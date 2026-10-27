@@ -9,7 +9,7 @@ next: false
 <p class="page-tagline">How applications discover what your terminal can do</p>
 
 <div class="beginner-intro">
-<p>Applications need to know terminal capabilities before using advanced features. But there's no reliable universal method. The ecosystem uses a mix of environment variables, query-response sequences, and databases — each with significant blind spots. Understanding these mechanisms explains why feature detection is hard and why terminfo.dev takes the approach it does.</p>
+<p>Applications need to know terminal features before using advanced features. But there's no reliable universal method. The ecosystem uses a mix of environment variables, query-response sequences, and databases — each with significant blind spots. Understanding these mechanisms explains why feature detection is hard and why terminfo.dev takes the approach it does.</p>
 </div>
 
 ## The Problem
@@ -26,7 +26,7 @@ The `$TERM` environment variable names the terminal description an application s
 
 The name selects a description; it need not identify the application drawing the window or verify every operation in that description. For example, Kitty documents its `xterm-kitty` entry and how to make that entry available on a remote host. If an entry is absent there, database-based programs cannot use it as intended. [Kitty FAQ](https://sw.kovidgoyal.net/kitty/faq/)
 
-So `$TERM` is a useful description selector, not an exhaustive capability test. Read the selected entry for what it declares, then use targeted queries or controlled checks when you need evidence about the current path.
+So `$TERM` is a useful description selector, not an exhaustive feature test. Read the selected entry for what it declares, then use targeted queries or controlled tests when you need evidence about the current path.
 
 ::: tip $TERM selects a description, not an exhaustive feature test
 Inside a multiplexer, `$TERM` usually describes the multiplexer. Over SSH, a database-based program needs the selected terminfo entry on the remote host. Kitty documents this installation problem and provides ways to copy its entry. [Kitty FAQ](https://sw.kovidgoyal.net/kitty/faq/)
@@ -38,7 +38,7 @@ Inside a multiplexer, `$TERM` usually describes the multiplexer. Over SSH, a dat
 
 The [termstandard/colors](https://github.com/termstandard/colors) community project documents the convention. It is not the only way to describe direct color: ncurses also documents an extended `RGB` terminfo capability. An environment value can be absent, inherited, or stale. [ncurses user_caps(5)](https://invisible-island.net/ncurses/man/user_caps.5.html)
 
-`$COLORTERM` concerns color only. It says nothing about underline styles, cursor shapes, clipboard access, graphics, or keyboard protocols. Other environment variables may hint at the launching application, but they are not a universal capability inventory.
+`$COLORTERM` concerns color only. It says nothing about underline styles, cursor shapes, clipboard access, graphics, or keyboard protocols. Other environment variables may hint at the launching application, but they are not a universal feature inventory.
 
 ## terminfo/termcap
 
@@ -68,7 +68,7 @@ If no probe was attempted, the site displays TEST TODO. An attempted DECRQM quer
 
 XTVERSION sends `CSI > 0 q` and, when implemented, returns `DCS > | text ST`. The text is supplied by the responding layer; its spelling and version format are implementation-specific. [xterm control sequences](https://invisible-island.net/xterm/ctlseqs/ctlseqs.html)
 
-The reply may identify an intermediate layer such as tmux rather than the outer graphical terminal. A name and version can guide a compatibility table, but that table predicts expected capabilities; it does not measure the installed configuration or the end-to-end path. [tmux manual](https://github.com/tmux/tmux/blob/master/tmux.1)
+The reply may identify an intermediate layer such as tmux rather than the outer graphical terminal. A name and version can guide a compatibility table, but that table predicts expected features; it does not measure the installed configuration or the end-to-end path. [tmux manual](https://github.com/tmux/tmux/blob/master/tmux.1)
 
 Using a version table requires maintaining its entries as implementations change. Where the behavior matters, a query or controlled test of that behavior provides narrower, stronger evidence. If no XTVERSION reply arrives, the result is TEST TODO if no probe was attempted, or TEST FAILURE if it was attempted without a result.
 
@@ -78,10 +78,10 @@ Runtime probing asks what a terminal did in a specified test. A measured reply o
 
 A width test can write a sample character and measure the cursor position afterward. The measured distance says how wide that sample was in that environment; a missing reply after an attempted query is TEST FAILURE. Writing test content changes the terminal, so this check needs a verified disposable test environment. Other probes use DECRPM queries, OSC response parsing, and DA1 sentinels.
 
-[Termless](https://termless.dev) instantiates a headless emulator and reads back its parser state. In an ordinary terminal, the `npx terminfo.dev` CLI runs reviewed queries and skips state-changing checks unless a verified disposable test environment is available. The site displays those skipped checks as TEST TODO; the raw run preserves the collector's original fields. A query reply establishes only the property it reports; rendering and interaction require their own observations.
+[Termless](https://termless.dev) instantiates a headless emulator and reads back its parser state. In an ordinary terminal, the `npx terminfo.dev` CLI runs reviewed queries and skips state-changing tests unless a verified disposable test environment is available. The site displays those skipped tests as TEST TODO; the raw run preserves the collector's original fields. A query reply establishes only the property it reports; rendering and interaction require their own observations.
 
 ::: info Why terminfo.dev probes directly instead of using terminfo
-Terminfo describes capabilities associated with a `$TERM` entry, including [user-defined extensions in ncurses](https://invisible-island.net/ncurses/man/user_caps.5.html). Those descriptions do not record what happened in a particular test. Runtime observations complement them; unanswered or refused checks give no support conclusion. See [Why not terminfo?](/about#why-not-terminfo) for the full rationale.
+Terminfo describes capabilities associated with a `$TERM` entry, including [user-defined extensions in ncurses](https://invisible-island.net/ncurses/man/user_caps.5.html). Those descriptions do not record what happened in a particular test. Runtime observations complement them; unanswered or refused tests give no support conclusion. See [Why not terminfo?](/about#why-not-terminfo) for the full rationale.
 :::
 
 ## Comparing Detection Methods
@@ -112,7 +112,7 @@ Beyond `$TERM` and `$COLORTERM`, some terminals set additional environment varia
 | **`GHOSTTY_RESOURCES_DIR`** | Ghostty                    | Resource path; suggests a Ghostty-launched environment               |
 | **`ITERM_SESSION_ID`**      | iTerm2                     | Session identifier; suggests an iTerm2-launched environment          |
 
-These variables are fast to check, but their presence is not a current-path capability test. A query such as XTVERSION or DECRQM asks the responding layer a narrower question; its reply must still be interpreted within that protocol.
+These variables are fast to check, but their presence is not a current-path feature test. A query such as XTVERSION or DECRQM asks the responding layer a narrower question; its reply must still be interpreted within that protocol.
 
 ::: warning Intermediate layers change what you can observe
 SSH forwarding is configurable, while `$TERM` is sent with an allocated PTY. A multiplexer may overwrite, retain, or add environment variables and may answer or filter terminal queries. Neither an inherited variable nor a query reply automatically identifies the outer graphical terminal. [OpenSSH ssh_config(5)](https://man.openbsd.org/ssh_config); [tmux manual](https://github.com/tmux/tmux/blob/master/tmux.1)
@@ -206,11 +206,11 @@ The Bash and JavaScript examples inspect hints, not terminal behavior; the Pytho
 
 ## What Developers Should Do
 
-For maximum compatibility, use a layered detection strategy. Start with `$TERM` to select a terminal description and `$COLORTERM` as a color hint. Read the entry rather than inferring all of its capabilities from its name. If accurate color behavior matters, test it on the actual terminal path.
+For maximum compatibility, use a layered detection strategy. Start with `$TERM` to select a terminal description and `$COLORTERM` as a color hint. Read the entry rather than inferring all of its features from its name. If accurate color behavior matters, test it on the actual terminal path.
 
 For specific features, ask a specific question. DECRQM can report whether the responding layer recognizes a private mode and its current state. XTVERSION can report that layer's name and version; a version table is a prediction, not a behavioral measurement. DA1 can help delimit unanswered queries, but a complete correlated reply establishes its scoped result even if DA1 never arrives.
 
-Most importantly, **degrade gracefully**. Do not treat `xterm-256color` as full xterm compatibility or a missing DECRPM reply as proof of non-support. Keep fallbacks for color, underlines, and keyboard input when a capability is unknown or unavailable. Match each conclusion to what was actually declared or observed.
+Most importantly, **degrade gracefully**. Do not treat `xterm-256color` as full xterm compatibility or a missing DECRPM reply as proof of non-support. Keep fallbacks for color, underlines, and keyboard input when a feature is unknown or unavailable. Match each conclusion to what was actually declared or observed.
 
 ---
 

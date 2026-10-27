@@ -60,11 +60,11 @@ async function printView(element: React.ReactElement): Promise<void> {
 
 const program = new Command()
   .name("terminfo")
-  .description(`Can your terminal do that? — record available checks across ${ALL_PROBES.length} feature definitions`)
+  .description(`Can your terminal do that? — record available tests across ${ALL_PROBES.length} feature definitions`)
   .version(`${packageVersion} (${getCliSuiteProbeHash()})`)
 
 program.addHelpSection("Examples:", [
-  ["$ npx terminfo.dev test", "Record available checks; other checks may be refused"],
+  ["$ npx terminfo.dev test", "Record available tests; other tests may be refused"],
   ["$ npx terminfo.dev test --json > raw.json", "One raw run; TTY input, controls on /dev/tty"],
   ["$ npx terminfo.dev test --output /tmp/terminfo-run.json", "Private raw file at an absolute path"],
   [
@@ -78,7 +78,7 @@ program.addHelpSection("Examples:", [
 
 program
   .command("test")
-  .description("Record terminal observations; state-changing checks require a verified test environment")
+  .description("Record terminal observations; state-changing tests require a verified test environment")
   .argument("[daemon]", "Daemon name to test")
   .option("--json", "Write one raw JSON run to stdout (inline probes require interactive TTY)")
   .option("--output <file>", "Write exact raw JSON to an absolute file")
@@ -182,7 +182,7 @@ program
       }
       const data = decoded.run
       const aggregate = aggregateCurrentResults(data.results, collected.receipt.manifest.catalogIds ?? [])
-      console.log(`${data.target.id} ${data.target.version}: ${currentSupportedShare(aggregate)}`)
+      console.log(`${data.subject.id} ${data.subject.version}: ${currentSupportedShare(aggregate)}`)
       console.log(currentCoverageSentence(aggregate, collected.receipt.manifest.catalogIds))
       console.log(
         `Run ${data.runId}: ${"sealedAt" in data ? "sealed" : "required review pending; unsealed draft"}; ${aggregate.complete ? "complete" : "incomplete"}; identity unverified.`,

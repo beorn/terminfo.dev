@@ -84,12 +84,12 @@ export function candidateFromSelected(
 ): ContextCandidate {
   return {
     key,
-    kind: selected.target.kind,
-    terminalId: selected.target.id,
-    os: selected.target.os ?? "",
-    permissions: selected.target.permissions ?? null,
+    kind: selected.subject.kind,
+    terminalId: selected.subject.id,
+    os: selected.subject.os ?? "",
+    permissions: selected.subject.permissions ?? null,
     runId: selected.runId,
-    version: selected.target.version ?? "",
+    version: selected.subject.version ?? "",
     measuredAt: selected.measuredAt,
     suiteId: selected.suiteId,
     suiteFreshness: selected.suiteFreshness,

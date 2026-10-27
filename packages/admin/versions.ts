@@ -48,6 +48,8 @@ const ADAPTER_SOURCE_PATHS = [
   "packages/terminfo.dev/src/identity-guard.ts",
   "packages/run-parser/src/index.ts",
   "packages/run-parser/src/app-launch.ts",
+  "packages/run-parser/src/json.ts",
+  "packages/run-parser/src/observations.ts",
   "scripts/release1-collection.ts",
   "scripts/interpretations.ts",
   "scripts/linux-container-run.sh",
@@ -138,7 +140,7 @@ export function probeSuiteSnapshot(repoRoot: string = REPO_ROOT): ProbeSuiteSnap
   const app = ALL_PROBES.filter((probe) => probe.term !== null)
     .map((probe) => probe.id)
     .sort()
-  const headless = ALL_PROBES.filter((probe) => probe.termless !== null)
+  const headless = ALL_PROBES.filter((probe) => probe.lib !== null)
     .map((probe) => probe.id)
     .sort()
   const textClaims = ALL_PROBES.filter((probe) => probe.term !== null && probe.textClaim === "characters")
@@ -149,7 +151,7 @@ export function probeSuiteSnapshot(repoRoot: string = REPO_ROOT): ProbeSuiteSnap
     probeHash: hash.digest("hex").slice(0, 12),
     adapterVersion,
     catalogIds,
-    probes: { app, headless, mux: [...app] },
+    probes: { term: app, lib: headless, mux: [...app] },
     sourcePaths,
   }
 }
@@ -163,8 +165,9 @@ export function probeSuiteSnapshot(repoRoot: string = REPO_ROOT): ProbeSuiteSnap
 export function derivedSuiteManifest(
   snapshot: ProbeSuiteSnapshot = probeSuiteSnapshot(),
   freeze?: { release: string; at: string },
-): ProbeSuiteManifest {
+): ProbeSuiteManifest & { schemaVersion: 4 } {
   return {
+    schemaVersion: 4,
     probeHash: snapshot.probeHash,
     adapterVersion: snapshot.adapterVersion,
     probes: snapshot.probes,

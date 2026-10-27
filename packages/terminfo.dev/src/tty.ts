@@ -240,7 +240,7 @@ export function readResponse(
     // withTTYOperation enters its context before invoking this body.
     const lease = operationContext.getStore() as TTYOperationLease
     const previous = lease.startResponseTimer
-    // The existing nested injection lease checks custody, then arms this already-listening reader.
+    // The existing nested injection lease tests custody, then arms this already-listening reader.
     lease.startResponseTimer = start
     try {
       if (inject) await inject()

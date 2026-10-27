@@ -36,7 +36,7 @@ import { probeHash } from "../packages/admin/versions.ts"
 import { fixtureContentDir } from "../test-fixtures/content-root.ts"
 
 /** One synthetic current run: only the target fields the selection rule reads. */
-type StubRun = { target: { kind: string; id: string; os?: string; permissions?: string | null } }
+type StubRun = { subject: { kind: string; id: string; os?: string; permissions?: string | null } }
 
 /**
  * A stub projection for the selection tests. The projection carries the ONE classified table
@@ -89,11 +89,11 @@ function writeFrozenSuite(content: string, probeHash: string): void {
   mkdirSync(join(content, "suites"), { recursive: true })
   writeFileSync(
     join(content, "suites", `${probeHash}.json`),
-    JSON.stringify({
+    JSON.stringify({ schemaVersion: 4 as const,
       probeHash,
       adapterVersion: "4.0.0",
       freeze: { release: "candidate2", at: "2026-10-12T03:33:42.000Z" },
-      probes: { app: [], headless: [], mux: [] },
+      probes: { term: [], lib: [], mux: [] },
     }),
   )
 }
@@ -279,7 +279,7 @@ describe("consumer selection", () => {
     }
   })
 
-  it("checks freshness without changing inventory or treating unreviewed files as current", () => {
+  it("tests freshness without changing inventory or treating unreviewed files as current", () => {
     const root = mkdtempSync(join(tmpdir(), "terminfo-freshness-"))
     const source = join(import.meta.dirname, "..")
     try {
@@ -410,7 +410,7 @@ describe("consumer selection", () => {
             if (!ref) throw new Error(`Missing run reference for ${version.runId}`)
             expect(ref).toMatchObject({
               runId: version.runId,
-              target: version.target,
+              subject: version.subject,
               measuredAt: version.measuredAt,
               suiteId: version.suiteId,
               probeHash: version.probeHash,
@@ -523,11 +523,11 @@ describe("consumer selection", () => {
   })
 
   it("requires a reviewed default row for two exact contexts of one terminal", () => {
-    const mac = { target: { kind: "app", id: "kitty", os: "macos" } }
-    const linux = { target: { kind: "app", id: "kitty", os: "linux" } }
+    const mac = { subject: { kind: "term", id: "kitty", os: "macos" } }
+    const linux = { subject: { kind: "term", id: "kitty", os: "linux" } }
     const macKey = projectedContextKey(
       {
-        kind: "app",
+        kind: "term",
         id: "kitty",
         version: "0.48.2",
         os: "macos",
@@ -541,7 +541,7 @@ describe("consumer selection", () => {
     )
     const linuxKey = projectedContextKey(
       {
-        kind: "app",
+        kind: "term",
         id: "kitty",
         version: "0.49.2",
         os: "linux",
@@ -578,9 +578,9 @@ describe("consumer selection", () => {
   })
 
   it("keeps same-named app and headless runs in distinct compatibility rows", () => {
-    const app = { target: { kind: "app", id: "kitty" } }
-    const headless = { target: { kind: "headless", id: "kitty" } }
-    const library = { target: { kind: "headless", id: "xtermjs" } }
+    const app = { subject: { kind: "term", id: "kitty" } }
+    const headless = { subject: { kind: "lib", id: "kitty" } }
+    const library = { subject: { kind: "lib", id: "xtermjs" } }
     const projection = stubProjection(
       { "app:kitty": app, "headless:kitty": headless, "headless:xtermjs": library },
       { "app:kitty": [app], "headless:kitty": [headless], "headless:xtermjs": [library] },
@@ -589,9 +589,9 @@ describe("consumer selection", () => {
     try {
       writeCatalog(content)
       const rows = compatibilityTargets(projection, content)
-      expect(rows.get("kitty")?.selected.target.kind).toBe("app")
-      expect(rows.get("headless-kitty")?.selected.target.kind).toBe("headless")
-      expect(rows.get("xtermjs")?.selected.target.kind).toBe("headless")
+      expect(rows.get("kitty")?.selected.subject.kind).toBe("app")
+      expect(rows.get("headless-kitty")?.selected.subject.kind).toBe("headless")
+      expect(rows.get("xtermjs")?.selected.subject.kind).toBe("headless")
       delete projection.current["app:kitty"]
       expect(compatibilityTargets(projection, content).get("headless-kitty")?.contextKey).toBe("headless:kitty")
     } finally {
@@ -600,10 +600,10 @@ describe("consumer selection", () => {
   })
 
   it("keeps released headless keys when same-id app runs arrive", () => {
-    const headlessWezterm = { target: { kind: "headless", id: "wezterm" } }
-    const appWezterm = { target: { kind: "app", id: "wezterm" } }
-    const headlessAlacritty = { target: { kind: "headless", id: "alacritty" } }
-    const appAlacritty = { target: { kind: "app", id: "alacritty" } }
+    const headlessWezterm = { subject: { kind: "lib", id: "wezterm" } }
+    const appWezterm = { subject: { kind: "term", id: "wezterm" } }
+    const headlessAlacritty = { subject: { kind: "lib", id: "alacritty" } }
+    const appAlacritty = { subject: { kind: "term", id: "alacritty" } }
     const projection = stubProjection({
       "headless:wezterm": headlessWezterm,
       "app:wezterm": appWezterm,
@@ -614,10 +614,10 @@ describe("consumer selection", () => {
     try {
       writeCatalog(content)
       const rows = compatibilityTargets(projection, content)
-      expect(rows.get("wezterm")?.selected.target.kind).toBe("headless")
-      expect(rows.get("app-wezterm")?.selected.target.kind).toBe("app")
-      expect(rows.get("alacritty")?.selected.target.kind).toBe("headless")
-      expect(rows.get("app-alacritty")?.selected.target.kind).toBe("app")
+      expect(rows.get("wezterm")?.selected.subject.kind).toBe("headless")
+      expect(rows.get("app-wezterm")?.selected.subject.kind).toBe("app")
+      expect(rows.get("alacritty")?.selected.subject.kind).toBe("headless")
+      expect(rows.get("app-alacritty")?.selected.subject.kind).toBe("app")
       delete projection.current["headless:wezterm"]
       expect(compatibilityTargets(projection, content).get("app-wezterm")?.contextKey).toBe("app:wezterm")
     } finally {
@@ -647,14 +647,14 @@ describe("consumer selection", () => {
   })
 
   it("names the declared xterm app run as a compatibility target", () => {
-    const appXterm = { target: { kind: "app", id: "xterm" } }
+    const appXterm = { subject: { kind: "term", id: "xterm" } }
     const projection = stubProjection({ "app:xterm": appXterm })
     const content = mkdtempSync(join(tmpdir(), "terminfo-xterm-target-"))
     try {
       writeCatalog(content)
       const rows = compatibilityTargets(projection, content)
       expect(rows.get("xterm")?.contextKey).toBe("app:xterm")
-      expect(rows.get("xterm")?.selected.target.kind).toBe("app")
+      expect(rows.get("xterm")?.selected.subject.kind).toBe("app")
     } finally {
       // raw-delete-allow: standalone component repository whose CI installs without hh's workspace, so removely is unavailable; content is this test's own mkdtemp scratch root
       rmSync(content, { recursive: true, force: true })

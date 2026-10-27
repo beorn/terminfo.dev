@@ -9,7 +9,7 @@ next: false
 <p class="page-tagline">ANSI 16, 256-color, truecolor, and the escape sequences that carry them</p>
 
 <div class="beginner-intro">
-<p>Terminals speak color through escape sequences. Three generations of color specs coexist: ANSI 16 (1980s), 256-color indexed (1990s), and truecolor (2000s). Each adds capability without breaking the last. Understanding which terminal supports which — and how applications negotiate down when needed — is the foundation of every modern TUI.</p>
+<p>Terminals speak color through escape sequences. Three generations of color specs coexist: ANSI 16 (1980s), 256-color indexed (1990s), and truecolor (2000s). Each adds feature without breaking the last. Understanding which terminal supports which — and how applications negotiate down when needed — is the foundation of every modern TUI.</p>
 </div>
 
 ## The three color generations

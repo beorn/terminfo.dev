@@ -645,10 +645,10 @@ async function probeDaemon(
   }
   let mode: "retained" | "admitted" | "pending-review" = outputDirectory === undefined ? "admitted" : "retained"
   if (outputDirectory !== undefined) {
-    const source = retainCollectedRun(run, retained.path, { kind: "app", id: appId, version }, outputDirectory)
+    const source = retainCollectedRun(run, retained.path, { kind: "term", id: appId, version }, outputDirectory)
     console.log(`  Retained private development run ${source}`)
   } else {
-    const source = admitCollectedRun(run, retained.path, { kind: "app", id: appId, version })
+    const source = admitCollectedRun(run, retained.path, { kind: "term", id: appId, version })
     if (source.endsWith(".draft.json")) mode = "pending-review"
   }
   const catalogIds = run.results.map((result) => result.featureId)

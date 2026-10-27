@@ -4,7 +4,7 @@
 
 If you build an app that runs in a terminal — a CLI tool, a text editor, a dashboard — you need to know what your users' terminals can actually do. Can they display colors? Do they support clickable links? Will emoji render correctly?
 
-Terminal capabilities vary by version, configuration and environment. A protocol may be documented, recognized by a parser, or fully usable in an application; those are different claims.
+Terminal features vary by version, configuration and environment. A protocol may be documented, recognized by a parser, or fully usable in an application; those are different claims.
 
 **terminfo.dev is a terminal feature compatibility database.** Its current audit is adding a traceable connection between probe results, recorded evidence and reviewed corrections. The [measurement guide](/contribute#what-a-probe-can-establish) explains what each method can establish and where it stops.
 
@@ -22,7 +22,7 @@ terminfo.dev asks a complementary question: what did a specific test observe in 
 
 **[Multiplexers](/multiplexers)** run between an application and an outer terminal. Results depend on that whole path, including versions, configuration and passthrough settings. A failure through tmux or Screen is not automatically a failure of the outer terminal.
 
-Controlled runs and community submissions are ways to collect these measurements. They should use the same versioned probe definitions. Older published CLI packages lag the source suite, so their coverage must be identified separately. A community submission needs identity, scope and evidence checks before it can support a published claim.
+Controlled runs and community submissions are ways to collect these measurements. They should use the same versioned probe definitions. Older published CLI packages lag the source suite, so their coverage must be identified separately. A community submission needs identity, scope and evidence tests before it can support a published claim.
 
 ## Evidence and Corrections
 
@@ -75,9 +75,9 @@ Features are tagged by their defining standard (13 standards). Each standard pag
 - **Configuration matters.** Keybindings, permissions, fonts and enabled features can affect a result. Historical runs do not all record their configuration; do not assume they used defaults.
 - **Specific versions, not all versions.** Probe results are from particular versions of each terminal and backend. Older or newer versions may differ. Check the terminal page and result context for the measured version.
 - **Programs inside a terminal are a different target.** A terminal emulator provides the surface that ordinary terminal applications consume. Identify which layer a reproduction actually tests.
-- **Visual claims need visual evidence.** Controlled screenshots, pixel checks or recordings can be automated, but protocol replies alone cannot establish glyph appearance, image placement or cursor blink timing.
+- **Visual claims need visual evidence.** Controlled screenshots, pixel tests or recordings can be automated, but protocol replies alone cannot establish glyph appearance, image placement or cursor blink timing.
 - **Platform coverage is incomplete.** Current reviewed app results cover Kitty on Linux. Older macOS records remain historical; the corrected suite has not established app behavior on macOS or Windows. Headless engine results are separate from desktop-app measurements.
-- **Headless evidence varies.** A cell-state assertion can prove an engine effect; a declared capability or consumed sequence cannot. Neither establishes rendering in the desktop application.
+- **Headless evidence varies.** A cell-state assertion can prove an engine effect; a declared feature or consumed sequence cannot. Neither establishes rendering in the desktop application.
 - **Multiplexer results depend on the outer terminal.** Multiplexer pass-through probes test what the multiplexer relays, but the outer terminal must also support the feature for it to work end-to-end.
 
 ## Changelog
@@ -101,7 +101,7 @@ Terminfo.dev builds on ideas and approaches from these projects:
 - **[esctest2](https://github.com/ThomasDickey/esctest2)** (Thomas Dickey, George Nachman) — VT conformance test suite. Our edge-case probes are inspired by their comprehensive test cases.
 - **[ucs-detect](https://github.com/jquast/ucs-detect)** (Jeff Quast) — Unicode terminal width testing. Our emoji ZWJ, regional indicator, and variation selector probes follow their cursor-position-based width measurement approach.
 - **[terminal-colorsaurus](https://github.com/bash/terminal-colorsaurus)** — Terminal color detection. Our DA1 sentinel pattern (query + DA1 fallback for faster response detection) is adapted from their approach.
-- **[notcurses](https://github.com/dankamongmen/notcurses)** (Nick Black) — TUI library with terminal capability detection. Their XTGETTCAP and graphics detection approaches inform our probe design.
+- **[notcurses](https://github.com/dankamongmen/notcurses)** (Nick Black) — TUI library with terminal feature detection. Their XTGETTCAP and graphics detection approaches inform our probe design.
 - **[vttest](https://invisible-island.net/vttest/)** (Per Lindberg, Thomas Dickey) — The original VT100/VT220 terminal test utility, maintained since 1986.
 - **[termstandard/colors](https://github.com/termstandard/colors)** — Community-maintained TrueColor terminal support list.
 

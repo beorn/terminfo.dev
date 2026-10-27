@@ -275,7 +275,7 @@ export function mapSnapshotToCells(
     if (points.length > cols) {
       return `row ${String(row)} is ${String(points.length)} characters over ${String(cols)} columns, so the terminal wrapped it and the row boundary is unknown`
     }
-    // A row that passed those checks has width `cols`: the terminal trims only trailing blanks, so
+    // A row that passed those tests has width `cols`: the terminal trims only trailing blanks, so
     // padding them back is a measurement. The row is recorded so the evidence label can say so.
     if (points.length < cols) paddedRows.push(row)
     mapped.push(points.length < cols ? `${line}${" ".repeat(cols - points.length)}` : line)

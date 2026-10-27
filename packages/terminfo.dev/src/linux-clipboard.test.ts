@@ -19,7 +19,7 @@ const directories: string[] = []
 
 // The direct-owner tests cannot witness mux attachment: both measured process shapes need
 // the same grant to reject detach, foreign sockets, changed identities and extra displays.
-test.runIf(process.platform === "linux")("mux clipboard grant checks the measured attachment before every read", () => {
+test.runIf(process.platform === "linux")("mux clipboard grant tests the measured attachment before every read", () => {
   const sourceRoot = dirname(fileURLToPath(import.meta.url))
   const child = String.raw`
 import assert from "node:assert/strict"
@@ -157,10 +157,10 @@ try {
     assert.equal(adapter.muxAttachmentProof.receiptSha256,hash(real.readFileSync(receiptPath)))
     // The batch's verifier must own every existing transaction check, not only its outer boundary.
     for (const [site, failAt] of [["start",1],["read",2],["write",3]]) {
-      let checks=0, callbacks=0
+      let tests=0, callbacks=0
       const refusal=new Error("transaction custody lost at "+site)
       const verify=async()=>{
-        if (++checks >= failAt) throw refusal
+        if (++tests >= failAt) throw refusal
         await adapter.assertOwned()
       }
       await assert.rejects(adapter.withClipboardFixture(async fixture=>{
@@ -169,7 +169,7 @@ try {
         return {pass:true}
       },()=>{},verify),new RegExp("transaction custody lost at "+site))
       assert.equal(callbacks,site==="write"?1:0)
-      assert.equal(checks,failAt+1,"restoration must use the same refused verifier")
+      assert.equal(tests,failAt+1,"restoration must use the same refused verifier")
     }
     // The same grant must notice detach before the next clipboard operation.
     variant="detached"
@@ -317,7 +317,7 @@ test.runIf(process.platform === "linux")(
   },
 )
 
-/** This child checks real Linux fds; Vitest workers replace stdin even when Vitest itself has a PTY. */
+/** This child tests real Linux fds; Vitest workers replace stdin even when Vitest itself has a PTY. */
 test.runIf(process.platform === "linux")("owned Linux output proof uses a real controlling PTY", () => {
   const sourceRoot = dirname(fileURLToPath(import.meta.url))
   const codeRoot = resolve(sourceRoot, "../../..")
@@ -647,7 +647,7 @@ test("a nested transaction refuses and callback failure restores and verifies th
           transaction(
             async () => ({
               pass: true,
-              observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none" },
+              tests: [{ id: "criterion", status: "test-todo", reason: "insufficient-evidence" }],
             }),
             (event) => events.push(event),
             async () => {},
@@ -678,7 +678,7 @@ test("restoration failure overrides a supported callback result", async () => {
   })
   await expect(
     transaction(
-      async () => ({ pass: true, observation: { outcome: "supported", evidence: "behavior" } }),
+      async () => ({ pass: true, observation: { outcome: "supported", assertionType: "query_reply" } }),
       () => {},
       async () => {},
     ),

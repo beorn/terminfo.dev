@@ -5,7 +5,7 @@
  * module makes no native call, so the CLI still starts under Node and every path that does not
  * call `loadKernel32()` is unaffected.
  *
- * `hasWindowsKernel32Ffi()` is the one runtime availability check. `detectTerminal()` checks it
+ * `hasWindowsKernel32Ffi()` is the one runtime availability check. `detectTerminal()` tests it
  * before probing Windows process ancestry so a Node invocation on Windows skips the FFI probe and
  * falls back to `$TERM` without throwing or catching, while `loadKernel32()` on the hosted Windows
  * ownership route refuses loudly ("bun:ffi is not available in this runtime") when `bun:ffi` is

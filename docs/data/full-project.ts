@@ -62,7 +62,7 @@ export interface FullProjectRows {
   requiredSuiteId: string
   /** Every recorded catalogue position, environment groups included. */
   catalogRows: number
-  /** The graded capabilities: `catalogRows` minus the environment groups (D132 B). */
+  /** The graded features: `catalogRows` minus the environment groups (D132 B). */
   gradedRows: number
   /** The environment groups the catalogue records: manual by design, never graded. */
   environmentGroups: number
@@ -115,12 +115,12 @@ function buildRow(
     (candidate) =>
       candidate.kind === context.kind &&
       candidate.terminalId === context.terminalId &&
-      (context.kind === "headless" || candidate.os === context.os),
+      (context.kind === "lib" || candidate.os === context.os),
   )
   if (matches.length === 0) {
     return { ...base, collected: false, cause: "no selected run for this context" }
   }
-  if (context.kind === "headless") {
+  if (context.kind === "lib") {
     // An engine's adapter is one context. Several current runs across operating systems are several
     // candidates for one row, so the row names them instead of choosing one and hiding the rest.
     const onSuite = matches.filter((candidate) => candidate.suiteId === args.requiredSuiteId)
@@ -176,11 +176,11 @@ function buildRow(
     }),
     observations: args.catalogIds.map((id) => {
       const cell = byId.get(id)
-      if (!cell) throw new Error(`Current run ${picked.run.runId} lacks frozen capability ${id}`)
+      if (!cell) throw new Error(`Current run ${picked.run.runId} lacks frozen feature ${id}`)
       return {
         id,
         state: cell.status,
-        method: cell?.evidence ?? null,
+        method: cell?.assertionType ?? null,
         note: null,
         reason: cell?.reason ?? null,
       }

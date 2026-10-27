@@ -609,7 +609,7 @@ async function generateLockfile() {
     if (!chosenDeclaration) throw new Error(`${catalogPath}: missing tracked terminal ${terminal.id}`)
     const [targetId, declaration] = chosenDeclaration
     const kind: string | undefined = terminal.probeMethod === "termless" ? "headless" : declaration.kind
-    const entry = selected.find(({ selected: run }) => run.target.kind === kind && run.target.id === targetId)
+    const entry = selected.find(({ selected: run }) => run.subject.kind === kind && run.subject.id === targetId)
     const run = entry?.selected
     return {
       terminalId: terminal.id,
@@ -617,7 +617,7 @@ async function generateLockfile() {
       contextKey: entry?.contextKey ?? null,
       runId: run?.runId ?? null,
       runSha256: run?.sha256 ?? null,
-      lastProbedVersion: run?.target.version ?? null,
+      lastProbedVersion: run?.subject.version ?? null,
       lastProbedDate: run?.measuredAt ?? "never",
       featureCount: run?.catalogIds.length ?? 0,
     }

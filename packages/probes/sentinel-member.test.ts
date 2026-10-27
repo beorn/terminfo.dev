@@ -257,9 +257,9 @@ function definitionOf(id: string): ProbeDefinition {
 }
 
 function armsOf(id: string) {
-  const { termless, term } = definitionOf(id)
-  if (!termless || !term) throw new Error(`${id} has no headless and live arm pair`)
-  return { termless, term }
+  const { lib, term } = definitionOf(id)
+  if (!lib || !term) throw new Error(`${id} has no headless and live arm pair`)
+  return { lib, term }
 }
 
 /** A proven context that keeps every outcome its sentinel member gave, in order. */
@@ -283,6 +283,7 @@ function replayingLive(outcomes: readonly TerminalQueryOutcome[]): TermProbeSour
     throw new Error(`the live arm asked for ${what}`)
   }
   return {
+    kind: "live",
     cols: 80,
     rows: 24,
     write: () => {},
@@ -330,15 +331,15 @@ const ARM_CASES: ArmCase[] = [
 test.each(ARM_CASES)(
   "$id, $when: the proven headless arm grades exactly as live grades the same outcomes",
   async ({ id, replies, outcome }) => {
-    const { termless, term } = armsOf(id)
+    const { lib, term } = armsOf(id)
     const { ctx, outcomes } = recordingContext((text) => (text === DA1_QUERY ? DA1 : (replies[text] ?? "")))
-    const headless = termless(ctx)
+    const headless = lib(ctx)
     expect(outcomes.length, id).toBeGreaterThan(0)
     expect(headless.observation?.outcome, id).toBe(outcome)
     if (outcome === "unsupported") expect(headless.observation?.note, id).toBe("negative by sentinel")
     expect(headless).toStrictEqual(await term(replayingLive(outcomes)))
     // Without the member the arm keeps today's capture-only reading, where silence never grades.
-    const plain = termless(contextOf(scripted((text) => replies[text] ?? "")))
+    const plain = lib(contextOf(scripted((text) => replies[text] ?? "")))
     expect(plain.observation?.outcome, id).toBe("inconclusive")
   },
 )
@@ -350,19 +351,19 @@ test.each([
   { id: "device.xtversion", query: "\x1b[>0q", reply: "\x1b]11;rgb:0000/0000/0000\x1b\\" },
   { id: "device.tertiary-da", query: "\x1b[=c", reply: DA1 },
 ])("$id: bytes ahead of the DA1 answer grade no-response, as live grades them", async ({ id, query, reply }) => {
-  const { termless, term } = armsOf(id)
+  const { lib, term } = armsOf(id)
   const { ctx, outcomes } = recordingContext((text) => (text === DA1_QUERY ? DA1 : text === query ? reply : ""))
-  const headless = termless(ctx)
+  const headless = lib(ctx)
   expect(
     outcomes.map((outcome) => outcome.reason),
     id,
   ).toStrictEqual(["sentinel"])
-  expect(headless.observation, id).toStrictEqual({ outcome: "inconclusive", reason: "no-response", evidence: "query" })
+  expect(headless.observation, id).toStrictEqual({ outcome: "inconclusive", reason: "no-response", assertionType: "query_reply" })
   expect(headless).toStrictEqual(await term(replayingLive(outcomes)))
 })
 
 test("extensions.kitty-keyboard: once detection answers, a silent flags query grades as live grades it", async () => {
-  const { termless, term } = armsOf("extensions.kitty-keyboard")
+  const { lib, term } = armsOf("extensions.kitty-keyboard")
   const detection = `\x1b[?0u${DA1}`
   const fed: string[] = []
   const { ctx, outcomes } = recordingContext((text) => {
@@ -370,7 +371,7 @@ test("extensions.kitty-keyboard: once detection answers, a silent flags query gr
     if (text === "\x1b[?u\x1b[c") return detection
     return text === DA1_QUERY ? DA1 : ""
   })
-  const headless = termless(ctx)
+  const headless = lib(ctx)
   // Detection stays the DA1-graded capture both collectors already share; the flags query takes the member.
   expect(fed).toEqual(["\x1b[?u\x1b[c", "\x1b[>1u", "\x1b[?u", DA1_QUERY, "\x1b[<u"])
   expect(headless.observation).toMatchObject({ outcome: "unsupported", note: "negative by sentinel" })
@@ -426,9 +427,9 @@ test.each(ANSWERED_CASES)(
   async ({ id, reply, liveFirst = [] }) => {
     // Both arms draw the same image number, so the live twin can take the headless arm's allocation outcome.
     vi.spyOn(globalThis.crypto, "randomUUID").mockReturnValue("0000002a-0000-4000-8000-000000000000")
-    const { termless, term } = armsOf(id)
+    const { lib, term } = armsOf(id)
     const { ctx, outcomes } = recordingContext((text) => (text === DA1_QUERY ? DA1 : reply(text)))
-    const headless = termless(ctx)
+    const headless = lib(ctx)
     const graded = outcomes.at(-1)
     const frame = graded?.match?.[0]
     if (!graded || !frame) throw new Error(`${id}: the member gave no answered outcome`)
@@ -456,7 +457,7 @@ test("G1: a silent proven engine publishes the sentinel negative once the grace 
     {
       featureId: "device.xtversion",
       outcome: "unsupported",
-      evidence: "query",
+      assertionType: "query_reply",
       note: "negative by sentinel",
       rawReplyRef: "device.xtversion",
     },
@@ -494,7 +495,7 @@ test("G1: a byte the engine sends after the callback voids the negative as a col
       featureId: "device.xtversion",
       outcome: "error",
       reason: "collector-error",
-      evidence: "query",
+      assertionType: "query_reply",
       note: expect.stringMatching(
         /^headless xtermjs probe device\.xtversion: late reply after sentinel: 10 bytes "\\u001bP>\|late\\u001b\\\\" at \+\d+ms; refused observation\(outcome=unsupported, evidence=query, .*\) and assertion\(kind=negative, .*\)$/,
       ),

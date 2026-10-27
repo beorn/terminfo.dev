@@ -114,7 +114,7 @@ const linuxReceipt = () => ({
     suiteHash: "f".repeat(12),
   },
   runnerArtifact: { frozenRunnerSha256: digest("runner"), buildReceiptSha256: digest("build") },
-  declaredTarget: { kind: "app", id: "kitty", version: "0.49.2", os: "linux" },
+  declaredTarget: { kind: "term", id: "kitty", version: "0.49.2", os: "linux" },
   preset: "current",
   clipboardProfile: "default",
 })
@@ -160,7 +160,7 @@ test("a well-formed container receipt parses and its digest is the exact bytes t
     kind: "linux-xvfb-container",
     runId: envelope.runId,
     collectedAt: envelope.collectedAt,
-    declaredTarget: { kind: "app", id: "kitty", os: "linux" },
+    declaredTarget: { kind: "term", id: "kitty", os: "linux" },
     identity: {
       imageId: "sha256:" + digest("image"),
       imageTarSha256: digest("tar"),
@@ -232,7 +232,7 @@ test("a transport receipt is refused by name and never authorizes a write", () =
   )
 })
 
-// 27910: existing missing-field checks allow a YAML job key to masquerade as a jobs-API id.
+// 27910: existing missing-field tests allow a YAML job key to masquerade as a jobs-API id.
 // All three API identity fields must instead contain decimal digits, with jobId naming the trap.
 test("hosted job identity requires decimal API ids and refuses GITHUB_JOB by name", () => {
   for (const key of ["githubRunId", "githubRunAttempt", "jobId"] as const) {
@@ -328,12 +328,12 @@ test("an absent receipt is loud at read time, never an empty object that reads a
 // binding side — never a value read back out of the receipt — and the check is loud by name.
 test("a receipt binds only to the target it declares, and cannot bind to none", () => {
   const receipt = parseDisposableReceipt(JSON.stringify(linuxReceipt()))
-  expect(receipt.declaredTarget).toEqual({ kind: "app", id: "kitty", os: "linux" })
-  expect(() => bindReceiptToRun(receipt, { kind: "app", id: "kitty", os: "linux" }, "test")).not.toThrow()
-  expect(() => bindReceiptToRun(receipt, { kind: "app", id: "wezterm", os: "linux" }, "test")).toThrow(
+  expect(receipt.declaredTarget).toEqual({ kind: "term", id: "kitty", os: "linux" })
+  expect(() => bindReceiptToRun(receipt, { kind: "term", id: "kitty", os: "linux" }, "test")).not.toThrow()
+  expect(() => bindReceiptToRun(receipt, { kind: "term", id: "wezterm", os: "linux" }, "test")).toThrow(
     /receipt declares target .*kitty.* but this run is .*wezterm/,
   )
-  expect(() => bindReceiptToRun(receipt, { kind: "app", id: "kitty", os: "macos" }, "test")).toThrow(/os disagree/)
+  expect(() => bindReceiptToRun(receipt, { kind: "term", id: "kitty", os: "macos" }, "test")).toThrow(/os disagree/)
   expect(() => bindReceiptToRun(receipt, undefined, "test")).toThrow(/no run target was supplied to bind it to/)
 })
 
@@ -342,7 +342,7 @@ test("a github-hosted receipt declares no target and is not refused for the abse
   const receipt = parseDisposableReceipt(JSON.stringify(githubReceipt()))
   expect(receipt.declaredTarget).toBeUndefined()
   expect(receipt.identity).toBeUndefined()
-  expect(() => bindReceiptToRun(receipt, { kind: "app", id: "kitty", os: "linux" }, "test")).not.toThrow()
+  expect(() => bindReceiptToRun(receipt, { kind: "term", id: "kitty", os: "linux" }, "test")).not.toThrow()
 })
 
 test("HOSTED_IDENTITY_SOURCES Windows patterns match real-format lines and capture exact values", () => {
@@ -386,7 +386,7 @@ test("an owned host is sampled for the os its caller names, with no hosted-runne
 })
 
 // D4 (@cto 6710987a, revised on f94cc5e0): the Darwin arm is the union's second member, parsed by the
-// same positional checks, from r13's measured chain — including the GUI outer terminal, which has no TTY.
+// same positional tests, from r13's measured chain — including the GUI outer terminal, which has no TTY.
 const darwinProof = () => {
   const hop = (
     pid: number,

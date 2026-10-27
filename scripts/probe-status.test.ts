@@ -23,7 +23,7 @@ import {
 import { loadFeatures, type FeatureCatalog } from "@terminfo/catalog"
 import { derivedProbeStatus, probeStatusOf, probeStatusSummary } from "../docs/data/probe-status.ts"
 
-const termlessArm = (() => ({ pass: true })) as unknown as ProbeDefinition["termless"]
+const termlessArm = (() => ({ pass: true })) as unknown as ProbeDefinition["lib"]
 const termArm = (async () => ({ pass: true })) as unknown as ProbeDefinition["term"]
 
 /** A definition with both arms, then whatever the case under test overrides. */
@@ -41,32 +41,32 @@ const catalog = (rows: Record<string, string>): FeatureCatalog =>
 describe("derivedProbeStatus", () => {
   it("reads automated only when every running arm declares measuring evidence", () => {
     expect(
-      derivedProbeStatus(definition({ termObservationEvidence: "query", termlessObservationEvidence: "parser-state" })),
+      derivedProbeStatus(definition({ termAssertionType: "query_reply", libAssertionType: "buffer_state" })),
     ).toBe("automated")
   })
 
   it("reads partial when an arm is absent, even if the other arm measures", () => {
-    expect(derivedProbeStatus(definition({ termless: null, termObservationEvidence: "query" }))).toBe("partial")
+    expect(derivedProbeStatus(definition({ lib: null, termAssertionType: "query_reply" }))).toBe("partial")
   })
 
   it("reads partial when a declared arm carries acceptance-only evidence", () => {
     expect(
-      derivedProbeStatus(definition({ termObservationEvidence: "query", termlessObservationEvidence: "consumed" })),
+      derivedProbeStatus(definition({ termAssertionType: "query_reply", libAssertionType: null })),
     ).toBe("partial")
   })
 
   it("lets the consumption signal outrank an undeclared arm, so the row is partial and not undeclared", () => {
-    expect(derivedProbeStatus(definition({ termlessObservationEvidence: "consumed" }))).toBe("partial")
+    expect(derivedProbeStatus(definition({ libAssertionType: null }))).toBe("partial")
   })
 
   it("cannot settle a row that leaves an arm undeclared", () => {
-    expect(derivedProbeStatus(definition({ termlessObservationEvidence: "parser-state" }))).toBeNull()
+    expect(derivedProbeStatus(definition({ libAssertionType: "buffer_state" }))).toBeNull()
   })
 })
 
 describe("probeStatusOf", () => {
   it("lets a reviewed value win, so a gate the definitions cannot express still reads partial", () => {
-    const gated = definition({ termObservationEvidence: "behavior", termlessObservationEvidence: "query" })
+    const gated = definition({ termAssertionType: "query_reply", libAssertionType: "query_reply" })
     expect(derivedProbeStatus(gated)).toBe("automated")
     expect(probeStatusOf("test.probe", catalog({ "test.probe": "partial" }))).toBe("partial")
   })
@@ -169,12 +169,12 @@ describe("the real catalog", () => {
     for (const id of ["extensions.font-ligatures", "input.kitty-click-events"]) {
       const declaration = ALL_PROBES.find((entry) => entry.id === id)
       expect(declaration, id).toBeDefined()
-      expect(declaration?.termlessObservationEvidence, id).toBe("none")
+      expect(declaration?.libAssertionType, id).toBeNull()
       expect(probeStatusOf(id, features), id).toBe("partial")
     }
-    expect(ALL_PROBES.find((entry) => entry.id === "extensions.font-ligatures")?.termObservationEvidence).toBe("pixels")
-    expect(ALL_PROBES.find((entry) => entry.id === "input.kitty-click-events")?.termObservationEvidence).toBe(
-      "interaction",
+    expect(ALL_PROBES.find((entry) => entry.id === "extensions.font-ligatures")?.termAssertionType).toBe("screenshot")
+    expect(ALL_PROBES.find((entry) => entry.id === "input.kitty-click-events")?.termAssertionType).toBe(
+      "input_bytes",
     )
   })
 
@@ -187,8 +187,8 @@ describe("the real catalog", () => {
     // method it cannot run. Both removals fail at their own declaration assertion, and the underlying
     // derivations differ: without "none" the row falls to null and would read undeclared, while
     // without "pixels" the remaining "none" still derives partial.
-    expect(declaration?.termObservationEvidence).toBe("pixels")
-    expect(declaration?.termlessObservationEvidence).toBe("none")
+    expect(declaration?.termAssertionType).toBe("screenshot")
+    expect(declaration?.libAssertionType).toBeNull()
     expect(derivedProbeStatus(declaration as ProbeDefinition)).toBe("partial")
     expect(probeStatusOf("modes.decsscls", features)).toBe("partial")
     // One home per truth: the derivation settles the badge, so the catalog carries no reviewed value

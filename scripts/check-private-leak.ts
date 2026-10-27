@@ -7,7 +7,7 @@
  * routes. This script is the gate that makes a `/reviews/` (or similar) page
  * impossible to publish silently.
  *
- * It checks THREE layers:
+ * It tests THREE layers:
  *   1. SOURCE  — no internal .md under docs/: forbidden path segments
  *                (reviews/internal/drafts/...), the `llm-meta` marker that AI
  *                review/enrichment output carries, or frontmatter that opts a

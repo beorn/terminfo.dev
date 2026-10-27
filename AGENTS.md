@@ -286,7 +286,7 @@ bun probe:mux                 # = bun terminfo probe mux --all
 - **App launch** (`probe app`): Testing real macOS terminals. Requires Accessibility permission for AppleScript. Doesn't work for all terminals (Warp, some Electron apps).
 - **Daemon** (`probe server`): Testing ANY terminal. Run `--start` in the target terminal, then `--all` from another session. Works for Warp, SSH sessions, Linux, anything with a TTY. **Most flexible method.**
 - **Mux** (`probe mux`): Testing multiplexer pass-through (tmux, screen). Launches the mux with a daemon inside, probes via HTTP, saves to `content/probes-mux/`. Shows which features each mux correctly relays vs. strips.
-- **Inline** (`probe here`): Quick test of the current terminal. Good for one-off checks.
+- **Inline** (`probe here`): Quick test of the current terminal. Good for one-off tests.
 - **Manual**: For terminals where none of the above work, run `terminfo detect` and submit results.
 
 ### Full Update Workflow
@@ -393,7 +393,7 @@ bun run build
 
 ## Adding a New Feature
 
-1. Add probe to `packages/probe-defs/src/<category>.ts` (unified — covers both termless and term)
+1. Add probe to `packages/probe-defs/src/<category>.ts` (unified — covers both lib and term)
 2. Add metadata to `content/features.json` (name, slug, url, tags, body, probe, baseline)
 3. Re-probe all terminals (see "Re-Probing All Terminals" above)
 4. Add annotations for any unexpected failures
@@ -407,7 +407,7 @@ a feature with a probe definition reads `"automated"`, one with no definition re
 The catalog may declare a reviewed override for exactly two statuses, each with a
 `probeStatusReason`:
 
-- `"partial"` — the definition establishes acceptance only (evidence `consumed`): we can tell the
+- `"partial"` — the definition establishes acceptance only (an execution-only pending test): we can tell the
   sequence was accepted, not that its effect happened. Examples: the SGR colour resets, OSC 8 and
   the OSC 133 / OSC 633 prompt marks.
 - `"manual"` — support data comes from docs or manual testing and no automatable probe exists
@@ -445,7 +445,7 @@ include the `"osc"` tag in addition to any vendor tag.
 
 ### Probe Quality Rules
 
-**Every termless callback MUST verify actual terminal state.** Never `return { pass: true }` without checking something. Use one of these verification strategies:
+**Every lib callback MUST verify actual terminal state.** Never `return { pass: true }` without checking something. Use one of these verification strategies:
 
 | Strategy             | When to use                 | Example                                       |
 | -------------------- | --------------------------- | --------------------------------------------- |
@@ -457,7 +457,7 @@ include the `"osc"` tag in addition to any vendor tag.
 | `ctx.getTitle()`     | OSC title sequences         | Check title changed                           |
 | `null`               | Last resort only            | When NO verification is possible (rare)       |
 
-If a termless callback returns `{ pass: true }` unconditionally, it's a false positive — every backend will pass regardless of whether it implements the feature.
+If a lib callback returns `{ pass: true }` unconditionally, it's a false positive — every backend will pass regardless of whether it implements the feature.
 
 ## Content Enrichment
 

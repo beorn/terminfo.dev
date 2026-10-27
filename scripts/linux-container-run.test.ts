@@ -193,7 +193,7 @@ fi
     if (mismatch === "sha256") measured.sha256 = "wrong-hash"
     const selected = mux ? { provenance: { executable: measured } } : { executable: measured }
     const run = {
-      target,
+      subject: { ...target, kind: mux ? "mux" : "term" },
       [selectedKey]: selected,
       // A matching wrong-location decoy must never rescue missing provenance.
       ...(mismatch === "missing"
@@ -315,8 +315,8 @@ describe("container run receipt composition", () => {
     expect(result.status).toBe(0)
     const containerBytes = readFileSync(join(dir, "container.json"))
     const final = join(dir, "reviewed-final.json")
-    const run = {
-      schemaVersion: 3,
+    const run = { source: { kind: "live" },
+      schemaVersion: 4,
       runId: "b".repeat(32),
       sealedAt: "2026-10-21T05:00:00.000Z",
       rawReplies: { "collector.review.example": "exact reviewed decision bytes" },
@@ -414,7 +414,7 @@ describe("container run receipt composition", () => {
 /** The receipt authorizes writing to a terminal, so the container judged by it must not be able
  * to rewrite the copy it is judged against, and the host must be able to prove that afterwards. */
 describe("disposable ownership receipt mount", () => {
-  it("hands the collector a read-only copy outside the writable output mount and re-checks it after removal", () => {
+  it("hands the collector a read-only copy outside the writable output mount and re-tests it after removal", () => {
     const source = readFileSync(launcher, "utf8")
     expect(source).toMatch(/--mount "type=bind,src=\$prep\/receipt,dst=\/receipt,readonly"/)
     expect(source).toMatch(/--env "TERMINFO_DISPOSABLE_RECEIPT=\/receipt\/host-measured\.json"/)

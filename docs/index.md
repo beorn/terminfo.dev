@@ -92,7 +92,7 @@ function platformIcon(os) {
 }
 
 function platformIcons(backendName) {
-  const os = displayedSelections[backendName]?.selected.target.os
+  const os = displayedSelections[backendName]?.selected.subject.os
   return os ? platformIcon(os) : ''
 }
 
@@ -207,7 +207,7 @@ function backendLabel(name) {
 // ghostty is measured on macOS and on Linux. Print the run's OS beside the label so two
 // legitimate runs cannot read as one contradictory number (28047).
 function backendContextLabel(name) {
-  const os = displayedSelections[name]?.selected.target.os
+  const os = displayedSelections[name]?.selected.subject.os
   return `${backendLabel(name)} · ${os ? (data.platformLabels?.[os] ?? os) : 'OS not recorded'}`
 }
 
@@ -546,7 +546,7 @@ function backendTooltip(name, version) {
 Data comes from three complementary sources:
 
 **Terminal Applications** — measured in a particular app and environment. On an ordinary terminal,
-the community CLI runs reviewed queries; checks that change terminal state remain TEST TODO
+the community CLI runs reviewed queries; tests that change terminal state remain TEST TODO
 until a verified disposable test environment is available. Rendering and interaction require
 their own evidence, such as screenshots and input tests; a reply alone proves neither.
 

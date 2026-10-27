@@ -26,13 +26,13 @@ function decided(state: ProbeStatus | undefined): boolean {
 
 function recordedScope(selected: PublicVersion): unknown[] {
   return [
-    selected.target.kind,
-    selected.target.os,
-    selected.target.osVersion,
-    selected.target.outerTerminal,
-    selected.target.mux,
-    selected.target.config,
-    selected.target.permissions,
+    selected.subject.kind,
+    selected.subject.os,
+    selected.subject.osVersion,
+    selected.subject.outerTerminal,
+    selected.subject.mux,
+    selected.subject.config,
+    selected.subject.permissions,
     selected.suiteId,
     selected.probeHash,
   ]
@@ -102,8 +102,8 @@ export default {
         // Always put alphabetically-first slug as A for deterministic URLs
         const [a, b] = left.slug.localeCompare(right.slug) <= 0 ? [left, right] : [right, left]
 
-        const targetA = a.selected.target
-        const targetB = b.selected.target
+        const targetA = a.selected.subject
+        const targetB = b.selected.subject
         const comparableScope = Boolean(
           targetA.os &&
           targetB.os &&
@@ -132,8 +132,8 @@ export default {
               cellA !== undefined &&
               cellB !== undefined &&
               // Evidence is a raw field, not a classification: the same-method check still reads it.
-              cellA.evidence !== undefined &&
-              cellA.evidence === cellB.evidence &&
+              cellA.assertionType !== undefined &&
+              cellA.assertionType === cellB.assertionType &&
               resultA !== "unknown" &&
               resultB !== "unknown",
             )

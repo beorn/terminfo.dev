@@ -16,7 +16,7 @@ let child: ChildProcess | undefined
 let home: string | undefined
 const packageRoot = join(import.meta.dirname, "../../..")
 
-// The owner factory has its own live-custody tests. This consumer case checks that the collector
+// The owner factory has its own live-custody tests. This consumer case tests that the collector
 // carries its verified subject rather than treating an untrusted envelope as an app or a grant.
 it.each(["tmux", "screen"])(
   "collects a %s envelope only when its target agrees with the verified attachment",
@@ -85,7 +85,7 @@ it.each(["tmux", "screen"])(
     await assert.rejects(collectProbeRun({ids:["device.xtversion"]}),error=>error===custodyFailure)
     assert.equal(verifierCalls,2)
     custodyFailure=undefined
-    assert.deepEqual(run.target,target)
+    assert.deepEqual(run.subject,target)
     assert.deepEqual(run.outerApp,outerApp)
     assert.equal(run.provenance,undefined)
     assert.equal(JSON.parse(run.rawReplies["collector.terminalOwnership"]).muxAttachment.captureRunId,run.runId)
@@ -962,7 +962,7 @@ describe("private finite daemon startup", () => {
         sourceArtifact:{path:"/Library/Caches/Homebrew/downloads/iterm2.zip",sha256:"b".repeat(64)}}
       const run=await collectProbeRun({ids,terminalAppOwner:{}})
       assert.deepEqual(run.origin,{kind:"collector",appLaunch:launch})
-      assert.equal(run.target.version,"0.49.2")
+      assert.equal(run.subject.version,"0.49.2")
       assert.deepEqual(JSON.parse(run.rawReplies["fixture.selected"]),ids)
       assert.ok(run.results.every(row=>row.status==="test-todo"))
       assert.equal(run.rawReplies["device.xtversion"],undefined)
@@ -976,7 +976,7 @@ describe("private finite daemon startup", () => {
         sourceArtifact:{url:"https://example.invalid/kitty.txz",sha256:digest("fixture source artifact")},
         runtime:{imageId:"sha256:"+"e".repeat(64),imageTarSha256:digest("fixture image tar"),arch:"amd64",nixLockRevision:"1".repeat(40),sourceRevision:"b".repeat(40),cleanTree:true,suiteHash:"a".repeat(12)},
         fixture:{definition:"fixture",config:"fixture",font:"fixture",geometry:"80x24",display:"fixture",gl:"fixture"}}
-      assert.equal(parseRunProvenance(provenance,run.target,{probeHash:run.probeHash,sourceRevision:run.sourceRevision},"fixture").executable.version,"kitty 0.49.2")
+      assert.equal(parseRunProvenance(provenance,run.subject,{probeHash:run.probeHash,sourceRevision:run.sourceRevision},"fixture").executable.version,"kitty 0.49.2")
       const feature=await collectProbeRun({ids:["device.xtversion"],terminalAppOwner:{}})
       assert.equal(feature.rawReplies["device.xtversion"],"feature-owned reply")
       assert.equal(feature.rawReplies["collector.xtversion"],raw)
@@ -1277,7 +1277,7 @@ describe("private finite daemon startup", () => {
           const row = run.results.find(row => row.featureId === "erase.character")
           assert.equal(row.status, "test-failure")
           assert.equal(row.evidence, "text")
-          assert.ok(row.checks.some(check => /timeout.*7 bytes/u.test(check.reason ?? "")), "retain the original acknowledgement timeout on its check")
+          assert.ok(row.tests.some(check => /timeout.*7 bytes/u.test(check.reason ?? "")), "retain the original acknowledgement timeout on its check")
           assert.match(row.reason, /Text criterion requires a declared claim and terminal-owned macOS cell observer/u)
           const trace = JSON.parse(run.rawReplies[row.rawReplyRef])
           assert.ok(trace.queries.some(query => query.sequence === "\\x1b[6n" && query.reason === "timeout" && query.raw === "partial"))
@@ -1390,8 +1390,8 @@ describe("private finite daemon startup", () => {
       }))
       const { collectProbeRun } = await import("./packages/terminfo.dev/src/serve.ts")
       const run = await collectProbeRun({ ids: ["device.xtversion"] })
-      assert.equal(run.target.id, fixture.id)
-      assert.equal(run.target.version, fixture.version)
+      assert.equal(run.subject.id, fixture.id)
+      assert.equal(run.subject.version, fixture.version)
       detectedName = fixture.id === "cmux" ? "ghostty" : fixture.id === "cursor" ? "com.microsoft.VSCode" : "cursor"
       await assert.rejects(
         collectProbeRun({ ids: ["device.xtversion"] }),

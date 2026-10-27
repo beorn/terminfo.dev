@@ -134,13 +134,13 @@ beforeEach(() => {
   vi.mocked(readRetainedDaemonProbeResponse).mockResolvedValue({
     path: "/private/http-responses/digest",
     sha256: "d".repeat(64),
-    run: {
-      schemaVersion: 3,
-      intendedContext: { kind: "app", id: "terminal-app", version: "2.15" },
+    run: { source: { kind: "live" },
+      schemaVersion: 4,
+      intendedSubject: { kind: "term", id: "terminal-app", version: "2.15" },
       runId: "private-run",
       origin: { kind: "collector" },
-      target: {
-        kind: "app",
+      subject: {
+        kind: "term",
         id: "terminal-app",
         version: "2.15",
         os: "macos",
@@ -163,7 +163,7 @@ beforeEach(() => {
           featureId: "sgr.bold",
           status: "test-todo",
           attempt: { scope: "none" },
-          checks: [],
+          tests: [],
           reason: "Required test missing",
         },
       ],
@@ -175,7 +175,7 @@ beforeEach(() => {
     source,
     destination: "/admitted/terminal-app.json",
     probeHash: "hash",
-    target: { kind: "app", id: "terminal-app", version: "2.15", os: "macos" },
+    subject: { kind: "term", id: "terminal-app", version: "2.15", os: "macos" },
     runId: "private-run",
   }))
   vi.mocked(stopOwnedDaemon).mockResolvedValue()

@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url"
 import ts from "typescript"
 import { expect, test, vi } from "vitest"
 
-const changed = vi.hoisted(() => ({ file: "", extraCatalog: false }))
+const changed = vi.hoisted(() => ({ file: "", extraCatalog: false, declaration: "original" as "original" | "null" | "absent" }))
 vi.mock("node:fs", async (importOriginal) => {
   const fs = await importOriginal<typeof import("node:fs")>()
   return {
@@ -19,6 +19,12 @@ vi.mock("node:fs", async (importOriginal) => {
     readFileSync(path: string, encoding?: BufferEncoding) {
       if (encoding) return fs.readFileSync(path, encoding)
       const bytes = fs.readFileSync(path)
+      if (changed.declaration !== "original" && path.endsWith("packages/probe-defs/src/helpers.ts")) {
+        // Snapshot hashes definition bytes verbatim: an explicit null is not an omitted declaration.
+        return Buffer.concat([bytes, Buffer.from(`
+const retainedObservableDeclarationFixture = ${changed.declaration === "null" ? "{ termAssertionType: null }" : "{}"}
+`)])
+      }
       return changed.file && path.endsWith(changed.file) ? Buffer.concat([bytes, Buffer.from("\n// changed")]) : bytes
     },
   }
@@ -84,12 +90,12 @@ test("suite identity changes with executable collection, ownership, capture and 
   }
   changed.file = ""
   const snapshot = probeSuiteSnapshot()
-  expect(snapshot.probes.app).toHaveLength(263)
-  expect(snapshot.probes.headless).toHaveLength(252)
-  expect(snapshot.probes.mux).toEqual(snapshot.probes.app)
-  expect(snapshot.probes.app).toContain("extensions.kitty-keyboard")
-  expect(snapshot.probes.app).toContain("input.xtest-key")
-  expect(snapshot.probes.app).toEqual([...snapshot.probes.app].sort())
+  expect(snapshot.probes.term).toHaveLength(263)
+  expect(snapshot.probes.lib).toHaveLength(252)
+  expect(snapshot.probes.mux).toEqual(snapshot.probes.term)
+  expect(snapshot.probes.term).toContain("extensions.kitty-keyboard")
+  expect(snapshot.probes.term).toContain("input.xtest-key")
+  expect(snapshot.probes.term).toEqual([...snapshot.probes.term].sort())
   expect(snapshot.sourcePaths).toContain("packages/terminfo.dev/src/tty.ts")
   expect(snapshot.sourcePaths).toContain("packages/terminfo.dev/src/linux-input.ts")
 })
@@ -256,8 +262,8 @@ test("the trusted manifest declares exactly the 37 reviewed character claims wit
     expect(ALL_PROBES.find((probe) => probe.id === id)?.textClaim).toBeUndefined()
   }
   expect(Object.keys(loadFeatures(join(SUITE_ROOT, "content")))).toHaveLength(273)
-  expect(manifest.probes.app).toHaveLength(263)
-  expect(manifest.probes.headless).toHaveLength(252)
+  expect(manifest.probes.term).toHaveLength(263)
+  expect(manifest.probes.lib).toHaveLength(252)
 })
 
 // Fixed denominator/frozen membership: callback-only schedule hash coverage misses new
@@ -266,7 +272,7 @@ test("freezes all catalogue IDs and changes suite identity for unscheduled addit
   const original = probeSuiteSnapshot()
   expect(original.catalogIds).toHaveLength(273)
   expect(original.catalogIds).toContain("device.env-term")
-  expect(original.probes.app).not.toContain("device.env-term")
+  expect(original.probes.term).not.toContain("device.env-term")
   try {
     changed.extraCatalog = true
     const expanded = probeSuiteSnapshot()
@@ -277,5 +283,17 @@ test("freezes all catalogue IDs and changes suite identity for unscheduled addit
     expect(original.catalogIds).not.toContain("runtime.unscheduled")
   } finally {
     changed.extraCatalog = false
+  }
+})
+
+// Nullable declarations preserve partial versus undeclared; their source identities must stay distinct.
+test("suite hashing distinguishes an explicit null declaration from absence", () => {
+  try {
+    changed.declaration = "null"
+    const explicitNull = probeSuiteSnapshot()
+    changed.declaration = "absent"
+    expect(probeSuiteSnapshot().probeHash).not.toBe(explicitNull.probeHash)
+  } finally {
+    changed.declaration = "original"
   }
 })

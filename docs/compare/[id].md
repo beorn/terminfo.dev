@@ -71,7 +71,7 @@ for (const cat of categories) {
     </a>
     <p class="compare-context"><strong>{{ p.termAVersion }}</strong> · {{ p.termAKind }} · {{ p.termAOs }} {{ p.termAOsVersion }}</p>
     <div class="compare-score">{{ p.termAPass }}/{{ p.termATotal }}</div>
-    <div class="compare-detail">Supported / all catalog capabilities</div>
+    <div class="compare-detail">Supported / all catalog features</div>
     <details class="compare-run-details"><summary>Run details</summary><dl class="compare-context-details">
       <dt>Configuration</dt><dd>{{ p.termAConfig }}</dd>
       <dt>Permissions</dt><dd>{{ p.termAPermissions }}</dd>
@@ -87,7 +87,7 @@ for (const cat of categories) {
     </a>
     <p class="compare-context"><strong>{{ p.termBVersion }}</strong> · {{ p.termBKind }} · {{ p.termBOs }} {{ p.termBOsVersion }}</p>
     <div class="compare-score">{{ p.termBPass }}/{{ p.termBTotal }}</div>
-    <div class="compare-detail">Supported / all catalog capabilities</div>
+    <div class="compare-detail">Supported / all catalog features</div>
     <details class="compare-run-details"><summary>Run details</summary><dl class="compare-context-details">
       <dt>Configuration</dt><dd>{{ p.termBConfig }}</dd>
       <dt>Permissions</dt><dd>{{ p.termBPermissions }}</dd>

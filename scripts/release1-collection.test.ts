@@ -118,7 +118,7 @@ const ENGINE_BACKENDS = [
 ]
 
 const cleanRun = (overrides: Partial<ProducedRun> = {}): ProducedRun => ({
-  target: { kind: "app", id: "xterm", os: "linux" },
+  subject: { kind: "term", id: "xterm", os: "linux" },
   ...overrides,
 })
 
@@ -134,12 +134,12 @@ it.each([
       featureId,
       status: "test-todo" as const,
       attempt: { scope: "none" as const },
-      checks: [],
+      tests: [],
       reason: "Required capability test has not started",
     }))
     const run = {
       runId: `summary-${label}`,
-      target: { kind: "app", id: "xterm", version: "411", os: "linux" },
+      subject: { kind: "term", id: "xterm", version: "411", os: "linux" },
       catalogIds,
       results,
       suiteId: "abcdef123456",
@@ -160,7 +160,7 @@ const fingerprintFiles = ${JSON.stringify(fingerprintFixture.files)};
 mock.module("node:fs", () => ({...fs, readFileSync: (path, ...args) => readFingerprintFile(typeof path === "string" ? fingerprintFiles[path] ?? path : path, ...args)}));
 const run = ${JSON.stringify(run)};
 mock.module(${JSON.stringify(join(dirname(CONTENT), "scripts/admit-run.ts"))}, () => ({
-  planAdmission: () => ({target: run.target, runId: run.runId}),
+  planAdmission: () => ({target: run.subject, runId: run.runId}),
   admitRun: () => ({})
 }));
 mock.module(${JSON.stringify(join(dirname(CONTENT), "docs/data/current-results.ts"))}, () => ({
@@ -263,10 +263,10 @@ it.each([
         ? vi.spyOn(versions, "probeSuiteSnapshot").mockReturnValue({
             ...parseSuiteManifest(manifestPath, readFileSync(manifestPath, "utf8")),
             catalogIds: Object.keys(catalog.loadFeatures(CONTENT)).sort(),
-            ...(textCase && {
+            ...(textCase && { schemaVersion: 4 as const,
               probes: {
-                app: ["text.overwrite"],
-                headless: parseSuiteManifest(manifestPath, readFileSync(manifestPath, "utf8")).probes.headless,
+                term: ["text.overwrite"],
+                lib: parseSuiteManifest(manifestPath, readFileSync(manifestPath, "utf8")).probes.lib,
                 mux: [],
               },
               textClaims: ["text.overwrite"],
@@ -371,8 +371,8 @@ it.each([
               const appRun = {
                 ...raw,
                 runId: "qualified-development-text",
-                target: {
-                  kind: "app",
+                subject: {
+                  kind: "term",
                   id,
                   version: "1.0.0",
                   os: "macos",
@@ -397,7 +397,7 @@ it.each([
                     observed: frames[1]!.ref,
                   },
                 ],
-                observations: [{ featureId, outcome: "supported", evidence: "text", rawReplyRef: featureId, frames }],
+                observations: [{ featureId, outcome: "supported", assertionType: "buffer_state", rawReplyRef: featureId, frames }],
                 screenshotRefs: [],
                 textSnapshotRefs: [...refs],
                 textQualification: { version: 1, recipe: "macos-text-cells-v1", grid: { rows: 4, cols: 12 }, shapes },
@@ -443,12 +443,12 @@ it.each([
       expect(pass.contexts).toHaveLength(33)
       if (textCase) {
         const terminal = pass.contexts.find(
-          (row) => row.context.kind === "app" && row.context.id === "terminal-app" && row.context.os === "macos",
+          (row) => row.context.kind === "term" && row.context.id === "terminal-app" && row.context.os === "macos",
         )
         expect(terminal?.status).toBe("not-started")
         expect(terminal?.error).toMatch(/expected current schema-3/)
       }
-      const engine = pass.contexts.find((row) => row.context.kind === "headless" && row.context.id === "xtermjs")
+      const engine = pass.contexts.find((row) => row.context.kind === "lib" && row.context.id === "xtermjs")
       expect(engine?.status).toBe("not-started")
       expect(engine?.classification).toBeUndefined()
       expect(engine?.error).toMatch(
@@ -501,7 +501,7 @@ it.each([
       }
       for (const id of LINUX_APP_IDS) {
         const row = pass.contexts.find(
-          (entry) => entry.context.kind === "app" && entry.context.id === id && entry.context.os === "linux",
+          (entry) => entry.context.kind === "term" && entry.context.id === id && entry.context.os === "linux",
         )
         const output = join(pass.directory, "linux", id)
         expect(launcher).toHaveBeenCalledWith(
@@ -626,9 +626,9 @@ describe("release 1 collection census", () => {
     // full-census.test.ts owns membership. This boundary owns route coverage and the actual CLI.
     const contexts = all.map((entry) => `${entry.kind}:${entry.id}/${entry.os}`)
     expect(new Set(contexts).size).toBe(33)
-    expect(all.filter((entry) => entry.kind === "app")).toHaveLength(18)
+    expect(all.filter((entry) => entry.kind === "term")).toHaveLength(18)
     expect(all.filter((entry) => entry.kind === "mux")).toHaveLength(4)
-    expect(all.filter((entry) => entry.kind === "headless")).toHaveLength(11)
+    expect(all.filter((entry) => entry.kind === "lib")).toHaveLength(11)
     expect(all).toHaveLength(33)
     // The CLI ledger must name the mux population as well; this is the real stdout boundary.
     const command = spawnSync(process.execPath, ["scripts/release1-collection.ts", "--plan"], {
@@ -731,7 +731,7 @@ describe("release 1 collection census", () => {
     )
     // A produced run carries the os it was MEASURED on: an app its own, a headless engine the host's.
     const measured = all.map((entry) =>
-      cleanRun({ target: { kind: entry.kind, id: entry.id, os: entry.kind === "headless" ? "linux" : entry.os } }),
+      cleanRun({ subject: { kind: entry.kind, id: entry.id, os: entry.kind === "lib" ? "linux" : entry.os } }),
     )
     expect(uncoveredContexts(all, measured)).toHaveLength(0)
   })
@@ -741,7 +741,7 @@ describe("release 1 collection census", () => {
     // ("linux"), so a key of id/os matched no headless run and every engine row read "no run produced"
     // right after its run was admitted (rehearsed on 950882d4f34d, xtermjs 7866d892).
     const all = census()
-    const headless = cleanRun({ target: { kind: "headless", id: "xtermjs", os: "linux" } })
+    const headless = cleanRun({ subject: { kind: "lib", id: "xtermjs", os: "linux" } })
     const uncovered = uncoveredContexts(all, [headless]).map((entry) => `${entry.context.kind}:${entry.context.id}`)
     expect(uncovered).not.toContain("headless:xtermjs")
     expect(uncovered).toContain("app:xterm")
@@ -775,7 +775,7 @@ describe("release collection hands every produced run to the admission owner", (
     source,
     destination: "/private/admitted-xterm.json",
     probeHash: frozenSuiteId,
-    target: { kind: "app", id: "xterm", version: "411", os: "linux" },
+    subject: { kind: "term", id: "xterm", version: "411", os: "linux" },
     runId: "c3".repeat(16),
   }
   it.each([frozenSuiteId, undefined])(
@@ -796,7 +796,7 @@ describe("release collection hands every produced run to the admission owner", (
           ...(assertedSuiteId === undefined ? {} : { frozenSuiteId: assertedSuiteId }),
         })
         expect(writer).toHaveBeenCalledWith(plan)
-        expect(produced).toEqual([{ target: plan.target, runId: plan.runId }])
+        expect(produced).toEqual([{ subject: plan.subject, runId: plan.runId }])
         expect(
           uncoveredContexts(census(), produced).some(({ context }) => context.id === "xterm" && context.os === "linux"),
         ).toBe(false)
@@ -950,7 +950,7 @@ mock.module(${JSON.stringify(join(dirname(CONTENT), "scripts/admit-run.ts"))}, (
 const ownedAppContext: CollectionContext = {
   id: "kitty",
   os: "macos",
-  kind: "app",
+  kind: "term",
   route: "local-owned-app",
   command: "bun packages/admin/src/index.ts probe app kitty --output <private-output>",
   requires: null,
@@ -968,7 +968,7 @@ it("starts an owned-app row locally with the probe argv it always ran", () => {
     "bun",
     "packages/admin/src/index.ts",
     "probe",
-    "app",
+    "term",
     "kitty",
     "--output",
     "/private/kitty",
@@ -1009,7 +1009,7 @@ it("hands the identical probe argv to the ssh transport with environment-owned c
     "bun",
     "packages/admin/src/index.ts",
     "probe",
-    "app",
+    "term",
     "kitty",
   ])
 })
@@ -1174,7 +1174,7 @@ it("runs the collector's ssh route through the driver and reads the run JSON it 
     const manifest = parseSuiteManifest(suitePath, readFileSync(suitePath, "utf8"))
     const catalogIds = Object.keys(catalog.loadFeatures(CONTENT))
     const run = parseRun(runPath, raw, catalogIds, new Map([[probeHash, manifest]]))
-    expect(run.target).toMatchObject({ kind: "app", id: "kitty", os: "macos" })
+    expect(run.subject).toMatchObject({ kind: "term", id: "kitty", os: "macos" })
     expect(run.suiteComplete).toBe(true)
   } finally {
     rmSync(directory, { recursive: true, force: true })
@@ -1221,7 +1221,7 @@ it("records the host-written transport receipt as evidence and refuses anything 
   }
 })
 
-// A valid pending capture used to return before delegated identity checks. Historical artifact
+// A valid pending capture used to return before delegated identity tests. Historical artifact
 // fixtures could not cover this schema-3 handoff even when they exercised the classified branch.
 it.each(["matching", "foreign-run", "foreign-context"] as const)(
   "validates delegated identity before accepting %s pending review",
@@ -1259,13 +1259,13 @@ it.each(["matching", "foreign-run", "foreign-context"] as const)(
         const run = {
           ...structuredClone(handed.draft),
           runId: fault === "foreign-run" ? "foreign-logical-attempt" : handed.draft.runId,
-          target: { ...measuredTarget, kind: fault === "foreign-context" ? "app" : "headless" },
+          subject: { ...measuredTarget, kind: fault === "foreign-context" ? "term" : "lib" },
           identity: "unverified",
           origin: { kind: "collector" },
           measuredAt: specimen.measuredAt,
           ...(fault !== "foreign-context" && { runtimeIdentity: specimen.runtimeIdentity }),
         }
-        run.results[0]!.checks = [
+        run.results[0]!.tests = [
           { id: "review", status: "test-todo", attempt: { scope: "none" }, reason: "Required review pending" },
         ]
         retainCaptureBinding(run as never, run.results[0]!.featureId)
@@ -1275,7 +1275,7 @@ it.each(["matching", "foreign-run", "foreign-context"] as const)(
       })
     try {
       const pass = await collectPass(directory)
-      const row = pass.contexts.find((entry) => entry.context.kind === "headless" && entry.context.id === "xtermjs")!
+      const row = pass.contexts.find((entry) => entry.context.kind === "lib" && entry.context.id === "xtermjs")!
       if (fault === "matching") expect(row.status, row.error).toBe("pending-review")
       else {
         expect(row.status).toBe("not-started")

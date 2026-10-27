@@ -30,7 +30,7 @@ export function createDraft(
 ): {
   sha256: string
   runId: string
-  schemaVersion: 2 | 3
+  schemaVersion: 2 | 4
   complete: boolean
   historical: boolean
   suiteComplete?: boolean
@@ -55,8 +55,8 @@ export function createDraft(
     )
   }
   const current =
-    run.schemaVersion === 3 ? aggregateCurrentResults(run.results, receipt.manifest.catalogIds ?? []) : undefined
-  const expected = receipt.manifest.probes[run.target.kind].length
+    run.schemaVersion === 4 ? aggregateCurrentResults(run.results, receipt.manifest.catalogIds ?? []) : undefined
+  const expected = receipt.manifest.probes[run.subject.kind].length
   const historicalCoverage =
     run.schemaVersion === 2
       ? {
@@ -73,15 +73,15 @@ export function createDraft(
   }
   const complete = current?.complete ?? false
   const context = {
-    target: run.target.kind,
-    terminal: run.target.id,
-    version: run.target.version,
-    os: run.target.os ?? "unknown",
-    osVersion: run.target.osVersion ?? "unknown",
-    outerTerminal: run.target.outerTerminal ?? "unknown",
-    mux: run.target.mux ?? "unknown",
-    config: run.target.config ?? "unknown",
-    permissions: run.target.permissions ?? "unknown",
+    subject: run.subject.kind,
+    terminal: run.subject.id,
+    version: run.subject.version,
+    os: run.subject.os ?? "unknown",
+    osVersion: run.subject.osVersion ?? "unknown",
+    outerTerminal: run.subject.outerTerminal ?? "unknown",
+    mux: run.subject.mux ?? "unknown",
+    config: run.subject.config ?? "unknown",
+    permissions: run.subject.permissions ?? "unknown",
     measuredAt: run.measuredAt,
     cliVersion: receipt.cliVersion,
     suiteId: run.suiteId,
@@ -114,10 +114,10 @@ export function createDraft(
     "If you choose to contribute, include this consent statement:",
     "I dedicate these results to the public domain (CC0 1.0) so terminfo.dev can publish them under any license.",
     ...(run.schemaVersion === 2 ? ["Historical schema-2 evidence: history only; not current terminal support."] : []),
-    ...(run.schemaVersion === 3 && !complete
+    ...(run.schemaVersion === 4 && !complete
       ? ["Current execution is incomplete: TEST TODO or TEST FAILURE remains."]
       : []),
-    ...(run.schemaVersion === 3 && !("sealedAt" in run)
+    ...(run.schemaVersion === 4 && !("sealedAt" in run)
       ? ["Required review pending: this capture remains an unsealed draft."]
       : []),
     "",

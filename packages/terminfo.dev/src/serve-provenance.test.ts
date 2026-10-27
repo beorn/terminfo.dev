@@ -31,13 +31,13 @@ let collectProbeRun: (options: { ids?: string[] }) => Promise<unknown>
 
 beforeAll(async () => {
   vi.stubGlobal("__TERMINFO_BUNDLED_SUITE__", {
-    manifest: {
+    manifest: { schemaVersion: 4 as const,
       probeHash: "a".repeat(12),
       sourceRevision: "b".repeat(40),
       generatedAt: "2026-09-28T00:00:00Z",
       adapterVersion: "test",
       catalogIds: Object.keys(loadFeatures(join(import.meta.dirname, "../../..", "content"))).sort(),
-      probes: { app: ALL_PROBES.map((probe) => probe.id).sort(), headless: [], mux: [] },
+      probes: { term: ALL_PROBES.map((probe) => probe.id).sort(), lib: [], mux: [] },
     },
     collectorRevision: "b".repeat(40),
   })

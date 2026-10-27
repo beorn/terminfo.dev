@@ -44,8 +44,8 @@ it.each([true, false])(
       const draft = JSON.parse(readFileSync(options.env.TERMINFO_DRAFT_PATH!, "utf8")) as RunDraft
       const run: CapturedRunDraft = {
         ...draft,
-        target: {
-          kind: "headless",
+        subject: {
+          kind: "lib",
           id: "xtermjs",
           version: "6.0.0",
           os: "linux",
@@ -71,7 +71,7 @@ it.each([true, false])(
       }
       if (pendingReview) {
         const result = run.results.find((row) => row.featureId === "device.primary-da")!
-        result.checks = [
+        result.tests = [
           { id: "review", status: "test-todo", attempt: { scope: "none" }, reason: "Context review pending" },
         ]
         result.reason = "Context review pending"
@@ -88,7 +88,7 @@ it.each([true, false])(
     const saved = JSON.parse(readFileSync(path, "utf8")) as CapturedRunDraft
     const original = JSON.parse(captureBytes) as CapturedRunDraft
     expect(saved.runId).toBe(original.runId)
-    expect(saved.target).toEqual(original.target)
+    expect(saved.subject).toEqual(original.subject)
     expect(saved.sourceRevision).toBe(original.sourceRevision)
     expect(saved.probeHash).toBe(original.probeHash)
     expect(readFileSync(capturePath, "utf8")).toBe(captureBytes)
@@ -104,7 +104,7 @@ it.each([true, false])(
       expect(path).toMatch(/\.draft\.json$/)
       expect(saved).not.toHaveProperty("sealedAt")
       expect(saved.rawReplies["collector.capture.device.primary-da"]).toBeTruthy()
-      expect(saved.results.find((row) => row.featureId === "device.primary-da")?.checks[0]?.status).toBe("test-todo")
+      expect(saved.results.find((row) => row.featureId === "device.primary-da")?.tests[0]?.status).toBe("test-todo")
       const pendingBytes = readFileSync(path, "utf8")
       const review = JSON.stringify({
         id: "headless-context-review",
@@ -118,7 +118,7 @@ it.each([true, false])(
         reviewer: "reviewer",
         reason: "Fixture context has no reply channel",
         scope: {
-          target: { kind: "headless", id: "xtermjs" },
+          subject: { kind: "lib", id: "xtermjs" },
           versions: ["6.0.0", "6.0.0"],
           suites: [saved.probeHash, saved.probeHash],
         },
@@ -144,7 +144,7 @@ it.each([true, false])(
   },
 )
 // The real worker loads headless-identity.ts, which requires the owned vterm checkout beside this one;
-// standalone component CI checks out terminfo.dev alone, so this runs wherever that layout exists.
+// standalone component CI tests out terminfo.dev alone, so this runs wherever that layout exists.
 const OWNED_LAYOUT = existsSync(fileURLToPath(new URL("../../../vterm", import.meta.url)))
 // The fixture tests above never send a collector-written draft through the decoder that admit-run uses;
 // this one runs the real xtermjs worker and the real admit-run --review. Admission itself writes the suite
@@ -169,7 +169,7 @@ it.runIf(OWNED_LAYOUT)("reviews a draft the real headless collector wrote throug
   const draft = JSON.parse(readFileSync(draftPath, "utf8")) as CapturedRunDraft
   const draftBytes = readFileSync(draftPath, "utf8")
   const pending = draft.results
-    .filter((row) => row.checks.some((check) => check.id === "review" && check.status === "test-todo"))
+    .filter((row) => row.tests.some((check) => check.id === "review" && check.status === "test-todo"))
     .map((row) => row.featureId)
     .sort()
   // #30699: the proven reply path makes these silent colour queries measured negatives.
@@ -190,7 +190,7 @@ it.runIf(OWNED_LAYOUT)("reviews a draft the real headless collector wrote throug
     ).toMatchObject({
       status: "unsupported",
       reason: "negative by sentinel",
-      checks: [expect.objectContaining({ id: "criterion", status: "unsupported" })],
+      tests: [expect.objectContaining({ id: "criterion", status: "unsupported" })],
     })
   }
   expect(pending).toEqual([
@@ -219,8 +219,8 @@ it.runIf(OWNED_LAYOUT)("reviews a draft the real headless collector wrote throug
       reviewer: "collect-headless round-trip test",
       reason,
       scope: {
-        target: { kind: "headless", id: "xtermjs" },
-        versions: [draft.target.version, draft.target.version],
+        subject: { kind: "lib", id: "xtermjs" },
+        versions: [draft.subject.version, draft.subject.version],
         suites: [draft.probeHash, draft.probeHash],
       },
       sources: [`collector.capture.${featureId}`],
@@ -264,7 +264,7 @@ it.runIf(OWNED_LAYOUT)("reviews a draft the real headless collector wrote throug
   for (const featureId of reviewed) {
     const row = retained.results?.find((entry) => entry.featureId === featureId)
     expect(row?.status, featureId).toBe("untestable")
-    const check = row?.checks?.find((entry) => entry.id === "review")
+    const check = row?.tests?.find((entry) => entry.id === "review")
     expect(check?.status, featureId).toBe("untestable")
     expect(check?.reviewRef, featureId).toBe(`collector.review.round-trip-${featureId}`)
   }
@@ -341,7 +341,7 @@ it("records an attempted worker timeout as collection FAILURE with retained diag
   expect(collection.failures[0]?.error).toContain("exceeded")
   expect(draft.runId).toBe(captureRunId)
   expect(draft.results).toHaveLength(273)
-  const delegated = new Set(probeSuiteSnapshot().probes.headless)
+  const delegated = new Set(probeSuiteSnapshot().probes.lib)
   expect(
     draft.results
       .filter((result) => delegated.has(result.featureId))

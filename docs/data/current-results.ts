@@ -33,7 +33,7 @@ export interface CurrentResults {
   projection: SelectedProjection
 }
 
-type TargetKind = SelectedVersion["target"]["kind"]
+type TargetKind = SelectedVersion["subject"]["kind"]
 
 interface CatalogTarget {
   kind: TargetKind
@@ -51,7 +51,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function isTargetKind(value: unknown): value is TargetKind {
-  return value === "app" || value === "headless" || value === "mux"
+  return value === "term" || value === "lib" || value === "mux"
 }
 
 function isIdList(value: unknown): value is string[] {
@@ -80,7 +80,7 @@ function loadCatalogKeys(contentDir: string): CatalogKeys {
     }
     catalog.set(id, { kind: value.kind, slug: value.slug, headlessBackends: backends })
     declare(id, value.kind)
-    for (const backend of backends) declare(backend, "headless")
+    for (const backend of backends) declare(backend, "lib")
   }
 
   const snapshotPath = join(import.meta.dirname, "..", "..", "content", "released-v1-keys.json")
@@ -89,7 +89,9 @@ function loadCatalogKeys(contentDir: string): CatalogKeys {
     throw new Error(`${snapshotPath}: invalid released v1 key declaration`)
   }
   const released = new Map<string, { key: string; kind: TargetKind }>()
-  for (const [key, value] of Object.entries(snapshot.keys)) {
+  for (const [key, historicalValue] of Object.entries(snapshot.keys)) {
+    // Released-key declarations retain their original wire labels.
+    const value = historicalValue === "app" ? "term" : historicalValue === "headless" ? "lib" : historicalValue
     if (!isTargetKind(value) || value === "mux") throw new Error(`${snapshotPath}: invalid released kind for ${key}`)
     const matches = [...catalog.entries()].filter(([id, row]) => id === key || row.slug === key)
     if (matches.length !== 1) {
@@ -114,8 +116,10 @@ function compatibilityKey(kind: TargetKind, id: string, catalog: CatalogKeys): s
   if (!declared?.has(kind)) throw new Error(`Undeclared compatibility target ${kind}:${id} in terminals.json`)
   const released = catalog.released.get(id)
   const bare = released?.key ?? id
-  const owner = released?.kind ?? (declared.has("app") ? "app" : kind)
-  return kind === owner ? bare : `${kind}-${bare}`
+  const owner = released?.kind ?? (declared.has("term") ? "term" : kind)
+  // Published route IDs retain their historical prefixes; the subject kind is canonical above.
+  const routeKind = kind === "lib" ? "headless" : kind === "term" ? "app" : kind
+  return kind === owner ? bare : `${routeKind}-${bare}`
 }
 
 /**
@@ -196,7 +200,8 @@ export function loadDefaultContextPolicy(contentDir: string): Record<string, Def
     // Normalize the reviewed key by the same rule the projection uses, so a row recorded before a
     // re-collect (with the era's runner store path in its key) still chooses the context it reviewed
     // (27929 D5). See maskRunnerStorePath.
-    policy[id] = {
+    const canonicalId = id.replace(/^app:/, "term:").replace(/^headless:/, "lib:")
+    policy[canonicalId] = {
       ...(row as unknown as DefaultContextReview),
       contextKey: maskRunnerStorePath(row.contextKey) as string,
     }
@@ -239,7 +244,7 @@ function compatibilityTargetsFor<Version extends SelectedVersion | CurrentSelect
   type TargetResult = { contextKey: string; selected: Version; policy?: DefaultContextReview }
   const groups = new Map<string, TargetResult[]>()
   for (const [contextKey, selected] of Object.entries(projection.current)) {
-    const targetKey = `${selected.target.kind}:${selected.target.id}`
+    const targetKey = `${selected.subject.kind}:${selected.subject.id}`
     const group = groups.get(targetKey) ?? []
     group.push({ contextKey, selected })
     groups.set(targetKey, group)
@@ -270,7 +275,7 @@ function compatibilityTargetsFor<Version extends SelectedVersion | CurrentSelect
     // pickContextRun returns one of the candidates it was given, so this lookup cannot miss.
     const chosen = byKey.get(picked.run.key)
     if (!chosen) throw new Error(`Selected run ${picked.run.key} is not among ${targetKey} current contexts`)
-    const key = compatibilityKey(chosen.selected.target.kind, chosen.selected.target.id, catalog)
+    const key = compatibilityKey(chosen.selected.subject.kind, chosen.selected.subject.id, catalog)
     if (byTarget.has(key)) throw new Error(`Ambiguous compatibility key ${key}: multiple catalog targets`)
     byTarget.set(key, { ...chosen, ...(review && { policy: review }) })
   }

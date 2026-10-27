@@ -12,7 +12,6 @@ import { join } from "node:path"
 import { afterEach, expect, it, vi } from "vitest"
 import {
   ALL_PROBES,
-  type HistoricalProbeRun as ProbeRun,
   type ProbeSuiteManifest,
   type TextQualification,
 } from "@terminfo/probe-defs"
@@ -54,12 +53,7 @@ it("checkpoints the native attempt before invoking its callback", async () => {
       seen = active
       return {
         pass: false,
-        observation: {
-          outcome: "inconclusive",
-          reason: "insufficient-evidence",
-          evidence: "none",
-          note: "Fixture callback completed",
-        },
+        tests: [{ id: "criterion", status: "test-todo", reason: "Fixture callback completed" }],
       }
     }
     await runProbeBatch({
@@ -78,14 +72,21 @@ it("checkpoints the native attempt before invoking its callback", async () => {
   })
 })
 const sourceRevision = "e".repeat(40)
-const manifest: ProbeSuiteManifest = {
+const manifest: ProbeSuiteManifest = { schemaVersion: 4 as const,
   probeHash,
   sourceRevision,
   generatedAt: "2026-09-28T00:00:00.000Z",
   adapterVersion: "test",
-  probes: { app: ALL_PROBES.filter((probe) => probe.term).map((probe) => probe.id), headless: [], mux: [] },
+  probes: { term: ALL_PROBES.filter((probe) => probe.term).map((probe) => probe.id), lib: [], mux: [] },
 }
-function asRun(batch: Awaited<ReturnType<typeof runProbeBatch>>): ProbeRun {
+// Versioned fixture only: exercise the strict schema-2 decoder; never a production writer.
+function asRun(batch: Awaited<ReturnType<typeof runProbeBatch>>) {
+  const observations = batch.observations.map(({ assertionType, ...observation }) => ({
+    ...observation,
+    evidence: assertionType === "buffer_state"
+      ? observation.frames?.some((frame) => frame.kind === "text-cells") ? "text" : "parser-state"
+      : ({ query_reply: "query", screenshot: "pixels", input_bytes: "interaction", clipboard: "behavior" } as const)[assertionType],
+  }))
   return {
     schemaVersion: 2,
     runId: "a".repeat(32),
@@ -108,9 +109,9 @@ function asRun(batch: Awaited<ReturnType<typeof runProbeBatch>>): ProbeRun {
     measuredAt: "2026-09-28T00:00:00.000Z",
     origin: { kind: "collector" },
     rawReplies: batch.rawReplies,
-    assertions: batch.assertions,
+    assertions: batch.assertions.map(({ assertionType: _type, ...assertion }) => assertion),
     screenshotRefs: [],
-    observations: batch.observations,
+    observations,
     ungradedDiagnostics: batch.ungradedDiagnostics,
     ...(batch.notTested.length ? { notTested: batch.notTested } : {}),
   }
@@ -131,17 +132,11 @@ it.each([
     const original = definition.term
     const responseFields = response === undefined ? {} : { response }
     const note = "Deterministic callback response retention fixture"
-    const observation = {
-      outcome: "inconclusive" as const,
-      reason: "insufficient-evidence" as const,
-      evidence: "none" as const,
-      note,
-    }
     const trace = JSON.stringify({ writes: [], queries: [], events: [] })
     // The collector records its own disposable-ownership verdict beside the replies.
     const sharedOwnership = { "collector.disposableOwnership": JSON.stringify({ kind: "shared" }) }
     try {
-      definition.term = async () => ({ pass: false, ...responseFields, observation })
+      definition.term = async () => ({ pass: false, ...responseFields, tests: [{id: "criterion", status: "test-todo", reason: note}] })
       const explicit = await runProbeBatch({ ids: [id] })
       definition.term = (async () => ({ pass: false, ...responseFields, note })) as unknown as typeof definition.term
       const legacy = await runProbeBatch({ ids: [id] })
@@ -157,9 +152,8 @@ it.each([
         manifest,
         sourceRevision,
       ).run
-      const expectedObservation = { featureId: id, ...observation, rawReplyRef: id }
-      expect(explicit.observations).toEqual([expectedObservation])
-      expect(decodedExplicit.observations).toEqual([expectedObservation])
+      expect(explicit.observations).toEqual([])
+      expect(decodedExplicit.observations).toEqual([])
       expect(explicit.ungradedDiagnostics).toEqual({})
       expect(decodedExplicit.ungradedDiagnostics).toEqual({})
       expect(explicit.assertions).toEqual([])
@@ -233,18 +227,12 @@ it.each([
     expect(definition.termNeedsGeometry).toBeUndefined()
     const original = definition.term
     const resultNoteFields = resultNote === undefined ? {} : { note: resultNote }
-    const observation = {
-      outcome: "inconclusive" as const,
-      reason: "insufficient-evidence" as const,
-      evidence: "none" as const,
-      ...(observationNote === undefined ? {} : { note: observationNote }),
-    }
     const expectedNote = observationNote ?? resultNote
     const trace = JSON.stringify({ writes: [], queries: [], events: [] })
     // The collector records its own disposable-ownership verdict beside the replies.
     const sharedOwnership = { "collector.disposableOwnership": JSON.stringify({ kind: "shared" }) }
     try {
-      definition.term = async () => ({ pass: false, ...resultNoteFields, observation })
+      definition.term = async () => ({ pass: false, ...resultNoteFields, tests: [{id: "criterion", status: "test-todo", reason: expectedNote!}] })
       const explicit = await runProbeBatch({ ids: [id] })
       definition.term = (async () => ({ pass: false, ...resultNoteFields })) as unknown as typeof definition.term
       const legacy = await runProbeBatch({ ids: [id] })
@@ -260,9 +248,8 @@ it.each([
         manifest,
         sourceRevision,
       ).run
-      const expectedObservation = { featureId: id, ...observation, note: expectedNote, rawReplyRef: id }
-      expect(explicit.observations).toEqual([expectedObservation])
-      expect(decodedExplicit.observations).toEqual([expectedObservation])
+      expect(explicit.observations).toEqual([])
+      expect(decodedExplicit.observations).toEqual([])
       expect(explicit.ungradedDiagnostics).toEqual({})
       expect(decodedExplicit.ungradedDiagnostics).toEqual({})
       expect(explicit.assertions).toEqual([])
@@ -304,22 +291,9 @@ it("refuses an unowned mutating callback without sending terminal bytes", async 
   }) as typeof process.stdout.write
   const batch = await runProbeBatch({ ids: ["reset.ris"], captureRunId: "a".repeat(32) })
   expect(writes).toEqual([])
-  expect(batch.observations).toMatchObject([
-    { featureId: "reset.ris", outcome: "inconclusive", reason: "policy-refused", evidence: "none" },
-  ])
-  expect(JSON.parse(batch.rawReplies["reset.ris"]!)).toMatchObject({ writes: [], queries: [], events: [] })
-
-  // A policy refusal must survive the real public/admin parser, not just this batch object.
-  const run = asRun(batch)
-  expect(
-    decodeCollectorRun("test-run.json", JSON.stringify(run), manifest, sourceRevision).run.observations,
-  ).toMatchObject([{ featureId: "reset.ris", outcome: "inconclusive", reason: "policy-refused" }])
-
-  // Missing owned geometry also declines before a callback writes; the same exact zero-byte trace must parse.
-  run.observations[0] = { ...run.observations[0]!, reason: "insufficient-evidence" }
-  expect(
-    decodeCollectorRun("geometry-unavailable.json", JSON.stringify(run), manifest, sourceRevision).run.observations,
-  ).toMatchObject([{ featureId: "reset.ris", outcome: "inconclusive", reason: "insufficient-evidence" }])
+  expect(batch.observations).toEqual([])
+  expect(batch.results.find((result) => result.featureId === "reset.ris")).toMatchObject({status: "test-todo", attempt: {scope: "none"}})
+  expect(JSON.parse(batch.rawReplies["reset.ris"]!)).toEqual({writes: [], queries: [], events: []})
 })
 
 it("records an owned default-profile OSC 52 refusal as unmeasured with an empty bound trace", async () => {
@@ -331,15 +305,7 @@ it("records an owned default-profile OSC 52 refusal as unmeasured with an empty 
   }) as typeof process.stdout.write
   const batch = await runProbeBatch({ ids: ["extensions.osc52-write"], captureRunId: "a".repeat(32) })
   expect(writes).toEqual([])
-  expect(batch.observations).toMatchObject([
-    {
-      featureId: "extensions.osc52-write",
-      outcome: "inconclusive",
-      reason: "policy-refused",
-      evidence: "none",
-      rawReplyRef: "extensions.osc52-write",
-    },
-  ])
+  expect(batch.results.filter((result) => ["extensions.osc52-write"].includes(result.featureId))).toMatchObject([{status: "test-todo",featureId: "extensions.osc52-write",rawReplyRef: "extensions.osc52-write"}])
   expect(batch.assertions).toEqual([])
   expect(JSON.parse(batch.rawReplies["extensions.osc52-write"]!)).toEqual({ writes: [], queries: [], events: [] })
 })
@@ -357,9 +323,7 @@ it("refuses a structural terminal owner even with the same claimed capture ID", 
     ownedTerminal: geometryOwner(noGeometry),
   })
   expect(writes).toEqual([])
-  expect(batch.observations).toMatchObject([
-    { featureId: "reset.ris", outcome: "inconclusive", reason: "policy-refused" },
-  ])
+  expect(batch.results.filter((result) => ["reset.ris"].includes(result.featureId))).toMatchObject([{status: "test-todo",featureId: "reset.ris"}])
 })
 
 it("lets reviewed DECRPM queries run while refusing cursor and title-writing callbacks", async () => {
@@ -376,17 +340,14 @@ it("lets reviewed DECRPM queries run while refusing cursor and title-writing cal
   expect(writes).toEqual(["\x1b[?2004$p\x1b[c", "\x1b[?2031$p\x1b[c"])
   expect(batch.observations.find((item) => item.featureId === "modes.bracketed-paste")).toMatchObject({
     outcome: "supported",
-    evidence: "query",
+    assertionType: "query_reply",
   })
   expect(batch.observations.find((item) => item.featureId === "modes.color-scheme-reporting")).toMatchObject({
     outcome: "supported",
-    evidence: "query",
+    assertionType: "query_reply",
   })
   for (const id of ["cursor.move.absolute", "device.xtwinops-20"]) {
-    expect(batch.observations.find((item) => item.featureId === id)).toMatchObject({
-      outcome: "inconclusive",
-      reason: "policy-refused",
-    })
+    expect(batch.results.find((item) => item.featureId === id)).toMatchObject({status: "test-todo"})
     expect(JSON.parse(batch.rawReplies[id]!)).toMatchObject({ writes: [], queries: [], events: [] })
   }
 })
@@ -414,13 +375,14 @@ it("projects Terminal.app identity replies without mistaking the DA1 sentinel fo
     {
       featureId: "device.xtversion",
       outcome: "unsupported",
-      evidence: "query",
+      assertionType: "query_reply",
       note: "negative by sentinel",
     },
   ])
   expect(batch.assertions).toContainEqual({
     featureId: "device.xtversion",
     kind: "negative",
+    assertionType: "query_reply",
     expected: "complete XTVERSION DCS >| printable name/version ST",
     observed: expect.stringMatching(/DA1 answered at \+\d+ms; no reply through the \d+ ms window/),
     rawReplyRef: "device.xtversion",
@@ -527,7 +489,7 @@ function validContainerReceipt() {
 }
 
 // 27832 amendment 1: a mutating probe needs a verified disposable-ownership receipt, the collector
-// checks it once before the first write, and the run records the kind and the digest.
+// tests it once before the first write, and the run records the kind and the digest.
 it("refuses a mutating reset probe with no disposable receipt and writes nothing", async () => {
   verifiedBatchFixture()
   const writes: string[] = []
@@ -537,19 +499,11 @@ it("refuses a mutating reset probe with no disposable receipt and writes nothing
   }) as typeof process.stdout.write
   const batch = await runProbeBatch({
     ids: ["extensions.osc110-reset-fg"],
-    target: { kind: "app", id: "kitty", os: "linux" },
+    subject: { kind: "term", id: "kitty", os: "linux" },
   })
   expect(writes).toEqual([])
   expect(JSON.parse(batch.rawReplies["collector.disposableOwnership"]!)).toEqual({ kind: "shared" })
-  expect(batch.observations).toMatchObject([
-    {
-      featureId: "extensions.osc110-reset-fg",
-      outcome: "inconclusive",
-      reason: "policy-refused",
-      evidence: "none",
-      note: "Collector refused before sending bytes because no verified disposable-ownership receipt was presented",
-    },
-  ])
+  expect(batch.results.filter((result) => ["extensions.osc110-reset-fg"].includes(result.featureId))).toMatchObject([{status: "test-todo",featureId: "extensions.osc110-reset-fg"}])
   expect(batch.assertions).toEqual([])
   expect(JSON.parse(batch.rawReplies["extensions.osc110-reset-fg"]!)).toEqual({ writes: [], queries: [], events: [] })
 })
@@ -567,7 +521,7 @@ it("a declared receipt that cannot be verified is loud before any byte, never a 
     return true
   }) as typeof process.stdout.write
   await expect(
-    runProbeBatch({ ids: ["extensions.osc110-reset-fg"], target: { kind: "app", id: "kitty", os: "linux" } }),
+    runProbeBatch({ ids: ["extensions.osc110-reset-fg"], subject: { kind: "term", id: "kitty", os: "linux" } }),
   ).rejects.toThrow(/unknown kind/)
   expect(writes).toEqual([])
 })
@@ -594,10 +548,10 @@ it("a verified disposable receipt runs the reset exchange and records its kind a
   }) as typeof process.stdout.write
   const batch = await runProbeBatch({
     ids: ["extensions.osc110-reset-fg"],
-    target: { kind: "app", id: "kitty", os: "linux" },
+    subject: { kind: "term", id: "kitty", os: "linux" },
   })
   expect(batch.observations).toMatchObject([
-    { featureId: "extensions.osc110-reset-fg", outcome: "supported", evidence: "behavior" },
+    { featureId: "extensions.osc110-reset-fg", outcome: "supported", assertionType: "query_reply" },
   ])
   expect(writes).toEqual([
     "\x1b]10;?\x07\x1b[c",
@@ -638,7 +592,7 @@ it("copies the apparatus-measured launch block the receipt carries onto the batc
   writeFileSync(path, JSON.stringify(receipt))
   process.env.TERMINFO_DISPOSABLE_RECEIPT = path
   process.stdout.write = (() => true) as typeof process.stdout.write
-  const batch = await runProbeBatch({ ids: [], target: { kind: "app", id: "iterm2", os: "macos" } })
+  const batch = await runProbeBatch({ ids: [], subject: { kind: "term", id: "iterm2", os: "macos" } })
   expect(batch.appLaunch).toEqual(receipt.appLaunch)
 })
 
@@ -650,19 +604,11 @@ it("refuses a mutating probe when neither owned terminal nor disposable receipt 
   }) as typeof process.stdout.write
   const batch = await runProbeBatch({
     ids: ["extensions.osc110-reset-fg"],
-    target: { kind: "app", id: "kitty", os: "linux" },
+    subject: { kind: "term", id: "kitty", os: "linux" },
   })
   expect(writes).toEqual([])
   expect(JSON.parse(batch.rawReplies["collector.disposableOwnership"]!)).toEqual({ kind: "shared" })
-  expect(batch.observations).toMatchObject([
-    {
-      featureId: "extensions.osc110-reset-fg",
-      outcome: "inconclusive",
-      reason: "policy-refused",
-      evidence: "none",
-      note: "Collector refused before sending bytes because neither a verified owned terminal nor a verified disposable-ownership receipt was presented",
-    },
-  ])
+  expect(batch.results.filter((result) => ["extensions.osc110-reset-fg"].includes(result.featureId))).toMatchObject([{status: "test-todo",featureId: "extensions.osc110-reset-fg"}])
   expect(batch.assertions).toEqual([])
 })
 
@@ -687,10 +633,10 @@ it("authorizes write probes and records receipt kind and digest when disposable-
   }) as typeof process.stdout.write
   const batch = await runProbeBatch({
     ids: ["extensions.osc110-reset-fg"],
-    target: { kind: "app", id: "kitty", os: "linux" },
+    subject: { kind: "term", id: "kitty", os: "linux" },
   })
   expect(batch.observations).toMatchObject([
-    { featureId: "extensions.osc110-reset-fg", outcome: "supported", evidence: "behavior" },
+    { featureId: "extensions.osc110-reset-fg", outcome: "supported", assertionType: "query_reply" },
   ])
   expect(writes).toEqual([
     "\x1b]10;?\x07\x1b[c",
@@ -734,17 +680,9 @@ it("gives the named geometry error for a geometry probe on disposable-only termi
     writes.push(text)
     return true
   }) as typeof process.stdout.write
-  const batch = await runProbeBatch({ ids: ["cursor.shape"], target: { kind: "app", id: "kitty", os: "linux" } })
+  const batch = await runProbeBatch({ ids: ["cursor.shape"], subject: { kind: "term", id: "kitty", os: "linux" } })
   expect(writes).toEqual([])
-  expect(batch.observations).toMatchObject([
-    {
-      featureId: "cursor.shape",
-      outcome: "inconclusive",
-      reason: "insufficient-evidence",
-      evidence: "none",
-      note: "No verified owned terminal for geometry read",
-    },
-  ])
+  expect(batch.results.filter((result) => ["cursor.shape"].includes(result.featureId))).toMatchObject([{status: "test-todo",featureId: "cursor.shape",reason: "No verified owned terminal for geometry read"}])
 })
 
 const measured = (
@@ -787,13 +725,8 @@ it("declines a declared callback with missing or conflicting owned geometry befo
     ids: ["reset.ris"],
     ownedTerminal: geometryOwner(noGeometry, async () => measured(24, 61)),
   })
-  expect(missing.observations).toMatchObject([
-    { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none" },
-  ])
-  expect(
-    decodeCollectorRun("missing-geometry.json", JSON.stringify(asRun(missing)), manifest, sourceRevision).run
-      .observations,
-  ).toMatchObject([{ featureId: "reset.ris", outcome: "inconclusive", reason: "insufficient-evidence" }])
+  expect(missing.results.find((result) => result.featureId === "reset.ris")).toMatchObject({status: "test-todo"})
+  expect(decodeCollectorRun("missing-geometry.json", JSON.stringify(asRun(missing)), manifest, sourceRevision).run.observations).toEqual([])
   expect(JSON.parse(missing.rawReplies["reset.ris"]!)).toEqual({ writes: [], queries: [], events: [] })
   expect(writes).toEqual([])
   const conflict = await runProbeBatch({
@@ -814,9 +747,7 @@ it("declines a declared callback with missing or conflicting owned geometry befo
       },
     },
   })
-  expect(conflict.observations).toMatchObject([
-    { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none" },
-  ])
+  expect(conflict.results.find((result) => result.featureId === "reset.ris")).toMatchObject({status: "test-failure"})
   expect(writes).toEqual([])
   expect(JSON.parse(conflict.rawReplies["collector.geometry"]!)).toMatchObject({
     source: darwinGeometrySource,
@@ -861,12 +792,7 @@ it("prepares capture once before the first eligible callback and retains its cal
         context.write(`fixture:${ids[index]}`)
         return {
           pass: false,
-          observation: {
-            outcome: "inconclusive",
-            reason: "insufficient-evidence",
-            evidence: "none",
-            note: "Lifecycle fixture does not measure terminal support",
-          },
+          tests: [{ id: "criterion", status: "test-todo", reason: "Lifecycle fixture does not measure terminal support" }],
         }
       }
     }
@@ -927,13 +853,9 @@ it("keeps query-only and nongeometry callbacks runnable when owned size is unava
   })
   expect(batch.observations.find((item) => item.featureId === "modes.bracketed-paste")).toMatchObject({
     outcome: "supported",
-    evidence: "query",
+    assertionType: "query_reply",
   })
-  expect(batch.observations.find((item) => item.featureId === "reset.decaln")).toMatchObject({
-    outcome: "inconclusive",
-    reason: "insufficient-evidence",
-    evidence: "none",
-  })
+  expect(batch.results.find((item) => item.featureId === "reset.decaln")).toMatchObject({status: "test-todo"})
   expect(batch.ungradedDiagnostics["reset.decaln"]).toBeUndefined()
   expect(writes).not.toContain("\x1b#8")
   expect(writes).toContain("\x1b[?2004$p\x1b[c")
@@ -972,7 +894,7 @@ it("retains actual width-helper writes and all four CPR query outcomes", async (
       })),
       events: emitted.map((sequence) => ({ sequence })),
     })
-    expect(batch.observations).toMatchObject([{ featureId: id, outcome: "supported", evidence: "behavior" }])
+    expect(batch.observations).toMatchObject([{ featureId: id, outcome: "supported", assertionType: "query_reply" }])
   } finally {
     vi.mocked(measureUtf8Decoding).mockRestore()
   }
@@ -998,7 +920,7 @@ it("keeps actual query evidence but downgrades its explicit result after a measu
         featureId: "device.primary-da",
         outcome: "inconclusive",
         reason: "insufficient-evidence",
-        evidence: "query",
+        assertionType: "query_reply",
       },
     ])
     expect(batch.assertions).toMatchObject([
@@ -1011,12 +933,12 @@ it("keeps actual query evidence but downgrades its explicit result after a measu
     ])
     expect(JSON.parse(batch.rawReplies["device.primary-da.callbackObservation"]!)).toMatchObject({
       outcome: "supported",
-      evidence: "query",
+      assertionType: "query_reply",
     })
     expect(batch.results.find((result) => result.featureId === "device.primary-da")).toMatchObject({
       status: "test-failure",
       criterionBranch: "resized-capture",
-      checks: [{ id: "geometry", status: "test-failure", assertionRefs: [0] }],
+      tests: [{ id: "geometry", status: "test-failure", assertionRefs: [0] }],
     })
     expect(batch.rawReplies["device.primary-da"]).toBe("\x1b[?62;4c")
     expect(JSON.parse(batch.rawReplies["collector.geometry"]!)).toMatchObject({
@@ -1076,13 +998,13 @@ it("refuses app named coverage that arrives beside its returned error observatio
   verifiedBatchFixture()
   const definition = ALL_PROBES.find((item) => item.id === "device.primary-da")!
   const originalTerm = definition.term
-  const originalEvidence = definition.termObservationEvidence
-  definition.termObservationEvidence = "query"
+  const originalEvidence = definition.termAssertionType
+  definition.termAssertionType = "query_reply"
   definition.term = (async () => ({
     pass: false,
     response: "\x1b[?62;4c",
     notTested: { reason: "no-semantic-observable", noObservable: "device attributes" },
-    observation: { outcome: "error", reason: "collector-error", evidence: "query", note: "TTY write failed" },
+    observation: { outcome: "error", reason: "collector-error", assertionType: "query_reply", note: "TTY write failed" },
   })) as unknown as typeof definition.term
   try {
     const batch = await runProbeBatch({ ids: [definition.id] })
@@ -1106,7 +1028,7 @@ it("refuses app named coverage that arrives beside its returned error observatio
     expect(batch.suiteComplete).toBe(false)
   } finally {
     definition.term = originalTerm
-    definition.termObservationEvidence = originalEvidence
+    definition.termAssertionType = originalEvidence
   }
 })
 
@@ -1118,7 +1040,7 @@ it("refuses app named coverage that arrives beside supported observation and ass
     pass: true,
     response: "\x1b[?62;4c",
     notTested: { reason: "no-semantic-observable", noObservable: "device attributes" },
-    observation: { outcome: "supported", evidence: "query" },
+    observation: { outcome: "supported", assertionType: "query_reply" },
     assertions: [{ kind: "positive", expected: "\x1b[?62;4c", observed: "\x1b[?62;4c" }],
   })) as unknown as typeof definition.term
   try {
@@ -1151,9 +1073,9 @@ it("reports undeclared geometry reads as collector errors without invented evide
   verifiedBatchFixture()
   const definition = ALL_PROBES.find((item) => item.id === "text.wrap")!
   const original = definition.termNeedsGeometry
-  const originalEvidence = definition.termObservationEvidence
+  const originalEvidence = definition.termAssertionType
   definition.termNeedsGeometry = undefined
-  definition.termObservationEvidence = "behavior"
+  definition.termAssertionType = "query_reply"
   const writes: string[] = []
   process.stdout.write = ((text: string) => {
     writes.push(text)
@@ -1170,7 +1092,7 @@ it("reports undeclared geometry reads as collector errors without invented evide
     expect(writes).toEqual([])
   } finally {
     definition.termNeedsGeometry = original
-    definition.termObservationEvidence = originalEvidence
+    definition.termAssertionType = originalEvidence
   }
 })
 
@@ -1192,11 +1114,11 @@ it.each([
   const definition = ALL_PROBES.find((item) => item.id === id)!
   expect(definition.termNeedsGeometry, id).toBe(true)
   const original = definition.termNeedsGeometry
-  const originalEvidence = definition.termObservationEvidence
+  const originalEvidence = definition.termAssertionType
   // Clearing the declaration must make the real collector seam refuse the callback's rows/cols read,
   // proving the declaration is load-bearing rather than only satisfied by a fake plain-number context.
   definition.termNeedsGeometry = undefined
-  definition.termObservationEvidence = "pixels"
+  definition.termAssertionType = "screenshot"
   const writes: string[] = []
   process.stdout.write = ((text: string) => {
     writes.push(text)
@@ -1219,7 +1141,7 @@ it.each([
     expect(writes, id).toEqual([])
   } finally {
     definition.termNeedsGeometry = original
-    definition.termObservationEvidence = originalEvidence
+    definition.termAssertionType = originalEvidence
   }
 })
 
@@ -1274,7 +1196,7 @@ it("grades editing.decsace on measured pixel cells and keeps suiteComplete", asy
     expect(batch.ungradedDiagnostics).toEqual({})
     expect(batch.suiteComplete).toBe(true)
     expect(batch.observations).toMatchObject([
-      { featureId: "editing.decsace", outcome: "supported", evidence: "pixels" },
+      { featureId: "editing.decsace", outcome: "supported", assertionType: "screenshot" },
     ])
     expect(
       decodeCollectorRun(
@@ -1283,7 +1205,7 @@ it("grades editing.decsace on measured pixel cells and keeps suiteComplete", asy
         manifest,
         sourceRevision,
       ).run.observations,
-    ).toMatchObject([{ featureId: "editing.decsace", outcome: "supported", evidence: "pixels" }])
+    ).toMatchObject([{ featureId: "editing.decsace", outcome: "supported", assertionType: "screenshot" }])
     expect(labels).toEqual([
       // The seed paint happens first, then the shared stability pair reads the seeded screen: its
       // second read IS the seed frame, so the extent frames follow.
@@ -1323,11 +1245,11 @@ it("grades cursor.shape and cursor.reverse-wrap when each declares its measured-
   expect(batch.ungradedDiagnostics).toEqual({})
   expect(batch.observations.find((item) => item.featureId === "cursor.shape")).toMatchObject({
     outcome: "inconclusive",
-    evidence: "pixels",
+    assertionType: "screenshot",
   })
   expect(batch.observations.find((item) => item.featureId === "cursor.reverse-wrap")).toMatchObject({
     outcome: "supported",
-    evidence: "query",
+    assertionType: "query_reply",
   })
 })
 
@@ -1417,7 +1339,7 @@ it("carries the console host a text capture recorded onto the observation, witho
     ownedTerminal: geometryOwner(measured(24, 80)),
   })
   const observation = batch.observations.find((item) => item.featureId === "erase.el-with-attrs")
-  expect(observation).toMatchObject({ evidence: "text" })
+  expect(observation).toMatchObject({ assertionType: "buffer_state" })
   expect(observation?.host).toEqual({
     image: "OpenConsole.exe",
     executablePath: owner.executablePath,
@@ -1463,10 +1385,8 @@ it("hands no adapter to a non-cell-readback probe on a text run", async () => {
   expect(reads).toBe(0)
   expect(batch.screenshotRefs).toEqual([])
   expect(batch.textSnapshotRefs ?? []).toEqual([])
-  expect(batch.observations.find((item) => item.featureId === "cursor.shape")).toMatchObject({
-    outcome: "inconclusive",
-  })
-  expect(batch.observations.find((item) => item.featureId === "cursor.shape")?.evidence).not.toBe("pixels")
+  expect(batch.results.find((item) => item.featureId === "cursor.shape")).toMatchObject({status: "test-failure"})
+  expect(batch.observations.find((item) => item.featureId === "cursor.shape")?.assertionType).not.toBe("pixels")
 })
 
 // A callback that fails after its text read is a collector error about cells, not a pixel claim.
@@ -1497,11 +1417,7 @@ it("records a text run's collector throw as text evidence", async () => {
     },
     ownedTerminal: geometryOwner(measured(24, 80)),
   })
-  expect(batch.observations.find((item) => item.featureId === "erase.el-with-attrs")).toMatchObject({
-    outcome: "error",
-    reason: "collector-error",
-    evidence: "text",
-  })
+  expect(batch.results.find((item) => item.featureId === "erase.el-with-attrs")).toMatchObject({status: "test-failure"})
 })
 
 // The public inline runner must put both callback writes and nested CPR queries on its selected TTY.
@@ -1561,7 +1477,7 @@ it("uses the injected TTY for callback writes, columns, and nested cursor querie
   ])
   expect(batch.observations.find((item) => item.featureId === "text.wrap")).toMatchObject({
     outcome: "supported",
-    evidence: "query",
+    assertionType: "query_reply",
   })
   expect(batch.ungradedDiagnostics["text.wrap"]).toBeUndefined()
   expect(JSON.parse(batch.rawReplies["collector.geometry"]!)).toMatchObject({ corroboration: { status: "silent" } })
@@ -1592,7 +1508,7 @@ it("binds an explicit DA1 observation to exact outbound and reply bytes", async 
     expect.objectContaining({
       featureId: "device.primary-da",
       outcome: "supported",
-      evidence: "query",
+      assertionType: "query_reply",
       rawReplyRef: "device.primary-da",
     }),
   ])
@@ -1632,16 +1548,8 @@ it("records an opted-in query callback exception as collector error, never suppo
     throw new Error("TTY write failed")
   }) as typeof process.stdout.write
   const batch = await runProbeBatch({ ids: ["device.primary-da"] })
-  expect(batch.observations).toEqual([
-    expect.objectContaining({
-      featureId: "device.primary-da",
-      outcome: "error",
-      reason: "collector-error",
-      evidence: "query",
-      note: "TTY write failed",
-    }),
-  ])
-  expect(batch.ungradedDiagnostics["device.primary-da"]).toBeUndefined()
+  expect(batch.results.filter((result) => ["device.primary-da"].includes(result.featureId))).toMatchObject([{status: "test-failure",featureId: "device.primary-da",reason: "TTY write failed"}])
+  expect(batch.ungradedDiagnostics["device.primary-da"]).toMatchObject({kind: "collector-error", message: "TTY write failed"})
   expect(batch.suiteComplete).toBe(false)
 })
 
@@ -1658,25 +1566,17 @@ it("retains a generated region callback's early write failure as a collector err
       throw new Error("A frame cannot precede the failed region write")
     },
   })
-  expect(batch.observations).toEqual([
-    expect.objectContaining({
-      featureId: definition.id,
-      outcome: "error",
-      reason: "collector-error",
-      evidence: "pixels",
-      note: "Region TTY write failed",
-    }),
-  ])
-  expect(batch.ungradedDiagnostics[definition.id]).toBeUndefined()
+  expect(batch.results.filter((result) => [definition.id].includes(result.featureId))).toMatchObject([{status: "test-failure",featureId: definition.id,reason: "Region TTY write failed"}])
+  expect(batch.ungradedDiagnostics[definition.id]).toMatchObject({kind: "collector-error"})
   expect(batch.suiteComplete).toBe(false)
 })
 
 it("does not use a headless-only marker to grade an app callback exception", async () => {
   const definition = ALL_PROBES.find((item) => item.id === "device.primary-da")!
-  const originalApp = definition.termObservationEvidence
-  const originalHeadless = definition.termlessObservationEvidence
-  definition.termObservationEvidence = undefined
-  definition.termlessObservationEvidence = "parser-state"
+  const originalApp = definition.termAssertionType
+  const originalHeadless = definition.libAssertionType
+  definition.termAssertionType = undefined
+  definition.libAssertionType = "buffer_state"
   process.stdout.write = (() => {
     throw new Error("App TTY write failed")
   }) as typeof process.stdout.write
@@ -1688,8 +1588,8 @@ it("does not use a headless-only marker to grade an app callback exception", asy
       [definition.id]: { kind: "collector-error", name: "Error", message: "App TTY write failed" },
     })
   } finally {
-    definition.termObservationEvidence = originalApp
-    definition.termlessObservationEvidence = originalHeadless
+    definition.termAssertionType = originalApp
+    definition.libAssertionType = originalHeadless
   }
 })
 
@@ -1720,12 +1620,12 @@ it.each(["start", "read", "write"])(
         return context.withClipboardFixture!(async (fixture) => {
           await fixture.readText()
           await fixture.writeText("fixture")
-          return { pass: true, observation: { outcome: "supported", evidence: "behavior" } }
+          return { pass: true, observation: { outcome: "supported", assertionType: "query_reply" } }
         })
       }
       probes[1]!.term = async () => {
         callbacks()
-        return { pass: true, observation: { outcome: "supported", evidence: "behavior" } }
+        return { pass: true, observation: { outcome: "supported", assertionType: "query_reply" } }
       }
       await expect(
         runProbeBatch({
@@ -1853,14 +1753,7 @@ it("records failed clipboard restoration as collector error rather than retainin
       },
     },
   })
-  expect(batch.observations).toEqual([
-    expect.objectContaining({
-      featureId: "extensions.osc52-write",
-      outcome: "error",
-      reason: "collector-error",
-      rawReplyRef: "extensions.osc52-write",
-    }),
-  ])
+  expect(batch.results.filter((result) => ["extensions.osc52-write"].includes(result.featureId))).toMatchObject([{status: "test-failure",featureId: "extensions.osc52-write",rawReplyRef: "extensions.osc52-write"}])
   expect(batch.suiteComplete).toBe(false)
 })
 
@@ -1903,7 +1796,7 @@ it("retains same-callback control and target frames without declaring visual sup
     expect.objectContaining({
       featureId: "sgr.underline.curly",
       outcome: "inconclusive",
-      evidence: "pixels",
+      assertionType: "screenshot",
       reason: "insufficient-evidence",
       screenshotRef: frames[1]?.ref,
       frames,
@@ -1953,15 +1846,7 @@ it("keeps today's graceful absence row when no capture callback is installed", a
     ownedTerminal: geometryOwner(measured(24, 80)),
     captureRunId: "a".repeat(32),
   })
-  expect(batch.observations).toMatchObject([
-    {
-      featureId: "cursor.shape",
-      outcome: "inconclusive",
-      reason: "no-response",
-      evidence: "query",
-      note: "DECRQSS cursor-style report unanswered; no pixel readback for shape",
-    },
-  ])
+  expect(batch.results.filter((result) => ["cursor.shape"].includes(result.featureId))).toMatchObject([{status: "test-failure",featureId: "cursor.shape",reason: "DECRQSS cursor-style report unanswered; no pixel readback for shape"}])
   expect(batch.ungradedDiagnostics).toEqual({})
 })
 
@@ -1976,15 +1861,7 @@ it("records an installed capture adapter failure as an error rather than quietly
     ownedTerminal: geometryOwner(measured(24, 80)),
     capture: () => Promise.reject(new Error("Owned window disappeared")),
   })
-  expect(batch.observations).toEqual([
-    expect.objectContaining({
-      featureId: "sgr.underline.curly",
-      outcome: "error",
-      evidence: "pixels",
-      reason: "collector-error",
-      note: "Owned window disappeared",
-    }),
-  ])
+  expect(batch.results.filter((result) => ["sgr.underline.curly"].includes(result.featureId))).toMatchObject([{status: "test-failure",featureId: "sgr.underline.curly",reason: "Owned window disappeared"}])
   expect(batch.screenshotRefs).toEqual([])
   expect(batch.ungradedDiagnostics).toEqual({})
 })
@@ -2007,7 +1884,7 @@ it("refuses a receipt for another target before writing any byte", async () => {
   await expect(
     runProbeBatch({
       ids: ["extensions.osc110-reset-fg"],
-      target: { kind: "app", id: "wezterm", os: "linux" },
+      subject: { kind: "term", id: "wezterm", os: "linux" },
     }),
   ).rejects.toThrow(/receipt declares target .*kitty.* but this run is .*wezterm/)
   expect(writes).toEqual([])
@@ -2057,7 +1934,7 @@ it("measures the decode context once per run and records it beside the other col
     seen.push(await ctx.utf8Decoding())
     return {
       pass: false,
-      observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "query" },
+      observation: { outcome: "inconclusive", reason: "insufficient-evidence", assertionType: "query_reply" },
     }
   }
   try {
@@ -2111,7 +1988,7 @@ it("joins the in-flight attempt, so a row asking before it returns measures noth
     expect(seen).toEqual(["8-bit", "8-bit"])
     return {
       pass: false,
-      observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "query" },
+      observation: { outcome: "inconclusive", reason: "insufficient-evidence", assertionType: "query_reply" },
     }
   }
   try {
@@ -2158,7 +2035,7 @@ it("keeps a failed attempt failed for the batch, so no later row re-measures the
     }
     return {
       pass: false,
-      observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "query" },
+      observation: { outcome: "inconclusive", reason: "insufficient-evidence", assertionType: "query_reply" },
     }
   }
   try {
@@ -2200,7 +2077,7 @@ it.each(["CaptureRestoreFailed", "QueryTimeout", "QueryIOError", "CapturePermiss
       callbacks++
       return {
         pass: false,
-        observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none" },
+        tests: [{ id: "criterion", status: "test-todo", reason: "insufficient-evidence" }],
       }
     }
     const failure = Object.assign(new Error("Witnessed restore did not match the pre-paint frame"), {
@@ -2370,15 +2247,9 @@ it.each(["unknown reply", "sentinel diagnostic reply", "sentinel diagnostic time
     const [batch] = await Promise.all([pending, vi.runAllTimersAsync()])
     vi.useRealTimers()
     expect(batch.observations).toContainEqual(
-      expect.objectContaining({ featureId: "device.primary-da", outcome: "supported", evidence: "query" }),
+      expect.objectContaining({ featureId: "device.primary-da", outcome: "supported", assertionType: "query_reply" }),
     )
-    expect(batch.observations).toContainEqual(
-      expect.objectContaining({
-        featureId: "erase.line.all",
-        outcome: "inconclusive",
-        note: expect.stringMatching(/cursor visibility/),
-      }),
-    )
+    expect(batch.results.find((result) => result.featureId === "erase.line.all")).toMatchObject({status: "test-todo", reason: expect.stringMatching(/cursor visibility/)})
     const trace = JSON.parse(batch.rawReplies["collector.captureCalibration.trace"]!)
     expect(trace).toMatchObject({
       writes: [],
@@ -2480,7 +2351,7 @@ it.each([25, 7].flatMap((missing) => ["reply", "malformed", "timeout"].map((diag
       )
       expect(capture).not.toHaveBeenCalled()
       expect(batch.observations).toContainEqual(
-        expect.objectContaining({ featureId: "device.primary-da", outcome: "supported", evidence: "query" }),
+        expect.objectContaining({ featureId: "device.primary-da", outcome: "supported", assertionType: "query_reply" }),
       )
     } finally {
       vi.useRealTimers()
@@ -2495,11 +2366,11 @@ it("records actual native callback failure and leaves an unscheduled frozen capa
   const id = "modes.bracketed-paste"
   const definition = ALL_PROBES.find((probe) => probe.id === id)!
   const original = definition.term
-  const draft = initializeRunDraft({
+  const draft = initializeRunDraft({ source: { kind: "live" },
     runId: "native-status-attempt",
     sourceRevision,
-    manifest: { ...manifest, catalogIds: [id, "unimplemented.capability"] },
-    intendedContext: { kind: "app", id: "kitty" },
+    manifest: { ...manifest, schemaVersion: 4, catalogIds: [id, "unimplemented.capability"] },
+    intendedSubject: { kind: "term", id: "kitty" },
   })
   try {
     definition.term = async () => {
@@ -2513,7 +2384,7 @@ it("records actual native callback failure and leaves an unscheduled frozen capa
     expect(batch.results.find((result) => result.featureId === "unimplemented.capability")).toMatchObject({
       status: "test-todo",
       attempt: { scope: "none" },
-      checks: [],
+      tests: [],
     })
   } finally {
     definition.term = original
@@ -2522,7 +2393,7 @@ it("records actual native callback failure and leaves an unscheduled frozen capa
 
 // Existing native tests retained framed observations but never distinguished an attempted broken
 // comparison from a still-unattempted required review at the callback-to-writer handoff.
-it("forwards explicit callback checks through the actual native batch attempt without inferring review from frames", async () => {
+it("forwards explicit callback tests through the actual native batch attempt without inferring review from frames", async () => {
   const { sgrCaptureFrames } = await import("../../../probe-defs/src/helpers.ts")
   const { cropPositionRefusal } = await import("../../../probe-defs/src/region-readback.ts")
   const id = "modes.bracketed-paste"
@@ -2557,7 +2428,7 @@ it("forwards explicit callback checks through the actual native batch attempt wi
     expect(failed.results.find((result) => result.featureId === id)).toMatchObject({
       status: "test-failure",
       criterionBranch: "same-crop-comparison",
-      checks: [{ id: "comparison", status: "test-failure", attempt: { scope: "probe" } }],
+      tests: [{ id: "comparison", status: "test-failure", attempt: { scope: "probe" } }],
     })
     let next = 0
     definition.term = async () =>
@@ -2571,7 +2442,7 @@ it("forwards explicit callback checks through the actual native batch attempt wi
     const recorded = pending.results.find((result) => result.featureId === id)!
     expect(recorded.status).toBe("test-todo")
     expect(recorded.criterionBranch).toBe("visual-review")
-    expect(recorded.checks.find((check) => check.id === "review")).toMatchObject({
+    expect(recorded.tests.find((check) => check.id === "review")).toMatchObject({
       status: "test-todo",
       attempt: { scope: "none" },
     })

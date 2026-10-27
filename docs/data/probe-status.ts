@@ -21,7 +21,7 @@
  * The build and validate print the undeclared count beside the gated rows, so the gap is visible and
  * never silent.
  */
-import { ALL_PROBES, isNonMeasuringEvidence, type ProbeDefinition } from "@terminfo/probe-defs"
+import { ALL_PROBES, type ProbeDefinition } from "@terminfo/probe-defs"
 import type { FeatureCatalog } from "@terminfo/catalog"
 
 /** The two statuses a catalog row may carry as a reviewed value; each needs a reason beside it. */
@@ -44,10 +44,10 @@ const featureIds = (catalog: FeatureCatalog): string[] => Object.keys(catalog).f
  * that declares acceptance-only evidence, fixes the row as partial even when another arm is silent.
  */
 export function derivedProbeStatus(definition: ProbeDefinition): DerivedProbeStatus {
-  const declared = [definition.termObservationEvidence, definition.termlessObservationEvidence]
-  if (definition.term === null || definition.termless === null) return "partial"
-  if (declared.some((evidence) => evidence !== undefined && isNonMeasuringEvidence(evidence))) return "partial"
-  if (declared.some((evidence) => evidence === undefined)) return null
+  const declared = [definition.termAssertionType, definition.libAssertionType]
+  if (definition.term === null || definition.lib === null) return "partial"
+  if (declared.some((assertionType) => assertionType === null)) return "partial"
+  if (declared.some((assertionType) => assertionType === undefined)) return null
   return "automated"
 }
 

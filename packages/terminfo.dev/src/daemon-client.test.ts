@@ -38,24 +38,24 @@ import {
 } from "./daemon-client.ts"
 
 const trustedReceipt = {
-  manifest: {
+  manifest: { schemaVersion: 4 as const,
     probeHash: "abcdef123456",
     sourceRevision: "b".repeat(40),
     generatedAt: "2026-09-28T00:00:00.000Z",
     adapterVersion: "3.3.1",
     catalogIds: ["device.primary-da"],
-    probes: { app: ["device.primary-da"], headless: ["device.primary-da"], mux: ["device.primary-da"] },
+    probes: { term: ["device.primary-da"], lib: ["device.primary-da"], mux: ["device.primary-da"] },
   } satisfies ProbeSuiteManifest,
   collectorRevision: "a".repeat(40),
 }
 
 function collectorRun(): CollectedProbeRun {
-  return {
-    schemaVersion: 3,
-    intendedContext: { kind: "app", id: "kitty", version: "0.49.1" },
+  return { source: { kind: "live" },
+    schemaVersion: 4,
+    intendedSubject: { kind: "term", id: "kitty", version: "0.49.1" },
     runId: "1234567890abcdef1234567890abcdef",
-    target: {
-      kind: "app",
+    subject: {
+      kind: "term",
       id: "kitty",
       version: "0.49.1",
       os: "linux",
@@ -79,7 +79,7 @@ function collectorRun(): CollectedProbeRun {
         featureId: "device.primary-da",
         status: "test-todo",
         attempt: { scope: "none" },
-        checks: [],
+        tests: [],
         reason: "Not implemented",
       },
     ],
@@ -125,12 +125,12 @@ it("keeps the Darwin editor IPC path short despite a long per-user temporary dir
 
 it("writes one immutable current capture and refuses a mismatched intended version", () => {
   root = mkdtempSync(join(tmpdir(), "terminfo-owned-"))
-  const run: CollectedProbeRun = {
-    schemaVersion: 3,
-    intendedContext: { kind: "app", id: "kitty", version: "0.49.1" },
+  const run: CollectedProbeRun = { source: { kind: "live" },
+    schemaVersion: 4,
+    intendedSubject: { kind: "term", id: "kitty", version: "0.49.1" },
     runId: "1234567890abcdef1234567890abcdef",
-    target: {
-      kind: "app",
+    subject: {
+      kind: "term",
       id: "kitty",
       version: "0.49.1",
       os: "macos",
@@ -152,16 +152,16 @@ it("writes one immutable current capture and refuses a mismatched intended versi
     results: collectorRun().results,
   }
   const dir = join(root, "runs")
-  expect(() => saveDaemonProbeRun(run, dir, { kind: "app", id: "kitty", version: "0.48.0" })).toThrow(
+  expect(() => saveDaemonProbeRun(run, dir, { kind: "term", id: "kitty", version: "0.48.0" })).toThrow(
     /Measured version/,
   )
-  const path = saveDaemonProbeRun(run, dir, { kind: "app", id: "kitty", version: "0.49.1" })
+  const path = saveDaemonProbeRun(run, dir, { kind: "term", id: "kitty", version: "0.49.1" })
   const saved = JSON.parse(readFileSync(path, "utf8")) as CollectedProbeRun
   expect(saved.rawReplies["device.primary-da"]).toBe("\x1b[?62;4c")
-  expect(() => saveDaemonProbeRun(run, dir, { kind: "app", id: "kitty", version: "0.49.1" })).toThrow()
+  expect(() => saveDaemonProbeRun(run, dir, { kind: "term", id: "kitty", version: "0.49.1" })).toThrow()
 })
 
-it("selects only the launched run and checks /info before returning its token", async () => {
+it("selects only the launched run and tests /info before returning its token", async () => {
   root = mkdtempSync(join(tmpdir(), "terminfo-owned-"))
   const daemonDir = join(root, "daemons")
   mkdirSync(daemonDir)
@@ -523,7 +523,7 @@ it("retains authenticated exact response bytes before intended-version refusal",
   expect(lstatSync(retained.path).mode & 0o077).toBe(0)
   expect(retained.run.rawReplies["collector.httpResponseSha256"]).toBe(sha)
   expect(() =>
-    saveDaemonProbeRun(retained.run, join(privateRoot, "runs"), { kind: "app", id: "kitty", version: "0.48.0" }),
+    saveDaemonProbeRun(retained.run, join(privateRoot, "runs"), { kind: "term", id: "kitty", version: "0.48.0" }),
   ).toThrow(/Measured version/)
   expect(readdirSync(privateRoot).sort()).toEqual(["http-responses"])
   await readRetainedDaemonProbeResponse(new Response(raw), { directory: privateDir, receipt: trustedReceipt })
@@ -626,7 +626,7 @@ it("sends the process owner as processOwner, refused when it names another daemo
 it("resumes a retained pending capture through the final writer without changing the original draft", () => {
   root = mkdtempSync(join(tmpdir(), "terminfo-owned-"))
   const run = collectorRun()
-  run.results[0]!.checks = [
+  run.results[0]!.tests = [
     { id: "review", status: "test-todo", attempt: { scope: "none" }, reason: "Required context review pending" },
   ]
   const path = saveDaemonProbeRun(run, root)
@@ -644,7 +644,7 @@ it("resumes a retained pending capture through the final writer without changing
     reviewer: "reviewer",
     reason: "This stream-only context cannot receive device-status replies",
     scope: {
-      target: { kind: "app", id: "kitty" },
+      subject: { kind: "term", id: "kitty" },
       versions: ["0.49.1", "0.49.1"],
       suites: [run.probeHash, run.probeHash],
     },
@@ -675,7 +675,7 @@ it("retains partial reviews as immutable snapshots, then seals the same logical 
     featureId,
     status: "test-todo",
     attempt: { scope: "none" },
-    checks: [
+    tests: [
       { id: "review", status: "test-todo", attempt: { scope: "none" }, reason: "Required context review pending" },
     ],
     reason: "Required context review pending",
@@ -696,7 +696,7 @@ it("retains partial reviews as immutable snapshots, then seals the same logical 
       reviewer: "reviewer",
       reason: "This stream-only context cannot receive the criterion's device replies",
       scope: {
-        target: { kind: "app", id: "kitty" },
+        subject: { kind: "term", id: "kitty" },
         versions: ["0.49.1", "0.49.1"],
         suites: [run.probeHash, run.probeHash],
       },
@@ -715,7 +715,7 @@ it("retains partial reviews as immutable snapshots, then seals the same logical 
   const manifest = {
     ...trustedReceipt.manifest,
     catalogIds: run.results.map((result) => result.featureId),
-    probes: { ...trustedReceipt.manifest.probes, app: run.results.map((result) => result.featureId) },
+    probes: { ...trustedReceipt.manifest.probes, term: run.results.map((result) => result.featureId) },
   }
   const parsed = parseRun(
     finalPath,

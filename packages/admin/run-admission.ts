@@ -54,8 +54,8 @@ import {
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..")
 export const CONTENT_DIR = join(ROOT, "content")
 const RUN_DIRS: Record<ProbeSubject["kind"], string> = {
-  app: "probes-apps",
-  headless: "probes-libs",
+  term: "probes-apps",
+  lib: "probes-libs",
   mux: "probes-mux",
 }
 
@@ -135,9 +135,9 @@ const ADMISSION_IDENTITY_RULES: Record<string, TerminalIdentityRule> = {
 }
 
 function identityMatch(run: LoadedRun): IdentityAdmission | null {
-  if (run.target.kind === "headless") {
+  if (run.subject.kind === "lib") {
     const receipt = run.runtimeIdentity
-    if (!receipt || receipt.engineVersion !== run.target.version) return null
+    if (!receipt || receipt.engineVersion !== run.subject.version) return null
     if (!(receipt.kind === "native" || receipt.integrity.kind === "registry" || receipt.integrity.cleanTree)) {
       return null
     }
@@ -145,12 +145,12 @@ function identityMatch(run: LoadedRun): IdentityAdmission | null {
     return versionReply ? { rule: "runtime-identity", xtversion: versionReply } : { rule: "runtime-identity" }
   }
   return protocolIdentityMatch({
-    target: run.target,
+    subject: run.subject,
     rawReplies: run.rawReplies,
     provenance: run.provenance,
     appLaunch: run.origin.appLaunch,
     results: Object.fromEntries(
-      run.schemaVersion === 3
+      (run.schemaVersion === 3 || run.schemaVersion === 4)
         ? (run.results ?? []).map((result) => [result.featureId, result.status === "supported"])
         : run.observations.map((o) => [o.featureId, o.outcome === "supported"]),
     ),
@@ -158,45 +158,45 @@ function identityMatch(run: LoadedRun): IdentityAdmission | null {
 }
 
 /** An identity preflight has no suite observations or fabricated LoadedRun. */
-type ProtocolIdentitySubject = Pick<LoadedRun, "target" | "rawReplies" | "provenance"> & {
+type ProtocolIdentitySubject = Pick<LoadedRun, "subject" | "rawReplies" | "provenance"> & {
   appLaunch?: LoadedRun["origin"]["appLaunch"]
   results?: Record<string, boolean>
 }
 
 function protocolIdentityMatch(run: ProtocolIdentitySubject): IdentityAdmission | null {
-  const rule = ADMISSION_IDENTITY_RULES[run.target.id]
+  const rule = ADMISSION_IDENTITY_RULES[run.subject.id]
   if (!rule) return null
-  if (run.target.kind !== (rule.targetKind ?? "app")) return null
-  const verification = TERMINAL_IDENTITY_RULES[run.target.id]
-    ? verifyTerminalIdentity(run.target.id, run.rawReplies, run.results)
+  if (run.subject.kind !== (rule.targetKind ?? "term")) return null
+  const verification = TERMINAL_IDENTITY_RULES[run.subject.id]
+    ? verifyTerminalIdentity(run.subject.id, run.rawReplies, run.results)
     : { ok: true, checked: true }
   if (!verification.checked || !verification.ok) return null
   const identity = deriveIdentity(run.rawReplies)
   if (!nonempty(identity.da1)) return null
-  const os = (run.target.os ?? "").toLowerCase()
+  const os = (run.subject.os ?? "").toLowerCase()
   // On Windows, ?61; is conhost's own reply (Alacritty runs its child inside a ConPTY session),
   // so DA1 identifies nothing there and identity rests on the measured launch receipt.
-  const da1Pattern = run.target.id === "alacritty" && os.startsWith("win") ? /\?61;/ : rule.da1Pattern
+  const da1Pattern = run.subject.id === "alacritty" && os.startsWith("win") ? /\?61;/ : rule.da1Pattern
   if (da1Pattern && !da1Pattern.test(identity.da1)) return null
   if (rule.da2VersionEncoding === "screen") {
-    const measured = resolveMeasuredAppVersion(run.target.id, "", run.rawReplies)
-    return measured === run.target.version ? { rule: run.target.id, da1: identity.da1 } : null
+    const measured = resolveMeasuredAppVersion(run.subject.id, "", run.rawReplies)
+    return measured === run.subject.version ? { rule: run.subject.id, da1: identity.da1 } : null
   }
   if (rule.forbidXtversion) {
     // Windows Terminal and Alacritty on Windows do not report XTVERSION. The hosted apparatus
     // measures the launched executable; identity is its byte-exact version and executable sha256,
     // plus the pinned Mesa3D renderer receipt on Alacritty.
-    if ((run.target.id === "windows-terminal" || run.target.id === "alacritty") && os.startsWith("win")) {
+    if ((run.subject.id === "windows-terminal" || run.subject.id === "alacritty") && os.startsWith("win")) {
       const receipt = run.appLaunch
       if (
-        run.target.version === "unknown" ||
+        run.subject.version === "unknown" ||
         !receipt ||
         receipt.platform !== "win32" ||
-        receipt.productVersion !== run.target.version
+        receipt.productVersion !== run.subject.version
       ) {
         return null
       }
-      if (run.target.id === "windows-terminal") {
+      if (run.subject.id === "windows-terminal") {
         if (
           receipt.sourceArtifact.kind !== "portable-zip" ||
           windowsCommBase(receipt.executablePath) !== "windowsterminal.exe"
@@ -211,7 +211,7 @@ function protocolIdentityMatch(run: ProtocolIdentitySubject): IdentityAdmission 
         return null
       }
       return {
-        rule: run.target.id,
+        rule: run.subject.id,
         da1: identity.da1,
         executable: { version: receipt.productVersion, sha256: receipt.executableSha256 },
       }
@@ -221,14 +221,14 @@ function protocolIdentityMatch(run: ProtocolIdentitySubject): IdentityAdmission 
     // disagreement, and records the executable's path and sha256; parseRunProvenance carries that
     // receipt here as `provenance` (@cto 2026-10-07, 31d5bdd0 option b). `?6c` alone is too weak to
     // identify — VT102 is a whole class — so the executable version CONFIRMS what DA1 only bounds.
-    if (isLinux(run.target.os)) {
+    if (isLinux(run.subject.os)) {
       const provenance = run.provenance
-      if (run.target.version === "unknown" || !provenance || !provenance.runtime.cleanTree) return null
+      if (run.subject.version === "unknown" || !provenance || !provenance.runtime.cleanTree) return null
       const { version, sha256 } = provenance.executable
       if (!/^[a-f0-9]{64}$/.test(sha256)) return null
       const tokens = measuredVersionTokens(version)
-      if (tokens.length !== 1 || tokens[0] !== run.target.version) return null
-      return { rule: run.target.id, da1: identity.da1, executable: { version, sha256 } }
+      if (tokens.length !== 1 || tokens[0] !== run.subject.version) return null
+      return { rule: run.subject.id, da1: identity.da1, executable: { version, sha256 } }
     }
     // macOS: unchanged. The launched bundle's CFBundleShortVersionString must equal the declared version.
     if (os.startsWith("mac") || os.startsWith("darwin")) {
@@ -236,13 +236,13 @@ function protocolIdentityMatch(run: ProtocolIdentitySubject): IdentityAdmission 
       if (
         !receipt ||
         receipt.platform === "win32" ||
-        run.target.version === "unknown" ||
-        receipt.cfBundleShortVersionString !== run.target.version
+        run.subject.version === "unknown" ||
+        receipt.cfBundleShortVersionString !== run.subject.version
       ) {
         return null
       }
       return {
-        rule: run.target.id,
+        rule: run.subject.id,
         da1: identity.da1,
         receipt: { cfBundleShortVersionString: receipt.cfBundleShortVersionString },
       }
@@ -251,8 +251,8 @@ function protocolIdentityMatch(run: ProtocolIdentitySubject): IdentityAdmission 
     return null
   }
   const versionReply = identity.xtversionPayload
-  if (!versionReply || !xtversionVersionEquals(versionReply, run.target.version)) return null
-  return { rule: run.target.id, da1: identity.da1, xtversion: versionReply }
+  if (!versionReply || !xtversionVersionEquals(versionReply, run.subject.version)) return null
+  return { rule: run.subject.id, da1: identity.da1, xtversion: versionReply }
 }
 
 function pinnedIdentity(run: LoadedRun, active: readonly Interpretation[]): boolean {
@@ -270,13 +270,13 @@ function identityDecision(
 ): AdmissionExclusionCode | null {
   if (run.identity === "disputed") return "identity-disputed"
   const pin = pinnedIdentity(run, active)
-  if (run.target.kind === "headless") {
+  if (run.subject.kind === "lib") {
     if (run.schemaVersion === 1 && !pin) {
       return run.identity === "unverified" ? "identity-unverified" : "identity-unreviewed"
     }
     return identityAdmission ? null : "runtime-identity-unverified"
   }
-  if (!ADMISSION_IDENTITY_RULES[run.target.id]) return "identity-no-profile"
+  if (!ADMISSION_IDENTITY_RULES[run.subject.id]) return "identity-no-profile"
   if (run.schemaVersion === 1) {
     if (!pin) return run.identity === "unverified" ? "identity-unverified" : "identity-unreviewed"
     return identityAdmission ? null : "identity-replies-mismatch"
@@ -350,8 +350,8 @@ function muxFixtureMatches(run: LoadedRun, attachment: ReturnType<typeof parseMu
       isDeepStrictEqual(preflight, { ...attachment.preflightCollector, launchRunId: attachment.launchRunId }) &&
       attachment.chain.at(-1)?.executablePath === run.outerApp.provenance.executable.path &&
       receipt.config === run.outerApp.provenance.fixture.config &&
-      run.outerApp.target.config === receipt.config &&
-      run.target.permissions === (receipt.profile === "default" ? null : receipt.permissions)
+      run.outerApp.subject.config === receipt.config &&
+      run.subject.permissions === (receipt.profile === "default" ? null : receipt.permissions)
     )
   } catch (cause) {
     // Malformed retained input is a named admission refusal, never an empty/default proof.
@@ -363,19 +363,19 @@ function muxFixtureMatches(run: LoadedRun, attachment: ReturnType<typeof parseMu
 /** All target kinds pass through this one provenance decision. */
 function provenanceDecision(run: LoadedRun): AdmissionExclusionCode | null {
   if (run.provenance && !run.provenance.runtime.cleanTree) return "native-provenance-dirty"
-  switch (run.target.kind) {
-    case "headless":
+  switch (run.subject.kind) {
+    case "lib":
       return null
-    case "app":
-      return isLinux(run.target.os) && !run.provenance ? "native-provenance-missing" : null
+    case "term":
+      return isLinux(run.subject.os) && !run.provenance ? "native-provenance-missing" : null
     case "mux": {
       // CTO 41878c53: the Linux arm may land alone; Darwin awaits its measured owner.
-      if (!isLinux(run.target.os)) return "mux-platform-unqualified"
+      if (!isLinux(run.subject.os)) return "mux-platform-unqualified"
       const outer = run.outerApp
       if (!outer) return "outer-app-proof-missing"
       if (!protocolIdentityMatch(outer)) return "outer-app-identity-mismatch"
       if (outer.provenance && !outer.provenance.runtime.cleanTree) return "native-provenance-dirty"
-      if (isLinux(outer.target.os) && !outer.provenance) return "native-provenance-missing"
+      if (isLinux(outer.subject.os) && !outer.provenance) return "native-provenance-missing"
       const ownershipSource = run.rawReplies["collector.terminalOwnership"]
       if (ownershipSource === undefined) return "mux-attachment-missing"
       let ownership: unknown
@@ -398,10 +398,10 @@ function provenanceDecision(run: LoadedRun): AdmissionExclusionCode | null {
       }
       if (
         attachment.captureRunId !== run.runId ||
-        attachment.mux !== run.target.id ||
-        attachment.mux !== run.target.mux ||
-        attachment.config.path !== run.target.config ||
-        attachment.executable.version !== run.target.version ||
+        attachment.mux !== run.subject.id ||
+        attachment.mux !== run.subject.mux ||
+        attachment.config.path !== run.subject.config ||
+        attachment.executable.version !== run.subject.version ||
         !muxFixtureMatches(run, attachment)
       ) {
         return "mux-attachment-invalid"
@@ -409,7 +409,7 @@ function provenanceDecision(run: LoadedRun): AdmissionExclusionCode | null {
       return null
     }
     default: {
-      const unhandled: never = run.target.kind
+      const unhandled: never = run.subject.kind
       return unhandled
     }
   }
@@ -452,7 +452,8 @@ export function assessRunAdmission(
         run.path,
         run.rawReplies["collector.disposableOwnership"],
         run.runId,
-        { kind: run.target.kind, id: run.target.id, os: run.target.os ?? "" },
+        // Custody receipt schema keeps app/headless wire kinds; adapt only this comparison.
+        { kind: run.subject.kind === "term" ? "app" : run.subject.kind === "lib" ? "headless" : run.subject.kind, id: run.subject.id, os: run.subject.os ?? "" },
         run,
         evidence.contentDir ?? dirname(dirname(run.path)),
         evidence.receiptPath ?? join(dirname(dirname(run.path)), "receipts", `${run.runId}.json`),
@@ -480,7 +481,7 @@ export interface AdmissionPlan {
   source: string
   destination: string
   probeHash: string
-  target: { kind: ProbeSubject["kind"]; id: string; version: string; os: string }
+  subject: { kind: ProbeSubject["kind"]; id: string; version: string; os: string }
   runId: string
   frozenSuiteId?: string
   release?: string
@@ -503,14 +504,15 @@ export function planAdmission(
     throw new Error(`Cannot read the run to admit: ${source}`, { cause })
   }
   if (!isRecord(parsed)) throw new Error(`Run to admit is not an object: ${source}`)
-  if (parsed.schemaVersion !== 2 && parsed.schemaVersion !== 3) {
-    throw new Error(`Run to admit requires current schema 3 or historical schema 2: ${source}`)
+  if (parsed.schemaVersion !== 2 && parsed.schemaVersion !== 3 && parsed.schemaVersion !== 4) {
+    throw new Error(`Run to admit requires current schema 4 or historical schema 2/3: ${source}`)
   }
-  const target = parsed.target
-  if (!isRecord(target) || !["app", "headless", "mux"].includes(String(target.kind))) {
+  // Historical run wire names are decoded strictly by parseRun below, without changing source bytes.
+  const target = parsed.schemaVersion === 4 ? parsed.subject : parsed.target
+  if (!isRecord(target) || !(parsed.schemaVersion === 4 ? ["term", "lib", "mux"] : ["app", "headless", "mux"]).includes(String(target.kind))) {
     throw new Error(`Run to admit has no app|headless|mux target kind: ${source}`)
   }
-  const kind = target.kind as ProbeSubject["kind"]
+  const kind = (target.kind === "app" ? "term" : target.kind === "headless" ? "lib" : target.kind) as ProbeSubject["kind"]
   const id = String(target.id)
   const version = String(target.version)
   const os = typeof target.os === "string" && target.os.length > 0 ? target.os : "unknown"
@@ -572,7 +574,7 @@ export function planAdmission(
   const destination = into ?? join(CONTENT_DIR, RUN_DIRS[kind], `${id}-${version}-${os}-${runId}.json`)
   preflightDestination(destination, readFileSync(source), "admitted run")
   assertDeclareIsAuthoring(ROOT, parsed.probeHash)
-  return { source, destination, probeHash: parsed.probeHash, target: { kind, id, version, os }, runId, ...options }
+  return { source, destination, probeHash: parsed.probeHash, subject: { kind, id, version, os }, runId, ...options }
 }
 
 /**
@@ -941,7 +943,7 @@ export function placeOwnershipReceipt(
 
 /** Host composition happens only after a completed Linux attach; bind those bytes to this run. */
 function preflightLinuxCompletionReceipt(source: string, run: LoadedRun): void {
-  if ((run.target.kind !== "app" && run.target.kind !== "mux") || !isLinux(run.target.os)) return
+  if ((run.subject.kind !== "term" && run.subject.kind !== "mux") || !isLinux(run.subject.os)) return
   const hostPath = join(dirname(source), RECEIPT_BESIDE_RUN)
   let host: unknown
   try {
@@ -950,17 +952,17 @@ function preflightLinuxCompletionReceipt(source: string, run: LoadedRun): void {
     throw new Error(`Cannot read/parse Linux host-measured.json receipt ${hostPath}`, { cause })
   }
   const launcher =
-    run.target.kind === "app" &&
+    run.subject.kind === "term" &&
     isRecord(host) &&
     typeof host.preset === "string" &&
     SAFE_COMPONENT.test(host.preset) &&
     typeof host.clipboardProfile === "string" &&
     SAFE_COMPONENT.test(host.clipboardProfile)
-      ? `bash scripts/linux-container-run.sh --target ${run.target.id} --preset ${host.preset} --clipboard-profile ${host.clipboardProfile} <outdir>`
+      ? `bash scripts/linux-container-run.sh --target ${run.subject.id} --preset ${host.preset} --clipboard-profile ${host.clipboardProfile} <outdir>`
       : "bun scripts/release1-collection.ts --plan (read this target's exact launcher command)"
   const cure = `; collect through the launcher to produce an admissible run. From ${ROOT}, run: ${launcher}`
   const path = join(dirname(source), "run-receipt.json")
-  if (!existsSync(path)) throw new Error(`${run.target.id}/linux: missing run-receipt.json next to ${source}${cure}`)
+  if (!existsSync(path)) throw new Error(`${run.subject.id}/linux: missing run-receipt.json next to ${source}${cure}`)
   let receipt: unknown
   try {
     receipt = JSON.parse(readFileSync(path, "utf8"))
@@ -982,7 +984,7 @@ function preflightLinuxCompletionReceipt(source: string, run: LoadedRun): void {
   if (!isRecord(receipt.receiptInputs) || receipt.receiptInputs.hostSha256 !== hostSha256) {
     throw new Error(`Linux completion receipt ${path} does not bind receiptInputs.hostSha256 to ${hostPath}${cure}`)
   }
-  if (run.schemaVersion === 3) {
+  if ((run.schemaVersion === 3 || run.schemaVersion === 4)) {
     const containerPath = join(dirname(source), "container-receipt.json")
     const capturePath = join(dirname(source), "v3-capture.json")
     let container: unknown
@@ -1054,7 +1056,7 @@ export function admitRun(plan: AdmissionPlan): {
   if (
     validated.probeHash !== plan.probeHash ||
     validated.runId !== plan.runId ||
-    JSON.stringify(validated.target) !== JSON.stringify(plan.target)
+    JSON.stringify(validated.subject) !== JSON.stringify(plan.subject)
   ) {
     throw new Error("Admission plan no longer matches the collected run; plan admission again")
   }
@@ -1075,9 +1077,10 @@ export function admitRun(plan: AdmissionPlan): {
     loaded.rawReplies["collector.disposableOwnership"],
     loaded.runId,
     {
-      kind: loaded.target.kind,
-      id: loaded.target.id,
-      os: loaded.target.os ?? "",
+      // Separate custody receipt protocol keeps historical kind spellings.
+      kind: loaded.subject.kind === "term" ? "app" : loaded.subject.kind === "lib" ? "headless" : loaded.subject.kind,
+      id: loaded.subject.id,
+      os: loaded.subject.os ?? "",
     },
     CONTENT_DIR,
     loaded,

@@ -55,7 +55,7 @@ test("report renders reviewed outcomes and missing cells without promoting legac
     )
     writeFileSync(
       join(root, "content", "suites", `${snapshot.probeHash}.json`),
-      JSON.stringify({
+      JSON.stringify({ schemaVersion: 4 as const,
         probeHash: snapshot.probeHash,
         sourceRevision: "1".repeat(40),
         generatedAt: "2026-09-28T00:00:00.000Z",
@@ -63,19 +63,19 @@ test("report renders reviewed outcomes and missing cells without promoting legac
         adapterVersion: snapshot.adapterVersion,
         catalogIds: fixtureFeatures,
         probes: {
-          app: fixtureFeatures.slice(0, 4),
-          headless: fixtureFeatures.slice(0, 4),
+          term: fixtureFeatures.slice(0, 4),
+          lib: fixtureFeatures.slice(0, 4),
           mux: fixtureFeatures.slice(0, 4),
         },
       }),
     )
-    const run = {
-      schemaVersion: 3,
+    const run = { source: { kind: "live" },
+      schemaVersion: 4,
       sealedAt: "2026-09-28T12:00:01.000Z",
-      intendedContext: { kind: "app", id: "kitty", version: "0.46.2" },
+      intendedSubject: { kind: "term", id: "kitty", version: "0.46.2" },
       runId: "reviewed-kitty",
-      target: {
-        kind: "app",
+      subject: {
+        kind: "term",
         id: "kitty",
         version: "0.46.2",
         os: "macos",
@@ -122,7 +122,7 @@ test("report renders reviewed outcomes and missing cells without promoting legac
           featureId,
           status,
           attempt: status === "test-todo" ? { scope: "none" } : attempt,
-          checks:
+          tests:
             status === "test-todo"
               ? []
               : [
@@ -133,7 +133,7 @@ test("report renders reviewed outcomes and missing cells without promoting legac
                     ...(index < 2 && { assertionRefs: [index], rawReplyRef: featureId }),
                   },
                 ],
-          ...(index < 2 && { evidence: "parser-state", rawReplyRef: featureId }),
+          ...(index < 2 && { assertionType: "buffer_state", rawReplyRef: featureId }),
           ...(index === 2 && { reason: "timeout" }),
           ...(index === 3 && { reason: "collector-error" }),
           ...(index === 4 && { reason: "Missing implementation" }),
@@ -146,7 +146,7 @@ test("report renders reviewed outcomes and missing cells without promoting legac
     const inconclusiveRun = {
       ...run,
       runId: "reviewed-kitty-inconclusive",
-      target: { ...run.target, config: "isolated" },
+      subject: { ...run.subject, config: "isolated" },
       measuredAt: "2026-09-28T13:00:00.000Z",
       rawReplies: { "device.primary-da": "\x1b[?62;52;c", "device.xtversion": "kitty(0.46.2)" },
       assertions: [],
@@ -154,7 +154,7 @@ test("report renders reviewed outcomes and missing cells without promoting legac
         featureId,
         status: "test-todo",
         attempt: { scope: "none" },
-        checks: [],
+        tests: [],
         reason: "Missing implementation",
       })),
     }
@@ -168,8 +168,8 @@ test("report renders reviewed outcomes and missing cells without promoting legac
       reviewer: "reviewer",
       reason: "checked captured identity",
       scope: {
-        target: { kind: "app", id: "kitty" },
-        versions: [run.target.version, run.target.version],
+        subject: { kind: "term", id: "kitty" },
+        versions: [run.subject.version, run.subject.version],
         suites: [run.suiteId, run.suiteId],
       },
       sources: [sourcePath],

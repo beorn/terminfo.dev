@@ -17,7 +17,7 @@ const SAMPLE_SHA256 = "a".repeat(64)
 
 describe("the site says why a text row does not count (30033 ruling f1f3c64b)", () => {
   it("names the console host on a Windows text row, and says it is not counted", () => {
-    const text = textEvidenceExplanation({ evidence: "text", conclusive: false, os: "windows" })
+    const text = textEvidenceExplanation({ assertionType: "buffer_state", conclusive: false, os: "windows" })
     expect(text).toContain("console host")
     expect(text).toContain("not counted")
     // The site projection carries no frame trace, so the cell says where the host IS recorded
@@ -34,7 +34,7 @@ describe("the site says why a text row does not count (30033 ruling f1f3c64b)", 
       executablePath: "C:\\Windows\\System32\\OpenConsole.exe",
       executableSha256: `sha256:${"b".repeat(64)}`,
     }
-    const text = textEvidenceExplanation({ evidence: "text", conclusive: false, os: "windows", host })
+    const text = textEvidenceExplanation({ assertionType: "buffer_state", conclusive: false, os: "windows", host })
     expect(text).toContain("OpenConsole.exe")
     expect(text).toContain(host.executablePath)
     expect(text).toContain(host.executableSha256)
@@ -45,7 +45,7 @@ describe("the site says why a text row does not count (30033 ruling f1f3c64b)", 
   })
 
   it("names the app's own text snapshot and the five readback shapes on macOS", () => {
-    const text = textEvidenceExplanation({ evidence: "text", conclusive: false, os: "macos" })
+    const text = textEvidenceExplanation({ assertionType: "buffer_state", conclusive: false, os: "macos" })
     expect(text).toContain("text snapshot")
     expect(text).toContain("five readback shapes")
   })
@@ -56,14 +56,14 @@ describe("the site says why a text row does not count (30033 ruling f1f3c64b)", 
     "Run sample: missing text qualification shape empty-last-row",
     "Run sample: text qualification shape soft-wrap target does not match the expected character grid",
   ])("names the carried qualification cause: %s", (textQualificationReason) => {
-    const text = textEvidenceExplanation({ evidence: "text", conclusive: false, os: "macos", textQualificationReason })
+    const text = textEvidenceExplanation({ assertionType: "buffer_state", conclusive: false, os: "macos", textQualificationReason })
     expect(text).toContain(textQualificationReason)
     expect(text).toContain("not counted")
   })
 
   it("stays silent for a conclusive row, and for a read that is not text", () => {
-    expect(textEvidenceExplanation({ evidence: "text", conclusive: true, os: "windows" })).toBeUndefined()
-    expect(textEvidenceExplanation({ evidence: "pixels", conclusive: false, os: "windows" })).toBeUndefined()
+    expect(textEvidenceExplanation({ assertionType: "buffer_state", conclusive: true, os: "windows" })).toBeUndefined()
+    expect(textEvidenceExplanation({ assertionType: "screenshot", conclusive: false, os: "windows" })).toBeUndefined()
     expect(textEvidenceExplanation(undefined)).toBeUndefined()
   })
 })
@@ -103,7 +103,7 @@ describe("popover trace panes for not-reviewed cells (#30565 AC3, AC4, @cto ruli
       cells: {
         "sgr.bg.default": {
           outcome: "supported",
-          evidence: "parser-state",
+          assertionType: "buffer_state",
           parserState: {
             baseline: defaultCellSnapshot("C", null),
             before: defaultCellSnapshot("X", { r: 0, g: 128, b: 0 }),
@@ -130,7 +130,7 @@ describe("popover trace panes for not-reviewed cells (#30565 AC3, AC4, @cto ruli
     const panes = describeTracePanes(loaded, {
       sequence: "ESC [ 49 m",
       probeGuidance: "Headless: measure neutral C, SGR 42 colored X, then SGR 49 reset R.",
-      targetKind: "headless",
+      subjectKind: "lib",
     })
 
     expect(panes.tested.text).toContain("Input bytes were not stored by this run (source revision 2cf6de20).")
@@ -171,7 +171,7 @@ describe("popover trace panes for not-reviewed cells (#30565 AC3, AC4, @cto ruli
       cells: {
         "sgr.bg.default": {
           outcome: "supported",
-          evidence: "query",
+          assertionType: "query_reply",
           events: [
             { kind: "write", sequence: "\u001b[0m" },
             { kind: "write", sequence: "\u001b[42m\u001b[49m" },
@@ -202,7 +202,7 @@ describe("popover trace panes for not-reviewed cells (#30565 AC3, AC4, @cto ruli
     const panes = describeTracePanes(loaded, {
       sequence: "ESC [ 49 m",
       probeGuidance: "Headless: measure neutral C, SGR 42 colored X, then SGR 49 reset R.",
-      targetKind: "app",
+      subjectKind: "app",
     })
 
     expect(panes.tested.items).toEqual([
@@ -239,7 +239,7 @@ describe("popover trace panes for not-reviewed cells (#30565 AC3, AC4, @cto ruli
       cells: {
         "device.xtwinops-21": {
           outcome: "unsupported",
-          evidence: "query",
+          assertionType: "query_reply",
           replyWithheld: true as const,
           events: [
             { kind: "write", sequence: "\u001b[0m" },
@@ -257,7 +257,7 @@ describe("popover trace panes for not-reviewed cells (#30565 AC3, AC4, @cto ruli
     })
     const panes = describeTracePanes(loaded, {
       sequence: "ESC [ 21 t",
-      targetKind: "app",
+      subjectKind: "app",
     })
 
     expect(panes.tested.text.toLowerCase()).toContain("reply not reviewed for publication")
@@ -291,7 +291,7 @@ describe("popover trace panes for not-reviewed cells (#30565 AC3, AC4, @cto ruli
       cells: {
         "device.xtwinops-21": {
           outcome: "unsupported",
-          evidence: "query",
+          assertionType: "query_reply",
           replyWithheld: true as const,
           events: [
             { kind: "write", sequence: "\u001b[0m" },
@@ -301,7 +301,7 @@ describe("popover trace panes for not-reviewed cells (#30565 AC3, AC4, @cto ruli
         },
         "extensions.osc52-read": {
           outcome: "unsupported",
-          evidence: "query",
+          assertionType: "query_reply",
           replyWithheld: true as const,
           assertions: [{ kind: "negative", expected: "no clipboard read", observed: "secret-clipboard" }],
         },
@@ -313,7 +313,7 @@ describe("popover trace panes for not-reviewed cells (#30565 AC3, AC4, @cto ruli
       runSha256: document.runSha256,
       featureId: "device.xtwinops-21",
     })
-    const queryPanes = describeTracePanes(withQuery, { sequence: "ESC [ 21 t", targetKind: "app" })
+    const queryPanes = describeTracePanes(withQuery, { sequence: "ESC [ 21 t", subjectKind: "app" })
     expect(queryPanes.tested.items).toEqual([
       { label: "Sent", code: "ESC [ 0 m" },
       { label: "Query · reply", code: "ESC [ 21 t ESC [ c" },
@@ -327,7 +327,7 @@ describe("popover trace panes for not-reviewed cells (#30565 AC3, AC4, @cto ruli
       runSha256: document.runSha256,
       featureId: "extensions.osc52-read",
     })
-    const noQueryPanes = describeTracePanes(withoutQuery, { sequence: "ESC ] 52 ; c ; ? BEL", targetKind: "app" })
+    const noQueryPanes = describeTracePanes(withoutQuery, { sequence: "ESC ] 52 ; c ; ? BEL", subjectKind: "app" })
     expect(noQueryPanes.tested.items).toEqual([
       { label: "Sent", text: "Input bytes were not stored by this run." },
       { label: "Reply", text: "Reply not reviewed for publication." },
@@ -370,7 +370,7 @@ describe("popover trace panes for not-reviewed cells (#30565 AC3, AC4, @cto ruli
       sequence: "ESC [ 48;5;N m",
       probeGuidance:
         "Headless: compare background SGR 48;5;67 and 48;5;173 cells with two independently exact direct-RGB cube reference cells.",
-      targetKind: "app",
+      subjectKind: "app",
     })
 
     expect(panes.tested.reasonLine).toBe("policy-refused: The configured policy declined to run or allow this probe.")

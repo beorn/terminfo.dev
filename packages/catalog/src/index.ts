@@ -203,13 +203,16 @@ function parseFeature(path: string, id: string, raw: Record<string, unknown>): F
 
 function parseTerminal(path: string, id: string, raw: Record<string, unknown>): TerminalRecord {
   const headlessBackends = optionalStringArray(path, id, "headlessBackends", raw.headlessBackends)
+  // Catalog bytes retain historical kind labels; consumers use canonical subject kinds.
+  const historicalKind = optionalString(path, id, "kind", raw.kind)
+  const kind = historicalKind === "app" ? "term" : historicalKind === "headless" ? "lib" : historicalKind
   return {
     label: requireString(path, id, "label", raw.label),
     slug: requireString(path, id, "slug", raw.slug),
     url: requireString(path, id, "url", raw.url),
     description: requireString(path, id, "description", raw.description),
     body: requireString(path, id, "body", raw.body),
-    kind: optionalString(path, id, "kind", raw.kind),
+    kind,
     headlessBackends,
     headlessLabel: optionalHeadlessLabel(path, id, raw.headlessLabel, headlessBackends),
     manifestBackend: optionalString(path, id, "manifestBackend", raw.manifestBackend),
@@ -246,7 +249,7 @@ type LabelSource = Readonly<Record<string, Pick<TerminalRecord, "label" | "kind"
  */
 export function headlessName(terminals: LabelSource, id: string): string | undefined {
   const entry = terminals[id]
-  return entry?.headlessLabel ?? (entry?.kind === "headless" ? entry.label : undefined)
+  return entry?.headlessLabel ?? (entry?.kind === "lib" ? entry.label : undefined)
 }
 
 /**
@@ -255,7 +258,7 @@ export function headlessName(terminals: LabelSource, id: string): string | undef
  */
 export function targetLabel(terminals: LabelSource, id: string, kind: string, fallback: string = id): string {
   return (
-    (kind === "headless" ? headlessName(terminals, id) : undefined) ?? `${terminals[id]?.label ?? fallback} (${kind})`
+    (kind === "lib" ? headlessName(terminals, id) : undefined) ?? `${terminals[id]?.label ?? fallback} (${kind})`
   )
 }
 

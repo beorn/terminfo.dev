@@ -14,7 +14,7 @@ const results = (entries: Record<string, ProbeStatus>): ProbeResult[] =>
   Object.entries(entries).map(([featureId, status]) => ({
     featureId,
     status,
-    checks: [],
+    tests: [],
     attempt: status === "test-todo" ? { scope: "none" } : { scope: "probe", startedAt: "2026-10-21T05:00:00.000Z" },
   }))
 // Retired exclusion tests could pass while unfinished current rows disappeared from the denominator.

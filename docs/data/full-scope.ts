@@ -1,12 +1,12 @@
 /**
- * Current full-catalogue arithmetic: Supported/all over the GRADED capabilities. The nine environment
+ * Current full-catalogue arithmetic: Supported/all over the GRADED features. The nine environment
  * positions stay in `catalogRows` (a run records them) but are ungraded, so they are never in
  * `denominator` — D132 B (#30917).
  */
 import type { ProbeResult, ProbeStatus } from "@terminfo/probe-defs"
 import { aggregateCurrentResults } from "./release-scope.ts"
 
-/** Current execution score: every frozen graded capability stays in the denominator. */
+/** Current execution score: every frozen graded feature stays in the denominator. */
 export interface ScopeResult {
   scope: string
   catalogRows: number

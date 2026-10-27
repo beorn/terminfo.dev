@@ -1,4 +1,4 @@
-/** Exact owned terminal window checks and live GUI process identity. No process runs at module load. */
+/** Exact owned terminal window tests and live GUI process identity. No process runs at module load. */
 import { spawnSync } from "node:child_process"
 import { realpathSync } from "node:fs"
 import {

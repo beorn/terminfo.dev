@@ -34,7 +34,7 @@ export interface BackendInfo {
   name: string
   version: string
   engine: string
-  type?: "app" | "headless" | "mux"
+  type?: "term" | "lib" | "mux"
   platforms?: string[]
 }
 
@@ -124,7 +124,7 @@ interface CurrentStats {
 function loadFeatureDescriptions(): FeatureCatalog {
   // The feature catalog, through its one loader (@terminfo/catalog). The loader already refuses a
   // nameless entry and drops $-prefixed comment keys, so the old string-vs-object normalization and
-  // its per-field checks live in one place now.
+  // its per-field tests live in one place now.
   return loadFeatures(contentDir)
 }
 
@@ -203,9 +203,9 @@ export function loadFullProbes(): ProbeData {
   // #30759 Slice A: the site renders the frozen suite only, so a historical-only target is
   // not a matrix row any more; it gets no metadata and no page.
   for (const [key, { selected }] of byTarget) {
-    const id = selected.target.id
+    const id = selected.subject.id
     if (key !== id) {
-      const label = targetLabel(catalog, id, selected.target.kind, meta[id]?.label)
+      const label = targetLabel(catalog, id, selected.subject.kind, meta[id]?.label)
       meta[key] = { ...meta[id], label, slug: key }
     }
   }
@@ -216,11 +216,11 @@ export function loadFullProbes(): ProbeData {
   const stats: ProbeData["stats"] = {}
   const selectedByBackend: ProbeData["selectedByBackend"] = Object.fromEntries(byTarget)
   for (const [key, { selected }] of byTarget) {
-    const { kind, os } = selected.target
+    const { kind, os } = selected.subject
     if (results[key]) throw new Error(`Ambiguous published terminal ${key}: multiple selected targets`)
     backends.push({
       name: key,
-      version: selected.target.version,
+      version: selected.subject.version,
       engine: "",
       type: kind,
       ...(os && { platforms: [os] }),

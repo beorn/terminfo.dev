@@ -111,7 +111,7 @@ export async function collectTextQualification({
 }
 
 /** Record the frozen text-oracle prerequisites before seal; current readers consume these facts. */
-export function recordTextQualificationChecks(
+export function recordTextQualificationTests(
   run: CapturedRunDraft,
   manifest: ProbeSuiteManifest,
   snapshots: ReadonlyMap<string, Uint8Array>,
@@ -120,10 +120,10 @@ export function recordTextQualificationChecks(
   const assessment = assessTextQualification({ ...run, textQualificationSpec: manifest.textQualification }, snapshots)
   const qualificationAttempt: ProbeAttempt = attempt ?? { scope: "none" }
   run.results = run.results.map((result) => {
-    if (result.evidence !== "text") return result
+    if (!result.frames?.some((frame) => frame.kind === "text-cells")) return result
     const admittedContext =
-      run.target.kind === "app" &&
-      run.target.os?.toLowerCase() === "macos" &&
+      run.subject.kind === "term" &&
+      run.subject.os?.toLowerCase() === "macos" &&
       result.host === undefined &&
       manifest.textClaims?.includes(result.featureId) === true
     const status = !admittedContext || !attempt ? "test-todo" : assessment.qualified ? "supported" : "test-failure"
@@ -134,8 +134,8 @@ export function recordTextQualificationChecks(
         : assessment.reason
     return finalizeProbeResult({
       ...result,
-      checks: [
-        ...result.checks.filter((check) => check.id !== "text-qualification"),
+      tests: [
+        ...result.tests.filter((check) => check.id !== "text-qualification"),
         {
           id: "text-qualification",
           status,

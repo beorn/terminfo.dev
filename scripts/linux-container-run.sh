@@ -18,7 +18,7 @@ compose_receipt() {
   if [[ -n "$final_run" ]]; then
     [[ -r "$final_run" ]] || { echo "Missing final run bytes: $final_run" >&2; return 2; }
     final_run_json=$(jq -e --arg sha "$(sha256sum "$final_run" | cut -d ' ' -f 1)" --arg path "$(basename "$final_run")" '
-      if .schemaVersion == 3 and (.sealedAt | type == "string") then {path:$path,runId:.runId,sha256:$sha}
+      if .schemaVersion == 4 and (.sealedAt | type == "string") then {path:$path,runId:.runId,sha256:$sha}
       else error("final completion receipt requires a sealed schema-3 run") end' "$final_run") || return 2
   fi
   host_sha=$(sha256sum "$host" | cut -d ' ' -f 1)
@@ -761,9 +761,9 @@ if [[ "${1:-}" == "--inside" ]]; then
       --arg mux "$TERMINFO_MUX_KIND" --arg muxVersion "$mux_version" --arg muxConfig /out/mux-empty.conf \
       --arg profile "$TERMINFO_CLIPBOARD_PROFILE" --arg permissions "$clipboard_permissions" '
       (if $profile == "default" then null else $permissions end) as $permissions |
-      {target:{kind:"mux",id:$mux,version:$muxVersion,os:$info[0].os,osVersion:$info[0].osVersion,
+      {subject:{kind:"mux",id:$mux,version:$muxVersion,os:$info[0].os,osVersion:$info[0].osVersion,
         outerTerminal:$app,mux:$mux,config:$muxConfig,permissions:$permissions},
-       outerApp:{target:{kind:"app",id:$app,version:$appVersion,os:$info[0].os,osVersion:$info[0].osVersion,
+       outerApp:{subject:{kind:"term",id:$app,version:$appVersion,os:$info[0].os,osVersion:$info[0].osVersion,
          outerTerminal:null,mux:null,config:$provenance[0].fixture.config,permissions:$permissions},
          rawReplies:{"device.primary-da":$da1[0].results[0].response,"collector.xtversion":$xtversion[0].results[0].response,
            "collector.preflightIdentity":($preflight[0]|tojson)},provenance:$provenance[0]}}' \
@@ -786,17 +786,17 @@ if [[ "${1:-}" == "--inside" ]]; then
   fi
   jq -e --slurpfile build "$build_receipt" --arg executablePath "$live_executable" \
     --arg executableSha "$live_executable_sha" --arg target "$target_id" --arg mux "${TERMINFO_MUX_KIND:-}" '
-    .schemaVersion == 3 and (has("sealedAt") | not) and (.runId | type == "string" and test("^[0-9a-f]{32}$")) and
-    (if $mux == "" then .target.kind == "app" and .target.id == $target and
+    .schemaVersion == 4 and (has("sealedAt") | not) and (.runId | type == "string" and test("^[0-9a-f]{32}$")) and
+    (if $mux == "" then .subject.kind == "term" and .subject.id == $target and
        .provenance.executable.path == $executablePath and .provenance.executable.sha256 == $executableSha
-     else .target.kind == "mux" and .target.id == $mux and .outerApp.target.id == $target and
+     else .subject.kind == "mux" and .subject.id == $mux and .outerApp.subject.id == $target and
        .outerApp.provenance.executable.path == $executablePath and .outerApp.provenance.executable.sha256 == $executableSha end) and
     .identity == "unverified" and .origin.kind == "collector" and
     .probeHash == $build[0].probeHash and .suiteId == $build[0].probeHash and
     .sourceRevision == $build[0].collectorRevision and
     (.rawReplies | type == "object") and (.assertions | type == "array") and
     (.results | type == "array") and (has("observations") | not)' /out/v3-capture.json >/dev/null || {
-    echo "Daemon returned an invalid schema-3 capture, or named a target other than $target_id ($(jq -c '.target // null' /out/v3-capture.json)); raw response retained" >&2
+    echo "Daemon returned an invalid schema-4 capture, or named a target other than $target_id ($(jq -c '.subject // null' /out/v3-capture.json)); raw response retained" >&2
     exit 2
   }
   probe_run_id=$(jq -er .runId /out/v3-capture.json)
@@ -1189,7 +1189,7 @@ jq -e --arg run "$(jq -er .probeRunId "$raw/observed.json")" --arg sha "$probe_s
   echo "Raw schema-3 capture differs from container receipt" >&2; exit 2;
 }
 jq -e --slurpfile run "$raw/v3-capture.json" \
-  '($run[0] | if .target.kind == "mux" then .outerApp.provenance.executable
+  '($run[0] | if .subject.kind == "mux" then .outerApp.provenance.executable
               else .provenance.executable end) as $executable |
    .executable.path == $executable.path and
    .executable.sha256 == $executable.sha256' \

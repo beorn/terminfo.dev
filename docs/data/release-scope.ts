@@ -123,7 +123,7 @@ export function aggregateCurrentResults(
     throw new Error("Current results differ from frozen catalogue membership")
   }
   // D132 B (#30917): grading covers the graded ids only. The nine environment groups stay in the
-  // catalogue — the membership check above still requires all 273 — but they are not capabilities and
+  // catalogue — the membership check above still requires all 273 — but they are not features and
   // a run cannot grade them, so they are counted below as visible ungraded, never as TEST TODO.
   const gradedIds = gradedFeatureIds(catalogIds)
   for (const id of gradedIds) {

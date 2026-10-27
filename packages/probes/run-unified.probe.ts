@@ -91,8 +91,8 @@ for (const [backendName, factory] of backends) {
     for (const [catName, probes] of categories) {
       describe(catName, () => {
         for (const p of probes) {
-          if (p.termless) {
-            const fn = p.termless
+          if (p.lib) {
+            const fn = p.lib
             test(p.id, () => {
               const result = fn(ctx)
               expect(result.pass).toBe(true)

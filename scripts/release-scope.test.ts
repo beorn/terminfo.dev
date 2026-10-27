@@ -128,11 +128,11 @@ export function d3Verdict(decisive: number, denominator: number): D3Verdict {
 function writeSuite(dir: string, probeHash: string, freeze?: { release: string; at: string }): void {
   writeFileSync(
     join(dir, `${probeHash}.json`),
-    JSON.stringify({
+    JSON.stringify({ schemaVersion: 4 as const,
       probeHash,
       adapterVersion: "4.0.0",
       ...(freeze === undefined ? {} : { freeze }),
-      probes: { app: [], headless: [], mux: [] },
+      probes: { term: [], lib: [], mux: [] },
     }),
   )
 }

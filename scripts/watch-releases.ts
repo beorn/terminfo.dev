@@ -345,9 +345,9 @@ async function main() {
   // Fetch all release pages for each source, even if API pages are out of date order.
   const promises = RELEASE_SOURCES.map(async (source): Promise<ReleaseResult> => {
     const current = [...currentTargets.values()].find(
-      ({ selected }) => selected.target.kind === "app" && selected.target.id === source.terminal,
+      ({ selected }) => selected.subject.kind === "term" && selected.subject.id === source.terminal,
     )
-    const currentVersion = current?.selected.target.version ?? null
+    const currentVersion = current?.selected.subject.version ?? null
     const currentEvidence = current
       ? { contextKey: current.contextKey, runId: current.selected.runId, sha256: current.selected.sha256 }
       : null

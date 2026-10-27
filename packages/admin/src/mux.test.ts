@@ -70,20 +70,21 @@ it.each([
     suiteComplete: _complete,
     ...metadata
   } = historical
-  const run: CapturedRunDraft = {
+  const run: CapturedRunDraft = { source: { kind: "live" },
     ...metadata,
-    schemaVersion: 3,
-    intendedContext: { kind: "mux", id: "tmux", version: "3.6a" },
+    assertions: [],
+    schemaVersion: 4,
+    intendedSubject: { kind: "mux", id: "tmux", version: "3.6a" },
     results: ["sgr.bold", ...(environment ? ENVIRONMENT_GROUP_IDS : [])].map((featureId) => ({
       featureId,
       status: "test-todo",
       attempt: { scope: "none" },
-      checks: [],
+      tests: [],
       reason: "Synthetic route fixture; not measured",
     })),
   }
   // Only transport/persistence is exercised: this synthetic identity is not native mux evidence.
-  run.target = { ...run.target, kind: "mux", id: "tmux", version: "3.6a" }
+  run.subject = { ...(historical as unknown as { target: CapturedRunDraft["subject"] }).target, kind: "mux", id: "tmux", version: "3.6a" }
   const bytes = JSON.stringify(run)
   // COPYFILE_EXCL cannot overwrite the real package.json on the unfixed path; the correct guard must refuse first.
   const original = join(directory, mode === "symlink" ? "package.json" : "http-response.json")
@@ -147,7 +148,7 @@ it.each([
       expect(raw).toBeTruthy()
       expect(JSON.parse(readFileSync(join(output, raw!), "utf8"))).toMatchObject({
         runId: run.runId,
-        target: { kind: "mux", id: "tmux" },
+        subject: { kind: "mux", id: "tmux" },
       })
     }
     expect(stopOwnedDaemon).toHaveBeenCalledWith(owned)

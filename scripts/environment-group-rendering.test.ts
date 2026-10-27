@@ -34,7 +34,7 @@ const todos = (): ProbeResult[] =>
     featureId,
     status: "test-todo",
     attempt: { scope: "none" },
-    checks: [],
+    tests: [],
     reason: "No implementation",
   }))
 
@@ -57,23 +57,23 @@ describe("public test CLI coverage uses the collected manifest", () => {
     ["current", catalogIds, ` · 9 environment groups ${PHRASE}`],
     ["historical", gradedIds, ""],
   ] as const)("prints the %s catalogue's environment clause", async (_label, ids, clause) => {
-    const manifest = {
+    const manifest = { schemaVersion: 4 as const,
       probeHash: "abcdef123456",
       sourceRevision: "a".repeat(40),
       generatedAt: "2026-10-25T00:00:00.000Z",
       adapterVersion: "test",
       catalogIds: [...ids],
-      probes: { app: [], headless: [], mux: [] },
+      probes: { term: [], lib: [], mux: [] },
     } satisfies ProbeSuiteManifest
     const run: CapturedRunDraft = {
-      ...initializeRunDraft({
+      ...initializeRunDraft({ source: { kind: "live" },
         runId: "1234567890abcdef1234567890abcdef",
         sourceRevision: manifest.sourceRevision,
         manifest,
-        intendedContext: { kind: "app", id: "kitty", version: "1" },
+        intendedSubject: { kind: "term", id: "kitty", version: "1" },
       }),
-      target: {
-        kind: "app",
+      subject: {
+        kind: "term",
         id: "kitty",
         version: "1",
         os: "linux",

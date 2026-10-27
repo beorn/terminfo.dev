@@ -166,7 +166,7 @@ function supportsKittyKeyboard(): boolean {
 
 ### Version Awareness
 
-Multiplexer capabilities change across versions. Tmux 3.4 added Sixel support that 3.2 doesn't have. If you're targeting a specific multiplexer feature, check the version:
+Multiplexer features change across versions. Tmux 3.4 added Sixel support that 3.2 doesn't have. If you're targeting a specific multiplexer feature, check the version:
 
 ```bash
 # Get tmux version

@@ -21,37 +21,38 @@ export function finalizeCollectedDraft(
   intended?: { kind: ProbeSubject["kind"]; id: string; version: string },
   reviews: readonly CaptureReviewInput[] = [],
 ): CollectedProbeRun | CurrentProbeRun {
-  if (run.schemaVersion !== 3 || !Array.isArray(run.results)) {
-    throw new Error("Final writer requires the current schema-3 draft; historical runs are read-only")
+  if (run.schemaVersion !== 4 || !Array.isArray(run.results)) {
+    throw new Error("Final writer requires the current schema-4 draft; historical runs are read-only")
   }
+  if (run.source?.kind !== "live") throw new Error(`Probe source ${String(run.source?.kind)} has no implementation at this source`)
   if ("sealedAt" in run) {
     throw new Error(`Run ${run.runId} is already sealed; enrichment cannot change immutable results`)
   }
-  if (intended && run.target.id !== intended.id && run.target.id !== "unknown") {
+  if (intended && run.subject.id !== intended.id && run.subject.id !== "unknown") {
     throw new Error(
-      `Measured terminal ${run.target.id} differs from intended ${intended.id}; refusing to relabel capture`,
+      `Measured terminal ${run.subject.id} differs from intended ${intended.id}; refusing to relabel capture`,
     )
   }
-  if (intended && run.target.version !== intended.version && run.target.version !== "unknown") {
+  if (intended && run.subject.version !== intended.version && run.subject.version !== "unknown") {
     throw new Error(
-      `Measured version ${run.target.version} differs from intended ${intended.version}; refusing to relabel capture`,
+      `Measured version ${run.subject.version} differs from intended ${intended.version}; refusing to relabel capture`,
     )
   }
   const captured = globalThis.structuredClone(run)
   if (intended) {
-    captured.target.kind = intended.kind
-    captured.intendedContext = { ...captured.intendedContext, ...intended }
+    captured.subject.kind = intended.kind
+    captured.intendedSubject = { ...captured.intendedSubject, ...intended }
     captured.rawReplies["collector.intent"] = JSON.stringify(intended)
   }
   for (const result of captured.results) {
-    if (result.checks.some((check) => check.id === "review" && check.status === "test-todo")) {
+    if (result.tests.some((check) => check.id === "review" && check.status === "test-todo")) {
       retainCaptureBinding(captured, result.featureId)
     }
   }
   for (const review of reviews) applyCaptureDecision(captured, review.source, review.startedAt)
   if (
     captured.results.some((result) =>
-      result.checks.some((check) => check.id === "review" && check.status === "test-todo"),
+      result.tests.some((check) => check.id === "review" && check.status === "test-todo"),
     )
   ) {
     return captured
@@ -67,7 +68,7 @@ export function saveDaemonProbeRun(
   reviews: readonly CaptureReviewInput[] = [],
 ): string {
   const captured = finalizeCollectedDraft(run, intended, reviews)
-  for (const value of [captured.target.id, captured.target.version, captured.target.os ?? "unknown", captured.runId]) {
+  for (const value of [captured.subject.id, captured.subject.version, captured.subject.os ?? "unknown", captured.runId]) {
     if (!/^[a-zA-Z0-9._-]+$/.test(value)) throw new Error(`Unsafe capture filename component: ${value}`)
   }
   mkdirSync(directory, { recursive: true })
@@ -80,7 +81,7 @@ export function saveDaemonProbeRun(
   const snapshot = reviewedPending ? `.${createHash("sha256").update(bytes).digest("hex")}` : ""
   const file = join(
     directory,
-    `${captured.target.id}-${captured.target.version}-${captured.target.os ?? "unknown"}-${captured.runId}${snapshot}${captured.sealedAt === undefined ? ".draft" : ""}.json`,
+    `${captured.subject.id}-${captured.subject.version}-${captured.subject.os ?? "unknown"}-${captured.runId}${snapshot}${captured.sealedAt === undefined ? ".draft" : ""}.json`,
   )
   writeFileSync(file, bytes, { flag: "wx", mode: 0o600 })
   return file

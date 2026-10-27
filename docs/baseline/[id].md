@@ -72,7 +72,7 @@ function barWidth(s, segment) {
 }
 
 function coverageLabel(s) {
-  return `${currentCoverageSentence(s, data.selectedByBackend[s.name]?.selected.catalogIds)} / ${s.score.all} capabilities`
+  return `${currentCoverageSentence(s, data.selectedByBackend[s.name]?.selected.catalogIds)} / ${s.score.all} features`
 }
 
 // #30763: only a row that decided nothing changes; a decided row keeps this page's own text, which

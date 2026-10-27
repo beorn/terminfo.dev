@@ -106,7 +106,7 @@ test("an ASCII region fixture prepares its screen before reading a preceding Uni
   backend.feed(encode("\x1b[H👨‍👩‍👧"))
   const probe = probeDefs.ALL_PROBES.find((entry) => entry.id === "erase.character")
   if (!probe?.term) throw new Error("Missing erase.character app callback")
-  const context: probeDefs.TermProbeSource = {
+  const context: probeDefs.TermProbeSource = { kind: "live",
     rows: 24,
     cols: 80,
     captureKind: "text-cells",
@@ -131,7 +131,7 @@ test("an ASCII region fixture prepares its screen before reading a preceding Uni
   }
   try {
     await expect(probe.term(context)).resolves.toMatchObject({
-      observation: { outcome: "supported", evidence: "text" },
+      observation: { outcome: "supported", assertionType: "buffer_state" },
     })
   } finally {
     backend.destroy()
@@ -194,7 +194,7 @@ test("origin addressing measures its margin prerequisite and binds the real pars
   if (!origin) throw new Error("Missing modes.origin registry definition")
   const batch = await collectOrigin(origin)
   expect(batch.observations).toMatchObject([
-    { featureId: origin.id, outcome: "supported", evidence: "parser-state", rawReplyRef: origin.id },
+    { featureId: origin.id, outcome: "supported", assertionType: "buffer_state", rawReplyRef: origin.id },
   ])
   expect(batch.assertions).toMatchObject([{ featureId: origin.id, kind: "positive", rawReplyRef: origin.id }])
   const raw = batch.rawReplies[origin.id]

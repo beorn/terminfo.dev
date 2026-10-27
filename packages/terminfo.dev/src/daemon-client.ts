@@ -214,8 +214,8 @@ export async function readRawDaemonProbeResponse(
 }> {
   const raw = decodeExactUtf8(Buffer.from(await response.arrayBuffer()), "daemon /probe")
   const decoded = decodeCollectorDraft("daemon /probe", raw, receipt.manifest, receipt.collectorRevision)
-  if (decoded.run.target.kind !== "app" && decoded.run.target.kind !== "mux") {
-    throw new Error(`Daemon /probe target kind ${decoded.run.target.kind} is not an app or mux`)
+  if (decoded.run.subject.kind !== "term" && decoded.run.subject.kind !== "mux") {
+    throw new Error(`Daemon /probe target kind ${decoded.run.subject.kind} is not an app or mux`)
   }
   return decoded
 }

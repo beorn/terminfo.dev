@@ -29,7 +29,7 @@ function featureNote(id) {
 const stale = computed(() => selectedRun.value ? isStaleRelation(selectedRun.value.suiteRelation) : false)
 const staleText = computed(() => selectedRun.value ? staleCaption(selectedRun.value.measuredAt) : '')
 function runLabel(run) {
-  return `${run.target.version} · ${run.target.os || 'OS not recorded'} · ${run.target.permissions || 'No permission override recorded'} · ${run.sha256.slice(0, 8)}`
+  return `${run.subject.version} · ${run.subject.os || 'OS not recorded'} · ${run.subject.permissions || 'No permission override recorded'} · ${run.sha256.slice(0, 8)}`
 }
 
 function featureTooltip(f) {
@@ -138,7 +138,7 @@ const breadcrumbParent = (() => {
 <div v-if="!isHistorical && !isCurrentApp && p.backendDescription" class="backend-info">
   <strong>Backend:</strong> {{ p.backendDescription }}
   <span v-if="p.backendType"> ({{ p.backendType }})</span>
-  <span v-if="selectedRun || p.version"> · v{{ selectedRun?.target.version || p.version }}</span>
+  <span v-if="selectedRun || p.version"> · v{{ selectedRun?.subject.version || p.version }}</span>
 </div>
 
 <p v-if="p.backendCaveat" class="backend-caveat">&#x26A0; {{ p.backendCaveat }}</p>
@@ -154,7 +154,7 @@ const breadcrumbParent = (() => {
 <div v-if="measuredBar" class="score-card">
   <h2 class="results-heading">Feature support</h2>
   <p v-if="stale" class="stale-line">{{ staleText }}</p>
-  <p class="selected-run">{{ p.terminalName }} {{ selectedRun.target.version }} · {{ selectedRun.target.os || 'OS not recorded' }} · Measured {{ testDate }} (UTC)</p>
+  <p class="selected-run">{{ p.terminalName }} {{ selectedRun.subject.version }} · {{ selectedRun.subject.os || 'OS not recorded' }} · Measured {{ testDate }} (UTC)</p>
   <p class="result-share-label" :title="currentCoverageSentence(measuredBar, selectedRun.catalogIds)">{{ measuredShare }}</p>
   <p>{{ currentCoverageSentence(measuredBar, selectedRun.catalogIds) }}</p>
   <div v-if="measuredBar.denominator > 0" class="result-share" aria-hidden="true">
@@ -164,7 +164,7 @@ const breadcrumbParent = (() => {
     <span v-if="measuredBar.counts['test-todo']" class="result-share-not-tested" :style="{ width: `${measuredBar.counts['test-todo'] / measuredBar.denominator * 100}%` }"></span>
     <span v-if="measuredBar.counts['test-failure']" class="result-share-error" :style="{ width: `${measuredBar.counts['test-failure'] / measuredBar.denominator * 100}%` }"></span>
   </div>
-  <p>Run {{ selectedRun.complete ? 'complete' : 'incomplete' }}. Completion and capability support are separate.</p>
+  <p>Run {{ selectedRun.complete ? 'complete' : 'incomplete' }}. Completion and feature support are separate.</p>
 </div>
 
 <details v-if="selectedRun" class="run-context">
@@ -182,11 +182,11 @@ const breadcrumbParent = (() => {
   <dl>
     <dt>Run</dt><dd><a href="/api/v3/data.json">{{ selectedRun.sha256 }}</a></dd>
     <dt>Suite</dt><dd>{{ selectedRun.suiteId }} · {{ selectedRun.suiteFreshness }}</dd>
-    <dt>Target</dt><dd>{{ selectedRun.target.kind }} · {{ selectedRun.target.id }} {{ selectedRun.target.version }}</dd>
-    <dt>OS</dt><dd>{{ selectedRun.target.os || 'Not recorded' }} {{ selectedRun.target.osVersion || '' }}</dd>
-    <dt>Permissions</dt><dd>{{ selectedRun.target.permissions || 'No explicit override recorded' }}</dd>
-    <dt>Configuration</dt><dd><code>{{ selectedRun.target.config || 'Not recorded' }}</code></dd>
-    <dt>Outer terminal / multiplexer</dt><dd>{{ selectedRun.target.outerTerminal || 'None recorded' }} / {{ selectedRun.target.mux || 'None recorded' }}</dd>
+    <dt>Target</dt><dd>{{ selectedRun.subject.kind }} · {{ selectedRun.subject.id }} {{ selectedRun.subject.version }}</dd>
+    <dt>OS</dt><dd>{{ selectedRun.subject.os || 'Not recorded' }} {{ selectedRun.subject.osVersion || '' }}</dd>
+    <dt>Permissions</dt><dd>{{ selectedRun.subject.permissions || 'No explicit override recorded' }}</dd>
+    <dt>Configuration</dt><dd><code>{{ selectedRun.subject.config || 'Not recorded' }}</code></dd>
+    <dt>Outer terminal / multiplexer</dt><dd>{{ selectedRun.subject.outerTerminal || 'None recorded' }} / {{ selectedRun.subject.mux || 'None recorded' }}</dd>
   </dl>
 </details>
 

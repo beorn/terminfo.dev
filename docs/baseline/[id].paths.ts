@@ -41,7 +41,7 @@ export default {
       description: data.meta[b.name]?.description ?? "",
       url: data.meta[b.name]?.url ?? "",
       version: b.version,
-      type: b.type ?? "headless",
+      type: b.type ?? "lib",
       platforms: b.platforms ?? [],
     }))
 
@@ -82,7 +82,7 @@ export default {
           description: data.meta[b.name]?.description ?? "",
           url: data.meta[b.name]?.url ?? "",
           version: b.version,
-          type: b.type ?? "headless",
+          type: b.type ?? "lib",
           platforms: b.platforms ?? [],
           score: bs.score,
           counts: bs.counts,

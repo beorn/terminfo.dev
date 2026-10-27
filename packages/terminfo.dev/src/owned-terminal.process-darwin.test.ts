@@ -231,7 +231,7 @@ test.each([
   }
   expect(recorded.ownership).toEqual({ kind: "shared" })
   if (allowed) {
-    expect(recorded.observation).toMatchObject({ outcome: "supported", evidence: "behavior" })
+    expect(recorded.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
     expect(recorded.observation.note).toContain(
       `run-scoped process owner pid 4242, marker ${marker.flag} ${marker.value}`,
     )
@@ -255,7 +255,7 @@ test.each([
       reason: "policy-refused",
       note: `Collector refused before sending bytes because ${refusal}`,
     })
-    expect(recorded.result).toMatchObject({ status: "test-todo", checks: [{ id: "prerequisite" }] })
+    expect(recorded.result).toMatchObject({ status: "test-todo", tests: [{ id: "prerequisite" }] })
     expect(recorded.assertions).toEqual([])
   }
 })

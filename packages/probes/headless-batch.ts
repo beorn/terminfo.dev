@@ -6,6 +6,7 @@ import {
   readHyperlinkMetadata,
   readSentinelReply,
   recordExecutedProbe,
+  ASSERTION_TYPES,
   sentinelGraceMs,
 } from "@terminfo/probe-defs"
 import type {
@@ -13,7 +14,6 @@ import type {
   RunDraft,
   NotTestedCoverage,
   Observation,
-  ObservationEvidence,
   ProbeAssertion,
   ProbeDefinition,
   ProbeCallbackResult,
@@ -37,15 +37,6 @@ export interface ProvenReplyPath {
   /** Called each time the member returns a `sentinel` outcome, so the collector listens before destroy. */
   readonly onSentinel: () => void
 }
-
-/**
- * A declared `none` says the arm does not measure, so a collector failure on it has no observation to
- * carry: the canonical parser admits `none` only as an inconclusive refusal, and refuses an error
- * that names it. Those failures stay named in `ungradedDiagnostics` instead of becoming an
- * observation the parser would reject. Every other declared method still reports its own error.
- */
-const carriesError = (evidence: ObservationEvidence | undefined): evidence is ObservationEvidence =>
-  evidence !== undefined && evidence !== "none"
 
 /** Capture one query, including adapters that parse pending input on state reads. */
 export function feedCapture(backend: TerminalBackend, text: string): string {
@@ -143,6 +134,7 @@ export function createLibProbeSource(backend: TerminalBackend, proven?: ProvenRe
       ? backend.getHyperlinkAt.bind(backend)
       : undefined
   return {
+    kind: "live",
     cols,
     getHyperlinkAt: readLink,
     feed(text) {
@@ -219,7 +211,7 @@ function refusedClaimEvidence(result: ProbeCallbackResult): string {
       `observation(${[
         `outcome=${observation.outcome}`,
         ...(observation.reason ? [`reason=${observation.reason}`] : []),
-        `evidence=${observation.evidence}`,
+        `evidence=${observation.assertionType}`,
         ...(observation.note ? [`note=${JSON.stringify(observation.note)}`] : []),
       ].join(", ")})`,
     )
@@ -256,6 +248,9 @@ function recordResult(batch: Batch, probe: ProbeDefinition, result: ProbeCallbac
   // instead of the old ungraded legacy-callback record.
   const widened: { observation?: ProbeCallbackResult["observation"] } = result
   const explicit = widened.observation
+  if (!explicit && result.tests?.length && result.tests.every((test) =>
+    (test.status === "test-todo" || test.status === "test-failure") && typeof test.reason === "string" && test.reason.trim().length > 0
+  ) && !result.assertions?.length) return
   if (!explicit) {
     batch.ungradedDiagnostics[id] = {
       kind: "collector-error",
@@ -267,29 +262,23 @@ function recordResult(batch: Batch, probe: ProbeDefinition, result: ProbeCallbac
     }
     return
   }
-  const declared = probe.termlessObservationEvidence
-  const unmeasuredRefusal =
-    explicit.outcome === "inconclusive" &&
-    Boolean(explicit.reason) &&
-    result.response === undefined &&
-    !result.assertions?.length
-  if (declared && !(explicit.evidence === "none" ? unmeasuredRefusal : explicit.evidence === declared)) {
-    const message = withRefusedClaim(
-      `Termless callback ${id} declares ${declared} evidence but returned ${explicit.evidence}${explicit.evidence === "none" ? " without an unmeasured refusal" : ""}`,
-      result,
-    )
-    if (carriesError(explicit.evidence)) {
-      batch.observations.push({
-        featureId: id,
-        outcome: "error",
-        reason: "collector-error",
-        evidence: explicit.evidence,
-        note: message,
-        ...(result.response !== undefined ? { rawReplyRef: id } : {}),
-      })
-    } else {
-      batch.ungradedDiagnostics[id] = { kind: "collector-error", name: "Error", message }
-    }
+  if (!ASSERTION_TYPES.includes(explicit.assertionType)) {
+    batch.ungradedDiagnostics[id] = { kind: "collector-error", name: "Error",
+      message: withRefusedClaim(`Callback for ${id} returned no valid assertion type`, result) }
+    return
+  }
+  // Undefined is undeclared; null explicitly declares no deciding typed observable.
+  // Keep the existing loud mismatch refusal; classification never turns null into an observation.
+  const declared = probe.libAssertionType
+  if (declared !== undefined && declared !== explicit.assertionType) {
+    batch.observations.push({
+      featureId: id,
+      outcome: "error",
+      reason: "collector-error",
+      assertionType: explicit.assertionType,
+      note: withRefusedClaim(`Lib callback ${id} declares ${String(declared)} but returned ${explicit.assertionType}`, result),
+      ...(result.response !== undefined ? { rawReplyRef: id } : {}),
+    })
     return
   }
   const conclusive = explicit.outcome === "supported" || explicit.outcome === "unsupported"
@@ -302,7 +291,7 @@ function recordResult(batch: Batch, probe: ProbeDefinition, result: ProbeCallbac
     !bound ||
     validAssertions.length === 0 ||
     (result.assertions ?? []).some((assertion) => assertion.kind !== expectedKind) ||
-    (explicit.evidence === "parser-state" &&
+    (explicit.assertionType === "buffer_state" &&
       !validAssertions.some((assertion) => assertion.observed === result.response))
   if (
     (conclusive && bindingInvalid) ||
@@ -312,7 +301,7 @@ function recordResult(batch: Batch, probe: ProbeDefinition, result: ProbeCallbac
       featureId: id,
       outcome: "error",
       reason: "collector-error",
-      evidence: explicit.evidence,
+      assertionType: explicit.assertionType,
       note: withRefusedClaim(
         `Callback result lacks ${conclusive ? "matching raw state and assertion" : "an inconclusive/error reason"}`,
         result,
@@ -340,18 +329,9 @@ function recordNotTested(batch: Batch, probe: ProbeDefinition, result: ProbeCall
   const assertions = result.assertions ?? []
   if (result.observation !== undefined || assertions.length > 0) {
     const mixedMessage = `Not-tested coverage for ${id} arrived beside ${refusedClaimEvidence(result)}; a probe that claims no semantic observable cannot also carry a measurement, so the coverage claim is refused and its evidence stays a collector error`
-    if (carriesError(probe.termlessObservationEvidence)) {
-      batch.observations.push({
-        featureId: id,
-        outcome: "error",
-        reason: "collector-error",
-        evidence: probe.termlessObservationEvidence,
-        note: mixedMessage,
-        ...(result.response !== undefined ? { rawReplyRef: id } : {}),
-      })
-    } else {
+
       batch.ungradedDiagnostics[id] = { kind: "collector-error", name: "Error", message: mixedMessage }
-    }
+
     return
   }
   const response = result.response
@@ -364,18 +344,9 @@ function recordNotTested(batch: Batch, probe: ProbeDefinition, result: ProbeCall
     response === undefined ||
     !bound
   ) {
-    if (carriesError(probe.termlessObservationEvidence)) {
-      batch.observations.push({
-        featureId: id,
-        outcome: "error",
-        reason: "collector-error",
-        evidence: probe.termlessObservationEvidence,
-        note: message,
-        ...(result.response !== undefined ? { rawReplyRef: id } : {}),
-      })
-    } else {
+
       batch.ungradedDiagnostics[id] = { kind: "collector-error", name: "Error", message }
-    }
+
     return
   }
   batch.rawReplies[id] = response
@@ -404,7 +375,7 @@ export async function collectBatch(
         featureId: probe.id,
         status: "test-todo",
         attempt: { scope: "none" },
-        checks: [],
+        tests: [],
         reason: "Required callback has not started",
       })),
     rawReplies: {},
@@ -414,7 +385,7 @@ export async function collectBatch(
     ungradedDiagnostics: {},
   }
   for (const probe of definitions) {
-    if (!probe.termless) continue
+    if (!probe.lib) continue
     process.stderr.write(`headless ${backendName} probe ${probe.id}\n`)
     let backend: TerminalBackend | undefined
     const attempt = { scope: "probe" as const, startedAt: new Date().toISOString() }
@@ -427,7 +398,7 @@ export async function collectBatch(
       reason: "Callback attempt started; no result recorded yet",
     }
     onCheckpoint?.(batch)
-    let callbackChecks: ProbeCallbackResult["checks"]
+    let callbackChecks: ProbeCallbackResult["tests"]
     let criterionBranch: string | undefined
     try {
       backend = await createBackend()
@@ -441,7 +412,7 @@ export async function collectBatch(
         },
       }
       const ctx = createLibProbeSource(backend, proven)
-      const callback = probe.termless(ctx)
+      const callback = probe.lib(ctx)
       // G1 runs before the callback's grade is kept: a late byte refuses that grade as a collector error,
       // while the run file keeps what was observed, the on-time capture and the late bytes beside it.
       const late = sentinel.fired ? await listenForLateReply(backend, graceMs) : undefined
@@ -455,27 +426,18 @@ export async function collectBatch(
           ),
         )
       }
-      callbackChecks = callback.checks
+      callbackChecks = callback.tests
       criterionBranch = callback.criterionBranch
       recordResult(batch, probe, callback)
     } catch (error) {
       const message = `headless ${backendName} probe ${probe.id}: ${errorMessage(error)}`
-      if (carriesError(probe.termlessObservationEvidence)) {
-        batch.observations.push({
-          featureId: probe.id,
-          outcome: "error",
-          reason: "collector-error",
-          evidence: probe.termlessObservationEvidence,
-          note: message,
-          ...(Object.hasOwn(batch.rawReplies, probe.id) ? { rawReplyRef: probe.id } : {}),
-        })
-      } else {
+
         batch.ungradedDiagnostics[probe.id] = {
           kind: "collector-error",
           name: error instanceof Error ? error.name : "Error",
           message,
         }
-      }
+
     } finally {
       const observation = batch.observations.find((entry) => entry.featureId === probe.id)
       const diagnostic = batch.ungradedDiagnostics[probe.id]
@@ -487,7 +449,8 @@ export async function collectBatch(
         diagnostic,
         coverage,
         assertions: batch.assertions,
-        checks: callbackChecks,
+        tests: callbackChecks,
+        ...(Object.hasOwn(batch.rawReplies, probe.id) ? { rawReplyRef: probe.id } : {}),
         criterionBranch,
       })
       const index = batch.results.findIndex((entry) => entry.featureId === probe.id)
@@ -503,7 +466,7 @@ export async function collectBatch(
           ...result,
           status: "test-failure",
           reason,
-          checks: [...result.checks, { id: "cleanup", status: "test-failure", attempt, reason }],
+          tests: [...result.tests, { id: "cleanup", status: "test-failure", attempt, reason }],
         }
         onCheckpoint?.(batch)
         throw new Error(reason, { cause })

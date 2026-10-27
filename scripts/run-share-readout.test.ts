@@ -35,7 +35,7 @@ const run = (entries: Partial<Record<ProbeStatus, number>>) => {
       featureId: `${status}.${index}`,
       status,
       attempt: { scope: "none" as const },
-      checks: [],
+      tests: [],
     })),
   )
   return aggregateCurrentResults(

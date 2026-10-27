@@ -149,23 +149,23 @@ it.each([
   ["here", false],
   ["here", true],
 ] as const)("prints %s coverage from its own environment catalogue: %s", async (command, environment) => {
-  const manifest = {
+  const manifest = { schemaVersion: 4 as const,
     probeHash: "abcdef123456",
     sourceRevision: "a".repeat(40),
     generatedAt: "2026-10-25T00:00:00.000Z",
     adapterVersion: "test",
     catalogIds: ["sgr.bold", ...(environment ? ENVIRONMENT_GROUP_IDS : [])],
-    probes: { app: [], headless: [], mux: [] },
+    probes: { term: [], lib: [], mux: [] },
   } satisfies ProbeSuiteManifest
   const run: CapturedRunDraft = {
-    ...initializeRunDraft({
+    ...initializeRunDraft({ source: { kind: "live" },
       runId: "1234567890abcdef1234567890abcdef",
       sourceRevision: manifest.sourceRevision,
       manifest,
-      intendedContext: { kind: "app", id: "kitty", version: "0.49.1" },
+      intendedSubject: { kind: "term", id: "kitty", version: "0.49.1" },
     }),
-    target: {
-      kind: "app",
+    subject: {
+      kind: "term",
       id: "kitty",
       version: "0.49.1",
       os: "linux",

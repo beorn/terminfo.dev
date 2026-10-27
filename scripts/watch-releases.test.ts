@@ -1,6 +1,6 @@
 /**
  * @failure Release refresh trusts unreviewed raw versions, too-new/undated releases, or a partial feed.
- * @level l2 — CLI comparison with reviewed app rows, plus UTC cutoff and source-response checks.
+ * @level l2 — CLI comparison with reviewed app rows, plus UTC cutoff and source-response tests.
  * @consumer scripts/watch-releases.ts monthly release report and catalog hint.
  * @testonly none
  */

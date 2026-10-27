@@ -45,11 +45,11 @@ function StateCell({ cell, width }: { cell: ProbeResult | undefined; width: numb
 }
 
 function CurrentSummary({ column }: { column: CurrentColumn }): React.ReactElement {
-  const { target } = column.run
+  const { subject } = column.run
   return (
     <Box flexDirection="column" marginBottom={1}>
       <Text bold>
-        {column.label}: {target.kind}:{target.id} {target.version} — run {column.run.runId}
+        {column.label}: {subject.kind}:{subject.id} {subject.version} — run {column.run.runId}
       </Text>
       <Text color="$muted">context {column.contextKey}</Text>
       <Text>

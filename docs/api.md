@@ -30,10 +30,10 @@ A run reference includes its target/context, source revision, suite, run ID/hash
 | `supported`    | Supported     | The recorded criterion was satisfied                             |
 | `unsupported`  | Unsupported   | The functioning test obtained the defined negative result        |
 | `untestable`   | Untestable    | A reviewed context impossibility prevents this criterion         |
-| `test-todo`    | TEST TODO     | Required work remains; this is not a terminal capability verdict |
+| `test-todo`    | TEST TODO     | Required work remains; this is not a terminal feature verdict |
 | `test-failure` | TEST FAILURE  | An attempted test or collection failed to obtain a valid result  |
 
-Each sealed run has exactly one result per frozen catalog ID. Its `results` array retains the recorded status and attempts/checks; readers never turn old observations into new current statuses.
+Each sealed run has exactly one result per frozen catalog ID. Its `results` array retains the recorded status and attempts/tests; readers never turn old observations into new current statuses.
 
 `score.supported / score.all` is Supported divided by the **graded** catalog positions (264 for a current
 273-row run). Untestable, TEST TODO and TEST FAILURE remain in that denominator. The nine environment
@@ -42,7 +42,7 @@ ungraded: **manual by design (catalogue)** and excluded from the score. Stored r
 only a stored TEST TODO is displayed as **NOT MEASURED**.
 
 A context's `complete` is true only when its TEST TODO and TEST FAILURE counts among the graded
-capabilities are both zero. Completion does not imply full support.
+features are both zero. Completion does not imply full support.
 
 Publication still requires every required context on the approved source/suite. An absent current context cannot count as complete.
 

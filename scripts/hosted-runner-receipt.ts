@@ -289,7 +289,7 @@ $dlls = @($dllFiles | ForEach-Object {
       `Hosted Windows receipt requires APP_ID=windows-terminal, APP_ID=alacritty or APP_ID=wezterm; received ${JSON.stringify(appId)}`,
     )
   }
-  const receipt = parseAppLaunchReceipt(value, "collector", "app", "Hosted Windows launch measurement")
+  const receipt = parseAppLaunchReceipt(value, "collector", "term", "Hosted Windows launch measurement")
   if (receipt?.platform !== "win32") throw new Error("Hosted Windows launch measurement has no win32 receipt")
   return receipt
 }

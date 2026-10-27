@@ -172,7 +172,7 @@ Basic attributes such as bold and palette colors are common, while extended unde
 
 ### Cursor — Positioning and Visibility
 
-Cursor sequences handle **positioning** (CUP, CHA, CNL), **visibility** (DECTCEM), **shape** (DECSCUSR — block, underline, bar, blinking variants), and **save/restore** (DECSC/DECRC). The cursor position report (`DSR 6`) lets applications ask "where is the cursor?" — essential for terminal capability detection and shell integration.
+Cursor sequences handle **positioning** (CUP, CHA, CNL), **visibility** (DECTCEM), **shape** (DECSCUSR — block, underline, bar, blinking variants), and **save/restore** (DECSC/DECRC). The cursor position report (`DSR 6`) lets applications ask "where is the cursor?" — essential for terminal feature detection and shell integration.
 
 Differences in DECSC/DECRC behavior (what exactly gets saved and restored) and cursor shape support are common sources of cross-terminal bugs in TUI applications.
 
@@ -230,7 +230,7 @@ A single displayed emoji may be one codepoint or a longer grapheme cluster but s
 Traditional terminals can't distinguish `Ctrl+I` from `Tab` — they're the same byte (`0x09`). The Kitty keyboard protocol fixes this by sending unambiguous key reports with modifier information. The Kitty protocol specification lists Ghostty, WezTerm, foot, and other implementations; support for individual enhancement flags and key events depends on version and configuration.
 :::
 
-Modern terminal extensions beyond the traditional VT specification: **Kitty keyboard protocol** (unambiguous key reporting), **Kitty graphics** and **Sixel** (inline images), **OSC 8 hyperlinks** (clickable links in terminal output), **text reflow** on resize, and **semantic prompt markers** (OSC 133). These features vary widely in adoption and represent the frontier of terminal capability.
+Modern terminal extensions beyond the traditional VT specification: **Kitty keyboard protocol** (unambiguous key reporting), **Kitty graphics** and **Sixel** (inline images), **OSC 8 hyperlinks** (clickable links in terminal output), **text reflow** on resize, and **semantic prompt markers** (OSC 133). These features vary widely in adoption and represent the frontier of terminal feature.
 
 <p class="category-link"><a class="hover-link" href="/extensions">View Extension features &rarr;</a></p>
 
@@ -248,7 +248,7 @@ The DEC Special Graphics set (activated with `ESC ( 0`) provides **box-drawing c
 
 ### Device Status — Terminal Identification
 
-Applications use **DA1** (Device Attributes) to identify terminal type and capabilities, and **DSR** (Device Status Report) to query cursor position and terminal health. These query-response sequences are the foundation of terminal capability detection — TUI frameworks use them at startup to determine what features are available.
+Applications use **DA1** (Device Attributes) to identify terminal type and features, and **DSR** (Device Status Report) to query cursor position and terminal health. These query-response sequences are the foundation of terminal feature detection — TUI frameworks use them at startup to determine what features are available.
 
 <p class="category-link"><a class="hover-link" href="/device">View Device Status features &rarr;</a></p>
 
@@ -272,7 +272,7 @@ The catalog includes measured and unmeasured features. Result cells identify the
 
 For **terminal applications**, query probes record replies such as cursor positions or protocol acknowledgements. Controlled app captures can establish particular visible properties when reviewed against a stated fixture. A reply alone does not demonstrate rendering or input-event delivery.
 
-For **headless backends**, [Termless](https://termless.dev) sends sequences and checks replies or programmatic terminal state. These assertions can verify cell contents, attributes or cursor behavior. A PNG drawn from that state illustrates the grid; it does not capture the terminal app’s renderer.
+For **headless backends**, [Termless](https://termless.dev) sends sequences and tests replies or programmatic terminal state. These assertions can verify cell contents, attributes or cursor behavior. A PNG drawn from that state illustrates the grid; it does not capture the terminal app’s renderer.
 
 The methods complement each other. Missing observations are TEST TODO; an attempted probe without a result is TEST FAILURE; a reviewed inability to measure is Untestable. Permissions and intermediaries such as multiplexers are part of the measurement context.
 

@@ -9,7 +9,7 @@ next: false
 <p class="page-tagline">Attack surfaces hiding in your terminal's escape sequence parser</p>
 
 <div class="beginner-intro">
-<p>Terminal emulators interpret escape sequences as instructions — move the cursor, change colors, set the window title, access the clipboard. Most of these are harmless, but some grant surprising capabilities to anything that can write bytes to your terminal. A malicious script, a poisoned log file, or even copied text from a website can exploit these to exfiltrate data, spoof your display, or inject commands. Modern terminals mitigate these risks, but understanding the attack surface matters.</p>
+<p>Terminal emulators interpret escape sequences as instructions — move the cursor, change colors, set the window title, access the clipboard. Most of these are harmless, but some grant surprising features to anything that can write bytes to your terminal. A malicious script, a poisoned log file, or even copied text from a website can exploit these to exfiltrate data, spoof your display, or inject commands. Modern terminals mitigate these risks, but understanding the attack surface matters.</p>
 </div>
 
 ## OSC 52: Clipboard Access
@@ -157,7 +157,7 @@ Some older terminals also supported _reading_ the title back via a query sequenc
 ## Further Reading
 
 - [OSC Sequences](/osc) — the full set of Operating System Command features tested across terminals
-- [Terminal Detection](/fundamentals/term-detection) — how applications query terminal capabilities
+- [Terminal Detection](/fundamentals/term-detection) — how applications query terminal features
 - [TTY Architecture](/fundamentals/tty-architecture) — the layers between your shell and your terminal
 
 ---
