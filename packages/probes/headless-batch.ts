@@ -1,7 +1,12 @@
 /** Internal production adapter and isolated result collection for one Termless engine. */
 /* oxlint-disable typescript/no-deprecated -- Current Termless resolve() adapters expose TerminalBackend lifecycle; Emulator does not yet replace that loader. */
 
-import { hasExtension, type HyperlinkExtension, type TerminalBackend } from "@termless/core"
+import {
+  hasExtension,
+  type HyperlinkExtension,
+  type ReplyDeliveryExtension,
+  type TerminalBackend,
+} from "@termless/core"
 import {
   readHyperlinkMetadata,
   readSentinelReply,
@@ -20,8 +25,9 @@ import type {
   TerminalQueryOutcome,
   LibProbeSource,
   UngradedDiagnostic,
+  HeadlessRuntimeIdentity,
 } from "@terminfo/probe-defs"
-import type { ReplyPathProof } from "./proven-reply-paths.ts"
+import { replyDeliveryDecision, type HeadlessProbeRuntime, type ReplyPathDecision } from "./headless-identity.ts"
 
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
@@ -31,7 +37,6 @@ const DA1_QUERY = "\x1b[c"
 
 /** A proven reply path, as the collector hands it to one probe's context (#30554). */
 export interface ProvenReplyPath {
-  readonly proof: ReplyPathProof
   /** The grace window this pass reads, recorded in every sentinel outcome and waited out by G1. */
   readonly graceMs: number
   /** Called each time the member returns a `sentinel` outcome, so the collector listens before destroy. */
@@ -118,7 +123,11 @@ async function listenForLateReply(
   return late?.bytes ? late : undefined
 }
 
-export function createLibProbeSource(backend: TerminalBackend, proven?: ProvenReplyPath): LibProbeSource {
+export function createLibProbeSource(
+  backend: TerminalBackend,
+  proven?: ProvenReplyPath,
+  runtimeIdentity?: HeadlessRuntimeIdentity,
+): LibProbeSource {
   let cols: number
   try {
     cols = backend.getRow(0).length
@@ -135,6 +144,7 @@ export function createLibProbeSource(backend: TerminalBackend, proven?: ProvenRe
       : undefined
   return {
     kind: "live",
+    ...(runtimeIdentity && { runtimeIdentity }),
     cols,
     getHyperlinkAt: readLink,
     feed(text) {
@@ -379,10 +389,22 @@ export async function collectBatch(
   definitions: readonly ProbeDefinition[],
   draft?: Pick<RunDraft, "results">,
   onCheckpoint?: (batch: Batch) => void,
-  proof?: ReplyPathProof,
+  runtime?: HeadlessProbeRuntime,
 ): Promise<Batch> {
   // One read of the grace window per pass: every sentinel outcome records it and G1 waits it out.
-  const graceMs = proof ? sentinelGraceMs() : 0
+  let graceMs: number | undefined
+  const replyPath: {
+    backend: string
+    declaration?: ReplyDeliveryExtension["replyDelivery"]
+    runtimeIdentity?: HeadlessRuntimeIdentity
+    decisions: Record<string, Pick<ReplyPathDecision, "member" | "reason">>
+  } = { backend: backendName, ...(runtime && { runtimeIdentity: runtime.identity }), decisions: {} }
+  const warned = new Set<string>()
+  const warn = (line: string) => {
+    if (warned.has(line)) return
+    warned.add(line)
+    process.stderr.write(`${line}\n`)
+  }
   const batch: Batch = {
     results:
       draft?.results ??
@@ -418,19 +440,27 @@ export async function collectBatch(
     try {
       backend = await createBackend()
       backend.init({ cols: 80, rows: 24 })
+      const declaration = hasExtension<ReplyDeliveryExtension>(backend, "reply-delivery")
+        ? backend.replyDelivery
+        : undefined
+      const decision = replyDeliveryDecision(backendName, declaration, runtime, warn)
+      if (declaration) replyPath.declaration ??= declaration
+      replyPath.decisions[probe.id] = { member: decision.member, reason: decision.reason }
+      batch.rawReplies["collector.replyPath"] = JSON.stringify(replyPath)
       const sentinel = { fired: false }
-      const proven = proof && {
-        proof,
-        graceMs,
-        onSentinel: () => {
-          sentinel.fired = true
-        },
-      }
-      const ctx = createLibProbeSource(backend, proven)
+      const proven = decision.member
+        ? {
+            graceMs: (graceMs ??= sentinelGraceMs()),
+            onSentinel: () => {
+              sentinel.fired = true
+            },
+          }
+        : undefined
+      const ctx = createLibProbeSource(backend, proven, runtime?.identity)
       const callback = probe.lib(ctx)
       // G1 runs before the callback's grade is kept: a late byte refuses that grade as a collector error,
       // while the run file keeps what was observed, the on-time capture and the late bytes beside it.
-      const late = sentinel.fired ? await listenForLateReply(backend, graceMs) : undefined
+      const late = sentinel.fired && proven ? await listenForLateReply(backend, proven.graceMs) : undefined
       if (late) {
         retainCallbackResponse(batch, probe.id, callback)
         batch.rawReplies[`${probe.id}.late`] = late.bytes

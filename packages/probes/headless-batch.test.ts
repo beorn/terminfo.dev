@@ -22,6 +22,12 @@ import { join } from "node:path"
 import { afterEach, beforeEach, expect, test, vi } from "vitest"
 import { collectBatch, createLibProbeSource } from "./headless-batch.ts"
 
+/** Feature captures only; collector qualification metadata is asserted in sentinel-member.test.ts. */
+function probeReplies(batch: Awaited<ReturnType<typeof collectBatch>>) {
+  const { "collector.replyPath": _qualification, ...replies } = batch.rawReplies
+  return replies
+}
+
 async function backend() {
   return createXtermBackend()
 }
@@ -405,7 +411,7 @@ test("attributes headless exceptions only to the headless marker and leaves lega
     })
     expect(batch.results.find((result) => result.featureId === id)?.status).toBe("test-failure")
   }
-  expect(batch.rawReplies).toEqual({})
+  expect(probeReplies(batch)).toEqual({})
   expect(batch.assertions).toEqual([])
 })
 
@@ -441,7 +447,7 @@ test("routes real registry constructor markers while multi-method callbacks rema
     expect(batch.results.find((result) => result.featureId === id)?.status).toBe("test-failure")
   }
   expect(batch.assertions).toEqual([])
-  expect(batch.rawReplies).toEqual({})
+  expect(probeReplies(batch)).toEqual({})
 })
 
 test.each(["factory", "init"] as const)("attributes a %s failure before invoking its callback", async (stage) => {
@@ -697,7 +703,9 @@ test.each([
       },
     })
     // The refusal keeps the bytes the callback returned, beside its diagnostic, under the same id.
-    expect(batch.rawReplies).toStrictEqual(variant === "supported" || variant === "raw" ? { "invalid-none": "X" } : {})
+    expect(probeReplies(batch)).toStrictEqual(
+      variant === "supported" || variant === "raw" ? { "invalid-none": "X" } : {},
+    )
   },
 )
 
@@ -728,7 +736,7 @@ test("an assertion type that disagrees with the marker keeps the response and th
     },
   ])
   expect(batch.assertions).toStrictEqual([])
-  expect(batch.rawReplies).toStrictEqual({ wrong: response })
+  expect(probeReplies(batch)).toStrictEqual({ wrong: response })
   validateObservation(batch.observations[0]!, "run", batch.rawReplies, batch.assertions)
 })
 
@@ -788,7 +796,7 @@ test.each([
     },
   ])
   expect(batch.assertions).toStrictEqual([])
-  expect(batch.rawReplies).toStrictEqual(row.response !== undefined ? { unbound: row.response } : {})
+  expect(probeReplies(batch)).toStrictEqual(row.response !== undefined ? { unbound: row.response } : {})
   validateObservation(batch.observations[0]!, "run", batch.rawReplies, batch.assertions)
 })
 
@@ -814,7 +822,7 @@ test("an inconclusive result without a reason keeps its response and refused cla
       rawReplyRef: "unreasoned",
     },
   ])
-  expect(batch.rawReplies).toStrictEqual({ unreasoned: "X" })
+  expect(probeReplies(batch)).toStrictEqual({ unreasoned: "X" })
   validateObservation(batch.observations[0]!, "run", batch.rawReplies, batch.assertions)
 })
 
@@ -838,7 +846,7 @@ test("a result with no observation keeps its response and refused assertions", a
         'Callback for legacy returned neither an observation nor a not-tested coverage record; its conclusion cannot be graded; refused assertion(kind=positive, expected="X", observed="X")',
     },
   })
-  expect(batch.rawReplies).toStrictEqual({ legacy: "X" })
+  expect(probeReplies(batch)).toStrictEqual({ legacy: "X" })
 })
 
 // 30585: a grader that got no reply names that as its reason, and the reason is the record of the missing raw.
@@ -858,7 +866,7 @@ test("admits an inconclusive no-response result with its named reason and no syn
     { featureId: "silent", outcome: "inconclusive", reason: "no-response", assertionType: "query_reply" },
   ])
   expect(batch.assertions).toStrictEqual([])
-  expect(batch.rawReplies).toStrictEqual({})
+  expect(probeReplies(batch)).toStrictEqual({})
   expect(batch.results).toStrictEqual([
     expect.objectContaining({ featureId: "silent", status: "test-failure", reason: "no-response" }),
   ])

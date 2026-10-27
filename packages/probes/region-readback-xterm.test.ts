@@ -181,7 +181,10 @@ async function collectOrigin(origin: probeDefs.ProbeDefinition) {
   const progress = vi.spyOn(process.stderr, "write").mockImplementation(() => true)
   try {
     const batch = await collectBatch(async () => createXtermBackend(), "xtermjs", [origin])
-    expect(progress.mock.calls.map(([chunk]) => String(chunk))).toEqual(["headless xtermjs probe modes.origin\n"])
+    expect(progress.mock.calls.map(([chunk]) => String(chunk))).toEqual([
+      "headless xtermjs probe modes.origin\n",
+      "headless xtermjs has no measured runtime identity for reply delivery\n",
+    ])
     return batch
   } finally {
     progress.mockRestore()
@@ -238,7 +241,8 @@ test.each([
 })
 
 test("every region-readback kind row grades its real xterm.js outcome", async () => {
-  // The collector reports progress on stderr. Consume only that expected diagnostic;
+  // These parser fixtures supply no runtime identity, so reply qualification is withheld loudly.
+  // Consume only the expected progress and qualification diagnostics;
   // any other output remains a failure rather than disappearing into a blanket mock.
   const progress = vi.spyOn(process.stderr, "write").mockImplementation(() => true)
   try {
@@ -248,7 +252,10 @@ test("every region-readback kind row grades its real xterm.js outcome", async ()
       probeDefs.regionReadbackProbes(KIND_ROWS),
     )
     expect(progress.mock.calls.map(([chunk]) => String(chunk))).toEqual(
-      KIND_ROWS.map((row) => `headless xtermjs probe ${row.id}\n`),
+      KIND_ROWS.flatMap((row, index) => [
+        `headless xtermjs probe ${row.id}\n`,
+        ...(index === 0 ? ["headless xtermjs has no measured runtime identity for reply delivery\n"] : []),
+      ]),
     )
     const outcome = (id: string) => batch.observations.find((item) => item.featureId === id)?.outcome ?? `missing:${id}`
     // No row may be absent from the batch: a row with no observation is a fixture that never ran.

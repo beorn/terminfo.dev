@@ -59,6 +59,25 @@ The five `AssertionType` values classify an actually retained deciding observati
 
 **Headless evidence** comes through [headless-batch.ts](../probes/headless-batch.ts). It retains callback `response` values as raw replies, not every probe-source call or every engine-state read.
 
+The collector forwards the run's measured `HeadlessRuntimeIdentity` through `LibProbeSource.runtimeIdentity`.
+It identifies the loaded adapter source, engine integrity and any loaded binary; feature-capability versions
+cannot substitute for it. Missing identity supplies no source-derived qualification.
+
+The optional sentinel member requires the executing adapter's `reply-delivery` extension. The single
+comparer in [headless-identity.ts](../probes/headless-identity.ts) checks its audited source blobs and
+registry integrity, clean source tree or loaded WASM digest against that measured runtime. Versions are
+diagnostic facts. Each initialized callback instance supplies its own declaration; the destroyed
+preflight instance cannot authorize another instance. `collector.replyPath` retains the shared
+declaration and measured identity once, alongside each feature's eligibility result and named
+withholding reason. Each distinct withholding reason is reported once per batch.
+
+Source-backed collection runs from the hh root with vendored Termless source. A dist-only install
+without the imported source binding loses sentinel eligibility loudly; silence stays inconclusive.
+Libvterm currently withholds the declaration because engine output can truncate before the adapter
+drains, even though its adapter now drains all queued output. Ghostty also declares no complete path.
+The existing two captures, shared classifier, DA1 control and G1 late-byte grace still decide the read;
+a delivery declaration never declares feature support. Sealed historical runs receive no new proof.
+
 Conclusive library observations need nonempty raw evidence and matching positive/negative assertions. A direct buffer-state assertion must match the retained response; invalid claims become collector errors.
 
 **Native evidence** comes through [probes/unified.ts](../terminfo.dev/src/probes/unified.ts). It retains writes, queries, ordered events and available capture/clipboard records separately from callback responses.
