@@ -84,12 +84,11 @@ test("every editing capture row asks the terminal's pixel report before painting
   for (const id of CAPTURE_IDS) {
     const { context, writes, frames } = captureContext(24, 80)
     const result = await find(id).term!(context)
-    expect(result.observation, id).toMatchObject({
-      outcome: "inconclusive",
-      reason: "insufficient-evidence",
-      assertionType: "query_reply",
-    })
-    expect(String(result.observation?.note), id).toContain("CSI 16 t")
+    expect(result.observation, id).toBeUndefined()
+    expect(result.tests, id).toMatchObject([
+      { id: "criterion", status: "test-failure", reason: expect.stringContaining("cell size in pixels") },
+    ])
+    expect(String(result.tests?.[0]?.reason), id).toContain("CSI 16 t")
     expect(frames, id).toEqual([])
     expect(writes, id).toEqual([])
   }
@@ -172,14 +171,11 @@ test("the readback-governed row hands the decision its own region and the termin
 test("the readback-governed row refuses by name when the terminal cannot report its pixel geometry", async () => {
   const { context, frames } = captureContext(24, 80)
   const result = await find("editing.delete-chars").term!(context)
-  expect(result.observation).toMatchObject({
-    outcome: "inconclusive",
-    reason: "insufficient-evidence",
-    // Shape B of 28582: the pixel-report queries were already written, so this is not the
-    // zero-byte "none" refusal — it is a query that came back unusable.
-    assertionType: "query_reply",
-  })
-  expect(String(result.observation?.note)).toContain("CSI 16 t")
+  expect(result.observation).toBeUndefined()
+  expect(result.tests).toMatchObject([
+    { id: "criterion", status: "test-failure", reason: expect.stringContaining("cell size in pixels") },
+  ])
+  expect(String(result.tests?.[0]?.reason)).toContain("CSI 16 t")
   expect(frames).toEqual([])
 })
 
@@ -187,9 +183,18 @@ test("an undersized terminal refuses an editing capture before writing", async (
   for (const id of CAPTURE_IDS) {
     const { context, writes, frames } = captureContext(1, 1)
     const result = await find(id).term!(context)
+    expect(result.observation, id).toBeUndefined()
     expect(result, id).toMatchObject({
-      observation: undefined,
-      tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
+      tests: [
+        expect.objectContaining({
+          status: "test-todo",
+          reason: expect.stringMatching(
+            new RegExp(
+              `^${id}: capture-region readback needs a measured grid of at least [0-9]+x[0-9]+; measured 1x1$`,
+            ),
+          ),
+        }),
+      ],
     })
     expect(writes, id).toEqual([])
     expect(frames, id).toEqual([])
@@ -200,34 +205,51 @@ test("a seed at the very edge refuses so it cannot wrap or scroll the captured r
   // insert-chars compares one nine-column row with its witness on row 3, so the kind DERIVES a floor of
   // 3 rows by 9 + the family's two-column margin = 11 columns.
   const tight = captureContext(1, 8)
-  expect(await find("editing.insert-chars").term!(tight.context)).toMatchObject({
-    observation: undefined,
-    tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
+  const tightResult = await find("editing.insert-chars").term!(tight.context)
+  expect(tightResult.observation).toBeUndefined()
+  expect(tightResult).toMatchObject({
+    tests: [
+      expect.objectContaining({
+        status: "test-todo",
+        reason: "editing.insert-chars: capture-region readback needs a measured grid of at least 3x11; measured 1x8",
+      }),
+    ],
   })
   expect(tight.writes).toEqual([])
   const margins = captureContext(2, 11)
   const refused = await find("editing.insert-chars").term!(margins.context)
+  expect(refused.observation).toBeUndefined()
   expect(refused).toMatchObject({
-    observation: undefined,
-    tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
+    tests: [
+      expect.objectContaining({
+        status: "test-todo",
+        reason: "editing.insert-chars: capture-region readback needs a measured grid of at least 3x11; measured 2x11",
+      }),
+    ],
   })
   expect(margins.writes).toEqual([])
   expect(margins.frames).toEqual([])
   // One column short of the derived floor still refuses: the margin is what stops the seed wrapping.
   const narrow = captureContext(3, 10)
-  expect(await find("editing.insert-chars").term!(narrow.context)).toMatchObject({
-    observation: undefined,
-    tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
+  const narrowResult = await find("editing.insert-chars").term!(narrow.context)
+  expect(narrowResult.observation).toBeUndefined()
+  expect(narrowResult).toMatchObject({
+    tests: [
+      expect.objectContaining({
+        status: "test-todo",
+        reason: "editing.insert-chars: capture-region readback needs a measured grid of at least 3x11; measured 3x10",
+      }),
+    ],
   })
   expect(narrow.writes).toEqual([])
   expect(narrow.frames).toEqual([])
   // Exactly the derived floor opens the guards: the row moves on to the pixel report, no paint yet.
   const fit = captureContext(3, 11)
-  expect((await find("editing.insert-chars").term!(fit.context)).observation).toMatchObject({
-    outcome: "inconclusive",
-    reason: "insufficient-evidence",
-    assertionType: "query_reply",
-  })
+  const fitting = await find("editing.insert-chars").term!(fit.context)
+  expect(fitting.observation).toBeUndefined()
+  expect(fitting.tests).toMatchObject([
+    { id: "criterion", status: "test-failure", reason: expect.stringContaining("cell size in pixels") },
+  ])
   expect(fit.frames).toEqual([])
 })
 
@@ -247,11 +269,17 @@ test("the capture set covers the cell-edit probes and leaves non-cell probes unt
 test("without a capture adapter a converted row refuses by name and writes nothing", async () => {
   const { context, writes, frames } = captureContext(24, 80, false)
   const result = await find("editing.insert-chars").term!(context)
+  expect(result.observation).toBeUndefined()
   expect(result).toMatchObject({
-    observation: undefined,
-    tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
+    tests: [
+      expect.objectContaining({
+        status: "test-todo",
+        reason:
+          "editing.insert-chars: no owned capture adapter is installed in this run, so the region fixture cannot be read back",
+      }),
+    ],
   })
-  expect(String(result.observation?.note)).toContain("no owned capture adapter")
+  expect(String(result.tests?.[0]?.reason)).toContain("no owned capture adapter")
   expect(writes).toEqual([])
   expect(frames).toEqual([])
 })
@@ -488,7 +516,14 @@ test("editing.decsace keeps a differing pair that is not the two extents inconcl
 test("editing.decsace without a capture adapter still clears its DECSACE extent", async () => {
   const { context, writes } = captureContext(24, 80, false)
   const result = await find("editing.decsace").term!(context)
-  expect(result.observation).toMatchObject({ outcome: "inconclusive" })
+  expect(result.observation).toBeUndefined()
+  expect(result.tests).toEqual([
+    {
+      id: "criterion",
+      status: "test-failure",
+      reason: "No cursor response after attributes set by DECCARA under a DECSACE extent",
+    },
+  ])
   // The no-capture branch runs no lifecycle, so the mode reset is its own job: DECSACE 2 is set and
   // then cleared, in that order, because a run that leaves the extent mode set changes the next
   // probe's DECCARA/DECRARA reach.

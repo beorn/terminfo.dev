@@ -109,7 +109,10 @@ describe("a text arm decides its rows from cells it read, never from pixels", ()
     const ctx: TermProbeSource = { ...textContext(), captureKind: "pixels", captureGeometry: undefined }
     const result = await captureRegionVerdict(ctx, "erase.el", spec)
     // The same run, now declaring pixels, must refuse for the missing pixel report by name.
-    expect(result?.observation).toMatchObject({ outcome: "inconclusive", assertionType: "query_reply" })
+    expect(result?.observation).toBeUndefined()
+    expect(result?.tests).toMatchObject([
+      { id: "criterion", status: "test-failure", reason: expect.stringContaining("cell size in pixels") },
+    ])
   })
 
   // 29577 option A: a text arm holds one exact cell digest, so it can name only the axes that

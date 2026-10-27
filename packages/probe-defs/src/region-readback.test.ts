@@ -473,39 +473,73 @@ test("a run without an owned capture keeps the caller's pixel path instead of de
 
 test("a region that leaves the measured grid refuses before any byte", async () => {
   const fake = ownedWindow({ repaintAfterPolls: 1, regionDigest: () => "seed" })
-  const result = await decide(fake, { region: { top: 1, left: 1, bottom: 1, right: 81 } })
-  expect(result.observation.outcome).toBe("inconclusive")
-  expect(result.observation.note).toContain("leaves the measured 24x80 grid")
+  const result = await captureRegionReadbackDecision(
+    fake.ctx,
+    "editing.delete-chars",
+    spec({ region: { top: 1, left: 1, bottom: 1, right: 81 } }),
+    fake.read,
+  )
+  expect(result?.observation).toBeUndefined()
+  expect(result?.tests).toMatchObject([
+    { status: "test-todo", reason: expect.stringContaining("leaves the measured 24x80 grid") },
+  ])
   expect(fake.writes).toEqual([])
 })
 
 test("a witness cell inside the compared region refuses before any byte", async () => {
   const fake = ownedWindow({ repaintAfterPolls: 1, regionDigest: () => "seed" })
-  const result = await decide(fake, { sentinel: { row: 1, col: 4 } })
-  expect(result.observation.note).toContain("lies inside compared region")
+  const result = await captureRegionReadbackDecision(
+    fake.ctx,
+    "editing.delete-chars",
+    spec({ sentinel: { row: 1, col: 4 } }),
+    fake.read,
+  )
+  expect(result?.observation).toBeUndefined()
+  expect(result?.tests).toMatchObject([
+    { status: "test-todo", reason: expect.stringContaining("lies inside compared region") },
+  ])
   expect(fake.writes).toEqual([])
 })
 
 test("a compared region covering the cursor row refuses before any byte", async () => {
   const fake = ownedWindow({ repaintAfterPolls: 1, regionDigest: () => "seed" })
-  const result = await decide(fake, { cursorRow: 1 })
-  expect(result.observation.note).toContain("includes the cursor row 1")
+  const result = await captureRegionReadbackDecision(
+    fake.ctx,
+    "editing.delete-chars",
+    spec({ cursorRow: 1 }),
+    fake.read,
+  )
+  expect(result?.observation).toBeUndefined()
+  expect(result?.tests).toMatchObject([
+    { status: "test-todo", reason: expect.stringContaining("includes the cursor row 1") },
+  ])
   expect(fake.writes).toEqual([])
 })
 
 test("an undersized measured grid refuses before any byte", async () => {
   const fake = ownedWindow({ rows: 2, cols: 4, repaintAfterPolls: 1, regionDigest: () => "seed" })
-  const result = await decide(fake)
-  expect(result.observation.note).toContain("needs a measured grid of at least 2x9")
+  const result = await captureRegionReadbackDecision(fake.ctx, "editing.delete-chars", spec(), fake.read)
+  expect(result?.observation).toBeUndefined()
+  expect(result?.tests).toMatchObject([
+    { status: "test-todo", reason: expect.stringContaining("needs a measured grid of at least 2x9") },
+  ])
   expect(fake.writes).toEqual([])
 })
 
 test("a terminal that answered neither pixel report refuses before any byte", async () => {
   const fake = ownedWindow({ repaintAfterPolls: 1, regionDigest: () => "seed" })
-  const result = await decide(fake, {
-    pixelGeometry: { cellWidth: 0, cellHeight: 16, textWidth: 640, textHeight: 384 },
-  })
-  expect(result.observation.note).toContain("needs the terminal's own positive pixel report")
+  const result = await captureRegionReadbackDecision(
+    fake.ctx,
+    "editing.delete-chars",
+    spec({
+      pixelGeometry: { cellWidth: 0, cellHeight: 16, textWidth: 640, textHeight: 384 },
+    }),
+    fake.read,
+  )
+  expect(result?.observation).toBeUndefined()
+  expect(result?.tests).toMatchObject([
+    { status: "test-todo", reason: expect.stringContaining("positive pixel report") },
+  ])
   expect(fake.writes).toEqual([])
 })
 
@@ -805,8 +839,9 @@ test("region rows refuse a calibrated footprint that no longer covers the curren
     throw new Error("A stale calibrated footprint must be refused before capture")
   }
   const result = await captureRegionVerdict(fake.ctx, "editing.delete-chars", spec())
+  if (result === null) throw new Error("Expected the calibrated footprint refusal, not an absent capture path")
+  expect(result.observation).toBeUndefined()
   expect(result).toMatchObject({
-    observation: undefined,
     tests: [
       expect.objectContaining({
         status: "test-todo",
@@ -1044,20 +1079,21 @@ test("every reset-family probe hands its capture arm to the region oracle, on th
     const probe = probes.find((candidate) => candidate.id === id)
     expect(probe, `${id}: a probe definition`).toBeDefined()
     const result = await probe!.term!(familyTerminal("expected"))
-    expect(result.observation?.outcome, id).toBe("inconclusive")
-    // The production callback runs the DECRQSS readback first, which writes and queries before the
-    // capture fixture stays silent: the refusal is truthful QUERY evidence, never the zero-byte "none"
-    // shape run-parser reserves for a trace with no writes, queries or events.
-    expect(result.observation?.assertionType, id).toBe("query_reply")
-    expect(result.observation?.note ?? "", id).toContain("no independent reference exists for a multi-attribute reset")
+    expect(result.observation, id).toBeUndefined()
+    expect(result.tests, id).toMatchObject([
+      {
+        status: "test-failure",
+        reason: expect.stringContaining("no independent reference exists for a multi-attribute reset"),
+      },
+    ])
+    // The attempted DECRQSS readback makes the named refusal FAILURE; no reply was retained,
+    // so it cannot become a query observation.
   }
 })
 
-test("a silent DECRQSS readback is truthful query evidence, and an answering one still grades the row", async () => {
-  // A named inconclusive after an attempted readback must keep truthful assertionType: the production
-  // callbacks write SGR0 + the tested sequence, query DECRQSS, then write a cleanup, so by the time
-  // the region oracle declines the row the trace is NOT empty. run-parser refuses evidence "none"
-  // unless writes, queries and events are all empty, so these three rows must report "query".
+test("a silent DECRQSS readback retains a named failure, and an answering one still grades the row", async () => {
+  // The callback attempted DECRQSS but retained no reply. Its named failure keeps the
+  // write/query trace without inventing a typed query observation.
   // The DECRQSS-supported path must survive: a terminal that reports its actual baseline, setup
   // and post-reset state is still graded structurally; only a silent one reaches the named refusal.
   const probes = [...sgrProbes, ...resetProbes]
@@ -1066,12 +1102,17 @@ test("a silent DECRQSS readback is truthful query evidence, and an answering one
     expect(probe, `${id}: a probe definition`).toBeDefined()
     const terminal = statefulTerminal(ALL_ATTRS, { ris: true })
     const result = await probe!.term!(terminal.ctx)
-    expect(result.observation?.outcome, id).toBe("inconclusive")
-    expect(result.observation?.assertionType, id).toBe("query_reply")
+    expect(result.observation, id).toBeUndefined()
+    expect(result.tests, id).toMatchObject([
+      {
+        status: "test-failure",
+        reason: expect.stringContaining("no independent reference exists for a multi-attribute reset"),
+      },
+    ])
     expect(terminal.writes.length, `${id}: the readback wrote before declining`).toBeGreaterThan(0)
     expect(terminal.queries, `${id}: the DECRQSS query was sent`).toContain("\x1bP$qm\x1b\\")
-    expect(result.observation?.note ?? "", id).toContain("no independent reference exists for a multi-attribute reset")
-    expect(result.observation?.note ?? "", id).toContain("the caller wrote before this refusal")
+    expect(result.tests?.[0]?.reason, id).toContain("no independent reference exists for a multi-attribute reset")
+    expect(result.tests?.[0]?.reason, id).toContain("the caller wrote before this refusal")
   }
   for (const id of NO_REFERENCE_ROWS) {
     const probe = probes.find((candidate) => candidate.id === id)
@@ -1294,22 +1335,27 @@ test("the three no-reference rows are inconclusive by name on the pixel path, wh
   for (const entry of cases) {
     const terminal = statefulTerminal(ALL_ATTRS, { ris: true, resetMisses: entry.miss, risRetains: entry.keep })
     const result = await captureRegionVerdict(terminal.ctx, entry.id, familyRow(entry.id))
-    expect(result?.observation?.outcome, entry.id).toBe("inconclusive")
-    expect(result?.observation?.assertionType, entry.id).toBe("none")
-    expect(result?.observation?.note ?? "", entry.id).toContain(
-      "no independent reference exists for a multi-attribute reset",
-    )
-    // "none" promises run-parser a trace with no writes, queries or events; the direct path is
-    // refused before a byte, so the terminal saw neither a write nor a query.
+    expect(result?.observation, entry.id).toBeUndefined()
+    expect(result?.tests, entry.id).toMatchObject([
+      {
+        status: "test-todo",
+        reason: expect.stringContaining("no independent reference exists for a multi-attribute reset"),
+      },
+    ])
+    // The direct execution-only refusal is TODO before a byte; neither writes nor queries occur.
     expect(terminal.writes, `${entry.id}: the direct refusal wrote nothing`).toEqual([])
     expect(terminal.queries, `${entry.id}: the direct refusal queried nothing`).toEqual([])
   }
   const correct = statefulTerminal(ALL_ATTRS, { ris: true })
   for (const id of NO_REFERENCE_ROWS) {
     const result = await captureRegionVerdict(correct.ctx, id, familyRow(id))
-    expect(result?.observation?.outcome, `${id}: a correct terminal cannot buy a pixel verdict here`).toBe(
-      "inconclusive",
-    )
+    expect(result?.observation, id).toBeUndefined()
+    expect(result?.tests, id).toMatchObject([
+      {
+        status: "test-todo",
+        reason: expect.stringContaining("no independent reference exists for a multi-attribute reset"),
+      },
+    ])
   }
 })
 
@@ -1339,7 +1385,13 @@ test("the refused rows are exactly the rows whose reset clears two or more attri
     const { noIndependentReference: _refusal, ...bare } = familyRow(entry.id)
     const terminal = statefulTerminal(ALL_ATTRS, { ris: true, resetMisses: entry.miss, risRetains: entry.keep })
     const refused = await captureRegionVerdict(terminal.ctx, entry.id, familyRow(entry.id))
-    expect(refused?.observation?.outcome, `${entry.id}: with the refusal`).toBe("inconclusive")
+    expect(refused?.observation, `${entry.id}: with the refusal`).toBeUndefined()
+    expect(refused?.tests, entry.id).toMatchObject([
+      {
+        status: "test-todo",
+        reason: expect.stringContaining("no independent reference exists for a multi-attribute reset"),
+      },
+    ])
     const graded = await captureRegionVerdict(terminal.ctx, entry.id, bare)
     expect(graded?.observation?.outcome, `${entry.id}: with the refusal stripped`).toBe("supported")
   }
@@ -1355,8 +1407,13 @@ test("the bold row's faint case is the third no-reference row", async () => {
     "sgr.selective-reset.bold",
     familyRow("sgr.selective-reset.bold"),
   )
-  expect(result?.observation?.outcome).toBe("inconclusive")
-  expect(result?.observation?.note ?? "").toContain("no independent reference exists for a multi-attribute reset")
+  expect(result?.observation).toBeUndefined()
+  expect(result?.tests).toMatchObject([
+    {
+      status: "test-todo",
+      reason: expect.stringContaining("no independent reference exists for a multi-attribute reset"),
+    },
+  ])
 })
 
 test("no combination of a missed cleared attribute and a retained reference attribute is supported unless the reset cleared everything it claims", async () => {

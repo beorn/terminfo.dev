@@ -425,5 +425,11 @@ test("decrqcra tests the one-cell character delta of the seeded rectangle", () =
     pass: false,
     observation: { outcome: "unsupported", assertionType: "query_reply" },
   })
-  expect(run(["", ""])).toMatchObject({ pass: false, observation: { outcome: "inconclusive" } })
+  const missing = run(["", ""])
+  expect(missing.observation).toBeUndefined()
+  expect(missing).toMatchObject({
+    pass: false,
+    response: JSON.stringify({ first: "", second: "" }),
+    tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }],
+  })
 })

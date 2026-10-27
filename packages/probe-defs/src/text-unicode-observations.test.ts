@@ -412,7 +412,7 @@ test.each([
     const result = await run(terminal)
     expect(result.observation).toMatchObject({
       outcome: ignored ? "unsupported" : "supported",
-      assertionType: mode === "app" ? "behavior" : "buffer_state",
+      assertionType: mode === "app" ? "query_reply" : "buffer_state",
     })
     expect(result.assertions).toMatchObject([{ kind: ignored ? "negative" : "positive" }])
     expect(terminal.writes.join("")).toContain(target)
@@ -421,14 +421,25 @@ test.each([
   if (mode === "app") {
     const terminal = tabTerminal()
     const missing = await probe.term(app({ write: terminal.write }))
-    expect(missing.observation).toMatchObject({ outcome: "inconclusive", reason: "no-response" })
+    expect(missing.observation).toBeUndefined()
+    expect(missing.tests).toEqual([
+      {
+        id: "criterion",
+        status: "test-failure",
+        reason:
+          id === "text.cht"
+            ? "CHT starting position was not measured at row 1, column 1"
+            : "CBT starting position was not measured at row 1, column 21",
+      },
+    ])
     expect(missing.assertions).toBeUndefined()
     expect(terminal.writes.join("")).not.toContain(target)
     expect(terminal.writes.at(-1)).toContain("\x1bH")
-    expect((await probe.term(app({ cols: 12 }))).observation).toMatchObject({
-      outcome: "inconclusive",
-      reason: "insufficient-evidence",
-    })
+    const undersized = await probe.term(app({ cols: 12 }))
+    expect(undersized.observation).toBeUndefined()
+    expect(undersized.tests).toEqual([
+      { id: "criterion", status: "test-todo", reason: "Tab fixture needs at least 21 columns" },
+    ])
   }
 })
 
@@ -456,7 +467,9 @@ test("grapheme ID measures the ZWJ sample width, including headless cell state",
   const result = await probe.term(app({ measureRenderedWidth: async () => 2 }))
   expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
   expect(result.assertions).toMatchObject([{ kind: "positive", expected: "2", observed: "2" }])
-  expect((await probe.term(app())).observation).toMatchObject({ outcome: "inconclusive", reason: "no-response" })
+  const missing = await probe.term(app())
+  expect(missing.observation).toBeUndefined()
+  expect(missing.tests).toEqual([{ id: "criterion", status: "test-failure", reason: "Cannot measure width" }])
 
   const sample = "👨‍👩‍👧"
   const blank = headless().getCell(0, 0)
@@ -559,9 +572,9 @@ test("text.wrap qualifies DECAWM then writes control then target before grading"
   expect(writes).toEqual(["\x1b[1;1H", "\x1b[1;1H\x1b[2K", "W".repeat(60), "\x1b[1;1H\x1b[2K", "W".repeat(61) + "X"])
   const narrowWrites: string[] = []
   const result = await byId("text.wrap").term(app({ cols: 61, rows: 1, write: (s) => narrowWrites.push(s) }))
+  expect(result.observation).toBeUndefined()
   expect(result).toMatchObject({
-    observation: undefined,
-    tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
+    tests: [expect.objectContaining({ status: "test-todo", reason: "Wrap fixture needs at least 2x2, measured 1x61" })],
   })
   expect(narrowWrites).toEqual([])
 })
@@ -597,20 +610,14 @@ test("text.wrap negative controls: unqualified control, spoofing, wrong target, 
   const missingHome = await byId("text.wrap").term(
     app({ cols: 61, queryMode: async () => "set", queryCursorPosition: cursorQueue(null) }),
   )
-  expect(missingHome.observation).toMatchObject({
-    outcome: "inconclusive",
-    reason: "no-response",
-    assertionType: "query_reply",
-  })
+  expect(missingHome.observation).toBeUndefined()
+  expect(missingHome.tests).toEqual([{ id: "criterion", status: "test-failure", reason: "no-response" }])
 
   const missingControl = await byId("text.wrap").term(
     app({ cols: 61, queryMode: async () => "set", queryCursorPosition: cursorQueue({ row: 1, col: 1 }, null) }),
   )
-  expect(missingControl.observation).toMatchObject({
-    outcome: "inconclusive",
-    reason: "no-response",
-    assertionType: "query_reply",
-  })
+  expect(missingControl.observation).toBeUndefined()
+  expect(missingControl.tests).toEqual([{ id: "criterion", status: "test-failure", reason: "no-response" }])
 
   const missingTarget = await byId("text.wrap").term(
     app({
@@ -619,11 +626,8 @@ test("text.wrap negative controls: unqualified control, spoofing, wrong target, 
       queryCursorPosition: cursorQueue({ row: 1, col: 1 }, { row: 1, col: 61 }),
     }),
   )
-  expect(missingTarget.observation).toMatchObject({
-    outcome: "inconclusive",
-    reason: "no-response",
-    assertionType: "query_reply",
-  })
+  expect(missingTarget.observation).toBeUndefined()
+  expect(missingTarget.tests).toEqual([{ id: "criterion", status: "test-failure", reason: "no-response" }])
 
   for (const [mode, reason] of [
     ["reset", "insufficient-evidence"],
@@ -641,11 +645,15 @@ test("text.wrap negative controls: unqualified control, spoofing, wrong target, 
         },
       }),
     )
-    expect(result.observation, String(mode)).toMatchObject({
-      outcome: "inconclusive",
-      reason,
-      assertionType: "query_reply",
-    })
+    if (mode === null) {
+      expect(result.observation).toBeUndefined()
+      expect(result.tests).toEqual([{ id: "criterion", status: "test-failure", reason: "DECAWM setup did not reply" }])
+    } else
+      expect(result.observation, String(mode)).toMatchObject({
+        outcome: "inconclusive",
+        reason,
+        assertionType: "query_reply",
+      })
     expect(writes, String(mode)).toEqual([])
   }
 })
@@ -695,11 +703,8 @@ test("text.tab and text.hts grade the combined HT/HTS fixture from qualified seq
     })
 
     const missing = await byId(id).term(app({ cols: 80, queryCursorPosition: cursorQueue(null) }))
-    expect(missing.observation, id).toMatchObject({
-      outcome: "inconclusive",
-      reason: "no-response",
-      assertionType: "query_reply",
-    })
+    expect(missing.observation, id).toBeUndefined()
+    expect(missing.tests, id).toEqual([{ id: "criterion", status: "test-failure", reason: "no-response" }])
   }
 })
 
@@ -717,9 +722,14 @@ test("tab combined fixture declines too-small geometry before any write or query
           },
         }),
       )
+      expect(result.observation, `${id} cols=${cols}`).toBeUndefined()
       expect(result, `${id} cols=${cols}`).toMatchObject({
-        observation: undefined,
-        tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
+        tests: [
+          expect.objectContaining({
+            status: "test-todo",
+            reason: `Text fixture needs at least 1x9; measured 24x${cols}`,
+          }),
+        ],
       })
       expect(writes, `${id} cols=${cols}`).toEqual([])
     }
@@ -735,51 +745,57 @@ test("HTS restores stops only inside the measured 61-column fixture", async () =
   expect(writes.at(-1)).not.toContain("\x1b[1;65H\x1bH")
   const small: string[] = []
   const result = await byId("text.hts").term(app({ cols: 5, write: (s) => small.push(s) }))
+  expect(result.observation).toBeUndefined()
   expect(result).toMatchObject({
-    observation: undefined,
-    tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
+    tests: [expect.objectContaining({ status: "test-todo", reason: "Text fixture needs at least 1x9; measured 24x5" })],
   })
   expect(small).toEqual([])
 })
 
 test("tab and Unicode size refusals record no feature measurement or writes", async () => {
-  for (const id of [
-    "text.tbc",
-    "text.cht",
-    "text.cbt",
-    "unicode.tab-stops",
-    "unicode.wrap-boundary",
-    "unicode.east-asian-ambiguous",
-    "unicode.grapheme-cursor",
-  ]) {
+  for (const [id, reason] of [
+    ["text.tbc", "Tab fixture needs at least 34 columns"],
+    ["text.cht", "Tab fixture needs at least 21 columns"],
+    ["text.cbt", "Tab fixture needs at least 21 columns"],
+    ["unicode.tab-stops", "Fixture needs at least 10 columns"],
+    ["unicode.wrap-boundary", "Wide-wrap fixture needs at least 2x2, measured 1x1"],
+    ["unicode.east-asian-ambiguous", "Fixture needs at least 3 columns"],
+    ["unicode.grapheme-cursor", "Fixture needs at least 3 columns"],
+  ] as const) {
     const writes: string[] = []
     const result = await byId(id).term(app({ cols: 1, rows: 1, write: (sequence) => writes.push(sequence) }))
+    expect(result.observation, id).toBeUndefined()
     expect(result, id).toMatchObject({
-      observation: undefined,
-      tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
+      tests: [expect.objectContaining({ status: "test-todo", reason })],
     })
     expect(writes, id).toEqual([])
   }
 })
 
 test("remaining text fixtures decline a 1x1 grid before any write or width query", async () => {
-  for (const id of [
-    "text.basic",
-    "text.newline",
-    "text.tab",
-    "text.wide.emoji",
-    "text.wide.cjk",
-    "text.overwrite",
-    "text.cr",
-    "text.backspace",
-    "text.index",
-    "text.next-line",
-    "text.reverse-index-scroll",
-    "text.combining",
-    "text.wide.emoji-flags",
-    "text.wide.emoji-vs16",
-    "text.wide.emoji-zwj",
-  ]) {
+  for (const [id, reason] of [
+    ["text.basic", "Text fixture needs at least 1x6; measured 1x1"],
+    ["text.newline", "Text fixture needs at least 4x5; measured 1x1"],
+    ["text.tab", "Text fixture needs at least 1x9; measured 1x1"],
+    ["text.wide.emoji", "Text fixture needs at least 1x3; measured 1x1"],
+    ["text.wide.cjk", "Text fixture needs at least 1x3; measured 1x1"],
+    [
+      "text.overwrite",
+      "text.overwrite: no owned capture adapter is installed in this run, so the region fixture cannot be read back",
+    ],
+    ["text.cr", "Text fixture needs at least 1x3; measured 1x1"],
+    ["text.backspace", "Text fixture needs at least 1x5; measured 1x1"],
+    ["text.index", "Text fixture needs at least 4x5; measured 1x1"],
+    ["text.next-line", "Text fixture needs at least 4x5; measured 1x1"],
+    [
+      "text.reverse-index-scroll",
+      "text.reverse-index-scroll: no owned capture adapter is installed in this run, so the region fixture cannot be read back",
+    ],
+    ["text.combining", "Text fixture needs at least 1x3; measured 1x1"],
+    ["text.wide.emoji-flags", "Text fixture needs at least 1x4; measured 1x1"],
+    ["text.wide.emoji-vs16", "Text fixture needs at least 1x3; measured 1x1"],
+    ["text.wide.emoji-zwj", "Text fixture needs at least 1x4; measured 1x1"],
+  ] as const) {
     const definition = textProbes.find((probe) => probe.id === id)
     if (!definition?.term) throw new Error(`Missing app callback ${id}`)
     const writes: string[] = []
@@ -797,9 +813,9 @@ test("remaining text fixtures decline a 1x1 grid before any write or width query
         },
       }),
     )
+    expect(result.observation, id).toBeUndefined()
     expect(result, id).toMatchObject({
-      observation: undefined,
-      tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
+      tests: [expect.objectContaining({ status: "test-todo", reason })],
     })
     expect(writes, id).toEqual([])
   }
@@ -843,7 +859,8 @@ test("headless wrap uses initialized 61 columns and declines a one-row grid", ()
       feed: (s) => tooShort.push(s),
     }),
   )
-  expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+  expect(result.observation).toBeUndefined()
+  expect(result.tests).toEqual([{ id: "criterion", status: "test-todo", reason: "insufficient-evidence" }])
   expect(tooShort).toEqual([])
   const unicodeTooShort: string[] = []
   const unicodeShortResult = byId("unicode.wrap-boundary").lib(
@@ -853,10 +870,10 @@ test("headless wrap uses initialized 61 columns and declines a one-row grid", ()
       feed: (s) => unicodeTooShort.push(s),
     }),
   )
-  expect(unicodeShortResult).toMatchObject({
-    observation: undefined,
-    tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
-  })
+  expect(unicodeShortResult.observation).toBeUndefined()
+  expect(unicodeShortResult.tests).toEqual([
+    { id: "criterion", status: "test-todo", reason: "Need at least two columns and two screen rows" },
+  ])
   expect(unicodeTooShort).toEqual([])
 })
 
@@ -962,9 +979,19 @@ test("invalid headless geometry never feeds wrap or tab fixtures", () => {
     for (const cols of [Number.NaN, Number.POSITIVE_INFINITY, 61.5]) {
       const feeds: string[] = []
       const result = byId(id).lib(headless({ cols, feed: (sequence) => feeds.push(sequence) }))
+      expect(result.observation, `${id} cols=${cols}`).toBeUndefined()
       expect(result, `${id} cols=${cols}`).toMatchObject({
-        observation: undefined,
-        tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
+        tests: [
+          expect.objectContaining({
+            status: "test-todo",
+            reason:
+              id === "unicode.wrap-boundary"
+                ? "Need at least two columns and two screen rows"
+                : id === "unicode.tab-stops"
+                  ? "Need at least ten measured columns"
+                  : "insufficient-evidence",
+          }),
+        ],
       })
       expect(feeds).toEqual([])
     }
@@ -1121,9 +1148,14 @@ test("headless emoji width refuses narrow geometry before any write", () => {
   ] as const) {
     const feeds: string[] = []
     const result = byId(id).lib(headless({ cols, feed: (sequence) => feeds.push(sequence) }))
+    expect(result.observation, id).toBeUndefined()
     expect(result, id).toMatchObject({
-      observation: undefined,
-      tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
+      tests: [
+        expect.objectContaining({
+          status: "test-todo",
+          reason: `Emoji width fixture needs at least ${cols + 1} columns to place the sample and sentinel without wrapping; measured ${cols}`,
+        }),
+      ],
     })
     expect(feeds, id).toEqual([])
   }

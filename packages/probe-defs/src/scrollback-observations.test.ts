@@ -176,8 +176,8 @@ test("cursor replies do not qualify app scrollback contents or region behavior",
     const result = await definition.term(silentAppContext(12, 61).context)
     expect(result.observation, id).toMatchObject({
       outcome: "inconclusive",
-      reason: "insufficient-evidence",
       assertionType: "query_reply",
+      reason: "insufficient-evidence",
     })
     expect(result.assertions ?? [], id).toEqual([])
     expect(result.response, id).toBeTruthy()
@@ -205,11 +205,16 @@ test("cursor replies do not qualify app scrollback contents or region behavior",
         return { row: 5, col: 5 }
       },
     })
+    expect(result.observation, id).toBeUndefined()
     expect(result, id).toMatchObject({
-      observation: undefined,
-      tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
+      tests: [
+        expect.objectContaining({
+          status: "test-todo",
+          reason: `${id}: no owned capture adapter is installed in this run, so the region fixture cannot be read back`,
+        }),
+      ],
     })
-    expect(String(result.observation?.note), id).toContain("no owned capture adapter")
+    expect(String(result.tests?.[0]?.reason), id).toContain("no owned capture adapter")
     expect(result.assertions ?? [], id).toEqual([])
     expect(queried, id).toBe(false)
     expect(writes, id).toEqual([])
@@ -228,9 +233,16 @@ test("DECSTBM reset declines a grid below its measured minimum before writing", 
   ]) {
     const app = captureApp(geometry.rows, geometry.cols)
     const result = await probe.term(app.context)
+    expect(result.observation, `${geometry.rows}x${geometry.cols}`).toBeUndefined()
     expect(result, `${geometry.rows}x${geometry.cols}`).toMatchObject({
-      observation: undefined,
-      tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
+      tests: [
+        expect.objectContaining({
+          status: "test-todo",
+          reason: expect.stringMatching(
+            /(?:capture-region readback needs a measured grid of at least|Scrollback fixture needs at least)/,
+          ),
+        }),
+      ],
     })
     expect(app.writes, `${geometry.rows}x${geometry.cols}`).toEqual([])
   }
@@ -238,12 +250,11 @@ test("DECSTBM reset declines a grid below its measured minimum before writing", 
   // reaches the pixel report instead of a geometry refusal.
   const tall = captureApp(1200, 61)
   const tallResult = await probe.term(tall.context)
-  expect(tallResult.observation).toMatchObject({
-    outcome: "inconclusive",
-    reason: "insufficient-evidence",
-    assertionType: "query_reply",
-  })
-  expect(String(tallResult.observation?.note), "1200 rows").toContain("cell size in pixels")
+  expect(tallResult.observation).toBeUndefined()
+  expect(tallResult.tests).toMatchObject([
+    { id: "criterion", status: "test-failure", reason: expect.stringContaining("cell size in pixels") },
+  ])
+  expect(String(tallResult.tests?.[0]?.reason), "1200 rows").toContain("cell size in pixels")
   expect(tall.writes, "1200 rows").toEqual([])
 })
 
@@ -264,6 +275,9 @@ test("remaining scrollback fixtures decline too-small geometry before writing", 
       kind: "live",
       rows: 1,
       cols: 1,
+      capture: async () => {
+        throw new Error(`${id} captured before size guard`)
+      },
       write: (sequence) => writes.push(sequence),
       queryCursorPosition: async () => {
         throw new Error(`${id} queried before size guard`)
@@ -277,9 +291,16 @@ test("remaining scrollback fixtures decline too-small geometry before writing", 
     }
     expect(probe.termNeedsGeometry, id).toBe(true)
     const result = await probe.term(context)
+    expect(result.observation, id).toBeUndefined()
     expect(result, id).toMatchObject({
-      observation: undefined,
-      tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
+      tests: [
+        expect.objectContaining({
+          status: "test-todo",
+          reason: expect.stringMatching(
+            /(?:capture-region readback needs a measured grid of at least|Scrollback fixture needs at least)/,
+          ),
+        }),
+      ],
     })
     expect(writes, id).toEqual([])
   }
@@ -376,9 +397,9 @@ test("invalid headless rows and narrow DECSTBM geometry refuse before writes", a
           getScrollback: () => ({ viewportOffset: 0, totalLines: 0, screenLines }),
         }),
       )
+      expect(result.observation, `${id} rows=${screenLines}`).toBeUndefined()
       expect(result, `${id} rows=${screenLines}`).toMatchObject({
-        observation: undefined,
-        tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
+        tests: [expect.objectContaining({ status: "test-todo", reason: "insufficient-evidence" })],
       })
       expect(feeds).toEqual([])
     }
@@ -403,10 +424,20 @@ test("invalid headless rows and narrow DECSTBM geometry refuse before writes", a
   const decstbm = scrollbackProbes.find((item) => item.id === "scrollback.decstbm")
   if (!decstbm?.term) throw new Error("Missing scrollback.decstbm app callback")
   const { context, writes } = silentAppContext(12, 1)
-  const result = await decstbm.term(context)
+  const result = await decstbm.term({
+    ...context,
+    capture: async () => {
+      throw new Error("DECSTBM captured before size guard")
+    },
+  })
+  expect(result.observation).toBeUndefined()
   expect(result).toMatchObject({
-    observation: undefined,
-    tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
+    tests: [
+      expect.objectContaining({
+        status: "test-todo",
+        reason: "scrollback.decstbm: capture-region readback needs a measured grid of at least 8x3; measured 12x1",
+      }),
+    ],
   })
   expect(writes).toEqual([])
 })
@@ -545,9 +576,17 @@ const findScrollback = (id: string) => {
 test("scrollback capture fixtures record control and target frames with honest, bounded claims", async () => {
   const accumulate = findScrollback("scrollback.accumulate")
   const small = captureApp(2, 61)
-  expect(await accumulate.term!(small.context)).toMatchObject({
-    observation: undefined,
-    tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
+  const tooSmall = await accumulate.term!(small.context)
+  expect(tooSmall.observation).toBeUndefined()
+  expect(tooSmall).toMatchObject({
+    tests: [
+      expect.objectContaining({
+        status: "test-todo",
+        reason: expect.stringMatching(
+          /(?:capture-region readback needs a measured grid of at least|Scrollback fixture needs at least)/,
+        ),
+      }),
+    ],
   })
   expect(small.writes).toEqual([])
   const accumulated = captureApp(3, 61)
@@ -568,12 +607,11 @@ test("scrollback capture fixtures record control and target frames with honest, 
   // alt-screen now judges through the region-readback oracle, so a surface that cannot report its own
   // pixels takes the oracle's named geometry refusal instead of ungraded control/target frames.
   const altResult = await alt.term!(alts.context)
-  expect(altResult.observation).toMatchObject({
-    outcome: "inconclusive",
-    reason: "insufficient-evidence",
-    assertionType: "query_reply",
-  })
-  expect(String(altResult.observation?.note)).toContain("cell size in pixels")
+  expect(altResult.observation).toBeUndefined()
+  expect(altResult.tests).toMatchObject([
+    { id: "criterion", status: "test-failure", reason: expect.stringContaining("cell size in pixels") },
+  ])
+  expect(String(altResult.tests?.[0]?.reason)).toContain("cell size in pixels")
   expect(alts.frames).toEqual([])
 
   const decstbm = findScrollback("scrollback.decstbm")
@@ -581,12 +619,11 @@ test("scrollback capture fixtures record control and target frames with honest, 
   // decstbm now judges through the region-readback oracle, so a surface that cannot report its own
   // pixels takes the oracle's named geometry refusal instead of ungraded control/target frames.
   const decstbmResult = await decstbm.term!(decstbms.context)
-  expect(decstbmResult.observation).toMatchObject({
-    outcome: "inconclusive",
-    reason: "insufficient-evidence",
-    assertionType: "query_reply",
-  })
-  expect(String(decstbmResult.observation?.note)).toContain("cell size in pixels")
+  expect(decstbmResult.observation).toBeUndefined()
+  expect(decstbmResult.tests).toMatchObject([
+    { id: "criterion", status: "test-failure", reason: expect.stringContaining("cell size in pixels") },
+  ])
+  expect(String(decstbmResult.tests?.[0]?.reason)).toContain("cell size in pixels")
   expect(decstbms.frames).toEqual([])
 
   const reset = findScrollback("scrollback.decstbm-reset")
@@ -594,21 +631,27 @@ test("scrollback capture fixtures record control and target frames with honest, 
   // 7-row grid cannot carry the row-2 witness on row 6 and the run refuses BY NAME before a byte.
   const short = captureApp(7, 61)
   const shortResult = await reset.term!(short.context)
+  expect(shortResult.observation).toBeUndefined()
   expect(shortResult).toMatchObject({
-    observation: undefined,
-    tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
+    tests: [
+      expect.objectContaining({
+        status: "test-todo",
+        reason: expect.stringMatching(
+          /(?:capture-region readback needs a measured grid of at least|Scrollback fixture needs at least)/,
+        ),
+      }),
+    ],
   })
-  expect(String(shortResult.observation?.note)).toContain("at least 8x3")
+  expect(String(shortResult.tests?.[0]?.reason)).toContain("at least 8x3")
   expect(short.writes).toEqual([])
   const resets = captureApp(12, 61)
   // decstbm-reset likewise judges through the region-readback oracle now.
   const resetResult = await reset.term!(resets.context)
-  expect(resetResult.observation).toMatchObject({
-    outcome: "inconclusive",
-    reason: "insufficient-evidence",
-    assertionType: "query_reply",
-  })
-  expect(String(resetResult.observation?.note)).toContain("cell size in pixels")
+  expect(resetResult.observation).toBeUndefined()
+  expect(resetResult.tests).toMatchObject([
+    { id: "criterion", status: "test-failure", reason: expect.stringContaining("cell size in pixels") },
+  ])
+  expect(String(resetResult.tests?.[0]?.reason)).toContain("cell size in pixels")
   expect(resets.frames).toEqual([])
 
   const setRegion = findScrollback("scrollback.set-region")
@@ -616,11 +659,18 @@ test("scrollback capture fixtures record control and target frames with honest, 
   // the family's two-column margin), so a 1-column grid is refused before a byte.
   const setSmall = captureApp(12, 1)
   const setSmallResult = await setRegion.term!(setSmall.context)
+  expect(setSmallResult.observation).toBeUndefined()
   expect(setSmallResult).toMatchObject({
-    observation: undefined,
-    tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
+    tests: [
+      expect.objectContaining({
+        status: "test-todo",
+        reason: expect.stringMatching(
+          /(?:capture-region readback needs a measured grid of at least|Scrollback fixture needs at least)/,
+        ),
+      }),
+    ],
   })
-  expect(String(setSmallResult.observation?.note)).toContain("at least 12x3")
+  expect(String(setSmallResult.tests?.[0]?.reason)).toContain("at least 12x3")
   expect(setSmall.writes).toEqual([])
 })
 

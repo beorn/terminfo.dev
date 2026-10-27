@@ -585,22 +585,22 @@ test("the rgb-underline rows refuse a terminal below 1x2 before any byte", async
   for (const id of ["sgr.underline.color", "sgr.underline-color-rgb"] as const) {
     const captured = colourTerminal("render", PALETTES[0] as Palette, { rows: 1, cols: 1 })
     const onCapture = await run(id, captured.ctx)
+    expect(onCapture.observation).toBeUndefined()
     expect(onCapture).toMatchObject({
-      observation: undefined,
-      tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
+      tests: [expect.objectContaining({ status: "test-todo", reason: "SGR fixture needs at least 1x2, measured 1x1" })],
     })
     // The generic 1x2 floor is checked first on both arms, exactly as it was before these rows moved
     // onto the capture row; the 3x34 capture guard is the stricter floor behind it.
-    expect(onCapture.observation?.note ?? "").toContain("SGR fixture needs at least 1x2, measured 1x1")
+    expect(onCapture.tests?.[0]?.reason ?? "").toContain("SGR fixture needs at least 1x2, measured 1x1")
     expect(captured.writes).toEqual([])
 
     const plain = colourTerminal("render", PALETTES[0] as Palette, { rows: 1, cols: 1 })
     const onTerm = await run(id, { ...plain.ctx, capture: undefined, captureKind: undefined })
+    expect(onTerm.observation).toBeUndefined()
     expect(onTerm).toMatchObject({
-      observation: undefined,
-      tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
+      tests: [expect.objectContaining({ status: "test-todo", reason: "SGR fixture needs at least 1x2, measured 1x1" })],
     })
-    expect(onTerm.observation?.note ?? "").toContain("SGR fixture needs at least 1x2, measured 1x1")
+    expect(onTerm.tests?.[0]?.reason ?? "").toContain("SGR fixture needs at least 1x2, measured 1x1")
     expect(plain.writes).toEqual([])
   }
 })
@@ -695,8 +695,27 @@ for (const id of REVIEW_IDS) {
   test(`${id} stays inconclusive by name, never graded from colour pixels`, async () => {
     const { ctx } = colourTerminal("render", PALETTES[0] as Palette)
     const result = await run(id, ctx)
-    expect(result.observation?.outcome).toBe("inconclusive")
-    expect(result.observation?.note ?? "").toMatch(/review|blink|reference/i)
+    if (id === "sgr.blink") {
+      expect(result.observation).toMatchObject({
+        outcome: "inconclusive",
+        assertionType: "screenshot",
+        reason: "insufficient-evidence",
+        note: "Control and target pixels captured; visual interpretation requires review",
+      })
+      expect(result.observation?.frames).toHaveLength(2)
+      expect(result.assertions).toMatchObject([
+        { kind: "positive", assertionType: "screenshot", observed: expect.any(String) },
+      ])
+    } else {
+      expect(result.observation).toBeUndefined()
+      expect(result.tests).toMatchObject([
+        {
+          id: "criterion",
+          status: "test-failure",
+          reason: expect.stringContaining("no independent reference exists for a multi-attribute reset"),
+        },
+      ])
+    }
     expect(result.pass).toBe(false)
   })
 }

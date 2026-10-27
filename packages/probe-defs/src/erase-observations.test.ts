@@ -370,11 +370,16 @@ test("every converted row refuses by name and writes nothing without an owned ca
     ] as const) {
       const events: string[] = []
       const result = await definition.term(appWithEvents(rows, cols, events))
+      expect(result.observation, `${row.id} at ${rows}x${cols}`).toBeUndefined()
       expect(result, `${row.id} at ${rows}x${cols}`).toMatchObject({
-        observation: undefined,
-        tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
+        tests: [
+          expect.objectContaining({
+            status: "test-todo",
+            reason: `${row.id}: no owned capture adapter is installed in this run, so the region fixture cannot be read back`,
+          }),
+        ],
       })
-      expect(String(result.observation?.note), `${row.id} at ${rows}x${cols}`).toContain("no owned capture adapter")
+      expect(String(result.tests?.[0]?.reason), `${row.id} at ${rows}x${cols}`).toContain("no owned capture adapter")
       expect(events, `${row.id} at ${rows}x${cols}`).toEqual([])
     }
   }
@@ -394,12 +399,11 @@ test("every converted row refuses by name when the terminal answers no pixel geo
         ref: `sha256:${"1".repeat(64)}`,
       }),
     })
-    expect(result.observation, row.id).toMatchObject({
-      outcome: "inconclusive",
-      reason: "insufficient-evidence",
-      assertionType: "query_reply",
-    })
-    expect(String(result.observation?.note), row.id).toContain("CSI 16 t")
+    expect(result.observation, row.id).toBeUndefined()
+    expect(result.tests, row.id).toMatchObject([
+      { id: "criterion", status: "test-failure", reason: expect.stringContaining("cell size in pixels") },
+    ])
+    expect(String(result.tests?.[0]?.reason), row.id).toContain("CSI 16 t")
     expect(result.observation?.outcome, row.id).not.toBe("supported")
     expect(events, row.id).toEqual([])
   }

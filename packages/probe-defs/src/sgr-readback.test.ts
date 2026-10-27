@@ -326,7 +326,11 @@ test.each(["baseline", "setup", "final"] as const)(
       }
       const result = await sgrTerm("sgr.selective-reset.bold")(ctx)
       expect(result.pass, kind).toBe(false)
-      expect(result.observation?.outcome, kind).toBe("inconclusive")
+      expect(result.observation, kind).toBeUndefined()
+      expect(result.tests, kind).toEqual([
+        { id: "criterion", status: "test-failure", reason: "Cursor did not reach the expected position" },
+      ])
+      expect(result.response, kind).toBe("1;2")
       expect(result.assertions ?? [], kind).toHaveLength(0)
       expect(queries, kind).toBe(stage + 1)
       expect(writes.at(-1), kind).toBe("\x1b[0m")

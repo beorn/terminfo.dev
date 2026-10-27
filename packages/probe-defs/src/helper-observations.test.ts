@@ -94,9 +94,14 @@ test("app reset observations require a measured effect and leave unmeasurable re
   const sgr = await find("reset.sgr")(
     terminal({ rows: 24, cols: 80, queryCursorPosition: async () => ({ row: 1, col: 2 }) }),
   )
+  expect(sgr.observation).toBeUndefined()
   expect(sgr).toMatchObject({
-    observation: undefined,
-    tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
+    tests: [
+      expect.objectContaining({
+        status: "test-todo",
+        reason: "Cursor advance does not measure SGR styling after reset",
+      }),
+    ],
   })
   expect(sgr.assertions ?? []).toEqual([])
 
@@ -156,9 +161,14 @@ test("app reset observations require a measured effect and leave unmeasurable re
 
   const methodWrites: string[] = []
   const method = await find("reset.method")(terminal({ write: (sequence) => methodWrites.push(sequence) }))
+  expect(method.observation).toBeUndefined()
   expect(method).toMatchObject({
-    observation: undefined,
-    tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
+    tests: [
+      expect.objectContaining({
+        status: "test-todo",
+        reason: "The app context has no reset() method or equivalent state readback",
+      }),
+    ],
   })
   expect(methodWrites).toEqual([])
 })
@@ -206,14 +216,15 @@ test("SGR consumption stays inconclusive while headless cell state supports an a
 
   const consumed = await probe.term(terminal({ queryCursorPosition: async () => ({ row: 1, col: 2 }) }))
   expect(consumed.pass).toBe(true)
+  expect(consumed.observation).toBeUndefined()
   expect(consumed).toMatchObject({
-    observation: undefined,
-    tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
+    tests: [expect.objectContaining({ status: "test-todo", reason: "Cursor advance does not verify SGR styling" })],
   })
   expect(consumed.assertions).toBeUndefined()
 
   const silent = await probe.term(terminal())
-  expect(silent.observation).toMatchObject({ outcome: "inconclusive", reason: "no-response" })
+  expect(silent.observation).toBeUndefined()
+  expect(silent.tests).toEqual([{ id: "criterion", status: "test-failure", reason: "No cursor response" }])
 
   const supported = probe.lib(headless({ getCell: () => ({ ...baseCell, bold: true }) }))
   expect(supported.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
@@ -258,9 +269,14 @@ test("SGR app fixtures refuse undersized grids before writes and retain valid br
         }),
       }),
     )
+    expect(result.observation, `${geometry.rows}x${geometry.cols}`).toBeUndefined()
     expect(result, `${geometry.rows}x${geometry.cols}`).toMatchObject({
-      observation: undefined,
-      tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
+      tests: [
+        expect.objectContaining({
+          status: "test-todo",
+          reason: `SGR fixture needs at least ${geometry.capture ? "3x34" : "1x2"}, measured ${geometry.rows}x${geometry.cols}`,
+        }),
+      ],
     })
     expect(result.response).toBeUndefined()
     expect(result.assertions).toBeUndefined()
@@ -279,9 +295,9 @@ test("SGR app fixtures refuse undersized grids before writes and retain valid br
       queryCursorPosition: async () => ({ row: 1, col: 2 }),
     }),
   )
+  expect(plain.observation).toBeUndefined()
   expect(plain).toMatchObject({
-    observation: undefined,
-    tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
+    tests: [expect.objectContaining({ status: "test-todo", reason: "Cursor advance does not verify SGR styling" })],
   })
   expect(plainWrites.length).toBeGreaterThan(0)
 
@@ -312,11 +328,12 @@ test("SGR app fixtures refuse undersized grids before writes and retain valid br
   expect(captured.criterionBranch).toBe("visual-review")
   expect(captured.tests).toEqual([
     { id: "capture", status: "supported", assertionRefs: [0] },
-    { id: "review", status: "test-todo", reason: expect.any(String) },
+    { id: "review", status: "test-todo", reason: "Valid control and target capture; required visual review pending" },
   ])
   expect(captured.assertions).toEqual([
     {
       kind: "positive",
+      assertionType: "screenshot",
       expected: expect.any(String),
       observed: JSON.stringify({
         control: captured.observation?.frames?.[0],
@@ -359,9 +376,11 @@ test("SGR reset capture fixtures share the 3x34 guard and need a fourth row for 
         },
       }),
     )
+    expect(small.observation, id).toBeUndefined()
     expect(small, id).toMatchObject({
-      observation: undefined,
-      tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
+      tests: [
+        expect.objectContaining({ status: "test-todo", reason: "SGR fixture needs at least 3x34, measured 2x33" }),
+      ],
     })
     expect(smallWrites, id).toEqual([])
     expect(smallCaptures, id).toBe(0)
@@ -382,7 +401,14 @@ test("SGR reset capture fixtures share the 3x34 guard and need a fourth row for 
     // A 3-row grid passes the SGR guard but cannot map the 4-row region fixture. The trace is not
     // empty (the silent DECRQSS baseline wrote neutralization and queried), so the evidence is "query"
     // and no capture is ever requested.
-    expect(ok.observation, id).toMatchObject({ outcome: "inconclusive", assertionType: "query_reply" })
+    expect(ok.observation, id).toBeUndefined()
+    expect(ok.tests, id).toMatchObject([
+      {
+        id: "criterion",
+        status: "test-failure",
+        reason: expect.stringContaining("the caller wrote before this refusal"),
+      },
+    ])
     expect(ok.assertions, id).toBeUndefined()
     expect(roles, id).toEqual([])
     expect(ok.observation?.frames, id).toBeUndefined()
@@ -461,9 +487,9 @@ test("underline color needs an observed color, not only an underline or a consum
     expect(colored.assertions, id).toMatchObject([{ kind: "positive", observed: colored.response }])
 
     const consumed = await probe.term(terminal({ queryCursorPosition: async () => ({ row: 1, col: 2 }) }))
+    expect(consumed.observation, id).toBeUndefined()
     expect(consumed, id).toMatchObject({
-      observation: undefined,
-      tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
+      tests: [expect.objectContaining({ status: "test-todo", reason: "Cursor advance does not verify SGR styling" })],
     })
     expect(consumed.assertions, id).toBeUndefined()
   }
@@ -521,9 +547,9 @@ test("indexed underline color follows two distinct measured palette controls", a
   expect(indistinguishable.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
 
   const consumed = await probe.term(terminal({ queryCursorPosition: async () => ({ row: 1, col: 2 }) }))
+  expect(consumed.observation).toBeUndefined()
   expect(consumed).toMatchObject({
-    observation: undefined,
-    tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
+    tests: [expect.objectContaining({ status: "test-todo", reason: "Cursor advance does not verify SGR styling" })],
   })
 })
 
@@ -938,11 +964,22 @@ test("all ten SGR color TTY replies remain inconclusive and restore style", asyn
       const answered = await probe.term(
         terminal({ write: (text) => writes.push(text), queryCursorPosition: async () => ({ row: 1, col: 2 }) }),
       )
-      expect(answered.observation, id).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+      expect(answered.observation, id).toBeUndefined()
+      expect(answered.tests, id).toMatchObject([
+        {
+          id: "criterion",
+          status: family === "default" ? "test-failure" : "test-todo",
+          reason:
+            family === "default"
+              ? "Cursor advance does not verify the reset rendered"
+              : "Cursor advance does not verify SGR styling",
+        },
+      ])
       expect(answered.assertions, id).toBeUndefined()
       expect(writes.at(-1), id).toBe("\x1b[0m")
       const silent = await probe.term(terminal())
-      expect(silent.observation, id).toMatchObject({ outcome: "inconclusive", reason: "no-response" })
+      expect(silent.observation, id).toBeUndefined()
+      expect(silent.tests, id).toEqual([{ id: "criterion", status: "test-failure", reason: "No cursor response" }])
     }
   }
   const color = sgrProbes.find((item) => item.id === "sgr.fg.standard")
@@ -978,14 +1015,18 @@ test("SGR reset cursor replies remain inconclusive and style cleanup runs on que
         queryCursorPosition: async () => ({ row: 1, col: 3 }),
       }),
     )
-    expect(result.observation, id).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+    expect(result.observation, id).toBeUndefined()
+    expect(result.tests, id).toEqual([
+      { id: "criterion", status: "test-todo", reason: "Cursor advance does not verify SGR reset" },
+    ])
     expect(result.assertions, id).toBeUndefined()
     expect(writes.at(-1), id).toBe("\x1b[0m")
   }
   const probe = sgrProbes.find((item) => item.id === "sgr.reset")
   if (!probe?.term) throw new Error("missing sgr.reset terminal callback")
   const silence = await probe.term(terminal())
-  expect(silence.observation).toMatchObject({ outcome: "inconclusive", reason: "no-response" })
+  expect(silence.observation).toBeUndefined()
+  expect(silence.tests).toEqual([{ id: "criterion", status: "test-failure", reason: "no-response" }])
   expect(silence.assertions).toBeUndefined()
   const writes: string[] = []
   await expect(
@@ -1019,7 +1060,12 @@ test("cursor movement binds measured positions and parser state, never a missing
   expect(terminalCursor.assertions).toMatchObject([
     { kind: "positive", expected: expect.any(String), observed: expect.any(String) },
   ])
-  expect((await cursor.term(terminal())).observation).toMatchObject({ outcome: "inconclusive", reason: "no-response" })
+  const missingCursor = await cursor.term(terminal())
+  expect(missingCursor.observation).toBeUndefined()
+  expect(missingCursor.tests).toEqual([
+    { id: "criterion", status: "test-failure", reason: "No cursor reply at origin" },
+  ])
+  expect(missingCursor.response).toBe(JSON.stringify({ origin: null, setup: null, final: null }))
 
   let headlessPosition = { x: 7, y: 8, visible: true, style: null }
   const parserCursor = cursor.lib(
@@ -1079,9 +1125,8 @@ test("DECRPM recognizes explicit set/reset/unknown without changing an existing 
   })
   expect(unknown.response).toBe("not recognized (Ps 0)")
   expect(unknown.assertions).toBeUndefined()
-  expect((await decrpm.term(makeContext(null))).observation).toMatchObject({
-    outcome: "inconclusive",
-    reason: "no-response",
-  })
+  const missing = await decrpm.term(makeContext(null))
+  expect(missing.observation).toBeUndefined()
+  expect(missing.tests).toEqual([{ id: "criterion", status: "test-failure", reason: "No DECRPM response" }])
   expect(written).toEqual([])
 })
