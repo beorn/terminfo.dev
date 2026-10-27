@@ -40,6 +40,119 @@ const modes = [
   { id: "modes.decsclm", number: 4 },
 ] as const
 
+// Q17: mode recognition cannot replace ordered width measurements with the ?40 policy gate open.
+test.each([
+  [80, false, "supported", false],
+  [132, false, "supported", false],
+  [80, true, "unsupported", false],
+  [80, false, "supported", true],
+] as const)(
+  "DECCOLM measures a roundtrip from %i columns (ignored=%s, outcome=%s, trailing sentinel=%s)",
+  (initial, ignored, outcome, trailingSentinel) => {
+    const definition = modesProbes.find((entry) => entry.id === "modes.deccolm")
+    if (!definition?.lib) throw new Error("Missing headless DECCOLM callback")
+    const writes: string[] = []
+    let width: number = initial
+    let allowed = false
+    const context = {
+      cols: initial,
+      feed(sequence: string) {
+        writes.push(sequence)
+        for (const match of sequence.matchAll(/\x1b\[\?(40|3)([hl])/g)) {
+          if (match[1] === "40") allowed = match[2] === "h"
+          else if (allowed && !ignored) width = match[2] === "h" ? 132 : 80
+        }
+      },
+      feedCapture(sequence: string) {
+        writes.push(sequence)
+        return sequence === "\x1b[18t" ? `\x1b[8;24;${width}t${trailingSentinel ? "\x1b[?1;2c" : ""}` : "\x1b[?3;1$y"
+      },
+      getText: () => "X",
+    } as unknown as LibProbeSource
+
+    const result = definition.lib(context)
+    expect(result.observation).toMatchObject({ outcome, assertionType: "query_reply" })
+    expect(result.notTested).toBeUndefined()
+    expect(result.assertions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          assertionType: "query_reply",
+          kind: outcome === "supported" ? "positive" : "negative",
+        }),
+      ]),
+    )
+    // Require retained geometry, without fixing the callback's JSON field names.
+    expect(result.response).toContain(String(initial))
+    if (!ignored) expect(result.response).toContain(String(initial === 80 ? 132 : 80))
+
+    const wire = writes.join("")
+    const change = initial === 80 ? "\x1b[?3h" : "\x1b[?3l"
+    const restore = initial === 80 ? "\x1b[?3l" : "\x1b[?3h"
+    const changeAt = wire.indexOf(change)
+    const restoreAt = wire.indexOf(restore, changeAt + change.length)
+    const policyAt = wire.indexOf("\x1b[?40h")
+    const queries = [...wire.matchAll(/\x1b\[18t/g)].map((match) => match.index)
+    expect(policyAt).toBeGreaterThanOrEqual(0)
+    expect(policyAt).toBeLessThan(changeAt)
+    expect(queries).toHaveLength(3)
+    expect(queries[0]).toBeLessThan(changeAt)
+    expect(wire.slice(0, queries[0])).not.toMatch(/\x1b\[\?3[hl]/)
+    expect(queries[1]).toBeGreaterThan(changeAt)
+    expect(queries[1]).toBeLessThan(restoreAt)
+    expect(queries[2]).toBeGreaterThan(restoreAt)
+    expect(width).toBe(initial)
+  },
+)
+
+test("DECCOLM names an unanswered initial 18t as missing observation before changing mode 3", () => {
+  const definition = modesProbes.find((entry) => entry.id === "modes.deccolm")
+  if (!definition?.lib) throw new Error("Missing headless DECCOLM callback")
+  const writes: string[] = []
+  const context = {
+    cols: 80,
+    feed: (sequence: string) => writes.push(sequence),
+    feedCapture(sequence: string) {
+      writes.push(sequence)
+      return ""
+    },
+    getText: () => "X",
+  } as unknown as LibProbeSource
+
+  const result = definition.lib(context)
+  expect(result.notTested).toMatchObject({
+    reason: "no-semantic-observable",
+    noObservable: expect.stringContaining("18t unanswered"),
+  })
+  expect(result.observation).toBeUndefined()
+  expect(result.assertions ?? []).toEqual([])
+  expect(writes.join("")).not.toMatch(/\x1b\[\?3[hl]/)
+})
+
+test.each([
+  ["malformed initial", ["\x1b[8;24;0t"]],
+  ["partial initial", ["\x1b[8;24;"]],
+  ["partial enabled", ["\x1b[8;24;80t", "\x1b[8;24;", "\x1b[8;24;80t"]],
+  ["missing enabled", ["\x1b[8;24;80t", "", "\x1b[8;24;80t"]],
+  ["missing restored", ["\x1b[8;24;80t", "\x1b[8;24;132t", ""]],
+] as const)("DECCOLM does not grade %s geometry as a conclusive transition", (_name, replies) => {
+  const definition = modesProbes.find((entry) => entry.id === "modes.deccolm")
+  if (!definition?.lib) throw new Error("Missing headless DECCOLM callback")
+  let query = 0
+  const context = {
+    cols: 80,
+    feed() {},
+    feedCapture(sequence: string) {
+      return sequence === "\x1b[18t" ? (replies[query++] ?? "") : "\x1b[?3;1$y"
+    },
+    getText: () => "X",
+  } as unknown as LibProbeSource
+
+  const result = definition.lib(context)
+  expect(result.observation?.outcome).not.toBe("supported")
+  expect(result.observation?.outcome).not.toBe("unsupported")
+  expect(result.assertions ?? []).toEqual([])
+})
+
 test.each(["bad-start", "ignored-move", "ignored-restore", "restored"] as const)(
   "1048 qualifies cursor setup before grading %s",
   (scenario) => {

@@ -77,21 +77,30 @@ test("null mode metadata classes A/B retain measured wrapping, unknown cleanup a
 })
 
 // The callback criterion can name the Ps while the collector must still keep the exact transport bytes.
-test("OSC 5522 retains its headless reply through the production batch recorder", async () => {
-  const id = "extensions.osc5522-clipboard"
-  const response = "\x1b[?5522;1$y"
-  const value = await backend()
-  const feed = value.feed.bind(value)
-  vi.spyOn(value, "feed").mockImplementation((bytes) => {
-    if (new TextDecoder().decode(bytes) === "\x1b[?5522$p") {
-      value.onResponse?.(new TextEncoder().encode(response))
-    } else feed(bytes)
-  })
-  const batch = await collectBatch(async () => value, "xtermjs", registryDefinitions([id]))
-  expect(batch.rawReplies[id]).toBe(response)
-  expect(batch.observations).toMatchObject([{ featureId: id, outcome: "supported", assertionType: "query_reply" }])
-  expect(batch.assertions).toMatchObject([{ featureId: id, observed: "set (Ps 1)" }])
-})
+test.each([0, 1, 4] as const)(
+  "OSC 5522 Ps %s retains detection and raw bytes through the production batch recorder",
+  async (ps) => {
+    const id = "extensions.osc5522-clipboard"
+    const response = `\x1b[?5522;${ps}$y\x1b[?1;2c`
+    const value = await backend()
+    const feed = value.feed.bind(value)
+    vi.spyOn(value, "feed").mockImplementation((bytes) => {
+      if (new TextDecoder().decode(bytes) === "\x1b[?5522$p") {
+        value.onResponse?.(new TextEncoder().encode(response))
+      } else feed(bytes)
+    })
+    const batch = await collectBatch(async () => value, "xtermjs", registryDefinitions([id]))
+    expect(batch.rawReplies[id]).toBe(response)
+    const supported = ps === 1
+    expect(batch.observations).toMatchObject([
+      { featureId: id, outcome: supported ? "supported" : "unsupported", assertionType: "query_reply" },
+    ])
+    expect(batch.assertions).toMatchObject([{ featureId: id, kind: supported ? "positive" : "negative" }])
+    expect(batch.results.find((result) => result.featureId === id)?.status).toBe(
+      supported ? "supported" : "unsupported",
+    )
+  },
+)
 
 // Missing-input callback tests never exercised the production recorder, so these
 // OS-window criteria stayed generic TODOs with no review a collector could retain.
