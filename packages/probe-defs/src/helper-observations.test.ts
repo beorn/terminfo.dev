@@ -215,17 +215,21 @@ test("source review retains the negative state and leaves omitted-argument resul
   const state = { char: "X", dim: false }
   const response = '{"char":"X","dim":false}'
   const expected = "faint attribute applied"
-  expect(parserStateResult(null, expected, state)).toEqual({
-    pass: false,
-    response,
-    observation: { outcome: "inconclusive", reason: "insufficient-evidence", assertionType: "buffer_state" },
-  })
-  expect(parserStateResult(false, expected, state)).toEqual({
-    pass: false,
-    response,
-    observation: { outcome: "unsupported", assertionType: "buffer_state" },
-    assertions: [{ assertionType: "buffer_state", kind: "negative", expected, observed: response }],
-  })
+  expect(JSON.stringify(parserStateResult(null, expected, state))).toBe(
+    JSON.stringify({
+      pass: false,
+      response,
+      observation: { outcome: "inconclusive", reason: "insufficient-evidence", assertionType: "buffer_state" },
+    }),
+  )
+  expect(JSON.stringify(parserStateResult(false, expected, state))).toBe(
+    JSON.stringify({
+      pass: false,
+      response,
+      observation: { outcome: "unsupported", assertionType: "buffer_state" },
+      assertions: [{ assertionType: "buffer_state", kind: "negative", expected, observed: response }],
+    }),
+  )
   const reason = "Cell readback cannot distinguish an absent style from an unreported attribute"
   for (const pass of [null, false]) {
     expect(parserStateResult(pass, expected, state, undefined, reason)).toEqual({
