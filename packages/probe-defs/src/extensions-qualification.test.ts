@@ -111,29 +111,47 @@ const directReplies = [
   ["extensions.osc1337-cellsize", "\x1b]1337;ReportCellSize=12;8\x07"],
   // 27915: iTerm2's newer height;width;scale form, as WezTerm 0-unstable-2026-09-17 sends it.
   ["extensions.osc1337-cellsize", "\x1b]1337;ReportCellSize=16.5;7.5;1.3\x1b\\"],
-  ["extensions.osc1337-capabilities", "\x1b]1337;Capabilities=alpha\x07"],
+  // Vendor request contracts: iTerm2 feature reporting uses Capabilities (not RequestCapabilities),
+  // and urxvt requests its version only when OSC 702's Pt is ?. These are independent wire expectations.
+  ["extensions.osc1337-capabilities", "\x1b]1337;Capabilities=alpha\x07", "\x1b]1337;Capabilities\x07"],
   ["extensions.osc7770-font-size", "\x1b]7770;14\x07"],
   ["extensions.osc7777-font-window-size", "\x1b]7777;14\x07"],
   ["extensions.osc701-locale", "\x1b]701;en_US.UTF-8\x07"],
-  ["extensions.osc702-version", "\x1b]702;rxvt-1\x07"],
+  ["extensions.osc702-version", "\x1b]702;rxvt-unicode;rxvt;9;31\x07", "\x1b]702;?\x07"],
   ["extensions.osc776-cell-size", "\x1b]776;8;16;2\x07"],
   ["extensions.sixel-da1", "\x1b[?1;4c"],
 ] as const
 
-test.each(directReplies)("%s only qualifies its complete, bound query frame", async (id, frame) => {
+test.each(directReplies)("%s requires a complete, bound reply", async (id, frame, expectedQuery?: string) => {
   const definition = callback(id)
   const run = async (raw: string) => {
-    const headless = definition.lib!({ feedCapture: () => raw } as unknown as LibProbeSource)
-    const query = async (_sequence: string, pattern: RegExp) => ({
-      match: pattern.exec(raw),
-      reason: pattern.test(raw) ? ("reply" as const) : ("sentinel" as const),
-      raw,
-      rawBase64: Buffer.from(raw).toString("base64"),
-    })
+    const libraryWrites: string[] = []
+    const terminalWrites: string[] = []
+    const headless = definition.lib!({
+      feedCapture: (sequence: string) => {
+        libraryWrites.push(sequence)
+        return raw
+      },
+    } as unknown as LibProbeSource)
+    const query = async (sequence: string, pattern: RegExp) => {
+      terminalWrites.push(sequence)
+      return {
+        match: pattern.exec(raw),
+        reason: pattern.test(raw) ? ("reply" as const) : ("sentinel" as const),
+        raw,
+        rawBase64: Buffer.from(raw).toString("base64"),
+      }
+    }
     const app = await definition.term!({
       queryWithSentinelOutcome: query,
       queryOutcome: query,
     } as unknown as TermProbeSource)
+    if (expectedQuery) {
+      expect({ library: libraryWrites, terminal: terminalWrites }, `${id}: emitted requests`).toEqual({
+        library: [expectedQuery],
+        terminal: [expectedQuery],
+      })
+    }
     return [headless, app]
   }
   for (const result of await run(frame)) {
