@@ -13,6 +13,7 @@ import {
   type ConsoleBufferOwner,
   type HistoricalProbeRun,
   type TextQualificationAssessment,
+  type TextQualification,
 } from "@terminfo/probe-defs"
 import type { LoadedRun } from "./index.ts"
 import { parseJsonStrict } from "./json.ts"
@@ -51,7 +52,7 @@ function fail(path: string, message: string): never {
 }
 const asString = (value: unknown, path: string, name: string): string =>
   nonempty(value) ? value : fail(path, `missing ${name}`)
-const textRead = (value: ObservationInput): boolean =>
+const textRead = (value: Pick<ObservationInput, "evidence" | "assertionType" | "frames">): boolean =>
   value.evidence === "text" ||
   (value.evidence === undefined &&
     value.assertionType === "buffer_state" &&
@@ -135,6 +136,14 @@ export function projectHistoricalResult(
     })
   }
   return result
+}
+
+/** Return the recorded witness for this result's reader-owned text requirement. */
+export function resultTextQualification(
+  result: ProbeResult,
+  qualification: TextQualification | undefined,
+): TextQualification | undefined {
+  return textRead(historical.get(result)?.input ?? result) ? qualification : undefined
 }
 
 /** Assertion classification follows its own binding; a different primary result cannot classify it. */

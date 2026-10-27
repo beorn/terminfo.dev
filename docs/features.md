@@ -82,7 +82,7 @@ function topTerminals(cat, limit = 3) {
   const features = data.categories[cat] ?? []
   if (features.length === 0) return []
 
-  const appBackends = data.backends.filter(b => b.type === 'app')
+  const appBackends = data.backends.filter(b => b.type === 'term')
   const scores = appBackends.map(b => {
     const featureIds = features.map(f => f.id)
     const conclusive = featureIds.filter(id => ['yes', 'no'].includes(data.results[b.name]?.[id]))

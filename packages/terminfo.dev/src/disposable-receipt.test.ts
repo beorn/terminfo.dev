@@ -114,7 +114,7 @@ const linuxReceipt = () => ({
     suiteHash: "f".repeat(12),
   },
   runnerArtifact: { frozenRunnerSha256: digest("runner"), buildReceiptSha256: digest("build") },
-  declaredTarget: { kind: "term", id: "kitty", version: "0.49.2", os: "linux" },
+  declaredTarget: { kind: "app", id: "kitty", version: "0.49.2", os: "linux" },
   preset: "current",
   clipboardProfile: "default",
 })
@@ -160,7 +160,7 @@ test("a well-formed container receipt parses and its digest is the exact bytes t
     kind: "linux-xvfb-container",
     runId: envelope.runId,
     collectedAt: envelope.collectedAt,
-    declaredTarget: { kind: "term", id: "kitty", os: "linux" },
+    declaredTarget: { kind: "app", id: "kitty", os: "linux" },
     identity: {
       imageId: "sha256:" + digest("image"),
       imageTarSha256: digest("tar"),
@@ -328,11 +328,30 @@ test("an absent receipt is loud at read time, never an empty object that reads a
 // binding side — never a value read back out of the receipt — and the check is loud by name.
 test("a receipt binds only to the target it declares, and cannot bind to none", () => {
   const receipt = parseDisposableReceipt(JSON.stringify(linuxReceipt()))
-  expect(receipt.declaredTarget).toEqual({ kind: "term", id: "kitty", os: "linux" })
-  expect(() => bindReceiptToRun(receipt, { kind: "term", id: "kitty", os: "linux" }, "test")).not.toThrow()
+  expect(receipt.declaredTarget).toEqual({ kind: "app", id: "kitty", os: "linux" })
+  // Canonical run kinds adapt at this existing foreign boundary; receipt bytes keep their own kinds.
+  for (const [runKind, receiptKind] of [
+    ["term", "app"],
+    ["lib", "headless"],
+    ["mux", "mux"],
+    ["app", "app"],
+    ["headless", "headless"],
+  ] as const) {
+    const boundReceipt = { ...receipt, declaredTarget: { kind: receiptKind, id: "kitty", os: "linux" } }
+    expect(() => bindReceiptToRun(boundReceipt, { kind: runKind, id: "kitty", os: "linux" }, "test")).not.toThrow()
+    expect(boundReceipt.declaredTarget.kind).toBe(receiptKind)
+  }
   expect(() => bindReceiptToRun(receipt, { kind: "term", id: "wezterm", os: "linux" }, "test")).toThrow(
-    /receipt declares target .*kitty.* but this run is .*wezterm/,
+    'receipt declares target {"kind":"app","id":"kitty","os":"linux"} but this run is {"kind":"app","id":"wezterm","os":"linux"}: id disagree',
   )
+  expect(() => bindReceiptToRun(receipt, { kind: "lib", id: "kitty", os: "linux" }, "test")).toThrow(/kind disagree/)
+  expect(() =>
+    bindReceiptToRun(
+      { ...receipt, declaredTarget: { kind: "term", id: "kitty", os: "linux" } },
+      { kind: "term", id: "kitty", os: "linux" },
+      "test",
+    ),
+  ).toThrow(/kind disagree/)
   expect(() => bindReceiptToRun(receipt, { kind: "term", id: "kitty", os: "macos" }, "test")).toThrow(/os disagree/)
   expect(() => bindReceiptToRun(receipt, undefined, "test")).toThrow(/no run target was supplied to bind it to/)
 })
@@ -343,6 +362,7 @@ test("a github-hosted receipt declares no target and is not refused for the abse
   expect(receipt.declaredTarget).toBeUndefined()
   expect(receipt.identity).toBeUndefined()
   expect(() => bindReceiptToRun(receipt, { kind: "term", id: "kitty", os: "linux" }, "test")).not.toThrow()
+  expect(() => bindReceiptToRun(receipt, undefined, "test")).not.toThrow()
 })
 
 test("HOSTED_IDENTITY_SOURCES Windows patterns match real-format lines and capture exact values", () => {

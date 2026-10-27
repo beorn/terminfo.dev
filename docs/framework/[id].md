@@ -10,8 +10,8 @@ const { params } = useData()
 const p = params.value
 
 const scores = JSON.parse(p.scores)
-const appScores = scores.filter(s => s.type === 'app')
-const headlessScores = scores.filter(s => s.type === 'headless')
+const appScores = scores.filter(s => s.type === 'term')
+const headlessScores = scores.filter(s => s.type === 'lib')
 
 function termTooltip(s) {
   const parts = []

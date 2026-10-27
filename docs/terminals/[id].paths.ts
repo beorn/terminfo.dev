@@ -169,7 +169,7 @@ export default {
         if (entry.slug === terminalSlug(backendName, data.meta)) {
           if (entry.historical) return "historical"
           if (entry.kind === "lib" || entry.kind === "mux") return entry.kind
-          if (entry.headlessBackends?.length) return "app+headless"
+          if (entry.headlessBackends?.length) return "term+lib"
           return "term"
         }
       }

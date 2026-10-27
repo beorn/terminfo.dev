@@ -70,8 +70,8 @@ const sortedBackends = computed(() => {
 })
 
 // Split into app (real terminals) and headless backends
-const allAppBackends = computed(() => sortedBackends.value.filter(b => b.type === 'app'))
-const headlessBackends = computed(() => sortedBackends.value.filter(b => b.type === 'headless'))
+const allAppBackends = computed(() => sortedBackends.value.filter(b => b.type === 'term'))
+const headlessBackends = computed(() => sortedBackends.value.filter(b => b.type === 'lib'))
 const muxBackends = computed(() => sortedBackends.value.filter(b => b.type === 'mux'))
 
 // The page names the ONE basis it counts, in a visitor's words: which rows this bar, these tooltips and

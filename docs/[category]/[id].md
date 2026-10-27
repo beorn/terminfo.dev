@@ -15,10 +15,10 @@ const backendResults = JSON.parse(p.backendResults)
 const featureTags = JSON.parse(p.featureTags || '[]')
 const subFeatures = JSON.parse(p.subFeatures || '[]')
 const backendNames = JSON.parse(p.backendNames || '[]')
-const appResults = backendResults.filter(r => r.type === 'app')
-const headlessResults = backendResults.filter(r => r.type === 'headless')
-const appBackends = backendNames.filter(b => b.type === 'app')
-const headlessBackends = backendNames.filter(b => b.type === 'headless')
+const appResults = backendResults.filter(r => r.type === 'term')
+const headlessResults = backendResults.filter(r => r.type === 'lib')
+const appBackends = backendNames.filter(b => b.type === 'term')
+const headlessBackends = backendNames.filter(b => b.type === 'lib')
 
 function termTooltip(r) {
   const parts = [r.label]

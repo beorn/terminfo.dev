@@ -358,21 +358,7 @@ export async function runProbeBatch(
   // Bind BEFORE the first write: a receipt for another target must not authorize this terminal, and
   // checking it afterwards would mean the wrong terminal was already written to. (27874)
   if (disposable) {
-    bindReceiptToRun(
-      disposable,
-      options.subject
-        ? {
-            ...options.subject,
-            kind:
-              options.subject.kind === "term"
-                ? "app"
-                : options.subject.kind === "lib"
-                  ? "headless"
-                  : options.subject.kind,
-          }
-        : undefined,
-      "collector.disposableOwnership",
-    )
+    bindReceiptToRun(disposable, options.subject, "collector.disposableOwnership")
   }
   const authorizedToWrite = ownsTerminal || Boolean(disposable)
   if (disposable?.appLaunch) batch.appLaunch = disposable.appLaunch

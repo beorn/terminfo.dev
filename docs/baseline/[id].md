@@ -17,10 +17,10 @@ const features = JSON.parse(p.features)
 const environmentGroupCount = features.filter((feature) => isEnvironmentGroup(feature.id)).length
 const backends = JSON.parse(p.backends)
 const scores = JSON.parse(p.scores)
-const appBackends = backends.filter(b => b.type === 'app')
-const headlessBackends = backends.filter(b => b.type === 'headless')
-const appScores = scores.filter(s => s.type === 'app')
-const headlessScores = scores.filter(s => s.type === 'headless')
+const appBackends = backends.filter(b => b.type === 'term')
+const headlessBackends = backends.filter(b => b.type === 'lib')
+const appScores = scores.filter(s => s.type === 'term')
+const headlessScores = scores.filter(s => s.type === 'lib')
 const barSegments = [
   { id: 'supported', label: 'Supported', symbol: '✓' },
   { id: 'unsupported', label: 'Unsupported', symbol: '✗' },

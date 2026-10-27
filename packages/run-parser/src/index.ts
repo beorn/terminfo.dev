@@ -111,7 +111,8 @@ function rejectUnknownFields(
 }
 
 export function parseSubject(value: unknown, path: string, schemaVersion: 2 | 3 | 4 = 4): ProbeSubject {
-  if (!object(value)) fail(path, "missing subject")
+  const subjectKey = schemaVersion === 4 ? "subject" : "target"
+  if (!object(value)) fail(path, `missing ${subjectKey}`)
   if (schemaVersion === 4) {
     rejectUnknownFields(
       value,
@@ -126,14 +127,14 @@ export function parseSubject(value: unknown, path: string, schemaVersion: 2 | 3 
 
   return {
     kind: kind as ProbeSubject["kind"],
-    id: asString(value.id, path, "target.id"),
-    version: asString(value.version, path, "target.version"),
-    os: nullableString(value.os, path, "target.os"),
-    osVersion: nullableString(value.osVersion, path, "target.osVersion"),
-    outerTerminal: nullableString(value.outerTerminal, path, "target.outerTerminal"),
-    mux: nullableString(value.mux, path, "target.mux"),
-    config: nullableString(value.config, path, "target.config"),
-    permissions: nullableString(value.permissions, path, "target.permissions"),
+    id: asString(value.id, path, `${subjectKey}.id`),
+    version: asString(value.version, path, `${subjectKey}.version`),
+    os: nullableString(value.os, path, `${subjectKey}.os`),
+    osVersion: nullableString(value.osVersion, path, `${subjectKey}.osVersion`),
+    outerTerminal: nullableString(value.outerTerminal, path, `${subjectKey}.outerTerminal`),
+    mux: nullableString(value.mux, path, `${subjectKey}.mux`),
+    config: nullableString(value.config, path, `${subjectKey}.config`),
+    permissions: nullableString(value.permissions, path, `${subjectKey}.permissions`),
   }
 }
 
@@ -153,15 +154,23 @@ function parseRuntimeIdentity(
   value: unknown,
   subject: ProbeSubject,
   path: string,
+  schemaVersion: 2 | 3 | 4,
 ): HeadlessRuntimeIdentity | undefined {
   if (subject.kind !== "lib") {
-    if (value !== undefined) fail(path, "runtimeIdentity is only valid for headless targets")
+    if (value !== undefined) {
+      fail(path, `runtimeIdentity is only valid for ${schemaVersion === 4 ? "lib subjects" : "headless targets"}`)
+    }
     return undefined
   }
-  if (!object(value) || !["js", "native"].includes(String(value.kind))) fail(path, "missing headless runtimeIdentity")
+  if (!object(value) || !["js", "native"].includes(String(value.kind))) {
+    fail(path, `missing ${schemaVersion === 4 ? "lib" : "headless"} runtimeIdentity`)
+  }
   const engineVersion = asString(value.engineVersion, path, "runtimeIdentity.engineVersion")
   if (engineVersion !== subject.version) {
-    fail(path, `runtimeIdentity.engineVersion ${engineVersion} conflicts with target.version ${subject.version}`)
+    fail(
+      path,
+      `runtimeIdentity.engineVersion ${engineVersion} conflicts with ${schemaVersion === 4 ? "subject" : "target"}.version ${subject.version}`,
+    )
   }
   const adapterVersion = asString(value.adapterVersion, path, "runtimeIdentity.adapterVersion")
   const termlessRevision = asString(value.termlessRevision, path, "runtimeIdentity.termlessRevision")
@@ -513,7 +522,7 @@ export function parseSuiteManifest(path: string, source: string): ParsedSuiteMan
 
 /**
  * The ONE measured-version extractor. An apparatus- or terminal-reported version string must carry
- * exactly one version token equal to the run's declared target version; a second bare number (a
+ * exactly one version token equal to the run's declared subject version; a second bare number (a
  * build id) must never let a disagreement pass falsely. Shared by native-run sealing
  * (`parseRunProvenance`) and Linux identity admission (`docs/data/selected-results.ts`) so the two
  * cannot drift into different answers (@cto 2026-10-07, 27916 AC2).
@@ -529,8 +538,21 @@ export function parseRunProvenance(
   expected: { probeHash: string; sourceRevision: string },
   path: string,
 ): RunProvenance | undefined {
+  return parseRunProvenanceForSchema(value, subject, expected, path, 4)
+}
+
+/** Historical raw documents retain target/app diagnostics; current callers name subject/term. */
+function parseRunProvenanceForSchema(
+  value: unknown,
+  subject: ProbeSubject,
+  expected: { probeHash: string; sourceRevision: string },
+  path: string,
+  schemaVersion: 2 | 3 | 4,
+): RunProvenance | undefined {
   if (value === undefined) return undefined
-  if (subject.kind !== "term") fail(path, "native provenance requires an app target")
+  if (subject.kind !== "term") {
+    fail(path, `native provenance requires ${schemaVersion === 4 ? "a term subject" : "an app target"}`)
+  }
   if (
     !object(value) ||
     !object(value.executable) ||
@@ -555,7 +577,10 @@ export function parseRunProvenance(
   const version = asString(value.executable.version, path, "provenance.executable.version")
   const versionTokens = measuredVersionTokens(version)
   if (versionTokens.length !== 1 || versionTokens[0] !== subject.version) {
-    fail(path, `provenance.executable.version differs from target.version ${subject.version}`)
+    fail(
+      path,
+      `provenance.executable.version differs from ${schemaVersion === 4 ? "subject" : "target"}.version ${subject.version}`,
+    )
   }
   // An absent kind keeps today's meaning: flat bytes at `url` (xterm, kitty). A derived tree names
   // its own proof, so the discriminator here mirrors the app-launch one (@cto 2026-10-06, 27892).
@@ -672,7 +697,7 @@ export function parseOuterApp(
 ): OuterAppProof | undefined {
   if (value === undefined) return undefined
   const subjectKey = schemaVersion === 4 ? "subject" : "target"
-  if (subject.kind !== "mux") fail(path, "outerApp is only valid for a mux target")
+  if (subject.kind !== "mux") fail(path, `outerApp is only valid for a mux ${subjectKey}`)
   if (
     !object(value) ||
     Object.keys(value).some((key) => ![subjectKey, "rawReplies", "provenance", "appLaunch"].includes(key))
@@ -681,7 +706,10 @@ export function parseOuterApp(
   }
   const outerSubject = parseSubject(value[subjectKey], `${path}.outerApp`, schemaVersion)
   if (outerSubject.kind !== "term" || outerSubject.outerTerminal !== null || outerSubject.mux !== null) {
-    fail(path, "outerApp requires one app target without another outer terminal or mux")
+    fail(
+      path,
+      `outerApp requires one ${schemaVersion === 4 ? "term subject" : "app target"} without another outer terminal or mux`,
+    )
   }
   if (subject.outerTerminal !== outerSubject.id || subject.mux !== subject.id) {
     fail(path, "outerApp disagrees with the claimed outer terminal or mux")
@@ -696,7 +724,13 @@ export function parseOuterApp(
   if (!object(value.rawReplies) || !Object.values(value.rawReplies).every((reply) => typeof reply === "string")) {
     fail(path, "invalid outerApp.rawReplies")
   }
-  const provenance = parseRunProvenance(value.provenance, outerSubject, expected, `${path}.outerApp`)
+  const provenance = parseRunProvenanceForSchema(
+    value.provenance,
+    outerSubject,
+    expected,
+    `${path}.outerApp`,
+    schemaVersion,
+  )
   const appLaunch = parseAppLaunchReceipt(value.appLaunch, originKind, outerSubject.kind, `${path}.outerApp`)
   return {
     subject: { ...outerSubject, kind: "term" },
@@ -1200,7 +1234,7 @@ export function parseRun(
     }
     if (!current && Object.hasOwn(raw, "results")) fail(path, "v2 run cannot contain legacy boolean results")
     const subject = parseSubject(raw[subjectKey], path, schemaVersion)
-    const runtimeIdentity = parseRuntimeIdentity(raw.runtimeIdentity, subject, path)
+    const runtimeIdentity = parseRuntimeIdentity(raw.runtimeIdentity, subject, path, schemaVersion)
     const runId = asString(raw.runId, path, "runId")
     if (!["verified", "unverified", "disputed"].includes(String(raw.identity))) fail(path, "invalid identity")
     if (!object(raw.origin) || !["collector", "community-issue", "manual-capture"].includes(String(raw.origin.kind))) {
@@ -1296,7 +1330,13 @@ export function parseRun(
     if (!current && raw.suiteComplete !== true && raw.suiteComplete !== false) fail(path, "missing suiteComplete")
     const probeHash = asString(raw.probeHash, path, "probeHash")
     const sourceRevision = asString(raw.sourceRevision, path, "sourceRevision")
-    const provenance = parseRunProvenance(raw.provenance, subject, { probeHash, sourceRevision }, path)
+    const provenance = parseRunProvenanceForSchema(
+      raw.provenance,
+      subject,
+      { probeHash, sourceRevision },
+      path,
+      schemaVersion,
+    )
     const outerApp = parseOuterApp(
       raw.outerApp,
       subject,

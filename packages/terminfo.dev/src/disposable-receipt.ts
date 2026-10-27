@@ -981,11 +981,16 @@ export function bindReceiptToRun(receipt: DisposableReceipt, target: ReceiptTarg
   if (!target) {
     fail(where, `receipt names target ${JSON.stringify(declared)} but no run target was supplied to bind it to`)
   }
-  const disagree = (["kind", "id", "os"] as const).filter((key) => declared[key] !== target[key])
+  // The receipt keeps its foreign wire vocabulary; only the measured run side is adapted here.
+  const receiptTarget = {
+    ...target,
+    kind: target.kind === "term" ? "app" : target.kind === "lib" ? "headless" : target.kind,
+  }
+  const disagree = (["kind", "id", "os"] as const).filter((key) => declared[key] !== receiptTarget[key])
   if (disagree.length > 0) {
     fail(
       where,
-      `receipt declares target ${JSON.stringify(declared)} but this run is ${JSON.stringify(target)}: ` +
+      `receipt declares target ${JSON.stringify(declared)} but this run is ${JSON.stringify(receiptTarget)}: ` +
         `${disagree.join(", ")} disagree, and a receipt for one target cannot authorize another`,
     )
   }

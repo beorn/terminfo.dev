@@ -544,7 +544,8 @@ export function projectResults(
       sha256: run.sha256,
       identity: run.identity,
       catalogIds: [...run.catalogIds],
-      results: globalThis.structuredClone(results),
+      // Preserve the parser's result objects: its private historical facts are keyed by identity.
+      results,
       suiteRelation,
       rawReplies: { ...run.rawReplies },
       assertions: globalThis.structuredClone(run.assertions),

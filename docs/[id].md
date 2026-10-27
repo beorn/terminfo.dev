@@ -13,8 +13,8 @@ const p = params.value
 
 const features = JSON.parse(p.features)
 const backends = JSON.parse(p.backends)
-const appBackends = backends.filter(b => b.type === 'app')
-const headlessBackends = backends.filter(b => b.type === 'headless')
+const appBackends = backends.filter(b => b.type === 'term')
+const headlessBackends = backends.filter(b => b.type === 'lib')
 
 const crossLinks = {
   'vt100': [

@@ -114,7 +114,7 @@ function standardAdoption(tag) {
     .map(([id]) => id)
   if (featureIds.length === 0) return null
 
-  const appBackends = data.backends.filter(b => b.type === 'app')
+  const appBackends = data.backends.filter(b => b.type === 'term')
   if (appBackends.length === 0) return null
 
   let totalPct = 0

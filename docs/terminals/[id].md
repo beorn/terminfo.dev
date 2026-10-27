@@ -41,14 +41,14 @@ function featureTooltip(f) {
 
 const testDate = computed(() => selectedRun.value ? new Date(selectedRun.value.measuredAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' }) : '')
 const isHistorical = p.historical === 'true'
-const isCurrentApp = !isHistorical && (p.terminalType === 'app' || p.terminalType === 'app+headless')
+const isCurrentApp = !isHistorical && (p.terminalType === 'term' || p.terminalType === 'term+lib')
 
 const typeBadge = (() => {
   const t = p.terminalType
   if (t === 'historical') return { label: 'Historical Terminal', cls: 'badge-historical', note: 'Reference entry \u2014 no automated probe data' }
   if (t === 'mux') return { label: 'Multiplexer', cls: 'badge-mux', note: '' }
-  if (t === 'headless') return { label: 'Headless Backend', cls: 'badge-backend', note: '' }
-  if (t === 'app+headless') return { label: 'App Terminal + Parser Backend', cls: 'badge-dual', note: '' }
+  if (t === 'lib') return { label: 'Headless Backend', cls: 'badge-backend', note: '' }
+  if (t === 'term+lib') return { label: 'App Terminal + Parser Backend', cls: 'badge-dual', note: '' }
   return { label: 'App Terminal', cls: 'badge-app', note: '' }
 })()
 
@@ -83,7 +83,7 @@ const relatedPages = crossLinks[p.id] ?? []
 
 const breadcrumbParent = (() => {
   const t = p.terminalType
-  if (t === 'headless') return { label: 'Parser Backends', link: '/backends' }
+  if (t === 'lib') return { label: 'Parser Backends', link: '/backends' }
   if (t === 'mux') return { label: 'Multiplexers', link: '/multiplexers' }
   if (t === 'historical') return { label: 'Historical', link: '/terminals' }
   return { label: 'Terminals', link: '/terminals' }

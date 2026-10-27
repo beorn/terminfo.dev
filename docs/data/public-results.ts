@@ -1,5 +1,6 @@
 /** The sole site/API mapping. Presentation decisions are not repository privacy controls. */
 import { createHash } from "node:crypto"
+import { resultTextQualification } from "../../packages/run-parser/src/observations.ts"
 import type {
   ProbeResult,
   ProbeStatus,
@@ -356,10 +357,11 @@ export function publicResults(projection: SelectedProjection, subjects: Readonly
         },
       }),
     }
-    const textQualification =
-      result.frames?.some((frame) => frame.kind === "text-cells") === true
-        ? qualificationFor(version, documents, 3)
-        : undefined
+    const textQualification = qualificationFor(
+      { ...version, textQualification: resultTextQualification(result, version.textQualification) },
+      documents,
+      3,
+    )
     evidenceCells[result.featureId] = {
       featureId: result.featureId,
       result: globalThis.structuredClone(result),

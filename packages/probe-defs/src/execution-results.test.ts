@@ -469,7 +469,8 @@ it("records adapted C154 semantic-mark callback outcomes as TODO or FAILURE with
 })
 
 // Existing tests all supplied an observation or coverage. Execution-only callbacks must preserve
-// their criterion facts without manufacturing either, and diagnostic pass never grades those facts.
+// their criterion facts without manufacturing either. Forward legacy pass to the real recorder
+// so this case catches a future pass-based promotion instead of dropping the contradictory input.
 it("records execution-only TODO and FAILURE tests, ignoring legacy pass even when true", () => {
   for (const status of ["test-todo", "test-failure"] as const) {
     const callback = {
@@ -478,11 +479,11 @@ it("records execution-only TODO and FAILURE tests, ignoring legacy pass even whe
       tests: [{ id: "criterion", status, reason: "No deciding observable was retained" }],
     } satisfies ProbeCallbackResult
     const result = recordExecutedProbe({
+      ...callback,
       featureId: "sgr.bold",
       attempt,
       rawReplyRef: "sgr.bold",
       assertions: [],
-      tests: callback.tests,
     })
     expect(result.status).toBe(status)
     expect(result.tests).toEqual([

@@ -3,10 +3,14 @@
  * @level l2
  * @consumer Current result selector, API v3 and site build
  * @testonly none
+ * @reach fs-read vendor/terminfo.dev/test-fixtures/probes-apps/** vendor/terminfo.dev/content/features.json vendor/terminfo.dev/content/suites/**
  */
 import { describe, expect, it } from "vitest"
-import { parseRun } from "@terminfo/run-parser"
-import type { ProbeResult, ProbeSuiteManifest } from "@terminfo/probe-defs"
+import { parseRun, parseSuiteManifest } from "@terminfo/run-parser"
+import { readFileSync } from "node:fs"
+import { join } from "node:path"
+import { publicResults, type EvidenceDocument } from "../docs/data/public-results.ts"
+import type { ProbeResult, ProbeSuiteManifest, TextQualification } from "@terminfo/probe-defs"
 import { ENVIRONMENT_GROUP_IDS } from "@terminfo/probe-defs"
 import { projectResults, maskRunnerStorePath } from "../docs/data/selected-results.ts"
 import { currentCoverageSentence } from "../docs/data/release-scope.ts"
@@ -218,4 +222,71 @@ it("retains the recorded live source only on selected schema-4 metadata", () => 
   ]
   expect(oldSelected?.schemaVersion).toBe(3)
   expect(oldSelected).not.toHaveProperty("source")
+})
+
+// The historical failed text read retained qualification but no frame. Existing mapper cases with
+// frames cannot detect losing that link when the old evidence label is decoded privately.
+it("keeps the retained failed text read's qualification link without widening current frame requirements", () => {
+  const root = join(import.meta.dirname, "..")
+  const path = join(root, "test-fixtures/probes-apps/terminal-app-2.15-macos-81d7321e92df660ce1c01931bebedbd2.json")
+  const bytes = readFileSync(path, "utf8")
+  const wire = JSON.parse(bytes) as {
+    probeHash: string
+    results: Array<{ featureId: string; evidence?: string; status: string; frames?: unknown }>
+    textQualification: TextQualification
+  }
+  const historicalResult = wire.results.find((result) => result.featureId === "charsets.utf8")
+  if (!historicalResult) throw new Error("Historical text failure fixture is missing")
+  expect(historicalResult.evidence).toBe("text")
+  expect(historicalResult.status).toBe("test-failure")
+  expect(historicalResult.frames).toBeUndefined()
+  const manifestPath = join(root, "content/suites", `${wire.probeHash}.json`)
+  const manifest = parseSuiteManifest(manifestPath, readFileSync(manifestPath, "utf8"))
+  const catalogIds = Object.keys(
+    JSON.parse(readFileSync(join(root, "content/features.json"), "utf8")) as Record<string, unknown>,
+  )
+  const run = parseRun(path, bytes, catalogIds, new Map([[manifest.probeHash, manifest]]))
+  const projection = projectResults([run], [], catalogIds, { currentProbeHash: manifest.probeHash }, [])
+  const selected = Object.values(projection.history)
+    .flat()
+    .find((version) => version.runId === run.runId)
+  if (!selected) throw new Error("Retained fixture was not projected")
+  selected.presentations["charsets.utf8"] = {
+    id: "review-text-failure",
+    reviewer: "fixture",
+    reason: "Present retained failure",
+    sources: [],
+    presentsEvidence: true,
+  }
+  const published = publicResults(projection, new Map())
+  const evidenceUrl = `/api/v3/evidence/${run.sha256}.json`
+  const document = published.documents.get(evidenceUrl)?.document as EvidenceDocument
+  const cell = document.cells["charsets.utf8"]
+  if (!cell) throw new Error("Presented fixture result is missing")
+  const qualification = cell.textQualification
+  expect(qualification).toEqual({
+    url: `/api/v3/evidence/${run.sha256}/text-qualification.json`,
+    sha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+  })
+  if (!qualification) throw new Error("Historical qualification link is missing")
+  expect(published.documents.get(qualification.url)?.document).toMatchObject({ qualification: wire.textQualification })
+  expect(cell.result.status).toBe("test-failure")
+  expect(cell.result).not.toHaveProperty("evidence")
+
+  // A current result has no historical qualification fact: a real text-cells frame is still needed.
+  const current = globalThis.structuredClone(projection)
+  const currentVersion = Object.values(current.history)
+    .flat()
+    .find((version) => version.runId === run.runId)
+  if (!currentVersion) throw new Error("Current mapper fixture is missing")
+  currentVersion.schemaVersion = 4
+  currentVersion.source = { kind: "live" }
+  const currentDocument = publicResults(current, new Map()).documents.get(evidenceUrl)?.document as EvidenceDocument
+  expect(currentDocument.cells["charsets.utf8"]?.textQualification).toBeUndefined()
+  const framed = run.results?.find((result) => result.frames?.some((frame) => frame.kind === "text-cells"))
+  const currentResult = currentVersion.results.find((result) => result.featureId === "charsets.utf8")
+  if (!framed || !currentResult) throw new Error("Current text frame mapper fixture is missing")
+  currentResult.frames = globalThis.structuredClone(framed.frames)
+  const framedDocument = publicResults(current, new Map()).documents.get(evidenceUrl)?.document as EvidenceDocument
+  expect(framedDocument.cells["charsets.utf8"]?.textQualification).toEqual(qualification)
 })

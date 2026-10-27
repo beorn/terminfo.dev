@@ -452,9 +452,8 @@ export function assessRunAdmission(
         run.path,
         run.rawReplies["collector.disposableOwnership"],
         run.runId,
-        // Custody receipt schema keeps app/headless wire kinds; adapt only this comparison.
         {
-          kind: run.subject.kind === "term" ? "app" : run.subject.kind === "lib" ? "headless" : run.subject.kind,
+          kind: run.subject.kind,
           id: run.subject.id,
           os: run.subject.os ?? "",
         },
@@ -1088,8 +1087,7 @@ export function admitRun(plan: AdmissionPlan): {
     loaded.rawReplies["collector.disposableOwnership"],
     loaded.runId,
     {
-      // Separate custody receipt protocol keeps historical kind spellings.
-      kind: loaded.subject.kind === "term" ? "app" : loaded.subject.kind === "lib" ? "headless" : loaded.subject.kind,
+      kind: loaded.subject.kind,
       id: loaded.subject.id,
       os: loaded.subject.os ?? "",
     },

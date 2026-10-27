@@ -1,13 +1,13 @@
 {
   "$comment": "Generated inventory of declared sources and reviewed current measurements; not an upstream source-check receipt.",
-  "generated": "2026-09-29T00:06:45.747Z",
-  "totalFeatures": 270,
+  "generated": "2026-10-27T07:04:04.917Z",
+  "totalFeatures": 273,
   "featureFamilies": {
     "sgr": 32,
     "cursor": 22,
     "erase": 11,
     "editing": 17,
-    "input": 8,
+    "input": 11,
     "modes": 30,
     "scrollback": 10,
     "extensions": 79,
@@ -51,13 +51,13 @@
     {
       "sourceId": "xterm-ctlseqs",
       "lastChecked": null,
-      "catalogFeatureCount": 199,
+      "catalogFeatureCount": 202,
       "notes": "Manifest generation does not fetch or verify this source; catalog count is declared family membership"
     },
     {
       "sourceId": "kitty-docs",
       "lastChecked": null,
-      "catalogFeatureCount": 119,
+      "catalogFeatureCount": 122,
       "notes": "Manifest generation does not fetch or verify this source; catalog count is declared family membership"
     },
     {
@@ -111,7 +111,7 @@
     {
       "sourceId": "fixterms-csiu",
       "lastChecked": null,
-      "catalogFeatureCount": 8,
+      "catalogFeatureCount": 11,
       "notes": "Manifest generation does not fetch or verify this source; catalog count is declared family membership"
     },
     {
@@ -184,7 +184,7 @@
   "terminals": [
     {
       "terminalId": "ghostty",
-      "kind": "app",
+      "kind": "term",
       "contextKey": null,
       "runId": null,
       "runSha256": null,
@@ -194,7 +194,7 @@
     },
     {
       "terminalId": "kitty",
-      "kind": "app",
+      "kind": "term",
       "contextKey": null,
       "runId": null,
       "runSha256": null,
@@ -204,7 +204,7 @@
     },
     {
       "terminalId": "iterm2",
-      "kind": "app",
+      "kind": "term",
       "contextKey": null,
       "runId": null,
       "runSha256": null,
@@ -214,7 +214,7 @@
     },
     {
       "terminalId": "terminal-app",
-      "kind": "app",
+      "kind": "term",
       "contextKey": null,
       "runId": null,
       "runSha256": null,
@@ -224,7 +224,7 @@
     },
     {
       "terminalId": "warp",
-      "kind": "app",
+      "kind": "term",
       "contextKey": null,
       "runId": null,
       "runSha256": null,
@@ -234,7 +234,7 @@
     },
     {
       "terminalId": "cursor",
-      "kind": "app",
+      "kind": "term",
       "contextKey": null,
       "runId": null,
       "runSha256": null,
@@ -244,7 +244,7 @@
     },
     {
       "terminalId": "com.microsoft.VSCode",
-      "kind": "app",
+      "kind": "term",
       "contextKey": null,
       "runId": null,
       "runSha256": null,
@@ -254,7 +254,7 @@
     },
     {
       "terminalId": "alacritty",
-      "kind": "headless",
+      "kind": "lib",
       "contextKey": null,
       "runId": null,
       "runSha256": null,
@@ -264,7 +264,7 @@
     },
     {
       "terminalId": "wezterm",
-      "kind": "headless",
+      "kind": "lib",
       "contextKey": null,
       "runId": null,
       "runSha256": null,
@@ -274,7 +274,7 @@
     },
     {
       "terminalId": "xtermjs",
-      "kind": "headless",
+      "kind": "lib",
       "contextKey": null,
       "runId": null,
       "runSha256": null,
@@ -284,7 +284,7 @@
     },
     {
       "terminalId": "vterm",
-      "kind": "headless",
+      "kind": "lib",
       "contextKey": null,
       "runId": null,
       "runSha256": null,
@@ -294,7 +294,7 @@
     },
     {
       "terminalId": "vt100",
-      "kind": "headless",
+      "kind": "lib",
       "contextKey": null,
       "runId": null,
       "runSha256": null,

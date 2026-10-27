@@ -845,7 +845,7 @@ onBeforeUnmount(() => {
               </template>
             </details>
 
-            <details v-if="cell.assertionType === 'pixels' && probeGuidanceText">
+            <details v-if="cell.assertionType === 'screenshot' && probeGuidanceText">
               <summary>Current probe guidance</summary>
               <p>{{ probeGuidanceText }}</p>
               <p>

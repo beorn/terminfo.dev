@@ -233,6 +233,27 @@ describe("sealed current runs", () => {
         new Map([[suite.probeHash, { ...currentSuite, schemaVersion: 4 }]]),
       )
     expect(() => parseV4({ ...raw, source: undefined })).toThrow(/source/)
+    // These are wire-key diagnostics: v4 has subject, while retained schema3 still has target.
+    for (const field of ["id", "version", "os", "osVersion", "outerTerminal", "mux", "config", "permissions"]) {
+      expect(() => parseV4({ ...raw, subject: { ...raw.subject, [field]: undefined } })).toThrow(`subject.${field}`)
+      expect(() =>
+        parseRun(
+          "historical-v3.json",
+          JSON.stringify({ ...current(), target: { ...target, [field]: undefined } }),
+          catalog,
+          new Map([[suite.probeHash, currentSuite]]),
+        ),
+      ).toThrow(`target.${field}`)
+    }
+    expect(() => parseV4({ ...raw, runtimeIdentity: {} })).toThrow("runtimeIdentity is only valid for lib subjects")
+    expect(() => parseV4({ ...raw, subject: { ...raw.subject, kind: "lib" } })).toThrow("missing lib runtimeIdentity")
+    expect(() =>
+      parseV4({
+        ...raw,
+        subject: { ...raw.subject, kind: "lib" },
+        runtimeIdentity: { kind: "js", engineVersion: "different-version" },
+      }),
+    ).toThrow(`conflicts with subject.version ${target.version}`)
     expect(() => parseV4({ ...raw, source: { kind: "trace" } })).toThrow(/trace probe source has no implementation/)
     expect(() => parseV4({ ...raw, target })).toThrow(/target/)
     expect(() => parseV4({ ...raw, mystery: true })).toThrow(/mystery/)
