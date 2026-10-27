@@ -7,7 +7,7 @@
  * @testonly none
  */
 import { describe, expect, test } from "vitest"
-import { ALL_PROBES, type ClipboardFixture, type ProbeResult, type TermContext } from "./index.ts"
+import { ALL_PROBES, type ClipboardFixture, type ProbeCallbackResult, type TermContext } from "./index.ts"
 
 function writeProbe() {
   const probe = ALL_PROBES.find((item) => item.id === "extensions.osc52-write")
@@ -321,7 +321,7 @@ test("extensions.clipboard-paste aborts when the plain-a control does not reach 
 test("extensions.clipboard-paste reads the seeded CLIPBOARD rather than the distinct PRIMARY selection", async () => {
   const writes: string[] = []
   const { ctx, clipboardWrites } = pasteAndRead({ paste: "bracketed" }, writes)
-  const result = (await pasteProbe().term!(ctx)) as ProbeResult
+  const result = (await pasteProbe().term!(ctx)) as ProbeCallbackResult
   expect(clipboardWrites).toHaveLength(1)
   const nonce = clipboardWrites[0] ?? ""
   expect(nonce.length).toBeGreaterThan(0)
@@ -341,7 +341,7 @@ test("extensions.clipboard-paste reads the seeded CLIPBOARD rather than the dist
 test("extensions.clipboard-paste records unsupported interaction when paste arrives as the raw nonce", async () => {
   const writes: string[] = []
   const { ctx, keys, clipboardWrites } = pasteAndRead({ paste: "raw" }, writes)
-  const result = (await pasteProbe().term!(ctx)) as ProbeResult
+  const result = (await pasteProbe().term!(ctx)) as ProbeCallbackResult
   expect(keys).toEqual(["a", "ctrl+shift+v"])
   const nonce = clipboardWrites[0] ?? ""
   expect(writes.join("")).toContain("\x1b[?2004h")

@@ -225,7 +225,7 @@ it.each([
     observationNote: "Deterministic observation-level note fixture",
   },
 ])(
-  "retains the ProbeResult note for the $label case and refuses an untyped legacy-shaped result",
+  "retains the ProbeCallbackResult note for the $label case and refuses an untyped legacy-shaped result",
   async ({ resultNote, observationNote }) => {
     const id = "modes.bracketed-paste"
     const definition = ALL_PROBES.find((probe) => probe.id === id)!

@@ -1,4 +1,4 @@
-import type { ProbeDefinition, ProbeResult, TermContext } from "./types.ts"
+import type { ProbeDefinition, ProbeCallbackResult, TermContext } from "./types.ts"
 import { probe, parserStateResult } from "./helpers.ts"
 import { regionReadbackProbes, type RegionReadbackRow } from "./region-readback-kind.ts"
 
@@ -179,7 +179,7 @@ export const scrollbackReadbackRows: readonly RegionReadbackRow[] = [
   },
 ]
 
-function tooSmall(ctx: TermContext, rows: number, cols: number): ProbeResult | undefined {
+function tooSmall(ctx: TermContext, rows: number, cols: number): ProbeCallbackResult | undefined {
   if (validSize(ctx.rows, rows) && validSize(ctx.cols, cols)) return undefined
   return {
     pass: false,

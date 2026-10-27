@@ -8,7 +8,7 @@ import { expect, test } from "vitest"
 import { recordExecutedCapability } from "./helpers.ts"
 import { resetProbes } from "./reset.ts"
 import { sgrProbes } from "./sgr.ts"
-import type { ProbeResult, TermContext, TerminalQueryOutcome } from "./types.ts"
+import type { ProbeCallbackResult, TermContext, TerminalQueryOutcome } from "./types.ts"
 
 function timeout(): TerminalQueryOutcome {
   return { match: null, reason: "timeout", raw: "", rawBase64: "" }
@@ -71,7 +71,7 @@ function qualifiedSgrReadbackContext(id: string, reply: string | null) {
   return sgrReadbackContext(setup !== undefined && reply !== null ? ["0", setup, reply] : reply)
 }
 
-function sgrTerm(id: string): (ctx: TermContext) => Promise<ProbeResult> {
+function sgrTerm(id: string): (ctx: TermContext) => Promise<ProbeCallbackResult> {
   const probe = [...sgrProbes, ...resetProbes].find((value) => value.id === id)
   if (!probe?.term) throw new Error(`missing term callback for ${id}`)
   return probe.term

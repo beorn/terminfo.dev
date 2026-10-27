@@ -4,11 +4,6 @@
 
 export type SupportLevel = "yes" | "no" | "partial" | "unknown"
 
-export interface ProbeResult {
-  support: SupportLevel
-  notes?: string
-}
-
 export interface BackendInfo {
   name: string
   version: string
@@ -20,7 +15,7 @@ export interface probesFeature {
   name: string
   category: string
   spec?: string
-  results: Record<string, ProbeResult>
+  results: Record<string, { support: SupportLevel; notes?: string }>
 }
 
 export interface probesDatabase {

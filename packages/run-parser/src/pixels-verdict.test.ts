@@ -18,7 +18,7 @@ import {
   modesProbes,
   type ObservationFrame,
   type ProbeSuiteManifest,
-  type ProbeResult,
+  type ProbeCallbackResult,
   type TermContext,
 } from "@terminfo/probe-defs"
 import { parseRun } from "./index.ts"
@@ -257,7 +257,7 @@ function callbackFixture(id: string) {
   return { context, writes, queries, requests }
 }
 
-function parseCallback(id: string, result: ProbeResult, fixture: ReturnType<typeof callbackFixture>) {
+function parseCallback(id: string, result: ProbeCallbackResult, fixture: ReturnType<typeof callbackFixture>) {
   const frames = result.observation?.frames ?? []
   const run = kittyRun({
     rawReplies: { [id]: JSON.stringify({ writes: fixture.writes, queries: fixture.queries, events: [] }) },

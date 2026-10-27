@@ -13,7 +13,7 @@ import {
   OBSERVATION_OUTCOMES,
   type ObservationOutcome,
   type ProbeDefinition,
-  type ProbeResult,
+  type ProbeCallbackResult,
   type TermContext,
   type TermlessContext,
   type TerminalQueryOutcome,
@@ -346,7 +346,7 @@ export async function regradeRow(
   row: ContractRow,
   contexts: { readonly headless?: TermlessContext; readonly term?: TermContext },
 ): Promise<RegradeResult> {
-  let result: ProbeResult | undefined
+  let result: ProbeCallbackResult | undefined
   if (probe.termless && contexts.headless !== undefined) result = probe.termless(contexts.headless)
   else if (probe.term && contexts.term !== undefined) result = await probe.term(contexts.term)
   const after = result?.observation?.outcome

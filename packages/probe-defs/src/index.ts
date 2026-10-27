@@ -1,6 +1,6 @@
 export type {
   ProbeDefinition,
-  ProbeResult,
+  ProbeCallbackResult,
   NoSemanticObservable,
   TermlessContext,
   TermContext,

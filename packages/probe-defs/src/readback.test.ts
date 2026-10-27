@@ -11,7 +11,7 @@ import { resetProbes } from "./reset.ts"
 import { sgrProbes } from "./sgr.ts"
 import type { TermContext, TerminalQueryOutcome } from "./types.ts"
 
-function termProbe(id: string): (ctx: TermContext) => Promise<import("./types.ts").ProbeResult> {
+function termProbe(id: string): (ctx: TermContext) => Promise<import("./types.ts").ProbeCallbackResult> {
   const probe = [...sgrProbes, ...cursorProbes, ...modesProbes, ...resetProbes].find((value) => value.id === id)
   if (!probe?.term) throw new Error(`missing term callback for ${id}`)
   return probe.term

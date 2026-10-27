@@ -7,7 +7,7 @@ export interface NoSemanticObservable {
 }
 
 /** A probe result is exactly one of two things: a measured observation, or a coverage record. */
-export type ProbeResult = MeasuredProbeResult | NotTestedCoverageResult
+export type ProbeCallbackResult = MeasuredProbeResult | NotTestedCoverageResult
 
 export interface MeasuredProbeResult extends ProbeExecutionChecks {
   /** Historical raw documents carry it; the live collector reads only observation. */
@@ -799,7 +799,7 @@ export interface TermContext {
    */
   captureGeometryRefusal?: string
   /** An owned Linux collector installs this only after verifying the launch receipt. */
-  withClipboardFixture?: (work: (fixture: ClipboardFixture) => Promise<ProbeResult>) => Promise<ProbeResult>
+  withClipboardFixture?: (work: (fixture: ClipboardFixture) => Promise<ProbeCallbackResult>) => Promise<ProbeCallbackResult>
   /** Present only when an owned OS capture adapter is installed for this run. */
   capture?: (request: CaptureRequest) => Promise<ObservationFrame>
   /** The terminal's OWN CELLS, on a text arm. Separate from `capture` because only the region
@@ -820,8 +820,8 @@ export interface TermContext {
 
 export interface ProbeDefinition {
   id: string
-  termless: ((ctx: TermlessContext) => ProbeResult) | null
-  term: ((ctx: TermContext) => Promise<ProbeResult>) | null
+  termless: ((ctx: TermlessContext) => ProbeCallbackResult) | null
+  term: ((ctx: TermContext) => Promise<ProbeCallbackResult>) | null
   /** Only an explicitly reviewed report request may run without a disposable terminal. */
   termWrites?: "query"
   /**

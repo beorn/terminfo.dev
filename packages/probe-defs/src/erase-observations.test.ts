@@ -12,7 +12,7 @@ import { ALL_PROBES } from "./index.ts"
 import { regionReadbackProbe, type RegionReadbackCell, type RegionReadbackRow } from "./region-readback-kind.ts"
 import { headlessContext, regradeRow } from "./testing/group-harness.ts"
 import { createSemanticSurface } from "./testing/semantic-surface.ts"
-import type { ProbeResult, TermContext, TermlessContext } from "./types.ts"
+import type { ProbeCallbackResult, TermContext, TermlessContext } from "./types.ts"
 
 /**
  * The kind table's own rows, one per CONVERTED Erase probe, listed BY NAME so a row that loses its
@@ -730,7 +730,7 @@ test("erase.screen.scrollback grades when the refs differ but the pixels agree",
   // A ref names the encoded container; two identical screens can carry different refs. Before 30080
   // this read not tested on every Linux context, because the restore check compared refs alone.
   const { ctx } = scrollbackApp({ clears: true, encodingOnly: true })
-  const result = (await byId("erase.screen.scrollback").term(ctx)) as ProbeResult
+  const result = (await byId("erase.screen.scrollback").term(ctx)) as ProbeCallbackResult
   expect(result.notTested).toBeUndefined()
   expect(result.observation).toMatchObject({ outcome: "supported", evidence: "pixels" })
 })
@@ -745,7 +745,7 @@ test("erase.screen.scrollback names moving pixels as inconclusive when the retur
 
 test("erase.screen.scrollback records unsupported when history remains after ED3", async () => {
   const { ctx, keys, clicks, writes } = scrollbackApp({ clears: false })
-  const result = (await byId("erase.screen.scrollback").term(ctx)) as ProbeResult
+  const result = (await byId("erase.screen.scrollback").term(ctx)) as ProbeCallbackResult
   expect(keys).toEqual(["a"])
   expect(clicks).toEqual([4, 5, 4, 5])
   expect(writes.join("")).toContain("\x1b[3J")
@@ -758,7 +758,7 @@ test("erase.screen.scrollback records unsupported when history remains after ED3
 
 test("erase.screen.scrollback records supported when wheel-up after ED3 stays on the post-ED3 frame", async () => {
   const { ctx, keys, clicks, writes } = scrollbackApp({ clears: true })
-  const result = (await byId("erase.screen.scrollback").term(ctx)) as ProbeResult
+  const result = (await byId("erase.screen.scrollback").term(ctx)) as ProbeCallbackResult
   expect(keys).toEqual(["a"])
   expect(clicks).toEqual([4, 5, 4, 5])
   expect(writes.join("")).toContain("\x1b[3J")

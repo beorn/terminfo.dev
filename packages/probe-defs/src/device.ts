@@ -1,4 +1,4 @@
-import type { ProbeDefinition, ProbeResult, TerminalQueryOutcome } from "./types.ts"
+import type { ProbeDefinition, ProbeCallbackResult, TerminalQueryOutcome } from "./types.ts"
 import {
   REPLY_AFTER_SENTINEL_NOTE,
   parserStateResult,
@@ -35,7 +35,7 @@ function deviceReplyResult(
   matchedFrame: string | null,
   reason: TerminalQueryOutcome["reason"],
   sentinel?: { atMs: number; graceMs: number },
-): ProbeResult {
+): ProbeCallbackResult {
   // F1 (27832): a frame that lands after the sentinel's DA1 answer is a late reply, graded by the frame
   // and recorded as late. Only when `sentinel` carries the measured ordering is that certain, so a
   // frame arriving after DA1 without the measurement keeps its null.
@@ -125,7 +125,7 @@ function answerPattern(spec: DeviceReply): RegExp {
  * outcome through `queryWithSentinelOutcome` (#30554), so both arms grade through here; a headless
  * context without that member keeps its capture-only reading.
  */
-function deviceOutcomeResult(spec: DeviceReply, outcome: TerminalQueryOutcome): ProbeResult {
+function deviceOutcomeResult(spec: DeviceReply, outcome: TerminalQueryOutcome): ProbeCallbackResult {
   return deviceReplyResult(spec, outcome.raw, replyFrame(outcome), outcome.reason, outcome.sentinel)
 }
 
@@ -176,7 +176,7 @@ function refusedFrame(spec: DeviceReply, matchedFrame: string | null): boolean {
 }
 
 /** Status-0 to SGR already shows the terminal speaks DECRQSS, so a silent second setting is not F1. */
-function decrqssAfterSgrRefusal(second: TerminalQueryOutcome): ProbeResult {
+function decrqssAfterSgrRefusal(second: TerminalQueryOutcome): ProbeCallbackResult {
   const secondFrame = replyFrame(second)
   const graded = deviceReplyResult(DECRQSS_DECSTBM, second.raw, secondFrame, second.reason, second.sentinel)
   if (graded.observation?.outcome === "supported") return graded
@@ -325,7 +325,7 @@ export const deviceProbes: ProbeDefinition[] = [
     () => {
       // Inherited process environment does not authenticate the current terminal.
       const advertised = typeof process !== "undefined" && !!process.env.TERM_FEATURES
-      return Promise.resolve<ProbeResult>({
+      return Promise.resolve<ProbeCallbackResult>({
         pass: false,
         note: advertised ? "TERM_FEATURES advertised; source unverified" : "TERM_FEATURES not advertised",
         observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "legacy" },

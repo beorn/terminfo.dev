@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto"
-import type { ProbeDefinition, ProbeResult, TermlessContext, TermContext, TerminalQueryOutcome } from "./types.ts"
+import type { ProbeDefinition, ProbeCallbackResult, TermlessContext, TermContext, TerminalQueryOutcome } from "./types.ts"
 import {
   REPLY_AFTER_SENTINEL_NOTE,
   decrpmPs,
@@ -49,7 +49,7 @@ function oscReplyResult(
   expected: string,
   prefix: RegExp,
   sentinel?: { atMs: number; graceMs: number },
-): ProbeResult {
+): ProbeCallbackResult {
   if (frame) {
     return {
       pass: true,
@@ -79,11 +79,11 @@ function oscReplyResult(
  * Live's grading of one OSC query outcome. A headless context on a proven reply path offers the same
  * outcome through `queryWithSentinelOutcome` (#30554), so both arms grade through here.
  */
-function oscOutcomeResult(reply: TerminalQueryOutcome, expected: string, prefix: RegExp): ProbeResult {
+function oscOutcomeResult(reply: TerminalQueryOutcome, expected: string, prefix: RegExp): ProbeCallbackResult {
   return oscReplyResult(reply.raw, replyFrame(reply), expected, prefix, reply.sentinel)
 }
 
-function unverifiedEffect(note: string, response?: string): ProbeResult {
+function unverifiedEffect(note: string, response?: string): ProbeCallbackResult {
   return {
     pass: false,
     ...(response !== undefined && { response }),
@@ -92,7 +92,7 @@ function unverifiedEffect(note: string, response?: string): ProbeResult {
   }
 }
 
-function unmeasuredStateEffect(feature: string): ProbeResult {
+function unmeasuredStateEffect(feature: string): ProbeCallbackResult {
   const note = `${feature} was not attempted; this probe has no effect readback or prior-state restoration`
   return {
     pass: false,
@@ -103,7 +103,7 @@ function unmeasuredStateEffect(feature: string): ProbeResult {
 
 const sixelDa1Reply = /\x1b\[\?([0-9]+(?:;[0-9]+)*);?c/
 
-function sixelDa1Result(raw: string, frame: string | null): ProbeResult {
+function sixelDa1Result(raw: string, frame: string | null): ProbeCallbackResult {
   const match = frame ? sixelDa1Reply.exec(frame) : null
   if (!match) {
     return {
@@ -136,7 +136,7 @@ const SIXEL_GEOMETRY_QUERY = "\x1b[?2;1;0S"
 const SIXEL_GEOMETRY_REPLY = /\x1b\[\?2;[0-9;]*S/
 
 /** Live's grading of one Sixel geometry outcome, shared by both arms (#30554). */
-function sixelGeometryOutcomeResult(reply: TerminalQueryOutcome): ProbeResult {
+function sixelGeometryOutcomeResult(reply: TerminalQueryOutcome): ProbeCallbackResult {
   return sixelGeometryResult(
     reply.raw,
     replyFrame(reply),
@@ -151,7 +151,7 @@ function sixelGeometryResult(
   frame: string | null,
   missingReason: "no-response" | "timeout",
   sentinel?: { atMs: number; graceMs: number },
-): ProbeResult {
+): ProbeCallbackResult {
   // xterm replies with CSI ? Pi ; Ps ; Pv S, but omits the value on failure, so the
   // measured failure frame is two parameters (CSI ? 2 ; 3 S). Requiring a third
   // parameter graded that documented failure as a malformed geometry.
@@ -299,7 +299,7 @@ function highlightResetProbe(id: string, setCode: number, resetCode: number): Pr
     if (r === undefined || g === undefined || b === undefined) return null
     return { raw: match[0] ?? "", rgb: `${r}/${g}/${b}` }
   }
-  const inconclusive = (note: string): ProbeResult => ({
+  const inconclusive = (note: string): ProbeCallbackResult => ({
     pass: false,
     observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "query", note },
   })
@@ -310,7 +310,7 @@ function highlightResetProbe(id: string, setCode: number, resetCode: number): Pr
         ctx.feed(`\x1b]${resetCode}\x07X`)
         return notTestedResult(`highlight colour reset (OSC ${resetCode})`, { cell: ctx.getCell(0, 0) })
       },
-      async (ctx): Promise<ProbeResult> => {
+      async (ctx): Promise<ProbeCallbackResult> => {
         const initial = await read(ctx)
         if (!initial) {
           return inconclusive(
@@ -475,7 +475,7 @@ function foregroundValue(response: string): string | null {
   return foregroundReply.exec(response)?.[1] ?? null
 }
 
-function colorSetIgnoredResult(response: string, setCode: number): ProbeResult {
+function colorSetIgnoredResult(response: string, setCode: number): ProbeCallbackResult {
   return {
     pass: false,
     response,
@@ -518,7 +518,7 @@ function probeForeground(before: string): string {
 async function colorResetAppProbe(
   ctx: TermContext,
   spec: { setCode: number; resetCode: number; index?: number },
-): Promise<ProbeResult> {
+): Promise<ProbeCallbackResult> {
   const indexPart = spec.index === undefined ? "" : `${spec.index};`
   const query = `\x1b]${spec.setCode};${indexPart}?\x07`
   const reply = new RegExp(
@@ -594,7 +594,7 @@ function resetProbe(id: string, setCode: number, resetCode: number, index?: numb
   }
 }
 
-function colorStackResult(before: string, requested: string, changed: string, restored: string): ProbeResult {
+function colorStackResult(before: string, requested: string, changed: string, restored: string): ProbeCallbackResult {
   const changedAsRequested = sameRgb(changed, requested)
   const restoredOriginal = sameRgb(restored, before)
   const pass = changedAsRequested && restoredOriginal
@@ -617,7 +617,7 @@ function colorStackResult(before: string, requested: string, changed: string, re
   }
 }
 
-function promptConsumptionResult(consumed: boolean | null): ProbeResult {
+function promptConsumptionResult(consumed: boolean | null): ProbeCallbackResult {
   const note =
     consumed === null
       ? "No cursor reply after semantic prompt marker"
@@ -643,7 +643,7 @@ function promptConsumptionResult(consumed: boolean | null): ProbeResult {
  * qualified sequence records the named no-semantic-observable coverage. A consumed-but-unqualified
  * read, and a missing cell, stay a real consumption observation — never not-tested.
  */
-function promptMarkResult(ctx: TermlessContext, sequence: string, noObservable: string): ProbeResult {
+function promptMarkResult(ctx: TermlessContext, sequence: string, noObservable: string): ProbeCallbackResult {
   ctx.feed("\x1b[1;1H")
   const home = ctx.getCursor()
   ctx.feed(sequence + "X")
@@ -666,7 +666,7 @@ function promptMarkResult(ctx: TermlessContext, sequence: string, noObservable: 
  * `rawReplyRef` to — no not-tested coverage is claimed from CPR alone. A null read, or a mark that never
  * advanced, stays a real consumption observation, never not-tested.
  */
-async function promptMarkAppResult(ctx: TermContext, sequence: string, noObservable: string): Promise<ProbeResult> {
+async function promptMarkAppResult(ctx: TermContext, sequence: string, noObservable: string): Promise<ProbeCallbackResult> {
   ctx.write("\x1b[1;1H\x1b[2K")
   const home = await ctx.queryCursorPosition()
   ctx.write(sequence + "X")
@@ -687,7 +687,7 @@ async function promptMarkAppResult(ctx: TermContext, sequence: string, noObserva
   return notTestedResult(noObservable, { home, target, control })
 }
 
-function colorStackError(evidence: "query" | "behavior", action: string, error: unknown): ProbeResult {
+function colorStackError(evidence: "query" | "behavior", action: string, error: unknown): ProbeCallbackResult {
   if (!(error instanceof Error)) throw error
   const note = `${action} (${evidence}) failed: ${error.name}: ${error.message}`
   return { pass: false, note, observation: { outcome: "error", reason: "collector-error", evidence, note } }
@@ -702,10 +702,10 @@ function colorStackProbe(): ProbeDefinition["termless"] {
       )
       if (silence) return silence
     }
-    let result: ProbeResult | undefined
+    let result: ProbeCallbackResult | undefined
     let primaryError: unknown
     let originalRaw: string | undefined
-    const queryForeground = (action: string): string | ProbeResult | null => {
+    const queryForeground = (action: string): string | ProbeCallbackResult | null => {
       let response: string
       try {
         response = ctx.feedCapture(foregroundQuery)
@@ -716,7 +716,7 @@ function colorStackProbe(): ProbeDefinition["termless"] {
       originalRaw ??= response
       return foregroundValue(response)
     }
-    const feed = (sequence: string, action: string): ProbeResult | undefined => {
+    const feed = (sequence: string, action: string): ProbeCallbackResult | undefined => {
       try {
         ctx.feed(sequence)
         return undefined
@@ -826,7 +826,7 @@ function colorStackProbe(): ProbeDefinition["termless"] {
   }
 }
 
-async function colorStackTermProbe(ctx: Parameters<NonNullable<ProbeDefinition["term"]>>[0]): Promise<ProbeResult> {
+async function colorStackTermProbe(ctx: Parameters<NonNullable<ProbeDefinition["term"]>>[0]): Promise<ProbeCallbackResult> {
   const originalReply = await ctx.queryWithSentinelOutcome(foregroundQuery, foregroundReply)
   const before = foregroundValue(originalReply.match?.[0] ?? "")
   if (!before) return unansweredQuery(originalReply, "No original OSC 10 foreground reply; color stack was not changed")
@@ -919,7 +919,7 @@ function kittyDetection(raw: string): KittyDetection {
   return { kind: "inconclusive", reason: "no-response" }
 }
 
-function kittyProtocolAbsent(response: string): ProbeResult {
+function kittyProtocolAbsent(response: string): ProbeCallbackResult {
   const note =
     "DA1 answered without any Kitty keyboard flags reply; the protocol is not supported (necessary-condition negative; key-event conformance was not tested)"
   return {
@@ -941,7 +941,7 @@ function kittyInconclusive(
   detection: Extract<KittyDetection, { kind: "inconclusive" }>,
   reason: "no-response" | "invalid-reply" | "timeout",
   response: string,
-): ProbeResult {
+): ProbeCallbackResult {
   const note =
     detection.reason === "invalid-reply"
       ? "Unreadable or out-of-order Kitty keyboard flags / DA1 reply (malformed, truncated, duplicate or residual bytes); no support conclusion"
@@ -1012,7 +1012,7 @@ export function kittyKeyboardFlagProbe(id: string, pushValue: number, flagBit: n
   return { ...definition, termObservationEvidence: "query", termlessObservationEvidence: "query" }
 }
 
-function unansweredQuery(reply: TerminalQueryOutcome, note: string): ProbeResult {
+function unansweredQuery(reply: TerminalQueryOutcome, note: string): ProbeCallbackResult {
   // A measured sentinel with nothing beside it is a decisive negative, not an unknown; a timeout
   // never answered DA1 at all, so it stays inconclusive.
   const silent = sentinelNegativeResult(reply.raw, reply.sentinel, note)
@@ -1039,13 +1039,13 @@ function unansweredQuery(reply: TerminalQueryOutcome, note: string): ProbeResult
 function matchedReplyResult(
   reply: TerminalQueryOutcome,
   missingNote: string,
-  grade: (frame: string) => ProbeResult,
-): ProbeResult {
+  grade: (frame: string) => ProbeCallbackResult,
+): ProbeCallbackResult {
   if (!reply.match) return unansweredQuery(reply, missingNote)
   return { ...grade(reply.match[0] ?? ""), response: reply.raw }
 }
 
-function keyboardFlagsResult(response: string, flagBits: number): ProbeResult {
+function keyboardFlagsResult(response: string, flagBits: number): ProbeCallbackResult {
   const match = /\x1b\[\?(\d+)u/.exec(response)
   if (!match?.[1]) {
     return unansweredQuery(
@@ -1075,7 +1075,7 @@ function graphicsQueryResult(
   response: string,
   imageId: number,
   acceptedNote = "Graphics query accepted RGB pixel data; visible rendering was not tested",
-): ProbeResult {
+): ProbeCallbackResult {
   const match = kittyReplyFrame({ i: String(imageId) }).exec(response)
   if (!match) {
     return unansweredQuery(
@@ -1132,7 +1132,7 @@ function imageTransferRequest(imageNumber: number): string {
   return `\x1b_Ga=t,f=24,s=1,v=1,t=d,I=${imageNumber};/wAA\x1b\\`
 }
 
-function allocatedImageResult(response: string, imageNumber: number): { imageId: number | null; result: ProbeResult } {
+function allocatedImageResult(response: string, imageNumber: number): { imageId: number | null; result: ProbeCallbackResult } {
   const match = allocationReply(imageNumber).exec(response)
   const imageId = match ? Number(kittyControlValue(match[1] ?? "", "i")) : 0
   if (!match || imageId < 1 || imageId > 0xffffffff) {
@@ -1178,7 +1178,7 @@ const GRAPHICS_QUERY = "\x1b_Gi=31,s=1,v=1,a=q,t=d,f=24;AAAA\x1b\\"
 const GRAPHICS_QUERY_REPLY = /\x1b_Gi=31;([^\x1b]+)\x1b\\/
 
 /** Live's reading of the graphics query outcome, shared by both arms (#30554). */
-function graphicsQueryOutcomeResult(reply: TerminalQueryOutcome): ProbeResult {
+function graphicsQueryOutcomeResult(reply: TerminalQueryOutcome): ProbeCallbackResult {
   return matchedReplyResult(reply, "No matching graphics query reply; image rendering was not tested", (frame) =>
     graphicsQueryResult(frame, 31),
   )
@@ -1188,7 +1188,7 @@ function graphicsQueryOutcomeResult(reply: TerminalQueryOutcome): ProbeResult {
 function allocationOutcomeResult(
   reply: TerminalQueryOutcome,
   imageNumber: number,
-): { imageId: number | null; result: ProbeResult } {
+): { imageId: number | null; result: ProbeCallbackResult } {
   if (!reply.match) {
     return {
       imageId: null,
@@ -1207,7 +1207,7 @@ function placementRequest(imageId: number): string {
 }
 
 /** Live's reading of a placement outcome, shared by both arms (#30554). */
-function placementOutcomeResult(placement: TerminalQueryOutcome, imageId: number): ProbeResult {
+function placementOutcomeResult(placement: TerminalQueryOutcome, imageId: number): ProbeCallbackResult {
   // The probe grades the acknowledgement, never rendering: WezTerm places silently (27915).
   return matchedReplyResult(placement, "No placement acknowledgement; visible pixels were not tested", (frame) =>
     graphicsQueryResult(frame, imageId, "Image placement acknowledged; visible pixels were not tested"),
@@ -1275,12 +1275,12 @@ const OSC21_FOREGROUND_QUERY = "\x1b]21;foreground=?\x1b\\"
 const OSC21_REPLY = /\x1b\]21;([^\x07\x1b]*)(?:\x07|\x1b\\)/
 
 /** Live's reading of the OSC 21 outcome, shared by both arms (#30554). */
-function kittyForegroundOutcomeResult(reply: TerminalQueryOutcome): ProbeResult {
+function kittyForegroundOutcomeResult(reply: TerminalQueryOutcome): ProbeCallbackResult {
   return matchedReplyResult(reply, "No OSC 21 reply; color rendering was not tested", kittyForegroundResult)
 }
 
 /** A query establishes recognition; this does not test changed colors or pixels. */
-function kittyForegroundResult(response: string): ProbeResult {
+function kittyForegroundResult(response: string): ProbeCallbackResult {
   const match = OSC21_REPLY.exec(response)
   if (!match) {
     return unansweredQuery(
@@ -1318,7 +1318,7 @@ function textSizingResult(
   width: { row: number; col: number },
   scale: { row: number; col: number },
   evidence: "behavior" | "parser-state",
-): ProbeResult {
+): ProbeCallbackResult {
   const widthWorks = width.row === before.row && width.col === before.col + 2
   const scaleWorks = scale.row === width.row && scale.col === width.col + 2
   const pass = widthWorks && scaleWorks
@@ -1340,7 +1340,7 @@ function textSizingResult(
 }
 
 /** Only an isolated headless backend may receive this disposable OSC 52 nonce. */
-function headlessClipboardRoundtrip(ctx: TermlessContext): ProbeResult {
+function headlessClipboardRoundtrip(ctx: TermlessContext): ProbeCallbackResult {
   const nonce = `terminfo-osc52-${randomUUID()}`
   const encoded = btoa(nonce)
   ctx.feed(`\x1b]52;c;${encoded}\x07`)
@@ -1392,7 +1392,7 @@ function headlessClipboardRoundtrip(ctx: TermlessContext): ProbeResult {
   }
 }
 
-function liveClipboardNotTested(): ProbeResult {
+function liveClipboardNotTested(): ProbeCallbackResult {
   const note = "Collector policy: no owned disposable clipboard with verified restoration; OSC 52 was not sent"
   return {
     pass: false,
@@ -1403,7 +1403,7 @@ function liveClipboardNotTested(): ProbeResult {
 
 const osc52Reply = /\x1b\]52;c;([A-Za-z0-9+/=]*)(?:\x07|\x1b\\)/
 
-function clipboardQueryResult(outcome: TerminalQueryOutcome, expected: string): ProbeResult {
+function clipboardQueryResult(outcome: TerminalQueryOutcome, expected: string): ProbeCallbackResult {
   const frame = osc52Reply.exec(outcome.raw)
   if (!frame || outcome.reason !== "reply" || !outcome.match) {
     const reason = outcome.raw ? "invalid-reply" : "no-response"
@@ -1437,7 +1437,7 @@ function clipboardQueryResult(outcome: TerminalQueryOutcome, expected: string): 
   }
 }
 
-async function liveClipboardProbe(ctx: TermContext, kind: "write" | "read" | "roundtrip"): Promise<ProbeResult> {
+async function liveClipboardProbe(ctx: TermContext, kind: "write" | "read" | "roundtrip"): Promise<ProbeCallbackResult> {
   if (!ctx.withClipboardFixture) return liveClipboardNotTested()
   return ctx.withClipboardFixture(async (fixture) => {
     if (kind !== "read") {
@@ -1503,7 +1503,7 @@ function escapeRegex(value: string): string {
 }
 
 /** OS clipboard → app via ctrl+shift+v. Distinct from OSC 52 (app → clipboard) and DECRPM 2004. */
-async function clipboardPaste(ctx: TermContext): Promise<ProbeResult> {
+async function clipboardPaste(ctx: TermContext): Promise<ProbeCallbackResult> {
   const input = ctx.input
   const readInput = ctx.readInput
   if (!input || !readInput) return notTestedResult("OS-level XTEST paste injection", { input: false })
@@ -1574,7 +1574,7 @@ function osc0IconTitleResult(
   iconLabel: string | null,
   windowTitle: string | null,
   raw: { icon: string; title: string },
-): ProbeResult {
+): ProbeCallbackResult {
   const response = JSON.stringify({ ...raw, iconLabel, windowTitle })
   if (iconLabel === null || windowTitle === null) {
     const missing = iconLabel === null ? "icon label (CSI 20 t)" : "window title (CSI 21 t)"
@@ -1773,7 +1773,7 @@ export const extensionsProbes: ProbeDefinition[] = [
     },
     () => {
       const note = "No timed frame playback or pixel readback for Kitty animation"
-      return Promise.resolve<ProbeResult>({
+      return Promise.resolve<ProbeCallbackResult>({
         pass: false,
         note,
         observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none", note },
@@ -1789,7 +1789,7 @@ export const extensionsProbes: ProbeDefinition[] = [
     },
     () => {
       const note = "No pixel and placeholder-cell readback for Kitty Unicode placeholders"
-      return Promise.resolve<ProbeResult>({
+      return Promise.resolve<ProbeCallbackResult>({
         pass: false,
         note,
         observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none", note },
@@ -1966,7 +1966,7 @@ export const extensionsProbes: ProbeDefinition[] = [
     },
     () => {
       const note = "No controlled resize and cell-content readback to measure reflow"
-      return Promise.resolve<ProbeResult>({
+      return Promise.resolve<ProbeCallbackResult>({
         pass: false,
         note,
         observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none", note },
@@ -1983,7 +1983,7 @@ export const extensionsProbes: ProbeDefinition[] = [
     },
     () => {
       const note = "No shell prompt integration metadata or behavior readback for OSC 133"
-      return Promise.resolve<ProbeResult>({
+      return Promise.resolve<ProbeCallbackResult>({
         pass: false,
         note,
         observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none", note },
@@ -2081,7 +2081,7 @@ export const extensionsProbes: ProbeDefinition[] = [
     },
     () => {
       const note = "No working-directory metadata readback for OSC 7"
-      return Promise.resolve<ProbeResult>({
+      return Promise.resolve<ProbeCallbackResult>({
         pass: false,
         note,
         observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none", note },
@@ -2098,7 +2098,7 @@ export const extensionsProbes: ProbeDefinition[] = [
     },
     () => {
       const note = "No VS Code shell integration metadata or behavior readback for OSC 633"
-      return Promise.resolve<ProbeResult>({
+      return Promise.resolve<ProbeCallbackResult>({
         pass: false,
         note,
         observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none", note },
@@ -2238,7 +2238,7 @@ export const extensionsProbes: ProbeDefinition[] = [
     },
     () => {
       const note = "No desktop notification delivery readback for OSC 9"
-      return Promise.resolve<ProbeResult>({
+      return Promise.resolve<ProbeCallbackResult>({
         pass: false,
         note,
         observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none", note },
@@ -2428,7 +2428,7 @@ export const extensionsProbes: ProbeDefinition[] = [
       },
       () => {
         const note = "No icon-name readback for OSC 1"
-        return Promise.resolve<ProbeResult>({
+        return Promise.resolve<ProbeCallbackResult>({
           pass: false,
           note,
           observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none", note },

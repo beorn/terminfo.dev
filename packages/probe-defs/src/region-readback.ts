@@ -28,7 +28,7 @@ import type {
   CapturePixelGeometry,
   CaptureRectangle,
   ObservationFrame,
-  ProbeResult,
+  ProbeCallbackResult,
   TermContext,
   TerminalQueryOutcome,
 } from "./types.ts"
@@ -181,7 +181,7 @@ function inconclusive(
   reason: "timeout" | "insufficient-evidence",
   evidence: "pixels" | "text" | "none" | "query" = "pixels",
   citation?: { screenshotRef?: string; frames?: ObservationFrame[] },
-): ProbeResult {
+): ProbeCallbackResult {
   return {
     pass: false,
     observation: {
@@ -200,7 +200,7 @@ function inconclusive(
  * Evidence "none" must carry a zero-byte trace, so a branch that has already queried is never this
  * shape — it reports evidence "query" instead (see captureRegionVerdict).
  */
-function refused(id: string, note: string): ProbeResult {
+function refused(id: string, note: string): ProbeCallbackResult {
   return inconclusive(id, note, "insufficient-evidence", "none")
 }
 
@@ -210,9 +210,9 @@ function refused(id: string, note: string): ProbeResult {
  * into the same observation with truthful query evidence and say why in the note. Pixel verdicts and
  * every non-"none" refusal pass through untouched.
  */
-function afterCallerBytes(result: ProbeResult, callerEvidence: "none" | "query"): ProbeResult
-function afterCallerBytes(result: ProbeResult | null, callerEvidence: "none" | "query"): ProbeResult | null
-function afterCallerBytes(result: ProbeResult | null, callerEvidence: "none" | "query"): ProbeResult | null {
+function afterCallerBytes(result: ProbeCallbackResult, callerEvidence: "none" | "query"): ProbeCallbackResult
+function afterCallerBytes(result: ProbeCallbackResult | null, callerEvidence: "none" | "query"): ProbeCallbackResult | null
+function afterCallerBytes(result: ProbeCallbackResult | null, callerEvidence: "none" | "query"): ProbeCallbackResult | null {
   const observation = result?.observation
   if (callerEvidence === "none" || !observation || observation.evidence !== "none") return result
   return {
@@ -239,7 +239,7 @@ function regionRefusal(
   rows: number,
   cols: number,
   textMode = false,
-): ProbeResult | undefined {
+): ProbeCallbackResult | undefined {
   const minRows = spec.minRows ?? 1
   const minCols = spec.minCols ?? 1
   if (!Number.isSafeInteger(rows) || !Number.isSafeInteger(cols) || rows < minRows || cols < minCols) {
@@ -333,7 +333,7 @@ async function awaitPaintWitness(options: {
   pollMs: number
   /** How this run sees its frames: the timeout branch names it rather than claiming pixels. */
   evidence?: "pixels" | "text"
-}): Promise<{ witness: RegionCapture } | ProbeResult> {
+}): Promise<{ witness: RegionCapture } | ProbeCallbackResult> {
   const { read, id, label, witnessCell, pixelGeometry, geometrySource, baseline, timeoutMs, pollMs } = options
   const evidence = options.evidence ?? "pixels"
   const deadline = Date.now() + timeoutMs
@@ -365,7 +365,7 @@ async function awaitPaintWitness(options: {
   }
 }
 
-function witnessed(result: { witness: RegionCapture } | ProbeResult): result is { witness: RegionCapture } {
+function witnessed(result: { witness: RegionCapture } | ProbeCallbackResult): result is { witness: RegionCapture } {
   return "witness" in result
 }
 
@@ -393,7 +393,7 @@ export function cropPositionRefusal(input: {
   response: string
   frames: ObservationFrame[]
   screenshotRef?: string
-}): ProbeResult | null {
+}): ProbeCallbackResult | null {
   const { id, compared, response, frames, screenshotRef } = input
   const cropped = compared.filter(
     (entry): entry is { role: string; rectangle: CaptureRectangle } => entry.rectangle !== undefined,
@@ -575,7 +575,7 @@ export async function captureRegionGeometry(
   id: string,
   spec: RegionGeometrySpec,
   refusalEvidence: "none" | "query" = "none",
-): Promise<{ geometry: PixelGeometry | undefined; source: PixelGeometrySource } | ProbeResult> {
+): Promise<{ geometry: PixelGeometry | undefined; source: PixelGeometrySource } | ProbeCallbackResult> {
   // Geometry first: an undersized terminal is refused before a single query byte.
   const textMode = ctx.captureKind === "text-cells"
   const bounds = regionRefusal(id, { ...spec, pixelGeometry: PENDING_GEOMETRY }, ctx.rows, ctx.cols, textMode)
@@ -629,7 +629,7 @@ export async function captureRegionVerdict(
   id: string,
   spec: Omit<RegionReadback, "pixelGeometry">,
   refusalEvidence: "none" | "query" = "none",
-): Promise<ProbeResult | null> {
+): Promise<ProbeCallbackResult | null> {
   const read = collectorRegionRead(ctx)
   if (!read) return null
   // A row whose reset clears two or more setup attributes has no reference independent of that
@@ -703,7 +703,7 @@ export async function captureStabilityPair<T extends StabilityCapture>(
   first: () => Promise<T>,
   second: () => Promise<T>,
 ): Promise<{
-  refusal: ProbeResult | null
+  refusal: ProbeCallbackResult | null
   second: T
   stability: {
     regionDigest: Array<string | undefined>
@@ -776,7 +776,7 @@ export async function captureRegionReadbackDecision(
   id: string,
   spec: RegionReadback,
   read: RegionRead | null,
-): Promise<ProbeResult | null> {
+): Promise<ProbeCallbackResult | null> {
   // How this decision was seen: the terminal's own cells on a text arm, pixels everywhere else.
   // Every branch below names it, so a published claim never says pixels it did not see.
   const evidence = ctx.captureKind === "text-cells" ? ("text" as const) : ("pixels" as const)

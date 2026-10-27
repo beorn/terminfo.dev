@@ -20,7 +20,7 @@ import {
   type ObservationFrame,
   type ProbeAssertion,
   type ProbeDefinition,
-  type ProbeResult,
+  type ProbeCallbackResult,
   type TermContext,
   type UngradedDiagnostic,
   type Utf8DecodingReading,
@@ -209,17 +209,17 @@ function capturedConsoleHost(trace: Record<string, unknown>): ConsoleBufferOwner
 }
 
 /**
- * Runtime totality guard. `ProbeResult` is a union that makes a measurement or a coverage
+ * Runtime totality guard. `ProbeCallbackResult` is a union that makes a measurement or a coverage
  * record mandatory, so a typed callback cannot reach here without one; an untyped caller
  * can, and that is reported rather than silently ungraded.
  */
-function claimsMeasurement(result: ProbeResult): boolean {
+function claimsMeasurement(result: ProbeCallbackResult): boolean {
   const widened: { observation?: unknown; assertions?: readonly unknown[] } = result
   return widened.observation !== undefined || (widened.assertions?.length ?? 0) > 0
 }
 
 /** A refused claim keeps its own observation detail and assertion contents in the error text, never as a claim. */
-function refusedClaimEvidence(result: ProbeResult): string {
+function refusedClaimEvidence(result: ProbeCallbackResult): string {
   const parts: string[] = []
   const observation = result.observation
   if (observation) {
@@ -686,7 +686,7 @@ export async function runProbeBatch(
       reason: "Callback attempt started; no result recorded yet",
     }
     options.onCheckpoint?.(batch)
-    let callbackChecks: ProbeResult["checks"]
+    let callbackChecks: ProbeCallbackResult["checks"]
     let criterionBranch: string | undefined
     try {
       if (!probe.term) throw new Error(`No app callback for ${probe.id}`)

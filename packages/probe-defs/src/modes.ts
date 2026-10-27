@@ -3,7 +3,7 @@ import type {
   CaptureRectangle,
   ObservationFrame,
   ProbeDefinition,
-  ProbeResult,
+  ProbeCallbackResult,
   TermContext,
   TermlessContext,
 } from "./types.ts"
@@ -79,7 +79,7 @@ export const modesReadbackRows: readonly RegionReadbackRow[] = [
 ]
 
 /** Refuse a modes capture fixture before any bytes when the measured geometry is too small. */
-function captureRefusal(ctx: TermContext, minRows: number, minCols: number, feature: string): ProbeResult | undefined {
+function captureRefusal(ctx: TermContext, minRows: number, minCols: number, feature: string): ProbeCallbackResult | undefined {
   if (!ctx.capture) return undefined
   if (Number.isSafeInteger(ctx.rows) && Number.isSafeInteger(ctx.cols) && ctx.rows >= minRows && ctx.cols >= minCols) {
     return undefined
@@ -102,7 +102,7 @@ function captureRefusal(ctx: TermContext, minRows: number, minCols: number, feat
  * attributes in one frame — bold present AND italic absent — is the discriminator. A pending push
  * is popped on capture failure so the fixture never leaves the stack unbalanced.
  */
-async function xtSgrStackCapture(ctx: TermContext, id: string, label: string): Promise<ProbeResult> {
+async function xtSgrStackCapture(ctx: TermContext, id: string, label: string): Promise<ProbeCallbackResult> {
   const refusal = captureRefusal(ctx, 3, 6, id)
   if (refusal) return refusal
   let pushed = false
@@ -146,7 +146,7 @@ async function xtSgrStackCapture(ctx: TermContext, id: string, label: string): P
  * `!` overwrites the last column and stays on row 1; with wrap saved-then-restored it wraps to
  * row 2. Both frames therefore differ only by the restored wrap state.
  */
-async function xtModeSaveCapture(ctx: TermContext, id: string): Promise<ProbeResult> {
+async function xtModeSaveCapture(ctx: TermContext, id: string): Promise<ProbeCallbackResult> {
   const refusal = captureRefusal(ctx, 2, 2, id)
   if (refusal) return refusal
   const xs = "X".repeat(ctx.cols)
@@ -190,7 +190,7 @@ async function xtModeSaveCapture(ctx: TermContext, id: string): Promise<ProbeRes
  * palette-setup failure (the control not measured blue) stays inconclusive. A pending push is popped
  * only when one is open, so a successful roundtrip is never double-popped.
  */
-async function xtColorStackCapture(ctx: TermContext, id: string): Promise<ProbeResult> {
+async function xtColorStackCapture(ctx: TermContext, id: string): Promise<ProbeCallbackResult> {
   const refusal = captureRefusal(ctx, 3, 8, id)
   if (refusal) return refusal
   let pushed = false
@@ -229,7 +229,7 @@ async function xtColorStackCapture(ctx: TermContext, id: string): Promise<ProbeR
 }
 
 /** A stack operation that produced output: the invalid-reply record the read-back arms keep. */
-function stackOutputResult(output: string): ProbeResult {
+function stackOutputResult(output: string): ProbeCallbackResult {
   return {
     pass: false,
     response: output,
@@ -261,7 +261,7 @@ function italicOnly(cell: StackCell): boolean {
  * whose SGR 0 does not clear bold, has no observable for the claim (a coverage record, TEST TODO)
  * rather than a negative.
  */
-function xtSgrStackHeadless(ctx: TermlessContext, id: string, label: string): ProbeResult {
+function xtSgrStackHeadless(ctx: TermlessContext, id: string, label: string): ProbeCallbackResult {
   const expected = `${id}: ${label} leaves Y bold-only (bold restored by the pop, italic cleared)`
   if (!Number.isSafeInteger(ctx.cols) || ctx.cols < 3) {
     return parserStateResult(null, expected, { cols: ctx.cols }, "Measured grid needs three columns")
@@ -312,7 +312,7 @@ function xtSgrStackHeadless(ctx: TermlessContext, id: string, label: string): Pr
  * backend that cannot show either state has no observable for the claim (a coverage record, TEST
  * TODO) rather than a negative.
  */
-function xtModeSaveHeadless(ctx: TermlessContext, id: string): ProbeResult {
+function xtModeSaveHeadless(ctx: TermlessContext, id: string): ProbeCallbackResult {
   const expected = `${id}: the ${ctx.cols}-column overflow ! wraps to row 2 after DECAWM is saved on, disabled and restored`
   const rows = ctx.getScrollback().screenLines
   if (!Number.isSafeInteger(ctx.cols) || ctx.cols < 2 || !Number.isSafeInteger(rows) || rows < 2) {
@@ -364,7 +364,7 @@ const COLOR_STACK_GREEN = { r: 0, g: 255, b: 0 }
  * readback whose colors do not follow OSC 4 has no observable for the claim (a coverage record,
  * TEST TODO) rather than a negative.
  */
-function xtColorStackHeadless(ctx: TermlessContext, id: string): ProbeResult {
+function xtColorStackHeadless(ctx: TermlessContext, id: string): ProbeCallbackResult {
   const expected = `${id}: Y printed through index 1 after the pop reads the blue baseline, not the pushed green`
   if (!Number.isSafeInteger(ctx.cols) || ctx.cols < 2) {
     return parserStateResult(null, expected, { cols: ctx.cols }, "Measured grid needs two columns")
@@ -474,7 +474,7 @@ function altScreenRoundtrip(
   screen: AltScreenMode,
   phase: "enter" | "exit" | "roundtrip",
   expected: string,
-): ProbeResult {
+): ProbeCallbackResult {
   const enter = `\x1b[?${screen.mode}h`
   const leave = `\x1b[?${screen.mode}l`
   const rows = ctx.getScrollback().screenLines
@@ -651,7 +651,7 @@ function altScreenRoundtrip(
   }
 }
 
-function alt1049ReadbackInconclusive(expected: string, note: string, error: unknown): ProbeResult {
+function alt1049ReadbackInconclusive(expected: string, note: string, error: unknown): ProbeCallbackResult {
   const message = error instanceof Error ? error.message : String(error)
   return parserStateResult(null, expected, { readbackError: message }, note)
 }
@@ -674,7 +674,7 @@ const LR_MARGIN_EXPECTED =
  * record, TEST TODO) rather than a negative. Cleanup resets the margins while ?69 is still set,
  * where CSI s is DECSLRM rather than a cursor save, then leaves the mode.
  */
-function leftRightMarginHeadless(ctx: TermlessContext): ProbeResult {
+function leftRightMarginHeadless(ctx: TermlessContext): ProbeCallbackResult {
   const width = LR_MARGIN_SEED.length
   if (!Number.isSafeInteger(ctx.cols) || ctx.cols < width) {
     return parserStateResult(null, LR_MARGIN_EXPECTED, { cols: ctx.cols }, "Measured grid needs eight columns")
@@ -833,7 +833,7 @@ interface DecssclsPair {
  * the control moved, the first band capture landed after the window could have finished, or the
  * frames were cropped from different rectangles.
  */
-async function decsscls(ctx: TermContext): Promise<ProbeResult> {
+async function decsscls(ctx: TermContext): Promise<ProbeCallbackResult> {
   const captureCallback = ctx.capture
   if (!captureCallback) {
     return notTestedResult(

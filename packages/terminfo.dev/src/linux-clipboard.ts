@@ -3,7 +3,7 @@ import { createHash } from "node:crypto"
 import { readFileSync, readdirSync, readlinkSync, realpathSync, statSync } from "node:fs"
 import { homedir } from "node:os"
 import { basename, dirname, sep } from "node:path"
-import type { ClipboardFixture, LinuxMuxAttachmentProof, ProbeResult, TermContext } from "@terminfo/probe-defs"
+import type { ClipboardFixture, LinuxMuxAttachmentProof, ProbeCallbackResult, TermContext } from "@terminfo/probe-defs"
 import { assertLiveExecutable, type LiveExecutable } from "./linux-capture.ts"
 
 type MuxReceiptTarget = Pick<
@@ -57,7 +57,7 @@ export interface LinuxClipboardAdapter {
     work: Parameters<NonNullable<TermContext["withClipboardFixture"]>>[0],
     trace: (event: ClipboardTraceEvent) => void,
     verify: () => Promise<void>,
-  ): Promise<ProbeResult>
+  ): Promise<ProbeCallbackResult>
   dispose(): Promise<void>
 }
 
@@ -75,7 +75,7 @@ export function createClipboardTransaction(
   return async (work, trace, verify) => {
     if (busy) throw new Error("Owned clipboard transaction cannot nest or overlap")
     busy = true
-    let result: ProbeResult | undefined
+    let result: ProbeCallbackResult | undefined
     let failure: unknown
     try {
       await verify()

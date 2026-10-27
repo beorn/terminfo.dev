@@ -16,7 +16,7 @@ import type {
   ObservationEvidence,
   ProbeAssertion,
   ProbeDefinition,
-  ProbeResult,
+  ProbeCallbackResult,
   TerminalQueryOutcome,
   TermlessContext,
   UngradedDiagnostic,
@@ -206,12 +206,12 @@ export function errorMessage(error: unknown): string {
 }
 
 /** The exact callback bytes stay evidence on every path, coverage or refusal; nothing is synthesized here. */
-function retainCallbackResponse(batch: Batch, id: string, result: ProbeResult): void {
+function retainCallbackResponse(batch: Batch, id: string, result: ProbeCallbackResult): void {
   if (result.response !== undefined) batch.rawReplies[id] = result.response
 }
 
 /** A refused claim keeps its own observation detail and assertion contents in the error text, never as a claim. */
-function refusedClaimEvidence(result: ProbeResult): string {
+function refusedClaimEvidence(result: ProbeCallbackResult): string {
   const parts: string[] = []
   const observation = result.observation
   if (observation) {
@@ -238,13 +238,13 @@ function refusedClaimEvidence(result: ProbeResult): string {
 }
 
 /** A refusal's text names the claim it refused, so the run file keeps what the grader concluded. */
-function withRefusedClaim(message: string, result: ProbeResult): string {
+function withRefusedClaim(message: string, result: ProbeCallbackResult): string {
   const refused = refusedClaimEvidence(result)
   return refused ? `${message}; refused ${refused}` : message
 }
 
 /** A callback conclusion without its raw state cannot become a support claim. */
-function recordResult(batch: Batch, probe: ProbeDefinition, result: ProbeResult): void {
+function recordResult(batch: Batch, probe: ProbeDefinition, result: ProbeCallbackResult): void {
   const id = probe.id
   if (result.notTested) {
     recordNotTested(batch, probe, result)
@@ -254,7 +254,7 @@ function recordResult(batch: Batch, probe: ProbeDefinition, result: ProbeResult)
   // The union makes one of the two records mandatory, so a typed callback always lands here
   // with a measurement. An untyped caller that returns neither gets a loud collector error
   // instead of the old ungraded legacy-callback record.
-  const widened: { observation?: ProbeResult["observation"] } = result
+  const widened: { observation?: ProbeCallbackResult["observation"] } = result
   const explicit = widened.observation
   if (!explicit) {
     batch.ungradedDiagnostics[id] = {
@@ -332,7 +332,7 @@ function recordResult(batch: Batch, probe: ProbeDefinition, result: ProbeResult)
  * capture or an unclosed reason stays a loud collector error, never a not-tested claim, and a result
  * that also carries its own observation or assertions is contradictory and is refused the same way.
  */
-function recordNotTested(batch: Batch, probe: ProbeDefinition, result: ProbeResult): void {
+function recordNotTested(batch: Batch, probe: ProbeDefinition, result: ProbeCallbackResult): void {
   const id = probe.id
   const notTested = result.notTested
   if (!notTested) return
@@ -427,7 +427,7 @@ export async function collectBatch(
       reason: "Callback attempt started; no result recorded yet",
     }
     onCheckpoint?.(batch)
-    let callbackChecks: ProbeResult["checks"]
+    let callbackChecks: ProbeCallbackResult["checks"]
     let criterionBranch: string | undefined
     try {
       backend = await createBackend()

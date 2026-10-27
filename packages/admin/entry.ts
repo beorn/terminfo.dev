@@ -1,4 +1,4 @@
-export type { ProbeResult, SupportLevel, BackendInfo, probesFeature, probesDatabase } from "./types.ts"
+export type { SupportLevel, BackendInfo, probesFeature, probesDatabase } from "./types.ts"
 /** @deprecated Use probesFeature */
 export type { probesFeature as CensusFeature } from "./types.ts"
 /** @deprecated Use probesDatabase */

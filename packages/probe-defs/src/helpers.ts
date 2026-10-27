@@ -14,16 +14,16 @@ import type {
 import type {
   ObservationEvidence,
   ProbeDefinition,
-  ProbeResult,
+  ProbeCallbackResult,
   TerminalQueryOutcome,
   TermlessContext,
   TermContext,
 } from "./types.ts"
 
 /** Keep the serialized state alongside the exact assertion that used it. */
-export function parserStateResult(pass: boolean | null, expected: string, state: object, note?: string): ProbeResult {
+export function parserStateResult(pass: boolean | null, expected: string, state: object, note?: string): ProbeCallbackResult {
   const response = JSON.stringify(state)
-  const assertions: NonNullable<ProbeResult["assertions"]> | undefined =
+  const assertions: NonNullable<ProbeCallbackResult["assertions"]> | undefined =
     pass === null ? undefined : [{ kind: pass ? "positive" : "negative", expected, observed: response }]
   return {
     pass: pass === true,
@@ -48,7 +48,7 @@ export function sameRgb(a: { r: number; g: number; b: number }, b: { r: number; 
  * The probe ran and retained raw state, but this environment exposes no applicable observable for
  * the claim. This is a coverage/applicability record, never a fifth measurement outcome.
  */
-export function notTestedResult(noObservable: string, state: object): ProbeResult {
+export function notTestedResult(noObservable: string, state: object): ProbeCallbackResult {
   return {
     pass: false,
     response: JSON.stringify(state),
@@ -63,7 +63,7 @@ export function notTestedResult(noObservable: string, state: object): ProbeResul
  * stays TEST TODO with a required review pending; nothing here grades support, delivery or
  * Untestable.
  */
-function reviewResult(branch: string, reason: string, noObservable: string, state: object): ProbeResult {
+function reviewResult(branch: string, reason: string, noObservable: string, state: object): ProbeCallbackResult {
   return {
     ...notTestedResult(noObservable, state),
     criterionBranch: branch,
@@ -79,7 +79,7 @@ export function osInputReviewResult(
   noObservable: string,
   state: object,
   reason = "Headless context injects no OS-level input; required independent review of the retained raw state pending",
-): ProbeResult {
+): ProbeCallbackResult {
   return reviewResult("os-input-review", reason, noObservable, state)
 }
 
@@ -89,7 +89,7 @@ export function osInputReviewResult(
  * sent. Never a sentinel negative (C10) and never graded from a source read (C7); the reviewer
  * names the engine's missing observable from its source audit row.
  */
-export function colorReadbackReviewResult(noObservable: string, state: object): ProbeResult {
+export function colorReadbackReviewResult(noObservable: string, state: object): ProbeCallbackResult {
   return reviewResult(
     "color-readback-review",
     "Headless context offers no colour readback; required independent review of the retained raw state pending",
@@ -109,7 +109,7 @@ export function colorReadbackReviewResult(noObservable: string, state: object): 
  * to its own oracle: a context that cannot answer this round trip already fails its geometry and
  * width reads by name (@dev/review2).
  */
-export async function utf8DecodingRefusal(ctx: TermContext, id: string): Promise<ProbeResult | null> {
+export async function utf8DecodingRefusal(ctx: TermContext, id: string): Promise<ProbeCallbackResult | null> {
   if (!ctx.utf8Decoding) return null
   if ((await ctx.utf8Decoding()) !== "8-bit") return null
   return {
@@ -132,7 +132,7 @@ export async function utf8DecodingRefusal(ctx: TermContext, id: string): Promise
 }
 
 /** Selective erase must remove unprotected cells and retain a protected control. */
-export function selectiveEraseResult(ctx: TermlessContext, sequence: string, rectangular: boolean): ProbeResult {
+export function selectiveEraseResult(ctx: TermlessContext, sequence: string, rectangular: boolean): ProbeCallbackResult {
   const expected = "DECSCA-protected P survives while selective erase clears ABCD"
   if (!Number.isSafeInteger(ctx.cols) || ctx.cols < 6) {
     return parserStateResult(null, expected, { cols: ctx.cols }, "Need six measured columns")
@@ -169,7 +169,7 @@ export function selectiveEraseResult(ctx: TermlessContext, sequence: string, rec
 }
 
 /** CPR cannot establish changed cells, styling, or scrollback contents. */
-export function unmeasuredCellResult(position: { row: number; col: number } | null, feature: string): ProbeResult {
+export function unmeasuredCellResult(position: { row: number; col: number } | null, feature: string): ProbeCallbackResult {
   return {
     pass: false,
     ...(position && { response: `${position.row};${position.col}` }),
@@ -279,7 +279,7 @@ export async function cursorStyleReadbackDecision(
   ctx: TermContext,
   sequence: string,
   expected: number,
-): Promise<ProbeResult | null> {
+): Promise<ProbeCallbackResult | null> {
   ctx.write(sequence)
   try {
     const ps = await queryCursorStyle(ctx)
@@ -315,7 +315,7 @@ export function sgrReadbackResult(
   sequence: string,
   state: readonly string[],
   readback: SgrReadback,
-): ProbeResult {
+): ProbeCallbackResult {
   // Extended-color operands are one parameter, never independent attributes. Keep the raw state
   // below, but compare equivalent legacy semicolon and colon reports as complete color tokens.
   const parameters: string[] = []
@@ -413,7 +413,7 @@ export async function sgrReadbackDecision(
   sequence: string,
   readback: SgrReadback,
   setup?: { sequence: string; baseline: SgrReadback; readback: SgrReadback },
-): Promise<ProbeResult | null> {
+): Promise<ProbeCallbackResult | null> {
   const observed: Record<string, string> = {}
   try {
     ctx.write("\x1b[0m")
@@ -471,7 +471,7 @@ export const SGR_CAPTURE_MIN_COLS = 34
  * whose arm writes before falling back (the DECRQSS readback) still calls this first, so the refusal
  * is never preceded by bytes of its own.
  */
-export function sgrPlainFixtureTooSmall(ctx: TermContext): ProbeResult | undefined {
+export function sgrPlainFixtureTooSmall(ctx: TermContext): ProbeCallbackResult | undefined {
   const { rows, cols } = ctx
   if (Number.isSafeInteger(rows) && Number.isSafeInteger(cols) && rows >= 1 && cols >= 2) return undefined
   return {
@@ -486,7 +486,7 @@ export function sgrPlainFixtureTooSmall(ctx: TermContext): ProbeResult | undefin
 }
 
 /** Refuse an SGR capture fixture before any bytes when the measured geometry is too small. */
-export function sgrCaptureTooSmall(ctx: TermContext, feature = "SGR capture"): ProbeResult | undefined {
+export function sgrCaptureTooSmall(ctx: TermContext, feature = "SGR capture"): ProbeCallbackResult | undefined {
   if (!ctx.capture) return undefined
   const { rows, cols } = ctx
   if (
@@ -517,7 +517,7 @@ export async function sgrCaptureFrames(
   meta: Record<string, unknown> = {},
   note = "Control and target pixels captured; visual interpretation requires review",
   controlLabel = `${targetLabel} control`,
-): Promise<ProbeResult> {
+): Promise<ProbeCallbackResult> {
   if (!ctx.capture) throw new Error(`${targetLabel}: SGR pixel capture requires a capture callback`)
   ctx.write(control)
   const controlFrame = await ctx.capture({ role: "control", label: controlLabel })
@@ -656,7 +656,7 @@ export function cursorProbe(
     evidence: ObservationEvidence,
     reason: "no-response" | "insufficient-evidence",
     note: string,
-  ): ProbeResult => ({
+  ): ProbeCallbackResult => ({
     pass: false,
     response: JSON.stringify({ origin, setup: setupPosition, final }),
     note,
@@ -793,7 +793,7 @@ export function cursorProbe(
 export function decrpmModeProbe(
   id: string,
   modeNum: number,
-  termlessFn: ((ctx: TermlessContext) => ProbeResult) | null,
+  termlessFn: ((ctx: TermlessContext) => ProbeCallbackResult) | null,
 ): ProbeDefinition {
   return {
     id,
@@ -812,7 +812,7 @@ export function decrpmModeProbe(
  * The adapter's getMode value rides along as context only, never as evidence (libvterm hard-codes it; wezterm
  * derives part of it from a byte scan). The branch keys on the observed reply, never on an engine name.
  */
-export function headlessDecrpmArm(modeNum: number, modeName?: string): (ctx: TermlessContext) => ProbeResult {
+export function headlessDecrpmArm(modeNum: number, modeName?: string): (ctx: TermlessContext) => ProbeCallbackResult {
   return (ctx) => {
     ctx.feed(`\x1b[?${modeNum}h`)
     // Read the adapter's mode view before the query. vt100 and vt220 used to run `CSI ? 1 $ p` as a DECCKM
@@ -853,7 +853,7 @@ export function decrpmReading(ps: DecrpmPs): string {
  * Ps 1, 2 and 3 grade supported; Ps 4 grades unsupported, because the terminal says it knows the mode and
  * that the mode cannot be set (xterm.js answers exactly that for 1005); Ps 0 and no reply are inconclusive.
  */
-export function decrpmResult(ps: DecrpmPs | null, modeNum: number): ProbeResult {
+export function decrpmResult(ps: DecrpmPs | null, modeNum: number): ProbeCallbackResult {
   if (ps === null) {
     return {
       pass: false,
@@ -921,8 +921,8 @@ export function isBlank(char: string): boolean {
  */
 export function probe(
   id: string,
-  termless: ((ctx: TermlessContext) => ProbeResult) | null,
-  term: ((ctx: TermContext) => Promise<ProbeResult>) | null,
+  termless: ((ctx: TermlessContext) => ProbeCallbackResult) | null,
+  term: ((ctx: TermContext) => Promise<ProbeCallbackResult>) | null,
   termObservationEvidence?: ObservationEvidence,
 ): ProbeDefinition {
   return { id, termless, term, ...(termObservationEvidence && { termObservationEvidence }) }
@@ -978,7 +978,7 @@ export function sentinelNegativeResult(
   raw: string,
   sentinel: { atMs: number; graceMs: number } | undefined,
   expected: string,
-): ProbeResult | null {
+): ProbeCallbackResult | null {
   const answer = sentinelAnswer(raw)
   if (!sentinel || answer === null || answer.start > 0 || raw.slice(answer.end).trim() !== "") return null
   const observed = `DA1 answered at +${String(sentinel.atMs)}ms; no reply through the ${String(sentinel.graceMs)} ms window`
@@ -997,7 +997,7 @@ export function sentinelNegativeResult(
  * exactly as live grades it. Every other outcome returns null and the probe keeps its own capture
  * reading, so an engine off the proven list is unchanged.
  */
-export function sentinelSilenceResult(outcome: TerminalQueryOutcome, expected: string): ProbeResult | null {
+export function sentinelSilenceResult(outcome: TerminalQueryOutcome, expected: string): ProbeCallbackResult | null {
   if (outcome.reason !== "sentinel") return null
   return sentinelNegativeResult(outcome.raw, outcome.sentinel, expected)
 }

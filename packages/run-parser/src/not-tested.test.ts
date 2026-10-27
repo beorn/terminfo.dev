@@ -184,6 +184,35 @@ describe("sealed current runs", () => {
       })),
     }
   }
+  // v1-v3 fixtures cannot detect a current reader/writer retaining the displaced wire names.
+  // This pending-only run claims no successful measurement or native qualification.
+  it("reads schema 4 live source, subject and tests without restoring displaced wire names", () => {
+    const { target, intendedContext, results, ...metadata } = current()
+    const raw = {
+      ...metadata,
+      schemaVersion: 4,
+      source: { kind: "live" },
+      subject: { ...target, kind: "term" },
+      intendedSubject: { ...intendedContext, kind: "term" },
+      results: results.map(({ checks, ...result }) => ({ ...result, tests: checks })),
+    }
+    const loaded = parseRun(
+      "current-v4.json",
+      JSON.stringify(raw),
+      catalog,
+      new Map([[suite.probeHash, currentSuite]]),
+    )
+    expect(loaded).toMatchObject({
+      schemaVersion: 4,
+      source: { kind: "live" },
+      subject: raw.subject,
+      intendedSubject: raw.intendedSubject,
+      results: raw.results,
+    })
+    expect(loaded).not.toHaveProperty("target")
+    expect(loaded).not.toHaveProperty("intendedContext")
+    for (const result of loaded.results!) expect(result).not.toHaveProperty("checks")
+  })
   it("reads recorded TODO without deriving status from today's catalogue or callback schedule", () => {
     const raw = current()
     const loaded = parseRun(

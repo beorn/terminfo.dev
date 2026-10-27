@@ -1,4 +1,4 @@
-import type { ProbeDefinition, ProbeResult, TermContext, TermlessContext } from "./types.ts"
+import type { ProbeDefinition, ProbeCallbackResult, TermContext, TermlessContext } from "./types.ts"
 import {
   notTestedResult,
   parserStateResult,
@@ -33,9 +33,9 @@ export function sgrTermReadback(
   id: string,
   sequence: string,
   readback: SgrReadback,
-  fallback: (ctx: TermContext) => ProbeResult | Promise<ProbeResult>,
+  fallback: (ctx: TermContext) => ProbeCallbackResult | Promise<ProbeCallbackResult>,
   setup?: Parameters<typeof sgrReadbackDecision>[4],
-): (ctx: TermContext) => Promise<ProbeResult> {
+): (ctx: TermContext) => Promise<ProbeCallbackResult> {
   return async (ctx) => {
     // The capture fixture guard refuses before any bytes on a measured small terminal, so the
     // readback must not emit its own sequences ahead of it.
@@ -68,7 +68,7 @@ async function consumedSgr(
   id: string,
   sequence: string,
   controlLabel = `${id} control`,
-): Promise<ProbeResult> {
+): Promise<ProbeCallbackResult> {
   if (ctx.capture) {
     const refusal = sgrCaptureTooSmall(ctx, id)
     if (refusal) return refusal
@@ -126,7 +126,7 @@ async function consumedSgrReset(
   setup: string,
   reset: string,
   controlPrefix = "",
-): Promise<ProbeResult> {
+): Promise<ProbeCallbackResult> {
   if (ctx.capture) {
     const refusal = sgrCaptureTooSmall(ctx, id)
     if (refusal) return refusal
@@ -254,7 +254,7 @@ function measuredReset(
   reset: string,
   set: readonly ResetAttribute[],
   preserve: readonly ResetAttribute[],
-): ProbeResult {
+): ProbeCallbackResult {
   ctx.feed(`C${setup}X${reset}Y`)
   const baseline = ctx.getCell(0, 0)
   const before = ctx.getCell(0, 1)
@@ -293,7 +293,7 @@ function measuredReset(
   )
 }
 
-async function consumedResetSgr(ctx: TermContext, id: string, setup: string, reset: string): Promise<ProbeResult> {
+async function consumedResetSgr(ctx: TermContext, id: string, setup: string, reset: string): Promise<ProbeCallbackResult> {
   if (ctx.capture) {
     const refusal = sgrCaptureTooSmall(ctx, id)
     if (refusal) return refusal

@@ -1,7 +1,7 @@
 import {
   frameDigests,
   type ProbeDefinition,
-  type ProbeResult,
+  type ProbeCallbackResult,
   type TermContext,
   type TermlessContext,
 } from "./types.ts"
@@ -34,7 +34,7 @@ const CURSOR_CUP_SCROLL_REGION_READBACK: Omit<RegionReadback, "pixelGeometry"> =
   minCols: 3,
 }
 
-function headlessPosition(ctx: TermlessContext, row: number, col: number): ProbeResult {
+function headlessPosition(ctx: TermlessContext, row: number, col: number): ProbeCallbackResult {
   const cursor = ctx.getCursor()
   return parserStateResult(cursor.y === row && cursor.x === col, `cursor row=${row}, col=${col} (0-based)`, cursor)
 }
@@ -45,7 +45,7 @@ function headlessSavedCursor(
   displaced: { row: number; col: number },
   save: string,
   restore: string,
-): ProbeResult {
+): ProbeCallbackResult {
   ctx.feed(`\x1b[${initial.row};${initial.col}H`)
   const setup = ctx.getCursor()
   if (setup.y !== initial.row - 1 || setup.x !== initial.col - 1) {
@@ -91,7 +91,7 @@ async function appSavedCursor(
   displaced: { row: number; col: number },
   save: string,
   restore: string,
-): Promise<ProbeResult> {
+): Promise<ProbeCallbackResult> {
   ctx.write(`\x1b[${initial.row};${initial.col}H`)
   const setup = await ctx.queryCursorPosition()
   if (!setup || setup.row !== initial.row || setup.col !== initial.col) {

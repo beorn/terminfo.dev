@@ -8,7 +8,7 @@ import { createHash } from "node:crypto"
 import { expect, test } from "vitest"
 import type { ProbeSuiteManifest } from "@terminfo/probe-defs"
 import { parseRun } from "@terminfo/run-parser"
-import { ALL_PROBES, type CaptureRequest, type ObservationFrame, type ProbeResult, type TermContext } from "../index.ts"
+import { ALL_PROBES, type CaptureRequest, type ObservationFrame, type ProbeCallbackResult, type TermContext } from "../index.ts"
 
 const FEATURE = "editing.delete-chars"
 const SUITE = "452ac343b55d"
@@ -148,7 +148,7 @@ function harness(mode: Mode): Harness {
  * adapter adds at collection time and the probe cannot know: every observation and assertion
  * carries its own rawReplyRef, and the run lists every frame ref it captured.
  */
-function assemble(result: ProbeResult, trace: Harness["trace"], frames: ObservationFrame[], feature = FEATURE) {
+function assemble(result: ProbeCallbackResult, trace: Harness["trace"], frames: ObservationFrame[], feature = FEATURE) {
   const observation = {
     featureId: feature,
     ...result.observation,

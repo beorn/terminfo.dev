@@ -1,4 +1,4 @@
-import type { ObservationEvidence, ProbeDefinition, ProbeResult, TermContext, TermlessContext } from "./types.ts"
+import type { ObservationEvidence, ProbeDefinition, ProbeCallbackResult, TermContext, TermlessContext } from "./types.ts"
 import { isBlank, parserStateResult, probe, utf8DecodingRefusal } from "./helpers.ts"
 import { regionReadbackProbes, type RegionReadbackRow } from "./region-readback-kind.ts"
 
@@ -89,7 +89,7 @@ function restoreDefaultTabs(write: (sequence: string) => void, cols: number): vo
   write(sequence + "\x1b[1;1H")
 }
 
-function tooSmall(ctx: TermContext, rows: number, cols: number): ProbeResult | undefined {
+function tooSmall(ctx: TermContext, rows: number, cols: number): ProbeCallbackResult | undefined {
   if (validSize(ctx.rows, rows) && validSize(ctx.cols, cols)) return undefined
   return {
     pass: false,
@@ -123,7 +123,7 @@ function tabCombinedResult(
   comparison: CursorPosition | null,
   owned: CursorPosition | null,
   cols: number,
-): ProbeResult {
+): ProbeCallbackResult {
   const response = JSON.stringify({ cols, home, comparison, owned })
   if (!home) {
     return { pass: false, response, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
@@ -195,7 +195,7 @@ function tabClearResult(
   },
   cols: number,
   evidence: ObservationEvidence,
-): ProbeResult {
+): ProbeCallbackResult {
   const response = JSON.stringify({ cols, ...positions })
   const { oldFirst, oldSecond, oldThird, after } = positions
   if (!oldFirst || !oldSecond || !oldThird || !after) {
@@ -252,7 +252,7 @@ function tabPositionResult(
   position: { row: number; col: number } | null,
   expectedCol: number,
   evidence: ObservationEvidence,
-): ProbeResult {
+): ProbeCallbackResult {
   if (!position) {
     return {
       pass: false,
@@ -294,7 +294,7 @@ function isLoneSurrogate(value: string): boolean {
  * being discarded as insufficient evidence, while constant/stale/wrapped/ambiguous readbacks stay
  * inconclusive. Width two is claimed only for the declared sample, never for a rendered glyph.
  */
-function emojiWidthResult(ctx: TermlessContext, { sample, maxColumns }: DeclaredWidthSample): ProbeResult {
+function emojiWidthResult(ctx: TermlessContext, { sample, maxColumns }: DeclaredWidthSample): ProbeCallbackResult {
   const expected = "Declared-width sample occupies two parser columns after qualified setup"
   const home = "\x1b[1;1H\x1b[2K"
   const marker = "X"

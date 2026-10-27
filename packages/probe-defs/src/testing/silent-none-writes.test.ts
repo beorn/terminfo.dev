@@ -6,7 +6,7 @@
  */
 import { expect, test } from "vitest"
 import { validateObservation } from "@terminfo/run-parser"
-import { ALL_PROBES, type Observation, type ProbeAssertion, type ProbeResult, type TermContext } from "../index.ts"
+import { ALL_PROBES, type Observation, type ProbeAssertion, type ProbeCallbackResult, type TermContext } from "../index.ts"
 
 const GEOMETRIES = [
   { rows: 1, cols: 1 },
@@ -34,8 +34,8 @@ function silentTerm(rows: number, cols: number): { ctx: TermContext; writes: str
 }
 
 function measuredObservation(
-  result: ProbeResult,
-): result is Extract<ProbeResult, { observation: NonNullable<ProbeResult["observation"]> }> {
+  result: ProbeCallbackResult,
+): result is Extract<ProbeCallbackResult, { observation: NonNullable<ProbeCallbackResult["observation"]> }> {
   return "observation" in result && result.observation !== undefined
 }
 

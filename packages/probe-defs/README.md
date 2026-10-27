@@ -18,7 +18,7 @@ The [shared execution helpers](src/helpers.ts) initialize every catalog member a
 
 **Callback and stored shapes are different.** Follow these names in [types.ts](src/types.ts):
 
-- `ProbeResult` is either a measured result with an `observation`, or `notTested` coverage naming a missing semantic observable. It can carry callback checks and a criterion branch.
+- `ProbeCallbackResult` is either a measured result with an `observation`, or `notTested` coverage naming a missing semantic observable. It can carry callback checks and a criterion branch.
 - `Observation` records an outcome, evidence method and any reason or frame references. `ProbeAssertion` records a positive/negative predicate, expected state and observed evidence.
 - `CapabilityResult` stores the feature's execution status, attempt, required checks, selected criterion branch and evidence references. It is not the callback's `pass` boolean.
 - `RunDraft` is a private schema-3 envelope: run/suite/source identity, intended context, measured identity when available, raw replies, assertions, artifact references and capability results.

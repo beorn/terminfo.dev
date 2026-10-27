@@ -15,7 +15,7 @@ import {
 } from "./helpers.ts"
 import { extensionsProbes } from "./extensions.ts"
 import { cropPositionRefusal } from "./region-readback.ts"
-import type { ObservationFrame, ProbeResult, TermContext } from "./types.ts"
+import type { ObservationFrame, ProbeCallbackResult, TermContext } from "./types.ts"
 const attempt = { scope: "probe" as const, startedAt: "2026-10-21T05:00:00.000Z" }
 // Full-catalog drafts previously let a failed subset dispatch mark unscheduled capabilities failed.
 it("records collection failure only for delegated unfinished IDs", () => {
@@ -64,7 +64,7 @@ const frames: ObservationFrame[] = [
     regionRectangle: { x: 0, y: 26, width: 10, height: 20 },
   },
 ]
-const record = (callback: ProbeResult) =>
+const record = (callback: ProbeCallbackResult) =>
   recordExecutedCapability({
     featureId: "sgr.bold",
     attempt,
@@ -160,7 +160,7 @@ it("keeps measured 8-bit decoding as unmet UTF-8 prerequisite TODO without inven
 it("records adapted C154 semantic-mark callback outcomes as TODO or FAILURE with rawReplyRef and no unreviewed Untestable", async () => {
   const osc133a = extensionsProbes.find((entry) => entry.id === "extensions.osc133-a")
   if (!osc133a?.term) throw new Error("Expected extensions.osc133-a app callback")
-  const recordC154 = (callback: ProbeResult) =>
+  const recordC154 = (callback: ProbeCallbackResult) =>
     recordExecutedCapability({
       featureId: osc133a.id,
       attempt,

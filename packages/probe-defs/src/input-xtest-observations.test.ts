@@ -7,7 +7,7 @@
 import { expect, test } from "vitest"
 import { inputProbes } from "./input.ts"
 import { modesProbes } from "./modes.ts"
-import type { ProbeResult, TermContext } from "./types.ts"
+import type { ProbeCallbackResult, TermContext } from "./types.ts"
 
 const xtestIds = ["input.xtest-key", "input.xtest-click", "input.xtest-wheel"] as const
 
@@ -166,7 +166,7 @@ test("input.xtest-key aborts when plain a does not reach the app, and does not i
 test("input.xtest-key records interaction after plain-a control then ctrl+a", async () => {
   const writes: string[] = []
   const { ctx, keys } = inputAndRead({ keys: { a: "a", "ctrl+a": "\x01" } }, writes)
-  const result = (await probe("input.xtest-key").term!(ctx)) as ProbeResult
+  const result = (await probe("input.xtest-key").term!(ctx)) as ProbeCallbackResult
   expect(keys).toEqual(["a", "ctrl+a"])
   expect(result.observation).toMatchObject({ outcome: "supported", evidence: "interaction" })
   expect(result.assertions?.[0]).toMatchObject({ kind: "positive", action: "xtest-key:ctrl+a" })
@@ -268,7 +268,7 @@ test.each([
 ] as const)("input.modify-other-keys records supported interaction for %s", async (report, label) => {
   const writes: string[] = []
   const { ctx, keys } = inputAndRead({ keys: { a: "a", "ctrl+i": report } }, writes)
-  const result = (await probe("input.modify-other-keys").term!(ctx)) as ProbeResult
+  const result = (await probe("input.modify-other-keys").term!(ctx)) as ProbeCallbackResult
   expect(keys).toEqual(["a", "ctrl+i"])
   expect(writes.join("")).toContain("\x1b[>4;2m")
   expect(writes.join("")).toContain("\x1b[>4;0m")
@@ -281,7 +281,7 @@ test.each([
 test("input.modify-other-keys records unsupported interaction when ctrl+i still reports Tab", async () => {
   const writes: string[] = []
   const { ctx, keys } = inputAndRead({ keys: { a: "a", "ctrl+i": "\t" } }, writes)
-  const result = (await probe("input.modify-other-keys").term!(ctx)) as ProbeResult
+  const result = (await probe("input.modify-other-keys").term!(ctx)) as ProbeCallbackResult
   expect(keys).toEqual(["a", "ctrl+i"])
   expect(writes.join("")).toContain("\x1b[>4;2m")
   expect(writes.join("")).toContain("\x1b[>4;0m")
@@ -362,7 +362,7 @@ test.each([
 ] as const)("input.modify-other-keys-3 records supported interaction for unmodified i as %s", async (report, label) => {
   const writes: string[] = []
   const { ctx, keys } = inputAndRead({ keys: { a: "a", i: report } }, writes)
-  const result = (await probe("input.modify-other-keys-3").term!(ctx)) as ProbeResult
+  const result = (await probe("input.modify-other-keys-3").term!(ctx)) as ProbeCallbackResult
   expect(keys).toEqual(["a", "i"])
   expect(writes.join("")).toContain("\x1b[>4;3m")
   expect(writes.join("")).toContain("\x1b[>4;0m")
@@ -376,7 +376,7 @@ test.each([
 test("input.modify-other-keys-3 records unsupported interaction when unmodified i still reports i", async () => {
   const writes: string[] = []
   const { ctx, keys } = inputAndRead({ keys: { a: "a", i: "i" } }, writes)
-  const result = (await probe("input.modify-other-keys-3").term!(ctx)) as ProbeResult
+  const result = (await probe("input.modify-other-keys-3").term!(ctx)) as ProbeCallbackResult
   expect(keys).toEqual(["a", "i"])
   expect(writes.join("")).toContain("\x1b[>4;3m")
   expect(writes.join("")).toContain("\x1b[>4;0m")
@@ -419,7 +419,7 @@ test("modes.application-keypad aborts when plain a does not reach the app, does 
 test("modes.application-keypad records supported interaction for KP_5 as SS3 u", async () => {
   const writes: string[] = []
   const { ctx, keys } = inputAndRead({ keys: { a: "a", KP_5: "\x1bOu" } }, writes)
-  const result = (await modeProbe("modes.application-keypad").term!(ctx)) as ProbeResult
+  const result = (await modeProbe("modes.application-keypad").term!(ctx)) as ProbeCallbackResult
   expect(keys).toEqual(["a", "KP_5"])
   expect(writes.join("")).toContain("\x1b=")
   expect(writes.join("")).toContain("\x1b>")
@@ -432,7 +432,7 @@ test("modes.application-keypad records supported interaction for KP_5 as SS3 u",
 test("modes.application-keypad records unsupported interaction when KP_5 still reports 5", async () => {
   const writes: string[] = []
   const { ctx, keys } = inputAndRead({ keys: { a: "a", KP_5: "5" } }, writes)
-  const result = (await modeProbe("modes.application-keypad").term!(ctx)) as ProbeResult
+  const result = (await modeProbe("modes.application-keypad").term!(ctx)) as ProbeCallbackResult
   expect(keys).toEqual(["a", "KP_5"])
   expect(writes.join("")).toContain("\x1b=")
   expect(writes.join("")).toContain("\x1b>")
@@ -479,7 +479,7 @@ test("modes.alt-scroll-1007 records supported interaction when wheel under 1007 
   const control = "\x1b[<0;10;5M"
   const report = "\x1b[A"
   const { ctx, clicks } = inputAndRead({ clickReports: [control, report] }, writes)
-  const result = (await modeProbe("modes.alt-scroll-1007").term!(ctx)) as ProbeResult
+  const result = (await modeProbe("modes.alt-scroll-1007").term!(ctx)) as ProbeCallbackResult
   expect(clicks).toEqual([1, 4])
   expect(writes.join("")).toContain("\x1b[?1049h")
   expect(writes.join("")).toContain("\x1b[?1007h")
@@ -496,7 +496,7 @@ test("modes.alt-scroll-1007 records unsupported interaction when wheel under 100
   const control = "\x1b[<0;10;5M"
   const report = "\x1b[<64;10;5M"
   const { ctx, clicks } = inputAndRead({ clickReports: [control, report] }, writes)
-  const result = (await modeProbe("modes.alt-scroll-1007").term!(ctx)) as ProbeResult
+  const result = (await modeProbe("modes.alt-scroll-1007").term!(ctx)) as ProbeCallbackResult
   expect(clicks).toEqual([1, 4])
   expect(writes.join("")).toContain("\x1b[?1007h")
   expect(writes.join("")).toContain("\x1b[?1007l")
@@ -579,7 +579,7 @@ test("input.pixel-mouse records supported interaction when 1016 reports pixel co
   const control = "\x1b[<0;10;5M"
   const report = "\x1b[<0;160;80M"
   const { ctx, clicks } = inputAndRead({ clickReports: [control, report] }, writes)
-  const result = (await probe("input.pixel-mouse").term!(ctx)) as ProbeResult
+  const result = (await probe("input.pixel-mouse").term!(ctx)) as ProbeCallbackResult
   expect(clicks).toEqual([1, 1])
   expect(writes.join("")).toContain("\x1b[?1016h")
   expect(writes.join("")).toContain("\x1b[?1016l")
@@ -593,7 +593,7 @@ test("input.pixel-mouse records unsupported interaction when 1016 still reports 
   const writes: string[] = []
   const cell = "\x1b[<0;10;5M"
   const { ctx, clicks } = inputAndRead({ clickReports: [cell, cell] }, writes)
-  const result = (await probe("input.pixel-mouse").term!(ctx)) as ProbeResult
+  const result = (await probe("input.pixel-mouse").term!(ctx)) as ProbeCallbackResult
   expect(clicks).toEqual([1, 1])
   expect(writes.join("")).toContain("\x1b[?1016h")
   expect(writes.join("")).toContain("\x1b[?1016l")
@@ -675,7 +675,7 @@ test("input.urxvt-mouse records supported interaction when 1015 reports CSI btn;
   const control = "\x1b[<0;10;5M"
   const report = "\x1b[0;10;5M"
   const { ctx, clicks } = inputAndRead({ clickReports: [control, report] }, writes)
-  const result = (await probe("input.urxvt-mouse").term!(ctx)) as ProbeResult
+  const result = (await probe("input.urxvt-mouse").term!(ctx)) as ProbeCallbackResult
   expect(clicks).toEqual([1, 1])
   expect(writes.join("")).toContain("\x1b[?1015h")
   expect(writes.join("")).toContain("\x1b[?1015l")
@@ -689,7 +689,7 @@ test("input.urxvt-mouse records unsupported interaction when 1015 still reports 
   const writes: string[] = []
   const sgr = "\x1b[<0;10;5M"
   const { ctx, clicks } = inputAndRead({ clickReports: [sgr, sgr] }, writes)
-  const result = (await probe("input.urxvt-mouse").term!(ctx)) as ProbeResult
+  const result = (await probe("input.urxvt-mouse").term!(ctx)) as ProbeCallbackResult
   expect(clicks).toEqual([1, 1])
   expect(writes.join("")).toContain("\x1b[?1015h")
   expect(writes.join("")).toContain("\x1b[?1015l")
@@ -771,7 +771,7 @@ test("input.x10-mouse records supported interaction when mode 9 reports CSI M pl
   const control = "\x1b[<0;10;5M"
   const report = "\x1b[M\x20\x2a\x25"
   const { ctx, clicks } = inputAndRead({ clickReports: [control, report] }, writes)
-  const result = (await probe("input.x10-mouse").term!(ctx)) as ProbeResult
+  const result = (await probe("input.x10-mouse").term!(ctx)) as ProbeCallbackResult
   expect(clicks).toEqual([1, 1])
   expect(writes.join("")).toContain("\x1b[?9h")
   expect(writes.join("")).toContain("\x1b[?9l")
@@ -785,7 +785,7 @@ test("input.x10-mouse records unsupported interaction when mode 9 still reports 
   const writes: string[] = []
   const sgr = "\x1b[<0;10;5M"
   const { ctx, clicks } = inputAndRead({ clickReports: [sgr, sgr] }, writes)
-  const result = (await probe("input.x10-mouse").term!(ctx)) as ProbeResult
+  const result = (await probe("input.x10-mouse").term!(ctx)) as ProbeCallbackResult
   expect(clicks).toEqual([1, 1])
   expect(writes.join("")).toContain("\x1b[?9h")
   expect(writes.join("")).toContain("\x1b[?9l")
@@ -862,7 +862,7 @@ test("input.button-event-mouse is not tested when the adapter cannot drag", asyn
       throw new Error("readInput should not run without injectDrag")
     },
   })
-  const result = (await probe("input.button-event-mouse").term!(ctx)) as ProbeResult
+  const result = (await probe("input.button-event-mouse").term!(ctx)) as ProbeCallbackResult
   expect(writes).toEqual([])
   expect(result.notTested).toEqual({
     reason: "no-semantic-observable",
@@ -887,7 +887,7 @@ test("input.button-event-mouse records supported interaction when 1002 reports S
   const control = "\x1b[<0;10;5M"
   const report = "\x1b[<32;12;5M"
   const { ctx, clicks, drags } = inputAndRead({ clickReports: [control], dragReports: [report] }, writes)
-  const result = (await probe("input.button-event-mouse").term!(ctx)) as ProbeResult
+  const result = (await probe("input.button-event-mouse").term!(ctx)) as ProbeCallbackResult
   expect(clicks).toEqual([1])
   expect(drags).toEqual([1])
   expect(writes.join("")).toContain("\x1b[?1002h")
@@ -902,7 +902,7 @@ test("input.button-event-mouse records unsupported interaction when 1002 still r
   const writes: string[] = []
   const sgr = "\x1b[<0;10;5M"
   const { ctx, clicks, drags } = inputAndRead({ clickReports: [sgr], dragReports: [sgr] }, writes)
-  const result = (await probe("input.button-event-mouse").term!(ctx)) as ProbeResult
+  const result = (await probe("input.button-event-mouse").term!(ctx)) as ProbeCallbackResult
   expect(clicks).toEqual([1])
   expect(drags).toEqual([1])
   expect(writes.join("")).toContain("\x1b[?1002h")

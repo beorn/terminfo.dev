@@ -1,4 +1,4 @@
-import type { ProbeDefinition, ProbeResult, TermlessContext, ObservationFrame } from "./types.ts"
+import type { ProbeDefinition, ProbeCallbackResult, TermlessContext, ObservationFrame } from "./types.ts"
 import { frameDigests } from "./types.ts"
 import { regionReadbackProbes, type RegionReadbackRow } from "./region-readback-kind.ts"
 import {
@@ -34,7 +34,7 @@ function checksumValue(response: string): number | undefined {
   return framed?.[1] === undefined ? undefined : Number.parseInt(framed[1], 16)
 }
 
-function checksumResult(first: string, second: string, lateNote?: string): ProbeResult {
+function checksumResult(first: string, second: string, lateNote?: string): ProbeCallbackResult {
   const before = checksumValue(first)
   const after = checksumValue(second)
   const both = before !== undefined && after !== undefined
@@ -51,7 +51,7 @@ function checksumResult(first: string, second: string, lateNote?: string): Probe
     : both
       ? `The same rectangle changed by ${delta}, which is neither +1 nor the DEC-compatible 65535.${late}`
       : `A complete checksum reply is missing for one of the two requests; expected ${DECRQCRA_EXPECTED}.${late}`
-  const assertions: NonNullable<ProbeResult["assertions"]> | undefined = both
+  const assertions: NonNullable<ProbeCallbackResult["assertions"]> | undefined = both
     ? [
         {
           kind: matches ? "positive" : "negative",
@@ -706,7 +706,7 @@ const editingProbeDefinitions: ProbeDefinition[] = [
         const cells = { top: 1, left: 1, bottom: 2, right: 8 }
         const reported = await captureRegionGeometry(ctx, "editing.decsace", { region: cells, minRows: 2, minCols: 8 })
         if ("pass" in reported) return reported
-        const captureEligibilityRefusal = (captures: ObservationFrame[]): ProbeResult | null => {
+        const captureEligibilityRefusal = (captures: ObservationFrame[]): ProbeCallbackResult | null => {
           const text = captures.find((frame) => frame.kind === "text-cells")
           if (text) {
             return {
