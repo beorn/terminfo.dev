@@ -2875,7 +2875,7 @@ export const extensionsProbes: ProbeDefinition[] = [
   oscSimpleQueryProbe(
     "extensions.osc702-version",
     "\x1b]702;?\x07",
-    /\x1b\]702;[^\x07\x1b]+(?:\x07|\x1b\\)/,
+    /\x1b\]702;[A-Za-z0-9_.-]+;[A-Za-z0-9_.-]+;[0-9]+;[0-9]+(?:\x07|\x1b\\)/,
     /\x1b\]702;/,
     "Complete OSC 702 version reply",
   ),

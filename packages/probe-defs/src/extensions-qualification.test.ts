@@ -210,6 +210,77 @@ test.each(directReplies)("%s requires a complete, bound reply", async (id, frame
   }
 })
 
+test("OSC 702 accepts complete 4-field vendor version frames and keeps query echoes, malformed, partial, and unmatched replies inconclusive", async () => {
+  const definition = callback("extensions.osc702-version")
+  const runBoth = async (raw: string) => {
+    const query = (_sequence: string, pattern: RegExp) => ({
+      match: pattern.exec(raw),
+      reason: pattern.test(raw) ? ("reply" as const) : ("sentinel" as const),
+      raw,
+      rawBase64: Buffer.from(raw).toString("base64"),
+    })
+    const headlessCapture = definition.lib!({ feedCapture: () => raw } as unknown as LibProbeSource)
+    const headlessSentinel = definition.lib!({ queryWithSentinelOutcome: query } as unknown as LibProbeSource)
+    const terminal = await definition.term!({
+      queryWithSentinelOutcome: async (seq: string, pat: RegExp) => query(seq, pat),
+      queryOutcome: async (seq: string, pat: RegExp) => query(seq, pat),
+    } as unknown as TermProbeSource)
+    return [headlessCapture, headlessSentinel, terminal]
+  }
+
+  for (const raw of [
+    "\x1b]702;rxvt-unicode;rxvt;9;31\x07",
+    "\x1b]702;rxvt-unicode;urxvt;7;4\x1b\\",
+    "\x1b]702;vterm.js;vterm;0;2\x1b\\",
+  ] as const) {
+    for (const result of await runBoth(raw)) {
+      expect(result.pass, raw).toBe(true)
+      expect(result.response, raw).toBe(raw)
+      expect(result.observation, raw).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
+      expect(result.assertions, raw).toMatchObject([{ kind: "positive", observed: raw }])
+    }
+  }
+
+  for (const raw of [
+    "\x1b]702;?\x07",
+    "\x1b]702;?\x1b\\",
+    "\x1b]702;rxvt-1\x07",
+    "\x1b]702;rxvt-unicode;rxvt\x07",
+    "\x1b]702;rxvt-unicode;rxvt;9\x07",
+    "\x1b]702;rxvt-unicode;rxvt;9;\x07",
+    "\x1b]702;rxvt-unicode;rxvt;nine;31\x07",
+    "\x1b]702;rxvt-unicode;rxvt;9;x\x07",
+    "\x1b]702;;rxvt;9;31\x07",
+    "\x1b]702;rxvt-unicode;;9;31\x07",
+    "\x1b]702;rxvt-unicode;rxvt;9;31;extra\x07",
+    "\x1b]702;rxvt-unicode;rxvt;9;31",
+  ] as const) {
+    for (const result of await runBoth(raw)) {
+      expect(result.pass, raw).toBe(false)
+      expect(result.response, raw).toBe(raw)
+      expect(result.observation, raw).toMatchObject({
+        outcome: "inconclusive",
+        reason: "invalid-reply",
+        assertionType: "query_reply",
+      })
+      expect(result.assertions, raw).toBeUndefined()
+    }
+  }
+
+  for (const raw of ["\x1b]701;en_US.UTF-8\x07", "\x1b[?1;2c"] as const) {
+    for (const result of await runBoth(raw)) {
+      expect(result.pass, raw).toBe(false)
+      expect(result.response, raw).toBe(raw)
+      expect(result.observation, raw).toMatchObject({
+        outcome: "inconclusive",
+        reason: "no-response",
+        assertionType: "query_reply",
+      })
+      expect(result.assertions, raw).toBeUndefined()
+    }
+  }
+})
+
 test.each([
   ["extensions.osc104-reset-palette", "4;0"],
   ["extensions.osc110-reset-fg", "10"],
