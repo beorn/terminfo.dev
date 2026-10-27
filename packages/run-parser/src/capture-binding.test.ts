@@ -147,6 +147,43 @@ describe("immutable pre-seal capture binding", () => {
     expect(origin.artifact.source).toBe(originalCapture)
     expect(JSON.stringify(origin.decision)).toBe(decisionBytes)
   })
+  // FINAL B4: only the review's failure may be decided; a separate failed condition still wins.
+  // Existing TODO reviews and finalizer-only tests do not cross this failed-review application boundary.
+  it.each([false, true])(
+    "decides only the source-negative review failure; unrelated failure=%s",
+    (unrelatedFailure) => {
+      const { draft, decision } = setup(JSON.stringify({ faint: false }), {
+        runId: "same-source-cohort",
+        startedAt: "2026-10-27T11:00:00.000Z",
+      })
+      decision.decision = "unsupported"
+      if (unrelatedFailure) {
+        draft.results[0]!.tests.push({
+          id: "cleanup",
+          status: "test-failure",
+          attempt: { scope: "probe", startedAt: "2026-10-27T11:00:00.000Z" },
+          reason: "Restoration could not be verified",
+        })
+      }
+      expect(draft.results[0]!.status).toBe("test-failure")
+      applyCaptureDecision(draft, JSON.stringify(decision), "2026-10-27T11:02:00.000Z")
+      expect(draft.results[0]!.tests.find((test) => test.id === "review")?.status).toBe("unsupported")
+      expect(draft.results[0]!.status).toBe(unrelatedFailure ? "test-failure" : "unsupported")
+      if (unrelatedFailure)
+        expect(draft.results[0]!.tests.find((test) => test.id === "cleanup")?.status).toBe("test-failure")
+    },
+  )
+  // FINAL B4 negative control: granting this criterion never admits an arbitrary failed review.
+  it("keeps the existing TODO-only eligibility for a different criterion", () => {
+    const { draft, decision } = setup("NO")
+    draft.results[0]!.tests.find((test) => test.id === "review")!.status = "test-failure"
+    draft.results[0] = finalizeProbeResult(draft.results[0]!)
+    decision.decision = "unsupported"
+    expect(() => applyCaptureDecision(draft, JSON.stringify(decision), "2026-10-27T11:02:00.000Z")).toThrow(
+      /pending required review/,
+    )
+    expect(draft.results[0]!.status).toBe("test-failure")
+  })
   it("keeps valid pending review unsealed, records the exact typed decision, then seals the same run", () => {
     const { draft, artifact, decision } = setup()
     expect(() => sealRunDraft(draft)).toThrow(/review pending/)
