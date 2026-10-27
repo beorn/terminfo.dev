@@ -671,7 +671,7 @@ export async function collectPass(
           Object.keys(decoded.run.rawReplies).some((key) => key.startsWith("collector.capture."))
         ) {
           row.status = "pending-review"
-          row.reason = "Valid capture; required review pending (unsealed)"
+          row.reason = "Valid capture; required review pending (unsealed TEST TODO)"
           continue
         }
         path = saveDaemonProbeRun(
@@ -687,7 +687,7 @@ export async function collectPass(
         if (path.endsWith(".draft.json")) {
           row.rawRun = path
           row.status = "pending-review"
-          row.reason = "Valid capture; required review pending (unsealed)"
+          row.reason = "Valid capture; required review pending (unsealed TEST TODO)"
           continue
         }
         row.rawRun = path

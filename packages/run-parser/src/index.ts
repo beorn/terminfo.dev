@@ -1138,7 +1138,8 @@ export function applyCaptureDecision(draft: RunDraft, source: string, startedAt:
       attempt: { scope: "probe", startedAt },
       reviewRef,
       reason: decision.reason,
-      ...(assertionRefs && { assertionRefs }),
+      // Untestable creates no derived assertions: clear pending refs so the original capture stays bound.
+      ...(sourceNegative || assertionRefs ? { assertionRefs: assertionRefs ?? [] } : {}),
     }
   })
   draft.rawReplies[reviewRef] = source

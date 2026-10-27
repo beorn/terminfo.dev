@@ -147,45 +147,48 @@ const setup = (
 describe("immutable pre-seal capture binding", () => {
   // FINAL B1/B2/B4: existing cases intentionally reject a different run and never attempt to
   // reuse a source-negative decision. Exercise the real applier with retained state, not a new seam.
-  it("reuses a source-negative review across cohorts without changing its origin run or capture evidence", () => {
-    const observed = JSON.stringify({
-      original: { faint: false },
-      changed: { faint: false },
-      restored: { faint: false },
-    })
-    const origin = setup(observed, { runId: "source-origin", startedAt: "2026-10-27T11:00:00.000Z" })
-    const current = setup(observed, { runId: "source-current", startedAt: "2026-10-27T11:01:00.000Z" })
-    origin.decision.decision = "unsupported"
-    origin.decision.reason = "Reviewed source and retained state establish the negative"
-    origin.decision.sources = ["vterm@d7f69fe916ed44d1e01d24b9a079f6b96ba86cb5:packages/vt100/src/screen.ts:444-498"]
-    const decisionBytes = JSON.stringify(origin.decision)
-    const originalCapture = origin.artifact.source
-    expect(current.draft.results[0]!.status).toBe("test-failure")
-    applyCaptureDecision(current.draft, decisionBytes, "2026-10-27T11:02:00.000Z")
-    expect(current.draft.results[0]!.status).toBe("unsupported")
-    expect(current.draft.rawReplies["collector.review.review-bold"]).toBe(decisionBytes)
-    expect(current.draft.assertions.at(-1)).toMatchObject({
-      kind: "negative",
-      assertionType: "buffer_state",
-      expected: "changed faint=true; restored faint=false",
-      observed,
-    })
-    expect(origin.decision.runId).toBe("source-origin")
-    expect(origin.artifact.source).toBe(originalCapture)
-    expect(JSON.stringify(origin.decision)).toBe(decisionBytes)
-    const manifest = {
-      schemaVersion: 4 as const,
-      probeHash: current.draft.probeHash,
-      adapterVersion: "3",
-      catalogIds: ["sgr.faint"],
-      probes: { term: [], lib: ["sgr.faint"], mux: [] },
-    }
-    const sealed = sealRunDraft(current.draft)
-    expect(
-      parseRun("reused.json", JSON.stringify(sealed), manifest.catalogIds, new Map([[manifest.probeHash, manifest]]))
-        .results?.[0]?.status,
-    ).toBe("unsupported")
-  })
+  it.each(["unsupported", "untestable"])(
+    "reuses a source-negative %s review and reads the sealed fresh cohort",
+    (reviewedStatus) => {
+      const observed = JSON.stringify({
+        original: { faint: false },
+        changed: { faint: false },
+        restored: { faint: false },
+      })
+      const origin = setup(observed, { runId: "source-origin", startedAt: "2026-10-27T11:00:00.000Z" })
+      const current = setup(observed, { runId: "source-current", startedAt: "2026-10-27T11:01:00.000Z" })
+      origin.decision.decision = reviewedStatus
+      origin.decision.reason = "Reviewed source and retained state establish the negative"
+      origin.decision.sources = ["vterm@d7f69fe916ed44d1e01d24b9a079f6b96ba86cb5:packages/vt100/src/screen.ts:444-498"]
+      const decisionBytes = JSON.stringify(origin.decision)
+      const originalCapture = origin.artifact.source
+      expect(current.draft.results[0]!.status).toBe("test-failure")
+      applyCaptureDecision(current.draft, decisionBytes, "2026-10-27T11:02:00.000Z")
+      expect(current.draft.results[0]!.status).toBe(reviewedStatus)
+      expect(current.draft.rawReplies["collector.review.review-bold"]).toBe(decisionBytes)
+      expect(current.draft.assertions.at(-1)).toMatchObject({
+        kind: "negative",
+        assertionType: "buffer_state",
+        expected: "changed faint=true; restored faint=false",
+        observed,
+      })
+      expect(origin.decision.runId).toBe("source-origin")
+      expect(origin.artifact.source).toBe(originalCapture)
+      expect(JSON.stringify(origin.decision)).toBe(decisionBytes)
+      const manifest = {
+        schemaVersion: 4 as const,
+        probeHash: current.draft.probeHash,
+        adapterVersion: "3",
+        catalogIds: ["sgr.faint"],
+        probes: { term: [], lib: ["sgr.faint"], mux: [] },
+      }
+      const sealed = sealRunDraft(current.draft)
+      expect(
+        parseRun("reused.json", JSON.stringify(sealed), manifest.catalogIds, new Map([[manifest.probeHash, manifest]]))
+          .results?.[0]?.status,
+      ).toBe(reviewedStatus)
+    },
+  )
   // FINAL B4: only the review's failure may be decided; a separate failed condition still wins.
   // Existing TODO reviews and finalizer-only tests do not cross this failed-review application boundary.
   it.each([false, true])(

@@ -1221,7 +1221,7 @@ TERMINFO_CAPTURE_RAW="$raw/v3-capture.json" TERMINFO_CAPTURE_OUTPUT="$raw" bun -
   const run=finalizeCollectedDraft(retained.run);
   const path=join(directory,run.sealedAt===undefined?"v3-run.draft.json":"v3-run.json");
   writeFileSync(path,JSON.stringify(run,null,2)+"\n",{flag:"wx",mode:0o600});
-  console.error(run.sealedAt===undefined?"Valid capture; required review pending":"Sealed current schema-4 run");
+  console.error(run.sealedAt===undefined?"Valid capture; required review pending (TEST TODO)":"Sealed current schema-4 run");
 '
 if [[ -f "$raw/v3-run.json" ]]; then
   compose_receipt "$raw/host-measured.json" "$raw/container-receipt.json" "$raw/run-receipt.json" "$raw/v3-run.json"
