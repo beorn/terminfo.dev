@@ -506,7 +506,7 @@ export async function collectPass(
       .map((context) => ({
         context,
         status: "not-started",
-        reason: deferred.get(contextName(context))!,
+        reason: deferred.get(contextName(context)),
       })),
     errors: [],
     complete: false,
@@ -531,7 +531,7 @@ export async function collectPass(
   const suites = new Map([[snapshot.probeHash, derivedSuiteManifest(snapshot)]])
   const files = new Map<string, string[]>()
   const failures = new Map<string, string>()
-  if (census.some((context) => context.kind === "lib"))
+  if (census.some((context) => context.kind === "lib")) {
     try {
       const collected = await collectHeadlessRuns(
         census.filter((context) => context.kind === "lib").map((context) => context.id),
@@ -572,6 +572,7 @@ export async function collectPass(
     } catch (error) {
       pass.errors.push(`headless collection: ${error instanceof Error ? error.message : String(error)}`)
     }
+  }
   const hosted = collectHostedArtifacts(
     census,
     directory,
@@ -1208,8 +1209,9 @@ if (import.meta.main) {
       !outputDirectory ||
       (development && (frozenSuite || deferralsPath)) ||
       runs.length
-    )
+    ) {
       usage()
+    }
     try {
       const deferrals: NonNullable<NonNullable<CollectionPass["freeze"]>["deferrals"]> = []
       if (deferralsPath) {
@@ -1219,6 +1221,9 @@ if (import.meta.main) {
           if (
             value === null ||
             typeof value !== "object" ||
+            !("context" in value) ||
+            !("routeIssue" in value) ||
+            !("reason" in value) ||
             typeof value.context !== "string" ||
             typeof value.routeIssue !== "string" ||
             typeof value.reason !== "string"

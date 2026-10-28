@@ -130,6 +130,7 @@ program
   .option(
     "--scoreboard <inputs...>",
     "Show context progress from explicit raw captures or collection pass files/directories",
+    (value: string, previous: string[] = []) => [...previous, value],
   )
   .action(async (opts: { scoreboard?: string[] }) => {
     const { handleReport } = await import("./report.ts")

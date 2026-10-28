@@ -41,6 +41,7 @@ import { join } from "node:path"
 import { expect, test } from "vitest"
 import { probeSuiteSnapshot } from "../versions.ts"
 import { loadCurrentResults } from "../../../docs/data/current-results.ts"
+import { parseSuiteManifest } from "@terminfo/run-parser"
 
 test("report renders reviewed outcomes and missing cells without promoting legacy history", () => {
   const root = mkdtempSync(join(tmpdir(), "terminfo-report-"))
@@ -289,13 +290,13 @@ test("report renders reviewed outcomes and missing cells without promoting legac
     expect(first.stdout).toContain("ghostty/linux | to-measure")
     expect(first.stdout).toContain("origin/live absent")
     expect(baseline().stdout).toBe(first.stdout)
-    expect(JSON.parse(readFileSync(draftPath, "utf8")).identity).toBe("unverified")
+    expect(JSON.parse(readFileSync(draftPath, "utf8"))).toMatchObject({ identity: "unverified" })
 
     // AC1/3: immutable pass records, rather than raw captures, own freeze ordering and deferrals.
     // The earlier raw journey cannot detect loss of the batch's carried route or pass identity.
     const newerSuite = "aaaaaaaaaaaa"
     const suitePath = join(root, "content", "suites", `${snapshot.probeHash}.json`)
-    const manifest = JSON.parse(readFileSync(suitePath, "utf8"))
+    const manifest = parseSuiteManifest(suitePath, readFileSync(suitePath, "utf8"))
     writeFileSync(
       join(root, "content", "suites", `${newerSuite}.json`),
       JSON.stringify({

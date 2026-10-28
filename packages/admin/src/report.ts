@@ -117,8 +117,9 @@ function rawScoreboard(paths: readonly string[], contentDir: string): string {
         }
       }
       for (const context of deferred.keys()) {
-        if (!rows.get(context)?.some((row) => row.source === path))
+        if (!rows.get(context)?.some((row) => row.source === path)) {
           throw new Error(`${path}: deferred context ${context} is absent from the pass`)
+        }
       }
       return
     }
@@ -182,10 +183,11 @@ function rawScoreboard(paths: readonly string[], contentDir: string): string {
     cwd: ROOT,
     encoding: "utf8",
   })
-  if (contentStatus.error || contentStatus.status !== 0)
+  if (contentStatus.error || contentStatus.status !== 0) {
     throw new Error(
       `Cannot establish content revision in ${ROOT}: ${contentStatus.error?.message ?? contentStatus.stderr}`,
     )
+  }
   const dirtyContent = contentStatus.stdout.length > 0
   const provenLive = head === live && !dirtyContent
   const { projection } = loadCurrentResults(contentDir)
@@ -238,16 +240,16 @@ function rawScoreboard(paths: readonly string[], contentDir: string): string {
     const sources = rows
       .get(context.context)
       ?.sort((left, right) => right.frozenAt.localeCompare(left.frozenAt) || left.source.localeCompare(right.source))
-    if (!sources) {
+    const latest = sources?.[0]
+    if (!latest) {
       lines.push(
         `| ${context.context} | to-measure | no pass | no captured run supplied | not recorded; resolving query: explicit inputs above |`,
       )
       continue
     }
-    const latest = sources[0]!
     lines.push(
       `| ${context.context} | ${latest.state} | ${escape(latest.pass)} | ${escape(`${latest.runId} ${latest.suite}`)} | ${escape(`${latest.counts}; ${latest.detail}; ${latest.source}; sha256=${latest.sha256}`)}${sources
-        .slice(1)
+        ?.slice(1)
         .map((row) =>
           escape(
             `; earlier pass ${row.pass}: ${row.runId} ${row.suite}; ${row.detail}; ${row.source}; sha256=${row.sha256}`,
