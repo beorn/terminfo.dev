@@ -201,6 +201,24 @@ describe("full-scope rows", () => {
     expect(buildFullProjectRows({ census, catalogIds: ids, candidates, requiredSuiteId: suite }).complete).toBe(false)
   })
 
+  // The page test reads the live corpus, so the wholly-empty witness lives here, next to the row
+  // builder that owns the behavior: the same 33 contexts and 273 positions, with no runs at all.
+  it("keeps an all-history corpus incomplete without inventing a current score", () => {
+    const ids = Array.from({ length: 273 }, (_, index) => `capability.${index}`)
+    const census = Array.from({ length: 33 }, (_, index): CensusContext => ({
+      context: `terminal-${index}/linux`,
+      terminalId: `terminal-${index}`,
+      os: "linux",
+      kind: "term",
+    }))
+    const rows = buildFullProjectRows({ census, catalogIds: ids, candidates: [], requiredSuiteId: suite })
+    expect(rows.collected).toBe(0)
+    expect(rows.notCollected).toBe(33)
+    expect(rows.recordedPositions).toBe(0)
+    expect(rows.complete).toBe(false)
+    expect(rows.contexts.every((row) => !("result" in row) && row.cause.trim() !== "")).toBe(true)
+  })
+
   it("refuses a missing required suite", () => {
     expect(() => buildFullProjectRows({ census: [app], catalogIds, candidates: [], requiredSuiteId: "" })).toThrow(
       /needs the suite/,
