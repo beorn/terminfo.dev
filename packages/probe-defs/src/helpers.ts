@@ -39,8 +39,9 @@ export function alacrittyHostRecipeResult(
     !empty ||
     ctx.runtimeIdentity?.kind !== "native" ||
     ctx.runtimeIdentity.loadedBinary.sha256 !== AUDITED_ALACRITTY_SHA256
-  )
+  ) {
     return result
+  }
   const claim: CallbackHostRecipeCause =
     recipe === "color-request"
       ? { recipe, cause: { kind: "observed", missing, query } }
