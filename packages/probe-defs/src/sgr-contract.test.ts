@@ -313,3 +313,26 @@ test("a decided SGR row reads unsatisfied from an inert cell", async () => {
   const inert = await regradeRow(probe, row, { headless: libProbeSource(inertModel()) })
   expect(inert.satisfies).toBe(false)
 })
+
+// Existing satisfaction rows cover true only; preserve false and missing-X failures separately.
+test.each([
+  ["sgr.faint", "dim"],
+  ["sgr.italic", "italic"],
+  ["sgr.strikethrough", "strikethrough"],
+] as const)("%s names unreported %s without treating it as a measured negative", (id, field) => {
+  const probe = sgrProbes.find((probe) => probe.id === id)!
+  const run = (value: boolean | null, char = "X") =>
+    probe.lib!(libProbeSource(inertModel(40, { [field]: value, char })))
+  const missing = run(null)
+  expect(missing.notTested).toMatchObject({ reason: "no-semantic-observable" })
+  expect(JSON.stringify(missing)).toContain(`producer does not report cell.${field}`)
+  expect(run(true).observation?.outcome).toBe("supported")
+  const measuredNegative = run(false)
+  expect(measuredNegative.notTested).toBeUndefined()
+  expect(measuredNegative.criterionBranch).toBe("source-negative-review")
+  expect(measuredNegative.assertions).toContainEqual(
+    expect.objectContaining({ kind: "negative", assertionType: "buffer_state" }),
+  )
+  expect(run(null, " ").observation?.outcome).toBe("inconclusive")
+  expect(run(null, " ").notTested).toBeUndefined()
+})

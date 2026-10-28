@@ -59,6 +59,8 @@ The five `AssertionType` values classify an actually retained deciding observati
 
 **Headless evidence** comes through [headless-batch.ts](../probes/headless-batch.ts). It retains callback `response` values as raw replies, not every probe-source call or every engine-state read.
 
+Cell `dim`, `italic` and `strikethrough` readbacks are required `boolean | null`: null means the producer does not report that attribute, never a terminal-support claim. Their SGR probes route null through named missing-observable coverage (TEST TODO); measured booleans retain their existing observation path.
+
 The collector forwards the run's measured `HeadlessRuntimeIdentity` through `LibProbeSource.runtimeIdentity`.
 It identifies the loaded adapter source, engine integrity and any loaded binary; feature-capability versions
 cannot substitute for it. Missing identity supplies no source-derived qualification.

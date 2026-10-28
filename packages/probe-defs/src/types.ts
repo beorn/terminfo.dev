@@ -689,12 +689,15 @@ export interface LibProbeSource {
     /** Absent: backend does not report links; null: reported unlinked; string: exact URI. */
     hyperlink?: string | null
     bold: boolean
-    dim: boolean
-    italic: boolean
+    /** null = this producer does not report the attribute; never a terminal-support claim. */
+    dim: boolean | null
+    /** null = this producer does not report the attribute; never a terminal-support claim. */
+    italic: boolean | null
     // oxlint-disable-next-line typescript/no-explicit-any -- Existing Termless cell contract; observation schema does not change it.
     underline: any
     underlineColor?: { r: number; g: number; b: number } | null
-    strikethrough: boolean
+    /** null = this producer does not report the attribute; never a terminal-support claim. */
+    strikethrough: boolean | null
     inverse: boolean
     hidden: boolean
     blink: boolean
