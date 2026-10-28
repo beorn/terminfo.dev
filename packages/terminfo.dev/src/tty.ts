@@ -137,13 +137,15 @@ function matchResponse(
     const chunks: Buffer[] = []
     let buf = ""
     let settled = false
-    let timer: ReturnType<typeof setTimeout> | undefined
+    let deadlineTimer: ReturnType<typeof setTimeout> | undefined
+    let graceTimer: ReturnType<typeof setTimeout> | undefined
     let writeAt = 0
     let sentinelFacts: { atMs: number; graceMs: number } | null = null
     let sentinelStart: number | undefined
 
     const cleanup = () => {
-      clearTimeout(timer)
+      clearTimeout(deadlineTimer)
+      clearTimeout(graceTimer)
       process.stdin.off("data", onData)
     }
 
@@ -196,16 +198,56 @@ function matchResponse(
         sentinelStart = start
         sentinelFacts = { atMs: Date.now() - writeAt, graceMs }
       }
-      clearTimeout(timer)
-      timer = setTimeout(() => finish(read.match, read.match ? "reply" : "sentinel", sentinelFacts), graceMs)
+      // Two timers (#30625, @cto a40ae9b7): the deadline set at the write is never extended, and each
+      // chunk may only restart the grace window up to it. A read cut by the deadline is decided by the
+      // same rule over the whole read, never as a timeout once DA1 has answered.
+      clearTimeout(graceTimer)
+      const untilDeadline = writeAt + timeoutMs - Date.now()
+      graceTimer = setTimeout(
+        () =>
+          finish(
+            read.match,
+            read.match ? "reply" : "sentinel",
+            // A window cut short proves nothing about the configured silence (@cto 30625 b050f6b9):
+            // the facts carry only when the OBSERVED interval covers the full grace, decided by the
+            // measurement, never by which timer happened to fire. A matched reply always keeps its
+            // DA1-before-reply ordering facts, or late-reply grading breaks.
+            read.match ? sentinelFacts : eligibleFacts(),
+          ),
+        Math.max(0, Math.min(graceMs, untilDeadline)),
+      )
+    }
+
+    const eligibleFacts = () =>
+      sentinelFacts !== null && Date.now() - (writeAt + sentinelFacts.atMs) >= sentinelFacts.graceMs
+        ? sentinelFacts
+        : null
+
+    const decideAtDeadline = () => {
+      if (settled) return
+      if (!sentinel) {
+        const match = buf.match(pattern)
+        finish(match ? [...match] : null, match ? "reply" : "timeout")
+        return
+      }
+      const read = readSentinelReply(buf, pattern)
+      if (read.kind === "reply") {
+        // A matched reply keeps its DA1-before-reply ordering facts even when the deadline ends the read;
+        // only a sentinel outcome needs the full observed window (@cto 30625 b050f6b9).
+        finish(read.match, "reply", sentinelFacts)
+        return
+      }
+      const answered = sentinelAnswer(buf) !== null
+      finish(
+        read.match,
+        read.match ? "reply" : answered ? "sentinel" : "timeout",
+        read.match ? sentinelFacts : answered ? eligibleFacts() : null,
+      )
     }
 
     const startTimer = () => {
-      if (settled || timer !== undefined) return
-      timer = setTimeout(() => {
-        const match = buf.match(pattern)
-        finish(match ? [...match] : null, match ? "reply" : "timeout")
-      }, timeoutMs)
+      if (settled || deadlineTimer !== undefined) return
+      deadlineTimer = setTimeout(decideAtDeadline, timeoutMs)
     }
     if (deferTimer) {
       deferTimer(startTimer, () => {
@@ -240,7 +282,7 @@ export function readResponse(
     // withTTYOperation enters its context before invoking this body.
     const lease = operationContext.getStore() as TTYOperationLease
     const previous = lease.startResponseTimer
-    // The existing nested injection lease tests custody, then arms this already-listening reader.
+    // The existing nested injection lease checks custody, then arms this already-listening reader.
     lease.startResponseTimer = start
     try {
       if (inject) await inject()

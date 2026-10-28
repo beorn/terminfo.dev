@@ -20,6 +20,7 @@ import {
   withTTYOperation,
 } from "./tty.ts"
 import { sentinelGraceMs } from "@terminfo/probe-defs"
+import { sentinelNegativeResult } from "../../probe-defs/src/helpers.ts"
 
 const originalWrite = process.stdout.write
 
@@ -34,7 +35,7 @@ function reply(bytes: string) {
 }
 
 describe("TTY transaction replies", () => {
-  it("tests a scoped owner before nested queries and releases it with the operation", async () => {
+  it("checks a scoped owner before nested queries and releases it with the operation", async () => {
     const failure = new Error("attachment continuity lost")
     const writes: string[] = []
     let revoked = false
@@ -217,8 +218,10 @@ describe("TTY transaction replies", () => {
       raw: "\uFFFD\x1b[?1;2c",
       rawBase64: sentinelBytes.toString("base64"),
     })
-    expect(sentinel.sentinel?.graceMs).toBe(250)
-    expect(sentinel.sentinel?.atMs).toBeGreaterThanOrEqual(0)
+    // @cto 30625 b050f6b9: the 20 ms deadline ends this read long before the configured 250 ms grace,
+    // so the observed silence is a partial window and carries NO certificate. The read stays a
+    // sentinel outcome with its bytes, and the grader records it inconclusive.
+    expect(sentinel.sentinel).toBeUndefined()
 
     const timeoutBytes = Buffer.from("\x1b]unrelated")
     process.stdout.write = (() => {
@@ -299,6 +302,65 @@ describe("TTY transaction replies", () => {
       sentinel: { graceMs: 60 },
     })
     expect(Date.now() - started).toBeGreaterThanOrEqual(50)
+    expect(process.stdin.listenerCount("data")).toBe(listenersBefore)
+  })
+
+  it("ends a sentinel read at the absolute deadline however often the terminal keeps writing", async () => {
+    const listenersBefore = process.stdin.listenerCount("data")
+    const started = Date.now()
+    let lastReplyAt = 0
+    const ticks = setInterval(() => {
+      lastReplyAt = Date.now() - started
+      reply("\x1b[?1;2c")
+      if (Date.now() - started >= 320) clearInterval(ticks)
+    }, 50)
+    process.stdout.write = (() => {
+      reply("\x1b[?1;2c")
+      return true
+    }) as typeof process.stdout.write
+    const outcome = await queryWithSentinelOutcome("\x1b[6n", /\x1b\[(\d+);(\d+)R/, 300, 100)
+    const elapsed = Date.now() - started
+    clearInterval(ticks)
+    // The deadline cuts the final grace window short, so the read is not silent for the configured
+    // 100 ms and must carry no silence certificate (@cto 30625 partial-grace ruling, including the
+    // deadline-clamped grace timer: same eligibility rule, decided by the observed interval, not by
+    // which timer fired). The deadline/cleanup proof below is retained unchanged.
+    expect(outcome).toMatchObject({ match: null, reason: "sentinel" })
+    expect(outcome.sentinel).toBeUndefined()
+    expect(lastReplyAt).toBeLessThanOrEqual(400)
+    expect(elapsed).toBeLessThan(300 + 100)
+    expect(process.stdin.listenerCount("data")).toBe(listenersBefore)
+  })
+
+  // #30625 @dev/12 review (2026-10-23): a deadline that cuts the grace window short must not grade
+  // a negative. One DA1 near the deadline, then silence, is a partial window: inconclusive, not
+  // "silent for the whole grace window". The repeated-DA1 regression above misses this because its
+  // earlier DA1 bytes already suppress negative grading.
+  it("never grades a sentinel negative when the deadline cuts the grace window short", async () => {
+    const listenersBefore = process.stdin.listenerCount("data")
+    const started = Date.now()
+    let sentinelAt = 0
+    process.stdout.write = (() => {
+      setTimeout(() => {
+        sentinelAt = Date.now() - started
+        reply("\x1b[?1;2c")
+      }, 250)
+      return true
+    }) as typeof process.stdout.write
+    const outcome = await queryWithSentinelOutcome("\x1b[6n", /\x1b\[(\d+);(\d+)R/, 300, 250)
+    const observedAfterSentinel = Date.now() - started - sentinelAt
+    expect(sentinelAt).toBeGreaterThanOrEqual(240)
+    expect(observedAfterSentinel).toBeLessThan(250)
+    // The existing shape for an incomplete, unmatched read (@cto 30625 partial-grace ruling): the DA1
+    // answer is kept as the reason and its bytes are retained, and NO silence certificate is emitted.
+    // Without the facts, device.ts's existing grader records inconclusive/no-response, never a negative
+    // (device-observations.test.ts "without the measured ordering a frame after DA1 stays unreadable").
+    expect(outcome.match).toBe(null)
+    expect(outcome.reason).toBe("sentinel")
+    expect(outcome.sentinel).toBeUndefined()
+    expect(outcome.raw).toBe("\x1b[?1;2c")
+    expect(outcome.rawBase64).toBe(Buffer.from("\x1b[?1;2c").toString("base64"))
+    expect(sentinelNegativeResult(outcome.raw, outcome.sentinel, "cursor position response")).toBe(null)
     expect(process.stdin.listenerCount("data")).toBe(listenersBefore)
   })
 
