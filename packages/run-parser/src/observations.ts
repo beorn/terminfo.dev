@@ -448,7 +448,7 @@ export function parseObservation(
   validateInput(observation, path, rawReplies, assertions)
   // A pixels verdict the collector decided in-run is a measurement, so the run alone must be able
   // to recompute it: its own assertion, bound like every other measuring evidence, and every digest
-  // that assertion cites is a frame's ref or cell-aligned regionDigest. A reviewed Interpretation is
+  // that assertion cites belongs to a retained frame, including a ref or cells citation. A reviewed Interpretation is
   // exempt — its evidence is the frame pair itself, checked by its own validator.
   if (
     (pixelRead(observation) || textRead(observation)) &&
@@ -481,7 +481,7 @@ function boundAssertion(
   return assertion
 }
 
-/** Keeps a pixels verdict recomputable: every digest it cites is a frame's ref or cell-aligned regionDigest, and it cites one. */
+/** Every citation belongs to a retained frame; at least one binds a ref or the compared cells. */
 function requireCitedFrameDigests(observation: ObservationInput, assertion: ReadAssertion, path: string): void {
   const { featureId } = observation
   const frames = observation.frames ?? []
@@ -489,14 +489,16 @@ function requireCitedFrameDigests(observation: ObservationInput, assertion: Read
   if (cited.length === 0) {
     fail(path, `${methodName(observation)} verdict for ${featureId} must cite the frame digest it decided on`)
   }
+  const citesRefOrCells = cited.some((digest) =>
+    frames.some((frame) => frame.ref === digest || frameDigests(frame).cells === digest),
+  )
   for (const digest of cited) {
-    // The same accessor the probe compares with, so a text verdict recomputes exactly as a pixel one
-    // does: the cited digest must be a frame's ref or the digest of the cells it compared. The
-    // whole-frame digest is NOT enough, because a verdict citing it alone decided no cells.
+    // Whole-frame digests can accompany retained evidence, but cannot decide cells alone.
     if (
       !frames.some((frame) => {
         const digests = frameDigests(frame)
-        return frame.ref === digest || digests.cells === digest
+        const refOrCells = frame.ref === digest || digests.cells === digest
+        return refOrCells || digests.whole === digest
       })
     ) {
       fail(
@@ -504,6 +506,12 @@ function requireCitedFrameDigests(observation: ObservationInput, assertion: Read
         `${methodName(observation)} verdict for ${featureId} cites ${digest}, which is not the ref or a digest of a frame in this observation`,
       )
     }
+  }
+  if (!citesRefOrCells) {
+    fail(
+      path,
+      `${methodName(observation)} verdict for ${featureId} cites ${cited[0]}, which is not the ref or a digest of a frame in this observation`,
+    )
   }
 }
 
