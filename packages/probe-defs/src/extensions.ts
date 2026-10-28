@@ -539,6 +539,7 @@ function oscSimpleQueryProbe(
 }
 
 function colorResetProbe(setCode: number, resetCode: number, index?: number): ProbeDefinition["lib"] {
+  const hostColorSlot = [4, 10, 11, 12].includes(setCode)
   const indexPart = index === undefined ? "" : `${index};`
   const query = `\x1b]${setCode};${indexPart}?\x07`
   const hostInput: HostInputName =
@@ -560,11 +561,18 @@ function colorResetProbe(setCode: number, resetCode: number, index?: number): Pr
         ctx.queryWithSentinelOutcome(query, replyPattern),
         `Complete OSC ${setCode} color reply`,
       )
+      if (silence && !hostColorSlot) return silence
     }
     const originalRaw = silence ? "" : ctx.feedCapture(query)
     const original = replyPattern.exec(originalRaw)?.[1]
     if (!original) {
       if (originalRaw === "") {
+        if (!hostColorSlot) {
+          return colorReadbackReviewResult(
+            `OSC ${setCode} colour query before OSC ${resetCode} answered nothing, so the reset effect cannot be read back`,
+            { query, originalRaw },
+          )
+        }
         const answer = (result: ProbeCallbackResult) =>
           alacrittyHostRecipeResult(ctx, result, "color-request", hostInput, query, true)
         const controls: { write: string; response: string }[] = []

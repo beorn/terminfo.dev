@@ -104,8 +104,22 @@ function terminalSource(overrides: Partial<TermProbeSource>): TermProbeSource {
  */
 // H1-H4/H6: actual criterion callbacks must own both the query declaration and its missing-input cause.
 // Parser/collector input fixtures cannot catch a production caller that never supplies either field.
+const artifact = "e6e16113863355b77d0aa3b359bd40c7066fb144e005fbc324fecfa3f4869bea"
+const nativeIdentity: NonNullable<LibProbeSource["runtimeIdentity"]> = {
+  kind: "native",
+  engineVersion: "0.26.0",
+  adapterVersion: "fixture",
+  termlessRevision: "2".repeat(40),
+  loadedBinary: { path: "fixture.node", sha256: artifact },
+  provenance: {
+    sha256: artifact,
+    sourceCommit: "3".repeat(40),
+    buildHash: "b".repeat(64),
+    toolchain: "fixture",
+    lockSha256: "c".repeat(64),
+  },
+}
 describe("audited native host recipe callers", () => {
-  const artifact = "e6e16113863355b77d0aa3b359bd40c7066fb144e005fbc324fecfa3f4869bea"
   test.each([
     ["extensions.osc10-fg-color", "color-request", "foreground-rgb", "\x1b]10;?\x07"],
     ["extensions.osc11-bg-color", "color-request", "background-rgb", "\x1b]11;?\x07"],
@@ -142,20 +156,7 @@ describe("audited native host recipe callers", () => {
                 return silence
               },
             }),
-            runtimeIdentity: {
-              kind: "native",
-              engineVersion: "0.26.0",
-              adapterVersion: "fixture",
-              termlessRevision: "2".repeat(40),
-              loadedBinary: { path: "fixture.node", sha256: artifact },
-              provenance: {
-                sha256: artifact,
-                sourceCommit: "3".repeat(40),
-                buildHash: "b".repeat(64),
-                toolchain: "fixture",
-                lockSha256: "c".repeat(64),
-              },
-            },
+            runtimeIdentity: nativeIdentity,
             feedCapture(sequence) {
               captured.push(sequence)
               return ""
@@ -2158,6 +2159,38 @@ describe("partial probe automation candidates", () => {
       expect(capture).toEqual([c.expected, c.expected, c.expected])
       expect(feed).toEqual([`\x1b]${c.set};rgb:aa/bb/cc\x07`, c.reset])
       expect(replies).toEqual([])
+      // C4: unreadable pointer slots keep their old no-mutation path, with and without a sentinel.
+      // The positive readback above cannot expose seed/reset writes made before a missing prerequisite.
+      for (const qualified of [false, true]) {
+        const calls: string[] = []
+        const empty = p.lib!(
+          context({
+            runtimeIdentity: nativeIdentity,
+            feed: (text) => {
+              calls.push(text)
+            },
+            feedCapture: (text) => {
+              calls.push(text)
+              return ""
+            },
+            ...(qualified && {
+              queryWithSentinelOutcome: (text: string) => {
+                calls.push(text)
+                return {
+                  match: null,
+                  reason: "sentinel" as const,
+                  raw: "\x1b[?1;2c",
+                  rawBase64: "G1s/MTsyYw==",
+                  sentinel: { atMs: 0, graceMs: 250 },
+                }
+              },
+            }),
+          }),
+        )
+        expect(calls).toEqual([c.expected])
+        expect(empty.hostRecipeCauses).toBeUndefined()
+        expect(empty.criterionBranch).toBe(qualified ? undefined : "color-readback-review")
+      }
     }
   })
 
