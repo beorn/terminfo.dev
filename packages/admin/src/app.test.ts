@@ -5,7 +5,7 @@
  * @testonly none
  */
 import { beforeEach, describe, expect, test, vi } from "vitest"
-import { execFileSync, execSync, spawn } from "node:child_process"
+import { execFileSync, execSync, spawn, spawnSync } from "node:child_process"
 import { closeSync, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs"
 import { runInNewContext } from "node:vm"
 import type { AppLaunchReceipt } from "@terminfo/probe-defs"
@@ -23,6 +23,7 @@ import { captureTerminalAppReceipt, launchTerminalWindow } from "./terminal-app-
 import {
   assertOwnedTerminalWindow,
   closeOwnedTerminalWindow,
+  parseKittyIdentity,
   recordedOwnerTty,
   resolveOwnedProcessByMarker,
 } from "../../terminfo.dev/src/terminal-app-window.ts"
@@ -60,6 +61,7 @@ vi.mock("node:child_process", () => ({
   }),
   execSync: vi.fn(() => "2.15\n"),
   spawn: vi.fn(),
+  spawnSync: vi.fn(),
 }))
 vi.mock("../versions.ts", () => ({
   sourceSuiteEnvironment: vi.fn(() => ({ TERMINFO_PROBE_HASH: "suite", TERMINFO_SOURCE_REVISION: "source" })),
@@ -220,6 +222,47 @@ test("hosted preparation keeps inherited secrets in spawn memory and leaves the 
     warn.mockRestore()
     error.mockRestore()
   }
+})
+
+test("Kitty text collection owns a run-local socket and removes it with its one window", async () => {
+  vi.mocked(spawnSync).mockReturnValue({ status: 0, stderr: "" } as ReturnType<typeof spawnSync>)
+  vi.mocked(parseKittyIdentity).mockReturnValue({
+    windowId: 7,
+    kittyPid: 777,
+    tty: "/dev/ttys009",
+    term: "xterm-kitty",
+  })
+  await handleApp("kitty", {})
+  expect(spawnSync).toHaveBeenCalledWith(
+    "/Applications/kitty.app/Contents/MacOS/kitty",
+    [
+      "--detach",
+      "--instance-group",
+      "terminfo-private-run",
+      "-1",
+      "-o",
+      "allow_remote_control=socket-only",
+      "--listen-on",
+      "unix:/private/run/kitty-private-run.sock",
+      "--",
+      "/bin/bash",
+      "/private/run/serve.sh",
+    ],
+    { encoding: "utf8", timeout: 15_000 },
+  )
+  expect(vi.mocked(writeFileSync).mock.calls.find(([path]) => path === "/private/run/serve.sh")?.[1]).toContain(
+    "TERMINFO_CAPTURE_DIRECTORY='/private/run/artifacts'",
+  )
+  expect(requestDaemonProbe).toHaveBeenCalledWith(
+    registration,
+    expect.objectContaining({ process: expect.objectContaining({ provider: "kitty", ownerPid: 777 }) }),
+  )
+  expect(closeOwnedTerminalWindow).toHaveBeenCalledWith(expect.objectContaining({ provider: "kitty", windowId: 7 }))
+  expect(removeProbeRun).toHaveBeenCalledWith({
+    id: "private-run",
+    directory: "/private/run",
+    scriptPath: "/private/run/serve.sh",
+  })
 })
 
 describe("WezTerm cli-process arm", () => {

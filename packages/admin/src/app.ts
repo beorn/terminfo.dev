@@ -485,7 +485,7 @@ export function launchPreparedCli(prepared: PreparedCliLaunch, diagnosticDirecto
 
 function launchWithServe(app: AppDef, run: ProbeRun): AppLaunch {
   const captureDirectory =
-    app.cliLaunch?.capture === "artifact-directory" ? join(run.directory, "artifacts") : undefined
+    app.id === "kitty" || app.cliLaunch?.capture === "artifact-directory" ? join(run.directory, "artifacts") : undefined
   const serveCmd = serveCommand(run, captureDirectory)
   const identityPath =
     app.id === "kitty"
@@ -514,7 +514,19 @@ function launchWithServe(app: AppDef, run: ProbeRun): AppLaunch {
     const instanceGroup = `terminfo-${run.id}`
     const launched = spawnSync(
       app.binaryPath,
-      ["--detach", "--instance-group", instanceGroup, "-1", "--", "/bin/bash", run.scriptPath],
+      [
+        "--detach",
+        "--instance-group",
+        instanceGroup,
+        "-1",
+        "-o",
+        "allow_remote_control=socket-only",
+        "--listen-on",
+        `unix:${join(run.directory, `kitty-${run.id}.sock`)}`,
+        "--",
+        "/bin/bash",
+        run.scriptPath,
+      ],
       { encoding: "utf8", timeout: 15_000 },
     )
     if (launched.error || launched.status !== 0) {

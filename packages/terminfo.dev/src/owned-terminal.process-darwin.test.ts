@@ -11,6 +11,7 @@ import { fileURLToPath } from "node:url"
 import { expect, test } from "vitest"
 import type { ProbeResult, Observation, ProbeAssertion } from "@terminfo/probe-defs"
 import { createOwnedTerminal, parseProcessOwnerAssertion } from "./owned-terminal.ts"
+import type { TerminalTextRead } from "./darwin-terminal-text.ts"
 
 const packageRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..")
 const launchRunId = "c".repeat(32)
@@ -54,10 +55,20 @@ function runDarwinArm(scenario: {
   /** The claim's own run id, when it differs from the worker's. */
   claimRunId?: string
   batch?: "process" | "terminal-app" | "disposed"
+  text?: {
+    stdout?: string
+    socket?: string
+    pid?: string
+    windowId?: string
+    error?: string
+    disposed?: boolean
+  }
 }): { status: number | null; stdout: string; stderr: string } {
   const script = `
     import { mock } from "bun:test"
     import assert from "node:assert/strict"
+    import { EventEmitter } from "node:events"
+    import { dirname, join } from "node:path"
     Object.defineProperty(process, "platform", { value: "darwin" })
     const scenario = ${JSON.stringify(scenario)}
     const launchRunId = scenario.launchRunId ?? ${JSON.stringify(launchRunId)}
@@ -67,8 +78,18 @@ function runDarwinArm(scenario: {
       Object.entries(scenario.parent).map(([key, value]) => [key === "self" ? self : key, value === "self" ? self : value]),
     )
     const executablePath = process.execPath
+    const socket = "unix:/private/owned-run/kitty-" + launchRunId + ".sock"
+    if (scenario.text) {
+      process.env.TERMINFO_CAPTURE_DIRECTORY = "/private/owned-run/artifacts"
+      process.env.KITTY_LISTEN_ON = scenario.text.socket ?? socket
+      process.env.KITTY_PID = scenario.text.pid ?? String(scenario.ownerPid)
+      process.env.KITTY_WINDOW_ID = scenario.text.windowId ?? "7"
+    }
+    const reads = []
     const device = { dev: 7n, rdev: 9n, ino: 11n }
     const realFs = await import("node:fs")
+    const realOpenSync = realFs.openSync
+    const realCloseSync = realFs.closeSync
     const realCp = await import("node:child_process")
     const realTty = await import("node:tty")
     const ps = (args) => {
@@ -83,11 +104,22 @@ function runDarwinArm(scenario: {
       if (field === "ppid=") return parent[pid] === undefined ? "" : String(parent[pid])
       throw new Error("unexpected ps field " + args.join(" "))
     }
-    mock.module("node:fs", () => ({ ...realFs, fstatSync: () => device, statSync: () => device }))
+    mock.module("node:fs", () => ({
+      ...realFs,
+      fstatSync: () => device,
+      statSync: () => device,
+      openSync: (path, ...args) => scenario.text && path === "/dev/fd/1" ? 900 : realOpenSync(path, ...args),
+      closeSync: (fd) => scenario.text && fd === 900 ? undefined : realCloseSync(fd),
+    }))
     mock.module("node:tty", () => ({ ...realTty, isatty: () => true }))
     mock.module("node:child_process", () => ({
       ...realCp,
       execFileSync: (command, args) => {
+        if (scenario.text && command === join(dirname(executablePath), "kitten")) {
+          reads.push(args)
+          if (scenario.text.error) throw new Error(scenario.text.error)
+          return scenario.text.stdout ?? "ab\\ncd\\n"
+        }
         if (command !== "/bin/ps") throw new Error("unexpected exec " + command)
         return ps(args)
       },
@@ -96,8 +128,19 @@ function runDarwinArm(scenario: {
         stdout: command === "/bin/ps" ? ps(args) : "",
         stderr: "",
       }),
-      spawn: () => {
-        throw new Error("stty is not run in this fixture")
+      spawn: (command, args) => {
+        if (!scenario.text) throw new Error("stty is not run in this fixture")
+        assert.equal(command, "/bin/stty")
+        assert.deepEqual(args, ["size"])
+        const child = new EventEmitter()
+        child.stdout = new EventEmitter()
+        child.stderr = new EventEmitter()
+        child.kill = () => true
+        queueMicrotask(() => {
+          child.stdout.emit("data", Buffer.from("2 3\\n"))
+          child.emit("close", 0)
+        })
+        return child
       },
     }))
     const { createOwnedTerminal, ownedTerminalVerifiedFor } = await import("./packages/terminfo.dev/src/owned-terminal.ts")
@@ -128,7 +171,12 @@ function runDarwinArm(scenario: {
       assert.equal(summary.ownedOwnerAssertion, undefined)
       // The pid serve's Darwin capture adopts is the one this proof checked, never a second reading.
       if (scenario.batch !== "terminal-app") assert.equal(owner.appPid, assertion.ownerPid)
-      if (!scenario.batch) {
+      if (scenario.text) {
+        assert.equal(typeof owner.readCells, "function")
+        if (scenario.text.disposed) await owner.dispose()
+        const read = await owner.readCells()
+        console.log("TEXT " + JSON.stringify({ read, reads }))
+      } else if (!scenario.batch) {
         console.log("GRANTED " + summary.outputBinding.tabTty)
       } else {
         assert.equal(ownedTerminalVerifiedFor(owner, ${JSON.stringify(captureRunId)}, process.stdout), true)
@@ -201,6 +249,88 @@ test("cli-process is granted by the same arm, not by a second proof", () => {
   })
   expect(result.stderr).toBe("")
   expect(result.stdout.trim()).toBe("GRANTED /dev/ttys004")
+})
+
+test.each([
+  { name: "owned socket and window", text: {}, status: "read", reads: 1, reason: undefined },
+  {
+    name: "another socket",
+    text: { socket: "unix:/private/other/kitty.sock" },
+    status: "refused",
+    reads: 0,
+    reason: "this run's capture-directory socket",
+  },
+  { name: "another owner", text: { pid: "4343" }, status: "refused", reads: 0, reason: "verified owner PID" },
+  { name: "missing window", text: { windowId: "" }, status: "refused", reads: 0, reason: "window ID" },
+  {
+    name: "omitted bottom row",
+    text: { stdout: "ab\n" },
+    status: "refused",
+    reads: 1,
+    reason: "1 rows where the measured screen has 2",
+  },
+  {
+    name: "blank screen omitted",
+    text: { stdout: "" },
+    status: "refused",
+    reads: 1,
+    reason: "0 rows where the measured screen has 2",
+  },
+  {
+    name: "remote read failed",
+    text: { error: "owned socket disappeared" },
+    status: "refused",
+    reads: 1,
+    reason: "owned socket disappeared",
+  },
+])("Kitty cell read: $name", ({ text, status, reads, reason }) => {
+  const result = runDarwinArm({
+    provider: "kitty",
+    ownerPid: 4242,
+    marker: { flag: "--instance-group", value: `terminfo-${launchRunId}` },
+    parent: { self: 4242, "4242": 1 },
+    text,
+  })
+  expect(result.status).toBe(0)
+  expect(result.stderr).toBe("")
+  expect(result.stdout).toMatch(/^TEXT /u)
+  const captured = JSON.parse(result.stdout.slice(5)) as { read: TerminalTextRead; reads: string[][] }
+  expect(captured.read.status, JSON.stringify(captured.read)).toBe(status)
+  expect(captured.reads).toHaveLength(reads)
+  if (status === "read") {
+    expect(captured.read).toEqual({
+      status: "read",
+      app: "kitty",
+      cells: { rows: 2, cols: 3, text: ["ab ", "cd "], paddedRows: [1, 2], droppedLines: 0 },
+    })
+  } else if (reason !== undefined) {
+    expect(captured.read).toMatchObject({ reason: expect.stringContaining(reason) })
+  }
+  if (reads > 0) {
+    expect(captured.reads[0]).toEqual([
+      "@",
+      "--to",
+      `unix:/private/owned-run/kitty-${launchRunId}.sock`,
+      "get-text",
+      "--extent",
+      "screen",
+      "--match",
+      "id:7",
+    ])
+  }
+})
+
+test("a disposed Kitty owner cannot read cells", () => {
+  const result = runDarwinArm({
+    provider: "kitty",
+    ownerPid: 4242,
+    marker: { flag: "--instance-group", value: `terminfo-${launchRunId}` },
+    parent: { self: 4242, "4242": 1 },
+    text: { disposed: true },
+  })
+  expect(result.status).toBe(0)
+  expect(result.stderr).toBe("")
+  expect(result.stdout.trim()).toBe("REFUSED Owned cell read has no live bound capture")
 })
 
 // Existing owner tests stop at construction; receipt-based batch tests do not carry the real

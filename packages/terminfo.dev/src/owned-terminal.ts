@@ -1,6 +1,7 @@
 import { execFileSync, spawn, type ChildProcess } from "node:child_process"
 import { closeSync, constants, fstatSync, openSync, readFileSync, statSync, type BigIntStats } from "node:fs"
 import { isatty, WriteStream } from "node:tty"
+import { dirname, isAbsolute, join } from "node:path"
 import { readDisposableReceipt } from "./disposable-receipt.ts"
 import type { LiveExecutable } from "./linux-capture.ts"
 import { createLinuxClipboardAdapter, type LinuxClipboardAdapter } from "./linux-clipboard.ts"
@@ -16,7 +17,12 @@ import {
   type ConsoleHostLookup,
 } from "./windows-console-cells.ts"
 import { kernelExecPath } from "./darwin-kernel-exec.ts"
-import { readTerminalTextSnapshot, type TerminalTextApp, type TerminalTextRead } from "./darwin-terminal-text.ts"
+import {
+  mapSnapshotToCells,
+  readTerminalTextSnapshot,
+  type TerminalTextApp,
+  type TerminalTextRead,
+} from "./darwin-terminal-text.ts"
 import { readConsoleGeometry } from "./windows-console-geometry.ts"
 import {
   HOSTED_WINDOWS_EXECUTABLE,
@@ -845,15 +851,21 @@ export async function createOwnedTerminal(options: {
     hostedReceiptSha256 = receipt.sha256
   }
   let clipboard: LinuxClipboardAdapter | undefined
+  const kittyOwner =
+    binding.platform === "darwin" && processOwner?.provider === "kitty"
+      ? parseProcessOwnerAssertion(processOwner)
+      : undefined
   // The two macOS terminals that answer no cell geometry: their read is the app's own text
   // snapshot, selected by the owned tab's TTY. Every other Darwin app keeps the capture path.
-  const darwinTextApp: TerminalTextApp | undefined =
+  const darwinTextApp: TerminalTextApp | "kitty" | undefined =
     binding.platform === "darwin"
-      ? terminalApp
-        ? "terminal-app"
-        : hostedApp?.id === "terminal-app" || hostedApp?.id === "iterm2"
-          ? hostedApp.id
-          : undefined
+      ? kittyOwner
+        ? "kitty"
+        : terminalApp
+          ? "terminal-app"
+          : hostedApp?.id === "terminal-app" || hostedApp?.id === "iterm2"
+            ? hostedApp.id
+            : undefined
       : undefined
   const darwinTextTty = binding.platform === "darwin" ? binding.tabTty : undefined
   // One executable digest per console host per run: the identity is resolved on every read because
@@ -973,6 +985,45 @@ export async function createOwnedTerminal(options: {
                 status: "refused",
                 reason: `the ${darwinTextApp} text snapshot needs a measured grid: ${geometry.diagnostic}`,
               } satisfies TerminalTextRead
+            }
+            if (darwinTextApp === "kitty") {
+              const assertion = parseProcessOwnerAssertion(processOwner)
+              const captureDirectory = process.env.TERMINFO_CAPTURE_DIRECTORY
+              const socket = process.env.KITTY_LISTEN_ON
+              const windowId = process.env.KITTY_WINDOW_ID
+              if (
+                !captureDirectory ||
+                !isAbsolute(captureDirectory) ||
+                socket !== `unix:${join(dirname(captureDirectory), `kitty-${expectedLaunchRunId}.sock`)}` ||
+                process.env.KITTY_PID !== String(assertion.ownerPid) ||
+                !windowId ||
+                !/^[1-9]\d*$/u.test(windowId)
+              ) {
+                return {
+                  status: "refused",
+                  reason:
+                    "Kitty text read requires this run's capture-directory socket, verified owner PID and window ID",
+                } satisfies TerminalTextRead
+              }
+              let snapshot: string
+              try {
+                snapshot = execFileSync(
+                  join(dirname(assertion.executablePath), "kitten"),
+                  ["@", "--to", socket, "get-text", "--extent", "screen", "--match", `id:${windowId}`],
+                  { encoding: "utf8", timeout: 5000, maxBuffer: 1024 * 1024 },
+                )
+              } catch (cause) {
+                return {
+                  status: "refused",
+                  reason: `Kitty window ${windowId} text read through ${socket} failed: ${cause instanceof Error ? cause.message : String(cause)}`,
+                } satisfies TerminalTextRead
+              }
+              const lines = snapshot === "" ? [] : snapshot.replace(/\n$/u, "").split("\n")
+              // The shared macOS mapper does not witness DECDWL/DECDHL; unknown character widths remain unmeasurable.
+              const cells = mapSnapshotToCells(lines, geometry.cols, geometry.rows, 0)
+              return typeof cells === "string"
+                ? { status: "refused", reason: `Kitty get-text: ${cells}` }
+                : { status: "read", app: "kitty", cells }
             }
             return readTerminalTextSnapshot({
               app: darwinTextApp,
