@@ -190,8 +190,7 @@ function matchResponse(
       // read (#30559, @cto 86260f80): a later DA1-shaped answer makes everything before it the reply. A
       // reply inside the window still grades by the reply, carrying the ordering note; anything else,
       // bytes ahead of the answer included, is the sentinel outcome, which the grader records as "negative
-      // by sentinel", citing these numbers, only when nothing preceded the answer. The window bounds the
-      // wait, so the DA1 deadline replaces the outer one, and each chunk restarts it. The facts time the
+      // by sentinel", citing these numbers, only when nothing preceded the answer. The facts time the
       // sentinel's own answer, so a later DA1-shaped answer re-stamps them (@cto a40ae9b7).
       const start = sentinelAnswer(buf)?.start
       if (sentinelFacts === null || start !== sentinelStart) {
