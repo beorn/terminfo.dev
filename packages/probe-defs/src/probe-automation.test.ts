@@ -249,21 +249,66 @@ describe("OSC 8 link metadata observation", () => {
     }
   })
 
-  test("missing link metadata is inconclusive, but a true declaration with absent field is an error", () => {
+  test("absent URI observer retains named coverage, but an invalid declared observer is an error", () => {
     const p = probe("extensions.osc8")
     if (!p.lib) throw new Error("OSC 8 needs headless callback")
-    const unreported = p.lib(linkedSource(Array(6).fill(undefined), false))
-    expect(unreported.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
-    expect(unreported.criterionBranch).toBe("source-negative-review")
-    expect(unreported.tests).toMatchObject([{ id: "review", status: "test-failure" }])
-    expect(unreported.assertions).toMatchObject([{ kind: "negative", observed: unreported.response }])
-    // A source review requires its fixture to exist; unrendered text cannot qualify by missing metadata.
+    const identities: LibProbeSource["runtimeIdentity"][] = [
+      undefined,
+      {
+        kind: "js",
+        runtimeFormat: "js",
+        engineVersion: "1.0",
+        adapterVersion: "4.0",
+        termlessRevision: "source-revision",
+        resolvedPath: "packages/example/src/backend.ts",
+        integrity: { kind: "registry", lockIntegrity: "sha512-example" },
+      },
+      {
+        kind: "native",
+        engineVersion: "1.0",
+        adapterVersion: "4.0",
+        termlessRevision: "source-revision",
+        loadedBinary: { path: "packages/example/native/example.node", sha256: "binary-digest" },
+        provenance: {
+          sha256: "binary-digest",
+          sourceCommit: "native-source",
+          buildHash: "build",
+          toolchain: "toolchain",
+          lockSha256: "lock",
+        },
+      },
+    ]
+    for (const runtimeIdentity of identities) {
+      const unreported = p.lib({ ...linkedSource(Array(6).fill(undefined), false), runtimeIdentity })
+      expect(unreported.observation).toBeUndefined()
+      expect(unreported.notTested).toMatchObject({
+        reason: "no-semantic-observable",
+        noObservable: expect.stringContaining("OSC 8 URI observer"),
+      })
+      expect(unreported.criterionBranch).toBeUndefined()
+      expect(unreported.tests).toBeUndefined()
+      expect(unreported.assertions).toBeUndefined()
+      expect(JSON.parse(unreported.response ?? "")).toEqual({
+        chars: [..."ALINKZ"],
+        links: Array(6).fill({ reported: false }),
+      })
+      expect(unreported.note).toContain(runtimeIdentity ? "source-revision" : "runtime identity unavailable")
+      if (runtimeIdentity) {
+        expect(unreported.note).toContain(
+          runtimeIdentity.kind === "js" ? runtimeIdentity.resolvedPath : runtimeIdentity.loadedBinary.path,
+        )
+      }
+    }
+    // Coverage still requires its text fixture; broken rendering is an attempted failed check.
     const brokenFixture = linkedSource(Array(6).fill(undefined), false)
     brokenFixture.getCell = () => ({ ...context({}).getCell(0, 0), char: "?" })
     const malformed = p.lib(brokenFixture)
     expect(malformed.criterionBranch).toBeUndefined()
     expect(malformed.assertions).toBeUndefined()
     expect(() => p.lib?.(linkedSource(Array(6).fill(undefined), true))).toThrow(/declares OSC 8 metadata/i)
+    const missingGetter = linkedSource(positions)
+    delete missingGetter.getHyperlinkAt
+    expect(() => p.lib?.(missingGetter)).toThrow(/declares OSC 8 metadata/i)
   })
 
   // AC3: the published feature flag does not declare metadata exposure.
@@ -271,7 +316,8 @@ describe("OSC 8 link metadata observation", () => {
     const p = probe("extensions.osc8")
     if (!p.lib) throw new Error("OSC 8 needs headless callback")
     const result = p.lib(linkedSource(Array(6).fill(null), false))
-    expect(result.observation).toMatchObject({ outcome: "inconclusive" })
+    expect(result.observation).toBeUndefined()
+    expect(result.notTested?.noObservable).toContain("OSC 8 URI observer")
     expect(JSON.parse(result.response ?? "")).toMatchObject({ links: Array(6).fill({ reported: false }) })
   })
 

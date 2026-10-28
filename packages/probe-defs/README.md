@@ -68,6 +68,11 @@ The five `AssertionType` values classify an actually retained deciding observati
 
 Cell `dim`, `italic` and `strikethrough` readbacks are required `boolean | null`: null means the producer does not report that attribute, never a terminal-support claim. Their SGR probes route null through named missing-observable coverage (TEST TODO); measured booleans retain their existing observation path.
 
+The OSC 8 library criterion requires exact per-cell URI metadata, including unlinked controls.
+An absent `hyperlinks` observer with valid fixture text retains named coverage (TEST TODO) and raw cell/link state,
+identifying the loaded adapter path and Termless revision when measured runtime identity is available.
+Declared getters returning null report unlinked cells, so URI mismatches remain measured negatives; invalid declared getters still throw.
+
 The collector forwards the run's measured `HeadlessRuntimeIdentity` through `LibProbeSource.runtimeIdentity`.
 It identifies the loaded adapter source, engine integrity and any loaded binary; feature-capability versions
 cannot substitute for it. Missing identity supplies no source-derived qualification.

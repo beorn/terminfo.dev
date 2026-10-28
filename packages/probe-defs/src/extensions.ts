@@ -2085,12 +2085,13 @@ export const extensionsProbes: ProbeDefinition[] = [
         const reported = links.every((link) => link.reported)
         const charsMatch = cells.every((cell, index) => cell.char === expectedChars[index])
         if (charsMatch && !reported) {
-          return parserStateResult(
-            null,
-            expected,
+          const identity = ctx.runtimeIdentity
+          const adapter = identity
+            ? `${identity.kind === "js" ? identity.resolvedPath : identity.loadedBinary.path} at Termless ${identity.termlessRevision}`
+            : "Adapter (runtime identity unavailable)"
+          return notTestedResult(
+            `${adapter} exposes no OSC 8 URI observer (getHyperlinkAt); link metadata unobservable`,
             { chars: cells.map((cell) => cell.char), links },
-            undefined,
-            "Cell readback cannot report OSC 8 link metadata for the rendered text fixture",
           )
         }
         if (!charsMatch) {
