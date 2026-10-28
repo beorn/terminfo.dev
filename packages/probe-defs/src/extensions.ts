@@ -323,10 +323,13 @@ function oscColorQueryProbe(id: string, oscCode: number, index?: number): ProbeD
       probe(
         id,
         (ctx) => {
+          let silence: ProbeCallbackResult | null = null
           if (ctx.queryWithSentinelOutcome) {
-            return oscOutcomeResult(ctx.queryWithSentinelOutcome(querySeq, pattern), expected, prefix)
+            const outcome = ctx.queryWithSentinelOutcome(querySeq, pattern)
+            silence = sentinelSilenceResult(outcome, expected)
+            if (!reviewInitialValue || !silence) return oscOutcomeResult(outcome, expected, prefix)
           }
-          const raw = ctx.feedCapture(querySeq)
+          const raw = silence ? "" : ctx.feedCapture(querySeq)
           if (raw !== "" || !reviewInitialValue) {
             return oscReplyResult(raw, pattern.exec(raw)?.[0] ?? null, expected, prefix)
           }
@@ -354,6 +357,7 @@ function oscColorQueryProbe(id: string, oscCode: number, index?: number): ProbeD
               state,
             )
           }
+          if (silence) return silence
           return {
             ...oscReplyResult(raw, null, expected, prefix),
             response: JSON.stringify(state),
@@ -502,21 +506,60 @@ function colorResetProbe(setCode: number, resetCode: number, index?: number): Pr
     "i",
   )
   return (ctx) => {
+    let silence: ProbeCallbackResult | null = null
     if (ctx.queryWithSentinelOutcome) {
-      const silence = sentinelSilenceResult(
+      silence = sentinelSilenceResult(
         ctx.queryWithSentinelOutcome(query, replyPattern),
         `Complete OSC ${setCode} color reply`,
       )
-      if (silence) return silence
     }
-    const originalRaw = ctx.feedCapture(query)
+    const originalRaw = silence ? "" : ctx.feedCapture(query)
     const original = replyPattern.exec(originalRaw)?.[1]
     if (!original) {
       if (originalRaw === "") {
-        return colorReadbackReviewResult(
-          `OSC ${setCode} colour query before OSC ${resetCode} answered nothing, so the reset effect cannot be read back`,
-          { query, originalRaw },
-        )
+        const controls: { write: string; response: string }[] = []
+        const capture = (write: string) => {
+          const response = ctx.feedCapture(write)
+          controls.push({ write, response })
+          return response
+        }
+        const reset = `\x1b]${resetCode}${index === undefined ? "" : `;${index}`}\x07`
+        let control: ReturnType<typeof seedColorReadback>
+        let resetRaw: string
+        try {
+          control = seedColorReadback(capture, `${setCode}${index === undefined ? "" : `;${index}`}`, replyPattern)
+        } finally {
+          resetRaw = capture(reset)
+        }
+        const restoredRaw = capture(query)
+        const response = JSON.stringify({ query, originalRaw, controls })
+        if (control.verified && resetRaw === "" && restoredRaw === "") {
+          return colorReadbackReviewResult(
+            `OSC ${setCode} seeded colour was verified but OSC ${resetCode} restored an unreadable embedder-owned default`,
+            { query, originalRaw, controls },
+          )
+        }
+        const restored = replyPattern.exec(restoredRaw)?.[1]
+        if (control.verified && restored && sameRgb(restored, seededCurrentColor)) {
+          return {
+            pass: false,
+            response,
+            observation: { outcome: "unsupported", assertionType: "query_reply" },
+            assertions: [
+              {
+                assertionType: "query_reply",
+                kind: "negative",
+                expected: `OSC ${resetCode} changes the verified seeded colour back to its default`,
+                observed: response,
+              },
+            ],
+          }
+        }
+        if (silence) return silence
+        return {
+          ...oscReplyResult(originalRaw, null, `OSC ${setCode} color before reset`, new RegExp(`\\x1b\\]${setCode};`)),
+          response,
+        }
       }
       return oscReplyResult(originalRaw, null, `OSC ${setCode} color before reset`, new RegExp(`\\x1b\\]${setCode};`))
     }

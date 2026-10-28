@@ -137,6 +137,68 @@ describe("initial colour context review", () => {
     if (!callback) throw new Error(`missing library callback ${id}`)
     const writes = [query, setter, query, reset, query]
 
+    // C1: a qualified DA1 channel cannot establish an embedder-owned default value.
+    // Existing positive-control cases omit the sentinel member and miss its early negative.
+    test(`${slot}: qualified silence verifies a seed before initial/default review`, () => {
+      const resetIds = {
+        "110": "extensions.osc110-reset-fg",
+        "111": "extensions.osc111-reset-bg",
+        "112": "extensions.osc112-reset-cursor",
+        "104;0": "extensions.osc104-reset-palette",
+      }
+      for (const run of [callback, probe(resetIds[resetCode]).lib!]) {
+        const seen: string[] = []
+        let current = ""
+        const result = run(
+          context({
+            queryWithSentinelOutcome(sequence) {
+              expect(sequence).toBe(query)
+              return {
+                match: null,
+                reason: "sentinel",
+                raw: "\x1b[?1;2c",
+                rawBase64: "G1s/MTsyYw==",
+                sentinel: { atMs: 0, graceMs: 250 },
+              }
+            },
+            feedCapture(sequence) {
+              seen.push(sequence)
+              if (sequence === setter) current = seeded
+              if (sequence === reset) current = ""
+              return sequence === query ? current : ""
+            },
+          }),
+        )
+        expect(result.criterionBranch).toBe("color-readback-review")
+        expect(result.observation).toBeUndefined()
+        expect(result.tests).toMatchObject([{ id: "review", status: "test-todo" }])
+        expect(seen).toEqual([setter, query, reset, query])
+      }
+    })
+
+    test(`${slot}: a reset that leaves the verified seed is a measured negative`, () => {
+      const resetIds = {
+        "110": "extensions.osc110-reset-fg",
+        "111": "extensions.osc111-reset-bg",
+        "112": "extensions.osc112-reset-cursor",
+        "104;0": "extensions.osc104-reset-palette",
+      }
+      let current = ""
+      const result = probe(resetIds[resetCode]).lib!(
+        context({
+          feedCapture(sequence) {
+            if (sequence === setter) current = seeded
+            return sequence === query ? current : ""
+          },
+        }),
+      )
+      expect(result).toMatchObject({
+        observation: { outcome: "unsupported", assertionType: "query_reply" },
+        assertions: [{ kind: "negative" }],
+      })
+      expect(result.criterionBranch).toBeUndefined()
+    })
+
     test(`${slot}: missing initial value selects required review after a disposable positive control`, () => {
       for (const reply of [seeded, `\x1b]${slot};rgb:a/b/c\x07`]) {
         const replies = ["", "", reply, "", ""]
