@@ -1285,11 +1285,12 @@ it.each(["matching", "foreign-run", "foreign-context", "admitted", "admission-re
             Object.keys(catalog.loadFeatures(CONTENT)),
             new Map([[frozenSuite!, frozenManifest!]]),
           )
+          if (run.subject.os === null) throw new Error("Fixture admission requires recorded OS")
           return {
             source,
             destination: join(directory, "admitted.json"),
             probeHash: frozenSuite!,
-            subject: { ...run.subject, os: run.subject.os ?? process.platform },
+            subject: { ...run.subject, os: run.subject.os },
             runId: run.runId,
           }
         })
