@@ -301,6 +301,7 @@ function oscColorQueryProbe(id: string, oscCode: number, index?: number): ProbeD
   const pattern = new RegExp(`\\x1b\\]${slot};rgb:[0-9a-f]{1,4}/[0-9a-f]{1,4}/[0-9a-f]{1,4}(?:\\x07|\\x1b\\\\)`, "i")
   const prefix = new RegExp(`\\x1b\\]${slot};`)
   const expected = `Complete OSC ${oscCode}${index === undefined ? "" : ` index-${index}`} color reply`
+  const reviewInitialValue = oscCode === 10 || oscCode === 11 || oscCode === 12 || (oscCode === 4 && index === 0)
   return {
     ...queryOnly(
       probe(
@@ -310,7 +311,9 @@ function oscColorQueryProbe(id: string, oscCode: number, index?: number): ProbeD
             return oscOutcomeResult(ctx.queryWithSentinelOutcome(querySeq, pattern), expected, prefix)
           }
           const raw = ctx.feedCapture(querySeq)
-          if (raw !== "") return oscReplyResult(raw, pattern.exec(raw)?.[0] ?? null, expected, prefix)
+          if (raw !== "" || !reviewInitialValue) {
+            return oscReplyResult(raw, pattern.exec(raw)?.[0] ?? null, expected, prefix)
+          }
 
           // This non-ANSI colour tests the producer without inventing its initial value.
           const seededColor = "rgb:aa/bb/cc"

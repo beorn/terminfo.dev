@@ -103,6 +103,24 @@ function terminalSource(overrides: Partial<TermProbeSource>): TermProbeSource {
  * @testonly none
  */
 describe("initial colour context review", () => {
+  test.each([
+    ["extensions.osc17-highlight-bg", "17"],
+    ["extensions.osc19-highlight-fg", "19"],
+  ])("keeps the unreviewed highlight query %s unchanged", (id, slot) => {
+    const seen: string[] = []
+    const result = probe(id).lib!(
+      context({
+        feedCapture(sequence) {
+          seen.push(sequence)
+          return ""
+        },
+      }),
+    )
+    expect(seen).toEqual([`\x1b]${slot};?\x07`])
+    expect(result).toMatchObject({ pass: false, response: "", tests: [{ id: "criterion", status: "test-failure" }] })
+    expect(result.criterionBranch).toBeUndefined()
+  })
+
   const cases = [
     ["extensions.osc10-fg-color", "10", "110"],
     ["extensions.osc11-bg-color", "11", "111"],
