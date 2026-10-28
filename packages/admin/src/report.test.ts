@@ -527,6 +527,18 @@ test("report renders reviewed outcomes and missing cells without promoting legac
     expect(mixedRow).toContain("supported=5")
     expect(mixedRow).toContain("supported=1")
     expect(mixedRow).toContain("test-failure=2")
+    // The explicit pass must not hide a second selected configuration when it matches admitted bytes.
+    const mixedPass = passPath("mixed-admitted", snapshot.probeHash, inconclusivePath, [], undefined, inconclusivePath)
+    const mixedReport = spawnSync(process.execPath, [join(root, "run.ts"), mixedPass], {
+      cwd: root,
+      encoding: "utf8",
+      timeout: 15_000,
+    })
+    expect(mixedReport.status, mixedReport.stderr).toBe(0)
+    const mixedPassRow = mixedReport.stdout.split("\n").find((line) => line.startsWith("| kitty/macos |"))
+    expect(mixedPassRow).toContain("| measured-unpublished |")
+    expect(mixedPassRow).toContain("test-failure=2")
+    expect(mixedPassRow).toContain("supported=5")
 
     // The canonical reader owns suiteRelation; the view must retain an older selected configuration as stale.
     const oldSuite = "bbbbbbbbbbbb"
