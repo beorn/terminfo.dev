@@ -32,7 +32,7 @@ import { decodeCollectorDraft } from "@terminfo/run-parser"
 import { saveDaemonProbeRun } from "../packages/terminfo.dev/src/daemon-client.ts"
 import { loadFeatures } from "@terminfo/catalog"
 import { fullContextCensus, type CensusContext } from "../docs/data/full-census.ts"
-import { parseRun, parseSuiteManifest } from "@terminfo/run-parser"
+import { parseJsonStrict, parseRun, parseSuiteManifest } from "@terminfo/run-parser"
 import { frozenSuiteIdFor } from "../packages/admin/suite-manifest.ts"
 import { assertPrivateCollectionOutput } from "../packages/admin/src/admit-collected-run.ts"
 import { loadCurrentResults, loadDefaultContextPolicy, reviewedContextFor } from "../docs/data/current-results.ts"
@@ -282,7 +282,7 @@ export async function engineBackendsFromManifest(): Promise<string[]> {
 
 export interface CollectionPass {
   mode: "development" | "admit"
-  freeze?: { id: string; release: string }
+  freeze?: { id: string; release: string; deferrals?: Array<{ context: string; routeIssue: string; reason: string }> }
   directory: string
   probeHash: string
   sourceRevision: string
@@ -433,9 +433,26 @@ export async function collectPass(
   outputDirectory: string,
   frozenSuiteId?: string,
   ownedApp: OwnedAppTransportOptions = { runner: "local" },
+  deferrals: NonNullable<NonNullable<CollectionPass["freeze"]>["deferrals"]> = [],
 ): Promise<CollectionPass> {
   const snapshot = probeSuiteSnapshot()
-  const freeze = frozenSuiteId === undefined ? undefined : declaredCollectionFreeze(frozenSuiteId, snapshot.probeHash)
+  const declaredFreeze =
+    frozenSuiteId === undefined ? undefined : declaredCollectionFreeze(frozenSuiteId, snapshot.probeHash)
+  const freeze = declaredFreeze && { ...declaredFreeze, ...(deferrals.length > 0 && { deferrals }) }
+  const canonical = fullContextCensus(CONTENT).contexts
+  const deferred = new Map<string, string>()
+  for (const entry of deferrals) {
+    if (
+      !freeze ||
+      !canonical.some((row) => row.context === entry.context) ||
+      !entry.routeIssue?.trim() ||
+      !entry.reason?.trim() ||
+      deferred.has(entry.context)
+    ) {
+      throw new Error(`Invalid frozen deferral ${entry.context}: requires one declared context, routeIssue and reason`)
+    }
+    deferred.set(entry.context, entry.reason)
+  }
   assertPrivateCollectionOutput(outputDirectory)
   mkdirSync(outputDirectory, { recursive: true })
   const output = realpathSync(outputDirectory)
@@ -465,7 +482,7 @@ export async function collectPass(
   ])) {
     inputSha256[path] = createHash("sha256").update(readFileSync(path)).digest("hex")
   }
-  const census = release1Census(await engineBackendsFromManifest()).map((context) =>
+  const declared = release1Census(await engineBackendsFromManifest()).map((context) =>
     context.route === "linux-container"
       ? {
           ...context,
@@ -473,6 +490,9 @@ export async function collectPass(
         }
       : context,
   )
+  const contextName = (context: CollectionContext): string =>
+    context.kind === "lib" ? `${context.id}/headless` : `${context.id}/${context.os}`
+  const census = declared.filter((context) => !deferred.has(contextName(context)))
   const pass: CollectionPass = {
     mode: freeze ? "admit" : "development",
     ...(freeze && { freeze }),
@@ -481,7 +501,13 @@ export async function collectPass(
     sourceRevision,
     inputSha256,
     catalogIds,
-    contexts: [],
+    contexts: declared
+      .filter((context) => deferred.has(contextName(context)))
+      .map((context) => ({
+        context,
+        status: "not-started",
+        reason: deferred.get(contextName(context))!,
+      })),
     errors: [],
     complete: false,
   }
@@ -505,46 +531,47 @@ export async function collectPass(
   const suites = new Map([[snapshot.probeHash, derivedSuiteManifest(snapshot)]])
   const files = new Map<string, string[]>()
   const failures = new Map<string, string>()
-  try {
-    const collected = await collectHeadlessRuns(
-      [],
-      join(directory, "lib"),
-      new Map(
-        census
-          .filter((context) => context.kind === "lib")
-          .map((context) => {
-            const handed = drafts.get(coverageKey(context.kind, context.id, context.os))
-            if (!handed) throw new Error(`Missing initialized headless context ${context.id}`)
-            return [context.id, handed]
-          }),
-      ),
-    )
-    for (const failure of collected.failures) failures.set(failure.backend, failure.error)
-    for (const path of collected.runs) {
-      try {
-        const file = realpathSync(path)
-        if (!file.startsWith(`${directory}${sep}`)) {
-          throw new Error(`collector returned raw output outside this private pass: ${file}`)
+  if (census.some((context) => context.kind === "lib"))
+    try {
+      const collected = await collectHeadlessRuns(
+        census.filter((context) => context.kind === "lib").map((context) => context.id),
+        join(directory, "lib"),
+        new Map(
+          census
+            .filter((context) => context.kind === "lib")
+            .map((context) => {
+              const handed = drafts.get(coverageKey(context.kind, context.id, context.os))
+              if (!handed) throw new Error(`Missing initialized headless context ${context.id}`)
+              return [context.id, handed]
+            }),
+        ),
+      )
+      for (const failure of collected.failures) failures.set(failure.backend, failure.error)
+      for (const path of collected.runs) {
+        try {
+          const file = realpathSync(path)
+          if (!file.startsWith(`${directory}${sep}`)) {
+            throw new Error(`collector returned raw output outside this private pass: ${file}`)
+          }
+          // This header only routes the file to its context; canonical parseRun validates every byte below.
+          const header = JSON.parse(readFileSync(file, "utf8")) as {
+            schemaVersion?: unknown
+            subject?: { id?: unknown }
+            target?: { id?: unknown }
+          }
+          // Preserve historical raw output custody before the current-contract refusal below.
+          const id = header.schemaVersion === 4 ? header.subject?.id : header.target?.id
+          if (typeof id !== "string" || !census.some((row) => row.kind === "lib" && row.id === id)) {
+            throw new Error(`headless collector returned an unexpected target in ${file}`)
+          }
+          files.set(id, [...(files.get(id) ?? []), file])
+        } catch (error) {
+          pass.errors.push(`${path}: ${error instanceof Error ? error.message : String(error)}`)
         }
-        // This header only routes the file to its context; canonical parseRun validates every byte below.
-        const header = JSON.parse(readFileSync(file, "utf8")) as {
-          schemaVersion?: unknown
-          subject?: { id?: unknown }
-          target?: { id?: unknown }
-        }
-        // Preserve historical raw output custody before the current-contract refusal below.
-        const id = header.schemaVersion === 4 ? header.subject?.id : header.target?.id
-        if (typeof id !== "string" || !census.some((row) => row.kind === "lib" && row.id === id)) {
-          throw new Error(`headless collector returned an unexpected target in ${file}`)
-        }
-        files.set(id, [...(files.get(id) ?? []), file])
-      } catch (error) {
-        pass.errors.push(`${path}: ${error instanceof Error ? error.message : String(error)}`)
       }
+    } catch (error) {
+      pass.errors.push(`headless collection: ${error instanceof Error ? error.message : String(error)}`)
     }
-  } catch (error) {
-    pass.errors.push(`headless collection: ${error instanceof Error ? error.message : String(error)}`)
-  }
   const hosted = collectHostedArtifacts(
     census,
     directory,
@@ -725,10 +752,7 @@ export async function collectPass(
       writeFileSync(handed.path, `${JSON.stringify(retained, null, 2)}\n`)
     }
   }
-  pass.complete =
-    pass.contexts.length === 33 &&
-    catalogIds.length === 273 &&
-    pass.contexts.every((row) => row.summary?.complete === true)
+  const eligible = pass.contexts.filter((row) => !deferred.has(contextName(row.context)))
   for (const [path, hash] of Object.entries(inputSha256)) {
     try {
       if (createHash("sha256").update(readFileSync(path)).digest("hex") !== hash) {
@@ -740,9 +764,14 @@ export async function collectPass(
       )
     }
   }
-  if (freeze && pass.errors.length === 0 && pass.contexts.every((row) => row.status === "classified")) {
+  if (
+    freeze &&
+    pass.errors.length === 0 &&
+    eligible.length > 0 &&
+    eligible.every((row) => row.status === "classified" && row.summary?.complete === true)
+  ) {
     try {
-      const paths = pass.contexts.map((row) => {
+      const paths = eligible.map((row) => {
         if (!row.rawRun) throw new Error(`${labelOf(row.context)}: validated context lost its raw run path`)
         return row.rawRun
       })
@@ -756,7 +785,7 @@ export async function collectPass(
     } catch (error) {
       const message = `Admission stopped: ${error instanceof Error ? error.message : String(error)}`
       pass.errors.push(message)
-      for (const row of pass.contexts) {
+      for (const row of eligible) {
         if (row.status !== "admitted") {
           row.status = "failed"
           row.error = `${labelOf(row.context)}: ${message}; raw run retained privately`
@@ -764,6 +793,12 @@ export async function collectPass(
       }
     }
   }
+  pass.complete =
+    pass.contexts.length === 33 &&
+    catalogIds.length === 273 &&
+    pass.errors.length === 0 &&
+    eligible.length > 0 &&
+    eligible.every((row) => row.summary?.complete === true && (!freeze || row.status === "admitted"))
   writeFileSync(join(directory, "pass.json"), `${JSON.stringify(pass, null, 2)}\n`, { flag: "wx" })
   return pass
 }
@@ -1094,7 +1129,7 @@ function usage(): never {
   console.error(
     "Usage: bun run release1-collection [--plan]\n" +
       "       bun run release1-collection --collect --development --output <private-directory>\n" +
-      "       bun run release1-collection --collect --admit --frozen-suite <id> --output <private-directory>\n" +
+      "       bun run release1-collection --collect --admit --frozen-suite <id> [--deferrals <json-file>] --output <private-directory>\n" +
       "       [--owned-app-transport ssh:<user>@<host> [--owned-app-stage <remote-dir>]\n" +
       "        --owned-app-known-hosts <path> [--owned-app-remove-stage]]\n" +
       "       bun run release1-collection --admit [--frozen-suite <id>] <run.json>...\n" +
@@ -1105,6 +1140,7 @@ function usage(): never {
       "           WIP: other routes remain named failures; this is not the completed full pass.\n" +
       "  --collect --admit  require the declared frozen suite; validate all contexts, plan all\n" +
       "           admissions, then place runs through the existing owner. No inclusion or publication.\n" +
+      "  --deferrals  explicit frozen context/routeIssue/reason array; carried routes remain in the pass census.\n" +
       "  --owned-app-transport  where an owned-app row starts: local (default) or an existing ssh host.\n" +
       "           The host, stage and known-hosts file are environment configuration named here, never\n" +
       "           product content; the host's own authority is unchanged by the transport.\n" +
@@ -1128,6 +1164,7 @@ if (import.meta.main) {
   let development = false
   let outputDirectory: string | undefined
   let frozenSuite: string | undefined
+  let deferralsPath: string | undefined
   let ownedAppRunner = "local"
   let ownedAppStage: string | undefined
   let ownedAppKnownHosts: string | undefined
@@ -1144,6 +1181,9 @@ if (import.meta.main) {
     } else if (argv[index] === "--frozen-suite") {
       frozenSuite = argv[++index]
       if (frozenSuite === undefined || frozenSuite.startsWith("--")) usage()
+    } else if (argv[index] === "--deferrals") {
+      deferralsPath = argv[++index]
+      if (!deferralsPath || deferralsPath.startsWith("--")) usage()
     } else if (argv[index] === "--owned-app-transport") {
       ownedAppRunner = argv[++index] ?? usage()
       if (ownedAppRunner.startsWith("--")) usage()
@@ -1162,20 +1202,49 @@ if (import.meta.main) {
     }
   }
   if (collect) {
-    if (plan || admit === development || !outputDirectory || (development && frozenSuite) || runs.length) usage()
+    if (
+      plan ||
+      admit === development ||
+      !outputDirectory ||
+      (development && (frozenSuite || deferralsPath)) ||
+      runs.length
+    )
+      usage()
     try {
+      const deferrals: NonNullable<NonNullable<CollectionPass["freeze"]>["deferrals"]> = []
+      if (deferralsPath) {
+        const values: unknown = parseJsonStrict(deferralsPath, readFileSync(deferralsPath, "utf8"))
+        if (!Array.isArray(values)) throw new Error(`${deferralsPath}: expected context/routeIssue/reason array`)
+        for (const value of values) {
+          if (
+            value === null ||
+            typeof value !== "object" ||
+            typeof value.context !== "string" ||
+            typeof value.routeIssue !== "string" ||
+            typeof value.reason !== "string"
+          ) {
+            throw new Error(`${deferralsPath}: each deferral requires context, routeIssue and reason`)
+          }
+          deferrals.push({ context: value.context, routeIssue: value.routeIssue, reason: value.reason })
+        }
+      }
       if (admit && !frozenSuite) throw new Error("--collect --admit requires --frozen-suite <declared-id>")
       if (ownedAppRunner === "local" && (ownedAppStage || ownedAppRemoveStage || ownedAppKnownHosts)) {
         throw new Error(
           "--owned-app-stage/--owned-app-known-hosts/--owned-app-remove-stage require --owned-app-transport ssh:<user>@<host>",
         )
       }
-      const pass = await collectPass(resolve(outputDirectory), admit ? frozenSuite : undefined, {
-        runner: ownedAppRunner,
-        ...(ownedAppStage === undefined ? {} : { stage: ownedAppStage }),
-        ...(ownedAppKnownHosts === undefined ? {} : { knownHosts: ownedAppKnownHosts }),
-        ...(ownedAppRemoveStage ? { removeStage: true } : {}),
-      })
+      const pass = await collectPass(
+        resolve(outputDirectory),
+        admit ? frozenSuite : undefined,
+        {
+          runner: ownedAppRunner,
+          ...(ownedAppStage === undefined ? {} : { stage: ownedAppStage }),
+          ...(ownedAppKnownHosts === undefined ? {} : { knownHosts: ownedAppKnownHosts }),
+          ...(ownedAppRemoveStage ? { removeStage: true } : {}),
+        },
+        deferrals,
+      )
       console.log(
         `${pass.mode === "admit" ? "Final collection" : "Private development"} pass: ${pass.directory}; cohort ${pass.complete ? "complete" : "incomplete"}`,
       )
@@ -1193,7 +1262,7 @@ if (import.meta.main) {
       process.exitCode = 1
     }
   } else {
-    if (development || outputDirectory) usage()
+    if (development || outputDirectory || deferralsPath) usage()
     if (!admit) {
       if (runs.length > 0) usage()
       plan = true

@@ -127,7 +127,10 @@ probe
 program
   .command("report")
   .description("Show saved probe results")
-  .option("--scoreboard <capture-files...>", "Show context progress from explicit private raw captures")
+  .option(
+    "--scoreboard <inputs...>",
+    "Show context progress from explicit raw captures or collection pass files/directories",
+  )
   .action(async (opts: { scoreboard?: string[] }) => {
     const { handleReport } = await import("./report.ts")
     await handleReport(opts)

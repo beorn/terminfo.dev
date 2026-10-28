@@ -244,6 +244,7 @@ it.each([
   ["matching", "text-missing"],
   ["matching", "text-modified"],
   ["frozen", "none"],
+  ["frozen", "deferred"],
 ] as const)(
   "retains a private %s-suite historical artifact after %s without current admission",
   async (suite, inputChange) => {
@@ -438,10 +439,29 @@ it.each([
       return { pid: 1, output: [], stdout: "", stderr: "", status: isKitty ? 17 : 0, signal: null }
     })
     try {
-      const pass = await collectPass(directory, frozenSuite)
+      const deferrals =
+        inputChange === "deferred"
+          ? [
+              {
+                context: "kitty/macos",
+                routeIssue: "@si/terminfo/hosted-kitty",
+                reason: "hosted OpenGL route carried forward",
+              },
+            ]
+          : []
+      const pass = await collectPass(directory, frozenSuite, { runner: "local" }, deferrals)
       expect(pass.mode).toBe(frozenSuite ? "admit" : "development")
       if (frozenSuite) expect(pass.freeze?.id).toBe(frozenSuite)
       expect(pass.contexts).toHaveLength(33)
+      if (inputChange === "deferred") {
+        // The frozen batch owns a carried route; its initialized TODO draft must not become a measurement.
+        expect(pass.freeze?.deferrals).toEqual(deferrals)
+        const deferred = pass.contexts.find((row) => row.context.id === "kitty" && row.context.os === "macos")
+        expect(deferred?.status).toBe("not-started")
+        expect(deferred?.reason).toBe(deferrals[0]!.reason)
+        expect(deferred?.rawRun).toBeUndefined()
+        expect(pass.complete).toBe(false)
+      }
       if (textCase) {
         const terminal = pass.contexts.find(
           (row) => row.context.kind === "term" && row.context.id === "terminal-app" && row.context.os === "macos",

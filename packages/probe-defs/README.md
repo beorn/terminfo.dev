@@ -18,6 +18,13 @@ The five assertion types classify the deciding observation: `query_reply` reads 
 
 Status names remain supported, unsupported, untestable, TEST TODO and TEST FAILURE. The last two retain code values `test-todo` and `test-failure`; this vocabulary change does not change status or publication behavior.
 
+The collection owner's frozen `CollectionPass.freeze.deferrals` records each carried context with its `routeIssue` and `reason`.
+`release1-collection --collect --admit --frozen-suite <id> --deferrals <json-file>` reads that explicit array before collection.
+Deferred contexts remain named in the pass census with their reason and no new measurement; existing context status values are unchanged.
+An admitting pass is complete only when every non-deferred declared context is complete and admitted, with no pass errors.
+The read-only admin `report --scoreboard <inputs...>` accepts explicit raw captures or pass files/directories, preserves pass identities,
+and uses the canonical selected-results reader and local `origin/live` revision to distinguish selection from proven publication.
+
 Device query criteria name the state actually reported. XTREPORTCOLORS (`CSI # R`)
 reports the palette-stack current entry and stored palette count as two
 nonnegative decimal fields, retaining the existing optional DEC-private `?`

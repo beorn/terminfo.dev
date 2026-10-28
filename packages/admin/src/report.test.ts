@@ -291,6 +291,148 @@ test("report renders reviewed outcomes and missing cells without promoting legac
     expect(baseline().stdout).toBe(first.stdout)
     expect(JSON.parse(readFileSync(draftPath, "utf8")).identity).toBe("unverified")
 
+    // AC1/3: immutable pass records, rather than raw captures, own freeze ordering and deferrals.
+    // The earlier raw journey cannot detect loss of the batch's carried route or pass identity.
+    const newerSuite = "aaaaaaaaaaaa"
+    const suitePath = join(root, "content", "suites", `${snapshot.probeHash}.json`)
+    const manifest = JSON.parse(readFileSync(suitePath, "utf8"))
+    writeFileSync(
+      join(root, "content", "suites", `${newerSuite}.json`),
+      JSON.stringify({
+        ...manifest,
+        probeHash: newerSuite,
+        freeze: { release: "next-candidate", at: "2026-09-29T00:00:00.000Z" },
+      }),
+    )
+    const nextDraft = join(root, "next.draft.json")
+    writeFileSync(
+      nextDraft,
+      JSON.stringify({
+        ...captured,
+        runId: "next-kitty",
+        identity: "unverified",
+        suiteId: newerSuite,
+        probeHash: newerSuite,
+      }),
+    )
+    const passPath = (name: string, suite: string, rawRun: string, deferrals: unknown[]) => {
+      const directory = join(root, name)
+      mkdirSync(directory)
+      const path = join(directory, "pass.json")
+      writeFileSync(
+        path,
+        JSON.stringify({
+          mode: "admit",
+          freeze: { id: suite, release: suite === newerSuite ? "next-candidate" : "candidate2", deferrals },
+          directory,
+          probeHash: suite,
+          sourceRevision: run.sourceRevision,
+          inputSha256: {},
+          catalogIds: fixtureFeatures,
+          complete: false,
+          errors: [],
+          contexts: [
+            { context: { kind: "term", id: "kitty", os: "macos" }, status: "classified", rawRun },
+            { context: { kind: "term", id: "ghostty", os: "linux" }, status: "not-started" },
+          ],
+        }),
+      )
+      return path
+    }
+    const olderPass = passPath("older-pass", snapshot.probeHash, draftPath, [])
+    const newerPass = passPath("newer-pass", newerSuite, nextDraft, [
+      {
+        context: "ghostty/linux",
+        routeIssue: "@si/terminfo/hosted-route",
+        reason: "hosted runner follow-up",
+      },
+    ])
+    const passes = spawnSync(process.execPath, [join(root, "run.ts"), newerPass, olderPass], {
+      cwd: root,
+      encoding: "utf8",
+      timeout: 15_000,
+    })
+    expect(passes.status, passes.stderr).toBe(0)
+    const kittyRow = passes.stdout.split("\n").find((line) => line.startsWith("| kitty/macos |"))
+    expect(kittyRow).toContain(`| measured-unpublished | ${newerSuite}`)
+    expect(kittyRow).toContain("next-kitty")
+    expect(kittyRow).toContain(`earlier pass ${snapshot.probeHash}`)
+    expect(passes.stdout).toContain("ghostty/linux | deferred")
+    expect(passes.stdout).toContain("hosted runner follow-up")
+    expect(passes.stdout).toContain("@si/terminfo/hosted-route")
+    expect(passes.stdout).toContain("selected at")
+    expect(passes.stdout).toContain("live unproven")
+    expect(passes.stdout).not.toContain("| published |")
+
+    // AC3: a live source marker alone is insufficient. Publication needs the selected content revision.
+    const completeRun = {
+      ...run,
+      rawReplies: { ...run.rawReplies, ...Object.fromEntries(fixtureFeatures.map((id) => [id, '{"value":true}'])) },
+      assertions: fixtureFeatures.map((featureId) => ({
+        featureId,
+        assertionType: "buffer_state",
+        kind: "positive",
+        rawReplyRef: featureId,
+        expected: "value=true",
+        observed: '{"value":true}',
+      })),
+      results: fixtureFeatures.map((featureId, index) => ({
+        featureId,
+        status: "supported",
+        assertionType: "buffer_state",
+        rawReplyRef: featureId,
+        attempt: { scope: "probe", startedAt: run.measuredAt },
+        tests: [
+          {
+            id: "criterion",
+            status: "supported",
+            assertionRefs: [index],
+            rawReplyRef: featureId,
+            attempt: { scope: "probe", startedAt: run.measuredAt },
+          },
+        ],
+      })),
+    }
+    const completeBytes = JSON.stringify(completeRun)
+    writeFileSync(runPath, completeBytes)
+    const completeIsolated = { ...completeRun, runId: inconclusiveRun.runId, subject: inconclusiveRun.subject }
+    const isolatedBytes = JSON.stringify(completeIsolated)
+    writeFileSync(inconclusivePath, isolatedBytes)
+    const interpretationsPath = join(root, "content", "interpretations.json")
+    writeFileSync(
+      interpretationsPath,
+      JSON.stringify([
+        review("review-kitty", completeRun.runId, completeBytes, runPath),
+        review("review-kitty-inconclusive", completeIsolated.runId, isolatedBytes, inconclusivePath),
+      ]),
+    )
+    execFileSync("git", ["-C", root, "add", "content"])
+    execFileSync("git", [
+      "-C",
+      root,
+      "-c",
+      "user.name=Fixture",
+      "-c",
+      "user.email=fixture@example.invalid",
+      "commit",
+      "-qm",
+      "selected content",
+    ])
+    execFileSync("git", ["-C", root, "update-ref", "refs/remotes/origin/live", "HEAD"])
+    const scoreboard = () =>
+      spawnSync(process.execPath, [join(root, "run.ts")], { cwd: root, encoding: "utf8", timeout: 15_000 })
+    const published = scoreboard()
+    expect(published.status, published.stderr).toBe(0)
+    expect(published.stdout).toContain("kitty/macos | published")
+    const featuresPath = join(root, "content", "features.json")
+    const featuresBytes = readFileSync(featuresPath, "utf8")
+    writeFileSync(featuresPath, `${featuresBytes}\n`)
+    const dirty = scoreboard()
+    expect(dirty.status, dirty.stderr).toBe(0)
+    expect(dirty.stdout).toContain("kitty/macos | measured-unpublished")
+    expect(dirty.stdout).toContain("content differs from HEAD")
+    writeFileSync(featuresPath, featuresBytes)
+
     writeFileSync(
       join(root, "run.ts"),
       'import { handleReport } from "./packages/admin/src/report.ts"; await handleReport()\n',

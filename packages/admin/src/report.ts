@@ -1,7 +1,7 @@
 /** Report command — render the canonical selected observations and separate history. */
 
-import { dirname, join } from "node:path"
-import { readFileSync } from "node:fs"
+import { basename, dirname, join } from "node:path"
+import { readFileSync, statSync } from "node:fs"
 import { spawnSync } from "node:child_process"
 import { createHash } from "node:crypto"
 import { fileURLToPath } from "node:url"
@@ -9,6 +9,7 @@ import { loadFeatures } from "@terminfo/catalog"
 import { parseJsonStrict, parseRun } from "@terminfo/run-parser"
 import { loadCurrentResults } from "../../../docs/data/current-results.ts"
 import { fullContextCensus } from "../../../docs/data/full-census.ts"
+import { isStaleRelation } from "../../../docs/data/release-scope.ts"
 import { readExplicitSuiteTarget } from "../suite-manifest.ts"
 import { renderReport } from "../report.tsx"
 
@@ -26,18 +27,101 @@ function revision(ref: string, optional = false): string | undefined {
   return result.stdout.trim()
 }
 
-/** Raw inputs are evidence, not pass declarations or publication receipts. */
+/** Explicit inputs are evidence, not publication receipts. No pass is synthesized from raw captures. */
 function rawScoreboard(paths: readonly string[], contentDir: string): string {
   const census = fullContextCensus(contentDir)
   const catalogIds = Object.keys(loadFeatures(contentDir))
   let observedAt = ""
   const rows = new Map<
     string,
-    Array<{ runId: string; suite: string; source: string; sha256: string; detail: string; counts: string }>
+    Array<{
+      runId: string
+      suite: string
+      source: string
+      sha256: string
+      detail: string
+      counts: string
+      pass: string
+      frozenAt: string
+      state: string
+    }>
   >()
-  for (const path of paths) {
+  type PassContext = { pass: string; frozenAt: string; suite: string; sourceRevision: string }
+  const append = (context: string, row: NonNullable<ReturnType<typeof rows.get>>[number]) => {
+    rows.set(context, [...(rows.get(context) ?? []), row])
+  }
+  function read(input: string, pass?: PassContext): void {
+    const path = statSync(input).isDirectory() ? join(input, "pass.json") : input
     const bytes = readFileSync(path, "utf8")
     const header: unknown = parseJsonStrict(path, bytes)
+    if (record(header) && Array.isArray(header.contexts)) {
+      if (pass) throw new Error(`${path}: a pass context must cite a raw run, not another pass`)
+      if (typeof header.probeHash !== "string" || typeof header.sourceRevision !== "string") {
+        throw new Error(`${path}: pass requires probeHash and sourceRevision`)
+      }
+      const freeze = header.freeze
+      const declaration = readExplicitSuiteTarget(ROOT, header.probeHash).manifest
+      if (
+        freeze !== undefined &&
+        (!record(freeze) || freeze.id !== header.probeHash || freeze.release !== declaration.freeze?.release)
+      ) {
+        throw new Error(`${path}: freeze disagrees with suite ${header.probeHash}`)
+      }
+      const identity: PassContext = {
+        pass: record(freeze) && typeof freeze.id === "string" ? freeze.id : basename(dirname(path)),
+        frozenAt: declaration.freeze?.at ?? "",
+        suite: header.probeHash,
+        sourceRevision: header.sourceRevision,
+      }
+      const deferrals = record(freeze) ? (freeze.deferrals ?? []) : []
+      if (!Array.isArray(deferrals)) throw new Error(`${path}: freeze.deferrals must be an array`)
+      const deferred = new Map<string, string>()
+      for (const value of deferrals) {
+        if (
+          !record(value) ||
+          typeof value.context !== "string" ||
+          typeof value.routeIssue !== "string" ||
+          !value.routeIssue ||
+          typeof value.reason !== "string" ||
+          !value.reason ||
+          !census.contexts.some((row) => row.context === value.context)
+        ) {
+          throw new Error(`${path}: deferral requires a canonical context, routeIssue and reason`)
+        }
+        if (deferred.has(value.context)) throw new Error(`${path}: duplicate deferral ${value.context}`)
+        deferred.set(value.context, `${value.reason}; route ${value.routeIssue}`)
+      }
+      for (const value of header.contexts) {
+        if (!record(value) || !record(value.context)) throw new Error(`${path}: pass has no context identity`)
+        const subject = value.context
+        const context = census.contexts.find(
+          (row) =>
+            row.kind === subject.kind && row.terminalId === subject.id && (row.kind === "lib" || row.os === subject.os),
+        )
+        if (!context) throw new Error(`${path}: pass names a context outside the canonical census`)
+        const reason = deferred.get(context.context)
+        if (reason === undefined && typeof value.rawRun === "string") {
+          read(value.rawRun, identity)
+        } else {
+          append(context.context, {
+            pass: identity.pass,
+            frozenAt: identity.frozenAt,
+            state: reason ? "deferred" : "to-measure",
+            suite: `${header.probeHash}@${header.sourceRevision}`,
+            runId: "no captured run supplied",
+            source: path,
+            sha256: createHash("sha256").update(bytes).digest("hex"),
+            counts: "not measured",
+            detail: reason ?? String(value.error ?? value.reason ?? "not recorded"),
+          })
+        }
+      }
+      for (const context of deferred.keys()) {
+        if (!rows.get(context)?.some((row) => row.source === path))
+          throw new Error(`${path}: deferred context ${context} is absent from the pass`)
+      }
+      return
+    }
     if (
       !record(header) ||
       typeof header.runId !== "string" ||
@@ -58,6 +142,9 @@ function rawScoreboard(paths: readonly string[], contentDir: string): string {
     if (!context) {
       throw new Error(`${path}: ${String(subject.kind)}:${subject.id}/${subject.os} is outside the canonical census`)
     }
+    if (pass && (pass.suite !== header.probeHash || pass.sourceRevision !== header.sourceRevision)) {
+      throw new Error(`${path}: raw suite/source disagrees with pass ${pass.pass}`)
+    }
     let detail = "baseline/unreviewed"
     let counts = "not validated"
     try {
@@ -76,8 +163,10 @@ function rawScoreboard(paths: readonly string[], contentDir: string): string {
       // Retain the named evidence row when its declaration is absent or invalid; it proves no verdict.
       detail += `; ${error instanceof Error ? error.message : String(error)}`
     }
-    const sources = rows.get(context.context) ?? []
-    sources.push({
+    append(context.context, {
+      pass: pass?.pass ?? "no pass",
+      frozenAt: pass?.frozenAt ?? "",
+      state: "measured-unpublished",
       runId: header.runId,
       suite: `${header.probeHash}@${header.sourceRevision}`,
       source: path,
@@ -85,29 +174,86 @@ function rawScoreboard(paths: readonly string[], contentDir: string): string {
       detail,
       counts,
     })
-    rows.set(context.context, sources)
   }
+  for (const path of paths) read(path)
   const head = revision("HEAD")
   const live = revision("refs/remotes/origin/live", true)
+  const contentStatus = spawnSync("git", ["status", "--porcelain", "--untracked-files=all", "--", "content"], {
+    cwd: ROOT,
+    encoding: "utf8",
+  })
+  if (contentStatus.error || contentStatus.status !== 0)
+    throw new Error(
+      `Cannot establish content revision in ${ROOT}: ${contentStatus.error?.message ?? contentStatus.stderr}`,
+    )
+  const dirtyContent = contentStatus.stdout.length > 0
+  const provenLive = head === live && !dirtyContent
+  const { projection } = loadCurrentResults(contentDir)
+  for (const selected of Object.values(projection.current)) {
+    const context = census.contexts.find(
+      (row) =>
+        row.kind === selected.subject.kind &&
+        row.terminalId === selected.subject.id &&
+        (row.kind === "lib" || row.os === selected.subject.os),
+    )
+    if (!context) continue
+    const publication = provenLive
+      ? `selected at ${head}, live proven`
+      : `selected at ${head}, live unproven (origin/live ${live ?? "absent"}${dirtyContent ? "; content differs from HEAD" : ""})`
+    const detail = `${publication}; ${selected.complete ? "reviewed-pass-awaiting-publish" : "reviewed-fail; recorded FAIL/TODO remains"}`
+    const existing = rows.get(context.context)
+    if (existing) {
+      for (const row of existing) row.detail += `; ${detail}; selected run ${selected.runId}`
+    } else {
+      append(context.context, {
+        pass: "no pass",
+        frozenAt: "",
+        state: isStaleRelation(selected.suiteRelation)
+          ? "stale"
+          : provenLive && selected.complete
+            ? "published"
+            : "measured-unpublished",
+        runId: selected.runId,
+        suite: `${selected.probeHash}@${selected.sourceRevision}`,
+        source: `loadCurrentResults(${contentDir}).projection.current`,
+        sha256: selected.sha256,
+        detail: `${detail}; ${selected.suiteFreshness}`,
+        counts: Object.entries(selected.counts)
+          .map(([status, count]) => `${status}=${count}`)
+          .join(" "),
+      })
+    }
+  }
   const escape = (value: string) => value.replaceAll("|", "\\|").replaceAll(/\r?\n/g, " ")
   const lines = [
-    "Not a pass, not an admission",
-    `Content revision ${head}; origin/live ${live ?? "absent"}; provenLive=${head === live}`,
+    "Terminal context scoreboard — Not a pass, not an admission",
+    `Content revision ${head}; origin/live ${live ?? "absent"}; provenLive=${provenLive}${dirtyContent ? "; content differs from HEAD" : ""}`,
     "Raw observations remain baseline/unreviewed; no admission or publication is inferred.",
     `Observation: ${observedAt || "no capture timestamp recorded"}; owner @dev/10. Explicit inputs: ${paths.map(escape).join(", ")}`,
+    ...projection.exclusions.map((row) => `Excluded run ${row.runId}: ${escape(row.reason)}; ${escape(row.path)}`),
     "| Context | State | Pass | Run / suite | Counts / evidence |",
     "| --- | --- | --- | --- | --- |",
   ]
   for (const context of census.contexts) {
-    const sources = rows.get(context.context)
+    const sources = rows
+      .get(context.context)
+      ?.sort((left, right) => right.frozenAt.localeCompare(left.frozenAt) || left.source.localeCompare(right.source))
     if (!sources) {
       lines.push(
         `| ${context.context} | to-measure | no pass | no captured run supplied | not recorded; resolving query: explicit inputs above |`,
       )
       continue
     }
+    const latest = sources[0]!
     lines.push(
-      `| ${context.context} | measured-unpublished | no pass | ${sources.map((row) => escape(`${row.runId} ${row.suite}`)).join("; ")} | ${sources.map((row) => escape(`${row.counts}; ${row.detail}; ${row.source}; sha256=${row.sha256}`)).join("; ")} |`,
+      `| ${context.context} | ${latest.state} | ${escape(latest.pass)} | ${escape(`${latest.runId} ${latest.suite}`)} | ${escape(`${latest.counts}; ${latest.detail}; ${latest.source}; sha256=${latest.sha256}`)}${sources
+        .slice(1)
+        .map((row) =>
+          escape(
+            `; earlier pass ${row.pass}: ${row.runId} ${row.suite}; ${row.detail}; ${row.source}; sha256=${row.sha256}`,
+          ),
+        )
+        .join("")} |`,
     )
   }
   return lines.join("\n")
