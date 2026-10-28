@@ -42,6 +42,7 @@ import { expect, test } from "vitest"
 import { probeSuiteSnapshot } from "../versions.ts"
 import { loadCurrentResults } from "../../../docs/data/current-results.ts"
 import { parseSuiteManifest } from "@terminfo/run-parser"
+import { ENVIRONMENT_GROUP_IDS } from "@terminfo/probe-defs"
 
 test("report renders reviewed outcomes and missing cells without promoting legacy history", () => {
   const root = mkdtempSync(join(tmpdir(), "terminfo-report-"))
@@ -50,7 +51,8 @@ test("report renders reviewed outcomes and missing cells without promoting legac
 
     const snapshot = probeSuiteSnapshot()
     // A small synthetic suite exercises the real selection/report boundary, not collector suite coverage.
-    const fixtureFeatures = ["cursor.position", "sgr.bold", "extensions.query", "modes.autowrap", "sgr.italic"]
+    const measuredFeatures = ["cursor.position", "sgr.bold", "extensions.query", "modes.autowrap", "sgr.italic"]
+    const fixtureFeatures = [...measuredFeatures, ...ENVIRONMENT_GROUP_IDS]
     writeFileSync(
       join(root, "content", "features.json"),
       // @terminfo/catalog's one shape requires a full record per row; this fixture only reads the ids.
@@ -131,7 +133,15 @@ test("report renders reviewed outcomes and missing cells without promoting legac
       results: fixtureFeatures.map((featureId, index) => {
         const attempt = { scope: "probe", startedAt: "2026-09-28T12:00:00.000Z" }
         const status =
-          index === 0 ? "supported" : index === 1 ? "unsupported" : index === 4 ? "test-todo" : "test-failure"
+          index >= measuredFeatures.length
+            ? "test-todo"
+            : index === 0
+              ? "supported"
+              : index === 1
+                ? "unsupported"
+                : index === 4
+                  ? "test-todo"
+                  : "test-failure"
         return {
           featureId,
           status,
@@ -150,7 +160,7 @@ test("report renders reviewed outcomes and missing cells without promoting legac
           ...(index < 2 && { assertionType: "buffer_state", rawReplyRef: featureId }),
           ...(index === 2 && { reason: "timeout" }),
           ...(index === 3 && { reason: "collector-error" }),
-          ...(index === 4 && { reason: "Missing implementation" }),
+          ...(index >= 4 && { reason: "Missing implementation" }),
         }
       }),
     }
@@ -397,8 +407,8 @@ test("report renders reviewed outcomes and missing cells without promoting legac
     // AC3: a live source marker alone is insufficient. Publication needs the selected content revision.
     const completeRun = {
       ...run,
-      rawReplies: { ...run.rawReplies, ...Object.fromEntries(fixtureFeatures.map((id) => [id, '{"value":true}'])) },
-      assertions: fixtureFeatures.map((featureId) => ({
+      rawReplies: { ...run.rawReplies, ...Object.fromEntries(measuredFeatures.map((id) => [id, '{"value":true}'])) },
+      assertions: measuredFeatures.map((featureId) => ({
         featureId,
         assertionType: "buffer_state",
         kind: "positive",
@@ -406,22 +416,26 @@ test("report renders reviewed outcomes and missing cells without promoting legac
         expected: "value=true",
         observed: '{"value":true}',
       })),
-      results: fixtureFeatures.map((featureId, index) => ({
-        featureId,
-        status: "supported",
-        assertionType: "buffer_state",
-        rawReplyRef: featureId,
-        attempt: { scope: "probe", startedAt: run.measuredAt },
-        tests: [
-          {
-            id: "criterion",
-            status: "supported",
-            assertionRefs: [index],
-            rawReplyRef: featureId,
-            attempt: { scope: "probe", startedAt: run.measuredAt },
-          },
-        ],
-      })),
+      results: fixtureFeatures.map((featureId, index) =>
+        index >= measuredFeatures.length
+          ? run.results[index]!
+          : {
+              featureId,
+              status: "supported",
+              assertionType: "buffer_state",
+              rawReplyRef: featureId,
+              attempt: { scope: "probe", startedAt: run.measuredAt },
+              tests: [
+                {
+                  id: "criterion",
+                  status: "supported",
+                  assertionRefs: [index],
+                  rawReplyRef: featureId,
+                  attempt: { scope: "probe", startedAt: run.measuredAt },
+                },
+              ],
+            },
+      ),
     }
     const completeBytes = JSON.stringify(completeRun)
     writeFileSync(runPath, completeBytes)
@@ -454,6 +468,7 @@ test("report renders reviewed outcomes and missing cells without promoting legac
     const published = scoreboard()
     expect(published.status, published.stderr).toBe(0)
     expect(published.stdout).toContain("kitty/macos | published")
+    expect(published.stdout).toContain("graded 5: supported=5")
     // A real pass points to both its private capture and the admitted selected bytes; neither path is synthesized.
     const admittedDraftPath = join(root, "admitted-capture.draft.json")
     const { sealedAt: _admittedSeal, ...admittedDraft } = completeRun
@@ -471,6 +486,8 @@ test("report renders reviewed outcomes and missing cells without promoting legac
     expect(admittedRow).toContain(admittedDraftPath)
     expect(admittedRow).toContain(createHash("sha256").update(completeBytes).digest("hex"))
     expect(admittedRow).toContain("reviewed-pass; publication proven")
+    expect(admittedRow).toContain("raw catalog 14: supported=5")
+    expect(admittedRow).toContain("test-todo=9")
     const sealedPass = passPath("sealed-pass", snapshot.probeHash, runPath, [], undefined, runPath)
     const sealedReport = spawnSync(process.execPath, [join(root, "run.ts"), sealedPass], {
       cwd: root,

@@ -180,7 +180,7 @@ function rawScoreboard(paths: readonly string[], contentDir: string): string {
       if (!run.results) throw new Error(`${path}: raw capture has no recorded results`)
       const totals: Record<string, number> = {}
       for (const result of run.results) totals[result.status] = (totals[result.status] ?? 0) + 1
-      counts = PROBE_STATUSES.map((status) => `${status}=${totals[status] ?? 0}`).join(" ")
+      counts = `raw catalog ${run.results.length}: ${PROBE_STATUSES.map((status) => `${status}=${totals[status] ?? 0}`).join(" ")}`
     } catch (error) {
       // Retain the named evidence row when its declaration is absent or invalid; it proves no verdict.
       detail += `; ${error instanceof Error ? error.message : String(error)}`
@@ -252,9 +252,9 @@ function rawScoreboard(paths: readonly string[], contentDir: string): string {
         source: `loadCurrentResults(${contentDir}).projection.current`,
         sha256: selected.sha256,
         detail: `${detail}; ${selected.suiteFreshness}`,
-        counts: Object.entries(selected.counts)
+        counts: `graded ${selected.score.all}: ${Object.entries(selected.counts)
           .map(([status, count]) => `${status}=${count}`)
-          .join(" "),
+          .join(" ")}`,
       })
     }
   }
