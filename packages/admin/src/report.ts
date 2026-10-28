@@ -44,6 +44,7 @@ function rawScoreboard(paths: readonly string[], contentDir: string): string {
       pass: string
       frozenAt: string
       state: string
+      selected: boolean
     }>
   >()
   type PassContext = { pass: string; frozenAt: string; suite: string; sourceRevision: string }
@@ -104,6 +105,7 @@ function rawScoreboard(paths: readonly string[], contentDir: string): string {
           read(value.rawRun, identity)
         } else {
           append(context.context, {
+            selected: false,
             pass: identity.pass,
             frozenAt: identity.frozenAt,
             state: reason ? "deferred" : "to-measure",
@@ -165,6 +167,7 @@ function rawScoreboard(paths: readonly string[], contentDir: string): string {
       detail += `; ${error instanceof Error ? error.message : String(error)}`
     }
     append(context.context, {
+      selected: false,
       pass: pass?.pass ?? "no pass",
       frozenAt: pass?.frozenAt ?? "",
       state: "measured-unpublished",
@@ -203,18 +206,23 @@ function rawScoreboard(paths: readonly string[], contentDir: string): string {
       ? `selected at ${head}, live proven`
       : `selected at ${head}, live unproven (origin/live ${live ?? "absent"}${dirtyContent ? "; content differs from HEAD" : ""})`
     const detail = `${publication}; ${selected.complete ? "reviewed-pass-awaiting-publish" : "reviewed-fail; recorded FAIL/TODO remains"}`
-    const existing = rows.get(context.context)
-    if (existing) {
-      for (const row of existing) row.detail += `; ${detail}; selected run ${selected.runId}`
+    const state = isStaleRelation(selected.suiteRelation)
+      ? "stale"
+      : provenLive && selected.complete
+        ? "published"
+        : "measured-unpublished"
+    const matching = rows
+      .get(context.context)
+      ?.find((row) => row.runId === selected.runId && row.sha256 === selected.sha256)
+    if (matching) {
+      matching.state = state
+      matching.detail += `; ${detail}; ${selected.suiteFreshness}`
     } else {
       append(context.context, {
+        selected: true,
         pass: "no pass",
         frozenAt: "",
-        state: isStaleRelation(selected.suiteRelation)
-          ? "stale"
-          : provenLive && selected.complete
-            ? "published"
-            : "measured-unpublished",
+        state,
         runId: selected.runId,
         suite: `${selected.probeHash}@${selected.sourceRevision}`,
         source: `loadCurrentResults(${contentDir}).projection.current`,
@@ -239,7 +247,13 @@ function rawScoreboard(paths: readonly string[], contentDir: string): string {
   for (const context of census.contexts) {
     const sources = rows
       .get(context.context)
-      ?.sort((left, right) => right.frozenAt.localeCompare(left.frozenAt) || left.source.localeCompare(right.source))
+      ?.sort(
+        (left, right) =>
+          right.frozenAt.localeCompare(left.frozenAt) ||
+          Number(left.selected) - Number(right.selected) ||
+          left.source.localeCompare(right.source) ||
+          left.runId.localeCompare(right.runId),
+      )
     const latest = sources?.[0]
     if (!latest) {
       lines.push(
@@ -247,12 +261,20 @@ function rawScoreboard(paths: readonly string[], contentDir: string): string {
       )
       continue
     }
+    const selectedStates = sources?.filter((row) => row.selected).map((row) => row.state) ?? []
+    const state = latest.selected
+      ? selectedStates.includes("stale")
+        ? "stale"
+        : selectedStates.every((value) => value === "published")
+          ? "published"
+          : "measured-unpublished"
+      : latest.state
     lines.push(
-      `| ${context.context} | ${latest.state} | ${escape(latest.pass)} | ${escape(`${latest.runId} ${latest.suite}`)} | ${escape(`${latest.counts}; ${latest.detail}; ${latest.source}; sha256=${latest.sha256}`)}${sources
+      `| ${context.context} | ${state} | ${escape(latest.pass)} | ${escape(`${latest.runId} ${latest.suite}`)} | ${escape(`${latest.counts}; ${latest.detail}; ${latest.source}; sha256=${latest.sha256}`)}${sources
         ?.slice(1)
         .map((row) =>
           escape(
-            `; earlier pass ${row.pass}: ${row.runId} ${row.suite}; ${row.detail}; ${row.source}; sha256=${row.sha256}`,
+            `; ${row.selected ? "selected evidence" : `earlier pass ${row.pass}`}: ${row.runId} ${row.suite}; ${row.counts}; ${row.state}; ${row.detail}; ${row.source}; sha256=${row.sha256}`,
           ),
         )
         .join("")} |`,

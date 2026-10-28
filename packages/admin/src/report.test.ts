@@ -434,6 +434,85 @@ test("report renders reviewed outcomes and missing cells without promoting legac
     expect(dirty.stdout).toContain("content differs from HEAD")
     writeFileSync(featuresPath, featuresBytes)
 
+    // AC2/3: one census row must retain every selected runtime configuration and its own counts.
+    // A complete configuration must not hide a second selected configuration's recorded failures.
+    writeFileSync(runPath, runBytes)
+    writeFileSync(
+      interpretationsPath,
+      JSON.stringify([
+        review("review-kitty", run.runId, runBytes, runPath),
+        review("review-kitty-inconclusive", completeIsolated.runId, isolatedBytes, inconclusivePath),
+      ]),
+    )
+    execFileSync("git", ["-C", root, "add", "content"])
+    execFileSync("git", [
+      "-C",
+      root,
+      "-c",
+      "user.name=Fixture",
+      "-c",
+      "user.email=fixture@example.invalid",
+      "commit",
+      "-qm",
+      "mixed selected configurations",
+    ])
+    execFileSync("git", ["-C", root, "update-ref", "refs/remotes/origin/live", "HEAD"])
+    const mixed = scoreboard()
+    expect(mixed.status, mixed.stderr).toBe(0)
+    const mixedRow = mixed.stdout.split("\n").find((line) => line.startsWith("| kitty/macos |"))
+    expect(mixedRow).toContain("measured-unpublished")
+    expect(mixedRow).toContain("reviewed-kitty-inconclusive")
+    expect(mixedRow).toContain("supported=5")
+    expect(mixedRow).toContain("supported=1")
+    expect(mixedRow).toContain("test-failure=2")
+
+    // The canonical reader owns suiteRelation; the view must retain an older selected configuration as stale.
+    const oldSuite = "bbbbbbbbbbbb"
+    const { freeze: _freeze, ...oldDeclaration } = manifest
+    writeFileSync(
+      join(root, "content", "suites", `${oldSuite}.json`),
+      JSON.stringify({ ...oldDeclaration, probeHash: oldSuite }),
+    )
+    const oldRun = {
+      ...run,
+      runId: "older-kitty",
+      suiteId: oldSuite,
+      probeHash: oldSuite,
+      subject: { ...run.subject, config: "older-suite" },
+    }
+    const oldPath = join(root, "content", "probes-apps", "older.json")
+    const oldBytes = JSON.stringify(oldRun)
+    writeFileSync(oldPath, oldBytes)
+    const oldReview = review("review-older-kitty", oldRun.runId, oldBytes, oldPath)
+    writeFileSync(
+      interpretationsPath,
+      JSON.stringify([
+        review("review-kitty", run.runId, runBytes, runPath),
+        review("review-kitty-inconclusive", completeIsolated.runId, isolatedBytes, inconclusivePath),
+        { ...oldReview, scope: { ...oldReview.scope, suites: [oldSuite, oldSuite] } },
+      ]),
+    )
+    execFileSync("git", ["-C", root, "add", "content"])
+    execFileSync("git", [
+      "-C",
+      root,
+      "-c",
+      "user.name=Fixture",
+      "-c",
+      "user.email=fixture@example.invalid",
+      "commit",
+      "-qm",
+      "retain older selected configuration",
+    ])
+    execFileSync("git", ["-C", root, "update-ref", "refs/remotes/origin/live", "HEAD"])
+    const stale = scoreboard()
+    expect(stale.status, stale.stderr).toBe(0)
+    const staleRow = stale.stdout.split("\n").find((line) => line.startsWith("| kitty/macos |"))
+    expect(staleRow).toContain("| stale |")
+    expect(staleRow).toContain("older-kitty")
+    expect(staleRow).toContain(`older suite ${oldSuite}`)
+    expect(staleRow).toContain("reviewed-kitty-inconclusive")
+
     writeFileSync(
       join(root, "run.ts"),
       'import { handleReport } from "./packages/admin/src/report.ts"; await handleReport()\n',
