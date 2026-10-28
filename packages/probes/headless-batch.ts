@@ -49,20 +49,31 @@ export interface ProvenReplyPath {
   readonly onSentinel: () => void
 }
 
+interface HostQueryCapture {
+  query: string
+  response: string
+  error: string | null
+}
+
 /** Capture one query, including adapters that parse pending input on state reads. */
-export function feedCapture(backend: TerminalBackend, text: string): string {
-  // Pending input belongs to the previous listener, not this query.
-  backend.getCursor()
+export function feedCapture(backend: TerminalBackend, text: string, captures: HostQueryCapture[] | undefined): string {
   let response = ""
+  let error: string | null = null
   const previous = backend.onResponse
-  backend.onResponse = (bytes) => {
-    response += decoder.decode(bytes)
-  }
   try {
+    // Pending input belongs to the previous listener, not this query.
+    backend.getCursor()
+    backend.onResponse = (bytes) => {
+      response += decoder.decode(bytes)
+    }
     backend.feed(encoder.encode(text))
     backend.getCursor()
+  } catch (cause) {
+    error = errorMessage(cause)
+    throw cause
   } finally {
     backend.onResponse = previous
+    captures?.push({ query: text, response, error })
   }
   return response
 }
@@ -82,10 +93,11 @@ function sentinelOutcome(
   sequence: string,
   pattern: RegExp,
   proven: ProvenReplyPath,
+  captures: HostQueryCapture[] | undefined,
 ): TerminalQueryOutcome {
   const writeAt = Date.now()
-  const reply = feedCapture(backend, sequence)
-  const answer = feedCapture(backend, DA1_QUERY)
+  const reply = feedCapture(backend, sequence, captures)
+  const answer = feedCapture(backend, DA1_QUERY, captures)
   const raw = reply + answer
   const captured = { raw, rawBase64: Buffer.from(raw).toString("base64") }
   const read = readSentinelReply(raw, pattern)
@@ -131,8 +143,9 @@ async function listenForLateReply(
 
 export function createLibProbeSource(
   backend: TerminalBackend,
-  proven?: ProvenReplyPath,
-  runtimeIdentity?: HeadlessRuntimeIdentity,
+  proven: ProvenReplyPath | undefined,
+  runtimeIdentity: HeadlessRuntimeIdentity | undefined,
+  captures: HostQueryCapture[] | undefined,
 ): LibProbeSource {
   let cols: number
   try {
@@ -157,11 +170,11 @@ export function createLibProbeSource(
       backend.feed(encoder.encode(text))
     },
     feedCapture(text) {
-      return feedCapture(backend, text)
+      return feedCapture(backend, text, captures)
     },
     ...(proven && {
       queryWithSentinelOutcome(sequence: string, pattern: RegExp) {
-        return sentinelOutcome(backend, sequence, pattern, proven)
+        return sentinelOutcome(backend, sequence, pattern, proven, captures)
       },
     }),
     getCell(row, col) {
@@ -480,7 +493,7 @@ export async function collectBatch(
             },
           }
         : undefined
-      const ctx = createLibProbeSource(backend, proven, initializedRuntime?.identity)
+      const ctx = createLibProbeSource(backend, proven, initializedRuntime?.identity, undefined)
       const callback = probe.lib(ctx)
       // G1 runs before the callback's grade is kept: a late byte refuses that grade as a collector error,
       // while the run file keeps what was observed, the on-time capture and the late bytes beside it.

@@ -136,7 +136,7 @@ function scripted(script: (text: string) => string): TerminalBackend {
 
 function sourceOf(backend: TerminalBackend, path?: ProvenReplyPath) {
   backend.init({ cols: 80, rows: 24 })
-  return createLibProbeSource(backend, path)
+  return createLibProbeSource(backend, path, undefined, undefined)
 }
 
 const base64 = (raw: string) => Buffer.from(raw).toString("base64")
@@ -147,10 +147,12 @@ test("an unproven context has no sentinel member", () => {
 
 test("a proven engine that answers DA1 and nothing else gives live's sentinel outcome and facts", () => {
   const onSentinel = vi.fn()
-  const ctx = sourceOf(
-    scripted((text) => (text === DA1_QUERY ? DA1 : "")),
-    proven(onSentinel),
-  )
+  // H6: retain each actual target/sentinel capture, including partial bytes on errors.
+  // Existing outcome checks cannot prove the collector has the separate request records.
+  const captures: Array<{ query: string; response: string; error: string | null }> = []
+  const backend = scripted((text) => (text === DA1_QUERY ? DA1 : ""))
+  backend.init({ cols: 80, rows: 24 })
+  const ctx = createLibProbeSource(backend, proven(onSentinel), undefined, captures)
   expect(ctx.queryWithSentinelOutcome?.("\x1b[>q", XTVERSION)).toStrictEqual({
     match: null,
     reason: "sentinel",
@@ -159,6 +161,22 @@ test("a proven engine that answers DA1 and nothing else gives live's sentinel ou
     sentinel: { atMs: expect.any(Number), graceMs: 250 },
   })
   expect(onSentinel).toHaveBeenCalledOnce()
+  expect(captures).toStrictEqual([
+    { query: "\x1b[>q", response: "", error: null },
+    { query: DA1_QUERY, response: DA1, error: null },
+  ])
+  const previous = backend.onResponse
+  vi.mocked(backend.feed).mockImplementation(() => {
+    backend.onResponse?.(encoder.encode("partial"))
+    throw new Error("feed interrupted")
+  })
+  expect(() => ctx.feedCapture("\x1b]10;?\x07")).toThrow("feed interrupted")
+  expect(captures.at(-1)).toStrictEqual({
+    query: "\x1b]10;?\x07",
+    response: "partial",
+    error: "feed interrupted",
+  })
+  expect(backend.onResponse).toBe(previous)
 })
 
 test.each([
@@ -266,7 +284,7 @@ test("a reply an adapter makes after the whole feed stays a reply because DA1 ha
     return text === `\x1b[14t${DA1_QUERY}` ? `${DA1}${winops}` : ""
   })
   const ctx = sourceOf(backend, proven())
-  const together = feedCapture(backend, `\x1b[14t${DA1_QUERY}`)
+  const together = feedCapture(backend, `\x1b[14t${DA1_QUERY}`, undefined)
   expect(together.indexOf(winops)).toBeGreaterThan(together.indexOf(DA1))
   const outcome = ctx.queryWithSentinelOutcome?.("\x1b[14t", /\x1b\[4;(\d+);(\d+)t/)
   expect(outcome).toMatchObject({ reason: "reply", raw: `${winops}${DA1}` })
@@ -295,7 +313,7 @@ test.each([
   const backend = await create()
   backend.init({ cols: 80, rows: 24 })
   try {
-    expect(feedCapture(backend, DA1_QUERY)).toBe(answer)
+    expect(feedCapture(backend, DA1_QUERY, undefined)).toBe(answer)
   } finally {
     backend.destroy()
   }
