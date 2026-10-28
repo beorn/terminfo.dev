@@ -204,10 +204,24 @@ function matchResponse(
       clearTimeout(graceTimer)
       const untilDeadline = writeAt + timeoutMs - Date.now()
       graceTimer = setTimeout(
-        () => finish(read.match, read.match ? "reply" : "sentinel", sentinelFacts),
+        () =>
+          finish(
+            read.match,
+            read.match ? "reply" : "sentinel",
+            // A window cut short proves nothing about the configured silence (@cto 30625 b050f6b9):
+            // the facts carry only when the OBSERVED interval covers the full grace, decided by the
+            // measurement, never by which timer happened to fire. A matched reply always keeps its
+            // DA1-before-reply ordering facts, or late-reply grading breaks.
+            read.match ? sentinelFacts : eligibleFacts(),
+          ),
         Math.max(0, Math.min(graceMs, untilDeadline)),
       )
     }
+
+    const eligibleFacts = () =>
+      sentinelFacts !== null && Date.now() - (writeAt + sentinelFacts.atMs) >= sentinelFacts.graceMs
+        ? sentinelFacts
+        : null
 
     const decideAtDeadline = () => {
       if (settled) return
@@ -218,11 +232,17 @@ function matchResponse(
       }
       const read = readSentinelReply(buf, pattern)
       if (read.kind === "reply") {
-        finish(read.match, "reply")
+        // A matched reply keeps its DA1-before-reply ordering facts even when the deadline ends the read;
+        // only a sentinel outcome needs the full observed window (@cto 30625 b050f6b9).
+        finish(read.match, "reply", sentinelFacts)
         return
       }
       const answered = sentinelAnswer(buf) !== null
-      finish(read.match, read.match ? "reply" : answered ? "sentinel" : "timeout", answered ? sentinelFacts : null)
+      finish(
+        read.match,
+        read.match ? "reply" : answered ? "sentinel" : "timeout",
+        read.match ? sentinelFacts : answered ? eligibleFacts() : null,
+      )
     }
 
     const startTimer = () => {

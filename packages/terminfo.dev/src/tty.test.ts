@@ -218,8 +218,10 @@ describe("TTY transaction replies", () => {
       raw: "\uFFFD\x1b[?1;2c",
       rawBase64: sentinelBytes.toString("base64"),
     })
-    expect(sentinel.sentinel?.graceMs).toBe(250)
-    expect(sentinel.sentinel?.atMs).toBeGreaterThanOrEqual(0)
+    // @cto 30625 b050f6b9: the 20 ms deadline ends this read long before the configured 250 ms grace,
+    // so the observed silence is a partial window and carries NO certificate. The read stays a
+    // sentinel outcome with its bytes, and the grader records it inconclusive.
+    expect(sentinel.sentinel).toBeUndefined()
 
     const timeoutBytes = Buffer.from("\x1b]unrelated")
     process.stdout.write = (() => {
