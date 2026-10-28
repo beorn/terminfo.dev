@@ -17,6 +17,7 @@ function stageRepo(root: string): void {
   copyFileSync(join(source, "packages", "admin", "report.tsx"), join(admin, "report.tsx"))
   symlinkSync(join(source, "packages", "admin", "versions.ts"), join(admin, "versions.ts"))
   symlinkSync(join(source, "packages", "admin", "parse.ts"), join(admin, "parse.ts"))
+  symlinkSync(join(source, "packages", "admin", "suite-manifest.ts"), join(admin, "suite-manifest.ts"))
   symlinkSync(join(source, "packages", "admin", "node_modules"), join(admin, "node_modules"), "dir")
   symlinkSync(join(source, "node_modules"), join(root, "node_modules"), "dir")
   symlinkSync(join(source, "docs"), join(root, "docs"), "dir")
@@ -32,9 +33,9 @@ function stageRepo(root: string): void {
  * @consumer Admin CLI report readers comparing selected terminal observations.
  * @testonly none
  */
-import { spawnSync } from "node:child_process"
+import { execFileSync, spawnSync } from "node:child_process"
 import { createHash } from "node:crypto"
-import { copyFileSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { expect, test } from "vitest"
@@ -249,6 +250,51 @@ test("report renders reviewed outcomes and missing cells without promoting legac
     expect(plain).not.toContain("NaN")
     expect(plain).toContain("Excluded runs:")
     expect(plain).not.toContain("9.9.9")
+
+    // AC1/2/3: the existing selected-only report cannot show a private capture or absent contexts.
+    // Use the same real reader/CLI fixture, without adding a test-only production seam.
+    copyFileSync(join(import.meta.dirname, "../../../content/terminals.json"), join(root, "content/terminals.json"))
+    const draftPath = join(root, "baseline.draft.json")
+    const { sealedAt: _sealedAt, ...captured } = run
+    writeFileSync(draftPath, JSON.stringify({ ...captured, runId: "baseline-kitty", identity: "unverified" }))
+    execFileSync("git", ["init", "-q", root])
+    execFileSync("git", ["-C", root, "add", "content"])
+    execFileSync("git", [
+      "-C",
+      root,
+      "-c",
+      "user.name=Fixture",
+      "-c",
+      "user.email=fixture@example.invalid",
+      "commit",
+      "-qm",
+      "report inputs",
+    ])
+    writeFileSync(
+      join(root, "run.ts"),
+      'import { handleReport } from "./packages/admin/src/report.ts"; await handleReport({ scoreboard: process.argv.slice(2) })\n',
+    )
+    const baseline = () =>
+      spawnSync(process.execPath, [join(root, "run.ts"), draftPath], { cwd: root, encoding: "utf8", timeout: 15_000 })
+    const first = baseline()
+    expect(first.status, first.stderr).toBe(0)
+    expect(first.stdout).toContain("Not a pass, not an admission")
+    expect(first.stdout).toContain("kitty/macos | measured-unpublished")
+    expect(first.stdout).toContain("baseline/unreviewed")
+    expect(first.stdout).toContain("no pass")
+    expect(first.stdout).toContain("baseline-kitty")
+    expect(first.stdout).toContain(run.probeHash)
+    expect(first.stdout).toContain(run.sourceRevision)
+    expect(first.stdout).toContain(createHash("sha256").update(readFileSync(draftPath)).digest("hex"))
+    expect(first.stdout).toContain("ghostty/linux | to-measure")
+    expect(first.stdout).toContain("origin/live absent")
+    expect(baseline().stdout).toBe(first.stdout)
+    expect(JSON.parse(readFileSync(draftPath, "utf8")).identity).toBe("unverified")
+
+    writeFileSync(
+      join(root, "run.ts"),
+      'import { handleReport } from "./packages/admin/src/report.ts"; await handleReport()\n',
+    )
 
     const corruptPath = join(root, "content", "probes-libs", "corrupt.json")
     writeFileSync(corruptPath, "{")
