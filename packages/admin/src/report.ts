@@ -47,7 +47,7 @@ function rawScoreboard(paths: readonly string[], contentDir: string): string {
       selected: boolean
     }>
   >()
-  type PassContext = { pass: string; frozenAt: string; suite: string; sourceRevision: string }
+  type PassContext = { pass: string; frozenAt: string; suite: string; sourceRevision: string; context?: string }
   const append = (context: string, row: NonNullable<ReturnType<typeof rows.get>>[number]) => {
     rows.set(context, [...(rows.get(context) ?? []), row])
   }
@@ -102,7 +102,7 @@ function rawScoreboard(paths: readonly string[], contentDir: string): string {
         if (!context) throw new Error(`${path}: pass names a context outside the canonical census`)
         const reason = deferred.get(context.context)
         if (reason === undefined && typeof value.rawRun === "string") {
-          read(value.rawRun, identity)
+          read(value.rawRun, { ...identity, context: context.context })
         } else {
           append(context.context, {
             selected: false,
@@ -151,6 +151,9 @@ function rawScoreboard(paths: readonly string[], contentDir: string): string {
     let detail = "baseline/unreviewed"
     let counts = "not validated"
     try {
+      if (pass?.context && pass.context !== context.context) {
+        throw new Error(`${path}: declared ${pass.context}; recorded ${context.context}`)
+      }
       const { manifest } = readExplicitSuiteTarget(ROOT, header.probeHash)
       if (header.suiteId !== manifest.probeHash) {
         throw new Error(`${path}: suiteId disagrees with manifest ${manifest.probeHash}`)
@@ -166,7 +169,7 @@ function rawScoreboard(paths: readonly string[], contentDir: string): string {
       // Retain the named evidence row when its declaration is absent or invalid; it proves no verdict.
       detail += `; ${error instanceof Error ? error.message : String(error)}`
     }
-    append(context.context, {
+    append(pass?.context ?? context.context, {
       selected: false,
       pass: pass?.pass ?? "no pass",
       frozenAt: pass?.frozenAt ?? "",

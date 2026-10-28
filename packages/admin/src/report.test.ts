@@ -316,7 +316,13 @@ test("report renders reviewed outcomes and missing cells without promoting legac
         probeHash: newerSuite,
       }),
     )
-    const passPath = (name: string, suite: string, rawRun: string, deferrals: unknown[]) => {
+    const passPath = (
+      name: string,
+      suite: string,
+      rawRun: string,
+      deferrals: unknown[],
+      context = { kind: "term", id: "kitty", os: "macos" },
+    ) => {
       const directory = join(root, name)
       mkdirSync(directory)
       const path = join(directory, "pass.json")
@@ -333,7 +339,7 @@ test("report renders reviewed outcomes and missing cells without promoting legac
           complete: false,
           errors: [],
           contexts: [
-            { context: { kind: "term", id: "kitty", os: "macos" }, status: "classified", rawRun },
+            { context, status: "classified", rawRun },
             { context: { kind: "term", id: "ghostty", os: "linux" }, status: "not-started" },
           ],
         }),
@@ -364,6 +370,23 @@ test("report renders reviewed outcomes and missing cells without promoting legac
     expect(passes.stdout).toContain("selected at")
     expect(passes.stdout).toContain("live unproven")
     expect(passes.stdout).not.toContain("| published |")
+
+    // AC1/4: a pass's path reference cannot transfer one terminal's measurement to another context.
+    const misroutedPass = passPath("misrouted-pass", newerSuite, nextDraft, [], {
+      kind: "term",
+      id: "ghostty",
+      os: "macos",
+    })
+    const misrouted = spawnSync(process.execPath, [join(root, "run.ts"), misroutedPass], {
+      cwd: root,
+      encoding: "utf8",
+      timeout: 15_000,
+    })
+    expect(misrouted.status, misrouted.stderr).toBe(0)
+    const misroutedRow = misrouted.stdout.split("\n").find((line) => line.startsWith("| ghostty/macos |"))
+    expect(misroutedRow).toContain("measured-unpublished")
+    expect(misroutedRow).toContain("not validated")
+    expect(misroutedRow).toContain("declared ghostty/macos; recorded kitty/macos")
 
     // AC3: a live source marker alone is insufficient. Publication needs the selected content revision.
     const completeRun = {
