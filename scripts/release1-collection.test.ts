@@ -1279,12 +1279,17 @@ it.each(["matching", "foreign-run", "foreign-context", "admitted", "admission-re
       : undefined
     const planner = finalCollection
       ? vi.spyOn(admission, "planAdmission").mockImplementation((source) => {
-          const run = JSON.parse(readFileSync(source, "utf8"))
+          const run = parseRun(
+            source,
+            readFileSync(source, "utf8"),
+            Object.keys(catalog.loadFeatures(CONTENT)),
+            new Map([[frozenSuite!, frozenManifest!]]),
+          )
           return {
             source,
             destination: join(directory, "admitted.json"),
             probeHash: frozenSuite!,
-            subject: run.subject,
+            subject: { ...run.subject, os: run.subject.os ?? process.platform },
             runId: run.runId,
           }
         })
@@ -1391,10 +1396,15 @@ it.each(["matching", "foreign-run", "foreign-context", "admitted", "admission-re
         expect(pass.contexts.filter((entry) => entry.status === "not-started")).toHaveLength(32)
         expect(pass.freeze?.deferrals).toEqual(deferrals)
         const retained = JSON.parse(readFileSync(join(pass.directory, "pass.json"), "utf8"))
-        expect(retained.complete).toBe(fault === "admitted")
-        expect(retained.contexts.find((entry: { status: string }) => entry.status === "admitted")?.admittedPath).toBe(
-          fault === "admitted" ? join(directory, "admitted.json") : undefined,
-        )
+        expect(retained).toMatchObject({
+          complete: fault === "admitted",
+          contexts: expect.arrayContaining([
+            expect.objectContaining({
+              status: fault === "admitted" ? "admitted" : "failed",
+              ...(fault === "admitted" && { admittedPath: join(directory, "admitted.json") }),
+            }),
+          ]),
+        })
         return
       }
       if (fault === "matching") expect(row.status, row.error).toBe("pending-review")
