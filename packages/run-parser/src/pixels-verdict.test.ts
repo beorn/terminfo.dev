@@ -14,6 +14,7 @@ import { fileURLToPath } from "node:url"
 import { describe, expect, it } from "vitest"
 import {
   recordExecutedProbe,
+  frameDigests,
   cursorProbes,
   editingProbes,
   extensionsProbes,
@@ -273,13 +274,14 @@ function parseCallback(id: string, result: ProbeCallbackResult, fixture: ReturnT
     tests: result.tests,
     criterionBranch: result.criterionBranch,
   })
+  const pendingReview = result.tests?.some((test) => test.id === "review" && test.status === "test-todo")
   const run = {
     ...metadata,
     schemaVersion: 4,
     source: { kind: "live" },
     subject: { ...target, kind: "term" },
     intendedSubject: { kind: "term", id: target.id },
-    sealedAt: "2026-10-10T22:11:00.000Z",
+    ...(!pendingReview && { sealedAt: "2026-10-10T22:11:00.000Z" }),
     rawReplies: { [id]: JSON.stringify({ writes: fixture.writes, queries: fixture.queries, events: [] }) },
     assertions,
     results: [recorded],
@@ -295,7 +297,9 @@ function parseCallback(id: string, result: ProbeCallbackResult, fixture: ReturnT
     catalogIds: [id],
     probes: { term: [id], lib: [], mux: [] },
   }
-  return parseRun(`${id}.json`, JSON.stringify(run), [id], new Map([[SUITE, callbackManifest]]))
+  return parseRun(`${id}.json`, JSON.stringify(run), [id], new Map([[SUITE, callbackManifest]]), {
+    mode: pendingReview ? "capture" : "sealed",
+  })
 }
 
 describe("in-run pixels verdicts", () => {
@@ -439,13 +443,24 @@ describe("in-run pixels verdicts", () => {
     const result = await probe.term(fixture.context)
     expect(result.observation?.outcome).toBe("inconclusive")
     expect(result.observation?.frames?.map(({ role }) => role)).toEqual(["control", "target"])
+    const observed = JSON.parse(result.assertions?.[0]?.observed ?? "null") as Record<
+      "control" | "target",
+      { pixelsDigest: string }
+    >
+    const frames = result.observation?.frames ?? []
+    for (const role of ["control", "target"] as const) {
+      const captured = frames.find((frame) => frame.role === role)
+      if (!captured) throw new Error(`Missing ${role} ligature frame`)
+      expect(observed[role].pixelsDigest).toMatch(/^sha256:[0-9a-f]{64}$/)
+      expect(observed[role].pixelsDigest).toBe(frameDigests(captured).whole)
+    }
     const loaded = parseCallback(id, result, fixture)
     expect(loaded.results?.[0]?.status).toBe("test-todo")
     expect(loaded.results?.[0]?.tests).toEqual([
       expect.objectContaining({ id: "capture", status: "supported" }),
       expect.objectContaining({ id: "review", status: "test-todo", attempt: { scope: "none" } }),
     ])
-    expect(loaded.observations[0]?.outcome).toBe("inconclusive")
+    expect(loaded.results?.[0]?.frames).toHaveLength(2)
   })
 
   it("admits a digest-equality verdict whose assertion cites a frame's regionDigest", () => {
@@ -456,6 +471,13 @@ describe("in-run pixels verdicts", () => {
     // The digests survive the parse, which is what keeps the verdict recomputable.
     expect(observation.frames?.[3]?.regionDigest).toBe(digest("after-region"))
     expect(observation.frames?.[3]?.pixelsDigest).toBe(digest("after-px"))
+  })
+
+  it("admits a frame-ref verdict accompanied by its retained whole-frame digest", () => {
+    const run = kittyRun()
+    const target = run.observations[0]!.frames[3]!
+    run.assertions[0]!.observed = JSON.stringify({ ref: target.ref, whole: frameDigests(target).whole })
+    expect(parse(run).observations[0]?.outcome).toBe("supported")
   })
 
   it("carries a frame's crop rectangle through the parse, and refuses one that is not a rectangle", () => {
