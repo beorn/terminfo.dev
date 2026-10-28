@@ -13,7 +13,14 @@ import { createVt220Backend } from "@termless/vt220"
 import { createVtermBackend } from "@termless/vterm"
 import { createXtermBackend } from "@termless/xtermjs"
 import { fakeProbeResult } from "@terminfo/probe-defs/testing/fake-probe-result"
-import { ALL_PROBES, type ProbeDefinition, type TermProbeSource, type TerminalQueryOutcome } from "@terminfo/probe-defs"
+import {
+  ALL_PROBES,
+  initializeRunDraft,
+  type CallbackHostRecipeCause,
+  type ProbeDefinition,
+  type TermProbeSource,
+  type TerminalQueryOutcome,
+} from "@terminfo/probe-defs"
 import { afterAll, afterEach, beforeAll, beforeEach, expect, test, vi } from "vitest"
 import { collectBatch, createLibProbeSource, feedCapture, type ProvenReplyPath } from "./headless-batch.ts"
 import type { HeadlessProbeRuntime } from "./headless-identity.ts"
@@ -694,6 +701,121 @@ test.each(["changed", "unavailable"] as const)(
 )
 
 // Same adapter/version/capabilities without the independent measurement cannot qualify.
+// H1/H2/H4/H6: explicit native-input unit fixture; no actual native engine qualification.
+test.each(["observed", "source-audited", "missing", "error"] as const)(
+  "retains and validates %s host custody before checkpointing the callback",
+  async (mode) => {
+    vi.spyOn(process.stderr, "write").mockImplementation(() => true)
+    const query = "\x1b]10;?\x07",
+      artifact = "a".repeat(64),
+      id = "host.fixture"
+    const runtime: HeadlessProbeRuntime = {
+      ...fixture.runtime,
+      adapterType: "native",
+      identity: {
+        kind: "native",
+        engineVersion: "fixture",
+        adapterVersion: "fixture",
+        termlessRevision: "2".repeat(40),
+        loadedBinary: { path: "fixture.node", sha256: artifact },
+        provenance: {
+          sha256: artifact,
+          sourceCommit: "3".repeat(40),
+          buildHash: "b".repeat(64),
+          toolchain: "fixture",
+          lockSha256: "c".repeat(64),
+        },
+      },
+    }
+    vi.mocked(runtimeIdentityOwner.headlessRuntimeIdentity).mockResolvedValue(runtime.identity)
+    const draft = initializeRunDraft({
+      source: { kind: "live" },
+      runId: "host-run",
+      sourceRevision: "1".repeat(40),
+      intendedSubject: { kind: "lib", id: "scripted-native" },
+      manifest: {
+        schemaVersion: 4,
+        probeHash: "host-suite",
+        adapterVersion: "4",
+        catalogIds: [id],
+        probes: { term: [], mux: [], lib: [id] },
+      },
+    })
+    draft.rawReplies["collector.collectionAttempt"] = JSON.stringify({
+      hostInputs: { "foreground-rgb": "not-supplied" },
+    })
+    const checkpoints: string[] = []
+    const batch = await collectBatch(
+      async () => {
+        const backend = fixture.create(() => "")
+        Object.defineProperty(backend, "replyDelivery", {
+          value: { ...fixture.declaration, engine: { kind: "native", sha256: artifact } },
+        })
+        return backend
+      },
+      "scripted-native",
+      [
+        {
+          id,
+          term: null,
+          libHostRecipes: [{ recipe: "color-request", query, missing: ["foreground-rgb"] }],
+          lib: (ctx) => {
+            expect(ctx.feedCapture(query)).toBe("")
+            if (mode === "error") throw new Error("original callback error")
+            const cause: CallbackHostRecipeCause =
+              mode === "observed"
+                ? { recipe: "color-request", cause: { kind: "observed", missing: "foreground-rgb", query } }
+                : {
+                    recipe: "color-request",
+                    cause: {
+                      kind: "source-audited",
+                      missing: "foreground-rgb",
+                      artifactSha256: artifact,
+                      sourceCitation: "fixture native colour request source",
+                    },
+                  }
+            return {
+              ...fakeProbeResult(),
+              ...(mode !== "missing" && { hostRecipeCauses: [cause] }),
+            }
+          },
+        },
+      ],
+      draft,
+      (batch) => {
+        const record = batch.rawReplies[`collector.hostRecipes.${id}`]
+        if (record !== undefined) checkpoints.push(record)
+      },
+      runtime,
+    )
+    const retained = JSON.parse(batch.rawReplies[`collector.hostRecipes.${id}`] ?? "null")
+    expect(retained).toMatchObject({ runId: draft.runId, captures: [{ query, response: "", error: null }] })
+    expect(checkpoints.at(-1)).toBe(batch.rawReplies[`collector.hostRecipes.${id}`])
+    if (mode === "missing" || mode === "error") {
+      expect(batch.results[0]).toMatchObject({ status: "test-failure" })
+      expect(batch.ungradedDiagnostics[id]).toMatchObject({
+        message: expect.stringContaining(mode === "error" ? "original callback error" : "missing cause"),
+      })
+    } else {
+      expect(batch.ungradedDiagnostics[id]).toBeUndefined()
+      expect(retained).toMatchObject({
+        causes: [
+          {
+            recipe: "color-request",
+            cause: {
+              kind: mode,
+              runId: draft.runId,
+              ...(mode === "observed"
+                ? { eventRef: `collector.hostRecipes.${id}` }
+                : { citation: { inputRecordRef: "collector.collectionAttempt", input: "foreground-rgb" } }),
+            },
+          },
+        ],
+      })
+    }
+  },
+)
+
 test("a declaration without measured runtime identity withholds the member and names lost coverage", async () => {
   vi.spyOn(process.stderr, "write").mockImplementation(() => true)
   const seen: unknown[] = []

@@ -10,6 +10,7 @@ import { pathToFileURL, fileURLToPath } from "node:url"
 import { manifest, type TerminalBackend } from "@termless/core"
 import {
   ALL_PROBES,
+  HOST_INPUT_NAMES,
   initializeRunDraft,
   recordCollectionFailure,
   type RunDraft,
@@ -151,6 +152,7 @@ async function collectOne(name: string, directory: string): Promise<string> {
     draft.rawReplies["collector.collectionAttempt"] = JSON.stringify({
       startedAt: collectionStartedAt,
       ids: suite.probes.lib,
+      hostInputs: Object.fromEntries(HOST_INPUT_NAMES.map((name) => [name, "not-supplied"])),
     })
     checkpoint()
     const loaded = loadedBackend(await resolveBackend(), entry.package)
