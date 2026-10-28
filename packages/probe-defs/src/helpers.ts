@@ -10,6 +10,9 @@ import type {
   CurrentProbeRun,
   ProbeSuiteManifest,
   RunDraft,
+  HostInputName,
+  HostRecipeName,
+  CallbackHostRecipeCause,
 } from "./types.ts"
 import type {
   AssertionType,
@@ -19,6 +22,42 @@ import type {
   LibProbeSource,
   TermProbeSource,
 } from "./types.ts"
+
+// Independent source audit of this exact unchanged native artifact, not a digest copied from runtime.
+const AUDITED_ALACRITTY_SHA256 = "e6e16113863355b77d0aa3b359bd40c7066fb144e005fbc324fecfa3f4869bea"
+
+/** Explain an actually empty host-owned query without changing the criterion or protocol bytes. */
+export function alacrittyHostRecipeResult(
+  ctx: LibProbeSource,
+  result: ProbeCallbackResult,
+  recipe: HostRecipeName,
+  missing: HostInputName,
+  query: string,
+  empty: boolean,
+): ProbeCallbackResult {
+  if (
+    !empty ||
+    ctx.runtimeIdentity?.kind !== "native" ||
+    ctx.runtimeIdentity.loadedBinary.sha256 !== AUDITED_ALACRITTY_SHA256
+  )
+    return result
+  const claim: CallbackHostRecipeCause =
+    recipe === "color-request"
+      ? { recipe, cause: { kind: "observed", missing, query } }
+      : {
+          recipe,
+          cause: {
+            kind: "source-audited",
+            missing,
+            artifactSha256: AUDITED_ALACRITTY_SHA256,
+            sourceCitation:
+              recipe === "text-area-size"
+                ? "alacritty_terminal 0.26.0 term/mod.rs:2259-2265 requests embedder pixels; Termless packages/alacritty/native/src/lib.rs EventProxy::send ignores TextAreaSizeRequest; this harness supplies no pixel geometry"
+                : "alacritty_terminal 0.26.0 Config default clipboard policy OnlyCopy; Termless packages/alacritty/native/src/lib.rs EventProxy::send has no ClipboardLoad handler; this harness supplies no clipboard read permission",
+          },
+        }
+  return { ...result, hostRecipeCauses: [...(result.hostRecipeCauses ?? []), claim] }
+}
 
 /** Keep the serialized state alongside the exact assertion that used it. */
 export function parserStateResult(

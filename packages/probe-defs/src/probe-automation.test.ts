@@ -102,6 +102,88 @@ function terminalSource(overrides: Partial<TermProbeSource>): TermProbeSource {
  * @consumer Library initial-colour callbacks and their required independent review.
  * @testonly none
  */
+// H1-H4/H6: actual criterion callbacks must own both the query declaration and its missing-input cause.
+// Parser/collector input fixtures cannot catch a production caller that never supplies either field.
+describe("audited native host recipe callers", () => {
+  const artifact = "e6e16113863355b77d0aa3b359bd40c7066fb144e005fbc324fecfa3f4869bea"
+  test.each([
+    ["extensions.osc10-fg-color", "color-request", "foreground-rgb", "\x1b]10;?\x07"],
+    ["extensions.osc11-bg-color", "color-request", "background-rgb", "\x1b]11;?\x07"],
+    ["extensions.osc12-cursor-color", "color-request", "cursor-rgb", "\x1b]12;?\x07"],
+    ["extensions.osc4-palette", "color-request", "palette-entry-rgb", "\x1b]4;0;?\x07"],
+    ["extensions.osc110-reset-fg", "color-request", "foreground-rgb", "\x1b]10;?\x07"],
+    ["extensions.osc111-reset-bg", "color-request", "background-rgb", "\x1b]11;?\x07"],
+    ["extensions.osc112-reset-cursor", "color-request", "cursor-rgb", "\x1b]12;?\x07"],
+    ["extensions.osc104-reset-palette", "color-request", "palette-entry-rgb", "\x1b]4;0;?\x07"],
+    ["extensions.osc30001-color-stack-push", "color-request", "foreground-rgb", "\x1b]10;?\x07"],
+    ["extensions.osc30101-color-stack-pop", "color-request", "foreground-rgb", "\x1b]10;?\x07"],
+    ["device.xtwinops-14", "text-area-size", "pixel-geometry", "\x1b[14t"],
+    ["extensions.osc52-clipboard", "clipboard-load", "clipboard-read-permission", "\x1b]52;c;?\x07"],
+    ["extensions.osc52-write", "clipboard-load", "clipboard-read-permission", "\x1b]52;c;?\x07"],
+    ["extensions.osc52-read", "clipboard-load", "clipboard-read-permission", "\x1b]52;c;?\x07"],
+  ] as const)(
+    "%s retains its actual empty host query cause without changing its criterion",
+    (id, recipe, missing, query) => {
+      for (const qualified of [false, true]) {
+        const definition = probe(id)
+        const captured: string[] = []
+        const silence = {
+          match: null,
+          reason: "sentinel" as const,
+          raw: "\x1b[?1;2c",
+          rawBase64: "G1s/MTsyYw==",
+          sentinel: { atMs: 0, graceMs: 250 },
+        }
+        const result = definition.lib!(
+          context({
+            ...(qualified && {
+              queryWithSentinelOutcome(sequence: string) {
+                captured.push(sequence)
+                return silence
+              },
+            }),
+            runtimeIdentity: {
+              kind: "native",
+              engineVersion: "0.26.0",
+              adapterVersion: "fixture",
+              termlessRevision: "2".repeat(40),
+              loadedBinary: { path: "fixture.node", sha256: artifact },
+              provenance: {
+                sha256: artifact,
+                sourceCommit: "3".repeat(40),
+                buildHash: "b".repeat(64),
+                toolchain: "fixture",
+                lockSha256: "c".repeat(64),
+              },
+            },
+            feedCapture(sequence) {
+              captured.push(sequence)
+              return ""
+            },
+          }),
+        )
+        expect(captured).toContain(query)
+        expect(definition.libHostRecipes).toContainEqual({ recipe, query, missing: [missing] })
+        expect(result.hostRecipeCauses).toMatchObject([
+          {
+            recipe,
+            cause:
+              recipe === "color-request"
+                ? { kind: "observed", missing, query }
+                : { kind: "source-audited", missing, artifactSha256: artifact, sourceCitation: expect.any(String) },
+          },
+        ])
+        const { hostRecipeCauses: _custody, ...criterion } = result
+        expect(criterion).toEqual(
+          definition.lib!(
+            context({ feedCapture: () => "", ...(qualified && { queryWithSentinelOutcome: () => silence }) }),
+          ),
+        )
+      }
+    },
+  )
+})
+
 describe("initial colour context review", () => {
   test.each([
     ["extensions.osc17-highlight-bg", "17"],

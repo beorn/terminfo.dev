@@ -5,9 +5,11 @@ import type {
   LibProbeSource,
   TermProbeSource,
   TerminalQueryOutcome,
+  HostInputName,
 } from "./types.ts"
 import {
   REPLY_AFTER_SENTINEL_NOTE,
+  alacrittyHostRecipeResult,
   decrpmPs,
   decrpmReplyPattern,
   decrpmReading,
@@ -344,6 +346,16 @@ function oscColorQueryProbe(id: string, oscCode: number, index?: number): ProbeD
   const prefix = new RegExp(`\\x1b\\]${slot};`)
   const expected = `Complete OSC ${oscCode}${index === undefined ? "" : ` index-${index}`} color reply`
   const reviewInitialValue = oscCode === 10 || oscCode === 11 || oscCode === 12 || (oscCode === 4 && index === 0)
+  const hostInput: HostInputName | undefined =
+    oscCode === 10
+      ? "foreground-rgb"
+      : oscCode === 11
+        ? "background-rgb"
+        : oscCode === 12
+          ? "cursor-rgb"
+          : oscCode === 4 && index === 0
+            ? "palette-entry-rgb"
+            : undefined
   return {
     ...queryOnly(
       probe(
@@ -356,8 +368,12 @@ function oscColorQueryProbe(id: string, oscCode: number, index?: number): ProbeD
             if (!reviewInitialValue || !silence) return oscOutcomeResult(outcome, expected, prefix)
           }
           const raw = silence ? "" : ctx.feedCapture(querySeq)
+          const answer = (result: ProbeCallbackResult) =>
+            hostInput === undefined
+              ? result
+              : alacrittyHostRecipeResult(ctx, result, "color-request", hostInput, querySeq, raw === "")
           if (raw !== "" || !reviewInitialValue) {
-            return oscReplyResult(raw, pattern.exec(raw)?.[0] ?? null, expected, prefix)
+            return answer(oscReplyResult(raw, pattern.exec(raw)?.[0] ?? null, expected, prefix))
           }
 
           const reset = `\x1b]${oscCode + 100}${index === undefined ? "" : `;${index}`}\x07`
@@ -371,22 +387,27 @@ function oscColorQueryProbe(id: string, oscCode: number, index?: number): ProbeD
           const restoredRaw = capture(querySeq)
           const state = { query: querySeq, initialRaw: raw, controls }
           if (control.verified && resetRaw === "" && restoredRaw === "") {
-            return colorReadbackReviewResult(
-              `OSC ${slot} initial/current colour is embedder-owned: initial query and reset query answered nothing; seeded query control cannot establish the initial value`,
-              state,
+            return answer(
+              colorReadbackReviewResult(
+                `OSC ${slot} initial/current colour is embedder-owned: initial query and reset query answered nothing; seeded query control cannot establish the initial value`,
+                state,
+              ),
             )
           }
-          if (silence) return silence
-          return {
+          if (silence) return answer(silence)
+          return answer({
             ...oscReplyResult(raw, null, expected, prefix),
             response: JSON.stringify(state),
-          }
+          })
         },
         async (ctx) => oscOutcomeResult(await ctx.queryWithSentinelOutcome(querySeq, pattern), expected, prefix),
         "query_reply",
       ),
     ),
     libAssertionType: "query_reply",
+    ...(hostInput === undefined
+      ? {}
+      : { libHostRecipes: [{ recipe: "color-request" as const, query: querySeq, missing: [hostInput] }] }),
   }
 }
 
@@ -520,6 +541,14 @@ function oscSimpleQueryProbe(
 function colorResetProbe(setCode: number, resetCode: number, index?: number): ProbeDefinition["lib"] {
   const indexPart = index === undefined ? "" : `${index};`
   const query = `\x1b]${setCode};${indexPart}?\x07`
+  const hostInput: HostInputName =
+    setCode === 10
+      ? "foreground-rgb"
+      : setCode === 11
+        ? "background-rgb"
+        : setCode === 12
+          ? "cursor-rgb"
+          : "palette-entry-rgb"
   const replyPattern = new RegExp(
     `\\x1b\\]${setCode};${indexPart}(rgb:[0-9a-f]{1,4}/[0-9a-f]{1,4}/[0-9a-f]{1,4})(?:\\x07|\\x1b\\\\)`,
     "i",
@@ -536,6 +565,8 @@ function colorResetProbe(setCode: number, resetCode: number, index?: number): Pr
     const original = replyPattern.exec(originalRaw)?.[1]
     if (!original) {
       if (originalRaw === "") {
+        const answer = (result: ProbeCallbackResult) =>
+          alacrittyHostRecipeResult(ctx, result, "color-request", hostInput, query, true)
         const controls: { write: string; response: string }[] = []
         const capture = (write: string) => {
           const response = ctx.feedCapture(write)
@@ -552,14 +583,16 @@ function colorResetProbe(setCode: number, resetCode: number, index?: number): Pr
         const restoredRaw = capture(query)
         const response = JSON.stringify({ query, originalRaw, controls })
         if (control.verified && resetRaw === "" && restoredRaw === "") {
-          return colorReadbackReviewResult(
-            `OSC ${setCode} seeded colour was verified but OSC ${resetCode} restored an unreadable embedder-owned default`,
-            { query, originalRaw, controls },
+          return answer(
+            colorReadbackReviewResult(
+              `OSC ${setCode} seeded colour was verified but OSC ${resetCode} restored an unreadable embedder-owned default`,
+              { query, originalRaw, controls },
+            ),
           )
         }
         const restored = replyPattern.exec(restoredRaw)?.[1]
         if (control.verified && restored && sameRgb(restored, seededCurrentColor)) {
-          return {
+          return answer({
             pass: false,
             response,
             observation: { outcome: "unsupported", assertionType: "query_reply" },
@@ -571,19 +604,21 @@ function colorResetProbe(setCode: number, resetCode: number, index?: number): Pr
                 observed: response,
               },
             ],
-          }
+          })
         }
-        if (silence) return silence
+        if (silence) return answer(silence)
         if (control.setterRaw === "" && control.seededRaw === "" && resetRaw === "" && restoredRaw === "") {
-          return colorReadbackReviewResult(
-            `OSC ${setCode} initial and seeded queries answered nothing, so OSC ${resetCode} reset readback needs independent review`,
-            { query, originalRaw, controls },
+          return answer(
+            colorReadbackReviewResult(
+              `OSC ${setCode} initial and seeded queries answered nothing, so OSC ${resetCode} reset readback needs independent review`,
+              { query, originalRaw, controls },
+            ),
           )
         }
-        return {
+        return answer({
           ...oscReplyResult(originalRaw, null, `OSC ${setCode} color before reset`, new RegExp(`\\x1b\\]${setCode};`)),
           response,
-        }
+        })
       }
       return oscReplyResult(originalRaw, null, `OSC ${setCode} color before reset`, new RegExp(`\\x1b\\]${setCode};`))
     }
@@ -777,6 +812,21 @@ function resetProbe(id: string, setCode: number, resetCode: number, index?: numb
       "query_reply",
     ),
     termNeedsDisposable: true,
+    libHostRecipes: [
+      {
+        recipe: "color-request",
+        query: `\x1b]${setCode};${index === undefined ? "" : `${index};`}?\x07`,
+        missing: [
+          setCode === 10
+            ? "foreground-rgb"
+            : setCode === 11
+              ? "background-rgb"
+              : setCode === 12
+                ? "cursor-rgb"
+                : "palette-entry-rgb",
+        ],
+      },
+    ],
   }
 }
 
@@ -895,12 +945,13 @@ function colorStackError(actionKind: "query" | "behavior", action: string, error
 
 function colorStackProbe(): ProbeDefinition["lib"] {
   return (ctx) => {
+    let silence: ProbeCallbackResult | null = null
     if (ctx.queryWithSentinelOutcome) {
-      const silence = sentinelSilenceResult(
+      silence = sentinelSilenceResult(
         ctx.queryWithSentinelOutcome(foregroundQuery, foregroundReply),
         "Complete OSC 10 foreground color reply",
       )
-      if (silence) return silence
+      if (silence && ctx.runtimeIdentity?.kind !== "native") return silence
     }
     let result: ProbeCallbackResult | undefined
     let primaryError: unknown
@@ -979,10 +1030,12 @@ function colorStackProbe(): ProbeDefinition["lib"] {
         }
         if (!control.verified || control.color === null) {
           if (control.setterRaw === "" && control.seededRaw === "") {
-            result = colorReadbackReviewResult(
-              "OSC 10 initial and seeded foreground queries answered nothing, so the colour-stack effect has no readback",
-              { query: foregroundQuery, originalRaw },
-            )
+            result =
+              silence ??
+              colorReadbackReviewResult(
+                "OSC 10 initial and seeded foreground queries answered nothing, so the colour-stack effect has no readback",
+                { query: foregroundQuery, originalRaw },
+              )
           } else {
             const note = "Current-colour fixture setter or exact seeded readback was not established"
             result = { pass: false, note, tests: [{ id: "criterion", status: "test-failure", reason: note }] }
@@ -1091,7 +1144,7 @@ function colorStackProbe(): ProbeDefinition["lib"] {
           delete result.assertions
         }
       }
-      if (seedAttempted && result) {
+      if (seedAttempted && result && result !== silence) {
         const response = JSON.stringify({
           query: foregroundQuery,
           originalRaw,
@@ -1105,6 +1158,17 @@ function colorStackProbe(): ProbeDefinition["lib"] {
           if (result.observation) result.observation.note = result.note
         }
         for (const assertion of result.assertions ?? []) assertion.observed = response
+      }
+      if (result && originalRaw === "") {
+        const explained = alacrittyHostRecipeResult(
+          ctx,
+          result,
+          "color-request",
+          "foreground-rgb",
+          foregroundQuery,
+          true,
+        )
+        if (explained.hostRecipeCauses) result.hostRecipeCauses = explained.hostRecipeCauses
       }
     }
   }
@@ -1659,7 +1723,16 @@ function headlessClipboardRoundtrip(ctx: LibProbeSource): ProbeCallbackResult {
   const nonce = `terminfo-osc52-${randomUUID()}`
   const encoded = btoa(nonce)
   ctx.feed(`\x1b]52;c;${encoded}\x07`)
-  return headlessClipboardResult(ctx.feedCapture("\x1b]52;c;?\x07"), nonce)
+  const query = "\x1b]52;c;?\x07"
+  const raw = ctx.feedCapture(query)
+  return alacrittyHostRecipeResult(
+    ctx,
+    headlessClipboardResult(raw, nonce),
+    "clipboard-load",
+    "clipboard-read-permission",
+    query,
+    raw === "",
+  )
 }
 
 /** Read silence is conclusive only on a collector-qualified, ordered reply path. */
@@ -1668,12 +1741,25 @@ function headlessClipboardRead(ctx: LibProbeSource): ProbeCallbackResult {
   ctx.feed(`\x1b]52;c;${btoa(nonce)}\x07`)
   if (ctx.queryWithSentinelOutcome) {
     const outcome = ctx.queryWithSentinelOutcome("\x1b]52;c;?\x07", osc52Reply)
-    return (
-      sentinelSilenceResult(outcome, "OSC 52 c query returns the exact written nonce") ??
-      headlessClipboardResult(outcome.raw, nonce)
+    const silence = sentinelSilenceResult(outcome, "OSC 52 c query returns the exact written nonce")
+    return alacrittyHostRecipeResult(
+      ctx,
+      silence ?? headlessClipboardResult(outcome.raw, nonce),
+      "clipboard-load",
+      "clipboard-read-permission",
+      "\x1b]52;c;?\x07",
+      silence !== null,
     )
   }
-  return headlessClipboardResult(ctx.feedCapture("\x1b]52;c;?\x07"), nonce)
+  const raw = ctx.feedCapture("\x1b]52;c;?\x07")
+  return alacrittyHostRecipeResult(
+    ctx,
+    headlessClipboardResult(raw, nonce),
+    "clipboard-load",
+    "clipboard-read-permission",
+    "\x1b]52;c;?\x07",
+    raw === "",
+  )
 }
 
 function headlessClipboardResult(response: string, nonce: string): ProbeCallbackResult {
@@ -2459,6 +2545,7 @@ export const extensionsProbes: ProbeDefinition[] = [
       "query_reply",
     ),
     libAssertionType: "query_reply",
+    libHostRecipes: [{ recipe: "clipboard-load", query: "\x1b]52;c;?\x07", missing: ["clipboard-read-permission"] }],
   },
 
   // OSC 52 write — set clipboard (most terminals support this)
@@ -2470,12 +2557,14 @@ export const extensionsProbes: ProbeDefinition[] = [
       "query_reply",
     ),
     libAssertionType: "query_reply",
+    libHostRecipes: [{ recipe: "clipboard-load", query: "\x1b]52;c;?\x07", missing: ["clipboard-read-permission"] }],
   },
 
   // OSC 52 read — query clipboard back (fewer terminals support this)
   {
     ...probe("extensions.osc52-read", headlessClipboardRead, (ctx) => liveClipboardProbe(ctx, "read"), "query_reply"),
     libAssertionType: "query_reply",
+    libHostRecipes: [{ recipe: "clipboard-load", query: "\x1b]52;c;?\x07", missing: ["clipboard-read-permission"] }],
   },
 
   probe(
@@ -3024,10 +3113,16 @@ export const extensionsProbes: ProbeDefinition[] = [
   },
 
   // OSC 30001 — Kitty color stack push
-  probe("extensions.osc30001-color-stack-push", colorStackProbe(), colorStackTermProbe, "query_reply"),
+  {
+    ...probe("extensions.osc30001-color-stack-push", colorStackProbe(), colorStackTermProbe, "query_reply"),
+    libHostRecipes: [{ recipe: "color-request", query: foregroundQuery, missing: ["foreground-rgb"] }],
+  },
 
   // OSC 30101 — Kitty color stack pop
-  probe("extensions.osc30101-color-stack-pop", colorStackProbe(), colorStackTermProbe, "query_reply"),
+  {
+    ...probe("extensions.osc30101-color-stack-pop", colorStackProbe(), colorStackTermProbe, "query_reply"),
+    libHostRecipes: [{ recipe: "color-request", query: foregroundQuery, missing: ["foreground-rgb"] }],
+  },
 
   // OSC 176 — foot Wayland app-id
   probe(
