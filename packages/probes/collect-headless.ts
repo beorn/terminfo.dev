@@ -173,7 +173,7 @@ async function collectOne(name: string, directory: string): Promise<string> {
         })
         checkpoint()
       },
-      { identity: runtimeIdentity, adapterPath, adapterPackage: entry.package },
+      { identity: runtimeIdentity, adapterPath, adapterPackage: entry.package, adapterType: entry.type },
     )
     const run: CapturedRunDraft = {
       ...draft,

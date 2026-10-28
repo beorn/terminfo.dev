@@ -14,6 +14,7 @@ export interface HeadlessProbeRuntime {
   readonly identity: HeadlessRuntimeIdentity
   readonly adapterPath: string
   readonly adapterPackage: string
+  readonly adapterType: string
 }
 
 type ReplyDelivery = ReplyDeliveryExtension["replyDelivery"]

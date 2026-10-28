@@ -27,7 +27,13 @@ import type {
   UngradedDiagnostic,
   HeadlessRuntimeIdentity,
 } from "@terminfo/probe-defs"
-import { replyDeliveryDecision, type HeadlessProbeRuntime, type ReplyPathDecision } from "./headless-identity.ts"
+import {
+  headlessRuntimeIdentity,
+  replyDeliveryDecision,
+  type HeadlessProbeRuntime,
+  type ReplyPathDecision,
+} from "./headless-identity.ts"
+import { isDeepStrictEqual } from "node:util"
 
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
@@ -397,7 +403,7 @@ export async function collectBatch(
     backend: string
     declaration?: ReplyDeliveryExtension["replyDelivery"]
     runtimeIdentity?: HeadlessRuntimeIdentity
-    decisions: Record<string, Pick<ReplyPathDecision, "member" | "reason">>
+    decisions: Record<string, Pick<ReplyPathDecision, "member" | "reason" | "runtimeIdentity">>
   } = { backend: backendName, ...(runtime && { runtimeIdentity: runtime.identity }), decisions: {} }
   const warned = new Set<string>()
   const warn = (line: string) => {
@@ -440,13 +446,31 @@ export async function collectBatch(
     try {
       backend = await createBackend()
       backend.init({ cols: 80, rows: 24 })
+      const initializedRuntime = runtime
+        ? {
+            ...runtime,
+            identity: await headlessRuntimeIdentity(backendName, runtime.adapterPackage, runtime.adapterType),
+          }
+        : undefined
       const declaration = hasExtension<ReplyDeliveryExtension>(backend, "reply-delivery")
         ? backend.replyDelivery
         : undefined
-      const decision = replyDeliveryDecision(backendName, declaration, runtime, warn)
+      const decision = replyDeliveryDecision(backendName, declaration, initializedRuntime, warn)
+      const identityChanged =
+        runtime !== undefined &&
+        initializedRuntime !== undefined &&
+        !isDeepStrictEqual(runtime.identity, initializedRuntime.identity)
+      const reason = identityChanged
+        ? `${backendName} initialized instance identity differs from the recorded run identity`
+        : decision.reason
       if (declaration) replyPath.declaration ??= declaration
-      replyPath.decisions[probe.id] = { member: decision.member, reason: decision.reason }
+      replyPath.decisions[probe.id] = {
+        member: decision.member && !identityChanged,
+        reason,
+        ...(initializedRuntime && { runtimeIdentity: initializedRuntime.identity }),
+      }
       batch.rawReplies["collector.replyPath"] = JSON.stringify(replyPath)
+      if (identityChanged) throw new Error(reason)
       const sentinel = { fired: false }
       const proven = decision.member
         ? {
@@ -456,7 +480,7 @@ export async function collectBatch(
             },
           }
         : undefined
-      const ctx = createLibProbeSource(backend, proven, runtime?.identity)
+      const ctx = createLibProbeSource(backend, proven, initializedRuntime?.identity)
       const callback = probe.lib(ctx)
       // G1 runs before the callback's grade is kept: a late byte refuses that grade as a collector error,
       // while the run file keeps what was observed, the on-time capture and the late bytes beside it.
