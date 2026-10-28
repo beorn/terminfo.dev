@@ -1244,8 +1244,8 @@ it("records the host-written transport receipt as evidence and refuses anything 
 
 // A valid pending capture used to return before delegated identity tests. Historical artifact
 // fixtures could not cover this schema-3 handoff even when they exercised the classified branch.
-it.each(["matching", "foreign-run", "foreign-context"] as const)(
-  "validates delegated identity before accepting %s pending review",
+it.each(["matching", "foreign-run", "foreign-context", "admitted", "admission-refused"] as const)(
+  "retains delegated identity and admission outcome: %s",
   async (fault) => {
     const directory = mkdtempSync(join(tmpdir(), "terminfo-pending-handoff-"))
     const specimen = JSON.parse(
@@ -1263,6 +1263,45 @@ it.each(["matching", "foreign-run", "foreign-context"] as const)(
       throw new Error("Missing historical runtime fixture")
     }
     const measuredTarget = specimen.target
+    const finalCollection = fault === "admitted" || fault === "admission-refused"
+    const frozenSuite = finalCollection ? frozenSuiteIdFor(CONTENT, "candidate2") : undefined
+    const currentSnapshot = versions.probeSuiteSnapshot()
+    const frozenManifest = frozenSuite
+      ? parseSuiteManifest(
+          join(CONTENT, "suites", `${frozenSuite}.json`),
+          readFileSync(join(CONTENT, "suites", `${frozenSuite}.json`), "utf8"),
+        )
+      : undefined
+    const snapshot = frozenManifest
+      ? vi
+          .spyOn(versions, "probeSuiteSnapshot")
+          .mockReturnValue({ ...currentSnapshot, ...frozenManifest, sourcePaths: [] })
+      : undefined
+    const planner = finalCollection
+      ? vi.spyOn(admission, "planAdmission").mockImplementation((source) => {
+          const run = JSON.parse(readFileSync(source, "utf8"))
+          return {
+            source,
+            destination: join(directory, "admitted.json"),
+            probeHash: frozenSuite!,
+            subject: run.subject,
+            runId: run.runId,
+          }
+        })
+      : undefined
+    const writer = finalCollection
+      ? vi.spyOn(admission, "admitRun").mockImplementation((plan) => {
+          if (fault === "admission-refused") throw new Error("fixture admission refused")
+          writeFileSync(plan.destination, readFileSync(plan.source))
+          return {
+            manifest: "existing",
+            run: "created",
+            screenshots: { created: 0, existing: 0 },
+            textSnapshots: { created: 0, existing: 0 },
+            receipt: { placed: "none", detail: "fixture" },
+          }
+        })
+      : undefined
     const launcher = vi.spyOn(childProcesses, "spawnSync").mockReturnValue({
       pid: 1,
       output: [],
@@ -1289,14 +1328,75 @@ it.each(["matching", "foreign-run", "foreign-context"] as const)(
         run.results[0]!.tests = [
           { id: "review", status: "test-todo", attempt: { scope: "none" }, reason: "Required review pending" },
         ]
-        retainCaptureBinding(run as never, run.results[0]!.featureId)
+        if (finalCollection) {
+          const attempt = { scope: "probe" as const, startedAt: specimen.measuredAt }
+          const measured = run.results.filter((result) => !ENVIRONMENT_GROUP_IDS.includes(result.featureId as never))
+          Object.assign(run, {
+            sealedAt: specimen.measuredAt,
+            rawReplies: Object.fromEntries(measured.map((result) => [result.featureId, '{"value":true}'])),
+            assertions: measured.map(({ featureId }) => ({
+              featureId,
+              assertionType: "buffer_state",
+              kind: "positive",
+              rawReplyRef: featureId,
+              expected: "value=true",
+              observed: '{"value":true}',
+            })),
+            results: run.results.map((result) => {
+              const index = measured.findIndex((entry) => entry.featureId === result.featureId)
+              return index < 0
+                ? result
+                : {
+                    featureId: result.featureId,
+                    status: "supported",
+                    assertionType: "buffer_state",
+                    rawReplyRef: result.featureId,
+                    attempt,
+                    tests: [
+                      {
+                        id: "criterion",
+                        status: "supported",
+                        attempt,
+                        assertionRefs: [index],
+                        rawReplyRef: result.featureId,
+                      },
+                    ],
+                  }
+            }),
+          })
+        } else retainCaptureBinding(run as never, run.results[0]!.featureId)
         const path = join(output, "pending.json")
         writeFileSync(path, JSON.stringify(run))
         return { directory: output, requested: ["xtermjs"], runs: [path], failures: [] }
       })
     try {
-      const pass = await collectPass(directory)
+      const deferrals = finalCollection
+        ? census()
+            .filter((row) => row.kind !== "lib" || row.id !== "xtermjs")
+            .map((row) => ({
+              context: row.kind === "lib" ? `${row.id}/headless` : `${row.id}/${row.os}`,
+              routeIssue: "@si/terminfo/carried-test-route",
+              reason: "Synthetic deferred test context",
+            }))
+        : []
+      const pass = await collectPass(directory, frozenSuite, { runner: "local" }, deferrals)
       const row = pass.contexts.find((entry) => entry.context.kind === "lib" && entry.context.id === "xtermjs")!
+      if (finalCollection) {
+        expect(pass.errors).toEqual(
+          fault === "admission-refused" ? ["Admission stopped: fixture admission refused"] : [],
+        )
+        expect(row.status, row.error).toBe(fault === "admitted" ? "admitted" : "failed")
+        expect(pass.complete).toBe(fault === "admitted")
+        expect(pass.contexts).toHaveLength(33)
+        expect(pass.contexts.filter((entry) => entry.status === "not-started")).toHaveLength(32)
+        expect(pass.freeze?.deferrals).toEqual(deferrals)
+        const retained = JSON.parse(readFileSync(join(pass.directory, "pass.json"), "utf8"))
+        expect(retained.complete).toBe(fault === "admitted")
+        expect(retained.contexts.find((entry: { status: string }) => entry.status === "admitted")?.admittedPath).toBe(
+          fault === "admitted" ? join(directory, "admitted.json") : undefined,
+        )
+        return
+      }
       if (fault === "matching") expect(row.status, row.error).toBe("pending-review")
       else {
         expect(row.status).toBe("not-started")
@@ -1308,6 +1408,9 @@ it.each(["matching", "foreign-run", "foreign-context"] as const)(
     } finally {
       collector.mockRestore()
       launcher.mockRestore()
+      planner?.mockRestore()
+      writer?.mockRestore()
+      snapshot?.mockRestore()
       rmSync(directory, { recursive: true, force: true })
     }
   },
