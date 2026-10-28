@@ -1,5 +1,6 @@
 /** Canonical parser and decoder for immutable terminal runs. */
 import { createHash } from "node:crypto"
+import { isDeepStrictEqual } from "node:util"
 import {
   SOURCE_NEGATIVE_REVIEW,
   HOST_INPUT_NAMES,
@@ -1601,6 +1602,9 @@ export function parseRun(
             fail(path, "host recipe: missing criterion declaration")
           }
           const instance = parseRuntimeIdentity(decision.runtimeIdentity, subject, path, schemaVersion)
+          if (!isDeepStrictEqual(instance, runtimeIdentity)) {
+            fail(path, "host recipe: initialized instance identity differs from the recorded run identity")
+          }
           validateHostRecipeCauses(
             path,
             runId,

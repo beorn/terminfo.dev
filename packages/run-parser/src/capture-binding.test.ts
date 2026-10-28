@@ -86,7 +86,7 @@ function hostCauseCapture(mode: string, query: string, split: boolean) {
     captures: [{ query, response: "", error: null }],
     causes: [{ recipe: "color-request", cause: source as typeof source | typeof observed }],
   }
-  if (mode === "observed" || mode === "foreign-reference") {
+  if (mode === "observed" || mode === "foreign-reference" || mode === "foreign-instance") {
     record.causes = [{ recipe: "color-request", cause: observed }]
   }
   if (mode === "missing-cause" || mode === "real-reply" || mode === "undeclared-query") record.causes = []
@@ -115,7 +115,10 @@ function hostCauseCapture(mode: string, query: string, split: boolean) {
       [featureId]: {
         member: true,
         reason: "fixture",
-        runtimeIdentity: draft.runtimeIdentity,
+        runtimeIdentity:
+          mode === "foreign-instance"
+            ? { ...draft.runtimeIdentity, adapterVersion: "different-initialized-adapter" }
+            : draft.runtimeIdentity,
         hostRecipes: expectations,
       },
     },
@@ -138,6 +141,9 @@ it.each([
   "stale-input",
   "stale-artifact",
   "foreign-reference",
+  // N3: a valid observed cause cannot authorize another initialized instance.
+  // Existing source-audited cases reject mismatched artifact citations, hiding this reader gap.
+  "foreign-instance",
   "foreign-run",
   "wrong-missing",
   "undeclared-query",
@@ -783,11 +789,16 @@ describe("immutable pre-seal capture binding", () => {
     },
   )
 
-  it.each(["raw", "context", "source", "suite", "feature", "run"])(
+  it.each(["raw", "host-cause", "context", "source", "suite", "feature", "run"])(
     "rejects review after %s binding changes",
     (change) => {
-      const { draft, decision } = setup()
+      // H6: a host-cause record is immutable review input, even when protocol bytes stay exact.
+      const hostRef = "collector.hostRecipes.sgr.bold"
+      const { draft, decision } = setup(undefined, undefined, (draft) => {
+        if (change === "host-cause") draft.rawReplies[hostRef] = JSON.stringify({ captures: [], causes: [] })
+      })
       if (change === "raw") draft.rawReplies["sgr.bold"] = "different trace"
+      if (change === "host-cause") draft.rawReplies[hostRef] = JSON.stringify({ captures: [], causes: ["changed"] })
       if (change === "context") draft.subject!.permissions = "changed"
       if (change === "source") draft.sourceRevision = "2".repeat(40)
       if (change === "suite") draft.probeHash = "different-suite"

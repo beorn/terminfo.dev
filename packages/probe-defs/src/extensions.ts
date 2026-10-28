@@ -812,21 +812,25 @@ function resetProbe(id: string, setCode: number, resetCode: number, index?: numb
       "query_reply",
     ),
     termNeedsDisposable: true,
-    libHostRecipes: [
-      {
-        recipe: "color-request",
-        query: `\x1b]${setCode};${index === undefined ? "" : `${index};`}?\x07`,
-        missing: [
-          setCode === 10
-            ? "foreground-rgb"
-            : setCode === 11
-              ? "background-rgb"
-              : setCode === 12
-                ? "cursor-rgb"
-                : "palette-entry-rgb",
-        ],
-      },
-    ],
+    ...([4, 10, 11, 12].includes(setCode)
+      ? {
+          libHostRecipes: [
+            {
+              recipe: "color-request" as const,
+              query: `\x1b]${setCode};${index === undefined ? "" : `${index};`}?\x07`,
+              missing: [
+                setCode === 10
+                  ? ("foreground-rgb" as const)
+                  : setCode === 11
+                    ? ("background-rgb" as const)
+                    : setCode === 12
+                      ? ("cursor-rgb" as const)
+                      : ("palette-entry-rgb" as const),
+              ],
+            },
+          ],
+        }
+      : {}),
   }
 }
 

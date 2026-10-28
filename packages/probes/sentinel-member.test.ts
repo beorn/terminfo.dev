@@ -702,10 +702,11 @@ test.each(["changed", "unavailable"] as const)(
 
 // Same adapter/version/capabilities without the independent measurement cannot qualify.
 // H1/H2/H4/H6: explicit native-input unit fixture; no actual native engine qualification.
-test.each(["observed", "source-audited", "missing", "error"] as const)(
+test.each(["observed", "source-audited", "missing", "error", "late"] as const)(
   "retains and validates %s host custody before checkpointing the callback",
   async (mode) => {
     vi.spyOn(process.stderr, "write").mockImplementation(() => true)
+    if (mode === "late") vi.stubEnv("TERMINFO_SENTINEL_GRACE_MS", "40")
     const query = "\x1b]10;?\x07",
       artifact = "a".repeat(64),
       id = "host.fixture"
@@ -716,7 +717,7 @@ test.each(["observed", "source-audited", "missing", "error"] as const)(
         kind: "native",
         engineVersion: "fixture",
         adapterVersion: "fixture",
-        termlessRevision: "2".repeat(40),
+        termlessRevision: fixture.runtime.identity.termlessRevision,
         loadedBinary: { path: "fixture.node", sha256: artifact },
         provenance: {
           sha256: artifact,
@@ -747,7 +748,11 @@ test.each(["observed", "source-audited", "missing", "error"] as const)(
     const checkpoints: string[] = []
     const batch = await collectBatch(
       async () => {
-        const backend = fixture.create(() => "")
+        const backend = fixture.create((text) => {
+          if (mode !== "late" || text !== DA1_QUERY) return ""
+          setTimeout(() => backend.onResponse?.(encoder.encode("late-native-reply")), 5)
+          return DA1
+        })
         Object.defineProperty(backend, "replyDelivery", {
           value: { ...fixture.declaration, engine: { kind: "native", sha256: artifact } },
         })
@@ -762,8 +767,11 @@ test.each(["observed", "source-audited", "missing", "error"] as const)(
           lib: (ctx) => {
             expect(ctx.feedCapture(query)).toBe("")
             if (mode === "error") throw new Error("original callback error")
+            if (mode === "late") {
+              expect(ctx.queryWithSentinelOutcome?.(query, /\x1b]10;/).reason).toBe("sentinel")
+            }
             const cause: CallbackHostRecipeCause =
-              mode === "observed"
+              mode === "observed" || mode === "late"
                 ? { recipe: "color-request", cause: { kind: "observed", missing: "foreground-rgb", query } }
                 : {
                     recipe: "color-request",
@@ -776,6 +784,7 @@ test.each(["observed", "source-audited", "missing", "error"] as const)(
                   }
             return {
               ...fakeProbeResult(),
+              ...(mode === "late" && { response: DA1 }),
               ...(mode !== "missing" && { hostRecipeCauses: [cause] }),
             }
           },
@@ -789,8 +798,37 @@ test.each(["observed", "source-audited", "missing", "error"] as const)(
       runtime,
     )
     const retained = JSON.parse(batch.rawReplies[`collector.hostRecipes.${id}`] ?? "null")
-    expect(retained).toMatchObject({ runId: draft.runId, captures: [{ query, response: "", error: null }] })
+    expect(retained).toMatchObject({
+      runId: draft.runId,
+      captures: [
+        { query, response: "", error: null },
+        ...(mode === "late"
+          ? [
+              { query, response: "", error: null },
+              { query: DA1_QUERY, response: DA1, error: null },
+            ]
+          : []),
+      ],
+    })
     expect(checkpoints.at(-1)).toBe(batch.rawReplies[`collector.hostRecipes.${id}`])
+    // G1/H6: native qualification must retain cause + both read windows while refusing the callback.
+    // The JS-only late-byte case cannot catch a native-route bypass or lost native host record.
+    if (mode === "late") {
+      expect(JSON.parse(batch.rawReplies["collector.replyPath"]!)).toMatchObject({
+        decisions: { [id]: { member: true } },
+      })
+      expect(batch.results[0]).toMatchObject({ status: "test-failure" })
+      expect(batch.ungradedDiagnostics[id]).toMatchObject({
+        message: expect.stringContaining("late reply after sentinel"),
+      })
+      expect(batch.observations).toEqual([])
+      expect(batch.rawReplies[id]).toBe(DA1)
+      expect(batch.rawReplies[`${id}.late`]).toBe("late-native-reply")
+      expect(retained).toMatchObject({
+        causes: [{ cause: { kind: "observed", eventRef: `collector.hostRecipes.${id}` } }],
+      })
+      return
+    }
     if (mode === "missing" || mode === "error") {
       expect(batch.results[0]).toMatchObject({ status: "test-failure" })
       expect(batch.ungradedDiagnostics[id]).toMatchObject({

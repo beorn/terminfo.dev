@@ -2134,6 +2134,9 @@ describe("partial probe automation candidates", () => {
 
     for (const c of cases) {
       const p = probe(c.id)
+      // C4: OSC13/14 do not dispatch the native host-colour recipes; keep their criterion unchanged.
+      // Reply-only assertions miss an accidental palette-input declaration from the shared reset factory.
+      expect(p.libHostRecipes).toBeUndefined()
       expect(p.lib).toBeTypeOf("function")
       const feed: string[] = []
       const capture: string[] = []
