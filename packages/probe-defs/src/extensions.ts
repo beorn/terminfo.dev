@@ -1012,7 +1012,7 @@ function colorStackProbe(): ProbeDefinition["lib"] {
         const response = JSON.stringify({
           query: foregroundQuery,
           originalRaw,
-          ...(comparison ?? {}),
+          ...comparison,
           ...(fixtureVerified && { fixture: { name: "verified seeded current", color: seededCurrentColor } }),
           trace,
         })

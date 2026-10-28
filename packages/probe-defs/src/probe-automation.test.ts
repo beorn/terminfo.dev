@@ -2134,8 +2134,9 @@ describe("partial probe automation candidates", () => {
       fixture.ctx.feedCapture = (sequence) => {
         seen.push(sequence)
         const response = originalCapture(sequence)
-        if (sequence === "\x1b]10;?\x07" && ++queries === ("query" in row ? row.query : -1))
+        if (sequence === "\x1b]10;?\x07" && ++queries === ("query" in row ? row.query : -1)) {
           throw new Error(`${row.name} primary`)
+        }
         if ("setter" in row && sequence === "\x1b]10;rgb:aa/bb/cc\x07") throw new Error("setter primary")
         if ("reset" in row && sequence === "\x1b]110\x07") throw new Error("reset cleanup")
         if ("pop" in row && sequence === "\x1b]30101\x1b\\") throw new Error("pop cleanup")
