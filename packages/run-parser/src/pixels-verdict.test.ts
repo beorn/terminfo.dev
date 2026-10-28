@@ -16,6 +16,7 @@ import {
   recordExecutedProbe,
   cursorProbes,
   editingProbes,
+  extensionsProbes,
   modesProbes,
   type ObservationFrame,
   type ProbeSuiteManifest,
@@ -412,6 +413,39 @@ describe("in-run pixels verdicts", () => {
       expect(fixture.requests).toEqual([])
     }
     expect(parseCallback(id, result, fixture).results?.[0]?.status).toBe(status)
+  })
+
+  it("keeps a native ligature capture pending review when its frames carry whole-pixel digests", async () => {
+    const id = "extensions.font-ligatures"
+    const probe = extensionsProbes.find((entry) => entry.id === id)
+    if (!probe?.term) throw new Error(`Missing ${id} terminal callback`)
+    const fixture = callbackFixture(id)
+    const capture = fixture.context.capture
+    if (!capture) throw new Error("Missing fixture capture")
+    fixture.context.capture = async (request) => {
+      const captured = await capture(request)
+      if (captured.kind === "text-cells") throw new Error("Fixture must start with pixels")
+      // Hosted macOS raw captures retain the PNG/source refs and whole pixels, without a cell crop.
+      return {
+        kind: "pixels",
+        role: captured.role,
+        label: captured.label,
+        capturedAt: captured.capturedAt,
+        ref: captured.ref,
+        sourceRef: captured.ref,
+        pixelsDigest: captured.pixelsDigest,
+      }
+    }
+    const result = await probe.term(fixture.context)
+    expect(result.observation?.outcome).toBe("inconclusive")
+    expect(result.observation?.frames?.map(({ role }) => role)).toEqual(["control", "target"])
+    const loaded = parseCallback(id, result, fixture)
+    expect(loaded.results?.[0]?.status).toBe("test-todo")
+    expect(loaded.results?.[0]?.tests).toEqual([
+      expect.objectContaining({ id: "capture", status: "supported" }),
+      expect.objectContaining({ id: "review", status: "test-todo", attempt: { scope: "none" } }),
+    ])
+    expect(loaded.observations[0]?.outcome).toBe("inconclusive")
   })
 
   it("admits a digest-equality verdict whose assertion cites a frame's regionDigest", () => {
