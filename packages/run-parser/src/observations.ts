@@ -510,7 +510,7 @@ function requireCitedFrameDigests(observation: ObservationInput, assertion: Read
   if (!citesRefOrCells) {
     fail(
       path,
-      `${methodName(observation)} verdict for ${featureId} cites ${cited[0]}, which is not the ref or a digest of a frame in this observation`,
+      `${methodName(observation)} verdict for ${featureId} cites only whole-frame digests; a verdict must cite a frame's ref or the digest of the cells it compared`,
     )
   }
 }
