@@ -2,6 +2,7 @@ import { execFileSync, spawn, type ChildProcess } from "node:child_process"
 import { closeSync, constants, fstatSync, openSync, readFileSync, statSync, type BigIntStats } from "node:fs"
 import { isatty, WriteStream } from "node:tty"
 import { dirname, isAbsolute, join } from "node:path"
+import { retain } from "./capture-core.ts"
 import { readDisposableReceipt } from "./disposable-receipt.ts"
 import type { LiveExecutable } from "./linux-capture.ts"
 import { createLinuxClipboardAdapter, type LinuxClipboardAdapter } from "./linux-clipboard.ts"
@@ -1005,12 +1006,12 @@ export async function createOwnedTerminal(options: {
                     "Kitty text read requires this run's capture-directory socket, verified owner PID and window ID",
                 } satisfies TerminalTextRead
               }
-              let snapshot: string
+              let stdout: Buffer
               try {
-                snapshot = execFileSync(
+                stdout = execFileSync(
                   join(dirname(assertion.executablePath), "kitten"),
                   ["@", "--to", socket, "get-text", "--extent", "screen", "--match", `id:${windowId}`],
-                  { encoding: "utf8", timeout: 5000, maxBuffer: 1024 * 1024 },
+                  { encoding: "buffer", timeout: 5000, maxBuffer: 1024 * 1024 },
                 )
               } catch (cause) {
                 return {
@@ -1018,12 +1019,34 @@ export async function createOwnedTerminal(options: {
                   reason: `Kitty window ${windowId} text read through ${socket} failed: ${cause instanceof Error ? cause.message : String(cause)}`,
                 } satisfies TerminalTextRead
               }
+              const ref = retain(captureDirectory, stdout, "bin")
+              const snapshot = stdout.toString("utf8")
               const lines = snapshot === "" ? [] : snapshot.replace(/\n$/u, "").split("\n")
               // The shared macOS mapper does not witness DECDWL/DECDHL; unknown character widths remain unmeasurable.
               const cells = mapSnapshotToCells(lines, geometry.cols, geometry.rows, 0)
-              return typeof cells === "string"
-                ? { status: "refused", reason: `Kitty get-text: ${cells}` }
-                : { status: "read", app: "kitty", cells }
+              if (typeof cells === "string") {
+                const lineByteLengths: number[] = []
+                let lineStart = 0
+                let lineFeeds = 0
+                for (let index = 0; index < stdout.length; index++) {
+                  if (stdout[index] !== 0x0a) continue
+                  lineFeeds++
+                  if (lineByteLengths.length < geometry.rows) lineByteLengths.push(index - lineStart)
+                  lineStart = index + 1
+                }
+                if (lineStart < stdout.length && lineByteLengths.length < geometry.rows) {
+                  lineByteLengths.push(stdout.length - lineStart)
+                }
+                const preview = Array.from(
+                  stdout.subarray(0, 256),
+                  (byte) => `\\x${byte.toString(16).padStart(2, "0")}`,
+                ).join("")
+                return {
+                  status: "refused",
+                  reason: `Kitty get-text: ${cells}; stdout=${ref}; bytes=${stdout.length}; lf=${lineFeeds}; lineBytes=${JSON.stringify(lineByteLengths)}; first256bytes=${JSON.stringify(preview)}`,
+                }
+              }
+              return { status: "read", app: "kitty", cells }
             }
             return readTerminalTextSnapshot({
               app: darwinTextApp,

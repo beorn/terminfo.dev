@@ -4,11 +4,15 @@
  * @level l1
  * @consumer createOwnedTerminal process arm used by collectProbeRun for kitty and cli-process.
  * @testonly none
+ * @reach fs-walk <fixture-only: checks raw stdout artifacts in an isolated temporary capture directory>
  */
 import { spawnSync } from "node:child_process"
+import { createHash } from "node:crypto"
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs"
+import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
-import { expect, test } from "vitest"
+import { afterEach, expect, test } from "vitest"
 import type { ProbeResult, Observation, ProbeAssertion } from "@terminfo/probe-defs"
 import { createOwnedTerminal, parseProcessOwnerAssertion } from "./owned-terminal.ts"
 import type { TerminalTextRead } from "./darwin-terminal-text.ts"
@@ -16,6 +20,11 @@ import type { TerminalTextRead } from "./darwin-terminal-text.ts"
 const packageRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..")
 const launchRunId = "c".repeat(32)
 const captureRunId = "d".repeat(32)
+const directories: string[] = []
+
+afterEach(() => {
+  for (const path of directories.splice(0)) rmSync(path, { recursive: true, force: true })
+})
 
 const assertionFor = (input: {
   provider: "kitty" | "cli-process"
@@ -56,14 +65,16 @@ function runDarwinArm(scenario: {
   claimRunId?: string
   batch?: "process" | "terminal-app" | "disposed"
   text?: {
-    stdout?: string
+    stdout?: string | number[]
     socket?: string
     pid?: string
     windowId?: string
     error?: string
     disposed?: boolean
   }
-}): { status: number | null; stdout: string; stderr: string } {
+}): { status: number | null; stdout: string; stderr: string; captureDirectory: string } {
+  const captureDirectory = mkdtempSync(join(tmpdir(), "terminfo-process-darwin-"))
+  directories.push(captureDirectory)
   const script = `
     import { mock } from "bun:test"
     import assert from "node:assert/strict"
@@ -78,9 +89,10 @@ function runDarwinArm(scenario: {
       Object.entries(scenario.parent).map(([key, value]) => [key === "self" ? self : key, value === "self" ? self : value]),
     )
     const executablePath = process.execPath
-    const socket = "unix:/private/owned-run/kitty-" + launchRunId + ".sock"
+    const captureDirectory = ${JSON.stringify(captureDirectory)}
+    const socket = "unix:" + join(dirname(captureDirectory), "kitty-" + launchRunId + ".sock")
     if (scenario.text) {
-      process.env.TERMINFO_CAPTURE_DIRECTORY = "/private/owned-run/artifacts"
+      process.env.TERMINFO_CAPTURE_DIRECTORY = captureDirectory
       process.env.KITTY_LISTEN_ON = scenario.text.socket ?? socket
       process.env.KITTY_PID = scenario.text.pid ?? String(scenario.ownerPid)
       process.env.KITTY_WINDOW_ID = scenario.text.windowId ?? "7"
@@ -114,11 +126,12 @@ function runDarwinArm(scenario: {
     mock.module("node:tty", () => ({ ...realTty, isatty: () => true }))
     mock.module("node:child_process", () => ({
       ...realCp,
-      execFileSync: (command, args) => {
+      execFileSync: (command, args, options) => {
         if (scenario.text && command === join(dirname(executablePath), "kitten")) {
           reads.push(args)
           if (scenario.text.error) throw new Error(scenario.text.error)
-          return scenario.text.stdout ?? "ab\\ncd\\n"
+          const stdout = Buffer.from(scenario.text.stdout ?? "ab\\ncd\\n")
+          return options?.encoding === "utf8" ? stdout.toString("utf8") : stdout
         }
         if (command !== "/bin/ps") throw new Error("unexpected exec " + command)
         return ps(args)
@@ -223,7 +236,10 @@ function runDarwinArm(scenario: {
       console.log("REFUSED " + error.message)
     }
   `
-  return spawnSync(process.execPath, ["-e", script], { cwd: packageRoot, encoding: "utf8", timeout: 20_000 })
+  return {
+    ...spawnSync(process.execPath, ["-e", script], { cwd: packageRoot, encoding: "utf8", timeout: 20_000 }),
+    captureDirectory,
+  }
 }
 
 test("kitty is granted by the shared process proof: marker, executable, TTY and ancestry all checked", () => {
@@ -264,10 +280,13 @@ test.each([
   { name: "missing window", text: { windowId: "" }, status: "refused", reads: 0, reason: "window ID" },
   {
     name: "omitted bottom row",
-    text: { stdout: "ab\n" },
+    text: { stdout: [0xc3, 0xa9, 0xff, 0x0d, 0x00, 0x1b, ...Array<number>(251).fill(0x61), 0x0a] },
     status: "refused",
     reads: 1,
     reason: "1 rows where the measured screen has 2",
+    diagnostic: `bytes=258; lf=1; lineBytes=[257]; first256bytes=${JSON.stringify(
+      "\\xc3\\xa9\\xff\\x0d\\x00\\x1b" + "\\x61".repeat(250),
+    )}`,
   },
   {
     name: "blank screen omitted",
@@ -275,6 +294,17 @@ test.each([
     status: "refused",
     reads: 1,
     reason: "0 rows where the measured screen has 2",
+    diagnostic: 'bytes=0; lf=0; lineBytes=[]; first256bytes=""',
+  },
+  {
+    name: "more rows than measured",
+    text: { stdout: "é\nab\nc\n" },
+    status: "refused",
+    reads: 1,
+    reason: "3 rows where the measured screen has 2",
+    diagnostic: `bytes=8; lf=3; lineBytes=[2,2]; first256bytes=${JSON.stringify(
+      "\\xc3\\xa9\\x0a\\x61\\x62\\x0a\\x63\\x0a",
+    )}`,
   },
   {
     name: "remote read failed",
@@ -283,7 +313,7 @@ test.each([
     reads: 1,
     reason: "owned socket disappeared",
   },
-])("Kitty cell read: $name", ({ text, status, reads, reason }) => {
+])("Kitty cell read: $name", ({ text, status, reads, reason, diagnostic }) => {
   const result = runDarwinArm({
     provider: "kitty",
     ownerPid: 4242,
@@ -306,11 +336,24 @@ test.each([
   } else if (reason !== undefined) {
     expect(captured.read).toMatchObject({ reason: expect.stringContaining(reason) })
   }
+  if (diagnostic !== undefined || status === "read") {
+    const stdout = Array.isArray(text.stdout) ? Buffer.from(text.stdout) : Buffer.from(text.stdout ?? "ab\ncd\n")
+    const digest = createHash("sha256").update(stdout).digest("hex")
+    expect(readdirSync(result.captureDirectory)).toEqual([`${digest}.bin`])
+    expect(readFileSync(join(result.captureDirectory, `${digest}.bin`))).toEqual(stdout)
+    if (diagnostic !== undefined) {
+      expect(captured.read).toMatchObject({
+        reason: expect.stringContaining(`stdout=sha256:${digest}; ${diagnostic}`),
+      })
+    }
+  } else {
+    expect(readdirSync(result.captureDirectory)).toEqual([])
+  }
   if (reads > 0) {
     expect(captured.reads[0]).toEqual([
       "@",
       "--to",
-      `unix:/private/owned-run/kitty-${launchRunId}.sock`,
+      `unix:${join(dirname(result.captureDirectory), `kitty-${launchRunId}.sock`)}`,
       "get-text",
       "--extent",
       "screen",
