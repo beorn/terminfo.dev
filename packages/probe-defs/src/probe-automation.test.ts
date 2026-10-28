@@ -1999,14 +1999,15 @@ describe("partial probe automation candidates", () => {
     failedQuery?: number,
     failedFeed?: "mutation" | "pop" | "restore",
     queryError: unknown = new Error("foreground query unavailable"),
+    options: { initialEmpty?: boolean; stackWorks?: boolean } = {},
   ) {
     const original = "rgb:1010/2020/3030"
-    let current = original
-    const stack: string[] = []
+    let current: string | null = options.initialEmpty ? null : original
+    const stack: Array<string | null> = []
     const writes: string[] = []
     let queries = 0
     let feedFailed = false
-    const ctx = context({
+    const ctx: LibProbeSource = context({
       feed(sequence) {
         writes.push(sequence)
         const action = sequence.includes("]30101")
@@ -2020,18 +2021,44 @@ describe("partial probe automation candidates", () => {
           feedFailed = true
           throw new Error(`${action} unavailable`)
         }
-        if (sequence.includes("]30001")) stack.push(current)
-        else if (sequence.includes("]30101")) current = stack.pop() ?? current
-        else current = /\x1b\]10;(rgb:[a-f\d/]+)/i.exec(sequence)?.[1] ?? current
+        if (sequence.includes("]110")) current = null
+        else if (sequence.includes("]30001")) {
+          if (options.stackWorks !== false) stack.push(current)
+        } else if (sequence.includes("]30101")) {
+          if (options.stackWorks !== false) current = stack.pop() ?? current
+        } else current = /\x1b\]10;(rgb:[a-f\d/]+)/i.exec(sequence)?.[1] ?? current
       },
       feedCapture(sequence) {
-        expect(sequence).toBe("\x1b]10;?\x07")
+        if (sequence !== "\x1b]10;?\x07") {
+          ctx.feed(sequence)
+          return ""
+        }
         if (++queries === failedQuery) throw queryError
-        return `\x1b]10;${current}\x1b\\`
+        return current === null ? "" : `\x1b]10;${current}\x1b\\`
       },
     })
     return { ctx, original, writes, foreground: () => current, stackDepth: () => stack.length }
   }
+
+  // Requirement: a verified chosen current colour exposes the stack effect even without an embedder default.
+  // Existing fixtures start with an observable original, so they miss the silent-initial early return.
+  test.each([true, false])("measures a verified current-colour stack fixture (stack works: %s)", (stackWorks) => {
+    for (const id of ["extensions.osc30001-color-stack-push", "extensions.osc30101-color-stack-pop"]) {
+      const fixture = colorStackFixture(undefined, undefined, undefined, { initialEmpty: true, stackWorks })
+      const result = probe(id).lib!(fixture.ctx)
+      expect(result.observation).toMatchObject({ outcome: stackWorks ? "supported" : "unsupported", assertionType: "query_reply" })
+      expect(result.note).toContain("verified seeded current")
+      expect(result.assertions).toMatchObject([{ kind: stackWorks ? "positive" : "negative" }])
+      expect(result.criterionBranch).toBeUndefined()
+      const raw = JSON.parse(result.response!) as { fixture: { name: string; color: string }; trace: Array<{ write: string; response: string }> }
+      expect(raw.fixture).toEqual({ name: "verified seeded current", color: "rgb:aa/bb/cc" })
+      expect(raw.trace[0]).toEqual({ write: "\x1b]10;?\x07", response: "" })
+      expect(raw.trace.at(-2)).toEqual({ write: "\x1b]110\x07", response: "" })
+      expect(raw.trace.at(-1)).toEqual({ write: "\x1b]10;?\x07", response: "" })
+      expect(fixture.foreground()).toBeNull()
+      expect(fixture.stackDepth()).toBe(0)
+    }
+  })
 
   test("OSC 30001/30101 probes verify color stack restore behavior", () => {
     for (const id of ["extensions.osc30001-color-stack-push", "extensions.osc30101-color-stack-pop"]) {
