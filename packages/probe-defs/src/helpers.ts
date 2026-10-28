@@ -102,10 +102,10 @@ export function osInputReviewResult(
 }
 
 /**
- * The headless arm of a colour reset or stack criterion whose first colour readback answered
- * nothing (#30547, @cto D-B): the effect cannot be observed, so the reset, push or pop is never
- * sent. Never a sentinel negative (C10) and never graded from a source read (C7); the reviewer
- * names the engine's missing observable from its source audit row.
+ * A headless colour criterion missing its initial readback. Reset/stack probes send no mutation
+ * when that prerequisite is absent (#30547, @cto D-B). Initial-query probes require a disposable
+ * set/query/reset control before selecting this branch. Never a sentinel negative (C10) and never
+ * graded from a source read (C7); the reviewer names the missing observable from its source audit.
  */
 export function colorReadbackReviewResult(noObservable: string, state: object): ProbeCallbackResult {
   return reviewResult(

@@ -66,6 +66,14 @@ The five `AssertionType` values classify an actually retained deciding observati
 
 **Headless evidence** comes through [headless-batch.ts](../probes/headless-batch.ts). It retains callback `response` values as raw replies, not every probe-source call or every engine-state read.
 
+The OSC 10, 11, 12 and 4 index-0 initial-colour queries preserve their ordinary reply and sentinel paths.
+Without a qualified sentinel path, an empty initial reply runs a disposable set/query/reset/query control,
+retaining every write and reply, including setter/reset acknowledgements. Only an exact seeded-colour
+reply, empty acknowledgements and an empty reset query select `color-readback-review`: the initial value
+is embedder-owned and still missing. A seeded reply never proves initial/default-colour support.
+Other control outcomes retain criterion FAILURE. Independent review must bind to the capture run's own
+suite manifest and raw evidence; this callback grants neither automatic Untestable nor support.
+
 Cell `dim`, `italic` and `strikethrough` readbacks are required `boolean | null`: null means the producer does not report that attribute, never a terminal-support claim. Their SGR probes route null through named missing-observable coverage (TEST TODO); measured booleans retain their existing observation path.
 
 The OSC 8 library criterion requires exact per-cell URI metadata, including unlinked controls.

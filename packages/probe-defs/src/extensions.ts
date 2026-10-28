@@ -295,31 +295,66 @@ function sixelGeometryResult(
 }
 
 /** OSC color query probe — feedCapture + regex (termless), sentinel query (term). */
-function oscColorQueryProbe(id: string, oscCode: number): ProbeDefinition {
-  const querySeq = `\x1b]${oscCode};?\x07`
-  const pattern = new RegExp(`\\x1b\\]${oscCode};rgb:[0-9a-f]{1,4}/[0-9a-f]{1,4}/[0-9a-f]{1,4}(?:\\x07|\\x1b\\\\)`, "i")
-  const prefix = new RegExp(`\\x1b\\]${oscCode};`)
+function oscColorQueryProbe(id: string, oscCode: number, index?: number): ProbeDefinition {
+  const slot = `${oscCode}${index === undefined ? "" : `;${index}`}`
+  const querySeq = `\x1b]${slot};?\x07`
+  const pattern = new RegExp(`\\x1b\\]${slot};rgb:[0-9a-f]{1,4}/[0-9a-f]{1,4}/[0-9a-f]{1,4}(?:\\x07|\\x1b\\\\)`, "i")
+  const prefix = new RegExp(`\\x1b\\]${slot};`)
+  const expected = `Complete OSC ${oscCode}${index === undefined ? "" : ` index-${index}`} color reply`
   return {
     ...queryOnly(
       probe(
         id,
         (ctx) => {
           if (ctx.queryWithSentinelOutcome) {
-            return oscOutcomeResult(
-              ctx.queryWithSentinelOutcome(querySeq, pattern),
-              `Complete OSC ${oscCode} color reply`,
-              prefix,
-            )
+            return oscOutcomeResult(ctx.queryWithSentinelOutcome(querySeq, pattern), expected, prefix)
           }
           const raw = ctx.feedCapture(querySeq)
-          return oscReplyResult(raw, pattern.exec(raw)?.[0] ?? null, `Complete OSC ${oscCode} color reply`, prefix)
+          if (raw !== "") return oscReplyResult(raw, pattern.exec(raw)?.[0] ?? null, expected, prefix)
+
+          // This non-ANSI colour tests the producer without inventing its initial value.
+          const seededColor = "rgb:aa/bb/cc"
+          const setter = `\x1b]${slot};${seededColor}\x07`
+          const reset = `\x1b]${oscCode + 100}${index === undefined ? "" : `;${index}`}\x07`
+          const controls: { write: string; response: string }[] = []
+          const capture = (write: string) => {
+            const response = ctx.feedCapture(write)
+            controls.push({ write, response })
+            return response
+          }
+          let setterRaw: string
+          let seededRaw: string
+          let resetRaw: string
+          try {
+            setterRaw = capture(setter)
+            seededRaw = capture(querySeq)
+          } finally {
+            // The setter can mutate before throwing; always attempt its reset.
+            resetRaw = capture(reset)
+          }
+          const restoredRaw = capture(querySeq)
+          const state = { query: querySeq, initialRaw: raw, controls }
+          const frame = pattern.exec(seededRaw)?.[0]
+          const color = frame?.slice(`\x1b]${slot};`.length).replace(/(?:\x07|\x1b\\)$/, "")
+          if (
+            setterRaw === "" &&
+            resetRaw === "" &&
+            restoredRaw === "" &&
+            frame === seededRaw &&
+            color &&
+            sameRgb(color, seededColor)
+          ) {
+            return colorReadbackReviewResult(
+              `OSC ${slot} initial/current colour is embedder-owned: initial query and reset query answered nothing; seeded query control cannot establish the initial value`,
+              state,
+            )
+          }
+          return {
+            ...oscReplyResult(raw, null, expected, prefix),
+            response: JSON.stringify(state),
+          }
         },
-        async (ctx) =>
-          oscOutcomeResult(
-            await ctx.queryWithSentinelOutcome(querySeq, pattern),
-            `Complete OSC ${oscCode} color reply`,
-            prefix,
-          ),
+        async (ctx) => oscOutcomeResult(await ctx.queryWithSentinelOutcome(querySeq, pattern), expected, prefix),
         "query_reply",
       ),
     ),
@@ -2662,13 +2697,7 @@ export const extensionsProbes: ProbeDefinition[] = [
   },
 
   // OSC 4 — color palette query for index 0.
-  oscSimpleQueryProbe(
-    "extensions.osc4-palette",
-    "\x1b]4;0;?\x07",
-    /\x1b\]4;0;rgb:[0-9a-f]{1,4}\/[0-9a-f]{1,4}\/[0-9a-f]{1,4}(?:\x07|\x1b\\)/i,
-    /\x1b\]4;0;/,
-    "Complete OSC 4 index-0 color reply",
-  ),
+  oscColorQueryProbe("extensions.osc4-palette", 4, 0),
 
   // OSC 5 — special color query for index 0.
   oscSimpleQueryProbe(

@@ -97,6 +97,144 @@ function terminalSource(overrides: Partial<TermProbeSource>): TermProbeSource {
 }
 
 /**
+ * @failure A seeded colour reply was mistaken for the missing embedder-owned initial value.
+ * @level l0
+ * @consumer Library initial-colour callbacks and their required independent review.
+ * @testonly none
+ */
+describe("initial colour context review", () => {
+  const cases = [
+    ["extensions.osc10-fg-color", "10", "110"],
+    ["extensions.osc11-bg-color", "11", "111"],
+    ["extensions.osc12-cursor-color", "12", "112"],
+    ["extensions.osc4-palette", "4;0", "104;0"],
+  ] as const
+
+  for (const [id, slot, resetCode] of cases) {
+    const query = `\x1b]${slot};?\x07`
+    const setter = `\x1b]${slot};rgb:aa/bb/cc\x07`
+    const reset = `\x1b]${resetCode}\x07`
+    const seeded = `\x1b]${slot};rgb:aaaa/bbbb/cccc\x1b\\`
+    const callback = probe(id).lib
+    if (!callback) throw new Error(`missing library callback ${id}`)
+    const writes = [query, setter, query, reset, query]
+
+    test(`${slot}: missing initial value selects required review after a disposable positive control`, () => {
+      for (const reply of [seeded, `\x1b]${slot};rgb:a/b/c\x07`]) {
+        const replies = ["", "", reply, "", ""]
+        const seen: string[] = []
+        const result = callback(
+          context({
+            feedCapture(sequence) {
+              expect(sequence).toBe(writes[seen.length])
+              seen.push(sequence)
+              return replies[seen.length - 1]!
+            },
+          }),
+        )
+        expect(seen).toEqual(writes)
+        expect(result).toMatchObject({
+          pass: false,
+          criterionBranch: "color-readback-review",
+          notTested: { noObservable: expect.stringContaining(`OSC ${slot}`) },
+          tests: [{ id: "review", status: "test-todo" }],
+        })
+        expect(result.notTested?.noObservable).toContain("embedder-owned")
+        expect(result.observation).toBeUndefined()
+        expect(result.assertions).toBeUndefined()
+        expect(JSON.parse(result.response!)).toEqual({
+          query,
+          initialRaw: "",
+          controls: writes.slice(1).map((write, index) => ({ write, response: replies[index + 1] })),
+        })
+      }
+    })
+
+    test(`${slot}: failed controls retain criterion failure and all attempted bytes`, () => {
+      const invalid = [
+        ["", "", "", "", ""],
+        ["", "", `\x1b]${slot};rgb:00/00/00\x07`, "", ""],
+        ["", "", "\x1b]999;rgb:aa/bb/cc\x07", "", ""],
+        ["", "", `extra${seeded}`, "", ""],
+        ["", "", `${seeded}${seeded}`, "", ""],
+        ["", "ack", seeded, "", ""],
+        ["", "", seeded, "ack", ""],
+        ["", "", seeded, "", seeded],
+      ]
+      for (const replies of invalid) {
+        const seen: string[] = []
+        const result = callback(
+          context({
+            feedCapture(sequence) {
+              expect(sequence).toBe(writes[seen.length])
+              seen.push(sequence)
+              return replies[seen.length - 1]!
+            },
+          }),
+        )
+        expect(seen).toEqual(writes)
+        expect(result).toMatchObject({ pass: false, tests: [{ id: "criterion", status: "test-failure" }] })
+        expect(result.criterionBranch).toBeUndefined()
+        expect(result.notTested).toBeUndefined()
+        expect(JSON.parse(result.response!)).toMatchObject({
+          controls: writes.slice(1).map((write, index) => ({ write, response: replies[index + 1] })),
+        })
+      }
+    })
+
+    test(`${slot}: nonempty initial replies and sentinel reads issue no setter`, () => {
+      for (const raw of [seeded, `\x1b]${slot};broken\x07`]) {
+        let count = 0
+        const result = callback(
+          context({
+            feedCapture(sequence) {
+              expect(sequence).toBe(query)
+              expect(++count).toBe(1)
+              return raw
+            },
+          }),
+        )
+        expect(result.response).toBe(raw)
+        expect(result.pass).toBe(raw === seeded)
+        expect(result.criterionBranch).toBeUndefined()
+      }
+      const result = callback(
+        context({
+          feedCapture() {
+            throw new Error("sentinel source must not mutate colours")
+          },
+          queryWithSentinelOutcome(sequence) {
+            expect(sequence).toBe(query)
+            return { match: null, reason: "timeout", raw: "", rawBase64: "" }
+          },
+        }),
+      )
+      expect(result).toMatchObject({ pass: false, response: "", tests: [{ status: "test-failure" }] })
+    })
+
+    test(`${slot}: setter or control-read errors still attempt reset and propagate`, () => {
+      for (const failAt of [1, 2]) {
+        const seen: string[] = []
+        const failure = new Error("control read failed")
+        expect(() =>
+          callback(
+            context({
+              feedCapture(sequence) {
+                const index = seen.length
+                seen.push(sequence)
+                if (index === failAt) throw failure
+                return ""
+              },
+            }),
+          ),
+        ).toThrow(failure)
+        expect(seen).toEqual([...writes.slice(0, failAt + 1), reset])
+      }
+    })
+  }
+})
+
+/**
  * @failure A color-register count, protocol failure, or DA1 responsiveness was reported as Sixel geometry.
  * @level l0
  * @consumer XTSMGRAPHICS item-2 callbacks in headless and real-terminal collectors.
