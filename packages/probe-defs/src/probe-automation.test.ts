@@ -2046,11 +2046,17 @@ describe("partial probe automation candidates", () => {
     for (const id of ["extensions.osc30001-color-stack-push", "extensions.osc30101-color-stack-pop"]) {
       const fixture = colorStackFixture(undefined, undefined, undefined, { initialEmpty: true, stackWorks })
       const result = probe(id).lib!(fixture.ctx)
-      expect(result.observation).toMatchObject({ outcome: stackWorks ? "supported" : "unsupported", assertionType: "query_reply" })
+      expect(result.observation).toMatchObject({
+        outcome: stackWorks ? "supported" : "unsupported",
+        assertionType: "query_reply",
+      })
       expect(result.note).toContain("verified seeded current")
       expect(result.assertions).toMatchObject([{ kind: stackWorks ? "positive" : "negative" }])
       expect(result.criterionBranch).toBeUndefined()
-      const raw = JSON.parse(result.response!) as { fixture: { name: string; color: string }; trace: Array<{ write: string; response: string }> }
+      const raw = JSON.parse(result.response!) as {
+        fixture: { name: string; color: string }
+        trace: Array<{ write: string; response: string }>
+      }
       expect(raw.fixture).toEqual({ name: "verified seeded current", color: "rgb:aa/bb/cc" })
       expect(raw.trace[0]).toEqual({ write: "\x1b]10;?\x07", response: "" })
       expect(raw.trace.at(-2)).toEqual({ write: "\x1b]110\x07", response: "" })
@@ -2058,6 +2064,128 @@ describe("partial probe automation candidates", () => {
       expect(fixture.foreground()).toBeNull()
       expect(fixture.stackDepth()).toBe(0)
     }
+  })
+
+  test.each([
+    { name: "silent", seeded: "", setter: "", status: "test-todo" },
+    { name: "wrong value", seeded: "\x1b]10;rgb:00/00/00\x07", setter: "", status: "test-failure" },
+    { name: "wrong slot", seeded: "\x1b]11;rgb:aa/bb/cc\x07", setter: "", status: "test-failure" },
+    { name: "partial", seeded: "\x1b]10;rgb:aa/bb/cc", setter: "", status: "test-failure" },
+    { name: "extra", seeded: "extra\x1b]10;rgb:aa/bb/cc\x07", setter: "", status: "test-failure" },
+    {
+      name: "multiple",
+      seeded: "\x1b]10;rgb:aa/bb/cc\x07\x1b]10;rgb:aa/bb/cc\x07",
+      setter: "",
+      status: "test-failure",
+    },
+    { name: "setter acknowledgement", seeded: "\x1b]10;rgb:aa/bb/cc\x07", setter: "ack", status: "test-failure" },
+  ])("does not infer a stack effect from $name setup", ({ seeded, setter, status }) => {
+    for (const id of ["extensions.osc30001-color-stack-push", "extensions.osc30101-color-stack-pop"]) {
+      let queries = 0
+      const seen: string[] = []
+      const result = probe(id).lib!(
+        context({
+          feedCapture(sequence) {
+            seen.push(sequence)
+            if (sequence === "\x1b]10;?\x07") return ++queries === 2 ? seeded : ""
+            if (sequence === "\x1b]10;rgb:aa/bb/cc\x07") return setter
+            expect(sequence).toBe("\x1b]110\x07")
+            return ""
+          },
+        }),
+      )
+      expect(result).toMatchObject({ pass: false, tests: [{ status }] })
+      expect(result.observation).toBeUndefined()
+      expect(result.assertions).toBeUndefined()
+      expect(result.criterionBranch).toBe(status === "test-todo" ? "color-readback-review" : undefined)
+      expect(seen).toEqual([
+        "\x1b]10;?\x07",
+        "\x1b]10;rgb:aa/bb/cc\x07",
+        "\x1b]10;?\x07",
+        "\x1b]110\x07",
+        "\x1b]10;?\x07",
+      ])
+      expect(JSON.parse(result.response!)).toMatchObject({
+        originalRaw: "",
+        trace: expect.arrayContaining([
+          { write: "\x1b]10;?\x07", response: "" },
+          { write: "\x1b]10;?\x07", response: seeded },
+        ]),
+      })
+    }
+  })
+
+  test.each([
+    { name: "initial query", query: 1 },
+    { name: "setter", setter: true },
+    { name: "seed query", query: 2 },
+    { name: "changed query", query: 3 },
+    { name: "restored query", query: 4 },
+    { name: "reset", reset: true },
+    { name: "post-reset query", query: 5 },
+    { name: "setter and reset", setter: true, reset: true },
+    { name: "changed query and cleanup pop", query: 3, pop: true },
+  ] as const)("preserves seeded stack $name failures and cleanup", (row) => {
+    for (const id of ["extensions.osc30001-color-stack-push", "extensions.osc30101-color-stack-pop"]) {
+      const fixture = colorStackFixture(undefined, undefined, undefined, { initialEmpty: true })
+      const originalCapture = fixture.ctx.feedCapture.bind(fixture.ctx)
+      const seen: string[] = []
+      let queries = 0
+      fixture.ctx.feedCapture = (sequence) => {
+        seen.push(sequence)
+        const response = originalCapture(sequence)
+        if (sequence === "\x1b]10;?\x07" && ++queries === ("query" in row ? row.query : -1))
+          throw new Error(`${row.name} primary`)
+        if ("setter" in row && sequence === "\x1b]10;rgb:aa/bb/cc\x07") throw new Error("setter primary")
+        if ("reset" in row && sequence === "\x1b]110\x07") throw new Error("reset cleanup")
+        if ("pop" in row && sequence === "\x1b]30101\x1b\\") throw new Error("pop cleanup")
+        return response
+      }
+      const result = probe(id).lib!(fixture.ctx)
+      expect(result).toMatchObject({ pass: false, tests: [{ status: "test-failure" }] })
+      expect(result.observation).toBeUndefined()
+      expect(result.assertions).toBeUndefined()
+      expect(result.note).toContain("failed: Error:")
+      if (row.name === "initial query") {
+        expect(fixture.writes).toEqual([])
+        expect(result.response).toBeUndefined()
+      } else {
+        expect(seen.at(-2)).toBe("\x1b]110\x07")
+        expect(seen.at(-1)).toBe("\x1b]10;?\x07")
+        expect(fixture.foreground()).toBeNull()
+        expect(result.response).toContain("trace")
+      }
+      if (row.name === "setter and reset") {
+        expect(result.note).toContain("setter primary")
+        expect(result.note).toContain("reset cleanup")
+      }
+    }
+  })
+
+  test("an unexpected seeded primary survives a reset failure and still attempts post-reset read", () => {
+    const primary = "unexpected seeded setter failure"
+    const fixture = colorStackFixture(undefined, undefined, undefined, { initialEmpty: true })
+    const originalCapture = fixture.ctx.feedCapture.bind(fixture.ctx)
+    const seen: string[] = []
+    fixture.ctx.feedCapture = (sequence) => {
+      seen.push(sequence)
+      const response = originalCapture(sequence)
+      if (sequence === "\x1b]10;rgb:aa/bb/cc\x07") throw primary
+      if (sequence === "\x1b]110\x07") throw new Error("reset unavailable")
+      return response
+    }
+    let caught: unknown
+    try {
+      probe("extensions.osc30001-color-stack-push").lib!(fixture.ctx)
+    } catch (error) {
+      caught = error
+    }
+    expect(caught).toBeInstanceOf(AggregateError)
+    if (!(caught instanceof AggregateError)) throw new Error("expected primary and cleanup failures")
+    expect(caught.errors).toContain(primary)
+    expect(caught.message).toContain("reset unavailable")
+    expect(seen.at(-1)).toBe("\x1b]10;?\x07")
+    expect(fixture.foreground()).toBeNull()
   })
 
   test("OSC 30001/30101 probes verify color stack restore behavior", () => {

@@ -294,6 +294,22 @@ function sixelGeometryResult(
   }
 }
 
+// One non-ANSI current-colour control shared by initial-query and stack criteria.
+const seededCurrentColor = "rgb:aa/bb/cc"
+
+function seedColorReadback(capture: (write: string) => string, slot: string, pattern: RegExp) {
+  const setterRaw = capture(`\x1b]${slot};${seededCurrentColor}\x07`)
+  const seededRaw = capture(`\x1b]${slot};?\x07`)
+  const frame = pattern.exec(seededRaw)?.[0]
+  const color = frame?.slice(`\x1b]${slot};`.length).replace(/(?:\x07|\x1b\\)$/, "") ?? null
+  return {
+    setterRaw,
+    seededRaw,
+    color,
+    verified: setterRaw === "" && frame === seededRaw && color !== null && sameRgb(color, seededCurrentColor),
+  }
+}
+
 /** OSC color query probe — feedCapture + regex (termless), sentinel query (term). */
 function oscColorQueryProbe(id: string, oscCode: number, index?: number): ProbeDefinition {
   const slot = `${oscCode}${index === undefined ? "" : `;${index}`}`
@@ -315,9 +331,6 @@ function oscColorQueryProbe(id: string, oscCode: number, index?: number): ProbeD
             return oscReplyResult(raw, pattern.exec(raw)?.[0] ?? null, expected, prefix)
           }
 
-          // This non-ANSI colour tests the producer without inventing its initial value.
-          const seededColor = "rgb:aa/bb/cc"
-          const setter = `\x1b]${slot};${seededColor}\x07`
           const reset = `\x1b]${oscCode + 100}${index === undefined ? "" : `;${index}`}\x07`
           const controls: { write: string; response: string }[] = []
           const capture = (write: string) => {
@@ -325,28 +338,17 @@ function oscColorQueryProbe(id: string, oscCode: number, index?: number): ProbeD
             controls.push({ write, response })
             return response
           }
-          let setterRaw: string
-          let seededRaw: string
+          let control: ReturnType<typeof seedColorReadback>
           let resetRaw: string
           try {
-            setterRaw = capture(setter)
-            seededRaw = capture(querySeq)
+            control = seedColorReadback(capture, slot, pattern)
           } finally {
             // The setter can mutate before throwing; always attempt its reset.
             resetRaw = capture(reset)
           }
           const restoredRaw = capture(querySeq)
           const state = { query: querySeq, initialRaw: raw, controls }
-          const frame = pattern.exec(seededRaw)?.[0]
-          const color = frame?.slice(`\x1b]${slot};`.length).replace(/(?:\x07|\x1b\\)$/, "")
-          if (
-            setterRaw === "" &&
-            resetRaw === "" &&
-            restoredRaw === "" &&
-            frame === seededRaw &&
-            color &&
-            sameRgb(color, seededColor)
-          ) {
+          if (control.verified && resetRaw === "" && restoredRaw === "") {
             return colorReadbackReviewResult(
               `OSC ${slot} initial/current colour is embedder-owned: initial query and reset query answered nothing; seeded query control cannot establish the initial value`,
               state,
@@ -820,10 +822,26 @@ function colorStackProbe(): ProbeDefinition["lib"] {
     let result: ProbeCallbackResult | undefined
     let primaryError: unknown
     let originalRaw: string | undefined
+    let seedAttempted = false
+    let fixtureVerified = false
+    let comparison: { before: string; changed: string; restored: string } | undefined
+    const trace: Array<{ write: string; response?: string; error?: string }> = []
+    const capture = (write: string) => {
+      const entry: (typeof trace)[number] = { write }
+      trace.push(entry)
+      try {
+        const response = ctx.feedCapture(write)
+        entry.response = response
+        return response
+      } catch (error) {
+        entry.error = error instanceof Error ? `${error.name}: ${error.message}` : String(error)
+        throw error
+      }
+    }
     const queryForeground = (action: string): string | ProbeCallbackResult | null => {
       let response: string
       try {
-        response = ctx.feedCapture(foregroundQuery)
+        response = seedAttempted ? capture(foregroundQuery) : ctx.feedCapture(foregroundQuery)
       } catch (error) {
         primaryError = error
         return colorStackError("query", action, error)
@@ -833,22 +851,17 @@ function colorStackProbe(): ProbeDefinition["lib"] {
     }
     const feed = (sequence: string, action: string): ProbeCallbackResult | undefined => {
       try {
-        ctx.feed(sequence)
+        if (seedAttempted) capture(sequence)
+        else ctx.feed(sequence)
         return undefined
       } catch (error) {
         primaryError = error
         return colorStackError("behavior", action, error)
       }
     }
-    const before = queryForeground("Original foreground query")
+    let before = queryForeground("Original foreground query")
     if (before !== null && typeof before !== "string") return before
-    if (!before) {
-      if (originalRaw === "") {
-        return colorReadbackReviewResult(
-          "OSC 10 foreground query before the colour-stack push answered nothing, so the push and pop cannot be read back",
-          { query: foregroundQuery, originalRaw },
-        )
-      }
+    if (!before && originalRaw !== "") {
       return {
         pass: false,
         response: JSON.stringify({ query: foregroundQuery, originalRaw }),
@@ -858,8 +871,45 @@ function colorStackProbe(): ProbeDefinition["lib"] {
     }
     let pushed = false
     let unexpectedlyFailed = false
-    const requested = probeForeground(before)
     try {
+      if (!before) {
+        trace.push({ write: foregroundQuery, response: originalRaw })
+        // The setter can mutate and then throw: cleanup ownership precedes the attempt.
+        seedAttempted = true
+        let setupKind: "query" | "behavior" = "behavior"
+        let setupAction = "Fixture foreground setter"
+        let control: ReturnType<typeof seedColorReadback>
+        try {
+          control = seedColorReadback(
+            (write) => {
+              setupKind = write === foregroundQuery ? "query" : "behavior"
+              setupAction = write === foregroundQuery ? "Fixture foreground query" : "Fixture foreground setter"
+              return capture(write)
+            },
+            "10",
+            foregroundReply,
+          )
+        } catch (error) {
+          primaryError = error
+          result = colorStackError(setupKind, setupAction, error)
+          return result
+        }
+        if (!control.verified || control.color === null) {
+          if (control.setterRaw === "" && control.seededRaw === "") {
+            result = colorReadbackReviewResult(
+              "OSC 10 initial and seeded foreground queries answered nothing, so the colour-stack effect has no readback",
+              { query: foregroundQuery, originalRaw },
+            )
+          } else {
+            const note = "Current-colour fixture setter or exact seeded readback was not established"
+            result = { pass: false, note, tests: [{ id: "criterion", status: "test-failure", reason: note }] }
+          }
+          return result
+        }
+        before = control.color
+        fixtureVerified = true
+      }
+      const requested = probeForeground(before)
       result = feed(colorPush, "Color-stack push")
       if (result !== undefined) return result
       pushed = true
@@ -878,14 +928,16 @@ function colorStackProbe(): ProbeDefinition["lib"] {
         result = restored
         return result
       }
-      result =
-        !changed || !restored
-          ? {
-              pass: false,
-              note: "No OSC 10 reply after changing or popping color",
-              tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }],
-            }
-          : colorStackResult(before, requested, changed, restored)
+      if (!changed || !restored) {
+        result = {
+          pass: false,
+          note: "No OSC 10 reply after changing or popping color",
+          tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }],
+        }
+      } else {
+        comparison = { before, changed, restored }
+        result = colorStackResult(before, requested, changed, restored)
+      }
       return result
     } catch (error) {
       unexpectedlyFailed = true
@@ -894,14 +946,31 @@ function colorStackProbe(): ProbeDefinition["lib"] {
     } finally {
       const cleanupFailures: Array<{ action: string; error: unknown }> = []
       try {
-        if (pushed) ctx.feed(colorPop)
+        if (pushed) {
+          if (seedAttempted) capture(colorPop)
+          else ctx.feed(colorPop)
+        }
       } catch (error) {
         cleanupFailures.push({ action: "Color-stack cleanup pop", error })
       } finally {
-        try {
-          ctx.feed(`\x1b]10;${before}\x07`)
-        } catch (error) {
-          cleanupFailures.push({ action: "Foreground cleanup restore", error })
+        if (seedAttempted) {
+          try {
+            capture("\x1b]110\x07")
+          } catch (error) {
+            cleanupFailures.push({ action: "Foreground cleanup reset", error })
+          } finally {
+            try {
+              capture(foregroundQuery)
+            } catch (error) {
+              cleanupFailures.push({ action: "Foreground cleanup query", error })
+            }
+          }
+        } else {
+          try {
+            ctx.feed(`\x1b]10;${before}\x07`)
+          } catch (error) {
+            cleanupFailures.push({ action: "Foreground cleanup restore", error })
+          }
         }
       }
       if (cleanupFailures.length > 0) {
@@ -938,6 +1007,21 @@ function colorStackProbe(): ProbeDefinition["lib"] {
           delete result.response
           delete result.assertions
         }
+      }
+      if (seedAttempted && result) {
+        const response = JSON.stringify({
+          query: foregroundQuery,
+          originalRaw,
+          ...(comparison ?? {}),
+          ...(fixtureVerified && { fixture: { name: "verified seeded current", color: seededCurrentColor } }),
+          trace,
+        })
+        result.response = response
+        if (fixtureVerified) {
+          result.note = `${result.note ?? "Stack fixture"}; measured on verified seeded current ${seededCurrentColor}`
+          if (result.observation) result.observation.note = result.note
+        }
+        for (const assertion of result.assertions ?? []) assertion.observed = response
       }
     }
   }
