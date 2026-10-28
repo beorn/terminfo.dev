@@ -145,6 +145,39 @@ const setup = (
 // Existing final-run SHA review tests cannot catch a circular pre-seal binding or status changes
 // authorized by a different capture. This exercises the actual execution helper and exact bytes.
 describe("immutable pre-seal capture binding", () => {
+  // Headless intent omits version; an explicit conflict remains binding even for the same run.
+  // Existing fixtures always supplied a matching version, hiding the production collector shape.
+  it.each([
+    { version: undefined, expected: "unsupported" },
+    { version: "0.7.0", expected: "test-failure" },
+  ])("checks an optional intended version ($version)", ({ version, expected }) => {
+    const { draft, artifact, decision } = setup(
+      JSON.stringify({ faint: false }),
+      { runId: "headless-intent", startedAt: "2026-10-27T11:00:00.000Z" },
+      (draft) => {
+        if (version === undefined) delete draft.intendedSubject.version
+        else draft.intendedSubject.version = version
+      },
+    )
+    decision.decision = "unsupported"
+    applyCaptureDecision(draft, JSON.stringify(decision), "2026-10-27T11:01:00.000Z")
+    expect(draft.results[0]!.status).toBe(expected)
+    expect(draft.rawReplies[artifact.rawReplyRef]).toBe(artifact.source)
+    if (expected === "test-failure") expect(draft.results[0]!.reason).toContain("versions differ")
+    const manifest = {
+      schemaVersion: 4 as const,
+      probeHash: draft.probeHash,
+      adapterVersion: "3",
+      catalogIds: ["sgr.faint"],
+      probes: { term: [], lib: ["sgr.faint"], mux: [] },
+    }
+    const run = expected === "unsupported" ? sealRunDraft(draft) : draft
+    expect(
+      parseRun("intent.json", JSON.stringify(run), manifest.catalogIds, new Map([[manifest.probeHash, manifest]]), {
+        mode: "capture",
+      }).results?.[0]?.status,
+    ).toBe(expected)
+  })
   // FINAL B1/B2/B4: existing cases intentionally reject a different run and never attempt to
   // reuse a source-negative decision. Exercise the real applier with retained state, not a new seam.
   it.each(["unsupported", "untestable"])(

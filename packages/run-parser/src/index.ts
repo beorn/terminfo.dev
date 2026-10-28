@@ -987,7 +987,10 @@ function validateCaptureBinding(
     ) {
       differences.add("subject")
     }
-    if (decision.scope.versions[0] !== subject?.version || draft.intendedSubject.version !== subject?.version) {
+    if (
+      decision.scope.versions[0] !== subject?.version ||
+      (draft.intendedSubject.version !== undefined && draft.intendedSubject.version !== subject?.version)
+    ) {
       differences.add("versions")
     }
     if (decision.scope.suites[0] !== draft.probeHash || draft.probeHash !== draft.suiteId) differences.add("suite")
