@@ -34,7 +34,7 @@ function reply(bytes: string) {
 }
 
 describe("TTY transaction replies", () => {
-  it("tests a scoped owner before nested queries and releases it with the operation", async () => {
+  it("checks a scoped owner before nested queries and releases it with the operation", async () => {
     const failure = new Error("attachment continuity lost")
     const writes: string[] = []
     let revoked = false
@@ -299,6 +299,26 @@ describe("TTY transaction replies", () => {
       sentinel: { graceMs: 60 },
     })
     expect(Date.now() - started).toBeGreaterThanOrEqual(50)
+    expect(process.stdin.listenerCount("data")).toBe(listenersBefore)
+  })
+
+  it("ends a sentinel read at the absolute deadline however often the terminal keeps writing", async () => {
+    const listenersBefore = process.stdin.listenerCount("data")
+    const started = Date.now()
+    const ticks = setInterval(() => {
+      reply("\x1b[?1;2c")
+      if (Date.now() - started >= 320) clearInterval(ticks)
+    }, 50)
+    process.stdout.write = (() => {
+      reply("\x1b[?1;2c")
+      return true
+    }) as typeof process.stdout.write
+    const outcome = await queryWithSentinelOutcome("\x1b[6n", /\x1b\[(\d+);(\d+)R/, 300, 100)
+    const elapsed = Date.now() - started
+    clearInterval(ticks)
+    expect(outcome).toMatchObject({ match: null, reason: "sentinel", sentinel: { graceMs: 100 } })
+    expect(outcome.sentinel?.atMs).toBeLessThanOrEqual(400)
+    expect(elapsed).toBeLessThan(300 + 100)
     expect(process.stdin.listenerCount("data")).toBe(listenersBefore)
   })
 
