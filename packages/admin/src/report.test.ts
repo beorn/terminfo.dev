@@ -322,6 +322,7 @@ test("report renders reviewed outcomes and missing cells without promoting legac
       rawRun: string,
       deferrals: unknown[],
       context = { kind: "term", id: "kitty", os: "macos" },
+      admittedPath?: string,
     ) => {
       const directory = join(root, name)
       mkdirSync(directory)
@@ -339,7 +340,12 @@ test("report renders reviewed outcomes and missing cells without promoting legac
           complete: false,
           errors: [],
           contexts: [
-            { context, status: "classified", rawRun },
+            {
+              context,
+              status: admittedPath ? "admitted" : "classified",
+              rawRun,
+              ...(admittedPath && { admittedPath }),
+            },
             { context: { kind: "term", id: "ghostty", os: "linux" }, status: "not-started" },
           ],
         }),
@@ -448,6 +454,39 @@ test("report renders reviewed outcomes and missing cells without promoting legac
     const published = scoreboard()
     expect(published.status, published.stderr).toBe(0)
     expect(published.stdout).toContain("kitty/macos | published")
+    // A real pass points to both its private capture and the admitted selected bytes; neither path is synthesized.
+    const admittedDraftPath = join(root, "admitted-capture.draft.json")
+    const { sealedAt: _admittedSeal, ...admittedDraft } = completeRun
+    writeFileSync(admittedDraftPath, JSON.stringify(admittedDraft))
+    const admittedPass = passPath("admitted-pass", snapshot.probeHash, admittedDraftPath, [], undefined, runPath)
+    const admittedReport = spawnSync(process.execPath, [join(root, "run.ts"), admittedPass], {
+      cwd: root,
+      encoding: "utf8",
+      timeout: 15_000,
+    })
+    expect(admittedReport.status, admittedReport.stderr).toBe(0)
+    const admittedRow = admittedReport.stdout.split("\n").find((line) => line.startsWith("| kitty/macos |"))
+    expect(admittedRow).toContain(`| published | ${snapshot.probeHash}`)
+    expect(admittedRow).toContain(runPath)
+    expect(admittedRow).toContain(admittedDraftPath)
+    expect(admittedRow).toContain(createHash("sha256").update(completeBytes).digest("hex"))
+    expect(admittedRow).toContain("reviewed-pass; publication proven")
+    const sealedPass = passPath("sealed-pass", snapshot.probeHash, runPath, [], undefined, runPath)
+    const sealedReport = spawnSync(process.execPath, [join(root, "run.ts"), sealedPass], {
+      cwd: root,
+      encoding: "utf8",
+      timeout: 15_000,
+    })
+    expect(sealedReport.status, sealedReport.stderr).toBe(0)
+    expect(sealedReport.stdout).toContain(`kitty/macos | published | ${snapshot.probeHash}`)
+    const foreignAdmission = passPath("foreign-admission", snapshot.probeHash, draftPath, [], undefined, runPath)
+    const foreignReport = spawnSync(process.execPath, [join(root, "run.ts"), foreignAdmission], {
+      cwd: root,
+      encoding: "utf8",
+      timeout: 15_000,
+    })
+    expect(foreignReport.status).not.toBe(0)
+    expect(foreignReport.stderr).toContain("does not identify captured run")
     const featuresPath = join(root, "content", "features.json")
     const featuresBytes = readFileSync(featuresPath, "utf8")
     writeFileSync(featuresPath, `${featuresBytes}\n`)

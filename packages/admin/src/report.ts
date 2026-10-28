@@ -7,6 +7,7 @@ import { createHash } from "node:crypto"
 import { fileURLToPath } from "node:url"
 import { loadFeatures } from "@terminfo/catalog"
 import { parseJsonStrict, parseRun } from "@terminfo/run-parser"
+import { PROBE_STATUSES } from "@terminfo/probe-defs"
 import { loadCurrentResults } from "../../../docs/data/current-results.ts"
 import { fullContextCensus } from "../../../docs/data/full-census.ts"
 import { isStaleRelation } from "../../../docs/data/release-scope.ts"
@@ -45,13 +46,16 @@ function rawScoreboard(paths: readonly string[], contentDir: string): string {
       frozenAt: string
       state: string
       selected: boolean
+      admitted: boolean
     }>
   >()
   type PassContext = { pass: string; frozenAt: string; suite: string; sourceRevision: string; context?: string }
-  const append = (context: string, row: NonNullable<ReturnType<typeof rows.get>>[number]) => {
+  type EvidenceRow = NonNullable<ReturnType<typeof rows.get>>[number]
+  const append = (context: string, row: EvidenceRow): EvidenceRow => {
     rows.set(context, [...(rows.get(context) ?? []), row])
+    return row
   }
-  function read(input: string, pass?: PassContext): void {
+  function read(input: string, pass?: PassContext): EvidenceRow | undefined {
     const path = statSync(input).isDirectory() ? join(input, "pass.json") : input
     const bytes = readFileSync(path, "utf8")
     const header: unknown = parseJsonStrict(path, bytes)
@@ -102,10 +106,21 @@ function rawScoreboard(paths: readonly string[], contentDir: string): string {
         if (!context) throw new Error(`${path}: pass names a context outside the canonical census`)
         const reason = deferred.get(context.context)
         if (reason === undefined && typeof value.rawRun === "string") {
-          read(value.rawRun, { ...identity, context: context.context })
+          const declared = { ...identity, context: context.context }
+          const capture = read(value.rawRun, declared)
+          if (value.status === "admitted" && typeof value.admittedPath === "string") {
+            const admitted = read(value.admittedPath, declared)
+            if (!capture || !admitted || capture.runId !== admitted.runId || capture.suite !== admitted.suite) {
+              throw new Error(
+                `${path}: admitted path ${value.admittedPath} does not identify captured run ${value.rawRun}`,
+              )
+            }
+            admitted.admitted = true
+          }
         } else {
           append(context.context, {
             selected: false,
+            admitted: false,
             pass: identity.pass,
             frozenAt: identity.frozenAt,
             state: reason ? "deferred" : "to-measure",
@@ -162,15 +177,14 @@ function rawScoreboard(paths: readonly string[], contentDir: string): string {
       if (!run.results) throw new Error(`${path}: raw capture has no recorded results`)
       const totals: Record<string, number> = {}
       for (const result of run.results) totals[result.status] = (totals[result.status] ?? 0) + 1
-      counts = ["supported", "unsupported", "test-failure", "test-todo"]
-        .map((status) => `${status}=${totals[status] ?? 0}`)
-        .join(" ")
+      counts = PROBE_STATUSES.map((status) => `${status}=${totals[status] ?? 0}`).join(" ")
     } catch (error) {
       // Retain the named evidence row when its declaration is absent or invalid; it proves no verdict.
       detail += `; ${error instanceof Error ? error.message : String(error)}`
     }
-    append(pass?.context ?? context.context, {
+    return append(pass?.context ?? context.context, {
       selected: false,
+      admitted: false,
       pass: pass?.pass ?? "no pass",
       frozenAt: pass?.frozenAt ?? "",
       state: "measured-unpublished",
@@ -198,6 +212,7 @@ function rawScoreboard(paths: readonly string[], contentDir: string): string {
   const provenLive = head === live && !dirtyContent
   const { projection } = loadCurrentResults(contentDir)
   for (const selected of Object.values(projection.current)) {
+    if (selected.measuredAt > observedAt) observedAt = selected.measuredAt
     const context = census.contexts.find(
       (row) =>
         row.kind === selected.subject.kind &&
@@ -208,21 +223,23 @@ function rawScoreboard(paths: readonly string[], contentDir: string): string {
     const publication = provenLive
       ? `selected at ${head}, live proven`
       : `selected at ${head}, live unproven (origin/live ${live ?? "absent"}${dirtyContent ? "; content differs from HEAD" : ""})`
-    const detail = `${publication}; ${selected.complete ? "reviewed-pass-awaiting-publish" : "reviewed-fail; recorded FAIL/TODO remains"}`
+    const detail = `${publication}; ${selected.complete ? (provenLive ? "reviewed-pass; publication proven" : "reviewed-pass-awaiting-publish") : "reviewed-fail; recorded FAIL/TODO remains"}`
     const state = isStaleRelation(selected.suiteRelation)
       ? "stale"
       : provenLive && selected.complete
         ? "published"
         : "measured-unpublished"
-    const matching = rows
-      .get(context.context)
-      ?.find((row) => row.runId === selected.runId && row.sha256 === selected.sha256)
-    if (matching) {
-      matching.state = state
-      matching.detail += `; ${detail}; ${selected.suiteFreshness}`
+    const matching =
+      rows.get(context.context)?.filter((row) => row.runId === selected.runId && row.sha256 === selected.sha256) ?? []
+    if (matching.length > 0) {
+      for (const row of matching) {
+        row.state = state
+        row.detail = `${detail}; ${selected.suiteFreshness}`
+      }
     } else {
       append(context.context, {
         selected: true,
+        admitted: false,
         pass: "no pass",
         frozenAt: "",
         state,
@@ -241,8 +258,8 @@ function rawScoreboard(paths: readonly string[], contentDir: string): string {
   const lines = [
     "Terminal context scoreboard — Not a pass, not an admission",
     `Content revision ${head}; origin/live ${live ?? "absent"}; provenLive=${provenLive}${dirtyContent ? "; content differs from HEAD" : ""}`,
-    "Raw observations remain baseline/unreviewed; no admission or publication is inferred.",
-    `Observation: ${observedAt || "no capture timestamp recorded"}; owner @dev/10. Explicit inputs: ${paths.map(escape).join(", ")}`,
+    "Unselected raw observations remain baseline/unreviewed; admission and publication use recorded evidence only.",
+    `Observation: ${observedAt || "no capture timestamp recorded"}; owner not recorded in inputs. Explicit inputs: ${paths.map(escape).join(", ")}`,
     ...projection.exclusions.map((row) => `Excluded run ${row.runId}: ${escape(row.reason)}; ${escape(row.path)}`),
     "| Context | State | Pass | Run / suite | Counts / evidence |",
     "| --- | --- | --- | --- | --- |",
@@ -253,6 +270,7 @@ function rawScoreboard(paths: readonly string[], contentDir: string): string {
       ?.sort(
         (left, right) =>
           right.frozenAt.localeCompare(left.frozenAt) ||
+          Number(right.admitted) - Number(left.admitted) ||
           Number(left.selected) - Number(right.selected) ||
           left.source.localeCompare(right.source) ||
           left.runId.localeCompare(right.runId),
