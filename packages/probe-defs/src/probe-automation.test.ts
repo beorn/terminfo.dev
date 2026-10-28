@@ -128,6 +128,12 @@ describe("initial colour context review", () => {
     ["extensions.osc4-palette", "4;0", "104;0"],
   ] as const
 
+  const resetIds = {
+    "110": "extensions.osc110-reset-fg",
+    "111": "extensions.osc111-reset-bg",
+    "112": "extensions.osc112-reset-cursor",
+    "104;0": "extensions.osc104-reset-palette",
+  }
   for (const [id, slot, resetCode] of cases) {
     const query = `\x1b]${slot};?\x07`
     const setter = `\x1b]${slot};rgb:aa/bb/cc\x07`
@@ -140,12 +146,6 @@ describe("initial colour context review", () => {
     // C1: a qualified DA1 channel cannot establish an embedder-owned default value.
     // Existing positive-control cases omit the sentinel member and miss its early negative.
     test(`${slot}: qualified silence verifies a seed before initial/default review`, () => {
-      const resetIds = {
-        "110": "extensions.osc110-reset-fg",
-        "111": "extensions.osc111-reset-bg",
-        "112": "extensions.osc112-reset-cursor",
-        "104;0": "extensions.osc104-reset-palette",
-      }
       for (const run of [callback, probe(resetIds[resetCode]).lib!]) {
         const seen: string[] = []
         let current = ""
@@ -177,12 +177,6 @@ describe("initial colour context review", () => {
     })
 
     test(`${slot}: a reset that leaves the verified seed is a measured negative`, () => {
-      const resetIds = {
-        "110": "extensions.osc110-reset-fg",
-        "111": "extensions.osc111-reset-bg",
-        "112": "extensions.osc112-reset-cursor",
-        "104;0": "extensions.osc104-reset-palette",
-      }
       let current = ""
       const result = probe(resetIds[resetCode]).lib!(
         context({
@@ -292,23 +286,48 @@ describe("initial colour context review", () => {
       expect(result).toMatchObject({ pass: false, response: "", tests: [{ status: "test-failure" }] })
     })
 
-    test(`${slot}: setter or control-read errors still attempt reset and propagate`, () => {
-      for (const failAt of [1, 2]) {
+    // C5: an observable original still needs cleanup if the setter mutates then throws.
+    test(`${slot}: reset cleanup preserves an observed-original setter error`, () => {
+      for (const cleanupFails of [false, true]) {
         const seen: string[] = []
-        const failure = new Error("control read failed")
         expect(() =>
-          callback(
+          probe(resetIds[resetCode]).lib!(
             context({
-              feedCapture(sequence) {
-                const index = seen.length
+              feedCapture: () => seeded,
+              feed(sequence) {
                 seen.push(sequence)
-                if (index === failAt) throw failure
-                return ""
+                if (sequence !== reset) throw new Error("original setter failed")
+                if (cleanupFails) throw new Error("reset also failed")
               },
             }),
           ),
-        ).toThrow(failure)
-        expect(seen).toEqual([...writes.slice(0, failAt + 1), reset])
+        ).toThrow("original setter failed")
+        expect(seen).toHaveLength(2)
+        expect(seen.at(-1)).toBe(reset)
+      }
+    })
+
+    test(`${slot}: setter or control-read errors still attempt reset and propagate`, () => {
+      for (const failAt of [1, 2]) {
+        for (const cleanupFails of [false, true]) {
+          const seen: string[] = []
+          const failure = new Error("control read failed")
+          const cleanup = new Error("reset cleanup failed")
+          expect(() =>
+            callback(
+              context({
+                feedCapture(sequence) {
+                  const index = seen.length
+                  seen.push(sequence)
+                  if (cleanupFails && sequence === reset) throw cleanup
+                  if (index === failAt) throw failure
+                  return ""
+                },
+              }),
+            ),
+          ).toThrow(failure.message)
+          expect(seen).toEqual([...writes.slice(0, failAt + 1), reset])
+        }
       }
     })
   }

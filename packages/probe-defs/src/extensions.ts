@@ -310,6 +310,32 @@ function seedColorReadback(capture: (write: string) => string, slot: string, pat
   }
 }
 
+/** A disposable seed owns its reset even when setting or reading it throws. */
+function seedColorReadbackAndReset(capture: (write: string) => string, slot: string, pattern: RegExp, reset: string) {
+  let control: ReturnType<typeof seedColorReadback>
+  let resetRaw: string
+  let primary: { error: unknown } | undefined
+  try {
+    control = seedColorReadback(capture, slot, pattern)
+  } catch (error) {
+    primary = { error }
+    throw error
+  } finally {
+    try {
+      resetRaw = capture(reset)
+    } catch (cleanup) {
+      if (primary) {
+        const message = primary.error instanceof Error ? primary.error.message : String(primary.error)
+        throw new AggregateError([primary.error, cleanup], `${message}; colour reset cleanup failed`, {
+          cause: primary.error,
+        })
+      }
+      throw cleanup
+    }
+  }
+  return { control, resetRaw }
+}
+
 /** OSC color query probe — feedCapture + regex (termless), sentinel query (term). */
 function oscColorQueryProbe(id: string, oscCode: number, index?: number): ProbeDefinition {
   const slot = `${oscCode}${index === undefined ? "" : `;${index}`}`
@@ -341,14 +367,7 @@ function oscColorQueryProbe(id: string, oscCode: number, index?: number): ProbeD
             controls.push({ write, response })
             return response
           }
-          let control: ReturnType<typeof seedColorReadback>
-          let resetRaw: string
-          try {
-            control = seedColorReadback(capture, slot, pattern)
-          } finally {
-            // The setter can mutate before throwing; always attempt its reset.
-            resetRaw = capture(reset)
-          }
+          const { control, resetRaw } = seedColorReadbackAndReset(capture, slot, pattern, reset)
           const restoredRaw = capture(querySeq)
           const state = { query: querySeq, initialRaw: raw, controls }
           if (control.verified && resetRaw === "" && restoredRaw === "") {
@@ -524,13 +543,12 @@ function colorResetProbe(setCode: number, resetCode: number, index?: number): Pr
           return response
         }
         const reset = `\x1b]${resetCode}${index === undefined ? "" : `;${index}`}\x07`
-        let control: ReturnType<typeof seedColorReadback>
-        let resetRaw: string
-        try {
-          control = seedColorReadback(capture, `${setCode}${index === undefined ? "" : `;${index}`}`, replyPattern)
-        } finally {
-          resetRaw = capture(reset)
-        }
+        const { control, resetRaw } = seedColorReadbackAndReset(
+          capture,
+          `${setCode}${index === undefined ? "" : `;${index}`}`,
+          replyPattern,
+          reset,
+        )
         const restoredRaw = capture(query)
         const response = JSON.stringify({ query, originalRaw, controls })
         if (control.verified && resetRaw === "" && restoredRaw === "") {
@@ -556,6 +574,12 @@ function colorResetProbe(setCode: number, resetCode: number, index?: number): Pr
           }
         }
         if (silence) return silence
+        if (control.setterRaw === "" && control.seededRaw === "" && resetRaw === "" && restoredRaw === "") {
+          return colorReadbackReviewResult(
+            `OSC ${setCode} initial and seeded queries answered nothing, so OSC ${resetCode} reset readback needs independent review`,
+            { query, originalRaw, controls },
+          )
+        }
         return {
           ...oscReplyResult(originalRaw, null, `OSC ${setCode} color before reset`, new RegExp(`\\x1b\\]${setCode};`)),
           response,
@@ -565,9 +589,10 @@ function colorResetProbe(setCode: number, resetCode: number, index?: number): Pr
     }
     const requested = probeForeground(original)
     let mustReset = false
+    let primary: { error: unknown } | undefined
     try {
-      ctx.feed(`\x1b]${setCode};${indexPart}${requested}\x07`)
       mustReset = true
+      ctx.feed(`\x1b]${setCode};${indexPart}${requested}\x07`)
       const changedRaw = ctx.feedCapture(query)
       const changed = replyPattern.exec(changedRaw)?.[1]
       ctx.feed(`\x1b]${resetCode}${index === undefined ? "" : `;${index}`}\x07`)
@@ -604,8 +629,23 @@ function colorResetProbe(setCode: number, resetCode: number, index?: number): Pr
           },
         ],
       }
+    } catch (error) {
+      primary = { error }
+      throw error
     } finally {
-      if (mustReset) ctx.feed(`\x1b]${resetCode}${index === undefined ? "" : `;${index}`}\x07`)
+      if (mustReset) {
+        try {
+          ctx.feed(`\x1b]${resetCode}${index === undefined ? "" : `;${index}`}\x07`)
+        } catch (cleanup) {
+          if (primary) {
+            const message = primary.error instanceof Error ? primary.error.message : String(primary.error)
+            throw new AggregateError([primary.error, cleanup], `${message}; colour reset cleanup failed`, {
+              cause: primary.error,
+            })
+          }
+          throw cleanup
+        }
+      }
     }
   }
 }
