@@ -1,6 +1,7 @@
 import type { ProbeDefinition, ProbeCallbackResult, TerminalQueryOutcome } from "./types.ts"
 import {
   REPLY_AFTER_SENTINEL_NOTE,
+  alacrittyHostRecipeResult,
   parserStateResult,
   probe,
   replyFrame,
@@ -145,15 +146,30 @@ function deviceOutcomeResult(spec: DeviceReply, outcome: TerminalQueryOutcome): 
 
 function deviceQuery(spec: DeviceReply): ProbeDefinition {
   const responsePattern = answerPattern(spec)
+  const hostPixels = spec.query === "\x1b[14t"
   const definition = probe(
     spec.id,
     (ctx) => {
       // DA1 cannot be its own sentinel, so primary DA1 keeps the capture, as live keeps its direct query.
       if (!spec.direct && ctx.queryWithSentinelOutcome) {
-        return deviceOutcomeResult(spec, ctx.queryWithSentinelOutcome(spec.query, responsePattern))
+        const outcome = ctx.queryWithSentinelOutcome(spec.query, responsePattern)
+        const result = deviceOutcomeResult(spec, outcome)
+        return hostPixels
+          ? alacrittyHostRecipeResult(
+              ctx,
+              result,
+              "text-area-size",
+              "pixel-geometry",
+              spec.query,
+              sentinelSilenceResult(outcome, spec.expected) !== null,
+            )
+          : result
       }
       const raw = ctx.feedCapture(spec.query)
-      return deviceReplyResult(spec, raw, responsePattern.exec(raw)?.[0] ?? null, "sentinel")
+      const result = deviceReplyResult(spec, raw, responsePattern.exec(raw)?.[0] ?? null, "sentinel")
+      return hostPixels
+        ? alacrittyHostRecipeResult(ctx, result, "text-area-size", "pixel-geometry", spec.query, raw === "")
+        : result
     },
     async (ctx) => {
       // Primary DA1 answers its own direct query; all other device queries use DA1 as a sentinel.
@@ -164,7 +180,14 @@ function deviceQuery(spec: DeviceReply): ProbeDefinition {
     },
     "query_reply",
   )
-  return { ...definition, termWrites: "query", libAssertionType: "query_reply" }
+  return {
+    ...definition,
+    termWrites: "query",
+    libAssertionType: "query_reply",
+    ...(hostPixels && {
+      libHostRecipes: [{ recipe: "text-area-size" as const, query: spec.query, missing: ["pixel-geometry" as const] }],
+    }),
+  }
 }
 
 const DECRQSS_SGR: DeviceReply = {

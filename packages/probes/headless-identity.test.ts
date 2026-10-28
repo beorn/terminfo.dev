@@ -479,6 +479,32 @@ function runReplyDecision(mode: string) {
         identity.runtimeFormat = "wasm";
         identity.loadedBinary = {path:"vendor/termless/engine.wasm",sha256:digest()};
       }
+      // N1/N2: the comparer consumes measured native custody, not a native library load.
+      // Keep the real imported adapter/Git fixture; alter only the engine evidence under comparison.
+      if (mode.startsWith("native-")) {
+        const path = join(root,"engine.node");
+        writeFileSync(path,"fixture native engine bytes");
+        const digest = () => createHash("sha256").update(readFileSync(path)).digest("hex");
+        declaration.engine = {kind:"native",sha256:digest()};
+        identity.kind = "native";
+        delete identity.runtimeFormat;
+        delete identity.integrity;
+        identity.loadedBinary = {path:"vendor/termless/engine.node",sha256:digest()};
+        identity.provenance = {sha256:digest(),sourceCommit:identity.termlessRevision,
+          buildHash:"fixture-build",toolchain:"fixture",lockSha256:"1".repeat(64)};
+        if (mode === "native-drift") {
+          writeFileSync(path,"different native engine bytes, same version");
+          identity.loadedBinary.sha256 = digest();
+          identity.provenance.sha256 = digest();
+        }
+        if (mode === "native-js") { identity.kind = "js"; identity.runtimeFormat = "js"; }
+        if (mode === "native-wasm") { identity.kind = "js"; identity.runtimeFormat = "wasm"; }
+        if (mode === "native-missing-binary") delete identity.loadedBinary;
+        if (mode === "native-missing-digest") delete identity.loadedBinary.sha256;
+        if (mode === "native-empty-digests") { declaration.engine.sha256 = ""; identity.loadedBinary.sha256 = ""; }
+        if (mode === "native-adapter") writeFileSync(entry,readFileSync(entry,"utf8")+"\\n// changed native adapter, same versions\\n");
+        if (mode === "native-entry") declaration.adapterSources = [{path:"packages/vt100/package.json",blobOid:git(adapterRoot,"hash-object","packages/vt100/package.json")}];
+      }
       if (mode === "entry") declaration.adapterSources = [];
       if (mode === "outside") declaration.adapterSources.push({path:"../vterm/packages/vt100/src/index.ts",blobOid:git(engineRoot,"hash-object","packages/vt100/src/index.ts")});
       if (mode === "dist") {
@@ -506,6 +532,15 @@ test.each([
   ["registry-drift", false, "lockIntegrity"],
   ["wasm-match", true, "bound to its loaded source"],
   ["wasm-drift", false, "sha256"],
+  ["native-match", true, "bound to its loaded source"],
+  ["native-drift", false, "sha256"],
+  ["native-js", false, "native"],
+  ["native-wasm", false, "native"],
+  ["native-missing-binary", false, "sha256"],
+  ["native-missing-digest", false, "sha256"],
+  ["native-empty-digests", false, "sha256"],
+  ["native-adapter", false, "adapterSources"],
+  ["native-entry", false, "imported entry"],
   ["entry", false, "source binding"],
   ["outside", false, "outside its imported checkout"],
   ["dist", false, "dist-only loses coverage"],

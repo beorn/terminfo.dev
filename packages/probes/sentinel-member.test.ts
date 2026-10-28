@@ -13,10 +13,18 @@ import { createVt220Backend } from "@termless/vt220"
 import { createVtermBackend } from "@termless/vterm"
 import { createXtermBackend } from "@termless/xtermjs"
 import { fakeProbeResult } from "@terminfo/probe-defs/testing/fake-probe-result"
-import { ALL_PROBES, type ProbeDefinition, type TermProbeSource, type TerminalQueryOutcome } from "@terminfo/probe-defs"
-import { afterAll, afterEach, beforeAll, expect, test, vi } from "vitest"
+import {
+  ALL_PROBES,
+  initializeRunDraft,
+  type CallbackHostRecipeCause,
+  type ProbeDefinition,
+  type TermProbeSource,
+  type TerminalQueryOutcome,
+} from "@terminfo/probe-defs"
+import { afterAll, afterEach, beforeAll, beforeEach, expect, test, vi } from "vitest"
 import { collectBatch, createLibProbeSource, feedCapture, type ProvenReplyPath } from "./headless-batch.ts"
 import type { HeadlessProbeRuntime } from "./headless-identity.ts"
+import * as runtimeIdentityOwner from "./headless-identity.ts"
 import { spawnSync } from "node:child_process"
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs"
 import { join } from "node:path"
@@ -82,6 +90,7 @@ async function scriptedRuntimeFixture() {
   const runtime: HeadlessProbeRuntime = {
     adapterPath: entry,
     adapterPackage: "@terminfo/scripted-reply-fixture",
+    adapterType: "js",
     identity: {
       kind: "js",
       runtimeFormat: "js",
@@ -107,6 +116,11 @@ let fixture: Awaited<ReturnType<typeof scriptedRuntimeFixture>>
 beforeAll(async () => {
   fixture = await scriptedRuntimeFixture()
 })
+// This suite scripts engine replies and identity input. Real identity production owns its own suite;
+// lifecycle assertions below independently prove WHEN and HOW OFTEN this owner is consulted.
+beforeEach(() => {
+  vi.spyOn(runtimeIdentityOwner, "headlessRuntimeIdentity").mockResolvedValue(fixture.runtime.identity)
+})
 afterAll(() => fixture?.destroy())
 
 // Unit setup for capture/classifier cases; actual engine delivery is checked separately below.
@@ -129,7 +143,7 @@ function scripted(script: (text: string) => string): TerminalBackend {
 
 function sourceOf(backend: TerminalBackend, path?: ProvenReplyPath) {
   backend.init({ cols: 80, rows: 24 })
-  return createLibProbeSource(backend, path)
+  return createLibProbeSource(backend, path, undefined, undefined)
 }
 
 const base64 = (raw: string) => Buffer.from(raw).toString("base64")
@@ -140,10 +154,12 @@ test("an unproven context has no sentinel member", () => {
 
 test("a proven engine that answers DA1 and nothing else gives live's sentinel outcome and facts", () => {
   const onSentinel = vi.fn()
-  const ctx = sourceOf(
-    scripted((text) => (text === DA1_QUERY ? DA1 : "")),
-    proven(onSentinel),
-  )
+  // H6: retain each actual target/sentinel capture, including partial bytes on errors.
+  // Existing outcome checks cannot prove the collector has the separate request records.
+  const captures: Array<{ query: string; response: string; error: string | null }> = []
+  const backend = scripted((text) => (text === DA1_QUERY ? DA1 : ""))
+  backend.init({ cols: 80, rows: 24 })
+  const ctx = createLibProbeSource(backend, proven(onSentinel), undefined, captures)
   expect(ctx.queryWithSentinelOutcome?.("\x1b[>q", XTVERSION)).toStrictEqual({
     match: null,
     reason: "sentinel",
@@ -152,6 +168,22 @@ test("a proven engine that answers DA1 and nothing else gives live's sentinel ou
     sentinel: { atMs: expect.any(Number), graceMs: 250 },
   })
   expect(onSentinel).toHaveBeenCalledOnce()
+  expect(captures).toStrictEqual([
+    { query: "\x1b[>q", response: "", error: null },
+    { query: DA1_QUERY, response: DA1, error: null },
+  ])
+  const previous = backend.onResponse
+  vi.mocked(backend.feed).mockImplementation(() => {
+    backend.onResponse?.(encoder.encode("partial"))
+    throw new Error("feed interrupted")
+  })
+  expect(() => ctx.feedCapture("\x1b]10;?\x07")).toThrow("feed interrupted")
+  expect(captures.at(-1)).toStrictEqual({
+    query: "\x1b]10;?\x07",
+    response: "partial",
+    error: "feed interrupted",
+  })
+  expect(backend.onResponse).toBe(previous)
 })
 
 test.each([
@@ -259,7 +291,7 @@ test("a reply an adapter makes after the whole feed stays a reply because DA1 ha
     return text === `\x1b[14t${DA1_QUERY}` ? `${DA1}${winops}` : ""
   })
   const ctx = sourceOf(backend, proven())
-  const together = feedCapture(backend, `\x1b[14t${DA1_QUERY}`)
+  const together = feedCapture(backend, `\x1b[14t${DA1_QUERY}`, undefined)
   expect(together.indexOf(winops)).toBeGreaterThan(together.indexOf(DA1))
   const outcome = ctx.queryWithSentinelOutcome?.("\x1b[14t", /\x1b\[4;(\d+);(\d+)t/)
   expect(outcome).toMatchObject({ reason: "reply", raw: `${winops}${DA1}` })
@@ -288,7 +320,7 @@ test.each([
   const backend = await create()
   backend.init({ cols: 80, rows: 24 })
   try {
-    expect(feedCapture(backend, DA1_QUERY)).toBe(answer)
+    expect(feedCapture(backend, DA1_QUERY, undefined)).toBe(answer)
   } finally {
     backend.destroy()
   }
@@ -573,6 +605,11 @@ test("qualifies each initialized callback instance and forwards the measured run
   const members: boolean[] = []
   const identities: unknown[] = []
   let instance = 0
+  const lifecycle: string[] = []
+  vi.mocked(runtimeIdentityOwner.headlessRuntimeIdentity).mockImplementation(async () => {
+    lifecycle.push("measure")
+    return structuredClone(runtime.identity)
+  })
   const batch = await collectBatch(
     async () => {
       const value = fixture.create()
@@ -580,6 +617,7 @@ test("qualifies each initialized callback instance and forwards the measured run
       const init = value.init.bind(value)
       vi.spyOn(value, "init").mockImplementation((options) => {
         init(options)
+        lifecycle.push("init")
         if (index === 2) value.capabilities.extensions.delete("reply-delivery")
         if (index === 3) Object.defineProperty(value, "replyDelivery", { value: undefined })
       })
@@ -600,6 +638,9 @@ test("qualifies each initialized callback instance and forwards the measured run
     runtime,
   )
   expect(instance).toBe(4)
+  expect(lifecycle).toEqual(["init", "measure", "init", "measure", "init", "measure", "init", "measure"])
+  expect(runtimeIdentityOwner.headlessRuntimeIdentity).toHaveBeenCalledTimes(4)
+  expect(runtimeIdentityOwner.headlessRuntimeIdentity).toHaveBeenCalledWith("xtermjs", runtime.adapterPackage, "js")
   expect(members).toEqual([true, true, false, false])
   expect(identities).toEqual([runtime.identity, runtime.identity, runtime.identity, runtime.identity])
   expect(JSON.parse(batch.rawReplies["collector.replyPath"]!)).toStrictEqual({
@@ -607,10 +648,10 @@ test("qualifies each initialized callback instance and forwards the measured run
     declaration: fixture.declaration,
     runtimeIdentity: runtime.identity,
     decisions: {
-      declared: { member: true, reason: expect.any(String) },
-      "declared-again": { member: true, reason: expect.any(String) },
-      absent: { member: false, reason: "xtermjs declares no reply delivery" },
-      changed: { member: false, reason: "xtermjs declares no reply delivery" },
+      declared: { member: true, reason: expect.any(String), runtimeIdentity: runtime.identity },
+      "declared-again": { member: true, reason: expect.any(String), runtimeIdentity: runtime.identity },
+      absent: { member: false, reason: "xtermjs declares no reply delivery", runtimeIdentity: runtime.identity },
+      changed: { member: false, reason: "xtermjs declares no reply delivery", runtimeIdentity: runtime.identity },
     },
   })
   expect(progress.mock.calls.map(([chunk]) => String(chunk))).toEqual([
@@ -622,7 +663,197 @@ test("qualifies each initialized callback instance and forwards the measured run
   ])
 })
 
+// N3: preflight custody cannot authorize changed or unreadable executing-instance custody.
+test.each(["changed", "unavailable"] as const)(
+  "refuses a %s initialized instance identity before the callback",
+  async (mode) => {
+    vi.spyOn(process.stderr, "write").mockImplementation(() => true)
+    const measured = { ...fixture.runtime.identity, engineVersion: "different-instance" }
+    const measure = vi.mocked(runtimeIdentityOwner.headlessRuntimeIdentity)
+    if (mode === "changed") measure.mockResolvedValue(measured)
+    else measure.mockRejectedValue(new Error("instance identity unavailable"))
+    const value = fixture.create()
+    const destroy = vi.spyOn(value, "destroy")
+    const callback = vi.fn(() => fakeProbeResult())
+    const batch = await collectBatch(
+      async () => value,
+      "xtermjs",
+      [{ id: "instance", term: null, lib: callback }],
+      undefined,
+      undefined,
+      fixture.runtime,
+    )
+    expect(measure).toHaveBeenCalledOnce()
+    expect(callback).not.toHaveBeenCalled()
+    expect(destroy).toHaveBeenCalledOnce()
+    expect(batch.results[0]).toMatchObject({
+      status: "test-failure",
+      reason: expect.stringContaining(
+        mode === "changed" ? "instance identity differs" : "instance identity unavailable",
+      ),
+    })
+    if (mode === "changed") {
+      expect(JSON.parse(batch.rawReplies["collector.replyPath"]!)).toMatchObject({
+        decisions: { instance: { member: false, runtimeIdentity: measured } },
+      })
+    }
+  },
+)
+
 // Same adapter/version/capabilities without the independent measurement cannot qualify.
+// H1/H2/H4/H6: explicit native-input unit fixture; no actual native engine qualification.
+test.each(["observed", "source-audited", "missing", "error", "late"] as const)(
+  "retains and validates %s host custody before checkpointing the callback",
+  async (mode) => {
+    vi.spyOn(process.stderr, "write").mockImplementation(() => true)
+    if (mode === "late") vi.stubEnv("TERMINFO_SENTINEL_GRACE_MS", "40")
+    const query = "\x1b]10;?\x07",
+      artifact = "a".repeat(64),
+      id = "host.fixture"
+    const runtime: HeadlessProbeRuntime = {
+      ...fixture.runtime,
+      adapterType: "native",
+      identity: {
+        kind: "native",
+        engineVersion: "fixture",
+        adapterVersion: "fixture",
+        termlessRevision: fixture.runtime.identity.termlessRevision,
+        loadedBinary: { path: "fixture.node", sha256: artifact },
+        provenance: {
+          sha256: artifact,
+          sourceCommit: "3".repeat(40),
+          buildHash: "b".repeat(64),
+          toolchain: "fixture",
+          lockSha256: "c".repeat(64),
+        },
+      },
+    }
+    vi.mocked(runtimeIdentityOwner.headlessRuntimeIdentity).mockResolvedValue(runtime.identity)
+    const draft = initializeRunDraft({
+      source: { kind: "live" },
+      runId: "host-run",
+      sourceRevision: "1".repeat(40),
+      intendedSubject: { kind: "lib", id: "scripted-native" },
+      manifest: {
+        schemaVersion: 4,
+        probeHash: "host-suite",
+        adapterVersion: "4",
+        catalogIds: [id],
+        probes: { term: [], mux: [], lib: [id] },
+      },
+    })
+    draft.rawReplies["collector.collectionAttempt"] = JSON.stringify({
+      hostInputs: { "foreground-rgb": "not-supplied" },
+    })
+    const checkpoints: string[] = []
+    const batch = await collectBatch(
+      async () => {
+        const backend = fixture.create((text) => {
+          if (mode !== "late" || text !== DA1_QUERY) return ""
+          setTimeout(() => backend.onResponse?.(encoder.encode("late-native-reply")), 5)
+          return DA1
+        })
+        Object.defineProperty(backend, "replyDelivery", {
+          value: { ...fixture.declaration, engine: { kind: "native", sha256: artifact } },
+        })
+        return backend
+      },
+      "scripted-native",
+      [
+        {
+          id,
+          term: null,
+          libHostRecipes: [{ recipe: "color-request", query, missing: ["foreground-rgb"] }],
+          lib: (ctx) => {
+            expect(ctx.feedCapture(query)).toBe("")
+            if (mode === "error") throw new Error("original callback error")
+            if (mode === "late") {
+              expect(ctx.queryWithSentinelOutcome?.(query, /\x1b]10;/).reason).toBe("sentinel")
+            }
+            const cause: CallbackHostRecipeCause =
+              mode === "observed" || mode === "late"
+                ? { recipe: "color-request", cause: { kind: "observed", missing: "foreground-rgb", query } }
+                : {
+                    recipe: "color-request",
+                    cause: {
+                      kind: "source-audited",
+                      missing: "foreground-rgb",
+                      artifactSha256: artifact,
+                      sourceCitation: "fixture native colour request source",
+                    },
+                  }
+            return {
+              ...fakeProbeResult(),
+              ...(mode === "late" && { response: DA1 }),
+              ...(mode !== "missing" && { hostRecipeCauses: [cause] }),
+            }
+          },
+        },
+      ],
+      draft,
+      (batch) => {
+        const record = batch.rawReplies[`collector.hostRecipes.${id}`]
+        if (record !== undefined) checkpoints.push(record)
+      },
+      runtime,
+    )
+    const retained = JSON.parse(batch.rawReplies[`collector.hostRecipes.${id}`] ?? "null")
+    expect(retained).toMatchObject({
+      runId: draft.runId,
+      captures: [
+        { query, response: "", error: null },
+        ...(mode === "late"
+          ? [
+              { query, response: "", error: null },
+              { query: DA1_QUERY, response: DA1, error: null },
+            ]
+          : []),
+      ],
+    })
+    expect(checkpoints.at(-1)).toBe(batch.rawReplies[`collector.hostRecipes.${id}`])
+    // G1/H6: native qualification must retain cause + both read windows while refusing the callback.
+    // The JS-only late-byte case cannot catch a native-route bypass or lost native host record.
+    if (mode === "late") {
+      expect(JSON.parse(batch.rawReplies["collector.replyPath"]!)).toMatchObject({
+        decisions: { [id]: { member: true } },
+      })
+      expect(batch.results[0]).toMatchObject({ status: "test-failure" })
+      expect(batch.ungradedDiagnostics[id]).toMatchObject({
+        message: expect.stringContaining("late reply after sentinel"),
+      })
+      expect(batch.observations).toEqual([])
+      expect(batch.rawReplies[id]).toBe(DA1)
+      expect(batch.rawReplies[`${id}.late`]).toBe("late-native-reply")
+      expect(retained).toMatchObject({
+        causes: [{ cause: { kind: "observed", eventRef: `collector.hostRecipes.${id}` } }],
+      })
+      return
+    }
+    if (mode === "missing" || mode === "error") {
+      expect(batch.results[0]).toMatchObject({ status: "test-failure" })
+      expect(batch.ungradedDiagnostics[id]).toMatchObject({
+        message: expect.stringContaining(mode === "error" ? "original callback error" : "missing cause"),
+      })
+    } else {
+      expect(batch.ungradedDiagnostics[id]).toBeUndefined()
+      expect(retained).toMatchObject({
+        causes: [
+          {
+            recipe: "color-request",
+            cause: {
+              kind: mode,
+              runId: draft.runId,
+              ...(mode === "observed"
+                ? { eventRef: `collector.hostRecipes.${id}` }
+                : { citation: { inputRecordRef: "collector.collectionAttempt", input: "foreground-rgb" } }),
+            },
+          },
+        ],
+      })
+    }
+  },
+)
+
 test("a declaration without measured runtime identity withholds the member and names lost coverage", async () => {
   vi.spyOn(process.stderr, "write").mockImplementation(() => true)
   const seen: unknown[] = []

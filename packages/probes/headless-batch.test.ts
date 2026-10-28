@@ -1051,7 +1051,7 @@ test("OSC 8 feature without metadata extension omits the cell field", () => {
     value.capabilities.extensions.delete("hyperlinks")
     value.feed(new TextEncoder().encode("\x1b]8;;https://example.com/observed\x07L"))
     expect(value.capabilities.osc8Hyperlinks).toBe(true)
-    expect(createLibProbeSource(value).getCell(0, 0)).not.toHaveProperty("hyperlink")
+    expect(createLibProbeSource(value, undefined, undefined, undefined).getCell(0, 0)).not.toHaveProperty("hyperlink")
   } finally {
     value.destroy()
   }
@@ -1064,7 +1064,9 @@ test.each([undefined, () => undefined, () => 5])("OSC 8 metadata declaration mis
   try {
     value.capabilities.extensions.add("hyperlinks")
     Object.assign(value, { getHyperlinkAt: readLink })
-    expect(() => createLibProbeSource(value).getCell(0, 0)).toThrow(`${value.name} declares OSC 8 metadata`)
+    expect(() => createLibProbeSource(value, undefined, undefined, undefined).getCell(0, 0)).toThrow(
+      `${value.name} declares OSC 8 metadata`,
+    )
   } finally {
     value.destroy()
   }

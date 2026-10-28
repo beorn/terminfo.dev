@@ -77,7 +77,7 @@ for (const [backendName, factory] of backends) {
     beforeAll(async () => {
       _b = await factory()
       _b.init({ cols: 80, rows: 24 })
-      ctx = createLibProbeSource(_b)
+      ctx = createLibProbeSource(_b, undefined, undefined, undefined)
     })
 
     afterAll(() => {
