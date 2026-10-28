@@ -356,7 +356,9 @@ describe("in-run pixels verdicts", () => {
         throw new Error("Missing real callback citation control")
       }
       assertion.observed = pixel.pixelsDigest
-      expect(() => parseCallback(id, result, fixture)).toThrow("which is not the ref or a digest of a frame")
+      expect(() => parseCallback(id, result, fixture)).toThrow(
+        "cites only whole-frame digests; a verdict must cite a frame's ref or the digest of the cells it compared",
+      )
     },
   )
 
@@ -460,6 +462,8 @@ describe("in-run pixels verdicts", () => {
       expect.objectContaining({ id: "capture", status: "supported" }),
       expect.objectContaining({ id: "review", status: "test-todo", attempt: { scope: "none" } }),
     ])
+    // Schema-4 stores capture evidence in results and has no legacy observation entries.
+    expect(loaded.observations).toEqual([])
     expect(loaded.results?.[0]?.frames).toHaveLength(2)
   })
 

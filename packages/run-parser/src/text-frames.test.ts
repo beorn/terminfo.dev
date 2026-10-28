@@ -233,7 +233,9 @@ describe("text frames — admitted only as what they are", () => {
   it("refuses a verdict that cites only the whole-frame digest, which decided no cells", () => {
     const run = textRun()
     const assertions = [{ ...(run.assertions as object[])[0], observed: WHOLE }]
-    expect(() => parse({ ...run, assertions })).toThrow(/not the ref or a digest of a frame/u)
+    expect(() => parse({ ...run, assertions })).toThrow(
+      "cites only whole-frame digests; a verdict must cite a frame's ref or the digest of the cells it compared",
+    )
   })
 
   it("refuses a text frame that carries a pixel field", () => {
