@@ -94,6 +94,16 @@ export function replyDeliveryDecision(
     ) {
       return decide(false, `${backend} reply delivery engine.sha256 differs from the loaded WASM`)
     }
+  } else if (expected.kind === "native") {
+    if (
+      identity.kind !== "native" ||
+      typeof expected.sha256 !== "string" ||
+      !/^[a-f0-9]{64}$/.test(expected.sha256) ||
+      !record(identity.loadedBinary) ||
+      identity.loadedBinary.sha256 !== expected.sha256
+    ) {
+      return decide(false, `${backend} reply delivery engine.sha256 differs from the loaded native binary`)
+    }
   } else {
     return decide(false, `${backend} reply delivery has no recognized audited engine binding`)
   }

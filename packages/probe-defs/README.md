@@ -87,7 +87,8 @@ cannot substitute for it. Missing identity supplies no source-derived qualificat
 
 The optional sentinel member requires the executing adapter's `reply-delivery` extension. The single
 comparer in [headless-identity.ts](../probes/headless-identity.ts) checks its audited source blobs and
-registry integrity, clean source tree or loaded WASM digest against that measured runtime. Versions are
+registry integrity, clean source tree or loaded WASM/native digest against that measured runtime. A native
+declaration requires a native identity and the exact loaded binary SHA256, then the same adapter-source checks. Versions are
 diagnostic facts. Each initialized callback instance supplies its own declaration; the destroyed
 preflight instance cannot authorize another instance. `collector.replyPath` retains the shared
 declaration and measured identity once, alongside each feature's eligibility result and named
