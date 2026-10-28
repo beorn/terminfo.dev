@@ -667,11 +667,11 @@ test.each(["changed", "unavailable"] as const)(
         mode === "changed" ? "instance identity differs" : "instance identity unavailable",
       ),
     })
-    if (mode === "changed")
-      expect(JSON.parse(batch.rawReplies["collector.replyPath"]!).decisions.instance).toMatchObject({
-        member: false,
-        runtimeIdentity: measured,
-      })
+    if (mode === "changed") {
+    expect(JSON.parse(batch.rawReplies["collector.replyPath"]!)).toMatchObject({
+      decisions: { instance: { member: false, runtimeIdentity: measured } },
+    })
+    }
   },
 )
 
