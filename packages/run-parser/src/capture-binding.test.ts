@@ -17,12 +17,12 @@ import { applyCaptureDecision, retainCaptureBinding, parseRun } from "./index.ts
 
 // H1-H7: explicit collector-input fixture, not an engine execution or qualification proof.
 // Existing immutable-binding tests cannot reject an invalid cause before the first binding exists.
-function hostCauseCapture(mode: string) {
+const HOST_QUERY = "\x1b]10;?\x07"
+function hostCauseCapture(mode: string, query: string, split: boolean) {
   const featureId = "host.fixture",
     runId = "host-custody",
     artifact = "a".repeat(64)
-  const query = "\x1b]10;?\x07",
-    recordRef = `collector.hostRecipes.${featureId}`
+  const recordRef = `collector.hostRecipes.${featureId}`
   const manifest = {
     schemaVersion: 4 as const,
     probeHash: "host-custody-suite",
@@ -86,9 +86,13 @@ function hostCauseCapture(mode: string) {
     captures: [{ query, response: "", error: null }],
     causes: [{ recipe: "color-request", cause: source as typeof source | typeof observed }],
   }
-  if (mode === "observed" || mode === "foreign-reference")
+  if (mode === "observed" || mode === "foreign-reference") {
     record.causes = [{ recipe: "color-request", cause: observed }]
-  if (mode === "missing-cause" || mode === "real-reply") record.causes = []
+  }
+  if (mode === "missing-cause" || mode === "real-reply" || mode === "undeclared-query") record.causes = []
+  if (split) {
+    record.captures = [query.slice(0, 3), query.slice(3)].map((part) => ({ query: part, response: "", error: null }))
+  }
   if (mode === "missing-capture") record.captures = []
   if (mode === "stale-input") citation.sha256 = "0".repeat(64)
   if (mode === "stale-artifact") source.artifactSha256 = "0".repeat(64)
@@ -125,7 +129,7 @@ function hostCauseCapture(mode: string) {
 it.each(["source-audited", "observed", "real-reply"])(
   "native host recipe accepts valid %s custody without changing the criterion",
   (mode) => {
-    expect(hostCauseCapture(mode)().results?.[0]?.status).toBe("test-failure")
+    expect(hostCauseCapture(mode, HOST_QUERY, false)().results?.[0]?.status).toBe("test-failure")
   },
 )
 it.each([
@@ -138,7 +142,17 @@ it.each([
   "wrong-missing",
   "undeclared-query",
 ])("native host recipe rejects %s custody", (mode) => {
-  expect(hostCauseCapture(mode)).toThrow(/host recipe/i)
+  expect(hostCauseCapture(mode, HOST_QUERY, false)).toThrow(/host recipe/i)
+})
+
+it.each([
+  ["OSC10 ST", "\x1b]10;?\x1b\\", false],
+  ["palette", "\x1b]4;0;?\x07", false],
+  ["clipboard", "\x1b]52;c;?\x07", false],
+  ["pixel geometry", "\x1b[14t", false],
+  ["fragmented clipboard", "\x1b]52;c;?\x07", true],
+] as const)("native host recipe rejects undeclared %s independently of cause presence", (_name, query, split) => {
+  expect(hostCauseCapture("undeclared-query", query, split)).toThrow(/captured undeclared/i)
 })
 
 const setup = (

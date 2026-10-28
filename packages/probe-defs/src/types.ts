@@ -12,7 +12,42 @@ export type ProbeCallbackResult =
   | NotTestedCoverageResult
   | ExecutionOnlyProbeCallbackResult
 
+export const HOST_INPUT_NAMES = [
+  "foreground-rgb",
+  "background-rgb",
+  "cursor-rgb",
+  "palette-entry-rgb",
+  "pixel-geometry",
+  "clipboard-read-permission",
+] as const
+export type HostInputName = (typeof HOST_INPUT_NAMES)[number]
+export type HostRecipeName = "color-request" | "text-area-size" | "clipboard-load"
+export interface HostRecipeExpectation {
+  recipe: HostRecipeName
+  query: string
+  missing: readonly HostInputName[]
+}
+export type CallbackHostRecipeCause =
+  | { recipe: HostRecipeName; cause: { kind: "observed"; missing: HostInputName; query: string } }
+  | {
+      recipe: HostRecipeName
+      cause: { kind: "source-audited"; missing: HostInputName; artifactSha256: string; sourceCitation: string }
+    }
+export type RetainedHostRecipeCause =
+  | { recipe: HostRecipeName; cause: { kind: "observed"; missing: HostInputName; runId: string; eventRef: string } }
+  | {
+      recipe: HostRecipeName
+      cause: {
+        kind: "source-audited"
+        missing: HostInputName
+        runId: string
+        artifactSha256: string
+        citation: { inputRecordRef: string; sha256: string; input: HostInputName; sourceLocation: string }
+      }
+    }
+
 export interface MeasuredProbeCallbackResult extends ProbeExecutionTests {
+  hostRecipeCauses?: readonly CallbackHostRecipeCause[]
   /** Historical raw documents carry it; the live collector reads only observation. */
   pass: boolean
   note?: string
@@ -24,6 +59,7 @@ export interface MeasuredProbeCallbackResult extends ProbeExecutionTests {
 }
 
 export interface NotTestedCoverageResult extends ProbeExecutionTests {
+  hostRecipeCauses?: readonly CallbackHostRecipeCause[]
   pass: boolean
   note?: string
   response?: string
@@ -35,6 +71,7 @@ export interface NotTestedCoverageResult extends ProbeExecutionTests {
 
 /** No deciding observation was retained. Legacy pass belongs only to the diagnostic runner (#30929). */
 export interface ExecutionOnlyProbeCallbackResult {
+  hostRecipeCauses?: readonly CallbackHostRecipeCause[]
   pass: boolean
   note?: string
   response?: string
@@ -831,6 +868,7 @@ export interface TermProbeSource {
 }
 
 export interface ProbeDefinition {
+  libHostRecipes?: readonly HostRecipeExpectation[]
   id: string
   lib: ((ctx: LibProbeSource) => ProbeCallbackResult) | null
   term: ((ctx: TermProbeSource) => Promise<ProbeCallbackResult>) | null

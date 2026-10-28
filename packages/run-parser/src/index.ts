@@ -2,6 +2,9 @@
 import { createHash } from "node:crypto"
 import {
   SOURCE_NEGATIVE_REVIEW,
+  HOST_INPUT_NAMES,
+  type HostRecipeExpectation,
+  type HostRecipeName,
   PROBE_STATUSES,
   finalizeProbeResult,
   type CaptureDecision,
@@ -1347,6 +1350,153 @@ export function parseProbeResults(
   return results
 }
 
+/** Closed host-request families dispatched by the audited native embedding, not a terminal parser. */
+function capturedHostQueries(text: string): Array<{ recipe: HostRecipeName; query: string }> {
+  const queries: Array<{ recipe: HostRecipeName; query: string }> = []
+  for (const match of text.matchAll(/\x1b\](4|10|11|12|52);([^\x07\x1b]*)(?:\x07|\x1b\\)/g)) {
+    const selector = match[1],
+      body = match[2]
+    if (
+      body !== undefined &&
+      (selector === "52"
+        ? /^[^;]*;\?$/.test(body)
+        : selector === "4"
+          ? /(?:^|;)\d+;\?(?:;|$)/.test(body)
+          : body === "?")
+    ) {
+      queries.push({ recipe: selector === "52" ? "clipboard-load" : "color-request", query: match[0] })
+    }
+  }
+  for (const match of text.matchAll(/\x1b\[14(?:;2)?t/g)) queries.push({ recipe: "text-area-size", query: match[0] })
+  return queries
+}
+
+/** One custody validator shared by collection and immutable-run reading. It never assigns a grade. */
+export function validateHostRecipeCauses(
+  path: string,
+  runId: string,
+  featureId: string,
+  expectations: readonly HostRecipeExpectation[],
+  rawReplies: Readonly<Record<string, string>>,
+  identity: HeadlessRuntimeIdentity | undefined,
+): void {
+  const refuse: (reason: string) => never = (reason) => fail(path, `${featureId} host recipe: ${reason}`)
+  const inputNames = new Set<string>(HOST_INPUT_NAMES)
+  const recipes = new Set(["color-request", "text-area-size", "clipboard-load"])
+  for (const expected of expectations) {
+    if (
+      !object(expected) ||
+      !recipes.has(expected.recipe) ||
+      !nonempty(expected.query) ||
+      !Array.isArray(expected.missing) ||
+      !expected.missing.length ||
+      !expected.missing.every((name) => inputNames.has(name))
+    ) {
+      refuse("invalid criterion declaration")
+    }
+  }
+  const recordRef = `collector.hostRecipes.${featureId}`
+  const retained = rawReplies[recordRef]
+  if (retained === undefined) refuse("missing retained query/cause record")
+  const record = parseJsonStrict(`${path}: ${recordRef}`, retained)
+  if (!object(record) || record.runId !== runId || !Array.isArray(record.captures) || !Array.isArray(record.causes)) {
+    refuse("query/cause record does not belong to this run")
+  }
+  const captures = record.captures.map((capture: unknown) => {
+    if (
+      !object(capture) ||
+      typeof capture.query !== "string" ||
+      typeof capture.response !== "string" ||
+      !(capture.error === null || typeof capture.error === "string")
+    ) {
+      refuse("invalid query capture")
+    }
+    return { query: capture.query, response: capture.response, error: capture.error }
+  })
+  // A terminal parses the ordered input stream, including a query split across writes.
+  for (const actual of capturedHostQueries(captures.map((capture) => capture.query).join(""))) {
+    if (!expectations.some((expected) => expected.recipe === actual.recipe && expected.query === actual.query)) {
+      refuse(`captured undeclared ${actual.recipe} query`)
+    }
+  }
+  const causes = record.causes.map((entry: unknown) => {
+    if (!object(entry) || !object(entry.cause)) refuse("invalid cause record")
+    const cause = entry.cause,
+      missing = cause.missing
+    if (
+      !nonempty(missing) ||
+      !inputNames.has(missing) ||
+      cause.runId !== runId ||
+      !expectations.some(
+        (expected) => expected.recipe === entry.recipe && new Set<string>(expected.missing).has(missing),
+      )
+    ) {
+      refuse("cause has a foreign run or undeclared missing input")
+    }
+    if (cause.kind === "observed") {
+      if (
+        cause.eventRef !== recordRef ||
+        Object.keys(cause).some((key) => !["kind", "missing", "runId", "eventRef"].includes(key)) ||
+        !expectations.some(
+          (expected) =>
+            expected.recipe === entry.recipe &&
+            new Set<string>(expected.missing).has(missing) &&
+            captures.some(
+              (capture) => capture.query === expected.query && capture.response === "" && capture.error === null,
+            ),
+        )
+      ) {
+        refuse("observed reference does not resolve to this run's empty target capture")
+      }
+    } else if (cause.kind === "source-audited") {
+      if (
+        Object.keys(cause).some((key) => !["kind", "missing", "runId", "artifactSha256", "citation"].includes(key)) ||
+        identity?.kind !== "native" ||
+        cause.artifactSha256 !== identity.loadedBinary.sha256
+      ) {
+        refuse("stale native artifact citation")
+      }
+      const citation = cause.citation
+      if (
+        !object(citation) ||
+        citation.inputRecordRef !== "collector.collectionAttempt" ||
+        citation.input !== missing ||
+        !nonempty(citation.sourceLocation)
+      ) {
+        refuse("invalid declared-input citation")
+      }
+      const inputs = rawReplies[citation.inputRecordRef]
+      if (inputs === undefined || citation.sha256 !== createHash("sha256").update(inputs).digest("hex")) {
+        refuse("stale declared-input digest")
+      }
+      const inputRecord = parseJsonStrict(`${path}: declared host inputs`, inputs)
+      if (
+        !object(inputRecord) ||
+        !object(inputRecord.hostInputs) ||
+        inputRecord.hostInputs[missing] !== "not-supplied"
+      ) {
+        refuse("cited input was not declared absent")
+      }
+    } else refuse("unrecognized cause kind")
+    return entry
+  })
+  for (const expected of expectations) {
+    const target = captures.filter((capture) => capture.query === expected.query && capture.error === null)
+    if (!target.length) refuse("missing applicable target query capture")
+    if (
+      target.some((capture) => capture.response === "") &&
+      !causes.some(
+        (entry) =>
+          entry.recipe === expected.recipe &&
+          object(entry.cause) &&
+          new Set<string>(expected.missing).has(String(entry.cause.missing)),
+      )
+    ) {
+      refuse("missing cause for captured empty target response")
+    }
+  }
+}
+
 export function parseRun(
   path: string,
   source: string,
@@ -1432,6 +1582,35 @@ export function parseRun(
     )
     if (!object(raw.rawReplies) || !Object.values(raw.rawReplies).every((v) => typeof v === "string")) {
       fail(path, "invalid rawReplies")
+    }
+    if (
+      schemaVersion === 4 &&
+      runtimeIdentity?.kind === "native" &&
+      typeof raw.rawReplies["collector.replyPath"] === "string"
+    ) {
+      const replyPath = parseJsonStrict(`${path}: collector.replyPath`, raw.rawReplies["collector.replyPath"])
+      if (
+        object(replyPath) &&
+        object(replyPath.declaration) &&
+        object(replyPath.declaration.engine) &&
+        replyPath.declaration.engine.kind === "native"
+      ) {
+        if (!object(replyPath.decisions)) fail(path, "host recipe: missing per-feature decisions")
+        for (const [featureId, decision] of Object.entries(replyPath.decisions)) {
+          if (!catalog.has(featureId) || !object(decision) || !Array.isArray(decision.hostRecipes)) {
+            fail(path, "host recipe: missing criterion declaration")
+          }
+          const instance = parseRuntimeIdentity(decision.runtimeIdentity, subject, path, schemaVersion)
+          validateHostRecipeCauses(
+            path,
+            runId,
+            featureId,
+            decision.hostRecipes as HostRecipeExpectation[],
+            raw.rawReplies as Record<string, string>,
+            instance,
+          )
+        }
+      }
     }
     if (
       !Array.isArray(raw.assertions) ||
