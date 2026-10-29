@@ -247,6 +247,54 @@ export const REPLY_PATH_AUDITS: ReadonlyMap<string, Readonly<Record<string, Repl
       },
     },
   ],
+  // Ghostty native (core 332b2aef), independently hashed artifact loaded by the 31369 capture
+  [
+    "9a9505600721226b952ae9ac92552b42389aa6713872a9f4904528f425b7ecdf",
+    {
+      "device.xtgetxres": {
+        query: "\x1bP+Q7465726d4e616d65\x1b\\",
+        kind: "parser-rejected",
+        citation: "ghostty 332b2aef src/terminal/dcs.zig:80-105 '+' accepts only final q (else null)",
+      },
+      "extensions.osc1337-capabilities": {
+        query: "\x1b]1337;Capabilities\x07",
+        kind: "parser-rejected",
+        citation:
+          "ghostty 332b2aef src/terminal/osc/parsers/iterm2.zig:11-62 Key/map omit Capabilities; :87-90 missing key -> invalid",
+      },
+      "extensions.osc1337-cellsize": {
+        query: "\x1b]1337;ReportCellSize\x07",
+        kind: "parser-rejected",
+        citation:
+          "ghostty 332b2aef src/terminal/osc/parsers/iterm2.zig:177-195 known ReportCellSize key is unimplemented -> invalid",
+      },
+      "extensions.osc701-locale": {
+        query: "\x1b]701;?\x07",
+        kind: "parser-rejected",
+        citation: "ghostty 332b2aef src/terminal/osc.zig:637-646 state7 accepts only ';' or '7'; '0' -> invalid",
+      },
+      "extensions.osc702-version": {
+        query: "\x1b]702;?\x07",
+        kind: "parser-rejected",
+        citation: "ghostty 332b2aef src/terminal/osc.zig:637-646 state7 accepts only ';' or '7'; '0' -> invalid",
+      },
+      "extensions.osc776-cell-size": {
+        query: "\x1b]776\x07",
+        kind: "parser-rejected",
+        citation: "ghostty 332b2aef src/terminal/osc.zig:643-646 state77 accepts only '7'; '6' -> invalid",
+      },
+      "extensions.osc7770-font-size": {
+        query: "\x1b]7770;?\x07",
+        kind: "parser-rejected",
+        citation: "ghostty 332b2aef src/terminal/osc.zig:674-681 state777 accepts only ';'; '0' -> invalid",
+      },
+      "extensions.osc7777-font-window-size": {
+        query: "\x1b]7777;?\x07",
+        kind: "parser-rejected",
+        citation: "ghostty 332b2aef src/terminal/osc.zig:674-681 state777 accepts only ';'; '7' -> invalid",
+      },
+    },
+  ],
   // vt100 0.16.2 Rust parser native artifact, the artifact the 31371 capture loaded
   [
     "a478127f571a25cf0e2b52e2972aa26d4344df03d9b3fba93ca03efd9cc9a0fa",

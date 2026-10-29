@@ -241,10 +241,11 @@ describe("reply-path audit", () => {
     return { result, sent }
   }
 
-  test("covers both audited artifacts", () => {
-    // Ghostty WASM at 5714ed07 and the vt100 0.16.2 Rust parser, as loaded by the 31372/31371 captures.
+  test("covers all three audited artifacts", () => {
+    // Ghostty WASM at 5714ed07, native at 332b2aef and the vt100 0.16.2 Rust parser.
     expect([...REPLY_PATH_AUDITS.keys()].sort()).toEqual([
       "7c43302dde147c6f7959b7bda7045ff375c71288da1af5667ffca2bf95beb2bf",
+      "9a9505600721226b952ae9ac92552b42389aa6713872a9f4904528f425b7ecdf",
       "a478127f571a25cf0e2b52e2972aa26d4344df03d9b3fba93ca03efd9cc9a0fa",
     ])
   })
