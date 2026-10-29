@@ -277,9 +277,11 @@ describe("#30917 environment groups are named, never TEST TODO", () => {
   it("wires the terminal page's coverage sentence to the run's own catalogue", () => {
     const terminal = source("docs/terminals/[id].md")
     expect(terminal).toContain("currentCoverageSentence(measuredBar, selectedRun.catalogIds)")
-    expect(terminal).toContain("aggregateCurrentResults(selectedRun.value.results, selectedRun.value.catalogIds)")
-    expect(terminal).toContain("selectedRun.value?.schemaVersion === 3 || selectedRun.value?.schemaVersion === 4")
-    expect(terminal).toContain("run.schemaVersion === 3 || run.schemaVersion === 4")
+    expect(terminal).toContain(
+      "aggregateCurrentResults('cells' in selection ? Object.values(selection.cells) : selection.results, selection.catalogIds)",
+    )
+    expect(terminal).toContain("const defaultRun = data.selectedByBackend[p.backendId]?.selected")
+    expect(terminal).toContain("runSha.value ? recordedRuns.find(run => run.sha256 === runSha.value) : defaultRun")
   })
 
   it("gives the evidence cell the manual-by-design words only for a stored TEST TODO", () => {
