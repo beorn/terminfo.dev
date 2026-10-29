@@ -590,6 +590,43 @@ it("the Kitty capture with the declared cell size grades its pixel cells from Ki
   expect(ids.map((id) => replyPath.decisions[id]?.member)).toEqual([true, true])
 })
 
+// The Alacritty capture of the addon rebuilt to answer CSI 14 t from the declared cell size (run d03bd884, addon sha256
+// 5d818656, termless 22476678; 31628) trimmed to that probe and its OSC 52 read (@cto ff19ee09). The engine's own
+// formatter answered from the declared 800x480 text area; its OSC 52 read stayed silent and carries the artifact's audit.
+const ALACRITTY_GEOMETRY = readFileSync(
+  new URL("./fixtures/alacritty-pixel-geometry.capture.json", import.meta.url),
+  "utf8",
+)
+function alacrittyGeometryCapture(mode: "captured" | "no-cause") {
+  const run = JSON.parse(ALACRITTY_GEOMETRY) as RunDraft & { results: { featureId: string }[]; probeHash: string }
+  const ids = run.results.map((result) => result.featureId)
+  const manifest = {
+    schemaVersion: 4 as const,
+    probeHash: run.probeHash,
+    adapterVersion: "4",
+    catalogIds: ids,
+    probes: { term: [], lib: ids, mux: [] },
+  }
+  if (mode === "no-cause") {
+    const recordRef = "collector.hostRecipes.extensions.osc52-read"
+    const record = JSON.parse(run.rawReplies[recordRef]!) as { causes: unknown[] }
+    record.causes = []
+    run.rawReplies[recordRef] = JSON.stringify(record)
+  }
+  return () =>
+    parseRun("alacritty-pixel-geometry.json", JSON.stringify(run), ids, new Map([[manifest.probeHash, manifest]]), {
+      mode: "capture",
+    })
+}
+it("the rebuilt Alacritty capture grades CSI 14 t from the engine's bytes and its OSC 52 read by the audit", () => {
+  const results = alacrittyGeometryCapture("captured")().results ?? []
+  expect(results.map((result) => [result.featureId, result.status])).toEqual([
+    ["device.xtwinops-14", "supported"],
+    ["extensions.osc52-read", "unsupported"],
+  ])
+  expect(alacrittyGeometryCapture("no-cause")).toThrow(/missing cause for captured empty target response/)
+})
+
 const setup = (
   observed?: string,
   sourceNegative?: { runId: string; startedAt: string },

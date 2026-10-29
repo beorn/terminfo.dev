@@ -1,0 +1,127 @@
+{
+  "schemaVersion": 4,
+  "source": {
+    "kind": "live"
+  },
+  "runId": "d03bd884-f23d-4f94-9a66-bb785b29a9f3",
+  "suiteId": "72f1bab8f508",
+  "probeHash": "72f1bab8f508",
+  "sourceRevision": "329e4306828b1cbbe639c48c457ede14f496adf1",
+  "intendedSubject": {
+    "kind": "lib",
+    "id": "alacritty",
+    "os": "linux"
+  },
+  "results": [
+    {
+      "featureId": "device.xtwinops-14",
+      "attempt": {
+        "scope": "probe",
+        "startedAt": "2026-10-29T10:22:20.763Z"
+      },
+      "tests": [
+        {
+          "id": "criterion",
+          "status": "supported",
+          "attempt": {
+            "scope": "probe",
+            "startedAt": "2026-10-29T10:22:20.763Z"
+          },
+          "assertionRefs": [
+            0
+          ],
+          "rawReplyRef": "device.xtwinops-14"
+        }
+      ],
+      "assertionType": "query_reply",
+      "rawReplyRef": "device.xtwinops-14",
+      "status": "supported"
+    },
+    {
+      "featureId": "extensions.osc52-read",
+      "attempt": {
+        "scope": "probe",
+        "startedAt": "2026-10-29T10:22:22.860Z"
+      },
+      "tests": [
+        {
+          "id": "criterion",
+          "status": "unsupported",
+          "attempt": {
+            "scope": "probe",
+            "startedAt": "2026-10-29T10:22:22.860Z"
+          },
+          "assertionRefs": [
+            1
+          ],
+          "rawReplyRef": "extensions.osc52-read",
+          "reason": "negative by sentinel"
+        }
+      ],
+      "assertionType": "query_reply",
+      "rawReplyRef": "extensions.osc52-read",
+      "reason": "negative by sentinel",
+      "status": "unsupported"
+    }
+  ],
+  "rawReplies": {
+    "collector.collectionAttempt": "{\"ids\":[\"charsets.dec-line-drawing\",\"charsets.dec-special\",\"charsets.g0-g1-switching\",\"charsets.utf8\",\"cursor.ansi-restore\",\"cursor.ansi-save\",\"cursor.cpl\",\"cursor.cud-past-bottom\",\"cursor.cup-boundaries\",\"cursor.cup-scroll-region\",\"cursor.cuu-past-top\",\"cursor.hide\",\"cursor.horizontal-absolute\",\"cursor.hpa\",\"cursor.move.absolute\",\"cursor.move.back\",\"cursor.move.down\",\"cursor.move.forward\",\"cursor.move.home\",\"cursor.move.up\",\"cursor.next-line\",\"cursor.position-report\",\"cursor.reverse-wrap\",\"cursor.save-restore\",\"cursor.shape\",\"cursor.vpa\",\"device.decrpm\",\"device.decrqss\",\"device.dsr-996-color-scheme\",\"device.primary-da\",\"device.secondary-da\",\"device.status-report\",\"device.tertiary-da\",\"device.xtgettcap\",\"device.xtgetxres\",\"device.xtreportcolors\",\"device.xtversion\",\"device.xtwinops-14\",\"device.xtwinops-16\",\"device.xtwinops-18\",\"device.xtwinops-20\",\"device.xtwinops-21\",\"device.xtwinops-22\",\"device.xtwinops-23\",\"editing.deccara\",\"editing.deccra\",\"editing.decdc\",\"editing.decera\",\"editing.decfra\",\"editing.decic\",\"editing.decrara\",\"editing.decrqcra\",\"editing.decsace\",\"editing.decsera\",\"editing.delete-chars\",\"editing.delete-lines\",\"editing.insert-chars\",\"editing.insert-lines\",\"editing.repeat-char\",\"editing.sl\",\"editing.sr\",\"erase.character\",\"erase.ed-scroll-region\",\"erase.el-with-attrs\",\"erase.line.all\",\"erase.line.left\",\"erase.line.right\",\"erase.screen.above\",\"erase.screen.all\",\"erase.screen.below\",\"erase.screen.scrollback\",\"erase.selective\",\"extensions.clipboard-paste\",\"extensions.font-ligatures\",\"extensions.iterm2-images\",\"extensions.kitty-graphics\",\"extensions.kitty-graphics.animation\",\"extensions.kitty-graphics.display\",\"extensions.kitty-graphics.transmit\",\"extensions.kitty-graphics.unicode-placeholders\",\"extensions.kitty-keyboard\",\"extensions.kitty-keyboard.disambiguate\",\"extensions.kitty-keyboard.report-all-keys\",\"extensions.kitty-keyboard.report-alternate\",\"extensions.kitty-keyboard.report-events\",\"extensions.kitty-keyboard.report-text\",\"extensions.notifications\",\"extensions.osc-633-vscode\",\"extensions.osc0-icon-title\",\"extensions.osc1-icon\",\"extensions.osc10-fg-color\",\"extensions.osc104-reset-palette\",\"extensions.osc11-bg-color\",\"extensions.osc110-reset-fg\",\"extensions.osc111-reset-bg\",\"extensions.osc112-reset-cursor\",\"extensions.osc113-reset-pointer-fg\",\"extensions.osc114-reset-pointer-bg\",\"extensions.osc117-reset-highlight-bg\",\"extensions.osc119-reset-highlight-fg\",\"extensions.osc12-cursor-color\",\"extensions.osc133-a\",\"extensions.osc133-b\",\"extensions.osc133-c\",\"extensions.osc133-d\",\"extensions.osc133-p\",\"extensions.osc1337-capabilities\",\"extensions.osc1337-cellsize\",\"extensions.osc17-highlight-bg\",\"extensions.osc19-highlight-fg\",\"extensions.osc2-title\",\"extensions.osc21-kitty-color\",\"extensions.osc30001-color-stack-push\",\"extensions.osc30101-color-stack-pop\",\"extensions.osc4-palette\",\"extensions.osc5-special-color\",\"extensions.osc52-clipboard\",\"extensions.osc52-read\",\"extensions.osc52-write\",\"extensions.osc5522-clipboard\",\"extensions.osc633-a\",\"extensions.osc633-b\",\"extensions.osc633-c\",\"extensions.osc633-d\",\"extensions.osc633-e\",\"extensions.osc633-p\",\"extensions.osc66-text-sizing\",\"extensions.osc7-cwd\",\"extensions.osc701-locale\",\"extensions.osc702-version\",\"extensions.osc720-scroll-up\",\"extensions.osc776-cell-size\",\"extensions.osc7770-font-size\",\"extensions.osc7777-font-window-size\",\"extensions.osc8\",\"extensions.reflow\",\"extensions.semantic-prompts\",\"extensions.sixel\",\"extensions.sixel-da1\",\"extensions.sixel-geometry-report\",\"extensions.truecolor\",\"input.button-event-mouse\",\"input.csi-u\",\"input.kitty-click-events\",\"input.modify-other-keys\",\"input.modify-other-keys-3\",\"input.pixel-mouse\",\"input.urxvt-mouse\",\"input.x10-mouse\",\"input.xtest-click\",\"input.xtest-key\",\"input.xtest-wheel\",\"modes.alt-screen.enter\",\"modes.alt-screen.exit\",\"modes.alt-scroll-1007\",\"modes.altscreen-1047\",\"modes.altscreen-1048\",\"modes.altscreen-47\",\"modes.application-cursor\",\"modes.application-keypad\",\"modes.auto-wrap\",\"modes.bracketed-paste\",\"modes.color-scheme-reporting\",\"modes.deccolm\",\"modes.decsclm\",\"modes.decsscls\",\"modes.focus-tracking\",\"modes.insert-replace\",\"modes.left-right-margin\",\"modes.mouse-all\",\"modes.mouse-sgr\",\"modes.mouse-tracking\",\"modes.origin\",\"modes.reverse-video\",\"modes.synchronized-output\",\"modes.utf8-mouse-1005\",\"modes.xtpopcolors\",\"modes.xtpopsgr\",\"modes.xtpushcolors\",\"modes.xtpushsgr\",\"modes.xtrestore\",\"modes.xtsave\",\"reset.decaln\",\"reset.method\",\"reset.ris\",\"reset.sgr\",\"reset.soft\",\"scrollback.accumulate\",\"scrollback.alt-screen\",\"scrollback.decstbm\",\"scrollback.decstbm-reset\",\"scrollback.reverse-index\",\"scrollback.scroll-down\",\"scrollback.scroll-up\",\"scrollback.set-region\",\"scrollback.total-lines\",\"sgr.bg.256\",\"sgr.bg.bright\",\"sgr.bg.default\",\"sgr.bg.standard\",\"sgr.bg.truecolor\",\"sgr.blink\",\"sgr.bold\",\"sgr.faint\",\"sgr.fg.256\",\"sgr.fg.bright\",\"sgr.fg.default\",\"sgr.fg.standard\",\"sgr.fg.truecolor\",\"sgr.hidden\",\"sgr.inverse\",\"sgr.italic\",\"sgr.overline\",\"sgr.reset\",\"sgr.selective-reset.bold\",\"sgr.selective-reset.inverse\",\"sgr.selective-reset.italic\",\"sgr.selective-reset.underline\",\"sgr.strikethrough\",\"sgr.underline-color-indexed\",\"sgr.underline-color-reset\",\"sgr.underline-color-rgb\",\"sgr.underline.color\",\"sgr.underline.curly\",\"sgr.underline.dashed\",\"sgr.underline.dotted\",\"sgr.underline.double\",\"sgr.underline.single\",\"text.backspace\",\"text.basic\",\"text.cbt\",\"text.cht\",\"text.combining\",\"text.cr\",\"text.hts\",\"text.index\",\"text.newline\",\"text.next-line\",\"text.overwrite\",\"text.reverse-index-scroll\",\"text.tab\",\"text.tbc\",\"text.wide.cjk\",\"text.wide.emoji\",\"text.wide.emoji-flags\",\"text.wide.emoji-vs16\",\"text.wide.emoji-zwj\",\"text.wrap\",\"unicode.east-asian-ambiguous\",\"unicode.grapheme-cursor\",\"unicode.tab-stops\",\"unicode.wrap-boundary\"],\"startedAt\":\"2026-10-29T10:22:08.566Z\",\"hostInputs\":{\"foreground-rgb\":\"not-supplied\",\"background-rgb\":\"not-supplied\",\"cursor-rgb\":\"not-supplied\",\"palette-entry-rgb\":\"not-supplied\",\"pixel-geometry\":\"{\\\"cellWidth\\\":10,\\\"cellHeight\\\":20}\",\"clipboard-read-permission\":\"not-supplied\"},\"result\":\"completed\"}",
+    "collector.replyPath": "{\"backend\":\"alacritty\",\"runtimeIdentity\":{\"kind\":\"native\",\"engineVersion\":\"0.26.0\",\"adapterVersion\":\"0.10.2\",\"termlessRevision\":\"107c05a6636ded43cb0864cfbc0fc9f6a7460b64\",\"loadedBinary\":{\"path\":\"vendor/termless/packages/alacritty/termless-alacritty-native.node\",\"sha256\":\"5d818656c9d58c8c68bec9f7bca1a55cc65ccf9fc078f9a3da0b872a28bf547a\"},\"provenance\":{\"sha256\":\"5d818656c9d58c8c68bec9f7bca1a55cc65ccf9fc078f9a3da0b872a28bf547a\",\"sourceCommit\":\"22476678c4055e34230278cd176d11ea450e3c97\",\"buildHash\":\"bacac1e0134e79c52aa55a87b6c3dff9452e9d85e84cbe275514591d8091db32\",\"toolchain\":\"rustc 1.94.0 (4a4ef493e 2026-03-02) (built from a source tarball); cargo 1.94.0 (85eff7c80 2026-01-15)\",\"lockSha256\":\"1f89f2579b7d786a116d8fefb8267c4af076bd3a3893adcf14b00c4466740497\"}},\"decisions\":{\"device.xtwinops-14\":{\"member\":true,\"reason\":\"alacritty declares complete reply delivery bound to its loaded source and engine\",\"runtimeIdentity\":{\"kind\":\"native\",\"engineVersion\":\"0.26.0\",\"adapterVersion\":\"0.10.2\",\"termlessRevision\":\"107c05a6636ded43cb0864cfbc0fc9f6a7460b64\",\"loadedBinary\":{\"path\":\"vendor/termless/packages/alacritty/termless-alacritty-native.node\",\"sha256\":\"5d818656c9d58c8c68bec9f7bca1a55cc65ccf9fc078f9a3da0b872a28bf547a\"},\"provenance\":{\"sha256\":\"5d818656c9d58c8c68bec9f7bca1a55cc65ccf9fc078f9a3da0b872a28bf547a\",\"sourceCommit\":\"22476678c4055e34230278cd176d11ea450e3c97\",\"buildHash\":\"bacac1e0134e79c52aa55a87b6c3dff9452e9d85e84cbe275514591d8091db32\",\"toolchain\":\"rustc 1.94.0 (4a4ef493e 2026-03-02) (built from a source tarball); cargo 1.94.0 (85eff7c80 2026-01-15)\",\"lockSha256\":\"1f89f2579b7d786a116d8fefb8267c4af076bd3a3893adcf14b00c4466740497\"}},\"hostRecipes\":[{\"recipe\":\"text-area-size\",\"query\":\"\\u001b[14t\",\"missing\":[\"pixel-geometry\"]}]},\"extensions.osc52-read\":{\"member\":true,\"reason\":\"alacritty declares complete reply delivery bound to its loaded source and engine\",\"runtimeIdentity\":{\"kind\":\"native\",\"engineVersion\":\"0.26.0\",\"adapterVersion\":\"0.10.2\",\"termlessRevision\":\"107c05a6636ded43cb0864cfbc0fc9f6a7460b64\",\"loadedBinary\":{\"path\":\"vendor/termless/packages/alacritty/termless-alacritty-native.node\",\"sha256\":\"5d818656c9d58c8c68bec9f7bca1a55cc65ccf9fc078f9a3da0b872a28bf547a\"},\"provenance\":{\"sha256\":\"5d818656c9d58c8c68bec9f7bca1a55cc65ccf9fc078f9a3da0b872a28bf547a\",\"sourceCommit\":\"22476678c4055e34230278cd176d11ea450e3c97\",\"buildHash\":\"bacac1e0134e79c52aa55a87b6c3dff9452e9d85e84cbe275514591d8091db32\",\"toolchain\":\"rustc 1.94.0 (4a4ef493e 2026-03-02) (built from a source tarball); cargo 1.94.0 (85eff7c80 2026-01-15)\",\"lockSha256\":\"1f89f2579b7d786a116d8fefb8267c4af076bd3a3893adcf14b00c4466740497\"}},\"hostRecipes\":[{\"recipe\":\"clipboard-load\",\"query\":\"\\u001b]52;c;?\\u0007\",\"missing\":[\"clipboard-read-permission\"]}]}},\"declaration\":{\"boundary\":\"feed-and-getCursor\",\"adapterSources\":[{\"path\":\"packages/alacritty/src/index.ts\",\"blobOid\":\"b4154cbd6ef4a83ce2cbf3dcf26ff13d645efd05\"},{\"path\":\"packages/alacritty/src/backend.ts\",\"blobOid\":\"7d21892bcc3f3abeb070be6c566cb114fd03e893\"},{\"path\":\"packages/alacritty/native/src/lib.rs\",\"blobOid\":\"f88194a69fb43e4d45244f1da70e149c50905b16\"},{\"path\":\"src/load-native.ts\",\"blobOid\":\"34e142550085450ab02138184626716ad0d6b546\"}],\"engine\":{\"kind\":\"native\",\"sha256\":\"5d818656c9d58c8c68bec9f7bca1a55cc65ccf9fc078f9a3da0b872a28bf547a\"}}}",
+    "device.xtwinops-14": "\u001b[4;480;800t\u001b[?6c",
+    "collector.hostRecipes.device.xtwinops-14": "{\"runId\":\"d03bd884-f23d-4f94-9a66-bb785b29a9f3\",\"captures\":[{\"query\":\"\\u001b[14t\",\"response\":\"\\u001b[4;480;800t\",\"error\":null},{\"query\":\"\\u001b[c\",\"response\":\"\\u001b[?6c\",\"error\":null}],\"causes\":[]}",
+    "extensions.osc52-read": "\u001b[?6c",
+    "collector.hostRecipes.extensions.osc52-read": "{\"runId\":\"d03bd884-f23d-4f94-9a66-bb785b29a9f3\",\"captures\":[{\"query\":\"\\u001b]52;c;?\\u0007\",\"response\":\"\",\"error\":null},{\"query\":\"\\u001b[c\",\"response\":\"\\u001b[?6c\",\"error\":null}],\"causes\":[{\"recipe\":\"clipboard-load\",\"cause\":{\"kind\":\"source-audited\",\"missing\":\"clipboard-read-permission\",\"runId\":\"d03bd884-f23d-4f94-9a66-bb785b29a9f3\",\"artifactSha256\":\"5d818656c9d58c8c68bec9f7bca1a55cc65ccf9fc078f9a3da0b872a28bf547a\",\"citation\":{\"inputRecordRef\":\"collector.collectionAttempt\",\"sha256\":\"3f3b2805cdc7d6dcb795c4be8714ef934a179b571cafaa3341d3639304c81993\",\"input\":\"clipboard-read-permission\",\"sourceLocation\":\"alacritty_terminal 0.26.0 Config default clipboard policy OnlyCopy; Termless packages/alacritty/native/src/lib.rs EventProxy::send has no ClipboardLoad handler; this harness supplies no clipboard read permission\"}}}]}"
+  },
+  "assertions": [
+    {
+      "featureId": "device.xtwinops-14",
+      "assertionType": "query_reply",
+      "kind": "positive",
+      "expected": "CSI 14 t reports text-area pixels as CSI 4;positive-height;positive-width t",
+      "observed": "\u001b[4;480;800t",
+      "rawReplyRef": "device.xtwinops-14"
+    },
+    {
+      "featureId": "extensions.osc52-read",
+      "assertionType": "query_reply",
+      "kind": "negative",
+      "expected": "OSC 52 c query returns the exact written nonce",
+      "observed": "DA1 answered at +0ms; no reply through the 250 ms window",
+      "rawReplyRef": "extensions.osc52-read"
+    }
+  ],
+  "screenshotRefs": [],
+  "runtimeIdentity": {
+    "kind": "native",
+    "engineVersion": "0.26.0",
+    "adapterVersion": "0.10.2",
+    "termlessRevision": "107c05a6636ded43cb0864cfbc0fc9f6a7460b64",
+    "loadedBinary": {
+      "path": "vendor/termless/packages/alacritty/termless-alacritty-native.node",
+      "sha256": "5d818656c9d58c8c68bec9f7bca1a55cc65ccf9fc078f9a3da0b872a28bf547a"
+    },
+    "provenance": {
+      "sha256": "5d818656c9d58c8c68bec9f7bca1a55cc65ccf9fc078f9a3da0b872a28bf547a",
+      "sourceCommit": "22476678c4055e34230278cd176d11ea450e3c97",
+      "buildHash": "bacac1e0134e79c52aa55a87b6c3dff9452e9d85e84cbe275514591d8091db32",
+      "toolchain": "rustc 1.94.0 (4a4ef493e 2026-03-02) (built from a source tarball); cargo 1.94.0 (85eff7c80 2026-01-15)",
+      "lockSha256": "1f89f2579b7d786a116d8fefb8267c4af076bd3a3893adcf14b00c4466740497"
+    }
+  },
+  "subject": {
+    "kind": "lib",
+    "id": "alacritty",
+    "version": "0.26.0",
+    "os": "linux",
+    "osVersion": "7.0.0-34-generic",
+    "outerTerminal": null,
+    "mux": null,
+    "config": "80x24 default Termless backend",
+    "permissions": null
+  },
+  "identity": "unverified",
+  "measuredAt": "2026-10-29T10:22:23.138Z",
+  "origin": {
+    "kind": "collector"
+  }
+}
