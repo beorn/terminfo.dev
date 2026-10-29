@@ -86,6 +86,18 @@ const headlessObservableFeatures = [
     "Adapter (runtime identity unavailable) exposes no OSC 8 URI observer (getHyperlinkAt); link metadata unobservable",
     { chars: [..."ALINKZ"], links: Array.from({ length: 6 }, () => ({ reported: false })) },
   ],
+  [
+    "extensions.font-ligatures",
+    "Font ligatures are renderer glyph shaping; the headless parser shapes no glyphs",
+    { ligatureSample: "!= -> => <= ==" },
+  ],
+  [
+    "modes.decsscls",
+    "DECSSCLS controls presentation timing; the headless parser paints no frames",
+    { presentation: false },
+  ],
+  ["modes.reverse-video", "rendered colors (pixels)", { mode: false }],
+  ["modes.synchronized-output", "frame timing", { text: "" }],
 ] as const
 
 test.each(headlessObservableFeatures)(

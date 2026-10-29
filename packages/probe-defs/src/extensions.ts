@@ -2316,10 +2316,12 @@ export const extensionsProbes: ProbeDefinition[] = [
   {
     ...probe(
       "extensions.font-ligatures",
-      () =>
-        notTestedResult("Font ligatures are renderer glyph shaping; the headless parser shapes no glyphs", {
+      () => {
+        const note = "Font ligatures are renderer glyph shaping; the headless parser shapes no glyphs"
+        return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
           ligatureSample: FONT_LIGATURE_TARGET,
-        }),
+        })
+      },
       async (ctx) => {
         if (!ctx.capture) {
           return notTestedResult("Font ligatures need rendered pixels; this context exposes no capture callback", {

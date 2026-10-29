@@ -1265,7 +1265,10 @@ export const modesProbes: ProbeDefinition[] = [
   // Reverse video
   decrpmModeProbe("modes.reverse-video", 5, (ctx) => {
     ctx.feed("\x1b[?5h")
-    return notTestedResult("rendered colors (pixels)", { mode: ctx.getMode("reverseVideo") })
+    const note = "rendered colors (pixels)"
+    return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
+      mode: ctx.getMode("reverseVideo"),
+    })
   }),
 
   // Synchronized output
@@ -1273,7 +1276,10 @@ export const modesProbes: ProbeDefinition[] = [
     ctx.feed("\x1b[?2026h")
     ctx.feed("Hello")
     ctx.feed("\x1b[?2026l")
-    return notTestedResult("frame timing", { text: ctx.getText() })
+    const note = "frame timing"
+    return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
+      text: ctx.getText(),
+    })
   }),
 
   // Origin mode
@@ -2146,10 +2152,12 @@ export const modesProbes: ProbeDefinition[] = [
   {
     ...probe(
       "modes.decsscls",
-      () =>
-        notTestedResult("DECSSCLS controls presentation timing; the headless parser paints no frames", {
+      () => {
+        const note = "DECSSCLS controls presentation timing; the headless parser paints no frames"
+        return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
           presentation: false,
-        }),
+        })
+      },
       decsscls,
     ),
     // The terminal arm captures timed frames and reports evidence "pixels"; the headless arm paints

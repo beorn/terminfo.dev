@@ -98,7 +98,8 @@ Declared getters returning null report unlinked cells, so URI mismatches remain 
 
 The eight declaration-only library checks (Kitty animation and Unicode placeholders, Sixel,
 semantic prompts, OSC 7, OSC 633, notifications and iTerm2 images), the absent OSC 8 URI observer,
-and the DECSCLM/2031 missing timing or host-event facilities retain their existing coverage and raw
+the DECSCLM/2031 missing timing or host-event facilities, and the four rendering-limit checks
+(font ligatures, DECSSCLS, reverse video and synchronized output) retain their existing coverage and raw
 state on `headless-observable-review`. Each carries a required review naming its missing observable.
 That branch and `reply-path-audit-review` admit only an independently bound Untestable decision;
 source review establishes no rendered effect or measured negative. App callbacks and real-observable
