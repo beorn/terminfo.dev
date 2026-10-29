@@ -219,9 +219,13 @@ test("report renders reviewed outcomes and missing cells without promoting legac
     )
 
     const projection = loadCurrentResults(join(root, "content")).projection
-    const reviewed = Object.values(projection.current).find((selected) => selected.runId === run.runId)
+    const reviewed = Object.values(projection.contexts).find((selected) =>
+      selected.contributingRunIds.includes(run.runId),
+    )
     expect(reviewed, JSON.stringify(projection.exclusions)).toBeDefined()
-    expect(Object.values(projection.current).map((selected) => selected.runId)).toContain(inconclusiveRun.runId)
+    expect(Object.values(projection.contexts).flatMap((selected) => selected.contributingRunIds)).toContain(
+      inconclusiveRun.runId,
+    )
     expect(reviewed?.counts).toEqual({ supported: 1, unsupported: 1, untestable: 0, "test-todo": 1, "test-failure": 2 })
 
     const invoke = () =>

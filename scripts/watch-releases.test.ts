@@ -156,9 +156,11 @@ describe("release watch consumer", () => {
       writeFileSync(
         join(root, "docs", "data", "current-results.ts"),
         `
-        const app = { subject: { kind: "term", id: "kitty", version: process.env.TEST_REVIEWED_APP_VERSION }, runId: "reviewed-kitty", sha256: "${"a".repeat(64)}" }
-        const headless = { subject: { kind: "lib", id: "kitty", version: "0.99" }, runId: "reviewed-parser", sha256: "${"b".repeat(64)}" }
-        export function loadCurrentResults() { return { projection: { current: { "term:kitty": app, "lib:kitty": headless } } } }
+        const appRun = { subject: { kind: "term", id: "kitty", version: process.env.TEST_REVIEWED_APP_VERSION }, runId: "reviewed-kitty", sha256: "${"a".repeat(64)}", measuredAt: "2026-07-02T00:00:00Z", suiteId: "fixture" }
+        const headlessRun = { subject: { kind: "lib", id: "kitty", version: "0.99" }, runId: "reviewed-parser", sha256: "${"b".repeat(64)}", measuredAt: "2026-07-02T00:00:00Z", suiteId: "fixture" }
+        const app = { subject: { kind: "term", id: "kitty" }, contributingRunIds: [appRun.runId] }
+        const headless = { subject: { kind: "lib", id: "kitty" }, contributingRunIds: [headlessRun.runId] }
+        export function loadCurrentResults() { return { projection: { contexts: { "term:kitty": app, "lib:kitty": headless }, history: { "term:kitty": [appRun], "lib:kitty": [headlessRun] } } } }
         export function compatibilitySubjects() { return new Map([
           ["kitty", { contextKey: "lib:kitty", selected: headless }],
           ...(!process.env.NO_REVIEWED_APP ? [["app-kitty", { contextKey: "term:kitty", selected: app }]] : []),
@@ -198,14 +200,17 @@ describe("release watch consumer", () => {
       expect(watch()).toMatchObject({
         runAt: "2026-09-28T20:00:00.000Z",
         cutoff: "2026-08-28T20:00:00.000Z",
-        currentVersion: "0.46.2",
+        currentVersions: ["0.46.2"],
         latestVersion: "0.49.1",
         disposition: "new-release",
-        currentEvidence: { contextKey: "term:kitty", runId: "reviewed-kitty", sha256: "a".repeat(64) },
+        currentEvidence: {
+          contextKey: "term:kitty",
+          sources: [expect.objectContaining({ runId: "reviewed-kitty", sha256: "a".repeat(64) })],
+        },
         selectedCandidate: { tag: "v0.49.1" },
       })
       expect(watch(null)).toMatchObject({
-        currentVersion: null,
+        currentVersions: [],
         disposition: "no-reviewed-current",
         isNewer: false,
       })
@@ -215,7 +220,7 @@ describe("release watch consumer", () => {
       expect(watch("0.47.0", 1)).toMatchObject({
         disposition: "comparison-unresolved",
         isNewer: false,
-        currentEvidence: { runId: "reviewed-kitty" },
+        currentEvidence: { sources: [expect.objectContaining({ runId: "reviewed-kitty" })] },
         error: expect.stringContaining("0.47.0"),
       })
     } finally {
