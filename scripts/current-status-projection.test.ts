@@ -14,6 +14,8 @@ import type { ProbeResult, ProbeSuiteManifest, TextQualification } from "@termin
 import { ENVIRONMENT_GROUP_IDS } from "@terminfo/probe-defs"
 import { projectResults, maskRunnerStorePath, projectedContextKey } from "../docs/data/selected-results.ts"
 import { currentCoverageSentence } from "../docs/data/release-scope.ts"
+import { candidateFromSelected, pickContextRun } from "../docs/data/run-selection.ts"
+import { readCellEvidence } from "../docs/data/evidence-reader.ts"
 
 // Explicit schema-3 wire fixture; current public results use tests and assertionType.
 type Schema3Result = Omit<ProbeResult, "tests" | "assertionType"> & { checks: ProbeResult["tests"]; evidence?: string }
@@ -95,6 +97,64 @@ function supportedBaseline() {
 // Existing selection tests exercise v1/v2 observation grading; they cannot prove that v3 selection
 // reads the stored five statuses and frozen denominator without applying later interpretations.
 describe("current execution projection", () => {
+  // CTO contract: only contributing original dates may supersede a reviewed host generation.
+  // Existing cell-composition cases do not exercise the picker or a newer no-output attempt.
+  it("does not let a newer attempt supersede original evidence from another host generation", () => {
+    const baseline = supportedBaseline()
+    const olderHost = {
+      ...baseline,
+      runId: "older-host",
+      measuredAt: "2026-10-20T00:00:00Z",
+      subject: { ...baseline.subject, osVersion: "old" },
+    }
+    const chosenHost = {
+      ...baseline,
+      runId: "chosen-host",
+      measuredAt: "2026-10-21T00:00:00Z",
+      subject: { ...baseline.subject, osVersion: "new" },
+    }
+    const projection = projectResults([olderHost, chosenHost], [], ids, { currentProbeHash: suite.probeHash }, [])
+    const candidates = Object.values(projection.contexts).map((context) => {
+      if (context.contributingRunIds.includes(olderHost.runId)) {
+        context.attempts.push({
+          runId: "no-output",
+          path: "working/no-output.json",
+          selection: { ids: [ids[0]!] },
+          attempt: { ids: [ids[0]!], result: "completed", startedAt: "2027-01-01T00:00:00Z" },
+          noOutputIds: [ids[0]!],
+        })
+      }
+      const candidate = candidateFromSelected(context.contextKey, context, {}, projection)
+      if (!candidate) throw new Error("fixture context lost original sources")
+      expect(candidate.sources.map((source) => source.runId)).not.toContain("no-output")
+      return candidate
+    })
+    const chosen = candidates.find((candidate) =>
+      candidate.sources.some((source) => source.runId === chosenHost.runId),
+    )!
+    expect(pickContextRun(candidates, { contextKey: chosen.key })).toEqual({
+      run: chosen,
+      selection: "reviewed default-context row",
+    })
+  })
+
+  // A context with both old and current cells remains eligible. Whole-run filtering misses this.
+  it("keeps a mixed-source context current and excludes a zero-source candidate", () => {
+    const baseline = supportedBaseline()
+    const projection = projectResults([baseline], [], ids, { currentProbeHash: suite.probeHash }, [])
+    const context = Object.values(projection.contexts)[0]!
+    const candidate = candidateFromSelected(context.contextKey, context, {}, projection)!
+    const mixed = {
+      ...candidate,
+      sources: [{ ...candidate.sources[0]!, suiteRelation: "older" as const }, ...candidate.sources],
+    }
+    const empty = { ...candidate, key: "attempt-only", sources: [] }
+    expect(pickContextRun([empty, mixed])).toEqual({ run: mixed, selection: "only current" })
+    expect(
+      candidateFromSelected(context.contextKey, { ...context, contributingRunIds: [] }, {}, projection),
+    ).toBeUndefined()
+    expect(pickContextRun([candidate])).toEqual({ run: candidate, selection: "only current" })
+  })
   // CTO R1: a working-only context must not rename an admitted context's public key.
   // The legacy-context witness below has no explicit working input and misses this population split.
   it("keeps public context keys stable beside a working-only context", () => {
@@ -108,14 +168,15 @@ describe("current execution projection", () => {
       { currentProbeHash: suite.probeHash, workingRuns: [working] },
       [],
     )
-    expect(Object.keys(projection.current)).toEqual(["term:kitty"])
+    expect(Object.keys(projection.versions)).toEqual(["term:kitty"])
     expect(Object.keys(projection.contexts)).toContain("term:kitty")
     const shared = projection.contexts["term:kitty"]!
     expect(shared.contributingRunIds).toEqual([current.runId])
     expect(Object.values(shared.cells).every((cell) => cell.origin.runId === current.runId)).toBe(true)
     const workingKey = projectedContextKey(working.subject, 2)
     expect(projection.contexts[workingKey]?.contributingRunIds).toEqual([working.runId])
-    expect(projection.current).not.toHaveProperty(workingKey)
+    expect(projection.versions).not.toHaveProperty(workingKey)
+    expect(projection).not.toHaveProperty("current")
   })
 
   // CTO R2: the canonical owner must resolve a retained attempt, even without the report's matcher.
@@ -166,7 +227,7 @@ describe("current execution projection", () => {
       observations: [],
     })
     const projection = projectResults([current, legacy], [], ids, { currentProbeHash: suite.probeHash }, [])
-    expect(Object.keys(projection.contexts)).toEqual(Object.keys(projection.current))
+    expect(Object.keys(projection.contexts)).toEqual(Object.keys(projection.versions))
     const context = Object.values(projection.contexts)[0]!
     expect(context.contributingRunIds).toEqual([current.runId])
     expect(Object.values(context.cells).every((cell) => cell.origin.runId === current.runId)).toBe(true)
@@ -252,8 +313,66 @@ describe("current execution projection", () => {
       ])
       expect(current).not.toHaveProperty("sha256")
       expect(current).not.toHaveProperty("sealedAt")
-      // CTO1212de0f: stage1 never puts composed cells beneath the public run's hash or seal.
-      expect(projection.current["term:kitty"]).toMatchObject({
+      // #31610 AC1/AC4: the private fold above passed while the public mapper lost these cells.
+      // RED at5044b105 used the old public seam and received TODO for both retained cells.
+      const published = publicResults(projection, new Map()).projection.contexts["term:kitty"]!
+      expect(published.cells[ids[1]!]!.status).toBe("supported")
+      expect(published.cells[ids[2]!]!.status).toBe("supported")
+      expect(published.contributingRunIds).toEqual([prior.runId, latest.runId])
+      expect(published.counts).toEqual(current.counts)
+      expect(published.cells[ids[0]!]!.origin).toEqual({ runId: latest.runId, resultId: ids[0] })
+      expect(published.cells[ids[2]!]!.origin).toEqual({ runId: prior.runId, resultId: ids[2] })
+      expect(published.cells[ids[2]!]!.measuredAt).toBe(prior.measuredAt)
+      expect(published.sources[prior.runId]!.sha256).toBe(prior.sha256)
+      expect(published).not.toHaveProperty("runId")
+      expect(published).not.toHaveProperty("sha256")
+      expect(published).not.toHaveProperty("sealedAt")
+      // A matching origin alone would miss mapping both cells through one run's publication review.
+      // Extend this owning two-run case through the public evidence reader and both trace receipts.
+      for (const [runId, featureId] of [
+        [prior.runId, ids[1]!],
+        [latest.runId, ids[3]!],
+      ]) {
+        const original = projection.history["term:kitty"]!.find((run) => run.runId === runId)!
+        original.presentations[featureId!] = {
+          id: `review-${runId}`,
+          reviewer: "fixture",
+          reason: "Inspect this original result",
+          sources: [],
+          presentsEvidence: true,
+        }
+      }
+      const reviewedPublic = publicResults(projection, new Map())
+      const reviewedContext = reviewedPublic.projection.contexts["term:kitty"]!
+      for (const featureId of [ids[1]!, ids[3]!]) {
+        const cell = reviewedContext.cells[featureId]!
+        const source = reviewedContext.sources[cell.origin.runId]!
+        expect(cell.presentation.state).toBe("presented")
+        if (cell.presentation.state !== "presented") throw new Error("Fixture evidence was not presented")
+        expect(cell.presentation.review.id).toBe(`review-${cell.origin.runId}`)
+        const document = reviewedPublic.documents.get(cell.presentation.url.split("#")[0]!)!
+        const evidence = readCellEvidence(document.document, {
+          schemaVersion: source.schemaVersion,
+          runId: cell.origin.runId,
+          runSha256: source.sha256,
+          featureId: cell.origin.resultId,
+          reviewId: cell.presentation.review.id,
+          status: cell.status,
+        })
+        expect(evidence.runId).toBe(cell.origin.runId)
+        expect(evidence.review.id).toBe(`review-${cell.origin.runId}`)
+        if (featureId === ids[1]) {
+          expect(evidence.record.rawReply).toBe("ACK")
+          expect(evidence.record.assertions[0]?.featureId).toBe(featureId)
+        }
+        if (!source.trace) throw new Error(`Missing original trace for ${source.runId}`)
+        expect(reviewedPublic.documents.get(source.trace.url)?.document).toMatchObject({
+          runId: source.runId,
+          runSha256: source.sha256,
+        })
+      }
+      // Original immutable runs keep their full cells and seals apart from the composed context.
+      expect(projection.history["term:kitty"]?.find((run) => run.runId === latest.runId)).toMatchObject({
         runId: latest.runId,
         sha256: latest.sha256,
         sealedAt: latest.sealedAt,
@@ -290,7 +409,9 @@ describe("current execution projection", () => {
         { runId: latest.runId, selection, attempt: outcome, noOutputIds: selection.ids },
       ])
       expect(context.attempts[0]!.attempt).not.toHaveProperty("startedAt")
-      expect(projection.current["term:kitty"]!.results).toEqual(latest.results)
+      expect(projection.history["term:kitty"]?.find((run) => run.runId === latest.runId)?.results).toEqual(
+        latest.results,
+      )
     },
   )
 
@@ -325,7 +446,7 @@ describe("current execution projection", () => {
     expect(context.contributingRunIds).toEqual([])
     expect(context.complete).toBe(false)
     expect(context.attempts).toMatchObject([{ runId: "original-draft", path: "original.draft.json", attempt: outcome }])
-    expect(projection.current).toEqual({})
+    expect(projection.versions).toEqual({})
   })
 
   it.each([
@@ -368,7 +489,6 @@ describe("current execution projection", () => {
       const context = projection.contexts["term:kitty"]!
       expect(context.cells[ids[0]!]!.origin.runId).toBe(winner)
       expect(context.cells[ids[0]!]!.result).toBe((winner === "A" ? a : z).results?.[0])
-      expect(projection.current["term:kitty"]!.runId).toBe("Z")
     },
   )
 
@@ -381,17 +501,16 @@ describe("current execution projection", () => {
       { currentProbeHash: suite.probeHash },
       [],
     )
-    const selected = projection.current["term:kitty"]
-    expect(selected?.results).toEqual(run.results)
+    const selected = projection.contexts["term:kitty"]
+    expect(Object.values(selected!.cells).map((cell) => cell.result)).toEqual(run.results)
     expect(selected?.score).toEqual({ supported: 0, all: 273 })
     expect(selected?.counts["test-todo"]).toBe(273)
     expect(selected?.complete).toBe(false)
     expect(projection.table[run.runId]).toEqual(Object.fromEntries(ids.map((id) => [id, "test-todo"])))
-    // One-run provenance invariant; this must remain true while public current is transitional.
-    expect(projection).toMatchObject({ contexts: { "term:kitty": { contributingRunIds: [selected!.runId] } } })
+    expect(projection).toMatchObject({ contexts: { "term:kitty": { contributingRunIds: [run.runId] } } })
     const context = projection.contexts["term:kitty"]!
     expect(Object.values(context.cells).map((cell) => cell.origin)).toEqual(
-      ids.map((resultId) => ({ runId: selected!.runId, resultId })),
+      ids.map((resultId) => ({ runId: run.runId, resultId })),
     )
   })
   it("retains an actual failed check alongside TODO without a decisive assertion hiding either", () => {
@@ -404,14 +523,14 @@ describe("current execution projection", () => {
       reason: "callback threw",
     }
     const projection = projectResults([parse(raw(results))], [], ids, { currentProbeHash: suite.probeHash }, [])
-    expect(projection.current["term:kitty"]?.counts).toEqual({
+    expect(projection.contexts["term:kitty"]?.counts).toEqual({
       supported: 0,
       unsupported: 0,
       untestable: 0,
       "test-todo": 272,
       "test-failure": 1,
     })
-    expect(projection.current["term:kitty"]?.complete).toBe(false)
+    expect(projection.contexts["term:kitty"]?.complete).toBe(false)
   })
   it("can finish all unsupported at zero supported out of 273, without excluding capabilities", () => {
     const value = raw(
@@ -439,15 +558,15 @@ describe("current execution projection", () => {
       { currentProbeHash: suite.probeHash },
       [],
     )
-    expect(projection.current["term:kitty"]?.score).toEqual({ supported: 0, all: 273 })
-    expect(projection.current["term:kitty"]?.counts.unsupported).toBe(273)
-    expect(projection.current["term:kitty"]?.complete).toBe(true)
+    expect(projection.contexts["term:kitty"]?.score).toEqual({ supported: 0, all: 273 })
+    expect(projection.contexts["term:kitty"]?.counts.unsupported).toBe(273)
+    expect(projection.contexts["term:kitty"]?.complete).toBe(true)
   })
   it("leaves a corpus of only legacy runs with no current row and no invented current score", () => {
     const { results: _results, sealedAt: _sealedAt, ...metadata } = raw([])
     const legacy = parse({ ...metadata, schemaVersion: 2, observations: [], suiteComplete: true })
     const projection = projectResults([legacy], [], ids, { currentProbeHash: suite.probeHash }, [])
-    expect(projection.current).toEqual({})
+    expect(projection.contexts).toEqual({})
     expect(projection.versions).toEqual({})
     expect(projection.history).toEqual({})
     // The legacy run is read only for input identity, never projected into a row of its own.
@@ -480,10 +599,10 @@ describe("current execution projection", () => {
     }
     const run = parseRun("fixture.json", JSON.stringify(value), splitIds, new Map([[splitSuite.probeHash, splitSuite]]))
     const projection = projectResults([run], [], splitIds, { currentProbeHash: suite.probeHash }, [])
-    const selected = projection.current["term:kitty"]
+    const selected = projection.contexts["term:kitty"]
     // The supported-looking environment row stays recorded, and never graded: numerator and
     // denominator both cover the same 264 ids (CTO condition, verdict 427f2da3).
-    expect(selected?.results.find((result) => result.featureId === supportedGroup)?.status).toBe("supported")
+    expect(selected?.cells[supportedGroup]?.result.status).toBe("supported")
     expect(currentCoverageSentence(selected!, selected!.catalogIds)).not.toContain("NOT MEASURED")
     expect(selected?.score).toEqual({ supported: 0, all: 264 })
     expect(selected?.counts).toEqual({
@@ -525,12 +644,14 @@ it("retains the recorded live source only on selected schema-4 metadata", () => 
     ids,
     new Map([[suite.probeHash, { ...suite, schemaVersion: 4 }]]),
   )
-  const selected = projectResults([loaded], [], ids, { currentProbeHash: suite.probeHash }, []).current["term:kitty"]
+  const selected = projectResults([loaded], [], ids, { currentProbeHash: suite.probeHash }, []).history[
+    "term:kitty"
+  ]?.[0]
   expect(selected?.schemaVersion).toBe(4)
   expect(selected?.source).toEqual({ kind: "live" })
-  const oldSelected = projectResults([parse(historical)], [], ids, { currentProbeHash: suite.probeHash }, []).current[
+  const oldSelected = projectResults([parse(historical)], [], ids, { currentProbeHash: suite.probeHash }, []).history[
     "term:kitty"
-  ]
+  ]?.[0]
   expect(oldSelected?.schemaVersion).toBe(3)
   expect(oldSelected).not.toHaveProperty("source")
 })

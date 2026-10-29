@@ -14,8 +14,8 @@ import type {
 } from "../../packages/probe-defs/src/types.ts"
 import type { CurrentResult } from "./current-results.ts"
 import {
-  statesFor,
   type SelectedCell,
+  type SelectedContextSummary,
   type SelectedProjection,
   type CurrentSelectedVersion,
   type SelectedVersion,
@@ -259,16 +259,34 @@ export interface PublicVersion extends Omit<
 }
 
 export interface PublicProjection {
-  current: Record<string, PublicVersion>
+  contexts: Record<string, PublicContextSummary>
   versions: Record<string, PublicVersion[]>
   history: Record<string, PublicVersion[]>
-  currentRunCount: number
+  contextCount: number
   exclusions: Array<{ runId: string; reason: string }>
 }
 
 export interface PublicCurrentResult extends Omit<CurrentResult, "selected"> {
-  selected: PublicVersion
+  selected: PublicContextSummary
   states: Readonly<Record<string, ProbeStatus>>
+}
+
+/** An original run's public receipt, separate from a context's composed cells. */
+export type PublicRunMetadata = Omit<PublicVersion, "results">
+
+export interface PublicContextSummary extends Omit<SelectedContextSummary, "cells" | "attempts"> {
+  cells: Record<
+    string,
+    PublicProbeResult & {
+      origin: { runId: string; resultId: string }
+      measuredAt: string
+      suiteId: string
+      suiteRelation: CurrentSelectedVersion["suiteRelation"]
+    }
+  >
+  sources: Record<string, PublicRunMetadata>
+  /** Filesystem paths remain private; original attempt identity/outcome remains visible. */
+  attempts: Array<Omit<SelectedContextSummary["attempts"][number], "path"> & { startedAt?: string }>
 }
 
 export interface CellEvidence {
@@ -299,9 +317,9 @@ function publicAttempt(attempt: ProbeResult["attempt"]): ProbeResult["attempt"] 
   return attempt.scope === "none" ? { scope: "none" } : { scope: attempt.scope, startedAt: attempt.startedAt }
 }
 
-/** The API and the site consume the same current/history split; only current v3 runs are published. */
+/** The API and site consume canonical contexts and original run-owned evidence documents. */
 export function publicResults(projection: SelectedProjection, subjects: ReadonlyMap<string, CurrentResult>) {
-  const traced = new Set([...subjects.values()].map((value) => value.selected.runId))
+  const traced = new Set(Object.values(projection.contexts).flatMap((context) => context.contributingRunIds))
   const documents: PublicDocuments = new Map()
   const mapResult = (
     result: ProbeResult,
@@ -440,23 +458,76 @@ export function publicResults(projection: SelectedProjection, subjects: Readonly
   }
   const mapGroups = (groups: Record<string, CurrentSelectedVersion[]>) =>
     Object.fromEntries(Object.entries(groups).map(([key, versions]) => [key, versions.map(mapVersion)]))
+  const originals = new Map(
+    Object.values(projection.history)
+      .flat()
+      .map((version) => [version.runId, version]),
+  )
+  const contexts: Record<string, PublicContextSummary> = Object.fromEntries(
+    Object.entries(projection.contexts).map(([key, context]) => {
+      const sources: Record<string, PublicRunMetadata> = {}
+      for (const runId of context.contributingRunIds) {
+        const original = originals.get(runId)
+        if (!original) throw new Error(`Context ${key} names contributing run ${runId} absent from original history`)
+        const { results: _results, ...metadata } = mapVersion(original)
+        sources[runId] = metadata
+      }
+      const cells = Object.fromEntries(
+        Object.entries(context.cells).map(([id, cell]) => {
+          const original = originals.get(cell.origin.runId)
+          if (!original) throw new Error(`Context ${key}/${id} names missing original run ${cell.origin.runId}`)
+          const result = mapVersion(original).results.find((row) => row.featureId === cell.origin.resultId)
+          if (!result) {
+            throw new Error(`Original run ${original.runId} lacks result ${cell.origin.resultId} for ${key}/${id}`)
+          }
+          return [
+            id,
+            {
+              ...result,
+              origin: cell.origin,
+              measuredAt: original.measuredAt,
+              suiteId: original.suiteId,
+              suiteRelation: original.suiteRelation,
+            },
+          ]
+        }),
+      )
+      return [
+        key,
+        {
+          ...context,
+          contributingRunIds: context.contributingRunIds,
+          cells,
+          sources,
+          attempts: context.attempts.map(({ path: _path, ...attempt }) => ({
+            ...attempt,
+            ...(attempt.attempt?.startedAt && { startedAt: attempt.attempt.startedAt }),
+          })),
+        },
+      ]
+    }),
+  )
   const selected: PublicProjection = {
-    current: Object.fromEntries(Object.entries(projection.current).map(([key, version]) => [key, mapVersion(version)])),
+    contexts,
     versions: mapGroups(projection.versions),
     history: mapGroups(projection.history),
-    currentRunCount: Object.keys(projection.current).length,
+    contextCount: Object.keys(contexts).length,
     exclusions: projection.exclusions.map(({ runId, reason }) => ({ runId, reason })),
   }
   const selectedByBackend: Record<string, PublicCurrentResult> = Object.fromEntries(
-    [...subjects].map(([key, value]) => [
-      key,
-      {
-        contextKey: value.contextKey,
-        selected: mapVersion(value.selected),
-        states: statesFor(projection, value.selected.runId),
-        ...(value.policy && { policy: { ...value.policy, sources: publicSources(value.policy.sources) } }),
-      },
-    ]),
+    [...subjects].map(([key, value]) => {
+      const context = contexts[value.contextKey]
+      if (!context) throw new Error(`Selected context ${value.contextKey} for ${key} is absent from public contexts`)
+      return [
+        key,
+        {
+          contextKey: value.contextKey,
+          selected: context,
+          states: Object.fromEntries(context.catalogIds.map((id) => [id, context.cells[id]?.status ?? "test-todo"])),
+          ...(value.policy && { policy: { ...value.policy, sources: publicSources(value.policy.sources) } }),
+        },
+      ]
+    }),
   )
   return { projection: selected, selectedByBackend, documents }
 }

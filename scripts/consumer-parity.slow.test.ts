@@ -7,7 +7,7 @@
  */
 import { gradedFeatureIds } from "@terminfo/probe-defs"
 import type { ProbeResult, ProbeStatus } from "@terminfo/probe-defs"
-import { describe, expect, it, vi } from "vitest"
+import { afterAll, describe, expect, it, vi } from "vitest"
 import {
   mkdtempSync,
   readFileSync,
@@ -29,11 +29,13 @@ import type {
   SelectedCell,
   SelectedProjection,
   SelectedVersion,
+  SelectedContextSummary,
 } from "../docs/data/selected-results.ts"
+import type { LoadedRun } from "@terminfo/run-parser"
 import { aggregateCurrentResults } from "../docs/data/release-scope.ts"
 import * as selectedResults from "../docs/data/selected-results.ts"
 import { publicResults } from "../docs/data/public-results.ts"
-import type { PublicVersion } from "../docs/data/public-results.ts"
+import type { PublicContextSummary, PublicVersion } from "../docs/data/public-results.ts"
 
 const fixture = vi.hoisted(() => {
   const runSha256 = "a".repeat(64)
@@ -89,7 +91,7 @@ const fixture = vi.hoisted(() => {
     measuredAt,
     suiteId: "suite-v2",
     probeHash: "current",
-    suiteFreshness: "current",
+    suiteFreshness: "release suite current",
     sourceRevision: "rev",
     sha256: runSha256,
     identity: "verified",
@@ -140,7 +142,7 @@ const fixture = vi.hoisted(() => {
     ...selected,
     runId: "screen-older-reviewed",
     sha256: "c".repeat(64),
-    suiteFreshness: "older suite (1 probes)",
+    suiteFreshness: "release suite current",
     subject: { ...screen.subject, version: "4.9" },
     cells: Object.fromEntries(
       Object.entries(cells).map(([id, cell]) => [
@@ -168,13 +170,14 @@ const fixture = vi.hoisted(() => {
     mux: mux as unknown as SelectedVersion,
     screen: screen as unknown as SelectedVersion,
     projection: {
-      current: { "term:kitty": selected, "mux:tmux": mux, "mux:screen": screen },
+      seeds: { "term:kitty": selected, "mux:tmux": mux, "mux:screen": screen },
       versions: {
         "term:kitty": [selected],
         "term:kitty:clipboard": [alternateKitty],
         "lib:kitty": [
           {
             ...alternateKitty,
+            runId: "kitty-lib-reviewed",
             sha256: "f".repeat(64),
             subject: { ...subject, kind: "lib" },
           },
@@ -185,7 +188,7 @@ const fixture = vi.hoisted(() => {
       history: { "term:kitty": [selected], "mux:tmux": [mux], "mux:screen": [screen] },
       exclusions: [],
     } as unknown as {
-      current: Record<string, SelectedVersion>
+      seeds: Record<string, SelectedVersion>
       versions: Record<string, SelectedVersion[]>
       history: Record<string, SelectedVersion[]>
       exclusions: SelectedProjection["exclusions"]
@@ -193,20 +196,44 @@ const fixture = vi.hoisted(() => {
   }
 })
 
+// Synthetic rows test consumer parity, not admission. The retained-corpus subprocess below
+// still runs the real assessor, parser, selector and composer without this module's mock registry.
+vi.mock("../packages/admin/run-admission.ts", async () => ({
+  ...(await vi.importActual<typeof import("../packages/admin/run-admission.ts")>("../packages/admin/run-admission.ts")),
+  assessRunAdmission: (run: LoadedRun) =>
+    run.runId.startsWith("kitty-clipboard") || run.runId.startsWith("kitty-lib")
+      ? { accepted: false, reason: "identity-unverified", identityAdmission: null }
+      : { accepted: true, identityAdmission: null },
+}))
+
 vi.mock("../docs/data/current-results.ts", async () => {
-  // The legacy fixtures below are sealed into schema-3 runs here, so every reader sees the same
-  // current-only shape production publishes.
   const { loadFeatures } = await import("@terminfo/catalog")
-  const { aggregateCurrentResults: aggregateFixture } = await import("../docs/data/release-scope.ts")
-  const { loadDefaultContextPolicy, reviewedContextFor } = await vi.importActual<
-    typeof import("../docs/data/current-results.ts")
-  >("../docs/data/current-results.ts")
-  const catalogIds = Object.keys(loadFeatures(join(import.meta.dirname, "..", "content")))
-  // These are synthetic v3 fixtures, not a compatibility reader: production never promotes history.
-  const sealedFixture = (run: SelectedVersion): CurrentSelectedVersion => {
+  const { projectResults, projectedContextKey } = await import("../docs/data/selected-results.ts")
+  const actual = await vi.importActual<typeof import("../docs/data/current-results.ts")>(
+    "../docs/data/current-results.ts",
+  )
+  const content = join(import.meta.dirname, "..", "content")
+  const catalogIds = Object.keys(loadFeatures(content))
+  const fixtureContent = mkdtempSync(join(tmpdir(), "terminfo-parity-policy-"))
+  symlinkSync(join(content, "terminals.json"), join(fixtureContent, "terminals.json"))
+  writeFileSync(
+    join(fixtureContent, "default-contexts.json"),
+    JSON.stringify({
+      defaultContext: {
+        "term:kitty": {
+          contextKey: projectedContextKey(fixture.selected.subject, 2),
+          reviewer: "fixture",
+          reason: "default physical context",
+          sources: ["fixture://kitty"],
+        },
+      },
+    }),
+  )
+  afterAll(() => rmSync(fixtureContent, { recursive: true, force: true }))
+  const sealedFixture = (run: SelectedVersion): LoadedRun => {
     const ids = [...new Set([...catalogIds, ...Object.keys(run.cells)])]
     const results = ids.map((featureId): ProbeResult => {
-      const cell = run.cells[featureId as keyof typeof run.cells]
+      const cell = run.cells[featureId]
       const status: ProbeStatus =
         cell?.outcome === "supported"
           ? "supported"
@@ -224,73 +251,142 @@ vi.mock("../docs/data/current-results.ts", async () => {
         reason: cell?.note,
       }
     })
-    // One fold, exactly as production grades: a fixture that recomputes a score is the second
-    // arithmetic this parity test exists to catch (D132 B, #30917).
-    const aggregate = aggregateFixture(results, ids)
     return {
       schemaVersion: 4,
+      source: { kind: "live" },
       runId: run.runId + "-sealed-" + run.sha256.slice(0, 8),
+      path: "/fixture/" + run.runId + ".json",
       subject: run.subject,
       measuredAt: run.measuredAt,
       suiteId: run.suiteId,
-      probeHash: run.probeHash ?? "fixture",
-      sourceRevision: run.sourceRevision ?? "fixture",
+      probeHash: "current",
+      sourceRevision: "a".repeat(40),
       sealedAt: run.measuredAt,
       sha256: run.sha256,
       identity: run.identity,
       catalogIds: ids,
       results,
-      counts: aggregate.counts,
-      score: { supported: aggregate.supported, all: aggregate.denominator },
-      complete: aggregate.complete,
-      suiteRelation: "release",
-      suiteFreshness: run.suiteFreshness,
+      suiteComplete: true,
+      suiteProbeCount: ids.length,
       rawReplies: {},
       assertions: [],
+      observations: [],
       origin: { kind: "collector" },
-      presentations: {},
+      screenshotRefs: [],
+      textSnapshotRefs: [],
+      notTested: [],
+      ungradedDiagnostics: {},
+      legacy: false,
     }
   }
   const build = () => {
-    const current = Object.fromEntries(
-      Object.entries(fixture.projection.current).map(([key, run]) => [key, sealedFixture(run)]),
-    )
-    const groups = (group: Record<string, SelectedVersion[]>): Record<string, CurrentSelectedVersion[]> =>
-      Object.fromEntries(Object.entries(group).map(([key, runs]) => [key, runs.map(sealedFixture)]))
-    const allCurrent = [
-      ...Object.values(current),
-      ...Object.values(groups(fixture.projection.versions)).flat(),
-      ...Object.values(groups(fixture.projection.history)).flat(),
-    ]
-    const currentTable = Object.fromEntries(
-      allCurrent.map((run) => [
-        run.runId,
-        Object.fromEntries(run.results.map((result) => [result.featureId, result.status])),
-      ]),
-    )
-    return {
-      current,
-      versions: groups(fixture.projection.versions),
-      history: groups(fixture.projection.history),
-      table: currentTable,
-      exclusions: [],
+    const originals = new Map<string, LoadedRun>()
+    for (const run of [
+      ...Object.values(fixture.projection.seeds),
+      ...Object.values(fixture.projection.versions).flat(),
+      ...Object.values(fixture.projection.history).flat(),
+    ]) {
+      const sealed = sealedFixture(run)
+      originals.set(sealed.runId, sealed)
     }
+    return projectResults(
+      [...originals.values()],
+      [],
+      catalogIds,
+      { currentProbeHash: "current", releaseSuiteId: "current" },
+      [],
+    )
   }
   return {
-    loadDefaultContextPolicy,
-    reviewedContextFor,
+    ...actual,
     loadCurrentResults: () => ({ projection: build() }),
-    // The projection under test, never a fresh fixture: a test that seeds a run must see the
-    // resolver read exactly that run (the retired promotion enumerated historical.current).
-    compatibilitySubjects: (projection: SelectedProjection) =>
-      new Map(
-        Object.entries(projection.current).map(([key, selected]) => [
-          selected.subject.id,
-          { contextKey: key, selected },
-        ]),
-      ),
+    compatibilitySubjects: (projection: SelectedProjection) => actual.compatibilitySubjects(projection, fixtureContent),
   }
 })
+
+function requiredContext(projection: SelectedProjection, kind: string, id: string): SelectedContextSummary {
+  const context = Object.values(projection.contexts).find(
+    (entry) => entry.subject?.kind === kind && entry.subject.id === id,
+  )
+  if (!context) throw new Error(`Missing fixture context ${kind}:${id}`)
+  return context
+}
+
+function originalRun(
+  projection: SelectedProjection,
+  context: SelectedContextSummary,
+  featureId = "sgr.bold",
+): CurrentSelectedVersion {
+  const runId = context.cells[featureId]?.origin.runId
+  const run = Object.values(projection.history)
+    .flat()
+    .find((entry) => entry.runId === runId)
+  if (!run) throw new Error(`Missing original fixture source ${runId}`)
+  return run
+}
+
+// Re-enter the production composer after a fixture changes an original subject/run.
+function recompose(projection: SelectedProjection, extra: readonly LoadedRun[] = []): SelectedProjection {
+  const runs = new Map(
+    Object.values(projection.contexts).flatMap((context) =>
+      Object.values(context.cells).map((cell) => [cell.run.runId, cell.run] as const),
+    ),
+  )
+  // Rejected original history still affects physical context keys and remains readable in history.
+  for (const version of Object.values(projection.history).flat()) {
+    if (runs.has(version.runId)) continue
+    runs.set(version.runId, {
+      ...version,
+      schemaVersion: 4,
+      source: { kind: "live" },
+      path: "/fixture/" + version.runId + ".json",
+      suiteComplete: true,
+      suiteProbeCount: version.catalogIds.length,
+      assertions: [],
+      observations: [],
+      screenshotRefs: [],
+      textSnapshotRefs: [],
+      notTested: [],
+      ungradedDiagnostics: {},
+      legacy: false,
+    })
+  }
+  for (const run of extra) runs.set(run.runId, run)
+  return selectedResults.projectResults(
+    [...runs.values()],
+    [],
+    Object.values(projection.contexts)[0]?.catalogIds ?? [],
+    { currentProbeHash: "current", releaseSuiteId: "current" },
+    [],
+  )
+}
+
+function addFixtureSubject(
+  projection: SelectedProjection,
+  kind: CurrentSelectedVersion["subject"]["kind"],
+  id: string,
+) {
+  const base = Object.values(projection.contexts).flatMap((context) => Object.values(context.cells))[0]?.run
+  if (!base) throw new Error("Missing original run for subject fixture")
+  const run = structuredClone(base)
+  run.subject = { ...run.subject, kind, id }
+  run.runId = `${base.runId}-${kind}-${id}`
+  run.sha256 = createHash("sha256").update(run.runId).digest("hex")
+  Object.assign(projection, recompose(projection, [run]))
+  const selected = requiredContext(projection, kind, id)
+  return { contextKey: selected.contextKey, selected }
+}
+
+function analysisSources(context: SelectedContextSummary) {
+  const runs = new Map(Object.values(context.cells).map((cell) => [cell.run.runId, cell.run]))
+  return [...runs.values()].map((run) => ({
+    runId: run.runId,
+    sha256: run.sha256,
+    measuredAt: run.measuredAt,
+    suiteId: run.suiteId,
+    version: run.subject.version,
+  }))
+}
 
 import probesLoader from "../docs/data/probes.data.ts"
 import { loadProbes } from "../docs/data/load-probes.ts"
@@ -350,18 +446,28 @@ it("keeps the retained corpus consistent across unmocked site, API and analysis 
       for (const dir of ["probes-apps", "probes-libs", "probes-mux"])
         for (const file of readdirSync(join(content, dir)).filter(name => name.endsWith(".json")))
           raw.add(digest(readFileSync(join(content, dir, file))));
-      assert.deepEqual(keys(site.selected.current), keys(projection.current));
-      assert.deepEqual(keys(v3.current), keys(projection.current));
-      assert.equal(v3.currentRunCount, keys(projection.current).length);
+      assert.deepEqual(keys(site.selected.contexts), keys(projection.contexts));
+      assert.deepEqual(keys(v3.contexts), keys(projection.contexts));
+      assert.equal(v3.contextCount, keys(projection.contexts).length);
       assert.deepEqual(matrix.stats, site.stats);
       assert.deepEqual(keys(site.selectedByBackend), [...compatibility.keys()].sort());
       const referenced = new Set();
       for (const [api, published] of [[v3,site.selected]]) {
-        for (const group of ["current","versions","history"]) {
+        assert.deepEqual(keys(api.contexts), keys(published.contexts));
+        for (const [key, context] of Object.entries(published.contexts)) {
+          const {sources, ...summary} = api.contexts[key];
+          assert.deepEqual(summary, (({sources, ...rest}) => rest)(context));
+          assert.deepEqual(keys(sources), keys(context.sources));
+          for (const [id, cell] of Object.entries(context.cells)) {
+            assert.ok(sources[cell.origin.runId], key + "/" + id + " has original source");
+            assert.equal(cell.measuredAt, sources[cell.origin.runId].measuredAt);
+            assert.equal(cell.suiteId, sources[cell.origin.runId].suiteId);
+          }
+        }
+        for (const group of ["versions","history"]) {
           assert.deepEqual(keys(api[group]),keys(published[group]));
-          for (const [key,value] of Object.entries(published[group])) {
-            const versions=group==="current"?[value]:value;
-            const refs=group==="current"?[api[group][key]]:api[group][key];
+          for (const [key,versions] of Object.entries(published[group])) {
+            const refs=api[group][key];
             for (const [i,version] of versions.entries()) {
               const bytes=readFileSync(join(out,refs[i].url.slice(1)));
               assert.equal(digest(bytes),refs[i].documentSha256);
@@ -371,20 +477,32 @@ it("keeps the retained corpus consistent across unmocked site, API and analysis 
             }
           }
         }
+        for (const context of Object.values(api.contexts)) for (const source of Object.values(context.sources)) {
+          const bytes=readFileSync(join(out,source.url.slice(1)));
+          assert.equal(digest(bytes),source.documentSha256);
+          const original=JSON.parse(bytes.toString());
+          assert.equal(original.runId,source.runId);
+          assert.equal(original.sha256,source.sha256);
+          const {results, ...metadata} = original;
+          const {url, documentSha256, ...receipt} = source;
+          assert.deepEqual(metadata, receipt);
+          assert.ok(raw.has(source.sha256));
+          referenced.add(source.sha256);
+        }
       }
       // #30764 deleted every old run and #30759 AC3 removed the historical reader, so a corpus can
       // legitimately reference nothing. Every consumer must then publish nothing rather than invent.
       if (referenced.size===0) {
-        assert.deepEqual(Object.keys(site.selected.current),[]);
+        assert.deepEqual(Object.keys(site.selected.contexts),[]);
         assert.deepEqual(Object.keys(site.selected.versions),[]);
         assert.deepEqual(Object.keys(site.selected.history),[]);
         // The row claims site, API and analysis consistency, so the empty case has to prove all
         // three rather than the site alone: the API publishes no group either, and analysis
         // publishes no current run.
-        assert.deepEqual(keys(v3.current),[]);
+        assert.deepEqual(keys(v3.contexts),[]);
         assert.deepEqual(keys(v3.versions),[]);
         assert.deepEqual(keys(v3.history),[]);
-        assert.ok(Object.values(analyses).every(entry=>!entry.runSha256));
+        assert.ok(Object.values(analyses).every(entry=>!entry.sources?.length));
       }
       for (const [key,{selected}] of compatibility) {
         assert.deepEqual(matrix.stats[key].score,selected.score);
@@ -395,9 +513,9 @@ it("keeps the retained corpus consistent across unmocked site, API and analysis 
         assert.equal(page.params.total,String(selected.score.all));
         assert.equal(page.params.yes,String(selected.score.supported));
       }
-      if (!v3.currentRunCount) {
+      if (!v3.contextCount) {
         assert.deepEqual(site.stats,{});
-        assert.deepEqual(v3.current,{});
+        assert.deepEqual(v3.contexts,{});
         assert.match(v3.message,/No current/);
         // #30764 deleted every old run and #30759 AC3 ships an empty archive, so a corpus with no
         // current run has nothing historical to show: no page may claim a historical run, and
@@ -405,7 +523,7 @@ it("keeps the retained corpus consistent across unmocked site, API and analysis 
         assert.ok(pages.every(page=>JSON.parse(page.params.historicalRuns||"[]").length===0));
       }
       for (const entry of Object.values(analyses))
-        if(entry.runSha256) assert.ok(Object.values(projection.current).some(run=>run.sha256===entry.runSha256));
+        for(const source of entry.sources ?? []) assert.ok(Object.values(projection.history).flat().some(run=>run.runId===source.runId && run.sha256===source.sha256 && run.measuredAt===source.measuredAt));
       // @cto f71ed475: v1 is frozen bytes on disk, never a generator output.
       const frozenV1 = JSON.parse(readFileSync(join(frozenV1Dir, "data.json"), "utf8"));
       assert.equal(frozenV1.version,1);
@@ -442,7 +560,7 @@ it("keeps the retained corpus consistent across unmocked site, API and analysis 
       for (const dir of ["probes-apps", "probes-libs", "probes-mux"])
         for (const file of readdirSync(join(content, dir)).filter(name => name.endsWith(".json")))
           if ([3,4].includes(JSON.parse(readFileSync(join(content, dir, file), "utf8")).schemaVersion)) sealedRunFiles += 1;
-      console.log(JSON.stringify({exactContexts:keys(projection.current).length,sealedRunFiles,referencedRuns:referenced.size,milliseconds:performance.now()-started}));
+      console.log(JSON.stringify({exactContexts:keys(projection.contexts).length,sealedRunFiles,referencedRuns:referenced.size,milliseconds:performance.now()-started}));
     `,
       ],
       { cwd: root, encoding: "utf8", timeout: 60_000, maxBuffer: 2 * 1024 * 1024 },
@@ -674,12 +792,12 @@ describe("selected-run consumer parity", () => {
         documentSha256: string
       }
       const v3 = JSON.parse(readFileSync(join(out, "api", "v3", "data.json"), "utf8")) as {
-        current: Record<string, RunReference>
+        contexts: Record<string, { sources: Record<string, RunReference> }>
         versions: Record<string, RunReference[]>
         history: Record<string, RunReference[]>
       }
       const refs = [
-        ...Object.values(v3.current),
+        ...Object.values(v3.contexts).flatMap((context) => Object.values(context.sources)),
         ...Object.values(v3.versions).flat(),
         ...Object.values(v3.history).flat(),
       ]
@@ -782,7 +900,8 @@ describe("selected-run consumer parity", () => {
       expect(site.results.kitty?.["sgr.bold"]).toBe("supported")
       // Current v3 must preserve exact sealed status while publication independently controls bytes.
       const projection = currentResults.loadCurrentResults("").projection
-      const current = projection.current["term:kitty"]
+      const context = requiredContext(projection, "term", "kitty")
+      const current = originalRun(projection, context)
       if (!current) throw new Error("Missing sealed privacy fixture")
       const result = current.results.find((result) => result.featureId === "sgr.bold")
       if (!result) throw new Error("Missing sealed privacy result")
@@ -795,17 +914,18 @@ describe("selected-run consumer parity", () => {
       result.screenshotRef = `sha256:${screenshotSha256}`
       result.reason = "UNAPPROVED_CURRENT_REASON /home/fixture/private"
       current.suiteId = probeHash()
+      for (const cell of Object.values(context.cells)) cell.run.suiteId = current.suiteId
       selection = vi.spyOn(currentResults, "loadCurrentResults").mockReturnValue({ projection })
       policy = vi.spyOn(currentResults, "loadDefaultContextPolicy").mockReturnValue({})
       current.rawReplies = { "bold-reply": "RETAINED_CURRENT_REPLY" }
       current.assertions = [
         { featureId: "sgr.bold", kind: "positive", expected: "expected criterion", observed: "actual response" },
       ]
-      const targets = new Map([["kitty", { contextKey: "term:kitty", selected: current }]])
+      const targets = new Map([["kitty", { contextKey: context.contextKey, selected: context }]])
       const unpublished = publicResults(projection, targets)
-      expect(JSON.stringify(unpublished.projection.current)).not.toContain("RETAINED_CURRENT_REPLY")
+      expect(JSON.stringify(unpublished.projection.contexts)).not.toContain("RETAINED_CURRENT_REPLY")
       // 30565: the displayed run's trace publishes the unreviewed result's allowlisted record only.
-      const receipt = unpublished.selectedByBackend.kitty?.selected.trace
+      const receipt = unpublished.projection.contexts[context.contextKey]?.sources[current.runId]?.trace
       if (!receipt) throw new Error("Missing trace receipt for the displayed current run")
       expect(receipt.url).toBe(`/api/v3/traces/${current.sha256}.json`)
       const trace = unpublished.documents.get(receipt.url)
@@ -839,13 +959,11 @@ describe("selected-run consumer parity", () => {
         },
       }
       const presented = publicResults(projection, targets)
-      const approval = presented.selectedByBackend.kitty?.selected.results.find(
-        (result) => result.featureId === "sgr.bold",
-      )?.presentation
+      const approval = presented.selectedByBackend.kitty?.selected.cells["sgr.bold"]?.presentation
       if (approval?.state !== "presented") throw new Error("Current evidence was not presented")
       expect(approval.url).toBe(`/api/v3/evidence/${current.sha256}.json#sgr.bold`)
       // A presentation decision takes the result out of the trace.
-      const traceAfter = presented.selectedByBackend.kitty?.selected.trace
+      const traceAfter = presented.projection.contexts[context.contextKey]?.sources[current.runId]?.trace
       const tracedAfter = traceAfter && presented.documents.get(traceAfter.url)
       if (traceAfter && !tracedAfter) throw new Error(`Missing trace document ${traceAfter.url}`)
       const cellsAfter = tracedAfter ? (JSON.parse(tracedAfter.bytes) as { cells: Record<string, unknown> }).cells : {}
@@ -869,7 +987,7 @@ describe("selected-run consumer parity", () => {
         },
       })
       expect(createHash("sha256").update(document!.bytes).digest("hex")).toBe(approval.sha256)
-      expect(JSON.stringify(presented.projection.current)).not.toContain("RETAINED_CURRENT_REPLY")
+      expect(JSON.stringify(presented.projection.contexts)).not.toContain("RETAINED_CURRENT_REPLY")
       expect(JSON.stringify(loadFullProjectData()).includes("UNAPPROVED_CURRENT_REASON")).toBe(true)
       imageReader = vi.spyOn(selectedResults, "readVerifiedArtifact").mockReturnValue(screenshot)
       generateApi(out)
@@ -906,19 +1024,19 @@ describe("selected-run consumer parity", () => {
     const out = mkdtempSync(join(tmpdir(), "terminfo-stale-run-"))
     // #30759 Slice A: v2 is gone, so the withdrawal rule is exercised on the v3 run documents.
     const runPath = join(out, "api", "v3", "runs", `${fixture.runSha256}.json`)
-    const current = fixture.projection.current["term:kitty"]
+    const current = fixture.projection.seeds["term:kitty"]
     const versions = fixture.projection.versions["term:kitty"]
     const history = fixture.projection.history["term:kitty"]
     try {
       generateApi(out)
       expect(existsSync(runPath)).toBe(true)
-      Reflect.deleteProperty(fixture.projection.current, "term:kitty")
+      Reflect.deleteProperty(fixture.projection.seeds, "term:kitty")
       fixture.projection.versions["term:kitty"] = []
       fixture.projection.history["term:kitty"] = []
       generateApi(out)
       expect(existsSync(runPath)).toBe(false)
     } finally {
-      if (current) fixture.projection.current["term:kitty"] = current
+      if (current) fixture.projection.seeds["term:kitty"] = current
       fixture.projection.versions["term:kitty"] = versions ?? []
       fixture.projection.history["term:kitty"] = history ?? []
       rmSync(out, { recursive: true, force: true })
@@ -991,7 +1109,7 @@ describe("selected-run consumer parity", () => {
       generateApi(out)
       // #30759 Slice A: v3 is the only generated consumer; v1 is frozen bytes and v2 is deleted.
       const v3 = JSON.parse(readFileSync(join(out, "api", "v3", "data.json"), "utf8")) as {
-        current: Record<string, { sha256: string }>
+        contexts: Record<string, PublicContextSummary>
       }
       expect(site.stats.kitty).toMatchObject({
         // D132 B (#30917): the nine environment positions are recorded but never graded.
@@ -999,22 +1117,29 @@ describe("selected-run consumer parity", () => {
         counts: { supported: 1, unsupported: 1, "test-todo": 262 },
         complete: false,
       })
-      expect(terminal?.params).toMatchObject({ generated: fixture.measuredAt, total: "264", yes: "1", no: "1" })
-      expect(terminal?.params.runSha256).toBe(fixture.runSha256)
+      expect(terminal?.params).toMatchObject({ total: "264", yes: "1", no: "1" })
+      expect(terminal?.params.runSha256).toBeUndefined()
+      expect(terminal?.params.generated).toBeUndefined()
+      expect(terminal?.params.analysisDate).toContain(fixture.measuredAt)
       const alternatives = JSON.parse(terminal!.params.otherRuns!) as PublicVersion[]
-      expect(alternatives.map((run: { runId: string }) => run.runId)).toEqual([
+      expect(alternatives.map((run) => run.runId).sort()).toEqual([
         "kitty-clipboard-reviewed-sealed-eeeeeeee",
+        "kitty-reviewed-sealed-aaaaaaaa",
       ])
-      expect(alternatives[0]?.subject.permissions).toBe("clipboard: read=deny,write=allow")
+      expect(alternatives.find((run) => run.subject.permissions)?.subject.permissions).toBe(
+        "clipboard: read=deny,write=allow",
+      )
       const screenPage = terminalPaths.paths().find((page) => page.params.backendId === "screen")!
       const olderRuns = JSON.parse(screenPage.params.otherRuns!) as PublicVersion[]
-      expect(olderRuns.map((run) => run.subject.version)).toEqual(["4.9"])
+      expect(olderRuns.map((run) => run.subject.version).sort()).toEqual(["4.9", "5.0"])
       expect(terminal?.params.terminalType).toBe("term")
-      expect(v3.current["term:kitty"]?.sha256).toBe(fixture.runSha256)
-      expect(v3.current["mux:tmux"]?.sha256).toBe(fixture.mux.sha256)
+      const kitty = Object.values(v3.contexts).find((context) => context.subject?.id === "kitty")
+      const tmux = Object.values(v3.contexts).find((context) => context.subject?.id === "tmux")
+      expect(Object.values(kitty?.sources ?? {}).map((run) => run.sha256)).toContain(fixture.runSha256)
+      expect(Object.values(tmux?.sources ?? {}).map((run) => run.sha256)).toContain(fixture.mux.sha256)
       expect(analysis).toMatchObject({
-        runSha256: fixture.runSha256,
-        measuredAt: fixture.measuredAt,
+        sources: [expect.objectContaining({ sha256: fixture.runSha256, measuredAt: fixture.measuredAt })],
+        versions: [fixture.selected.subject.version],
         score: { supported: 1, all: 264 },
       })
       expect(analyses["features-index"]?.analysis).toContain("recorded support")
@@ -1104,13 +1229,15 @@ describe("selected-run consumer parity", () => {
     })
     expect(site.stats.screen?.pct).toBeNull()
     expect(terminal?.params).toMatchObject({
-      generated: fixture.screen.measuredAt,
-      runSha256: fixture.screen.sha256,
       pct: "",
     })
     expect(JSON.parse(terminal?.params.versions ?? "[]")).toEqual([
-      expect.objectContaining({ version: fixture.screen.subject.version, pct: 0, suiteFreshness: "current" }),
-      expect.objectContaining({ version: "4.9", pct: 0, suiteFreshness: "older suite (1 probes)" }),
+      expect.objectContaining({
+        version: fixture.screen.subject.version,
+        pct: 0,
+        suiteFreshness: "release suite current",
+      }),
+      expect.objectContaining({ version: "4.9", pct: 0, suiteFreshness: "release suite current" }),
     ])
     const comparison = comparePaths
       .paths()
@@ -1137,16 +1264,20 @@ describe("selected-run consumer parity", () => {
     const kitty = kittyEntry?.selected
     const screen = screenEntry?.selected
     const tmux = tmuxEntry?.selected
-    const bold = kitty?.results.find((result) => result.featureId === "sgr.bold")
-    if (!screen || !tmux || !bold || !screenEntry || !tmuxEntry) throw new Error("Missing comparison fixtures")
-    function requiredResult(run: import("../docs/data/public-results").PublicVersion, id: string) {
-      const result = run.results.find((result) => result.featureId === id)
+    const bold = kitty?.cells["sgr.bold"]
+    if (!screen?.subject || !tmux?.subject || !bold || !screenEntry || !tmuxEntry) {
+      throw new Error("Missing comparison fixtures")
+    }
+    function requiredResult(run: PublicContextSummary, id: string) {
+      const result = run.cells[id]
       if (!result) throw new Error(`Missing fixture result ${id}`)
       return result
     }
     function refresh(entry: NonNullable<ReturnType<typeof loadProbes>["selectedByBackend"][string]>) {
-      entry.states = Object.fromEntries(entry.selected.results.map((result) => [result.featureId, result.status]))
-      const aggregate = aggregateCurrentResults(entry.selected.results, entry.selected.catalogIds)
+      entry.states = Object.fromEntries(
+        Object.values(entry.selected.cells).map((result) => [result.featureId, result.status]),
+      )
+      const aggregate = aggregateCurrentResults(Object.values(entry.selected.cells), entry.selected.catalogIds)
       entry.selected.complete = aggregate.complete
       entry.selected.counts = aggregate.counts
       entry.selected.score = { supported: aggregate.supported, all: aggregate.denominator }
@@ -1167,9 +1298,9 @@ describe("selected-run consumer parity", () => {
     const originalTmux = structuredClone(tmux)
     try {
       screen.subject.mux = tmux.subject.mux
-      for (const result of [...screen.results, ...tmux.results]) result.status = "unsupported"
-      Object.assign(requiredResult(screen, "sgr.bold"), { ...structuredClone(bold), status: "unsupported" })
-      Object.assign(requiredResult(tmux, "sgr.bold"), { ...structuredClone(bold), status: "supported" })
+      for (const result of [...Object.values(screen.cells), ...Object.values(tmux.cells)]) result.status = "unsupported"
+      Object.assign(requiredResult(screen, "sgr.bold"), { assertionType: bold.assertionType, status: "unsupported" })
+      Object.assign(requiredResult(tmux, "sgr.bold"), { assertionType: bold.assertionType, status: "supported" })
       Object.assign(requiredResult(screen, "extensions.sixel"), {
         status: "unsupported",
         assertionType: "buffer_state",
@@ -1282,10 +1413,8 @@ describe("selected-run consumer parity", () => {
 
   it("uses selected public notes across routes without promoting unscoped annotations", () => {
     const data = loadProbes()
-    const reviewed = data.selectedByBackend.kitty?.selected.results.find((result) => result.featureId === "sgr.bold")
-    const inconclusive = data.selectedByBackend.screen?.selected.results.find(
-      (result) => result.featureId === "sgr.bold",
-    )
+    const reviewed = data.selectedByBackend.kitty?.selected.cells["sgr.bold"]
+    const inconclusive = data.selectedByBackend.screen?.selected.cells["sgr.bold"]
     if (!reviewed || !inconclusive) throw new Error("Missing selected bold cells in parity fixture")
     const originalNote = reviewed.reason
     const originalInconclusiveNote = inconclusive.reason
@@ -1377,19 +1506,8 @@ it("labels the headless Ghostty cores libghostty-vt and keeps Ghostty for the ap
   // Operator 2026-10-21 (30608): a headless Ghostty core is the library, never the app that embeds it.
   // The WASM core is measured under the app entry, so its label comes from that entry's headlessLabels.
   const projection = currentResults.loadCurrentResults("").projection
-  const base = Object.values(projection.current)[0]
-  if (!base) throw new Error("the fixture projection has no current run")
-  const as = (contextKey: string, kind: CurrentSelectedVersion["subject"]["kind"], id: string) => {
-    const selected = structuredClone(base)
-    selected.subject = { ...selected.subject, kind, id }
-    // Public results cache mapped runs by run id and publish one trace per run sha, so each subject needs
-    // its own sealed run, sha and status row.
-    selected.runId = `${base.runId}-${contextKey}`
-    selected.sha256 = createHash("sha256").update(contextKey).digest("hex")
-    projection.current[contextKey] = selected
-    projection.table = { ...projection.table, [selected.runId]: projection.table[base.runId] ?? {} }
-    return { contextKey, selected }
-  }
+  const as = (_contextKey: string, kind: CurrentSelectedVersion["subject"]["kind"], id: string) =>
+    addFixtureSubject(projection, kind, id)
   const selection = vi.spyOn(currentResults, "loadCurrentResults").mockReturnValue({ projection })
   const targets = vi.spyOn(currentResults, "compatibilitySubjects").mockReturnValue(
     new Map([
@@ -1448,15 +1566,8 @@ it("does not name a subject with no current run on the site", () => {
     }
     // Non-vacuity control: when the same named subject IS current, the site does name it. Without
     // this, "absent" could mean the fixture never reaches the resolver at all.
-    const sealed = Object.values(projection.current)[0]
-    if (!sealed) throw new Error("the fixture projection has no sealed current run")
     const promoted = structuredClone(projection)
-    const controlRun = structuredClone(sealed)
-    controlRun.subject = { ...controlRun.subject, kind: "lib", id: "ghostty-native" }
-    controlRun.runId = "control-ghostty-native"
-    controlRun.sha256 = createHash("sha256").update("control-ghostty-native").digest("hex")
-    promoted.current = { ...promoted.current, "headless:ghostty-native": controlRun }
-    promoted.table = { ...promoted.table, [controlRun.runId]: promoted.table[sealed.runId] ?? {} }
+    addFixtureSubject(promoted, "lib", "ghostty-native")
     selection.mockReturnValue({ projection: promoted })
     const controlData = loadFullProbes()
     expect(controlData.selectedByBackend["ghostty-native"]).toBeDefined()
@@ -1475,17 +1586,8 @@ it("terminalPaths.paths() refuses loudly when two pages mint one id", () => {
   // The loader memoizes on globalThis, so the rows below are written into a clone and cannot outlive
   // mockRestore into a later test.
   const projection = structuredClone(currentResults.loadCurrentResults("").projection)
-  const base = Object.values(projection.current)[0]
-  if (!base) throw new Error("the fixture projection has no current run")
-  const as = (contextKey: string, kind: CurrentSelectedVersion["subject"]["kind"], id: string) => {
-    const selected = structuredClone(base)
-    selected.subject = { ...selected.subject, kind, id }
-    selected.runId = `${base.runId}-${contextKey}`
-    selected.sha256 = createHash("sha256").update(contextKey).digest("hex")
-    projection.current[contextKey] = selected
-    projection.table = { ...projection.table, [selected.runId]: projection.table[base.runId] ?? {} }
-    return { contextKey, selected }
-  }
+  const as = (_contextKey: string, kind: CurrentSelectedVersion["subject"]["kind"], id: string) =>
+    addFixtureSubject(projection, kind, id)
   const selection = vi.spyOn(currentResults, "loadCurrentResults").mockReturnValue({ projection })
   const app = as("app:ghostty", "term", "ghostty")
   const native = as("headless:ghostty-native", "lib", "ghostty-native")
@@ -1509,7 +1611,7 @@ it("terminalPaths.paths() refuses loudly when two pages mint one id", () => {
         "ghostty-native": { label: "libghostty-vt (native)", slug: "ghostty" },
       },
     })
-    // One explicit entry per minted run — the builder finds analysis by selected run sha, and a
+    // One explicit entry per minted context — the builder matches original contributors, and a
     // catch-all would also answer a lookup that should have failed.
     analysis = vi.spyOn(probeData, "loadAnalysis").mockReturnValue({
       ...generateAnalysis(),
@@ -1517,13 +1619,13 @@ it("terminalPaths.paths() refuses loudly when two pages mint one id", () => {
         analysis: "<p>app</p>",
         date: "2026-09-28",
         changes: null,
-        runSha256: app.selected.sha256,
+        sources: analysisSources(app.selected),
       },
       "terminals/ghostty-native": {
         analysis: "<p>parser</p>",
         date: "2026-09-28",
         changes: null,
-        runSha256: native.selected.sha256,
+        sources: analysisSources(native.selected),
       },
     } as unknown as ReturnType<typeof probeData.loadAnalysis>)
     let message = ""

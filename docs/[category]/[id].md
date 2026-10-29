@@ -23,7 +23,7 @@ const headlessBackends = backendNames.filter(b => b.type === 'lib')
 function termTooltip(r) {
   const parts = [r.label]
   if (r.description) parts.push(r.description)
-  if (r.version) parts.push('Version: ' + r.version)
+  if (r.version) parts.push('Source versions: ' + r.version)
   return parts.join('\n')
 }
 </script>
@@ -88,7 +88,7 @@ function termTooltip(r) {
   <thead>
     <tr>
       <th>Terminal</th>
-      <th>Version</th>
+      <th>Source versions</th>
       <th>Support</th>
       <th>Notes</th>
     </tr>
@@ -117,7 +117,7 @@ function termTooltip(r) {
   <thead>
     <tr>
       <th>Backend</th>
-      <th>Version</th>
+      <th>Source versions</th>
       <th>Support</th>
       <th>Notes</th>
     </tr>

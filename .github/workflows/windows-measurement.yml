@@ -3,6 +3,16 @@ name: windows-measurement
 on:
   workflow_dispatch:
     inputs:
+      context_matrix:
+        description: "Collection target rows; defaults to every hosted Windows terminal"
+        type: string
+        required: false
+        default: '{"include":[{"id":"windows-terminal"},{"id":"alacritty"},{"id":"wezterm"}]}'
+      probe_ids:
+        description: "JSON probe IDs; null collects the full suite"
+        type: string
+        required: false
+        default: "null"
       capture_run_ids:
         description: "Existing coordinator draft run IDs by matrix target; empty object for standalone collection"
         type: string
@@ -20,21 +30,19 @@ concurrency:
 jobs:
   measure-windows:
     name: Windows ${{ matrix.id }}
+    if: ${{ toJSON(fromJSON(inputs.context_matrix).include) != '[]' && toJSON(fromJSON(inputs.probe_ids)) != '[]' }}
     runs-on: windows-latest
     timeout-minutes: 25
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - id: windows-terminal
-          - id: alacritty
-          - id: wezterm
+      matrix: ${{ fromJSON(inputs.context_matrix) }}
     defaults:
       run:
         shell: bash
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       CAPTURE_RUN_IDS: ${{ inputs.capture_run_ids }}
+      PROBE_IDS: ${{ inputs.probe_ids }}
     steps:
       - name: Bootstrap the pinned producer and sample at job start
         id: start
@@ -230,12 +238,15 @@ jobs:
             *) echo "Unknown Windows collection app: $APP_ID" >&2; exit 1 ;;
           esac
 
+          PROBE_IDS_EXPORT=""
+          if [[ "$PROBE_IDS" != null ]]; then PROBE_IDS_EXPORT="\$env:TERMINFO_PROBE_IDS = '${PROBE_IDS//\'/\'\'}'"; fi
           cat > "$COMMAND_PATH" <<PS1
           \$ErrorActionPreference = "Continue"
           \$env:PATH = "$APP_DIR;$BUN_DIR;$NODE_DIR;" + \$env:PATH
           \$env:TERMINFO_DISPOSABLE_RECEIPT = "$WIN_OUT\\host-measured.json"
           \$env:TERMINFO_CAPTURE_DIRECTORY = "$WIN_OUT\\artifacts"
           \$env:TERMINFO_CAPTURE_RUN_ID = "$CAPTURE_RUN_ID"
+          $PROBE_IDS_EXPORT
 
           \$attempts = 0
           while (-not (Test-Path "$WIN_OUT\\collector-ready")) {

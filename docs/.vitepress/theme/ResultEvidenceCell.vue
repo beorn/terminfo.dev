@@ -2,7 +2,12 @@
 import { computed, nextTick, onBeforeUnmount, ref, useId, watch } from "vue"
 import { withBase } from "vitepress"
 import type { ObservationReason } from "@terminfo/probe-defs"
-import type { PublicProbeResult, PublicVersion, TextQualificationDocument } from "../../data/public-results"
+import type {
+  PublicProbeResult,
+  PublicRunMetadata,
+  PublicContextSummary,
+  TextQualificationDocument,
+} from "../../data/public-results"
 import {
   describeTracePanes,
   REASON_EXPLANATIONS,
@@ -31,13 +36,28 @@ const props = withDefaults(
     featureName: string
     probeGuidance?: string
     subjectName: string
-    version?: PublicVersion
+    version?: PublicRunMetadata | PublicContextSummary
     cell?: PublicProbeResult
     display?: "compact" | "text"
   }>(),
   { display: "compact" },
 )
 
+// A composed context has no run identity: evidence belongs to this feature's original source.
+const sourceRun = computed<PublicRunMetadata | undefined>(() => {
+  const selection = props.version
+  if (!selection || !("cells" in selection)) return selection
+  const cell = selection.cells[props.featureId]
+  if (!cell) return undefined
+  const source = selection.sources[cell.origin.runId]
+  if (!source) throw new Error(`Context feature ${props.featureId} lacks source ${cell.origin.runId}`)
+  return source
+})
+const sourceFeatureId = computed(() =>
+  props.version && "cells" in props.version
+    ? (props.version.cells[props.featureId]?.origin.resultId ?? props.featureId)
+    : props.featureId,
+)
 const currentResult = computed(() => (props.cell && "status" in props.cell ? props.cell : undefined))
 
 const trigger = ref<HTMLButtonElement | null>(null)
@@ -64,8 +84,7 @@ const dialogTitleId = `${id}-title`
 
 const reasonExplanations: Record<ObservationReason, string> = REASON_EXPLANATIONS
 
-// Pages select current runs only ([id].paths.ts), so a row's status is always the sealed status.
-// The historical table is not in the client payload; it had no reachable reader and is gone with it.
+// Composed and original-run views both retain the cell's recorded status.
 // The rule itself is evidence-status.ts, where it is testable; only a stored TEST TODO on an
 // environment position becomes the manual-by-design words (@cto 98cd142b D1).
 const status = computed(() => evidenceStatus(props.featureId, currentResult.value?.status))
@@ -76,7 +95,7 @@ const methodLabel = computed(() =>
 const selectionExplanation = computed(() => {
   if (!props.version) return "No reviewed current result is available for this context."
   if (!props.cell) {
-    return "This feature was not measured by this selected run."
+    return "This feature has no retained measurement in this selection."
   }
   return undefined
 })
@@ -118,7 +137,7 @@ const tracePaneCopy = computed(() => {
   return describeTracePanes(cellTrace.value, {
     sequence: featureMeta?.sequence,
     probeGuidance: props.probeGuidance ?? featureMeta?.probe,
-    subjectKind: props.version?.subject.kind,
+    subjectKind: sourceRun.value?.subject.kind,
     hasReferenceImage: Boolean(referenceImageUrl.value || expectedIllustration.value),
   })
 })
@@ -143,7 +162,7 @@ const STEP_STATUS: Record<string, string> = {
   "TEST FAILURE": "test-failure",
 }
 const stepSource = computed<StepSource | undefined>(() => {
-  const screen = props.version && "screen" in props.version ? props.version.screen : undefined
+  const screen = sourceRun.value?.screen
   const statusKeyword = currentResult.value?.status ?? STEP_STATUS[status.value.text] ?? "untestable"
   const cell = cellTrace.value?.cell
   if (cell) {
@@ -207,20 +226,21 @@ const actionLabel = computed(() => {
 })
 const accessibleName = computed(
   () =>
-    `${props.featureName} in ${props.subjectName}${props.version ? ` ${props.version.subject.version}` : ""}: ${status.value.text}. ${actionLabel.value}`,
+    `${props.featureName} in ${props.subjectName}${sourceRun.value ? ` ${sourceRun.value.subject.version}` : ""}: ${status.value.text}. ${actionLabel.value}`,
 )
 const rawReplyDisplay = computed(() => (rawReply.value === undefined ? "" : JSON.stringify(rawReply.value)))
 const evidenceIdentity = computed(() => {
   return JSON.stringify([
     props.featureId,
-    props.version?.runId,
-    props.version?.sha256,
-    props.version?.subject.version,
+    sourceFeatureId.value,
+    sourceRun.value?.runId,
+    sourceRun.value?.sha256,
+    sourceRun.value?.subject.version,
     currentResult.value?.status,
     props.cell?.reason,
     props.cell?.assertionType,
     presentation.value,
-    props.version?.trace,
+    sourceRun.value?.trace,
   ])
 })
 
@@ -264,7 +284,7 @@ async function verifiedBytes(
 async function loadEvidence(): Promise<void> {
   if (evidenceLoading.value || evidenceDocument.value || cellTrace.value) return
   const approval = presentation.value
-  const version = props.version
+  const version = sourceRun.value
   const cell = props.cell
   if (!version || !cell) return
   if (approval?.state === "not-reviewed") {
@@ -304,7 +324,7 @@ async function loadEvidence(): Promise<void> {
         schemaVersion: version.schemaVersion,
         runId: version.runId,
         runSha256: version.sha256,
-        featureId: props.featureId,
+        featureId: sourceFeatureId.value,
         expectedSha256: traceReceipt.sha256,
         actualSha256: cached.actualSha256,
       })
@@ -352,7 +372,7 @@ async function loadEvidence(): Promise<void> {
       schemaVersion: version.schemaVersion,
       runId: version.runId,
       runSha256: version.sha256,
-      featureId: props.featureId,
+      featureId: sourceFeatureId.value,
       reviewId: approval.review.id,
       status: currentResult.value?.status,
     })
@@ -597,7 +617,7 @@ onBeforeUnmount(() => {
         <strong class="result-evidence__test-title">{{ featureName }}</strong>
         <span class="result-evidence__compact-context"
           >{{ subjectName
-          }}<template v-if="version"> · {{ version.subject.version }} · {{ version.subject.os }}</template></span
+          }}<template v-if="sourceRun"> · {{ sourceRun.subject.version }} · {{ sourceRun.subject.os }}</template></span
         >
         <p v-if="plainResult" class="result-evidence__plain">{{ plainResult }}</p>
         <ResultSteps v-if="stepTable" :rows="stepTable.rows" />
@@ -695,7 +715,7 @@ onBeforeUnmount(() => {
             <span v-if="presentation?.state === 'withdrawn'"
               >Presentation withdrawn: {{ readerSafeExplanation(presentation.review.reason) }}</span
             >
-            <code v-if="version">Run {{ version.runId }}</code>
+            <code v-if="sourceRun">Run {{ sourceRun.runId }}</code>
             <details v-if="probeGuidanceText">
               <summary>Catalog test description</summary>
               {{ probeGuidanceText }}
@@ -720,8 +740,8 @@ onBeforeUnmount(() => {
             <h2 :id="dialogTitleId">{{ featureName }}</h2>
             <p class="result-evidence__context">
               {{ subjectName
-              }}<template v-if="version">
-                · {{ version.subject.version }} · {{ version.subject.os || "OS not recorded" }}</template
+              }}<template v-if="sourceRun">
+                · {{ sourceRun.subject.version }} · {{ sourceRun.subject.os || "OS not recorded" }}</template
               >
             </p>
           </div>
@@ -750,7 +770,7 @@ onBeforeUnmount(() => {
         <p v-if="reasonExplanation">{{ readerSafeExplanation(reasonExplanation) }}</p>
 
         <h3>Evidence</h3>
-        <p v-if="!version">No reviewed current run is selected for this terminal context.</p>
+        <p v-if="!sourceRun">No original source is available for this feature in the selection.</p>
         <p v-else-if="!cell">TEST TODO: no reviewed current result covers this feature.</p>
         <template v-else-if="presentation?.state === 'not-reviewed'">
           <p>Original evidence has not been reviewed for presentation.</p>
@@ -862,34 +882,34 @@ onBeforeUnmount(() => {
             <dt>Feature ID</dt>
             <dd>{{ featureId }}</dd>
             <dt>Subject</dt>
-            <dd>{{ version ? `${version.subject.kind}:${version.subject.id}` : "No reviewed current run" }}</dd>
+            <dd>{{ sourceRun ? `${sourceRun.subject.kind}:${sourceRun.subject.id}` : "No reviewed current run" }}</dd>
             <dt>Version</dt>
-            <dd>{{ version?.subject.version ?? "Not recorded" }}</dd>
+            <dd>{{ sourceRun?.subject.version ?? "Not recorded" }}</dd>
             <dt>Operating system</dt>
             <dd>
-              {{ version?.subject.os ?? "Not recorded"
-              }}<template v-if="version?.subject.osVersion"> {{ version.subject.osVersion }}</template>
+              {{ sourceRun?.subject.os ?? "Not recorded"
+              }}<template v-if="sourceRun?.subject.osVersion"> {{ sourceRun.subject.osVersion }}</template>
             </dd>
             <dt>Outer terminal</dt>
-            <dd>{{ version?.subject.outerTerminal ?? "Not recorded" }}</dd>
+            <dd>{{ sourceRun?.subject.outerTerminal ?? "Not recorded" }}</dd>
             <dt>Multiplexer</dt>
-            <dd>{{ version?.subject.mux ?? "Not recorded" }}</dd>
+            <dd>{{ sourceRun?.subject.mux ?? "Not recorded" }}</dd>
             <dt>Configuration</dt>
-            <dd>{{ version?.subject.config ?? "Not recorded" }}</dd>
+            <dd>{{ sourceRun?.subject.config ?? "Not recorded" }}</dd>
             <dt>Permissions</dt>
-            <dd>{{ version?.subject.permissions ?? "Not recorded" }}</dd>
+            <dd>{{ sourceRun?.subject.permissions ?? "Not recorded" }}</dd>
             <dt>Measured at</dt>
-            <dd>{{ version?.measuredAt ?? "Not recorded" }}</dd>
+            <dd>{{ sourceRun?.measuredAt ?? "Not recorded" }}</dd>
             <dt>Run ID</dt>
-            <dd>{{ version?.runId ?? "Not recorded" }}</dd>
+            <dd>{{ sourceRun?.runId ?? "Not recorded" }}</dd>
             <dt>Run SHA-256</dt>
-            <dd>{{ version?.sha256 ?? "Not recorded" }}</dd>
+            <dd>{{ sourceRun?.sha256 ?? "Not recorded" }}</dd>
             <dt>Recorded method</dt>
             <dd>{{ currentResult?.assertionType ?? "Not recorded" }}</dd>
             <dt>Suite</dt>
-            <dd>{{ version?.suiteId ?? "Not recorded" }} · {{ version?.suiteFreshness ?? "Not recorded" }}</dd>
+            <dd>{{ sourceRun?.suiteId ?? "Not recorded" }} · {{ sourceRun?.suiteFreshness ?? "Not recorded" }}</dd>
             <dt>Source revision</dt>
-            <dd>{{ version?.sourceRevision ?? "Not recorded" }}</dd>
+            <dd>{{ sourceRun?.sourceRevision ?? "Not recorded" }}</dd>
           </dl>
         </details>
       </dialog>

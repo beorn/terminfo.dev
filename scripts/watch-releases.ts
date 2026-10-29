@@ -48,8 +48,11 @@ export interface ReleaseCandidate {
 interface ReleaseResult {
   terminal: string
   label: string
-  currentVersion: string | null
-  currentEvidence: { contextKey: string; runId: string; sha256: string } | null
+  currentVersions: string[]
+  currentEvidence: {
+    contextKey: string
+    sources: Array<{ runId: string; version: string; sha256: string; suiteId: string; measuredAt: string }>
+  } | null
   latestVersion: string | null
   latestDate: string | null
   sourceUrl: string | null
@@ -339,39 +342,60 @@ async function main() {
   const cutoff = latestMode ? runAt : calendarMonthCutoff(runAt)
   const projection = loadCurrentResults(contentDir).projection
   const currentSubjects = compatibilitySubjects(projection, contentDir)
+  const originals = new Map(
+    Object.values(projection.history)
+      .flat()
+      .map((run) => [run.runId, run]),
+  )
 
   const results: ReleaseResult[] = []
 
   // Fetch all release pages for each source, even if API pages are out of date order.
   const promises = RELEASE_SOURCES.map(async (source): Promise<ReleaseResult> => {
     const current = [...currentSubjects.values()].find(
-      ({ selected }) => selected.subject.kind === "term" && selected.subject.id === source.terminal,
+      ({ selected }) => selected.subject?.kind === "term" && selected.subject.id === source.terminal,
     )
-    const currentVersion = current?.selected.subject.version ?? null
-    const currentEvidence = current
-      ? { contextKey: current.contextKey, runId: current.selected.runId, sha256: current.selected.sha256 }
-      : null
+    const sources = (current?.selected.contributingRunIds ?? []).map((runId) => {
+      const original = originals.get(runId)
+      if (!original) throw new Error(`Release watch context ${current?.contextKey} names absent original run ${runId}`)
+      return {
+        runId,
+        version: original.subject.version,
+        sha256: original.sha256,
+        suiteId: original.suiteId,
+        measuredAt: original.measuredAt,
+      }
+    })
+    const currentVersions = [...new Set(sources.map((entry) => entry.version))]
+    const currentEvidence = current ? { contextKey: current.contextKey, sources } : null
     try {
       const selection = selectEligibleRelease(await fetchReleaseFeed(source), cutoff)
       const selected = selection.selected
       let disposition: ReleaseResult["disposition"]
       let error: string | null = null
-      if (currentVersion === null) disposition = "no-reviewed-current"
+      if (currentVersions.length === 0) disposition = "no-reviewed-current"
       else if (selected === null) disposition = "no-eligible-release"
       else {
-        const matches = selection.candidates.filter(
-          (candidate) => candidate.version === normalizeVersion(currentVersion),
-        )
-        const measuredRelease = matches.length === 1 ? matches[0] : undefined
-        if (!measuredRelease?.publishedAt || !selected.publishedAt) {
+        const measured = currentVersions.map((version) => {
+          const matches = selection.candidates.filter((candidate) => candidate.version === normalizeVersion(version))
+          return { version, release: matches.length === 1 ? matches[0] : undefined }
+        })
+        const unresolved = measured.filter((entry) => !entry.release?.publishedAt)
+        if (unresolved.length > 0 || !selected.publishedAt) {
           disposition = "comparison-unresolved"
-          error = `${source.terminal}: reviewed version ${currentVersion} has no unique dated release in the source feed; comparison requires review`
+          error = `${source.terminal}: reviewed versions ${unresolved.map((entry) => entry.version).join(", ") || currentVersions.join(", ")} have no unique dated release in the source feed; comparison requires review`
         } else {
           // Release numbering can change schemes; compare the source's publication chronology.
-          const order =
-            Date.parse(selected.publishedAt) - Date.parse(measuredRelease.publishedAt) ||
-            compareVersions(selected.version, measuredRelease.version)
-          disposition = order > 0 ? "new-release" : order < 0 ? "newer-than-eligible" : "up-to-date"
+          const selectedDate = Date.parse(selected.publishedAt)
+          const orders = measured.map(({ release }) => {
+            if (!release?.publishedAt) throw new Error("Validated release comparison lost its dated source")
+            return selectedDate - Date.parse(release.publishedAt) || compareVersions(selected.version, release.version)
+          })
+          disposition = orders.every((order) => order > 0)
+            ? "new-release"
+            : orders.some((order) => order < 0)
+              ? "newer-than-eligible"
+              : "up-to-date"
         }
       }
       const isNewer = disposition === "new-release"
@@ -379,7 +403,7 @@ async function main() {
       return {
         terminal: source.terminal,
         label: source.label,
-        currentVersion,
+        currentVersions,
         currentEvidence,
         latestVersion: selected?.version ?? null,
         latestDate: selected?.publishedAt ?? null,
@@ -397,7 +421,7 @@ async function main() {
       return {
         terminal: source.terminal,
         label: source.label,
-        currentVersion,
+        currentVersions,
         currentEvidence,
         latestVersion: null,
         latestDate: null,
@@ -429,13 +453,16 @@ async function main() {
   console.log()
 
   const labelWidth = Math.max(...results.map((r) => r.label.length))
-  const curWidth = Math.max(...results.map((r) => (r.currentVersion ?? "unknown").length), "current:".length)
+  const curWidth = Math.max(
+    ...results.map((r) => (r.currentVersions.join(", ") || "unknown").length),
+    "current:".length,
+  )
   const latWidth = Math.max(...results.map((r) => (r.latestVersion ?? "none").length), "eligible:".length)
 
   let hasNew = false
   for (const r of results) {
     const label = r.label.padEnd(labelWidth)
-    const cur = (r.currentVersion ?? "unknown").padEnd(curWidth)
+    const cur = (r.currentVersions.join(", ") || "unknown").padEnd(curWidth)
     const lat = (r.latestVersion ?? "none").padEnd(latWidth)
 
     let status: string
@@ -496,7 +523,7 @@ async function main() {
     writeFileSync(terminalsPath, JSON.stringify(terminals, null, 2) + "\n")
     console.log(`  Recorded ${newReleases.length} eligible release hint(s) in terminals.json:`)
     for (const r of newReleases) {
-      console.log(`    ${r.label}: ${r.currentVersion} → ${r.latestVersion}`)
+      console.log(`    ${r.label}: ${r.currentVersions.join(", ")} → ${r.latestVersion}`)
     }
     console.log()
   } else if (hasNew) {
