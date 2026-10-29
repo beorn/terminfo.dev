@@ -28,8 +28,9 @@ import { HEADLESS_TERMINAL, declaredHostInputs } from "./headless-terminal.ts"
 import { owningCheckout } from "./termless-root.ts"
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..")
-// Match the existing Linux full-probe HTTP budget for one engine.
-const WORKER_TIMEOUT_MS = 120_000
+// One engine's whole suite. Kitty needs about 110-125 s at nice 10 under host load (31693), so 120 s killed it at
+// probe ~268 of 273; 600 s still stops a hung worker.
+const WORKER_TIMEOUT_MS = 600_000
 const WORKER_STOP_GRACE_MS = 2_000
 
 function record(value: unknown): value is Record<string, unknown> {
