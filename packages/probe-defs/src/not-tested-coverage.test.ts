@@ -9,12 +9,10 @@ import { expect, test } from "vitest"
 import { ALL_PROBES, SEMANTIC_PROMPT_SOURCE_REVIEW } from "./index.ts"
 import type { LibProbeSource } from "./types.ts"
 
-// The 7 scheduled headless features whose raw state is measurable but whose claim is not. The seven DECRQM
+// The 5 scheduled headless features whose raw state is measurable but whose claim is not. The seven DECRQM
 // mode features left this list with #30543: their headless arm grades the engine's own DECRPM reply.
 const notTestedFeatures = [
   "extensions.osc1-icon",
-  "extensions.osc117-reset-highlight-bg",
-  "extensions.osc119-reset-highlight-fg",
   "modes.application-keypad",
   "modes.reverse-video",
   "modes.synchronized-output",
@@ -253,8 +251,8 @@ test.each(sourceNegativeBranchFeatures)(
   },
 )
 
-test("the 7 headless not-tested features emit named coverage from measured state", () => {
-  expect(notTestedFeatures).toHaveLength(7)
+test("the 5 headless not-tested features emit named coverage from measured state", () => {
+  expect(notTestedFeatures).toHaveLength(5)
   for (const id of notTestedFeatures) {
     const definition = ALL_PROBES.find((probe) => probe.id === id)
     if (!definition?.lib) throw new Error(`missing headless ${id}`)

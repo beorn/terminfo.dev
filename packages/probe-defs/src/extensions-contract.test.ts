@@ -720,12 +720,7 @@ test("a decided extension row reads unsatisfied when silent or unacknowledged", 
 })
 
 test("semantic observables omitted in headless mode return notTested without failing determinism", async () => {
-  const omittedProbes = [
-    "extensions.osc1-icon",
-    "extensions.osc117-reset-highlight-bg",
-    "extensions.osc119-reset-highlight-fg",
-    "extensions.font-ligatures",
-  ]
+  const omittedProbes = ["extensions.osc1-icon", "extensions.font-ligatures"]
   const headless = libProbeSource(inertModel())
   for (const id of omittedProbes) {
     const probe = extensionsProbes.find((p) => p.id === id)
