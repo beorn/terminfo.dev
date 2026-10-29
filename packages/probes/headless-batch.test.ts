@@ -14,7 +14,7 @@ import { resolve as resolveVt220 } from "@termless/vt220"
 import { createKittyBackend, isKittyAvailable } from "@termless/kitty"
 import { ALL_PROBES, type ProbeDefinition } from "@terminfo/probe-defs"
 import { fakeProbeResult } from "@terminfo/probe-defs/testing/fake-probe-result"
-import { validateObservation } from "@terminfo/run-parser"
+import { validateObservation, retainCaptureBinding } from "@terminfo/run-parser"
 import { spawnSync } from "node:child_process"
 import { mkdtempSync, readFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -163,6 +163,61 @@ test("requests review for headless OS-input criteria without fabricating app del
       }),
     )
   }
+})
+
+// Callback coverage alone did not prove that a shell mark could enter canonical required-review custody.
+test("retains a qualified headless shell mark's required source review through production recording", async () => {
+  const id = "extensions.osc133-a"
+  const { initializeRunDraft } = await import("@terminfo/probe-defs")
+  const draft = initializeRunDraft({
+    source: { kind: "live" },
+    runId: "semantic-prompt-review",
+    sourceRevision: "a".repeat(40),
+    intendedSubject: { kind: "lib", id: "xtermjs" },
+    manifest: {
+      schemaVersion: 4,
+      probeHash: "semantic-prompt-suite",
+      adapterVersion: "3",
+      catalogIds: [id],
+      probes: { term: [], mux: [], lib: [id] },
+    },
+  })
+  const batch = await collectBatch(backend, "xtermjs", registryDefinitions([id]), draft)
+  expect(batch.results).toEqual([
+    expect.objectContaining({
+      featureId: id,
+      status: "test-todo",
+      criterionBranch: "semantic-prompt-source-review",
+      rawReplyRef: id,
+      tests: [
+        expect.objectContaining({ id: "review", status: "test-todo", attempt: { scope: "none" }, rawReplyRef: id }),
+      ],
+    }),
+  ])
+  expect(batch.observations).toEqual([])
+  expect(batch.assertions).toEqual([])
+  expect(JSON.parse(batch.rawReplies[id]!)).toMatchObject({
+    home: { x: 0, y: 0 },
+    target: { x: 1, y: 0 },
+    control: { x: 0, y: 0 },
+    cell: "X",
+  })
+  // collect-headless.ts assembles its captured run from these production batch fields.
+  const captured = {
+    ...draft,
+    rawReplies: { ...draft.rawReplies, ...batch.rawReplies },
+    assertions: batch.assertions,
+    results: batch.results,
+  }
+  const binding = retainCaptureBinding(captured, id)
+  expect(captured.rawReplies[binding.rawReplyRef]).toBe(binding.source)
+  expect(JSON.parse(binding.source)).toMatchObject({
+    featureId: id,
+    criterionBranch: "semantic-prompt-source-review",
+    rawReplyRefs: expect.arrayContaining([
+      expect.objectContaining({ key: id, sha256: expect.stringMatching(/^[0-9a-f]{64}$/) }),
+    ]),
+  })
 })
 
 // The no-response grade hid that no F4 engine can read a colour back headless (#30547, @cto D-B): a silent first

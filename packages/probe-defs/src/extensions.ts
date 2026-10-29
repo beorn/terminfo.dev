@@ -1000,7 +1000,12 @@ function promptMarkResult(ctx: LibProbeSource, sequence: string, noObservable: s
   const qualified =
     consumed && home.x === 0 && home.y === 0 && target.x === 1 && target.y === 0 && control.x === 0 && control.y === 0
   if (!qualified) return promptConsumptionResult(consumed)
-  return notTestedResult(noObservable, { home, target, control, cell: cell.char })
+  return reviewResult(
+    "semantic-prompt-source-review",
+    "Independent review must determine whether the pinned engine source parses this OSC 133 / 633 mark and exposes mark or zone state; citation per cell required for supported, unsupported or Untestable",
+    noObservable,
+    { home, target, control, cell: cell.char },
+  )
 }
 
 /**

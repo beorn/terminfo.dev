@@ -86,6 +86,14 @@ test("the 11 headless C154 semantic-mark features emit named coverage only after
     expect(fed, id).toEqual(["\x1b[1;1H", `${sequence}X`, "\x1b[1;1H"])
     expect(read, id).toBe(3)
     expect(result.notTested, id).toEqual({ reason: "no-semantic-observable", noObservable })
+    expect(result.criterionBranch, id).toBe("semantic-prompt-source-review")
+    expect(result.tests, id).toEqual([
+      {
+        id: "review",
+        status: "test-todo",
+        reason: expect.stringMatching(/pinned engine source.*OSC 133.*633.*mark or zone state.*citation per cell/),
+      },
+    ])
     expect(JSON.parse(result.response ?? "{}"), id).toEqual({
       home: reads[0],
       target: reads[1],
