@@ -351,7 +351,7 @@ describe("daemon HTTP boundary", () => {
 
   // Carrier validation precedes source-suite loading. The old endpoint ignored
   // these bodies and tried to probe; authentication coverage did not detect that.
-  it("refuses malformed or mismatched owner assertions before collection", async () => {
+  it("refuses malformed probe requests with original diagnostics before collection", async () => {
     const { registration } = await startTestDaemon()
     const url = `http://127.0.0.1:${registration.port}/probe`
     const owner = {
@@ -376,22 +376,49 @@ describe("daemon HTTP boundary", () => {
     const headers = { Authorization: `Bearer ${registration.token}`, "Content-Type": "application/json" }
     const unauthenticated = await fetch(url, { method: "POST", body: JSON.stringify({ terminalAppOwner: owner }) })
     expect(unauthenticated.status).toBe(403)
-    for (const body of [
-      "{malformed",
-      JSON.stringify({ terminalAppOwner: null }),
-      JSON.stringify({ terminalAppOwner: { ...owner, launchRunId: "f".repeat(32) } }),
-      JSON.stringify({ terminalAppOwner: { ...owner, workerPid: registration.pid + 1 } }),
-      JSON.stringify({ terminalAppOwner: { ...owner, token: registration.token } }),
-      JSON.stringify({ unexpectedOwner: owner }),
-      JSON.stringify({ processOwner: null }),
-      JSON.stringify({ processOwner: { ...processOwner, launchRunId: "f".repeat(32) } }),
-      JSON.stringify({ processOwner: { ...processOwner, workerPid: registration.pid + 1 } }),
-      JSON.stringify({ processOwner: { ...processOwner, windowId: 791 } }),
-      JSON.stringify({ terminalAppOwner: owner, processOwner: { ...owner, provider: "kitty" } }),
-    ]) {
+    // The new ids carrier must name its own invalid input; owner-only rejection coverage
+    // previously allowed every parse failure to be replaced by an owner-assertion message.
+    for (const [body, diagnostic] of [
+      [JSON.stringify({ ids: null }), "Invalid probe request ids: expected resolved probe ids"],
+      [JSON.stringify({ ids: "cursor.hide" }), "Invalid probe request ids: expected resolved probe ids"],
+      [JSON.stringify({ ids: ["cursor.hide", 3] }), "Invalid probe request ids: expected resolved probe ids"],
+      ["{malformed", /JSON/],
+      [JSON.stringify({ terminalAppOwner: null }), "Invalid Terminal.app owner assertion"],
+      [
+        JSON.stringify({ terminalAppOwner: { ...owner, launchRunId: "f".repeat(32) } }),
+        "Terminal.app owner assertion differs from this daemon's launch run or PID",
+      ],
+      [
+        JSON.stringify({ terminalAppOwner: { ...owner, workerPid: registration.pid + 1 } }),
+        "Terminal.app owner assertion differs from this daemon's launch run or PID",
+      ],
+      [
+        JSON.stringify({ terminalAppOwner: { ...owner, token: registration.token } }),
+        "Invalid Terminal.app owner assertion",
+      ],
+      [JSON.stringify({ unexpectedOwner: owner }), "Invalid probe request shape"],
+      [JSON.stringify({ processOwner: null }), "Invalid process owner assertion"],
+      [
+        JSON.stringify({ processOwner: { ...processOwner, launchRunId: "f".repeat(32) } }),
+        "Process owner assertion differs from this daemon's launch run or PID",
+      ],
+      [
+        JSON.stringify({ processOwner: { ...processOwner, workerPid: registration.pid + 1 } }),
+        "Process owner assertion differs from this daemon's launch run or PID",
+      ],
+      [JSON.stringify({ processOwner: { ...processOwner, windowId: 791 } }), "Invalid process owner assertion"],
+      [
+        JSON.stringify({ terminalAppOwner: owner, processOwner: { ...owner, provider: "kitty" } }),
+        "Invalid probe request shape",
+      ],
+    ] as const) {
       const response = await fetch(url, { method: "POST", headers, body })
       expect(response.status).toBe(400)
-      expect(await response.json()).toEqual({ error: "Invalid or mismatched owned-terminal owner assertion" })
+      const payload = await response.json()
+      expect(payload).toEqual({
+        error: typeof diagnostic === "string" ? diagnostic : expect.stringMatching(diagnostic),
+      })
+      expect(JSON.stringify(payload)).not.toContain(registration.token)
     }
   })
 
