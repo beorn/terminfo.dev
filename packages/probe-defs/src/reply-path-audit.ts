@@ -253,8 +253,58 @@ export const REPLY_PATH_AUDITS: ReadonlyMap<string, Readonly<Record<string, Repl
     {
       "device.xtgetxres": {
         query: "\x1bP+Q7465726d4e616d65\x1b\\",
+        kind: "no-reply-path",
+        citation:
+          "termless 71cac2c3 packages/ghostty-native/native/src/main.zig:81 vtStream() -> ghostty 332b2aef src/terminal/Terminal.zig:264 ReadonlyStream; stream.zig:733-735 forwards dcs_hook/put/unhook to the handler; stream_readonly.zig:161-166 ignores all three (dcs.zig:80-93 is not linked)",
+      },
+      "extensions.osc1337-capabilities": {
+        query: "\x1b]1337;Capabilities\x07",
         kind: "parser-rejected",
-        citation: "ghostty 332b2aef src/terminal/dcs.zig:80-105 '+' accepts only final q (else null)",
+        citation:
+          "ghostty 332b2aef src/terminal/osc/parsers/iterm2.zig:11-62 Key/map omit Capabilities; :87-90 missing key -> invalid",
+      },
+      "extensions.osc1337-cellsize": {
+        query: "\x1b]1337;ReportCellSize\x07",
+        kind: "parser-rejected",
+        citation:
+          "ghostty 332b2aef src/terminal/osc/parsers/iterm2.zig:177-195 known ReportCellSize key is unimplemented -> invalid",
+      },
+      "extensions.osc701-locale": {
+        query: "\x1b]701;?\x07",
+        kind: "parser-rejected",
+        citation: "ghostty 332b2aef src/terminal/osc.zig:637-646 state7 accepts only ';' or '7'; '0' -> invalid",
+      },
+      "extensions.osc702-version": {
+        query: "\x1b]702;?\x07",
+        kind: "parser-rejected",
+        citation: "ghostty 332b2aef src/terminal/osc.zig:637-646 state7 accepts only ';' or '7'; '0' -> invalid",
+      },
+      "extensions.osc776-cell-size": {
+        query: "\x1b]776\x07",
+        kind: "parser-rejected",
+        citation: "ghostty 332b2aef src/terminal/osc.zig:643-646 state77 accepts only '7'; '6' -> invalid",
+      },
+      "extensions.osc7770-font-size": {
+        query: "\x1b]7770;?\x07",
+        kind: "parser-rejected",
+        citation: "ghostty 332b2aef src/terminal/osc.zig:674-681 state777 accepts only ';'; '0' -> invalid",
+      },
+      "extensions.osc7777-font-window-size": {
+        query: "\x1b]7777;?\x07",
+        kind: "parser-rejected",
+        citation: "ghostty 332b2aef src/terminal/osc.zig:674-681 state777 accepts only ';'; '7' -> invalid",
+      },
+    },
+  ],
+  // Ghostty native (core 332b2aef), independently hashed current capture artifact
+  [
+    "ac12d6408c2049f1d720e9735d7eb69251d3eed868fc9ced58de98b3543f3e2e",
+    {
+      "device.xtgetxres": {
+        query: "\x1bP+Q7465726d4e616d65\x1b\\",
+        kind: "no-reply-path",
+        citation:
+          "termless 71cac2c3 packages/ghostty-native/native/src/main.zig:81 vtStream() -> ghostty 332b2aef src/terminal/Terminal.zig:264 ReadonlyStream; stream.zig:733-735 forwards dcs_hook/put/unhook to the handler; stream_readonly.zig:161-166 ignores all three (dcs.zig:80-93 is not linked)",
       },
       "extensions.osc1337-capabilities": {
         query: "\x1b]1337;Capabilities\x07",
