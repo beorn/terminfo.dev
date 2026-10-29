@@ -3,6 +3,27 @@ name: macos-measurement
 on:
   workflow_dispatch:
     inputs:
+      context_matrix:
+        description: "Collection target rows; defaults to every hosted macOS terminal"
+        type: string
+        required: false
+        default: >-
+          {"include":[
+            {"id":"terminal-app","bundle":"/System/Applications/Utilities/Terminal.app"},
+            {"id":"iterm2","bundle":"/Applications/iTerm.app"},
+            {"id":"ghostty","bundle":"/Applications/Ghostty.app"},
+            {"id":"alacritty","bundle":"/Applications/Alacritty.app"},
+            {"id":"wezterm","bundle":"/Applications/WezTerm.app"},
+            {"id":"cursor","bundle":"/Applications/Cursor.app"},
+            {"id":"com.microsoft.VSCode","bundle":"/Applications/Visual Studio Code.app"},
+            {"id":"warp","bundle":"/Applications/Warp.app"},
+            {"id":"cmux","bundle":"/Applications/cmux.app"}
+          ]}
+      probe_ids:
+        description: "JSON probe IDs; null collects the full suite"
+        type: string
+        required: false
+        default: "null"
       capture_run_ids:
         description: "Existing coordinator draft run IDs by matrix target; empty object for standalone collection"
         type: string
@@ -20,33 +41,16 @@ concurrency:
 jobs:
   measure-macos:
     name: macOS ${{ matrix.id }}
+    if: ${{ toJSON(fromJSON(inputs.context_matrix).include) != '[]' && toJSON(fromJSON(inputs.probe_ids)) != '[]' }}
     runs-on: macos-latest
     timeout-minutes: 25
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - id: terminal-app
-            bundle: /System/Applications/Utilities/Terminal.app
-          - id: iterm2
-            bundle: /Applications/iTerm.app
-          - id: ghostty
-            bundle: /Applications/Ghostty.app
-          - id: alacritty
-            bundle: /Applications/Alacritty.app
-          - id: wezterm
-            bundle: /Applications/WezTerm.app
-          - id: cursor
-            bundle: /Applications/Cursor.app
-          - id: com.microsoft.VSCode
-            bundle: /Applications/Visual Studio Code.app
-          - id: warp
-            bundle: /Applications/Warp.app
-          - id: cmux
-            bundle: /Applications/cmux.app
+      matrix: ${{ fromJSON(inputs.context_matrix) }}
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       CAPTURE_RUN_IDS: ${{ inputs.capture_run_ids }}
+      PROBE_IDS: ${{ inputs.probe_ids }}
     steps:
       - name: Bootstrap the pinned producer and sample at job start
         run: |
@@ -275,6 +279,8 @@ jobs:
             test -n "$bundle_version" || { echo "$APP_ID bundle version is empty" >&2; exit 1; }
             TARGET_VERSION_EXPORT="$(printf 'export TERMINFO_TARGET_VERSION=%q' "$bundle_version")"
           fi
+          PROBE_IDS_ARGS=""
+          if [[ "$PROBE_IDS" != null ]]; then PROBE_IDS_ARGS="$(printf ' --probe-ids %q' "$PROBE_IDS")"; fi
           cat > "$COMMAND_PATH" <<SCRIPT
           #!/bin/bash
           $TARGET_VERSION_EXPORT
@@ -306,7 +312,7 @@ jobs:
           # one PTY. Redirecting stdout to the log made that binding impossible and failed every
           # hosted macOS job at collect (27917; cause b7580050 / 28533). Only stderr is logged.
           printf 'phase=collector-invoked\n' >&2
-          "$COLLECTOR_BUN" "$COLLECTOR" test --output "$OUT/run.json" 2>> "$OUT/collector.log"
+          "$COLLECTOR_BUN" "$COLLECTOR" test --output "$OUT/run.json"$PROBE_IDS_ARGS 2>> "$OUT/collector.log"
           status=\$?
           printf 'phase=collector-exited status=%s\n' "\$status" >&2
           printf '%s\n' "\$status" > "$OUT/collector-exit"

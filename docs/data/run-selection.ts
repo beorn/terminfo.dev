@@ -11,9 +11,12 @@ import { isStaleRelation, type CellState, type SuiteRelation } from "./release-s
 import {
   parseProjectedContextKey,
   recognizeProjectedContextKey,
+  originalRunFor,
   type ProjectedContextKeyParts,
   type SelectedVersion,
   type CurrentSelectedVersion,
+  type SelectedContextSummary,
+  type SelectedProjection,
 } from "./selected-results.ts"
 
 /**
@@ -34,12 +37,9 @@ export interface ContextCandidate {
   terminalId: string
   os: string
   permissions: string | null
-  runId: string
-  version: string
-  measuredAt: string
-  suiteId: string
-  suiteFreshness: string
-  suiteRelation: SuiteRelation
+  sources: Array<{ runId: string; measuredAt: string; suiteId: string; suiteRelation: SuiteRelation }>
+  /** The canonical context, when this candidate is a composed view. */
+  context?: SelectedContextSummary
   cells?: ShareCells
   results?: ProbeResult[]
   /**
@@ -64,6 +64,12 @@ export interface CurrentContextCandidate extends ContextCandidate {
 /** The candidate for one context key, from the projection's own selected version. */
 export function candidateFromSelected(
   key: string,
+  selected: SelectedContextSummary,
+  states: Readonly<Record<string, ProbeStatus>>,
+  projection: SelectedProjection,
+): CurrentContextCandidate | undefined
+export function candidateFromSelected(
+  key: string,
   selected: SelectedVersion,
   states: Readonly<Record<string, CellState>>,
 ): HistoricalContextCandidate
@@ -79,21 +85,48 @@ export function candidateFromSelected(
 ): ContextCandidate
 export function candidateFromSelected(
   key: string,
-  selected: SelectedVersion | CurrentSelectedVersion,
+  selected: SelectedVersion | CurrentSelectedVersion | SelectedContextSummary,
   states: Readonly<Record<string, CellState | ProbeStatus>>,
-): ContextCandidate {
+  projection?: SelectedProjection,
+): ContextCandidate | undefined {
+  if ("contributingRunIds" in selected) {
+    if (selected.contributingRunIds.length === 0) return undefined
+    if (!selected.subject) throw new Error(`Context ${key} has contributing evidence without physical subject facts`)
+    if (!projection) throw new Error(`Context ${key} needs its original projection history`)
+    return {
+      key,
+      kind: selected.subject.kind,
+      terminalId: selected.subject.id,
+      os: selected.subject.os ?? "",
+      permissions: selected.subject.permissions,
+      sources: selected.contributingRunIds.map((runId) => {
+        const original = originalRunFor(projection, key, runId)
+        return {
+          runId,
+          measuredAt: original.measuredAt,
+          suiteId: original.suiteId,
+          suiteRelation: original.suiteRelation,
+        }
+      }),
+      context: selected,
+      results: Object.values(selected.cells).map((cell) => cell.result),
+      states,
+    }
+  }
   return {
     key,
     kind: selected.subject.kind,
     terminalId: selected.subject.id,
     os: selected.subject.os ?? "",
     permissions: selected.subject.permissions ?? null,
-    runId: selected.runId,
-    version: selected.subject.version ?? "",
-    measuredAt: selected.measuredAt,
-    suiteId: selected.suiteId,
-    suiteFreshness: selected.suiteFreshness,
-    suiteRelation: selected.suiteRelation,
+    sources: [
+      {
+        runId: selected.runId,
+        measuredAt: selected.measuredAt,
+        suiteId: selected.suiteId,
+        suiteRelation: selected.suiteRelation,
+      },
+    ],
     ...("results" in selected ? { results: selected.results } : { cells: selected.cells }),
     states,
   }
@@ -130,19 +163,22 @@ function successors(
   chosen: ContextCandidate,
   context: ProjectedContextKeyParts,
 ): ContextCandidate[] {
+  // Only original contributing evidence dates compare host generations. Attempts never refresh it.
+  const evidenceDate = (candidate: ContextCandidate): number =>
+    Math.max(...candidate.sources.map((source) => Date.parse(source.measuredAt)))
   const newer = candidates.filter((candidate) => {
     if (candidate.key === chosen.key) return false
     const other = parseProjectedContextKey(candidate.key)
     return (
       other !== undefined &&
       sameContextOtherGeneration(other, context) &&
-      Date.parse(candidate.measuredAt) > Date.parse(chosen.measuredAt)
+      evidenceDate(candidate) > evidenceDate(chosen)
     )
   })
   if (newer.length === 0) return []
-  const newest = Math.max(...newer.map((candidate) => Date.parse(candidate.measuredAt)))
+  const newest = Math.max(...newer.map(evidenceDate))
   return newer
-    .filter((candidate) => Date.parse(candidate.measuredAt) === newest)
+    .filter((candidate) => evidenceDate(candidate) === newest)
     .sort((left, right) => left.key.localeCompare(right.key))
 }
 
@@ -161,6 +197,13 @@ function unreadableCandidate(candidate: ContextCandidate): { stale: string } {
   return {
     stale: `current context key ${candidate.key} is unreadable; projectedContextKey wrote it, so no reviewed row can be applied until that key is fixed`,
   }
+}
+
+/** A context remains current when any of its original evidence sources is current. */
+export function hasCurrentSource(
+  sources: readonly Pick<ContextCandidate["sources"][number], "suiteRelation">[],
+): boolean {
+  return sources.some((source) => !isStaleRelation(source.suiteRelation))
 }
 
 /**
@@ -190,6 +233,7 @@ export function pickContextRun<T extends ContextCandidate>(
   candidates: readonly T[],
   reviewed?: { contextKey: string },
 ): PickedContextRun<T> | undefined {
+  candidates = candidates.filter((candidate) => candidate.sources.length > 0)
   if (candidates.length === 0) return undefined
   if (reviewed !== undefined) {
     const reviewedKey = reviewed.contextKey
@@ -225,7 +269,7 @@ export function pickContextRun<T extends ContextCandidate>(
       return refusedReview(reviewedKey, "no current candidate names it", candidates)
     }
   }
-  const current = candidates.filter((candidate) => !isStaleRelation(candidate.suiteRelation))
+  const current = candidates.filter((candidate) => hasCurrentSource(candidate.sources))
   const considered = current.length > 0 ? current : candidates
   const [only] = considered
   if (considered.length === 1 && only) return { run: only, selection: "only current" }
