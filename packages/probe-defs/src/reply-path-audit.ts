@@ -70,6 +70,36 @@ export const REPLY_PATH_AUDITS: ReadonlyMap<string, Readonly<Record<string, Repl
   [
     "77b69f9f22c4126359be864fcce97afad8f84615053e21d335ba6348a8d3e1d7",
     {
+      "extensions.osc0-icon-title": {
+        query: "\u001b[20t",
+        kind: "parser-rejected",
+        citation:
+          "Ghostty WASM artifact 77b69f9f22c4126359be864fcce97afad8f84615053e21d335ba6348a8d3e1d7, core 5714ed07a1012573261b7b7e3ed2add9c1504496; Termless 14912a2729d795b45579698abcdb92d4749f4ff1 vendor/ghostty-web/ghostty-wasm-api.patch:834-837 constructs ResponseStream(ResponseHandler), :877 feeds it, :605-617 ignores request_mode_unknown/size_report/clipboard_contents. Core src/terminal/stream.zig:1793-1849 XTWINOPS accepts 14/16/18/21 and 22/23, but 20 reaches the unimplemented-parameter arm before any handler. Terminfo 27541ce40cea4baaaa5a34171ad059e08d295d19 packages/probe-defs/src/extensions.ts:2245-2254,2759-2770 requires BOTH icon20 and title21 exact payload replies; icon20 is necessary. Title21 separately dispatches size_report (:1819-1821), ignored by this WASM handler.",
+      },
+      "extensions.osc52-clipboard": {
+        query: "\u001b]52;c;?\u0007",
+        kind: "no-reply-path",
+        citation:
+          "Ghostty WASM artifact 77b69f9f22c4126359be864fcce97afad8f84615053e21d335ba6348a8d3e1d7, core 5714ed07a1012573261b7b7e3ed2add9c1504496; Termless 14912a2729d795b45579698abcdb92d4749f4ff1 vendor/ghostty-web/ghostty-wasm-api.patch:834-837 constructs ResponseStream(ResponseHandler), :877 feeds it, :605-617 ignores request_mode_unknown/size_report/clipboard_contents. Core src/terminal/osc.zig:941-975 parses OSC52 kind/data; stream.zig:2022-2026 dispatches clipboard_contents, which this WASM handler ignores without clipboard storage, host callback or reply append. Terminfo 27541ce40cea4baaaa5a34171ad059e08d295d19 packages/probe-defs/src/extensions.ts:1942-1961,2789-2793 requires exact nonce roundtrip via this read query, not write consumption.",
+      },
+      "extensions.osc52-read": {
+        query: "\u001b]52;c;?\u0007",
+        kind: "no-reply-path",
+        citation:
+          "Ghostty WASM artifact 77b69f9f22c4126359be864fcce97afad8f84615053e21d335ba6348a8d3e1d7, core 5714ed07a1012573261b7b7e3ed2add9c1504496; Termless 14912a2729d795b45579698abcdb92d4749f4ff1 vendor/ghostty-web/ghostty-wasm-api.patch:834-837 constructs ResponseStream(ResponseHandler), :877 feeds it, :605-617 ignores request_mode_unknown/size_report/clipboard_contents. Core src/terminal/osc.zig:941-975 parses OSC52 kind/data; stream.zig:2022-2026 dispatches clipboard_contents, which this WASM handler ignores without clipboard storage, host callback or reply append. Terminfo 27541ce40cea4baaaa5a34171ad059e08d295d19 packages/probe-defs/src/extensions.ts:1965-1988,2812-2814 seeds an isolated nonce and requires this read query to return it.",
+      },
+      "extensions.osc52-write": {
+        query: "\u001b]52;c;?\u0007",
+        kind: "no-reply-path",
+        citation:
+          "Ghostty WASM artifact 77b69f9f22c4126359be864fcce97afad8f84615053e21d335ba6348a8d3e1d7, core 5714ed07a1012573261b7b7e3ed2add9c1504496; Termless 14912a2729d795b45579698abcdb92d4749f4ff1 vendor/ghostty-web/ghostty-wasm-api.patch:834-837 constructs ResponseStream(ResponseHandler), :877 feeds it, :605-617 ignores request_mode_unknown/size_report/clipboard_contents. Core src/terminal/osc.zig:941-975 parses OSC52 kind/data; stream.zig:2022-2026 dispatches clipboard_contents, which this WASM handler ignores without clipboard storage, host callback or reply append. Terminfo 27541ce40cea4baaaa5a34171ad059e08d295d19 packages/probe-defs/src/extensions.ts:1942-1961,2801-2805 uses the nonce roundtrip callback; its necessary observation is this exact readback query, not standalone write success.",
+      },
+      "extensions.osc5522-clipboard": {
+        query: "\u001b[?5522$p",
+        kind: "no-reply-path",
+        citation:
+          "Ghostty WASM artifact 77b69f9f22c4126359be864fcce97afad8f84615053e21d335ba6348a8d3e1d7, core 5714ed07a1012573261b7b7e3ed2add9c1504496; Termless 14912a2729d795b45579698abcdb92d4749f4ff1 vendor/ghostty-web/ghostty-wasm-api.patch:834-837 constructs ResponseStream(ResponseHandler), :877 feeds it, :605-617 ignores request_mode_unknown/size_report/clipboard_contents. Terminfo 27541ce40cea4baaaa5a34171ad059e08d295d19 packages/probe-defs/src/extensions.ts:3164-3185 sends DECRQM ?5522$p only, never OSC5522. Core modes.zig:146-157,189-233 has no 5522 entry; stream.zig:1605-1613 dispatches request_mode_unknown, ignored by this WASM handler without a reply append.",
+      },
       "extensions.kitty-graphics": {
         query: "\u001b_G",
         matches: "prefix",
