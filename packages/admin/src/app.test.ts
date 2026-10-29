@@ -667,26 +667,62 @@ test.each([
     }
     const script = writes.find(([path]) => String(path).endsWith(`${prefix}-fixture/extension.cjs`))
     expect(script?.[2]).toEqual({ flag: "wx", mode: 0o600 })
-    expect(script?.[1]).toBe(`const vscode = require("vscode");
+    const terminalJson = '{"name":"terminfo-private-run","shellPath":"/bin/bash","shellArgs":["/private/run/serve.sh"],"cwd":"/private/run"}'
+    const vscodeFixture = `const vscode = require("vscode");
 exports.activate = (context) => {
-  const terminal = vscode.window.createTerminal({"name":"terminfo-private-run","shellPath":"/bin/bash","shellArgs":["/private/run/serve.sh"],"cwd":"/private/run"});
+  const terminal = vscode.window.createTerminal(${terminalJson});
   context.subscriptions.push(terminal);
   terminal.show();
 };
-`)
+`
+    const cursorFixture = `const vscode = require("vscode");
+exports.activate = async (context) => {
+  await vscode.commands.executeCommand("workbench.action.closePanel");
+  await vscode.commands.executeCommand("workbench.action.toggleMaximizedPanel");
+  const terminal = vscode.window.createTerminal(${terminalJson});
+  context.subscriptions.push(terminal);
+  terminal.show();
+};
+`
+    expect(script?.[1]).toBe(prefix === "cursor" ? cursorFixture : vscodeFixture)
     const terminal = { show: vi.fn(), dispose: vi.fn() }
     const createTerminal = vi.fn(() => terminal)
-    const exported: { activate?: (context: { subscriptions: unknown[] }) => void } = {}
+    const commands: string[] = []
+    const executeCommand = vi.fn(async (command: string) => {
+      commands.push(command)
+    })
+    const exported: { activate?: (context: { subscriptions: unknown[] }) => void | Promise<void> } = {}
     runInNewContext(String(script?.[1]), {
       exports: exported,
       require: (id: string) => {
         if (id !== "vscode") throw new Error(`Unexpected fixture import: ${id}`)
-        return { window: { createTerminal } }
+        return { commands: { executeCommand }, window: { createTerminal } }
       },
     })
     const subscriptions: unknown[] = []
     expect(typeof exported.activate).toBe("function")
-    exported.activate!({ subscriptions })
+    await exported.activate!({ subscriptions })
+    if (prefix === "cursor") {
+      expect(commands).toEqual([
+        "workbench.action.closePanel",
+        "workbench.action.toggleMaximizedPanel",
+      ])
+      expect(executeCommand.mock.invocationCallOrder[1]).toBeLessThan(createTerminal.mock.invocationCallOrder[0]!)
+      const rejectedCreate = vi.fn(() => terminal)
+      const rejected: { activate?: (context: { subscriptions: unknown[] }) => Promise<void> } = {}
+      runInNewContext(String(script?.[1]), {
+        exports: rejected,
+        require: (id: string) => {
+          if (id !== "vscode") throw new Error(`Unexpected fixture import: ${id}`)
+          return {
+            commands: { executeCommand: async () => { throw new Error("panel command failed") } },
+            window: { createTerminal: rejectedCreate },
+          }
+        },
+      })
+      await expect(rejected.activate!({ subscriptions: [] })).rejects.toThrow("panel command failed")
+      expect(rejectedCreate).not.toHaveBeenCalled()
+    }
     expect(createTerminal).toHaveBeenCalledWith({
       name: "terminfo-private-run",
       shellPath: "/bin/bash",

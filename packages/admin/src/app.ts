@@ -144,17 +144,25 @@ function prepareEditorFixture(run: ProbeRun, markerValue: string, prefix: "curso
     shellArgs: [run.scriptPath],
     cwd: run.directory,
   }
-  writeFileSync(
-    join(fixture, "extension.cjs"),
-    `const vscode = require("vscode");
-exports.activate = (context) => {
-  const terminal = vscode.window.createTerminal(${JSON.stringify(terminal)});
+  const terminalJson = JSON.stringify(terminal)
+  const extension = prefix === "cursor"
+    ? `const vscode = require("vscode");
+exports.activate = async (context) => {
+  await vscode.commands.executeCommand("workbench.action.closePanel");
+  await vscode.commands.executeCommand("workbench.action.toggleMaximizedPanel");
+  const terminal = vscode.window.createTerminal(${terminalJson});
   context.subscriptions.push(terminal);
   terminal.show();
 };
-`,
-    { flag: "wx", mode: 0o600 },
-  )
+`
+    : `const vscode = require("vscode");
+exports.activate = (context) => {
+  const terminal = vscode.window.createTerminal(${terminalJson});
+  context.subscriptions.push(terminal);
+  terminal.show();
+};
+`
+  writeFileSync(join(fixture, "extension.cjs"), extension, { flag: "wx", mode: 0o600 })
 }
 
 const vscodeAdditionalStatePaths = [
