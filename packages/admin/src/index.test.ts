@@ -84,7 +84,7 @@ test("CLI help is independent of source suite metadata", () => {
 describe("headless CLI exact probe selection", () => {
   let program: Command
   beforeAll(async () => {
-    const parse = vi.spyOn(Command.prototype, "parseAsync").mockImplementation(async function(this: Command) { return this })
+    const parse = vi.spyOn(Command.prototype, "parseAsync").mockImplementation(function(this: Command) { return this })
     try {
       await import("./index.ts")
       program = parse.mock.contexts[0]!

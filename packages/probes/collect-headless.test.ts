@@ -12,7 +12,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { afterEach, expect, it, vi } from "vitest"
-import type { CapturedRunDraft, RunDraft } from "@terminfo/probe-defs"
+import { readCollectorAttempt, type CapturedRunDraft, type RunDraft } from "@terminfo/probe-defs"
 import { parseRun } from "@terminfo/run-parser"
 import { collectHeadlessRuns } from "./collect-headless.ts"
 import { probeSuiteSnapshot } from "../admin/versions.ts"
@@ -161,7 +161,7 @@ it.runIf(OWNED_LAYOUT)("executes only selected callbacks in the real headless wo
   const draft = JSON.parse(readFileSync(collection.runs[0]!, "utf8")) as CapturedRunDraft
   expect(draft.results.filter((row) => row.attempt.scope !== "none").map((row) => row.featureId)).toEqual(["sgr.bold"])
   expect(JSON.parse(draft.rawReplies["collector.selection"]!)).toEqual({ ids: ["sgr.bold"] })
-  expect(JSON.parse(draft.rawReplies["collector.collectionAttempt"]!).result).toBe("completed")
+  expect(readCollectorAttempt(draft.rawReplies)?.result).toBe("completed")
   expect(draft.results).toHaveLength(273)
 }, 30_000)
 // The fixture tests above never send a collector-written draft through the decoder that admit-run uses;
@@ -356,7 +356,7 @@ it("initializes all 273 before worker launch and retains explicit missing prereq
   expect(draft.results.every((result) => result.status === "test-todo" && result.attempt.scope === "none")).toBe(true)
   expect(draft).not.toHaveProperty("target")
   expect(JSON.parse(draft.rawReplies["collector.selection"]!)).toEqual({ ids: probeSuiteSnapshot().probes.lib })
-  const attempt = JSON.parse(draft.rawReplies["collector.collectionAttempt"]!)
+  const attempt = readCollectorAttempt(draft.rawReplies)
   expect(attempt).toMatchObject({ result: "failed", error: expect.stringContaining("missing pinned package") })
   expect(attempt).not.toHaveProperty("startedAt")
 })
@@ -539,7 +539,7 @@ it.each([
   expect(draft.runId).toBe(runId)
   const attempt = JSON.parse(draft.rawReplies["collector.collectionAttempt"]!)
   expect(attempt).toMatchObject({ ids, result, error: expect.stringContaining(originalError) })
-  if (started) expect(attempt.startedAt).toEqual(expect.any(String))
+  if (started) expect(attempt?.startedAt).toEqual(expect.any(String))
   else expect(attempt).not.toHaveProperty("startedAt")
   expect(JSON.parse(draft.rawReplies["collector.selection"]!)).toEqual({ ids })
   if (result === "cancelled" || !started) {

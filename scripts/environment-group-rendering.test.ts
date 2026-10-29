@@ -15,7 +15,7 @@ import { join } from "node:path"
 import { beforeAll, describe, expect, it, vi } from "vitest"
 import { Command } from "@silvery/commander"
 import { ENVIRONMENT_GROUP_IDS, initializeRunDraft, recordCollectorSelection, recordCollectorAttempt } from "@terminfo/probe-defs"
-import type { ProbeResult, CapturedRunDraft, ProbeSuiteManifest } from "@terminfo/probe-defs"
+import type { ProbeResult, CapturedRunDraft, ProbeSuiteManifest, RunDraft } from "@terminfo/probe-defs"
 import * as publicCollector from "../packages/terminfo.dev/src/serve.ts"
 import * as probeOutput from "../packages/terminfo.dev/src/probe-output.ts"
 import * as daemonClient from "../packages/terminfo.dev/src/daemon-client.ts"
@@ -127,7 +127,7 @@ describe("public test CLI coverage uses the collected manifest", () => {
       expect(publicCollector.collectProbeRun).toHaveBeenCalledWith(probeIds === undefined ? {} : { ids: probeIds })
       if (probeIds?.length === 0) {
         expect(probeOutput.probeOutputStream).not.toHaveBeenCalled()
-        const saved = JSON.parse(String(stdout.mock.calls[0]?.[0]))
+        const saved = JSON.parse(String(stdout.mock.calls[0]?.[0])) as RunDraft
         expect(saved.runId).toBe(run.runId)
         expect(JSON.parse(saved.rawReplies["collector.collectionAttempt"])).toEqual({ ids: [], result: "empty" })
         expect(saved).not.toHaveProperty("subject")

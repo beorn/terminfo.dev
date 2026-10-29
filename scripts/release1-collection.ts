@@ -31,6 +31,7 @@ import {
   recordCollectorSelection,
   recordCollectorAttempt,
   readCollectorAttempt,
+  readCollectorSelection,
   resolveProbeIds,
   collectorIds,
   type CollectorAttempt,
@@ -102,6 +103,24 @@ function linuxLiveArgs(kind: CollectionContext["kind"], id: string): string[] {
     "default",
     ...(kind === "mux" ? ["--mux", id] : []),
   ]
+}
+
+/** Discover the existing launcher's retained raw file on either successful or failed exit. */
+function linuxRawRun(output: string): string | undefined {
+  const runs = readdirSync(output, { withFileTypes: true }).filter((entry) => entry.isDirectory())
+  if (runs.length === 0) return undefined
+  const run = runs[0]
+  if (runs.length !== 1 || !run) {
+    throw new Error(`Linux launcher produced ${runs.length} run directories in ${output}; expected exactly one`)
+  }
+  for (const name of ["v3-run.json", "v3-run.draft.json", "v3-capture.json"]) {
+    const candidate = join(output, run.name, "raw", name)
+    if (!existsSync(candidate)) continue
+    const path = realpathSync(candidate)
+    if (!path.startsWith(`${output}${sep}`)) throw new Error(`Linux raw output escaped its private context: ${path}`)
+    return path
+  }
+  return undefined
 }
 
 /** A Linux app row runs the invocation the live pass declares; nothing is read back from a run. */
@@ -555,17 +574,15 @@ export async function collectPass(
     })
     const path = join(directory, `${context.kind}-${context.id}-${context.os}.draft.json`)
     recordCollectorSelection(draft, probeIds ?? snapshot.probes[context.kind])
+    if (probeIds?.length === 0) {
+      recordCollectorAttempt(draft, { ids: [], result: "empty" })
+      pass.contexts.push({ context, status: "not-started", rawRun: path, reason: "Explicit empty probe selection" })
+    }
     writeFileSync(path, `${JSON.stringify(draft, null, 2)}\n`, { flag: "wx" })
     drafts.set(coverageKey(context.kind, context.id, context.os), { draft, path })
   }
   if (census.length === 0 || probeIds?.length === 0) {
     pass.attempt = { ids: probeIds ?? [], result: "empty" }
-    for (const context of census) {
-      const handed = drafts.get(coverageKey(context.kind, context.id, context.os))!
-      recordCollectorAttempt(handed.draft, { ids: [], result: "empty" })
-      writeFileSync(handed.path, `${JSON.stringify(handed.draft, null, 2)}\n`)
-      pass.contexts.push({ context, status: "not-started", rawRun: handed.path, reason: "Explicit empty probe selection" })
-    }
     writeFileSync(join(directory, "pass.json"), `${JSON.stringify(pass, null, 2)}\n`, { flag: "wx" })
     return pass
   }
@@ -637,7 +654,8 @@ export async function collectPass(
         row.directory = output
         mkdirSync(output, { recursive: true })
         runChild(
-          ["bash", "scripts/linux-container-run.sh", ...linuxLiveArgs(context.kind, context.id), output],
+          ["bash", "scripts/linux-container-run.sh", ...linuxLiveArgs(context.kind, context.id),
+            ...(probeIds === undefined ? [] : ["--ids", probeIds.join(",")]), output],
           `${labelOf(context)} Linux collection`,
           {
             stdout: join(output, "launcher.stdout.log"),
@@ -648,18 +666,11 @@ export async function collectPass(
             TERMINFO_CAPTURE_RUN_ID: handed.draft.runId,
             TERMINFO_PROBE_HASH: snapshot.probeHash,
             TERMINFO_SOURCE_REVISION: sourceRevision,
-            ...(probeIds === undefined ? {} : { TERMINFO_PROBE_IDS: JSON.stringify(probeIds) }),
           },
         )
-        const runs = readdirSync(output, { withFileTypes: true }).filter((entry) => entry.isDirectory())
-        if (runs.length !== 1 || !runs[0]) {
-          throw new Error(`Linux launcher produced ${runs.length} run directories in ${output}; expected exactly one`)
-        }
-        const finalPath = join(output, runs[0].name, "raw", "v3-run.json")
-        path = realpathSync(existsSync(finalPath) ? finalPath : join(output, runs[0].name, "raw", "v3-run.draft.json"))
-        if (!path.startsWith(`${output}${sep}`)) {
-          throw new Error(`Linux raw output escaped its private context: ${path}`)
-        }
+        const retained = linuxRawRun(output)
+        if (!retained) throw new Error(`Linux launcher produced no raw run in ${output}`)
+        path = retained
       } else if (context.route === "local-owned-app") {
         const output = join(directory, "owned-app", context.id)
         row.directory = output
@@ -790,6 +801,32 @@ export async function collectPass(
       row.status = "classified"
     } catch (error) {
       row.error = `${labelOf(context)}: ${error instanceof Error ? error.message : String(error)}`
+      if (context.route === "linux-container" && row.directory) {
+        try {
+          const actualPath = linuxRawRun(row.directory)
+          if (actualPath) {
+            row.rawRun = actualPath
+            // Bind failure custody only; canonical report/admission still validates the original bytes.
+            const actual = parseJsonStrict(actualPath, readFileSync(actualPath, "utf8")) as Partial<RunDraft> | null
+            const ids = [...(probeIds ?? snapshot.probes[context.kind])]
+            if (!actual || actual.schemaVersion !== 4 || actual.source?.kind !== "live" ||
+              actual.runId !== handed.draft.runId || actual.sourceRevision !== sourceRevision ||
+              actual.probeHash !== snapshot.probeHash || actual.suiteId !== snapshot.probeHash || !actual.rawReplies) {
+              throw new Error(`Linux failure output differs from delegated identity: ${actualPath}`)
+            }
+            const actualSelection = readCollectorSelection(actual.rawReplies)
+            const actualAttempt = readCollectorAttempt(actual.rawReplies)
+            if (!actualSelection || actualSelection.ids.join("\n") !== ids.join("\n") ||
+              !actualAttempt || actualAttempt.ids.join("\n") !== ids.join("\n")) {
+              throw new Error(`Linux failure output differs from delegated selection/attempt: ${actualPath}`)
+            }
+            row.status = actualAttempt.startedAt ? "failed" : "not-started"
+            continue
+          }
+        } catch (custodyError) {
+          row.reason = `Untrusted Linux failure output: ${custodyError instanceof Error ? custodyError.message : String(custodyError)}`
+        }
+      }
       const retained = JSON.parse(readFileSync(handed.path, "utf8")) as RunDraft
       const previousAttempt = readCollectorAttempt(retained.rawReplies)
       const actualStart = previousAttempt?.startedAt

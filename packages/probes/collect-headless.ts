@@ -196,14 +196,15 @@ async function collectOne(name: string, directory: string): Promise<string> {
       { identity: runtimeIdentity, adapterPath, adapterPackage: entry.package, adapterType: entry.type },
     )
     const startedAttempt = readCollectorAttempt(draft.rawReplies)
-    recordCollectorAttempt(draft, {
+    const completedAttempt = {
       ids,
       startedAt: collectionStartedAt,
       ...(startedAttempt?.hostInputs && { hostInputs: startedAttempt.hostInputs }),
-      result: "completed",
-    })
+      result: "completed" as const,
+    }
+    recordCollectorAttempt(draft, completedAttempt)
     // Batch metadata includes the start checkpoint; retain the completed outcome above.
-    batch.rawReplies["collector.collectionAttempt"] = draft.rawReplies["collector.collectionAttempt"]!
+    recordCollectorAttempt(batch, completedAttempt)
     checkpoint()
     const run: CapturedRunDraft = {
       ...draft,

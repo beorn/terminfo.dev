@@ -93,7 +93,7 @@ export function recordCollectorSelection(draft: RunDraft, ids: readonly string[]
   draft.rawReplies["collector.selection"] = JSON.stringify({ ids })
 }
 
-export function recordCollectorAttempt(draft: RunDraft, attempt: CollectorAttempt): void {
+export function recordCollectorAttempt(draft: Pick<RunDraft, "rawReplies">, attempt: CollectorAttempt): void {
   draft.rawReplies["collector.collectionAttempt"] = JSON.stringify(attempt)
 }
 
