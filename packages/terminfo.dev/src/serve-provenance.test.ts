@@ -81,7 +81,7 @@ test("the frame-less controlled-Linux capture fails by name", async () => {
 
 test("provenance without owned capture or clipboard refuses before selecting any callback", async () => {
   writeFileSync(receipt, JSON.stringify({ executable: { path: process.execPath, sha256: "0".repeat(64) } }))
-  await expect(collectProbeRun({ ids: [] })).rejects.toThrow("requires owned capture or clipboard")
+  await expect(collectProbeRun({ ids: ["device.xtversion"] })).rejects.toThrow("requires owned capture or clipboard")
 })
 
 test.each(["C:\\artifacts\\terminfo-run.exe", "C:/artifacts/terminfo-run.exe", "D:\\Program Files\\app.exe"])(
@@ -91,7 +91,7 @@ test.each(["C:\\artifacts\\terminfo-run.exe", "C:/artifacts/terminfo-run.exe", "
     process.env.TERMINFO_CAPTURE_DIRECTORY = join(directory, "frames")
     try {
       // Passes measuredExecutable check; fails later on executable digest or existence check
-      await expect(collectProbeRun({ ids: [] })).rejects.not.toThrow(
+      await expect(collectProbeRun({ ids: ["device.xtversion"] })).rejects.not.toThrow(
         "Runtime provenance has invalid measured executable",
       )
     } finally {
@@ -104,7 +104,7 @@ test("provenance rejects relative path", async () => {
   writeFileSync(receipt, JSON.stringify({ executable: { path: "relative/path/app.exe", sha256: "0".repeat(64) } }))
   process.env.TERMINFO_CAPTURE_DIRECTORY = join(directory, "frames")
   try {
-    await expect(collectProbeRun({ ids: [] })).rejects.toThrow("Runtime provenance has invalid measured executable")
+    await expect(collectProbeRun({ ids: ["device.xtversion"] })).rejects.toThrow("Runtime provenance has invalid measured executable")
   } finally {
     delete process.env.TERMINFO_CAPTURE_DIRECTORY
   }
@@ -120,6 +120,6 @@ test.runIf(process.platform === "linux")(
       JSON.stringify({ executable: { path, sha256: actual.replace(/^./, actual[0] === "0" ? "1" : "0") } }),
     )
     process.env.TERMINFO_CAPTURE_DIRECTORY = join(directory, "frames")
-    await expect(collectProbeRun({ ids: [] })).rejects.toThrow("executable digest mismatch")
+    await expect(collectProbeRun({ ids: ["device.xtversion"] })).rejects.toThrow("executable digest mismatch")
   },
 )

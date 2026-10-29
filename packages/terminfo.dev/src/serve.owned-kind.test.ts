@@ -73,7 +73,7 @@ afterAll(() => {
 test("Linux clipboard plus disposable receipts do not refuse as dual owners", async () => {
   process.env.TERMINFO_CLIPBOARD_FIXTURE_RECEIPT = clipboard
   process.env.TERMINFO_DISPOSABLE_RECEIPT = disposable
-  await expect(collectProbeRun({ ids: [] })).rejects.not.toThrow(
+  await expect(collectProbeRun({ ids: ["device.xtversion"] })).rejects.not.toThrow(
     "Collection cannot have both Linux and hosted Darwin owners",
   )
 })

@@ -38,8 +38,8 @@ function collectorRecord(rawReplies: Record<string, string>, key: string): Recor
   return value as Record<string, unknown>
 }
 
-function collectorIds(value: unknown, key: string): string[] {
-  if (!Array.isArray(value) || !value.every((id) => typeof id === "string" && id.length > 0)) {
+export function collectorIds(value: unknown, key: string): string[] {
+  if (!Array.isArray(value) || !value.every((id): id is string => typeof id === "string" && id.length > 0)) {
     throw new Error(`Invalid ${key}: expected resolved probe ids`)
   }
   return [...value]
