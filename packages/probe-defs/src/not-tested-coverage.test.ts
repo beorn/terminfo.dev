@@ -36,6 +36,85 @@ const context = (): LibProbeSource =>
     reset: () => {},
   }) as unknown as LibProbeSource
 
+// These missing observables previously emitted coverage without the required review attachment.
+// Declared capability flags do not establish rendering, delivery, timing or event behaviour.
+const headlessObservableFeatures = [
+  [
+    "extensions.kitty-graphics.animation",
+    "Declared Kitty graphics capability does not establish timed animation playback",
+    { declared: true },
+  ],
+  [
+    "extensions.kitty-graphics.unicode-placeholders",
+    "Declared Kitty graphics capability does not establish Unicode placeholder rendering",
+    { declared: true },
+  ],
+  ["extensions.sixel", "Declared Sixel capability does not establish rendered pixels", { declared: true }],
+  [
+    "extensions.semantic-prompts",
+    "Declared semantic-prompt capability does not establish shell prompt integration",
+    { declared: true },
+  ],
+  [
+    "extensions.osc7-cwd",
+    "Declared OSC 7 capability does not establish working-directory metadata delivery",
+    { declared: true },
+  ],
+  [
+    "extensions.osc-633-vscode",
+    "Declared semantic-prompt capability does not establish VS Code OSC 633 shell integration",
+    { declared: true },
+  ],
+  [
+    "extensions.notifications",
+    "Declared OSC 9 capability does not establish desktop notification delivery",
+    { declared: true },
+  ],
+  [
+    "extensions.iterm2-images",
+    "Declared iTerm2 image capability does not establish rendered image pixels",
+    { declared: true },
+  ],
+  ["modes.decsclm", "DECSCLM requires presentation timing capture", { presentation: false }],
+  [
+    "modes.color-scheme-reporting",
+    "Mode 2031 requires a host palette actuator and persistent unsolicited-event listener",
+    { paletteActuator: false, persistentListener: false },
+  ],
+  [
+    "extensions.osc8",
+    "Adapter (runtime identity unavailable) exposes no OSC 8 URI observer (getHyperlinkAt); link metadata unobservable",
+    { chars: [..."ALINKZ"], links: Array.from({ length: 6 }, () => ({ reported: false })) },
+  ],
+] as const
+
+test.each(headlessObservableFeatures)(
+  "%s retains its missing observable and state for required review",
+  (id, noObservable, state) => {
+    const definition = ALL_PROBES.find((probe) => probe.id === id)
+    if (!definition?.lib) throw new Error(`missing headless ${id}`)
+    const source = {
+      ...context(),
+      capabilities: {
+        kittyGraphics: true,
+        sixel: true,
+        semanticPrompts: true,
+        extensions: new Set(["osc7", "osc9", "iterm2Images"]),
+      },
+      getCell: (_row: number, col: number) => ({ char: "ALINKZ"[col] }),
+    } as unknown as LibProbeSource
+    const result = definition.lib(source)
+    expect(result.notTested).toEqual({ reason: "no-semantic-observable", noObservable })
+    expect(JSON.parse(result.response!)).toEqual(state)
+    expect(result.criterionBranch).toBe("headless-observable-review")
+    expect(result.tests).toEqual([
+      { id: "review", status: "test-todo", reason: `Headless observable review required: ${noObservable}` },
+    ])
+    expect(result.observation).toBeUndefined()
+    expect(result.assertions).toBeUndefined()
+  },
+)
+
 test("the 7 headless not-tested features emit named coverage from measured state", () => {
   expect(notTestedFeatures).toHaveLength(7)
   for (const id of notTestedFeatures) {

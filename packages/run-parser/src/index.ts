@@ -3,8 +3,8 @@ import { createHash } from "node:crypto"
 import { isDeepStrictEqual } from "node:util"
 import {
   SOURCE_NEGATIVE_REVIEW,
-  REPLY_PATH_AUDIT_REVIEW,
   HARNESS_INCOMPLETE_TEST,
+  UNTESTABLE_ONLY_REVIEW_BRANCHES,
   HOST_INPUT_NAMES,
   type HostRecipeExpectation,
   type HostRecipeName,
@@ -1293,12 +1293,13 @@ export function parseProbeResults(
         fail(path, `${featureId} query_reply source-negative review requires a recorded parser-level rejection`)
       }
     }
-    // A reply-path audit review records a missing reply path, so a reviewer may decide it only as Untestable.
+    // Missing-observable reviews cannot establish support or a measured negative.
     if (
-      result.criterionBranch === REPLY_PATH_AUDIT_REVIEW &&
+      result.criterionBranch !== undefined &&
+      UNTESTABLE_ONLY_REVIEW_BRANCHES.has(result.criterionBranch) &&
       tests.some((test) => test.id === "review" && (test.status === "supported" || test.status === "unsupported"))
     ) {
-      fail(path, `${featureId} reply-path audit review admits only an untestable decision`)
+      fail(path, `${featureId} ${result.criterionBranch} review admits only an untestable decision`)
     }
     // A capture that reached a callback the adapter does not reproduce is a harness gap, never a terminal property.
     const harnessRow = tests.find((test) => test.id === HARNESS_INCOMPLETE_TEST)

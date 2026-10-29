@@ -983,6 +983,11 @@ export function probe(
 }
 
 export const REPLY_PATH_AUDIT_REVIEW = "reply-path-audit-review"
+export const HEADLESS_OBSERVABLE_REVIEW = "headless-observable-review"
+export const UNTESTABLE_ONLY_REVIEW_BRANCHES: ReadonlySet<string> = new Set([
+  REPLY_PATH_AUDIT_REVIEW,
+  HEADLESS_OBSERVABLE_REVIEW,
+])
 
 /** The collector's test row for a capture that reached an engine callback its adapter does not reproduce. */
 export const HARNESS_INCOMPLETE_TEST = "harness"
