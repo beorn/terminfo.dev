@@ -95,6 +95,24 @@ function supportedBaseline() {
 // Existing selection tests exercise v1/v2 observation grading; they cannot prove that v3 selection
 // reads the stored five statuses and frozen denominator without applying later interpretations.
 describe("current execution projection", () => {
+  // Existing context keys count legacy configurations too; the new private view must use that owner.
+  it("keeps private context keys identical to public keys when legacy configurations exist", () => {
+    const current = supportedBaseline()
+    const { results: _results, sealedAt: _seal, ...value } = raw([])
+    const legacy = parse({
+      ...value,
+      schemaVersion: 2,
+      runId: "legacy-linux",
+      target: { ...value.target, os: "linux" },
+      suiteComplete: true,
+      observations: [],
+    })
+    const projection = projectResults([current, legacy], [], ids, { currentProbeHash: suite.probeHash }, [])
+    expect(Object.keys(projection.contexts)).toEqual(Object.keys(projection.current))
+    const context = Object.values(projection.contexts)[0]!
+    expect(context.contributingRunIds).toEqual([current.runId])
+    expect(Object.values(context.cells).every((cell) => cell.origin.runId === current.runId)).toBe(true)
+  })
   // #31594 AC1/AC2: whole-run fixtures cannot expose a partial run erasing untouched evidence.
   // The existing parser/projection seam must retain cells, not select the best-looking result.
   it.each(["test-failure", "test-todo"] as const)(

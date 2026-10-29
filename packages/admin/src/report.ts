@@ -6,9 +6,10 @@ import { spawnSync } from "node:child_process"
 import { createHash } from "node:crypto"
 import { fileURLToPath } from "node:url"
 import { loadFeatures } from "@terminfo/catalog"
-import { parseJsonStrict, parseRun } from "@terminfo/run-parser"
-import { PROBE_STATUSES } from "@terminfo/probe-defs"
+import { parseJsonStrict, parseRun, type LoadedRun } from "@terminfo/run-parser"
+import { PROBE_STATUSES, readCollectorSelection, readCollectorAttempt } from "@terminfo/probe-defs"
 import { loadCurrentResults } from "../../../docs/data/current-results.ts"
+import type { SelectedAttemptInput } from "../../../docs/data/selected-results.ts"
 import { fullContextCensus } from "../../../docs/data/full-census.ts"
 import { isStaleRelation } from "../../../docs/data/release-scope.ts"
 import { readExplicitSuiteTarget } from "../suite-manifest.ts"
@@ -29,10 +30,17 @@ function revision(ref: string, optional = false): string | undefined {
 }
 
 /** Explicit inputs are evidence, not publication receipts. No pass is synthesized from raw captures. */
-function rawScoreboard(paths: readonly string[], contentDir: string): string {
+async function rawScoreboard(paths: readonly string[], contentDir: string): Promise<string> {
   const census = fullContextCensus(contentDir)
   const catalogIds = Object.keys(loadFeatures(contentDir))
   let observedAt = ""
+  const workingRuns: LoadedRun[] = []
+  type DeclaredContext = (typeof census.contexts)[number]
+  const pendingAttempts: Array<{
+    context: DeclaredContext
+    intended: Record<string, unknown>
+    input: Omit<SelectedAttemptInput, "contextKey">
+  }> = []
   const rows = new Map<
     string,
     Array<{
@@ -49,7 +57,13 @@ function rawScoreboard(paths: readonly string[], contentDir: string): string {
       admitted: boolean
     }>
   >()
-  type PassContext = { pass: string; frozenAt: string; suite: string; sourceRevision: string; context?: string }
+  type PassContext = {
+    pass: string
+    frozenAt: string
+    suite: string
+    sourceRevision: string
+    context?: DeclaredContext
+  }
   type EvidenceRow = NonNullable<ReturnType<typeof rows.get>>[number]
   const append = (context: string, row: EvidenceRow): EvidenceRow => {
     rows.set(context, [...(rows.get(context) ?? []), row])
@@ -101,7 +115,7 @@ function rawScoreboard(paths: readonly string[], contentDir: string): string {
       if (!context) throw new Error(`${path}: pass names a context outside the canonical census`)
       const reason = deferred.get(context.context)
       if (reason === undefined && typeof value.rawRun === "string") {
-        const declared = { ...identity, context: context.context }
+        const declared = { ...identity, context }
         const capture = read(value.rawRun, declared)
         if (value.status === "admitted" && typeof value.admittedPath === "string") {
           const admitted = read(value.admittedPath, declared)
@@ -153,6 +167,41 @@ function rawScoreboard(paths: readonly string[], contentDir: string): string {
     }
     const subject = header.subject ?? header.target
     if (!record(subject) || typeof subject.id !== "string" || typeof subject.os !== "string") {
+      if (pass?.context) {
+        if (!record(header.rawReplies)) throw new Error(`${path}: initialized draft has no retained rawReplies`)
+        const rawReplies: Record<string, string> = {}
+        for (const [key, value] of Object.entries(header.rawReplies)) {
+          if (typeof value !== "string") throw new Error(`${path}: rawReplies.${key} is not retained text`)
+          rawReplies[key] = value
+        }
+        if (pass.suite !== header.probeHash || pass.sourceRevision !== header.sourceRevision) {
+          throw new Error(`${path}: raw suite/source disagrees with pass ${pass.pass}`)
+        }
+        const selection = readCollectorSelection(rawReplies)
+        const attempt = readCollectorAttempt(rawReplies)
+        if (selection) {
+          pendingAttempts.push({
+            context: pass.context,
+            intended: record(header.intendedSubject) ? header.intendedSubject : {},
+            input: { runId: header.runId, path, rawReplies },
+          })
+        }
+        return append(pass.context.context, {
+          selected: false,
+          admitted: false,
+          pass: pass.pass,
+          frozenAt: pass.frozenAt,
+          state: "to-measure",
+          suite: `${header.probeHash}@${header.sourceRevision}`,
+          runId: header.runId,
+          source: path,
+          sha256: createHash("sha256").update(bytes).digest("hex"),
+          counts: "no measured subject or emitted result",
+          detail:
+            `${attempt?.result ?? "collector.collectionAttempt outcome absent"}; ${attempt?.error ?? ""}` +
+            (selection ? "" : "; collector.selection absent; no selection inferred"),
+        })
+      }
       throw new Error(`${path}: raw capture has no recorded subject identity`)
     }
     const kind = subject.kind === "headless" ? "lib" : subject.kind === "app" ? "term" : subject.kind
@@ -169,8 +218,8 @@ function rawScoreboard(paths: readonly string[], contentDir: string): string {
     let detail = "baseline/unreviewed"
     let counts = "not validated"
     try {
-      if (pass?.context && pass.context !== context.context) {
-        throw new Error(`${path}: declared ${pass.context}; recorded ${context.context}`)
+      if (pass?.context && pass.context.context !== context.context) {
+        throw new Error(`${path}: declared ${pass.context.context}; recorded ${context.context}`)
       }
       const { manifest } = readExplicitSuiteTarget(ROOT, header.probeHash)
       if (header.suiteId !== manifest.probeHash) {
@@ -178,6 +227,7 @@ function rawScoreboard(paths: readonly string[], contentDir: string): string {
       }
       const run = parseRun(path, bytes, catalogIds, new Map([[manifest.probeHash, manifest]]), { mode: "capture" })
       if (!run.results) throw new Error(`${path}: raw capture has no recorded results`)
+      workingRuns.push(run)
       const totals: Record<string, number> = {}
       for (const result of run.results) totals[result.status] = (totals[result.status] ?? 0) + 1
       counts = `raw catalog ${run.results.length}: ${PROBE_STATUSES.map((status) => `${status}=${totals[status] ?? 0}`).join(" ")}`
@@ -185,7 +235,7 @@ function rawScoreboard(paths: readonly string[], contentDir: string): string {
       // Retain the named evidence row when its declaration is absent or invalid; it proves no verdict.
       detail += `; ${error instanceof Error ? error.message : String(error)}`
     }
-    return append(pass?.context ?? context.context, {
+    return append(pass?.context?.context ?? context.context, {
       selected: false,
       admitted: false,
       pass: pass?.pass ?? "no pass",
@@ -213,7 +263,8 @@ function rawScoreboard(paths: readonly string[], contentDir: string): string {
   }
   const dirtyContent = contentStatus.stdout.length > 0
   const provenLive = head === live && !dirtyContent
-  const { projection } = loadCurrentResults(contentDir)
+  let privateProjection = loadCurrentResults(contentDir, { workingRuns }).projection
+  const projection = privateProjection
   for (const selected of Object.values(projection.current)) {
     if (selected.measuredAt > observedAt) observedAt = selected.measuredAt
     const context = census.contexts.find(
@@ -305,13 +356,38 @@ function rawScoreboard(paths: readonly string[], contentDir: string): string {
         .join("")} |`,
     )
   }
-  return lines.join("\n")
+  // This is the SAME canonical reader used by the default report. Explicit inputs bypass its
+  // tree-only memo; raw/pass rows above remain evidence/publication receipts, not another selector.
+  if (pendingAttempts.length > 0) {
+    const explicitRunIds = new Set(workingRuns.map((run) => run.runId))
+    const workingAttempts = pendingAttempts.map(({ context, intended, input }) => {
+      const declared = context
+      const matches = Object.entries(privateProjection.contexts).filter(([, summary]) =>
+        Object.values(summary.cells).some(({ run }) => {
+          if (run.subject.kind !== declared.kind || run.subject.id !== declared.terminalId) return false
+          if (declared.kind !== "lib" && run.subject.os !== declared.os) return false
+          return Object.entries(intended).every(
+            ([key, value]) => value === undefined || run.subject[key as keyof typeof run.subject] === value,
+          )
+        }),
+      )
+      const explicit = matches.filter(([, summary]) => summary.contributingRunIds.some((id) => explicitRunIds.has(id)))
+      const candidates = explicit.length > 0 ? explicit : matches
+      // Ambiguous/unmeasured configurations remain the original requested context. No physical
+      // subject is guessed and no old cell is reassigned; the retained attempt still stays visible.
+      const [only] = candidates
+      const contextKey = candidates.length === 1 && only ? only[0] : context.context
+      return { ...input, contextKey }
+    })
+    privateProjection = loadCurrentResults(contentDir, { workingRuns, workingAttempts }).projection
+  }
+  return `${lines.join("\n")}\n\n${await renderReport(privateProjection, catalogIds)}`
 }
 
 export async function handleReport(options: { scoreboard?: string[] } = {}): Promise<void> {
   const contentDir = join(ROOT, "content")
   if (options.scoreboard) {
-    console.log(rawScoreboard(options.scoreboard, contentDir))
+    console.log(await rawScoreboard(options.scoreboard, contentDir))
     return
   }
   const { projection } = loadCurrentResults(contentDir)

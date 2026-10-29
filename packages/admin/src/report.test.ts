@@ -41,7 +41,7 @@ import { join } from "node:path"
 import { expect, test } from "vitest"
 import { probeSuiteSnapshot } from "../versions.ts"
 import { loadCurrentResults } from "../../../docs/data/current-results.ts"
-import { parseSuiteManifest } from "@terminfo/run-parser"
+import { parseSuiteManifest, parseRun } from "@terminfo/run-parser"
 import { ENVIRONMENT_GROUP_IDS } from "@terminfo/probe-defs"
 
 test("report renders reviewed outcomes and missing cells without promoting legacy history", () => {
@@ -341,6 +341,32 @@ test("report renders reviewed outcomes and missing cells without promoting legac
       ),
     }
     writeFileSync(partialPath, JSON.stringify(partial))
+    // The default reader was memoized earlier in this process. Explicit working inputs must
+    // bypass it, and successive inputs with the same tree must not share a stale mixed view.
+    const workingManifest = parseSuiteManifest(
+      join(root, "content", "suites", `${snapshot.probeHash}.json`),
+      readFileSync(join(root, "content", "suites", `${snapshot.probeHash}.json`), "utf8"),
+    )
+    const working = (path: string) =>
+      parseRun(
+        path,
+        readFileSync(path, "utf8"),
+        fixtureFeatures,
+        new Map([[workingManifest.probeHash, workingManifest]]),
+        { mode: "capture" },
+      )
+    const withPartial = loadCurrentResults(join(root, "content"), {
+      workingRuns: [working(draftPath), working(partialPath)],
+    })
+    expect(
+      Object.values(withPartial.projection.contexts).find((row) => row.contributingRunIds.includes("partial-kitty"))
+        ?.contributingRunIds,
+    ).toEqual(["baseline-kitty", "partial-kitty"])
+    const withoutPartial = loadCurrentResults(join(root, "content"), { workingRuns: [working(draftPath)] })
+    expect(withoutPartial).not.toBe(withPartial)
+    expect(
+      Object.values(withoutPartial.projection.contexts).some((row) => row.contributingRunIds.includes("partial-kitty")),
+    ).toBe(false)
     const composed = spawnSync(process.execPath, [join(root, "run.ts"), draftPath, partialPath], {
       cwd: root,
       encoding: "utf8",

@@ -547,7 +547,7 @@ export function projectResults(
   validatePresentationSupersession(interpretations, "interpretations")
   const active = activeInterpretations(interpretations)
   const acceptedRuns: LoadedRun[] = []
-  const baselineRuns: LoadedRun[] = []
+  const baselineRunIds: string[] = []
   for (const run of currentRuns) {
     if (!run.results || !run.catalogIds || !run.sealedAt || !run.probeHash || !run.sourceRevision) {
       throw new Error(`Current run ${run.runId} lacks its sealed execution contract`)
@@ -638,7 +638,7 @@ export function projectResults(
     // Reuse the existing ranking for the explicitly supplied historical baseline. This does not
     // change public current's field, ranking, deduplication, cells, hash or seal (CTO1212de0f).
     const baseline = versions.find((version) => readCollectorSelection(version.rawReplies) === undefined)
-    if (baseline) baselineRuns.push(runs.find((run) => run.runId === baseline.runId)!)
+    if (baseline) baselineRunIds.push(baseline.runId)
     const unique = versions.filter(
       (version, index) => versions.findIndex((entry) => entry.subject.version === version.subject.version) === index,
     )
@@ -652,10 +652,11 @@ export function projectResults(
     table,
     contexts: composeContextSummaries(
       acceptedRuns,
-      baselineRuns,
+      baselineRunIds,
       policy.workingRuns ?? [],
       policy.workingAttempts ?? [],
       catalogIds,
+      countContexts([...runs, ...(policy.workingRuns ?? [])]),
     ),
   }
 }
@@ -675,19 +676,21 @@ function compareContextAttempts(
 
 function composeContextSummaries(
   acceptedRuns: readonly LoadedRun[],
-  baselineRuns: readonly LoadedRun[],
+  baselineRunIds: readonly string[],
   workingRuns: readonly LoadedRun[],
   workingAttempts: readonly SelectedAttemptInput[],
   catalogIds: readonly string[],
+  contexts: ReadonlyMap<string, ReadonlySet<string>>,
 ): Record<string, SelectedContextSummary> {
   const runsById = new Map<string, LoadedRun>()
   for (const run of [...acceptedRuns, ...workingRuns]) {
-    const previous = runsById.get(run.runId)
-    if (previous && previous.sha256 !== run.sha256) throw new Error(`duplicate runId ${run.runId}`)
-    if (!previous) runsById.set(run.runId, run)
+    // A pass may cite its original draft and its sealed admitted snapshot: one run, different
+    // envelopes. Keep the admitted immutable owner; both input paths remain report evidence.
+    if (!runsById.has(run.runId)) runsById.set(run.runId, run)
   }
   const runs = [...runsById.values()]
-  const contexts = countContexts(runs)
+  const baselineIds = new Set(baselineRunIds)
+  const workingIds = new Set(workingRuns.map((run) => run.runId))
   const keyFor = (run: LoadedRun): string =>
     projectedContextKey(run.subject, contexts.get(`${run.subject.kind}:${run.subject.id}`)?.size ?? 0)
   const groups = new Map<string, LoadedRun[]>()
@@ -706,10 +709,8 @@ function composeContextSummaries(
     // missingIds/TODO counts, without manufacturing ProbeResult or subject records.
     const viewIds = ids.length ? ids : [...catalogIds]
     const baselines = [
-      ...baselineRuns.filter((run) => keyFor(run) === contextKey),
-      ...workingRuns.filter(
-        (run) => keyFor(run) === contextKey && readCollectorSelection(run.rawReplies) === undefined,
-      ),
+      ...candidates.filter((run) => baselineIds.has(run.runId)),
+      ...candidates.filter((run) => workingIds.has(run.runId) && readCollectorSelection(run.rawReplies) === undefined),
     ]
     const remember = (run: LoadedRun, result: ProbeResult): void => {
       cells[result.featureId] = { origin: { runId: run.runId, resultId: result.featureId }, run, result }
