@@ -48,6 +48,13 @@ Both source interfaces carry `readonly kind: ProbeSourceKind` directly. The only
 
 The [shared execution helpers](src/helpers.ts) initialize every catalog member as `test-todo` with no attempt, then record only the work actually performed.
 
+OSC99 capability detection has both library and term query arms. They share the nonce/title
+criterion and never display a notification. Unqualified library capture silence stays inconclusive;
+only the existing qualified sentinel path can establish a negative reply result. Current artifact
+source audits retain their own parser/reply-path citations. Viewport hold on output has a term
+coverage callback naming our missing actuator forwarding and position readback, performs no I/O,
+and stays TEST TODO. Its library arm remains null; this does not establish an engine limitation.
+
 **Callback and stored shapes are different.** Follow these names in [types.ts](src/types.ts):
 
 - `ProbeCallbackResult` has three arms: a measured `observation`; `notTested` coverage naming a missing semantic observable; or execution-only, nonempty TODO/FAILURE `tests`, each with a mandatory reason. Execution-only callbacks have no observation, assertions or coverage. Callbacks can select a criterion branch.

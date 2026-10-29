@@ -1,6 +1,6 @@
 /**
  * @failure A Scrollback feature is graded without a bound contract row, a decided re-grade drifts,
- *   or the catalog-only tenth feature is silently dropped from the group contract.
+ *   or the viewport coverage feature is silently dropped from the group contract.
  * @level l2
  * @consumer 28018 candidate-2 Scrollback group (child 28459); the 28453 harness adopter.
  * @reach fs-walk vendor/terminfo.dev/packages/probe-defs/src/scrollback-contract.test.ts vendor/terminfo.dev/packages/probe-defs/src/scrollback-observations.test.ts vendor/terminfo.dev/packages/probe-defs/src/testing/group-harness.ts vendor/terminfo.dev/packages/probe-defs/src/testing/semantic-surface.ts
@@ -18,15 +18,12 @@ import {
   satisfiesContract,
   type GroupContract,
   type GroupContractSpec,
-  type NamedUnavailable,
 } from "./testing/group-harness.ts"
 import { createSemanticSurface } from "./testing/semantic-surface.ts"
 
 /**
- * The 10 Scrollback features of 28018's Scrollback row. Nine are probe-backed (scrollback.ts, 9
- * defs) with the outcome the probe must read when its controls hold; the tenth, viewport-hold-output,
- * is a catalog id with no definition in the frozen suite and is carried below in namedUnavailable -
- * never dropped and never given an invented def (the earlier 8/10 ceiling wrongly counted it decided).
+ * All ten Scrollback features have definitions. Nine decide from measured state; viewport hold
+ * executes a coverage callback naming our missing source actuator/readback and stays TEST TODO.
  */
 const SCROLLBACK_CONTRACT: GroupContract = [
   {
@@ -65,16 +62,6 @@ const SCROLLBACK_CONTRACT: GroupContract = [
   { id: "scrollback.viewport-hold-output", expected: "not-tested", claim: "The viewport holds on output" },
 ]
 
-/** The catalog-only tenth feature, NAMED rather than silently dropped (no definition in the suite). */
-const SCROLLBACK_NAMED_UNAVAILABLE: readonly NamedUnavailable[] = [
-  {
-    id: "scrollback.viewport-hold-output",
-    reason: "no-semantic-observable",
-    noObservable:
-      "the frozen suite has no probe definition for viewport hold on output; it is a UI-only readback (10 catalog ids, 9 defs in scrollback.ts)",
-  },
-]
-
 /** The named set 28454 reviews: Scrollback's rows plus the focused test files that bind them (no glob). */
 const SCROLLBACK_CONTRACT_SPEC: GroupContractSpec = {
   group: "scrollback",
@@ -83,18 +70,15 @@ const SCROLLBACK_CONTRACT_SPEC: GroupContractSpec = {
     "packages/probe-defs/src/scrollback-contract.test.ts",
     "packages/probe-defs/src/scrollback-observations.test.ts",
   ],
-  namedUnavailable: SCROLLBACK_NAMED_UNAVAILABLE,
 }
 
-test("the Scrollback contract covers every probe, names none unknown, and carries the catalog-only tenth", () => {
-  const gaps = contractGaps(scrollbackProbes, SCROLLBACK_CONTRACT, SCROLLBACK_NAMED_UNAVAILABLE)
+test("the Scrollback contract covers every probe including viewport coverage", () => {
+  const gaps = contractGaps(scrollbackProbes, SCROLLBACK_CONTRACT)
   expect(gaps.uncovered).toEqual([])
   expect(gaps.unknown).toEqual([])
   expect(gaps.misdeclared).toEqual([])
-  // Nine probe definitions bind nine contract rows; the tenth catalog id is named, not probe-backed.
-  expect(scrollbackProbes).toHaveLength(9)
+  expect(scrollbackProbes).toHaveLength(10)
   expect(SCROLLBACK_CONTRACT).toHaveLength(10)
-  expect(SCROLLBACK_NAMED_UNAVAILABLE).toHaveLength(1)
   expect(scrollbackProbes.map((entry) => entry.id)).toContain("scrollback.viewport-hold-output")
   expect(SCROLLBACK_CONTRACT.map((entry) => entry.id)).toContain("scrollback.viewport-hold-output")
 })
@@ -114,7 +98,8 @@ test("the Scrollback contract names its focused tests, and every named file exis
 test("the harness replays every probe-backed Scrollback feature deterministically", async () => {
   for (const row of SCROLLBACK_CONTRACT) {
     const probe = scrollbackProbes.find((entry) => entry.id === row.id)
-    if (!probe) continue // the catalog-only named-unavailable row binds no probe
+    if (!probe) throw new Error(`Missing Scrollback probe ${row.id}`)
+    if (!probe.lib) continue // viewport coverage uses the term callback, checked separately below
     expect(probe.lib !== null || probe.term !== null, `${row.id} has no callback`).toBe(true)
     const first = await regradeRow(probe, row, { headless: libProbeSource(createSemanticSurface()) })
     const second = await regradeRow(probe, row, { headless: libProbeSource(createSemanticSurface()) })
@@ -128,10 +113,10 @@ test("the harness replays every probe-backed Scrollback feature deterministicall
 // implements the operation its claim names, and each by-design inconclusive row reads exactly that.
 // Every row is driven by the probe's own fixture, so a probe whose expectation disagrees with the
 // terminal cannot pass this test.
-test("every probe-backed Scrollback row reads the outcome its contract requires", async () => {
-  for (const row of SCROLLBACK_CONTRACT) {
+test("every decided Scrollback row reads the outcome its contract requires", async () => {
+  for (const row of SCROLLBACK_CONTRACT.filter((row) => row.expected === "decided")) {
     const probe = scrollbackProbes.find((entry) => entry.id === row.id)
-    if (!probe) continue
+    if (!probe) throw new Error(`Missing Scrollback probe ${row.id}`)
     const required = row.expected === "decided" ? "supported" : row.expected
     const graded = await regradeRow(probe, row, { headless: libProbeSource(createSemanticSurface()) })
     expect(graded.after, `${row.id} reads ${required} from a surface implementing its claim`).toBe(required)
@@ -151,17 +136,17 @@ test("every probe-backed Scrollback row reads the outcome its contract requires"
     "scrollback.decstbm",
     "scrollback.decstbm-reset",
   ])
-  // The catalog-only tenth row is the ONLY one that stays out of the denominator.
+  // Viewport hold remains explicitly unmeasured; registration grants no support outcome.
   expect(SCROLLBACK_CONTRACT.filter((row) => row.expected !== "decided").map((row) => row.id)).toEqual([
     "scrollback.viewport-hold-output",
   ])
 })
 
-// The catalog-only row is NAMED: without the namedUnavailable declaration the same contract reports
-// it unknown, so the declaration is load-bearing, never a decorative label.
-test("the catalog-only Scrollback feature is named unavailable, never silently dropped", () => {
-  expect(contractGaps(scrollbackProbes, SCROLLBACK_CONTRACT).unknown).toEqual(["scrollback.viewport-hold-output"])
-  expect(contractGaps(scrollbackProbes, SCROLLBACK_CONTRACT, SCROLLBACK_NAMED_UNAVAILABLE).unknown).toEqual([])
+test("viewport coverage is backed by a real term callback and keeps its null library arm", () => {
+  const viewport = scrollbackProbes.find((entry) => entry.id === "scrollback.viewport-hold-output")
+  expect(viewport?.term).toBeTypeOf("function")
+  expect(viewport?.lib).toBeNull()
+  expect(contractGaps(scrollbackProbes, SCROLLBACK_CONTRACT).unknown).toEqual([])
 })
 
 // One negative control: a surface whose line feed never advances cannot grow history, so the

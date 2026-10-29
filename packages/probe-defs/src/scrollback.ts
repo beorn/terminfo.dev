@@ -1,5 +1,5 @@
 import type { ProbeDefinition, ProbeCallbackResult, TermProbeSource } from "./types.ts"
-import { probe, parserStateResult } from "./helpers.ts"
+import { probe, parserStateResult, notTestedResult } from "./helpers.ts"
 import { regionReadbackProbes, type RegionReadbackRow } from "./region-readback-kind.ts"
 
 /**
@@ -376,4 +376,12 @@ export const scrollbackProbes: ProbeDefinition[] = [
   },
 
   ...regionReadbackProbes(scrollbackReadbackRows),
+  probe("scrollback.viewport-hold-output", null, () =>
+    Promise.resolve(
+      notTestedResult(
+        "Our probe source lacks viewport actuator forwarding and viewport-position readback; hold on output remains TEST TODO",
+        { missing: ["viewport actuator forwarding", "viewport-position readback"], writesPerformed: 0 },
+      ),
+    ),
+  ),
 ]

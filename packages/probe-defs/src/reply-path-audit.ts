@@ -70,6 +70,13 @@ export const REPLY_PATH_AUDITS: ReadonlyMap<string, Readonly<Record<string, Repl
   [
     "77b69f9f22c4126359be864fcce97afad8f84615053e21d335ba6348a8d3e1d7",
     {
+      "extensions.osc99-kitty-notify": {
+        query: "\u001b]99;",
+        matches: "prefix",
+        kind: "parser-rejected",
+        citation:
+          "Ghostty WASM77b69f9f, core5714ed07a1012573261b7b7e3ed2add9c1504496: src/terminal/osc.zig:556-565 puts first9 in state9; :1076-1081 accepts only semicolon there, so second9 invalidates OSC99; :554 clears complete and :1708-1714 returns null. Parser.zig:270-273 emits osc_dispatch only for nonnull commands. The actual WASM write path is Termless14912a2729d795b45579698abcdb92d4749f4ff1 vendor/ghostty-web/ghostty-wasm-api.patch:834-837 ResponseStream(ResponseHandler), :877 nextSlice; no notification action is reached. Audited family is Terminfo27541ce4 extensions.ts:3267-3312 capability query ESC]99;i=<nonce>:p=?;ST, not desktop delivery.",
+      },
       "extensions.osc0-icon-title": {
         query: "\u001b[20t",
         kind: "parser-rejected",
@@ -374,6 +381,13 @@ export const REPLY_PATH_AUDITS: ReadonlyMap<string, Readonly<Record<string, Repl
   [
     "8872ab0fc56429489b52cd5d3b5a293032c3ec7dbbb71545d237945c3ef525f3",
     {
+      "extensions.osc99-kitty-notify": {
+        query: "\u001b]99;",
+        matches: "prefix",
+        kind: "parser-rejected",
+        citation:
+          "Ghostty native8872ab0f, core332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28: src/terminal/osc.zig:501-512 puts first9 in state9; :672-680 accepts only semicolon in that state, so second9 invalidates OSC99; :481-484 discards later bytes and :691-695 returns null. Parser.zig:270-273 emits osc_dispatch only for nonnull commands. Termless14912a2729d795b45579698abcdb92d4749f4ff1 packages/ghostty-native/native/src/main.zig:80 uses Terminal.vtStream; this core Terminal.zig:260-265 selects ReadonlyStream, but no action reaches that handler for OSC99. Audited family is Terminfo27541ce4 extensions.ts:3267-3312 capability query ESC]99;i=<nonce>:p=?;ST, not OSC9 or desktop delivery.",
+      },
       "device.xtgetxres": {
         query: "\u001bP+Q7465726d4e616d65\u001b\\",
         kind: "no-reply-path",
@@ -1266,6 +1280,13 @@ export const REPLY_PATH_AUDITS: ReadonlyMap<string, Readonly<Record<string, Repl
   [
     "f309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96",
     {
+      "extensions.osc99-kitty-notify": {
+        query: "\u001b]99;",
+        matches: "prefix",
+        kind: "no-reply-path",
+        citation:
+          "vt100-rust0.16.2 artifactf309015f: vte0.15.0 src/lib.rs:419-422 ends OSC on ESC and :554-587 forwards its semicolon-separated params to performer.osc_dispatch. vt1000.16.2 src/perform.rs:198-236 handles OSC0/1/2/52 only; OSC99 reaches callbacks.unhandled_osc at :234-236, whose default src/callbacks.rs:64-66 is empty. Termless14912a2729d795b45579698abcdb92d4749f4ff1 packages/vt100-rust/native/src/lib.rs:10-14 implements only title storage, with no unhandled_osc override or reply writer. Exact cached crate SHA256 vt100054ff75fb8fa83e609e685106df4faeffdf3a735d3c74ebce97ec557d5d36fd9 and vtea5924018406ce0063cd67f8e008104968b74b563ee1b85dde3ed1f7cb87d3dbd verified; archive source files match inspected cache bytes. Audited family is Terminfo27541ce4 extensions.ts:3267-3312 capability query ESC]99;i=<nonce>:p=?;ST.",
+      },
       "extensions.kitty-keyboard": VT100_RUST_KEYBOARD_AUDIT,
       "extensions.kitty-keyboard.disambiguate": VT100_RUST_KEYBOARD_AUDIT,
       "extensions.kitty-keyboard.report-events": VT100_RUST_KEYBOARD_AUDIT,
