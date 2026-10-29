@@ -357,7 +357,7 @@ describe("in-run pixels verdicts", () => {
       }
       assertion.observed = pixel.pixelsDigest
       expect(() => parseCallback(id, result, fixture)).toThrow(
-        "cites only whole-frame digests; a verdict must cite a frame's ref or the digest of the cells it compared",
+        `${id}.json: screenshot verdict for ${id} cites only source or whole-frame digests; a verdict must cite a frame's ref or the digest of the cells it compared`,
       )
     },
   )
@@ -421,7 +421,7 @@ describe("in-run pixels verdicts", () => {
     expect(parseCallback(id, result, fixture).results?.[0]?.status).toBe(status)
   })
 
-  it("keeps a native ligature capture pending review when its frames carry whole-pixel digests", async () => {
+  it("keeps a native ligature capture pending review with distinct source refs and whole-pixel digests", async () => {
     const id = "extensions.font-ligatures"
     const probe = extensionsProbes.find((entry) => entry.id === id)
     if (!probe?.term) throw new Error(`Missing ${id} terminal callback`)
@@ -431,14 +431,14 @@ describe("in-run pixels verdicts", () => {
     fixture.context.capture = async (request) => {
       const captured = await capture(request)
       if (captured.kind === "text-cells") throw new Error("Fixture must start with pixels")
-      // Hosted macOS raw captures retain the PNG/source refs and whole pixels, without a cell crop.
+      // Linux XWD source bytes differ from the retained PNG; neither provenance digest decides alone.
       return {
         kind: "pixels",
         role: captured.role,
         label: captured.label,
         capturedAt: captured.capturedAt,
         ref: captured.ref,
-        sourceRef: captured.ref,
+        sourceRef: digest(`source:${captured.ref}`),
         pixelsDigest: captured.pixelsDigest,
       }
     }
@@ -464,7 +464,19 @@ describe("in-run pixels verdicts", () => {
     ])
     // Schema-4 stores capture evidence in results and has no legacy observation entries.
     expect(loaded.observations).toEqual([])
-    expect(loaded.results?.[0]?.frames).toHaveLength(2)
+    expect(loaded.results?.[0]?.frames).toEqual(frames)
+    const assertion = result.assertions?.[0]
+    const control = frames.find((frame) => frame.role === "control")
+    if (!assertion || !control || control.kind === "text-cells" || !control.sourceRef) {
+      throw new Error("Missing ligature source citation control")
+    }
+    expect(control.sourceRef).not.toBe(control.ref)
+    assertion.observed = control.sourceRef
+    expect(() => parseCallback(id, result, fixture)).toThrow(
+      `${id}.json: screenshot verdict for ${id} cites only source or whole-frame digests; a verdict must cite a frame's ref or the digest of the cells it compared`,
+    )
+    assertion.observed = JSON.stringify({ ref: control.ref, sourceRef: digest("foreign-source") })
+    expect(() => parseCallback(id, result, fixture)).toThrow(/is not the ref or a digest of a frame/)
   })
 
   it("admits a digest-equality verdict whose assertion cites a frame's regionDigest", () => {
