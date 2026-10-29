@@ -556,11 +556,10 @@ function colorResetProbe(setCode: number, resetCode: number, index?: number): Pr
   )
   return (ctx) => {
     let silence: ProbeCallbackResult | null = null
+    let initialSentinel: TerminalQueryOutcome | undefined
     if (ctx.queryWithSentinelOutcome) {
-      silence = sentinelSilenceResult(
-        ctx.queryWithSentinelOutcome(query, replyPattern),
-        `Complete OSC ${setCode} color reply`,
-      )
+      initialSentinel = ctx.queryWithSentinelOutcome(query, replyPattern)
+      silence = sentinelSilenceResult(initialSentinel, `Complete OSC ${setCode} color reply`)
       if (silence && !hostColorSlot) return silence
     }
     const originalRaw = silence ? "" : ctx.feedCapture(query)
@@ -576,6 +575,7 @@ function colorResetProbe(setCode: number, resetCode: number, index?: number): Pr
         const answer = (result: ProbeCallbackResult) =>
           alacrittyHostRecipeResult(ctx, result, "color-request", hostInput, query, true)
         const controls: { write: string; response: string }[] = []
+        // Capture-only sources cannot provide the additional cell witness; keep their existing query criterion.
         const indexed = setCode === 4 && resetCode === 104 && index === 0 && typeof ctx.getCell === "function"
         type Cell = ReturnType<LibProbeSource["getCell"]>
         const cells = {
@@ -610,7 +610,7 @@ function colorResetProbe(setCode: number, resetCode: number, index?: number): Pr
           reset,
         )
         const restoredRaw = capture(query)
-        const state = { query, originalRaw, controls, ...(indexed && { cells }) }
+        const state = { query, originalRaw, controls, ...(indexed && { cells, ...(silence && { initialSentinel }) }) }
         const response = JSON.stringify(state)
         const rgb = (cell: Cell | null, char: string) =>
           cell?.char === char &&
@@ -623,15 +623,18 @@ function colorResetProbe(setCode: number, resetCode: number, index?: number): Pr
         const same = rgb(cells.same, "S"),
           fresh = rgb(cells.fresh, "F")
         const seed = { r: 170, g: 187, b: 204 }
+        const restored = replyPattern.exec(restoredRaw)?.[1]
         if (indexed && before && seeded && !sameRgbCells(before, seed) && sameRgbCells(seeded, seed)) {
-          if (same && fresh && sameRgbCells(fresh, before)) {
+          if (same && fresh && sameRgbCells(fresh, before) && !(restored && sameRgb(restored, seededCurrentColor))) {
             return parserStateResult(
               true,
               "OSC 104 restores palette index 0 for a fresh indexed cell",
               state,
               sameRgbCells(same, before)
                 ? "Indexed colour resolved at read"
-                : "Cell RGB resolved at paint; fresh cell proves reset",
+                : sameRgbCells(same, seed)
+                  ? "Cell RGB resolved at paint; fresh cell proves reset"
+                  : "Stored cell RGB differs from default and seed; fresh cell proves reset",
             )
           }
           if (same && fresh && sameRgbCells(fresh, seed) && sameRgbCells(same, seed)) {
@@ -657,7 +660,6 @@ function colorResetProbe(setCode: number, resetCode: number, index?: number): Pr
             ),
           )
         }
-        const restored = replyPattern.exec(restoredRaw)?.[1]
         if (control.verified && restored && sameRgb(restored, seededCurrentColor)) {
           return answer({
             pass: false,
@@ -673,7 +675,14 @@ function colorResetProbe(setCode: number, resetCode: number, index?: number): Pr
             ],
           })
         }
-        if (silence) return answer({ ...silence, response })
+        if (silence) {
+          // Keep the deciding DA1 bytes intact; optional cell/control evidence accompanies its assertion.
+          return answer(
+            indexed
+              ? { ...silence, assertions: silence.assertions?.map((assertion) => ({ ...assertion, note: response })) }
+              : silence,
+          )
+        }
         if (control.setterRaw === "" && control.seededRaw === "" && resetRaw === "" && restoredRaw === "") {
           return answer(
             colorReadbackReviewResult(

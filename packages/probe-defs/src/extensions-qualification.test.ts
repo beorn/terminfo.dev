@@ -29,6 +29,8 @@ function indexedPalette(
     missingDefault?: boolean
     invalidFresh?: boolean
     fail?: "setter" | "getter" | "cleanup" | "getter+cleanup"
+    sentinel?: boolean
+    queryAfterSeed?: boolean
   } = {},
 ) {
   const original = options.collision ? { r: 170, g: 187, b: 204 } : { r: 29, g: 31, b: 33 }
@@ -57,7 +59,9 @@ function indexedPalette(
     feed,
     feedCapture: (bytes: string) => {
       feed(bytes)
-      return bytes === "\x1b]4;0;?\x07" && !reset && current === seed ? "\x1b]4;0;rgb:aaaa/bbbb/cccc\x07" : ""
+      return bytes === "\x1b]4;0;?\x07" && ((!reset && current === seed) || (reset && options.queryAfterSeed))
+        ? "\x1b]4;0;rgb:aaaa/bbbb/cccc\x07"
+        : ""
     },
     getCell: (_row: number, col: number) => {
       const cell = cells.get(col)
@@ -89,6 +93,15 @@ function indexedPalette(
       }
     },
   } as unknown as LibProbeSource
+  if (options.sentinel) {
+    source.queryWithSentinelOutcome = () => ({
+      match: null,
+      reason: "sentinel",
+      raw: "\x1b[?1;2c",
+      rawBase64: Buffer.from("\x1b[?1;2c").toString("base64"),
+      sentinel: { atMs: 1, graceMs: 250 },
+    })
+  }
   return { source, writes }
 }
 
@@ -96,12 +109,29 @@ test.each([
   [{}, "supported"],
   [{ resolvedAtPaint: true }, "supported"],
   [{ ignoresReset: true }, "unsupported"],
+  [{ sentinel: true }, "supported"],
 ] as const)("OSC104 uses a freshly painted indexed cell to decide reset: %j", (options, outcome) => {
   const result = callback("extensions.osc104-reset-palette").lib!(indexedPalette(options).source)
   expect(result.observation).toMatchObject({ outcome, assertionType: "buffer_state" })
   expect(result.assertions).toMatchObject([{ kind: outcome === "supported" ? "positive" : "negative" }])
   const state = JSON.parse(result.response!)
   expect(state).toMatchObject({ cells: { before: { char: "D" }, seeded: { char: "S" }, fresh: { char: "F" } } })
+  if ("sentinel" in options) {
+    expect(state.initialSentinel).toMatchObject({ raw: "\x1b[?1;2c", sentinel: { atMs: 1, graceMs: 250 } })
+  }
+  if ("resolvedAtPaint" in options) expect(result.observation?.note).toContain("resolved at paint")
+})
+
+test("OSC104 keeps sentinel reply bytes and retains unqualified cell readings beside them", () => {
+  const result = callback("extensions.osc104-reset-palette").lib!(
+    indexedPalette({ sentinel: true, ignoresSeed: true }).source,
+  )
+  expect(result.response).toBe("\x1b[?1;2c")
+  expect(result.observation).toMatchObject({ outcome: "unsupported", note: "negative by sentinel" })
+  const state = JSON.parse(result.assertions![0]!.note!)
+  expect(state.cells.before.char).toBe("D")
+  expect(state.cells.seeded.fg).toEqual(state.cells.before.fg)
+  expect(state.initialSentinel.sentinel.graceMs).toBe(250)
 })
 
 test.each([
@@ -117,12 +147,15 @@ test.each([
   { after: "third" },
   { after: "missing" },
   { after: "contradiction" },
+  { queryAfterSeed: true },
 ] as const)("OSC104 cannot grade an unqualified or contradictory indexed reading: %j", (options) => {
   const result = callback("extensions.osc104-reset-palette").lib!(indexedPalette(options).source)
   expect(result.observation?.outcome).not.toBe("supported")
   expect(result.observation?.outcome).not.toBe("unsupported")
   expect(result.assertions).toBeUndefined()
   expect(result.response).toContain('"cells"')
+  expect(result.criterionBranch).toBe("color-readback-review")
+  expect(result.tests).toMatchObject([{ id: "review", status: "test-todo" }])
 })
 
 test.each(["setter", "getter", "cleanup", "getter+cleanup"] as const)(

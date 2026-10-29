@@ -81,6 +81,10 @@ Exact glyphs and valid RGB must establish a default distinct from the verified a
 Fresh F matching D proves reset; F remaining seeded is a controlled negative when S also remains seeded.
 S records cell storage (resolved at read or at paint), so S remaining seeded with F restored still proves reset.
 S restored with F seeded, a third fresh colour or missing post-reset readings require independent review.
+An answered post-reset query still reporting the seed contradicts a fresh cell restored to default and also requires review.
+Missing S-after is conservatively reviewed even when F matches D; no storage reading is invented.
+Sentinel negatives keep their original DA1 response, with optional indexed-cell controls retained in the assertion note.
+Cell-decided results retain the original sentinel outcome and timing alongside their controls.
 Missing default or seed controls retain the existing query/sentinel/review rules, never a reset negative.
 The shared disposable reset still owns cleanup; operational errors propagate, preserving both causes
 when cleanup also fails. Complete initial query paths and other reset features are unchanged.
