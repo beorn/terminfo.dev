@@ -743,6 +743,8 @@ export interface LibProbeSource {
     bg: { r: number; g: number; b: number } | null
     cursor: { r: number; g: number; b: number } | null
   }
+  /** Icon name. Present only when the backend reports it separately from the window title. */
+  getIconLabel?(): string
   /** Width read back from the backend after initialization, never inferred from cursor behavior. */
   readonly cols: number
   feed(text: string): void
@@ -787,8 +789,6 @@ export interface LibProbeSource {
   getText(): string
   getScrollback(): { viewportOffset: number; totalLines: number; screenLines: number }
   getTitle(): string
-  /** Present when the backend reports an icon name separately from the window title. */
-  getIconLabel?(): string
   reset(): void
   capabilities: {
     truecolor: boolean
