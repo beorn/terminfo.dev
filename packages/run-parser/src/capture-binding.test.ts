@@ -124,6 +124,7 @@ function hostCauseCapture(
     assertions: [],
     tests: [{ id: "criterion", status: "test-failure", reason: "Fixture has no initial colour reply" }],
   })
+  const emptyRecipes = mode === "no-recipes"
   const finalized = finalization !== undefined
   const input = JSON.stringify({
     ...(finalized && { ids: [featureId], startedAt: draft.measuredAt, result: "started" }),
@@ -150,7 +151,8 @@ function hostCauseCapture(
   if (split) {
     record.captures = [query.slice(0, 3), query.slice(3)].map((part) => ({ query: part, response: "", error: null }))
   }
-  if (mode === "missing-capture") record.captures = []
+  if (mode === "missing-capture" || emptyRecipes) record.captures = []
+  if (emptyRecipes) record.causes = []
   if (mode === "stale-input") citation.sha256 = "0".repeat(64)
   if (finalization === "stale") citation.sha256 = "0".repeat(64)
   if (mode === "stale-artifact") source.artifactSha256 = "0".repeat(64)
@@ -159,7 +161,7 @@ function hostCauseCapture(
   if (mode === "wrong-missing") source.missing = "background-rgb"
   if (mode === "real-reply") record.captures[0]!.response = "\x1b]10;rgb:aaaa/bbbb/cccc\x07"
   const expectations: HostRecipeExpectation[] =
-    mode === "undeclared-query" ? [] : [{ recipe: "color-request", query, missing: ["foreground-rgb"] }]
+    mode === "undeclared-query" || emptyRecipes ? [] : [{ recipe: "color-request", query, missing: ["foreground-rgb"] }]
   draft.rawReplies[recordRef] = JSON.stringify(record)
   draft.rawReplies["collector.replyPath"] = JSON.stringify({
     backend: "alacritty",
@@ -194,7 +196,7 @@ function hostCauseCapture(
             hostInputs: { "foreground-rgb": finalization === "tampered" ? "supplied" : "not-supplied" },
             ...(outcome === "completed" ? { result: outcome } : { result: outcome, error: "original fixture error" }),
           },
-          [{ id: featureId, libHostRecipes: expectations }],
+          [{ id: featureId, ...(emptyRecipes ? {} : { libHostRecipes: expectations }) }],
         )
       } catch (error) {
         expect(draft.rawReplies).toEqual(before)
@@ -202,7 +204,7 @@ function hostCauseCapture(
       }
       expect(readCollectorAttempt(draft.rawReplies)?.result).toBe(outcome)
       if (outcome !== "completed") expect(readCollectorAttempt(draft.rawReplies)?.error).toBe("original fixture error")
-      if (mode === "observed") expect(draft.rawReplies[recordRef]).toBe(before[recordRef])
+      if (mode === "observed" || emptyRecipes) expect(draft.rawReplies[recordRef]).toBe(before[recordRef])
     }
     return parseRun(
       "host-custody.json",
@@ -224,12 +226,18 @@ it.each(["source-audited", "observed", "real-reply"])(
 )
 // Selected-run outcomes must survive canonical reading after collection ends.
 // Existing custody cases bind the started bytes and never finalize the attempt.
-it.each(["completed", "failed", "cancelled"] as const)(
-  "retains native host custody after %s finalization",
-  (outcome) => {
-    expect(hostCauseCapture("source-audited", HOST_QUERY, false, outcome)().results?.[0]?.status).toBe("test-failure")
-  },
-)
+it.each([
+  ["completed", "source-audited"],
+  ["failed", "source-audited"],
+  ["cancelled", "source-audited"],
+  ["completed", "no-recipes"],
+  ["failed", "no-recipes"],
+  ["cancelled", "no-recipes"],
+] as const)("retains native host custody after %s finalization with %s recipes", (outcome, mode) => {
+  // Native producers also persist empty records for known probes with no host recipe declaration.
+  // Prior cases always supplied a declaration and missed the real Kitty finalizer refusal.
+  expect(hostCauseCapture(mode, HOST_QUERY, false, outcome)().results?.[0]?.status).toBe("test-failure")
+})
 it.each([
   ["stale", /stale before finalization/],
   ["tampered", /hostInputs|unchanged|changed/],

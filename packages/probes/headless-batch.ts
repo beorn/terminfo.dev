@@ -89,10 +89,10 @@ export function finalizeHeadlessAttempt(
   const records = hostKeys.map((key) => {
     const featureId = key.slice("collector.hostRecipes.".length)
     const definition = definitions.find((candidate) => candidate.id === featureId)
-    if (!definition?.libHostRecipes) {
+    if (!definition) {
       throw new Error(`Headless attempt finalization lacks host expectations for ${featureId}`)
     }
-    const expectations = definition.libHostRecipes
+    const expectations = definition.libHostRecipes ?? []
     try {
       const record = validateHostRecipeCauses(
         "headless attempt finalization",
