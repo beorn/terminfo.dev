@@ -11,6 +11,7 @@ import {
   sealRunDraft,
   recordExecutedProbe,
   finalizeProbeResult,
+  REPLY_PATH_AUDIT_REVIEW,
   type RunDraft,
 } from "@terminfo/probe-defs"
 import { applyCaptureDecision, retainCaptureBinding, parseRun } from "./index.ts"
@@ -368,6 +369,44 @@ describe("immutable pre-seal capture binding", () => {
         parseRun("reused.json", JSON.stringify(sealed), manifest.catalogIds, new Map([[manifest.probeHash, manifest]]))
           .results?.[0]?.status,
       ).toBe(reviewedStatus)
+    },
+  )
+  // CTO afedd8b5: a query reply is source-negative only on a cited parser-level rejection, never a missing writer.
+  // Every existing source-negative fixture is buffer_state, so none could read a query_reply review without that field.
+  it.each([
+    { rejection: "parser", accepted: true },
+    { rejection: undefined, accepted: false },
+  ])(
+    "reads a query_reply source-negative review only with a parser rejection ($rejection)",
+    ({ rejection, accepted }) => {
+      const observed = JSON.stringify({ ...(rejection && { rejection }), replyPathAudit: { query: "\x1b[>1c" } })
+      const { draft, decision } = setup(
+        observed,
+        { runId: "query-reply-review", startedAt: "2026-10-28T22:00:00.000Z" },
+        (draft) => {
+          draft.results[0]!.assertionType = "query_reply"
+          draft.assertions = draft.assertions.map((assertion) => ({ ...assertion, assertionType: "query_reply" }))
+        },
+      )
+      decision.decision = "unsupported"
+      decision.sources = ["vt100@0.16.2:src/parser.rs:1"]
+      applyCaptureDecision(draft, JSON.stringify(decision), "2026-10-28T22:01:00.000Z")
+      const manifest = {
+        schemaVersion: 4 as const,
+        probeHash: draft.probeHash,
+        adapterVersion: "3",
+        catalogIds: ["sgr.faint"],
+        probes: { term: [], lib: ["sgr.faint"], mux: [] },
+      }
+      const read = () =>
+        parseRun(
+          "query-reply.json",
+          JSON.stringify(sealRunDraft(draft)),
+          manifest.catalogIds,
+          new Map([[manifest.probeHash, manifest]]),
+        )
+      if (accepted) expect(read().results?.[0]?.status).toBe("unsupported")
+      else expect(read).toThrow(/query_reply source-negative review requires a recorded parser-level rejection/)
     },
   )
   // FINAL B4: only the review's failure may be decided; a separate failed condition still wins.
@@ -788,6 +827,34 @@ describe("immutable pre-seal capture binding", () => {
       ).toThrow(/capture|raw|bound/)
     },
   )
+
+  // The typed supported/unsupported rows above admit any branch; a missing reply path must never read as a capability.
+  it.each([
+    { decision: "supported", accepted: false },
+    { decision: "unsupported", accepted: false },
+    { decision: "untestable", accepted: true },
+  ] as const)("decides a reply-path audit review only as untestable ($decision)", ({ decision: verdict, accepted }) => {
+    const { draft, decision } = setup("NO", undefined, (draft) => {
+      draft.results[0]!.criterionBranch = REPLY_PATH_AUDIT_REVIEW
+    })
+    decision.decision = verdict
+    applyCaptureDecision(draft, JSON.stringify(decision), "2026-10-28T22:40:00.000Z")
+    const manifest = {
+      probeHash: draft.probeHash,
+      adapterVersion: "3",
+      catalogIds: ["sgr.bold"],
+      probes: { term: ["sgr.bold"], lib: [], mux: [] },
+    }
+    const read = () =>
+      parseRun(
+        "reply-path-review.json",
+        JSON.stringify(sealRunDraft(draft)),
+        ["sgr.bold"],
+        new Map([[draft.probeHash, manifest]]),
+      )
+    if (accepted) expect(read().results?.[0]?.status).toBe("untestable")
+    else expect(read).toThrow(/reply-path audit review admits only an untestable decision/)
+  })
 
   it.each(["raw", "host-cause", "context", "source", "suite", "feature", "run"])(
     "rejects review after %s binding changes",
