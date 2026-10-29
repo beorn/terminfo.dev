@@ -17,6 +17,13 @@ const GHOSTTY_NATIVE_KEYBOARD_AUDIT: ReplyPathAudit = {
     "termless 0c409349 packages/ghostty-native/native/src/main.zig:81 vtStream() -> ghostty 332b2aef Terminal.zig:264 ReadonlyStream; stream.zig:1828 parses kitty_keyboard_query and :1278-1292 device_attributes; stream_readonly.zig:139-143 retains keyboard flags but :176-190 ignores both queries without a writer",
 }
 
+const VT100_OSC52_AUDIT: ReplyPathAudit = {
+  query: "\x1b]52;c;?\x07",
+  kind: "no-reply-path",
+  citation:
+    "vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:210-218 OSC 52 '?' -> Callbacks::paste_from_clipboard, empty by default (src/callbacks.rs:36); termless 0c409349 packages/vt100-rust/native/src/lib.rs:10-14 implements only set_window_title",
+}
+
 /**
  * Source audits of exact artifacts that cannot reply, keyed by loaded-artifact sha256 — never a digest copied from
  * runtime — and then by featureId. Data only: a cell enters with its own citation and is reviewed as data. An
@@ -684,6 +691,12 @@ export const REPLY_PATH_AUDITS: ReadonlyMap<string, Readonly<Record<string, Repl
         citation:
           "vt100 0.16.2 src/perform.rs:186-194 intermediate arm -> Callbacks::unhandled_csi, empty by default (src/callbacks.rs:55-63)",
       },
+      "extensions.osc0-icon-title": {
+        query: "\x1b[20t",
+        kind: "no-reply-path",
+        citation:
+          "vt100 0.16.2 src/perform.rs:132-136 handles only CSI 8 t; CSI 20 t and 21 t reach :147-155 -> Callbacks::unhandled_csi, empty by default (src/callbacks.rs:55-63); termless 0c409349 packages/vt100-rust/native/src/lib.rs:10-14 implements only set_window_title",
+      },
       "extensions.osc10-fg-color": {
         query: "\x1b]10;?\x07",
         kind: "no-reply-path",
@@ -785,6 +798,15 @@ export const REPLY_PATH_AUDITS: ReadonlyMap<string, Readonly<Record<string, Repl
         kind: "no-reply-path",
         citation:
           "vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66)",
+      },
+      "extensions.osc52-clipboard": VT100_OSC52_AUDIT,
+      "extensions.osc52-read": VT100_OSC52_AUDIT,
+      "extensions.osc52-write": VT100_OSC52_AUDIT,
+      "extensions.osc5522-clipboard": {
+        query: "\x1b[?5522$p",
+        kind: "no-reply-path",
+        citation:
+          "vte 0.15.0 src/lib.rs:207-209 collects '?'; vt100 0.16.2 src/perform.rs:176-183 '?' default arm -> Callbacks::unhandled_csi, empty by default (src/callbacks.rs:55-63)",
       },
       "extensions.osc701-locale": {
         query: "\x1b]701;?\x07",

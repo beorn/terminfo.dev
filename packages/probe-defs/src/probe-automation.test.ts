@@ -491,6 +491,25 @@ describe("reply-path audit", () => {
     }
   })
 
+  // #31371: the five vt100-rust cells #31375 and #31376 could not attribute graded test-failure in run d390b869 because the
+  // table had no row for them; the table test below covers only rows that exist, so only this pin catches their absence.
+  test("vt100 0.16.2 Rust parser: the clipboard and icon-title queries have no reply path", () => {
+    const rust = "f309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96"
+    for (const id of [
+      "extensions.osc0-icon-title",
+      "extensions.osc52-clipboard",
+      "extensions.osc52-read",
+      "extensions.osc52-write",
+      "extensions.osc5522-clipboard",
+    ]) {
+      expect(REPLY_PATH_AUDITS.get(rust)?.[id]?.kind, id).toBe("no-reply-path")
+      expect(run(id, rust, () => "").result, id).toMatchObject({
+        criterionBranch: REPLY_PATH_AUDIT_REVIEW,
+        tests: [{ id: "review", status: "test-todo" }],
+      })
+    }
+  })
+
   test.each(cells)("$id on $sha256", ({ sha256, id, audit }) => {
     const unlisted = run(id, "f".repeat(64), () => "")
     expect(JSON.stringify(unlisted.result)).not.toContain("replyPathAudit")
