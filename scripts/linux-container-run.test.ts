@@ -495,6 +495,39 @@ describe("frame-less container run", () => {
   })
 })
 
+it.each(["absent", "stale"])("host readback uses receipt identity with %s caller exports", (caller) => {
+  const command = readFileSync(launcher, "utf8").match(/^(?:TERMINFO_[A-Z_]+="[^\n]*\n?)+bun -e '[\s\S]*?^'/m)
+  if (!command) throw new Error("Host Bun readback command not found in Linux launcher")
+  const env = { ...process.env }
+  delete env.TERMINFO_PROBE_HASH
+  delete env.TERMINFO_SOURCE_REVISION
+  if (caller === "stale") {
+    env.TERMINFO_PROBE_HASH = "c".repeat(12)
+    env.TERMINFO_SOURCE_REVISION = "d".repeat(40)
+  }
+  const result = spawnSync(
+    "bash",
+    [
+      "-c",
+      `suite_hash=$1 source_revision=$2 raw=$3
+bun() { command bun -e 'console.log(JSON.stringify({probeHash:process.env.TERMINFO_PROBE_HASH,sourceRevision:process.env.TERMINFO_SOURCE_REVISION,raw:process.env.TERMINFO_CAPTURE_RAW,output:process.env.TERMINFO_CAPTURE_OUTPUT}))'; }
+${command[0]}`,
+      "_",
+      "a".repeat(12),
+      "b".repeat(40),
+      dir,
+    ],
+    { encoding: "utf8", env },
+  )
+  expect(result.status, result.stderr).toBe(0)
+  expect(JSON.parse(result.stdout)).toEqual({
+    probeHash: "a".repeat(12),
+    sourceRevision: "b".repeat(40),
+    raw: join(dir, "v3-capture.json"),
+    output: dir,
+  })
+})
+
 describe("explicit Linux image selection", () => {
   it.each([
     ["bogus", "default", "default", "Unknown target"],
