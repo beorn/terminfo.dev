@@ -9,6 +9,7 @@ import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { expect, test, vi } from "vitest"
+import type { SelectedProjection } from "../docs/data/selected-results.ts"
 
 const contentDir = join(dirname(fileURLToPath(import.meta.url)), "..", "content")
 
@@ -31,7 +32,7 @@ vi.mock("node:fs", async (importOriginal) => {
 vi.mock("../docs/data/current-results.ts", () => ({
   loadCurrentResults: () => ({
     projection: {
-      current: {},
+      contexts: {},
       versions: {},
       history: {},
       table: {},
@@ -39,17 +40,7 @@ vi.mock("../docs/data/current-results.ts", () => ({
       releaseSuiteId: null,
       treeSuiteId: "fixture",
       treeMovedPastRelease: false,
-      historical: {
-        current: {},
-        versions: {},
-        history: {},
-        table: {},
-        exclusions: [],
-        releaseSuiteId: null,
-        treeSuiteId: "fixture",
-        treeMovedPastRelease: false,
-      },
-    },
+    } satisfies SelectedProjection,
   }),
   compatibilitySubjects: () => new Map(),
 }))
