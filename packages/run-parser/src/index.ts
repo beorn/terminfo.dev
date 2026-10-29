@@ -1305,7 +1305,9 @@ export function parseProbeResults(
     const rawState = nonempty(item.rawReplyRef) ? rawReplies[item.rawReplyRef] : undefined
     // Found by its key, never by its serialized prefix: key order or JSON whitespace must not hide the record.
     const parsed: unknown =
-      rawState !== undefined && /^[\t\n\r ]*\{/.test(rawState) ? parseJsonStrict(`${path}: ${featureId}`, rawState) : undefined
+      rawState !== undefined && /^[\t\n\r ]*\{/.test(rawState)
+        ? parseJsonStrict(`${path}: ${featureId}`, rawState)
+        : undefined
     if (harnessRow || (object(parsed) && Object.hasOwn(parsed, "unreproduced"))) {
       const record = object(parsed) ? parsed.unreproduced : undefined
       const recorded =
