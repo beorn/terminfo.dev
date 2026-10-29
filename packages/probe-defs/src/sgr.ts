@@ -1,6 +1,5 @@
 import type { ProbeDefinition, ProbeCallbackResult, TermProbeSource, LibProbeSource } from "./types.ts"
 import {
-  notTestedResult,
   parserStateResult,
   sameRgb,
   sgrProbe,
@@ -193,7 +192,9 @@ function rgbUnderlineProbe(id: string): ProbeDefinition {
         const state = { blueControl, greenControl, target }
         const expected = `${id}: X has explicit rgb(255,0,128) underline distinct from the reset/default B cell`
         const framed = blueControl.char === "A" && greenControl.char === "B" && target.char === "X"
-        if (framed && target.underlineColor == null) return notTestedResult(UNDERLINE_COLOR_UNEXPOSED, state)
+        if (framed && target.underlineColor == null) {
+          return parserStateResult(null, expected, state, undefined, UNDERLINE_COLOR_UNEXPOSED)
+        }
         if (
           blueControl.char !== "A" ||
           greenControl.char !== "B" ||
@@ -283,7 +284,13 @@ function measuredReset(
   const cleared = set.filter(shown).every((attribute) => measuredAttribute(after, attribute) === false)
   const retained = preserve.filter(shown).every((attribute) => measuredAttribute(after, attribute) === true)
   if (cleared && retained && (!set.some(shown) || !preserve.every(shown))) {
-    return notTestedResult(`${unshown.join(" and ")} on the styled setup cell in the headless readback`, state)
+    return parserStateResult(
+      null,
+      expected,
+      state,
+      undefined,
+      `${unshown.join(" and ")} on the styled setup cell in the headless readback`,
+    )
   }
   return parserStateResult(
     cleared && retained,
@@ -420,9 +427,12 @@ function namedColorProbe(id: string, channel: ColorChannel, firstCode: number, s
           return parserStateResult(false, expected, state)
         }
         if (!neutral && !a && !b) {
-          return notTestedResult(
-            `the ${channel} color field in the headless readback (neutral, SGR ${firstCode} and SGR ${secondCode} cells all read no color)`,
+          return parserStateResult(
+            null,
+            expected,
             state,
+            undefined,
+            `the ${channel} color field in the headless readback (neutral, SGR ${firstCode} and SGR ${secondCode} cells all read no color)`,
           )
         }
         return parserStateResult(
@@ -475,9 +485,12 @@ function indexedColorProbe(id: string, channel: ColorChannel): ProbeDefinition {
         // {r: index, g: 0, b: 0}; #30703), so it stays inconclusive until an in-probe control shows the
         // adapter resolves indices (@cto cd391424).
         if (!a || !b || !sameRgb(a, first) || !sameRgb(b, second)) {
-          return notTestedResult(
-            `direct RGB ${channel} readback matching the fed value (SGR ${sgr};2 reference cells A and B)`,
+          return parserStateResult(
+            null,
+            expected,
             state,
+            undefined,
+            `direct RGB ${channel} readback matching the fed value (SGR ${sgr};2 reference cells A and B)`,
           )
         }
         if (x && y && sameRgb(x, a) && sameRgb(y, b)) return parserStateResult(true, expected, state)
@@ -540,9 +553,12 @@ function truecolorProbe(id: string, channel: ColorChannel): ProbeDefinition {
           // #30701, @cto ruling C: a target that reads no color is a measured ignore while the
           // independent controls show two distinct colors; without them the channel is not shown.
           if (calibrated) return parserStateResult(false, expected, state)
-          return notTestedResult(
-            `independent ${channel} color controls (SGR ${ordinary[0]} and ${ordinary[1]}) distinguishable in the headless readback`,
+          return parserStateResult(
+            null,
+            expected,
             state,
+            undefined,
+            `independent ${channel} color controls (SGR ${ordinary[0]} and ${ordinary[1]}) distinguishable in the headless readback`,
           )
         }
         const preceding = controlSecond[channel]
@@ -594,10 +610,13 @@ function defaultColorProbe(id: string, channel: ColorChannel): ProbeDefinition {
         const resetColor = after[channel]
         if (!changed || sameCellColor(baseColor, changed) || resetColor === undefined) {
           // #30701, @cto ruling C: the colored X is the reference the reset is read against; a setup
-          // that reads back as the default leaves the reset with no observable (TEST TODO).
-          return notTestedResult(
-            `a colored ${channel} setup cell (SGR ${setup}) distinct from the default, and the reset cell's ${channel}, in the headless readback`,
+          // that reads back as the default leaves the reset with no observable.
+          return parserStateResult(
+            null,
+            expected,
             state,
+            undefined,
+            `a colored ${channel} setup cell (SGR ${setup}) distinct from the default, and the reset cell's ${channel}, in the headless readback`,
           )
         }
         return parserStateResult(sameCellColor(baseColor, resetColor), expected, state)
@@ -752,7 +771,7 @@ export const sgrProbes: ProbeDefinition[] = [
           "SGR 58 index 5/4 underline colors match the opposite SGR 38 palette controls, not their same-foreground defaults"
         const framed = default4.char === "A" && target5.char === "X" && default5.char === "B" && target4.char === "Y"
         if (framed && target5.underlineColor == null && target4.underlineColor == null) {
-          return notTestedResult(UNDERLINE_COLOR_UNEXPOSED, state)
+          return parserStateResult(null, expected, state, undefined, UNDERLINE_COLOR_UNEXPOSED)
         }
         if (
           default4.char !== "A" ||
@@ -815,7 +834,9 @@ export const sgrProbes: ProbeDefinition[] = [
         const expected =
           "X has explicit underline rgb(255,0,128); SGR 59 restores Y to the measured reset-state C color"
         const framed = baseline.char === "C" && before.char === "X" && after.char === "Y"
-        if (framed && before.underlineColor == null) return notTestedResult(UNDERLINE_COLOR_UNEXPOSED, state)
+        if (framed && before.underlineColor == null) {
+          return parserStateResult(null, expected, state, undefined, UNDERLINE_COLOR_UNEXPOSED)
+        }
         if (
           baseline.char !== "C" ||
           before.char !== "X" ||

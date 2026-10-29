@@ -20,7 +20,7 @@
  */
 import type { ProbeDefinition, LibProbeSource } from "./types.ts"
 import { captureRegionVerdict, type RegionReadback } from "./region-readback.ts"
-import { isBlank, notTestedResult, parserStateResult } from "./helpers.ts"
+import { isBlank, parserStateResult } from "./helpers.ts"
 
 /** One write between the seed frame and the final read, and the cursor report it must reach. */
 export interface RegionReadbackStep {
@@ -654,9 +654,12 @@ export function regionReadbackProbe(row: RegionReadbackRow): ProbeDefinition {
             }),
           )
           if (painted.size > 0 && gridMatch(before, unpainted)) {
-            return notTestedResult(
-              `${row.id}: the seed's painted ${[...painted].join(" and ")} on the region cells in the headless readback (the seed characters arrived without it)`,
+            return parserStateResult(
+              null,
+              row.expected,
               { before: responseGrid(before, row.before) },
+              undefined,
+              `${row.id}: the seed's painted ${[...painted].join(" and ")} on the region cells in the headless readback (the seed characters arrived without it)`,
             )
           }
           return parserStateResult(null, row.expected, { before: responseGrid(before, row.before) }, row.seedNote)
