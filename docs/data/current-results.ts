@@ -9,6 +9,7 @@ import {
   type SelectedVersion,
   type CurrentSelectedVersion,
   type SelectedAttemptInput,
+  type SelectedContextSummary,
 } from "./selected-results.ts"
 import type { ProbeStatus } from "@terminfo/probe-defs"
 import type { CellState } from "./release-scope.ts"
@@ -26,7 +27,7 @@ export interface DefaultContextReview {
 
 export interface CurrentResult {
   contextKey: string
-  selected: CurrentSelectedVersion
+  selected: SelectedContextSummary
   policy?: DefaultContextReview
 }
 

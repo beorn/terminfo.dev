@@ -254,10 +254,19 @@ describe("current execution projection", () => {
       expect(current).not.toHaveProperty("sha256")
       expect(current).not.toHaveProperty("sealedAt")
       // #31610 AC1/AC4: the private fold above passed while the public mapper lost these cells.
-      // Exercise the existing public seam before migrating its shape, so RED is retained evidence loss.
-      const published = publicResults(projection, new Map()).projection.current["term:kitty"]!
-      expect(published.results.find((result) => result.featureId === ids[1])?.status).toBe("supported")
-      expect(published.results.find((result) => result.featureId === ids[2])?.status).toBe("supported")
+      // RED at5044b105 used the old public seam and received TODO for both retained cells.
+      const published = publicResults(projection, new Map()).projection.contexts["term:kitty"]!
+      expect(published.cells[ids[1]!]!.status).toBe("supported")
+      expect(published.cells[ids[2]!]!.status).toBe("supported")
+      expect(published.contributingRunIds).toEqual([prior.runId, latest.runId])
+      expect(published.counts).toEqual(current.counts)
+      expect(published.cells[ids[0]!]!.origin).toEqual({ runId: latest.runId, resultId: ids[0] })
+      expect(published.cells[ids[2]!]!.origin).toEqual({ runId: prior.runId, resultId: ids[2] })
+      expect(published.cells[ids[2]!]!.measuredAt).toBe(prior.measuredAt)
+      expect(published.sources[prior.runId]!.sha256).toBe(prior.sha256)
+      expect(published).not.toHaveProperty("runId")
+      expect(published).not.toHaveProperty("sha256")
+      expect(published).not.toHaveProperty("sealedAt")
       // Original immutable runs keep their full cells and seals apart from the composed context.
       expect(projection.history["term:kitty"]?.find((run) => run.runId === latest.runId)).toMatchObject({
         runId: latest.runId,

@@ -205,6 +205,8 @@ export interface SelectedContextAttempt {
 
 export interface SelectedContextSummary {
   contextKey: string
+  /** Shared physical context facts; absent for an unmeasured pre-start attempt. */
+  subject?: Omit<ProbeSubject, "version">
   catalogIds: string[]
   cells: Record<string, SelectedContextCell>
   missingIds: string[]
@@ -784,6 +786,18 @@ function composeContextSummaries(
     )
     summaries[contextKey] = {
       contextKey,
+      ...(candidates[0] && {
+        subject: {
+          kind: candidates[0].subject.kind,
+          id: candidates[0].subject.id,
+          os: candidates[0].subject.os,
+          osVersion: candidates[0].subject.osVersion,
+          outerTerminal: candidates[0].subject.outerTerminal,
+          mux: candidates[0].subject.mux,
+          config: maskRunnerStorePath(candidates[0].subject.config),
+          permissions: candidates[0].subject.permissions,
+        },
+      }),
       catalogIds: viewIds,
       cells,
       missingIds,
