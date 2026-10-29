@@ -745,6 +745,11 @@ export interface LibProbeSource {
   }
   /** Icon name. Present only when the backend reports it separately from the window title. */
   getIconLabel?(): string
+  /** Present only when the backend exposes the engine's clipboard callback state. */
+  getClipboardState?(): {
+    writes: { selector: string; payload: string; text?: string; decodeError?: string }[]
+    pasteSelector?: string
+  }
   /** Width read back from the backend after initialization, never inferred from cursor behavior. */
   readonly cols: number
   feed(text: string): void

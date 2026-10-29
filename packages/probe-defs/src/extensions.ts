@@ -2000,7 +2000,44 @@ function textSizingResult(
  * A pass, a host-recipe cause, an observation, a nonempty reply, or a callback with no loaded
  * binary keeps the measured roundtrip. A listed reply-path audit still replaces an empty capture.
  */
+const ENGINE_CLIPBOARD_NOTE = "engine copy_to_clipboard callback read via getClipboardState, no reply bytes"
+
 function headlessOsc52Write(ctx: LibProbeSource): ProbeCallbackResult {
+  if (typeof ctx.getClipboardState !== "function") return headlessOsc52WriteWithoutWitness(ctx)
+  const nonce = `terminfo-osc52-${randomUUID()}`
+  const encoded = btoa(nonce)
+  ctx.feed(`\x1b]52;c;${encoded}\x07`)
+  const retained = ctx.getClipboardState()
+  const writes = retained.writes.map((write) => ({ selector: write.selector, payload: write.payload }))
+  const match = retained.writes.find((write) => write.selector === "c" && write.payload === encoded)
+  const note = [
+    ENGINE_CLIPBOARD_NOTE,
+    match?.text !== undefined ? `text ${match.text}` : undefined,
+    match?.decodeError !== undefined ? `decodeError ${match.decodeError}` : undefined,
+    retained.pasteSelector !== undefined ? `paste ${retained.pasteSelector}` : undefined,
+    match === undefined && writes.length > 0
+      ? `retained selectors ${writes.map((write) => write.selector).join(",")} did not match`
+      : undefined,
+  ]
+    .filter((part) => part !== undefined)
+    .join("; ")
+  const expected = JSON.stringify({ selector: "c", payload: encoded })
+  if (match) {
+    return parserStateResult(
+      true,
+      expected,
+      { selector: match.selector, payload: match.payload },
+      note,
+      undefined,
+      "query_reply",
+    )
+  }
+  const state = { writes }
+  if (writes.length === 0) return parserStateResult(false, expected, state, note, undefined, "query_reply")
+  return parserStateResult(null, expected, state, note, undefined, "query_reply")
+}
+
+function headlessOsc52WriteWithoutWitness(ctx: LibProbeSource): ProbeCallbackResult {
   const measured = headlessClipboardRoundtrip(ctx)
   const identity = ctx.runtimeIdentity
   const unauditedSilence =

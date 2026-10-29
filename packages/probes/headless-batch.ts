@@ -313,6 +313,8 @@ export function createLibProbeSource(
       ? backend.getDefaultColors.bind(backend)
       : undefined
   const readIconLabel = typeof backend.getIconLabel === "function" ? backend.getIconLabel.bind(backend) : undefined
+  const readClipboardState =
+    typeof backend.getClipboardState === "function" ? backend.getClipboardState.bind(backend) : undefined
   return {
     kind: "live",
     ...(runtimeIdentity && { runtimeIdentity }),
@@ -320,6 +322,7 @@ export function createLibProbeSource(
     getHyperlinkAt: readLink,
     getDefaultColors: readDefaultColors,
     getIconLabel: readIconLabel,
+    getClipboardState: readClipboardState,
     feed(text) {
       backend.feed(encoder.encode(text))
     },

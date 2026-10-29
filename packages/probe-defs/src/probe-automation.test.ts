@@ -983,6 +983,69 @@ describe("reply-path audit", () => {
     expect(run("extensions.osc52-write", old, () => "").result.criterionBranch).toBe(REPLY_PATH_AUDIT_REVIEW)
   })
 
+  function writeWithClipboard(state: {
+    writes: { selector: string; payload: string; text?: string; decodeError?: string }[]
+    pasteSelector?: string
+  }) {
+    let fed = ""
+    return probe("extensions.osc52-write").lib!({
+      kind: "live",
+      cols: 80,
+      feed(text: string) {
+        fed += text
+      },
+      feedCapture: () => "",
+      getCell: () => {
+        throw new Error("unused")
+      },
+      getClipboardState: () => {
+        if (state.writes.some((write) => write.payload === "")) {
+          const payload = /\x1b\]52;c;([A-Za-z0-9+/=]*)/.exec(fed)?.[1] ?? ""
+          return {
+            ...state,
+            writes: state.writes.map((write) => (write.payload === "" ? { ...write, payload } : write)),
+          }
+        }
+        return state
+      },
+    } as LibProbeSource)
+  }
+
+  test("osc52-write passes when the engine callback retained the encoded nonce", () => {
+    const result = writeWithClipboard({
+      writes: [{ selector: "c", payload: "", text: "decoded-note" }],
+      pasteSelector: "c",
+    })
+    const expected = result.assertions?.[0]?.expected
+    expect(result.observation?.outcome).toBe("supported")
+    expect(result.assertions?.[0]).toMatchObject({
+      assertionType: "query_reply",
+      kind: "positive",
+      observed: expected,
+    })
+    expect(JSON.parse(expected ?? "")).toMatchObject({ selector: "c" })
+    expect(result.response).toBe(expected)
+    expect(result.note).toContain("engine copy_to_clipboard callback read via getClipboardState, no reply bytes")
+    expect(result.note).toContain("decoded-note")
+  })
+
+  test("osc52-write is unsupported when the engine callback retained no writes", () => {
+    const result = writeWithClipboard({ writes: [] })
+    expect(result.observation?.outcome).toBe("unsupported")
+    expect(result.assertions?.[0]?.assertionType).toBe("query_reply")
+    expect(result.assertions?.[0]?.kind).toBe("negative")
+    expect(JSON.parse(result.response ?? "")).toEqual({ writes: [] })
+    expect(result.note).toContain("engine copy_to_clipboard callback read via getClipboardState, no reply bytes")
+  })
+
+  test("osc52-write is inconclusive when the engine callback retained a different write", () => {
+    const result = writeWithClipboard({ writes: [{ selector: "p", payload: "cHJpbWFyeQ==" }] })
+    expect(result.observation?.outcome).toBe("inconclusive")
+    expect(result.assertions).toBeUndefined()
+    expect(JSON.parse(result.response ?? "")).toEqual({ writes: [{ selector: "p", payload: "cHJpbWFyeQ==" }] })
+    expect(result.note).toContain("p")
+  })
+
   test.each(cells)("$id on $sha256", ({ sha256, id, audit }) => {
     const unlisted = run(id, "f".repeat(64), () => "")
     expect(JSON.stringify(unlisted.result)).not.toContain("replyPathAudit")
