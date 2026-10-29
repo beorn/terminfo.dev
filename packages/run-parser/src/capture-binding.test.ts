@@ -23,6 +23,7 @@ import {
   type RunDraft,
   ALL_PROBES,
   readCollectorAttempt,
+  type HostRecipeExpectation,
 } from "@terminfo/probe-defs"
 import { fakeProbeResult } from "@terminfo/probe-defs/testing/fake-probe-result"
 import { applyCaptureDecision, retainCaptureBinding, parseRun, decodeCollectorDraft } from "./index.ts"
@@ -157,7 +158,7 @@ function hostCauseCapture(
   if (mode === "foreign-run") record.runId = "another-run"
   if (mode === "wrong-missing") source.missing = "background-rgb"
   if (mode === "real-reply") record.captures[0]!.response = "\x1b]10;rgb:aaaa/bbbb/cccc\x07"
-  const expectations =
+  const expectations: HostRecipeExpectation[] =
     mode === "undeclared-query" ? [] : [{ recipe: "color-request", query, missing: ["foreground-rgb"] }]
   draft.rawReplies[recordRef] = JSON.stringify(record)
   draft.rawReplies["collector.replyPath"] = JSON.stringify({

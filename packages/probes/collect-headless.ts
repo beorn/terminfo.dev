@@ -353,6 +353,7 @@ export async function collectHeadlessRuns(
       }
       const previousAttempt = readCollectorAttempt(retained.rawReplies)
       if (previousAttempt?.result === "completed") return
+      const primaryDiagnostic = previousAttempt?.error ?? retained.rawReplies["collector.failure"] ?? scrubbed
       const startedAt =
         previousAttempt?.startedAt ?? (retained.rawReplies["collector.prerequisite"] ? undefined : workerStartedAt)
       if (!startedAt && result === "failed" && !retained.rawReplies["collector.prerequisite"]) {
@@ -370,17 +371,19 @@ export async function collectHeadlessRuns(
               ids,
               ...(startedAt && { startedAt }),
               result,
-              error: previousAttempt?.error ?? scrubbed,
+              error: primaryDiagnostic,
             },
             resolved.probes,
           )
         }
       } catch (finalizationError) {
         retained.rawReplies["collector.finalizationFailure"] = scrubRecordedFailure(errorMessage(finalizationError))
-        process.stderr.write(`Attempt finalization refused after ${scrubbed}: ${errorMessage(finalizationError)}\n`)
+        process.stderr.write(
+          `Attempt finalization refused after ${primaryDiagnostic}: ${errorMessage(finalizationError)}. Coordinator: ${scrubbed}\n`,
+        )
       }
       if (result === "failed" && startedAt && !retained.rawReplies["collector.prerequisite"]) {
-        recordCollectionFailure(retained, startedAt, previousAttempt?.error ?? scrubbed, ids)
+        recordCollectionFailure(retained, startedAt, primaryDiagnostic, ids)
       } else if (retained.rawReplies["collector.prerequisite"]) {
         retained.rawReplies["collector.prerequisite"] = scrubRecordedFailure(
           retained.rawReplies["collector.prerequisite"],

@@ -399,6 +399,7 @@ it.each([false, true])(
           result: "started",
         })
         draft.rawReplies["collector.hostRecipes.device.primary-da"] = "{}"
+        draft.rawReplies["collector.failure"] = "original worker failure"
         writeFileSync(options.env.TERMINFO_DRAFT_PATH!, JSON.stringify(draft))
       }
       let finish!: (code: number) => void
@@ -449,7 +450,7 @@ it.each([false, true])(
         .filter((result) => !delegated.has(result.featureId))
         .every((result) => result.status === "test-todo" && result.attempt.scope === "none"),
     ).toBe(true)
-    expect(draft.rawReplies["collector.failure"]).toContain("exceeded")
+    expect(draft.rawReplies["collector.failure"]).toContain(refused ? "original worker failure" : "exceeded")
     expect(draft).not.toHaveProperty("target")
   },
 )
