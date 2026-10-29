@@ -11,7 +11,7 @@ import type { LibProbeSource } from "./types.ts"
 
 function source(
   icon: { current: string } | null,
-  options: { changesTitle?: boolean; ignoresTitleSetup?: boolean } = {},
+  options: { changesTitle?: boolean; ignoresTitleSetup?: boolean; ignoresIconSet?: boolean } = {},
 ): LibProbeSource {
   let title = "unchanged-title"
   return {
@@ -32,7 +32,7 @@ function source(
       const windowTitle = /\x1b\]2;([^\x07]*)\x07/.exec(text)?.[1]
       if (windowTitle !== undefined && !options.ignoresTitleSetup) title = windowTitle
       const iconLabel = /\x1b\]1;([^\x07]*)\x07/.exec(text)?.[1]
-      if (icon && iconLabel !== undefined) {
+      if (icon && iconLabel !== undefined && !options.ignoresIconSet) {
         icon.current = iconLabel
         if (options.changesTitle) title = iconLabel
       }
@@ -95,4 +95,10 @@ test("headless osc1 requires a verified title control before deciding independen
   const result = probe!.lib!(source({ current: "original-icon" }, { ignoresTitleSetup: true }))
   expect(result.observation).toBeUndefined()
   expect(result.tests).toMatchObject([{ id: "criterion", status: "test-failure", reason: expect.any(String) }])
+})
+
+test.each(["original-icon", "test-icon"])("headless osc1 rejects an ignored write from initial label %s", (initial) => {
+  const probe = extensionsProbes.find((entry) => entry.id === "extensions.osc1-icon")
+  const result = probe!.lib!(source({ current: initial }, { ignoresIconSet: true }))
+  expect(result.observation).toMatchObject({ outcome: "unsupported" })
 })

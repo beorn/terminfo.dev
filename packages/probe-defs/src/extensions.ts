@@ -3391,6 +3391,7 @@ export const extensionsProbes: ProbeDefinition[] = [
           return notTestedResult("icon-name state", { before, after })
         }
         const before = { icon: ctx.getIconLabel(), title: ctx.getTitle() }
+        const requested = before.icon === "test-icon" ? "test-icon-2" : "test-icon"
         const control =
           before.title === "terminfo-title-control" ? "terminfo-title-control-2" : "terminfo-title-control"
         try {
@@ -3409,12 +3410,12 @@ export const extensionsProbes: ProbeDefinition[] = [
               ],
             }
           }
-          ctx.feed("\x1b]1;test-icon\x07")
+          ctx.feed(`\x1b]1;${requested}\x07`)
           const after = { icon: ctx.getIconLabel(), title: ctx.getTitle() }
           return parserStateResult(
-            after.icon === "test-icon" && after.title === control,
+            after.icon === requested && after.title === control,
             "OSC 1 sets the icon name without changing the independently verified window title",
-            { before, control, after },
+            { before, requested, control, after },
           )
         } finally {
           ctx.feed(`\x1b]1;${before.icon}\x07`)
