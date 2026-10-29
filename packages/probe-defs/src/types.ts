@@ -92,6 +92,22 @@ export type ProbeAttempt =
   | { scope: "none" }
   | { scope: "collection" | "probe"; startedAt: string; diagnosticRef?: string }
 
+/** Resolved callback intent; an empty list explicitly schedules no work. */
+export interface CollectorSelection {
+  ids: string[]
+}
+
+/** Retained collection lifecycle. An absent result preserves a historical recorded start. */
+export type CollectorAttempt = CollectorSelection & {
+  startedAt?: string
+  hostInputs?: Record<string, string>
+} & (
+    | { result: "started" | "completed"; startedAt: string; error?: never }
+    | { result: "empty"; error?: never }
+    | { result: "cancelled" | "failed"; error: string }
+    | { result?: undefined; startedAt: string; error?: never }
+  )
+
 /** The still-required tests for the frozen criterion branch, retained at execution. */
 export interface ProbeTestResult {
   id: string

@@ -10,6 +10,8 @@ import type {
   CurrentProbeRun,
   ProbeSuiteManifest,
   RunDraft,
+  CollectorSelection,
+  CollectorAttempt,
 } from "./types.ts"
 import type {
   AssertionType,
@@ -20,6 +22,80 @@ import type {
   TermProbeSource,
 } from "./types.ts"
 import { replyPathAuditFor, type ReplyPathAudit } from "./reply-path-audit.ts"
+
+function collectorRecord(rawReplies: Record<string, string>, key: string): Record<string, unknown> | undefined {
+  const raw = rawReplies[key]
+  if (raw === undefined) return undefined
+  let value: unknown
+  try {
+    value = JSON.parse(raw)
+  } catch (cause) {
+    throw new Error(`Invalid ${key}: retained record is not JSON`, { cause })
+  }
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(`Invalid ${key}: expected a retained object`)
+  }
+  return value as Record<string, unknown>
+}
+
+function collectorIds(value: unknown, key: string): string[] {
+  if (!Array.isArray(value) || !value.every((id) => typeof id === "string" && id.length > 0)) {
+    throw new Error(`Invalid ${key}: expected resolved probe ids`)
+  }
+  return [...value]
+}
+
+/** Absence is legacy evidence, never an inferred full selection. */
+export function readCollectorSelection(rawReplies: Record<string, string>): CollectorSelection | undefined {
+  const value = collectorRecord(rawReplies, "collector.selection")
+  if (value === undefined) return undefined
+  return { ids: collectorIds(value.ids, "collector.selection") }
+}
+
+/** Decode the retained start/outcome without manufacturing a time or a successful result. */
+export function readCollectorAttempt(rawReplies: Record<string, string>): CollectorAttempt | undefined {
+  const value = collectorRecord(rawReplies, "collector.collectionAttempt")
+  if (value === undefined) return undefined
+  const ids = collectorIds(value.ids, "collector.collectionAttempt")
+  const result = value.result
+  if (
+    result !== undefined &&
+    (typeof result !== "string" || !["started", "completed", "empty", "cancelled", "failed"].includes(result))
+  ) {
+    throw new Error("Invalid collector.collectionAttempt: unknown result")
+  }
+  if (
+    (value.startedAt !== undefined &&
+      (typeof value.startedAt !== "string" || !Number.isFinite(Date.parse(value.startedAt)))) ||
+    ((result === undefined || result === "started" || result === "completed") && value.startedAt === undefined)
+  ) {
+    throw new Error("Invalid collector.collectionAttempt: recorded start required for a started attempt")
+  }
+  if ((result === "failed" || result === "cancelled") && typeof value.error !== "string") {
+    throw new Error("Invalid collector.collectionAttempt: original error required")
+  }
+  if (result !== "failed" && result !== "cancelled" && value.error !== undefined) {
+    throw new Error("Invalid collector.collectionAttempt: error requires a failed or cancelled result")
+  }
+  if (
+    value.hostInputs !== undefined &&
+    (typeof value.hostInputs !== "object" ||
+      value.hostInputs === null ||
+      Array.isArray(value.hostInputs) ||
+      !Object.values(value.hostInputs).every((entry) => typeof entry === "string"))
+  ) {
+    throw new Error("Invalid collector.collectionAttempt: invalid retained host inputs")
+  }
+  return { ...value, ids } as CollectorAttempt
+}
+
+export function recordCollectorSelection(draft: RunDraft, ids: readonly string[]): void {
+  draft.rawReplies["collector.selection"] = JSON.stringify({ ids })
+}
+
+export function recordCollectorAttempt(draft: RunDraft, attempt: CollectorAttempt): void {
+  draft.rawReplies["collector.collectionAttempt"] = JSON.stringify(attempt)
+}
 
 /** Keep the serialized state alongside the exact assertion that used it. */
 export function parserStateResult(

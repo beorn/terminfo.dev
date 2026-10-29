@@ -13,6 +13,10 @@ import {
   sealRunDraft,
   utf8DecodingRefusal,
   sgrProbe,
+  readCollectorSelection,
+  readCollectorAttempt,
+  recordCollectorSelection,
+  recordCollectorAttempt,
 } from "./helpers.ts"
 import { extensionsProbes } from "./extensions.ts"
 import { deviceProbes } from "./device.ts"
@@ -23,8 +27,53 @@ import { unicodeProbes } from "./unicode.ts"
 import { editingProbes } from "./editing.ts"
 import { textProbes } from "./text.ts"
 import { cropPositionRefusal } from "./region-readback.ts"
-import type { LibProbeSource, ObservationFrame, ProbeCallbackResult, TermProbeSource } from "./types.ts"
+import type {
+  CollectorAttempt,
+  LibProbeSource,
+  ObservationFrame,
+  ProbeCallbackResult,
+  TermProbeSource,
+} from "./types.ts"
 const attempt = { scope: "probe" as const, startedAt: "2026-10-21T05:00:00.000Z" }
+
+// AC3: callbacks alone cannot preserve an empty/pre-start attempt or distinguish it from legacy absence.
+it.each([
+  { ids: [], result: "empty" },
+  { ids: ["selected"], result: "failed", error: "original\ntransport error" },
+  { ids: ["selected"], result: "cancelled", error: "SIGINT", startedAt: attempt.startedAt },
+  { ids: ["selected"], result: "completed", startedAt: attempt.startedAt, hostInputs: { clipboard: "not-supplied" } },
+] satisfies CollectorAttempt[])("retains selected intent and $result without inventing output", (collection) => {
+  const draft = initializeRunDraft({
+    runId: "selected-attempt",
+    sourceRevision: "1".repeat(40),
+    source: { kind: "live" },
+    intendedSubject: { kind: "term", id: "kitty" },
+    manifest: {
+      schemaVersion: 4,
+      probeHash: "subset-suite",
+      adapterVersion: "3",
+      catalogIds: ["selected", "untouched"],
+      probes: { term: ["selected", "untouched"], lib: [], mux: [] },
+    },
+  })
+  recordCollectorSelection(draft, collection.ids)
+  recordCollectorAttempt(draft, collection)
+  expect(readCollectorSelection(draft.rawReplies)?.ids).toEqual(collection.ids)
+  expect(readCollectorAttempt(draft.rawReplies)).toEqual(collection)
+  expect(draft.results.map((result) => result.attempt)).toEqual([{ scope: "none" }, { scope: "none" }])
+  expect(draft.runId).toBe("selected-attempt")
+})
+
+it("keeps legacy absence distinct from malformed or newly completed collection evidence", () => {
+  expect(readCollectorSelection({})).toBeUndefined()
+  expect(readCollectorAttempt({})).toBeUndefined()
+  const legacy = { ids: ["selected"], startedAt: attempt.startedAt }
+  expect(readCollectorAttempt({ "collector.collectionAttempt": JSON.stringify(legacy) })).toEqual(legacy)
+  expect(() => readCollectorSelection({ "collector.selection": "broken JSON" })).toThrow("collector.selection")
+  expect(() =>
+    readCollectorAttempt({ "collector.collectionAttempt": JSON.stringify({ ids: [], result: "completed" }) }),
+  ).toThrow("recorded start")
+})
 // Full-catalog drafts previously let a failed subset dispatch mark unscheduled capabilities failed.
 it("records collection failure only for delegated unfinished IDs", () => {
   const draft = initializeRunDraft({
