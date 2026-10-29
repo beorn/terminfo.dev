@@ -1138,7 +1138,9 @@ it("fails collection by name and exit 1 for a required null route without admiss
   const macosWorkflowPath = join(root, ".github/workflows/macos-measurement.yml")
   const missingRoutePath = join(directory, "missing-cmux-workflow.yml")
   const workflow = parse(readFileSync(macosWorkflowPath, "utf8"))
-  const matrix = JSON.parse(workflow.on.workflow_dispatch.inputs.context_matrix.default)
+  const matrix = JSON.parse(workflow.on.workflow_dispatch.inputs.context_matrix.default) as {
+    include: Array<{ id: string }>
+  }
   matrix.include = matrix.include.filter((row: { id: string }) => row.id !== "cmux")
   workflow.on.workflow_dispatch.inputs.context_matrix.default = JSON.stringify(matrix)
   writeFileSync(missingRoutePath, stringify(workflow))

@@ -208,13 +208,15 @@ function hostedAppRows(os: "macos" | "windows"): Array<{ id: string; [key: strin
   }
   const declared = workflow?.on?.workflow_dispatch?.inputs?.context_matrix?.default
   if (typeof declared !== "string") throw new Error(`${path}: expected context_matrix JSON string default`)
-  const matrix = parseJsonStrict(`${path}: context_matrix default`, declared) as { include?: unknown }
+  const matrix = parseJsonStrict(`${path}: context_matrix default`, declared) as {
+    include?: Array<{ id?: unknown; [key: string]: unknown }>
+  }
   const rows = matrix?.include
   if (!Array.isArray(rows) || rows.length === 0) throw new Error(`${path}: expected nonempty measure-${os} app matrix`)
   for (const row of rows) {
     if (typeof row?.id !== "string" || row.id.length === 0) throw new Error(`${path}: matrix app is missing its id`)
   }
-  return rows
+  return rows as Array<{ id: string; [key: string]: unknown }>
 }
 
 function collectionRoutes(expected: readonly CensusContext[]): CollectionContext[] {

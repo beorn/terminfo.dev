@@ -739,13 +739,13 @@ test.each(["macos", "windows"])("%s workflow keeps the full matrix in its dispat
   const job = workflow.jobs[`measure-${os}`]
   expect(inputs.context_matrix).toMatchObject({ type: "string", required: false })
   expect(inputs.probe_ids).toMatchObject({ type: "string", required: false, default: "null" })
-  const matrix = JSON.parse(inputs.context_matrix.default)
+  const matrix = JSON.parse(inputs.context_matrix.default) as { include: Array<{ id: string; bundle?: string }> }
   expect(Object.keys(matrix)).toEqual(["include"])
-  if (os === "windows")
+  if (os === "windows") {
     expect(matrix.include).toEqual([{ id: "windows-terminal" }, { id: "alacritty" }, { id: "wezterm" }])
-  else {
+  } else {
     expect(matrix.include).toHaveLength(9)
-    expect(matrix.include.every((row: { id: string; bundle: string }) => row.id && row.bundle)).toBe(true)
+    expect(matrix.include.every((row: { id: string; bundle?: string }) => row.id && row.bundle)).toBe(true)
   }
   expect(job.strategy.matrix).toBe("${{ fromJSON(inputs.context_matrix) }}")
   expect(job.if).toBe(
