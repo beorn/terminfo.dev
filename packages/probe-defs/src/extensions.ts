@@ -1870,11 +1870,10 @@ function headlessClipboardRoundtrip(ctx: LibProbeSource): ProbeCallbackResult {
   const query = "\x1b]52;c;?\x07"
   const outcome = ctx.queryWithSentinelOutcome?.(query, osc52Reply)
   const raw = outcome ? outcome.raw : ctx.feedCapture(query)
-  const read = outcome ? readSentinelReply(raw, osc52Reply).kind : null
   // CTO d5f41664: unmatched/partial bytes lose the old per-capture empty attribution deliberately.
-  // Only measured clean sentinel silence (or a wholly empty buffer) proves the missing host input.
+  // The existing silence classifier supplies only the host-input fact, never this write's verdict.
   const empty = outcome
-    ? (read === "answered" && outcome.sentinel !== undefined) || (read === "pending" && raw === "")
+    ? sentinelSilenceResult(outcome, "OSC 52 c query returns the exact written nonce") !== null || raw === ""
     : raw === ""
   return nativeHostRecipeResult(
     ctx,

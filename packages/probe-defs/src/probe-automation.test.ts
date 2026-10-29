@@ -308,6 +308,7 @@ describe("qualified clipboard roundtrip", () => {
       failure: true,
     },
     { when: "DA1-shaped query then real DA1", raw: da1 + da1, reason: "sentinel", sentinel: true },
+    { when: "DA1 followed by non-matching junk", raw: da1 + "ZZZ", reason: "sentinel", sentinel: true },
     { when: "malformed OSC52 reply", raw: "\x1b]52;c;???\x07" + da1, reason: "sentinel", sentinel: true },
   ] as const
   test.each(["extensions.osc52-clipboard", "extensions.osc52-write"])(
@@ -356,33 +357,43 @@ describe("qualified clipboard roundtrip", () => {
       }
     },
   )
-  test.each(["extensions.osc52-clipboard", "extensions.osc52-write"])(
-    "%s grades the actual written nonce and retains DA1",
-    (id) => {
-      let encoded = ""
-      let writes = 0
-      let raw = ""
-      const result = probe(id).lib!(
-        context({
-          feed(text) {
-            writes++
-            encoded = /\x1b\]52;c;([^\x07]*)\x07/.exec(text)![1]!
-          },
-          feedCapture: () => {
-            throw new Error("qualified roundtrip used bare capture")
-          },
-          queryWithSentinelOutcome(_sequence, pattern) {
-            raw = `\x1b]52;c;${encoded}\x07${da1}`
-            return { raw, rawBase64: Buffer.from(raw).toString("base64"), reason: "reply", match: raw.match(pattern) }
-          },
-        }),
-      )
-      expect(writes).toBe(1)
-      expect(atob(encoded)).toMatch(/^terminfo-osc52-/)
-      expect(result.observation?.outcome).toBe("supported")
-      expect(result.response).toBe(raw)
-    },
-  )
+  test.each(
+    ["extensions.osc52-clipboard", "extensions.osc52-write"].flatMap((id) =>
+      [false, true].map((after) => ({ id, after })),
+    ),
+  )("$id grades the actual written nonce and retains DA1 (reply after DA1: $after)", ({ id, after }) => {
+    let encoded = ""
+    let writes = 0
+    let raw = ""
+    const result = probe(id).lib!(
+      context({
+        runtimeIdentity: nativeIdentity,
+        feed(text) {
+          writes++
+          encoded = /\x1b\]52;c;([^\x07]*)\x07/.exec(text)![1]!
+        },
+        feedCapture: () => {
+          throw new Error("qualified roundtrip used bare capture")
+        },
+        queryWithSentinelOutcome(_sequence, pattern) {
+          const reply = `\x1b]52;c;${encoded}\x07`
+          raw = after ? da1 + reply : reply + da1
+          return {
+            raw,
+            rawBase64: Buffer.from(raw).toString("base64"),
+            reason: "reply",
+            match: raw.match(pattern),
+            ...(after && { sentinel: { atMs: 0, graceMs: 250 } }),
+          }
+        },
+      }),
+    )
+    expect(writes).toBe(1)
+    expect(atob(encoded)).toMatch(/^terminfo-osc52-/)
+    expect(result.observation?.outcome).toBe("supported")
+    expect(result.hostRecipeCauses).toBeUndefined()
+    expect(result.response).toBe(raw)
+  })
 })
 
 describe("reply-path audit", () => {
