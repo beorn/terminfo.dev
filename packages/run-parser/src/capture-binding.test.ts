@@ -555,6 +555,33 @@ it("the rebuilt WezTerm capture grades its pixel cells from the engine's bytes a
   expect(weztermGeometryCapture("no-cause")).toThrow(/missing cause for captured empty target response/)
 })
 
+// The Kitty capture after its bridge handed Screen the declared cell size (run fda748aa, launcher sha256 bb65c2d5,
+// termless 3d3a814; 31627) trimmed to its two pixel probes (@cto ff19ee09). Kitty answered both from the declared
+// 800x480 text area through the re-keyed reply delivery; before, its 0x0 cell answered 4;0;0t and 6;0;0t.
+const KITTY_GEOMETRY = readFileSync(new URL("./fixtures/kitty-pixel-geometry.capture.json", import.meta.url), "utf8")
+it("the Kitty capture with the declared cell size grades its pixel cells from Kitty's bytes through its reply delivery", () => {
+  const run = JSON.parse(KITTY_GEOMETRY) as RunDraft & { results: { featureId: string }[]; probeHash: string }
+  const ids = run.results.map((result) => result.featureId)
+  const manifest = {
+    schemaVersion: 4 as const,
+    probeHash: run.probeHash,
+    adapterVersion: "4",
+    catalogIds: ids,
+    probes: { term: [], lib: ids, mux: [] },
+  }
+  const parsed = parseRun("kitty-pixel-geometry.json", KITTY_GEOMETRY, ids, new Map([[manifest.probeHash, manifest]]), {
+    mode: "capture",
+  })
+  expect((parsed.results ?? []).map((result) => [result.featureId, result.status])).toEqual([
+    ["device.xtwinops-14", "supported"],
+    ["device.xtwinops-16", "supported"],
+  ])
+  const replyPath = JSON.parse(run.rawReplies["collector.replyPath"]!) as {
+    decisions: Record<string, { member: boolean }>
+  }
+  expect(ids.map((id) => replyPath.decisions[id]?.member)).toEqual([true, true])
+})
+
 const setup = (
   observed?: string,
   sourceNegative?: { runId: string; startedAt: string },
