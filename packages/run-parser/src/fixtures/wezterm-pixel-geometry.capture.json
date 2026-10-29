@@ -27,9 +27,7 @@
             "scope": "probe",
             "startedAt": "2026-10-29T08:40:18.824Z"
           },
-          "assertionRefs": [
-            0
-          ],
+          "assertionRefs": [0],
           "rawReplyRef": "device.xtwinops-14"
         }
       ],
@@ -51,9 +49,7 @@
             "scope": "probe",
             "startedAt": "2026-10-29T08:40:18.849Z"
           },
-          "assertionRefs": [
-            1
-          ],
+          "assertionRefs": [1],
           "rawReplyRef": "device.xtwinops-16"
         }
       ],
@@ -75,9 +71,7 @@
             "scope": "probe",
             "startedAt": "2026-10-29T08:40:12.195Z"
           },
-          "assertionRefs": [
-            2
-          ],
+          "assertionRefs": [2],
           "rawReplyRef": "extensions.osc1337-cellsize"
         }
       ],
@@ -99,9 +93,7 @@
             "scope": "probe",
             "startedAt": "2026-10-29T08:40:20.808Z"
           },
-          "assertionRefs": [
-            3
-          ],
+          "assertionRefs": [3],
           "rawReplyRef": "extensions.osc52-read",
           "reason": "negative by sentinel"
         }
@@ -125,9 +117,7 @@
             "scope": "probe",
             "startedAt": "2026-10-29T08:40:15.345Z"
           },
-          "assertionRefs": [
-            4
-          ],
+          "assertionRefs": [4],
           "rawReplyRef": "extensions.sixel-geometry-report",
           "reason": "Current Sixel geometry reported as 800×480 pixels"
         }
