@@ -150,9 +150,9 @@ test.each([-1, 1])("viewport hold calibrates sign %s and reads target only after
   const fixture = viewportSource({ sign })
   const result = viewportProbe()(fixture.source)
   expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
-  const evidence = JSON.parse(result.response!)
+  const evidence = JSON.parse(result.response!) as Record<string, unknown>
   expect(Object.keys(evidence).sort()).toEqual(["anchor", "baseline", "control", "ordinary", "synchronized"])
-  expect(evidence.control.ordinary.sign).toBe(sign)
+  expect(evidence).toMatchObject({ control: { ordinary: { sign } } })
   expect(fixture.moves.slice(0, sign === -1 ? 1 : 2)).toEqual(sign === -1 ? [-1] : [-1, 1])
   expect(fixture.reads.filter((read) => read.target)).toEqual([
     { target: true, bottom: true },
@@ -258,7 +258,7 @@ test("real vterm partial drift is inconclusive rather than an unqualified negati
     const result = viewportProbe()(createLibProbeSource(backend, undefined, undefined, undefined))
     expect(result.observation?.outcome).toBe("inconclusive")
     expect(result.assertions).toBeUndefined()
-    expect(JSON.parse(result.response!).ordinary.outcome).toBe("drift")
+    expect(JSON.parse(result.response!)).toMatchObject({ ordinary: { outcome: "drift" } })
   } finally {
     backend.destroy()
   }
