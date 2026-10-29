@@ -252,6 +252,9 @@ it.each([
   ["frozen", "none"],
   ["frozen", "deferred"],
   ["matching", "selected"],
+  ["matching", "hosted-selected"],
+  ["matching", "hosted-one-os"],
+  ["matching", "hosted-contexts"],
   ["matching", "completed-collector-error"],
   ["matching", "empty-selection"],
   ["matching", "linux-prestart"],
@@ -516,18 +519,82 @@ it.each([
           : []
       // AC1: the existing full-census fixture otherwise hides ignored context/probe selections.
       const selection =
-        inputChange === "selected" || inputChange === "completed-collector-error"
-          ? { contexts: ["xtermjs/headless"], ids: ["sgr.bold"] }
-          : inputChange === "linux-prestart" || inputChange.startsWith("linux-poststart")
-            ? { contexts: ["alacritty/linux"], ids: ["sgr.bold"] }
-            : inputChange === "empty-selection"
-              ? { contexts: [], ids: [] }
-              : inputChange === "empty-probes"
-                ? { contexts: ["alacritty/linux"], ids: [] }
-                : undefined
+        inputChange === "hosted-selected"
+          ? { contexts: ["terminal-app/macos", "windows-terminal/windows"], ids: ["sgr.bold"] }
+          : inputChange === "hosted-one-os"
+            ? { contexts: ["com.microsoft.VSCode/macos"], ids: ["sgr.bold"] }
+            : inputChange === "hosted-contexts"
+              ? { contexts: ["terminal-app/macos"] }
+              : inputChange === "selected" || inputChange === "completed-collector-error"
+                ? { contexts: ["xtermjs/headless"], ids: ["sgr.bold"] }
+                : inputChange === "linux-prestart" || inputChange.startsWith("linux-poststart")
+                  ? { contexts: ["alacritty/linux"], ids: ["sgr.bold"] }
+                  : inputChange === "empty-selection"
+                    ? { contexts: [], ids: [] }
+                    : inputChange === "empty-probes"
+                      ? { contexts: ["alacritty/linux"], ids: [] }
+                      : undefined
       const pass = await collectPass(directory, frozenSuite, { runner: "local" }, deferrals, selection)
       expect(pass.mode).toBe(frozenSuite ? "admit" : "development")
       if (frozenSuite) expect(pass.freeze?.id).toBe(frozenSuite)
+      if (selection && inputChange.startsWith("hosted-")) {
+        // AC2: full-census fixtures pin omission, but cannot detect an ignored hosted subset.
+        // Assert actual dispatch fields and original draft custody through the real coordinator.
+        const calls = launcher.mock.calls.filter(([command, args]) => command === "gh" && args?.[0] === "workflow")
+        const expectedOS = inputChange === "hosted-selected" ? ["macos", "windows"] : ["macos"]
+        expect(calls).toHaveLength(expectedOS.length)
+        expect(headless.collectHeadlessRuns).not.toHaveBeenCalled()
+        expect(pass.selection).toEqual(selection)
+        expect(pass.contexts.map((row) => `${row.context.id}/${row.context.os}`)).toEqual(selection.contexts)
+        for (const os of expectedOS) {
+          const contexts = pass.contexts.filter((row) => row.context.os === os)
+          const ids = Object.fromEntries(
+            contexts.map((row) => {
+              const draft = JSON.parse(
+                readFileSync(join(pass.directory, `term-${row.context.id}-${os}.draft.json`), "utf8"),
+              ) as RunDraft
+              const expectedIds = selection.ids ?? versions.probeSuiteSnapshot().probes.term
+              expect(readCollectorSelection(draft.rawReplies)).toEqual({ ids: expectedIds })
+              return [row.context.id, draft.runId]
+            }),
+          )
+          const rows = contexts.map((row) =>
+            os === "windows"
+              ? { id: row.context.id }
+              : {
+                  id: row.context.id,
+                  bundle:
+                    row.context.id === "terminal-app"
+                      ? "/System/Applications/Utilities/Terminal.app"
+                      : "/Applications/Visual Studio Code.app",
+                },
+          )
+          expect(launcher).toHaveBeenCalledWith(
+            "gh",
+            [
+              "workflow",
+              "run",
+              `${os}-measurement.yml`,
+              "--repo",
+              "beorn/terminfo.dev",
+              "--ref",
+              "fixture-collection",
+              "--field",
+              `capture_run_ids=${JSON.stringify(ids)}`,
+              "--field",
+              `context_matrix=${JSON.stringify({ include: rows })}`,
+              "--field",
+              `probe_ids=${JSON.stringify(selection.ids ?? versions.probeSuiteSnapshot().probes.term)}`,
+            ],
+            expect.anything(),
+          )
+        }
+        expect(pass.complete).toBe(false)
+        expect(planner).not.toHaveBeenCalled()
+        expect(writer).not.toHaveBeenCalled()
+        expect(readFileSync(original, "utf8")).toBe(originalBytes)
+        return
+      }
       if (selection) {
         // AC1: a local-only selection must not start either hosted matrix.
         // Checking the headless argv alone missed these unrelated workflow dispatches.
@@ -1071,9 +1138,11 @@ it("fails collection by name and exit 1 for a required null route without admiss
   const macosWorkflowPath = join(root, ".github/workflows/macos-measurement.yml")
   const missingRoutePath = join(directory, "missing-cmux-workflow.yml")
   const workflow = parse(readFileSync(macosWorkflowPath, "utf8"))
-  workflow.jobs["measure-macos"].strategy.matrix.include = workflow.jobs[
-    "measure-macos"
-  ].strategy.matrix.include.filter((row: { id: string }) => row.id !== "cmux")
+  const matrix = JSON.parse(workflow.on.workflow_dispatch.inputs.context_matrix.default) as {
+    include: Array<{ id: string }>
+  }
+  matrix.include = matrix.include.filter((row: { id: string }) => row.id !== "cmux")
+  workflow.on.workflow_dispatch.inputs.context_matrix.default = JSON.stringify(matrix)
   writeFileSync(missingRoutePath, stringify(workflow))
   writeFileSync(
     preload,
