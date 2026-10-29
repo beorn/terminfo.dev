@@ -12,7 +12,11 @@ import {
 } from "node:fs"
 import { homedir, tmpdir } from "node:os"
 import { dirname, join } from "node:path"
-import { type CapturedRunDraft as CollectedProbeRun, type ProbeSuiteManifest, type RunDraft } from "@terminfo/probe-defs"
+import {
+  type CapturedRunDraft as CollectedProbeRun,
+  type ProbeSuiteManifest,
+  type RunDraft,
+} from "@terminfo/probe-defs"
 import { decodeCollectorDraft, decodeExactUtf8 } from "@terminfo/run-parser"
 import { getTrustedSuiteReceipt } from "./serve.ts"
 import {
@@ -147,7 +151,11 @@ export async function stopOwnedDaemon(owned: OwnedDaemon): Promise<void> {
   }
 }
 
-export async function requestDaemonProbe(daemon: DaemonRegistration, request?: DaemonOwnerRequest, ids?: string[]): Promise<Response> {
+export async function requestDaemonProbe(
+  daemon: DaemonRegistration,
+  request?: DaemonOwnerRequest,
+  ids?: string[],
+): Promise<Response> {
   if (!Number.isInteger(daemon.port) || daemon.port < 1 || daemon.port > 65535) {
     throw new Error(`Invalid daemon port: ${daemon.port}`)
   }
@@ -299,7 +307,10 @@ export async function readRetainedDaemonProbeResponse(
   if (decoded.kind === "captured") {
     return {
       kind: decoded.kind,
-      run: { ...decoded.run, rawReplies: { ...decoded.run.rawReplies, "collector.httpResponseSha256": decoded.sha256 } },
+      run: {
+        ...decoded.run,
+        rawReplies: { ...decoded.run.rawReplies, "collector.httpResponseSha256": decoded.sha256 },
+      },
       ...retained,
     }
   }

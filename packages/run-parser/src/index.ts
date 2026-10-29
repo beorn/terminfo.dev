@@ -2054,7 +2054,8 @@ export function decodeCollectorDraft(
     if (attempt?.result === "empty") {
       const refuse = (changed: string): never => {
         throw Object.assign(new Error(`${path}: invalid empty selection at ${changed}`), {
-          kind: "invalid-empty-selection" as const, path: changed,
+          kind: "invalid-empty-selection" as const,
+          path: changed,
         })
       }
       const selection = readCollectorSelection(records)
@@ -2067,21 +2068,33 @@ export function decodeCollectorDraft(
       for (const [key, entry] of Object.entries(intended)) {
         if (key === "kind") {
           if (entry !== "term" && entry !== "lib" && entry !== "mux") refuse(`intendedSubject.${key}`)
-        } else if (!["id", "version", "os", "osVersion", "outerTerminal", "mux", "config", "permissions"].includes(key) ||
-          !(nonempty(entry) || (entry === null && key !== "id" && key !== "version"))) {
+        } else if (
+          !["id", "version", "os", "osVersion", "outerTerminal", "mux", "config", "permissions"].includes(key) ||
+          !(nonempty(entry) || (entry === null && key !== "id" && key !== "version"))
+        ) {
           refuse(`intendedSubject.${key}`)
         }
       }
       for (const key of Object.keys(records)) {
-        if (!["collector.selection", "collector.collectionAttempt", "collector.httpResponseSha256"].includes(key)) refuse(`rawReplies.${key}`)
+        if (!["collector.selection", "collector.collectionAttempt", "collector.httpResponseSha256"].includes(key)) {
+          refuse(`rawReplies.${key}`)
+        }
       }
       const initialized = initializeRunDraft({
-        runId: value.runId as string, sourceRevision: collectorRevision, source: { kind: "live" },
-        intendedSubject: intended as Partial<ProbeSubject>, manifest: manifest as ProbeSuiteManifest & { schemaVersion: 4 },
+        runId: value.runId as string,
+        sourceRevision: collectorRevision,
+        source: { kind: "live" },
+        intendedSubject: intended as Partial<ProbeSubject>,
+        manifest: manifest as ProbeSuiteManifest & { schemaVersion: 4 },
       })
       const difference = initializedDraftDifference(value, { ...initialized, rawReplies: records })
       if (difference) refuse(difference)
-      return { kind: "empty-selection", run: value as unknown as RunDraft, raw, sha256: createHash("sha256").update(raw).digest("hex") }
+      return {
+        kind: "empty-selection",
+        run: value as unknown as RunDraft,
+        raw,
+        sha256: createHash("sha256").update(raw).digest("hex"),
+      }
     }
   }
   const measured = parseRun(path, raw, manifest.catalogIds ?? [], new Map([[manifest.probeHash, manifest]]), {

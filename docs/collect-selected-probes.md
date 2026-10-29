@@ -23,13 +23,13 @@ The printed pass directory contains `pass.json`. Its `selection` names the resol
 For each selected context, the draft records `rawReplies["collector.selection"]` before dispatch.
 Decode that JSON string to read `ids`; decode `rawReplies["collector.collectionAttempt"]` to read the typed outcome.
 
-| Outcome | Meaning |
-| --- | --- |
-| `empty` | Explicit selection scheduled nothing; no start or measured identity is invented. |
-| `started` | Actual collection started; an interrupted record may retain this checkpoint. |
-| `completed` | Collection returned; required review or feature TODOs may remain. |
-| `failed` | Original error retained; a pre-start refusal has no invented start. |
-| `cancelled` | Cancellation retained with its original diagnostic. |
+| Outcome     | Meaning                                                                          |
+| ----------- | -------------------------------------------------------------------------------- |
+| `empty`     | Explicit selection scheduled nothing; no start or measured identity is invented. |
+| `started`   | Actual collection started; an interrupted record may retain this checkpoint.     |
+| `completed` | Collection returned; required review or feature TODOs may remain.                |
+| `failed`    | Original error retained; a pre-start refusal has no invented start.              |
+| `cancelled` | Cancellation retained with its original diagnostic.                              |
 
 Draft initialization retains every catalogue position as an unattempted TODO.
 Only emitted results have a top-level `ProbeResult.attempt` with scope `probe` or `collection`; a selected but unreached TODO remains scope `none`.

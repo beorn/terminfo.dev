@@ -14,7 +14,13 @@ import { createHash } from "node:crypto"
 import { join } from "node:path"
 import { beforeAll, describe, expect, it, vi } from "vitest"
 import { Command } from "@silvery/commander"
-import { ENVIRONMENT_GROUP_IDS, initializeRunDraft, recordCollectorSelection, recordCollectorAttempt } from "@terminfo/probe-defs"
+import {
+  ENVIRONMENT_GROUP_IDS,
+  initializeRunDraft,
+  recordCollectorSelection,
+  recordCollectorAttempt,
+  readCollectorAttempt,
+} from "@terminfo/probe-defs"
 import type { ProbeResult, CapturedRunDraft, ProbeSuiteManifest, RunDraft } from "@terminfo/probe-defs"
 import * as publicCollector from "../packages/terminfo.dev/src/serve.ts"
 import * as probeOutput from "../packages/terminfo.dev/src/probe-output.ts"
@@ -33,7 +39,7 @@ vi.mock("../packages/terminfo.dev/src/serve.ts", () => ({
   listDaemons: vi.fn(),
   startDaemon: vi.fn(),
 }))
-vi.mock("../packages/terminfo.dev/src/daemon-client.ts", async importOriginal => ({
+vi.mock("../packages/terminfo.dev/src/daemon-client.ts", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../packages/terminfo.dev/src/daemon-client.ts")>()),
   requestDaemonProbe: vi.fn(),
   readRetainedDaemonProbeResponse: vi.fn(),
@@ -60,7 +66,10 @@ describe("public test CLI coverage uses the collected manifest", () => {
       const parsed = parse.mock.contexts[0]
       if (!parsed) throw new Error("CLI entry point did not parse its command")
       program = parsed
-      program.commands.find(command => command.name() === "test")!.exitOverride().configureOutput({ writeErr: () => {} })
+      program.commands
+        .find((command) => command.name() === "test")!
+        .exitOverride()
+        .configureOutput({ writeErr: () => {} })
     } finally {
       parse.mockRestore()
     }
@@ -104,10 +113,16 @@ describe("public test CLI coverage uses the collected manifest", () => {
       measuredAt: "2026-10-25T00:00:00.000Z",
       origin: { kind: "collector" },
     }
-    const response = probeIds?.length === 0 ? initializeRunDraft({
-      source: run.source, runId: run.runId, sourceRevision: run.sourceRevision,
-      manifest, intendedSubject: run.intendedSubject,
-    }) : run
+    const response =
+      probeIds?.length === 0
+        ? initializeRunDraft({
+            source: run.source,
+            runId: run.runId,
+            sourceRevision: run.sourceRevision,
+            manifest,
+            intendedSubject: run.intendedSubject,
+          })
+        : run
     if (probeIds?.length === 0) {
       recordCollectorSelection(response, [])
       recordCollectorAttempt(response, { ids: [], result: "empty" })
@@ -122,14 +137,21 @@ describe("public test CLI coverage uses the collected manifest", () => {
     const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true)
     const stderr = vi.spyOn(console, "error").mockImplementation(() => {})
     try {
-      await program.parseAsync(["test", ...(probeIds === undefined ? [] : ["--probe-ids", JSON.stringify(probeIds)]), ...(probeIds?.length === 0 ? ["--json"] : [])], { from: "user" })
+      await program.parseAsync(
+        [
+          "test",
+          ...(probeIds === undefined ? [] : ["--probe-ids", JSON.stringify(probeIds)]),
+          ...(probeIds?.length === 0 ? ["--json"] : []),
+        ],
+        { from: "user" },
+      )
       expect(publicCollector.collectProbeRun).toHaveBeenCalledTimes(1)
       expect(publicCollector.collectProbeRun).toHaveBeenCalledWith(probeIds === undefined ? {} : { ids: probeIds })
       if (probeIds?.length === 0) {
         expect(probeOutput.probeOutputStream).not.toHaveBeenCalled()
         const saved = JSON.parse(String(stdout.mock.calls[0]?.[0])) as RunDraft
         expect(saved.runId).toBe(run.runId)
-        expect(JSON.parse(saved.rawReplies["collector.collectionAttempt"])).toEqual({ ids: [], result: "empty" })
+        expect(readCollectorAttempt(saved.rawReplies)).toEqual({ ids: [], result: "empty" })
         expect(saved).not.toHaveProperty("subject")
         expect(saved).not.toHaveProperty("measuredAt")
         expect(saved).not.toHaveProperty("sealedAt")
@@ -147,22 +169,46 @@ describe("public test CLI coverage uses the collected manifest", () => {
   // AC1/AC5: inline argument coverage cannot detect a named-daemon filter being silently ignored.
   it("forwards explicit empty IDs to a named daemon and writes the retained unmeasured draft", async () => {
     const directory = mkdtempSync(join(tmpdir(), "terminfo-cli-empty-"))
-    const manifest = { schemaVersion: 4 as const, probeHash: "abcdef123456", sourceRevision: "a".repeat(40),
-      generatedAt: "2026-10-25T00:00:00.000Z", adapterVersion: "test", catalogIds,
-      probes: { term: [], lib: [], mux: [] } }
-    const run = initializeRunDraft({ source: { kind: "live" }, runId: "named-empty-cli", manifest,
-      sourceRevision: manifest.sourceRevision, intendedSubject: { kind: "term", id: "kitty" } })
+    const manifest = {
+      schemaVersion: 4 as const,
+      probeHash: "abcdef123456",
+      sourceRevision: "a".repeat(40),
+      generatedAt: "2026-10-25T00:00:00.000Z",
+      adapterVersion: "test",
+      catalogIds,
+      probes: { term: [], lib: [], mux: [] },
+    }
+    const run = initializeRunDraft({
+      source: { kind: "live" },
+      runId: "named-empty-cli",
+      manifest,
+      sourceRevision: manifest.sourceRevision,
+      intendedSubject: { kind: "term", id: "kitty" },
+    })
     recordCollectorSelection(run, [])
     recordCollectorAttempt(run, { ids: [], result: "empty" })
     const raw = JSON.stringify(run)
     const path = join(directory, "original-response")
     writeFileSync(path, raw)
-    const daemon = { pid: 22, port: 43210, runId: "daemon", token: "a".repeat(64), terminal: "kitty", terminalVersion: "1",
-      os: "linux", osVersion: "fixture", started: "2026-10-25T00:00:00.000Z" }
+    const daemon = {
+      pid: 22,
+      port: 43210,
+      runId: "daemon",
+      token: "a".repeat(64),
+      terminal: "kitty",
+      terminalVersion: "1",
+      os: "linux",
+      osVersion: "fixture",
+      started: "2026-10-25T00:00:00.000Z",
+    }
     vi.mocked(publicCollector.listDaemons).mockReturnValue([daemon])
     vi.mocked(daemonClient.requestDaemonProbe).mockClear().mockResolvedValue(new Response(raw))
-    vi.mocked(daemonClient.readRetainedDaemonProbeResponse).mockResolvedValue({ kind: "empty-selection", run, path,
-      sha256: createHash("sha256").update(raw).digest("hex") })
+    vi.mocked(daemonClient.readRetainedDaemonProbeResponse).mockResolvedValue({
+      kind: "empty-selection",
+      run,
+      path,
+      sha256: createHash("sha256").update(raw).digest("hex"),
+    })
     vi.mocked(probeOutput.probeOutputStream).mockClear()
     const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true)
     const stderr = vi.spyOn(console, "error").mockImplementation(() => {})
@@ -172,7 +218,11 @@ describe("public test CLI coverage uses the collected manifest", () => {
       expect(stdout).toHaveBeenCalledWith(raw)
       expect(probeOutput.probeOutputStream).not.toHaveBeenCalled()
       expect(stderr.mock.calls.flat().join(" ")).toContain("no probes executed")
-    } finally { stdout.mockRestore(); stderr.mockRestore(); rmSync(directory, { recursive: true, force: true }) }
+    } finally {
+      stdout.mockRestore()
+      stderr.mockRestore()
+      rmSync(directory, { recursive: true, force: true })
+    }
   })
   it("passes exact probe IDs into the existing daemon startup selection input", async () => {
     const before = process.env.TERMINFO_PROBE_IDS

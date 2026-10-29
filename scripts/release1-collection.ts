@@ -469,7 +469,9 @@ export async function collectPass(
 ): Promise<CollectionPass> {
   const resolvedIds = selection?.ids === undefined ? undefined : resolveProbeIds(selection.ids)
   if (resolvedIds?.result === "invalid") {
-    throw new Error(`Unknown or duplicate probe IDs: ${[...resolvedIds.unknownIds, ...resolvedIds.duplicateIds].join(", ")}`)
+    throw new Error(
+      `Unknown or duplicate probe IDs: ${[...resolvedIds.unknownIds, ...resolvedIds.duplicateIds].join(", ")}`,
+    )
   }
   const probeIds = resolvedIds?.probes.map((probe) => probe.id)
   const snapshot = probeSuiteSnapshot()
@@ -654,8 +656,13 @@ export async function collectPass(
         row.directory = output
         mkdirSync(output, { recursive: true })
         runChild(
-          ["bash", "scripts/linux-container-run.sh", ...linuxLiveArgs(context.kind, context.id),
-            ...(probeIds === undefined ? [] : ["--ids", probeIds.join(",")]), output],
+          [
+            "bash",
+            "scripts/linux-container-run.sh",
+            ...linuxLiveArgs(context.kind, context.id),
+            ...(probeIds === undefined ? [] : ["--ids", probeIds.join(",")]),
+            output,
+          ],
           `${labelOf(context)} Linux collection`,
           {
             stdout: join(output, "launcher.stdout.log"),
@@ -809,15 +816,26 @@ export async function collectPass(
             // Bind failure custody only; canonical report/admission still validates the original bytes.
             const actual = parseJsonStrict(actualPath, readFileSync(actualPath, "utf8")) as Partial<RunDraft> | null
             const ids = [...(probeIds ?? snapshot.probes[context.kind])]
-            if (!actual || actual.schemaVersion !== 4 || actual.source?.kind !== "live" ||
-              actual.runId !== handed.draft.runId || actual.sourceRevision !== sourceRevision ||
-              actual.probeHash !== snapshot.probeHash || actual.suiteId !== snapshot.probeHash || !actual.rawReplies) {
+            if (
+              !actual ||
+              actual.schemaVersion !== 4 ||
+              actual.source?.kind !== "live" ||
+              actual.runId !== handed.draft.runId ||
+              actual.sourceRevision !== sourceRevision ||
+              actual.probeHash !== snapshot.probeHash ||
+              actual.suiteId !== snapshot.probeHash ||
+              !actual.rawReplies
+            ) {
               throw new Error(`Linux failure output differs from delegated identity: ${actualPath}`)
             }
             const actualSelection = readCollectorSelection(actual.rawReplies)
             const actualAttempt = readCollectorAttempt(actual.rawReplies)
-            if (!actualSelection || actualSelection.ids.join("\n") !== ids.join("\n") ||
-              !actualAttempt || actualAttempt.ids.join("\n") !== ids.join("\n")) {
+            if (
+              !actualSelection ||
+              actualSelection.ids.join("\n") !== ids.join("\n") ||
+              !actualAttempt ||
+              actualAttempt.ids.join("\n") !== ids.join("\n")
+            ) {
               throw new Error(`Linux failure output differs from delegated selection/attempt: ${actualPath}`)
             }
             row.status = actualAttempt.startedAt ? "failed" : "not-started"
@@ -1283,8 +1301,7 @@ if (import.meta.main) {
     } else if (argv[index] === "--probe-ids") {
       probeIdsInput = argv[++index]
       if (probeIdsInput === undefined || probeIdsInput.startsWith("--")) usage()
-    }
-    else if (argv[index] === "--output") {
+    } else if (argv[index] === "--output") {
       outputDirectory = argv[++index]
       if (!outputDirectory || outputDirectory.startsWith("--")) usage()
     } else if (argv[index] === "--frozen-suite") {
@@ -1357,14 +1374,20 @@ if (import.meta.main) {
           ...(ownedAppRemoveStage ? { removeStage: true } : {}),
         },
         deferrals,
-        contextsInput === undefined && probeIdsInput === undefined ? undefined : {
-          ...(contextsInput === undefined ? {} : {
-            contexts: collectorIds(parseJsonStrict("--contexts", contextsInput), "--contexts"),
-          }),
-          ...(probeIdsInput === undefined ? {} : {
-            ids: collectorIds(parseJsonStrict("--probe-ids", probeIdsInput), "--probe-ids"),
-          }),
-        },
+        contextsInput === undefined && probeIdsInput === undefined
+          ? undefined
+          : {
+              ...(contextsInput === undefined
+                ? {}
+                : {
+                    contexts: collectorIds(parseJsonStrict("--contexts", contextsInput), "--contexts"),
+                  }),
+              ...(probeIdsInput === undefined
+                ? {}
+                : {
+                    ids: collectorIds(parseJsonStrict("--probe-ids", probeIdsInput), "--probe-ids"),
+                  }),
+            },
       )
       console.log(
         `${pass.mode === "admit" ? "Final collection" : "Private development"} pass: ${pass.directory}; cohort ${pass.complete ? "complete" : "incomplete"}`,
@@ -1377,7 +1400,8 @@ if (import.meta.main) {
       for (const error of pass.errors) console.error(error)
       if (
         ((!pass.selection || pass.mode === "admit") && !pass.complete && pass.attempt?.result !== "empty") ||
-        pass.errors.length || pass.contexts.some((row) => row.status === "failed" || row.error)
+        pass.errors.length ||
+        pass.contexts.some((row) => row.status === "failed" || row.error)
       ) {
         process.exitCode = 1
       }
@@ -1386,7 +1410,9 @@ if (import.meta.main) {
       process.exitCode = 1
     }
   } else {
-    if (development || outputDirectory || deferralsPath || contextsInput !== undefined || probeIdsInput !== undefined) usage()
+    if (development || outputDirectory || deferralsPath || contextsInput !== undefined || probeIdsInput !== undefined) {
+      usage()
+    }
     if (!admit) {
       if (runs.length > 0) usage()
       plan = true

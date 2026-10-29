@@ -127,11 +127,13 @@ async function collectOne(name: string, directory: string): Promise<string> {
   })
   const draftPath = process.env.TERMINFO_DRAFT_PATH ?? join(directory, `${name}-${draft.runId}.draft.json`)
   const delegated = process.env.TERMINFO_DRAFT_PATH
-    ? JSON.parse(readFileSync(draftPath, "utf8")) as RunDraft
+    ? (JSON.parse(readFileSync(draftPath, "utf8")) as RunDraft)
     : undefined
   const ids = readCollectorSelection(delegated?.rawReplies ?? {})?.ids ?? [...suite.probes.lib]
   const resolved = resolveProbeIds(ids)
-  if (resolved.result === "invalid") throw new Error(`Unknown probe: ${resolved.unknownIds[0] ?? resolved.duplicateIds[0]}`)
+  if (resolved.result === "invalid") {
+    throw new Error(`Unknown probe: ${resolved.unknownIds[0] ?? resolved.duplicateIds[0]}`)
+  }
   recordCollectorSelection(draft, ids)
   const initialBytes = `${JSON.stringify(draft, null, 2)}\n`
   if (process.env.TERMINFO_DRAFT_PATH) {
@@ -283,7 +285,9 @@ export async function collectHeadlessRuns(
   const suite = trustedSuite()
   const ids = probeIds === undefined ? [...suite.probes.lib] : [...probeIds]
   const resolved = resolveProbeIds(ids)
-  if (resolved.result === "invalid") throw new Error(`Unknown probe: ${resolved.unknownIds[0] ?? resolved.duplicateIds[0]}`)
+  if (resolved.result === "invalid") {
+    throw new Error(`Unknown probe: ${resolved.unknownIds[0] ?? resolved.duplicateIds[0]}`)
+  }
   const script = realpathSync(fileURLToPath(import.meta.url))
   if (!script.endsWith("/packages/probes/collect-headless.ts")) {
     throw new Error(`Packaged CLI has no local headless collector source at ${script}; install the source workspaces`)
@@ -335,8 +339,8 @@ export async function collectHeadlessRuns(
         throw new Error(`Worker ${name} changed delegated run identity`)
       }
       const previousAttempt = readCollectorAttempt(retained.rawReplies)
-      const startedAt = previousAttempt?.startedAt ??
-        (retained.rawReplies["collector.prerequisite"] ? undefined : workerStartedAt)
+      const startedAt =
+        previousAttempt?.startedAt ?? (retained.rawReplies["collector.prerequisite"] ? undefined : workerStartedAt)
       if (!startedAt && result === "failed" && !retained.rawReplies["collector.prerequisite"]) {
         retained.rawReplies["collector.prerequisite"] = scrubbed
         for (const row of retained.results) {

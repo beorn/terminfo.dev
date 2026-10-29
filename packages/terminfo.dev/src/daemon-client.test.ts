@@ -392,14 +392,19 @@ it("refuses the old boolean daemon payload instead of upgrading it to v2 observa
 // AC3: measured-capture tests cannot expose an initialized empty draft being forced into measured identity.
 it("retains exact empty selection HTTP bytes as an unmeasured draft", async () => {
   root = mkdtempSync(join(tmpdir(), "terminfo-owned-empty-"))
-  const draft = initializeRunDraft({ source: { kind: "live" }, runId: "empty-selection-fixture",
-    sourceRevision: trustedReceipt.collectorRevision, manifest: trustedReceipt.manifest,
-    intendedSubject: { kind: "term", id: "kitty" } })
+  const draft = initializeRunDraft({
+    source: { kind: "live" },
+    runId: "empty-selection-fixture",
+    sourceRevision: trustedReceipt.collectorRevision,
+    manifest: trustedReceipt.manifest,
+    intendedSubject: { kind: "term", id: "kitty" },
+  })
   recordCollectorSelection(draft, [])
   recordCollectorAttempt(draft, { ids: [], result: "empty" })
   const raw = `${JSON.stringify(draft)}\r\n`
   const retained = await readRetainedDaemonProbeResponse(new Response(raw), {
-    directory: join(root, "http-responses"), receipt: trustedReceipt,
+    directory: join(root, "http-responses"),
+    receipt: trustedReceipt,
   })
   expect(retained.kind).toBe("empty-selection")
   expect(retained.run).toEqual(draft)
@@ -407,7 +412,7 @@ it("retains exact empty selection HTTP bytes as an unmeasured draft", async () =
   expect(retained.sha256).toBe(createHash("sha256").update(raw).digest("hex"))
   expect(retained.run).not.toHaveProperty("subject")
   expect(retained.run).not.toHaveProperty("measuredAt")
-  expect(retained.run.results.every(row => row.status === "test-todo" && row.attempt.scope === "none")).toBe(true)
+  expect(retained.run.results.every((row) => row.status === "test-todo" && row.attempt.scope === "none")).toBe(true)
 })
 
 it("retains exact daemon HTTP bytes and refuses invalid UTF-8 before parsing", async () => {

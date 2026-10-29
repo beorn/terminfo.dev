@@ -2,7 +2,10 @@
 
 import { collectHeadlessRuns } from "../../probes/collect-headless.ts"
 
-export async function runTermlessProbes(selectors: string[], opts: { force?: boolean; probeIds?: string[] }): Promise<void> {
+export async function runTermlessProbes(
+  selectors: string[],
+  opts: { force?: boolean; probeIds?: string[] },
+): Promise<void> {
   const collection = await collectHeadlessRuns(selectors, undefined, undefined, opts.probeIds)
   console.log(`Headless raw runs: ${collection.runs.length}; directory: ${collection.directory}`)
   if (collection.failures.length) {

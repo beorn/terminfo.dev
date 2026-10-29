@@ -45,7 +45,9 @@ it("resolves explicit probe IDs once in catalogue order with typed invalid and e
   expect(resolveProbeIds([second.id, first.id])).toEqual({ result: "resolved", probes: [first, second] })
   expect(resolveProbeIds([])).toEqual({ result: "empty", probes: [] })
   expect(resolveProbeIds([first.id, "unknown", first.id, "unknown"])).toEqual({
-    result: "invalid", unknownIds: ["unknown"], duplicateIds: [first.id, "unknown"],
+    result: "invalid",
+    unknownIds: ["unknown"],
+    duplicateIds: [first.id, "unknown"],
   })
 })
 

@@ -43,7 +43,15 @@ async function runProbes(out?: NodeJS.WriteStream, ids?: string[]) {
   const { collectProbeRun, getTrustedSuiteReceipt } = await import("./serve.ts")
   const run = await collectProbeRun({ ...(out && { out }), ...(ids !== undefined && { ids }) })
   const receipt = getTrustedSuiteReceipt()
-  return { ...decodeCollectorDraft("inline collector", `${JSON.stringify(run)}\n`, receipt.manifest, receipt.collectorRevision), receipt }
+  return {
+    ...decodeCollectorDraft(
+      "inline collector",
+      `${JSON.stringify(run)}\n`,
+      receipt.manifest,
+      receipt.collectorRevision,
+    ),
+    receipt,
+  }
 }
 
 function outputPath(path: string): string {
@@ -134,7 +142,9 @@ program
           const raw = readFileSync(retained.path, "utf8")
           if (opts.output) writeFileSync(opts.output, raw, { flag: "wx", mode: 0o600 })
           else process.stdout.write(raw)
-          console.error(`Empty selection draft ${retained.run.runId}${opts.output ? ` saved to ${opts.output}` : ""}; SHA256 ${retained.sha256}; no probes executed`)
+          console.error(
+            `Empty selection draft ${retained.run.runId}${opts.output ? ` saved to ${opts.output}` : ""}; SHA256 ${retained.sha256}; no probes executed`,
+          )
           return
         }
         const captured = finalizeCollectedDraft(retained.run)
@@ -147,7 +157,9 @@ program
           receipt.manifest,
           receipt.collectorRevision,
         )
-        if ("kind" in decoded && decoded.kind === "empty-selection") throw new Error("Empty selection where a capture was required")
+        if ("kind" in decoded && decoded.kind === "empty-selection") {
+          throw new Error("Empty selection where a capture was required")
+        }
         if (opts.output) {
           writeFileSync(opts.output, decoded.raw, { flag: "wx", mode: 0o600 })
           console.error(
@@ -190,7 +202,9 @@ program
         collected.receipt.manifest,
         collected.receipt.collectorRevision,
       )
-      if ("kind" in decoded && decoded.kind === "empty-selection") throw new Error("Empty selection where a capture was required")
+      if ("kind" in decoded && decoded.kind === "empty-selection") {
+        throw new Error("Empty selection where a capture was required")
+      }
       if (opts.output) {
         writeFileSync(opts.output, raw, { flag: "wx", mode: 0o600 })
         console.error(

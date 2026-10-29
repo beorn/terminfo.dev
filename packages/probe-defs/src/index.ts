@@ -144,7 +144,9 @@ export const ALL_PROBES = [
 ]
 
 /** Resolve execution inputs without changing the full catalogue or suite membership. */
-export function resolveProbeIds(ids: readonly string[]):
+export function resolveProbeIds(
+  ids: readonly string[],
+):
   | { result: "resolved" | "empty"; probes: import("./types.ts").ProbeDefinition[] }
   | { result: "invalid"; unknownIds: string[]; duplicateIds: string[] } {
   const known = new Set(ALL_PROBES.map((probe) => probe.id))

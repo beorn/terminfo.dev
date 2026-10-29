@@ -1071,7 +1071,9 @@ export function startDaemon(port = 0): void {
     ids = collectorIds(value, "TERMINFO_PROBE_IDS")
     const resolved = resolveProbeIds(ids)
     if (resolved.result === "invalid") {
-      if (resolved.unknownIds.length) throw new Error(`Unknown or inapplicable TERMINFO_PROBE_IDS: ${JSON.stringify(resolved.unknownIds)}`)
+      if (resolved.unknownIds.length) {
+        throw new Error(`Unknown or inapplicable TERMINFO_PROBE_IDS: ${JSON.stringify(resolved.unknownIds)}`)
+      }
       throw new Error(`Duplicate TERMINFO_PROBE_IDS: ${JSON.stringify(ids)}`)
     }
   }
@@ -1156,7 +1158,9 @@ export function startDaemon(port = 0): void {
           res.end(JSON.stringify({ error: "Probe collection requires GET or POST" }))
           return
         }
-        console.log(s.dim(`[${new Date().toISOString()}] Running ${requestedIds?.length ?? ALL_PROBES.length} probes...`))
+        console.log(
+          s.dim(`[${new Date().toISOString()}] Running ${requestedIds?.length ?? ALL_PROBES.length} probes...`),
+        )
         const run = await collectProbeRun({
           ...(requestedIds !== undefined && { ids: requestedIds }),
           terminalAppOwner,
@@ -1164,9 +1168,11 @@ export function startDaemon(port = 0): void {
           expectedLaunchRunId: runId,
         })
         console.log(
-          s.dim(requestedIds?.length === 0
-            ? `Empty selection; draft ${run.runId} retained; no probes executed`
-            : `Collected selected probe results; draft ${run.runId} awaits final writer`),
+          s.dim(
+            requestedIds?.length === 0
+              ? `Empty selection; draft ${run.runId} retained; no probes executed`
+              : `Collected selected probe results; draft ${run.runId} awaits final writer`,
+          ),
         )
         res.end(JSON.stringify(run))
         return

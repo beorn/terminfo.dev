@@ -118,14 +118,17 @@ it.each(["tmux", "screen"])(
   },
 )
 
-
 // AC1/AC3: the existing capture journeys cannot detect an empty request doing TTY work,
 // lost intent before a prerequisite refusal, or cancellation being reported as cell failures.
 it.each(["empty", "prerequisite", "completed", "cancelled", "failed", "unknown"])(
   "retains native selection and typed %s outcome through its existing draft custody",
   (mode) => {
     home = mkdtempSync(join(tmpdir(), "terminfo-serve-selection-"))
-    const result = spawnSync(process.execPath, ["-e", String.raw`
+    const result = spawnSync(
+      process.execPath,
+      [
+        "-e",
+        String.raw`
       import { mock } from "bun:test"
       import assert from "node:assert/strict"
       import { readFileSync } from "node:fs"
@@ -202,11 +205,25 @@ it.each(["empty", "prerequisite", "completed", "cancelled", "failed", "unknown"]
       if (mode === "empty" || mode === "cancelled" || mode === "prerequisite") {
         assert.ok(draft.results.every(row=>row.attempt.scope==="none"))
       }
-    `], { cwd: packageRoot, encoding: "utf8", timeout: 10_000,
-      env: { ...process.env, HOME: home, NATIVE_ATTEMPT_FIXTURE: mode,
-        TERMINFO_CAPTURE_DIRECTORY: "", TERMINFO_CLIPBOARD_FIXTURE_RECEIPT: "", TERMINFO_DISPOSABLE_RECEIPT: "",
-        TERMINFO_RUNTIME_PROVENANCE: "", TERMINFO_TARGET_ID: "", TERMINFO_TARGET_VERSION: "" }
-    })
+    `,
+      ],
+      {
+        cwd: packageRoot,
+        encoding: "utf8",
+        timeout: 10_000,
+        env: {
+          ...process.env,
+          HOME: home,
+          NATIVE_ATTEMPT_FIXTURE: mode,
+          TERMINFO_CAPTURE_DIRECTORY: "",
+          TERMINFO_CLIPBOARD_FIXTURE_RECEIPT: "",
+          TERMINFO_DISPOSABLE_RECEIPT: "",
+          TERMINFO_RUNTIME_PROVENANCE: "",
+          TERMINFO_TARGET_ID: "",
+          TERMINFO_TARGET_VERSION: "",
+        },
+      },
+    )
     expect(result.status, result.stderr).toBe(0)
   },
 )
@@ -1567,13 +1584,19 @@ describe("private finite daemon startup", () => {
       // AC1: explicit request selection overrides startup selection, including [] rather than full.
       for (const ids of [[], ["cursor.show"]]) {
         const selected = await fetch(`http://127.0.0.1:${registration.port}/probe`, {
-          method: "POST", headers: { Authorization: `Bearer ${registration.token}`, "Content-Type": "application/json" },
+          method: "POST",
+          headers: { Authorization: `Bearer ${registration.token}`, "Content-Type": "application/json" },
           body: JSON.stringify({ ids }),
         })
         expect(selected.status).toBe(200)
-        const result = await selected.json() as { rawReplies: { selected?: string[]; "collector.collectionAttempt": string } }
+        const result = (await selected.json()) as {
+          rawReplies: { selected?: string[]; "collector.collectionAttempt": string }
+        }
         expect(result.rawReplies.selected).toEqual(ids.length === 0 ? undefined : ids)
-        expect(JSON.parse(result.rawReplies["collector.collectionAttempt"])).toMatchObject({ ids, result: ids.length === 0 ? "empty" : "completed" })
+        expect(JSON.parse(result.rawReplies["collector.collectionAttempt"])).toMatchObject({
+          ids,
+          result: ids.length === 0 ? "empty" : "completed",
+        })
       }
     },
   )
