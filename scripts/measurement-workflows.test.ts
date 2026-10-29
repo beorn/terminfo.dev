@@ -21,7 +21,7 @@ const root = join(import.meta.dirname, "..")
 
 // Startup evidence must precede readiness, survive early errors and append collector stderr.
 // Existing argv/YAML tests never execute the generated shell, so they missed the empty archive.
-test.each(["waiting", "bad-receipt", "collector"] as const)(
+test.each(["waiting", "bad-receipt", "collector", "selected"] as const)(
   "hosted command preserves startup evidence and PTY stdout through %s",
   (scenario) => {
     const workflow = parse(readFileSync(join(root, ".github/workflows/macos-measurement.yml"), "utf8"))
@@ -30,7 +30,9 @@ test.each(["waiting", "bad-receipt", "collector"] as const)(
     // The runner parses the whole step before reaching any extracted caller (30392).
     const syntax = spawnSync("/bin/bash", ["-n"], { input: collect, encoding: "utf8" })
     expect(syntax.status, syntax.stderr).toBe(0)
-    const producer = collect.match(/cat > "\$COMMAND_PATH" <<SCRIPT\n[\s\S]*?\nSCRIPT\n/)
+    const producer = collect.match(
+      /(?:PROBE_IDS_EXPORT=""\n[\s\S]*?)?cat > "\$COMMAND_PATH" <<SCRIPT\n[\s\S]*?\nSCRIPT\n/,
+    )
     expect(producer, "production command producer exists").not.toBeNull()
     const directory = mkdtempSync(join(tmpdir(), "hosted-entry-"))
     const out = join(directory, "artifacts")
@@ -40,7 +42,7 @@ test.each(["waiting", "bad-receipt", "collector"] as const)(
     try {
       writeFileSync(
         collector,
-        "printf 'probe-stdout\\n'\nprintf 'collector-first\\n' >&2\nprintf 'collector-second\\n' >&2\nexit 7\n",
+        `printf '%s\\0' "$@" "\${TERMINFO_PROBE_IDS-unset}" "$TERMINFO_CAPTURE_RUN_ID" "$TERMINFO_RUN_ID" > ${shellQuote(join(out, "invocation"))}\nprintf 'probe-stdout\\n'\nprintf 'collector-first\\n' >&2\nprintf 'collector-second\\n' >&2\nexit 7\n`,
       )
       const generated = spawnSync("/bin/bash", ["-c", producer![0]], {
         encoding: "utf8",
@@ -53,6 +55,8 @@ test.each(["waiting", "bad-receipt", "collector"] as const)(
           COLLECTOR_BUN: "/bin/bash",
           COLLECTOR: collector,
           TARGET_VERSION_EXPORT: "",
+          PROBE_IDS: scenario === "selected" ? '["cursor-position","device-attributes"]' : "null",
+          CAPTURE_RUN_ID: "b".repeat(32),
         },
       })
       expect(generated.status, generated.stderr).toBe(0)
@@ -60,13 +64,15 @@ test.each(["waiting", "bad-receipt", "collector"] as const)(
         writeFileSync(join(out, "collector-ready"), "")
         writeFileSync(
           join(out, "host-measured.json"),
-          JSON.stringify(scenario === "collector" ? { runId: "a".repeat(32) } : {}),
+          JSON.stringify(scenario === "collector" || scenario === "selected" ? { runId: "a".repeat(32) } : {}),
         )
       }
+      const commandEnv = { ...process.env }
+      delete commandEnv.TERMINFO_PROBE_IDS
       const result = spawnSync(
         "/bin/bash",
         ["-c", 'sleep() { printf "early-wait-error\\n" >&2; }; export -f sleep; /bin/bash "$1"', "fixture", command],
-        { encoding: "utf8" },
+        { encoding: "utf8", env: commandEnv },
       )
       const log = readFileSync(join(out, "collector.log"), "utf8")
       expect(log).toMatch(/phase=entry.*utc=.*pid=.*tty=/)
@@ -88,6 +94,14 @@ test.each(["waiting", "bad-receipt", "collector"] as const)(
           expect(log).toContain("phase=collector-exited status=7")
           expect(readFileSync(join(out, "collector-exit"), "utf8")).toBe("7\n")
           expect(result.stdout).toBe("probe-stdout\n")
+          expect(readFileSync(join(out, "invocation"), "utf8").split("\0").slice(0, -1)).toEqual([
+            "test",
+            "--output",
+            join(out, "run.json"),
+            scenario === "selected" ? '["cursor-position","device-attributes"]' : "unset",
+            "b".repeat(32),
+            "a".repeat(32),
+          ])
         }
       }
     } finally {
@@ -716,6 +730,71 @@ test("hosted editor caller writes the TTY command before launch and retains no i
   expect(closed).toEqual([window])
   expect(events.at(-1)).toBe("close")
 })
+
+// Selected hosted collection must use one matrix-data owner and omit empty work before expansion.
+// Existing step-condition fixtures neither read dispatch defaults nor check the job-level input wiring.
+test.each(["macos", "windows"])("%s workflow keeps the full matrix in its dispatch default", (os) => {
+  const workflow = parse(readFileSync(join(root, `.github/workflows/${os}-measurement.yml`), "utf8"))
+  const inputs = workflow.on.workflow_dispatch.inputs
+  const job = workflow.jobs[`measure-${os}`]
+  expect(inputs.context_matrix).toMatchObject({ type: "string", required: false })
+  expect(inputs.probe_ids).toMatchObject({ type: "string", required: false, default: "null" })
+  const matrix = JSON.parse(inputs.context_matrix.default)
+  expect(Object.keys(matrix)).toEqual(["include"])
+  if (os === "windows")
+    expect(matrix.include).toEqual([{ id: "windows-terminal" }, { id: "alacritty" }, { id: "wezterm" }])
+  else {
+    expect(matrix.include).toHaveLength(9)
+    expect(matrix.include.every((row: { id: string; bundle: string }) => row.id && row.bundle)).toBe(true)
+  }
+  expect(job.strategy.matrix).toBe("${{ fromJSON(inputs.context_matrix) }}")
+  expect(job.if).toBe(
+    "${{ toJSON(fromJSON(inputs.context_matrix).include) != '[]' && toJSON(fromJSON(inputs.probe_ids)) != '[]' }}",
+  )
+  expect(job.env.PROBE_IDS).toBe("${{ inputs.probe_ids }}")
+})
+
+// The native Windows child is PowerShell. Execute its actual bash producer, then inspect the
+// generated child; Linux does not prove PowerShell execution or hosted scheduler behavior.
+test.each(["null", '["cursor-position","device-attributes"]'])(
+  "Windows collector producer carries probe input %s without changing argv or run IDs",
+  (probeIds) => {
+    const workflow = parse(readFileSync(join(root, ".github/workflows/windows-measurement.yml"), "utf8"))
+    const collect = workflow.jobs["measure-windows"].steps.find((step: { id?: string }) => step.id === "collect")
+      .run as string
+    const producer = collect.match(/(?:PROBE_IDS_EXPORT=""\n[\s\S]*?)?cat > "\$COMMAND_PATH" <<PS1\n[\s\S]*?\nPS1\n/)
+    expect(producer, "production Windows command producer exists").not.toBeNull()
+    const directory = mkdtempSync(join(tmpdir(), "hosted-windows-entry-"))
+    const command = join(directory, "collect.ps1")
+    try {
+      const generated = spawnSync("/bin/bash", ["-c", producer![0]], {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          COMMAND_PATH: command,
+          APP_DIR: "/stub/app",
+          BUN_DIR: "/stub/bin",
+          NODE_DIR: "/stub/node",
+          COLLECTOR_BUN: "/stub/bun",
+          COLLECTOR: "/stub/terminfo.mjs",
+          WIN_OUT: "/stub/out",
+          WIN_EXECUTABLE: "/stub/app/terminal.exe",
+          CAPTURE_RUN_ID: "b".repeat(32),
+          PROBE_IDS: probeIds,
+        },
+      })
+      expect(generated.status, generated.stderr).toBe(0)
+      const child = readFileSync(command, "utf8")
+      if (probeIds === "null") expect(child).not.toContain("$env:TERMINFO_PROBE_IDS")
+      else expect(child).toContain(`$env:TERMINFO_PROBE_IDS = '${probeIds}'`)
+      expect(child).toContain(`$env:TERMINFO_CAPTURE_RUN_ID = "${"b".repeat(32)}"`)
+      expect(child).toContain("$env:TERMINFO_RUN_ID = $receipt.runId")
+      expect(child).toContain('& "/stub/bun" "/stub/terminfo.mjs" test --output "/stub/out\\run.json" *>&1')
+    } finally {
+      rmSync(directory, { recursive: true, force: true })
+    }
+  },
+)
 
 // serve.ts passes `process.env.TERMINFO_RUN_ID ?? ""` into createOwnedTerminal, which rejects anything
 // that is not 32 lowercase hex; the run id exists only after the receipt is emitted, so the workflow must

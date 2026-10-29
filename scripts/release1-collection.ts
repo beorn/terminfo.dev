@@ -201,23 +201,27 @@ const localOwnedAppRow = (id: string): CollectionContext => ({
 })
 
 /** Route membership comes from the existing workflow matrix, not a second list of app IDs. */
-function hostedAppIds(os: "macos" | "windows"): ReadonlySet<string> {
+function hostedAppRows(os: "macos" | "windows"): Array<{ id: string; [key: string]: unknown }> {
   const path = join(ROOT, ".github", "workflows", `${os}-measurement.yml`)
   const workflow = parse(readFileSync(path, "utf8")) as {
-    jobs?: Record<string, { strategy?: { matrix?: { include?: Array<{ id?: unknown }> } } }>
+    on?: { workflow_dispatch?: { inputs?: { context_matrix?: { default?: unknown } } } }
   }
-  const rows = workflow?.jobs?.[`measure-${os}`]?.strategy?.matrix?.include
+  const declared = workflow?.on?.workflow_dispatch?.inputs?.context_matrix?.default
+  if (typeof declared !== "string") throw new Error(`${path}: expected context_matrix JSON string default`)
+  const matrix = parseJsonStrict(`${path}: context_matrix default`, declared) as { include?: unknown }
+  const rows = matrix?.include
   if (!Array.isArray(rows) || rows.length === 0) throw new Error(`${path}: expected nonempty measure-${os} app matrix`)
-  const ids = new Set<string>()
   for (const row of rows) {
     if (typeof row?.id !== "string" || row.id.length === 0) throw new Error(`${path}: matrix app is missing its id`)
-    ids.add(row.id)
   }
-  return ids
+  return rows
 }
 
 function collectionRoutes(expected: readonly CensusContext[]): CollectionContext[] {
-  const hosted = { macos: hostedAppIds("macos"), windows: hostedAppIds("windows") }
+  const hosted = {
+    macos: new Set(hostedAppRows("macos").map((row) => row.id)),
+    windows: new Set(hostedAppRows("windows").map((row) => row.id)),
+  }
   const contexts: CollectionContext[] = []
   for (const { terminalId: id, os, kind } of expected) {
     if (kind === "lib") continue
@@ -642,6 +646,7 @@ export async function collectPass(
     inputSha256[join(ROOT, "bun.lock")] as string,
     pass.errors,
     drafts,
+    selection ? (probeIds ?? snapshot.probes.term) : undefined,
   )
   for (const context of census) {
     const row: CollectionPass["contexts"][number] = { context, status: "not-started" }
@@ -957,6 +962,7 @@ function collectHostedArtifacts(
   lockSha256: string,
   errors: string[],
   drafts: ReadonlyMap<string, { draft: RunDraft; path: string }>,
+  probeIds?: readonly string[],
 ): Map<string, { directory: string; path?: string; error?: string }> {
   const results = new Map<string, { directory: string; path?: string; error?: string }>()
   if (!census.some((context) => context.route === "hosted-workflow")) return results
@@ -989,7 +995,7 @@ function collectHostedArtifacts(
     return results
   }
   const dispatched: Array<{ os: string; contexts: CollectionContext[]; output: string; runId: string }> = []
-  for (const os of ["macos", "windows"]) {
+  for (const os of ["macos", "windows"] as const) {
     const contexts = census.filter((row) => row.route === "hosted-workflow" && row.os === os)
     if (contexts.length === 0) continue
     const output = join(root, os)
@@ -1018,6 +1024,16 @@ function collectHostedArtifacts(
                 }),
               ),
             )}`,
+            ...(probeIds === undefined
+              ? []
+              : [
+                  "--field",
+                  `context_matrix=${JSON.stringify({
+                    include: hostedAppRows(os).filter((row) => contexts.some((context) => context.id === row.id)),
+                  })}`,
+                  "--field",
+                  `probe_ids=${JSON.stringify(probeIds)}`,
+                ]),
           ],
           workflow,
           dispatchLogs,
