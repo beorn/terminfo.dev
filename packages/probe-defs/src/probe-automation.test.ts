@@ -3826,4 +3826,34 @@ describe("partial probe automation candidates", () => {
     expect(result.pass).toBe(true)
     expect(fed).toContain("\x1b]720\x07")
   })
+
+  test("OSC 720 does not let a changed history count or screen height qualify the observer", () => {
+    const p = probe("extensions.osc720-scroll-up")
+    expect(p.lib).toBeTypeOf("function")
+
+    for (const mutation of ["total", "screen"] as const) {
+      let scrollStep = 0
+      const result = p.lib!(
+        context({
+          getScrollback() {
+            const stepped = Math.min(scrollStep, 2)
+            return {
+              viewportOffset: 7,
+              totalLines: mutation === "total" ? 31 + stepped : 31,
+              screenLines: mutation === "screen" ? 24 + stepped : 24,
+            }
+          },
+          scrollViewport() {
+            scrollStep += 1
+          },
+          reset() {
+            scrollStep = 0
+          },
+        }),
+      )
+      expect(result.notTested?.noObservable).toBe("scrollback viewport state")
+      expect(result.observation?.outcome).not.toBe("unsupported")
+      expect(result.assertions).toBeUndefined()
+    }
+  })
 })

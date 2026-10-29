@@ -27,6 +27,8 @@ function viewportModel(options: {
   honorsOsc720: boolean
   /** Whether the control leaves the baseline unrestorable. */
   resetBroken?: boolean
+  /** Whether the measured OSC 720 also changes the buffer geometry. */
+  osc720ChangesGeometry?: boolean
 }): LibProbeSource {
   const screenRows = 24
   let fed = 0
@@ -63,6 +65,7 @@ function viewportModel(options: {
     },
     feed(text: string) {
       if (text.includes("\x1b]720") && options.honorsOsc720) up(options.upDelta ?? -1)
+      if (text.includes("\x1b]720") && options.osc720ChangesGeometry) rows += 1
       feedHistory(text)
     },
     feedCapture: () => "",
@@ -127,5 +130,12 @@ test("a control that leaves the baseline unrestorable is inconclusive, never a v
   expect(result.notTested).toBeUndefined()
   expect(result.observation?.outcome).toBe("inconclusive")
   expect(result.observation?.reason).toBe("insufficient-evidence")
+  expect(result.assertions).toBeUndefined()
+})
+
+test("a measured sequence that changes the buffer geometry is inconclusive, never a verdict", () => {
+  const result = osc720()(viewportModel({ scrollableViewport: true, honorsOsc720: true, osc720ChangesGeometry: true }))
+  expect(result.notTested).toBeUndefined()
+  expect(result.observation?.outcome).toBe("inconclusive")
   expect(result.assertions).toBeUndefined()
 })

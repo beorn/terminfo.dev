@@ -1432,6 +1432,10 @@ function sameViewport(reading: ScrollbackReading, other: ScrollbackReading): boo
   )
 }
 
+function sameGeometry(reading: ScrollbackReading, other: ScrollbackReading): boolean {
+  return reading.totalLines === other.totalLines && reading.screenLines === other.screenLines
+}
+
 function feedScrollbackHistory(ctx: LibProbeSource): void {
   for (let i = 0; i < OSC720_HISTORY_LINES; i++) ctx.feed(`scroll-${i}\r\n`)
 }
@@ -1455,10 +1459,16 @@ function osc720ScrollProbe(): ProbeDefinition["lib"] {
     const afterMinus = ctx.getScrollback()
     ctx.scrollViewport(1)
     const afterPlus = ctx.getScrollback()
-    const moved = !sameViewport(afterMinus, before) || !sameViewport(afterPlus, afterMinus)
+    // Only the position may qualify the observer, and only while the history count and screen height
+    // hold: a control that changes totalLines or screenLines has said nothing about whether the
+    // viewport position can move, so it must stay unqualified however the counts changed.
+    const controlGeometryFixed = sameGeometry(afterMinus, before) && sameGeometry(afterPlus, before)
+    const controlPositionMoved =
+      afterMinus.viewportOffset !== before.viewportOffset || afterPlus.viewportOffset !== afterMinus.viewportOffset
+    const moved = controlGeometryFixed && controlPositionMoved
     ctx.reset()
     feedScrollbackHistory(ctx)
-    const control = { afterMinus, afterPlus, moved, restored: ctx.getScrollback() }
+    const control = { afterMinus, afterPlus, geometryFixed: controlGeometryFixed, moved, restored: ctx.getScrollback() }
     if (!sameViewport(control.restored, before)) {
       return parserStateResult(
         null,
@@ -1472,6 +1482,14 @@ function osc720ScrollProbe(): ProbeDefinition["lib"] {
     }
     ctx.feed("\x1b]720\x07")
     const after = ctx.getScrollback()
+    if (!sameGeometry(after, before)) {
+      return parserStateResult(
+        null,
+        OSC720_CLAIM,
+        { before, after, control },
+        "The measured sequence changed the buffer geometry",
+      )
+    }
     const pass = after.viewportOffset < before.viewportOffset
     return parserStateResult(pass, OSC720_CLAIM, { before, after, control })
   }
