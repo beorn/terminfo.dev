@@ -100,6 +100,49 @@ test("the termless arm names a missing title reply as inconclusive, never unsupp
   expect(result.observation?.note).toContain("window title (CSI 21 t)")
 })
 
+// The existing lib cases cover an absent member. These cases pin the newly joined qualified route:
+// DA1 evidence must survive, but only the member's matched reports can decide the OSC0 effect.
+test.each([
+  { when: "exact reports", replies: exactReplies, outcome: "supported" },
+  { when: "wrong icon", replies: { ...exactReplies, [ICON_QUERY]: "\x1b]Lother-icon\x07" }, outcome: "unsupported" },
+  { when: "missing title", replies: { [ICON_QUERY]: exactReplies[ICON_QUERY] }, outcome: "inconclusive" },
+  { when: "sentinel silence", replies: {}, outcome: "inconclusive" },
+])("the qualified termless arm retains both query traces for $when", ({ replies, outcome }) => {
+  const queries: string[] = []
+  const writes: string[] = []
+  const ctx = lib({})
+  ctx.feed = (text) => {
+    writes.push(text)
+  }
+  ctx.feedCapture = () => {
+    throw new Error("qualified query fell back to bare capture")
+  }
+  ctx.queryWithSentinelOutcome = (sequence, pattern) => {
+    queries.push(sequence)
+    const reply = (replies as Record<string, string>)[sequence] ?? ""
+    const raw = reply + "\x1b[?1;2c"
+    return {
+      match: pattern.exec(reply),
+      reason: reply ? "reply" : "sentinel",
+      raw,
+      rawBase64: Buffer.from(raw).toString("base64"),
+      sentinel: { atMs: 0, graceMs: 250 },
+    }
+  }
+  const result = termlessCallback()(ctx)
+  expect(result.observation?.outcome).toBe(outcome)
+  expect(queries).toEqual([ICON_QUERY, TITLE_QUERY])
+  expect(writes).toEqual([`\x1b]0;${PAYLOAD}\x07`])
+  expect(JSON.parse(result.response!)).toMatchObject({
+    icon: ((replies as Record<string, string>)[ICON_QUERY] ?? "") + "\x1b[?1;2c",
+    title: ((replies as Record<string, string>)[TITLE_QUERY] ?? "") + "\x1b[?1;2c",
+  })
+  if (outcome === "inconclusive") {
+    expect(result.observation).toMatchObject({ reason: "insufficient-evidence" })
+    expect(result.assertions?.some(({ kind }) => kind === "negative")).not.toBe(true)
+  }
+})
+
 test("the sentinel app arm supports OSC 0 when both replies return the exact payload", async () => {
   const result = await termCallback()(terminal(exactReplies))
   expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })

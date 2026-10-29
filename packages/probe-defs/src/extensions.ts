@@ -1868,14 +1868,21 @@ function headlessClipboardRoundtrip(ctx: LibProbeSource): ProbeCallbackResult {
   const encoded = btoa(nonce)
   ctx.feed(`\x1b]52;c;${encoded}\x07`)
   const query = "\x1b]52;c;?\x07"
-  const raw = ctx.feedCapture(query)
+  const outcome = ctx.queryWithSentinelOutcome?.(query, osc52Reply)
+  const raw = outcome ? outcome.raw : ctx.feedCapture(query)
+  const read = outcome ? readSentinelReply(raw, osc52Reply).kind : null
+  // CTO d5f41664: unmatched/partial bytes lose the old per-capture empty attribution deliberately.
+  // Only measured clean sentinel silence (or a wholly empty buffer) proves the missing host input.
+  const empty = outcome
+    ? (read === "answered" && outcome.sentinel !== undefined) || (read === "pending" && raw === "")
+    : raw === ""
   return nativeHostRecipeResult(
     ctx,
-    headlessClipboardResult(raw, nonce),
+    { ...headlessClipboardResult(empty ? "" : raw, nonce), response: raw },
     "clipboard-load",
     "clipboard-read-permission",
     query,
-    raw === "",
+    empty,
   )
 }
 
@@ -2674,10 +2681,14 @@ export const extensionsProbes: ProbeDefinition[] = [
       "extensions.osc0-icon-title",
       (ctx) => {
         ctx.feed(`\x1b]0;${OSC0_PAYLOAD}\x07`)
-        const icon = ctx.feedCapture(OSC0_ICON_QUERY)
-        const title = ctx.feedCapture(OSC0_TITLE_QUERY)
-        const iconLabel = OSC0_ICON_REPLY.exec(icon)?.[1] ?? null
-        const windowTitle = OSC0_TITLE_REPLY.exec(title)?.[1] ?? null
+        const iconOutcome = ctx.queryWithSentinelOutcome?.(OSC0_ICON_QUERY, OSC0_ICON_REPLY)
+        const titleOutcome = ctx.queryWithSentinelOutcome?.(OSC0_TITLE_QUERY, OSC0_TITLE_REPLY)
+        const icon = iconOutcome ? iconOutcome.raw : ctx.feedCapture(OSC0_ICON_QUERY)
+        const title = titleOutcome ? titleOutcome.raw : ctx.feedCapture(OSC0_TITLE_QUERY)
+        const iconLabel = iconOutcome ? (iconOutcome.match?.[1] ?? null) : (OSC0_ICON_REPLY.exec(icon)?.[1] ?? null)
+        const windowTitle = titleOutcome
+          ? (titleOutcome.match?.[1] ?? null)
+          : (OSC0_TITLE_REPLY.exec(title)?.[1] ?? null)
         return osc0IconTitleResult(iconLabel, windowTitle, { icon, title })
       },
       async (ctx) => {
