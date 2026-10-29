@@ -183,6 +183,25 @@ describe("audited native host recipe callers", () => {
       }
     },
   )
+
+  // A second native host (WezTerm) must never inherit another artifact's audited causes.
+  test.each(["device.xtwinops-14", "extensions.osc52-read", "extensions.osc10-fg-color"])(
+    "%s claims no host recipe cause for an unaudited native artifact",
+    (id) => {
+      const other = "f".repeat(64)
+      const result = probe(id).lib!(
+        context({
+          runtimeIdentity: {
+            ...nativeIdentity,
+            loadedBinary: { path: "other.node", sha256: other },
+            provenance: { ...nativeIdentity.provenance, sha256: other },
+          },
+          feedCapture: () => "",
+        }),
+      )
+      expect(result.hostRecipeCauses).toBeUndefined()
+    },
+  )
 })
 
 describe("initial colour context review", () => {

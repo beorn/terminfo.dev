@@ -1,7 +1,6 @@
 import type { ProbeDefinition, ProbeCallbackResult, TerminalQueryOutcome } from "./types.ts"
 import {
   REPLY_AFTER_SENTINEL_NOTE,
-  alacrittyHostRecipeResult,
   parserStateResult,
   probe,
   replyFrame,
@@ -10,6 +9,7 @@ import {
   sentinelNegativeResult,
   sentinelSilenceResult,
 } from "./helpers.ts"
+import { nativeHostRecipeResult } from "./native-host-audit.ts"
 
 /** These patterns match complete answers to the specific query, not arbitrary consumed output. */
 interface DeviceReply {
@@ -187,7 +187,7 @@ function deviceQuery(spec: DeviceReply): ProbeDefinition {
         )
       }
       return hostPixels
-        ? alacrittyHostRecipeResult(
+        ? nativeHostRecipeResult(
             ctx,
             result,
             "text-area-size",

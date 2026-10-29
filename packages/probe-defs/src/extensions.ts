@@ -9,7 +9,6 @@ import type {
 } from "./types.ts"
 import {
   REPLY_AFTER_SENTINEL_NOTE,
-  alacrittyHostRecipeResult,
   decrpmPs,
   decrpmReplyPattern,
   decrpmReading,
@@ -30,6 +29,7 @@ import {
   sgrCaptureTooSmall,
   unmeasuredCellResult,
 } from "./helpers.ts"
+import { nativeHostRecipeResult } from "./native-host-audit.ts"
 import { sgrTermReadback } from "./sgr.ts"
 import { captureRegionGeometry, captureRegionReadbackDecision, collectorRegionRead } from "./region-readback.ts"
 import { SIXEL_BOUNDS, SIXEL_REGION, sixelReadback } from "./sixel-capture.ts"
@@ -372,7 +372,7 @@ function oscColorQueryProbe(id: string, oscCode: number, index?: number): ProbeD
           const answer = (result: ProbeCallbackResult) =>
             hostInput === undefined
               ? result
-              : alacrittyHostRecipeResult(ctx, result, "color-request", hostInput, querySeq, raw === "")
+              : nativeHostRecipeResult(ctx, result, "color-request", hostInput, querySeq, raw === "")
           if (raw !== "" || !reviewInitialValue) {
             return answer(oscReplyResult(raw, pattern.exec(raw)?.[0] ?? null, expected, prefix))
           }
@@ -606,7 +606,7 @@ function colorResetProbe(setCode: number, resetCode: number, index?: number): Pr
           )
         }
         const answer = (result: ProbeCallbackResult) =>
-          alacrittyHostRecipeResult(ctx, result, "color-request", hostInput, query, true)
+          nativeHostRecipeResult(ctx, result, "color-request", hostInput, query, true)
         const controls: { write: string; response: string }[] = []
         // Capture-only sources cannot provide the additional cell witness; keep their existing query criterion.
         const indexed = setCode === 4 && resetCode === 104 && index === 0 && typeof ctx.getCell === "function"
@@ -1273,14 +1273,7 @@ function colorStackProbe(): ProbeDefinition["lib"] {
         for (const assertion of result.assertions ?? []) assertion.observed = response
       }
       if (result && originalRaw === "") {
-        const explained = alacrittyHostRecipeResult(
-          ctx,
-          result,
-          "color-request",
-          "foreground-rgb",
-          foregroundQuery,
-          true,
-        )
+        const explained = nativeHostRecipeResult(ctx, result, "color-request", "foreground-rgb", foregroundQuery, true)
         if (explained.hostRecipeCauses) result.hostRecipeCauses = explained.hostRecipeCauses
       }
     }
@@ -1858,7 +1851,7 @@ function headlessClipboardRoundtrip(ctx: LibProbeSource): ProbeCallbackResult {
   ctx.feed(`\x1b]52;c;${encoded}\x07`)
   const query = "\x1b]52;c;?\x07"
   const raw = ctx.feedCapture(query)
-  return alacrittyHostRecipeResult(
+  return nativeHostRecipeResult(
     ctx,
     headlessClipboardResult(raw, nonce),
     "clipboard-load",
@@ -1875,7 +1868,7 @@ function headlessClipboardRead(ctx: LibProbeSource): ProbeCallbackResult {
   if (ctx.queryWithSentinelOutcome) {
     const outcome = ctx.queryWithSentinelOutcome("\x1b]52;c;?\x07", osc52Reply)
     const silence = sentinelSilenceResult(outcome, "OSC 52 c query returns the exact written nonce")
-    return alacrittyHostRecipeResult(
+    return nativeHostRecipeResult(
       ctx,
       silence ?? headlessClipboardResult(outcome.raw, nonce),
       "clipboard-load",
@@ -1885,7 +1878,7 @@ function headlessClipboardRead(ctx: LibProbeSource): ProbeCallbackResult {
     )
   }
   const raw = ctx.feedCapture("\x1b]52;c;?\x07")
-  return alacrittyHostRecipeResult(
+  return nativeHostRecipeResult(
     ctx,
     headlessClipboardResult(raw, nonce),
     "clipboard-load",
