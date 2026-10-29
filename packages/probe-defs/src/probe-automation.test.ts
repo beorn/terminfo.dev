@@ -391,7 +391,15 @@ describe("reply-path audit", () => {
 
   // Existing exact rows must not acquire prefix semantics; the generic table sends only their canonical bytes.
   test.each(["\x1b[c", "\x1b[cX", "X\x1b[c"])("exact query audit keeps byte equality for %j", (query) => {
-    const measured = { pass: false, response: "measured" }
+    const measured = {
+      pass: false,
+      response: "measured",
+      observation: {
+        outcome: "inconclusive" as const,
+        assertionType: "query_reply" as const,
+        reason: "no-response" as const,
+      },
+    }
     const definition = defineProbe(
       "device.primary-da",
       (ctx) => {
