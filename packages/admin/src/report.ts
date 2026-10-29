@@ -36,11 +36,7 @@ async function rawScoreboard(paths: readonly string[], contentDir: string): Prom
   let observedAt = ""
   const workingRuns: LoadedRun[] = []
   type DeclaredContext = (typeof census.contexts)[number]
-  const pendingAttempts: Array<{
-    context: DeclaredContext
-    intended: Record<string, unknown>
-    input: Omit<SelectedAttemptInput, "contextKey">
-  }> = []
+  const pendingAttempts: SelectedAttemptInput[] = []
   const rows = new Map<
     string,
     Array<{
@@ -182,8 +178,10 @@ async function rawScoreboard(paths: readonly string[], contentDir: string): Prom
         if (selection) {
           pendingAttempts.push({
             context: pass.context,
-            intended: record(header.intendedSubject) ? header.intendedSubject : {},
-            input: { runId: header.runId, path, rawReplies },
+            intendedSubject: record(header.intendedSubject) ? header.intendedSubject : {},
+            runId: header.runId,
+            path,
+            rawReplies,
           })
         }
         return append(pass.context.context, {
@@ -263,8 +261,7 @@ async function rawScoreboard(paths: readonly string[], contentDir: string): Prom
   }
   const dirtyContent = contentStatus.stdout.length > 0
   const provenLive = head === live && !dirtyContent
-  let privateProjection = loadCurrentResults(contentDir, { workingRuns }).projection
-  const projection = privateProjection
+  const projection = loadCurrentResults(contentDir, { workingRuns, workingAttempts: pendingAttempts }).projection
   for (const selected of Object.values(projection.current)) {
     if (selected.measuredAt > observedAt) observedAt = selected.measuredAt
     const context = census.contexts.find(
@@ -356,32 +353,7 @@ async function rawScoreboard(paths: readonly string[], contentDir: string): Prom
         .join("")} |`,
     )
   }
-  // This is the SAME canonical reader used by the default report. Explicit inputs bypass its
-  // tree-only memo; raw/pass rows above remain evidence/publication receipts, not another selector.
-  if (pendingAttempts.length > 0) {
-    const explicitRunIds = new Set(workingRuns.map((run) => run.runId))
-    const workingAttempts = pendingAttempts.map(({ context, intended, input }) => {
-      const declared = context
-      const matches = Object.entries(privateProjection.contexts).filter(([, summary]) =>
-        Object.values(summary.cells).some(({ run }) => {
-          if (run.subject.kind !== declared.kind || run.subject.id !== declared.terminalId) return false
-          if (declared.kind !== "lib" && run.subject.os !== declared.os) return false
-          return Object.entries(intended).every(
-            ([key, value]) => value === undefined || run.subject[key as keyof typeof run.subject] === value,
-          )
-        }),
-      )
-      const explicit = matches.filter(([, summary]) => summary.contributingRunIds.some((id) => explicitRunIds.has(id)))
-      const candidates = explicit.length > 0 ? explicit : matches
-      // Ambiguous/unmeasured configurations remain the original requested context. No physical
-      // subject is guessed and no old cell is reassigned; the retained attempt still stays visible.
-      const [only] = candidates
-      const contextKey = candidates.length === 1 && only ? only[0] : context.context
-      return { ...input, contextKey }
-    })
-    privateProjection = loadCurrentResults(contentDir, { workingRuns, workingAttempts }).projection
-  }
-  return `${lines.join("\n")}\n\n${await renderReport(privateProjection, catalogIds)}`
+  return `${lines.join("\n")}\n\n${await renderReport(projection, catalogIds)}`
 }
 
 export async function handleReport(options: { scoreboard?: string[] } = {}): Promise<void> {

@@ -12,7 +12,7 @@ import { join } from "node:path"
 import { publicResults, type EvidenceDocument } from "../docs/data/public-results.ts"
 import type { ProbeResult, ProbeSuiteManifest, TextQualification } from "@terminfo/probe-defs"
 import { ENVIRONMENT_GROUP_IDS } from "@terminfo/probe-defs"
-import { projectResults, maskRunnerStorePath } from "../docs/data/selected-results.ts"
+import { projectResults, maskRunnerStorePath, projectedContextKey } from "../docs/data/selected-results.ts"
 import { currentCoverageSentence } from "../docs/data/release-scope.ts"
 
 // Explicit schema-3 wire fixture; current public results use tests and assertionType.
@@ -95,6 +95,64 @@ function supportedBaseline() {
 // Existing selection tests exercise v1/v2 observation grading; they cannot prove that v3 selection
 // reads the stored five statuses and frozen denominator without applying later interpretations.
 describe("current execution projection", () => {
+  // CTO R1: a working-only context must not rename an admitted context's public key.
+  // The legacy-context witness below has no explicit working input and misses this population split.
+  it("keeps public context keys stable beside a working-only context", () => {
+    const current = supportedBaseline()
+    const value = raw(todos())
+    const working = parse({ ...value, runId: "working-linux", target: { ...value.target, os: "linux" } })
+    const projection = projectResults(
+      [current],
+      [],
+      ids,
+      { currentProbeHash: suite.probeHash, workingRuns: [working] },
+      [],
+    )
+    expect(Object.keys(projection.current)).toEqual(["term:kitty"])
+    expect(Object.keys(projection.contexts)).toContain("term:kitty")
+    const shared = projection.contexts["term:kitty"]!
+    expect(shared.contributingRunIds).toEqual([current.runId])
+    expect(Object.values(shared.cells).every((cell) => cell.origin.runId === current.runId)).toBe(true)
+    const workingKey = projectedContextKey(working.subject, 2)
+    expect(projection.contexts[workingKey]?.contributingRunIds).toEqual([working.runId])
+    expect(projection.current).not.toHaveProperty(workingKey)
+  })
+
+  // CTO R2: the canonical owner must resolve a retained attempt, even without the report's matcher.
+  it("resolves a pre-start attempt to its intended working context in the canonical projection", () => {
+    const current = supportedBaseline()
+    const value = raw(todos())
+    const working = parse({
+      ...value,
+      runId: "working-config",
+      target: { ...value.target, config: "isolated" },
+    })
+    const selection = { ids: [ids[0]!] }
+    const outcome = { ...selection, result: "failed", error: "Original pre-start failure" }
+    const input = {
+      context: { context: "kitty/macos", kind: "term" as const, terminalId: "kitty", os: "macos" },
+      intendedSubject: { kind: "term", id: "kitty", os: "macos", config: "isolated" },
+      runId: "intended-draft",
+      path: "intended.draft.json",
+      rawReplies: {
+        "collector.selection": JSON.stringify(selection),
+        "collector.collectionAttempt": JSON.stringify(outcome),
+      },
+    }
+    const projection = projectResults(
+      [current],
+      [],
+      ids,
+      { currentProbeHash: suite.probeHash, workingRuns: [working], workingAttempts: [input] },
+      [],
+    )
+    expect(projection.contexts[projectedContextKey(working.subject, 2)]?.attempts).toMatchObject([
+      { runId: input.runId, path: input.path, attempt: outcome, noOutputIds: selection.ids },
+    ])
+    expect(projection.contexts).not.toHaveProperty("kitty/macos")
+    expect(projection.contexts["term:kitty"]?.attempts).toEqual([])
+  })
+
   // Existing context keys count legacy configurations too; the new private view must use that owner.
   it("keeps private context keys identical to public keys when legacy configurations exist", () => {
     const current = supportedBaseline()
@@ -247,7 +305,8 @@ describe("current execution projection", () => {
         currentProbeHash: suite.probeHash,
         workingAttempts: [
           {
-            contextKey: "term:kitty",
+            context: { context: "term:kitty", kind: "term", terminalId: "kitty", os: "macos" },
+            intendedSubject: { kind: "term", id: "kitty", os: "macos" },
             runId: "original-draft",
             path: "original.draft.json",
             rawReplies: {

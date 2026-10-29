@@ -3,6 +3,7 @@ import { existsSync, readFileSync, readdirSync } from "node:fs"
 import { isAbsolute, join } from "node:path"
 import { aggregateCurrentResults, treeMovedPastRelease, type SuiteRelation } from "./release-scope.ts"
 import { loadFeatures } from "@terminfo/catalog"
+import type { CensusContext } from "./full-census.ts"
 import {
   type Interpretation,
   type ProbeResult,
@@ -187,7 +188,8 @@ export interface SelectedContextCell {
 
 /** An initialized draft can retain intent even when no measured subject or result exists. */
 export interface SelectedAttemptInput {
-  contextKey: string
+  context: CensusContext
+  intendedSubject: Record<string, unknown>
   runId: string
   path: string
   rawReplies: Record<string, string>
@@ -656,7 +658,7 @@ export function projectResults(
       policy.workingRuns ?? [],
       policy.workingAttempts ?? [],
       catalogIds,
-      countContexts([...runs, ...(policy.workingRuns ?? [])]),
+      new Map(Object.entries(projection.current).map(([key, current]) => [contextKey(current.subject), key])),
     ),
   }
 }
@@ -680,7 +682,7 @@ function composeContextSummaries(
   workingRuns: readonly LoadedRun[],
   workingAttempts: readonly SelectedAttemptInput[],
   catalogIds: readonly string[],
-  contexts: ReadonlyMap<string, ReadonlySet<string>>,
+  publicContextKeys: ReadonlyMap<string, string>,
 ): Record<string, SelectedContextSummary> {
   const runsById = new Map<string, LoadedRun>()
   for (const run of [...acceptedRuns, ...workingRuns]) {
@@ -691,15 +693,34 @@ function composeContextSummaries(
   const runs = [...runsById.values()]
   const baselineIds = new Set(baselineRunIds)
   const workingIds = new Set(workingRuns.map((run) => run.runId))
+  // Working inputs cannot rename a public key. Working-only contexts take the existing qualified
+  // form (the multi-context branch), even when they are the only working context for this target.
   const keyFor = (run: LoadedRun): string =>
-    projectedContextKey(run.subject, contexts.get(`${run.subject.kind}:${run.subject.id}`)?.size ?? 0)
+    publicContextKeys.get(contextKey(run.subject)) ?? projectedContextKey(run.subject, 2)
   const groups = new Map<string, LoadedRun[]>()
   for (const run of runs) {
     const key = keyFor(run)
     groups.set(key, [...(groups.get(key) ?? []), run])
   }
+  const attemptsByContext = new Map<string, SelectedAttemptInput[]>()
   for (const input of workingAttempts) {
-    if (!groups.has(input.contextKey)) groups.set(input.contextKey, [])
+    const declared = input.context
+    const matches = [...groups].filter(([, candidates]) =>
+      candidates.some((run) => {
+        if (run.subject.kind !== declared.kind || run.subject.id !== declared.terminalId) return false
+        if (declared.kind !== "lib" && run.subject.os !== declared.os) return false
+        return Object.entries(input.intendedSubject).every(
+          ([key, value]) => value === undefined || run.subject[key as keyof ProbeSubject] === value,
+        )
+      }),
+    )
+    const explicit = matches.filter(([, candidates]) => candidates.some((run) => workingIds.has(run.runId)))
+    const candidates = explicit.length > 0 ? explicit : matches
+    // Unmeasured or ambiguous configurations retain the declared context; no subject is invented.
+    const [only] = candidates
+    const key = candidates.length === 1 && only ? only[0] : declared.context
+    if (!groups.has(key)) groups.set(key, [])
+    attemptsByContext.set(key, [...(attemptsByContext.get(key) ?? []), input])
   }
   const summaries: Record<string, SelectedContextSummary> = {}
   for (const [contextKey, candidates] of groups) {
@@ -740,7 +761,7 @@ function composeContextSummaries(
       }
       attempts.push({ runId: run.runId, path: run.path, selection, attempt, noOutputIds })
     }
-    for (const input of workingAttempts.filter((entry) => entry.contextKey === contextKey)) {
+    for (const input of attemptsByContext.get(contextKey) ?? []) {
       if (attempts.some((attempt) => attempt.runId === input.runId)) continue
       const selection = readCollectorSelection(input.rawReplies)
       if (selection) {
