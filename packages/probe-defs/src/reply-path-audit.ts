@@ -10,6 +10,13 @@ export interface ReplyPathAudit {
   readonly citation: string
 }
 
+const GHOSTTY_NATIVE_KEYBOARD_AUDIT: ReplyPathAudit = {
+  query: "\x1b[?u\x1b[c",
+  kind: "no-reply-path",
+  citation:
+    "termless 0c409349 packages/ghostty-native/native/src/main.zig:81 vtStream() -> ghostty 332b2aef Terminal.zig:264 ReadonlyStream; stream.zig:1828 parses kitty_keyboard_query and :1278-1292 device_attributes; stream_readonly.zig:139-143 retains keyboard flags but :176-190 ignores both queries without a writer",
+}
+
 /**
  * Source audits of exact artifacts that cannot reply, keyed by loaded-artifact sha256 — never a digest copied from
  * runtime — and then by featureId. Data only: a cell enters with its own citation and is reviewed as data. An
@@ -19,6 +26,19 @@ export const REPLY_PATH_AUDITS: ReadonlyMap<string, Readonly<Record<string, Repl
   string,
   Readonly<Record<string, ReplyPathAudit>>
 >([
+  // Ghostty native 1.3.1, native tree45cbad88: independently loaded artifact in run2e689eee.
+  [
+    "17d155feee5df8fa30266b9a354bbe66e39484d08218de5e03dc3bb2f199a0a3",
+    {
+      "extensions.kitty-keyboard": GHOSTTY_NATIVE_KEYBOARD_AUDIT,
+      "extensions.kitty-keyboard.disambiguate": GHOSTTY_NATIVE_KEYBOARD_AUDIT,
+      "extensions.kitty-keyboard.report-events": GHOSTTY_NATIVE_KEYBOARD_AUDIT,
+      "extensions.kitty-keyboard.report-alternate": GHOSTTY_NATIVE_KEYBOARD_AUDIT,
+      "extensions.kitty-keyboard.report-all-keys": GHOSTTY_NATIVE_KEYBOARD_AUDIT,
+      "extensions.kitty-keyboard.report-text": GHOSTTY_NATIVE_KEYBOARD_AUDIT,
+      "input.csi-u": GHOSTTY_NATIVE_KEYBOARD_AUDIT,
+    },
+  ],
   // ghostty-web 0.4.0 WASM (core 5714ed07), the artifact the 31372 capture loaded
   [
     "7c43302dde147c6f7959b7bda7045ff375c71288da1af5667ffca2bf95beb2bf",
