@@ -39,6 +39,7 @@ import {
   type ReplyPathDecision,
 } from "./headless-identity.ts"
 import { isDeepStrictEqual } from "node:util"
+import { HEADLESS_TERMINAL } from "./headless-terminal.ts"
 
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
@@ -530,7 +531,7 @@ export async function collectBatch(
     let hostRecord: { runId: string; captures: HostQueryCapture[]; causes: RetainedHostRecipeCause[] } | undefined
     try {
       backend = await createBackend()
-      backend.init({ cols: 80, rows: 24 })
+      backend.init(HEADLESS_TERMINAL)
       const initializedRuntime = runtime
         ? {
             ...runtime,

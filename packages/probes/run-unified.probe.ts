@@ -9,6 +9,7 @@ import { describe, test, expect, beforeAll, afterAll, beforeEach } from "vitest"
 import type { TerminalBackend } from "@termless/core"
 import { ALL_PROBES, type LibProbeSource } from "@terminfo/probe-defs"
 import { createLibProbeSource } from "./headless-batch.ts"
+import { HEADLESS_TERMINAL } from "./headless-terminal.ts"
 
 import { manifest } from "@termless/core"
 import { createLogger } from "loggily"
@@ -76,7 +77,7 @@ for (const [backendName, factory] of backends) {
 
     beforeAll(async () => {
       _b = await factory()
-      _b.init({ cols: 80, rows: 24 })
+      _b.init(HEADLESS_TERMINAL)
       ctx = createLibProbeSource(_b, undefined, undefined, undefined)
     })
 
