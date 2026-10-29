@@ -1,0 +1,231 @@
+{
+  "schemaVersion": 4,
+  "source": {
+    "kind": "live"
+  },
+  "runId": "777ffa79-5cf9-40c5-bd06-e63dcb8fc7cc",
+  "suiteId": "d7b2ae93201f",
+  "probeHash": "d7b2ae93201f",
+  "sourceRevision": "a2b69a6ec09a73b07e1939037a192a38bce415eb",
+  "intendedSubject": {
+    "kind": "lib",
+    "id": "wezterm",
+    "os": "linux"
+  },
+  "results": [
+    {
+      "featureId": "device.xtwinops-14",
+      "attempt": {
+        "scope": "probe",
+        "startedAt": "2026-10-29T08:40:18.824Z"
+      },
+      "tests": [
+        {
+          "id": "criterion",
+          "status": "supported",
+          "attempt": {
+            "scope": "probe",
+            "startedAt": "2026-10-29T08:40:18.824Z"
+          },
+          "assertionRefs": [
+            0
+          ],
+          "rawReplyRef": "device.xtwinops-14"
+        }
+      ],
+      "assertionType": "query_reply",
+      "rawReplyRef": "device.xtwinops-14",
+      "status": "supported"
+    },
+    {
+      "featureId": "device.xtwinops-16",
+      "attempt": {
+        "scope": "probe",
+        "startedAt": "2026-10-29T08:40:18.849Z"
+      },
+      "tests": [
+        {
+          "id": "criterion",
+          "status": "supported",
+          "attempt": {
+            "scope": "probe",
+            "startedAt": "2026-10-29T08:40:18.849Z"
+          },
+          "assertionRefs": [
+            1
+          ],
+          "rawReplyRef": "device.xtwinops-16"
+        }
+      ],
+      "assertionType": "query_reply",
+      "rawReplyRef": "device.xtwinops-16",
+      "status": "supported"
+    },
+    {
+      "featureId": "extensions.osc1337-cellsize",
+      "attempt": {
+        "scope": "probe",
+        "startedAt": "2026-10-29T08:40:12.195Z"
+      },
+      "tests": [
+        {
+          "id": "criterion",
+          "status": "supported",
+          "attempt": {
+            "scope": "probe",
+            "startedAt": "2026-10-29T08:40:12.195Z"
+          },
+          "assertionRefs": [
+            2
+          ],
+          "rawReplyRef": "extensions.osc1337-cellsize"
+        }
+      ],
+      "assertionType": "query_reply",
+      "rawReplyRef": "extensions.osc1337-cellsize",
+      "status": "supported"
+    },
+    {
+      "featureId": "extensions.osc52-read",
+      "attempt": {
+        "scope": "probe",
+        "startedAt": "2026-10-29T08:40:20.808Z"
+      },
+      "tests": [
+        {
+          "id": "criterion",
+          "status": "unsupported",
+          "attempt": {
+            "scope": "probe",
+            "startedAt": "2026-10-29T08:40:20.808Z"
+          },
+          "assertionRefs": [
+            3
+          ],
+          "rawReplyRef": "extensions.osc52-read",
+          "reason": "negative by sentinel"
+        }
+      ],
+      "assertionType": "query_reply",
+      "rawReplyRef": "extensions.osc52-read",
+      "reason": "negative by sentinel",
+      "status": "unsupported"
+    },
+    {
+      "featureId": "extensions.sixel-geometry-report",
+      "attempt": {
+        "scope": "probe",
+        "startedAt": "2026-10-29T08:40:15.345Z"
+      },
+      "tests": [
+        {
+          "id": "criterion",
+          "status": "supported",
+          "attempt": {
+            "scope": "probe",
+            "startedAt": "2026-10-29T08:40:15.345Z"
+          },
+          "assertionRefs": [
+            4
+          ],
+          "rawReplyRef": "extensions.sixel-geometry-report",
+          "reason": "Current Sixel geometry reported as 800×480 pixels"
+        }
+      ],
+      "assertionType": "query_reply",
+      "rawReplyRef": "extensions.sixel-geometry-report",
+      "reason": "Current Sixel geometry reported as 800×480 pixels",
+      "status": "supported"
+    }
+  ],
+  "rawReplies": {
+    "collector.collectionAttempt": "{\"startedAt\":\"2026-10-29T08:40:10.618Z\",\"ids\":[\"device.xtwinops-14\",\"device.xtwinops-16\",\"extensions.osc1337-cellsize\",\"extensions.osc52-read\",\"extensions.sixel-geometry-report\"],\"hostInputs\":{\"foreground-rgb\":\"not-supplied\",\"background-rgb\":\"not-supplied\",\"cursor-rgb\":\"not-supplied\",\"palette-entry-rgb\":\"not-supplied\",\"pixel-geometry\":\"{\\\"cellWidth\\\":10,\\\"cellHeight\\\":20}\",\"clipboard-read-permission\":\"not-supplied\"}}",
+    "collector.replyPath": "{\"backend\":\"wezterm\",\"runtimeIdentity\":{\"kind\":\"native\",\"engineVersion\":\"0.1.0-fork.5\",\"adapterVersion\":\"0.10.2\",\"termlessRevision\":\"71cac2c3f261f5c18f778d33ffb1736261b897d0\",\"loadedBinary\":{\"path\":\"vendor/termless/packages/wezterm/termless-wezterm.node\",\"sha256\":\"78c05a7155ffb48b351de181cce13a5d996c3472f545f674dc34177fe27bae01\"},\"provenance\":{\"sha256\":\"78c05a7155ffb48b351de181cce13a5d996c3472f545f674dc34177fe27bae01\",\"sourceCommit\":\"71cac2c3f261f5c18f778d33ffb1736261b897d0\",\"buildHash\":\"688276ccf914a2be8aeb3112a52c55858182c0b172a691666a13326bcca005d9\",\"toolchain\":\"rustc 1.94.0 (4a4ef493e 2026-03-02) (built from a source tarball); cargo 1.94.0 (85eff7c80 2026-01-15)\",\"lockSha256\":\"8eaeab733cced8d47feb223d773d5ae158b2e6af8c994f993d4071d9ba3231d4\"}},\"decisions\":{\"extensions.sixel-geometry-report\":{\"member\":true,\"reason\":\"wezterm declares complete reply delivery bound to its loaded source and engine\",\"runtimeIdentity\":{\"kind\":\"native\",\"engineVersion\":\"0.1.0-fork.5\",\"adapterVersion\":\"0.10.2\",\"termlessRevision\":\"71cac2c3f261f5c18f778d33ffb1736261b897d0\",\"loadedBinary\":{\"path\":\"vendor/termless/packages/wezterm/termless-wezterm.node\",\"sha256\":\"78c05a7155ffb48b351de181cce13a5d996c3472f545f674dc34177fe27bae01\"},\"provenance\":{\"sha256\":\"78c05a7155ffb48b351de181cce13a5d996c3472f545f674dc34177fe27bae01\",\"sourceCommit\":\"71cac2c3f261f5c18f778d33ffb1736261b897d0\",\"buildHash\":\"688276ccf914a2be8aeb3112a52c55858182c0b172a691666a13326bcca005d9\",\"toolchain\":\"rustc 1.94.0 (4a4ef493e 2026-03-02) (built from a source tarball); cargo 1.94.0 (85eff7c80 2026-01-15)\",\"lockSha256\":\"8eaeab733cced8d47feb223d773d5ae158b2e6af8c994f993d4071d9ba3231d4\"}},\"hostRecipes\":[]},\"device.xtwinops-14\":{\"member\":true,\"reason\":\"wezterm declares complete reply delivery bound to its loaded source and engine\",\"runtimeIdentity\":{\"kind\":\"native\",\"engineVersion\":\"0.1.0-fork.5\",\"adapterVersion\":\"0.10.2\",\"termlessRevision\":\"71cac2c3f261f5c18f778d33ffb1736261b897d0\",\"loadedBinary\":{\"path\":\"vendor/termless/packages/wezterm/termless-wezterm.node\",\"sha256\":\"78c05a7155ffb48b351de181cce13a5d996c3472f545f674dc34177fe27bae01\"},\"provenance\":{\"sha256\":\"78c05a7155ffb48b351de181cce13a5d996c3472f545f674dc34177fe27bae01\",\"sourceCommit\":\"71cac2c3f261f5c18f778d33ffb1736261b897d0\",\"buildHash\":\"688276ccf914a2be8aeb3112a52c55858182c0b172a691666a13326bcca005d9\",\"toolchain\":\"rustc 1.94.0 (4a4ef493e 2026-03-02) (built from a source tarball); cargo 1.94.0 (85eff7c80 2026-01-15)\",\"lockSha256\":\"8eaeab733cced8d47feb223d773d5ae158b2e6af8c994f993d4071d9ba3231d4\"}},\"hostRecipes\":[{\"recipe\":\"text-area-size\",\"query\":\"\\u001b[14t\",\"missing\":[\"pixel-geometry\"]}]},\"device.xtwinops-16\":{\"member\":true,\"reason\":\"wezterm declares complete reply delivery bound to its loaded source and engine\",\"runtimeIdentity\":{\"kind\":\"native\",\"engineVersion\":\"0.1.0-fork.5\",\"adapterVersion\":\"0.10.2\",\"termlessRevision\":\"71cac2c3f261f5c18f778d33ffb1736261b897d0\",\"loadedBinary\":{\"path\":\"vendor/termless/packages/wezterm/termless-wezterm.node\",\"sha256\":\"78c05a7155ffb48b351de181cce13a5d996c3472f545f674dc34177fe27bae01\"},\"provenance\":{\"sha256\":\"78c05a7155ffb48b351de181cce13a5d996c3472f545f674dc34177fe27bae01\",\"sourceCommit\":\"71cac2c3f261f5c18f778d33ffb1736261b897d0\",\"buildHash\":\"688276ccf914a2be8aeb3112a52c55858182c0b172a691666a13326bcca005d9\",\"toolchain\":\"rustc 1.94.0 (4a4ef493e 2026-03-02) (built from a source tarball); cargo 1.94.0 (85eff7c80 2026-01-15)\",\"lockSha256\":\"8eaeab733cced8d47feb223d773d5ae158b2e6af8c994f993d4071d9ba3231d4\"}},\"hostRecipes\":[]},\"extensions.osc1337-cellsize\":{\"member\":true,\"reason\":\"wezterm declares complete reply delivery bound to its loaded source and engine\",\"runtimeIdentity\":{\"kind\":\"native\",\"engineVersion\":\"0.1.0-fork.5\",\"adapterVersion\":\"0.10.2\",\"termlessRevision\":\"71cac2c3f261f5c18f778d33ffb1736261b897d0\",\"loadedBinary\":{\"path\":\"vendor/termless/packages/wezterm/termless-wezterm.node\",\"sha256\":\"78c05a7155ffb48b351de181cce13a5d996c3472f545f674dc34177fe27bae01\"},\"provenance\":{\"sha256\":\"78c05a7155ffb48b351de181cce13a5d996c3472f545f674dc34177fe27bae01\",\"sourceCommit\":\"71cac2c3f261f5c18f778d33ffb1736261b897d0\",\"buildHash\":\"688276ccf914a2be8aeb3112a52c55858182c0b172a691666a13326bcca005d9\",\"toolchain\":\"rustc 1.94.0 (4a4ef493e 2026-03-02) (built from a source tarball); cargo 1.94.0 (85eff7c80 2026-01-15)\",\"lockSha256\":\"8eaeab733cced8d47feb223d773d5ae158b2e6af8c994f993d4071d9ba3231d4\"}},\"hostRecipes\":[]},\"extensions.osc52-read\":{\"member\":true,\"reason\":\"wezterm declares complete reply delivery bound to its loaded source and engine\",\"runtimeIdentity\":{\"kind\":\"native\",\"engineVersion\":\"0.1.0-fork.5\",\"adapterVersion\":\"0.10.2\",\"termlessRevision\":\"71cac2c3f261f5c18f778d33ffb1736261b897d0\",\"loadedBinary\":{\"path\":\"vendor/termless/packages/wezterm/termless-wezterm.node\",\"sha256\":\"78c05a7155ffb48b351de181cce13a5d996c3472f545f674dc34177fe27bae01\"},\"provenance\":{\"sha256\":\"78c05a7155ffb48b351de181cce13a5d996c3472f545f674dc34177fe27bae01\",\"sourceCommit\":\"71cac2c3f261f5c18f778d33ffb1736261b897d0\",\"buildHash\":\"688276ccf914a2be8aeb3112a52c55858182c0b172a691666a13326bcca005d9\",\"toolchain\":\"rustc 1.94.0 (4a4ef493e 2026-03-02) (built from a source tarball); cargo 1.94.0 (85eff7c80 2026-01-15)\",\"lockSha256\":\"8eaeab733cced8d47feb223d773d5ae158b2e6af8c994f993d4071d9ba3231d4\"}},\"hostRecipes\":[{\"recipe\":\"clipboard-load\",\"query\":\"\\u001b]52;c;?\\u0007\",\"missing\":[\"clipboard-read-permission\"]}]}},\"declaration\":{\"boundary\":\"feed-and-getCursor\",\"adapterSources\":[{\"path\":\"packages/wezterm/src/index.ts\",\"blobOid\":\"512606c5270ffd0cff55c1b70f5b3eda18a92df0\"},{\"path\":\"packages/wezterm/src/backend.ts\",\"blobOid\":\"011399df25f97701044ee0c88809144d940cd7c7\"},{\"path\":\"packages/wezterm/native/src/lib.rs\",\"blobOid\":\"1a41e16d876820d2d3ca01230939a48f2cace5b1\"},{\"path\":\"src/load-native.ts\",\"blobOid\":\"34e142550085450ab02138184626716ad0d6b546\"}],\"engine\":{\"kind\":\"native\",\"sha256\":\"78c05a7155ffb48b351de181cce13a5d996c3472f545f674dc34177fe27bae01\"}}}",
+    "extensions.sixel-geometry-report": "\u001b[?2;0;800;480S\u001b[?65;4;6;18;22;52c",
+    "collector.hostRecipes.extensions.sixel-geometry-report": "{\"runId\":\"777ffa79-5cf9-40c5-bd06-e63dcb8fc7cc\",\"captures\":[{\"query\":\"\\u001b[?2;1;0S\",\"response\":\"\\u001b[?2;0;800;480S\",\"error\":null},{\"query\":\"\\u001b[c\",\"response\":\"\\u001b[?65;4;6;18;22;52c\",\"error\":null}],\"causes\":[]}",
+    "device.xtwinops-14": "\u001b[4;480;800t\u001b[?65;4;6;18;22;52c",
+    "collector.hostRecipes.device.xtwinops-14": "{\"runId\":\"777ffa79-5cf9-40c5-bd06-e63dcb8fc7cc\",\"captures\":[{\"query\":\"\\u001b[14t\",\"response\":\"\\u001b[4;480;800t\",\"error\":null},{\"query\":\"\\u001b[c\",\"response\":\"\\u001b[?65;4;6;18;22;52c\",\"error\":null}],\"causes\":[]}",
+    "device.xtwinops-16": "\u001b[6;20;10t\u001b[?65;4;6;18;22;52c",
+    "collector.hostRecipes.device.xtwinops-16": "{\"runId\":\"777ffa79-5cf9-40c5-bd06-e63dcb8fc7cc\",\"captures\":[{\"query\":\"\\u001b[16t\",\"response\":\"\\u001b[6;20;10t\",\"error\":null},{\"query\":\"\\u001b[c\",\"response\":\"\\u001b[?65;4;6;18;22;52c\",\"error\":null}],\"causes\":[]}",
+    "extensions.osc1337-cellsize": "\u001b]1337;ReportCellSize=20.0;10.0\u001b\\\u001b[?65;4;6;18;22;52c",
+    "collector.hostRecipes.extensions.osc1337-cellsize": "{\"runId\":\"777ffa79-5cf9-40c5-bd06-e63dcb8fc7cc\",\"captures\":[{\"query\":\"\\u001b]1337;ReportCellSize\\u0007\",\"response\":\"\\u001b]1337;ReportCellSize=20.0;10.0\\u001b\\\\\",\"error\":null},{\"query\":\"\\u001b[c\",\"response\":\"\\u001b[?65;4;6;18;22;52c\",\"error\":null}],\"causes\":[]}",
+    "extensions.osc52-read": "\u001b[?65;4;6;18;22;52c",
+    "collector.hostRecipes.extensions.osc52-read": "{\"runId\":\"777ffa79-5cf9-40c5-bd06-e63dcb8fc7cc\",\"captures\":[{\"query\":\"\\u001b]52;c;?\\u0007\",\"response\":\"\",\"error\":null},{\"query\":\"\\u001b[c\",\"response\":\"\\u001b[?65;4;6;18;22;52c\",\"error\":null}],\"causes\":[{\"recipe\":\"clipboard-load\",\"cause\":{\"kind\":\"unimplemented\",\"missing\":\"clipboard-read-permission\",\"runId\":\"777ffa79-5cf9-40c5-bd06-e63dcb8fc7cc\",\"artifactSha256\":\"78c05a7155ffb48b351de181cce13a5d996c3472f545f674dc34177fe27bae01\",\"citation\":{\"sourceLocation\":\"tattoy-wezterm-term 0.1.0-fork.5 terminalstate/performer.rs:788 drops OperatingSystemCommand::QuerySelection; terminal.rs:13-19 Clipboard has only set_contents, so no build of this engine answers an OSC 52 read\"}}}]}"
+  },
+  "assertions": [
+    {
+      "featureId": "device.xtwinops-14",
+      "assertionType": "query_reply",
+      "kind": "positive",
+      "expected": "CSI 14 t reports text-area pixels as CSI 4;positive-height;positive-width t",
+      "observed": "\u001b[4;480;800t",
+      "rawReplyRef": "device.xtwinops-14"
+    },
+    {
+      "featureId": "device.xtwinops-16",
+      "assertionType": "query_reply",
+      "kind": "positive",
+      "expected": "CSI 16 t returns a complete CSI 6;positive-height;positive-width t frame",
+      "observed": "\u001b[6;20;10t",
+      "rawReplyRef": "device.xtwinops-16"
+    },
+    {
+      "featureId": "extensions.osc1337-cellsize",
+      "assertionType": "query_reply",
+      "kind": "positive",
+      "expected": "Complete OSC 1337 ReportCellSize reply with two positive dimensions and an optional scale",
+      "observed": "\u001b]1337;ReportCellSize=20.0;10.0\u001b\\",
+      "rawReplyRef": "extensions.osc1337-cellsize"
+    },
+    {
+      "featureId": "extensions.osc52-read",
+      "assertionType": "query_reply",
+      "kind": "negative",
+      "expected": "OSC 52 c query returns the exact written nonce",
+      "observed": "DA1 answered at +1ms; no reply through the 250 ms window",
+      "rawReplyRef": "extensions.osc52-read"
+    },
+    {
+      "featureId": "extensions.sixel-geometry-report",
+      "assertionType": "query_reply",
+      "kind": "positive",
+      "expected": "XTSMGRAPHICS item 2 read returns status 0 and two positive pixel dimensions",
+      "observed": "\u001b[?2;0;800;480S",
+      "rawReplyRef": "extensions.sixel-geometry-report"
+    }
+  ],
+  "screenshotRefs": [],
+  "subject": {
+    "kind": "lib",
+    "id": "wezterm",
+    "version": "0.1.0-fork.5",
+    "os": "linux",
+    "osVersion": "7.0.0-34-generic",
+    "outerTerminal": null,
+    "mux": null,
+    "config": "80x24 default Termless backend",
+    "permissions": null
+  },
+  "identity": "unverified",
+  "runtimeIdentity": {
+    "kind": "native",
+    "engineVersion": "0.1.0-fork.5",
+    "adapterVersion": "0.10.2",
+    "termlessRevision": "71cac2c3f261f5c18f778d33ffb1736261b897d0",
+    "loadedBinary": {
+      "path": "vendor/termless/packages/wezterm/termless-wezterm.node",
+      "sha256": "78c05a7155ffb48b351de181cce13a5d996c3472f545f674dc34177fe27bae01"
+    },
+    "provenance": {
+      "sha256": "78c05a7155ffb48b351de181cce13a5d996c3472f545f674dc34177fe27bae01",
+      "sourceCommit": "71cac2c3f261f5c18f778d33ffb1736261b897d0",
+      "buildHash": "688276ccf914a2be8aeb3112a52c55858182c0b172a691666a13326bcca005d9",
+      "toolchain": "rustc 1.94.0 (4a4ef493e 2026-03-02) (built from a source tarball); cargo 1.94.0 (85eff7c80 2026-01-15)",
+      "lockSha256": "8eaeab733cced8d47feb223d773d5ae158b2e6af8c994f993d4071d9ba3231d4"
+    }
+  },
+  "measuredAt": "2026-10-29T08:40:21.081Z",
+  "origin": {
+    "kind": "collector"
+  }
+}
