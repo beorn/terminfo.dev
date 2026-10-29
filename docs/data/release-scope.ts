@@ -91,7 +91,7 @@ export interface CurrentAggregate {
 }
 
 export function aggregateCurrentResults(
-  results: readonly ProbeResult[],
+  results: readonly Pick<ProbeResult, "featureId" | "status">[],
   catalogIds: readonly string[],
 ): CurrentAggregate {
   if (!catalogIds.length || new Set(catalogIds).size !== catalogIds.length) {

@@ -125,6 +125,7 @@ it.each([
   vi.mocked(findOwnedDaemon).mockResolvedValue(owned)
   vi.mocked(requestDaemonProbe).mockResolvedValue(new Response("{}"))
   vi.mocked(readRetainedDaemonProbeResponse).mockResolvedValue({
+    kind: "captured",
     run,
     path: original,
     sha256: createHash("sha256").update(bytes).digest("hex"),
