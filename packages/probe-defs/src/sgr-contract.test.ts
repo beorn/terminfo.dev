@@ -328,7 +328,7 @@ test.each([
   expect(missing.notTested).toBeUndefined()
   expect(missing.criterionBranch).toBe("source-negative-review")
   expect(missing.tests).toContainEqual(expect.objectContaining({ id: "review", status: "test-failure" }))
-  expect(JSON.parse(missing.response!)[field]).toBeNull()
+  expect(JSON.parse(missing.response!)).toEqual(expect.objectContaining({ [field]: null }))
   expect(missing.assertions).toContainEqual(
     expect.objectContaining({ kind: "negative", assertionType: "buffer_state" }),
   )

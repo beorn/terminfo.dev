@@ -788,9 +788,9 @@ describe("immutable pre-seal capture binding", () => {
     decision.decision = outcome
     applyCaptureDecision(draft, JSON.stringify(decision), "2026-10-27T11:01:00.000Z")
     expect(draft.results[0]!.status).toBe(outcome)
-    expect(JSON.parse(draft.rawReplies["sgr.faint"]!).dim).toBeNull()
+    expect(JSON.parse(draft.rawReplies["sgr.faint"]!)).toEqual(expect.objectContaining({ dim: null }))
     expect(draft.assertions[0]!.assertionType).toBe("buffer_state")
-    expect(JSON.parse(draft.assertions[0]!.observed).dim).toBeNull()
+    expect(JSON.parse(draft.assertions[0]!.observed)).toEqual(expect.objectContaining({ dim: null }))
   })
 
   // Headless intent omits version; an explicit conflict remains binding even for the same run.
