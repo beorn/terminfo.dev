@@ -301,6 +301,25 @@ describe("reply-path audit", () => {
     expect(result.assertions ?? []).toEqual([])
   })
 
+  // #31377 AC1: data-derived cases cannot detect an omitted fixed-query audit or its wrong source kind.
+  test.each([
+    ["extensions.osc21-kitty-color", "\x1b]21;foreground=?\x1b\\", false],
+    ["extensions.sixel-geometry-report", "\x1b[?2;1;0S", true],
+  ] as const)("native fixed query preserves its source distinction: %s", (id, query, parserRejected) => {
+    const { result, sent } = run(id, "17d155feee5df8fa30266b9a354bbe66e39484d08218de5e03dc3bb2f199a0a3", () => "")
+    expect(sent).toEqual([query])
+    if (parserRejected) {
+      expect(result).toMatchObject({ observation: { outcome: "unsupported", assertionType: "query_reply" } })
+      expect(result.assertions).toEqual([expect.objectContaining({ kind: "negative", assertionType: "query_reply" })])
+    } else {
+      expect(result).toMatchObject({
+        criterionBranch: REPLY_PATH_AUDIT_REVIEW,
+        tests: [{ id: "review", status: "test-todo" }],
+      })
+      expect(result.observation).toBeUndefined()
+    }
+  })
+
   // #31369, @cto fb6cfc2f: named current-native source limitations must reach the production callback.
   // The generic audit cases iterate only present entries, so they cannot catch a missing approved cell.
   test.each([

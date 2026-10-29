@@ -37,6 +37,18 @@ export const REPLY_PATH_AUDITS: ReadonlyMap<string, Readonly<Record<string, Repl
       "extensions.kitty-keyboard.report-all-keys": GHOSTTY_NATIVE_KEYBOARD_AUDIT,
       "extensions.kitty-keyboard.report-text": GHOSTTY_NATIVE_KEYBOARD_AUDIT,
       "input.csi-u": GHOSTTY_NATIVE_KEYBOARD_AUDIT,
+      "extensions.osc21-kitty-color": {
+        query: "\x1b]21;foreground=?\x1b\\",
+        kind: "no-reply-path",
+        citation:
+          "termless 0c409349 packages/ghostty-native/native/src/main.zig:81 vtStream() -> ghostty 332b2aef Terminal.zig:264-265 initAlloc; stream.zig:2018-2019 dispatches kitty_color_report; stream_readonly.zig:159 calls kittyColorOperation but :362-399 ignores .query while retaining set/reset; native getDefaultColors :535 exposes RGB state, not a protocol reply",
+      },
+      "extensions.sixel-geometry-report": {
+        query: "\x1b[?2;1;0S",
+        kind: "parser-rejected",
+        citation:
+          "ghostty 332b2aef src/terminal/parse_table.zig:324 collects '?' as CSI intermediate (Parser.zig:313-321); stream.zig:1128-1142 handles final S only without intermediates and ignores XTSMGRAPHICS '?' before any handler; termless 0c409349 packages/ghostty-native/native/src/main.zig:81 uses this stream",
+      },
     },
   ],
   // ghostty-web 0.4.0 WASM (core 5714ed07), the artifact the 31372 capture loaded
