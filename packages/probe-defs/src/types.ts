@@ -769,7 +769,8 @@ export interface LibProbeSource {
     strikethrough: boolean | null
     inverse: boolean
     hidden: boolean
-    blink: boolean
+    /** null = this producer does not report the attribute; never a terminal-support claim. */
+    blink: boolean | null
     overline?: boolean
     fg: { r: number; g: number; b: number } | null
     bg: { r: number; g: number; b: number } | null

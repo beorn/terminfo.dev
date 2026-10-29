@@ -89,7 +89,7 @@ Missing default or seed controls retain the existing query/sentinel/review rules
 The shared disposable reset still owns cleanup; operational errors propagate, preserving both causes
 when cleanup also fails. Complete initial query paths and other reset features are unchanged.
 
-Cell `dim`, `italic` and `strikethrough` readbacks are required `boolean | null`: null means the producer does not report that attribute, never a terminal-support claim. Their SGR probes route null through named missing-observable coverage (TEST TODO); measured booleans retain their existing observation path.
+Cell `dim`, `italic`, `strikethrough` and `blink` readbacks are required `boolean | null`: null means the producer does not report that attribute, never a terminal-support claim. On a rendered X cell, their SGR probes retain the null or false state through `source-negative-review`, with a required review and a buffer-state assertion. A source-bound decision distinguishes an engine gap (Unsupported at that pin) from a binding gap (Untestable until repaired and recaptured). Positive booleans retain their supported observation path. A missing X retains the existing inconclusive result without an assertion or review; it is not reclassified as missing-observable coverage. Stored captures remain unchanged.
 
 The OSC 8 library criterion requires exact per-cell URI metadata, including unlinked controls.
 An absent `hyperlinks` observer with valid fixture text retains named coverage (TEST TODO) and raw cell/link state,

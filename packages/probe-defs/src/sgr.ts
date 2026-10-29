@@ -629,7 +629,7 @@ export const sgrProbes: ProbeDefinition[] = [
     "sgr.faint",
     "\x1b[2m",
     (cell) => cell.dim === true,
-    (cell) => (cell.dim === null ? "Cell producer does not report cell.dim" : null),
+    undefined,
     { require: [2] },
     "Cell readback cannot distinguish unsupported faint styling from an unreported or collapsed attribute",
   ),
@@ -638,7 +638,7 @@ export const sgrProbes: ProbeDefinition[] = [
     "sgr.italic",
     "\x1b[3m",
     (cell) => cell.italic === true,
-    (cell) => (cell.italic === null ? "Cell producer does not report cell.italic" : null),
+    undefined,
     { require: [3] },
     "Cell readback cannot distinguish unsupported italic styling from an unreported attribute",
   ),
@@ -690,7 +690,14 @@ export const sgrProbes: ProbeDefinition[] = [
     "Cell readback cannot distinguish unsupported dashed underline from a collapsed underline style",
   ),
 
-  sgrProbe("sgr.blink", "\x1b[5m", (cell) => cell.blink === true, undefined, { require: [5] }),
+  sgrProbe(
+    "sgr.blink",
+    "\x1b[5m",
+    (cell) => cell.blink === true,
+    undefined,
+    { require: [5] },
+    "Cell readback cannot distinguish unsupported blink styling from an unreported attribute",
+  ),
 
   sgrProbe("sgr.inverse", "\x1b[7m", (cell) => cell.inverse === true, undefined, { require: [7] }),
 
@@ -707,7 +714,7 @@ export const sgrProbes: ProbeDefinition[] = [
     "sgr.strikethrough",
     "\x1b[9m",
     (cell) => cell.strikethrough === true,
-    (cell) => (cell.strikethrough === null ? "Cell producer does not report cell.strikethrough" : null),
+    undefined,
     { require: [9] },
     "Cell readback cannot distinguish unsupported strikethrough from an unreported attribute",
   ),
