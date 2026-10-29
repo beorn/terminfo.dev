@@ -523,6 +523,17 @@ export async function collectBatch(
               recipe: entry.recipe,
               cause: { kind: cause.kind, missing: cause.missing, runId, eventRef: recordRef },
             })
+          } else if (cause.kind === "unimplemented") {
+            hostRecord.causes.push({
+              recipe: entry.recipe,
+              cause: {
+                kind: cause.kind,
+                missing: cause.missing,
+                runId,
+                artifactSha256: cause.artifactSha256,
+                citation: { sourceLocation: cause.sourceCitation },
+              },
+            })
           } else {
             const inputs = batch.rawReplies["collector.collectionAttempt"]
             if (inputs === undefined) throw new Error("Native host cause requires collector.collectionAttempt")

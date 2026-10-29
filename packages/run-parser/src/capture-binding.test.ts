@@ -17,6 +17,7 @@ import {
   type LibProbeSource,
   type RunDraft,
 } from "@terminfo/probe-defs"
+import { fakeProbeResult } from "@terminfo/probe-defs/testing/fake-probe-result"
 import { applyCaptureDecision, retainCaptureBinding, parseRun } from "./index.ts"
 
 // H1-H7: explicit collector-input fixture, not an engine execution or qualification proof.
@@ -186,13 +187,15 @@ function weztermCapture(mode: "captured" | "audited" | "foreign-artifact" | "dec
       const ctx = { runtimeIdentity: run.runtimeIdentity } as LibProbeSource
       const claim = nativeHostRecipeResult(
         ctx,
-        { pass: false },
+        fakeProbeResult(),
         "clipboard-load",
         "clipboard-read-permission",
         "\x1b]52;c;?\x07",
         true,
       ).hostRecipeCauses?.[0]
-      if (claim?.cause.kind !== "unimplemented") throw new Error(`no unimplemented audit cause: ${JSON.stringify(claim)}`)
+      if (claim?.cause.kind !== "unimplemented") {
+        throw new Error(`no unimplemented audit cause: ${JSON.stringify(claim)}`)
+      }
       const cause: Record<string, unknown> = {
         kind: "unimplemented",
         missing: claim.cause.missing,
@@ -201,7 +204,9 @@ function weztermCapture(mode: "captured" | "audited" | "foreign-artifact" | "dec
         citation: { sourceLocation: claim.cause.sourceCitation },
       }
       if (mode === "foreign-artifact") cause.artifactSha256 = "0".repeat(64)
-      if (mode === "declared-input") cause.citation = { ...(cause.citation as object), inputRecordRef: "collector.collectionAttempt" }
+      if (mode === "declared-input") {
+        cause.citation = { ...(cause.citation as object), inputRecordRef: "collector.collectionAttempt" }
+      }
       if (mode === "no-source") cause.citation = { sourceLocation: "" }
       record.causes = [{ recipe: claim.recipe, cause }]
     }

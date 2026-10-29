@@ -31,7 +31,12 @@ export type CallbackHostRecipeCause =
   | { recipe: HostRecipeName; cause: { kind: "observed"; missing: HostInputName; query: string } }
   | {
       recipe: HostRecipeName
-      cause: { kind: "source-audited"; missing: HostInputName; artifactSha256: string; sourceCitation: string }
+      cause: {
+        kind: "source-audited" | "unimplemented"
+        missing: HostInputName
+        artifactSha256: string
+        sourceCitation: string
+      }
     }
 export type RetainedHostRecipeCause =
   | { recipe: HostRecipeName; cause: { kind: "observed"; missing: HostInputName; runId: string; eventRef: string } }
@@ -43,6 +48,17 @@ export type RetainedHostRecipeCause =
         runId: string
         artifactSha256: string
         citation: { inputRecordRef: string; sha256: string; input: HostInputName; sourceLocation: string }
+      }
+    }
+  | {
+      recipe: HostRecipeName
+      /** The audited artifact has no reply path for the query; the citation names that source, not a host input. */
+      cause: {
+        kind: "unimplemented"
+        missing: HostInputName
+        runId: string
+        artifactSha256: string
+        citation: { sourceLocation: string }
       }
     }
 
