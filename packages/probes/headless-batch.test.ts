@@ -12,7 +12,13 @@ import { resolve as resolveLibvterm } from "@termless/libvterm"
 import { resolve as resolveVt100 } from "@termless/vt100"
 import { resolve as resolveVt220 } from "@termless/vt220"
 import { createKittyBackend, isKittyAvailable } from "@termless/kitty"
-import { ALL_PROBES, type ProbeDefinition } from "@terminfo/probe-defs"
+import type { EmulatorWarning } from "@termless/core"
+import {
+  ALL_PROBES,
+  HARNESS_INCOMPLETE_TEST,
+  type ProbeCallbackResult,
+  type ProbeDefinition,
+} from "@terminfo/probe-defs"
 import { fakeProbeResult } from "@terminfo/probe-defs/testing/fake-probe-result"
 import { validateObservation, retainCaptureBinding } from "@terminfo/run-parser"
 import { spawnSync } from "node:child_process"
@@ -384,6 +390,53 @@ for (const [name, create, available] of [
     }
   })
 }
+
+// #31373 (@cto 15cf18e4): a capture that reached an engine callback its adapter does not reproduce is a harness gap.
+// The adapters above report no such callback, so no existing collector test could grade one.
+test.each([
+  { name: "silent", query: "\x1b]52;c;?\x1b\\", harness: true },
+  { name: "replied", query: "\x1b]52;c;?\x1b\\\x1b[6n", harness: false },
+])("grades a capture that reached an unreproduced callback ($name)", async ({ query, harness }) => {
+  const value = createXtermBackend()
+  const warnings: EmulatorWarning[] = []
+  // xterm.js stands in for an adapter that reports one unreproduced callback per OSC 52 read.
+  value.capabilities.extensions.add("warnings")
+  const feed = value.feed.bind(value)
+  value.feed = (bytes) => {
+    if (new TextDecoder().decode(bytes).includes("\x1b]52;")) {
+      warnings.push({ code: "UNREPRODUCED_CALLBACK", message: "clipboard_control", backend: "xtermjs" })
+    }
+    feed(bytes)
+  }
+  Object.assign(value, {
+    getWarnings: () => [...warnings],
+    clearWarnings: () => {
+      warnings.length = 0
+    },
+  })
+  const measured = (reply: string): ProbeCallbackResult => ({ ...fakeProbeResult("query_reply"), response: reply })
+  const batch = await collectBatch(async () => value, "xtermjs", [
+    definition("clipboard.read", (ctx) => measured(ctx.feedCapture(query))),
+  ])
+  const result = batch.results.find((entry) => entry.featureId === "clipboard.read")
+  if (!harness) {
+    expect(result?.tests.some((test) => test.id === HARNESS_INCOMPLETE_TEST)).toBe(false)
+    expect(batch.rawReplies["clipboard.read"]).toMatch(/^\x1b\[\d+;\d+R$/)
+    return
+  }
+  expect(result?.status).toBe("test-failure")
+  expect(result?.tests).toEqual([
+    expect.objectContaining({
+      id: HARNESS_INCOMPLETE_TEST,
+      status: "test-failure",
+      reason: "Harness incomplete: xtermjs did not reproduce clipboard_control; silence is not evidence",
+    }),
+  ])
+  expect(JSON.parse(batch.rawReplies["clipboard.read"] ?? "null")).toEqual({
+    unreproduced: { backend: "xtermjs", captures: [{ query, callbacks: ["clipboard_control"] }] },
+    measuredResponse: "",
+  })
+})
 
 test("real vterm grades interior-region SU without moving the row above into history", async () => {
   const id = "scrollback.scroll-up"

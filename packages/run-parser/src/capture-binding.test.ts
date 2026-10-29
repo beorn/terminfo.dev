@@ -12,6 +12,7 @@ import {
   recordExecutedProbe,
   finalizeProbeResult,
   REPLY_PATH_AUDIT_REVIEW,
+  HARNESS_INCOMPLETE_TEST,
   type RunDraft,
 } from "@terminfo/probe-defs"
 import { applyCaptureDecision, retainCaptureBinding, parseRun } from "./index.ts"
@@ -160,6 +161,85 @@ it.each([
   ["fragmented clipboard", "\x1b]52;c;?\x07", true],
 ] as const)("native host recipe rejects undeclared %s independently of cause presence", (_name, query, split) => {
   expect(hostCauseCapture("undeclared-query", query, split)).toThrow(/captured undeclared/i)
+})
+
+// #31373 (@cto 15cf18e4): an unreproduced-callback record and its failed harness row are one claim. The
+// collector writes both together; the reader refuses either one alone, which no existing fixture carries.
+function harnessCapture(mode: "both" | "record-only" | "row-only" | "todo-row") {
+  const featureId = "clipboard.read"
+  const manifest = {
+    schemaVersion: 4 as const,
+    probeHash: "harness-suite",
+    adapterVersion: "4",
+    catalogIds: [featureId],
+    probes: { term: [], lib: [featureId], mux: [] },
+  }
+  const draft = initializeRunDraft({
+    runId: "harness-gap",
+    sourceRevision: "1".repeat(40),
+    source: { kind: "live" },
+    intendedSubject: { kind: "lib", id: "kitty", version: "0.49.2" },
+    manifest,
+  })
+  draft.subject = {
+    kind: "lib",
+    id: "kitty",
+    version: "0.49.2",
+    os: "linux",
+    osVersion: null,
+    outerTerminal: null,
+    mux: null,
+    config: null,
+    permissions: null,
+  }
+  draft.runtimeIdentity = {
+    kind: "native",
+    engineVersion: "0.49.2",
+    adapterVersion: "0.10.2",
+    termlessRevision: "2".repeat(40),
+    loadedBinary: { path: "kitty", sha256: "a".repeat(64) },
+    provenance: {
+      sha256: "a".repeat(64),
+      sourceCommit: "3".repeat(40),
+      buildHash: "b".repeat(64),
+      toolchain: "fixture",
+      lockSha256: "c".repeat(64),
+    },
+  }
+  draft.identity = "unverified"
+  draft.measuredAt = "2026-10-28T23:00:00.000Z"
+  draft.origin = { kind: "collector" }
+  const query = "\x1b]52;c;?\x07"
+  draft.rawReplies[featureId] =
+    mode === "row-only"
+      ? ""
+      : JSON.stringify({
+          unreproduced: { backend: "kitty", captures: [{ query, callbacks: ["clipboard_control"] }] },
+          measuredResponse: "",
+        })
+  const reason = "Harness incomplete: kitty did not reproduce clipboard_control; silence is not evidence"
+  draft.results[0] = recordExecutedProbe({
+    featureId,
+    attempt: { scope: "probe", startedAt: draft.measuredAt },
+    assertions: [],
+    tests: [
+      mode === "record-only"
+        ? { id: "criterion", status: "test-failure", reason: "no-response" }
+        : { id: HARNESS_INCOMPLETE_TEST, status: mode === "todo-row" ? "test-todo" : "test-failure", reason },
+    ],
+    rawReplyRef: featureId,
+  })
+  return () =>
+    parseRun("harness-gap.json", JSON.stringify(draft), [featureId], new Map([[manifest.probeHash, manifest]]), {
+      mode: "capture",
+    })
+}
+
+it("reads an unreproduced-callback record beside its failed harness row", () => {
+  expect(harnessCapture("both")().results?.[0]?.status).toBe("test-failure")
+})
+it.each(["record-only", "row-only", "todo-row"] as const)("refuses an unreproduced-callback claim with %s", (mode) => {
+  expect(harnessCapture(mode)).toThrow(/unreproduced-callback record/)
 })
 
 const setup = (
