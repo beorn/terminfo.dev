@@ -677,6 +677,20 @@ function colorResetProbe(setCode: number, resetCode: number, index?: number): Pr
     if (!original) {
       if (originalRaw === "") {
         if (!hostColorSlot) {
+          if (
+            index === undefined &&
+            (setCode === 13 || setCode === 14) &&
+            resetCode === setCode + 100 &&
+            ctx.getDefaultColors
+          ) {
+            return parserStateResult(
+              null,
+              `OSC ${resetCode} restores the prior OSC ${setCode} color after a verified change`,
+              { query, originalRaw, defaultColors: ctx.getDefaultColors() },
+              undefined,
+              `OSC ${setCode} initial colour readback is missing and OSC ${resetCode} reset was not observed; default-color readback reports only fg, bg, and cursor, so pointer-colour support requires source review`,
+            )
+          }
           return colorReadbackReviewResult(
             `OSC ${setCode} colour query before OSC ${resetCode} answered nothing, so the reset effect cannot be read back`,
             { query, originalRaw },

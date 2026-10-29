@@ -620,6 +620,75 @@ test.each([
   expect(collisionResult.writes).toEqual([`\x1b]${setCode};rgb:12/34/56\x07`, writesExpected[1]])
 })
 
+test.each([
+  ["extensions.osc113-reset-pointer-fg", 13, 113],
+  ["extensions.osc114-reset-pointer-bg", 14, 114],
+] as const)(
+  "%s routes empty initial pointer-color readback with getDefaultColors to source-negative-review without inventing slots or writes",
+  (id, setCode, resetCode) => {
+    const query = `\x1b]${setCode};?\x07`
+    const defaultColors = { fg: null, bg: { r: 1, g: 2, b: 3 }, cursor: { r: 4, g: 5, b: 6 } }
+    const writes: string[] = []
+    const queries: string[] = []
+    const result = callback(id).lib!({
+      getDefaultColors: () => defaultColors,
+      feed: (bytes: string) => {
+        writes.push(bytes)
+      },
+      feedCapture: (bytes: string) => {
+        queries.push(bytes)
+        return ""
+      },
+    } as unknown as LibProbeSource)
+    expect(queries).toEqual([query])
+    expect(writes).toEqual([])
+    expect(result.criterionBranch).toBe("source-negative-review")
+    expect(result.notTested).toBeUndefined()
+    expect(result.tests).toEqual([
+      {
+        id: "review",
+        status: "test-failure",
+        reason: `OSC ${setCode} initial colour readback is missing and OSC ${resetCode} reset was not observed; default-color readback reports only fg, bg, and cursor, so pointer-colour support requires source review`,
+      },
+    ])
+    expect(result.observation).toEqual({
+      outcome: "inconclusive",
+      reason: "insufficient-evidence",
+      assertionType: "buffer_state",
+    })
+    const expected = `OSC ${resetCode} restores the prior OSC ${setCode} color after a verified change`
+    expect(result.assertions).toEqual([
+      {
+        assertionType: "buffer_state",
+        kind: "negative",
+        expected,
+        observed: result.response,
+      },
+    ])
+    expect(JSON.parse(result.response!)).toEqual({
+      query,
+      originalRaw: "",
+      defaultColors,
+    })
+
+    expect(() =>
+      callback(id).lib!({
+        getDefaultColors: () => {
+          throw new Error("default-color getter boom")
+        },
+        feed: () => {},
+        feedCapture: () => "",
+      } as unknown as LibProbeSource),
+    ).toThrow("default-color getter boom")
+
+    const withoutGetter = callback(id).lib!({
+      feed: () => {},
+      feedCapture: () => "",
+    } as unknown as LibProbeSource)
+    expect(withoutGetter.criterionBranch).toBe("color-readback-review")
+  },
+)
+
 test.each(appResetProbes)(
   "app %s reads the colour, sets it, reads the change, resets, and reads the restoration",
   async (id, setCode, resetCode, index) => {

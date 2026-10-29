@@ -96,8 +96,11 @@ restoration to the measured baseline, including null for unset, is a
 `buffer_state` positive; a verified seed remaining after reset is negative.
 Unverified seeds, getter failures, non-target slot changes or a third reset
 color retain `color-readback-review` with the cause. Without the getter these
-three callbacks keep their existing query path. Other color features are
-unchanged.
+three callbacks keep their existing query path. When the `default-colors` getter
+is exposed and the initial OSC 13 or 14 pointer-color query answers nothing, OSC
+113 and 114 retain the query, empty reply and measured `fg`/`bg`/`cursor`
+default-color state on `source-negative-review` without inventing pointer slots
+or executing reset writes. Other color features are unchanged.
 
 Cell `dim`, `italic`, `strikethrough` and `blink` readbacks are required `boolean | null`: null means the producer does not report that attribute, never a terminal-support claim. On a rendered X cell, their SGR probes retain the null or false state through `source-negative-review`, with a required review and a buffer-state assertion. A source-bound decision distinguishes an engine gap (Unsupported at that pin) from a binding gap (Untestable until repaired and recaptured). Positive booleans retain their supported observation path. A missing X retains the existing inconclusive result without an assertion or review; it is not reclassified as missing-observable coverage. Stored captures remain unchanged.
 
