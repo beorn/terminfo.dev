@@ -490,7 +490,7 @@ export const deviceProbes: ProbeDefinition[] = [
     malformed: /\x1bP>\|/,
     expected: "complete XTVERSION DCS >| printable name/version ST",
   }),
-  probe("device.term-features", null, () => Promise.resolve(notTestedResult("terminal child environment")), null),
+  probe("device.term-features", null, () => Promise.resolve(notTestedResult("terminal child environment", {})), null),
 
   // DSR ?996 — color-scheme query: CSI ? 996 n → CSI ? 997 ; Ps n
   {
