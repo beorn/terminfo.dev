@@ -400,6 +400,13 @@ describe("qualified clipboard roundtrip", () => {
 })
 
 describe("reply-path audit", () => {
+  const wasmReadbackQueries = [
+    ["extensions.osc0-icon-title", "\x1b[20t", "parser-rejected"],
+    ["extensions.osc52-clipboard", "\x1b]52;c;?\x07", "no-reply-path"],
+    ["extensions.osc52-read", "\x1b]52;c;?\x07", "no-reply-path"],
+    ["extensions.osc52-write", "\x1b]52;c;?\x07", "no-reply-path"],
+    ["extensions.osc5522-clipboard", "\x1b[?5522$p", "no-reply-path"],
+  ] as const
   // #31385: rebuilding cell readback must retain all applicable audits, including #31377's graphics prefixes.
   // The data-derived callback cases below cannot detect an omitted artifact or omitted row.
   test.each([
@@ -428,7 +435,9 @@ describe("reply-path audit", () => {
     )
     const rebuilt = REPLY_PATH_AUDITS.get(digest)
     expect(rebuilt).toBeDefined()
-    expect(Object.keys(rebuilt!).sort()).toEqual(Object.keys(prior).sort())
+    expect(Object.keys(rebuilt!).sort()).toEqual(
+      [...Object.keys(prior), ...(digest.startsWith("77b69f9f") ? wasmReadbackQueries.map(([id]) => id) : [])].sort(),
+    )
     for (const [id, audit] of Object.entries(prior)) {
       expect(rebuilt![id]).toMatchObject({ query: audit.query, kind: audit.kind })
       expect(rebuilt![id]!.matches).toBe(audit.matches)
@@ -508,6 +517,21 @@ describe("reply-path audit", () => {
         criterionBranch: REPLY_PATH_AUDIT_REVIEW,
         tests: [{ id: "review", status: "test-todo" }],
       })
+      expect(result.observation).toBeUndefined()
+    }
+  })
+
+  // Data-derived cases cannot catch a missing row; these five actual callback queries were omitted.
+  test.each(wasmReadbackQueries)("WASM readback %s retains its own query and source kind", (id, query, kind) => {
+    const digest = "77b69f9f22c4126359be864fcce97afad8f84615053e21d335ba6348a8d3e1d7"
+    expect(REPLY_PATH_AUDITS.get(digest)?.[id]).toMatchObject({ query, kind })
+    const { result, sent } = run(id, digest, () => "")
+    expect(sent).toContain(query)
+    if (kind === "parser-rejected") {
+      expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
+    } else {
+      expect(result.criterionBranch).toBe(REPLY_PATH_AUDIT_REVIEW)
+      expect(result.tests).toMatchObject([{ id: "review", status: "test-todo" }])
       expect(result.observation).toBeUndefined()
     }
   })
