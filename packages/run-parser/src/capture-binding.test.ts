@@ -170,7 +170,7 @@ it.each([
 // #31373 (@cto 15cf18e4): an unreproduced-callback record and its failed harness row are one claim. The
 // collector writes both together; the reader refuses either one alone, which no existing fixture carries.
 function harnessCapture(
-  mode: "both" | "record-only" | "row-only" | "todo-row",
+  mode: "both" | "record-only" | "reordered-record" | "spaced-record" | "row-only" | "todo-row",
   host?: "cause" | "no-cause" | "two-targets" | "replied-cause",
 ) {
   const featureId = "clipboard.read"
@@ -217,20 +217,21 @@ function harnessCapture(
   draft.measuredAt = "2026-10-28T23:00:00.000Z"
   draft.origin = { kind: "collector" }
   const query = "\x1b]52;c;?\x07"
+  const unreproduced = { backend: "kitty", captures: [{ query, callbacks: ["clipboard_control"] }] }
+  // @cto ff549ce2: the reader finds the record by its key, so neither key order nor JSON whitespace hides it.
   draft.rawReplies[featureId] =
     mode === "row-only"
       ? ""
-      : JSON.stringify({
-          unreproduced: { backend: "kitty", captures: [{ query, callbacks: ["clipboard_control"] }] },
-          measuredResponse: "",
-        })
+      : mode === "reordered-record"
+        ? JSON.stringify({ measuredResponse: "", unreproduced })
+        : `${mode === "spaced-record" ? "\n " : ""}${JSON.stringify({ unreproduced, measuredResponse: "" })}`
   const reason = "Harness incomplete: kitty did not reproduce clipboard_control; silence is not evidence"
   draft.results[0] = recordExecutedProbe({
     featureId,
     attempt: { scope: "probe", startedAt: draft.measuredAt },
     assertions: [],
     tests: [
-      mode === "record-only"
+      mode === "record-only" || mode === "reordered-record" || mode === "spaced-record"
         ? { id: "criterion", status: "test-failure", reason: "no-response" }
         : { id: HARNESS_INCOMPLETE_TEST, status: mode === "todo-row" ? "test-todo" : "test-failure", reason },
     ],
@@ -340,9 +341,12 @@ it("refuses a harness-unreproduced cause on a capture that replied", () => {
 it("reads an unreproduced-callback record beside its failed harness row", () => {
   expect(harnessCapture("both")().results?.[0]?.status).toBe("test-failure")
 })
-it.each(["record-only", "row-only", "todo-row"] as const)("refuses an unreproduced-callback claim with %s", (mode) => {
-  expect(harnessCapture(mode)).toThrow(/unreproduced-callback record/)
-})
+it.each(["record-only", "reordered-record", "spaced-record", "row-only", "todo-row"] as const)(
+  "refuses an unreproduced-callback claim with %s",
+  (mode) => {
+    expect(harnessCapture(mode)).toThrow(/unreproduced-callback record/)
+  },
+)
 it("the WezTerm OSC 52 read audit makes its refused capture parse without changing a result", () => {
   expect(weztermCapture("captured")).toThrow(/missing cause for captured empty target response/)
   const statuses = (JSON.parse(WEZTERM_OSC52) as { results: { status: string }[] }).results.map((r) => r.status)
