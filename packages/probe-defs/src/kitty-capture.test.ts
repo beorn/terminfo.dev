@@ -118,9 +118,19 @@ test("the layout guard sits right of the grid, covers the row below it, and is i
   // Byte-identical in both states: the guard is a control, not a difference the row could read.
   expect(one).toBe(two)
   expect(one.split(KITTY_GUARD_TEXT).length - 1).toBe(3)
-  // Three CUP-moved guard rows: the two placeholder rows and the row below the grid.
-  for (const row of [KITTY_GUARD_REGION.top, KITTY_GUARD_REGION.top + 1, KITTY_GUARD_REGION.bottom]) {
-    expect(one).toContain(`\u{1b}[${String(row)};${String(KITTY_GUARD_REGION.left)}H${KITTY_GUARD_TEXT}`)
+  // The row BELOW the grid is the only guard the row writes with a CUP of its own.
+  expect(one).toContain(
+    `\u{1b}[${String(KITTY_GUARD_REGION.bottom)};${String(KITTY_GUARD_REGION.left)}H\u{1b}[0m${KITTY_GUARD_TEXT}`,
+  )
+  // Beside each placeholder row the guard follows the second cell directly, with NO cursor move: a CUP
+  // to the guard column would repaint it in place even when the terminal widened or swallowed the
+  // placeholder cells, which is the reflow this control has to see.
+  for (const row of [KITTY_GUARD_REGION.top, KITTY_GUARD_REGION.top + 1]) {
+    expect(one).not.toContain(`\u{1b}[${String(row)};${String(KITTY_GUARD_REGION.left)}H${KITTY_GUARD_TEXT}`)
+  }
+  // Each row's last placeholder cell is immediately followed by the reset and the guard bytes.
+  for (const rowDiacritic of [KITTY_DIACRITIC_0, KITTY_DIACRITIC_1]) {
+    expect(one).toContain(`${rowDiacritic}${KITTY_DIACRITIC_1}\u{1b}[0m${KITTY_GUARD_TEXT}`)
   }
 })
 

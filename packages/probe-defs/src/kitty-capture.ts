@@ -237,19 +237,23 @@ export function kittyPlaceholderText(imageId: number): string {
       `kitty placeholder ids are pinned to 1..255 so no third diacritic is needed; got ${String(imageId)}`,
     )
   }
+  // The row below the grid is positioned by CUP; the guard beside each placeholder row is NOT. It is
+  // written straight after that row's second placeholder cell, with no cursor repositioning in between,
+  // so it lands wherever the terminal actually left the cursor. A CUP to the guard column would put the
+  // bytes back at columns 5..7 even in a terminal that widened or swallowed the placeholder cells, which
+  // is precisely the reflow the guard exists to catch.
+  const below = `\x1b[${KITTY_GUARD_REGION.bottom};${KITTY_GUARD_REGION.left}H\x1b[0m${KITTY_GUARD_TEXT}`
   const rows: string[] = []
   for (let row = 0; row < KITTY_BLOCK_ROWS; row++) {
     let line = ""
     for (let col = 0; col < KITTY_BLOCK_COLS; col++) {
       line += `${KITTY_PLACEHOLDER}${kittyDiacritic(row)}${kittyDiacritic(col)}`
     }
-    rows.push(`\x1b[${KITTY_BLOCK_TOP + row};${KITTY_BLOCK_LEFT}H${line}`)
+    rows.push(
+      `\x1b[${KITTY_BLOCK_TOP + row};${KITTY_BLOCK_LEFT}H\x1b[38;5;${imageId}m${line}\x1b[0m${KITTY_GUARD_TEXT}`,
+    )
   }
-  const guard: string[] = []
-  for (let row = KITTY_GUARD_REGION.top; row <= KITTY_GUARD_REGION.bottom; row++) {
-    guard.push(`\x1b[${row};${KITTY_GUARD_REGION.left}H${KITTY_GUARD_TEXT}`)
-  }
-  return `\x1b[38;5;${imageId}m${rows.join("")}\x1b[0m${guard.join("")}${kittyPark()}`
+  return `${below}${rows.join("")}${kittyPark()}`
 }
 
 /** The same-comparison rule both rows share: byte inequality of the region digest, never a tolerance. */
