@@ -1283,6 +1283,14 @@ export function parseProbeResults(
       return { ...entry, attempt: checkAttempt } as unknown as ProbeTestResult
     })
     const result = { ...item, featureId, status, attempt, tests: tests } as unknown as ProbeResult
+    // A query reply is source-negative only on a cited parser-level rejection, never a missing reply writer.
+    if (result.criterionBranch === SOURCE_NEGATIVE_REVIEW && item.assertionType === "query_reply") {
+      const state = nonempty(item.rawReplyRef) ? rawReplies[item.rawReplyRef] : undefined
+      const parsed: unknown = state === undefined ? undefined : parseJsonStrict(`${path}: ${featureId}`, state)
+      if (!object(parsed) || parsed.rejection !== "parser") {
+        fail(path, `${featureId} query_reply source-negative review requires a recorded parser-level rejection`)
+      }
+    }
     if (finalizeProbeResult(result).status !== status) {
       fail(path, `${featureId} recorded status hides required test work`)
     }

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest"
 import { ALL_PROBES, type LibProbeSource, type TermProbeSource } from "./index.ts"
-import { REPLY_AFTER_SENTINEL_NOTE } from "./helpers.ts"
+import { REPLY_AFTER_SENTINEL_NOTE, REPLY_PATH_AUDIT_REVIEW, SOURCE_NEGATIVE_REVIEW } from "./helpers.ts"
+import { REPLY_PATH_AUDITS } from "./reply-path-audit.ts"
 
 const OSC_SEMANTIC_MARK_CASES = [
   ["extensions.osc133-a", "\x1b]133;A\x07"],
@@ -202,6 +203,82 @@ describe("audited native host recipe callers", () => {
       expect(result.hostRecipeCauses).toBeUndefined()
     },
   )
+})
+
+/**
+ * @failure A cited missing reply path replaced a measured reply, or an unaudited artifact inherited the review.
+ * @level l0
+ * @consumer probe() reply-path audit hook (CTO 10c2da7b) and run-parser's query_reply source-negative check.
+ * @testonly REPLY_PATH_AUDITS: exported so every audited cell runs through its own production probe.
+ */
+// CTO 10c2da7b condition 2: listed + zero reply → review; listed + one reply byte → measured; unlisted → measured.
+// The audited cells run their real callbacks; no existing test reaches the hook with a listed artifact.
+describe("reply-path audit", () => {
+  const cells = [...REPLY_PATH_AUDITS].flatMap(([sha256, audits]) =>
+    Object.entries(audits).map(([id, audit]) => ({ sha256, id, audit })),
+  )
+  const identity = (sha256: string): NonNullable<LibProbeSource["runtimeIdentity"]> => ({
+    ...nativeIdentity,
+    loadedBinary: { path: "audited.wasm", sha256 },
+    provenance: { ...nativeIdentity.provenance, sha256 },
+  })
+  const run = (id: string, sha256: string, reply: (sequence: string) => string) => {
+    const sent: string[] = []
+    const result = probe(id).lib!(
+      context({
+        runtimeIdentity: identity(sha256),
+        feedCapture(sequence) {
+          sent.push(sequence)
+          return reply(sequence)
+        },
+      }),
+    )
+    return { result, sent }
+  }
+
+  test("covers both audited artifacts", () => {
+    // Ghostty WASM at 5714ed07 and the vt100 0.16.2 Rust parser, as loaded by the 31372/31371 captures.
+    expect([...REPLY_PATH_AUDITS.keys()].sort()).toEqual([
+      "7c43302dde147c6f7959b7bda7045ff375c71288da1af5667ffca2bf95beb2bf",
+      "a478127f571a25cf0e2b52e2972aa26d4344df03d9b3fba93ca03efd9cc9a0fa",
+    ])
+  })
+
+  test.each(cells)("$id on $sha256", ({ sha256, id, audit }) => {
+    const unlisted = run(id, "f".repeat(64), () => "")
+    expect(JSON.stringify(unlisted.result)).not.toContain("replyPathAudit")
+
+    const silent = run(id, sha256, () => "")
+    expect(silent.sent).toContain(audit.query)
+    const state = JSON.parse(silent.result.response!)
+    expect(state).toEqual({
+      ...(audit.kind === "parser-rejected" && { rejection: "parser" }),
+      replyPathAudit: {
+        artifactSha256: sha256,
+        featureId: id,
+        ...audit,
+        captures: silent.sent.filter((sequence) => sequence === audit.query).length,
+        replyBytes: 0,
+      },
+      measuredResponse: unlisted.result.response ?? null,
+    })
+    if (audit.kind === "no-reply-path") {
+      expect(silent.result).toMatchObject({
+        criterionBranch: REPLY_PATH_AUDIT_REVIEW,
+        tests: [{ id: "review", status: "test-todo" }],
+      })
+    } else {
+      expect(silent.result).toMatchObject({
+        criterionBranch: SOURCE_NEGATIVE_REVIEW,
+        tests: [{ id: "review", status: "test-failure" }],
+        observation: { outcome: "inconclusive", assertionType: "query_reply" },
+      })
+      expect(probe(id).libAssertionType ?? "query_reply").toBe("query_reply")
+    }
+
+    const answer = (sequence: string) => (sequence === audit.query ? "\x1b" : "")
+    expect(run(id, sha256, answer).result).toEqual(run(id, "f".repeat(64), answer).result)
+  })
 })
 
 describe("initial colour context review", () => {
