@@ -1148,9 +1148,9 @@ export function startDaemon(port = 0): void {
                 throw new Error("Process owner assertion differs from this daemon's launch run or PID")
               }
             }
-          } catch {
+          } catch (error) {
             res.statusCode = 400
-            res.end(JSON.stringify({ error: "Invalid or mismatched owned-terminal owner assertion" }))
+            res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }))
             return
           }
         } else if (req.method !== "GET") {
