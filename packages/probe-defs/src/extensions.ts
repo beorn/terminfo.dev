@@ -1465,10 +1465,15 @@ function osc720ScrollProbe(): ProbeDefinition["lib"] {
     const controlGeometryFixed = sameGeometry(afterMinus, before) && sameGeometry(afterPlus, before)
     const controlPositionMoved =
       afterMinus.viewportOffset !== before.viewportOffset || afterPlus.viewportOffset !== afterMinus.viewportOffset
-    const moved = controlGeometryFixed && controlPositionMoved
     ctx.reset()
     feedScrollbackHistory(ctx)
-    const control = { afterMinus, afterPlus, geometryFixed: controlGeometryFixed, moved, restored: ctx.getScrollback() }
+    const control = {
+      afterMinus,
+      afterPlus,
+      geometryFixed: controlGeometryFixed,
+      positionMoved: controlPositionMoved,
+      restored: ctx.getScrollback(),
+    }
     if (!sameViewport(control.restored, before)) {
       return parserStateResult(
         null,
@@ -1477,7 +1482,14 @@ function osc720ScrollProbe(): ProbeDefinition["lib"] {
         "Viewport control did not restore the measured baseline",
       )
     }
-    if (!moved) {
+    // A control that moved something other than the position is an irregular instrument, not an
+    // absence of one: the readings are kept and the result stays inconclusive rather than becoming a
+    // coverage record (CTO ruling on 31752). Only a control that moved nothing at fixed extents is
+    // evidence that this backend has no viewport scroll state.
+    if (!controlGeometryFixed) {
+      return parserStateResult(null, OSC720_CLAIM, { before, control }, "Viewport control changed the buffer geometry")
+    }
+    if (!controlPositionMoved) {
       return notTestedResult("scrollback viewport state", { before, control })
     }
     ctx.feed("\x1b]720\x07")

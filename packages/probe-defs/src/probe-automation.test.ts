@@ -3827,7 +3827,7 @@ describe("partial probe automation candidates", () => {
     expect(fed).toContain("\x1b]720\x07")
   })
 
-  test("OSC 720 does not let a changed history count or screen height qualify the observer", () => {
+  test("OSC 720 treats a control that changes only counts as inconclusive, never coverage", () => {
     const p = probe("extensions.osc720-scroll-up")
     expect(p.lib).toBeTypeOf("function")
 
@@ -3851,8 +3851,11 @@ describe("partial probe automation candidates", () => {
           },
         }),
       )
-      expect(result.notTested?.noObservable).toBe("scrollback viewport state")
-      expect(result.observation?.outcome).not.toBe("unsupported")
+      expect(result.notTested).toBeUndefined()
+      expect(result.observation?.outcome).toBe("inconclusive")
+      expect(result.observation?.reason).toBe("insufficient-evidence")
+      expect(result.note).toContain("geometry")
+      expect(result.response).toContain('"afterMinus"')
       expect(result.assertions).toBeUndefined()
     }
   })
