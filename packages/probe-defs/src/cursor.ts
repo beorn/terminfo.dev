@@ -528,6 +528,24 @@ export const cursorProbes: ProbeDefinition[] = [
               frames: [control, target],
               note: "DECRQSS cursor-style report unanswered; cursor pixels captured, shape difference requires review",
             },
+            criterionBranch: "visual-review",
+            tests: [
+              { id: "capture", status: "supported", assertionRefs: [0] },
+              {
+                id: "review",
+                status: "test-todo",
+                reason: "Cursor shape frames captured; required independent review pending; cursor cell is unmeasured",
+              },
+            ],
+            assertions: [
+              {
+                assertionType: "screenshot",
+                kind: "positive",
+                expected:
+                  "Compare default control with requested blinking bar target; cursor cell is unmeasured, so location or blink-phase absence cannot establish a shape negative",
+                observed: JSON.stringify({ control, target }),
+              },
+            ],
           }
         } finally {
           ctx.write("\x1b[0 q")
