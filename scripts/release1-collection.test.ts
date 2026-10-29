@@ -252,6 +252,7 @@ it.each([
   ["frozen", "none"],
   ["frozen", "deferred"],
   ["matching", "selected"],
+  ["matching", "completed-collector-error"],
   ["matching", "empty-selection"],
   ["matching", "linux-prestart"],
   ["matching", "linux-poststart"],
@@ -296,21 +297,36 @@ it.each([
     const writer = vi.spyOn(admission, "admitRun").mockImplementation(() => {
       throw new Error("Development must not write admission")
     })
-    const collector = vi.spyOn(headless, "collectHeadlessRuns").mockImplementation(async (_selectors, output) => {
-      if (!output) throw new Error("collection requires a private output directory")
-      mkdirSync(output, { recursive: true })
-      const raw = join(output, "xtermjs.json")
-      writeFileSync(raw, bytes)
-      // Use a private source canary: the failure must not delete or rewrite a real checkout input.
-      if (inputChange === "remove") rmSync(input)
-      if (inputChange === "rewrite") writeFileSync(input, "changed private suite input")
-      if (inputChange === "blocked-hosted") writeFileSync(join(dirname(output), "hosted"), "private obstruction")
-      if (inputChange === "blocked-macos") {
-        mkdirSync(join(dirname(output), "hosted"))
-        writeFileSync(join(dirname(output), "hosted", "macos"), "private obstruction")
-      }
-      return { directory: output, requested: ENGINE_BACKENDS, runs: [raw], failures: [] }
-    })
+    let completedDraftBytes: string | undefined
+    const collector = vi
+      .spyOn(headless, "collectHeadlessRuns")
+      .mockImplementation(async (_selectors, output, initializations) => {
+        if (!output) throw new Error("collection requires a private output directory")
+        mkdirSync(output, { recursive: true })
+        const raw = join(output, "xtermjs.json")
+        writeFileSync(raw, bytes)
+        if (inputChange === "completed-collector-error") {
+          const handed = initializations?.get("xtermjs")
+          if (!handed) throw new Error("Expected delegated headless draft")
+          handed.draft.rawReplies["collector.collectionAttempt"] = JSON.stringify({
+            ids: ["sgr.bold"],
+            startedAt: "2026-10-29T07:01:02.000Z",
+            result: "completed",
+            hostInputs: { "pixel-geometry": "not-supplied" },
+          })
+          completedDraftBytes = JSON.stringify(handed.draft)
+          writeFileSync(handed.path, completedDraftBytes)
+        }
+        // Use a private source canary: the failure must not delete or rewrite a real checkout input.
+        if (inputChange === "remove") rmSync(input)
+        if (inputChange === "rewrite") writeFileSync(input, "changed private suite input")
+        if (inputChange === "blocked-hosted") writeFileSync(join(dirname(output), "hosted"), "private obstruction")
+        if (inputChange === "blocked-macos") {
+          mkdirSync(join(dirname(output), "hosted"))
+          writeFileSync(join(dirname(output), "hosted", "macos"), "private obstruction")
+        }
+        return { directory: output, requested: ENGINE_BACKENDS, runs: [raw], failures: [] }
+      })
     // The real launcher owns containers and receipts. Its process boundary is replaced here;
     // a failed Kitty launch and other malformed raw outputs must remain separate, retained failures.
     let actualRoutePath: string | undefined
@@ -500,7 +516,7 @@ it.each([
           : []
       // AC1: the existing full-census fixture otherwise hides ignored context/probe selections.
       const selection =
-        inputChange === "selected"
+        inputChange === "selected" || inputChange === "completed-collector-error"
           ? { contexts: ["xtermjs/headless"], ids: ["sgr.bold"] }
           : inputChange === "linux-prestart" || inputChange.startsWith("linux-poststart")
             ? { contexts: ["alacritty/linux"], ids: ["sgr.bold"] }
@@ -577,6 +593,16 @@ it.each([
             readFileSync(join(pass.directory, "lib-xtermjs-unknown.draft.json"), "utf8"),
           ) as RunDraft
           expect(readCollectorSelection(retained.rawReplies)).toEqual({ ids: ["sgr.bold"] })
+          // A downstream parser refusal belongs to the pass row, not the finished collector's record.
+          // Existing error rows have no terminal attempt to preserve.
+          if (inputChange === "completed-collector-error") {
+            expect(readCollectorAttempt(retained.rawReplies)?.result).toBe("completed")
+            expect(readFileSync(join(pass.directory, "lib-xtermjs-unknown.draft.json"), "utf8")).toBe(
+              completedDraftBytes,
+            )
+            expect(pass.contexts[0]?.error).toMatch(/current schema-4/)
+            expect(pass.contexts[0]?.status).toBe("failed")
+          }
         }
         return
       }
