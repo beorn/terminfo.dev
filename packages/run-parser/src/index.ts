@@ -13,6 +13,8 @@ import {
   initializeRunDraft,
   readCollectorSelection,
   readCollectorAttempt,
+  collectorAttemptDigest,
+  type RetainedHostRecipeCause,
   type CaptureDecision,
   type RunDraft,
   type CapturedRunDraft,
@@ -1428,7 +1430,7 @@ export function validateHostRecipeCauses(
   expectations: readonly HostRecipeExpectation[],
   rawReplies: Readonly<Record<string, string>>,
   identity: HeadlessRuntimeIdentity | undefined,
-): void {
+): { runId: string; captures: unknown[]; causes: RetainedHostRecipeCause[] } {
   const refuse: (reason: string) => never = (reason) => fail(path, `${featureId} host recipe: ${reason}`)
   const inputNames = new Set<string>(HOST_INPUT_NAMES)
   const recipes = new Set(["color-request", "text-area-size", "clipboard-load"])
@@ -1543,7 +1545,7 @@ export function validateHostRecipeCauses(
         refuse("invalid declared-input citation")
       }
       const inputs = rawReplies[citation.inputRecordRef]
-      if (inputs === undefined || citation.sha256 !== createHash("sha256").update(inputs).digest("hex")) {
+      if (inputs === undefined || citation.sha256 !== collectorAttemptDigest(inputs)) {
         refuse("stale declared-input digest")
       }
       const inputRecord = parseJsonStrict(`${path}: declared host inputs`, inputs)
@@ -1574,6 +1576,7 @@ export function validateHostRecipeCauses(
       refuse("missing cause for captured empty target response")
     }
   }
+  return record as { runId: string; captures: unknown[]; causes: RetainedHostRecipeCause[] }
 }
 
 export function parseRun(

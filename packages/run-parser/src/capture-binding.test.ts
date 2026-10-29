@@ -21,9 +21,12 @@ import {
   recordCollectorSelection,
   recordCollectorAttempt,
   type RunDraft,
+  ALL_PROBES,
+  readCollectorAttempt,
 } from "@terminfo/probe-defs"
 import { fakeProbeResult } from "@terminfo/probe-defs/testing/fake-probe-result"
 import { applyCaptureDecision, retainCaptureBinding, parseRun, decodeCollectorDraft } from "./index.ts"
+import { finalizeHeadlessAttempt } from "../../probes/headless-batch.ts"
 
 // Empty HTTP transport is a real initialized draft, not a truncated measured capture.
 // Sealed-run binding tests never decode the unmeasured collector response boundary.
@@ -61,7 +64,12 @@ it.each(["empty", "status", "scope", "captured"])("decodes collector %s through 
 // H1-H7: explicit collector-input fixture, not an engine execution or qualification proof.
 // Existing immutable-binding tests cannot reject an invalid cause before the first binding exists.
 const HOST_QUERY = "\x1b]10;?\x07"
-function hostCauseCapture(mode: string, query: string, split: boolean) {
+function hostCauseCapture(
+  mode: string,
+  query: string,
+  split: boolean,
+  finalization?: "completed" | "failed" | "cancelled" | "stale" | "tampered",
+) {
   const featureId = "host.fixture",
     runId = "host-custody",
     artifact = "a".repeat(64)
@@ -114,7 +122,7 @@ function hostCauseCapture(mode: string, query: string, split: boolean) {
     assertions: [],
     tests: [{ id: "criterion", status: "test-failure", reason: "Fixture has no initial colour reply" }],
   })
-  const finalized = ["completed", "failed", "cancelled"].includes(mode)
+  const finalized = finalization !== undefined
   const input = JSON.stringify({
     ...(finalized && { ids: [featureId], startedAt: draft.measuredAt, result: "started" }),
     hostInputs: { "foreground-rgb": "not-supplied" },
@@ -142,6 +150,7 @@ function hostCauseCapture(mode: string, query: string, split: boolean) {
   }
   if (mode === "missing-capture") record.captures = []
   if (mode === "stale-input") citation.sha256 = "0".repeat(64)
+  if (finalization === "stale") citation.sha256 = "0".repeat(64)
   if (mode === "stale-artifact") source.artifactSha256 = "0".repeat(64)
   if (mode === "foreign-reference") observed.eventRef = "collector.hostRecipes.other"
   if (mode === "foreign-run") record.runId = "another-run"
@@ -170,20 +179,39 @@ function hostCauseCapture(mode: string, query: string, split: boolean) {
       },
     },
   })
-  if (finalized) {
-    recordCollectorAttempt(draft, {
-      ids: [featureId],
-      startedAt: draft.measuredAt,
-      hostInputs: { "foreground-rgb": "not-supplied" },
-      ...(mode === "completed"
-        ? { result: "completed" as const }
-        : { result: mode as "failed" | "cancelled", error: "original fixture error" }),
-    })
+  return () => {
+    if (finalization) {
+      const before = { ...draft.rawReplies }
+      const outcome = finalization === "failed" || finalization === "cancelled" ? finalization : "completed"
+      try {
+        finalizeHeadlessAttempt(
+          draft,
+          {
+            ids: [featureId],
+            startedAt: draft.measuredAt,
+            hostInputs: { "foreground-rgb": finalization === "tampered" ? "supplied" : "not-supplied" },
+            ...(outcome === "completed" ? { result: outcome } : { result: outcome, error: "original fixture error" }),
+          },
+          [{ id: featureId, libHostRecipes: expectations }],
+        )
+      } catch (error) {
+        expect(draft.rawReplies).toEqual(before)
+        throw error
+      }
+      expect(readCollectorAttempt(draft.rawReplies)?.result).toBe(outcome)
+      if (outcome !== "completed") expect(readCollectorAttempt(draft.rawReplies)?.error).toBe("original fixture error")
+      if (mode === "observed") expect(draft.rawReplies[recordRef]).toBe(before[recordRef])
+    }
+    return parseRun(
+      "host-custody.json",
+      JSON.stringify(draft),
+      [featureId],
+      new Map([[manifest.probeHash, manifest]]),
+      {
+        mode: "capture",
+      },
+    )
   }
-  return () =>
-    parseRun("host-custody.json", JSON.stringify(draft), [featureId], new Map([[manifest.probeHash, manifest]]), {
-      mode: "capture",
-    })
 }
 
 it.each(["source-audited", "observed", "real-reply"])(
@@ -194,8 +222,20 @@ it.each(["source-audited", "observed", "real-reply"])(
 )
 // Selected-run outcomes must survive canonical reading after collection ends.
 // Existing custody cases bind the started bytes and never finalize the attempt.
-it.each(["completed", "failed", "cancelled"])("retains native host custody after %s finalization", (mode) => {
-  expect(hostCauseCapture(mode, HOST_QUERY, false)().results?.[0]?.status).toBe("test-failure")
+it.each(["completed", "failed", "cancelled"] as const)(
+  "retains native host custody after %s finalization",
+  (outcome) => {
+    expect(hostCauseCapture("source-audited", HOST_QUERY, false, outcome)().results?.[0]?.status).toBe("test-failure")
+  },
+)
+it.each([
+  ["stale", /stale before finalization/],
+  ["tampered", /hostInputs|unchanged|changed/],
+] as const)("refuses %s finalization atomically", (mode, diagnostic) => {
+  expect(hostCauseCapture("source-audited", HOST_QUERY, false, mode)).toThrow(diagnostic)
+})
+it("preserves observed host-cause bytes through finalization", () => {
+  expect(hostCauseCapture("observed", HOST_QUERY, false, "completed")().results?.[0]?.status).toBe("test-failure")
 })
 it.each([
   "missing-cause",
@@ -336,7 +376,9 @@ function harnessCapture(
 // The refused WezTerm capture (run 4cd4be36, addon sha256 84da518e) trimmed to its three clipboard-load probes. Its
 // declared OSC 52 read returned zero bytes with no cause, so the parser refused the whole run file.
 const WEZTERM_OSC52 = readFileSync(new URL("./fixtures/wezterm-osc52-refused.capture.json", import.meta.url), "utf8")
-function weztermCapture(mode: "captured" | "audited" | "foreign-artifact" | "declared-input" | "no-source") {
+function weztermCapture(
+  mode: "captured" | "audited" | "foreign-artifact" | "declared-input" | "no-source" | "finalized",
+) {
   const run = JSON.parse(WEZTERM_OSC52) as RunDraft & { results: { featureId: string }[]; probeHash: string }
   const ids = run.results.map((result) => result.featureId)
   const manifest = {
@@ -379,6 +421,24 @@ function weztermCapture(mode: "captured" | "audited" | "foreign-artifact" | "dec
     }
     run.rawReplies[recordRef] = JSON.stringify(record)
   }
+  if (mode === "finalized") {
+    const attempt = readCollectorAttempt(run.rawReplies)
+    if (!attempt?.startedAt) throw new Error("Expected retained WezTerm collection start")
+    const hostRecords = Object.fromEntries(
+      ids.map((id) => [`collector.hostRecipes.${id}`, run.rawReplies[`collector.hostRecipes.${id}`]]),
+    )
+    finalizeHeadlessAttempt(
+      run,
+      {
+        ids: attempt.ids,
+        startedAt: attempt.startedAt,
+        ...(attempt.hostInputs && { hostInputs: attempt.hostInputs }),
+        result: "completed",
+      },
+      ALL_PROBES,
+    )
+    for (const [key, bytes] of Object.entries(hostRecords)) expect(run.rawReplies[key]).toBe(bytes)
+  }
   return () =>
     parseRun("wezterm-osc52.json", JSON.stringify(run), ids, new Map([[manifest.probeHash, manifest]]), {
       mode: "capture",
@@ -407,6 +467,7 @@ it("the WezTerm OSC 52 read audit makes its refused capture parse without changi
   expect(weztermCapture("captured")).toThrow(/missing cause for captured empty target response/)
   const statuses = (JSON.parse(WEZTERM_OSC52) as { results: { status: string }[] }).results.map((r) => r.status)
   expect(weztermCapture("audited")().results?.map((result) => result.status)).toEqual(statuses)
+  expect(weztermCapture("finalized")().results?.map((result) => result.status)).toEqual(statuses)
 })
 it.each(["foreign-artifact", "declared-input", "no-source"] as const)(
   "the WezTerm unimplemented cause refuses %s custody",

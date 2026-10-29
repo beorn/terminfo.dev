@@ -24,7 +24,7 @@ import {
 import { parseRun } from "@terminfo/run-parser"
 import { derivedSuiteManifest, probeSuiteSnapshot } from "../admin/versions.ts"
 import { saveDaemonProbeRun } from "../terminfo.dev/src/capture-writer.ts"
-import { collectBatch, errorMessage } from "./headless-batch.ts"
+import { collectBatch, errorMessage, finalizeHeadlessAttempt } from "./headless-batch.ts"
 import { owningCheckout } from "./termless-root.ts"
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..")
@@ -180,6 +180,8 @@ async function collectOne(name: string, directory: string): Promise<string> {
     loaded.init({ cols: 80, rows: 24 })
     loaded.getCell(0, 0)
     const runtimeIdentity = await headlessRuntimeIdentity(name, entry.package, entry.type)
+    draft.runtimeIdentity = runtimeIdentity
+    checkpoint()
     backend = undefined
     loaded.destroy()
     const batch = await collectBatch(
@@ -204,9 +206,11 @@ async function collectOne(name: string, directory: string): Promise<string> {
       ...(startedAttempt?.hostInputs && { hostInputs: startedAttempt.hostInputs }),
       result: "completed" as const,
     }
-    recordCollectorAttempt(draft, completedAttempt)
+    finalizeHeadlessAttempt(draft, completedAttempt, resolved.probes)
     // Batch metadata includes the start checkpoint; retain the completed outcome above.
-    recordCollectorAttempt(batch, completedAttempt)
+    const completedBatch = { ...draft, rawReplies: batch.rawReplies }
+    finalizeHeadlessAttempt(completedBatch, completedAttempt, resolved.probes)
+    batch.rawReplies = completedBatch.rawReplies
     checkpoint()
     const run: CapturedRunDraft = {
       ...draft,
@@ -242,13 +246,22 @@ async function collectOne(name: string, directory: string): Promise<string> {
     return path
   } catch (error) {
     const diagnostic = scrubRecordedFailure(errorMessage(error))
-    recordCollectorAttempt(draft, {
-      ...readCollectorAttempt(draft.rawReplies),
-      ids,
-      ...(collectionStartedAt && { startedAt: collectionStartedAt }),
-      result: "failed",
-      error: diagnostic,
-    })
+    try {
+      finalizeHeadlessAttempt(
+        draft,
+        {
+          ...readCollectorAttempt(draft.rawReplies),
+          ids,
+          ...(collectionStartedAt && { startedAt: collectionStartedAt }),
+          result: "failed",
+          error: diagnostic,
+        },
+        resolved.probes,
+      )
+    } catch (finalizationError) {
+      draft.rawReplies["collector.finalizationFailure"] = scrubRecordedFailure(errorMessage(finalizationError))
+      process.stderr.write(`Attempt finalization refused after ${diagnostic}: ${errorMessage(finalizationError)}\n`)
+    }
     if (collectionStartedAt) recordCollectionFailure(draft, collectionStartedAt, diagnostic, ids)
     else {
       draft.rawReplies["collector.prerequisite"] = diagnostic
@@ -339,6 +352,7 @@ export async function collectHeadlessRuns(
         throw new Error(`Worker ${name} changed delegated run identity`)
       }
       const previousAttempt = readCollectorAttempt(retained.rawReplies)
+      if (previousAttempt?.result === "completed") return
       const startedAt =
         previousAttempt?.startedAt ?? (retained.rawReplies["collector.prerequisite"] ? undefined : workerStartedAt)
       if (!startedAt && result === "failed" && !retained.rawReplies["collector.prerequisite"]) {
@@ -347,13 +361,24 @@ export async function collectHeadlessRuns(
           if (row.status === "test-todo" && ids.includes(row.featureId)) row.reason = scrubbed
         }
       }
-      recordCollectorAttempt(retained, {
-        ...previousAttempt,
-        ids,
-        ...(startedAt && { startedAt }),
-        result,
-        error: previousAttempt?.error ?? scrubbed,
-      })
+      try {
+        if (previousAttempt?.result !== "failed" && previousAttempt?.result !== "cancelled") {
+          finalizeHeadlessAttempt(
+            retained,
+            {
+              ...previousAttempt,
+              ids,
+              ...(startedAt && { startedAt }),
+              result,
+              error: previousAttempt?.error ?? scrubbed,
+            },
+            resolved.probes,
+          )
+        }
+      } catch (finalizationError) {
+        retained.rawReplies["collector.finalizationFailure"] = scrubRecordedFailure(errorMessage(finalizationError))
+        process.stderr.write(`Attempt finalization refused after ${scrubbed}: ${errorMessage(finalizationError)}\n`)
+      }
       if (result === "failed" && startedAt && !retained.rawReplies["collector.prerequisite"]) {
         recordCollectionFailure(retained, startedAt, previousAttempt?.error ?? scrubbed, ids)
       } else if (retained.rawReplies["collector.prerequisite"]) {
@@ -458,12 +483,18 @@ export async function collectHeadlessRuns(
       const captured = JSON.parse(readFileSync(path, "utf8")) as CapturedRunDraft
       recordCollectorSelection(captured, ids)
       const capturedAttempt = readCollectorAttempt(captured.rawReplies)
-      recordCollectorAttempt(captured, {
-        ids,
-        startedAt: capturedAttempt?.startedAt ?? workerStartedAt,
-        ...(capturedAttempt?.hostInputs && { hostInputs: capturedAttempt.hostInputs }),
-        result: "completed",
-      })
+      if (capturedAttempt?.result !== "completed") {
+        finalizeHeadlessAttempt(
+          captured,
+          {
+            ids,
+            startedAt: capturedAttempt?.startedAt ?? workerStartedAt,
+            ...(capturedAttempt?.hostInputs && { hostInputs: capturedAttempt.hostInputs }),
+            result: "completed",
+          },
+          resolved.probes,
+        )
+      }
       const finalPath = saveDaemonProbeRun(captured, directory)
       parseRun(
         finalPath,

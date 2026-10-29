@@ -378,55 +378,81 @@ it("initializes all 273 before worker launch and retains explicit missing prereq
   expect(attempt).toMatchObject({ result: "failed", error: expect.stringContaining("missing pinned package") })
   expect(attempt).not.toHaveProperty("startedAt")
 })
-it("records an attempted selected worker timeout without changing unselected rows or suite membership", async () => {
-  vi.useFakeTimers()
-  const dir = directory()
-  let captureRunId: string | undefined
-  let unselectedRows: RunDraft["results"] = []
-  vi.spyOn(Bun, "spawn").mockImplementation(((_argv: unknown, options: { env: Record<string, string> }) => {
-    captureRunId = options.env.TERMINFO_CAPTURE_RUN_ID
-    unselectedRows = retainedDraft(dir).results.filter((row) => row.featureId !== "device.primary-da")
-    let finish!: (code: number) => void
-    const exited = new Promise<number>((resolve) => {
-      finish = resolve
+it.each([false, true])(
+  "records an attempted selected worker timeout with finalization refusal=%s without changing unselected rows or suite membership",
+  async (refused) => {
+    vi.useFakeTimers()
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true)
+    const dir = directory()
+    let captureRunId: string | undefined
+    let unselectedRows: RunDraft["results"] = []
+    vi.spyOn(Bun, "spawn").mockImplementation(((_argv: unknown, options: { env: Record<string, string> }) => {
+      captureRunId = options.env.TERMINFO_CAPTURE_RUN_ID
+      unselectedRows = retainedDraft(dir).results.filter((row) => row.featureId !== "device.primary-da")
+      if (refused) {
+        // A secondary custody refusal must not hide the original process failure.
+        // Other timeout fixtures contain no host records and cannot reach that catch.
+        const draft = retainedDraft(dir)
+        draft.rawReplies["collector.collectionAttempt"] = JSON.stringify({
+          ids: ["device.primary-da"],
+          startedAt: new Date().toISOString(),
+          result: "started",
+        })
+        draft.rawReplies["collector.hostRecipes.device.primary-da"] = "{}"
+        writeFileSync(options.env.TERMINFO_DRAFT_PATH!, JSON.stringify(draft))
+      }
+      let finish!: (code: number) => void
+      const exited = new Promise<number>((resolve) => {
+        finish = resolve
+      })
+      return {
+        stdout: new Blob([]).stream(),
+        stderr: new Blob(["worker diagnostic"]).stream(),
+        exited,
+        kill: () => finish(143),
+      }
+    }) as never)
+    const ids = ["device.primary-da"]
+    const pending = collectHeadlessRuns(["libvterm"], dir, undefined, ids)
+    await vi.advanceTimersByTimeAsync(120_000)
+    const collection = await pending
+    const draft = retainedDraft(dir)
+    expect(collection.failures[0]?.error).toContain("exceeded")
+    expect(draft.runId).toBe(captureRunId)
+    expect(draft.results).toHaveLength(273)
+    expect(draft.results.filter((row) => row.featureId !== "device.primary-da")).toEqual(unselectedRows)
+    const delegated = new Set(ids)
+    expect(JSON.parse(draft.rawReplies["collector.selection"]!)).toEqual({ ids })
+    expect(JSON.parse(draft.rawReplies["collector.collectionAttempt"]!)).toMatchObject({
+      ids,
+      result: refused ? "started" : "failed",
+      startedAt: expect.any(String),
+      ...(!refused && { error: expect.stringContaining("exceeded") }),
     })
-    return {
-      stdout: new Blob([]).stream(),
-      stderr: new Blob(["worker diagnostic"]).stream(),
-      exited,
-      kill: () => finish(143),
+    if (refused) {
+      expect(draft.rawReplies["collector.finalizationFailure"]).toMatch(/identity|expectations/)
+      expect(
+        stderr.mock.calls.some(
+          ([message]) =>
+            String(message).includes("Attempt finalization refused after") && String(message).includes("exceeded"),
+        ),
+      ).toBe(true)
+      expect(draft.rawReplies["collector.hostRecipes.device.primary-da"]).toBe("{}")
     }
-  }) as never)
-  const ids = ["device.primary-da"]
-  const pending = collectHeadlessRuns(["libvterm"], dir, undefined, ids)
-  await vi.advanceTimersByTimeAsync(120_000)
-  const collection = await pending
-  const draft = retainedDraft(dir)
-  expect(collection.failures[0]?.error).toContain("exceeded")
-  expect(draft.runId).toBe(captureRunId)
-  expect(draft.results).toHaveLength(273)
-  expect(draft.results.filter((row) => row.featureId !== "device.primary-da")).toEqual(unselectedRows)
-  const delegated = new Set(ids)
-  expect(JSON.parse(draft.rawReplies["collector.selection"]!)).toEqual({ ids })
-  expect(JSON.parse(draft.rawReplies["collector.collectionAttempt"]!)).toMatchObject({
-    ids,
-    result: "failed",
-    startedAt: expect.any(String),
-    error: expect.stringContaining("exceeded"),
-  })
-  expect(
-    draft.results
-      .filter((result) => delegated.has(result.featureId))
-      .every((result) => result.status === "test-failure" && result.attempt.scope === "collection"),
-  ).toBe(true)
-  expect(
-    draft.results
-      .filter((result) => !delegated.has(result.featureId))
-      .every((result) => result.status === "test-todo" && result.attempt.scope === "none"),
-  ).toBe(true)
-  expect(draft.rawReplies["collector.failure"]).toContain("exceeded")
-  expect(draft).not.toHaveProperty("target")
-})
+    expect(
+      draft.results
+        .filter((result) => delegated.has(result.featureId))
+        .every((result) => result.status === "test-failure" && result.attempt.scope === "collection"),
+    ).toBe(true)
+    expect(
+      draft.results
+        .filter((result) => !delegated.has(result.featureId))
+        .every((result) => result.status === "test-todo" && result.attempt.scope === "none"),
+    ).toBe(true)
+    expect(draft.rawReplies["collector.failure"]).toContain("exceeded")
+    expect(draft).not.toHaveProperty("target")
+  },
+)
 it("scrubs absolute host folder prefixes from recorded draft failures while keeping full paths in terminal errors", async () => {
   const dir = directory()
   const receiptPath = "/hh/var/wt/seat/vendor/termless/packages/libvterm/wasm/libvterm.wasm.receipt.json"

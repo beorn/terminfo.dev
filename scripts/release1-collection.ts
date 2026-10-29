@@ -847,16 +847,24 @@ export async function collectPass(
       }
       const retained = JSON.parse(readFileSync(handed.path, "utf8")) as RunDraft
       const previousAttempt = readCollectorAttempt(retained.rawReplies)
+      if (
+        previousAttempt?.result === "completed" ||
+        previousAttempt?.result === "failed" ||
+        previousAttempt?.result === "cancelled"
+      ) {
+        row.status = "failed"
+        continue
+      }
       const actualStart = previousAttempt?.startedAt
       const ids = [...(probeIds ?? snapshot.probes[context.kind])]
       recordCollectorAttempt(retained, {
         ...previousAttempt,
         ids,
         ...(actualStart && { startedAt: actualStart }),
-        result: previousAttempt?.result === "cancelled" ? "cancelled" : "failed",
+        result: "failed",
         error: previousAttempt?.error ?? row.error,
       })
-      if (actualStart && previousAttempt?.result !== "cancelled") {
+      if (actualStart) {
         recordCollectionFailure(retained, actualStart, previousAttempt?.error ?? row.error, ids)
       }
       row.status = retained.results.some((result) => result.status === "test-failure") ? "failed" : "not-started"

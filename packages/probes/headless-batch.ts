@@ -15,6 +15,9 @@ import {
   recordExecutedProbe,
   ASSERTION_TYPES,
   sentinelGraceMs,
+  collectorAttemptDigest,
+  readCollectorAttempt,
+  recordCollectorAttempt,
 } from "@terminfo/probe-defs"
 import type {
   ProbeResult,
@@ -29,9 +32,9 @@ import type {
   UngradedDiagnostic,
   HeadlessRuntimeIdentity,
   RetainedHostRecipeCause,
+  CollectorAttempt,
 } from "@terminfo/probe-defs"
 import { validateHostRecipeCauses } from "@terminfo/run-parser"
-import { createHash } from "node:crypto"
 import {
   headlessRuntimeIdentity,
   replyDeliveryDecision,
@@ -39,6 +42,99 @@ import {
   type ReplyPathDecision,
 } from "./headless-identity.ts"
 import { isDeepStrictEqual } from "node:util"
+
+/** Finalize the existing attempt without breaking its source-audited host-input citations. */
+export function finalizeHeadlessAttempt(
+  draft: Pick<RunDraft, "rawReplies" | "runId" | "runtimeIdentity">,
+  attempt: CollectorAttempt,
+  definitions: readonly Pick<ProbeDefinition, "id" | "libHostRecipes">[],
+): void {
+  const hostKeys = Object.keys(draft.rawReplies).filter((key) => key.startsWith("collector.hostRecipes."))
+  if (hostKeys.length === 0) {
+    recordCollectorAttempt(draft, attempt)
+    return
+  }
+  const staged = { rawReplies: { ...draft.rawReplies } }
+  recordCollectorAttempt(staged, attempt)
+  const oldRaw = draft.rawReplies["collector.collectionAttempt"]
+  const newRaw = staged.rawReplies["collector.collectionAttempt"]
+  if (oldRaw === newRaw) return
+  const previous = readCollectorAttempt(draft.rawReplies)
+  const next = readCollectorAttempt(staged.rawReplies)
+  if (!oldRaw || !newRaw || !previous?.startedAt || !next) {
+    throw new Error("Headless attempt finalization requires the original recorded start")
+  }
+  if (
+    !isDeepStrictEqual(
+      { ...previous, result: undefined, error: undefined },
+      { ...next, result: undefined, error: undefined },
+    )
+  ) {
+    throw new Error("Headless attempt finalization changed ids, start or retained host inputs")
+  }
+  if (previous.result === "completed" || previous.result === "failed" || previous.result === "cancelled") {
+    if (previous.result === next.result) return
+    throw new Error("Headless attempt finalization cannot change a terminal outcome")
+  }
+  if (previous.result !== undefined && previous.result !== "started") {
+    throw new Error("Headless attempt finalization requires a started or legacy attempt")
+  }
+  if (next.result !== "completed" && next.result !== "failed" && next.result !== "cancelled") {
+    throw new Error("Headless attempt finalization requires a terminal outcome")
+  }
+  if (!draft.runtimeIdentity) throw new Error("Headless attempt finalization lacks measured runtime identity")
+  const oldDigest = collectorAttemptDigest(oldRaw)
+  const newDigest = collectorAttemptDigest(newRaw)
+  const records = hostKeys.map((key) => {
+    const featureId = key.slice("collector.hostRecipes.".length)
+    const definition = definitions.find((candidate) => candidate.id === featureId)
+    if (!definition?.libHostRecipes) {
+      throw new Error(`Headless attempt finalization lacks host expectations for ${featureId}`)
+    }
+    const expectations = definition.libHostRecipes
+    try {
+      const record = validateHostRecipeCauses(
+        "headless attempt finalization",
+        draft.runId,
+        featureId,
+        expectations,
+        draft.rawReplies,
+        draft.runtimeIdentity,
+      )
+      return { key, featureId, expectations, record }
+    } catch (error) {
+      if (error instanceof Error && error.message.endsWith("host recipe: stale declared-input digest")) {
+        throw new Error(`Headless host citation stale before finalization: ${featureId}`, { cause: error })
+      }
+      throw error
+    }
+  })
+  for (const { key, featureId, record } of records) {
+    let changed = false
+    const causes = record.causes.map((entry) => {
+      const cause = entry.cause
+      if (cause.kind !== "source-audited" || cause.citation.inputRecordRef !== "collector.collectionAttempt")
+        return entry
+      if (cause.citation.sha256 !== oldDigest) {
+        throw new Error(`Headless host citation stale before finalization: ${featureId}`)
+      }
+      changed = true
+      return { ...entry, cause: { ...cause, citation: { ...cause.citation, sha256: newDigest } } }
+    })
+    if (changed) staged.rawReplies[key] = JSON.stringify({ ...record, causes })
+  }
+  for (const { featureId, expectations } of records) {
+    validateHostRecipeCauses(
+      "headless attempt finalization",
+      draft.runId,
+      featureId,
+      expectations,
+      staged.rawReplies,
+      draft.runtimeIdentity,
+    )
+  }
+  draft.rawReplies = staged.rawReplies
+}
 
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
@@ -622,7 +718,7 @@ export async function collectBatch(
                 artifactSha256: cause.artifactSha256,
                 citation: {
                   inputRecordRef: "collector.collectionAttempt",
-                  sha256: createHash("sha256").update(inputs).digest("hex"),
+                  sha256: collectorAttemptDigest(inputs),
                   input: cause.missing,
                   sourceLocation: cause.sourceCitation,
                 },

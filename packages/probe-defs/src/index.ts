@@ -219,6 +219,7 @@ export {
   readCollectorAttempt,
   recordCollectorSelection,
   recordCollectorAttempt,
+  collectorAttemptDigest,
 } from "./helpers.ts"
 
 export { assessTextQualification, type TextQualificationAssessment } from "./text-qualification.ts"

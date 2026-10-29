@@ -1,4 +1,5 @@
 import { PROBE_STATUSES } from "./types.ts"
+import { createHash } from "node:crypto"
 import type { ProbeTestInput } from "./types.ts"
 import type {
   ProbeAttempt,
@@ -95,6 +96,11 @@ export function recordCollectorSelection(draft: RunDraft, ids: readonly string[]
 
 export function recordCollectorAttempt(draft: Pick<RunDraft, "rawReplies">, attempt: CollectorAttempt): void {
   draft.rawReplies["collector.collectionAttempt"] = JSON.stringify(attempt)
+}
+
+/** Host-cause citations bind the whole retained input record, including its collection outcome. */
+export function collectorAttemptDigest(raw: string): string {
+  return createHash("sha256").update(raw).digest("hex")
 }
 
 /** Keep the serialized state alongside the exact assertion that used it. */
