@@ -30,6 +30,7 @@ import {
   type TerminalIdentityRule,
 } from "../terminfo.dev/src/identity-guard.ts"
 import { windowsCommBase } from "../terminfo.dev/src/windows-process-ancestry.ts"
+import { hostedDarwinAppFromExecutablePath } from "../terminfo.dev/src/owned-terminal.ts"
 import { parseLinuxClipboardReceipt } from "../terminfo.dev/src/linux-clipboard.ts"
 import { activeInterpretations, applies, nonempty, parseInterpretations } from "../../scripts/interpretations.ts"
 import { loadFeatures } from "@terminfo/catalog"
@@ -114,13 +115,20 @@ function isLinux(os: string | null | undefined): boolean {
   return (os ?? "").toLowerCase().startsWith("linux")
 }
 
+function isDarwin(os: string | null | undefined): boolean {
+  const name = (os ?? "").toLowerCase()
+  return name.startsWith("mac") || name.startsWith("darwin")
+}
+
 function xtversionVersionEquals(payload: string, declared: string): boolean {
   const paren = /^(?:[A-Za-z][\w.+-]*)\(([^)]+)\)$/.exec(payload)
   if (paren) return paren[1] === declared
   return payload === declared || payload.endsWith(` ${declared}`) || payload.endsWith(`/${declared}`)
 }
 
-const ADMISSION_IDENTITY_RULES: Record<string, TerminalIdentityRule> = {
+type AdmissionIdentityRule = TerminalIdentityRule & { identitySource?: "hosted-darwin" }
+
+const ADMISSION_IDENTITY_RULES: Record<string, AdmissionIdentityRule> = {
   ...TERMINAL_IDENTITY_RULES,
   alacritty: {
     terminal: "alacritty",
@@ -132,6 +140,9 @@ const ADMISSION_IDENTITY_RULES: Record<string, TerminalIdentityRule> = {
     da1Pattern: /\?61;/,
     forbidXtversion: true,
   },
+  cmux: { terminal: "cmux", identitySource: "hosted-darwin" },
+  cursor: { terminal: "cursor", identitySource: "hosted-darwin" },
+  "com.microsoft.VSCode": { terminal: "com.microsoft.VSCode", identitySource: "hosted-darwin" },
 }
 
 function identityMatch(run: LoadedRun): IdentityAdmission | null {
@@ -178,6 +189,25 @@ function protocolIdentityMatch(run: ProtocolIdentitySubject): IdentityAdmission 
   // so DA1 identifies nothing there and identity rests on the measured launch receipt.
   const da1Pattern = run.subject.id === "alacritty" && os.startsWith("win") ? /\?61;/ : rule.da1Pattern
   if (da1Pattern && !da1Pattern.test(identity.da1)) return null
+  if (rule.identitySource === "hosted-darwin") {
+    const launch = run.appLaunch
+    if (
+      !isDarwin(os) ||
+      !launch ||
+      launch.platform === "win32" ||
+      run.subject.version === "unknown" ||
+      launch.cfBundleShortVersionString !== run.subject.version
+    ) {
+      return null
+    }
+    // The engine reply cannot identify its enclosing app. This provisional version match still
+    // needs the cited measured launch and GUI app binding in preflightOwnershipReceipt.
+    return {
+      rule: run.subject.id,
+      da1: identity.da1,
+      receipt: { cfBundleShortVersionString: launch.cfBundleShortVersionString },
+    }
+  }
   if (rule.da2VersionEncoding === "screen") {
     const measured = resolveMeasuredAppVersion(run.subject.id, "", run.rawReplies)
     return measured === run.subject.version ? { rule: run.subject.id, da1: identity.da1 } : null
@@ -754,6 +784,16 @@ function preflightOwnershipReceipt(
   compareHostedHistory = true,
 ): { bytes?: Buffer; detail: string } {
   const windowsIdentity = run?.origin.appLaunch?.platform === "win32"
+  const hostedDarwinIdentity =
+    run?.subject.kind === "term" &&
+    isDarwin(run.subject.os) &&
+    ADMISSION_IDENTITY_RULES[run.subject.id]?.identitySource === "hosted-darwin"
+  const requireDarwinHostedReceipt = () => {
+    throw new ReceiptRefusal(
+      "ownership-receipt-missing",
+      `Run ${runId}: ${run?.subject.id} identity requires a cited github-hosted-runner ownership receipt`,
+    )
+  }
   const requireWindowsHostedReceipt = () => {
     throw new ReceiptRefusal(
       "windows-hosted-receipt-required",
@@ -762,6 +802,7 @@ function preflightOwnershipReceipt(
   }
   if (ownership === undefined) {
     if (windowsIdentity) requireWindowsHostedReceipt()
+    if (hostedDarwinIdentity) requireDarwinHostedReceipt()
     return { detail: "the run cites no collector.disposableOwnership reply" }
   }
   let citation: unknown
@@ -783,6 +824,7 @@ function preflightOwnershipReceipt(
   }
   const kind = citation.kind
   if (windowsIdentity && kind !== "github-hosted-runner") requireWindowsHostedReceipt()
+  if (hostedDarwinIdentity && kind !== "github-hosted-runner") requireDarwinHostedReceipt()
   if (kind === "shared") {
     return { detail: "collected against a shared terminal: it cites no receipt, so none is placed" }
   }
@@ -858,6 +900,36 @@ function preflightOwnershipReceipt(
       "ownership-receipt-app-launch-mismatch",
       `Run ${runId} origin.appLaunch${differing ? `.${differing}` : ""} differs from cited ownership receipt ${receiptPath}`,
     )
+  }
+  if (hostedDarwinIdentity) {
+    // Strict parsing above validated these fields; compare their actual values, not their presence.
+    const measured = JSON.parse(bytes.toString("utf8")) as { runner: { os: string } }
+    const launch = receipt.appLaunch
+    if (!isDarwin(measured.runner.os) || !launch || launch.platform === "win32") {
+      throw new ReceiptRefusal(
+        "ownership-receipt-target-mismatch",
+        `Receipt ${receiptPath}: ${run.subject.id} requires a measured Mac app launch on a Darwin runner; runner OS ${JSON.stringify(measured.runner.os)}`,
+      )
+    }
+    let app: ReturnType<typeof hostedDarwinAppFromExecutablePath>
+    try {
+      app = hostedDarwinAppFromExecutablePath(launch.executablePath)
+    } catch (cause) {
+      if (!(cause instanceof Error) || !cause.message.startsWith("Hosted Darwin receipt executable is not one of")) {
+        throw cause
+      }
+      throw new ReceiptRefusal(
+        "ownership-receipt-target-mismatch",
+        `Receipt ${receiptPath}: executable ${JSON.stringify(launch.executablePath)} does not identify requested app ${run.subject.id}`,
+        cause,
+      )
+    }
+    if (app.id !== run.subject.id) {
+      throw new ReceiptRefusal(
+        "ownership-receipt-target-mismatch",
+        `Receipt ${receiptPath}: executable ${JSON.stringify(launch.executablePath)} identifies ${app.id}, not requested app ${run.subject.id}`,
+      )
+    }
   }
   // The measured renderer must be exactly the pinned Mesa3D set: a DLL beyond it is a renderer
   // nobody pinned, and the presence of opengl32.dll alone does not say which one drew the frames.
