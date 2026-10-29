@@ -307,6 +307,40 @@ describe("reply-path audit", () => {
   }
 
   // #31377 AC1: explicit membership catches omitted audits that data-derived cases cannot see.
+  // The current Rust/WASM captures execute these queries but lack the source-bound branch (CTO d6f8c7de).
+  test.each([
+    ["7c43302dde147c6f7959b7bda7045ff375c71288da1af5667ffca2bf95beb2bf", "extensions.kitty-graphics", false],
+    ["7c43302dde147c6f7959b7bda7045ff375c71288da1af5667ffca2bf95beb2bf", "extensions.kitty-graphics.transmit", false],
+    ["7c43302dde147c6f7959b7bda7045ff375c71288da1af5667ffca2bf95beb2bf", "extensions.kitty-graphics.display", false],
+    ["7c43302dde147c6f7959b7bda7045ff375c71288da1af5667ffca2bf95beb2bf", "extensions.osc21-kitty-color", true],
+    ["7c43302dde147c6f7959b7bda7045ff375c71288da1af5667ffca2bf95beb2bf", "extensions.sixel-geometry-report", true],
+    ["f309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96", "extensions.kitty-keyboard", false],
+    ["f309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96", "extensions.kitty-keyboard.disambiguate", false],
+    ["f309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96", "extensions.kitty-keyboard.report-events", false],
+    ["f309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96", "extensions.kitty-keyboard.report-alternate", false],
+    ["f309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96", "extensions.kitty-keyboard.report-all-keys", false],
+    ["f309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96", "extensions.kitty-keyboard.report-text", false],
+    ["f309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96", "input.csi-u", false],
+    ["f309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96", "extensions.osc21-kitty-color", false],
+    ["f309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96", "extensions.sixel-geometry-report", false],
+    ["f309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96", "extensions.kitty-graphics", true],
+    ["f309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96", "extensions.kitty-graphics.transmit", true],
+    ["f309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96", "extensions.kitty-graphics.display", true],
+  ] as const)("named query on %s selects its source-bound result: %s", (sha256, id, parserRejected) => {
+    const { result, sent } = run(id, sha256, () => "")
+    expect(sent.length).toBeGreaterThan(0)
+    if (parserRejected) {
+      expect(result).toMatchObject({ observation: { outcome: "unsupported", assertionType: "query_reply" } })
+      expect(result.assertions).toEqual([expect.objectContaining({ kind: "negative", assertionType: "query_reply" })])
+    } else {
+      expect(result).toMatchObject({
+        criterionBranch: REPLY_PATH_AUDIT_REVIEW,
+        tests: [{ id: "review", status: "test-todo" }],
+      })
+      expect(result.observation).toBeUndefined()
+    }
+  })
+
   test.each([
     "extensions.kitty-keyboard",
     "extensions.kitty-keyboard.disambiguate",
