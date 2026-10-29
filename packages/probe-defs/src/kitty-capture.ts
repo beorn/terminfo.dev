@@ -117,19 +117,32 @@ export function kittyBlockPixels(geometry: { readonly cellWidth: number; readonl
 }
 
 /**
- * One animation frame, or the root frame of an animation. Every frame carries its own `z`, the root
- * included: `a=f` with `z=0` is ignored and an unset gap falls back to a default, which is exactly the
- * value this row must not inherit. Quiet transmission keeps the reply stream free of acks that the
- * trace could later mistake for evidence.
+ * One animation frame. A NON-root frame carries its own `z` here: `z=0` is ignored by the protocol and
+ * an unset gap falls back to a default, which is exactly the value this row must not inherit.
+ *
+ * The ROOT frame is different and is NOT given a gap here: the spec states the first frame is created
+ * with the base image data and "has no gap, so its gap must be set using this control code" — that is
+ * `kittyRootGap` below. Quiet transmission keeps the reply stream free of acks that the trace could
+ * later mistake for evidence.
  */
 export function kittyFrameTransfer(
   imageId: number,
   frame: { readonly width: number; readonly height: number; readonly rgb: readonly [number, number, number] },
   options: { readonly root?: boolean; readonly gapMs?: number } = {},
 ): string {
-  const gap = options.gapMs ?? KITTY_GAP_MS
   const size = options.root ? `,s=${frame.width},v=${frame.height}` : ""
-  return `\x1b_Ga=f,i=${imageId},f=24${size},z=${gap},q=2;${kittyPixelPayload(frame.width, frame.height, frame.rgb)}\x1b\\`
+  const gap = options.root ? "" : `,z=${String(options.gapMs ?? KITTY_GAP_MS)}`
+  return `\x1b_Ga=f,i=${imageId},f=24${size}${gap},q=2;${kittyPixelPayload(frame.width, frame.height, frame.rgb)}\x1b\\`
+}
+
+/**
+ * The root frame's own gap, set through the animation control code because the root carries no gap at
+ * transfer time (kitty graphics protocol, "Controlling animations": "the first frame or root frame is
+ * created with the base image data and has no gap, so its gap must be set using this control code").
+ * Without it the root would run on the zero default and two equal captures would mean nothing.
+ */
+export function kittyRootGap(imageId: number, gapMs: number = KITTY_GAP_MS): string {
+  return `\x1b_Ga=a,i=${imageId},r=1,z=${String(gapMs)},q=2\x1b\\`
 }
 
 /** Place the image. The ack is read as the live placement path, never as pixels. */

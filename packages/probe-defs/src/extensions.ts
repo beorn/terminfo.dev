@@ -62,6 +62,7 @@ import {
   kittyPlace,
   kittyPlaceholderNumber,
   kittyPlaceholderText,
+  kittyRootGap,
   kittySelectFrame,
   kittyStartPlayback,
   kittyStopPlayback,
@@ -2806,6 +2807,8 @@ export const extensionsProbes: ProbeDefinition[] = [
         ids.push(playbackId)
         ctx.write(kittyFrameTransfer(playbackId, { ...size, rgb: KITTY_FRAME_RED }, { root: true }))
         ctx.write(kittyFrameTransfer(playbackId, { ...size, rgb: KITTY_FRAME_BLUE }))
+        // The root frame carries no gap at transfer time; its gap is set by the control code.
+        ctx.write(kittyRootGap(playbackId))
         ctx.write(kittyBlockOrigin())
         const placement = await ctx.queryWithSentinelOutcome(
           kittyPlace(playbackId),

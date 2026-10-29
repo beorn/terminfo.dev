@@ -24,6 +24,7 @@ import {
   kittyPlaceholderNumber,
   kittyPlaceholderText,
   kittyPlace,
+  kittyRootGap,
   kittySelectFrame,
   kittyStartPlayback,
   kittyStopPlayback,
@@ -36,9 +37,12 @@ const frame = { width: 20, height: 40, rgb: [255, 0, 0] as const }
 test("every animation frame carries an explicit gap and the loop count is explicit", () => {
   const root = kittyFrameTransfer(7, frame, { root: true })
   const later = kittyFrameTransfer(7, frame)
-  // The root frame is sized and gapped; a later frame carries its gap too and no size.
+  // The root is sized and carries NO gap: the protocol gives it none at transfer time, so its gap
+  // comes from the control code, which is the one place a default could otherwise take over.
   expect(root).toContain(",s=20,v=40")
-  expect(root).toContain(`,z=${String(KITTY_GAP_MS)}`)
+  expect(root).not.toContain(",z=")
+  expect(kittyRootGap(7)).toContain("a=a,i=7,r=1")
+  expect(kittyRootGap(7)).toContain(`z=${String(KITTY_GAP_MS)}`)
   expect(later).toContain(`,z=${String(KITTY_GAP_MS)}`)
   expect(later).not.toContain(",s=20")
   const start = kittyStartPlayback(7)
