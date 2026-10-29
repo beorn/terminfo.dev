@@ -3,6 +3,8 @@ import { createHash } from "node:crypto"
 import { isDeepStrictEqual } from "node:util"
 import {
   SOURCE_NEGATIVE_REVIEW,
+  HARNESS_INCOMPLETE_TEST,
+  UNTESTABLE_ONLY_REVIEW_BRANCHES,
   HOST_INPUT_NAMES,
   type HostRecipeExpectation,
   type HostRecipeName,
@@ -1283,6 +1285,49 @@ export function parseProbeResults(
       return { ...entry, attempt: checkAttempt } as unknown as ProbeTestResult
     })
     const result = { ...item, featureId, status, attempt, tests: tests } as unknown as ProbeResult
+    // A query reply is source-negative only on a cited parser-level rejection, never a missing reply writer.
+    if (result.criterionBranch === SOURCE_NEGATIVE_REVIEW && item.assertionType === "query_reply") {
+      const state = nonempty(item.rawReplyRef) ? rawReplies[item.rawReplyRef] : undefined
+      const parsed: unknown = state === undefined ? undefined : parseJsonStrict(`${path}: ${featureId}`, state)
+      if (!object(parsed) || parsed.rejection !== "parser") {
+        fail(path, `${featureId} query_reply source-negative review requires a recorded parser-level rejection`)
+      }
+    }
+    // Missing-observable reviews cannot establish support or a measured negative.
+    if (
+      result.criterionBranch !== undefined &&
+      UNTESTABLE_ONLY_REVIEW_BRANCHES.has(result.criterionBranch) &&
+      tests.some((test) => test.id === "review" && (test.status === "supported" || test.status === "unsupported"))
+    ) {
+      fail(path, `${featureId} ${result.criterionBranch} review admits only an untestable decision`)
+    }
+    // A capture that reached a callback the adapter does not reproduce is a harness gap, never a terminal property.
+    const harnessRow = tests.find((test) => test.id === HARNESS_INCOMPLETE_TEST)
+    const rawState = nonempty(item.rawReplyRef) ? rawReplies[item.rawReplyRef] : undefined
+    // Found by its key, never by its serialized prefix: key order or JSON whitespace must not hide the record.
+    const parsed: unknown =
+      rawState !== undefined && /^[\t\n\r ]*\{/.test(rawState)
+        ? parseJsonStrict(`${path}: ${featureId}`, rawState)
+        : undefined
+    if (harnessRow || (object(parsed) && Object.hasOwn(parsed, "unreproduced"))) {
+      const record = object(parsed) ? parsed.unreproduced : undefined
+      const recorded =
+        object(record) &&
+        nonempty(record.backend) &&
+        Array.isArray(record.captures) &&
+        record.captures.length > 0 &&
+        record.captures.every(
+          (capture) =>
+            object(capture) &&
+            typeof capture.query === "string" &&
+            Array.isArray(capture.callbacks) &&
+            capture.callbacks.length > 0 &&
+            capture.callbacks.every(nonempty),
+        )
+      if (!recorded || harnessRow?.status !== "test-failure" || status !== "test-failure") {
+        fail(path, `${featureId} unreproduced-callback record requires its failed harness row, and the row its record`)
+      }
+    }
     if (finalizeProbeResult(result).status !== status) {
       fail(path, `${featureId} recorded status hides required test work`)
     }
@@ -1412,7 +1457,24 @@ export function validateHostRecipeCauses(
     ) {
       refuse("invalid query capture")
     }
-    return { query: capture.query, response: capture.response, error: capture.error }
+    // A-prime (@cto 4ac8b275): a zero-byte capture beside a callback the harness did not reproduce carries its cause.
+    const cause = capture.cause
+    if (
+      cause !== undefined &&
+      !(
+        object(cause) &&
+        cause.kind === "harness-unreproduced" &&
+        Object.keys(cause).every((key) => key === "kind" || key === "callbacks") &&
+        Array.isArray(cause.callbacks) &&
+        cause.callbacks.length > 0 &&
+        cause.callbacks.every(nonempty) &&
+        capture.response === "" &&
+        capture.error === null
+      )
+    ) {
+      refuse("invalid harness-unreproduced capture cause")
+    }
+    return { query: capture.query, response: capture.response, error: capture.error, harness: cause !== undefined }
   })
   // A terminal parses the ordered input stream, including a query split across writes.
   for (const actual of capturedHostQueries(captures.map((capture) => capture.query).join(""))) {
@@ -1449,7 +1511,7 @@ export function validateHostRecipeCauses(
       ) {
         refuse("observed reference does not resolve to this run's empty target capture")
       }
-    } else if (cause.kind === "source-audited") {
+    } else if (cause.kind === "source-audited" || cause.kind === "unimplemented") {
       if (
         Object.keys(cause).some((key) => !["kind", "missing", "runId", "artifactSha256", "citation"].includes(key)) ||
         identity?.kind !== "native" ||
@@ -1458,6 +1520,17 @@ export function validateHostRecipeCauses(
         refuse("stale native artifact citation")
       }
       const citation = cause.citation
+      if (cause.kind === "unimplemented") {
+        // The audited artifact has no reply path for the query, so the citation names that source and no host input.
+        if (
+          !object(citation) ||
+          Object.keys(citation).some((key) => key !== "sourceLocation") ||
+          !nonempty(citation.sourceLocation)
+        ) {
+          refuse("invalid no-reply-path citation")
+        }
+        return entry
+      }
       if (
         !object(citation) ||
         citation.inputRecordRef !== "collector.collectionAttempt" ||
@@ -1484,8 +1557,10 @@ export function validateHostRecipeCauses(
   for (const expected of expectations) {
     const target = captures.filter((capture) => capture.query === expected.query && capture.error === null)
     if (!target.length) refuse("missing applicable target query capture")
+    const silent = target.filter((capture) => capture.response === "")
     if (
-      target.some((capture) => capture.response === "") &&
+      silent.length > 0 &&
+      !silent.every((capture) => capture.harness) &&
       !causes.some(
         (entry) =>
           entry.recipe === expected.recipe &&

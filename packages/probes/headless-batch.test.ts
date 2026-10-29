@@ -12,15 +12,21 @@ import { resolve as resolveLibvterm } from "@termless/libvterm"
 import { resolve as resolveVt100 } from "@termless/vt100"
 import { resolve as resolveVt220 } from "@termless/vt220"
 import { createKittyBackend, isKittyAvailable } from "@termless/kitty"
-import { ALL_PROBES, type ProbeDefinition } from "@terminfo/probe-defs"
+import type { EmulatorWarning } from "@termless/core"
+import {
+  ALL_PROBES,
+  HARNESS_INCOMPLETE_TEST,
+  type ProbeCallbackResult,
+  type ProbeDefinition,
+} from "@terminfo/probe-defs"
 import { fakeProbeResult } from "@terminfo/probe-defs/testing/fake-probe-result"
-import { validateObservation } from "@terminfo/run-parser"
+import { validateObservation, retainCaptureBinding } from "@terminfo/run-parser"
 import { spawnSync } from "node:child_process"
 import { mkdtempSync, readFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, beforeEach, expect, test, vi } from "vitest"
-import { collectBatch, createLibProbeSource } from "./headless-batch.ts"
+import { collectBatch, createLibProbeSource, feedCapture } from "./headless-batch.ts"
 
 /** Feature captures only; collector qualification metadata is asserted in sentinel-member.test.ts. */
 function probeReplies(batch: Awaited<ReturnType<typeof collectBatch>>) {
@@ -163,6 +169,61 @@ test("requests review for headless OS-input criteria without fabricating app del
       }),
     )
   }
+})
+
+// Callback coverage alone did not prove that a shell mark could enter canonical required-review custody.
+test("retains a qualified headless shell mark's required source review through production recording", async () => {
+  const id = "extensions.osc133-a"
+  const { initializeRunDraft } = await import("@terminfo/probe-defs")
+  const draft = initializeRunDraft({
+    source: { kind: "live" },
+    runId: "semantic-prompt-review",
+    sourceRevision: "a".repeat(40),
+    intendedSubject: { kind: "lib", id: "xtermjs" },
+    manifest: {
+      schemaVersion: 4,
+      probeHash: "semantic-prompt-suite",
+      adapterVersion: "3",
+      catalogIds: [id],
+      probes: { term: [], mux: [], lib: [id] },
+    },
+  })
+  const batch = await collectBatch(backend, "xtermjs", registryDefinitions([id]), draft)
+  expect(batch.results).toEqual([
+    expect.objectContaining({
+      featureId: id,
+      status: "test-todo",
+      criterionBranch: "semantic-prompt-source-review",
+      rawReplyRef: id,
+      tests: [
+        expect.objectContaining({ id: "review", status: "test-todo", attempt: { scope: "none" }, rawReplyRef: id }),
+      ],
+    }),
+  ])
+  expect(batch.observations).toEqual([])
+  expect(batch.assertions).toEqual([])
+  expect(JSON.parse(batch.rawReplies[id]!)).toMatchObject({
+    home: { x: 0, y: 0 },
+    target: { x: 1, y: 0 },
+    control: { x: 0, y: 0 },
+    cell: "X",
+  })
+  // collect-headless.ts assembles its captured run from these production batch fields.
+  const captured = {
+    ...draft,
+    rawReplies: { ...draft.rawReplies, ...batch.rawReplies },
+    assertions: batch.assertions,
+    results: batch.results,
+  }
+  const binding = retainCaptureBinding(captured, id)
+  expect(captured.rawReplies[binding.rawReplyRef]).toBe(binding.source)
+  expect(JSON.parse(binding.source)).toMatchObject({
+    featureId: id,
+    criterionBranch: "semantic-prompt-source-review",
+    rawReplyRefs: expect.arrayContaining([
+      expect.objectContaining({ key: id, sha256: expect.stringMatching(/^[0-9a-f]{64}$/) }),
+    ]),
+  })
 })
 
 // The no-response grade hid that no F4 engine can read a colour back headless (#30547, @cto D-B): a silent first
@@ -308,16 +369,36 @@ for (const [name, create, available] of [
       const previous = vi.fn()
       value.onResponse = previous
       const replies: string[] = []
-      await collectBatch(async () => value, name, [
-        definition("capture", (ctx) => {
-          ctx.feed("\x1b[6n") // This reply belongs to the previous listener.
-          replies.push(ctx.feedCapture("\x1b[2;3H\x1b[6n"))
-          replies.push(ctx.feedCapture("\x1b[4;5H\x1b[6n"))
-          ctx.reset()
-          replies.push(ctx.feedCapture("\x1b[6n"))
-          return fakeProbeResult()
-        }),
-      ])
+      // Kitty declares native reply delivery, whose host-recipe record needs the run draft the collector passes.
+      const { initializeRunDraft } = await import("@terminfo/probe-defs")
+      const draft = initializeRunDraft({
+        source: { kind: "live" },
+        runId: `${name}-reset-capture`,
+        sourceRevision: "a".repeat(40),
+        intendedSubject: { kind: "lib", id: name },
+        manifest: {
+          schemaVersion: 4 as const,
+          probeHash: "reset-capture",
+          adapterVersion: "3",
+          catalogIds: ["capture"],
+          probes: { term: [], mux: [], lib: ["capture"] },
+        },
+      })
+      await collectBatch(
+        async () => value,
+        name,
+        [
+          definition("capture", (ctx) => {
+            ctx.feed("\x1b[6n") // This reply belongs to the previous listener.
+            replies.push(ctx.feedCapture("\x1b[2;3H\x1b[6n"))
+            replies.push(ctx.feedCapture("\x1b[4;5H\x1b[6n"))
+            ctx.reset()
+            replies.push(ctx.feedCapture("\x1b[6n"))
+            return fakeProbeResult()
+          }),
+        ],
+        draft,
+      )
       expect(replies).toEqual(["\x1b[2;3R", "\x1b[4;5R", "\x1b[1;1R"])
       expect(previous.mock.calls.map(([bytes]) => new TextDecoder().decode(bytes)).join("")).toBe("\x1b[1;1R")
       expect(value.onResponse).toBe(previous)
@@ -329,6 +410,76 @@ for (const [name, create, available] of [
     }
   })
 }
+
+// #31373 (@cto 15cf18e4): a capture that reached an engine callback its adapter does not reproduce is a harness gap.
+// The adapters above report no such callback, so no existing collector test could grade one.
+// xterm.js stands in for an adapter that reports one unreproduced callback per OSC 52 read.
+function unreproducingXterm() {
+  const value = createXtermBackend()
+  const warnings: EmulatorWarning[] = []
+  value.capabilities.extensions.add("warnings")
+  const feed = value.feed.bind(value)
+  value.feed = (bytes) => {
+    if (new TextDecoder().decode(bytes).includes("\x1b]52;")) {
+      warnings.push({ code: "UNREPRODUCED_CALLBACK", message: "clipboard_control", backend: "xtermjs" })
+    }
+    feed(bytes)
+  }
+  return Object.assign(value, {
+    getWarnings: () => [...warnings],
+    clearWarnings: () => {
+      warnings.length = 0
+    },
+  })
+}
+
+test.each([
+  { name: "silent", query: "\x1b]52;c;?\x1b\\", harness: true },
+  { name: "replied", query: "\x1b]52;c;?\x1b\\\x1b[6n", harness: false },
+])("grades a capture that reached an unreproduced callback ($name)", async ({ query, harness }) => {
+  const value = unreproducingXterm()
+  const measured = (reply: string): ProbeCallbackResult => ({ ...fakeProbeResult("query_reply"), response: reply })
+  const batch = await collectBatch(async () => value, "xtermjs", [
+    definition("clipboard.read", (ctx) => measured(ctx.feedCapture(query))),
+  ])
+  const result = batch.results.find((entry) => entry.featureId === "clipboard.read")
+  if (!harness) {
+    expect(result?.tests.some((test) => test.id === HARNESS_INCOMPLETE_TEST)).toBe(false)
+    expect(batch.rawReplies["clipboard.read"]).toMatch(/^\x1b\[\d+;\d+R$/)
+    return
+  }
+  expect(result?.status).toBe("test-failure")
+  expect(result?.tests).toEqual([
+    expect.objectContaining({
+      id: HARNESS_INCOMPLETE_TEST,
+      status: "test-failure",
+      reason: "Harness incomplete: xtermjs did not reproduce clipboard_control; silence is not evidence",
+    }),
+  ])
+  expect(JSON.parse(batch.rawReplies["clipboard.read"] ?? "null")).toEqual({
+    unreproduced: { backend: "xtermjs", captures: [{ query, callbacks: ["clipboard_control"] }] },
+    measuredResponse: "",
+  })
+})
+
+// #31373 (@cto 4ac8b275): on the native host route, the silent capture itself carries why it is silent, so the
+// host-cause validator can accept it per capture; a capture that replied carries no cause.
+test.each([
+  { name: "silent", query: "\x1b]52;c;?\x07", cause: true },
+  { name: "replied", query: "\x1b]52;c;?\x07\x1b[6n", cause: false },
+])("a host capture beside an unreproduced callback records its harness cause ($name)", ({ query, cause }) => {
+  const value = unreproducingXterm()
+  value.init({ cols: 80, rows: 24 })
+  const captures: Parameters<typeof feedCapture>[2] = []
+  try {
+    feedCapture(value, query, captures, { captures: [], silent: false })
+  } finally {
+    value.destroy()
+  }
+  expect(captures?.[0]?.cause).toEqual(
+    cause ? { kind: "harness-unreproduced", callbacks: ["clipboard_control"] } : undefined,
+  )
+})
 
 test("real vterm grades interior-region SU without moving the row above into history", async () => {
   const id = "scrollback.scroll-up"

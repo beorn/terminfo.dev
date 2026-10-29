@@ -201,6 +201,25 @@ it.runIf(OWNED_LAYOUT)(
     }
     expect(pending).toEqual([
       "extensions.clipboard-paste",
+      "extensions.iterm2-images",
+      "extensions.kitty-graphics.animation",
+      "extensions.kitty-graphics.unicode-placeholders",
+      "extensions.notifications",
+      "extensions.osc-633-vscode",
+      "extensions.osc133-a",
+      "extensions.osc133-b",
+      "extensions.osc133-c",
+      "extensions.osc133-d",
+      "extensions.osc133-p",
+      "extensions.osc633-a",
+      "extensions.osc633-b",
+      "extensions.osc633-c",
+      "extensions.osc633-d",
+      "extensions.osc633-e",
+      "extensions.osc633-p",
+      "extensions.osc7-cwd",
+      "extensions.semantic-prompts",
+      "extensions.sixel",
       "input.button-event-mouse",
       "input.kitty-click-events",
       "input.modify-other-keys",
@@ -213,6 +232,8 @@ it.runIf(OWNED_LAYOUT)(
       "input.xtest-wheel",
       "modes.alt-scroll-1007",
       "modes.application-keypad",
+      "modes.color-scheme-reporting",
+      "modes.decsclm",
     ])
     const decision = (featureId: string, reason: string) =>
       JSON.stringify({

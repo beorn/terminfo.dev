@@ -6,13 +6,21 @@
  */
 import { describe, expect, it } from "vitest"
 import { createHash } from "node:crypto"
+import { readFileSync } from "node:fs"
 import {
   initializeRunDraft,
   sealRunDraft,
   recordExecutedProbe,
   finalizeProbeResult,
+  REPLY_PATH_AUDIT_REVIEW,
+  HARNESS_INCOMPLETE_TEST,
+  nativeHostRecipeResult,
+  type LibProbeSource,
+  HEADLESS_OBSERVABLE_REVIEW,
+  UNTESTABLE_ONLY_REVIEW_BRANCHES,
   type RunDraft,
 } from "@terminfo/probe-defs"
+import { fakeProbeResult } from "@terminfo/probe-defs/testing/fake-probe-result"
 import { applyCaptureDecision, retainCaptureBinding, parseRun } from "./index.ts"
 
 // H1-H7: explicit collector-input fixture, not an engine execution or qualification proof.
@@ -159,6 +167,235 @@ it.each([
   ["fragmented clipboard", "\x1b]52;c;?\x07", true],
 ] as const)("native host recipe rejects undeclared %s independently of cause presence", (_name, query, split) => {
   expect(hostCauseCapture("undeclared-query", query, split)).toThrow(/captured undeclared/i)
+})
+
+// #31373 (@cto 15cf18e4): an unreproduced-callback record and its failed harness row are one claim. The
+// collector writes both together; the reader refuses either one alone, which no existing fixture carries.
+function harnessCapture(
+  mode: "both" | "record-only" | "reordered-record" | "spaced-record" | "row-only" | "todo-row",
+  host?: "cause" | "no-cause" | "two-targets" | "replied-cause",
+) {
+  const featureId = "clipboard.read"
+  const manifest = {
+    schemaVersion: 4 as const,
+    probeHash: "harness-suite",
+    adapterVersion: "4",
+    catalogIds: [featureId],
+    probes: { term: [], lib: [featureId], mux: [] },
+  }
+  const draft = initializeRunDraft({
+    runId: "harness-gap",
+    sourceRevision: "1".repeat(40),
+    source: { kind: "live" },
+    intendedSubject: { kind: "lib", id: "kitty", version: "0.49.2" },
+    manifest,
+  })
+  draft.subject = {
+    kind: "lib",
+    id: "kitty",
+    version: "0.49.2",
+    os: "linux",
+    osVersion: null,
+    outerTerminal: null,
+    mux: null,
+    config: null,
+    permissions: null,
+  }
+  draft.runtimeIdentity = {
+    kind: "native",
+    engineVersion: "0.49.2",
+    adapterVersion: "0.10.2",
+    termlessRevision: "2".repeat(40),
+    loadedBinary: { path: "kitty", sha256: "a".repeat(64) },
+    provenance: {
+      sha256: "a".repeat(64),
+      sourceCommit: "3".repeat(40),
+      buildHash: "b".repeat(64),
+      toolchain: "fixture",
+      lockSha256: "c".repeat(64),
+    },
+  }
+  draft.identity = "unverified"
+  draft.measuredAt = "2026-10-28T23:00:00.000Z"
+  draft.origin = { kind: "collector" }
+  const query = "\x1b]52;c;?\x07"
+  const unreproduced = { backend: "kitty", captures: [{ query, callbacks: ["clipboard_control"] }] }
+  // @cto ff549ce2: the reader finds the record by its key, so neither key order nor JSON whitespace hides it.
+  draft.rawReplies[featureId] =
+    mode === "row-only"
+      ? ""
+      : mode === "reordered-record"
+        ? JSON.stringify({ measuredResponse: "", unreproduced })
+        : `${mode === "spaced-record" ? "\n " : ""}${JSON.stringify({ unreproduced, measuredResponse: "" })}`
+  const reason = "Harness incomplete: kitty did not reproduce clipboard_control; silence is not evidence"
+  draft.results[0] = recordExecutedProbe({
+    featureId,
+    attempt: { scope: "probe", startedAt: draft.measuredAt },
+    assertions: [],
+    tests: [
+      mode === "record-only" || mode === "reordered-record" || mode === "spaced-record"
+        ? { id: "criterion", status: "test-failure", reason: "no-response" }
+        : { id: HARNESS_INCOMPLETE_TEST, status: mode === "todo-row" ? "test-todo" : "test-failure", reason },
+    ],
+    rawReplyRef: featureId,
+  })
+  if (host) {
+    // A-prime (@cto 4ac8b275): on the native host route the silent capture itself carries the harness cause.
+    const colour = { recipe: "color-request", query: "\x1b]10;?\x07", missing: ["foreground-rgb"] }
+    const hostRecipes = [
+      { recipe: "clipboard-load", query, missing: ["clipboard-read-permission"] },
+      ...(host === "two-targets" ? [colour] : []),
+    ]
+    const cause = { kind: "harness-unreproduced", callbacks: ["clipboard_control"] }
+    draft.rawReplies[`collector.hostRecipes.${featureId}`] = JSON.stringify({
+      runId: draft.runId,
+      captures: [
+        {
+          query,
+          response: host === "replied-cause" ? "\x1b]52;c;Zm9v\x07" : "",
+          error: null,
+          ...(host !== "no-cause" && { cause }),
+        },
+        ...(host === "two-targets" ? [{ query: colour.query, response: "", error: null }] : []),
+      ],
+      causes: [],
+    })
+    draft.rawReplies["collector.replyPath"] = JSON.stringify({
+      backend: "kitty",
+      declaration: {
+        boundary: "feed-and-getCursor",
+        adapterSources: [{ path: "fixture.ts", blobOid: "4".repeat(40) }],
+        engine: { kind: "native", sha256: "a".repeat(64) },
+      },
+      runtimeIdentity: draft.runtimeIdentity,
+      decisions: {
+        [featureId]: { member: true, reason: "fixture", runtimeIdentity: draft.runtimeIdentity, hostRecipes },
+      },
+    })
+  }
+  return () =>
+    parseRun("harness-gap.json", JSON.stringify(draft), [featureId], new Map([[manifest.probeHash, manifest]]), {
+      mode: "capture",
+    })
+}
+
+// The refused WezTerm capture (run 4cd4be36, addon sha256 84da518e) trimmed to its three clipboard-load probes. Its
+// declared OSC 52 read returned zero bytes with no cause, so the parser refused the whole run file.
+const WEZTERM_OSC52 = readFileSync(new URL("./fixtures/wezterm-osc52-refused.capture.json", import.meta.url), "utf8")
+function weztermCapture(mode: "captured" | "audited" | "foreign-artifact" | "declared-input" | "no-source") {
+  const run = JSON.parse(WEZTERM_OSC52) as RunDraft & { results: { featureId: string }[]; probeHash: string }
+  const ids = run.results.map((result) => result.featureId)
+  const manifest = {
+    schemaVersion: 4 as const,
+    probeHash: run.probeHash,
+    adapterVersion: "4",
+    catalogIds: ids,
+    probes: { term: [], lib: ids, mux: [] },
+  }
+  for (const id of ids) {
+    const recordRef = `collector.hostRecipes.${id}`
+    const record = JSON.parse(run.rawReplies[recordRef]!) as { runId: string; causes: unknown[] }
+    if (mode !== "captured") {
+      // The cause the audit entry gives this artifact, retained as the collector writes it.
+      const ctx = { runtimeIdentity: run.runtimeIdentity } as LibProbeSource
+      const claim = nativeHostRecipeResult(
+        ctx,
+        fakeProbeResult(),
+        "clipboard-load",
+        "clipboard-read-permission",
+        "\x1b]52;c;?\x07",
+        true,
+      ).hostRecipeCauses?.[0]
+      if (claim?.cause.kind !== "unimplemented") {
+        throw new Error(`no unimplemented audit cause: ${JSON.stringify(claim)}`)
+      }
+      const cause: Record<string, unknown> = {
+        kind: "unimplemented",
+        missing: claim.cause.missing,
+        runId: record.runId,
+        artifactSha256: claim.cause.artifactSha256,
+        citation: { sourceLocation: claim.cause.sourceCitation },
+      }
+      if (mode === "foreign-artifact") cause.artifactSha256 = "0".repeat(64)
+      if (mode === "declared-input") {
+        cause.citation = { ...(cause.citation as object), inputRecordRef: "collector.collectionAttempt" }
+      }
+      if (mode === "no-source") cause.citation = { sourceLocation: "" }
+      record.causes = [{ recipe: claim.recipe, cause }]
+    }
+    run.rawReplies[recordRef] = JSON.stringify(record)
+  }
+  return () =>
+    parseRun("wezterm-osc52.json", JSON.stringify(run), ids, new Map([[manifest.probeHash, manifest]]), {
+      mode: "capture",
+    })
+}
+
+it("parses a silent native host capture that carries its harness-unreproduced cause", () => {
+  expect(harnessCapture("both", "cause")().results?.[0]?.status).toBe("test-failure")
+})
+it.each(["no-cause", "two-targets"] as const)("refuses a silent native host target without a cause (%s)", (host) => {
+  expect(harnessCapture("both", host)).toThrow(/missing cause for captured empty target response/)
+})
+it("refuses a harness-unreproduced cause on a capture that replied", () => {
+  expect(harnessCapture("both", "replied-cause")).toThrow(/invalid harness-unreproduced capture cause/)
+})
+it("reads an unreproduced-callback record beside its failed harness row", () => {
+  expect(harnessCapture("both")().results?.[0]?.status).toBe("test-failure")
+})
+it.each(["record-only", "reordered-record", "spaced-record", "row-only", "todo-row"] as const)(
+  "refuses an unreproduced-callback claim with %s",
+  (mode) => {
+    expect(harnessCapture(mode)).toThrow(/unreproduced-callback record/)
+  },
+)
+it("the WezTerm OSC 52 read audit makes its refused capture parse without changing a result", () => {
+  expect(weztermCapture("captured")).toThrow(/missing cause for captured empty target response/)
+  const statuses = (JSON.parse(WEZTERM_OSC52) as { results: { status: string }[] }).results.map((r) => r.status)
+  expect(weztermCapture("audited")().results?.map((result) => result.status)).toEqual(statuses)
+})
+it.each(["foreign-artifact", "declared-input", "no-source"] as const)(
+  "the WezTerm unimplemented cause refuses %s custody",
+  (mode) => {
+    expect(weztermCapture(mode)).toThrow(/host recipe/i)
+  },
+)
+
+// The Kitty capture at the reply-delivery declaration's head (run f9d82f78, launcher sha256 bb65c2d5, termless 80c97ba)
+// trimmed to its three OSC 52 probes (@cto ff19ee09: a native declaration lands with a parse test on a real capture). Each
+// silent clipboard read reached clipboard_control, which the bridge does not reproduce, so its capture carries the cause.
+const KITTY_OSC52 = readFileSync(new URL("./fixtures/kitty-osc52-harness.capture.json", import.meta.url), "utf8")
+function kittyCapture(mode: "captured" | "no-cause") {
+  const run = JSON.parse(KITTY_OSC52) as RunDraft & { results: { featureId: string }[]; probeHash: string }
+  const ids = run.results.map((result) => result.featureId)
+  const manifest = {
+    schemaVersion: 4 as const,
+    probeHash: run.probeHash,
+    adapterVersion: "4",
+    catalogIds: ids,
+    probes: { term: [], lib: ids, mux: [] },
+  }
+  if (mode === "no-cause") {
+    for (const id of ids) {
+      const recordRef = `collector.hostRecipes.${id}`
+      const record = JSON.parse(run.rawReplies[recordRef]!) as { captures: { cause?: unknown }[] }
+      for (const capture of record.captures) delete capture.cause
+      run.rawReplies[recordRef] = JSON.stringify(record)
+    }
+  }
+  return () =>
+    parseRun("kitty-osc52.json", JSON.stringify(run), ids, new Map([[manifest.probeHash, manifest]]), {
+      mode: "capture",
+    })
+}
+it("the real Kitty capture parses its silent OSC 52 reads by their harness cause, and refuses them without it", () => {
+  const results = kittyCapture("captured")().results ?? []
+  expect(results.map((result) => [result.featureId, result.status, result.tests[0]?.id])).toEqual([
+    ["extensions.osc52-clipboard", "test-failure", HARNESS_INCOMPLETE_TEST],
+    ["extensions.osc52-read", "test-failure", HARNESS_INCOMPLETE_TEST],
+    ["extensions.osc52-write", "test-failure", HARNESS_INCOMPLETE_TEST],
+  ])
+  expect(kittyCapture("no-cause")).toThrow(/missing cause for captured empty target response/)
 })
 
 const setup = (
@@ -368,6 +605,44 @@ describe("immutable pre-seal capture binding", () => {
         parseRun("reused.json", JSON.stringify(sealed), manifest.catalogIds, new Map([[manifest.probeHash, manifest]]))
           .results?.[0]?.status,
       ).toBe(reviewedStatus)
+    },
+  )
+  // CTO afedd8b5: a query reply is source-negative only on a cited parser-level rejection, never a missing writer.
+  // Every existing source-negative fixture is buffer_state, so none could read a query_reply review without that field.
+  it.each([
+    { rejection: "parser", accepted: true },
+    { rejection: undefined, accepted: false },
+  ])(
+    "reads a query_reply source-negative review only with a parser rejection ($rejection)",
+    ({ rejection, accepted }) => {
+      const observed = JSON.stringify({ ...(rejection && { rejection }), replyPathAudit: { query: "\x1b[>1c" } })
+      const { draft, decision } = setup(
+        observed,
+        { runId: "query-reply-review", startedAt: "2026-10-28T22:00:00.000Z" },
+        (draft) => {
+          draft.results[0]!.assertionType = "query_reply"
+          draft.assertions = draft.assertions.map((assertion) => ({ ...assertion, assertionType: "query_reply" }))
+        },
+      )
+      decision.decision = "unsupported"
+      decision.sources = ["vt100@0.16.2:src/parser.rs:1"]
+      applyCaptureDecision(draft, JSON.stringify(decision), "2026-10-28T22:01:00.000Z")
+      const manifest = {
+        schemaVersion: 4 as const,
+        probeHash: draft.probeHash,
+        adapterVersion: "3",
+        catalogIds: ["sgr.faint"],
+        probes: { term: [], lib: ["sgr.faint"], mux: [] },
+      }
+      const read = () =>
+        parseRun(
+          "query-reply.json",
+          JSON.stringify(sealRunDraft(draft)),
+          manifest.catalogIds,
+          new Map([[manifest.probeHash, manifest]]),
+        )
+      if (accepted) expect(read().results?.[0]?.status).toBe("unsupported")
+      else expect(read).toThrow(/query_reply source-negative review requires a recorded parser-level rejection/)
     },
   )
   // FINAL B4: only the review's failure may be decided; a separate failed condition still wins.
@@ -788,6 +1063,41 @@ describe("immutable pre-seal capture binding", () => {
       ).toThrow(/capture|raw|bound/)
     },
   )
+
+  // The typed supported/unsupported rows above admit any branch; a missing reply path must never read as a capability.
+  it.each(
+    [...UNTESTABLE_ONLY_REVIEW_BRANCHES].flatMap((branch) =>
+      (
+        [
+          { decision: "supported", accepted: false },
+          { decision: "unsupported", accepted: false },
+          { decision: "untestable", accepted: true },
+        ] as const
+      ).map((entry) => ({ ...entry, branch })),
+    ),
+  )("decides $branch only as untestable ($decision)", ({ decision: verdict, accepted, branch }) => {
+    expect([...UNTESTABLE_ONLY_REVIEW_BRANCHES]).toEqual([REPLY_PATH_AUDIT_REVIEW, HEADLESS_OBSERVABLE_REVIEW])
+    const { draft, decision } = setup("NO", undefined, (draft) => {
+      draft.results[0]!.criterionBranch = branch
+    })
+    decision.decision = verdict
+    applyCaptureDecision(draft, JSON.stringify(decision), "2026-10-28T22:40:00.000Z")
+    const manifest = {
+      probeHash: draft.probeHash,
+      adapterVersion: "3",
+      catalogIds: ["sgr.bold"],
+      probes: { term: ["sgr.bold"], lib: [], mux: [] },
+    }
+    const read = () =>
+      parseRun(
+        "reply-path-review.json",
+        JSON.stringify(sealRunDraft(draft)),
+        ["sgr.bold"],
+        new Map([[draft.probeHash, manifest]]),
+      )
+    if (accepted) expect(read().results?.[0]?.status).toBe("untestable")
+    else expect(read).toThrow(/review admits only an untestable decision/)
+  })
 
   it.each(["raw", "host-cause", "context", "source", "suite", "feature", "run"])(
     "rejects review after %s binding changes",

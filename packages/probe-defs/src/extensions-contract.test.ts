@@ -616,6 +616,16 @@ test("the extensions contract names its focused tests, and every named file exis
 
 test("the harness replays every extension feature deterministically", async () => {
   const headless = libProbeSource(inertModel())
+  const headlessReviews = new Set([
+    "extensions.kitty-graphics.animation",
+    "extensions.kitty-graphics.unicode-placeholders",
+    "extensions.sixel",
+    "extensions.semantic-prompts",
+    "extensions.osc7-cwd",
+    "extensions.osc-633-vscode",
+    "extensions.notifications",
+    "extensions.iterm2-images",
+  ])
   const term = replayTermProbeSource(new Map(), {
     queryCursorPosition: async () => ({ row: 0, col: 0 }),
   })
@@ -625,6 +635,12 @@ test("the harness replays every extension feature deterministically", async () =
     const probe = extensionsProbes.find((entry) => entry.id === row.id)
     expect(probe, `missing extension probe ${row.id}`).toBeDefined()
     if (!probe) continue
+    if (headlessReviews.has(row.id)) {
+      const result = probe.lib!(headless)
+      expect(result.criterionBranch, row.id).toBe("headless-observable-review")
+      expect(result.tests, row.id).toMatchObject([{ id: "review", status: "test-todo" }])
+      expect((await regradeRow(probe, row, { headless })).after, row.id).toBeUndefined()
+    }
     expect(probe.lib !== null || probe.term !== null, `${row.id} has no callback`).toBe(true)
     const first = await regradeRow(probe, row, { headless, term })
     const second = await regradeRow(probe, row, { headless, term })

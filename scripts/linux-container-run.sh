@@ -1212,6 +1212,7 @@ jq -e --arg run "$run_id" --arg profile "$clipboard_profile" --arg sha "$clipboa
    .clipboardFixture.sha256 == $sha' "$raw/container-receipt.json" >/dev/null || {
   echo "Container clipboard fixture differs from exact retained receipt" >&2; exit 2;
 }
+TERMINFO_PROBE_HASH="$suite_hash" TERMINFO_SOURCE_REVISION="$source_revision" \
 TERMINFO_CAPTURE_RAW="$raw/v3-capture.json" TERMINFO_CAPTURE_OUTPUT="$raw" bun -e '
   import {readFileSync,writeFileSync} from "node:fs";
   import {join} from "node:path";

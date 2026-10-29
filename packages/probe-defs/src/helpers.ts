@@ -10,9 +10,6 @@ import type {
   CurrentProbeRun,
   ProbeSuiteManifest,
   RunDraft,
-  HostInputName,
-  HostRecipeName,
-  CallbackHostRecipeCause,
 } from "./types.ts"
 import type {
   AssertionType,
@@ -22,43 +19,7 @@ import type {
   LibProbeSource,
   TermProbeSource,
 } from "./types.ts"
-
-// Independent source audit of this exact unchanged native artifact, not a digest copied from runtime.
-const AUDITED_ALACRITTY_SHA256 = "e6e16113863355b77d0aa3b359bd40c7066fb144e005fbc324fecfa3f4869bea"
-
-/** Explain an actually empty host-owned query without changing the criterion or protocol bytes. */
-export function alacrittyHostRecipeResult(
-  ctx: LibProbeSource,
-  result: ProbeCallbackResult,
-  recipe: HostRecipeName,
-  missing: HostInputName,
-  query: string,
-  empty: boolean,
-): ProbeCallbackResult {
-  if (
-    !empty ||
-    ctx.runtimeIdentity?.kind !== "native" ||
-    ctx.runtimeIdentity.loadedBinary.sha256 !== AUDITED_ALACRITTY_SHA256
-  ) {
-    return result
-  }
-  const claim: CallbackHostRecipeCause =
-    recipe === "color-request"
-      ? { recipe, cause: { kind: "observed", missing, query } }
-      : {
-          recipe,
-          cause: {
-            kind: "source-audited",
-            missing,
-            artifactSha256: AUDITED_ALACRITTY_SHA256,
-            sourceCitation:
-              recipe === "text-area-size"
-                ? "alacritty_terminal 0.26.0 term/mod.rs:2259-2265 requests embedder pixels; Termless packages/alacritty/native/src/lib.rs EventProxy::send ignores TextAreaSizeRequest; this harness supplies no pixel geometry"
-                : "alacritty_terminal 0.26.0 Config default clipboard policy OnlyCopy; Termless packages/alacritty/native/src/lib.rs EventProxy::send has no ClipboardLoad handler; this harness supplies no clipboard read permission",
-          },
-        }
-  return { ...result, hostRecipeCauses: [...(result.hostRecipeCauses ?? []), claim] }
-}
+import { replyPathAuditFor, type ReplyPathAudit } from "./reply-path-audit.ts"
 
 /** Keep the serialized state alongside the exact assertion that used it. */
 export function parserStateResult(
@@ -67,6 +28,7 @@ export function parserStateResult(
   state: object,
   note?: string,
   sourceReviewReason?: string,
+  assertionType: AssertionType = "buffer_state",
 ): ProbeCallbackResult {
   if (sourceReviewReason !== undefined && pass === true) {
     throw new Error("A positive parser state cannot require source review")
@@ -76,7 +38,7 @@ export function parserStateResult(
   const assertions: NonNullable<ProbeCallbackResult["assertions"]> | undefined =
     pass === null && !sourceReview
       ? undefined
-      : [{ assertionType: "buffer_state" as const, kind: pass ? "positive" : "negative", expected, observed: response }]
+      : [{ assertionType, kind: pass ? "positive" : "negative", expected, observed: response }]
   return {
     pass: pass === true,
     response,
@@ -88,7 +50,7 @@ export function parserStateResult(
     observation: {
       outcome: sourceReview || pass === null ? "inconclusive" : pass ? "supported" : "unsupported",
       ...((sourceReview || pass === null) && { reason: "insufficient-evidence" as const }),
-      assertionType: "buffer_state",
+      assertionType,
       ...(note && { note }),
     },
     ...(assertions && { assertions }),
@@ -1016,7 +978,78 @@ export function probe(
   term: ((ctx: TermProbeSource) => Promise<ProbeCallbackResult>) | null,
   termAssertionType?: AssertionType | null,
 ): ProbeDefinition {
-  return { id, lib, term, ...(termAssertionType !== undefined ? { termAssertionType } : {}) }
+  const audited = lib && ((ctx: LibProbeSource) => replyPathAudited(id, ctx, lib))
+  return { id, lib: audited, term, ...(termAssertionType !== undefined ? { termAssertionType } : {}) }
+}
+
+export const REPLY_PATH_AUDIT_REVIEW = "reply-path-audit-review"
+export const HEADLESS_OBSERVABLE_REVIEW = "headless-observable-review"
+export const UNTESTABLE_ONLY_REVIEW_BRANCHES: ReadonlySet<string> = new Set([
+  REPLY_PATH_AUDIT_REVIEW,
+  HEADLESS_OBSERVABLE_REVIEW,
+])
+
+/** The collector's test row for a capture that reached an engine callback its adapter does not reproduce. */
+export const HARNESS_INCOMPLETE_TEST = "harness"
+
+/**
+ * Apply the reply-path audit table (reply-path-audit.ts) to one library probe; it decides nothing about identity.
+ * The review replaces the measured result only when the probe sent the audited query byte-exact and every capture
+ * of it returned zero bytes. Any reply byte, an unsent query, or an unlisted artifact/feature keeps the measured result.
+ */
+function replyPathAudited(
+  id: string,
+  ctx: LibProbeSource,
+  lib: (ctx: LibProbeSource) => ProbeCallbackResult,
+): ProbeCallbackResult {
+  const entry = replyPathAuditFor(ctx, id)
+  if (entry === undefined) return lib(ctx)
+  const replies: string[] = []
+  const recorded = new Proxy(ctx, {
+    get(target, key): unknown {
+      if (key !== "feedCapture") {
+        const value: unknown = Reflect.get(target, key, target)
+        return value
+      }
+      return (text: string) => {
+        const reply = target.feedCapture(text)
+        if (text === entry.audit.query) replies.push(reply)
+        return reply
+      }
+    },
+  })
+  const measured = lib(recorded)
+  if (replies.length === 0 || replies.some((reply) => reply.length > 0)) return measured
+  const review = replyPathReviewResult(id, entry.artifactSha256, entry.audit, replies.length, measured)
+  return measured.hostRecipeCauses ? { ...review, hostRecipeCauses: measured.hostRecipeCauses } : review
+}
+
+/** The cell reads "review by reply-path audit": which entry fired, the query it matched, and the zero-byte fact. */
+function replyPathReviewResult(
+  id: string,
+  artifactSha256: string,
+  audit: ReplyPathAudit,
+  captures: number,
+  measured: ProbeCallbackResult,
+): ProbeCallbackResult {
+  const replyPathAudit = { artifactSha256, featureId: id, ...audit, captures, replyBytes: 0 }
+  const measuredResponse = measured.response ?? null
+  if (audit.kind === "no-reply-path") {
+    return reviewResult(
+      REPLY_PATH_AUDIT_REVIEW,
+      `Review by reply-path audit: the loaded artifact has no reply path (${audit.citation}); Untestable review required`,
+      `${id}: no reply path for this query in the loaded artifact`,
+      { replyPathAudit, measuredResponse },
+    )
+  }
+  return parserStateResult(
+    false,
+    `parser-level rejection of ${JSON.stringify(audit.query)}`,
+    { rejection: "parser", replyPathAudit, measuredResponse },
+    undefined,
+    `Review by reply-path audit: the parser rejects the query before any handler (${audit.citation}); source-negative review required`,
+    "query_reply",
+  )
 }
 
 /** Feature support is independent of whether an observer can inspect link metadata. */

@@ -58,6 +58,10 @@ export type {
 } from "./types.ts"
 export {
   SOURCE_NEGATIVE_REVIEW,
+  REPLY_PATH_AUDIT_REVIEW,
+  HARNESS_INCOMPLETE_TEST,
+  HEADLESS_OBSERVABLE_REVIEW,
+  UNTESTABLE_ONLY_REVIEW_BRANCHES,
   sgrProbe,
   cursorProbe,
   decrpmModeProbe,
@@ -159,6 +163,7 @@ export {
 }
 
 export { splitDecidableBasis } from "./decidable-basis.ts"
+export { nativeHostRecipeResult } from "./native-host-audit.ts"
 export type { DecidableBasis } from "./decidable-basis.ts"
 export { ENVIRONMENT_GROUP_IDS, gradedFeatureIds, isEnvironmentGroup } from "./environment-groups.ts"
 export type { EnvironmentGroupId } from "./environment-groups.ts"

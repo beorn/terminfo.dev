@@ -702,7 +702,7 @@ test.each(["changed", "unavailable"] as const)(
 
 // Same adapter/version/capabilities without the independent measurement cannot qualify.
 // H1/H2/H4/H6: explicit native-input unit fixture; no actual native engine qualification.
-test.each(["observed", "source-audited", "missing", "error", "late"] as const)(
+test.each(["observed", "source-audited", "unimplemented", "missing", "error", "late"] as const)(
   "retains and validates %s host custody before checkpointing the callback",
   async (mode) => {
     vi.spyOn(process.stderr, "write").mockImplementation(() => true)
@@ -776,7 +776,7 @@ test.each(["observed", "source-audited", "missing", "error", "late"] as const)(
                 : {
                     recipe: "color-request",
                     cause: {
-                      kind: "source-audited",
+                      kind: mode === "unimplemented" ? mode : "source-audited",
                       missing: "foreground-rgb",
                       artifactSha256: artifact,
                       sourceCitation: "fixture native colour request source",
@@ -845,11 +845,19 @@ test.each(["observed", "source-audited", "missing", "error", "late"] as const)(
               runId: draft.runId,
               ...(mode === "observed"
                 ? { eventRef: `collector.hostRecipes.${id}` }
-                : { citation: { inputRecordRef: "collector.collectionAttempt", input: "foreground-rgb" } }),
+                : mode === "source-audited"
+                  ? { citation: { inputRecordRef: "collector.collectionAttempt", input: "foreground-rgb" } }
+                  : { artifactSha256: artifact }),
             },
           },
         ],
       })
+      // A no-reply-path cause cites only its source: no declared host input stands behind it.
+      if (mode === "unimplemented") {
+        expect((retained as { causes: [{ cause: { citation: unknown } }] }).causes[0].cause.citation).toEqual({
+          sourceLocation: "fixture native colour request source",
+        })
+      }
     }
   },
 )

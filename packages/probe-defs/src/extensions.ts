@@ -9,7 +9,7 @@ import type {
 } from "./types.ts"
 import {
   REPLY_AFTER_SENTINEL_NOTE,
-  alacrittyHostRecipeResult,
+  HEADLESS_OBSERVABLE_REVIEW,
   decrpmPs,
   decrpmReplyPattern,
   decrpmReading,
@@ -30,6 +30,7 @@ import {
   sgrCaptureTooSmall,
   unmeasuredCellResult,
 } from "./helpers.ts"
+import { nativeHostRecipeResult } from "./native-host-audit.ts"
 import { sgrTermReadback } from "./sgr.ts"
 import { captureRegionGeometry, captureRegionReadbackDecision, collectorRegionRead } from "./region-readback.ts"
 import { SIXEL_BOUNDS, SIXEL_REGION, sixelReadback } from "./sixel-capture.ts"
@@ -372,7 +373,7 @@ function oscColorQueryProbe(id: string, oscCode: number, index?: number): ProbeD
           const answer = (result: ProbeCallbackResult) =>
             hostInput === undefined
               ? result
-              : alacrittyHostRecipeResult(ctx, result, "color-request", hostInput, querySeq, raw === "")
+              : nativeHostRecipeResult(ctx, result, "color-request", hostInput, querySeq, raw === "")
           if (raw !== "" || !reviewInitialValue) {
             return answer(oscReplyResult(raw, pattern.exec(raw)?.[0] ?? null, expected, prefix))
           }
@@ -606,7 +607,7 @@ function colorResetProbe(setCode: number, resetCode: number, index?: number): Pr
           )
         }
         const answer = (result: ProbeCallbackResult) =>
-          alacrittyHostRecipeResult(ctx, result, "color-request", hostInput, query, true)
+          nativeHostRecipeResult(ctx, result, "color-request", hostInput, query, true)
         const controls: { write: string; response: string }[] = []
         // Capture-only sources cannot provide the additional cell witness; keep their existing query criterion.
         const indexed = setCode === 4 && resetCode === 104 && index === 0 && typeof ctx.getCell === "function"
@@ -1000,7 +1001,12 @@ function promptMarkResult(ctx: LibProbeSource, sequence: string, noObservable: s
   const qualified =
     consumed && home.x === 0 && home.y === 0 && target.x === 1 && target.y === 0 && control.x === 0 && control.y === 0
   if (!qualified) return promptConsumptionResult(consumed)
-  return notTestedResult(noObservable, { home, target, control, cell: cell.char })
+  return reviewResult(
+    "semantic-prompt-source-review",
+    "Independent review must determine whether the pinned engine source parses this OSC 133 / 633 mark and exposes mark or zone state; citation per cell required for supported, unsupported or Untestable",
+    noObservable,
+    { home, target, control, cell: cell.char },
+  )
 }
 
 /**
@@ -1273,14 +1279,7 @@ function colorStackProbe(): ProbeDefinition["lib"] {
         for (const assertion of result.assertions ?? []) assertion.observed = response
       }
       if (result && originalRaw === "") {
-        const explained = alacrittyHostRecipeResult(
-          ctx,
-          result,
-          "color-request",
-          "foreground-rgb",
-          foregroundQuery,
-          true,
-        )
+        const explained = nativeHostRecipeResult(ctx, result, "color-request", "foreground-rgb", foregroundQuery, true)
         if (explained.hostRecipeCauses) result.hostRecipeCauses = explained.hostRecipeCauses
       }
     }
@@ -1482,6 +1481,11 @@ export function kittyKeyboardFlagProbe(id: string, pushValue: number, flagBit: n
   return { ...definition, termAssertionType: "query_reply", libAssertionType: "query_reply" }
 }
 
+/** Wrap captured library text without inventing measured DA1 timing or changing its matched frame. */
+function rawQueryOutcome(raw: string, match: string[] | null): TerminalQueryOutcome {
+  return { match, reason: "sentinel", raw, rawBase64: Buffer.from(raw).toString("base64") }
+}
+
 function unansweredQuery(reply: TerminalQueryOutcome, note: string): ProbeCallbackResult {
   // A measured sentinel with nothing beside it is a decisive negative, not an unknown; a timeout
   // never answered DA1 at all, so it stays inconclusive.
@@ -1526,10 +1530,7 @@ function matchedReplyResult(
 function keyboardFlagsResult(response: string, flagBits: number): ProbeCallbackResult {
   const match = /\x1b\[\?(\d+)u/.exec(response)
   if (!match?.[1]) {
-    return unansweredQuery(
-      { match: null, reason: "sentinel", raw: response, rawBase64: btoa(response) },
-      KITTY_FLAGS_MISSING,
-    )
+    return unansweredQuery(rawQueryOutcome(response, null), KITTY_FLAGS_MISSING)
   }
   const flags = Number(match[1])
   const pass = (flags & flagBits) === flagBits
@@ -1558,7 +1559,7 @@ function graphicsQueryResult(
   const match = kittyReplyFrame({ i: String(imageId) }).exec(response)
   if (!match) {
     return unansweredQuery(
-      { match: null, reason: "sentinel", raw: response, rawBase64: btoa(response) },
+      rawQueryOutcome(response, null),
       "No matching graphics query reply; image rendering was not tested",
     )
   }
@@ -1628,7 +1629,7 @@ function allocatedImageResult(
     return {
       imageId: null,
       result: unansweredQuery(
-        { match: null, reason: "sentinel", raw: response, rawBase64: btoa(response) },
+        rawQueryOutcome(response, null),
         "No matching image allocation reply; no image ownership or transmission conclusion",
       ),
     }
@@ -1669,9 +1670,30 @@ const GRAPHICS_QUERY_REPLY = /\x1b_Gi=31;([^\x1b]+)\x1b\\/
 
 /** Live's reading of the graphics query outcome, shared by both arms (#30554). */
 function graphicsQueryOutcomeResult(reply: TerminalQueryOutcome): ProbeCallbackResult {
-  return matchedReplyResult(reply, "No matching graphics query reply; image rendering was not tested", (frame) =>
-    graphicsQueryResult(frame, 31),
-  )
+  return matchedReplyResult(reply, "No matching graphics query reply; image rendering was not tested", (frame) => {
+    const match = kittyReplyFrame({ i: "31" }).exec(frame)
+    const message = match?.[2]
+    // Only the canonical a=q direct RGB request has this criterion; placement keeps its own OK-only grader.
+    if (!match || !message || !/^[\x20-\x7e]+$/.test(message)) return graphicsQueryResult(frame, 31)
+    const pass = message === "OK"
+    const note = pass
+      ? "Canonical direct RGB graphics query accepted; visible rendering was not tested"
+      : `Canonical direct RGB graphics query refused: ${message}; protocol recognized, visible rendering was not tested`
+    return {
+      pass,
+      note,
+      observation: { outcome: pass ? "supported" : "unsupported", assertionType: "query_reply", note },
+      assertions: [
+        {
+          assertionType: "query_reply",
+          kind: pass ? "positive" : "negative",
+          expected: "Canonical direct RGB graphics query i=31 acknowledged with OK",
+          observed: match[0],
+          note: JSON.stringify({ protocolRecognized: true, message }),
+        },
+      ],
+    }
+  })
 }
 
 /** Live's reading of an allocation outcome, shared by both arms (#30554); the result keeps the whole read window. */
@@ -1773,10 +1795,7 @@ function kittyForegroundOutcomeResult(reply: TerminalQueryOutcome): ProbeCallbac
 function kittyForegroundResult(response: string): ProbeCallbackResult {
   const match = OSC21_REPLY.exec(response)
   if (!match) {
-    return unansweredQuery(
-      { match: null, reason: "sentinel", raw: response, rawBase64: btoa(response) },
-      "No OSC 21 reply; color rendering was not tested",
-    )
+    return unansweredQuery(rawQueryOutcome(response, null), "No OSC 21 reply; color rendering was not tested")
   }
   const values = match[1]?.split(";").filter((field) => field.startsWith("foreground=")) ?? []
   const value = values.length === 1 ? values[0]?.slice("foreground=".length) : undefined
@@ -1838,7 +1857,7 @@ function headlessClipboardRoundtrip(ctx: LibProbeSource): ProbeCallbackResult {
   ctx.feed(`\x1b]52;c;${encoded}\x07`)
   const query = "\x1b]52;c;?\x07"
   const raw = ctx.feedCapture(query)
-  return alacrittyHostRecipeResult(
+  return nativeHostRecipeResult(
     ctx,
     headlessClipboardResult(raw, nonce),
     "clipboard-load",
@@ -1855,7 +1874,7 @@ function headlessClipboardRead(ctx: LibProbeSource): ProbeCallbackResult {
   if (ctx.queryWithSentinelOutcome) {
     const outcome = ctx.queryWithSentinelOutcome("\x1b]52;c;?\x07", osc52Reply)
     const silence = sentinelSilenceResult(outcome, "OSC 52 c query returns the exact written nonce")
-    return alacrittyHostRecipeResult(
+    return nativeHostRecipeResult(
       ctx,
       silence ?? headlessClipboardResult(outcome.raw, nonce),
       "clipboard-load",
@@ -1865,7 +1884,7 @@ function headlessClipboardRead(ctx: LibProbeSource): ProbeCallbackResult {
     )
   }
   const raw = ctx.feedCapture("\x1b]52;c;?\x07")
-  return alacrittyHostRecipeResult(
+  return nativeHostRecipeResult(
     ctx,
     headlessClipboardResult(raw, nonce),
     "clipboard-load",
@@ -2335,10 +2354,13 @@ export const extensionsProbes: ProbeDefinition[] = [
     ...queryOnly(
       probe(
         "extensions.kitty-graphics",
-        (ctx) =>
-          ctx.queryWithSentinelOutcome
-            ? graphicsQueryOutcomeResult(ctx.queryWithSentinelOutcome(GRAPHICS_QUERY, GRAPHICS_QUERY_REPLY))
-            : graphicsQueryResult(ctx.feedCapture(GRAPHICS_QUERY), 31),
+        (ctx) => {
+          if (ctx.queryWithSentinelOutcome) {
+            return graphicsQueryOutcomeResult(ctx.queryWithSentinelOutcome(GRAPHICS_QUERY, GRAPHICS_QUERY_REPLY))
+          }
+          const raw = ctx.feedCapture(GRAPHICS_QUERY)
+          return graphicsQueryOutcomeResult(rawQueryOutcome(raw, GRAPHICS_QUERY_REPLY.exec(raw)))
+        },
         async (ctx) =>
           graphicsQueryOutcomeResult(await ctx.queryWithSentinelOutcome(GRAPHICS_QUERY, GRAPHICS_QUERY_REPLY)),
         "query_reply",
@@ -2355,7 +2377,9 @@ export const extensionsProbes: ProbeDefinition[] = [
     "extensions.kitty-graphics.animation",
     (ctx) => {
       const note = "Declared Kitty graphics capability does not establish timed animation playback"
-      return notTestedResult(note, { declared: ctx.capabilities.kittyGraphics === true })
+      return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
+        declared: ctx.capabilities.kittyGraphics === true,
+      })
     },
     () => {
       const note = "No timed frame playback or pixel readback for Kitty animation"
@@ -2371,7 +2395,9 @@ export const extensionsProbes: ProbeDefinition[] = [
     "extensions.kitty-graphics.unicode-placeholders",
     (ctx) => {
       const note = "Declared Kitty graphics capability does not establish Unicode placeholder rendering"
-      return notTestedResult(note, { declared: ctx.capabilities.kittyGraphics === true })
+      return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
+        declared: ctx.capabilities.kittyGraphics === true,
+      })
     },
     () => {
       const note = "No pixel and placeholder-cell readback for Kitty Unicode placeholders"
@@ -2389,7 +2415,9 @@ export const extensionsProbes: ProbeDefinition[] = [
       "extensions.sixel",
       (ctx) => {
         const note = "Declared Sixel capability does not establish rendered pixels"
-        return notTestedResult(note, { declared: ctx.capabilities.sixel === true })
+        return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
+          declared: ctx.capabilities.sixel === true,
+        })
       },
       async (ctx) => {
         // Sixel paints outside the cell grid. On an arm that reads cells there is nothing to
@@ -2493,10 +2521,11 @@ export const extensionsProbes: ProbeDefinition[] = [
           const adapter = identity
             ? `${identity.kind === "js" ? identity.resolvedPath : identity.loadedBinary.path} at Termless ${identity.termlessRevision}`
             : "Adapter (runtime identity unavailable)"
-          return notTestedResult(
-            `${adapter} exposes no OSC 8 URI observer (getHyperlinkAt); link metadata unobservable`,
-            { chars: cells.map((cell) => cell.char), links },
-          )
+          const note = `${adapter} exposes no OSC 8 URI observer (getHyperlinkAt); link metadata unobservable`
+          return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
+            chars: cells.map((cell) => cell.char),
+            links,
+          })
         }
         if (!charsMatch) {
           return {
@@ -2597,7 +2626,9 @@ export const extensionsProbes: ProbeDefinition[] = [
     "extensions.semantic-prompts",
     (ctx) => {
       const note = "Declared semantic-prompt capability does not establish shell prompt integration"
-      return notTestedResult(note, { declared: ctx.capabilities.semanticPrompts === true })
+      return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
+        declared: ctx.capabilities.semanticPrompts === true,
+      })
     },
     () => {
       const note = "No shell prompt integration metadata or behavior readback for OSC 133"
@@ -2698,7 +2729,9 @@ export const extensionsProbes: ProbeDefinition[] = [
     "extensions.osc7-cwd",
     (ctx) => {
       const note = "Declared OSC 7 capability does not establish working-directory metadata delivery"
-      return notTestedResult(note, { declared: ctx.capabilities.extensions.has("osc7") })
+      return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
+        declared: ctx.capabilities.extensions.has("osc7"),
+      })
     },
     () => {
       const note = "No working-directory metadata readback for OSC 7"
@@ -2715,7 +2748,9 @@ export const extensionsProbes: ProbeDefinition[] = [
     "extensions.osc-633-vscode",
     (ctx) => {
       const note = "Declared semantic-prompt capability does not establish VS Code OSC 633 shell integration"
-      return notTestedResult(note, { declared: ctx.capabilities.semanticPrompts === true })
+      return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
+        declared: ctx.capabilities.semanticPrompts === true,
+      })
     },
     () => {
       const note = "No VS Code shell integration metadata or behavior readback for OSC 633"
@@ -2855,7 +2890,9 @@ export const extensionsProbes: ProbeDefinition[] = [
     "extensions.notifications",
     (ctx) => {
       const note = "Declared OSC 9 capability does not establish desktop notification delivery"
-      return notTestedResult(note, { declared: ctx.capabilities.extensions.has("osc9") })
+      return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
+        declared: ctx.capabilities.extensions.has("osc9"),
+      })
     },
     () => {
       const note = "No desktop notification delivery readback for OSC 9"
@@ -2873,7 +2910,9 @@ export const extensionsProbes: ProbeDefinition[] = [
       "extensions.iterm2-images",
       (ctx) => {
         const note = "Declared iTerm2 image capability does not establish rendered image pixels"
-        return notTestedResult(note, { declared: ctx.capabilities.extensions.has("iterm2Images") })
+        return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
+          declared: ctx.capabilities.extensions.has("iterm2Images"),
+        })
       },
       async (ctx) => {
         if (ctx.capture) {
