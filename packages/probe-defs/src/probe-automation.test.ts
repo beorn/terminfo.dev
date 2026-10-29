@@ -289,18 +289,37 @@ describe("audited native host recipe callers", () => {
 describe("reply-path audit", () => {
   // #31385: rebuilding cell readback must retain all applicable audits, including #31377's graphics prefixes.
   // The data-derived callback cases below cannot detect an omitted artifact or omitted row.
-  test("the combined native artifact retains both prior Ghostty audit sets", () => {
-    const prior = {
-      ...REPLY_PATH_AUDITS.get("ac12d6408c2049f1d720e9735d7eb69251d3eed868fc9ced58de98b3543f3e2e"),
-      ...REPLY_PATH_AUDITS.get("17d155feee5df8fa30266b9a354bbe66e39484d08218de5e03dc3bb2f199a0a3"),
-    }
-    const rebuilt = REPLY_PATH_AUDITS.get("8872ab0fc56429489b52cd5d3b5a293032c3ec7dbbb71545d237945c3ef525f3")
+  test.each([
+    {
+      name: "native",
+      digest: "8872ab0fc56429489b52cd5d3b5a293032c3ec7dbbb71545d237945c3ef525f3",
+      priors: [
+        "ac12d6408c2049f1d720e9735d7eb69251d3eed868fc9ced58de98b3543f3e2e",
+        "17d155feee5df8fa30266b9a354bbe66e39484d08218de5e03dc3bb2f199a0a3",
+      ],
+      core: "332b2aef",
+    },
+    {
+      name: "WASM",
+      digest: "77b69f9f22c4126359be864fcce97afad8f84615053e21d335ba6348a8d3e1d7",
+      priors: ["7c43302dde147c6f7959b7bda7045ff375c71288da1af5667ffca2bf95beb2bf"],
+      core: "5714ed07",
+    },
+  ])("the rebuilt $name artifact retains its prior Ghostty audit sets", ({ digest, priors, core }) => {
+    const prior = Object.fromEntries(
+      priors.flatMap((sha) => {
+        const audits = REPLY_PATH_AUDITS.get(sha)
+        if (!audits) throw new Error(`Missing required prior audit ${sha}`)
+        return Object.entries(audits)
+      }),
+    )
+    const rebuilt = REPLY_PATH_AUDITS.get(digest)
     expect(rebuilt).toBeDefined()
     expect(Object.keys(rebuilt!).sort()).toEqual(Object.keys(prior).sort())
     for (const [id, audit] of Object.entries(prior)) {
       expect(rebuilt![id]).toMatchObject({ query: audit.query, kind: audit.kind })
       expect(rebuilt![id]!.matches).toBe(audit.matches)
-      expect(rebuilt![id]!.citation).toContain("332b2aef")
+      expect(rebuilt![id]!.citation).toContain(core)
     }
   })
   const cells = [...REPLY_PATH_AUDITS].flatMap(([sha256, audits]) =>
@@ -647,10 +666,11 @@ describe("reply-path audit", () => {
     expect(raw.trace.at(-1)).toEqual({ write: query, error: "Error: stack attempt failed" })
   })
 
-  test("covers all six audited artifacts", () => {
-    // Ghostty WASM at 5714ed07, four native artifacts at 332b2aef and the vt100 0.16.2 Rust parser.
+  test("covers all seven audited artifacts", () => {
+    // Two Ghostty WASM artifacts at 5714ed07, four native artifacts at 332b2aef and vt100 0.16.2.
     expect([...REPLY_PATH_AUDITS.keys()].sort()).toEqual([
       "17d155feee5df8fa30266b9a354bbe66e39484d08218de5e03dc3bb2f199a0a3",
+      "77b69f9f22c4126359be864fcce97afad8f84615053e21d335ba6348a8d3e1d7",
       "7c43302dde147c6f7959b7bda7045ff375c71288da1af5667ffca2bf95beb2bf",
       "8872ab0fc56429489b52cd5d3b5a293032c3ec7dbbb71545d237945c3ef525f3",
       "9a9505600721226b952ae9ac92552b42389aa6713872a9f4904528f425b7ecdf",
