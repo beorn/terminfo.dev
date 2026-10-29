@@ -1261,9 +1261,12 @@ test.skipIf(!ghosttyNativeAvailable)(
     ] as const
     const ids = [...resetRows.map(([id]) => id), "extensions.osc8"]
     const instances: { writes: string[]; replies: string[] }[] = []
+    let metadataAvailable = false
     const batch = await collectBatch(
       async () => {
         const value = createGhosttyNativeBackend()
+        metadataAvailable =
+          value.capabilities.extensions.has("default-colors") || value.capabilities.extensions.has("hyperlinks")
         const instance = { writes: [] as string[], replies: [] as string[] }
         instances.push(instance)
         const feed = value.feed.bind(value)
@@ -1278,8 +1281,33 @@ test.skipIf(!ghosttyNativeAvailable)(
       registryDefinitions(ids),
     )
     expect(batch.results.map(({ featureId, status }) => ({ featureId, status }))).toEqual(
-      ids.map((featureId) => ({ featureId, status: "supported" })),
+      ids.map((featureId) => ({ featureId, status: metadataAvailable ? "supported" : "test-todo" })),
     )
+    // Native 0.10.2 lacks metadata; retain its TODO evidence and the source build's positive assertions.
+    if (!metadataAvailable) {
+      expect(batch.results.map(({ rawReplyRef }) => rawReplyRef)).toEqual(ids)
+      expect(batch.observations).toEqual([])
+      expect(batch.assertions).toEqual([])
+      expect(batch.ungradedDiagnostics).toEqual({})
+      expect(batch.notTested).toMatchObject(
+        ids.map((featureId) => ({
+          featureId,
+          reason: "no-semantic-observable",
+          rawReplyRef: featureId,
+        })),
+      )
+      for (const [id] of resetRows) {
+        expect(JSON.parse(batch.rawReplies[id]!)).toMatchObject({
+          originalRaw: "",
+          controls: Array.from({ length: 4 }, () => ({ response: "" })),
+        })
+      }
+      expect(JSON.parse(batch.rawReplies["extensions.osc8"]!)).toEqual({
+        chars: [..."ALINKZ"],
+        links: Array.from({ length: 6 }, () => ({ reported: false })),
+      })
+      return
+    }
     expect(batch.observations).toHaveLength(4)
     expect(batch.notTested).toEqual([])
     expect(batch.ungradedDiagnostics).toEqual({})
