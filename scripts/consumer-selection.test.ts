@@ -29,7 +29,7 @@ import { loadAnalysis } from "../docs/data/load-probes.ts"
 import terminalPaths from "../docs/terminals/[id].paths.ts"
 import { compatibilitySubjects, loadCurrentResults } from "../docs/data/current-results.ts"
 import { publicResults } from "../docs/data/public-results.ts"
-import type { PublicVersion } from "../docs/data/public-results.ts"
+import type { PublicVersion, PublicContextSummary } from "../docs/data/public-results.ts"
 import { projectedContextKey, type SelectedProjection } from "../docs/data/selected-results.ts"
 import type { CellState } from "../docs/data/release-scope.ts"
 import { probeHash } from "../packages/admin/versions.ts"
@@ -39,18 +39,31 @@ import { fixtureContentDir } from "../test-fixtures/content-root.ts"
 type StubRun = { subject: { kind: string; id: string; os?: string; permissions?: string | null } }
 
 /**
- * A stub projection for the selection tests. The projection carries the ONE classified table
- * (28792 item 1), so each stub run gets a run id and an EMPTY classified row — the selection rule reads
- * no cells, and `compatibilitySubjects` only needs a row to exist for every current run.
+ * Identity-only selection fixtures: each context has one original source and no scored cells.
+ * Composition and scoring are exercised through real run documents in the other cases below.
  */
 function stubProjection(current: Record<string, StubRun>, history: Record<string, unknown[]> = {}): SelectedProjection {
   const table: Record<string, Record<string, import("@terminfo/probe-defs").ProbeStatus>> = {}
+  const contexts: Record<string, unknown> = {}
+  const originals: Record<string, unknown[]> = { ...history }
   for (const [key, run] of Object.entries(current)) {
     const runId = `run:${key}`
-    ;(run as StubRun & { runId?: string }).runId = runId
+    originals[key] = [{ ...run, runId, measuredAt: "2026-10-01T00:00:00Z", suiteId: "fixture", suiteRelation: "tree" }]
     table[runId] = {}
+    contexts[key] = {
+      contextKey: key,
+      subject: run.subject,
+      catalogIds: [],
+      cells: {},
+      missingIds: [],
+      contributingRunIds: [runId],
+      attempts: [],
+      counts: {},
+      score: { supported: 0, all: 0 },
+      complete: true,
+    }
   }
-  return { current, history, table } as unknown as SelectedProjection
+  return { contexts, history: originals, versions: originals, table, exclusions: [] } as unknown as SelectedProjection
 }
 
 /** A v3 run reference is the published run without its results; the payload carries no historical fields. */
@@ -180,10 +193,10 @@ describe("consumer selection", () => {
           "console.log(JSON.stringify({",
           "  fixtureRuns: fixtureRuns.length,",
           "  currentFixtureRuns,",
-          "  projectionCurrent: Object.keys(projection.current).length,",
-          "  publishedCurrent: Object.keys(published.projection.current).length,",
-          "  currentRunCount: current.currentRunCount,",
-          "  currentKeys: Object.keys(current.current).length,",
+          "  projectionCurrent: Object.keys(projection.contexts).length,",
+          "  publishedCurrent: Object.keys(published.projection.contexts).length,",
+          "  currentRunCount: current.contextCount,",
+          "  currentKeys: Object.keys(current.contexts).length,",
           "  message: current.message,",
           "}))",
           "",
@@ -378,25 +391,30 @@ describe("consumer selection", () => {
           terminalId: string
           kind: string
           contextKey: string | null
-          runId: string | null
-          runSha256: string | null
-          lastProbedVersion: string | null
-          lastProbedDate: string
+          contributingRunIds: string[]
+          sources: Array<{ runId: string; sha256: string; version: string; measuredAt: string }>
+          lastProbedVersions: string[]
         }>
       }
       expect(inventory.sources.every((entry) => entry.lastChecked === null)).toBe(true)
       expect(inventory.terminals.find((entry) => entry.terminalId === "kitty")).toMatchObject({
-        lastProbedVersion: null,
-        lastProbedDate: "never",
+        lastProbedVersions: [],
+        sources: [],
       })
       expect(inventory.terminals.find((entry) => entry.terminalId === "alacritty")).toMatchObject({ kind: "lib" })
       expect(inventory.terminals.find((entry) => entry.terminalId === "xtermjs")).toMatchObject({
         kind: "lib",
         contextKey: projectedContextKey(libSubject, 1),
-        runId: "freshness-library-run",
-        runSha256: createHash("sha256").update(libBytes).digest("hex"),
-        lastProbedVersion: "6.0.0",
-        lastProbedDate: libMeasuredAt,
+        contributingRunIds: ["freshness-library-run"],
+        sources: [
+          expect.objectContaining({
+            runId: "freshness-library-run",
+            sha256: createHash("sha256").update(libBytes).digest("hex"),
+            version: "6.0.0",
+            measuredAt: libMeasuredAt,
+          }),
+        ],
+        lastProbedVersions: ["6.0.0"],
       })
       // The refresh command must preserve its child check's failure status.
       copyFileSync(join(source, "scripts", "update.ts"), join(root, "scripts", "update.ts"))
@@ -464,7 +482,7 @@ describe("consumer selection", () => {
       const projection = loadCurrentResults(contentDir).projection
       const expected = publicResults(projection, compatibilitySubjects(projection, contentDir)).projection
       const v3 = JSON.parse(readFileSync(dataPath, "utf8")) as {
-        current: Record<string, RunReference>
+        contexts: Record<string, PublicContextSummary & { sources: Record<string, RunReference> }>
         versions: Record<string, RunReference[]>
         history: Record<string, RunReference[]>
         exclusions: unknown[]
@@ -501,11 +519,28 @@ describe("consumer selection", () => {
           })
         }
       }
-      assertGroup(v3.current, expected.current)
+      expect(Object.keys(v3.contexts).sort()).toEqual(Object.keys(expected.contexts).sort())
+      for (const [key, context] of Object.entries(expected.contexts)) {
+        const actual = v3.contexts[key]
+        expect(actual).toBeDefined()
+        expect(actual?.cells).toEqual(context.cells)
+        assertGroup(
+          actual!.sources,
+          Object.fromEntries(
+            context.contributingRunIds.map((runId) => {
+              const original = Object.values(expected.history)
+                .flat()
+                .find((run) => run.runId === runId)
+              if (!original) throw new Error(`Missing original run ${runId}`)
+              return [runId, original]
+            }),
+          ),
+        )
+      }
       assertGroup(v3.versions, expected.versions)
       assertGroup(v3.history, expected.history)
       expect(v3.exclusions).toEqual(expected.exclusions)
-      expect(Object.keys(v3.current).length).toBeGreaterThan(0)
+      expect(Object.keys(v3.contexts).length).toBeGreaterThan(0)
     } finally {
       rmSync(out, { recursive: true, force: true })
     }
@@ -541,8 +576,8 @@ describe("consumer selection", () => {
       const site = probesLoader.load()
       const { dataPath } = generateApi(out)
       const api = JSON.parse(readFileSync(dataPath, "utf8")) as {
-        current: Record<string, unknown>
-        currentRunCount: number
+        contexts: Record<string, unknown>
+        contextCount: number
       }
       // Share the site's analysis loader with terminal paths, as the real site does.
       const analysis = loadAnalysis()
@@ -554,10 +589,10 @@ describe("consumer selection", () => {
         // No current kitty run: kitty is scored nowhere, whatever other targets the corpus holds as current.
         expect(site.results.kitty).toBeUndefined()
         expect(site.stats.kitty).toBeUndefined()
-        expect(Object.keys(api.current).filter((key) => key.startsWith("term:kitty"))).toEqual([])
+        expect(Object.keys(api.contexts).filter((key) => key.startsWith("term:kitty"))).toEqual([])
         expect(analysis["terminals/kitty"]?.analysis).toContain("No current sealed")
       }
-      if (api.currentRunCount === 0) {
+      if (api.contextCount === 0) {
         expect(analysis["baseline/core"]?.analysis).toContain("No current sealed")
       }
       expect(terminalPaths.paths().some((page) => page.params.id === "kitty")).toBe(true)
@@ -664,10 +699,10 @@ describe("consumer selection", () => {
     try {
       writeCatalog(content)
       const rows = compatibilitySubjects(projection, content)
-      expect(rows.get("kitty")?.selected.subject.kind).toBe("term")
-      expect(rows.get("headless-kitty")?.selected.subject.kind).toBe("lib")
-      expect(rows.get("xtermjs")?.selected.subject.kind).toBe("lib")
-      delete projection.current["term:kitty"]
+      expect(rows.get("kitty")?.selected.subject?.kind).toBe("term")
+      expect(rows.get("headless-kitty")?.selected.subject?.kind).toBe("lib")
+      expect(rows.get("xtermjs")?.selected.subject?.kind).toBe("lib")
+      delete projection.contexts["term:kitty"]
       expect(compatibilitySubjects(projection, content).get("headless-kitty")?.contextKey).toBe("lib:kitty")
     } finally {
       rmSync(content, { recursive: true, force: true })
@@ -689,11 +724,11 @@ describe("consumer selection", () => {
     try {
       writeCatalog(content)
       const rows = compatibilitySubjects(projection, content)
-      expect(rows.get("wezterm")?.selected.subject.kind).toBe("lib")
-      expect(rows.get("app-wezterm")?.selected.subject.kind).toBe("term")
-      expect(rows.get("alacritty")?.selected.subject.kind).toBe("lib")
-      expect(rows.get("app-alacritty")?.selected.subject.kind).toBe("term")
-      delete projection.current["headless:wezterm"]
+      expect(rows.get("wezterm")?.selected.subject?.kind).toBe("lib")
+      expect(rows.get("app-wezterm")?.selected.subject?.kind).toBe("term")
+      expect(rows.get("alacritty")?.selected.subject?.kind).toBe("lib")
+      expect(rows.get("app-alacritty")?.selected.subject?.kind).toBe("term")
+      delete projection.contexts["headless:wezterm"]
       expect(compatibilitySubjects(projection, content).get("app-wezterm")?.contextKey).toBe("app:wezterm")
     } finally {
       rmSync(content, { recursive: true, force: true })
@@ -727,7 +762,7 @@ describe("consumer selection", () => {
       writeCatalog(content)
       const rows = compatibilitySubjects(projection, content)
       expect(rows.get("xterm")?.contextKey).toBe("term:xterm")
-      expect(rows.get("xterm")?.selected.subject.kind).toBe("term")
+      expect(rows.get("xterm")?.selected.subject?.kind).toBe("term")
     } finally {
       // raw-delete-allow: standalone component repository whose CI installs without hh's workspace, so removely is unavailable; content is this test's own mkdtemp scratch root
       rmSync(content, { recursive: true, force: true })

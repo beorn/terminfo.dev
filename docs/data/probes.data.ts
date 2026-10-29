@@ -20,7 +20,7 @@ import type { ProbeStatus } from "@terminfo/probe-defs"
 import {
   aggregateCurrentResults,
   currentSupportedShare,
-  isStaleRelation,
+  hasCurrentSource,
   runDecidedNothing,
   staleCaption,
   type CurrentAggregate,
@@ -32,7 +32,7 @@ const contentDir = join(__dirname, "..", "..", "content")
 
 export interface BackendInfo {
   name: string
-  version: string
+  versions: string[]
   engine: string
   type?: "term" | "lib" | "mux"
   platforms?: string[]
@@ -97,7 +97,7 @@ export interface ProbeData {
   generated: string
   selected: PublicProjection
   selectedByBackend: Record<string, PublicCurrentResult>
-  currentRunCount: number
+  currentContextCount: number
   releaseScope: ReleaseScope
   releaseBars: Record<string, CurrentAggregate>
   /** Backend name -> the bar's SUPPORTED share label, the front page's secondary readout beside the D3 verdict. */
@@ -203,6 +203,7 @@ export function loadFullProbes(): ProbeData {
   // #30759 Slice A: the site renders the frozen suite only, so a historical-only target is
   // not a matrix row any more; it gets no metadata and no page.
   for (const [key, { selected }] of bySubject) {
+    if (!selected.subject) throw new Error(`Selected context ${key} has no physical subject`)
     const id = selected.subject.id
     if (key !== id) {
       const label = subjectLabel(catalog, id, selected.subject.kind, meta[id]?.label)
@@ -216,18 +217,19 @@ export function loadFullProbes(): ProbeData {
   const stats: ProbeData["stats"] = {}
   const selectedByBackend: ProbeData["selectedByBackend"] = Object.fromEntries(bySubject)
   for (const [key, { selected }] of bySubject) {
+    if (!selected.subject) throw new Error(`Selected public context ${key} has no physical subject`)
     const { kind, os } = selected.subject
     if (results[key]) throw new Error(`Ambiguous published terminal ${key}: multiple selected targets`)
     backends.push({
       name: key,
-      version: selected.subject.version,
+      versions: [...new Set(Object.values(selected.sources).map((source) => source.subject.version))],
       engine: "",
       type: kind,
       ...(os && { platforms: [os] }),
     })
-    results[key] = Object.fromEntries(selected.results.map((result) => [result.featureId, result.status]))
+    results[key] = Object.fromEntries(selected.catalogIds.map((id) => [id, selected.cells[id]?.status ?? "test-todo"]))
     notes[key] = Object.fromEntries(
-      selected.results.flatMap((result) => (result.reason ? [[result.featureId, result.reason]] : [])),
+      Object.values(selected.cells).flatMap((result) => (result.reason ? [[result.featureId, result.reason]] : [])),
     )
     stats[key] = {
       score: { ...selected.score },
@@ -245,8 +247,8 @@ export function loadFullProbes(): ProbeData {
       (stats[b.name]?.score.supported ?? 0) - (stats[a.name]?.score.supported ?? 0) || a.name.localeCompare(b.name),
   )
   const generated =
-    Object.values(projection.current)
-      .map((v) => v.measuredAt)
+    Object.values(published.projection.contexts)
+      .flatMap((context) => Object.values(context.sources).map((source) => source.measuredAt))
       .sort()
       .at(-1) ?? ""
   const release = loadReleaseScope({ catalog: featureDescriptions, categories: categoryCatalog })
@@ -255,16 +257,21 @@ export function loadFullProbes(): ProbeData {
   const releaseStale: Record<string, string | null> = {}
   for (const [key, entry] of bySubject) {
     const { selected } = entry
-    // The sealed run's complete frozen catalog is the current score basis.
-    const original = projection.current[entry.contextKey]
-    if (!original) throw new Error(`Missing sealed current run for ${key}`)
-    const bar = aggregateCurrentResults(original.results, original.catalogIds)
+    const original = projection.contexts[entry.contextKey]
+    if (!original) throw new Error(`Missing composed current context for ${key}`)
+    const bar = aggregateCurrentResults(
+      original.catalogIds.map((id) => ({ featureId: id, status: original.cells[id]?.result.status ?? "test-todo" })),
+      original.catalogIds,
+    )
     releaseBars[key] = bar
     releaseShares[key] = currentSupportedShare(bar)
-    releaseStale[key] = isStaleRelation(selected.suiteRelation) ? staleCaption(selected.measuredAt) : null
+    const sources = Object.values(selected.sources)
+    releaseStale[key] = !hasCurrentSource(sources)
+      ? sources.map((source) => `${source.runId}: ${staleCaption(source.measuredAt)}`).join("; ")
+      : null
   }
   const releaseTable: Record<string, Readonly<Record<string, ProbeStatus>>> = {}
-  for (const run of Object.values(published.projection.versions).flat()) {
+  for (const run of Object.values(published.projection.history).flat()) {
     const rows = projection.table[run.runId]
     if (!rows) throw new Error(`The projection has no sealed status row for run ${run.runId}`)
     releaseTable[run.runId] = rows
@@ -287,7 +294,7 @@ export function loadFullProbes(): ProbeData {
     generated,
     selected: published.projection,
     selectedByBackend,
-    currentRunCount: published.projection.currentRunCount,
+    currentContextCount: published.projection.contextCount,
     releaseScope: release,
     releaseBars,
     releaseShares,
@@ -328,15 +335,17 @@ function computeBaselines(data: ProbeData, projection: import("./selected-result
     baselineStats[backend.name] = backendStats
     const selected = data.selectedByBackend[backend.name]?.selected
     if (!selected) throw new Error(`Missing selected public run for ${backend.name}`)
-    const original = Object.values(projection.current).find((run) => run.runId === selected.runId)
-    if (!original) throw new Error(`Missing frozen current results for ${selected.runId}`)
+    const original = projection.contexts[selected.contextKey]
+    if (!original) throw new Error(`Missing composed current context ${selected.contextKey}`)
     for (const bl of baselineOrder) {
       const group = new Set(baselines[bl] ?? [])
       const ids = original.catalogIds.filter((id) => group.has(id))
       if (!ids.length) continue
       const wanted = new Set(ids)
       const bar = aggregateCurrentResults(
-        original.results.filter((result) => wanted.has(result.featureId)),
+        original.catalogIds
+          .filter((id) => wanted.has(id))
+          .map((id) => ({ featureId: id, status: original.cells[id]?.result.status ?? "test-todo" })),
         ids,
       )
       backendStats[bl] = {

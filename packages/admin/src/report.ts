@@ -9,7 +9,7 @@ import { loadFeatures } from "@terminfo/catalog"
 import { parseJsonStrict, parseRun, type LoadedRun } from "@terminfo/run-parser"
 import { PROBE_STATUSES, readCollectorSelection, readCollectorAttempt } from "@terminfo/probe-defs"
 import { loadCurrentResults } from "../../../docs/data/current-results.ts"
-import type { SelectedAttemptInput } from "../../../docs/data/selected-results.ts"
+import { originalRunFor, type SelectedAttemptInput } from "../../../docs/data/selected-results.ts"
 import { fullContextCensus } from "../../../docs/data/full-census.ts"
 import { isStaleRelation } from "../../../docs/data/release-scope.ts"
 import { readExplicitSuiteTarget } from "../suite-manifest.ts"
@@ -262,48 +262,71 @@ async function rawScoreboard(paths: readonly string[], contentDir: string): Prom
   const dirtyContent = contentStatus.stdout.length > 0
   const provenLive = head === live && !dirtyContent
   const projection = loadCurrentResults(contentDir, { workingRuns, workingAttempts: pendingAttempts }).projection
-  for (const selected of Object.values(projection.current)) {
-    if (selected.measuredAt > observedAt) observedAt = selected.measuredAt
-    const context = census.contexts.find(
-      (row) =>
-        row.kind === selected.subject.kind &&
-        row.terminalId === selected.subject.id &&
-        (row.kind === "lib" || row.os === selected.subject.os),
-    )
-    if (!context) continue
-    const publication = provenLive
-      ? `selected at ${head}, live proven`
-      : `selected at ${head}, live unproven (origin/live ${live ?? "absent"}${dirtyContent ? "; content differs from HEAD" : ""})`
-    const detail = `${publication}; ${selected.complete ? (provenLive ? "reviewed-pass; publication proven" : "reviewed-pass-awaiting-publish") : "reviewed-fail; recorded FAIL/TODO remains"}`
-    const state = isStaleRelation(selected.suiteRelation)
-      ? "stale"
-      : provenLive && selected.complete
-        ? "published"
-        : "measured-unpublished"
-    const matching =
-      rows.get(context.context)?.filter((row) => row.runId === selected.runId && row.sha256 === selected.sha256) ?? []
-    if (matching.length > 0) {
-      for (const row of matching) {
-        row.selected = true
-        row.state = state
-        row.detail = `${detail}; ${selected.suiteFreshness}`
+  for (const summary of Object.values(projection.contexts)) {
+    for (const runId of summary.contributingRunIds) {
+      // Private working inputs need factual rows, while admitted originals use the shared owner.
+      if (!projection.history[summary.contextKey]?.some((run) => run.runId === runId)) {
+        // Working captures already have factual private rows above; contributing to the composed
+        // view does not admit them or give them a reviewed/publication identity.
+        const original = Object.values(summary.cells).find((cell) => cell.origin.runId === runId)?.run
+        if (!original) throw new Error(`Context ${summary.contextKey} names absent original contributor ${runId}`)
+        const matching = [...rows.values()]
+          .flat()
+          .filter((row) => row.runId === runId && row.sha256 === original.sha256)
+        if (matching.length === 0) {
+          throw new Error(`Context ${summary.contextKey} contributor ${runId} has no retained private input row`)
+        }
+        const contribution = Object.values(summary.cells).filter((cell) => cell.origin.runId === runId).length
+        for (const row of matching) {
+          row.selected = true
+          row.detail += `; contributes ${contribution} cells to ${summary.contextKey}; private original, not admitted`
+        }
+        continue
       }
-    } else {
-      append(context.context, {
-        selected: true,
-        admitted: false,
-        pass: "no pass",
-        frozenAt: "",
-        state,
-        runId: selected.runId,
-        suite: `${selected.probeHash}@${selected.sourceRevision}`,
-        source: `loadCurrentResults(${contentDir}).projection.current`,
-        sha256: selected.sha256,
-        detail: `${detail}; ${selected.suiteFreshness}`,
-        counts: `graded ${selected.score.all}: ${Object.entries(selected.counts)
-          .map(([status, count]) => `${status}=${count}`)
-          .join(" ")}`,
-      })
+      const selected = originalRunFor(projection, summary.contextKey, runId)
+      if (selected.measuredAt > observedAt) observedAt = selected.measuredAt
+      const context = census.contexts.find(
+        (row) =>
+          row.kind === selected.subject.kind &&
+          row.terminalId === selected.subject.id &&
+          (row.kind === "lib" || row.os === selected.subject.os),
+      )
+      if (!context) continue
+      const publication = provenLive
+        ? `selected at ${head}, live proven`
+        : `selected at ${head}, live unproven (origin/live ${live ?? "absent"}${dirtyContent ? "; content differs from HEAD" : ""})`
+      const contribution = Object.values(summary.cells).filter((cell) => cell.origin.runId === runId).length
+      const detail = `${publication}; contributes ${contribution} cells to ${summary.contextKey}; original run ${selected.complete ? (provenLive ? "reviewed-pass; publication proven" : "reviewed-pass-awaiting-publish") : "reviewed-fail; recorded FAIL/TODO remains"}`
+      const state = isStaleRelation(selected.suiteRelation)
+        ? "stale"
+        : provenLive && selected.complete
+          ? "published"
+          : "measured-unpublished"
+      const matching =
+        rows.get(context.context)?.filter((row) => row.runId === selected.runId && row.sha256 === selected.sha256) ?? []
+      if (matching.length > 0) {
+        for (const row of matching) {
+          row.selected = true
+          row.state = state
+          row.detail = `${detail}; ${selected.suiteFreshness}`
+        }
+      } else {
+        append(context.context, {
+          selected: true,
+          admitted: false,
+          pass: "no pass",
+          frozenAt: "",
+          state,
+          runId: selected.runId,
+          suite: `${selected.probeHash}@${selected.sourceRevision}`,
+          source: `loadCurrentResults(${contentDir}).projection.contexts[${summary.contextKey}] contributor`,
+          sha256: selected.sha256,
+          detail: `${detail}; ${selected.suiteFreshness}`,
+          counts: `graded ${selected.score.all}: ${Object.entries(selected.counts)
+            .map(([status, count]) => `${status}=${count}`)
+            .join(" ")}`,
+        })
+      }
     }
   }
   const escape = (value: string) => value.replaceAll("|", "\\|").replaceAll(/\r?\n/g, " ")
@@ -347,7 +370,7 @@ async function rawScoreboard(paths: readonly string[], contentDir: string): Prom
         ?.slice(1)
         .map((row) =>
           escape(
-            `; ${row.selected ? "selected evidence" : `earlier pass ${row.pass}`}: ${row.runId} ${row.suite}; ${row.counts}; ${row.state}; ${row.detail}; ${row.source}; sha256=${row.sha256}`,
+            `; earlier pass ${row.pass}${row.selected ? "; selected evidence" : ""}: ${row.runId} ${row.suite}; ${row.counts}; ${row.state}; ${row.detail}; ${row.source}; sha256=${row.sha256}`,
           ),
         )
         .join("")} |`,
