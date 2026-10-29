@@ -217,9 +217,8 @@ export interface SelectedContextSummary {
 }
 
 export interface SelectedProjection {
-  /** Canonical composed view. Stage1 public consumers continue to read the unchanged `current`. */
+  /** The canonical composed view for private and public consumers. */
   contexts: Record<string, SelectedContextSummary>
-  current: Record<string, CurrentSelectedVersion>
   versions: Record<string, CurrentSelectedVersion[]>
   history: Record<string, CurrentSelectedVersion[]>
   table: Readonly<Record<string, Readonly<Record<string, ProbeStatus>>>>
@@ -536,7 +535,6 @@ export function projectResults(
   }
   const projection: SelectedProjection = {
     contexts: {},
-    current: {},
     versions: {},
     history: {},
     table: {},
@@ -637,17 +635,14 @@ export function projectResults(
         Date.parse(b.measuredAt) - Date.parse(a.measuredAt) ||
         b.runId.localeCompare(a.runId),
     )
-    // Reuse the existing ranking for the explicitly supplied historical baseline. This does not
-    // change public current's field, ranking, deduplication, cells, hash or seal (CTO1212de0f).
+    // Original versions retain their display order. Only an explicit historical baseline supplies
+    // untouched cells; selected attempts are folded independently by their recorded start below.
     const baseline = versions.find((version) => readCollectorSelection(version.rawReplies) === undefined)
     if (baseline) baselineRunIds.push(baseline.runId)
     const unique = versions.filter(
       (version, index) => versions.findIndex((entry) => entry.subject.version === version.subject.version) === index,
     )
     projection.versions[key] = unique
-    const selected = unique[0]
-    if (!selected) throw new Error(`missing selected current version for ${key}`)
-    projection.current[key] = selected
   }
   return {
     ...projection,
@@ -658,7 +653,11 @@ export function projectResults(
       policy.workingRuns ?? [],
       policy.workingAttempts ?? [],
       catalogIds,
-      new Map(Object.entries(projection.current).map(([key, current]) => [contextKey(current.subject), key])),
+      new Map(
+        Object.entries(projection.versions).flatMap(([key, versions]) =>
+          versions.map((version) => [contextKey(version.subject), key] as const),
+        ),
+      ),
     ),
   }
 }
@@ -682,7 +681,7 @@ function composeContextSummaries(
   workingRuns: readonly LoadedRun[],
   workingAttempts: readonly SelectedAttemptInput[],
   catalogIds: readonly string[],
-  publicContextKeys: ReadonlyMap<string, string>,
+  contextKeys: ReadonlyMap<string, string>,
 ): Record<string, SelectedContextSummary> {
   const runsById = new Map<string, LoadedRun>()
   for (const run of [...acceptedRuns, ...workingRuns]) {
@@ -693,10 +692,10 @@ function composeContextSummaries(
   const runs = [...runsById.values()]
   const baselineIds = new Set(baselineRunIds)
   const workingIds = new Set(workingRuns.map((run) => run.runId))
-  // Working inputs cannot rename a public key. Working-only contexts take the existing qualified
+  // Working inputs cannot rename an admitted key. Working-only contexts take the existing qualified
   // form (the multi-context branch), even when they are the only working context for this target.
   const keyFor = (run: LoadedRun): string =>
-    publicContextKeys.get(contextKey(run.subject)) ?? projectedContextKey(run.subject, 2)
+    contextKeys.get(contextKey(run.subject)) ?? projectedContextKey(run.subject, 2)
   const groups = new Map<string, LoadedRun[]>()
   for (const run of runs) {
     const key = keyFor(run)
