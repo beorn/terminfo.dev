@@ -45,7 +45,7 @@ function termTooltip(b) {
   const parts = []
   if (b.description) parts.push(b.description)
   if (b.type) parts.push('Type: ' + b.type)
-  if (b.version) parts.push('Version: ' + b.version)
+  if (b.version) parts.push('Source versions: ' + b.version)
   if (b.url) parts.push(b.url)
   return parts.join('\n') || b.label
 }

@@ -53,29 +53,46 @@ describe("the full-273 preview", () => {
   // context, so it asserts the same properties without pinning a count that content keeps moving.
   it("keeps the live reading's evidence and completeness tied to the contexts it collected", () => {
     const collected = data.contexts.filter((row) => row.collected)
-    expect(Object.keys(data.evidenceVersions).sort()).toEqual(collected.map((row) => row.context).sort())
+    expect(Object.keys(data.evidenceContexts).sort()).toEqual(collected.map((row) => row.context).sort())
     expect(data.recordedPositions).toBe(collected.reduce((sum, row) => sum + row.result.catalogRows, 0))
     expect(data.complete).toBe(
       data.contexts.length > 0 && data.notCollected === 0 && collected.every((row) => row.result.complete),
     )
   })
 
-  it("lets every collected row reach its run's evidence through the established evidence cell", () => {
+  // Accepted requirement: composed cells retain original receipts and off-suite holds.
+  // A single context-level run receipt cannot prove either retained-cell property.
+  it("retains original source receipts and marks off-suite observations as held", () => {
     for (const row of data.contexts) {
       if (!row.collected) continue
-      const version = data.evidenceVersions[row.context]
-      expect(version?.runId).toBe(row.run.runId)
-      expect(version?.sha256).toBeTruthy()
+      const context = data.evidenceContexts[row.context]
+      expect(context?.contextKey).toBe(row.selection.contextKey)
+      expect(Object.keys(context?.sources ?? {}).sort()).toEqual(row.sources.map((source) => source.runId).sort())
+      expect([...row.heldIds].sort()).toEqual(
+        row.observations
+          .filter((observation) => observation.hold)
+          .map((observation) => observation.id)
+          .sort(),
+      )
       for (const observation of row.observations) {
-        expect(
-          version?.results.find((result) => result.featureId === observation.id),
-          `${row.context} ${observation.id}`,
-        ).toBeDefined()
+        const cell = context?.cells[observation.id]
+        expect(cell, `${row.context} ${observation.id}`).toBeDefined()
+        expect(cell?.origin).toEqual(observation.origin)
+        expect(cell?.status).toBe(observation.state)
+        const source = context?.sources[observation.origin.runId]
+        expect(source?.sha256).toMatch(/^[0-9a-f]{64}$/)
+        expect(source?.suiteId).toBe(observation.suiteId)
+        expect(source?.measuredAt).toBe(observation.measuredAt)
+        if (observation.suiteId !== data.suiteId) {
+          expect(observation.hold).toBe(
+            `retained from suite ${observation.suiteId}, measured ${observation.measuredAt}; not release evidence`,
+          )
+          expect(row.heldIds).toContain(observation.id)
+        } else {
+          expect(observation.hold).toBeUndefined()
+        }
       }
     }
-    const page = readFileSync(join(root, "docs", "release", "full-273.md"), "utf8")
-    expect(page).toContain("<ResultEvidenceCell")
-    expect(page).toContain("data.evidenceVersions[row.context]")
   })
 
   it("renders both the observation note and its named limitation", () => {

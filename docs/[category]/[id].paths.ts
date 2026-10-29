@@ -47,7 +47,7 @@ export default {
           slug: terminalSlug(b.name, data.meta),
           label: bmeta?.label ?? b.name,
           description: bmeta?.description ?? "",
-          version: b.version,
+          version: b.versions.join(", "),
           type: b.type ?? "lib",
           result,
           note,
