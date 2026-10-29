@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import { ALL_PROBES, type LibProbeSource, type TermProbeSource } from "./index.ts"
+import { ALL_PROBES, type LibProbeSource, type TermProbeSource, type TerminalQueryOutcome } from "./index.ts"
 import {
   HEADLESS_OBSERVABLE_REVIEW,
   REPLY_AFTER_SENTINEL_NOTE,
@@ -283,6 +283,119 @@ describe("audited native host recipe callers", () => {
  */
 // CTO 10c2da7b condition 2: listed + zero reply → review; listed + one reply byte → measured; unlisted → measured.
 // The audited cells run their real callbacks; no existing test reaches the hook with a listed artifact.
+// CTO d5f41664 explicitly replaces query-capture emptiness with qualified clean-silence attribution.
+// These real callbacks own the native host cause; generic sentinel classifier tests cannot pin it.
+describe("qualified clipboard roundtrip", () => {
+  const da1 = "\x1b[?1;2c"
+  const frame = (data: string) => `\x1b]52;c;${btoa(data)}\x07`
+  const cases = [
+    { when: "clean sentinel silence", raw: da1, reason: "sentinel", sentinel: true, cause: true, failure: true },
+    { when: "whole empty buffer", raw: "", reason: "timeout", sentinel: false, cause: true, failure: true },
+    // Each pair has the same callback-visible bytes in both worlds. Neither world's cause is inferable.
+    { when: "unmatched: empty query / junk plus DA1", raw: "ZZZ" + da1, reason: "sentinel", sentinel: true },
+    { when: "unmatched: junk query / DA1", raw: "ZZZ" + da1, reason: "sentinel", sentinel: true },
+    { when: "pending: empty query / junk", raw: "ZZZ", reason: "timeout", sentinel: false },
+    { when: "pending: junk query / empty control", raw: "ZZZ", reason: "timeout", sentinel: false },
+    { when: "reply: wrong nonce on control side", raw: frame("other-nonce") + da1, reason: "reply", sentinel: false },
+    { when: "reply: wrong nonce on query side", raw: frame("other-nonce") + da1, reason: "reply", sentinel: false },
+    { when: "answered: query holds DA1, control silent", raw: da1, reason: "timeout", sentinel: false },
+    {
+      when: "answered: empty query, control answers",
+      raw: da1,
+      reason: "sentinel",
+      sentinel: true,
+      cause: true,
+      failure: true,
+    },
+    { when: "DA1-shaped query then real DA1", raw: da1 + da1, reason: "sentinel", sentinel: true },
+    { when: "DA1 followed by non-matching junk", raw: da1 + "ZZZ", reason: "sentinel", sentinel: true },
+    { when: "malformed OSC52 reply", raw: "\x1b]52;c;???\x07" + da1, reason: "sentinel", sentinel: true },
+  ] as const
+  test.each(["extensions.osc52-clipboard", "extensions.osc52-write"])(
+    "%s attributes only measured clean silence",
+    (id) => {
+      for (const row of cases) {
+        const queries: string[] = []
+        const result = probe(id).lib!(
+          context({
+            runtimeIdentity: nativeIdentity,
+            feedCapture: () => {
+              throw new Error("qualified roundtrip used bare capture")
+            },
+            queryWithSentinelOutcome(sequence, pattern): TerminalQueryOutcome {
+              queries.push(sequence)
+              return {
+                raw: row.raw,
+                rawBase64: Buffer.from(row.raw).toString("base64"),
+                reason: row.reason,
+                match: row.raw.match(pattern),
+                ...(row.sentinel && { sentinel: { atMs: 0, graceMs: 250 } }),
+              }
+            },
+          }),
+        )
+        expect(queries, row.when).toEqual(["\x1b]52;c;?\x07"])
+        expect(result.response, row.when).toBe(row.raw)
+        if ("cause" in row && row.cause) {
+          expect(result.hostRecipeCauses, row.when).toMatchObject([
+            { recipe: "clipboard-load", cause: { kind: "source-audited", artifactSha256: artifact } },
+          ])
+        } else expect(result.hostRecipeCauses, row.when).toBeUndefined()
+        if ("failure" in row && row.failure) {
+          expect(result.tests, row.when).toContainEqual({
+            id: "criterion",
+            status: "test-failure",
+            reason: "No OSC 52 c query response from the isolated backend",
+          })
+          expect(result.observation, row.when).toBeUndefined()
+        } else {
+          expect(result.observation, row.when).toMatchObject({
+            outcome: "inconclusive",
+            reason: row.reason === "reply" ? "insufficient-evidence" : "invalid-reply",
+          })
+        }
+      }
+    },
+  )
+  test.each(
+    ["extensions.osc52-clipboard", "extensions.osc52-write"].flatMap((id) =>
+      [false, true].map((after) => ({ id, after })),
+    ),
+  )("$id grades the actual written nonce and retains DA1 (reply after DA1: $after)", ({ id, after }) => {
+    let encoded = ""
+    let writes = 0
+    let raw = ""
+    const result = probe(id).lib!(
+      context({
+        runtimeIdentity: nativeIdentity,
+        feed(text) {
+          writes++
+          encoded = /\x1b\]52;c;([^\x07]*)\x07/.exec(text)![1]!
+        },
+        feedCapture: () => {
+          throw new Error("qualified roundtrip used bare capture")
+        },
+        queryWithSentinelOutcome(_sequence, pattern) {
+          const reply = `\x1b]52;c;${encoded}\x07`
+          raw = after ? da1 + reply : reply + da1
+          return {
+            raw,
+            rawBase64: Buffer.from(raw).toString("base64"),
+            reason: "reply",
+            match: raw.match(pattern),
+            ...(after && { sentinel: { atMs: 0, graceMs: 250 } }),
+          }
+        },
+      }),
+    )
+    expect(writes).toBe(1)
+    expect(atob(encoded)).toMatch(/^terminfo-osc52-/)
+    expect(result.observation?.outcome).toBe("supported")
+    expect(result.hostRecipeCauses).toBeUndefined()
+    expect(result.response).toBe(raw)
+  })
+})
+
 describe("reply-path audit", () => {
   const cells = [...REPLY_PATH_AUDITS].flatMap(([sha256, audits]) =>
     Object.entries(audits).map(([id, audit]) => ({ sha256, id, audit })),
