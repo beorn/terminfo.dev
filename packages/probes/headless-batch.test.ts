@@ -275,8 +275,21 @@ test.each([
     expect(batch.results).toHaveLength(COLOR_READBACK_IDS.length)
     // On xtermjs, extensions.osc104-reset-palette is decided via the indexed-cell witness
     // (_core._inputHandler.onColor events; #31735, @cto 863bef67), while the 7 default/stack
-    // queries remain silent and request color-readback-review.
-    const cellWitnessIds = engine === "xtermjs" ? ["extensions.osc104-reset-palette"] : []
+    // queries remain silent and request color-readback-review. Standalone terminfo.dev CI
+    // installs published @termless/xtermjs 0.10.2 (which predates #31735), so retain its TODO
+    // evidence there and the source build's positive assertion when OSC 4 cell resolution is live.
+    let xtermPaletteResolved = false
+    if (engine === "xtermjs") {
+      const probe = await factory()
+      try {
+        probe.init({ cols: 4, rows: 1 })
+        probe.feed(new TextEncoder().encode("\x1b]4;1;rgb:11/22/33\x1b\\\x1b[31mA"))
+        xtermPaletteResolved = probe.getCell(0, 0).fg?.r === 0x11
+      } finally {
+        probe.destroy()
+      }
+    }
+    const cellWitnessIds = xtermPaletteResolved ? ["extensions.osc104-reset-palette"] : []
     expect(batch.observations).toEqual(
       cellWitnessIds.map((featureId) =>
         expect.objectContaining({ featureId, outcome: "supported", assertionType: "buffer_state" }),
