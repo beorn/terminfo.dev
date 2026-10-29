@@ -369,16 +369,36 @@ for (const [name, create, available] of [
       const previous = vi.fn()
       value.onResponse = previous
       const replies: string[] = []
-      await collectBatch(async () => value, name, [
-        definition("capture", (ctx) => {
-          ctx.feed("\x1b[6n") // This reply belongs to the previous listener.
-          replies.push(ctx.feedCapture("\x1b[2;3H\x1b[6n"))
-          replies.push(ctx.feedCapture("\x1b[4;5H\x1b[6n"))
-          ctx.reset()
-          replies.push(ctx.feedCapture("\x1b[6n"))
-          return fakeProbeResult()
-        }),
-      ])
+      // Kitty declares native reply delivery, whose host-recipe record needs the run draft the collector passes.
+      const { initializeRunDraft } = await import("@terminfo/probe-defs")
+      const draft = initializeRunDraft({
+        source: { kind: "live" },
+        runId: `${name}-reset-capture`,
+        sourceRevision: "a".repeat(40),
+        intendedSubject: { kind: "lib", id: name },
+        manifest: {
+          schemaVersion: 4 as const,
+          probeHash: "reset-capture",
+          adapterVersion: "3",
+          catalogIds: ["capture"],
+          probes: { term: [], mux: [], lib: ["capture"] },
+        },
+      })
+      await collectBatch(
+        async () => value,
+        name,
+        [
+          definition("capture", (ctx) => {
+            ctx.feed("\x1b[6n") // This reply belongs to the previous listener.
+            replies.push(ctx.feedCapture("\x1b[2;3H\x1b[6n"))
+            replies.push(ctx.feedCapture("\x1b[4;5H\x1b[6n"))
+            ctx.reset()
+            replies.push(ctx.feedCapture("\x1b[6n"))
+            return fakeProbeResult()
+          }),
+        ],
+        draft,
+      )
       expect(replies).toEqual(["\x1b[2;3R", "\x1b[4;5R", "\x1b[1;1R"])
       expect(previous.mock.calls.map(([bytes]) => new TextDecoder().decode(bytes)).join("")).toBe("\x1b[1;1R")
       expect(value.onResponse).toBe(previous)
