@@ -116,6 +116,7 @@ const INERT_CELL: InertCell = {
   inverse: false,
   hidden: false,
   blink: false,
+  overline: false,
   fg: null,
   bg: null,
   wide: false,

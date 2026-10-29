@@ -741,8 +741,8 @@ export const sgrProbes: ProbeDefinition[] = [
   sgrProbe(
     "sgr.overline",
     "\x1b[53m",
-    (cell) => (cell.overline === undefined ? null : cell.overline === true),
-    (cell) => (cell.overline === undefined ? "cell.overline field not exposed" : null),
+    (cell) => (cell.overline == null ? null : cell.overline === true),
+    (cell) => (cell.overline == null ? "cell.overline field not exposed" : null),
     { require: [53] },
   ),
 

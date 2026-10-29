@@ -172,6 +172,7 @@ function headless(x: number, y: number, rows = 24, reply = ""): LibProbeSource {
       inverse: false,
       hidden: false,
       blink: false,
+      overline: false,
       fg: null,
       bg: null,
       wide: false,

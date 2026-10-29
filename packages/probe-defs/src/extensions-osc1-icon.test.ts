@@ -42,6 +42,7 @@ function source(icon: { current: string } | null): LibProbeSource {
       inverse: false,
       hidden: false,
       blink: null,
+      overline: null,
       fg: null,
       bg: null,
       wide: false,
