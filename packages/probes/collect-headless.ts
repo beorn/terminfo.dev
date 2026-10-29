@@ -10,7 +10,6 @@ import { pathToFileURL, fileURLToPath } from "node:url"
 import { manifest, type TerminalBackend } from "@termless/core"
 import {
   ALL_PROBES,
-  HOST_INPUT_NAMES,
   initializeRunDraft,
   recordCollectionFailure,
   type RunDraft,
@@ -20,6 +19,7 @@ import { parseRun } from "@terminfo/run-parser"
 import { derivedSuiteManifest, probeSuiteSnapshot } from "../admin/versions.ts"
 import { saveDaemonProbeRun } from "../terminfo.dev/src/capture-writer.ts"
 import { collectBatch, errorMessage } from "./headless-batch.ts"
+import { HEADLESS_TERMINAL, declaredHostInputs } from "./headless-terminal.ts"
 import { owningCheckout } from "./termless-root.ts"
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..")
@@ -152,12 +152,12 @@ async function collectOne(name: string, directory: string): Promise<string> {
     draft.rawReplies["collector.collectionAttempt"] = JSON.stringify({
       startedAt: collectionStartedAt,
       ids: suite.probes.lib,
-      hostInputs: Object.fromEntries(HOST_INPUT_NAMES.map((name) => [name, "not-supplied"])),
+      hostInputs: declaredHostInputs(),
     })
     checkpoint()
     const loaded = loadedBackend(await resolveBackend(), entry.package)
     backend = loaded
-    loaded.init({ cols: 80, rows: 24 })
+    loaded.init(HEADLESS_TERMINAL)
     loaded.getCell(0, 0)
     const runtimeIdentity = await headlessRuntimeIdentity(name, entry.package, entry.type)
     backend = undefined

@@ -177,7 +177,10 @@ describe("audited native host recipe callers", () => {
             cause:
               recipe === "color-request"
                 ? { kind: "observed", missing, query }
-                : { kind: "source-audited", missing, artifactSha256: artifact, sourceCitation: expect.any(String) },
+                : recipe === "text-area-size"
+                  ? // The harness declares pixel geometry (31551), so the empty CSI 14 t is the wrapper's: it drops the request.
+                    { kind: "unimplemented", missing, artifactSha256: artifact, sourceCitation: expect.any(String) }
+                  : { kind: "source-audited", missing, artifactSha256: artifact, sourceCitation: expect.any(String) },
           },
         ])
         const { hostRecipeCauses: _custody, ...criterion } = result
@@ -208,6 +211,26 @@ describe("audited native host recipe callers", () => {
       expect(result.hostRecipeCauses).toBeUndefined()
     },
   )
+
+  // WezTerm answers CSI 14 t from the pixels it was given (31551), so the audit lists only the recipe it leaves unanswered.
+  test("the WezTerm artifact cites its OSC 52 read and leaves CSI 14 t measured", () => {
+    const wezterm = "84da518e3f298a0ed75f186db6e39d87e99b8f0c8508dd7252ec0cafee77fe12"
+    const silent = (id: string) =>
+      probe(id).lib!(
+        context({
+          runtimeIdentity: {
+            ...nativeIdentity,
+            loadedBinary: { path: "wezterm.node", sha256: wezterm },
+            provenance: { ...nativeIdentity.provenance, sha256: wezterm },
+          },
+          feedCapture: () => "",
+        }),
+      )
+    expect(silent("device.xtwinops-14").hostRecipeCauses).toBeUndefined()
+    expect(silent("extensions.osc52-read").hostRecipeCauses).toMatchObject([
+      { recipe: "clipboard-load", cause: { kind: "unimplemented", artifactSha256: wezterm } },
+    ])
+  })
 })
 
 /**
