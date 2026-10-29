@@ -8,7 +8,7 @@
  */
 import { expect, test } from "vitest"
 import { extensionsProbes } from "./extensions.ts"
-import { KITTY_GUARD_REGION, KITTY_GUARD_TEXT } from "./kitty-capture.ts"
+import { KITTY_GUARD_REGION, KITTY_GUARD_TEXT, KITTY_REGION } from "./kitty-capture.ts"
 import type { ObservationFrame, TermProbeSource, TerminalQueryOutcome } from "./types.ts"
 
 const GEOMETRY = {
@@ -117,6 +117,8 @@ function surface(options: Surface) {
         ref: `sha256:cells-${String(index)}`,
         capturedAt: index,
         cellDigest: String(digest),
+        frameDigest: `cells-frame-${String(digest)}`,
+        cellRectangle: { ...KITTY_REGION },
       }
       captures.push({ role, label, cells: cells !== undefined, writesBefore: writes.length, ref: frame.ref })
       return frame
