@@ -194,6 +194,23 @@ Native execution can also change the recorded result: for example, a measured re
 
 `TermProbeSource.capture` supplies owned pixel capture; `cells` is a separate terminal-text route for declared cell readback. [Region readback](src/region-readback.ts) and callbacks evaluate the resulting evidence.
 
+**Timed and composited rows decide by pixels, never by an acknowledgement.** The kitty animation and
+unicode-placeholder rows read `capture` and compare region digests as raw bytes; neither a `_G` reply nor
+a first painted frame is evidence. Animation's observation is two target frames of one rectangle with no
+write between them, taken only behind four controls of the same run: a client-driven frame selection that
+must differ, a one-frame image that must hold still, a cursor-only capture that must leave the rectangle
+alone, and a redraw that must change the screen outside it. Placeholders compare the placeholder rectangle
+with the image composited over it against the same characters on the same foreground colour with the image
+deleted, with an ordinary `a=p` placement of the same pixels — measured against a captured blank — as the
+live control; this queue transmits quietly, so no acknowledgement exists to inherit. The placeholder row
+adds two in-run pixel controls in place of the cell readback it used to require: a layout guard — the same
+short ASCII written immediately right of the grid and captured with the row below it, byte-identical in both
+states, so a terminal that reflows when the image arrives is inconclusive by name rather than graded on a
+moved rectangle — and a same-image veto, which makes the with-image rectangle supported only when it is
+pixel-identical to the ordinary placement of the same opaque image over the same cells. Where a run does
+expose a cells adapter, unequal readbacks still veto to inconclusive before the table, and a text-only run
+refuses by name before it.
+
 The run retains screenshot/text references and assertion references. A captured frame does not by itself establish support, and a pending required review does not become an unsupported result.
 
 ## How execution becomes status
