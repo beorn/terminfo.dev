@@ -737,6 +737,12 @@ export interface LibProbeSource {
   readonly runtimeIdentity?: HeadlessRuntimeIdentity
   /** Existing HyperlinkExtension method; present only for exposed parser metadata. */
   getHyperlinkAt?(row: number, col: number): string | null
+  /** Current engine defaults; null is an observed unset slot. Available for all three slots or absent. */
+  getDefaultColors?(): {
+    fg: { r: number; g: number; b: number } | null
+    bg: { r: number; g: number; b: number } | null
+    cursor: { r: number; g: number; b: number } | null
+  }
   /** Width read back from the backend after initialization, never inferred from cursor behavior. */
   readonly cols: number
   feed(text: string): void

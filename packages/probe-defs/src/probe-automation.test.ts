@@ -216,6 +216,7 @@ describe("audited native host recipe callers", () => {
   test.each([
     "84da518e3f298a0ed75f186db6e39d87e99b8f0c8508dd7252ec0cafee77fe12",
     "78c05a7155ffb48b351de181cce13a5d996c3472f545f674dc34177fe27bae01",
+    "0f56a805793d7d829daa617f1323aacff0d73fe868747b0d077c6af315e2aab8",
   ])("the WezTerm artifact %s cites its OSC 52 read and leaves CSI 14 t measured", (wezterm) => {
     const silent = (id: string) =>
       probe(id).lib!(
@@ -255,8 +256,10 @@ describe("audited native host recipe callers", () => {
   })
 
   // The Alacritty addon rebuilt at termless 0400d94a for underline_color forwarding (31379) leaves EventProxy unchanged.
-  test("the Alacritty artifact 11c87e7e cites its OSC 52 read and leaves CSI 14 t measured", () => {
-    const alacritty = "11c87e7e7f23e6f224e9dc8c3296b0a91f5453a42038e5ad049aafa864f9bd50"
+  test.each([
+    "11c87e7e7f23e6f224e9dc8c3296b0a91f5453a42038e5ad049aafa864f9bd50",
+    "d280c3fd2129f42db0d7154d6e66f5582a67fa1faf1e82ab463b6b8286f126d0",
+  ])("the Alacritty artifact %s cites its OSC 52 read and leaves CSI 14 t measured", (alacritty) => {
     const silent = (id: string) =>
       probe(id).lib!(
         context({
@@ -284,6 +287,22 @@ describe("audited native host recipe callers", () => {
 // CTO 10c2da7b condition 2: listed + zero reply → review; listed + one reply byte → measured; unlisted → measured.
 // The audited cells run their real callbacks; no existing test reaches the hook with a listed artifact.
 describe("reply-path audit", () => {
+  // #31385: rebuilding cell readback must retain all applicable audits, including #31377's graphics prefixes.
+  // The data-derived callback cases below cannot detect an omitted artifact or omitted row.
+  test("the combined native artifact retains both prior Ghostty audit sets", () => {
+    const prior = {
+      ...REPLY_PATH_AUDITS.get("ac12d6408c2049f1d720e9735d7eb69251d3eed868fc9ced58de98b3543f3e2e"),
+      ...REPLY_PATH_AUDITS.get("17d155feee5df8fa30266b9a354bbe66e39484d08218de5e03dc3bb2f199a0a3"),
+    }
+    const rebuilt = REPLY_PATH_AUDITS.get("8872ab0fc56429489b52cd5d3b5a293032c3ec7dbbb71545d237945c3ef525f3")
+    expect(rebuilt).toBeDefined()
+    expect(Object.keys(rebuilt!).sort()).toEqual(Object.keys(prior).sort())
+    for (const [id, audit] of Object.entries(prior)) {
+      expect(rebuilt![id]).toMatchObject({ query: audit.query, kind: audit.kind })
+      expect(rebuilt![id]!.matches).toBe(audit.matches)
+      expect(rebuilt![id]!.citation).toContain("332b2aef")
+    }
+  })
   const cells = [...REPLY_PATH_AUDITS].flatMap(([sha256, audits]) =>
     Object.entries(audits).map(([id, audit]) => ({ sha256, id, audit })),
   )
@@ -628,11 +647,12 @@ describe("reply-path audit", () => {
     expect(raw.trace.at(-1)).toEqual({ write: query, error: "Error: stack attempt failed" })
   })
 
-  test("covers all five audited artifacts", () => {
-    // Ghostty WASM at 5714ed07, three native artifacts at 332b2aef and the vt100 0.16.2 Rust parser.
+  test("covers all six audited artifacts", () => {
+    // Ghostty WASM at 5714ed07, four native artifacts at 332b2aef and the vt100 0.16.2 Rust parser.
     expect([...REPLY_PATH_AUDITS.keys()].sort()).toEqual([
       "17d155feee5df8fa30266b9a354bbe66e39484d08218de5e03dc3bb2f199a0a3",
       "7c43302dde147c6f7959b7bda7045ff375c71288da1af5667ffca2bf95beb2bf",
+      "8872ab0fc56429489b52cd5d3b5a293032c3ec7dbbb71545d237945c3ef525f3",
       "9a9505600721226b952ae9ac92552b42389aa6713872a9f4904528f425b7ecdf",
       "ac12d6408c2049f1d720e9735d7eb69251d3eed868fc9ced58de98b3543f3e2e",
       "f309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96",

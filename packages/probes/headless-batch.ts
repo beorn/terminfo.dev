@@ -4,6 +4,7 @@
 import {
   hasExtension,
   type HyperlinkExtension,
+  type DefaultColorsExtension,
   type ReplyDeliveryExtension,
   type TerminalBackend,
   type WarningExtension,
@@ -307,11 +308,16 @@ export function createLibProbeSource(
     hasExtension<HyperlinkExtension>(backend, "hyperlinks") && typeof backend.getHyperlinkAt === "function"
       ? backend.getHyperlinkAt.bind(backend)
       : undefined
+  const readDefaultColors =
+    hasExtension<DefaultColorsExtension>(backend, "default-colors") && typeof backend.getDefaultColors === "function"
+      ? backend.getDefaultColors.bind(backend)
+      : undefined
   return {
     kind: "live",
     ...(runtimeIdentity && { runtimeIdentity }),
     cols,
     getHyperlinkAt: readLink,
+    getDefaultColors: readDefaultColors,
     feed(text) {
       backend.feed(encoder.encode(text))
     },
