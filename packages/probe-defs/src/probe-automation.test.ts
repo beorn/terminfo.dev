@@ -1,11 +1,6 @@
 import { describe, expect, test } from "vitest"
 import { ALL_PROBES, type LibProbeSource, type TermProbeSource } from "./index.ts"
-import {
-  HEADLESS_OBSERVABLE_REVIEW,
-  REPLY_AFTER_SENTINEL_NOTE,
-  REPLY_PATH_AUDIT_REVIEW,
-  SOURCE_NEGATIVE_REVIEW,
-} from "./helpers.ts"
+import { HEADLESS_OBSERVABLE_REVIEW, REPLY_AFTER_SENTINEL_NOTE, REPLY_PATH_AUDIT_REVIEW } from "./helpers.ts"
 import { REPLY_PATH_AUDITS } from "./reply-path-audit.ts"
 
 const OSC_SEMANTIC_MARK_CASES = [
@@ -258,7 +253,7 @@ describe("audited native host recipe callers", () => {
 /**
  * @failure A cited missing reply path replaced a measured reply, or an unaudited artifact inherited the review.
  * @level l0
- * @consumer probe() reply-path audit hook (CTO 10c2da7b) and run-parser's query_reply source-negative check.
+ * @consumer probe() reply-path audit hook (CTO 10c2da7b; parser-rejected grades Unsupported per CTO d9998884).
  * @testonly REPLY_PATH_AUDITS: exported so every audited cell runs through its own production probe.
  */
 // CTO 10c2da7b condition 2: listed + zero reply → review; listed + one reply byte → measured; unlisted → measured.
@@ -362,11 +357,14 @@ describe("reply-path audit", () => {
         tests: [{ id: "review", status: "test-todo" }],
       })
     } else {
+      // @cto d9998884: a cited parser rejection on the live path is Unsupported, whatever the reply delivery.
       expect(silent.result).toMatchObject({
-        criterionBranch: SOURCE_NEGATIVE_REVIEW,
-        tests: [{ id: "review", status: "test-failure" }],
-        observation: { outcome: "inconclusive", assertionType: "query_reply" },
+        pass: false,
+        observation: { outcome: "unsupported", assertionType: "query_reply", note: "negative by source citation" },
+        assertions: [{ assertionType: "query_reply", kind: "negative" }],
       })
+      expect(silent.result).not.toHaveProperty("criterionBranch")
+      expect(silent.result).not.toHaveProperty("tests")
       expect(probe(id).libAssertionType ?? "query_reply").toBe("query_reply")
     }
 

@@ -4,7 +4,8 @@ import type { LibProbeSource } from "./types.ts"
 export interface ReplyPathAudit {
   readonly query: string
   /** no-reply-path: the sequence is handled but the artifact has no writer for the reply (Untestable review).
-   *  parser-rejected: the artifact's parser rejects the sequence before any handler (source-negative review). */
+   *  parser-rejected: the artifact's parser rejects the sequence before any handler (Unsupported, negative by source
+   *  citation). */
   readonly kind: "no-reply-path" | "parser-rejected"
   readonly citation: string
 }

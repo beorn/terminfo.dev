@@ -1106,7 +1106,11 @@ function replyPathAudited(
   return measured.hostRecipeCauses ? { ...review, hostRecipeCauses: measured.hostRecipeCauses } : review
 }
 
-/** The cell reads "review by reply-path audit": which entry fired, the query it matched, and the zero-byte fact. */
+/**
+ * The cell records which entry fired, the query it matched, and the zero-byte fact. A missing reply path reads
+ * "review by reply-path audit"; a cited parser rejection on the live path is Unsupported whatever the artifact's
+ * reply delivery, because no reply transport changes a result the engine never produces (@cto d9998884).
+ */
 function replyPathReviewResult(
   id: string,
   artifactSha256: string,
@@ -1128,8 +1132,8 @@ function replyPathReviewResult(
     false,
     `parser-level rejection of ${JSON.stringify(audit.query)}`,
     { rejection: "parser", replyPathAudit, measuredResponse },
+    "negative by source citation",
     undefined,
-    `Review by reply-path audit: the parser rejects the query before any handler (${audit.citation}); source-negative review required`,
     "query_reply",
   )
 }
