@@ -2,16 +2,16 @@
 
 import React from "react"
 import { Box, Text, renderString } from "silvery"
-import type { SelectedProjection, CurrentSelectedVersion } from "../../docs/data/selected-results.ts"
+import type { SelectedProjection, SelectedContextSummary } from "../../docs/data/selected-results.ts"
 
 import type { ProbeResult } from "@terminfo/probe-defs"
 import { isEnvironmentGroup } from "@terminfo/probe-defs"
 import { currentCoverageSentence } from "../../docs/data/release-scope.ts"
 
-type CurrentColumn = { label: string; contextKey: string; run: CurrentSelectedVersion }
+type CurrentColumn = { label: string; contextKey: string; view: SelectedContextSummary }
 type StateToken = "YES" | "NO" | "UNTEST" | "FAIL" | "TODO" | "N/M" | "—"
 
-function score(run: CurrentSelectedVersion): string {
+function score(run: SelectedContextSummary): string {
   return `${run.score.supported}/${run.score.all} Supported / all (${Math.round((100 * run.score.supported) / run.score.all)}%)`
 }
 
@@ -45,17 +45,32 @@ function StateCell({ cell, width }: { cell: ProbeResult | undefined; width: numb
 }
 
 function CurrentSummary({ column }: { column: CurrentColumn }): React.ReactElement {
-  const { subject } = column.run
+  const { view } = column
+  const single =
+    view.contributingRunIds.length === 1
+      ? Object.values(view.cells).find((cell) => cell.origin.runId === view.contributingRunIds[0])?.run
+      : undefined
   return (
     <Box flexDirection="column" marginBottom={1}>
       <Text bold>
-        {column.label}: {subject.kind}:{subject.id} {subject.version} — run {column.run.runId}
+        {column.label}:{" "}
+        {single
+          ? `${single.subject.kind}:${single.subject.id} ${single.subject.version} — run ${single.runId}`
+          : column.contextKey}
       </Text>
       <Text color="$muted">context {column.contextKey}</Text>
+      <Text>Contributing runs: {view.contributingRunIds.join(", ") || "none; no emitted evidence"}</Text>
       <Text>
-        {score(column.run)} · {currentCoverageSentence(column.run, column.run.catalogIds)} ·{" "}
-        {column.run.complete ? "complete" : "incomplete"}
+        {score(view)} · {currentCoverageSentence(view, view.catalogIds)} ·{" "}
+        {view.complete ? "result coverage complete" : "result coverage incomplete"}
       </Text>
+      {view.attempts.map((entry) => (
+        <Text key={entry.runId} color="$muted">
+          Requested run {entry.runId}: {entry.attempt?.result ?? "outcome not recorded"};{" "}
+          {entry.attempt?.startedAt ?? "start not recorded"}; selected {entry.selection.ids.length}; no output{" "}
+          {entry.noOutputIds.join(", ") || "none"}; {entry.attempt?.error ?? ""} · {entry.path}
+        </Text>
+      ))}
     </Box>
   )
 }
@@ -103,11 +118,7 @@ function FeatureMatrix({
                 <Text>{id}</Text>
               </Box>
               {group.map((column) => (
-                <StateCell
-                  key={column.label}
-                  cell={column.run.results.find((result) => result.featureId === id)}
-                  width={columnWidth}
-                />
+                <StateCell key={column.label} cell={column.view.cells[id]?.result} width={columnWidth} />
               ))}
             </Box>
           ))}
@@ -126,16 +137,16 @@ export function CensusReport({
   featureIds: string[]
   width: number
 }): React.ReactElement {
-  const columns = Object.entries(projection.current)
+  const columns = Object.entries(projection.contexts)
     .sort(([a], [b]) => a.localeCompare(b))
-    .map(([contextKey, run], index) => ({ label: `C${index + 1}`, contextKey, run }))
+    .map(([contextKey, view], index) => ({ label: `C${index + 1}`, contextKey, view }))
   return (
-    <Box flexDirection="column">
+    <Box flexDirection="column" flexShrink={0}>
       <Text bold color="$primary">
         terminfo report — {featureIds.length} catalog features
       </Text>
       <Text bold>Current selected contexts: {columns.length}</Text>
-      {columns.length === 0 && <Text color="$muted">No current sealed runs.</Text>}
+      {columns.length === 0 && <Text color="$muted">No current result evidence or selected attempts.</Text>}
       {columns.map((column) => (
         <CurrentSummary key={column.contextKey} column={column} />
       ))}
@@ -143,7 +154,7 @@ export function CensusReport({
       <Text bold>Observation reasons and notes</Text>
       {columns.flatMap((column) =>
         featureIds.flatMap((id) => {
-          const cell = column.run.results.find((result) => result.featureId === id)
+          const cell = column.view.cells[id]?.result
           if (!cell?.reason) return []
           return [
             <Text key={`${column.label}:${id}`}>
@@ -152,6 +163,18 @@ export function CensusReport({
           ]
         }),
       )}
+      {columns
+        .filter((column) => column.view.attempts.length > 0)
+        .map((column) => (
+          <Box key={`origins:${column.contextKey}`} flexDirection="column">
+            <Text bold>Original result evidence · {column.label}</Text>
+            {Object.entries(column.view.cells).map(([id, cell]) => (
+              <Text key={id}>
+                {id}: {cell.origin.runId} / {cell.origin.resultId} · {cell.run.measuredAt} · {cell.run.path}
+              </Text>
+            ))}
+          </Box>
+        ))}
       <Text bold>Excluded runs: {projection.exclusions.length}</Text>
       {projection.exclusions.map((excluded) => (
         <Text key={`${excluded.path}:${excluded.runId}`}>

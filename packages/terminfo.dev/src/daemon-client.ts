@@ -12,7 +12,11 @@ import {
 } from "node:fs"
 import { homedir, tmpdir } from "node:os"
 import { dirname, join } from "node:path"
-import { type CapturedRunDraft as CollectedProbeRun, type ProbeSuiteManifest } from "@terminfo/probe-defs"
+import {
+  type CapturedRunDraft as CollectedProbeRun,
+  type ProbeSuiteManifest,
+  type RunDraft,
+} from "@terminfo/probe-defs"
 import { decodeCollectorDraft, decodeExactUtf8 } from "@terminfo/run-parser"
 import { getTrustedSuiteReceipt } from "./serve.ts"
 import {
@@ -147,32 +151,37 @@ export async function stopOwnedDaemon(owned: OwnedDaemon): Promise<void> {
   }
 }
 
-export async function requestDaemonProbe(daemon: DaemonRegistration, request?: DaemonOwnerRequest): Promise<Response> {
+export async function requestDaemonProbe(
+  daemon: DaemonRegistration,
+  request?: DaemonOwnerRequest,
+  ids?: string[],
+): Promise<Response> {
   if (!Number.isInteger(daemon.port) || daemon.port < 1 || daemon.port > 65535) {
     throw new Error(`Invalid daemon port: ${daemon.port}`)
   }
   if (!daemon.token) {
     throw new Error(`Daemon on port ${daemon.port} has no authorization token; restart it with the current CLI`)
   }
-  let body: string | undefined
+  let body: Record<string, unknown> | undefined
   if (request && "terminalApp" in request) {
     const owner = parseTerminalAppOwner(request.terminalApp)
     if (owner.launchRunId !== daemon.runId || owner.workerPid !== daemon.pid || daemon.terminal !== "terminal-app") {
       throw new Error("Terminal.app owner assertion differs from the selected daemon")
     }
-    body = JSON.stringify({ terminalAppOwner: owner })
+    body = { terminalAppOwner: owner }
   } else if (request) {
     const owner = parseProcessOwnerAssertion(request.process)
     if (owner.launchRunId !== daemon.runId || owner.workerPid !== daemon.pid) {
       throw new Error(`${owner.provider} owner assertion differs from the selected daemon`)
     }
-    body = JSON.stringify({ processOwner: owner })
+    body = { processOwner: owner }
   }
+  if (ids !== undefined) body = { ...body, ids }
   await verifyDaemonInfo(daemon)
   const response = await fetch(`http://127.0.0.1:${daemon.port}/probe`, {
     method: body ? "POST" : "GET",
     headers: { Authorization: `Bearer ${daemon.token}`, ...(body && { "Content-Type": "application/json" }) },
-    ...(body && { body }),
+    ...(body && { body: JSON.stringify(body) }),
     signal: AbortSignal.timeout(120_000),
   })
   if (!response.ok) {
@@ -207,14 +216,10 @@ export async function requestDaemonProbe(daemon: DaemonRegistration, request?: D
 export async function readRawDaemonProbeResponse(
   response: Response,
   receipt: { manifest: ProbeSuiteManifest; collectorRevision: string } = getTrustedSuiteReceipt(),
-): Promise<{
-  run: CollectedProbeRun
-  raw: string
-  sha256: string
-}> {
+): Promise<ReturnType<typeof decodeCollectorDraft>> {
   const raw = decodeExactUtf8(Buffer.from(await response.arrayBuffer()), "daemon /probe")
   const decoded = decodeCollectorDraft("daemon /probe", raw, receipt.manifest, receipt.collectorRevision)
-  if (decoded.run.subject.kind !== "term" && decoded.run.subject.kind !== "mux") {
+  if (decoded.kind === "captured" && decoded.run.subject.kind !== "term" && decoded.run.subject.kind !== "mux") {
     throw new Error(`Daemon /probe subject kind ${decoded.run.subject.kind} is not term or mux`)
   }
   return decoded
@@ -281,7 +286,10 @@ export async function readRetainedDaemonProbeResponse(
     directory?: string
     receipt?: { manifest: ProbeSuiteManifest; collectorRevision: string }
   } = {},
-): Promise<{ run: CollectedProbeRun; path: string; sha256: string }> {
+): Promise<
+  | { kind: "captured"; run: CollectedProbeRun; path: string; sha256: string }
+  | { kind: "empty-selection"; run: RunDraft; path: string; sha256: string }
+> {
   const bytes = Buffer.from(await response.arrayBuffer())
   const retained = retainDaemonResponseBytes(bytes, options.directory)
   let decoded: Awaited<ReturnType<typeof readRawDaemonProbeResponse>>
@@ -296,13 +304,17 @@ export async function readRetainedDaemonProbeResponse(
       retained,
     )
   }
-  return {
-    run: {
-      ...decoded.run,
-      rawReplies: { ...decoded.run.rawReplies, "collector.httpResponseSha256": decoded.sha256 },
-    },
-    ...retained,
+  if (decoded.kind === "captured") {
+    return {
+      kind: decoded.kind,
+      run: {
+        ...decoded.run,
+        rawReplies: { ...decoded.run.rawReplies, "collector.httpResponseSha256": decoded.sha256 },
+      },
+      ...retained,
+    }
   }
+  return { kind: decoded.kind, run: decoded.run, ...retained }
 }
 
 export { finalizeCollectedDraft, saveDaemonProbeRun, type CaptureReviewInput } from "./capture-writer.ts"

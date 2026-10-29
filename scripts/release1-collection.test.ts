@@ -39,7 +39,13 @@ import * as versions from "../packages/admin/versions.ts"
 import { frozenSuiteIdFor } from "../packages/admin/suite-manifest.ts"
 import * as headless from "../packages/probes/collect-headless.ts"
 import { retainCaptureBinding } from "@terminfo/run-parser"
-import { ENVIRONMENT_GROUP_IDS, textQualificationFixtures } from "@terminfo/probe-defs"
+import {
+  ENVIRONMENT_GROUP_IDS,
+  textQualificationFixtures,
+  readCollectorSelection,
+  readCollectorAttempt,
+  type RunDraft,
+} from "@terminfo/probe-defs"
 import { aggregateCurrentResults } from "../docs/data/release-scope.ts"
 import {
   admitProducedRuns,
@@ -245,6 +251,13 @@ it.each([
   ["matching", "text-modified"],
   ["frozen", "none"],
   ["frozen", "deferred"],
+  ["matching", "selected"],
+  ["matching", "empty-selection"],
+  ["matching", "linux-prestart"],
+  ["matching", "linux-poststart"],
+  ["matching", "linux-poststart-capture"],
+  ["matching", "linux-poststart-final"],
+  ["matching", "empty-probes"],
 ] as const)(
   "retains a private %s-suite historical artifact after %s without current admission",
   async (suite, inputChange) => {
@@ -300,12 +313,48 @@ it.each([
     })
     // The real launcher owns containers and receipts. Its process boundary is replaced here;
     // a failed Kitty launch and other malformed raw outputs must remain separate, retained failures.
+    let actualRoutePath: string | undefined
+    let actualRouteBytes: string | undefined
+    let actualRouteRunId: string | undefined
+    const actualStartedAt = "2026-10-29T07:01:02.000Z"
+    const actualError = "original Linux fixture collector failure"
     const launcher = vi.spyOn(childProcesses, "spawnSync").mockImplementation((command, args, options) => {
       if (!Array.isArray(args)) throw new Error("expected explicit Linux launcher argv")
       const stdio = options?.stdio
       const respond = (stdout: string, status = 0) => {
         if (Array.isArray(stdio) && typeof stdio[1] === "number") writeSync(stdio[1], stdout)
         return { pid: 1, output: [], stdout: "", stderr: "", status, signal: null }
+      }
+      if (inputChange === "linux-prestart" && command === "bash") return respond("prerequisite failed", 1)
+      if (inputChange.startsWith("linux-poststart") && command === "bash") {
+        const output = args.at(-1)
+        if (typeof output !== "string") throw new Error("Expected Linux fixture output")
+        const draftPath = join(dirname(dirname(output)), "term-alacritty-linux.draft.json")
+        const draft = JSON.parse(readFileSync(draftPath, "utf8")) as RunDraft
+        actualRouteRunId = draft.runId
+        expect(options?.env?.TERMINFO_CAPTURE_RUN_ID).toBe(draft.runId)
+        expect(options?.env?.TERMINFO_SOURCE_REVISION).toBe(draft.sourceRevision)
+        expect(readCollectorSelection(draft.rawReplies)).toEqual({ ids: ["sgr.bold"] })
+        draft.rawReplies["collector.collectionAttempt"] = JSON.stringify({
+          ids: ["sgr.bold"],
+          result: "failed",
+          startedAt: actualStartedAt,
+          error: actualError,
+        })
+        draft.rawReplies["collector.failure"] = actualError
+        const raw = join(output, "fixture-run", "raw")
+        mkdirSync(raw, { recursive: true })
+        actualRoutePath = join(
+          raw,
+          inputChange === "linux-poststart-capture"
+            ? "v3-capture.json"
+            : inputChange === "linux-poststart-final"
+              ? "v3-run.json"
+              : "v3-run.draft.json",
+        )
+        actualRouteBytes = JSON.stringify(draft)
+        writeFileSync(actualRoutePath, actualRouteBytes)
+        return respond("fixture collector started then failed", 17)
       }
       if (command === "git") {
         if (args[0] === "symbolic-ref") return respond("fixture-collection\n")
@@ -449,9 +498,88 @@ it.each([
               },
             ]
           : []
-      const pass = await collectPass(directory, frozenSuite, { runner: "local" }, deferrals)
+      // AC1: the existing full-census fixture otherwise hides ignored context/probe selections.
+      const selection =
+        inputChange === "selected"
+          ? { contexts: ["xtermjs/headless"], ids: ["sgr.bold"] }
+          : inputChange === "linux-prestart" || inputChange.startsWith("linux-poststart")
+            ? { contexts: ["alacritty/linux"], ids: ["sgr.bold"] }
+            : inputChange === "empty-selection"
+              ? { contexts: [], ids: [] }
+              : inputChange === "empty-probes"
+                ? { contexts: ["alacritty/linux"], ids: [] }
+                : undefined
+      const pass = await collectPass(directory, frozenSuite, { runner: "local" }, deferrals, selection)
       expect(pass.mode).toBe(frozenSuite ? "admit" : "development")
       if (frozenSuite) expect(pass.freeze?.id).toBe(frozenSuite)
+      if (selection) {
+        expect(
+          pass.contexts.map((row) => `${row.context.id}/${row.context.os === "unknown" ? "headless" : row.context.os}`),
+        ).toEqual(selection.contexts)
+        expect(pass.selection).toEqual(selection)
+        if (selection.contexts.length === 0 || inputChange === "empty-probes") {
+          expect(pass.attempt?.result).toBe("empty")
+          expect(headless.collectHeadlessRuns).not.toHaveBeenCalled()
+          expect(childProcesses.spawnSync).not.toHaveBeenCalled()
+          if (inputChange === "empty-probes") {
+            const row = pass.contexts[0]
+            if (!row?.rawRun) throw new Error("Expected retained empty context draft")
+            const retained = JSON.parse(readFileSync(row.rawRun, "utf8")) as RunDraft
+            expect(readCollectorSelection(retained.rawReplies)).toEqual({ ids: [] })
+            expect(readCollectorAttempt(retained.rawReplies)).toEqual({ ids: [], result: "empty" })
+          }
+        } else if (inputChange === "linux-prestart" || inputChange.startsWith("linux-poststart")) {
+          expect(headless.collectHeadlessRuns).not.toHaveBeenCalled()
+          const selectedRow = pass.contexts[0]
+          if (!selectedRow?.rawRun) throw new Error("Expected retained Linux context draft")
+          const retained = JSON.parse(readFileSync(selectedRow.rawRun, "utf8")) as RunDraft
+          expect(readCollectorSelection(retained.rawReplies)).toEqual({ ids: ["sgr.bold"] })
+          expect(readCollectorAttempt(retained.rawReplies)).toMatchObject({ result: "failed", ids: ["sgr.bold"] })
+          if (inputChange.startsWith("linux-poststart")) {
+            expect(pass.contexts[0]?.rawRun).toBe(actualRoutePath)
+            if (!actualRoutePath || actualRouteBytes === undefined) {
+              throw new Error("Expected original Linux route fixture")
+            }
+            expect(readFileSync(actualRoutePath, "utf8")).toBe(actualRouteBytes)
+            expect(readCollectorAttempt(retained.rawReplies)).toEqual({
+              ids: ["sgr.bold"],
+              result: "failed",
+              startedAt: actualStartedAt,
+              error: actualError,
+            })
+            expect(retained.runId).toBe(actualRouteRunId)
+            expect(retained).not.toHaveProperty("subject")
+            expect(retained).not.toHaveProperty("measuredAt")
+            expect(pass.contexts[0]?.status).toBe("failed")
+            expect(pass.contexts[0]?.error).toContain("exited 17")
+          } else expect(readCollectorAttempt(retained.rawReplies)?.startedAt).toBeUndefined()
+          expect(retained.results.every((row: { attempt: { scope: string } }) => row.attempt.scope === "none")).toBe(
+            true,
+          )
+          const linuxCall = vi.mocked(childProcesses.spawnSync).mock.calls.find(([command]) => command === "bash")
+          expect(linuxCall?.[1]).toEqual([
+            "scripts/linux-container-run.sh",
+            "--target",
+            "alacritty",
+            "--preset",
+            "default",
+            "--clipboard-profile",
+            "default",
+            "--ids",
+            "sgr.bold",
+            pass.contexts[0]?.directory,
+          ])
+        } else {
+          expect(headless.collectHeadlessRuns).toHaveBeenCalledWith(["xtermjs"], expect.any(String), expect.any(Map), [
+            "sgr.bold",
+          ])
+          const retained = JSON.parse(
+            readFileSync(join(pass.directory, "lib-xtermjs-unknown.draft.json"), "utf8"),
+          ) as RunDraft
+          expect(readCollectorSelection(retained.rawReplies)).toEqual({ ids: ["sgr.bold"] })
+        }
+        return
+      }
       expect(pass.contexts).toHaveLength(33)
       if (inputChange === "deferred") {
         // The frozen batch owns a carried route; its initialized TODO draft must not become a measurement.
@@ -545,7 +673,8 @@ it.each([
             }),
           }),
         )
-        expect(row?.status).toBe("failed")
+        // A launcher error or malformed file supplies no actual collector start or emitted result.
+        expect(row?.status).toBe("not-started")
         expect(row?.error).toContain(`${id}/linux`)
         expect(readFileSync(join(output, "launcher.stderr.log"), "utf8")).toBe("launcher fixture diagnostic")
         if (id === "kitty") expect(row?.error).toMatch(/exited 17/)
