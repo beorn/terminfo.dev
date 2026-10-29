@@ -1,4 +1,4 @@
-import type { ProbeDefinition, ProbeCallbackResult, TerminalQueryOutcome } from "./types.ts"
+import type { LibProbeSource, ProbeDefinition, ProbeCallbackResult, TerminalQueryOutcome } from "./types.ts"
 import {
   REPLY_AFTER_SENTINEL_NOTE,
   parserStateResult,
@@ -746,8 +746,7 @@ export const deviceProbes: ProbeDefinition[] = [
   {
     ...probe(
       "device.xtwinops-23",
-      (ctx) =>
-        titleStackHeadless(ctx, "XTWINOPS 23 restores the title saved before a different title was set"),
+      (ctx) => titleStackHeadless(ctx, "XTWINOPS 23 restores the title saved before a different title was set"),
       async (ctx) => {
         ctx.write("\x1b[22;0t") // push first so we have something to pop
         ctx.write("\x1b[23;0t")
