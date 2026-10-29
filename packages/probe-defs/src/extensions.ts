@@ -22,6 +22,7 @@ import {
   readHyperlinkMetadata,
   readSentinelReply,
   replyFrame,
+  reviewResult,
   sameRgb as sameRgbCells,
   sentinelNegativeResult,
   sentinelSilenceResult,
@@ -524,11 +525,43 @@ function oscSimpleQueryProbe(
       probe(
         id,
         (ctx) => {
-          if (ctx.queryWithSentinelOutcome) {
-            return oscOutcomeResult(ctx.queryWithSentinelOutcome(query, pattern), expected, prefix)
+          const outcome = ctx.queryWithSentinelOutcome?.(query, pattern)
+          const raw = outcome ? outcome.raw : ctx.feedCapture(query)
+          const result = outcome
+            ? oscOutcomeResult(outcome, expected, prefix)
+            : oscReplyResult(raw, pattern.exec(raw)?.[0] ?? null, expected, prefix)
+          const identity = ctx.runtimeIdentity
+          const zeroGeometry =
+            (id === "extensions.osc1337-cellsize" &&
+              /^\x1b\]1337;ReportCellSize=0;0\x1b\\(?:\x1b\[\?[0-9]+(?:;[0-9]+)*c)?$/.test(raw)) ||
+            (id === "extensions.osc776-cell-size" &&
+              /^\x1b\]776;0;0;0\x1b\\(?:\x1b\[\?[0-9]+(?:;[0-9]+)*c)?$/.test(raw))
+          if (
+            zeroGeometry &&
+            result.observation?.outcome === "inconclusive" &&
+            identity?.kind === "js" &&
+            identity.runtimeFormat === "js" &&
+            identity.resolvedPath === "vendor/vterm/packages/vterm/src/index.ts" &&
+            identity.integrity.kind === "source" &&
+            identity.integrity.cleanTree &&
+            identity.integrity.repository === "git@github.com:beorn/vterm.git" &&
+            identity.integrity.revision === "1cfc325f3aedd4617e437ee76e6a03fc2cc16438" &&
+            identity.integrity.treeOid === "2ee13d2cb894e86ee9575dd6945f42028df44966"
+          ) {
+            return reviewResult(
+              "headless-geometry-review",
+              "Required independent review of the audited headless context and retained zero geometry reply pending",
+              "Audited vterm headless subject has no physical font cell dimensions",
+              {
+                query,
+                raw,
+                runtimeIdentity: identity,
+                sourceCitation:
+                  "vterm screen.ts at 1cfc325f: ScreenOptions has no physical font metrics; OSC1337 ReportCellSize and OSC776 deliberately report unknown zero dimensions (#30575)",
+              },
+            )
           }
-          const raw = ctx.feedCapture(query)
-          return oscReplyResult(raw, pattern.exec(raw)?.[0] ?? null, expected, prefix)
+          return result
         },
         async (ctx) => oscOutcomeResult(await ctx.queryWithSentinelOutcome(query, pattern), expected, prefix),
         "query_reply",
@@ -2871,7 +2904,7 @@ export const extensionsProbes: ProbeDefinition[] = [
     termNeedsGeometry: true,
   },
 
-  // OSC 1337 ReportCellSize — query cell dimensions in pixels
+  // OSC 1337 ReportCellSize — query cell dimensions in points, plus optional pixels-per-point scale
   oscSimpleQueryProbe(
     "extensions.osc1337-cellsize",
     "\x1b]1337;ReportCellSize\x07",

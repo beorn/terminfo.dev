@@ -121,7 +121,7 @@ export const SOURCE_NEGATIVE_REVIEW = "source-negative-review"
  * stays TEST TODO with a required review pending; nothing here grades support, delivery or
  * Untestable.
  */
-function reviewResult(branch: string, reason: string, noObservable: string, state: object): ProbeCallbackResult {
+export function reviewResult(branch: string, reason: string, noObservable: string, state: object): ProbeCallbackResult {
   return {
     ...notTestedResult(noObservable, state),
     criterionBranch: branch,
