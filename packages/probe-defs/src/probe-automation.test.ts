@@ -296,6 +296,48 @@ describe("reply-path audit", () => {
     ])
   })
 
+  // @cto d9998884, f9d23c2a (#31372): the WASM build drops every DCS before src/terminal/dcs.zig, and it builds its
+  // stream without an OSC allocator, so each colour query is rejected at the parser. The table test above accepts
+  // either kind, so only this pin keeps the ruled kinds.
+  test("ghostty-web 0.4.0 WASM: DCS queries have no reply path; colour queries are parser-rejected", () => {
+    const ghostty = REPLY_PATH_AUDITS.get("7c43302dde147c6f7959b7bda7045ff375c71288da1af5667ffca2bf95beb2bf")!
+    const dcs = Object.entries(ghostty).filter(([, audit]) => audit.query.startsWith("\x1bP"))
+    expect(dcs.map(([id, audit]) => [id, audit.kind])).toEqual([
+      ["device.decrqss", "no-reply-path"],
+      ["device.xtgettcap", "no-reply-path"],
+      ["device.xtgetxres", "no-reply-path"],
+    ])
+    for (const [, audit] of dcs) {
+      expect(audit.citation).toContain("patch:586-588")
+      expect(audit.citation).not.toContain("parses it")
+    }
+    for (const id of [
+      "extensions.osc10-fg-color",
+      "extensions.osc104-reset-palette",
+      "extensions.osc11-bg-color",
+      "extensions.osc110-reset-fg",
+      "extensions.osc111-reset-bg",
+      "extensions.osc112-reset-cursor",
+      "extensions.osc113-reset-pointer-fg",
+      "extensions.osc114-reset-pointer-bg",
+      "extensions.osc12-cursor-color",
+      "extensions.osc17-highlight-bg",
+      "extensions.osc19-highlight-fg",
+      "extensions.osc30001-color-stack-push",
+      "extensions.osc30101-color-stack-pop",
+      "extensions.osc4-palette",
+      "extensions.osc5-special-color",
+    ]) {
+      const audit = ghostty[id]!
+      expect(audit.kind, id).toBe("parser-rejected")
+      expect(audit.citation, id).toContain(
+        "patch:827 ResponseStream.init → ghostty 5714ed07 src/terminal/stream.zig:497-501",
+      )
+      expect(audit.citation, id).toContain("only under initAlloc (stream.zig:506-510)")
+      expect(audit.citation, id).not.toContain("682-687")
+    }
+  })
+
   test.each(cells)("$id on $sha256", ({ sha256, id, audit }) => {
     const unlisted = run(id, "f".repeat(64), () => "")
     expect(JSON.stringify(unlisted.result)).not.toContain("replyPathAudit")

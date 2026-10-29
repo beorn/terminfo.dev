@@ -32,7 +32,7 @@ export const REPLY_PATH_AUDITS: ReadonlyMap<string, Readonly<Record<string, Repl
         query: "\x1bP$qm\x1b\\",
         kind: "no-reply-path",
         citation:
-          "ghostty-web 0.4.0 WASM drops the reply (termless vendor/ghostty-web/ghostty-wasm-api.patch:586-588 dcs_* no-op); ghostty 5714ed07 src/terminal/dcs.zig:96-100 decrqss parses it",
+          "ghostty-web 0.4.0 WASM: termless vendor/ghostty-web/ghostty-wasm-api.patch:697 Stream(ResponseHandler), :824/:827 construct, :867 feed; ghostty 5714ed07 src/terminal/stream.zig:778-780 forwards raw DCS to the handler; patch:586-588/:607 DCS handlers are no-ops; src/terminal/dcs.zig is not on this path",
       },
       "device.dsr-996-color-scheme": {
         query: "\x1b[?996n",
@@ -62,12 +62,13 @@ export const REPLY_PATH_AUDITS: ReadonlyMap<string, Readonly<Record<string, Repl
         query: "\x1bP+q544e\x1b\\",
         kind: "no-reply-path",
         citation:
-          "ghostty-web 0.4.0 WASM drops the reply (termless vendor/ghostty-web/ghostty-wasm-api.patch:586-588 dcs_* no-op); ghostty 5714ed07 src/terminal/dcs.zig:81-91 xtgettcap parses it",
+          "ghostty-web 0.4.0 WASM: termless vendor/ghostty-web/ghostty-wasm-api.patch:697 Stream(ResponseHandler), :824/:827 construct, :867 feed; ghostty 5714ed07 src/terminal/stream.zig:778-780 forwards raw DCS to the handler; patch:586-588/:607 DCS handlers are no-ops; src/terminal/dcs.zig is not on this path",
       },
       "device.xtgetxres": {
         query: "\x1bP+Q7465726d4e616d65\x1b\\",
-        kind: "parser-rejected",
-        citation: "ghostty 5714ed07 src/terminal/dcs.zig:81-93 '+' accepts only final q (else null)",
+        kind: "no-reply-path",
+        citation:
+          "ghostty-web 0.4.0 WASM drops the DCS (termless vendor/ghostty-web/ghostty-wasm-api.patch:586-588 dcs_* no-op); ghostty 5714ed07 src/terminal/dcs.zig:81-93 is not linked",
       },
       "device.xtreportcolors": {
         query: "\x1b[#R",
@@ -116,57 +117,57 @@ export const REPLY_PATH_AUDITS: ReadonlyMap<string, Readonly<Record<string, Repl
       },
       "extensions.osc10-fg-color": {
         query: "\x1b]10;?\x07",
-        kind: "no-reply-path",
+        kind: "parser-rejected",
         citation:
-          "ghostty-web 0.4.0 WASM drops the reply (termless vendor/ghostty-web/ghostty-wasm-api.patch:682-687 colorOperation no-op); ghostty 5714ed07 src/terminal/osc.zig:602-623 color_operation osc_10 parses it",
+          "ghostty-web 0.4.0 WASM constructs its stream without an OSC allocator (termless vendor/ghostty-web/ghostty-wasm-api.patch:827 ResponseStream.init → ghostty 5714ed07 src/terminal/stream.zig:497-501 → src/terminal/Parser.zig:230 osc_parser .init(null)); src/terminal/osc.zig:604-607 rejects OSC 10 with a null allocator. ghostty 5714ed07 parses this only under initAlloc (stream.zig:506-510); ghostty-web 0.4.0 constructs the stream with init, so the limit is the WASM build's, not the grammar's",
       },
       "extensions.osc104-reset-palette": {
         query: "\x1b]4;0;?\x07",
-        kind: "no-reply-path",
+        kind: "parser-rejected",
         citation:
-          "seed query: ghostty-web 0.4.0 WASM drops the reply (termless vendor/ghostty-web/ghostty-wasm-api.patch:682-687); ghostty 5714ed07 src/terminal/osc.zig:902-918 parses it",
+          "seed query OSC 4: ghostty-web 0.4.0 WASM constructs its stream without an OSC allocator (termless vendor/ghostty-web/ghostty-wasm-api.patch:827 ResponseStream.init → ghostty 5714ed07 src/terminal/stream.zig:497-501 → src/terminal/Parser.zig:230 osc_parser .init(null)); src/terminal/osc.zig:904-907 rejects OSC 4 with a null allocator, and OSC 104 itself is guarded the same way (osc.zig:626-629). ghostty 5714ed07 parses this only under initAlloc (stream.zig:506-510); ghostty-web 0.4.0 constructs the stream with init, so the limit is the WASM build's, not the grammar's",
       },
       "extensions.osc11-bg-color": {
         query: "\x1b]11;?\x07",
-        kind: "no-reply-path",
+        kind: "parser-rejected",
         citation:
-          "ghostty-web 0.4.0 WASM drops the reply (termless vendor/ghostty-web/ghostty-wasm-api.patch:682-687); ghostty 5714ed07 src/terminal/osc.zig:643-686 color_operation osc_11 parses it",
+          "ghostty-web 0.4.0 WASM constructs its stream without an OSC allocator (termless vendor/ghostty-web/ghostty-wasm-api.patch:827 ResponseStream.init → ghostty 5714ed07 src/terminal/stream.zig:497-501 → src/terminal/Parser.zig:230 osc_parser .init(null)); src/terminal/osc.zig:645-648 rejects OSC 11 with a null allocator. ghostty 5714ed07 parses this only under initAlloc (stream.zig:506-510); ghostty-web 0.4.0 constructs the stream with init, so the limit is the WASM build's, not the grammar's",
       },
       "extensions.osc110-reset-fg": {
         query: "\x1b]10;?\x07",
-        kind: "no-reply-path",
+        kind: "parser-rejected",
         citation:
-          "seed query: ghostty-web 0.4.0 WASM drops the reply (termless vendor/ghostty-web/ghostty-wasm-api.patch:682-687); ghostty 5714ed07 src/terminal/osc.zig:602-623 parses it",
+          "seed query OSC 10: ghostty-web 0.4.0 WASM constructs its stream without an OSC allocator (termless vendor/ghostty-web/ghostty-wasm-api.patch:827 ResponseStream.init → ghostty 5714ed07 src/terminal/stream.zig:497-501 → src/terminal/Parser.zig:230 osc_parser .init(null)); src/terminal/osc.zig:604-607 rejects OSC 10 with a null allocator, and OSC 110 itself is guarded the same way (osc.zig:657-661). ghostty 5714ed07 parses this only under initAlloc (stream.zig:506-510); ghostty-web 0.4.0 constructs the stream with init, so the limit is the WASM build's, not the grammar's",
       },
       "extensions.osc111-reset-bg": {
         query: "\x1b]11;?\x07",
-        kind: "no-reply-path",
+        kind: "parser-rejected",
         citation:
-          "seed query: ghostty-web 0.4.0 WASM drops the reply (termless vendor/ghostty-web/ghostty-wasm-api.patch:682-687); ghostty 5714ed07 src/terminal/osc.zig:643-686 parses it",
+          "seed query OSC 11: ghostty-web 0.4.0 WASM constructs its stream without an OSC allocator (termless vendor/ghostty-web/ghostty-wasm-api.patch:827 ResponseStream.init → ghostty 5714ed07 src/terminal/stream.zig:497-501 → src/terminal/Parser.zig:230 osc_parser .init(null)); src/terminal/osc.zig:645-648 rejects OSC 11 with a null allocator, and OSC 111 itself is guarded the same way (osc.zig:657-661). ghostty 5714ed07 parses this only under initAlloc (stream.zig:506-510); ghostty-web 0.4.0 constructs the stream with init, so the limit is the WASM build's, not the grammar's",
       },
       "extensions.osc112-reset-cursor": {
         query: "\x1b]12;?\x07",
-        kind: "no-reply-path",
+        kind: "parser-rejected",
         citation:
-          "seed query: ghostty-web 0.4.0 WASM drops the reply (termless vendor/ghostty-web/ghostty-wasm-api.patch:682-687); ghostty 5714ed07 src/terminal/osc.zig:688-704 parses it",
+          "seed query OSC 12: ghostty-web 0.4.0 WASM constructs its stream without an OSC allocator (termless vendor/ghostty-web/ghostty-wasm-api.patch:827 ResponseStream.init → ghostty 5714ed07 src/terminal/stream.zig:497-501 → src/terminal/Parser.zig:230 osc_parser .init(null)); src/terminal/osc.zig:690-693 rejects OSC 12 with a null allocator, and OSC 112 itself is guarded the same way (osc.zig:657-661). ghostty 5714ed07 parses this only under initAlloc (stream.zig:506-510); ghostty-web 0.4.0 constructs the stream with init, so the limit is the WASM build's, not the grammar's",
       },
       "extensions.osc113-reset-pointer-fg": {
         query: "\x1b]13;?\x07",
-        kind: "no-reply-path",
+        kind: "parser-rejected",
         citation:
-          "seed query: ghostty-web 0.4.0 WASM drops the reply (termless vendor/ghostty-web/ghostty-wasm-api.patch:682-687); ghostty 5714ed07 src/terminal/osc.zig:705-722 osc_13 parses it",
+          "seed query OSC 13: ghostty-web 0.4.0 WASM constructs its stream without an OSC allocator (termless vendor/ghostty-web/ghostty-wasm-api.patch:827 ResponseStream.init → ghostty 5714ed07 src/terminal/stream.zig:497-501 → src/terminal/Parser.zig:230 osc_parser .init(null)); src/terminal/osc.zig:707-710 rejects OSC 13 with a null allocator, and OSC 113 itself is guarded the same way (osc.zig:657-661). ghostty 5714ed07 parses this only under initAlloc (stream.zig:506-510); ghostty-web 0.4.0 constructs the stream with init, so the limit is the WASM build's, not the grammar's",
       },
       "extensions.osc114-reset-pointer-bg": {
         query: "\x1b]14;?\x07",
-        kind: "no-reply-path",
+        kind: "parser-rejected",
         citation:
-          "seed query: ghostty-web 0.4.0 WASM drops the reply (termless vendor/ghostty-web/ghostty-wasm-api.patch:682-687); ghostty 5714ed07 src/terminal/osc.zig:728-744 osc_14 parses it",
+          "seed query OSC 14: ghostty-web 0.4.0 WASM constructs its stream without an OSC allocator (termless vendor/ghostty-web/ghostty-wasm-api.patch:827 ResponseStream.init → ghostty 5714ed07 src/terminal/stream.zig:497-501 → src/terminal/Parser.zig:230 osc_parser .init(null)); src/terminal/osc.zig:730-733 rejects OSC 14 with a null allocator, and OSC 114 itself is guarded the same way (osc.zig:657-661). ghostty 5714ed07 parses this only under initAlloc (stream.zig:506-510); ghostty-web 0.4.0 constructs the stream with init, so the limit is the WASM build's, not the grammar's",
       },
       "extensions.osc12-cursor-color": {
         query: "\x1b]12;?\x07",
-        kind: "no-reply-path",
+        kind: "parser-rejected",
         citation:
-          "ghostty-web 0.4.0 WASM drops the reply (termless vendor/ghostty-web/ghostty-wasm-api.patch:682-687); ghostty 5714ed07 src/terminal/osc.zig:688-704 color_operation osc_12 parses it",
+          "ghostty-web 0.4.0 WASM constructs its stream without an OSC allocator (termless vendor/ghostty-web/ghostty-wasm-api.patch:827 ResponseStream.init → ghostty 5714ed07 src/terminal/stream.zig:497-501 → src/terminal/Parser.zig:230 osc_parser .init(null)); src/terminal/osc.zig:690-693 rejects OSC 12 with a null allocator. ghostty 5714ed07 parses this only under initAlloc (stream.zig:506-510); ghostty-web 0.4.0 constructs the stream with init, so the limit is the WASM build's, not the grammar's",
       },
       "extensions.osc1337-capabilities": {
         query: "\x1b]1337;Capabilities\x07",
@@ -180,39 +181,39 @@ export const REPLY_PATH_AUDITS: ReadonlyMap<string, Readonly<Record<string, Repl
       },
       "extensions.osc17-highlight-bg": {
         query: "\x1b]17;?\x07",
-        kind: "no-reply-path",
+        kind: "parser-rejected",
         citation:
-          "ghostty-web 0.4.0 WASM drops the reply (termless vendor/ghostty-web/ghostty-wasm-api.patch:682-687); ghostty 5714ed07 src/terminal/osc.zig:779-795 color_operation osc_17 parses it",
+          "ghostty-web 0.4.0 WASM constructs its stream without an OSC allocator (termless vendor/ghostty-web/ghostty-wasm-api.patch:827 ResponseStream.init → ghostty 5714ed07 src/terminal/stream.zig:497-501 → src/terminal/Parser.zig:230 osc_parser .init(null)); src/terminal/osc.zig:781-784 rejects OSC 17 with a null allocator. ghostty 5714ed07 parses this only under initAlloc (stream.zig:506-510); ghostty-web 0.4.0 constructs the stream with init, so the limit is the WASM build's, not the grammar's",
       },
       "extensions.osc19-highlight-fg": {
         query: "\x1b]19;?\x07",
-        kind: "no-reply-path",
+        kind: "parser-rejected",
         citation:
-          "ghostty-web 0.4.0 WASM drops the reply (termless vendor/ghostty-web/ghostty-wasm-api.patch:682-687); ghostty 5714ed07 src/terminal/osc.zig:813-831 color_operation osc_19 parses it",
+          "ghostty-web 0.4.0 WASM constructs its stream without an OSC allocator (termless vendor/ghostty-web/ghostty-wasm-api.patch:827 ResponseStream.init → ghostty 5714ed07 src/terminal/stream.zig:497-501 → src/terminal/Parser.zig:230 osc_parser .init(null)); src/terminal/osc.zig:815-818 rejects OSC 19 with a null allocator. ghostty 5714ed07 parses this only under initAlloc (stream.zig:506-510); ghostty-web 0.4.0 constructs the stream with init, so the limit is the WASM build's, not the grammar's",
       },
       "extensions.osc30001-color-stack-push": {
         query: "\x1b]10;?\x07",
-        kind: "no-reply-path",
+        kind: "parser-rejected",
         citation:
-          "the probe sends only the seed OSC 10 query; ghostty-web 0.4.0 WASM drops its reply (termless vendor/ghostty-web/ghostty-wasm-api.patch:682-687); ghostty 5714ed07 src/terminal/osc.zig:602-623 parses it. OSC 30001 itself is parser-rejected (src/terminal/osc.zig:556-566) but is never sent",
+          "the probe sends only the seed OSC 10 query: ghostty-web 0.4.0 WASM constructs its stream without an OSC allocator (termless vendor/ghostty-web/ghostty-wasm-api.patch:827 ResponseStream.init → ghostty 5714ed07 src/terminal/stream.zig:497-501 → src/terminal/Parser.zig:230 osc_parser .init(null)); src/terminal/osc.zig:604-607 rejects OSC 10 with a null allocator. OSC 30001 itself, never sent, is outside the grammar (osc.zig:556-566 accepts no OSC number starting with 3). ghostty 5714ed07 parses this only under initAlloc (stream.zig:506-510); ghostty-web 0.4.0 constructs the stream with init, so the limit is the WASM build's, not the grammar's",
       },
       "extensions.osc30101-color-stack-pop": {
         query: "\x1b]10;?\x07",
-        kind: "no-reply-path",
+        kind: "parser-rejected",
         citation:
-          "the probe sends only the seed OSC 10 query; ghostty-web 0.4.0 WASM drops its reply (termless vendor/ghostty-web/ghostty-wasm-api.patch:682-687); ghostty 5714ed07 src/terminal/osc.zig:602-623 parses it. OSC 30101 itself is parser-rejected (src/terminal/osc.zig:556-566) but is never sent",
+          "the probe sends only the seed OSC 10 query: ghostty-web 0.4.0 WASM constructs its stream without an OSC allocator (termless vendor/ghostty-web/ghostty-wasm-api.patch:827 ResponseStream.init → ghostty 5714ed07 src/terminal/stream.zig:497-501 → src/terminal/Parser.zig:230 osc_parser .init(null)); src/terminal/osc.zig:604-607 rejects OSC 10 with a null allocator. OSC 30101 itself, never sent, is outside the grammar (osc.zig:556-566 accepts no OSC number starting with 3). ghostty 5714ed07 parses this only under initAlloc (stream.zig:506-510); ghostty-web 0.4.0 constructs the stream with init, so the limit is the WASM build's, not the grammar's",
       },
       "extensions.osc4-palette": {
         query: "\x1b]4;0;?\x07",
-        kind: "no-reply-path",
+        kind: "parser-rejected",
         citation:
-          "ghostty-web 0.4.0 WASM drops the reply (termless vendor/ghostty-web/ghostty-wasm-api.patch:682-687); ghostty 5714ed07 src/terminal/osc.zig:902-918 color_operation osc_4 parses it",
+          "ghostty-web 0.4.0 WASM constructs its stream without an OSC allocator (termless vendor/ghostty-web/ghostty-wasm-api.patch:827 ResponseStream.init → ghostty 5714ed07 src/terminal/stream.zig:497-501 → src/terminal/Parser.zig:230 osc_parser .init(null)); src/terminal/osc.zig:904-907 rejects OSC 4 with a null allocator. ghostty 5714ed07 parses this only under initAlloc (stream.zig:506-510); ghostty-web 0.4.0 constructs the stream with init, so the limit is the WASM build's, not the grammar's",
       },
       "extensions.osc5-special-color": {
         query: "\x1b]5;0;?\x07",
-        kind: "no-reply-path",
+        kind: "parser-rejected",
         citation:
-          "ghostty-web 0.4.0 WASM drops the reply (termless vendor/ghostty-web/ghostty-wasm-api.patch:682-687); ghostty 5714ed07 src/terminal/osc.zig:921-937 color_operation osc_5 parses it",
+          "ghostty-web 0.4.0 WASM constructs its stream without an OSC allocator (termless vendor/ghostty-web/ghostty-wasm-api.patch:827 ResponseStream.init → ghostty 5714ed07 src/terminal/stream.zig:497-501 → src/terminal/Parser.zig:230 osc_parser .init(null)); src/terminal/osc.zig:923-926 rejects OSC 5 with a null allocator. ghostty 5714ed07 parses this only under initAlloc (stream.zig:506-510); ghostty-web 0.4.0 constructs the stream with init, so the limit is the WASM build's, not the grammar's",
       },
       "extensions.osc701-locale": {
         query: "\x1b]701;?\x07",
