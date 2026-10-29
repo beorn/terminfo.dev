@@ -161,6 +161,7 @@ export {
 }
 
 export { splitDecidableBasis } from "./decidable-basis.ts"
+export { nativeHostRecipeResult } from "./native-host-audit.ts"
 export type { DecidableBasis } from "./decidable-basis.ts"
 export { ENVIRONMENT_GROUP_IDS, gradedFeatureIds, isEnvironmentGroup } from "./environment-groups.ts"
 export type { EnvironmentGroupId } from "./environment-groups.ts"

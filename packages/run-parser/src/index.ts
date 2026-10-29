@@ -1506,7 +1506,7 @@ export function validateHostRecipeCauses(
       ) {
         refuse("observed reference does not resolve to this run's empty target capture")
       }
-    } else if (cause.kind === "source-audited") {
+    } else if (cause.kind === "source-audited" || cause.kind === "unimplemented") {
       if (
         Object.keys(cause).some((key) => !["kind", "missing", "runId", "artifactSha256", "citation"].includes(key)) ||
         identity?.kind !== "native" ||
@@ -1515,6 +1515,17 @@ export function validateHostRecipeCauses(
         refuse("stale native artifact citation")
       }
       const citation = cause.citation
+      if (cause.kind === "unimplemented") {
+        // The audited artifact has no reply path for the query, so the citation names that source and no host input.
+        if (
+          !object(citation) ||
+          Object.keys(citation).some((key) => key !== "sourceLocation") ||
+          !nonempty(citation.sourceLocation)
+        ) {
+          refuse("invalid no-reply-path citation")
+        }
+        return entry
+      }
       if (
         !object(citation) ||
         citation.inputRecordRef !== "collector.collectionAttempt" ||

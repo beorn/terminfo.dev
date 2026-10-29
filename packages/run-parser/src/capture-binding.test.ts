@@ -6,6 +6,7 @@
  */
 import { describe, expect, it } from "vitest"
 import { createHash } from "node:crypto"
+import { readFileSync } from "node:fs"
 import {
   initializeRunDraft,
   sealRunDraft,
@@ -13,8 +14,11 @@ import {
   finalizeProbeResult,
   REPLY_PATH_AUDIT_REVIEW,
   HARNESS_INCOMPLETE_TEST,
+  nativeHostRecipeResult,
+  type LibProbeSource,
   type RunDraft,
 } from "@terminfo/probe-defs"
+import { fakeProbeResult } from "@terminfo/probe-defs/testing/fake-probe-result"
 import { applyCaptureDecision, retainCaptureBinding, parseRun } from "./index.ts"
 
 // H1-H7: explicit collector-input fixture, not an engine execution or qualification proof.
@@ -272,6 +276,58 @@ function harnessCapture(
     })
 }
 
+// The refused WezTerm capture (run 4cd4be36, addon sha256 84da518e) trimmed to its three clipboard-load probes. Its
+// declared OSC 52 read returned zero bytes with no cause, so the parser refused the whole run file.
+const WEZTERM_OSC52 = readFileSync(new URL("./fixtures/wezterm-osc52-refused.capture.json", import.meta.url), "utf8")
+function weztermCapture(mode: "captured" | "audited" | "foreign-artifact" | "declared-input" | "no-source") {
+  const run = JSON.parse(WEZTERM_OSC52) as RunDraft & { results: { featureId: string }[]; probeHash: string }
+  const ids = run.results.map((result) => result.featureId)
+  const manifest = {
+    schemaVersion: 4 as const,
+    probeHash: run.probeHash,
+    adapterVersion: "4",
+    catalogIds: ids,
+    probes: { term: [], lib: ids, mux: [] },
+  }
+  for (const id of ids) {
+    const recordRef = `collector.hostRecipes.${id}`
+    const record = JSON.parse(run.rawReplies[recordRef]!) as { runId: string; causes: unknown[] }
+    if (mode !== "captured") {
+      // The cause the audit entry gives this artifact, retained as the collector writes it.
+      const ctx = { runtimeIdentity: run.runtimeIdentity } as LibProbeSource
+      const claim = nativeHostRecipeResult(
+        ctx,
+        fakeProbeResult(),
+        "clipboard-load",
+        "clipboard-read-permission",
+        "\x1b]52;c;?\x07",
+        true,
+      ).hostRecipeCauses?.[0]
+      if (claim?.cause.kind !== "unimplemented") {
+        throw new Error(`no unimplemented audit cause: ${JSON.stringify(claim)}`)
+      }
+      const cause: Record<string, unknown> = {
+        kind: "unimplemented",
+        missing: claim.cause.missing,
+        runId: record.runId,
+        artifactSha256: claim.cause.artifactSha256,
+        citation: { sourceLocation: claim.cause.sourceCitation },
+      }
+      if (mode === "foreign-artifact") cause.artifactSha256 = "0".repeat(64)
+      if (mode === "declared-input") {
+        cause.citation = { ...(cause.citation as object), inputRecordRef: "collector.collectionAttempt" }
+      }
+      if (mode === "no-source") cause.citation = { sourceLocation: "" }
+      record.causes = [{ recipe: claim.recipe, cause }]
+    }
+    run.rawReplies[recordRef] = JSON.stringify(record)
+  }
+  return () =>
+    parseRun("wezterm-osc52.json", JSON.stringify(run), ids, new Map([[manifest.probeHash, manifest]]), {
+      mode: "capture",
+    })
+}
+
 it("parses a silent native host capture that carries its harness-unreproduced cause", () => {
   expect(harnessCapture("both", "cause")().results?.[0]?.status).toBe("test-failure")
 })
@@ -287,6 +343,17 @@ it("reads an unreproduced-callback record beside its failed harness row", () => 
 it.each(["record-only", "row-only", "todo-row"] as const)("refuses an unreproduced-callback claim with %s", (mode) => {
   expect(harnessCapture(mode)).toThrow(/unreproduced-callback record/)
 })
+it("the WezTerm OSC 52 read audit makes its refused capture parse without changing a result", () => {
+  expect(weztermCapture("captured")).toThrow(/missing cause for captured empty target response/)
+  const statuses = (JSON.parse(WEZTERM_OSC52) as { results: { status: string }[] }).results.map((r) => r.status)
+  expect(weztermCapture("audited")().results?.map((result) => result.status)).toEqual(statuses)
+})
+it.each(["foreign-artifact", "declared-input", "no-source"] as const)(
+  "the WezTerm unimplemented cause refuses %s custody",
+  (mode) => {
+    expect(weztermCapture(mode)).toThrow(/host recipe/i)
+  },
+)
 
 const setup = (
   observed?: string,
