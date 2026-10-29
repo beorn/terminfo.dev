@@ -117,7 +117,7 @@ test.each([
   const state = JSON.parse(result.response!)
   expect(state).toMatchObject({ cells: { before: { char: "D" }, seeded: { char: "S" }, fresh: { char: "F" } } })
   if ("sentinel" in options) {
-    expect(state.initialSentinel).toMatchObject({ raw: "\x1b[?1;2c", sentinel: { atMs: 1, graceMs: 250 } })
+    expect(state).toMatchObject({ initialSentinel: { raw: "\x1b[?1;2c", sentinel: { atMs: 1, graceMs: 250 } } })
   }
   if ("resolvedAtPaint" in options) expect(result.observation?.note).toContain("resolved at paint")
 })
@@ -129,9 +129,13 @@ test("OSC104 keeps sentinel reply bytes and retains unqualified cell readings be
   expect(result.response).toBe("\x1b[?1;2c")
   expect(result.observation).toMatchObject({ outcome: "unsupported", note: "negative by sentinel" })
   const state = JSON.parse(result.assertions![0]!.note!)
-  expect(state.cells.before.char).toBe("D")
-  expect(state.cells.seeded.fg).toEqual(state.cells.before.fg)
-  expect(state.initialSentinel.sentinel.graceMs).toBe(250)
+  expect(state).toMatchObject({
+    cells: {
+      before: { char: "D", fg: { r: 29, g: 31, b: 33 } },
+      seeded: { char: "S", fg: { r: 29, g: 31, b: 33 } },
+    },
+    initialSentinel: { sentinel: { graceMs: 250 } },
+  })
 })
 
 test.each([

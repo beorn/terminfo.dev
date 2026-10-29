@@ -678,7 +678,7 @@ function colorResetProbe(setCode: number, resetCode: number, index?: number): Pr
         if (silence) {
           // Keep the deciding DA1 bytes intact; optional cell/control evidence accompanies its assertion.
           return answer(
-            indexed
+            indexed && silence.observation
               ? { ...silence, assertions: silence.assertions?.map((assertion) => ({ ...assertion, note: response })) }
               : silence,
           )
