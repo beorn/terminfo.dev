@@ -646,12 +646,16 @@ test.each([
         "chat.disableAIFeatures": true,
         "workbench.startupEditor": "none",
         "workbench.welcomePage.experimentalOnboarding": false,
+        "workbench.panel.opensMaximized": "always",
       })
       expect(DatabaseSync).not.toHaveBeenCalled()
     } else {
       // Cursor's updater is Disabled before any check under update.mode "none", so no update toast.
       expect(settings?.[2]).toEqual({ flag: "wx", mode: 0o600 })
-      expect(JSON.parse(String(settings?.[1]))).toEqual({ "update.mode": "none" })
+      expect(JSON.parse(String(settings?.[1]))).toEqual({
+        "update.mode": "none",
+        "workbench.panel.opensMaximized": "always",
+      })
       // Application storage records the command-line prompt as dismissed, so it never schedules.
       expect(DatabaseSync).toHaveBeenCalledWith("/private/run/cursor-private-run/User/globalStorage/state.vscdb")
       expect(sqlite.run).toHaveBeenCalledWith(
