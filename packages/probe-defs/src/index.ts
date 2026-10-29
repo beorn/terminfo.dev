@@ -59,6 +59,8 @@ export type {
 export {
   SOURCE_NEGATIVE_REVIEW,
   REPLY_PATH_AUDIT_REVIEW,
+  HEADLESS_OBSERVABLE_REVIEW,
+  UNTESTABLE_ONLY_REVIEW_BRANCHES,
   sgrProbe,
   cursorProbe,
   decrpmModeProbe,

@@ -12,6 +12,8 @@ import {
   recordExecutedProbe,
   finalizeProbeResult,
   REPLY_PATH_AUDIT_REVIEW,
+  HEADLESS_OBSERVABLE_REVIEW,
+  UNTESTABLE_ONLY_REVIEW_BRANCHES,
   type RunDraft,
 } from "@terminfo/probe-defs"
 import { applyCaptureDecision, retainCaptureBinding, parseRun } from "./index.ts"
@@ -829,13 +831,20 @@ describe("immutable pre-seal capture binding", () => {
   )
 
   // The typed supported/unsupported rows above admit any branch; a missing reply path must never read as a capability.
-  it.each([
-    { decision: "supported", accepted: false },
-    { decision: "unsupported", accepted: false },
-    { decision: "untestable", accepted: true },
-  ] as const)("decides a reply-path audit review only as untestable ($decision)", ({ decision: verdict, accepted }) => {
+  it.each(
+    [...UNTESTABLE_ONLY_REVIEW_BRANCHES].flatMap((branch) =>
+      (
+        [
+          { decision: "supported", accepted: false },
+          { decision: "unsupported", accepted: false },
+          { decision: "untestable", accepted: true },
+        ] as const
+      ).map((entry) => ({ ...entry, branch })),
+    ),
+  )("decides $branch only as untestable ($decision)", ({ decision: verdict, accepted, branch }) => {
+    expect([...UNTESTABLE_ONLY_REVIEW_BRANCHES]).toEqual([REPLY_PATH_AUDIT_REVIEW, HEADLESS_OBSERVABLE_REVIEW])
     const { draft, decision } = setup("NO", undefined, (draft) => {
-      draft.results[0]!.criterionBranch = REPLY_PATH_AUDIT_REVIEW
+      draft.results[0]!.criterionBranch = branch
     })
     decision.decision = verdict
     applyCaptureDecision(draft, JSON.stringify(decision), "2026-10-28T22:40:00.000Z")
@@ -853,7 +862,7 @@ describe("immutable pre-seal capture binding", () => {
         new Map([[draft.probeHash, manifest]]),
       )
     if (accepted) expect(read().results?.[0]?.status).toBe("untestable")
-    else expect(read).toThrow(/reply-path audit review admits only an untestable decision/)
+    else expect(read).toThrow(/review admits only an untestable decision/)
   })
 
   it.each(["raw", "host-cause", "context", "source", "suite", "feature", "run"])(
