@@ -252,6 +252,11 @@ describe("current execution projection", () => {
       ])
       expect(current).not.toHaveProperty("sha256")
       expect(current).not.toHaveProperty("sealedAt")
+      // #31610 AC1/AC4: the private fold above passed while the public mapper lost these cells.
+      // Exercise the existing public seam before migrating its shape, so RED is retained evidence loss.
+      const published = publicResults(projection, new Map()).projection.current["term:kitty"]!
+      expect(published.results.find((result) => result.featureId === ids[1])?.status).toBe("supported")
+      expect(published.results.find((result) => result.featureId === ids[2])?.status).toBe("supported")
       // CTO1212de0f: stage1 never puts composed cells beneath the public run's hash or seal.
       expect(projection.current["term:kitty"]).toMatchObject({
         runId: latest.runId,
