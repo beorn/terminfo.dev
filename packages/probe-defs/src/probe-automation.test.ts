@@ -357,6 +357,24 @@ describe("reply-path audit", () => {
     )
   })
 
+  test("a failed native stack attempt retains the early readback review and its trace error", () => {
+    const query = "\x1b]30001\x1b\\"
+    const { result } = run(
+      "extensions.osc30001-color-stack-push",
+      "ac12d6408c2049f1d720e9735d7eb69251d3eed868fc9ced58de98b3543f3e2e",
+      (sequence) => {
+        if (sequence === query) throw new Error("stack attempt failed")
+        return ""
+      },
+    )
+    expect(result).toMatchObject({
+      criterionBranch: "color-readback-review",
+      tests: [{ id: "review", status: "test-todo" }],
+    })
+    expect(result.observation).toBeUndefined()
+    expect(JSON.parse(result.response!).trace.at(-1)).toEqual({ write: query, error: "Error: stack attempt failed" })
+  })
+
   test("covers all four audited artifacts", () => {
     // Ghostty WASM at 5714ed07, two native artifacts at 332b2aef and the vt100 0.16.2 Rust parser.
     expect([...REPLY_PATH_AUDITS.keys()].sort()).toEqual([
@@ -2546,6 +2564,7 @@ describe("partial probe automation candidates", () => {
     { name: "setter acknowledgement", seeded: "\x1b]10;rgb:aa/bb/cc\x07", setter: "ack", status: "test-failure" },
   ])("does not infer a stack effect from $name setup", ({ seeded, setter, status }) => {
     for (const id of ["extensions.osc30001-color-stack-push", "extensions.osc30101-color-stack-pop"]) {
+      const stackQuery = id === "extensions.osc30001-color-stack-push" ? "\x1b]30001\x1b\\" : "\x1b]30101\x1b\\"
       let queries = 0
       const seen: string[] = []
       const result = probe(id).lib!(
@@ -2554,6 +2573,7 @@ describe("partial probe automation candidates", () => {
             seen.push(sequence)
             if (sequence === "\x1b]10;?\x07") return ++queries === 2 ? seeded : ""
             if (sequence === "\x1b]10;rgb:aa/bb/cc\x07") return setter
+            if (sequence === stackQuery) return ""
             expect(sequence).toBe("\x1b]110\x07")
             return ""
           },
@@ -2569,7 +2589,9 @@ describe("partial probe automation candidates", () => {
         "\x1b]10;?\x07",
         "\x1b]110\x07",
         "\x1b]10;?\x07",
+        stackQuery,
       ])
+      expect(JSON.parse(result.response!).trace.at(-1)).toEqual({ write: stackQuery, response: "" })
       expect(JSON.parse(result.response!)).toMatchObject({
         originalRaw: "",
         trace: expect.arrayContaining([
