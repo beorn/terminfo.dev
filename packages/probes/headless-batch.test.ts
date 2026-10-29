@@ -22,6 +22,7 @@ import {
   type ProbeDefinition,
 } from "@terminfo/probe-defs"
 import { fakeProbeResult } from "@terminfo/probe-defs/testing/fake-probe-result"
+import { regradeRow, satisfiesContract, type GroupContract } from "../probe-defs/src/testing/group-harness.ts"
 import { validateObservation, retainCaptureBinding } from "@terminfo/run-parser"
 import { spawnSync } from "node:child_process"
 import { mkdtempSync, readFileSync, rmSync } from "node:fs"
@@ -52,6 +53,62 @@ test("viewport hold records a real xterm measurement and both output phases", as
     ordinary: { outcome: "hold", markerObserved: true },
     synchronized: { outcome: "hold", markerObserved: true },
   })
+})
+
+test("the real viewport Scrollback contract replays deterministically and satisfies its decided row", async () => {
+  const row: GroupContract[number] = {
+    id: "scrollback.viewport-hold-output",
+    expected: "decided",
+    claim: "The viewport holds on ordinary and synchronized output",
+  }
+  const probe = ALL_PROBES.find((entry) => entry.id === row.id)
+  if (!probe) throw new Error(`Missing Scrollback probe ${row.id}`)
+  expect(probe.lib !== null || probe.term !== null, `${row.id} has no callback`).toBe(true)
+  {
+    const backend = createXtermBackend()
+    backend.init({ cols: 80, rows: 24 })
+    try {
+      const source = () => createLibProbeSource(backend, undefined, undefined, undefined)
+      const first = await regradeRow(probe, row, { headless: source() })
+      const second = await regradeRow(probe, row, { headless: source() })
+      expect(second.after, `${row.id} is not deterministic`).toBe(first.after)
+      expect(second.satisfies, `${row.id} satisfaction is not deterministic`).toBe(first.satisfies)
+      expect(first.satisfies, `${row.id} must route through satisfiesContract`).toBe(
+        satisfiesContract(row, first.after),
+      )
+    } finally {
+      backend.destroy()
+    }
+  }
+  {
+    const backend = createXtermBackend()
+    backend.init({ cols: 80, rows: 24 })
+    try {
+      const required = row.expected === "decided" ? "supported" : row.expected
+      const graded = await regradeRow(probe, row, {
+        headless: createLibProbeSource(backend, undefined, undefined, undefined),
+      })
+      expect(graded.after, `${row.id} reads ${required} from a surface implementing its claim`).toBe(required)
+      expect(graded.satisfies, `${row.id} satisfies its contract row`).toBe(true)
+    } finally {
+      backend.destroy()
+    }
+  }
+})
+
+test("real vterm partial drift is inconclusive rather than an unqualified negative", async () => {
+  const probe = ALL_PROBES.find((entry) => entry.id === "scrollback.viewport-hold-output")
+  if (!probe?.lib) throw new Error("Missing scrollback.viewport-hold-output headless callback")
+  const backend = await createVtermBackend()
+  backend.init({ cols: 80, rows: 24 })
+  try {
+    const result = probe.lib(createLibProbeSource(backend, undefined, undefined, undefined))
+    expect(result.observation?.outcome).toBe("inconclusive")
+    expect(result.assertions).toBeUndefined()
+    expect(JSON.parse(result.response!)).toMatchObject({ ordinary: { outcome: "drift" } })
+  } finally {
+    backend.destroy()
+  }
 })
 
 // libvterm exposes no mode getter; its real cell behavior still decides wrapping.

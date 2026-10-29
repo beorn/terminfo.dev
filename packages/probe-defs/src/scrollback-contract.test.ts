@@ -20,8 +20,6 @@ import {
   type GroupContractSpec,
 } from "./testing/group-harness.ts"
 import { createSemanticSurface } from "./testing/semantic-surface.ts"
-import { createXtermBackend } from "@termless/xtermjs"
-import { createLibProbeSource } from "../../probes/headless-batch.ts"
 
 /**
  * All ten library Scrollback features decide from measured state. The app viewport arm
@@ -78,6 +76,20 @@ const SCROLLBACK_CONTRACT_SPEC: GroupContractSpec = {
   ],
 }
 
+// Real viewport replay and satisfaction live beside the production batch tests in probes.
+// Name fixture rows explicitly so future backend-dependent rows cannot enter this loop.
+const FIXTURE_SCROLLBACK_IDS = new Set([
+  "scrollback.accumulate",
+  "scrollback.total-lines",
+  "scrollback.scroll-up",
+  "scrollback.reverse-index",
+  "scrollback.scroll-down",
+  "scrollback.set-region",
+  "scrollback.alt-screen",
+  "scrollback.decstbm",
+  "scrollback.decstbm-reset",
+])
+
 test("the Scrollback contract covers every probe including viewport coverage", () => {
   const gaps = contractGaps(scrollbackProbes, SCROLLBACK_CONTRACT)
   expect(gaps.uncovered).toEqual([])
@@ -101,55 +113,31 @@ test("the Scrollback contract names its focused tests, and every named file exis
 
 // Determinism only: the surface is fed the same fixture twice, so this proves the harness replays
 // without movement, NOT that a decided row is satisfied. The satisfaction binding is the test below.
-test("the harness replays every probe-backed Scrollback feature deterministically", async () => {
-  for (const row of SCROLLBACK_CONTRACT) {
+test("the harness replays the fixture-backed Scrollback features deterministically", async () => {
+  for (const row of SCROLLBACK_CONTRACT.filter(({ id }) => FIXTURE_SCROLLBACK_IDS.has(id))) {
     const probe = scrollbackProbes.find((entry) => entry.id === row.id)
     if (!probe) throw new Error(`Missing Scrollback probe ${row.id}`)
     expect(probe.lib !== null || probe.term !== null, `${row.id} has no callback`).toBe(true)
-    const backend = row.id === "scrollback.viewport-hold-output" ? createXtermBackend() : undefined
-    backend?.init({ cols: 80, rows: 24 })
-    try {
-      const source = () =>
-        backend
-          ? createLibProbeSource(backend, undefined, undefined, undefined)
-          : libProbeSource(createSemanticSurface())
-      const first = await regradeRow(probe, row, { headless: source() })
-      const second = await regradeRow(probe, row, { headless: source() })
-      expect(second.after, `${row.id} is not deterministic`).toBe(first.after)
-      expect(second.satisfies, `${row.id} satisfaction is not deterministic`).toBe(first.satisfies)
-      expect(first.satisfies, `${row.id} must route through satisfiesContract`).toBe(
-        satisfiesContract(row, first.after),
-      )
-    } finally {
-      backend?.destroy()
-    }
+    const source = () => libProbeSource(createSemanticSurface())
+    const first = await regradeRow(probe, row, { headless: source() })
+    const second = await regradeRow(probe, row, { headless: source() })
+    expect(second.after, `${row.id} is not deterministic`).toBe(first.after)
+    expect(second.satisfies, `${row.id} satisfaction is not deterministic`).toBe(first.satisfies)
+    expect(first.satisfies, `${row.id} must route through satisfiesContract`).toBe(satisfiesContract(row, first.after))
   }
 })
 
-// The bound satisfaction proof: each decided row reads "supported" against a source that really
-// implements the operation its claim names.
+// Fixture satisfaction proof; real viewport satisfaction lives beside the production batch test.
 // Every row is driven by the probe's own fixture, so a probe whose expectation disagrees with the
 // terminal cannot pass this test.
-test("every decided Scrollback row reads the outcome its contract requires", async () => {
-  for (const row of SCROLLBACK_CONTRACT.filter((row) => row.expected === "decided")) {
+test("every fixture-backed Scrollback row reads the outcome its contract requires", async () => {
+  for (const row of SCROLLBACK_CONTRACT.filter(({ id }) => FIXTURE_SCROLLBACK_IDS.has(id))) {
     const probe = scrollbackProbes.find((entry) => entry.id === row.id)
     if (!probe) throw new Error(`Missing Scrollback probe ${row.id}`)
     const required = row.expected === "decided" ? "supported" : row.expected
-    // The generic semantic surface has no viewport actuator. Bind this row to the real
-    // source rather than extending a general testing framework for a single feature.
-    const backend = row.id === "scrollback.viewport-hold-output" ? createXtermBackend() : undefined
-    backend?.init({ cols: 80, rows: 24 })
-    try {
-      const graded = await regradeRow(probe, row, {
-        headless: backend
-          ? createLibProbeSource(backend, undefined, undefined, undefined)
-          : libProbeSource(createSemanticSurface()),
-      })
-      expect(graded.after, `${row.id} reads ${required} from a surface implementing its claim`).toBe(required)
-      expect(graded.satisfies, `${row.id} satisfies its contract row`).toBe(true)
-    } finally {
-      backend?.destroy()
-    }
+    const graded = await regradeRow(probe, row, { headless: libProbeSource(createSemanticSurface()) })
+    expect(graded.after, `${row.id} reads ${required} from a surface implementing its claim`).toBe(required)
+    expect(graded.satisfies, `${row.id} satisfies its contract row`).toBe(true)
   }
   // All ten library rows decide from measured grid, history or qualified viewport state.
   const decided = SCROLLBACK_CONTRACT.filter((row) => row.expected === "decided").map((row) => row.id)
