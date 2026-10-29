@@ -10,6 +10,9 @@ import {
   type HostRecipeName,
   PROBE_STATUSES,
   finalizeProbeResult,
+  initializeRunDraft,
+  readCollectorSelection,
+  readCollectorAttempt,
   type CaptureDecision,
   type RunDraft,
   type CapturedRunDraft,
@@ -2069,16 +2072,89 @@ export function decodeHistoricalCollectorRun(
   return { run, raw, sha256: measured.sha256 }
 }
 
-/** Canonical live collector transport is an unsealed schema-4 capture; final writer seals later. */
+/** Locate altered initialized draft content without hiding it beneath an empty-selection label. */
+function initializedDraftDifference(actual: unknown, expected: unknown, path = ""): string | undefined {
+  if (isDeepStrictEqual(actual, expected)) return undefined
+  if (Array.isArray(actual) && Array.isArray(expected)) {
+    for (let index = 0; index < Math.max(actual.length, expected.length); index++) {
+      const changed = initializedDraftDifference(actual[index], expected[index], `${path}[${index}]`)
+      if (changed) return changed
+    }
+  } else if (object(actual) && object(expected)) {
+    for (const key of new Set([...Object.keys(expected), ...Object.keys(actual)])) {
+      const changed = initializedDraftDifference(actual[key], expected[key], path ? `${path}.${key}` : key)
+      if (changed) return changed
+    }
+  }
+  return path
+}
+
+export type DecodedCollectorDraft = { raw: string; sha256: string } & (
+  | { kind: "captured"; run: CapturedRunDraft }
+  | { kind: "empty-selection"; run: RunDraft }
+)
+
+/** Canonical live transport retains a capture or an explicitly empty initialized draft. */
 export function decodeCollectorDraft(
   path: string,
   raw: string,
   manifest: ProbeSuiteManifest,
   collectorRevision: string,
-): { run: CapturedRunDraft; raw: string; sha256: string } {
+): DecodedCollectorDraft {
   const value = parseJsonStrict(path, raw)
   if (!object(value) || value.schemaVersion !== 4 || Object.hasOwn(value, "sealedAt")) {
     fail(path, "expected unsealed schemaVersion 4 collector draft")
+  }
+  if (object(value.rawReplies)) {
+    const rawReplies = value.rawReplies
+    if (!Object.values(rawReplies).every((entry) => typeof entry === "string")) fail(path, "invalid rawReplies")
+    const records = rawReplies as Record<string, string>
+    const attempt = readCollectorAttempt(records)
+    if (attempt?.result === "empty") {
+      const refuse = (changed: string): never => {
+        throw Object.assign(new Error(`${path}: invalid empty selection at ${changed}`), {
+          kind: "invalid-empty-selection" as const,
+          path: changed,
+        })
+      }
+      const selection = readCollectorSelection(records)
+      if (!selection || selection.ids.length || attempt.ids.length) refuse("collector.selection.ids")
+      if (attempt.startedAt !== undefined) refuse("collector.collectionAttempt.startedAt")
+      if (manifest.schemaVersion !== 4) refuse("schemaVersion")
+      if (!nonempty(value.runId)) refuse("runId")
+      if (!object(value.intendedSubject)) refuse("intendedSubject")
+      const intended = value.intendedSubject as Record<string, unknown>
+      for (const [key, entry] of Object.entries(intended)) {
+        if (key === "kind") {
+          if (entry !== "term" && entry !== "lib" && entry !== "mux") refuse(`intendedSubject.${key}`)
+        } else if (
+          !["id", "version", "os", "osVersion", "outerTerminal", "mux", "config", "permissions"].includes(key) ||
+          !(nonempty(entry) || (entry === null && key !== "id" && key !== "version"))
+        ) {
+          refuse(`intendedSubject.${key}`)
+        }
+      }
+      for (const key of Object.keys(records)) {
+        if (!["collector.selection", "collector.collectionAttempt", "collector.httpResponseSha256"].includes(key)) {
+          refuse(`rawReplies.${key}`)
+        }
+      }
+      const initialized = initializeRunDraft({
+        runId: value.runId as string,
+        sourceRevision: collectorRevision,
+        source: { kind: "live" },
+        intendedSubject: intended as Partial<ProbeSubject>,
+        manifest: manifest as ProbeSuiteManifest & { schemaVersion: 4 },
+      })
+      const difference = initializedDraftDifference(value, { ...initialized, rawReplies: records })
+      if (difference) refuse(difference)
+      return {
+        kind: "empty-selection",
+        run: value as unknown as RunDraft,
+        raw,
+        sha256: createHash("sha256").update(raw).digest("hex"),
+      }
+    }
   }
   const measured = parseRun(path, raw, manifest.catalogIds ?? [], new Map([[manifest.probeHash, manifest]]), {
     mode: "capture",
@@ -2093,7 +2169,7 @@ export function decodeCollectorDraft(
   if (measured.identity !== "unverified" || measured.origin.kind !== "collector") {
     fail(path, "collector draft requires unverified measured identity and collector origin")
   }
-  return { run: value as unknown as CapturedRunDraft, raw, sha256: measured.sha256 }
+  return { kind: "captured", run: value as unknown as CapturedRunDraft, raw, sha256: measured.sha256 }
 }
 
 /** A final file is current only when sealed; historical files have their explicit historical decoder. */
