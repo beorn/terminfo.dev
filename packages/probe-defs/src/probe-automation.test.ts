@@ -820,8 +820,8 @@ describe("reply-path audit", () => {
     expect(raw.trace.at(-1)).toEqual({ write: query, error: "Error: stack attempt failed" })
   })
 
-  test("covers all seven audited artifacts", () => {
-    // Two Ghostty WASM artifacts at 5714ed07, four native artifacts at 332b2aef and vt100 0.16.2.
+  test("covers all eight audited artifacts", () => {
+    // Two Ghostty WASM artifacts at 5714ed07, four native artifacts at 332b2aef, and two vt100-rust builds.
     expect([...REPLY_PATH_AUDITS.keys()].sort()).toEqual([
       "17d155feee5df8fa30266b9a354bbe66e39484d08218de5e03dc3bb2f199a0a3",
       "77b69f9f22c4126359be864fcce97afad8f84615053e21d335ba6348a8d3e1d7",
@@ -829,6 +829,7 @@ describe("reply-path audit", () => {
       "8872ab0fc56429489b52cd5d3b5a293032c3ec7dbbb71545d237945c3ef525f3",
       "9a9505600721226b952ae9ac92552b42389aa6713872a9f4904528f425b7ecdf",
       "ac12d6408c2049f1d720e9735d7eb69251d3eed868fc9ced58de98b3543f3e2e",
+      "b9109b5918707746420833dfc2eab3ea5bc7feec5fa93bee4cd6e824e74d0962",
       "f309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96",
     ])
   })
@@ -892,6 +893,22 @@ describe("reply-path audit", () => {
         tests: [{ id: "review", status: "test-todo" }],
       })
     }
+  })
+
+  test("vt100-rust b9109b59 audits read and clipboard and leaves a silent write not-tested", () => {
+    const sha = "b9109b5918707746420833dfc2eab3ea5bc7feec5fa93bee4cd6e824e74d0962"
+    const old = "f309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96"
+    expect(REPLY_PATH_AUDITS.get(sha)?.["extensions.osc52-clipboard"]?.kind).toBe("no-reply-path")
+    expect(REPLY_PATH_AUDITS.get(sha)?.["extensions.osc52-read"]?.kind).toBe("no-reply-path")
+    expect(REPLY_PATH_AUDITS.get(sha)?.["extensions.osc52-write"]).toBeUndefined()
+    expect(REPLY_PATH_AUDITS.get(old)?.["extensions.osc52-write"]?.kind).toBe("no-reply-path")
+    const silent = run("extensions.osc52-write", sha, () => "")
+    expect(silent.result.notTested).toEqual({
+      reason: "no-semantic-observable",
+      noObservable: "clipboard write state",
+    })
+    expect(JSON.stringify(silent.result)).not.toContain("replyPathAudit")
+    expect(run("extensions.osc52-write", old, () => "").result.criterionBranch).toBe(REPLY_PATH_AUDIT_REVIEW)
   })
 
   test.each(cells)("$id on $sha256", ({ sha256, id, audit }) => {

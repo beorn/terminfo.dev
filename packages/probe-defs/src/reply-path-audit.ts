@@ -27,6 +27,13 @@ const GHOSTTY_NATIVE_GRAPHICS_AUDIT: ReplyPathAudit = {
     "termless 0c409349 packages/ghostty-native/native/src/main.zig:81 vtStream() -> ghostty 332b2aef Terminal.zig:260-265 ReadonlyStream; stream.zig:736-738 forwards APC; stream_readonly.zig:168-173 ignores apc_start/apc_put/apc_end; native exports main.zig:48-65 provide no image-state or reply observer",
 }
 
+const VT100_RUST_OSC52_READ_AUDIT: ReplyPathAudit = {
+  query: "\x1b]52;c;?\x07",
+  kind: "no-reply-path",
+  citation:
+    "termless 4a730304 packages/vt100-rust/native/src/lib.rs:50-52 paste_from_clipboard records the selector and writes no reply bytes. vt100 0.16.2 OSC 52 '?' calls paste_from_clipboard. Artifact b9109b5918707746420833dfc2eab3ea5bc7feec5fa93bee4cd6e824e74d0962, sourceCommit bf1408e001e11cac31853565f78ff8dddb70e098. The f309015f rows are the previous artifact and stay unchanged.",
+}
+
 const VT100_OSC52_AUDIT: ReplyPathAudit = {
   query: "\x1b]52;c;?\x07",
   kind: "no-reply-path",
@@ -1277,6 +1284,13 @@ export const REPLY_PATH_AUDITS: ReadonlyMap<string, Readonly<Record<string, Repl
   ],
   // vt100 0.16.2 Rust parser native artifact from termless 0c409349, built by its declared `nix shell .#native-tools`
   // build; two checkouts gave this sha256 (#31671). termless 83f653f moved it off a478127f, the 31371 capture's key.
+  [
+    "b9109b5918707746420833dfc2eab3ea5bc7feec5fa93bee4cd6e824e74d0962",
+    {
+      "extensions.osc52-clipboard": VT100_RUST_OSC52_READ_AUDIT,
+      "extensions.osc52-read": VT100_RUST_OSC52_READ_AUDIT,
+    },
+  ],
   [
     "f309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96",
     {

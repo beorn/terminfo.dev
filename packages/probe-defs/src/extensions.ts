@@ -1993,7 +1993,27 @@ function textSizingResult(
   }
 }
 
-/** Only an isolated headless backend may receive this disposable OSC 52 nonce. */
+/**
+ * Only an isolated headless backend may receive this disposable OSC 52 nonce.
+ * A loaded artifact that answers the write query with no bytes, and has no host-recipe cause,
+ * has no engine-callback witness for the clipboard. That silence stays not-tested.
+ * A pass, a host-recipe cause, an observation, a nonempty reply, or a callback with no loaded
+ * binary keeps the measured roundtrip. A listed reply-path audit still replaces an empty capture.
+ */
+function headlessOsc52Write(ctx: LibProbeSource): ProbeCallbackResult {
+  const measured = headlessClipboardRoundtrip(ctx)
+  const identity = ctx.runtimeIdentity
+  const unauditedSilence =
+    !measured.pass &&
+    (measured.hostRecipeCauses?.length ?? 0) === 0 &&
+    measured.observation === undefined &&
+    (measured.response ?? "") === "" &&
+    identity !== undefined &&
+    "loadedBinary" in identity
+  if (!unauditedSilence) return measured
+  return notTestedResult("clipboard write state", { response: "" })
+}
+
 function headlessClipboardRoundtrip(ctx: LibProbeSource): ProbeCallbackResult {
   const nonce = `terminfo-osc52-${randomUUID()}`
   const encoded = btoa(nonce)
@@ -2852,12 +2872,7 @@ export const extensionsProbes: ProbeDefinition[] = [
 
   // OSC 52 write — set clipboard (most terminals support this)
   {
-    ...probe(
-      "extensions.osc52-write",
-      headlessClipboardRoundtrip,
-      (ctx) => liveClipboardProbe(ctx, "write"),
-      "query_reply",
-    ),
+    ...probe("extensions.osc52-write", headlessOsc52Write, (ctx) => liveClipboardProbe(ctx, "write"), "query_reply"),
     libAssertionType: "query_reply",
     libHostRecipes: [{ recipe: "clipboard-load", query: "\x1b]52;c;?\x07", missing: ["clipboard-read-permission"] }],
   },
