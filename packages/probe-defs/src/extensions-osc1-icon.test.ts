@@ -12,7 +12,6 @@ import type { LibProbeSource } from "./types.ts"
 function source(icon: { current: string } | null): LibProbeSource {
   return {
     cols: 80,
-    rows: 24,
     capabilities: {
       truecolor: false,
       kittyKeyboard: false,
