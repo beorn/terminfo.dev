@@ -74,6 +74,21 @@ is embedder-owned and still missing. A seeded reply never proves initial/default
 Other control outcomes retain criterion FAILURE. Independent review must bind to the capture run's own
 suite manifest and raw evidence; this callback grants neither automatic Untestable nor support.
 
+For the OSC 104 library reset with an unanswered initial OSC 4 index-0 query, indexed cells provide
+an independent reset witness. The callback retains a default D before setting, seeded S before and
+after reset, and fresh F painted after reset, alongside the existing query controls and extra writes.
+Exact glyphs and valid RGB must establish a default distinct from the verified aa/bb/cc seed.
+Fresh F matching D proves reset; F remaining seeded is a controlled negative when S also remains seeded.
+S records cell storage (resolved at read or at paint), so S remaining seeded with F restored still proves reset.
+S restored with F seeded, a third fresh colour or missing post-reset readings require independent review.
+An answered post-reset query still reporting the seed contradicts a fresh cell restored to default and also requires review.
+Missing S-after is conservatively reviewed even when F matches D; no storage reading is invented.
+Sentinel negatives keep their original DA1 response, with optional indexed-cell controls retained in the assertion note.
+Cell-decided results retain the original sentinel outcome and timing alongside their controls.
+Missing default or seed controls retain the existing query/sentinel/review rules, never a reset negative.
+The shared disposable reset still owns cleanup; operational errors propagate, preserving both causes
+when cleanup also fails. Complete initial query paths and other reset features are unchanged.
+
 Cell `dim`, `italic` and `strikethrough` readbacks are required `boolean | null`: null means the producer does not report that attribute, never a terminal-support claim. Their SGR probes route null through named missing-observable coverage (TEST TODO); measured booleans retain their existing observation path.
 
 The OSC 8 library criterion requires exact per-cell URI metadata, including unlinked controls.
@@ -85,11 +100,22 @@ The collector forwards the run's measured `HeadlessRuntimeIdentity` through `Lib
 It identifies the loaded adapter source, engine integrity and any loaded binary; feature-capability versions
 cannot substitute for it. Missing identity supplies no source-derived qualification.
 
+The four vterm headless geometry queries (XTWINOPS 14/16, OSC 1337 ReportCellSize and OSC 776)
+select required independent review only for complete zero-dimension replies from the audited clean
+source revision and tree. That subject has no physical font/window geometry; zero is an unknown,
+not a measured size. The callback retains query, raw reply, measured runtime identity and source citation
+through the existing coverage/review shape. It remains TEST TODO until own-suite review determines
+applicability. Other runtimes, malformed replies and positive dimensions retain their query criteria;
+no historical result acquires a review or changes grade.
+
 The optional sentinel member requires the executing adapter's `reply-delivery` extension. The single
 comparer in [headless-identity.ts](../probes/headless-identity.ts) checks its audited source blobs and
-registry integrity, clean source tree or loaded WASM digest against that measured runtime. Versions are
+registry integrity, clean source tree or loaded WASM/native digest against that measured runtime. A native
+declaration requires a native identity and the exact loaded binary SHA256, then the same adapter-source checks. Versions are
 diagnostic facts. Each initialized callback instance supplies its own declaration; the destroyed
-preflight instance cannot authorize another instance. `collector.replyPath` retains the shared
+preflight instance cannot authorize another instance. The existing identity owner measures again after
+each actual instance initializes; a changed or unavailable identity prevents its callback. Per-feature
+decisions retain that initialized instance's identity. `collector.replyPath` retains the shared
 declaration and measured identity once, alongside each feature's eligibility result and named
 withholding reason. Each distinct withholding reason is reported once per batch.
 

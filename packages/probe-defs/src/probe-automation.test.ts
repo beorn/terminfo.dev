@@ -102,6 +102,89 @@ function terminalSource(overrides: Partial<TermProbeSource>): TermProbeSource {
  * @consumer Library initial-colour callbacks and their required independent review.
  * @testonly none
  */
+// H1-H4/H6: actual criterion callbacks must own both the query declaration and its missing-input cause.
+// Parser/collector input fixtures cannot catch a production caller that never supplies either field.
+const artifact = "e6e16113863355b77d0aa3b359bd40c7066fb144e005fbc324fecfa3f4869bea"
+const nativeIdentity: NonNullable<LibProbeSource["runtimeIdentity"]> = {
+  kind: "native",
+  engineVersion: "0.26.0",
+  adapterVersion: "fixture",
+  termlessRevision: "2".repeat(40),
+  loadedBinary: { path: "fixture.node", sha256: artifact },
+  provenance: {
+    sha256: artifact,
+    sourceCommit: "3".repeat(40),
+    buildHash: "b".repeat(64),
+    toolchain: "fixture",
+    lockSha256: "c".repeat(64),
+  },
+}
+describe("audited native host recipe callers", () => {
+  test.each([
+    ["extensions.osc10-fg-color", "color-request", "foreground-rgb", "\x1b]10;?\x07"],
+    ["extensions.osc11-bg-color", "color-request", "background-rgb", "\x1b]11;?\x07"],
+    ["extensions.osc12-cursor-color", "color-request", "cursor-rgb", "\x1b]12;?\x07"],
+    ["extensions.osc4-palette", "color-request", "palette-entry-rgb", "\x1b]4;0;?\x07"],
+    ["extensions.osc110-reset-fg", "color-request", "foreground-rgb", "\x1b]10;?\x07"],
+    ["extensions.osc111-reset-bg", "color-request", "background-rgb", "\x1b]11;?\x07"],
+    ["extensions.osc112-reset-cursor", "color-request", "cursor-rgb", "\x1b]12;?\x07"],
+    ["extensions.osc104-reset-palette", "color-request", "palette-entry-rgb", "\x1b]4;0;?\x07"],
+    ["extensions.osc30001-color-stack-push", "color-request", "foreground-rgb", "\x1b]10;?\x07"],
+    ["extensions.osc30101-color-stack-pop", "color-request", "foreground-rgb", "\x1b]10;?\x07"],
+    ["device.xtwinops-14", "text-area-size", "pixel-geometry", "\x1b[14t"],
+    ["extensions.osc52-clipboard", "clipboard-load", "clipboard-read-permission", "\x1b]52;c;?\x07"],
+    ["extensions.osc52-write", "clipboard-load", "clipboard-read-permission", "\x1b]52;c;?\x07"],
+    ["extensions.osc52-read", "clipboard-load", "clipboard-read-permission", "\x1b]52;c;?\x07"],
+  ] as const)(
+    "%s retains its actual empty host query cause without changing its criterion",
+    (id, recipe, missing, query) => {
+      for (const qualified of [false, true]) {
+        const definition = probe(id)
+        const captured: string[] = []
+        const silence = {
+          match: null,
+          reason: "sentinel" as const,
+          raw: "\x1b[?1;2c",
+          rawBase64: "G1s/MTsyYw==",
+          sentinel: { atMs: 0, graceMs: 250 },
+        }
+        const result = definition.lib!(
+          context({
+            ...(qualified && {
+              queryWithSentinelOutcome(sequence: string) {
+                captured.push(sequence)
+                return silence
+              },
+            }),
+            runtimeIdentity: nativeIdentity,
+            feedCapture(sequence) {
+              captured.push(sequence)
+              return ""
+            },
+          }),
+        )
+        expect(captured).toContain(query)
+        expect(definition.libHostRecipes).toContainEqual({ recipe, query, missing: [missing] })
+        expect(result.hostRecipeCauses).toMatchObject([
+          {
+            recipe,
+            cause:
+              recipe === "color-request"
+                ? { kind: "observed", missing, query }
+                : { kind: "source-audited", missing, artifactSha256: artifact, sourceCitation: expect.any(String) },
+          },
+        ])
+        const { hostRecipeCauses: _custody, ...criterion } = result
+        expect(criterion).toEqual(
+          definition.lib!(
+            context({ feedCapture: () => "", ...(qualified && { queryWithSentinelOutcome: () => silence }) }),
+          ),
+        )
+      }
+    },
+  )
+})
+
 describe("initial colour context review", () => {
   test.each([
     ["extensions.osc17-highlight-bg", "17"],
@@ -128,6 +211,12 @@ describe("initial colour context review", () => {
     ["extensions.osc4-palette", "4;0", "104;0"],
   ] as const
 
+  const resetIds = {
+    "110": "extensions.osc110-reset-fg",
+    "111": "extensions.osc111-reset-bg",
+    "112": "extensions.osc112-reset-cursor",
+    "104;0": "extensions.osc104-reset-palette",
+  }
   for (const [id, slot, resetCode] of cases) {
     const query = `\x1b]${slot};?\x07`
     const setter = `\x1b]${slot};rgb:aa/bb/cc\x07`
@@ -136,6 +225,56 @@ describe("initial colour context review", () => {
     const callback = probe(id).lib
     if (!callback) throw new Error(`missing library callback ${id}`)
     const writes = [query, setter, query, reset, query]
+
+    // C1: a qualified DA1 channel cannot establish an embedder-owned default value.
+    // Existing positive-control cases omit the sentinel member and miss its early negative.
+    test(`${slot}: qualified silence verifies a seed before initial/default review`, () => {
+      for (const run of [callback, probe(resetIds[resetCode]).lib!]) {
+        const seen: string[] = []
+        let current = ""
+        const result = run(
+          context({
+            queryWithSentinelOutcome(sequence) {
+              expect(sequence).toBe(query)
+              return {
+                match: null,
+                reason: "sentinel",
+                raw: "\x1b[?1;2c",
+                rawBase64: "G1s/MTsyYw==",
+                sentinel: { atMs: 0, graceMs: 250 },
+              }
+            },
+            feedCapture(sequence) {
+              seen.push(sequence)
+              if (sequence === setter) current = seeded
+              if (sequence === reset) current = ""
+              return sequence === query ? current : ""
+            },
+          }),
+        )
+        expect(result.criterionBranch).toBe("color-readback-review")
+        expect(result.observation).toBeUndefined()
+        expect(result.tests).toMatchObject([{ id: "review", status: "test-todo" }])
+        expect(seen).toEqual([setter, query, reset, query])
+      }
+    })
+
+    test(`${slot}: a reset that leaves the verified seed is a measured negative`, () => {
+      let current = ""
+      const result = probe(resetIds[resetCode]).lib!(
+        context({
+          feedCapture(sequence) {
+            if (sequence === setter) current = seeded
+            return sequence === query ? current : ""
+          },
+        }),
+      )
+      expect(result).toMatchObject({
+        observation: { outcome: "unsupported", assertionType: "query_reply" },
+        assertions: [{ kind: "negative" }],
+      })
+      expect(result.criterionBranch).toBeUndefined()
+    })
 
     test(`${slot}: missing initial value selects required review after a disposable positive control`, () => {
       for (const reply of [seeded, `\x1b]${slot};rgb:a/b/c\x07`]) {
@@ -230,23 +369,48 @@ describe("initial colour context review", () => {
       expect(result).toMatchObject({ pass: false, response: "", tests: [{ status: "test-failure" }] })
     })
 
-    test(`${slot}: setter or control-read errors still attempt reset and propagate`, () => {
-      for (const failAt of [1, 2]) {
+    // C5: an observable original still needs cleanup if the setter mutates then throws.
+    test(`${slot}: reset cleanup preserves an observed-original setter error`, () => {
+      for (const cleanupFails of [false, true]) {
         const seen: string[] = []
-        const failure = new Error("control read failed")
         expect(() =>
-          callback(
+          probe(resetIds[resetCode]).lib!(
             context({
-              feedCapture(sequence) {
-                const index = seen.length
+              feedCapture: () => seeded,
+              feed(sequence) {
                 seen.push(sequence)
-                if (index === failAt) throw failure
-                return ""
+                if (sequence !== reset) throw new Error("original setter failed")
+                if (cleanupFails) throw new Error("reset also failed")
               },
             }),
           ),
-        ).toThrow(failure)
-        expect(seen).toEqual([...writes.slice(0, failAt + 1), reset])
+        ).toThrow("original setter failed")
+        expect(seen).toHaveLength(2)
+        expect(seen.at(-1)).toBe(reset)
+      }
+    })
+
+    test(`${slot}: setter or control-read errors still attempt reset and propagate`, () => {
+      for (const failAt of [1, 2]) {
+        for (const cleanupFails of [false, true]) {
+          const seen: string[] = []
+          const failure = new Error("control read failed")
+          const cleanup = new Error("reset cleanup failed")
+          expect(() =>
+            callback(
+              context({
+                feedCapture(sequence) {
+                  const index = seen.length
+                  seen.push(sequence)
+                  if (cleanupFails && sequence === reset) throw cleanup
+                  if (index === failAt) throw failure
+                  return ""
+                },
+              }),
+            ),
+          ).toThrow(failure.message)
+          expect(seen).toEqual([...writes.slice(0, failAt + 1), reset])
+        }
       }
     })
   }
@@ -1971,6 +2135,9 @@ describe("partial probe automation candidates", () => {
 
     for (const c of cases) {
       const p = probe(c.id)
+      // C4: OSC13/14 do not dispatch the native host-colour recipes; keep their criterion unchanged.
+      // Reply-only assertions miss an accidental palette-input declaration from the shared reset factory.
+      expect(p.libHostRecipes).toBeUndefined()
       expect(p.lib).toBeTypeOf("function")
       const feed: string[] = []
       const capture: string[] = []
@@ -1992,6 +2159,38 @@ describe("partial probe automation candidates", () => {
       expect(capture).toEqual([c.expected, c.expected, c.expected])
       expect(feed).toEqual([`\x1b]${c.set};rgb:aa/bb/cc\x07`, c.reset])
       expect(replies).toEqual([])
+      // C4: unreadable pointer slots keep their old no-mutation path, with and without a sentinel.
+      // The positive readback above cannot expose seed/reset writes made before a missing prerequisite.
+      for (const qualified of [false, true]) {
+        const calls: string[] = []
+        const empty = p.lib!(
+          context({
+            runtimeIdentity: nativeIdentity,
+            feed: (text) => {
+              calls.push(text)
+            },
+            feedCapture: (text) => {
+              calls.push(text)
+              return ""
+            },
+            ...(qualified && {
+              queryWithSentinelOutcome: (text: string) => {
+                calls.push(text)
+                return {
+                  match: null,
+                  reason: "sentinel" as const,
+                  raw: "\x1b[?1;2c",
+                  rawBase64: "G1s/MTsyYw==",
+                  sentinel: { atMs: 0, graceMs: 250 },
+                }
+              },
+            }),
+          }),
+        )
+        expect(calls).toEqual([c.expected])
+        expect(empty.hostRecipeCauses).toBeUndefined()
+        expect(empty.criterionBranch).toBe(qualified ? undefined : "color-readback-review")
+      }
     }
   })
 

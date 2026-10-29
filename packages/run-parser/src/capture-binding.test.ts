@@ -5,6 +5,7 @@
  * @testonly none
  */
 import { describe, expect, it } from "vitest"
+import { createHash } from "node:crypto"
 import {
   initializeRunDraft,
   sealRunDraft,
@@ -13,6 +14,153 @@ import {
   type RunDraft,
 } from "@terminfo/probe-defs"
 import { applyCaptureDecision, retainCaptureBinding, parseRun } from "./index.ts"
+
+// H1-H7: explicit collector-input fixture, not an engine execution or qualification proof.
+// Existing immutable-binding tests cannot reject an invalid cause before the first binding exists.
+const HOST_QUERY = "\x1b]10;?\x07"
+function hostCauseCapture(mode: string, query: string, split: boolean) {
+  const featureId = "host.fixture",
+    runId = "host-custody",
+    artifact = "a".repeat(64)
+  const recordRef = `collector.hostRecipes.${featureId}`
+  const manifest = {
+    schemaVersion: 4 as const,
+    probeHash: "host-custody-suite",
+    adapterVersion: "4",
+    catalogIds: [featureId],
+    probes: { term: [], lib: [featureId], mux: [] },
+  }
+  const draft = initializeRunDraft({
+    runId,
+    sourceRevision: "1".repeat(40),
+    source: { kind: "live" },
+    intendedSubject: { kind: "lib", id: "alacritty", version: "0.26.0" },
+    manifest,
+  })
+  draft.subject = {
+    kind: "lib",
+    id: "alacritty",
+    version: "0.26.0",
+    os: "linux",
+    osVersion: null,
+    outerTerminal: null,
+    mux: null,
+    config: null,
+    permissions: null,
+  }
+  draft.runtimeIdentity = {
+    kind: "native",
+    engineVersion: "0.26.0",
+    adapterVersion: "0.10.2",
+    termlessRevision: "2".repeat(40),
+    loadedBinary: { path: "fixture.node", sha256: artifact },
+    provenance: {
+      sha256: artifact,
+      sourceCommit: "3".repeat(40),
+      buildHash: "b".repeat(64),
+      toolchain: "fixture",
+      lockSha256: "c".repeat(64),
+    },
+  }
+  draft.identity = "unverified"
+  draft.measuredAt = "2026-10-28T19:00:00.000Z"
+  draft.origin = { kind: "collector" }
+  draft.results[0] = recordExecutedProbe({
+    featureId,
+    attempt: { scope: "probe", startedAt: draft.measuredAt },
+    assertions: [],
+    tests: [{ id: "criterion", status: "test-failure", reason: "Fixture has no initial colour reply" }],
+  })
+  const input = JSON.stringify({ hostInputs: { "foreground-rgb": "not-supplied" } })
+  draft.rawReplies["collector.collectionAttempt"] = input
+  const citation = {
+    inputRecordRef: "collector.collectionAttempt",
+    sha256: createHash("sha256").update(input).digest("hex"),
+    input: "foreground-rgb",
+    sourceLocation: "fixture-native.rs:1",
+  }
+  const source = { kind: "source-audited", missing: "foreground-rgb", runId, artifactSha256: artifact, citation }
+  const observed = { kind: "observed", missing: "foreground-rgb", runId, eventRef: recordRef }
+  const record = {
+    runId,
+    captures: [{ query, response: "", error: null }],
+    causes: [{ recipe: "color-request", cause: source as typeof source | typeof observed }],
+  }
+  if (mode === "observed" || mode === "foreign-reference" || mode === "foreign-instance") {
+    record.causes = [{ recipe: "color-request", cause: observed }]
+  }
+  if (mode === "missing-cause" || mode === "real-reply" || mode === "undeclared-query") record.causes = []
+  if (split) {
+    record.captures = [query.slice(0, 3), query.slice(3)].map((part) => ({ query: part, response: "", error: null }))
+  }
+  if (mode === "missing-capture") record.captures = []
+  if (mode === "stale-input") citation.sha256 = "0".repeat(64)
+  if (mode === "stale-artifact") source.artifactSha256 = "0".repeat(64)
+  if (mode === "foreign-reference") observed.eventRef = "collector.hostRecipes.other"
+  if (mode === "foreign-run") record.runId = "another-run"
+  if (mode === "wrong-missing") source.missing = "background-rgb"
+  if (mode === "real-reply") record.captures[0]!.response = "\x1b]10;rgb:aaaa/bbbb/cccc\x07"
+  const expectations =
+    mode === "undeclared-query" ? [] : [{ recipe: "color-request", query, missing: ["foreground-rgb"] }]
+  draft.rawReplies[recordRef] = JSON.stringify(record)
+  draft.rawReplies["collector.replyPath"] = JSON.stringify({
+    backend: "alacritty",
+    declaration: {
+      boundary: "feed-and-getCursor",
+      adapterSources: [{ path: "fixture.ts", blobOid: "4".repeat(40) }],
+      engine: { kind: "native", sha256: artifact },
+    },
+    runtimeIdentity: draft.runtimeIdentity,
+    decisions: {
+      [featureId]: {
+        member: true,
+        reason: "fixture",
+        runtimeIdentity:
+          mode === "foreign-instance"
+            ? { ...draft.runtimeIdentity, adapterVersion: "different-initialized-adapter" }
+            : draft.runtimeIdentity,
+        hostRecipes: expectations,
+      },
+    },
+  })
+  return () =>
+    parseRun("host-custody.json", JSON.stringify(draft), [featureId], new Map([[manifest.probeHash, manifest]]), {
+      mode: "capture",
+    })
+}
+
+it.each(["source-audited", "observed", "real-reply"])(
+  "native host recipe accepts valid %s custody without changing the criterion",
+  (mode) => {
+    expect(hostCauseCapture(mode, HOST_QUERY, false)().results?.[0]?.status).toBe("test-failure")
+  },
+)
+it.each([
+  "missing-cause",
+  "missing-capture",
+  "stale-input",
+  "stale-artifact",
+  "foreign-reference",
+  // N3: a valid observed cause cannot authorize another initialized instance.
+  // Existing source-audited cases reject mismatched artifact citations, hiding this reader gap.
+  "foreign-instance",
+  "foreign-run",
+  "wrong-missing",
+  "undeclared-query",
+])("native host recipe rejects %s custody", (mode) => {
+  expect(hostCauseCapture(mode, HOST_QUERY, false)).toThrow(/host recipe/i)
+})
+
+it.each([
+  ["OSC10 ST", "\x1b]10;?\x1b\\", false],
+  ["palette", "\x1b]4;0;?\x07", false],
+  ["clipboard", "\x1b]52;c;?\x07", false],
+  ["pixel geometry", "\x1b[14t", false],
+  ["fragmented clipboard", "\x1b]52;c;?\x07", true],
+] as const)("native host recipe rejects undeclared %s independently of cause presence", (_name, query, split) => {
+  expect(hostCauseCapture("undeclared-query", query, split)).toThrow(/captured undeclared/i)
+})
+
 const setup = (
   observed?: string,
   sourceNegative?: { runId: string; startedAt: string },
@@ -641,11 +789,16 @@ describe("immutable pre-seal capture binding", () => {
     },
   )
 
-  it.each(["raw", "context", "source", "suite", "feature", "run"])(
+  it.each(["raw", "host-cause", "context", "source", "suite", "feature", "run"])(
     "rejects review after %s binding changes",
     (change) => {
-      const { draft, decision } = setup()
+      // H6: a host-cause record is immutable review input, even when protocol bytes stay exact.
+      const hostRef = "collector.hostRecipes.sgr.bold"
+      const { draft, decision } = setup(undefined, undefined, (draft) => {
+        if (change === "host-cause") draft.rawReplies[hostRef] = JSON.stringify({ captures: [], causes: [] })
+      })
       if (change === "raw") draft.rawReplies["sgr.bold"] = "different trace"
+      if (change === "host-cause") draft.rawReplies[hostRef] = JSON.stringify({ captures: [], causes: ["changed"] })
       if (change === "context") draft.subject!.permissions = "changed"
       if (change === "source") draft.sourceRevision = "2".repeat(40)
       if (change === "suite") draft.probeHash = "different-suite"

@@ -498,7 +498,7 @@ function requireCitedFrameDigests(observation: ObservationInput, assertion: Read
       !frames.some((frame) => {
         const digests = frameDigests(frame)
         const refOrCells = frame.ref === digest || digests.cells === digest
-        return refOrCells || digests.whole === digest
+        return refOrCells || frame.sourceRef === digest || digests.whole === digest
       })
     ) {
       fail(
@@ -510,7 +510,7 @@ function requireCitedFrameDigests(observation: ObservationInput, assertion: Read
   if (!citesRefOrCells) {
     fail(
       path,
-      `${methodName(observation)} verdict for ${featureId} cites only whole-frame digests; a verdict must cite a frame's ref or the digest of the cells it compared`,
+      `${methodName(observation)} verdict for ${featureId} cites only source or whole-frame digests; a verdict must cite a frame's ref or the digest of the cells it compared`,
     )
   }
 }

@@ -329,6 +329,7 @@ it("keeps the retained corpus consistent across unmocked site, API and analysis 
       import terminalPaths from ${entry("docs/terminals/[id].paths.ts")};
       import { generateApi } from ${entry("scripts/generate-api.ts")};
       import { generateAnalysis } from ${entry("scripts/generate-analysis.ts")};
+      import { gradedFeatureIds } from ${entry("packages/probe-defs/src/index.ts")};
       const started = performance.now();
       const content = ${JSON.stringify(join(root, "content"))};
       const out = ${JSON.stringify(out)};
@@ -437,11 +438,11 @@ it("keeps the retained corpus consistent across unmocked site, API and analysis 
       };
       walkFrozen("");
       assert.deepEqual(frozenV1Actual, frozenV1Expected);
-      let schema3Files = 0;
+      let sealedRunFiles = 0;
       for (const dir of ["probes-apps", "probes-libs", "probes-mux"])
         for (const file of readdirSync(join(content, dir)).filter(name => name.endsWith(".json")))
-          if (JSON.parse(readFileSync(join(content, dir, file), "utf8")).schemaVersion === 3) schema3Files += 1;
-      console.log(JSON.stringify({exactContexts:keys(projection.current).length,schema3Files,referencedRuns:referenced.size,milliseconds:performance.now()-started}));
+          if ([3,4].includes(JSON.parse(readFileSync(join(content, dir, file), "utf8")).schemaVersion)) sealedRunFiles += 1;
+      console.log(JSON.stringify({exactContexts:keys(projection.current).length,sealedRunFiles,referencedRuns:referenced.size,milliseconds:performance.now()-started}));
     `,
       ],
       { cwd: root, encoding: "utf8", timeout: 60_000, maxBuffer: 2 * 1024 * 1024 },
@@ -457,14 +458,16 @@ it("keeps the retained corpus consistent across unmocked site, API and analysis 
     ).toBe(true)
     const receipt = JSON.parse(result.stdout) as {
       exactContexts: number
-      schema3Files: number
+      sealedRunFiles: number
       compatibilitySubjects: number
       referencedRuns: number
     }
-    // Current contexts come from sealed schema-3 run files and from nothing else: none without a file,
-    // at least one once a file exists, never more contexts than files.
-    expect(receipt.exactContexts > 0).toBe(receipt.schema3Files > 0)
-    expect(receipt.exactContexts).toBeLessThanOrEqual(receipt.schema3Files)
+    // Current contexts come from sealed run files and from nothing else: none without a file, at
+    // least one once a file exists, never more contexts than files. Schema 3 and schema 4 are both
+    // current — docs/data/selected-results.ts selects `schemaVersion === 3 || === 4` — so this counts
+    // both rather than assuming the batch that landed the first admitted capture never arrives.
+    expect(receipt.exactContexts > 0).toBe(receipt.sealedRunFiles > 0)
+    expect(receipt.exactContexts).toBeLessThanOrEqual(receipt.sealedRunFiles)
     expect(receipt.compatibilitySubjects).toBeUndefined()
     // A corpus with current contexts must reference at least one run; the post-#30764 corpus has none
     // to reference, and referencing nothing is correct. Symmetric on purpose: the collector refills

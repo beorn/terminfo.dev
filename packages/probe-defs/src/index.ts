@@ -1,4 +1,9 @@
 export type {
+  HostInputName,
+  HostRecipeName,
+  HostRecipeExpectation,
+  CallbackHostRecipeCause,
+  RetainedHostRecipeCause,
   ProbeDefinition,
   ProbeCallbackResult,
   MeasuredProbeCallbackResult,
@@ -17,7 +22,7 @@ export type {
   CaptureRectangle,
   CaptureRequest,
 } from "./types.ts"
-export { OBSERVATION_OUTCOMES, OBSERVATION_REASONS, ASSERTION_TYPES, frameDigests } from "./types.ts"
+export { OBSERVATION_OUTCOMES, OBSERVATION_REASONS, ASSERTION_TYPES, HOST_INPUT_NAMES, frameDigests } from "./types.ts"
 export type {
   ObservationOutcome,
   ObservationReason,

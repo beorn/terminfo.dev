@@ -26,8 +26,17 @@ import type {
   LibProbeSource,
   UngradedDiagnostic,
   HeadlessRuntimeIdentity,
+  RetainedHostRecipeCause,
 } from "@terminfo/probe-defs"
-import { replyDeliveryDecision, type HeadlessProbeRuntime, type ReplyPathDecision } from "./headless-identity.ts"
+import { validateHostRecipeCauses } from "@terminfo/run-parser"
+import { createHash } from "node:crypto"
+import {
+  headlessRuntimeIdentity,
+  replyDeliveryDecision,
+  type HeadlessProbeRuntime,
+  type ReplyPathDecision,
+} from "./headless-identity.ts"
+import { isDeepStrictEqual } from "node:util"
 
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
@@ -43,20 +52,31 @@ export interface ProvenReplyPath {
   readonly onSentinel: () => void
 }
 
+interface HostQueryCapture {
+  query: string
+  response: string
+  error: string | null
+}
+
 /** Capture one query, including adapters that parse pending input on state reads. */
-export function feedCapture(backend: TerminalBackend, text: string): string {
-  // Pending input belongs to the previous listener, not this query.
-  backend.getCursor()
+export function feedCapture(backend: TerminalBackend, text: string, captures: HostQueryCapture[] | undefined): string {
   let response = ""
+  let error: string | null = null
   const previous = backend.onResponse
-  backend.onResponse = (bytes) => {
-    response += decoder.decode(bytes)
-  }
   try {
+    // Pending input belongs to the previous listener, not this query.
+    backend.getCursor()
+    backend.onResponse = (bytes) => {
+      response += decoder.decode(bytes)
+    }
     backend.feed(encoder.encode(text))
     backend.getCursor()
+  } catch (cause) {
+    error = errorMessage(cause)
+    throw cause
   } finally {
     backend.onResponse = previous
+    captures?.push({ query: text, response, error })
   }
   return response
 }
@@ -76,10 +96,11 @@ function sentinelOutcome(
   sequence: string,
   pattern: RegExp,
   proven: ProvenReplyPath,
+  captures: HostQueryCapture[] | undefined,
 ): TerminalQueryOutcome {
   const writeAt = Date.now()
-  const reply = feedCapture(backend, sequence)
-  const answer = feedCapture(backend, DA1_QUERY)
+  const reply = feedCapture(backend, sequence, captures)
+  const answer = feedCapture(backend, DA1_QUERY, captures)
   const raw = reply + answer
   const captured = { raw, rawBase64: Buffer.from(raw).toString("base64") }
   const read = readSentinelReply(raw, pattern)
@@ -125,8 +146,9 @@ async function listenForLateReply(
 
 export function createLibProbeSource(
   backend: TerminalBackend,
-  proven?: ProvenReplyPath,
-  runtimeIdentity?: HeadlessRuntimeIdentity,
+  proven: ProvenReplyPath | undefined,
+  runtimeIdentity: HeadlessRuntimeIdentity | undefined,
+  captures: HostQueryCapture[] | undefined,
 ): LibProbeSource {
   let cols: number
   try {
@@ -151,11 +173,11 @@ export function createLibProbeSource(
       backend.feed(encoder.encode(text))
     },
     feedCapture(text) {
-      return feedCapture(backend, text)
+      return feedCapture(backend, text, captures)
     },
     ...(proven && {
       queryWithSentinelOutcome(sequence: string, pattern: RegExp) {
-        return sentinelOutcome(backend, sequence, pattern, proven)
+        return sentinelOutcome(backend, sequence, pattern, proven, captures)
       },
     }),
     getCell(row, col) {
@@ -387,7 +409,7 @@ export async function collectBatch(
   createBackend: () => Promise<TerminalBackend>,
   backendName: string,
   definitions: readonly ProbeDefinition[],
-  draft?: Pick<RunDraft, "results">,
+  draft?: Pick<RunDraft, "results" | "runId" | "rawReplies">,
   onCheckpoint?: (batch: Batch) => void,
   runtime?: HeadlessProbeRuntime,
 ): Promise<Batch> {
@@ -397,7 +419,7 @@ export async function collectBatch(
     backend: string
     declaration?: ReplyDeliveryExtension["replyDelivery"]
     runtimeIdentity?: HeadlessRuntimeIdentity
-    decisions: Record<string, Pick<ReplyPathDecision, "member" | "reason">>
+    decisions: Record<string, Pick<ReplyPathDecision, "member" | "reason" | "runtimeIdentity">>
   } = { backend: backendName, ...(runtime && { runtimeIdentity: runtime.identity }), decisions: {} }
   const warned = new Set<string>()
   const warn = (line: string) => {
@@ -415,7 +437,7 @@ export async function collectBatch(
         tests: [],
         reason: "Required callback has not started",
       })),
-    rawReplies: {},
+    rawReplies: { ...draft?.rawReplies },
     observations: [],
     assertions: [],
     notTested: [],
@@ -437,16 +459,42 @@ export async function collectBatch(
     onCheckpoint?.(batch)
     let callbackTests: ProbeCallbackResult["tests"]
     let criterionBranch: string | undefined
+    let hostRecord: { runId: string; captures: HostQueryCapture[]; causes: RetainedHostRecipeCause[] } | undefined
     try {
       backend = await createBackend()
       backend.init({ cols: 80, rows: 24 })
+      const initializedRuntime = runtime
+        ? {
+            ...runtime,
+            identity: await headlessRuntimeIdentity(backendName, runtime.adapterPackage, runtime.adapterType),
+          }
+        : undefined
       const declaration = hasExtension<ReplyDeliveryExtension>(backend, "reply-delivery")
         ? backend.replyDelivery
         : undefined
-      const decision = replyDeliveryDecision(backendName, declaration, runtime, warn)
+      const decision = replyDeliveryDecision(backendName, declaration, initializedRuntime, warn)
+      const identityChanged =
+        runtime !== undefined &&
+        initializedRuntime !== undefined &&
+        !isDeepStrictEqual(runtime.identity, initializedRuntime.identity)
+      const reason = identityChanged
+        ? `${backendName} initialized instance identity differs from the recorded run identity`
+        : decision.reason
       if (declaration) replyPath.declaration ??= declaration
-      replyPath.decisions[probe.id] = { member: decision.member, reason: decision.reason }
+      const nativeHostRoute = declaration?.engine.kind === "native"
+      const hostRecipes = probe.libHostRecipes ?? []
+      replyPath.decisions[probe.id] = {
+        member: decision.member && !identityChanged,
+        reason,
+        ...(initializedRuntime && { runtimeIdentity: initializedRuntime.identity }),
+        ...(nativeHostRoute && { hostRecipes }),
+      }
       batch.rawReplies["collector.replyPath"] = JSON.stringify(replyPath)
+      if (identityChanged) throw new Error(reason)
+      if (nativeHostRoute) {
+        if (!draft) throw new Error("Native host recipe capture requires the actual run draft")
+        hostRecord = { runId: draft.runId, captures: [], causes: [] }
+      }
       const sentinel = { fired: false }
       const proven = decision.member
         ? {
@@ -456,8 +504,47 @@ export async function collectBatch(
             },
           }
         : undefined
-      const ctx = createLibProbeSource(backend, proven, runtime?.identity)
+      const ctx = createLibProbeSource(backend, proven, initializedRuntime?.identity, hostRecord?.captures)
       const callback = probe.lib(ctx)
+      if (hostRecord) {
+        const runId = hostRecord.runId
+        const recordRef = `collector.hostRecipes.${probe.id}`
+        for (const entry of callback.hostRecipeCauses ?? []) {
+          const cause = entry.cause
+          if (cause.kind === "observed") {
+            if (
+              !hostRecord.captures.some(
+                (capture) => capture.query === cause.query && capture.response === "" && capture.error === null,
+              )
+            ) {
+              throw new Error("Observed host cause has no matching empty query capture")
+            }
+            hostRecord.causes.push({
+              recipe: entry.recipe,
+              cause: { kind: cause.kind, missing: cause.missing, runId, eventRef: recordRef },
+            })
+          } else {
+            const inputs = batch.rawReplies["collector.collectionAttempt"]
+            if (inputs === undefined) throw new Error("Native host cause requires collector.collectionAttempt")
+            hostRecord.causes.push({
+              recipe: entry.recipe,
+              cause: {
+                kind: cause.kind,
+                missing: cause.missing,
+                runId,
+                artifactSha256: cause.artifactSha256,
+                citation: {
+                  inputRecordRef: "collector.collectionAttempt",
+                  sha256: createHash("sha256").update(inputs).digest("hex"),
+                  input: cause.missing,
+                  sourceLocation: cause.sourceCitation,
+                },
+              },
+            })
+          }
+        }
+        batch.rawReplies[recordRef] = JSON.stringify(hostRecord)
+      }
       // G1 runs before the callback's grade is kept: a late byte refuses that grade as a collector error,
       // while the run file keeps what was observed, the on-time capture and the late bytes beside it.
       const late = sentinel.fired && proven ? await listenForLateReply(backend, proven.graceMs) : undefined
@@ -469,6 +556,16 @@ export async function collectBatch(
             `late reply after sentinel: ${String(late.bytes.length)} bytes ${JSON.stringify(late.bytes)} at +${String(late.firstAtMs)}ms`,
             callback,
           ),
+        )
+      }
+      if (hostRecord) {
+        validateHostRecipeCauses(
+          "headless collector",
+          hostRecord.runId,
+          probe.id,
+          hostRecipes,
+          batch.rawReplies,
+          initializedRuntime?.identity,
         )
       }
       callbackTests = callback.tests
@@ -483,6 +580,7 @@ export async function collectBatch(
         message,
       }
     } finally {
+      if (hostRecord) batch.rawReplies[`collector.hostRecipes.${probe.id}`] = JSON.stringify(hostRecord)
       const observation = batch.observations.find((entry) => entry.featureId === probe.id)
       const diagnostic = batch.ungradedDiagnostics[probe.id]
       const coverage = batch.notTested.find((entry) => entry.featureId === probe.id)

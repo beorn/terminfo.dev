@@ -29,8 +29,11 @@ describe("the full-273 preview", () => {
       if (!row.collected) continue
       const { result } = row
       expect(result.catalogRows).toBe(273)
-      expect(result.denominator).toBe(273)
-      expect(result.fraction).toBe(`${result.supported}/273`)
+      // D132 B (#30917): the run records all 273 positions, but the score is over the graded
+      // catalogue — the nine environment groups are visible and never in the denominator. The page
+      // states the same rule (docs/release/full-273.md: "Supported / all <gradedRows> graded features").
+      expect(result.denominator).toBe(data.gradedRows)
+      expect(result.fraction).toBe(`${result.supported}/${data.gradedRows}`)
       expect(result.complete).toBe(result.counts["test-todo"] === 0 && result.counts["test-failure"] === 0)
       expect(result.groups.reduce((sum, group) => sum + group.catalogRows, 0)).toBe(273)
     }
@@ -44,12 +47,17 @@ describe("the full-273 preview", () => {
     }
   })
 
-  it("keeps an all-history corpus incomplete without inventing a current score", () => {
-    expect(data.collected).toBe(0)
-    expect(data.notCollected).toBe(33)
-    expect(data.recordedPositions).toBe(0)
-    expect(data.complete).toBe(false)
-    expect(data.evidenceVersions).toEqual({})
+  // The wholly-empty corpus witness lives with the row builder that owns it
+  // (scripts/full-project.test.ts, "keeps an all-history corpus incomplete without inventing a
+  // current score"): this page test reads the live corpus, which now holds a first collected
+  // context, so it asserts the same properties without pinning a count that content keeps moving.
+  it("keeps the live reading's evidence and completeness tied to the contexts it collected", () => {
+    const collected = data.contexts.filter((row) => row.collected)
+    expect(Object.keys(data.evidenceVersions).sort()).toEqual(collected.map((row) => row.context).sort())
+    expect(data.recordedPositions).toBe(collected.reduce((sum, row) => sum + row.result.catalogRows, 0))
+    expect(data.complete).toBe(
+      data.contexts.length > 0 && data.notCollected === 0 && collected.every((row) => row.result.complete),
+    )
   })
 
   it("lets every collected row reach its run's evidence through the established evidence cell", () => {

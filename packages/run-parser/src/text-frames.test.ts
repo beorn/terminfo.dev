@@ -234,7 +234,7 @@ describe("text frames — admitted only as what they are", () => {
     const run = textRun()
     const assertions = [{ ...(run.assertions as object[])[0], observed: WHOLE }]
     expect(() => parse({ ...run, assertions })).toThrow(
-      "cites only whole-frame digests; a verdict must cite a frame's ref or the digest of the cells it compared",
+      "cites only source or whole-frame digests; a verdict must cite a frame's ref or the digest of the cells it compared",
     )
   })
 
