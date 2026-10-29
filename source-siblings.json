@@ -26,6 +26,13 @@
       "repository": "beorn/loggily",
       "commit": "115f855f63d7666e821b7cfbf1253ded91348d75",
       "pack": true
+    },
+    {
+      "name": "@termless/xtermjs",
+      "repository": "beorn/termless",
+      "commit": "4d9f42ba0477943d386d07e191b54e8c5bfed3a8",
+      "pack": true,
+      "directory": "packages/xtermjs"
     }
   ]
 }
