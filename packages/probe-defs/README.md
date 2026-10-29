@@ -89,6 +89,16 @@ Missing default or seed controls retain the existing query/sentinel/review rules
 The shared disposable reset still owns cleanup; operational errors propagate, preserving both causes
 when cleanup also fails. Complete initial query paths and other reset features are unchanged.
 
+OSC 110, 111 and 112 can instead read current engine defaults when the source
+exposes the advertised `default-colors` getter. Each callback retains all three
+slots and exact writes: baseline, distinct verified RGB seed, then reset. Target
+restoration to the measured baseline, including null for unset, is a
+`buffer_state` positive; a verified seed remaining after reset is negative.
+Unverified seeds, getter failures, non-target slot changes or a third reset
+color retain `color-readback-review` with the cause. Without the getter these
+three callbacks keep their existing query path. Other color features are
+unchanged.
+
 Cell `dim`, `italic`, `strikethrough` and `blink` readbacks are required `boolean | null`: null means the producer does not report that attribute, never a terminal-support claim. On a rendered X cell, their SGR probes retain the null or false state through `source-negative-review`, with a required review and a buffer-state assertion. A source-bound decision distinguishes an engine gap (Unsupported at that pin) from a binding gap (Untestable until repaired and recaptured). Positive booleans retain their supported observation path. A missing X retains the existing inconclusive result without an assertion or review; it is not reclassified as missing-observable coverage. Stored captures remain unchanged.
 
 The OSC 8 library criterion requires exact per-cell URI metadata, including unlinked controls.

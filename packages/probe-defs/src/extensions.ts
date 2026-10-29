@@ -589,6 +589,82 @@ function colorResetProbe(setCode: number, resetCode: number, index?: number): Pr
     "i",
   )
   return (ctx) => {
+    if (index === undefined && [10, 11, 12].includes(setCode) && resetCode === setCode + 100 && ctx.getDefaultColors) {
+      type Colors = ReturnType<NonNullable<LibProbeSource["getDefaultColors"]>>
+      const slots = ["fg", "bg", "cursor"] as const
+      const slot = setCode === 10 ? "fg" : setCode === 11 ? "bg" : "cursor"
+      const state: {
+        slot: typeof slot
+        baseline?: Colors
+        seeded?: Colors
+        restored?: Colors
+        seed?: NonNullable<Colors["fg"]>
+        writes: string[]
+        errors: string[]
+      } = { slot, writes: [], errors: [] }
+      const readColors = ctx.getDefaultColors.bind(ctx)
+      const read = (): { colors: Colors } | { error: string } => {
+        try {
+          const colors = readColors()
+          if (typeof colors !== "object" || colors === null) {
+            throw new Error("default colors must report all three slots")
+          }
+          for (const key of slots) {
+            const color = colors[key]
+            if (
+              color !== null &&
+              (typeof color !== "object" ||
+                !color ||
+                ![color.r, color.g, color.b].every(
+                  (channel) => Number.isInteger(channel) && channel >= 0 && channel <= 255,
+                ))
+            ) {
+              throw new Error(`default colors ${key} must be RGB or null`)
+            }
+          }
+          return { colors: globalThis.structuredClone(colors) }
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error)
+          state.errors.push(message)
+          return { error: message }
+        }
+      }
+      const review = (reason: string) =>
+        colorReadbackReviewResult(`OSC ${resetCode}: ${reason}; independent review required`, state)
+      const baselineRead = read()
+      if ("error" in baselineRead) return review("default-color baseline could not be read")
+      const baseline = (state.baseline = baselineRead.colors)
+      const equal = (a: Colors["fg"], b: Colors["fg"]) => (a === null || b === null ? a === b : sameRgbCells(a, b))
+      const first = { r: 170, g: 187, b: 204 }
+      state.seed = equal(baseline[slot], first) ? { r: 18, g: 52, b: 86 } : first
+      const write = (bytes: string) => {
+        state.writes.push(bytes)
+        ctx.feed(bytes)
+      }
+      const seedRgb = [state.seed.r, state.seed.g, state.seed.b]
+        .map((channel) => channel.toString(16).padStart(2, "0"))
+        .join("/")
+      write(`\x1b]${setCode};rgb:${seedRgb}\x07`)
+      const seededRead = read()
+      if ("colors" in seededRead) state.seeded = seededRead.colors
+      write(`\x1b]${resetCode}\x07`)
+      const restoredRead = read()
+      if ("colors" in restoredRead) state.restored = restoredRead.colors
+      const { seeded, restored } = state
+      if (!seeded || !restored) return review("seeded or restored default colors could not be read")
+      if (!equal(seeded[slot], state.seed)) return review("distinct seed was not verified")
+      if (
+        slots.some(
+          (key) => key !== slot && (!equal(seeded[key], baseline[key]) || !equal(restored[key], baseline[key])),
+        )
+      ) {
+        return review("a non-target default-color slot moved")
+      }
+      const expected = `OSC ${resetCode} restores the measured ${slot} default after a verified distinct seed`
+      if (equal(restored[slot], baseline[slot])) return parserStateResult(true, expected, state)
+      if (equal(restored[slot], state.seed)) return parserStateResult(false, expected, state)
+      return review("reset produced neither the baseline nor the verified seed")
+    }
     let silence: ProbeCallbackResult | null = null
     let initialSentinel: TerminalQueryOutcome | undefined
     if (ctx.queryWithSentinelOutcome) {

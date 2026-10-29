@@ -34,6 +34,29 @@ const VT100_OSC52_AUDIT: ReplyPathAudit = {
     "vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:210-218 OSC 52 '?' -> Callbacks::paste_from_clipboard, empty by default (src/callbacks.rs:36); termless 0c409349 packages/vt100-rust/native/src/lib.rs:10-14 implements only set_window_title",
 }
 
+const GHOSTTY_WASM_GRAPHICS_AUDIT: ReplyPathAudit = {
+  query: "\x1b_G",
+  matches: "prefix",
+  kind: "no-reply-path",
+  citation:
+    "ghostty-web 0.4.0 artifact7c43302d, core5714ed07: termless vendor/ghostty-web/ghostty-wasm-api.patch:697 ResponseStream(ResponseHandler), :824-827 constructs, :867 feeds; core src/terminal/stream.zig:781-783 forwards APC; patch:589-591/:607 ignores APC handlers, exposing no image state or graphics reply; display cannot complete its a=t allocation prerequisite",
+}
+
+const VT100_RUST_KEYBOARD_AUDIT: ReplyPathAudit = {
+  query: "\x1b[?u\x1b[c",
+  kind: "no-reply-path",
+  citation:
+    "vt100-rust 0.16.2 artifactf309015f: registry/src/index.crates.io-1949cf8c6b5b557f/vt100-0.16.2/src/perform.rs:176-183 private ?u and :157-164 plain c dispatch Callbacks::unhandled_csi, empty at src/callbacks.rs:55-63; termless0400d94a packages/vt100-rust/native/src/lib.rs:10-14 implements only title storage, no reply export. Cargo.lock vt100 checksum054ff75fb8fa83e609e685106df4faeffdf3a735d3c74ebce97ec557d5d36fd9; vte0.15.0 checksuma5924018406ce0063cd67f8e008104968b74b563ee1b85dde3ed1f7cb87d3dbd",
+}
+
+const VT100_RUST_GRAPHICS_AUDIT: ReplyPathAudit = {
+  query: "\x1b_G",
+  matches: "prefix",
+  kind: "parser-rejected",
+  citation:
+    "vt100-rust 0.16.2 artifactf309015f: registry/src/index.crates.io-1949cf8c6b5b557f/vte-0.15.0/src/lib.rs:377 ESC_ enters SosPmApcString; :182 routes payload only to anywhere (:438-451 controls only), discarding it before any vt100 callback; Perform:761-815 exposes no APC hook. Cargo.lock vte0.15.0 checksuma5924018406ce0063cd67f8e008104968b74b563ee1b85dde3ed1f7cb87d3dbd; vt1000.16.2 checksum054ff75fb8fa83e609e685106df4faeffdf3a735d3c74ebce97ec557d5d36fd9; display's a=t prerequisite is discarded before any placement can be attempted",
+}
+
 /**
  * Source audits of exact artifacts that cannot reply, keyed by loaded-artifact sha256 — never a digest copied from
  * runtime — and then by featureId. Data only: a cell enters with its own citation and is reviewed as data. An
@@ -43,6 +66,323 @@ export const REPLY_PATH_AUDITS: ReadonlyMap<string, Readonly<Record<string, Repl
   string,
   Readonly<Record<string, ReplyPathAudit>>
 >([
+  // Ghostty native rebuilt at Termless 5afcc676 (31385): URI/default/underline cell readback changes no readonly reply route.
+  // Same core 332b2aef; all applicable prior audits retained, including the three graphics prefix rows (31377).
+  [
+    "8872ab0fc56429489b52cd5d3b5a293032c3ec7dbbb71545d237945c3ef525f3",
+    {
+      "device.xtgetxres": {
+        query: "\u001bP+Q7465726d4e616d65\u001b\\",
+        kind: "no-reply-path",
+        citation:
+          "termless 5afcc676 packages/ghostty-native/native/src/main.zig:80 vtStream() -> ghostty 332b2aef src/terminal/Terminal.zig:264 ReadonlyStream; stream.zig:733-735 forwards dcs_hook/put/unhook to the handler; stream_readonly.zig:161-166 ignores all three (dcs.zig:80-93 is not linked)",
+      },
+      "extensions.osc1337-capabilities": {
+        query: "\u001b]1337;Capabilities\u0007",
+        kind: "parser-rejected",
+        citation:
+          "ghostty 332b2aef src/terminal/osc/parsers/iterm2.zig:11-62 Key/map omit Capabilities; :87-90 missing key -> invalid",
+      },
+      "extensions.osc1337-cellsize": {
+        query: "\u001b]1337;ReportCellSize\u0007",
+        kind: "parser-rejected",
+        citation:
+          "ghostty 332b2aef src/terminal/osc/parsers/iterm2.zig:177-195 known ReportCellSize key is unimplemented -> invalid",
+      },
+      "extensions.osc701-locale": {
+        query: "\u001b]701;?\u0007",
+        kind: "parser-rejected",
+        citation: "ghostty 332b2aef src/terminal/osc.zig:637-646 state7 accepts only ';' or '7'; '0' -> invalid",
+      },
+      "extensions.osc702-version": {
+        query: "\u001b]702;?\u0007",
+        kind: "parser-rejected",
+        citation: "ghostty 332b2aef src/terminal/osc.zig:637-646 state7 accepts only ';' or '7'; '0' -> invalid",
+      },
+      "extensions.osc776-cell-size": {
+        query: "\u001b]776\u0007",
+        kind: "parser-rejected",
+        citation: "ghostty 332b2aef src/terminal/osc.zig:643-646 state77 accepts only '7'; '6' -> invalid",
+      },
+      "extensions.osc7770-font-size": {
+        query: "\u001b]7770;?\u0007",
+        kind: "parser-rejected",
+        citation: "ghostty 332b2aef src/terminal/osc.zig:674-681 state777 accepts only ';'; '0' -> invalid",
+      },
+      "extensions.osc7777-font-window-size": {
+        query: "\u001b]7777;?\u0007",
+        kind: "parser-rejected",
+        citation: "ghostty 332b2aef src/terminal/osc.zig:674-681 state777 accepts only ';'; '7' -> invalid",
+      },
+      "cursor.position-report": {
+        query: "\u001b[6n",
+        kind: "no-reply-path",
+        citation:
+          "ghostty332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28 device_status.zig64-66 recognizes5/6/?996; stream.zig1490-1514 dispatches device_status; readonly183 ignores",
+      },
+      "device.decrpm": {
+        query: "\u001b[?7$p",
+        kind: "no-reply-path",
+        citation:
+          "ghostty332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28 stream.zig1550-1576 parses?7$p (mode wraparound); readonly178-179 ignores request_mode/request_mode_unknown",
+      },
+      "device.decrqss": {
+        query: "\u001bP$qm\u001b\\",
+        kind: "no-reply-path",
+        citation:
+          "termless 5afcc676 packages/ghostty-native/native/src/main.zig:80 -> ghostty332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28 Terminal.zig:264-265 ReadonlyStream.initAlloc; stream.zig:733-735 raw DCS hook/put/unhook forwarded to readonly161-166 ignored; full dcs.zig parser not reached",
+      },
+      "device.dsr-996-color-scheme": {
+        query: "\u001b[?996n",
+        kind: "no-reply-path",
+        citation:
+          "ghostty332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28 device_status.zig64-66 recognizes5/6/?996; stream.zig1490-1514 dispatches device_status; readonly183 ignores",
+      },
+      "device.primary-da": {
+        query: "\u001b[c",
+        kind: "no-reply-path",
+        citation:
+          "ghostty332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28 stream.zig1278-1291 parses DA finalc and prefixes; readonly182 ignores device_attributes; source table cannot infer DA1 attribute4 from no reply",
+      },
+      "device.secondary-da": {
+        query: "\u001b[>c",
+        kind: "no-reply-path",
+        citation:
+          "ghostty332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28 stream.zig1278-1291 parses DA finalc and prefixes; readonly182 ignores device_attributes; source table cannot infer DA1 attribute4 from no reply",
+      },
+      "device.status-report": {
+        query: "\u001b[5n",
+        kind: "no-reply-path",
+        citation:
+          "ghostty332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28 device_status.zig64-66 recognizes5/6/?996; stream.zig1490-1514 dispatches device_status; readonly183 ignores",
+      },
+      "device.tertiary-da": {
+        query: "\u001b[=c",
+        kind: "no-reply-path",
+        citation:
+          "ghostty332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28 stream.zig1278-1291 parses DA finalc and prefixes; readonly182 ignores device_attributes; source table cannot infer DA1 attribute4 from no reply",
+      },
+      "device.xtgettcap": {
+        query: "\u001bP+q544e\u001b\\",
+        kind: "no-reply-path",
+        citation:
+          "termless 5afcc676 packages/ghostty-native/native/src/main.zig:80 -> ghostty332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28 Terminal.zig:264-265 ReadonlyStream.initAlloc; stream.zig:733-735 raw DCS hook/put/unhook forwarded to readonly161-166 ignored; full dcs.zig parser not reached",
+      },
+      "device.xtreportcolors": {
+        query: "\u001b[#R",
+        kind: "parser-rejected",
+        citation:
+          "ghostty 332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28 src/terminal/stream.zig CSI dispatch has no final R prong; :1938 unimplemented CSI action, before handler dispatch",
+      },
+      "device.xtversion": {
+        query: "\u001b[>0q",
+        kind: "no-reply-path",
+        citation:
+          "ghostty332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28 stream.zig:1636-1637 parses CSI>0q as xtversion; readonly181 ignores",
+      },
+      "device.xtwinops-14": {
+        query: "\u001b[14t",
+        kind: "no-reply-path",
+        citation:
+          "ghostty332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28 stream.zig1755-1790 explicitly dispatches this XTWINOPS parameter as size_report; readonly180 ignores",
+      },
+      "device.xtwinops-16": {
+        query: "\u001b[16t",
+        kind: "no-reply-path",
+        citation:
+          "ghostty332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28 stream.zig1755-1790 explicitly dispatches this XTWINOPS parameter as size_report; readonly180 ignores",
+      },
+      "device.xtwinops-18": {
+        query: "\u001b[18t",
+        kind: "no-reply-path",
+        citation:
+          "ghostty332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28 stream.zig1755-1790 explicitly dispatches this XTWINOPS parameter as size_report; readonly180 ignores",
+      },
+      "device.xtwinops-20": {
+        query: "\u001b[20t",
+        kind: "parser-rejected",
+        citation:
+          "ghostty 332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28 src/terminal/stream.zig:1755-1820 XTWINOPS handles14/16/18/21,22/23 only;20 ->unimplemented parameter before handler. ",
+      },
+      "device.xtwinops-21": {
+        query: "\u001b[21t",
+        kind: "no-reply-path",
+        citation:
+          "ghostty332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28 stream.zig1755-1790 explicitly dispatches this XTWINOPS parameter as size_report; readonly180 ignores",
+      },
+      "editing.decrqcra": {
+        query: "\u001b[1;1;1;1;1;5*y",
+        kind: "parser-rejected",
+        citation:
+          "ghostty 332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28 src/terminal/stream.zig CSI dispatch has no final y prong; :1938 unimplemented CSI action, before handler dispatch",
+      },
+      "extensions.osc10-fg-color": {
+        query: "\u001b]10;?\u0007",
+        kind: "no-reply-path",
+        citation:
+          "ghostty332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28 Terminal.zig264-265 supplies allocator; osc/parsers/color.zig45-110,175-205,278-304 parses exact OSC4/5 or10-19 query; stream.zig color_operation -> readonly290-359; query355 ignored. Stored palette/fg/bg/cursor state does not supply a query reply; no WASM null-allocator finding transferred.",
+      },
+      "extensions.osc11-bg-color": {
+        query: "\u001b]11;?\u0007",
+        kind: "no-reply-path",
+        citation:
+          "ghostty332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28 Terminal.zig264-265 supplies allocator; osc/parsers/color.zig45-110,175-205,278-304 parses exact OSC4/5 or10-19 query; stream.zig color_operation -> readonly290-359; query355 ignored. Stored palette/fg/bg/cursor state does not supply a query reply; no WASM null-allocator finding transferred.",
+      },
+      "extensions.osc12-cursor-color": {
+        query: "\u001b]12;?\u0007",
+        kind: "no-reply-path",
+        citation:
+          "ghostty332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28 Terminal.zig264-265 supplies allocator; osc/parsers/color.zig45-110,175-205,278-304 parses exact OSC4/5 or10-19 query; stream.zig color_operation -> readonly290-359; query355 ignored. Stored palette/fg/bg/cursor state does not supply a query reply; no WASM null-allocator finding transferred.",
+      },
+      "extensions.osc17-highlight-bg": {
+        query: "\u001b]17;?\u0007",
+        kind: "no-reply-path",
+        citation:
+          "ghostty332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28 Terminal.zig264-265 supplies allocator; osc/parsers/color.zig45-110,175-205,278-304 parses exact OSC4/5 or10-19 query; stream.zig color_operation -> readonly290-359; query355 ignored. Stored palette/fg/bg/cursor state does not supply a query reply; no WASM null-allocator finding transferred.",
+      },
+      "extensions.osc19-highlight-fg": {
+        query: "\u001b]19;?\u0007",
+        kind: "no-reply-path",
+        citation:
+          "ghostty332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28 Terminal.zig264-265 supplies allocator; osc/parsers/color.zig45-110,175-205,278-304 parses exact OSC4/5 or10-19 query; stream.zig color_operation -> readonly290-359; query355 ignored. Stored palette/fg/bg/cursor state does not supply a query reply; no WASM null-allocator finding transferred.",
+      },
+      "extensions.osc4-palette": {
+        query: "\u001b]4;0;?\u0007",
+        kind: "no-reply-path",
+        citation:
+          "ghostty332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28 Terminal.zig264-265 supplies allocator; osc/parsers/color.zig45-110,175-205,278-304 parses exact OSC4/5 or10-19 query; stream.zig color_operation -> readonly290-359; query355 ignored. Stored palette/fg/bg/cursor state does not supply a query reply; no WASM null-allocator finding transferred.",
+      },
+      "extensions.osc5-special-color": {
+        query: "\u001b]5;0;?\u0007",
+        kind: "no-reply-path",
+        citation:
+          "ghostty332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28 Terminal.zig264-265 supplies allocator; osc/parsers/color.zig45-110,175-205,278-304 parses exact OSC4/5 or10-19 query; stream.zig color_operation -> readonly290-359; query355 ignored. Stored palette/fg/bg/cursor state does not supply a query reply; no WASM null-allocator finding transferred.",
+      },
+      "extensions.sixel-da1": {
+        query: "\u001b[c",
+        kind: "no-reply-path",
+        citation:
+          "ghostty332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28 stream.zig1278-1291 parses DA finalc and prefixes; readonly182 ignores device_attributes; source table cannot infer DA1 attribute4 from no reply",
+      },
+      "extensions.osc52-clipboard": {
+        query: "\u001b]52;c;?\u0007",
+        kind: "no-reply-path",
+        citation:
+          "ghostty332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28 osc52 parses clipboard_contents, stream.zig1987-1992 dispatches clipboard_contents; readonly189 ignores; no clipboard host/readback is exposed in this native product. Criterion is exact nonce roundtrip/read query, not standalone write.",
+      },
+      "extensions.osc52-read": {
+        query: "\u001b]52;c;?\u0007",
+        kind: "no-reply-path",
+        citation:
+          "ghostty332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28 osc52 parses clipboard_contents, stream.zig1987-1992 dispatches clipboard_contents; readonly189 ignores; no clipboard host/readback is exposed in this native product. Criterion is exact nonce roundtrip/read query, not standalone write.",
+      },
+      "extensions.osc52-write": {
+        query: "\u001b]52;c;?\u0007",
+        kind: "no-reply-path",
+        citation:
+          "ghostty332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28 osc52 parses clipboard_contents, stream.zig1987-1992 dispatches clipboard_contents; readonly189 ignores; no clipboard host/readback is exposed in this native product. Criterion is exact nonce roundtrip/read query, not standalone write.",
+      },
+      "extensions.osc5522-clipboard": {
+        query: "\u001b[?5522$p",
+        kind: "no-reply-path",
+        citation:
+          "terminfo7587293850a871e062bf94aade5d52129883fb8a extensions.ts3065-3080 sends DECRQM?5522$p only; ghostty332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28 modes.zig:146-159,189-234 has no5522 entry; stream.zig1567-1576 dispatches request_mode_unknown; readonly178-179 ignores. No OSC5522 command is attempted.",
+      },
+      "extensions.osc0-icon-title": {
+        query: "\u001b[20t",
+        kind: "parser-rejected",
+        citation:
+          "ghostty 332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28 src/terminal/stream.zig:1755-1820 XTWINOPS handles14/16/18/21,22/23 only;20 ->unimplemented parameter before handler. This feature requires BOTH20 and21 exact payload replies;20 is necessary;21 dispatches size_report and is separately ignored.",
+      },
+      "extensions.osc30001-color-stack-push": {
+        query: "\u001b]30001\u001b\\",
+        kind: "parser-rejected",
+        citation:
+          "ghostty 332b2aef src/terminal/osc.zig:515-533 state3 ->30 ->300 accepts only8; OSC30001 rejects0 at state300 before a handler",
+      },
+      "extensions.osc30101-color-stack-pop": {
+        query: "\u001b]30101\u001b\\",
+        kind: "parser-rejected",
+        citation:
+          "ghostty 332b2aef src/terminal/osc.zig:515-533 state3 ->30 accepts only0; OSC30101 rejects1 at state30 before a handler",
+      },
+      "extensions.kitty-graphics": {
+        query: "\u001b_G",
+        matches: "prefix",
+        kind: "no-reply-path",
+        citation:
+          "termless 5afcc676 packages/ghostty-native/native/src/main.zig:80 vtStream() -> ghostty 332b2aef Terminal.zig:260-265 ReadonlyStream; stream.zig:736-738 forwards APC; stream_readonly.zig:168-173 ignores apc_start/apc_put/apc_end; native exports main.zig:48-65 provide no image-state or reply observer",
+      },
+      "extensions.kitty-graphics.transmit": {
+        query: "\u001b_G",
+        matches: "prefix",
+        kind: "no-reply-path",
+        citation:
+          "termless 5afcc676 packages/ghostty-native/native/src/main.zig:80 vtStream() -> ghostty 332b2aef Terminal.zig:260-265 ReadonlyStream; stream.zig:736-738 forwards APC; stream_readonly.zig:168-173 ignores apc_start/apc_put/apc_end; native exports main.zig:48-65 provide no image-state or reply observer",
+      },
+      "extensions.kitty-graphics.display": {
+        query: "\u001b_G",
+        matches: "prefix",
+        kind: "no-reply-path",
+        citation:
+          "termless 5afcc676 packages/ghostty-native/native/src/main.zig:80 vtStream() -> ghostty 332b2aef Terminal.zig:260-265 ReadonlyStream; stream.zig:736-738 forwards APC; stream_readonly.zig:168-173 ignores apc_start/apc_put/apc_end; native exports main.zig:48-65 provide no image-state or reply observer",
+      },
+      "extensions.kitty-keyboard": {
+        query: "\u001b[?u\u001b[c",
+        kind: "no-reply-path",
+        citation:
+          "termless 5afcc676 packages/ghostty-native/native/src/main.zig:80 vtStream() -> ghostty 332b2aef Terminal.zig:264 ReadonlyStream; stream.zig:1828 parses kitty_keyboard_query and :1278-1292 device_attributes; stream_readonly.zig:139-143 retains keyboard flags but :176-190 ignores both queries without a writer",
+      },
+      "extensions.kitty-keyboard.disambiguate": {
+        query: "\u001b[?u\u001b[c",
+        kind: "no-reply-path",
+        citation:
+          "termless 5afcc676 packages/ghostty-native/native/src/main.zig:80 vtStream() -> ghostty 332b2aef Terminal.zig:264 ReadonlyStream; stream.zig:1828 parses kitty_keyboard_query and :1278-1292 device_attributes; stream_readonly.zig:139-143 retains keyboard flags but :176-190 ignores both queries without a writer",
+      },
+      "extensions.kitty-keyboard.report-events": {
+        query: "\u001b[?u\u001b[c",
+        kind: "no-reply-path",
+        citation:
+          "termless 5afcc676 packages/ghostty-native/native/src/main.zig:80 vtStream() -> ghostty 332b2aef Terminal.zig:264 ReadonlyStream; stream.zig:1828 parses kitty_keyboard_query and :1278-1292 device_attributes; stream_readonly.zig:139-143 retains keyboard flags but :176-190 ignores both queries without a writer",
+      },
+      "extensions.kitty-keyboard.report-alternate": {
+        query: "\u001b[?u\u001b[c",
+        kind: "no-reply-path",
+        citation:
+          "termless 5afcc676 packages/ghostty-native/native/src/main.zig:80 vtStream() -> ghostty 332b2aef Terminal.zig:264 ReadonlyStream; stream.zig:1828 parses kitty_keyboard_query and :1278-1292 device_attributes; stream_readonly.zig:139-143 retains keyboard flags but :176-190 ignores both queries without a writer",
+      },
+      "extensions.kitty-keyboard.report-all-keys": {
+        query: "\u001b[?u\u001b[c",
+        kind: "no-reply-path",
+        citation:
+          "termless 5afcc676 packages/ghostty-native/native/src/main.zig:80 vtStream() -> ghostty 332b2aef Terminal.zig:264 ReadonlyStream; stream.zig:1828 parses kitty_keyboard_query and :1278-1292 device_attributes; stream_readonly.zig:139-143 retains keyboard flags but :176-190 ignores both queries without a writer",
+      },
+      "extensions.kitty-keyboard.report-text": {
+        query: "\u001b[?u\u001b[c",
+        kind: "no-reply-path",
+        citation:
+          "termless 5afcc676 packages/ghostty-native/native/src/main.zig:80 vtStream() -> ghostty 332b2aef Terminal.zig:264 ReadonlyStream; stream.zig:1828 parses kitty_keyboard_query and :1278-1292 device_attributes; stream_readonly.zig:139-143 retains keyboard flags but :176-190 ignores both queries without a writer",
+      },
+      "input.csi-u": {
+        query: "\u001b[?u\u001b[c",
+        kind: "no-reply-path",
+        citation:
+          "termless 5afcc676 packages/ghostty-native/native/src/main.zig:80 vtStream() -> ghostty 332b2aef Terminal.zig:264 ReadonlyStream; stream.zig:1828 parses kitty_keyboard_query and :1278-1292 device_attributes; stream_readonly.zig:139-143 retains keyboard flags but :176-190 ignores both queries without a writer",
+      },
+      "extensions.osc21-kitty-color": {
+        query: "\u001b]21;foreground=?\u001b\\",
+        kind: "no-reply-path",
+        citation:
+          "termless 5afcc676 packages/ghostty-native/native/src/main.zig:80 vtStream() -> ghostty 332b2aef Terminal.zig:264-265 initAlloc; stream.zig:2018-2019 dispatches kitty_color_report; stream_readonly.zig:159 calls kittyColorOperation but :362-399 ignores .query while retaining set/reset; native getDefaultColors :571 exposes RGB state, not a protocol reply",
+      },
+      "extensions.sixel-geometry-report": {
+        query: "\u001b[?2;1;0S",
+        kind: "parser-rejected",
+        citation:
+          "ghostty 332b2aef src/terminal/parse_table.zig:324 collects '?' as CSI intermediate (Parser.zig:313-321); stream.zig:1128-1142 handles final S only without intermediates and ignores XTSMGRAPHICS '?' before any handler; termless 5afcc676 packages/ghostty-native/native/src/main.zig:80 uses this stream",
+      },
+    },
+  ],
   // Ghostty native 1.3.1, native tree45cbad88: independently loaded artifact in run2e689eee.
   [
     "17d155feee5df8fa30266b9a354bbe66e39484d08218de5e03dc3bb2f199a0a3",
@@ -75,6 +415,21 @@ export const REPLY_PATH_AUDITS: ReadonlyMap<string, Readonly<Record<string, Repl
   [
     "7c43302dde147c6f7959b7bda7045ff375c71288da1af5667ffca2bf95beb2bf",
     {
+      "extensions.kitty-graphics": GHOSTTY_WASM_GRAPHICS_AUDIT,
+      "extensions.kitty-graphics.transmit": GHOSTTY_WASM_GRAPHICS_AUDIT,
+      "extensions.kitty-graphics.display": GHOSTTY_WASM_GRAPHICS_AUDIT,
+      "extensions.osc21-kitty-color": {
+        query: "\x1b]21;foreground=?\x1b\\",
+        kind: "parser-rejected",
+        citation:
+          "ghostty-web 0.4.0 artifact7c43302d, core5714ed07: termless vendor/ghostty-web/ghostty-wasm-api.patch:827 ResponseStream.init -> src/terminal/stream.zig:497-501 Parser.init -> Parser.zig:230 osc_parser.init(null); osc.zig:845-851 rejects OSC21 without an allocator before any handler",
+      },
+      "extensions.sixel-geometry-report": {
+        query: "\x1b[?2;1;0S",
+        kind: "parser-rejected",
+        citation:
+          "ghostty-web 0.4.0 artifact7c43302d, core5714ed07: src/terminal/parse_table.zig:324 collects '?' as a CSI intermediate, Parser.zig:312-320 retains it; stream.zig:1173-1188 handles S only without intermediates and ignores '?' before any handler; termless vendor/ghostty-web/ghostty-wasm-api.patch:827 selects this stream",
+      },
       "device.decrpm": {
         query: "\x1b[?7$p",
         kind: "no-reply-path",
@@ -608,6 +963,28 @@ export const REPLY_PATH_AUDITS: ReadonlyMap<string, Readonly<Record<string, Repl
   [
     "f309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96",
     {
+      "extensions.kitty-keyboard": VT100_RUST_KEYBOARD_AUDIT,
+      "extensions.kitty-keyboard.disambiguate": VT100_RUST_KEYBOARD_AUDIT,
+      "extensions.kitty-keyboard.report-events": VT100_RUST_KEYBOARD_AUDIT,
+      "extensions.kitty-keyboard.report-alternate": VT100_RUST_KEYBOARD_AUDIT,
+      "extensions.kitty-keyboard.report-all-keys": VT100_RUST_KEYBOARD_AUDIT,
+      "extensions.kitty-keyboard.report-text": VT100_RUST_KEYBOARD_AUDIT,
+      "input.csi-u": VT100_RUST_KEYBOARD_AUDIT,
+      "extensions.kitty-graphics": VT100_RUST_GRAPHICS_AUDIT,
+      "extensions.kitty-graphics.transmit": VT100_RUST_GRAPHICS_AUDIT,
+      "extensions.kitty-graphics.display": VT100_RUST_GRAPHICS_AUDIT,
+      "extensions.osc21-kitty-color": {
+        query: "\x1b]21;foreground=?\x1b\\",
+        kind: "no-reply-path",
+        citation:
+          "vt100-rust 0.16.2 artifactf309015f: registry/src/index.crates.io-1949cf8c6b5b557f/vt100-0.16.2/src/perform.rs:234-236 dispatches unknown OSC21 to unhandled_osc, empty at src/callbacks.rs:65; termless0400d94a packages/vt100-rust/native/src/lib.rs:10-14 implements only title storage, no reply export. Cargo.lock vt100 checksum054ff75fb8fa83e609e685106df4faeffdf3a735d3c74ebce97ec557d5d36fd9; vte0.15.0 checksuma5924018406ce0063cd67f8e008104968b74b563ee1b85dde3ed1f7cb87d3dbd",
+      },
+      "extensions.sixel-geometry-report": {
+        query: "\x1b[?2;1;0S",
+        kind: "no-reply-path",
+        citation:
+          "vt100-rust 0.16.2 artifactf309015f: registry/src/index.crates.io-1949cf8c6b5b557f/vt100-0.16.2/src/perform.rs:176-183 dispatches private ?S to unhandled_csi, empty at src/callbacks.rs:55-63; termless0400d94a packages/vt100-rust/native/src/lib.rs:10-14 implements only title storage, no reply export. Cargo.lock vt100 checksum054ff75fb8fa83e609e685106df4faeffdf3a735d3c74ebce97ec557d5d36fd9; vte0.15.0 checksuma5924018406ce0063cd67f8e008104968b74b563ee1b85dde3ed1f7cb87d3dbd",
+      },
       "cursor.position-report": {
         query: "\x1b[6n",
         kind: "no-reply-path",

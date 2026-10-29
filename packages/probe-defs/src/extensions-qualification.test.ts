@@ -535,6 +535,91 @@ const appResetProbes = [
   ["extensions.osc114-reset-pointer-bg", 14, 114, undefined],
 ] as const
 
+// Direct state decides only after a distinct seed; query-only tests cannot detect a constant getter,
+// cross-slot mutation, or missing retention of nullable engine defaults.
+test.each([
+  ["extensions.osc110-reset-fg", 10, 110, "fg"],
+  ["extensions.osc111-reset-bg", 11, 111, "bg"],
+  ["extensions.osc112-reset-cursor", 12, 112, "cursor"],
+] as const)("%s qualifies only controlled direct default-color restoration", (id, setCode, resetCode, slot) => {
+  type Colors = {
+    fg: { r: number; g: number; b: number } | null
+    bg: { r: number; g: number; b: number } | null
+    cursor: { r: number; g: number; b: number } | null
+  }
+  const baseline: Colors = { fg: null, bg: { r: 1, g: 2, b: 3 }, cursor: { r: 4, g: 5, b: 6 } }
+  const seed = { r: 170, g: 187, b: 204 }
+  const seeded = { ...baseline, [slot]: seed }
+  const writesExpected = [`\x1b]${setCode};rgb:aa/bb/cc\x07`, `\x1b]${resetCode}\x07`]
+  const run = (readings: Array<Colors | Error>) => {
+    const writes: string[] = []
+    const result = callback(id).lib!({
+      getDefaultColors() {
+        const value = readings.shift()
+        if (value instanceof Error) throw value
+        if (!value) throw new Error("unexpected extra default-color read")
+        return value
+      },
+      feed: (bytes: string) => {
+        writes.push(bytes)
+      },
+      feedCapture: () => {
+        throw new Error("direct default-color arm must not query")
+      },
+    } as unknown as LibProbeSource)
+    return { result, writes }
+  }
+  const positive = run([baseline, seeded, baseline])
+  expect(positive.result.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
+  expect(positive.writes).toEqual(writesExpected)
+  const state = JSON.parse(positive.result.response!)
+  expect(state).toMatchObject({ baseline, seeded, restored: baseline, writes: writesExpected, seed })
+  expect(positive.result.assertions).toMatchObject([
+    { kind: "positive", assertionType: "buffer_state", observed: positive.result.response },
+  ])
+  const unset = { fg: null, bg: null, cursor: null }
+  const restoredUnset = run([unset, { ...unset, [slot]: seed }, unset])
+  expect(restoredUnset.result.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
+  expect(JSON.parse(restoredUnset.result.response!)).toMatchObject({
+    baseline: unset,
+    restored: unset,
+    writes: writesExpected,
+  })
+  const negative = run([baseline, seeded, seeded])
+  expect(negative.result.observation).toMatchObject({ outcome: "unsupported", assertionType: "buffer_state" })
+  expect(negative.result.assertions).toMatchObject([{ kind: "negative", observed: negative.result.response }])
+  const other = slot === "fg" ? "bg" : "fg"
+  for (const readings of [
+    [baseline, baseline, baseline],
+    [baseline, { ...seeded, [other]: seed }, baseline],
+    [baseline, seeded, { ...baseline, [other]: seed }],
+    [baseline, seeded, { ...baseline, [slot]: { r: 7, g: 8, b: 9 } }],
+    [baseline, new Error("seed read failed"), baseline],
+    [baseline, seeded, new Error("reset read failed")],
+    [new Error("baseline read failed")],
+    [
+      { fg: null, bg: null, cursor: null },
+      { fg: null, bg: null, cursor: null },
+      { fg: null, bg: null, cursor: null },
+    ],
+  ]) {
+    const expectedErrors = readings
+      .filter((reading): reading is Error => reading instanceof Error)
+      .map((error) => error.message)
+    const expectedWrites = readings[0] instanceof Error ? [] : writesExpected
+    const reviewed = run(readings)
+    expect(reviewed.result.criterionBranch).toBe("color-readback-review")
+    expect(reviewed.result.observation).toBeUndefined()
+    expect(reviewed.result.assertions).toBeUndefined()
+    expect(JSON.parse(reviewed.result.response!)).toMatchObject({ writes: expectedWrites, errors: expectedErrors })
+  }
+  const collision = { ...baseline, [slot]: seed }
+  const distinct = { r: 18, g: 52, b: 86 }
+  const collisionResult = run([collision, { ...collision, [slot]: distinct }, collision])
+  expect(collisionResult.result.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
+  expect(collisionResult.writes).toEqual([`\x1b]${setCode};rgb:12/34/56\x07`, writesExpected[1]])
+})
+
 test.each(appResetProbes)(
   "app %s reads the colour, sets it, reads the change, resets, and reads the restoration",
   async (id, setCode, resetCode, index) => {

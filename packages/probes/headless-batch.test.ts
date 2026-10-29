@@ -12,6 +12,7 @@ import { resolve as resolveLibvterm } from "@termless/libvterm"
 import { resolve as resolveVt100 } from "@termless/vt100"
 import { resolve as resolveVt220 } from "@termless/vt220"
 import { createKittyBackend, isKittyAvailable } from "@termless/kitty"
+import { createGhosttyNativeBackend, isGhosttyNativeAvailable } from "@termless/ghostty-native"
 import type { EmulatorWarning } from "@termless/core"
 import {
   ALL_PROBES,
@@ -1222,6 +1223,100 @@ test.each([undefined, () => undefined, () => 5])("OSC 8 metadata declaration mis
     value.destroy()
   }
 })
+
+// A getter method alone cannot authorize state observation; forwarding must preserve its receiver
+// and all three nullable slots without synthesizing colors from the real backend's cells.
+test("default-color source forwarding requires an advertised callable aggregate getter", () => {
+  const value = createXtermBackend({ cols: 80, rows: 24 })
+  const colors = { fg: null, bg: { r: 1, g: 2, b: 3 }, cursor: null }
+  const readColors = function (this: unknown) {
+    expect(this).toBe(value)
+    return colors
+  }
+  try {
+    Object.assign(value, { getDefaultColors: readColors })
+    expect(createLibProbeSource(value, undefined, undefined, undefined).getDefaultColors).toBeUndefined()
+    value.capabilities.extensions.add("default-colors")
+    const source = createLibProbeSource(value, undefined, undefined, undefined)
+    expect(source.getDefaultColors?.()).toEqual(colors)
+    Object.assign(value, { getDefaultColors: undefined })
+    expect(createLibProbeSource(value, undefined, undefined, undefined).getDefaultColors).toBeUndefined()
+    Object.assign(value, { getDefaultColors: 42 })
+    expect(createLibProbeSource(value, undefined, undefined, undefined).getDefaultColors).toBeUndefined()
+  } finally {
+    value.destroy()
+  }
+})
+
+// Native adapter tests and isolated callback controls cannot catch source forwarding or collector
+// binding failures. This journey uses the authentic addon and unchanged registry definitions.
+const ghosttyNativeAvailable = isGhosttyNativeAvailable()
+test.skipIf(!ghosttyNativeAvailable)(
+  `real Ghostty default-color resets and OSC 8 retain bound buffer-state evidence${ghosttyNativeAvailable ? "" : " (NOT MEASURED: native addon unavailable)"}`,
+  async () => {
+    const resetRows = [
+      ["extensions.osc110-reset-fg", "fg", 10, 110],
+      ["extensions.osc111-reset-bg", "bg", 11, 111],
+      ["extensions.osc112-reset-cursor", "cursor", 12, 112],
+    ] as const
+    const ids = [...resetRows.map(([id]) => id), "extensions.osc8"]
+    const instances: { writes: string[]; replies: string[] }[] = []
+    const batch = await collectBatch(
+      async () => {
+        const value = createGhosttyNativeBackend()
+        const instance = { writes: [] as string[], replies: [] as string[] }
+        instances.push(instance)
+        const feed = value.feed.bind(value)
+        vi.spyOn(value, "feed").mockImplementation((bytes) => {
+          instance.writes.push(new TextDecoder().decode(bytes))
+          feed(bytes)
+        })
+        value.onResponse = (bytes) => instance.replies.push(new TextDecoder().decode(bytes))
+        return value
+      },
+      "ghostty-native",
+      registryDefinitions(ids),
+    )
+    expect(batch.results.map(({ featureId, status }) => ({ featureId, status }))).toEqual(
+      ids.map((featureId) => ({ featureId, status: "supported" })),
+    )
+    expect(batch.observations).toHaveLength(4)
+    expect(batch.notTested).toEqual([])
+    expect(batch.ungradedDiagnostics).toEqual({})
+    for (const id of ids) {
+      expect(batch.observations.find((row) => row.featureId === id)).toMatchObject({
+        outcome: "supported",
+        assertionType: "buffer_state",
+        rawReplyRef: id,
+      })
+      expect(batch.assertions.filter((row) => row.featureId === id)).toMatchObject([
+        { kind: "positive", assertionType: "buffer_state", rawReplyRef: id, observed: batch.rawReplies[id] },
+      ])
+    }
+    const unset = { fg: null, bg: null, cursor: null }
+    const seed = { r: 170, g: 187, b: 204 }
+    for (const [index, [id, slot, setter, reset]] of resetRows.entries()) {
+      const writes = [`\x1b]${setter};rgb:aa/bb/cc\x07`, `\x1b]${reset}\x07`]
+      expect(JSON.parse(batch.rawReplies[id]!)).toEqual({
+        slot,
+        baseline: unset,
+        seeded: { ...unset, [slot]: seed },
+        restored: unset,
+        seed,
+        writes,
+        errors: [],
+      })
+      expect(instances[index]!.writes).toEqual(writes)
+    }
+    const uri = "https://example.com/osc8-proof"
+    expect(JSON.parse(batch.rawReplies["extensions.osc8"]!)).toEqual({
+      chars: [..."ALINKZ"],
+      links: [null, uri, uri, uri, uri, null].map((uri) => ({ reported: true, uri })),
+    })
+    expect(instances).toHaveLength(4)
+    expect(instances.map(({ replies }) => replies)).toEqual([[], [], [], []])
+  },
+)
 
 // Runtime status must preserve attempted failure separately from an unstarted implementation;
 // old observation/coverage tests cannot express a catalogue member with no callback.
