@@ -46,4 +46,4 @@ Direct manual workflow dispatch can supply rows outside the default matrix. Each
 Required resources remain the existing suite, catalogue, source and route runtime dependencies.
 Missing resources and route failures keep their named diagnostics and retained private draft; they never select a fallback subset.
 
-See the [probe-system model](../packages/probe-defs/README.md#collector-routes-and-persistence) for collector and writer ownership.
+See the [probe-system model](https://github.com/beorn/terminfo.dev/blob/main/packages/probe-defs/README.md#collector-routes-and-persistence) for collector and writer ownership.
