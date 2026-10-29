@@ -90,8 +90,9 @@ export default {
       const terminal = meta.terminal ?? {}
 
       const selected = data.selectedByBackend[b.name]?.selected
-      if (selected && !selected.subject)
+      if (selected && !selected.subject) {
         throw new Error(`Selected context ${selected.contextKey} lacks a physical subject`)
+      }
       // A parser and its app may share a slug; match original contributors, never a representative hash.
       const sourceIds = selected?.contributingRunIds.slice().sort()
       const a = selected
@@ -101,8 +102,9 @@ export default {
               JSON.stringify(entry.sources?.map((source) => source.runId).sort()) === JSON.stringify(sourceIds),
           )?.[1]
         : allAnalysis["terminals/" + slug]
-      if (selected && selected.score.all > 0 && !a)
+      if (selected && selected.score.all > 0 && !a) {
         throw new Error(`Missing terminal analysis for ${b.name} context ${selected.contextKey}`)
+      }
 
       // Load all version results for this backend
       const versions = versionsForBackend(data, b.name)

@@ -673,10 +673,11 @@ async function generateLockfile() {
       let stale = false
       for (const source of entry.sources) {
         const age = Math.floor((now - new Date(source.measuredAt).getTime()) / (1000 * 60 * 60 * 24))
-        if (!Number.isFinite(age))
+        if (!Number.isFinite(age)) {
           throw new Error(
             `Inventory ${entry.terminalId} source ${source.runId} has invalid measuredAt ${source.measuredAt}`,
           )
+        }
         if (age < 0 || (sla && age > sla.maxAgeDays)) {
           console.log(
             `  STALE: ${entry.terminalId} — original run ${source.runId}, measured ${source.measuredAt}: ${age} days old (SLA: ${sla?.maxAgeDays} days)`,

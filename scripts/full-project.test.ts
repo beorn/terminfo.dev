@@ -248,15 +248,12 @@ describe("full-scope rows", () => {
   // The old excluded-denominator fixtures cannot prove the strengthened 33 × 273 finish rule.
   it("requires all 9009 recorded positions and zero TODO/failure in every context", () => {
     const ids = Array.from({ length: 273 }, (_, index) => `capability.${index}`)
-    const census = Array.from(
-      { length: 33 },
-      (_, index): CensusContext => ({
-        context: `terminal-${index}/linux`,
-        terminalId: `terminal-${index}`,
-        os: "linux",
-        kind: "term",
-      }),
-    )
+    const census = Array.from({ length: 33 }, (_, index): CensusContext => ({
+      context: `terminal-${index}/linux`,
+      terminalId: `terminal-${index}`,
+      os: "linux",
+      kind: "term",
+    }))
     const candidates = census.map((context) =>
       candidate({
         kind: context.kind,
@@ -281,15 +278,12 @@ describe("full-scope rows", () => {
   // builder that owns the behavior: the same 33 contexts and 273 positions, with no runs at all.
   it("keeps an all-history corpus incomplete without inventing a current score", () => {
     const ids = Array.from({ length: 273 }, (_, index) => `capability.${index}`)
-    const census = Array.from(
-      { length: 33 },
-      (_, index): CensusContext => ({
-        context: `terminal-${index}/linux`,
-        terminalId: `terminal-${index}`,
-        os: "linux",
-        kind: "term",
-      }),
-    )
+    const census = Array.from({ length: 33 }, (_, index): CensusContext => ({
+      context: `terminal-${index}/linux`,
+      terminalId: `terminal-${index}`,
+      os: "linux",
+      kind: "term",
+    }))
     const rows = buildFullProjectRows({ census, catalogIds: ids, candidates: [], requiredSuiteId: suite })
     expect(rows.collected).toBe(0)
     expect(rows.notCollected).toBe(33)

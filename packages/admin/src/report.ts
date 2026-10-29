@@ -278,8 +278,9 @@ async function rawScoreboard(paths: readonly string[], contentDir: string): Prom
         const matching = [...rows.values()]
           .flat()
           .filter((row) => row.runId === runId && row.sha256 === original.sha256)
-        if (matching.length === 0)
+        if (matching.length === 0) {
           throw new Error(`Context ${summary.contextKey} contributor ${runId} has no retained private input row`)
+        }
         const contribution = Object.values(summary.cells).filter((cell) => cell.origin.runId === runId).length
         for (const row of matching) {
           row.selected = true

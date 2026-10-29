@@ -115,7 +115,7 @@ describe("current execution projection", () => {
     }
     const projection = projectResults([olderHost, chosenHost], [], ids, { currentProbeHash: suite.probeHash }, [])
     const candidates = Object.values(projection.contexts).map((context) => {
-      if (context.contributingRunIds.includes(olderHost.runId))
+      if (context.contributingRunIds.includes(olderHost.runId)) {
         context.attempts.push({
           runId: "no-output",
           path: "working/no-output.json",
@@ -123,6 +123,7 @@ describe("current execution projection", () => {
           attempt: { ids: [ids[0]!], result: "completed", startedAt: "2027-01-01T00:00:00Z" },
           noOutputIds: [ids[0]!],
         })
+      }
       const candidate = candidateFromSelected(context.contextKey, context, {}, projection)
       if (!candidate) throw new Error("fixture context lost original sources")
       expect(candidate.sources.map((source) => source.runId)).not.toContain("no-output")

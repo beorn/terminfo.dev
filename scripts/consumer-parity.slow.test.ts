@@ -1265,8 +1265,9 @@ describe("selected-run consumer parity", () => {
     const screen = screenEntry?.selected
     const tmux = tmuxEntry?.selected
     const bold = kitty?.cells["sgr.bold"]
-    if (!screen?.subject || !tmux?.subject || !bold || !screenEntry || !tmuxEntry)
+    if (!screen?.subject || !tmux?.subject || !bold || !screenEntry || !tmuxEntry) {
       throw new Error("Missing comparison fixtures")
+    }
     function requiredResult(run: PublicContextSummary, id: string) {
       const result = run.cells[id]
       if (!result) throw new Error(`Missing fixture result ${id}`)

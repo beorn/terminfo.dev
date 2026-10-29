@@ -275,12 +275,15 @@ export interface PublicCurrentResult extends Omit<CurrentResult, "selected"> {
 export type PublicRunMetadata = Omit<PublicVersion, "results">
 
 export interface PublicContextSummary extends Omit<SelectedContextSummary, "cells" | "attempts"> {
-  cells: Record<string, PublicProbeResult & {
-    origin: { runId: string; resultId: string }
-    measuredAt: string
-    suiteId: string
-    suiteRelation: CurrentSelectedVersion["suiteRelation"]
-  }>
+  cells: Record<
+    string,
+    PublicProbeResult & {
+      origin: { runId: string; resultId: string }
+      measuredAt: string
+      suiteId: string
+      suiteRelation: CurrentSelectedVersion["suiteRelation"]
+    }
+  >
   sources: Record<string, PublicRunMetadata>
   /** Filesystem paths remain private; original attempt identity/outcome remains visible. */
   attempts: Array<Omit<SelectedContextSummary["attempts"][number], "path"> & { startedAt?: string }>
@@ -455,7 +458,11 @@ export function publicResults(projection: SelectedProjection, subjects: Readonly
   }
   const mapGroups = (groups: Record<string, CurrentSelectedVersion[]>) =>
     Object.fromEntries(Object.entries(groups).map(([key, versions]) => [key, versions.map(mapVersion)]))
-  const originals = new Map(Object.values(projection.history).flat().map((version) => [version.runId, version]))
+  const originals = new Map(
+    Object.values(projection.history)
+      .flat()
+      .map((version) => [version.runId, version]),
+  )
   const contexts: Record<string, PublicContextSummary> = Object.fromEntries(
     Object.entries(projection.contexts).map(([key, context]) => {
       const sources: Record<string, PublicRunMetadata> = {}
@@ -470,26 +477,34 @@ export function publicResults(projection: SelectedProjection, subjects: Readonly
           const original = originals.get(cell.origin.runId)
           if (!original) throw new Error(`Context ${key}/${id} names missing original run ${cell.origin.runId}`)
           const result = mapVersion(original).results.find((row) => row.featureId === cell.origin.resultId)
-          if (!result) throw new Error(`Original run ${original.runId} lacks result ${cell.origin.resultId} for ${key}/${id}`)
-          return [id, {
-            ...result,
-            origin: cell.origin,
-            measuredAt: original.measuredAt,
-            suiteId: original.suiteId,
-            suiteRelation: original.suiteRelation,
-          }]
+          if (!result) {
+            throw new Error(`Original run ${original.runId} lacks result ${cell.origin.resultId} for ${key}/${id}`)
+          }
+          return [
+            id,
+            {
+              ...result,
+              origin: cell.origin,
+              measuredAt: original.measuredAt,
+              suiteId: original.suiteId,
+              suiteRelation: original.suiteRelation,
+            },
+          ]
         }),
       )
-      return [key, {
-        ...context,
-        contributingRunIds: context.contributingRunIds,
-        cells,
-        sources,
-        attempts: context.attempts.map(({ path: _path, ...attempt }) => ({
-          ...attempt,
-          ...(attempt.attempt?.startedAt && { startedAt: attempt.attempt.startedAt }),
-        })),
-      }]
+      return [
+        key,
+        {
+          ...context,
+          contributingRunIds: context.contributingRunIds,
+          cells,
+          sources,
+          attempts: context.attempts.map(({ path: _path, ...attempt }) => ({
+            ...attempt,
+            ...(attempt.attempt?.startedAt && { startedAt: attempt.attempt.startedAt }),
+          })),
+        },
+      ]
     }),
   )
   const selected: PublicProjection = {
@@ -503,12 +518,15 @@ export function publicResults(projection: SelectedProjection, subjects: Readonly
     [...subjects].map(([key, value]) => {
       const context = contexts[value.contextKey]
       if (!context) throw new Error(`Selected context ${value.contextKey} for ${key} is absent from public contexts`)
-      return [key, {
-        contextKey: value.contextKey,
-        selected: context,
-        states: Object.fromEntries(context.catalogIds.map((id) => [id, context.cells[id]?.status ?? "test-todo"])),
-        ...(value.policy && { policy: { ...value.policy, sources: publicSources(value.policy.sources) } }),
-      }]
+      return [
+        key,
+        {
+          contextKey: value.contextKey,
+          selected: context,
+          states: Object.fromEntries(context.catalogIds.map((id) => [id, context.cells[id]?.status ?? "test-todo"])),
+          ...(value.policy && { policy: { ...value.policy, sources: publicSources(value.policy.sources) } }),
+        },
+      ]
     }),
   )
   return { projection: selected, selectedByBackend, documents }
