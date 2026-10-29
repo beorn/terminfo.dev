@@ -350,7 +350,7 @@ describe("reply-path audit", () => {
       q === "\x1b[21t" ? "\x1b]losc0-icon-title\x07" : "",
     )
     expect(result).toMatchObject({ observation: { outcome: "unsupported", assertionType: "query_reply" } })
-    expect(JSON.parse(result.response!).measuredResponse).toContain("osc0-icon-title")
+    expect(JSON.parse(result.response!)).toMatchObject({ measuredResponse: expect.stringContaining("osc0-icon-title") })
     const answerIcon = (q: string) => (q === "\x1b[20t" ? "\x1b]Losc0-icon-title\x07" : "")
     expect(run("extensions.osc0-icon-title", sha, answerIcon).result).toEqual(
       run("extensions.osc0-icon-title", "f".repeat(64), answerIcon).result,
@@ -372,7 +372,8 @@ describe("reply-path audit", () => {
       tests: [{ id: "review", status: "test-todo" }],
     })
     expect(result.observation).toBeUndefined()
-    expect(JSON.parse(result.response!).trace.at(-1)).toEqual({ write: query, error: "Error: stack attempt failed" })
+    const raw = JSON.parse(result.response!) as { trace: unknown[] }
+    expect(raw.trace.at(-1)).toEqual({ write: query, error: "Error: stack attempt failed" })
   })
 
   test("covers all four audited artifacts", () => {
@@ -2591,8 +2592,9 @@ describe("partial probe automation candidates", () => {
         "\x1b]10;?\x07",
         stackQuery,
       ])
-      expect(JSON.parse(result.response!).trace.at(-1)).toEqual({ write: stackQuery, response: "" })
-      expect(JSON.parse(result.response!)).toMatchObject({
+      const raw = JSON.parse(result.response!) as { trace: unknown[] }
+      expect(raw.trace.at(-1)).toEqual({ write: stackQuery, response: "" })
+      expect(raw).toMatchObject({
         originalRaw: "",
         trace: expect.arrayContaining([
           { write: "\x1b]10;?\x07", response: "" },
