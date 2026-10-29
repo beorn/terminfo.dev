@@ -268,6 +268,8 @@ const EXTENSIONS_CONTRACT_SPEC: GroupContractSpec = {
     "packages/probe-defs/src/extensions-geometry.test.ts",
     "packages/probe-defs/src/extensions-qualification.test.ts",
     "packages/probe-defs/src/extensions-osc0-observations.test.ts",
+    "packages/probe-defs/src/kitty-capture.test.ts",
+    "packages/probe-defs/src/kitty-rows.test.ts",
   ],
 }
 
@@ -275,13 +277,17 @@ const EXECUTION_ONLY_INCONCLUSIVE_DISPOSITIONS: Readonly<
   Record<string, { status: "test-todo" | "test-failure"; reason: string }>
 > = {
   "extensions.truecolor": { status: "test-todo", reason: "No cursor response; RGB color was not measured" },
+  // Both kitty pixel rows now have a deciding observation; without the terminal's own pixel report
+  // the arm cannot map its rectangle onto cells and names the unanswered geometry queries.
   "extensions.kitty-graphics.animation": {
-    status: "test-todo",
-    reason: "No timed frame playback or pixel readback for Kitty animation",
+    status: "test-failure",
+    reason:
+      "extensions.kitty-graphics.animation: the terminal answered CSI 16 t (cell size in pixels) with timeout and CSI 14 t (text area in pixels) with timeout, so no cell size can be mapped, so this run cannot map cells onto the captured window",
   },
   "extensions.kitty-graphics.unicode-placeholders": {
-    status: "test-todo",
-    reason: "No pixel and placeholder-cell readback for Kitty Unicode placeholders",
+    status: "test-failure",
+    reason:
+      "extensions.kitty-graphics.unicode-placeholders: the terminal answered CSI 16 t (cell size in pixels) with timeout and CSI 14 t (text area in pixels) with timeout, so no cell size can be mapped, so this run cannot map cells onto the captured window",
   },
   "extensions.sixel": {
     status: "test-failure",

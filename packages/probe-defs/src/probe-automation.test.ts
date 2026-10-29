@@ -2724,9 +2724,9 @@ describe("extensions without a complete behavior oracle", () => {
     "extensions.notifications",
     "extensions.iterm2-images",
   ] as const
+  // The two kitty pixel rows left this list with their pixel arms: they now read a capture and
+  // compare frames, so "no readback oracle" is no longer true of them.
   const noOracleAppIds = [
-    "extensions.kitty-graphics.animation",
-    "extensions.kitty-graphics.unicode-placeholders",
     "extensions.sixel",
     "extensions.semantic-prompts",
     "extensions.osc-633-vscode",
