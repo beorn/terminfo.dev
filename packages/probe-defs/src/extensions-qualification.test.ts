@@ -1053,7 +1053,13 @@ test.each([
  * colour it held at run start, and a query reports it. `ignoresReset` models a terminal that consumes
  * the reset without restoring the slot.
  */
-function highlightTerminal(setCode: number, resetCode: number, initial: string, ignoresReset = false) {
+function highlightTerminal(
+  setCode: number,
+  resetCode: number,
+  initial: string,
+  ignoresReset = false,
+  ignoresSet = false,
+) {
   let colour = initial
   const writes: string[] = []
   const queries: string[] = []
@@ -1063,7 +1069,7 @@ function highlightTerminal(setCode: number, resetCode: number, initial: string, 
     write: (bytes: string) => {
       writes.push(bytes)
       const set = new RegExp(`\\x1b\\]${setCode};rgb:([0-9a-f]{1,4}/[0-9a-f]{1,4}/[0-9a-f]{1,4})\\x07`, "i").exec(bytes)
-      if (set?.[1]) colour = set[1]
+      if (set?.[1] && !ignoresSet) colour = set[1]
       if (!ignoresReset && bytes === `\x1b]${resetCode}\x07`) colour = initial
     },
     queryWithSentinelOutcome: async (_sequence: string, pattern: RegExp) => {
@@ -1083,7 +1089,16 @@ function highlightTerminal(setCode: number, resetCode: number, initial: string, 
     queryMode: async () => null,
     measureRenderedWidth: async () => null,
   } as unknown as TermProbeSource
-  return { ctx, writes, queries, colour: () => colour }
+  const lib = {
+    feed: ctx.write,
+    feedCapture: (bytes: string) => {
+      ctx.write(bytes)
+      queries.push(bytes)
+      return bytes === `\x1b]${setCode};?\x07` ? `\x1b]${setCode};rgb:${colour}\x07` : ""
+    },
+    getCell: () => ({ char: "X" }),
+  } as unknown as LibProbeSource
+  return { ctx, lib, writes, queries, colour: () => colour }
 }
 
 test.each([
@@ -1128,11 +1143,42 @@ test.each([
 })
 
 test.each([
-  ["extensions.osc117-reset-highlight-bg", null],
-  ["extensions.osc119-reset-highlight-fg", null],
-] as const)("%s declares its headless arm without a typed observable (%s), never parser state", (id, assertionType) => {
+  ["extensions.osc117-reset-highlight-bg", 17, 117],
+  ["extensions.osc119-reset-highlight-fg", 19, 119],
+] as const)("%s grades the headless reset only after a distinct verified change", (id, setCode, resetCode) => {
   const definition = callback(id)
-  expect(definition.libAssertionType).toBe(assertionType)
+  expect(definition.libAssertionType).toBe("query_reply")
+  for (const ignoresReset of [false, true]) {
+    const fixture = highlightTerminal(setCode, resetCode, "1111/2222/3333", ignoresReset)
+    const result = definition.lib!(fixture.lib)
+    expect(result.observation).toMatchObject({
+      outcome: ignoresReset ? "unsupported" : "supported",
+      assertionType: "query_reply",
+    })
+    expect(fixture.queries[0]).toBe(`\x1b]${setCode};?\x07`)
+    expect(fixture.colour()).toBe("1111/2222/3333")
+  }
+  for (const fixture of [
+    highlightTerminal(setCode, resetCode, ""),
+    highlightTerminal(setCode, resetCode, "1111/2222/3333", false, true),
+  ]) {
+    const result = definition.lib!(fixture.lib)
+    expect(result.observation?.outcome).not.toBe("supported")
+    expect(result.observation?.outcome).not.toBe("unsupported")
+    expect(result.tests ?? result.observation).toBeDefined()
+  }
+  const silent = highlightTerminal(setCode, resetCode, "")
+  const result = definition.lib!({
+    ...silent.lib,
+    queryWithSentinelOutcome: () => ({
+      match: null,
+      reason: "sentinel",
+      raw: "\x1b[?1;2c",
+      rawBase64: btoa("\x1b[?1;2c"),
+    }),
+  })
+  expect(result.observation).toBeUndefined()
+  expect(result.tests).toMatchObject([{ id: "criterion", status: "test-failure", reason: expect.any(String) }])
 })
 
 // Actual run772ff2a6, vterm source1cfc325f/tree2ee13d2: no font/window geometry.
