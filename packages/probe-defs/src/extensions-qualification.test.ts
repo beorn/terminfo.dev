@@ -823,7 +823,6 @@ test.each([
   ["another printable error", "\x1b_Gi=31;EIO: image unavailable\x1b\\", "unsupported", "EIO: image unavailable"],
   ["wrong image ID", "\x1b_Gi=32;ENOTSUP\x1b\\", null, null],
   ["control byte", "\x1b_Gi=31;ENO\x00TSUP\x1b\\", null, null],
-  ["non-ASCII message", "\x1b_Gi=31;E\u0100\x1b\\", null, null],
   ["partial frame", "\x1b_Gi=31;ENOTSUP", null, null],
   ["no reply", "", null, null],
 ] as const)("the canonical Kitty query grades %s consistently in both arms", async (_label, raw, outcome, message) => {
@@ -853,6 +852,36 @@ test.each([
       expect(JSON.parse(result.assertions![0]!.note!)).toEqual({ protocolRecognized: true, message })
     }
   }
+})
+
+// The five captured-text wrappers must preserve malformed Unicode instead of throwing during encoding.
+// Keyboard detection and image allocation must succeed first so their later wrappers are actually reached.
+test.each([
+  ["keyboard", "extensions.kitty-keyboard"],
+  ["allocation", "extensions.kitty-graphics.transmit"],
+  ["placement", "extensions.kitty-graphics.display"],
+  ["foreground", "extensions.osc21-kitty-color"],
+  ["query", "extensions.kitty-graphics"],
+] as const)("captured-text normalization preserves malformed Unicode for %s", (kind, id) => {
+  const raw = "\x1b_Gi=31;E\u0100\x1b\\"
+  const writes: string[] = []
+  const result = callback(id).lib!({
+    feed: (sequence: string) => writes.push(sequence),
+    feedCapture: (sequence: string) => {
+      if (kind === "keyboard" && sequence === "\x1b[?u\x1b[c") return "\x1b[?1u\x1b[?62;4c"
+      if (kind === "placement" && sequence.includes("a=t")) {
+        const imageNumber = /I=(\d+)/.exec(sequence)?.[1]
+        if (!imageNumber) throw new Error("placement fixture requires an image allocation request")
+        return `\x1b_Gi=2,I=${imageNumber};OK\x1b\\`
+      }
+      return raw
+    },
+  } as unknown as LibProbeSource)
+  expect(result.response).toBe(raw)
+  expect(result.observation).toMatchObject({ outcome: "inconclusive", assertionType: "query_reply" })
+  expect(result.assertions).toBeUndefined()
+  if (kind === "keyboard") expect(writes).toContain("\x1b[<u")
+  if (kind === "placement") expect(writes).toContain("\x1b_Ga=d,d=I,i=2,q=2\x1b\\")
 })
 
 /**

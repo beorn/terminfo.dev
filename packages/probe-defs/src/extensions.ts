@@ -1482,6 +1482,11 @@ export function kittyKeyboardFlagProbe(id: string, pushValue: number, flagBit: n
   return { ...definition, termAssertionType: "query_reply", libAssertionType: "query_reply" }
 }
 
+/** Wrap captured library text without inventing measured DA1 timing or changing its matched frame. */
+function rawQueryOutcome(raw: string, match: string[] | null): TerminalQueryOutcome {
+  return { match, reason: "sentinel", raw, rawBase64: Buffer.from(raw).toString("base64") }
+}
+
 function unansweredQuery(reply: TerminalQueryOutcome, note: string): ProbeCallbackResult {
   // A measured sentinel with nothing beside it is a decisive negative, not an unknown; a timeout
   // never answered DA1 at all, so it stays inconclusive.
@@ -1526,10 +1531,7 @@ function matchedReplyResult(
 function keyboardFlagsResult(response: string, flagBits: number): ProbeCallbackResult {
   const match = /\x1b\[\?(\d+)u/.exec(response)
   if (!match?.[1]) {
-    return unansweredQuery(
-      { match: null, reason: "sentinel", raw: response, rawBase64: btoa(response) },
-      KITTY_FLAGS_MISSING,
-    )
+    return unansweredQuery(rawQueryOutcome(response, null), KITTY_FLAGS_MISSING)
   }
   const flags = Number(match[1])
   const pass = (flags & flagBits) === flagBits
@@ -1558,7 +1560,7 @@ function graphicsQueryResult(
   const match = kittyReplyFrame({ i: String(imageId) }).exec(response)
   if (!match) {
     return unansweredQuery(
-      { match: null, reason: "sentinel", raw: response, rawBase64: btoa(response) },
+      rawQueryOutcome(response, null),
       "No matching graphics query reply; image rendering was not tested",
     )
   }
@@ -1628,7 +1630,7 @@ function allocatedImageResult(
     return {
       imageId: null,
       result: unansweredQuery(
-        { match: null, reason: "sentinel", raw: response, rawBase64: btoa(response) },
+        rawQueryOutcome(response, null),
         "No matching image allocation reply; no image ownership or transmission conclusion",
       ),
     }
@@ -1668,17 +1670,8 @@ const GRAPHICS_QUERY = "\x1b_Gi=31,s=1,v=1,a=q,t=d,f=24;AAAA\x1b\\"
 const GRAPHICS_QUERY_REPLY = /\x1b_Gi=31;([^\x1b]+)\x1b\\/
 
 /** Live's reading of the graphics query outcome, shared by both arms (#30554). */
-function graphicsQueryOutcomeResult(reply: TerminalQueryOutcome | string): ProbeCallbackResult {
-  const outcome =
-    typeof reply === "string"
-      ? {
-          match: GRAPHICS_QUERY_REPLY.exec(reply),
-          reason: "sentinel" as const,
-          raw: reply,
-          rawBase64: Buffer.from(reply).toString("base64"),
-        }
-      : reply
-  return matchedReplyResult(outcome, "No matching graphics query reply; image rendering was not tested", (frame) => {
+function graphicsQueryOutcomeResult(reply: TerminalQueryOutcome): ProbeCallbackResult {
+  return matchedReplyResult(reply, "No matching graphics query reply; image rendering was not tested", (frame) => {
     const match = kittyReplyFrame({ i: "31" }).exec(frame)
     const message = match?.[2]
     // Only the canonical a=q direct RGB request has this criterion; placement keeps its own OK-only grader.
@@ -1803,10 +1796,7 @@ function kittyForegroundOutcomeResult(reply: TerminalQueryOutcome): ProbeCallbac
 function kittyForegroundResult(response: string): ProbeCallbackResult {
   const match = OSC21_REPLY.exec(response)
   if (!match) {
-    return unansweredQuery(
-      { match: null, reason: "sentinel", raw: response, rawBase64: btoa(response) },
-      "No OSC 21 reply; color rendering was not tested",
-    )
+    return unansweredQuery(rawQueryOutcome(response, null), "No OSC 21 reply; color rendering was not tested")
   }
   const values = match[1]?.split(";").filter((field) => field.startsWith("foreground=")) ?? []
   const value = values.length === 1 ? values[0]?.slice("foreground=".length) : undefined
@@ -2365,10 +2355,13 @@ export const extensionsProbes: ProbeDefinition[] = [
     ...queryOnly(
       probe(
         "extensions.kitty-graphics",
-        (ctx) =>
-          ctx.queryWithSentinelOutcome
-            ? graphicsQueryOutcomeResult(ctx.queryWithSentinelOutcome(GRAPHICS_QUERY, GRAPHICS_QUERY_REPLY))
-            : graphicsQueryOutcomeResult(ctx.feedCapture(GRAPHICS_QUERY)),
+        (ctx) => {
+          if (ctx.queryWithSentinelOutcome) {
+            return graphicsQueryOutcomeResult(ctx.queryWithSentinelOutcome(GRAPHICS_QUERY, GRAPHICS_QUERY_REPLY))
+          }
+          const raw = ctx.feedCapture(GRAPHICS_QUERY)
+          return graphicsQueryOutcomeResult(rawQueryOutcome(raw, GRAPHICS_QUERY_REPLY.exec(raw)))
+        },
         async (ctx) =>
           graphicsQueryOutcomeResult(await ctx.queryWithSentinelOutcome(GRAPHICS_QUERY, GRAPHICS_QUERY_REPLY)),
         "query_reply",
