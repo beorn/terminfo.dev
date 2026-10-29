@@ -4,6 +4,7 @@ import { isDeepStrictEqual } from "node:util"
 import {
   SOURCE_NEGATIVE_REVIEW,
   REPLY_PATH_AUDIT_REVIEW,
+  HARNESS_INCOMPLETE_TEST,
   HOST_INPUT_NAMES,
   type HostRecipeExpectation,
   type HostRecipeName,
@@ -1299,6 +1300,29 @@ export function parseProbeResults(
     ) {
       fail(path, `${featureId} reply-path audit review admits only an untestable decision`)
     }
+    // A capture that reached a callback the adapter does not reproduce is a harness gap, never a terminal property.
+    const harnessRow = tests.find((test) => test.id === HARNESS_INCOMPLETE_TEST)
+    const rawState = nonempty(item.rawReplyRef) ? rawReplies[item.rawReplyRef] : undefined
+    if (harnessRow || rawState?.startsWith('{"unreproduced":')) {
+      const parsed: unknown = rawState ? parseJsonStrict(`${path}: ${featureId}`, rawState) : undefined
+      const record = object(parsed) ? parsed.unreproduced : undefined
+      const recorded =
+        object(record) &&
+        nonempty(record.backend) &&
+        Array.isArray(record.captures) &&
+        record.captures.length > 0 &&
+        record.captures.every(
+          (capture) =>
+            object(capture) &&
+            typeof capture.query === "string" &&
+            Array.isArray(capture.callbacks) &&
+            capture.callbacks.length > 0 &&
+            capture.callbacks.every(nonempty),
+        )
+      if (!recorded || harnessRow?.status !== "test-failure" || status !== "test-failure") {
+        fail(path, `${featureId} unreproduced-callback record requires its failed harness row, and the row its record`)
+      }
+    }
     if (finalizeProbeResult(result).status !== status) {
       fail(path, `${featureId} recorded status hides required test work`)
     }
@@ -1428,7 +1452,24 @@ export function validateHostRecipeCauses(
     ) {
       refuse("invalid query capture")
     }
-    return { query: capture.query, response: capture.response, error: capture.error }
+    // A-prime (@cto 4ac8b275): a zero-byte capture beside a callback the harness did not reproduce carries its cause.
+    const cause = capture.cause
+    if (
+      cause !== undefined &&
+      !(
+        object(cause) &&
+        cause.kind === "harness-unreproduced" &&
+        Object.keys(cause).every((key) => key === "kind" || key === "callbacks") &&
+        Array.isArray(cause.callbacks) &&
+        cause.callbacks.length > 0 &&
+        cause.callbacks.every(nonempty) &&
+        capture.response === "" &&
+        capture.error === null
+      )
+    ) {
+      refuse("invalid harness-unreproduced capture cause")
+    }
+    return { query: capture.query, response: capture.response, error: capture.error, harness: cause !== undefined }
   })
   // A terminal parses the ordered input stream, including a query split across writes.
   for (const actual of capturedHostQueries(captures.map((capture) => capture.query).join(""))) {
@@ -1511,8 +1552,10 @@ export function validateHostRecipeCauses(
   for (const expected of expectations) {
     const target = captures.filter((capture) => capture.query === expected.query && capture.error === null)
     if (!target.length) refuse("missing applicable target query capture")
+    const silent = target.filter((capture) => capture.response === "")
     if (
-      target.some((capture) => capture.response === "") &&
+      silent.length > 0 &&
+      !silent.every((capture) => capture.harness) &&
       !causes.some(
         (entry) =>
           entry.recipe === expected.recipe &&

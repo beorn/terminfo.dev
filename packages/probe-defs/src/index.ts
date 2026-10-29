@@ -59,6 +59,7 @@ export type {
 export {
   SOURCE_NEGATIVE_REVIEW,
   REPLY_PATH_AUDIT_REVIEW,
+  HARNESS_INCOMPLETE_TEST,
   sgrProbe,
   cursorProbe,
   decrpmModeProbe,
