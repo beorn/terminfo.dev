@@ -8,6 +8,7 @@
  * `full-scope.ts`; the one run selection is `run-selection.ts`; this loader only composes them.
  */
 import { join } from "node:path"
+import { isEnvironmentGroup } from "../../packages/probe-defs/src/environment-groups.ts"
 import { loadFeatures } from "@terminfo/catalog"
 import { probeHash } from "../../packages/admin/versions.ts"
 import { loadCategories, orderedCategoryIds } from "./categories.ts"
@@ -19,6 +20,33 @@ import { fullContextCensus } from "./full-census.ts"
 import { buildFullProjectRows, type FullContextRow } from "./full-project.ts"
 
 const contentDir = join(import.meta.dirname, "..", "..", "content")
+
+// Technical-owner DATA snapshot, accepted by @dev/10 (e209d32a).
+// Source: 31733-selected-membership-20261029-1610.json, SHA-256 below.
+// CTO 5af532bb: keep this private beside the preview; future rows require reviewed delivery.
+// This incomplete diagnostic receipt does not admit a run or certify the remaining population.
+const toolGapMembership = {
+  authoritySha256: "aeaaefbd91bc6d34a6cd6057590fd1234912e2c10ed239b11ec6fa08085e32ad",
+  membershipComplete: false,
+  rows: [
+    {
+      context: "lib:libvterm",
+      engine: "libvterm",
+      engineVersion: "0.3.3",
+      feature: "extensions.osc1-icon",
+      suite: "c7df853eef35",
+      run: "959ccc7dfdd25375a9922b33286f7180",
+      namedGap: "icon-name state",
+      plainCause: "Our libvterm adapter does not expose the engine's icon-name callback state.",
+      recordedStatus: "test-todo",
+      measuredAt: "2026-10-29T22:37:32.875Z",
+      sourceRevision: "0df200f426a0adf5b4518eb38a7474bbd4bc5abe",
+      adapterRevision: "cd5cd5172680fd240ee3445dea96289793bc2d59",
+      loadedBinarySha256: "5937bd79139ee5856bcf1bd619cc44fcd2d750d3def3066a74956678cdaaaeb2",
+      rawSha256: "ebba95d6da8e6efa8fa8e80bf522de1af1f560fd968897eadf28a28b7780a9fe",
+    },
+  ],
+}
 
 export interface FullProjectData {
   /** Always `development`: this reading is unadmitted and cannot be published as a result. */
@@ -38,6 +66,17 @@ export interface FullProjectData {
   notCollected: number
   complete: boolean
   recordedPositions: number
+  /** Read-time explanation and counts, never admission, publication or a stored grade. */
+  toolGaps: {
+    authorityPath: string
+    authoritySha256: string
+    membershipComplete: boolean
+    classes: Array<{ name: string; accepted: number; matched: number }>
+    namedTodo: number
+    unnamedTodo: number
+    failures: number
+    eligibleForConsideration: boolean
+  }
 }
 
 /** Every catalog row in the site's category order; an ungroupable id is refused, never dropped. */
@@ -78,8 +117,55 @@ export function loadFullProjectData(): FullProjectData {
     reviewed,
   })
   const evidenceContexts: Record<string, PublicContextSummary> = {}
+  const toolGaps: FullProjectData["toolGaps"] = {
+    authorityPath: "docs/data/full-project.data.ts",
+    authoritySha256: toolGapMembership.authoritySha256,
+    membershipComplete: toolGapMembership.membershipComplete,
+    classes: [],
+    namedTodo: 0,
+    unnamedTodo: 0,
+    failures: 0,
+    eligibleForConsideration: false,
+  }
+  const classes = new Map<string, { name: string; accepted: number; matched: number }>()
+  const matchedGaps = new Set<(typeof toolGapMembership.rows)[number]>()
+  const membershipKeys = new Set<string>()
+  for (const gap of toolGapMembership.rows) {
+    for (const key of [
+      "context",
+      "engine",
+      "engineVersion",
+      "feature",
+      "suite",
+      "run",
+      "namedGap",
+      "plainCause",
+      "measuredAt",
+      "sourceRevision",
+      "adapterRevision",
+      "loadedBinarySha256",
+      "rawSha256",
+    ] as const) {
+      if (typeof gap[key] !== "string" || !gap[key].trim()) {
+        throw new Error(`${toolGaps.authorityPath}: accepted tool-gap row lacks ${key}`)
+      }
+    }
+    if (gap.recordedStatus !== "test-todo") {
+      throw new Error(`${toolGaps.authorityPath}: accepted tool-gap row must name TEST TODO`)
+    }
+    const key = JSON.stringify([gap.suite, gap.run, gap.context, gap.feature])
+    if (membershipKeys.has(key)) throw new Error(`${toolGaps.authorityPath}: duplicate accepted tool-gap cell ${key}`)
+    membershipKeys.add(key)
+    const group = classes.get(gap.namedGap) ?? { name: gap.namedGap, accepted: 0, matched: 0 }
+    group.accepted++
+    classes.set(gap.namedGap, group)
+  }
+  // Census and kind own the required contexts; no second list of eleven library identities.
+  let boundInputs =
+    rows.notCollected === 0 && rows.contexts.length > 0 && rows.contexts.some((row) => row.kind === "lib")
   for (const row of rows.contexts) {
     if (!row.collected) continue
+    if (row.heldIds.length || row.sources.length === 0) boundInputs = false
     const context = published.contexts[row.selection.contextKey]
     if (!context) {
       throw new Error(
@@ -89,8 +175,52 @@ export function loadFullProjectData(): FullProjectData {
     evidenceContexts[row.context] = context
     for (const observation of row.observations) {
       observation.reason = context.cells[observation.id]?.reason ?? null
+      if (isEnvironmentGroup(observation.id)) continue
+      const original = projection.contexts[row.selection.contextKey]?.cells[observation.id]
+      if (!original || observation.suiteId !== requiredSuiteId || !original.run.sourceRevision) boundInputs = false
+      if (observation.state === "test-failure") toolGaps.failures++
+      if (observation.state !== "test-todo") continue
+      const gap =
+        !observation.hold &&
+        !row.heldIds.includes(observation.id) &&
+        row.kind === "lib" &&
+        original?.result.status === "test-todo"
+          ? toolGapMembership.rows.find(
+              (member) =>
+                member.context === row.selection.contextKey &&
+                member.feature === observation.id &&
+                member.feature === observation.origin.resultId &&
+                member.run === observation.origin.runId &&
+                member.suite === observation.suiteId &&
+                member.suite === requiredSuiteId &&
+                member.run === original.run.runId &&
+                member.suite === original.run.suiteId &&
+                member.rawSha256 === original.run.sha256 &&
+                member.sourceRevision === original.run.sourceRevision &&
+                member.engine === original.run.subject.id &&
+                member.engineVersion === original.run.subject.version &&
+                member.measuredAt === observation.measuredAt &&
+                member.measuredAt === original.run.measuredAt &&
+                member.engineVersion === original.run.runtimeIdentity?.engineVersion &&
+                member.adapterRevision === original.run.runtimeIdentity?.termlessRevision &&
+                original.run.runtimeIdentity !== undefined &&
+                "loadedBinary" in original.run.runtimeIdentity &&
+                member.loadedBinarySha256 === original.run.runtimeIdentity.loadedBinary?.sha256,
+            )
+          : undefined
+      if (gap) {
+        observation.note = gap.plainCause
+        toolGaps.namedTodo++
+        matchedGaps.add(gap)
+      } else toolGaps.unnamedTodo++
     }
   }
+  for (const group of classes.values()) {
+    group.matched = [...matchedGaps].filter((gap) => gap.namedGap === group.name).length
+  }
+  toolGaps.classes = [...classes.values()].sort((a, b) => a.name.localeCompare(b.name))
+  toolGaps.eligibleForConsideration =
+    boundInputs && toolGaps.membershipComplete && toolGaps.failures === 0 && toolGaps.unnamedTodo === 0
   return {
     mode: "development",
     suiteId: requiredSuiteId,
@@ -103,6 +233,7 @@ export function loadFullProjectData(): FullProjectData {
     notCollected: rows.notCollected,
     complete: rows.complete,
     recordedPositions: rows.recordedPositions,
+    toolGaps,
   }
 }
 

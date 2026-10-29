@@ -27,6 +27,19 @@ This page reads composed contexts with original sealed sources on the required s
 - Completion requires **zero TEST TODO and zero TEST FAILURE among the graded features in every required context**, on this one suite. Cohort: **{{ data.complete ? 'complete' : 'incomplete' }}**.
 - No current sealed runs means no current score. [Historical results remain available](/api#historical-v1-and-v2).
 
+## Named tool gaps
+
+Accepted metadata snapshot: <code>{{ data.toolGaps.authorityPath }}</code>, source SHA-256 <code>{{ data.toolGaps.authoritySha256 }}</code>.
+Membership: **{{ data.toolGaps.membershipComplete ? 'complete' : 'incomplete' }}**. An accepted draft receipt cannot name a different selected sealed receipt.
+
+<table>
+  <thead><tr><th>Named gap</th><th>Accepted cells</th><th>Exact selected matches</th></tr></thead>
+  <tbody><tr v-for="group in data.toolGaps.classes" :key="group.name"><td>{{ group.name }}</td><td>{{ group.accepted }}</td><td>{{ group.matched }}</td></tr></tbody>
+</table>
+
+Graded positions: **{{ data.toolGaps.namedTodo }} named TEST TODO**, **{{ data.toolGaps.unnamedTodo }} unnamed TEST TODO**, **{{ data.toolGaps.failures }} TEST FAILURE**.
+Release consideration: **{{ data.toolGaps.eligibleForConsideration ? 'eligible for operator review' : 'blocked' }}**. Missing contexts, incomplete membership, unnamed TODO or any failure block consideration. Existing admission and operator batch GO remain required; this preview publishes no result.
+
 ## The contexts
 
 <table>
