@@ -3,6 +3,7 @@ import { createHash } from "node:crypto"
 import { isDeepStrictEqual } from "node:util"
 import {
   SOURCE_NEGATIVE_REVIEW,
+  SEMANTIC_PROMPT_SOURCE_REVIEW,
   HARNESS_INCOMPLETE_TEST,
   UNTESTABLE_ONLY_REVIEW_BRANCHES,
   HOST_INPUT_NAMES,
@@ -829,6 +830,7 @@ function captureBindingSource(
   const result = draft.results.find((entry) => entry.featureId === featureId)
   if (!result) throw new Error(`Capture feature ${featureId} is outside frozen catalogue`)
   const sourceNegative = historicalSource === undefined && result.criterionBranch === SOURCE_NEGATIVE_REVIEW
+  const semanticSource = historicalSource === undefined && result.criterionBranch === SEMANTIC_PROMPT_SOURCE_REVIEW
   const rawKeys = new Set<string>()
   if (result.rawReplyRef) rawKeys.add(result.rawReplyRef)
   for (const test of result.tests) if (test.rawReplyRef) rawKeys.add(test.rawReplyRef)
@@ -892,7 +894,7 @@ function captureBindingSource(
           intendedContext: historicalSource.intendedContext,
           ...(historicalSource.target !== undefined ? { target: historicalSource.target } : {}),
         }),
-    ...(sourceNegative &&
+    ...((sourceNegative || semanticSource) &&
       draft.runtimeIdentity && {
         runtimeIdentity: {
           kind: draft.runtimeIdentity.kind,
@@ -962,6 +964,12 @@ function validateCaptureBinding(
 ): string | undefined {
   const source = draft.rawReplies[`collector.capture.${decision.featureId}`]
   const result = draft.results.find((entry) => entry.featureId === decision.featureId)
+  if (
+    result?.criterionBranch === SEMANTIC_PROMPT_SOURCE_REVIEW &&
+    (draft.subject?.kind !== "lib" || !draft.runtimeIdentity)
+  ) {
+    fail(path, `${decision.featureId} semantic source review requires a lib subject and runtimeIdentity`)
+  }
   if (historicalSource === undefined && result?.criterionBranch === SOURCE_NEGATIVE_REVIEW) {
     const currentSource = captureBindingSource(draft, decision.featureId)
     if (!source || source !== currentSource) fail(path, "capture context/source/suite/evidence binding changed")
@@ -1084,6 +1092,9 @@ export function applyCaptureDecision(draft: RunDraft, source: string, startedAt:
   const index = draft.results.findIndex((result) => result.featureId === decision.featureId)
   const result = draft.results[index]
   const sourceNegative = result?.criterionBranch === SOURCE_NEGATIVE_REVIEW
+  const semanticSource =
+    result?.criterionBranch === SEMANTIC_PROMPT_SOURCE_REVIEW &&
+    (decision.decision === "supported" || decision.decision === "unsupported")
   if (
     !result ||
     !result.tests.some(
@@ -1094,6 +1105,9 @@ export function applyCaptureDecision(draft: RunDraft, source: string, startedAt:
     throw new Error(`Capture ${decision.featureId} has no pending required review`)
   }
   const reviewRef = `collector.review.${decision.id}`
+  if (semanticSource && !hasSourceReviewRow(decision)) {
+    throw new Error(`Capture ${decision.featureId} semantic source review requires its source review row`)
+  }
   if (Object.hasOwn(draft.rawReplies, reviewRef)) throw new Error(`Capture review ${decision.id} already retained`)
   if (sourceNegative && originBinding !== undefined) {
     if (createHash("sha256").update(originBinding, "utf8").digest("hex") !== decision.captureSha256) {
@@ -1129,7 +1143,9 @@ export function applyCaptureDecision(draft: RunDraft, source: string, startedAt:
     return
   }
   let assertionRefs: number[] | undefined
-  if (decision.decision !== "untestable") {
+  if (semanticSource) {
+    assertionRefs = []
+  } else if (decision.decision !== "untestable") {
     const captured = draft.assertions.filter((assertion) => assertion.featureId === decision.featureId)
     if (!captured.length || captured.some((assertion) => !assertion.expected || !assertion.observed)) {
       throw new Error(`Capture ${decision.featureId} review requires retained TESTED/EXPECTED assertions`)
@@ -1189,6 +1205,10 @@ function probeAttempt(value: unknown, path: string, rawReplies: Record<string, s
     startedAt: value.startedAt,
     ...(typeof value.diagnosticRef === "string" ? { diagnosticRef: value.diagnosticRef } : {}),
   }
+}
+
+function hasSourceReviewRow(decision: CaptureDecision): boolean {
+  return decision.sources.some((source) => !source.startsWith("terminfo.dev@") && !source.startsWith("termless@"))
 }
 
 export function parseProbeResults(
@@ -1336,7 +1356,43 @@ export function parseProbeResults(
     if (finalizeProbeResult(result).status !== status) {
       fail(path, `${featureId} recorded status hides required test work`)
     }
-    if (status === "supported" || status === "unsupported") {
+    const semanticSource =
+      result.criterionBranch === SEMANTIC_PROMPT_SOURCE_REVIEW && (status === "supported" || status === "unsupported")
+    if (semanticSource) {
+      const key = result.reviewRef
+      const reviewTest = tests.find((test) => test.id === "review" && test.reviewRef === key)
+      if (!key || !rawReplies[key]) fail(path, `${featureId} requires its immutable source review decision`)
+      const review = parseCaptureDecision(
+        parseJsonStrict(`${path}: ${key}`, rawReplies[key]),
+        path,
+        expected,
+        schemaVersion,
+      )
+      if (
+        review.decision !== status ||
+        review.featureId !== featureId ||
+        reviewTest?.status !== status ||
+        review.reason !== reviewTest.reason ||
+        review.reason !== result.reason ||
+        !hasSourceReviewRow(review)
+      ) {
+        fail(path, `${featureId} invalid source review decision or source review row`)
+      }
+      const binding = rawReplies[`collector.capture.${featureId}`]
+      if (!binding) fail(path, `${featureId} requires its runtime-bearing capture binding`)
+      const captured = parseJsonStrict(`${path}: ${featureId} capture binding`, binding)
+      if (
+        attempt.scope !== "probe" ||
+        !object(captured) ||
+        !object(captured.runtimeIdentity) ||
+        !object(captured.subject) ||
+        captured.subject.kind !== "lib" ||
+        createHash("sha256").update(binding, "utf8").digest("hex") !== review.captureSha256
+      ) {
+        fail(path, `${featureId} requires its lib runtimeIdentity capture binding`)
+      }
+    }
+    if ((status === "supported" || status === "unsupported") && !semanticSource) {
       if (attempt.scope === "none" || !(schemaVersion === 4 ? item.assertionType : item.evidence)) {
         fail(path, `${featureId} support result requires measured evidence`)
       }

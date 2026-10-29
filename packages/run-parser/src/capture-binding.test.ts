@@ -13,6 +13,7 @@ import {
   recordExecutedProbe,
   finalizeProbeResult,
   REPLY_PATH_AUDIT_REVIEW,
+  SEMANTIC_PROMPT_SOURCE_REVIEW,
   HARNESS_INCOMPLETE_TEST,
   nativeHostRecipeResult,
   type LibProbeSource,
@@ -758,6 +759,143 @@ const setup = (
   }
   return { draft, artifact, decision }
 }
+// Source-only prompt review is approved evidence, not a measured assertion. These explicit
+// collector-input fixtures exercise the canonical seam; they do not attest an engine build.
+function semanticPromptCapture(status: "supported" | "unsupported" = "supported") {
+  const featureId = "extensions.osc133-a"
+  const result = setup(undefined, { runId: "prompt-review", startedAt: "2026-10-29T10:00:00Z" }, (draft) => {
+    delete draft.rawReplies["sgr.faint"]
+    draft.rawReplies[featureId] = JSON.stringify({ home: { x: 0, y: 0 }, target: { x: 1, y: 0 }, cell: "X" })
+    draft.rawReplies["collector.collectionAttempt"] = JSON.stringify({
+      startedAt: "2026-10-29T10:00:00Z",
+      ids: [featureId],
+    })
+    draft.results[0] = recordExecutedProbe({
+      featureId,
+      attempt: { scope: "probe", startedAt: "2026-10-29T10:00:00Z" },
+      assertions: [],
+      tests: [{ id: "review", status: "test-todo", reason: "Independent source review pending" }],
+      criterionBranch: SEMANTIC_PROMPT_SOURCE_REVIEW,
+    })
+    draft.runtimeIdentity = {
+      kind: "js",
+      runtimeFormat: "wasm",
+      engineVersion: "0.8.0",
+      adapterVersion: "0.10.2",
+      termlessRevision: "2".repeat(40),
+      resolvedPath: "/fixtures/engine.js",
+      integrity: {
+        kind: "source",
+        repository: "fixture",
+        revision: "3".repeat(40),
+        treeOid: "4".repeat(40),
+        cleanTree: true,
+      },
+      loadedBinary: { path: "/fixtures/engine.wasm", sha256: "a".repeat(64) },
+    }
+  })
+  result.decision.decision = status
+  result.decision.reason = "Source row names the prompt parser arm and the mark state it writes or rejects"
+  result.decision.sources = ["terminfo.dev@" + result.draft.sourceRevision, "fixture-source-review-row"]
+  return result
+}
+
+describe("semantic prompt source review", () => {
+  const at = "2026-10-29T10:01:00Z"
+  const read = (draft: RunDraft) =>
+    parseRun(
+      "prompt.json",
+      JSON.stringify(sealRunDraft(draft)),
+      ["extensions.osc133-a"],
+      new Map([
+        [
+          draft.probeHash,
+          {
+            schemaVersion: 4,
+            probeHash: draft.probeHash,
+            adapterVersion: "3",
+            catalogIds: ["extensions.osc133-a"],
+            probes: { term: [], lib: ["extensions.osc133-a"], mux: [] },
+          },
+        ],
+      ]),
+    )
+
+  it.each(["supported", "unsupported"] as const)("roundtrips %s without invented assertions", (status) => {
+    const { draft, decision } = semanticPromptCapture(status)
+    const raw = { ...draft.rawReplies }
+    applyCaptureDecision(draft, JSON.stringify(decision), at)
+    expect(draft.assertions).toEqual([])
+    expect(draft.results[0]!.tests[0]!.assertionRefs).toEqual([])
+    for (const [key, value] of Object.entries(raw)) expect(draft.rawReplies[key]).toBe(value)
+    expect(read(draft).results?.[0]).toMatchObject({ status, criterionBranch: SEMANTIC_PROMPT_SOURCE_REVIEW })
+  })
+
+  it.each(["binary", "tree", "revision", "source", "subject", "run"])("rejects changed %s binding", (field) => {
+    const { draft, decision } = semanticPromptCapture()
+    if (field === "binary" && draft.runtimeIdentity?.kind === "js" && draft.runtimeIdentity.runtimeFormat === "wasm") {
+      draft.runtimeIdentity.loadedBinary!.sha256 = "b".repeat(64)
+    }
+    if (field === "tree" && draft.runtimeIdentity?.kind === "js" && draft.runtimeIdentity.integrity.kind === "source") {
+      draft.runtimeIdentity.integrity.treeOid = "5".repeat(40)
+    }
+    if (
+      field === "revision" &&
+      draft.runtimeIdentity?.kind === "js" &&
+      draft.runtimeIdentity.integrity.kind === "source"
+    ) {
+      draft.runtimeIdentity.integrity.revision = "6".repeat(40)
+    }
+    if (field === "source") draft.sourceRevision = "7".repeat(40)
+    if (field === "subject") draft.subject!.config = "another configuration"
+    if (field === "run") draft.runId = "another-run"
+    expect(() => applyCaptureDecision(draft, JSON.stringify(decision), at)).toThrow(/binding changed/)
+  })
+
+  it("keeps the ordinary review assertion requirement", () => {
+    const { draft, decision } = semanticPromptCapture()
+    draft.results[0]!.criterionBranch = "ordinary-review"
+    delete draft.rawReplies[`collector.capture.${decision.featureId}`]
+    decision.captureSha256 = retainCaptureBinding(draft, decision.featureId).sha256
+    expect(() => applyCaptureDecision(draft, JSON.stringify(decision), at)).toThrow(/retained TESTED\/EXPECTED/)
+  })
+
+  it.each(["runtime", "review-row"])("requires source proof %s", (field) => {
+    const { draft, decision } = semanticPromptCapture()
+    if (field === "runtime") delete draft.runtimeIdentity
+    else decision.sources = ["terminfo.dev@" + draft.sourceRevision, "termless@" + "2".repeat(40)]
+    expect(() => applyCaptureDecision(draft, JSON.stringify(decision), at)).toThrow(
+      field === "runtime" ? /runtimeIdentity/ : /source|review row/,
+    )
+  })
+
+  // The reader must not accept a status-only source result or a stripped proof, even after application.
+  it.each(["decision", "binding", "status", "reason", "sources", "runtime"])(
+    "reader rejects changed %s proof",
+    (field) => {
+      const { draft, decision } = semanticPromptCapture()
+      applyCaptureDecision(draft, JSON.stringify(decision), at)
+      const key = `collector.review.${decision.id}`
+      if (field === "decision") delete draft.rawReplies[key]
+      else if (field === "binding") delete draft.rawReplies[`collector.capture.${decision.featureId}`]
+      else if (field === "runtime") {
+        const binding = JSON.parse(draft.rawReplies[`collector.capture.${decision.featureId}`]!) as {
+          runtimeIdentity?: unknown
+        }
+        delete binding.runtimeIdentity
+        draft.rawReplies[`collector.capture.${decision.featureId}`] = JSON.stringify(binding)
+      } else {
+        const proof = JSON.parse(draft.rawReplies[key]!) as typeof decision
+        if (field === "status") proof.decision = "unsupported"
+        if (field === "reason") proof.reason = "another source claim"
+        if (field === "sources") proof.sources = ["terminfo.dev@" + draft.sourceRevision]
+        draft.rawReplies[key] = JSON.stringify(proof)
+      }
+      expect(() => read(draft)).toThrow(/source review|capture binding|runtimeIdentity/)
+    },
+  )
+})
+
 // Existing final-run SHA review tests cannot catch a circular pre-seal binding or status changes
 // authorized by a different capture. This exercises the actual execution helper and exact bytes.
 describe("immutable pre-seal capture binding", () => {

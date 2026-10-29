@@ -6,7 +6,7 @@
  * @testonly none
  */
 import { expect, test } from "vitest"
-import { ALL_PROBES } from "./index.ts"
+import { ALL_PROBES, SEMANTIC_PROMPT_SOURCE_REVIEW } from "./index.ts"
 import type { LibProbeSource } from "./types.ts"
 
 // The 7 scheduled headless features whose raw state is measurable but whose claim is not. The seven DECRQM
@@ -303,7 +303,7 @@ test("the 11 headless C154 semantic-mark features emit named coverage only after
     expect(fed, id).toEqual(["\x1b[1;1H", `${sequence}X`, "\x1b[1;1H"])
     expect(read, id).toBe(3)
     expect(result.notTested, id).toEqual({ reason: "no-semantic-observable", noObservable })
-    expect(result.criterionBranch, id).toBe("semantic-prompt-source-review")
+    expect(result.criterionBranch, id).toBe(SEMANTIC_PROMPT_SOURCE_REVIEW)
     expect(result.tests, id).toEqual([
       {
         id: "review",
