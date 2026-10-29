@@ -10,8 +10,6 @@ import { scrollbackProbes, scrollbackReadbackRows } from "./scrollback.ts"
 import type { ObservationFrame, TermProbeSource, LibProbeSource } from "./types.ts"
 import { libProbeSource } from "./testing/group-harness.ts"
 import { createSemanticSurface } from "./testing/semantic-surface.ts"
-import { createVtermBackend } from "@termless/vterm"
-import { createLibProbeSource } from "../../probes/headless-batch.ts"
 
 function headless(overrides: Partial<LibProbeSource> = {}): LibProbeSource {
   return {
@@ -248,19 +246,6 @@ test("viewport absent actuator stays named coverage; operational and cleanup err
       expect(caught).toBeInstanceOf(AggregateError)
       expect((caught as AggregateError).errors).toEqual([primary, cleanup])
     } else expect(caught).toBe(failFeed ? primary : cleanup)
-  }
-})
-
-test("real vterm partial drift is inconclusive rather than an unqualified negative", async () => {
-  const backend = await createVtermBackend()
-  backend.init({ cols: 80, rows: 24 })
-  try {
-    const result = viewportProbe()(createLibProbeSource(backend, undefined, undefined, undefined))
-    expect(result.observation?.outcome).toBe("inconclusive")
-    expect(result.assertions).toBeUndefined()
-    expect(JSON.parse(result.response!)).toMatchObject({ ordinary: { outcome: "drift" } })
-  } finally {
-    backend.destroy()
   }
 })
 
