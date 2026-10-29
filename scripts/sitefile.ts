@@ -598,6 +598,7 @@ async function generateLockfile() {
   // versions are not measurements. Partial/unreviewed history stays excluded.
   const { projection } = loadCurrentResults(contentDir)
   const selected = [...compatibilitySubjects(projection, contentDir).values()]
+  const originals = new Map(Object.values(projection.history).flat().map((run) => [run.runId, run]))
   const catalogPath = path.join(contentDir, "terminals.json")
   const catalog = loadTerminals(contentDir)
   const terminalLock = terminals.map((terminal) => {
@@ -609,16 +610,20 @@ async function generateLockfile() {
     if (!chosenDeclaration) throw new Error(`${catalogPath}: missing tracked terminal ${terminal.id}`)
     const [subjectId, declaration] = chosenDeclaration
     const kind: string | undefined = terminal.probeMethod === "termless" ? "lib" : declaration.kind
-    const entry = selected.find(({ selected: run }) => run.subject.kind === kind && run.subject.id === subjectId)
+    const entry = selected.find(({ selected: run }) => run.subject?.kind === kind && run.subject.id === subjectId)
     const run = entry?.selected
+    const sources = (run?.contributingRunIds ?? []).map((runId) => {
+      const original = originals.get(runId)
+      if (!original) throw new Error(`Inventory context ${entry?.contextKey} names absent original run ${runId}`)
+      return { runId, sha256: original.sha256, version: original.subject.version, measuredAt: original.measuredAt, suiteId: original.suiteId }
+    })
     return {
       terminalId: terminal.id,
       kind,
       contextKey: entry?.contextKey ?? null,
-      runId: run?.runId ?? null,
-      runSha256: run?.sha256 ?? null,
-      lastProbedVersion: run?.subject.version ?? null,
-      lastProbedDate: run?.measuredAt ?? "never",
+      contributingRunIds: run?.contributingRunIds ?? [],
+      sources,
+      lastProbedVersions: [...new Set(sources.map((source) => source.version))],
       featureCount: run?.catalogIds.length ?? 0,
     }
   })
