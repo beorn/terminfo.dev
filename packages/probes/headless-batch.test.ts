@@ -26,7 +26,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, beforeEach, expect, test, vi } from "vitest"
-import { collectBatch, createLibProbeSource } from "./headless-batch.ts"
+import { collectBatch, createLibProbeSource, feedCapture } from "./headless-batch.ts"
 
 /** Feature captures only; collector qualification metadata is asserted in sentinel-member.test.ts. */
 function probeReplies(batch: Awaited<ReturnType<typeof collectBatch>>) {
@@ -393,13 +393,10 @@ for (const [name, create, available] of [
 
 // #31373 (@cto 15cf18e4): a capture that reached an engine callback its adapter does not reproduce is a harness gap.
 // The adapters above report no such callback, so no existing collector test could grade one.
-test.each([
-  { name: "silent", query: "\x1b]52;c;?\x1b\\", harness: true },
-  { name: "replied", query: "\x1b]52;c;?\x1b\\\x1b[6n", harness: false },
-])("grades a capture that reached an unreproduced callback ($name)", async ({ query, harness }) => {
+// xterm.js stands in for an adapter that reports one unreproduced callback per OSC 52 read.
+function unreproducingXterm() {
   const value = createXtermBackend()
   const warnings: EmulatorWarning[] = []
-  // xterm.js stands in for an adapter that reports one unreproduced callback per OSC 52 read.
   value.capabilities.extensions.add("warnings")
   const feed = value.feed.bind(value)
   value.feed = (bytes) => {
@@ -408,12 +405,19 @@ test.each([
     }
     feed(bytes)
   }
-  Object.assign(value, {
+  return Object.assign(value, {
     getWarnings: () => [...warnings],
     clearWarnings: () => {
       warnings.length = 0
     },
   })
+}
+
+test.each([
+  { name: "silent", query: "\x1b]52;c;?\x1b\\", harness: true },
+  { name: "replied", query: "\x1b]52;c;?\x1b\\\x1b[6n", harness: false },
+])("grades a capture that reached an unreproduced callback ($name)", async ({ query, harness }) => {
+  const value = unreproducingXterm()
   const measured = (reply: string): ProbeCallbackResult => ({ ...fakeProbeResult("query_reply"), response: reply })
   const batch = await collectBatch(async () => value, "xtermjs", [
     definition("clipboard.read", (ctx) => measured(ctx.feedCapture(query))),
@@ -436,6 +440,25 @@ test.each([
     unreproduced: { backend: "xtermjs", captures: [{ query, callbacks: ["clipboard_control"] }] },
     measuredResponse: "",
   })
+})
+
+// #31373 (@cto 4ac8b275): on the native host route, the silent capture itself carries why it is silent, so the
+// host-cause validator can accept it per capture; a capture that replied carries no cause.
+test.each([
+  { name: "silent", query: "\x1b]52;c;?\x07", cause: true },
+  { name: "replied", query: "\x1b]52;c;?\x07\x1b[6n", cause: false },
+])("a host capture beside an unreproduced callback records its harness cause ($name)", ({ query, cause }) => {
+  const value = unreproducingXterm()
+  value.init({ cols: 80, rows: 24 })
+  const captures: Parameters<typeof feedCapture>[2] = []
+  try {
+    feedCapture(value, query, captures, { captures: [], silent: false })
+  } finally {
+    value.destroy()
+  }
+  expect(captures?.[0]?.cause).toEqual(
+    cause ? { kind: "harness-unreproduced", callbacks: ["clipboard_control"] } : undefined,
+  )
 })
 
 test("real vterm grades interior-region SU without moving the row above into history", async () => {
