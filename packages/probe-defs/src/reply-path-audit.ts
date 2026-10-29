@@ -34,6 +34,29 @@ const VT100_OSC52_AUDIT: ReplyPathAudit = {
     "vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:210-218 OSC 52 '?' -> Callbacks::paste_from_clipboard, empty by default (src/callbacks.rs:36); termless 0c409349 packages/vt100-rust/native/src/lib.rs:10-14 implements only set_window_title",
 }
 
+const GHOSTTY_WASM_GRAPHICS_AUDIT: ReplyPathAudit = {
+  query: "\x1b_G",
+  matches: "prefix",
+  kind: "no-reply-path",
+  citation:
+    "ghostty-web 0.4.0 artifact7c43302d, core5714ed07: termless vendor/ghostty-web/ghostty-wasm-api.patch:697 ResponseStream(ResponseHandler), :824-827 constructs, :867 feeds; core src/terminal/stream.zig:781-783 forwards APC; patch:589-591/:607 ignores APC handlers, exposing no image state or graphics reply; display cannot complete its a=t allocation prerequisite",
+}
+
+const VT100_RUST_KEYBOARD_AUDIT: ReplyPathAudit = {
+  query: "\x1b[?u\x1b[c",
+  kind: "no-reply-path",
+  citation:
+    "vt100-rust 0.16.2 artifactf309015f: registry/src/index.crates.io-1949cf8c6b5b557f/vt100-0.16.2/src/perform.rs:176-183 private ?u and :157-164 plain c dispatch Callbacks::unhandled_csi, empty at src/callbacks.rs:55-63; termless0400d94a packages/vt100-rust/native/src/lib.rs:10-14 implements only title storage, no reply export. Cargo.lock vt100 checksum054ff75fb8fa83e609e685106df4faeffdf3a735d3c74ebce97ec557d5d36fd9; vte0.15.0 checksuma5924018406ce0063cd67f8e008104968b74b563ee1b85dde3ed1f7cb87d3dbd",
+}
+
+const VT100_RUST_GRAPHICS_AUDIT: ReplyPathAudit = {
+  query: "\x1b_G",
+  matches: "prefix",
+  kind: "parser-rejected",
+  citation:
+    "vt100-rust 0.16.2 artifactf309015f: registry/src/index.crates.io-1949cf8c6b5b557f/vte-0.15.0/src/lib.rs:377 ESC_ enters SosPmApcString; :182 routes payload only to anywhere (:438-451 controls only), discarding it before any vt100 callback; Perform:761-815 exposes no APC hook. Cargo.lock vte0.15.0 checksuma5924018406ce0063cd67f8e008104968b74b563ee1b85dde3ed1f7cb87d3dbd; vt1000.16.2 checksum054ff75fb8fa83e609e685106df4faeffdf3a735d3c74ebce97ec557d5d36fd9; display's a=t prerequisite is discarded before any placement can be attempted",
+}
+
 /**
  * Source audits of exact artifacts that cannot reply, keyed by loaded-artifact sha256 — never a digest copied from
  * runtime — and then by featureId. Data only: a cell enters with its own citation and is reviewed as data. An
@@ -75,6 +98,21 @@ export const REPLY_PATH_AUDITS: ReadonlyMap<string, Readonly<Record<string, Repl
   [
     "7c43302dde147c6f7959b7bda7045ff375c71288da1af5667ffca2bf95beb2bf",
     {
+      "extensions.kitty-graphics": GHOSTTY_WASM_GRAPHICS_AUDIT,
+      "extensions.kitty-graphics.transmit": GHOSTTY_WASM_GRAPHICS_AUDIT,
+      "extensions.kitty-graphics.display": GHOSTTY_WASM_GRAPHICS_AUDIT,
+      "extensions.osc21-kitty-color": {
+        query: "\x1b]21;foreground=?\x1b\\",
+        kind: "parser-rejected",
+        citation:
+          "ghostty-web 0.4.0 artifact7c43302d, core5714ed07: termless vendor/ghostty-web/ghostty-wasm-api.patch:827 ResponseStream.init -> src/terminal/stream.zig:497-501 Parser.init -> Parser.zig:230 osc_parser.init(null); osc.zig:845-851 rejects OSC21 without an allocator before any handler",
+      },
+      "extensions.sixel-geometry-report": {
+        query: "\x1b[?2;1;0S",
+        kind: "parser-rejected",
+        citation:
+          "ghostty-web 0.4.0 artifact7c43302d, core5714ed07: src/terminal/parse_table.zig:324 collects '?' as a CSI intermediate, Parser.zig:312-320 retains it; stream.zig:1173-1188 handles S only without intermediates and ignores '?' before any handler; termless vendor/ghostty-web/ghostty-wasm-api.patch:827 selects this stream",
+      },
       "device.decrpm": {
         query: "\x1b[?7$p",
         kind: "no-reply-path",
@@ -608,6 +646,28 @@ export const REPLY_PATH_AUDITS: ReadonlyMap<string, Readonly<Record<string, Repl
   [
     "f309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96",
     {
+      "extensions.kitty-keyboard": VT100_RUST_KEYBOARD_AUDIT,
+      "extensions.kitty-keyboard.disambiguate": VT100_RUST_KEYBOARD_AUDIT,
+      "extensions.kitty-keyboard.report-events": VT100_RUST_KEYBOARD_AUDIT,
+      "extensions.kitty-keyboard.report-alternate": VT100_RUST_KEYBOARD_AUDIT,
+      "extensions.kitty-keyboard.report-all-keys": VT100_RUST_KEYBOARD_AUDIT,
+      "extensions.kitty-keyboard.report-text": VT100_RUST_KEYBOARD_AUDIT,
+      "input.csi-u": VT100_RUST_KEYBOARD_AUDIT,
+      "extensions.kitty-graphics": VT100_RUST_GRAPHICS_AUDIT,
+      "extensions.kitty-graphics.transmit": VT100_RUST_GRAPHICS_AUDIT,
+      "extensions.kitty-graphics.display": VT100_RUST_GRAPHICS_AUDIT,
+      "extensions.osc21-kitty-color": {
+        query: "\x1b]21;foreground=?\x1b\\",
+        kind: "no-reply-path",
+        citation:
+          "vt100-rust 0.16.2 artifactf309015f: registry/src/index.crates.io-1949cf8c6b5b557f/vt100-0.16.2/src/perform.rs:234-236 dispatches unknown OSC21 to unhandled_osc, empty at src/callbacks.rs:65; termless0400d94a packages/vt100-rust/native/src/lib.rs:10-14 implements only title storage, no reply export. Cargo.lock vt100 checksum054ff75fb8fa83e609e685106df4faeffdf3a735d3c74ebce97ec557d5d36fd9; vte0.15.0 checksuma5924018406ce0063cd67f8e008104968b74b563ee1b85dde3ed1f7cb87d3dbd",
+      },
+      "extensions.sixel-geometry-report": {
+        query: "\x1b[?2;1;0S",
+        kind: "no-reply-path",
+        citation:
+          "vt100-rust 0.16.2 artifactf309015f: registry/src/index.crates.io-1949cf8c6b5b557f/vt100-0.16.2/src/perform.rs:176-183 dispatches private ?S to unhandled_csi, empty at src/callbacks.rs:55-63; termless0400d94a packages/vt100-rust/native/src/lib.rs:10-14 implements only title storage, no reply export. Cargo.lock vt100 checksum054ff75fb8fa83e609e685106df4faeffdf3a735d3c74ebce97ec557d5d36fd9; vte0.15.0 checksuma5924018406ce0063cd67f8e008104968b74b563ee1b85dde3ed1f7cb87d3dbd",
+      },
       "cursor.position-report": {
         query: "\x1b[6n",
         kind: "no-reply-path",

@@ -315,11 +315,31 @@ describe("reply-path audit", () => {
     ["7c43302dde147c6f7959b7bda7045ff375c71288da1af5667ffca2bf95beb2bf", "extensions.osc21-kitty-color", true],
     ["7c43302dde147c6f7959b7bda7045ff375c71288da1af5667ffca2bf95beb2bf", "extensions.sixel-geometry-report", true],
     ["f309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96", "extensions.kitty-keyboard", false],
-    ["f309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96", "extensions.kitty-keyboard.disambiguate", false],
-    ["f309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96", "extensions.kitty-keyboard.report-events", false],
-    ["f309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96", "extensions.kitty-keyboard.report-alternate", false],
-    ["f309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96", "extensions.kitty-keyboard.report-all-keys", false],
-    ["f309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96", "extensions.kitty-keyboard.report-text", false],
+    [
+      "f309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96",
+      "extensions.kitty-keyboard.disambiguate",
+      false,
+    ],
+    [
+      "f309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96",
+      "extensions.kitty-keyboard.report-events",
+      false,
+    ],
+    [
+      "f309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96",
+      "extensions.kitty-keyboard.report-alternate",
+      false,
+    ],
+    [
+      "f309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96",
+      "extensions.kitty-keyboard.report-all-keys",
+      false,
+    ],
+    [
+      "f309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96",
+      "extensions.kitty-keyboard.report-text",
+      false,
+    ],
     ["f309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96", "input.csi-u", false],
     ["f309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96", "extensions.osc21-kitty-color", false],
     ["f309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96", "extensions.sixel-geometry-report", false],
@@ -700,7 +720,7 @@ describe("reply-path audit", () => {
         replyBytes: 0,
       },
       measuredResponse: unlisted.result.response ?? null,
-      ...(audit.matches === "prefix" && { matchedQueries: matched }),
+      ...(audit.kind === "no-reply-path" && audit.matches === "prefix" && { matchedQueries: matched }),
     })
     if (audit.kind === "no-reply-path") {
       expect(silent.result).toMatchObject({
