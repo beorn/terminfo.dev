@@ -13,6 +13,11 @@ import {
   HOST_INPUT_NAMES,
   initializeRunDraft,
   recordCollectionFailure,
+  recordCollectorSelection,
+  resolveProbeIds,
+  recordCollectorAttempt,
+  readCollectorSelection,
+  readCollectorAttempt,
   type RunDraft,
   type CapturedRunDraft,
 } from "@terminfo/probe-defs"
@@ -93,7 +98,6 @@ function trustedSuite() {
 
 /** The same collector runs in a fresh process for each engine: a native abort cannot hide another engine. */
 async function collectOne(name: string, directory: string): Promise<string> {
-  const { headlessRuntimeIdentity } = await import("./headless-identity.ts")
   const entry = manifest().backends[name]
   if (!entry || entry.type === "os") throw new Error(`Unknown or OS-only headless backend ${name}`)
   const suite = trustedSuite()
@@ -122,6 +126,15 @@ async function collectOne(name: string, directory: string): Promise<string> {
     intendedSubject: { kind: "lib", id: name, os: process.platform },
   })
   const draftPath = process.env.TERMINFO_DRAFT_PATH ?? join(directory, `${name}-${draft.runId}.draft.json`)
+  const delegated = process.env.TERMINFO_DRAFT_PATH
+    ? (JSON.parse(readFileSync(draftPath, "utf8")) as RunDraft)
+    : undefined
+  const ids = readCollectorSelection(delegated?.rawReplies ?? {})?.ids ?? [...suite.probes.lib]
+  const resolved = resolveProbeIds(ids)
+  if (resolved.result === "invalid") {
+    throw new Error(`Unknown probe: ${resolved.unknownIds[0] ?? resolved.duplicateIds[0]}`)
+  }
+  recordCollectorSelection(draft, ids)
   const initialBytes = `${JSON.stringify(draft, null, 2)}\n`
   if (process.env.TERMINFO_DRAFT_PATH) {
     if (process.env.TERMINFO_DRAFT_PATH !== draftPath || readFileSync(draftPath, "utf8") !== initialBytes) {
@@ -129,9 +142,15 @@ async function collectOne(name: string, directory: string): Promise<string> {
     }
   } else writeFileSync(draftPath, initialBytes, { flag: "wx" })
   const checkpoint = () => writeFileSync(draftPath, `${JSON.stringify(draft, null, 2)}\n`)
+  if (ids.length === 0) {
+    recordCollectorAttempt(draft, { ids, result: "empty" })
+    checkpoint()
+    return draftPath
+  }
   let collectionStartedAt: string | undefined
   let backend: TerminalBackend | undefined
   try {
+    const { headlessRuntimeIdentity } = await import("./headless-identity.ts")
     if (name === "kitty" && !process.env.KITTY_BINARY) {
       throw new Error("Kitty requires KITTY_BINARY from a pinned Nix shell")
     }
@@ -149,9 +168,10 @@ async function collectOne(name: string, directory: string): Promise<string> {
     }
     const resolveBackend = mod.resolve as () => Promise<unknown>
     collectionStartedAt = new Date().toISOString()
-    draft.rawReplies["collector.collectionAttempt"] = JSON.stringify({
+    recordCollectorAttempt(draft, {
+      result: "started",
       startedAt: collectionStartedAt,
-      ids: suite.probes.lib,
+      ids,
       hostInputs: Object.fromEntries(HOST_INPUT_NAMES.map((name) => [name, "not-supplied"])),
     })
     checkpoint()
@@ -165,7 +185,7 @@ async function collectOne(name: string, directory: string): Promise<string> {
     const batch = await collectBatch(
       async () => loadedBackend(await resolveBackend(), entry.package),
       name,
-      ALL_PROBES,
+      resolved.probes,
       draft,
       (progress) => {
         Object.assign(draft, {
@@ -177,6 +197,17 @@ async function collectOne(name: string, directory: string): Promise<string> {
       },
       { identity: runtimeIdentity, adapterPath, adapterPackage: entry.package, adapterType: entry.type },
     )
+    const startedAttempt = readCollectorAttempt(draft.rawReplies)
+    const completedAttempt = {
+      ids,
+      startedAt: collectionStartedAt,
+      ...(startedAttempt?.hostInputs && { hostInputs: startedAttempt.hostInputs }),
+      result: "completed" as const,
+    }
+    recordCollectorAttempt(draft, completedAttempt)
+    // Batch metadata includes the start checkpoint; retain the completed outcome above.
+    recordCollectorAttempt(batch, completedAttempt)
+    checkpoint()
     const run: CapturedRunDraft = {
       ...draft,
       subject: {
@@ -211,10 +242,19 @@ async function collectOne(name: string, directory: string): Promise<string> {
     return path
   } catch (error) {
     const diagnostic = scrubRecordedFailure(errorMessage(error))
-    if (collectionStartedAt) recordCollectionFailure(draft, collectionStartedAt, diagnostic, suite.probes.lib)
+    recordCollectorAttempt(draft, {
+      ...readCollectorAttempt(draft.rawReplies),
+      ids,
+      ...(collectionStartedAt && { startedAt: collectionStartedAt }),
+      result: "failed",
+      error: diagnostic,
+    })
+    if (collectionStartedAt) recordCollectionFailure(draft, collectionStartedAt, diagnostic, ids)
     else {
       draft.rawReplies["collector.prerequisite"] = diagnostic
-      for (const result of draft.results) if (result.status === "test-todo") result.reason = diagnostic
+      for (const result of draft.results) {
+        if (result.status === "test-todo" && ids.includes(result.featureId)) result.reason = diagnostic
+      }
     }
     checkpoint()
     throw error
@@ -227,6 +267,7 @@ export async function collectHeadlessRuns(
   selectors: string[] = [],
   outputDirectory?: string,
   initializations?: ReadonlyMap<string, { draft: RunDraft; path: string }>,
+  probeIds?: readonly string[],
 ): Promise<HeadlessCollection> {
   const backends = manifest().backends
   const osOnly = Object.entries(backends)
@@ -242,6 +283,11 @@ export async function collectHeadlessRuns(
   const unknown = requested.filter((name) => !headless.includes(name))
   if (unknown.length) throw new Error(`Unknown headless backend selector(s): ${unknown.join(", ")}`)
   const suite = trustedSuite()
+  const ids = probeIds === undefined ? [...suite.probes.lib] : [...probeIds]
+  const resolved = resolveProbeIds(ids)
+  if (resolved.result === "invalid") {
+    throw new Error(`Unknown probe: ${resolved.unknownIds[0] ?? resolved.duplicateIds[0]}`)
+  }
   const script = realpathSync(fileURLToPath(import.meta.url))
   if (!script.endsWith("/packages/probes/collect-headless.ts")) {
     throw new Error(`Packaged CLI has no local headless collector source at ${script}; install the source workspaces`)
@@ -273,9 +319,16 @@ export async function collectHeadlessRuns(
       if (readFileSync(draftPath, "utf8") !== `${JSON.stringify(delegated, null, 2)}\n`) {
         throw new Error(`Headless ${name} initial writer handoff differs`)
       }
-    } else writeFileSync(draftPath, `${JSON.stringify(delegated, null, 2)}\n`, { flag: "wx" })
-    const workerStartedAt = new Date().toISOString()
-    const retainFailure = (diagnostic: string) => {
+    }
+    recordCollectorSelection(delegated, ids)
+    writeFileSync(draftPath, `${JSON.stringify(delegated, null, 2)}\n`, handed ? undefined : { flag: "wx" })
+    if (ids.length === 0) {
+      recordCollectorAttempt(delegated, { ids, result: "empty" })
+      writeFileSync(draftPath, `${JSON.stringify(delegated, null, 2)}\n`)
+      continue
+    }
+    let workerStartedAt: string | undefined
+    const retainFailure = (diagnostic: string, result: "failed" | "cancelled" = "failed") => {
       const scrubbed = scrubRecordedFailure(diagnostic)
       const retained = JSON.parse(readFileSync(draftPath, "utf8")) as RunDraft
       if (
@@ -285,9 +338,25 @@ export async function collectHeadlessRuns(
       ) {
         throw new Error(`Worker ${name} changed delegated run identity`)
       }
-      if (!retained.rawReplies["collector.prerequisite"]) {
-        recordCollectionFailure(retained, workerStartedAt, scrubbed, suite.probes.lib)
-      } else {
+      const previousAttempt = readCollectorAttempt(retained.rawReplies)
+      const startedAt =
+        previousAttempt?.startedAt ?? (retained.rawReplies["collector.prerequisite"] ? undefined : workerStartedAt)
+      if (!startedAt && result === "failed" && !retained.rawReplies["collector.prerequisite"]) {
+        retained.rawReplies["collector.prerequisite"] = scrubbed
+        for (const row of retained.results) {
+          if (row.status === "test-todo" && ids.includes(row.featureId)) row.reason = scrubbed
+        }
+      }
+      recordCollectorAttempt(retained, {
+        ...previousAttempt,
+        ids,
+        ...(startedAt && { startedAt }),
+        result,
+        error: previousAttempt?.error ?? scrubbed,
+      })
+      if (result === "failed" && startedAt && !retained.rawReplies["collector.prerequisite"]) {
+        recordCollectionFailure(retained, startedAt, previousAttempt?.error ?? scrubbed, ids)
+      } else if (retained.rawReplies["collector.prerequisite"]) {
         retained.rawReplies["collector.prerequisite"] = scrubRecordedFailure(
           retained.rawReplies["collector.prerequisite"],
         )
@@ -306,6 +375,7 @@ export async function collectHeadlessRuns(
         stdout: "pipe",
         stderr: "pipe",
       })
+      workerStartedAt = new Date().toISOString()
       let exited = false
       let timedOut = false
       let forceTimer: ReturnType<typeof setTimeout> | undefined
@@ -353,7 +423,10 @@ export async function collectHeadlessRuns(
           lines.find((line) => line.startsWith("ENOENT:")) ??
           lines.at(-1) ??
           "no stderr"
-        retainFailure(`Worker exited ${exitCode}: ${detail}; stderr=${stderrPath}`)
+        retainFailure(
+          `Worker exited ${exitCode}: ${detail}; stderr=${stderrPath}`,
+          exitCode === 130 || exitCode === 143 ? "cancelled" : "failed",
+        )
         failures.push({
           backend: name,
           package: entry.package,
@@ -383,6 +456,14 @@ export async function collectHeadlessRuns(
       }
       if (parsed.runId !== delegated.runId) throw new Error(`Worker ${name} changed runId during capture handoff`)
       const captured = JSON.parse(readFileSync(path, "utf8")) as CapturedRunDraft
+      recordCollectorSelection(captured, ids)
+      const capturedAttempt = readCollectorAttempt(captured.rawReplies)
+      recordCollectorAttempt(captured, {
+        ids,
+        startedAt: capturedAttempt?.startedAt ?? workerStartedAt,
+        ...(capturedAttempt?.hostInputs && { hostInputs: capturedAttempt.hostInputs }),
+        result: "completed",
+      })
       const finalPath = saveDaemonProbeRun(captured, directory)
       parseRun(
         finalPath,
