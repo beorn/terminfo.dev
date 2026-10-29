@@ -312,12 +312,14 @@ export function createLibProbeSource(
     hasExtension<DefaultColorsExtension>(backend, "default-colors") && typeof backend.getDefaultColors === "function"
       ? backend.getDefaultColors.bind(backend)
       : undefined
+  const readIconLabel = typeof backend.getIconLabel === "function" ? backend.getIconLabel.bind(backend) : undefined
   return {
     kind: "live",
     ...(runtimeIdentity && { runtimeIdentity }),
     cols,
     getHyperlinkAt: readLink,
     getDefaultColors: readDefaultColors,
+    getIconLabel: readIconLabel,
     feed(text) {
       backend.feed(encoder.encode(text))
     },

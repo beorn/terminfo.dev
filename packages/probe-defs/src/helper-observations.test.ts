@@ -21,6 +21,7 @@ const baseCell = {
   inverse: false,
   hidden: false,
   blink: false,
+  overline: null,
   fg: null,
   bg: null,
   wide: false,

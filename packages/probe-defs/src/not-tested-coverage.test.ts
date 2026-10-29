@@ -228,6 +228,7 @@ test.each(sourceNegativeBranchFeatures)(
         inverse: false,
         strikethrough: false,
         blink: false,
+        overline: false,
         hidden: false,
         wide: false,
       }),

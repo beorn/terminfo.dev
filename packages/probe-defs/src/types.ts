@@ -743,6 +743,8 @@ export interface LibProbeSource {
     bg: { r: number; g: number; b: number } | null
     cursor: { r: number; g: number; b: number } | null
   }
+  /** Icon name. Present only when the backend reports it separately from the window title. */
+  getIconLabel?(): string
   /** Width read back from the backend after initialization, never inferred from cursor behavior. */
   readonly cols: number
   feed(text: string): void
@@ -777,7 +779,8 @@ export interface LibProbeSource {
     hidden: boolean
     /** null = this producer does not report the attribute; never a terminal-support claim. */
     blink: boolean | null
-    overline?: boolean
+    /** null = this producer does not report the attribute; never a terminal-support claim. */
+    overline: boolean | null
     fg: { r: number; g: number; b: number } | null
     bg: { r: number; g: number; b: number } | null
     wide: boolean

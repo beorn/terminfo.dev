@@ -49,6 +49,7 @@ function context(overrides: Partial<LibProbeSource>): LibProbeSource {
         inverse: false,
         hidden: false,
         blink: false,
+        overline: false,
         fg: null,
         bg: null,
         wide: false,
@@ -2516,6 +2517,20 @@ describe("extensions without a complete behavior oracle", () => {
         expect(JSON.parse(result.response ?? "null"), id).toEqual({ before: "original", after })
         expect(result.assertions ?? [], id).toEqual([])
       }
+      let icon = ""
+      const graded = callback(
+        context({
+          feed(text: string) {
+            if (text.includes("test-icon")) icon = "test-icon"
+          },
+          getTitle: () => "unchanged-title",
+          getIconLabel: () => icon,
+        }),
+      )
+      expect(graded.notTested, id).toBeUndefined()
+      expect(graded.pass, id).toBe(true)
+      expect(graded.assertions?.[0]?.expected, id).toBe("OSC 1 sets the icon name")
+      expect(JSON.parse(graded.response ?? "null"), id).toEqual({ before: "", after: "test-icon" })
     }
   })
 

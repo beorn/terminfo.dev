@@ -3193,10 +3193,16 @@ export const extensionsProbes: ProbeDefinition[] = [
     ...probe(
       "extensions.osc1-icon",
       (ctx) => {
-        const before = ctx.getTitle()
+        if (typeof ctx.getIconLabel !== "function") {
+          const before = ctx.getTitle()
+          ctx.feed("\x1b]1;test-icon\x07")
+          const after = ctx.getTitle()
+          return notTestedResult("icon-name state", { before, after })
+        }
+        const before = ctx.getIconLabel()
         ctx.feed("\x1b]1;test-icon\x07")
-        const after = ctx.getTitle()
-        return notTestedResult("icon-name state", { before, after })
+        const after = ctx.getIconLabel()
+        return parserStateResult(after === "test-icon", "OSC 1 sets the icon name", { before, after })
       },
       () => {
         const note = "No icon-name readback for OSC 1"
