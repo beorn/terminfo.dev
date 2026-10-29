@@ -37,6 +37,18 @@ const NATIVE_HOST_AUDITS: ReadonlyMap<string, NativeHostSourceCitations> = new M
     },
   ],
   [
+    // The same engine rebuilt at Termless 22476678, whose wrapper answers CSI 14 t from the declared pixel geometry
+    // through the engine's own formatter (31628), so that reply is never empty and needs no row.
+    "5d818656c9d58c8c68bec9f7bca1a55cc65ccf9fc078f9a3da0b872a28bf547a",
+    {
+      "clipboard-load": {
+        kind: "source-audited",
+        citation:
+          "alacritty_terminal 0.26.0 Config default clipboard policy OnlyCopy; Termless packages/alacritty/native/src/lib.rs EventProxy::send has no ClipboardLoad handler; this harness supplies no clipboard read permission",
+      },
+    },
+  ],
+  [
     // WezTerm: tattoy-wezterm-term 0.1.0-fork.5 behind the Termless native addon. It answers CSI 14 t from the pixels
     // the wrapper gives it (terminalstate/mod.rs:2047-2054), so that reply is never empty and needs no row.
     "84da518e3f298a0ed75f186db6e39d87e99b8f0c8508dd7252ec0cafee77fe12",

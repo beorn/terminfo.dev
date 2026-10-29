@@ -233,6 +233,26 @@ describe("audited native host recipe callers", () => {
       { recipe: "clipboard-load", cause: { kind: "unimplemented", artifactSha256: wezterm } },
     ])
   })
+
+  // The Alacritty addon rebuilt at the declared pixel geometry answers CSI 14 t (31628), so only its OSC 52 read is cited.
+  test("the Alacritty artifact 5d818656 cites its OSC 52 read and leaves CSI 14 t measured", () => {
+    const alacritty = "5d818656c9d58c8c68bec9f7bca1a55cc65ccf9fc078f9a3da0b872a28bf547a"
+    const silent = (id: string) =>
+      probe(id).lib!(
+        context({
+          runtimeIdentity: {
+            ...nativeIdentity,
+            loadedBinary: { path: "alacritty.node", sha256: alacritty },
+            provenance: { ...nativeIdentity.provenance, sha256: alacritty },
+          },
+          feedCapture: () => "",
+        }),
+      )
+    expect(silent("device.xtwinops-14").hostRecipeCauses).toBeUndefined()
+    expect(silent("extensions.osc52-read").hostRecipeCauses).toMatchObject([
+      { recipe: "clipboard-load", cause: { kind: "source-audited", artifactSha256: alacritty } },
+    ])
+  })
 })
 
 /**
