@@ -341,16 +341,17 @@ export interface KittyPlaceholderEvidence {
   /** The ordinary `a=p` placement of the same pixels in the same rectangle. */
   readonly ordinary: string | undefined
   /**
-   * Cell readbacks of the placeholder rectangle in both states, when this run exposes cells. A pixel
-   * arm has no cell adapter, so the absence is recorded rather than assumed.
+   * Cell readbacks of the placeholder rectangle in both states. REQUIRED for a verdict: without them
+   * a pixel difference cannot separate the composited image from a change in the placeholder
+   * characters themselves, so `null` refuses by name instead of deciding permissively.
    */
   readonly cellReadback: KittyDigestPair | null
 }
 
 /**
- * The placeholder decision table. The cell readback can only veto (`the run compared two different
- * screens`); it can never decide the row, because a text arm has no pixels and a pixel arm has no
- * cells. Quiet mode means no acknowledgement exists to inherit.
+ * The placeholder decision table. The cell readback is a PRECONDITION, not a discriminator: matching
+ * readbacks prove both states contain the same text, and a missing readback is inconclusive by name
+ * rather than a permissive pass. Quiet mode means no acknowledgement exists to inherit.
  */
 export function decideKittyPlaceholders(evidence: KittyPlaceholderEvidence): KittyVerdict {
   if (evidence.withImage[0] === undefined || evidence.withImage[1] === undefined) {
@@ -367,7 +368,14 @@ export function decideKittyPlaceholders(evidence: KittyPlaceholderEvidence): Kit
       decidedBy: "a missing region digest",
     }
   }
-  if (evidence.cellReadback && evidence.cellReadback[0] !== evidence.cellReadback[1]) {
+  if (!evidence.cellReadback) {
+    return {
+      outcome: "inconclusive",
+      note: "Kitty unicode placeholders: this run read no cells, so the two states' text was never compared and a pixel difference alone cannot separate the image from a change in the placeholder characters; the cell readback is the precondition the contract requires",
+      decidedBy: "a missing cell readback",
+    }
+  }
+  if (evidence.cellReadback[0] !== evidence.cellReadback[1]) {
     return {
       outcome: "inconclusive",
       note: `Kitty unicode placeholders: the placeholder cells read back differently in the two states (${pairNames(evidence.cellReadback)}), so the run compared two different screens`,

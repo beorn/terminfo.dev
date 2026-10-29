@@ -184,8 +184,11 @@ must differ, a one-frame image that must hold still, a cursor-only capture that 
 alone, and a redraw that must change the screen outside it. Placeholders compare the placeholder rectangle
 with the image composited over it against the same characters on the same foreground colour with the image
 deleted, with an ordinary `a=p` placement of the same pixels — measured against a captured blank — as the
-live control; this queue transmits quietly, so no acknowledgement exists to inherit. A text arm has no
-pixels and a pixel arm has no cells, so a cell readback can veto either row and never decide it.
+live control; this queue transmits quietly, so no acknowledgement exists to inherit. For the placeholder
+row the cell readback of that rectangle in both states is a REQUIRED precondition: matching readbacks prove
+both states contain the same text, and a run that reads no cells is inconclusive by name rather than a
+permissive pass, because a pixel difference alone cannot separate the composited image from a change in the
+placeholder characters. A cell readback can veto the row and never decides it on its own.
 
 The run retains screenshot/text references and assertion references. A captured frame does not by itself establish support, and a pending required review does not become an unsupported result.
 

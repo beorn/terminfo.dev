@@ -142,16 +142,16 @@ test("each failed control names itself instead of becoming a negative", () => {
   }
 })
 
-test("placeholders are supported only on pixels, with the ordinary placement painted", () => {
+test("placeholders are supported only on pixels, with matching cells and the ordinary placement painted", () => {
   const supported = decideKittyPlaceholders({
     withImage: ["with", "with"],
     withoutImage: "without",
     blank: "blank",
     ordinary: "ordinary",
-    cellReadback: null,
+    cellReadback: ["cells", "cells"],
   })
   expect(supported.outcome).toBe("supported")
-  // The cell readback can veto but never decide.
+  // The cell readback can veto but never decides on its own.
   expect(
     decideKittyPlaceholders({
       withImage: ["with", "with"],
@@ -161,6 +161,16 @@ test("placeholders are supported only on pixels, with the ordinary placement pai
       cellReadback: ["one", "two"],
     }).decidedBy,
   ).toBe("the cell readback precondition")
+  // A run that read no cells compares two screens it cannot show contain the same text: never a pass.
+  const unread = decideKittyPlaceholders({
+    withImage: ["with", "with"],
+    withoutImage: "without",
+    blank: "blank",
+    ordinary: "ordinary",
+    cellReadback: null,
+  })
+  expect(unread.outcome).toBe("inconclusive")
+  expect(unread.decidedBy).toBe("a missing cell readback")
   // Identical pixels through both paths, with the ordinary placement alive: negative.
   expect(
     decideKittyPlaceholders({
@@ -168,7 +178,7 @@ test("placeholders are supported only on pixels, with the ordinary placement pai
       withoutImage: "same",
       blank: "blank",
       ordinary: "ordinary",
-      cellReadback: null,
+      cellReadback: ["cells", "cells"],
     }).outcome,
   ).toBe("unsupported")
   // An unmeasured graphics path never implicates the feature.
@@ -178,7 +188,7 @@ test("placeholders are supported only on pixels, with the ordinary placement pai
       withoutImage: "same",
       blank: "blank",
       ordinary: "blank",
-      cellReadback: null,
+      cellReadback: ["cells", "cells"],
     }).outcome,
   ).toBe("inconclusive")
 })

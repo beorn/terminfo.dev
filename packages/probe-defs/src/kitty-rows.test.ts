@@ -22,6 +22,8 @@ interface Surface {
   readonly whole?: readonly string[]
   /** What the terminal answers a `_G` command with. */
   readonly ack?: "ok" | "silent"
+  /** Cell digests for the placeholder readback pair, when this run reads cells at all. */
+  readonly cells?: readonly string[]
 }
 
 interface Capture {
@@ -89,6 +91,24 @@ function surface(options: Surface) {
       return { role, label, ref, capturedAt: index, pixelsDigest: whole } satisfies ObservationFrame
     },
   }
+  if (options.cells) {
+    let cellIndex = 0
+    context.cells = async ({ role, label, cells }) => {
+      const index = captures.length + 1
+      const digest = options.cells?.[Math.min(cellIndex, (options.cells?.length ?? 1) - 1)]
+      cellIndex += 1
+      const frame = {
+        kind: "text-cells" as const,
+        role,
+        label,
+        ref: `sha256:cells-${String(index)}`,
+        capturedAt: index,
+        cellDigest: String(digest),
+      }
+      captures.push({ role, label, cells: cells !== undefined, writesBefore: writes.length, ref: frame.ref })
+      return frame
+    }
+  }
   return { context, captures, writes }
 }
 
@@ -143,6 +163,7 @@ test("an equal playback pair on a live pipeline with a stable still image is a n
 test("placeholders decide from pixels, with the quiet transmit and an ordinary placement alive", async () => {
   const { context, writes } = surface({
     region: ["with-image", "with-image", "without-image", "blank", "ordinary"],
+    cells: ["placeholder-cells", "placeholder-cells"],
   })
   const result = await term("extensions.kitty-graphics.unicode-placeholders")(context)
   const joined = writes.join("")
@@ -159,11 +180,23 @@ test("placeholders decide from pixels, with the quiet transmit and an ordinary p
 })
 
 test("an accepted quiet transmit with identical pixels is not placeholder support", async () => {
-  const { context } = surface({ region: ["same", "same", "same", "blank", "ordinary"], ack: "ok" })
+  const { context } = surface({
+    region: ["same", "same", "same", "blank", "ordinary"],
+    cells: ["placeholder-cells", "placeholder-cells"],
+    ack: "ok",
+  })
   const result = await term("extensions.kitty-graphics.unicode-placeholders")(context)
   expect(result.observation?.outcome).toBe("unsupported")
   expect(result.pass).toBe(false)
   expect(result.assertions).toMatchObject([{ kind: "negative" }])
+})
+
+test("a run that reads no cells never decides the placeholder row", async () => {
+  const { context } = surface({ region: ["with-image", "with-image", "without-image", "blank", "ordinary"] })
+  const result = await term("extensions.kitty-graphics.unicode-placeholders")(context)
+  expect(result.observation?.outcome).toBe("inconclusive")
+  expect(result.observation?.note).toContain("read no cells")
+  expect(result.pass).toBe(false)
 })
 
 test("a text snapshot never decides either row", async () => {
