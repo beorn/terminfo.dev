@@ -15,6 +15,68 @@ function callback(id: string) {
   return definition
 }
 
+// A consumed sentinel qualifies only the source-review evidence, never the audio, flash or font effect.
+test.each([
+  ["extensions.osc440-audio", "\x1b]440;bell.wav\x07"],
+  ["extensions.osc555-flash", "\x1b]555\x07"],
+  ["extensions.osc710-font-normal", "\x1b]710;monospace\x07"],
+])("%s retains a pinned vterm source-negative review only after its sentinel renders", (id, sequence) => {
+  const identity = {
+    kind: "js",
+    runtimeFormat: "js",
+    engineVersion: "0.9.0",
+    adapterVersion: "0.10.2",
+    termlessRevision: "2".repeat(40),
+    resolvedPath: "vendor/vterm/packages/vterm/src/index.ts",
+    integrity: {
+      kind: "source",
+      repository: "git@github.com:beorn/vterm.git",
+      revision: "1cfc325f3aedd4617e437ee76e6a03fc2cc16438",
+      treeOid: "2ee13d2cb894e86ee9575dd6945f42028df44966",
+      cleanTree: true,
+    },
+  } as const
+  for (const mode of ["pinned", "no-sentinel", "foreign", "changed-source", "dirty"] as const) {
+    const writes: string[] = []
+    const source = {
+      runtimeIdentity: {
+        ...identity,
+        resolvedPath: mode === "foreign" ? "another-engine.ts" : identity.resolvedPath,
+        integrity: {
+          ...identity.integrity,
+          revision: mode === "changed-source" ? "3".repeat(40) : identity.integrity.revision,
+          cleanTree: mode !== "dirty",
+        },
+      },
+      feed: (bytes: string) => writes.push(bytes),
+      getCell: () => ({ char: mode === "no-sentinel" ? " " : "X" }),
+    } as unknown as LibProbeSource
+    const result = callback(id).lib!(source)
+    expect(result.observation?.outcome).not.toBe("supported")
+    if (mode === "pinned") {
+      expect(writes.join("")).toContain(sequence + "X")
+      expect(result.criterionBranch).toBe("source-negative-review")
+      expect(result.tests).toMatchObject([
+        { id: "review", status: "test-failure", reason: expect.stringContaining("1cfc325f") },
+      ])
+      expect(result.observation).toMatchObject({ outcome: "inconclusive", assertionType: "buffer_state" })
+      expect(JSON.parse(result.response!)).toMatchObject({
+        fed: writes.join(""),
+        sentinel: { char: "X" },
+        engineState: null,
+      })
+      expect(result.assertions).toMatchObject([
+        { kind: "negative", assertionType: "buffer_state", observed: result.response },
+      ])
+    } else {
+      expect(result.criterionBranch).toBeUndefined()
+      expect(result.assertions).toBeUndefined()
+      expect(result.tests).toBeUndefined()
+      if (mode !== "no-sentinel") expect(writes).toEqual([])
+    }
+  }
+})
+
 // The initial/default query is silent; indexed painted cells are an independent palette witness.
 function indexedPalette(
   options: {

@@ -6,6 +6,7 @@ import {
   notTestedResult,
   replyFrame,
   reviewResult,
+  HEADLESS_OBSERVABLE_REVIEW,
   sentinelAnswer,
   sentinelNegativeResult,
   sentinelSilenceResult,
@@ -490,7 +491,20 @@ export const deviceProbes: ProbeDefinition[] = [
     malformed: /\x1bP>\|/,
     expected: "complete XTVERSION DCS >| printable name/version ST",
   }),
-  probe("device.term-features", null, () => Promise.resolve(notTestedResult("terminal child environment", {})), null),
+  probe(
+    "device.term-features",
+    (ctx) => {
+      const note = "TERM_FEATURES is a terminal program's child-environment export; a library spawns no child process"
+      return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
+        audit: {
+          api: "LibProbeSource (packages/probe-defs/src/types.ts): no terminal-owned child-process environment",
+          runtimeIdentity: ctx.runtimeIdentity ?? null,
+        },
+      })
+    },
+    () => Promise.resolve(notTestedResult("terminal child environment", {})),
+    null,
+  ),
 
   // DSR ?996 — color-scheme query: CSI ? 996 n → CSI ? 997 ; Ps n
   {

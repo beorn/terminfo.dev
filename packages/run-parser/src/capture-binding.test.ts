@@ -759,6 +759,65 @@ const setup = (
   }
   return { draft, artifact, decision }
 }
+
+// The generic branch fixtures cannot catch a real definition left null: no review or binding is then produced.
+it("TERM_FEATURES library coverage reaches an immutable Untestable review without I/O or assertions", () => {
+  const featureId = "device.term-features"
+  const definition = ALL_PROBES.find((entry) => entry.id === featureId)
+  const { draft, artifact, decision } = setup(
+    undefined,
+    {
+      runId: "term-features-library-review",
+      startedAt: "2026-10-29T23:00:00.000Z",
+    },
+    (draft) => {
+      if (!definition?.lib) throw new Error("TERM_FEATURES has no library review arm")
+      const result = definition.lib({
+        runtimeIdentity: draft.runtimeIdentity,
+        feed: () => {
+          throw new Error("TERM_FEATURES must not feed")
+        },
+        feedCapture: () => {
+          throw new Error("TERM_FEATURES must not query")
+        },
+      } as unknown as LibProbeSource)
+      expect(result.criterionBranch).toBe(HEADLESS_OBSERVABLE_REVIEW)
+      expect(result.observation).toBeUndefined()
+      expect(result.assertions).toBeUndefined()
+      expect(JSON.parse(result.response!)).toMatchObject({ audit: { runtimeIdentity: draft.runtimeIdentity } })
+      expect(result.notTested?.noObservable).toContain("child-environment export")
+      draft.rawReplies[featureId] = result.response!
+      draft.results = [
+        recordExecutedProbe({
+          featureId,
+          attempt: { scope: "probe", startedAt: draft.measuredAt! },
+          coverage: result.notTested && { ...result.notTested, featureId, rawReplyRef: featureId },
+          assertions: [],
+          tests: result.tests,
+          criterionBranch: result.criterionBranch,
+        }),
+      ]
+    },
+  )
+  expect(draft.results[0]!.status).toBe("test-todo")
+  decision.reason = draft.results[0]!.tests[0]!.reason!
+  applyCaptureDecision(draft, JSON.stringify(decision), "2026-10-29T23:01:00.000Z")
+  const manifest = {
+    probeHash: draft.probeHash,
+    adapterVersion: "3",
+    catalogIds: [featureId],
+    probes: { term: [], lib: [featureId], mux: [] },
+  }
+  const parsed = parseRun(
+    "term-features.json",
+    JSON.stringify(sealRunDraft(draft)),
+    [featureId],
+    new Map([[draft.probeHash, manifest]]),
+  )
+  expect(parsed.results?.[0]?.status).toBe("untestable")
+  expect(parsed.rawReplies[artifact.rawReplyRef]).toBe(artifact.source)
+  expect(parsed.assertions).toEqual([])
+})
 // Source-only prompt review is approved evidence, not a measured assertion. These explicit
 // collector-input fixtures exercise the canonical seam; they do not attest an engine build.
 function semanticPromptCapture(status: "supported" | "unsupported" = "supported") {
