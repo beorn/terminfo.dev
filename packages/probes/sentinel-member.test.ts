@@ -387,6 +387,7 @@ interface ArmCase {
 
 // One real arm per grader family, both two-step arms, and DECRQSS's second step after an SGR refusal.
 const ARM_CASES: ArmCase[] = [
+  { id: "extensions.osc0-icon-title", when: "silent", replies: {}, outcome: "inconclusive" },
   { id: "device.xtversion", when: "silent", replies: {}, outcome: "unsupported" },
   { id: "device.xtwinops-20", when: "silent", replies: {}, outcome: "unsupported" },
   { id: "device.decrqss", when: "silent", replies: {}, outcome: "unsupported" },
