@@ -20,7 +20,10 @@ test("nine fresh Mac jobs bootstrap the shared producer before checkout and coll
   const workflow = parse(await readFile(new URL("../.github/workflows/macos-measurement.yml", import.meta.url), "utf8"))
   expect(Object.keys(workflow.jobs)).toEqual(["measure-macos"])
   const job = workflow.jobs["measure-macos"]
-  expect(job.strategy.matrix.include.map((row: { id: string }) => row.id)).toEqual([
+  const matrix = JSON.parse(workflow.on.workflow_dispatch.inputs.context_matrix.default) as {
+    include: Array<{ id: string }>
+  }
+  expect(matrix.include.map((row: { id: string }) => row.id)).toEqual([
     "terminal-app",
     "iterm2",
     "ghostty",

@@ -205,6 +205,8 @@ export interface SelectedContextAttempt {
 
 export interface SelectedContextSummary {
   contextKey: string
+  /** Shared physical context facts; absent for an unmeasured pre-start attempt. */
+  subject?: Omit<ProbeSubject, "version">
   catalogIds: string[]
   cells: Record<string, SelectedContextCell>
   missingIds: string[]
@@ -217,9 +219,8 @@ export interface SelectedContextSummary {
 }
 
 export interface SelectedProjection {
-  /** Canonical composed view. Stage1 public consumers continue to read the unchanged `current`. */
+  /** The canonical composed view for private and public consumers. */
   contexts: Record<string, SelectedContextSummary>
-  current: Record<string, CurrentSelectedVersion>
   versions: Record<string, CurrentSelectedVersion[]>
   history: Record<string, CurrentSelectedVersion[]>
   table: Readonly<Record<string, Readonly<Record<string, ProbeStatus>>>>
@@ -385,6 +386,8 @@ export function classifyDevelopmentRun(run: LoadedRun): {
  * Exported so the reviewed `default-contexts.json` rows, which record the unmasked key from the era
  * they were reviewed in, are normalized by the SAME rule instead of needing a hand edit per collect.
  */
+export function maskRunnerStorePath(config: string | null): string | null
+export function maskRunnerStorePath(config: unknown): unknown
 export function maskRunnerStorePath(config: unknown): unknown {
   return typeof config === "string"
     ? config
@@ -429,7 +432,7 @@ export function countContexts(runs: readonly LoadedRun[]): Map<string, Set<strin
  * The key one run's context carries in the projection: the bare `<kind>:<id>` while its group has ONE
  * context, and `<kind>:<id>@<context>` once the group carries more, so a multi-context tie never hides
  * behind an id-level key. The group spans every run of the target, legacy and current, so one context
- * carries one key in `current` and in `historical.current` and a reviewed default-context row names it once (30661). `run-selection.ts` reads this shape back to tell a stale reviewed row from a
+ * carries one key in `contexts` and in historical groups, and a reviewed default-context row names it once (30661). `run-selection.ts` reads this shape back to tell a stale reviewed row from a
  * review that names another os; tests build fixtures through THIS function, never a hand-copied shape.
  */
 export function projectedContextKey(subject: ProbeSubject, contextCount: number): string {
@@ -536,7 +539,6 @@ export function projectResults(
   }
   const projection: SelectedProjection = {
     contexts: {},
-    current: {},
     versions: {},
     history: {},
     table: {},
@@ -637,17 +639,14 @@ export function projectResults(
         Date.parse(b.measuredAt) - Date.parse(a.measuredAt) ||
         b.runId.localeCompare(a.runId),
     )
-    // Reuse the existing ranking for the explicitly supplied historical baseline. This does not
-    // change public current's field, ranking, deduplication, cells, hash or seal (CTO1212de0f).
+    // Original versions retain their display order. Only an explicit historical baseline supplies
+    // untouched cells; selected attempts are folded independently by their recorded start below.
     const baseline = versions.find((version) => readCollectorSelection(version.rawReplies) === undefined)
     if (baseline) baselineRunIds.push(baseline.runId)
     const unique = versions.filter(
       (version, index) => versions.findIndex((entry) => entry.subject.version === version.subject.version) === index,
     )
     projection.versions[key] = unique
-    const selected = unique[0]
-    if (!selected) throw new Error(`missing selected current version for ${key}`)
-    projection.current[key] = selected
   }
   return {
     ...projection,
@@ -658,7 +657,11 @@ export function projectResults(
       policy.workingRuns ?? [],
       policy.workingAttempts ?? [],
       catalogIds,
-      new Map(Object.entries(projection.current).map(([key, current]) => [contextKey(current.subject), key])),
+      new Map(
+        Object.entries(projection.versions).flatMap(([key, versions]) =>
+          versions.map((version) => [contextKey(version.subject), key] as const),
+        ),
+      ),
     ),
   }
 }
@@ -676,13 +679,24 @@ function compareContextAttempts(
   return Date.parse(left) - Date.parse(right) || a.runId.localeCompare(b.runId)
 }
 
+/** Resolve one immutable original within its canonical context; working inputs stay private. */
+export function originalRunFor<T extends Pick<CurrentSelectedVersion, "runId">>(
+  projection: { history: Readonly<Record<string, readonly T[]>> },
+  contextKey: string,
+  runId: string,
+): T {
+  const run = projection.history[contextKey]?.find((original) => original.runId === runId)
+  if (!run) throw new Error(`Context ${contextKey} names missing original run ${runId}`)
+  return run
+}
+
 function composeContextSummaries(
   acceptedRuns: readonly LoadedRun[],
   baselineRunIds: readonly string[],
   workingRuns: readonly LoadedRun[],
   workingAttempts: readonly SelectedAttemptInput[],
   catalogIds: readonly string[],
-  publicContextKeys: ReadonlyMap<string, string>,
+  contextKeys: ReadonlyMap<string, string>,
 ): Record<string, SelectedContextSummary> {
   const runsById = new Map<string, LoadedRun>()
   for (const run of [...acceptedRuns, ...workingRuns]) {
@@ -693,10 +707,10 @@ function composeContextSummaries(
   const runs = [...runsById.values()]
   const baselineIds = new Set(baselineRunIds)
   const workingIds = new Set(workingRuns.map((run) => run.runId))
-  // Working inputs cannot rename a public key. Working-only contexts take the existing qualified
+  // Working inputs cannot rename an admitted key. Working-only contexts take the existing qualified
   // form (the multi-context branch), even when they are the only working context for this target.
   const keyFor = (run: LoadedRun): string =>
-    publicContextKeys.get(contextKey(run.subject)) ?? projectedContextKey(run.subject, 2)
+    contextKeys.get(contextKey(run.subject)) ?? projectedContextKey(run.subject, 2)
   const groups = new Map<string, LoadedRun[]>()
   for (const run of runs) {
     const key = keyFor(run)
@@ -785,6 +799,18 @@ function composeContextSummaries(
     )
     summaries[contextKey] = {
       contextKey,
+      ...(candidates[0] && {
+        subject: {
+          kind: candidates[0].subject.kind,
+          id: candidates[0].subject.id,
+          os: candidates[0].subject.os,
+          osVersion: candidates[0].subject.osVersion,
+          outerTerminal: candidates[0].subject.outerTerminal,
+          mux: candidates[0].subject.mux,
+          config: maskRunnerStorePath(candidates[0].subject.config),
+          permissions: candidates[0].subject.permissions,
+        },
+      }),
       catalogIds: viewIds,
       cells,
       missingIds,
@@ -798,10 +824,10 @@ function composeContextSummaries(
   return summaries
 }
 
-export function statesFor(projection: SelectedProjection, runId: string): Readonly<Record<string, ProbeStatus>> {
-  const states = projection.table[runId]
-  if (!states) throw new Error(`The projection classified no row for run ${runId}`)
-  return states
+export function statesFor(projection: SelectedProjection, contextKey: string): Readonly<Record<string, ProbeStatus>> {
+  const context = projection.contexts[contextKey]
+  if (!context) throw new Error(`The projection classified no context ${contextKey}`)
+  return Object.fromEntries(context.catalogIds.map((id) => [id, context.cells[id]?.result.status ?? "test-todo"]))
 }
 
 /**

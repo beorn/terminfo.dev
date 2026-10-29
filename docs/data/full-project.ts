@@ -24,6 +24,10 @@ export interface ObservationRow {
   method: string | null
   note: string | null
   reason: string | null
+  origin: { runId: string; resultId: string }
+  suiteId: string
+  measuredAt: string
+  hold?: string
 }
 
 export interface CollectedRow {
@@ -32,15 +36,12 @@ export interface CollectedRow {
   os: string
   kind: ContextKind
   collected: true
-  run: {
-    runId: string
-    /** The projection's own context key, so the preview can reach this run's evidence document. */
+  selection: {
     contextKey: string
-    suiteId: string
-    measuredAt: string
-    version: string
-    selection: string
+    method: string
   }
+  sources: ContextCandidate["sources"]
+  heldIds: string[]
   result: ScopeResult
   /** Every catalog id, so the preview shows the row itself and not only its count. */
   observations: readonly ObservationRow[]
@@ -123,7 +124,9 @@ function buildRow(
   if (context.kind === "lib") {
     // An engine's adapter is one context. Several current runs across operating systems are several
     // candidates for one row, so the row names them instead of choosing one and hiding the rest.
-    const onSuite = matches.filter((candidate) => candidate.suiteId === args.requiredSuiteId)
+    const onSuite = matches.filter((candidate) =>
+      candidate.sources.some((source) => source.suiteId === args.requiredSuiteId),
+    )
     const distinctOs = [...new Set(onSuite.map((candidate) => candidate.os))].sort()
     if (distinctOs.length > 1) {
       return {
@@ -146,11 +149,13 @@ function buildRow(
     }
   }
   if ("stale" in picked) return { ...base, collected: false, cause: picked.stale }
-  if (picked.run.suiteId !== args.requiredSuiteId) {
+  const onSuiteSources = picked.run.sources.filter((source) => source.suiteId === args.requiredSuiteId)
+  const [firstOnSuite] = onSuiteSources
+  if (!firstOnSuite) {
     return {
       ...base,
       collected: false,
-      cause: `selected run is on suite ${picked.run.suiteId}; required ${args.requiredSuiteId}`,
+      cause: `selected run is on suite ${[...new Set(picked.run.sources.map((source) => source.suiteId))].join(", ")}; required ${args.requiredSuiteId}; sources ${picked.run.sources.map((source) => source.runId).join(", ")}`,
     }
   }
   const results = picked.run.results
@@ -158,32 +163,54 @@ function buildRow(
     return { ...base, collected: false, cause: "selected run is historical; current sealed results required" }
   }
   const byId = new Map(results.map((result) => [result.featureId, result]))
+  for (const source of onSuiteSources) {
+    const original = picked.run.context
+      ? Object.values(picked.run.context.cells).find((cell) => cell.origin.runId === source.runId)?.run.results
+      : results
+    for (const id of args.catalogIds) {
+      if (!original?.some((result) => result.featureId === id)) {
+        throw new Error(`Current run ${source.runId} lacks frozen feature ${id}`)
+      }
+    }
+  }
+  const heldIds: string[] = []
+  const observations = args.catalogIds.map((id): ObservationRow => {
+    const cell = byId.get(id)
+    if (!cell) throw new Error(`Current context ${picked.run.key} lacks frozen feature ${id}`)
+    const original = picked.run.context?.cells[id]?.run
+    const source = original ?? firstOnSuite
+    const hold =
+      source.suiteId !== args.requiredSuiteId
+        ? `retained from suite ${source.suiteId}, measured ${source.measuredAt}; not release evidence`
+        : undefined
+    if (hold) heldIds.push(id)
+    return {
+      id,
+      state: cell.status,
+      method: cell.assertionType ?? null,
+      note: null,
+      reason: cell.reason ?? null,
+      origin: { runId: source.runId, resultId: id },
+      suiteId: source.suiteId,
+      measuredAt: source.measuredAt,
+      ...(hold && { hold }),
+    }
+  })
+  const held = new Set(heldIds)
   return {
     ...base,
     collected: true,
-    run: {
-      runId: picked.run.runId,
+    selection: {
       contextKey: picked.run.key,
-      suiteId: picked.run.suiteId,
-      measuredAt: picked.run.measuredAt,
-      version: picked.run.version,
-      selection: picked.selection,
+      method: picked.selection,
     },
+    sources: picked.run.sources,
+    heldIds,
     result: scopeAggregate({
       scope: context.context,
       catalogIds: args.catalogIds,
-      results,
+      results: results.map((result) => (held.has(result.featureId) ? { ...result, status: "test-todo" } : result)),
     }),
-    observations: args.catalogIds.map((id) => {
-      const cell = byId.get(id)
-      if (!cell) throw new Error(`Current run ${picked.run.runId} lacks frozen feature ${id}`)
-      return {
-        id,
-        state: cell.status,
-        method: cell?.assertionType ?? null,
-        note: null,
-        reason: cell?.reason ?? null,
-      }
-    }),
+    observations,
   }
 }

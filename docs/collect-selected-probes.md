@@ -37,9 +37,13 @@ An unsuccessful attempt does not refresh an older result's date or review.
 Each capture retains its own run ID, evidence and review bindings.
 
 The `complete` field still describes the whole required cohort; selecting a subset does not make the cohort complete.
-Use the existing private report with explicit pass inputs to inspect composed results. Public projection and hosted filtering follow the separate hosted/public delivery stage.
+Use the existing private report with explicit pass inputs to inspect composed results. The same selectors constrain hosted macOS and Windows work: only the selected workflow jobs start, and each collector receives the resolved probe IDs.
+
+Hosted workflow transport uses the existing `context_matrix` and `probe_ids` inputs. The full matrix lives once, in each workflow input default; the dispatcher filters those actual rows, preserving macOS bundle paths. With no selection it omits both fields, so the defaults preserve full collection. Empty context or probe arrays return before dispatch. Selected hosted inline collectors receive the existing `--probe-ids` JSON argument; null selection leaves their command arguments unchanged. The Linux container keeps `TERMINFO_PROBE_IDS` because its collector runs `test --serve`.
+
+Direct manual workflow dispatch can supply rows outside the default matrix. Each row keeps its own job name; an absent macOS bundle fails the existing launch. A standalone job does not become a coordinator capture: only IDs named by `capture_run_ids` can enter that coordinator's retained drafts. Keep the selected row IDs, capture run IDs and source revision together when inspecting workflow artifacts.
 
 Required resources remain the existing suite, catalogue, source and route runtime dependencies.
 Missing resources and route failures keep their named diagnostics and retained private draft; they never select a fallback subset.
 
-See the [probe-system model](../packages/probe-defs/README.md#collector-routes-and-persistence) for collector and writer ownership.
+See the [probe-system model](https://github.com/beorn/terminfo.dev/blob/main/packages/probe-defs/README.md#collector-routes-and-persistence) for collector and writer ownership.

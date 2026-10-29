@@ -1,10 +1,14 @@
 import { PROBE_STATUSES, type ProbeResult, type ProbeStatus } from "../../packages/probe-defs/src/types.ts"
 import { environmentGroupIds, gradedFeatureIds } from "../../packages/probe-defs/src/environment-groups.ts"
-import type { PublicVersion, PublicProbeResult } from "./public-results.ts"
+import type { PublicVersion, PublicProbeResult, PublicContextSummary } from "./public-results.ts"
 
 /** Read a current (schema 3 or 4) published result without manufacturing any legacy observation. */
-export function publicResultFor(version: PublicVersion | undefined, featureId: string): PublicProbeResult | undefined {
+export function publicResultFor(
+  version: PublicVersion | PublicContextSummary | undefined,
+  featureId: string,
+): PublicProbeResult | undefined {
   if (!version) return undefined
+  if ("cells" in version) return version.cells[featureId]
   return version.results.find((result) => result.featureId === featureId)
 }
 
@@ -74,6 +78,11 @@ export type SuiteRelation = "release" | "tree" | "older" | "partial"
  */
 export function isStaleRelation(relation: SuiteRelation): boolean {
   return relation === "older" || relation === "partial"
+}
+
+/** A context remains current when any original evidence source is current; safe for site clients. */
+export function hasCurrentSource(sources: readonly { suiteRelation: SuiteRelation }[]): boolean {
+  return sources.some((source) => !isStaleRelation(source.suiteRelation))
 }
 
 /** True when the live tree has moved past the release suite, so a banner must say so (one, not two). */
