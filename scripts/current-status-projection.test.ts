@@ -14,6 +14,7 @@ import type { ProbeResult, ProbeSuiteManifest, TextQualification } from "@termin
 import { ENVIRONMENT_GROUP_IDS } from "@terminfo/probe-defs"
 import { projectResults, maskRunnerStorePath, projectedContextKey } from "../docs/data/selected-results.ts"
 import { currentCoverageSentence } from "../docs/data/release-scope.ts"
+import { candidateFromSelected, pickContextRun } from "../docs/data/run-selection.ts"
 
 // Explicit schema-3 wire fixture; current public results use tests and assertionType.
 type Schema3Result = Omit<ProbeResult, "tests" | "assertionType"> & { checks: ProbeResult["tests"]; evidence?: string }
@@ -95,6 +96,63 @@ function supportedBaseline() {
 // Existing selection tests exercise v1/v2 observation grading; they cannot prove that v3 selection
 // reads the stored five statuses and frozen denominator without applying later interpretations.
 describe("current execution projection", () => {
+  // CTO contract: only contributing original dates may supersede a reviewed host generation.
+  // Existing cell-composition cases do not exercise the picker or a newer no-output attempt.
+  it("does not let a newer attempt supersede original evidence from another host generation", () => {
+    const baseline = supportedBaseline()
+    const olderHost = {
+      ...baseline,
+      runId: "older-host",
+      measuredAt: "2026-10-20T00:00:00Z",
+      subject: { ...baseline.subject, osVersion: "old" },
+    }
+    const chosenHost = {
+      ...baseline,
+      runId: "chosen-host",
+      measuredAt: "2026-10-21T00:00:00Z",
+      subject: { ...baseline.subject, osVersion: "new" },
+    }
+    const projection = projectResults([olderHost, chosenHost], [], ids, { currentProbeHash: suite.probeHash }, [])
+    const candidates = Object.values(projection.contexts).map((context) => {
+      if (context.contributingRunIds.includes(olderHost.runId))
+        context.attempts.push({
+          runId: "no-output",
+          path: "working/no-output.json",
+          selection: { ids: [ids[0]!] },
+          attempt: { ids: [ids[0]!], result: "completed", startedAt: "2027-01-01T00:00:00Z" },
+          noOutputIds: [ids[0]!],
+        })
+      const candidate = candidateFromSelected(context.contextKey, context, {}, projection)
+      if (!candidate) throw new Error("fixture context lost original sources")
+      expect(candidate.sources.map((source) => source.runId)).not.toContain("no-output")
+      return candidate
+    })
+    const chosen = candidates.find((candidate) =>
+      candidate.sources.some((source) => source.runId === chosenHost.runId),
+    )!
+    expect(pickContextRun(candidates, { contextKey: chosen.key })).toEqual({
+      run: chosen,
+      selection: "reviewed default-context row",
+    })
+  })
+
+  // A context with both old and current cells remains eligible. Whole-run filtering misses this.
+  it("keeps a mixed-source context current and excludes a zero-source candidate", () => {
+    const baseline = supportedBaseline()
+    const projection = projectResults([baseline], [], ids, { currentProbeHash: suite.probeHash }, [])
+    const context = Object.values(projection.contexts)[0]!
+    const candidate = candidateFromSelected(context.contextKey, context, {}, projection)!
+    const mixed = {
+      ...candidate,
+      sources: [{ ...candidate.sources[0]!, suiteRelation: "older" as const }, ...candidate.sources],
+    }
+    const empty = { ...candidate, key: "attempt-only", sources: [] }
+    expect(pickContextRun([empty, mixed])).toEqual({ run: mixed, selection: "only current" })
+    expect(
+      candidateFromSelected(context.contextKey, { ...context, contributingRunIds: [] }, {}, projection),
+    ).toBeUndefined()
+    expect(pickContextRun([candidate])).toEqual({ run: candidate, selection: "only current" })
+  })
   // CTO R1: a working-only context must not rename an admitted context's public key.
   // The legacy-context witness below has no explicit working input and misses this population split.
   it("keeps public context keys stable beside a working-only context", () => {
@@ -305,7 +363,9 @@ describe("current execution projection", () => {
         { runId: latest.runId, selection, attempt: outcome, noOutputIds: selection.ids },
       ])
       expect(context.attempts[0]!.attempt).not.toHaveProperty("startedAt")
-      expect(projection.history["term:kitty"]?.find((run) => run.runId === latest.runId)?.results).toEqual(latest.results)
+      expect(projection.history["term:kitty"]?.find((run) => run.runId === latest.runId)?.results).toEqual(
+        latest.results,
+      )
     },
   )
 
@@ -538,7 +598,9 @@ it("retains the recorded live source only on selected schema-4 metadata", () => 
     ids,
     new Map([[suite.probeHash, { ...suite, schemaVersion: 4 }]]),
   )
-  const selected = projectResults([loaded], [], ids, { currentProbeHash: suite.probeHash }, []).history["term:kitty"]?.[0]
+  const selected = projectResults([loaded], [], ids, { currentProbeHash: suite.probeHash }, []).history[
+    "term:kitty"
+  ]?.[0]
   expect(selected?.schemaVersion).toBe(4)
   expect(selected?.source).toEqual({ kind: "live" })
   const oldSelected = projectResults([parse(historical)], [], ids, { currentProbeHash: suite.probeHash }, []).history[

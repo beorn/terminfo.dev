@@ -49,7 +49,10 @@ interface ReleaseResult {
   terminal: string
   label: string
   currentVersions: string[]
-  currentEvidence: { contextKey: string; sources: Array<{ runId: string; version: string; sha256: string; suiteId: string; measuredAt: string }> } | null
+  currentEvidence: {
+    contextKey: string
+    sources: Array<{ runId: string; version: string; sha256: string; suiteId: string; measuredAt: string }>
+  } | null
   latestVersion: string | null
   latestDate: string | null
   sourceUrl: string | null
@@ -339,7 +342,11 @@ async function main() {
   const cutoff = latestMode ? runAt : calendarMonthCutoff(runAt)
   const projection = loadCurrentResults(contentDir).projection
   const currentSubjects = compatibilitySubjects(projection, contentDir)
-  const originals = new Map(Object.values(projection.history).flat().map((run) => [run.runId, run]))
+  const originals = new Map(
+    Object.values(projection.history)
+      .flat()
+      .map((run) => [run.runId, run]),
+  )
 
   const results: ReleaseResult[] = []
 
@@ -351,12 +358,16 @@ async function main() {
     const sources = (current?.selected.contributingRunIds ?? []).map((runId) => {
       const original = originals.get(runId)
       if (!original) throw new Error(`Release watch context ${current?.contextKey} names absent original run ${runId}`)
-      return { runId, version: original.subject.version, sha256: original.sha256, suiteId: original.suiteId, measuredAt: original.measuredAt }
+      return {
+        runId,
+        version: original.subject.version,
+        sha256: original.sha256,
+        suiteId: original.suiteId,
+        measuredAt: original.measuredAt,
+      }
     })
     const currentVersions = [...new Set(sources.map((entry) => entry.version))]
-    const currentEvidence = current
-      ? { contextKey: current.contextKey, sources }
-      : null
+    const currentEvidence = current ? { contextKey: current.contextKey, sources } : null
     try {
       const selection = selectEligibleRelease(await fetchReleaseFeed(source), cutoff)
       const selected = selection.selected
@@ -380,7 +391,11 @@ async function main() {
             if (!release?.publishedAt) throw new Error("Validated release comparison lost its dated source")
             return selectedDate - Date.parse(release.publishedAt) || compareVersions(selected.version, release.version)
           })
-          disposition = orders.every((order) => order > 0) ? "new-release" : orders.some((order) => order < 0) ? "newer-than-eligible" : "up-to-date"
+          disposition = orders.every((order) => order > 0)
+            ? "new-release"
+            : orders.some((order) => order < 0)
+              ? "newer-than-eligible"
+              : "up-to-date"
         }
       }
       const isNewer = disposition === "new-release"
@@ -438,7 +453,10 @@ async function main() {
   console.log()
 
   const labelWidth = Math.max(...results.map((r) => r.label.length))
-  const curWidth = Math.max(...results.map((r) => (r.currentVersions.join(", ") || "unknown").length), "current:".length)
+  const curWidth = Math.max(
+    ...results.map((r) => (r.currentVersions.join(", ") || "unknown").length),
+    "current:".length,
+  )
   const latWidth = Math.max(...results.map((r) => (r.latestVersion ?? "none").length), "eligible:".length)
 
   let hasNew = false

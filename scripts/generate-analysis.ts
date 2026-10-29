@@ -195,7 +195,11 @@ interface SelectedAnalysisInput {
 function buildTerminalResultMap(): Map<string, SelectedAnalysisInput> {
   const { projection } = loadCurrentResults(contentDir)
   const selected = compatibilitySubjects(projection, contentDir)
-  const originals = new Map(Object.values(projection.history).flat().map((run) => [run.runId, run]))
+  const originals = new Map(
+    Object.values(projection.history)
+      .flat()
+      .map((run) => [run.runId, run]),
+  )
   const resultMap = new Map<string, SelectedAnalysisInput>()
   for (const [key, { selected: version }] of selected) {
     if (!version.subject) throw new Error(`Analysis context ${key} has no physical subject`)
@@ -204,11 +208,19 @@ function buildTerminalResultMap(): Map<string, SelectedAnalysisInput> {
     const sources = version.contributingRunIds.map((runId): AnalysisSource => {
       const original = originals.get(runId)
       if (!original) throw new Error(`Analysis context ${key} names absent original run ${runId}`)
-      return { runId, sha256: original.sha256, measuredAt: original.measuredAt, suiteId: original.suiteId, version: original.subject.version }
+      return {
+        runId,
+        sha256: original.sha256,
+        measuredAt: original.measuredAt,
+        suiteId: original.suiteId,
+        version: original.subject.version,
+      }
     })
     resultMap.set(key, {
       sourceId: version.subject.id,
-      results: Object.fromEntries(version.catalogIds.map((id) => [id, version.cells[id]?.result.status ?? "test-todo"])),
+      results: Object.fromEntries(
+        version.catalogIds.map((id) => [id, version.cells[id]?.result.status ?? "test-todo"]),
+      ),
       recordedResults,
       catalogIds: version.catalogIds,
       aggregate: aggregateCurrentResults(recordedResults, version.catalogIds),

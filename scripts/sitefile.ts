@@ -598,7 +598,11 @@ async function generateLockfile() {
   // versions are not measurements. Partial/unreviewed history stays excluded.
   const { projection } = loadCurrentResults(contentDir)
   const selected = [...compatibilitySubjects(projection, contentDir).values()]
-  const originals = new Map(Object.values(projection.history).flat().map((run) => [run.runId, run]))
+  const originals = new Map(
+    Object.values(projection.history)
+      .flat()
+      .map((run) => [run.runId, run]),
+  )
   const catalogPath = path.join(contentDir, "terminals.json")
   const catalog = loadTerminals(contentDir)
   const terminalLock = terminals.map((terminal) => {
@@ -615,7 +619,13 @@ async function generateLockfile() {
     const sources = (run?.contributingRunIds ?? []).map((runId) => {
       const original = originals.get(runId)
       if (!original) throw new Error(`Inventory context ${entry?.contextKey} names absent original run ${runId}`)
-      return { runId, sha256: original.sha256, version: original.subject.version, measuredAt: original.measuredAt, suiteId: original.suiteId }
+      return {
+        runId,
+        sha256: original.sha256,
+        version: original.subject.version,
+        measuredAt: original.measuredAt,
+        suiteId: original.suiteId,
+      }
     })
     return {
       terminalId: terminal.id,
