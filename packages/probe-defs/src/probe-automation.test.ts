@@ -850,9 +850,10 @@ describe("reply-path audit", () => {
     expect(raw.trace.at(-1)).toEqual({ write: query, error: "Error: stack attempt failed" })
   })
 
-  test("covers all ten audited artifacts", () => {
-    // Three Ghostty WASM artifacts at 5714ed07, five native artifacts at 332b2aef, and two vt100-rust builds.
+  test("covers all eleven audited artifacts", () => {
+    // Three Ghostty WASM artifacts at 5714ed07, five native artifacts at 332b2aef, and three vt100-rust builds.
     expect([...REPLY_PATH_AUDITS.keys()].sort()).toEqual([
+      "0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3",
       "17d155feee5df8fa30266b9a354bbe66e39484d08218de5e03dc3bb2f199a0a3",
       "77b69f9f22c4126359be864fcce97afad8f84615053e21d335ba6348a8d3e1d7",
       "7c43302dde147c6f7959b7bda7045ff375c71288da1af5667ffca2bf95beb2bf",
@@ -927,8 +928,10 @@ describe("reply-path audit", () => {
     }
   })
 
-  test("vt100-rust b9109b59 lists the ruled twins and leaves a silent write not-tested", () => {
-    const sha = "b9109b5918707746420833dfc2eab3ea5bc7feec5fa93bee4cd6e824e74d0962"
+  test.each([
+    "b9109b5918707746420833dfc2eab3ea5bc7feec5fa93bee4cd6e824e74d0962",
+    "0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3",
+  ])("vt100-rust %s lists the ruled twins and leaves a silent write not-tested", (sha) => {
     const old = "f309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96"
     const noReply = [
       "cursor.position-report",
