@@ -357,6 +357,48 @@ describe("reply-path audit", () => {
     )
   })
 
+  // @cto 52d43147: an unlisted artifact must keep the complete pre-attempt early result,
+  // not acquire a source-negative grade merely because the probe now records its own attempt.
+  test("an unlisted stack attempt preserves the early review except for its trace entry", () => {
+    const id = "extensions.osc30001-color-stack-push"
+    const query = "\x1b]10;?\x07"
+    const stackQuery = "\x1b]30001\x1b\\"
+    const missing =
+      "OSC 10 initial and seeded foreground queries answered nothing, so the colour-stack effect has no readback"
+    const early = {
+      pass: false,
+      response: JSON.stringify({
+        query,
+        originalRaw: "",
+        trace: [
+          { write: query, response: "" },
+          { write: "\x1b]10;rgb:aa/bb/cc\x07", response: "" },
+          { write: query, response: "" },
+          { write: "\x1b]110\x07", response: "" },
+          { write: query, response: "" },
+        ],
+      }),
+      note: missing,
+      notTested: { reason: "no-semantic-observable", noObservable: missing },
+      criterionBranch: "color-readback-review",
+      tests: [
+        {
+          id: "review",
+          status: "test-todo",
+          reason:
+            "Library probe source offers no colour readback; required independent review of the retained raw state pending",
+        },
+      ],
+    }
+    const { result } = run(id, "f".repeat(64), () => "")
+    const raw = JSON.parse(result.response!) as { query: string; originalRaw: string; trace: unknown[] }
+    expect(raw.trace.pop()).toEqual({ write: stackQuery, response: "" })
+    expect({ ...result, response: JSON.stringify(raw) }).toEqual(early)
+    const listed = run(id, "ac12d6408c2049f1d720e9735d7eb69251d3eed868fc9ced58de98b3543f3e2e", () => "").result
+    const listedRaw = JSON.parse(listed.response!) as { measuredResponse: string }
+    expect(listedRaw.measuredResponse).toBe(result.response)
+  })
+
   test("a failed native stack attempt retains the early readback review and its trace error", () => {
     const query = "\x1b]30001\x1b\\"
     const { result } = run(
