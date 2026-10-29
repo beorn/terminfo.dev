@@ -1219,6 +1219,7 @@ TERMINFO_CAPTURE_RAW="$raw/v3-capture.json" TERMINFO_CAPTURE_OUTPUT="$raw" bun -
   import {readRetainedDaemonProbeResponse,finalizeCollectedDraft} from "./packages/terminfo.dev/src/daemon-client.ts";
   const directory=process.env.TERMINFO_CAPTURE_OUTPUT;
   const retained=await readRetainedDaemonProbeResponse(new Response(readFileSync(process.env.TERMINFO_CAPTURE_RAW)),{directory:join(directory,"http-responses")});
+  if(retained.kind==="empty-selection") throw new Error("Empty selection where a capture was required");
   const run=finalizeCollectedDraft(retained.run);
   const path=join(directory,run.sealedAt===undefined?"v3-run.draft.json":"v3-run.json");
   writeFileSync(path,JSON.stringify(run,null,2)+"\n",{flag:"wx",mode:0o600});
