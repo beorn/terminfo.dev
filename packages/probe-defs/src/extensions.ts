@@ -1035,13 +1035,19 @@ function resetProbe(id: string, setCode: number, resetCode: number, index?: numb
   }
 }
 
-function colorStackResult(before: string, requested: string, changed: string, restored: string): ProbeCallbackResult {
+function colorStackResult(
+  before: string,
+  requested: string,
+  changed: string,
+  restored: string,
+  operation: "push" | "pop",
+): ProbeCallbackResult {
   const changedAsRequested = sameRgb(changed, requested)
   const restoredOriginal = sameRgb(restored, before)
   const pass = changedAsRequested && restoredOriginal
   const response = JSON.stringify({ before, changed, restored })
   const note = pass
-    ? "Foreground changed and color-stack pop restored its original value"
+    ? `Foreground changed and the color-stack ${operation} round trip restored its original value`
     : "Foreground change or stack restoration was not observed"
   return {
     pass,
@@ -1052,7 +1058,10 @@ function colorStackResult(before: string, requested: string, changed: string, re
       {
         assertionType: "query_reply" as const,
         kind: pass ? "positive" : "negative",
-        expected: "Changed foreground and restored original after color-stack pop",
+        expected:
+          operation === "push"
+            ? "Changed foreground and restored original after color-stack push, observed through a push/pop round trip"
+            : "Changed foreground and restored original after color-stack pop",
         observed: response,
       },
     ],
@@ -1155,6 +1164,7 @@ function colorStackError(actionKind: "query" | "behavior", action: string, error
 
 function colorStackProbe(ownSequence: typeof colorPush | typeof colorPop): ProbeDefinition["lib"] {
   return (ctx) => {
+    const operation = ownSequence === colorPush ? "push" : "pop"
     let silence: ProbeCallbackResult | null = null
     if (ctx.queryWithSentinelOutcome) {
       silence = sentinelSilenceResult(
@@ -1283,7 +1293,7 @@ function colorStackProbe(ownSequence: typeof colorPush | typeof colorPop): Probe
         }
       } else {
         comparison = { before, changed, restored }
-        result = colorStackResult(before, requested, changed, restored)
+        result = colorStackResult(before, requested, changed, restored, operation)
       }
       return result
     } catch (error) {
@@ -1391,6 +1401,7 @@ function colorStackProbe(ownSequence: typeof colorPush | typeof colorPop): Probe
 
 async function colorStackTermProbe(
   ctx: Parameters<NonNullable<ProbeDefinition["term"]>>[0],
+  operation: "push" | "pop",
 ): Promise<ProbeCallbackResult> {
   const originalReply = await ctx.queryWithSentinelOutcome(foregroundQuery, foregroundReply)
   const before = foregroundValue(originalReply.match?.[0] ?? "")
@@ -1409,7 +1420,7 @@ async function colorStackTermProbe(
     const restoredReply = await ctx.queryWithSentinelOutcome(foregroundQuery, foregroundReply)
     const restored = foregroundValue(restoredReply.match?.[0] ?? "")
     if (!restored) return unansweredQuery(restoredReply, "No OSC 10 reply after color-stack pop")
-    return colorStackResult(before, requested, changed, restored)
+    return colorStackResult(before, requested, changed, restored, operation)
   } finally {
     try {
       if (pushed) ctx.write(colorPop)
@@ -3523,13 +3534,23 @@ export const extensionsProbes: ProbeDefinition[] = [
 
   // OSC 30001 — Kitty color stack push
   {
-    ...probe("extensions.osc30001-color-stack-push", colorStackProbe(colorPush), colorStackTermProbe, "query_reply"),
+    ...probe(
+      "extensions.osc30001-color-stack-push",
+      colorStackProbe(colorPush),
+      (ctx) => colorStackTermProbe(ctx, "push"),
+      "query_reply",
+    ),
     libHostRecipes: [{ recipe: "color-request", query: foregroundQuery, missing: ["foreground-rgb"] }],
   },
 
   // OSC 30101 — Kitty color stack pop
   {
-    ...probe("extensions.osc30101-color-stack-pop", colorStackProbe(colorPop), colorStackTermProbe, "query_reply"),
+    ...probe(
+      "extensions.osc30101-color-stack-pop",
+      colorStackProbe(colorPop),
+      (ctx) => colorStackTermProbe(ctx, "pop"),
+      "query_reply",
+    ),
     libHostRecipes: [{ recipe: "color-request", query: foregroundQuery, missing: ["foreground-rgb"] }],
   },
 
