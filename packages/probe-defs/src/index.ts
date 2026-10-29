@@ -173,6 +173,8 @@ export { PROBE_STATUSES } from "./types.ts"
 export type {
   ProbeStatus,
   ProbeAttempt,
+  CollectorSelection,
+  CollectorAttempt,
   ProbeResult,
   ProbeTestResult,
   ProbeTestInput,
@@ -183,6 +185,13 @@ export type {
 } from "./types.ts"
 export { initializeRunDraft, finalizeProbeResult, sealRunDraft } from "./helpers.ts"
 
-export { recordExecutedProbe, recordCollectionFailure } from "./helpers.ts"
+export {
+  recordExecutedProbe,
+  recordCollectionFailure,
+  readCollectorSelection,
+  readCollectorAttempt,
+  recordCollectorSelection,
+  recordCollectorAttempt,
+} from "./helpers.ts"
 
 export { assessTextQualification, type TextQualificationAssessment } from "./text-qualification.ts"
