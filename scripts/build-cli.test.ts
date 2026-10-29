@@ -4,6 +4,7 @@
  * @consumer Published terminfo.dev bin entry
  * @reach fs-walk vendor/terminfo.dev/.github/workflows/macos-measurement.yml vendor/terminfo.dev/.github/workflows/windows-measurement.yml
  * @testonly none
+ * @source-grep mkdtemp roots hold createComposedFixture's clone; workflow build steps write the compared dist/terminfo.bundle.mjs there.
  */
 import { execFileSync, spawnSync } from "node:child_process"
 import {
