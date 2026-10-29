@@ -423,8 +423,8 @@ describe("reply-path audit", () => {
     expect([...REPLY_PATH_AUDITS.keys()].sort()).toEqual([
       "7c43302dde147c6f7959b7bda7045ff375c71288da1af5667ffca2bf95beb2bf",
       "9a9505600721226b952ae9ac92552b42389aa6713872a9f4904528f425b7ecdf",
-      "a478127f571a25cf0e2b52e2972aa26d4344df03d9b3fba93ca03efd9cc9a0fa",
       "ac12d6408c2049f1d720e9735d7eb69251d3eed868fc9ced58de98b3543f3e2e",
+      "f309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96",
     ])
   })
 

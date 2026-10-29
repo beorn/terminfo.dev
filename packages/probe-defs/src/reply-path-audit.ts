@@ -551,9 +551,10 @@ export const REPLY_PATH_AUDITS: ReadonlyMap<string, Readonly<Record<string, Repl
       },
     },
   ],
-  // vt100 0.16.2 Rust parser native artifact, the artifact the 31371 capture loaded
+  // vt100 0.16.2 Rust parser native artifact from termless 0c409349, built by its declared `nix shell .#native-tools`
+  // build; two checkouts gave this sha256 (#31671). termless 83f653f moved it off a478127f, the 31371 capture's key.
   [
-    "a478127f571a25cf0e2b52e2972aa26d4344df03d9b3fba93ca03efd9cc9a0fa",
+    "f309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96",
     {
       "cursor.position-report": {
         query: "\x1b[6n",
