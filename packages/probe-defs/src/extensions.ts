@@ -1600,6 +1600,46 @@ function unansweredQuery(reply: TerminalQueryOutcome, note: string): ProbeCallba
   }
 }
 
+/** OSC99 capability detection only; neither arm displays a desktop notification. */
+function notificationQueryResult(reply: TerminalQueryOutcome, id: string, fallback = false): ProbeCallbackResult {
+  if (!reply.match) {
+    const note = "No matching notification query reply; OS display was not tested"
+    if (!fallback) return unansweredQuery(reply, note)
+    return {
+      pass: false,
+      response: reply.raw,
+      note,
+      observation: { outcome: "inconclusive", assertionType: "query_reply", reason: "no-response", note },
+    }
+  }
+  const payloadFields = reply.match[1]?.split(":").filter((field) => field.startsWith("p=")) ?? []
+  const pass = payloadFields.length === 1 && payloadFields[0]?.slice(2).split(",").includes("title") === true
+  const note = pass
+    ? "Notification capabilities acknowledge title payloads; OS display, activation and close events were not tested"
+    : "Notification reply does not advertise the required title payload; no support conclusion"
+  return {
+    pass,
+    response: reply.match[0],
+    note,
+    observation: {
+      outcome: pass ? "supported" : "inconclusive",
+      assertionType: "query_reply",
+      ...(!pass && { reason: "invalid-reply" as const }),
+      note,
+    },
+    ...(pass && {
+      assertions: [
+        {
+          assertionType: "query_reply" as const,
+          kind: "positive" as const,
+          expected: `OSC 99 echoes i=${id}, p=? and advertises p=title`,
+          observed: reply.match[0] ?? "",
+        },
+      ],
+    }),
+  }
+}
+
 /**
  * Live's reading of one string-graded query outcome: no matched frame grades through unansweredQuery, a
  * matched frame through the site's grader. A library probe source on a proven reply path offers the same
@@ -3270,49 +3310,33 @@ export const extensionsProbes: ProbeDefinition[] = [
   ),
 
   // Query capabilities without displaying a notification or requiring desktop access.
-  queryOnly(
-    probe(
-      "extensions.osc99-kitty-notify",
-      null, // Desktop notification delivery is outside a headless parser's scope.
-      async (ctx) => {
-        const id = globalThis.crypto.randomUUID()
-        const reply = await ctx.queryWithSentinelOutcome(
-          `\x1b]99;i=${id}:p=?;\x1b\\`,
-          new RegExp(`\\x1b\\]99;i=${id}:p=\\?;([^\\x07\\x1b]*)(?:\\x07|\\x1b\\\\)`),
-        )
-        if (!reply.match) {
-          return unansweredQuery(reply, "No matching notification query reply; OS display was not tested")
-        }
-        const payloadFields = reply.match[1]?.split(":").filter((field) => field.startsWith("p=")) ?? []
-        const pass = payloadFields.length === 1 && payloadFields[0]?.slice(2).split(",").includes("title") === true
-        const note = pass
-          ? "Notification capabilities acknowledge title payloads; OS display, activation and close events were not tested"
-          : "Notification reply does not advertise the required title payload; no support conclusion"
-        return {
-          pass,
-          response: reply.match[0],
-          note,
-          observation: {
-            outcome: pass ? "supported" : "inconclusive",
-            assertionType: "query_reply",
-            ...(!pass && { reason: "invalid-reply" as const }),
-            note,
-          },
-          ...(pass && {
-            assertions: [
-              {
-                assertionType: "query_reply" as const,
-                kind: "positive" as const,
-                expected: `OSC 99 echoes i=${id}, p=? and advertises p=title`,
-                observed: reply.match[0] ?? "",
-              },
-            ],
-          }),
-        }
-      },
-      "query_reply",
+  {
+    ...queryOnly(
+      probe(
+        "extensions.osc99-kitty-notify",
+        (ctx) => {
+          const id = globalThis.crypto.randomUUID()
+          const sequence = `\x1b]99;i=${id}:p=?;\x1b\\`
+          const pattern = new RegExp(`\\x1b\\]99;i=${id}:p=\\?;([^\\x07\\x1b]*)(?:\\x07|\\x1b\\\\)`)
+          if (ctx.queryWithSentinelOutcome) {
+            return notificationQueryResult(ctx.queryWithSentinelOutcome(sequence, pattern), id)
+          }
+          const raw = ctx.feedCapture(sequence)
+          return notificationQueryResult(rawQueryOutcome(raw, raw.match(pattern)), id, true)
+        },
+        async (ctx) => {
+          const id = globalThis.crypto.randomUUID()
+          const reply = await ctx.queryWithSentinelOutcome(
+            `\x1b]99;i=${id}:p=?;\x1b\\`,
+            new RegExp(`\\x1b\\]99;i=${id}:p=\\?;([^\\x07\\x1b]*)(?:\\x07|\\x1b\\\\)`),
+          )
+          return notificationQueryResult(reply, id)
+        },
+        "query_reply",
+      ),
     ),
-  ),
+    libAssertionType: "query_reply",
+  },
 
   // OSC 777 — rxvt-unicode notifications
   probe(

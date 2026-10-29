@@ -393,7 +393,7 @@ The catalog may declare a reviewed override for exactly two statuses, each with 
 - `"partial"` — the definition establishes acceptance only (an execution-only pending test): we can tell the
   sequence was accepted, not that its effect happened. Examples: the SGR colour resets, OSC 8 and
   the OSC 133 / OSC 633 prompt marks.
-- `"manual"` — support data comes from docs or manual testing and no automatable probe exists
+- `"manual"` — support data comes from docs or manual testing and no automated measurement exists
   (the nine `device.env-*` rows and `scrollback.viewport-hold-output`).
 
 An `"automated"` or `"unprobed"` override is not honoured; those derive from the definitions, so
@@ -401,8 +401,10 @@ they cannot drift. `bun run validate` refuses any other override value, or an ov
 reason.
 
 For `"manual"` and `"unprobed"` features, set the `probe` field to
-`"Manual verification required — no automated probe available."` and don't add a
-matching entry in `packages/probe-defs/`.
+`"Manual verification required — no automated probe available."`
+Viewport hold has a registered coverage callback naming our missing actuator/readback.
+It stays TEST TODO; registration supplies no automated support measurement.
+See the canonical declaration contract above.
 
 For UI-owned viewport behavior, prefer `"manual"` plus an exact reproduction
 recipe over a fake automated probe. Examples: whether output while the user is

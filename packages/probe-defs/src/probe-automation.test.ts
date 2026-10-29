@@ -401,6 +401,18 @@ describe("qualified clipboard roundtrip", () => {
 })
 
 describe("reply-path audit", () => {
+  // #31692: data-derived cases cannot detect an omitted current-artifact OSC99 audit.
+  test.each([
+    ["77b69f9f22c4126359be864fcce97afad8f84615053e21d335ba6348a8d3e1d7", "parser-rejected"],
+    ["8872ab0fc56429489b52cd5d3b5a293032c3ec7dbbb71545d237945c3ef525f3", "parser-rejected"],
+    ["f309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96", "no-reply-path"],
+  ])("OSC99 capability query has its own source audit for %s", (sha, kind) => {
+    expect(REPLY_PATH_AUDITS.get(sha!)?.["extensions.osc99-kitty-notify"]).toMatchObject({
+      query: "\x1b]99;",
+      matches: "prefix",
+      kind,
+    })
+  })
   const wasmReadbackQueries = [
     ["extensions.osc0-icon-title", "\x1b[20t", "parser-rejected"],
     ["extensions.osc52-clipboard", "\x1b]52;c;?\x07", "no-reply-path"],
@@ -437,7 +449,11 @@ describe("reply-path audit", () => {
     const rebuilt = REPLY_PATH_AUDITS.get(digest)
     expect(rebuilt).toBeDefined()
     expect(Object.keys(rebuilt!).sort()).toEqual(
-      [...Object.keys(prior), ...(digest.startsWith("77b69f9f") ? wasmReadbackQueries.map(([id]) => id) : [])].sort(),
+      [
+        ...Object.keys(prior),
+        "extensions.osc99-kitty-notify",
+        ...(digest.startsWith("77b69f9f") ? wasmReadbackQueries.map(([id]) => id) : []),
+      ].sort(),
     )
     for (const [id, audit] of Object.entries(prior)) {
       expect(rebuilt![id]).toMatchObject({ query: audit.query, kind: audit.kind })
@@ -2302,6 +2318,89 @@ describe("Kitty protocol detection", () => {
       }
       if (outcome === "supported") expect(result.assertions?.[0]?.observed).toContain("title,body")
     }
+  })
+
+  // #31692: the term-only test could not catch the missing real library arm or fallback silence.
+  test.each([
+    "valid",
+    "wrong-id",
+    "missing-title",
+    "duplicate-p",
+    "garbage",
+    "timeout",
+    "qualified-silence",
+    "fallback-silence",
+    "fallback-valid",
+  ] as const)("notification library query preserves its criterion for %s", (replyKind) => {
+    const p = probe("extensions.osc99-kitty-notify")
+    if (!p.lib) throw new Error("missing notification library callback")
+    const sent: string[] = []
+    let observed = ""
+    const exchange = (sequence: string, pattern: RegExp) => {
+      sent.push(sequence)
+      const id = /\x1b\]99;i=([^:;]+):p=\?;/.exec(sequence)?.[1]
+      if (!id) throw new Error("Missing notification capability query")
+      const empty = replyKind === "timeout" || replyKind === "fallback-silence"
+      const payload =
+        replyKind === "missing-title" ? "p=body" : replyKind === "duplicate-p" ? "p=title:p=body" : "p=title,body"
+      observed = empty
+        ? ""
+        : replyKind === "qualified-silence"
+          ? "\x1b[?1;2c"
+          : replyKind === "garbage"
+            ? "unrelated bytes"
+            : `\x1b]99;i=${replyKind === "wrong-id" ? "unrelated" : id}:p=?;${payload}\x1b\\`
+      return {
+        raw: observed,
+        rawBase64: btoa(observed),
+        match: observed.match(pattern),
+        reason: replyKind === "timeout" ? ("timeout" as const) : ("sentinel" as const),
+        ...(replyKind === "qualified-silence" && { sentinel: { atMs: 1, graceMs: 250 } }),
+      }
+    }
+    const source = context({
+      feed: () => {
+        throw new Error("Capability query must not display a notification")
+      },
+    })
+    if (replyKind.startsWith("fallback-")) {
+      source.feedCapture = (sequence) => {
+        return exchange(sequence, /never/).raw
+      }
+    } else source.queryWithSentinelOutcome = exchange
+    const result = p.lib(source)
+    expect(sent).toHaveLength(1)
+    expect(p.libAssertionType).toBe("query_reply")
+    if (replyKind === "valid" || replyKind === "fallback-valid") {
+      expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
+      expect(result.assertions).toMatchObject([{ kind: "positive", observed }])
+      expect(result.response).toBe(observed)
+    } else if (replyKind === "qualified-silence") {
+      expect(result.observation?.outcome).toBe("unsupported")
+      expect(result.assertions).toMatchObject([{ kind: "negative" }])
+    } else if (replyKind === "timeout") {
+      expect(result.observation?.outcome).not.toBe("unsupported")
+      expect(result.tests).toMatchObject([{ status: "test-failure" }])
+    } else {
+      expect(result.observation?.outcome).toBe("inconclusive")
+      expect(result.assertions ?? []).toEqual([])
+    }
+  })
+
+  test("viewport hold coverage names our missing actuator and readback without I/O", async () => {
+    const p = probe("scrollback.viewport-hold-output")
+    expect(p.lib).toBeNull()
+    if (!p.term) throw new Error("missing viewport coverage callback")
+    const source = new Proxy(terminalSource({}), {
+      get: () => {
+        throw new Error("Viewport coverage must not perform I/O or inspect source state")
+      },
+    })
+    const result = await p.term(source)
+    expect(result.notTested).toMatchObject({ reason: "no-semantic-observable" })
+    expect(result.notTested?.noObservable).toMatch(/actuator.*readback/i)
+    expect(result.observation).toBeUndefined()
+    expect(result.assertions).toBeUndefined()
   })
 
   test("OSC 21 validates the requested foreground reply and never falls back to cursor consumption", async () => {

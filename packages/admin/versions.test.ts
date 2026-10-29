@@ -52,6 +52,25 @@ import { loadFeatures } from "@terminfo/catalog"
 import { ALL_PROBES } from "@terminfo/probe-defs"
 import { derivedSuiteManifest, probeHash, probeSuiteSnapshot } from "./versions.ts"
 
+// #31692: hashing the catalogue did not prove that its non-environment IDs were reachable.
+test("every non-environment catalogue ID is reachable by a declared probe selection", () => {
+  const snapshot = probeSuiteSnapshot()
+  const environment = new Set([
+    "device.env-colorterm",
+    "device.env-kitty",
+    "device.env-lc-terminal",
+    "device.env-no-color",
+    "device.env-term",
+    "device.env-term-program",
+    "device.env-vte-version",
+    "device.env-wezterm",
+    "device.env-wt-session",
+  ])
+  const reachable = new Set(Object.values(snapshot.probes).flat())
+  expect(snapshot.catalogIds.filter((id) => !environment.has(id) && !reachable.has(id))).toEqual([])
+  expect(snapshot.probes.lib).toContain("extensions.osc99-kitty-notify")
+})
+
 test("suite hash changes when either imported mode or extension definitions change", () => {
   const baseline = probeHash()
   for (const file of ["modes.ts", "extensions.ts"]) {
@@ -97,8 +116,8 @@ test("suite identity changes with executable collection, ownership, capture and 
   }
   changed.file = ""
   const snapshot = probeSuiteSnapshot()
-  expect(snapshot.probes.term).toHaveLength(263)
-  expect(snapshot.probes.lib).toHaveLength(252)
+  expect(snapshot.probes.term).toHaveLength(264)
+  expect(snapshot.probes.lib).toHaveLength(253)
   expect(snapshot.probes.mux).toEqual(snapshot.probes.term)
   expect(snapshot.probes.term).toContain("extensions.kitty-keyboard")
   expect(snapshot.probes.term).toContain("input.xtest-key")
@@ -269,8 +288,8 @@ test("the trusted manifest declares exactly the 37 reviewed character claims wit
     expect(ALL_PROBES.find((probe) => probe.id === id)?.textClaim).toBeUndefined()
   }
   expect(Object.keys(loadFeatures(join(SUITE_ROOT, "content")))).toHaveLength(273)
-  expect(manifest.probes.term).toHaveLength(263)
-  expect(manifest.probes.lib).toHaveLength(252)
+  expect(manifest.probes.term).toHaveLength(264)
+  expect(manifest.probes.lib).toHaveLength(253)
 })
 
 // Fixed denominator/frozen membership: callback-only schedule hash coverage misses new
