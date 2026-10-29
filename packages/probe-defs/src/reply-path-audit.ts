@@ -54,7 +54,7 @@ const VT100_RUST_B910_GRAPHICS_AUDIT: ReplyPathAudit = {
 const VT100_RUST_B910_OSC21_AUDIT: ReplyPathAudit = {
   query: "\x1b]21;foreground=?\x1b\\",
   kind: "no-reply-path",
-  citation: `registry/src/index.crates.io-1949cf8c6b5b557f/vt100-0.16.2/src/perform.rs:234-236 dispatches unknown OSC21 to unhandled_osc, empty at src/callbacks.rs:65. Cargo.lock vt100 checksum054ff75fb8fa83e609e685106df4faeffdf3a735d3c74ebce97ec557d5d36fd9; vte0.15.0 checksuma5924018406ce0063cd67f8e008104968b74b563ee1b85dde3ed1f7cb87d3dbd. ${VT100_RUST_B910_LIB}`,
+  citation: `registry/src/index.crates.io-1949cf8c6b5b557f/vt100-0.16.2/src/perform.rs:234-236 dispatches unknown OSC21 to unhandled_osc, empty at src/callbacks.rs:66. Cargo.lock vt100 checksum054ff75fb8fa83e609e685106df4faeffdf3a735d3c74ebce97ec557d5d36fd9; vte0.15.0 checksuma5924018406ce0063cd67f8e008104968b74b563ee1b85dde3ed1f7cb87d3dbd. ${VT100_RUST_B910_LIB}`,
 }
 
 const VT100_RUST_B910_SIXEL_DA_AUDIT: ReplyPathAudit = {
@@ -1329,6 +1329,216 @@ export const REPLY_PATH_AUDITS: ReadonlyMap<string, Readonly<Record<string, Repl
   [
     "b9109b5918707746420833dfc2eab3ea5bc7feec5fa93bee4cd6e824e74d0962",
     {
+      "cursor.position-report": {
+        query: "\u001b[6n",
+        kind: "no-reply-path",
+        citation: "vt100 0.16.2 src/perform.rs:157-164 csi_dispatch default arm -> Callbacks::unhandled_csi, empty by default (src/callbacks.rs:55-63). termless 4a730304 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact b9109b5918707746420833dfc2eab3ea5bc7feec5fa93bee4cd6e824e74d0962, sourceCommit bf1408e001e11cac31853565f78ff8dddb70e098.",
+      },
+      "device.decrpm": {
+        query: "\u001b[?7$p",
+        kind: "no-reply-path",
+        citation: "vte 0.15.0 src/lib.rs:207-209 collects '?'; vt100 0.16.2 src/perform.rs:176-183 '?' default arm -> Callbacks::unhandled_csi, empty by default (src/callbacks.rs:55-63). termless 4a730304 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact b9109b5918707746420833dfc2eab3ea5bc7feec5fa93bee4cd6e824e74d0962, sourceCommit bf1408e001e11cac31853565f78ff8dddb70e098.",
+      },
+      "device.decrqss": {
+        query: "\u001bP$qm\u001b\\",
+        kind: "no-reply-path",
+        citation: "vte 0.15.0 src/lib.rs:351-354,292 dispatches DCS to Perform::hook/put/unhook, empty by default (src/lib.rs:779-789); vt100 0.16.2 src/perform.rs:33-239 overrides none. termless 4a730304 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact b9109b5918707746420833dfc2eab3ea5bc7feec5fa93bee4cd6e824e74d0962, sourceCommit bf1408e001e11cac31853565f78ff8dddb70e098.",
+      },
+      "device.dsr-996-color-scheme": {
+        query: "\u001b[?996n",
+        kind: "no-reply-path",
+        citation: "vte 0.15.0 src/lib.rs:207-209 collects '?'; vt100 0.16.2 src/perform.rs:176-183 '?' default arm -> Callbacks::unhandled_csi, empty by default (src/callbacks.rs:55-63). termless 4a730304 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact b9109b5918707746420833dfc2eab3ea5bc7feec5fa93bee4cd6e824e74d0962, sourceCommit bf1408e001e11cac31853565f78ff8dddb70e098.",
+      },
+      "device.primary-da": {
+        query: "\u001b[c",
+        kind: "no-reply-path",
+        citation: "vt100 0.16.2 src/perform.rs:157-164 csi_dispatch default arm -> Callbacks::unhandled_csi, empty by default (src/callbacks.rs:55-63). termless 4a730304 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact b9109b5918707746420833dfc2eab3ea5bc7feec5fa93bee4cd6e824e74d0962, sourceCommit bf1408e001e11cac31853565f78ff8dddb70e098.",
+      },
+      "device.secondary-da": {
+        query: "\u001b[>c",
+        kind: "no-reply-path",
+        citation: "vt100 0.16.2 src/perform.rs:186-194 intermediate arm -> Callbacks::unhandled_csi, empty by default (src/callbacks.rs:55-63). termless 4a730304 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact b9109b5918707746420833dfc2eab3ea5bc7feec5fa93bee4cd6e824e74d0962, sourceCommit bf1408e001e11cac31853565f78ff8dddb70e098.",
+      },
+      "device.status-report": {
+        query: "\u001b[5n",
+        kind: "no-reply-path",
+        citation: "vt100 0.16.2 src/perform.rs:157-164 csi_dispatch default arm -> Callbacks::unhandled_csi, empty by default (src/callbacks.rs:55-63). termless 4a730304 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact b9109b5918707746420833dfc2eab3ea5bc7feec5fa93bee4cd6e824e74d0962, sourceCommit bf1408e001e11cac31853565f78ff8dddb70e098.",
+      },
+      "device.tertiary-da": {
+        query: "\u001b[=c",
+        kind: "no-reply-path",
+        citation: "vt100 0.16.2 src/perform.rs:186-194 intermediate arm -> Callbacks::unhandled_csi, empty by default (src/callbacks.rs:55-63). termless 4a730304 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact b9109b5918707746420833dfc2eab3ea5bc7feec5fa93bee4cd6e824e74d0962, sourceCommit bf1408e001e11cac31853565f78ff8dddb70e098.",
+      },
+      "device.xtgettcap": {
+        query: "\u001bP+q544e\u001b\\",
+        kind: "no-reply-path",
+        citation: "vte 0.15.0 src/lib.rs:351-354,292 dispatches DCS to Perform::hook/put/unhook, empty by default (src/lib.rs:779-789); vt100 0.16.2 src/perform.rs:33-239 overrides none. termless 4a730304 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact b9109b5918707746420833dfc2eab3ea5bc7feec5fa93bee4cd6e824e74d0962, sourceCommit bf1408e001e11cac31853565f78ff8dddb70e098.",
+      },
+      "device.xtgetxres": {
+        query: "\u001bP+Q7465726d4e616d65\u001b\\",
+        kind: "no-reply-path",
+        citation: "vte 0.15.0 src/lib.rs:351-354,292 dispatches DCS to Perform::hook/put/unhook, empty by default (src/lib.rs:779-789); vt100 0.16.2 src/perform.rs:33-239 overrides none. termless 4a730304 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact b9109b5918707746420833dfc2eab3ea5bc7feec5fa93bee4cd6e824e74d0962, sourceCommit bf1408e001e11cac31853565f78ff8dddb70e098.",
+      },
+      "device.xtreportcolors": {
+        query: "\u001b[#R",
+        kind: "no-reply-path",
+        citation: "vt100 0.16.2 src/perform.rs:186-194 intermediate arm -> Callbacks::unhandled_csi, empty by default (src/callbacks.rs:55-63). termless 4a730304 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact b9109b5918707746420833dfc2eab3ea5bc7feec5fa93bee4cd6e824e74d0962, sourceCommit bf1408e001e11cac31853565f78ff8dddb70e098.",
+      },
+      "device.xtversion": {
+        query: "\u001b[>0q",
+        kind: "no-reply-path",
+        citation: "vt100 0.16.2 src/perform.rs:186-194 intermediate arm -> Callbacks::unhandled_csi, empty by default (src/callbacks.rs:55-63). termless 4a730304 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact b9109b5918707746420833dfc2eab3ea5bc7feec5fa93bee4cd6e824e74d0962, sourceCommit bf1408e001e11cac31853565f78ff8dddb70e098.",
+      },
+      "device.xtwinops-14": {
+        query: "\u001b[14t",
+        kind: "no-reply-path",
+        citation: "vt100 0.16.2 src/perform.rs:132-136 handles only CSI 8 t; other ops reach :147-155 -> Callbacks::unhandled_csi, empty by default (src/callbacks.rs:55-63). termless 4a730304 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact b9109b5918707746420833dfc2eab3ea5bc7feec5fa93bee4cd6e824e74d0962, sourceCommit bf1408e001e11cac31853565f78ff8dddb70e098.",
+      },
+      "device.xtwinops-16": {
+        query: "\u001b[16t",
+        kind: "no-reply-path",
+        citation: "vt100 0.16.2 src/perform.rs:132-136 handles only CSI 8 t; other ops reach :147-155 -> Callbacks::unhandled_csi, empty by default (src/callbacks.rs:55-63). termless 4a730304 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact b9109b5918707746420833dfc2eab3ea5bc7feec5fa93bee4cd6e824e74d0962, sourceCommit bf1408e001e11cac31853565f78ff8dddb70e098.",
+      },
+      "device.xtwinops-18": {
+        query: "\u001b[18t",
+        kind: "no-reply-path",
+        citation: "vt100 0.16.2 src/perform.rs:132-136 handles only CSI 8 t; other ops reach :147-155 -> Callbacks::unhandled_csi, empty by default (src/callbacks.rs:55-63). termless 4a730304 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact b9109b5918707746420833dfc2eab3ea5bc7feec5fa93bee4cd6e824e74d0962, sourceCommit bf1408e001e11cac31853565f78ff8dddb70e098.",
+      },
+      "device.xtwinops-20": {
+        query: "\u001b[20t",
+        kind: "no-reply-path",
+        citation: "vt100 0.16.2 src/perform.rs:132-136 handles only CSI 8 t; other ops reach :147-155 -> Callbacks::unhandled_csi, empty by default (src/callbacks.rs:55-63). termless 4a730304 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact b9109b5918707746420833dfc2eab3ea5bc7feec5fa93bee4cd6e824e74d0962, sourceCommit bf1408e001e11cac31853565f78ff8dddb70e098.",
+      },
+      "device.xtwinops-21": {
+        query: "\u001b[21t",
+        kind: "no-reply-path",
+        citation: "vt100 0.16.2 src/perform.rs:132-136 handles only CSI 8 t; other ops reach :147-155 -> Callbacks::unhandled_csi, empty by default (src/callbacks.rs:55-63). termless 4a730304 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact b9109b5918707746420833dfc2eab3ea5bc7feec5fa93bee4cd6e824e74d0962, sourceCommit bf1408e001e11cac31853565f78ff8dddb70e098.",
+      },
+      "editing.decrqcra": {
+        query: "\u001b[1;1;1;1;1;5*y",
+        kind: "no-reply-path",
+        citation: "vt100 0.16.2 src/perform.rs:186-194 intermediate arm -> Callbacks::unhandled_csi, empty by default (src/callbacks.rs:55-63). termless 4a730304 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact b9109b5918707746420833dfc2eab3ea5bc7feec5fa93bee4cd6e824e74d0962, sourceCommit bf1408e001e11cac31853565f78ff8dddb70e098.",
+      },
+      "extensions.osc0-icon-title": {
+        query: "\u001b[20t",
+        kind: "no-reply-path",
+        citation: "vt100 0.16.2 src/perform.rs:132-136 handles only CSI 8 t; CSI 20 t and 21 t reach :147-155 -> Callbacks::unhandled_csi, empty by default (src/callbacks.rs:55-63); termless 4a730304 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact b9109b5918707746420833dfc2eab3ea5bc7feec5fa93bee4cd6e824e74d0962, sourceCommit bf1408e001e11cac31853565f78ff8dddb70e098.",
+      },
+      "extensions.osc10-fg-color": {
+        query: "\u001b]10;?\u0007",
+        kind: "no-reply-path",
+        citation: "vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66). termless 4a730304 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact b9109b5918707746420833dfc2eab3ea5bc7feec5fa93bee4cd6e824e74d0962, sourceCommit bf1408e001e11cac31853565f78ff8dddb70e098.",
+      },
+      "extensions.osc104-reset-palette": {
+        query: "\u001b]4;0;?\u0007",
+        kind: "no-reply-path",
+        citation: "vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66). termless 4a730304 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact b9109b5918707746420833dfc2eab3ea5bc7feec5fa93bee4cd6e824e74d0962, sourceCommit bf1408e001e11cac31853565f78ff8dddb70e098.",
+      },
+      "extensions.osc11-bg-color": {
+        query: "\u001b]11;?\u0007",
+        kind: "no-reply-path",
+        citation: "vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66). termless 4a730304 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact b9109b5918707746420833dfc2eab3ea5bc7feec5fa93bee4cd6e824e74d0962, sourceCommit bf1408e001e11cac31853565f78ff8dddb70e098.",
+      },
+      "extensions.osc110-reset-fg": {
+        query: "\u001b]10;?\u0007",
+        kind: "no-reply-path",
+        citation: "vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66). termless 4a730304 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact b9109b5918707746420833dfc2eab3ea5bc7feec5fa93bee4cd6e824e74d0962, sourceCommit bf1408e001e11cac31853565f78ff8dddb70e098.",
+      },
+      "extensions.osc111-reset-bg": {
+        query: "\u001b]11;?\u0007",
+        kind: "no-reply-path",
+        citation: "vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66). termless 4a730304 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact b9109b5918707746420833dfc2eab3ea5bc7feec5fa93bee4cd6e824e74d0962, sourceCommit bf1408e001e11cac31853565f78ff8dddb70e098.",
+      },
+      "extensions.osc112-reset-cursor": {
+        query: "\u001b]12;?\u0007",
+        kind: "no-reply-path",
+        citation: "vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66). termless 4a730304 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact b9109b5918707746420833dfc2eab3ea5bc7feec5fa93bee4cd6e824e74d0962, sourceCommit bf1408e001e11cac31853565f78ff8dddb70e098.",
+      },
+      "extensions.osc113-reset-pointer-fg": {
+        query: "\u001b]13;?\u0007",
+        kind: "no-reply-path",
+        citation: "vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66). termless 4a730304 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact b9109b5918707746420833dfc2eab3ea5bc7feec5fa93bee4cd6e824e74d0962, sourceCommit bf1408e001e11cac31853565f78ff8dddb70e098.",
+      },
+      "extensions.osc114-reset-pointer-bg": {
+        query: "\u001b]14;?\u0007",
+        kind: "no-reply-path",
+        citation: "vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66). termless 4a730304 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact b9109b5918707746420833dfc2eab3ea5bc7feec5fa93bee4cd6e824e74d0962, sourceCommit bf1408e001e11cac31853565f78ff8dddb70e098.",
+      },
+      "extensions.osc12-cursor-color": {
+        query: "\u001b]12;?\u0007",
+        kind: "no-reply-path",
+        citation: "vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66). termless 4a730304 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact b9109b5918707746420833dfc2eab3ea5bc7feec5fa93bee4cd6e824e74d0962, sourceCommit bf1408e001e11cac31853565f78ff8dddb70e098.",
+      },
+      "extensions.osc1337-capabilities": {
+        query: "\u001b]1337;Capabilities\u0007",
+        kind: "no-reply-path",
+        citation: "vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66). termless 4a730304 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact b9109b5918707746420833dfc2eab3ea5bc7feec5fa93bee4cd6e824e74d0962, sourceCommit bf1408e001e11cac31853565f78ff8dddb70e098.",
+      },
+      "extensions.osc1337-cellsize": {
+        query: "\u001b]1337;ReportCellSize\u0007",
+        kind: "no-reply-path",
+        citation: "vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66). termless 4a730304 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact b9109b5918707746420833dfc2eab3ea5bc7feec5fa93bee4cd6e824e74d0962, sourceCommit bf1408e001e11cac31853565f78ff8dddb70e098.",
+      },
+      "extensions.osc17-highlight-bg": {
+        query: "\u001b]17;?\u0007",
+        kind: "no-reply-path",
+        citation: "vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66). termless 4a730304 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact b9109b5918707746420833dfc2eab3ea5bc7feec5fa93bee4cd6e824e74d0962, sourceCommit bf1408e001e11cac31853565f78ff8dddb70e098.",
+      },
+      "extensions.osc19-highlight-fg": {
+        query: "\u001b]19;?\u0007",
+        kind: "no-reply-path",
+        citation: "vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66). termless 4a730304 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact b9109b5918707746420833dfc2eab3ea5bc7feec5fa93bee4cd6e824e74d0962, sourceCommit bf1408e001e11cac31853565f78ff8dddb70e098.",
+      },
+      "extensions.osc30001-color-stack-push": {
+        query: "\u001b]10;?\u0007",
+        kind: "no-reply-path",
+        citation: "vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66). termless 4a730304 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact b9109b5918707746420833dfc2eab3ea5bc7feec5fa93bee4cd6e824e74d0962, sourceCommit bf1408e001e11cac31853565f78ff8dddb70e098.",
+      },
+      "extensions.osc30101-color-stack-pop": {
+        query: "\u001b]10;?\u0007",
+        kind: "no-reply-path",
+        citation: "vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66). termless 4a730304 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact b9109b5918707746420833dfc2eab3ea5bc7feec5fa93bee4cd6e824e74d0962, sourceCommit bf1408e001e11cac31853565f78ff8dddb70e098.",
+      },
+      "extensions.osc4-palette": {
+        query: "\u001b]4;0;?\u0007",
+        kind: "no-reply-path",
+        citation: "vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66). termless 4a730304 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact b9109b5918707746420833dfc2eab3ea5bc7feec5fa93bee4cd6e824e74d0962, sourceCommit bf1408e001e11cac31853565f78ff8dddb70e098.",
+      },
+      "extensions.osc5-special-color": {
+        query: "\u001b]5;0;?\u0007",
+        kind: "no-reply-path",
+        citation: "vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66). termless 4a730304 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact b9109b5918707746420833dfc2eab3ea5bc7feec5fa93bee4cd6e824e74d0962, sourceCommit bf1408e001e11cac31853565f78ff8dddb70e098.",
+      },
+      "extensions.osc5522-clipboard": {
+        query: "\u001b[?5522$p",
+        kind: "no-reply-path",
+        citation: "vte 0.15.0 src/lib.rs:207-209 collects '?'; vt100 0.16.2 src/perform.rs:176-183 '?' default arm -> Callbacks::unhandled_csi, empty by default (src/callbacks.rs:55-63). termless 4a730304 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact b9109b5918707746420833dfc2eab3ea5bc7feec5fa93bee4cd6e824e74d0962, sourceCommit bf1408e001e11cac31853565f78ff8dddb70e098.",
+      },
+      "extensions.osc701-locale": {
+        query: "\u001b]701;?\u0007",
+        kind: "no-reply-path",
+        citation: "vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66). termless 4a730304 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact b9109b5918707746420833dfc2eab3ea5bc7feec5fa93bee4cd6e824e74d0962, sourceCommit bf1408e001e11cac31853565f78ff8dddb70e098.",
+      },
+      "extensions.osc702-version": {
+        query: "\u001b]702;?\u0007",
+        kind: "no-reply-path",
+        citation: "vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66). termless 4a730304 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact b9109b5918707746420833dfc2eab3ea5bc7feec5fa93bee4cd6e824e74d0962, sourceCommit bf1408e001e11cac31853565f78ff8dddb70e098.",
+      },
+      "extensions.osc776-cell-size": {
+        query: "\u001b]776\u0007",
+        kind: "no-reply-path",
+        citation: "vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66). termless 4a730304 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact b9109b5918707746420833dfc2eab3ea5bc7feec5fa93bee4cd6e824e74d0962, sourceCommit bf1408e001e11cac31853565f78ff8dddb70e098.",
+      },
+      "extensions.osc7770-font-size": {
+        query: "\u001b]7770;?\u0007",
+        kind: "no-reply-path",
+        citation: "vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66). termless 4a730304 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact b9109b5918707746420833dfc2eab3ea5bc7feec5fa93bee4cd6e824e74d0962, sourceCommit bf1408e001e11cac31853565f78ff8dddb70e098.",
+      },
+      "extensions.osc7777-font-window-size": {
+        query: "\u001b]7777;?\u0007",
+        kind: "no-reply-path",
+        citation: "vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66). termless 4a730304 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact b9109b5918707746420833dfc2eab3ea5bc7feec5fa93bee4cd6e824e74d0962, sourceCommit bf1408e001e11cac31853565f78ff8dddb70e098.",
+      },
       "extensions.kitty-graphics": VT100_RUST_B910_GRAPHICS_AUDIT,
       "extensions.kitty-graphics.display": VT100_RUST_B910_GRAPHICS_AUDIT,
       "extensions.kitty-graphics.transmit": VT100_RUST_B910_GRAPHICS_AUDIT,
