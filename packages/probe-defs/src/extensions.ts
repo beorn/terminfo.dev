@@ -576,12 +576,33 @@ function colorResetProbe(setCode: number, resetCode: number, index?: number): Pr
         const answer = (result: ProbeCallbackResult) =>
           alacrittyHostRecipeResult(ctx, result, "color-request", hostInput, query, true)
         const controls: { write: string; response: string }[] = []
+        const indexed = setCode === 4 && resetCode === 104 && index === 0 && typeof ctx.getCell === "function"
+        type Cell = ReturnType<LibProbeSource["getCell"]>
+        const cells = {
+          writes: [] as string[],
+          before: null as Cell | null,
+          seeded: null as Cell | null,
+          same: null as Cell | null,
+          fresh: null as Cell | null,
+        }
+        const paint = (col: number, char: string) => {
+          const write = `\x1b[1;${col + 1}H\x1b[38;5;0m${char}\x1b[0m`
+          cells.writes.push(write)
+          ctx.feed(write)
+          return globalThis.structuredClone(ctx.getCell(0, col))
+        }
+        if (indexed) cells.before = paint(0, "D")
+        const reset = `\x1b]${resetCode}${index === undefined ? "" : `;${index}`}\x07`
         const capture = (write: string) => {
           const response = ctx.feedCapture(write)
           controls.push({ write, response })
+          if (indexed && write === `\x1b]4;0;${seededCurrentColor}\x07`) cells.seeded = paint(1, "S")
+          if (indexed && write === reset) {
+            cells.same = globalThis.structuredClone(ctx.getCell(0, 1))
+            cells.fresh = paint(2, "F")
+          }
           return response
         }
-        const reset = `\x1b]${resetCode}${index === undefined ? "" : `;${index}`}\x07`
         const { control, resetRaw } = seedColorReadbackAndReset(
           capture,
           `${setCode}${index === undefined ? "" : `;${index}`}`,
@@ -589,12 +610,50 @@ function colorResetProbe(setCode: number, resetCode: number, index?: number): Pr
           reset,
         )
         const restoredRaw = capture(query)
-        const response = JSON.stringify({ query, originalRaw, controls })
+        const state = { query, originalRaw, controls, ...(indexed && { cells }) }
+        const response = JSON.stringify(state)
+        const rgb = (cell: Cell | null, char: string) =>
+          cell?.char === char &&
+          cell.fg &&
+          [cell.fg.r, cell.fg.g, cell.fg.b].every((n) => Number.isInteger(n) && n >= 0 && n <= 255)
+            ? cell.fg
+            : null
+        const before = rgb(cells.before, "D"),
+          seeded = rgb(cells.seeded, "S")
+        const same = rgb(cells.same, "S"),
+          fresh = rgb(cells.fresh, "F")
+        const seed = { r: 170, g: 187, b: 204 }
+        if (indexed && before && seeded && !sameRgbCells(before, seed) && sameRgbCells(seeded, seed)) {
+          if (same && fresh && sameRgbCells(fresh, before)) {
+            return parserStateResult(
+              true,
+              "OSC 104 restores palette index 0 for a fresh indexed cell",
+              state,
+              sameRgbCells(same, before)
+                ? "Indexed colour resolved at read"
+                : "Cell RGB resolved at paint; fresh cell proves reset",
+            )
+          }
+          if (same && fresh && sameRgbCells(fresh, seed) && sameRgbCells(same, seed)) {
+            return parserStateResult(
+              false,
+              "OSC 104 restores palette index 0 for a fresh indexed cell",
+              state,
+              "Verified seed remains in the fresh cell after reset",
+            )
+          }
+          return answer(
+            colorReadbackReviewResult(
+              "OSC 104 post-reset indexed readings are missing or contradictory; independent review required",
+              state,
+            ),
+          )
+        }
         if (control.verified && resetRaw === "" && restoredRaw === "") {
           return answer(
             colorReadbackReviewResult(
               `OSC ${setCode} seeded colour was verified but OSC ${resetCode} restored an unreadable embedder-owned default`,
-              { query, originalRaw, controls },
+              state,
             ),
           )
         }
@@ -614,12 +673,12 @@ function colorResetProbe(setCode: number, resetCode: number, index?: number): Pr
             ],
           })
         }
-        if (silence) return answer(silence)
+        if (silence) return answer({ ...silence, response })
         if (control.setterRaw === "" && control.seededRaw === "" && resetRaw === "" && restoredRaw === "") {
           return answer(
             colorReadbackReviewResult(
               `OSC ${setCode} initial and seeded queries answered nothing, so OSC ${resetCode} reset readback needs independent review`,
-              { query, originalRaw, controls },
+              state,
             ),
           )
         }

@@ -15,6 +15,138 @@ function callback(id: string) {
   return definition
 }
 
+// The initial/default query is silent; indexed painted cells are an independent palette witness.
+function indexedPalette(
+  options: {
+    ignoresReset?: boolean
+    ignoresSeed?: boolean
+    resolvedAtPaint?: boolean
+    collision?: boolean
+    after?: "third" | "missing" | "contradiction"
+    invalidDefault?: boolean
+    invalidSeed?: boolean
+    badGlyph?: "D" | "S" | "F"
+    missingDefault?: boolean
+    invalidFresh?: boolean
+    fail?: "setter" | "getter" | "cleanup" | "getter+cleanup"
+  } = {},
+) {
+  const original = options.collision ? { r: 170, g: 187, b: 204 } : { r: 29, g: 31, b: 33 }
+  const seed = { r: 170, g: 187, b: 204 }
+  let current = original
+  let reset = false
+  const cells = new Map<number, { char: string; fg: typeof original }>()
+  const writes: string[] = []
+  const feed = (bytes: string) => {
+    writes.push(bytes)
+    const painted = /\x1b\[1;(\d+)H\x1b\[38;5;0m([DSF])/.exec(bytes)
+    if (painted) cells.set(Number(painted[1]) - 1, { char: painted[2]!, fg: current })
+    if (bytes === "\x1b]4;0;rgb:aa/bb/cc\x07") {
+      if (options.fail === "setter") throw new Error("palette setter failed")
+      if (!options.ignoresSeed) current = seed
+    }
+    if (bytes === "\x1b]104;0\x07") {
+      if (options.fail === "cleanup" || options.fail === "getter+cleanup") throw new Error("palette cleanup failed")
+      reset = true
+      if (!options.ignoresReset) current = original
+      if (options.after === "third") current = { r: 7, g: 8, b: 9 }
+      if (options.after === "contradiction") current = seed
+    }
+  }
+  const source = {
+    feed,
+    feedCapture: (bytes: string) => {
+      feed(bytes)
+      return bytes === "\x1b]4;0;?\x07" && !reset && current === seed ? "\x1b]4;0;rgb:aaaa/bbbb/cccc\x07" : ""
+    },
+    getCell: (_row: number, col: number) => {
+      const cell = cells.get(col)
+      if (cell?.char === "S" && !reset && (options.fail === "getter" || options.fail === "getter+cleanup")) {
+        throw new Error("palette getter failed")
+      }
+      if (
+        !cell ||
+        (cell.char === "F" && options.after === "missing") ||
+        (cell.char === "D" && options.missingDefault)
+      ) {
+        return { char: "", fg: null, bg: null }
+      }
+      const invalid =
+        (cell.char === "D" && options.invalidDefault) ||
+        (cell.char === "S" && !reset && options.invalidSeed) ||
+        (cell.char === "F" && options.invalidFresh)
+      const fg =
+        options.after === "contradiction" && reset && cell.char === "S"
+          ? original
+          : options.resolvedAtPaint
+            ? cell.fg
+            : current
+      return {
+        ...cell,
+        char: options.badGlyph === cell.char ? "?" : cell.char,
+        fg: invalid ? { r: NaN, g: 0, b: 0 } : fg,
+        bg: null,
+      }
+    },
+  } as unknown as LibProbeSource
+  return { source, writes }
+}
+
+test.each([
+  [{}, "supported"],
+  [{ resolvedAtPaint: true }, "supported"],
+  [{ ignoresReset: true }, "unsupported"],
+] as const)("OSC104 uses a freshly painted indexed cell to decide reset: %j", (options, outcome) => {
+  const result = callback("extensions.osc104-reset-palette").lib!(indexedPalette(options).source)
+  expect(result.observation).toMatchObject({ outcome, assertionType: "buffer_state" })
+  expect(result.assertions).toMatchObject([{ kind: outcome === "supported" ? "positive" : "negative" }])
+  const state = JSON.parse(result.response!)
+  expect(state).toMatchObject({ cells: { before: { char: "D" }, seeded: { char: "S" }, fresh: { char: "F" } } })
+})
+
+test.each([
+  { collision: true },
+  { ignoresSeed: true },
+  { invalidDefault: true },
+  { invalidSeed: true },
+  { badGlyph: "D" },
+  { badGlyph: "S" },
+  { badGlyph: "F" },
+  { missingDefault: true },
+  { invalidFresh: true },
+  { after: "third" },
+  { after: "missing" },
+  { after: "contradiction" },
+] as const)("OSC104 cannot grade an unqualified or contradictory indexed reading: %j", (options) => {
+  const result = callback("extensions.osc104-reset-palette").lib!(indexedPalette(options).source)
+  expect(result.observation?.outcome).not.toBe("supported")
+  expect(result.observation?.outcome).not.toBe("unsupported")
+  expect(result.assertions).toBeUndefined()
+  expect(result.response).toContain('"cells"')
+})
+
+test.each(["setter", "getter", "cleanup", "getter+cleanup"] as const)(
+  "OSC104 preserves operational %s errors and reset cleanup",
+  (fail) => {
+    const fixture = indexedPalette({ fail })
+    expect(() => callback("extensions.osc104-reset-palette").lib!(fixture.source)).toThrow(
+      fail === "getter+cleanup" ? AggregateError : /palette .* failed/,
+    )
+    expect(fixture.writes).toContain("\x1b]104;0\x07")
+    if (fail === "getter+cleanup") {
+      try {
+        callback("extensions.osc104-reset-palette").lib!(indexedPalette({ fail }).source)
+      } catch (error) {
+        expect(error).toBeInstanceOf(AggregateError)
+        expect((error as AggregateError).errors.map((cause: Error) => cause.message)).toEqual([
+          "palette getter failed",
+          "palette cleanup failed",
+        ])
+      }
+    }
+  },
+)
+
 test("OSC 10 needs a complete matching foreground-color reply in both collectors", async () => {
   const definition = callback("extensions.osc10-fg-color")
   const frame = "\x1b]10;rgb:ffff/0000/0000\x07"
