@@ -27,9 +27,7 @@
             "scope": "probe",
             "startedAt": "2026-10-29T10:22:20.763Z"
           },
-          "assertionRefs": [
-            0
-          ],
+          "assertionRefs": [0],
           "rawReplyRef": "device.xtwinops-14"
         }
       ],
@@ -51,9 +49,7 @@
             "scope": "probe",
             "startedAt": "2026-10-29T10:22:22.860Z"
           },
-          "assertionRefs": [
-            1
-          ],
+          "assertionRefs": [1],
           "rawReplyRef": "extensions.osc52-read",
           "reason": "negative by sentinel"
         }
