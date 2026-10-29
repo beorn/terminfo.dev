@@ -398,6 +398,46 @@ it("the real Kitty capture parses its silent OSC 52 reads by their harness cause
   expect(kittyCapture("no-cause")).toThrow(/missing cause for captured empty target response/)
 })
 
+// The WezTerm capture of the addon rebuilt with the declared pixel geometry (run 777ffa79, addon sha256 78c05a71, termless
+// 71cac2c3; 31551) trimmed to its four pixel probes and its OSC 52 read (@cto ff19ee09). The engine answered every pixel
+// query from the declared 800x480 text area; its OSC 52 read stayed silent and carries the artifact's audit cause.
+const WEZTERM_GEOMETRY = readFileSync(
+  new URL("./fixtures/wezterm-pixel-geometry.capture.json", import.meta.url),
+  "utf8",
+)
+function weztermGeometryCapture(mode: "captured" | "no-cause") {
+  const run = JSON.parse(WEZTERM_GEOMETRY) as RunDraft & { results: { featureId: string }[]; probeHash: string }
+  const ids = run.results.map((result) => result.featureId)
+  const manifest = {
+    schemaVersion: 4 as const,
+    probeHash: run.probeHash,
+    adapterVersion: "4",
+    catalogIds: ids,
+    probes: { term: [], lib: ids, mux: [] },
+  }
+  if (mode === "no-cause") {
+    const recordRef = "collector.hostRecipes.extensions.osc52-read"
+    const record = JSON.parse(run.rawReplies[recordRef]!) as { causes: unknown[] }
+    record.causes = []
+    run.rawReplies[recordRef] = JSON.stringify(record)
+  }
+  return () =>
+    parseRun("wezterm-pixel-geometry.json", JSON.stringify(run), ids, new Map([[manifest.probeHash, manifest]]), {
+      mode: "capture",
+    })
+}
+it("the rebuilt WezTerm capture grades its pixel cells from the engine's bytes and its OSC 52 read by the audit", () => {
+  const results = weztermGeometryCapture("captured")().results ?? []
+  expect(results.map((result) => [result.featureId, result.status])).toEqual([
+    ["device.xtwinops-14", "supported"],
+    ["device.xtwinops-16", "supported"],
+    ["extensions.osc1337-cellsize", "supported"],
+    ["extensions.osc52-read", "unsupported"],
+    ["extensions.sixel-geometry-report", "supported"],
+  ])
+  expect(weztermGeometryCapture("no-cause")).toThrow(/missing cause for captured empty target response/)
+})
+
 const setup = (
   observed?: string,
   sourceNegative?: { runId: string; startedAt: string },
