@@ -12,7 +12,12 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { afterEach, expect, it, vi } from "vitest"
-import { readCollectorAttempt, type CapturedRunDraft, type RunDraft } from "@terminfo/probe-defs"
+import {
+  readCollectorAttempt,
+  SOURCE_NEGATIVE_REVIEW,
+  type CapturedRunDraft,
+  type RunDraft,
+} from "@terminfo/probe-defs"
 import { parseRun } from "@terminfo/run-parser"
 import { collectHeadlessRuns } from "./collect-headless.ts"
 import { probeSuiteSnapshot } from "../admin/versions.ts"
@@ -199,7 +204,14 @@ it.runIf(OWNED_LAYOUT)(
     const draft = JSON.parse(readFileSync(draftPath, "utf8")) as CapturedRunDraft
     const draftBytes = readFileSync(draftPath, "utf8")
     const pending = draft.results
-      .filter((row) => row.tests.some((check) => check.id === "review" && check.status === "test-todo"))
+      .filter((row) =>
+        row.tests.some(
+          (check) =>
+            check.id === "review" &&
+            (check.status === "test-todo" ||
+              (row.criterionBranch === SOURCE_NEGATIVE_REVIEW && check.status === "test-failure")),
+        ),
+      )
       .map((row) => row.featureId)
       .sort()
     // #30699: the proven reply path makes these silent colour queries measured negatives.
@@ -223,7 +235,14 @@ it.runIf(OWNED_LAYOUT)(
         tests: [expect.objectContaining({ id: "criterion", status: "unsupported" })],
       })
     }
+    // A missing DECCARA witness needs source review too; its failed review must keep the run private.
+    expect(draft.results.find((row) => row.featureId === "editing.decsace")).toMatchObject({
+      status: "test-failure",
+      criterionBranch: SOURCE_NEGATIVE_REVIEW,
+      tests: [expect.objectContaining({ id: "review", status: "test-failure" })],
+    })
     expect(pending).toEqual([
+      "editing.decsace",
       "extensions.clipboard-paste",
       "extensions.font-ligatures",
       "extensions.iterm2-images",
@@ -282,7 +301,9 @@ it.runIf(OWNED_LAYOUT)(
         supersedes: [],
       })
     const reason = (featureId: string) =>
-      `Embedded xterm.js injects no OS-level input, so ${featureId} has no path to the engine`
+      featureId === "editing.decsace"
+        ? "The DECCARA witness is absent, so this review cannot decide DECSACE extent"
+        : `Embedded xterm.js injects no OS-level input, so ${featureId} has no path to the engine`
     const reviewed = pending.slice(0, -1)
     const sealing = pending[pending.length - 1]!
     const reviewPaths = reviewed.map((featureId, index) => {
