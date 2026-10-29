@@ -14,6 +14,7 @@ import {
   initializeRunDraft,
   recordCollectionFailure,
   recordCollectorSelection,
+  resolveProbeIds,
   recordCollectorAttempt,
   readCollectorSelection,
   readCollectorAttempt,
@@ -129,9 +130,8 @@ async function collectOne(name: string, directory: string): Promise<string> {
     ? JSON.parse(readFileSync(draftPath, "utf8")) as RunDraft
     : undefined
   const ids = readCollectorSelection(delegated?.rawReplies ?? {})?.ids ?? [...suite.probes.lib]
-  for (const id of ids) {
-    if (!ALL_PROBES.some((probe) => probe.id === id)) throw new Error(`Unknown probe: ${id}`)
-  }
+  const resolved = resolveProbeIds(ids)
+  if (resolved.result === "invalid") throw new Error(`Unknown probe: ${resolved.unknownIds[0] ?? resolved.duplicateIds[0]}`)
   recordCollectorSelection(draft, ids)
   const initialBytes = `${JSON.stringify(draft, null, 2)}\n`
   if (process.env.TERMINFO_DRAFT_PATH) {
@@ -183,7 +183,7 @@ async function collectOne(name: string, directory: string): Promise<string> {
     const batch = await collectBatch(
       async () => loadedBackend(await resolveBackend(), entry.package),
       name,
-      ALL_PROBES.filter((probe) => ids.includes(probe.id)),
+      resolved.probes,
       draft,
       (progress) => {
         Object.assign(draft, {
@@ -281,9 +281,8 @@ export async function collectHeadlessRuns(
   if (unknown.length) throw new Error(`Unknown headless backend selector(s): ${unknown.join(", ")}`)
   const suite = trustedSuite()
   const ids = probeIds === undefined ? [...suite.probes.lib] : [...probeIds]
-  for (const id of ids) {
-    if (!ALL_PROBES.some((probe) => probe.id === id)) throw new Error(`Unknown probe: ${id}`)
-  }
+  const resolved = resolveProbeIds(ids)
+  if (resolved.result === "invalid") throw new Error(`Unknown probe: ${resolved.unknownIds[0] ?? resolved.duplicateIds[0]}`)
   const script = realpathSync(fileURLToPath(import.meta.url))
   if (!script.endsWith("/packages/probes/collect-headless.ts")) {
     throw new Error(`Packaged CLI has no local headless collector source at ${script}; install the source workspaces`)

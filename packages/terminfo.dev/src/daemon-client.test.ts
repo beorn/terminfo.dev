@@ -25,6 +25,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, expect, it, vi } from "vitest"
 import { parseRun } from "@terminfo/run-parser"
+import { initializeRunDraft, recordCollectorSelection, recordCollectorAttempt } from "@terminfo/probe-defs"
 import type { CapturedRunDraft as CollectedProbeRun, ProbeSuiteManifest } from "@terminfo/probe-defs"
 import {
   createProbeRun,
@@ -358,6 +359,17 @@ it("sends the attributed owner assertion only after verifying the private daemon
   expect(seen[1]?.authorization).toBe(`Bearer ${registration.token}`)
   expect(JSON.parse(seen[1]!.body)).toEqual({ terminalAppOwner: owner })
   expect(seen[1]!.body).not.toContain(registration.token)
+  // AC1: ownership-only coverage misses a third selection argument silently dropped at transport.
+  for (const ids of [[], ["device.primary-da"]]) {
+    seen.length = 0
+    await requestDaemonProbe(registration, { terminalApp: owner }, ids)
+    expect(JSON.parse(seen[1]!.body)).toEqual({ terminalAppOwner: owner, ids })
+    expect(seen[1]!.authorization).toBe(`Bearer ${registration.token}`)
+  }
+  seen.length = 0
+  await requestDaemonProbe(registration, undefined, [])
+  expect(seen[1]?.method).toBe("POST")
+  expect(JSON.parse(seen[1]!.body)).toEqual({ ids: [] })
 })
 
 it("refuses the old boolean daemon payload instead of upgrading it to v2 observations", async () => {
@@ -375,6 +387,27 @@ it("refuses the old boolean daemon payload instead of upgrading it to v2 observa
   await expect(
     readRetainedDaemonProbeResponse(legacy, { directory: join(root, "http-responses"), receipt: trustedReceipt }),
   ).rejects.toThrow(/v2|schema|boolean/i)
+})
+
+// AC3: measured-capture tests cannot expose an initialized empty draft being forced into measured identity.
+it("retains exact empty selection HTTP bytes as an unmeasured draft", async () => {
+  root = mkdtempSync(join(tmpdir(), "terminfo-owned-empty-"))
+  const draft = initializeRunDraft({ source: { kind: "live" }, runId: "empty-selection-fixture",
+    sourceRevision: trustedReceipt.collectorRevision, manifest: trustedReceipt.manifest,
+    intendedSubject: { kind: "term", id: "kitty" } })
+  recordCollectorSelection(draft, [])
+  recordCollectorAttempt(draft, { ids: [], result: "empty" })
+  const raw = `${JSON.stringify(draft)}\r\n`
+  const retained = await readRetainedDaemonProbeResponse(new Response(raw), {
+    directory: join(root, "http-responses"), receipt: trustedReceipt,
+  })
+  expect(retained.kind).toBe("empty-selection")
+  expect(retained.run).toEqual(draft)
+  expect(readFileSync(retained.path, "utf8")).toBe(raw)
+  expect(retained.sha256).toBe(createHash("sha256").update(raw).digest("hex"))
+  expect(retained.run).not.toHaveProperty("subject")
+  expect(retained.run).not.toHaveProperty("measuredAt")
+  expect(retained.run.results.every(row => row.status === "test-todo" && row.attempt.scope === "none")).toBe(true)
 })
 
 it("retains exact daemon HTTP bytes and refuses invalid UTF-8 before parsing", async () => {
@@ -524,6 +557,8 @@ it("retains authenticated exact response bytes before intended-version refusal",
   expect(readFileSync(retained.path, "utf8")).not.toContain(token)
   expect(lstatSync(privateDir).mode & 0o077).toBe(0)
   expect(lstatSync(retained.path).mode & 0o077).toBe(0)
+  expect(retained.kind).toBe("captured")
+  if (retained.kind !== "captured") throw new Error("Expected captured fixture")
   expect(retained.run.rawReplies["collector.httpResponseSha256"]).toBe(sha)
   expect(() =>
     saveDaemonProbeRun(retained.run, join(privateRoot, "runs"), { kind: "term", id: "kitty", version: "0.48.0" }),

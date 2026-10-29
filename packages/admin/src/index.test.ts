@@ -7,8 +7,12 @@
 import { spawnSync } from "node:child_process"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
-import { expect, test } from "vitest"
+import { beforeAll, describe, expect, test, vi } from "vitest"
+import { Command } from "@silvery/commander"
+import { collectHeadlessRuns } from "../../probes/collect-headless.ts"
 import { ensureSourceSuiteEnvironment, sourceSuiteEnvironment } from "../versions.ts"
+
+vi.mock("../../probes/collect-headless.ts", () => ({ collectHeadlessRuns: vi.fn() }))
 
 const sourceDirectory = dirname(fileURLToPath(import.meta.url))
 const root = join(sourceDirectory, "..", "..", "..")
@@ -74,4 +78,36 @@ test("CLI help is independent of source suite metadata", () => {
   expect(result.error).toBeUndefined()
   expect(result.status).toBe(0)
   expect(result.stdout).toContain("probe")
+})
+
+// AC1/AC5: source metadata tests cannot catch a parsed filter dropped before the headless collector.
+describe("headless CLI exact probe selection", () => {
+  let program: Command
+  beforeAll(async () => {
+    const parse = vi.spyOn(Command.prototype, "parseAsync").mockImplementation(async function(this: Command) { return this })
+    try {
+      await import("./index.ts")
+      program = parse.mock.contexts[0]!
+      for (const command of [program, ...program.commands, ...program.commands.flatMap(command => command.commands)]) {
+        command.exitOverride().configureOutput({ writeErr: () => {} })
+      }
+    } finally { parse.mockRestore() }
+  })
+  test.each([{ ids: undefined }, { ids: [] }, { ids: ["device.primary-da"] }])("forwards exact probe IDs $ids without inferring a full selection", async ({ ids }) => {
+    vi.mocked(collectHeadlessRuns).mockReset().mockResolvedValue({
+      directory: "/fixture/headless", requested: ["xtermjs"], runs: [], failures: [],
+    })
+    const log = vi.spyOn(console, "log").mockImplementation(() => {})
+    try {
+      await program.parseAsync(["probe", "termless", "xtermjs", ...(ids === undefined ? [] : ["--probe-ids", JSON.stringify(ids)])], { from: "user" })
+      expect(collectHeadlessRuns).toHaveBeenCalledTimes(1)
+      expect(vi.mocked(collectHeadlessRuns).mock.calls[0]?.[0]).toEqual(["xtermjs"])
+      expect(vi.mocked(collectHeadlessRuns).mock.calls[0]?.[3]).toEqual(ids)
+    } finally { log.mockRestore() }
+  })
+  test.each(["{", "{}", '["device.primary-da",3]'])("refuses malformed probe IDs %s before dispatch", async value => {
+    vi.mocked(collectHeadlessRuns).mockClear()
+    await expect(program.parseAsync(["probe", "termless", "xtermjs", "--probe-ids", value], { from: "user" })).rejects.toThrow()
+    expect(collectHeadlessRuns).not.toHaveBeenCalled()
+  })
 })

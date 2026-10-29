@@ -1564,6 +1564,17 @@ describe("private finite daemon startup", () => {
       expect(run.results).toHaveLength(273)
       expect(new Set(run.results.map((result) => result.featureId)).size).toBe(273)
       expect(run.results.every((result) => result.status === "test-todo")).toBe(true)
+      // AC1: explicit request selection overrides startup selection, including [] rather than full.
+      for (const ids of [[], ["cursor.show"]]) {
+        const selected = await fetch(`http://127.0.0.1:${registration.port}/probe`, {
+          method: "POST", headers: { Authorization: `Bearer ${registration.token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ ids }),
+        })
+        expect(selected.status).toBe(200)
+        const result = await selected.json() as { rawReplies: { selected?: string[]; "collector.collectionAttempt": string } }
+        expect(result.rawReplies.selected).toEqual(ids.length === 0 ? undefined : ids)
+        expect(JSON.parse(result.rawReplies["collector.collectionAttempt"])).toMatchObject({ ids, result: ids.length === 0 ? "empty" : "completed" })
+      }
     },
   )
 

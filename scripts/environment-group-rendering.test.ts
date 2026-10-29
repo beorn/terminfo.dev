@@ -8,13 +8,17 @@
  *   and the arithmetic it prints is exercised directly through the fold and the sentence.
  * @testonly none
  */
-import { readFileSync } from "node:fs"
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { createHash } from "node:crypto"
 import { join } from "node:path"
 import { beforeAll, describe, expect, it, vi } from "vitest"
 import { Command } from "@silvery/commander"
-import { ENVIRONMENT_GROUP_IDS, initializeRunDraft } from "@terminfo/probe-defs"
+import { ENVIRONMENT_GROUP_IDS, initializeRunDraft, recordCollectorSelection, recordCollectorAttempt } from "@terminfo/probe-defs"
 import type { ProbeResult, CapturedRunDraft, ProbeSuiteManifest } from "@terminfo/probe-defs"
 import * as publicCollector from "../packages/terminfo.dev/src/serve.ts"
+import * as probeOutput from "../packages/terminfo.dev/src/probe-output.ts"
+import * as daemonClient from "../packages/terminfo.dev/src/daemon-client.ts"
 import { currentCoverageSentence, aggregateCurrentResults } from "../docs/data/release-scope.ts"
 import { scopeAggregate } from "../docs/data/full-scope.ts"
 import { evidenceStatus, MANUAL_BY_DESIGN_STATUS } from "../docs/.vitepress/theme/evidence-status.ts"
@@ -26,7 +30,15 @@ vi.mock("../packages/terminfo.dev/src/serve.ts", () => ({
   collectProbeRun: vi.fn(),
   getTrustedSuiteReceipt: vi.fn(),
   getCliSuiteProbeHash: () => "abcdef123456",
+  listDaemons: vi.fn(),
+  startDaemon: vi.fn(),
 }))
+vi.mock("../packages/terminfo.dev/src/daemon-client.ts", async importOriginal => ({
+  ...(await importOriginal<typeof import("../packages/terminfo.dev/src/daemon-client.ts")>()),
+  requestDaemonProbe: vi.fn(),
+  readRetainedDaemonProbeResponse: vi.fn(),
+}))
+vi.mock("../packages/terminfo.dev/src/probe-output.ts", () => ({ probeOutputStream: vi.fn(() => undefined) }))
 const gradedIds = Array.from({ length: 264 }, (_, index) => `capability.${index}`)
 const catalogIds = [...ENVIRONMENT_GROUP_IDS, ...gradedIds]
 const todos = (): ProbeResult[] =>
@@ -48,15 +60,18 @@ describe("public test CLI coverage uses the collected manifest", () => {
       const parsed = parse.mock.contexts[0]
       if (!parsed) throw new Error("CLI entry point did not parse its command")
       program = parsed
+      program.commands.find(command => command.name() === "test")!.exitOverride().configureOutput({ writeErr: () => {} })
     } finally {
       parse.mockRestore()
     }
   })
 
   it.each([
-    ["current", catalogIds, ` · 9 environment groups ${PHRASE}`],
-    ["historical", gradedIds, ""],
-  ] as const)("prints the %s catalogue's environment clause", async (_label, ids, clause) => {
+    ["current", catalogIds, ` · 9 environment groups ${PHRASE}`, undefined],
+    ["historical", gradedIds, "", undefined],
+    ["selected", catalogIds, ` · 9 environment groups ${PHRASE}`, ["device.primary-da"]],
+    ["empty", catalogIds, "", []],
+  ] as const)("prints the %s catalogue's environment clause", async (_label, ids, clause, probeIds) => {
     const manifest = {
       schemaVersion: 4 as const,
       probeHash: "abcdef123456",
@@ -89,18 +104,86 @@ describe("public test CLI coverage uses the collected manifest", () => {
       measuredAt: "2026-10-25T00:00:00.000Z",
       origin: { kind: "collector" },
     }
-    vi.mocked(publicCollector.collectProbeRun).mockResolvedValue(run)
+    const response = probeIds?.length === 0 ? initializeRunDraft({
+      source: run.source, runId: run.runId, sourceRevision: run.sourceRevision,
+      manifest, intendedSubject: run.intendedSubject,
+    }) : run
+    if (probeIds?.length === 0) {
+      recordCollectorSelection(response, [])
+      recordCollectorAttempt(response, { ids: [], result: "empty" })
+    }
+    vi.mocked(publicCollector.collectProbeRun).mockClear().mockResolvedValue(response)
+    vi.mocked(probeOutput.probeOutputStream).mockClear()
     vi.mocked(publicCollector.getTrustedSuiteReceipt).mockReturnValue({
       manifest,
       collectorRevision: manifest.sourceRevision,
     })
     const output = vi.spyOn(console, "log").mockImplementation(() => {})
+    const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true)
+    const stderr = vi.spyOn(console, "error").mockImplementation(() => {})
     try {
-      await program.parseAsync(["test"], { from: "user" })
+      await program.parseAsync(["test", ...(probeIds === undefined ? [] : ["--probe-ids", JSON.stringify(probeIds)]), ...(probeIds?.length === 0 ? ["--json"] : [])], { from: "user" })
+      expect(publicCollector.collectProbeRun).toHaveBeenCalledTimes(1)
+      expect(publicCollector.collectProbeRun).toHaveBeenCalledWith(probeIds === undefined ? {} : { ids: probeIds })
+      if (probeIds?.length === 0) {
+        expect(probeOutput.probeOutputStream).not.toHaveBeenCalled()
+        const saved = JSON.parse(String(stdout.mock.calls[0]?.[0]))
+        expect(saved.runId).toBe(run.runId)
+        expect(JSON.parse(saved.rawReplies["collector.collectionAttempt"])).toEqual({ ids: [], result: "empty" })
+        expect(saved).not.toHaveProperty("subject")
+        expect(saved).not.toHaveProperty("measuredAt")
+        expect(saved).not.toHaveProperty("sealedAt")
+        expect(stderr.mock.calls.flat().join(" ")).not.toContain("identity unverified")
+        return
+      }
       const summary = output.mock.calls.map(([line]) => line).find((line) => line.includes("TEST FAILURE"))
       expect(summary).toBe(`0 Supported · 0 Unsupported · 0 Untestable · 264 TEST TODO · 0 TEST FAILURE${clause}`)
     } finally {
       output.mockRestore()
+      stdout.mockRestore()
+      stderr.mockRestore()
+    }
+  })
+  // AC1/AC5: inline argument coverage cannot detect a named-daemon filter being silently ignored.
+  it("forwards explicit empty IDs to a named daemon and writes the retained unmeasured draft", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "terminfo-cli-empty-"))
+    const manifest = { schemaVersion: 4 as const, probeHash: "abcdef123456", sourceRevision: "a".repeat(40),
+      generatedAt: "2026-10-25T00:00:00.000Z", adapterVersion: "test", catalogIds,
+      probes: { term: [], lib: [], mux: [] } }
+    const run = initializeRunDraft({ source: { kind: "live" }, runId: "named-empty-cli", manifest,
+      sourceRevision: manifest.sourceRevision, intendedSubject: { kind: "term", id: "kitty" } })
+    recordCollectorSelection(run, [])
+    recordCollectorAttempt(run, { ids: [], result: "empty" })
+    const raw = JSON.stringify(run)
+    const path = join(directory, "original-response")
+    writeFileSync(path, raw)
+    const daemon = { pid: 22, port: 43210, runId: "daemon", token: "a".repeat(64), terminal: "kitty", terminalVersion: "1",
+      os: "linux", osVersion: "fixture", started: "2026-10-25T00:00:00.000Z" }
+    vi.mocked(publicCollector.listDaemons).mockReturnValue([daemon])
+    vi.mocked(daemonClient.requestDaemonProbe).mockClear().mockResolvedValue(new Response(raw))
+    vi.mocked(daemonClient.readRetainedDaemonProbeResponse).mockResolvedValue({ kind: "empty-selection", run, path,
+      sha256: createHash("sha256").update(raw).digest("hex") })
+    vi.mocked(probeOutput.probeOutputStream).mockClear()
+    const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true)
+    const stderr = vi.spyOn(console, "error").mockImplementation(() => {})
+    try {
+      await program.parseAsync(["test", "kitty", "--probe-ids", "[]", "--json"], { from: "user" })
+      expect(daemonClient.requestDaemonProbe).toHaveBeenCalledWith(daemon, undefined, [])
+      expect(stdout).toHaveBeenCalledWith(raw)
+      expect(probeOutput.probeOutputStream).not.toHaveBeenCalled()
+      expect(stderr.mock.calls.flat().join(" ")).toContain("no probes executed")
+    } finally { stdout.mockRestore(); stderr.mockRestore(); rmSync(directory, { recursive: true, force: true }) }
+  })
+  it("passes exact probe IDs into the existing daemon startup selection input", async () => {
+    const before = process.env.TERMINFO_PROBE_IDS
+    vi.mocked(publicCollector.startDaemon).mockClear()
+    try {
+      await program.parseAsync(["test", "--serve", "--probe-ids", '["device.primary-da"]'], { from: "user" })
+      expect(process.env.TERMINFO_PROBE_IDS).toBe('["device.primary-da"]')
+      expect(publicCollector.startDaemon).toHaveBeenCalledWith(0)
+    } finally {
+      if (before === undefined) delete process.env.TERMINFO_PROBE_IDS
+      else process.env.TERMINFO_PROBE_IDS = before
     }
   })
 })

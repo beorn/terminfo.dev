@@ -80,6 +80,7 @@ export async function handleServer(
       const res = await requestDaemonProbe(d)
       const retained = await readRetainedDaemonProbeResponse(res)
       console.log(`  Retained private HTTP response ${retained.path}; SHA256 ${retained.sha256}`)
+      if (retained.kind === "empty-selection") throw new Error("Empty selection where a capture was required")
       const data = retained.run
       const catalogIds = data.results.map((result) => result.featureId)
       const aggregate = aggregateCurrentResults(data.results, catalogIds)

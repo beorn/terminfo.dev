@@ -152,6 +152,18 @@ it.each([true, false])(
 // The real worker loads headless-identity.ts, which requires the owned vterm checkout beside this one;
 // standalone component CI tests out terminfo.dev alone, so this runs wherever that layout exists.
 const OWNED_LAYOUT = existsSync(fileURLToPath(new URL("../../../vterm", import.meta.url)))
+// AC1: mocked coordinator tests cannot detect a worker still passing ALL_PROBES to the batch.
+// This existing worker boundary measures one embedded fixture backend, never a Terminal app.
+it.runIf(OWNED_LAYOUT)("executes only selected callbacks in the real headless worker", async () => {
+  const collection = await collectHeadlessRuns(["xtermjs"], directory(), undefined, ["sgr.bold"])
+  expect(collection.failures).toEqual([])
+  expect(collection.runs).toHaveLength(1)
+  const draft = JSON.parse(readFileSync(collection.runs[0]!, "utf8")) as CapturedRunDraft
+  expect(draft.results.filter((row) => row.attempt.scope !== "none").map((row) => row.featureId)).toEqual(["sgr.bold"])
+  expect(JSON.parse(draft.rawReplies["collector.selection"]!)).toEqual({ ids: ["sgr.bold"] })
+  expect(JSON.parse(draft.rawReplies["collector.collectionAttempt"]!).result).toBe("completed")
+  expect(draft.results).toHaveLength(273)
+}, 30_000)
 // The fixture tests above never send a collector-written draft through the decoder that admit-run uses;
 // this one runs the real xtermjs worker and the real admit-run --review. Admission itself writes the suite
 // manifest and receipts into content/, so one review stays pending here: admit-run retains the reviewed

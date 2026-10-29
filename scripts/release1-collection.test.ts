@@ -245,6 +245,9 @@ it.each([
   ["matching", "text-modified"],
   ["frozen", "none"],
   ["frozen", "deferred"],
+  ["matching", "selected"],
+  ["matching", "empty-selection"],
+  ["matching", "linux-prestart"],
 ] as const)(
   "retains a private %s-suite historical artifact after %s without current admission",
   async (suite, inputChange) => {
@@ -307,6 +310,7 @@ it.each([
         if (Array.isArray(stdio) && typeof stdio[1] === "number") writeSync(stdio[1], stdout)
         return { pid: 1, output: [], stdout: "", stderr: "", status, signal: null }
       }
+      if (inputChange === "linux-prestart" && command === "bash") return respond("prerequisite failed", 1)
       if (command === "git") {
         if (args[0] === "symbolic-ref") return respond("fixture-collection\n")
         if (args[0] === "ls-remote") return respond(`${raw.sourceRevision}\trefs/heads/fixture-collection\n`)
@@ -449,9 +453,42 @@ it.each([
               },
             ]
           : []
-      const pass = await collectPass(directory, frozenSuite, { runner: "local" }, deferrals)
+      // AC1: the existing full-census fixture otherwise hides ignored context/probe selections.
+      const selection = inputChange === "selected"
+        ? { contexts: ["xtermjs/headless"], ids: ["sgr.bold"] }
+        : inputChange === "linux-prestart" ? { contexts: ["alacritty/linux"], ids: ["sgr.bold"] }
+        : inputChange === "empty-selection" ? { contexts: [], ids: [] } : undefined
+      const pass = await collectPass(directory, frozenSuite, { runner: "local" }, deferrals, selection)
       expect(pass.mode).toBe(frozenSuite ? "admit" : "development")
       if (frozenSuite) expect(pass.freeze?.id).toBe(frozenSuite)
+      if (selection) {
+        expect(pass.contexts.map((row) => `${row.context.id}/${row.context.os === "unknown" ? "headless" : row.context.os}`))
+          .toEqual(selection.contexts)
+        expect(pass.selection).toEqual(selection)
+        if (selection.contexts.length === 0) {
+          expect(pass.attempt?.result).toBe("empty")
+          expect(headless.collectHeadlessRuns).not.toHaveBeenCalled()
+          expect(childProcesses.spawnSync).not.toHaveBeenCalled()
+        } else if (inputChange === "linux-prestart") {
+          expect(headless.collectHeadlessRuns).not.toHaveBeenCalled()
+          expect(pass.contexts[0]?.rawRun).toBeDefined()
+          const retained = JSON.parse(readFileSync(pass.contexts[0]!.rawRun!, "utf8"))
+          expect(JSON.parse(retained.rawReplies["collector.selection"])).toEqual({ ids: ["sgr.bold"] })
+          expect(JSON.parse(retained.rawReplies["collector.collectionAttempt"])).toMatchObject({ result: "failed", ids: ["sgr.bold"] })
+          expect(JSON.parse(retained.rawReplies["collector.collectionAttempt"]).startedAt).toBeUndefined()
+          expect(retained.results.every((row: { attempt: { scope: string } }) => row.attempt.scope === "none")).toBe(true)
+          expect(childProcesses.spawnSync).toHaveBeenCalledWith("bash", expect.any(Array), expect.objectContaining({
+            env: expect.objectContaining({ TERMINFO_PROBE_IDS: '["sgr.bold"]' }),
+          }))
+        } else {
+          expect(headless.collectHeadlessRuns).toHaveBeenCalledWith(
+            ["xtermjs"], expect.any(String), expect.any(Map), ["sgr.bold"],
+          )
+          const retained = JSON.parse(readFileSync(join(pass.directory, "lib-xtermjs-unknown.draft.json"), "utf8"))
+          expect(JSON.parse(retained.rawReplies["collector.selection"])).toEqual({ ids: ["sgr.bold"] })
+        }
+        return
+      }
       expect(pass.contexts).toHaveLength(33)
       if (inputChange === "deferred") {
         // The frozen batch owns a carried route; its initialized TODO draft must not become a measurement.
@@ -545,7 +582,8 @@ it.each([
             }),
           }),
         )
-        expect(row?.status).toBe("failed")
+        // A launcher error or malformed file supplies no actual collector start or emitted result.
+        expect(row?.status).toBe("not-started")
         expect(row?.error).toContain(`${id}/linux`)
         expect(readFileSync(join(output, "launcher.stderr.log"), "utf8")).toBe("launcher fixture diagnostic")
         if (id === "kitty") expect(row?.error).toMatch(/exited 17/)

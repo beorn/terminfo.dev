@@ -12,9 +12,34 @@ import {
   recordExecutedProbe,
   finalizeProbeResult,
   REPLY_PATH_AUDIT_REVIEW,
+  recordCollectorSelection,
+  recordCollectorAttempt,
   type RunDraft,
 } from "@terminfo/probe-defs"
-import { applyCaptureDecision, retainCaptureBinding, parseRun } from "./index.ts"
+import { applyCaptureDecision, retainCaptureBinding, parseRun, decodeCollectorDraft } from "./index.ts"
+
+// Empty HTTP transport is a real initialized draft, not a truncated measured capture.
+// Sealed-run binding tests never decode the unmeasured collector response boundary.
+it.each(["empty", "status", "scope", "captured"])("decodes collector %s through its typed draft arm", (mode) => {
+  const manifest = {
+    schemaVersion: 4 as const, probeHash: "capture-suite", adapterVersion: "3",
+    catalogIds: ["sgr.bold"], probes: { term: ["sgr.bold"], lib: [], mux: [] },
+  }
+  const draft = mode === "captured" ? setup().draft : initializeRunDraft({
+    runId: "empty-selection", sourceRevision: "1".repeat(40), source: { kind: "live" },
+    intendedSubject: { kind: "term", id: "kitty" }, manifest,
+  })
+  if (mode === "captured") draft.identity = "unverified"
+  else {
+    recordCollectorSelection(draft, [])
+    recordCollectorAttempt(draft, { ids: [], result: "empty" })
+  }
+  if (mode === "status") draft.results[0]!.status = "supported"
+  if (mode === "scope") draft.results[0]!.attempt = { scope: "probe", startedAt: "2026-10-29T06:00:00Z" }
+  const decode = () => decodeCollectorDraft("selection.draft.json", JSON.stringify(draft), manifest, "1".repeat(40))
+  if (mode === "status" || mode === "scope") expect(decode).toThrow(`results[0].${mode === "status" ? "status" : "attempt.scope"}`)
+  else expect(decode()).toMatchObject({ kind: mode === "captured" ? "captured" : "empty-selection", run: draft })
+})
 
 // H1-H7: explicit collector-input fixture, not an engine execution or qualification proof.
 // Existing immutable-binding tests cannot reject an invalid cause before the first binding exists.
