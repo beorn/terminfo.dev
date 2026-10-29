@@ -1419,22 +1419,61 @@ async function colorStackTermProbe(
   }
 }
 
+const OSC720_CLAIM = "OSC 720 moves the scrollback viewport up"
+const OSC720_HISTORY_LINES = 30
+
+type ScrollbackReading = ReturnType<LibProbeSource["getScrollback"]>
+
+function sameViewport(reading: ScrollbackReading, other: ScrollbackReading): boolean {
+  return (
+    reading.viewportOffset === other.viewportOffset &&
+    reading.totalLines === other.totalLines &&
+    reading.screenLines === other.screenLines
+  )
+}
+
+function feedScrollbackHistory(ctx: LibProbeSource): void {
+  for (let i = 0; i < OSC720_HISTORY_LINES; i++) ctx.feed(`scroll-${i}\r\n`)
+}
+
 function osc720ScrollProbe(): ProbeDefinition["lib"] {
   return (ctx) => {
-    for (let i = 0; i < 30; i++) ctx.feed(`scroll-${i}\r\n`)
+    feedScrollbackHistory(ctx)
     const before = ctx.getScrollback()
     if (before.totalLines <= before.screenLines || before.viewportOffset <= 0) {
+      return parserStateResult(null, OSC720_CLAIM, { before }, "No scrollback viewport available")
+    }
+    // A reading only qualifies the measurement below when the backend's viewport channel can move at
+    // all: a row derived as totalLines - screenLines reads the live bottom forever, so an unchanged
+    // row there is absence of an observer, never evidence that the engine ignored OSC 720. Both
+    // deltas are tried because the sign that scrolls up differs per backend, and the reading is
+    // restored (and the restoration checked) before the measured sequence runs.
+    if (!ctx.scrollViewport) {
+      return notTestedResult("scrollback viewport scroll control", { before })
+    }
+    ctx.scrollViewport(-1)
+    const afterMinus = ctx.getScrollback()
+    ctx.scrollViewport(1)
+    const afterPlus = ctx.getScrollback()
+    const moved = !sameViewport(afterMinus, before) || !sameViewport(afterPlus, afterMinus)
+    ctx.reset()
+    feedScrollbackHistory(ctx)
+    const control = { afterMinus, afterPlus, moved, restored: ctx.getScrollback() }
+    if (!sameViewport(control.restored, before)) {
       return parserStateResult(
         null,
-        "OSC 720 moves the scrollback viewport up",
-        { before },
-        "No scrollback viewport available",
+        OSC720_CLAIM,
+        { before, control },
+        "Viewport control did not restore the measured baseline",
       )
+    }
+    if (!moved) {
+      return notTestedResult("scrollback viewport state", { before, control })
     }
     ctx.feed("\x1b]720\x07")
     const after = ctx.getScrollback()
     const pass = after.viewportOffset < before.viewportOffset
-    return parserStateResult(pass, "OSC 720 moves the scrollback viewport up", { before, after })
+    return parserStateResult(pass, OSC720_CLAIM, { before, after, control })
   }
 }
 

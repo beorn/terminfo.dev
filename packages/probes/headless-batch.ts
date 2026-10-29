@@ -358,6 +358,9 @@ export function createLibProbeSource(
     getScrollback() {
       return backend.getScrollback()
     },
+    scrollViewport(delta: number) {
+      backend.scrollViewport(delta)
+    },
     getTitle() {
       return backend.getTitle()
     },

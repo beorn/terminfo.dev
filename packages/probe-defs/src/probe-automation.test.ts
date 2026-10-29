@@ -3802,18 +3802,23 @@ describe("partial probe automation candidates", () => {
     const p = probe("extensions.osc720-scroll-up")
     expect(p.lib).toBeTypeOf("function")
 
-    let scrollReads = 0
+    // The reading must come from a channel the control can move, or the measurement is not qualified.
+    let viewportOffset = 1
     const fed: string[] = []
     const result = p.lib!(
       context({
         feed(text) {
           fed.push(text)
+          if (text.includes("\x1b]720")) viewportOffset = 0
         },
         getScrollback() {
-          scrollReads++
-          return scrollReads === 1
-            ? { viewportOffset: 1, totalLines: 4, screenLines: 3 }
-            : { viewportOffset: 0, totalLines: 4, screenLines: 3 }
+          return { viewportOffset, totalLines: 4, screenLines: 3 }
+        },
+        scrollViewport(delta) {
+          viewportOffset = Math.max(0, Math.min(1, viewportOffset + delta))
+        },
+        reset() {
+          viewportOffset = 1
         },
       }),
     )
