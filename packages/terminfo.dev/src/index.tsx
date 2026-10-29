@@ -19,9 +19,10 @@ import { readRetainedDaemonProbeResponse, requestDaemonProbe, finalizeCollectedD
  */
 
 import React from "react"
-import { writeFileSync } from "node:fs"
+import { readFileSync, writeFileSync } from "node:fs"
 import { isAbsolute } from "node:path"
-import { Command, uint } from "@silvery/commander"
+import { Command, uint, json } from "@silvery/commander"
+import { collectorIds } from "@terminfo/probe-defs"
 import { renderString } from "silvery"
 import { version as packageVersion } from "../package.json" with { type: "json" }
 import { detectTerminal } from "./detect.ts"
@@ -38,10 +39,19 @@ import { probeOutputStream } from "./probe-output.ts"
 import { getCliSuiteProbeHash } from "./serve.ts"
 
 /** Collect the same current draft as the daemon endpoint; finalization follows all enrichment. */
-async function runProbes(out?: NodeJS.WriteStream) {
+async function runProbes(out?: NodeJS.WriteStream, ids?: string[]) {
   const { collectProbeRun, getTrustedSuiteReceipt } = await import("./serve.ts")
-  const run = await collectProbeRun(out ? { out } : {})
-  return { run, receipt: getTrustedSuiteReceipt() }
+  const run = await collectProbeRun({ ...(out && { out }), ...(ids !== undefined && { ids }) })
+  const receipt = getTrustedSuiteReceipt()
+  return {
+    ...decodeCollectorDraft(
+      "inline collector",
+      `${JSON.stringify(run)}\n`,
+      receipt.manifest,
+      receipt.collectorRevision,
+    ),
+    receipt,
+  }
 }
 
 function outputPath(path: string): string {
@@ -82,6 +92,7 @@ program
   .argument("[daemon]", "Daemon name to test")
   .option("--json", "Write one raw JSON run to stdout (inline probes require interactive TTY)")
   .option("--output <file>", "Write exact raw JSON to an absolute file")
+  .option("--probe-ids <json>", "Exact probe IDs as a JSON array; [] executes none", json)
   .option("--serve", "Start daemon for remote testing")
   .option("-p, --port <port>", "Port for --serve", uint)
   .option("--all", "Unavailable: collecting multiple daemons is refused")
@@ -93,7 +104,9 @@ program
       serve?: boolean
       port?: number
       all?: boolean
+      probeIds?: unknown
     }) => {
+      const probeIds = opts.probeIds === undefined ? undefined : collectorIds(opts.probeIds, "--probe-ids")
       if (opts.json && opts.output) throw new Error("Choose --json or --output for one raw run")
       if (opts.output) outputPath(opts.output)
       if (opts.all) throw new Error("Collecting multiple daemons is unavailable; test one named daemon with --output")
@@ -103,6 +116,7 @@ program
       // --serve: start daemon mode
       if (opts.serve) {
         const { startDaemon } = await import("./serve.ts")
+        if (probeIds !== undefined) process.env.TERMINFO_PROBE_IDS = JSON.stringify(probeIds)
         startDaemon(opts.port ?? 0)
         return
       }
@@ -123,7 +137,16 @@ program
         }
         const daemon = targets[0]
         if (!daemon) throw new Error("Selected daemon registration disappeared")
-        const retained = await readRetainedDaemonProbeResponse(await requestDaemonProbe(daemon))
+        const retained = await readRetainedDaemonProbeResponse(await requestDaemonProbe(daemon, undefined, probeIds))
+        if (retained.kind === "empty-selection") {
+          const raw = readFileSync(retained.path, "utf8")
+          if (opts.output) writeFileSync(opts.output, raw, { flag: "wx", mode: 0o600 })
+          else process.stdout.write(raw)
+          console.error(
+            `Empty selection draft ${retained.run.runId}${opts.output ? ` saved to ${opts.output}` : ""}; SHA256 ${retained.sha256}; no probes executed`,
+          )
+          return
+        }
         const captured = finalizeCollectedDraft(retained.run)
         const raw = `${JSON.stringify(captured)}\n`
         const { getTrustedSuiteReceipt } = await import("./serve.ts")
@@ -134,6 +157,9 @@ program
           receipt.manifest,
           receipt.collectorRevision,
         )
+        if ("kind" in decoded && decoded.kind === "empty-selection") {
+          throw new Error("Empty selection where a capture was required")
+        }
         if (opts.output) {
           writeFileSync(opts.output, decoded.raw, { flag: "wx", mode: 0o600 })
           console.error(
@@ -147,10 +173,10 @@ program
       }
 
       // Default: collect the current execution contract in this terminal.
-      const out = probeOutputStream(opts)
+      const out = probeIds?.length === 0 ? undefined : probeOutputStream(opts)
       let collected: Awaited<ReturnType<typeof runProbes>>
       try {
-        collected = await runProbes(out)
+        collected = await runProbes(out, probeIds)
       } finally {
         // Only close a stream we opened: when --output probes this process's own stdout, ending it
         // would close the terminal we were launched in.
@@ -160,6 +186,14 @@ program
           })
         }
       }
+      if (collected.kind === "empty-selection") {
+        if (opts.output) writeFileSync(opts.output, collected.raw, { flag: "wx", mode: 0o600 })
+        else if (opts.json) process.stdout.write(collected.raw)
+        const message = `Empty selection draft ${collected.run.runId}${opts.output ? ` saved to ${opts.output}` : ""}; SHA256 ${collected.sha256}; no probes executed`
+        if (opts.json || opts.output) console.error(message)
+        else console.log(message)
+        return
+      }
       const captured = finalizeCollectedDraft(collected.run)
       const raw = `${JSON.stringify(captured)}\n`
       const decoded = (captured.sealedAt === undefined ? decodeCollectorDraft : decodeCollectorRun)(
@@ -168,6 +202,9 @@ program
         collected.receipt.manifest,
         collected.receipt.collectorRevision,
       )
+      if ("kind" in decoded && decoded.kind === "empty-selection") {
+        throw new Error("Empty selection where a capture was required")
+      }
       if (opts.output) {
         writeFileSync(opts.output, raw, { flag: "wx", mode: 0o600 })
         console.error(

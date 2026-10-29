@@ -60,6 +60,7 @@ if (import.meta.main) {
       const manifest = derivedSuiteManifest(probeSuiteSnapshot())
       const revision = execFileSync("git", ["rev-parse", "HEAD"], { cwd: import.meta.dirname, encoding: "utf8" }).trim()
       const decoded = decodeCollectorDraft(source, readFileSync(source, "utf8"), manifest, revision)
+      if (decoded.kind === "empty-selection") throw new Error(`${source}: empty selection where a capture was required`)
       const directory = dirname(source)
       source = saveDaemonProbeRun(decoded.run, directory, undefined, {
         manifest,

@@ -8,12 +8,13 @@ import {
   type SelectedProjection,
   type SelectedVersion,
   type CurrentSelectedVersion,
+  type SelectedAttemptInput,
 } from "./selected-results.ts"
 import type { ProbeStatus } from "@terminfo/probe-defs"
 import type { CellState } from "./release-scope.ts"
 import { frozenSuiteIdFor } from "./load-release-scope.ts"
 import { candidateFromSelected, pickContextRun } from "./run-selection.ts"
-import { parseJsonStrict } from "@terminfo/run-parser"
+import { parseJsonStrict, type LoadedRun } from "@terminfo/run-parser"
 import { loadTerminals } from "@terminfo/catalog"
 
 export interface DefaultContextReview {
@@ -147,12 +148,21 @@ function currentResultsCache(): Map<string, CurrentResults> {
 
 export function loadCurrentResults(
   contentDir: string,
-  options: { artifactDir?: string; releaseSuiteId?: string } = {},
+  options: {
+    artifactDir?: string
+    releaseSuiteId?: string
+    workingRuns?: readonly LoadedRun[]
+    workingAttempts?: readonly SelectedAttemptInput[]
+  } = {},
 ): CurrentResults {
   // A reading may be taken on another cohort's freeze (candidate 2 reads the c240 suite candidate 4
   // froze). The caller that holds that suite names it here, so one home decides it; otherwise the
   // registry is read and throws loudly when it names no suite.
   const releaseSuiteId = options.releaseSuiteId ?? releaseSuiteIdFor(contentDir)
+  // Explicit working evidence is not a cached corpus reading, including an explicit empty input.
+  if (options.workingRuns !== undefined || options.workingAttempts !== undefined) {
+    return { projection: loadSelectedResults(contentDir, probeHash(), { ...options, releaseSuiteId }) }
+  }
   const key = `${contentDir}\u0000${probeHash()}\u0000${options.artifactDir ?? ""}\u0000${releaseSuiteId}`
   const cache = currentResultsCache()
   const memoized = cache.get(key)

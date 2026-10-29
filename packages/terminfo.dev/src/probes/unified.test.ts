@@ -416,6 +416,15 @@ it("projects Terminal.app identity replies without mistaking the DA1 sentinel fo
 })
 
 const originalWrite = process.stdout.write
+
+// The shared registry now resolves IDs; native diagnostics remain the existing CLI contract.
+it.each([
+  { ids: ["not-a-probe"], message: "Unknown or inapplicable app probe not-a-probe" },
+  { ids: ["sgr.bold", "sgr.bold"], message: "Duplicate probe ID in app batch" },
+])("keeps native selection diagnostic bytes: $message", async ({ ids, message }) => {
+  await expect(runProbeBatch({ ids })).rejects.toThrow(new Error(message))
+})
+
 afterEach(() => {
   vi.restoreAllMocks()
   process.stdout.write = originalWrite

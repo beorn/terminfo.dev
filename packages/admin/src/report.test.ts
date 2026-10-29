@@ -41,7 +41,7 @@ import { join } from "node:path"
 import { expect, test } from "vitest"
 import { probeSuiteSnapshot } from "../versions.ts"
 import { loadCurrentResults } from "../../../docs/data/current-results.ts"
-import { parseSuiteManifest } from "@terminfo/run-parser"
+import { parseSuiteManifest, parseRun } from "@terminfo/run-parser"
 import { ENVIRONMENT_GROUP_IDS } from "@terminfo/probe-defs"
 
 test("report renders reviewed outcomes and missing cells without promoting legacy history", () => {
@@ -301,6 +301,132 @@ test("report renders reviewed outcomes and missing cells without promoting legac
     expect(first.stdout).toContain("origin/live absent")
     expect(baseline().stdout).toBe(first.stdout)
     expect(JSON.parse(readFileSync(draftPath, "utf8"))).toMatchObject({ identity: "unverified" })
+
+    // #31594: raw per-run totals cannot prove the private report uses the canonical mixed summary.
+    const partialPath = join(root, "partial.draft.json")
+    const startedAt = "2026-09-28T12:30:00.000Z"
+    const selectedIds = ["cursor.position", "sgr.bold"]
+    const partial = {
+      ...captured,
+      runId: "partial-kitty",
+      measuredAt: startedAt,
+      rawReplies: {
+        ...captured.rawReplies,
+        "collector.selection": JSON.stringify({ ids: selectedIds }),
+        "collector.collectionAttempt": JSON.stringify({
+          ids: selectedIds,
+          startedAt,
+          result: "failed",
+          error: "partial collector stopped",
+        }),
+      },
+      assertions: [],
+      results: captured.results.map(({ featureId }) =>
+        featureId === "cursor.position"
+          ? {
+              featureId,
+              status: "test-failure",
+              attempt: { scope: "probe", startedAt },
+              tests: [
+                {
+                  id: "criterion",
+                  status: "test-failure",
+                  attempt: { scope: "probe", startedAt },
+                  reason: "selected callback failed",
+                },
+              ],
+              reason: "selected callback failed",
+            }
+          : { featureId, status: "test-todo", attempt: { scope: "none" }, tests: [], reason: "not reached" },
+      ),
+    }
+    writeFileSync(partialPath, JSON.stringify(partial))
+    // The default reader was memoized earlier in this process. Explicit working inputs must
+    // bypass it, and successive inputs with the same tree must not share a stale mixed view.
+    const workingManifest = parseSuiteManifest(
+      join(root, "content", "suites", `${snapshot.probeHash}.json`),
+      readFileSync(join(root, "content", "suites", `${snapshot.probeHash}.json`), "utf8"),
+    )
+    const working = (path: string) =>
+      parseRun(
+        path,
+        readFileSync(path, "utf8"),
+        fixtureFeatures,
+        new Map([[workingManifest.probeHash, workingManifest]]),
+        { mode: "capture" },
+      )
+    const withPartial = loadCurrentResults(join(root, "content"), {
+      workingRuns: [working(draftPath), working(partialPath)],
+    })
+    expect(
+      Object.values(withPartial.projection.contexts).find((row) => row.contributingRunIds.includes("partial-kitty"))
+        ?.contributingRunIds,
+    ).toEqual(["baseline-kitty", "partial-kitty"])
+    const withoutPartial = loadCurrentResults(join(root, "content"), { workingRuns: [working(draftPath)] })
+    expect(withoutPartial).not.toBe(withPartial)
+    expect(
+      Object.values(withoutPartial.projection.contexts).some((row) => row.contributingRunIds.includes("partial-kitty")),
+    ).toBe(false)
+    const composed = spawnSync(process.execPath, [join(root, "run.ts"), draftPath, partialPath], {
+      cwd: root,
+      encoding: "utf8",
+      timeout: 15_000,
+    })
+    expect(composed.status, composed.stderr).toBe(0)
+    expect(composed.stdout).toContain("Contributing runs: baseline-kitty, partial-kitty")
+    expect(composed.stdout).toContain("cursor.position: partial-kitty / cursor.position")
+    expect(composed.stdout).toContain("sgr.bold: baseline-kitty / sgr.bold")
+    // AC5: a long report must preserve its last evidence link after the matrix and wrapped attempts.
+    // Earlier substring checks cannot detect the final footer overwriting that result's origin.
+    const lastFeature = fixtureFeatures.at(-1)
+    expect(composed.stdout).toContain(`${lastFeature}: baseline-kitty / ${lastFeature}`)
+    expect(composed.stdout).toContain("partial collector stopped")
+    expect(composed.stdout).toContain("0/5 Supported / all")
+
+    // A pre-start draft has intent and an error, not measured subject/identity or a sealed run.
+    const refusedPath = join(root, "refused.draft.json")
+    const { subject: _subject, identity: _identity, measuredAt: _time, origin: _origin, ...initialized } = captured
+    writeFileSync(
+      refusedPath,
+      JSON.stringify({
+        ...initialized,
+        runId: "original-refusal",
+        rawReplies: {
+          "collector.selection": JSON.stringify({ ids: selectedIds }),
+          "collector.collectionAttempt": JSON.stringify({
+            ids: selectedIds,
+            result: "failed",
+            error: "original prerequisite error",
+          }),
+        },
+      }),
+    )
+    const refusedPassPath = join(root, "refused-pass.json")
+    writeFileSync(
+      refusedPassPath,
+      JSON.stringify({
+        probeHash: run.probeHash,
+        sourceRevision: run.sourceRevision,
+        contexts: [
+          {
+            context: { kind: "term", id: "kitty", os: "macos" },
+            status: "failed",
+            rawRun: refusedPath,
+            error: "original prerequisite error",
+          },
+        ],
+      }),
+    )
+    const refused = spawnSync(process.execPath, [join(root, "run.ts"), draftPath, refusedPassPath], {
+      cwd: root,
+      encoding: "utf8",
+      timeout: 15_000,
+    })
+    expect(refused.status, refused.stderr).toBe(0)
+    expect(refused.stdout).toContain("original-refusal")
+    expect(refused.stdout).toContain("original prerequisite error")
+    expect(refused.stdout).toContain("Contributing runs: baseline-kitty")
+    expect(refused.stdout).toContain(refusedPath)
 
     // AC1/3: immutable pass records, rather than raw captures, own freeze ordering and deferrals.
     // The earlier raw journey cannot detect loss of the batch's carried route or pass identity.
