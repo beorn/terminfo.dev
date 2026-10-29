@@ -251,10 +251,14 @@ const APPS: AppDef[] = [
         const user = join(markerValue, "User")
         mkdirSync(user, { mode: 0o700 })
         // Without it the updater reaches "ready" and "New update available" covers the terminal.
-        writeFileSync(join(user, "settings.json"), JSON.stringify({ "update.mode": "none" }), {
-          flag: "wx",
-          mode: 0o600,
-        })
+        writeFileSync(
+          join(user, "settings.json"),
+          JSON.stringify({
+            "update.mode": "none",
+            "workbench.panel.opensMaximized": "always",
+          }),
+          { flag: "wx", mode: 0o600 },
+        )
         // "Want to launch Cursor from the command line?" has no setting; pinned in ./cursor-onboarding.ts.
         dismissCursorCommandLinePrompt(markerValue)
       },
@@ -298,6 +302,7 @@ const APPS: AppDef[] = [
             "chat.disableAIFeatures": true,
             "workbench.startupEditor": "none",
             "workbench.welcomePage.experimentalOnboarding": false,
+            "workbench.panel.opensMaximized": "always",
           }),
           { flag: "wx", mode: 0o600 },
         )
