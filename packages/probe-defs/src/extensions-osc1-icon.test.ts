@@ -11,6 +11,7 @@ import type { LibProbeSource } from "./types.ts"
 
 function source(icon: { current: string } | null): LibProbeSource {
   return {
+    kind: "live",
     cols: 80,
     capabilities: {
       truecolor: false,
