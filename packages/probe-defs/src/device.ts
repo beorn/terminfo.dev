@@ -5,6 +5,7 @@ import {
   parserStateResult,
   probe,
   replyFrame,
+  reviewResult,
   sentinelAnswer,
   sentinelNegativeResult,
   sentinelSilenceResult,
@@ -151,24 +152,49 @@ function deviceQuery(spec: DeviceReply): ProbeDefinition {
     spec.id,
     (ctx) => {
       // DA1 cannot be its own sentinel, so primary DA1 keeps the capture, as live keeps its direct query.
-      if (!spec.direct && ctx.queryWithSentinelOutcome) {
-        const outcome = ctx.queryWithSentinelOutcome(spec.query, responsePattern)
-        const result = deviceOutcomeResult(spec, outcome)
-        return hostPixels
-          ? alacrittyHostRecipeResult(
-              ctx,
-              result,
-              "text-area-size",
-              "pixel-geometry",
-              spec.query,
-              sentinelSilenceResult(outcome, spec.expected) !== null,
-            )
-          : result
+      const outcome = !spec.direct ? ctx.queryWithSentinelOutcome?.(spec.query, responsePattern) : undefined
+      const raw = outcome ? outcome.raw : ctx.feedCapture(spec.query)
+      const result = outcome
+        ? deviceOutcomeResult(spec, outcome)
+        : deviceReplyResult(spec, raw, responsePattern.exec(raw)?.[0] ?? null, "sentinel")
+      const identity = ctx.runtimeIdentity
+      const zeroGeometry =
+        (spec.id === "device.xtwinops-14" && /^\x1b\[4;0;0t(?:\x1b\[\?[0-9]+(?:;[0-9]+)*c)?$/.test(raw)) ||
+        (spec.id === "device.xtwinops-16" && /^\x1b\[6;0;0t(?:\x1b\[\?[0-9]+(?:;[0-9]+)*c)?$/.test(raw))
+      if (
+        zeroGeometry &&
+        result.observation?.outcome === "inconclusive" &&
+        identity?.kind === "js" &&
+        identity.runtimeFormat === "js" &&
+        identity.resolvedPath === "vendor/vterm/packages/vterm/src/index.ts" &&
+        identity.integrity.kind === "source" &&
+        identity.integrity.cleanTree &&
+        identity.integrity.repository === "git@github.com:beorn/vterm.git" &&
+        identity.integrity.revision === "1cfc325f3aedd4617e437ee76e6a03fc2cc16438" &&
+        identity.integrity.treeOid === "2ee13d2cb894e86ee9575dd6945f42028df44966"
+      ) {
+        return reviewResult(
+          "headless-geometry-review",
+          "Required independent review of the audited headless context and retained zero geometry reply pending",
+          "Audited vterm headless subject has no font or window pixel geometry",
+          {
+            query: spec.query,
+            raw,
+            runtimeIdentity: identity,
+            sourceCitation:
+              "vterm screen.ts at 1cfc325f: ScreenOptions has no physical font/window metrics; XTWINOPS14/16 deliberately report unknown zero dimensions (#30575)",
+          },
+        )
       }
-      const raw = ctx.feedCapture(spec.query)
-      const result = deviceReplyResult(spec, raw, responsePattern.exec(raw)?.[0] ?? null, "sentinel")
       return hostPixels
-        ? alacrittyHostRecipeResult(ctx, result, "text-area-size", "pixel-geometry", spec.query, raw === "")
+        ? alacrittyHostRecipeResult(
+            ctx,
+            result,
+            "text-area-size",
+            "pixel-geometry",
+            spec.query,
+            outcome ? sentinelSilenceResult(outcome, spec.expected) !== null : raw === "",
+          )
         : result
     },
     async (ctx) => {

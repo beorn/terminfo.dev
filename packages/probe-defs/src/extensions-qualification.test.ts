@@ -907,3 +907,77 @@ test.each([
   const definition = callback(id)
   expect(definition.libAssertionType).toBe(assertionType)
 })
+
+// Actual run772ff2a6, vterm source1cfc325f/tree2ee13d2: no font/window geometry.
+// Q8 requires independent review of this context limit, never automatic Untestable.
+const geometryRuntime = {
+  kind: "js",
+  adapterVersion: "0.10.2",
+  termlessRevision: "f57e9d6b4add561f37e21c8e679d28c617111be6",
+  resolvedPath: "vendor/vterm/packages/vterm/src/index.ts",
+  integrity: {
+    kind: "source",
+    repository: "git@github.com:beorn/vterm.git",
+    revision: "1cfc325f3aedd4617e437ee76e6a03fc2cc16438",
+    treeOid: "2ee13d2cb894e86ee9575dd6945f42028df44966",
+    cleanTree: true,
+  },
+  runtimeFormat: "js",
+  engineVersion: "0.9.0",
+} as const
+const geometryReplies = [
+  {
+    id: "extensions.osc1337-cellsize",
+    raw: "\u001b]1337;ReportCellSize=0;0\u001b\\\u001b[?62;4c",
+    positive: "\u001b]1337;ReportCellSize=12;6\u001b\\",
+  },
+  {
+    id: "extensions.osc776-cell-size",
+    raw: "\u001b]776;0;0;0\u001b\\\u001b[?62;4c",
+    positive: "\u001b]776;8;16;0\u001b\\",
+  },
+] as const
+
+test.each(geometryReplies)("$id retains audited geometry limits for required review", ({ id, raw }) => {
+  for (const sentinel of [false, true]) {
+    const ctx = {
+      feedCapture: () => raw,
+      runtimeIdentity: geometryRuntime,
+      ...(sentinel && {
+        queryWithSentinelOutcome: () => ({
+          raw,
+          rawBase64: Buffer.from(raw).toString("base64"),
+          reason: "sentinel",
+          match: null,
+        }),
+      }),
+    } as unknown as LibProbeSource
+    const result = callback(id).lib!(ctx)
+    expect(result.notTested?.reason).toBe("no-semantic-observable")
+    expect(result.tests).toMatchObject([{ id: "review", status: "test-todo" }])
+    expect(result.observation).toBeUndefined()
+    const state = JSON.parse(result.response!)
+    expect(state).toMatchObject({ raw, runtimeIdentity: geometryRuntime })
+  }
+})
+
+test.each(geometryReplies)("$id requires audited source and complete zero geometry", ({ id, raw, positive }) => {
+  const identities = [
+    undefined,
+    { ...geometryRuntime, resolvedPath: "foreign/index.ts" },
+    { ...geometryRuntime, runtimeFormat: "wasm" },
+    ...[{ cleanTree: false }, { revision: "foreign" }, { treeOid: "foreign" }, { repository: "foreign" }].map(
+      (change) => ({ ...geometryRuntime, integrity: { ...geometryRuntime.integrity, ...change } }),
+    ),
+  ]
+  for (const runtimeIdentity of identities) {
+    const ctx = { feedCapture: () => raw, runtimeIdentity } as unknown as LibProbeSource
+    expect(callback(id).lib!(ctx).notTested).toBeUndefined()
+  }
+  for (const reply of ["", raw.slice(0, 4), "foreign", raw + "foreign", "foreign" + raw]) {
+    const ctx = { feedCapture: () => reply, runtimeIdentity: geometryRuntime } as unknown as LibProbeSource
+    expect(callback(id).lib!(ctx).notTested).toBeUndefined()
+  }
+  const ctx = { feedCapture: () => positive, runtimeIdentity: geometryRuntime } as unknown as LibProbeSource
+  expect(callback(id).lib!(ctx).observation?.outcome).toBe("supported")
+})

@@ -100,6 +100,14 @@ The collector forwards the run's measured `HeadlessRuntimeIdentity` through `Lib
 It identifies the loaded adapter source, engine integrity and any loaded binary; feature-capability versions
 cannot substitute for it. Missing identity supplies no source-derived qualification.
 
+The four vterm headless geometry queries (XTWINOPS 14/16, OSC 1337 ReportCellSize and OSC 776)
+select required independent review only for complete zero-dimension replies from the audited clean
+source revision and tree. That subject has no physical font/window geometry; zero is an unknown,
+not a measured size. The callback retains query, raw reply, measured runtime identity and source citation
+through the existing coverage/review shape. It remains TEST TODO until own-suite review determines
+applicability. Other runtimes, malformed replies and positive dimensions retain their query criteria;
+no historical result acquires a review or changes grade.
+
 The optional sentinel member requires the executing adapter's `reply-delivery` extension. The single
 comparer in [headless-identity.ts](../probes/headless-identity.ts) checks its audited source blobs and
 registry integrity, clean source tree or loaded WASM/native digest against that measured runtime. A native
