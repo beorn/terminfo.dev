@@ -238,8 +238,17 @@ test("extensions.truecolor grades unexposed RGB targets against the independent 
   ])
   expect(ignored.observation).toMatchObject({ outcome: "unsupported", assertionType: "buffer_state" })
   const monochrome = run([null, null])
-  expect(monochrome.observation).toBeUndefined()
-  expect(monochrome.notTested?.noObservable).toContain("color controls")
+  expect(monochrome.notTested).toBeUndefined()
+  expect(monochrome.criterionBranch).toBe("source-negative-review")
+  expect(monochrome.tests).toEqual([
+    {
+      id: "review",
+      status: "test-failure",
+      reason: expect.stringContaining("color controls"),
+    },
+  ])
+  expect(monochrome.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+  expect(monochrome.assertions).toMatchObject([{ kind: "negative", assertionType: "buffer_state" }])
 })
 
 test("extensions.truecolor decides from the DECRQSS SGR report, the same oracle as sgr.fg.truecolor", async () => {

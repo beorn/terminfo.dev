@@ -98,6 +98,11 @@ const headlessObservableFeatures = [
   ],
   ["modes.reverse-video", "rendered colors (pixels)", { mode: false }],
   ["modes.synchronized-output", "frame timing", { text: "" }],
+  [
+    "reset.soft",
+    "the application-cursor mode (DECCKM) state in the headless getMode readback",
+    { before: null, after: null },
+  ],
 ] as const
 
 test.each(headlessObservableFeatures)(
@@ -113,6 +118,7 @@ test.each(headlessObservableFeatures)(
         semanticPrompts: true,
         extensions: new Set(["osc7", "osc9", "iterm2Images"]),
       },
+      getMode: (mode: string) => (mode === "applicationCursor" ? (null as unknown as boolean) : false),
       getCell: (_row: number, col: number) => ({ char: "ALINKZ"[col] }),
     } as unknown as LibProbeSource
     const result = definition.lib(source)
@@ -124,6 +130,112 @@ test.each(headlessObservableFeatures)(
     ])
     expect(result.observation).toBeUndefined()
     expect(result.assertions).toBeUndefined()
+  },
+)
+
+const sourceNegativeBranchFeatures = [
+  [
+    "sgr.underline.color",
+    ["A", "B", "X"],
+    "sgr.underline.color: X has explicit rgb(255,0,128) underline distinct from the reset/default B cell",
+    "the underline color field (cell.underlineColor): the headless readback reports none on a cell fed an explicit SGR 58 color",
+  ],
+  [
+    "sgr.underline-color-indexed",
+    ["A", "X", "B", "Y"],
+    "SGR 58 index 5/4 underline colors match the opposite SGR 38 palette controls, not their same-foreground defaults",
+    "the underline color field (cell.underlineColor): the headless readback reports none on a cell fed an explicit SGR 58 color",
+  ],
+  [
+    "sgr.underline-color-reset",
+    ["C", "X", "Y"],
+    "X has explicit underline rgb(255,0,128); SGR 59 restores Y to the measured reset-state C color",
+    "the underline color field (cell.underlineColor): the headless readback reports none on a cell fed an explicit SGR 58 color",
+  ],
+  [
+    "sgr.selective-reset.italic",
+    ["C", "X", "Y"],
+    "sgr.selective-reset.italic: measured setup attributes clear on Y and unrelated attributes remain set",
+    "italic and bold on the styled setup cell in the headless readback",
+  ],
+  [
+    "sgr.fg.standard",
+    ["C", "X", "Y"],
+    "sgr.fg.standard: the two named colors select distinct exposed fg RGB values",
+    "the fg color field in the headless readback (neutral, SGR 31 and SGR 34 cells all read no color)",
+  ],
+  [
+    "sgr.fg.256",
+    ["C", "A", "B", "X", "Y"],
+    "sgr.fg.256: indices 67 and 173 match two independently observed canonical RGB cube references",
+    "direct RGB fg readback matching the fed value (SGR 38;2 reference cells A and B)",
+  ],
+  [
+    "sgr.fg.truecolor",
+    ["C", "A", "B", "X", "Y"],
+    "sgr.fg.truecolor: two distinct direct-RGB samples are exposed at their exact requested values",
+    "independent fg color controls (SGR 31 and 34) distinguishable in the headless readback",
+  ],
+  [
+    "sgr.fg.default",
+    ["C", "X", "R"],
+    "sgr.fg.default: reset R restores the measured C fg after a distinct colored X",
+    "a colored fg setup cell (SGR 31) distinct from the default, and the reset cell's fg, in the headless readback",
+  ],
+  [
+    "extensions.truecolor",
+    ["C", "A", "B", "X", "Y"],
+    "Two distinct direct-RGB foreground samples match their requested values",
+    "independent foreground color controls (SGR 31 and 34) distinguishable in the headless readback",
+  ],
+  [
+    "erase.el-with-attrs",
+    ["X", "X", "X", "X", "X"],
+    "EL carries the current background onto the erased cells",
+    "erase.el-with-attrs: the seed's painted bg on the region cells in the headless readback (the seed characters arrived without it)",
+  ],
+] as const
+
+test.each(sourceNegativeBranchFeatures)(
+  "%s routes unexposed headless colour/reset state to source-negative-review",
+  (id, chars, expected, reason) => {
+    const definition = ALL_PROBES.find((probe) => probe.id === id)
+    if (!definition?.lib) throw new Error(`missing headless ${id}`)
+    const result = definition.lib({
+      ...context(),
+      getCell: (row: number, col: number) => ({
+        char: row === 0 ? (chars[col] ?? " ") : " ",
+        fg: null,
+        bg: null,
+        bold: false,
+        dim: null,
+        italic: null,
+        underline: false,
+        underlineColor: null,
+        inverse: false,
+        strikethrough: false,
+        blink: false,
+        hidden: false,
+        wide: false,
+      }),
+    } as unknown as LibProbeSource)
+    expect(result.pass).toBe(false)
+    expect(result.notTested).toBeUndefined()
+    expect(result.criterionBranch).toBe("source-negative-review")
+    expect(result.tests).toEqual([{ id: "review", status: "test-failure", reason }])
+    expect(result.observation).toEqual({
+      outcome: "inconclusive",
+      reason: "insufficient-evidence",
+      assertionType: "buffer_state",
+    })
+    expect(result.assertions).toEqual([
+      {
+        assertionType: "buffer_state",
+        kind: "negative",
+        expected,
+        observed: result.response!,
+      },
+    ])
   },
 )
 

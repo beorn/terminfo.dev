@@ -2339,9 +2339,12 @@ export const extensionsProbes: ProbeDefinition[] = [
           if (controlFirst.fg && controlSecond.fg && !sameRgbCells(controlFirst.fg, controlSecond.fg)) {
             return parserStateResult(false, expected, state)
           }
-          return notTestedResult(
-            "independent foreground color controls (SGR 31 and 34) distinguishable in the headless readback",
+          return parserStateResult(
+            null,
+            expected,
             state,
+            undefined,
+            "independent foreground color controls (SGR 31 and 34) distinguishable in the headless readback",
           )
         }
         if (
