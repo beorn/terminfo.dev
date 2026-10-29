@@ -225,6 +225,7 @@ it.runIf(OWNED_LAYOUT)(
     }
     expect(pending).toEqual([
       "extensions.clipboard-paste",
+      "extensions.font-ligatures",
       "extensions.iterm2-images",
       "extensions.kitty-graphics.animation",
       "extensions.kitty-graphics.unicode-placeholders",
@@ -258,6 +259,9 @@ it.runIf(OWNED_LAYOUT)(
       "modes.application-keypad",
       "modes.color-scheme-reporting",
       "modes.decsclm",
+      "modes.decsscls",
+      "modes.reverse-video",
+      "modes.synchronized-output",
     ])
     const decision = (featureId: string, reason: string) =>
       JSON.stringify({
