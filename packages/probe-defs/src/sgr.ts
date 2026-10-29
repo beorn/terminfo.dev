@@ -42,12 +42,14 @@ export function sgrTermReadback(
       const refusal = sgrCaptureTooSmall(ctx, "SGR fixture")
       if (refusal) return refusal
     }
-    const decided = await sgrReadbackDecision(ctx, id, sequence, readback, setup)
+    const region = RESET_FAMILY_CAPTURE[id]
+    const independentSetup =
+      region && !region.noIndependentReference ? () => captureRegionVerdict(ctx, id, region, true) : undefined
+    const decided = await sgrReadbackDecision(ctx, id, sequence, readback, setup, independentSetup)
     if (decided) return decided
     // The readback may have written its sequence and query before returning no decisive answer, so a
     // named refusal from the region oracle after it is truthful QUERY evidence, never the zero-byte
     // "none" shape run-parser demands. A caller that wrote nothing still passes "none".
-    const region = RESET_FAMILY_CAPTURE[id]
     if (region) {
       const verdict = await captureRegionVerdict(ctx, id, region, true)
       if (verdict) return verdict

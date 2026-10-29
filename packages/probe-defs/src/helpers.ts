@@ -536,6 +536,7 @@ export async function sgrReadbackDecision(
   sequence: string,
   readback: SgrReadback,
   setup?: { sequence: string; baseline: SgrReadback; readback: SgrReadback },
+  independentSetup?: () => Promise<ProbeCallbackResult | null>,
 ): Promise<ProbeCallbackResult | null> {
   const observed: Record<string, string> = {}
   try {
@@ -553,6 +554,28 @@ export async function sgrReadbackDecision(
         observed[phase] = state.join(";")
         const qualified = sgrReadbackResult(id, bytes, state, criterion)
         if (!qualified.pass) {
+          if (phase === "setup" && qualified.observation?.outcome === "unsupported" && independentSetup) {
+            const captured = await independentSetup()
+            if (captured) {
+              const instrument = `${id}: the independent capture oracle supplies this result because the terminal's SGR report did not establish setup`
+              const note = captured.note ? `${captured.note}; ${instrument}` : instrument
+              const retained = {
+                response: JSON.stringify({ ...observed, capture: captured.response }),
+                note,
+              }
+              if (captured.observation) {
+                return {
+                  ...captured,
+                  ...retained,
+                  observation: {
+                    ...captured.observation,
+                    note: captured.observation.note ? `${captured.observation.note}; ${instrument}` : instrument,
+                  },
+                }
+              }
+              return { ...captured, ...retained }
+            }
+          }
           const note = `${id}: ${phase} prerequisite was not established${qualified.note ? `: ${qualified.note}` : ""}`
           return {
             pass: false,

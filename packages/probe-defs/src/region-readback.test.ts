@@ -316,6 +316,7 @@ const PLANES = {
   edit: "\x1b[1;2H\x1b[1P",
   expected: "\x1b[1;1HBBB",
   ignored: "\x1b[1;1HCCC",
+  setupReference: "\x1b[1;1HDDD",
 } as const
 const PLANE_SPEC = { seed: PLANES.seed, edit: PLANES.edit, expected: PLANES.expected, ignored: PLANES.ignored }
 
@@ -325,6 +326,7 @@ function planePainter(applied: string, ignoredReadsAs?: string): Painter {
     const joined = writes.join("")
     if (ignoredReadsAs !== undefined && joined.includes(PLANES.ignored)) return ignoredReadsAs
     const planes: Array<[string, string]> = [
+      ["seed", PLANES.setupReference],
       ["ignored", PLANES.ignored],
       ["expected", PLANES.expected],
       ["target", PLANES.seed + PLANES.edit],
@@ -371,6 +373,67 @@ test("a spec with no ignored plane keeps its three-plane verdict", async () => {
   const result = await decide(fake)
   expect(result.observation.outcome).toBe("supported")
   expect(result.observation.frames).toHaveLength(6)
+})
+
+test("a setup reference must equal the seed before either a verdict or a collapsed-control refusal", async () => {
+  for (const applied of ["expected", "seed", "ignored", "third"]) {
+    const fake = ownedWindow({
+      repaintAfterPolls: 1,
+      regionDigest: (writes) =>
+        writes.join("").includes(PLANES.setupReference) ? "independent-setup" : planePainter(applied)(writes),
+    })
+    const result = await decide(fake, { ...PLANE_SPEC, setupReference: PLANES.setupReference })
+    expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+    expect(result.observation.note).toContain("setup reference")
+    expect(result.observation.note).toContain("seed")
+    expect(result.observation.note).not.toContain("third distinct")
+    expect(result.assertions ?? []).toHaveLength(0)
+    expect(result.observation.frames).toHaveLength(10)
+  }
+  const fake = ownedWindow({
+    repaintAfterPolls: 1,
+    regionDigest: (writes) => (writes.join("").includes(PLANES.setupReference) ? "different-setup" : "same"),
+  })
+  const result = await decide(fake, { ...PLANE_SPEC, setupReference: PLANES.setupReference })
+  expect(result.observation.note).toContain("setup reference")
+  expect(result.observation.note).not.toContain("cannot separate")
+})
+
+test("a matching setup reference adds one witnessed frame and old specs keep their four frames", async () => {
+  for (const setupReference of [undefined, PLANES.setupReference]) {
+    const fake = ownedWindow({ repaintAfterPolls: 1, regionDigest: planePainter("expected") })
+    const result = await decide(fake, { ...PLANE_SPEC, ...(setupReference && { setupReference }) })
+    expect(result.observation.outcome).toBe("supported")
+    expect(result.observation.frames).toHaveLength(setupReference ? 10 : 8)
+    expect(regionReads(fake).map(({ label }) => label)).toEqual([
+      "editing.delete-chars: capture stability 1",
+      "editing.delete-chars: capture stability 2",
+      "editing.delete-chars: pre-edit seed",
+      "editing.delete-chars: post-sequence target",
+      "editing.delete-chars: expected frame",
+      "editing.delete-chars: ignored-attribute frame",
+      ...(setupReference ? ["editing.delete-chars: setup reference frame"] : []),
+    ])
+    const response = JSON.parse(result.response!)
+    expect(response).toMatchObject({
+      seed: "1,1,1,8|seed",
+      after: "1,1,1,8|expected",
+      expected: "1,1,1,8|expected",
+      ignored: "1,1,1,8|ignored",
+    })
+    if (setupReference) expect(response).toHaveProperty("setupReference", "1,1,1,8|seed")
+    else expect(response).not.toHaveProperty("setupReference")
+  }
+})
+
+test("a missing setup-reference digest raises instead of returning a reset verdict", async () => {
+  const fake = ownedWindow({ repaintAfterPolls: 1, regionDigest: planePainter("expected") })
+  const read = fake.read
+  fake.read = async (request) => {
+    const capture = await read(request)
+    return request.label.endsWith("setup reference frame") ? { ...capture, regionDigest: undefined! } : capture
+  }
+  await expect(decide(fake, { ...PLANE_SPEC, setupReference: PLANES.setupReference })).rejects.toThrow("digests")
 })
 
 test("a degenerate run whose seed frame reads as its expected frame is inconclusive by name", async () => {
@@ -904,7 +967,7 @@ test("compared frames cropped at ONE position decide as before, so it is the rec
 
 test("a no-op is the measured negative only when the caller's ignored frame IS the seed frame", async () => {
   const fake = ownedWindow({ repaintAfterPolls: 1, regionDigest: planePainter("seed") })
-  const result = await decide(fake, { ...PLANES, ignored: PLANES.seed })
+  const result = await decide(fake, { ...PLANE_SPEC, ignored: PLANES.seed })
   expect(result.observation.outcome).toBe("unsupported")
   expect(result.assertions?.[0]?.kind).toBe("negative")
 })
@@ -967,7 +1030,7 @@ async function familyDecide(
 }
 
 function familyDigest(label: string, applied: string): string {
-  return label.endsWith("pre-edit seed")
+  return label.endsWith("pre-edit seed") || label.endsWith("setup reference frame")
     ? "seed"
     : label.endsWith("post-sequence target")
       ? applied
@@ -1019,7 +1082,7 @@ test("the nine reset-family rows declare one capture-region row each", () => {
   expect(Object.keys(RESET_FAMILY_CAPTURE).sort()).toEqual([...RESET_FAMILY_ROWS].sort())
 })
 
-test("every reset-family row keeps its witness and cursor out of the compared cells, and its ignored frame is the seed", () => {
+test("every reset-family row keeps its witness and cursor outside the compared cells", () => {
   for (const id of RESET_FAMILY_ROWS) {
     const row = familyRow(id)
     const insideRow = row.sentinel.row >= row.region.top && row.sentinel.row <= row.region.bottom
@@ -1029,7 +1092,10 @@ test("every reset-family row keeps its witness and cursor out of the compared ce
       row.cursorRow >= row.region.top && row.cursorRow <= row.region.bottom,
       `${id}: the cursor row lies outside the compared region`,
     ).toBe(false)
-    expect(row.ignored, `${id}: the ignored frame IS the seed frame`).toBe(row.seed)
+    if (id === "sgr.fg.default" || id === "sgr.bg.default" || (NO_REFERENCE_ROWS as readonly string[]).includes(id)) {
+      expect(row.ignored, `${id}: the ignored frame IS the seed frame`).toBe(row.seed)
+      expect(row.setupReference, `${id}: unchanged reference scope`).toBeUndefined()
+    }
     expect(row.expected, `${id}: the expected frame differs from the seed`).not.toBe(row.seed)
     expect(row.edit, `${id}: the edit repaints the compared cells in place`).toContain("\x1b[3;")
   }
@@ -1165,6 +1231,7 @@ interface StatefulTerminal {
   writes: string[]
   /** Every sequence it was queried with, in order. */
   queries: string[]
+  captures: string[]
 }
 
 interface StatefulOptions {
@@ -1174,6 +1241,10 @@ interface StatefulOptions {
   risClearsCells?: boolean
   /** Attributes the RESET UNDER TEST fails to clear: the row's cleared set minus this. */
   resetMisses?: readonly (SgrAttr | SgrColor)[]
+  ignoreBold?: "always" | "combined"
+  resetDropsBold?: boolean
+  resetAddsBold?: boolean
+  replies?: readonly string[]
 }
 
 /** A terminal that paints cells under real SGR state; `sgr0` lists what its SGR 0 actually clears. */
@@ -1183,13 +1254,14 @@ function statefulTerminal(sgr0: readonly SgrAttr[], options: StatefulOptions = {
   const cells = new Map<string, string>()
   const writes: string[] = []
   const queries: string[] = []
+  const captures: string[] = []
   let row = 1
   let col = 1
   let reads = 0
   const paint = () =>
     cells.set(
       `${row},${col}`,
-      `${state.bold ? "b" : "-"}${state.faint ? "f" : "-"}${state.italic ? "i" : "-"}${state.inverse ? "v" : "-"}${state.underline ? "u" : "-"}|${color.fg ?? ""}|${color.bg ?? ""}|${color.uc ?? ""}`,
+      `${state.bold ? "b" : "-"}${state.faint ? "f" : "-"}${state.italic ? "i" : "-"}${state.inverse ? "v" : "-"}${state.underline ? "u" : "-"}|${color.fg ?? ""}|${color.bg ?? ""}|${state.underline ? (color.uc ?? "") : ""}`,
     )
   const miss = new Set<SgrAttr | SgrColor>(options.resetMisses ?? [])
   const clear = (attribute: SgrAttr) => {
@@ -1208,8 +1280,11 @@ function statefulTerminal(sgr0: readonly SgrAttr[], options: StatefulOptions = {
         clearColour("fg")
         clearColour("bg")
         clearColour("uc")
-      } else if (code === 1) state.bold = true
-      else if (code === 2) state.faint = true
+      } else if (code === 1) {
+        if (options.ignoreBold !== "always" && !(options.ignoreBold === "combined" && codes.length > 1)) {
+          state.bold = true
+        }
+      } else if (code === 2) state.faint = true
       else if (code === 3) state.italic = true
       else if (code === 4 || code === 21) state.underline = true
       else if (code === 7) state.inverse = true
@@ -1218,10 +1293,16 @@ function statefulTerminal(sgr0: readonly SgrAttr[], options: StatefulOptions = {
         if (!miss.has("faint")) state.faint = false
       } else if (code === 23) {
         if (!miss.has("italic")) state.italic = false
+        if (options.resetDropsBold) state.bold = false
+        if (options.resetAddsBold) state.bold = true
       } else if (code === 24) {
         if (!miss.has("underline")) state.underline = false
+        if (options.resetDropsBold) state.bold = false
+        if (options.resetAddsBold) state.bold = true
       } else if (code === 27) {
         if (!miss.has("inverse")) state.inverse = false
+        if (options.resetDropsBold) state.bold = false
+        if (options.resetAddsBold) state.bold = true
       } else if (code >= 30 && code <= 37) color.fg = String(code)
       else if (code === 39) clearColour("fg")
       else if (code >= 40 && code <= 47) color.bg = String(code)
@@ -1283,6 +1364,7 @@ function statefulTerminal(sgr0: readonly SgrAttr[], options: StatefulOptions = {
     write,
     capture: async (request: { role: ObservationFrame["role"]; label: string; cells?: CaptureCells }) => {
       if (!request.cells) throw new Error("the stateful terminal is read by region")
+      captures.push(request.label)
       reads += 1
       const frame: ObservationFrame = {
         role: request.role,
@@ -1309,14 +1391,132 @@ function statefulTerminal(sgr0: readonly SgrAttr[], options: StatefulOptions = {
     queryOutcome: async () => ({ match: null, reason: "timeout" as const, raw: "", rawBase64: "" }),
     queryWithSentinelOutcome: async (sequence: string) => {
       queries.push(sequence)
+      if (options.replies) {
+        const reply = options.replies[queries.length - 1]
+        if (reply === undefined) throw new Error("Unexpected extra SGR readback")
+        const raw = `\x1bP1$r${reply}m\x1b\\`
+        return { match: [raw, reply], reason: "reply" as const, raw, rawBase64: Buffer.from(raw).toString("base64") }
+      }
       return { match: null, reason: "timeout" as const, raw: "", rawBase64: "" }
     },
     queryMode: async () => null,
   } as unknown as TermProbeSource
-  return { ctx, cells, snapshot, writes, queries }
+  return { ctx, cells, snapshot, writes, queries, captures }
 }
 
 const ALL_ATTRS: readonly SgrAttr[] = ["bold", "italic", "inverse", "underline", "faint"]
+
+// A reset verdict requires a separately witnessed FULL setup. Older models always honoured every
+// setter; those tests could not expose a reset graded after its preserved bold was never painted.
+const SELECTIVE_COMPANION_ROWS = [
+  "sgr.selective-reset.underline",
+  "sgr.selective-reset.italic",
+  "sgr.selective-reset.inverse",
+] as const
+
+test.each(
+  SELECTIVE_COMPANION_ROWS.flatMap((id) =>
+    (["always", "combined"] as const).flatMap((ignoreBold) =>
+      (["oracle", "callback"] as const).map((route) => ({ id, ignoreBold, route })),
+    ),
+  ),
+)("$id refuses an unestablished companion by name ($ignoreBold, $route)", async ({ id, ignoreBold, route }) => {
+  for (const fault of ["normal", "drops-bold", "adds-bold", "no-op"] as const) {
+    const cleared =
+      id === "sgr.selective-reset.underline" ? "underline" : id === "sgr.selective-reset.italic" ? "italic" : "inverse"
+    const terminal = statefulTerminal(ALL_ATTRS, {
+      ris: true,
+      ignoreBold,
+      resetDropsBold: fault === "drops-bold",
+      resetAddsBold: fault === "adds-bold",
+      resetMisses: fault === "no-op" ? [cleared] : [],
+      ...(route === "callback" && { replies: ["0", "0"] }),
+    })
+    const probe = sgrProbes.find((candidate) => candidate.id === id)
+    if (!probe?.term) throw new Error(`${id}: missing callback`)
+    const result =
+      route === "oracle" ? await captureRegionVerdict(terminal.ctx, id, familyRow(id)) : await probe.term(terminal.ctx)
+    const label = `${id}: ${ignoreBold}, ${fault}, ${route}`
+    expect(result?.observation?.outcome, label).toBe("inconclusive")
+    expect(result?.observation?.reason, label).toBe("insufficient-evidence")
+    expect(result?.observation?.note, label).toContain(
+      ignoreBold === "always" ? "ignored-attribute frame and the expected frame" : "setup reference",
+    )
+    expect(result?.assertions ?? [], label).toHaveLength(0)
+    if (route === "callback") {
+      expect(terminal.queries, label).toHaveLength(2)
+      expect(JSON.parse(result!.response!), label).toMatchObject({ baseline: "0", setup: "0" })
+    }
+  }
+})
+
+test.each(GRADED_ROWS)(
+  "%s uses qualified pixels when complete neutral SGR reports cannot establish setup",
+  async (id) => {
+    const terminal = statefulTerminal(ALL_ATTRS, { ris: true, replies: ["0", "0"] })
+    const probe = [...sgrProbes, ...resetProbes].find((candidate) => candidate.id === id)
+    if (!probe?.term) throw new Error(`${id}: missing callback`)
+    const result = await probe.term(terminal.ctx)
+    expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "screenshot" })
+    expect(result.assertions?.[0]?.kind).toBe("positive")
+    expect(terminal.queries).toHaveLength(2)
+    expect(terminal.captures.length).toBeGreaterThan(0)
+    expect(result.response).toContain('"baseline":"0"')
+    expect(result.response).toContain('"setup":"0"')
+    expect(result.observation?.note).toContain("independent capture oracle")
+    expect(terminal.writes.at(-1)).toBe("\x1b[0m")
+  },
+)
+
+test.each(SELECTIVE_COMPANION_ROWS)(
+  "%s measures a reset that also drops its established companion as unsupported",
+  async (id) => {
+    for (const route of ["oracle", "callback"] as const) {
+      const terminal = statefulTerminal(ALL_ATTRS, {
+        ris: true,
+        resetDropsBold: true,
+        ...(route === "callback" && { replies: ["0", "0"] }),
+      })
+      const probe = sgrProbes.find((candidate) => candidate.id === id)
+      if (!probe?.term) throw new Error(`${id}: missing callback`)
+      const result =
+        route === "oracle"
+          ? await captureRegionVerdict(terminal.ctx, id, familyRow(id))
+          : await probe.term(terminal.ctx)
+      expect(result?.observation, route).toMatchObject({ outcome: "unsupported", assertionType: "screenshot" })
+      expect(result?.assertions?.[0]?.kind, route).toBe("negative")
+      if (route === "callback") {
+        expect(terminal.queries).toHaveLength(2)
+        expect(JSON.parse(result!.response!)).toMatchObject({ baseline: "0", setup: "0" })
+      }
+    }
+  },
+)
+
+test("an unqualified setup retains an independent measurement refusal and propagates a capture error with cleanup", async () => {
+  const probe = sgrProbes.find((candidate) => candidate.id === "sgr.selective-reset.underline")
+  if (!probe?.term) throw new Error("missing selective underline callback")
+  const refused = statefulTerminal(ALL_ATTRS, { ris: true, replies: ["0", "0"] })
+  // Three rows pass the SGR caller's 3x34 preflight but fail the region oracle's fourth cursor row.
+  refused.ctx.rows = 3
+  const result = await probe.term(refused.ctx)
+  expect(result.observation).toBeUndefined()
+  expect(result.tests).toMatchObject([
+    { status: "test-failure", reason: expect.stringContaining("needs a measured grid") },
+  ])
+  expect(JSON.parse(result.response!)).toMatchObject({ baseline: "0", setup: "0" })
+  expect(refused.queries).toHaveLength(2)
+  expect(refused.captures).toEqual([])
+  expect(refused.writes.at(-1)).toBe("\x1b[0m")
+
+  const throwing = statefulTerminal(ALL_ATTRS, { ris: true, replies: ["0", "0"] })
+  throwing.ctx.capture = async () => {
+    throw new Error("setup capture failed")
+  }
+  await expect(probe.term(throwing.ctx)).rejects.toThrow("setup capture failed")
+  expect(throwing.queries).toHaveLength(2)
+  expect(throwing.writes.at(-1)).toBe("\x1b[0m")
+})
 
 /** Every subset, including the empty one: the exhaustive table's domain. */
 function subsets<T>(items: readonly T[]): T[][] {
@@ -1443,10 +1643,14 @@ test("no combination of a missed cleared attribute and a retained reference attr
         }
         const keepsOnlyResidual = keeps.every((attribute) => !cleared.includes(attribute))
         if (misses.length === 0 && keepsOnlyResidual && (GRADED_ROWS as readonly string[]).includes(id)) {
-          expect(
-            outcome,
-            `${label}: a correct reset retaining nothing from the cleared set must decide supported`,
-          ).toBe("supported")
+          if (keeps.length > 0) {
+            // A retained companion contaminates the neutral negative reference. It then equals
+            // the expected preserved companion, so even a correct reset lacks a discriminator.
+            expect(outcome, `${label}: retained companion collapses the negative reference`).toBe("inconclusive")
+            expect(result?.observation?.note, label).toContain("ignored-attribute frame and the expected frame")
+          } else {
+            expect(outcome, `${label}: independently qualified controls decide a correct reset`).toBe("supported")
+          }
         }
       }
     }
