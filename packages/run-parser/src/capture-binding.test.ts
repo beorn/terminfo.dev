@@ -165,7 +165,10 @@ it.each([
 
 // #31373 (@cto 15cf18e4): an unreproduced-callback record and its failed harness row are one claim. The
 // collector writes both together; the reader refuses either one alone, which no existing fixture carries.
-function harnessCapture(mode: "both" | "record-only" | "row-only" | "todo-row") {
+function harnessCapture(
+  mode: "both" | "record-only" | "row-only" | "todo-row",
+  host?: "cause" | "no-cause" | "two-targets" | "replied-cause",
+) {
   const featureId = "clipboard.read"
   const manifest = {
     schemaVersion: 4 as const,
@@ -229,12 +232,55 @@ function harnessCapture(mode: "both" | "record-only" | "row-only" | "todo-row") 
     ],
     rawReplyRef: featureId,
   })
+  if (host) {
+    // A-prime (@cto 4ac8b275): on the native host route the silent capture itself carries the harness cause.
+    const colour = { recipe: "color-request", query: "\x1b]10;?\x07", missing: ["foreground-rgb"] }
+    const hostRecipes = [
+      { recipe: "clipboard-load", query, missing: ["clipboard-read-permission"] },
+      ...(host === "two-targets" ? [colour] : []),
+    ]
+    const cause = { kind: "harness-unreproduced", callbacks: ["clipboard_control"] }
+    draft.rawReplies[`collector.hostRecipes.${featureId}`] = JSON.stringify({
+      runId: draft.runId,
+      captures: [
+        {
+          query,
+          response: host === "replied-cause" ? "\x1b]52;c;Zm9v\x07" : "",
+          error: null,
+          ...(host !== "no-cause" && { cause }),
+        },
+        ...(host === "two-targets" ? [{ query: colour.query, response: "", error: null }] : []),
+      ],
+      causes: [],
+    })
+    draft.rawReplies["collector.replyPath"] = JSON.stringify({
+      backend: "kitty",
+      declaration: {
+        boundary: "feed-and-getCursor",
+        adapterSources: [{ path: "fixture.ts", blobOid: "4".repeat(40) }],
+        engine: { kind: "native", sha256: "a".repeat(64) },
+      },
+      runtimeIdentity: draft.runtimeIdentity,
+      decisions: {
+        [featureId]: { member: true, reason: "fixture", runtimeIdentity: draft.runtimeIdentity, hostRecipes },
+      },
+    })
+  }
   return () =>
     parseRun("harness-gap.json", JSON.stringify(draft), [featureId], new Map([[manifest.probeHash, manifest]]), {
       mode: "capture",
     })
 }
 
+it("parses a silent native host capture that carries its harness-unreproduced cause", () => {
+  expect(harnessCapture("both", "cause")().results?.[0]?.status).toBe("test-failure")
+})
+it.each(["no-cause", "two-targets"] as const)("refuses a silent native host target without a cause (%s)", (host) => {
+  expect(harnessCapture("both", host)).toThrow(/missing cause for captured empty target response/)
+})
+it("refuses a harness-unreproduced cause on a capture that replied", () => {
+  expect(harnessCapture("both", "replied-cause")).toThrow(/invalid harness-unreproduced capture cause/)
+})
 it("reads an unreproduced-callback record beside its failed harness row", () => {
   expect(harnessCapture("both")().results?.[0]?.status).toBe("test-failure")
 })

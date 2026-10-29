@@ -1452,7 +1452,24 @@ export function validateHostRecipeCauses(
     ) {
       refuse("invalid query capture")
     }
-    return { query: capture.query, response: capture.response, error: capture.error }
+    // A-prime (@cto 4ac8b275): a zero-byte capture beside a callback the harness did not reproduce carries its cause.
+    const cause = capture.cause
+    if (
+      cause !== undefined &&
+      !(
+        object(cause) &&
+        cause.kind === "harness-unreproduced" &&
+        Object.keys(cause).every((key) => key === "kind" || key === "callbacks") &&
+        Array.isArray(cause.callbacks) &&
+        cause.callbacks.length > 0 &&
+        cause.callbacks.every(nonempty) &&
+        capture.response === "" &&
+        capture.error === null
+      )
+    ) {
+      refuse("invalid harness-unreproduced capture cause")
+    }
+    return { query: capture.query, response: capture.response, error: capture.error, harness: cause !== undefined }
   })
   // A terminal parses the ordered input stream, including a query split across writes.
   for (const actual of capturedHostQueries(captures.map((capture) => capture.query).join(""))) {
@@ -1524,8 +1541,10 @@ export function validateHostRecipeCauses(
   for (const expected of expectations) {
     const target = captures.filter((capture) => capture.query === expected.query && capture.error === null)
     if (!target.length) refuse("missing applicable target query capture")
+    const silent = target.filter((capture) => capture.response === "")
     if (
-      target.some((capture) => capture.response === "") &&
+      silent.length > 0 &&
+      !silent.every((capture) => capture.harness) &&
       !causes.some(
         (entry) =>
           entry.recipe === expected.recipe &&

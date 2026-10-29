@@ -58,6 +58,8 @@ interface HostQueryCapture {
   query: string
   response: string
   error: string | null
+  /** A-prime (@cto 4ac8b275): zero bytes beside a callback this harness did not reproduce. */
+  cause?: { kind: "harness-unreproduced"; callbacks: string[] }
 }
 
 /** The warning code an adapter reports for an engine callback it does not reproduce (termless kitty). */
@@ -89,6 +91,7 @@ export function feedCapture(
 ): string {
   let response = ""
   let error: string | null = null
+  let callbacks: string[] = []
   const previous = backend.onResponse
   try {
     // Pending input belongs to the previous listener, not this query.
@@ -99,7 +102,7 @@ export function feedCapture(
     backend.feed(encoder.encode(text))
     backend.getCursor()
     if (unreproduced) {
-      const callbacks = drainUnreproduced(backend)
+      callbacks = drainUnreproduced(backend)
       if (callbacks.length) {
         unreproduced.captures.push({ query: text, callbacks })
         if (!response) unreproduced.silent = true
@@ -110,7 +113,13 @@ export function feedCapture(
     throw cause
   } finally {
     backend.onResponse = previous
-    captures?.push({ query: text, response, error })
+    const silent = callbacks.length > 0 && response === "" && error === null
+    captures?.push({
+      query: text,
+      response,
+      error,
+      ...(silent && { cause: { kind: "harness-unreproduced" as const, callbacks } }),
+    })
   }
   return response
 }
