@@ -745,6 +745,11 @@ export interface LibProbeSource {
   }
   /** Icon name. Present only when the backend reports it separately from the window title. */
   getIconLabel?(): string
+  /** Present only when the backend exposes the engine's clipboard callback state. */
+  getClipboardState?(): {
+    writes: { selector: string; payload: string; text?: string; decodeError?: string }[]
+    pasteSelector?: string
+  }
   /** Width read back from the backend after initialization, never inferred from cursor behavior. */
   readonly cols: number
   feed(text: string): void
@@ -789,6 +794,14 @@ export interface LibProbeSource {
   getMode(mode: string): boolean
   getText(): string
   getScrollback(): { viewportOffset: number; totalLines: number; screenLines: number }
+  /**
+   * Viewport scroll control, present only when the adapter can drive the backend's documented
+   * `scrollViewport(delta)`. Both directions are needed to qualify a viewport observation: backends
+   * disagree on the sign that scrolls up (measured 2026-10-29 on termless 06340a5c — ghostty-native
+   * and xtermjs scroll up on -1; alacritty, vt100, vt220 and vterm on +1), and a backend with no
+   * viewport scroll state ignores both. Absent, a viewport reading cannot qualify a negative.
+   */
+  scrollViewport?(delta: number): void
   getTitle(): string
   reset(): void
   capabilities: {

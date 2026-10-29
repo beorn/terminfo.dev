@@ -1042,13 +1042,19 @@ function resetProbe(id: string, setCode: number, resetCode: number, index?: numb
   }
 }
 
-function colorStackResult(before: string, requested: string, changed: string, restored: string): ProbeCallbackResult {
+function colorStackResult(
+  before: string,
+  requested: string,
+  changed: string,
+  restored: string,
+  operation: "push" | "pop",
+): ProbeCallbackResult {
   const changedAsRequested = sameRgb(changed, requested)
   const restoredOriginal = sameRgb(restored, before)
   const pass = changedAsRequested && restoredOriginal
   const response = JSON.stringify({ before, changed, restored })
   const note = pass
-    ? "Foreground changed and color-stack pop restored its original value"
+    ? `Foreground changed and the color-stack ${operation} round trip restored its original value`
     : "Foreground change or stack restoration was not observed"
   return {
     pass,
@@ -1059,7 +1065,10 @@ function colorStackResult(before: string, requested: string, changed: string, re
       {
         assertionType: "query_reply" as const,
         kind: pass ? "positive" : "negative",
-        expected: "Changed foreground and restored original after color-stack pop",
+        expected:
+          operation === "push"
+            ? "Changed foreground and restored original after color-stack push, observed through a push/pop round trip"
+            : "Changed foreground and restored original after color-stack pop",
         observed: response,
       },
     ],
@@ -1162,6 +1171,7 @@ function colorStackError(actionKind: "query" | "behavior", action: string, error
 
 function colorStackProbe(ownSequence: typeof colorPush | typeof colorPop): ProbeDefinition["lib"] {
   return (ctx) => {
+    const operation = ownSequence === colorPush ? "push" : "pop"
     let silence: ProbeCallbackResult | null = null
     if (ctx.queryWithSentinelOutcome) {
       silence = sentinelSilenceResult(
@@ -1290,7 +1300,7 @@ function colorStackProbe(ownSequence: typeof colorPush | typeof colorPop): Probe
         }
       } else {
         comparison = { before, changed, restored }
-        result = colorStackResult(before, requested, changed, restored)
+        result = colorStackResult(before, requested, changed, restored, operation)
       }
       return result
     } catch (error) {
@@ -1398,6 +1408,7 @@ function colorStackProbe(ownSequence: typeof colorPush | typeof colorPop): Probe
 
 async function colorStackTermProbe(
   ctx: Parameters<NonNullable<ProbeDefinition["term"]>>[0],
+  operation: "push" | "pop",
 ): Promise<ProbeCallbackResult> {
   const originalReply = await ctx.queryWithSentinelOutcome(foregroundQuery, foregroundReply)
   const before = foregroundValue(originalReply.match?.[0] ?? "")
@@ -1416,7 +1427,7 @@ async function colorStackTermProbe(
     const restoredReply = await ctx.queryWithSentinelOutcome(foregroundQuery, foregroundReply)
     const restored = foregroundValue(restoredReply.match?.[0] ?? "")
     if (!restored) return unansweredQuery(restoredReply, "No OSC 10 reply after color-stack pop")
-    return colorStackResult(before, requested, changed, restored)
+    return colorStackResult(before, requested, changed, restored, operation)
   } finally {
     try {
       if (pushed) ctx.write(colorPop)
@@ -1426,22 +1437,91 @@ async function colorStackTermProbe(
   }
 }
 
+const OSC720_CLAIM = "OSC 720 moves the scrollback viewport up"
+const OSC720_HISTORY_LINES = 30
+
+type ScrollbackReading = ReturnType<LibProbeSource["getScrollback"]>
+
+function sameViewport(reading: ScrollbackReading, other: ScrollbackReading): boolean {
+  return (
+    reading.viewportOffset === other.viewportOffset &&
+    reading.totalLines === other.totalLines &&
+    reading.screenLines === other.screenLines
+  )
+}
+
+function sameGeometry(reading: ScrollbackReading, other: ScrollbackReading): boolean {
+  return reading.totalLines === other.totalLines && reading.screenLines === other.screenLines
+}
+
+function feedScrollbackHistory(ctx: LibProbeSource): void {
+  for (let i = 0; i < OSC720_HISTORY_LINES; i++) ctx.feed(`scroll-${i}\r\n`)
+}
+
 function osc720ScrollProbe(): ProbeDefinition["lib"] {
   return (ctx) => {
-    for (let i = 0; i < 30; i++) ctx.feed(`scroll-${i}\r\n`)
+    feedScrollbackHistory(ctx)
     const before = ctx.getScrollback()
     if (before.totalLines <= before.screenLines || before.viewportOffset <= 0) {
+      return parserStateResult(null, OSC720_CLAIM, { before }, "No scrollback viewport available")
+    }
+    // A reading only qualifies the measurement below when the backend's viewport channel can move at
+    // all: a row derived as totalLines - screenLines reads the live bottom forever, so an unchanged
+    // row there is absence of an observer, never evidence that the engine ignored OSC 720. Both
+    // deltas are tried because the sign that scrolls up differs per backend, and the reading is
+    // restored (and the restoration checked) before the measured sequence runs.
+    if (!ctx.scrollViewport) {
+      return notTestedResult("scrollback viewport scroll control", { before })
+    }
+    ctx.scrollViewport(-1)
+    const afterMinus = ctx.getScrollback()
+    ctx.scrollViewport(1)
+    const afterPlus = ctx.getScrollback()
+    // Only the position may qualify the observer, and only while the history count and screen height
+    // hold: a control that changes totalLines or screenLines has said nothing about whether the
+    // viewport position can move, so it must stay unqualified however the counts changed.
+    const controlGeometryFixed = sameGeometry(afterMinus, before) && sameGeometry(afterPlus, before)
+    const controlPositionMoved =
+      afterMinus.viewportOffset !== before.viewportOffset || afterPlus.viewportOffset !== afterMinus.viewportOffset
+    ctx.reset()
+    feedScrollbackHistory(ctx)
+    const control = {
+      afterMinus,
+      afterPlus,
+      geometryFixed: controlGeometryFixed,
+      positionMoved: controlPositionMoved,
+      restored: ctx.getScrollback(),
+    }
+    if (!sameViewport(control.restored, before)) {
       return parserStateResult(
         null,
-        "OSC 720 moves the scrollback viewport up",
-        { before },
-        "No scrollback viewport available",
+        OSC720_CLAIM,
+        { before, control },
+        "Viewport control did not restore the measured baseline",
       )
+    }
+    // A control that moved something other than the position is an irregular instrument, not an
+    // absence of one: the readings are kept and the result stays inconclusive rather than becoming a
+    // coverage record (CTO ruling on 31752). Only a control that moved nothing at fixed extents is
+    // evidence that this backend has no viewport scroll state.
+    if (!controlGeometryFixed) {
+      return parserStateResult(null, OSC720_CLAIM, { before, control }, "Viewport control changed the buffer geometry")
+    }
+    if (!controlPositionMoved) {
+      return notTestedResult("scrollback viewport state", { before, control })
     }
     ctx.feed("\x1b]720\x07")
     const after = ctx.getScrollback()
+    if (!sameGeometry(after, before)) {
+      return parserStateResult(
+        null,
+        OSC720_CLAIM,
+        { before, after, control },
+        "The measured sequence changed the buffer geometry",
+      )
+    }
     const pass = after.viewportOffset < before.viewportOffset
-    return parserStateResult(pass, "OSC 720 moves the scrollback viewport up", { before, after })
+    return parserStateResult(pass, OSC720_CLAIM, { before, after, control })
   }
 }
 
@@ -2007,7 +2087,44 @@ function textSizingResult(
  * A pass, a host-recipe cause, an observation, a nonempty reply, or a callback with no loaded
  * binary keeps the measured roundtrip. A listed reply-path audit still replaces an empty capture.
  */
+const ENGINE_CLIPBOARD_NOTE = "engine copy_to_clipboard callback read via getClipboardState, no reply bytes"
+
 function headlessOsc52Write(ctx: LibProbeSource): ProbeCallbackResult {
+  if (typeof ctx.getClipboardState !== "function") return headlessOsc52WriteWithoutWitness(ctx)
+  const nonce = `terminfo-osc52-${randomUUID()}`
+  const encoded = btoa(nonce)
+  ctx.feed(`\x1b]52;c;${encoded}\x07`)
+  const retained = ctx.getClipboardState()
+  const writes = retained.writes.map((write) => ({ selector: write.selector, payload: write.payload }))
+  const match = retained.writes.find((write) => write.selector === "c" && write.payload === encoded)
+  const note = [
+    ENGINE_CLIPBOARD_NOTE,
+    match?.text !== undefined ? `text ${match.text}` : undefined,
+    match?.decodeError !== undefined ? `decodeError ${match.decodeError}` : undefined,
+    retained.pasteSelector !== undefined ? `paste ${retained.pasteSelector}` : undefined,
+    match === undefined && writes.length > 0
+      ? `retained selectors ${writes.map((write) => write.selector).join(",")} did not match`
+      : undefined,
+  ]
+    .filter((part) => part !== undefined)
+    .join("; ")
+  const expected = JSON.stringify({ selector: "c", payload: encoded })
+  if (match) {
+    return parserStateResult(
+      true,
+      expected,
+      { selector: match.selector, payload: match.payload },
+      note,
+      undefined,
+      "query_reply",
+    )
+  }
+  const state = { writes }
+  if (writes.length === 0) return parserStateResult(false, expected, state, note, undefined, "query_reply")
+  return parserStateResult(null, expected, state, note, undefined, "query_reply")
+}
+
+function headlessOsc52WriteWithoutWitness(ctx: LibProbeSource): ProbeCallbackResult {
   const measured = headlessClipboardRoundtrip(ctx)
   const identity = ctx.runtimeIdentity
   const unauditedSilence =
@@ -3436,13 +3553,23 @@ export const extensionsProbes: ProbeDefinition[] = [
 
   // OSC 30001 — Kitty color stack push
   {
-    ...probe("extensions.osc30001-color-stack-push", colorStackProbe(colorPush), colorStackTermProbe, "query_reply"),
+    ...probe(
+      "extensions.osc30001-color-stack-push",
+      colorStackProbe(colorPush),
+      (ctx) => colorStackTermProbe(ctx, "push"),
+      "query_reply",
+    ),
     libHostRecipes: [{ recipe: "color-request", query: foregroundQuery, missing: ["foreground-rgb"] }],
   },
 
   // OSC 30101 — Kitty color stack pop
   {
-    ...probe("extensions.osc30101-color-stack-pop", colorStackProbe(colorPop), colorStackTermProbe, "query_reply"),
+    ...probe(
+      "extensions.osc30101-color-stack-pop",
+      colorStackProbe(colorPop),
+      (ctx) => colorStackTermProbe(ctx, "pop"),
+      "query_reply",
+    ),
     libHostRecipes: [{ recipe: "color-request", query: foregroundQuery, missing: ["foreground-rgb"] }],
   },
 

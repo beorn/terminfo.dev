@@ -44,6 +44,7 @@ import { loadCurrentResults } from "../../../docs/data/current-results.ts"
 import { parseSuiteManifest, parseRun } from "@terminfo/run-parser"
 import { ENVIRONMENT_GROUP_IDS } from "@terminfo/probe-defs"
 
+// This journey boots several real CLI processes; 5s is not a report performance contract.
 test("report renders reviewed outcomes and missing cells without promoting legacy history", () => {
   const root = mkdtempSync(join(tmpdir(), "terminfo-report-"))
   try {
@@ -748,7 +749,7 @@ test("report renders reviewed outcomes and missing cells without promoting legac
   } finally {
     rmSync(root, { recursive: true, force: true })
   }
-})
+}, 30_000)
 
 // @failure A piped report loses its tail: the feature matrix or the sections after it are
 // clipped, so the command exits 0 with an apparently complete report missing its counts.

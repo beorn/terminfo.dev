@@ -353,6 +353,222 @@ test.each(["8c50df5834ccb938c208aa91467e9a2b", "2912118b74039bf72ac84070921836ce
   },
 )
 
+// AC4: engine replies cannot distinguish the enclosing Mac apps. Existing Windows launch tests
+// cannot catch an app swap or missing hosted evidence for these previously unprofiled IDs.
+const hostedMacApps = [
+  {
+    id: "cmux",
+    version: "0.65.2",
+    executablePath: "/Applications/cmux.app/Contents/MacOS/cmux",
+    engine: "ghostty 1.3.2-HEAD-+cb1ef70",
+  },
+  {
+    id: "cursor",
+    version: "3.25.9",
+    executablePath: "/Applications/Cursor.app/Contents/MacOS/Cursor",
+    engine: "xterm.js 6.1.0-beta.304",
+  },
+  {
+    id: "com.microsoft.VSCode",
+    version: "1.142.0",
+    executablePath: "/Applications/Visual Studio Code.app/Contents/MacOS/Code",
+    engine: "xterm.js 6.1.0-beta.304",
+  },
+]
+
+function hostedMacAdmissionFixture(app: (typeof hostedMacApps)[number]) {
+  const fixtures = join(import.meta.dirname, "..", "test-fixtures")
+  const original = join(
+    fixtures,
+    "probes-apps",
+    "windows-terminal-1.23.20211.0-windows-5ce6e5804f4f8eb592f0b83c1f68e166.json",
+  )
+  const bytes = readFileSync(original, "utf8")
+  const document = parseJsonStrict(original, bytes)
+  if (!object(document) || typeof document.probeHash !== "string") throw new Error("Identity fixture has no suite")
+  const content = join(import.meta.dirname, "..", "content")
+  const manifestPath = join(content, "suites", `${document.probeHash}.json`)
+  const manifest = parseSuiteManifest(manifestPath, readFileSync(manifestPath, "utf8"))
+  const catalog = parseJsonStrict("feature catalog", readFileSync(join(content, "features.json"), "utf8"))
+  if (!object(catalog)) throw new Error("Identity fixture catalog is not an object")
+  const retained = parseRun(
+    original,
+    bytes,
+    Object.keys(catalog).filter((id) => !id.startsWith("$")),
+    new Map([[manifest.probeHash, manifest]]),
+  )
+  // Synthetic app/host metadata exercises admission only; no new native run is claimed.
+  const directory = temp("terminfo-mac-profile-")
+  const source = join(directory, "run.json")
+  const launch = {
+    bundlePath: app.executablePath.slice(0, app.executablePath.indexOf("/Contents/")),
+    cfBundleShortVersionString: app.version,
+    cfBundleVersion: "1",
+    executablePath: app.executablePath,
+    executableSha256: "a1".repeat(32),
+    sourceArtifact: { path: join(directory, "installer.zip"), sha256: "b2".repeat(32) },
+  }
+  const host = { ...hostedReceipt("macOS", "27833"), appLaunch: launch }
+  const rawReplies: Record<string, string> = { ...retained.rawReplies }
+  delete rawReplies["collector.da2"]
+  const da1 = "\x1b[?1;2c"
+  rawReplies["collector.xtversion"] = `\x1bP>|${app.engine}\x1b\\${da1}`
+  rawReplies["device.primary-da"] = da1
+  rawReplies["collector.disposableOwnership"] = ownershipBesideRun(source, host)
+  const run = {
+    ...retained,
+    path: source,
+    subject: { ...retained.subject, kind: "term" as const, id: app.id, version: app.version, os: "macos" },
+    origin: { ...retained.origin, appLaunch: launch },
+    rawReplies,
+  }
+  const evidence = {
+    receiptPath: join(directory, "host-measured.json"),
+    contentDir: directory,
+    mode: "placement" as const,
+  }
+  return { run, evidence, source, host, launch }
+}
+
+test.each(hostedMacApps)("$id uses measured Mac app identity, retaining its embedded-engine reply", (app) => {
+  const { run, evidence } = hostedMacAdmissionFixture(app)
+  expect(assessRunAdmission(run, [], evidence)).toMatchObject({
+    accepted: true,
+    identityAdmission: { rule: app.id, receipt: { cfBundleShortVersionString: app.version } },
+  })
+  expect(run.rawReplies["collector.xtversion"]).toContain(app.engine)
+  // The receipt deliberately has no declaredTarget; the executable must supply the app binding.
+  const darwin = { ...run, subject: { ...run.subject, os: "Darwin" } }
+  expect(assessRunAdmission(darwin, [], evidence)).toMatchObject({ accepted: true })
+})
+
+test.each(hostedMacApps)("$id cannot substitute copied launch metadata for cited Mac receipt bytes", (app) => {
+  const { run, evidence } = hostedMacAdmissionFixture(app)
+  for (const citation of [undefined, JSON.stringify({ kind: "shared" })]) {
+    const rawReplies = { ...run.rawReplies }
+    if (citation === undefined) delete rawReplies["collector.disposableOwnership"]
+    else rawReplies["collector.disposableOwnership"] = citation
+    expect
+      .soft(assessRunAdmission({ ...run, rawReplies }, [], evidence))
+      .toMatchObject({ accepted: false, reason: "ownership-receipt-missing" })
+  }
+  expect
+    .soft(assessRunAdmission(run, [], { ...evidence, receiptPath: join(evidence.contentDir, "absent.json") }))
+    .toMatchObject({ accepted: false, reason: "ownership-receipt-missing" })
+  const badDigest = {
+    ...run.rawReplies,
+    "collector.disposableOwnership": JSON.stringify({ kind: "github-hosted-runner", receiptSha256: "c3".repeat(32) }),
+  }
+  expect
+    .soft(assessRunAdmission({ ...run, rawReplies: badDigest }, [], evidence))
+    .toMatchObject({ accepted: false, reason: "ownership-receipt-digest-mismatch" })
+  const copied = {
+    ...run,
+    origin: { ...run.origin, appLaunch: { ...run.origin.appLaunch, executableSha256: "d4".repeat(32) } },
+  }
+  expect
+    .soft(assessRunAdmission(copied, [], evidence))
+    .toMatchObject({ accepted: false, reason: "ownership-receipt-app-launch-mismatch" })
+})
+
+test.each(hostedMacApps)("$id requires exact Mac version, term kind and answered DA1", (app) => {
+  const { run, evidence } = hostedMacAdmissionFixture(app)
+  const noDa1 = { ...run.rawReplies, "collector.xtversion": `\x1bP>|${app.engine}\x1b\\`, "device.primary-da": "" }
+  for (const changed of [
+    { ...run, subject: { ...run.subject, version: `${app.version} ` } },
+    { ...run, subject: { ...run.subject, version: "unknown" } },
+    { ...run, subject: { ...run.subject, os: "linux" } },
+    { ...run, subject: { ...run.subject, kind: "mux" as const } },
+    { ...run, origin: { ...run.origin, appLaunch: undefined } },
+    { ...run, rawReplies: noDa1 },
+  ]) {
+    expect
+      .soft(assessRunAdmission(changed, [], evidence))
+      .toMatchObject({ accepted: false, reason: "identity-replies-mismatch" })
+  }
+})
+
+test.each(hostedMacApps)("$id binds the measured GUI executable and runner OS without declaredTarget", (app) => {
+  const { run, evidence, source, host, launch } = hostedMacAdmissionFixture(app)
+  const otherApp =
+    app.id === "cursor"
+      ? "/Applications/Visual Studio Code.app/Contents/MacOS/Code"
+      : "/Applications/Cursor.app/Contents/MacOS/Cursor"
+  // Keep the same version in both copies, so version inequality cannot mask an app-ID swap.
+  const paths = [
+    otherApp,
+    "/Applications/Unknown.app/Contents/MacOS/unknown",
+    ...(app.id === "cmux" ? ["/usr/local/bin/cmux"] : []),
+  ]
+  for (const executablePath of paths) {
+    const wrongLaunch = { ...launch, executablePath }
+    const ownership = ownershipBesideRun(source, { ...host, appLaunch: wrongLaunch })
+    expect
+      .soft(
+        assessRunAdmission(
+          {
+            ...run,
+            origin: { ...run.origin, appLaunch: wrongLaunch },
+            rawReplies: { ...run.rawReplies, "collector.disposableOwnership": ownership },
+          },
+          [],
+          evidence,
+        ),
+      )
+      .toMatchObject({
+        accepted: false,
+        reason: "ownership-receipt-target-mismatch",
+        detail: expect.stringContaining(executablePath),
+      })
+  }
+  const wrongOs = ownershipBesideRun(source, { ...host, runner: { ...host.runner, os: "Linux" } })
+  expect
+    .soft(
+      assessRunAdmission(
+        { ...run, rawReplies: { ...run.rawReplies, "collector.disposableOwnership": wrongOs } },
+        [],
+        evidence,
+      ),
+    )
+    .toMatchObject({
+      accepted: false,
+      reason: "ownership-receipt-target-mismatch",
+      detail: expect.stringContaining("Linux"),
+    })
+})
+
+test.each([
+  {
+    id: "warp",
+    version: "v0.2026.10.14.08.27.stable_01",
+    da1: "\x1b[?62c",
+    engine: "Warp(v0.2026.10.14.08.27.stable_01)",
+  },
+  { id: "iterm2", version: "3.6.11", da1: "\x1b[?64;1;2c", engine: "iTerm2 3.6.11" },
+])("$id retains its reply profile and shared/missing Mac receipt behavior", (app) => {
+  const { run, evidence } = hostedMacAdmissionFixture({
+    ...app,
+    executablePath: "/Applications/Fixture.app/Contents/MacOS/fixture",
+  })
+  const rawReplies: Record<string, string> = {
+    ...run.rawReplies,
+    "collector.xtversion": `\x1bP>|${app.engine}\x1b\\${app.da1}`,
+    "device.primary-da": app.da1,
+  }
+  for (const citation of [undefined, JSON.stringify({ kind: "shared" })]) {
+    if (citation === undefined) delete rawReplies["collector.disposableOwnership"]
+    else rawReplies["collector.disposableOwnership"] = citation
+    expect.soft(assessRunAdmission({ ...run, rawReplies }, [], evidence)).toMatchObject({ accepted: true })
+    expect
+      .soft(assessRunAdmission({ ...run, rawReplies, subject: { ...run.subject, version: "9.9.9" } }, [], evidence))
+      .toMatchObject({ accepted: false, reason: "identity-replies-mismatch" })
+  }
+  expect(assessRunAdmission({ ...run, subject: { ...run.subject, id: "unknown-host" } }, [], evidence)).toMatchObject({
+    accepted: false,
+    reason: "identity-no-profile",
+  })
+})
+
 // AC1: Windows has no XTVERSION profile. The measured portable executable version must supply
 // whole-run identity, and comparison is byte-exact; macOS parser cases cannot prove this decision.
 test("Windows admission requires its measured executable version to match exactly", () => {
