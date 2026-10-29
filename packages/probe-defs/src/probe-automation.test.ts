@@ -213,8 +213,10 @@ describe("audited native host recipe callers", () => {
   )
 
   // WezTerm answers CSI 14 t from the pixels it was given (31551), so the audit lists only the recipe it leaves unanswered.
-  test("the WezTerm artifact cites its OSC 52 read and leaves CSI 14 t measured", () => {
-    const wezterm = "84da518e3f298a0ed75f186db6e39d87e99b8f0c8508dd7252ec0cafee77fe12"
+  test.each([
+    "84da518e3f298a0ed75f186db6e39d87e99b8f0c8508dd7252ec0cafee77fe12",
+    "78c05a7155ffb48b351de181cce13a5d996c3472f545f674dc34177fe27bae01",
+  ])("the WezTerm artifact %s cites its OSC 52 read and leaves CSI 14 t measured", (wezterm) => {
     const silent = (id: string) =>
       probe(id).lib!(
         context({

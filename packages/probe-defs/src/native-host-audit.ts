@@ -48,6 +48,17 @@ const NATIVE_HOST_AUDITS: ReadonlyMap<string, NativeHostSourceCitations> = new M
       },
     },
   ],
+  [
+    // The same engine rebuilt at Termless 71cac2c3, whose wrapper gives it the declared pixel geometry (31551).
+    "78c05a7155ffb48b351de181cce13a5d996c3472f545f674dc34177fe27bae01",
+    {
+      "clipboard-load": {
+        kind: "unimplemented",
+        citation:
+          "tattoy-wezterm-term 0.1.0-fork.5 terminalstate/performer.rs:788 drops OperatingSystemCommand::QuerySelection; terminal.rs:13-19 Clipboard has only set_contents, so no build of this engine answers an OSC 52 read",
+      },
+    },
+  ],
 ])
 
 /** Explain an actually empty host-owned query without changing the criterion or protocol bytes. */
