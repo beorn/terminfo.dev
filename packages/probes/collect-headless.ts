@@ -14,6 +14,7 @@ import {
   initializeRunDraft,
   recordCollectionFailure,
   recordCollectorSelection,
+  resolveProbeIds,
   recordCollectorAttempt,
   readCollectorSelection,
   readCollectorAttempt,
@@ -126,11 +127,12 @@ async function collectOne(name: string, directory: string): Promise<string> {
   })
   const draftPath = process.env.TERMINFO_DRAFT_PATH ?? join(directory, `${name}-${draft.runId}.draft.json`)
   const delegated = process.env.TERMINFO_DRAFT_PATH
-    ? JSON.parse(readFileSync(draftPath, "utf8")) as RunDraft
+    ? (JSON.parse(readFileSync(draftPath, "utf8")) as RunDraft)
     : undefined
   const ids = readCollectorSelection(delegated?.rawReplies ?? {})?.ids ?? [...suite.probes.lib]
-  for (const id of ids) {
-    if (!ALL_PROBES.some((probe) => probe.id === id)) throw new Error(`Unknown probe: ${id}`)
+  const resolved = resolveProbeIds(ids)
+  if (resolved.result === "invalid") {
+    throw new Error(`Unknown probe: ${resolved.unknownIds[0] ?? resolved.duplicateIds[0]}`)
   }
   recordCollectorSelection(draft, ids)
   const initialBytes = `${JSON.stringify(draft, null, 2)}\n`
@@ -183,7 +185,7 @@ async function collectOne(name: string, directory: string): Promise<string> {
     const batch = await collectBatch(
       async () => loadedBackend(await resolveBackend(), entry.package),
       name,
-      ALL_PROBES.filter((probe) => ids.includes(probe.id)),
+      resolved.probes,
       draft,
       (progress) => {
         Object.assign(draft, {
@@ -196,14 +198,15 @@ async function collectOne(name: string, directory: string): Promise<string> {
       { identity: runtimeIdentity, adapterPath, adapterPackage: entry.package, adapterType: entry.type },
     )
     const startedAttempt = readCollectorAttempt(draft.rawReplies)
-    recordCollectorAttempt(draft, {
+    const completedAttempt = {
       ids,
       startedAt: collectionStartedAt,
       ...(startedAttempt?.hostInputs && { hostInputs: startedAttempt.hostInputs }),
-      result: "completed",
-    })
+      result: "completed" as const,
+    }
+    recordCollectorAttempt(draft, completedAttempt)
     // Batch metadata includes the start checkpoint; retain the completed outcome above.
-    batch.rawReplies["collector.collectionAttempt"] = draft.rawReplies["collector.collectionAttempt"]!
+    recordCollectorAttempt(batch, completedAttempt)
     checkpoint()
     const run: CapturedRunDraft = {
       ...draft,
@@ -281,8 +284,9 @@ export async function collectHeadlessRuns(
   if (unknown.length) throw new Error(`Unknown headless backend selector(s): ${unknown.join(", ")}`)
   const suite = trustedSuite()
   const ids = probeIds === undefined ? [...suite.probes.lib] : [...probeIds]
-  for (const id of ids) {
-    if (!ALL_PROBES.some((probe) => probe.id === id)) throw new Error(`Unknown probe: ${id}`)
+  const resolved = resolveProbeIds(ids)
+  if (resolved.result === "invalid") {
+    throw new Error(`Unknown probe: ${resolved.unknownIds[0] ?? resolved.duplicateIds[0]}`)
   }
   const script = realpathSync(fileURLToPath(import.meta.url))
   if (!script.endsWith("/packages/probes/collect-headless.ts")) {
@@ -335,8 +339,8 @@ export async function collectHeadlessRuns(
         throw new Error(`Worker ${name} changed delegated run identity`)
       }
       const previousAttempt = readCollectorAttempt(retained.rawReplies)
-      const startedAt = previousAttempt?.startedAt ??
-        (retained.rawReplies["collector.prerequisite"] ? undefined : workerStartedAt)
+      const startedAt =
+        previousAttempt?.startedAt ?? (retained.rawReplies["collector.prerequisite"] ? undefined : workerStartedAt)
       if (!startedAt && result === "failed" && !retained.rawReplies["collector.prerequisite"]) {
         retained.rawReplies["collector.prerequisite"] = scrubbed
         for (const row of retained.results) {

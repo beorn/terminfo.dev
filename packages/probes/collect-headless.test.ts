@@ -12,7 +12,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { afterEach, expect, it, vi } from "vitest"
-import type { CapturedRunDraft, RunDraft } from "@terminfo/probe-defs"
+import { readCollectorAttempt, type CapturedRunDraft, type RunDraft } from "@terminfo/probe-defs"
 import { parseRun } from "@terminfo/run-parser"
 import { collectHeadlessRuns } from "./collect-headless.ts"
 import { probeSuiteSnapshot } from "../admin/versions.ts"
@@ -93,7 +93,9 @@ it.each([true, false])(
     expect(saved.sourceRevision).toBe(original.sourceRevision)
     expect(saved.probeHash).toBe(original.probeHash)
     expect(JSON.parse(saved.rawReplies["collector.collectionAttempt"]!)).toMatchObject({
-      ids: ["device.primary-da"], result: "completed", startedAt: expect.any(String),
+      ids: ["device.primary-da"],
+      result: "completed",
+      startedAt: expect.any(String),
     })
     expect(readFileSync(capturePath, "utf8")).toBe(captureBytes)
     const suite = probeSuiteSnapshot()
@@ -152,6 +154,24 @@ it.each([true, false])(
 // The real worker loads headless-identity.ts, which requires the owned vterm checkout beside this one;
 // standalone component CI tests out terminfo.dev alone, so this runs wherever that layout exists.
 const OWNED_LAYOUT = existsSync(fileURLToPath(new URL("../../../vterm", import.meta.url)))
+// AC1: mocked coordinator tests cannot detect a worker still passing ALL_PROBES to the batch.
+// This existing worker boundary measures one embedded fixture backend, never a Terminal app.
+it.runIf(OWNED_LAYOUT)(
+  "executes only selected callbacks in the real headless worker",
+  async () => {
+    const collection = await collectHeadlessRuns(["xtermjs"], directory(), undefined, ["sgr.bold"])
+    expect(collection.failures).toEqual([])
+    expect(collection.runs).toHaveLength(1)
+    const draft = JSON.parse(readFileSync(collection.runs[0]!, "utf8")) as CapturedRunDraft
+    expect(draft.results.filter((row) => row.attempt.scope !== "none").map((row) => row.featureId)).toEqual([
+      "sgr.bold",
+    ])
+    expect(JSON.parse(draft.rawReplies["collector.selection"]!)).toEqual({ ids: ["sgr.bold"] })
+    expect(readCollectorAttempt(draft.rawReplies)?.result).toBe("completed")
+    expect(draft.results).toHaveLength(273)
+  },
+  30_000,
+)
 // The fixture tests above never send a collector-written draft through the decoder that admit-run uses;
 // this one runs the real xtermjs worker and the real admit-run --review. Admission itself writes the suite
 // manifest and receipts into content/, so one review stays pending here: admit-run retains the reviewed
@@ -205,6 +225,11 @@ it.runIf(OWNED_LAYOUT)(
     }
     expect(pending).toEqual([
       "extensions.clipboard-paste",
+      "extensions.iterm2-images",
+      "extensions.kitty-graphics.animation",
+      "extensions.kitty-graphics.unicode-placeholders",
+      "extensions.notifications",
+      "extensions.osc-633-vscode",
       "extensions.osc133-a",
       "extensions.osc133-b",
       "extensions.osc133-c",
@@ -216,6 +241,9 @@ it.runIf(OWNED_LAYOUT)(
       "extensions.osc633-d",
       "extensions.osc633-e",
       "extensions.osc633-p",
+      "extensions.osc7-cwd",
+      "extensions.semantic-prompts",
+      "extensions.sixel",
       "input.button-event-mouse",
       "input.kitty-click-events",
       "input.modify-other-keys",
@@ -228,6 +256,8 @@ it.runIf(OWNED_LAYOUT)(
       "input.xtest-wheel",
       "modes.alt-scroll-1007",
       "modes.application-keypad",
+      "modes.color-scheme-reporting",
+      "modes.decsclm",
     ])
     const decision = (featureId: string, reason: string) =>
       JSON.stringify({
@@ -344,7 +374,7 @@ it("initializes all 273 before worker launch and retains explicit missing prereq
   expect(draft.results.every((result) => result.status === "test-todo" && result.attempt.scope === "none")).toBe(true)
   expect(draft).not.toHaveProperty("target")
   expect(JSON.parse(draft.rawReplies["collector.selection"]!)).toEqual({ ids: probeSuiteSnapshot().probes.lib })
-  const attempt = JSON.parse(draft.rawReplies["collector.collectionAttempt"]!)
+  const attempt = readCollectorAttempt(draft.rawReplies)
   expect(attempt).toMatchObject({ result: "failed", error: expect.stringContaining("missing pinned package") })
   expect(attempt).not.toHaveProperty("startedAt")
 })
@@ -379,7 +409,10 @@ it("records an attempted selected worker timeout without changing unselected row
   const delegated = new Set(ids)
   expect(JSON.parse(draft.rawReplies["collector.selection"]!)).toEqual({ ids })
   expect(JSON.parse(draft.rawReplies["collector.collectionAttempt"]!)).toMatchObject({
-    ids, result: "failed", startedAt: expect.any(String), error: expect.stringContaining("exceeded"),
+    ids,
+    result: "failed",
+    startedAt: expect.any(String),
+    error: expect.stringContaining("exceeded"),
   })
   expect(
     draft.results
@@ -483,7 +516,9 @@ it.runIf(OWNED_LAYOUT)(
 // and had no typed record for cancellation or a refusal before a process actually started.
 it("retains explicit empty probe selection without starting a worker or inventing a collection start", async () => {
   const dir = directory()
-  const spawn = vi.spyOn(Bun, "spawn").mockImplementation(() => { throw new Error("Unexpected empty-selection worker") })
+  const spawn = vi.spyOn(Bun, "spawn").mockImplementation(() => {
+    throw new Error("Unexpected empty-selection worker")
+  })
   const collection = await collectHeadlessRuns(["libvterm"], dir, undefined, [])
   expect(spawn).not.toHaveBeenCalled()
   expect(collection.runs).toEqual([])
@@ -496,9 +531,12 @@ it("retains explicit empty probe selection without starting a worker or inventin
   expect(draft.probeHash).toBe(probeSuiteSnapshot().probeHash)
 })
 it("rejects unknown exact probe IDs before any worker starts", async () => {
-  const spawn = vi.spyOn(Bun, "spawn").mockImplementation(() => { throw new Error("Unexpected unknown-selection worker") })
-  await expect(collectHeadlessRuns(["libvterm"], directory(), undefined, ["missing.probe"]))
-    .rejects.toThrow("Unknown probe: missing.probe")
+  const spawn = vi.spyOn(Bun, "spawn").mockImplementation(() => {
+    throw new Error("Unexpected unknown-selection worker")
+  })
+  await expect(collectHeadlessRuns(["libvterm"], directory(), undefined, ["missing.probe"])).rejects.toThrow(
+    "Unknown probe: missing.probe",
+  )
   expect(spawn).not.toHaveBeenCalled()
 })
 it.each([
@@ -516,8 +554,10 @@ it.each([
     expect(draft.runId).toBe(runId)
     if (code === undefined) throw new Error(originalError)
     return {
-      stdout: new Blob([]).stream(), stderr: new Blob([`Error: ${originalError}`]).stream(),
-      exited: Promise.resolve(code), kill: vi.fn(),
+      stdout: new Blob([]).stream(),
+      stderr: new Blob([`Error: ${originalError}`]).stream(),
+      exited: Promise.resolve(code),
+      kill: vi.fn(),
     }
   }) as never)
   const collection = await collectHeadlessRuns(["libvterm"], dir, undefined, ids)
@@ -525,14 +565,17 @@ it.each([
   expect(collection.failures[0]?.error).toContain(originalError)
   const draft = retainedDraft(dir)
   expect(draft.runId).toBe(runId)
-  const attempt = JSON.parse(draft.rawReplies["collector.collectionAttempt"]!)
+  const attempt = readCollectorAttempt(draft.rawReplies)
   expect(attempt).toMatchObject({ ids, result, error: expect.stringContaining(originalError) })
-  if (started) expect(attempt.startedAt).toEqual(expect.any(String))
+  if (started) expect(attempt?.startedAt).toEqual(expect.any(String))
   else expect(attempt).not.toHaveProperty("startedAt")
   expect(JSON.parse(draft.rawReplies["collector.selection"]!)).toEqual({ ids })
   if (result === "cancelled" || !started) {
     expect(draft.results.every((row) => row.attempt.scope === "none")).toBe(true)
   }
-  expect(draft.results.filter((row) => !ids.includes(row.featureId))
-    .every((row) => row.status === "test-todo" && row.attempt.scope === "none")).toBe(true)
+  expect(
+    draft.results
+      .filter((row) => !ids.includes(row.featureId))
+      .every((row) => row.status === "test-todo" && row.attempt.scope === "none"),
+  ).toBe(true)
 })

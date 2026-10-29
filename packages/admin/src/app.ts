@@ -631,6 +631,7 @@ async function probeDaemon(
   )
   const retained = await readRetainedDaemonProbeResponse(res)
   console.log(`  Retained private HTTP response ${retained.path}; SHA256 ${retained.sha256}`)
+  if (retained.kind === "empty-selection") throw new Error("Empty selection where a capture was required")
   const data = retained.run
   const identityCheck = verifyTerminalIdentity(appId, data.rawReplies)
   const run = {

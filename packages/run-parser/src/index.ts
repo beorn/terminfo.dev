@@ -3,12 +3,16 @@ import { createHash } from "node:crypto"
 import { isDeepStrictEqual } from "node:util"
 import {
   SOURCE_NEGATIVE_REVIEW,
-  REPLY_PATH_AUDIT_REVIEW,
+  HARNESS_INCOMPLETE_TEST,
+  UNTESTABLE_ONLY_REVIEW_BRANCHES,
   HOST_INPUT_NAMES,
   type HostRecipeExpectation,
   type HostRecipeName,
   PROBE_STATUSES,
   finalizeProbeResult,
+  initializeRunDraft,
+  readCollectorSelection,
+  readCollectorAttempt,
   type CaptureDecision,
   type RunDraft,
   type CapturedRunDraft,
@@ -1292,12 +1296,36 @@ export function parseProbeResults(
         fail(path, `${featureId} query_reply source-negative review requires a recorded parser-level rejection`)
       }
     }
-    // A reply-path audit review records a missing reply path, so a reviewer may decide it only as Untestable.
+    // Missing-observable reviews cannot establish support or a measured negative.
     if (
-      result.criterionBranch === REPLY_PATH_AUDIT_REVIEW &&
+      result.criterionBranch !== undefined &&
+      UNTESTABLE_ONLY_REVIEW_BRANCHES.has(result.criterionBranch) &&
       tests.some((test) => test.id === "review" && (test.status === "supported" || test.status === "unsupported"))
     ) {
-      fail(path, `${featureId} reply-path audit review admits only an untestable decision`)
+      fail(path, `${featureId} ${result.criterionBranch} review admits only an untestable decision`)
+    }
+    // A capture that reached a callback the adapter does not reproduce is a harness gap, never a terminal property.
+    const harnessRow = tests.find((test) => test.id === HARNESS_INCOMPLETE_TEST)
+    const rawState = nonempty(item.rawReplyRef) ? rawReplies[item.rawReplyRef] : undefined
+    if (harnessRow || rawState?.startsWith('{"unreproduced":')) {
+      const parsed: unknown = rawState ? parseJsonStrict(`${path}: ${featureId}`, rawState) : undefined
+      const record = object(parsed) ? parsed.unreproduced : undefined
+      const recorded =
+        object(record) &&
+        nonempty(record.backend) &&
+        Array.isArray(record.captures) &&
+        record.captures.length > 0 &&
+        record.captures.every(
+          (capture) =>
+            object(capture) &&
+            typeof capture.query === "string" &&
+            Array.isArray(capture.callbacks) &&
+            capture.callbacks.length > 0 &&
+            capture.callbacks.every(nonempty),
+        )
+      if (!recorded || harnessRow?.status !== "test-failure" || status !== "test-failure") {
+        fail(path, `${featureId} unreproduced-callback record requires its failed harness row, and the row its record`)
+      }
     }
     if (finalizeProbeResult(result).status !== status) {
       fail(path, `${featureId} recorded status hides required test work`)
@@ -1428,7 +1456,24 @@ export function validateHostRecipeCauses(
     ) {
       refuse("invalid query capture")
     }
-    return { query: capture.query, response: capture.response, error: capture.error }
+    // A-prime (@cto 4ac8b275): a zero-byte capture beside a callback the harness did not reproduce carries its cause.
+    const cause = capture.cause
+    if (
+      cause !== undefined &&
+      !(
+        object(cause) &&
+        cause.kind === "harness-unreproduced" &&
+        Object.keys(cause).every((key) => key === "kind" || key === "callbacks") &&
+        Array.isArray(cause.callbacks) &&
+        cause.callbacks.length > 0 &&
+        cause.callbacks.every(nonempty) &&
+        capture.response === "" &&
+        capture.error === null
+      )
+    ) {
+      refuse("invalid harness-unreproduced capture cause")
+    }
+    return { query: capture.query, response: capture.response, error: capture.error, harness: cause !== undefined }
   })
   // A terminal parses the ordered input stream, including a query split across writes.
   for (const actual of capturedHostQueries(captures.map((capture) => capture.query).join(""))) {
@@ -1465,7 +1510,7 @@ export function validateHostRecipeCauses(
       ) {
         refuse("observed reference does not resolve to this run's empty target capture")
       }
-    } else if (cause.kind === "source-audited") {
+    } else if (cause.kind === "source-audited" || cause.kind === "unimplemented") {
       if (
         Object.keys(cause).some((key) => !["kind", "missing", "runId", "artifactSha256", "citation"].includes(key)) ||
         identity?.kind !== "native" ||
@@ -1474,6 +1519,17 @@ export function validateHostRecipeCauses(
         refuse("stale native artifact citation")
       }
       const citation = cause.citation
+      if (cause.kind === "unimplemented") {
+        // The audited artifact has no reply path for the query, so the citation names that source and no host input.
+        if (
+          !object(citation) ||
+          Object.keys(citation).some((key) => key !== "sourceLocation") ||
+          !nonempty(citation.sourceLocation)
+        ) {
+          refuse("invalid no-reply-path citation")
+        }
+        return entry
+      }
       if (
         !object(citation) ||
         citation.inputRecordRef !== "collector.collectionAttempt" ||
@@ -1500,8 +1556,10 @@ export function validateHostRecipeCauses(
   for (const expected of expectations) {
     const target = captures.filter((capture) => capture.query === expected.query && capture.error === null)
     if (!target.length) refuse("missing applicable target query capture")
+    const silent = target.filter((capture) => capture.response === "")
     if (
-      target.some((capture) => capture.response === "") &&
+      silent.length > 0 &&
+      !silent.every((capture) => capture.harness) &&
       !causes.some(
         (entry) =>
           entry.recipe === expected.recipe &&
@@ -2010,16 +2068,89 @@ export function decodeHistoricalCollectorRun(
   return { run, raw, sha256: measured.sha256 }
 }
 
-/** Canonical live collector transport is an unsealed schema-4 capture; final writer seals later. */
+/** Locate altered initialized draft content without hiding it beneath an empty-selection label. */
+function initializedDraftDifference(actual: unknown, expected: unknown, path = ""): string | undefined {
+  if (isDeepStrictEqual(actual, expected)) return undefined
+  if (Array.isArray(actual) && Array.isArray(expected)) {
+    for (let index = 0; index < Math.max(actual.length, expected.length); index++) {
+      const changed = initializedDraftDifference(actual[index], expected[index], `${path}[${index}]`)
+      if (changed) return changed
+    }
+  } else if (object(actual) && object(expected)) {
+    for (const key of new Set([...Object.keys(expected), ...Object.keys(actual)])) {
+      const changed = initializedDraftDifference(actual[key], expected[key], path ? `${path}.${key}` : key)
+      if (changed) return changed
+    }
+  }
+  return path
+}
+
+export type DecodedCollectorDraft = { raw: string; sha256: string } & (
+  | { kind: "captured"; run: CapturedRunDraft }
+  | { kind: "empty-selection"; run: RunDraft }
+)
+
+/** Canonical live transport retains a capture or an explicitly empty initialized draft. */
 export function decodeCollectorDraft(
   path: string,
   raw: string,
   manifest: ProbeSuiteManifest,
   collectorRevision: string,
-): { run: CapturedRunDraft; raw: string; sha256: string } {
+): DecodedCollectorDraft {
   const value = parseJsonStrict(path, raw)
   if (!object(value) || value.schemaVersion !== 4 || Object.hasOwn(value, "sealedAt")) {
     fail(path, "expected unsealed schemaVersion 4 collector draft")
+  }
+  if (object(value.rawReplies)) {
+    const rawReplies = value.rawReplies
+    if (!Object.values(rawReplies).every((entry) => typeof entry === "string")) fail(path, "invalid rawReplies")
+    const records = rawReplies as Record<string, string>
+    const attempt = readCollectorAttempt(records)
+    if (attempt?.result === "empty") {
+      const refuse = (changed: string): never => {
+        throw Object.assign(new Error(`${path}: invalid empty selection at ${changed}`), {
+          kind: "invalid-empty-selection" as const,
+          path: changed,
+        })
+      }
+      const selection = readCollectorSelection(records)
+      if (!selection || selection.ids.length || attempt.ids.length) refuse("collector.selection.ids")
+      if (attempt.startedAt !== undefined) refuse("collector.collectionAttempt.startedAt")
+      if (manifest.schemaVersion !== 4) refuse("schemaVersion")
+      if (!nonempty(value.runId)) refuse("runId")
+      if (!object(value.intendedSubject)) refuse("intendedSubject")
+      const intended = value.intendedSubject as Record<string, unknown>
+      for (const [key, entry] of Object.entries(intended)) {
+        if (key === "kind") {
+          if (entry !== "term" && entry !== "lib" && entry !== "mux") refuse(`intendedSubject.${key}`)
+        } else if (
+          !["id", "version", "os", "osVersion", "outerTerminal", "mux", "config", "permissions"].includes(key) ||
+          !(nonempty(entry) || (entry === null && key !== "id" && key !== "version"))
+        ) {
+          refuse(`intendedSubject.${key}`)
+        }
+      }
+      for (const key of Object.keys(records)) {
+        if (!["collector.selection", "collector.collectionAttempt", "collector.httpResponseSha256"].includes(key)) {
+          refuse(`rawReplies.${key}`)
+        }
+      }
+      const initialized = initializeRunDraft({
+        runId: value.runId as string,
+        sourceRevision: collectorRevision,
+        source: { kind: "live" },
+        intendedSubject: intended as Partial<ProbeSubject>,
+        manifest: manifest as ProbeSuiteManifest & { schemaVersion: 4 },
+      })
+      const difference = initializedDraftDifference(value, { ...initialized, rawReplies: records })
+      if (difference) refuse(difference)
+      return {
+        kind: "empty-selection",
+        run: value as unknown as RunDraft,
+        raw,
+        sha256: createHash("sha256").update(raw).digest("hex"),
+      }
+    }
   }
   const measured = parseRun(path, raw, manifest.catalogIds ?? [], new Map([[manifest.probeHash, manifest]]), {
     mode: "capture",
@@ -2034,7 +2165,7 @@ export function decodeCollectorDraft(
   if (measured.identity !== "unverified" || measured.origin.kind !== "collector") {
     fail(path, "collector draft requires unverified measured identity and collector origin")
   }
-  return { run: value as unknown as CapturedRunDraft, raw, sha256: measured.sha256 }
+  return { kind: "captured", run: value as unknown as CapturedRunDraft, raw, sha256: measured.sha256 }
 }
 
 /** A final file is current only when sealed; historical files have their explicit historical decoder. */

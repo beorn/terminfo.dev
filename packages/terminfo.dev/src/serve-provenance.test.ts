@@ -104,7 +104,9 @@ test("provenance rejects relative path", async () => {
   writeFileSync(receipt, JSON.stringify({ executable: { path: "relative/path/app.exe", sha256: "0".repeat(64) } }))
   process.env.TERMINFO_CAPTURE_DIRECTORY = join(directory, "frames")
   try {
-    await expect(collectProbeRun({ ids: ["device.xtversion"] })).rejects.toThrow("Runtime provenance has invalid measured executable")
+    await expect(collectProbeRun({ ids: ["device.xtversion"] })).rejects.toThrow(
+      "Runtime provenance has invalid measured executable",
+    )
   } finally {
     delete process.env.TERMINFO_CAPTURE_DIRECTORY
   }

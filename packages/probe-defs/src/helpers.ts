@@ -93,7 +93,7 @@ export function recordCollectorSelection(draft: RunDraft, ids: readonly string[]
   draft.rawReplies["collector.selection"] = JSON.stringify({ ids })
 }
 
-export function recordCollectorAttempt(draft: RunDraft, attempt: CollectorAttempt): void {
+export function recordCollectorAttempt(draft: Pick<RunDraft, "rawReplies">, attempt: CollectorAttempt): void {
   draft.rawReplies["collector.collectionAttempt"] = JSON.stringify(attempt)
 }
 
@@ -1059,6 +1059,14 @@ export function probe(
 }
 
 export const REPLY_PATH_AUDIT_REVIEW = "reply-path-audit-review"
+export const HEADLESS_OBSERVABLE_REVIEW = "headless-observable-review"
+export const UNTESTABLE_ONLY_REVIEW_BRANCHES: ReadonlySet<string> = new Set([
+  REPLY_PATH_AUDIT_REVIEW,
+  HEADLESS_OBSERVABLE_REVIEW,
+])
+
+/** The collector's test row for a capture that reached an engine callback its adapter does not reproduce. */
+export const HARNESS_INCOMPLETE_TEST = "harness"
 
 /**
  * Apply the reply-path audit table (reply-path-audit.ts) to one library probe; it decides nothing about identity.

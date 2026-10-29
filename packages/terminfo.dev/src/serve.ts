@@ -36,6 +36,8 @@ import {
   recordCollectionFailure,
   recordCollectorSelection,
   recordCollectorAttempt,
+  collectorIds,
+  resolveProbeIds,
   type ProbeSuiteManifest,
   type TermProbeSource,
   type TerminalQueryOutcome,
@@ -1066,11 +1068,14 @@ export function startDaemon(port = 0): void {
     } catch {
       throw new Error("Invalid TERMINFO_PROBE_IDS JSON")
     }
-    if (!Array.isArray(value)) throw new Error("TERMINFO_PROBE_IDS requires an array")
-    const invalid = value.filter((id) => typeof id !== "string" || !ALL_PROBES.some((probe) => probe.id === id))
-    if (invalid.length) throw new Error(`Unknown or inapplicable TERMINFO_PROBE_IDS: ${JSON.stringify(invalid)}`)
-    if (new Set(value).size !== value.length) throw new Error(`Duplicate TERMINFO_PROBE_IDS: ${JSON.stringify(value)}`)
-    ids = value as string[]
+    ids = collectorIds(value, "TERMINFO_PROBE_IDS")
+    const resolved = resolveProbeIds(ids)
+    if (resolved.result === "invalid") {
+      if (resolved.unknownIds.length) {
+        throw new Error(`Unknown or inapplicable TERMINFO_PROBE_IDS: ${JSON.stringify(resolved.unknownIds)}`)
+      }
+      throw new Error(`Duplicate TERMINFO_PROBE_IDS: ${JSON.stringify(ids)}`)
+    }
   }
   const terminal = detectTerminal()
   const token = randomBytes(32).toString("hex")
@@ -1115,6 +1120,7 @@ export function startDaemon(port = 0): void {
       }
 
       if (url.pathname === "/probe") {
+        let requestedIds = ids
         let terminalAppOwner: TerminalAppOwnerAssertion | undefined
         let processOwner: ProcessOwnerAssertion | undefined
         if (req.method === "POST") {
@@ -1124,11 +1130,12 @@ export function startDaemon(port = 0): void {
               !body ||
               typeof body !== "object" ||
               Array.isArray(body) ||
-              Object.keys(body).some((key) => key !== "terminalAppOwner" && key !== "processOwner") ||
+              Object.keys(body).some((key) => key !== "terminalAppOwner" && key !== "processOwner" && key !== "ids") ||
               ("terminalAppOwner" in body && "processOwner" in body)
             ) {
               throw new Error("Invalid probe request shape")
             }
+            if ("ids" in body) requestedIds = collectorIds(body.ids, "probe request ids")
             if ("terminalAppOwner" in body) {
               terminalAppOwner = parseTerminalAppOwner(body.terminalAppOwner)
               if (terminalAppOwner.launchRunId !== runId || terminalAppOwner.workerPid !== process.pid) {
@@ -1151,15 +1158,21 @@ export function startDaemon(port = 0): void {
           res.end(JSON.stringify({ error: "Probe collection requires GET or POST" }))
           return
         }
-        console.log(s.dim(`[${new Date().toISOString()}] Running ${ids?.length ?? ALL_PROBES.length} probes...`))
+        console.log(
+          s.dim(`[${new Date().toISOString()}] Running ${requestedIds?.length ?? ALL_PROBES.length} probes...`),
+        )
         const run = await collectProbeRun({
-          ...(ids && { ids }),
+          ...(requestedIds !== undefined && { ids: requestedIds }),
           terminalAppOwner,
           processOwner,
           expectedLaunchRunId: runId,
         })
         console.log(
-          s.dim(`Captured ${run.results.length} explicit probe results; draft ${run.runId} awaits final writer`),
+          s.dim(
+            requestedIds?.length === 0
+              ? `Empty selection; draft ${run.runId} retained; no probes executed`
+              : `Collected selected probe results; draft ${run.runId} awaits final writer`,
+          ),
         )
         res.end(JSON.stringify(run))
         return

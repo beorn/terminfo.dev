@@ -9,6 +9,7 @@ import type {
 } from "./types.ts"
 import {
   REPLY_AFTER_SENTINEL_NOTE,
+  HEADLESS_OBSERVABLE_REVIEW,
   decrpmPs,
   decrpmReplyPattern,
   decrpmReading,
@@ -2376,7 +2377,9 @@ export const extensionsProbes: ProbeDefinition[] = [
     "extensions.kitty-graphics.animation",
     (ctx) => {
       const note = "Declared Kitty graphics capability does not establish timed animation playback"
-      return notTestedResult(note, { declared: ctx.capabilities.kittyGraphics === true })
+      return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
+        declared: ctx.capabilities.kittyGraphics === true,
+      })
     },
     () => {
       const note = "No timed frame playback or pixel readback for Kitty animation"
@@ -2392,7 +2395,9 @@ export const extensionsProbes: ProbeDefinition[] = [
     "extensions.kitty-graphics.unicode-placeholders",
     (ctx) => {
       const note = "Declared Kitty graphics capability does not establish Unicode placeholder rendering"
-      return notTestedResult(note, { declared: ctx.capabilities.kittyGraphics === true })
+      return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
+        declared: ctx.capabilities.kittyGraphics === true,
+      })
     },
     () => {
       const note = "No pixel and placeholder-cell readback for Kitty Unicode placeholders"
@@ -2410,7 +2415,9 @@ export const extensionsProbes: ProbeDefinition[] = [
       "extensions.sixel",
       (ctx) => {
         const note = "Declared Sixel capability does not establish rendered pixels"
-        return notTestedResult(note, { declared: ctx.capabilities.sixel === true })
+        return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
+          declared: ctx.capabilities.sixel === true,
+        })
       },
       async (ctx) => {
         // Sixel paints outside the cell grid. On an arm that reads cells there is nothing to
@@ -2514,10 +2521,11 @@ export const extensionsProbes: ProbeDefinition[] = [
           const adapter = identity
             ? `${identity.kind === "js" ? identity.resolvedPath : identity.loadedBinary.path} at Termless ${identity.termlessRevision}`
             : "Adapter (runtime identity unavailable)"
-          return notTestedResult(
-            `${adapter} exposes no OSC 8 URI observer (getHyperlinkAt); link metadata unobservable`,
-            { chars: cells.map((cell) => cell.char), links },
-          )
+          const note = `${adapter} exposes no OSC 8 URI observer (getHyperlinkAt); link metadata unobservable`
+          return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
+            chars: cells.map((cell) => cell.char),
+            links,
+          })
         }
         if (!charsMatch) {
           return {
@@ -2618,7 +2626,9 @@ export const extensionsProbes: ProbeDefinition[] = [
     "extensions.semantic-prompts",
     (ctx) => {
       const note = "Declared semantic-prompt capability does not establish shell prompt integration"
-      return notTestedResult(note, { declared: ctx.capabilities.semanticPrompts === true })
+      return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
+        declared: ctx.capabilities.semanticPrompts === true,
+      })
     },
     () => {
       const note = "No shell prompt integration metadata or behavior readback for OSC 133"
@@ -2719,7 +2729,9 @@ export const extensionsProbes: ProbeDefinition[] = [
     "extensions.osc7-cwd",
     (ctx) => {
       const note = "Declared OSC 7 capability does not establish working-directory metadata delivery"
-      return notTestedResult(note, { declared: ctx.capabilities.extensions.has("osc7") })
+      return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
+        declared: ctx.capabilities.extensions.has("osc7"),
+      })
     },
     () => {
       const note = "No working-directory metadata readback for OSC 7"
@@ -2736,7 +2748,9 @@ export const extensionsProbes: ProbeDefinition[] = [
     "extensions.osc-633-vscode",
     (ctx) => {
       const note = "Declared semantic-prompt capability does not establish VS Code OSC 633 shell integration"
-      return notTestedResult(note, { declared: ctx.capabilities.semanticPrompts === true })
+      return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
+        declared: ctx.capabilities.semanticPrompts === true,
+      })
     },
     () => {
       const note = "No VS Code shell integration metadata or behavior readback for OSC 633"
@@ -2876,7 +2890,9 @@ export const extensionsProbes: ProbeDefinition[] = [
     "extensions.notifications",
     (ctx) => {
       const note = "Declared OSC 9 capability does not establish desktop notification delivery"
-      return notTestedResult(note, { declared: ctx.capabilities.extensions.has("osc9") })
+      return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
+        declared: ctx.capabilities.extensions.has("osc9"),
+      })
     },
     () => {
       const note = "No desktop notification delivery readback for OSC 9"
@@ -2894,7 +2910,9 @@ export const extensionsProbes: ProbeDefinition[] = [
       "extensions.iterm2-images",
       (ctx) => {
         const note = "Declared iTerm2 image capability does not establish rendered image pixels"
-        return notTestedResult(note, { declared: ctx.capabilities.extensions.has("iterm2Images") })
+        return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
+          declared: ctx.capabilities.extensions.has("iterm2Images"),
+        })
       },
       async (ctx) => {
         if (ctx.capture) {

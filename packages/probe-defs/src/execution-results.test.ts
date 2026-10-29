@@ -5,6 +5,7 @@
  * @testonly none
  */
 import { expect, it } from "vitest"
+import { ALL_PROBES, resolveProbeIds } from "./index.ts"
 import {
   sgrCaptureFrames,
   recordExecutedProbe,
@@ -35,6 +36,20 @@ import type {
   TermProbeSource,
 } from "./types.ts"
 const attempt = { scope: "probe" as const, startedAt: "2026-10-21T05:00:00.000Z" }
+
+// CTO consolidation contract: the registry owns unknown/duplicate IDs and catalogue ordering.
+// Existing collector tests prove dispatch; they cannot pin this shared typed boundary.
+it("resolves explicit probe IDs once in catalogue order with typed invalid and empty outcomes", () => {
+  const first = ALL_PROBES[0]!
+  const second = ALL_PROBES[1]!
+  expect(resolveProbeIds([second.id, first.id])).toEqual({ result: "resolved", probes: [first, second] })
+  expect(resolveProbeIds([])).toEqual({ result: "empty", probes: [] })
+  expect(resolveProbeIds([first.id, "unknown", first.id, "unknown"])).toEqual({
+    result: "invalid",
+    unknownIds: ["unknown"],
+    duplicateIds: [first.id, "unknown"],
+  })
+})
 
 // AC3: callbacks alone cannot preserve an empty/pre-start attempt or distinguish it from legacy absence.
 it.each([

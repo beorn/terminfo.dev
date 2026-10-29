@@ -8,6 +8,7 @@
 
 import {
   ALL_PROBES as PROBE_DEFS,
+  resolveProbeIds,
   recordExecutedProbe,
   type ProbeResult,
   type RunDraft,
@@ -168,16 +169,15 @@ export interface GeometryCorroboration {
 
 function selectAppProbes(ids?: string[]): { expected: ProbeDefinition[]; selected: ProbeDefinition[] } {
   const expected = PROBE_DEFS.filter((probe) => probe.term !== null)
-  const requested = ids
-    ? ids.map((id) => {
-        const probe = expected.find((item) => item.id === id)
-        if (!probe) throw new Error(`Unknown or inapplicable app probe ${id}`)
-        return probe
-      })
-    : expected
-  if (new Set(requested.map((probe) => probe.id)).size !== requested.length) {
+  const resolved = resolveProbeIds(ids ?? expected.map((probe) => probe.id))
+  if (resolved.result === "invalid") {
+    if (resolved.unknownIds.length) throw new Error(`Unknown or inapplicable app probe ${resolved.unknownIds[0]}`)
     throw new Error("Duplicate probe ID in app batch")
   }
+  const inapplicable = resolved.probes.find((probe) => probe.term === null)
+  if (inapplicable) throw new Error(`Unknown or inapplicable app probe ${inapplicable.id}`)
+  // Preserve the caller's schedule; the shared registry resolves definitions in catalogue order.
+  const requested = ids ? resolved.probes.sort((a, b) => ids.indexOf(a.id) - ids.indexOf(b.id)) : resolved.probes
   return {
     expected,
     selected: [

@@ -1,0 +1,122 @@
+{
+  "schemaVersion": 4,
+  "source": {
+    "kind": "live"
+  },
+  "runId": "4cd4be36-5cfb-4404-b0b6-ced85a7e4958",
+  "suiteId": "15334db1159f",
+  "probeHash": "15334db1159f",
+  "sourceRevision": "ed1b5fa831b3a6571a6a80eb6bb2f6b596333efb",
+  "intendedSubject": {
+    "kind": "lib",
+    "id": "wezterm",
+    "os": "linux"
+  },
+  "subject": {
+    "kind": "lib",
+    "id": "wezterm",
+    "version": "0.1.0-fork.5",
+    "os": "linux",
+    "osVersion": null,
+    "outerTerminal": null,
+    "mux": null,
+    "config": "80x24 default Termless backend",
+    "permissions": null
+  },
+  "identity": "unverified",
+  "runtimeIdentity": {
+    "kind": "native",
+    "engineVersion": "0.1.0-fork.5",
+    "adapterVersion": "0.10.2",
+    "termlessRevision": "5a369cc691497c4c6be620401dc104d3f62ddd36",
+    "loadedBinary": {
+      "path": "vendor/termless/packages/wezterm/termless-wezterm.node",
+      "sha256": "84da518e3f298a0ed75f186db6e39d87e99b8f0c8508dd7252ec0cafee77fe12"
+    },
+    "provenance": {
+      "sha256": "84da518e3f298a0ed75f186db6e39d87e99b8f0c8508dd7252ec0cafee77fe12",
+      "sourceCommit": "a552d932a1bff11f50aa80568aad08f424d409e6",
+      "buildHash": "0a7c113f3c71f7868135ef79e4b7b09dd382fea14b68010ac86a612d5f9ed191",
+      "toolchain": "rustc 1.94.0 (4a4ef493e 2026-03-02) (built from a source tarball); cargo 1.94.0 (85eff7c80 2026-01-15)",
+      "lockSha256": "8eaeab733cced8d47feb223d773d5ae158b2e6af8c994f993d4071d9ba3231d4"
+    }
+  },
+  "measuredAt": "2026-10-29T06:18:51.400Z",
+  "origin": {
+    "kind": "collector"
+  },
+  "results": [
+    {
+      "featureId": "extensions.osc52-clipboard",
+      "attempt": {
+        "scope": "probe",
+        "startedAt": "2026-10-29T06:18:51.234Z"
+      },
+      "tests": [
+        {
+          "id": "criterion",
+          "status": "test-failure",
+          "attempt": {
+            "scope": "probe",
+            "startedAt": "2026-10-29T06:18:51.234Z"
+          },
+          "assertionRefs": [],
+          "reason": "headless wezterm probe extensions.osc52-clipboard: headless collector: extensions.osc52-clipboard host recipe: missing cause for captured empty target response"
+        }
+      ],
+      "reason": "headless wezterm probe extensions.osc52-clipboard: headless collector: extensions.osc52-clipboard host recipe: missing cause for captured empty target response",
+      "status": "test-failure"
+    },
+    {
+      "featureId": "extensions.osc52-read",
+      "attempt": {
+        "scope": "probe",
+        "startedAt": "2026-10-29T06:18:51.293Z"
+      },
+      "tests": [
+        {
+          "id": "criterion",
+          "status": "test-failure",
+          "attempt": {
+            "scope": "probe",
+            "startedAt": "2026-10-29T06:18:51.293Z"
+          },
+          "assertionRefs": [],
+          "reason": "headless wezterm probe extensions.osc52-read: headless collector: extensions.osc52-read host recipe: missing cause for captured empty target response"
+        }
+      ],
+      "reason": "headless wezterm probe extensions.osc52-read: headless collector: extensions.osc52-read host recipe: missing cause for captured empty target response",
+      "status": "test-failure"
+    },
+    {
+      "featureId": "extensions.osc52-write",
+      "attempt": {
+        "scope": "probe",
+        "startedAt": "2026-10-29T06:18:51.265Z"
+      },
+      "tests": [
+        {
+          "id": "criterion",
+          "status": "test-failure",
+          "attempt": {
+            "scope": "probe",
+            "startedAt": "2026-10-29T06:18:51.265Z"
+          },
+          "assertionRefs": [],
+          "reason": "headless wezterm probe extensions.osc52-write: headless collector: extensions.osc52-write host recipe: missing cause for captured empty target response"
+        }
+      ],
+      "reason": "headless wezterm probe extensions.osc52-write: headless collector: extensions.osc52-write host recipe: missing cause for captured empty target response",
+      "status": "test-failure"
+    }
+  ],
+  "assertions": [],
+  "screenshotRefs": [],
+  "rawReplies": {
+    "collector.collectionAttempt": "{\"startedAt\":\"2026-10-29T06:18:37.977Z\",\"ids\":[\"extensions.osc52-clipboard\",\"extensions.osc52-read\",\"extensions.osc52-write\"],\"hostInputs\":{\"foreground-rgb\":\"not-supplied\",\"background-rgb\":\"not-supplied\",\"cursor-rgb\":\"not-supplied\",\"palette-entry-rgb\":\"not-supplied\",\"pixel-geometry\":\"not-supplied\",\"clipboard-read-permission\":\"not-supplied\"}}",
+    "collector.replyPath": "{\"backend\":\"wezterm\",\"runtimeIdentity\":{\"kind\":\"native\",\"engineVersion\":\"0.1.0-fork.5\",\"adapterVersion\":\"0.10.2\",\"termlessRevision\":\"5a369cc691497c4c6be620401dc104d3f62ddd36\",\"loadedBinary\":{\"path\":\"vendor/termless/packages/wezterm/termless-wezterm.node\",\"sha256\":\"84da518e3f298a0ed75f186db6e39d87e99b8f0c8508dd7252ec0cafee77fe12\"},\"provenance\":{\"sha256\":\"84da518e3f298a0ed75f186db6e39d87e99b8f0c8508dd7252ec0cafee77fe12\",\"sourceCommit\":\"a552d932a1bff11f50aa80568aad08f424d409e6\",\"buildHash\":\"0a7c113f3c71f7868135ef79e4b7b09dd382fea14b68010ac86a612d5f9ed191\",\"toolchain\":\"rustc 1.94.0 (4a4ef493e 2026-03-02) (built from a source tarball); cargo 1.94.0 (85eff7c80 2026-01-15)\",\"lockSha256\":\"8eaeab733cced8d47feb223d773d5ae158b2e6af8c994f993d4071d9ba3231d4\"}},\"decisions\":{\"extensions.osc52-clipboard\":{\"member\":true,\"reason\":\"wezterm declares complete reply delivery bound to its loaded source and engine\",\"runtimeIdentity\":{\"kind\":\"native\",\"engineVersion\":\"0.1.0-fork.5\",\"adapterVersion\":\"0.10.2\",\"termlessRevision\":\"5a369cc691497c4c6be620401dc104d3f62ddd36\",\"loadedBinary\":{\"path\":\"vendor/termless/packages/wezterm/termless-wezterm.node\",\"sha256\":\"84da518e3f298a0ed75f186db6e39d87e99b8f0c8508dd7252ec0cafee77fe12\"},\"provenance\":{\"sha256\":\"84da518e3f298a0ed75f186db6e39d87e99b8f0c8508dd7252ec0cafee77fe12\",\"sourceCommit\":\"a552d932a1bff11f50aa80568aad08f424d409e6\",\"buildHash\":\"0a7c113f3c71f7868135ef79e4b7b09dd382fea14b68010ac86a612d5f9ed191\",\"toolchain\":\"rustc 1.94.0 (4a4ef493e 2026-03-02) (built from a source tarball); cargo 1.94.0 (85eff7c80 2026-01-15)\",\"lockSha256\":\"8eaeab733cced8d47feb223d773d5ae158b2e6af8c994f993d4071d9ba3231d4\"}},\"hostRecipes\":[{\"recipe\":\"clipboard-load\",\"query\":\"\\u001b]52;c;?\\u0007\",\"missing\":[\"clipboard-read-permission\"]}]},\"extensions.osc52-write\":{\"member\":true,\"reason\":\"wezterm declares complete reply delivery bound to its loaded source and engine\",\"runtimeIdentity\":{\"kind\":\"native\",\"engineVersion\":\"0.1.0-fork.5\",\"adapterVersion\":\"0.10.2\",\"termlessRevision\":\"5a369cc691497c4c6be620401dc104d3f62ddd36\",\"loadedBinary\":{\"path\":\"vendor/termless/packages/wezterm/termless-wezterm.node\",\"sha256\":\"84da518e3f298a0ed75f186db6e39d87e99b8f0c8508dd7252ec0cafee77fe12\"},\"provenance\":{\"sha256\":\"84da518e3f298a0ed75f186db6e39d87e99b8f0c8508dd7252ec0cafee77fe12\",\"sourceCommit\":\"a552d932a1bff11f50aa80568aad08f424d409e6\",\"buildHash\":\"0a7c113f3c71f7868135ef79e4b7b09dd382fea14b68010ac86a612d5f9ed191\",\"toolchain\":\"rustc 1.94.0 (4a4ef493e 2026-03-02) (built from a source tarball); cargo 1.94.0 (85eff7c80 2026-01-15)\",\"lockSha256\":\"8eaeab733cced8d47feb223d773d5ae158b2e6af8c994f993d4071d9ba3231d4\"}},\"hostRecipes\":[{\"recipe\":\"clipboard-load\",\"query\":\"\\u001b]52;c;?\\u0007\",\"missing\":[\"clipboard-read-permission\"]}]},\"extensions.osc52-read\":{\"member\":true,\"reason\":\"wezterm declares complete reply delivery bound to its loaded source and engine\",\"runtimeIdentity\":{\"kind\":\"native\",\"engineVersion\":\"0.1.0-fork.5\",\"adapterVersion\":\"0.10.2\",\"termlessRevision\":\"5a369cc691497c4c6be620401dc104d3f62ddd36\",\"loadedBinary\":{\"path\":\"vendor/termless/packages/wezterm/termless-wezterm.node\",\"sha256\":\"84da518e3f298a0ed75f186db6e39d87e99b8f0c8508dd7252ec0cafee77fe12\"},\"provenance\":{\"sha256\":\"84da518e3f298a0ed75f186db6e39d87e99b8f0c8508dd7252ec0cafee77fe12\",\"sourceCommit\":\"a552d932a1bff11f50aa80568aad08f424d409e6\",\"buildHash\":\"0a7c113f3c71f7868135ef79e4b7b09dd382fea14b68010ac86a612d5f9ed191\",\"toolchain\":\"rustc 1.94.0 (4a4ef493e 2026-03-02) (built from a source tarball); cargo 1.94.0 (85eff7c80 2026-01-15)\",\"lockSha256\":\"8eaeab733cced8d47feb223d773d5ae158b2e6af8c994f993d4071d9ba3231d4\"}},\"hostRecipes\":[{\"recipe\":\"clipboard-load\",\"query\":\"\\u001b]52;c;?\\u0007\",\"missing\":[\"clipboard-read-permission\"]}]}},\"declaration\":{\"boundary\":\"feed-and-getCursor\",\"adapterSources\":[{\"path\":\"packages/wezterm/src/index.ts\",\"blobOid\":\"512606c5270ffd0cff55c1b70f5b3eda18a92df0\"},{\"path\":\"packages/wezterm/src/backend.ts\",\"blobOid\":\"9f9af63f2bcc439be7f809bdb7d60643ed1fbe4b\"},{\"path\":\"packages/wezterm/native/src/lib.rs\",\"blobOid\":\"59dc70811d17b3cfcdede9d33ab8edf86bbf05e2\"},{\"path\":\"src/load-native.ts\",\"blobOid\":\"34e142550085450ab02138184626716ad0d6b546\"}],\"engine\":{\"kind\":\"native\",\"sha256\":\"84da518e3f298a0ed75f186db6e39d87e99b8f0c8508dd7252ec0cafee77fe12\"}}}",
+    "collector.hostRecipes.extensions.osc52-clipboard": "{\"runId\":\"4cd4be36-5cfb-4404-b0b6-ced85a7e4958\",\"captures\":[{\"query\":\"\\u001b]52;c;?\\u0007\",\"response\":\"\",\"error\":null}],\"causes\":[]}",
+    "collector.hostRecipes.extensions.osc52-write": "{\"runId\":\"4cd4be36-5cfb-4404-b0b6-ced85a7e4958\",\"captures\":[{\"query\":\"\\u001b]52;c;?\\u0007\",\"response\":\"\",\"error\":null}],\"causes\":[]}",
+    "collector.hostRecipes.extensions.osc52-read": "{\"runId\":\"4cd4be36-5cfb-4404-b0b6-ced85a7e4958\",\"captures\":[{\"query\":\"\\u001b]52;c;?\\u0007\",\"response\":\"\",\"error\":null},{\"query\":\"\\u001b[c\",\"response\":\"\\u001b[?65;4;6;18;22;52c\",\"error\":null}],\"causes\":[]}"
+  }
+}

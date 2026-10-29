@@ -6,8 +6,10 @@ import {
   type HyperlinkExtension,
   type ReplyDeliveryExtension,
   type TerminalBackend,
+  type WarningExtension,
 } from "@termless/core"
 import {
+  HARNESS_INCOMPLETE_TEST,
   readHyperlinkMetadata,
   readSentinelReply,
   recordExecutedProbe,
@@ -56,12 +58,40 @@ interface HostQueryCapture {
   query: string
   response: string
   error: string | null
+  /** A-prime (@cto 4ac8b275): zero bytes beside a callback this harness did not reproduce. */
+  cause?: { kind: "harness-unreproduced"; callbacks: string[] }
+}
+
+/** The warning code an adapter reports for an engine callback it does not reproduce (termless kitty). */
+const UNREPRODUCED_CALLBACK = "UNREPRODUCED_CALLBACK"
+
+/** Per probe: each capture that reached an unreproduced callback, and whether any of them returned zero bytes. */
+interface UnreproducedRecord {
+  captures: { query: string; callbacks: string[] }[]
+  silent: boolean
+}
+
+/** Drain the adapter's warnings, keeping only the unreproduced callbacks, classified by code. */
+function drainUnreproduced(backend: TerminalBackend): string[] {
+  if (!hasExtension<WarningExtension>(backend, "warnings")) return []
+  const callbacks = backend
+    .getWarnings()
+    .filter((warning) => warning.code === UNREPRODUCED_CALLBACK)
+    .map((warning) => warning.message)
+  backend.clearWarnings()
+  return callbacks
 }
 
 /** Capture one query, including adapters that parse pending input on state reads. */
-export function feedCapture(backend: TerminalBackend, text: string, captures: HostQueryCapture[] | undefined): string {
+export function feedCapture(
+  backend: TerminalBackend,
+  text: string,
+  captures: HostQueryCapture[] | undefined,
+  unreproduced?: UnreproducedRecord,
+): string {
   let response = ""
   let error: string | null = null
+  let callbacks: string[] = []
   const previous = backend.onResponse
   try {
     // Pending input belongs to the previous listener, not this query.
@@ -71,12 +101,25 @@ export function feedCapture(backend: TerminalBackend, text: string, captures: Ho
     }
     backend.feed(encoder.encode(text))
     backend.getCursor()
+    if (unreproduced) {
+      callbacks = drainUnreproduced(backend)
+      if (callbacks.length) {
+        unreproduced.captures.push({ query: text, callbacks })
+        if (!response) unreproduced.silent = true
+      }
+    }
   } catch (cause) {
     error = errorMessage(cause)
     throw cause
   } finally {
     backend.onResponse = previous
-    captures?.push({ query: text, response, error })
+    const silent = callbacks.length > 0 && response === "" && error === null
+    captures?.push({
+      query: text,
+      response,
+      error,
+      ...(silent && { cause: { kind: "harness-unreproduced" as const, callbacks } }),
+    })
   }
   return response
 }
@@ -97,10 +140,11 @@ function sentinelOutcome(
   pattern: RegExp,
   proven: ProvenReplyPath,
   captures: HostQueryCapture[] | undefined,
+  unreproduced: UnreproducedRecord | undefined,
 ): TerminalQueryOutcome {
   const writeAt = Date.now()
-  const reply = feedCapture(backend, sequence, captures)
-  const answer = feedCapture(backend, DA1_QUERY, captures)
+  const reply = feedCapture(backend, sequence, captures, unreproduced)
+  const answer = feedCapture(backend, DA1_QUERY, captures, unreproduced)
   const raw = reply + answer
   const captured = { raw, rawBase64: Buffer.from(raw).toString("base64") }
   const read = readSentinelReply(raw, pattern)
@@ -149,6 +193,7 @@ export function createLibProbeSource(
   proven: ProvenReplyPath | undefined,
   runtimeIdentity: HeadlessRuntimeIdentity | undefined,
   captures: HostQueryCapture[] | undefined,
+  unreproduced?: UnreproducedRecord,
 ): LibProbeSource {
   let cols: number
   try {
@@ -173,11 +218,11 @@ export function createLibProbeSource(
       backend.feed(encoder.encode(text))
     },
     feedCapture(text) {
-      return feedCapture(backend, text, captures)
+      return feedCapture(backend, text, captures, unreproduced)
     },
     ...(proven && {
       queryWithSentinelOutcome(sequence: string, pattern: RegExp) {
-        return sentinelOutcome(backend, sequence, pattern, proven, captures)
+        return sentinelOutcome(backend, sequence, pattern, proven, captures, unreproduced)
       },
     }),
     getCell(row, col) {
@@ -265,6 +310,29 @@ function refusedClaimEvidence(result: ProbeCallbackResult): string {
 function withRefusedClaim(message: string, result: ProbeCallbackResult): string {
   const refused = refusedClaimEvidence(result)
   return refused ? `${message}; refused ${refused}` : message
+}
+
+/** A silent capture beside an unreproduced callback grades the harness, keeping the measured response beside it. */
+function harnessIncompleteResult(
+  backendName: string,
+  record: UnreproducedRecord,
+  measured: ProbeCallbackResult,
+): ProbeCallbackResult {
+  const callbacks = [...new Set(record.captures.flatMap((capture) => capture.callbacks))].join(", ")
+  return {
+    pass: false,
+    response: JSON.stringify({
+      unreproduced: { backend: backendName, captures: record.captures },
+      measuredResponse: measured.response ?? null,
+    }),
+    tests: [
+      {
+        id: HARNESS_INCOMPLETE_TEST,
+        status: "test-failure",
+        reason: `Harness incomplete: ${backendName} did not reproduce ${callbacks}; silence is not evidence`,
+      },
+    ],
+  }
 }
 
 /** A callback conclusion without its raw state cannot become a support claim. */
@@ -504,7 +572,15 @@ export async function collectBatch(
             },
           }
         : undefined
-      const ctx = createLibProbeSource(backend, proven, initializedRuntime?.identity, hostRecord?.captures)
+      const unreproduced: UnreproducedRecord = { captures: [], silent: false }
+      drainUnreproduced(backend) // Nothing reported before this probe's first capture belongs to it.
+      const ctx = createLibProbeSource(
+        backend,
+        proven,
+        initializedRuntime?.identity,
+        hostRecord?.captures,
+        unreproduced,
+      )
       const callback = probe.lib(ctx)
       if (hostRecord) {
         const runId = hostRecord.runId
@@ -522,6 +598,17 @@ export async function collectBatch(
             hostRecord.causes.push({
               recipe: entry.recipe,
               cause: { kind: cause.kind, missing: cause.missing, runId, eventRef: recordRef },
+            })
+          } else if (cause.kind === "unimplemented") {
+            hostRecord.causes.push({
+              recipe: entry.recipe,
+              cause: {
+                kind: cause.kind,
+                missing: cause.missing,
+                runId,
+                artifactSha256: cause.artifactSha256,
+                citation: { sourceLocation: cause.sourceCitation },
+              },
             })
           } else {
             const inputs = batch.rawReplies["collector.collectionAttempt"]
@@ -568,9 +655,10 @@ export async function collectBatch(
           initializedRuntime?.identity,
         )
       }
-      callbackTests = callback.tests
-      criterionBranch = callback.criterionBranch
-      recordResult(batch, probe, callback)
+      const graded = unreproduced.silent ? harnessIncompleteResult(backendName, unreproduced, callback) : callback
+      callbackTests = graded.tests
+      criterionBranch = graded.criterionBranch
+      recordResult(batch, probe, graded)
     } catch (error) {
       const message = `headless ${backendName} probe ${probe.id}: ${errorMessage(error)}`
 
