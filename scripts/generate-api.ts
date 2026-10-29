@@ -30,7 +30,7 @@ import { compatibilitySubjects, loadCurrentResults } from "../docs/data/current-
 import { PROBE_STATUSES } from "@terminfo/probe-defs"
 import { parseJsonStrict } from "@terminfo/run-parser"
 import { loadFeatures } from "@terminfo/catalog"
-import { readVerifiedArtifact } from "../docs/data/selected-results.ts"
+import { originalRunFor, readVerifiedArtifact } from "../docs/data/selected-results.ts"
 import { publicResults, type CellEvidence, type HistoricalCellEvidence } from "../docs/data/public-results.ts"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -294,8 +294,8 @@ export function generateApi(
     }
   }
 
-  // Only current sealed runs supply current results.
-  type CurrentVersion = (typeof published.projection.current)[string]
+  // Original immutable run documents remain separate from composed context summaries.
+  type CurrentVersion = (typeof published.projection.versions)[string][number]
   const currentRef = (version: CurrentVersion) => {
     const url = `/api/v3/runs/${version.sha256}.json`
     const bytes = Buffer.from(JSON.stringify(version) + "\n")
@@ -310,14 +310,14 @@ export function generateApi(
   const currentData = {
     version: 3,
     generated:
-      Object.values(projection.current)
-        .map((run) => run.measuredAt)
+      Object.values(published.projection.contexts)
+        .flatMap((context) => Object.values(context.sources).map((source) => source.measuredAt))
         .sort()
         .at(-1) ?? "",
     methodology: {
-      revision: "2026-10-20-sealed-five-statuses",
+      revision: "2026-10-29-composed-contexts",
       statuses: PROBE_STATUSES,
-      score: "Supported / all frozen catalog positions; no exclusions.",
+      score: "Supported / graded catalog positions; environment rows remain visible and ungraded.",
       completion:
         "A context is complete only with zero TEST TODO and TEST FAILURE. Absent required contexts remain incomplete.",
       historical: { v1: "/api/v1/data.json" },
@@ -325,12 +325,23 @@ export function generateApi(
     },
     features,
     catalogIds: [...allFeatureIds].sort(),
-    currentRunCount: published.projection.currentRunCount,
-    ...(published.projection.currentRunCount === 0 && {
+    contextCount: published.projection.contextCount,
+    ...(published.projection.contextCount === 0 && {
       message: "No current sealed runs; historical results remain available.",
     }),
-    current: Object.fromEntries(
-      Object.entries(published.projection.current).map(([key, run]) => [key, currentRef(run)]),
+    contexts: Object.fromEntries(
+      Object.entries(published.projection.contexts).map(([key, context]) => [
+        key,
+        {
+          ...context,
+          sources: Object.fromEntries(
+            Object.keys(context.sources).map((runId) => {
+              const original = originalRunFor(published.projection, key, runId)
+              return [runId, currentRef(original)]
+            }),
+          ),
+        },
+      ]),
     ),
     versions: currentGroups(published.projection.versions),
     history: currentGroups(published.projection.history),
@@ -349,11 +360,11 @@ export function generateApi(
 if (import.meta.url === `file://${process.argv[1]}`) {
   const { dataPath } = generateApi()
   const data = JSON.parse(readFileSync(dataPath, "utf-8")) as {
-    current: Record<string, unknown>
+    contexts: Record<string, unknown>
     features: Record<string, unknown>
   }
-  const runCount = Object.keys(data.current).length
+  const runCount = Object.keys(data.contexts).length
   const featureCount = Object.keys(data.features).length
   console.log(`Generated ${dataPath}`)
-  console.log(`  ${featureCount} features, ${runCount} current runs`)
+  console.log(`  ${featureCount} features, ${runCount} current contexts`)
 }

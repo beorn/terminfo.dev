@@ -19,6 +19,7 @@ import { parseJsonStrict } from "@terminfo/run-parser"
 import type { ProbeResult, ProbeStatus } from "@terminfo/probe-defs"
 import { aggregateCurrentResults, type CurrentAggregate } from "../docs/data/release-scope.ts"
 import { compatibilitySubjects, loadCurrentResults } from "../docs/data/current-results.ts"
+import { originalRunFor } from "../docs/data/selected-results.ts"
 import { loadCategories, type CategoryMeta } from "../docs/data/categories.ts"
 import {
   loadFeatures as loadFeatureCatalog,
@@ -80,6 +81,8 @@ interface BaselineMeta {
   forTerminalAuthors: string
 }
 
+type AnalysisSource = { runId: string; sha256: string; measuredAt: string; suiteId: string; version: string }
+
 interface TerminalStats {
   name: string
   slug: string
@@ -92,19 +95,18 @@ interface TerminalStats {
   uniquelySupported: string[]
   uniquelyMissing: string[]
   missingFeatures: string[]
-  version: string
+  versions: string[]
   type: "term" | "lib" | "mux"
-  runSha256: string
-  measuredAt: string
+  sources: AnalysisSource[]
 }
 
-interface AnalysisEntry {
+export interface AnalysisEntry {
   analysis: string
-  date: string
+  date?: string
   probeCount?: number
   changes: string | null
-  runSha256?: string
-  measuredAt?: string
+  sources?: AnalysisSource[]
+  versions?: string[]
   score?: { supported: number; all: number }
   counts?: Record<ProbeStatus, number>
   complete?: boolean
@@ -186,28 +188,40 @@ interface SelectedAnalysisInput {
   aggregate: CurrentAggregate
   sourceId: string
   results: Record<string, ProbeStatus>
-  version: string
+  versions: string[]
   type: "term" | "lib" | "mux"
-  runSha256: string
-  measuredAt: string
+  sources: AnalysisSource[]
 }
 
 function buildTerminalResultMap(): Map<string, SelectedAnalysisInput> {
   const { projection } = loadCurrentResults(contentDir)
   const selected = compatibilitySubjects(projection, contentDir)
   const resultMap = new Map<string, SelectedAnalysisInput>()
-  for (const [key, { selected: version }] of selected) {
+  for (const [key, { contextKey, selected: version }] of selected) {
+    if (!version.subject) throw new Error(`Analysis context ${key} has no physical subject`)
     if (resultMap.has(key)) throw new Error(`Ambiguous analysis terminal ${key}: multiple selected targets`)
+    const recordedResults = Object.values(version.cells).map((cell) => cell.result)
+    const sources = version.contributingRunIds.map((runId): AnalysisSource => {
+      const original = originalRunFor(projection, contextKey, runId)
+      return {
+        runId,
+        sha256: original.sha256,
+        measuredAt: original.measuredAt,
+        suiteId: original.suiteId,
+        version: original.subject.version,
+      }
+    })
     resultMap.set(key, {
       sourceId: version.subject.id,
-      results: Object.fromEntries(version.results.map((result) => [result.featureId, result.status])),
-      recordedResults: version.results,
+      results: Object.fromEntries(
+        version.catalogIds.map((id) => [id, version.cells[id]?.result.status ?? "test-todo"]),
+      ),
+      recordedResults,
       catalogIds: version.catalogIds,
-      aggregate: aggregateCurrentResults(version.results, version.catalogIds),
-      version: version.subject.version,
+      aggregate: aggregateCurrentResults(recordedResults, version.catalogIds),
+      versions: [...new Set(sources.map((source) => source.version))],
       type: version.subject.kind,
-      runSha256: version.sha256,
-      measuredAt: version.measuredAt,
+      sources,
     })
   }
   return resultMap
@@ -339,10 +353,9 @@ function computeTerminalStats(
     uniquelySupported,
     uniquelyMissing,
     missingFeatures,
-    version: data.version,
+    versions: data.versions,
     type: data.type,
-    runSha256: data.runSha256,
-    measuredAt: data.measuredAt,
+    sources: data.sources,
   }
 }
 
@@ -441,11 +454,10 @@ function generateTerminalAnalysis(
 
   return {
     analysis: `<p>${parts.join(". ")}.</p>`,
-    date: stats.measuredAt.slice(0, 10),
     probeCount: stats.total,
     changes: null,
-    runSha256: stats.runSha256,
-    measuredAt: stats.measuredAt,
+    sources: stats.sources,
+    versions: stats.versions,
     score: { supported: stats.yes, all: stats.total },
   }
 }

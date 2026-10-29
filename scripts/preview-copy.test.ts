@@ -15,7 +15,7 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..")
 
 /**
  * The page templates that render. `docs/api.md` and `docs/release/full-273.md` quote the v3 `message`
- * string on purpose — they document the API's currentRunCount-0 response, not page copy.
+ * string on purpose — they document the API's contextCount-0 response, not page copy.
  */
 const pageTemplates = [
   "docs/index.md",

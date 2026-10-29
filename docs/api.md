@@ -6,22 +6,26 @@ outline: [2, 3]
 
 ## Current results
 
-**`GET /api/v3/data.json`** returns the current five-status contract. Only sealed schema-3 or schema-4 runs appear as current results.
+**`GET /api/v3/data.json`** returns the current five-status contract. Composed contexts retain cells from original sealed schema-3 or schema-4 runs.
 
 [View current data](/api/v3/data.json) · [Frozen v1](/api/v1/data.json)
 
-| Field                    | Meaning                                                                       |
-| ------------------------ | ----------------------------------------------------------------------------- |
-| `version`                | Public API version, `3`                                                       |
-| `generated`              | Latest selected current measurement time, or empty when no current run exists |
-| `features`, `catalogIds` | Catalog metadata; each run also records its own exact frozen `catalogIds`     |
-| `currentRunCount`        | Number of selected current contexts                                           |
-| `current`                | Exact context keys mapped to current run references                           |
-| `versions`, `history`    | Retained sealed schema-3 or schema-4 run references                           |
-| `methodology`            | Status, score, completion and historical endpoint explanations                |
-| `message`                | Explicit no-current explanation when `currentRunCount` is zero                |
+| Field                    | Meaning                                                                        |
+| ------------------------ | ------------------------------------------------------------------------------ |
+| `version`                | Public API version, `3`                                                        |
+| `generated`              | Latest original source measurement time across contexts; empty with no sources |
+| `features`, `catalogIds` | Catalog metadata; each run also records its own exact frozen `catalogIds`      |
+| `contextCount`           | Number of composed contexts                                                    |
+| `contexts`               | Exact context keys mapped to composed context summaries                        |
+| `versions`, `history`    | Retained sealed schema-3 or schema-4 run references                            |
+| `methodology`            | Status, score, completion and historical endpoint explanations                 |
+| `message`                | Explicit no-current explanation when `contextCount` is zero                    |
 
-A run reference includes its subject, source revision, suite, run ID/hash, frozen catalog IDs, `sealedAt`, counts, score, completion, and a verified run-document URL/hash.
+A context includes its physical `subject` (without a version), `catalogIds`, `cells`, `sources`, `contributingRunIds`, `attempts`, counts, score and completion. Its subject may be absent for an unmeasured pre-start attempt. A context has no single run ID, version, suite, run hash or seal.
+
+Each `cells[featureId]` retains its original status, `origin: { runId, resultId }`, `measuredAt`, `suiteId` and `suiteRelation`. Resolve its original receipt as `context.sources[cell.origin.runId]`. Each source retains its own subject version, source revision, suite, run ID/hash, frozen catalog IDs, seal, counts, score, completion, trace receipt and verified run-document URL/hash. `versions` and `history` reference these original immutable run documents; they do not contain composed results.
+
+Each public attempt is flat: `runId`, optional recorded `startedAt` and `noOutputIds`. Private selection, outcome and error objects remain in the canonical private projection. A later attempt without output does not replace an earlier measured cell.
 
 ## Five recorded statuses
 
@@ -48,7 +52,7 @@ Publication still requires every required context on the approved source/suite. 
 
 ## No current sealed runs
 
-An all-history corpus is a valid migration state. The v3 response contains catalog metadata, `currentRunCount: 0`, `current: {}`, and an explicit message:
+An all-history corpus is a valid migration state. The v3 response contains catalog metadata, `contextCount: 0`, `contexts: {}`, and an explicit message:
 
 > No current sealed runs; historical results remain available.
 
@@ -58,16 +62,20 @@ It does not invent a current score or a completed cohort. Historical results rem
 
 ```javascript
 const data = await fetch("https://terminfo.dev/api/v3/data.json").then((r) => r.json())
-if (data.currentRunCount === 0) console.log(data.message)
+if (data.contextCount === 0) console.log(data.message)
 
-for (const [context, reference] of Object.entries(data.current)) {
-  const run = await fetch(new URL(reference.url, "https://terminfo.dev")).then((r) => r.json())
-  const result = run.results.find((result) => result.featureId === "sgr.fg.truecolor")
-  console.log(context, result?.status, run.score, run.complete)
+for (const [contextKey, context] of Object.entries(data.contexts)) {
+  const cell = context.cells["sgr.fg.truecolor"]
+  const source = cell && context.sources[cell.origin.runId]
+  console.log(contextKey, cell?.status, context.score, context.complete)
+  if (source) {
+    const originalRun = await fetch(new URL(source.url, "https://terminfo.dev")).then((r) => r.json())
+    console.log(source.subject.version, source.measuredAt, originalRun.runId)
+  }
 }
 ```
 
-A missing context means there is no selected current run. A feature outside a run's frozen catalog has no result in that run. Neither absence means Unsupported.
+A missing context means there is no selected composed context. A missing cell has no retained result; an original run may also lack a feature outside its frozen catalog. Neither absence means Unsupported.
 
 ## Evidence and publication
 
@@ -79,7 +87,7 @@ Each run's evidence document keys its approved cells under `cells[featureId]` an
 
 Free-form execution reasons and captured diagnostics pass the existing presentation review boundary. A summary without that approval does not expose the private collector note or capture.
 
-A run a page displays carries `trace`: the URL and SHA-256 receipt of its trace document, `/api/v3/traces/<run sha256>.json`. The document names the run's SHA-256, its recorded identity and admission rule, and holds every result without a presentation decision, keyed by feature ID:
+Each contributing original source carries `trace`: the URL and SHA-256 receipt of its trace document, `/api/v3/traces/<run sha256>.json`. The document names the run's SHA-256, its recorded identity and admission rule, and holds every result without a presentation decision, keyed by feature ID:
 
 - the outcome or status, the evidence method and a reason code;
 - the bytes the probe wrote, and each query's sequence and reason;
@@ -102,4 +110,4 @@ The frozen SVG badges remain at their released URLs, stay embeddable at `https:/
 ![Historical terminfo.dev result](https://terminfo.dev/api/v1/badges/ghostty.svg)
 ```
 
-Use v3 run status, score and completion for current comparisons. Historical records cannot discharge the fresh current-source qualification requirement.
+Use v3 composed context status, score and completion for current comparisons. Historical records cannot discharge the fresh current-source qualification requirement.

@@ -319,9 +319,9 @@ describe("release 1 measurement scope", () => {
     const loader = readFileSync(join(root, "docs", "data", "probes.data.ts"), "utf8")
     expect(home).toContain("currentCoverageSentence(bar, displayedSelections[backendName]?.selected.catalogIds)")
     expect(home).toContain("data.releaseShares[backendName]")
-    expect(terminal).toContain("aggregateCurrentResults(selectedRun.value.results, selectedRun.value.catalogIds)")
+    // The composed-context migration removes whole-run results from this page. The
+    // projection/consumer parity suites exercise its aggregate inputs; avoid pinning call syntax.
     expect(terminal).toContain("currentSupportedShare(measuredBar.value)")
-    expect(loader).toContain("aggregateCurrentResults(original.results, original.catalogIds)")
     expect(loader).toContain("releaseShares[key] = currentSupportedShare(bar)")
     for (const source of [home, terminal, loader]) {
       expect(source).not.toContain("releaseVerdicts[")

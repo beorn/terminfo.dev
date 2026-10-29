@@ -7,11 +7,10 @@ import {
   maskRunnerStorePath,
   type SelectedProjection,
   type SelectedVersion,
-  type CurrentSelectedVersion,
   type SelectedAttemptInput,
+  type SelectedContextSummary,
+  statesFor,
 } from "./selected-results.ts"
-import type { ProbeStatus } from "@terminfo/probe-defs"
-import type { CellState } from "./release-scope.ts"
 import { frozenSuiteIdFor } from "./load-release-scope.ts"
 import { candidateFromSelected, pickContextRun } from "./run-selection.ts"
 import { parseJsonStrict, type LoadedRun } from "@terminfo/run-parser"
@@ -26,7 +25,7 @@ export interface DefaultContextReview {
 
 export interface CurrentResult {
   contextKey: string
-  selected: CurrentSelectedVersion
+  selected: SelectedContextSummary
   policy?: DefaultContextReview
 }
 
@@ -242,18 +241,14 @@ export function compatibilitySubjects(projection: SelectedProjection, contentDir
   return compatibilitySubjectsFor(projection, contentDir)
 }
 
-function compatibilitySubjectsFor<Version extends SelectedVersion | CurrentSelectedVersion>(
-  projection: {
-    current: Record<string, Version>
-    table: Readonly<Record<string, Readonly<Record<string, CellState | ProbeStatus>>>>
-  },
-  contentDir: string,
-): Map<string, { contextKey: string; selected: Version; policy?: DefaultContextReview }> {
+function compatibilitySubjectsFor(projection: SelectedProjection, contentDir: string): Map<string, CurrentResult> {
   const policy = loadDefaultContextPolicy(contentDir)
   const catalog = loadCatalogKeys(contentDir)
-  type SubjectResult = { contextKey: string; selected: Version; policy?: DefaultContextReview }
+  type SubjectResult = CurrentResult
   const groups = new Map<string, SubjectResult[]>()
-  for (const [contextKey, selected] of Object.entries(projection.current)) {
+  for (const [contextKey, selected] of Object.entries(projection.contexts)) {
+    if (selected.contributingRunIds.length === 0) continue
+    if (!selected.subject) throw new Error(`Context ${contextKey} has evidence without physical subject facts`)
     const subjectKey = `${selected.subject.kind}:${selected.subject.id}`
     const group = groups.get(subjectKey) ?? []
     group.push({ contextKey, selected })
@@ -265,9 +260,15 @@ function compatibilitySubjectsFor<Version extends SelectedVersion | CurrentSelec
     // The one run-selection rule; this site and the decisive-share reader must not hold two copies.
     const byKey = new Map(group.map((entry) => [entry.contextKey, entry]))
     const picked = pickContextRun(
-      group.map((entry) =>
-        candidateFromSelected(entry.contextKey, entry.selected, selectedStates(projection.table, entry.selected.runId)),
-      ),
+      group.flatMap((entry) => {
+        const candidate = candidateFromSelected(
+          entry.contextKey,
+          entry.selected,
+          statesFor(projection, entry.contextKey),
+          projection,
+        )
+        return candidate ? [candidate] : []
+      }),
       review,
     )
     if (picked === undefined) throw new Error(`No current run for ${subjectKey}`)
@@ -285,18 +286,10 @@ function compatibilitySubjectsFor<Version extends SelectedVersion | CurrentSelec
     // pickContextRun returns one of the candidates it was given, so this lookup cannot miss.
     const chosen = byKey.get(picked.run.key)
     if (!chosen) throw new Error(`Selected run ${picked.run.key} is not among ${subjectKey} current contexts`)
+    if (!chosen.selected.subject) throw new Error(`Selected context ${picked.run.key} has no physical subject`)
     const key = compatibilityKey(chosen.selected.subject.kind, chosen.selected.subject.id, catalog)
     if (bySubject.has(key)) throw new Error(`Ambiguous compatibility key ${key}: multiple catalog targets`)
     bySubject.set(key, { ...chosen, ...(review && { policy: review }) })
   }
   return bySubject
-}
-
-function selectedStates(
-  table: Readonly<Record<string, Readonly<Record<string, CellState | ProbeStatus>>>>,
-  runId: string,
-): Readonly<Record<string, CellState | ProbeStatus>> {
-  const states = table[runId]
-  if (!states) throw new Error(`Selected run ${runId} has no projected result table`)
-  return states
 }

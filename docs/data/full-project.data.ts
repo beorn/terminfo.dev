@@ -12,7 +12,7 @@ import { loadFeatures } from "@terminfo/catalog"
 import { probeHash } from "../../packages/admin/versions.ts"
 import { loadCategories, orderedCategoryIds } from "./categories.ts"
 import { compatibilitySubjects, loadCurrentResults, loadDefaultContextPolicy } from "./current-results.ts"
-import { publicResults, type PublicVersion } from "./public-results.ts"
+import { publicResults, type PublicContextSummary } from "./public-results.ts"
 import { candidateFromSelected, type ContextCandidate } from "./run-selection.ts"
 import { statesFor } from "./selected-results.ts"
 import { fullContextCensus } from "./full-census.ts"
@@ -32,7 +32,7 @@ export interface FullProjectData {
    * The collected context -> its selected run as the site publishes it, so every row can render the
    * established evidence cell and open the run's own evidence document. Nothing is re-derived here.
    */
-  evidenceVersions: Readonly<Record<string, PublicVersion>>
+  evidenceContexts: Readonly<Record<string, PublicContextSummary>>
   contexts: readonly FullContextRow[]
   collected: number
   notCollected: number
@@ -64,9 +64,10 @@ function catalogIdsInDisplayOrder(): string[] {
 export function loadFullProjectData(): FullProjectData {
   const requiredSuiteId = probeHash()
   const projection = loadCurrentResults(contentDir, { releaseSuiteId: requiredSuiteId }).projection
-  const candidates: ContextCandidate[] = Object.entries(projection.current).map(([key, selected]) =>
-    candidateFromSelected(key, selected, statesFor(projection, selected.runId)),
-  )
+  const candidates: ContextCandidate[] = Object.entries(projection.contexts).flatMap(([key, selected]) => {
+    const candidate = candidateFromSelected(key, selected, statesFor(projection, key), projection)
+    return candidate ? [candidate] : []
+  })
   const reviewed = loadDefaultContextPolicy(contentDir)
   const published = publicResults(projection, compatibilitySubjects(projection, contentDir)).projection
   const rows = buildFullProjectRows({
@@ -76,18 +77,18 @@ export function loadFullProjectData(): FullProjectData {
     requiredSuiteId,
     reviewed,
   })
-  const evidenceVersions: Record<string, PublicVersion> = {}
+  const evidenceContexts: Record<string, PublicContextSummary> = {}
   for (const row of rows.contexts) {
     if (!row.collected) continue
-    const version = published.versions[row.run.contextKey]?.find((entry) => entry.runId === row.run.runId)
-    if (!version) {
+    const context = published.contexts[row.selection.contextKey]
+    if (!context) {
       throw new Error(
-        `collected context ${row.context} names run ${row.run.runId}, which the public projection does not carry`,
+        `collected context ${row.context} names ${row.selection.contextKey}, which the public projection does not carry`,
       )
     }
-    evidenceVersions[row.context] = version
+    evidenceContexts[row.context] = context
     for (const observation of row.observations) {
-      observation.reason = version.results.find((result) => result.featureId === observation.id)?.reason ?? null
+      observation.reason = context.cells[observation.id]?.reason ?? null
     }
   }
   return {
@@ -96,7 +97,7 @@ export function loadFullProjectData(): FullProjectData {
     catalogRows: rows.catalogRows,
     gradedRows: rows.gradedRows,
     environmentGroups: rows.environmentGroups,
-    evidenceVersions,
+    evidenceContexts,
     contexts: rows.contexts,
     collected: rows.collected,
     notCollected: rows.notCollected,
