@@ -19,6 +19,27 @@ type NativeHostSourceCitations = Readonly<Partial<Record<Exclude<HostRecipeName,
  * from runtime. A host gains causes only through its own audit here; no host inherits another's citations.
  */
 const NATIVE_HOST_AUDITS: ReadonlyMap<string, NativeHostSourceCitations> = new Map([
+  // Rebuilt at Termless 5afcc676 for owned URI and underlineColor readback (31385); reply and host-input routes unchanged.
+  [
+    "d280c3fd2129f42db0d7154d6e66f5582a67fa1faf1e82ab463b6b8286f126d0",
+    {
+      "clipboard-load": {
+        kind: "source-audited",
+        citation:
+          "alacritty_terminal 0.26.0 Config default clipboard policy OnlyCopy; Termless packages/alacritty/native/src/lib.rs EventProxy::send has no ClipboardLoad handler; this harness supplies no clipboard read permission",
+      },
+    },
+  ],
+  [
+    "0f56a805793d7d829daa617f1323aacff0d73fe868747b0d077c6af315e2aab8",
+    {
+      "clipboard-load": {
+        kind: "unimplemented",
+        citation:
+          "tattoy-wezterm-term 0.1.0-fork.5 terminalstate/performer.rs:788 drops OperatingSystemCommand::QuerySelection; terminal.rs:13-19 Clipboard has only set_contents, so no build of this engine answers an OSC 52 read",
+      },
+    },
+  ],
   [
     // Alacritty: alacritty_terminal 0.26.0 behind the Termless native addon.
     "e6e16113863355b77d0aa3b359bd40c7066fb144e005fbc324fecfa3f4869bea",
