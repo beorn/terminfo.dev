@@ -414,12 +414,21 @@ it.each([false, true])(
         stdout: new Blob([]).stream(),
         stderr: new Blob(["worker diagnostic"]).stream(),
         exited,
-        kill: () => finish(143),
+        kill: () => {
+          killedAt ??= Date.now() - startedAt
+          finish(143)
+        },
       }
     }) as never)
     const ids = ["device.primary-da"]
+    const startedAt = Date.now()
+    let killedAt: number | undefined
     const pending = collectHeadlessRuns(["libvterm"], dir, undefined, ids)
+    // 31693: kitty's full suite needs about 110-125 s at nice 10 under host load; the old 120 s ceiling killed it.
     await vi.advanceTimersByTimeAsync(120_000)
+    expect(killedAt).toBeUndefined()
+    await vi.advanceTimersByTimeAsync(480_000)
+    expect(killedAt).toBe(600_000)
     const collection = await pending
     const draft = retainedDraft(dir)
     expect(collection.failures[0]?.error).toContain("exceeded")
