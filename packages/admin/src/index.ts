@@ -23,7 +23,8 @@
  * ```
  */
 
-import { Command } from "@silvery/commander"
+import { Command, json } from "@silvery/commander"
+import { collectorIds } from "@terminfo/probe-defs"
 import { ensureSourceSuiteEnvironment } from "../versions.ts"
 
 const program = new Command().name("terminfo").description("Terminal feature testing for terminfo.dev")
@@ -60,10 +61,12 @@ probe
   .description("Headless library probes via Termless backends")
   .argument("[selectors...]", "Backend selectors to probe")
   .option("--all", "Probe all backends")
+  .option("--probe-ids <json>", "Exact probe IDs as a JSON array; [] executes none", json)
   .option("-f, --force", "Re-run even if cached")
-  .actionMerged(async (opts: { selectors: string[]; all?: boolean; force?: boolean }) => {
+  .actionMerged(async (opts: { selectors: string[]; all?: boolean; force?: boolean; probeIds?: unknown }) => {
     const { runTermlessProbes } = await import("./termless.ts")
-    await runTermlessProbes(opts.all ? [] : opts.selectors, opts)
+    const probeIds = opts.probeIds === undefined ? undefined : collectorIds(opts.probeIds, "--probe-ids")
+    await runTermlessProbes(opts.all ? [] : opts.selectors, { ...opts, probeIds })
   })
 
 // ── probe server ──

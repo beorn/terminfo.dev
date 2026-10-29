@@ -16,6 +16,10 @@ import {
   type TextQualification,
   finalizeProbeResult,
   type TextQualificationAssessment,
+  type CollectorSelection,
+  type CollectorAttempt,
+  readCollectorSelection,
+  readCollectorAttempt,
 } from "@terminfo/probe-defs"
 import { type LoadedRun, parseSuiteManifest, parseRun, parseJsonStrict } from "@terminfo/run-parser"
 import {
@@ -174,7 +178,45 @@ export interface CurrentSelectedVersion {
   complete: boolean
 }
 
+/** A private view refers to the original result and its own run, never to a synthetic capture. */
+export interface SelectedContextCell {
+  origin: { runId: string; resultId: string }
+  run: LoadedRun
+  result: ProbeResult
+}
+
+/** An initialized draft can retain intent even when no measured subject or result exists. */
+export interface SelectedAttemptInput {
+  contextKey: string
+  runId: string
+  path: string
+  rawReplies: Record<string, string>
+}
+
+export interface SelectedContextAttempt {
+  runId: string
+  path: string
+  selection: CollectorSelection
+  attempt: CollectorAttempt | undefined
+  noOutputIds: string[]
+}
+
+export interface SelectedContextSummary {
+  contextKey: string
+  catalogIds: string[]
+  cells: Record<string, SelectedContextCell>
+  missingIds: string[]
+  contributingRunIds: string[]
+  attempts: SelectedContextAttempt[]
+  counts: Record<ProbeStatus, number>
+  score: { supported: number; all: number }
+  /** Completeness of the recorded cell set, not a claim that a requested attempt completed. */
+  complete: boolean
+}
+
 export interface SelectedProjection {
+  /** Canonical composed view. Stage1 public consumers continue to read the unchanged `current`. */
+  contexts: Record<string, SelectedContextSummary>
   current: Record<string, CurrentSelectedVersion>
   versions: Record<string, CurrentSelectedVersion[]>
   history: Record<string, CurrentSelectedVersion[]>
@@ -451,7 +493,13 @@ export function projectResults(
   runs: readonly LoadedRun[],
   interpretations: readonly Interpretation[],
   catalogIds: readonly string[],
-  policy: { currentProbeHash: string; releaseSuiteId?: string | null; textSnapshots?: ReadonlyMap<string, Uint8Array> },
+  policy: {
+    currentProbeHash: string
+    releaseSuiteId?: string | null
+    textSnapshots?: ReadonlyMap<string, Uint8Array>
+    workingRuns?: readonly LoadedRun[]
+    workingAttempts?: readonly SelectedAttemptInput[]
+  },
   archivedExclusions: readonly SelectedExclusion[],
 ): SelectedProjection {
   if (!nonempty(policy.currentProbeHash)) throw new Error("currentProbeHash is required")
@@ -485,6 +533,7 @@ export function projectResults(
     ids.add(run.runId)
   }
   const projection: SelectedProjection = {
+    contexts: {},
     current: {},
     versions: {},
     history: {},
@@ -497,6 +546,8 @@ export function projectResults(
   const table: Record<string, Record<string, ProbeStatus>> = {}
   validatePresentationSupersession(interpretations, "interpretations")
   const active = activeInterpretations(interpretations)
+  const acceptedRuns: LoadedRun[] = []
+  const baselineRunIds: string[] = []
   for (const run of currentRuns) {
     if (!run.results || !run.catalogIds || !run.sealedAt || !run.probeHash || !run.sourceRevision) {
       throw new Error(`Current run ${run.runId} lacks its sealed execution contract`)
@@ -567,6 +618,7 @@ export function projectResults(
       projection.exclusions.push({ runId: run.runId, path: run.path, reason: assessment.reason })
       continue
     }
+    acceptedRuns.push(run)
     ;(projection.versions[key] ??= []).push(version)
   }
   const rank = (version: CurrentSelectedVersion): number =>
@@ -583,6 +635,10 @@ export function projectResults(
         Date.parse(b.measuredAt) - Date.parse(a.measuredAt) ||
         b.runId.localeCompare(a.runId),
     )
+    // Reuse the existing ranking for the explicitly supplied historical baseline. This does not
+    // change public current's field, ranking, deduplication, cells, hash or seal (CTO1212de0f).
+    const baseline = versions.find((version) => readCollectorSelection(version.rawReplies) === undefined)
+    if (baseline) baselineRunIds.push(baseline.runId)
     const unique = versions.filter(
       (version, index) => versions.findIndex((entry) => entry.subject.version === version.subject.version) === index,
     )
@@ -591,7 +647,134 @@ export function projectResults(
     if (!selected) throw new Error(`missing selected current version for ${key}`)
     projection.current[key] = selected
   }
-  return { ...projection, table }
+  return {
+    ...projection,
+    table,
+    contexts: composeContextSummaries(
+      acceptedRuns,
+      baselineRunIds,
+      policy.workingRuns ?? [],
+      policy.workingAttempts ?? [],
+      catalogIds,
+      countContexts([...runs, ...(policy.workingRuns ?? [])]),
+    ),
+  }
+}
+
+/** One composition within projectResults; all immutable public run objects remain separate. */
+function compareContextAttempts(
+  a: Pick<SelectedContextAttempt, "runId" | "attempt">,
+  b: Pick<SelectedContextAttempt, "runId" | "attempt">,
+): number {
+  const left = a.attempt?.startedAt
+  const right = b.attempt?.startedAt
+  if (left === undefined || right === undefined) {
+    return left === right ? a.runId.localeCompare(b.runId) : left === undefined ? 1 : -1
+  }
+  return Date.parse(left) - Date.parse(right) || a.runId.localeCompare(b.runId)
+}
+
+function composeContextSummaries(
+  acceptedRuns: readonly LoadedRun[],
+  baselineRunIds: readonly string[],
+  workingRuns: readonly LoadedRun[],
+  workingAttempts: readonly SelectedAttemptInput[],
+  catalogIds: readonly string[],
+  contexts: ReadonlyMap<string, ReadonlySet<string>>,
+): Record<string, SelectedContextSummary> {
+  const runsById = new Map<string, LoadedRun>()
+  for (const run of [...acceptedRuns, ...workingRuns]) {
+    // A pass may cite its original draft and its sealed admitted snapshot: one run, different
+    // envelopes. Keep the admitted immutable owner; both input paths remain report evidence.
+    if (!runsById.has(run.runId)) runsById.set(run.runId, run)
+  }
+  const runs = [...runsById.values()]
+  const baselineIds = new Set(baselineRunIds)
+  const workingIds = new Set(workingRuns.map((run) => run.runId))
+  const keyFor = (run: LoadedRun): string =>
+    projectedContextKey(run.subject, contexts.get(`${run.subject.kind}:${run.subject.id}`)?.size ?? 0)
+  const groups = new Map<string, LoadedRun[]>()
+  for (const run of runs) {
+    const key = keyFor(run)
+    groups.set(key, [...(groups.get(key) ?? []), run])
+  }
+  for (const input of workingAttempts) {
+    if (!groups.has(input.contextKey)) groups.set(input.contextKey, [])
+  }
+  const summaries: Record<string, SelectedContextSummary> = {}
+  for (const [contextKey, candidates] of groups) {
+    const cells: Record<string, SelectedContextCell> = {}
+    const ids = [...new Set(candidates.flatMap((run) => run.catalogIds ?? []))]
+    // No measured run exists for a pre-start refusal: the explicit catalogue remains visible as
+    // missingIds/TODO counts, without manufacturing ProbeResult or subject records.
+    const viewIds = ids.length ? ids : [...catalogIds]
+    const baselines = [
+      ...candidates.filter((run) => baselineIds.has(run.runId)),
+      ...candidates.filter((run) => workingIds.has(run.runId) && readCollectorSelection(run.rawReplies) === undefined),
+    ]
+    const remember = (run: LoadedRun, result: ProbeResult): void => {
+      cells[result.featureId] = { origin: { runId: run.runId, resultId: result.featureId }, run, result }
+    }
+    for (const run of baselines) {
+      for (const result of consoleHostHeldResults(run)) remember(run, result)
+    }
+    const selected = candidates.flatMap((run) => {
+      const selection = readCollectorSelection(run.rawReplies)
+      return selection ? [{ runId: run.runId, run, selection, attempt: readCollectorAttempt(run.rawReplies) }] : []
+    })
+    selected.sort(compareContextAttempts)
+    const attempts: SelectedContextAttempt[] = []
+    for (const { run, selection, attempt } of selected) {
+      const results = consoleHostHeldResults(run)
+      // A real initialized TODO is useful missing-evidence data when no prior cell exists; it
+      // never replaces a prior cell and never becomes an emitted measurement.
+      for (const result of results) {
+        if (!cells[result.featureId] && result.attempt.scope === "none") remember(run, result)
+      }
+      const emitted = new Map(results.filter((result) => result.attempt.scope !== "none").map((r) => [r.featureId, r]))
+      const noOutputIds: string[] = []
+      for (const id of selection.ids) {
+        const result = emitted.get(id)
+        if (!result || attempt?.startedAt === undefined) noOutputIds.push(id)
+        else remember(run, result)
+      }
+      attempts.push({ runId: run.runId, path: run.path, selection, attempt, noOutputIds })
+    }
+    for (const input of workingAttempts.filter((entry) => entry.contextKey === contextKey)) {
+      if (attempts.some((attempt) => attempt.runId === input.runId)) continue
+      const selection = readCollectorSelection(input.rawReplies)
+      if (selection) {
+        attempts.push({
+          runId: input.runId,
+          path: input.path,
+          selection,
+          attempt: readCollectorAttempt(input.rawReplies),
+          noOutputIds: [...selection.ids],
+        })
+      }
+    }
+    attempts.sort(compareContextAttempts)
+    const contributing = new Set(Object.values(cells).map((cell) => cell.origin.runId))
+    const sourceOrder = [...baselines, ...selected.map((entry) => entry.run), ...candidates]
+    const contributingRunIds = [...new Set(sourceOrder.map((run) => run.runId))].filter((id) => contributing.has(id))
+    const missingIds = viewIds.filter((id) => !cells[id])
+    const aggregate = aggregateCurrentResults(
+      viewIds.map((featureId) => ({ featureId, status: cells[featureId]?.result.status ?? "test-todo" })),
+      viewIds,
+    )
+    summaries[contextKey] = {
+      contextKey,
+      catalogIds: viewIds,
+      cells,
+      missingIds,
+      contributingRunIds,
+      attempts,
+      counts: aggregate.counts,
+      score: { supported: aggregate.supported, all: aggregate.denominator },
+      complete: aggregate.complete,
+    }
+  }
+  return summaries
 }
 
 export function statesFor(projection: SelectedProjection, runId: string): Readonly<Record<string, ProbeStatus>> {
@@ -665,7 +848,12 @@ export function loadArchivedExclusions(contentDir: string): SelectedExclusion[] 
 export function loadSelectedResults(
   contentDir: string,
   currentProbeHash: string,
-  options: { artifactDir?: string; releaseSuiteId?: string | null } = {},
+  options: {
+    artifactDir?: string
+    releaseSuiteId?: string | null
+    workingRuns?: readonly LoadedRun[]
+    workingAttempts?: readonly SelectedAttemptInput[]
+  } = {},
 ): SelectedProjection {
   const featuresPath = join(contentDir, "features.json")
   if (!existsSync(featuresPath)) fail(featuresPath, "missing required catalog")
@@ -718,6 +906,8 @@ export function loadSelectedResults(
       currentProbeHash,
       textSnapshots,
       releaseSuiteId: options.releaseSuiteId ?? null,
+      workingRuns: options.workingRuns,
+      workingAttempts: options.workingAttempts,
     },
     loadArchivedExclusions(contentDir),
   )

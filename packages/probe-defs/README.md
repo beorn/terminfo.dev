@@ -192,6 +192,12 @@ These run statuses are separate from the catalog's [probe-coverage labels](../..
 
 ## Collector routes and persistence
 
+[Selected collection](../../docs/collect-selected-probes.md) describes explicit context/probe inputs and retained attempt outcomes.
+The existing registry exports `resolveProbeIds`; collectors share its typed resolution rather than duplicate ID lookup.
+Selection changes the callback schedule, while initialized drafts retain the full catalogue and the original suite hash.
+The existing `collector.selection` and `collector.collectionAttempt` records retain intent, actual start and outcome.
+The canonical draft decoder distinguishes captured runs from explicitly empty initialized drafts; empty drafts contain no measured identity or emitted result.
+
 The five admin routes share definitions, but do not all execute or persist through the same path:
 
 - **Headless:** [admin/src/termless.ts](../admin/src/termless.ts) calls [collect-headless.ts](../probes/collect-headless.ts), which runs isolated engine workers using `headless-batch.ts` and retains private runs.

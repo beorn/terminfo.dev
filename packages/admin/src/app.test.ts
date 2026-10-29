@@ -134,6 +134,7 @@ beforeEach(() => {
   vi.mocked(findOwnedDaemon).mockResolvedValue({ filepath: "/private/registration", registration })
   vi.mocked(requestDaemonProbe).mockResolvedValue(new Response("{}"))
   vi.mocked(readRetainedDaemonProbeResponse).mockResolvedValue({
+    kind: "captured",
     path: "/private/http-responses/digest",
     sha256: "d".repeat(64),
     run: {
