@@ -147,6 +147,13 @@ a delivery declaration never declares feature support. Sealed historical runs re
 
 Conclusive library observations need nonempty raw evidence and matching positive/negative assertions. A direct buffer-state assertion must match the retained response; invalid claims become collector errors.
 
+The `semantic-prompt-source-review` library branch is the approved source-only exception for OSC 133/633 marks.
+An independently reviewed typed `CaptureDecision` names the parser arm and written or rejected mark state;
+its immutable capture binding includes the loaded runtime and its own run identity. The canonical writer and
+reader retain that decision as proof without inventing an observation, assertion type or assertion.
+Missing runtime identity or a source-review row remains an error; ordinary observation reviews keep their
+expected-versus-observed requirement. This exception does not admit terminal-app source reviews.
+
 **Native evidence** comes through [probes/unified.ts](../terminfo.dev/src/probes/unified.ts). It retains writes, queries, ordered events and available capture/clipboard records separately from callback responses.
 
 Most native raw-reply entries are serialized traces. Identity-query entries retain queried bytes and a separate `.trace`; a callback response, when supplied for a measurement, uses `.callbackResponse`.

@@ -158,6 +158,7 @@ export function notTestedResult(noObservable: string, state: object): ProbeCallb
 }
 
 export const SOURCE_NEGATIVE_REVIEW = "source-negative-review"
+export const SEMANTIC_PROMPT_SOURCE_REVIEW = "semantic-prompt-source-review"
 
 /**
  * A criterion this context has no observable for: the same coverage record and raw state as

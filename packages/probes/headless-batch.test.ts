@@ -16,6 +16,7 @@ import { createGhosttyNativeBackend, isGhosttyNativeAvailable } from "@termless/
 import type { EmulatorWarning } from "@termless/core"
 import {
   ALL_PROBES,
+  SEMANTIC_PROMPT_SOURCE_REVIEW,
   HARNESS_INCOMPLETE_TEST,
   type ProbeCallbackResult,
   type ProbeDefinition,
@@ -194,7 +195,7 @@ test("retains a qualified headless shell mark's required source review through p
     expect.objectContaining({
       featureId: id,
       status: "test-todo",
-      criterionBranch: "semantic-prompt-source-review",
+      criterionBranch: SEMANTIC_PROMPT_SOURCE_REVIEW,
       rawReplyRef: id,
       tests: [
         expect.objectContaining({ id: "review", status: "test-todo", attempt: { scope: "none" }, rawReplyRef: id }),
@@ -220,7 +221,7 @@ test("retains a qualified headless shell mark's required source review through p
   expect(captured.rawReplies[binding.rawReplyRef]).toBe(binding.source)
   expect(JSON.parse(binding.source)).toMatchObject({
     featureId: id,
-    criterionBranch: "semantic-prompt-source-review",
+    criterionBranch: SEMANTIC_PROMPT_SOURCE_REVIEW,
     rawReplyRefs: expect.arrayContaining([
       expect.objectContaining({ key: id, sha256: expect.stringMatching(/^[0-9a-f]{64}$/) }),
     ]),

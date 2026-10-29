@@ -10,6 +10,7 @@ import type {
 import {
   REPLY_AFTER_SENTINEL_NOTE,
   HEADLESS_OBSERVABLE_REVIEW,
+  SEMANTIC_PROMPT_SOURCE_REVIEW,
   decrpmPs,
   decrpmReplyPattern,
   decrpmReading,
@@ -1078,7 +1079,7 @@ function promptMarkResult(ctx: LibProbeSource, sequence: string, noObservable: s
     consumed && home.x === 0 && home.y === 0 && target.x === 1 && target.y === 0 && control.x === 0 && control.y === 0
   if (!qualified) return promptConsumptionResult(consumed)
   return reviewResult(
-    "semantic-prompt-source-review",
+    SEMANTIC_PROMPT_SOURCE_REVIEW,
     "Independent review must determine whether the pinned engine source parses this OSC 133 / 633 mark and exposes mark or zone state; citation per cell required for supported, unsupported or Untestable",
     noObservable,
     { home, target, control, cell: cell.char },
