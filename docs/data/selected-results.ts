@@ -386,6 +386,8 @@ export function classifyDevelopmentRun(run: LoadedRun): {
  * Exported so the reviewed `default-contexts.json` rows, which record the unmasked key from the era
  * they were reviewed in, are normalized by the SAME rule instead of needing a hand edit per collect.
  */
+export function maskRunnerStorePath(config: string | null): string | null
+export function maskRunnerStorePath(config: unknown): unknown
 export function maskRunnerStorePath(config: unknown): unknown {
   return typeof config === "string"
     ? config
@@ -811,10 +813,10 @@ function composeContextSummaries(
   return summaries
 }
 
-export function statesFor(projection: SelectedProjection, runId: string): Readonly<Record<string, ProbeStatus>> {
-  const states = projection.table[runId]
-  if (!states) throw new Error(`The projection classified no row for run ${runId}`)
-  return states
+export function statesFor(projection: SelectedProjection, contextKey: string): Readonly<Record<string, ProbeStatus>> {
+  const context = projection.contexts[contextKey]
+  if (!context) throw new Error(`The projection classified no context ${contextKey}`)
+  return Object.fromEntries(context.catalogIds.map((id) => [id, context.cells[id]?.result.status ?? "test-todo"]))
 }
 
 /**

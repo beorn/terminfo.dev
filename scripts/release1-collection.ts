@@ -47,12 +47,7 @@ import { parseJsonStrict, parseRun, parseSuiteManifest } from "@terminfo/run-par
 import { frozenSuiteIdFor } from "../packages/admin/suite-manifest.ts"
 import { assertPrivateCollectionOutput } from "../packages/admin/src/admit-collected-run.ts"
 import { loadCurrentResults, loadDefaultContextPolicy, reviewedContextFor } from "../docs/data/current-results.ts"
-import {
-  classifyDevelopmentRun,
-  consoleHostHeldResults,
-  readVerifiedArtifact,
-  statesFor as currentStatesFor,
-} from "../docs/data/selected-results.ts"
+import { classifyDevelopmentRun, consoleHostHeldResults, readVerifiedArtifact } from "../docs/data/selected-results.ts"
 import { parseInterpretations } from "./interpretations.ts"
 import { derivedSuiteManifest, probeSuiteSnapshot } from "../packages/admin/versions.ts"
 import { collectHeadlessRuns } from "../packages/probes/collect-headless.ts"
@@ -1479,9 +1474,11 @@ if (import.meta.main) {
         census: fullContextCensus(CONTENT).contexts,
         catalogIds: Object.keys(loadFeatures(CONTENT)),
         requiredSuiteId,
-        candidates: admitted.map(({ key, run }) =>
-          candidateFromSelected(key, run, currentStatesFor(projection, run.runId)),
-        ),
+        candidates: admitted.map(({ key, run }) => {
+          const states = projection.table[run.runId]
+          if (!states) throw new Error(`Admitted original run ${run.runId} has no classified result row`)
+          return candidateFromSelected(key, run, states)
+        }),
         reviewed: loadDefaultContextPolicy(CONTENT),
       })
       for (const { key, run } of admitted) {
