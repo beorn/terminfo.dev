@@ -31,18 +31,36 @@ test.each(["waiting", "bad-receipt", "collector", "selected"] as const)(
     const syntax = spawnSync("/bin/bash", ["-n"], { input: collect, encoding: "utf8" })
     expect(syntax.status, syntax.stderr).toBe(0)
     const producer = collect.match(
-      /(?:PROBE_IDS_EXPORT=""\n[\s\S]*?)?cat > "\$COMMAND_PATH" <<SCRIPT\n[\s\S]*?\nSCRIPT\n/,
+      /(?:PROBE_IDS_ARGS=""\n[\s\S]*?)?cat > "\$COMMAND_PATH" <<SCRIPT\n[\s\S]*?\nSCRIPT\n/,
     )
     expect(producer, "production command producer exists").not.toBeNull()
     const directory = mkdtempSync(join(tmpdir(), "hosted-entry-"))
     const out = join(directory, "artifacts")
     const command = join(directory, "collect.command")
-    const collector = join(directory, "collector.sh")
+    const collector = join(directory, scenario === "selected" ? "collector.ts" : "collector.sh")
     mkdirSync(out)
     try {
+      const invocation = join(out, "invocation")
       writeFileSync(
         collector,
-        `printf '%s\\0' "$@" "\${TERMINFO_PROBE_IDS-unset}" "$TERMINFO_CAPTURE_RUN_ID" "$TERMINFO_RUN_ID" > ${shellQuote(join(out, "invocation"))}\nprintf 'probe-stdout\\n'\nprintf 'collector-first\\n' >&2\nprintf 'collector-second\\n' >&2\nexit 7\n`,
+        scenario === "selected"
+          ? `import { mock } from "bun:test";
+import { writeFileSync } from "node:fs";
+mock.module(${JSON.stringify(join(root, "packages/terminfo.dev/src/serve.ts"))}, () => ({
+  getCliSuiteProbeHash: () => "fixture-suite",
+  getTrustedSuiteReceipt: () => { throw new Error("unexpected receipt read"); },
+  collectProbeRun: async (options) => {
+    writeFileSync(${JSON.stringify(join(out, "selection.json"))}, JSON.stringify({ ids: options.ids }));
+    writeFileSync(${JSON.stringify(invocation)}, [...process.argv.slice(2), process.env.TERMINFO_PROBE_IDS ?? "unset", process.env.TERMINFO_CAPTURE_RUN_ID, process.env.TERMINFO_RUN_ID].join("\\0") + "\\0");
+    process.stdout.write("probe-stdout\\n");
+    process.stderr.write("collector-first\\ncollector-second\\n");
+    process.exit(7);
+  },
+}));
+mock.module(${JSON.stringify(join(root, "packages/terminfo.dev/src/probe-output.ts"))}, () => ({ probeOutputStream: () => process.stdout }));
+await import(${JSON.stringify(join(root, "packages/terminfo.dev/src/index.tsx"))});
+`
+          : `printf '%s\\0' "$@" "\${TERMINFO_PROBE_IDS-unset}" "$TERMINFO_CAPTURE_RUN_ID" "$TERMINFO_RUN_ID" > ${shellQuote(invocation)}\nprintf 'probe-stdout\\n'\nprintf 'collector-first\\n' >&2\nprintf 'collector-second\\n' >&2\nexit 7\n`,
       )
       const generated = spawnSync("/bin/bash", ["-c", producer![0]], {
         encoding: "utf8",
@@ -52,10 +70,10 @@ test.each(["waiting", "bad-receipt", "collector", "selected"] as const)(
           COMMAND_PATH: command,
           BUN_DIR: "/bin",
           NODE_DIR: "/usr/bin",
-          COLLECTOR_BUN: "/bin/bash",
+          COLLECTOR_BUN: scenario === "selected" ? process.execPath : "/bin/bash",
           COLLECTOR: collector,
           TARGET_VERSION_EXPORT: "",
-          PROBE_IDS: scenario === "selected" ? '["cursor-position","device-attributes"]' : "null",
+          PROBE_IDS: scenario === "selected" ? '["device.primary-da"]' : "null",
           CAPTURE_RUN_ID: "b".repeat(32),
         },
       })
@@ -88,6 +106,12 @@ test.each(["waiting", "bad-receipt", "collector", "selected"] as const)(
           expect(log).toContain("Receipt has no launch run ID")
           expect(log).not.toContain("phase=collector-invoked")
         } else {
+          // AC2: the real CLI must pass the selection to the collector, before any probe callback.
+          if (scenario === "selected") {
+            expect(JSON.parse(readFileSync(join(out, "selection.json"), "utf8"))).toEqual({
+              ids: ["device.primary-da"],
+            })
+          }
           expect(log).toContain("phase=run-id-parsed")
           expect(log).toContain("phase=collector-invoked")
           expect(log).toContain("collector-first\ncollector-second\n")
@@ -98,7 +122,8 @@ test.each(["waiting", "bad-receipt", "collector", "selected"] as const)(
             "test",
             "--output",
             join(out, "run.json"),
-            scenario === "selected" ? '["cursor-position","device-attributes"]' : "unset",
+            ...(scenario === "selected" ? ["--probe-ids", '["device.primary-da"]'] : []),
+            "unset",
             "b".repeat(32),
             "a".repeat(32),
           ])
@@ -757,12 +782,12 @@ test.each(["macos", "windows"])("%s workflow keeps the full matrix in its dispat
 // The native Windows child is PowerShell. Execute its actual bash producer, then inspect the
 // generated child; Linux does not prove PowerShell execution or hosted scheduler behavior.
 test.each(["null", '["cursor-position","device-attributes"]'])(
-  "Windows collector producer carries probe input %s without changing argv or run IDs",
+  "Windows collector producer carries probe input %s through native argv and preserves run IDs",
   (probeIds) => {
     const workflow = parse(readFileSync(join(root, ".github/workflows/windows-measurement.yml"), "utf8"))
     const collect = workflow.jobs["measure-windows"].steps.find((step: { id?: string }) => step.id === "collect")
       .run as string
-    const producer = collect.match(/(?:PROBE_IDS_EXPORT=""\n[\s\S]*?)?cat > "\$COMMAND_PATH" <<PS1\n[\s\S]*?\nPS1\n/)
+    const producer = collect.match(/(?:PROBE_IDS_ARGS=""\n[\s\S]*?)?cat > "\$COMMAND_PATH" <<PS1\n[\s\S]*?\nPS1\n/)
     expect(producer, "production Windows command producer exists").not.toBeNull()
     const directory = mkdtempSync(join(tmpdir(), "hosted-windows-entry-"))
     const command = join(directory, "collect.ps1")
@@ -785,11 +810,11 @@ test.each(["null", '["cursor-position","device-attributes"]'])(
       })
       expect(generated.status, generated.stderr).toBe(0)
       const child = readFileSync(command, "utf8")
-      if (probeIds === "null") expect(child).not.toContain("$env:TERMINFO_PROBE_IDS")
-      else expect(child).toContain(`$env:TERMINFO_PROBE_IDS = '${probeIds}'`)
+      expect(child).not.toContain("$env:TERMINFO_PROBE_IDS")
+      const probeArgs = probeIds === "null" ? "" : ` --probe-ids '${probeIds.replaceAll('"', '\\\"')}'`
       expect(child).toContain(`$env:TERMINFO_CAPTURE_RUN_ID = "${"b".repeat(32)}"`)
       expect(child).toContain("$env:TERMINFO_RUN_ID = $receipt.runId")
-      expect(child).toContain('& "/stub/bun" "/stub/terminfo.mjs" test --output "/stub/out\\run.json" *>&1')
+      expect(child).toContain(`& "/stub/bun" "/stub/terminfo.mjs" test --output "/stub/out\\run.json"${probeArgs} *>&1`)
     } finally {
       rmSync(directory, { recursive: true, force: true })
     }

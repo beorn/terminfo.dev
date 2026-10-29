@@ -19,6 +19,7 @@ import {
   type SelectedProjection,
   type CurrentSelectedVersion,
   type SelectedVersion,
+  originalRunFor,
 } from "./selected-results.ts"
 import type { CellState } from "./release-scope.ts"
 import { currentTrace, type CurrentTraceDocument } from "./run-trace.ts"
@@ -285,8 +286,8 @@ export interface PublicContextSummary extends Omit<SelectedContextSummary, "cell
     }
   >
   sources: Record<string, PublicRunMetadata>
-  /** Filesystem paths remain private; original attempt identity/outcome remains visible. */
-  attempts: Array<Omit<SelectedContextSummary["attempts"][number], "path"> & { startedAt?: string }>
+  /** Public attempt facts are flat; private paths and original outcomes remain in the canonical input. */
+  attempts: Array<{ runId: string; startedAt?: string; noOutputIds: string[] }>
 }
 
 export interface CellEvidence {
@@ -458,24 +459,17 @@ export function publicResults(projection: SelectedProjection, subjects: Readonly
   }
   const mapGroups = (groups: Record<string, CurrentSelectedVersion[]>) =>
     Object.fromEntries(Object.entries(groups).map(([key, versions]) => [key, versions.map(mapVersion)]))
-  const originals = new Map(
-    Object.values(projection.history)
-      .flat()
-      .map((version) => [version.runId, version]),
-  )
   const contexts: Record<string, PublicContextSummary> = Object.fromEntries(
     Object.entries(projection.contexts).map(([key, context]) => {
       const sources: Record<string, PublicRunMetadata> = {}
       for (const runId of context.contributingRunIds) {
-        const original = originals.get(runId)
-        if (!original) throw new Error(`Context ${key} names contributing run ${runId} absent from original history`)
+        const original = originalRunFor(projection, key, runId)
         const { results: _results, ...metadata } = mapVersion(original)
         sources[runId] = metadata
       }
       const cells = Object.fromEntries(
         Object.entries(context.cells).map(([id, cell]) => {
-          const original = originals.get(cell.origin.runId)
-          if (!original) throw new Error(`Context ${key}/${id} names missing original run ${cell.origin.runId}`)
+          const original = originalRunFor(projection, key, cell.origin.runId)
           const result = mapVersion(original).results.find((row) => row.featureId === cell.origin.resultId)
           if (!result) {
             throw new Error(`Original run ${original.runId} lacks result ${cell.origin.resultId} for ${key}/${id}`)
@@ -499,8 +493,9 @@ export function publicResults(projection: SelectedProjection, subjects: Readonly
           contributingRunIds: context.contributingRunIds,
           cells,
           sources,
-          attempts: context.attempts.map(({ path: _path, ...attempt }) => ({
-            ...attempt,
+          attempts: context.attempts.map((attempt) => ({
+            runId: attempt.runId,
+            noOutputIds: attempt.noOutputIds,
             ...(attempt.attempt?.startedAt && { startedAt: attempt.attempt.startedAt }),
           })),
         },

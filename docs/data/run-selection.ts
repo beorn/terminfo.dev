@@ -11,6 +11,7 @@ import { isStaleRelation, type CellState, type SuiteRelation } from "./release-s
 import {
   parseProjectedContextKey,
   recognizeProjectedContextKey,
+  originalRunFor,
   type ProjectedContextKeyParts,
   type SelectedVersion,
   type CurrentSelectedVersion,
@@ -92,11 +93,6 @@ export function candidateFromSelected(
     if (selected.contributingRunIds.length === 0) return undefined
     if (!selected.subject) throw new Error(`Context ${key} has contributing evidence without physical subject facts`)
     if (!projection) throw new Error(`Context ${key} needs its original projection history`)
-    const originals = new Map(
-      Object.values(projection.history)
-        .flat()
-        .map((run) => [run.runId, run]),
-    )
     return {
       key,
       kind: selected.subject.kind,
@@ -104,8 +100,7 @@ export function candidateFromSelected(
       os: selected.subject.os ?? "",
       permissions: selected.subject.permissions,
       sources: selected.contributingRunIds.map((runId) => {
-        const original = originals.get(runId)
-        if (!original) throw new Error(`Context ${key} names missing original contributing run ${runId}`)
+        const original = originalRunFor(projection, key, runId)
         return {
           runId,
           measuredAt: original.measuredAt,
@@ -204,6 +199,13 @@ function unreadableCandidate(candidate: ContextCandidate): { stale: string } {
   }
 }
 
+/** A context remains current when any of its original evidence sources is current. */
+export function hasCurrentSource(
+  sources: readonly Pick<ContextCandidate["sources"][number], "suiteRelation">[],
+): boolean {
+  return sources.some((source) => !isStaleRelation(source.suiteRelation))
+}
+
 /**
  * Choose the one run the site selects for a (terminal id, os) context. The site's own selection keys by
  * terminal id, not by id+os, so a context can carry several current entries: kitty/linux has the
@@ -267,9 +269,7 @@ export function pickContextRun<T extends ContextCandidate>(
       return refusedReview(reviewedKey, "no current candidate names it", candidates)
     }
   }
-  const current = candidates.filter((candidate) =>
-    candidate.sources.some((source) => !isStaleRelation(source.suiteRelation)),
-  )
+  const current = candidates.filter((candidate) => hasCurrentSource(candidate.sources))
   const considered = current.length > 0 ? current : candidates
   const [only] = considered
   if (considered.length === 1 && only) return { run: only, selection: "only current" }

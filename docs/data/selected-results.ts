@@ -432,7 +432,7 @@ export function countContexts(runs: readonly LoadedRun[]): Map<string, Set<strin
  * The key one run's context carries in the projection: the bare `<kind>:<id>` while its group has ONE
  * context, and `<kind>:<id>@<context>` once the group carries more, so a multi-context tie never hides
  * behind an id-level key. The group spans every run of the target, legacy and current, so one context
- * carries one key in `current` and in `historical.current` and a reviewed default-context row names it once (30661). `run-selection.ts` reads this shape back to tell a stale reviewed row from a
+ * carries one key in `contexts` and in historical groups, and a reviewed default-context row names it once (30661). `run-selection.ts` reads this shape back to tell a stale reviewed row from a
  * review that names another os; tests build fixtures through THIS function, never a hand-copied shape.
  */
 export function projectedContextKey(subject: ProbeSubject, contextCount: number): string {
@@ -677,6 +677,17 @@ function compareContextAttempts(
     return left === right ? a.runId.localeCompare(b.runId) : left === undefined ? 1 : -1
   }
   return Date.parse(left) - Date.parse(right) || a.runId.localeCompare(b.runId)
+}
+
+/** Resolve one immutable original within its canonical context; working inputs stay private. */
+export function originalRunFor<T extends Pick<CurrentSelectedVersion, "runId">>(
+  projection: { history: Readonly<Record<string, readonly T[]>> },
+  contextKey: string,
+  runId: string,
+): T {
+  const run = projection.history[contextKey]?.find((original) => original.runId === runId)
+  if (!run) throw new Error(`Context ${contextKey} names missing original run ${runId}`)
+  return run
 }
 
 function composeContextSummaries(

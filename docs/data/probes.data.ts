@@ -14,6 +14,7 @@ import { parseJsonStrict } from "@terminfo/run-parser"
 import { loadFeatures, loadTerminals, subjectLabel, type FeatureCatalog } from "@terminfo/catalog"
 import { compatibilitySubjects, loadCurrentResults } from "./current-results.ts"
 import { publicResults, type PublicProjection, type PublicCurrentResult } from "./public-results.ts"
+import { hasCurrentSource } from "./run-selection.ts"
 import { loadCategories, orderedCategoryIds } from "./categories.ts"
 import { loadReleaseScope } from "./load-release-scope.ts"
 import type { ProbeStatus } from "@terminfo/probe-defs"
@@ -266,7 +267,7 @@ export function loadFullProbes(): ProbeData {
     releaseBars[key] = bar
     releaseShares[key] = currentSupportedShare(bar)
     const sources = Object.values(selected.sources)
-    releaseStale[key] = sources.every((source) => isStaleRelation(source.suiteRelation))
+    releaseStale[key] = !hasCurrentSource(sources)
       ? sources.map((source) => `${source.runId}: ${staleCaption(source.measuredAt)}`).join("; ")
       : null
   }

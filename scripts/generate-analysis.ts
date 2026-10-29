@@ -19,6 +19,7 @@ import { parseJsonStrict } from "@terminfo/run-parser"
 import type { ProbeResult, ProbeStatus } from "@terminfo/probe-defs"
 import { aggregateCurrentResults, type CurrentAggregate } from "../docs/data/release-scope.ts"
 import { compatibilitySubjects, loadCurrentResults } from "../docs/data/current-results.ts"
+import { originalRunFor } from "../docs/data/selected-results.ts"
 import { loadCategories, type CategoryMeta } from "../docs/data/categories.ts"
 import {
   loadFeatures as loadFeatureCatalog,
@@ -195,19 +196,13 @@ interface SelectedAnalysisInput {
 function buildTerminalResultMap(): Map<string, SelectedAnalysisInput> {
   const { projection } = loadCurrentResults(contentDir)
   const selected = compatibilitySubjects(projection, contentDir)
-  const originals = new Map(
-    Object.values(projection.history)
-      .flat()
-      .map((run) => [run.runId, run]),
-  )
   const resultMap = new Map<string, SelectedAnalysisInput>()
-  for (const [key, { selected: version }] of selected) {
+  for (const [key, { contextKey, selected: version }] of selected) {
     if (!version.subject) throw new Error(`Analysis context ${key} has no physical subject`)
     if (resultMap.has(key)) throw new Error(`Ambiguous analysis terminal ${key}: multiple selected targets`)
     const recordedResults = Object.values(version.cells).map((cell) => cell.result)
     const sources = version.contributingRunIds.map((runId): AnalysisSource => {
-      const original = originals.get(runId)
-      if (!original) throw new Error(`Analysis context ${key} names absent original run ${runId}`)
+      const original = originalRunFor(projection, contextKey, runId)
       return {
         runId,
         sha256: original.sha256,

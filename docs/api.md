@@ -25,7 +25,7 @@ A context includes its physical `subject` (without a version), `catalogIds`, `ce
 
 Each `cells[featureId]` retains its original status, `origin: { runId, resultId }`, `measuredAt`, `suiteId` and `suiteRelation`. Resolve its original receipt as `context.sources[cell.origin.runId]`. Each source retains its own subject version, source revision, suite, run ID/hash, frozen catalog IDs, seal, counts, score, completion, trace receipt and verified run-document URL/hash. `versions` and `history` reference these original immutable run documents; they do not contain composed results.
 
-Attempts retain their original run identity, start time and no-output IDs. A later attempt without output does not replace an earlier measured cell.
+Each public attempt is flat: `runId`, optional recorded `startedAt` and `noOutputIds`. Private selection, outcome and error objects remain in the canonical private projection. A later attempt without output does not replace an earlier measured cell.
 
 ## Five recorded statuses
 

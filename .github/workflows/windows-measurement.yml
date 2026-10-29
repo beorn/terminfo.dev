@@ -238,15 +238,18 @@ jobs:
             *) echo "Unknown Windows collection app: $APP_ID" >&2; exit 1 ;;
           esac
 
-          PROBE_IDS_EXPORT=""
-          if [[ "$PROBE_IDS" != null ]]; then PROBE_IDS_EXPORT="\$env:TERMINFO_PROBE_IDS = '${PROBE_IDS//\'/\'\'}'"; fi
+          PROBE_IDS_ARGS=""
+          if [[ "$PROBE_IDS" != null ]]; then
+            # PowerShell 5.1 passes this JSON to a native process; retain its embedded quotes.
+            PROBE_IDS_NATIVE="${PROBE_IDS//\"/\\\"}"
+            PROBE_IDS_ARGS=" --probe-ids '${PROBE_IDS_NATIVE//\'/\'\'}'"
+          fi
           cat > "$COMMAND_PATH" <<PS1
           \$ErrorActionPreference = "Continue"
           \$env:PATH = "$APP_DIR;$BUN_DIR;$NODE_DIR;" + \$env:PATH
           \$env:TERMINFO_DISPOSABLE_RECEIPT = "$WIN_OUT\\host-measured.json"
           \$env:TERMINFO_CAPTURE_DIRECTORY = "$WIN_OUT\\artifacts"
           \$env:TERMINFO_CAPTURE_RUN_ID = "$CAPTURE_RUN_ID"
-          $PROBE_IDS_EXPORT
 
           \$attempts = 0
           while (-not (Test-Path "$WIN_OUT\\collector-ready")) {
@@ -276,7 +279,7 @@ jobs:
             exit 1
           }
 
-          & "$COLLECTOR_BUN" "$COLLECTOR" test --output "$WIN_OUT\\run.json" *>&1 | Out-File -FilePath "$WIN_OUT\\collector.log" -Encoding utf8
+          & "$COLLECTOR_BUN" "$COLLECTOR" test --output "$WIN_OUT\\run.json"$PROBE_IDS_ARGS *>&1 | Out-File -FilePath "$WIN_OUT\\collector.log" -Encoding utf8
           \$exitCode = \$LASTEXITCODE
           if (\$null -eq \$exitCode) { \$exitCode = 0 }
           Set-Content -Path "$WIN_OUT\\collector-exit" -Value \$exitCode -Encoding ascii

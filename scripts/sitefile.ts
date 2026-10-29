@@ -14,6 +14,7 @@
  */
 
 import { compatibilitySubjects, loadCurrentResults } from "../docs/data/current-results.ts"
+import { originalRunFor } from "../docs/data/selected-results.ts"
 import { parseJsonStrict } from "@terminfo/run-parser"
 import { loadFeatures, loadTerminals } from "@terminfo/catalog"
 
@@ -598,11 +599,6 @@ async function generateLockfile() {
   // versions are not measurements. Partial/unreviewed history stays excluded.
   const { projection } = loadCurrentResults(contentDir)
   const selected = [...compatibilitySubjects(projection, contentDir).values()]
-  const originals = new Map(
-    Object.values(projection.history)
-      .flat()
-      .map((run) => [run.runId, run]),
-  )
   const catalogPath = path.join(contentDir, "terminals.json")
   const catalog = loadTerminals(contentDir)
   const terminalLock = terminals.map((terminal) => {
@@ -616,17 +612,18 @@ async function generateLockfile() {
     const kind: string | undefined = terminal.probeMethod === "termless" ? "lib" : declaration.kind
     const entry = selected.find(({ selected: run }) => run.subject?.kind === kind && run.subject?.id === subjectId)
     const run = entry?.selected
-    const sources = (run?.contributingRunIds ?? []).map((runId) => {
-      const original = originals.get(runId)
-      if (!original) throw new Error(`Inventory context ${entry?.contextKey} names absent original run ${runId}`)
-      return {
-        runId,
-        sha256: original.sha256,
-        version: original.subject.version,
-        measuredAt: original.measuredAt,
-        suiteId: original.suiteId,
-      }
-    })
+    const sources = entry
+      ? entry.selected.contributingRunIds.map((runId) => {
+          const original = originalRunFor(projection, entry.contextKey, runId)
+          return {
+            runId,
+            sha256: original.sha256,
+            version: original.subject.version,
+            measuredAt: original.measuredAt,
+            suiteId: original.suiteId,
+          }
+        })
+      : []
     return {
       terminalId: terminal.id,
       kind,

@@ -279,8 +279,8 @@ jobs:
             test -n "$bundle_version" || { echo "$APP_ID bundle version is empty" >&2; exit 1; }
             TARGET_VERSION_EXPORT="$(printf 'export TERMINFO_TARGET_VERSION=%q' "$bundle_version")"
           fi
-          PROBE_IDS_EXPORT=""
-          if [[ "$PROBE_IDS" != null ]]; then PROBE_IDS_EXPORT="$(printf 'export TERMINFO_PROBE_IDS=%q' "$PROBE_IDS")"; fi
+          PROBE_IDS_ARGS=""
+          if [[ "$PROBE_IDS" != null ]]; then PROBE_IDS_ARGS="$(printf ' --probe-ids %q' "$PROBE_IDS")"; fi
           cat > "$COMMAND_PATH" <<SCRIPT
           #!/bin/bash
           $TARGET_VERSION_EXPORT
@@ -288,7 +288,6 @@ jobs:
           export TERMINFO_DISPOSABLE_RECEIPT="$OUT/host-measured.json"
           export TERMINFO_CAPTURE_DIRECTORY="$OUT/artifacts"
           export TERMINFO_CAPTURE_RUN_ID="$CAPTURE_RUN_ID"
-          $PROBE_IDS_EXPORT
           printf 'phase=entry utc=%s pid=%s tty=%s\n' "\$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "\$\$" "\$(tty)" >> "$OUT/collector.log"
           exec 2>> "$OUT/collector.log"
           attempts=0
@@ -313,7 +312,7 @@ jobs:
           # one PTY. Redirecting stdout to the log made that binding impossible and failed every
           # hosted macOS job at collect (27917; cause b7580050 / 28533). Only stderr is logged.
           printf 'phase=collector-invoked\n' >&2
-          "$COLLECTOR_BUN" "$COLLECTOR" test --output "$OUT/run.json" 2>> "$OUT/collector.log"
+          "$COLLECTOR_BUN" "$COLLECTOR" test --output "$OUT/run.json"$PROBE_IDS_ARGS 2>> "$OUT/collector.log"
           status=\$?
           printf 'phase=collector-exited status=%s\n' "\$status" >&2
           printf '%s\n' "\$status" > "$OUT/collector-exit"

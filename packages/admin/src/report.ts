@@ -9,7 +9,7 @@ import { loadFeatures } from "@terminfo/catalog"
 import { parseJsonStrict, parseRun, type LoadedRun } from "@terminfo/run-parser"
 import { PROBE_STATUSES, readCollectorSelection, readCollectorAttempt } from "@terminfo/probe-defs"
 import { loadCurrentResults } from "../../../docs/data/current-results.ts"
-import type { SelectedAttemptInput } from "../../../docs/data/selected-results.ts"
+import { originalRunFor, type SelectedAttemptInput } from "../../../docs/data/selected-results.ts"
 import { fullContextCensus } from "../../../docs/data/full-census.ts"
 import { isStaleRelation } from "../../../docs/data/release-scope.ts"
 import { readExplicitSuiteTarget } from "../suite-manifest.ts"
@@ -262,15 +262,10 @@ async function rawScoreboard(paths: readonly string[], contentDir: string): Prom
   const dirtyContent = contentStatus.stdout.length > 0
   const provenLive = head === live && !dirtyContent
   const projection = loadCurrentResults(contentDir, { workingRuns, workingAttempts: pendingAttempts }).projection
-  const originals = new Map(
-    Object.values(projection.history)
-      .flat()
-      .map((run) => [run.runId, run]),
-  )
   for (const summary of Object.values(projection.contexts)) {
     for (const runId of summary.contributingRunIds) {
-      const selected = originals.get(runId)
-      if (!selected) {
+      // Private working inputs need factual rows, while admitted originals use the shared owner.
+      if (!projection.history[summary.contextKey]?.some((run) => run.runId === runId)) {
         // Working captures already have factual private rows above; contributing to the composed
         // view does not admit them or give them a reviewed/publication identity.
         const original = Object.values(summary.cells).find((cell) => cell.origin.runId === runId)?.run
@@ -288,6 +283,7 @@ async function rawScoreboard(paths: readonly string[], contentDir: string): Prom
         }
         continue
       }
+      const selected = originalRunFor(projection, summary.contextKey, runId)
       if (selected.measuredAt > observedAt) observedAt = selected.measuredAt
       const context = census.contexts.find(
         (row) =>

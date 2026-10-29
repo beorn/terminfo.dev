@@ -142,7 +142,9 @@ const fixture = vi.hoisted(() => {
     ...selected,
     runId: "screen-older-reviewed",
     sha256: "c".repeat(64),
-    suiteFreshness: "release suite current",
+    probeHash: "older-suite",
+    suiteId: "older-suite",
+    suiteFreshness: "older suite older-suite",
     subject: { ...screen.subject, version: "4.9" },
     cells: Object.fromEntries(
       Object.entries(cells).map(([id, cell]) => [
@@ -232,6 +234,8 @@ vi.mock("../docs/data/current-results.ts", async () => {
   afterAll(() => rmSync(fixtureContent, { recursive: true, force: true }))
   const sealedFixture = (run: SelectedVersion): LoadedRun => {
     const ids = [...new Set([...catalogIds, ...Object.keys(run.cells)])]
+    // A real selected collection leaves exactly one older original cell visible.
+    const selectedIds = run.runId === "screen-reviewed" ? ids.filter((id) => id !== "extensions.sixel") : null
     const results = ids.map((featureId): ProbeResult => {
       const cell = run.cells[featureId]
       const status: ProbeStatus =
@@ -245,7 +249,9 @@ vi.mock("../docs/data/current-results.ts", async () => {
       return {
         featureId,
         status,
-        attempt: status === "test-todo" ? { scope: "none" } : { scope: "probe", startedAt: run.measuredAt },
+        attempt: (selectedIds ? selectedIds.includes(featureId) : status !== "test-todo")
+          ? { scope: "probe", startedAt: run.measuredAt }
+          : { scope: "none" },
         tests: [],
         assertionType: cell?.assertionType,
         reason: cell?.note,
@@ -259,7 +265,7 @@ vi.mock("../docs/data/current-results.ts", async () => {
       subject: run.subject,
       measuredAt: run.measuredAt,
       suiteId: run.suiteId,
-      probeHash: "current",
+      probeHash: run.probeHash ?? "current",
       sourceRevision: "a".repeat(40),
       sealedAt: run.measuredAt,
       sha256: run.sha256,
@@ -268,7 +274,16 @@ vi.mock("../docs/data/current-results.ts", async () => {
       results,
       suiteComplete: true,
       suiteProbeCount: ids.length,
-      rawReplies: {},
+      rawReplies: selectedIds
+        ? {
+            "collector.selection": JSON.stringify({ ids: selectedIds }),
+            "collector.collectionAttempt": JSON.stringify({
+              ids: selectedIds,
+              startedAt: run.measuredAt,
+              result: "completed",
+            }),
+          }
+        : {},
       assertions: [],
       observations: [],
       origin: { kind: "collector" },
@@ -318,11 +333,8 @@ function originalRun(
   featureId = "sgr.bold",
 ): CurrentSelectedVersion {
   const runId = context.cells[featureId]?.origin.runId
-  const run = Object.values(projection.history)
-    .flat()
-    .find((entry) => entry.runId === runId)
-  if (!run) throw new Error(`Missing original fixture source ${runId}`)
-  return run
+  if (!runId) throw new Error(`Missing original fixture source for ${featureId}`)
+  return selectedResults.originalRunFor(projection, context.contextKey, runId)
 }
 
 // Re-enter the production composer after a fixture changes an original subject/run.
@@ -1218,18 +1230,18 @@ describe("selected-run consumer parity", () => {
     }
   })
 
-  it("keeps a sealed all-TODO subject visible with its graded denominator", () => {
+  it("keeps a mixed-suite subject visible with one retained original cell", () => {
     const site = probesLoader.load()
     const terminal = terminalPaths.paths().find((page) => page.params.id === "gnu-screen")
     expect(site.backends.map((backend) => backend.name)).toContain("screen")
     expect(site.stats.screen).toMatchObject({
       score: { all: 264, supported: 0 },
-      counts: { "test-todo": 264 },
+      counts: { supported: 0, unsupported: 1, untestable: 0, "test-todo": 263, "test-failure": 0 },
       complete: false,
     })
-    expect(site.stats.screen?.pct).toBeNull()
+    expect(site.stats.screen?.pct).toBe(0)
     expect(terminal?.params).toMatchObject({
-      pct: "",
+      pct: "0",
     })
     expect(JSON.parse(terminal?.params.versions ?? "[]")).toEqual([
       expect.objectContaining({
@@ -1237,8 +1249,40 @@ describe("selected-run consumer parity", () => {
         pct: 0,
         suiteFreshness: "release suite current",
       }),
-      expect.objectContaining({ version: "4.9", pct: 0, suiteFreshness: "release suite current" }),
+      expect.objectContaining({ version: "4.9", pct: 0, suiteFreshness: "older suite older-suite" }),
     ])
+    const screen = loadProbes().selectedByBackend.screen!.selected
+    const olderRunId = "screen-older-reviewed-sealed-cccccccc"
+    const currentRunId = "screen-reviewed-sealed-dddddddd"
+    expect(screen.contributingRunIds).toEqual([olderRunId, currentRunId])
+    expect(Object.values(screen.cells).filter((cell) => cell.origin.runId === olderRunId)).toHaveLength(1)
+    expect(Object.values(screen.cells).filter((cell) => cell.origin.runId === currentRunId)).toHaveLength(272)
+    expect(screen.cells["extensions.sixel"]).toMatchObject({
+      status: "unsupported",
+      origin: { runId: olderRunId, resultId: "extensions.sixel" },
+      suiteId: "older-suite",
+      suiteRelation: "older",
+      measuredAt: fixture.measuredAt,
+    })
+    expect(screen.cells["sgr.bold"]).toMatchObject({
+      status: "test-todo",
+      origin: { runId: currentRunId, resultId: "sgr.bold" },
+      suiteRelation: "release",
+      measuredAt: fixture.screen.measuredAt,
+    })
+    expect(screen.sources[olderRunId]).toMatchObject({
+      suiteFreshness: "older suite older-suite",
+      suiteRelation: "older",
+      sha256: "c".repeat(64),
+      measuredAt: fixture.measuredAt,
+    })
+    expect(screen.sources[currentRunId]).toMatchObject({
+      suiteFreshness: "release suite current",
+      suiteRelation: "release",
+      sha256: "d".repeat(64),
+      measuredAt: fixture.screen.measuredAt,
+    })
+    expect(site.releaseStale.screen).toBeNull()
     const comparison = comparePaths
       .paths()
       .find(

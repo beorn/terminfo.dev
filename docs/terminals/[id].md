@@ -9,6 +9,7 @@ import { useData } from 'vitepress'
 import { computed, ref } from 'vue'
 import { data } from '../data/probes.data'
 import { aggregateCurrentResults, currentCoverageSentence, isStaleRelation, staleCaption, currentSupportedShare, publicResultFor } from '../data/release-scope.ts'
+import { hasCurrentSource } from '../data/run-selection.ts'
 const { params } = useData()
 const p = params.value
 
@@ -30,8 +31,8 @@ function featureNote(id) {
   const result = publicResultFor(selectedRun.value, id)
   return result?.reason || ''
 }
-const stale = computed(() => sourceRuns.value.some(run => isStaleRelation(run.suiteRelation)))
-const staleText = computed(() => sourceRuns.value.filter(run => isStaleRelation(run.suiteRelation)).map(run => `${run.runId}: ${staleCaption(run.measuredAt)}`).join('; '))
+const stale = computed(() => !hasCurrentSource(sourceRuns.value))
+const staleText = computed(() => stale.value ? sourceRuns.value.map(run => `${run.runId}: ${staleCaption(run.measuredAt)}`).join('; ') : '')
 function runLabel(run) {
   return `${run.subject.version} · ${run.subject.os || 'OS not recorded'} · ${run.subject.permissions || 'No permission override recorded'} · ${run.sha256.slice(0, 8)}`
 }

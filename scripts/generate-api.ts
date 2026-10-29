@@ -30,7 +30,7 @@ import { compatibilitySubjects, loadCurrentResults } from "../docs/data/current-
 import { PROBE_STATUSES } from "@terminfo/probe-defs"
 import { parseJsonStrict } from "@terminfo/run-parser"
 import { loadFeatures } from "@terminfo/catalog"
-import { readVerifiedArtifact } from "../docs/data/selected-results.ts"
+import { originalRunFor, readVerifiedArtifact } from "../docs/data/selected-results.ts"
 import { publicResults, type CellEvidence, type HistoricalCellEvidence } from "../docs/data/public-results.ts"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -307,11 +307,6 @@ export function generateApi(
   }
   const currentGroups = (groups: Record<string, CurrentVersion[]>) =>
     Object.fromEntries(Object.entries(groups).map(([key, versions]) => [key, versions.map(currentRef)]))
-  const originals = new Map(
-    Object.values(published.projection.history)
-      .flat()
-      .map((run) => [run.runId, run]),
-  )
   const currentData = {
     version: 3,
     generated:
@@ -341,8 +336,7 @@ export function generateApi(
           ...context,
           sources: Object.fromEntries(
             Object.keys(context.sources).map((runId) => {
-              const original = originals.get(runId)
-              if (!original) throw new Error(`API context ${key} names missing original run ${runId}`)
+              const original = originalRunFor(published.projection, key, runId)
               return [runId, currentRef(original)]
             }),
           ),

@@ -19,6 +19,7 @@ import { readFileSync, writeFileSync } from "node:fs"
 import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
 import { compatibilitySubjects, loadCurrentResults } from "../docs/data/current-results.ts"
+import { originalRunFor } from "../docs/data/selected-results.ts"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const rootDir = join(__dirname, "..")
@@ -342,11 +343,6 @@ async function main() {
   const cutoff = latestMode ? runAt : calendarMonthCutoff(runAt)
   const projection = loadCurrentResults(contentDir).projection
   const currentSubjects = compatibilitySubjects(projection, contentDir)
-  const originals = new Map(
-    Object.values(projection.history)
-      .flat()
-      .map((run) => [run.runId, run]),
-  )
 
   const results: ReleaseResult[] = []
 
@@ -355,17 +351,18 @@ async function main() {
     const current = [...currentSubjects.values()].find(
       ({ selected }) => selected.subject?.kind === "term" && selected.subject.id === source.terminal,
     )
-    const sources = (current?.selected.contributingRunIds ?? []).map((runId) => {
-      const original = originals.get(runId)
-      if (!original) throw new Error(`Release watch context ${current?.contextKey} names absent original run ${runId}`)
-      return {
-        runId,
-        version: original.subject.version,
-        sha256: original.sha256,
-        suiteId: original.suiteId,
-        measuredAt: original.measuredAt,
-      }
-    })
+    const sources = current
+      ? current.selected.contributingRunIds.map((runId) => {
+          const original = originalRunFor(projection, current.contextKey, runId)
+          return {
+            runId,
+            version: original.subject.version,
+            sha256: original.sha256,
+            suiteId: original.suiteId,
+            measuredAt: original.measuredAt,
+          }
+        })
+      : []
     const currentVersions = [...new Set(sources.map((entry) => entry.version))]
     const currentEvidence = current ? { contextKey: current.contextKey, sources } : null
     try {

@@ -149,7 +149,13 @@ describe("current execution projection", () => {
       sources: [{ ...candidate.sources[0]!, suiteRelation: "older" as const }, ...candidate.sources],
     }
     const empty = { ...candidate, key: "attempt-only", sources: [] }
-    expect(pickContextRun([empty, mixed])).toEqual({ run: mixed, selection: "only current" })
+    // An all-stale sibling makes some→every change the pick instead of reaching the one-item fallback.
+    const stale = {
+      ...candidate,
+      key: projectedContextKey({ ...baseline.subject, config: "older-only-fixture" }, 2),
+      sources: candidate.sources.map((source) => ({ ...source, suiteRelation: "older" as const })),
+    }
+    expect(pickContextRun([empty, stale, mixed])).toEqual({ run: mixed, selection: "only current" })
     expect(
       candidateFromSelected(context.contextKey, { ...context, contributingRunIds: [] }, {}, projection),
     ).toBeUndefined()
@@ -323,6 +329,13 @@ describe("current execution projection", () => {
       expect(published.cells[ids[0]!]!.origin).toEqual({ runId: latest.runId, resultId: ids[0] })
       expect(published.cells[ids[2]!]!.origin).toEqual({ runId: prior.runId, resultId: ids[2] })
       expect(published.cells[ids[2]!]!.measuredAt).toBe(prior.measuredAt)
+      expect(published.attempts).toEqual([
+        {
+          runId: latest.runId,
+          startedAt: "2026-10-21T06:00:00.000Z",
+          noOutputIds: [ids[2]],
+        },
+      ])
       expect(published.sources[prior.runId]!.sha256).toBe(prior.sha256)
       expect(published).not.toHaveProperty("runId")
       expect(published).not.toHaveProperty("sha256")
