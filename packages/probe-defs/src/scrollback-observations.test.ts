@@ -10,6 +10,8 @@ import { scrollbackProbes, scrollbackReadbackRows } from "./scrollback.ts"
 import type { ObservationFrame, TermProbeSource, LibProbeSource } from "./types.ts"
 import { libProbeSource } from "./testing/group-harness.ts"
 import { createSemanticSurface } from "./testing/semantic-surface.ts"
+import { createVtermBackend } from "@termless/vterm"
+import { createLibProbeSource } from "../../probes/headless-batch.ts"
 
 function headless(overrides: Partial<LibProbeSource> = {}): LibProbeSource {
   return {
@@ -52,6 +54,215 @@ function headless(overrides: Partial<LibProbeSource> = {}): LibProbeSource {
     ...overrides,
   }
 }
+
+// These controls decide whether a viewport reading can grade support. Older scrollback
+// tests cover parser regions/history, but never exercise viewport motion or output anchoring.
+type ViewportFault =
+  | "none"
+  | "noop"
+  | "constant"
+  | "count"
+  | "geometry"
+  | "mixed"
+  | "invalid"
+  | "ignored"
+  | "history"
+  | "clipped"
+  | "not-bottom"
+  | "no-marker"
+  | "restore"
+  | "evicted"
+function viewportSource(
+  options: { sign?: number; outcomes?: readonly string[]; faults?: readonly ViewportFault[] } = {},
+) {
+  let phase = -1
+  let state = { viewportOffset: 0, totalLines: 5, screenLines: 5 }
+  let text = ""
+  let target = false
+  const writes: string[] = []
+  const moves: number[] = []
+  const reads: { target: boolean; bottom: boolean }[] = []
+  const fault = () => options.faults?.[phase] ?? "none"
+  const source = headless({
+    reset() {
+      phase++
+      state = { viewportOffset: 0, totalLines: 5, screenLines: 5 }
+      text = ""
+      target = false
+    },
+    feed(sequence) {
+      writes.push(sequence)
+      if (sequence.includes("\r\n") && !sequence.startsWith("\r\n") && !sequence.startsWith("\x1b[?2026h")) {
+        if (fault() === "ignored") return
+        text = sequence.split("\r\n").at(-1)!
+        state.totalLines = fault() === "history" ? 5 : sequence.split("\r\n").length - (fault() === "clipped" ? 1 : 0)
+        state.viewportOffset = state.totalLines - 5 - (fault() === "not-bottom" ? 1 : 0)
+      } else if (sequence.includes("\r\n")) {
+        target = true
+        if (fault() !== "evicted") state.totalLines++
+        text = fault() === "no-marker" ? "" : sequence.replace(/\x1b\[\?2026[hl]/g, "").slice(2)
+        const outcome = options.outcomes?.[phase] ?? "hold"
+        if (outcome === "snap") state.viewportOffset = state.totalLines - state.screenLines
+        if (outcome === "drift") state.viewportOffset++
+      }
+    },
+    scrollViewport(delta) {
+      moves.push(delta)
+      if (!target) {
+        if (fault() === "noop") return
+        if (fault() === "count" || fault() === "mixed") state.totalLines++
+        if (fault() === "geometry" || fault() === "mixed") state.screenLines++
+        if (fault() === "count" || fault() === "geometry") return
+        if (fault() === "mixed") {
+          state.viewportOffset--
+          return
+        }
+        if (fault() === "invalid") {
+          state.viewportOffset = NaN
+          return
+        }
+      } else if (fault() === "restore") return
+      state.viewportOffset = Math.max(
+        0,
+        Math.min(state.totalLines - state.screenLines, state.viewportOffset - delta * (options.sign ?? 1)),
+      )
+    },
+    getScrollback: () => ({
+      ...state,
+      ...(fault() === "constant" && { viewportOffset: state.totalLines - state.screenLines }),
+    }),
+    getText() {
+      const bottom = state.viewportOffset === state.totalLines - state.screenLines
+      reads.push({ target, bottom })
+      return bottom ? text : "history has no target marker"
+    },
+  })
+  return { source, writes, moves, reads, phase: () => phase, state: () => state }
+}
+
+function viewportProbe() {
+  const found = scrollbackProbes.find((row) => row.id === "scrollback.viewport-hold-output")
+  if (!found?.lib) throw new Error("Viewport hold needs a library callback")
+  return found.lib
+}
+
+test.each([-1, 1])("viewport hold calibrates sign %s and reads target only after returning to bottom", (sign) => {
+  const fixture = viewportSource({ sign })
+  const result = viewportProbe()(fixture.source)
+  expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
+  const evidence = JSON.parse(result.response!) as Record<string, unknown>
+  expect(Object.keys(evidence).sort()).toEqual(["anchor", "baseline", "control", "ordinary", "synchronized"])
+  expect(evidence).toMatchObject({ control: { ordinary: { sign } } })
+  expect(fixture.moves.slice(0, sign === -1 ? 1 : 2)).toEqual(sign === -1 ? [-1] : [-1, 1])
+  expect(fixture.reads.filter((read) => read.target)).toEqual([
+    { target: true, bottom: true },
+    { target: true, bottom: true },
+  ])
+  expect(fixture.writes).toContain("\x1b[?2026h\r\nviewport-synchronized\x1b[?2026l")
+  expect(fixture.phase()).toBe(2)
+  expect(fixture.state()).toEqual({ viewportOffset: 0, totalLines: 5, screenLines: 5 })
+})
+
+test.each([
+  ["snap", "hold", "unsupported", "ordinary"],
+  ["hold", "snap", "unsupported", "synchronized"],
+  ["drift", "hold", "inconclusive", "ordinary"],
+  ["hold", "drift", "inconclusive", "synchronized"],
+  ["drift", "snap", "inconclusive", "ordinary"],
+  ["snap", "drift", "inconclusive", "synchronized"],
+] as const)("viewport %s then %s gives %s", (ordinary, synchronized, outcome, phase) => {
+  const fixture = viewportSource({ outcomes: [ordinary, synchronized] })
+  const result = viewportProbe()(fixture.source)
+  expect(result.observation?.outcome).toBe(outcome)
+  expect(result.note).toContain(phase)
+  expect(result.assertions?.[0]?.kind).toBe(outcome === "unsupported" ? "negative" : undefined)
+})
+
+test.each([
+  ["noop", "scrollback viewport state"],
+  ["constant", "scrollback viewport state"],
+  ["history", "scrollback history rows"],
+  ["count", null],
+  ["geometry", null],
+  ["mixed", null],
+  ["invalid", null],
+  ["ignored", null],
+  ["clipped", null],
+  ["not-bottom", null],
+  ["no-marker", null],
+  ["restore", null],
+  ["evicted", null],
+] as const)("viewport %s cannot manufacture a support decision", (fault, coverage) => {
+  const fixture = viewportSource({ faults: [fault, fault] })
+  const result = viewportProbe()(fixture.source)
+  if (coverage) expect(result.notTested?.noObservable).toBe(coverage)
+  else expect(result.observation?.outcome).toBe("inconclusive")
+  expect(result.assertions).toBeUndefined()
+  if (fault === "ignored") expect(result.note).toContain("feed not observed")
+  if (fault === "restore") expect(fixture.reads.some((read) => read.target)).toBe(false)
+  expect(fixture.phase()).toBe(2)
+})
+
+test.each([0, 1])("a failed phase %s control prevents the other phase's snap verdict", (failedPhase) => {
+  const fixture = viewportSource({
+    outcomes: ["snap", "snap"],
+    faults: failedPhase === 0 ? ["count", "none"] : ["none", "count"],
+  })
+  const result = viewportProbe()(fixture.source)
+  expect(result.observation?.outcome).toBe("inconclusive")
+  expect(result.assertions).toBeUndefined()
+})
+
+test("viewport absent actuator stays named coverage; operational and cleanup errors survive", () => {
+  const fixture = viewportSource()
+  delete fixture.source.scrollViewport
+  expect(viewportProbe()(fixture.source).notTested?.noObservable).toBe("scrollback viewport scroll control")
+  expect(fixture.writes).toEqual([])
+  expect(fixture.phase()).toBe(-1)
+  const primary = new Error("feed adapter failed")
+  const cleanup = new Error("reset adapter failed")
+  for (const [failFeed, failCleanup] of [
+    [true, false],
+    [false, true],
+    [true, true],
+  ]) {
+    const disposable = viewportSource()
+    const reset = disposable.source.reset.bind(disposable.source)
+    let resets = 0
+    disposable.source.reset = () => {
+      if (++resets === (failFeed ? 2 : 3) && failCleanup) throw cleanup
+      reset()
+    }
+    if (failFeed) {
+      disposable.source.feed = () => {
+        throw primary
+      }
+    }
+    let caught: unknown
+    try {
+      viewportProbe()(disposable.source)
+    } catch (error) {
+      caught = error
+    }
+    if (failFeed && failCleanup) {
+      expect(caught).toBeInstanceOf(AggregateError)
+      expect((caught as AggregateError).errors).toEqual([primary, cleanup])
+    } else expect(caught).toBe(failFeed ? primary : cleanup)
+  }
+})
+
+test("real vterm partial drift is inconclusive rather than an unqualified negative", async () => {
+  const backend = await createVtermBackend()
+  backend.init({ cols: 80, rows: 24 })
+  try {
+    const result = viewportProbe()(createLibProbeSource(backend, undefined, undefined, undefined))
+    expect(result.observation?.outcome).toBe("inconclusive")
+    expect(result.assertions).toBeUndefined()
+    expect(JSON.parse(result.response!)).toMatchObject({ ordinary: { outcome: "drift" } })
+  } finally {
+    backend.destroy()
+  }
+})
 
 /**
  * @failure RI/SD is reported supported when a blank top row comes from losing the seeded rows.

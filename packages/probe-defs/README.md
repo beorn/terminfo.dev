@@ -51,9 +51,18 @@ The [shared execution helpers](src/helpers.ts) initialize every catalog member a
 OSC99 capability detection has both library and term query arms. They share the nonce/title
 criterion and never display a notification. Unqualified library capture silence stays inconclusive;
 only the existing qualified sentinel path can establish a negative reply result. Current artifact
-source audits retain their own parser/reply-path citations. Viewport hold on output has a term
-coverage callback naming our missing actuator forwarding and position readback, performs no I/O,
-and stays TEST TODO. Its library arm remains null; this does not establish an engine limitation.
+source audits retain their own parser/reply-path citations. Viewport hold on output measures the
+library viewport through the existing scroll control and absolute position/extents. Each independent
+ordinary/synchronized phase resets the main buffer, observes its numbered seed, requires history,
+exact retention and a bottom baseline, then calibrates the first inward sign (-1 before +1) without
+changing extents. One new marker row witnesses hold at the same anchor, snap to the new bottom, or
+inconclusive partial drift. Marker readability is checked only after a verified return to bottom.
+Both phases must qualify: either qualified snap is negative, both holds are positive, and a failed
+control or partial drift withholds a verdict. Missing history or scroll control/state names coverage;
+operational and cleanup errors propagate. Retained buffer-state evidence has baseline, anchor,
+control, ordinary and synchronized keys. The exact DECSET 2026 bytes exercise output inside that
+block without claiming painting support. The app coverage callback performs no I/O and stays TEST
+TODO because it has no live terminal UI scroll actuator; its manual UI recipe remains in the catalog.
 
 **Callback and stored shapes are different.** Follow these names in [types.ts](src/types.ts):
 
