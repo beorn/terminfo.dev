@@ -529,6 +529,13 @@ it.each([
       expect(pass.mode).toBe(frozenSuite ? "admit" : "development")
       if (frozenSuite) expect(pass.freeze?.id).toBe(frozenSuite)
       if (selection) {
+        // AC1: a local-only selection must not start either hosted matrix.
+        // Checking the headless argv alone missed these unrelated workflow dispatches.
+        expect(
+          vi
+            .mocked(childProcesses.spawnSync)
+            .mock.calls.filter(([command, args]) => command === "gh" && args?.[0] === "workflow"),
+        ).toHaveLength(0)
         expect(
           pass.contexts.map((row) => `${row.context.id}/${row.context.os === "unknown" ? "headless" : row.context.os}`),
         ).toEqual(selection.contexts)

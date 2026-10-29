@@ -959,6 +959,7 @@ function collectHostedArtifacts(
   drafts: ReadonlyMap<string, { draft: RunDraft; path: string }>,
 ): Map<string, { directory: string; path?: string; error?: string }> {
   const results = new Map<string, { directory: string; path?: string; error?: string }>()
+  if (!census.some((context) => context.route === "hosted-workflow")) return results
   const root = join(directory, "hosted")
   const logs = (directory: string, step: string) => ({
     stdout: join(directory, `${step}.stdout.log`),
@@ -990,6 +991,7 @@ function collectHostedArtifacts(
   const dispatched: Array<{ os: string; contexts: CollectionContext[]; output: string; runId: string }> = []
   for (const os of ["macos", "windows"]) {
     const contexts = census.filter((row) => row.route === "hosted-workflow" && row.os === os)
+    if (contexts.length === 0) continue
     const output = join(root, os)
     try {
       mkdirSync(output, { recursive: true })
