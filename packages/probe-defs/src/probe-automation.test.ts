@@ -895,13 +895,43 @@ describe("reply-path audit", () => {
     }
   })
 
-  test("vt100-rust b9109b59 audits read and clipboard and leaves a silent write not-tested", () => {
+  test("vt100-rust b9109b59 lists the ruled twins and leaves a silent write not-tested", () => {
     const sha = "b9109b5918707746420833dfc2eab3ea5bc7feec5fa93bee4cd6e824e74d0962"
     const old = "f309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96"
-    expect(REPLY_PATH_AUDITS.get(sha)?.["extensions.osc52-clipboard"]?.kind).toBe("no-reply-path")
-    expect(REPLY_PATH_AUDITS.get(sha)?.["extensions.osc52-read"]?.kind).toBe("no-reply-path")
-    expect(REPLY_PATH_AUDITS.get(sha)?.["extensions.osc52-write"]).toBeUndefined()
+    const noReply = [
+      "extensions.kitty-keyboard",
+      "extensions.kitty-keyboard.disambiguate",
+      "extensions.kitty-keyboard.report-all-keys",
+      "extensions.kitty-keyboard.report-alternate",
+      "extensions.kitty-keyboard.report-events",
+      "extensions.kitty-keyboard.report-text",
+      "extensions.osc21-kitty-color",
+      "extensions.osc52-clipboard",
+      "extensions.osc52-read",
+      "extensions.osc99-kitty-notify",
+      "extensions.sixel-da1",
+      "extensions.sixel-geometry-report",
+      "input.csi-u",
+    ]
+    const parserRejected = [
+      "extensions.kitty-graphics",
+      "extensions.kitty-graphics.display",
+      "extensions.kitty-graphics.transmit",
+    ]
+    const rows = REPLY_PATH_AUDITS.get(sha)
+    expect(Object.keys(rows ?? {}).sort()).toEqual([...noReply, ...parserRejected].sort())
+    for (const id of noReply) expect(rows?.[id]?.kind, id).toBe("no-reply-path")
+    for (const id of parserRejected) expect(rows?.[id]?.kind, id).toBe("parser-rejected")
+    const readRows = ["extensions.osc52-clipboard", "extensions.osc52-read"]
+    for (const id of [...noReply, ...parserRejected].filter((id) => !readRows.includes(id))) {
+      expect(rows?.[id]?.citation, id).toContain("lib.rs:21-53")
+      expect(rows?.[id]?.citation, id).not.toContain("artifactf309015f")
+    }
+    expect(rows?.["extensions.osc52-clipboard"]?.citation).toContain("lib.rs:50-52")
+    expect(rows?.["extensions.osc52-read"]?.citation).toContain("lib.rs:50-52")
+    expect(rows?.["extensions.osc52-write"]).toBeUndefined()
     expect(REPLY_PATH_AUDITS.get(old)?.["extensions.osc52-write"]?.kind).toBe("no-reply-path")
+    expect(REPLY_PATH_AUDITS.get(old)?.["extensions.osc99-kitty-notify"]?.kind).toBe("no-reply-path")
     const silent = run("extensions.osc52-write", sha, () => "")
     expect(silent.result.notTested).toEqual({
       reason: "no-semantic-observable",
