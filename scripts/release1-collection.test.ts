@@ -39,8 +39,10 @@ import * as versions from "../packages/admin/versions.ts"
 import { frozenSuiteIdFor } from "../packages/admin/suite-manifest.ts"
 import * as headless from "../packages/probes/collect-headless.ts"
 import { retainCaptureBinding } from "@terminfo/run-parser"
+import { saveDaemonProbeRun } from "../packages/terminfo.dev/src/daemon-client.ts"
 import {
   ENVIRONMENT_GROUP_IDS,
+  SOURCE_NEGATIVE_REVIEW,
   textQualificationFixtures,
   readCollectorSelection,
   readCollectorAttempt,
@@ -1475,185 +1477,251 @@ it("records the host-written transport receipt as evidence and refuses anything 
 
 // A valid pending capture used to return before delegated identity tests. Historical artifact
 // fixtures could not cover this schema-3 handoff even when they exercised the classified branch.
-it.each(["matching", "foreign-run", "foreign-context", "admitted", "admission-refused"] as const)(
-  "retains delegated identity and admission outcome: %s",
-  async (fault) => {
-    const directory = mkdtempSync(join(tmpdir(), "terminfo-pending-handoff-"))
-    const specimen = JSON.parse(
-      readFileSync(join(ROUND, "probes-libs/xtermjs-6.0.0-linux-c19905bf-2d90-474c-9e1a-13805bb3c0c4.json"), "utf8"),
-    )
-    if (
-      typeof specimen !== "object" ||
-      specimen === null ||
-      !("target" in specimen) ||
-      typeof specimen.target !== "object" ||
-      specimen.target === null ||
-      !("measuredAt" in specimen) ||
-      !("runtimeIdentity" in specimen)
-    ) {
-      throw new Error("Missing historical runtime fixture")
-    }
-    const measuredTarget = specimen.target
-    const finalCollection = fault === "admitted" || fault === "admission-refused"
-    const frozenSuite = finalCollection ? frozenSuiteIdFor(CONTENT, "candidate2") : undefined
-    const currentSnapshot = versions.probeSuiteSnapshot()
-    const frozenManifest = frozenSuite
-      ? parseSuiteManifest(
-          join(CONTENT, "suites", `${frozenSuite}.json`),
-          readFileSync(join(CONTENT, "suites", `${frozenSuite}.json`), "utf8"),
+it.each([
+  "matching",
+  "source-negative-pending",
+  "foreign-run",
+  "foreign-context",
+  "admitted",
+  "admission-refused",
+] as const)("retains delegated identity and admission outcome: %s", async (fault) => {
+  const directory = mkdtempSync(join(tmpdir(), "terminfo-pending-handoff-"))
+  const specimen = JSON.parse(
+    readFileSync(join(ROUND, "probes-libs/xtermjs-6.0.0-linux-c19905bf-2d90-474c-9e1a-13805bb3c0c4.json"), "utf8"),
+  )
+  if (
+    typeof specimen !== "object" ||
+    specimen === null ||
+    !("target" in specimen) ||
+    typeof specimen.target !== "object" ||
+    specimen.target === null ||
+    !("measuredAt" in specimen) ||
+    typeof specimen.measuredAt !== "string" ||
+    !("runtimeIdentity" in specimen)
+  ) {
+    throw new Error("Missing historical runtime fixture")
+  }
+  const measuredTarget = specimen.target
+  const measuredAt = specimen.measuredAt
+  const finalCollection = fault === "admitted" || fault === "admission-refused"
+  const frozenSuite = finalCollection ? frozenSuiteIdFor(CONTENT, "candidate2") : undefined
+  const currentSnapshot = versions.probeSuiteSnapshot()
+  const frozenManifest = frozenSuite
+    ? parseSuiteManifest(
+        join(CONTENT, "suites", `${frozenSuite}.json`),
+        readFileSync(join(CONTENT, "suites", `${frozenSuite}.json`), "utf8"),
+      )
+    : undefined
+  const snapshot = frozenManifest
+    ? vi
+        .spyOn(versions, "probeSuiteSnapshot")
+        .mockReturnValue({ ...currentSnapshot, ...frozenManifest, sourcePaths: [] })
+    : undefined
+  const planner = finalCollection
+    ? vi.spyOn(admission, "planAdmission").mockImplementation((source) => {
+        const run = parseRun(
+          source,
+          readFileSync(source, "utf8"),
+          Object.keys(catalog.loadFeatures(CONTENT)),
+          new Map([[frozenSuite!, frozenManifest!]]),
         )
-      : undefined
-    const snapshot = frozenManifest
-      ? vi
-          .spyOn(versions, "probeSuiteSnapshot")
-          .mockReturnValue({ ...currentSnapshot, ...frozenManifest, sourcePaths: [] })
-      : undefined
-    const planner = finalCollection
-      ? vi.spyOn(admission, "planAdmission").mockImplementation((source) => {
-          const run = parseRun(
-            source,
-            readFileSync(source, "utf8"),
-            Object.keys(catalog.loadFeatures(CONTENT)),
-            new Map([[frozenSuite!, frozenManifest!]]),
-          )
-          if (run.subject.os === null) throw new Error("Fixture admission requires recorded OS")
-          return {
-            source,
-            destination: join(directory, "admitted.json"),
-            probeHash: frozenSuite!,
-            subject: { ...run.subject, os: run.subject.os },
-            runId: run.runId,
-          }
-        })
-      : undefined
-    const writer = finalCollection
-      ? vi.spyOn(admission, "admitRun").mockImplementation((plan) => {
-          if (fault === "admission-refused") throw new Error("fixture admission refused")
-          writeFileSync(plan.destination, readFileSync(plan.source))
-          return {
-            manifest: "existing",
-            run: "created",
-            screenshots: { created: 0, existing: 0 },
-            textSnapshots: { created: 0, existing: 0 },
-            receipt: { placed: "none", detail: "fixture" },
-          }
-        })
-      : undefined
-    const launcher = vi.spyOn(childProcesses, "spawnSync").mockReturnValue({
+        if (run.subject.os === null) throw new Error("Fixture admission requires recorded OS")
+        return {
+          source,
+          destination: join(directory, "admitted.json"),
+          probeHash: frozenSuite!,
+          subject: { ...run.subject, os: run.subject.os },
+          runId: run.runId,
+        }
+      })
+    : undefined
+  const writer = finalCollection
+    ? vi.spyOn(admission, "admitRun").mockImplementation((plan) => {
+        if (fault === "admission-refused") throw new Error("fixture admission refused")
+        writeFileSync(plan.destination, readFileSync(plan.source))
+        return {
+          manifest: "existing",
+          run: "created",
+          screenshots: { created: 0, existing: 0 },
+          textSnapshots: { created: 0, existing: 0 },
+          receipt: { placed: "none", detail: "fixture" },
+        }
+      })
+    : undefined
+  const launcher = vi.spyOn(childProcesses, "spawnSync").mockImplementation((command, args) => {
+    if (
+      fault === "source-negative-pending" &&
+      command === "bash" &&
+      Array.isArray(args) &&
+      args.includes("alacritty") &&
+      !args.includes("--mux")
+    ) {
+      const output = String(args.at(-1))
+      const draft = JSON.parse(
+        readFileSync(join(dirname(dirname(output)), "term-alacritty-linux.draft.json"), "utf8"),
+      ) as RunDraft
+      const appRun = {
+        ...structuredClone(draft),
+        subject: { ...measuredTarget, kind: "term", id: "alacritty", os: "linux" },
+        identity: "unverified",
+        origin: { kind: "collector" },
+        measuredAt: specimen.measuredAt,
+      }
+      appRun.results[0]!.status = "test-failure"
+      appRun.results[0]!.criterionBranch = SOURCE_NEGATIVE_REVIEW
+      appRun.results[0]!.attempt = { scope: "probe", startedAt: measuredAt }
+      appRun.results[0]!.reason = "Required source-negative review pending"
+      appRun.results[0]!.tests = [
+        {
+          id: "review",
+          status: "test-failure",
+          attempt: { scope: "probe", startedAt: measuredAt },
+          reason: "Required source-negative review pending",
+        },
+      ]
+      retainCaptureBinding(appRun as never, appRun.results[0]!.featureId)
+      const rawDir = join(output, "fixture-run", "raw")
+      mkdirSync(rawDir, { recursive: true })
+      writeFileSync(join(rawDir, "v3-run.draft.json"), JSON.stringify(appRun))
+      return { pid: 1, output: [], stdout: "", stderr: "", status: 0, signal: null }
+    }
+    return {
       pid: 1,
       output: [],
       stdout: "",
       stderr: "fixture external route unavailable",
       status: 1,
       signal: null,
-    })
-    const collector = vi
-      .spyOn(headless, "collectHeadlessRuns")
-      .mockImplementation(async (_selectors, output, initializations) => {
-        if (!output || !initializations) throw new Error("Expected initialized coordinator handoff")
-        mkdirSync(output, { recursive: true })
-        const handed = initializations.get("xtermjs")!
-        const run = {
-          ...structuredClone(handed.draft),
-          runId: fault === "foreign-run" ? "foreign-logical-attempt" : handed.draft.runId,
-          subject: { ...measuredTarget, kind: fault === "foreign-context" ? "term" : "lib" },
-          identity: "unverified",
-          origin: { kind: "collector" },
-          measuredAt: specimen.measuredAt,
-          ...(fault !== "foreign-context" && { runtimeIdentity: specimen.runtimeIdentity }),
-        }
+    }
+  })
+  const collector = vi
+    .spyOn(headless, "collectHeadlessRuns")
+    .mockImplementation(async (_selectors, output, initializations) => {
+      if (!output || !initializations) throw new Error("Expected initialized coordinator handoff")
+      mkdirSync(output, { recursive: true })
+      const handed = initializations.get("xtermjs")!
+      const run = {
+        ...structuredClone(handed.draft),
+        runId: fault === "foreign-run" ? "foreign-logical-attempt" : handed.draft.runId,
+        subject: { ...measuredTarget, kind: fault === "foreign-context" ? "term" : "lib" },
+        identity: "unverified",
+        origin: { kind: "collector" },
+        measuredAt: specimen.measuredAt,
+        ...(fault !== "foreign-context" && { runtimeIdentity: specimen.runtimeIdentity }),
+      }
+      if (fault === "source-negative-pending") {
+        run.results[0]!.status = "test-failure"
+        run.results[0]!.criterionBranch = SOURCE_NEGATIVE_REVIEW
+        run.results[0]!.attempt = { scope: "probe", startedAt: measuredAt }
+        run.results[0]!.reason = "Required source-negative review pending"
+        run.results[0]!.tests = [
+          {
+            id: "review",
+            status: "test-failure",
+            attempt: { scope: "probe", startedAt: measuredAt },
+            reason: "Required source-negative review pending",
+          },
+        ]
+      } else {
         run.results[0]!.tests = [
           { id: "review", status: "test-todo", attempt: { scope: "none" }, reason: "Required review pending" },
         ]
-        if (finalCollection) {
-          const attempt = { scope: "probe" as const, startedAt: specimen.measuredAt }
-          const measured = run.results.filter((result) => !ENVIRONMENT_GROUP_IDS.includes(result.featureId as never))
-          Object.assign(run, {
-            sealedAt: specimen.measuredAt,
-            rawReplies: Object.fromEntries(measured.map((result) => [result.featureId, '{"value":true}'])),
-            assertions: measured.map(({ featureId }) => ({
-              featureId,
-              assertionType: "buffer_state",
-              kind: "positive",
-              rawReplyRef: featureId,
-              expected: "value=true",
-              observed: '{"value":true}',
-            })),
-            results: run.results.map((result) => {
-              const index = measured.findIndex((entry) => entry.featureId === result.featureId)
-              return index < 0
-                ? result
-                : {
-                    featureId: result.featureId,
-                    status: "supported",
-                    assertionType: "buffer_state",
-                    rawReplyRef: result.featureId,
-                    attempt,
-                    tests: [
-                      {
-                        id: "criterion",
-                        status: "supported",
-                        attempt,
-                        assertionRefs: [index],
-                        rawReplyRef: result.featureId,
-                      },
-                    ],
-                  }
-            }),
-          })
-        } else retainCaptureBinding(run as never, run.results[0]!.featureId)
-        const path = join(output, "pending.json")
-        writeFileSync(path, JSON.stringify(run))
-        return { directory: output, requested: ["xtermjs"], runs: [path], failures: [] }
-      })
-    try {
-      const deferrals = finalCollection
-        ? census()
-            .filter((row) => row.kind !== "lib" || row.id !== "xtermjs")
-            .map((row) => ({
-              context: row.kind === "lib" ? `${row.id}/headless` : `${row.id}/${row.os}`,
-              routeIssue: "@si/terminfo/carried-test-route",
-              reason: "Synthetic deferred test context",
-            }))
-        : []
-      const pass = await collectPass(directory, frozenSuite, { runner: "local" }, deferrals)
-      const row = pass.contexts.find((entry) => entry.context.kind === "lib" && entry.context.id === "xtermjs")!
+      }
       if (finalCollection) {
-        expect(pass.errors).toEqual(
-          fault === "admission-refused" ? ["Admission stopped: fixture admission refused"] : [],
-        )
-        expect(row.status, row.error).toBe(fault === "admitted" ? "admitted" : "failed")
-        expect(pass.complete).toBe(fault === "admitted")
-        expect(pass.contexts).toHaveLength(33)
-        expect(pass.contexts.filter((entry) => entry.status === "not-started")).toHaveLength(32)
-        expect(pass.freeze?.deferrals).toEqual(deferrals)
-        const retained = JSON.parse(readFileSync(join(pass.directory, "pass.json"), "utf8"))
-        expect(retained).toMatchObject({
-          complete: fault === "admitted",
-          contexts: expect.arrayContaining([
-            expect.objectContaining({
-              status: fault === "admitted" ? "admitted" : "failed",
-              ...(fault === "admitted" && { admittedPath: join(directory, "admitted.json") }),
-            }),
-          ]),
+        const attempt = { scope: "probe" as const, startedAt: specimen.measuredAt }
+        const measured = run.results.filter((result) => !ENVIRONMENT_GROUP_IDS.includes(result.featureId as never))
+        Object.assign(run, {
+          sealedAt: specimen.measuredAt,
+          rawReplies: Object.fromEntries(measured.map((result) => [result.featureId, '{"value":true}'])),
+          assertions: measured.map(({ featureId }) => ({
+            featureId,
+            assertionType: "buffer_state",
+            kind: "positive",
+            rawReplyRef: featureId,
+            expected: "value=true",
+            observed: '{"value":true}',
+          })),
+          results: run.results.map((result) => {
+            const index = measured.findIndex((entry) => entry.featureId === result.featureId)
+            return index < 0
+              ? result
+              : {
+                  featureId: result.featureId,
+                  status: "supported",
+                  assertionType: "buffer_state",
+                  rawReplyRef: result.featureId,
+                  attempt,
+                  tests: [
+                    {
+                      id: "criterion",
+                      status: "supported",
+                      attempt,
+                      assertionRefs: [index],
+                      rawReplyRef: result.featureId,
+                    },
+                  ],
+                }
+          }),
         })
-        return
-      }
-      if (fault === "matching") expect(row.status, row.error).toBe("pending-review")
-      else {
-        expect(row.status).toBe("not-started")
-        expect(row.error).toMatch(
-          fault === "foreign-run" ? /changed logical runId/ : /expected current schema-4 lib:xtermjs context/,
-        )
-      }
-      expect(pass.complete).toBe(false)
-    } finally {
-      collector.mockRestore()
-      launcher.mockRestore()
-      planner?.mockRestore()
-      writer?.mockRestore()
-      snapshot?.mockRestore()
-      rmSync(directory, { recursive: true, force: true })
+      } else retainCaptureBinding(run as never, run.results[0]!.featureId)
+      const path =
+        fault === "source-negative-pending" ? saveDaemonProbeRun(run as never, output) : join(output, "pending.json")
+      if (fault !== "source-negative-pending") writeFileSync(path, JSON.stringify(run))
+      return { directory: output, requested: ["xtermjs"], runs: [path], failures: [] }
+    })
+  try {
+    const deferrals = finalCollection
+      ? census()
+          .filter((row) => row.kind !== "lib" || row.id !== "xtermjs")
+          .map((row) => ({
+            context: row.kind === "lib" ? `${row.id}/headless` : `${row.id}/${row.os}`,
+            routeIssue: "@si/terminfo/carried-test-route",
+            reason: "Synthetic deferred test context",
+          }))
+      : []
+    const pass = await collectPass(directory, frozenSuite, { runner: "local" }, deferrals)
+    const row = pass.contexts.find((entry) => entry.context.kind === "lib" && entry.context.id === "xtermjs")!
+    if (finalCollection) {
+      expect(pass.errors).toEqual(fault === "admission-refused" ? ["Admission stopped: fixture admission refused"] : [])
+      expect(row.status, row.error).toBe(fault === "admitted" ? "admitted" : "failed")
+      expect(pass.complete).toBe(fault === "admitted")
+      expect(pass.contexts).toHaveLength(33)
+      expect(pass.contexts.filter((entry) => entry.status === "not-started")).toHaveLength(32)
+      expect(pass.freeze?.deferrals).toEqual(deferrals)
+      const retained = JSON.parse(readFileSync(join(pass.directory, "pass.json"), "utf8"))
+      expect(retained).toMatchObject({
+        complete: fault === "admitted",
+        contexts: expect.arrayContaining([
+          expect.objectContaining({
+            status: fault === "admitted" ? "admitted" : "failed",
+            ...(fault === "admitted" && { admittedPath: join(directory, "admitted.json") }),
+          }),
+        ]),
+      })
+      return
     }
-  },
-)
+    if (fault === "matching" || fault === "source-negative-pending") {
+      expect(row.status, row.error).toBe("pending-review")
+      if (fault === "source-negative-pending") {
+        const appRow = pass.contexts.find(
+          (entry) => entry.context.kind === "term" && entry.context.id === "alacritty" && entry.context.os === "linux",
+        )!
+        expect(appRow.status, appRow.error).toBe("pending-review")
+        expect(readdirSync(dirname(appRow.rawRun!))).toEqual(["v3-run.draft.json"])
+      }
+    } else {
+      expect(row.status).toBe("not-started")
+      expect(row.error).toMatch(
+        fault === "foreign-run" ? /changed logical runId/ : /expected current schema-4 lib:xtermjs context/,
+      )
+    }
+    expect(pass.complete).toBe(false)
+  } finally {
+    collector.mockRestore()
+    launcher.mockRestore()
+    planner?.mockRestore()
+    writer?.mockRestore()
+    snapshot?.mockRestore()
+    rmSync(directory, { recursive: true, force: true })
+  }
+})

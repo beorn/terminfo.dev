@@ -34,6 +34,7 @@ import {
   readCollectorSelection,
   resolveProbeIds,
   collectorIds,
+  SOURCE_NEGATIVE_REVIEW,
   type CollectorAttempt,
   type RunDraft,
 } from "@terminfo/probe-defs"
@@ -760,7 +761,12 @@ export async function collectPass(
         }
         if (
           decoded.run.results.some((result) =>
-            result.tests.some((check) => check.id === "review" && check.status === "test-todo"),
+            result.tests.some(
+              (check) =>
+                check.id === "review" &&
+                (check.status === "test-todo" ||
+                  (result.criterionBranch === SOURCE_NEGATIVE_REVIEW && check.status === "test-failure")),
+            ),
           ) &&
           Object.keys(decoded.run.rawReplies).some((key) => key.startsWith("collector.capture."))
         ) {
