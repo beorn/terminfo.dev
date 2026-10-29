@@ -983,6 +983,11 @@ export function probe(
 }
 
 export const REPLY_PATH_AUDIT_REVIEW = "reply-path-audit-review"
+export const HEADLESS_OBSERVABLE_REVIEW = "headless-observable-review"
+export const UNTESTABLE_ONLY_REVIEW_BRANCHES: ReadonlySet<string> = new Set([
+  REPLY_PATH_AUDIT_REVIEW,
+  HEADLESS_OBSERVABLE_REVIEW,
+])
 
 /**
  * Apply the reply-path audit table (reply-path-audit.ts) to one library probe; it decides nothing about identity.

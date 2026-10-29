@@ -1,6 +1,11 @@
 import { describe, expect, test } from "vitest"
 import { ALL_PROBES, type LibProbeSource, type TermProbeSource } from "./index.ts"
-import { REPLY_AFTER_SENTINEL_NOTE, REPLY_PATH_AUDIT_REVIEW, SOURCE_NEGATIVE_REVIEW } from "./helpers.ts"
+import {
+  HEADLESS_OBSERVABLE_REVIEW,
+  REPLY_AFTER_SENTINEL_NOTE,
+  REPLY_PATH_AUDIT_REVIEW,
+  SOURCE_NEGATIVE_REVIEW,
+} from "./helpers.ts"
 import { REPLY_PATH_AUDITS } from "./reply-path-audit.ts"
 
 const OSC_SEMANTIC_MARK_CASES = [
@@ -701,8 +706,10 @@ describe("OSC 8 link metadata observation", () => {
         reason: "no-semantic-observable",
         noObservable: expect.stringContaining("OSC 8 URI observer"),
       })
-      expect(unreported.criterionBranch).toBeUndefined()
-      expect(unreported.tests).toBeUndefined()
+      expect(unreported.criterionBranch).toBe(HEADLESS_OBSERVABLE_REVIEW)
+      expect(unreported.tests).toEqual([
+        { id: "review", status: "test-todo", reason: `Headless observable review required: ${unreported.note}` },
+      ])
       expect(unreported.assertions).toBeUndefined()
       expect(JSON.parse(unreported.response ?? "")).toEqual({
         chars: [..."ALINKZ"],

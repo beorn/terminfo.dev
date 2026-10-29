@@ -96,6 +96,14 @@ An absent `hyperlinks` observer with valid fixture text retains named coverage (
 identifying the loaded adapter path and Termless revision when measured runtime identity is available.
 Declared getters returning null report unlinked cells, so URI mismatches remain measured negatives; invalid declared getters still throw.
 
+The eight declaration-only library checks (Kitty animation and Unicode placeholders, Sixel,
+semantic prompts, OSC 7, OSC 633, notifications and iTerm2 images), the absent OSC 8 URI observer,
+and the DECSCLM/2031 missing timing or host-event facilities retain their existing coverage and raw
+state on `headless-observable-review`. Each carries a required review naming its missing observable.
+That branch and `reply-path-audit-review` admit only an independently bound Untestable decision;
+source review establishes no rendered effect or measured negative. App callbacks and real-observable
+paths keep their criteria. Existing captures acquire no new branch or review.
+
 The collector forwards the run's measured `HeadlessRuntimeIdentity` through `LibProbeSource.runtimeIdentity`.
 It identifies the loaded adapter source, engine integrity and any loaded binary; feature-capability versions
 cannot substitute for it. Missing identity supplies no source-derived qualification.

@@ -14,6 +14,8 @@ import {
   headlessDecrpmArm,
   parserStateResult,
   notTestedResult,
+  reviewResult,
+  HEADLESS_OBSERVABLE_REVIEW,
   osInputReviewResult,
   sameRgb,
   isBlank,
@@ -1886,20 +1888,25 @@ export const modesProbes: ProbeDefinition[] = [
   }),
 
   // ?4 — DECSCLM needs presentation timing, not mode recognition or final parser state.
-  decrpmModeProbe("modes.decsclm", 4, () =>
-    notTestedResult("DECSCLM requires presentation timing capture", { presentation: false }),
-  ),
+  decrpmModeProbe("modes.decsclm", 4, () => {
+    const note = "DECSCLM requires presentation timing capture"
+    return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
+      presentation: false,
+    })
+  }),
 
   // Mode 2031 — color scheme reporting (dark/light mode notifications)
   // Adopted by: iTerm2, tmux 3.6, Contour, foot, kitty
   {
     ...probe(
       "modes.color-scheme-reporting",
-      () =>
-        notTestedResult("Mode 2031 requires a host palette actuator and persistent unsolicited-event listener", {
+      () => {
+        const note = "Mode 2031 requires a host palette actuator and persistent unsolicited-event listener"
+        return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
           paletteActuator: false,
           persistentListener: false,
-        }),
+        })
+      },
       async (ctx) => {
         const ps = await queryDecrpm(ctx, 2031)
         // Ps 4 says the terminal knows the mode and cannot set it: unsupported, as decrpmResult grades it (#30557).
