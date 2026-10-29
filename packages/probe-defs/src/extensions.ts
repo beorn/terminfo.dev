@@ -1668,10 +1668,35 @@ const GRAPHICS_QUERY = "\x1b_Gi=31,s=1,v=1,a=q,t=d,f=24;AAAA\x1b\\"
 const GRAPHICS_QUERY_REPLY = /\x1b_Gi=31;([^\x1b]+)\x1b\\/
 
 /** Live's reading of the graphics query outcome, shared by both arms (#30554). */
-function graphicsQueryOutcomeResult(reply: TerminalQueryOutcome): ProbeCallbackResult {
-  return matchedReplyResult(reply, "No matching graphics query reply; image rendering was not tested", (frame) =>
-    graphicsQueryResult(frame, 31),
-  )
+function graphicsQueryOutcomeResult(reply: TerminalQueryOutcome | string): ProbeCallbackResult {
+  const outcome =
+    typeof reply === "string"
+      ? { match: GRAPHICS_QUERY_REPLY.exec(reply), reason: "sentinel" as const, raw: reply, rawBase64: btoa(reply) }
+      : reply
+  return matchedReplyResult(outcome, "No matching graphics query reply; image rendering was not tested", (frame) => {
+    const match = kittyReplyFrame({ i: "31" }).exec(frame)
+    const message = match?.[2]
+    // Only the canonical a=q direct RGB request has this criterion; placement keeps its own OK-only grader.
+    if (!match || !message || !/^[\x20-\x7e]+$/.test(message)) return graphicsQueryResult(frame, 31)
+    const pass = message === "OK"
+    const note = pass
+      ? "Canonical direct RGB graphics query accepted; visible rendering was not tested"
+      : `Canonical direct RGB graphics query refused: ${message}; protocol recognized, visible rendering was not tested`
+    return {
+      pass,
+      note,
+      observation: { outcome: pass ? "supported" : "unsupported", assertionType: "query_reply", note },
+      assertions: [
+        {
+          assertionType: "query_reply",
+          kind: pass ? "positive" : "negative",
+          expected: "Canonical direct RGB graphics query i=31 acknowledged with OK",
+          observed: match[0],
+          note: JSON.stringify({ protocolRecognized: true, message }),
+        },
+      ],
+    }
+  })
 }
 
 /** Live's reading of an allocation outcome, shared by both arms (#30554); the result keeps the whole read window. */
@@ -2338,7 +2363,7 @@ export const extensionsProbes: ProbeDefinition[] = [
         (ctx) =>
           ctx.queryWithSentinelOutcome
             ? graphicsQueryOutcomeResult(ctx.queryWithSentinelOutcome(GRAPHICS_QUERY, GRAPHICS_QUERY_REPLY))
-            : graphicsQueryResult(ctx.feedCapture(GRAPHICS_QUERY), 31),
+            : graphicsQueryOutcomeResult(ctx.feedCapture(GRAPHICS_QUERY)),
         async (ctx) =>
           graphicsQueryOutcomeResult(await ctx.queryWithSentinelOutcome(GRAPHICS_QUERY, GRAPHICS_QUERY_REPLY)),
         "query_reply",

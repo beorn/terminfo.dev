@@ -815,10 +815,42 @@ test("a kitty allocation reply that echoes another image number does not qualify
   }
 })
 
-test("the kitty graphics query still qualifies its i=31;OK reply (27915 kept the single-key frame)", () => {
+// 31377: the refusal specimen is retained run772ff2a6/suite9cc61ebe4417, including its DA1 window.
+// A correlated refusal proves recognition but does not accept the canonical direct RGB query.
+test.each([
+  ["OK", "\x1b_Gi=31;OK\x1b\\", "supported", "OK"],
+  ["retained vterm refusal", "\x1b_Gi=31;ENOTSUP\x1b\\\x1b[?62;4c", "unsupported", "ENOTSUP"],
+  ["another printable error", "\x1b_Gi=31;EIO: image unavailable\x1b\\", "unsupported", "EIO: image unavailable"],
+  ["wrong image ID", "\x1b_Gi=32;ENOTSUP\x1b\\", null, null],
+  ["control byte", "\x1b_Gi=31;ENO\x00TSUP\x1b\\", null, null],
+  ["partial frame", "\x1b_Gi=31;ENOTSUP", null, null],
+] as const)("the canonical Kitty query grades %s consistently in both arms", async (_label, raw, outcome, message) => {
   const definition = callback("extensions.kitty-graphics")
-  const result = definition.lib!({ feedCapture: () => "\x1b_Gi=31;OK\x1b\\" } as unknown as LibProbeSource)
-  expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
+  const query = (_sequence: string, pattern: RegExp) => ({
+    match: pattern.exec(raw),
+    reason: "sentinel" as const,
+    raw,
+    rawBase64: Buffer.from(raw).toString("base64"),
+  })
+  const results = [
+    definition.lib!({ feedCapture: () => raw } as unknown as LibProbeSource),
+    definition.lib!({ queryWithSentinelOutcome: query } as unknown as LibProbeSource),
+    await definition.term!({
+      queryWithSentinelOutcome: async (sequence: string, pattern: RegExp) => query(sequence, pattern),
+    } as unknown as TermProbeSource),
+  ]
+  for (const result of results) {
+    expect(result.response).toBe(raw)
+    if (outcome === null) {
+      expect(result.observation?.outcome).not.toBe("supported")
+      expect(result.observation?.outcome).not.toBe("unsupported")
+      expect(result.assertions).toBeUndefined()
+    } else {
+      expect(result.observation).toMatchObject({ outcome, assertionType: "query_reply" })
+      expect(result.assertions).toMatchObject([{ kind: outcome === "supported" ? "positive" : "negative" }])
+      expect(JSON.parse(result.assertions![0]!.note!)).toEqual({ protocolRecognized: true, message })
+    }
+  }
 })
 
 /**
