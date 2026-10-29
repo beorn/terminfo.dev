@@ -281,6 +281,26 @@ describe("reply-path audit", () => {
     return { result, sent }
   }
 
+  // #31377 AC1: explicit membership catches omitted audits that data-derived cases cannot see.
+  test.each([
+    "extensions.kitty-keyboard",
+    "extensions.kitty-keyboard.disambiguate",
+    "extensions.kitty-keyboard.report-events",
+    "extensions.kitty-keyboard.report-alternate",
+    "extensions.kitty-keyboard.report-all-keys",
+    "extensions.kitty-keyboard.report-text",
+    "input.csi-u",
+  ])("native readonly keyboard query retains required review: %s", (id) => {
+    const { result, sent } = run(id, "17d155feee5df8fa30266b9a354bbe66e39484d08218de5e03dc3bb2f199a0a3", () => "")
+    expect(sent).toEqual(["\x1b[?u\x1b[c"])
+    expect(result).toMatchObject({
+      criterionBranch: REPLY_PATH_AUDIT_REVIEW,
+      tests: [{ id: "review", status: "test-todo" }],
+    })
+    expect(result.observation).toBeUndefined()
+    expect(result.assertions ?? []).toEqual([])
+  })
+
   // #31369, @cto fb6cfc2f: named current-native source limitations must reach the production callback.
   // The generic audit cases iterate only present entries, so they cannot catch a missing approved cell.
   test.each([
@@ -418,9 +438,10 @@ describe("reply-path audit", () => {
     expect(raw.trace.at(-1)).toEqual({ write: query, error: "Error: stack attempt failed" })
   })
 
-  test("covers all four audited artifacts", () => {
-    // Ghostty WASM at 5714ed07, two native artifacts at 332b2aef and the vt100 0.16.2 Rust parser.
+  test("covers all five audited artifacts", () => {
+    // Ghostty WASM at 5714ed07, three native artifacts at 332b2aef and the vt100 0.16.2 Rust parser.
     expect([...REPLY_PATH_AUDITS.keys()].sort()).toEqual([
+      "17d155feee5df8fa30266b9a354bbe66e39484d08218de5e03dc3bb2f199a0a3",
       "7c43302dde147c6f7959b7bda7045ff375c71288da1af5667ffca2bf95beb2bf",
       "9a9505600721226b952ae9ac92552b42389aa6713872a9f4904528f425b7ecdf",
       "ac12d6408c2049f1d720e9735d7eb69251d3eed868fc9ced58de98b3543f3e2e",
