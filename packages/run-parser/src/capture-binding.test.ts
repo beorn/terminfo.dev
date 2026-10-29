@@ -172,7 +172,7 @@ it.each([
 // #31373 (@cto 15cf18e4): an unreproduced-callback record and its failed harness row are one claim. The
 // collector writes both together; the reader refuses either one alone, which no existing fixture carries.
 function harnessCapture(
-  mode: "both" | "record-only" | "row-only" | "todo-row",
+  mode: "both" | "record-only" | "reordered-record" | "spaced-record" | "row-only" | "todo-row",
   host?: "cause" | "no-cause" | "two-targets" | "replied-cause",
 ) {
   const featureId = "clipboard.read"
@@ -219,20 +219,21 @@ function harnessCapture(
   draft.measuredAt = "2026-10-28T23:00:00.000Z"
   draft.origin = { kind: "collector" }
   const query = "\x1b]52;c;?\x07"
+  const unreproduced = { backend: "kitty", captures: [{ query, callbacks: ["clipboard_control"] }] }
+  // @cto ff549ce2: the reader finds the record by its key, so neither key order nor JSON whitespace hides it.
   draft.rawReplies[featureId] =
     mode === "row-only"
       ? ""
-      : JSON.stringify({
-          unreproduced: { backend: "kitty", captures: [{ query, callbacks: ["clipboard_control"] }] },
-          measuredResponse: "",
-        })
+      : mode === "reordered-record"
+        ? JSON.stringify({ measuredResponse: "", unreproduced })
+        : `${mode === "spaced-record" ? "\n " : ""}${JSON.stringify({ unreproduced, measuredResponse: "" })}`
   const reason = "Harness incomplete: kitty did not reproduce clipboard_control; silence is not evidence"
   draft.results[0] = recordExecutedProbe({
     featureId,
     attempt: { scope: "probe", startedAt: draft.measuredAt },
     assertions: [],
     tests: [
-      mode === "record-only"
+      mode === "record-only" || mode === "reordered-record" || mode === "spaced-record"
         ? { id: "criterion", status: "test-failure", reason: "no-response" }
         : { id: HARNESS_INCOMPLETE_TEST, status: mode === "todo-row" ? "test-todo" : "test-failure", reason },
     ],
@@ -342,9 +343,12 @@ it("refuses a harness-unreproduced cause on a capture that replied", () => {
 it("reads an unreproduced-callback record beside its failed harness row", () => {
   expect(harnessCapture("both")().results?.[0]?.status).toBe("test-failure")
 })
-it.each(["record-only", "row-only", "todo-row"] as const)("refuses an unreproduced-callback claim with %s", (mode) => {
-  expect(harnessCapture(mode)).toThrow(/unreproduced-callback record/)
-})
+it.each(["record-only", "reordered-record", "spaced-record", "row-only", "todo-row"] as const)(
+  "refuses an unreproduced-callback claim with %s",
+  (mode) => {
+    expect(harnessCapture(mode)).toThrow(/unreproduced-callback record/)
+  },
+)
 it("the WezTerm OSC 52 read audit makes its refused capture parse without changing a result", () => {
   expect(weztermCapture("captured")).toThrow(/missing cause for captured empty target response/)
   const statuses = (JSON.parse(WEZTERM_OSC52) as { results: { status: string }[] }).results.map((r) => r.status)
@@ -356,6 +360,43 @@ it.each(["foreign-artifact", "declared-input", "no-source"] as const)(
     expect(weztermCapture(mode)).toThrow(/host recipe/i)
   },
 )
+
+// The Kitty capture at the reply-delivery declaration's head (run b0a66924, launcher sha256 c490c7d9, termless 0b27886)
+// trimmed to its three OSC 52 probes (@cto ff19ee09: a native declaration lands with a parse test on a real capture). Each
+// silent clipboard read reached clipboard_control, which the bridge does not reproduce, so its capture carries the cause.
+const KITTY_OSC52 = readFileSync(new URL("./fixtures/kitty-osc52-harness.capture.json", import.meta.url), "utf8")
+function kittyCapture(mode: "captured" | "no-cause") {
+  const run = JSON.parse(KITTY_OSC52) as RunDraft & { results: { featureId: string }[]; probeHash: string }
+  const ids = run.results.map((result) => result.featureId)
+  const manifest = {
+    schemaVersion: 4 as const,
+    probeHash: run.probeHash,
+    adapterVersion: "4",
+    catalogIds: ids,
+    probes: { term: [], lib: ids, mux: [] },
+  }
+  if (mode === "no-cause") {
+    for (const id of ids) {
+      const recordRef = `collector.hostRecipes.${id}`
+      const record = JSON.parse(run.rawReplies[recordRef]!) as { captures: { cause?: unknown }[] }
+      for (const capture of record.captures) delete capture.cause
+      run.rawReplies[recordRef] = JSON.stringify(record)
+    }
+  }
+  return () =>
+    parseRun("kitty-osc52.json", JSON.stringify(run), ids, new Map([[manifest.probeHash, manifest]]), {
+      mode: "capture",
+    })
+}
+it("the real Kitty capture parses its silent OSC 52 reads by their harness cause, and refuses them without it", () => {
+  const results = kittyCapture("captured")().results ?? []
+  expect(results.map((result) => [result.featureId, result.status, result.tests[0]?.id])).toEqual([
+    ["extensions.osc52-clipboard", "test-failure", HARNESS_INCOMPLETE_TEST],
+    ["extensions.osc52-read", "test-failure", HARNESS_INCOMPLETE_TEST],
+    ["extensions.osc52-write", "test-failure", HARNESS_INCOMPLETE_TEST],
+  ])
+  expect(kittyCapture("no-cause")).toThrow(/missing cause for captured empty target response/)
+})
 
 const setup = (
   observed?: string,
