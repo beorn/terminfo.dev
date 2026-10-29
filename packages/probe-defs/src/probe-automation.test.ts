@@ -426,6 +426,15 @@ describe("reply-path audit", () => {
   // The data-derived callback cases below cannot detect an omitted artifact or omitted row.
   test.each([
     {
+      name: "native overline",
+      digest: "d70f2f8adb5dfcb6a7d75d23e11a60ba3671844b930a3f66970a709f65ee1346",
+      priors: [
+        "ac12d6408c2049f1d720e9735d7eb69251d3eed868fc9ced58de98b3543f3e2e",
+        "17d155feee5df8fa30266b9a354bbe66e39484d08218de5e03dc3bb2f199a0a3",
+      ],
+      core: "332b2aef",
+    },
+    {
       name: "native",
       digest: "8872ab0fc56429489b52cd5d3b5a293032c3ec7dbbb71545d237945c3ef525f3",
       priors: [
@@ -841,8 +850,8 @@ describe("reply-path audit", () => {
     expect(raw.trace.at(-1)).toEqual({ write: query, error: "Error: stack attempt failed" })
   })
 
-  test("covers all nine audited artifacts", () => {
-    // Three Ghostty WASM artifacts at 5714ed07, four native artifacts at 332b2aef, and two vt100-rust builds.
+  test("covers all ten audited artifacts", () => {
+    // Three Ghostty WASM artifacts at 5714ed07, five native artifacts at 332b2aef, and two vt100-rust builds.
     expect([...REPLY_PATH_AUDITS.keys()].sort()).toEqual([
       "17d155feee5df8fa30266b9a354bbe66e39484d08218de5e03dc3bb2f199a0a3",
       "77b69f9f22c4126359be864fcce97afad8f84615053e21d335ba6348a8d3e1d7",
@@ -851,6 +860,7 @@ describe("reply-path audit", () => {
       "9a9505600721226b952ae9ac92552b42389aa6713872a9f4904528f425b7ecdf",
       "ac12d6408c2049f1d720e9735d7eb69251d3eed868fc9ced58de98b3543f3e2e",
       "b9109b5918707746420833dfc2eab3ea5bc7feec5fa93bee4cd6e824e74d0962",
+      "d70f2f8adb5dfcb6a7d75d23e11a60ba3671844b930a3f66970a709f65ee1346",
       "d80a8110258a124fb6ff52a6fe149b8e39b5180d986907cc9fb7dc9143c3f3d9",
       "f309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96",
     ])
