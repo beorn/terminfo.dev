@@ -823,7 +823,9 @@ test.each([
   ["another printable error", "\x1b_Gi=31;EIO: image unavailable\x1b\\", "unsupported", "EIO: image unavailable"],
   ["wrong image ID", "\x1b_Gi=32;ENOTSUP\x1b\\", null, null],
   ["control byte", "\x1b_Gi=31;ENO\x00TSUP\x1b\\", null, null],
+  ["non-ASCII message", "\x1b_Gi=31;E\u0100\x1b\\", null, null],
   ["partial frame", "\x1b_Gi=31;ENOTSUP", null, null],
+  ["no reply", "", null, null],
 ] as const)("the canonical Kitty query grades %s consistently in both arms", async (_label, raw, outcome, message) => {
   const definition = callback("extensions.kitty-graphics")
   const query = (_sequence: string, pattern: RegExp) => ({

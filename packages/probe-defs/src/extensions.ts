@@ -1671,7 +1671,12 @@ const GRAPHICS_QUERY_REPLY = /\x1b_Gi=31;([^\x1b]+)\x1b\\/
 function graphicsQueryOutcomeResult(reply: TerminalQueryOutcome | string): ProbeCallbackResult {
   const outcome =
     typeof reply === "string"
-      ? { match: GRAPHICS_QUERY_REPLY.exec(reply), reason: "sentinel" as const, raw: reply, rawBase64: btoa(reply) }
+      ? {
+          match: GRAPHICS_QUERY_REPLY.exec(reply),
+          reason: "sentinel" as const,
+          raw: reply,
+          rawBase64: Buffer.from(reply).toString("base64"),
+        }
       : reply
   return matchedReplyResult(outcome, "No matching graphics query reply; image rendering was not tested", (frame) => {
     const match = kittyReplyFrame({ i: "31" }).exec(frame)
