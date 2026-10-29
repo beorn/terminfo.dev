@@ -49,6 +49,17 @@ const NATIVE_HOST_AUDITS: ReadonlyMap<string, NativeHostSourceCitations> = new M
     },
   ],
   [
+    // The same engine rebuilt at Termless 0400d94a for cell underline_color forwarding (31379); EventProxy is unchanged.
+    "11c87e7e7f23e6f224e9dc8c3296b0a91f5453a42038e5ad049aafa864f9bd50",
+    {
+      "clipboard-load": {
+        kind: "source-audited",
+        citation:
+          "alacritty_terminal 0.26.0 Config default clipboard policy OnlyCopy; Termless packages/alacritty/native/src/lib.rs EventProxy::send has no ClipboardLoad handler; this harness supplies no clipboard read permission",
+      },
+    },
+  ],
+  [
     // WezTerm: tattoy-wezterm-term 0.1.0-fork.5 behind the Termless native addon. It answers CSI 14 t from the pixels
     // the wrapper gives it (terminalstate/mod.rs:2047-2054), so that reply is never empty and needs no row.
     "84da518e3f298a0ed75f186db6e39d87e99b8f0c8508dd7252ec0cafee77fe12",

@@ -248,6 +248,26 @@ describe("audited native host recipe callers", () => {
       { recipe: "clipboard-load", cause: { kind: "source-audited", artifactSha256: alacritty } },
     ])
   })
+
+  // The Alacritty addon rebuilt at termless 0400d94a for underline_color forwarding (31379) leaves EventProxy unchanged.
+  test("the Alacritty artifact 11c87e7e cites its OSC 52 read and leaves CSI 14 t measured", () => {
+    const alacritty = "11c87e7e7f23e6f224e9dc8c3296b0a91f5453a42038e5ad049aafa864f9bd50"
+    const silent = (id: string) =>
+      probe(id).lib!(
+        context({
+          runtimeIdentity: {
+            ...nativeIdentity,
+            loadedBinary: { path: "alacritty.node", sha256: alacritty },
+            provenance: { ...nativeIdentity.provenance, sha256: alacritty },
+          },
+          feedCapture: () => "",
+        }),
+      )
+    expect(silent("device.xtwinops-14").hostRecipeCauses).toBeUndefined()
+    expect(silent("extensions.osc52-read").hostRecipeCauses).toMatchObject([
+      { recipe: "clipboard-load", cause: { kind: "source-audited", artifactSha256: alacritty } },
+    ])
+  })
 })
 
 /**
