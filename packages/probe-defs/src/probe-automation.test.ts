@@ -1008,7 +1008,7 @@ describe("reply-path audit", () => {
         }
         return state
       },
-    } as LibProbeSource)
+    } as unknown as LibProbeSource)
   }
 
   test("osc52-write passes when the engine callback retained the encoded nonce", () => {
