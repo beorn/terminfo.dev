@@ -319,13 +319,19 @@ test.each([
   ["sgr.faint", "dim"],
   ["sgr.italic", "italic"],
   ["sgr.strikethrough", "strikethrough"],
-] as const)("%s names unreported %s without treating it as a measured negative", (id, field) => {
+  ["sgr.blink", "blink"],
+] as const)("%s retains unreported %s for required source review", (id, field) => {
   const probe = sgrProbes.find((probe) => probe.id === id)!
   const run = (value: boolean | null, char = "X") =>
     probe.lib!(libProbeSource(inertModel(40, { [field]: value, char })))
   const missing = run(null)
-  expect(missing.notTested).toMatchObject({ reason: "no-semantic-observable" })
-  expect(JSON.stringify(missing)).toContain(`producer does not report cell.${field}`)
+  expect(missing.notTested).toBeUndefined()
+  expect(missing.criterionBranch).toBe("source-negative-review")
+  expect(missing.tests).toContainEqual(expect.objectContaining({ id: "review", status: "test-failure" }))
+  expect(JSON.parse(missing.response!)).toEqual(expect.objectContaining({ [field]: null }))
+  expect(missing.assertions).toContainEqual(
+    expect.objectContaining({ kind: "negative", assertionType: "buffer_state" }),
+  )
   expect(run(true).observation?.outcome).toBe("supported")
   const measuredNegative = run(false)
   expect(measuredNegative.notTested).toBeUndefined()
@@ -335,4 +341,6 @@ test.each([
   )
   expect(run(null, " ").observation?.outcome).toBe("inconclusive")
   expect(run(null, " ").notTested).toBeUndefined()
+  expect(run(null, " ").criterionBranch).toBeUndefined()
+  expect(run(null, " ").assertions).toBeUndefined()
 })

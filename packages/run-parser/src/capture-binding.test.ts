@@ -28,6 +28,8 @@ import {
 import { fakeProbeResult } from "@terminfo/probe-defs/testing/fake-probe-result"
 import { applyCaptureDecision, retainCaptureBinding, parseRun, decodeCollectorDraft } from "./index.ts"
 import { finalizeHeadlessAttempt } from "../../probes/headless-batch.ts"
+import { libProbeSource } from "../../probe-defs/src/testing/group-harness.ts"
+import { createSemanticSurface } from "../../probe-defs/src/testing/semantic-surface.ts"
 
 // Empty HTTP transport is a real initialized draft, not a truncated measured capture.
 // Sealed-run binding tests never decode the unmeasured collector response boundary.
@@ -759,6 +761,38 @@ const setup = (
 // Existing final-run SHA review tests cannot catch a circular pre-seal binding or status changes
 // authorized by a different capture. This exercises the actual execution helper and exact bytes.
 describe("immutable pre-seal capture binding", () => {
+  // Existing review fixtures supply the pending row; this crosses the actual SGR producer boundary.
+  it.each(["unsupported", "untestable"] as const)("decides an actual null SGR readback as %s", (outcome) => {
+    const model = createSemanticSurface()
+    const source = libProbeSource({
+      ...model,
+      getCell: (row, col) => ({ ...model.getCell(row, col), dim: null }),
+    })
+    const callback = ALL_PROBES.find((probe) => probe.id === "sgr.faint")!.lib!(source)
+    const startedAt = "2026-10-27T11:00:00.000Z"
+    const { draft, decision } = setup(callback.response, { runId: "null-style-review", startedAt }, (draft) => {
+      draft.assertions = (callback.assertions ?? []).map((assertion) => ({
+        ...assertion,
+        featureId: "sgr.faint",
+        rawReplyRef: "sgr.faint",
+      }))
+      draft.results[0] = recordExecutedProbe({
+        featureId: "sgr.faint",
+        attempt: { scope: "probe", startedAt },
+        observation: { ...callback.observation!, featureId: "sgr.faint", rawReplyRef: "sgr.faint" },
+        assertions: draft.assertions,
+        tests: callback.tests,
+        criterionBranch: callback.criterionBranch,
+      })
+    })
+    decision.decision = outcome
+    applyCaptureDecision(draft, JSON.stringify(decision), "2026-10-27T11:01:00.000Z")
+    expect(draft.results[0]!.status).toBe(outcome)
+    expect(JSON.parse(draft.rawReplies["sgr.faint"]!)).toEqual(expect.objectContaining({ dim: null }))
+    expect(draft.assertions[0]!.assertionType).toBe("buffer_state")
+    expect(JSON.parse(draft.assertions[0]!.observed)).toEqual(expect.objectContaining({ dim: null }))
+  })
+
   // Headless intent omits version; an explicit conflict remains binding even for the same run.
   // Existing fixtures always supplied a matching version, hiding the production collector shape.
   it.each([
