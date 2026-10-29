@@ -52,6 +52,25 @@ import { loadFeatures } from "@terminfo/catalog"
 import { ALL_PROBES } from "@terminfo/probe-defs"
 import { derivedSuiteManifest, probeHash, probeSuiteSnapshot } from "./versions.ts"
 
+// #31692: hashing the catalogue did not prove that its non-environment IDs were reachable.
+test("every non-environment catalogue ID is reachable by a declared probe selection", () => {
+  const snapshot = probeSuiteSnapshot()
+  const environment = new Set([
+    "device.env-colorterm",
+    "device.env-kitty",
+    "device.env-lc-terminal",
+    "device.env-no-color",
+    "device.env-term",
+    "device.env-term-program",
+    "device.env-vte-version",
+    "device.env-wezterm",
+    "device.env-wt-session",
+  ])
+  const reachable = new Set(Object.values(snapshot.probes).flat())
+  expect(snapshot.catalogIds.filter((id) => !environment.has(id) && !reachable.has(id))).toEqual([])
+  expect(snapshot.probes.lib).toContain("extensions.osc99-kitty-notify")
+})
+
 test("suite hash changes when either imported mode or extension definitions change", () => {
   const baseline = probeHash()
   for (const file of ["modes.ts", "extensions.ts"]) {

@@ -2303,6 +2303,73 @@ describe("Kitty protocol detection", () => {
     }
   })
 
+  // #31692: the term-only test could not catch the missing real library arm or fallback silence.
+  test.each([
+    "valid",
+    "wrong-id",
+    "missing-title",
+    "duplicate-p",
+    "garbage",
+    "timeout",
+    "qualified-silence",
+    "fallback-silence",
+  ] as const)("notification library query preserves its criterion for %s", (replyKind) => {
+    const p = probe("extensions.osc99-kitty-notify")
+    if (!p.lib) throw new Error("missing notification library callback")
+    const sent: string[] = []
+    let observed = ""
+    const exchange = (sequence: string, pattern: RegExp) => {
+      sent.push(sequence)
+      const id = /\x1b\]99;i=([^:;]+):p=\?;/.exec(sequence)?.[1]
+      if (!id) throw new Error("Missing notification capability query")
+      const empty = replyKind === "timeout" || replyKind === "fallback-silence"
+      const payload =
+        replyKind === "missing-title" ? "p=body" : replyKind === "duplicate-p" ? "p=title:p=body" : "p=title,body"
+      observed = empty
+        ? ""
+        : replyKind === "qualified-silence"
+          ? "\x1b[?1;2c"
+          : replyKind === "garbage"
+            ? "unrelated bytes"
+            : `\x1b]99;i=${replyKind === "wrong-id" ? "unrelated" : id}:p=?;${payload}\x1b\\`
+      return {
+        raw: observed,
+        rawBase64: btoa(observed),
+        match: observed.match(pattern),
+        reason: replyKind === "timeout" ? ("timeout" as const) : ("sentinel" as const),
+        ...(replyKind === "qualified-silence" && { sentinel: { atMs: 1, graceMs: 250 } }),
+      }
+    }
+    const source = context({
+      feed: () => {
+        throw new Error("Capability query must not display a notification")
+      },
+    })
+    if (replyKind === "fallback-silence")
+      source.feedCapture = (sequence) => {
+        sent.push(sequence)
+        return ""
+      }
+    else source.queryWithSentinelOutcome = exchange
+    const result = p.lib(source)
+    expect(sent).toHaveLength(1)
+    expect(p.libAssertionType).toBe("query_reply")
+    if (replyKind === "valid") {
+      expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
+      expect(result.assertions).toMatchObject([{ kind: "positive", observed }])
+      expect(result.response).toBe(observed)
+    } else if (replyKind === "qualified-silence") {
+      expect(result.observation?.outcome).toBe("unsupported")
+      expect(result.assertions).toMatchObject([{ kind: "negative" }])
+    } else if (replyKind === "timeout") {
+      expect(result.observation?.outcome).not.toBe("unsupported")
+      expect(result.tests).toMatchObject([{ status: "test-failure" }])
+    } else {
+      expect(result.observation?.outcome).toBe("inconclusive")
+      expect(result.assertions ?? []).toEqual([])
+    }
+  })
+
   test("OSC 21 validates the requested foreground reply and never falls back to cursor consumption", async () => {
     const p = probe("extensions.osc21-kitty-color")
     if (!p.term || !p.lib) throw new Error("OSC 21 needs both callbacks")

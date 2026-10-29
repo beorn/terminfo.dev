@@ -95,7 +95,7 @@ test("the Scrollback contract covers every probe, names none unknown, and carrie
   expect(scrollbackProbes).toHaveLength(9)
   expect(SCROLLBACK_CONTRACT).toHaveLength(10)
   expect(SCROLLBACK_NAMED_UNAVAILABLE).toHaveLength(1)
-  expect(scrollbackProbes.map((entry) => entry.id)).not.toContain("scrollback.viewport-hold-output")
+  expect(scrollbackProbes.map((entry) => entry.id)).toContain("scrollback.viewport-hold-output")
   expect(SCROLLBACK_CONTRACT.map((entry) => entry.id)).toContain("scrollback.viewport-hold-output")
 })
 
