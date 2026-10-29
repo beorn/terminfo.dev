@@ -359,6 +359,43 @@ it.each(["foreign-artifact", "declared-input", "no-source"] as const)(
   },
 )
 
+// The Kitty capture at the reply-delivery declaration's head (run b0a66924, launcher sha256 c490c7d9, termless 0b27886)
+// trimmed to its three OSC 52 probes (@cto ff19ee09: a native declaration lands with a parse test on a real capture). Each
+// silent clipboard read reached clipboard_control, which the bridge does not reproduce, so its capture carries the cause.
+const KITTY_OSC52 = readFileSync(new URL("./fixtures/kitty-osc52-harness.capture.json", import.meta.url), "utf8")
+function kittyCapture(mode: "captured" | "no-cause") {
+  const run = JSON.parse(KITTY_OSC52) as RunDraft & { results: { featureId: string }[]; probeHash: string }
+  const ids = run.results.map((result) => result.featureId)
+  const manifest = {
+    schemaVersion: 4 as const,
+    probeHash: run.probeHash,
+    adapterVersion: "4",
+    catalogIds: ids,
+    probes: { term: [], lib: ids, mux: [] },
+  }
+  if (mode === "no-cause") {
+    for (const id of ids) {
+      const recordRef = `collector.hostRecipes.${id}`
+      const record = JSON.parse(run.rawReplies[recordRef]!) as { captures: { cause?: unknown }[] }
+      for (const capture of record.captures) delete capture.cause
+      run.rawReplies[recordRef] = JSON.stringify(record)
+    }
+  }
+  return () =>
+    parseRun("kitty-osc52.json", JSON.stringify(run), ids, new Map([[manifest.probeHash, manifest]]), {
+      mode: "capture",
+    })
+}
+it("the real Kitty capture parses its silent OSC 52 reads by their harness cause, and refuses them without it", () => {
+  const results = kittyCapture("captured")().results ?? []
+  expect(results.map((result) => [result.featureId, result.status, result.tests[0]?.id])).toEqual([
+    ["extensions.osc52-clipboard", "test-failure", HARNESS_INCOMPLETE_TEST],
+    ["extensions.osc52-read", "test-failure", HARNESS_INCOMPLETE_TEST],
+    ["extensions.osc52-write", "test-failure", HARNESS_INCOMPLETE_TEST],
+  ])
+  expect(kittyCapture("no-cause")).toThrow(/missing cause for captured empty target response/)
+})
+
 const setup = (
   observed?: string,
   sourceNegative?: { runId: string; startedAt: string },
