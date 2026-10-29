@@ -270,7 +270,23 @@ async function rawScoreboard(paths: readonly string[], contentDir: string): Prom
   for (const summary of Object.values(projection.contexts)) {
     for (const runId of summary.contributingRunIds) {
       const selected = originals.get(runId)
-      if (!selected) throw new Error(`Context ${summary.contextKey} names absent original contributor ${runId}`)
+      if (!selected) {
+        // Working captures already have factual private rows above; contributing to the composed
+        // view does not admit them or give them a reviewed/publication identity.
+        const original = Object.values(summary.cells).find((cell) => cell.origin.runId === runId)?.run
+        if (!original) throw new Error(`Context ${summary.contextKey} names absent original contributor ${runId}`)
+        const matching = [...rows.values()]
+          .flat()
+          .filter((row) => row.runId === runId && row.sha256 === original.sha256)
+        if (matching.length === 0)
+          throw new Error(`Context ${summary.contextKey} contributor ${runId} has no retained private input row`)
+        const contribution = Object.values(summary.cells).filter((cell) => cell.origin.runId === runId).length
+        for (const row of matching) {
+          row.selected = true
+          row.detail += `; contributes ${contribution} cells to ${summary.contextKey}; private original, not admitted`
+        }
+        continue
+      }
       if (selected.measuredAt > observedAt) observedAt = selected.measuredAt
       const context = census.contexts.find(
         (row) =>
@@ -357,7 +373,7 @@ async function rawScoreboard(paths: readonly string[], contentDir: string): Prom
         ?.slice(1)
         .map((row) =>
           escape(
-            `; ${row.selected ? "selected evidence" : `earlier pass ${row.pass}`}: ${row.runId} ${row.suite}; ${row.counts}; ${row.state}; ${row.detail}; ${row.source}; sha256=${row.sha256}`,
+            `; earlier pass ${row.pass}${row.selected ? "; selected evidence" : ""}: ${row.runId} ${row.suite}; ${row.counts}; ${row.state}; ${row.detail}; ${row.source}; sha256=${row.sha256}`,
           ),
         )
         .join("")} |`,
