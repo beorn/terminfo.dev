@@ -149,6 +149,11 @@ describe("release watch consumer", () => {
       mkdirSync(join(root, "docs", "data"), { recursive: true })
       mkdirSync(join(root, "content", "probes-apps"), { recursive: true })
       copyFileSync(join(import.meta.dirname, "watch-releases.ts"), join(root, "scripts", "watch-releases.ts"))
+      // Exercise the shared original lookup, rather than reimplementing it in the isolated CLI fixture.
+      writeFileSync(
+        join(root, "docs", "data", "selected-results.ts"),
+        `export { originalRunFor } from ${JSON.stringify(join(import.meta.dirname, "../docs/data/selected-results.ts"))}`,
+      )
       writeFileSync(
         join(root, "content", "probes-apps", "kitty-0.99-linux.json"),
         JSON.stringify({ backend: "kitty", version: "0.99" }),
