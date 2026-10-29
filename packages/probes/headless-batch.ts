@@ -113,8 +113,9 @@ export function finalizeHeadlessAttempt(
     let changed = false
     const causes = record.causes.map((entry) => {
       const cause = entry.cause
-      if (cause.kind !== "source-audited" || cause.citation.inputRecordRef !== "collector.collectionAttempt")
+      if (cause.kind !== "source-audited" || cause.citation.inputRecordRef !== "collector.collectionAttempt") {
         return entry
+      }
       if (cause.citation.sha256 !== oldDigest) {
         throw new Error(`Headless host citation stale before finalization: ${featureId}`)
       }

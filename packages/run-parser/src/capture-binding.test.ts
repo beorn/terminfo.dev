@@ -72,7 +72,8 @@ function hostCauseCapture(
 ) {
   const featureId = "host.fixture",
     runId = "host-custody",
-    artifact = "a".repeat(64)
+    artifact = "a".repeat(64),
+    startedAt = "2026-10-28T19:00:00.000Z"
   const recordRef = `collector.hostRecipes.${featureId}`
   const manifest = {
     schemaVersion: 4 as const,
@@ -114,7 +115,7 @@ function hostCauseCapture(
     },
   }
   draft.identity = "unverified"
-  draft.measuredAt = "2026-10-28T19:00:00.000Z"
+  draft.measuredAt = startedAt
   draft.origin = { kind: "collector" }
   draft.results[0] = recordExecutedProbe({
     featureId,
@@ -188,7 +189,7 @@ function hostCauseCapture(
           draft,
           {
             ids: [featureId],
-            startedAt: draft.measuredAt,
+            startedAt,
             hostInputs: { "foreground-rgb": finalization === "tampered" ? "supplied" : "not-supplied" },
             ...(outcome === "completed" ? { result: outcome } : { result: outcome, error: "original fixture error" }),
           },
