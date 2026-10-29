@@ -401,7 +401,10 @@ it("the real Kitty capture parses its silent OSC 52 reads by their harness cause
 // The WezTerm capture of the addon rebuilt with the declared pixel geometry (run 777ffa79, addon sha256 78c05a71, termless
 // 71cac2c3; 31551) trimmed to its four pixel probes and its OSC 52 read (@cto ff19ee09). The engine answered every pixel
 // query from the declared 800x480 text area; its OSC 52 read stayed silent and carries the artifact's audit cause.
-const WEZTERM_GEOMETRY = readFileSync(new URL("./fixtures/wezterm-pixel-geometry.capture.json", import.meta.url), "utf8")
+const WEZTERM_GEOMETRY = readFileSync(
+  new URL("./fixtures/wezterm-pixel-geometry.capture.json", import.meta.url),
+  "utf8",
+)
 function weztermGeometryCapture(mode: "captured" | "no-cause") {
   const run = JSON.parse(WEZTERM_GEOMETRY) as RunDraft & { results: { featureId: string }[]; probeHash: string }
   const ids = run.results.map((result) => result.featureId)
