@@ -413,7 +413,9 @@ const COLOR_STACK_GREEN = { r: 0, g: 255, b: 0 }
 /**
  * Headless XTPUSHCOLORS/XTPOPCOLORS read-back (#30700): the pixel capture's palette fixture, read
  * from cells. Calibration redefines index 1 blue, draws and reads a cell, then green and reads
- * again, which proves OSC 4 moves the reported foreground at all. The target sets the blue
+ * again, which proves OSC 4 moves the reported foreground at all (on @xterm/headless, the
+ * per-instance palette array mirrors _core._inputHandler.onColor events, so OSC 4 cell-color
+ * calibration grades that engine-delivered index+rgb event; #31735, @cto 863bef67). The target sets the blue
  * baseline, pushes, redefines index 1 green, prints X, pops and prints Y. Y alone is graded, read
  * before any later palette change can recolor it: blue means the pop restored the saved palette,
  * green means it did not. X is never graded, because a correct pop may recolor it (turn362). A

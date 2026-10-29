@@ -259,9 +259,26 @@ test.each([
   async (engine, factory) => {
     const batch = await collectBatch(factory, engine, registryDefinitions(COLOR_READBACK_IDS))
     expect(batch.results).toHaveLength(COLOR_READBACK_IDS.length)
-    expect(batch.observations).toEqual([])
-    expect(batch.assertions).toEqual([])
+    // On xtermjs, extensions.osc104-reset-palette is decided via the indexed-cell witness
+    // (_core._inputHandler.onColor events; #31735, @cto 863bef67), while the 7 default/stack
+    // queries remain silent and request color-readback-review.
+    const cellWitnessIds = engine === "xtermjs" ? ["extensions.osc104-reset-palette"] : []
+    expect(batch.observations).toEqual(
+      cellWitnessIds.map((featureId) =>
+        expect.objectContaining({ featureId, outcome: "supported", assertionType: "buffer_state" }),
+      ),
+    )
+    expect(batch.assertions).toEqual(
+      cellWitnessIds.map((featureId) =>
+        expect.objectContaining({ featureId, kind: "positive", assertionType: "buffer_state" }),
+      ),
+    )
     for (const result of batch.results) {
+      if (cellWitnessIds.includes(result.featureId)) {
+        expect(result.status, result.featureId).toBe("supported")
+        expect(result.criterionBranch, result.featureId).toBeUndefined()
+        continue
+      }
       expect(result.status, result.featureId).toBe("test-todo")
       expect(result.criterionBranch, result.featureId).toBe("color-readback-review")
       expect(result.rawReplyRef, result.featureId).toBe(result.featureId)

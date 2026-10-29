@@ -19,6 +19,17 @@ type NativeHostSourceCitations = Readonly<Partial<Record<Exclude<HostRecipeName,
  * from runtime. A host gains causes only through its own audit here; no host inherits another's citations.
  */
 const NATIVE_HOST_AUDITS: ReadonlyMap<string, NativeHostSourceCitations> = new Map([
+  // Rebuilt for term.colors() indexed/named cell color resolution (31735); reply and host-input routes unchanged.
+  [
+    "67736cf8d7d96156ac921566713032a445bfd8564e499f5e715c3c7f077d8af6",
+    {
+      "clipboard-load": {
+        kind: "source-audited",
+        citation:
+          "alacritty_terminal 0.26.0 Config default clipboard policy OnlyCopy; Termless packages/alacritty/native/src/lib.rs EventProxy::send has no ClipboardLoad handler; this harness supplies no clipboard read permission",
+      },
+    },
+  ],
   // Rebuilt at Termless 5afcc676 for owned URI and underlineColor readback (31385); reply and host-input routes unchanged.
   [
     "d280c3fd2129f42db0d7154d6e66f5582a67fa1faf1e82ab463b6b8286f126d0",

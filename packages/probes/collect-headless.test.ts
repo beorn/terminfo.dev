@@ -214,9 +214,14 @@ it.runIf(OWNED_LAYOUT)(
       )
       .map((row) => row.featureId)
       .sort()
-    // #30699: the proven reply path makes these silent colour queries measured negatives.
+    // #31735, @cto 863bef67: xtermjs subscribes to _core._inputHandler.onColor, so extensions.osc104-reset-palette
+    // grades supported via the indexed-cell witness, while the 7 default/stack queries stay negative by sentinel (#30699).
+    expect(draft.results.find((row) => row.featureId === "extensions.osc104-reset-palette")).toMatchObject({
+      status: "supported",
+      reason: "Indexed colour resolved at read",
+      tests: [expect.objectContaining({ id: "criterion", status: "supported" })],
+    })
     const colourReadback = [
-      "extensions.osc104-reset-palette",
       "extensions.osc110-reset-fg",
       "extensions.osc111-reset-bg",
       "extensions.osc112-reset-cursor",

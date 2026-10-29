@@ -666,6 +666,69 @@ describe("window-operation qualification", () => {
       }
     }
   })
+
+  // #31735, @cto 863bef67: when both CSI 22;0t and CSI 23;0t are source-audited as unimplemented in the loaded
+  // WASM artifact (ghostty 0.4.0 stream_handler.zig:343-346; libvterm 0.3.3 state.c:978), an observed setup +
+  // un-restored title grades Unsupported by source citation; failed setup or unaudited artifacts stay inconclusive.
+  test.each([
+    ["d80a8110258a124fb6ff52a6fe149b8e39b5180d986907cc9fb7dc9143c3f3d9", "stream_handler.zig:343-346"],
+    ["5937bd79139ee5856bcf1bd619cc44fcd2d750d3def3066a74956678cdaaaeb2", "src/state.c:978"],
+  ] as const)(
+    "audited title-stack artifact %s grades Unsupported by source only after observed setup",
+    (sha256, cite) => {
+      for (const id of ["device.xtwinops-22", "device.xtwinops-23"] as const) {
+        const makeCtx = (titles: readonly [string, string, string], binarySha: string = sha256) => {
+          let index = 0
+          return {
+            feed: () => undefined,
+            runtimeIdentity: {
+              kind: "js",
+              runtimeFormat: "wasm",
+              engineVersion: "0.4.0",
+              adapterVersion: "0.4.0",
+              termlessRevision: "0".repeat(40),
+              resolvedPath: "fixture.js",
+              integrity: { kind: "registry", lockIntegrity: "sha512-fixture" },
+              loadedBinary: { path: "fixture.wasm", sha256: binarySha },
+            },
+            getTitle: () => titles[index++]!,
+          } as unknown as LibProbeSource
+        }
+        const negative = callback(id).headless(makeCtx(["pushed-title", "new-title", "new-title"]))
+        expect(negative.observation).toMatchObject({
+          outcome: "unsupported",
+          assertionType: "buffer_state",
+          note: "negative by source citation",
+        })
+        expect(negative.assertions).toMatchObject([
+          { kind: "negative", assertionType: "buffer_state", observed: negative.response },
+        ])
+        expect(JSON.parse(negative.response!)).toMatchObject({
+          original: "pushed-title",
+          changed: "new-title",
+          restored: "new-title",
+          artifactSha256: sha256,
+          sourceCitation: expect.stringContaining(cite),
+        })
+
+        // Real restoration still wins over the audit table.
+        const positive = callback(id).headless(makeCtx(["pushed-title", "new-title", "pushed-title"]))
+        expect(positive.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
+
+        // Unobservable setup stays inconclusive even on an audited artifact.
+        const unobservable = callback(id).headless(makeCtx(["", "", ""]))
+        expect(unobservable.observation).toMatchObject({
+          outcome: "inconclusive",
+          reason: "insufficient-evidence",
+          note: "Title setup was not observable",
+        })
+
+        // Unaudited digest stays inconclusive.
+        const unaudited = callback(id).headless(makeCtx(["pushed-title", "new-title", "new-title"], "f".repeat(64)))
+        expect(unaudited.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+      }
+    },
+  )
 })
 
 /**
