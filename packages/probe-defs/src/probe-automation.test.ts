@@ -281,6 +281,101 @@ describe("reply-path audit", () => {
     return { result, sent }
   }
 
+  // #31369, @cto fb6cfc2f: named current-native source limitations must reach the production callback.
+  // The generic audit cases iterate only present entries, so they cannot catch a missing approved cell.
+  test.each([
+    ["cursor.position-report", false],
+    ["device.decrpm", false],
+    ["device.decrqss", false],
+    ["device.dsr-996-color-scheme", false],
+    ["device.primary-da", false],
+    ["device.secondary-da", false],
+    ["device.status-report", false],
+    ["device.tertiary-da", false],
+    ["device.xtgettcap", false],
+    ["device.xtreportcolors", true],
+    ["device.xtversion", false],
+    ["device.xtwinops-14", false],
+    ["device.xtwinops-16", false],
+    ["device.xtwinops-18", false],
+    ["device.xtwinops-20", true],
+    ["device.xtwinops-21", false],
+    ["editing.decrqcra", true],
+    ["extensions.osc10-fg-color", false],
+    ["extensions.osc11-bg-color", false],
+    ["extensions.osc12-cursor-color", false],
+    ["extensions.osc17-highlight-bg", false],
+    ["extensions.osc19-highlight-fg", false],
+    ["extensions.osc4-palette", false],
+    ["extensions.osc5-special-color", false],
+    ["extensions.sixel-da1", false],
+    ["extensions.osc52-clipboard", false],
+    ["extensions.osc52-read", false],
+    ["extensions.osc52-write", false],
+    ["extensions.osc5522-clipboard", false],
+    ["extensions.osc0-icon-title", true],
+  ] as const)("current native source contract: %s", (id, parserRejected) => {
+    const { result } = run(id, "ac12d6408c2049f1d720e9735d7eb69251d3eed868fc9ced58de98b3543f3e2e", () => "")
+    if (parserRejected) {
+      expect(result).toMatchObject({ observation: { outcome: "unsupported", assertionType: "query_reply" } })
+      expect(result.assertions).toEqual([expect.objectContaining({ kind: "negative", assertionType: "query_reply" })])
+    } else {
+      expect(result).toMatchObject({
+        criterionBranch: REPLY_PATH_AUDIT_REVIEW,
+        tests: [{ id: "review", status: "test-todo" }],
+      })
+      expect(result.observation).toBeUndefined()
+    }
+  })
+
+  // @cto fb6cfc2f: these source-negative decisions must still be reached when the current native
+  // observer returns no colour replies. A seeded-only fixture would hide the actual early-return path.
+  test.each([
+    ["extensions.osc30001-color-stack-push", "\x1b]30001\x1b\\"],
+    ["extensions.osc30101-color-stack-pop", "\x1b]30101\x1b\\"],
+  ] as const)("native stack rejection survives missing colour controls: %s", (id, query) => {
+    for (const sha of [
+      "ac12d6408c2049f1d720e9735d7eb69251d3eed868fc9ced58de98b3543f3e2e",
+      "9a9505600721226b952ae9ac92552b42389aa6713872a9f4904528f425b7ecdf",
+    ]) {
+      const { result, sent } = run(id, sha, () => "")
+      expect(sent).toContain(query)
+      expect(result).toMatchObject({ observation: { outcome: "unsupported", assertionType: "query_reply" } })
+    }
+  })
+
+  test("native OSC 0 retains the answered title arm while rejecting the necessary icon arm", () => {
+    const sha = "ac12d6408c2049f1d720e9735d7eb69251d3eed868fc9ced58de98b3543f3e2e"
+    const { result } = run("extensions.osc0-icon-title", sha, (q) =>
+      q === "\x1b[21t" ? "\x1b]losc0-icon-title\x07" : "",
+    )
+    expect(result).toMatchObject({ observation: { outcome: "unsupported", assertionType: "query_reply" } })
+    expect(JSON.parse(result.response!)).toMatchObject({ measuredResponse: expect.stringContaining("osc0-icon-title") })
+    const answerIcon = (q: string) => (q === "\x1b[20t" ? "\x1b]Losc0-icon-title\x07" : "")
+    expect(run("extensions.osc0-icon-title", sha, answerIcon).result).toEqual(
+      run("extensions.osc0-icon-title", "f".repeat(64), answerIcon).result,
+    )
+  })
+
+  test("a failed native stack attempt retains the early readback review and its trace error", () => {
+    const query = "\x1b]30001\x1b\\"
+    const { result } = run(
+      "extensions.osc30001-color-stack-push",
+      "ac12d6408c2049f1d720e9735d7eb69251d3eed868fc9ced58de98b3543f3e2e",
+      (sequence) => {
+        if (sequence === query) throw new Error("stack attempt failed")
+        return ""
+      },
+    )
+    expect(result).toMatchObject({
+      criterionBranch: "color-readback-review",
+      tests: [{ id: "review", status: "test-todo" }],
+    })
+    expect(result.observation).toBeUndefined()
+    const raw = JSON.parse(result.response!) as { trace: unknown[] }
+    expect(raw.trace.at(-1)).toEqual({ write: query, error: "Error: stack attempt failed" })
+  })
+
   test("covers all four audited artifacts", () => {
     // Ghostty WASM at 5714ed07, two native artifacts at 332b2aef and the vt100 0.16.2 Rust parser.
     expect([...REPLY_PATH_AUDITS.keys()].sort()).toEqual([
@@ -2470,6 +2565,7 @@ describe("partial probe automation candidates", () => {
     { name: "setter acknowledgement", seeded: "\x1b]10;rgb:aa/bb/cc\x07", setter: "ack", status: "test-failure" },
   ])("does not infer a stack effect from $name setup", ({ seeded, setter, status }) => {
     for (const id of ["extensions.osc30001-color-stack-push", "extensions.osc30101-color-stack-pop"]) {
+      const stackQuery = id === "extensions.osc30001-color-stack-push" ? "\x1b]30001\x1b\\" : "\x1b]30101\x1b\\"
       let queries = 0
       const seen: string[] = []
       const result = probe(id).lib!(
@@ -2478,6 +2574,7 @@ describe("partial probe automation candidates", () => {
             seen.push(sequence)
             if (sequence === "\x1b]10;?\x07") return ++queries === 2 ? seeded : ""
             if (sequence === "\x1b]10;rgb:aa/bb/cc\x07") return setter
+            if (sequence === stackQuery) return ""
             expect(sequence).toBe("\x1b]110\x07")
             return ""
           },
@@ -2493,8 +2590,11 @@ describe("partial probe automation candidates", () => {
         "\x1b]10;?\x07",
         "\x1b]110\x07",
         "\x1b]10;?\x07",
+        stackQuery,
       ])
-      expect(JSON.parse(result.response!)).toMatchObject({
+      const raw = JSON.parse(result.response!) as { trace: unknown[] }
+      expect(raw.trace.at(-1)).toEqual({ write: stackQuery, response: "" })
+      expect(raw).toMatchObject({
         originalRaw: "",
         trace: expect.arrayContaining([
           { write: "\x1b]10;?\x07", response: "" },

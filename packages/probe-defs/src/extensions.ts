@@ -1062,7 +1062,7 @@ function colorStackError(actionKind: "query" | "behavior", action: string, error
   return { pass: false, note, tests: [{ id: "criterion", status: "test-failure", reason: note }] }
 }
 
-function colorStackProbe(): ProbeDefinition["lib"] {
+function colorStackProbe(ownSequence: typeof colorPush | typeof colorPop): ProbeDefinition["lib"] {
   return (ctx) => {
     let silence: ProbeCallbackResult | null = null
     if (ctx.queryWithSentinelOutcome) {
@@ -1077,10 +1077,10 @@ function colorStackProbe(): ProbeDefinition["lib"] {
     let originalRaw: string | undefined
     let seedAttempted = false
     let fixtureVerified = false
+    let readbackUnavailable = false
     let comparison: { before: string; changed: string; restored: string } | undefined
     const trace: Array<{ write: string; response?: string; error?: string }> = []
-    const capture = (write: string) => {
-      const entry: (typeof trace)[number] = { write }
+    const capture = (write: string, entry: (typeof trace)[number] = { write }) => {
       trace.push(entry)
       try {
         const response = ctx.feedCapture(write)
@@ -1159,6 +1159,7 @@ function colorStackProbe(): ProbeDefinition["lib"] {
             const note = "Current-colour fixture setter or exact seeded readback was not established"
             result = { pass: false, note, tests: [{ id: "criterion", status: "test-failure", reason: note }] }
           }
+          readbackUnavailable = result !== silence
           return result
         }
         before = control.color
@@ -1261,6 +1262,17 @@ function colorStackProbe(): ProbeDefinition["lib"] {
           delete result.observation
           delete result.response
           delete result.assertions
+        }
+      }
+      if (readbackUnavailable && cleanupFailures.length === 0) {
+        // Keep the early measurement, but retain this probe's own attempt after its foreground cleanup.
+        // capture records response bytes or the error; a failed attempt cannot establish a parser negative.
+        const attempt: (typeof trace)[number] = { write: ownSequence }
+        try {
+          capture(ownSequence, attempt)
+        } catch (error) {
+          // Retain the failed attempt without replacing the readback result.
+          attempt.error = error instanceof Error ? `${error.name}: ${error.message}` : String(error)
         }
       }
       if (seedAttempted && result && result !== silence) {
@@ -3266,13 +3278,13 @@ export const extensionsProbes: ProbeDefinition[] = [
 
   // OSC 30001 — Kitty color stack push
   {
-    ...probe("extensions.osc30001-color-stack-push", colorStackProbe(), colorStackTermProbe, "query_reply"),
+    ...probe("extensions.osc30001-color-stack-push", colorStackProbe(colorPush), colorStackTermProbe, "query_reply"),
     libHostRecipes: [{ recipe: "color-request", query: foregroundQuery, missing: ["foreground-rgb"] }],
   },
 
   // OSC 30101 — Kitty color stack pop
   {
-    ...probe("extensions.osc30101-color-stack-pop", colorStackProbe(), colorStackTermProbe, "query_reply"),
+    ...probe("extensions.osc30101-color-stack-pop", colorStackProbe(colorPop), colorStackTermProbe, "query_reply"),
     libHostRecipes: [{ recipe: "color-request", query: foregroundQuery, missing: ["foreground-rgb"] }],
   },
 
