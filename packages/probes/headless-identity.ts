@@ -44,14 +44,7 @@ export function replyDeliveryDecision(
       ...(runtime && { runtimeIdentity: runtime.identity }),
     }
   }
-  if (!declaration) {
-    return decide(
-      false,
-      backend === "libvterm"
-        ? "libvterm declares no complete reply delivery: engine output truncates before the adapter drains"
-        : `${backend} declares no reply delivery`,
-    )
-  }
+  if (!declaration) return decide(false, `${backend} declares no reply delivery`)
   if (!runtime) return decide(false, `${backend} has no measured runtime identity for reply delivery`)
   if (
     declaration.boundary !== "feed-and-getCursor" ||
