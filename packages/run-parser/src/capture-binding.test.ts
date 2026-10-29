@@ -11,6 +11,7 @@ import {
   sealRunDraft,
   recordExecutedProbe,
   finalizeProbeResult,
+  REPLY_PATH_AUDIT_REVIEW,
   type RunDraft,
 } from "@terminfo/probe-defs"
 import { applyCaptureDecision, retainCaptureBinding, parseRun } from "./index.ts"
@@ -826,6 +827,34 @@ describe("immutable pre-seal capture binding", () => {
       ).toThrow(/capture|raw|bound/)
     },
   )
+
+  // The typed supported/unsupported rows above admit any branch; a missing reply path must never read as a capability.
+  it.each([
+    { decision: "supported", accepted: false },
+    { decision: "unsupported", accepted: false },
+    { decision: "untestable", accepted: true },
+  ] as const)("decides a reply-path audit review only as untestable ($decision)", ({ decision: verdict, accepted }) => {
+    const { draft, decision } = setup("NO", undefined, (draft) => {
+      draft.results[0]!.criterionBranch = REPLY_PATH_AUDIT_REVIEW
+    })
+    decision.decision = verdict
+    applyCaptureDecision(draft, JSON.stringify(decision), "2026-10-28T22:40:00.000Z")
+    const manifest = {
+      probeHash: draft.probeHash,
+      adapterVersion: "3",
+      catalogIds: ["sgr.bold"],
+      probes: { term: ["sgr.bold"], lib: [], mux: [] },
+    }
+    const read = () =>
+      parseRun(
+        "reply-path-review.json",
+        JSON.stringify(sealRunDraft(draft)),
+        ["sgr.bold"],
+        new Map([[draft.probeHash, manifest]]),
+      )
+    if (accepted) expect(read().results?.[0]?.status).toBe("untestable")
+    else expect(read).toThrow(/reply-path audit review admits only an untestable decision/)
+  })
 
   it.each(["raw", "host-cause", "context", "source", "suite", "feature", "run"])(
     "rejects review after %s binding changes",

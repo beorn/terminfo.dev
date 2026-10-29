@@ -3,6 +3,7 @@ import { createHash } from "node:crypto"
 import { isDeepStrictEqual } from "node:util"
 import {
   SOURCE_NEGATIVE_REVIEW,
+  REPLY_PATH_AUDIT_REVIEW,
   HOST_INPUT_NAMES,
   type HostRecipeExpectation,
   type HostRecipeName,
@@ -1290,6 +1291,13 @@ export function parseProbeResults(
       if (!object(parsed) || parsed.rejection !== "parser") {
         fail(path, `${featureId} query_reply source-negative review requires a recorded parser-level rejection`)
       }
+    }
+    // A reply-path audit review records a missing reply path, so a reviewer may decide it only as Untestable.
+    if (
+      result.criterionBranch === REPLY_PATH_AUDIT_REVIEW &&
+      tests.some((test) => test.id === "review" && (test.status === "supported" || test.status === "unsupported"))
+    ) {
+      fail(path, `${featureId} reply-path audit review admits only an untestable decision`)
     }
     if (finalizeProbeResult(result).status !== status) {
       fail(path, `${featureId} recorded status hides required test work`)
