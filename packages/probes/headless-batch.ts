@@ -43,7 +43,39 @@ import {
   type ReplyPathDecision,
 } from "./headless-identity.ts"
 import { isDeepStrictEqual } from "node:util"
+import { NATIVE_HOST_AUDITS } from "../probe-defs/src/native-host-audit.ts"
+import { REPLY_PATH_AUDITS } from "../probe-defs/src/reply-path-audit.ts"
 import { HEADLESS_TERMINAL } from "./headless-terminal.ts"
+
+/**
+ * Refuse an unaudited native artifact once, before probe collection (#31774, @cto 5429c292): check
+ * `runtimeIdentity.loadedBinary.sha256` against both `NATIVE_HOST_AUDITS` and `REPLY_PATH_AUDITS` (and against
+ * `declaration.engine.sha256` when declared), and emit one sentence naming loaded sha, expected sha,
+ * `nativeTreeOid`, and the audited keys on stderr and in the thrown error.
+ */
+export function assertAuditedNativeArtifact(
+  backend: string,
+  runtimeIdentity: HeadlessRuntimeIdentity,
+  declaration: ReplyDeliveryExtension["replyDelivery"] | undefined,
+  nativeTreeOid?: string,
+  draftPath?: string,
+  warn: (line: string) => void = (line) => process.stderr.write(`${line}\n`),
+): void {
+  if (backend === "kitty" || runtimeIdentity.kind !== "native") return
+  const loadedSha = runtimeIdentity.loadedBinary.sha256
+  const expectedSha = declaration?.engine.kind === "native" ? declaration.engine.sha256 : undefined
+  const inAuditTables = NATIVE_HOST_AUDITS.has(loadedSha) || REPLY_PATH_AUDITS.has(loadedSha)
+  if (inAuditTables && (expectedSha === undefined || loadedSha === expectedSha)) return
+  const auditedKeys = [...new Set([...NATIVE_HOST_AUDITS.keys(), ...REPLY_PATH_AUDITS.keys()])]
+    .map((key) => key.slice(0, 12))
+    .join(", ")
+  const message =
+    `${backend} native artifact ${loadedSha} is not in NATIVE_HOST_AUDITS or REPLY_PATH_AUDITS ` +
+    `(expected sha ${expectedSha ?? "none"}, nativeTreeOid ${nativeTreeOid ?? "unrecorded"}, ` +
+    `audited keys: ${auditedKeys}; draft: ${draftPath ?? "unrecorded"}); refusing collection before probes run`
+  warn(message)
+  throw new Error(message)
+}
 
 /** Finalize the existing attempt without breaking its source-audited host-input citations. */
 export function finalizeHeadlessAttempt(

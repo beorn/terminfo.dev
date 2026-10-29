@@ -18,10 +18,10 @@ type NativeHostSourceCitations = Readonly<Partial<Record<Exclude<HostRecipeName,
  * Independent source audits of exact unchanged native artifacts, keyed by loaded-binary sha256 — never a digest copied
  * from runtime. A host gains causes only through its own audit here; no host inherits another's citations.
  */
-const NATIVE_HOST_AUDITS: ReadonlyMap<string, NativeHostSourceCitations> = new Map([
-  // Rebuilt for term.colors() indexed/named cell color resolution (31735); reply and host-input routes unchanged.
+export const NATIVE_HOST_AUDITS: ReadonlyMap<string, NativeHostSourceCitations> = new Map([
+  // Rebuilt for term.colors() indexed/named cell color resolution (31735, 31774); reply and host-input routes unchanged.
   [
-    "67736cf8d7d96156ac921566713032a445bfd8564e499f5e715c3c7f077d8af6",
+    "32d76284e5a3c7673fafbbc83a16717fa0a1c1811c7d659d982176a53ceb1aa9",
     {
       "clipboard-load": {
         kind: "source-audited",
