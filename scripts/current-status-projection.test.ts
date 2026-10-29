@@ -15,6 +15,7 @@ import { ENVIRONMENT_GROUP_IDS } from "@terminfo/probe-defs"
 import { projectResults, maskRunnerStorePath, projectedContextKey } from "../docs/data/selected-results.ts"
 import { currentCoverageSentence } from "../docs/data/release-scope.ts"
 import { candidateFromSelected, pickContextRun } from "../docs/data/run-selection.ts"
+import { readCellEvidence } from "../docs/data/evidence-reader.ts"
 
 // Explicit schema-3 wire fixture; current public results use tests and assertionType.
 type Schema3Result = Omit<ProbeResult, "tests" | "assertionType"> & { checks: ProbeResult["tests"]; evidence?: string }
@@ -325,6 +326,50 @@ describe("current execution projection", () => {
       expect(published).not.toHaveProperty("runId")
       expect(published).not.toHaveProperty("sha256")
       expect(published).not.toHaveProperty("sealedAt")
+      // A matching origin alone would miss mapping both cells through one run's publication review.
+      // Extend this owning two-run case through the public evidence reader and both trace receipts.
+      for (const [runId, featureId] of [
+        [prior.runId, ids[1]!],
+        [latest.runId, ids[3]!],
+      ]) {
+        const original = projection.history["term:kitty"]!.find((run) => run.runId === runId)!
+        original.presentations[featureId!] = {
+          id: `review-${runId}`,
+          reviewer: "fixture",
+          reason: "Inspect this original result",
+          sources: [],
+          presentsEvidence: true,
+        }
+      }
+      const reviewedPublic = publicResults(projection, new Map())
+      const reviewedContext = reviewedPublic.projection.contexts["term:kitty"]!
+      for (const featureId of [ids[1]!, ids[3]!]) {
+        const cell = reviewedContext.cells[featureId]!
+        const source = reviewedContext.sources[cell.origin.runId]!
+        expect(cell.presentation.state).toBe("presented")
+        if (cell.presentation.state !== "presented") throw new Error("Fixture evidence was not presented")
+        expect(cell.presentation.review.id).toBe(`review-${cell.origin.runId}`)
+        const document = reviewedPublic.documents.get(cell.presentation.url.split("#")[0]!)!
+        const evidence = readCellEvidence(document.document, {
+          schemaVersion: source.schemaVersion,
+          runId: cell.origin.runId,
+          runSha256: source.sha256,
+          featureId: cell.origin.resultId,
+          reviewId: cell.presentation.review.id,
+          status: cell.status,
+        })
+        expect(evidence.runId).toBe(cell.origin.runId)
+        expect(evidence.review.id).toBe(`review-${cell.origin.runId}`)
+        if (featureId === ids[1]) {
+          expect(evidence.record.rawReply).toBe("ACK")
+          expect(evidence.record.assertions[0]?.featureId).toBe(featureId)
+        }
+        if (!source.trace) throw new Error(`Missing original trace for ${source.runId}`)
+        expect(reviewedPublic.documents.get(source.trace.url)?.document).toMatchObject({
+          runId: source.runId,
+          runSha256: source.sha256,
+        })
+      }
       // Original immutable runs keep their full cells and seals apart from the composed context.
       expect(projection.history["term:kitty"]?.find((run) => run.runId === latest.runId)).toMatchObject({
         runId: latest.runId,
