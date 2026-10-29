@@ -10,8 +10,19 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, expect, it, vi } from "vitest"
-import { ALL_PROBES, type ProbeSuiteManifest, type TextQualification } from "@terminfo/probe-defs"
-import { decodeHistoricalCollectorRun as decodeCollectorRun } from "@terminfo/run-parser"
+import {
+  ALL_PROBES,
+  initializeRunDraft,
+  sealRunDraft,
+  type ProbeSuiteManifest,
+  type TextQualification,
+} from "@terminfo/probe-defs"
+import {
+  applyCaptureDecision,
+  retainCaptureBinding,
+  parseRun,
+  decodeHistoricalCollectorRun as decodeCollectorRun,
+} from "@terminfo/run-parser"
 import * as terminalOwnership from "../owned-terminal.ts"
 import { verifyTerminalIdentity } from "../identity-guard.ts"
 import { measureUtf8Decoding } from "../tty.ts"
@@ -2519,3 +2530,133 @@ it("forwards explicit callback tests through the actual native batch attempt wit
     definition.term = original
   }
 })
+
+// AC1–AC3 (#31677): the forwarding test above replaces the callback with a valid helper.
+// These actual producers previously retained frames but defaulted to FAILURE with no review.
+// Frames and decisions here are explicit collector fixtures, never terminal qualification evidence.
+it.each([
+  ["modes.xtpushsgr", 2, /bold.*not italic/i],
+  ["modes.xtpopsgr", 2, /bold.*not italic/i],
+  ["modes.xtsave", 2, /row 2/],
+  ["modes.xtrestore", 2, /row 2/],
+  ["modes.xtpushcolors", 2, /blue/],
+  ["modes.xtpopcolors", 2, /blue/],
+  ["modes.alt-screen.exit", 3, /PRIMARY.*ALTONLY/],
+  ["modes.altscreen-47", 3, /MAIN47.*ALT47/],
+  ["modes.altscreen-1047", 3, /second entry/i],
+  ["modes.left-right-margin", 2, /column 6/],
+  ["modes.insert-replace", 2, /XABCD/],
+  ["cursor.shape", 2, /cursor cell/i],
+] as const)(
+  "retains actual %s capture through required review and the canonical reader",
+  async (id, count, expected) => {
+    verifiedBatchFixture()
+    vi.useFakeTimers()
+    const ownManifest = {
+      ...manifest,
+      schemaVersion: 4 as const,
+      catalogIds: [id],
+      probes: { term: [id], lib: [], mux: [] },
+    } satisfies ProbeSuiteManifest
+    const draft = initializeRunDraft({
+      runId: `native-visual-${id}`,
+      sourceRevision,
+      source: { kind: "live" },
+      manifest: ownManifest,
+      intendedSubject: { kind: "term", id: "kitty", version: "0.49.1" },
+    })
+    draft.subject = {
+      kind: "term",
+      id: "kitty",
+      version: "0.49.1",
+      os: "linux",
+      osVersion: null,
+      outerTerminal: null,
+      mux: null,
+      config: null,
+      permissions: "fixture capture",
+    }
+    draft.identity = "verified"
+    draft.measuredAt = "2026-10-29T15:00:00.000Z"
+    draft.origin = { kind: "collector" }
+    let captures = 0
+    process.stdout.write = (() => true) as typeof process.stdout.write
+    try {
+      const pending = runProbeBatch({
+        ids: [id],
+        draft,
+        ownedTerminal: geometryOwner(measured(24, 80)),
+        capture: async ({ role, label }) => ({
+          frame: { role, label, capturedAt: ++captures, ref: `sha256:${String(captures).repeat(64)}` },
+          trace: {},
+        }),
+      })
+      const [batch] = await Promise.all([pending, vi.runAllTimersAsync()])
+      expect(batch.ungradedDiagnostics).toEqual({})
+      expect(captures).toBe(count)
+      const result = batch.results.find((entry) => entry.featureId === id)!
+      expect(result).toMatchObject({
+        status: "test-todo",
+        criterionBranch: "visual-review",
+        tests: [
+          { id: "capture", status: "supported", assertionRefs: [0] },
+          { id: "review", status: "test-todo", attempt: { scope: "none" } },
+        ],
+      })
+      expect(result.frames).toHaveLength(count)
+      expect(batch.observations[0]).toMatchObject({ outcome: "inconclusive", assertionType: "screenshot" })
+      expect(batch.assertions).toHaveLength(1)
+      expect(batch.assertions[0]).toMatchObject({
+        featureId: id,
+        assertionType: "screenshot",
+        expected: expect.stringMatching(expected),
+      })
+      const retained = JSON.parse(batch.assertions[0]!.observed)
+      expect(retained).toEqual(
+        count === 3
+          ? { control: result.frames![0], alternate: result.frames![1], restored: result.frames![2] }
+          : { control: result.frames![0], target: result.frames![1] },
+      )
+      if (id === "cursor.shape") {
+        expect(JSON.parse(batch.rawReplies[`${id}.callbackResponse`]!)).toMatchObject({ cursorCell: null })
+      }
+      Object.assign(draft.rawReplies, batch.rawReplies)
+      draft.assertions = batch.assertions
+      draft.screenshotRefs = batch.screenshotRefs
+      const before = structuredClone(result.frames)
+      const binding = retainCaptureBinding(draft, id)
+      // This exercises reader eligibility only; the fixture has no actual rendered pixel plane.
+      applyCaptureDecision(
+        draft,
+        JSON.stringify({
+          id: `fixture-review-${id}`,
+          runId: draft.runId,
+          featureId: id,
+          captureSha256: binding.sha256,
+          decision: "untestable",
+          reviewed: true,
+          reviewer: "fixture-reviewer",
+          reason: "Deterministic collector fixture has no actual pixel plane; no terminal support verdict",
+          scope: {
+            subject: { kind: "term", id: "kitty" },
+            versions: ["0.49.1", "0.49.1"],
+            suites: [probeHash, probeHash],
+          },
+          sources: [binding.rawReplyRef],
+          supersedes: [],
+        }),
+        "2026-10-29T15:01:00.000Z",
+      )
+      const read = parseRun(
+        "native-visual-fixture.json",
+        JSON.stringify(sealRunDraft(draft)),
+        [id],
+        new Map([[probeHash, ownManifest]]),
+      )
+      expect(read.results?.[0]).toMatchObject({ status: "untestable", frames: before })
+      expect(read.assertions[0]?.expected).toMatch(expected)
+    } finally {
+      vi.useRealTimers()
+    }
+  },
+)

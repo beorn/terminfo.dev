@@ -755,7 +755,6 @@ test("alt-screen exit capture frames the primary, alternate and restored buffers
     screenshotRef: frames[2]?.ref,
     note: expect.stringContaining("independent pixel review"),
   })
-  expect(result.assertions).toBeUndefined()
 })
 
 test.each(["modes.altscreen-47", "modes.altscreen-1047"] as const)(
@@ -778,7 +777,6 @@ test.each(["modes.altscreen-47", "modes.altscreen-1047"] as const)(
       note: expect.stringContaining("independent pixel review"),
     })
     expect(result.observation?.frames, id).toHaveLength(3)
-    expect(result.assertions, id).toBeUndefined()
   },
 )
 
@@ -798,7 +796,6 @@ test("insert-replace capture contrasts replacement with IRM insertion", async ()
     frames,
     note: expect.stringContaining("independent pixel review"),
   })
-  expect(result.assertions).toBeUndefined()
 })
 
 test("left/right margin capture contrasts an unconstrained write with a margin-confined wrap", async () => {
@@ -817,7 +814,6 @@ test("left/right margin capture contrasts an unconstrained write with a margin-c
     assertionType: "screenshot",
     frames,
   })
-  expect(result.assertions).toBeUndefined()
 })
 
 test("modes capture refuses undersized geometry before any bytes or frames", async () => {
@@ -870,7 +866,6 @@ test.each([
     frames,
     note: expect.stringContaining("independent pixel review"),
   })
-  expect(result.assertions, id).toBeUndefined()
 })
 
 test.each(["modes.xtpushcolors", "modes.xtpopcolors"] as const)(
