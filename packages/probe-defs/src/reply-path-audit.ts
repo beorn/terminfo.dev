@@ -3,6 +3,8 @@ import type { LibProbeSource } from "./types.ts"
 /** One audited cell: the exact query bytes, why the artifact cannot answer them, and its own source citation. */
 export interface ReplyPathAudit {
   readonly query: string
+  /** Only an explicitly audited family may contain a per-run query identifier. Omitted means byte-exact. */
+  readonly matches?: "prefix"
   /** no-reply-path: the sequence is handled but the artifact has no writer for the reply (Untestable review).
    *  parser-rejected: the artifact's parser rejects the sequence before any handler (Unsupported, negative by source
    *  citation). */
@@ -15,6 +17,14 @@ const GHOSTTY_NATIVE_KEYBOARD_AUDIT: ReplyPathAudit = {
   kind: "no-reply-path",
   citation:
     "termless 0c409349 packages/ghostty-native/native/src/main.zig:81 vtStream() -> ghostty 332b2aef Terminal.zig:264 ReadonlyStream; stream.zig:1828 parses kitty_keyboard_query and :1278-1292 device_attributes; stream_readonly.zig:139-143 retains keyboard flags but :176-190 ignores both queries without a writer",
+}
+
+const GHOSTTY_NATIVE_GRAPHICS_AUDIT: ReplyPathAudit = {
+  query: "\x1b_G",
+  matches: "prefix",
+  kind: "no-reply-path",
+  citation:
+    "termless 0c409349 packages/ghostty-native/native/src/main.zig:81 vtStream() -> ghostty 332b2aef Terminal.zig:260-265 ReadonlyStream; stream.zig:736-738 forwards APC; stream_readonly.zig:168-173 ignores apc_start/apc_put/apc_end; native exports main.zig:48-65 provide no image-state or reply observer",
 }
 
 const VT100_OSC52_AUDIT: ReplyPathAudit = {
@@ -37,6 +47,9 @@ export const REPLY_PATH_AUDITS: ReadonlyMap<string, Readonly<Record<string, Repl
   [
     "17d155feee5df8fa30266b9a354bbe66e39484d08218de5e03dc3bb2f199a0a3",
     {
+      "extensions.kitty-graphics": GHOSTTY_NATIVE_GRAPHICS_AUDIT,
+      "extensions.kitty-graphics.transmit": GHOSTTY_NATIVE_GRAPHICS_AUDIT,
+      "extensions.kitty-graphics.display": GHOSTTY_NATIVE_GRAPHICS_AUDIT,
       "extensions.kitty-keyboard": GHOSTTY_NATIVE_KEYBOARD_AUDIT,
       "extensions.kitty-keyboard.disambiguate": GHOSTTY_NATIVE_KEYBOARD_AUDIT,
       "extensions.kitty-keyboard.report-events": GHOSTTY_NATIVE_KEYBOARD_AUDIT,

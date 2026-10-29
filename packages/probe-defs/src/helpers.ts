@@ -1076,7 +1076,7 @@ export const HARNESS_INCOMPLETE_TEST = "harness"
 
 /**
  * Apply the reply-path audit table (reply-path-audit.ts) to one library probe; it decides nothing about identity.
- * The review replaces the measured result only when the probe sent the audited query byte-exact and every capture
+ * The review replaces the measured result only when the probe sent its audited query and every matching capture
  * of it returned zero bytes. Any reply byte, an unsent query, or an unlisted artifact/feature keeps the measured result.
  */
 function replyPathAudited(
@@ -1086,23 +1086,37 @@ function replyPathAudited(
 ): ProbeCallbackResult {
   const entry = replyPathAuditFor(ctx, id)
   if (entry === undefined) return lib(ctx)
-  const replies: string[] = []
+  const captures: { text: string; reply: string }[] = []
+  const matches = (text: string) =>
+    entry.audit.matches === "prefix" ? text.startsWith(entry.audit.query) : text === entry.audit.query
+  const record = (text: string, reply: string) => {
+    if (matches(text)) captures.push({ text, reply })
+  }
   const recorded = new Proxy(ctx, {
     get(target, key): unknown {
+      if (key === "queryWithSentinelOutcome") {
+        const query = target.queryWithSentinelOutcome
+        if (query === undefined) return undefined
+        return (text: string, pattern: RegExp) => {
+          const outcome = query.call(target, text, pattern)
+          record(text, outcome.raw)
+          return outcome
+        }
+      }
       if (key !== "feedCapture") {
         const value: unknown = Reflect.get(target, key, target)
         return value
       }
       return (text: string) => {
         const reply = target.feedCapture(text)
-        if (text === entry.audit.query) replies.push(reply)
+        record(text, reply)
         return reply
       }
     },
   })
   const measured = lib(recorded)
-  if (replies.length === 0 || replies.some((reply) => reply.length > 0)) return measured
-  const review = replyPathReviewResult(id, entry.artifactSha256, entry.audit, replies.length, measured)
+  if (captures.length === 0 || captures.some(({ reply }) => reply.length > 0)) return measured
+  const review = replyPathReviewResult(id, entry.artifactSha256, entry.audit, captures, measured)
   return measured.hostRecipeCauses ? { ...review, hostRecipeCauses: measured.hostRecipeCauses } : review
 }
 
@@ -1115,17 +1129,21 @@ function replyPathReviewResult(
   id: string,
   artifactSha256: string,
   audit: ReplyPathAudit,
-  captures: number,
+  captures: readonly { text: string; reply: string }[],
   measured: ProbeCallbackResult,
 ): ProbeCallbackResult {
-  const replyPathAudit = { artifactSha256, featureId: id, ...audit, captures, replyBytes: 0 }
+  const replyPathAudit = { artifactSha256, featureId: id, ...audit, captures: captures.length, replyBytes: 0 }
   const measuredResponse = measured.response ?? null
   if (audit.kind === "no-reply-path") {
     return reviewResult(
       REPLY_PATH_AUDIT_REVIEW,
       `Review by reply-path audit: the loaded artifact has no reply path (${audit.citation}); Untestable review required`,
       `${id}: no reply path for this query in the loaded artifact`,
-      { replyPathAudit, measuredResponse },
+      {
+        replyPathAudit,
+        measuredResponse,
+        ...(audit.matches === "prefix" && { matchedQueries: captures.map(({ text }) => text) }),
+      },
     )
   }
   return parserStateResult(
