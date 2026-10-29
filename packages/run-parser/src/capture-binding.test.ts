@@ -114,7 +114,11 @@ function hostCauseCapture(mode: string, query: string, split: boolean) {
     assertions: [],
     tests: [{ id: "criterion", status: "test-failure", reason: "Fixture has no initial colour reply" }],
   })
-  const input = JSON.stringify({ hostInputs: { "foreground-rgb": "not-supplied" } })
+  const finalized = ["completed", "failed", "cancelled"].includes(mode)
+  const input = JSON.stringify({
+    ...(finalized && { ids: [featureId], startedAt: draft.measuredAt, result: "started" }),
+    hostInputs: { "foreground-rgb": "not-supplied" },
+  })
   draft.rawReplies["collector.collectionAttempt"] = input
   const citation = {
     inputRecordRef: "collector.collectionAttempt",
@@ -166,6 +170,16 @@ function hostCauseCapture(mode: string, query: string, split: boolean) {
       },
     },
   })
+  if (finalized) {
+    recordCollectorAttempt(draft, {
+      ids: [featureId],
+      startedAt: draft.measuredAt,
+      hostInputs: { "foreground-rgb": "not-supplied" },
+      ...(mode === "completed"
+        ? { result: "completed" as const }
+        : { result: mode as "failed" | "cancelled", error: "original fixture error" }),
+    })
+  }
   return () =>
     parseRun("host-custody.json", JSON.stringify(draft), [featureId], new Map([[manifest.probeHash, manifest]]), {
       mode: "capture",
@@ -178,6 +192,11 @@ it.each(["source-audited", "observed", "real-reply"])(
     expect(hostCauseCapture(mode, HOST_QUERY, false)().results?.[0]?.status).toBe("test-failure")
   },
 )
+// Selected-run outcomes must survive canonical reading after collection ends.
+// Existing custody cases bind the started bytes and never finalize the attempt.
+it.each(["completed", "failed", "cancelled"])("retains native host custody after %s finalization", (mode) => {
+  expect(hostCauseCapture(mode, HOST_QUERY, false)().results?.[0]?.status).toBe("test-failure")
+})
 it.each([
   "missing-cause",
   "missing-capture",
