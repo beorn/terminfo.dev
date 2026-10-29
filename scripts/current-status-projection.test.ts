@@ -67,6 +67,90 @@ const todos = (): Schema3Result[] =>
 // Existing selection tests exercise v1/v2 observation grading; they cannot prove that v3 selection
 // reads the stored five statuses and frozen denominator without applying later interpretations.
 describe("current execution projection", () => {
+  // #31594 AC1/AC2: whole-run fixtures cannot expose a partial run erasing untouched evidence.
+  // The existing parser/projection seam must retain cells, not select the best-looking result.
+  it.each(["test-failure", "test-todo"] as const)(
+    "composes selected %s with original unselected and unreached results from two runs",
+    (status) => {
+      const baselineResults = todos()
+      const baseline = raw(baselineResults)
+      const assertions = ids.slice(0, 4).map((featureId) => ({
+        featureId,
+        kind: "positive",
+        rawReplyRef: featureId,
+        expected: "ACK",
+        observed: "ACK",
+      }))
+      for (const [index, featureId] of ids.slice(0, 4).entries()) {
+        baselineResults[index] = {
+          featureId,
+          status: "supported",
+          evidence: "query",
+          rawReplyRef: featureId,
+          attempt,
+          checks: [{ id: "criterion", status: "supported", attempt, assertionRefs: [index], rawReplyRef: featureId }],
+        }
+      }
+      const prior = parse({
+        ...baseline,
+        runId: "baseline-run",
+        assertions,
+        rawReplies: { ...baseline.rawReplies, ...Object.fromEntries(ids.slice(0, 4).map((id) => [id, "ACK"])) },
+      })
+      const nextResults = todos()
+      const emittedAttempt = { scope: "probe" as const, startedAt: "2026-10-21T06:00:00.000Z" }
+      nextResults[0] = {
+        featureId: ids[0]!,
+        status,
+        attempt: emittedAttempt,
+        checks: [
+          {
+            id: "criterion",
+            status,
+            attempt: status === "test-todo" ? { scope: "none" } : emittedAttempt,
+            reason: "Selected callback retained this outcome",
+          },
+        ],
+        reason: "Selected callback retained this outcome",
+      }
+      nextResults[3] = {
+        featureId: ids[3]!,
+        status: "test-todo",
+        attempt: emittedAttempt,
+        checks: [
+          { id: "criterion", status: "test-todo", attempt: { scope: "none" }, reason: "Observable unavailable" },
+        ],
+        reason: "Observable unavailable",
+      }
+      const selectedIds = [ids[0]!, ids[2]!, ids[3]!]
+      const next = raw(nextResults)
+      const latest = parse({
+        ...next,
+        runId: "selected-run",
+        measuredAt: "2026-10-21T06:00:00.000Z",
+        sealedAt: "2026-10-21T06:00:01.000Z",
+        rawReplies: {
+          ...next.rawReplies,
+          "collector.selection": JSON.stringify({ ids: selectedIds }),
+          "collector.collectionAttempt": JSON.stringify({
+            ids: selectedIds,
+            startedAt: "2026-10-21T06:00:00.000Z",
+            result: "failed",
+            error: "Worker stopped before the third selected callback",
+          }),
+        },
+      })
+      const projection = projectResults([prior, latest], [], ids, { currentProbeHash: suite.probeHash }, [])
+      const current = projection.current["term:kitty"]!
+      expect(current.results.find((result) => result.featureId === ids[0])?.status).toBe(status)
+      expect(current.results.find((result) => result.featureId === ids[1])).toBe(prior.results?.[1])
+      expect(current.results.find((result) => result.featureId === ids[2])).toBe(prior.results?.[2])
+      expect(current.results.find((result) => result.featureId === ids[3])).toBe(latest.results?.[3])
+      expect(prior.rawReplies[ids[1]!]).toBe("ACK")
+      expect(prior.assertions[1]?.featureId).toBe(ids[1])
+    },
+  )
+
   it("keeps every TODO visible over all 273 and admits current identity using the existing measured rule", () => {
     const run = parse(raw(todos()))
     const projection = projectResults(
