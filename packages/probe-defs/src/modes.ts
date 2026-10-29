@@ -141,6 +141,19 @@ async function xtSgrStackCapture(ctx: TermProbeSource, id: string, label: string
         frames: [control, target],
         note: "Control shows Y plain; the target pushes bold, resets attributes, styles X italic, then pops, so Y must be bold and NOT italic if the SGR stack round-tripped. An ignored push/pop leaves Y italic-only and not bold. Requires independent pixel review of both attributes",
       },
+      criterionBranch: "visual-review",
+      tests: [
+        { id: "capture", status: "supported", assertionRefs: [0] },
+        { id: "review", status: "test-todo", reason: "SGR stack frames captured; required independent review pending" },
+      ],
+      assertions: [
+        {
+          assertionType: "screenshot",
+          kind: "positive",
+          expected: "Control Y is plain; target Y is bold and NOT italic after the SGR stack roundtrip",
+          observed: JSON.stringify({ control, target }),
+        },
+      ],
     }
   } finally {
     if (pushed) ctx.write("\x1b[#}")
@@ -181,6 +194,23 @@ async function xtModeSaveCapture(ctx: TermProbeSource, id: string): Promise<Prob
         frames: [control, target],
         note: "Control keeps the overflow on row 1 with wrap off; the target saves wrap on, disables it, then restores it, so the overflow should wrap to row 2. Whether the restore re-enabled wrap requires independent pixel review",
       },
+      criterionBranch: "visual-review",
+      tests: [
+        { id: "capture", status: "supported", assertionRefs: [0] },
+        {
+          id: "review",
+          status: "test-todo",
+          reason: "Mode save/restore frames captured; required independent review pending",
+        },
+      ],
+      assertions: [
+        {
+          assertionType: "screenshot",
+          kind: "positive",
+          expected: "Control overflow ! overwrites the final column of row 1; restored wrap sends target ! to row 2",
+          observed: JSON.stringify({ control, target }),
+        },
+      ],
     }
   } finally {
     ctx.write("\x1b[?7h\x1b[0m\x1b[2J\x1b[H")
@@ -229,6 +259,24 @@ async function xtColorStackCapture(ctx: TermProbeSource, id: string): Promise<Pr
         frames: [control, target],
         note: "Control shows X and Y in the blue baseline index 1; the target pushes the palette, redefines index 1 green, prints X, pops before Y. Grade the roundtrip by Y alone: Y must match the blue baseline control, so a green Y means the pop did not restore the saved palette. Do not grade on X -- it is drawn through palette index 1, so a correct pop may recolor it blue and its color is not evidence either way. A palette-setup failure (control not measured blue) stays inconclusive. Requires independent pixel review",
       },
+      criterionBranch: "visual-review",
+      tests: [
+        { id: "capture", status: "supported", assertionRefs: [0] },
+        {
+          id: "review",
+          status: "test-todo",
+          reason: "Palette stack frames captured; required independent review pending",
+        },
+      ],
+      assertions: [
+        {
+          assertionType: "screenshot",
+          kind: "positive",
+          expected:
+            "Control index 1 is visibly blue; target Y matches that blue control after pop. Grade Y alone, not X; an unproved blue control remains inconclusive",
+          observed: JSON.stringify({ control, target }),
+        },
+      ],
     }
   } finally {
     if (pushed) ctx.write("\x1b[#Q")
@@ -1188,6 +1236,24 @@ export const modesProbes: ProbeDefinition[] = [
                 frames: [control, alternate, restored],
                 note: "Control shows PRIMARY; the alternate frame shows ALTONLY; the restored frame must show PRIMARY again with ALTONLY gone. Whether the primary buffer came back requires independent pixel review, because CPR after exit proves nothing about buffer contents",
               },
+              criterionBranch: "visual-review",
+              tests: [
+                { id: "capture", status: "supported", assertionRefs: [0] },
+                {
+                  id: "review",
+                  status: "test-todo",
+                  reason: "Alternate-screen exit frames captured; required independent review pending",
+                },
+              ],
+              assertions: [
+                {
+                  assertionType: "screenshot",
+                  kind: "positive",
+                  expected:
+                    "Control shows PRIMARY, alternate shows ALTONLY, restored shows PRIMARY with ALTONLY absent",
+                  observed: JSON.stringify({ control, alternate, restored }),
+                },
+              ],
             }
           } finally {
             ctx.write("\x1b[?1049l\x1b[0m\x1b[2J\x1b[H")
@@ -1402,6 +1468,23 @@ export const modesProbes: ProbeDefinition[] = [
                 frames: [control, target],
                 note: "Control replaces A with X (XBCD); the IRM target inserts X and shifts the run (XABCD). Whether the shift actually happened requires independent pixel review",
               },
+              criterionBranch: "visual-review",
+              tests: [
+                { id: "capture", status: "supported", assertionRefs: [0] },
+                {
+                  id: "review",
+                  status: "test-todo",
+                  reason: "Insert/replace frames captured; required independent review pending",
+                },
+              ],
+              assertions: [
+                {
+                  assertionType: "screenshot",
+                  kind: "positive",
+                  expected: "Replace-mode control shows XBCD; insert-mode target shifts the seeded ABCD to show XABCD",
+                  observed: JSON.stringify({ control, target }),
+                },
+              ],
             }
           } finally {
             ctx.write("\x1b[4l\x1b[0m\x1b[2J\x1b[H")
@@ -1497,6 +1580,24 @@ export const modesProbes: ProbeDefinition[] = [
                 frames: [control, target],
                 note: "Control keeps ABCDE on row 1; with DECLRMM margins 3-6 the fifth glyph wraps at column 6 onto row 2. Whether the wrap respected the margin requires independent pixel review",
               },
+              criterionBranch: "visual-review",
+              tests: [
+                { id: "capture", status: "supported", assertionRefs: [0] },
+                {
+                  id: "review",
+                  status: "test-todo",
+                  reason: "Left/right margin frames captured; required independent review pending",
+                },
+              ],
+              assertions: [
+                {
+                  assertionType: "screenshot",
+                  kind: "positive",
+                  expected:
+                    "Control ABCDE stays on row 1; target margins 3–6 wrap at column 6 and put the fifth glyph on row 2",
+                  observed: JSON.stringify({ control, target }),
+                },
+              ],
             }
           } finally {
             ctx.write("\x1b[?69l\x1b[0m\x1b[2J\x1b[H")
@@ -1560,6 +1661,23 @@ export const modesProbes: ProbeDefinition[] = [
                 frames: [control, alternate, restored],
                 note: "Control shows MAIN47; the alternate frame shows ALT47; the restored frame must show MAIN47 again with ALT47 gone. Whether ?47 actually swapped buffers requires independent pixel review",
               },
+              criterionBranch: "visual-review",
+              tests: [
+                { id: "capture", status: "supported", assertionRefs: [0] },
+                {
+                  id: "review",
+                  status: "test-todo",
+                  reason: "Legacy alternate-screen frames captured; required independent review pending",
+                },
+              ],
+              assertions: [
+                {
+                  assertionType: "screenshot",
+                  kind: "positive",
+                  expected: "Control shows MAIN47, alternate shows ALT47, restored shows MAIN47 with ALT47 absent",
+                  observed: JSON.stringify({ control, alternate, restored }),
+                },
+              ],
             }
           } finally {
             ctx.write("\x1b[?47l\x1b[0m\x1b[2J\x1b[H")
@@ -1624,6 +1742,25 @@ export const modesProbes: ProbeDefinition[] = [
                 frames: [control, alternate, restored],
                 note: "Control shows MAIN47; the alternate frame shows ALT1047; the restored frame must show MAIN47 again with ALT1047 gone. Whether ?1047 actually swapped and cleared buffers requires independent pixel review",
               },
+              criterionBranch: "visual-review",
+              tests: [
+                { id: "capture", status: "supported", assertionRefs: [0] },
+                {
+                  id: "review",
+                  status: "test-todo",
+                  reason:
+                    "1047 roundtrip frames captured; required independent review pending; clearing needs a second entry",
+                },
+              ],
+              assertions: [
+                {
+                  assertionType: "screenshot",
+                  kind: "positive",
+                  expected:
+                    "Control shows MAIN47, alternate shows ALT1047, restored shows MAIN47 with ALT1047 absent; clearing on exit requires a second entry, which these frames do not establish",
+                  observed: JSON.stringify({ control, alternate, restored }),
+                },
+              ],
             }
           } finally {
             ctx.write("\x1b[?1047l\x1b[0m\x1b[2J\x1b[H")

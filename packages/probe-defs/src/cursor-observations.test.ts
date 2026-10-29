@@ -242,7 +242,6 @@ test("cursor.shape capture names measured geometry and roles without inventing a
     assertionType: "screenshot",
   })
   expect(result.observation?.frames).toHaveLength(2)
-  expect(result.assertions).toBeUndefined()
 })
 
 test("reverse-wrap grades a measured backward wrap, not a bare CPR", async () => {
