@@ -1,0 +1,514 @@
+import type { LibProbeSource } from "./types.ts"
+
+/** One audited cell: the exact query bytes, why the artifact cannot answer them, and its own source citation. */
+export interface ReplyPathAudit {
+  readonly query: string
+  /** no-reply-path: the sequence is handled but the artifact has no writer for the reply (Untestable review).
+   *  parser-rejected: the artifact's parser rejects the sequence before any handler (source-negative review). */
+  readonly kind: "no-reply-path" | "parser-rejected"
+  readonly citation: string
+}
+
+/**
+ * Source audits of exact artifacts that cannot reply, keyed by loaded-artifact sha256 — never a digest copied from
+ * runtime — and then by featureId. Data only: a cell enters with its own citation and is reviewed as data. An
+ * unlisted (artifact, feature) pair keeps the probe's measured result.
+ */
+export const REPLY_PATH_AUDITS: ReadonlyMap<string, Readonly<Record<string, ReplyPathAudit>>> = new Map<
+  string,
+  Readonly<Record<string, ReplyPathAudit>>
+>([
+  // ghostty-web 0.4.0 WASM (core 5714ed07), the artifact the 31372 capture loaded
+  [
+    "7c43302dde147c6f7959b7bda7045ff375c71288da1af5667ffca2bf95beb2bf",
+    {
+      "device.decrpm": {
+        query: "\x1b[?7$p",
+        kind: "no-reply-path",
+        citation:
+          "ghostty-web 0.4.0 WASM drops the reply (termless vendor/ghostty-web/ghostty-wasm-api.patch:594-595 no-op); ghostty 5714ed07 src/terminal/stream.zig:1583-1618 request_mode parses it",
+      },
+      "device.decrqss": {
+        query: "\x1bP$qm\x1b\\",
+        kind: "no-reply-path",
+        citation:
+          "ghostty-web 0.4.0 WASM drops the reply (termless vendor/ghostty-web/ghostty-wasm-api.patch:586-588 dcs_* no-op); ghostty 5714ed07 src/terminal/dcs.zig:96-100 decrqss parses it",
+      },
+      "device.dsr-996-color-scheme": {
+        query: "\x1b[?996n",
+        kind: "no-reply-path",
+        citation:
+          "ghostty-web 0.4.0 WASM drops the reply (termless vendor/ghostty-web/ghostty-wasm-api.patch:634-636 'Not supported in WASM context'); ghostty 5714ed07 src/terminal/stream.zig:1528-1556 device_status color_scheme parses it",
+      },
+      "device.primary-da": {
+        query: "\x1b[c",
+        kind: "no-reply-path",
+        citation:
+          "ghostty-web 0.4.0 WASM drops the reply (termless vendor/ghostty-web/ghostty-wasm-api.patch:598 no-op); ghostty 5714ed07 src/terminal/stream.zig:1320-1338 device_attributes parses it",
+      },
+      "device.secondary-da": {
+        query: "\x1b[>c",
+        kind: "no-reply-path",
+        citation:
+          "ghostty-web 0.4.0 WASM drops the reply (termless vendor/ghostty-web/ghostty-wasm-api.patch:598 no-op); ghostty 5714ed07 src/terminal/stream.zig:1320-1338 device_attributes parses it",
+      },
+      "device.tertiary-da": {
+        query: "\x1b[=c",
+        kind: "no-reply-path",
+        citation:
+          "ghostty-web 0.4.0 WASM drops the reply (termless vendor/ghostty-web/ghostty-wasm-api.patch:598 no-op); ghostty 5714ed07 src/terminal/stream.zig:1320-1338 device_attributes parses it",
+      },
+      "device.xtgettcap": {
+        query: "\x1bP+q544e\x1b\\",
+        kind: "no-reply-path",
+        citation:
+          "ghostty-web 0.4.0 WASM drops the reply (termless vendor/ghostty-web/ghostty-wasm-api.patch:586-588 dcs_* no-op); ghostty 5714ed07 src/terminal/dcs.zig:81-91 xtgettcap parses it",
+      },
+      "device.xtgetxres": {
+        query: "\x1bP+Q7465726d4e616d65\x1b\\",
+        kind: "parser-rejected",
+        citation: "ghostty 5714ed07 src/terminal/dcs.zig:81-93 '+' accepts only final q (else null)",
+      },
+      "device.xtreportcolors": {
+        query: "\x1b[#R",
+        kind: "parser-rejected",
+        citation: "ghostty 5714ed07 src/terminal/stream.zig:1977 no 'R' final: 'unimplemented CSI action'",
+      },
+      "device.xtversion": {
+        query: "\x1b[>0q",
+        kind: "no-reply-path",
+        citation:
+          "ghostty-web 0.4.0 WASM drops the reply (termless vendor/ghostty-web/ghostty-wasm-api.patch:597 no-op); ghostty 5714ed07 src/terminal/stream.zig:1676 xtversion parses it",
+      },
+      "device.xtwinops-14": {
+        query: "\x1b[14t",
+        kind: "no-reply-path",
+        citation:
+          "ghostty-web 0.4.0 WASM drops the reply (termless vendor/ghostty-web/ghostty-wasm-api.patch:596 no-op); ghostty 5714ed07 src/terminal/stream.zig:1797-1803 size_report csi_14_t parses it",
+      },
+      "device.xtwinops-16": {
+        query: "\x1b[16t",
+        kind: "no-reply-path",
+        citation:
+          "ghostty-web 0.4.0 WASM drops the reply (termless vendor/ghostty-web/ghostty-wasm-api.patch:596 no-op); ghostty 5714ed07 src/terminal/stream.zig:1804-1810 size_report csi_16_t parses it",
+      },
+      "device.xtwinops-18": {
+        query: "\x1b[18t",
+        kind: "no-reply-path",
+        citation:
+          "ghostty-web 0.4.0 WASM drops the reply (termless vendor/ghostty-web/ghostty-wasm-api.patch:596 no-op); ghostty 5714ed07 src/terminal/stream.zig:1811-1817 size_report csi_18_t parses it",
+      },
+      "device.xtwinops-20": {
+        query: "\x1b[20t",
+        kind: "parser-rejected",
+        citation: "ghostty 5714ed07 src/terminal/stream.zig:1844-1847 'ignoring CSI t with unimplemented parameter'",
+      },
+      "device.xtwinops-21": {
+        query: "\x1b[21t",
+        kind: "no-reply-path",
+        citation:
+          "ghostty-web 0.4.0 WASM drops the reply (termless vendor/ghostty-web/ghostty-wasm-api.patch:596 no-op); ghostty 5714ed07 src/terminal/stream.zig:1818-1824 size_report csi_21_t parses it",
+      },
+      "editing.decrqcra": {
+        query: "\x1b[1;1;1;1;1;5*y",
+        kind: "parser-rejected",
+        citation: "ghostty 5714ed07 src/terminal/stream.zig:1977 no 'y' final: 'unimplemented CSI action'",
+      },
+      "extensions.osc10-fg-color": {
+        query: "\x1b]10;?\x07",
+        kind: "no-reply-path",
+        citation:
+          "ghostty-web 0.4.0 WASM drops the reply (termless vendor/ghostty-web/ghostty-wasm-api.patch:682-687 colorOperation no-op); ghostty 5714ed07 src/terminal/osc.zig:602-623 color_operation osc_10 parses it",
+      },
+      "extensions.osc104-reset-palette": {
+        query: "\x1b]4;0;?\x07",
+        kind: "no-reply-path",
+        citation:
+          "seed query: ghostty-web 0.4.0 WASM drops the reply (termless vendor/ghostty-web/ghostty-wasm-api.patch:682-687); ghostty 5714ed07 src/terminal/osc.zig:902-918 parses it",
+      },
+      "extensions.osc11-bg-color": {
+        query: "\x1b]11;?\x07",
+        kind: "no-reply-path",
+        citation:
+          "ghostty-web 0.4.0 WASM drops the reply (termless vendor/ghostty-web/ghostty-wasm-api.patch:682-687); ghostty 5714ed07 src/terminal/osc.zig:643-686 color_operation osc_11 parses it",
+      },
+      "extensions.osc110-reset-fg": {
+        query: "\x1b]10;?\x07",
+        kind: "no-reply-path",
+        citation:
+          "seed query: ghostty-web 0.4.0 WASM drops the reply (termless vendor/ghostty-web/ghostty-wasm-api.patch:682-687); ghostty 5714ed07 src/terminal/osc.zig:602-623 parses it",
+      },
+      "extensions.osc111-reset-bg": {
+        query: "\x1b]11;?\x07",
+        kind: "no-reply-path",
+        citation:
+          "seed query: ghostty-web 0.4.0 WASM drops the reply (termless vendor/ghostty-web/ghostty-wasm-api.patch:682-687); ghostty 5714ed07 src/terminal/osc.zig:643-686 parses it",
+      },
+      "extensions.osc112-reset-cursor": {
+        query: "\x1b]12;?\x07",
+        kind: "no-reply-path",
+        citation:
+          "seed query: ghostty-web 0.4.0 WASM drops the reply (termless vendor/ghostty-web/ghostty-wasm-api.patch:682-687); ghostty 5714ed07 src/terminal/osc.zig:688-704 parses it",
+      },
+      "extensions.osc113-reset-pointer-fg": {
+        query: "\x1b]13;?\x07",
+        kind: "no-reply-path",
+        citation:
+          "seed query: ghostty-web 0.4.0 WASM drops the reply (termless vendor/ghostty-web/ghostty-wasm-api.patch:682-687); ghostty 5714ed07 src/terminal/osc.zig:705-722 osc_13 parses it",
+      },
+      "extensions.osc114-reset-pointer-bg": {
+        query: "\x1b]14;?\x07",
+        kind: "no-reply-path",
+        citation:
+          "seed query: ghostty-web 0.4.0 WASM drops the reply (termless vendor/ghostty-web/ghostty-wasm-api.patch:682-687); ghostty 5714ed07 src/terminal/osc.zig:728-744 osc_14 parses it",
+      },
+      "extensions.osc12-cursor-color": {
+        query: "\x1b]12;?\x07",
+        kind: "no-reply-path",
+        citation:
+          "ghostty-web 0.4.0 WASM drops the reply (termless vendor/ghostty-web/ghostty-wasm-api.patch:682-687); ghostty 5714ed07 src/terminal/osc.zig:688-704 color_operation osc_12 parses it",
+      },
+      "extensions.osc1337-capabilities": {
+        query: "\x1b]1337;Capabilities\x07",
+        kind: "parser-rejected",
+        citation: "ghostty 5714ed07 src/terminal/osc.zig:723-726 @\"133\" + '7' -> invalid",
+      },
+      "extensions.osc1337-cellsize": {
+        query: "\x1b]1337;ReportCellSize\x07",
+        kind: "parser-rejected",
+        citation: "ghostty 5714ed07 src/terminal/osc.zig:723-726 @\"133\" + '7' -> invalid",
+      },
+      "extensions.osc17-highlight-bg": {
+        query: "\x1b]17;?\x07",
+        kind: "no-reply-path",
+        citation:
+          "ghostty-web 0.4.0 WASM drops the reply (termless vendor/ghostty-web/ghostty-wasm-api.patch:682-687); ghostty 5714ed07 src/terminal/osc.zig:779-795 color_operation osc_17 parses it",
+      },
+      "extensions.osc19-highlight-fg": {
+        query: "\x1b]19;?\x07",
+        kind: "no-reply-path",
+        citation:
+          "ghostty-web 0.4.0 WASM drops the reply (termless vendor/ghostty-web/ghostty-wasm-api.patch:682-687); ghostty 5714ed07 src/terminal/osc.zig:813-831 color_operation osc_19 parses it",
+      },
+      "extensions.osc30001-color-stack-push": {
+        query: "\x1b]10;?\x07",
+        kind: "no-reply-path",
+        citation:
+          "the probe sends only the seed OSC 10 query; ghostty-web 0.4.0 WASM drops its reply (termless vendor/ghostty-web/ghostty-wasm-api.patch:682-687); ghostty 5714ed07 src/terminal/osc.zig:602-623 parses it. OSC 30001 itself is parser-rejected (src/terminal/osc.zig:556-566) but is never sent",
+      },
+      "extensions.osc30101-color-stack-pop": {
+        query: "\x1b]10;?\x07",
+        kind: "no-reply-path",
+        citation:
+          "the probe sends only the seed OSC 10 query; ghostty-web 0.4.0 WASM drops its reply (termless vendor/ghostty-web/ghostty-wasm-api.patch:682-687); ghostty 5714ed07 src/terminal/osc.zig:602-623 parses it. OSC 30101 itself is parser-rejected (src/terminal/osc.zig:556-566) but is never sent",
+      },
+      "extensions.osc4-palette": {
+        query: "\x1b]4;0;?\x07",
+        kind: "no-reply-path",
+        citation:
+          "ghostty-web 0.4.0 WASM drops the reply (termless vendor/ghostty-web/ghostty-wasm-api.patch:682-687); ghostty 5714ed07 src/terminal/osc.zig:902-918 color_operation osc_4 parses it",
+      },
+      "extensions.osc5-special-color": {
+        query: "\x1b]5;0;?\x07",
+        kind: "no-reply-path",
+        citation:
+          "ghostty-web 0.4.0 WASM drops the reply (termless vendor/ghostty-web/ghostty-wasm-api.patch:682-687); ghostty 5714ed07 src/terminal/osc.zig:921-937 color_operation osc_5 parses it",
+      },
+      "extensions.osc701-locale": {
+        query: "\x1b]701;?\x07",
+        kind: "parser-rejected",
+        citation: "ghostty 5714ed07 src/terminal/osc.zig:979-990 @\"7\" + '0' -> invalid",
+      },
+      "extensions.osc702-version": {
+        query: "\x1b]702;?\x07",
+        kind: "parser-rejected",
+        citation: "ghostty 5714ed07 src/terminal/osc.zig:979-990 @\"7\" + '0' -> invalid",
+      },
+      "extensions.osc776-cell-size": {
+        query: "\x1b]776\x07",
+        kind: "parser-rejected",
+        citation: "ghostty 5714ed07 src/terminal/osc.zig:991-995 @\"77\" + '6' -> invalid",
+      },
+      "extensions.osc7770-font-size": {
+        query: "\x1b]7770;?\x07",
+        kind: "parser-rejected",
+        citation: "ghostty 5714ed07 src/terminal/osc.zig:996-1002 @\"777\" + '0' -> invalid",
+      },
+      "extensions.osc7777-font-window-size": {
+        query: "\x1b]7777;?\x07",
+        kind: "parser-rejected",
+        citation: "ghostty 5714ed07 src/terminal/osc.zig:996-1002 @\"777\" + '7' -> invalid",
+      },
+      "extensions.sixel-da1": {
+        query: "\x1b[c",
+        kind: "no-reply-path",
+        citation:
+          "ghostty-web 0.4.0 WASM drops the reply (termless vendor/ghostty-web/ghostty-wasm-api.patch:598 no-op); ghostty 5714ed07 src/terminal/stream.zig:1320-1338 device_attributes parses it",
+      },
+    },
+  ],
+  // vt100 0.16.2 Rust parser native artifact, the artifact the 31371 capture loaded
+  [
+    "a478127f571a25cf0e2b52e2972aa26d4344df03d9b3fba93ca03efd9cc9a0fa",
+    {
+      "cursor.position-report": {
+        query: "\x1b[6n",
+        kind: "no-reply-path",
+        citation:
+          "vt100 0.16.2 src/perform.rs:157-164 csi_dispatch default arm -> Callbacks::unhandled_csi, empty by default (src/callbacks.rs:55-63)",
+      },
+      "device.decrpm": {
+        query: "\x1b[?7$p",
+        kind: "no-reply-path",
+        citation:
+          "vte 0.15.0 src/lib.rs:207-209 collects '?'; vt100 0.16.2 src/perform.rs:176-183 '?' default arm -> Callbacks::unhandled_csi, empty by default (src/callbacks.rs:55-63)",
+      },
+      "device.decrqss": {
+        query: "\x1bP$qm\x1b\\",
+        kind: "no-reply-path",
+        citation:
+          "vte 0.15.0 src/lib.rs:351-354,292 dispatches DCS to Perform::hook/put/unhook, empty by default (src/lib.rs:779-789); vt100 0.16.2 src/perform.rs:33-239 overrides none",
+      },
+      "device.dsr-996-color-scheme": {
+        query: "\x1b[?996n",
+        kind: "no-reply-path",
+        citation:
+          "vte 0.15.0 src/lib.rs:207-209 collects '?'; vt100 0.16.2 src/perform.rs:176-183 '?' default arm -> Callbacks::unhandled_csi, empty by default (src/callbacks.rs:55-63)",
+      },
+      "device.primary-da": {
+        query: "\x1b[c",
+        kind: "no-reply-path",
+        citation:
+          "vt100 0.16.2 src/perform.rs:157-164 csi_dispatch default arm -> Callbacks::unhandled_csi, empty by default (src/callbacks.rs:55-63)",
+      },
+      "device.secondary-da": {
+        query: "\x1b[>c",
+        kind: "no-reply-path",
+        citation:
+          "vt100 0.16.2 src/perform.rs:186-194 intermediate arm -> Callbacks::unhandled_csi, empty by default (src/callbacks.rs:55-63)",
+      },
+      "device.status-report": {
+        query: "\x1b[5n",
+        kind: "no-reply-path",
+        citation:
+          "vt100 0.16.2 src/perform.rs:157-164 csi_dispatch default arm -> Callbacks::unhandled_csi, empty by default (src/callbacks.rs:55-63)",
+      },
+      "device.tertiary-da": {
+        query: "\x1b[=c",
+        kind: "no-reply-path",
+        citation:
+          "vt100 0.16.2 src/perform.rs:186-194 intermediate arm -> Callbacks::unhandled_csi, empty by default (src/callbacks.rs:55-63)",
+      },
+      "device.xtgettcap": {
+        query: "\x1bP+q544e\x1b\\",
+        kind: "no-reply-path",
+        citation:
+          "vte 0.15.0 src/lib.rs:351-354,292 dispatches DCS to Perform::hook/put/unhook, empty by default (src/lib.rs:779-789); vt100 0.16.2 src/perform.rs:33-239 overrides none",
+      },
+      "device.xtgetxres": {
+        query: "\x1bP+Q7465726d4e616d65\x1b\\",
+        kind: "no-reply-path",
+        citation:
+          "vte 0.15.0 src/lib.rs:351-354,292 dispatches DCS to Perform::hook/put/unhook, empty by default (src/lib.rs:779-789); vt100 0.16.2 src/perform.rs:33-239 overrides none",
+      },
+      "device.xtreportcolors": {
+        query: "\x1b[#R",
+        kind: "no-reply-path",
+        citation:
+          "vt100 0.16.2 src/perform.rs:186-194 intermediate arm -> Callbacks::unhandled_csi, empty by default (src/callbacks.rs:55-63)",
+      },
+      "device.xtversion": {
+        query: "\x1b[>0q",
+        kind: "no-reply-path",
+        citation:
+          "vt100 0.16.2 src/perform.rs:186-194 intermediate arm -> Callbacks::unhandled_csi, empty by default (src/callbacks.rs:55-63)",
+      },
+      "device.xtwinops-14": {
+        query: "\x1b[14t",
+        kind: "no-reply-path",
+        citation:
+          "vt100 0.16.2 src/perform.rs:132-136 handles only CSI 8 t; other ops reach :147-155 -> Callbacks::unhandled_csi, empty by default (src/callbacks.rs:55-63)",
+      },
+      "device.xtwinops-16": {
+        query: "\x1b[16t",
+        kind: "no-reply-path",
+        citation:
+          "vt100 0.16.2 src/perform.rs:132-136 handles only CSI 8 t; other ops reach :147-155 -> Callbacks::unhandled_csi, empty by default (src/callbacks.rs:55-63)",
+      },
+      "device.xtwinops-18": {
+        query: "\x1b[18t",
+        kind: "no-reply-path",
+        citation:
+          "vt100 0.16.2 src/perform.rs:132-136 handles only CSI 8 t; other ops reach :147-155 -> Callbacks::unhandled_csi, empty by default (src/callbacks.rs:55-63)",
+      },
+      "device.xtwinops-20": {
+        query: "\x1b[20t",
+        kind: "no-reply-path",
+        citation:
+          "vt100 0.16.2 src/perform.rs:132-136 handles only CSI 8 t; other ops reach :147-155 -> Callbacks::unhandled_csi, empty by default (src/callbacks.rs:55-63)",
+      },
+      "device.xtwinops-21": {
+        query: "\x1b[21t",
+        kind: "no-reply-path",
+        citation:
+          "vt100 0.16.2 src/perform.rs:132-136 handles only CSI 8 t; other ops reach :147-155 -> Callbacks::unhandled_csi, empty by default (src/callbacks.rs:55-63)",
+      },
+      "editing.decrqcra": {
+        query: "\x1b[1;1;1;1;1;5*y",
+        kind: "no-reply-path",
+        citation:
+          "vt100 0.16.2 src/perform.rs:186-194 intermediate arm -> Callbacks::unhandled_csi, empty by default (src/callbacks.rs:55-63)",
+      },
+      "extensions.osc10-fg-color": {
+        query: "\x1b]10;?\x07",
+        kind: "no-reply-path",
+        citation:
+          "vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66)",
+      },
+      "extensions.osc104-reset-palette": {
+        query: "\x1b]4;0;?\x07",
+        kind: "no-reply-path",
+        citation:
+          "vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66)",
+      },
+      "extensions.osc11-bg-color": {
+        query: "\x1b]11;?\x07",
+        kind: "no-reply-path",
+        citation:
+          "vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66)",
+      },
+      "extensions.osc110-reset-fg": {
+        query: "\x1b]10;?\x07",
+        kind: "no-reply-path",
+        citation:
+          "vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66)",
+      },
+      "extensions.osc111-reset-bg": {
+        query: "\x1b]11;?\x07",
+        kind: "no-reply-path",
+        citation:
+          "vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66)",
+      },
+      "extensions.osc112-reset-cursor": {
+        query: "\x1b]12;?\x07",
+        kind: "no-reply-path",
+        citation:
+          "vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66)",
+      },
+      "extensions.osc113-reset-pointer-fg": {
+        query: "\x1b]13;?\x07",
+        kind: "no-reply-path",
+        citation:
+          "vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66)",
+      },
+      "extensions.osc114-reset-pointer-bg": {
+        query: "\x1b]14;?\x07",
+        kind: "no-reply-path",
+        citation:
+          "vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66)",
+      },
+      "extensions.osc12-cursor-color": {
+        query: "\x1b]12;?\x07",
+        kind: "no-reply-path",
+        citation:
+          "vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66)",
+      },
+      "extensions.osc1337-capabilities": {
+        query: "\x1b]1337;Capabilities\x07",
+        kind: "no-reply-path",
+        citation:
+          "vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66)",
+      },
+      "extensions.osc1337-cellsize": {
+        query: "\x1b]1337;ReportCellSize\x07",
+        kind: "no-reply-path",
+        citation:
+          "vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66)",
+      },
+      "extensions.osc17-highlight-bg": {
+        query: "\x1b]17;?\x07",
+        kind: "no-reply-path",
+        citation:
+          "vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66)",
+      },
+      "extensions.osc19-highlight-fg": {
+        query: "\x1b]19;?\x07",
+        kind: "no-reply-path",
+        citation:
+          "vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66)",
+      },
+      "extensions.osc30001-color-stack-push": {
+        query: "\x1b]10;?\x07",
+        kind: "no-reply-path",
+        citation:
+          "vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66)",
+      },
+      "extensions.osc30101-color-stack-pop": {
+        query: "\x1b]10;?\x07",
+        kind: "no-reply-path",
+        citation:
+          "vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66)",
+      },
+      "extensions.osc4-palette": {
+        query: "\x1b]4;0;?\x07",
+        kind: "no-reply-path",
+        citation:
+          "vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66)",
+      },
+      "extensions.osc5-special-color": {
+        query: "\x1b]5;0;?\x07",
+        kind: "no-reply-path",
+        citation:
+          "vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66)",
+      },
+      "extensions.osc701-locale": {
+        query: "\x1b]701;?\x07",
+        kind: "no-reply-path",
+        citation:
+          "vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66)",
+      },
+      "extensions.osc702-version": {
+        query: "\x1b]702;?\x07",
+        kind: "no-reply-path",
+        citation:
+          "vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66)",
+      },
+      "extensions.osc776-cell-size": {
+        query: "\x1b]776\x07",
+        kind: "no-reply-path",
+        citation:
+          "vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66)",
+      },
+      "extensions.osc7770-font-size": {
+        query: "\x1b]7770;?\x07",
+        kind: "no-reply-path",
+        citation:
+          "vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66)",
+      },
+      "extensions.osc7777-font-window-size": {
+        query: "\x1b]7777;?\x07",
+        kind: "no-reply-path",
+        citation:
+          "vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66)",
+      },
+      "extensions.sixel-da1": {
+        query: "\x1b[c",
+        kind: "no-reply-path",
+        citation:
+          "vt100 0.16.2 src/perform.rs:157-164 csi_dispatch default arm -> Callbacks::unhandled_csi, empty by default (src/callbacks.rs:55-63)",
+      },
+    },
+  ],
+])
+
+/** The audited cell for this probe on the loaded artifact, if the table lists one. */
+export function replyPathAuditFor(
+  ctx: LibProbeSource,
+  featureId: string,
+): { artifactSha256: string; audit: ReplyPathAudit } | undefined {
+  const identity = ctx.runtimeIdentity
+  if (identity === undefined || !("loadedBinary" in identity)) return undefined
+  const artifactSha256 = identity.loadedBinary.sha256
+  const audit = REPLY_PATH_AUDITS.get(artifactSha256)?.[featureId]
+  return audit === undefined ? undefined : { artifactSha256, audit }
+}
