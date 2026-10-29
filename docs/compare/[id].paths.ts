@@ -2,7 +2,7 @@ import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { loadFeatures } from "@terminfo/catalog"
 import { loadProbes, featureSlug, catLabel, terminalSlug } from "../data/load-probes"
-import type { PublicVersion } from "../data/public-results"
+import type { PublicContextSummary } from "../data/public-results"
 import { publicResultFor } from "../data/release-scope"
 import type { ProbeStatus } from "@terminfo/probe-defs"
 
@@ -24,17 +24,15 @@ function decided(state: ProbeStatus | undefined): boolean {
   return state === "supported" || state === "unsupported"
 }
 
-function recordedScope(selected: PublicVersion): unknown[] {
+function recordedScope(selected: PublicContextSummary): unknown[] {
   return [
-    selected.subject.kind,
-    selected.subject.os,
-    selected.subject.osVersion,
-    selected.subject.outerTerminal,
-    selected.subject.mux,
-    selected.subject.config,
-    selected.subject.permissions,
-    selected.suiteId,
-    selected.probeHash,
+    selected.subject?.kind,
+    selected.subject?.os,
+    selected.subject?.osVersion,
+    selected.subject?.outerTerminal,
+    selected.subject?.mux,
+    selected.subject?.config,
+    selected.subject?.permissions,
   ]
 }
 
@@ -47,7 +45,7 @@ export default {
     const terminals = data.backends.map((b) => {
       const meta = data.meta[b.name] ?? {}
       const selected = data.selectedByBackend[b.name]?.selected
-      if (!selected) throw new Error(`Missing selected run for comparison terminal ${b.name}`)
+      if (!selected?.subject) throw new Error(`Missing physical subject for comparison terminal ${b.name}`)
       const states = data.selectedByBackend[b.name]?.states
       if (!states) throw new Error(`Missing classified states for comparison terminal ${b.name}`)
       const slug = terminalSlug(b.name, data.meta)
@@ -58,7 +56,7 @@ export default {
         description: meta.description ?? "",
         url: meta.url ?? "",
         type: meta.type ?? "",
-        selected,
+        selected: { ...selected, subject: selected.subject },
         states,
       }
     })
@@ -107,8 +105,6 @@ export default {
         const comparableScope = Boolean(
           subjectA.os &&
           subjectB.os &&
-          a.selected.probeHash &&
-          b.selected.probeHash &&
           a.selected.complete &&
           b.selected.complete &&
           JSON.stringify(recordedScope(a.selected)) === JSON.stringify(recordedScope(b.selected)),
@@ -127,6 +123,7 @@ export default {
             const resultB = resultFor(stateB)
             const comparable = Boolean(
               comparableScope &&
+              a.selected.cells[f.id]?.suiteId === b.selected.cells[f.id]?.suiteId &&
               decided(stateA) &&
               decided(stateB) &&
               cellA !== undefined &&
@@ -189,8 +186,8 @@ export default {
             termBType: b.type,
             termAKind: subjectA.kind,
             termBKind: subjectB.kind,
-            termAVersion: subjectA.version,
-            termBVersion: subjectB.version,
+            termAVersion: [...new Set(Object.values(a.selected.sources).map((run) => run.subject.version))].join(", "),
+            termBVersion: [...new Set(Object.values(b.selected.sources).map((run) => run.subject.version))].join(", "),
             termAOs: subjectA.os ?? "Not recorded",
             termBOs: subjectB.os ?? "Not recorded",
             termAOsVersion: subjectA.osVersion ?? "Not recorded",
@@ -203,8 +200,10 @@ export default {
             termBConfig: subjectB.config ?? "Not recorded",
             termAPermissions: subjectA.permissions ?? "Not recorded",
             termBPermissions: subjectB.permissions ?? "Not recorded",
-            termASuite: a.selected.suiteId,
-            termBSuite: b.selected.suiteId,
+            termASuite: [...new Set(Object.values(a.selected.sources).map((run) => run.suiteId))].join(", "),
+            termBSuite: [...new Set(Object.values(b.selected.sources).map((run) => run.suiteId))].join(", "),
+            termASources: JSON.stringify(Object.values(a.selected.sources)),
+            termBSources: JSON.stringify(Object.values(b.selected.sources)),
             termASuiteComplete: String(a.selected.complete),
             termBSuiteComplete: String(b.selected.complete),
             comparableScope: String(comparableScope),

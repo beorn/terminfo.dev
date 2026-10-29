@@ -29,7 +29,7 @@ const categoryFilter = ref('all')
 const baselineFilter = ref('all')
 const platformFilter = ref('all')
 
-// Only a current run is displayed; a historical-only target has no row.
+// Display composed current contexts; a historical-only target has no row.
 const displayedSelections = { ...data.selectedByBackend }
 
 // D132 B (#30917): the environment groups a run records are ungraded, so no bar, tooltip or order
@@ -92,7 +92,7 @@ function platformIcon(os) {
 }
 
 function platformIcons(backendName) {
-  const os = displayedSelections[backendName]?.selected.subject.os
+  const os = displayedSelections[backendName]?.selected.subject?.os
   return os ? platformIcon(os) : ''
 }
 
@@ -146,7 +146,7 @@ function catLabel(cat) {
 function barSegmentItems(backendName, segment) {
   const selected = data.selectedByBackend[backendName]?.selected
   if (!selected) return []
-  return selected.results.filter(result => result.status === segment && !isEnvironmentGroup(result.featureId)).map(result => {
+  return Object.values(selected.cells).filter(result => result.status === segment && !isEnvironmentGroup(result.featureId)).map(result => {
     const feature = data.features.find(feature => feature.id === result.featureId)
     return { id: result.featureId, name: data.featureDescriptions[result.featureId]?.name ?? result.featureId,
       href: feature ? '/' + feature.category + '/' + featureSlug(result.featureId) : undefined,
@@ -203,11 +203,10 @@ function backendLabel(name) {
   return data.meta[name]?.label ?? name
 }
 
-// Every score below belongs to one measured run, and one terminal key can hold several:
-// ghostty is measured on macOS and on Linux. Print the run's OS beside the label so two
-// legitimate runs cannot read as one contradictory number (28047).
+// Every score belongs to one physical context, which may retain several original runs.
+// Print its OS so separate Linux and macOS contexts remain distinct (28047).
 function backendContextLabel(name) {
-  const os = displayedSelections[name]?.selected.subject.os
+  const os = displayedSelections[name]?.selected.subject?.os
   return `${backendLabel(name)} · ${os ? (data.platformLabels?.[os] ?? os) : 'OS not recorded'}`
 }
 
@@ -226,9 +225,9 @@ function backendTooltip(name, version) {
   const parts = [backendContextLabel(name), meta.description, scoreLabel(name), coverageLabel(name)]
   if (meta.upstream) parts.push(`Upstream: ${meta.upstream}`)
   if (meta.type) parts.push(`Type: ${meta.type}`)
-  if (version) parts.push(`Version: ${version}`)
-  const measuredAt = displayedSelections[name]?.selected.measuredAt
-  if (measuredAt) parts.push(`Tested (UTC): ${new Date(measuredAt).toLocaleDateString('en-US', { timeZone: 'UTC' })}`)
+  if (version) parts.push(`Source versions: ${version}`)
+  const sources = Object.values(displayedSelections[name]?.selected.sources ?? {})
+  for (const source of sources) parts.push(`Source ${source.runId}: ${source.subject.version} · ${source.measuredAt} · suite ${source.suiteId}`)
   if (meta.url) parts.push(meta.url)
   if (meta.caveat) parts.push(`⚠ ${meta.caveat}`)
   return parts.join('\n')
@@ -259,9 +258,9 @@ function backendTooltip(name, version) {
 
 <div v-if="appBackends.length > 0" class="summary">
   <div v-for="b in appBackends" :key="b.name" class="summary-row" :class="{ 'summary-row-historical': !data.selectedByBackend[b.name] }">
-    <a class="summary-name hover-link" :href="'/terminals/' + termSlug(b.name)" :data-tooltip="backendTooltip(b.name, b.version)">{{ backendLabel(b.name) }}</a>
+    <a class="summary-name hover-link" :href="'/terminals/' + termSlug(b.name)" :data-tooltip="backendTooltip(b.name, b.versions.join(', '))">{{ backendLabel(b.name) }}</a>
     <span class="summary-platforms" :title="backendContextLabel(b.name)" v-html="platformIcons(b.name)"></span>
-    <span class="summary-version" :title="b.version">{{ b.version }}</span>
+    <span class="summary-version" :title="b.versions.join(', ')">{{ b.versions.join(', ') }}</span>
     <div class="summary-bar">
       <div v-for="segment in barSegments" :key="segment.id" class="bar-segment" :class="'bar-' + segment.style" :style="{ width: segmentWidth(b.name, segment.id) }">
         <a class="bar-segment-link" :href="'/terminals/' + termSlug(b.name)" :aria-label="backendLabel(b.name) + ': ' + segment.label + ' — view results'"></a>
@@ -338,7 +337,7 @@ function backendTooltip(name, version) {
     <tr>
       <th class="feature-col"></th>
       <th v-for="b in appBackends" :key="b.name">
-        <a class="hover-link" :href="'/terminals/' + termSlug(b.name)" :title="backendTooltip(b.name, b.version)">{{ backendLabel(b.name) }}</a>
+        <a class="hover-link" :href="'/terminals/' + termSlug(b.name)" :title="backendTooltip(b.name, b.versions.join(', '))">{{ backendLabel(b.name) }}</a>
         <span class="th-platforms" v-html="platformIcons(b.name)"></span>
         <span v-if="!data.selectedByBackend[b.name]" class="historical-label">Historical</span>
       </th>
@@ -375,8 +374,8 @@ function backendTooltip(name, version) {
 
 <div class="summary summary-muted">
   <div v-for="b in headlessBackends" :key="b.name" class="summary-row" :class="{ 'summary-row-historical': !data.selectedByBackend[b.name] }">
-    <a class="summary-name hover-link" :href="'/terminals/' + termSlug(b.name)" :data-tooltip="backendTooltip(b.name, b.version)">{{ backendLabel(b.name) }}</a>
-    <span class="summary-version" :title="b.version">{{ b.version }}</span>
+    <a class="summary-name hover-link" :href="'/terminals/' + termSlug(b.name)" :data-tooltip="backendTooltip(b.name, b.versions.join(', '))">{{ backendLabel(b.name) }}</a>
+    <span class="summary-version" :title="b.versions.join(', ')">{{ b.versions.join(', ') }}</span>
     <div class="summary-bar">
       <div v-for="segment in barSegments" :key="segment.id" class="bar-segment" :class="'bar-' + segment.style" :style="{ width: segmentWidth(b.name, segment.id) }">
         <a class="bar-segment-link" :href="'/terminals/' + termSlug(b.name)" :aria-label="backendLabel(b.name) + ': ' + segment.label + ' — view results'"></a>
@@ -422,7 +421,7 @@ function backendTooltip(name, version) {
     <tr>
       <th class="feature-col"></th>
       <th v-for="b in headlessBackends" :key="b.name">
-        <a class="hover-link" :href="'/terminals/' + termSlug(b.name)" :title="backendTooltip(b.name, b.version)">{{ backendLabel(b.name) }}</a>
+        <a class="hover-link" :href="'/terminals/' + termSlug(b.name)" :title="backendTooltip(b.name, b.versions.join(', '))">{{ backendLabel(b.name) }}</a>
         <span v-if="!data.selectedByBackend[b.name]" class="historical-label">Historical</span>
       </th>
     </tr>
@@ -455,8 +454,8 @@ function backendTooltip(name, version) {
 
 <div class="summary summary-muted">
   <div v-for="b in muxBackends" :key="b.name" class="summary-row" :class="{ 'summary-row-historical': !data.selectedByBackend[b.name] }">
-    <a class="summary-name hover-link" :href="'/terminals/' + termSlug(b.name)" :data-tooltip="backendTooltip(b.name, b.version)">{{ backendLabel(b.name) }}</a>
-    <span class="summary-version" :title="b.version">{{ b.version }}</span>
+    <a class="summary-name hover-link" :href="'/terminals/' + termSlug(b.name)" :data-tooltip="backendTooltip(b.name, b.versions.join(', '))">{{ backendLabel(b.name) }}</a>
+    <span class="summary-version" :title="b.versions.join(', ')">{{ b.versions.join(', ') }}</span>
     <div class="summary-bar">
       <div v-for="segment in barSegments" :key="segment.id" class="bar-segment" :class="'bar-' + segment.style" :style="{ width: segmentWidth(b.name, segment.id) }">
         <a class="bar-segment-link" :href="'/terminals/' + termSlug(b.name)" :aria-label="backendLabel(b.name) + ': ' + segment.label + ' — view results'"></a>
@@ -480,7 +479,7 @@ function backendTooltip(name, version) {
     <tr>
       <th class="feature-col"></th>
       <th v-for="b in muxBackends" :key="b.name">
-        <a class="hover-link" :href="'/terminals/' + termSlug(b.name)" :title="backendTooltip(b.name, b.version)">{{ backendLabel(b.name) }}</a>
+        <a class="hover-link" :href="'/terminals/' + termSlug(b.name)" :title="backendTooltip(b.name, b.versions.join(', '))">{{ backendLabel(b.name) }}</a>
         <span v-if="!data.selectedByBackend[b.name]" class="historical-label">Historical</span>
       </th>
     </tr>

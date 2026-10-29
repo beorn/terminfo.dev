@@ -18,13 +18,11 @@ interface VersionInfo {
 /** Versions displayed on a terminal page come only from reviewed, exact-context runs. */
 function versionsForBackend(data: ReturnType<typeof loadProbes>, backendName: string): VersionInfo[] {
   const current = data.selectedByBackend[backendName]
-  if (!current) return []
+  if (!current?.selected.subject) return []
+  const subject = current.selected.subject
   const contextKey = current?.contextKey
   const versions = (contextKey ? (data.selected.versions[contextKey] ?? []) : [])
-    .filter(
-      (selected) =>
-        selected.subject.id === current?.selected.subject.id && selected.subject.kind === current.selected.subject.kind,
-    )
+    .filter((selected) => selected.subject.id === subject.id && selected.subject.kind === subject.kind)
     .map((selected) => ({
       version: selected.subject.version,
       total: selected.score.all,
@@ -92,31 +90,26 @@ export default {
       const terminal = meta.terminal ?? {}
 
       const selected = data.selectedByBackend[b.name]?.selected
-      // A parser and its app can share a public slug; measured analysis belongs to the selected run.
-      const slugAnalysis = allAnalysis["terminals/" + slug]
-      const a =
-        selected && selected.score.all > 0
-          ? Object.entries(allAnalysis).find(
-              ([key, entry]) => key.startsWith("terminals/") && entry.runSha256 === selected.sha256,
-            )?.[1]
-          : slugAnalysis?.runSha256
-            ? undefined
-            : slugAnalysis
-      if (selected && selected.score.all > 0 && !a) {
-        throw new Error(`Missing terminal analysis for ${b.name} selected run ${selected.sha256}`)
-      }
+      if (selected && !selected.subject)
+        throw new Error(`Selected context ${selected.contextKey} lacks a physical subject`)
+      // A parser and its app may share a slug; match original contributors, never a representative hash.
+      const sourceIds = selected?.contributingRunIds.slice().sort()
+      const a = selected
+        ? Object.entries(allAnalysis).find(
+            ([key, entry]) =>
+              key.startsWith("terminals/") &&
+              JSON.stringify(entry.sources?.map((source) => source.runId).sort()) === JSON.stringify(sourceIds),
+          )?.[1]
+        : allAnalysis["terminals/" + slug]
+      if (selected && selected.score.all > 0 && !a)
+        throw new Error(`Missing terminal analysis for ${b.name} context ${selected.contextKey}`)
 
       // Load all version results for this backend
       const versions = versionsForBackend(data, b.name)
       const otherRuns = selected
-        ? Object.values(data.selected.versions)
+        ? Object.values(data.selected.history)
             .flat()
-            .filter(
-              (run) =>
-                run.subject.id === selected.subject.id &&
-                run.subject.kind === selected.subject.kind &&
-                run.sha256 !== selected.sha256,
-            )
+            .filter((run) => run.subject.id === selected.subject?.id && run.subject.kind === selected.subject?.kind)
         : []
 
       return {
@@ -136,11 +129,8 @@ export default {
           terminalUrl: meta.url ?? terminal.url ?? "",
           terminalRepo: meta.repo ?? terminal.repo ?? "",
           terminalAuthor: terminal.author ?? "",
-          version: b.version,
+          version: b.versions.join(", "),
           engine: b.engine,
-          generated: selected?.measuredAt ?? "",
-          runSha256: selected?.sha256 ?? "",
-          suiteFreshness: selected?.suiteFreshness ?? "",
           total: stats ? String(stats.score.all) : "",
           yes: stats ? String(stats.score.supported) : "",
           no: stats ? String(stats.counts.unsupported) : "",
@@ -150,7 +140,8 @@ export default {
           versions: JSON.stringify(versions),
           otherRuns: JSON.stringify(otherRuns),
           analysis: linkifyContentExcluding(a?.analysis ?? "", new Set([`/terminals/${slug}`])),
-          analysisDate: a?.date ?? "",
+          analysisDate:
+            a?.sources?.map((source) => `${source.runId}: ${source.measuredAt}`).join("; ") ?? a?.date ?? "",
           analysisChanges: a?.changes ?? "",
           historical: "false",
           terminalType: "term",
@@ -163,7 +154,7 @@ export default {
 
     // Classify terminal type from terminals.json metadata
     function getTerminalType(backendName: string): string {
-      const selectedKind = data.selectedByBackend[backendName]?.selected.subject.kind
+      const selectedKind = data.selectedByBackend[backendName]?.selected.subject?.kind
       if (selectedKind) return selectedKind
       for (const [, entry] of Object.entries(terminalsData)) {
         if (entry.slug === terminalSlug(backendName, data.meta)) {

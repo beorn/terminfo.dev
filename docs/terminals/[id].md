@@ -13,21 +13,25 @@ const { params } = useData()
 const p = params.value
 
 const categories = p.categories ? JSON.parse(p.categories) : []
-const versions = p.versions ? JSON.parse(p.versions) : []
 const defaultRun = data.selectedByBackend[p.backendId]?.selected
-const runs = [defaultRun, ...JSON.parse(p.otherRuns || '[]')].filter(Boolean)
-// #30759: the page renders current sealed runs only, so every recorded run here is current.
-const recordedRuns = runs
-const runSha = ref(defaultRun?.sha256 || '')
-const selectedRun = computed(() => recordedRuns.find(run => run.sha256 === runSha.value))
-const measuredBar = computed(() => (selectedRun.value?.schemaVersion === 3 || selectedRun.value?.schemaVersion === 4) ? aggregateCurrentResults(selectedRun.value.results, selectedRun.value.catalogIds) : undefined)
+const recordedRuns = JSON.parse(p.otherRuns || '[]')
+// Empty selection explicitly means composed context; run hashes select original documents only.
+const runSha = ref('')
+const selectedRun = computed(() => runSha.value ? recordedRuns.find(run => run.sha256 === runSha.value) : defaultRun)
+const sourceRuns = computed(() => !selectedRun.value ? [] : 'sources' in selectedRun.value ? Object.values(selectedRun.value.sources) : [selectedRun.value])
+const sourceVersions = computed(() => [...new Set(sourceRuns.value.map(run => run.subject.version))].join(', '))
+const measuredBar = computed(() => {
+  const selection = selectedRun.value
+  if (!selection) return undefined
+  return aggregateCurrentResults('cells' in selection ? Object.values(selection.cells) : selection.results, selection.catalogIds)
+})
 const measuredShare = computed(() => measuredBar.value ? currentSupportedShare(measuredBar.value) : '')
 function featureNote(id) {
   const result = publicResultFor(selectedRun.value, id)
   return result?.reason || ''
 }
-const stale = computed(() => selectedRun.value ? isStaleRelation(selectedRun.value.suiteRelation) : false)
-const staleText = computed(() => selectedRun.value ? staleCaption(selectedRun.value.measuredAt) : '')
+const stale = computed(() => sourceRuns.value.some(run => isStaleRelation(run.suiteRelation)))
+const staleText = computed(() => sourceRuns.value.filter(run => isStaleRelation(run.suiteRelation)).map(run => `${run.runId}: ${staleCaption(run.measuredAt)}`).join('; '))
 function runLabel(run) {
   return `${run.subject.version} · ${run.subject.os || 'OS not recorded'} · ${run.subject.permissions || 'No permission override recorded'} · ${run.sha256.slice(0, 8)}`
 }
@@ -39,7 +43,7 @@ function featureTooltip(f) {
   return parts.join('\n')
 }
 
-const testDate = computed(() => selectedRun.value ? new Date(selectedRun.value.measuredAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' }) : '')
+const testDate = computed(() => sourceRuns.value.map(run => `${run.runId}: ${run.measuredAt}`).join('; '))
 const isHistorical = p.historical === 'true'
 const isCurrentApp = !isHistorical && (p.terminalType === 'term' || p.terminalType === 'term+lib')
 
@@ -138,7 +142,7 @@ const breadcrumbParent = (() => {
 <div v-if="!isHistorical && !isCurrentApp && p.backendDescription" class="backend-info">
   <strong>Backend:</strong> {{ p.backendDescription }}
   <span v-if="p.backendType"> ({{ p.backendType }})</span>
-  <span v-if="selectedRun || p.version"> · v{{ selectedRun?.subject.version || p.version }}</span>
+  <span v-if="selectedRun || p.version"> · v{{ sourceVersions || p.version }}</span>
 </div>
 
 <p v-if="p.backendCaveat" class="backend-caveat">&#x26A0; {{ p.backendCaveat }}</p>
@@ -149,12 +153,12 @@ const breadcrumbParent = (() => {
   &mdash; this terminal uses the same underlying engine and is not probed separately.
 </p>
 
-<p v-if="!defaultRun && !isHistorical">No current sealed run. Historical results remain available below.</p>
+<p v-if="!defaultRun && !isHistorical">No composed context is available.</p>
 
 <div v-if="measuredBar" class="score-card">
   <h2 class="results-heading">Feature support</h2>
   <p v-if="stale" class="stale-line">{{ staleText }}</p>
-  <p class="selected-run">{{ p.terminalName }} {{ selectedRun.subject.version }} · {{ selectedRun.subject.os || 'OS not recorded' }} · Measured {{ testDate }} (UTC)</p>
+  <p class="selected-run">{{ p.terminalName }} · Source versions: {{ sourceVersions }} · {{ selectedRun.subject?.os || 'OS not recorded' }} · Original measurements: {{ testDate }}</p>
   <p class="result-share-label" :title="currentCoverageSentence(measuredBar, selectedRun.catalogIds)">{{ measuredShare }}</p>
   <p>{{ currentCoverageSentence(measuredBar, selectedRun.catalogIds) }}</p>
   <div v-if="measuredBar.denominator > 0" class="result-share" aria-hidden="true">
@@ -164,33 +168,35 @@ const breadcrumbParent = (() => {
     <span v-if="measuredBar.counts['test-todo']" class="result-share-not-tested" :style="{ width: `${measuredBar.counts['test-todo'] / measuredBar.denominator * 100}%` }"></span>
     <span v-if="measuredBar.counts['test-failure']" class="result-share-error" :style="{ width: `${measuredBar.counts['test-failure'] / measuredBar.denominator * 100}%` }"></span>
   </div>
-  <p>Run {{ selectedRun.complete ? 'complete' : 'incomplete' }}. Completion and feature support are separate.</p>
+  <p>Selection {{ selectedRun.complete ? 'complete' : 'incomplete' }}. Completion and feature support are separate.</p>
 </div>
 
 <details v-if="selectedRun" class="run-context">
   <summary>Test environment and recorded versions</summary>
 
-  <p>Recorded suite: {{ selectedRun.suiteId }} · {{ selectedRun.suiteFreshness }}. Results from different suites are not directly comparable.</p>
-  <div v-if="recordedRuns.length > 1" class="run-picker">
-    <label for="reviewed-run">Version and configuration</label>
+  <p>Each feature retains its original run, version, suite and measurement date. Results from different suites are not directly comparable.</p>
+  <div v-if="recordedRuns.length" class="run-picker">
+    <label for="reviewed-run">Composed context or original run</label>
     <select id="reviewed-run" v-model="runSha">
-      <option v-for="run in recordedRuns" :key="run.sha256" :value="run.sha256">{{ (run.schemaVersion === 3 || run.schemaVersion === 4) ? 'Current' : 'Historical' }} · {{ runLabel(run) }}</option>
+      <option v-if="defaultRun" value="">Composed context (default)</option>
+      <option v-for="run in recordedRuns" :key="run.sha256" :value="run.sha256">Original run · {{ runLabel(run) }}</option>
     </select>
     <p>Choosing another record replaces the counts and evidence below. Choices include current configurations and older measurements; the matrix uses the default context.</p>
   </div>
 
+  <ul>
+    <li v-for="run in sourceRuns" :key="run.runId">Original run <code>{{ run.runId }}</code> · {{ run.subject.version }} · measured {{ run.measuredAt }} · suite <code>{{ run.suiteId }}</code> · {{ run.suiteFreshness }} · SHA-256 <code>{{ run.sha256 }}</code></li>
+  </ul>
   <dl>
-    <dt>Run</dt><dd><a href="/api/v3/data.json">{{ selectedRun.sha256 }}</a></dd>
-    <dt>Suite</dt><dd>{{ selectedRun.suiteId }} · {{ selectedRun.suiteFreshness }}</dd>
-    <dt>Subject</dt><dd>{{ selectedRun.subject.kind }} · {{ selectedRun.subject.id }} {{ selectedRun.subject.version }}</dd>
-    <dt>OS</dt><dd>{{ selectedRun.subject.os || 'Not recorded' }} {{ selectedRun.subject.osVersion || '' }}</dd>
-    <dt>Permissions</dt><dd>{{ selectedRun.subject.permissions || 'No explicit override recorded' }}</dd>
-    <dt>Configuration</dt><dd><code>{{ selectedRun.subject.config || 'Not recorded' }}</code></dd>
-    <dt>Outer terminal / multiplexer</dt><dd>{{ selectedRun.subject.outerTerminal || 'None recorded' }} / {{ selectedRun.subject.mux || 'None recorded' }}</dd>
+    <dt>Subject</dt><dd>{{ selectedRun.subject?.kind }} · {{ selectedRun.subject?.id }}</dd>
+    <dt>OS</dt><dd>{{ selectedRun.subject?.os || 'Not recorded' }} {{ selectedRun.subject?.osVersion || '' }}</dd>
+    <dt>Permissions</dt><dd>{{ selectedRun.subject?.permissions || 'No explicit override recorded' }}</dd>
+    <dt>Configuration</dt><dd><code>{{ selectedRun.subject?.config || 'Not recorded' }}</code></dd>
+    <dt>Outer terminal / multiplexer</dt><dd>{{ selectedRun.subject?.outerTerminal || 'None recorded' }} / {{ selectedRun.subject?.mux || 'None recorded' }}</dd>
   </dl>
 </details>
 
-<details v-if="p.analysis && selectedRun?.sha256 === defaultRun?.sha256" class="analysis">
+<details v-if="p.analysis && !runSha" class="analysis">
   <summary>Analysis · {{ p.analysisDate }}</summary>
   <div class="analysis-body" v-html="p.analysis"></div>
   <p v-if="p.analysisChanges" class="analysis-changes">{{ p.analysisChanges }}</p>
