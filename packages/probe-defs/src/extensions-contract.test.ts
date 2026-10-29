@@ -720,12 +720,7 @@ test("a decided extension row reads unsatisfied when silent or unacknowledged", 
 })
 
 test("semantic observables omitted in headless mode return notTested without failing determinism", async () => {
-  const omittedProbes = [
-    "extensions.osc1-icon",
-    "extensions.osc117-reset-highlight-bg",
-    "extensions.osc119-reset-highlight-fg",
-    "extensions.font-ligatures",
-  ]
+  const omittedProbes = ["extensions.osc1-icon", "extensions.font-ligatures"]
   const headless = libProbeSource(inertModel())
   for (const id of omittedProbes) {
     const probe = extensionsProbes.find((p) => p.id === id)
@@ -749,5 +744,21 @@ test("a non-empty unparsed colour-stack readback fails with its raw reply retain
     expect(result.assertions, id).toBeUndefined()
     expect(result.tests, id).toMatchObject([expect.objectContaining({ status: "test-failure", reason: "no-response" })])
     expect(JSON.parse(result.response ?? "null"), id).toEqual({ query: "\x1b]10;?\x07", originalRaw: unparsed })
+  }
+})
+
+// Regression (#31754): the shared colour-stack helper served one sentence to both rows, so a green
+// push result reported "after color-stack pop". Each row must name its own operation.
+test("each colour-stack row names its own operation in the expected sentence", () => {
+  for (const [id, operation] of [
+    ["extensions.osc30001-color-stack-push", "push"],
+    ["extensions.osc30101-color-stack-pop", "pop"],
+  ] as const) {
+    const probe = extensionsProbes.find((p) => p.id === id)
+    const context = decidedSatisfactionSources(id)
+    if (!probe?.lib || !context.headless) throw new Error(`missing headless arm for ${id}`)
+    const result = probe.lib(context.headless)
+    expect(result?.assertions?.[0]?.expected, id).toContain(`color-stack ${operation}`)
+    expect(result?.assertions?.[0]?.expected, id).not.toContain(`color-stack ${operation === "push" ? "pop" : "push"}`)
   }
 })

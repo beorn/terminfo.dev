@@ -9,7 +9,11 @@ import { expect, test } from "vitest"
 import { extensionsProbes } from "./extensions.ts"
 import type { LibProbeSource } from "./types.ts"
 
-function source(icon: { current: string } | null): LibProbeSource {
+function source(
+  icon: { current: string } | null,
+  options: { changesTitle?: boolean; ignoresTitleSetup?: boolean; ignoresIconSet?: boolean } = {},
+): LibProbeSource {
+  let title = "unchanged-title"
   return {
     kind: "live",
     cols: 80,
@@ -25,12 +29,18 @@ function source(icon: { current: string } | null): LibProbeSource {
       extensions: new Set<string>(),
     },
     feed(text: string) {
-      if (icon && text.includes("test-icon")) icon.current = "test-icon"
+      const windowTitle = /\x1b\]2;([^\x07]*)\x07/.exec(text)?.[1]
+      if (windowTitle !== undefined && !options.ignoresTitleSetup) title = windowTitle
+      const iconLabel = /\x1b\]1;([^\x07]*)\x07/.exec(text)?.[1]
+      if (icon && iconLabel !== undefined && !options.ignoresIconSet) {
+        icon.current = iconLabel
+        if (options.changesTitle) title = iconLabel
+      }
     },
     feedCapture: () => "",
     getMode: () => false,
     getText: () => "",
-    getTitle: () => "unchanged-title",
+    getTitle: () => title,
     ...(icon ? { getIconLabel: () => icon.current } : {}),
     getCell: () => ({
       char: "X",
@@ -58,7 +68,7 @@ test("headless osc1 grades the icon when getIconLabel is present", () => {
   expect(probe?.lib).toBeTypeOf("function")
   const icon = { current: "" }
   const result = probe!.lib!(source(icon))
-  expect(icon.current).toBe("test-icon")
+  expect(icon.current).toBe("")
   expect(result.notTested).toBeUndefined()
   expect(result.pass).toBe(true)
 })
@@ -68,4 +78,27 @@ test("headless osc1 stays not-tested when getIconLabel is absent", () => {
   const result = probe!.lib!(source(null))
   expect(result.notTested?.reason).toBe("no-semantic-observable")
   expect(result.pass).toBe(false)
+})
+
+test.each([false, true])("headless osc1 checks title independence when the title side effect is %s", (changesTitle) => {
+  const probe = extensionsProbes.find((entry) => entry.id === "extensions.osc1-icon")
+  const icon = { current: "original-icon" }
+  const ctx = source(icon, { changesTitle })
+  const result = probe!.lib!(ctx)
+  expect(result.observation).toMatchObject({ outcome: changesTitle ? "unsupported" : "supported" })
+  expect(icon.current).toBe("original-icon")
+  expect(ctx.getTitle()).toBe("unchanged-title")
+})
+
+test("headless osc1 requires a verified title control before deciding independence", () => {
+  const probe = extensionsProbes.find((entry) => entry.id === "extensions.osc1-icon")
+  const result = probe!.lib!(source({ current: "original-icon" }, { ignoresTitleSetup: true }))
+  expect(result.observation).toBeUndefined()
+  expect(result.tests).toMatchObject([{ id: "criterion", status: "test-failure", reason: expect.any(String) }])
+})
+
+test.each(["original-icon", "test-icon"])("headless osc1 rejects an ignored write from initial label %s", (initial) => {
+  const probe = extensionsProbes.find((entry) => entry.id === "extensions.osc1-icon")
+  const result = probe!.lib!(source({ current: initial }, { ignoresIconSet: true }))
+  expect(result.observation).toMatchObject({ outcome: "unsupported" })
 })

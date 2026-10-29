@@ -452,10 +452,7 @@ function highlightResetProbe(id: string, setCode: number, resetCode: number): Pr
   return {
     ...probe(
       id,
-      (ctx) => {
-        ctx.feed(`\x1b]${resetCode}\x07X`)
-        return notTestedResult(`highlight colour reset (OSC ${resetCode})`, { cell: ctx.getCell(0, 0) })
-      },
+      colorResetProbe(setCode, resetCode),
       async (ctx): Promise<ProbeCallbackResult> => {
         const initial = await read(ctx)
         if (!initial) {
@@ -511,7 +508,7 @@ function highlightResetProbe(id: string, setCode: number, resetCode: number): Pr
     // The callback mutates the highlight slot, so the collector must hold a disposable receipt:
     // the same classification the OSC 10-14 reset probes carry.
     termNeedsDisposable: true,
-    libAssertionType: null,
+    libAssertionType: "query_reply",
   }
 }
 
@@ -575,6 +572,7 @@ function oscSimpleQueryProbe(
 
 function colorResetProbe(setCode: number, resetCode: number, index?: number): ProbeDefinition["lib"] {
   const hostColorSlot = [4, 10, 11, 12].includes(setCode)
+  const highlightColorSlot = setCode === 17 || setCode === 19
   const indexPart = index === undefined ? "" : `${index};`
   const query = `\x1b]${setCode};${indexPart}?\x07`
   const hostInput: HostInputName =
@@ -671,11 +669,24 @@ function colorResetProbe(setCode: number, resetCode: number, index?: number): Pr
     if (ctx.queryWithSentinelOutcome) {
       initialSentinel = ctx.queryWithSentinelOutcome(query, replyPattern)
       silence = sentinelSilenceResult(initialSentinel, `Complete OSC ${setCode} color reply`)
-      if (silence && !hostColorSlot) return silence
+      if (silence && !hostColorSlot && !highlightColorSlot) return silence
     }
     const originalRaw = silence ? "" : ctx.feedCapture(query)
     const original = replyPattern.exec(originalRaw)?.[1]
     if (!original) {
+      if (highlightColorSlot) {
+        return {
+          pass: false,
+          response: JSON.stringify({ query, originalRaw, initialSentinel }),
+          tests: [
+            {
+              id: "criterion",
+              status: "test-failure",
+              reason: `OSC ${setCode} initial highlight colour was not read back, so OSC ${resetCode} cannot be compared with it`,
+            },
+          ],
+        }
+      }
       if (originalRaw === "") {
         if (!hostColorSlot) {
           if (
@@ -749,25 +760,32 @@ function colorResetProbe(setCode: number, resetCode: number, index?: number): Pr
           fresh = rgb(cells.fresh, "F")
         const seed = { r: 170, g: 187, b: 204 }
         const restored = replyPattern.exec(restoredRaw)?.[1]
+        // On @xterm/headless, the per-instance palette array mirrors _core._inputHandler.onColor
+        // events, so OSC 4 grades the engine-delivered (index, rgb) event and OSC 104 grades the
+        // typed restore event rather than the restored default value, which is ours (#31735, @cto 863bef67).
         if (indexed && before && seeded && !sameRgbCells(before, seed) && sameRgbCells(seeded, seed)) {
           if (same && fresh && sameRgbCells(fresh, before) && !(restored && sameRgb(restored, seededCurrentColor))) {
-            return parserStateResult(
-              true,
-              "OSC 104 restores palette index 0 for a fresh indexed cell",
-              state,
-              sameRgbCells(same, before)
-                ? "Indexed colour resolved at read"
-                : sameRgbCells(same, seed)
-                  ? "Cell RGB resolved at paint; fresh cell proves reset"
-                  : "Stored cell RGB differs from default and seed; fresh cell proves reset",
+            return answer(
+              parserStateResult(
+                true,
+                "OSC 104 restores palette index 0 for a fresh indexed cell",
+                state,
+                sameRgbCells(same, before)
+                  ? "Indexed colour resolved at read"
+                  : sameRgbCells(same, seed)
+                    ? "Cell RGB resolved at paint; fresh cell proves reset"
+                    : "Stored cell RGB differs from default and seed; fresh cell proves reset",
+              ),
             )
           }
           if (same && fresh && sameRgbCells(fresh, seed) && sameRgbCells(same, seed)) {
-            return parserStateResult(
-              false,
-              "OSC 104 restores palette index 0 for a fresh indexed cell",
-              state,
-              "Verified seed remains in the fresh cell after reset",
+            return answer(
+              parserStateResult(
+                false,
+                "OSC 104 restores palette index 0 for a fresh indexed cell",
+                state,
+                "Verified seed remains in the fresh cell after reset",
+              ),
             )
           }
           return answer(
@@ -849,6 +867,18 @@ function colorResetProbe(setCode: number, resetCode: number, index?: number): Pr
         }
       }
       if (!sameRgb(changed, requested)) {
+        if (highlightColorSlot) {
+          return {
+            pass: false,
+            response,
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              assertionType: "query_reply",
+              note: `OSC ${setCode} highlight seed was not verified, so OSC ${resetCode} was not qualified`,
+            },
+          }
+        }
         return colorSetIgnoredResult(response, setCode)
       }
       const pass = sameRgb(restored, original)
@@ -869,9 +899,13 @@ function colorResetProbe(setCode: number, resetCode: number, index?: number): Pr
       primary = { error }
       throw error
     } finally {
-      if (mustReset) {
+      if (mustReset || highlightColorSlot) {
         try {
-          ctx.feed(`\x1b]${resetCode}${index === undefined ? "" : `;${index}`}\x07`)
+          ctx.feed(
+            highlightColorSlot
+              ? `\x1b]${setCode};${original}\x07`
+              : `\x1b]${resetCode}${index === undefined ? "" : `;${index}`}\x07`,
+          )
         } catch (cleanup) {
           if (primary) {
             const message = primary.error instanceof Error ? primary.error.message : String(primary.error)
@@ -1035,13 +1069,19 @@ function resetProbe(id: string, setCode: number, resetCode: number, index?: numb
   }
 }
 
-function colorStackResult(before: string, requested: string, changed: string, restored: string): ProbeCallbackResult {
+function colorStackResult(
+  before: string,
+  requested: string,
+  changed: string,
+  restored: string,
+  operation: "push" | "pop",
+): ProbeCallbackResult {
   const changedAsRequested = sameRgb(changed, requested)
   const restoredOriginal = sameRgb(restored, before)
   const pass = changedAsRequested && restoredOriginal
   const response = JSON.stringify({ before, changed, restored })
   const note = pass
-    ? "Foreground changed and color-stack pop restored its original value"
+    ? `Foreground changed and the color-stack ${operation} round trip restored its original value`
     : "Foreground change or stack restoration was not observed"
   return {
     pass,
@@ -1052,7 +1092,10 @@ function colorStackResult(before: string, requested: string, changed: string, re
       {
         assertionType: "query_reply" as const,
         kind: pass ? "positive" : "negative",
-        expected: "Changed foreground and restored original after color-stack pop",
+        expected:
+          operation === "push"
+            ? "Changed foreground and restored original after color-stack push, observed through a push/pop round trip"
+            : "Changed foreground and restored original after color-stack pop",
         observed: response,
       },
     ],
@@ -1155,6 +1198,7 @@ function colorStackError(actionKind: "query" | "behavior", action: string, error
 
 function colorStackProbe(ownSequence: typeof colorPush | typeof colorPop): ProbeDefinition["lib"] {
   return (ctx) => {
+    const operation = ownSequence === colorPush ? "push" : "pop"
     let silence: ProbeCallbackResult | null = null
     if (ctx.queryWithSentinelOutcome) {
       silence = sentinelSilenceResult(
@@ -1283,7 +1327,7 @@ function colorStackProbe(ownSequence: typeof colorPush | typeof colorPop): Probe
         }
       } else {
         comparison = { before, changed, restored }
-        result = colorStackResult(before, requested, changed, restored)
+        result = colorStackResult(before, requested, changed, restored, operation)
       }
       return result
     } catch (error) {
@@ -1391,6 +1435,7 @@ function colorStackProbe(ownSequence: typeof colorPush | typeof colorPop): Probe
 
 async function colorStackTermProbe(
   ctx: Parameters<NonNullable<ProbeDefinition["term"]>>[0],
+  operation: "push" | "pop",
 ): Promise<ProbeCallbackResult> {
   const originalReply = await ctx.queryWithSentinelOutcome(foregroundQuery, foregroundReply)
   const before = foregroundValue(originalReply.match?.[0] ?? "")
@@ -1409,7 +1454,7 @@ async function colorStackTermProbe(
     const restoredReply = await ctx.queryWithSentinelOutcome(foregroundQuery, foregroundReply)
     const restored = foregroundValue(restoredReply.match?.[0] ?? "")
     if (!restored) return unansweredQuery(restoredReply, "No OSC 10 reply after color-stack pop")
-    return colorStackResult(before, requested, changed, restored)
+    return colorStackResult(before, requested, changed, restored, operation)
   } finally {
     try {
       if (pushed) ctx.write(colorPop)
@@ -1465,10 +1510,15 @@ function osc720ScrollProbe(): ProbeDefinition["lib"] {
     const controlGeometryFixed = sameGeometry(afterMinus, before) && sameGeometry(afterPlus, before)
     const controlPositionMoved =
       afterMinus.viewportOffset !== before.viewportOffset || afterPlus.viewportOffset !== afterMinus.viewportOffset
-    const moved = controlGeometryFixed && controlPositionMoved
     ctx.reset()
     feedScrollbackHistory(ctx)
-    const control = { afterMinus, afterPlus, geometryFixed: controlGeometryFixed, moved, restored: ctx.getScrollback() }
+    const control = {
+      afterMinus,
+      afterPlus,
+      geometryFixed: controlGeometryFixed,
+      positionMoved: controlPositionMoved,
+      restored: ctx.getScrollback(),
+    }
     if (!sameViewport(control.restored, before)) {
       return parserStateResult(
         null,
@@ -1477,7 +1527,14 @@ function osc720ScrollProbe(): ProbeDefinition["lib"] {
         "Viewport control did not restore the measured baseline",
       )
     }
-    if (!moved) {
+    // A control that moved something other than the position is an irregular instrument, not an
+    // absence of one: the readings are kept and the result stays inconclusive rather than becoming a
+    // coverage record (CTO ruling on 31752). Only a control that moved nothing at fixed extents is
+    // evidence that this backend has no viewport scroll state.
+    if (!controlGeometryFixed) {
+      return parserStateResult(null, OSC720_CLAIM, { before, control }, "Viewport control changed the buffer geometry")
+    }
+    if (!controlPositionMoved) {
       return notTestedResult("scrollback viewport state", { before, control })
     }
     ctx.feed("\x1b]720\x07")
@@ -3363,10 +3420,37 @@ export const extensionsProbes: ProbeDefinition[] = [
           const after = ctx.getTitle()
           return notTestedResult("icon-name state", { before, after })
         }
-        const before = ctx.getIconLabel()
-        ctx.feed("\x1b]1;test-icon\x07")
-        const after = ctx.getIconLabel()
-        return parserStateResult(after === "test-icon", "OSC 1 sets the icon name", { before, after })
+        const before = { icon: ctx.getIconLabel(), title: ctx.getTitle() }
+        const requested = before.icon === "test-icon" ? "test-icon-2" : "test-icon"
+        const control =
+          before.title === "terminfo-title-control" ? "terminfo-title-control-2" : "terminfo-title-control"
+        try {
+          ctx.feed(`\x1b]2;${control}\x07`)
+          const title = ctx.getTitle()
+          if (title !== control) {
+            return {
+              pass: false,
+              response: JSON.stringify({ before, control, title }),
+              tests: [
+                {
+                  id: "criterion",
+                  status: "test-failure",
+                  reason: "OSC 2 window-title control was not read back, so OSC 1 title independence cannot be decided",
+                },
+              ],
+            }
+          }
+          ctx.feed(`\x1b]1;${requested}\x07`)
+          const after = { icon: ctx.getIconLabel(), title: ctx.getTitle() }
+          return parserStateResult(
+            after.icon === requested && after.title === control,
+            "OSC 1 sets the icon name without changing the independently verified window title",
+            { before, requested, control, after },
+          )
+        } finally {
+          ctx.feed(`\x1b]1;${before.icon}\x07`)
+          ctx.feed(`\x1b]2;${before.title}\x07`)
+        }
       },
       () => {
         const note = "No icon-name readback for OSC 1"
@@ -3523,13 +3607,23 @@ export const extensionsProbes: ProbeDefinition[] = [
 
   // OSC 30001 — Kitty color stack push
   {
-    ...probe("extensions.osc30001-color-stack-push", colorStackProbe(colorPush), colorStackTermProbe, "query_reply"),
+    ...probe(
+      "extensions.osc30001-color-stack-push",
+      colorStackProbe(colorPush),
+      (ctx) => colorStackTermProbe(ctx, "push"),
+      "query_reply",
+    ),
     libHostRecipes: [{ recipe: "color-request", query: foregroundQuery, missing: ["foreground-rgb"] }],
   },
 
   // OSC 30101 — Kitty color stack pop
   {
-    ...probe("extensions.osc30101-color-stack-pop", colorStackProbe(colorPop), colorStackTermProbe, "query_reply"),
+    ...probe(
+      "extensions.osc30101-color-stack-pop",
+      colorStackProbe(colorPop),
+      (ctx) => colorStackTermProbe(ctx, "pop"),
+      "query_reply",
+    ),
     libHostRecipes: [{ recipe: "color-request", query: foregroundQuery, missing: ["foreground-rgb"] }],
   },
 

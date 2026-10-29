@@ -260,6 +260,7 @@ describe("audited native host recipe callers", () => {
   test.each([
     "11c87e7e7f23e6f224e9dc8c3296b0a91f5453a42038e5ad049aafa864f9bd50",
     "d280c3fd2129f42db0d7154d6e66f5582a67fa1faf1e82ab463b6b8286f126d0",
+    "67736cf8d7d96156ac921566713032a445bfd8564e499f5e715c3c7f077d8af6",
   ])("the Alacritty artifact %s cites its OSC 52 read and leaves CSI 14 t measured", (alacritty) => {
     const silent = (id: string) =>
       probe(id).lib!(
@@ -403,6 +404,7 @@ describe("qualified clipboard roundtrip", () => {
 describe("reply-path audit", () => {
   // #31692: data-derived cases cannot detect an omitted current-artifact OSC99 audit.
   test.each([
+    ["d80a8110258a124fb6ff52a6fe149b8e39b5180d986907cc9fb7dc9143c3f3d9", "parser-rejected"],
     ["77b69f9f22c4126359be864fcce97afad8f84615053e21d335ba6348a8d3e1d7", "parser-rejected"],
     ["8872ab0fc56429489b52cd5d3b5a293032c3ec7dbbb71545d237945c3ef525f3", "parser-rejected"],
     ["f309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96", "no-reply-path"],
@@ -468,6 +470,25 @@ describe("reply-path audit", () => {
       expect(rebuilt![id]).toMatchObject({ query: audit.query, kind: audit.kind })
       expect(rebuilt![id]!.matches).toBe(audit.matches)
       expect(rebuilt![id]!.citation).toContain(core)
+    }
+  })
+
+  // #31735, @cto 863bef67: Ghostty WASM d80a8110 adds .size_report (.csi_18_t) copied from Termio.zig:540-546,
+  // so device.xtwinops-18 leaves the no-reply-path audit table while all other 77b69f9f rows remain.
+  test("the rebuilt Ghostty WASM d80a8110 retains all 77b69f9f audits except device.xtwinops-18", () => {
+    const prior = REPLY_PATH_AUDITS.get("77b69f9f22c4126359be864fcce97afad8f84615053e21d335ba6348a8d3e1d7")!
+    const rebuilt = REPLY_PATH_AUDITS.get("d80a8110258a124fb6ff52a6fe149b8e39b5180d986907cc9fb7dc9143c3f3d9")!
+    expect(rebuilt).toBeDefined()
+    expect(rebuilt["device.xtwinops-18"]).toBeUndefined()
+    expect(Object.keys(rebuilt).sort()).toEqual(
+      Object.keys(prior)
+        .filter((id) => id !== "device.xtwinops-18")
+        .sort(),
+    )
+    for (const [id, audit] of Object.entries(rebuilt)) {
+      expect(audit).toMatchObject({ query: prior[id]!.query, kind: prior[id]!.kind })
+      expect(audit.matches).toBe(prior[id]!.matches)
+      expect(audit.citation).toContain("5714ed07")
     }
   })
   const cells = [...REPLY_PATH_AUDITS].flatMap(([sha256, audits]) =>
@@ -829,8 +850,8 @@ describe("reply-path audit", () => {
     expect(raw.trace.at(-1)).toEqual({ write: query, error: "Error: stack attempt failed" })
   })
 
-  test("covers all nine audited artifacts", () => {
-    // Two Ghostty WASM artifacts at 5714ed07, five native artifacts at 332b2aef, and two vt100-rust builds.
+  test("covers all ten audited artifacts", () => {
+    // Three Ghostty WASM artifacts at 5714ed07, five native artifacts at 332b2aef, and two vt100-rust builds.
     expect([...REPLY_PATH_AUDITS.keys()].sort()).toEqual([
       "17d155feee5df8fa30266b9a354bbe66e39484d08218de5e03dc3bb2f199a0a3",
       "77b69f9f22c4126359be864fcce97afad8f84615053e21d335ba6348a8d3e1d7",
@@ -840,6 +861,7 @@ describe("reply-path audit", () => {
       "ac12d6408c2049f1d720e9735d7eb69251d3eed868fc9ced58de98b3543f3e2e",
       "b9109b5918707746420833dfc2eab3ea5bc7feec5fa93bee4cd6e824e74d0962",
       "d70f2f8adb5dfcb6a7d75d23e11a60ba3671844b930a3f66970a709f65ee1346",
+      "d80a8110258a124fb6ff52a6fe149b8e39b5180d986907cc9fb7dc9143c3f3d9",
       "f309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96",
     ])
   })
@@ -2778,20 +2800,6 @@ describe("extensions without a complete behavior oracle", () => {
         expect(JSON.parse(result.response ?? "null"), id).toEqual({ before: "original", after })
         expect(result.assertions ?? [], id).toEqual([])
       }
-      let icon = ""
-      const graded = callback(
-        context({
-          feed(text: string) {
-            if (text.includes("test-icon")) icon = "test-icon"
-          },
-          getTitle: () => "unchanged-title",
-          getIconLabel: () => icon,
-        }),
-      )
-      expect(graded.notTested, id).toBeUndefined()
-      expect(graded.pass, id).toBe(true)
-      expect(graded.assertions?.[0]?.expected, id).toBe("OSC 1 sets the icon name")
-      expect(JSON.parse(graded.response ?? "null"), id).toEqual({ before: "", after: "test-icon" })
     }
   })
 
@@ -3837,7 +3845,7 @@ describe("partial probe automation candidates", () => {
     expect(fed).toContain("\x1b]720\x07")
   })
 
-  test("OSC 720 does not let a changed history count or screen height qualify the observer", () => {
+  test("OSC 720 treats a control that changes only counts as inconclusive, never coverage", () => {
     const p = probe("extensions.osc720-scroll-up")
     expect(p.lib).toBeTypeOf("function")
 
@@ -3861,8 +3869,11 @@ describe("partial probe automation candidates", () => {
           },
         }),
       )
-      expect(result.notTested?.noObservable).toBe("scrollback viewport state")
-      expect(result.observation?.outcome).not.toBe("unsupported")
+      expect(result.notTested).toBeUndefined()
+      expect(result.observation?.outcome).toBe("inconclusive")
+      expect(result.observation?.reason).toBe("insufficient-evidence")
+      expect(result.note).toContain("geometry")
+      expect(result.response).toContain('"afterMinus"')
       expect(result.assertions).toBeUndefined()
     }
   })
