@@ -749,6 +749,9 @@ function colorResetProbe(setCode: number, resetCode: number, index?: number): Pr
           fresh = rgb(cells.fresh, "F")
         const seed = { r: 170, g: 187, b: 204 }
         const restored = replyPattern.exec(restoredRaw)?.[1]
+        // On @xterm/headless, the per-instance palette array mirrors _core._inputHandler.onColor
+        // events, so OSC 4 grades the engine-delivered (index, rgb) event and OSC 104 grades the
+        // typed restore event rather than the restored default value, which is ours (#31735, @cto 863bef67).
         if (indexed && before && seeded && !sameRgbCells(before, seed) && sameRgbCells(seeded, seed)) {
           if (same && fresh && sameRgbCells(fresh, before) && !(restored && sameRgb(restored, seededCurrentColor))) {
             return parserStateResult(

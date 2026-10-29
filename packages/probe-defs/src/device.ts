@@ -243,6 +243,59 @@ const DECRQSS_DECSCL: DeviceReply = {
   expected: 'complete DECRQSS status 1 DECSCL conformance parameters ending "p and ST',
 }
 
+/**
+ * Exact loaded WASM artifacts whose source implements neither CSI 22 ; 0 t (push) nor CSI 23 ; 0 t (pop)
+ * (#31735, @cto 863bef67). A black-box push/pop round trip that observes { original: "pushed-title",
+ * changed: "new-title", restored: "new-title" } cannot separate a broken push from a broken pop on an
+ * unaudited engine, but when the loaded artifact's source implements neither operation and holds no title
+ * stack, both device.xtwinops-22 and device.xtwinops-23 are decided Unsupported by source citation.
+ */
+const TITLE_STACK_UNIMPLEMENTED_AUDITS: ReadonlyMap<string, string> = new Map([
+  [
+    "d80a8110258a124fb6ff52a6fe149b8e39b5180d986907cc9fb7dc9143c3f3d9",
+    "ghostty 5714ed07a1012573261b7b7e3ed2add9c1504496 src/terminal/stream.zig:1825-1843 dispatches .title_push and .title_pop; src/termio/stream_handler.zig:343-346 has .title_push, .title_pop => {} // Unimplemented, and termless vendor/ghostty-web/ghostty-wasm-api.patch keeps .title_push and .title_pop as no-ops",
+  ],
+  [
+    "5937bd79139ee5856bcf1bd619cc44fcd2d750d3def3066a74956678cdaaaeb2",
+    "libvterm 0.3.3 src/state.c:978 on_csi has no case 0x74 ('t') and VTermState holds no title stack, so neither CSI 22;0t nor CSI 23;0t is implemented",
+  ],
+])
+
+function titleStackHeadless(ctx: LibProbeSource, expected: string): ProbeCallbackResult {
+  ctx.feed("\x1b]2;pushed-title\x07")
+  const original = ctx.getTitle()
+  ctx.feed("\x1b[22;0t")
+  ctx.feed("\x1b]2;new-title\x07")
+  const changed = ctx.getTitle()
+  ctx.feed("\x1b[23;0t")
+  const restored = ctx.getTitle()
+  if (original === "pushed-title" && changed === "new-title" && restored === "pushed-title") {
+    return parserStateResult(true, expected, { original, changed, restored })
+  }
+  const identity = ctx.runtimeIdentity
+  const artifactSha256 = identity !== undefined && "loadedBinary" in identity ? identity.loadedBinary.sha256 : undefined
+  const sourceCitation =
+    original === "pushed-title" && changed === "new-title" && restored === "new-title" && artifactSha256 !== undefined
+      ? TITLE_STACK_UNIMPLEMENTED_AUDITS.get(artifactSha256)
+      : undefined
+  if (sourceCitation !== undefined && artifactSha256 !== undefined) {
+    return parserStateResult(
+      false,
+      expected,
+      { original, changed, restored, artifactSha256, sourceCitation },
+      "negative by source citation",
+    )
+  }
+  return parserStateResult(
+    null,
+    expected,
+    { original, changed, restored },
+    original !== "pushed-title" || changed !== "new-title"
+      ? "Title setup was not observable"
+      : "Title push/pop did not restore the old title; the failing operation is unknown",
+  )
+}
+
 function refusedFrame(spec: DeviceReply, matchedFrame: string | null): boolean {
   return Boolean(matchedFrame && spec.refusal?.exec(matchedFrame)?.[0])
 }
@@ -654,29 +707,13 @@ export const deviceProbes: ProbeDefinition[] = [
   },
 
   // XTWINOPS 22 — push title/icon stack: CSI 22 ; 0 t
-  // A successful push/pop round trip establishes both operations; failure cannot identify either.
+  // A successful push/pop round trip establishes both operations; failure cannot identify either
+  // unless the loaded artifact's source is audited to implement neither operation (#31735, @cto 863bef67).
   {
     ...probe(
       "device.xtwinops-22",
-      (ctx) => {
-        ctx.feed("\x1b]2;pushed-title\x07")
-        const original = ctx.getTitle()
-        ctx.feed("\x1b[22;0t") // push
-        ctx.feed("\x1b]2;new-title\x07") // overwrite
-        const changed = ctx.getTitle()
-        ctx.feed("\x1b[23;0t")
-        const restored = ctx.getTitle()
-        return parserStateResult(
-          original === "pushed-title" && changed === "new-title" && restored === "pushed-title" ? true : null,
-          "XTWINOPS 22 preserves the old title on its stack after a different title is set",
-          { original, changed, restored },
-          original !== "pushed-title" || changed !== "new-title"
-            ? "Title setup was not observable"
-            : restored !== "pushed-title"
-              ? "Title push/pop did not restore the old title; the failing operation is unknown"
-              : undefined,
-        )
-      },
+      (ctx) =>
+        titleStackHeadless(ctx, "XTWINOPS 22 preserves the old title on its stack after a different title is set"),
       async (ctx) => {
         ctx.write("\x1b]2;pushed-title\x07")
         ctx.write("\x1b[22;0t") // push
@@ -709,25 +746,8 @@ export const deviceProbes: ProbeDefinition[] = [
   {
     ...probe(
       "device.xtwinops-23",
-      (ctx) => {
-        ctx.feed("\x1b]2;pushed-title\x07")
-        const original = ctx.getTitle()
-        ctx.feed("\x1b[22;0t")
-        ctx.feed("\x1b]2;new-title\x07")
-        const changed = ctx.getTitle()
-        ctx.feed("\x1b[23;0t")
-        const restored = ctx.getTitle()
-        return parserStateResult(
-          original === "pushed-title" && changed === "new-title" && restored === "pushed-title" ? true : null,
-          "XTWINOPS 23 restores the title saved before a different title was set",
-          { original, changed, restored },
-          original !== "pushed-title" || changed !== "new-title"
-            ? "Title setup was not observable"
-            : restored !== "pushed-title"
-              ? "Title push/pop did not restore the old title; the failing operation is unknown"
-              : undefined,
-        )
-      },
+      (ctx) =>
+        titleStackHeadless(ctx, "XTWINOPS 23 restores the title saved before a different title was set"),
       async (ctx) => {
         ctx.write("\x1b[22;0t") // push first so we have something to pop
         ctx.write("\x1b[23;0t")
