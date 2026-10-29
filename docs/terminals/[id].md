@@ -8,8 +8,7 @@ next: false
 import { useData } from 'vitepress'
 import { computed, ref } from 'vue'
 import { data } from '../data/probes.data'
-import { aggregateCurrentResults, currentCoverageSentence, isStaleRelation, staleCaption, currentSupportedShare, publicResultFor } from '../data/release-scope.ts'
-import { hasCurrentSource } from '../data/run-selection.ts'
+import { aggregateCurrentResults, currentCoverageSentence, hasCurrentSource, staleCaption, currentSupportedShare, publicResultFor } from '../data/release-scope.ts'
 const { params } = useData()
 const p = params.value
 

@@ -80,6 +80,11 @@ export function isStaleRelation(relation: SuiteRelation): boolean {
   return relation === "older" || relation === "partial"
 }
 
+/** A context remains current when any original evidence source is current; safe for site clients. */
+export function hasCurrentSource(sources: readonly { suiteRelation: SuiteRelation }[]): boolean {
+  return sources.some((source) => !isStaleRelation(source.suiteRelation))
+}
+
 /** True when the live tree has moved past the release suite, so a banner must say so (one, not two). */
 export function treeMovedPastRelease(treeSuiteId: string | null, releaseSuiteId: string | null): boolean {
   return Boolean(treeSuiteId) && Boolean(releaseSuiteId) && treeSuiteId !== releaseSuiteId

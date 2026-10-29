@@ -7,7 +7,7 @@
  * choice of a private fallback chain beside it. One rule, two callers.
  */
 import type { ProbeStatus, ProbeResult } from "@terminfo/probe-defs"
-import { isStaleRelation, type CellState, type SuiteRelation } from "./release-scope.ts"
+import { hasCurrentSource, type CellState, type SuiteRelation } from "./release-scope.ts"
 import {
   parseProjectedContextKey,
   recognizeProjectedContextKey,
@@ -197,13 +197,6 @@ function unreadableCandidate(candidate: ContextCandidate): { stale: string } {
   return {
     stale: `current context key ${candidate.key} is unreadable; projectedContextKey wrote it, so no reviewed row can be applied until that key is fixed`,
   }
-}
-
-/** A context remains current when any of its original evidence sources is current. */
-export function hasCurrentSource(
-  sources: readonly Pick<ContextCandidate["sources"][number], "suiteRelation">[],
-): boolean {
-  return sources.some((source) => !isStaleRelation(source.suiteRelation))
 }
 
 /**
