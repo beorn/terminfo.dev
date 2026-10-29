@@ -194,17 +194,30 @@ const sourceNegativeBranchFeatures = [
     "EL carries the current background onto the erased cells",
     "erase.el-with-attrs: the seed's painted bg on the region cells in the headless readback (the seed characters arrived without it)",
   ],
+  [
+    "editing.decsace",
+    [..."abcdefghijklmnop"],
+    "DECSACE rectangle extent confines DECCARA to the 2x2 block; stream extent reaches the rest of the reading-order span",
+    "DECCARA not honoured, extent unobservable",
+  ],
+  [
+    "modes.left-right-margin",
+    [..."ABCDEFGH"],
+    "Left-right margin mode constrains horizontal operations: ICH at column 3 under DECSLRM 3;6 drops F at column 6 and leaves G and H in columns 7-8",
+    "ICH shifting row 1 right from column 3 in the headless readback (control frame not calibrated)",
+  ],
 ] as const
 
 test.each(sourceNegativeBranchFeatures)(
-  "%s routes unexposed headless colour/reset state to source-negative-review",
+  "%s routes unexposed headless colour/reset/buffer state to source-negative-review",
   (id, chars, expected, reason) => {
     const definition = ALL_PROBES.find((probe) => probe.id === id)
     if (!definition?.lib) throw new Error(`missing headless ${id}`)
     const result = definition.lib({
       ...context(),
+      getScrollback: () => ({ screenLines: 24, totalLines: 24 }),
       getCell: (row: number, col: number) => ({
-        char: row === 0 ? (chars[col] ?? " ") : " ",
+        char: (row === 0 ? chars[col] : row === 1 ? chars[8 + col] : undefined) ?? " ",
         fg: null,
         bg: null,
         bold: false,

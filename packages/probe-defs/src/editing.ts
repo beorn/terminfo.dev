@@ -9,7 +9,6 @@ import {
   cropPositionRefusal,
 } from "./region-readback.ts"
 import {
-  notTestedResult,
   parserStateResult,
   probe,
   REPLY_AFTER_SENTINEL_NOTE,
@@ -670,7 +669,13 @@ const editingProbeDefinitions: ProbeDefinition[] = [
             )
           }
           if (!rectPattern.includes("#")) {
-            return notTestedResult("DECCARA not honoured, extent unobservable", { rect, stream })
+            return parserStateResult(
+              null,
+              DECSACE_EXPECTED,
+              { rect, stream },
+              undefined,
+              "DECCARA not honoured, extent unobservable",
+            )
           }
           return parserStateResult(
             null,

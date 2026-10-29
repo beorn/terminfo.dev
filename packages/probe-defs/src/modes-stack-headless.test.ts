@@ -332,13 +332,33 @@ test.each([
   expect(screen.margins()).toEqual({ leftRightMode: false, leftMargin: 0, rightMargin: 7 })
 })
 
-test("modes.left-right-margin records a readback whose ICH shows no shift as no observable (TEST TODO)", () => {
+test("modes.left-right-margin routes a readback whose ICH shows no shift to source-negative-review", () => {
   const screen = fakeScreen({ insertChars: false })
   const result = headless(MARGIN)(screen.context)
   expect(result.pass).toBe(false)
-  expect(result.observation).toBeUndefined()
-  expect(result.notTested).toEqual({ reason: "no-semantic-observable", noObservable: expect.stringContaining("ICH") })
-  expect(result.assertions).toBeUndefined()
+  expect(result.notTested).toBeUndefined()
+  expect(result.criterionBranch).toBe("source-negative-review")
+  expect(result.tests).toEqual([
+    {
+      id: "review",
+      status: "test-failure",
+      reason: "ICH shifting row 1 right from column 3 in the headless readback (control frame not calibrated)",
+    },
+  ])
+  expect(result.observation).toEqual({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+    assertionType: "buffer_state",
+  })
+  expect(result.assertions).toEqual([
+    {
+      assertionType: "buffer_state",
+      kind: "negative",
+      expected:
+        "Left-right margin mode constrains horizontal operations: ICH at column 3 under DECSLRM 3;6 drops F at column 6 and leaves G and H in columns 7-8",
+      observed: result.response!,
+    },
+  ])
   expect(screen.feeds.join("")).not.toContain("\x1b[?69h")
   expect(screen.feeds.at(-1)).toBe("\x1b[?69l\x1b[0m\x1b[2J\x1b[H")
 })

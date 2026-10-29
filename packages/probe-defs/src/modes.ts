@@ -753,12 +753,15 @@ function leftRightMarginHeadless(ctx: LibProbeSource): ProbeCallbackResult {
     ctx.feed("\x1b[1;3H\x1b[@")
     const control = readRow()
     if (control !== LR_MARGIN_UNBOUNDED) {
-      return notTestedResult(
-        "ICH shifting row 1 right from column 3 in the headless readback (control frame not calibrated)",
+      return parserStateResult(
+        null,
+        LR_MARGIN_EXPECTED,
         {
           seed,
           control,
         },
+        undefined,
+        "ICH shifting row 1 right from column 3 in the headless readback (control frame not calibrated)",
       )
     }
     ctx.feed("\x1b[0m\x1b[2J\x1b[1;1H" + LR_MARGIN_SEED)
