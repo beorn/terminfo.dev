@@ -2617,8 +2617,9 @@ it.each([
           ? { control: result.frames![0], alternate: result.frames![1], restored: result.frames![2] }
           : { control: result.frames![0], target: result.frames![1] },
       )
-      if (id === "cursor.shape")
+      if (id === "cursor.shape") {
         expect(JSON.parse(batch.rawReplies[`${id}.callbackResponse`]!)).toMatchObject({ cursorCell: null })
+      }
       Object.assign(draft.rawReplies, batch.rawReplies)
       draft.assertions = batch.assertions
       draft.screenshotRefs = batch.screenshotRefs
