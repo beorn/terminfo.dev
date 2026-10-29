@@ -376,6 +376,10 @@ test("report renders reviewed outcomes and missing cells without promoting legac
     expect(composed.stdout).toContain("Contributing runs: baseline-kitty, partial-kitty")
     expect(composed.stdout).toContain("cursor.position: partial-kitty / cursor.position")
     expect(composed.stdout).toContain("sgr.bold: baseline-kitty / sgr.bold")
+    // AC5: a long report must preserve its last evidence link after the matrix and wrapped attempts.
+    // Earlier substring checks cannot detect the final footer overwriting that result's origin.
+    const lastFeature = fixtureFeatures.at(-1)
+    expect(composed.stdout).toContain(`${lastFeature}: baseline-kitty / ${lastFeature}`)
     expect(composed.stdout).toContain("partial collector stopped")
     expect(composed.stdout).toContain("0/5 Supported / all")
 

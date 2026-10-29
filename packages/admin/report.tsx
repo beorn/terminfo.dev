@@ -141,7 +141,7 @@ export function CensusReport({
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([contextKey, view], index) => ({ label: `C${index + 1}`, contextKey, view }))
   return (
-    <Box flexDirection="column">
+    <Box flexDirection="column" flexShrink={0}>
       <Text bold color="$primary">
         terminfo report — {featureIds.length} catalog features
       </Text>
