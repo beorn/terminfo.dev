@@ -3,6 +3,7 @@ import {
   REPLY_AFTER_SENTINEL_NOTE,
   parserStateResult,
   probe,
+  notTestedResult,
   replyFrame,
   reviewResult,
   sentinelAnswer,
@@ -489,21 +490,7 @@ export const deviceProbes: ProbeDefinition[] = [
     malformed: /\x1bP>\|/,
     expected: "complete XTVERSION DCS >| printable name/version ST",
   }),
-  probe(
-    "device.term-features",
-    null,
-    () => {
-      // Inherited process environment does not authenticate the current terminal.
-      const advertised = typeof process !== "undefined" && !!process.env.TERM_FEATURES
-      const note = advertised ? "TERM_FEATURES advertised; source unverified" : "TERM_FEATURES not advertised"
-      return Promise.resolve<ProbeCallbackResult>({
-        pass: false,
-        note,
-        tests: [{ id: "criterion", status: "test-failure", reason: note }],
-      })
-    },
-    null,
-  ),
+  probe("device.term-features", null, () => Promise.resolve(notTestedResult("terminal child environment")), null),
 
   // DSR ?996 — color-scheme query: CSI ? 996 n → CSI ? 997 ; Ps n
   {

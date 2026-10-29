@@ -314,7 +314,23 @@ it("preserves native callback note fallback for unmeasured widths and TERM_FEATU
     expect(record(callback)).toMatchObject({ status: "test-failure", reason: "Cannot measure width" })
   }
   const callback = await deviceProbes.find((row) => row.id === "device.term-features")!.term!({} as TermProbeSource)
-  expect(record(callback)).toMatchObject({ status: "test-failure", reason: callback.note })
+  expect(callback.notTested).toEqual({
+    reason: "no-semantic-observable",
+    noObservable: "terminal child environment",
+  })
+  expect(
+    recordExecutedProbe({
+      featureId: "device.term-features",
+      attempt,
+      rawReplyRef: "device.term-features",
+      assertions: [],
+      coverage: {
+        featureId: "device.term-features",
+        ...callback.notTested!,
+        rawReplyRef: "device.term-features",
+      },
+    }),
+  ).toMatchObject({ status: "test-todo", reason: "terminal child environment" })
   for (const id of ["unicode.wrap-boundary", "unicode.tab-stops"]) {
     const term = unicodeProbes.find((row) => row.id === id)?.term
     if (!term) throw new Error(`Missing native callback ${id}`)
