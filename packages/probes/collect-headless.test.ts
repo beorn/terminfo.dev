@@ -201,6 +201,17 @@ it.runIf(OWNED_LAYOUT)(
     }
     expect(pending).toEqual([
       "extensions.clipboard-paste",
+      "extensions.osc133-a",
+      "extensions.osc133-b",
+      "extensions.osc133-c",
+      "extensions.osc133-d",
+      "extensions.osc133-p",
+      "extensions.osc633-a",
+      "extensions.osc633-b",
+      "extensions.osc633-c",
+      "extensions.osc633-d",
+      "extensions.osc633-e",
+      "extensions.osc633-p",
       "input.button-event-mouse",
       "input.kitty-click-events",
       "input.modify-other-keys",
