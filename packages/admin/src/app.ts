@@ -145,8 +145,9 @@ function prepareEditorFixture(run: ProbeRun, markerValue: string, prefix: "curso
     cwd: run.directory,
   }
   const terminalJson = JSON.stringify(terminal)
-  const extension = prefix === "cursor"
-    ? `const vscode = require("vscode");
+  const extension =
+    prefix === "cursor"
+      ? `const vscode = require("vscode");
 exports.activate = async (context) => {
   await vscode.commands.executeCommand("workbench.action.closePanel");
   await vscode.commands.executeCommand("workbench.action.toggleMaximizedPanel");
@@ -155,7 +156,7 @@ exports.activate = async (context) => {
   terminal.show();
 };
 `
-    : `const vscode = require("vscode");
+      : `const vscode = require("vscode");
 exports.activate = (context) => {
   const terminal = vscode.window.createTerminal(${terminalJson});
   context.subscriptions.push(terminal);
