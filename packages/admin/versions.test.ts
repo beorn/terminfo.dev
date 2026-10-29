@@ -117,7 +117,8 @@ test("suite identity changes with executable collection, ownership, capture and 
   changed.file = ""
   const snapshot = probeSuiteSnapshot()
   expect(snapshot.probes.term).toHaveLength(264)
-  expect(snapshot.probes.lib).toHaveLength(253)
+  expect(snapshot.probes.lib).toHaveLength(254)
+  expect(snapshot.probes.lib).toContain("scrollback.viewport-hold-output")
   expect(snapshot.probes.mux).toEqual(snapshot.probes.term)
   expect(snapshot.probes.term).toContain("extensions.kitty-keyboard")
   expect(snapshot.probes.term).toContain("input.xtest-key")
@@ -289,7 +290,8 @@ test("the trusted manifest declares exactly the 37 reviewed character claims wit
   }
   expect(Object.keys(loadFeatures(join(SUITE_ROOT, "content")))).toHaveLength(273)
   expect(manifest.probes.term).toHaveLength(264)
-  expect(manifest.probes.lib).toHaveLength(253)
+  expect(manifest.probes.lib).toHaveLength(254)
+  expect(manifest.probes.lib).toContain("scrollback.viewport-hold-output")
 })
 
 // Fixed denominator/frozen membership: callback-only schedule hash coverage misses new

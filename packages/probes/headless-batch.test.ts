@@ -40,6 +40,20 @@ async function backend() {
   return createXtermBackend()
 }
 
+// The old null arm left this real-source feature unattempted; fake callback tests cannot
+// catch a missing registry schedule or actuator forward at the production recorder boundary.
+test("viewport hold records a real xterm measurement and both output phases", async () => {
+  const id = "scrollback.viewport-hold-output"
+  const batch = await collectBatch(backend, "xtermjs", registryDefinitions([id]))
+  expect(batch.results).toMatchObject([{ featureId: id, status: "supported", attempt: { scope: "probe" } }])
+  expect(batch.observations).toMatchObject([{ featureId: id, outcome: "supported", assertionType: "buffer_state" }])
+  expect(batch.assertions).toMatchObject([{ featureId: id, kind: "positive", assertionType: "buffer_state" }])
+  expect(JSON.parse(batch.rawReplies[id]!)).toMatchObject({
+    ordinary: { outcome: "hold", markerObserved: true },
+    synchronized: { outcome: "hold", markerObserved: true },
+  })
+})
+
 // libvterm exposes no mode getter; its real cell behavior still decides wrapping.
 test("null mode metadata classes A/B retain measured wrapping, unknown cleanup and raw state", async () => {
   const writes: string[] = []

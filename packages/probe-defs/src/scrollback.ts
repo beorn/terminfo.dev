@@ -1,4 +1,4 @@
-import type { ProbeDefinition, ProbeCallbackResult, TermProbeSource } from "./types.ts"
+import type { ProbeDefinition, ProbeCallbackResult, TermProbeSource, LibProbeSource } from "./types.ts"
 import { probe, parserStateResult, notTestedResult } from "./helpers.ts"
 import { regionReadbackProbes, type RegionReadbackRow } from "./region-readback-kind.ts"
 
@@ -197,6 +197,149 @@ function validSize(value: number, minimum: number): boolean {
   return Number.isSafeInteger(value) && value >= minimum
 }
 
+/** Hold is measured at an inward anchor; output readability is checked only back at bottom. */
+function viewportHold(ctx: LibProbeSource): ProbeCallbackResult {
+  type Reading = ReturnType<LibProbeSource["getScrollback"]>
+  type Phase = "ordinary" | "synchronized"
+  type PhaseResult = {
+    outcome?: "hold" | "snap" | "drift"
+    note?: string
+    missing?: string
+    markerObserved?: boolean
+    after?: Reading
+    restored?: Reading
+  }
+  const state: {
+    baseline: Partial<Record<Phase, { fresh: Reading; seeded?: Reading; lineCount?: number; feedObserved?: boolean }>>
+    anchor: Partial<Record<Phase, Reading>>
+    control: Partial<Record<Phase, { sign?: number; attempts: { delta: number; reading: Reading }[] }>>
+    ordinary: PhaseResult
+    synchronized: PhaseResult
+  } = { baseline: {}, anchor: {}, control: {}, ordinary: {}, synchronized: {} }
+  const expected = "Viewport stays anchored during ordinary and synchronized output without keyboard input"
+  if (!ctx.scrollViewport) return notTestedResult("scrollback viewport scroll control", state)
+  const scroll = ctx.scrollViewport.bind(ctx)
+  const valid = (reading: Reading) =>
+    validSize(reading.screenLines, 1) &&
+    validSize(reading.totalLines, reading.screenLines) &&
+    validSize(reading.viewportOffset, 0) &&
+    reading.viewportOffset <= reading.totalLines - reading.screenLines
+  const extents = (a: Reading, b: Reading) => a.totalLines === b.totalLines && a.screenLines === b.screenLines
+  function phase(name: Phase): PhaseResult {
+    ctx.reset()
+    ctx.feed("\x1b[?1049l\x1b[?2026l")
+    const fresh = ctx.getScrollback()
+    const baseline = {
+      fresh,
+      lineCount: fresh.screenLines * 2,
+      seeded: undefined as Reading | undefined,
+      feedObserved: false,
+    }
+    state.baseline[name] = baseline
+    if (!valid(fresh) || !validSize(ctx.cols, `viewport-${name}`.length) || !Number.isSafeInteger(baseline.lineCount)) {
+      return { note: "invalid geometry or fresh scrollback readings" }
+    }
+    const lines = Array.from({ length: baseline.lineCount }, (_, index) => `hold-${index}`)
+    const lastLine = lines.at(-1)
+    if (lastLine === undefined || lastLine.length > ctx.cols) return { note: "numbered seed exceeds measured columns" }
+    ctx.feed(lines.join("\r\n"))
+    baseline.feedObserved = ctx.getText().includes(lastLine)
+    const seeded = ctx.getScrollback()
+    baseline.seeded = seeded
+    // Order matters: ignored feeds are inconclusive; an observed feed without history names coverage.
+    if (!baseline.feedObserved) return { note: "feed not observed" }
+    if (!valid(seeded) || seeded.screenLines !== fresh.screenLines) {
+      return { note: "invalid seeded geometry or readings" }
+    }
+    if (seeded.totalLines - seeded.screenLines < 1) return { missing: "scrollback history rows" }
+    if (seeded.totalLines !== baseline.lineCount) {
+      return { note: "exact seed retention not established (clipping or eviction)" }
+    }
+    if (seeded.viewportOffset !== seeded.totalLines - seeded.screenLines) {
+      return { note: "seeded viewport is not at bottom" }
+    }
+    const control: { sign?: number; attempts: { delta: number; reading: Reading }[] } = { attempts: [] }
+    state.control[name] = control
+    let anchor: Reading | undefined
+    for (const delta of [-1, 1]) {
+      scroll(delta)
+      const reading = ctx.getScrollback()
+      control.attempts.push({ delta, reading })
+      if (!extents(seeded, reading)) return { note: "viewport control changed extents" }
+      if (!valid(reading)) return { note: "viewport control returned invalid position" }
+      if (reading.viewportOffset < seeded.viewportOffset) {
+        anchor = reading
+        control.sign = delta
+        break
+      }
+    }
+    if (!anchor || control.sign === undefined) return { missing: "scrollback viewport state" }
+    state.anchor[name] = anchor
+    const marker = `viewport-${name}`
+    const output = `\r\n${marker}`
+    ctx.feed(name === "synchronized" ? `\x1b[?2026h${output}\x1b[?2026l` : output)
+    const after = ctx.getScrollback()
+    const result: PhaseResult = { after }
+    if (!valid(after) || after.screenLines !== seeded.screenLines || after.totalLines !== seeded.totalLines + 1) {
+      return { ...result, note: "output did not retain exactly one additional row at fixed geometry" }
+    }
+    const bottom = after.totalLines - after.screenLines
+    result.outcome =
+      after.viewportOffset === anchor.viewportOffset ? "hold" : after.viewportOffset === bottom ? "snap" : "drift"
+    // One added row can put bottom two steps beyond the anchor. Reverse the calibrated
+    // direction by the actual distance, then qualify that restoration before reading text.
+    scroll(-control.sign * (bottom - after.viewportOffset))
+    const restored = ctx.getScrollback()
+    result.restored = restored
+    if (!valid(restored) || !extents(after, restored) || restored.viewportOffset !== bottom) {
+      return { ...result, note: "return to bottom not established" }
+    }
+    result.markerObserved = ctx.getText().includes(marker)
+    if (!result.markerObserved) return { ...result, note: "target marker not observed after verified return to bottom" }
+    return result
+  }
+  let failed = false
+  let primary: unknown
+  try {
+    state.ordinary = phase("ordinary")
+    state.synchronized = phase("synchronized")
+    const phases = ["ordinary", "synchronized"] as const
+    const unqualified = phases.find((name) => state[name].note !== undefined)
+    if (unqualified) return parserStateResult(null, expected, state, `${unqualified}: ${state[unqualified].note}`)
+    const missing = phases.map((name) => state[name].missing).find((value) => value !== undefined)
+    if (missing !== undefined) return notTestedResult(missing, state)
+    const drift = phases.find((name) => state[name].outcome === "drift")
+    if (drift) {
+      return parserStateResult(
+        null,
+        expected,
+        state,
+        `${drift}: viewport partially drifted rather than holding or snapping to bottom`,
+      )
+    }
+    const snap = phases.find((name) => state[name].outcome === "snap")
+    return parserStateResult(
+      !snap,
+      expected,
+      state,
+      snap ? `${snap}: viewport snapped to the new bottom` : "Both phases held the qualified anchor",
+    )
+  } catch (error) {
+    failed = true
+    primary = error
+    throw error
+  } finally {
+    try {
+      ctx.reset()
+    } catch (cleanup) {
+      if (failed) {
+        throw new AggregateError([primary, cleanup], "Viewport hold failed and disposable source reset also failed")
+      }
+      throw cleanup
+    }
+  }
+}
+
 export const scrollbackProbes: ProbeDefinition[] = [
   {
     ...probe(
@@ -376,12 +519,15 @@ export const scrollbackProbes: ProbeDefinition[] = [
   },
 
   ...regionReadbackProbes(scrollbackReadbackRows),
-  probe("scrollback.viewport-hold-output", null, () =>
-    Promise.resolve(
-      notTestedResult(
-        "Our probe source lacks viewport actuator forwarding and viewport-position readback; hold on output remains TEST TODO",
-        { missing: ["viewport actuator forwarding", "viewport-position readback"], writesPerformed: 0 },
+  {
+    ...probe("scrollback.viewport-hold-output", viewportHold, () =>
+      Promise.resolve(
+        notTestedResult(
+          "Our probe source lacks viewport actuator forwarding and viewport-position readback; hold on output remains TEST TODO",
+          { missing: ["viewport actuator forwarding", "viewport-position readback"], writesPerformed: 0 },
+        ),
       ),
     ),
-  ),
+    libAssertionType: "buffer_state",
+  },
 ]

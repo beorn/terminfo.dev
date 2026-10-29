@@ -2541,7 +2541,8 @@ describe("Kitty protocol detection", () => {
 
   test("viewport hold coverage names our missing actuator and readback without I/O", async () => {
     const p = probe("scrollback.viewport-hold-output")
-    expect(p.lib).toBeNull()
+    expect(p.lib).toBeTypeOf("function")
+    expect(p.libAssertionType).toBe("buffer_state")
     if (!p.term) throw new Error("missing viewport coverage callback")
     const source = new Proxy(terminalSource({}), {
       get: () => {

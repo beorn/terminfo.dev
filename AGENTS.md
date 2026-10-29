@@ -390,11 +390,10 @@ and [nullable declaration comments](packages/probe-defs/src/types.ts) for the di
 The catalog may declare a reviewed override for exactly two statuses, each with a
 `probeStatusReason`:
 
-- `"partial"` — the definition establishes acceptance only (an execution-only pending test): we can tell the
-  sequence was accepted, not that its effect happened. Examples: the SGR colour resets, OSC 8 and
-  the OSC 133 / OSC 633 prompt marks.
+- `"partial"` — an automated path leaves part of the effect or another route unmeasured.
+  Viewport hold measures the library arm while retaining the manual app UI recipe.
 - `"manual"` — support data comes from docs or manual testing and no automated measurement exists
-  (the nine `device.env-*` rows and `scrollback.viewport-hold-output`).
+  (the nine `device.env-*` rows).
 
 An `"automated"` or `"unprobed"` override is not honoured; those derive from the definitions, so
 they cannot drift. `bun run validate` refuses any other override value, or an override with no
@@ -402,8 +401,8 @@ reason.
 
 For `"manual"` and `"unprobed"` features, set the `probe` field to
 `"Manual verification required — no automated probe available."`
-Viewport hold has a registered coverage callback naming our missing actuator/readback.
-It stays TEST TODO; registration supplies no automated support measurement.
+Viewport hold's library arm measures ordinary and synchronized output with qualified viewport controls.
+Its app arm names the missing actuator/readback and stays TEST TODO; registration supplies no app support measurement.
 See the canonical declaration contract above.
 
 For UI-owned viewport behavior, prefer `"manual"` plus an exact reproduction

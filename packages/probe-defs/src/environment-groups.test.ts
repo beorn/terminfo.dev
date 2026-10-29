@@ -36,8 +36,11 @@ describe("environment-group partition (D132 B)", () => {
     }
   })
 
-  it("keeps the named-unavailable viewport position out of the group", () => {
-    expect(features["scrollback.viewport-hold-output"]?.probeStatus).toBe("manual")
+  it("keeps partially measured viewport hold out of the environment group", () => {
+    expect(features["scrollback.viewport-hold-output"]?.probeStatus).toBe("partial")
+    expect(features["scrollback.viewport-hold-output"]?.probeStatusReason).toBe(
+      "partial: library arm measured by scrollback.viewport-hold-output on ordinary and synchronized output; the app arm has no automated probe (terminal UI policy, no live scroll actuator) and keeps the manual UI recipe",
+    )
     expect(isEnvironmentGroup("scrollback.viewport-hold-output")).toBe(false)
   })
 
