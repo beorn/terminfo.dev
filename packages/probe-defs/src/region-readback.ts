@@ -107,9 +107,12 @@ export interface RegionReadback {
    * Writes that paint the frame the sequence would leave if it IGNORED the one attribute its row
    * claims — a DECSCA-protected cell erased, an EL that drops the current background. An after-frame
    * equal to it is a measured NEGATIVE like `seed`, not an unnamed `inconclusive`: the row's own
-   * discriminator is the whole point. Absent when the row's sequence has no attribute to ignore.
+   * discriminator is the whole point. For a reset's preserve claim, this is the frame with the
+   * preserved attribute also cleared. Absent when the row has no attribute to ignore.
    */
   ignored?: string
+  /** Independently authored full setup; the observed seed must match before any reset verdict. */
+  setupReference?: string
   /**
    * Set when the expected frame cannot be produced without the sequence under test: a row whose
    * reset clears TWO OR MORE of its setup attributes (reset.sgr, sgr.reset, sgr.selective-reset.bold)
@@ -815,6 +818,9 @@ export async function captureRegionReadbackDecision(
     ...(spec.ignored === undefined
       ? []
       : [{ role: "control" as const, label: `${id}: ignored-attribute frame`, writes: spec.ignored }]),
+    ...(spec.setupReference === undefined
+      ? []
+      : [{ role: "control" as const, label: `${id}: setup reference frame`, writes: spec.setupReference }]),
   ]
   const frames: ObservationFrame[] = []
   const digests: string[] = []
@@ -886,11 +892,14 @@ export async function captureRegionReadbackDecision(
     const after = digests[1]
     const expected = digests[2]
     const ignored = spec.ignored === undefined ? undefined : digests[3]
+    const referenceIndex = spec.ignored === undefined ? 3 : 4
+    const setupReference = spec.setupReference === undefined ? undefined : digests[referenceIndex]
     if (
       seed === undefined ||
       after === undefined ||
       expected === undefined ||
-      (spec.ignored !== undefined && ignored === undefined)
+      (spec.ignored !== undefined && ignored === undefined) ||
+      (spec.setupReference !== undefined && setupReference === undefined)
     ) {
       throw new Error(
         `${id}: the capture-region decision reached the verdict with ${digests.length} of ${steps.length} digests`,
@@ -907,6 +916,7 @@ export async function captureRegionReadbackDecision(
       after,
       expected,
       ...(ignored !== undefined && { ignored }),
+      ...(setupReference !== undefined && { setupReference }),
     })
     const cropRefusal = cropPositionRefusal({
       id,
@@ -915,12 +925,22 @@ export async function captureRegionReadbackDecision(
         { role: "the post-sequence frame", rectangle: cropRectangles[1] },
         { role: "the expected frame", rectangle: cropRectangles[2] },
         ...(spec.ignored === undefined ? [] : [{ role: "the ignored-attribute frame", rectangle: cropRectangles[3] }]),
+        ...(spec.setupReference === undefined
+          ? []
+          : [{ role: "the independent setup reference", rectangle: cropRectangles[referenceIndex] }]),
       ],
       response: observed,
       frames,
       ...(assertionType === "screenshot" ? { screenshotRef: frames[3]?.ref } : {}),
     })
     if (cropRefusal) return cropRefusal
+    if (setupReference !== undefined && seed !== setupReference) {
+      const note = `${id}: the seed frame does not match the independent setup reference; required setup was not established (seed ${seed}, reference ${setupReference})`
+      return {
+        ...inconclusive(id, note, "insufficient-evidence", assertionType, cite(frames.at(-1)?.ref, frames)),
+        response: observed,
+      }
+    }
     if (seed === expected) {
       return inconclusive(
         id,
@@ -992,6 +1012,9 @@ export async function captureRegionReadbackDecision(
         outcome: supported ? "supported" : "unsupported",
         assertionType,
         ...cite(frames[3]?.ref, frames),
+        ...(spec.setupReference !== undefined && after === ignored
+          ? { note: `${id}: the reset also cleared the preserved attribute` }
+          : {}),
       },
       assertions: [
         {

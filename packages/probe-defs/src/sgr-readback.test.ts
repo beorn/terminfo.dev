@@ -140,6 +140,8 @@ test.each([
   ["reset.sgr", "0"],
 ] as const)("%s cannot qualify a reset from constant final-state reply %s", async (id, reply) => {
   const { ctx } = sgrReadbackSource(reply)
+  // This contract is query-only. Qualified capture has its own independently witnessed controls.
+  ctx.capture = undefined
   const result = await sgrTerm(id)(ctx)
   expect(result.observation).toMatchObject({ outcome: "inconclusive", assertionType: "query_reply" })
   expect(result.pass).toBe(false)
@@ -285,10 +287,8 @@ test.each([
   ["sgr.selective-reset.bold", ["0", "1;3"], "setup"],
   ["sgr.selective-reset.underline", ["0;4:6"], "baseline"],
   ["sgr.selective-reset.underline", ["0", "1;4:6"], "setup"],
-  ["sgr.selective-reset.underline", ["0", "1;4:0", "1"], "setup"],
   ["sgr.reset", ["0", "1;3;4:0", "0"], "setup"],
   ["sgr.underline-color-reset", ["0", "4;58;2;255;0"], "setup"],
-  ["sgr.underline-color-reset", ["0", "4;58;2;255;0;129"], "setup"],
 ] as const)("%s retains an unqualified %s response without a reset verdict (%s)", async (id, replies, phase) => {
   const { ctx, queries, writes } = sgrReadbackSource(replies)
   let captures = 0
@@ -303,6 +303,43 @@ test.each([
   const phaseIndex = phase === "baseline" ? 0 : 1
   expect(JSON.parse(result.response!)).toMatchObject({ phase, [phase]: replies[phaseIndex] })
   expect(queries).toHaveLength(phaseIndex + 1)
+  expect(captures).toBe(0)
+  expect(writes.at(-1)).toBe("\x1b[0m")
+})
+
+test.each([
+  ["sgr.selective-reset.underline", ["0", "0"]],
+  ["sgr.underline-color-reset", ["0", "4;58;2;255;0;129"]],
+] as const)(
+  "%s keeps its original setup failure when the independent oracle has no owned capture",
+  async (id, replies) => {
+    const { ctx, queries, writes } = sgrReadbackSource(replies)
+    ctx.capture = undefined
+    const result = await sgrTerm(id)(ctx)
+    expect(result.observation).toMatchObject({ outcome: "inconclusive", assertionType: "query_reply" })
+    expect(result.observation?.note).toContain("setup prerequisite")
+    expect(JSON.parse(result.response!)).toMatchObject({ phase: "setup", baseline: "0", setup: replies[1] })
+    expect(queries).toHaveLength(2)
+    expect(writes.at(-1)).toBe("\x1b[0m")
+  },
+)
+
+test.each([
+  [["1"], "inconclusive", 1],
+  [["0", "1;4:6"], "inconclusive", 2],
+  [["0", "1;4", "1;4:6"], "inconclusive", 3],
+  [["0", "1;4", "1;4"], "unsupported", 3],
+  [["0", "1;4", "1"], "supported", 3],
+] as const)("reset query boundaries keep capture closed for %s", async (replies, outcome, queryCount) => {
+  const { ctx, queries, writes } = sgrReadbackSource(replies)
+  let captures = 0
+  ctx.capture = async () => {
+    captures++
+    throw new Error("A deciding query must not capture")
+  }
+  const result = await sgrTerm("sgr.selective-reset.underline")(ctx)
+  expect(result.observation).toMatchObject({ outcome, assertionType: "query_reply" })
+  expect(queries).toHaveLength(queryCount)
   expect(captures).toBe(0)
   expect(writes.at(-1)).toBe("\x1b[0m")
 })

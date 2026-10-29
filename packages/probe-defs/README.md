@@ -82,6 +82,15 @@ Callbacks currently perform I/O and judge it in the same implementation. There i
 
 The five `AssertionType` values classify an actually retained deciding observation: `query_reply`, `buffer_state`, `screenshot`, `input_bytes` and `clipboard`. Pixel versus text-cells capture payloads and positive versus negative assertion polarity remain separate facts. An OSC 52 write decided by independent clipboard readback is `clipboard`; paste decided by `readInput` is `input_bytes`, including its existing control/report envelope and performed action.
 
+Reset-family capture recipes can supply an optional `RegionReadback.setupReference`: an independently
+authored full setup, painted behind the existing witness. The seed must match it before any verdict.
+Companion rows also compare a neutral ignored frame against the expected preserved attribute; missing
+setup or an inseparable reference stays inconclusive. Recipes without the member keep four frames.
+A qualified baseline followed by a complete but unqualified SGR setup report may use this existing
+independent capture path for the six eligible reset rows. The response retains both query phases and
+the capture response, and the note names the deciding instrument. Malformed setup, failed baseline,
+final-phase results and the three multi-attribute reference refusals keep their existing behavior.
+
 **Headless evidence** comes through [headless-batch.ts](../probes/headless-batch.ts). It retains callback `response` values as raw replies, not every probe-source call or every engine-state read.
 
 The OSC 10, 11, 12 and 4 index-0 initial-colour queries preserve their ordinary reply and sentinel paths.
