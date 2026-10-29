@@ -29,6 +29,8 @@ function viewportModel(options: {
   resetBroken?: boolean
   /** Whether the measured OSC 720 also changes the buffer geometry. */
   osc720ChangesGeometry?: boolean
+  /** Whether the control changes only the geometry, leaving the position pinned. */
+  controlChangesGeometryOnly?: boolean
 }): LibProbeSource {
   const screenRows = 24
   let fed = 0
@@ -41,6 +43,10 @@ function viewportModel(options: {
     rows = screenRows + fed
   }
   const up = (delta: number) => {
+    if (options.controlChangesGeometryOnly) {
+      rows += 1
+      return
+    }
     if (!options.scrollableViewport) return
     if (delta !== (options.upDelta ?? -1)) return
     nativeOffset = Math.min(nativeOffset + 1, rows - screenRows)
@@ -137,5 +143,16 @@ test("a measured sequence that changes the buffer geometry is inconclusive, neve
   const result = osc720()(viewportModel({ scrollableViewport: true, honorsOsc720: true, osc720ChangesGeometry: true }))
   expect(result.notTested).toBeUndefined()
   expect(result.observation?.outcome).toBe("inconclusive")
+  expect(result.assertions).toBeUndefined()
+})
+
+test("a control that changes only the geometry is inconclusive, never coverage", () => {
+  const result = osc720()(
+    viewportModel({ scrollableViewport: true, honorsOsc720: false, controlChangesGeometryOnly: true }),
+  )
+  expect(result.notTested).toBeUndefined()
+  expect(result.observation?.outcome).toBe("inconclusive")
+  expect(result.observation?.reason).toBe("insufficient-evidence")
+  expect(result.note).toContain("geometry")
   expect(result.assertions).toBeUndefined()
 })
