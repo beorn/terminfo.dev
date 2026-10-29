@@ -47,7 +47,10 @@ import {
   KITTY_FRAME_BLUE,
   KITTY_FRAME_RED,
   KITTY_GAP_MS,
+  KITTY_GUARD_REGION,
+  KITTY_GUARD_TEXT,
   KITTY_LOOP_FOREVER,
+  KITTY_PLACEHOLDER_BOUNDS,
   KITTY_REGION,
   KITTY_RETRY_FACTOR,
   KITTY_WAIT_FACTOR,
@@ -2958,7 +2961,10 @@ export const extensionsProbes: ProbeDefinition[] = [
       }
       const refusal = sgrCaptureTooSmall(ctx, id)
       if (refusal) return refusal
-      const reported = await captureRegionGeometry(ctx, id, { region: { ...KITTY_REGION }, ...KITTY_BOUNDS })
+      const reported = await captureRegionGeometry(ctx, id, {
+        region: { ...KITTY_REGION },
+        ...KITTY_PLACEHOLDER_BOUNDS,
+      })
       if ("pass" in reported) return reported
       const geometry = reported.geometry
       if (!geometry) {
@@ -2970,8 +2976,17 @@ export const extensionsProbes: ProbeDefinition[] = [
       const size = kittyBlockPixels(geometry)
       const frames: ObservationFrame[] = []
       const ids: number[] = []
-      const shoot = async (role: "control" | "target", label: string) => {
-        const frame = await capture({ role, label, cells: { ...KITTY_REGION }, pixelGeometry: geometry })
+      const shoot = async (
+        role: "control" | "target",
+        label: string,
+        region: {
+          readonly top: number
+          readonly left: number
+          readonly bottom: number
+          readonly right: number
+        } = KITTY_REGION,
+      ) => {
+        const frame = await capture({ role, label, cells: { ...region }, pixelGeometry: geometry })
         frames.push(frame)
         return frame
       }
@@ -3001,6 +3016,13 @@ export const extensionsProbes: ProbeDefinition[] = [
           "target",
           "Placeholder grid with the image, re-captured after a delayed interval and no write since",
         )
+        // Control 1: the same guard bytes beside the grid and on the row below it, captured in the
+        // with-image state. A terminal that reflows when the image arrives moves this text.
+        const guardWithImage = await shoot(
+          "control",
+          `Layout guard "${KITTY_GUARD_TEXT}" beside the placeholder grid and on the row below it, with the image`,
+          KITTY_GUARD_REGION,
+        )
         const cellsWithImage = await readCells("Placeholder rectangle cells with the image composited")
         ctx.write(kittyDeleteImage(placeholderId))
         ctx.write(KITTY_CLEAR)
@@ -3008,6 +3030,11 @@ export const extensionsProbes: ProbeDefinition[] = [
         const withoutImage = await shoot(
           "control",
           "The same placeholder characters and foreground colour with the image deleted",
+        )
+        const guardWithoutImage = await shoot(
+          "control",
+          "Layout guard beside the placeholder grid and on the row below it, with the image deleted",
+          KITTY_GUARD_REGION,
         )
         const cellsWithoutImage = await readCells("Placeholder rectangle cells with the image deleted")
         // The live control: the same pixels painted by an ordinary placement in the same rectangle,
@@ -3025,6 +3052,7 @@ export const extensionsProbes: ProbeDefinition[] = [
         const verdict = decideKittyPlaceholders({
           withImage: [withImageFirst.regionDigest, withImageSecond.regionDigest],
           withoutImage: withoutImage.regionDigest,
+          guard: [guardWithImage.regionDigest, guardWithoutImage.regionDigest],
           blank: blank.regionDigest,
           ordinary: ordinary.regionDigest,
           cellReadback:
@@ -3035,8 +3063,16 @@ export const extensionsProbes: ProbeDefinition[] = [
         const observed = JSON.stringify({
           id,
           region: KITTY_REGION,
+          guardRegion: KITTY_GUARD_REGION,
           placeholderId,
           ordinaryId,
+          guard: { withImage: guardWithImage.regionDigest, withoutImage: guardWithoutImage.regionDigest },
+          digests: {
+            withImage: [withImageFirst.regionDigest, withImageSecond.regionDigest],
+            withoutImage: withoutImage.regionDigest,
+            blank: blank.regionDigest,
+            ordinary: ordinary.regionDigest,
+          },
           cellReadback:
             cellsWithImage === undefined ? "unavailable: this pixel arm exposes no cell adapter" : "compared",
           frames: frames.map((frame) => ({ role: frame.role, ref: frame.ref, label: frame.label })),
@@ -3060,7 +3096,7 @@ export const extensionsProbes: ProbeDefinition[] = [
                     assertionType: "screenshot" as const,
                     kind: verdict.outcome === "supported" ? ("positive" as const) : ("negative" as const),
                     expected:
-                      "The placeholder rectangle differs from the same characters with the image deleted, while an ordinary placement of the same pixels paints the same rectangle and a quiet transmit produced no acknowledgement to inherit",
+                      "The placeholder rectangle differs from the same characters with the image deleted, is pixel-identical to an ordinary placement of the same opaque image over the same cells, and the identical layout guard beside it did not move while the ordinary placement painted against the captured blank",
                     observed,
                     note: `decided by ${verdict.decidedBy}`,
                   },

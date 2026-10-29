@@ -8,6 +8,7 @@
  */
 import { expect, test } from "vitest"
 import { extensionsProbes } from "./extensions.ts"
+import { KITTY_GUARD_REGION, KITTY_GUARD_TEXT } from "./kitty-capture.ts"
 import type { ObservationFrame, TermProbeSource, TerminalQueryOutcome } from "./types.ts"
 
 const GEOMETRY = {
@@ -18,6 +19,8 @@ const GEOMETRY = {
 interface Surface {
   /** Region digests handed out in capture order; the last one repeats. */
   readonly region: readonly string[]
+  /** Digests for captures of the layout-guard rectangle, in capture order; the last one repeats. */
+  readonly guard?: readonly string[]
   /** Whole-window digests handed out for captures that name no cells. */
   readonly whole?: readonly string[]
   /** What the terminal answers a `_G` command with. */
@@ -39,6 +42,7 @@ function surface(options: Surface) {
   const writes: string[] = []
   const captures: Capture[] = []
   let regionIndex = 0
+  let guardIndex = 0
   let wholeIndex = 0
   const ack = (): TerminalQueryOutcome => {
     if (options.ack === "silent") return { match: null, reason: "timeout", raw: "", rawBase64: "" }
@@ -74,8 +78,17 @@ function surface(options: Surface) {
       const ref = `sha256:${String(index).padStart(64, "0")}`
       captures.push({ role, label, cells: cells !== undefined, writesBefore: writes.length, ref })
       if (cells !== undefined) {
-        const digest = options.region[Math.min(regionIndex, options.region.length - 1)]
-        regionIndex += 1
+        const isGuard =
+          cells.top === KITTY_GUARD_REGION.top &&
+          cells.left === KITTY_GUARD_REGION.left &&
+          cells.bottom === KITTY_GUARD_REGION.bottom &&
+          cells.right === KITTY_GUARD_REGION.right
+        const queue = isGuard ? (options.guard ?? ["guard"]) : options.region
+        const digest = isGuard
+          ? queue[Math.min(guardIndex, queue.length - 1)]
+          : queue[Math.min(regionIndex, queue.length - 1)]
+        if (isGuard) guardIndex += 1
+        else regionIndex += 1
         return {
           role,
           label,
@@ -161,8 +174,11 @@ test("an equal playback pair on a live pipeline with a stable still image is a n
 })
 
 test("placeholders decide from pixels, with the quiet transmit and an ordinary placement alive", async () => {
-  const { context, writes } = surface({
-    region: ["with-image", "with-image", "without-image", "blank", "ordinary"],
+  const { context, writes, captures } = surface({
+    // grid with image (twice), grid with the image deleted, blank, then the ordinary placement of the
+    // same pixels — which must land on the SAME digest as the with-image rectangle.
+    region: ["with-image", "with-image", "text-only", "blank", "with-image"],
+    guard: ["guard", "guard"],
     cells: ["placeholder-cells", "placeholder-cells"],
   })
   const result = await term("extensions.kitty-graphics.unicode-placeholders")(context)
@@ -173,15 +189,21 @@ test("placeholders decide from pixels, with the quiet transmit and an ordinary p
   // The placeholder characters and the id in the foreground colour, in BOTH states.
   expect(joined.split("\u{10EEEE}").length - 1).toBe(8)
   expect(joined).toContain("[38;5;")
+  // Control 1: the same guard bytes beside the grid and on the row below it, in BOTH states.
+  expect(joined.split(KITTY_GUARD_TEXT).length - 1).toBe(6)
   // The live control is a real placement of the same pixels, not an acknowledgement.
   expect(joined).toContain("a=p,i=")
+  // The guard rectangle is captured in each state, so a reflow between them is observable.
+  expect(captures.filter((capture) => capture.label.includes("Layout guard")).length).toBe(2)
   expect(result.observation?.outcome).toBe("supported")
   expect(result.assertions).toMatchObject([{ kind: "positive", assertionType: "screenshot" }])
+  expect(result.response).toContain('"guard"')
 })
 
 test("an accepted quiet transmit with identical pixels is not placeholder support", async () => {
   const { context } = surface({
     region: ["same", "same", "same", "blank", "ordinary"],
+    guard: ["guard", "guard"],
     cells: ["placeholder-cells", "placeholder-cells"],
     ack: "ok",
   })
@@ -191,11 +213,50 @@ test("an accepted quiet transmit with identical pixels is not placeholder suppor
   expect(result.assertions).toMatchObject([{ kind: "negative" }])
 })
 
-test("a run that reads no cells never decides the placeholder row", async () => {
-  const { context } = surface({ region: ["with-image", "with-image", "without-image", "blank", "ordinary"] })
+test("a pixel arm with no cell adapter decides from pixels and records the absent adapter", async () => {
+  const { context } = surface({
+    region: ["with-image", "with-image", "text-only", "blank", "with-image"],
+    guard: ["guard", "guard"],
+  })
+  const result = await term("extensions.kitty-graphics.unicode-placeholders")(context)
+  expect(result.observation?.outcome).toBe("supported")
+  expect(result.response).toContain("unavailable: this pixel arm exposes no cell adapter")
+})
+
+test("cells that read back differently veto before the pixel table", async () => {
+  const { context } = surface({
+    region: ["with-image", "with-image", "text-only", "blank", "with-image"],
+    guard: ["guard", "guard"],
+    cells: ["placeholder-cells", "different-cells"],
+  })
   const result = await term("extensions.kitty-graphics.unicode-placeholders")(context)
   expect(result.observation?.outcome).toBe("inconclusive")
-  expect(result.observation?.note).toContain("read no cells")
+  expect(result.observation?.note).toContain("read back differently")
+  expect(result.pass).toBe(false)
+})
+
+test("a guard that moves between the two states is inconclusive by name, never a verdict", async () => {
+  const { context } = surface({
+    region: ["with-image", "with-image", "text-only", "blank", "with-image"],
+    guard: ["guard", "shifted-guard"],
+    cells: ["placeholder-cells", "placeholder-cells"],
+  })
+  const result = await term("extensions.kitty-graphics.unicode-placeholders")(context)
+  expect(result.observation?.outcome).toBe("inconclusive")
+  expect(result.observation?.note).toContain("layout changed between states")
+  expect(result.assertions).toBeUndefined()
+})
+
+test("a placeholder rectangle that is not pixel-identical to the ordinary placement is inconclusive", async () => {
+  const { context } = surface({
+    // Rendered something, but not the same pixels an a=p placement of the same image produces.
+    region: ["with-image", "with-image", "text-only", "blank", "other-pixels"],
+    guard: ["guard", "guard"],
+    cells: ["placeholder-cells", "placeholder-cells"],
+  })
+  const result = await term("extensions.kitty-graphics.unicode-placeholders")(context)
+  expect(result.observation?.outcome).toBe("inconclusive")
+  expect(result.observation?.note).toContain("not pixel-identical to ordinary placement")
   expect(result.pass).toBe(false)
 })
 

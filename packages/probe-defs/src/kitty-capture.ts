@@ -36,6 +36,33 @@ export const KITTY_REGION = {
 /** The grid this block needs, stated once so the geometry query and the paint cannot drift. */
 export const KITTY_BOUNDS = { minRows: KITTY_CURSOR_ROW, minCols: KITTY_BLOCK_LEFT + KITTY_BLOCK_COLS } as const
 
+/**
+ * The layout guard: short ASCII written immediately RIGHT of the placeholder grid, byte-identical in
+ * both states, plus one spare column so a one-cell shift of the text is visible. A terminal that
+ * consumes the diacritics, widens the placeholder cells or reflows when the image arrives moves this
+ * text, and the guard digest then disagrees between the two states.
+ */
+export const KITTY_GUARD_TEXT = "|kg"
+export const KITTY_GUARD_COLS = 3
+
+/**
+ * The guard rectangle: the guard cells beside every placeholder row, and the row BELOW the grid, so a
+ * vertical reflow is caught as well as a horizontal one. The image's `c,r` cover the placeholder grid
+ * only and never these cells.
+ */
+export const KITTY_GUARD_REGION = {
+  top: KITTY_BLOCK_TOP,
+  left: KITTY_BLOCK_LEFT + KITTY_BLOCK_COLS,
+  bottom: KITTY_BLOCK_TOP + KITTY_BLOCK_ROWS,
+  right: KITTY_BLOCK_LEFT + KITTY_BLOCK_COLS + KITTY_GUARD_COLS - 1,
+} as const
+
+/** The grid the placeholder arm needs: the guard extends the block's columns and one row below it. */
+export const KITTY_PLACEHOLDER_BOUNDS = {
+  minRows: KITTY_CURSOR_ROW,
+  minCols: KITTY_GUARD_REGION.right,
+} as const
+
 /** The gap the probe sets itself, in milliseconds. The protocol's default is not used anywhere. */
 export const KITTY_GAP_MS = 250
 
@@ -200,8 +227,9 @@ export function kittyVirtualPlacement(
 
 /**
  * The placeholder text for the 2x2 grid, with the image id carried in the foreground colour exactly
- * as the protocol's own example does. The same string is printed in BOTH states, so the two screens
- * differ only by the composited image.
+ * as the protocol's own example does, and the layout guard beside it. The same bytes are printed in
+ * BOTH states, so the two screens differ only by the composited image, and any movement of the text
+ * between the states shows up in the guard rectangle rather than being read as a painted image.
  */
 export function kittyPlaceholderText(imageId: number): string {
   if (!Number.isSafeInteger(imageId) || imageId < 1 || imageId > 255) {
@@ -217,7 +245,11 @@ export function kittyPlaceholderText(imageId: number): string {
     }
     rows.push(`\x1b[${KITTY_BLOCK_TOP + row};${KITTY_BLOCK_LEFT}H${line}`)
   }
-  return `\x1b[38;5;${imageId}m${rows.join("")}\x1b[0m${kittyPark()}`
+  const guard: string[] = []
+  for (let row = KITTY_GUARD_REGION.top; row <= KITTY_GUARD_REGION.bottom; row++) {
+    guard.push(`\x1b[${row};${KITTY_GUARD_REGION.left}H${KITTY_GUARD_TEXT}`)
+  }
+  return `\x1b[38;5;${imageId}m${rows.join("")}\x1b[0m${guard.join("")}${kittyPark()}`
 }
 
 /** The same-comparison rule both rows share: byte inequality of the region digest, never a tolerance. */
@@ -336,28 +368,45 @@ export interface KittyPlaceholderEvidence {
   readonly withImage: KittyDigestPair
   /** The same characters and foreground colour with the image deleted. */
   readonly withoutImage: string | undefined
+  /**
+   * The layout guard's digest beside the placeholder rows and on the row below the grid, once in each
+   * state. REQUIRED: it is what shows the two states compared the same layout, and a terminal that
+   * reflows when the image arrives fails it by name instead of being graded on a moved rectangle.
+   */
+  readonly guard: KittyDigestPair
   /** A captured blank rectangle, before the ordinary placement paints it. */
   readonly blank: string | undefined
   /** The ordinary `a=p` placement of the same pixels in the same rectangle. */
   readonly ordinary: string | undefined
   /**
-   * Cell readbacks of the placeholder rectangle in both states. REQUIRED for a verdict: without them
-   * a pixel difference cannot separate the composited image from a change in the placeholder
-   * characters themselves, so `null` refuses by name instead of deciding permissively.
+   * Cell readbacks of the placeholder rectangle in both states, when this run exposes a cells adapter.
+   * A VETO only: unequal readbacks compared two different screens and are inconclusive before the
+   * table. Absent readbacks are recorded and the pixels decide, because the guard and the same-image
+   * control carry the job the readback was doing.
    */
   readonly cellReadback: KittyDigestPair | null
 }
 
 /**
- * The placeholder decision table. The cell readback is a PRECONDITION, not a discriminator: matching
- * readbacks prove both states contain the same text, and a missing readback is inconclusive by name
- * rather than a permissive pass. Quiet mode means no acknowledgement exists to inherit.
+ * The placeholder decision table, from pixels on a pixel arm. Two in-run controls stand where the cell
+ * readback used to: the layout guard must hold still between the states, and the with-image rectangle
+ * must equal the ordinary `a=p` placement of the same opaque image over the same cells. Quiet mode
+ * means no acknowledgement exists to inherit, and a cells adapter, where present, can only veto.
  */
 export function decideKittyPlaceholders(evidence: KittyPlaceholderEvidence): KittyVerdict {
-  if (evidence.withImage[0] === undefined || evidence.withImage[1] === undefined) {
+  const [withFirst, withSecond] = evidence.withImage
+  const [guardWith, guardWithout] = evidence.guard
+  if (withFirst === undefined || withSecond === undefined) {
     return {
       outcome: "inconclusive",
       note: "Kitty unicode placeholders: a placeholder frame reported no region digest, so nothing was compared",
+      decidedBy: "a missing region digest",
+    }
+  }
+  if (guardWith === undefined || guardWithout === undefined) {
+    return {
+      outcome: "inconclusive",
+      note: "Kitty unicode placeholders: the layout guard reported no region digest in one of the two states, so a changed layout could be read as a painted image",
       decidedBy: "a missing region digest",
     }
   }
@@ -368,25 +417,34 @@ export function decideKittyPlaceholders(evidence: KittyPlaceholderEvidence): Kit
       decidedBy: "a missing region digest",
     }
   }
-  if (!evidence.cellReadback) {
-    return {
-      outcome: "inconclusive",
-      note: "Kitty unicode placeholders: this run read no cells, so the two states' text was never compared and a pixel difference alone cannot separate the image from a change in the placeholder characters; the cell readback is the precondition the contract requires",
-      decidedBy: "a missing cell readback",
-    }
-  }
-  if (evidence.cellReadback[0] !== evidence.cellReadback[1]) {
-    return {
-      outcome: "inconclusive",
-      note: `Kitty unicode placeholders: the placeholder cells read back differently in the two states (${pairNames(evidence.cellReadback)}), so the run compared two different screens`,
-      decidedBy: "the cell readback precondition",
-    }
-  }
   if (evidence.blank === undefined || evidence.ordinary === undefined) {
     return {
       outcome: "inconclusive",
       note: "Kitty unicode placeholders: the ordinary-placement control reported no region digest",
       decidedBy: "a missing region digest",
+    }
+  }
+  // A cells adapter, where the run has one, vetoes before the table: two states that read back
+  // different text compared two different screens, whatever their pixels did.
+  if (evidence.cellReadback && evidence.cellReadback[0] !== evidence.cellReadback[1]) {
+    return {
+      outcome: "inconclusive",
+      note: `Kitty unicode placeholders: the placeholder cells read back differently in the two states (${pairNames(evidence.cellReadback)}), so the run compared two different screens`,
+      decidedBy: "the cell readback veto",
+    }
+  }
+  if (guardWith !== guardWithout) {
+    return {
+      outcome: "inconclusive",
+      note: `Kitty unicode placeholders: layout changed between states (${guardWith} against ${guardWithout} beside the placeholder grid and on the row below it), so the rectangles compared two different screens and no verdict follows`,
+      decidedBy: "the layout guard control",
+    }
+  }
+  if (withFirst !== withSecond) {
+    return {
+      outcome: "inconclusive",
+      note: `Kitty unicode placeholders: the with-image rectangle did not hold still across the delayed re-capture (${pairNames(evidence.withImage)}), so it cannot be compared to either control`,
+      decidedBy: "the delayed with-image re-capture",
     }
   }
   if (evidence.blank === evidence.ordinary) {
@@ -396,16 +454,24 @@ export function decideKittyPlaceholders(evidence: KittyPlaceholderEvidence): Kit
       decidedBy: "the ordinary-placement control",
     }
   }
-  if (evidence.withImage[1] !== evidence.withoutImage) {
+  if (withSecond !== evidence.withoutImage) {
+    if (withSecond !== evidence.ordinary) {
+      return {
+        outcome: "inconclusive",
+        note: `Kitty unicode placeholders: the placeholder rectangle rendered something the without-image state did not have (${withSecond} against ${evidence.withoutImage}), but it is not pixel-identical to the ordinary placement of the same image (${evidence.ordinary}), so it rendered, not pixel-identical to ordinary placement`,
+        decidedBy: "the same-image control",
+      }
+    }
     return {
       outcome: "supported",
-      note: `Kitty unicode placeholders: the placeholder rectangle painted with the image composited over it (${pairNames(evidence.withImage)} against ${evidence.withoutImage}) while the same characters on the same foreground colour did not, and an ordinary placement of the same pixels did`,
-      decidedBy: "the with-image and without-image pair, with the ordinary placement alive",
+      note: `Kitty unicode placeholders: the placeholder rectangle painted with the image composited over it (${withSecond} against ${evidence.withoutImage}) and matched the ordinary placement of the same pixels exactly, while the layout guard held still and that placement painted against the captured blank`,
+      decidedBy:
+        "the with-image and without-image pair, with the ordinary placement identical and the layout guard equal",
     }
   }
   return {
     outcome: "unsupported",
-    note: `Kitty unicode placeholders: the placeholder rectangle is pixel-identical with and without the image (${pairNames(evidence.withImage)} against ${evidence.withoutImage}) while the ordinary placement of the same pixels painted, so the same pixels render through a=p and not through placeholders`,
-    decidedBy: "the with-image and without-image pair, after the delayed re-capture",
+    note: `Kitty unicode placeholders: the placeholder rectangle is pixel-identical with and without the image (${withSecond} against ${evidence.withoutImage}) while the ordinary placement of the same pixels painted and the layout guard held still, so the same pixels render through a=p and not through placeholders`,
+    decidedBy: "the with-image and without-image pair, after the delayed re-capture, with the layout guard equal",
   }
 }

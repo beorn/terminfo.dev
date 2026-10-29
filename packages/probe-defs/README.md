@@ -184,11 +184,14 @@ must differ, a one-frame image that must hold still, a cursor-only capture that 
 alone, and a redraw that must change the screen outside it. Placeholders compare the placeholder rectangle
 with the image composited over it against the same characters on the same foreground colour with the image
 deleted, with an ordinary `a=p` placement of the same pixels — measured against a captured blank — as the
-live control; this queue transmits quietly, so no acknowledgement exists to inherit. For the placeholder
-row the cell readback of that rectangle in both states is a REQUIRED precondition: matching readbacks prove
-both states contain the same text, and a run that reads no cells is inconclusive by name rather than a
-permissive pass, because a pixel difference alone cannot separate the composited image from a change in the
-placeholder characters. A cell readback can veto the row and never decides it on its own.
+live control; this queue transmits quietly, so no acknowledgement exists to inherit. The placeholder row
+adds two in-run pixel controls in place of the cell readback it used to require: a layout guard — the same
+short ASCII written immediately right of the grid and captured with the row below it, byte-identical in both
+states, so a terminal that reflows when the image arrives is inconclusive by name rather than graded on a
+moved rectangle — and a same-image veto, which makes the with-image rectangle supported only when it is
+pixel-identical to the ordinary placement of the same opaque image over the same cells. Where a run does
+expose a cells adapter, unequal readbacks still veto to inconclusive before the table, and a text-only run
+refuses by name before it.
 
 The run retains screenshot/text references and assertion references. A captured frame does not by itself establish support, and a pending required review does not become an unsupported result.
 

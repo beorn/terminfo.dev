@@ -8,12 +8,18 @@
  */
 import { expect, test } from "vitest"
 import {
+  KITTY_BLOCK_COLS,
+  KITTY_BLOCK_LEFT,
+  KITTY_BLOCK_TOP,
   KITTY_CLEAR,
   KITTY_DIACRITIC_0,
   KITTY_DIACRITIC_1,
   KITTY_GAP_MS,
+  KITTY_GUARD_REGION,
+  KITTY_GUARD_TEXT,
   KITTY_LOOP_FOREVER,
   KITTY_PLACEHOLDER,
+  KITTY_PLACEHOLDER_BOUNDS,
   decideKittyAnimation,
   decideKittyPlaceholders,
   kittyBlockPixels,
@@ -30,6 +36,7 @@ import {
   kittyStopPlayback,
   kittyVirtualPlacement,
   type KittyAnimationEvidence,
+  type KittyPlaceholderEvidence,
 } from "./kitty-capture.ts"
 
 const frame = { width: 20, height: 40, rgb: [255, 0, 0] as const }
@@ -98,6 +105,25 @@ test("placeholder text pins the spec's code point, diacritics and foreground-col
   expect(text.startsWith(KITTY_CLEAR.slice(0, 0))).toBe(true)
 })
 
+test("the layout guard sits right of the grid, covers the row below it, and is identical in both states", () => {
+  // The guard's own columns start where the placeholder grid ends, so the image never covers it.
+  expect(KITTY_GUARD_REGION.left).toBe(KITTY_BLOCK_LEFT + KITTY_BLOCK_COLS)
+  expect(KITTY_GUARD_REGION.right - KITTY_GUARD_REGION.left + 1).toBe(KITTY_GUARD_TEXT.length)
+  expect(KITTY_GUARD_REGION.top).toBe(KITTY_BLOCK_TOP)
+  // One row MORE than the grid: the row below the grid is captured too, so vertical reflow is caught.
+  expect(KITTY_GUARD_REGION.bottom).toBe(KITTY_GUARD_REGION.top + 2)
+  expect(KITTY_PLACEHOLDER_BOUNDS.minCols).toBe(KITTY_GUARD_REGION.right)
+  const one = kittyPlaceholderText(7)
+  const two = kittyPlaceholderText(7)
+  // Byte-identical in both states: the guard is a control, not a difference the row could read.
+  expect(one).toBe(two)
+  expect(one.split(KITTY_GUARD_TEXT).length - 1).toBe(3)
+  // Three CUP-moved guard rows: the two placeholder rows and the row below the grid.
+  for (const row of [KITTY_GUARD_REGION.top, KITTY_GUARD_REGION.top + 1, KITTY_GUARD_REGION.bottom]) {
+    expect(one).toContain(`\u{1b}[${String(row)};${String(KITTY_GUARD_REGION.left)}H${KITTY_GUARD_TEXT}`)
+  }
+})
+
 function evidence(overrides: Partial<KittyAnimationEvidence> = {}): KittyAnimationEvidence {
   return {
     playback: ["a", "b"],
@@ -142,53 +168,55 @@ test("each failed control names itself instead of becoming a negative", () => {
   }
 })
 
-test("placeholders are supported only on pixels, with matching cells and the ordinary placement painted", () => {
-  const supported = decideKittyPlaceholders({
-    withImage: ["with", "with"],
-    withoutImage: "without",
+function placeholders(overrides: Partial<KittyPlaceholderEvidence> = {}): KittyPlaceholderEvidence {
+  return {
+    withImage: ["image", "image"],
+    withoutImage: "text-only",
+    guard: ["guard", "guard"],
     blank: "blank",
-    ordinary: "ordinary",
-    cellReadback: ["cells", "cells"],
-  })
-  expect(supported.outcome).toBe("supported")
-  // The cell readback can veto but never decides on its own.
-  expect(
-    decideKittyPlaceholders({
-      withImage: ["with", "with"],
-      withoutImage: "without",
-      blank: "blank",
-      ordinary: "ordinary",
-      cellReadback: ["one", "two"],
-    }).decidedBy,
-  ).toBe("the cell readback precondition")
-  // A run that read no cells compares two screens it cannot show contain the same text: never a pass.
-  const unread = decideKittyPlaceholders({
-    withImage: ["with", "with"],
-    withoutImage: "without",
-    blank: "blank",
-    ordinary: "ordinary",
+    ordinary: "image",
     cellReadback: null,
-  })
-  expect(unread.outcome).toBe("inconclusive")
-  expect(unread.decidedBy).toBe("a missing cell readback")
-  // Identical pixels through both paths, with the ordinary placement alive: negative.
-  expect(
-    decideKittyPlaceholders({
-      withImage: ["same", "same"],
-      withoutImage: "same",
-      blank: "blank",
-      ordinary: "ordinary",
-      cellReadback: ["cells", "cells"],
-    }).outcome,
-  ).toBe("unsupported")
-  // An unmeasured graphics path never implicates the feature.
-  expect(
-    decideKittyPlaceholders({
-      withImage: ["same", "same"],
-      withoutImage: "same",
-      blank: "blank",
-      ordinary: "blank",
-      cellReadback: ["cells", "cells"],
-    }).outcome,
-  ).toBe("inconclusive")
+    ...overrides,
+  }
+}
+
+test("placeholders are supported by pixels alone: differs from text, equals the ordinary placement, guard still", () => {
+  // No cells adapter: the pixels decide, because the guard and the same-image control carry the
+  // separation a cell readback used to provide.
+  const supported = decideKittyPlaceholders(placeholders())
+  expect(supported.outcome).toBe("supported")
+  expect(supported.decidedBy).toContain("layout guard equal")
+  // A cells adapter that agrees changes nothing.
+  expect(decideKittyPlaceholders(placeholders({ cellReadback: ["cells", "cells"] })).outcome).toBe("supported")
+})
+
+test("each veto names itself instead of becoming a verdict", () => {
+  // Cells that read back differently compared two different screens.
+  const cells = decideKittyPlaceholders(placeholders({ cellReadback: ["one", "two"] }))
+  expect(cells.outcome).toBe("inconclusive")
+  expect(cells.decidedBy).toBe("the cell readback veto")
+  // A moved guard means the layout changed between the states, so the rectangles are not comparable.
+  const moved = decideKittyPlaceholders(placeholders({ guard: ["guard", "shifted"] }))
+  expect(moved.outcome).toBe("inconclusive")
+  expect(moved.decidedBy).toBe("the layout guard control")
+  expect(moved.note).toContain("layout changed between states")
+  // Something painted that is not the image: rendered, but not the ordinary placement.
+  const notOrdinary = decideKittyPlaceholders(placeholders({ ordinary: "other-pixels" }))
+  expect(notOrdinary.outcome).toBe("inconclusive")
+  expect(notOrdinary.decidedBy).toBe("the same-image control")
+  expect(notOrdinary.note).toContain("not pixel-identical to ordinary placement")
+  // A rectangle that changes under a delayed re-capture is noise, not a state.
+  expect(decideKittyPlaceholders(placeholders({ withImage: ["first", "second"] })).outcome).toBe("inconclusive")
+  // A missing guard digest is a missing measurement, never a pass.
+  expect(decideKittyPlaceholders(placeholders({ guard: [undefined, "guard"] })).decidedBy).toBe(
+    "a missing region digest",
+  )
+})
+
+test("identical pixels through both paths stay a negative, and an unmeasured path implicates nothing", () => {
+  const same = decideKittyPlaceholders(placeholders({ withImage: ["same", "same"], withoutImage: "same" }))
+  expect(same.outcome).toBe("unsupported")
+  expect(same.decidedBy).toContain("layout guard equal")
+  // The ordinary placement never painted, so the graphics path is unmeasured.
+  expect(decideKittyPlaceholders(placeholders({ blank: "blank", ordinary: "blank" })).outcome).toBe("inconclusive")
 })
