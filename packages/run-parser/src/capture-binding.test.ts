@@ -361,7 +361,7 @@ it.each(["foreign-artifact", "declared-input", "no-source"] as const)(
   },
 )
 
-// The Kitty capture at the reply-delivery declaration's head (run b0a66924, launcher sha256 c490c7d9, termless 0b27886)
+// The Kitty capture at the reply-delivery declaration's head (run f9d82f78, launcher sha256 bb65c2d5, termless 80c97ba)
 // trimmed to its three OSC 52 probes (@cto ff19ee09: a native declaration lands with a parse test on a real capture). Each
 // silent clipboard read reached clipboard_control, which the bridge does not reproduce, so its capture carries the cause.
 const KITTY_OSC52 = readFileSync(new URL("./fixtures/kitty-osc52-harness.capture.json", import.meta.url), "utf8")
