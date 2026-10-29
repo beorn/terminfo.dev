@@ -787,6 +787,8 @@ export interface LibProbeSource {
   getText(): string
   getScrollback(): { viewportOffset: number; totalLines: number; screenLines: number }
   getTitle(): string
+  /** Present when the backend reports an icon name separately from the window title. */
+  getIconLabel?(): string
   reset(): void
   capabilities: {
     truecolor: boolean

@@ -287,6 +287,11 @@ async function listenForLateReply(
   return late?.bytes ? late : undefined
 }
 
+function iconLabelReader(backend: TerminalBackend): { getIconLabel?: () => string } {
+  const read = backend.getIconLabel?.bind(backend)
+  return read ? { getIconLabel: () => read() } : {}
+}
+
 export function createLibProbeSource(
   backend: TerminalBackend,
   proven: ProvenReplyPath | undefined,
@@ -356,6 +361,7 @@ export function createLibProbeSource(
     getTitle() {
       return backend.getTitle()
     },
+    ...iconLabelReader(backend),
     reset() {
       backend.reset()
     },
