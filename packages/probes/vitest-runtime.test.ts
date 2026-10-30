@@ -8,11 +8,28 @@
  */
 import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
-import { dirname, join } from "node:path"
+import { dirname, join, resolve } from "node:path"
 import { expect, test } from "vitest"
 import CensusReporter from "../admin/reporter.ts"
 import { createVitest, version, type Reporter } from "vitest/node"
 import type { RuntimeArtifact } from "./fixtures/vitest-runtime.fixture.ts"
+
+test("production erase configuration isolates reports for repeated invocations", async () => {
+  const directories: string[] = []
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const runtime = await createVitest({
+      root: resolve(dirname(import.meta.filename), "../.."),
+      config: join(dirname(import.meta.filename), "erase.vitest.config.ts"),
+      watch: false,
+    })
+    try {
+      directories.push(runtime.config.attachmentsDir)
+    } finally {
+      await runtime.close()
+    }
+  }
+  expect(directories[0]).not.toBe(directories[1])
+})
 
 test("installed Vitest preserves task-owned checks and awaited reporter attachments", async () => {
   expect(version).toBe("5.0.4")
@@ -128,14 +145,17 @@ test("installed Vitest preserves task-owned checks and awaited reporter attachme
 
 test("actual erase entry persists domain results: capture-failure", async () => {
   const directory = await mkdtemp(join(tmpdir(), "terminfo-erase-run-"))
+  const home = join(directory, "blocked-home")
+  await writeFile(home, "a file cannot own a replay directory")
   const reporter = new CensusReporter(directory)
   const nativeStates: string[] = []
   const runtime = await createVitest({
     root: dirname(import.meta.filename),
     config: false,
+    setupFiles: ["fixtures/erase-home.fixture.ts"],
     include: ["erase-replay.probe.ts"],
     provide: {
-      eraseArtifactRoot: "relative-store-is-invalid",
+      eraseTestHome: home,
       eraseFault: "deciding",
     },
     reporters: [
@@ -159,7 +179,7 @@ test("actual erase entry persists domain results: capture-failure", async () => 
     expect(reportFiles).toHaveLength(1)
     const report = JSON.parse(await readFile(join(directory, reportFiles[0]!), "utf8"))
     expect(report).toMatchObject({ counts: { "test-failure": 11 } })
-    expect(record.error).toMatch(/explicit absolute path/)
+    expect(record.error).toMatch(/ENOTDIR/)
     expect(record.assertions).toEqual([])
     expect(record.failureResults).toHaveLength(11)
     expect(record.failureResults?.every(({ status }) => status === "test-failure")).toBe(true)

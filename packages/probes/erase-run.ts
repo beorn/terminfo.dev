@@ -1,8 +1,8 @@
 /** Runner-owned immutable capture, offline assertion, native metadata and artifact lifecycle. */
 import { recordArtifact, type TestArtifactBase, type TestContext } from "vitest"
 import { createHash, randomUUID } from "node:crypto"
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs"
-import { basename, join, isAbsolute } from "node:path"
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
+import { basename, join } from "node:path"
 import { platform, release } from "node:os"
 import {
   ALL_PROBES,
@@ -25,6 +25,7 @@ import { HEADLESS_TERMINAL } from "./headless-terminal.ts"
 import { eraseProbes } from "../probe-defs/src/erase.ts"
 import { captureEraseCalls, replayEraseCalls } from "./erase-replay.ts"
 import { readEraseCapture } from "./erase-capture.ts"
+import { ERASE_REPLAY_ROOT } from "./erase-store.ts"
 
 type EraseRecords = ReturnType<typeof replayEraseCalls>
 export interface EraseRunRecord {
@@ -43,15 +44,12 @@ declare module "vitest" {
   interface TaskMeta {
     terminfoErase?: EraseRunRecord
   }
-  interface ProvidedContext {
-    eraseArtifactRoot: string
-  }
   interface TestArtifactRegistry {
     [eraseArtifactKey]: EraseArtifact
   }
 }
 
-export async function runEraseReplay(context: TestContext, directory: string): Promise<EraseRunRecord> {
+export async function runEraseReplay(context: TestContext): Promise<EraseRunRecord> {
   const startedAt = new Date().toISOString()
   const finalRecord: EraseRunRecord = { assertions: [], checks: [], files: [] }
   let failure: unknown
@@ -71,7 +69,8 @@ export async function runEraseReplay(context: TestContext, directory: string): P
     )
   }
   try {
-    if (!isAbsolute(directory)) throw new Error("Erase artifact directory must be an explicit absolute path")
+    mkdirSync(ERASE_REPLAY_ROOT, { recursive: true })
+    const directory = mkdtempSync(join(ERASE_REPLAY_ROOT, "erase-"))
     const snapshot = probeSuiteSnapshot()
     const dirt = uncommittedCollectorDirt(undefined, snapshot)
     if (dirt) throw new Error("Erase capture requires committed source inputs:\n" + dirt)
@@ -112,7 +111,6 @@ export async function runEraseReplay(context: TestContext, directory: string): P
       geometry: HEADLESS_TERMINAL,
       blobs: [],
     })
-    mkdirSync(directory, { recursive: true })
     const capturePath = saveDaemonProbeRun(capture, directory)
     finalRecord.captureRunId = capture.runId
     finalRecord.files.push(capturePath)
@@ -155,13 +153,14 @@ export async function runEraseReplay(context: TestContext, directory: string): P
           criterionBranch: result.criterionBranch,
           observation: result.observation && { ...result.observation, featureId, rawReplyRef: featureId },
           coverage: result.notTested && { ...result.notTested, featureId, rawReplyRef: featureId },
-          diagnostic: precondition
-            ? {
-                kind: "collector-error",
-                name: "PreconditionFailed",
-                message: "Erase precondition failed: " + precondition.matcher,
-              }
-            : undefined,
+          diagnostic:
+            precondition && !result.tests?.some((test) => test.id === "criterion" && test.status === "test-failure")
+              ? {
+                  kind: "collector-error",
+                  name: "PreconditionFailed",
+                  message: "Erase precondition failed: " + precondition.matcher,
+                }
+              : undefined,
           rawReplyRef: featureId,
         })
         const index = assertion.results.findIndex((entry) => entry.featureId === featureId)

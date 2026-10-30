@@ -654,10 +654,7 @@ export function regionReadbackProbe(
           )
         }
         if (!grid("precondition", before, row.before)) {
-          // #30701, @cto ruling C: a seed whose only miss is an attribute the row paints (inverse, a
-          // background) leaves the claim's reference uncalibrated (TEST TODO naming it). Any other miss,
-          // missing characters or an attribute the seed declares absent, is a fixture that never
-          // landed, inconclusive by the row's own note.
+          // A missing painted seed is a failed precondition, not evidence about the row's claim.
           const painted = new Set<string>()
           const unpainted = row.before.map((cells) =>
             cells.map((cell): RegionReadbackCell => {
@@ -668,13 +665,15 @@ export function regionReadbackProbe(
             }),
           )
           if (painted.size > 0 && gridMatch(before, unpainted)) {
-            return parserStateResult(
-              null,
-              row.expected,
-              { before: responseGrid(before, row.before) },
-              undefined,
-              `${row.id}: the seed's painted ${[...painted].join(" and ")} on the region cells in the headless readback (the seed characters arrived without it)`,
+            const read = before.map((cells) =>
+              cells.map((cell) => ({ char: cell.char, bg: cell.bg, inverse: cell.inverse })),
             )
+            const reason = `PreconditionFailed: precondition failed: seed cells not painted (expected ${[...painted].join(" and ")} at ${JSON.stringify({ region: row.region, cells: row.before })}, read ${JSON.stringify(read)})`
+            return {
+              pass: false,
+              response: JSON.stringify({ before: responseGrid(before, row.before) }),
+              tests: [{ id: "criterion", status: "test-failure", reason }],
+            }
           }
           return parserStateResult(null, row.expected, { before: responseGrid(before, row.before) }, row.seedNote)
         }

@@ -1,8 +1,8 @@
 /**
- * @failure Erase capture/assertion reports lose domain results on success, deciding, precondition or replay failure.
+ * @failure Erase replay loses domain results, precondition identity or fixed artifact placement.
  * @level l2
- * @consumer Phase0 erase recorder entry on installed Vitest5.0.4 with owned source adapter identity.
- * @reach fs-walk <fixture-only: generated erase capture, assertion, report and attachment directory>
+ * @consumer Phase0 erase runner with owned source adapter identity.
+ * @reach fs-walk <fixture-only: generated erase capture, assertions, reports and attachments>
  * @testonly none
  */
 import { mkdtemp, readFile, readdir, rm } from "node:fs/promises"
@@ -12,18 +12,20 @@ import { expect, test } from "vitest"
 import { createVitest } from "vitest/node"
 import CensusReporter from "../packages/admin/reporter.ts"
 
-test.for(["success", "deciding", "precondition", "replay-failure"] as const)(
+test.for(["success", "deciding", "precondition", "replay-failure", "painted-seed"] as const)(
   "actual erase entry persists domain results: %s",
   async (mode) => {
     const directory = await mkdtemp(join(tmpdir(), "terminfo-erase-run-"))
+    const home = directory
     const reporter = new CensusReporter(directory)
     const nativeStates: string[] = []
     const runtime = await createVitest({
       root: join(dirname(import.meta.filename), "../packages/probes"),
       config: false,
       include: [mode === "success" ? "erase-replay.probe.ts" : "fixtures/erase-fault.fixture.ts"],
+      setupFiles: ["fixtures/erase-home.fixture.ts"],
       provide: {
-        eraseArtifactRoot: directory,
+        eraseTestHome: home,
         eraseFault: mode === "success" ? "deciding" : mode,
       },
       reporters: [
@@ -51,7 +53,7 @@ test.for(["success", "deciding", "precondition", "replay-failure"] as const)(
           ? { supported: 11 }
           : mode === "deciding"
             ? { supported: 10, unsupported: 1 }
-            : mode === "precondition"
+            : mode === "precondition" || mode === "painted-seed"
               ? { supported: 10, "test-failure": 1 }
               : { "test-failure": 11 }
       expect(report).toMatchObject({ counts })
@@ -69,6 +71,10 @@ test.for(["success", "deciding", "precondition", "replay-failure"] as const)(
         return
       }
       expect(record.error).toBeUndefined()
+      expect(record.files.length).toBeGreaterThan(0)
+      expect(record.files.every((path) => path.startsWith(join(directory, ".terminfo-dev", "replays") + "/"))).toBe(
+        true,
+      )
       expect(record.assertions).toHaveLength(2)
       expect(new Set([record.captureRunId, ...record.assertions.map(({ runId }) => runId)]).size).toBe(3)
       const outcomes = record.checks.map((records) => records.map(({ startedAt: _startedAt, ...outcome }) => outcome))
@@ -88,14 +94,30 @@ test.for(["success", "deciding", "precondition", "replay-failure"] as const)(
         ).toEqual(
           Object.fromEntries(record.checks[runIndex]!.map(({ featureId, startedAt }) => [featureId, startedAt])),
         )
-        const character = selected.find(({ featureId }) => featureId === "erase.character")
+        const target = mode === "painted-seed" ? "erase.el-with-attrs" : "erase.character"
+        const character = selected.find(({ featureId }) => featureId === target)
         expect(character?.status).toBe(
-          mode === "deciding" ? "unsupported" : mode === "precondition" ? "test-failure" : "supported",
+          mode === "deciding"
+            ? "unsupported"
+            : mode === "precondition" || mode === "painted-seed"
+              ? "test-failure"
+              : "supported",
         )
+        if (mode === "painted-seed") {
+          const capture = record.files[0]
+          if (!capture) throw new Error("Missing painted-seed capture path")
+          const live = JSON.parse(await readFile(join(dirname(capture), "painted-seed-live.json"), "utf8"))
+          expect(live).not.toHaveProperty("observation")
+          expect(live).not.toHaveProperty("assertions")
+          expect(character?.criterionBranch).toBeUndefined()
+          expect(live).toHaveProperty(
+            "tests",
+            character?.tests.map(({ id, status, reason }) => ({ id, status, reason })),
+          )
+          expect(character?.tests.every(({ assertionRefs }) => assertionRefs?.length === 0)).toBe(true)
+        }
         expect(
-          selected
-            .filter(({ featureId }) => featureId !== "erase.character")
-            .every(({ status }) => status === "supported"),
+          selected.filter(({ featureId }) => featureId !== target).every(({ status }) => status === "supported"),
         ).toBe(true)
       }
       for (const path of record.files) expect(JSON.parse(await readFile(path, "utf8"))).toBeTruthy()

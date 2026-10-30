@@ -2,7 +2,7 @@
 
 `@terminfo/probe-defs` defines term feature probes, their observations and the shared run model. Start at the [exports and probe registry](src/index.ts); [types.ts](src/types.ts) owns the record types.
 
-This describes the implemented system. Callbacks still perform live I/O and evaluate it together. The private viprobe package supplies the ordered record/read/replay core. Both TTY recording owners now derive their legacy display events from validated call logs. The selected eleven-probe erase runner reuses the existing region/history predicates through task-owned native checks and replays actual xterm.js effects offline. Artifact provenance, final domain mapping/reporting and delivery remain unfinished under recorder #30932; no stored grades or current admission change.
+This describes the implemented system. Callbacks still perform live I/O and evaluate it together. The private viprobe package supplies the ordered record/read/replay core. Both TTY recording owners derive their legacy display events from validated call logs. The selected eleven-probe erase runner captures actual xterm.js effects once and reasserts them twice offline with task-owned checks, bound artifact provenance and domain reporting. Its artifacts remain under the fixed private `~/.terminfo-dev/replays` root, with a separate directory per attempt. The wider collector migration and reassert CLI remain unfinished under recorder #30932; no stored grades or current admission change.
 
 ## Vocabulary and current code
 
@@ -133,6 +133,11 @@ Untestable or a negative. Every other identity keeps its existing measured crite
 - `CapturedRunDraft` requires measured subject, identity, time and origin. `CurrentProbeRun` additionally has `sealedAt`; `ProbeRun` aliases this current shape. Historical reader outputs retain their schema marker, canonical names and an absent source. Their assertion type may remain absent when retained historical evidence cannot establish it.
 
 The legacy callback `pass` still exists for the [diagnostic Vitest runner](../probes/run-unified.probe.ts), including the execution-only arm. Current collectors record observations/tests through `recordExecutedProbe`; even `pass: true` with an explicit FAILURE test stays failure. Cleanup #30929 removes `pass` from every arm.
+
+A region seed whose characters arrive without their painted background or inverse attribute fails the
+claim's precondition. Live and replay retain the same `criterion` TEST FAILURE and `PreconditionFailed`
+cause with expected cells and observed values; this is no negative assertion about the feature itself
+and creates no source-review row. Replay preserves that callback-provided cause alongside its native checks.
 
 The OSC 1 library criterion requires separate icon readback and a verified OSC 2 window-title control; an icon update must preserve that title. Missing icon readback remains coverage, while a failed title control is an execution failure. Both labels are restored after the attempt. Library OSC 117/119 resets reuse the color-reset helper's initial-query, distinct verified seed and reset-query sequence. Missing initial highlight readback or an unverified seed cannot establish reset support or absence; the original highlight color is restored after the attempt.
 
