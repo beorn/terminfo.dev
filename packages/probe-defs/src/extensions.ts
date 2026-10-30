@@ -1153,8 +1153,8 @@ function vtermAbsentOsc(id: string, code: number, sequence: string, effect: stri
       identity.integrity.kind !== "source" ||
       !identity.integrity.cleanTree ||
       identity.integrity.repository !== "git@github.com:beorn/vterm.git" ||
-      identity.integrity.revision !== "1cfc325f3aedd4617e437ee76e6a03fc2cc16438" ||
-      identity.integrity.treeOid !== "2ee13d2cb894e86ee9575dd6945f42028df44966"
+      identity.integrity.revision !== "53a9eb9291b7880f4dc6a39a6802301049997a72" ||
+      identity.integrity.treeOid !== "617ae6002c7befea7b3e43d11bf23e6b433e3d65"
     ) {
       return notTestedResult(`OSC ${code} ${effect}: no audited library target readback at this runtime`, {})
     }
@@ -1167,7 +1167,7 @@ function vtermAbsentOsc(id: string, code: number, sequence: string, effect: stri
       { fed, sentinel, engineState: null, engineStateReason: `No ${effect} target state is exposed at this pin` },
       sentinel.char === "X" ? undefined : "No rendered X cell to evaluate",
       sentinel.char === "X"
-        ? `vterm 1cfc325f3aedd4617e437ee76e6a03fc2cc16438 packages/vterm/src/screen.ts:3593-4053: handleOSC's switch (code) has no case ${code} or ${effect} target writer; independent source review required`
+        ? `vterm 53a9eb9291b7880f4dc6a39a6802301049997a72 packages/vterm/src/screen.ts:3596-4055: handleOSC's switch (code) has no case ${code} or ${effect} target writer; independent source review required`
         : undefined,
     )
   }

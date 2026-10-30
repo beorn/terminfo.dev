@@ -31,8 +31,8 @@ test.each([
     integrity: {
       kind: "source",
       repository: "git@github.com:beorn/vterm.git",
-      revision: "1cfc325f3aedd4617e437ee76e6a03fc2cc16438",
-      treeOid: "2ee13d2cb894e86ee9575dd6945f42028df44966",
+      revision: "53a9eb9291b7880f4dc6a39a6802301049997a72",
+      treeOid: "617ae6002c7befea7b3e43d11bf23e6b433e3d65",
       cleanTree: true,
     },
   } as const
@@ -57,7 +57,7 @@ test.each([
       expect(writes.join("")).toContain(sequence + "X")
       expect(result.criterionBranch).toBe("source-negative-review")
       expect(result.tests).toMatchObject([
-        { id: "review", status: "test-failure", reason: expect.stringContaining("1cfc325f") },
+        { id: "review", status: "test-failure", reason: expect.stringContaining("53a9eb92") },
       ])
       expect(result.observation).toMatchObject({ outcome: "inconclusive", assertionType: "buffer_state" })
       expect(JSON.parse(result.response!)).toMatchObject({
