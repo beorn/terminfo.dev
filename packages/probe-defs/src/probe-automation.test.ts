@@ -1636,13 +1636,13 @@ describe("OSC 8 link metadata observation", () => {
         runtimeFormat: "wasm",
         engineVersion: "0.3.3",
         adapterVersion: "0.10.2",
-        termlessRevision: "8b8664540f365fa0ba1d9b6400d3c4d1a160582c",
+        termlessRevision: "2d97417328b7b1d086f9396b9a1731216ed134cc",
         resolvedPath: "vendor/termless/packages/libvterm/src/index.ts",
         integrity: {
           kind: "source",
           repository: "git@github.com:beorn/termless.git",
-          revision: "8b8664540f365fa0ba1d9b6400d3c4d1a160582c",
-          treeOid: "11fe1c686758b41038ba25f10b4482a8e2dc4b5b",
+          revision: "2d97417328b7b1d086f9396b9a1731216ed134cc",
+          treeOid: "d47c013290cf7a9cb1dae316fd77c66a11a2925a",
           cleanTree: true,
         },
         loadedBinary: {
@@ -1657,7 +1657,7 @@ describe("OSC 8 link metadata observation", () => {
         kind: "native",
         engineVersion: "0.16.2",
         adapterVersion: "0.10.2",
-        termlessRevision: "8b8664540f365fa0ba1d9b6400d3c4d1a160582c",
+        termlessRevision: "2d97417328b7b1d086f9396b9a1731216ed134cc",
         loadedBinary: {
           path: "vendor/termless/packages/vt100-rust/termless-vt100-rust.node",
           sha256: "0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3",
@@ -1709,8 +1709,16 @@ describe("OSC 8 link metadata observation", () => {
         foreignIdentities.push(
           { ...identity, adapterVersion: "unreviewed-version" },
           { ...identity, termlessRevision: "0".repeat(40) },
+          { ...identity, termlessRevision: "8b8664540f365fa0ba1d9b6400d3c4d1a160582c" },
           { ...identity, loadedBinary: { ...identity.loadedBinary, path: "unreviewed/binary" } },
           { ...identity, loadedBinary: { ...identity.loadedBinary, sha256: "0".repeat(64) } },
+          {
+            ...identity,
+            loadedBinary: {
+              ...identity.loadedBinary,
+              sha256: "f309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96",
+            },
+          },
         )
       }
       if (identity.kind === "native") {
