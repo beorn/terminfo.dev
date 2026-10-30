@@ -1162,12 +1162,13 @@ const ABSENT_OSC_ENGINES = {
   },
   vt220: {
     kind: "source",
+    runtimeFormat: "js",
     engineVersion: "0.9.0",
     resolvedPath: "vendor/vterm/packages/vt220/src/index.ts",
     repository: "git@github.com:beorn/vterm.git",
     revision: "53a9eb9291b7880f4dc6a39a6802301049997a72",
     treeOid: "69366752918a6086c639123799cc3ac68d8083a0",
-    codes: [9, 22, 176, 440, 555, 666, 710, 777, 3008],
+    codes: [8, 9, 22, 176, 440, 555, 666, 710, 777, 3008],
     sourceCitation:
       "vt220 53a9eb9291b7880f4dc6a39a6802301049997a72 packages/vt220/src/screen.ts:703-718 handleOSC: no-semicolon return; cases 0/1/2 only",
   },
@@ -1192,18 +1193,6 @@ const ABSENT_OSC_ENGINES = {
     codes: [9, 22, 176, 440, 555, 666, 710, 777, 3008],
     sourceCitation:
       "@xterm/headless 6.0.0 bundle SHA256 17a90b650cf6b77cce2b98c4063884d43545e4ce177a54b76ccfc906f1aacaed, map SHA256 780e782badc8189491a469c9277b783e01911882ea84417b31e71294ea927d98: InputHandler.ts:292-331 OSC registrations and :201-203 logging-only fallback, OscParser.ts:145-146 fallback dispatch, CoreTerminal.ts:236-237 embedder hook; termless 84003d2c91610fe2743142675234a0fb3ec9cf1d packages/xtermjs/src/backend.ts registers no OSC handler",
-  },
-  vt220: {
-    kind: "source",
-    runtimeFormat: "js",
-    engineVersion: "0.9.0",
-    resolvedPath: "vendor/vterm/packages/vt220/src/index.ts",
-    repository: "git@github.com:beorn/vterm.git",
-    revision: "53a9eb9291b7880f4dc6a39a6802301049997a72",
-    treeOid: "69366752918a6086c639123799cc3ac68d8083a0",
-    codes: [8],
-    sourceCitation:
-      "vt220 53a9eb9291b7880f4dc6a39a6802301049997a72 packages/vt220/src/screen.ts:703-718 handleOSC switch, cases 0/1/2 only",
   },
   libvterm: {
     kind: "source",
