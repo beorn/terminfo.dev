@@ -527,7 +527,7 @@ const ALT_SCREEN_UNIMPLEMENTED_AUDITS: ReadonlyMap<string, string> = new Map([
   ],
   [
     "git@github.com:beorn/vterm.git@53a9eb9291b7880f4dc6a39a6802301049997a72:69366752918a6086c639123799cc3ac68d8083a0:vendor/vterm/packages/vt220/src/index.ts",
-    "vterm packages/vt220/src/screen.ts:145 'Main screen buffer (no alternate screen in VT100)', with :90 listing the alternate screen among what it does not cover; no CSI ? 1049 changes state in that source tree",
+    "vterm packages/vt220/src/screen.ts:145 'Main screen buffer (no alternate screen in VT220)', with :90 listing the alternate screen among what it does not cover; no CSI ? 1049 changes state in that source tree",
   ],
 ])
 
