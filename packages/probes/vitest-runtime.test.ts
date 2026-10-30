@@ -18,6 +18,7 @@ test("installed Vitest preserves task-owned checks and awaited reporter attachme
   const artifactBytes = new Map<string, unknown>()
   const finalRecordBytes = new Map<string, unknown>()
   const matcherEvaluations: number[] = []
+  const contracts: unknown[] = []
   const completed: Array<{ id: string; name: string; state: string; errors: string[]; attachmentsReady: boolean }> = []
   const directory = await mkdtemp(join(tmpdir(), "terminfo-vitest-runtime-"))
   const reporter: Reporter = {
@@ -33,6 +34,11 @@ test("installed Vitest preserves task-owned checks and awaited reporter attachme
     },
     // Public TaskMeta survives failed tasks; final records are persisted here, never through final annotate.
     async onTestCaseResult(task) {
+      const contract = task.meta().terminfoCheckContract
+      if (contract) {
+        contracts.push({ ...contract, state: task.result().state })
+        return
+      }
       const finalRecord = task.meta().terminfoRuntimeProof
       const evaluations = task.meta().terminfoMatcherEvaluations
       if (typeof evaluations === "number") matcherEvaluations.push(evaluations)
@@ -68,6 +74,7 @@ test("installed Vitest preserves task-owned checks and awaited reporter attachme
   try {
     await runtime.start()
     expect(completed).toHaveLength(2)
+    expect(contracts).toEqual([{ finishThrew: true, prematureCount: null, state: "failed" }])
     expect(Math.max(...matcherEvaluations)).toBe(4)
     expect(new Set(completed.map((task) => task.id)).size).toBe(2)
     for (const [label, value] of [

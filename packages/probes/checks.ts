@@ -121,6 +121,7 @@ export function withChecks<M extends MatcherMap>(
     precondition: (name, ...parameters) => run("precondition", name, parameters),
     finish() {
       if (session.failure) throw session.failure
+      if (session.active) return incomplete(session, "Check session cannot finish while its matcher is active")
       session.closed = true
       sessions.delete(context.task)
       return Object.freeze([...session.checks])

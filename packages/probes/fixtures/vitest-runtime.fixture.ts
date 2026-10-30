@@ -33,6 +33,7 @@ declare module "vitest" {
   interface TaskMeta {
     terminfoRuntimeProof?: RuntimeFinalRecord
     terminfoMatcherEvaluations?: number
+    terminfoCheckContract?: { finishThrew: boolean; prematureCount: number | null }
   }
   interface Matchers<R extends void | Promise<void> = void | Promise<void>, T = unknown> {
     toRecorderRuntimeEqual(expected: number): R
@@ -56,6 +57,32 @@ let arrivals = 0
 let release: () => void
 const bothRunning = new Promise<void>((resolve) => {
   release = resolve
+})
+
+// A caught integration error must not certify an empty result while its matcher is still running.
+test("a matcher cannot finish its own active check session", (context) => {
+  let prematureCount: number | null = null
+  const session = withChecks(context, {
+    mode: "replay",
+    matchers: {
+      toFinishInsideMatcher(received: number) {
+        prematureCount = session.finish().length
+        return { pass: received === 1, actual: received, expected: 1, message: () => "premature finish" }
+      },
+    },
+  })
+  try {
+    session.check("toFinishInsideMatcher", 1)
+  } catch {
+    // Deliberately caught: the runner-owned finish must still reject this session.
+  }
+  let finishThrew = false
+  try {
+    session.finish()
+  } catch (error) {
+    finishThrew = error instanceof Error && error.name === "IncompleteReplay"
+  }
+  context.task.meta.terminfoCheckContract = { finishThrew, prematureCount }
 })
 
 // These remain real failed tasks; the outer test verifies the exact soft failure and final records.
