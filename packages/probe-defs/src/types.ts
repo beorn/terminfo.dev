@@ -706,6 +706,8 @@ export interface HistoricalInterpretation {
   verifiesIdentity?: boolean
   /** Controls evidence shown by the site and API; not a privacy control in this public repository. */
   presentsEvidence?: boolean
+  /** Required on a presentation decision: the non-author acceptor, their GO message id and an ISO time with an offset. */
+  accepted?: { by: string; wire: string; at: string }
   origin?: "documentation"
 }
 
@@ -726,6 +728,7 @@ export interface CaptureDecision {
   observation?: never
   verifiesIdentity?: never
   presentsEvidence?: never
+  accepted?: never
   origin?: never
 }
 export type Interpretation = HistoricalInterpretation | CaptureDecision
