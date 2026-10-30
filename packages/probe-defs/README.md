@@ -55,7 +55,7 @@ observation or assertion. The application arm remains TEST TODO until terminal-o
 
 The pinned vterm 0.9.0 library arms for OSC 440, 555 and 710 feed their exact commands and a cell-X
 consumption control. A rendered X retains `source-negative-review`, its actual fed/cell state and a
-negative buffer-state assertion for independent review of the absent handler at source1cfc325f.
+negative buffer-state assertion for independent review of the absent handler at source53a9eb92.
 The control does not measure audio, flash or font state; that target remains explicitly unexposed.
 Other identities keep named coverage, and a missing X grants no source-review negative.
 
