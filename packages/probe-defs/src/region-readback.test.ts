@@ -631,7 +631,7 @@ test("a pixel query answered with a sentinel reports query evidence, not a zero-
   const fake = ownedWindow({ repaintAfterPolls: 1, regionDigest: () => "seed" })
   const ctx: TermProbeSource = {
     ...fake.ctx,
-    queryWithSentinelOutcome: async () => ({ match: null, reason: "sentinel", raw: "\x1b[c", rawBase64: "" }),
+    queryWithSentinelOutcome: async () => ({ match: null, reason: "sentinel", raw: "\x1b[?1;2c", rawBase64: "" }),
     capture: async (request) => ({
       role: request.role,
       label: request.label,
@@ -656,6 +656,14 @@ test("a pixel query answered with a sentinel reports query evidence, not a zero-
   expect(result.observation.outcome).toBe("inconclusive")
   expect(result.observation.assertionType).toBe("query_reply")
   expect(result.observation.note).toContain("CSI 16 t")
+  expect(result.tests).toMatchObject([
+    {
+      id: "criterion",
+      status: "test-failure",
+      reason: expect.stringContaining("this run cannot map cells onto the captured window"),
+    },
+  ])
+  expect(result.assertions).toBeUndefined()
 })
 
 /**

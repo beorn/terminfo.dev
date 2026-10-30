@@ -663,7 +663,10 @@ export async function captureRegionGeometry(
     if (!retainedReply) {
       return { pass: false, tests: [{ id: "criterion", status: "test-failure", reason: note }] }
     }
-    return inconclusive(id, note, "insufficient-evidence", "query_reply")
+    return {
+      ...inconclusive(id, note, "insufficient-evidence", "query_reply"),
+      tests: [{ id: "criterion", status: "test-failure", reason: note }],
+    }
   }
   return reported
 }
