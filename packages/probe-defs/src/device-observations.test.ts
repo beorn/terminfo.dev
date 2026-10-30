@@ -667,12 +667,15 @@ describe("window-operation qualification", () => {
     }
   })
 
-  // #31735, @cto 863bef67: when both CSI 22;0t and CSI 23;0t are source-audited as unimplemented in the loaded
-  // WASM artifact (ghostty 0.4.0 stream_handler.zig:343-346; libvterm 0.3.3 state.c:978), an observed setup +
-  // un-restored title grades Unsupported by source citation; failed setup or unaudited artifacts stay inconclusive.
+  // #31735, #31387, @cto 863bef67: when both CSI 22;0t and CSI 23;0t are source-audited as unimplemented in the loaded
+  // binary artifact (ghostty 0.4.0 stream_handler.zig:343-346; libvterm 0.3.3 state.c:978; vt100-rust 0.16.2
+  // perform.rs:132-156; wezterm 0.1.0-fork.5 terminalstate/mod.rs:2090-2095), an observed setup + un-restored title
+  // grades Unsupported by source citation; failed setup or unaudited artifacts stay inconclusive.
   test.each([
     ["d80a8110258a124fb6ff52a6fe149b8e39b5180d986907cc9fb7dc9143c3f3d9", "stream_handler.zig:343-346"],
     ["5937bd79139ee5856bcf1bd619cc44fcd2d750d3def3066a74956678cdaaaeb2", "src/state.c:978"],
+    ["0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3", "src/perform.rs:132-156"],
+    ["0f56a805793d7d829daa617f1323aacff0d73fe868747b0d077c6af315e2aab8", "src/terminalstate/mod.rs:2090-2095"],
   ] as const)(
     "audited title-stack artifact %s grades Unsupported by source only after observed setup",
     (sha256, cite) => {
@@ -726,6 +729,93 @@ describe("window-operation qualification", () => {
         // Unaudited digest stays inconclusive.
         const unaudited = callback(id).headless(makeCtx(["pushed-title", "new-title", "new-title"], "f".repeat(64)))
         expect(unaudited.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+      }
+    },
+  )
+
+  test.each([
+    [
+      "vendor/vterm/packages/vt100/src/index.ts",
+      "5ffc7ad9ae120d0bf93c64b0fdc712eb40892896",
+      "packages/vt100/src/screen.ts:251-358",
+    ],
+    [
+      "vendor/vterm/packages/vt220/src/index.ts",
+      "69366752918a6086c639123799cc3ac68d8083a0",
+      "packages/vt220/src/screen.ts:305-428",
+    ],
+  ] as const)(
+    "audited title-stack JS source tree %s (%s) grades Unsupported by source only after observed setup",
+    (resolvedPath, treeOid, cite) => {
+      for (const id of ["device.xtwinops-22", "device.xtwinops-23"] as const) {
+        const baseIdentity = {
+          kind: "js" as const,
+          runtimeFormat: "js" as const,
+          engineVersion: "0.9.0",
+          adapterVersion: "0.10.2",
+          termlessRevision: "d5e6248bfb080c3065f81b78c45bdfe1b37c06d6",
+          resolvedPath,
+          integrity: {
+            kind: "source" as const,
+            repository: "git@github.com:beorn/vterm.git",
+            revision: "53a9eb9291b7880f4dc6a39a6802301049997a72",
+            treeOid,
+            cleanTree: true,
+          },
+        }
+        const makeCtx = (
+          titles: readonly [string, string, string],
+          runtimeIdentity: unknown = baseIdentity,
+        ): LibProbeSource => {
+          let index = 0
+          return {
+            feed: () => undefined,
+            runtimeIdentity,
+            getTitle: () => titles[index++]!,
+          } as unknown as LibProbeSource
+        }
+
+        const negative = callback(id).headless(makeCtx(["pushed-title", "new-title", "new-title"]))
+        expect(negative.observation).toMatchObject({
+          outcome: "unsupported",
+          assertionType: "buffer_state",
+          note: "negative by source citation",
+        })
+        expect(negative.assertions).toMatchObject([
+          { kind: "negative", assertionType: "buffer_state", observed: negative.response },
+        ])
+        expect(JSON.parse(negative.response!)).toMatchObject({
+          original: "pushed-title",
+          changed: "new-title",
+          restored: "new-title",
+          revision: "53a9eb9291b7880f4dc6a39a6802301049997a72",
+          treeOid,
+          sourceCitation: expect.stringContaining(cite),
+        })
+
+        // Real restoration still wins over the audit table.
+        const positive = callback(id).headless(makeCtx(["pushed-title", "new-title", "pushed-title"]))
+        expect(positive.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
+
+        // Unobservable setup stays inconclusive even on an audited source tree.
+        const unobservable = callback(id).headless(makeCtx(["", "", ""]))
+        expect(unobservable.observation).toMatchObject({
+          outcome: "inconclusive",
+          reason: "insufficient-evidence",
+          note: "Title setup was not observable",
+        })
+
+        // Any dirty or mutated source identity stays inconclusive.
+        for (const mutated of [
+          { ...baseIdentity, integrity: { ...baseIdentity.integrity, cleanTree: false } },
+          { ...baseIdentity, integrity: { ...baseIdentity.integrity, revision: "f".repeat(40) } },
+          { ...baseIdentity, integrity: { ...baseIdentity.integrity, treeOid: "f".repeat(40) } },
+          { ...baseIdentity, integrity: { ...baseIdentity.integrity, repository: "git@github.com:other/vterm.git" } },
+          { ...baseIdentity, resolvedPath: "vendor/vterm/packages/other/src/index.ts" },
+        ]) {
+          const res = callback(id).headless(makeCtx(["pushed-title", "new-title", "new-title"], mutated))
+          expect(res.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+        }
       }
     },
   )
