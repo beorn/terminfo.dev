@@ -112,9 +112,12 @@ test.each(["cursor.hide", "modes.insert-replace"] as const)(
 test.each(["sgr.bold", "cursor.hide", "modes.insert-replace"] as const)(
   "%s never grades unsupported when the readback reply is missing",
   async (id) => {
-    // Keep this query-only: an available capture would test pixel geometry instead of the missing reply.
-    const { capture: _capture, ...source } = kittySource(false)
-    const result = await termProbe(id)({ ...source, queryCursorPosition: async () => null })
+    const source = kittySource(false)
+    // IRM falls through to capture after DECRQM silence; select its query-only path for this missing-reply check.
+    const { capture: _capture, ...queryOnly } = source
+    const result = await termProbe(id)(
+      id === "modes.insert-replace" ? { ...queryOnly, queryCursorPosition: async () => null } : source,
+    )
     expect(result.pass).toBe(false)
     if (id === "modes.insert-replace") {
       // IRM falls through to its cell fixture; a missing cursor reply is an execution failure, not a verdict.
