@@ -263,6 +263,9 @@ it.each([
   ["matching", "linux-poststart"],
   ["matching", "linux-poststart-capture"],
   ["matching", "linux-poststart-final"],
+  ["matching", "macos-poststart"],
+  ["matching", "macos-prestart"],
+  ["matching", "macos-untrusted"],
   ["matching", "empty-probes"],
 ] as const)(
   "retains a private %s-suite historical artifact after %s without current admission",
@@ -339,6 +342,8 @@ it.each([
     let actualRouteRunId: string | undefined
     const actualStartedAt = "2026-10-29T07:01:02.000Z"
     const actualError = "original Linux fixture collector failure"
+    const macosContexts = ["ghostty", "cursor", "com.microsoft.VSCode", "cmux", "alacritty", "wezterm"]
+    const hostedDrafts = new Map<string, { path: string; bytes: string }>()
     const launcher = vi.spyOn(childProcesses, "spawnSync").mockImplementation((command, args, options) => {
       if (!Array.isArray(args)) throw new Error("expected explicit Linux launcher argv")
       const stdio = options?.stdio
@@ -399,16 +404,46 @@ it.each([
             }),
           )
         }
-        if (args[1] === "watch") return respond("workflow fixture result", mac ? 0 : 1)
+        if (args[1] === "watch")
+          return respond("workflow fixture result", inputChange.startsWith("macos-") ? 1 : mac ? 0 : 1)
         if (args[1] === "download") {
           const artifacts = args[args.indexOf("--dir") + 1]
           if (typeof artifacts !== "string") throw new Error("expected hosted artifact output directory")
           for (const id of mac
-            ? ["terminal-app", "iterm2", "ghostty", "alacritty", "wezterm", "cursor", "com.microsoft.VSCode"]
+            ? ["terminal-app", "iterm2", "ghostty", "alacritty", "wezterm", "cursor", "com.microsoft.VSCode", "cmux"]
             : ["windows-terminal", "alacritty"]) {
             const folder = join(artifacts, `${mac ? "macos" : "win32"}-${id}-${args[2]}-1`)
             mkdirSync(folder, { recursive: true })
-            writeFileSync(join(folder, "run.json"), "{}")
+            if (inputChange.startsWith("macos-") && macosContexts.includes(id)) {
+              // The real six-context failure retained completed drafts after canonical output failed.
+              // A job-start marker alone is deliberately insufficient evidence of a collector start.
+              writeFileSync(join(folder, "job-start.json"), JSON.stringify({ phase: "job-start" }))
+              if (inputChange !== "macos-prestart") {
+                const draft = JSON.parse(
+                  readFileSync(join(dirname(dirname(dirname(artifacts))), `term-${id}-macos.draft.json`), "utf8"),
+                ) as RunDraft
+                draft.rawReplies["collector.collectionAttempt"] = JSON.stringify({
+                  ids: ["sgr.bold"],
+                  startedAt: actualStartedAt,
+                  result: "completed",
+                })
+                if (inputChange === "macos-untrusted") draft.runId = "another-delegated-run"
+                const output = join(folder, "artifacts")
+                mkdirSync(output)
+                const path = join(
+                  output,
+                  `${JSON.parse(readFileSync(join(dirname(dirname(dirname(artifacts))), `term-${id}-macos.draft.json`), "utf8")).runId}.draft.json`,
+                )
+                const bytes = JSON.stringify(draft)
+                writeFileSync(path, bytes)
+                hostedDrafts.set(id, { path, bytes })
+                writeFileSync(join(folder, "collector-exit"), "1\n")
+                writeFileSync(
+                  join(folder, "collector.log"),
+                  "phase=collector-invoked\nphase=collector-exited status=1\n",
+                )
+              }
+            } else writeFileSync(join(folder, "run.json"), "{}")
             // 30035: exercise the actual development collection boundary, including its retained bytes.
             // The recipe itself is tested independently; this case proves the caller passes verified context.
             if (textCase && id === "terminal-app") {
@@ -520,8 +555,9 @@ it.each([
             ]
           : []
       // AC1: the existing full-census fixture otherwise hides ignored context/probe selections.
-      const selection =
-        inputChange === "hosted-selected"
+      const selection = inputChange.startsWith("macos-")
+        ? { contexts: macosContexts.map((id) => `${id}/macos`), ids: ["sgr.bold"] }
+        : inputChange === "hosted-selected"
           ? { contexts: ["terminal-app/macos", "windows-terminal/windows"], ids: ["sgr.bold"] }
           : inputChange === "hosted-one-os"
             ? { contexts: ["com.microsoft.VSCode/macos"], ids: ["sgr.bold"] }
@@ -539,6 +575,30 @@ it.each([
       const pass = await collectPass(directory, frozenSuite, { runner: "local" }, deferrals, selection)
       expect(pass.mode).toBe(frozenSuite ? "admit" : "development")
       if (frozenSuite) expect(pass.freeze?.id).toBe(frozenSuite)
+      if (inputChange.startsWith("macos-")) {
+        expect(pass.contexts).toHaveLength(6)
+        expect(pass.contexts.map((row) => row.status)).toEqual(
+          Array(6).fill(inputChange === "macos-poststart" ? "failed" : "not-started"),
+        )
+        expect(headless.collectHeadlessRuns).not.toHaveBeenCalled()
+        for (const row of pass.contexts) {
+          const original = hostedDrafts.get(row.context.id)
+          if (original) expect(readFileSync(original.path, "utf8")).toBe(original.bytes)
+          if (inputChange === "macos-poststart") {
+            expect(row.rawRun).toBe(original?.path)
+            expect(row.error).toContain("exited 1")
+            expect(row.error).toContain(join(row.directory!, "collector.log"))
+            const retained = JSON.parse(readFileSync(row.rawRun!, "utf8")) as RunDraft
+            expect(readCollectorAttempt(retained.rawReplies)?.startedAt).toBe(actualStartedAt)
+            expect(retained.results.every((result) => result.status === "test-todo")).toBe(true)
+          }
+          if (inputChange === "macos-untrusted") expect(row.reason).toContain("differs from delegated identity")
+        }
+        expect(pass.complete).toBe(false)
+        expect(planner).not.toHaveBeenCalled()
+        expect(writer).not.toHaveBeenCalled()
+        return
+      }
       if (selection && inputChange.startsWith("hosted-")) {
         // AC2: full-census fixtures pin omission, but cannot detect an ignored hosted subset.
         // Assert actual dispatch fields and original draft custody through the real coordinator.

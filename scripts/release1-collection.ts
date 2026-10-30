@@ -816,9 +816,14 @@ export async function collectPass(
       row.status = "classified"
     } catch (error) {
       row.error = `${labelOf(context)}: ${error instanceof Error ? error.message : String(error)}`
-      if (context.route === "linux-container" && row.directory) {
+      if ((context.route === "linux-container" || context.route === "hosted-workflow") && row.directory) {
         try {
-          const actualPath = linuxRawRun(row.directory)
+          const actualPath =
+            context.route === "linux-container"
+              ? linuxRawRun(row.directory)
+              : row.rawRun !== handed.path
+                ? row.rawRun
+                : undefined
           if (actualPath) {
             row.rawRun = actualPath
             // Bind failure custody only; canonical report/admission still validates the original bytes.
@@ -834,7 +839,7 @@ export async function collectPass(
               actual.suiteId !== snapshot.probeHash ||
               !actual.rawReplies
             ) {
-              throw new Error(`Linux failure output differs from delegated identity: ${actualPath}`)
+              throw new Error(`Collector failure output differs from delegated identity: ${actualPath}`)
             }
             const actualSelection = readCollectorSelection(actual.rawReplies)
             const actualAttempt = readCollectorAttempt(actual.rawReplies)
@@ -844,13 +849,13 @@ export async function collectPass(
               !actualAttempt ||
               actualAttempt.ids.join("\n") !== ids.join("\n")
             ) {
-              throw new Error(`Linux failure output differs from delegated selection/attempt: ${actualPath}`)
+              throw new Error(`Collector failure output differs from delegated selection/attempt: ${actualPath}`)
             }
             row.status = actualAttempt.startedAt ? "failed" : "not-started"
             continue
           }
         } catch (custodyError) {
-          row.reason = `Untrusted Linux failure output: ${custodyError instanceof Error ? custodyError.message : String(custodyError)}`
+          row.reason = `Untrusted collector failure output: ${custodyError instanceof Error ? custodyError.message : String(custodyError)}`
         }
       }
       const retained = JSON.parse(readFileSync(handed.path, "utf8")) as RunDraft
@@ -875,7 +880,7 @@ export async function collectPass(
       if (actualStart) {
         recordCollectionFailure(retained, actualStart, previousAttempt?.error ?? row.error, ids)
       }
-      row.status = retained.results.some((result) => result.status === "test-failure") ? "failed" : "not-started"
+      row.status = actualStart ? "failed" : "not-started"
       if (!actualStart) {
         for (const result of retained.results) {
           if (result.status === "test-todo" && ids.includes(result.featureId)) result.reason = row.error
@@ -1130,7 +1135,6 @@ function collectHostedArtifacts(
             throw new Error(`artifact escaped private directory: ${result.directory}`)
           }
           const raw = join(result.directory, "run.json")
-          if (existsSync(raw)) result.path = raw
           const lock = join(result.directory, "collector-bun.lock")
           if (createHash("sha256").update(readFileSync(lock)).digest("hex") !== lockSha256) {
             throw new Error(`hosted dependency lock differs from pass lock: ${lock}`)
@@ -1152,6 +1156,26 @@ function collectHostedArtifacts(
           ) {
             throw new Error(`hosted collector build differs from pass source/suite: ${result.directory}`)
           }
+          // A failed canonical save still leaves the collector's original, delegated draft.
+          // It establishes failure custody only; the normal path still requires run.json.
+          const initialized = drafts.get(coverageKey(context.kind, context.id, context.os))
+          if (!initialized) throw new Error(`Missing hosted context draft ${context.id}`)
+          const draft = join(result.directory, "artifacts", `${initialized.draft.runId}.draft.json`)
+          const candidate = existsSync(raw) ? raw : existsSync(draft) ? draft : undefined
+          if (candidate) {
+            const path = realpathSync(candidate)
+            if (!path.startsWith(`${result.directory}${sep}`))
+              throw new Error(`hosted raw output escaped private context: ${path}`)
+            result.path = path
+          }
+          const exit = join(result.directory, "collector-exit")
+          if (existsSync(exit)) {
+            const status = readFileSync(exit, "utf8").trim()
+            if (!/^\d+$/.test(status)) throw new Error(`Invalid collector exit status in ${exit}`)
+            if (Number(status) !== 0)
+              throw new Error(`collector exited ${status}; log ${join(result.directory, "collector.log")}`)
+          }
+          if (!existsSync(raw)) throw new Error(`hosted artifact has no validated raw run in ${result.directory}`)
         } catch (error) {
           result.error = error instanceof Error ? error.message : String(error)
         }
