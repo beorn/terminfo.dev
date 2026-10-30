@@ -15,7 +15,7 @@ import { nativeHostRecipeResult } from "./native-host-audit.ts"
 
 // The individual integrated APIs return parser/readback backends, not a terminal-owned application child.
 // These citations were read at this Termless pin; runtime identity alone is not the source audit.
-const TERM_FEATURES_API_REVISION = "d5e6248bfb080c3065f81b78c45bdfe1b37c06d6"
+const TERM_FEATURES_API_REVISION = "84003d2c91610fe2743142675234a0fb3ec9cf1d"
 const TERM_FEATURES_API_CITATIONS: Readonly<Record<string, readonly [string, string]>> = {
   "vendor/vterm/packages/vterm/src/index.ts": [
     "vterm",
@@ -94,7 +94,7 @@ function termFeaturesLibraryReview(ctx: LibProbeSource): ProbeCallbackResult {
     audit: {
       engine: citation[0],
       engineVersion: identity.engineVersion,
-      sourceCitation: `${citation[1]}; Termless@${TERM_FEATURES_API_REVISION} src/terminal/types.ts:275-320 TerminalBackend has no application-child environment API`,
+      sourceCitation: `${citation[1]}; Termless@${TERM_FEATURES_API_REVISION} src/terminal/types.ts:277-317 TerminalBackend has no application-child environment API`,
       apiRevision: TERM_FEATURES_API_REVISION,
       runtimeIdentity: identity,
     },

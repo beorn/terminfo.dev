@@ -781,7 +781,7 @@ it("TERM_FEATURES library coverage reaches an immutable Untestable review withou
         runtimeFormat: "js",
         engineVersion: "0.9.0",
         adapterVersion: "0.10.2",
-        termlessRevision: "d5e6248bfb080c3065f81b78c45bdfe1b37c06d6",
+        termlessRevision: "84003d2c91610fe2743142675234a0fb3ec9cf1d",
         resolvedPath: "vendor/vterm/packages/vterm/src/index.ts",
         integrity: {
           kind: "source",
@@ -807,7 +807,7 @@ it("TERM_FEATURES library coverage reaches an immutable Untestable review withou
       expect(JSON.parse(result.response!)).toMatchObject({
         audit: {
           engine: "vterm",
-          apiRevision: "d5e6248bfb080c3065f81b78c45bdfe1b37c06d6",
+          apiRevision: "84003d2c91610fe2743142675234a0fb3ec9cf1d",
           sourceCitation: expect.stringContaining("packages/vterm/src/backend.ts:63"),
         },
       })
