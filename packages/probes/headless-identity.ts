@@ -361,8 +361,14 @@ function loadedAddon(adapterDirectory: string): { path: string; sha256: string }
   return { path, sha256: sha256(readFileSync(path)) }
 }
 
-/** The `nativeTreeOid` recorded in the loaded native addon's `.receipt.json` (#31774). */
-export function readNativeArtifactTreeOid(adapterSpecifier: string): string | undefined {
+/**
+ * The `nativeTreeOid` recorded in the loaded native addon's `.receipt.json` (#31774).
+ * Kitty is typed `"native"` in `backends.json` but is a `kitty +runpy` subprocess bridge that loads no `.node` addon (#31810).
+ */
+export function readNativeArtifactTreeOid(adapterSpecifier: string, name?: string): string | undefined {
+  if (name === "kitty" || adapterSpecifier === "@termless/kitty" || adapterSpecifier.endsWith("/kitty")) {
+    return undefined
+  }
   const adapter = resolvedPackage(adapterSpecifier, MODULE_PATH)
   const loadedBinary = loadedAddon(adapter.directory)
   const receipt: unknown = JSON.parse(readFileSync(`${loadedBinary.path}.receipt.json`, "utf8"))

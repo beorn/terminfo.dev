@@ -183,7 +183,7 @@ async function collectOne(name: string, directory: string): Promise<string> {
     const runtimeIdentity = await headlessRuntimeIdentity(name, entry.package, entry.type)
     draft.runtimeIdentity = runtimeIdentity
     checkpoint()
-    if (entry.type === "native") {
+    if (entry.type === "native" && name !== "kitty") {
       const declaration = hasExtension<ReplyDeliveryExtension>(loaded, "reply-delivery")
         ? loaded.replyDelivery
         : undefined
@@ -191,7 +191,7 @@ async function collectOne(name: string, directory: string): Promise<string> {
         name,
         runtimeIdentity,
         declaration,
-        readNativeArtifactTreeOid(entry.package),
+        readNativeArtifactTreeOid(entry.package, name),
         draftPath,
       )
     }
