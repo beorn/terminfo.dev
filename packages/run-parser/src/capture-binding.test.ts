@@ -832,11 +832,11 @@ it.each(["device.term-features", "erase.screen.scrollback"])(
         expect(result.observation).toBeUndefined()
         expect(result.assertions).toBeUndefined()
         const retained = JSON.parse(result.response!)
-        const audit = history ? retained : retained.audit
-        expect(audit).toMatchObject({
+        const audit = {
           runtimeIdentity: draft.runtimeIdentity,
           sourceCitation: expect.stringContaining(citation),
-        })
+        }
+        expect(retained).toMatchObject(history ? audit : { audit })
         if (!history) {
           expect(retained).toMatchObject({
             audit: {
@@ -881,10 +881,11 @@ it.each(["device.term-features", "erase.screen.scrollback"])(
     expect(parsed.rawReplies[artifact.rawReplyRef]).toBe(artifact.source)
     expect(parsed.assertions).toEqual([])
     const retained = JSON.parse(parsed.rawReplies[featureId]!)
-    expect(history ? retained : retained.audit).toMatchObject({
+    const audit = {
       sourceCitation: expect.stringContaining(citation),
       runtimeIdentity: draft.runtimeIdentity,
-    })
+    }
+    expect(retained).toMatchObject(history ? audit : { audit })
     expect(parsed.rawReplies[featureId]).toBe(draft.rawReplies[featureId])
   },
 )
