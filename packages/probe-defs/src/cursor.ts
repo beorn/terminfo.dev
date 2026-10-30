@@ -419,7 +419,10 @@ export const cursorProbes: ProbeDefinition[] = [
             })
             ctx.write("\x1b[?25l")
             const target = await capture({ role: "target", label: "Hidden cursor requested at the same cell" })
-            const observed = JSON.stringify({ rows, cols, cursor: { row: 2, col: 3 }, control, target })
+            // The restore is a compared frame, not the cleanup below (#31812): its rule names a restored frame.
+            ctx.write("\x1b[?25h")
+            const restored = await capture({ role: "control", label: "Shown again at the same cell" })
+            const observed = JSON.stringify({ rows, cols, cursor: { row: 2, col: 3 }, control, target, restored })
             return {
               pass: false,
               response: observed,
@@ -429,7 +432,7 @@ export const cursorProbes: ProbeDefinition[] = [
                 {
                   id: "review",
                   status: "test-todo",
-                  reason: "Valid cursor control and target frames; required independent review pending",
+                  reason: "Valid cursor control, hidden and restored frames; required independent review pending",
                 },
               ],
               observation: {
@@ -437,15 +440,15 @@ export const cursorProbes: ProbeDefinition[] = [
                 reason: "insufficient-evidence",
                 assertionType: "screenshot",
                 screenshotRef: target.ref,
-                frames: [control, target],
-                note: "No measured raster, so the same cell cannot be compared by raw-pixel digest; the pair needs independent review and blink phase cannot establish a negative",
+                frames: [control, target, restored],
+                note: "No measured raster, so the same cell cannot be compared by raw-pixel digest; the three frames need independent review and blink phase cannot establish a negative",
               },
               assertions: [
                 {
                   assertionType: "screenshot" as const,
                   kind: "positive",
                   expected:
-                    "Control visibly shows a cursor at row 2 column 3 between L and R; target removes that cursor while other seeded content is unchanged",
+                    "Control visibly shows a cursor at row 2 column 3 between L and R; target removes that cursor while other seeded content is unchanged; the restored frame shows the cursor at that cell again",
                   observed,
                   note: "capture-only assertion; no cell-aligned digest was available",
                 },
