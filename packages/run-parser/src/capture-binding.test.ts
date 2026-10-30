@@ -772,6 +772,25 @@ it("TERM_FEATURES library coverage reaches an immutable Untestable review withou
     },
     (draft) => {
       if (!definition?.lib) throw new Error("TERM_FEATURES has no library review arm")
+      // Collector-input fixture at the audited engine/API pin; this does not attest a loaded engine.
+      draft.intendedSubject = { kind: "lib", id: "vterm", version: "0.9.0" }
+      draft.subject!.id = "vterm"
+      draft.subject!.version = "0.9.0"
+      draft.runtimeIdentity = {
+        kind: "js",
+        runtimeFormat: "js",
+        engineVersion: "0.9.0",
+        adapterVersion: "0.10.2",
+        termlessRevision: "6ffc0df79756fcc259d87131681641606540e512",
+        resolvedPath: "vendor/vterm/packages/vterm/src/index.ts",
+        integrity: {
+          kind: "source",
+          repository: "git@github.com:beorn/vterm.git",
+          revision: "1cfc325f3aedd4617e437ee76e6a03fc2cc16438",
+          treeOid: "2ee13d2cb894e86ee9575dd6945f42028df44966",
+          cleanTree: true,
+        },
+      }
       const result = definition.lib({
         runtimeIdentity: draft.runtimeIdentity,
         feed: () => {
@@ -785,6 +804,13 @@ it("TERM_FEATURES library coverage reaches an immutable Untestable review withou
       expect(result.observation).toBeUndefined()
       expect(result.assertions).toBeUndefined()
       expect(JSON.parse(result.response!)).toMatchObject({ audit: { runtimeIdentity: draft.runtimeIdentity } })
+      expect(JSON.parse(result.response!)).toMatchObject({
+        audit: {
+          engine: "vterm",
+          apiRevision: "6ffc0df79756fcc259d87131681641606540e512",
+          sourceCitation: expect.stringContaining("packages/vterm/src/backend.ts:63"),
+        },
+      })
       expect(result.notTested?.noObservable).toContain("child-environment export")
       draft.rawReplies[featureId] = result.response!
       draft.results = [
@@ -817,6 +843,9 @@ it("TERM_FEATURES library coverage reaches an immutable Untestable review withou
   expect(parsed.results?.[0]?.status).toBe("untestable")
   expect(parsed.rawReplies[artifact.rawReplyRef]).toBe(artifact.source)
   expect(parsed.assertions).toEqual([])
+  expect(JSON.parse(parsed.rawReplies[featureId]!)).toMatchObject({
+    audit: { sourceCitation: expect.stringContaining("packages/vterm/src/backend.ts:63") },
+  })
 })
 // Source-only prompt review is approved evidence, not a measured assertion. These explicit
 // collector-input fixtures exercise the canonical seam; they do not attest an engine build.
