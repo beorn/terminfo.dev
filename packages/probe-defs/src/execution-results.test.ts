@@ -76,6 +76,12 @@ it.each([
   expect(readCollectorSelection(draft.rawReplies)?.ids).toEqual(collection.ids)
   expect(readCollectorAttempt(draft.rawReplies)).toEqual(collection)
   expect(draft.results.map((result) => result.attempt)).toEqual([{ scope: "none" }, { scope: "none" }])
+  // Raw-row acceptance: run-level selection alone cannot explain an untouched row.
+  for (const result of draft.results) {
+    expect(result.reason).toMatch(
+      collection.ids.some((id) => id === result.featureId) ? /has not started/i : /not selected/i,
+    )
+  }
   expect(draft.runId).toBe("selected-attempt")
 })
 
