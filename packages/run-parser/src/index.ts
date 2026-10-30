@@ -2219,7 +2219,8 @@ export function decodeCollectorDraft(
         })
       }
       const selection = readCollectorSelection(records)
-      if (!selection || selection.ids.length || attempt.ids.length) refuse("collector.selection.ids")
+      if (!selection) return refuse("collector.selection.ids")
+      if (selection.ids.length || attempt.ids.length) refuse("collector.selection.ids")
       if (attempt.startedAt !== undefined) refuse("collector.collectionAttempt.startedAt")
       if (manifest.schemaVersion !== 4) refuse("schemaVersion")
       if (!nonempty(value.runId)) refuse("runId")
