@@ -1449,7 +1449,10 @@ export function recordExecutedProbe(input: {
           ? "test-todo"
           : "test-failure"
   const diagnosticReason = diagnostic?.kind === "collector-error" ? diagnostic.message : diagnostic?.note
-  const reason = diagnosticReason ?? observation?.note ?? coverage?.noObservable ?? observation?.reason
+  const reason =
+    !input.tests && !diagnostic && !coverage && observation?.outcome === "inconclusive"
+      ? "writer default: inconclusive observation without test rows; callback defect"
+      : (diagnosticReason ?? observation?.note ?? coverage?.noObservable ?? observation?.reason)
   const rawReplyRef = observation?.rawReplyRef ?? coverage?.rawReplyRef ?? input.rawReplyRef
   return finalizeProbeResult({
     featureId,

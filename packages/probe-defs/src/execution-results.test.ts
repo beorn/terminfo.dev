@@ -438,6 +438,36 @@ it("keeps an explicit unattempted visual review TODO and the capture unsealed", 
   expect(() => sealRunDraft(draft)).toThrow(/review pending/)
 })
 
+// #31740: row-emission tests cannot pin whose reason the writer synthesizes when a callback forgets its rows.
+it("names the writer default when an inconclusive capture callback omits its test rows", async () => {
+  let next = 0
+  const aligned = frames.map((frame) => ({ ...frame, regionRectangle: frames[0]!.regionRectangle }))
+  const callback = await sgrCaptureFrames(
+    { write() {}, capture: async () => aligned[next++]! } as unknown as TermProbeSource,
+    "control",
+    "target",
+    "bold target",
+    {},
+    undefined,
+    "normal control",
+  )
+  expect(callback.observation?.outcome).toBe("inconclusive")
+  const { tests: _omitted, ...rowless } = callback
+  const result = record(rowless)
+  expect(result).toMatchObject({
+    status: "test-failure",
+    reason: "writer default: inconclusive observation without test rows; callback defect",
+    tests: [
+      {
+        id: "criterion",
+        status: "test-failure",
+        reason: "writer default: inconclusive observation without test rows; callback defect",
+      },
+    ],
+  })
+  expect(result.frames).toEqual(aligned)
+})
+
 // The existing visual-review fixture does not exercise the measured, repairable locale prerequisite.
 it("keeps measured 8-bit decoding as unmet UTF-8 prerequisite TODO without inventing a review", async () => {
   const callback = await utf8DecodingRefusal(
