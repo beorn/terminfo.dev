@@ -89,7 +89,7 @@ Free-form execution reasons and captured diagnostics pass the existing presentat
 
 Each contributing original source carries `trace`: the URL and SHA-256 receipt of its trace document, `/api/v3/traces/<run sha256>.json`. The document names the run's SHA-256, its recorded identity and admission rule, and holds every result without a presentation decision, keyed by feature ID:
 
-- the outcome or status, the evidence method and a reason code;
+- the outcome or status, the assertion type and a reason code;
 - the bytes the probe wrote, and each query's sequence and reason;
 - a headless engine's parser state;
 - each assertion's kind and expected text.
