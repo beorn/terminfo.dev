@@ -2392,7 +2392,7 @@
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
     "tags": ["osc", "xterm-extensions"],
     "body": "OSC 5 sets or queries special color resources used for text attributes. The sequence is <code>ESC ] 5 ; c ; spec BEL</code> where c identifies the special color: 0=bold, 1=underline, 2=blink, 3=reverse, 4=italic. To query: <code>ESC ] 5 ; c ; ? BEL</code>. These special colors override the rendered color of text with specific attributes — for example, making all bold text appear in a specific color regardless of the foreground setting. Support is limited to xterm and a few other terminals.",
-    "probe": "Query special color 0 (bold) with <code>OSC 5 ; 0 ; ? BEL</code>, verify response matches <code>OSC 5 ; 0 ; rgb:...</code> pattern.",
+    "probe": "Query special color 0 (bold) with <code>OSC 5 ; 0 ; ? BEL</code>. Expected: a complete reply <code>OSC 5 ; 0 ; rgb:R/G/B</code>, one to four hex digits per channel, ended by BEL or ST; that reply is the supported result, also when it arrives after the DA1 sentinel. When the only output is the on-time answer to the DA1 sentinel, with nothing after it through the grace window, the result is unsupported. Output that contains <code>OSC 5 ; 0 ;</code> but no complete color is inconclusive (invalid reply), other output is inconclusive (no response), and no output at all is TEST FAILURE.",
     "baseline": "rich",
     "sequence": "ESC ] 5 ; c ; spec BEL"
   },
