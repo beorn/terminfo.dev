@@ -240,6 +240,14 @@ new comparison or grade.
 
 `TermProbeSource.capture` supplies owned pixel capture; `cells` is a separate terminal-text route for declared cell readback. [Region readback](src/region-readback.ts) and callbacks evaluate the resulting evidence.
 
+The app exit/1047/insert-mode rows declare character readback and use that same region oracle.
+Exit and 1047 paint primary then alternate markers; leaving the alternate is compared with a plainly
+painted primary reference. Text reads use the existing character change criterion; pixel reads retain
+their declared freshness checks. An unqualified entry leaves any failed exit roundtrip as named TODO,
+never an exit negative. A restored primary marker still leaves exact 1047 clear-on-exit and 1049 saved
+cursor/scrollback unmeasured. Same-1047 re-entry does not prove clearing. IRM keeps its query-first
+positives and recognized negatives; only an undecided query reaches the existing insertion fixture.
+
 **Timed and composited rows decide by pixels, never by an acknowledgement.** The kitty animation and
 unicode-placeholder rows read `capture` and compare region digests as raw bytes; neither a `_G` reply nor
 a first painted frame is evidence. Animation's observation is two target frames of one rectangle with no

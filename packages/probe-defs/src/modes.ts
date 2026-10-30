@@ -89,7 +89,7 @@ function captureRefusal(
   minCols: number,
   feature: string,
 ): ProbeCallbackResult | undefined {
-  if (!ctx.capture) return undefined
+  if (!ctx.capture && !ctx.cells) return undefined
   if (Number.isSafeInteger(ctx.rows) && Number.isSafeInteger(ctx.cols) && ctx.rows >= minRows && ctx.cols >= minCols) {
     return undefined
   }
@@ -109,28 +109,75 @@ function captureRefusal(
 async function primaryRestoreCapture(
   ctx: TermProbeSource,
   id: string,
-  mode: 47 | 1049,
+  mode: 47 | 1047 | 1049,
   primary: string,
   alternate: string,
 ): Promise<ProbeCallbackResult> {
   const leave = `\x1b[?${mode}l`
   const enter = `\x1b[?${mode}h`
   const baseline = `${leave}\x1b[0m\x1b[2J\x1b[H${primary}`
+  const alternateFrame = `${enter}\x1b[0m\x1b[2J\x1b[H${alternate}`
+  // An alternate seed makes restoration a change in the existing character oracle.
+  // Keep the unrelated ?47 recipe and its no-change pixel criterion intact.
+  const changesSeed = mode !== 47
   const result = await captureRegionVerdict(ctx, id, {
     region: { top: 1, left: 1, bottom: 1, right: Math.max(primary.length, alternate.length) },
     sentinel: { row: 2, col: 1 },
     cursorRow: 3,
     minRows: 3,
     minCols: 8,
-    seed: baseline,
-    edit: `${enter}\x1b[0m\x1b[2J\x1b[H${alternate}${leave}`,
+    seed: changesSeed ? `${baseline}${alternateFrame}` : baseline,
+    edit: changesSeed ? leave : `${alternateFrame}${leave}`,
     expected: baseline,
-    ignored: `${enter}\x1b[0m\x1b[2J\x1b[H${alternate}`,
-    discriminator: { signal: "primary-marker-restored", expected: "no-change" },
+    ignored: alternateFrame,
+    ...(ctx.captureKind !== "text-cells" && {
+      discriminator: {
+        signal: "primary-marker-restored",
+        expected: changesSeed ? ("change" as const) : ("no-change" as const),
+      },
+    }),
     cleanup: leave,
     timeoutMs: DEFAULT_TIMEOUT_MS,
   })
   if (!result) throw new Error(`${id}: owned primary restoration capture disappeared`)
+  if (result.observation?.outcome === "supported" || result.observation?.outcome === "unsupported") {
+    // The generic character oracle supplies the observation and assertion; name that same
+    // measured criterion before adding this callback's explicitly unmeasured facets.
+    result.tests ??= [{ id: "primary-marker-restored", status: result.observation.outcome, assertionRefs: [0] }]
+  }
+  const remainingFacets = {
+    id: "remaining-facets",
+    status: "test-todo" as const,
+    reason:
+      mode === 1049
+        ? "Primary-marker capture does not measure saved cursor or retained scrollback restoration"
+        : mode === 1047
+          ? "Primary-marker roundtrip does not measure exact alternate-buffer clear-on-exit; same-1047 re-entry cannot establish it"
+          : "Single alternate-screen roundtrip does not measure alternate contents surviving the next entry",
+  }
+  if (
+    mode !== 47 &&
+    result.observation &&
+    result.tests?.some((test) => test.id === "primary-marker-restored" && test.status === "unsupported")
+  ) {
+    // Distinct painted markers do not independently establish entry into another buffer.
+    // Without that prerequisite the failed roundtrip cannot be attributed to exit.
+    return {
+      ...result,
+      pass: false,
+      observation: {
+        ...result.observation,
+        outcome: "inconclusive",
+        reason: "insufficient-evidence",
+        note: "entry not qualified; failed primary restoration cannot establish an exit negative",
+      },
+      assertions: [],
+      tests: [
+        { id: "entry-qualified", status: "test-todo", reason: "entry not qualified before the failed exit roundtrip" },
+        remainingFacets,
+      ],
+    }
+  }
   if (
     result.tests?.some(
       (test) => test.id === "primary-marker-restored" && (test.status === "supported" || test.status === "unsupported"),
@@ -138,20 +185,13 @@ async function primaryRestoreCapture(
     result.assertions?.[0]
   ) {
     result.assertions.push({
-      assertionType: "screenshot",
+      assertionType: result.assertions[0].assertionType,
       kind: "positive",
       expected: `${id}: actual alternate marker ${alternate} differs from the independently painted primary ${primary} in the same crop behind its paint witness`,
       observed: result.response ?? "",
     })
     result.tests.push({ id: "alternate-marker-control", status: "supported", assertionRefs: [1] })
-    result.tests.push({
-      id: "remaining-facets",
-      status: "test-todo",
-      reason:
-        mode === 1049
-          ? "Primary-marker capture does not measure saved cursor or retained scrollback restoration"
-          : "Single alternate-screen roundtrip does not measure alternate contents surviving the next entry",
-    })
+    result.tests.push(remainingFacets)
   }
   return result
 }
@@ -1308,7 +1348,8 @@ export const modesProbes: ProbeDefinition[] = [
         }
         const refusal = captureRefusal(ctx, 3, 8, "Alt-screen exit")
         if (refusal) return refusal
-        if (ctx.capture) return primaryRestoreCapture(ctx, "modes.alt-screen.exit", 1049, "PRIMARY", "ALTONLY")
+        if (ctx.capture || ctx.cells)
+          return primaryRestoreCapture(ctx, "modes.alt-screen.exit", 1049, "PRIMARY", "ALTONLY")
         ctx.write("\x1b[?1049h") // enter
         try {
           ctx.write("\x1b[3;3H") // move somewhere in alt
@@ -1332,6 +1373,8 @@ export const modesProbes: ProbeDefinition[] = [
       },
     ),
     termNeedsGeometry: true,
+    cellReadback: true,
+    textClaim: "characters",
   },
 
   // Bracketed paste
@@ -1487,7 +1530,7 @@ export const modesProbes: ProbeDefinition[] = [
             }
           }
         }
-        if (ctx.capture) {
+        if (ctx.capture || ctx.cells) {
           const reset = "\x1b[4l\x1b[0m\x1b[2J\x1b[H"
           const result = await captureRegionVerdict(
             ctx,
@@ -1502,7 +1545,9 @@ export const modesProbes: ProbeDefinition[] = [
               edit: `${reset}ABCD\x1b[1;1H\x1b[4hX\x1b[4l`,
               expected: `${reset}XABCD`,
               ignored: `${reset}XBCD`,
-              discriminator: { signal: "inserted-cells", expected: "change" },
+              ...(ctx.captureKind !== "text-cells" && {
+                discriminator: { signal: "inserted-cells", expected: "change" as const },
+              }),
               cleanup: "\x1b[4l",
               timeoutMs: DEFAULT_TIMEOUT_MS,
             },
@@ -1537,6 +1582,8 @@ export const modesProbes: ProbeDefinition[] = [
       },
     ),
     termNeedsGeometry: true,
+    cellReadback: true,
+    textClaim: "characters",
   },
 
   // SGR mouse encoding
@@ -1636,67 +1683,10 @@ export const modesProbes: ProbeDefinition[] = [
       (ctx) =>
         altScreenRoundtrip(ctx, ALT_SCREEN_1047, "roundtrip", "?1047 swaps and clears the visible alternate buffer"),
       async (ctx) => {
-        const refusal = captureRefusal(ctx, 1, 8, "?1047 alternate screen")
+        const refusal = captureRefusal(ctx, 3, 8, "?1047 alternate screen")
         if (refusal) return refusal
-        if (ctx.capture) {
-          try {
-            ctx.write("\x1b[?1047l\x1b[0m\x1b[2J\x1b[H\x1b[1;1HMAIN47")
-            const control = await ctx.capture!({
-              role: "control",
-              label: "Primary-screen marker MAIN47 before ?1047 is set",
-            })
-            ctx.write("\x1b[?1047h\x1b[1;1HALT1047")
-            const alternate = await ctx.capture!({
-              role: "target",
-              label: "Alternate-screen marker ALT1047 while ?1047 is set",
-            })
-            ctx.write("\x1b[?1047l")
-            const restored = await ctx.capture!({
-              role: "target",
-              label: "Primary-screen marker after ?1047 is reset: MAIN47 restored and ALT1047 absent",
-            })
-            const observed = JSON.stringify({
-              rows: ctx.rows,
-              cols: ctx.cols,
-              control: control.label,
-              alternate: alternate.label,
-              restored: restored.label,
-            })
-            return {
-              pass: false,
-              response: observed,
-              observation: {
-                outcome: "inconclusive",
-                reason: "insufficient-evidence",
-                assertionType: "screenshot",
-                screenshotRef: restored.ref,
-                frames: [control, alternate, restored],
-                note: "Control shows MAIN47; the alternate frame shows ALT1047; the restored frame must show MAIN47 again with ALT1047 gone. Whether ?1047 actually swapped and cleared buffers requires independent pixel review",
-              },
-              criterionBranch: "visual-review",
-              tests: [
-                { id: "capture", status: "supported", assertionRefs: [0] },
-                {
-                  id: "review",
-                  status: "test-todo",
-                  reason:
-                    "1047 roundtrip frames captured; required independent review pending; clearing needs a second entry",
-                },
-              ],
-              assertions: [
-                {
-                  assertionType: "screenshot",
-                  kind: "positive",
-                  expected:
-                    "Control shows MAIN47, alternate shows ALT1047, restored shows MAIN47 with ALT1047 absent; clearing on exit requires a second entry, which these frames do not establish",
-                  observed: JSON.stringify({ control, alternate, restored }),
-                },
-              ],
-            }
-          } finally {
-            ctx.write("\x1b[?1047l\x1b[0m\x1b[2J\x1b[H")
-          }
-        }
+        if (ctx.capture || ctx.cells)
+          return primaryRestoreCapture(ctx, "modes.altscreen-1047", 1047, "MAIN47", "ALT1047")
         const ps = await queryDecrpm(ctx, 1047)
         // Ps 4 says the terminal knows 1047 and cannot set it: the shared grader marks it unsupported (#30557 r2).
         if (ps === 4) return decrpmResult(ps, 1047)
@@ -1732,6 +1722,8 @@ export const modesProbes: ProbeDefinition[] = [
       "query_reply",
     ),
     termNeedsGeometry: true,
+    cellReadback: true,
+    textClaim: "characters",
   },
 
   // ?1048 — save/restore cursor only (no alt screen)

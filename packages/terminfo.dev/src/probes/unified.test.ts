@@ -2620,12 +2620,10 @@ it.each([
                 ? "seed"
                 : lowerLabel.includes("post-sequence target")
                   ? id === "modes.alt-screen.exit"
-                    ? "seed"
+                    ? "expected"
                     : "third"
                   : lowerLabel.includes("expected frame")
-                    ? id === "modes.alt-screen.exit"
-                      ? "seed"
-                      : "expected"
+                    ? "expected"
                     : lowerLabel.includes("ignored-attribute")
                       ? "ignored"
                       : lowerLabel.includes("setup reference")

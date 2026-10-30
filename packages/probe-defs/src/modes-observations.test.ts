@@ -14,8 +14,10 @@ function captureSource(
   writes: string[],
   frames: ObservationFrame[],
   fresh = true,
+  kind: "pixels" | "text-cells" = "pixels",
+  restoresPrimary = true,
 ): TermProbeSource {
-  return {
+  const source: TermProbeSource = {
     kind: "live",
     rows,
     cols,
@@ -37,17 +39,22 @@ function captureSource(
       const witness = fresh ? (writes.filter((entry) => /^\x1b\[\d+;\d+H.$/.test(entry)).at(-1) ?? "blank") : "stale"
       const palette = label.includes("colors")
       const sgr = /xt(push|pop)sgr/.test(label)
-      const restoration = /alt-screen\.exit|altscreen-47/.test(label)
+      const restoration = /alt-screen\.exit|altscreen-47|altscreen-1047/.test(label)
       let plane = "stable"
       if (/paint witness|— baseline/.test(label)) plane = witness
       else if (label.includes("post-sequence target") || label.endsWith("expected frame")) {
-        plane = palette ? "blue" : "expected"
+        plane =
+          restoration && !restoresPrimary && label.includes("post-sequence target")
+            ? "seed"
+            : palette
+              ? "blue"
+              : "expected"
       } else if (label.endsWith("setup reference frame")) plane = "blue"
       else if (label.endsWith("ignored-attribute frame")) plane = palette ? "green" : sgr ? "italic" : "seed"
       else if (label.endsWith("pre-edit seed")) {
         plane = palette
           ? "blue"
-          : restoration
+          : restoration && label.includes("altscreen-47")
             ? "expected"
             : sgr && writes.some((entry) => entry.includes("\x1b[1;3m"))
               ? "bold-italic"
@@ -75,6 +82,30 @@ function captureSource(
       return frame
     },
   }
+  if (kind === "text-cells") {
+    const capture = source.capture!
+    source.cells = async (request) => {
+      const frame = await capture({
+        ...request,
+        pixelGeometry: { cellWidth: 10, cellHeight: 20, textWidth: cols * 10, textHeight: rows * 20 },
+      })
+      if (!request.cells || !frame.regionDigest || !frame.pixelsDigest) throw new Error("Missing fixture cell read")
+      return {
+        kind: "text-cells",
+        role: frame.role,
+        label: frame.label,
+        capturedAt: frame.capturedAt,
+        ref: frame.ref,
+        cellDigest: frame.regionDigest,
+        frameDigest: frame.pixelsDigest,
+        cellRectangle: request.cells,
+      }
+    }
+    source.capture = undefined
+    source.captureGeometry = undefined
+    source.captureKind = "text-cells"
+  }
+  return source
 }
 
 const modes = [
@@ -838,6 +869,26 @@ test.each(ALT_SWAP)("%s stays inconclusive on an undersized grid or an unavailab
   expect(writes.at(-1)).toBe(`\x1b[?${mode}l\x1b[0m`)
 })
 
+// A painted alternate marker distinguishes frames, but it does not qualify buffer entry.
+// Existing positive roundtrips cannot catch attribution of an unqualified entry failure to exit.
+test.each([
+  ["modes.alt-screen.exit", "pixels"],
+  ["modes.alt-screen.exit", "text-cells"],
+  ["modes.altscreen-1047", "pixels"],
+  ["modes.altscreen-1047", "text-cells"],
+] as const)("%s keeps an exit-negative pending when entry is not qualified on %s", async (id, kind) => {
+  const definition = modesProbes.find((entry) => entry.id === id)
+  if (!definition?.term) throw new Error(`Missing app callback for ${id}`)
+  const result = await definition.term(captureSource(24, 80, [], [], true, kind, false))
+  expect(result.observation?.outcome).not.toBe("unsupported")
+  expect(result.tests?.some((row) => row.status === "unsupported")).not.toBe(true)
+  expect(result.tests).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ status: "test-todo", reason: expect.stringContaining("entry not qualified") }),
+    ]),
+  )
+})
+
 test("alt-screen exit capture frames the primary, alternate and restored buffers", async () => {
   const definition = modesProbes.find((item) => item.id === "modes.alt-screen.exit")
   if (!definition?.term) throw new Error("Missing app alt-screen exit callback")
@@ -863,28 +914,17 @@ test.each(["modes.altscreen-47", "modes.altscreen-1047"] as const)(
     const writes: string[] = []
     const frames: ObservationFrame[] = []
     const result = await definition.term(captureSource(24, 80, writes, frames))
-    if (id === "modes.altscreen-47") {
-      expect(result.tests).toMatchObject([
-        { id: "primary-marker-restored", status: "supported" },
-        { id: "alternate-marker-control", status: "supported" },
-        { id: "remaining-facets", status: "test-todo", reason: expect.stringContaining("next entry") },
-      ])
-      expect(result.assertions).toHaveLength(2)
-      expect(result.observation?.frames?.filter((frame) => frame.role === "target")).toHaveLength(1)
-      return
-    }
-    expect(
-      frames.map(({ role }) => role),
-      id,
-    ).toEqual(["control", "target", "target"])
-    expect(result.pass, id).toBe(false)
-    expect(result.observation, id).toMatchObject({
-      outcome: "inconclusive",
-      reason: "insufficient-evidence",
-      assertionType: "screenshot",
-      note: expect.stringContaining("independent pixel review"),
-    })
-    expect(result.observation?.frames, id).toHaveLength(3)
+    expect(result.tests).toMatchObject([
+      { id: "primary-marker-restored", status: "supported" },
+      { id: "alternate-marker-control", status: "supported" },
+      {
+        id: "remaining-facets",
+        status: "test-todo",
+        reason: expect.stringMatching(id === "modes.altscreen-1047" ? /clear.*exit/i : /next entry/),
+      },
+    ])
+    expect(result.assertions).toHaveLength(2)
+    expect(result.observation?.frames?.filter((frame) => frame.role === "target")).toHaveLength(1)
   },
 )
 
