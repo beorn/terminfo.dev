@@ -634,7 +634,11 @@ test("1049 exit grades Unsupported by source citation when the loaded source has
   const definition = alt1049Probe("exit")
   const audited = alt1049Source("ignored-entry")
   const result = definition.lib!(withRuntimeIdentity(audited.context, VT100_SOURCE_IDENTITY))
-  expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "buffer_state", note: "negative by source citation" })
+  expect(result.observation).toMatchObject({
+    outcome: "unsupported",
+    assertionType: "buffer_state",
+    note: "negative by source citation",
+  })
   expect(result.assertions).toMatchObject([{ kind: "negative", assertionType: "buffer_state" }])
   expect(JSON.parse(result.response!)).toMatchObject({
     sourceCitation: expect.stringContaining("packages/vt100/src/screen.ts:99"),
