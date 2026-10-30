@@ -1348,8 +1348,9 @@ export const modesProbes: ProbeDefinition[] = [
         }
         const refusal = captureRefusal(ctx, 3, 8, "Alt-screen exit")
         if (refusal) return refusal
-        if (ctx.capture || ctx.cells)
+        if (ctx.capture || ctx.cells) {
           return primaryRestoreCapture(ctx, "modes.alt-screen.exit", 1049, "PRIMARY", "ALTONLY")
+        }
         ctx.write("\x1b[?1049h") // enter
         try {
           ctx.write("\x1b[3;3H") // move somewhere in alt
@@ -1685,8 +1686,9 @@ export const modesProbes: ProbeDefinition[] = [
       async (ctx) => {
         const refusal = captureRefusal(ctx, 3, 8, "?1047 alternate screen")
         if (refusal) return refusal
-        if (ctx.capture || ctx.cells)
+        if (ctx.capture || ctx.cells) {
           return primaryRestoreCapture(ctx, "modes.altscreen-1047", 1047, "MAIN47", "ALT1047")
+        }
         const ps = await queryDecrpm(ctx, 1047)
         // Ps 4 says the terminal knows 1047 and cannot set it: the shared grader marks it unsupported (#30557 r2).
         if (ps === 4) return decrpmResult(ps, 1047)
