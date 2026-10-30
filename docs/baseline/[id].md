@@ -57,7 +57,7 @@ function barSegmentItems(s, segment) {
   for (const f of features) {
     if (isEnvironmentGroup(f.id)) continue
     // The reader classified every cell once; this reads that state. The raw cell is read for its NOTE
-    // only (a raw field, not a classification), exactly as the compare page reads its evidence method.
+    // only (a raw field, not a classification), exactly as the compare page reads its assertion type.
     const entry = data.selectedByBackend[s.name]
     const state = entry?.states[f.id]
     if (state !== segment) continue

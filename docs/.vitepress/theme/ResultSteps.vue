@@ -34,7 +34,7 @@ function positionCell(value?: string): string | undefined {
       <tr>
         <th scope="col">Step</th>
         <th scope="col">Sent</th>
-        <th scope="col">Reply</th>
+        <th scope="col">Observed</th>
         <th scope="col">Expected row;col</th>
         <th scope="col">Got row;col</th>
         <th scope="col">Result</th>

@@ -60,7 +60,7 @@ Automated image tests can decide criteria with machine-readable comparisons. Whe
 
 A collapsible section at the bottom of the result details, next to the assertionType:
 
-- **Review history** — the recorded result, who changed it and why, and the **Evidence publication check**: the approval to show this result's own screenshots or raw reply. Without it, the page shows no images and says so.
+- **Review history** — the recorded result, who changed it and why, and the **evidence presentation review**: the approval to show this result's own screenshots or raw reply. Without it, the page shows no images and says so.
 - **Screenshots** — the two frames, each with capture time, SHA-256 and a link to the original.
 - **Technical details · raw trace** — the raw bytes.
 - **Current probe guidance** — what the probe tests today; a description, not evidence.

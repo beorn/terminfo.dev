@@ -633,7 +633,7 @@ onBeforeUnmount(() => {
             </details>
           </div>
           <div v-if="replyBytes" class="result-evidence__bytes">
-            <span class="result-evidence__bytes-label">Reply</span>
+            <span class="result-evidence__bytes-label">Observed</span>
             <code>{{ replyBytes.summary }}</code>
             <details>
               <summary>Full reply bytes</summary>
