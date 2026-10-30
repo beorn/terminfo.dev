@@ -3,6 +3,7 @@
  * @level l2
  * @consumer The approved Phase0 Terminfo recorder/check adapter on installed Vitest5.0.4.
  * @reach runs an isolated Vitest fixture with concurrent native soft failures, TaskMeta and artifact delivery.
+ * @reach fs-walk <fixture-only: generated erase capture, assertion, report and attachment directory>
  * @testonly none
  */
 import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises"
