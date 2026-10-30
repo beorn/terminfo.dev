@@ -12,6 +12,7 @@ import {
   PROBE_STATUSES,
   finalizeProbeResult,
   initializeRunDraft,
+  recordCollectorSelection,
   readCollectorSelection,
   readCollectorAttempt,
   collectorAttemptDigest,
@@ -2246,7 +2247,11 @@ export function decodeCollectorDraft(
         intendedSubject: intended as Partial<ProbeSubject>,
         manifest: manifest as ProbeSuiteManifest & { schemaVersion: 4 },
       })
-      const difference = initializedDraftDifference(value, { ...initialized, rawReplies: records })
+      let difference = initializedDraftDifference(value, { ...initialized, rawReplies: records })
+      if (difference) {
+        recordCollectorSelection(initialized, selection.ids)
+        difference = initializedDraftDifference(value, { ...initialized, rawReplies: records })
+      }
       if (difference) refuse(difference)
       return {
         kind: "empty-selection",
