@@ -47,12 +47,16 @@ it("strips callback-only reply metadata from stored result and draft serializati
     producer: "TTY",
     attempts: [{ sequence: "\x1b[6n", received: "", timeoutMs: 37 }],
   })
-  const result = finalizeProbeResult({
+  const input = {
     featureId: "sgr.bold",
     attempt,
-    tests: callback.tests!.map((test) => ({ ...test, attempt })),
-    ...{ replyFailureTestIds: ["criterion"] },
-  })
+    tests: callback.tests!.map((test) => ({
+      ...test,
+      attempt,
+    })),
+    replyFailureTestIds: ["criterion"],
+  }
+  const result = finalizeProbeResult(input)
   const draft = initializeRunDraft({
     runId: "reply-metadata",
     sourceRevision: "1".repeat(40),
