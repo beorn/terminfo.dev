@@ -423,6 +423,7 @@ it.each([
                 const draft = JSON.parse(
                   readFileSync(join(dirname(dirname(dirname(artifacts))), `term-${id}-macos.draft.json`), "utf8"),
                 ) as RunDraft
+                const delegatedRunId = draft.runId
                 draft.rawReplies["collector.collectionAttempt"] = JSON.stringify({
                   ids: ["sgr.bold"],
                   startedAt: actualStartedAt,
@@ -431,10 +432,7 @@ it.each([
                 if (inputChange === "macos-untrusted") draft.runId = "another-delegated-run"
                 const output = join(folder, "artifacts")
                 mkdirSync(output)
-                const path = join(
-                  output,
-                  `${JSON.parse(readFileSync(join(dirname(dirname(dirname(artifacts))), `term-${id}-macos.draft.json`), "utf8")).runId}.draft.json`,
-                )
+                const path = join(output, `${delegatedRunId}.draft.json`)
                 const bytes = JSON.stringify(draft)
                 writeFileSync(path, bytes)
                 hostedDrafts.set(id, { path, bytes })
