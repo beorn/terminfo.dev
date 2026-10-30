@@ -202,8 +202,15 @@ test.for(["success", "capture-failure", "deciding", "precondition", "replay-fail
         expect(run.results).toHaveLength(273)
         const selected = run.results.filter(({ attempt }) => attempt.scope !== "none")
         expect(selected).toHaveLength(11)
-        expect(selected.map(({ attempt }) => (attempt.scope === "none" ? undefined : attempt.startedAt))).toEqual(
-          record.checks[runIndex]?.map(({ startedAt }) => startedAt),
+        expect(
+          Object.fromEntries(
+            selected.map(({ featureId, attempt }) => [
+              featureId,
+              attempt.scope === "none" ? undefined : attempt.startedAt,
+            ]),
+          ),
+        ).toEqual(
+          Object.fromEntries(record.checks[runIndex]!.map(({ featureId, startedAt }) => [featureId, startedAt])),
         )
         const character = selected.find(({ featureId }) => featureId === "erase.character")
         expect(character?.status).toBe(
