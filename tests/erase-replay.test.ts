@@ -12,14 +12,14 @@ import { tmpdir, release } from "node:os"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { initializeRunDraft, sealRunDraft, type CapturedRunDraft } from "@terminfo/probe-defs"
-import { derivedSuiteManifest } from "../admin/versions.ts"
-import { headlessRuntimeIdentity } from "./headless-identity.ts"
-import { HEADLESS_TERMINAL } from "./headless-terminal.ts"
-import { readEraseCapture } from "./erase-capture.ts"
+import { derivedSuiteManifest } from "../packages/admin/versions.ts"
+import { headlessRuntimeIdentity } from "../packages/probes/headless-identity.ts"
+import { HEADLESS_TERMINAL } from "../packages/probes/headless-terminal.ts"
+import { readEraseCapture } from "../packages/probes/erase-capture.ts"
 import { expect, test, vi } from "vitest"
 import * as xterm from "@termless/xtermjs"
 import { readCallLog } from "viprobe"
-import { captureEraseCalls, replayEraseCalls } from "./erase-replay.ts"
+import { captureEraseCalls, replayEraseCalls } from "../packages/probes/erase-replay.ts"
 
 vi.mock("@termless/xtermjs", async (original) => {
   const actual = await original<typeof import("@termless/xtermjs")>()
@@ -101,7 +101,7 @@ test("real erase calls replay twice without opening a terminal backend", async (
   const manifest = derivedSuiteManifest()
   const runtimeIdentity = await headlessRuntimeIdentity("xtermjs", "@termless/xtermjs", "js")
   const sourceRevision = execFileSync("git", ["rev-parse", "HEAD"], {
-    cwd: fileURLToPath(new URL("../..", import.meta.url)),
+    cwd: fileURLToPath(new URL("..", import.meta.url)),
     encoding: "utf8",
   }).trim()
   const subject = {
