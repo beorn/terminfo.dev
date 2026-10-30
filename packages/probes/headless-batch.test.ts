@@ -314,7 +314,6 @@ test("requests review for headless OS-input criteria without fabricating app del
     "input.urxvt-mouse",
     "input.x10-mouse",
     "input.button-event-mouse",
-    "input.kitty-click-events",
     "modes.alt-scroll-1007",
     "modes.application-keypad",
   ]
@@ -354,6 +353,70 @@ test("requests review for headless OS-input criteria without fabricating app del
         reason: expect.any(String),
       }),
     )
+  }
+})
+
+test("input.kitty-click-events measures unsupported on xtermjs via the delegated mouse-encoding extension and enforces C3 wiring", async () => {
+  const id = "input.kitty-click-events"
+  const batch = await collectBatch(backend, "xtermjs", registryDefinitions([id]))
+  expect(batch.ungradedDiagnostics).toEqual({})
+  expect(batch.results).toMatchObject([
+    {
+      featureId: id,
+      status: "unsupported",
+      attempt: { scope: "probe" },
+      assertionType: "input_bytes",
+      rawReplyRef: id,
+    },
+  ])
+  expect(batch.observations).toMatchObject([
+    {
+      featureId: id,
+      outcome: "unsupported",
+      assertionType: "input_bytes",
+      rawReplyRef: id,
+    },
+  ])
+  expect(batch.assertions).toMatchObject([
+    {
+      featureId: id,
+      kind: "negative",
+      action: "kitty-click-events:1",
+      assertionType: "input_bytes",
+      rawReplyRef: id,
+    },
+  ])
+  const observed = JSON.parse(batch.rawReplies[id]!) as Record<string, unknown>
+  expect(observed).toMatchObject({
+    marker: "OSC 133;A;click_events=1",
+    pointer: { x: 5, y: 3 },
+    negativeControl: null,
+    report: null,
+  })
+
+  // C3: declared "mouse-encoding" without an encodeMouse function throws a loud binding defect.
+  const brokenBackend = await createXtermBackend()
+  brokenBackend.init({ cols: 80, rows: 24 })
+  try {
+    const withoutMethod = Object.assign(Object.create(Object.getPrototypeOf(brokenBackend)), brokenBackend, {
+      encodeMouse: undefined,
+    })
+    expect(() => createLibProbeSource(withoutMethod, undefined, undefined, undefined)).toThrow(
+      /declares capability extension "mouse-encoding" without an encodeMouse function/,
+    )
+  } finally {
+    brokenBackend.destroy()
+  }
+
+  // C3: encodeMouse method present without "mouse-encoding" in capabilities.extensions stays unwired -> TEST TODO.
+  const undeclaredBackend = await createXtermBackend()
+  undeclaredBackend.init({ cols: 80, rows: 24 })
+  try {
+    undeclaredBackend.capabilities.extensions.delete("mouse-encoding")
+    const src = createLibProbeSource(undeclaredBackend, undefined, undefined, undefined)
+    expect(src.encodeMouse).toBeUndefined()
+  } finally {
+    undeclaredBackend.destroy()
   }
 })
 

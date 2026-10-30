@@ -5,6 +5,7 @@ import {
   hasExtension,
   type HyperlinkExtension,
   type DefaultColorsExtension,
+  type MouseEncodingExtension,
   type ReplyDeliveryExtension,
   type TerminalBackend,
   type WarningExtension,
@@ -347,6 +348,13 @@ export function createLibProbeSource(
   const readIconLabel = typeof backend.getIconLabel === "function" ? backend.getIconLabel.bind(backend) : undefined
   const readClipboardState =
     typeof backend.getClipboardState === "function" ? backend.getClipboardState.bind(backend) : undefined
+  const declaresMouseEncoding = backend.capabilities.extensions.has("mouse-encoding")
+  const candidateEncodeMouse = (backend as Partial<MouseEncodingExtension>).encodeMouse
+  if (declaresMouseEncoding && typeof candidateEncodeMouse !== "function") {
+    throw new Error(`${backend.name} declares capability extension "mouse-encoding" without an encodeMouse function`)
+  }
+  const encodeMouse =
+    declaresMouseEncoding && typeof candidateEncodeMouse === "function" ? candidateEncodeMouse.bind(backend) : undefined
   return {
     kind: "live",
     ...(runtimeIdentity && { runtimeIdentity }),
@@ -395,6 +403,7 @@ export function createLibProbeSource(
         backend.scrollViewport(delta)
       },
     }),
+    ...(encodeMouse && { encodeMouse }),
     getTitle() {
       return backend.getTitle()
     },

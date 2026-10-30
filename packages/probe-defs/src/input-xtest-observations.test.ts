@@ -7,7 +7,7 @@
 import { expect, test } from "vitest"
 import { inputProbes } from "./input.ts"
 import { modesProbes } from "./modes.ts"
-import type { ProbeCallbackResult, TermProbeSource } from "./types.ts"
+import type { LibMouseEvent, LibProbeSource, ProbeCallbackResult, TermProbeSource } from "./types.ts"
 
 const xtestIds = ["input.xtest-key", "input.xtest-click", "input.xtest-wheel"] as const
 
@@ -967,4 +967,249 @@ test("input.kitty-click-events stays inconclusive when the report does not match
     assertionType: "input_bytes",
   })
   expect(result.assertions).toBeUndefined()
+})
+
+function sgrBytes(button: number, x: number, y: number, suffix: "M" | "m" = "M"): Uint8Array {
+  const prefix = [String.fromCharCode(0x1b), "[", "<"].join("")
+  return new TextEncoder().encode(`${prefix}${String(button)};${String(x)};${String(y)}${suffix}`)
+}
+
+function libMouseSource(
+  overrides: {
+    extensions?: Iterable<string>
+    encodeMouse?: (event: LibMouseEvent) => Uint8Array | null
+  } = {},
+  feeds: string[] = [],
+  events: LibMouseEvent[] = [],
+): LibProbeSource {
+  return {
+    kind: "live",
+    cols: 80,
+    feed(text) {
+      feeds.push(text)
+    },
+    feedCapture() {
+      return ""
+    },
+    getCell: () => {
+      throw new Error("Unexpected getCell")
+    },
+    getCursor: () => {
+      throw new Error("Unexpected getCursor")
+    },
+    getMode: () => false,
+    getText: () => "",
+    getScrollback: () => ({ viewportOffset: 0, totalLines: 24, screenLines: 24 }),
+    getTitle: () => "",
+    reset() {},
+    ...(overrides.encodeMouse && {
+      encodeMouse(event: LibMouseEvent) {
+        events.push({ ...event })
+        return overrides.encodeMouse!(event)
+      },
+    }),
+    capabilities: {
+      truecolor: false,
+      kittyKeyboard: false,
+      kittyGraphics: false,
+      sixel: false,
+      osc8Hyperlinks: false,
+      semanticPrompts: false,
+      reflow: false,
+      unicode: "unknown",
+      extensions: new Set(overrides.extensions ?? ["mouse-encoding"]),
+    },
+  }
+}
+
+test("input.kitty-click-events declares libAssertionType input_bytes and returns notTestedResult when capability is absent or undeclared", () => {
+  const definition = probe("input.kitty-click-events")
+  expect(definition.libAssertionType).toBe("input_bytes")
+
+  const absent = definition.lib!(libMouseSource({ extensions: [] }))
+  expect(absent.notTested).toEqual({
+    reason: "no-semantic-observable",
+    noObservable: expect.stringMatching(/mouse-encoding/i),
+  })
+  expect(absent.observation).toBeUndefined()
+  expect(absent.criterionBranch).toBeUndefined()
+
+  const undeclaredMethod = definition.lib!(
+    libMouseSource({
+      extensions: [],
+      encodeMouse: (event) => sgrBytes(0, event.x + 1, event.y + 1),
+    }),
+  )
+  expect(undeclaredMethod.notTested).toEqual({
+    reason: "no-semantic-observable",
+    noObservable: expect.stringMatching(/undeclared|mouse-encoding/i),
+  })
+  expect(undeclaredMethod.observation).toBeUndefined()
+})
+
+test("input.kitty-click-events library arm returns inconclusive when the 1000+1006 delivery control returns null", () => {
+  const feeds: string[] = []
+  const events: LibMouseEvent[] = []
+  const ctx = libMouseSource(
+    {
+      encodeMouse: () => null,
+    },
+    feeds,
+    events,
+  )
+  const result = probe("input.kitty-click-events").lib!(ctx)
+  expect(events).toHaveLength(1)
+  expect(result.observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+    assertionType: "input_bytes",
+    note: expect.stringMatching(/delivery control/i),
+  })
+  expect(result.assertions).toBeUndefined()
+})
+
+test("input.kitty-click-events library arm throws when delivery control returns non-SGR bytes without coordinates", () => {
+  const ctx = libMouseSource({
+    encodeMouse: () => new TextEncoder().encode("not-sgr"),
+  })
+  expect(() => probe("input.kitty-click-events").lib!(ctx)).toThrow(/coordinates|delivery control/i)
+})
+
+test("input.kitty-click-events library arm returns inconclusive when the modes-off negative control outside the prompt still emits a report (C4)", () => {
+  const feeds: string[] = []
+  const events: LibMouseEvent[] = []
+  const ctx = libMouseSource(
+    {
+      encodeMouse: (event) => sgrBytes(0, event.x + 1, event.y + 1, event.action === "release" ? "m" : "M"),
+    },
+    feeds,
+    events,
+  )
+  const result = probe("input.kitty-click-events").lib!(ctx)
+  expect(result.observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+    assertionType: "input_bytes",
+    note: expect.stringMatching(/mouse modes still active|outside/i),
+  })
+  expect(result.assertions).toBeUndefined()
+  expect(feeds.some((chunk) => chunk.includes("133;B"))).toBe(true)
+})
+
+test("input.kitty-click-events library arm records unsupported when control passes, modes-off negative control is null, and prompt click is null", () => {
+  const feeds: string[] = []
+  const events: LibMouseEvent[] = []
+  let modesOn = false
+  const ctx = libMouseSource(
+    {
+      encodeMouse: (event) => {
+        if (!modesOn) return null
+        return sgrBytes(0, event.x + 1, event.y + 1, event.action === "release" ? "m" : "M")
+      },
+    },
+    feeds,
+    events,
+  )
+  const origFeed = ctx.feed.bind(ctx)
+  ctx.feed = (text: string) => {
+    origFeed(text)
+    if (text.includes("?1000h")) modesOn = true
+    if (text.includes("?1000l")) modesOn = false
+  }
+  const result = probe("input.kitty-click-events").lib!(ctx)
+  expect(result.observation).toMatchObject({
+    outcome: "unsupported",
+    assertionType: "input_bytes",
+  })
+  expect(result.assertions?.[0]).toMatchObject({
+    kind: "negative",
+    action: "kitty-click-events:1",
+    assertionType: "input_bytes",
+  })
+  expect(events.map((entry) => `${entry.action}:${String(entry.x)},${String(entry.y)}`)).toEqual([
+    "press:4,2",
+    "release:4,2",
+    "press:4,3",
+    "press:4,2",
+  ])
+})
+
+test("input.kitty-click-events library arm returns inconclusive when the prompt click report does not correlate with the control cell or button", () => {
+  let modesOn = false
+  let promptRow = -1
+  const ctx = libMouseSource({
+    encodeMouse: (event) => {
+      if (modesOn) {
+        return sgrBytes(0, event.x + 1, event.y + 1, event.action === "release" ? "m" : "M")
+      }
+      if (event.y + 1 === promptRow && event.action === "press") {
+        return sgrBytes(2, event.x + 9, event.y + 5, "M")
+      }
+      return null
+    },
+  })
+  const origFeed = ctx.feed.bind(ctx)
+  ctx.feed = (text: string) => {
+    origFeed(text)
+    if (text.includes("?1000h")) modesOn = true
+    if (text.includes("?1000l")) modesOn = false
+    if (text.includes("133;A;click_events=1")) promptRow = 3
+  }
+  const result = probe("input.kitty-click-events").lib!(ctx)
+  expect(result.observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+    assertionType: "input_bytes",
+    note: expect.stringMatching(/correlate/i),
+  })
+  expect(result.assertions).toBeUndefined()
+})
+
+test("input.kitty-click-events library arm records supported when control passes, modes-off negative control is null, and prompt click correlates", () => {
+  const feeds: string[] = []
+  const events: LibMouseEvent[] = []
+  let modesOn = false
+  let promptRow = -1
+  const ctx = libMouseSource(
+    {
+      encodeMouse: (event) => {
+        if (modesOn) {
+          return sgrBytes(0, event.x + 1, event.y + 1, event.action === "release" ? "m" : "M")
+        }
+        if (event.y + 1 === promptRow) {
+          return sgrBytes(0, event.x + 1, event.y + 1, event.action === "release" ? "m" : "M")
+        }
+        return null
+      },
+    },
+    feeds,
+    events,
+  )
+  const origFeed = ctx.feed.bind(ctx)
+  ctx.feed = (text: string) => {
+    origFeed(text)
+    if (text.includes("?1000h")) modesOn = true
+    if (text.includes("?1000l")) modesOn = false
+    if (text.includes("133;A;click_events=1")) promptRow = 3
+    if (text.includes("133;B")) promptRow = -1
+  }
+  const result = probe("input.kitty-click-events").lib!(ctx)
+  expect(result.observation).toMatchObject({
+    outcome: "supported",
+    assertionType: "input_bytes",
+  })
+  expect(result.assertions).toEqual([
+    expect.objectContaining({
+      kind: "positive",
+      action: "kitty-click-events:1",
+      assertionType: "input_bytes",
+    }),
+  ])
+  expect(events.map((entry) => `${entry.action}:${String(entry.x)},${String(entry.y)}`)).toEqual([
+    "press:4,2",
+    "release:4,2",
+    "press:4,3",
+    "press:4,2",
+    "release:4,2",
+  ])
 })
