@@ -1,5 +1,13 @@
 import type { AssertionType, ProbeDefinition, ProbeCallbackResult, LibProbeSource } from "./types.ts"
-import { isBlank, parserStateResult, probe, tooSmall, utf8DecodingRefusal, validSize } from "./helpers.ts"
+import {
+  isBlank,
+  parserStateResult,
+  probe,
+  tooSmall,
+  utf8DecodingRefusal,
+  validSize,
+  renderedWidthFailure,
+} from "./helpers.ts"
 import { regionReadbackProbes, type RegionReadbackRow } from "./region-readback-kind.ts"
 
 /**
@@ -802,30 +810,24 @@ export const textProbes: ProbeDefinition[] = [
         if (decoding) return decoding
         const ascii = await ctx.measureRenderedWidth("AA")
         const width = await ctx.measureRenderedWidth("\u{1f389}")
-        if (ascii !== 2 || width === null) {
+        if (typeof ascii !== "number")
+          return renderedWidthFailure(ascii, "text.wide.emoji", "ASCII", JSON.stringify({ ascii, width }))
+        if (ascii !== 2) {
+          const reason = `ASCII width control: expected 2, got ${ascii}`
           return {
             pass: false,
             response: JSON.stringify({ ascii, width }),
-            ...(width === null
-              ? {
-                  tests: [
-                    {
-                      id: "criterion",
-                      status: "test-failure",
-                      reason: "ASCII width control or emoji width was unavailable",
-                    },
-                  ] as [{ id: string; status: "test-failure"; reason: string }],
-                }
-              : {
-                  observation: {
-                    outcome: "inconclusive",
-                    reason: "insufficient-evidence",
-                    assertionType: "query_reply",
-                    note: "ASCII width control or emoji width was unavailable",
-                  },
-                }),
+            tests: [{ id: "criterion", status: "test-failure", reason }],
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              assertionType: "query_reply",
+              note: reason,
+            },
           }
         }
+        if (typeof width !== "number")
+          return renderedWidthFailure(width, "text.wide.emoji", "sample", JSON.stringify({ ascii, width }))
         const pass = width === 2
         return {
           pass,
@@ -869,30 +871,24 @@ export const textProbes: ProbeDefinition[] = [
         if (decoding) return decoding
         const ascii = await ctx.measureRenderedWidth("AA")
         const width = await ctx.measureRenderedWidth("\u4e2d")
-        if (ascii !== 2 || width === null) {
+        if (typeof ascii !== "number")
+          return renderedWidthFailure(ascii, "text.wide.cjk", "ASCII", JSON.stringify({ ascii, width }))
+        if (ascii !== 2) {
+          const reason = `ASCII width control: expected 2, got ${ascii}`
           return {
             pass: false,
             response: JSON.stringify({ ascii, width }),
-            ...(width === null
-              ? {
-                  tests: [
-                    {
-                      id: "criterion",
-                      status: "test-failure",
-                      reason: "ASCII width control or CJK width was unavailable",
-                    },
-                  ] as [{ id: string; status: "test-failure"; reason: string }],
-                }
-              : {
-                  observation: {
-                    outcome: "inconclusive",
-                    reason: "insufficient-evidence",
-                    assertionType: "query_reply",
-                    note: "ASCII width control or CJK width was unavailable",
-                  },
-                }),
+            tests: [{ id: "criterion", status: "test-failure", reason }],
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              assertionType: "query_reply",
+              note: reason,
+            },
           }
         }
+        if (typeof width !== "number")
+          return renderedWidthFailure(width, "text.wide.cjk", "sample", JSON.stringify({ ascii, width }))
         const pass = width === 2
         return {
           pass,
@@ -1170,30 +1166,24 @@ export const textProbes: ProbeDefinition[] = [
         if (decoding) return decoding
         const ascii = await ctx.measureRenderedWidth("A")
         const width = await ctx.measureRenderedWidth("e\u0301")
-        if (ascii !== 1 || width === null) {
+        if (typeof ascii !== "number")
+          return renderedWidthFailure(ascii, "text.combining", "ASCII", JSON.stringify({ ascii, width }))
+        if (ascii !== 1) {
+          const reason = `ASCII width control: expected 1, got ${ascii}`
           return {
             pass: false,
             response: JSON.stringify({ ascii, width }),
-            ...(width === null
-              ? {
-                  tests: [
-                    {
-                      id: "criterion",
-                      status: "test-failure",
-                      reason: "ASCII width control or combining width was unavailable",
-                    },
-                  ] as [{ id: string; status: "test-failure"; reason: string }],
-                }
-              : {
-                  observation: {
-                    outcome: "inconclusive",
-                    reason: "insufficient-evidence",
-                    assertionType: "query_reply",
-                    note: "ASCII width control or combining width was unavailable",
-                  },
-                }),
+            tests: [{ id: "criterion", status: "test-failure", reason }],
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              assertionType: "query_reply",
+              note: reason,
+            },
           }
         }
+        if (typeof width !== "number")
+          return renderedWidthFailure(width, "text.combining", "sample", JSON.stringify({ ascii, width }))
         const pass = width === 1
         return {
           pass,
@@ -1508,30 +1498,24 @@ export const textProbes: ProbeDefinition[] = [
         if (decoding) return decoding
         const ascii = await ctx.measureRenderedWidth("AA")
         const width = await ctx.measureRenderedWidth("\u{1F1FA}\u{1F1F8}")
-        if (ascii !== 2 || width === null) {
+        if (typeof ascii !== "number")
+          return renderedWidthFailure(ascii, "text.wide.emoji-flags", "ASCII", JSON.stringify({ ascii, width }))
+        if (ascii !== 2) {
+          const reason = `ASCII width control: expected 2, got ${ascii}`
           return {
             pass: false,
             response: JSON.stringify({ ascii, width }),
-            ...(width === null
-              ? {
-                  tests: [
-                    {
-                      id: "criterion",
-                      status: "test-failure",
-                      reason: "ASCII width control or flag width was unavailable",
-                    },
-                  ] as [{ id: string; status: "test-failure"; reason: string }],
-                }
-              : {
-                  observation: {
-                    outcome: "inconclusive",
-                    reason: "insufficient-evidence",
-                    assertionType: "query_reply",
-                    note: "ASCII width control or flag width was unavailable",
-                  },
-                }),
+            tests: [{ id: "criterion", status: "test-failure", reason }],
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              assertionType: "query_reply",
+              note: reason,
+            },
           }
         }
+        if (typeof width !== "number")
+          return renderedWidthFailure(width, "text.wide.emoji-flags", "sample", JSON.stringify({ ascii, width }))
         const pass = width === 2
         return {
           pass,
@@ -1562,30 +1546,24 @@ export const textProbes: ProbeDefinition[] = [
         if (decoding) return decoding
         const ascii = await ctx.measureRenderedWidth("AA")
         const width = await ctx.measureRenderedWidth("\u263A\uFE0F")
-        if (ascii !== 2 || width === null) {
+        if (typeof ascii !== "number")
+          return renderedWidthFailure(ascii, "text.wide.emoji-vs16", "ASCII", JSON.stringify({ ascii, width }))
+        if (ascii !== 2) {
+          const reason = `ASCII width control: expected 2, got ${ascii}`
           return {
             pass: false,
             response: JSON.stringify({ ascii, width }),
-            ...(width === null
-              ? {
-                  tests: [
-                    {
-                      id: "criterion",
-                      status: "test-failure",
-                      reason: "ASCII width control or VS16 width was unavailable",
-                    },
-                  ] as [{ id: string; status: "test-failure"; reason: string }],
-                }
-              : {
-                  observation: {
-                    outcome: "inconclusive",
-                    reason: "insufficient-evidence",
-                    assertionType: "query_reply",
-                    note: "ASCII width control or VS16 width was unavailable",
-                  },
-                }),
+            tests: [{ id: "criterion", status: "test-failure", reason }],
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              assertionType: "query_reply",
+              note: reason,
+            },
           }
         }
+        if (typeof width !== "number")
+          return renderedWidthFailure(width, "text.wide.emoji-vs16", "sample", JSON.stringify({ ascii, width }))
         const pass = width === 2
         return {
           pass,
@@ -1616,30 +1594,24 @@ export const textProbes: ProbeDefinition[] = [
         if (decoding) return decoding
         const ascii = await ctx.measureRenderedWidth("AA")
         const width = await ctx.measureRenderedWidth("\u{1F468}\u200D\u{1F469}\u200D\u{1F467}")
-        if (ascii !== 2 || width === null) {
+        if (typeof ascii !== "number")
+          return renderedWidthFailure(ascii, "text.wide.emoji-zwj", "ASCII", JSON.stringify({ ascii, width }))
+        if (ascii !== 2) {
+          const reason = `ASCII width control: expected 2, got ${ascii}`
           return {
             pass: false,
             response: JSON.stringify({ ascii, width }),
-            ...(width === null
-              ? {
-                  tests: [
-                    {
-                      id: "criterion",
-                      status: "test-failure",
-                      reason: "ASCII width control or ZWJ width was unavailable",
-                    },
-                  ] as [{ id: string; status: "test-failure"; reason: string }],
-                }
-              : {
-                  observation: {
-                    outcome: "inconclusive",
-                    reason: "insufficient-evidence",
-                    assertionType: "query_reply",
-                    note: "ASCII width control or ZWJ width was unavailable",
-                  },
-                }),
+            tests: [{ id: "criterion", status: "test-failure", reason }],
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              assertionType: "query_reply",
+              note: reason,
+            },
           }
         }
+        if (typeof width !== "number")
+          return renderedWidthFailure(width, "text.wide.emoji-zwj", "sample", JSON.stringify({ ascii, width }))
         const pass = width === 2
         return {
           pass,

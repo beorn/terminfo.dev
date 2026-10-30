@@ -18,7 +18,7 @@ function app(overrides: Partial<TermProbeSource> = {}): TermProbeSource {
     kind: "live",
     write() {},
     queryCursorPosition: async () => null,
-    measureRenderedWidth: async () => null,
+    measureRenderedWidth: async () => ({ kind: "no-reply", step: "sample" }) as const,
     query: async () => null,
     queryWithSentinel: async () => null,
     queryOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
@@ -173,6 +173,42 @@ test("text width claims require an ASCII control and the named sample", async ()
     expect(invalid.observation, id).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
     expect(invalid.assertions, id).toBeUndefined()
   }
+})
+
+// The one measurement API must reach every width family before any numeric predicate.
+test.each([
+  "text.wide.emoji",
+  "text.wide.cjk",
+  "text.combining",
+  "text.wide.emoji-flags",
+  "text.wide.emoji-vs16",
+  "text.wide.emoji-zwj",
+  "unicode.east-asian-ambiguous",
+  "unicode.grapheme-cursor",
+])("%s preserves the width reader's named causes", async (id) => {
+  for (const [reading, status, evidence] of [
+    [{ kind: "no-reply", step: "sample" }, "test-todo", "sample"],
+    [{ kind: "control-mismatch", step: "ascii", observed: { row: 1, col: 3 } }, "test-failure", "1;3"],
+    [{ kind: "wrapped", observed: { row: 2, col: 4 } }, "test-failure", "2;4"],
+  ] as const) {
+    const result = await byId(id).term(
+      app({
+        measureRenderedWidth: async (sample) => (sample === "AA" ? 2 : sample === "A" ? 1 : reading),
+      }),
+    )
+    expect(result.tests, id).toContainEqual(
+      expect.objectContaining({
+        id: "criterion",
+        status,
+        reason: expect.stringContaining(evidence),
+      }),
+    )
+    expect(result.assertions, id).toBeUndefined()
+    expect(result.response, id).toContain(reading.kind)
+  }
+  const malformed = app()
+  Reflect.set(malformed, "measureRenderedWidth", async () => ({ kind: "future" }))
+  await expect(byId(id).term(malformed)).rejects.toThrow(`${id}: width transport: unknown kind future`)
 })
 
 // 28752: a wide-sample row compares plainly written glyphs, so it assumes the run decodes plain
@@ -532,7 +568,9 @@ test("grapheme ID measures the ZWJ sample width, including headless cell state",
   expect(result.assertions).toMatchObject([{ kind: "positive", expected: "2", observed: "2" }])
   const missing = await probe.term(app())
   expect(missing.observation).toBeUndefined()
-  expect(missing.tests).toEqual([{ id: "criterion", status: "test-failure", reason: "Cannot measure width" }])
+  expect(missing.tests).toEqual([
+    { id: "criterion", status: "test-todo", reason: "sample width: no cursor-position readback at sample" },
+  ])
 
   const sample = "👨‍👩‍👧"
   const blank = headless().getCell(0, 0)

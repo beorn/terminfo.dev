@@ -1228,7 +1228,11 @@ export function startDaemon(port = 0): void {
             return
           }
 
-          const results: Array<{ response?: string | null; width?: number | null; error?: string }> = []
+          const results: Array<{
+            response?: string | null
+            width?: Awaited<ReturnType<TermProbeSource["measureRenderedWidth"]>>
+            error?: string
+          }> = []
 
           await withRawMode(async () => {
             process.stdout.write("\x1b[0m\x1b[2J\x1b[H")

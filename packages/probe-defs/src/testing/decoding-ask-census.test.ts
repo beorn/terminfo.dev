@@ -54,7 +54,7 @@ function recordingTerm(decoding: "utf8" | "8-bit", answers: boolean): { ctx: Ter
     queryCursorPosition: async () => (answers ? { row: 1, col: ++column } : null),
     measureRenderedWidth: async (text) => {
       note(text)
-      return answers ? (NON_ASCII.test(text) ? 2 : 1) : null
+      return answers ? (NON_ASCII.test(text) ? 2 : 1) : { kind: "no-reply", step: "sample" }
     },
     query: async (sequence) => {
       note(sequence)

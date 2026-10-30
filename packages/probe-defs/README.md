@@ -175,7 +175,7 @@ is exposed and the initial OSC 13 or 14 pointer-color query answers nothing, OSC
 default-color state on `source-negative-review` without inventing pointer slots
 or executing reset writes. Other color features are unchanged.
 
-Cell `dim`, `italic`, `strikethrough` and `blink` readbacks are required `boolean | null`: null means the producer does not report that attribute, never a terminal-support claim. On a rendered X cell, their SGR probes retain the null or false state through `source-negative-review`, with a required review and a buffer-state assertion. A source-bound decision distinguishes an engine gap (Unsupported at that pin) from a binding gap: TEST TODO, named, until repaired and recaptured. Positive booleans retain their supported observation path. A missing X retains the existing inconclusive result without an assertion or review; it is not reclassified as missing-observable coverage. Stored captures remain unchanged.
+Cell `dim`, `italic`, `strikethrough` and `blink` readbacks are required `boolean | null`: null means the producer does not report that attribute, never a terminal-support claim. On a rendered X cell, their SGR probes retain the null or false state through `source-negative-review`, with a required review and a buffer-state assertion. A source-bound decision distinguishes an engine gap (Unsupported at that pin) from a binding gap: TEST TODO, named, until repaired and recaptured. Positive booleans retain their supported observation path. A missing X retains an inconclusive result without a deciding assertion. A rowless, unnamed inconclusive result keeps the writer default TEST FAILURE (callback defect); only an explicit named test or review row classifies its cause. It is not reclassified as missing-observable coverage. Stored captures remain unchanged.
 
 The OSC 8 library criterion requires exact per-cell URI metadata, including unlinked controls.
 An absent `hyperlinks` observer with valid fixture text retains named coverage (TEST TODO) and raw cell/link state,
@@ -344,3 +344,10 @@ Admission is a separate operation owned by [run-admission.ts](../admin/run-admis
 That owner checks the run, suite and cited artifacts before placing admitted content. A private collection, successful test or sealed result alone does not mean site data has been published.
 
 The [execution and seal-boundary tests](src/execution-results.test.ts) exercise these distinctions without collecting new terminal data.
+
+`measureRenderedWidth` returns a number or a named readback cause: `no-reply` with its step,
+`control-mismatch` with its step and observed cursor, or `wrapped` with its observed cursor.
+All width callbacks distinguish these before applying their numeric feature criterion: missing
+readback is named TEST TODO; wrong controls and wrapping are named TEST FAILURE. A wrong numeric
+ASCII control is also a fixture failure. Unknown transport kinds throw with the probe and kind
+named. `/query` retains the same result in its `width` field. JSON preserves the cause fields.

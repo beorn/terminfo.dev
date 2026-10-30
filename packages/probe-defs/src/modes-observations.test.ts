@@ -21,7 +21,7 @@ function captureSource(
     cols,
     write: (bytes: string) => writes.push(bytes),
     queryCursorPosition: async () => ({ row: 1, col: 1 }),
-    measureRenderedWidth: async () => null,
+    measureRenderedWidth: async () => ({ kind: "no-reply", step: "sample" }) as const,
     query: async () => null,
     queryWithSentinel: async () => null,
     queryOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
@@ -364,7 +364,7 @@ test("app cursor replies and mode recognition do not prove alternate-buffer beha
       rows: 24,
       write() {},
       queryCursorPosition: async () => ({ row: 3, col: 3 }),
-      measureRenderedWidth: async () => null,
+      measureRenderedWidth: async () => ({ kind: "no-reply", step: "sample" }) as const,
       query: async () => null,
       // Private DECRQM answers "set" (Ps 1); the ANSI IRM query stays unanswered, so IRM keeps its cell fixture.
       queryWithSentinel: async (sequence, pattern) => {

@@ -122,7 +122,7 @@ test("an ASCII region fixture prepares its screen before reading a preceding Uni
       return textCellsFrame(checkpoint, read, Date.now()).frame
     },
     queryCursorPosition: async () => null,
-    measureRenderedWidth: async () => null,
+    measureRenderedWidth: async () => ({ kind: "no-reply", step: "sample" }) as const,
     query: async () => null,
     queryWithSentinel: async () => null,
     queryOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),

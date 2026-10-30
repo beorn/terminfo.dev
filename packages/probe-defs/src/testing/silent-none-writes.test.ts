@@ -21,7 +21,7 @@ function silentTerm(rows: number, cols: number): { ctx: TermProbeSource; writes:
       writes.push(text)
     },
     queryCursorPosition: async () => null,
-    measureRenderedWidth: async () => null,
+    measureRenderedWidth: async () => ({ kind: "no-reply", step: "sample" }) as const,
     query: async () => null,
     queryWithSentinel: async () => null,
     queryOutcome: timeout,

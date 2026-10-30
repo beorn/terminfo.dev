@@ -322,7 +322,7 @@ export function replayTermProbeSource(
     kind: "live",
     write: () => {},
     queryCursorPosition: async () => null,
-    measureRenderedWidth: async () => null,
+    measureRenderedWidth: async () => ({ kind: "no-reply", step: "sample" }) as const,
     query: async (sequence, pattern) => outcome(sequence, pattern).match,
     queryWithSentinel: async (sequence, pattern) => outcome(sequence, pattern).match,
     queryOutcome: async (sequence, pattern) => outcome(sequence, pattern),

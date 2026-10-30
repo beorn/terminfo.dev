@@ -34,7 +34,7 @@ function sgrReadbackSource(reply: string | null | readonly (string | null)[]) {
     }),
     write: (bytes: string) => writes.push(bytes),
     queryCursorPosition: async () => ({ row: 1, col: 2 }),
-    measureRenderedWidth: async () => null,
+    measureRenderedWidth: async () => ({ kind: "no-reply", step: "sample" }) as const,
     query: async () => null,
     queryWithSentinel: async () => null,
     queryOutcome: async () => timeout(),

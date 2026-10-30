@@ -65,7 +65,7 @@ const textSource = (): TermProbeSource => ({
   capture: async (request) => textFrame(request.label, request.role),
   write() {},
   queryCursorPosition: async () => null,
-  measureRenderedWidth: async () => null,
+  measureRenderedWidth: async () => ({ kind: "no-reply", step: "sample" }) as const,
   query: async () => null,
   queryWithSentinel: async () => null,
   queryOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),

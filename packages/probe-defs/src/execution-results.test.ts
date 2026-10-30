@@ -310,8 +310,14 @@ it("preserves native callback note fallback for unmeasured widths and TERM_FEATU
   for (const row of unicodeProbes) {
     if (!["unicode.east-asian-ambiguous", "unicode.grapheme-cursor"].includes(row.id)) continue
     if (!row.term) continue
-    const callback = await row.term({ cols: 80, measureRenderedWidth: async () => null } as unknown as TermProbeSource)
-    expect(record(callback)).toMatchObject({ status: "test-failure", reason: "Cannot measure width" })
+    const callback = await row.term({
+      cols: 80,
+      measureRenderedWidth: async () => ({ kind: "no-reply", step: "sample" }) as const,
+    } as unknown as TermProbeSource)
+    expect(record(callback)).toMatchObject({
+      status: "test-todo",
+      reason: "sample width: no cursor-position readback at sample",
+    })
   }
   const callback = await deviceProbes.find((row) => row.id === "device.term-features")!.term!({} as TermProbeSource)
   expect(callback.notTested).toEqual({

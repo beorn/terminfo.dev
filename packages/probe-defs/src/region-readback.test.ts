@@ -125,7 +125,7 @@ function ownedWindow(options: {
       pendingWrite = true
     },
     queryCursorPosition: async () => ({ row: 4, col: 1 }),
-    measureRenderedWidth: async () => null,
+    measureRenderedWidth: async () => ({ kind: "no-reply", step: "sample" }) as const,
     query: async () => null,
     queryWithSentinel: async () => null,
     queryOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
@@ -1081,7 +1081,7 @@ function familyTerminal(applied: string): TermProbeSource {
       }
     },
     queryCursorPosition: async () => ({ row: 4, col: 1 }),
-    measureRenderedWidth: async () => null,
+    measureRenderedWidth: async () => ({ kind: "no-reply", step: "sample" }) as const,
     query: async () => null,
     queryWithSentinel: async () => null,
     queryOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
@@ -1397,7 +1397,7 @@ function statefulTerminal(sgr0: readonly SgrAttr[], options: StatefulOptions = {
       }
     },
     queryCursorPosition: async () => ({ row: 4, col: 1 }),
-    measureRenderedWidth: async () => null,
+    measureRenderedWidth: async () => ({ kind: "no-reply", step: "sample" }) as const,
     query: async () => null,
     queryWithSentinel: async () => null,
     queryOutcome: async () => ({ match: null, reason: "timeout" as const, raw: "", rawBase64: "" }),

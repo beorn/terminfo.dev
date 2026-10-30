@@ -141,7 +141,7 @@ function harness(mode: Mode): Harness {
       if (/^\u001b\[\d+;\d+H[0-9]$/.test(text)) witnessVersion += 1
     },
     queryCursorPosition: async () => null,
-    measureRenderedWidth: async () => null,
+    measureRenderedWidth: async () => ({ kind: "no-reply", step: "sample" }) as const,
     query: async () => null,
     queryWithSentinel: async () => null,
     queryOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),

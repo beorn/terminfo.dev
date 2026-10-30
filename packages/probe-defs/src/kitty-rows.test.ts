@@ -59,7 +59,7 @@ function surface(options: Surface) {
       writes.push(bytes)
     },
     queryCursorPosition: async () => ({ row: 1, col: 1 }),
-    measureRenderedWidth: async () => null,
+    measureRenderedWidth: async () => ({ kind: "no-reply", step: "sample" }) as const,
     query: async () => null,
     queryWithSentinel: async () => null,
     queryOutcome: async (sequence) => {

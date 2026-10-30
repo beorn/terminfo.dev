@@ -13,6 +13,7 @@ export type {
   LibMouseEvent,
   LibProbeSource,
   TermProbeSource,
+  RenderedWidthResult,
   TerminalQueryOutcome,
   ClipboardFixture,
   InputFixture,

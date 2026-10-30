@@ -450,7 +450,7 @@ test("accumulate uses measured rows and does not infer 24 after CSI silence", as
     cols: 61,
     write: (s) => writes.push(s),
     queryCursorPosition: async () => ({ row: 37, col: 1 }),
-    measureRenderedWidth: async () => null,
+    measureRenderedWidth: async () => ({ kind: "no-reply", step: "sample" }) as const,
     query: async () => null,
     queryWithSentinel: async (s) => {
       queries.push(s)
@@ -473,7 +473,7 @@ function silentAppSource(rows: number, cols: number): { context: TermProbeSource
     cols,
     write: (sequence) => writes.push(sequence),
     queryCursorPosition: async () => ({ row: 5, col: 5 }),
-    measureRenderedWidth: async () => null,
+    measureRenderedWidth: async () => ({ kind: "no-reply", step: "sample" }) as const,
     query: async () => null,
     queryWithSentinel: async () => null,
     queryOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
@@ -604,7 +604,7 @@ test("remaining scrollback fixtures decline too-small geometry before writing", 
       queryCursorPosition: async () => {
         throw new Error(`${id} queried before size guard`)
       },
-      measureRenderedWidth: async () => null,
+      measureRenderedWidth: async () => ({ kind: "no-reply", step: "sample" }) as const,
       query: async () => null,
       queryWithSentinel: async () => null,
       queryOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
@@ -869,7 +869,7 @@ function captureApp(rows: number, cols: number) {
     cols,
     write: (bytes) => writes.push(bytes),
     queryCursorPosition: async () => null,
-    measureRenderedWidth: async () => null,
+    measureRenderedWidth: async () => ({ kind: "no-reply", step: "sample" }) as const,
     query: async () => null,
     queryWithSentinel: async () => null,
     queryOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
@@ -1103,7 +1103,7 @@ function regionReadbackApp(
       surface.feed(options.strip === undefined ? bytes : bytes.replaceAll(options.strip, ""))
     },
     queryCursorPosition: async () => ({ row: 1, col: 1 }),
-    measureRenderedWidth: async () => null,
+    measureRenderedWidth: async () => ({ kind: "no-reply", step: "sample" }) as const,
     query: async () => null,
     queryWithSentinel: async () => null,
     queryOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),

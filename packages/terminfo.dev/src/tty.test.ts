@@ -557,7 +557,10 @@ describe("TTY transaction replies", () => {
         return true
       },
     } as unknown as NodeJS.WriteStream
-    expect(await withTTYOperation(() => measureRenderedWidth("界"), out)).toBeNull()
+    expect(await withTTYOperation(() => measureRenderedWidth("界"), out)).toEqual({
+      kind: "wrapped",
+      observed: { row: 2, col: 3 },
+    })
     expect(writes.at(-1)).toBe("\x1b8")
   })
 
@@ -576,7 +579,10 @@ describe("TTY transaction replies", () => {
         return true
       },
     } as unknown as NodeJS.WriteStream
-    expect(await withTTYOperation(() => measureRenderedWidth("界"), out)).toBeNull()
+    expect(await withTTYOperation(() => measureRenderedWidth("界"), out)).toEqual({
+      kind: "wrapped",
+      observed: { row: 2, col: 2 },
+    })
     expect(writes.at(-1)).toBe("\x1b8")
   })
 
@@ -589,7 +595,11 @@ describe("TTY transaction replies", () => {
         return true
       },
     } as unknown as NodeJS.WriteStream
-    expect(await withTTYOperation(() => measureRenderedWidth("界"), out)).toBeNull()
+    expect(await withTTYOperation(() => measureRenderedWidth("界"), out)).toEqual({
+      kind: "control-mismatch",
+      step: "origin",
+      observed: { row: 1, col: 1 },
+    })
     expect(writes).toEqual(["\x1b7", "\x1b[2;1H", "\x1b[6n", "\x1b8"])
   })
 

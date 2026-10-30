@@ -1,5 +1,5 @@
 import type { ProbeDefinition } from "./types.ts"
-import { parserStateResult, probe, utf8DecodingRefusal, validSize } from "./helpers.ts"
+import { parserStateResult, probe, utf8DecodingRefusal, validSize, renderedWidthFailure } from "./helpers.ts"
 
 export const unicodeProbes: ProbeDefinition[] = [
   {
@@ -41,13 +41,8 @@ export const unicodeProbes: ProbeDefinition[] = [
         const decoding = await utf8DecodingRefusal(ctx, "unicode.east-asian-ambiguous")
         if (decoding) return decoding
         const width = await ctx.measureRenderedWidth("●")
-        if (width === null) {
-          return {
-            pass: false,
-            note: "Cannot measure width",
-            tests: [{ id: "criterion", status: "test-failure", reason: "Cannot measure width" }],
-          }
-        }
+        if (typeof width !== "number")
+          return renderedWidthFailure(width, "unicode.east-asian-ambiguous", "sample", JSON.stringify({ width }))
         const pass = width === 1 || width === 2
         return {
           pass,
@@ -115,13 +110,8 @@ export const unicodeProbes: ProbeDefinition[] = [
         const decoding = await utf8DecodingRefusal(ctx, "unicode.grapheme-cursor")
         if (decoding) return decoding
         const width = await ctx.measureRenderedWidth("\u{1F468}\u200D\u{1F469}\u200D\u{1F467}")
-        if (width === null) {
-          return {
-            pass: false,
-            note: "Cannot measure width",
-            tests: [{ id: "criterion", status: "test-failure", reason: "Cannot measure width" }],
-          }
-        }
+        if (typeof width !== "number")
+          return renderedWidthFailure(width, "unicode.grapheme-cursor", "sample", JSON.stringify({ width }))
         return {
           pass: width === 2,
           note: width === 2 ? undefined : `width=${width}, expected 2`,

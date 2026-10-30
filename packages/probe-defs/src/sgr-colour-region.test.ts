@@ -517,7 +517,7 @@ function colourTerminal(mode: Mode, palette: Palette, geometry = { rows: ROWS, c
       paint(screen, text, mode, palette, mode === "deferred-paint" && firstColourPaint)
     },
     queryCursorPosition: async () => ({ row: screen.row + 1, col: screen.col + 1 }),
-    measureRenderedWidth: async () => null,
+    measureRenderedWidth: async () => ({ kind: "no-reply", step: "sample" }) as const,
     query: async () => null,
     queryWithSentinel: async () => null,
     queryOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
