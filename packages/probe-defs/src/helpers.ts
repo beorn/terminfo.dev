@@ -1258,16 +1258,10 @@ export function cellWidthTransition(reads: CellWidthTransitionReads): ProbeCallb
     }
   }
   const moved = reads.enabled.width === target && reads.restored.width === initial
-  if (!moved && (reads.decrpm === 0 || reads.decrpm === 4)) {
-    return cellWidthNamed(response, "mode not recognized/settable", {
-      decrpm: reads.decrpm,
-      enabled: reads.enabled.cursor,
-    })
-  }
-  // A measured move outranks a refusal, but the contradiction stays visible in the cell's reason.
-  const refusedYetMoved =
-    moved && (reads.decrpm === 0 || reads.decrpm === 4)
-      ? `DECRPM mode 3 reads ${decrpmReading(reads.decrpm)} while the sweep measured ${initial} -> ${target} -> ${initial}`
+  // The measured sweep decides support; retain a refusing DECRPM reading as corroboration.
+  const decrpmNote =
+    reads.decrpm === 0 || reads.decrpm === 4
+      ? `DECRPM mode 3 reads ${decrpmReading(reads.decrpm)} while the sweep measured ${initial} -> ${reads.enabled.width} -> ${reads.restored.width}`
       : undefined
   return {
     pass: moved,
@@ -1275,7 +1269,7 @@ export function cellWidthTransition(reads: CellWidthTransitionReads): ProbeCallb
     observation: {
       outcome: moved ? "supported" : "unsupported",
       assertionType: "buffer_state",
-      note: [`initial=${initial}, enabled=${reads.enabled.width}, restored=${reads.restored.width}`, refusedYetMoved]
+      note: [`initial=${initial}, enabled=${reads.enabled.width}, restored=${reads.restored.width}`, decrpmNote]
         .filter((part) => part !== undefined)
         .join("; "),
     },

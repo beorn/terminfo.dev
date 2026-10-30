@@ -274,18 +274,20 @@ test("DECCOLM grades a no-change by an engine that accepted the mode as unsuppor
   expect(result.tests).toBeUndefined()
 })
 
-test.each([0, 4] as const)("DECCOLM keeps a refused mode named inconclusive at DECRPM Ps %i", (ps) => {
+test.each([0, 4] as const)("DECCOLM grades unchanged measured width unsupported at DECRPM Ps %i", (ps) => {
   const { context } = cellWidthContext({ width: 80, ignoresMode: true, decrpm: `\x1b[?3;${ps}$y` })
   const result = headlessDeccolm()(context)
   expect(result.observation).toMatchObject({
-    outcome: "inconclusive",
+    outcome: "unsupported",
     assertionType: "buffer_state",
-    note: "mode not recognized/settable",
+    note: expect.stringContaining(`DECRPM mode 3 reads ${ps === 0 ? "not recognized" : "permanently reset"} (Ps ${ps})`),
   })
-  expect(result.tests).toMatchObject([
+  expect(result.tests).toBeUndefined()
+  expect(result.assertions).toMatchObject([
     expect.objectContaining({
-      status: "test-failure",
-      reason: expect.stringContaining("mode not recognized/settable"),
+      kind: "negative",
+      expected: expect.stringContaining("with ?40 honoured"),
+      observed: result.response,
     }),
   ])
 })
