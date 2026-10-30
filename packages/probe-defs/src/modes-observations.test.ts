@@ -280,7 +280,9 @@ test.each([0, 4] as const)("DECCOLM grades unchanged measured width unsupported 
   expect(result.observation).toMatchObject({
     outcome: "unsupported",
     assertionType: "buffer_state",
-    note: expect.stringContaining(`DECRPM mode 3 reads ${ps === 0 ? "not recognized" : "permanently reset"} (Ps ${ps})`),
+    note: expect.stringContaining(
+      `DECRPM mode 3 reads ${ps === 0 ? "not recognized" : "permanently reset"} (Ps ${ps})`,
+    ),
   })
   expect(result.tests).toBeUndefined()
   expect(result.assertions).toMatchObject([
