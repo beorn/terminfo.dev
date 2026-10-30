@@ -7,8 +7,12 @@
 import { expect, test } from "vitest"
 import { createCallLog, IncompleteReplay, readCallLog, withCallLog } from "../src/call-log.ts"
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+}
+
 function record(value: unknown): Record<string, unknown> {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) throw new Error("expected fixture object")
+  if (!isRecord(value)) throw new Error("expected fixture object")
   return value
 }
 
