@@ -52,6 +52,12 @@ Both source interfaces carry `readonly kind: ProbeSourceKind` directly. The only
 
 The [shared execution helpers](src/helpers.ts) initialize every catalog member as `test-todo` with no attempt, then record only the work actually performed.
 
+Library SGR 39/49/59 resets without a distinct colored setup retain their actual cell state on a
+named `headless-observable-review` TEST TODO row. That missing prerequisite cannot establish a
+reset negative. Compound attribute resets with unshown setup attributes retain a named
+`source-negative-review` TEST FAILURE until the complete criterion is reviewed; a partial reset
+does not decide the whole claim. Other source-negative style reviews keep their existing failures.
+
 TERM_FEATURES means a terminal program's export into its child environment. Its library arm performs
 no I/O and retains a `headless-observable-review` row with the API boundary and loaded runtime for
 per-engine source review. Only a non-author Untestable decision can discharge it; it creates no

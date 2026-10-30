@@ -342,3 +342,100 @@ test.each([
   expect(run(null, " ").criterionBranch).toBeUndefined()
   expect(run(null, " ").assertions).toBeUndefined()
 })
+
+// #31766: these causes came from the retained VT100/VT220/libvterm/Rust states.
+// A reset without a distinct colored seed is unmeasured, even when its parser lacks the setup.
+test.each(["sgr.fg.default", "sgr.bg.default", "sgr.underline-color-reset"])(
+  "%s names its missing colored seed as TODO without changing the retained state",
+  (id) => {
+    const probe = sgrProbes.find((entry) => entry.id === id)!
+    const cells: TableCell[] = [
+      { char: "C", underline: "single" },
+      { char: "X" },
+      { char: id === "sgr.underline-color-reset" ? "Y" : "R" },
+    ]
+    const result = probe.lib!(libProbeSource(cellsModel(cells)))
+    expect(result.criterionBranch).toBe("headless-observable-review")
+    expect(result.tests).toContainEqual(
+      expect.objectContaining({
+        id: "review",
+        status: "test-todo",
+        reason: expect.stringContaining("distinct colored seed"),
+      }),
+    )
+    expect(result.assertions).toBeUndefined()
+    expect(JSON.parse(result.response!)).toMatchObject({
+      before: { char: "X", fg: null, bg: null, underlineColor: null },
+      after: { char: cells[2]!.char },
+    })
+
+    // A missing fixture cell is a different cause; it must not inherit the seed TODO.
+    const missing = probe.lib!(libProbeSource(cellsModel([{ char: " " }, ...cells.slice(1)])))
+    expect(missing.tests?.some((row) => row.status === "test-todo")).not.toBe(true)
+  },
+)
+
+test.each(["sgr.selective-reset.bold", "sgr.selective-reset.italic"])(
+  "%s keeps an incomplete compound criterion as a named FAILURE",
+  (id) => {
+    const probe = sgrProbes.find((entry) => entry.id === id)!
+    const result = probe.lib!(
+      libProbeSource(
+        cellsModel([
+          { char: "C", dim: null, italic: null },
+          { char: "X", bold: true, dim: null, italic: null },
+          { char: "Y", bold: id.endsWith("italic"), dim: null, italic: null },
+        ]),
+      ),
+    )
+    expect(result.criterionBranch).toBe("source-negative-review")
+    expect(result.tests).toContainEqual(
+      expect.objectContaining({
+        id: "review",
+        status: "test-failure",
+        reason: expect.stringContaining("complete compound criterion pending"),
+      }),
+    )
+    expect(result.observation?.outcome).toBe("inconclusive")
+    expect(JSON.parse(result.response!)).toMatchObject({ before: { bold: true, dim: null, italic: null } })
+  },
+)
+
+test("a distinct reset seed with an unexposed reset cell keeps the existing FAILURE", () => {
+  const source = libProbeSource(cellsModel([{ char: "C" }, { char: "X", fg: { r: 205, g: 0, b: 0 } }, { char: "R" }]))
+  const read = source.getCell
+  source.getCell = (row, col) => {
+    const cell = read(row, col)
+    // An invalid producer omitted the required field; this is not a seedless fixture.
+    if (col === 2) Reflect.deleteProperty(cell, "fg")
+    return cell
+  }
+  const result = sgrProbes.find((entry) => entry.id === "sgr.fg.default")!.lib!(source)
+  expect(result.criterionBranch).toBe("source-negative-review")
+  expect(result.tests).toContainEqual(expect.objectContaining({ id: "review", status: "test-failure" }))
+})
+
+test.each(["wrong requested color", "baseline already requested color"])(
+  "SGR59 names its requested-color prerequisite: %s",
+  (cause) => {
+    const pink = { r: 255, g: 0, b: 128 }
+    const blue = { r: 0, g: 0, b: 255 }
+    const result = sgrProbes.find((entry) => entry.id === "sgr.underline-color-reset")!.lib!(
+      libProbeSource(
+        cellsModel([
+          { char: "C", underline: "single", underlineColor: cause.startsWith("baseline") ? pink : null },
+          { char: "X", underline: "single", underlineColor: cause.startsWith("baseline") ? pink : blue },
+          { char: "Y", underline: "single", underlineColor: null },
+        ]),
+      ),
+    )
+    expect(result.tests).toContainEqual(
+      expect.objectContaining({
+        id: "review",
+        status: "test-todo",
+        reason: expect.stringContaining("requested rgb(255,0,128)"),
+      }),
+    )
+    expect(result.assertions).toBeUndefined()
+  },
+)
