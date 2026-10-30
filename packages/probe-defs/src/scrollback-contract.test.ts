@@ -73,6 +73,7 @@ const SCROLLBACK_CONTRACT_SPEC: GroupContractSpec = {
   tests: [
     "packages/probe-defs/src/scrollback-contract.test.ts",
     "packages/probe-defs/src/scrollback-observations.test.ts",
+    "packages/probes/headless-batch.test.ts",
   ],
 }
 
@@ -108,6 +109,7 @@ test("the Scrollback contract names its focused tests, and every named file exis
   expect(command).toContain("bunx --bun vitest run")
   expect(command).not.toContain("bun test")
   expect(command).not.toMatch(/[*?]/u)
+  expect(command).toContain("packages/probes/headless-batch.test.ts")
   for (const path of SCROLLBACK_CONTRACT_SPEC.tests) expect(command).toContain(path)
 })
 
