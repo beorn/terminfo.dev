@@ -524,7 +524,7 @@ function decodeValue(value: Encoded, projection = false): unknown {
       return projection ? Object.freeze(restored) : restored
     }
     default:
-      throw new Error(`Unknown scratch value kind ${value.kind}`)
+      throw new Error("Unknown scratch value kind")
   }
 }
 

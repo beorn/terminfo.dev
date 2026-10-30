@@ -99,9 +99,14 @@ test("an invalid trailing operation cannot deliver a partial projection", () => 
   capture.context.read(() => 1)
   capture.finish()
   for (const target of ["operation", "callback"]) {
-    const raw = JSON.parse(JSON.stringify(log))
-    if (target === "operation") raw.calls[1].finished = false
-    else raw.calls[1].callbacks[0].finished = false
+    const raw = record(JSON.parse(JSON.stringify(log)))
+    const call = storedCall(raw, 1)
+    if (target === "operation") call.finished = false
+    else {
+      const callbacks = call.callbacks
+      if (!Array.isArray(callbacks)) throw new Error("Expected retained callback list")
+      record(callbacks[0]).finished = false
+    }
     let projected = 0
     expect(() =>
       readCallLog(raw, {
