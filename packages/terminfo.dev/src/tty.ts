@@ -88,8 +88,9 @@ function projectedQuery(value: unknown): QueryOutcome {
     typeof value.raw !== "string" ||
     typeof value.rawBase64 !== "string" ||
     !(value.match === null || (Array.isArray(value.match) && value.match.every((item) => typeof item === "string")))
-  )
+  ) {
     throw new IncompleteReplay("TTY call log contains an invalid query outcome")
+  }
   const sentinel = value.sentinel
   let measuredSentinel: QueryOutcome["sentinel"]
   if (sentinel !== undefined) {
@@ -99,8 +100,9 @@ function projectedQuery(value: unknown): QueryOutcome {
       !Number.isFinite(sentinel.atMs) ||
       typeof sentinel.graceMs !== "number" ||
       !Number.isFinite(sentinel.graceMs)
-    )
+    ) {
       throw new IncompleteReplay("TTY call log contains invalid sentinel timing")
+    }
     measuredSentinel = { atMs: sentinel.atMs, graceMs: sentinel.graceMs }
   }
   return {
@@ -139,8 +141,9 @@ function projectTTYLog(log: CallLog): { queries: TTYQueryTrace[]; events: TTYTra
           !traceRecord(value) ||
           typeof value.eventAtPerformanceMs !== "number" ||
           !Number.isFinite(value.eventAtPerformanceMs)
-        )
+        ) {
           throw new IncompleteReplay("TTY call log contains invalid response ordering")
+        }
         rows.push({
           at: value.eventAtPerformanceMs,
           index: position,
