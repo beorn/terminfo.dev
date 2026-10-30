@@ -15,7 +15,7 @@ import { nativeHostRecipeResult } from "./native-host-audit.ts"
 
 // The individual integrated APIs return parser/readback backends, not a terminal-owned application child.
 // These citations were read at this Termless pin; runtime identity alone is not the source audit.
-const TERM_FEATURES_API_REVISION = "84003d2c91610fe2743142675234a0fb3ec9cf1d"
+const TERM_FEATURES_API_REVISION = "8b8664540f365fa0ba1d9b6400d3c4d1a160582c"
 const TERM_FEATURES_API_CITATIONS: Readonly<Record<string, readonly [string, string]>> = {
   "vendor/vterm/packages/vterm/src/index.ts": [
     "vterm",
@@ -66,7 +66,7 @@ function termFeaturesLibraryReview(ctx: LibProbeSource): ProbeCallbackResult {
   ) {
     citation = [
       "xtermjs",
-      "packages/xtermjs/src/backend.ts:145 createXtermBackend integrates @xterm/headless as an in-process TerminalBackend",
+      "packages/xtermjs/src/backend.ts:171-174 createXtermBackend integrates @xterm/headless as an in-process TerminalBackend",
     ]
   } else if (
     identity.kind === "js" &&
@@ -76,7 +76,7 @@ function termFeaturesLibraryReview(ctx: LibProbeSource): ProbeCallbackResult {
   ) {
     citation = [
       "ghostty",
-      "packages/ghostty/src/backend.ts:249 createGhosttyBackend returns TerminalBackend over the ghostty-web core",
+      "packages/ghostty/src/backend.ts:249-252 createGhosttyBackend returns LegacyBackend over the ghostty-web core",
     ]
   } else if (
     identity.kind === "native" &&
