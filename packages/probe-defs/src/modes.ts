@@ -1911,15 +1911,18 @@ export const modesProbes: ProbeDefinition[] = [
         )
       }
       const geometryReply = /\x1b\[8;([1-9][0-9]*);([1-9][0-9]*)t/
-      const reply18t = () => {
-        const match = geometryReply.exec(ctx.feedCapture("\x1b[18t"))
+      const replyNotes: string[] = []
+      const reply18t = (phase: string) => {
+        const raw = ctx.feedCapture("\x1b[18t")
+        const match = geometryReply.exec(raw)
+        if (raw && !match) replyNotes.push(`Malformed 18t reply (${phase}): ${JSON.stringify(raw)}`)
         return match ? Number(match[2]) : null
       }
       // Close the 80/132 policy gate for the baseline and gate control A. The collector destroys this
       // probe's disposable backend; no unavailable prior ?40 state is invented for cleanup.
       ctx.feed("\x1b[?40l")
       const initial = sweepCellWidth(ctx)
-      const initial18t = reply18t()
+      const initial18t = reply18t("initial")
       const mirror = initial.kind === "width" && initial.width === 132
       const change = mirror ? "\x1b[?3l" : "\x1b[?3h"
       const restore = mirror ? "\x1b[?3h" : "\x1b[?3l"
@@ -1929,16 +1932,20 @@ export const modesProbes: ProbeDefinition[] = [
         const gateBefore = sweepCellWidth(ctx)
         ctx.feed(restore + "\x1b[?40h" + change)
         const enabled = sweepCellWidth(ctx)
-        const enabled18t = reply18t()
+        const enabled18t = reply18t("enabled")
         ctx.feed(restore)
         const restored = sweepCellWidth(ctx)
-        const restored18t = reply18t()
+        const restored18t = reply18t("restored")
         // Gate control B: with ?40 closed again the mode must not move the width a second time.
         ctx.feed("\x1b[?40l" + change)
         const gateAfter = sweepCellWidth(ctx)
         ctx.feed(restore + "\x1b[?40h")
-        const decrpm = decrpmPs(decrpmReplyPattern(3).exec(ctx.feedCapture("\x1b[?3$p"))?.[1])
-        return cellWidthTransition({
+        const decrpmRaw = ctx.feedCapture("\x1b[?3$p")
+        const decrpm = decrpmPs(decrpmReplyPattern(3).exec(decrpmRaw)?.[1])
+        if (decrpmRaw && decrpm === null) {
+          replyNotes.push(`Malformed or out-of-range DECRPM mode 3 reply: ${JSON.stringify(decrpmRaw)}`)
+        }
+        const result = cellWidthTransition({
           initial,
           gateBefore,
           enabled,
@@ -1947,6 +1954,10 @@ export const modesProbes: ProbeDefinition[] = [
           decrpm,
           reply18t: { initial: initial18t, enabled: enabled18t, restored: restored18t },
         })
+        if (replyNotes.length && result.observation) {
+          result.observation.note = [result.observation.note, ...replyNotes].filter(Boolean).join("; ")
+        }
+        return result
       } finally {
         ctx.feed(restore + "\x1b[?40h")
       }
