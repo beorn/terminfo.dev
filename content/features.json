@@ -863,7 +863,7 @@
     "tags": ["xterm-extensions"],
     "baseline": "modern",
     "body": "The fixterms/CSI u encoding reports keypresses as CSI codepoint ; modifiers u sequences. This was the precursor to the Kitty keyboard protocol and provides unambiguous key identification for terminal applications.\n\nCSI u came from the 'fixterms' effort to repair ambiguous keyboard input without replacing the whole terminal protocol. It reports Unicode code points plus modifiers, making Ctrl-I distinguishable from Tab and Ctrl-M from Enter. Kitty's keyboard protocol is the richer successor, but CSI u remains an important compatibility step.",
-    "probe": "Query keyboard mode flags and check if the terminal supports CSI u encoding for key events."
+    "probe": "Query keyboard mode flags and check if the terminal supports CSI u encoding for key events. Expected: the acknowledged flags include mask 1."
   },
   "input.pixel-mouse": {
     "name": "Pixel Mouse Reporting (1016)",
@@ -1218,7 +1218,7 @@
     "url": "https://sw.kovidgoyal.net/kitty/keyboard-protocol/",
     "tags": ["kitty-extensions"],
     "body": "The Kitty keyboard protocol solves fundamental ambiguities in traditional terminal input handling. Legacy terminals cannot distinguish between <code>Ctrl+I</code> and <code>Tab</code>, <code>Ctrl+M</code> and <code>Enter</code>, or <code>Escape</code> and the start of an escape sequence — they all produce the same byte sequences. The protocol also enables key-release events and distinguishes between different modifier key presses (left vs. right Shift).\n\nApplications opt in with <code>CSI &gt; flags u</code>, where <code>flags</code> is a bitmask selecting reporting modes: disambiguate keys (1), report event types (2), report alternate keys (4), report all keys as escape sequences (8), and report associated text (16). Keys are reported as <code>CSI unicode-key-code : shifted-key : base-layout-key ; modifiers : event-type u</code>.\n\nAdopted by Ghostty, WezTerm, foot, and rio. The protocol is progressive — applications can request only the features they need, and terminals report which flags they support.",
-    "probe": "Query keyboard mode flags via <code>CSI ? u</code> and check for a <code>CSI ? flags u</code> response indicating Kitty keyboard protocol support.",
+    "probe": "Query keyboard mode flags via <code>CSI ? u</code> and check for a <code>CSI ? flags u</code> response indicating Kitty keyboard protocol support. Expected: the acknowledged flags include mask 1.",
     "baseline": "rich",
     "sequence": "ESC [ > flags u"
   },
