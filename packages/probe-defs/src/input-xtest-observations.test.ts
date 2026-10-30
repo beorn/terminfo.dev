@@ -452,6 +452,8 @@ test.each([
   ["coalesced prefix", ["\x1b[15~\x1bOu"]],
   ["fragmented", ["\x1bO", "u\x1b[12~"]],
   ["separate chunks", ["\x1bOu", "\x1b[12~"]],
+  ["coalesced OSC prefix", ["\x1b]lterm5\x1b\\\x1bOu"]],
+  ["separate OSC prefix", ["\x1b]lterm5\x1b\\", "\x1bOu"]],
 ] as const)("modes.application-keypad reads SS3 u from %s through actual stdin", async (_label, chunks) => {
   const ctx = term({
     input: {
@@ -468,7 +470,7 @@ test.each([
 })
 
 // The real input reader returns only regex matches: a digit inside another report is not KP_5.
-test.each(["15", "\x1b[15~", "\x1b[<0;15;1M"])(
+test.each(["15", "\x1b[15~", "\x1b[<0;15;1M", "\x1b]lterm5\x1b\\", "\x1b]5;0;rgb:ffff/ffff/ffff\x07"])(
   "modes.application-keypad rejects unrelated input containing 5: %s",
   async (report) => {
     const { ctx } = inputAndRead({ keys: { a: "a", KP_5: report } })
