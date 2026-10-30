@@ -157,21 +157,21 @@ describe("the real catalog", () => {
     expect(probeStatusOf("editing.decsace", features)).toBe("automated")
   })
 
-  it("settles the rows whose terminal arm measures but whose headless arm declines", () => {
+  it("settles the declining ligature arm and the two measuring click-event arms", () => {
     const features = loadFeatures(contentDir)
     // Font ligatures are renderer glyph shaping: the terminal arm captures a spaced control and a
-    // contiguous sample as pixels, and the headless parser shapes no glyphs at all. Kitty click
-    // events are OS-level injection: the terminal arm reads the click report, while the headless
-    // arm refuses before measuring. Undeclared is the word for "nobody has said yet", not for
-    // "one arm declines by design", so both rows read partial and name the arm that cannot measure.
-    for (const id of ["extensions.font-ligatures", "input.kitty-click-events"]) {
+    // contiguous sample as pixels, and the headless parser shapes no glyphs at all.
+    for (const id of ["extensions.font-ligatures"]) {
       const declaration = ALL_PROBES.find((entry) => entry.id === id)
       expect(declaration, id).toBeDefined()
       expect(declaration?.libAssertionType, id).toBeNull()
       expect(probeStatusOf(id, features), id).toBe("partial")
     }
     expect(ALL_PROBES.find((entry) => entry.id === "extensions.font-ligatures")?.termAssertionType).toBe("screenshot")
+    // The library arm now measures mouse encoding through its declared extension (#31798 C5).
+    expect(ALL_PROBES.find((entry) => entry.id === "input.kitty-click-events")?.libAssertionType).toBe("input_bytes")
     expect(ALL_PROBES.find((entry) => entry.id === "input.kitty-click-events")?.termAssertionType).toBe("input_bytes")
+    expect(probeStatusOf("input.kitty-click-events", features)).toBe("automated")
   })
 
   it("derives decsscls partial from its two declared arms, with no catalog override", () => {

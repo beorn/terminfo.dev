@@ -28,9 +28,15 @@
       "pack": true
     },
     {
+      "name": "@termless/core",
+      "repository": "beorn/termless",
+      "commit": "7425c664bf9272357769e23d63b280f2d5dca5f2",
+      "pack": true
+    },
+    {
       "name": "@termless/xtermjs",
       "repository": "beorn/termless",
-      "commit": "4d9f42ba0477943d386d07e191b54e8c5bfed3a8",
+      "commit": "7425c664bf9272357769e23d63b280f2d5dca5f2",
       "pack": true,
       "directory": "packages/xtermjs"
     },
