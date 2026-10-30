@@ -400,3 +400,42 @@ test.each(["sgr.selective-reset.bold", "sgr.selective-reset.italic"])(
     expect(JSON.parse(result.response!)).toMatchObject({ before: { bold: true, dim: null, italic: null } })
   },
 )
+
+test("a distinct reset seed with an unexposed reset cell keeps the existing FAILURE", () => {
+  const source = libProbeSource(cellsModel([{ char: "C" }, { char: "X", fg: { r: 205, g: 0, b: 0 } }, { char: "R" }]))
+  const read = source.getCell
+  source.getCell = (row, col) => {
+    const cell = read(row, col)
+    // An invalid producer omitted the required field; this is not a seedless fixture.
+    if (col === 2) Reflect.deleteProperty(cell, "fg")
+    return cell
+  }
+  const result = sgrProbes.find((entry) => entry.id === "sgr.fg.default")!.lib!(source)
+  expect(result.criterionBranch).toBe("source-negative-review")
+  expect(result.tests).toContainEqual(expect.objectContaining({ id: "review", status: "test-failure" }))
+})
+
+test.each(["wrong requested color", "baseline already requested color"])(
+  "SGR59 names its requested-color prerequisite: %s",
+  (cause) => {
+    const pink = { r: 255, g: 0, b: 128 }
+    const blue = { r: 0, g: 0, b: 255 }
+    const result = sgrProbes.find((entry) => entry.id === "sgr.underline-color-reset")!.lib!(
+      libProbeSource(
+        cellsModel([
+          { char: "C", underline: "single", underlineColor: cause.startsWith("baseline") ? pink : null },
+          { char: "X", underline: "single", underlineColor: cause.startsWith("baseline") ? pink : blue },
+          { char: "Y", underline: "single", underlineColor: null },
+        ]),
+      ),
+    )
+    expect(result.tests).toContainEqual(
+      expect.objectContaining({
+        id: "review",
+        status: "test-todo",
+        reason: expect.stringContaining("requested rgb(255,0,128)"),
+      }),
+    )
+    expect(result.assertions).toBeUndefined()
+  },
+)

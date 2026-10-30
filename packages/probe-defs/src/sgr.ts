@@ -831,11 +831,20 @@ function defaultColorProbe(id: string, channel: ColorChannel): ProbeDefinition {
         const baseColor = baseline[channel]
         const changed = before[channel]
         const resetColor = after[channel]
-        if (!changed || sameCellColor(baseColor, changed) || resetColor === undefined) {
+        if (!changed || sameCellColor(baseColor, changed)) {
           // #30701, @cto ruling C: the colored X is the reference the reset is read against; a setup
           // that reads back as the default leaves the reset with no observable.
           const reason = `No distinct colored seed for ${id}: a colored ${channel} setup cell (SGR ${setup}) distinct from the default, and the reset cell's ${channel}, in the headless readback`
           return reviewResult(HEADLESS_OBSERVABLE_REVIEW, reason, reason, state)
+        }
+        if (resetColor === undefined) {
+          return parserStateResult(
+            null,
+            expected,
+            state,
+            undefined,
+            `a colored ${channel} setup cell (SGR ${setup}) distinct from the default, and the reset cell's ${channel}, in the headless readback`,
+          )
         }
         return parserStateResult(sameCellColor(baseColor, resetColor), expected, state)
       },
@@ -1076,7 +1085,7 @@ export const sgrProbes: ProbeDefinition[] = [
           (baseline.underlineColor && sameRgb(baseline.underlineColor, requestedUnderlineColor))
         ) {
           const reason =
-            "No distinct colored seed for SGR 59: requested colored underline prerequisite was not observed"
+            "SGR 59 needs the requested rgb(255,0,128) setup distinct from its reset-state baseline; that prerequisite was not observed"
           return reviewResult(HEADLESS_OBSERVABLE_REVIEW, reason, reason, state)
         }
         if (after.underlineColor && sameRgb(after.underlineColor, before.underlineColor)) {
