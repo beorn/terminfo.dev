@@ -96,13 +96,13 @@ function inputAndRead(
         if (queued !== undefined) pending.push(queued)
       },
     },
-    readInput: async (_pattern, _timeoutMs, inject) => {
+    readInput: async (pattern, _timeoutMs, inject) => {
       listening = true
       try {
         if (!inject) throw new Error("readInput requires the inject callback so stdin is already listening")
         await inject()
         const next = pending.shift()
-        return next === undefined ? null : [next]
+        return next === undefined ? null : next.match(pattern)
       } finally {
         listening = false
       }
@@ -206,6 +206,17 @@ test("input.xtest-wheel records interaction under 1000+1006 after a control clic
   expect(result.assertions?.[0]).toMatchObject({ kind: "positive", action: "xtest-wheel:4" })
   const observed = JSON.parse(result.assertions?.[0]?.observed ?? "null") as Record<string, unknown>
   expect(observed).toMatchObject({ mode: "1000+1006", control: "\x1b[<0;10;10M", report: "\x1b[<64;10;10M" })
+})
+
+// Same transport, wrong event: delivery alone cannot establish the claimed button.
+test.each([
+  ["input.xtest-click", "\x1b[<64;10;10M"],
+  ["input.xtest-wheel", "\x1b[<0;10;10M"],
+])("%s rejects a different button's SGR report", async (id, report) => {
+  const { ctx } = inputAndRead({ clickReports: ["\x1b[<0;10;10M", report] })
+  const result = await probe(id).term!(ctx)
+  expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "input_bytes" })
+  expect(result.assertions?.[0]).toMatchObject({ kind: "negative" })
 })
 
 test("input.modify-other-keys is not tested without an OS XTEST adapter", async () => {
@@ -431,7 +442,17 @@ test("modes.application-keypad records supported interaction for KP_5 as SS3 u",
   expect(result.assertions?.[0]).toMatchObject({ kind: "positive", action: "application-keypad:KP_5" })
   const observed = JSON.parse(result.assertions?.[0]?.observed ?? "null") as Record<string, unknown>
   expect(observed).toMatchObject({ mode: "application-keypad", control: "a", report: "\x1bOu" })
+  expect(result.assertions?.[0]?.expected).toMatch(/SS3 u/)
 })
+
+// The real input reader returns only regex matches: a digit inside another report is not KP_5.
+test.each(["15", "\x1b[15~", "\x1b[<0;15;1M"])(
+  "modes.application-keypad rejects unrelated input containing 5: %s",
+  async (report) => {
+    const { ctx } = inputAndRead({ keys: { a: "a", KP_5: report } })
+    await expect(modeProbe("modes.application-keypad").term!(ctx)).rejects.toThrow(/KP_5/)
+  },
+)
 
 test("modes.application-keypad records unsupported interaction when KP_5 still reports 5", async () => {
   const writes: string[] = []
@@ -495,20 +516,22 @@ test("modes.alt-scroll-1007 records supported interaction when wheel under 1007 
   expect(observed).toMatchObject({ mode: "1007", control, report })
 })
 
-test("modes.alt-scroll-1007 records unsupported interaction when wheel under 1007 still reports SGR", async () => {
-  const writes: string[] = []
-  const control = "\x1b[<0;10;5M"
-  const report = "\x1b[<64;10;5M"
-  const { ctx, clicks } = inputAndRead({ clickReports: [control, report] }, writes)
-  const result = (await modeProbe("modes.alt-scroll-1007").term!(ctx)) as ProbeCallbackResult
-  expect(clicks).toEqual([1, 4])
-  expect(writes.join("")).toContain("\x1b[?1007h")
-  expect(writes.join("")).toContain("\x1b[?1007l")
-  expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "input_bytes" })
-  expect(result.assertions?.[0]).toMatchObject({ kind: "negative", action: "alt-scroll-1007:4" })
-  const observed = JSON.parse(result.assertions?.[0]?.observed ?? "null") as Record<string, unknown>
-  expect(observed).toMatchObject({ mode: "1007", control, report })
-})
+test.each(["\x1b[<64;10;5M", "\x1b[B", "\x1bOA", "\x1bOB"])(
+  "modes.alt-scroll-1007 rejects non-CSI-A report %s",
+  async (report) => {
+    const writes: string[] = []
+    const control = "\x1b[<0;10;5M"
+    const { ctx, clicks } = inputAndRead({ clickReports: [control, report] }, writes)
+    const result = (await modeProbe("modes.alt-scroll-1007").term!(ctx)) as ProbeCallbackResult
+    expect(clicks).toEqual([1, 4])
+    expect(writes.join("")).toContain("\x1b[?1007h")
+    expect(writes.join("")).toContain("\x1b[?1007l")
+    expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "input_bytes" })
+    expect(result.assertions?.[0]).toMatchObject({ kind: "negative", action: "alt-scroll-1007:4" })
+    const observed = JSON.parse(result.assertions?.[0]?.observed ?? "null") as Record<string, unknown>
+    expect(observed).toMatchObject({ mode: "1007", control, report })
+  },
+)
 
 test("modes.alt-scroll-1007 throws when the 1007 wheel is silent after delivery control, and still resets 1007", async () => {
   const writes: string[] = []
