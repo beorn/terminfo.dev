@@ -580,6 +580,7 @@ const windowTitleReply: DeviceReply = {
   query: "\x1b[21t",
   valid: /\x1b\]ltest-title(?:\x07|\x1b\\)/,
   malformed: /\x1b\]l/,
+  contradicts: /\x1b\]l[^\x07\x1b]*(?:\x07|\x1b\\)/,
   expected: "CSI 21 t returns the exact window title set by OSC 2",
 }
 
@@ -832,15 +833,20 @@ export const deviceProbes: ProbeDefinition[] = [
         if (ctx.queryWithSentinelOutcome) {
           return deviceOutcomeResult(
             windowTitleReply,
-            ctx.queryWithSentinelOutcome(windowTitleReply.query, windowTitleReply.valid),
+            ctx.queryWithSentinelOutcome(windowTitleReply.query, answerPattern(windowTitleReply)),
           )
         }
         const raw = ctx.feedCapture(windowTitleReply.query)
-        return deviceReplyResult(windowTitleReply, raw, windowTitleReply.valid.exec(raw)?.[0] ?? null, "sentinel")
+        return deviceReplyResult(
+          windowTitleReply,
+          raw,
+          answerPattern(windowTitleReply).exec(raw)?.[0] ?? null,
+          "sentinel",
+        )
       },
       async (ctx) => {
         ctx.write("\x1b]2;test-title\x07")
-        const reply = await ctx.queryWithSentinelOutcome(windowTitleReply.query, windowTitleReply.valid)
+        const reply = await ctx.queryWithSentinelOutcome(windowTitleReply.query, answerPattern(windowTitleReply))
         return deviceOutcomeResult(windowTitleReply, reply)
       },
     ),
