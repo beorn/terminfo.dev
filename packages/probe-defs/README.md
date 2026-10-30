@@ -66,14 +66,29 @@ source audits retain their own parser/reply-path citations. Viewport hold on out
 library viewport through the existing scroll control and absolute position/extents. Each independent
 ordinary/synchronized phase resets the main buffer, observes its numbered seed, requires history,
 exact retention and a bottom baseline, then calibrates the first inward sign (-1 before +1) without
-changing extents. One new marker row witnesses hold at the same anchor, snap to the new bottom, or
-inconclusive partial drift. Marker readability is checked only after a verified return to bottom.
-Both phases must qualify: either qualified snap is negative, both holds are positive, and a failed
-control or partial drift withholds a verdict. Missing history or scroll control/state names coverage;
-operational and cleanup errors propagate. Retained buffer-state evidence has baseline, anchor,
+changing extents. Exactly one retained new marker row witnesses hold at the same anchor, snap to the
+new bottom, or bottom-relative motion: the absolute viewport offset advances by exactly one from its
+anchor, keeping its distance from bottom. Marker readability is checked only after a verified return
+to bottom. Both phases must qualify: both bottom-relative outcomes are negative with the reason
+"viewport kept its distance from bottom instead of its anchor"; one bottom-relative outcome mixed
+with any other outcome is inconclusive. Otherwise either qualified snap is negative and both holds
+are positive. Failed controls and every other drift withhold a verdict. Missing history or scroll
+control/state names coverage; operational and cleanup errors propagate. Retained buffer-state evidence has baseline, anchor,
 control, ordinary and synchronized keys. The exact DECSET 2026 bytes exercise output inside that
 block without claiming painting support. The app coverage callback performs no I/O and stays TEST
 TODO because it has no live terminal UI scroll actuator; its manual UI recipe remains in the catalog.
+
+The optional library capability `productViewport: { available: false, reason }` explicitly declares
+that the library subject has no product viewport; an absent declaration means undeclared. The
+collector omits the probe source's scroll control for that declaration. Before any phase action, the
+viewport callback retains the declaration and exact reason plus measured `runtimeIdentity` (null
+when missing), and selects `headless-observable-review` with named scroll-control coverage. It creates
+no phase measurements or assertions and stays TEST TODO until independent per-engine source review
+decides Untestable with the same reason. Missing runtime identity bars that source-based decision.
+A declaration of absence paired with a present scroll control is an inconclusive apparatus
+contradiction, with no review row. An undeclared missing scroll control keeps ordinary named coverage.
+Scripted callback tests cover these branches and the exact two-phase arithmetic independently of
+engine versions; historical captures and grades are unchanged.
 
 **Callback and stored shapes are different.** Follow these names in [types.ts](src/types.ts):
 

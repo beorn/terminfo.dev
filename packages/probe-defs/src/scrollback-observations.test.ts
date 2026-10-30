@@ -80,6 +80,7 @@ function viewportSource(
   const writes: string[] = []
   const moves: number[] = []
   const reads: { target: boolean; bottom: boolean }[] = []
+  let scrollbackReads = 0
   const fault = () => options.faults?.[phase] ?? "none"
   const source = headless({
     reset() {
@@ -101,7 +102,8 @@ function viewportSource(
         text = fault() === "no-marker" ? "" : sequence.replace(/\x1b\[\?2026[hl]/g, "").slice(2)
         const outcome = options.outcomes?.[phase] ?? "hold"
         if (outcome === "snap") state.viewportOffset = state.totalLines - state.screenLines
-        if (outcome === "drift") state.viewportOffset++
+        if (outcome === "bottom-relative") state.viewportOffset++
+        if (outcome === "drift") state.viewportOffset--
       }
     },
     scrollViewport(delta) {
@@ -125,17 +127,28 @@ function viewportSource(
         Math.min(state.totalLines - state.screenLines, state.viewportOffset - delta * (options.sign ?? 1)),
       )
     },
-    getScrollback: () => ({
-      ...state,
-      ...(fault() === "constant" && { viewportOffset: state.totalLines - state.screenLines }),
-    }),
+    getScrollback: () => {
+      scrollbackReads++
+      return {
+        ...state,
+        ...(fault() === "constant" && { viewportOffset: state.totalLines - state.screenLines }),
+      }
+    },
     getText() {
       const bottom = state.viewportOffset === state.totalLines - state.screenLines
       reads.push({ target, bottom })
       return bottom ? text : "history has no target marker"
     },
   })
-  return { source, writes, moves, reads, phase: () => phase, state: () => state }
+  return {
+    source,
+    writes,
+    moves,
+    reads,
+    scrollbackReads: () => scrollbackReads,
+    phase: () => phase,
+    state: () => state,
+  }
 }
 
 function viewportProbe() {
@@ -161,19 +174,42 @@ test.each([-1, 1])("viewport hold calibrates sign %s and reads target only after
   expect(fixture.state()).toEqual({ viewportOffset: 0, totalLines: 5, screenLines: 5 })
 })
 
+/**
+ * @failure Two qualified phases that retain their distance from bottom are left inconclusive;
+ *   a mixed or non-one-row drift can instead be misgraded as that controlled negative.
+ * @level l1
+ * @consumer Headless viewport-hold support and negative assertions.
+ * @testonly none
+ */
 test.each([
   ["snap", "hold", "unsupported", "ordinary"],
   ["hold", "snap", "unsupported", "synchronized"],
+  ["bottom-relative", "bottom-relative", "unsupported", "viewport kept its distance from bottom instead of its anchor"],
+  ["bottom-relative", "hold", "inconclusive", "viewport"],
+  ["hold", "bottom-relative", "inconclusive", "viewport"],
+  ["bottom-relative", "snap", "inconclusive", "viewport"],
+  ["snap", "bottom-relative", "inconclusive", "viewport"],
+  ["bottom-relative", "drift", "inconclusive", "viewport"],
+  ["drift", "bottom-relative", "inconclusive", "viewport"],
   ["drift", "hold", "inconclusive", "ordinary"],
   ["hold", "drift", "inconclusive", "synchronized"],
   ["drift", "snap", "inconclusive", "ordinary"],
   ["snap", "drift", "inconclusive", "synchronized"],
+  ["drift", "drift", "inconclusive", "ordinary"],
 ] as const)("viewport %s then %s gives %s", (ordinary, synchronized, outcome, phase) => {
   const fixture = viewportSource({ outcomes: [ordinary, synchronized] })
   const result = viewportProbe()(fixture.source)
   expect(result.observation?.outcome).toBe(outcome)
   expect(result.note).toContain(phase)
   expect(result.assertions?.[0]?.kind).toBe(outcome === "unsupported" ? "negative" : undefined)
+  if (outcome === "unsupported") expect(result.assertions?.[0]?.observed).toBe(result.response)
+  if (ordinary === "bottom-relative" && synchronized === "bottom-relative") {
+    expect(result.note).toBe("viewport kept its distance from bottom instead of its anchor")
+    expect(JSON.parse(result.response!)).toMatchObject({
+      ordinary: { outcome: "bottom-relative", markerObserved: true },
+      synchronized: { outcome: "bottom-relative", markerObserved: true },
+    })
+  }
 })
 
 test.each([
@@ -201,14 +237,92 @@ test.each([
   expect(fixture.phase()).toBe(2)
 })
 
-test.each([0, 1])("a failed phase %s control prevents the other phase's snap verdict", (failedPhase) => {
+test.each([
+  [0, "snap"],
+  [1, "snap"],
+  [0, "bottom-relative"],
+  [1, "bottom-relative"],
+] as const)("a failed phase %s control prevents a %s verdict", (failedPhase, outcome) => {
   const fixture = viewportSource({
-    outcomes: ["snap", "snap"],
+    outcomes: [outcome, outcome],
     faults: failedPhase === 0 ? ["count", "none"] : ["none", "count"],
   })
   const result = viewportProbe()(fixture.source)
   expect(result.observation?.outcome).toBe("inconclusive")
   expect(result.assertions).toBeUndefined()
+})
+
+/**
+ * @failure A declared absence of the product viewport falls into generic missing-control coverage,
+ *   loses the source-review identity/reason, or runs fake viewport phases through a contradictory actuator.
+ * @level l1
+ * @consumer Required independent headless-observable review for viewport-hold.
+ * @testonly none
+ */
+test.each([true, false])(
+  "viewport absence retains review evidence with runtime identity present=%s",
+  (withIdentity) => {
+    const fixture = viewportSource()
+    delete fixture.source.scrollViewport
+    const productViewport = { available: false as const, reason: "Fixture library exposes no product viewport" }
+    fixture.source.capabilities.productViewport = productViewport
+    const runtimeIdentity: LibProbeSource["runtimeIdentity"] = {
+      kind: "js",
+      runtimeFormat: "js",
+      resolvedPath: "/fixtures/viewport-engine.js",
+      engineVersion: "fixture",
+      adapterVersion: "fixture",
+      termlessRevision: "fixture-revision",
+      integrity: { kind: "registry", lockIntegrity: "sha512:fixture" },
+    }
+    const result = viewportProbe()({ ...fixture.source, ...(withIdentity ? { runtimeIdentity } : {}) })
+    expect(result).toMatchObject({
+      criterionBranch: "headless-observable-review",
+      notTested: { noObservable: "scrollback viewport scroll control" },
+      tests: [{ id: "review", status: "test-todo", reason: productViewport.reason }],
+    })
+    expect(result.observation).toBeUndefined()
+    expect(result.assertions).toBeUndefined()
+    expect(JSON.parse(result.response!)).toEqual({
+      productViewport,
+      runtimeIdentity: withIdentity ? runtimeIdentity : null,
+      baseline: {},
+      anchor: {},
+      control: {},
+      ordinary: {},
+      synchronized: {},
+    })
+    expect(fixture.writes).toEqual([])
+    expect(fixture.moves).toEqual([])
+    expect(fixture.reads).toEqual([])
+    expect(fixture.scrollbackReads()).toBe(0)
+    expect(fixture.phase()).toBe(-1)
+  },
+)
+
+test("viewport declared absent with a present actuator is an inconclusive apparatus contradiction", () => {
+  const fixture = viewportSource()
+  fixture.source.capabilities.productViewport = {
+    available: false,
+    reason: "Fixture library exposes no product viewport",
+  }
+  const result = viewportProbe()(fixture.source)
+  expect(result.observation?.outcome).toBe("inconclusive")
+  expect(result.note).toMatch(/declared absent.*scroll control.*present/)
+  expect(result.criterionBranch).toBeUndefined()
+  expect(result.notTested).toBeUndefined()
+  expect(result.assertions).toBeUndefined()
+  expect(JSON.parse(result.response!)).toMatchObject({
+    productViewport: fixture.source.capabilities.productViewport,
+    runtimeIdentity: null,
+    ordinary: {},
+    synchronized: {},
+  })
+  expect(fixture.writes).toEqual([])
+  expect(fixture.moves).toEqual([])
+  expect(fixture.reads).toEqual([])
+  expect(fixture.scrollbackReads()).toBe(0)
+  expect(fixture.phase()).toBe(-1)
 })
 
 test("viewport absent actuator stays named coverage; operational and cleanup errors survive", () => {

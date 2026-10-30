@@ -1,5 +1,5 @@
 import type { ProbeDefinition, ProbeCallbackResult, TermProbeSource, LibProbeSource } from "./types.ts"
-import { probe, parserStateResult, notTestedResult } from "./helpers.ts"
+import { probe, parserStateResult, notTestedResult, reviewResult, HEADLESS_OBSERVABLE_REVIEW } from "./helpers.ts"
 import { regionReadbackProbes, type RegionReadbackRow } from "./region-readback-kind.ts"
 
 /**
@@ -202,7 +202,7 @@ function viewportHold(ctx: LibProbeSource): ProbeCallbackResult {
   type Reading = ReturnType<LibProbeSource["getScrollback"]>
   type Phase = "ordinary" | "synchronized"
   type PhaseResult = {
-    outcome?: "hold" | "snap" | "drift"
+    outcome?: "hold" | "snap" | "bottom-relative" | "drift"
     note?: string
     missing?: string
     markerObserved?: boolean
@@ -215,8 +215,19 @@ function viewportHold(ctx: LibProbeSource): ProbeCallbackResult {
     control: Partial<Record<Phase, { sign?: number; attempts: { delta: number; reading: Reading }[] }>>
     ordinary: PhaseResult
     synchronized: PhaseResult
+    productViewport?: LibProbeSource["capabilities"]["productViewport"]
+    runtimeIdentity?: LibProbeSource["runtimeIdentity"] | null
   } = { baseline: {}, anchor: {}, control: {}, ordinary: {}, synchronized: {} }
   const expected = "Viewport stays anchored during ordinary and synchronized output without keyboard input"
+  const declared = ctx.capabilities.productViewport
+  if (declared?.available === false) {
+    state.productViewport = declared
+    state.runtimeIdentity = ctx.runtimeIdentity ?? null
+    if (ctx.scrollViewport) {
+      return parserStateResult(null, expected, state, "Product viewport declared absent but scroll control is present")
+    }
+    return reviewResult(HEADLESS_OBSERVABLE_REVIEW, declared.reason, "scrollback viewport scroll control", state)
+  }
   if (!ctx.scrollViewport) return notTestedResult("scrollback viewport scroll control", state)
   const scroll = ctx.scrollViewport.bind(ctx)
   const valid = (reading: Reading) =>
@@ -285,7 +296,13 @@ function viewportHold(ctx: LibProbeSource): ProbeCallbackResult {
     }
     const bottom = after.totalLines - after.screenLines
     result.outcome =
-      after.viewportOffset === anchor.viewportOffset ? "hold" : after.viewportOffset === bottom ? "snap" : "drift"
+      after.viewportOffset === anchor.viewportOffset
+        ? "hold"
+        : after.viewportOffset === bottom
+          ? "snap"
+          : after.viewportOffset === anchor.viewportOffset + 1
+            ? "bottom-relative"
+            : "drift"
     // One added row can put bottom two steps beyond the anchor. Reverse the calibrated
     // direction by the actual distance, then qualify that restoration before reading text.
     scroll(-control.sign * (bottom - after.viewportOffset))
@@ -308,6 +325,18 @@ function viewportHold(ctx: LibProbeSource): ProbeCallbackResult {
     if (unqualified) return parserStateResult(null, expected, state, `${unqualified}: ${state[unqualified].note}`)
     const missing = phases.map((name) => state[name].missing).find((value) => value !== undefined)
     if (missing !== undefined) return notTestedResult(missing, state)
+    const bottomRelative = phases.find((name) => state[name].outcome === "bottom-relative")
+    if (bottomRelative) {
+      const both = phases.every((name) => state[name].outcome === "bottom-relative")
+      return parserStateResult(
+        both ? false : null,
+        expected,
+        state,
+        both
+          ? "viewport kept its distance from bottom instead of its anchor"
+          : `${bottomRelative}: bottom-relative viewport motion differed between phases`,
+      )
+    }
     const drift = phases.find((name) => state[name].outcome === "drift")
     if (drift) {
       return parserStateResult(
