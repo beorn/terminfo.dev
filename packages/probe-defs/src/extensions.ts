@@ -24,6 +24,7 @@ import {
   readHyperlinkMetadata,
   readSentinelReply,
   replyFrame,
+  replyFailure,
   reviewResult,
   sameRgb as sameRgbCells,
   sentinelNegativeResult,
@@ -149,7 +150,7 @@ function oscReplyResult(
   const silent = sentinelNegativeResult(raw, sentinel, expected)
   if (silent) return silent
   if (raw.length === 0) {
-    return { pass: false, response: raw, tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }] }
+    return { ...replyFailure("no-response"), response: raw }
   }
   return {
     pass: false,
@@ -159,6 +160,7 @@ function oscReplyResult(
       reason: prefix.test(raw) ? "invalid-reply" : "no-response",
       assertionType: "query_reply",
     },
+    tests: [{ id: "criterion", status: "test-failure", reason: `Malformed OSC reply: ${JSON.stringify(raw)}` }],
   }
 }
 
@@ -200,7 +202,7 @@ function sixelDa1Result(raw: string, frame: string | null): ProbeCallbackResult 
   const match = frame ? sixelDa1Reply.exec(frame) : null
   if (!match) {
     if (raw.length === 0) {
-      return { pass: false, response: raw, tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }] }
+      return { ...replyFailure("no-response"), response: raw }
     }
     return {
       pass: false,
@@ -210,6 +212,7 @@ function sixelDa1Result(raw: string, frame: string | null): ProbeCallbackResult 
         reason: raw.includes("\x1b[?") ? "invalid-reply" : "no-response",
         assertionType: "query_reply",
       },
+      tests: [{ id: "criterion", status: "test-failure", reason: `Malformed DA1 reply: ${JSON.stringify(raw)}` }],
     }
   }
   const advertised = (match[1]?.split(";") ?? []).includes("4")
@@ -261,7 +264,7 @@ function sixelGeometryResult(
       if (silent) return silent
     }
     if (raw.length === 0) {
-      return { pass: false, response: raw, note, tests: [{ id: "criterion", status: "test-failure", reason: note }] }
+      return { ...replyFailure(note), response: raw }
     }
     return {
       pass: false,
@@ -273,6 +276,9 @@ function sixelGeometryResult(
         reason: malformed ? "invalid-reply" : missingReason,
         note,
       },
+      tests: [
+        { id: "criterion", status: "test-failure", reason: `Malformed Sixel geometry reply: ${JSON.stringify(raw)}` },
+      ],
     }
   }
   const status = Number(reply[1])
@@ -1415,6 +1421,7 @@ function colorStackProbe(ownSequence: typeof colorPush | typeof colorPop): Probe
     let result: ProbeCallbackResult | undefined
     let primaryError: unknown
     let originalRaw: string | undefined
+    let foregroundRaw = ""
     let seedAttempted = false
     let fixtureVerified = false
     let readbackUnavailable = false
@@ -1440,6 +1447,7 @@ function colorStackProbe(ownSequence: typeof colorPush | typeof colorPop): Probe
         return colorStackError("query", action, error)
       }
       originalRaw ??= response
+      foregroundRaw = response
       return foregroundValue(response)
     }
     const feed = (sequence: string, action: string): ProbeCallbackResult | undefined => {
@@ -1455,11 +1463,12 @@ function colorStackProbe(ownSequence: typeof colorPush | typeof colorPop): Probe
     let before = queryForeground("Original foreground query")
     if (before !== null && typeof before !== "string") return before
     if (!before && originalRaw !== "") {
+      const note = `Malformed OSC 10 reply: ${JSON.stringify(originalRaw)}`
       return {
         pass: false,
         response: JSON.stringify({ query: foregroundQuery, originalRaw }),
-        note: "No original OSC 10 foreground reply",
-        tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }],
+        note,
+        tests: [{ id: "criterion", status: "test-failure", reason: note }],
       }
     }
     let pushed = false
@@ -1512,6 +1521,7 @@ function colorStackProbe(ownSequence: typeof colorPush | typeof colorPop): Probe
       result = feed(`\x1b]10;${requested}\x07`, "Foreground mutation")
       if (result !== undefined) return result
       const changed = queryForeground("Foreground query after mutation")
+      const changedRaw = foregroundRaw
       if (changed !== null && typeof changed !== "string") {
         result = changed
         return result
@@ -1520,16 +1530,18 @@ function colorStackProbe(ownSequence: typeof colorPush | typeof colorPop): Probe
       if (result !== undefined) return result
       pushed = false
       const restored = queryForeground("Foreground query after pop")
+      const restoredRaw = foregroundRaw
       if (restored !== null && typeof restored !== "string") {
         result = restored
         return result
       }
       if (!changed || !restored) {
-        result = {
-          pass: false,
-          note: "No OSC 10 reply after changing or popping color",
-          tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }],
-        }
+        const malformed =
+          !changed && changedRaw !== "" ? changedRaw : !restored && restoredRaw !== "" ? restoredRaw : null
+        if (malformed !== null) {
+          const note = `Malformed OSC 10 reply: ${JSON.stringify(malformed)}`
+          result = { pass: false, note, tests: [{ id: "criterion", status: "test-failure", reason: note }] }
+        } else result = replyFailure("No OSC 10 reply after changing or popping color")
       } else {
         comparison = { before, changed, restored }
         result = colorStackResult(before, requested, changed, restored, operation)
@@ -1596,6 +1608,9 @@ function colorStackProbe(ownSequence: typeof colorPush | typeof colorPop): Probe
           )
         }
         if (result) {
+          // Cleanup failure supersedes reply absence; do not attach reply evidence to that failure.
+          const unmarked = result as { replyFailureTestIds?: readonly string[] }
+          delete unmarked.replyFailureTestIds
           result.pass = false
           result.note = note
           result.tests = [{ id: "criterion", status: "test-failure", reason: note }]

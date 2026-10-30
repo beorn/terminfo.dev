@@ -9,6 +9,38 @@ import { extensionsProbes } from "./extensions.ts"
 import { replayTermProbeSource } from "./testing/group-harness.ts"
 import type { TermProbeSource, LibProbeSource } from "./types.ts"
 
+// Callback intent is distinct from producer formatting: malformed bytes must never opt into
+// silence evidence. Existing reply qualification cases did not inspect that execution contract.
+test.each([
+  ["extensions.osc17-highlight-bg", "OSC", "\x1b]17;broken\x07"],
+  ["extensions.sixel-da1", "DA1", "\x1b[?broken"],
+  ["extensions.sixel-geometry-report", "Sixel geometry", "\x1b[?2;brokenS"],
+] as const)("%s marks only an empty raw reply", async (id, kind, malformed) => {
+  const definition = callback(id)
+  for (const raw of ["", malformed]) {
+    const query = async (_sequence: string, pattern: RegExp) => ({
+      match: pattern.exec(raw),
+      reason: "timeout" as const,
+      raw,
+      rawBase64: Buffer.from(raw).toString("base64"),
+    })
+    const results = [
+      definition.lib!({ feedCapture: () => raw } as unknown as LibProbeSource),
+      await definition.term!({ queryOutcome: query, queryWithSentinelOutcome: query } as unknown as TermProbeSource),
+    ]
+    for (const result of results) {
+      expect(result.tests).toMatchObject([{ id: "criterion", status: "test-failure" }])
+      expect(result.assertions).toBeUndefined()
+      if (raw === "") {
+        expect(result).toHaveProperty("replyFailureTestIds", ["criterion"])
+      } else {
+        expect(result).not.toHaveProperty("replyFailureTestIds")
+        expect(result.tests?.[0]?.reason).toBe(`Malformed ${kind} reply: ${JSON.stringify(raw)}`)
+      }
+    }
+  }
+})
+
 function callback(id: string) {
   const definition = extensionsProbes.find((item) => item.id === id)
   if (!definition?.lib || !definition.term) throw new Error(`missing extension callback ${id}`)

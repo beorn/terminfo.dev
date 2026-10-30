@@ -767,8 +767,36 @@ test("a non-empty unparsed colour-stack readback fails with its raw reply retain
     expect(result.criterionBranch, id).toBeUndefined()
     expect(result.observation, id).toBeUndefined()
     expect(result.assertions, id).toBeUndefined()
-    expect(result.tests, id).toMatchObject([expect.objectContaining({ status: "test-failure", reason: "no-response" })])
+    expect(result.tests, id).toMatchObject([
+      { status: "test-failure", reason: `Malformed OSC 10 reply: ${JSON.stringify(unparsed)}` },
+    ])
+    expect(result).not.toHaveProperty("replyFailureTestIds")
     expect(JSON.parse(result.response ?? "null"), id).toEqual({ query: "\x1b]10;?\x07", originalRaw: unparsed })
+  }
+})
+
+// Initial readback is valid, so these exercise the actual mutation/pop failure rather than
+// the distinct embedder-owned initial-colour review. Both arms still restore the foreground.
+test.each([
+  ["changed", ""],
+  ["restored", ""],
+  ["changed", "\x1b]10;broken\x07"],
+  ["restored", "\x1b]10;broken\x07"],
+] as const)("colour-stack %s readback distinguishes raw %j", (stage, raw) => {
+  const original = "\x1b]10;rgb:1010/2020/3030\x07"
+  for (const id of ["extensions.osc30001-color-stack-push", "extensions.osc30101-color-stack-pop"]) {
+    const definition = extensionsProbes.find((entry) => entry.id === id)
+    if (!definition?.lib) throw new Error(`Missing ${id} headless arm`)
+    const replies = [original, stage === "changed" ? raw : original, stage === "restored" ? raw : original]
+    const result = definition.lib(libProbeSource({ ...inertModel(), feedCapture: () => replies.shift() ?? "" }))
+    expect(result.tests, id).toMatchObject([{ id: "criterion", status: "test-failure" }])
+    expect(result.observation, id).toBeUndefined()
+    expect(result.assertions, id).toBeUndefined()
+    if (raw === "") expect(result, id).toHaveProperty("replyFailureTestIds", ["criterion"])
+    else {
+      expect(result, id).not.toHaveProperty("replyFailureTestIds")
+      expect(result.tests?.[0]?.reason, id).toBe(`Malformed OSC 10 reply: ${JSON.stringify(raw)}`)
+    }
   }
 })
 
