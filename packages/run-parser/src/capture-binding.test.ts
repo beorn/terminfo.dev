@@ -837,7 +837,7 @@ it.each(["device.term-features", "erase.screen.scrollback"])(
           runtimeIdentity: draft.runtimeIdentity,
           sourceCitation: expect.stringContaining(citation),
         })
-        if (!history)
+        if (!history) {
           expect(retained).toMatchObject({
             audit: {
               engine: "vterm",
@@ -845,6 +845,7 @@ it.each(["device.term-features", "erase.screen.scrollback"])(
               sourceCitation: expect.stringContaining("packages/vterm/src/backend.ts:63"),
             },
           })
+        }
         expect(result.notTested?.noObservable).toContain(
           history ? "retained scrollback history count" : "child-environment export",
         )
