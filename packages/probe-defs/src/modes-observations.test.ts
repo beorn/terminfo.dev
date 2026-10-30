@@ -605,6 +605,60 @@ test("1049 exit keeps an unattributed entry failure inconclusive", () => {
   expect(result.assertions).toBeUndefined()
 })
 
+// #31388: an engine whose source implements no alternate screen cannot enter one, so its ?1049 exit is not an
+// "unattributed" result — it is an absence decided by source, the same shape as the audited title stack
+// (device.ts TITLE_STACK_UNIMPLEMENTED_AUDITS, @cto 863bef67). The audit must key on the loaded source
+// identity (integrity.repository + revision + treeOid + cleanTree), never on an adapter or engine name, so a
+// moved or locally modified source falls back to the existing inconclusive answer instead of inheriting a
+// negative. Recorded identity is the vt100 row of run 2026-10-30T01-34-04Z.
+const VT100_SOURCE_IDENTITY = {
+  kind: "js",
+  adapterVersion: "0.10.2",
+  termlessRevision: "d5e6248bfb080c3065f81b78c45bdfe1b37c06d6",
+  resolvedPath: "vendor/vterm/packages/vt100/src/index.ts",
+  integrity: {
+    kind: "source",
+    repository: "git@github.com:beorn/vterm.git",
+    revision: "53a9eb9291b7880f4dc6a39a6802301049997a72",
+    treeOid: "5ffc7ad9ae120d0bf93c64b0fdc712eb40892896",
+    cleanTree: true,
+  },
+  runtimeFormat: "js",
+  engineVersion: "0.9.0",
+} as const
+
+const withRuntimeIdentity = (context: LibProbeSource, runtimeIdentity: unknown): LibProbeSource =>
+  Object.assign(context, { runtimeIdentity }) as LibProbeSource
+
+test("1049 exit grades Unsupported by source citation when the loaded source has no alternate screen", () => {
+  const definition = alt1049Probe("exit")
+  const audited = alt1049Source("ignored-entry")
+  const result = definition.lib!(withRuntimeIdentity(audited.context, VT100_SOURCE_IDENTITY))
+  expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "buffer_state", note: "negative by source citation" })
+  expect(result.assertions).toMatchObject([{ kind: "negative", assertionType: "buffer_state" }])
+  expect(JSON.parse(result.response!)).toMatchObject({
+    sourceCitation: expect.stringContaining("packages/vt100/src/screen.ts:99"),
+  })
+})
+
+test("the same entry failure stays inconclusive on a moved, dirty or different source", () => {
+  const definition = alt1049Probe("exit")
+  const unauditedIdentities = [
+    { ...VT100_SOURCE_IDENTITY.integrity, revision: "0".repeat(40) },
+    { ...VT100_SOURCE_IDENTITY.integrity, treeOid: "0".repeat(40) },
+    { ...VT100_SOURCE_IDENTITY.integrity, cleanTree: false },
+  ]
+  for (const integrity of unauditedIdentities) {
+    const { context } = alt1049Source("ignored-entry")
+    const result = definition.lib!(withRuntimeIdentity(context, { ...VT100_SOURCE_IDENTITY, integrity }))
+    expect(result.observation, JSON.stringify(integrity)).toMatchObject({
+      outcome: "inconclusive",
+      reason: "insufficient-evidence",
+    })
+    expect(result.assertions, JSON.stringify(integrity)).toBeUndefined()
+  }
+})
+
 test("1049 constant-cursor context cannot pass as a saved-cursor restoration", () => {
   for (const id of ["enter", "exit"] as const) {
     const definition = alt1049Probe(id)
