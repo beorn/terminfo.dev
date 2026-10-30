@@ -364,9 +364,10 @@ test.each(["sgr.fg.default", "sgr.bg.default", "sgr.underline-color-reset"])(
       }),
     )
     expect(result.assertions).toBeUndefined()
-    const state = JSON.parse(result.response!)
-    expect(state.before).toMatchObject({ char: "X", fg: null, bg: null, underlineColor: null })
-    expect(state.after.char).toBe(cells[2]!.char)
+    expect(JSON.parse(result.response!)).toMatchObject({
+      before: { char: "X", fg: null, bg: null, underlineColor: null },
+      after: { char: cells[2]!.char },
+    })
 
     // A missing fixture cell is a different cause; it must not inherit the seed TODO.
     const missing = probe.lib!(libProbeSource(cellsModel([{ char: " " }, ...cells.slice(1)])))
@@ -396,6 +397,6 @@ test.each(["sgr.selective-reset.bold", "sgr.selective-reset.italic"])(
       }),
     )
     expect(result.observation?.outcome).toBe("inconclusive")
-    expect(JSON.parse(result.response!).before).toMatchObject({ bold: true, dim: null, italic: null })
+    expect(JSON.parse(result.response!)).toMatchObject({ before: { bold: true, dim: null, italic: null } })
   },
 )
