@@ -86,6 +86,8 @@ export {
   sentinelAnswer,
   sentinelGraceMs,
   utf8DecodingRefusal,
+  replyFailure,
+  withReplyFailureEvidence,
   type SentinelRead,
 } from "./helpers.ts"
 export {

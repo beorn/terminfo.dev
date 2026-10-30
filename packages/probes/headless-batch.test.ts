@@ -21,6 +21,7 @@ import {
   HARNESS_INCOMPLETE_TEST,
   HEADLESS_OBSERVABLE_REVIEW,
   initializeRunDraft,
+  replyFailure,
   type CapturedRunDraft,
   type ProbeCallbackResult,
   type ProbeDefinition,
@@ -47,6 +48,31 @@ function probeReplies(batch: Awaited<ReturnType<typeof collectBatch>>) {
 async function backend() {
   return createXtermBackend()
 }
+
+// The collector must use actual feedCapture evidence only when the callback requests it.
+// Callback-only tests cannot establish this production adapter/sink boundary.
+test.each([false, true])("retains only marked synchronous reply failure evidence (marked: %s)", async (marked) => {
+  const definition = ALL_PROBES.find((entry) => entry.id === "cursor.position-report")!
+  const batch = await collectBatch(backend, "xtermjs", [
+    {
+      ...definition,
+      lib(ctx) {
+        expect(ctx.feedCapture("\x1b[9999n")).toBe("")
+        return marked
+          ? replyFailure("No probe reply")
+          : { pass: false, tests: [{ id: "criterion", status: "test-failure", reason: "No probe reply" }] }
+      },
+    },
+  ])
+  const result = batch.results[0]!
+  expect(result.status).toBe("test-failure")
+  expect(result.reason).toBe(
+    marked
+      ? 'No probe reply; sent "\\u001b[9999n"; received ""; synchronous feed and getCursor boundary'
+      : "No probe reply",
+  )
+  expect(JSON.stringify(batch)).not.toContain("replyFailureTestIds")
+})
 
 // Malformed corroborating replies must stay visible after the real callback/collector boundary;
 // valid retained-state fixtures cannot distinguish bad input from silence.

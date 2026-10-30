@@ -21,6 +21,7 @@ import {
   collectorAttemptDigest,
   readCollectorAttempt,
   recordCollectorAttempt,
+  withReplyFailureEvidence,
 } from "@terminfo/probe-defs"
 import type {
   ProbeResult,
@@ -732,14 +733,16 @@ export async function collectBatch(
         : undefined
       const unreproduced: UnreproducedRecord = { captures: [], silent: false }
       drainUnreproduced(backend) // Nothing reported before this probe's first capture belongs to it.
-      const ctx = createLibProbeSource(
-        backend,
-        proven,
-        initializedRuntime?.identity,
-        hostRecord?.captures,
-        unreproduced,
-      )
-      const callback = probe.lib(ctx)
+      const replyCaptures = hostRecord?.captures ?? []
+      const ctx = createLibProbeSource(backend, proven, initializedRuntime?.identity, replyCaptures, unreproduced)
+      const callback = withReplyFailureEvidence(probe.id, probe.lib(ctx), {
+        producer: "headless",
+        attempts: replyCaptures.map((capture) => ({
+          sequence: capture.query,
+          received: capture.response,
+          timeoutMs: null,
+        })),
+      })
       if (hostRecord) {
         const runId = hostRecord.runId
         const recordRef = `collector.hostRecipes.${probe.id}`

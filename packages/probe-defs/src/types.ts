@@ -87,6 +87,8 @@ export interface NotTestedCoverageResult extends ProbeExecutionTests {
 
 /** No deciding observation was retained. Legacy pass belongs only to the diagnostic runner (#30929). */
 export interface ExecutionOnlyProbeCallbackResult {
+  /** Callback-only intent; producers append actual request evidence to these failure reasons. */
+  readonly replyFailureTestIds?: readonly string[]
   hostRecipeCauses?: readonly CallbackHostRecipeCause[]
   pass: boolean
   note?: string

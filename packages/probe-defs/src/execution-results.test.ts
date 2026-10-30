@@ -9,6 +9,9 @@ import { ALL_PROBES, resolveProbeIds } from "./index.ts"
 import {
   sgrCaptureFrames,
   recordExecutedProbe,
+  finalizeProbeResult,
+  replyFailure,
+  withReplyFailureEvidence,
   recordCollectionFailure,
   initializeRunDraft,
   sealRunDraft,
@@ -36,6 +39,73 @@ import type {
   TermProbeSource,
 } from "./types.ts"
 const attempt = { scope: "probe" as const, startedAt: "2026-10-21T05:00:00.000Z" }
+
+// Callback-only reply markers must never become stored evidence fields. Existing tests
+// did not pass callback metadata through the public finalizer's structural boundary.
+it("strips callback-only reply metadata from stored result and draft serialization", () => {
+  const callback = withReplyFailureEvidence("sgr.bold", replyFailure("No cursor reply"), {
+    producer: "TTY",
+    attempts: [{ sequence: "\x1b[6n", received: "", timeoutMs: 37 }],
+  })
+  const result = finalizeProbeResult({
+    featureId: "sgr.bold",
+    attempt,
+    tests: callback.tests!.map((test) => ({ ...test, attempt })),
+    ...{ replyFailureTestIds: ["criterion"] },
+  })
+  const draft = initializeRunDraft({
+    runId: "reply-metadata",
+    sourceRevision: "1".repeat(40),
+    source: { kind: "live" },
+    intendedSubject: { kind: "term", id: "kitty" },
+    manifest: {
+      schemaVersion: 4,
+      probeHash: "reply-suite",
+      adapterVersion: "3",
+      catalogIds: ["sgr.bold"],
+      probes: { term: ["sgr.bold"], lib: [], mux: [] },
+    },
+  })
+  draft.results[0] = result
+  expect(result.reason).toContain('sent "\\u001b[6n"; received ""; timeout 37 ms')
+  expect(result).not.toHaveProperty("replyFailureTestIds")
+  expect(JSON.stringify(draft)).not.toContain("replyFailureTestIds")
+})
+
+// One formatter owns the evidence template; unrelated failure reasons and grades stay untouched.
+it.each([
+  {
+    producer: "TTY" as const,
+    attempts: [{ sequence: "\x1b[6n", received: "", timeoutMs: 37 }],
+    expected: 'sent "\\u001b[6n"; received ""; timeout 37 ms',
+  },
+  {
+    producer: "headless" as const,
+    attempts: [{ sequence: "\x1b[6n", received: "\x1b?", timeoutMs: null }],
+    expected: 'sent "\\u001b[6n"; received "\\u001b?"; synchronous feed and getCursor boundary',
+  },
+  { producer: "TTY" as const, attempts: [], expected: "no completed TTY trace for this query" },
+  { producer: "headless" as const, attempts: [], expected: "no headless capture recorded" },
+])("retains only explicitly marked $producer failure evidence", ({ producer, attempts, expected }) => {
+  const callback = replyFailure("No cursor reply")
+  const unrelated = { id: "setup", status: "test-failure" as const, reason: "Fixture not established" }
+  callback.tests.push(unrelated)
+  const result = withReplyFailureEvidence("cursor.position-report", callback, { producer, attempts })
+  expect(result.tests?.[0]).toMatchObject({ id: "criterion", status: "test-failure" })
+  expect(result.tests?.[0]?.reason).toBe(`No cursor reply; ${expected}`)
+  expect(result.tests?.[1]).toBe(unrelated)
+  const unmarked: ProbeCallbackResult = { pass: false, tests: [unrelated] }
+  expect(withReplyFailureEvidence("cursor.position-report", unmarked, { producer, attempts })).toBe(unmarked)
+  expect(callback.tests[0].reason).toBe("No cursor reply")
+})
+
+it("names a callback defect instead of ignoring an invalid reply marker", () => {
+  const callback = replyFailure("No cursor reply")
+  callback.tests[0].status = "test-todo"
+  expect(() => withReplyFailureEvidence("cursor.position-report", callback, { producer: "TTY", attempts: [] })).toThrow(
+    /cursor\.position-report.*criterion.*test-failure/,
+  )
+})
 
 // CTO consolidation contract: the registry owns unknown/duplicate IDs and catalogue ordering.
 // Existing collector tests prove dispatch; they cannot pin this shared typed boundary.

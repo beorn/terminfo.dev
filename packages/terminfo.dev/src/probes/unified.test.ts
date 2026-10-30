@@ -15,6 +15,7 @@ import {
   ALL_PROBES,
   initializeRunDraft,
   sealRunDraft,
+  replyFailure,
   type ProbeSuiteManifest,
   type TextQualification,
 } from "@terminfo/probe-defs"
@@ -39,6 +40,40 @@ vi.mock("../tty.ts", async (importOriginal) => {
 })
 
 const linuxGeometrySource = "stty size on a /proc/self/fd reopen of the verified output device" as const
+
+// Real query recording supplies nondefault timeout and bytes; the fixture supplies only callback intent.
+it.each([false, true])("attaches completed TTY evidence only to marked failure rows (marked: %s)", async (marked) => {
+  const probe = ALL_PROBES.find((entry) => entry.id === "device.primary-da")!
+  const original = probe.term
+  try {
+    probe.term = async (ctx) => {
+      await ctx.queryOutcome("\x1b[6n", /\x1b\[(\d+);(\d+)R/, 37)
+      return marked
+        ? replyFailure("No probe reply")
+        : { pass: false, tests: [{ id: "criterion", status: "test-failure", reason: "No probe reply" }] }
+    }
+    const batch = await runProbeBatch({
+      ids: [probe.id],
+      out: {
+        write() {
+          return true
+        },
+      } as unknown as NodeJS.WriteStream,
+    })
+    const result = batch.results.find((entry) => entry.featureId === probe.id)!
+    expect(result.status).toBe("test-failure")
+    expect(result.reason).toBe(
+      marked ? 'No probe reply; sent "\\u001b[6n"; received ""; timeout 37 ms' : "No probe reply",
+    )
+    expect(JSON.parse(batch.rawReplies[probe.id + ".trace"]!)).toMatchObject({
+      queries: [{ sequence: "\x1b[6n", timeoutMs: 37, reason: "timeout", raw: "" }],
+    })
+    expect(JSON.stringify(batch)).not.toContain("replyFailureTestIds")
+  } finally {
+    probe.term = original
+  }
+})
+
 const darwinGeometrySource = "stty size on a /dev/fd reopen of the verified output device" as const
 const noGeometry = {
   status: "unavailable" as const,

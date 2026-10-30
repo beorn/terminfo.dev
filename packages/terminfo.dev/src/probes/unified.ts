@@ -10,6 +10,7 @@ import {
   ALL_PROBES as PROBE_DEFS,
   resolveProbeIds,
   recordExecutedProbe,
+  withReplyFailureEvidence,
   type ProbeResult,
   type RunDraft,
   type CaptureCells,
@@ -697,6 +698,14 @@ export async function runProbeBatch(
       } finally {
         if (geometryCheck) geometryCheck.post = await readGeometry()
       }
+      result = withReplyFailureEvidence(probe.id, result, {
+        producer: "TTY",
+        attempts: queries.map((query) => ({
+          sequence: query.sequence,
+          received: query.raw,
+          timeoutMs: query.timeoutMs,
+        })),
+      })
       callbackTests = result.tests
       criterionBranch = result.criterionBranch
       if (result.notTested) {

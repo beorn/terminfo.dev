@@ -18,11 +18,58 @@ import type {
   AssertionType,
   ProbeDefinition,
   ProbeCallbackResult,
+  ExecutionOnlyProbeCallbackResult,
   TerminalQueryOutcome,
   LibProbeSource,
   TermProbeSource,
 } from "./types.ts"
 import { replyPathAuditFor, type ReplyPathAudit } from "./reply-path-audit.ts"
+
+/** Mark an absent-reply failure without deciding producer absence from silence. */
+export function replyFailure(reason: string): ExecutionOnlyProbeCallbackResult {
+  return {
+    pass: false,
+    note: reason,
+    tests: [{ id: "criterion", status: "test-failure", reason }],
+    replyFailureTestIds: ["criterion"],
+  }
+}
+
+/** Add completed producer evidence only where the callback explicitly requested it. */
+export function withReplyFailureEvidence(
+  featureId: string,
+  result: ProbeCallbackResult,
+  evidence: {
+    producer: "TTY" | "headless"
+    attempts: readonly { sequence: string; received: string; timeoutMs: number | null }[]
+  },
+): ProbeCallbackResult {
+  if (!("replyFailureTestIds" in result) || !result.replyFailureTestIds?.length) return result
+  const marked = new Set(result.replyFailureTestIds)
+  for (const id of marked) {
+    if (!result.tests.some((test) => test.id === id && test.status === "test-failure")) {
+      throw new Error(
+        `Callback ${featureId} reply marker ${id} must name a test-failure test; fix the callback builder use`,
+      )
+    }
+  }
+  const detail = evidence.attempts.length
+    ? evidence.attempts
+        .map(
+          (entry) =>
+            `sent ${JSON.stringify(entry.sequence)}; received ${JSON.stringify(entry.received)}; ${entry.timeoutMs === null ? "synchronous feed and getCursor boundary" : `timeout ${entry.timeoutMs} ms`}`,
+        )
+        .join(" | ")
+    : evidence.producer === "TTY"
+      ? "no completed TTY trace for this query"
+      : "no headless capture recorded"
+  return {
+    ...result,
+    tests: result.tests.map((test) =>
+      marked.has(test.id) && test.status === "test-failure" ? { ...test, reason: `${test.reason}; ${detail}` } : test,
+    ) as ExecutionOnlyProbeCallbackResult["tests"],
+  }
+}
 
 function collectorRecord(rawReplies: Record<string, string>, key: string): Record<string, unknown> | undefined {
   const raw = rawReplies[key]
@@ -1678,7 +1725,9 @@ export function finalizeProbeResult(input: Omit<ProbeResult, "status">): ProbeRe
   } else {
     status = tests.some((test) => test.status === "unsupported") ? "unsupported" : "supported"
   }
-  return { ...input, status, ...(reason === undefined ? {} : { reason }) }
+  const stored = { ...input } as typeof input & { replyFailureTestIds?: unknown }
+  delete stored.replyFailureTestIds
+  return { ...stored, status, ...(reason === undefined ? {} : { reason }) }
 }
 
 /** Seal only measured/enriched identity; pending required review keeps the same draft open. */
