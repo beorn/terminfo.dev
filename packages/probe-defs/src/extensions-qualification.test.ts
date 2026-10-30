@@ -113,7 +113,7 @@ test.each([
         { kind: "negative", assertionType: "buffer_state", observed: result.response },
       ])
       if (engine === "xtermjs") {
-        expect(JSON.parse(result.response!).runtimeIdentity).toEqual(identity)
+        expect(JSON.parse(result.response!)).toMatchObject({ runtimeIdentity: identity })
         expect(result.tests).toMatchObject([{ reason: expect.stringContaining("packages/xtermjs/src/backend.ts") }])
       }
     } else {
