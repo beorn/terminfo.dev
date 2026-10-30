@@ -55,6 +55,7 @@ test.each(retainedDeccolm.rows)("DECCOLM retained $engine state survives the str
   const reads = JSON.parse(sample.raw) as Parameters<typeof cellWidthTransition>[0]
   const callback = cellWidthTransition(reads)
   expect(callback.response).toBe(sample.raw)
+  if (!callback.observation) throw new Error(`Retained ${sample.engine} state must produce a measured callback`)
   const collect = (result: ProbeCallbackResult) =>
     collectBatch(backend, "xtermjs", [{ ...definition, lib: () => result }])
   const legacy = await collect({
