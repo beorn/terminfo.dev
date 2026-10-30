@@ -59,6 +59,10 @@ negative buffer-state assertion for independent review of the absent handler at 
 The control does not measure audio, flash or font state; that target remains explicitly unexposed.
 Other identities keep named coverage, and a missing X grants no source-review negative.
 
+The same helper covers @xterm/headless6.0.0 OSC9/22/176/440/555/666/710/777/3008 at its audited registry integrity and adapter0.10.2.
+It retains the bundle/map and adapter citations plus the executing runtime identity for independent source review.
+The bundle hashes are audit evidence, not fields in the runtime identity; the embedder hook must also be checked at the captured Termless source.
+
 OSC99 capability detection has both library and term query arms. They share the nonce/title
 criterion and never display a notification. Unqualified library capture silence stays inconclusive;
 only the existing qualified sentinel path can establish a negative reply result. Current artifact

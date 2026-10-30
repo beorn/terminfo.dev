@@ -1141,21 +1141,61 @@ function colorStackResult(
   }
 }
 
-/** Only this audited engine pin can use source rejection for these otherwise unobservable effects. */
-function vtermAbsentOsc(id: string, code: number, sequence: string, effect: string) {
+/** Source identities qualify a required review, never the target effect itself. */
+const ABSENT_OSC_ENGINES = {
+  vterm: {
+    kind: "source",
+    engineVersion: "0.9.0",
+    resolvedPath: "vendor/vterm/packages/vterm/src/index.ts",
+    repository: "git@github.com:beorn/vterm.git",
+    revision: "53a9eb9291b7880f4dc6a39a6802301049997a72",
+    treeOid: "617ae6002c7befea7b3e43d11bf23e6b433e3d65",
+    codes: [440, 555, 710],
+    sourceCitation:
+      "vterm 53a9eb9291b7880f4dc6a39a6802301049997a72 packages/vterm/src/screen.ts:3596-4055 handleOSC switch",
+  },
+  xtermjs: {
+    kind: "registry",
+    engineVersion: "6.0.0",
+    adapterVersion: "0.10.2",
+    pathSuffix: "/@xterm/headless/lib-headless/xterm-headless.js",
+    lockIntegrity: "sha512-5Yj1QINYCyzrZtf8OFIHi47iQtI+0qYFPHmouEfG8dHNxbZ9Tb9YGSuLcsEwj9Z+OL75GJqPyJbyoFer80a2Hw==",
+    codes: [9, 22, 176, 440, 555, 666, 710, 777, 3008],
+    sourceCitation:
+      "@xterm/headless 6.0.0 bundle SHA256 17a90b650cf6b77cce2b98c4063884d43545e4ce177a54b76ccfc906f1aacaed, map SHA256 780e782badc8189491a469c9277b783e01911882ea84417b31e71294ea927d98: InputHandler.ts:292-331 OSC registrations and :201-203 logging-only fallback, OscParser.ts:145-146 fallback dispatch, CoreTerminal.ts:236-237 embedder hook; termless 84003d2c91610fe2743142675234a0fb3ec9cf1d packages/xtermjs/src/backend.ts registers no OSC handler",
+  },
+} as const
+
+function sourceAbsentOsc(id: string, code: number, sequence: string, effect: string) {
   return (ctx: LibProbeSource): ProbeCallbackResult => {
     const identity = ctx.runtimeIdentity
-    if (
-      identity?.kind !== "js" ||
-      identity.runtimeFormat !== "js" ||
-      identity.engineVersion !== "0.9.0" ||
-      identity.resolvedPath !== "vendor/vterm/packages/vterm/src/index.ts" ||
-      identity.integrity.kind !== "source" ||
-      !identity.integrity.cleanTree ||
-      identity.integrity.repository !== "git@github.com:beorn/vterm.git" ||
-      identity.integrity.revision !== "53a9eb9291b7880f4dc6a39a6802301049997a72" ||
-      identity.integrity.treeOid !== "617ae6002c7befea7b3e43d11bf23e6b433e3d65"
-    ) {
+    const audit =
+      identity?.kind === "js" && identity.runtimeFormat === "js"
+        ? Object.values(ABSENT_OSC_ENGINES).find((expected) => {
+            if (identity.engineVersion !== expected.engineVersion || !expected.codes.some((value) => value === code)) {
+              return false
+            }
+            switch (identity.integrity.kind) {
+              case "source":
+                return (
+                  expected.kind === "source" &&
+                  identity.resolvedPath === expected.resolvedPath &&
+                  identity.integrity.cleanTree &&
+                  identity.integrity.repository === expected.repository &&
+                  identity.integrity.revision === expected.revision &&
+                  identity.integrity.treeOid === expected.treeOid
+                )
+              case "registry":
+                return (
+                  expected.kind === "registry" &&
+                  identity.adapterVersion === expected.adapterVersion &&
+                  identity.resolvedPath.endsWith(expected.pathSuffix) &&
+                  identity.integrity.lockIntegrity === expected.lockIntegrity
+                )
+            }
+          })
+        : undefined
+    if (!audit) {
       return notTestedResult(`OSC ${code} ${effect}: no audited library target readback at this runtime`, {})
     }
     const fed = "\x1b[1;1H\x1b[2K" + sequence + "X"
@@ -1164,10 +1204,16 @@ function vtermAbsentOsc(id: string, code: number, sequence: string, effect: stri
     return parserStateResult(
       null,
       `${id}: the engine handles OSC ${code} (a ${effect} handler exists at the pinned source)`,
-      { fed, sentinel, engineState: null, engineStateReason: `No ${effect} target state is exposed at this pin` },
+      {
+        fed,
+        sentinel,
+        engineState: null,
+        engineStateReason: `No ${effect} target state is exposed at this pin`,
+        runtimeIdentity: identity,
+      },
       sentinel.char === "X" ? undefined : "No rendered X cell to evaluate",
       sentinel.char === "X"
-        ? `vterm 53a9eb9291b7880f4dc6a39a6802301049997a72 packages/vterm/src/screen.ts:3596-4055: handleOSC's switch (code) has no case ${code} or ${effect} target writer; independent source review required`
+        ? `${audit.sourceCitation}: no case ${code} or ${effect} target writer; independent source review required`
         : undefined,
     )
   }
@@ -3699,8 +3745,8 @@ export const extensionsProbes: ProbeDefinition[] = [
   // OSC 9;4 — progress bar (ConEmu protocol, adopted by Ghostty, iTerm2, Windows Terminal, etc.)
   probe(
     "extensions.osc9-progress",
-    // Headless: no way to detect OSC 9;4 support (all backends silently consume unknown OSC)
-    null,
+    // Feed the ConEmu progress form; consumption alone does not measure progress display.
+    sourceAbsentOsc("extensions.osc9-progress", 9, "\x1b]9;4;1;50\x07", "progress"),
     () => Promise.resolve(unmeasuredStateEffect("OSC 9;4 progress display")),
   ),
 
@@ -3917,7 +3963,7 @@ export const extensionsProbes: ProbeDefinition[] = [
   // Visible pointer appearance also needs observation outside the cell grid.
   probe(
     "extensions.osc22-pointer",
-    null, // No headless pointer-shape query or desktop observation is implemented here.
+    sourceAbsentOsc("extensions.osc22-pointer", 22, "\x1b]22;pointer\x07", "pointer"),
     async (ctx) => {
       ctx.write("\x1b[1;1H\x1b[2K")
       ctx.write("\x1b]22;pointer\x07")
@@ -3958,7 +4004,7 @@ export const extensionsProbes: ProbeDefinition[] = [
   // OSC 777 — rxvt-unicode notifications
   probe(
     "extensions.osc777-notify",
-    null, // Headless: no way to detect notification support (silently consumed)
+    sourceAbsentOsc("extensions.osc777-notify", 777, "\x1b]777;notify;test;body\x07", "notification"),
     async (ctx) => {
       ctx.write("\x1b[1;1H\x1b[2K")
       ctx.write("\x1b]777;notify;test;body\x07")
@@ -3970,7 +4016,7 @@ export const extensionsProbes: ProbeDefinition[] = [
   // OSC 666 — VTE termprop
   probe(
     "extensions.osc666-termprop",
-    null, // Headless: no way to detect termprop support (silently consumed)
+    sourceAbsentOsc("extensions.osc666-termprop", 666, "\x1b]666;test-prop=value\x07", "terminal property"),
     async (ctx) => {
       ctx.write("\x1b[1;1H\x1b[2K")
       ctx.write("\x1b]666;test-prop=value\x07")
@@ -3982,7 +4028,7 @@ export const extensionsProbes: ProbeDefinition[] = [
   // OSC 3008 — systemd context
   probe(
     "extensions.osc3008-context",
-    null, // Headless: no way to detect context support (silently consumed)
+    sourceAbsentOsc("extensions.osc3008-context", 3008, "\x1b]3008;type=test\x07", "systemd context"),
     async (ctx) => {
       ctx.write("\x1b[1;1H\x1b[2K")
       ctx.write("\x1b]3008;type=test\x07")
@@ -4039,7 +4085,7 @@ export const extensionsProbes: ProbeDefinition[] = [
   // OSC 176 — foot Wayland app-id
   probe(
     "extensions.osc176-app-id",
-    null, // Headless: app-id is a Wayland window-manager concept, not in the cell grid
+    sourceAbsentOsc("extensions.osc176-app-id", 176, "\x1b]176;terminfo-test\x07", "app-id"),
     async (ctx) => {
       ctx.write("\x1b[1;1H\x1b[2K")
       ctx.write("\x1b]176;terminfo-test\x07")
@@ -4051,7 +4097,7 @@ export const extensionsProbes: ProbeDefinition[] = [
   // OSC 555 — foot screen flash (visual bell)
   probe(
     "extensions.osc555-flash",
-    vtermAbsentOsc("extensions.osc555-flash", 555, "\x1b]555\x07", "flash"),
+    sourceAbsentOsc("extensions.osc555-flash", 555, "\x1b]555\x07", "flash"),
     async (ctx) => {
       ctx.write("\x1b[1;1H\x1b[2K")
       ctx.write("\x1b]555\x07")
@@ -4064,7 +4110,7 @@ export const extensionsProbes: ProbeDefinition[] = [
   // OSC 440 — mintty audio sound
   probe(
     "extensions.osc440-audio",
-    vtermAbsentOsc("extensions.osc440-audio", 440, "\x1b]440;bell.wav\x07", "audio"),
+    sourceAbsentOsc("extensions.osc440-audio", 440, "\x1b]440;bell.wav\x07", "audio"),
     async (ctx) => {
       ctx.write("\x1b[1;1H\x1b[2K")
       ctx.write("\x1b]440;bell.wav\x07")
@@ -4113,7 +4159,7 @@ export const extensionsProbes: ProbeDefinition[] = [
   // OSC 710 — rxvt-unicode set normal font
   probe(
     "extensions.osc710-font-normal",
-    vtermAbsentOsc("extensions.osc710-font-normal", 710, "\x1b]710;monospace\x07", "font"),
+    sourceAbsentOsc("extensions.osc710-font-normal", 710, "\x1b]710;monospace\x07", "font"),
     () => Promise.resolve(unmeasuredStateEffect("OSC 710 font selection")),
   ),
 
