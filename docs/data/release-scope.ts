@@ -145,6 +145,32 @@ export function aggregateCurrentResults(
   }
 }
 
+/**
+ * A library's completeness tier over its graded positions (the environment groups excluded): 0 nothing graded was
+ * measured, 1 incomplete (any TEST TODO), 2 broken (TEST FAILURE and no TEST TODO), 3 every graded position decided.
+ * Not the Release 1 scope `tier` of {@link ReleaseScope} (#31733 A3). This is the rule's one home: the hourly
+ * re-measure imports it from the pinned checkout and the site renders from it (#31733 A2, #31747).
+ */
+export type CompletenessTier = Readonly<{
+  completenessTier: 0 | 1 | 2 | 3
+  todo: number
+  failure: number
+  positions: number
+}>
+
+/** The completeness tier of one library's recorded statuses, keyed by feature id. */
+export function completenessTierOf(statuses: Readonly<Record<string, string>>): CompletenessTier {
+  const graded = gradedFeatureIds(Object.keys(statuses)).map((id) => statuses[id])
+  const todo = graded.filter((status) => status === "test-todo").length
+  const failure = graded.filter((status) => status === "test-failure").length
+  return {
+    completenessTier: graded.length === 0 ? 0 : todo > 0 ? 1 : failure > 0 ? 2 : 3,
+    todo,
+    failure,
+    positions: graded.length,
+  }
+}
+
 export function currentCoverageSentence(
   aggregate: Pick<CurrentAggregate, "counts">,
   catalogIds?: readonly string[],
