@@ -126,14 +126,14 @@ test("installed Vitest preserves task-owned checks and awaited reporter attachme
   }
 }, 60_000)
 
-test("actual erase entry persists two trace assertions and reports domain results", async () => {
+test.for(["success", "capture-failure"] as const)("actual erase entry persists domain results: %s", async (mode) => {
   const directory = await mkdtemp(join(tmpdir(), "terminfo-erase-run-"))
   const reporter = new CensusReporter(directory)
   const runtime = await createVitest({
     root: dirname(import.meta.filename),
     config: false,
     include: ["erase-replay.probe.ts"],
-    provide: { eraseArtifactRoot: directory },
+    provide: { eraseArtifactRoot: mode === "success" ? directory : "relative-store-is-invalid" },
     reporters: [reporter],
     attachmentsDir: join(directory, "vitest-attachments"),
     watch: false,
@@ -143,6 +143,13 @@ test("actual erase entry persists two trace assertions and reports domain result
     await runtime.start()
     expect(reporter.records).toHaveLength(1)
     const record = reporter.records[0]!
+    if (mode === "capture-failure") {
+      expect(record.error).toMatch(/explicit absolute path/)
+      expect(record.assertions).toEqual([])
+      expect(record.failureResults).toHaveLength(11)
+      expect(record.failureResults?.every(({ status }) => status === "test-failure")).toBe(true)
+      return
+    }
     expect(record.error).toBeUndefined()
     expect(record.assertions).toHaveLength(2)
     expect(new Set([record.captureRunId, ...record.assertions.map(({ runId }) => runId)]).size).toBe(3)

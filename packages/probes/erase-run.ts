@@ -138,11 +138,13 @@ export async function runEraseReplay(context: TestContext, directory: string): P
       const validated = readEraseCapture(directory, source, expected)
       const records = replayEraseCalls(validated.log, context)
       for (const { featureId, result, checks } of records) {
-        if (!ALL_PROBES.some(({ id }) => id === featureId))
+        if (!ALL_PROBES.some(({ id }) => id === featureId)) {
           throw new Error("Erase result outside catalogue: " + featureId)
+        }
         if (result.response !== undefined) assertion.rawReplies[featureId] = result.response
-        for (const item of result.assertions ?? [])
+        for (const item of result.assertions ?? []) {
           assertion.assertions.push({ ...item, featureId, rawReplyRef: featureId })
+        }
         const precondition = checks.find((check) => check.kind === "precondition" && !check.ok)
         const domain = recordExecutedProbe({
           featureId,

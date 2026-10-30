@@ -8,7 +8,7 @@ export default class CensusReporter implements Reporter {
   readonly records: EraseRunRecord[] = []
   private readonly ready = new Set<string>()
   constructor(private readonly directory: string) {}
-  onTestCaseArtifactRecord: NonNullable<Reporter["onTestCaseArtifactRecord"]> = async (task, artifact) => {
+  onTestCaseArtifactRecord: NonNullable<Reporter["onTestCaseArtifactRecord"]> = (task, artifact) => {
     if (artifact.type !== "terminfo:erase") return
     for (const attachment of artifact.attachments ?? []) {
       if (!attachment.path) throw new Error("Erase attachment has no persisted path")
@@ -16,11 +16,12 @@ export default class CensusReporter implements Reporter {
     }
     this.ready.add(task.id)
   }
-  onTestCaseResult: NonNullable<Reporter["onTestCaseResult"]> = async (task) => {
+  onTestCaseResult: NonNullable<Reporter["onTestCaseResult"]> = (task) => {
     const record = task.meta().terminfoErase
     if (!record) throw new Error("Erase task has no runner-owned final metadata: " + task.name)
-    if (!record.error && !this.ready.has(task.id))
+    if (!record.error && !this.ready.has(task.id)) {
       throw new Error("Erase task completed before its attachments arrived")
+    }
     const results =
       record.failureResults ?? record.assertions.at(-1)?.results.filter((entry) => entry.attempt.scope !== "none")
     if (!results?.length) throw new Error("Erase task has no retained domain results: " + task.name)
