@@ -220,6 +220,10 @@ Native execution can also change the recorded result: for example, a measured re
 
 Declared visual criteria use [region readback](src/region-readback.ts) to compare stable,
 cell-aligned pixel crops against independently painted references behind a paint witness.
+For each declared frame, the sentinel must complete a same-crop space→glyph→space→glyph
+roundtrip with exact repeatable digests; an intermediate clear alone cannot qualify paint.
+This relies on faithful current captures and ordered terminal paint, not arbitrary adapter replay
+or compositor completion. Missing roundtrip returns retain `no freshness witness` review.
 Expected-change and expected-no-change claims have separate controls; an unchanged frame
 without freshness evidence remains review TEST TODO. Each decided signal retains its own
 assertion. Missing discriminators and unmeasured feature facets remain named review rows;

@@ -2591,6 +2591,7 @@ it.each([
     draft.measuredAt = "2026-10-29T15:00:00.000Z"
     draft.origin = { kind: "collector" }
     let captures = 0
+    let witness = "blank"
     const pixelGeometry = { cellWidth: 8, cellHeight: 16, textWidth: 640, textHeight: 384 }
     const digest = (value: string) => `sha256:${createHash("sha256").update(value).digest("hex")}`
     const makeCapture =
@@ -2613,21 +2614,19 @@ it.each([
           ? "unchanged"
           : lowerLabel.includes("stability")
             ? "stable"
-            : lowerLabel.includes("paint witness")
-              ? "painted"
-              : lowerLabel.includes("baseline")
-                ? "baseline"
-                : lowerLabel.includes("pre-edit seed")
-                  ? "seed"
-                  : lowerLabel.includes("post-sequence target")
-                    ? "third"
-                    : lowerLabel.includes("expected frame")
-                      ? "expected"
-                      : lowerLabel.includes("ignored-attribute")
-                        ? "ignored"
-                        : lowerLabel.includes("setup reference")
-                          ? "seed"
-                          : "fixture"
+            : lowerLabel.includes("paint witness") || lowerLabel.includes("baseline")
+              ? witness
+              : lowerLabel.includes("pre-edit seed")
+                ? "seed"
+                : lowerLabel.includes("post-sequence target")
+                  ? "third"
+                  : lowerLabel.includes("expected frame")
+                    ? "expected"
+                    : lowerLabel.includes("ignored-attribute")
+                      ? "ignored"
+                      : lowerLabel.includes("setup reference")
+                        ? "seed"
+                        : "fixture"
         const regionRectangle = cells
           ? {
               x: (cells.left - 1) * pixelGeometry.cellWidth,
@@ -2653,7 +2652,11 @@ it.each([
           trace: {},
         }
       }
-    process.stdout.write = (() => true) as typeof process.stdout.write
+    process.stdout.write = ((chunk: string | Uint8Array) => {
+      const bytes = typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf8")
+      if (/^\x1b\[\d+;\d+H.$/.test(bytes)) witness = bytes.slice(-1)
+      return true
+    }) as typeof process.stdout.write
     try {
       const pending = runProbeBatch({
         ids: [id],

@@ -794,7 +794,7 @@ test("alt-screen exit capture frames the primary, alternate and restored buffers
     { id: "remaining-facets", status: "test-todo", reason: expect.stringMatching(/saved cursor.*scrollback/) },
   ])
   expect(result.assertions).toHaveLength(2)
-  expect(result.observation?.frames).toHaveLength(8)
+  expect(result.observation?.frames?.filter((frame) => frame.role === "target")).toHaveLength(1)
 })
 
 test.each(["modes.altscreen-47", "modes.altscreen-1047"] as const)(
@@ -812,7 +812,7 @@ test.each(["modes.altscreen-47", "modes.altscreen-1047"] as const)(
         { id: "remaining-facets", status: "test-todo", reason: expect.stringContaining("next entry") },
       ])
       expect(result.assertions).toHaveLength(2)
-      expect(result.observation?.frames).toHaveLength(8)
+      expect(result.observation?.frames?.filter((frame) => frame.role === "target")).toHaveLength(1)
       return
     }
     expect(
@@ -839,7 +839,7 @@ test("insert-replace capture contrasts replacement with IRM insertion", async ()
   expect(writes.some((entry) => entry.includes("\x1b[4h"))).toBe(true)
   expect(result.tests).toEqual([{ id: "inserted-cells", status: "supported", assertionRefs: [0] }])
   expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "screenshot" })
-  expect(result.observation?.frames).toHaveLength(8)
+  expect(result.observation?.frames?.filter((frame) => frame.role === "target")).toHaveLength(1)
   expect(frames.find((frame) => frame.label.endsWith("expected frame"))?.regionRectangle).toEqual({
     x: 0,
     y: 0,

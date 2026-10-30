@@ -8,6 +8,9 @@
  * capture would be a false negative. A terminal paints damage in stream ORDER, so a sentinel glyph
  * landing in a cell outside every compared region witnesses that every byte written before it — the
  * edit included — is on screen.
+ * Declared visual rows additionally require a same-cell space/glyph/space/glyph digest roundtrip:
+ * an intermediate clear of the preceding glyph must not masquerade as the requested paint. This
+ * assumes faithful current captures and ordered paint; it is not a general compositor fence.
  *
  * The decision is digest EQUALITY and nothing else: after equals expected is supported; after equals
  * seed (the sequence left the screen untouched) or equals the row's `ignored` frame (the sequence ran
@@ -340,6 +343,9 @@ async function awaitPaintWitness(options: {
   pollMs: number
   /** Declared pixel decisions cannot treat a crop shift as a paint witness. */
   requireSameCrop?: boolean
+  /** A declared roundtrip must return to this measured digest, not merely change again. */
+  expectedDigest?: string
+  priorFrames?: ObservationFrame[]
   /** How this run sees its frames: the timeout branch names it rather than claiming pixels. */
   assertionType?: "screenshot" | "buffer_state"
 }): Promise<{ witness: RegionCapture } | ProbeCallbackResult> {
@@ -367,22 +373,38 @@ async function awaitPaintWitness(options: {
         `${id}: paint witness crop moved between its baseline (${baselineCrop}) and witness capture (${paintedCrop}); the changed crop cannot establish freshness`,
         "insufficient-evidence",
         assertionType,
-        { screenshotRef: painted.frame.ref, frames: [baseline.frame, painted.frame] },
+        {
+          screenshotRef: painted.frame.ref,
+          frames: [...(options.priorFrames ?? [baseline.frame]), painted.frame],
+        },
       )
     }
-    if (painted.regionDigest !== baseline.regionDigest) return { witness: painted }
+    if (
+      options.expectedDigest === undefined
+        ? painted.regionDigest !== baseline.regionDigest
+        : painted.regionDigest === options.expectedDigest
+    ) {
+      return { witness: painted }
+    }
     const frameMoved = painted.pixelsDigest !== baseline.pixelsDigest
     if (Date.now() >= deadline) {
       return inconclusive(
         id,
-        frameMoved
-          ? `${id}: paint witnessed outside the sentinel region after ${label} within ${timeoutMs} ms; the frame moved while witness cell ${witnessCell.top},${witnessCell.left} stood still, so the cells-to-pixels geometry is wrong for this context (cell geometry ${geometrySource ?? "unknown"})`
-          : `${id}: no paint witness within ${timeoutMs} ms after ${label}; the terminal left the witness cell unpainted, so this run cannot separate a painted frame from a stale one (cell geometry ${geometrySource ?? "unknown"})`,
+        options.expectedDigest !== undefined
+          ? `${id}: no paint witness return to the measured sentinel digest within ${timeoutMs} ms after ${label}; the requested space/glyph roundtrip did not complete`
+          : frameMoved
+            ? `${id}: paint witnessed outside the sentinel region after ${label} within ${timeoutMs} ms; the frame moved while witness cell ${witnessCell.top},${witnessCell.left} stood still, so the cells-to-pixels geometry is wrong for this context (cell geometry ${geometrySource ?? "unknown"})`
+            : `${id}: no paint witness within ${timeoutMs} ms after ${label}; the terminal left the witness cell unpainted, so this run cannot separate a painted frame from a stale one (cell geometry ${geometrySource ?? "unknown"})`,
         "timeout",
         assertionType,
         // A text timeout cites no frame: a lone frame is not the pair a verdict needs, and the row
         // is inconclusive about the paint, not about a snapshot it could point a reader at.
-        assertionType === "screenshot" ? { screenshotRef: painted.frame.ref } : {},
+        assertionType === "screenshot"
+          ? {
+              screenshotRef: painted.frame.ref,
+              ...(requireSameCrop ? { frames: [...(options.priorFrames ?? [baseline.frame]), painted.frame] } : {}),
+            }
+          : {},
       )
     }
     await new Promise<void>((resolve) => {
@@ -910,6 +932,7 @@ export async function captureRegionReadbackDecision(
       : [{ role: "control" as const, label: `${id}: setup reference frame`, writes: spec.setupReference }]),
   ]
   const frames: ObservationFrame[] = []
+  let targetScreenshotRef: string | undefined
   const digests: string[] = []
   // Each digest's own crop rectangle, pushed in lockstep with it: two digests mean the same cells
   // only when their rectangles match (29580).
@@ -943,15 +966,18 @@ export async function captureRegionReadbackDecision(
     for (const [index, step] of steps.entries()) {
       ctx.write(step.writes)
       ctx.write(park)
-      // The baseline is read after this step's frame paints, before its witness glyph is written.
+      // Writes can still be waiting for paint when this baseline is captured. Declared rows
+      // challenge a space/glyph pair in both directions before trusting the requested paint.
+      const sentinelWrite = `\x1b[${spec.sentinel.row};${spec.sentinel.col}H`
+      if (discriminator) ctx.write(`${sentinelWrite} `)
       const baseline = await read({
         role: "control",
         label: `${step.label} — baseline`,
         region: witnessCell,
         pixelGeometry: spec.pixelGeometry,
       })
-      ctx.write(`\x1b[${spec.sentinel.row};${spec.sentinel.col}H${witnessGlyph(index)}`)
-      const result = await awaitPaintWitness({
+      ctx.write(`${sentinelWrite}${witnessGlyph(index)}`)
+      const witnessOptions = {
         read,
         id,
         label: step.label,
@@ -963,11 +989,33 @@ export async function captureRegionReadbackDecision(
         pollMs,
         requireSameCrop: discriminator !== undefined,
         assertionType,
-      })
+      }
+      const result = await awaitPaintWitness(witnessOptions)
       if (!witnessed(result)) {
         return review(result, result.observation?.reason === "timeout" ? "no freshness witness" : undefined)
       }
-      frames.push(result.witness.frame)
+      if (discriminator) {
+        const roundtripFrames = [baseline.frame, result.witness.frame]
+        for (const [write, expectedDigest, label] of [
+          [" ", baseline.regionDigest, "space return"],
+          [witnessGlyph(index), result.witness.regionDigest, "glyph return"],
+        ] as const) {
+          ctx.write(`${sentinelWrite}${write}`)
+          const returned = await awaitPaintWitness({
+            ...witnessOptions,
+            label: `${step.label} — ${label}`,
+            expectedDigest,
+            priorFrames: roundtripFrames,
+          })
+          if (!witnessed(returned)) {
+            return review(returned, returned.observation?.reason === "timeout" ? "no freshness witness" : undefined)
+          }
+          roundtripFrames.push(returned.witness.frame)
+        }
+        frames.push(...roundtripFrames)
+      } else {
+        frames.push(result.witness.frame)
+      }
       const measured = await read({
         role: step.role,
         label: step.label,
@@ -977,6 +1025,7 @@ export async function captureRegionReadbackDecision(
       digests.push(measured.regionDigest)
       cropRectangles.push(measured.regionRectangle)
       frames.push(measured.frame)
+      if (step.role === "target") targetScreenshotRef = measured.frame.ref
     }
     const seed = digests[0]
     const after = digests[1]
@@ -1022,7 +1071,7 @@ export async function captureRegionReadbackDecision(
       ],
       response: observed,
       frames,
-      ...(assertionType === "screenshot" ? { screenshotRef: frames[3]?.ref } : {}),
+      ...(assertionType === "screenshot" ? { screenshotRef: targetScreenshotRef } : {}),
     })
     if (cropRefusal) return cropRefusal
     if (setupReference !== undefined && seed !== setupReference) {
@@ -1039,7 +1088,7 @@ export async function captureRegionReadbackDecision(
           `${id}: no-change requires a matching independent expected frame and a distinct ignored contrast`,
           "insufficient-evidence",
           assertionType,
-          cite(frames[3]?.ref, frames),
+          cite(targetScreenshotRef, frames),
         ),
         response: observed,
       })
@@ -1051,7 +1100,7 @@ export async function captureRegionReadbackDecision(
           `${id}: the seed frame and the expected frame read the same cells, so this run cannot separate them`,
           "insufficient-evidence",
           assertionType,
-          cite(frames[3]?.ref, frames),
+          cite(targetScreenshotRef, frames),
         ),
       )
     }
@@ -1062,7 +1111,7 @@ export async function captureRegionReadbackDecision(
           `${id}: the ignored-attribute frame and the expected frame read the same cells, so this run cannot separate them`,
           "insufficient-evidence",
           assertionType,
-          cite(frames[3]?.ref, frames),
+          cite(targetScreenshotRef, frames),
         ),
       )
     }
@@ -1109,7 +1158,7 @@ export async function captureRegionReadbackDecision(
           outcome: "inconclusive",
           reason: "insufficient-evidence",
           assertionType,
-          ...cite(frames[3]?.ref, frames),
+          ...cite(targetScreenshotRef, frames),
           note,
         },
       })
@@ -1130,7 +1179,7 @@ export async function captureRegionReadbackDecision(
       observation: {
         outcome: supported ? "supported" : "unsupported",
         assertionType,
-        ...cite(frames[3]?.ref, frames),
+        ...cite(targetScreenshotRef, frames),
         ...(spec.setupReference !== undefined && after === ignored
           ? { note: `${id}: the reset also cleared the preserved attribute` }
           : {}),

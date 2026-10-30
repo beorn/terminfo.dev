@@ -1693,6 +1693,9 @@ test.each([
   expect(result.tests).toEqual([{ id: "fixture.changed", status, assertionRefs: [0] }])
   expect(result.assertions).toHaveLength(1)
   expect(result.assertions?.[0]?.kind).toBe(kind)
+  expect(result.observation.screenshotRef).toBe(
+    result.observation.frames?.find((frame) => frame.role === "target")?.ref,
+  )
 })
 
 test.each([
@@ -1723,6 +1726,53 @@ test("declared visual missing witness keeps review evidence execution-only", asy
   expect(result?.assertions).toBeUndefined()
   expect(response.review?.note).toContain("no paint witness")
   expect(response.review?.screenshotRef).toMatch(/^sha256:/)
+})
+
+// The ordinary fixture paints the target and sentinel together. A partial repaint can instead
+// clear the preceding glyph before the requested glyph (and the target) reaches the window.
+test.each([
+  ["intermediate clear", ["0", " "]],
+  ["missing clear return", [" ", "1"]],
+  ["missing glyph return", [" ", "1", " "]],
+] as const)("declared visual %s cannot establish requested paint", async (_fault, sentinelPaints) => {
+  const fake = declaredWindow("expected")
+  const read = fake.read
+  let targetStep = false
+  let sentinelReads = 0
+  const write = fake.ctx.write.bind(fake.ctx)
+  fake.ctx.write = (sequence) => {
+    if (sequence === `${PLANE_SPEC.seed}${PLANE_SPEC.edit}`) targetStep = true
+    if (sequence === PLANE_SPEC.expected || sequence === PLANE_SPEC.ignored) targetStep = false
+    write(sequence)
+  }
+  fake.read = async (request) => {
+    const captured = await read(request)
+    if (targetStep && key(request.region) === SENTINEL_CELL) {
+      const painted = sentinelPaints[Math.min(sentinelReads++, sentinelPaints.length - 1)]
+      captured.regionDigest = `sentinel|${painted}`
+      captured.pixelsDigest = `frame|seed|${painted}`
+      captured.frame.regionDigest = captured.regionDigest
+      captured.frame.pixelsDigest = captured.pixelsDigest
+    } else if (request.role === "target") {
+      captured.regionDigest = `${key(request.region)}|seed`
+      captured.frame.regionDigest = captured.regionDigest
+    }
+    return captured
+  }
+  const result = await captureRegionReadbackDecision(
+    fake.ctx,
+    "visual",
+    spec({ ...PLANE_SPEC, discriminator: CHANGE_SIGNAL, timeoutMs: 5 }),
+    fake.read,
+  )
+  expect(result?.tests).toEqual([{ id: "review", status: "test-todo", reason: "no freshness witness" }])
+  expect(result?.assertions).toBeUndefined()
+  expect(result?.observation).toBeUndefined()
+  const response = JSON.parse(result?.response ?? "{}") as { review?: { frames?: PixelObservationFrame[] } }
+  expect(response.review?.frames?.map((frame) => frame.regionDigest)).toEqual([
+    ...sentinelPaints.map((painted) => `sentinel|${painted}`),
+    `sentinel|${sentinelPaints.at(-1)}`,
+  ])
 })
 
 test("declared visual instability before a target frame keeps review evidence execution-only", async () => {
