@@ -48,6 +48,62 @@ async function backend() {
   return createXtermBackend()
 }
 
+// Malformed corroborating replies must stay visible after the real callback/collector boundary;
+// valid retained-state fixtures cannot distinguish bad input from silence.
+test.each([
+  { query: "\x1b[18t", reply: "not-a-size-reply", note: "Malformed 18t reply", disagree: false },
+  {
+    query: "\x1b[?3$p",
+    reply: "not-a-mode-reply",
+    note: "Malformed or out-of-range DECRPM mode 3 reply",
+    disagree: false,
+  },
+  { query: "\x1b[?3$p", reply: "\x1b[?3;9$y", note: "Malformed or out-of-range DECRPM mode 3 reply", disagree: false },
+  { query: "\x1b[18t", reply: "", note: null, disagree: false },
+  { query: "\x1b[18t", reply: "not-a-size-reply", note: "Malformed 18t reply", disagree: true },
+  {
+    query: "\x1b[?3$p",
+    reply: "not-a-mode-reply",
+    note: "Malformed or out-of-range DECRPM mode 3 reply",
+    disagree: true,
+  },
+])(
+  "DECCOLM retains corroborating reply diagnostics: $reply (disagreement: $disagree)",
+  async ({ query, reply, note, disagree }) => {
+    const definition = ALL_PROBES.find((entry) => entry.id === "modes.deccolm")!
+    const batch = await collectBatch(backend, "xtermjs", [
+      {
+        ...definition,
+        lib(context) {
+          const capture = context.feedCapture.bind(context)
+          let sizeReplies = 0
+          context.feedCapture = (sequence) => {
+            if (disagree && sequence === "\x1b[18t" && ++sizeReplies === 2) return "\x1b[8;24;100t"
+            return sequence === query ? reply : capture(sequence)
+          }
+          return definition.lib!(context)
+        },
+      },
+    ])
+    expect(batch.results).toMatchObject([{ status: disagree ? "test-failure" : "unsupported" }])
+    const diagnostic =
+      batch.observations[0]?.note ?? batch.results[0]?.tests.find((test) => test.id === "criterion")?.reason
+    if (disagree) {
+      expect(batch.observations).toEqual([])
+      expect(diagnostic).toContain("18t/sweep disagreement")
+    } else {
+      expect(batch.assertions.length).toBeGreaterThan(0)
+    }
+    if (note) {
+      expect(diagnostic).toContain(note)
+      expect(diagnostic).toContain(JSON.stringify(reply))
+    } else {
+      expect(diagnostic).not.toMatch(/Malformed/)
+    }
+    expect(batch.assertions.every((assertion) => assertion.observed === batch.rawReplies[definition.id])).toBe(true)
+  },
+)
+
 // Callback-only tests missed the eight real collector refusals. Replay only their retained
 // state through the deciding callback and collector; this fixture does not execute these engines.
 test.each(retainedDeccolm.rows)("DECCOLM retained $engine state survives the strict collector", async (sample) => {
