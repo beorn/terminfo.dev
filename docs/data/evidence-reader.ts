@@ -523,12 +523,12 @@ export function describeTracePanes(trace: LoadedCellTrace, options: TracePaneOpt
 
     if (cell.replyWithheld) {
       items.push({
-        label: "Reply",
-        text: "Reply not reviewed for publication.",
+        label: "Observed",
+        text: "Observed bytes not reviewed for publication.",
       })
     } else if (primaryMatches.length > 0) {
       items.push({
-        label: "Reply",
+        label: "Observed",
         code: primaryMatches.join("  "),
         ...(observedValues.length > 0 && { text: `Observed: ${observedValues.join(", ")}` }),
       })
@@ -540,7 +540,7 @@ export function describeTracePanes(trace: LoadedCellTrace, options: TracePaneOpt
     } else {
       const reasons = [...new Set(queries.map((q) => q.reason).filter(Boolean))].join(", ")
       items.push({
-        label: "Reply",
+        label: "Observed",
         text: queries.length > 0 ? `No matching reply (${reasons || "none"}).` : "No reply recorded.",
       })
     }
@@ -551,8 +551,8 @@ export function describeTracePanes(trace: LoadedCellTrace, options: TracePaneOpt
       text: "Input bytes were not stored by this run.",
     })
     items.push({
-      label: "Reply",
-      text: "Reply not reviewed for publication.",
+      label: "Observed",
+      text: "Observed bytes not reviewed for publication.",
     })
     notKeptLine = "Not kept: screenshot, raw read window, reviewed evidence file"
   } else {

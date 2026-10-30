@@ -1,10 +1,14 @@
 import { PROBE_STATUSES, type ProbeResult, type ProbeStatus } from "../../packages/probe-defs/src/types.ts"
 import { environmentGroupIds, gradedFeatureIds } from "../../packages/probe-defs/src/environment-groups.ts"
-import type { PublicVersion, PublicProbeResult } from "./public-results.ts"
+import type { PublicVersion, PublicProbeResult, PublicContextSummary } from "./public-results.ts"
 
 /** Read a current (schema 3 or 4) published result without manufacturing any legacy observation. */
-export function publicResultFor(version: PublicVersion | undefined, featureId: string): PublicProbeResult | undefined {
+export function publicResultFor(
+  version: PublicVersion | PublicContextSummary | undefined,
+  featureId: string,
+): PublicProbeResult | undefined {
   if (!version) return undefined
+  if ("cells" in version) return version.cells[featureId]
   return version.results.find((result) => result.featureId === featureId)
 }
 
@@ -76,6 +80,11 @@ export function isStaleRelation(relation: SuiteRelation): boolean {
   return relation === "older" || relation === "partial"
 }
 
+/** A context remains current when any original evidence source is current; safe for site clients. */
+export function hasCurrentSource(sources: readonly { suiteRelation: SuiteRelation }[]): boolean {
+  return sources.some((source) => !isStaleRelation(source.suiteRelation))
+}
+
 /** True when the live tree has moved past the release suite, so a banner must say so (one, not two). */
 export function treeMovedPastRelease(treeSuiteId: string | null, releaseSuiteId: string | null): boolean {
   return Boolean(treeSuiteId) && Boolean(releaseSuiteId) && treeSuiteId !== releaseSuiteId
@@ -91,7 +100,7 @@ export interface CurrentAggregate {
 }
 
 export function aggregateCurrentResults(
-  results: readonly ProbeResult[],
+  results: readonly Pick<ProbeResult, "featureId" | "status">[],
   catalogIds: readonly string[],
 ): CurrentAggregate {
   if (!catalogIds.length || new Set(catalogIds).size !== catalogIds.length) {
@@ -133,6 +142,32 @@ export function aggregateCurrentResults(
     idsByState,
     supported: counts.supported,
     complete: counts["test-todo"] === 0 && counts["test-failure"] === 0,
+  }
+}
+
+/**
+ * A library's completeness tier over its graded positions (the environment groups excluded): 0 nothing graded was
+ * measured, 1 incomplete (any TEST TODO), 2 broken (TEST FAILURE and no TEST TODO), 3 every graded position decided.
+ * Not the Release 1 scope `tier` of {@link ReleaseScope} (#31733 A3). This is the rule's one home: the hourly
+ * re-measure imports it from the pinned checkout and the site renders from it (#31733 A2, #31747).
+ */
+export type CompletenessTier = Readonly<{
+  completenessTier: 0 | 1 | 2 | 3
+  todo: number
+  failure: number
+  positions: number
+}>
+
+/** The completeness tier of one library's recorded statuses, keyed by feature id. */
+export function completenessTierOf(statuses: Readonly<Record<string, string>>): CompletenessTier {
+  const graded = gradedFeatureIds(Object.keys(statuses)).map((id) => statuses[id])
+  const todo = graded.filter((status) => status === "test-todo").length
+  const failure = graded.filter((status) => status === "test-failure").length
+  return {
+    completenessTier: graded.length === 0 ? 0 : todo > 0 ? 1 : failure > 0 ? 2 : 3,
+    todo,
+    failure,
+    positions: graded.length,
   }
 }
 

@@ -110,12 +110,24 @@ test.each(["cursor.hide", "modes.insert-replace"] as const)(
 )
 
 test.each(["sgr.bold", "cursor.hide", "modes.insert-replace"] as const)(
-  "%s stays inconclusive and never negative when the readback reply is missing",
+  "%s never grades unsupported when the readback reply is missing",
   async (id) => {
-    const result = await termProbe(id)(kittySource(false))
+    const source = kittySource(false)
+    // IRM falls through to capture after DECRQM silence; select its query-only path for this missing-reply check.
+    const { capture: _capture, ...queryOnly } = source
+    const result = await termProbe(id)(
+      id === "modes.insert-replace" ? { ...queryOnly, queryCursorPosition: async () => null } : source,
+    )
     expect(result.pass).toBe(false)
-    expect(result.observation?.outcome).toBe("inconclusive")
-    expect(result.observation?.outcome).not.toBe("unsupported")
+    if (id === "modes.insert-replace") {
+      // IRM falls through to its cell fixture; a missing cursor reply is an execution failure, not a verdict.
+      expect(result.tests).toEqual([{ id: "criterion", status: "test-failure", reason: "no-response" }])
+      expect(result.observation).toBeUndefined()
+      expect(result.assertions).toBeUndefined()
+    } else {
+      expect(result.observation?.outcome).toBe("inconclusive")
+      expect(result.observation?.outcome).not.toBe("unsupported")
+    }
   },
 )
 

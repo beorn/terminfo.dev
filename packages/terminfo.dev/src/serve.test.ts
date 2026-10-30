@@ -70,6 +70,7 @@ it.each(["tmux", "screen"])(
       const attempt=JSON.parse(collectionAttempt)
       assert.deepEqual(attempt.ids,["device.xtversion"])
       assert.ok(Number.isFinite(Date.parse(attempt.startedAt)))
+      assert.equal(attempt.result,"started")
       const batch={results:options.draft.results,rawReplies:{"fixture.reply":"batch-reply"},observations:[],assertions:[],notTested:[],ungradedDiagnostics:{},suiteComplete:false,screenshotRefs:[],textSnapshotRefs:[]}
       options.onCheckpoint(batch)
       assert.equal(readDraft().rawReplies["collector.collectionAttempt"],collectionAttempt)
@@ -78,7 +79,7 @@ it.each(["tmux", "screen"])(
     }}))
     const {collectProbeRun}=await import("./packages/terminfo.dev/src/serve.ts")
     const run=await collectProbeRun({ids:["device.xtversion"]})
-    assert.equal(run.rawReplies["collector.collectionAttempt"],collectionAttempt)
+    assert.deepEqual(JSON.parse(run.rawReplies["collector.collectionAttempt"]),{...JSON.parse(collectionAttempt),result:"completed"})
     assert.equal(run.rawReplies["fixture.reply"],"batch-reply")
     assert.equal(verifierCalls,1)
     custodyFailure=new Error("fixture mux custody revoked at batch")
@@ -113,6 +114,116 @@ it.each(["tmux", "screen"])(
       },
     )
     expect(result.error, result.stderr).toBeUndefined()
+    expect(result.status, result.stderr).toBe(0)
+  },
+)
+
+// AC1/AC3: the existing capture journeys cannot detect an empty request doing TTY work,
+// lost intent before a prerequisite refusal, or cancellation being reported as cell failures.
+it.each(["empty", "prerequisite", "completed", "cancelled", "failed", "unknown"])(
+  "retains native selection and typed %s outcome through its existing draft custody",
+  (mode) => {
+    home = mkdtempSync(join(tmpdir(), "terminfo-serve-selection-"))
+    const result = spawnSync(
+      process.execPath,
+      [
+        "-e",
+        String.raw`
+      import { mock } from "bun:test"
+      import assert from "node:assert/strict"
+      import { readFileSync } from "node:fs"
+      import { join } from "node:path"
+      const mode = process.env.NATIVE_ATTEMPT_FIXTURE
+      const unified = await import("./packages/terminfo.dev/src/probes/unified.ts")
+      const actualBatch = unified.runProbeBatch
+      const tty = await import("./packages/terminfo.dev/src/tty.ts")
+      const owned = await import("./packages/terminfo.dev/src/owned-terminal.ts")
+      const hash = "a".repeat(12), revision = "b".repeat(40)
+      const ids = mode === "empty" ? [] : mode === "unknown" ? ["missing.probe"] : ["device.xtversion"]
+      const runId = "selected-" + mode
+      let detected = 0, raw = 0, batches = 0, owners = 0, unselectedRows
+      const original = new Error("fixture " + mode + " diagnostic")
+      if (mode === "cancelled") original.name = "AbortError"
+      globalThis.__TERMINFO_BUNDLED_SUITE__ = { manifest: {
+        schemaVersion: 4, catalogIds: Object.keys((await import("@terminfo/catalog")).loadFeatures(process.cwd()+"/content")).sort(),
+        probeHash: hash, probes: { term: unified.ALL_PROBES.map(probe=>probe.id).sort(), lib: [], mux: [] }
+      }, collectorRevision: revision }
+      const readDraft = () => JSON.parse(readFileSync(join(process.env.HOME,".terminfo-dev","http-responses",runId+".draft.json"),"utf8"))
+      mock.module("./packages/terminfo.dev/src/detect.ts", () => ({ detectTerminal: () => {
+        detected++
+        if (mode !== "empty") assert.equal(readDraft().rawReplies["collector.selection"], JSON.stringify({ ids }))
+        unselectedRows = readDraft().results.filter(row=>!ids.includes(row.featureId))
+        if (mode === "prerequisite") throw original
+        return { name: "kitty", version: "0.49.2", os: "linux", osVersion: "fixture" }
+      }}))
+      mock.module("./packages/terminfo.dev/src/owned-terminal.ts", () => ({ ...owned,
+        createOwnedTerminal: async () => { owners++; throw new Error("unexpected owner dispatch") }
+      }))
+      mock.module("./packages/terminfo.dev/src/tty.ts", () => ({ ...tty,
+        withRawMode: async callback => {
+          raw++
+          if (mode === "cancelled" || mode === "failed") throw original
+          return callback()
+        }, drainStdin: async () => {}
+      }))
+      mock.module("./packages/terminfo.dev/src/probes/unified.ts", () => ({ ...unified,
+        runProbeBatch: async options => {
+          batches++
+          assert.deepEqual(options.ids, ids)
+          if (mode === "unknown") return actualBatch(options)
+          return { results: options.draft.results, rawReplies: { "device.xtversion": "kitty(0.49.2)" },
+            observations: [], assertions: [], screenshotRefs: [], ungradedDiagnostics: {}, suiteComplete: false }
+        }
+      }))
+      const { collectProbeRun } = await import("./packages/terminfo.dev/src/serve.ts")
+      if (["prerequisite", "cancelled", "failed"].includes(mode)) {
+        await assert.rejects(collectProbeRun({ ids, captureRunId: runId }), error => error === original)
+      } else if (mode === "unknown") {
+        await assert.rejects(collectProbeRun({ ids, captureRunId: runId }), /Unknown or inapplicable app probe missing.probe/)
+      } else {
+        const run = await collectProbeRun({ ids, captureRunId: runId })
+        if (mode === "empty") {
+          assert.equal(detected, 0); assert.equal(raw, 0); assert.equal(batches, 0); assert.equal(owners, 0)
+          for (const key of ["subject", "identity", "measuredAt", "origin"]) assert.equal(Object.hasOwn(run,key),false,key)
+        }
+      }
+      const draft = readDraft()
+      assert.equal(draft.runId, runId); assert.equal(draft.probeHash, hash); assert.equal(draft.sourceRevision, revision)
+      assert.deepEqual(JSON.parse(draft.rawReplies["collector.selection"]), { ids })
+      const attempt = JSON.parse(draft.rawReplies["collector.collectionAttempt"])
+      const expected = mode === "prerequisite" || mode === "unknown" ? "failed" : mode
+      assert.equal(attempt.result, expected); assert.deepEqual(attempt.ids, ids)
+      if (mode === "empty" || mode === "prerequisite") assert.equal(Object.hasOwn(attempt,"startedAt"),false)
+      else assert.ok(Number.isFinite(Date.parse(attempt.startedAt)))
+      if (["prerequisite", "cancelled", "failed"].includes(mode)) assert.equal(attempt.error, original.message)
+      assert.equal(draft.results.length, 273)
+      for (const row of draft.results.filter(row=>!ids.includes(row.featureId))) {
+        assert.equal(row.status,"test-todo"); assert.equal(row.attempt.scope,"none")
+
+      }
+      if (unselectedRows) assert.deepEqual(draft.results.filter(row=>!ids.includes(row.featureId)), unselectedRows)
+      if (mode === "empty" || mode === "cancelled" || mode === "prerequisite") {
+        assert.ok(draft.results.every(row=>row.attempt.scope==="none"))
+      }
+    `,
+      ],
+      {
+        cwd: packageRoot,
+        encoding: "utf8",
+        timeout: 10_000,
+        env: {
+          ...process.env,
+          HOME: home,
+          NATIVE_ATTEMPT_FIXTURE: mode,
+          TERMINFO_CAPTURE_DIRECTORY: "",
+          TERMINFO_CLIPBOARD_FIXTURE_RECEIPT: "",
+          TERMINFO_DISPOSABLE_RECEIPT: "",
+          TERMINFO_RUNTIME_PROVENANCE: "",
+          TERMINFO_TARGET_ID: "",
+          TERMINFO_TARGET_VERSION: "",
+        },
+      },
+    )
     expect(result.status, result.stderr).toBe(0)
   },
 )
@@ -240,7 +351,7 @@ describe("daemon HTTP boundary", () => {
 
   // Carrier validation precedes source-suite loading. The old endpoint ignored
   // these bodies and tried to probe; authentication coverage did not detect that.
-  it("refuses malformed or mismatched owner assertions before collection", async () => {
+  it("refuses malformed probe requests with original diagnostics before collection", async () => {
     const { registration } = await startTestDaemon()
     const url = `http://127.0.0.1:${registration.port}/probe`
     const owner = {
@@ -265,22 +376,49 @@ describe("daemon HTTP boundary", () => {
     const headers = { Authorization: `Bearer ${registration.token}`, "Content-Type": "application/json" }
     const unauthenticated = await fetch(url, { method: "POST", body: JSON.stringify({ terminalAppOwner: owner }) })
     expect(unauthenticated.status).toBe(403)
-    for (const body of [
-      "{malformed",
-      JSON.stringify({ terminalAppOwner: null }),
-      JSON.stringify({ terminalAppOwner: { ...owner, launchRunId: "f".repeat(32) } }),
-      JSON.stringify({ terminalAppOwner: { ...owner, workerPid: registration.pid + 1 } }),
-      JSON.stringify({ terminalAppOwner: { ...owner, token: registration.token } }),
-      JSON.stringify({ unexpectedOwner: owner }),
-      JSON.stringify({ processOwner: null }),
-      JSON.stringify({ processOwner: { ...processOwner, launchRunId: "f".repeat(32) } }),
-      JSON.stringify({ processOwner: { ...processOwner, workerPid: registration.pid + 1 } }),
-      JSON.stringify({ processOwner: { ...processOwner, windowId: 791 } }),
-      JSON.stringify({ terminalAppOwner: owner, processOwner: { ...owner, provider: "kitty" } }),
-    ]) {
+    // The new ids carrier must name its own invalid input; owner-only rejection coverage
+    // previously allowed every parse failure to be replaced by an owner-assertion message.
+    for (const [body, diagnostic] of [
+      [JSON.stringify({ ids: null }), "Invalid probe request ids: expected resolved probe ids"],
+      [JSON.stringify({ ids: "cursor.hide" }), "Invalid probe request ids: expected resolved probe ids"],
+      [JSON.stringify({ ids: ["cursor.hide", 3] }), "Invalid probe request ids: expected resolved probe ids"],
+      ["{malformed", /JSON/],
+      [JSON.stringify({ terminalAppOwner: null }), "Invalid Terminal.app owner assertion"],
+      [
+        JSON.stringify({ terminalAppOwner: { ...owner, launchRunId: "f".repeat(32) } }),
+        "Terminal.app owner assertion differs from this daemon's launch run or PID",
+      ],
+      [
+        JSON.stringify({ terminalAppOwner: { ...owner, workerPid: registration.pid + 1 } }),
+        "Terminal.app owner assertion differs from this daemon's launch run or PID",
+      ],
+      [
+        JSON.stringify({ terminalAppOwner: { ...owner, token: registration.token } }),
+        "Invalid Terminal.app owner assertion",
+      ],
+      [JSON.stringify({ unexpectedOwner: owner }), "Invalid probe request shape"],
+      [JSON.stringify({ processOwner: null }), "Invalid process owner assertion"],
+      [
+        JSON.stringify({ processOwner: { ...processOwner, launchRunId: "f".repeat(32) } }),
+        "Process owner assertion differs from this daemon's launch run or PID",
+      ],
+      [
+        JSON.stringify({ processOwner: { ...processOwner, workerPid: registration.pid + 1 } }),
+        "Process owner assertion differs from this daemon's launch run or PID",
+      ],
+      [JSON.stringify({ processOwner: { ...processOwner, windowId: 791 } }), "Invalid process owner assertion"],
+      [
+        JSON.stringify({ terminalAppOwner: owner, processOwner: { ...owner, provider: "kitty" } }),
+        "Invalid probe request shape",
+      ],
+    ] as const) {
       const response = await fetch(url, { method: "POST", headers, body })
       expect(response.status).toBe(400)
-      expect(await response.json()).toEqual({ error: "Invalid or mismatched owned-terminal owner assertion" })
+      const payload = await response.json()
+      expect(payload).toEqual({
+        error: typeof diagnostic === "string" ? diagnostic : expect.stringMatching(diagnostic),
+      })
+      expect(JSON.stringify(payload)).not.toContain(registration.token)
     }
   })
 
@@ -1426,7 +1564,7 @@ describe("private finite daemon startup", () => {
     },
   )
 
-  it.each([undefined, '["cursor.hide","reset.decaln"]'])(
+  it.each([undefined, "[]", '["cursor.hide","reset.decaln"]'])(
     "forwards startup selection %s once and preserves producer completeness",
     async (selection) => {
       const { registration } = await startTestDaemon(
@@ -1458,17 +1596,39 @@ describe("private finite daemon startup", () => {
       })
       expect(response.status).toBe(200)
       const run = (await response.json()) as {
-        rawReplies: { selected: string[] | null }
+        rawReplies: { selected?: string[] | null; "collector.collectionAttempt"?: string }
         results: { featureId: string; status: string }[]
       }
-      expect(run.rawReplies.selected).toEqual(selection ? JSON.parse(selection) : null)
+      if (selection === "[]") {
+        expect(run.rawReplies.selected).toBeUndefined()
+        expect(JSON.parse(run.rawReplies["collector.collectionAttempt"]!)).toEqual({ ids: [], result: "empty" })
+        expect(run).not.toHaveProperty("subject")
+        expect(run).not.toHaveProperty("measuredAt")
+      } else expect(run.rawReplies.selected).toEqual(selection ? JSON.parse(selection) : null)
       expect(run.results).toHaveLength(273)
       expect(new Set(run.results.map((result) => result.featureId)).size).toBe(273)
       expect(run.results.every((result) => result.status === "test-todo")).toBe(true)
+      // AC1: explicit request selection overrides startup selection, including [] rather than full.
+      for (const ids of [[], ["cursor.show"]]) {
+        const selected = await fetch(`http://127.0.0.1:${registration.port}/probe`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${registration.token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ ids }),
+        })
+        expect(selected.status).toBe(200)
+        const result = (await selected.json()) as {
+          rawReplies: { selected?: string[]; "collector.collectionAttempt": string }
+        }
+        expect(result.rawReplies.selected).toEqual(ids.length === 0 ? undefined : ids)
+        expect(JSON.parse(result.rawReplies["collector.collectionAttempt"])).toMatchObject({
+          ids,
+          result: ids.length === 0 ? "empty" : "completed",
+        })
+      }
     },
   )
 
-  it.each(["", "null", "[]", '["cursor.hide","cursor.hide"]', '["not-a-probe"]', '["cursor.hide",3]'])(
+  it.each(["", "null", '["cursor.hide","cursor.hide"]', '["not-a-probe"]', '["cursor.hide",3]'])(
     "refuses malformed or inapplicable private IDs %s before listening",
     (value) => {
       home = mkdtempSync(join(tmpdir(), "terminfo-serve-private-"))

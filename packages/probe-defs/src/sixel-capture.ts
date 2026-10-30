@@ -11,8 +11,7 @@
  *   block's interior cell is compared, so edge scaling, band rounding and small geometry error fall
  *   outside the compared pixels; the sentinel sits outside the tile's worst-case extent.
  */
-import type { RegionReadback } from "./region-readback.ts"
-import type { PixelGeometry } from "./region-readback.ts"
+import { SENTINEL, type PixelGeometry, type RegionReadback } from "./region-readback.ts"
 
 /** The tile spans this many cells from its CUP origin. */
 const BLOCK_ROWS = 3
@@ -41,8 +40,6 @@ export const SIXEL_REGION = {
  * is the block itself. The geometry query and the readback both read this, so they cannot drift.
  */
 export const SIXEL_BOUNDS = { minRows: SIXEL_CURSOR_ROW, minCols: BLOCK_LEFT + BLOCK_COLS } as const
-
-const SENTINEL = { row: 1, col: 1 } as const
 
 export interface SixelTileSize {
   readonly width: number

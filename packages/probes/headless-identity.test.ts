@@ -141,7 +141,10 @@ function runKittyIdentity(attrs: Record<string, unknown>, sourcePresent = true, 
       if (args[0] === "hash" && args[1] === "path" && args[2] === source) return "sha256-" + "B".repeat(43) + "=";
       throw new Error("Unexpected Nix operation: " + args.join(" "));
     };
-    const { headlessRuntimeIdentity } = await import(${JSON.stringify(fixture.identityHref)});
+    const { headlessRuntimeIdentity, readNativeArtifactTreeOid } = await import(${JSON.stringify(fixture.identityHref)});
+    if (readNativeArtifactTreeOid("@termless/kitty", "kitty") !== undefined || readNativeArtifactTreeOid("@termless/kitty") !== undefined) {
+      throw new Error("Expected readNativeArtifactTreeOid to skip kitty bridge adapter");
+    }
     const identity = await headlessRuntimeIdentity("kitty", "@termless/kitty", "native");
     process.stdout.write(JSON.stringify(identity));
   `,

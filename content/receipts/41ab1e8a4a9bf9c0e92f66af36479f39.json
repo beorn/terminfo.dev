@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "kind": "github-hosted-runner",
+  "runId": "d4a2dd6586581ed7f9c9ce9705477cd0",
+  "collectedAt": "2026-10-28T19:12:37.655Z",
+  "job": {
+    "repository": "beorn/terminfo.dev",
+    "workflow": "macos-measurement",
+    "workflowRef": "beorn/terminfo.dev/.github/workflows/macos-measurement.yml@refs/heads/main",
+    "githubRunId": "40751394090",
+    "githubRunAttempt": "1",
+    "job": "measure-macos",
+    "jobId": "123038735514"
+  },
+  "runner": {
+    "environment": "github-hosted",
+    "name": "GitHub Actions 1000051267",
+    "os": "macOS",
+    "arch": "ARM64",
+    "imageOS": "macos26",
+    "imageVersion": "20261021.0445.8",
+    "trackingId": "github_c8c52df3-25af-40db-85ef-1cf9beabce19"
+  },
+  "vm": {
+    "identityAtJobStart": {
+      "machineIdSha256": "9e9b7f639f56c2916b9b55d7f0d5fffa60f870f8dcc6044eabb35d52f8c1ab45",
+      "productUuidSha256": "6d710d84ee7cb0f090799d914dfadc8c3c97418aaeec1739cc30afce06ecfcaa",
+      "bootIdSha256": "feb071277ad7727973ed0c5e84689ab8546f51acb159a8fe64c28eaa1c458b49"
+    },
+    "identityAtCollection": {
+      "machineIdSha256": "9e9b7f639f56c2916b9b55d7f0d5fffa60f870f8dcc6044eabb35d52f8c1ab45",
+      "productUuidSha256": "6d710d84ee7cb0f090799d914dfadc8c3c97418aaeec1739cc30afce06ecfcaa",
+      "bootIdSha256": "feb071277ad7727973ed0c5e84689ab8546f51acb159a8fe64c28eaa1c458b49"
+    }
+  },
+  "appLaunch": {
+    "bundlePath": "/Applications/Warp.app",
+    "cfBundleShortVersionString": "0.2026.10.14.08.27.01",
+    "cfBundleVersion": "0.2026.10.14.08.27.01",
+    "executablePath": "/Applications/Warp.app/Contents/MacOS/stable",
+    "executableSha256": "876425ff14b7d34cc6091adc12dc3dc2b8e946598036a3ff106dc94fec65a633",
+    "sourceArtifact": {
+      "path": "/Users/runner/work/_temp/Warp.dmg",
+      "sha256": "866204c9583007b06c0e88e399fe57187150a9ab43ad4000c5935035794025c1"
+    }
+  }
+}

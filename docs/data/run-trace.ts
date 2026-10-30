@@ -4,7 +4,7 @@
  * 2239262c (one document per displayed run) set what it publishes without that review; docs/api.md
  * "Evidence and publication" states the same contract for API readers.
  *
- * Published: each cell's outcome or status, evidence method and reason code; the bytes the probe wrote;
+ * Published: each cell's outcome or status, assertion type and reason code; the bytes the probe wrote;
  * each query's sequence and reason; the headless parser state; each assertion's kind and expected text;
  * and, for features on REPLY_LIST only, a query's `match` and a live assertion's `observed`.
  * Never published here: notes, assertion actions, ungraded diagnostics, screenshots and frames, and

@@ -10,8 +10,19 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, expect, it, vi } from "vitest"
-import { ALL_PROBES, type ProbeSuiteManifest, type TextQualification } from "@terminfo/probe-defs"
-import { decodeHistoricalCollectorRun as decodeCollectorRun } from "@terminfo/run-parser"
+import {
+  ALL_PROBES,
+  initializeRunDraft,
+  sealRunDraft,
+  type ProbeSuiteManifest,
+  type TextQualification,
+} from "@terminfo/probe-defs"
+import {
+  applyCaptureDecision,
+  retainCaptureBinding,
+  parseRun,
+  decodeHistoricalCollectorRun as decodeCollectorRun,
+} from "@terminfo/run-parser"
 import * as terminalOwnership from "../owned-terminal.ts"
 import { verifyTerminalIdentity } from "../identity-guard.ts"
 import { measureUtf8Decoding } from "../tty.ts"
@@ -416,6 +427,15 @@ it("projects Terminal.app identity replies without mistaking the DA1 sentinel fo
 })
 
 const originalWrite = process.stdout.write
+
+// The shared registry now resolves IDs; native diagnostics remain the existing CLI contract.
+it.each([
+  { ids: ["not-a-probe"], message: "Unknown or inapplicable app probe not-a-probe" },
+  { ids: ["sgr.bold", "sgr.bold"], message: "Duplicate probe ID in app batch" },
+])("keeps native selection diagnostic bytes: $message", async ({ ids, message }) => {
+  await expect(runProbeBatch({ ids })).rejects.toThrow(new Error(message))
+})
+
 afterEach(() => {
   vi.restoreAllMocks()
   process.stdout.write = originalWrite
@@ -1875,6 +1895,17 @@ it("records a FrameUnavailable capture as a named collector error, never invente
     name: "FrameUnavailable",
     message: expect.stringContaining("no capture directory"),
   })
+  expect(batch.results.find((result) => result.featureId === "sgr.underline.curly")).toMatchObject({
+    status: "test-todo",
+    reason: "This run has no capture directory, so no frame is available for a probe that needs one",
+    tests: [
+      expect.objectContaining({
+        id: "criterion",
+        status: "test-todo",
+        reason: "This run has no capture directory, so no frame is available for a probe that needs one",
+      }),
+    ],
+  })
   expect(batch.observations).toEqual([])
 })
 
@@ -2510,3 +2541,330 @@ it("forwards explicit callback tests through the actual native batch attempt wit
     definition.term = original
   }
 })
+
+// AC1–AC3 (#31677): the forwarding test above replaces the callback with a valid helper.
+// These actual producers previously retained frames but defaulted to FAILURE with no review.
+// Frames and decisions here are explicit collector fixtures, never terminal qualification evidence.
+it.each([
+  ["modes.xtpushsgr", 2, /bold.*not italic/i],
+  ["modes.xtpopsgr", 2, /bold.*not italic/i],
+  ["modes.xtsave", 2, /row 2/],
+  ["modes.xtrestore", 2, /row 2/],
+  ["modes.xtpushcolors", 2, /blue/],
+  ["modes.xtpopcolors", 2, /blue/],
+  ["modes.alt-screen.exit", 3, /PRIMARY.*ALTONLY/],
+  ["modes.altscreen-47", 3, /MAIN47.*ALT47/],
+  ["modes.altscreen-1047", 3, /second entry/i],
+  ["modes.left-right-margin", 2, /column 6/],
+  ["modes.insert-replace", 2, /XABCD/],
+  ["cursor.shape", 2, /cursor cell/i],
+] as const)(
+  "retains actual %s capture through required review and the canonical reader",
+  async (id, count, expected) => {
+    verifiedBatchFixture()
+    vi.useFakeTimers()
+    const ownManifest = {
+      ...manifest,
+      schemaVersion: 4 as const,
+      catalogIds: [id],
+      probes: { term: [id], lib: [], mux: [] },
+    } satisfies ProbeSuiteManifest
+    const draft = initializeRunDraft({
+      runId: `native-visual-${id}`,
+      sourceRevision,
+      source: { kind: "live" },
+      manifest: ownManifest,
+      intendedSubject: { kind: "term", id: "kitty", version: "0.49.1" },
+    })
+    draft.subject = {
+      kind: "term",
+      id: "kitty",
+      version: "0.49.1",
+      os: "linux",
+      osVersion: null,
+      outerTerminal: null,
+      mux: null,
+      config: null,
+      permissions: "fixture capture",
+    }
+    draft.identity = "verified"
+    draft.measuredAt = "2026-10-29T15:00:00.000Z"
+    draft.origin = { kind: "collector" }
+    let captures = 0
+    let witness = "blank"
+    const pixelGeometry = { cellWidth: 8, cellHeight: 16, textWidth: 640, textHeight: 384 }
+    const digest = (value: string) => `sha256:${createHash("sha256").update(value).digest("hex")}`
+    const makeCapture =
+      (unchangingPixels = false) =>
+      async ({
+        role,
+        label,
+        cells,
+      }: {
+        role: "control" | "target"
+        label: string
+        cells?: { top: number; left: number; bottom: number; right: number }
+      }) => {
+        const capturedAt = ++captures
+        const lowerLabel = label.toLowerCase()
+        // Constructed fixture planes prove that the collector maps each requested crop to pixels
+        // and carries the witness through the new reader. The distinct third target stays unknown
+        // to the comparison; it is never evidence of terminal qualification.
+        const phase = unchangingPixels
+          ? "unchanged"
+          : lowerLabel.includes("stability")
+            ? "stable"
+            : lowerLabel.includes("paint witness") || lowerLabel.includes("baseline")
+              ? witness
+              : lowerLabel.includes("pre-edit seed")
+                ? "seed"
+                : lowerLabel.includes("post-sequence target")
+                  ? id === "modes.alt-screen.exit"
+                    ? "seed"
+                    : "third"
+                  : lowerLabel.includes("expected frame")
+                    ? id === "modes.alt-screen.exit"
+                      ? "seed"
+                      : "expected"
+                    : lowerLabel.includes("ignored-attribute")
+                      ? "ignored"
+                      : lowerLabel.includes("setup reference")
+                        ? "seed"
+                        : "fixture"
+        const regionRectangle = cells
+          ? {
+              x: (cells.left - 1) * pixelGeometry.cellWidth,
+              y: (cells.top - 1) * pixelGeometry.cellHeight,
+              width: (cells.right - cells.left + 1) * pixelGeometry.cellWidth,
+              height: (cells.bottom - cells.top + 1) * pixelGeometry.cellHeight,
+            }
+          : undefined
+        return {
+          frame: {
+            role,
+            label,
+            capturedAt,
+            ref: `sha256:${createHash("sha256").update(`fixture frame ${capturedAt}`).digest("hex")}`,
+            ...(cells && regionRectangle
+              ? {
+                  pixelsDigest: digest(`whole:${phase}`),
+                  regionDigest: digest(`crop:${cells.top},${cells.left},${cells.bottom},${cells.right}:${phase}`),
+                  regionRectangle,
+                }
+              : {}),
+          },
+          trace: {},
+        }
+      }
+    process.stdout.write = ((chunk: string | Uint8Array) => {
+      const bytes = typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf8")
+      if (/^\x1b\[\d+;\d+H.$/.test(bytes)) witness = bytes.slice(-1)
+      return true
+    }) as typeof process.stdout.write
+    try {
+      const pending = runProbeBatch({
+        ids: [id],
+        draft,
+        ownedTerminal: geometryOwner(measured(24, 80)),
+        prepareCapture: async ({ source }) => {
+          source.captureGeometry = { geometry: pixelGeometry, source: "measured by complete raster calibration" }
+        },
+        capture: makeCapture(),
+      })
+      const [batch] = await Promise.all([pending, vi.runAllTimersAsync()])
+      expect(batch.ungradedDiagnostics).toEqual({})
+      const result = batch.results.find((entry) => entry.featureId === id)!
+      if (id === "modes.alt-screen.exit") {
+        // A real successful alternate-marker control cites the initial stability pair in its response.
+        // Those cleared-canvas digests differ from every later primary/alternate/witness capture.
+        expect(result.tests).toMatchObject([
+          { id: "primary-marker-restored", status: "supported", assertionRefs: [0] },
+          { id: "alternate-marker-control", status: "supported", assertionRefs: [1] },
+          { id: "remaining-facets", status: "test-todo" },
+        ])
+        expect(batch.assertions).toHaveLength(2)
+        Object.assign(draft.rawReplies, batch.rawReplies)
+        draft.results = batch.results
+        draft.assertions = batch.assertions
+        draft.screenshotRefs = batch.screenshotRefs
+        const read = parseRun(
+          "native-visual-stability-fixture.json",
+          JSON.stringify(sealRunDraft(draft)),
+          [id],
+          new Map([[probeHash, ownManifest]]),
+        )
+        expect(read.results?.[0]).toMatchObject({ status: "test-todo", frames: result.frames })
+        expect(read.results?.[0]?.frames?.filter((frame) => frame.label.includes("capture stability"))).toHaveLength(2)
+        expect(read.assertions).toHaveLength(2)
+        return
+      }
+      if (batch.assertions.length === 0) {
+        expect(result).toMatchObject({ status: "test-todo" })
+        expect(result.tests.some((check) => check.status === "test-todo")).toBe(true)
+        expect(result.frames!.length).toBeGreaterThanOrEqual(8)
+        expect(
+          result.frames!.every((frame) => Boolean(frame.regionDigest && frame.pixelsDigest && frame.regionRectangle)),
+        ).toBe(true)
+        Object.assign(draft.rawReplies, batch.rawReplies)
+        draft.results = batch.results
+        draft.assertions = batch.assertions
+        draft.screenshotRefs = batch.screenshotRefs
+        if (!result.tests.some((check) => check.id === "review")) {
+          expect(
+            result.tests.every(
+              (check) => check.status === "test-todo" && check.reason?.includes("a third distinct frame"),
+            ),
+          ).toBe(true)
+          const decoded = decodeCollectorRun(
+            "native-visual-collector-fixture.json",
+            JSON.stringify({ ...asRun(batch), screenshotRefs: batch.screenshotRefs }),
+            manifest,
+            sourceRevision,
+          ).run
+          expect(decoded.observations.find((observation) => observation.featureId === id)?.frames).toEqual(
+            result.frames,
+          )
+          return
+        }
+        const binding = retainCaptureBinding(draft, id)
+        applyCaptureDecision(
+          draft,
+          JSON.stringify({
+            id: `fixture-review-${id}`,
+            runId: draft.runId,
+            featureId: id,
+            captureSha256: binding.sha256,
+            decision: "untestable",
+            reviewed: true,
+            reviewer: "fixture-reviewer",
+            reason: "Deterministic fixture planes do not establish terminal support",
+            scope: {
+              subject: { kind: "term", id: "kitty" },
+              versions: ["0.49.1", "0.49.1"],
+              suites: [probeHash, probeHash],
+            },
+            sources: [binding.rawReplyRef],
+            supersedes: [],
+          }),
+          "2026-10-29T15:01:00.000Z",
+        )
+        const read = parseRun(
+          "native-visual-fixture.json",
+          JSON.stringify(sealRunDraft(draft)),
+          [id],
+          new Map([[probeHash, ownManifest]]),
+        )
+        expect(read.results?.[0]).toMatchObject({ status: "untestable", frames: result.frames })
+        expect(read.assertions).toEqual([])
+        if (id === "modes.insert-replace") {
+          const noFreshDraft = initializeRunDraft({
+            runId: `native-visual-no-freshness-${id}`,
+            sourceRevision,
+            source: { kind: "live" },
+            manifest: ownManifest,
+            intendedSubject: { kind: "term", id: "kitty", version: "0.49.1" },
+          })
+          noFreshDraft.subject = structuredClone(draft.subject)
+          noFreshDraft.identity = "verified"
+          noFreshDraft.measuredAt = "2026-10-29T15:02:00.000Z"
+          noFreshDraft.origin = { kind: "collector" }
+          const unchangedPending = runProbeBatch({
+            ids: [id],
+            draft: noFreshDraft,
+            ownedTerminal: geometryOwner(measured(24, 80)),
+            prepareCapture: async ({ source }) => {
+              source.captureGeometry = { geometry: pixelGeometry, source: "measured by complete raster calibration" }
+            },
+            capture: makeCapture(true),
+          })
+          const [unchanged] = await Promise.all([unchangedPending, vi.runAllTimersAsync()])
+          expect(unchanged.ungradedDiagnostics).toEqual({})
+          const noFreshDecoded = decodeCollectorRun(
+            "native-visual-no-freshness.json",
+            JSON.stringify({ ...asRun(unchanged), screenshotRefs: unchanged.screenshotRefs }),
+            ownManifest,
+            sourceRevision,
+          ).run
+          expect(unchanged.observations).toEqual([])
+          expect(noFreshDecoded.observations).toEqual([])
+          expect(unchanged.results.find((entry) => entry.featureId === id)).toMatchObject({
+            status: "test-todo",
+            tests: [
+              expect.objectContaining({
+                id: "review",
+                status: "test-todo",
+                reason: expect.stringContaining("no freshness witness"),
+              }),
+            ],
+          })
+        }
+        return
+      }
+      expect(result).toMatchObject({
+        status: "test-todo",
+        criterionBranch: "visual-review",
+        tests: [
+          { id: "capture", status: "supported", assertionRefs: [0] },
+          { id: "review", status: "test-todo", attempt: { scope: "none" } },
+        ],
+      })
+      expect(result.frames).toHaveLength(count)
+      expect(batch.observations[0]).toMatchObject({ outcome: "inconclusive", assertionType: "screenshot" })
+      expect(batch.assertions).toHaveLength(1)
+      expect(batch.assertions[0]).toMatchObject({
+        featureId: id,
+        assertionType: "screenshot",
+        expected: expect.stringMatching(expected),
+      })
+      const retained = JSON.parse(batch.assertions[0]!.observed)
+      expect(retained).toEqual(
+        count === 3
+          ? { control: result.frames![0], alternate: result.frames![1], restored: result.frames![2] }
+          : { control: result.frames![0], target: result.frames![1] },
+      )
+      if (id === "cursor.shape") {
+        expect(JSON.parse(batch.rawReplies[`${id}.callbackResponse`]!)).toMatchObject({ cursorCell: null })
+        expect(result.tests.find((check) => check.id === "review")?.reason).toBe(
+          "Cursor shape frames captured; review pending: undeclared cursor discriminator #31812 (cursor cell and blink phase unmeasured)",
+        )
+      }
+      Object.assign(draft.rawReplies, batch.rawReplies)
+      draft.assertions = batch.assertions
+      draft.screenshotRefs = batch.screenshotRefs
+      const before = structuredClone(result.frames)
+      const binding = retainCaptureBinding(draft, id)
+      // This exercises reader eligibility only; the fixture has no actual rendered pixel plane.
+      applyCaptureDecision(
+        draft,
+        JSON.stringify({
+          id: `fixture-review-${id}`,
+          runId: draft.runId,
+          featureId: id,
+          captureSha256: binding.sha256,
+          decision: "untestable",
+          reviewed: true,
+          reviewer: "fixture-reviewer",
+          reason: "Deterministic collector fixture has no actual pixel plane; no terminal support verdict",
+          scope: {
+            subject: { kind: "term", id: "kitty" },
+            versions: ["0.49.1", "0.49.1"],
+            suites: [probeHash, probeHash],
+          },
+          sources: [binding.rawReplyRef],
+          supersedes: [],
+        }),
+        "2026-10-29T15:01:00.000Z",
+      )
+      const read = parseRun(
+        "native-visual-fixture.json",
+        JSON.stringify(sealRunDraft(draft)),
+        [id],
+        new Map([[probeHash, ownManifest]]),
+      )
+      expect(read.results?.[0]).toMatchObject({ status: "untestable", frames: before })
+      expect(read.assertions[0]?.expected).toMatch(expected)
+    } finally {
+      vi.useRealTimers()
+    }
+  },
+)

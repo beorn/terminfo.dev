@@ -39,7 +39,15 @@ import * as versions from "../packages/admin/versions.ts"
 import { frozenSuiteIdFor } from "../packages/admin/suite-manifest.ts"
 import * as headless from "../packages/probes/collect-headless.ts"
 import { retainCaptureBinding } from "@terminfo/run-parser"
-import { ENVIRONMENT_GROUP_IDS, textQualificationFixtures } from "@terminfo/probe-defs"
+import { saveDaemonProbeRun } from "../packages/terminfo.dev/src/daemon-client.ts"
+import {
+  ENVIRONMENT_GROUP_IDS,
+  SOURCE_NEGATIVE_REVIEW,
+  textQualificationFixtures,
+  readCollectorSelection,
+  readCollectorAttempt,
+  type RunDraft,
+} from "@terminfo/probe-defs"
 import { aggregateCurrentResults } from "../docs/data/release-scope.ts"
 import {
   admitProducedRuns,
@@ -245,6 +253,20 @@ it.each([
   ["matching", "text-modified"],
   ["frozen", "none"],
   ["frozen", "deferred"],
+  ["matching", "selected"],
+  ["matching", "hosted-selected"],
+  ["matching", "hosted-one-os"],
+  ["matching", "hosted-contexts"],
+  ["matching", "completed-collector-error"],
+  ["matching", "empty-selection"],
+  ["matching", "linux-prestart"],
+  ["matching", "linux-poststart"],
+  ["matching", "linux-poststart-capture"],
+  ["matching", "linux-poststart-final"],
+  ["matching", "macos-poststart"],
+  ["matching", "macos-prestart"],
+  ["matching", "macos-untrusted"],
+  ["matching", "empty-probes"],
 ] as const)(
   "retains a private %s-suite historical artifact after %s without current admission",
   async (suite, inputChange) => {
@@ -283,29 +305,82 @@ it.each([
     const writer = vi.spyOn(admission, "admitRun").mockImplementation(() => {
       throw new Error("Development must not write admission")
     })
-    const collector = vi.spyOn(headless, "collectHeadlessRuns").mockImplementation(async (_selectors, output) => {
-      if (!output) throw new Error("collection requires a private output directory")
-      mkdirSync(output, { recursive: true })
-      const raw = join(output, "xtermjs.json")
-      writeFileSync(raw, bytes)
-      // Use a private source canary: the failure must not delete or rewrite a real checkout input.
-      if (inputChange === "remove") rmSync(input)
-      if (inputChange === "rewrite") writeFileSync(input, "changed private suite input")
-      if (inputChange === "blocked-hosted") writeFileSync(join(dirname(output), "hosted"), "private obstruction")
-      if (inputChange === "blocked-macos") {
-        mkdirSync(join(dirname(output), "hosted"))
-        writeFileSync(join(dirname(output), "hosted", "macos"), "private obstruction")
-      }
-      return { directory: output, requested: ENGINE_BACKENDS, runs: [raw], failures: [] }
-    })
+    let completedDraftBytes: string | undefined
+    const collector = vi
+      .spyOn(headless, "collectHeadlessRuns")
+      .mockImplementation(async (_selectors, output, initializations) => {
+        if (!output) throw new Error("collection requires a private output directory")
+        mkdirSync(output, { recursive: true })
+        const raw = join(output, "xtermjs.json")
+        writeFileSync(raw, bytes)
+        if (inputChange === "completed-collector-error") {
+          const handed = initializations?.get("xtermjs")
+          if (!handed) throw new Error("Expected delegated headless draft")
+          handed.draft.rawReplies["collector.collectionAttempt"] = JSON.stringify({
+            ids: ["sgr.bold"],
+            startedAt: "2026-10-29T07:01:02.000Z",
+            result: "completed",
+            hostInputs: { "pixel-geometry": "not-supplied" },
+          })
+          completedDraftBytes = JSON.stringify(handed.draft)
+          writeFileSync(handed.path, completedDraftBytes)
+        }
+        // Use a private source canary: the failure must not delete or rewrite a real checkout input.
+        if (inputChange === "remove") rmSync(input)
+        if (inputChange === "rewrite") writeFileSync(input, "changed private suite input")
+        if (inputChange === "blocked-hosted") writeFileSync(join(dirname(output), "hosted"), "private obstruction")
+        if (inputChange === "blocked-macos") {
+          mkdirSync(join(dirname(output), "hosted"))
+          writeFileSync(join(dirname(output), "hosted", "macos"), "private obstruction")
+        }
+        return { directory: output, requested: ENGINE_BACKENDS, runs: [raw], failures: [] }
+      })
     // The real launcher owns containers and receipts. Its process boundary is replaced here;
     // a failed Kitty launch and other malformed raw outputs must remain separate, retained failures.
+    let actualRoutePath: string | undefined
+    let actualRouteBytes: string | undefined
+    let actualRouteRunId: string | undefined
+    const actualStartedAt = "2026-10-29T07:01:02.000Z"
+    const actualError = "original Linux fixture collector failure"
+    const macosContexts = ["ghostty", "cursor", "com.microsoft.VSCode", "cmux", "alacritty", "wezterm"]
+    const hostedDrafts = new Map<string, { path: string; bytes: string }>()
     const launcher = vi.spyOn(childProcesses, "spawnSync").mockImplementation((command, args, options) => {
       if (!Array.isArray(args)) throw new Error("expected explicit Linux launcher argv")
       const stdio = options?.stdio
       const respond = (stdout: string, status = 0) => {
         if (Array.isArray(stdio) && typeof stdio[1] === "number") writeSync(stdio[1], stdout)
         return { pid: 1, output: [], stdout: "", stderr: "", status, signal: null }
+      }
+      if (inputChange === "linux-prestart" && command === "bash") return respond("prerequisite failed", 1)
+      if (inputChange.startsWith("linux-poststart") && command === "bash") {
+        const output = args.at(-1)
+        if (typeof output !== "string") throw new Error("Expected Linux fixture output")
+        const draftPath = join(dirname(dirname(output)), "term-alacritty-linux.draft.json")
+        const draft = JSON.parse(readFileSync(draftPath, "utf8")) as RunDraft
+        actualRouteRunId = draft.runId
+        expect(options?.env?.TERMINFO_CAPTURE_RUN_ID).toBe(draft.runId)
+        expect(options?.env?.TERMINFO_SOURCE_REVISION).toBe(draft.sourceRevision)
+        expect(readCollectorSelection(draft.rawReplies)).toEqual({ ids: ["sgr.bold"] })
+        draft.rawReplies["collector.collectionAttempt"] = JSON.stringify({
+          ids: ["sgr.bold"],
+          result: "failed",
+          startedAt: actualStartedAt,
+          error: actualError,
+        })
+        draft.rawReplies["collector.failure"] = actualError
+        const raw = join(output, "fixture-run", "raw")
+        mkdirSync(raw, { recursive: true })
+        actualRoutePath = join(
+          raw,
+          inputChange === "linux-poststart-capture"
+            ? "v3-capture.json"
+            : inputChange === "linux-poststart-final"
+              ? "v3-run.json"
+              : "v3-run.draft.json",
+        )
+        actualRouteBytes = JSON.stringify(draft)
+        writeFileSync(actualRoutePath, actualRouteBytes)
+        return respond("fixture collector started then failed", 17)
       }
       if (command === "git") {
         if (args[0] === "symbolic-ref") return respond("fixture-collection\n")
@@ -329,16 +404,45 @@ it.each([
             }),
           )
         }
-        if (args[1] === "watch") return respond("workflow fixture result", mac ? 0 : 1)
+        if (args[1] === "watch") {
+          return respond("workflow fixture result", inputChange.startsWith("macos-") ? 1 : mac ? 0 : 1)
+        }
         if (args[1] === "download") {
           const artifacts = args[args.indexOf("--dir") + 1]
           if (typeof artifacts !== "string") throw new Error("expected hosted artifact output directory")
           for (const id of mac
-            ? ["terminal-app", "iterm2", "ghostty", "alacritty", "wezterm", "cursor", "com.microsoft.VSCode"]
+            ? ["terminal-app", "iterm2", "ghostty", "alacritty", "wezterm", "cursor", "com.microsoft.VSCode", "cmux"]
             : ["windows-terminal", "alacritty"]) {
             const folder = join(artifacts, `${mac ? "macos" : "win32"}-${id}-${args[2]}-1`)
             mkdirSync(folder, { recursive: true })
-            writeFileSync(join(folder, "run.json"), "{}")
+            if (inputChange.startsWith("macos-") && macosContexts.includes(id)) {
+              // The real six-context failure retained completed drafts after canonical output failed.
+              // A job-start marker alone is deliberately insufficient evidence of a collector start.
+              writeFileSync(join(folder, "job-start.json"), JSON.stringify({ phase: "job-start" }))
+              if (inputChange !== "macos-prestart") {
+                const draft = JSON.parse(
+                  readFileSync(join(dirname(dirname(dirname(artifacts))), `term-${id}-macos.draft.json`), "utf8"),
+                ) as RunDraft
+                const delegatedRunId = draft.runId
+                draft.rawReplies["collector.collectionAttempt"] = JSON.stringify({
+                  ids: ["sgr.bold"],
+                  startedAt: actualStartedAt,
+                  result: "completed",
+                })
+                if (inputChange === "macos-untrusted") draft.runId = "another-delegated-run"
+                const output = join(folder, "artifacts")
+                mkdirSync(output)
+                const path = join(output, `${delegatedRunId}.draft.json`)
+                const bytes = JSON.stringify(draft)
+                writeFileSync(path, bytes)
+                hostedDrafts.set(id, { path, bytes })
+                writeFileSync(join(folder, "collector-exit"), "1\n")
+                writeFileSync(
+                  join(folder, "collector.log"),
+                  "phase=collector-invoked\nphase=collector-exited status=1\n",
+                )
+              }
+            } else writeFileSync(join(folder, "run.json"), "{}")
             // 30035: exercise the actual development collection boundary, including its retained bytes.
             // The recipe itself is tested independently; this case proves the caller passes verified context.
             if (textCase && id === "terminal-app") {
@@ -449,9 +553,194 @@ it.each([
               },
             ]
           : []
-      const pass = await collectPass(directory, frozenSuite, { runner: "local" }, deferrals)
+      // AC1: the existing full-census fixture otherwise hides ignored context/probe selections.
+      const selection = inputChange.startsWith("macos-")
+        ? { contexts: macosContexts.map((id) => `${id}/macos`), ids: ["sgr.bold"] }
+        : inputChange === "hosted-selected"
+          ? { contexts: ["terminal-app/macos", "windows-terminal/windows"], ids: ["sgr.bold"] }
+          : inputChange === "hosted-one-os"
+            ? { contexts: ["com.microsoft.VSCode/macos"], ids: ["sgr.bold"] }
+            : inputChange === "hosted-contexts"
+              ? { contexts: ["terminal-app/macos"] }
+              : inputChange === "selected" || inputChange === "completed-collector-error"
+                ? { contexts: ["xtermjs/headless"], ids: ["sgr.bold"] }
+                : inputChange === "linux-prestart" || inputChange.startsWith("linux-poststart")
+                  ? { contexts: ["alacritty/linux"], ids: ["sgr.bold"] }
+                  : inputChange === "empty-selection"
+                    ? { contexts: [], ids: [] }
+                    : inputChange === "empty-probes"
+                      ? { contexts: ["alacritty/linux"], ids: [] }
+                      : undefined
+      const pass = await collectPass(directory, frozenSuite, { runner: "local" }, deferrals, selection)
       expect(pass.mode).toBe(frozenSuite ? "admit" : "development")
       if (frozenSuite) expect(pass.freeze?.id).toBe(frozenSuite)
+      if (inputChange.startsWith("macos-")) {
+        expect(pass.contexts).toHaveLength(6)
+        expect(pass.contexts.map((row) => row.status)).toEqual(
+          Array(6).fill(inputChange === "macos-poststart" ? "failed" : "not-started"),
+        )
+        expect(headless.collectHeadlessRuns).not.toHaveBeenCalled()
+        for (const row of pass.contexts) {
+          const original = hostedDrafts.get(row.context.id)
+          if (original) expect(readFileSync(original.path, "utf8")).toBe(original.bytes)
+          if (inputChange === "macos-poststart") {
+            expect(row.rawRun).toBe(original?.path)
+            expect(row.error).toContain("exited 1")
+            expect(row.error).toContain(join(row.directory!, "collector.log"))
+            const retained = JSON.parse(readFileSync(row.rawRun!, "utf8")) as RunDraft
+            expect(readCollectorAttempt(retained.rawReplies)?.startedAt).toBe(actualStartedAt)
+            expect(retained.results.every((result) => result.status === "test-todo")).toBe(true)
+          }
+          if (inputChange === "macos-untrusted") expect(row.reason).toContain("differs from delegated identity")
+        }
+        expect(pass.complete).toBe(false)
+        expect(planner).not.toHaveBeenCalled()
+        expect(writer).not.toHaveBeenCalled()
+        return
+      }
+      if (selection && inputChange.startsWith("hosted-")) {
+        // AC2: full-census fixtures pin omission, but cannot detect an ignored hosted subset.
+        // Assert actual dispatch fields and original draft custody through the real coordinator.
+        const calls = launcher.mock.calls.filter(([command, args]) => command === "gh" && args?.[0] === "workflow")
+        const expectedOS = inputChange === "hosted-selected" ? ["macos", "windows"] : ["macos"]
+        expect(calls).toHaveLength(expectedOS.length)
+        expect(headless.collectHeadlessRuns).not.toHaveBeenCalled()
+        expect(pass.selection).toEqual(selection)
+        expect(pass.contexts.map((row) => `${row.context.id}/${row.context.os}`)).toEqual(selection.contexts)
+        for (const os of expectedOS) {
+          const contexts = pass.contexts.filter((row) => row.context.os === os)
+          const ids = Object.fromEntries(
+            contexts.map((row) => {
+              const draft = JSON.parse(
+                readFileSync(join(pass.directory, `term-${row.context.id}-${os}.draft.json`), "utf8"),
+              ) as RunDraft
+              const expectedIds = selection.ids ?? versions.probeSuiteSnapshot().probes.term
+              expect(readCollectorSelection(draft.rawReplies)).toEqual({ ids: expectedIds })
+              return [row.context.id, draft.runId]
+            }),
+          )
+          const rows = contexts.map((row) =>
+            os === "windows"
+              ? { id: row.context.id }
+              : {
+                  id: row.context.id,
+                  bundle:
+                    row.context.id === "terminal-app"
+                      ? "/System/Applications/Utilities/Terminal.app"
+                      : "/Applications/Visual Studio Code.app",
+                },
+          )
+          expect(launcher).toHaveBeenCalledWith(
+            "gh",
+            [
+              "workflow",
+              "run",
+              `${os}-measurement.yml`,
+              "--repo",
+              "beorn/terminfo.dev",
+              "--ref",
+              "fixture-collection",
+              "--field",
+              `capture_run_ids=${JSON.stringify(ids)}`,
+              "--field",
+              `context_matrix=${JSON.stringify({ include: rows })}`,
+              "--field",
+              `probe_ids=${JSON.stringify(selection.ids ?? versions.probeSuiteSnapshot().probes.term)}`,
+            ],
+            expect.anything(),
+          )
+        }
+        expect(pass.complete).toBe(false)
+        expect(planner).not.toHaveBeenCalled()
+        expect(writer).not.toHaveBeenCalled()
+        expect(readFileSync(original, "utf8")).toBe(originalBytes)
+        return
+      }
+      if (selection) {
+        // AC1: a local-only selection must not start either hosted matrix.
+        // Checking the headless argv alone missed these unrelated workflow dispatches.
+        expect(
+          vi
+            .mocked(childProcesses.spawnSync)
+            .mock.calls.filter(([command, args]) => command === "gh" && args?.[0] === "workflow"),
+        ).toHaveLength(0)
+        expect(
+          pass.contexts.map((row) => `${row.context.id}/${row.context.os === "unknown" ? "headless" : row.context.os}`),
+        ).toEqual(selection.contexts)
+        expect(pass.selection).toEqual(selection)
+        if (selection.contexts.length === 0 || inputChange === "empty-probes") {
+          expect(pass.attempt?.result).toBe("empty")
+          expect(headless.collectHeadlessRuns).not.toHaveBeenCalled()
+          expect(childProcesses.spawnSync).not.toHaveBeenCalled()
+          if (inputChange === "empty-probes") {
+            const row = pass.contexts[0]
+            if (!row?.rawRun) throw new Error("Expected retained empty context draft")
+            const retained = JSON.parse(readFileSync(row.rawRun, "utf8")) as RunDraft
+            expect(readCollectorSelection(retained.rawReplies)).toEqual({ ids: [] })
+            expect(readCollectorAttempt(retained.rawReplies)).toEqual({ ids: [], result: "empty" })
+          }
+        } else if (inputChange === "linux-prestart" || inputChange.startsWith("linux-poststart")) {
+          expect(headless.collectHeadlessRuns).not.toHaveBeenCalled()
+          const selectedRow = pass.contexts[0]
+          if (!selectedRow?.rawRun) throw new Error("Expected retained Linux context draft")
+          const retained = JSON.parse(readFileSync(selectedRow.rawRun, "utf8")) as RunDraft
+          expect(readCollectorSelection(retained.rawReplies)).toEqual({ ids: ["sgr.bold"] })
+          expect(readCollectorAttempt(retained.rawReplies)).toMatchObject({ result: "failed", ids: ["sgr.bold"] })
+          if (inputChange.startsWith("linux-poststart")) {
+            expect(pass.contexts[0]?.rawRun).toBe(actualRoutePath)
+            if (!actualRoutePath || actualRouteBytes === undefined) {
+              throw new Error("Expected original Linux route fixture")
+            }
+            expect(readFileSync(actualRoutePath, "utf8")).toBe(actualRouteBytes)
+            expect(readCollectorAttempt(retained.rawReplies)).toEqual({
+              ids: ["sgr.bold"],
+              result: "failed",
+              startedAt: actualStartedAt,
+              error: actualError,
+            })
+            expect(retained.runId).toBe(actualRouteRunId)
+            expect(retained).not.toHaveProperty("subject")
+            expect(retained).not.toHaveProperty("measuredAt")
+            expect(pass.contexts[0]?.status).toBe("failed")
+            expect(pass.contexts[0]?.error).toContain("exited 17")
+          } else expect(readCollectorAttempt(retained.rawReplies)?.startedAt).toBeUndefined()
+          expect(retained.results.every((row: { attempt: { scope: string } }) => row.attempt.scope === "none")).toBe(
+            true,
+          )
+          const linuxCall = vi.mocked(childProcesses.spawnSync).mock.calls.find(([command]) => command === "bash")
+          expect(linuxCall?.[1]).toEqual([
+            "scripts/linux-container-run.sh",
+            "--target",
+            "alacritty",
+            "--preset",
+            "default",
+            "--clipboard-profile",
+            "default",
+            "--ids",
+            "sgr.bold",
+            pass.contexts[0]?.directory,
+          ])
+        } else {
+          expect(headless.collectHeadlessRuns).toHaveBeenCalledWith(["xtermjs"], expect.any(String), expect.any(Map), [
+            "sgr.bold",
+          ])
+          const retained = JSON.parse(
+            readFileSync(join(pass.directory, "lib-xtermjs-unknown.draft.json"), "utf8"),
+          ) as RunDraft
+          expect(readCollectorSelection(retained.rawReplies)).toEqual({ ids: ["sgr.bold"] })
+          // A downstream parser refusal belongs to the pass row, not the finished collector's record.
+          // Existing error rows have no terminal attempt to preserve.
+          if (inputChange === "completed-collector-error") {
+            expect(readCollectorAttempt(retained.rawReplies)?.result).toBe("completed")
+            expect(readFileSync(join(pass.directory, "lib-xtermjs-unknown.draft.json"), "utf8")).toBe(
+              completedDraftBytes,
+            )
+            expect(pass.contexts[0]?.error).toMatch(/current schema-4/)
+            expect(pass.contexts[0]?.status).toBe("failed")
+          }
+        }
+        return
+      }
       expect(pass.contexts).toHaveLength(33)
       if (inputChange === "deferred") {
         // The frozen batch owns a carried route; its initialized TODO draft must not become a measurement.
@@ -545,7 +834,8 @@ it.each([
             }),
           }),
         )
-        expect(row?.status).toBe("failed")
+        // A launcher error or malformed file supplies no actual collector start or emitted result.
+        expect(row?.status).toBe("not-started")
         expect(row?.error).toContain(`${id}/linux`)
         expect(readFileSync(join(output, "launcher.stderr.log"), "utf8")).toBe("launcher fixture diagnostic")
         if (id === "kitty") expect(row?.error).toMatch(/exited 17/)
@@ -909,9 +1199,11 @@ it("fails collection by name and exit 1 for a required null route without admiss
   const macosWorkflowPath = join(root, ".github/workflows/macos-measurement.yml")
   const missingRoutePath = join(directory, "missing-cmux-workflow.yml")
   const workflow = parse(readFileSync(macosWorkflowPath, "utf8"))
-  workflow.jobs["measure-macos"].strategy.matrix.include = workflow.jobs[
-    "measure-macos"
-  ].strategy.matrix.include.filter((row: { id: string }) => row.id !== "cmux")
+  const matrix = JSON.parse(workflow.on.workflow_dispatch.inputs.context_matrix.default) as {
+    include: Array<{ id: string }>
+  }
+  matrix.include = matrix.include.filter((row: { id: string }) => row.id !== "cmux")
+  workflow.on.workflow_dispatch.inputs.context_matrix.default = JSON.stringify(matrix)
   writeFileSync(missingRoutePath, stringify(workflow))
   writeFileSync(
     preload,
@@ -1244,185 +1536,251 @@ it("records the host-written transport receipt as evidence and refuses anything 
 
 // A valid pending capture used to return before delegated identity tests. Historical artifact
 // fixtures could not cover this schema-3 handoff even when they exercised the classified branch.
-it.each(["matching", "foreign-run", "foreign-context", "admitted", "admission-refused"] as const)(
-  "retains delegated identity and admission outcome: %s",
-  async (fault) => {
-    const directory = mkdtempSync(join(tmpdir(), "terminfo-pending-handoff-"))
-    const specimen = JSON.parse(
-      readFileSync(join(ROUND, "probes-libs/xtermjs-6.0.0-linux-c19905bf-2d90-474c-9e1a-13805bb3c0c4.json"), "utf8"),
-    )
-    if (
-      typeof specimen !== "object" ||
-      specimen === null ||
-      !("target" in specimen) ||
-      typeof specimen.target !== "object" ||
-      specimen.target === null ||
-      !("measuredAt" in specimen) ||
-      !("runtimeIdentity" in specimen)
-    ) {
-      throw new Error("Missing historical runtime fixture")
-    }
-    const measuredTarget = specimen.target
-    const finalCollection = fault === "admitted" || fault === "admission-refused"
-    const frozenSuite = finalCollection ? frozenSuiteIdFor(CONTENT, "candidate2") : undefined
-    const currentSnapshot = versions.probeSuiteSnapshot()
-    const frozenManifest = frozenSuite
-      ? parseSuiteManifest(
-          join(CONTENT, "suites", `${frozenSuite}.json`),
-          readFileSync(join(CONTENT, "suites", `${frozenSuite}.json`), "utf8"),
+it.each([
+  "matching",
+  "source-negative-pending",
+  "foreign-run",
+  "foreign-context",
+  "admitted",
+  "admission-refused",
+] as const)("retains delegated identity and admission outcome: %s", async (fault) => {
+  const directory = mkdtempSync(join(tmpdir(), "terminfo-pending-handoff-"))
+  const specimen = JSON.parse(
+    readFileSync(join(ROUND, "probes-libs/xtermjs-6.0.0-linux-c19905bf-2d90-474c-9e1a-13805bb3c0c4.json"), "utf8"),
+  )
+  if (
+    typeof specimen !== "object" ||
+    specimen === null ||
+    !("target" in specimen) ||
+    typeof specimen.target !== "object" ||
+    specimen.target === null ||
+    !("measuredAt" in specimen) ||
+    typeof specimen.measuredAt !== "string" ||
+    !("runtimeIdentity" in specimen)
+  ) {
+    throw new Error("Missing historical runtime fixture")
+  }
+  const measuredTarget = specimen.target
+  const measuredAt = specimen.measuredAt
+  const finalCollection = fault === "admitted" || fault === "admission-refused"
+  const frozenSuite = finalCollection ? frozenSuiteIdFor(CONTENT, "candidate2") : undefined
+  const currentSnapshot = versions.probeSuiteSnapshot()
+  const frozenManifest = frozenSuite
+    ? parseSuiteManifest(
+        join(CONTENT, "suites", `${frozenSuite}.json`),
+        readFileSync(join(CONTENT, "suites", `${frozenSuite}.json`), "utf8"),
+      )
+    : undefined
+  const snapshot = frozenManifest
+    ? vi
+        .spyOn(versions, "probeSuiteSnapshot")
+        .mockReturnValue({ ...currentSnapshot, ...frozenManifest, sourcePaths: [] })
+    : undefined
+  const planner = finalCollection
+    ? vi.spyOn(admission, "planAdmission").mockImplementation((source) => {
+        const run = parseRun(
+          source,
+          readFileSync(source, "utf8"),
+          Object.keys(catalog.loadFeatures(CONTENT)),
+          new Map([[frozenSuite!, frozenManifest!]]),
         )
-      : undefined
-    const snapshot = frozenManifest
-      ? vi
-          .spyOn(versions, "probeSuiteSnapshot")
-          .mockReturnValue({ ...currentSnapshot, ...frozenManifest, sourcePaths: [] })
-      : undefined
-    const planner = finalCollection
-      ? vi.spyOn(admission, "planAdmission").mockImplementation((source) => {
-          const run = parseRun(
-            source,
-            readFileSync(source, "utf8"),
-            Object.keys(catalog.loadFeatures(CONTENT)),
-            new Map([[frozenSuite!, frozenManifest!]]),
-          )
-          if (run.subject.os === null) throw new Error("Fixture admission requires recorded OS")
-          return {
-            source,
-            destination: join(directory, "admitted.json"),
-            probeHash: frozenSuite!,
-            subject: { ...run.subject, os: run.subject.os },
-            runId: run.runId,
-          }
-        })
-      : undefined
-    const writer = finalCollection
-      ? vi.spyOn(admission, "admitRun").mockImplementation((plan) => {
-          if (fault === "admission-refused") throw new Error("fixture admission refused")
-          writeFileSync(plan.destination, readFileSync(plan.source))
-          return {
-            manifest: "existing",
-            run: "created",
-            screenshots: { created: 0, existing: 0 },
-            textSnapshots: { created: 0, existing: 0 },
-            receipt: { placed: "none", detail: "fixture" },
-          }
-        })
-      : undefined
-    const launcher = vi.spyOn(childProcesses, "spawnSync").mockReturnValue({
+        if (run.subject.os === null) throw new Error("Fixture admission requires recorded OS")
+        return {
+          source,
+          destination: join(directory, "admitted.json"),
+          probeHash: frozenSuite!,
+          subject: { ...run.subject, os: run.subject.os },
+          runId: run.runId,
+        }
+      })
+    : undefined
+  const writer = finalCollection
+    ? vi.spyOn(admission, "admitRun").mockImplementation((plan) => {
+        if (fault === "admission-refused") throw new Error("fixture admission refused")
+        writeFileSync(plan.destination, readFileSync(plan.source))
+        return {
+          manifest: "existing",
+          run: "created",
+          screenshots: { created: 0, existing: 0 },
+          textSnapshots: { created: 0, existing: 0 },
+          receipt: { placed: "none", detail: "fixture" },
+        }
+      })
+    : undefined
+  const launcher = vi.spyOn(childProcesses, "spawnSync").mockImplementation((command, args) => {
+    if (
+      fault === "source-negative-pending" &&
+      command === "bash" &&
+      Array.isArray(args) &&
+      args.includes("alacritty") &&
+      !args.includes("--mux")
+    ) {
+      const output = String(args.at(-1))
+      const draft = JSON.parse(
+        readFileSync(join(dirname(dirname(output)), "term-alacritty-linux.draft.json"), "utf8"),
+      ) as RunDraft
+      const appRun = {
+        ...structuredClone(draft),
+        subject: { ...measuredTarget, kind: "term", id: "alacritty", os: "linux" },
+        identity: "unverified",
+        origin: { kind: "collector" },
+        measuredAt: specimen.measuredAt,
+      }
+      appRun.results[0]!.status = "test-failure"
+      appRun.results[0]!.criterionBranch = SOURCE_NEGATIVE_REVIEW
+      appRun.results[0]!.attempt = { scope: "probe", startedAt: measuredAt }
+      appRun.results[0]!.reason = "Required source-negative review pending"
+      appRun.results[0]!.tests = [
+        {
+          id: "review",
+          status: "test-failure",
+          attempt: { scope: "probe", startedAt: measuredAt },
+          reason: "Required source-negative review pending",
+        },
+      ]
+      retainCaptureBinding(appRun as never, appRun.results[0]!.featureId)
+      const rawDir = join(output, "fixture-run", "raw")
+      mkdirSync(rawDir, { recursive: true })
+      writeFileSync(join(rawDir, "v3-run.draft.json"), JSON.stringify(appRun))
+      return { pid: 1, output: [], stdout: "", stderr: "", status: 0, signal: null }
+    }
+    return {
       pid: 1,
       output: [],
       stdout: "",
       stderr: "fixture external route unavailable",
       status: 1,
       signal: null,
-    })
-    const collector = vi
-      .spyOn(headless, "collectHeadlessRuns")
-      .mockImplementation(async (_selectors, output, initializations) => {
-        if (!output || !initializations) throw new Error("Expected initialized coordinator handoff")
-        mkdirSync(output, { recursive: true })
-        const handed = initializations.get("xtermjs")!
-        const run = {
-          ...structuredClone(handed.draft),
-          runId: fault === "foreign-run" ? "foreign-logical-attempt" : handed.draft.runId,
-          subject: { ...measuredTarget, kind: fault === "foreign-context" ? "term" : "lib" },
-          identity: "unverified",
-          origin: { kind: "collector" },
-          measuredAt: specimen.measuredAt,
-          ...(fault !== "foreign-context" && { runtimeIdentity: specimen.runtimeIdentity }),
-        }
+    }
+  })
+  const collector = vi
+    .spyOn(headless, "collectHeadlessRuns")
+    .mockImplementation(async (_selectors, output, initializations) => {
+      if (!output || !initializations) throw new Error("Expected initialized coordinator handoff")
+      mkdirSync(output, { recursive: true })
+      const handed = initializations.get("xtermjs")!
+      const run = {
+        ...structuredClone(handed.draft),
+        runId: fault === "foreign-run" ? "foreign-logical-attempt" : handed.draft.runId,
+        subject: { ...measuredTarget, kind: fault === "foreign-context" ? "term" : "lib" },
+        identity: "unverified",
+        origin: { kind: "collector" },
+        measuredAt: specimen.measuredAt,
+        ...(fault !== "foreign-context" && { runtimeIdentity: specimen.runtimeIdentity }),
+      }
+      if (fault === "source-negative-pending") {
+        run.results[0]!.status = "test-failure"
+        run.results[0]!.criterionBranch = SOURCE_NEGATIVE_REVIEW
+        run.results[0]!.attempt = { scope: "probe", startedAt: measuredAt }
+        run.results[0]!.reason = "Required source-negative review pending"
+        run.results[0]!.tests = [
+          {
+            id: "review",
+            status: "test-failure",
+            attempt: { scope: "probe", startedAt: measuredAt },
+            reason: "Required source-negative review pending",
+          },
+        ]
+      } else {
         run.results[0]!.tests = [
           { id: "review", status: "test-todo", attempt: { scope: "none" }, reason: "Required review pending" },
         ]
-        if (finalCollection) {
-          const attempt = { scope: "probe" as const, startedAt: specimen.measuredAt }
-          const measured = run.results.filter((result) => !ENVIRONMENT_GROUP_IDS.includes(result.featureId as never))
-          Object.assign(run, {
-            sealedAt: specimen.measuredAt,
-            rawReplies: Object.fromEntries(measured.map((result) => [result.featureId, '{"value":true}'])),
-            assertions: measured.map(({ featureId }) => ({
-              featureId,
-              assertionType: "buffer_state",
-              kind: "positive",
-              rawReplyRef: featureId,
-              expected: "value=true",
-              observed: '{"value":true}',
-            })),
-            results: run.results.map((result) => {
-              const index = measured.findIndex((entry) => entry.featureId === result.featureId)
-              return index < 0
-                ? result
-                : {
-                    featureId: result.featureId,
-                    status: "supported",
-                    assertionType: "buffer_state",
-                    rawReplyRef: result.featureId,
-                    attempt,
-                    tests: [
-                      {
-                        id: "criterion",
-                        status: "supported",
-                        attempt,
-                        assertionRefs: [index],
-                        rawReplyRef: result.featureId,
-                      },
-                    ],
-                  }
-            }),
-          })
-        } else retainCaptureBinding(run as never, run.results[0]!.featureId)
-        const path = join(output, "pending.json")
-        writeFileSync(path, JSON.stringify(run))
-        return { directory: output, requested: ["xtermjs"], runs: [path], failures: [] }
-      })
-    try {
-      const deferrals = finalCollection
-        ? census()
-            .filter((row) => row.kind !== "lib" || row.id !== "xtermjs")
-            .map((row) => ({
-              context: row.kind === "lib" ? `${row.id}/headless` : `${row.id}/${row.os}`,
-              routeIssue: "@si/terminfo/carried-test-route",
-              reason: "Synthetic deferred test context",
-            }))
-        : []
-      const pass = await collectPass(directory, frozenSuite, { runner: "local" }, deferrals)
-      const row = pass.contexts.find((entry) => entry.context.kind === "lib" && entry.context.id === "xtermjs")!
+      }
       if (finalCollection) {
-        expect(pass.errors).toEqual(
-          fault === "admission-refused" ? ["Admission stopped: fixture admission refused"] : [],
-        )
-        expect(row.status, row.error).toBe(fault === "admitted" ? "admitted" : "failed")
-        expect(pass.complete).toBe(fault === "admitted")
-        expect(pass.contexts).toHaveLength(33)
-        expect(pass.contexts.filter((entry) => entry.status === "not-started")).toHaveLength(32)
-        expect(pass.freeze?.deferrals).toEqual(deferrals)
-        const retained = JSON.parse(readFileSync(join(pass.directory, "pass.json"), "utf8"))
-        expect(retained).toMatchObject({
-          complete: fault === "admitted",
-          contexts: expect.arrayContaining([
-            expect.objectContaining({
-              status: fault === "admitted" ? "admitted" : "failed",
-              ...(fault === "admitted" && { admittedPath: join(directory, "admitted.json") }),
-            }),
-          ]),
+        const attempt = { scope: "probe" as const, startedAt: specimen.measuredAt }
+        const measured = run.results.filter((result) => !ENVIRONMENT_GROUP_IDS.includes(result.featureId as never))
+        Object.assign(run, {
+          sealedAt: specimen.measuredAt,
+          rawReplies: Object.fromEntries(measured.map((result) => [result.featureId, '{"value":true}'])),
+          assertions: measured.map(({ featureId }) => ({
+            featureId,
+            assertionType: "buffer_state",
+            kind: "positive",
+            rawReplyRef: featureId,
+            expected: "value=true",
+            observed: '{"value":true}',
+          })),
+          results: run.results.map((result) => {
+            const index = measured.findIndex((entry) => entry.featureId === result.featureId)
+            return index < 0
+              ? result
+              : {
+                  featureId: result.featureId,
+                  status: "supported",
+                  assertionType: "buffer_state",
+                  rawReplyRef: result.featureId,
+                  attempt,
+                  tests: [
+                    {
+                      id: "criterion",
+                      status: "supported",
+                      attempt,
+                      assertionRefs: [index],
+                      rawReplyRef: result.featureId,
+                    },
+                  ],
+                }
+          }),
         })
-        return
-      }
-      if (fault === "matching") expect(row.status, row.error).toBe("pending-review")
-      else {
-        expect(row.status).toBe("not-started")
-        expect(row.error).toMatch(
-          fault === "foreign-run" ? /changed logical runId/ : /expected current schema-4 lib:xtermjs context/,
-        )
-      }
-      expect(pass.complete).toBe(false)
-    } finally {
-      collector.mockRestore()
-      launcher.mockRestore()
-      planner?.mockRestore()
-      writer?.mockRestore()
-      snapshot?.mockRestore()
-      rmSync(directory, { recursive: true, force: true })
+      } else retainCaptureBinding(run as never, run.results[0]!.featureId)
+      const path =
+        fault === "source-negative-pending" ? saveDaemonProbeRun(run as never, output) : join(output, "pending.json")
+      if (fault !== "source-negative-pending") writeFileSync(path, JSON.stringify(run))
+      return { directory: output, requested: ["xtermjs"], runs: [path], failures: [] }
+    })
+  try {
+    const deferrals = finalCollection
+      ? census()
+          .filter((row) => row.kind !== "lib" || row.id !== "xtermjs")
+          .map((row) => ({
+            context: row.kind === "lib" ? `${row.id}/headless` : `${row.id}/${row.os}`,
+            routeIssue: "@si/terminfo/carried-test-route",
+            reason: "Synthetic deferred test context",
+          }))
+      : []
+    const pass = await collectPass(directory, frozenSuite, { runner: "local" }, deferrals)
+    const row = pass.contexts.find((entry) => entry.context.kind === "lib" && entry.context.id === "xtermjs")!
+    if (finalCollection) {
+      expect(pass.errors).toEqual(fault === "admission-refused" ? ["Admission stopped: fixture admission refused"] : [])
+      expect(row.status, row.error).toBe(fault === "admitted" ? "admitted" : "failed")
+      expect(pass.complete).toBe(fault === "admitted")
+      expect(pass.contexts).toHaveLength(33)
+      expect(pass.contexts.filter((entry) => entry.status === "not-started")).toHaveLength(32)
+      expect(pass.freeze?.deferrals).toEqual(deferrals)
+      const retained = JSON.parse(readFileSync(join(pass.directory, "pass.json"), "utf8"))
+      expect(retained).toMatchObject({
+        complete: fault === "admitted",
+        contexts: expect.arrayContaining([
+          expect.objectContaining({
+            status: fault === "admitted" ? "admitted" : "failed",
+            ...(fault === "admitted" && { admittedPath: join(directory, "admitted.json") }),
+          }),
+        ]),
+      })
+      return
     }
-  },
-)
+    if (fault === "matching" || fault === "source-negative-pending") {
+      expect(row.status, row.error).toBe("pending-review")
+      if (fault === "source-negative-pending") {
+        const appRow = pass.contexts.find(
+          (entry) => entry.context.kind === "term" && entry.context.id === "alacritty" && entry.context.os === "linux",
+        )!
+        expect(appRow.status, appRow.error).toBe("pending-review")
+        expect(readdirSync(dirname(appRow.rawRun!))).toEqual(["v3-run.draft.json"])
+      }
+    } else {
+      expect(row.status).toBe("not-started")
+      expect(row.error).toMatch(
+        fault === "foreign-run" ? /changed logical runId/ : /expected current schema-4 lib:xtermjs context/,
+      )
+    }
+    expect(pass.complete).toBe(false)
+  } finally {
+    collector.mockRestore()
+    launcher.mockRestore()
+    planner?.mockRestore()
+    writer?.mockRestore()
+    snapshot?.mockRestore()
+    rmSync(directory, { recursive: true, force: true })
+  }
+})

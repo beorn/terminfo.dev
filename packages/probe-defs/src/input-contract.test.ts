@@ -125,6 +125,7 @@ function inputModel(csiUAnswered = false): HeadlessModel {
       inverse: false,
       hidden: false,
       blink: false,
+      overline: false,
       fg: null,
       bg: null,
       wide: false,
@@ -164,7 +165,7 @@ function inputSatisfactionSources(id: string): { readonly headless?: LibProbeSou
         input: { injectKey: async () => {}, injectClick: async () => {} },
         readInput: async (pattern) => {
           if (pattern.test("a")) return ["a"]
-          if (pattern.test("\x01")) return ["\x01"]
+          if (pattern.test("\x1b[97;5u")) return ["\x1b[97;5u"]
           return null
         },
       }),
@@ -173,13 +174,19 @@ function inputSatisfactionSources(id: string): { readonly headless?: LibProbeSou
   if (id === "input.pixel-mouse") {
     let callCount = 0
     return {
-      term: replayTermProbeSource(new Map(), {
-        input: { injectKey: async () => {}, injectClick: async () => {} },
-        readInput: async () => {
-          callCount++
-          return callCount % 2 === 1 ? ["\x1b[<0;10;5M"] : ["\x1b[<0;160;80M"]
+      term: replayTermProbeSource(
+        new Map([
+          ["\x1b[16t", { sequence: "\x1b[16t", raw: "\x1b[6;16;16t", match: null, reason: "reply" as const }],
+          ["\x1b[14t", { sequence: "\x1b[14t", raw: "\x1b[4;384;1280t", match: null, reason: "reply" as const }],
+        ]),
+        {
+          input: { injectKey: async () => {}, injectClick: async () => {} },
+          readInput: async () => {
+            callCount++
+            return callCount % 2 === 1 ? ["\x1b[<0;10;5M"] : ["\x1b[<0;160;80M"]
+          },
         },
-      }),
+      ),
     }
   }
   if (id === "input.kitty-click-events") {

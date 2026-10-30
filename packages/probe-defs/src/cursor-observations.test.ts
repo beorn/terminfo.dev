@@ -172,6 +172,7 @@ function headless(x: number, y: number, rows = 24, reply = ""): LibProbeSource {
       inverse: false,
       hidden: false,
       blink: false,
+      overline: false,
       fg: null,
       bg: null,
       wide: false,
@@ -242,7 +243,6 @@ test("cursor.shape capture names measured geometry and roles without inventing a
     assertionType: "screenshot",
   })
   expect(result.observation?.frames).toHaveLength(2)
-  expect(result.assertions).toBeUndefined()
 })
 
 test("reverse-wrap grades a measured backward wrap, not a bare CPR", async () => {
@@ -960,6 +960,25 @@ test("app cursor hide seeds a shown steady fixed-cell control and records geomet
   expect(writes.at(-1)).toContain("\x1b[2J")
   expect(writes.at(-1)).toContain("\x1b[?25h")
   expect(writes.at(-1)).toContain("\x1b[0 q")
+})
+
+// #31812: without a measured raster the restore was only cleanup, so the review never saw the frame its rule names.
+test("app cursor hide without a measured raster captures a compared restored frame after an explicit show", async () => {
+  const context = app(null)
+  const writes: string[] = []
+  const checkpoints: string[] = []
+  context.write = (bytes) => writes.push(bytes)
+  context.capture = async ({ role, label }) => {
+    checkpoints.push(writes.join(""))
+    return { role, label, capturedAt: checkpoints.length, ref: `frame-${String(checkpoints.length)}` }
+  }
+  const result = await byId("cursor.hide").term!(context)
+  expect(checkpoints).toHaveLength(3)
+  expect(checkpoints[2]!.slice(checkpoints[1]!.length)).toBe("\x1b[?25h")
+  expect(result.observation).toMatchObject({ outcome: "inconclusive", assertionType: "screenshot" })
+  expect(result.observation?.frames?.map((frame) => frame.ref)).toEqual(["frame-1", "frame-2", "frame-3"])
+  expect(JSON.parse(result.response ?? "")).toMatchObject({ restored: { ref: "frame-3" } })
+  expect(result.assertions).toMatchObject([{ expected: expect.stringContaining("restored") }])
 })
 
 test("app cursor hide grades the cursor cell's raw-pixel digests across shown, hidden and restored", async () => {

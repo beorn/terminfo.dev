@@ -12,7 +12,12 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { afterEach, expect, it, vi } from "vitest"
-import type { CapturedRunDraft, RunDraft } from "@terminfo/probe-defs"
+import {
+  readCollectorAttempt,
+  SOURCE_NEGATIVE_REVIEW,
+  type CapturedRunDraft,
+  type RunDraft,
+} from "@terminfo/probe-defs"
 import { parseRun } from "@terminfo/run-parser"
 import { collectHeadlessRuns } from "./collect-headless.ts"
 import { probeSuiteSnapshot } from "../admin/versions.ts"
@@ -33,7 +38,7 @@ const retainedDraft = (dir: string): RunDraft => {
   if (!file) throw new Error("Expected initialized delegated draft")
   return JSON.parse(readFileSync(join(dir, file), "utf8")) as RunDraft
 }
-// The writer tests cover review decisions, but cannot catch a coordinator that seals before them.
+// AC1/AC3: the writer tests cannot catch lost pre-dispatch selection or a coordinator that seals before review.
 it.each([true, false])(
   "retains the successful capture with pending review=%s through the shared writer",
   async (pendingReview) => {
@@ -42,6 +47,7 @@ it.each([true, false])(
     let captureBytes = ""
     vi.spyOn(Bun, "spawn").mockImplementation(((_argv: unknown, options: { env: Record<string, string> }) => {
       const draft = JSON.parse(readFileSync(options.env.TERMINFO_DRAFT_PATH!, "utf8")) as RunDraft
+      expect(draft.rawReplies["collector.selection"]).toBe(JSON.stringify({ ids: ["device.primary-da"] }))
       const run: CapturedRunDraft = {
         ...draft,
         subject: {
@@ -81,7 +87,7 @@ it.each([true, false])(
       writeFileSync(capturePath, captureBytes)
       return { stdout: new Blob([]).stream(), stderr: new Blob([]).stream(), exited: Promise.resolve(0), kill: vi.fn() }
     }) as never)
-    const collection = await collectHeadlessRuns(["xtermjs"], dir)
+    const collection = await collectHeadlessRuns(["xtermjs"], dir, undefined, ["device.primary-da"])
     expect(collection.failures).toEqual([])
     expect(collection.runs).toHaveLength(1)
     const path = collection.runs[0]!
@@ -91,6 +97,11 @@ it.each([true, false])(
     expect(saved.subject).toEqual(original.subject)
     expect(saved.sourceRevision).toBe(original.sourceRevision)
     expect(saved.probeHash).toBe(original.probeHash)
+    expect(JSON.parse(saved.rawReplies["collector.collectionAttempt"]!)).toMatchObject({
+      ids: ["device.primary-da"],
+      result: "completed",
+      startedAt: expect.any(String),
+    })
     expect(readFileSync(capturePath, "utf8")).toBe(captureBytes)
     const suite = probeSuiteSnapshot()
     parseRun(
@@ -148,6 +159,24 @@ it.each([true, false])(
 // The real worker loads headless-identity.ts, which requires the owned vterm checkout beside this one;
 // standalone component CI tests out terminfo.dev alone, so this runs wherever that layout exists.
 const OWNED_LAYOUT = existsSync(fileURLToPath(new URL("../../../vterm", import.meta.url)))
+// AC1: mocked coordinator tests cannot detect a worker still passing ALL_PROBES to the batch.
+// This existing worker boundary measures one embedded fixture backend, never a Terminal app.
+it.runIf(OWNED_LAYOUT)(
+  "executes only selected callbacks in the real headless worker",
+  async () => {
+    const collection = await collectHeadlessRuns(["xtermjs"], directory(), undefined, ["sgr.bold"])
+    expect(collection.failures).toEqual([])
+    expect(collection.runs).toHaveLength(1)
+    const draft = JSON.parse(readFileSync(collection.runs[0]!, "utf8")) as CapturedRunDraft
+    expect(draft.results.filter((row) => row.attempt.scope !== "none").map((row) => row.featureId)).toEqual([
+      "sgr.bold",
+    ])
+    expect(JSON.parse(draft.rawReplies["collector.selection"]!)).toEqual({ ids: ["sgr.bold"] })
+    expect(readCollectorAttempt(draft.rawReplies)?.result).toBe("completed")
+    expect(draft.results).toHaveLength(273)
+  },
+  30_000,
+)
 // The fixture tests above never send a collector-written draft through the decoder that admit-run uses;
 // this one runs the real xtermjs worker and the real admit-run --review. Admission itself writes the suite
 // manifest and receipts into content/, so one review stays pending here: admit-run retains the reviewed
@@ -167,20 +196,7 @@ it.runIf(OWNED_LAYOUT)(
         `admit-run binds HEAD to the draft's sourceRevision; commit the dirty suite sources first:\n${dirtySources}`,
       )
     }
-    const dir = directory()
-    const collection = await collectHeadlessRuns(["xtermjs"], dir)
-    expect(collection.failures).toEqual([])
-    const draftPath = collection.runs[0]!
-    expect(draftPath).toMatch(/\.draft\.json$/)
-    const draft = JSON.parse(readFileSync(draftPath, "utf8")) as CapturedRunDraft
-    const draftBytes = readFileSync(draftPath, "utf8")
-    const pending = draft.results
-      .filter((row) => row.tests.some((check) => check.id === "review" && check.status === "test-todo"))
-      .map((row) => row.featureId)
-      .sort()
-    // #30699: the proven reply path makes these silent colour queries measured negatives.
     const colourReadback = [
-      "extensions.osc104-reset-palette",
       "extensions.osc110-reset-fg",
       "extensions.osc111-reset-bg",
       "extensions.osc112-reset-cursor",
@@ -189,6 +205,38 @@ it.runIf(OWNED_LAYOUT)(
       "extensions.osc30001-color-stack-push",
       "extensions.osc30101-color-stack-pop",
     ]
+    const dir = directory()
+    // Exercise the review journey with its own witnesses; unrelated catalogue additions must not expand it.
+    const collection = await collectHeadlessRuns(["xtermjs"], dir, undefined, [
+      "editing.decsace",
+      "extensions.osc104-reset-palette",
+      ...colourReadback,
+      "input.kitty-click-events",
+      "modes.synchronized-output",
+    ])
+    expect(collection.failures).toEqual([])
+    const draftPath = collection.runs[0]!
+    expect(draftPath).toMatch(/\.draft\.json$/)
+    const draft = JSON.parse(readFileSync(draftPath, "utf8")) as CapturedRunDraft
+    const draftBytes = readFileSync(draftPath, "utf8")
+    const pending = draft.results
+      .filter((row) =>
+        row.tests.some(
+          (check) =>
+            check.id === "review" &&
+            (check.status === "test-todo" ||
+              (row.criterionBranch === SOURCE_NEGATIVE_REVIEW && check.status === "test-failure")),
+        ),
+      )
+      .map((row) => row.featureId)
+      .sort()
+    // #31735, @cto 863bef67: xtermjs subscribes to _core._inputHandler.onColor, so extensions.osc104-reset-palette
+    // grades supported via the indexed-cell witness, while the 7 default/stack queries stay negative by sentinel (#30699).
+    expect(draft.results.find((row) => row.featureId === "extensions.osc104-reset-palette")).toMatchObject({
+      status: "supported",
+      reason: "Indexed colour resolved at read",
+      tests: [expect.objectContaining({ id: "criterion", status: "supported" })],
+    })
     for (const featureId of colourReadback) {
       expect(
         draft.results.find((row) => row.featureId === featureId),
@@ -199,21 +247,18 @@ it.runIf(OWNED_LAYOUT)(
         tests: [expect.objectContaining({ id: "criterion", status: "unsupported" })],
       })
     }
-    expect(pending).toEqual([
-      "extensions.clipboard-paste",
-      "input.button-event-mouse",
-      "input.kitty-click-events",
-      "input.modify-other-keys",
-      "input.modify-other-keys-3",
-      "input.pixel-mouse",
-      "input.urxvt-mouse",
-      "input.x10-mouse",
-      "input.xtest-click",
-      "input.xtest-key",
-      "input.xtest-wheel",
-      "modes.alt-scroll-1007",
-      "modes.application-keypad",
-    ])
+    // A missing DECCARA witness needs source review too; its failed review must keep the run private.
+    expect(draft.results.find((row) => row.featureId === "editing.decsace")).toMatchObject({
+      status: "test-failure",
+      criterionBranch: SOURCE_NEGATIVE_REVIEW,
+      tests: [expect.objectContaining({ id: "review", status: "test-failure" })],
+    })
+    expect(draft.results.find((row) => row.featureId === "input.kitty-click-events")).toMatchObject({
+      status: "unsupported",
+      assertionType: "input_bytes",
+      tests: [expect.objectContaining({ id: "criterion", status: "unsupported" })],
+    })
+    expect(pending).toEqual(["editing.decsace", "modes.synchronized-output"])
     const decision = (featureId: string, reason: string) =>
       JSON.stringify({
         id: `round-trip-${featureId}`,
@@ -233,7 +278,9 @@ it.runIf(OWNED_LAYOUT)(
         supersedes: [],
       })
     const reason = (featureId: string) =>
-      `Embedded xterm.js injects no OS-level input, so ${featureId} has no path to the engine`
+      featureId === "editing.decsace"
+        ? "The DECCARA witness is absent, so this review cannot decide DECSACE extent"
+        : `Embedded xterm.js injects no OS-level input, so ${featureId} has no path to the engine`
     const reviewed = pending.slice(0, -1)
     const sealing = pending[pending.length - 1]!
     const reviewPaths = reviewed.map((featureId, index) => {
@@ -328,45 +375,96 @@ it("initializes all 273 before worker launch and retains explicit missing prereq
   expect(draft.runId).toBe(captureRunId)
   expect(draft.results.every((result) => result.status === "test-todo" && result.attempt.scope === "none")).toBe(true)
   expect(draft).not.toHaveProperty("target")
+  expect(JSON.parse(draft.rawReplies["collector.selection"]!)).toEqual({ ids: probeSuiteSnapshot().probes.lib })
+  const attempt = readCollectorAttempt(draft.rawReplies)
+  expect(attempt).toMatchObject({ result: "failed", error: expect.stringContaining("missing pinned package") })
+  expect(attempt).not.toHaveProperty("startedAt")
 })
-it("records an attempted worker timeout as collection FAILURE with retained diagnostics and the same runId", async () => {
-  vi.useFakeTimers()
-  const dir = directory()
-  let captureRunId: string | undefined
-  vi.spyOn(Bun, "spawn").mockImplementation(((_argv: unknown, options: { env: Record<string, string> }) => {
-    captureRunId = options.env.TERMINFO_CAPTURE_RUN_ID
-    let finish!: (code: number) => void
-    const exited = new Promise<number>((resolve) => {
-      finish = resolve
+it.each([false, true])(
+  "records an attempted selected worker timeout with finalization refusal=%s without changing unselected rows or suite membership",
+  async (refused) => {
+    vi.useFakeTimers()
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true)
+    const dir = directory()
+    let captureRunId: string | undefined
+    let unselectedRows: RunDraft["results"] = []
+    vi.spyOn(Bun, "spawn").mockImplementation(((_argv: unknown, options: { env: Record<string, string> }) => {
+      captureRunId = options.env.TERMINFO_CAPTURE_RUN_ID
+      unselectedRows = retainedDraft(dir).results.filter((row) => row.featureId !== "device.primary-da")
+      if (refused) {
+        // A secondary custody refusal must not hide the original process failure.
+        // Other timeout fixtures contain no host records and cannot reach that catch.
+        const draft = retainedDraft(dir)
+        draft.rawReplies["collector.collectionAttempt"] = JSON.stringify({
+          ids: ["device.primary-da"],
+          startedAt: new Date().toISOString(),
+          result: "started",
+        })
+        draft.rawReplies["collector.hostRecipes.device.primary-da"] = "{}"
+        draft.rawReplies["collector.failure"] = "original worker failure"
+        writeFileSync(options.env.TERMINFO_DRAFT_PATH!, JSON.stringify(draft))
+      }
+      let finish!: (code: number) => void
+      const exited = new Promise<number>((resolve) => {
+        finish = resolve
+      })
+      return {
+        stdout: new Blob([]).stream(),
+        stderr: new Blob(["worker diagnostic"]).stream(),
+        exited,
+        kill: () => {
+          killedAt ??= Date.now() - startedAt
+          finish(143)
+        },
+      }
+    }) as never)
+    const ids = ["device.primary-da"]
+    const startedAt = Date.now()
+    let killedAt: number | undefined
+    const pending = collectHeadlessRuns(["libvterm"], dir, undefined, ids)
+    // 31693: kitty's full suite needs about 110-125 s at nice 10 under host load; the old 120 s ceiling killed it.
+    await vi.advanceTimersByTimeAsync(120_000)
+    expect(killedAt).toBeUndefined()
+    await vi.advanceTimersByTimeAsync(480_000)
+    expect(killedAt).toBe(600_000)
+    const collection = await pending
+    const draft = retainedDraft(dir)
+    expect(collection.failures[0]?.error).toContain("exceeded")
+    expect(draft.runId).toBe(captureRunId)
+    expect(draft.results).toHaveLength(273)
+    expect(draft.results.filter((row) => row.featureId !== "device.primary-da")).toEqual(unselectedRows)
+    const delegated = new Set(ids)
+    expect(JSON.parse(draft.rawReplies["collector.selection"]!)).toEqual({ ids })
+    expect(JSON.parse(draft.rawReplies["collector.collectionAttempt"]!)).toMatchObject({
+      ids,
+      result: refused ? "started" : "failed",
+      startedAt: expect.any(String),
+      ...(!refused && { error: expect.stringContaining("exceeded") }),
     })
-    return {
-      stdout: new Blob([]).stream(),
-      stderr: new Blob(["worker diagnostic"]).stream(),
-      exited,
-      kill: () => finish(143),
+    if (refused) {
+      expect(draft.rawReplies["collector.finalizationFailure"]).toMatch(/identity|expectations/)
+      expect(
+        stderr.mock.calls.some(
+          ([message]) =>
+            String(message).includes("Attempt finalization refused after") && String(message).includes("exceeded"),
+        ),
+      ).toBe(true)
+      expect(draft.rawReplies["collector.hostRecipes.device.primary-da"]).toBe("{}")
     }
-  }) as never)
-  const pending = collectHeadlessRuns(["libvterm"], dir)
-  await vi.advanceTimersByTimeAsync(120_000)
-  const collection = await pending
-  const draft = retainedDraft(dir)
-  expect(collection.failures[0]?.error).toContain("exceeded")
-  expect(draft.runId).toBe(captureRunId)
-  expect(draft.results).toHaveLength(273)
-  const delegated = new Set(probeSuiteSnapshot().probes.lib)
-  expect(
-    draft.results
-      .filter((result) => delegated.has(result.featureId))
-      .every((result) => result.status === "test-failure" && result.attempt.scope === "collection"),
-  ).toBe(true)
-  expect(
-    draft.results
-      .filter((result) => !delegated.has(result.featureId))
-      .every((result) => result.status === "test-todo" && result.attempt.scope === "none"),
-  ).toBe(true)
-  expect(draft.rawReplies["collector.failure"]).toContain("exceeded")
-  expect(draft).not.toHaveProperty("target")
-})
+    expect(
+      draft.results
+        .filter((result) => delegated.has(result.featureId))
+        .every((result) => result.status === "test-failure" && result.attempt.scope === "collection"),
+    ).toBe(true)
+    expect(
+      draft.results
+        .filter((result) => !delegated.has(result.featureId))
+        .every((result) => result.status === "test-todo" && result.attempt.scope === "none"),
+    ).toBe(true)
+    expect(draft.rawReplies["collector.failure"]).toContain(refused ? "original worker failure" : "exceeded")
+    expect(draft).not.toHaveProperty("target")
+  },
+)
 it("scrubs absolute host folder prefixes from recorded draft failures while keeping full paths in terminal errors", async () => {
   const dir = directory()
   const receiptPath = "/hh/var/wt/seat/vendor/termless/packages/libvterm/wasm/libvterm.wasm.receipt.json"
@@ -451,3 +549,71 @@ it.runIf(OWNED_LAYOUT)(
     expect(draftBytes).not.toContain("/local/bin")
   },
 )
+
+// AC1/AC3: whole-suite worker tests previously dispatched even an explicitly empty/unknown list,
+// and had no typed record for cancellation or a refusal before a process actually started.
+it("retains explicit empty probe selection without starting a worker or inventing a collection start", async () => {
+  const dir = directory()
+  const spawn = vi.spyOn(Bun, "spawn").mockImplementation(() => {
+    throw new Error("Unexpected empty-selection worker")
+  })
+  const collection = await collectHeadlessRuns(["libvterm"], dir, undefined, [])
+  expect(spawn).not.toHaveBeenCalled()
+  expect(collection.runs).toEqual([])
+  expect(collection.failures).toEqual([])
+  const draft = retainedDraft(dir)
+  expect(JSON.parse(draft.rawReplies["collector.selection"]!)).toEqual({ ids: [] })
+  expect(JSON.parse(draft.rawReplies["collector.collectionAttempt"]!)).toEqual({ ids: [], result: "empty" })
+  expect(draft.results).toHaveLength(273)
+  expect(draft.results.every((row) => row.status === "test-todo" && row.attempt.scope === "none")).toBe(true)
+  expect(draft.probeHash).toBe(probeSuiteSnapshot().probeHash)
+})
+it("rejects unknown exact probe IDs before any worker starts", async () => {
+  const spawn = vi.spyOn(Bun, "spawn").mockImplementation(() => {
+    throw new Error("Unexpected unknown-selection worker")
+  })
+  await expect(collectHeadlessRuns(["libvterm"], directory(), undefined, ["missing.probe"])).rejects.toThrow(
+    "Unknown probe: missing.probe",
+  )
+  expect(spawn).not.toHaveBeenCalled()
+})
+it.each([
+  { name: "pre-start failure", code: undefined, result: "failed", started: false },
+  { name: "cancelled worker", code: 143, result: "cancelled", started: true },
+  { name: "failed worker", code: 1, result: "failed", started: true },
+])("retains original selection and diagnostics after $name", async ({ code, result, started }) => {
+  const dir = directory()
+  const ids = ["device.primary-da"]
+  const originalError = "fixture worker unavailable"
+  let runId: string | undefined
+  vi.spyOn(Bun, "spawn").mockImplementation(((_argv: unknown, options: { env: Record<string, string> }) => {
+    const draft = retainedDraft(dir)
+    runId = options.env.TERMINFO_CAPTURE_RUN_ID
+    expect(draft.runId).toBe(runId)
+    if (code === undefined) throw new Error(originalError)
+    return {
+      stdout: new Blob([]).stream(),
+      stderr: new Blob([`Error: ${originalError}`]).stream(),
+      exited: Promise.resolve(code),
+      kill: vi.fn(),
+    }
+  }) as never)
+  const collection = await collectHeadlessRuns(["libvterm"], dir, undefined, ids)
+  expect(collection.failures).toHaveLength(1)
+  expect(collection.failures[0]?.error).toContain(originalError)
+  const draft = retainedDraft(dir)
+  expect(draft.runId).toBe(runId)
+  const attempt = readCollectorAttempt(draft.rawReplies)
+  expect(attempt).toMatchObject({ ids, result, error: expect.stringContaining(originalError) })
+  if (started) expect(attempt?.startedAt).toEqual(expect.any(String))
+  else expect(attempt).not.toHaveProperty("startedAt")
+  expect(JSON.parse(draft.rawReplies["collector.selection"]!)).toEqual({ ids })
+  if (result === "cancelled" || !started) {
+    expect(draft.results.every((row) => row.attempt.scope === "none")).toBe(true)
+  }
+  expect(
+    draft.results
+      .filter((row) => !ids.includes(row.featureId))
+      .every((row) => row.status === "test-todo" && row.attempt.scope === "none"),
+  ).toBe(true)
+})

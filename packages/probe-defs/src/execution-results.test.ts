@@ -5,6 +5,7 @@
  * @testonly none
  */
 import { expect, it } from "vitest"
+import { ALL_PROBES, resolveProbeIds } from "./index.ts"
 import {
   sgrCaptureFrames,
   recordExecutedProbe,
@@ -13,6 +14,10 @@ import {
   sealRunDraft,
   utf8DecodingRefusal,
   sgrProbe,
+  readCollectorSelection,
+  readCollectorAttempt,
+  recordCollectorSelection,
+  recordCollectorAttempt,
 } from "./helpers.ts"
 import { extensionsProbes } from "./extensions.ts"
 import { deviceProbes } from "./device.ts"
@@ -23,8 +28,67 @@ import { unicodeProbes } from "./unicode.ts"
 import { editingProbes } from "./editing.ts"
 import { textProbes } from "./text.ts"
 import { cropPositionRefusal } from "./region-readback.ts"
-import type { LibProbeSource, ObservationFrame, ProbeCallbackResult, TermProbeSource } from "./types.ts"
+import type {
+  CollectorAttempt,
+  LibProbeSource,
+  ObservationFrame,
+  ProbeCallbackResult,
+  TermProbeSource,
+} from "./types.ts"
 const attempt = { scope: "probe" as const, startedAt: "2026-10-21T05:00:00.000Z" }
+
+// CTO consolidation contract: the registry owns unknown/duplicate IDs and catalogue ordering.
+// Existing collector tests prove dispatch; they cannot pin this shared typed boundary.
+it("resolves explicit probe IDs once in catalogue order with typed invalid and empty outcomes", () => {
+  const first = ALL_PROBES[0]!
+  const second = ALL_PROBES[1]!
+  expect(resolveProbeIds([second.id, first.id])).toEqual({ result: "resolved", probes: [first, second] })
+  expect(resolveProbeIds([])).toEqual({ result: "empty", probes: [] })
+  expect(resolveProbeIds([first.id, "unknown", first.id, "unknown"])).toEqual({
+    result: "invalid",
+    unknownIds: ["unknown"],
+    duplicateIds: [first.id, "unknown"],
+  })
+})
+
+// AC3: callbacks alone cannot preserve an empty/pre-start attempt or distinguish it from legacy absence.
+it.each([
+  { ids: [], result: "empty" },
+  { ids: ["selected"], result: "failed", error: "original\ntransport error" },
+  { ids: ["selected"], result: "cancelled", error: "SIGINT", startedAt: attempt.startedAt },
+  { ids: ["selected"], result: "completed", startedAt: attempt.startedAt, hostInputs: { clipboard: "not-supplied" } },
+] satisfies CollectorAttempt[])("retains selected intent and $result without inventing output", (collection) => {
+  const draft = initializeRunDraft({
+    runId: "selected-attempt",
+    sourceRevision: "1".repeat(40),
+    source: { kind: "live" },
+    intendedSubject: { kind: "term", id: "kitty" },
+    manifest: {
+      schemaVersion: 4,
+      probeHash: "subset-suite",
+      adapterVersion: "3",
+      catalogIds: ["selected", "untouched"],
+      probes: { term: ["selected", "untouched"], lib: [], mux: [] },
+    },
+  })
+  recordCollectorSelection(draft, collection.ids)
+  recordCollectorAttempt(draft, collection)
+  expect(readCollectorSelection(draft.rawReplies)?.ids).toEqual(collection.ids)
+  expect(readCollectorAttempt(draft.rawReplies)).toEqual(collection)
+  expect(draft.results.map((result) => result.attempt)).toEqual([{ scope: "none" }, { scope: "none" }])
+  expect(draft.runId).toBe("selected-attempt")
+})
+
+it("keeps legacy absence distinct from malformed or newly completed collection evidence", () => {
+  expect(readCollectorSelection({})).toBeUndefined()
+  expect(readCollectorAttempt({})).toBeUndefined()
+  const legacy = { ids: ["selected"], startedAt: attempt.startedAt }
+  expect(readCollectorAttempt({ "collector.collectionAttempt": JSON.stringify(legacy) })).toEqual(legacy)
+  expect(() => readCollectorSelection({ "collector.selection": "broken JSON" })).toThrow("collector.selection")
+  expect(() =>
+    readCollectorAttempt({ "collector.collectionAttempt": JSON.stringify({ ids: [], result: "completed" }) }),
+  ).toThrow("recorded start")
+})
 // Full-catalog drafts previously let a failed subset dispatch mark unscheduled capabilities failed.
 it("records collection failure only for delegated unfinished IDs", () => {
   const draft = initializeRunDraft({
@@ -250,7 +314,23 @@ it("preserves native callback note fallback for unmeasured widths and TERM_FEATU
     expect(record(callback)).toMatchObject({ status: "test-failure", reason: "Cannot measure width" })
   }
   const callback = await deviceProbes.find((row) => row.id === "device.term-features")!.term!({} as TermProbeSource)
-  expect(record(callback)).toMatchObject({ status: "test-failure", reason: callback.note })
+  expect(callback.notTested).toEqual({
+    reason: "no-semantic-observable",
+    noObservable: "terminal child environment",
+  })
+  expect(
+    recordExecutedProbe({
+      featureId: "device.term-features",
+      attempt,
+      rawReplyRef: "device.term-features",
+      assertions: [],
+      coverage: {
+        featureId: "device.term-features",
+        ...callback.notTested!,
+        rawReplyRef: "device.term-features",
+      },
+    }),
+  ).toMatchObject({ status: "test-todo", reason: "terminal child environment" })
   for (const id of ["unicode.wrap-boundary", "unicode.tab-stops"]) {
     const term = unicodeProbes.find((row) => row.id === id)?.term
     if (!term) throw new Error(`Missing native callback ${id}`)
@@ -356,6 +436,37 @@ it("keeps an explicit unattempted visual review TODO and the capture unsealed", 
   draft.origin = { kind: "collector" }
   draft.results = [result]
   expect(() => sealRunDraft(draft)).toThrow(/review pending/)
+})
+
+// #31740: row-emission tests cannot pin whose reason the writer synthesizes when a callback forgets its rows.
+it("names the writer default when an inconclusive capture callback omits its test rows", async () => {
+  let next = 0
+  const aligned = frames.map((frame) => ({ ...frame, regionRectangle: frames[0]!.regionRectangle }))
+  const callback = await sgrCaptureFrames(
+    { write() {}, capture: async () => aligned[next++]! } as unknown as TermProbeSource,
+    "control",
+    "target",
+    "bold target",
+    {},
+    undefined,
+    "normal control",
+  )
+  if (!callback.observation) throw new Error("Expected the existing captured visual-review observation")
+  expect(callback.observation?.outcome).toBe("inconclusive")
+  const { tests: _omitted, ...rowless } = callback
+  const result = record(rowless)
+  expect(result).toMatchObject({
+    status: "test-failure",
+    reason: "writer default: inconclusive observation without test rows; callback defect",
+    tests: [
+      {
+        id: "criterion",
+        status: "test-failure",
+        reason: "writer default: inconclusive observation without test rows; callback defect",
+      },
+    ],
+  })
+  expect(result.frames).toEqual(aligned)
 })
 
 // The existing visual-review fixture does not exercise the measured, repairable locale prerequisite.

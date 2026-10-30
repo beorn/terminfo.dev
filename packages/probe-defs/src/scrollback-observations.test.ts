@@ -27,6 +27,7 @@ function headless(overrides: Partial<LibProbeSource> = {}): LibProbeSource {
       inverse: false,
       hidden: false,
       blink: false,
+      overline: false,
       fg: null,
       bg: null,
       wide: false,
@@ -51,6 +52,316 @@ function headless(overrides: Partial<LibProbeSource> = {}): LibProbeSource {
     ...overrides,
   }
 }
+
+// These controls decide whether a viewport reading can grade support. Older scrollback
+// tests cover parser regions/history, but never exercise viewport motion or output anchoring.
+type ViewportFault =
+  | "none"
+  | "noop"
+  | "constant"
+  | "count"
+  | "geometry"
+  | "mixed"
+  | "invalid"
+  | "ignored"
+  | "history"
+  | "clipped"
+  | "not-bottom"
+  | "no-marker"
+  | "restore"
+  | "evicted"
+function viewportSource(
+  options: { sign?: number; outcomes?: readonly string[]; faults?: readonly ViewportFault[] } = {},
+) {
+  let phase = -1
+  let state = { viewportOffset: 0, totalLines: 5, screenLines: 5 }
+  let text = ""
+  let target = false
+  const writes: string[] = []
+  const moves: number[] = []
+  const reads: { target: boolean; bottom: boolean }[] = []
+  let scrollbackReads = 0
+  const fault = () => options.faults?.[phase] ?? "none"
+  const source = headless({
+    reset() {
+      phase++
+      state = { viewportOffset: 0, totalLines: 5, screenLines: 5 }
+      text = ""
+      target = false
+    },
+    feed(sequence) {
+      writes.push(sequence)
+      if (sequence.includes("\r\n") && !sequence.startsWith("\r\n") && !sequence.startsWith("\x1b[?2026h")) {
+        if (fault() === "ignored") return
+        text = sequence.split("\r\n").at(-1)!
+        state.totalLines = fault() === "history" ? 5 : sequence.split("\r\n").length - (fault() === "clipped" ? 1 : 0)
+        state.viewportOffset = state.totalLines - 5 - (fault() === "not-bottom" ? 1 : 0)
+      } else if (sequence.includes("\r\n")) {
+        target = true
+        if (fault() !== "evicted") state.totalLines++
+        text = fault() === "no-marker" ? "" : sequence.replace(/\x1b\[\?2026[hl]/g, "").slice(2)
+        const outcome = options.outcomes?.[phase] ?? "hold"
+        if (outcome === "snap") state.viewportOffset = state.totalLines - state.screenLines
+        if (outcome === "bottom-relative") state.viewportOffset++
+        if (outcome === "drift") state.viewportOffset--
+      }
+    },
+    scrollViewport(delta) {
+      moves.push(delta)
+      if (!target) {
+        if (fault() === "noop") return
+        if (fault() === "count" || fault() === "mixed") state.totalLines++
+        if (fault() === "geometry" || fault() === "mixed") state.screenLines++
+        if (fault() === "count" || fault() === "geometry") return
+        if (fault() === "mixed") {
+          state.viewportOffset--
+          return
+        }
+        if (fault() === "invalid") {
+          state.viewportOffset = NaN
+          return
+        }
+      } else if (fault() === "restore") return
+      state.viewportOffset = Math.max(
+        0,
+        Math.min(state.totalLines - state.screenLines, state.viewportOffset - delta * (options.sign ?? 1)),
+      )
+    },
+    getScrollback: () => {
+      scrollbackReads++
+      return {
+        ...state,
+        ...(fault() === "constant" && { viewportOffset: state.totalLines - state.screenLines }),
+      }
+    },
+    getText() {
+      const bottom = state.viewportOffset === state.totalLines - state.screenLines
+      reads.push({ target, bottom })
+      return bottom ? text : "history has no target marker"
+    },
+  })
+  return {
+    source,
+    writes,
+    moves,
+    reads,
+    scrollbackReads: () => scrollbackReads,
+    phase: () => phase,
+    state: () => state,
+  }
+}
+
+function viewportProbe() {
+  const found = scrollbackProbes.find((row) => row.id === "scrollback.viewport-hold-output")
+  if (!found?.lib) throw new Error("Viewport hold needs a library callback")
+  return found.lib
+}
+
+test.each([-1, 1])("viewport hold calibrates sign %s and reads target only after returning to bottom", (sign) => {
+  const fixture = viewportSource({ sign })
+  const result = viewportProbe()(fixture.source)
+  expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
+  const evidence = JSON.parse(result.response!) as Record<string, unknown>
+  expect(Object.keys(evidence).sort()).toEqual(["anchor", "baseline", "control", "ordinary", "synchronized"])
+  expect(evidence).toMatchObject({ control: { ordinary: { sign } } })
+  expect(fixture.moves.slice(0, sign === -1 ? 1 : 2)).toEqual(sign === -1 ? [-1] : [-1, 1])
+  expect(fixture.reads.filter((read) => read.target)).toEqual([
+    { target: true, bottom: true },
+    { target: true, bottom: true },
+  ])
+  expect(fixture.writes).toContain("\x1b[?2026h\r\nviewport-synchronized\x1b[?2026l")
+  expect(fixture.phase()).toBe(2)
+  expect(fixture.state()).toEqual({ viewportOffset: 0, totalLines: 5, screenLines: 5 })
+})
+
+/**
+ * @failure Two qualified phases that retain their distance from bottom are left inconclusive;
+ *   a mixed or non-one-row drift can instead be misgraded as that controlled negative.
+ * @level l1
+ * @consumer Headless viewport-hold support and negative assertions.
+ * @testonly none
+ */
+test.each([
+  ["snap", "hold", "unsupported", "ordinary"],
+  ["hold", "snap", "unsupported", "synchronized"],
+  ["bottom-relative", "bottom-relative", "unsupported", "viewport kept its distance from bottom instead of its anchor"],
+  ["bottom-relative", "hold", "inconclusive", "viewport"],
+  ["hold", "bottom-relative", "inconclusive", "viewport"],
+  ["bottom-relative", "snap", "inconclusive", "viewport"],
+  ["snap", "bottom-relative", "inconclusive", "viewport"],
+  ["bottom-relative", "drift", "inconclusive", "viewport"],
+  ["drift", "bottom-relative", "inconclusive", "viewport"],
+  ["drift", "hold", "inconclusive", "ordinary"],
+  ["hold", "drift", "inconclusive", "synchronized"],
+  ["drift", "snap", "inconclusive", "ordinary"],
+  ["snap", "drift", "inconclusive", "synchronized"],
+  ["drift", "drift", "inconclusive", "ordinary"],
+] as const)("viewport %s then %s gives %s", (ordinary, synchronized, outcome, phase) => {
+  const fixture = viewportSource({ outcomes: [ordinary, synchronized] })
+  const result = viewportProbe()(fixture.source)
+  expect(result.observation?.outcome).toBe(outcome)
+  expect(result.note).toContain(phase)
+  expect(result.assertions?.[0]?.kind).toBe(outcome === "unsupported" ? "negative" : undefined)
+  if (outcome === "unsupported") expect(result.assertions?.[0]?.observed).toBe(result.response)
+  if (ordinary === "bottom-relative" && synchronized === "bottom-relative") {
+    expect(result.note).toBe("viewport kept its distance from bottom instead of its anchor")
+    expect(JSON.parse(result.response!)).toMatchObject({
+      ordinary: { outcome: "bottom-relative", markerObserved: true },
+      synchronized: { outcome: "bottom-relative", markerObserved: true },
+    })
+  }
+})
+
+test.each([
+  ["noop", "scrollback viewport state"],
+  ["constant", "scrollback viewport state"],
+  ["history", "scrollback history rows"],
+  ["count", null],
+  ["geometry", null],
+  ["mixed", null],
+  ["invalid", null],
+  ["ignored", null],
+  ["clipped", null],
+  ["not-bottom", null],
+  ["no-marker", null],
+  ["restore", null],
+  ["evicted", null],
+] as const)("viewport %s cannot manufacture a support decision", (fault, coverage) => {
+  const fixture = viewportSource({ faults: [fault, fault] })
+  const result = viewportProbe()(fixture.source)
+  if (coverage) expect(result.notTested?.noObservable).toBe(coverage)
+  else expect(result.observation?.outcome).toBe("inconclusive")
+  expect(result.assertions).toBeUndefined()
+  if (fault === "ignored") expect(result.note).toContain("feed not observed")
+  if (fault === "restore") expect(fixture.reads.some((read) => read.target)).toBe(false)
+  expect(fixture.phase()).toBe(2)
+})
+
+test.each([
+  [0, "snap"],
+  [1, "snap"],
+  [0, "bottom-relative"],
+  [1, "bottom-relative"],
+] as const)("a failed phase %s control prevents a %s verdict", (failedPhase, outcome) => {
+  const fixture = viewportSource({
+    outcomes: [outcome, outcome],
+    faults: failedPhase === 0 ? ["count", "none"] : ["none", "count"],
+  })
+  const result = viewportProbe()(fixture.source)
+  expect(result.observation?.outcome).toBe("inconclusive")
+  expect(result.assertions).toBeUndefined()
+})
+
+/**
+ * @failure A declared absence of the product viewport falls into generic missing-control coverage,
+ *   loses the source-review identity/reason, or runs fake viewport phases through a contradictory actuator.
+ * @level l1
+ * @consumer Required independent headless-observable review for viewport-hold.
+ * @testonly none
+ */
+test.each([true, false])(
+  "viewport absence retains review evidence with runtime identity present=%s",
+  (withIdentity) => {
+    const fixture = viewportSource()
+    delete fixture.source.scrollViewport
+    const productViewport = { available: false as const, reason: "Fixture library exposes no product viewport" }
+    fixture.source.capabilities.productViewport = productViewport
+    const runtimeIdentity: LibProbeSource["runtimeIdentity"] = {
+      kind: "js",
+      runtimeFormat: "js",
+      resolvedPath: "/fixtures/viewport-engine.js",
+      engineVersion: "fixture",
+      adapterVersion: "fixture",
+      termlessRevision: "fixture-revision",
+      integrity: { kind: "registry", lockIntegrity: "sha512:fixture" },
+    }
+    const result = viewportProbe()({ ...fixture.source, ...(withIdentity ? { runtimeIdentity } : {}) })
+    expect(result).toMatchObject({
+      criterionBranch: "headless-observable-review",
+      notTested: { noObservable: "scrollback viewport scroll control" },
+      tests: [{ id: "review", status: "test-todo", reason: productViewport.reason }],
+    })
+    expect(result.observation).toBeUndefined()
+    expect(result.assertions).toBeUndefined()
+    expect(JSON.parse(result.response!)).toEqual({
+      productViewport,
+      runtimeIdentity: withIdentity ? runtimeIdentity : null,
+      baseline: {},
+      anchor: {},
+      control: {},
+      ordinary: {},
+      synchronized: {},
+    })
+    expect(fixture.writes).toEqual([])
+    expect(fixture.moves).toEqual([])
+    expect(fixture.reads).toEqual([])
+    expect(fixture.scrollbackReads()).toBe(0)
+    expect(fixture.phase()).toBe(-1)
+  },
+)
+
+test("viewport declared absent with a present actuator is an inconclusive apparatus contradiction", () => {
+  const fixture = viewportSource()
+  fixture.source.capabilities.productViewport = {
+    available: false,
+    reason: "Fixture library exposes no product viewport",
+  }
+  const result = viewportProbe()(fixture.source)
+  expect(result.observation?.outcome).toBe("inconclusive")
+  expect(result.note).toMatch(/declared absent.*scroll control.*present/)
+  expect(result.criterionBranch).toBeUndefined()
+  expect(result.notTested).toBeUndefined()
+  expect(result.assertions).toBeUndefined()
+  expect(JSON.parse(result.response!)).toMatchObject({
+    productViewport: fixture.source.capabilities.productViewport,
+    runtimeIdentity: null,
+    ordinary: {},
+    synchronized: {},
+  })
+  expect(fixture.writes).toEqual([])
+  expect(fixture.moves).toEqual([])
+  expect(fixture.reads).toEqual([])
+  expect(fixture.scrollbackReads()).toBe(0)
+  expect(fixture.phase()).toBe(-1)
+})
+
+test("viewport absent actuator stays named coverage; operational and cleanup errors survive", () => {
+  const fixture = viewportSource()
+  delete fixture.source.scrollViewport
+  expect(viewportProbe()(fixture.source).notTested?.noObservable).toBe("scrollback viewport scroll control")
+  expect(fixture.writes).toEqual([])
+  expect(fixture.phase()).toBe(-1)
+  const primary = new Error("feed adapter failed")
+  const cleanup = new Error("reset adapter failed")
+  for (const [failFeed, failCleanup] of [
+    [true, false],
+    [false, true],
+    [true, true],
+  ]) {
+    const disposable = viewportSource()
+    const reset = disposable.source.reset.bind(disposable.source)
+    let resets = 0
+    disposable.source.reset = () => {
+      if (++resets === (failFeed ? 2 : 3) && failCleanup) throw cleanup
+      reset()
+    }
+    if (failFeed) {
+      disposable.source.feed = () => {
+        throw primary
+      }
+    }
+    let caught: unknown
+    try {
+      viewportProbe()(disposable.source)
+    } catch (error) {
+      caught = error
+    }
+    if (failFeed && failCleanup) {
+      expect(caught).toBeInstanceOf(AggregateError)
+      expect((caught as AggregateError).errors).toEqual([primary, cleanup])
+    } else expect(caught).toBe(failFeed ? primary : cleanup)
+  }
+})
 
 /**
  * @failure RI/SD is reported supported when a blank top row comes from losing the seeded rows.
@@ -91,11 +402,13 @@ test.each([
       ["L", "I", "N", "E", "1"],
       ["L", "I", "N", "E", "2"],
       ["L", "I", "N", "E", "3"],
+      ["", "", "", "", ""],
     ],
     [
       ["", "", "", "", ""],
       ["L", "I", "N", "E", "1"],
       ["L", "I", "N", "E", "2"],
+      ["L", "I", "N", "E", "3"],
     ],
   ],
 ] as const)(
@@ -107,10 +420,12 @@ test.each([
     // The blank row the operation inserts must come from the operation, never from losing a marker: a
     // marker lost inside the compared grid is a different screen, which reads unsupported, not support.
     const lostMarker = after.map((cells, index) => (index === 1 ? cells.map(() => "?") : cells))
+    const lostLastMarker = after.map((cells, index) => (index === after.length - 1 ? cells.map(() => "?") : cells))
     for (const [effect, screens, outcome] of [
       ["shift", { [row.seed]: before, [operation]: after }, "supported"],
       ["no-op", { [row.seed]: before }, "unsupported"],
       ["lost-marker", { [row.seed]: before, [operation]: lostMarker }, "unsupported"],
+      ["lost-last-marker", { [row.seed]: before, [operation]: lostLastMarker }, "unsupported"],
       ["missing-seed", { [row.seed]: before.map((cells) => cells.map(() => "?")) }, "inconclusive"],
     ] as const) {
       const result = probe.lib(declaredScreen(screens, 5))
@@ -510,8 +825,8 @@ test("DECSTBM retains support only when the region's inner rows actually move", 
   const probe = scrollbackProbes.find((item) => item.id === "scrollback.decstbm")
   if (!probe?.lib) throw new Error("missing decstbm callback")
   const row = readbackRow("scrollback.decstbm")
-  const before = [["F"], [""], ["A"], ["B"], ["C"]]
-  const after = [["F"], [""], ["B"], ["C"], [""]]
+  const before = [["F"], ["S"], ["A"], ["B"], ["C"]]
+  const after = [["F"], ["S"], ["B"], ["C"], [""]]
   // FIXED on row 1 is the row's control and survives either way, so a row that graded the control
   // alone would read supported on a surface that scrolled nothing. The inner rows are the claim.
   const still = probe.lib(declaredScreen({ [row.seed]: before }))
@@ -705,6 +1020,46 @@ test.each([
 })
 
 const digest = (value: string): string => `sha256:${createHash("sha256").update(value).digest("hex")}`
+
+// A region beginning one or more rows too high must move a nonblank adjacent control.
+// The older ignored-region controls leave that row blank and miss this narrower fault.
+test.each([
+  ["scrollback.set-region", "\x1b[5;10r", "\x1b[2;10r", 3],
+  ["scrollback.decstbm", "\x1b[3;6r", "\x1b[2;6r", 1],
+] as const)("%s witnesses the exact region top in both callback arms", async (id, requested, wrong, adjacent) => {
+  const definition = findScrollback(id)
+  for (const replace of [false, true]) {
+    const surface = createSemanticSurface()
+    const ctx = libProbeSource(surface)
+    const feed = ctx.feed.bind(ctx)
+    ctx.feed = (bytes) => feed(replace ? bytes.replaceAll(requested, wrong) : bytes)
+    const lib = definition.lib!(ctx)
+    const app = regionReadbackApp(12, 61)
+    const write = app.context.write.bind(app.context)
+    app.context.write = (bytes) => write(replace ? bytes.replaceAll(requested, wrong) : bytes)
+    const capture = app.context.capture!.bind(app.context)
+    const adjacentReadings: string[] = []
+    app.context.capture = async (request) => {
+      if (request.label.endsWith("pre-edit seed") || request.label.endsWith("post-sequence target")) {
+        adjacentReadings.push(app.surface.getCell(adjacent, 0).char)
+      }
+      return capture(request)
+    }
+    const term = await definition.term!(app.context)
+    if (!replace) {
+      expect(surface.getCell(adjacent, 0).char).toBe("S")
+      expect(adjacentReadings).toEqual(["S", "S"])
+    }
+    for (const result of [lib, term]) {
+      if (replace) {
+        expect(result.observation?.outcome).not.toBe("supported")
+        expect(result.pass).toBe(false)
+      } else {
+        expect(result.observation?.outcome).toBe("supported")
+      }
+    }
+  }
+})
 
 /**
  * A `TermProbeSource` over this repository's own semantic terminal. The app callbacks run for real, and

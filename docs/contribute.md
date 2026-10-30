@@ -27,7 +27,7 @@ npx terminfo.dev --version      # Record the CLI version
 
 For inline `test --json` or `test --output`, stdin must be an interactive terminal. With `--json` the raw JSON goes to stdout, so probe controls go to `/dev/tty`, separate from it; with `--output` the JSON goes to a file, so the probe controls use stdout — the terminal you launched the CLI in, which is the device a hosted owned-terminal receipt verifies. `--output` refuses an existing file. A draft does not create a GitHub issue or grant publication consent.
 
-In an ordinary terminal, the CLI can run reviewed query tests. Checks that change terminal state require a verified disposable test environment. Without one, those tests are not sent and the site displays TEST TODO. The raw run preserves the collector's original fields. You do not need to loosen terminal permissions. Default clipboard access stays off.
+In an ordinary terminal, the CLI can run reviewed query tests. Tests that change terminal state require a verified disposable test environment. Without one, those tests are not sent and the site displays TEST TODO. The raw run preserves the collector's original fields. You do not need to loosen terminal permissions. Default clipboard access stays off.
 
 ## What a probe can establish
 
@@ -52,7 +52,7 @@ We are correcting older probes and results that treated sequence consumption or 
 
 The reader label is one of five values: **Supported**, **Unsupported**, **Untestable**, **TEST TODO** or **TEST FAILURE**, accompanied by the specific assertion and evidence. **Untestable** means a reviewer established there is no observable; **TEST TODO** means no attempt or impossibility review exists; **TEST FAILURE** means an attempt did not establish a result. The underlying record can carry a coverage note (`reason: "no-semantic-observable"`) naming a missing observable, for example an input event or a pixel color that a headless cell dump cannot expose. That raw field is retained, while the reader label follows the reviewed classification. Documentation can describe an implementation, but is separate from a measured result. Older scorecards do not yet express all of these distinctions.
 
-Suite completeness and support are different. A complete suite has a recorded outcome for every scheduled probe, including TEST TODO, TEST FAILURE and named Untestable coverage; it does not mean every check established a result. Support asks which measured behaviors worked. An older submission with fewer probes contributes useful history without making its missing features failures. Our target is trustworthy measurements of the stated scope, rather than 100% support from every terminal.
+Suite completeness and support are different. A complete suite has a recorded outcome for every scheduled probe, including TEST TODO, TEST FAILURE and named Untestable coverage; it does not mean every test established a result. Support asks which measured behaviors worked. An older submission with fewer probes contributes useful history without making its missing features failures. Our target is trustworthy measurements of the stated scope, rather than 100% support from every terminal.
 
 ## Contributing screenshots and reproductions
 

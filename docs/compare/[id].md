@@ -59,7 +59,7 @@ for (const cat of categories) {
   Support scores use each frozen catalog. Differences require matching recorded contexts, suites and methods. Other environment differences may remain.
 </p>
 <p v-else class="compare-scope compare-scope--limited">
-  Recorded contexts or suites differ or are incomplete. Inspect each result below; no pairwise support difference is claimed.
+  Recorded physical contexts differ or are incomplete. Inspect each result below; no pairwise support difference is claimed.
 </p>
 
 ## Summary
@@ -69,15 +69,16 @@ for (const cat of categories) {
     <a :href="'/terminals/' + p.termASlug" class="compare-card-link">
       <h3>{{ p.termALabel }}</h3>
     </a>
-    <p class="compare-context"><strong>{{ p.termAVersion }}</strong> · {{ p.termAKind }} · {{ p.termAOs }} {{ p.termAOsVersion }}</p>
+    <p class="compare-context"><strong>Source versions: {{ p.termAVersion }}</strong> · {{ p.termAKind }} · {{ p.termAOs }} {{ p.termAOsVersion }}</p>
     <div class="compare-score">{{ p.termAPass }}/{{ p.termATotal }}</div>
     <div class="compare-detail">Supported / all catalog features</div>
-    <details class="compare-run-details"><summary>Run details</summary><dl class="compare-context-details">
+    <details class="compare-run-details"><summary>Context and original sources</summary><dl class="compare-context-details">
       <dt>Configuration</dt><dd>{{ p.termAConfig }}</dd>
       <dt>Permissions</dt><dd>{{ p.termAPermissions }}</dd>
       <dt>Outer terminal</dt><dd>{{ p.termAOuter }}</dd>
       <dt>Multiplexer</dt><dd>{{ p.termAMux }}</dd>
-      <dt>Suite</dt><dd>{{ p.termASuite }} · {{ p.termASuiteComplete === 'true' ? 'complete' : 'incomplete' }}</dd>
+      <dt>Source suites</dt><dd>{{ p.termASuite }} · {{ p.termASuiteComplete === 'true' ? 'complete' : 'incomplete' }}</dd>
+      <dt>Original sources</dt><dd><ul><li v-for="run in JSON.parse(p.termASources)" :key="run.runId"><code>{{ run.runId }}</code> · {{ run.subject.version }} · {{ run.measuredAt }} · suite <code>{{ run.suiteId }}</code></li></ul></dd>
     </dl></details>
   </div>
   <div class="compare-vs">vs</div>
@@ -85,15 +86,16 @@ for (const cat of categories) {
     <a :href="'/terminals/' + p.termBSlug" class="compare-card-link">
       <h3>{{ p.termBLabel }}</h3>
     </a>
-    <p class="compare-context"><strong>{{ p.termBVersion }}</strong> · {{ p.termBKind }} · {{ p.termBOs }} {{ p.termBOsVersion }}</p>
+    <p class="compare-context"><strong>Source versions: {{ p.termBVersion }}</strong> · {{ p.termBKind }} · {{ p.termBOs }} {{ p.termBOsVersion }}</p>
     <div class="compare-score">{{ p.termBPass }}/{{ p.termBTotal }}</div>
     <div class="compare-detail">Supported / all catalog features</div>
-    <details class="compare-run-details"><summary>Run details</summary><dl class="compare-context-details">
+    <details class="compare-run-details"><summary>Context and original sources</summary><dl class="compare-context-details">
       <dt>Configuration</dt><dd>{{ p.termBConfig }}</dd>
       <dt>Permissions</dt><dd>{{ p.termBPermissions }}</dd>
       <dt>Outer terminal</dt><dd>{{ p.termBOuter }}</dd>
       <dt>Multiplexer</dt><dd>{{ p.termBMux }}</dd>
-      <dt>Suite</dt><dd>{{ p.termBSuite }} · {{ p.termBSuiteComplete === 'true' ? 'complete' : 'incomplete' }}</dd>
+      <dt>Source suites</dt><dd>{{ p.termBSuite }} · {{ p.termBSuiteComplete === 'true' ? 'complete' : 'incomplete' }}</dd>
+      <dt>Original sources</dt><dd><ul><li v-for="run in JSON.parse(p.termBSources)" :key="run.runId"><code>{{ run.runId }}</code> · {{ run.subject.version }} · {{ run.measuredAt }} · suite <code>{{ run.suiteId }}</code></li></ul></dd>
     </dl></details>
   </div>
 </div>

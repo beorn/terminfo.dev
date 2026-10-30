@@ -1,5 +1,13 @@
-import type { ProbeDefinition, ProbeCallbackResult, TermProbeSource } from "./types.ts"
-import { probe, parserStateResult } from "./helpers.ts"
+import type { ProbeDefinition, ProbeCallbackResult, LibProbeSource } from "./types.ts"
+import {
+  probe,
+  parserStateResult,
+  notTestedResult,
+  reviewResult,
+  tooSmall,
+  validSize,
+  HEADLESS_OBSERVABLE_REVIEW,
+} from "./helpers.ts"
 import { regionReadbackProbes, type RegionReadbackRow } from "./region-readback-kind.ts"
 
 /**
@@ -70,12 +78,14 @@ export const scrollbackReadbackRows: readonly RegionReadbackRow[] = [
       ["L", "I", "N", "E", "1"],
       ["L", "I", "N", "E", "2"],
       ["L", "I", "N", "E", "3"],
+      ["", "", "", "", ""],
     ],
     steps: [{ write: "\x1b[H" }, { write: "\x1b[T" }],
     after: [
       ["", "", "", "", ""],
       ["L", "I", "N", "E", "1"],
       ["L", "I", "N", "E", "2"],
+      ["L", "I", "N", "E", "3"],
     ],
     controls: [],
     cursorRow: 5,
@@ -89,11 +99,14 @@ export const scrollbackReadbackRows: readonly RegionReadbackRow[] = [
     textClaim: "characters",
     expected: "DECSTBM sets the region: a marker on the requested top row scrolls out while the row above it stays",
     region: { top: 1, left: 1 },
-    seed: "\x1b[1;1HFIXED\x1b[5;1HA\x1b[6;1HB\x1b[7;1HC",
-    before: [["F"], [""], [""], [""], ["A"], ["B"], ["C"]],
+    seed: "\x1b[1;1HFIXED\x1b[4;1HS\x1b[5;1HA\x1b[6;1HB\x1b[7;1HC",
+    before: [["F"], [""], [""], ["S"], ["A"], ["B"], ["C"]],
     steps: [{ write: "\x1b[5;10r" }, { write: "\x1b[10;1H" }, { write: "\n" }, { write: "\x1b[r" }],
-    after: [["F"], [""], [""], [""], ["B"], ["C"], [""]],
-    controls: [{ row: 0, col: 0, char: "F" }],
+    after: [["F"], [""], [""], ["S"], ["B"], ["C"], [""]],
+    controls: [
+      { row: 0, col: 0, char: "F" },
+      { row: 3, col: 0, char: "S" },
+    ],
     cursorRow: 11,
     sentinel: { row: 12, col: 1 },
     reset: "\x1b[r",
@@ -148,11 +161,14 @@ export const scrollbackReadbackRows: readonly RegionReadbackRow[] = [
     textClaim: "characters",
     expected: "DECSTBM confines the scroll: the inner marker scrolls while the row above the region stays",
     region: { top: 1, left: 1 },
-    seed: "\x1b[1;1HFIXED\x1b[3;1HA\x1b[4;1HB\x1b[5;1HC",
-    before: [["F"], [""], ["A"], ["B"], ["C"]],
+    seed: "\x1b[1;1HFIXED\x1b[2;1HS\x1b[3;1HA\x1b[4;1HB\x1b[5;1HC",
+    before: [["F"], ["S"], ["A"], ["B"], ["C"]],
     steps: [{ write: "\x1b[3;6r" }, { write: "\x1b[6;1H" }, { write: "\n" }, { write: "\x1b[r" }],
-    after: [["F"], [""], ["B"], ["C"], [""]],
-    controls: [{ row: 0, col: 0, char: "F" }],
+    after: [["F"], ["S"], ["B"], ["C"], [""]],
+    controls: [
+      { row: 0, col: 0, char: "F" },
+      { row: 1, col: 0, char: "S" },
+    ],
     cursorRow: 7,
     sentinel: { row: 8, col: 1 },
     reset: "\x1b[r",
@@ -179,22 +195,176 @@ export const scrollbackReadbackRows: readonly RegionReadbackRow[] = [
   },
 ]
 
-function tooSmall(ctx: TermProbeSource, rows: number, cols: number): ProbeCallbackResult | undefined {
-  if (validSize(ctx.rows, rows) && validSize(ctx.cols, cols)) return undefined
-  return {
-    pass: false,
-    tests: [
-      {
-        id: "criterion",
-        status: "test-todo",
-        reason: `Scrollback fixture needs at least ${rows}x${cols}; measured ${ctx.rows}x${ctx.cols}`,
-      },
-    ],
+/** Hold is measured at an inward anchor; output readability is checked only back at bottom. */
+function viewportHold(ctx: LibProbeSource): ProbeCallbackResult {
+  type Reading = ReturnType<LibProbeSource["getScrollback"]>
+  type Phase = "ordinary" | "synchronized"
+  type PhaseResult = {
+    outcome?: "hold" | "snap" | "bottom-relative" | "drift"
+    note?: string
+    missing?: string
+    markerObserved?: boolean
+    after?: Reading
+    restored?: Reading
   }
-}
-
-function validSize(value: number, minimum: number): boolean {
-  return Number.isSafeInteger(value) && value >= minimum
+  const state: {
+    baseline: Partial<Record<Phase, { fresh: Reading; seeded?: Reading; lineCount?: number; feedObserved?: boolean }>>
+    anchor: Partial<Record<Phase, Reading>>
+    control: Partial<Record<Phase, { sign?: number; attempts: { delta: number; reading: Reading }[] }>>
+    ordinary: PhaseResult
+    synchronized: PhaseResult
+    productViewport?: LibProbeSource["capabilities"]["productViewport"]
+    runtimeIdentity?: LibProbeSource["runtimeIdentity"] | null
+  } = { baseline: {}, anchor: {}, control: {}, ordinary: {}, synchronized: {} }
+  const expected = "Viewport stays anchored during ordinary and synchronized output without keyboard input"
+  const declared = ctx.capabilities.productViewport
+  if (declared?.available === false) {
+    state.productViewport = declared
+    state.runtimeIdentity = ctx.runtimeIdentity ?? null
+    if (ctx.scrollViewport) {
+      return parserStateResult(null, expected, state, "Product viewport declared absent but scroll control is present")
+    }
+    return reviewResult(HEADLESS_OBSERVABLE_REVIEW, declared.reason, "scrollback viewport scroll control", state)
+  }
+  if (!ctx.scrollViewport) return notTestedResult("scrollback viewport scroll control", state)
+  const scroll = ctx.scrollViewport.bind(ctx)
+  const valid = (reading: Reading) =>
+    validSize(reading.screenLines, 1) &&
+    validSize(reading.totalLines, reading.screenLines) &&
+    validSize(reading.viewportOffset, 0) &&
+    reading.viewportOffset <= reading.totalLines - reading.screenLines
+  const extents = (a: Reading, b: Reading) => a.totalLines === b.totalLines && a.screenLines === b.screenLines
+  function phase(name: Phase): PhaseResult {
+    ctx.reset()
+    ctx.feed("\x1b[?1049l\x1b[?2026l")
+    const fresh = ctx.getScrollback()
+    const baseline = {
+      fresh,
+      lineCount: fresh.screenLines * 2,
+      seeded: undefined as Reading | undefined,
+      feedObserved: false,
+    }
+    state.baseline[name] = baseline
+    if (!valid(fresh) || !validSize(ctx.cols, `viewport-${name}`.length) || !Number.isSafeInteger(baseline.lineCount)) {
+      return { note: "invalid geometry or fresh scrollback readings" }
+    }
+    const lines = Array.from({ length: baseline.lineCount }, (_, index) => `hold-${index}`)
+    const lastLine = lines.at(-1)
+    if (lastLine === undefined || lastLine.length > ctx.cols) return { note: "numbered seed exceeds measured columns" }
+    ctx.feed(lines.join("\r\n"))
+    baseline.feedObserved = ctx.getText().includes(lastLine)
+    const seeded = ctx.getScrollback()
+    baseline.seeded = seeded
+    // Order matters: ignored feeds are inconclusive; an observed feed without history names coverage.
+    if (!baseline.feedObserved) return { note: "feed not observed" }
+    if (!valid(seeded) || seeded.screenLines !== fresh.screenLines) {
+      return { note: "invalid seeded geometry or readings" }
+    }
+    if (seeded.totalLines - seeded.screenLines < 1) return { missing: "scrollback history rows" }
+    if (seeded.totalLines !== baseline.lineCount) {
+      return { note: "exact seed retention not established (clipping or eviction)" }
+    }
+    if (seeded.viewportOffset !== seeded.totalLines - seeded.screenLines) {
+      return { note: "seeded viewport is not at bottom" }
+    }
+    const control: { sign?: number; attempts: { delta: number; reading: Reading }[] } = { attempts: [] }
+    state.control[name] = control
+    let anchor: Reading | undefined
+    for (const delta of [-1, 1]) {
+      scroll(delta)
+      const reading = ctx.getScrollback()
+      control.attempts.push({ delta, reading })
+      if (!extents(seeded, reading)) return { note: "viewport control changed extents" }
+      if (!valid(reading)) return { note: "viewport control returned invalid position" }
+      if (reading.viewportOffset < seeded.viewportOffset) {
+        anchor = reading
+        control.sign = delta
+        break
+      }
+    }
+    if (!anchor || control.sign === undefined) return { missing: "scrollback viewport state" }
+    state.anchor[name] = anchor
+    const marker = `viewport-${name}`
+    const output = `\r\n${marker}`
+    ctx.feed(name === "synchronized" ? `\x1b[?2026h${output}\x1b[?2026l` : output)
+    const after = ctx.getScrollback()
+    const result: PhaseResult = { after }
+    if (!valid(after) || after.screenLines !== seeded.screenLines || after.totalLines !== seeded.totalLines + 1) {
+      return { ...result, note: "output did not retain exactly one additional row at fixed geometry" }
+    }
+    const bottom = after.totalLines - after.screenLines
+    result.outcome =
+      after.viewportOffset === anchor.viewportOffset
+        ? "hold"
+        : after.viewportOffset === bottom
+          ? "snap"
+          : after.viewportOffset === anchor.viewportOffset + 1
+            ? "bottom-relative"
+            : "drift"
+    // One added row can put bottom two steps beyond the anchor. Reverse the calibrated
+    // direction by the actual distance, then qualify that restoration before reading text.
+    scroll(-control.sign * (bottom - after.viewportOffset))
+    const restored = ctx.getScrollback()
+    result.restored = restored
+    if (!valid(restored) || !extents(after, restored) || restored.viewportOffset !== bottom) {
+      return { ...result, note: "return to bottom not established" }
+    }
+    result.markerObserved = ctx.getText().includes(marker)
+    if (!result.markerObserved) return { ...result, note: "target marker not observed after verified return to bottom" }
+    return result
+  }
+  let failed = false
+  let primary: unknown
+  try {
+    state.ordinary = phase("ordinary")
+    state.synchronized = phase("synchronized")
+    const phases = ["ordinary", "synchronized"] as const
+    const unqualified = phases.find((name) => state[name].note !== undefined)
+    if (unqualified) return parserStateResult(null, expected, state, `${unqualified}: ${state[unqualified].note}`)
+    const missing = phases.map((name) => state[name].missing).find((value) => value !== undefined)
+    if (missing !== undefined) return notTestedResult(missing, state)
+    const bottomRelative = phases.find((name) => state[name].outcome === "bottom-relative")
+    if (bottomRelative) {
+      const both = phases.every((name) => state[name].outcome === "bottom-relative")
+      return parserStateResult(
+        both ? false : null,
+        expected,
+        state,
+        both
+          ? "viewport kept its distance from bottom instead of its anchor"
+          : `${bottomRelative}: bottom-relative viewport motion differed between phases`,
+      )
+    }
+    const drift = phases.find((name) => state[name].outcome === "drift")
+    if (drift) {
+      return parserStateResult(
+        null,
+        expected,
+        state,
+        `${drift}: viewport partially drifted rather than holding or snapping to bottom`,
+      )
+    }
+    const snap = phases.find((name) => state[name].outcome === "snap")
+    return parserStateResult(
+      !snap,
+      expected,
+      state,
+      snap ? `${snap}: viewport snapped to the new bottom` : "Both phases held the qualified anchor",
+    )
+  } catch (error) {
+    failed = true
+    primary = error
+    throw error
+  } finally {
+    try {
+      ctx.reset()
+    } catch (cleanup) {
+      if (failed) {
+        throw new AggregateError([primary, cleanup], "Viewport hold failed and disposable source reset also failed")
+      }
+      throw cleanup
+    }
+  }
 }
 
 export const scrollbackProbes: ProbeDefinition[] = [
@@ -221,7 +391,7 @@ export const scrollbackProbes: ProbeDefinition[] = [
       async (ctx) => {
         const capture = ctx.capture
         if (capture) {
-          const refusal = tooSmall(ctx, 3, `line-${ctx.rows + 9}`.length)
+          const refusal = tooSmall(ctx, 3, `line-${ctx.rows + 9}`.length, "Scrollback fixture")
           if (refusal) return refusal
           try {
             ctx.write("\x1b[0m\x1b[2J\x1b[H")
@@ -261,7 +431,7 @@ export const scrollbackProbes: ProbeDefinition[] = [
             ctx.write("\x1b[0m\x1b[2J\x1b[H")
           }
         }
-        const refusal = tooSmall(ctx, 1, `line-${ctx.rows + 9}`.length)
+        const refusal = tooSmall(ctx, 1, `line-${ctx.rows + 9}`.length, "Scrollback fixture")
         if (refusal) return refusal
         const rows = ctx.rows
         ctx.write("\x1b[2J\x1b[H") // clear + home
@@ -312,7 +482,7 @@ export const scrollbackProbes: ProbeDefinition[] = [
       async (ctx) => {
         const capture = ctx.capture
         if (capture) {
-          const refusal = tooSmall(ctx, 5, `total-${ctx.rows + 9}`.length)
+          const refusal = tooSmall(ctx, 5, `total-${ctx.rows + 9}`.length, "Scrollback fixture")
           if (refusal) return refusal
           try {
             ctx.write("\x1b[0m\x1b[2J\x1b[H")
@@ -351,7 +521,7 @@ export const scrollbackProbes: ProbeDefinition[] = [
             ctx.write("\x1b[0m\x1b[2J\x1b[H")
           }
         }
-        const refusal = tooSmall(ctx, 5, `total-${ctx.rows + 9}`.length)
+        const refusal = tooSmall(ctx, 5, `total-${ctx.rows + 9}`.length, "Scrollback fixture")
         if (refusal) return refusal
         ctx.write("\x1b[2J\x1b[H") // clear
         for (let i = 0; i < ctx.rows + 10; i++) ctx.write(`total-${i}\n`)
@@ -376,4 +546,15 @@ export const scrollbackProbes: ProbeDefinition[] = [
   },
 
   ...regionReadbackProbes(scrollbackReadbackRows),
+  {
+    ...probe("scrollback.viewport-hold-output", viewportHold, () =>
+      Promise.resolve(
+        notTestedResult(
+          "Our probe source lacks viewport actuator forwarding and viewport-position readback; hold on output remains TEST TODO",
+          { missing: ["viewport actuator forwarding", "viewport-position readback"], writesPerformed: 0 },
+        ),
+      ),
+    ),
+    libAssertionType: "buffer_state",
+  },
 ]

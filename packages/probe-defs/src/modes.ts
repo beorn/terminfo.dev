@@ -1,6 +1,7 @@
 import type {
   CaptureCells,
   CaptureRectangle,
+  HeadlessRuntimeIdentity,
   ObservationFrame,
   ProbeDefinition,
   ProbeCallbackResult,
@@ -14,6 +15,8 @@ import {
   headlessDecrpmArm,
   parserStateResult,
   notTestedResult,
+  reviewResult,
+  HEADLESS_OBSERVABLE_REVIEW,
   osInputReviewResult,
   sameRgb,
   isBlank,
@@ -29,6 +32,7 @@ import {
 } from "./helpers.ts"
 import { applicationKeypad, altScroll1007 } from "./input.ts"
 import { regionReadbackProbes, type RegionReadbackRow } from "./region-readback-kind.ts"
+import { captureRegionVerdict, DEFAULT_TIMEOUT_MS } from "./region-readback.ts"
 
 /** One addressing fixture supplies both parser-state and capture-region observers. */
 export const modesReadbackRows: readonly RegionReadbackRow[] = [
@@ -106,6 +110,57 @@ function captureRefusal(
   }
 }
 
+/** Marker restoration, qualified by a separately witnessed actual alternate-buffer marker. */
+async function primaryRestoreCapture(
+  ctx: TermProbeSource,
+  id: string,
+  mode: 47 | 1049,
+  primary: string,
+  alternate: string,
+): Promise<ProbeCallbackResult> {
+  const leave = `\x1b[?${mode}l`
+  const enter = `\x1b[?${mode}h`
+  const baseline = `${leave}\x1b[0m\x1b[2J\x1b[H${primary}`
+  const result = await captureRegionVerdict(ctx, id, {
+    region: { top: 1, left: 1, bottom: 1, right: Math.max(primary.length, alternate.length) },
+    sentinel: { row: 2, col: 1 },
+    cursorRow: 3,
+    minRows: 3,
+    minCols: 8,
+    seed: baseline,
+    edit: `${enter}\x1b[0m\x1b[2J\x1b[H${alternate}${leave}`,
+    expected: baseline,
+    ignored: `${enter}\x1b[0m\x1b[2J\x1b[H${alternate}`,
+    discriminator: { signal: "primary-marker-restored", expected: "no-change" },
+    cleanup: leave,
+    timeoutMs: DEFAULT_TIMEOUT_MS,
+  })
+  if (!result) throw new Error(`${id}: owned primary restoration capture disappeared`)
+  if (
+    result.tests?.some(
+      (test) => test.id === "primary-marker-restored" && (test.status === "supported" || test.status === "unsupported"),
+    ) &&
+    result.assertions?.[0]
+  ) {
+    result.assertions.push({
+      assertionType: "screenshot",
+      kind: "positive",
+      expected: `${id}: actual alternate marker ${alternate} differs from the independently painted primary ${primary} in the same crop behind its paint witness`,
+      observed: result.response ?? "",
+    })
+    result.tests.push({ id: "alternate-marker-control", status: "supported", assertionRefs: [1] })
+    result.tests.push({
+      id: "remaining-facets",
+      status: "test-todo",
+      reason:
+        mode === 1049
+          ? "Primary-marker capture does not measure saved cursor or retained scrollback restoration"
+          : "Single alternate-screen roundtrip does not measure alternate contents surviving the next entry",
+    })
+  }
+  return result
+}
+
 /**
  * SGR-stack capture: the target pushes bold, RESETS the live attributes, applies italic to X, and
  * pops before Y. A working roundtrip leaves Y bold-only (bold restored, no italic); an ignored
@@ -114,35 +169,102 @@ function captureRefusal(
  * is popped on capture failure so the fixture never leaves the stack unbalanced.
  */
 async function xtSgrStackCapture(ctx: TermProbeSource, id: string, label: string): Promise<ProbeCallbackResult> {
-  const refusal = captureRefusal(ctx, 3, 6, id)
+  const refusal = captureRefusal(ctx, 5, 6, id)
   if (refusal) return refusal
   let pushed = false
+  const stackCtx: TermProbeSource = {
+    ...ctx,
+    write(sequence) {
+      // Keep the original successful-write boundary around push/pop even though the oracle
+      // supplies one fixture string: a failure before the push must not pop somebody else's stack.
+      for (const part of sequence.split(/(\x1b\[#[{}])/)) {
+        if (!part) continue
+        ctx.write(part)
+        if (part === "\x1b[#{") pushed = true
+        if (part === "\x1b[#}") pushed = false
+      }
+    },
+  }
   try {
-    ctx.write("\x1b[0m\x1b[2J\x1b[3;3H\x1b[1m\x1b[3mX\x1b[0mY")
-    const control = await ctx.capture!({
-      role: "control",
-      label: `${id}: X bold+italic, Y plain after SGR 0 (no stack)`,
+    const reset = "\x1b[0m\x1b[2J\x1b[H"
+    const paintY = (attributes: string) => `${reset}\x1b[3;4H${attributes}Y\x1b[0m`
+    const stackEdit = `${reset}\x1b[3;3H\x1b[1m\x1b[#{\x1b[0m\x1b[3mX\x1b[#}Y\x1b[0m`
+    const results: ProbeCallbackResult[] = []
+    for (const axis of [
+      { signal: "bold-restored", seed: paintY("") },
+      { signal: "italic-cleared", seed: paintY("\x1b[1;3m") },
+    ]) {
+      const result = await captureRegionVerdict(stackCtx, id, {
+        region: { top: 3, left: 4, bottom: 3, right: 4 },
+        sentinel: { row: 4, col: 1 },
+        cursorRow: 5,
+        minRows: 5,
+        minCols: 6,
+        seed: axis.seed,
+        edit: stackEdit,
+        expected: paintY("\x1b[1m"),
+        ignored: paintY("\x1b[3m"),
+        discriminator: { signal: axis.signal, expected: "change" },
+        timeoutMs: DEFAULT_TIMEOUT_MS,
+      })
+      if (!result) throw new Error(`${id}: owned SGR capture disappeared`)
+      results.push(result)
+    }
+    const assertions = results.flatMap((result) => result.assertions ?? [])
+    let offset = 0
+    const tests = results.flatMap((result, index) => {
+      const axis = index === 0 ? "bold-restored" : "italic-cleared"
+      const axisTests =
+        result.tests ??
+        (result.observation?.outcome === "inconclusive"
+          ? [
+              {
+                id: "review",
+                status: "test-todo" as const,
+                reason: result.observation.note ?? `${axis}: insufficient visual evidence`,
+              },
+            ]
+          : undefined)
+      if (!axisTests?.length) throw new Error(`${id}: ${axis} returned no required criterion rows`)
+      const rows = axisTests.map((test) => ({
+        ...test,
+        id: test.id === axis ? axis : `${axis}.${test.id}`,
+        ...(test.assertionRefs && { assertionRefs: test.assertionRefs.map((ref) => ref + offset) }),
+      }))
+      offset += result.assertions?.length ?? 0
+      return rows
     })
-    ctx.write("\x1b[0m\x1b[2J\x1b[3;3H\x1b[1m")
-    ctx.write("\x1b[#{")
-    pushed = true
-    ctx.write("\x1b[0m\x1b[3mX\x1b[#}Y")
-    pushed = false
-    const target = await ctx.capture!({
-      role: "target",
-      label: `${id}: ${label} — Y should be bold-only (bold restored by the pop, italic cleared)`,
-    })
-    const observed = JSON.stringify({ control: control.label, target: target.label })
+    const frames = results.flatMap((result) => result.observation?.frames ?? [])
+    const screenshotRef = results.find((result) => result.observation?.screenshotRef)?.observation?.screenshotRef
+    const allSupported = tests.length === 2 && tests.every((test) => test.status === "supported")
+    const negative = tests.some((test) => test.status === "unsupported")
+    if (!results.some((result) => result.observation)) {
+      return {
+        pass: false,
+        criterionBranch: "visual-review",
+        response: JSON.stringify({ label, axes: results.map((result) => result.response) }),
+        tests: [
+          {
+            id: "review",
+            status: tests.some((test) => test.status === "test-failure") ? "test-failure" : "test-todo",
+            reason: tests.map((test) => `${test.id}: ${test.reason}`).join("; "),
+          },
+        ],
+      }
+    }
     return {
-      pass: false,
-      response: observed,
+      pass: allSupported,
+      criterionBranch: "sgr-stack-axes",
+      tests,
+      assertions,
+      response: JSON.stringify({ label, axes: results.map((result) => result.response) }),
       observation: {
-        outcome: "inconclusive",
-        reason: "insufficient-evidence",
+        outcome: negative ? "unsupported" : allSupported ? "supported" : "inconclusive",
+        ...(!negative && !allSupported && { reason: "insufficient-evidence" as const }),
         assertionType: "screenshot",
-        screenshotRef: target.ref,
-        frames: [control, target],
-        note: "Control shows Y plain; the target pushes bold, resets attributes, styles X italic, then pops, so Y must be bold and NOT italic if the SGR stack round-tripped. An ignored push/pop leaves Y italic-only and not bold. Requires independent pixel review of both attributes",
+        frames,
+        ...(screenshotRef && { screenshotRef }),
+        note: "Bold restoration and italic clearing are separately qualified against their own seed and the same bold-only/italic-only references; both run the same stack edit",
       },
     }
   } finally {
@@ -158,36 +280,26 @@ async function xtSgrStackCapture(ctx: TermProbeSource, id: string, label: string
  * row 2. Both frames therefore differ only by the restored wrap state.
  */
 async function xtModeSaveCapture(ctx: TermProbeSource, id: string): Promise<ProbeCallbackResult> {
-  const refusal = captureRefusal(ctx, 2, 2, id)
+  const refusal = captureRefusal(ctx, 4, 2, id)
   if (refusal) return refusal
-  const xs = "X".repeat(ctx.cols)
-  try {
-    ctx.write(`\x1b[?7l\x1b[0m\x1b[2J\x1b[1;1H${xs}!`)
-    const control = await ctx.capture!({
-      role: "control",
-      label: `${id}: auto-wrap off, so the overflow ! overwrites the last column and stays on row 1`,
-    })
-    ctx.write(`\x1b[?7h\x1b[?7s\x1b[?7l\x1b[?7r\x1b[0m\x1b[2J\x1b[1;1H${xs}!`)
-    const target = await ctx.capture!({
-      role: "target",
-      label: `${id}: wrap saved on, disabled and restored; the ${ctx.cols}-column overflow ! should wrap to row 2`,
-    })
-    const observed = JSON.stringify({ control: control.label, target: target.label })
-    return {
-      pass: false,
-      response: observed,
-      observation: {
-        outcome: "inconclusive",
-        reason: "insufficient-evidence",
-        assertionType: "screenshot",
-        screenshotRef: target.ref,
-        frames: [control, target],
-        note: "Control keeps the overflow on row 1 with wrap off; the target saves wrap on, disables it, then restores it, so the overflow should wrap to row 2. Whether the restore re-enabled wrap requires independent pixel review",
-      },
-    }
-  } finally {
-    ctx.write("\x1b[?7h\x1b[0m\x1b[2J\x1b[H")
-  }
+  const xs = "X".repeat(Number.isSafeInteger(ctx.cols) && ctx.cols > 0 ? ctx.cols : 0)
+  const reset = "\x1b[?7l\x1b[0m\x1b[2J\x1b[H"
+  const result = await captureRegionVerdict(ctx, id, {
+    region: { top: 2, left: 1, bottom: 2, right: 1 },
+    sentinel: { row: 3, col: 1 },
+    cursorRow: 4,
+    minRows: 4,
+    minCols: 2,
+    seed: `${reset}${xs}!`,
+    edit: `\x1b[?7h\x1b[?7s\x1b[?7l\x1b[?7r\x1b[0m\x1b[2J\x1b[H${xs}!`,
+    expected: `${reset}\x1b[2;1H!`,
+    ignored: reset,
+    discriminator: { signal: "wrap-restored", expected: "change" },
+    cleanup: "\x1b[?7h",
+    timeoutMs: DEFAULT_TIMEOUT_MS,
+  })
+  if (!result) throw new Error(`${id}: owned mode-save capture disappeared`)
+  return result
 }
 
 /**
@@ -202,37 +314,42 @@ async function xtModeSaveCapture(ctx: TermProbeSource, id: string): Promise<Prob
  * only when one is open, so a successful roundtrip is never double-popped.
  */
 async function xtColorStackCapture(ctx: TermProbeSource, id: string): Promise<ProbeCallbackResult> {
-  const refusal = captureRefusal(ctx, 3, 8, id)
+  const refusal = captureRefusal(ctx, 4, 8, id)
   if (refusal) return refusal
   let pushed = false
+  const stackCtx: TermProbeSource = {
+    ...ctx,
+    write(sequence) {
+      for (const part of sequence.split(/(\x1b\[#[PQ])/)) {
+        if (!part) continue
+        ctx.write(part)
+        if (part === "\x1b[#P") pushed = true
+        if (part === "\x1b[#Q") pushed = false
+      }
+    },
+  }
   try {
-    ctx.write("\x1b[0m\x1b[2J\x1b[1;1H\x1b]4;1;rgb:00/00/ff\x07\x1b[38;5;1mXY")
-    const control = await ctx.capture!({
-      role: "control",
-      label: `${id}: palette index 1 set to the blue baseline; X and Y both use it`,
+    const reset = "\x1b[0m\x1b[2J\x1b[H"
+    const blue = "\x1b]4;1;rgb:00/00/ff\x07"
+    const green = "\x1b]4;1;rgb:00/ff/00\x07"
+    const baseline = `${reset}${blue}\x1b[1;1H\x1b[38;5;1mXY\x1b[0m`
+    const result = await captureRegionVerdict(stackCtx, id, {
+      region: { top: 1, left: 2, bottom: 1, right: 2 },
+      sentinel: { row: 3, col: 1 },
+      cursorRow: 4,
+      minRows: 4,
+      minCols: 8,
+      seed: baseline,
+      edit: `${reset}${blue}\x1b[#P${green}\x1b[1;1H\x1b[38;5;1mX\x1b[#Q\x1b[38;5;1mY\x1b[0m`,
+      expected: baseline,
+      ignored: `${reset}${green}\x1b[1;2H\x1b[38;5;1mY\x1b[0m`,
+      setupReference: `${reset}\x1b[1;2H\x1b[38;2;0;0;255mY\x1b[0m`,
+      discriminator: { signal: "palette-y-restored", expected: "no-change" },
+      cleanup: "\x1b]104\x07",
+      timeoutMs: DEFAULT_TIMEOUT_MS,
     })
-    ctx.write("\x1b[0m\x1b[2J\x1b[1;1H\x1b]4;1;rgb:00/00/ff\x07")
-    ctx.write("\x1b[#P")
-    pushed = true
-    ctx.write("\x1b]4;1;rgb:00/ff/00\x07\x1b[38;5;1mX\x1b[#Q\x1b[38;5;1mY")
-    pushed = false
-    const target = await ctx.capture!({
-      role: "target",
-      label: `${id}: X uses the pushed green index 1; Y uses the blue baseline restored by the pop`,
-    })
-    const observed = JSON.stringify({ control: control.label, target: target.label })
-    return {
-      pass: false,
-      response: observed,
-      observation: {
-        outcome: "inconclusive",
-        reason: "insufficient-evidence",
-        assertionType: "screenshot",
-        screenshotRef: target.ref,
-        frames: [control, target],
-        note: "Control shows X and Y in the blue baseline index 1; the target pushes the palette, redefines index 1 green, prints X, pops before Y. Grade the roundtrip by Y alone: Y must match the blue baseline control, so a green Y means the pop did not restore the saved palette. Do not grade on X -- it is drawn through palette index 1, so a correct pop may recolor it blue and its color is not evidence either way. A palette-setup failure (control not measured blue) stays inconclusive. Requires independent pixel review",
-      },
-    }
+    if (!result) throw new Error(`${id}: owned palette capture disappeared`)
+    return result
   } finally {
     if (pushed) ctx.write("\x1b[#Q")
     ctx.write("\x1b]104\x07\x1b[0m\x1b[2J\x1b[H")
@@ -368,7 +485,9 @@ const COLOR_STACK_GREEN = { r: 0, g: 255, b: 0 }
 /**
  * Headless XTPUSHCOLORS/XTPOPCOLORS read-back (#30700): the pixel capture's palette fixture, read
  * from cells. Calibration redefines index 1 blue, draws and reads a cell, then green and reads
- * again, which proves OSC 4 moves the reported foreground at all. The target sets the blue
+ * again, which proves OSC 4 moves the reported foreground at all (on @xterm/headless, the
+ * per-instance palette array mirrors _core._inputHandler.onColor events, so OSC 4 cell-color
+ * calibration grades that engine-delivered index+rgb event; #31735, @cto 863bef67). The target sets the blue
  * baseline, pushes, redefines index 1 green, prints X, pops and prints Y. Y alone is graded, read
  * before any later palette change can recolor it: blue means the pop restored the saved palette,
  * green means it did not. X is never graded, because a correct pop may recolor it (turn362). A
@@ -465,6 +584,35 @@ const ALT_SCREEN_1047: AltScreenMode = { mode: 1047, clearsOnEnter: false, clear
 const ALT_SCREEN_47: AltScreenMode = { mode: 47, clearsOnEnter: false, clearsOnExit: false, savesCursor: false }
 
 /**
+ * Exact loaded sources whose engine implements no alternate screen at all (#31388, @dev/10 d2dbb969). On such
+ * an engine a ?1049 exit is not "unattributed": there is no alternate buffer to leave, so the honest grade is a
+ * negative decided by source — the shape of the audited title stack (#31735, @cto 863bef67), but keyed on a
+ * source tuple because a JS source engine has no loaded binary to hash. Repository, revision, tree and resolved
+ * path must all match and the tree must be clean. An adapter name is never enough: the adapters are
+ * pass-throughs, and a moved or locally modified engine must fall back to the existing inconclusive answer.
+ */
+const ALT_SCREEN_UNIMPLEMENTED_AUDITS: ReadonlyMap<string, string> = new Map([
+  [
+    "git@github.com:beorn/vterm.git@53a9eb9291b7880f4dc6a39a6802301049997a72:5ffc7ad9ae120d0bf93c64b0fdc712eb40892896:vendor/vterm/packages/vt100/src/index.ts",
+    "vterm packages/vt100/src/screen.ts:99 'Main screen buffer (no alternate screen in VT100)'; no CSI ? 1049 changes state in that source tree, so there is no alternate buffer for exit to leave",
+  ],
+  [
+    "git@github.com:beorn/vterm.git@53a9eb9291b7880f4dc6a39a6802301049997a72:69366752918a6086c639123799cc3ac68d8083a0:vendor/vterm/packages/vt220/src/index.ts",
+    "vterm packages/vt220/src/screen.ts:145 'Main screen buffer (no alternate screen in VT220)', with :90 listing the alternate screen among what it does not cover; no CSI ? 1049 changes state in that source tree",
+  ],
+])
+
+/** The source citation for the loaded engine, or undefined when the exact source is not audited. */
+function altScreenAbsenceCitation(identity: HeadlessRuntimeIdentity | undefined): string | undefined {
+  if (identity === undefined || !("resolvedPath" in identity)) return undefined
+  const integrity = identity.integrity
+  if (integrity.kind !== "source" || !integrity.cleanTree) return undefined
+  return ALT_SCREEN_UNIMPLEMENTED_AUDITS.get(
+    `${integrity.repository}@${integrity.revision}:${integrity.treeOid}:${identity.resolvedPath}`,
+  )
+}
+
+/**
  * One measured alternate-screen roundtrip, shared by the 1049 enter and exit callbacks and by the
  * ?47 and ?1047 callbacks (#30702). Existing ctx only: feed, getCell, getCursor, getScrollback and
  * cols. No rows API and no entry-homing requirement. EVERY callback grades supported only when the
@@ -554,6 +702,14 @@ function altScreenRoundtrip(
     if (!entered) {
       const state = { seedA, seedB, blankA, blankB, ...(!screen.clearsOnEnter && { seedShown }) }
       if (phase === "exit") {
+        // An engine audited as having no alternate screen cannot have entered one, so its exit is decided by
+        // source rather than left unattributed (#31388). Every other engine keeps the inconclusive answer below:
+        // an exit across an unqualified entry is genuinely unattributable, and the broad failed-entry branch
+        // stays as it is.
+        const sourceCitation = altScreenAbsenceCitation(ctx.runtimeIdentity)
+        if (sourceCitation !== undefined) {
+          return parserStateResult(false, expected, { ...state, sourceCitation }, "negative by source citation")
+        }
         return parserStateResult(
           null,
           expected,
@@ -708,12 +864,15 @@ function leftRightMarginHeadless(ctx: LibProbeSource): ProbeCallbackResult {
     ctx.feed("\x1b[1;3H\x1b[@")
     const control = readRow()
     if (control !== LR_MARGIN_UNBOUNDED) {
-      return notTestedResult(
-        "ICH shifting row 1 right from column 3 in the headless readback (control frame not calibrated)",
+      return parserStateResult(
+        null,
+        LR_MARGIN_EXPECTED,
         {
           seed,
           control,
         },
+        undefined,
+        "ICH shifting row 1 right from column 3 in the headless readback (control frame not calibrated)",
       )
     }
     ctx.feed("\x1b[0m\x1b[2J\x1b[1;1H" + LR_MARGIN_SEED)
@@ -1154,48 +1313,7 @@ export const modesProbes: ProbeDefinition[] = [
         }
         const refusal = captureRefusal(ctx, 3, 8, "Alt-screen exit")
         if (refusal) return refusal
-        if (ctx.capture) {
-          try {
-            ctx.write("\x1b[?1049l\x1b[0m\x1b[2J\x1b[H")
-            ctx.write("\x1b[1;1HPRIMARY")
-            const control = await ctx.capture!({
-              role: "control",
-              label: "Primary-screen marker PRIMARY before entering the alternate screen",
-            })
-            ctx.write("\x1b[?1049h")
-            ctx.write("\x1b[1;1HALTONLY")
-            const alternate = await ctx.capture!({
-              role: "target",
-              label: "Alternate-screen marker ALTONLY while ?1049 is set",
-            })
-            ctx.write("\x1b[?1049l")
-            const restored = await ctx.capture!({
-              role: "target",
-              label: "Primary-screen marker after ?1049l: PRIMARY restored and ALTONLY absent",
-            })
-            const observed = JSON.stringify({
-              rows: ctx.rows,
-              cols: ctx.cols,
-              control: control.label,
-              alternate: alternate.label,
-              restored: restored.label,
-            })
-            return {
-              pass: false,
-              response: observed,
-              observation: {
-                outcome: "inconclusive",
-                reason: "insufficient-evidence",
-                assertionType: "screenshot",
-                screenshotRef: restored.ref,
-                frames: [control, alternate, restored],
-                note: "Control shows PRIMARY; the alternate frame shows ALTONLY; the restored frame must show PRIMARY again with ALTONLY gone. Whether the primary buffer came back requires independent pixel review, because CPR after exit proves nothing about buffer contents",
-              },
-            }
-          } finally {
-            ctx.write("\x1b[?1049l\x1b[0m\x1b[2J\x1b[H")
-          }
-        }
+        if (ctx.capture) return primaryRestoreCapture(ctx, "modes.alt-screen.exit", 1049, "PRIMARY", "ALTONLY")
         ctx.write("\x1b[?1049h") // enter
         try {
           ctx.write("\x1b[3;3H") // move somewhere in alt
@@ -1268,7 +1386,10 @@ export const modesProbes: ProbeDefinition[] = [
   // Reverse video
   decrpmModeProbe("modes.reverse-video", 5, (ctx) => {
     ctx.feed("\x1b[?5h")
-    return notTestedResult("rendered colors (pixels)", { mode: ctx.getMode("reverseVideo") })
+    const note = "rendered colors (pixels)"
+    return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
+      mode: ctx.getMode("reverseVideo"),
+    })
   }),
 
   // Synchronized output
@@ -1276,7 +1397,10 @@ export const modesProbes: ProbeDefinition[] = [
     ctx.feed("\x1b[?2026h")
     ctx.feed("Hello")
     ctx.feed("\x1b[?2026l")
-    return notTestedResult("frame timing", { text: ctx.getText() })
+    const note = "frame timing"
+    return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
+      text: ctx.getText(),
+    })
   }),
 
   // Origin mode
@@ -1350,7 +1474,7 @@ export const modesProbes: ProbeDefinition[] = [
           const off = await queryDecrpm(ctx, 4, "ansi")
           if (off !== null && off !== 0) {
             // The stored reading keeps the Ps (#30557 r2): a permanent state (Ps 3 or 4) fails the toggle.
-            const ok = (on === 1 || on === 3) && (off === 2 || off === 4)
+            const ok = on === 1 && off === 2
             return {
               pass: ok,
               response: JSON.stringify({ on: decrpmReading(on), off: decrpmReading(off) }),
@@ -1369,40 +1493,28 @@ export const modesProbes: ProbeDefinition[] = [
           }
         }
         if (ctx.capture) {
-          try {
-            ctx.write("\x1b[4l\x1b[0m\x1b[2J\x1b[H\x1b[1;1HABCD\x1b[1;1HX")
-            const control = await ctx.capture!({
-              role: "control",
-              label: "Seed ABCD with X typed at column 1 in replace mode: expect XBCD",
-            })
-            ctx.write("\x1b[4l\x1b[0m\x1b[2J\x1b[H\x1b[1;1HABCD\x1b[1;1H\x1b[4hX")
-            const target = await ctx.capture!({
-              role: "target",
-              label: "Seed ABCD with X typed at column 1 under IRM (ANSI 4h): expect XABCD",
-            })
-            const observed = JSON.stringify({
-              rows: ctx.rows,
-              cols: ctx.cols,
-              seed: "ABCD",
-              typed: { row: 1, col: 1, char: "X" },
-              control: control.label,
-              target: target.label,
-            })
-            return {
-              pass: false,
-              response: observed,
-              observation: {
-                outcome: "inconclusive",
-                reason: "insufficient-evidence",
-                assertionType: "screenshot",
-                screenshotRef: target.ref,
-                frames: [control, target],
-                note: "Control replaces A with X (XBCD); the IRM target inserts X and shifts the run (XABCD). Whether the shift actually happened requires independent pixel review",
-              },
-            }
-          } finally {
-            ctx.write("\x1b[4l\x1b[0m\x1b[2J\x1b[H")
-          }
+          const reset = "\x1b[4l\x1b[0m\x1b[2J\x1b[H"
+          const result = await captureRegionVerdict(
+            ctx,
+            "modes.insert-replace",
+            {
+              region: { top: 1, left: 1, bottom: 1, right: 5 },
+              sentinel: { row: 2, col: 1 },
+              cursorRow: 3,
+              minRows: 3,
+              minCols: 6,
+              seed: `${reset}XBCD`,
+              edit: `${reset}ABCD\x1b[1;1H\x1b[4hX\x1b[4l`,
+              expected: `${reset}XABCD`,
+              ignored: `${reset}XBCD`,
+              discriminator: { signal: "inserted-cells", expected: "change" },
+              cleanup: "\x1b[4l",
+              timeoutMs: DEFAULT_TIMEOUT_MS,
+            },
+            true,
+          )
+          if (!result) throw new Error("modes.insert-replace: owned capture disappeared")
+          return result
         }
         ctx.write("\x1b[1;1H\x1b[2K")
         ctx.write("ABCD")
@@ -1465,39 +1577,23 @@ export const modesProbes: ProbeDefinition[] = [
         const refusal = captureRefusal(ctx, 2, 8, "Left/right margin")
         if (refusal) return refusal
         if (ctx.capture) {
-          try {
-            ctx.write("\x1b[?69l\x1b[?7h\x1b[0m\x1b[2J\x1b[H\x1b[1;1HABCDE")
-            const control = await ctx.capture!({
-              role: "control",
-              label: "Five glyphs ABCDE written from row 1 column 1 with margins reset: all stay on row 1",
-            })
-            ctx.write("\x1b[2J\x1b[H\x1b[?69h\x1b[3;6s\x1b[1;3HABCDE")
-            const target = await ctx.capture!({
-              role: "target",
-              label: "DECLRMM margins 3-6: ABCDE written from column 3 wraps at column 6 onto row 2",
-            })
-            const observed = JSON.stringify({
-              rows: ctx.rows,
-              cols: ctx.cols,
-              margins: "3-6",
-              control: control.label,
-              target: target.label,
-            })
-            return {
-              pass: false,
-              response: observed,
-              observation: {
-                outcome: "inconclusive",
-                reason: "insufficient-evidence",
-                assertionType: "screenshot",
-                screenshotRef: target.ref,
-                frames: [control, target],
-                note: "Control keeps ABCDE on row 1; with DECLRMM margins 3-6 the fifth glyph wraps at column 6 onto row 2. Whether the wrap respected the margin requires independent pixel review",
-              },
-            }
-          } finally {
-            ctx.write("\x1b[?69l\x1b[0m\x1b[2J\x1b[H")
-          }
+          const reset = "\x1b[?69h\x1b[s\x1b[?69l\x1b[?7h\x1b[0m\x1b[2J\x1b[H"
+          const result = await captureRegionVerdict(ctx, "modes.left-right-margin", {
+            region: { top: 2, left: 3, bottom: 2, right: 3 },
+            sentinel: { row: 3, col: 1 },
+            cursorRow: 4,
+            minRows: 4,
+            minCols: 8,
+            seed: `${reset}ABCDE`,
+            edit: `${reset}\x1b[?69h\x1b[3;6s\x1b[1;3HABCDE\x1b[s\x1b[?69l`,
+            expected: `${reset}\x1b[2;3HE`,
+            ignored: reset,
+            discriminator: { signal: "margin-wrap", expected: "change" },
+            cleanup: "\x1b[?69h\x1b[s\x1b[?69l\x1b[?7h",
+            timeoutMs: DEFAULT_TIMEOUT_MS,
+          })
+          if (!result) throw new Error("modes.left-right-margin: owned capture disappeared")
+          return result
         }
         return {
           pass: false,
@@ -1522,46 +1618,7 @@ export const modesProbes: ProbeDefinition[] = [
       async (ctx) => {
         const refusal = captureRefusal(ctx, 1, 8, "?47 alternate screen")
         if (refusal) return refusal
-        if (ctx.capture) {
-          try {
-            ctx.write("\x1b[?47l\x1b[0m\x1b[2J\x1b[H\x1b[1;1HMAIN47")
-            const control = await ctx.capture!({
-              role: "control",
-              label: "Primary-screen marker MAIN47 before ?47 is set",
-            })
-            ctx.write("\x1b[?47h\x1b[1;1HALT47")
-            const alternate = await ctx.capture!({
-              role: "target",
-              label: "Alternate-screen marker ALT47 while ?47 is set",
-            })
-            ctx.write("\x1b[?47l")
-            const restored = await ctx.capture!({
-              role: "target",
-              label: "Primary-screen marker after ?47 is reset: MAIN47 restored and ALT47 absent",
-            })
-            const observed = JSON.stringify({
-              rows: ctx.rows,
-              cols: ctx.cols,
-              control: control.label,
-              alternate: alternate.label,
-              restored: restored.label,
-            })
-            return {
-              pass: false,
-              response: observed,
-              observation: {
-                outcome: "inconclusive",
-                reason: "insufficient-evidence",
-                assertionType: "screenshot",
-                screenshotRef: restored.ref,
-                frames: [control, alternate, restored],
-                note: "Control shows MAIN47; the alternate frame shows ALT47; the restored frame must show MAIN47 again with ALT47 gone. Whether ?47 actually swapped buffers requires independent pixel review",
-              },
-            }
-          } finally {
-            ctx.write("\x1b[?47l\x1b[0m\x1b[2J\x1b[H")
-          }
-        }
+        if (ctx.capture) return primaryRestoreCapture(ctx, "modes.altscreen-47", 47, "MAIN47", "ALT47")
         return {
           pass: false,
           tests: [
@@ -1621,6 +1678,25 @@ export const modesProbes: ProbeDefinition[] = [
                 frames: [control, alternate, restored],
                 note: "Control shows MAIN47; the alternate frame shows ALT1047; the restored frame must show MAIN47 again with ALT1047 gone. Whether ?1047 actually swapped and cleared buffers requires independent pixel review",
               },
+              criterionBranch: "visual-review",
+              tests: [
+                { id: "capture", status: "supported", assertionRefs: [0] },
+                {
+                  id: "review",
+                  status: "test-todo",
+                  reason:
+                    "1047 roundtrip frames captured; required independent review pending; clearing needs a second entry",
+                },
+              ],
+              assertions: [
+                {
+                  assertionType: "screenshot",
+                  kind: "positive",
+                  expected:
+                    "Control shows MAIN47, alternate shows ALT1047, restored shows MAIN47 with ALT1047 absent; clearing on exit requires a second entry, which these frames do not establish",
+                  observed: JSON.stringify({ control, alternate, restored }),
+                },
+              ],
             }
           } finally {
             ctx.write("\x1b[?1047l\x1b[0m\x1b[2J\x1b[H")
@@ -1863,20 +1939,25 @@ export const modesProbes: ProbeDefinition[] = [
   },
 
   // ?4 — DECSCLM needs presentation timing, not mode recognition or final parser state.
-  decrpmModeProbe("modes.decsclm", 4, () =>
-    notTestedResult("DECSCLM requires presentation timing capture", { presentation: false }),
-  ),
+  decrpmModeProbe("modes.decsclm", 4, () => {
+    const note = "DECSCLM requires presentation timing capture"
+    return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
+      presentation: false,
+    })
+  }),
 
   // Mode 2031 — color scheme reporting (dark/light mode notifications)
   // Adopted by: iTerm2, tmux 3.6, Contour, foot, kitty
   {
     ...probe(
       "modes.color-scheme-reporting",
-      () =>
-        notTestedResult("Mode 2031 requires a host palette actuator and persistent unsolicited-event listener", {
+      () => {
+        const note = "Mode 2031 requires a host palette actuator and persistent unsolicited-event listener"
+        return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
           paletteActuator: false,
           persistentListener: false,
-        }),
+        })
+      },
       async (ctx) => {
         const ps = await queryDecrpm(ctx, 2031)
         // Ps 4 says the terminal knows the mode and cannot set it: unsupported, as decrpmResult grades it (#30557).
@@ -2116,10 +2197,12 @@ export const modesProbes: ProbeDefinition[] = [
   {
     ...probe(
       "modes.decsscls",
-      () =>
-        notTestedResult("DECSSCLS controls presentation timing; the headless parser paints no frames", {
+      () => {
+        const note = "DECSSCLS controls presentation timing; the headless parser paints no frames"
+        return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
           presentation: false,
-        }),
+        })
+      },
       decsscls,
     ),
     // The terminal arm captures timed frames and reports evidence "pixels"; the headless arm paints

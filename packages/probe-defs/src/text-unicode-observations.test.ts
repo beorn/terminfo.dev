@@ -48,6 +48,7 @@ function headless(overrides: Partial<LibProbeSource> = {}): LibProbeSource {
       inverse: false,
       hidden: false,
       blink: false,
+      overline: false,
       fg: null,
       bg: null,
     }),

@@ -48,6 +48,9 @@ export function createDraft(
         ? decodeCollectorRun
         : decodeCollectorDraft
   const decoded = decoder(rawRunPath, raw, receipt.manifest, receipt.collectorRevision)
+  if ("kind" in decoded && decoded.kind === "empty-selection") {
+    throw new Error(`${rawRunPath}: empty selection where a capture was required`)
+  }
   const { run } = decoded
   if (run.screenshotRefs.length > 0 || (run.textSnapshotRefs?.length ?? 0) > 0) {
     throw new Error(

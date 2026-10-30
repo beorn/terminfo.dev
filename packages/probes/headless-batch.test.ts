@@ -8,19 +8,33 @@
 /* oxlint-disable typescript/no-deprecated -- Exercise the production TerminalBackend adapter boundary. */
 import { createXtermBackend } from "@termless/xtermjs"
 import { createVtermBackend } from "@termless/vterm"
+import { createWeztermBackend } from "@termless/wezterm"
 import { resolve as resolveLibvterm } from "@termless/libvterm"
 import { resolve as resolveVt100 } from "@termless/vt100"
 import { resolve as resolveVt220 } from "@termless/vt220"
 import { createKittyBackend, isKittyAvailable } from "@termless/kitty"
-import { ALL_PROBES, type ProbeDefinition } from "@terminfo/probe-defs"
+import { createGhosttyNativeBackend, isGhosttyNativeAvailable } from "@termless/ghostty-native"
+import type { EmulatorWarning } from "@termless/core"
+import {
+  ALL_PROBES,
+  SEMANTIC_PROMPT_SOURCE_REVIEW,
+  HARNESS_INCOMPLETE_TEST,
+  HEADLESS_OBSERVABLE_REVIEW,
+  initializeRunDraft,
+  type CapturedRunDraft,
+  type ProbeCallbackResult,
+  type ProbeDefinition,
+} from "@terminfo/probe-defs"
 import { fakeProbeResult } from "@terminfo/probe-defs/testing/fake-probe-result"
-import { validateObservation } from "@terminfo/run-parser"
+import { regradeRow, satisfiesContract, type GroupContract } from "../probe-defs/src/testing/group-harness.ts"
+import { validateObservation, retainCaptureBinding } from "@terminfo/run-parser"
 import { spawnSync } from "node:child_process"
 import { mkdtempSync, readFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, beforeEach, expect, test, vi } from "vitest"
-import { collectBatch, createLibProbeSource } from "./headless-batch.ts"
+import { collectBatch, createLibProbeSource, feedCapture } from "./headless-batch.ts"
+import { finalizeCollectedDraft } from "../terminfo.dev/src/capture-writer.ts"
 
 /** Feature captures only; collector qualification metadata is asserted in sentinel-member.test.ts. */
 function probeReplies(batch: Awaited<ReturnType<typeof collectBatch>>) {
@@ -31,6 +45,184 @@ function probeReplies(batch: Awaited<ReturnType<typeof collectBatch>>) {
 async function backend() {
   return createXtermBackend()
 }
+
+// The old null arm left this real-source feature unattempted; fake callback tests cannot
+// catch a missing registry schedule or actuator forward at the production recorder boundary.
+test("viewport hold records a real xterm measurement and both output phases", async () => {
+  const id = "scrollback.viewport-hold-output"
+  const batch = await collectBatch(backend, "xtermjs", registryDefinitions([id]))
+  expect(batch.results).toMatchObject([{ featureId: id, status: "supported", attempt: { scope: "probe" } }])
+  expect(batch.observations).toMatchObject([{ featureId: id, outcome: "supported", assertionType: "buffer_state" }])
+  expect(batch.assertions).toMatchObject([{ featureId: id, kind: "positive", assertionType: "buffer_state" }])
+  expect(JSON.parse(batch.rawReplies[id]!)).toMatchObject({
+    ordinary: { outcome: "hold", markerObserved: true },
+    synchronized: { outcome: "hold", markerObserved: true },
+  })
+})
+
+test("the real viewport Scrollback contract replays deterministically and satisfies its decided row", async () => {
+  const row: GroupContract[number] = {
+    id: "scrollback.viewport-hold-output",
+    expected: "decided",
+    claim: "The viewport holds on ordinary and synchronized output",
+  }
+  const probe = ALL_PROBES.find((entry) => entry.id === row.id)
+  if (!probe) throw new Error(`Missing Scrollback probe ${row.id}`)
+  expect(probe.lib !== null || probe.term !== null, `${row.id} has no callback`).toBe(true)
+  {
+    const backend = createXtermBackend()
+    backend.init({ cols: 80, rows: 24 })
+    try {
+      const source = () => createLibProbeSource(backend, undefined, undefined, undefined)
+      const first = await regradeRow(probe, row, { headless: source() })
+      const second = await regradeRow(probe, row, { headless: source() })
+      expect(second.after, `${row.id} is not deterministic`).toBe(first.after)
+      expect(second.satisfies, `${row.id} satisfaction is not deterministic`).toBe(first.satisfies)
+      expect(first.satisfies, `${row.id} must route through satisfiesContract`).toBe(
+        satisfiesContract(row, first.after),
+      )
+    } finally {
+      backend.destroy()
+    }
+  }
+  {
+    const backend = createXtermBackend()
+    backend.init({ cols: 80, rows: 24 })
+    try {
+      const required = row.expected === "decided" ? "supported" : row.expected
+      const graded = await regradeRow(probe, row, {
+        headless: createLibProbeSource(backend, undefined, undefined, undefined),
+      })
+      expect(graded.after, `${row.id} reads ${required} from a surface implementing its claim`).toBe(required)
+      expect(graded.satisfies, `${row.id} satisfies its contract row`).toBe(true)
+    } finally {
+      backend.destroy()
+    }
+  }
+})
+
+// #31804 repaired the pinned engine's anchor; #31803 merges second and retains the real witness.
+test("real vterm holds the absolute viewport anchor in both output phases", async () => {
+  const probe = ALL_PROBES.find((entry) => entry.id === "scrollback.viewport-hold-output")
+  if (!probe?.lib) throw new Error("Missing scrollback.viewport-hold-output headless callback")
+  const backend = await createVtermBackend()
+  backend.init({ cols: 80, rows: 24 })
+  try {
+    const result = probe.lib(createLibProbeSource(backend, undefined, undefined, undefined))
+    expect(result.observation?.outcome).toBe("supported")
+    expect(result.assertions).toMatchObject([{ kind: "positive", assertionType: "buffer_state" }])
+    expect(JSON.parse(result.response!)).toMatchObject({
+      ordinary: { outcome: "hold", markerObserved: true },
+      synchronized: { outcome: "hold", markerObserved: true },
+    })
+  } finally {
+    backend.destroy()
+  }
+})
+
+// Scripted callback tests cannot detect a producer declaration lost at the real adapter/collector/writer boundary.
+// These are private unit captures: no source-derived Untestable decision or identity verification is applied.
+test.each([
+  ["wezterm", async () => createWeztermBackend()],
+  ["libvterm", resolveLibvterm],
+] as const)(
+  "retains %s viewport absence through production collection and immutable writer binding",
+  async (name, producer) => {
+    const id = "scrollback.viewport-hold-output"
+    const declaredBackend = await producer()
+    const declaration = declaredBackend.capabilities.productViewport
+    expect(declaration).toMatchObject({
+      available: false,
+      reason: expect.stringContaining(name === "wezterm" ? "Screen" : "libvterm"),
+    })
+    declaredBackend.destroy()
+    // Carry the real producer's declaration on the existing JS harness: absence performs no engine I/O,
+    // and this transport contract must run without the optional WezTerm native addon (including hosted CI).
+    // An xterm-named carrier also proves omission is capability-derived rather than an engine-name list.
+    const factory = async () => {
+      const value = createXtermBackend()
+      value.capabilities.productViewport = declaration
+      return value
+    }
+    const instance = await factory()
+    instance.init({ cols: 80, rows: 24 })
+    try {
+      const source = createLibProbeSource(instance, undefined, undefined, undefined)
+      expect(source.capabilities.productViewport).toEqual(declaration)
+      expect(source.scrollViewport).toBeUndefined()
+    } finally {
+      instance.destroy()
+    }
+    const draft = initializeRunDraft({
+      source: { kind: "live" },
+      runId: `viewport-absence-${name}`,
+      sourceRevision: "a".repeat(40),
+      intendedSubject: { kind: "lib", id: name },
+      manifest: {
+        schemaVersion: 4,
+        probeHash: "viewport-absence-suite",
+        adapterVersion: "3",
+        catalogIds: [id],
+        probes: { term: [], mux: [], lib: [id] },
+      },
+    })
+    const batch = await collectBatch(factory, name, registryDefinitions([id]), draft)
+    expect(batch.results).toMatchObject([
+      {
+        featureId: id,
+        status: "test-todo",
+        criterionBranch: HEADLESS_OBSERVABLE_REVIEW,
+        tests: [{ id: "review", status: "test-todo", reason: declaration!.reason }],
+      },
+    ])
+    expect(batch.observations).toEqual([])
+    expect(batch.assertions).toEqual([])
+    expect(JSON.parse(batch.rawReplies[id]!)).toMatchObject({ productViewport: declaration, runtimeIdentity: null })
+    const captured: CapturedRunDraft = {
+      ...draft,
+      subject: {
+        kind: "lib",
+        id: name,
+        version: "unit-fixture",
+        os: "linux",
+        osVersion: null,
+        outerTerminal: null,
+        mux: null,
+        config: null,
+        permissions: null,
+      },
+      identity: "unverified",
+      measuredAt: "2026-10-30T01:00:00.000Z",
+      origin: { kind: "collector" },
+      rawReplies: { ...draft.rawReplies, ...batch.rawReplies },
+      assertions: batch.assertions,
+      results: batch.results,
+    }
+    const finalized = finalizeCollectedDraft(captured)
+    expect(finalized.sealedAt).toBeUndefined()
+    if (finalized.sealedAt !== undefined) throw new Error("Expected pending viewport review draft")
+    expect(finalized.results).toEqual(batch.results)
+    const key = `collector.capture.${id}`
+    const binding = finalized.rawReplies[key]!
+    expect(JSON.parse(binding)).toMatchObject({
+      featureId: id,
+      criterionBranch: HEADLESS_OBSERVABLE_REVIEW,
+      rawReplyRefs: expect.arrayContaining([expect.objectContaining({ key: id })]),
+    })
+    // A declaration removed or reason changed after collection must bind different bytes, never reuse approval.
+    for (const mutation of ["declaration", "reason"]) {
+      const changed = structuredClone(captured)
+      const raw = JSON.parse(changed.rawReplies[id]!) as { productViewport?: { available: false; reason: string } }
+      if (mutation === "declaration") delete raw.productViewport
+      else raw.productViewport!.reason += " changed audit"
+      changed.rawReplies[id] = JSON.stringify(raw)
+      expect(finalizeCollectedDraft(changed).rawReplies[key]).not.toBe(binding)
+      const alreadyBound = structuredClone(finalized)
+      alreadyBound.rawReplies[id] = changed.rawReplies[id]!
+      expect(() => retainCaptureBinding(alreadyBound, id)).toThrow()
+    }
+  },
+)
 
 // libvterm exposes no mode getter; its real cell behavior still decides wrapping.
 test("null mode metadata classes A/B retain measured wrapping, unknown cleanup and raw state", async () => {
@@ -122,7 +314,6 @@ test("requests review for headless OS-input criteria without fabricating app del
     "input.urxvt-mouse",
     "input.x10-mouse",
     "input.button-event-mouse",
-    "input.kitty-click-events",
     "modes.alt-scroll-1007",
     "modes.application-keypad",
   ]
@@ -165,6 +356,125 @@ test("requests review for headless OS-input criteria without fabricating app del
   }
 })
 
+test("input.kitty-click-events measures unsupported on xtermjs via the delegated mouse-encoding extension and enforces C3 wiring", async () => {
+  const id = "input.kitty-click-events"
+  const batch = await collectBatch(backend, "xtermjs", registryDefinitions([id]))
+  expect(batch.ungradedDiagnostics).toEqual({})
+  expect(batch.results).toMatchObject([
+    {
+      featureId: id,
+      status: "unsupported",
+      attempt: { scope: "probe" },
+      assertionType: "input_bytes",
+      rawReplyRef: id,
+    },
+  ])
+  expect(batch.observations).toMatchObject([
+    {
+      featureId: id,
+      outcome: "unsupported",
+      assertionType: "input_bytes",
+      rawReplyRef: id,
+    },
+  ])
+  expect(batch.assertions).toMatchObject([
+    {
+      featureId: id,
+      kind: "negative",
+      action: "kitty-click-events:1",
+      assertionType: "input_bytes",
+      rawReplyRef: id,
+    },
+  ])
+  const observed = JSON.parse(batch.rawReplies[id]!) as Record<string, unknown>
+  expect(observed).toMatchObject({
+    marker: "OSC 133;A;click_events=1",
+    pointer: { x: 5, y: 3 },
+    negativeControl: null,
+    report: null,
+  })
+
+  // C3: declared "mouse-encoding" without an encodeMouse function throws a loud binding defect.
+  const brokenBackend = await createXtermBackend()
+  brokenBackend.init({ cols: 80, rows: 24 })
+  try {
+    const withoutMethod = Object.assign(Object.create(Object.getPrototypeOf(brokenBackend)), brokenBackend, {
+      encodeMouse: undefined,
+    })
+    expect(() => createLibProbeSource(withoutMethod, undefined, undefined, undefined)).toThrow(
+      /declares capability extension "mouse-encoding" without an encodeMouse function/,
+    )
+  } finally {
+    brokenBackend.destroy()
+  }
+
+  // C3: encodeMouse method present without "mouse-encoding" in capabilities.extensions stays unwired -> TEST TODO.
+  const undeclaredBackend = await createXtermBackend()
+  undeclaredBackend.init({ cols: 80, rows: 24 })
+  try {
+    undeclaredBackend.capabilities.extensions.delete("mouse-encoding")
+    const src = createLibProbeSource(undeclaredBackend, undefined, undefined, undefined)
+    expect(src.encodeMouse).toBeUndefined()
+  } finally {
+    undeclaredBackend.destroy()
+  }
+})
+
+// Callback coverage alone did not prove that a shell mark could enter canonical required-review custody.
+test("retains a qualified headless shell mark's required source review through production recording", async () => {
+  const id = "extensions.osc133-a"
+  const { initializeRunDraft } = await import("@terminfo/probe-defs")
+  const draft = initializeRunDraft({
+    source: { kind: "live" },
+    runId: "semantic-prompt-review",
+    sourceRevision: "a".repeat(40),
+    intendedSubject: { kind: "lib", id: "xtermjs" },
+    manifest: {
+      schemaVersion: 4,
+      probeHash: "semantic-prompt-suite",
+      adapterVersion: "3",
+      catalogIds: [id],
+      probes: { term: [], mux: [], lib: [id] },
+    },
+  })
+  const batch = await collectBatch(backend, "xtermjs", registryDefinitions([id]), draft)
+  expect(batch.results).toEqual([
+    expect.objectContaining({
+      featureId: id,
+      status: "test-todo",
+      criterionBranch: SEMANTIC_PROMPT_SOURCE_REVIEW,
+      rawReplyRef: id,
+      tests: [
+        expect.objectContaining({ id: "review", status: "test-todo", attempt: { scope: "none" }, rawReplyRef: id }),
+      ],
+    }),
+  ])
+  expect(batch.observations).toEqual([])
+  expect(batch.assertions).toEqual([])
+  expect(JSON.parse(batch.rawReplies[id]!)).toMatchObject({
+    home: { x: 0, y: 0 },
+    target: { x: 1, y: 0 },
+    control: { x: 0, y: 0 },
+    cell: "X",
+  })
+  // collect-headless.ts assembles its captured run from these production batch fields.
+  const captured = {
+    ...draft,
+    rawReplies: { ...draft.rawReplies, ...batch.rawReplies },
+    assertions: batch.assertions,
+    results: batch.results,
+  }
+  const binding = retainCaptureBinding(captured, id)
+  expect(captured.rawReplies[binding.rawReplyRef]).toBe(binding.source)
+  expect(JSON.parse(binding.source)).toMatchObject({
+    featureId: id,
+    criterionBranch: SEMANTIC_PROMPT_SOURCE_REVIEW,
+    rawReplyRefs: expect.arrayContaining([
+      expect.objectContaining({ key: id, sha256: expect.stringMatching(/^[0-9a-f]{64}$/) }),
+    ]),
+  })
+})
+
 // The no-response grade hid that no F4 engine can read a colour back headless (#30547, @cto D-B): a silent first
 // readback must ask for review with its raw query retained, while an engine that answers keeps its measured grade.
 const COLOR_READBACK_IDS = [
@@ -196,9 +506,26 @@ test.each([
   async (engine, factory) => {
     const batch = await collectBatch(factory, engine, registryDefinitions(COLOR_READBACK_IDS))
     expect(batch.results).toHaveLength(COLOR_READBACK_IDS.length)
-    expect(batch.observations).toEqual([])
-    expect(batch.assertions).toEqual([])
+    // On xtermjs, extensions.osc104-reset-palette is decided via the indexed-cell witness
+    // (_core._inputHandler.onColor events; #31735, @cto 863bef67), while the 7 default/stack
+    // queries remain silent and request color-readback-review.
+    const cellWitnessIds = engine === "xtermjs" ? ["extensions.osc104-reset-palette"] : []
+    expect(batch.observations).toEqual(
+      cellWitnessIds.map((featureId) =>
+        expect.objectContaining({ featureId, outcome: "supported", assertionType: "buffer_state" }),
+      ),
+    )
+    expect(batch.assertions).toEqual(
+      cellWitnessIds.map((featureId) =>
+        expect.objectContaining({ featureId, kind: "positive", assertionType: "buffer_state" }),
+      ),
+    )
     for (const result of batch.results) {
+      if (cellWitnessIds.includes(result.featureId)) {
+        expect(result.status, result.featureId).toBe("supported")
+        expect(result.criterionBranch, result.featureId).toBeUndefined()
+        continue
+      }
       expect(result.status, result.featureId).toBe("test-todo")
       expect(result.criterionBranch, result.featureId).toBe("color-readback-review")
       expect(result.rawReplyRef, result.featureId).toBe(result.featureId)
@@ -308,16 +635,36 @@ for (const [name, create, available] of [
       const previous = vi.fn()
       value.onResponse = previous
       const replies: string[] = []
-      await collectBatch(async () => value, name, [
-        definition("capture", (ctx) => {
-          ctx.feed("\x1b[6n") // This reply belongs to the previous listener.
-          replies.push(ctx.feedCapture("\x1b[2;3H\x1b[6n"))
-          replies.push(ctx.feedCapture("\x1b[4;5H\x1b[6n"))
-          ctx.reset()
-          replies.push(ctx.feedCapture("\x1b[6n"))
-          return fakeProbeResult()
-        }),
-      ])
+      // Kitty declares native reply delivery, whose host-recipe record needs the run draft the collector passes.
+      const { initializeRunDraft } = await import("@terminfo/probe-defs")
+      const draft = initializeRunDraft({
+        source: { kind: "live" },
+        runId: `${name}-reset-capture`,
+        sourceRevision: "a".repeat(40),
+        intendedSubject: { kind: "lib", id: name },
+        manifest: {
+          schemaVersion: 4 as const,
+          probeHash: "reset-capture",
+          adapterVersion: "3",
+          catalogIds: ["capture"],
+          probes: { term: [], mux: [], lib: ["capture"] },
+        },
+      })
+      await collectBatch(
+        async () => value,
+        name,
+        [
+          definition("capture", (ctx) => {
+            ctx.feed("\x1b[6n") // This reply belongs to the previous listener.
+            replies.push(ctx.feedCapture("\x1b[2;3H\x1b[6n"))
+            replies.push(ctx.feedCapture("\x1b[4;5H\x1b[6n"))
+            ctx.reset()
+            replies.push(ctx.feedCapture("\x1b[6n"))
+            return fakeProbeResult()
+          }),
+        ],
+        draft,
+      )
       expect(replies).toEqual(["\x1b[2;3R", "\x1b[4;5R", "\x1b[1;1R"])
       expect(previous.mock.calls.map(([bytes]) => new TextDecoder().decode(bytes)).join("")).toBe("\x1b[1;1R")
       expect(value.onResponse).toBe(previous)
@@ -329,6 +676,76 @@ for (const [name, create, available] of [
     }
   })
 }
+
+// #31373 (@cto 15cf18e4): a capture that reached an engine callback its adapter does not reproduce is a harness gap.
+// The adapters above report no such callback, so no existing collector test could grade one.
+// xterm.js stands in for an adapter that reports one unreproduced callback per OSC 52 read.
+function unreproducingXterm() {
+  const value = createXtermBackend()
+  const warnings: EmulatorWarning[] = []
+  value.capabilities.extensions.add("warnings")
+  const feed = value.feed.bind(value)
+  value.feed = (bytes) => {
+    if (new TextDecoder().decode(bytes).includes("\x1b]52;")) {
+      warnings.push({ code: "UNREPRODUCED_CALLBACK", message: "clipboard_control", backend: "xtermjs" })
+    }
+    feed(bytes)
+  }
+  return Object.assign(value, {
+    getWarnings: () => [...warnings],
+    clearWarnings: () => {
+      warnings.length = 0
+    },
+  })
+}
+
+test.each([
+  { name: "silent", query: "\x1b]52;c;?\x1b\\", harness: true },
+  { name: "replied", query: "\x1b]52;c;?\x1b\\\x1b[6n", harness: false },
+])("grades a capture that reached an unreproduced callback ($name)", async ({ query, harness }) => {
+  const value = unreproducingXterm()
+  const measured = (reply: string): ProbeCallbackResult => ({ ...fakeProbeResult("query_reply"), response: reply })
+  const batch = await collectBatch(async () => value, "xtermjs", [
+    definition("clipboard.read", (ctx) => measured(ctx.feedCapture(query))),
+  ])
+  const result = batch.results.find((entry) => entry.featureId === "clipboard.read")
+  if (!harness) {
+    expect(result?.tests.some((test) => test.id === HARNESS_INCOMPLETE_TEST)).toBe(false)
+    expect(batch.rawReplies["clipboard.read"]).toMatch(/^\x1b\[\d+;\d+R$/)
+    return
+  }
+  expect(result?.status).toBe("test-failure")
+  expect(result?.tests).toEqual([
+    expect.objectContaining({
+      id: HARNESS_INCOMPLETE_TEST,
+      status: "test-failure",
+      reason: "Harness incomplete: xtermjs did not reproduce clipboard_control; silence is not evidence",
+    }),
+  ])
+  expect(JSON.parse(batch.rawReplies["clipboard.read"] ?? "null")).toEqual({
+    unreproduced: { backend: "xtermjs", captures: [{ query, callbacks: ["clipboard_control"] }] },
+    measuredResponse: "",
+  })
+})
+
+// #31373 (@cto 4ac8b275): on the native host route, the silent capture itself carries why it is silent, so the
+// host-cause validator can accept it per capture; a capture that replied carries no cause.
+test.each([
+  { name: "silent", query: "\x1b]52;c;?\x07", cause: true },
+  { name: "replied", query: "\x1b]52;c;?\x07\x1b[6n", cause: false },
+])("a host capture beside an unreproduced callback records its harness cause ($name)", ({ query, cause }) => {
+  const value = unreproducingXterm()
+  value.init({ cols: 80, rows: 24 })
+  const captures: Parameters<typeof feedCapture>[2] = []
+  try {
+    feedCapture(value, query, captures, { captures: [], silent: false })
+  } finally {
+    value.destroy()
+  }
+  expect(captures?.[0]?.cause).toEqual(
+    cause ? { kind: "harness-unreproduced", callbacks: ["clipboard_control"] } : undefined,
+  )
+})
 
 test("real vterm grades interior-region SU without moving the row above into history", async () => {
   const id = "scrollback.scroll-up"
@@ -850,7 +1267,7 @@ test("a result with no observation keeps its response and refused assertions", a
 })
 
 // 30585: a grader that got no reply names that as its reason, and the reason is the record of the missing raw.
-// The recorder admits it as measured, publishes no verdict and synthesizes nothing into rawReplies.
+// The observation keeps its measured reason; a rowless callback is a writer defect and synthesizes no raw reply.
 test("admits an inconclusive no-response result with its named reason and no synthesized raw", async () => {
   const batch = await collectBatch(backend, "xtermjs", [
     definition(
@@ -868,7 +1285,11 @@ test("admits an inconclusive no-response result with its named reason and no syn
   expect(batch.assertions).toStrictEqual([])
   expect(probeReplies(batch)).toStrictEqual({})
   expect(batch.results).toStrictEqual([
-    expect.objectContaining({ featureId: "silent", status: "test-failure", reason: "no-response" }),
+    expect.objectContaining({
+      featureId: "silent",
+      status: "test-failure",
+      reason: "writer default: inconclusive observation without test rows; callback defect",
+    }),
   ])
   expect(batch.results[0]).not.toHaveProperty("rawReplyRef")
   validateObservation(batch.observations[0]!, "run", batch.rawReplies, batch.assertions)
@@ -1072,6 +1493,128 @@ test.each([undefined, () => undefined, () => 5])("OSC 8 metadata declaration mis
   }
 })
 
+// A getter method alone cannot authorize state observation; forwarding must preserve its receiver
+// and all three nullable slots without synthesizing colors from the real backend's cells.
+test("default-color source forwarding requires an advertised callable aggregate getter", () => {
+  const value = createXtermBackend({ cols: 80, rows: 24 })
+  const colors = { fg: null, bg: { r: 1, g: 2, b: 3 }, cursor: null }
+  const readColors = function (this: unknown) {
+    expect(this).toBe(value)
+    return colors
+  }
+  try {
+    Object.assign(value, { getDefaultColors: readColors })
+    expect(createLibProbeSource(value, undefined, undefined, undefined).getDefaultColors).toBeUndefined()
+    value.capabilities.extensions.add("default-colors")
+    const source = createLibProbeSource(value, undefined, undefined, undefined)
+    expect(source.getDefaultColors?.()).toEqual(colors)
+    Object.assign(value, { getDefaultColors: undefined })
+    expect(createLibProbeSource(value, undefined, undefined, undefined).getDefaultColors).toBeUndefined()
+    Object.assign(value, { getDefaultColors: 42 })
+    expect(createLibProbeSource(value, undefined, undefined, undefined).getDefaultColors).toBeUndefined()
+  } finally {
+    value.destroy()
+  }
+})
+
+// Native adapter tests and isolated callback controls cannot catch source forwarding or collector
+// binding failures. This journey uses the authentic addon and unchanged registry definitions.
+const ghosttyNativeAvailable = isGhosttyNativeAvailable()
+test.skipIf(!ghosttyNativeAvailable)(
+  `real Ghostty default-color resets and OSC 8 retain bound buffer-state evidence${ghosttyNativeAvailable ? "" : " (NOT MEASURED: native addon unavailable)"}`,
+  async () => {
+    const resetRows = [
+      ["extensions.osc110-reset-fg", "fg", 10, 110],
+      ["extensions.osc111-reset-bg", "bg", 11, 111],
+      ["extensions.osc112-reset-cursor", "cursor", 12, 112],
+    ] as const
+    const ids = [...resetRows.map(([id]) => id), "extensions.osc8"]
+    const instances: { writes: string[]; replies: string[] }[] = []
+    let metadataAvailable = false
+    const batch = await collectBatch(
+      async () => {
+        const value = createGhosttyNativeBackend()
+        metadataAvailable =
+          value.capabilities.extensions.has("default-colors") || value.capabilities.extensions.has("hyperlinks")
+        const instance = { writes: [] as string[], replies: [] as string[] }
+        instances.push(instance)
+        const feed = value.feed.bind(value)
+        vi.spyOn(value, "feed").mockImplementation((bytes) => {
+          instance.writes.push(new TextDecoder().decode(bytes))
+          feed(bytes)
+        })
+        value.onResponse = (bytes) => instance.replies.push(new TextDecoder().decode(bytes))
+        return value
+      },
+      "ghostty-native",
+      registryDefinitions(ids),
+    )
+    expect(batch.results.map(({ featureId, status }) => ({ featureId, status }))).toEqual(
+      ids.map((featureId) => ({ featureId, status: metadataAvailable ? "supported" : "test-todo" })),
+    )
+    // Native 0.10.2 lacks metadata; retain its TODO evidence and the source build's positive assertions.
+    if (!metadataAvailable) {
+      expect(batch.results.map(({ rawReplyRef }) => rawReplyRef)).toEqual(ids)
+      expect(batch.observations).toEqual([])
+      expect(batch.assertions).toEqual([])
+      expect(batch.ungradedDiagnostics).toEqual({})
+      expect(batch.notTested).toMatchObject(
+        ids.map((featureId) => ({
+          featureId,
+          reason: "no-semantic-observable",
+          rawReplyRef: featureId,
+        })),
+      )
+      for (const [id] of resetRows) {
+        expect(JSON.parse(batch.rawReplies[id]!)).toMatchObject({
+          originalRaw: "",
+          controls: Array.from({ length: 4 }, () => ({ response: "" })),
+        })
+      }
+      expect(JSON.parse(batch.rawReplies["extensions.osc8"]!)).toEqual({
+        chars: [..."ALINKZ"],
+        links: Array.from({ length: 6 }, () => ({ reported: false })),
+      })
+      return
+    }
+    expect(batch.observations).toHaveLength(4)
+    expect(batch.notTested).toEqual([])
+    expect(batch.ungradedDiagnostics).toEqual({})
+    for (const id of ids) {
+      expect(batch.observations.find((row) => row.featureId === id)).toMatchObject({
+        outcome: "supported",
+        assertionType: "buffer_state",
+        rawReplyRef: id,
+      })
+      expect(batch.assertions.filter((row) => row.featureId === id)).toMatchObject([
+        { kind: "positive", assertionType: "buffer_state", rawReplyRef: id, observed: batch.rawReplies[id] },
+      ])
+    }
+    const unset = { fg: null, bg: null, cursor: null }
+    const seed = { r: 170, g: 187, b: 204 }
+    for (const [index, [id, slot, setter, reset]] of resetRows.entries()) {
+      const writes = [`\x1b]${setter};rgb:aa/bb/cc\x07`, `\x1b]${reset}\x07`]
+      expect(JSON.parse(batch.rawReplies[id]!)).toEqual({
+        slot,
+        baseline: unset,
+        seeded: { ...unset, [slot]: seed },
+        restored: unset,
+        seed,
+        writes,
+        errors: [],
+      })
+      expect(instances[index]!.writes).toEqual(writes)
+    }
+    const uri = "https://example.com/osc8-proof"
+    expect(JSON.parse(batch.rawReplies["extensions.osc8"]!)).toEqual({
+      chars: [..."ALINKZ"],
+      links: [null, uri, uri, uri, uri, null].map((uri) => ({ reported: true, uri })),
+    })
+    expect(instances).toHaveLength(4)
+    expect(instances.map(({ replies }) => replies)).toEqual([[], [], [], []])
+  },
+)
+
 // Runtime status must preserve attempted failure separately from an unstarted implementation;
 // old observation/coverage tests cannot express a catalogue member with no callback.
 test("records a complete explicit catalogue and retains probe attempt failure", async () => {
@@ -1141,3 +1684,200 @@ test("retains execution-only failure bytes despite pass true and rejects a typed
     { featureId: "declared-null", outcome: "error", reason: "collector-error" },
   ])
 })
+
+// #31774 (@cto 5429c292 Q1.2): an unaudited native artifact must be refused once up front before any probe runs,
+// with one sentence on stderr and in the run record naming loaded sha, expected sha, nativeTreeOid, and audited keys;
+// no per-probe errors, no sentinel degradation, and no secondary throw in finalizeHeadlessAttempt.
+test("refuses an unaudited native artifact up front before probe collection with loaded sha, expected sha, nativeTreeOid, and audited keys", async () => {
+  const { initializeRunDraft, readCollectorAttempt, recordCollectionFailure, recordCollectorAttempt } =
+    await import("@terminfo/probe-defs")
+  const { NATIVE_HOST_AUDITS } = await import("../probe-defs/src/native-host-audit.ts")
+  const { REPLY_PATH_AUDITS } = await import("../probe-defs/src/reply-path-audit.ts")
+  const { assertAuditedNativeArtifact, finalizeHeadlessAttempt } = await import("./headless-batch.ts")
+  const loadedSha = "67736cf8d7d96156ac921566713032a445bfd8564e499f5e715c3c7f077d8af6"
+  const expectedSha = "32d76284e5a3c7673fafbbc83a16717fa0a1c1811c7d659d982176a53ceb1aa9"
+  const nativeTreeOid = "4c4fb801b537704068deac6b8df24ed86a68cf35"
+  const runtimeIdentity = {
+    kind: "native" as const,
+    engineVersion: "0.26.0",
+    adapterVersion: "0.1.0",
+    termlessRevision: "cd5cd5172680fd240ee3445dea96289793bc2d59",
+    loadedBinary: {
+      path: "vendor/termless/packages/alacritty/termless-alacritty-native.node",
+      sha256: loadedSha,
+    },
+    provenance: {
+      sha256: loadedSha,
+      sourceCommit: "cd5cd5172680fd240ee3445dea96289793bc2d59",
+      buildHash: "94ef4fbf1e21d454c70a39efaf9cfde1ebabe57a0f9cdb186fef782cfb1ff8ce",
+      toolchain: "rustc 1.94.0",
+      lockSha256: "1f89f2579b7d786a116d8fefb8267c4af076bd3a3893adcf14b00c4466740497",
+    },
+  }
+  const declaration = {
+    boundary: "feed-and-getCursor" as const,
+    adapterSources: [{ path: "packages/alacritty/src/index.ts", blobOid: "b4154cbd6ef4a83ce2cbf3dcf26ff13d645efd05" }],
+    engine: { kind: "native" as const, sha256: expectedSha },
+  }
+  // Audited artifact passes without emitting a warning or throwing.
+  const draftPath = "pass-s93GZY/lib-alacritty-unknown.draft.json"
+  const warnings: string[] = []
+  expect(() =>
+    assertAuditedNativeArtifact(
+      "alacritty",
+      {
+        ...runtimeIdentity,
+        loadedBinary: { ...runtimeIdentity.loadedBinary, sha256: expectedSha },
+        provenance: { ...runtimeIdentity.provenance, sha256: expectedSha },
+      },
+      declaration,
+      nativeTreeOid,
+      draftPath,
+      (line) => warnings.push(line),
+    ),
+  ).not.toThrow()
+  expect(warnings).toEqual([])
+
+  // Unaudited artifact refuses up front before any probe runs.
+  const ids = ["extensions.osc10-fg-color", "device.primary-da"]
+  const startedAt = "2026-10-29T22:34:03.743Z"
+  const draft = initializeRunDraft({
+    source: { kind: "live" },
+    runId: "alacritty-unaudited-preflight",
+    sourceRevision: "a".repeat(40),
+    intendedSubject: { kind: "lib", id: "alacritty" },
+    manifest: {
+      schemaVersion: 4,
+      probeHash: "suite-hash",
+      adapterVersion: "4",
+      catalogIds: ids,
+      probes: { term: [], mux: [], lib: ids },
+    },
+  })
+  recordCollectorAttempt(draft, { result: "started", startedAt, ids, hostInputs: { "foreground-rgb": "not-supplied" } })
+  draft.runtimeIdentity = runtimeIdentity
+
+  let caught: Error | undefined
+  try {
+    assertAuditedNativeArtifact("alacritty", runtimeIdentity, declaration, nativeTreeOid, draftPath, (line) =>
+      warnings.push(line),
+    )
+  } catch (error) {
+    caught = error as Error
+    finalizeHeadlessAttempt(
+      draft,
+      {
+        ...readCollectorAttempt(draft.rawReplies),
+        ids,
+        startedAt,
+        result: "failed",
+        error: caught.message,
+      },
+      registryDefinitions(ids),
+    )
+    recordCollectionFailure(draft, startedAt, caught.message, ids)
+  }
+
+  expect(caught).toBeDefined()
+  expect(warnings).toEqual([caught!.message])
+  expect(caught!.message).toContain(loadedSha)
+  expect(caught!.message).toContain(`expected sha ${expectedSha}`)
+  expect(caught!.message).toContain(`nativeTreeOid ${nativeTreeOid}`)
+  expect(caught!.message).toContain(`draft: ${draftPath}`)
+  for (const key of [...NATIVE_HOST_AUDITS.keys(), ...REPLY_PATH_AUDITS.keys()]) {
+    expect(caught!.message).toContain(key.slice(0, 12))
+  }
+  expect(draft.rawReplies["collector.failure"]).toBe(caught!.message)
+  expect(draft.rawReplies["collector.finalizationFailure"]).toBeUndefined()
+  expect(draft.rawReplies["collector.replyPath"]).toBeUndefined()
+  expect(Object.keys(draft.rawReplies).filter((key) => key.startsWith("collector.hostRecipes."))).toEqual([])
+  expect(draft.results.every((row) => row.attempt.scope === "collection" && row.reason === caught!.message)).toBe(true)
+
+  // #31810: kitty is typed "native" in backends.json but is a `kitty +runpy` subprocess bridge that loads
+  // no .node addon; evaluating readNativeArtifactTreeOid(entry.package) as an argument to assertAuditedNativeArtifact
+  // must never ask require.cache for a loaded native addon in packages/kitty.
+  const { readNativeArtifactTreeOid } = await import("./headless-identity.ts")
+  const kittyIdentity = {
+    kind: "native" as const,
+    engineVersion: "0.49.2",
+    adapterVersion: "0.10.2",
+    termlessRevision: "07628619c7b5b5f74de1536df16dab0bc62676b6",
+    loadedBinary: {
+      path: "/nix/store/fbpk67n6fd9kb95vl7ksrc7pkh3gx3qx-kitty-official-binary-0.49.2/bin/kitty",
+      sha256: "bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886",
+    },
+    provenance: {
+      sha256: "bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886",
+      sourceCommit: "07628619c7b5b5f74de1536df16dab0bc62676b6",
+      buildHash: "88e840e1b8e7f09edf3464ee33df8753fd5107838de15bccb6ea59e0dd6cc9c3",
+      toolchain: "Nix kitty +runpy",
+      lockSha256: "282d1098337a5705a7c1d13188a74d2fe34565766619e8d6b21a48d5b67451be",
+    },
+  }
+  const kittyWarnings: string[] = []
+  expect(readNativeArtifactTreeOid("@termless/kitty")).toBeUndefined()
+  expect(readNativeArtifactTreeOid("@termless/kitty", "kitty")).toBeUndefined()
+  expect(() =>
+    assertAuditedNativeArtifact(
+      "kitty",
+      kittyIdentity,
+      undefined,
+      readNativeArtifactTreeOid("@termless/kitty", "kitty"),
+      "pass-qd5XqF/lib-kitty-unknown.draft.json",
+      (line) => kittyWarnings.push(line),
+    ),
+  ).not.toThrow()
+  expect(kittyWarnings).toEqual([])
+})
+
+// 31387: Ghostty native's adapter reports an empty title after OSC 2, so the title-stack round trip observes
+// nothing. A rowless inconclusive was folded to TEST FAILURE as a callback defect; an unobservable setup takes
+// the headless observable review instead, with the three empty readings retained as raw state.
+const TITLE_STACK_IDS = ["device.xtwinops-22", "device.xtwinops-23"] as const
+
+function expectTitleSetupReview(batch: Awaited<ReturnType<typeof collectBatch>>): void {
+  expect(batch.results).toMatchObject(
+    TITLE_STACK_IDS.map((featureId) => ({
+      featureId,
+      status: "test-todo",
+      criterionBranch: HEADLESS_OBSERVABLE_REVIEW,
+      tests: [
+        {
+          id: "review",
+          status: "test-todo",
+          reason: "Headless observable review required: Title setup was not observable",
+        },
+      ],
+    })),
+  )
+  expect(batch.observations).toEqual([])
+  expect(batch.assertions).toEqual([])
+  for (const id of TITLE_STACK_IDS) {
+    expect(JSON.parse(batch.rawReplies[id]!)).toEqual({ original: "", changed: "", restored: "" })
+  }
+}
+
+test("an adapter that reports no title gives the title-stack cells a headless observable review", async () => {
+  const batch = await collectBatch(
+    async () => {
+      const value = createXtermBackend()
+      vi.spyOn(value, "getTitle").mockReturnValue("")
+      return value
+    },
+    "xtermjs",
+    registryDefinitions(TITLE_STACK_IDS),
+  )
+  expectTitleSetupReview(batch)
+})
+
+test.skipIf(!ghosttyNativeAvailable)(
+  `real Ghostty native title-stack cells are a headless observable review${ghosttyNativeAvailable ? "" : " (NOT MEASURED: native addon unavailable)"}`,
+  async () => {
+    const batch = await collectBatch(
+      async () => createGhosttyNativeBackend(),
+      "ghostty-native",
+      registryDefinitions(TITLE_STACK_IDS),
+    )
+    expectTitleSetupReview(batch)
+  },
+)

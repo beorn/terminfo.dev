@@ -10,11 +10,10 @@
  *   SGR 0) and reset.ts (reset.sgr) on owned contexts.
  * @testonly none
  */
-import type { RegionReadback } from "./region-readback.ts"
+import { SENTINEL, type RegionReadback } from "./region-readback.ts"
 
 /** The cells the row compares: the two YY cells, never the XX cells nor the witness. */
 const REGION = { top: 3, left: 5, bottom: 3, right: 6 } as const
-const SENTINEL = { row: 1, col: 1 } as const
 const CURSOR_ROW = 4
 
 /**
@@ -74,7 +73,12 @@ function expectedFrame(setup: string, residual: string): string {
   )
 }
 
-function row(setup: string, reset: string, residual: string): Omit<RegionReadback, "pixelGeometry"> {
+function row(
+  setup: string,
+  reset: string,
+  residual: string,
+  setupReference?: string,
+): Omit<RegionReadback, "pixelGeometry"> {
   const styledYY = `${setup}YY`
   const seed = frame(setup, styledYY)
   return {
@@ -84,10 +88,10 @@ function row(setup: string, reset: string, residual: string): Omit<RegionReadbac
     seed,
     edit: `\x1b[3;3H${setup}XX${reset}YY\x1b[${CURSOR_ROW};1H`,
     expected: expectedFrame(setup, residual),
-    // The frame a terminal that IGNORED this reset leaves: the setup attribute still on YY. It is
-    // the seed frame by construction, so the "cannot separate" branch can never fire on a row with a
-    // real discriminator, and a no-op still reads as the measured negative through `after == ignored`.
-    ignored: seed,
+    // A no-op already matches seed. Companion rows also distinguish loss of the preserve claim:
+    // expected paints the residual, ignored paints neutral, and the independent setup qualifies seed.
+    ignored: setupReference === undefined ? seed : expectedFrame(setup, ""),
+    ...(setupReference === undefined ? {} : { setupReference: expectedFrame(setup, setupReference) }),
     timeoutMs: 5000,
     pollMs: 250,
     minRows: CURSOR_ROW,
@@ -111,12 +115,12 @@ export const RESET_FAMILY_CAPTURE: Record<string, Omit<RegionReadback, "pixelGeo
   },
   "sgr.fg.default": row("\x1b[31m", "\x1b[39m", ""),
   "sgr.bg.default": row("\x1b[42m", "\x1b[49m", ""),
-  "sgr.underline-color-reset": row("\x1b[4m\x1b[58;2;255;0;128m", "\x1b[59m", "\x1b[4m"),
+  "sgr.underline-color-reset": row("\x1b[4m\x1b[58;2;255;0;128m", "\x1b[59m", "\x1b[4m", "\x1b[58;2;255;0;128m\x1b[4m"),
   "sgr.selective-reset.bold": {
     ...row("\x1b[1;2;3m", "\x1b[22m", "\x1b[3m"),
     noIndependentReference: NO_INDEPENDENT_REFERENCE,
   },
-  "sgr.selective-reset.underline": row("\x1b[1;4m", "\x1b[24m", "\x1b[1m"),
-  "sgr.selective-reset.italic": row("\x1b[1;3m", "\x1b[23m", "\x1b[1m"),
-  "sgr.selective-reset.inverse": row("\x1b[1;7m", "\x1b[27m", "\x1b[1m"),
+  "sgr.selective-reset.underline": row("\x1b[1;4m", "\x1b[24m", "\x1b[1m", "\x1b[1m\x1b[4m"),
+  "sgr.selective-reset.italic": row("\x1b[1;3m", "\x1b[23m", "\x1b[1m", "\x1b[1m\x1b[3m"),
+  "sgr.selective-reset.inverse": row("\x1b[1;7m", "\x1b[27m", "\x1b[1m", "\x1b[1m\x1b[7m"),
 }

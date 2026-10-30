@@ -6,10 +6,12 @@ import type {
   TermProbeSource,
   TerminalQueryOutcome,
   HostInputName,
+  ObservationFrame,
 } from "./types.ts"
 import {
   REPLY_AFTER_SENTINEL_NOTE,
-  alacrittyHostRecipeResult,
+  HEADLESS_OBSERVABLE_REVIEW,
+  SEMANTIC_PROMPT_SOURCE_REVIEW,
   decrpmPs,
   decrpmReplyPattern,
   decrpmReading,
@@ -30,8 +32,47 @@ import {
   sgrCaptureTooSmall,
   unmeasuredCellResult,
 } from "./helpers.ts"
+import { nativeHostRecipeResult } from "./native-host-audit.ts"
 import { sgrTermReadback } from "./sgr.ts"
-import { captureRegionGeometry, captureRegionReadbackDecision, collectorRegionRead } from "./region-readback.ts"
+import {
+  beginCaptureLifecycle,
+  captureRegionGeometry,
+  captureRegionReadbackDecision,
+  collectorRegionRead,
+  endCaptureLifecycle,
+} from "./region-readback.ts"
+import {
+  KITTY_BOUNDS,
+  KITTY_CLEAR,
+  KITTY_FRAME_BLUE,
+  KITTY_FRAME_RED,
+  KITTY_GAP_MS,
+  KITTY_GUARD_REGION,
+  KITTY_GUARD_TEXT,
+  KITTY_LOOP_FOREVER,
+  KITTY_PLACEHOLDER_BOUNDS,
+  KITTY_REGION,
+  KITTY_RETRY_FACTOR,
+  KITTY_WAIT_FACTOR,
+  decideKittyAnimation,
+  decideKittyPlaceholders,
+  kittyBlockOrigin,
+  kittyBlockPixels,
+  kittyDeleteImage,
+  kittyFrameTransfer,
+  kittyImageNumber,
+  kittyPark,
+  kittyPlace,
+  kittyPlaceholderNumber,
+  kittyPlaceholderText,
+  kittyRootGap,
+  kittySelectFrame,
+  kittyStartPlayback,
+  kittyStopPlayback,
+  kittyVirtualPlacement,
+  kittyWait,
+  type KittyDigestPair,
+} from "./kitty-capture.ts"
 import { SIXEL_BOUNDS, SIXEL_REGION, sixelReadback } from "./sixel-capture.ts"
 
 /** A minimal solid-red 8x8 PNG; the OSC 1337 inline image target renders it as reviewable pixels. */
@@ -309,7 +350,7 @@ function seedColorReadback(capture: (write: string) => string, slot: string, pat
     setterRaw,
     seededRaw,
     color,
-    verified: setterRaw === "" && frame === seededRaw && color !== null && sameRgb(color, seededCurrentColor),
+    verified: setterRaw === "" && frame === seededRaw && color !== null && sameRgbText(color, seededCurrentColor),
   }
 }
 
@@ -372,7 +413,7 @@ function oscColorQueryProbe(id: string, oscCode: number, index?: number): ProbeD
           const answer = (result: ProbeCallbackResult) =>
             hostInput === undefined
               ? result
-              : alacrittyHostRecipeResult(ctx, result, "color-request", hostInput, querySeq, raw === "")
+              : nativeHostRecipeResult(ctx, result, "color-request", hostInput, querySeq, raw === "")
           if (raw !== "" || !reviewInitialValue) {
             return answer(oscReplyResult(raw, pattern.exec(raw)?.[0] ?? null, expected, prefix))
           }
@@ -450,10 +491,7 @@ function highlightResetProbe(id: string, setCode: number, resetCode: number): Pr
   return {
     ...probe(
       id,
-      (ctx) => {
-        ctx.feed(`\x1b]${resetCode}\x07X`)
-        return notTestedResult(`highlight colour reset (OSC ${resetCode})`, { cell: ctx.getCell(0, 0) })
-      },
+      colorResetProbe(setCode, resetCode),
       async (ctx): Promise<ProbeCallbackResult> => {
         const initial = await read(ctx)
         if (!initial) {
@@ -509,7 +547,7 @@ function highlightResetProbe(id: string, setCode: number, resetCode: number): Pr
     // The callback mutates the highlight slot, so the collector must hold a disposable receipt:
     // the same classification the OSC 10-14 reset probes carry.
     termNeedsDisposable: true,
-    libAssertionType: null,
+    libAssertionType: "query_reply",
   }
 }
 
@@ -545,8 +583,8 @@ function oscSimpleQueryProbe(
             identity.integrity.kind === "source" &&
             identity.integrity.cleanTree &&
             identity.integrity.repository === "git@github.com:beorn/vterm.git" &&
-            identity.integrity.revision === "1cfc325f3aedd4617e437ee76e6a03fc2cc16438" &&
-            identity.integrity.treeOid === "2ee13d2cb894e86ee9575dd6945f42028df44966"
+            identity.integrity.revision === "53a9eb9291b7880f4dc6a39a6802301049997a72" &&
+            identity.integrity.treeOid === "617ae6002c7befea7b3e43d11bf23e6b433e3d65"
           ) {
             return reviewResult(
               "headless-geometry-review",
@@ -557,7 +595,7 @@ function oscSimpleQueryProbe(
                 raw,
                 runtimeIdentity: identity,
                 sourceCitation:
-                  "vterm screen.ts at 1cfc325f: ScreenOptions has no physical font metrics; OSC1337 ReportCellSize and OSC776 deliberately report unknown zero dimensions (#30575)",
+                  "vterm screen.ts at 53a9eb92: ScreenOptions has no physical font metrics; OSC1337 ReportCellSize and OSC776 deliberately report unknown zero dimensions (#30575)",
               },
             )
           }
@@ -573,6 +611,7 @@ function oscSimpleQueryProbe(
 
 function colorResetProbe(setCode: number, resetCode: number, index?: number): ProbeDefinition["lib"] {
   const hostColorSlot = [4, 10, 11, 12].includes(setCode)
+  const highlightColorSlot = setCode === 17 || setCode === 19
   const indexPart = index === undefined ? "" : `${index};`
   const query = `\x1b]${setCode};${indexPart}?\x07`
   const hostInput: HostInputName =
@@ -588,25 +627,128 @@ function colorResetProbe(setCode: number, resetCode: number, index?: number): Pr
     "i",
   )
   return (ctx) => {
+    if (index === undefined && [10, 11, 12].includes(setCode) && resetCode === setCode + 100 && ctx.getDefaultColors) {
+      type Colors = ReturnType<NonNullable<LibProbeSource["getDefaultColors"]>>
+      const slots = ["fg", "bg", "cursor"] as const
+      const slot = setCode === 10 ? "fg" : setCode === 11 ? "bg" : "cursor"
+      const state: {
+        slot: typeof slot
+        baseline?: Colors
+        seeded?: Colors
+        restored?: Colors
+        seed?: NonNullable<Colors["fg"]>
+        writes: string[]
+        errors: string[]
+      } = { slot, writes: [], errors: [] }
+      const readColors = ctx.getDefaultColors.bind(ctx)
+      const read = (): { colors: Colors } | { error: string } => {
+        try {
+          const colors = readColors()
+          if (typeof colors !== "object" || colors === null) {
+            throw new Error("default colors must report all three slots")
+          }
+          for (const key of slots) {
+            const color = colors[key]
+            if (
+              color !== null &&
+              (typeof color !== "object" ||
+                !color ||
+                ![color.r, color.g, color.b].every(
+                  (channel) => Number.isInteger(channel) && channel >= 0 && channel <= 255,
+                ))
+            ) {
+              throw new Error(`default colors ${key} must be RGB or null`)
+            }
+          }
+          return { colors: globalThis.structuredClone(colors) }
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error)
+          state.errors.push(message)
+          return { error: message }
+        }
+      }
+      const review = (reason: string) =>
+        colorReadbackReviewResult(`OSC ${resetCode}: ${reason}; independent review required`, state)
+      const baselineRead = read()
+      if ("error" in baselineRead) return review("default-color baseline could not be read")
+      const baseline = (state.baseline = baselineRead.colors)
+      const equal = (a: Colors["fg"], b: Colors["fg"]) => (a === null || b === null ? a === b : sameRgbCells(a, b))
+      const first = { r: 170, g: 187, b: 204 }
+      state.seed = equal(baseline[slot], first) ? { r: 18, g: 52, b: 86 } : first
+      const write = (bytes: string) => {
+        state.writes.push(bytes)
+        ctx.feed(bytes)
+      }
+      const seedRgb = [state.seed.r, state.seed.g, state.seed.b]
+        .map((channel) => channel.toString(16).padStart(2, "0"))
+        .join("/")
+      write(`\x1b]${setCode};rgb:${seedRgb}\x07`)
+      const seededRead = read()
+      if ("colors" in seededRead) state.seeded = seededRead.colors
+      write(`\x1b]${resetCode}\x07`)
+      const restoredRead = read()
+      if ("colors" in restoredRead) state.restored = restoredRead.colors
+      const { seeded, restored } = state
+      if (!seeded || !restored) return review("seeded or restored default colors could not be read")
+      if (!equal(seeded[slot], state.seed)) return review("distinct seed was not verified")
+      if (
+        slots.some(
+          (key) => key !== slot && (!equal(seeded[key], baseline[key]) || !equal(restored[key], baseline[key])),
+        )
+      ) {
+        return review("a non-target default-color slot moved")
+      }
+      const expected = `OSC ${resetCode} restores the measured ${slot} default after a verified distinct seed`
+      if (equal(restored[slot], baseline[slot])) return parserStateResult(true, expected, state)
+      if (equal(restored[slot], state.seed)) return parserStateResult(false, expected, state)
+      return review("reset produced neither the baseline nor the verified seed")
+    }
     let silence: ProbeCallbackResult | null = null
     let initialSentinel: TerminalQueryOutcome | undefined
     if (ctx.queryWithSentinelOutcome) {
       initialSentinel = ctx.queryWithSentinelOutcome(query, replyPattern)
       silence = sentinelSilenceResult(initialSentinel, `Complete OSC ${setCode} color reply`)
-      if (silence && !hostColorSlot) return silence
+      if (silence && !hostColorSlot && !highlightColorSlot) return silence
     }
     const originalRaw = silence ? "" : ctx.feedCapture(query)
     const original = replyPattern.exec(originalRaw)?.[1]
     if (!original) {
+      if (highlightColorSlot) {
+        return {
+          pass: false,
+          response: JSON.stringify({ query, originalRaw, initialSentinel }),
+          tests: [
+            {
+              id: "criterion",
+              status: "test-failure",
+              reason: `OSC ${setCode} initial highlight colour was not read back, so OSC ${resetCode} cannot be compared with it`,
+            },
+          ],
+        }
+      }
       if (originalRaw === "") {
         if (!hostColorSlot) {
+          if (
+            index === undefined &&
+            (setCode === 13 || setCode === 14) &&
+            resetCode === setCode + 100 &&
+            ctx.getDefaultColors
+          ) {
+            return parserStateResult(
+              null,
+              `OSC ${resetCode} restores the prior OSC ${setCode} color after a verified change`,
+              { query, originalRaw, defaultColors: ctx.getDefaultColors() },
+              undefined,
+              `OSC ${setCode} initial colour readback is missing and OSC ${resetCode} reset was not observed; default-color readback reports only fg, bg, and cursor, so pointer-colour support requires source review`,
+            )
+          }
           return colorReadbackReviewResult(
             `OSC ${setCode} colour query before OSC ${resetCode} answered nothing, so the reset effect cannot be read back`,
             { query, originalRaw },
           )
         }
         const answer = (result: ProbeCallbackResult) =>
-          alacrittyHostRecipeResult(ctx, result, "color-request", hostInput, query, true)
+          nativeHostRecipeResult(ctx, result, "color-request", hostInput, query, true)
         const controls: { write: string; response: string }[] = []
         // Capture-only sources cannot provide the additional cell witness; keep their existing query criterion.
         const indexed = setCode === 4 && resetCode === 104 && index === 0 && typeof ctx.getCell === "function"
@@ -657,25 +799,37 @@ function colorResetProbe(setCode: number, resetCode: number, index?: number): Pr
           fresh = rgb(cells.fresh, "F")
         const seed = { r: 170, g: 187, b: 204 }
         const restored = replyPattern.exec(restoredRaw)?.[1]
+        // On @xterm/headless, the per-instance palette array mirrors _core._inputHandler.onColor
+        // events, so OSC 4 grades the engine-delivered (index, rgb) event and OSC 104 grades the
+        // typed restore event rather than the restored default value, which is ours (#31735, @cto 863bef67).
         if (indexed && before && seeded && !sameRgbCells(before, seed) && sameRgbCells(seeded, seed)) {
-          if (same && fresh && sameRgbCells(fresh, before) && !(restored && sameRgb(restored, seededCurrentColor))) {
-            return parserStateResult(
-              true,
-              "OSC 104 restores palette index 0 for a fresh indexed cell",
-              state,
-              sameRgbCells(same, before)
-                ? "Indexed colour resolved at read"
-                : sameRgbCells(same, seed)
-                  ? "Cell RGB resolved at paint; fresh cell proves reset"
-                  : "Stored cell RGB differs from default and seed; fresh cell proves reset",
+          if (
+            same &&
+            fresh &&
+            sameRgbCells(fresh, before) &&
+            !(restored && sameRgbText(restored, seededCurrentColor))
+          ) {
+            return answer(
+              parserStateResult(
+                true,
+                "OSC 104 restores palette index 0 for a fresh indexed cell",
+                state,
+                sameRgbCells(same, before)
+                  ? "Indexed colour resolved at read"
+                  : sameRgbCells(same, seed)
+                    ? "Cell RGB resolved at paint; fresh cell proves reset"
+                    : "Stored cell RGB differs from default and seed; fresh cell proves reset",
+              ),
             )
           }
           if (same && fresh && sameRgbCells(fresh, seed) && sameRgbCells(same, seed)) {
-            return parserStateResult(
-              false,
-              "OSC 104 restores palette index 0 for a fresh indexed cell",
-              state,
-              "Verified seed remains in the fresh cell after reset",
+            return answer(
+              parserStateResult(
+                false,
+                "OSC 104 restores palette index 0 for a fresh indexed cell",
+                state,
+                "Verified seed remains in the fresh cell after reset",
+              ),
             )
           }
           return answer(
@@ -693,7 +847,7 @@ function colorResetProbe(setCode: number, resetCode: number, index?: number): Pr
             ),
           )
         }
-        if (control.verified && restored && sameRgb(restored, seededCurrentColor)) {
+        if (control.verified && restored && sameRgbText(restored, seededCurrentColor)) {
           return answer({
             pass: false,
             response,
@@ -756,10 +910,22 @@ function colorResetProbe(setCode: number, resetCode: number, index?: number): Pr
           },
         }
       }
-      if (!sameRgb(changed, requested)) {
+      if (!sameRgbText(changed, requested)) {
+        if (highlightColorSlot) {
+          return {
+            pass: false,
+            response,
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              assertionType: "query_reply",
+              note: `OSC ${setCode} highlight seed was not verified, so OSC ${resetCode} was not qualified`,
+            },
+          }
+        }
         return colorSetIgnoredResult(response, setCode)
       }
-      const pass = sameRgb(restored, original)
+      const pass = sameRgbText(restored, original)
       return {
         pass,
         response,
@@ -777,9 +943,13 @@ function colorResetProbe(setCode: number, resetCode: number, index?: number): Pr
       primary = { error }
       throw error
     } finally {
-      if (mustReset) {
+      if (mustReset || highlightColorSlot) {
         try {
-          ctx.feed(`\x1b]${resetCode}${index === undefined ? "" : `;${index}`}\x07`)
+          ctx.feed(
+            highlightColorSlot
+              ? `\x1b]${setCode};${original}\x07`
+              : `\x1b]${resetCode}${index === undefined ? "" : `;${index}`}\x07`,
+          )
         } catch (cleanup) {
           if (primary) {
             const message = primary.error instanceof Error ? primary.error.message : String(primary.error)
@@ -823,7 +993,7 @@ function colorSetIgnoredResult(response: string, setCode: number): ProbeCallback
   }
 }
 
-function sameRgb(left: string, right: string): boolean {
+function sameRgbText(left: string, right: string): boolean {
   const channels = (color: string) =>
     color
       .slice(4)
@@ -835,7 +1005,7 @@ function sameRgb(left: string, right: string): boolean {
 }
 
 function probeForeground(before: string): string {
-  return sameRgb(before, "rgb:aa/bb/cc") ? "rgb:12/34/56" : "rgb:aa/bb/cc"
+  return sameRgbText(before, "rgb:aa/bb/cc") ? "rgb:12/34/56" : "rgb:aa/bb/cc"
 }
 
 /**
@@ -892,10 +1062,10 @@ async function colorResetAppProbe(
       },
     }
   }
-  if (!sameRgb(changed.rgb, requested)) {
+  if (!sameRgbText(changed.rgb, requested)) {
     return colorSetIgnoredResult(response, spec.setCode)
   }
-  const pass = sameRgb(restored.rgb, before.rgb)
+  const pass = sameRgbText(restored.rgb, before.rgb)
   return {
     pass,
     response,
@@ -943,13 +1113,19 @@ function resetProbe(id: string, setCode: number, resetCode: number, index?: numb
   }
 }
 
-function colorStackResult(before: string, requested: string, changed: string, restored: string): ProbeCallbackResult {
-  const changedAsRequested = sameRgb(changed, requested)
-  const restoredOriginal = sameRgb(restored, before)
+function colorStackResult(
+  before: string,
+  requested: string,
+  changed: string,
+  restored: string,
+  operation: "push" | "pop",
+): ProbeCallbackResult {
+  const changedAsRequested = sameRgbText(changed, requested)
+  const restoredOriginal = sameRgbText(restored, before)
   const pass = changedAsRequested && restoredOriginal
   const response = JSON.stringify({ before, changed, restored })
   const note = pass
-    ? "Foreground changed and color-stack pop restored its original value"
+    ? `Foreground changed and the color-stack ${operation} round trip restored its original value`
     : "Foreground change or stack restoration was not observed"
   return {
     pass,
@@ -960,10 +1136,93 @@ function colorStackResult(before: string, requested: string, changed: string, re
       {
         assertionType: "query_reply" as const,
         kind: pass ? "positive" : "negative",
-        expected: "Changed foreground and restored original after color-stack pop",
+        expected:
+          operation === "push"
+            ? "Changed foreground and restored original after color-stack push, observed through a push/pop round trip"
+            : "Changed foreground and restored original after color-stack pop",
         observed: response,
       },
     ],
+  }
+}
+
+/** Source identities qualify a required review, never the target effect itself. */
+const ABSENT_OSC_ENGINES = {
+  vterm: {
+    kind: "source",
+    engineVersion: "0.9.0",
+    resolvedPath: "vendor/vterm/packages/vterm/src/index.ts",
+    repository: "git@github.com:beorn/vterm.git",
+    revision: "53a9eb9291b7880f4dc6a39a6802301049997a72",
+    treeOid: "617ae6002c7befea7b3e43d11bf23e6b433e3d65",
+    codes: [9, 22, 176, 440, 555, 666, 710, 777, 3008],
+    sourceCitation:
+      "vterm 53a9eb9291b7880f4dc6a39a6802301049997a72 packages/vterm/src/screen.ts:3596-4055 handleOSC switch",
+  },
+  xtermjs: {
+    kind: "registry",
+    engineVersion: "6.0.0",
+    adapterVersion: "0.10.2",
+    pathSuffix: "/@xterm/headless/lib-headless/xterm-headless.js",
+    lockIntegrity: "sha512-5Yj1QINYCyzrZtf8OFIHi47iQtI+0qYFPHmouEfG8dHNxbZ9Tb9YGSuLcsEwj9Z+OL75GJqPyJbyoFer80a2Hw==",
+    codes: [9, 22, 176, 440, 555, 666, 710, 777, 3008],
+    sourceCitation:
+      "@xterm/headless 6.0.0 bundle SHA256 17a90b650cf6b77cce2b98c4063884d43545e4ce177a54b76ccfc906f1aacaed, map SHA256 780e782badc8189491a469c9277b783e01911882ea84417b31e71294ea927d98: InputHandler.ts:292-331 OSC registrations and :201-203 logging-only fallback, OscParser.ts:145-146 fallback dispatch, CoreTerminal.ts:236-237 embedder hook; termless 84003d2c91610fe2743142675234a0fb3ec9cf1d packages/xtermjs/src/backend.ts registers no OSC handler",
+  },
+} as const
+
+function sourceAbsentOsc(id: string, code: number, sequence: string, effect: string) {
+  return (ctx: LibProbeSource): ProbeCallbackResult => {
+    const identity = ctx.runtimeIdentity
+    const audit =
+      identity?.kind === "js" && identity.runtimeFormat === "js"
+        ? Object.values(ABSENT_OSC_ENGINES).find((expected) => {
+            if (identity.engineVersion !== expected.engineVersion || !expected.codes.some((value) => value === code)) {
+              return false
+            }
+            switch (identity.integrity.kind) {
+              case "source":
+                return (
+                  expected.kind === "source" &&
+                  identity.resolvedPath === expected.resolvedPath &&
+                  identity.integrity.cleanTree &&
+                  identity.integrity.repository === expected.repository &&
+                  identity.integrity.revision === expected.revision &&
+                  identity.integrity.treeOid === expected.treeOid
+                )
+              case "registry":
+                return (
+                  expected.kind === "registry" &&
+                  identity.adapterVersion === expected.adapterVersion &&
+                  identity.resolvedPath.endsWith(expected.pathSuffix) &&
+                  identity.integrity.lockIntegrity === expected.lockIntegrity
+                )
+            }
+          })
+        : undefined
+    if (!audit) {
+      return notTestedResult(`OSC ${code} ${effect}: no audited library target readback at this runtime`, {})
+    }
+    const fed = "\x1b[1;1H\x1b[2K" + sequence + "X"
+    ctx.feed(fed)
+    const sentinel = ctx.getCell(0, 0)
+    return parserStateResult(
+      null,
+      `${id}: the engine handles OSC ${code} (a ${effect} handler exists at the pinned source)`,
+      {
+        fed,
+        sentinel,
+        engineState: null,
+        engineStateReason: `No ${effect} target state is exposed at this pin`,
+        runtimeIdentity: identity,
+      },
+      sentinel.char === "X" ? undefined : "No rendered X cell to evaluate",
+      sentinel.char === "X"
+        ? audit.kind === "source" && code === 9
+          ? `${audit.sourceCitation}; screen.ts:3921-3923 notification sink stores every OSC 9 value, with no progress subcode or state interpretation; independent source review required`
+          : `${audit.sourceCitation}: no case ${code} or ${effect} target writer; independent source review required`
+        : undefined,
+    )
   }
 }
 
@@ -1000,7 +1259,12 @@ function promptMarkResult(ctx: LibProbeSource, sequence: string, noObservable: s
   const qualified =
     consumed && home.x === 0 && home.y === 0 && target.x === 1 && target.y === 0 && control.x === 0 && control.y === 0
   if (!qualified) return promptConsumptionResult(consumed)
-  return notTestedResult(noObservable, { home, target, control, cell: cell.char })
+  return reviewResult(
+    SEMANTIC_PROMPT_SOURCE_REVIEW,
+    "Independent review must determine whether the pinned engine source parses this OSC 133 / 633 mark and exposes mark or zone state; citation per cell required for supported, unsupported or Untestable",
+    noObservable,
+    { home, target, control, cell: cell.char },
+  )
 }
 
 /**
@@ -1056,8 +1320,9 @@ function colorStackError(actionKind: "query" | "behavior", action: string, error
   return { pass: false, note, tests: [{ id: "criterion", status: "test-failure", reason: note }] }
 }
 
-function colorStackProbe(): ProbeDefinition["lib"] {
+function colorStackProbe(ownSequence: typeof colorPush | typeof colorPop): ProbeDefinition["lib"] {
   return (ctx) => {
+    const operation = ownSequence === colorPush ? "push" : "pop"
     let silence: ProbeCallbackResult | null = null
     if (ctx.queryWithSentinelOutcome) {
       silence = sentinelSilenceResult(
@@ -1071,10 +1336,10 @@ function colorStackProbe(): ProbeDefinition["lib"] {
     let originalRaw: string | undefined
     let seedAttempted = false
     let fixtureVerified = false
+    let readbackUnavailable = false
     let comparison: { before: string; changed: string; restored: string } | undefined
     const trace: Array<{ write: string; response?: string; error?: string }> = []
-    const capture = (write: string) => {
-      const entry: (typeof trace)[number] = { write }
+    const capture = (write: string, entry: (typeof trace)[number] = { write }) => {
       trace.push(entry)
       try {
         const response = ctx.feedCapture(write)
@@ -1153,6 +1418,7 @@ function colorStackProbe(): ProbeDefinition["lib"] {
             const note = "Current-colour fixture setter or exact seeded readback was not established"
             result = { pass: false, note, tests: [{ id: "criterion", status: "test-failure", reason: note }] }
           }
+          readbackUnavailable = result !== silence
           return result
         }
         before = control.color
@@ -1185,7 +1451,7 @@ function colorStackProbe(): ProbeDefinition["lib"] {
         }
       } else {
         comparison = { before, changed, restored }
-        result = colorStackResult(before, requested, changed, restored)
+        result = colorStackResult(before, requested, changed, restored, operation)
       }
       return result
     } catch (error) {
@@ -1257,6 +1523,17 @@ function colorStackProbe(): ProbeDefinition["lib"] {
           delete result.assertions
         }
       }
+      if (readbackUnavailable && cleanupFailures.length === 0) {
+        // Keep the early measurement, but retain this probe's own attempt after its foreground cleanup.
+        // capture records response bytes or the error; a failed attempt cannot establish a parser negative.
+        const attempt: (typeof trace)[number] = { write: ownSequence }
+        try {
+          capture(ownSequence, attempt)
+        } catch (error) {
+          // Retain the failed attempt without replacing the readback result.
+          attempt.error = error instanceof Error ? `${error.name}: ${error.message}` : String(error)
+        }
+      }
       if (seedAttempted && result && result !== silence) {
         const response = JSON.stringify({
           query: foregroundQuery,
@@ -1273,14 +1550,7 @@ function colorStackProbe(): ProbeDefinition["lib"] {
         for (const assertion of result.assertions ?? []) assertion.observed = response
       }
       if (result && originalRaw === "") {
-        const explained = alacrittyHostRecipeResult(
-          ctx,
-          result,
-          "color-request",
-          "foreground-rgb",
-          foregroundQuery,
-          true,
-        )
+        const explained = nativeHostRecipeResult(ctx, result, "color-request", "foreground-rgb", foregroundQuery, true)
         if (explained.hostRecipeCauses) result.hostRecipeCauses = explained.hostRecipeCauses
       }
     }
@@ -1289,6 +1559,7 @@ function colorStackProbe(): ProbeDefinition["lib"] {
 
 async function colorStackTermProbe(
   ctx: Parameters<NonNullable<ProbeDefinition["term"]>>[0],
+  operation: "push" | "pop",
 ): Promise<ProbeCallbackResult> {
   const originalReply = await ctx.queryWithSentinelOutcome(foregroundQuery, foregroundReply)
   const before = foregroundValue(originalReply.match?.[0] ?? "")
@@ -1307,7 +1578,7 @@ async function colorStackTermProbe(
     const restoredReply = await ctx.queryWithSentinelOutcome(foregroundQuery, foregroundReply)
     const restored = foregroundValue(restoredReply.match?.[0] ?? "")
     if (!restored) return unansweredQuery(restoredReply, "No OSC 10 reply after color-stack pop")
-    return colorStackResult(before, requested, changed, restored)
+    return colorStackResult(before, requested, changed, restored, operation)
   } finally {
     try {
       if (pushed) ctx.write(colorPop)
@@ -1317,22 +1588,91 @@ async function colorStackTermProbe(
   }
 }
 
+const OSC720_CLAIM = "OSC 720 moves the scrollback viewport up"
+const OSC720_HISTORY_LINES = 30
+
+type ScrollbackReading = ReturnType<LibProbeSource["getScrollback"]>
+
+function sameViewport(reading: ScrollbackReading, other: ScrollbackReading): boolean {
+  return (
+    reading.viewportOffset === other.viewportOffset &&
+    reading.totalLines === other.totalLines &&
+    reading.screenLines === other.screenLines
+  )
+}
+
+function sameGeometry(reading: ScrollbackReading, other: ScrollbackReading): boolean {
+  return reading.totalLines === other.totalLines && reading.screenLines === other.screenLines
+}
+
+function feedScrollbackHistory(ctx: LibProbeSource): void {
+  for (let i = 0; i < OSC720_HISTORY_LINES; i++) ctx.feed(`scroll-${i}\r\n`)
+}
+
 function osc720ScrollProbe(): ProbeDefinition["lib"] {
   return (ctx) => {
-    for (let i = 0; i < 30; i++) ctx.feed(`scroll-${i}\r\n`)
+    feedScrollbackHistory(ctx)
     const before = ctx.getScrollback()
     if (before.totalLines <= before.screenLines || before.viewportOffset <= 0) {
+      return parserStateResult(null, OSC720_CLAIM, { before }, "No scrollback viewport available")
+    }
+    // A reading only qualifies the measurement below when the backend's viewport channel can move at
+    // all: a row derived as totalLines - screenLines reads the live bottom forever, so an unchanged
+    // row there is absence of an observer, never evidence that the engine ignored OSC 720. Both
+    // deltas are tried because the sign that scrolls up differs per backend, and the reading is
+    // restored (and the restoration checked) before the measured sequence runs.
+    if (!ctx.scrollViewport) {
+      return notTestedResult("scrollback viewport scroll control", { before })
+    }
+    ctx.scrollViewport(-1)
+    const afterMinus = ctx.getScrollback()
+    ctx.scrollViewport(1)
+    const afterPlus = ctx.getScrollback()
+    // Only the position may qualify the observer, and only while the history count and screen height
+    // hold: a control that changes totalLines or screenLines has said nothing about whether the
+    // viewport position can move, so it must stay unqualified however the counts changed.
+    const controlGeometryFixed = sameGeometry(afterMinus, before) && sameGeometry(afterPlus, before)
+    const controlPositionMoved =
+      afterMinus.viewportOffset !== before.viewportOffset || afterPlus.viewportOffset !== afterMinus.viewportOffset
+    ctx.reset()
+    feedScrollbackHistory(ctx)
+    const control = {
+      afterMinus,
+      afterPlus,
+      geometryFixed: controlGeometryFixed,
+      positionMoved: controlPositionMoved,
+      restored: ctx.getScrollback(),
+    }
+    if (!sameViewport(control.restored, before)) {
       return parserStateResult(
         null,
-        "OSC 720 moves the scrollback viewport up",
-        { before },
-        "No scrollback viewport available",
+        OSC720_CLAIM,
+        { before, control },
+        "Viewport control did not restore the measured baseline",
       )
+    }
+    // A control that moved something other than the position is an irregular instrument, not an
+    // absence of one: the readings are kept and the result stays inconclusive rather than becoming a
+    // coverage record (CTO ruling on 31752). Only a control that moved nothing at fixed extents is
+    // evidence that this backend has no viewport scroll state.
+    if (!controlGeometryFixed) {
+      return parserStateResult(null, OSC720_CLAIM, { before, control }, "Viewport control changed the buffer geometry")
+    }
+    if (!controlPositionMoved) {
+      return notTestedResult("scrollback viewport state", { before, control })
     }
     ctx.feed("\x1b]720\x07")
     const after = ctx.getScrollback()
+    if (!sameGeometry(after, before)) {
+      return parserStateResult(
+        null,
+        OSC720_CLAIM,
+        { before, after, control },
+        "The measured sequence changed the buffer geometry",
+      )
+    }
     const pass = after.viewportOffset < before.viewportOffset
-    return parserStateResult(pass, "OSC 720 moves the scrollback viewport up", { before, after })
+    return parserStateResult(pass, OSC720_CLAIM, { before, after, control })
   }
 }
 
@@ -1510,6 +1850,46 @@ function unansweredQuery(reply: TerminalQueryOutcome, note: string): ProbeCallba
       reason: reply.reason === "timeout" ? "timeout" : "no-response",
       note,
     },
+  }
+}
+
+/** OSC99 capability detection only; neither arm displays a desktop notification. */
+function notificationQueryResult(reply: TerminalQueryOutcome, id: string, fallback = false): ProbeCallbackResult {
+  if (!reply.match) {
+    const note = "No matching notification query reply; OS display was not tested"
+    if (!fallback) return unansweredQuery(reply, note)
+    return {
+      pass: false,
+      response: reply.raw,
+      note,
+      observation: { outcome: "inconclusive", assertionType: "query_reply", reason: "no-response", note },
+    }
+  }
+  const payloadFields = reply.match[1]?.split(":").filter((field) => field.startsWith("p=")) ?? []
+  const pass = payloadFields.length === 1 && payloadFields[0]?.slice(2).split(",").includes("title") === true
+  const note = pass
+    ? "Notification capabilities acknowledge title payloads; OS display, activation and close events were not tested"
+    : "Notification reply does not advertise the required title payload; no support conclusion"
+  return {
+    pass,
+    response: reply.match[0],
+    note,
+    observation: {
+      outcome: pass ? "supported" : "inconclusive",
+      assertionType: "query_reply",
+      ...(!pass && { reason: "invalid-reply" as const }),
+      note,
+    },
+    ...(pass && {
+      assertions: [
+        {
+          assertionType: "query_reply" as const,
+          kind: "positive" as const,
+          expected: `OSC 99 echoes i=${id}, p=? and advertises p=title`,
+          observed: reply.match[0] ?? "",
+        },
+      ],
+    }),
   }
 }
 
@@ -1727,6 +2107,23 @@ function placementOutcomeResult(placement: TerminalQueryOutcome, imageId: number
   )
 }
 
+/**
+ * A named inconclusive for a run that cannot see pixels at all. No image is cited because none was
+ * taken, and the note says which measurement is missing rather than implying a negative.
+ */
+function kittyUnobservableResult(id: string, note: string): ProbeCallbackResult {
+  return {
+    pass: false,
+    response: JSON.stringify({ id, note }),
+    observation: {
+      outcome: "inconclusive",
+      reason: "insufficient-evidence",
+      assertionType: "query_reply",
+      note: `${id}: ${note}`,
+    },
+  }
+}
+
 function kittyImageTransferProbe(id: string, display: boolean): ProbeDefinition {
   const newNumber = () => (Number.parseInt(globalThis.crypto.randomUUID().slice(0, 8), 16) % 0xfffffffe) + 1
   return {
@@ -1851,20 +2248,83 @@ function textSizingResult(
   }
 }
 
-/** Only an isolated headless backend may receive this disposable OSC 52 nonce. */
+/**
+ * Only an isolated headless backend may receive this disposable OSC 52 nonce.
+ * A loaded artifact that answers the write query with no bytes, and has no host-recipe cause,
+ * has no engine-callback witness for the clipboard. That silence stays not-tested.
+ * A pass, a host-recipe cause, an observation, a nonempty reply, or a callback with no loaded
+ * binary keeps the measured roundtrip. A listed reply-path audit still replaces an empty capture.
+ */
+const ENGINE_CLIPBOARD_NOTE = "engine copy_to_clipboard callback read via getClipboardState, no reply bytes"
+
+function headlessOsc52Write(ctx: LibProbeSource): ProbeCallbackResult {
+  if (typeof ctx.getClipboardState !== "function") return headlessOsc52WriteWithoutWitness(ctx)
+  const nonce = `terminfo-osc52-${randomUUID()}`
+  const encoded = btoa(nonce)
+  ctx.feed(`\x1b]52;c;${encoded}\x07`)
+  const retained = ctx.getClipboardState()
+  const writes = retained.writes.map((write) => ({ selector: write.selector, payload: write.payload }))
+  const match = retained.writes.find((write) => write.selector === "c" && write.payload === encoded)
+  const note = [
+    ENGINE_CLIPBOARD_NOTE,
+    match?.text !== undefined ? `text ${match.text}` : undefined,
+    match?.decodeError !== undefined ? `decodeError ${match.decodeError}` : undefined,
+    retained.pasteSelector !== undefined ? `paste ${retained.pasteSelector}` : undefined,
+    match === undefined && writes.length > 0
+      ? `retained selectors ${writes.map((write) => write.selector).join(",")} did not match`
+      : undefined,
+  ]
+    .filter((part) => part !== undefined)
+    .join("; ")
+  const expected = JSON.stringify({ selector: "c", payload: encoded })
+  if (match) {
+    return parserStateResult(
+      true,
+      expected,
+      { selector: match.selector, payload: match.payload },
+      note,
+      undefined,
+      "query_reply",
+    )
+  }
+  const state = { writes }
+  if (writes.length === 0) return parserStateResult(false, expected, state, note, undefined, "query_reply")
+  return parserStateResult(null, expected, state, note, undefined, "query_reply")
+}
+
+function headlessOsc52WriteWithoutWitness(ctx: LibProbeSource): ProbeCallbackResult {
+  const measured = headlessClipboardRoundtrip(ctx)
+  const identity = ctx.runtimeIdentity
+  const unauditedSilence =
+    !measured.pass &&
+    (measured.hostRecipeCauses?.length ?? 0) === 0 &&
+    measured.observation === undefined &&
+    (measured.response ?? "") === "" &&
+    identity !== undefined &&
+    "loadedBinary" in identity
+  if (!unauditedSilence) return measured
+  return notTestedResult("clipboard write state", { response: "" })
+}
+
 function headlessClipboardRoundtrip(ctx: LibProbeSource): ProbeCallbackResult {
   const nonce = `terminfo-osc52-${randomUUID()}`
   const encoded = btoa(nonce)
   ctx.feed(`\x1b]52;c;${encoded}\x07`)
   const query = "\x1b]52;c;?\x07"
-  const raw = ctx.feedCapture(query)
-  return alacrittyHostRecipeResult(
+  const outcome = ctx.queryWithSentinelOutcome?.(query, osc52Reply)
+  const raw = outcome ? outcome.raw : ctx.feedCapture(query)
+  // CTO d5f41664: unmatched/partial bytes lose the old per-capture empty attribution deliberately.
+  // The existing silence classifier supplies only the host-input fact, never this write's verdict.
+  const empty = outcome
+    ? sentinelSilenceResult(outcome, "OSC 52 c query returns the exact written nonce") !== null || raw === ""
+    : raw === ""
+  return nativeHostRecipeResult(
     ctx,
-    headlessClipboardResult(raw, nonce),
+    { ...headlessClipboardResult(empty ? "" : raw, nonce), response: raw },
     "clipboard-load",
     "clipboard-read-permission",
     query,
-    raw === "",
+    empty,
   )
 }
 
@@ -1875,7 +2335,7 @@ function headlessClipboardRead(ctx: LibProbeSource): ProbeCallbackResult {
   if (ctx.queryWithSentinelOutcome) {
     const outcome = ctx.queryWithSentinelOutcome("\x1b]52;c;?\x07", osc52Reply)
     const silence = sentinelSilenceResult(outcome, "OSC 52 c query returns the exact written nonce")
-    return alacrittyHostRecipeResult(
+    return nativeHostRecipeResult(
       ctx,
       silence ?? headlessClipboardResult(outcome.raw, nonce),
       "clipboard-load",
@@ -1885,7 +2345,7 @@ function headlessClipboardRead(ctx: LibProbeSource): ProbeCallbackResult {
     )
   }
   const raw = ctx.feedCapture("\x1b]52;c;?\x07")
-  return alacrittyHostRecipeResult(
+  return nativeHostRecipeResult(
     ctx,
     headlessClipboardResult(raw, nonce),
     "clipboard-load",
@@ -2246,9 +2706,12 @@ export const extensionsProbes: ProbeDefinition[] = [
           if (controlFirst.fg && controlSecond.fg && !sameRgbCells(controlFirst.fg, controlSecond.fg)) {
             return parserStateResult(false, expected, state)
           }
-          return notTestedResult(
-            "independent foreground color controls (SGR 31 and 34) distinguishable in the headless readback",
+          return parserStateResult(
+            null,
+            expected,
             state,
+            undefined,
+            "independent foreground color controls (SGR 31 and 34) distinguishable in the headless readback",
           )
         }
         if (
@@ -2305,10 +2768,12 @@ export const extensionsProbes: ProbeDefinition[] = [
   {
     ...probe(
       "extensions.font-ligatures",
-      () =>
-        notTestedResult("Font ligatures are renderer glyph shaping; the headless parser shapes no glyphs", {
+      () => {
+        const note = "Font ligatures are renderer glyph shaping; the headless parser shapes no glyphs"
+        return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
           ligatureSample: FONT_LIGATURE_TARGET,
-        }),
+        })
+      },
       async (ctx) => {
         if (!ctx.capture) {
           return notTestedResult("Font ligatures need rendered pixels; this context exposes no capture callback", {
@@ -2378,32 +2843,357 @@ export const extensionsProbes: ProbeDefinition[] = [
     "extensions.kitty-graphics.animation",
     (ctx) => {
       const note = "Declared Kitty graphics capability does not establish timed animation playback"
-      return notTestedResult(note, { declared: ctx.capabilities.kittyGraphics === true })
-    },
-    () => {
-      const note = "No timed frame playback or pixel readback for Kitty animation"
-      return Promise.resolve<ProbeCallbackResult>({
-        pass: false,
-        note,
-        tests: [{ id: "criterion", status: "test-todo", reason: note }],
+      return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
+        declared: ctx.capabilities.kittyGraphics === true,
       })
     },
+    async (ctx) => {
+      const id = "extensions.kitty-graphics.animation"
+      const capture = ctx.capture
+      if (!capture) {
+        // No pixel adapter: an instrument limit, named before a byte, never a feature verdict.
+        const note =
+          "Kitty animation is pixels over time; this arm has no pixel capture, so the missing adapter is pixel capture and playback is not observable here"
+        return {
+          pass: false,
+          note,
+          tests: [{ id: "criterion", status: "test-todo", reason: note }],
+        }
+      }
+      if (ctx.captureKind === "text-cells") {
+        return kittyUnobservableResult(id, "a text snapshot has no pixels, so timed playback cannot be seen")
+      }
+      const refusal = sgrCaptureTooSmall(ctx, id)
+      if (refusal) return refusal
+      const reported = await captureRegionGeometry(ctx, id, { region: { ...KITTY_REGION }, ...KITTY_BOUNDS })
+      if ("pass" in reported) return reported
+      const geometry = reported.geometry
+      if (!geometry) {
+        return kittyUnobservableResult(
+          id,
+          "this pixel arm reported no cell-to-pixel geometry, so the compared rectangle cannot be aligned to cells",
+        )
+      }
+      const size = kittyBlockPixels(geometry)
+      const frames: ObservationFrame[] = []
+      const ids: number[] = []
+      const shoot = async (role: "control" | "target", label: string) => {
+        const frame = await capture({ role, label, cells: { ...KITTY_REGION }, pixelGeometry: geometry })
+        frames.push(frame)
+        return frame
+      }
+      const whole = async (role: "control" | "target", label: string) => {
+        const frame = await capture({ role, label, pixelGeometry: geometry })
+        frames.push(frame)
+        return frame
+      }
+      beginCaptureLifecycle(ctx)
+      try {
+        ctx.write(KITTY_CLEAR)
+        ctx.write(kittyPark())
+        const playbackId = kittyImageNumber()
+        ids.push(playbackId)
+        ctx.write(kittyFrameTransfer(playbackId, { ...size, rgb: KITTY_FRAME_RED }, { root: true }))
+        ctx.write(kittyFrameTransfer(playbackId, { ...size, rgb: KITTY_FRAME_BLUE }))
+        // The root frame carries no gap at transfer time; its gap is set by the control code.
+        ctx.write(kittyRootGap(playbackId))
+        ctx.write(kittyBlockOrigin())
+        const placement = await ctx.queryWithSentinelOutcome(
+          kittyPlace(playbackId),
+          kittyReplyFrame({ i: String(playbackId) }),
+        )
+        ctx.write(kittyPark())
+        ctx.write(kittyStartPlayback(playbackId))
+        const playbackFirst = await shoot(
+          "target",
+          `Terminal-driven playback, first frame of a ${String(KITTY_GAP_MS)} ms gap, loop v=${String(KITTY_LOOP_FOREVER)}`,
+        )
+        // The interval is measured from this capture's completion, and the elapsed value travels in
+        // the response, so a reader never has to infer the wait from the gap it asked for.
+        const intervalStart = Date.now()
+        await kittyWait(KITTY_GAP_MS * KITTY_WAIT_FACTOR)
+        const playbackSecond = await shoot(
+          "target",
+          "Terminal-driven playback, second frame after 1.5x the gap with no write between the pair",
+        )
+        const playbackElapsedMs = Date.now() - intervalStart
+        let retry: KittyDigestPair | null = null
+        if (playbackFirst.regionDigest === playbackSecond.regionDigest) {
+          await kittyWait(KITTY_GAP_MS * KITTY_RETRY_FACTOR)
+          const retried = await shoot(
+            "target",
+            "Terminal-driven playback retried at twice the gap, no write since the equal pair",
+          )
+          retry = [playbackSecond.regionDigest, retried.regionDigest]
+        }
+        // Arm 2 — the update control. Selecting a frame by hand must change the rectangle; an equal
+        // pair here means the image pipeline is unproven and no negative may be taken from arm 1.
+        ctx.write(kittyStopPlayback(playbackId))
+        ctx.write(kittySelectFrame(playbackId, 1))
+        const clientFirst = await shoot("control", "Client-driven frame selection, frame 1 of a stopped animation")
+        ctx.write(kittySelectFrame(playbackId, 2))
+        const clientSecond = await shoot(
+          "control",
+          "Client-driven frame selection, frame 2 of the same stopped animation",
+        )
+        ctx.write(kittyDeleteImage(playbackId))
+        // Arm 3 — a one-frame image over the same intervals must hold still.
+        const stillId = kittyImageNumber()
+        ids.push(stillId)
+        ctx.write(KITTY_CLEAR)
+        ctx.write(kittyPark())
+        ctx.write(kittyFrameTransfer(stillId, { ...size, rgb: KITTY_FRAME_RED }, { root: true }))
+        ctx.write(kittyBlockOrigin())
+        await ctx.queryWithSentinelOutcome(kittyPlace(stillId), kittyReplyFrame({ i: String(stillId) }))
+        ctx.write(kittyPark())
+        const stillFirst = await shoot("control", "One-frame image, first capture over the playback intervals")
+        await kittyWait(KITTY_GAP_MS * KITTY_WAIT_FACTOR)
+        const stillSecond = await shoot("control", "One-frame image, second capture over the same interval")
+        // Arm 4 — the cursor-only control. Both captures keep the cursor OUTSIDE the compared
+        // rectangle and differ only by which outside row it parks on, so a change here would mean
+        // the cursor is inside the rectangle and the comparison is contaminated.
+        const cursorFirst = await shoot("control", "Cursor-only control, cursor parked on the parking row")
+        ctx.write("\x1b[1;1H")
+        const cursorSecond = await shoot(
+          "control",
+          "Cursor-only control, cursor moved to row 1, still outside the rectangle",
+        )
+        // Arm 5 — one ordinary glyph outside the rectangle must change the captured screen.
+        const redrawFirst = await whole("control", "Redraw control, whole window before one ordinary glyph")
+        ctx.write("\x1b[1;1HQ")
+        const redrawSecond = await whole(
+          "control",
+          "Redraw control, whole window after one ordinary glyph outside the rectangle",
+        )
+        const verdict = decideKittyAnimation({
+          playback: [playbackFirst.regionDigest, playbackSecond.regionDigest],
+          retry,
+          clientFrame: [clientFirst.regionDigest, clientSecond.regionDigest],
+          still: [stillFirst.regionDigest, stillSecond.regionDigest],
+          cursorOnly: [cursorFirst.regionDigest, cursorSecond.regionDigest],
+          redraw: [redrawFirst.pixelsDigest, redrawSecond.pixelsDigest],
+          playbackElapsedMs,
+        })
+        const observed = JSON.stringify({
+          id,
+          region: KITTY_REGION,
+          gapMs: KITTY_GAP_MS,
+          loop: KITTY_LOOP_FOREVER,
+          playbackElapsedMs,
+          playback: verdict.outcome,
+          placementAck: placement.raw,
+          frames: frames.map((frame) => ({ role: frame.role, ref: frame.ref, label: frame.label })),
+        })
+        return {
+          pass: verdict.outcome === "supported",
+          response: observed,
+          observation: {
+            outcome: verdict.outcome,
+            ...(verdict.outcome === "inconclusive" ? { reason: "insufficient-evidence" as const } : {}),
+            assertionType: "screenshot",
+            screenshotRef: playbackSecond.ref,
+            frames,
+            note: verdict.note,
+          },
+          ...(verdict.outcome === "inconclusive"
+            ? {}
+            : {
+                assertions: [
+                  {
+                    assertionType: "screenshot" as const,
+                    kind: verdict.outcome === "supported" ? ("positive" as const) : ("negative" as const),
+                    expected:
+                      "Two target frames of one run, no write between them, differ on the animation rectangle while frame selection differs, a one-frame image holds still, the cursor-only capture is equal and a redraw changes the screen outside the rectangle",
+                    observed,
+                    note: `decided by ${verdict.decidedBy}`,
+                  },
+                ],
+              }),
+        }
+      } finally {
+        for (const imageId of ids) ctx.write(kittyDeleteImage(imageId))
+        endCaptureLifecycle(ctx)
+      }
+    },
+    "screenshot",
   ),
 
   probe(
     "extensions.kitty-graphics.unicode-placeholders",
     (ctx) => {
       const note = "Declared Kitty graphics capability does not establish Unicode placeholder rendering"
-      return notTestedResult(note, { declared: ctx.capabilities.kittyGraphics === true })
-    },
-    () => {
-      const note = "No pixel and placeholder-cell readback for Kitty Unicode placeholders"
-      return Promise.resolve<ProbeCallbackResult>({
-        pass: false,
-        note,
-        tests: [{ id: "criterion", status: "test-todo", reason: note }],
+      return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
+        declared: ctx.capabilities.kittyGraphics === true,
       })
     },
+    async (ctx) => {
+      const id = "extensions.kitty-graphics.unicode-placeholders"
+      const capture = ctx.capture
+      if (!capture) {
+        const note =
+          "Kitty unicode placeholders are a composited image over cells; this arm has no pixel capture, so the missing adapter is pixel capture and the placeholder rendering is not observable here"
+        return {
+          pass: false,
+          note,
+          tests: [{ id: "criterion", status: "test-todo", reason: note }],
+        }
+      }
+      if (ctx.captureKind === "text-cells") {
+        return kittyUnobservableResult(
+          id,
+          "this run reads the terminal's cells and no pixels, so a composited image cannot be seen; the cell readback alone never decides this row",
+        )
+      }
+      const refusal = sgrCaptureTooSmall(ctx, id)
+      if (refusal) return refusal
+      const reported = await captureRegionGeometry(ctx, id, {
+        region: { ...KITTY_REGION },
+        ...KITTY_PLACEHOLDER_BOUNDS,
+      })
+      if ("pass" in reported) return reported
+      const geometry = reported.geometry
+      if (!geometry) {
+        return kittyUnobservableResult(
+          id,
+          "this pixel arm reported no cell-to-pixel geometry, so the placeholder rectangle cannot be aligned to cells",
+        )
+      }
+      const size = kittyBlockPixels(geometry)
+      const frames: ObservationFrame[] = []
+      const ids: number[] = []
+      const shoot = async (
+        role: "control" | "target",
+        label: string,
+        region: {
+          readonly top: number
+          readonly left: number
+          readonly bottom: number
+          readonly right: number
+        } = KITTY_REGION,
+      ) => {
+        const frame = await capture({ role, label, cells: { ...region }, pixelGeometry: geometry })
+        frames.push(frame)
+        return frame
+      }
+      // A cell adapter, when the run exposes one, can only VETO: two states that read back different
+      // text compared two different screens. A pixel run exposes none, and that absence is recorded.
+      const readCells = async (label: string) => {
+        if (!ctx.cells) return undefined
+        const frame = await ctx.cells({ role: "control", label, cells: { ...KITTY_REGION }, pixelGeometry: geometry })
+        frames.push(frame)
+        return frame.cellDigest
+      }
+      beginCaptureLifecycle(ctx)
+      try {
+        ctx.write(KITTY_CLEAR)
+        const placeholderId = kittyPlaceholderNumber()
+        ids.push(placeholderId)
+        ctx.write(kittyVirtualPlacement(placeholderId, { ...size, rgb: KITTY_FRAME_RED }))
+        ctx.write(kittyPlaceholderText(placeholderId))
+        const withImageFirst = await shoot(
+          "target",
+          `Placeholder grid with image ${String(placeholderId)} composited over U+10EEEE cells`,
+        )
+        // A single equal pair is never a negative: the with-image state is re-read after a delay
+        // before any unsupported verdict (the same delayed-capture shape reset.decaln uses).
+        await kittyWait(KITTY_GAP_MS * KITTY_WAIT_FACTOR)
+        const withImageSecond = await shoot(
+          "target",
+          "Placeholder grid with the image, re-captured after a delayed interval and no write since",
+        )
+        // Control 1: the same guard bytes beside the grid and on the row below it, captured in the
+        // with-image state. A terminal that reflows when the image arrives moves this text.
+        const guardWithImage = await shoot(
+          "control",
+          `Layout guard "${KITTY_GUARD_TEXT}" beside the placeholder grid and on the row below it, with the image`,
+          KITTY_GUARD_REGION,
+        )
+        const cellsWithImage = await readCells("Placeholder rectangle cells with the image composited")
+        ctx.write(kittyDeleteImage(placeholderId))
+        ctx.write(KITTY_CLEAR)
+        ctx.write(kittyPlaceholderText(placeholderId))
+        const withoutImage = await shoot(
+          "control",
+          "The same placeholder characters and foreground colour with the image deleted",
+        )
+        const guardWithoutImage = await shoot(
+          "control",
+          "Layout guard beside the placeholder grid and on the row below it, with the image deleted",
+          KITTY_GUARD_REGION,
+        )
+        const cellsWithoutImage = await readCells("Placeholder rectangle cells with the image deleted")
+        // The live control: the same pixels painted by an ordinary placement in the same rectangle,
+        // measured against a captured blank rather than assumed from an acknowledgement.
+        ctx.write(KITTY_CLEAR)
+        ctx.write(kittyPark())
+        const ordinaryId = kittyPlaceholderNumber()
+        ids.push(ordinaryId)
+        const blank = await shoot("control", "Blank rectangle captured before the ordinary placement")
+        ctx.write(kittyFrameTransfer(ordinaryId, { ...size, rgb: KITTY_FRAME_RED }, { root: true }))
+        ctx.write(kittyBlockOrigin())
+        await ctx.queryWithSentinelOutcome(kittyPlace(ordinaryId), kittyReplyFrame({ i: String(ordinaryId) }))
+        ctx.write(kittyPark())
+        const ordinary = await shoot("control", "Ordinary a=p placement of the same pixels in the same rectangle")
+        const verdict = decideKittyPlaceholders({
+          withImage: [withImageFirst.regionDigest, withImageSecond.regionDigest],
+          withoutImage: withoutImage.regionDigest,
+          guard: [guardWithImage.regionDigest, guardWithoutImage.regionDigest],
+          blank: blank.regionDigest,
+          ordinary: ordinary.regionDigest,
+          cellReadback:
+            cellsWithImage === undefined || cellsWithoutImage === undefined
+              ? null
+              : [cellsWithImage, cellsWithoutImage],
+        })
+        const observed = JSON.stringify({
+          id,
+          region: KITTY_REGION,
+          guardRegion: KITTY_GUARD_REGION,
+          placeholderId,
+          ordinaryId,
+          guard: { withImage: guardWithImage.regionDigest, withoutImage: guardWithoutImage.regionDigest },
+          digests: {
+            withImage: [withImageFirst.regionDigest, withImageSecond.regionDigest],
+            withoutImage: withoutImage.regionDigest,
+            blank: blank.regionDigest,
+            ordinary: ordinary.regionDigest,
+          },
+          cellReadback:
+            cellsWithImage === undefined ? "unavailable: this pixel arm exposes no cell adapter" : "compared",
+          frames: frames.map((frame) => ({ role: frame.role, ref: frame.ref, label: frame.label })),
+        })
+        return {
+          pass: verdict.outcome === "supported",
+          response: observed,
+          observation: {
+            outcome: verdict.outcome,
+            ...(verdict.outcome === "inconclusive" ? { reason: "insufficient-evidence" as const } : {}),
+            assertionType: "screenshot",
+            screenshotRef: withImageSecond.ref,
+            frames,
+            note: verdict.note,
+          },
+          ...(verdict.outcome === "inconclusive"
+            ? {}
+            : {
+                assertions: [
+                  {
+                    assertionType: "screenshot" as const,
+                    kind: verdict.outcome === "supported" ? ("positive" as const) : ("negative" as const),
+                    expected:
+                      "The placeholder rectangle differs from the same characters with the image deleted, is pixel-identical to an ordinary placement of the same opaque image over the same cells, and the identical layout guard beside it did not move while the ordinary placement painted against the captured blank",
+                    observed,
+                    note: `decided by ${verdict.decidedBy}`,
+                  },
+                ],
+              }),
+        }
+      } finally {
+        for (const imageId of ids) ctx.write(kittyDeleteImage(imageId))
+        endCaptureLifecycle(ctx)
+      }
+    },
+    "screenshot",
   ),
 
   // Sixel — rendering remains unmeasured without pixel readback.
@@ -2412,7 +3202,9 @@ export const extensionsProbes: ProbeDefinition[] = [
       "extensions.sixel",
       (ctx) => {
         const note = "Declared Sixel capability does not establish rendered pixels"
-        return notTestedResult(note, { declared: ctx.capabilities.sixel === true })
+        return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
+          declared: ctx.capabilities.sixel === true,
+        })
       },
       async (ctx) => {
         // Sixel paints outside the cell grid. On an arm that reads cells there is nothing to
@@ -2516,10 +3308,11 @@ export const extensionsProbes: ProbeDefinition[] = [
           const adapter = identity
             ? `${identity.kind === "js" ? identity.resolvedPath : identity.loadedBinary.path} at Termless ${identity.termlessRevision}`
             : "Adapter (runtime identity unavailable)"
-          return notTestedResult(
-            `${adapter} exposes no OSC 8 URI observer (getHyperlinkAt); link metadata unobservable`,
-            { chars: cells.map((cell) => cell.char), links },
-          )
+          const note = `${adapter} exposes no OSC 8 URI observer (getHyperlinkAt); link metadata unobservable`
+          return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
+            chars: cells.map((cell) => cell.char),
+            links,
+          })
         }
         if (!charsMatch) {
           return {
@@ -2620,7 +3413,9 @@ export const extensionsProbes: ProbeDefinition[] = [
     "extensions.semantic-prompts",
     (ctx) => {
       const note = "Declared semantic-prompt capability does not establish shell prompt integration"
-      return notTestedResult(note, { declared: ctx.capabilities.semanticPrompts === true })
+      return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
+        declared: ctx.capabilities.semanticPrompts === true,
+      })
     },
     () => {
       const note = "No shell prompt integration metadata or behavior readback for OSC 133"
@@ -2652,10 +3447,14 @@ export const extensionsProbes: ProbeDefinition[] = [
       "extensions.osc0-icon-title",
       (ctx) => {
         ctx.feed(`\x1b]0;${OSC0_PAYLOAD}\x07`)
-        const icon = ctx.feedCapture(OSC0_ICON_QUERY)
-        const title = ctx.feedCapture(OSC0_TITLE_QUERY)
-        const iconLabel = OSC0_ICON_REPLY.exec(icon)?.[1] ?? null
-        const windowTitle = OSC0_TITLE_REPLY.exec(title)?.[1] ?? null
+        const iconOutcome = ctx.queryWithSentinelOutcome?.(OSC0_ICON_QUERY, OSC0_ICON_REPLY)
+        const titleOutcome = ctx.queryWithSentinelOutcome?.(OSC0_TITLE_QUERY, OSC0_TITLE_REPLY)
+        const icon = iconOutcome ? iconOutcome.raw : ctx.feedCapture(OSC0_ICON_QUERY)
+        const title = titleOutcome ? titleOutcome.raw : ctx.feedCapture(OSC0_TITLE_QUERY)
+        const iconLabel = iconOutcome ? (iconOutcome.match?.[1] ?? null) : (OSC0_ICON_REPLY.exec(icon)?.[1] ?? null)
+        const windowTitle = titleOutcome
+          ? (titleOutcome.match?.[1] ?? null)
+          : (OSC0_TITLE_REPLY.exec(title)?.[1] ?? null)
         return osc0IconTitleResult(iconLabel, windowTitle, { icon, title })
       },
       async (ctx) => {
@@ -2686,12 +3485,7 @@ export const extensionsProbes: ProbeDefinition[] = [
 
   // OSC 52 write — set clipboard (most terminals support this)
   {
-    ...probe(
-      "extensions.osc52-write",
-      headlessClipboardRoundtrip,
-      (ctx) => liveClipboardProbe(ctx, "write"),
-      "query_reply",
-    ),
+    ...probe("extensions.osc52-write", headlessOsc52Write, (ctx) => liveClipboardProbe(ctx, "write"), "query_reply"),
     libAssertionType: "query_reply",
     libHostRecipes: [{ recipe: "clipboard-load", query: "\x1b]52;c;?\x07", missing: ["clipboard-read-permission"] }],
   },
@@ -2721,7 +3515,9 @@ export const extensionsProbes: ProbeDefinition[] = [
     "extensions.osc7-cwd",
     (ctx) => {
       const note = "Declared OSC 7 capability does not establish working-directory metadata delivery"
-      return notTestedResult(note, { declared: ctx.capabilities.extensions.has("osc7") })
+      return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
+        declared: ctx.capabilities.extensions.has("osc7"),
+      })
     },
     () => {
       const note = "No working-directory metadata readback for OSC 7"
@@ -2738,7 +3534,9 @@ export const extensionsProbes: ProbeDefinition[] = [
     "extensions.osc-633-vscode",
     (ctx) => {
       const note = "Declared semantic-prompt capability does not establish VS Code OSC 633 shell integration"
-      return notTestedResult(note, { declared: ctx.capabilities.semanticPrompts === true })
+      return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
+        declared: ctx.capabilities.semanticPrompts === true,
+      })
     },
     () => {
       const note = "No VS Code shell integration metadata or behavior readback for OSC 633"
@@ -2878,7 +3676,9 @@ export const extensionsProbes: ProbeDefinition[] = [
     "extensions.notifications",
     (ctx) => {
       const note = "Declared OSC 9 capability does not establish desktop notification delivery"
-      return notTestedResult(note, { declared: ctx.capabilities.extensions.has("osc9") })
+      return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
+        declared: ctx.capabilities.extensions.has("osc9"),
+      })
     },
     () => {
       const note = "No desktop notification delivery readback for OSC 9"
@@ -2896,7 +3696,9 @@ export const extensionsProbes: ProbeDefinition[] = [
       "extensions.iterm2-images",
       (ctx) => {
         const note = "Declared iTerm2 image capability does not establish rendered image pixels"
-        return notTestedResult(note, { declared: ctx.capabilities.extensions.has("iterm2Images") })
+        return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
+          declared: ctx.capabilities.extensions.has("iterm2Images"),
+        })
       },
       async (ctx) => {
         if (ctx.capture) {
@@ -2950,9 +3752,10 @@ export const extensionsProbes: ProbeDefinition[] = [
   // OSC 9;4 — progress bar (ConEmu protocol, adopted by Ghostty, iTerm2, Windows Terminal, etc.)
   probe(
     "extensions.osc9-progress",
-    // Headless: no way to detect OSC 9;4 support (all backends silently consume unknown OSC)
-    null,
+    // Feed the ConEmu progress form; consumption alone does not measure progress display.
+    sourceAbsentOsc("extensions.osc9-progress", 9, "\x1b]9;4;1;50\x07", "progress"),
     () => Promise.resolve(unmeasuredStateEffect("OSC 9;4 progress display")),
+    null,
   ),
 
   // OSC 66 — text sizing protocol (Kitty, sets text scale/cell width)
@@ -3074,10 +3877,43 @@ export const extensionsProbes: ProbeDefinition[] = [
     ...probe(
       "extensions.osc1-icon",
       (ctx) => {
-        const before = ctx.getTitle()
-        ctx.feed("\x1b]1;test-icon\x07")
-        const after = ctx.getTitle()
-        return notTestedResult("icon-name state", { before, after })
+        if (typeof ctx.getIconLabel !== "function") {
+          const before = ctx.getTitle()
+          ctx.feed("\x1b]1;test-icon\x07")
+          const after = ctx.getTitle()
+          return notTestedResult("icon-name state", { before, after })
+        }
+        const before = { icon: ctx.getIconLabel(), title: ctx.getTitle() }
+        const requested = before.icon === "test-icon" ? "test-icon-2" : "test-icon"
+        const control =
+          before.title === "terminfo-title-control" ? "terminfo-title-control-2" : "terminfo-title-control"
+        try {
+          ctx.feed(`\x1b]2;${control}\x07`)
+          const title = ctx.getTitle()
+          if (title !== control) {
+            return {
+              pass: false,
+              response: JSON.stringify({ before, control, title }),
+              tests: [
+                {
+                  id: "criterion",
+                  status: "test-failure",
+                  reason: "OSC 2 window-title control was not read back, so OSC 1 title independence cannot be decided",
+                },
+              ],
+            }
+          }
+          ctx.feed(`\x1b]1;${requested}\x07`)
+          const after = { icon: ctx.getIconLabel(), title: ctx.getTitle() }
+          return parserStateResult(
+            after.icon === requested && after.title === control,
+            "OSC 1 sets the icon name without changing the independently verified window title",
+            { before, requested, control, after },
+          )
+        } finally {
+          ctx.feed(`\x1b]1;${before.icon}\x07`)
+          ctx.feed(`\x1b]2;${before.title}\x07`)
+        }
       },
       () => {
         const note = "No icon-name readback for OSC 1"
@@ -3135,94 +3971,82 @@ export const extensionsProbes: ProbeDefinition[] = [
   // Visible pointer appearance also needs observation outside the cell grid.
   probe(
     "extensions.osc22-pointer",
-    null, // No headless pointer-shape query or desktop observation is implemented here.
+    sourceAbsentOsc("extensions.osc22-pointer", 22, "\x1b]22;pointer\x07", "pointer"),
     async (ctx) => {
       ctx.write("\x1b[1;1H\x1b[2K")
       ctx.write("\x1b]22;pointer\x07")
       const pos = await ctx.queryCursorPosition()
       return unmeasuredCellResult(pos, "OSC 22 pointer shape")
     },
+    null,
   ),
 
   // Query capabilities without displaying a notification or requiring desktop access.
-  queryOnly(
-    probe(
-      "extensions.osc99-kitty-notify",
-      null, // Desktop notification delivery is outside a headless parser's scope.
-      async (ctx) => {
-        const id = globalThis.crypto.randomUUID()
-        const reply = await ctx.queryWithSentinelOutcome(
-          `\x1b]99;i=${id}:p=?;\x1b\\`,
-          new RegExp(`\\x1b\\]99;i=${id}:p=\\?;([^\\x07\\x1b]*)(?:\\x07|\\x1b\\\\)`),
-        )
-        if (!reply.match) {
-          return unansweredQuery(reply, "No matching notification query reply; OS display was not tested")
-        }
-        const payloadFields = reply.match[1]?.split(":").filter((field) => field.startsWith("p=")) ?? []
-        const pass = payloadFields.length === 1 && payloadFields[0]?.slice(2).split(",").includes("title") === true
-        const note = pass
-          ? "Notification capabilities acknowledge title payloads; OS display, activation and close events were not tested"
-          : "Notification reply does not advertise the required title payload; no support conclusion"
-        return {
-          pass,
-          response: reply.match[0],
-          note,
-          observation: {
-            outcome: pass ? "supported" : "inconclusive",
-            assertionType: "query_reply",
-            ...(!pass && { reason: "invalid-reply" as const }),
-            note,
-          },
-          ...(pass && {
-            assertions: [
-              {
-                assertionType: "query_reply" as const,
-                kind: "positive" as const,
-                expected: `OSC 99 echoes i=${id}, p=? and advertises p=title`,
-                observed: reply.match[0] ?? "",
-              },
-            ],
-          }),
-        }
-      },
-      "query_reply",
+  {
+    ...queryOnly(
+      probe(
+        "extensions.osc99-kitty-notify",
+        (ctx) => {
+          const id = globalThis.crypto.randomUUID()
+          const sequence = `\x1b]99;i=${id}:p=?;\x1b\\`
+          const pattern = new RegExp(`\\x1b\\]99;i=${id}:p=\\?;([^\\x07\\x1b]*)(?:\\x07|\\x1b\\\\)`)
+          if (ctx.queryWithSentinelOutcome) {
+            return notificationQueryResult(ctx.queryWithSentinelOutcome(sequence, pattern), id)
+          }
+          const raw = ctx.feedCapture(sequence)
+          return notificationQueryResult(rawQueryOutcome(raw, raw.match(pattern)), id, true)
+        },
+        async (ctx) => {
+          const id = globalThis.crypto.randomUUID()
+          const reply = await ctx.queryWithSentinelOutcome(
+            `\x1b]99;i=${id}:p=?;\x1b\\`,
+            new RegExp(`\\x1b\\]99;i=${id}:p=\\?;([^\\x07\\x1b]*)(?:\\x07|\\x1b\\\\)`),
+          )
+          return notificationQueryResult(reply, id)
+        },
+        "query_reply",
+      ),
     ),
-  ),
+    libAssertionType: "query_reply",
+  },
 
   // OSC 777 — rxvt-unicode notifications
   probe(
     "extensions.osc777-notify",
-    null, // Headless: no way to detect notification support (silently consumed)
+    sourceAbsentOsc("extensions.osc777-notify", 777, "\x1b]777;notify;test;body\x07", "notification"),
     async (ctx) => {
       ctx.write("\x1b[1;1H\x1b[2K")
       ctx.write("\x1b]777;notify;test;body\x07")
       const pos = await ctx.queryCursorPosition()
       return unmeasuredCellResult(pos, "OSC 777 notification delivery")
     },
+    null,
   ),
 
   // OSC 666 — VTE termprop
   probe(
     "extensions.osc666-termprop",
-    null, // Headless: no way to detect termprop support (silently consumed)
+    sourceAbsentOsc("extensions.osc666-termprop", 666, "\x1b]666;test-prop=value\x07", "terminal property"),
     async (ctx) => {
       ctx.write("\x1b[1;1H\x1b[2K")
       ctx.write("\x1b]666;test-prop=value\x07")
       const pos = await ctx.queryCursorPosition()
       return unmeasuredCellResult(pos, "OSC 666 terminal property")
     },
+    null,
   ),
 
   // OSC 3008 — systemd context
   probe(
     "extensions.osc3008-context",
-    null, // Headless: no way to detect context support (silently consumed)
+    sourceAbsentOsc("extensions.osc3008-context", 3008, "\x1b]3008;type=test\x07", "systemd context"),
     async (ctx) => {
       ctx.write("\x1b[1;1H\x1b[2K")
       ctx.write("\x1b]3008;type=test\x07")
       const pos = await ctx.queryCursorPosition()
       return unmeasuredCellResult(pos, "OSC 3008 systemd context")
     },
+    null,
   ),
 
   // OSC 113 — reset pointer fg color
@@ -3250,50 +4074,63 @@ export const extensionsProbes: ProbeDefinition[] = [
 
   // OSC 30001 — Kitty color stack push
   {
-    ...probe("extensions.osc30001-color-stack-push", colorStackProbe(), colorStackTermProbe, "query_reply"),
+    ...probe(
+      "extensions.osc30001-color-stack-push",
+      colorStackProbe(colorPush),
+      (ctx) => colorStackTermProbe(ctx, "push"),
+      "query_reply",
+    ),
     libHostRecipes: [{ recipe: "color-request", query: foregroundQuery, missing: ["foreground-rgb"] }],
   },
 
   // OSC 30101 — Kitty color stack pop
   {
-    ...probe("extensions.osc30101-color-stack-pop", colorStackProbe(), colorStackTermProbe, "query_reply"),
+    ...probe(
+      "extensions.osc30101-color-stack-pop",
+      colorStackProbe(colorPop),
+      (ctx) => colorStackTermProbe(ctx, "pop"),
+      "query_reply",
+    ),
     libHostRecipes: [{ recipe: "color-request", query: foregroundQuery, missing: ["foreground-rgb"] }],
   },
 
   // OSC 176 — foot Wayland app-id
   probe(
     "extensions.osc176-app-id",
-    null, // Headless: app-id is a Wayland window-manager concept, not in the cell grid
+    sourceAbsentOsc("extensions.osc176-app-id", 176, "\x1b]176;terminfo-test\x07", "app-id"),
     async (ctx) => {
       ctx.write("\x1b[1;1H\x1b[2K")
       ctx.write("\x1b]176;terminfo-test\x07")
       const pos = await ctx.queryCursorPosition()
       return unmeasuredCellResult(pos, "OSC 176 Wayland app-id")
     },
+    null,
   ),
 
   // OSC 555 — foot screen flash (visual bell)
   probe(
     "extensions.osc555-flash",
-    null, // Headless: visual bell is a UI animation, not in the cell grid
+    sourceAbsentOsc("extensions.osc555-flash", 555, "\x1b]555\x07", "flash"),
     async (ctx) => {
       ctx.write("\x1b[1;1H\x1b[2K")
       ctx.write("\x1b]555\x07")
       const pos = await ctx.queryCursorPosition()
       return unmeasuredCellResult(pos, "OSC 555 screen flash")
     },
+    null,
   ),
 
   // OSC 440 — mintty audio sound
   probe(
     "extensions.osc440-audio",
-    null, // Headless: audio playback is not observable from the cell grid
+    sourceAbsentOsc("extensions.osc440-audio", 440, "\x1b]440;bell.wav\x07", "audio"),
     async (ctx) => {
       ctx.write("\x1b[1;1H\x1b[2K")
       ctx.write("\x1b]440;bell.wav\x07")
       const pos = await ctx.queryCursorPosition()
       return unmeasuredCellResult(pos, "OSC 440 audio playback")
     },
+    null,
   ),
 
   // OSC 7770 — mintty font size query/set
@@ -3335,7 +4172,7 @@ export const extensionsProbes: ProbeDefinition[] = [
   // OSC 710 — rxvt-unicode set normal font
   probe(
     "extensions.osc710-font-normal",
-    null, // Headless: font selection is not observable in the cell grid
+    sourceAbsentOsc("extensions.osc710-font-normal", 710, "\x1b]710;monospace\x07", "font"),
     () => Promise.resolve(unmeasuredStateEffect("OSC 710 font selection")),
   ),
 

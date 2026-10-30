@@ -1,15 +1,105 @@
-import type { ProbeDefinition, ProbeCallbackResult, TerminalQueryOutcome } from "./types.ts"
+import type { LibProbeSource, ProbeDefinition, ProbeCallbackResult, TerminalQueryOutcome } from "./types.ts"
 import {
   REPLY_AFTER_SENTINEL_NOTE,
-  alacrittyHostRecipeResult,
   parserStateResult,
   probe,
+  notTestedResult,
   replyFrame,
   reviewResult,
+  HEADLESS_OBSERVABLE_REVIEW,
   sentinelAnswer,
   sentinelNegativeResult,
   sentinelSilenceResult,
 } from "./helpers.ts"
+import { nativeHostRecipeResult } from "./native-host-audit.ts"
+
+// The individual integrated APIs return parser/readback backends, not a terminal-owned application child.
+// These citations were read at this Termless pin; runtime identity alone is not the source audit.
+const TERM_FEATURES_API_REVISION = "8b8664540f365fa0ba1d9b6400d3c4d1a160582c"
+const TERM_FEATURES_API_CITATIONS: Readonly<Record<string, readonly [string, string]>> = {
+  "vendor/vterm/packages/vterm/src/index.ts": [
+    "vterm",
+    "packages/vterm/src/backend.ts:63 createVtermBackend integrates the vterm Screen as a TerminalBackend with no application-child environment API",
+  ],
+  "vendor/vterm/packages/vt220/src/index.ts": [
+    "vt220",
+    "packages/vt220/src/backend.ts:39 createVt220Backend integrates the vt220 Screen as a TerminalBackend with no application-child environment API",
+  ],
+  "vendor/vterm/packages/vt100/src/index.ts": [
+    "vt100",
+    "packages/vt100/src/backend.ts:42 createVt100Backend integrates the vt100 Screen as a TerminalBackend with no application-child environment API",
+  ],
+  "vendor/termless/packages/vt100-rust/termless-vt100-rust.node": [
+    "vt100-rust",
+    "packages/vt100-rust/src/backend.ts:174 createVt100RustBackend returns TerminalBackend",
+  ],
+  "vendor/termless/packages/wezterm/termless-wezterm.node": [
+    "wezterm",
+    "packages/wezterm/src/backend.ts:197 createWeztermBackend returns TerminalBackend",
+  ],
+  "vendor/termless/packages/alacritty/termless-alacritty-native.node": [
+    "alacritty",
+    "packages/alacritty/src/backend.ts:151 createAlacrittyBackend returns TerminalBackend",
+  ],
+  "vendor/termless/packages/ghostty-native/termless-ghostty-native.node": [
+    "ghostty-native",
+    "packages/ghostty-native/src/backend.ts:217 createGhosttyNativeBackend returns TerminalBackend",
+  ],
+  "vendor/termless/packages/libvterm/src/index.ts": [
+    "libvterm",
+    "packages/libvterm/src/backend.ts:168 createLibvtermBackend returns the parser/readback LegacyBackend",
+  ],
+}
+
+function termFeaturesLibraryReview(ctx: LibProbeSource): ProbeCallbackResult {
+  const identity = ctx.runtimeIdentity
+  if (!identity || identity.termlessRevision !== TERM_FEATURES_API_REVISION) {
+    return notTestedResult("TERM_FEATURES: no pinned engine API source audit at this runtime", {})
+  }
+  const entry = identity.kind === "native" ? identity.loadedBinary.path : identity.resolvedPath
+  let citation = TERM_FEATURES_API_CITATIONS[entry]
+  if (
+    identity.kind === "js" &&
+    identity.integrity.kind === "registry" &&
+    identity.engineVersion === "6.0.0" &&
+    identity.resolvedPath.endsWith("/@xterm/headless/lib-headless/xterm-headless.js")
+  ) {
+    citation = [
+      "xtermjs",
+      "packages/xtermjs/src/backend.ts:171-174 createXtermBackend integrates @xterm/headless as an in-process TerminalBackend",
+    ]
+  } else if (
+    identity.kind === "js" &&
+    identity.runtimeFormat === "wasm" &&
+    identity.engineVersion === "0.4.0" &&
+    identity.resolvedPath.endsWith("/ghostty-web/dist/ghostty-web.js")
+  ) {
+    citation = [
+      "ghostty",
+      "packages/ghostty/src/backend.ts:249-252 createGhosttyBackend returns LegacyBackend over the ghostty-web core",
+    ]
+  } else if (
+    identity.kind === "native" &&
+    identity.loadedBinary.sha256 === "bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886"
+  ) {
+    citation = [
+      "kitty",
+      "packages/kitty/src/backend.ts:250-315 createKittyBackend exposes parser/readback via +runpy bridge; that helper subprocess is not a terminal-owned application child",
+    ]
+  }
+  if (!citation) return notTestedResult("TERM_FEATURES: no engine-specific API source citation at this runtime", {})
+  const note =
+    "TERM_FEATURES is a terminal program's child-environment export; this library API spawns no application child process"
+  return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
+    audit: {
+      engine: citation[0],
+      engineVersion: identity.engineVersion,
+      sourceCitation: `${citation[1]}; Termless@${TERM_FEATURES_API_REVISION} src/terminal/types.ts:277-317 TerminalBackend has no application-child environment API`,
+      apiRevision: TERM_FEATURES_API_REVISION,
+      runtimeIdentity: identity,
+    },
+  })
+}
 
 /** These patterns match complete answers to the specific query, not arbitrary consumed output. */
 interface DeviceReply {
@@ -187,7 +277,7 @@ function deviceQuery(spec: DeviceReply): ProbeDefinition {
         )
       }
       return hostPixels
-        ? alacrittyHostRecipeResult(
+        ? nativeHostRecipeResult(
             ctx,
             result,
             "text-area-size",
@@ -241,6 +331,127 @@ const DECRQSS_DECSCL: DeviceReply = {
   refusal: /\x1bP0\$r\x1b\\/,
   malformed: /\x1bP[01]\$r/,
   expected: 'complete DECRQSS status 1 DECSCL conformance parameters ending "p and ST',
+}
+
+/**
+ * Exact loaded binary artifacts and clean JS source trees whose source implements neither CSI 22 ; 0 t (push)
+ * nor CSI 23 ; 0 t (pop) (#31735, #31387, @cto 863bef67). A black-box push/pop round trip that observes
+ * { original: "pushed-title", changed: "new-title", restored: "new-title" } cannot separate a broken push from a
+ * broken pop on an unaudited engine, but when the loaded artifact's or pinned source tree's implementation has
+ * neither operation and holds no title stack, both device.xtwinops-22 and device.xtwinops-23 are decided
+ * Unsupported by source citation.
+ */
+const TITLE_STACK_UNIMPLEMENTED_AUDITS: ReadonlyMap<string, string> = new Map([
+  [
+    "d80a8110258a124fb6ff52a6fe149b8e39b5180d986907cc9fb7dc9143c3f3d9",
+    "ghostty 5714ed07a1012573261b7b7e3ed2add9c1504496 src/terminal/stream.zig:1825-1843 dispatches .title_push and .title_pop; src/termio/stream_handler.zig:343-346 has .title_push, .title_pop => {} // Unimplemented, and termless vendor/ghostty-web/ghostty-wasm-api.patch keeps .title_push and .title_pop as no-ops",
+  ],
+  [
+    "5937bd79139ee5856bcf1bd619cc44fcd2d750d3def3066a74956678cdaaaeb2",
+    "libvterm 0.3.3 src/state.c:978 on_csi has no case 0x74 ('t') and VTermState holds no title stack, so neither CSI 22;0t nor CSI 23;0t is implemented",
+  ],
+  [
+    "0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3",
+    "vt100 0.16.2 src/perform.rs:132-156 csi_dispatch 't' handles only op 8 (resize) and forwards all other ops to Callbacks::unhandled_csi (empty by default at src/callbacks.rs:55-63); termless 6ffc0df79756fcc259d87131681641606540e512 packages/vt100-rust/native/src/lib.rs:8-54 TerminalCallbacks stores only title: String with no title stack and does not override unhandled_csi, so neither CSI 22;0t nor CSI 23;0t is implemented",
+  ],
+  [
+    "0f56a805793d7d829daa617f1323aacff0d73fe868747b0d077c6af315e2aab8",
+    "tattoy-wezterm-escape-parser 0.1.0-1 src/csi.rs:2633-2644 parses CSI 22;0t as Window::PushIconAndWindowTitle and CSI 23;0t as Window::PopIconAndWindowTitle; tattoy-wezterm-term 0.1.0-fork.5 src/terminalstate/performer.rs:509 dispatches CSI::Window to perform_csi_window, where src/terminalstate/mod.rs:2090-2095 matches PopIconAndWindowTitle..PushWindowTitle => {} and TerminalState at src/terminalstate/mod.rs:334-337 holds only title: String and icon_title: Option<String> with no title stack",
+  ],
+])
+
+const TITLE_STACK_UNIMPLEMENTED_SOURCE_TREES: ReadonlyMap<
+  string,
+  { readonly resolvedPath: string; readonly sourceCitation: string }
+> = new Map([
+  [
+    "5ffc7ad9ae120d0bf93c64b0fdc712eb40892896",
+    {
+      resolvedPath: "vendor/vterm/packages/vt100/src/index.ts",
+      sourceCitation:
+        'vterm 53a9eb9291b7880f4dc6a39a6802301049997a72 packages/vt100/src/screen.ts:251-358 handleCSI has no case "t" and createScreen at packages/vt100/src/screen.ts:130 holds only title = "" with no title stack, so neither CSI 22;0t nor CSI 23;0t is implemented',
+    },
+  ],
+  [
+    "69366752918a6086c639123799cc3ac68d8083a0",
+    {
+      resolvedPath: "vendor/vterm/packages/vt220/src/index.ts",
+      sourceCitation:
+        'vterm 53a9eb9291b7880f4dc6a39a6802301049997a72 packages/vt220/src/screen.ts:305-428 handleCSI has no case "t" and createScreen at packages/vt220/src/screen.ts:104,176 holds only title = "" with no title stack, so neither CSI 22;0t nor CSI 23;0t is implemented',
+    },
+  ],
+])
+
+function titleStackHeadless(ctx: LibProbeSource, expected: string): ProbeCallbackResult {
+  ctx.feed("\x1b]2;pushed-title\x07")
+  const original = ctx.getTitle()
+  ctx.feed("\x1b[22;0t")
+  ctx.feed("\x1b]2;new-title\x07")
+  const changed = ctx.getTitle()
+  ctx.feed("\x1b[23;0t")
+  const restored = ctx.getTitle()
+  if (original === "pushed-title" && changed === "new-title" && restored === "pushed-title") {
+    return parserStateResult(true, expected, { original, changed, restored })
+  }
+  const identity = ctx.runtimeIdentity
+  const artifactSha256 = identity !== undefined && "loadedBinary" in identity ? identity.loadedBinary.sha256 : undefined
+  const sourceCitation =
+    original === "pushed-title" && changed === "new-title" && restored === "new-title" && artifactSha256 !== undefined
+      ? TITLE_STACK_UNIMPLEMENTED_AUDITS.get(artifactSha256)
+      : undefined
+  if (sourceCitation !== undefined && artifactSha256 !== undefined) {
+    return parserStateResult(
+      false,
+      expected,
+      { original, changed, restored, artifactSha256, sourceCitation },
+      "negative by source citation",
+    )
+  }
+  if (
+    original === "pushed-title" &&
+    changed === "new-title" &&
+    restored === "new-title" &&
+    identity?.kind === "js" &&
+    identity.runtimeFormat === "js" &&
+    identity.engineVersion === "0.9.0" &&
+    identity.integrity.kind === "source" &&
+    identity.integrity.cleanTree &&
+    identity.integrity.repository === "git@github.com:beorn/vterm.git" &&
+    identity.integrity.revision === "53a9eb9291b7880f4dc6a39a6802301049997a72"
+  ) {
+    const sourceAudit = TITLE_STACK_UNIMPLEMENTED_SOURCE_TREES.get(identity.integrity.treeOid)
+    if (sourceAudit !== undefined && sourceAudit.resolvedPath === identity.resolvedPath) {
+      return parserStateResult(
+        false,
+        expected,
+        {
+          original,
+          changed,
+          restored,
+          revision: identity.integrity.revision,
+          treeOid: identity.integrity.treeOid,
+          sourceCitation: sourceAudit.sourceCitation,
+        },
+        "negative by source citation",
+      )
+    }
+  }
+  if (original !== "pushed-title" || changed !== "new-title") {
+    // No title readback means this adapter exposes no title observable, which decides neither operation
+    // (Ghostty native reads empty at all three steps, #31387); it takes the headless observable review.
+    const note = "Title setup was not observable"
+    return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
+      original,
+      changed,
+      restored,
+    })
+  }
+  return parserStateResult(
+    null,
+    expected,
+    { original, changed, restored },
+    "Title push/pop did not restore the old title; the failing operation is unknown",
+  )
 }
 
 function refusedFrame(spec: DeviceReply, matchedFrame: string | null): boolean {
@@ -438,17 +649,8 @@ export const deviceProbes: ProbeDefinition[] = [
   }),
   probe(
     "device.term-features",
-    null,
-    () => {
-      // Inherited process environment does not authenticate the current terminal.
-      const advertised = typeof process !== "undefined" && !!process.env.TERM_FEATURES
-      const note = advertised ? "TERM_FEATURES advertised; source unverified" : "TERM_FEATURES not advertised"
-      return Promise.resolve<ProbeCallbackResult>({
-        pass: false,
-        note,
-        tests: [{ id: "criterion", status: "test-failure", reason: note }],
-      })
-    },
+    termFeaturesLibraryReview,
+    () => Promise.resolve(notTestedResult("terminal child environment", {})),
     null,
   ),
 
@@ -654,29 +856,13 @@ export const deviceProbes: ProbeDefinition[] = [
   },
 
   // XTWINOPS 22 — push title/icon stack: CSI 22 ; 0 t
-  // A successful push/pop round trip establishes both operations; failure cannot identify either.
+  // A successful push/pop round trip establishes both operations; failure cannot identify either
+  // unless the loaded artifact's source is audited to implement neither operation (#31735, @cto 863bef67).
   {
     ...probe(
       "device.xtwinops-22",
-      (ctx) => {
-        ctx.feed("\x1b]2;pushed-title\x07")
-        const original = ctx.getTitle()
-        ctx.feed("\x1b[22;0t") // push
-        ctx.feed("\x1b]2;new-title\x07") // overwrite
-        const changed = ctx.getTitle()
-        ctx.feed("\x1b[23;0t")
-        const restored = ctx.getTitle()
-        return parserStateResult(
-          original === "pushed-title" && changed === "new-title" && restored === "pushed-title" ? true : null,
-          "XTWINOPS 22 preserves the old title on its stack after a different title is set",
-          { original, changed, restored },
-          original !== "pushed-title" || changed !== "new-title"
-            ? "Title setup was not observable"
-            : restored !== "pushed-title"
-              ? "Title push/pop did not restore the old title; the failing operation is unknown"
-              : undefined,
-        )
-      },
+      (ctx) =>
+        titleStackHeadless(ctx, "XTWINOPS 22 preserves the old title on its stack after a different title is set"),
       async (ctx) => {
         ctx.write("\x1b]2;pushed-title\x07")
         ctx.write("\x1b[22;0t") // push
@@ -709,25 +895,7 @@ export const deviceProbes: ProbeDefinition[] = [
   {
     ...probe(
       "device.xtwinops-23",
-      (ctx) => {
-        ctx.feed("\x1b]2;pushed-title\x07")
-        const original = ctx.getTitle()
-        ctx.feed("\x1b[22;0t")
-        ctx.feed("\x1b]2;new-title\x07")
-        const changed = ctx.getTitle()
-        ctx.feed("\x1b[23;0t")
-        const restored = ctx.getTitle()
-        return parserStateResult(
-          original === "pushed-title" && changed === "new-title" && restored === "pushed-title" ? true : null,
-          "XTWINOPS 23 restores the title saved before a different title was set",
-          { original, changed, restored },
-          original !== "pushed-title" || changed !== "new-title"
-            ? "Title setup was not observable"
-            : restored !== "pushed-title"
-              ? "Title push/pop did not restore the old title; the failing operation is unknown"
-              : undefined,
-        )
-      },
+      (ctx) => titleStackHeadless(ctx, "XTWINOPS 23 restores the title saved before a different title was set"),
       async (ctx) => {
         ctx.write("\x1b[22;0t") // push first so we have something to pop
         ctx.write("\x1b[23;0t")

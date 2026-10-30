@@ -3,10 +3,12 @@ import { captureRegionVerdict, type RegionReadback } from "./region-readback.ts"
 import { RESET_FAMILY_CAPTURE } from "./reset-family-capture.ts"
 import {
   decrpmReading,
+  HEADLESS_OBSERVABLE_REVIEW,
   notTestedResult,
   parserStateResult,
   probe,
   queryDecrpm,
+  reviewResult,
   sgrCaptureFrames,
   sgrCaptureTooSmall,
   sgrReadbackDecision,
@@ -236,10 +238,16 @@ export const resetProbes: ProbeDefinition[] = [
         // #30701, @cto ruling C: a getMode that reports no applicationCursor state is a field the backend
         // does not expose (TEST TODO); an exposed mode that stayed off is still unmeasured.
         if (typeof before !== "boolean") {
-          return notTestedResult("the application-cursor mode (DECCKM) state in the headless getMode readback", {
-            before,
-            after,
-          })
+          const noObservable = "the application-cursor mode (DECCKM) state in the headless getMode readback"
+          return reviewResult(
+            HEADLESS_OBSERVABLE_REVIEW,
+            `Headless observable review required: ${noObservable}`,
+            noObservable,
+            {
+              before,
+              after,
+            },
+          )
         }
         return parserStateResult(
           before ? !after : null,

@@ -31,7 +31,12 @@ export type CallbackHostRecipeCause =
   | { recipe: HostRecipeName; cause: { kind: "observed"; missing: HostInputName; query: string } }
   | {
       recipe: HostRecipeName
-      cause: { kind: "source-audited"; missing: HostInputName; artifactSha256: string; sourceCitation: string }
+      cause: {
+        kind: "source-audited" | "unimplemented"
+        missing: HostInputName
+        artifactSha256: string
+        sourceCitation: string
+      }
     }
 export type RetainedHostRecipeCause =
   | { recipe: HostRecipeName; cause: { kind: "observed"; missing: HostInputName; runId: string; eventRef: string } }
@@ -43,6 +48,17 @@ export type RetainedHostRecipeCause =
         runId: string
         artifactSha256: string
         citation: { inputRecordRef: string; sha256: string; input: HostInputName; sourceLocation: string }
+      }
+    }
+  | {
+      recipe: HostRecipeName
+      /** The audited artifact has no reply path for the query; the citation names that source, not a host input. */
+      cause: {
+        kind: "unimplemented"
+        missing: HostInputName
+        runId: string
+        artifactSha256: string
+        citation: { sourceLocation: string }
       }
     }
 
@@ -91,6 +107,22 @@ export type ProbeStatus = (typeof PROBE_STATUSES)[number]
 export type ProbeAttempt =
   | { scope: "none" }
   | { scope: "collection" | "probe"; startedAt: string; diagnosticRef?: string }
+
+/** Resolved callback intent; an empty list explicitly schedules no work. */
+export interface CollectorSelection {
+  ids: string[]
+}
+
+/** Retained collection lifecycle. An absent result preserves a historical recorded start. */
+export type CollectorAttempt = CollectorSelection & {
+  startedAt?: string
+  hostInputs?: Record<string, string>
+} & (
+    | { result: "started" | "completed"; startedAt: string; error?: never }
+    | { result: "empty"; error?: never }
+    | { result: "cancelled" | "failed"; error: string }
+    | { result?: undefined; startedAt: string; error?: never }
+  )
 
 /** The still-required tests for the frozen criterion branch, retained at execution. */
 export interface ProbeTestResult {
@@ -674,6 +706,8 @@ export interface HistoricalInterpretation {
   verifiesIdentity?: boolean
   /** Controls evidence shown by the site and API; not a privacy control in this public repository. */
   presentsEvidence?: boolean
+  /** Required on a presentation decision: the non-author acceptor, their GO message id and an ISO time with an offset. */
+  accepted?: { by: string; wire: string; at: string }
   origin?: "documentation"
 }
 
@@ -694,6 +728,7 @@ export interface CaptureDecision {
   observation?: never
   verifiesIdentity?: never
   presentsEvidence?: never
+  accepted?: never
   origin?: never
 }
 export type Interpretation = HistoricalInterpretation | CaptureDecision
@@ -705,6 +740,19 @@ export interface LibProbeSource {
   readonly runtimeIdentity?: HeadlessRuntimeIdentity
   /** Existing HyperlinkExtension method; present only for exposed parser metadata. */
   getHyperlinkAt?(row: number, col: number): string | null
+  /** Current engine defaults; null is an observed unset slot. Available for all three slots or absent. */
+  getDefaultColors?(): {
+    fg: { r: number; g: number; b: number } | null
+    bg: { r: number; g: number; b: number } | null
+    cursor: { r: number; g: number; b: number } | null
+  }
+  /** Icon name. Present only when the backend reports it separately from the window title. */
+  getIconLabel?(): string
+  /** Present only when the backend exposes the engine's clipboard callback state. */
+  getClipboardState?(): {
+    writes: { selector: string; payload: string; text?: string; decodeError?: string }[]
+    pasteSelector?: string
+  }
   /** Width read back from the backend after initialization, never inferred from cursor behavior. */
   readonly cols: number
   feed(text: string): void
@@ -737,8 +785,10 @@ export interface LibProbeSource {
     strikethrough: boolean | null
     inverse: boolean
     hidden: boolean
-    blink: boolean
-    overline?: boolean
+    /** null = this producer does not report the attribute; never a terminal-support claim. */
+    blink: boolean | null
+    /** null = this producer does not report the attribute; never a terminal-support claim. */
+    overline: boolean | null
     fg: { r: number; g: number; b: number } | null
     bg: { r: number; g: number; b: number } | null
     wide: boolean
@@ -747,6 +797,19 @@ export interface LibProbeSource {
   getMode(mode: string): boolean
   getText(): string
   getScrollback(): { viewportOffset: number; totalLines: number; screenLines: number }
+  /**
+   * Viewport scroll control, present only when the adapter can drive the backend's documented
+   * `scrollViewport(delta)`. Both directions are needed to qualify a viewport observation: backends
+   * disagree on the sign that scrolls up (measured 2026-10-29 on termless 06340a5c — ghostty-native
+   * and xtermjs scroll up on -1; alacritty, vt100, vt220 and vterm on +1), and a backend with no
+   * viewport scroll state ignores both. Absent, a viewport reading cannot qualify a negative.
+   */
+  scrollViewport?(delta: number): void
+  /**
+   * Library mouse-event encoder delegate, wired by `createLibProbeSource` only when
+   * `capabilities.extensions.has("mouse-encoding")` and `typeof backend.encodeMouse === "function"` (#31798, @cto C3).
+   */
+  encodeMouse?(event: LibMouseEvent): Uint8Array | null
   getTitle(): string
   reset(): void
   capabilities: {
@@ -757,6 +820,8 @@ export interface LibProbeSource {
     osc8Hyperlinks: boolean
     semanticPrompts: boolean
     reflow: boolean
+    /** Audited library-interface absence; undefined is undeclared. Retain the reason in capture state. */
+    productViewport?: { available: false; reason: string }
     unicode: string
     extensions: Set<string>
   }
@@ -794,6 +859,17 @@ export interface TerminalQueryOutcome {
    * sentinel". Absent when nothing answered DA1.
    */
   sentinel?: { atMs: number; graceMs: number }
+}
+
+/** Library mouse-event input matching `@termless/core` `MouseEvent` (#31798). */
+export interface LibMouseEvent {
+  x: number
+  y: number
+  button: "left" | "middle" | "right" | "none" | "wheelUp" | "wheelDown"
+  action: "press" | "release" | "move"
+  shift?: boolean
+  ctrl?: boolean
+  alt?: boolean
 }
 
 /** Independently observed text selection in an owned disposable display. */

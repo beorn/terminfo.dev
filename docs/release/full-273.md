@@ -7,15 +7,15 @@ next: false
 
 <script setup>
 import { data } from '../data/full-project.data'
-import { currentCoverageSentence } from '../data/release-scope.ts'
+import { currentCoverageSentence, publicResultFor } from '../data/release-scope.ts'
 const collected = data.contexts.filter((row) => row.collected)
-function resultFor(row, id) { return data.evidenceVersions[row.context]?.results.find((result) => result.featureId === id) }
+function resultFor(row, id) { return publicResultFor(data.evidenceContexts[row.context], id) }
 </script>
 
 # All 273 features across 33 contexts
 
 ::: warning Development reading — private, unadmitted, not a result
-This page reads current sealed execution results on the required suite. A context without a current run is **NOT COLLECTED**, with its cause. Historical results remain available through the [historical API](/api#historical-v1-and-v2); they do not complete this cohort.
+This page reads composed contexts with original sealed sources on the required suite. Retained cells from other suites stay visible with a hold reason and do not count as release evidence. A context without a source on the required suite is **NOT COLLECTED**, with its cause. Historical results remain available through the [historical API](/api#historical-v1-and-v2); they do not complete this cohort.
 :::
 
 ## Scope
@@ -26,6 +26,19 @@ This page reads current sealed execution results on the required suite. A contex
 - Score is **Supported / all {{ data.gradedRows }} graded features**; the {{ data.environmentGroups }} environment groups are ungraded and never in the denominator. Unsupported and Untestable remain in the denominator.
 - Completion requires **zero TEST TODO and zero TEST FAILURE among the graded features in every required context**, on this one suite. Cohort: **{{ data.complete ? 'complete' : 'incomplete' }}**.
 - No current sealed runs means no current score. [Historical results remain available](/api#historical-v1-and-v2).
+
+## Named tool gaps
+
+Accepted metadata snapshot: <code>{{ data.toolGaps.authorityPath }}</code>, source SHA-256 <code>{{ data.toolGaps.authoritySha256 }}</code>.
+Membership: **{{ data.toolGaps.membershipComplete ? 'complete' : 'incomplete' }}**. An accepted draft receipt cannot name a different selected sealed receipt.
+
+<table>
+  <thead><tr><th>Named gap</th><th>Accepted cells</th><th>Exact selected matches</th></tr></thead>
+  <tbody><tr v-for="group in data.toolGaps.classes" :key="group.name"><td>{{ group.name }}</td><td>{{ group.accepted }}</td><td>{{ group.matched }}</td></tr></tbody>
+</table>
+
+Graded positions: **{{ data.toolGaps.namedTodo }} named TEST TODO**, **{{ data.toolGaps.unnamedTodo }} unnamed TEST TODO**, **{{ data.toolGaps.failures }} TEST FAILURE**.
+Release consideration: **{{ data.toolGaps.eligibleForConsideration ? 'eligible for operator review' : 'blocked' }}**. Missing contexts, incomplete membership, unnamed TODO or any failure block consideration. Existing admission and operator batch GO remain required; this preview publishes no result.
 
 ## The contexts
 
@@ -47,7 +60,9 @@ This page reads current sealed execution results on the required suite. A contex
 
 <div v-for="row in collected" :key="row.context">
   <h3>{{ row.context }} <small>{{ row.result.fraction }} Supported / all</small></h3>
-  <p>Run <code>{{ row.run.runId }}</code> &middot; suite <code>{{ row.run.suiteId }}</code> &middot; {{ row.run.version }} &middot; selected by {{ row.run.selection }}.</p>
+  <p>Context <code>{{ row.selection.contextKey }}</code> &middot; selected by {{ row.selection.method }}.</p>
+  <ul><li v-for="source in row.sources" :key="source.runId">Original run <code>{{ source.runId }}</code> &middot; version {{ data.evidenceContexts[row.context].sources[source.runId].subject.version }} &middot; suite <code>{{ source.suiteId }}</code> &middot; measured {{ source.measuredAt }}.</li></ul>
+  <p v-if="row.heldIds.length">Retained cells excluded from release evidence: {{ row.heldIds.join(', ') }}.</p>
   <table>
     <thead><tr><th>Group</th><th>Supported / all</th><th>Completion</th></tr></thead>
     <tbody><tr v-for="group in row.result.groups" :key="group.key"><td>{{ group.key }}</td><td>{{ group.fraction }} &middot; {{ group.pct }}%</td><td>{{ group.complete ? 'complete' : 'incomplete' }} &mdash; {{ currentCoverageSentence(group) }}</td></tr></tbody>
@@ -55,15 +70,16 @@ This page reads current sealed execution results on the required suite. A contex
   <details>
     <summary>All {{ row.observations.length }} features and their recorded evidence</summary>
     <table>
-      <thead><tr><th>Feature</th><th>Result</th><th>Assertion type</th><th>Recorded reason</th></tr></thead>
+      <thead><tr><th>Feature</th><th>Result</th><th>Assertion type</th><th>Original source</th><th>Recorded reason / release hold</th></tr></thead>
       <tbody><tr v-for="observation in row.observations" :key="observation.id">
         <td><code>{{ observation.id }}</code></td>
         <td><ResultEvidenceCell v-if="resultFor(row, observation.id)"
           :feature-id="observation.id" :feature-name="observation.id" :subject-name="row.context"
-          :version="data.evidenceVersions[row.context]" :cell="resultFor(row, observation.id)" display="text" />
+          :version="data.evidenceContexts[row.context]" :cell="resultFor(row, observation.id)" display="text" />
           <template v-else>{{ observation.state }}</template></td>
         <td>{{ observation.method ?? '—' }}</td>
-        <td><template v-if="observation.note">{{ observation.note }}</template><template v-if="observation.reason">limitation: {{ observation.reason }}</template><template v-if="!observation.note && !observation.reason">&mdash;</template></td>
+        <td><code>{{ observation.origin.runId }}</code> · {{ observation.measuredAt }} · suite <code>{{ observation.suiteId }}</code></td>
+        <td><p v-if="observation.hold">{{ observation.hold }}</p><template v-if="observation.note">{{ observation.note }}</template><template v-if="observation.reason">limitation: {{ observation.reason }}</template><template v-if="!observation.note && !observation.reason && !observation.hold">&mdash;</template></td>
       </tr></tbody>
     </table>
   </details>

@@ -17,7 +17,7 @@ A result label states the outcome, then the evidence or the reason, as in "Suppo
 
 ## Supported and Unsupported: verified in …
 
-Supported: the effect happened. Unsupported: the same kind of check showed it did not. The second half names the evidence and the limit of the claim.
+Supported: the effect happened. Unsupported: the same kind of test showed it did not. The second half names the evidence and the limit of the claim.
 
 - **… verified in screenshot** — before-and-after screenshots of the real app, compared by a reviewer. Only that moment, version and configuration; nothing outside the frames.
 - **… verified in terminal response** — the terminal's reply to our query. Not how the feature looks or behaves.
@@ -25,11 +25,11 @@ Supported: the effect happened. Unsupported: the same kind of check showed it di
 - **… verified in engine state** — the cells, cursor or modes of a terminal engine run without a window. Not what a desktop app draws.
 - **… verified in input test** — an input action during the test and what followed. Only what that input tried.
 
-## Instruments and decisions
+## Assertion types and decisions
 
-An **instrument** is the mechanism that collected the evidence. The decision rule says what that evidence establishes. A protocol reply, engine-state reader, terminal text-buffer readback and screen capture answer different questions; they are not a ranked ladder. For example, reading a changed and restored color value can decide a color-reset claim, while a claim about the rendered color needs appropriate image evidence.
+An observation's **assertion type** says what kind of evidence the probe read: `query_reply`, `buffer_state`, `screenshot`, `input_bytes` or `clipboard`. The decision rule says what that evidence establishes. A query reply, an engine-state reader, a terminal text-buffer readback and a screen capture answer different questions; they are not a ranked ladder. For example, reading a changed and restored color value can decide a color-reset claim, while a claim about the rendered color needs appropriate image evidence.
 
-A required review is a decision over retained evidence, not another instrument. A successful capture does not itself establish the visual effect. Missing authorization or a missing instrument can leave a required check unstarted; reviewing different evidence does not turn that missing measurement into Unsupported or Untestable.
+A required review is a decision over retained evidence, not another measurement. A successful capture does not itself establish the visual effect. Missing authorization or a tool we have not built yet can leave a required test unstarted; reviewing different evidence does not turn that missing measurement into Unsupported or Untestable.
 
 ## "Corrected after review"
 
@@ -60,7 +60,7 @@ Automated image tests can decide criteria with machine-readable comparisons. Whe
 
 A collapsible section at the bottom of the result details, next to the assertionType:
 
-- **Review history** — the recorded result, who changed it and why, and the **Evidence publication check**: the approval to show this result's own screenshots or raw reply. Without it, the page shows no images and says so.
+- **Review history** — the recorded result, who changed it and why, and the **evidence presentation review**: the approval to show this result's own screenshots or raw reply. Without it, the page shows no images and says so.
 - **Screenshots** — the two frames, each with capture time, SHA-256 and a link to the original.
 - **Technical details · raw trace** — the raw bytes.
 - **Current probe guidance** — what the probe tests today; a description, not evidence.

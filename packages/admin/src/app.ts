@@ -144,17 +144,26 @@ function prepareEditorFixture(run: ProbeRun, markerValue: string, prefix: "curso
     shellArgs: [run.scriptPath],
     cwd: run.directory,
   }
-  writeFileSync(
-    join(fixture, "extension.cjs"),
-    `const vscode = require("vscode");
-exports.activate = (context) => {
-  const terminal = vscode.window.createTerminal(${JSON.stringify(terminal)});
+  const terminalJson = JSON.stringify(terminal)
+  const extension =
+    prefix === "cursor"
+      ? `const vscode = require("vscode");
+exports.activate = async (context) => {
+  await vscode.commands.executeCommand("workbench.action.closePanel");
+  await vscode.commands.executeCommand("workbench.action.toggleMaximizedPanel");
+  const terminal = vscode.window.createTerminal(${terminalJson});
   context.subscriptions.push(terminal);
   terminal.show();
 };
-`,
-    { flag: "wx", mode: 0o600 },
-  )
+`
+      : `const vscode = require("vscode");
+exports.activate = (context) => {
+  const terminal = vscode.window.createTerminal(${terminalJson});
+  context.subscriptions.push(terminal);
+  terminal.show();
+};
+`
+  writeFileSync(join(fixture, "extension.cjs"), extension, { flag: "wx", mode: 0o600 })
 }
 
 const vscodeAdditionalStatePaths = [
@@ -251,10 +260,14 @@ const APPS: AppDef[] = [
         const user = join(markerValue, "User")
         mkdirSync(user, { mode: 0o700 })
         // Without it the updater reaches "ready" and "New update available" covers the terminal.
-        writeFileSync(join(user, "settings.json"), JSON.stringify({ "update.mode": "none" }), {
-          flag: "wx",
-          mode: 0o600,
-        })
+        writeFileSync(
+          join(user, "settings.json"),
+          JSON.stringify({
+            "update.mode": "none",
+            "workbench.panel.opensMaximized": "always",
+          }),
+          { flag: "wx", mode: 0o600 },
+        )
         // "Want to launch Cursor from the command line?" has no setting; pinned in ./cursor-onboarding.ts.
         dismissCursorCommandLinePrompt(markerValue)
       },
@@ -298,6 +311,7 @@ const APPS: AppDef[] = [
             "chat.disableAIFeatures": true,
             "workbench.startupEditor": "none",
             "workbench.welcomePage.experimentalOnboarding": false,
+            "workbench.panel.opensMaximized": "always",
           }),
           { flag: "wx", mode: 0o600 },
         )
@@ -631,6 +645,7 @@ async function probeDaemon(
   )
   const retained = await readRetainedDaemonProbeResponse(res)
   console.log(`  Retained private HTTP response ${retained.path}; SHA256 ${retained.sha256}`)
+  if (retained.kind === "empty-selection") throw new Error("Empty selection where a capture was required")
   const data = retained.run
   const identityCheck = verifyTerminalIdentity(appId, data.rawReplies)
   const run = {

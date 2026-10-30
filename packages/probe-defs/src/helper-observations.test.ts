@@ -21,6 +21,7 @@ const baseCell = {
   inverse: false,
   hidden: false,
   blink: false,
+  overline: null,
   fg: null,
   bg: null,
   wide: false,
@@ -206,6 +207,10 @@ test("headless reset.sgr grades the measured styles and reset.soft needs an expo
   const soft = find("reset.soft")(headless({ getMode: () => null as unknown as boolean }))
   expect(soft.observation).toBeUndefined()
   expect(soft.notTested).toEqual({ reason: "no-semantic-observable", noObservable: expect.stringContaining("DECCKM") })
+  expect(soft.criterionBranch).toBe("headless-observable-review")
+  expect(soft.tests).toEqual([
+    { id: "review", status: "test-todo", reason: expect.stringContaining("Headless observable review required:") },
+  ])
   // An exposed mode that stayed off is unmeasured, never a coverage record.
   expect(find("reset.soft")(headless()).observation).toMatchObject({ outcome: "inconclusive" })
 })
@@ -548,13 +553,14 @@ test("underline color needs an observed color, not only an underline or a consum
         }),
       }),
     )
-    // #30701: a cell fed SGR 58 that reports no underline color is a missing field (TEST TODO).
-    expect(unexposed.observation, id).toBeUndefined()
-    expect(unexposed.notTested, id).toEqual({
-      reason: "no-semantic-observable",
-      noObservable: expect.stringContaining("cell.underlineColor"),
-    })
-    expect(unexposed.assertions, id).toBeUndefined()
+    // #31379: a cell fed SGR 58 that reports no underline color routes to source-negative-review.
+    expect(unexposed.notTested, id).toBeUndefined()
+    expect(unexposed.criterionBranch, id).toBe("source-negative-review")
+    expect(unexposed.tests, id).toEqual([
+      { id: "review", status: "test-failure", reason: expect.stringContaining("cell.underlineColor") },
+    ])
+    expect(unexposed.observation, id).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+    expect(unexposed.assertions, id).toMatchObject([{ kind: "negative", observed: unexposed.response }])
 
     const colored = probe.lib(
       headless({
@@ -610,12 +616,13 @@ test("indexed underline color follows two distinct measured palette controls", a
     )
 
   const unexposed = run(undefined, undefined)
-  expect(unexposed.observation).toBeUndefined()
-  expect(unexposed.notTested).toEqual({
-    reason: "no-semantic-observable",
-    noObservable: expect.stringContaining("cell.underlineColor"),
-  })
-  expect(unexposed.assertions).toBeUndefined()
+  expect(unexposed.notTested).toBeUndefined()
+  expect(unexposed.criterionBranch).toBe("source-negative-review")
+  expect(unexposed.tests).toEqual([
+    { id: "review", status: "test-failure", reason: expect.stringContaining("cell.underlineColor") },
+  ])
+  expect(unexposed.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+  expect(unexposed.assertions).toMatchObject([{ kind: "negative", observed: unexposed.response }])
 
   const matched = run(index5, index4)
   expect(matched.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
@@ -653,9 +660,13 @@ test("underline color reset needs both an observed colored before cell and defau
   const missingBefore = probe.lib(
     withCells({ ...baseCell, underline: true, underlineColor: undefined }, { ...baseCell, char: "Y", underline: true }),
   )
-  expect(missingBefore.observation).toBeUndefined()
-  expect(missingBefore.notTested?.noObservable).toContain("cell.underlineColor")
-  expect(missingBefore.assertions).toBeUndefined()
+  expect(missingBefore.notTested).toBeUndefined()
+  expect(missingBefore.criterionBranch).toBe("source-negative-review")
+  expect(missingBefore.tests).toEqual([
+    { id: "review", status: "test-failure", reason: expect.stringContaining("cell.underlineColor") },
+  ])
+  expect(missingBefore.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+  expect(missingBefore.assertions).toMatchObject([{ kind: "negative", observed: missingBefore.response }])
 
   const missingAfter = probe.lib(
     withCells(
@@ -700,12 +711,13 @@ test("a null underline color from an adapter with no color readback is TEST TODO
         }),
       }),
     )
-    expect(result.observation, id).toBeUndefined()
-    expect(result.notTested, id).toEqual({
-      reason: "no-semantic-observable",
-      noObservable: expect.stringContaining("cell.underlineColor"),
-    })
-    expect(result.assertions, id).toBeUndefined()
+    expect(result.notTested, id).toBeUndefined()
+    expect(result.criterionBranch, id).toBe("source-negative-review")
+    expect(result.tests, id).toEqual([
+      { id: "review", status: "test-failure", reason: expect.stringContaining("cell.underlineColor") },
+    ])
+    expect(result.observation, id).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+    expect(result.assertions, id).toMatchObject([{ kind: "negative", observed: result.response }])
   }
 })
 
@@ -797,10 +809,14 @@ test("SGR reset results require an observed setup and preserve unrelated attribu
     const unobservedSetup = probe.lib(
       headless({ getCell: (_row, col) => ({ ...baseCell, char: ["C", "X", "Y"][col] ?? "" }) }),
     )
-    // #30701: a styled setup that shows none of the attributes has no observable (TEST TODO).
-    expect(unobservedSetup.observation, id).toBeUndefined()
-    expect(unobservedSetup.notTested?.reason, id).toBe("no-semantic-observable")
-    expect(unobservedSetup.assertions, id).toBeUndefined()
+    // #31379: a styled setup that shows none of the attributes routes to source-negative-review.
+    expect(unobservedSetup.notTested, id).toBeUndefined()
+    expect(unobservedSetup.criterionBranch, id).toBe("source-negative-review")
+    expect(unobservedSetup.tests, id).toEqual([
+      { id: "review", status: "test-failure", reason: expect.stringContaining("on the styled setup cell") },
+    ])
+    expect(unobservedSetup.observation, id).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+    expect(unobservedSetup.assertions, id).toMatchObject([{ kind: "negative", observed: unobservedSetup.response }])
     if (erasedSentinel) {
       const lost = read(erasedSentinel)
       expect(lost.observation, id).toMatchObject({ outcome: "unsupported", assertionType: "buffer_state" })
@@ -829,11 +845,11 @@ test.each([
     }),
   )
   if (outcome === "todo") {
-    expect(result.observation).toBeUndefined()
-    expect(result.notTested).toEqual({
-      reason: "no-semantic-observable",
-      noObservable: expect.stringContaining(unshown),
-    })
+    expect(result.notTested).toBeUndefined()
+    expect(result.criterionBranch).toBe("source-negative-review")
+    expect(result.tests).toEqual([{ id: "review", status: "test-failure", reason: expect.stringContaining(unshown) }])
+    expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+    expect(result.assertions).toMatchObject([{ kind: "negative", observed: result.response }])
   } else {
     expect(result.observation).toMatchObject({ outcome, assertionType: "buffer_state" })
     expect(result.observation?.note).toContain(unshown)
@@ -886,12 +902,13 @@ test("named ANSI color probes require distinct exposed selection, without theme 
     expect(ignored?.observation, id).toMatchObject({ outcome: "unsupported", assertionType: "buffer_state" })
     expect(ignored?.assertions, id).toMatchObject([{ kind: "negative", observed: ignored?.response }])
     const unshown = run(null, null)
-    expect(unshown?.observation, id).toBeUndefined()
-    expect(unshown?.assertions, id).toBeUndefined()
-    expect(unshown?.notTested, id).toEqual({
-      reason: "no-semantic-observable",
-      noObservable: expect.stringContaining(`the ${channel} color field`),
-    })
+    expect(unshown?.notTested, id).toBeUndefined()
+    expect(unshown?.criterionBranch, id).toBe("source-negative-review")
+    expect(unshown?.tests, id).toEqual([
+      { id: "review", status: "test-failure", reason: expect.stringContaining(`the ${channel} color field`) },
+    ])
+    expect(unshown?.observation, id).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+    expect(unshown?.assertions, id).toMatchObject([{ kind: "negative", observed: unshown?.response }])
     const absentDefault = probe.lib(
       headless({
         getCell: (_row, col) => ({
@@ -957,11 +974,13 @@ test("indexed cube colors require two exact direct-RGB reference controls", () =
       expect(palette?.assertions, id).toBeUndefined()
     }
     const uncalibrated = run([first, second], [null, null])
-    expect(uncalibrated?.observation, id).toBeUndefined()
-    expect(uncalibrated?.notTested, id).toEqual({
-      reason: "no-semantic-observable",
-      noObservable: expect.stringContaining("direct RGB"),
-    })
+    expect(uncalibrated?.notTested, id).toBeUndefined()
+    expect(uncalibrated?.criterionBranch, id).toBe("source-negative-review")
+    expect(uncalibrated?.tests, id).toEqual([
+      { id: "review", status: "test-failure", reason: expect.stringContaining("direct RGB") },
+    ])
+    expect(uncalibrated?.observation, id).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+    expect(uncalibrated?.assertions, id).toMatchObject([{ kind: "negative", observed: uncalibrated?.response }])
   }
 })
 
@@ -1007,8 +1026,13 @@ test("truecolor probes distinguish exact sampled RGB from calibrated wrong RGB",
     expect(ignored?.observation, id).toMatchObject({ outcome: "unsupported", assertionType: "buffer_state" })
     expect(ignored?.assertions, id).toMatchObject([{ kind: "negative", observed: ignored?.response }])
     const uncalibrated = run([null, null], [null, null])
-    expect(uncalibrated?.observation, id).toBeUndefined()
-    expect(uncalibrated?.notTested?.noObservable, id).toContain("color controls")
+    expect(uncalibrated?.notTested, id).toBeUndefined()
+    expect(uncalibrated?.criterionBranch, id).toBe("source-negative-review")
+    expect(uncalibrated?.tests, id).toEqual([
+      { id: "review", status: "test-failure", reason: expect.stringContaining("color controls") },
+    ])
+    expect(uncalibrated?.observation, id).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+    expect(uncalibrated?.assertions, id).toMatchObject([{ kind: "negative", observed: uncalibrated?.response }])
   }
 })
 
@@ -1035,11 +1059,15 @@ test("SGR 39 and 49 restore the measured default, including concrete RGB default
     const ignored = run([baseline, colored, colored])
     expect(ignored?.observation, id).toMatchObject({ outcome: "unsupported", assertionType: "buffer_state" })
     expect(ignored?.assertions, id).toMatchObject([{ kind: "negative", observed: ignored?.response }])
-    // #30701 (@cto ruling C): a setup that reads back as the default leaves the reset no reference.
+    // #31379: a setup that reads back as the default leaves the reset no reference and routes to source-negative-review.
     const uncalibrated = run([baseline, baseline, baseline])
-    expect(uncalibrated?.observation, id).toBeUndefined()
-    expect(uncalibrated?.notTested?.noObservable, id).toContain("setup cell")
-    expect(uncalibrated?.assertions, id).toBeUndefined()
+    expect(uncalibrated?.notTested, id).toBeUndefined()
+    expect(uncalibrated?.criterionBranch, id).toBe("source-negative-review")
+    expect(uncalibrated?.tests, id).toEqual([
+      { id: "review", status: "test-failure", reason: expect.stringContaining("setup cell") },
+    ])
+    expect(uncalibrated?.observation, id).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+    expect(uncalibrated?.assertions, id).toMatchObject([{ kind: "negative", observed: uncalibrated?.response }])
   }
 })
 

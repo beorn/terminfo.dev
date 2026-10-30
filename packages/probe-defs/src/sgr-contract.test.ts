@@ -102,6 +102,7 @@ const INERT_CELL: InertCell = {
   inverse: false,
   hidden: false,
   blink: false,
+  overline: false,
   fg: null,
   bg: null,
   wide: false,
@@ -142,7 +143,7 @@ const SGR_SATISFACTION_CELLS: Record<string, readonly TableCell[]> = {
   "sgr.inverse": [X({ inverse: true })],
   "sgr.hidden": [X({ hidden: true })],
   "sgr.strikethrough": [X({ strikethrough: true })],
-  // overline reads an OPTIONAL cell field: binding it needs the field PRESENT (omitted = notTested, below)
+  // overline null means the engine exposes no bit: that row stays notTested, never a false off.
   "sgr.overline": [X({ overline: true })],
   // full + selective resets; measuredReset reads the C (baseline), X (styled), Y (reset) cells
   "sgr.reset": [{ char: "C" }, X({ bold: true, italic: true, underline: "single" }), { char: "Y" }],
@@ -278,11 +279,8 @@ test("every SGR contract row is satisfied by the headless cell state its claim r
   expect(Object.keys(SGR_SATISFACTION_CELLS).sort()).toEqual(decided.sort())
 })
 
-test("a row reading an OPTIONAL cell field is notTested when the field is omitted, bound when present", async () => {
-  // sgr.overline is the one row whose claim reads an optional field. Present -> the same synthetic
-  // predicate seam the other 31 rows use; omitted -> notTested("no-semantic-observable"), never a
-  // false negative (@dev/10 2026-10-09: types.ts permits overline?:boolean, so the earlier "cannot be
-  // exposed headlessly" wording was wrong - the field is simply optional).
+test("a row reading overline is notTested when the bit is null, bound when present", async () => {
+  // null is "the engine exposes no bit" (d90759cc). Present true satisfies the row. null is not a false off.
   const row = SGR_CONTRACT.find((entry) => entry.id === "sgr.overline")
   const probe = sgrProbes.find((entry) => entry.id === "sgr.overline")
   expect(row, "the SGR contract names sgr.overline").toBeDefined()
@@ -291,7 +289,7 @@ test("a row reading an OPTIONAL cell field is notTested when the field is omitte
   const present = await regradeRow(probe, row, { headless: libProbeSource(cellsModel([X({ overline: true })])) })
   expect(present.after).toBe("supported")
   expect(present.satisfies).toBe(true)
-  const omittedSource = libProbeSource(cellsModel([{ char: "X" }]))
+  const omittedSource = libProbeSource(cellsModel([{ char: "X", overline: null }]))
   const omitted = await regradeRow(probe, row, { headless: omittedSource })
   expect(omitted.after).toBeUndefined()
   expect(omitted.satisfies).toBe(false)
@@ -319,13 +317,19 @@ test.each([
   ["sgr.faint", "dim"],
   ["sgr.italic", "italic"],
   ["sgr.strikethrough", "strikethrough"],
-] as const)("%s names unreported %s without treating it as a measured negative", (id, field) => {
+  ["sgr.blink", "blink"],
+] as const)("%s retains unreported %s for required source review", (id, field) => {
   const probe = sgrProbes.find((probe) => probe.id === id)!
   const run = (value: boolean | null, char = "X") =>
     probe.lib!(libProbeSource(inertModel(40, { [field]: value, char })))
   const missing = run(null)
-  expect(missing.notTested).toMatchObject({ reason: "no-semantic-observable" })
-  expect(JSON.stringify(missing)).toContain(`producer does not report cell.${field}`)
+  expect(missing.notTested).toBeUndefined()
+  expect(missing.criterionBranch).toBe("source-negative-review")
+  expect(missing.tests).toContainEqual(expect.objectContaining({ id: "review", status: "test-failure" }))
+  expect(JSON.parse(missing.response!)).toEqual(expect.objectContaining({ [field]: null }))
+  expect(missing.assertions).toContainEqual(
+    expect.objectContaining({ kind: "negative", assertionType: "buffer_state" }),
+  )
   expect(run(true).observation?.outcome).toBe("supported")
   const measuredNegative = run(false)
   expect(measuredNegative.notTested).toBeUndefined()
@@ -335,4 +339,6 @@ test.each([
   )
   expect(run(null, " ").observation?.outcome).toBe("inconclusive")
   expect(run(null, " ").notTested).toBeUndefined()
+  expect(run(null, " ").criterionBranch).toBeUndefined()
+  expect(run(null, " ").assertions).toBeUndefined()
 })

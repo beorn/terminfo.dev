@@ -1,6 +1,7 @@
-import type { ProbeDefinition, ProbeCallbackResult, TermProbeSource } from "./types.ts"
+import type { LibProbeSource, ProbeDefinition, ProbeCallbackResult, TermProbeSource } from "./types.ts"
 import { notTestedResult, osInputReviewResult, probe } from "./helpers.ts"
 import { kittyKeyboardFlagProbe } from "./extensions.ts"
+import { queryPixelGeometry, type PixelGeometry } from "./region-readback.ts"
 
 export const inputProbes: ProbeDefinition[] = [
   probe("input.modify-other-keys", () => headlessXtestReview("key injection"), modifyOtherKeys2, "input_bytes"),
@@ -20,8 +21,8 @@ export const inputProbes: ProbeDefinition[] = [
   probe("input.xtest-click", () => headlessXtestReview("click injection"), xtestClick, "input_bytes"),
   probe("input.xtest-wheel", () => headlessXtestReview("wheel injection"), xtestWheel, "input_bytes"),
   {
-    ...probe("input.kitty-click-events", () => headlessXtestReview("click injection"), kittyClickEvents, "input_bytes"),
-    libAssertionType: null,
+    ...probe("input.kitty-click-events", kittyClickEventsLib, kittyClickEvents, "input_bytes"),
+    libAssertionType: "input_bytes",
   },
 ]
 
@@ -29,6 +30,7 @@ const MOUSE_SET = "\x1b[?1000h\x1b[?1006h"
 const MOUSE_RESET = "\x1b[?1000l\x1b[?1006l"
 const PLAIN_A = /^a/
 const MODIFIED_KEY = /\x01|\x1b\[(?:27;\d+;\d+~|\d+;\d+u)/
+const CTRL_A_ENCODING = /^\x1b\[(?:27;5;97~|97;5u)$/
 const SGR_MOUSE = /\x1b\[<\d+;\d+;\d+[Mm]/
 const MODIFY_OTHER_KEYS_2 = "\x1b[>4;2m"
 const MODIFY_OTHER_KEYS_3 = "\x1b[>4;3m"
@@ -38,8 +40,9 @@ const MODIFY_OTHER_KEYS_3_REPORT = /\x1b\[(?:27;\d+;\d+~|\d+;\d+u)|i/
 const MODIFY_OTHER_KEYS_ENCODING = /\x1b\[(?:27;\d+;105~|105;\d+u)/
 const DECKPAM = "\x1b="
 const DECKPNM = "\x1b>"
-const APPLICATION_KEYPAD_REPORT = /\x1bOu|5/
-const APPLICATION_KEYPAD_ENCODING = /\x1bOu/
+// SS3 may be mixed with other replies; only a standalone 5 establishes numeric-keypad fallback.
+const APPLICATION_KEYPAD_REPORT = /\x1bOu|^5$/
+const APPLICATION_KEYPAD_ENCODING = /^\x1bOu$/
 const PIXEL_MOUSE_SET = "\x1b[?1016h"
 const PIXEL_MOUSE_RESET = "\x1b[?1016l"
 const URXVT_MOUSE_SET = "\x1b[?1015h"
@@ -57,7 +60,7 @@ const ALT_SCREEN_RESET = "\x1b[?1049l"
 const ALT_SCROLL_SET = "\x1b[?1007h"
 const ALT_SCROLL_RESET = "\x1b[?1007l"
 const ALT_SCROLL_OR_SGR = /\x1b(?:\[(?:<\d+;\d+;\d+[Mm]|[AB])|O[AB])/
-const ALT_SCROLL_ENCODING = /\x1b(?:\[[AB]|O[AB])/
+const ALT_SCROLL_ENCODING = /^\x1b\[A$/
 const KITTY_CLICK_START = "\x1b]133;A;click_events=1\x07"
 const KITTY_CLICK_END = "\x1b]133;B\x07"
 const SGR_MOUSE_PRESS = /\x1b\[<\d+;\d+;\d+M/
@@ -183,7 +186,7 @@ export async function applicationKeypad(ctx: TermProbeSource): Promise<ProbeCall
       throw new Error("XTEST application keypad KP_5 did not reach the app after a successful delivery control")
     }
     const observed = { mode: "application-keypad", control, report }
-    const expected = "OS XTEST KP_5 report under DECKPAM after plain-a delivery control"
+    const expected = "OS XTEST KP_5 report as SS3 u under DECKPAM after plain-a delivery control"
     if (APPLICATION_KEYPAD_ENCODING.test(report)) {
       return interactionResult("application-keypad:KP_5", expected, observed)
     }
@@ -236,10 +239,11 @@ async function xtestKey(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   if (!report) {
     throw new Error("XTEST modified key did not reach the app after a successful delivery control")
   }
-  return interactionResult("xtest-key:ctrl+a", "OS XTEST ctrl+a report after plain-a delivery control", {
-    control,
-    report,
-  })
+  const observed = { control, report }
+  const expected = "OS XTEST ctrl+a report after plain-a delivery control"
+  return CTRL_A_ENCODING.test(report)
+    ? interactionResult("xtest-key:ctrl+a", expected, observed)
+    : unsupportedInteraction("xtest-key:ctrl+a", expected, observed)
 }
 
 async function withMouseModes<T>(ctx: TermProbeSource, work: () => Promise<T>): Promise<T> {
@@ -257,10 +261,17 @@ function sgrMouseCoords(report: string): { x: number; y: number } | undefined {
   return { x: Number(match[1]), y: Number(match[2]) }
 }
 
-function pixelCoordsDistinct(control: string, report: string): boolean {
+function pixelCoordsWithin(control: string, report: string, geometry: PixelGeometry): boolean {
   const cell = sgrMouseCoords(control)
   const pixel = sgrMouseCoords(report)
-  return cell !== undefined && pixel !== undefined && (pixel.x !== cell.x || pixel.y !== cell.y)
+  return (
+    cell !== undefined &&
+    pixel !== undefined &&
+    pixel.x > (cell.x - 1) * geometry.cellWidth &&
+    pixel.x <= cell.x * geometry.cellWidth &&
+    pixel.y > (cell.y - 1) * geometry.cellHeight &&
+    pixel.y <= cell.y * geometry.cellHeight
+  )
 }
 
 function isUrxvtMouse(report: string): boolean {
@@ -386,6 +397,10 @@ async function pixelMouse(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
       SGR_MOUSE,
       "XTEST delivery control failed: click under 1000+1006 did not reach the app",
     )
+    const measured = await queryPixelGeometry(ctx)
+    if ("missing" in measured) {
+      return notTestedResult(`no cell geometry: ${measured.missing}`, { control, geometry: measured })
+    }
     ctx.write(PIXEL_MOUSE_SET)
     try {
       const report = (await readInput(SGR_MOUSE, 1000, () => input.injectClick(1)))?.[0]
@@ -394,9 +409,9 @@ async function pixelMouse(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
           "XTEST 1016 pixel-mouse click did not reach the app after a successful 1000+1006 delivery control",
         )
       }
-      const observed = { mode: "1016", control, report }
+      const observed = { mode: "1016", control, report, geometry: measured.geometry, geometrySource: measured.source }
       const expected = "OS XTEST click report under 1016 with pixel coordinates after 1000+1006 delivery control"
-      if (pixelCoordsDistinct(control, report)) {
+      if (pixelCoordsWithin(control, report, measured.geometry)) {
         return interactionResult("pixel-mouse:1", expected, observed)
       }
       return unsupportedInteraction("pixel-mouse:1", expected, observed)
@@ -421,11 +436,15 @@ async function xtestClick(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
     if (!report) {
       throw new Error("XTEST click did not reach the app after a successful 1000+1006 delivery control")
     }
-    return interactionResult("xtest-click:1", "OS XTEST button-1 report under 1000+1006 after same-run control click", {
+    const expected = "OS XTEST button-1 report under 1000+1006 after same-run control click"
+    const observed = {
       mode: "1000+1006",
       control,
       report,
-    })
+    }
+    return /^\x1b\[<0;\d+;\d+[Mm]$/.test(report)
+      ? interactionResult("xtest-click:1", expected, observed)
+      : unsupportedInteraction("xtest-click:1", expected, observed)
   })
 }
 
@@ -444,11 +463,15 @@ async function xtestWheel(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
     if (!report) {
       throw new Error("XTEST wheel did not reach the app after a successful 1000+1006 delivery control")
     }
-    return interactionResult("xtest-wheel:4", "OS XTEST wheel-4 report under 1000+1006 after same-run control click", {
+    const expected = "OS XTEST wheel-4 report under 1000+1006 after same-run control click"
+    const observed = {
       mode: "1000+1006",
       control,
       report,
-    })
+    }
+    return /^\x1b\[<64;\d+;\d+M$/.test(report)
+      ? interactionResult("xtest-wheel:4", expected, observed)
+      : unsupportedInteraction("xtest-wheel:4", expected, observed)
   })
 }
 
@@ -504,5 +527,107 @@ async function kittyClickEvents(ctx: TermProbeSource): Promise<ProbeCallbackResu
     return interactionResult("kitty-click-events:1", expected, observed)
   } finally {
     ctx.write(`${KITTY_CLICK_END}\x1b[${point.y};1H\x1b[2K\x1b[H`)
+  }
+}
+
+function decodeMouseReport(bytes: Uint8Array | null): string | null {
+  return bytes === null ? null : new TextDecoder().decode(bytes)
+}
+
+function kittyClickEventsLib(ctx: LibProbeSource): ProbeCallbackResult {
+  if (!ctx.capabilities.extensions.has("mouse-encoding") || typeof ctx.encodeMouse !== "function") {
+    return notTestedResult("library mouse-event encoding (undeclared mouse-encoding extension)", {
+      mouseEncoding: false,
+    })
+  }
+  const encodeMouse = ctx.encodeMouse
+  const cell = { x: 4, y: 2 } as const
+  const targetPoint = { x: cell.x + 1, y: cell.y + 1 }
+  const nonPromptCell = { x: cell.x, y: cell.y + 1 } as const
+  const expected =
+    "Click inside a main-screen OSC 133 prompt marked click_events=1 reports SGR mouse while mouse modes are off"
+  const csi = MOUSE_SET.slice(0, 2)
+  ctx.feed(MOUSE_SET)
+  let control: string | null = null
+  let controlCompleted = false
+  try {
+    control = decodeMouseReport(encodeMouse({ x: cell.x, y: cell.y, button: "left", action: "press" }))
+    if (control === null) {
+      const observed = { marker: "OSC 133;A;click_events=1", control: null, pointer: targetPoint, report: null }
+      return {
+        pass: false,
+        response: JSON.stringify(observed),
+        observation: {
+          outcome: "inconclusive",
+          reason: "insufficient-evidence",
+          assertionType: "input_bytes",
+          note: "Library mouse encoding delivery control under 1000+1006 returned null",
+        },
+      }
+    }
+    const point = sgrMouseCoords(control)
+    if (
+      !point ||
+      !SGR_MOUSE_PRESS.test(control) ||
+      sgrMouseButton(control) !== 0 ||
+      point.x !== targetPoint.x ||
+      point.y !== targetPoint.y
+    ) {
+      throw new Error(`click delivery control ${JSON.stringify(control)} carries no SGR cell coordinates`)
+    }
+    encodeMouse({ x: cell.x, y: cell.y, button: "left", action: "release" })
+    controlCompleted = true
+  } finally {
+    if (!controlCompleted) {
+      ctx.feed(MOUSE_RESET)
+    }
+  }
+  try {
+    const observedBase = { marker: "OSC 133;A;click_events=1", control, pointer: targetPoint }
+    const pad = " ".repeat(Math.max(0, targetPoint.x - 2))
+    ctx.feed(`${csi}${String(targetPoint.y)};1H${KITTY_CLICK_START}$ ${pad}`)
+    ctx.feed(MOUSE_RESET)
+    const negativeControl = decodeMouseReport(
+      encodeMouse({ x: nonPromptCell.x, y: nonPromptCell.y, button: "left", action: "press" }),
+    )
+    if (negativeControl !== null) {
+      const observed = { ...observedBase, negativeControl, report: null }
+      return {
+        pass: false,
+        response: JSON.stringify(observed),
+        observation: {
+          outcome: "inconclusive",
+          reason: "insufficient-evidence",
+          assertionType: "input_bytes",
+          note: "Negative control outside the marked prompt still emitted a mouse report after 1000+1006 reset (mouse modes still active)",
+        },
+      }
+    }
+    const report = decodeMouseReport(encodeMouse({ x: cell.x, y: cell.y, button: "left", action: "press" }))
+    const observed = { ...observedBase, negativeControl: null, report }
+    if (report === null) return unsupportedInteraction("kitty-click-events:1", expected, observed)
+    encodeMouse({ x: cell.x, y: cell.y, button: "left", action: "release" })
+    const reported = sgrMouseCoords(report)
+    if (
+      !SGR_MOUSE_PRESS.test(report) ||
+      sgrMouseButton(report) !== 0 ||
+      !reported ||
+      reported.x !== targetPoint.x ||
+      reported.y !== targetPoint.y
+    ) {
+      return {
+        pass: false,
+        response: JSON.stringify(observed),
+        observation: {
+          outcome: "inconclusive",
+          reason: "insufficient-evidence",
+          assertionType: "input_bytes",
+          note: "A click report arrived but did not correlate with the control click's button and cell",
+        },
+      }
+    }
+    return interactionResult("kitty-click-events:1", expected, observed)
+  } finally {
+    ctx.feed(`${KITTY_CLICK_END}${csi}${String(targetPoint.y)};1H${csi}2K${csi}H${MOUSE_RESET}`)
   }
 }

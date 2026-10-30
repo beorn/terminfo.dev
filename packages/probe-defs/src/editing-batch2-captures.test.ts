@@ -479,16 +479,33 @@ test.each([
   expect(JSON.parse(result.response ?? "{}")).toEqual({ rect, stream })
 })
 
-test("editing.decsace with no inverse cell in either frame records the extent as unobservable (TEST TODO)", () => {
+test("editing.decsace with no inverse cell in either frame routes to source-negative-review", () => {
   const none = "........|........"
   const result = find("editing.decsace").lib!(decsacePairSource(none, none))
   expect(result.pass).toBe(false)
-  expect(result.observation).toBeUndefined()
-  expect(result.notTested).toEqual({
-    reason: "no-semantic-observable",
-    noObservable: "DECCARA not honoured, extent unobservable",
+  expect(result.notTested).toBeUndefined()
+  expect(result.criterionBranch).toBe("source-negative-review")
+  expect(result.tests).toEqual([
+    {
+      id: "review",
+      status: "test-failure",
+      reason: "DECCARA not honoured, extent unobservable",
+    },
+  ])
+  expect(result.observation).toEqual({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+    assertionType: "buffer_state",
   })
-  expect(result.assertions).toBeUndefined()
+  expect(result.assertions).toEqual([
+    {
+      assertionType: "buffer_state",
+      kind: "negative",
+      expected:
+        "DECSACE rectangle extent confines DECCARA to the 2x2 block; stream extent reaches the rest of the reading-order span",
+      observed: result.response!,
+    },
+  ])
 })
 
 test("editing.decsace keeps any other agreeing pair inconclusive by name, never a pass", () => {

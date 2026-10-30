@@ -21,6 +21,10 @@ Status names remain supported, unsupported, untestable, TEST TODO and TEST FAILU
 The collection owner's frozen `CollectionPass.freeze.deferrals` records each carried context with its `routeIssue` and `reason`.
 `release1-collection --collect --admit --frozen-suite <id> --deferrals <json-file>` reads that explicit array before collection.
 Deferred contexts remain named in the pass census with their reason and no new measurement; existing context status values are unchanged.
+Failed hosted collection retains its original delegated draft as failure custody when canonical `run.json` is absent.
+Only a source-, suite-, run- and selection-bound collector attempt with a recorded start establishes execution;
+a job-start marker alone does not. A nonzero collector exit reports `failed`, with its exit code and log path.
+This custody never supplies grades or bypasses canonical validation, review or admission.
 An admitting pass is complete only when every non-deferred declared context is complete and admitted, with no pass errors.
 The read-only admin `report --scoreboard <inputs...>` accepts explicit raw captures or pass files/directories, preserves pass identities,
 and uses the canonical selected-results reader and local `origin/live` revision to distinguish selection from proven publication.
@@ -48,6 +52,56 @@ Both source interfaces carry `readonly kind: ProbeSourceKind` directly. The only
 
 The [shared execution helpers](src/helpers.ts) initialize every catalog member as `test-todo` with no attempt, then record only the work actually performed.
 
+TERM_FEATURES means a terminal program's export into its child environment. Its library arm performs
+no I/O and retains a `headless-observable-review` row with the API boundary and loaded runtime for
+per-engine source review. Only a non-author Untestable decision can discharge it; it creates no
+observation or assertion. The application arm remains TEST TODO until terminal-owned child readback exists.
+
+The pinned vterm 0.9.0 library arms for OSC 9, 22, 176, 440, 555, 666, 710, 777 and 3008 feed their exact commands and a cell-X
+consumption control. A rendered X retains `source-negative-review`, its actual fed/cell state and a
+negative buffer-state assertion for independent review of the target implementation at source53a9eb92.
+The control proves parser consumption, not a target effect; target state remains explicitly unexposed.
+Other identities keep named coverage, and a missing X grants no source-review negative.
+OSC 9 specifically names the engine's notification sink and lack of progress subcode/state
+interpretation; it never claims that the OSC 9 handler is absent. The other audited codes
+retain their absent-case source reasons. A decision still requires independent review bound
+to a fresh exact-run capture; these qualifiers do not approve old captures or application arms.
+
+The same helper covers @xterm/headless6.0.0 OSC9/22/176/440/555/666/710/777/3008 at its audited registry integrity and adapter0.10.2.
+It retains the bundle/map and adapter citations plus the executing runtime identity for independent source review.
+The bundle hashes are audit evidence, not fields in the runtime identity; the embedder hook must also be checked at the captured Termless source.
+
+OSC99 capability detection has both library and term query arms. They share the nonce/title
+criterion and never display a notification. Unqualified library capture silence stays inconclusive;
+only the existing qualified sentinel path can establish a negative reply result. Current artifact
+source audits retain their own parser/reply-path citations. Viewport hold on output measures the
+library viewport through the existing scroll control and absolute position/extents. Each independent
+ordinary/synchronized phase resets the main buffer, observes its numbered seed, requires history,
+exact retention and a bottom baseline, then calibrates the first inward sign (-1 before +1) without
+changing extents. Exactly one retained new marker row witnesses hold at the same anchor, snap to the
+new bottom, or bottom-relative motion: the absolute viewport offset advances by exactly one from its
+anchor, keeping its distance from bottom. Marker readability is checked only after a verified return
+to bottom. Both phases must qualify: both bottom-relative outcomes are negative with the reason
+"viewport kept its distance from bottom instead of its anchor"; one bottom-relative outcome mixed
+with any other outcome is inconclusive. Otherwise either qualified snap is negative and both holds
+are positive. Failed controls and every other drift withhold a verdict. Missing history or scroll
+control/state names coverage; operational and cleanup errors propagate. Retained buffer-state evidence has baseline, anchor,
+control, ordinary and synchronized keys. The exact DECSET 2026 bytes exercise output inside that
+block without claiming painting support. The app coverage callback performs no I/O and stays TEST
+TODO because it has no live terminal UI scroll actuator; its manual UI recipe remains in the catalog.
+
+The optional library capability `productViewport: { available: false, reason }` explicitly declares
+that the library subject has no product viewport; an absent declaration means undeclared. The
+collector omits the probe source's scroll control for that declaration. Before any phase action, the
+viewport callback retains the declaration and exact reason plus measured `runtimeIdentity` (null
+when missing), and selects `headless-observable-review` with named scroll-control coverage. It creates
+no phase measurements or assertions and stays TEST TODO until independent per-engine source review
+decides Untestable with the same reason. Missing runtime identity bars that source-based decision.
+A declaration of absence paired with a present scroll control is an inconclusive apparatus
+contradiction, with no review row. An undeclared missing scroll control keeps ordinary named coverage.
+Scripted callback tests cover these branches and the exact two-phase arithmetic independently of
+engine versions; historical captures and grades are unchanged.
+
 **Callback and stored shapes are different.** Follow these names in [types.ts](src/types.ts):
 
 - `ProbeCallbackResult` has three arms: a measured `observation`; `notTested` coverage naming a missing semantic observable; or execution-only, nonempty TODO/FAILURE `tests`, each with a mandatory reason. Execution-only callbacks have no observation, assertions or coverage. Callbacks can select a criterion branch.
@@ -58,11 +112,30 @@ The [shared execution helpers](src/helpers.ts) initialize every catalog member a
 
 The legacy callback `pass` still exists for the [diagnostic Vitest runner](../probes/run-unified.probe.ts), including the execution-only arm. Current collectors record observations/tests through `recordExecutedProbe`; even `pass: true` with an explicit FAILURE test stays failure. Cleanup #30929 removes `pass` from every arm.
 
+The OSC 1 library criterion requires separate icon readback and a verified OSC 2 window-title control; an icon update must preserve that title. Missing icon readback remains coverage, while a failed title control is an execution failure. Both labels are restored after the attempt. Library OSC 117/119 resets reuse the color-reset helper's initial-query, distinct verified seed and reset-query sequence. Missing initial highlight readback or an unverified seed cannot establish reset support or absence; the original highlight color is restored after the attempt.
+
 ## Evidence, capture and assertion
 
 Callbacks currently perform I/O and judge it in the same implementation. There is no general persisted callback transcript or independently replayable assertion API supplied by this package.
 
 The five `AssertionType` values classify an actually retained deciding observation: `query_reply`, `buffer_state`, `screenshot`, `input_bytes` and `clipboard`. Pixel versus text-cells capture payloads and positive versus negative assertion polarity remain separate facts. An OSC 52 write decided by independent clipboard readback is `clipboard`; paste decided by `readInput` is `input_bytes`, including its existing control/report envelope and performed action.
+
+The XTEST key criterion requires the ctrl+a modified-key encoding after its plain-a delivery
+control; a bare control byte or another modified key does not meet it. Pixel mouse reporting
+uses the existing terminal-reported cell geometry to predict the pixel box of the control
+click's cell and retains that geometry with the target report. Missing cell geometry stays
+named TEST TODO. The two scroll-region recipes seed and preserve a nonblank marker immediately
+above the requested top row. The insert/replace query criterion requires set then reset
+(Ps 1 then 2); permanent-state replies retain their numeric readings and fail that toggle claim.
+
+Reset-family capture recipes can supply an optional `RegionReadback.setupReference`: an independently
+authored full setup, painted behind the existing witness. The seed must match it before any verdict.
+Companion rows also compare a neutral ignored frame against the expected preserved attribute; missing
+setup or an inseparable reference stays inconclusive. Recipes without the member keep four frames.
+A qualified baseline followed by a complete but unqualified SGR setup report may use this existing
+independent capture path for the six eligible reset rows. The response retains both query phases and
+the capture response, and the note names the deciding instrument. Malformed setup, failed baseline,
+final-phase results and the three multi-attribute reference refusals keep their existing behavior.
 
 **Headless evidence** comes through [headless-batch.ts](../probes/headless-batch.ts). It retains callback `response` values as raw replies, not every probe-source call or every engine-state read.
 
@@ -89,12 +162,34 @@ Missing default or seed controls retain the existing query/sentinel/review rules
 The shared disposable reset still owns cleanup; operational errors propagate, preserving both causes
 when cleanup also fails. Complete initial query paths and other reset features are unchanged.
 
-Cell `dim`, `italic` and `strikethrough` readbacks are required `boolean | null`: null means the producer does not report that attribute, never a terminal-support claim. Their SGR probes route null through named missing-observable coverage (TEST TODO); measured booleans retain their existing observation path.
+OSC 110, 111 and 112 can instead read current engine defaults when the source
+exposes the advertised `default-colors` getter. Each callback retains all three
+slots and exact writes: baseline, distinct verified RGB seed, then reset. Target
+restoration to the measured baseline, including null for unset, is a
+`buffer_state` positive; a verified seed remaining after reset is negative.
+Unverified seeds, getter failures, non-target slot changes or a third reset
+color retain `color-readback-review` with the cause. Without the getter these
+three callbacks keep their existing query path. When the `default-colors` getter
+is exposed and the initial OSC 13 or 14 pointer-color query answers nothing, OSC
+113 and 114 retain the query, empty reply and measured `fg`/`bg`/`cursor`
+default-color state on `source-negative-review` without inventing pointer slots
+or executing reset writes. Other color features are unchanged.
+
+Cell `dim`, `italic`, `strikethrough` and `blink` readbacks are required `boolean | null`: null means the producer does not report that attribute, never a terminal-support claim. On a rendered X cell, their SGR probes retain the null or false state through `source-negative-review`, with a required review and a buffer-state assertion. A source-bound decision distinguishes an engine gap (Unsupported at that pin) from a binding gap: TEST TODO, named, until repaired and recaptured. Positive booleans retain their supported observation path. A missing X retains the existing inconclusive result without an assertion or review; it is not reclassified as missing-observable coverage. Stored captures remain unchanged.
 
 The OSC 8 library criterion requires exact per-cell URI metadata, including unlinked controls.
 An absent `hyperlinks` observer with valid fixture text retains named coverage (TEST TODO) and raw cell/link state,
 identifying the loaded adapter path and Termless revision when measured runtime identity is available.
 Declared getters returning null report unlinked cells, so URI mismatches remain measured negatives; invalid declared getters still throw.
+
+The eight declaration-only library checks (Kitty animation and Unicode placeholders, Sixel,
+semantic prompts, OSC 7, OSC 633, notifications and iTerm2 images), the absent OSC 8 URI observer,
+the DECSCLM/2031 missing timing or host-event facilities, and the four rendering-limit checks
+(font ligatures, DECSSCLS, reverse video and synchronized output) retain their existing coverage and raw
+state on `headless-observable-review`. Each carries a required review naming its missing observable.
+That branch and `reply-path-audit-review` admit only an independently bound Untestable decision;
+source review establishes no rendered effect or measured negative. App callbacks and real-observable
+paths keep their criteria. Existing captures acquire no new branch or review.
 
 The collector forwards the run's measured `HeadlessRuntimeIdentity` through `LibProbeSource.runtimeIdentity`.
 It identifies the loaded adapter source, engine integrity and any loaded binary; feature-capability versions
@@ -128,6 +223,13 @@ a delivery declaration never declares feature support. Sealed historical runs re
 
 Conclusive library observations need nonempty raw evidence and matching positive/negative assertions. A direct buffer-state assertion must match the retained response; invalid claims become collector errors.
 
+The `semantic-prompt-source-review` library branch is the approved source-only exception for OSC 133/633 marks.
+An independently reviewed typed `CaptureDecision` names the parser arm and written or rejected mark state;
+its immutable capture binding includes the loaded runtime and its own run identity. The canonical writer and
+reader retain that decision as proof without inventing an observation, assertion type or assertion.
+Missing runtime identity or a source-review row remains an error; ordinary observation reviews keep their
+expected-versus-observed requirement. This exception does not admit terminal-app source reviews.
+
 **Native evidence** comes through [probes/unified.ts](../terminfo.dev/src/probes/unified.ts). It retains writes, queries, ordered events and available capture/clipboard records separately from callback responses.
 
 Most native raw-reply entries are serialized traces. Identity-query entries retain queried bytes and a separate `.trace`; a callback response, when supplied for a measurement, uses `.callbackResponse`.
@@ -136,7 +238,36 @@ Native execution can also change the recorded result: for example, a measured re
 
 **Frames are evidence, not verdicts.** `ObservationFrame` distinguishes pixel frames from `text-cells` frames; pixel and cell rectangles/digests are not interchangeable.
 
+Declared visual criteria use [region readback](src/region-readback.ts) to compare stable,
+cell-aligned pixel crops against independently painted references behind a paint witness.
+For each declared frame, the sentinel must complete a same-crop space→glyph→space→glyph
+roundtrip with exact repeatable digests; an intermediate clear alone cannot qualify paint.
+This relies on faithful current captures and ordered terminal paint, not arbitrary adapter replay
+or compositor completion. Missing roundtrip returns retain `no freshness witness` review. Both initial stability captures remain in the result frames because response-backed assertions cite their cell and whole-image digests. A missing pixel geometry emits a required failure row naming the missing report, retaining attempted query evidence without a feature verdict.
+Expected-change and expected-no-change claims have separate controls; an unchanged frame
+without freshness evidence remains review TEST TODO. Each decided signal retains its own
+assertion. Missing discriminators and unmeasured feature facets remain named review rows;
+cursor-shape cell and blink-phase sampling belongs to #31812. Historical frames acquire no
+new comparison or grade.
+
 `TermProbeSource.capture` supplies owned pixel capture; `cells` is a separate terminal-text route for declared cell readback. [Region readback](src/region-readback.ts) and callbacks evaluate the resulting evidence.
+
+**Timed and composited rows decide by pixels, never by an acknowledgement.** The kitty animation and
+unicode-placeholder rows read `capture` and compare region digests as raw bytes; neither a `_G` reply nor
+a first painted frame is evidence. Animation's observation is two target frames of one rectangle with no
+write between them, taken only behind four controls of the same run: a client-driven frame selection that
+must differ, a one-frame image that must hold still, a cursor-only capture that must leave the rectangle
+alone, and a redraw that must change the screen outside it. Placeholders compare the placeholder rectangle
+with the image composited over it against the same characters on the same foreground colour with the image
+deleted, with an ordinary `a=p` placement of the same pixels — measured against a captured blank — as the
+live control; this queue transmits quietly, so no acknowledgement exists to inherit. The placeholder row
+adds two in-run pixel controls in place of the cell readback it used to require: a layout guard — the same
+short ASCII written immediately right of the grid and captured with the row below it, byte-identical in both
+states, so a terminal that reflows when the image arrives is inconclusive by name rather than graded on a
+moved rectangle — and a same-image veto, which makes the with-image rectangle supported only when it is
+pixel-identical to the ordinary placement of the same opaque image over the same cells. Where a run does
+expose a cells adapter, unequal readbacks still veto to inconclusive before the table, and a text-only run
+refuses by name before it.
 
 The run retains screenshot/text references and assertion references. A captured frame does not by itself establish support, and a pending required review does not become an unsupported result.
 
@@ -183,6 +314,12 @@ and persistent event listener. Mode recognition or enabled metadata cannot decid
 These run statuses are separate from the catalog's [probe-coverage labels](../../docs/data/probe-status.ts), such as `automated`, `partial` and `manual`, which describe the available test definitions.
 
 ## Collector routes and persistence
+
+[Selected collection](../../docs/collect-selected-probes.md) describes explicit context/probe inputs and retained attempt outcomes.
+The existing registry exports `resolveProbeIds`; collectors share its typed resolution rather than duplicate ID lookup.
+Selection changes the callback schedule, while initialized drafts retain the full catalogue and the original suite hash.
+The existing `collector.selection` and `collector.collectionAttempt` records retain intent, actual start and outcome.
+The canonical draft decoder distinguishes captured runs from explicitly empty initialized drafts; empty drafts contain no measured identity or emitted result.
 
 The five admin routes share definitions, but do not all execute or persist through the same path:
 

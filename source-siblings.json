@@ -26,6 +26,40 @@
       "repository": "beorn/loggily",
       "commit": "115f855f63d7666e821b7cfbf1253ded91348d75",
       "pack": true
+    },
+    {
+      "name": "@termless/core",
+      "repository": "beorn/termless",
+      "commit": "7425c664bf9272357769e23d63b280f2d5dca5f2",
+      "pack": true
+    },
+    {
+      "name": "@termless/xtermjs",
+      "repository": "beorn/termless",
+      "commit": "7425c664bf9272357769e23d63b280f2d5dca5f2",
+      "pack": true,
+      "directory": "packages/xtermjs"
+    },
+    {
+      "name": "@termless/libvterm",
+      "repository": "beorn/termless",
+      "commit": "7c4f1eb9e434ba4e6407e862c326b654974a082e",
+      "pack": true,
+      "directory": "packages/libvterm"
+    },
+    {
+      "name": "@termless/wezterm",
+      "repository": "beorn/termless",
+      "commit": "7c4f1eb9e434ba4e6407e862c326b654974a082e",
+      "pack": true,
+      "directory": "packages/wezterm"
+    },
+    {
+      "name": "vterm.js",
+      "repository": "beorn/vterm",
+      "commit": "53a9eb9291b7880f4dc6a39a6802301049997a72",
+      "pack": true,
+      "directory": "packages/vterm"
     }
   ]
 }

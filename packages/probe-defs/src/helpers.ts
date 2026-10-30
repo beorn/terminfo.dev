@@ -1,4 +1,5 @@
 import { PROBE_STATUSES } from "./types.ts"
+import { createHash } from "node:crypto"
 import type { ProbeTestInput } from "./types.ts"
 import type {
   ProbeAttempt,
@@ -10,9 +11,8 @@ import type {
   CurrentProbeRun,
   ProbeSuiteManifest,
   RunDraft,
-  HostInputName,
-  HostRecipeName,
-  CallbackHostRecipeCause,
+  CollectorSelection,
+  CollectorAttempt,
 } from "./types.ts"
 import type {
   AssertionType,
@@ -22,42 +22,85 @@ import type {
   LibProbeSource,
   TermProbeSource,
 } from "./types.ts"
+import { replyPathAuditFor, type ReplyPathAudit } from "./reply-path-audit.ts"
 
-// Independent source audit of this exact unchanged native artifact, not a digest copied from runtime.
-const AUDITED_ALACRITTY_SHA256 = "e6e16113863355b77d0aa3b359bd40c7066fb144e005fbc324fecfa3f4869bea"
-
-/** Explain an actually empty host-owned query without changing the criterion or protocol bytes. */
-export function alacrittyHostRecipeResult(
-  ctx: LibProbeSource,
-  result: ProbeCallbackResult,
-  recipe: HostRecipeName,
-  missing: HostInputName,
-  query: string,
-  empty: boolean,
-): ProbeCallbackResult {
-  if (
-    !empty ||
-    ctx.runtimeIdentity?.kind !== "native" ||
-    ctx.runtimeIdentity.loadedBinary.sha256 !== AUDITED_ALACRITTY_SHA256
-  ) {
-    return result
+function collectorRecord(rawReplies: Record<string, string>, key: string): Record<string, unknown> | undefined {
+  const raw = rawReplies[key]
+  if (raw === undefined) return undefined
+  let value: unknown
+  try {
+    value = JSON.parse(raw)
+  } catch (cause) {
+    throw new Error(`Invalid ${key}: retained record is not JSON`, { cause })
   }
-  const claim: CallbackHostRecipeCause =
-    recipe === "color-request"
-      ? { recipe, cause: { kind: "observed", missing, query } }
-      : {
-          recipe,
-          cause: {
-            kind: "source-audited",
-            missing,
-            artifactSha256: AUDITED_ALACRITTY_SHA256,
-            sourceCitation:
-              recipe === "text-area-size"
-                ? "alacritty_terminal 0.26.0 term/mod.rs:2259-2265 requests embedder pixels; Termless packages/alacritty/native/src/lib.rs EventProxy::send ignores TextAreaSizeRequest; this harness supplies no pixel geometry"
-                : "alacritty_terminal 0.26.0 Config default clipboard policy OnlyCopy; Termless packages/alacritty/native/src/lib.rs EventProxy::send has no ClipboardLoad handler; this harness supplies no clipboard read permission",
-          },
-        }
-  return { ...result, hostRecipeCauses: [...(result.hostRecipeCauses ?? []), claim] }
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(`Invalid ${key}: expected a retained object`)
+  }
+  return value as Record<string, unknown>
+}
+
+export function collectorIds(value: unknown, key: string): string[] {
+  if (!Array.isArray(value) || !value.every((id): id is string => typeof id === "string" && id.length > 0)) {
+    throw new Error(`Invalid ${key}: expected resolved probe ids`)
+  }
+  return [...value]
+}
+
+/** Absence is legacy evidence, never an inferred full selection. */
+export function readCollectorSelection(rawReplies: Record<string, string>): CollectorSelection | undefined {
+  const value = collectorRecord(rawReplies, "collector.selection")
+  if (value === undefined) return undefined
+  return { ids: collectorIds(value.ids, "collector.selection") }
+}
+
+/** Decode the retained start/outcome without manufacturing a time or a successful result. */
+export function readCollectorAttempt(rawReplies: Record<string, string>): CollectorAttempt | undefined {
+  const value = collectorRecord(rawReplies, "collector.collectionAttempt")
+  if (value === undefined) return undefined
+  const ids = collectorIds(value.ids, "collector.collectionAttempt")
+  const result = value.result
+  if (
+    result !== undefined &&
+    (typeof result !== "string" || !["started", "completed", "empty", "cancelled", "failed"].includes(result))
+  ) {
+    throw new Error("Invalid collector.collectionAttempt: unknown result")
+  }
+  if (
+    (value.startedAt !== undefined &&
+      (typeof value.startedAt !== "string" || !Number.isFinite(Date.parse(value.startedAt)))) ||
+    ((result === undefined || result === "started" || result === "completed") && value.startedAt === undefined)
+  ) {
+    throw new Error("Invalid collector.collectionAttempt: recorded start required for a started attempt")
+  }
+  if ((result === "failed" || result === "cancelled") && typeof value.error !== "string") {
+    throw new Error("Invalid collector.collectionAttempt: original error required")
+  }
+  if (result !== "failed" && result !== "cancelled" && value.error !== undefined) {
+    throw new Error("Invalid collector.collectionAttempt: error requires a failed or cancelled result")
+  }
+  if (
+    value.hostInputs !== undefined &&
+    (typeof value.hostInputs !== "object" ||
+      value.hostInputs === null ||
+      Array.isArray(value.hostInputs) ||
+      !Object.values(value.hostInputs).every((entry) => typeof entry === "string"))
+  ) {
+    throw new Error("Invalid collector.collectionAttempt: invalid retained host inputs")
+  }
+  return { ...value, ids } as CollectorAttempt
+}
+
+export function recordCollectorSelection(draft: RunDraft, ids: readonly string[]): void {
+  draft.rawReplies["collector.selection"] = JSON.stringify({ ids })
+}
+
+export function recordCollectorAttempt(draft: Pick<RunDraft, "rawReplies">, attempt: CollectorAttempt): void {
+  draft.rawReplies["collector.collectionAttempt"] = JSON.stringify(attempt)
+}
+
+/** Host-cause citations bind the whole retained input record, including its collection outcome. */
+export function collectorAttemptDigest(raw: string): string {
+  return createHash("sha256").update(raw).digest("hex")
 }
 
 /** Keep the serialized state alongside the exact assertion that used it. */
@@ -67,6 +110,7 @@ export function parserStateResult(
   state: object,
   note?: string,
   sourceReviewReason?: string,
+  assertionType: AssertionType = "buffer_state",
 ): ProbeCallbackResult {
   if (sourceReviewReason !== undefined && pass === true) {
     throw new Error("A positive parser state cannot require source review")
@@ -76,7 +120,7 @@ export function parserStateResult(
   const assertions: NonNullable<ProbeCallbackResult["assertions"]> | undefined =
     pass === null && !sourceReview
       ? undefined
-      : [{ assertionType: "buffer_state" as const, kind: pass ? "positive" : "negative", expected, observed: response }]
+      : [{ assertionType, kind: pass ? "positive" : "negative", expected, observed: response }]
   return {
     pass: pass === true,
     response,
@@ -88,7 +132,7 @@ export function parserStateResult(
     observation: {
       outcome: sourceReview || pass === null ? "inconclusive" : pass ? "supported" : "unsupported",
       ...((sourceReview || pass === null) && { reason: "insufficient-evidence" as const }),
-      assertionType: "buffer_state",
+      assertionType,
       ...(note && { note }),
     },
     ...(assertions && { assertions }),
@@ -114,6 +158,7 @@ export function notTestedResult(noObservable: string, state: object): ProbeCallb
 }
 
 export const SOURCE_NEGATIVE_REVIEW = "source-negative-review"
+export const SEMANTIC_PROMPT_SOURCE_REVIEW = "semantic-prompt-source-review"
 
 /**
  * A criterion this context has no observable for: the same coverage record and raw state as
@@ -491,6 +536,7 @@ export async function sgrReadbackDecision(
   sequence: string,
   readback: SgrReadback,
   setup?: { sequence: string; baseline: SgrReadback; readback: SgrReadback },
+  independentSetup?: () => Promise<ProbeCallbackResult | null>,
 ): Promise<ProbeCallbackResult | null> {
   const observed: Record<string, string> = {}
   try {
@@ -508,6 +554,28 @@ export async function sgrReadbackDecision(
         observed[phase] = state.join(";")
         const qualified = sgrReadbackResult(id, bytes, state, criterion)
         if (!qualified.pass) {
+          if (phase === "setup" && qualified.observation?.outcome === "unsupported" && independentSetup) {
+            const captured = await independentSetup()
+            if (captured) {
+              const instrument = `${id}: the independent capture oracle supplies this result because the terminal's SGR report did not establish setup`
+              const note = captured.note ? `${captured.note}; ${instrument}` : instrument
+              const retained = {
+                response: JSON.stringify({ ...observed, capture: captured.response }),
+                note,
+              }
+              if (captured.observation) {
+                return {
+                  ...captured,
+                  ...retained,
+                  observation: {
+                    ...captured.observation,
+                    note: captured.observation.note ? `${captured.observation.note}; ${instrument}` : instrument,
+                  },
+                }
+              }
+              return { ...captured, ...retained }
+            }
+          }
           const note = `${id}: ${phase} prerequisite was not established${qualified.note ? `: ${qualified.note}` : ""}`
           return {
             pass: false,
@@ -631,6 +699,12 @@ export async function sgrCaptureFrames(
   }
 }
 
+/** The SGR pixel fixture: the attribute's sequence and the text sample it styles at a 1-based row and column. */
+export type SgrCaptureFixture = Readonly<{ sequence: string; sample: string; row: number; col: number }>
+
+/** A probe-owned pixel capture, for an attribute one control/target pair cannot show (sgr.blink, #31812). */
+export type SgrCapture = (ctx: TermProbeSource, fixture: SgrCaptureFixture) => Promise<ProbeCallbackResult>
+
 export function sgrProbe(
   id: string,
   sequence: string,
@@ -638,6 +712,7 @@ export function sgrProbe(
   noObservableWhen?: (cell: ReturnType<LibProbeSource["getCell"]>) => string | null,
   readback?: SgrReadback,
   sourceReviewReason?: string,
+  capture?: SgrCapture,
 ): ProbeDefinition {
   return {
     id,
@@ -681,6 +756,7 @@ export function sgrProbe(
         if (refusal) return refusal
         const sample = "AaBb 0123456789 - terminal text"
         try {
+          if (capture) return await capture(ctx, { sequence, sample, row: 3, col: 3 })
           return await sgrCaptureFrames(
             ctx,
             "\x1b[0m\x1b[2J\x1b[3;3H" + sample,
@@ -1136,6 +1212,29 @@ export function isBlank(char: string): boolean {
   return char === "" || char === " "
 }
 
+export function validSize(value: number, minimum: number): boolean {
+  return Number.isSafeInteger(value) && value >= minimum
+}
+
+export function tooSmall(
+  ctx: TermProbeSource,
+  rows: number,
+  cols: number,
+  fixture = "Text fixture",
+): ProbeCallbackResult | undefined {
+  if (validSize(ctx.rows, rows) && validSize(ctx.cols, cols)) return undefined
+  return {
+    pass: false,
+    tests: [
+      {
+        id: "criterion",
+        status: "test-todo",
+        reason: `${fixture} needs at least ${rows}x${cols}; measured ${ctx.rows}x${ctx.cols}`,
+      },
+    ],
+  }
+}
+
 /**
  * Simple probe — for probes that need custom logic on both sides.
  */
@@ -1145,7 +1244,100 @@ export function probe(
   term: ((ctx: TermProbeSource) => Promise<ProbeCallbackResult>) | null,
   termAssertionType?: AssertionType | null,
 ): ProbeDefinition {
-  return { id, lib, term, ...(termAssertionType !== undefined ? { termAssertionType } : {}) }
+  const audited = lib && ((ctx: LibProbeSource) => replyPathAudited(id, ctx, lib))
+  return { id, lib: audited, term, ...(termAssertionType !== undefined ? { termAssertionType } : {}) }
+}
+
+export const REPLY_PATH_AUDIT_REVIEW = "reply-path-audit-review"
+export const HEADLESS_OBSERVABLE_REVIEW = "headless-observable-review"
+export const UNTESTABLE_ONLY_REVIEW_BRANCHES: ReadonlySet<string> = new Set([
+  REPLY_PATH_AUDIT_REVIEW,
+  HEADLESS_OBSERVABLE_REVIEW,
+])
+
+/** The collector's test row for a capture that reached an engine callback its adapter does not reproduce. */
+export const HARNESS_INCOMPLETE_TEST = "harness"
+
+/**
+ * Apply the reply-path audit table (reply-path-audit.ts) to one library probe; it decides nothing about identity.
+ * The review replaces the measured result only when the probe sent its audited query and every matching capture
+ * of it returned zero bytes. Any reply byte, an unsent query, or an unlisted artifact/feature keeps the measured result.
+ */
+function replyPathAudited(
+  id: string,
+  ctx: LibProbeSource,
+  lib: (ctx: LibProbeSource) => ProbeCallbackResult,
+): ProbeCallbackResult {
+  const entry = replyPathAuditFor(ctx, id)
+  if (entry === undefined) return lib(ctx)
+  const captures: { text: string; reply: string }[] = []
+  const matches = (text: string) =>
+    entry.audit.matches === "prefix" ? text.startsWith(entry.audit.query) : text === entry.audit.query
+  const record = (text: string, reply: string) => {
+    if (matches(text)) captures.push({ text, reply })
+  }
+  const recorded = new Proxy(ctx, {
+    get(target, key): unknown {
+      if (key === "queryWithSentinelOutcome") {
+        const query = target.queryWithSentinelOutcome
+        if (query === undefined) return undefined
+        return (text: string, pattern: RegExp) => {
+          const outcome = query.call(target, text, pattern)
+          record(text, outcome.raw)
+          return outcome
+        }
+      }
+      if (key !== "feedCapture") {
+        const value: unknown = Reflect.get(target, key, target)
+        return value
+      }
+      return (text: string) => {
+        const reply = target.feedCapture(text)
+        record(text, reply)
+        return reply
+      }
+    },
+  })
+  const measured = lib(recorded)
+  if (captures.length === 0 || captures.some(({ reply }) => reply.length > 0)) return measured
+  const review = replyPathReviewResult(id, entry.artifactSha256, entry.audit, captures, measured)
+  return measured.hostRecipeCauses ? { ...review, hostRecipeCauses: measured.hostRecipeCauses } : review
+}
+
+/**
+ * The cell records which entry fired, the query it matched, and the zero-byte fact. A missing reply path reads
+ * "review by reply-path audit"; a cited parser rejection on the live path is Unsupported whatever the artifact's
+ * reply delivery, because no reply transport changes a result the engine never produces (@cto d9998884).
+ */
+function replyPathReviewResult(
+  id: string,
+  artifactSha256: string,
+  audit: ReplyPathAudit,
+  captures: readonly { text: string; reply: string }[],
+  measured: ProbeCallbackResult,
+): ProbeCallbackResult {
+  const replyPathAudit = { artifactSha256, featureId: id, ...audit, captures: captures.length, replyBytes: 0 }
+  const measuredResponse = measured.response ?? null
+  if (audit.kind === "no-reply-path") {
+    return reviewResult(
+      REPLY_PATH_AUDIT_REVIEW,
+      `Review by reply-path audit: the loaded artifact has no reply path (${audit.citation}); Untestable review required`,
+      `${id}: no reply path for this query in the loaded artifact`,
+      {
+        replyPathAudit,
+        measuredResponse,
+        ...(audit.matches === "prefix" && { matchedQueries: captures.map(({ text }) => text) }),
+      },
+    )
+  }
+  return parserStateResult(
+    false,
+    `parser-level rejection of ${JSON.stringify(audit.query)}`,
+    { rejection: "parser", replyPathAudit, measuredResponse },
+    "negative by source citation",
+    undefined,
+    "query_reply",
+  )
 }
 
 /** Feature support is independent of whether an observer can inspect link metadata. */
@@ -1417,7 +1609,10 @@ export function recordExecutedProbe(input: {
           ? "test-todo"
           : "test-failure"
   const diagnosticReason = diagnostic?.kind === "collector-error" ? diagnostic.message : diagnostic?.note
-  const reason = diagnosticReason ?? observation?.note ?? coverage?.noObservable ?? observation?.reason
+  const reason =
+    !input.tests && !diagnostic && !coverage && observation?.outcome === "inconclusive"
+      ? "writer default: inconclusive observation without test rows; callback defect"
+      : (diagnosticReason ?? observation?.note ?? coverage?.noObservable ?? observation?.reason)
   const rawReplyRef = observation?.rawReplyRef ?? coverage?.rawReplyRef ?? input.rawReplyRef
   return finalizeProbeResult({
     featureId,

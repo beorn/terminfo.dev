@@ -4,15 +4,23 @@
 import {
   hasExtension,
   type HyperlinkExtension,
+  type DefaultColorsExtension,
+  type MouseEncodingExtension,
   type ReplyDeliveryExtension,
   type TerminalBackend,
+  type WarningExtension,
 } from "@termless/core"
 import {
+  HARNESS_INCOMPLETE_TEST,
   readHyperlinkMetadata,
   readSentinelReply,
   recordExecutedProbe,
   ASSERTION_TYPES,
+  sentinelAnswer,
   sentinelGraceMs,
+  collectorAttemptDigest,
+  readCollectorAttempt,
+  recordCollectorAttempt,
 } from "@terminfo/probe-defs"
 import type {
   ProbeResult,
@@ -27,9 +35,9 @@ import type {
   UngradedDiagnostic,
   HeadlessRuntimeIdentity,
   RetainedHostRecipeCause,
+  CollectorAttempt,
 } from "@terminfo/probe-defs"
 import { validateHostRecipeCauses } from "@terminfo/run-parser"
-import { createHash } from "node:crypto"
 import {
   headlessRuntimeIdentity,
   replyDeliveryDecision,
@@ -37,6 +45,133 @@ import {
   type ReplyPathDecision,
 } from "./headless-identity.ts"
 import { isDeepStrictEqual } from "node:util"
+import { NATIVE_HOST_AUDITS } from "../probe-defs/src/native-host-audit.ts"
+import { REPLY_PATH_AUDITS } from "../probe-defs/src/reply-path-audit.ts"
+import { HEADLESS_TERMINAL } from "./headless-terminal.ts"
+
+/**
+ * Refuse an unaudited native artifact once, before probe collection (#31774, @cto 5429c292): check
+ * `runtimeIdentity.loadedBinary.sha256` against both `NATIVE_HOST_AUDITS` and `REPLY_PATH_AUDITS` (and against
+ * `declaration.engine.sha256` when declared), and emit one sentence naming loaded sha, expected sha,
+ * `nativeTreeOid`, and the audited keys on stderr and in the thrown error.
+ */
+export function assertAuditedNativeArtifact(
+  backend: string,
+  runtimeIdentity: HeadlessRuntimeIdentity,
+  declaration: ReplyDeliveryExtension["replyDelivery"] | undefined,
+  nativeTreeOid?: string,
+  draftPath?: string,
+  warn: (line: string) => void = (line) => process.stderr.write(`${line}\n`),
+): void {
+  if (backend === "kitty" || runtimeIdentity.kind !== "native") return
+  const loadedSha = runtimeIdentity.loadedBinary.sha256
+  const expectedSha = declaration?.engine.kind === "native" ? declaration.engine.sha256 : undefined
+  const inAuditTables = NATIVE_HOST_AUDITS.has(loadedSha) || REPLY_PATH_AUDITS.has(loadedSha)
+  if (inAuditTables && (expectedSha === undefined || loadedSha === expectedSha)) return
+  const auditedKeys = [...new Set([...NATIVE_HOST_AUDITS.keys(), ...REPLY_PATH_AUDITS.keys()])]
+    .map((key) => key.slice(0, 12))
+    .join(", ")
+  const message =
+    `${backend} native artifact ${loadedSha} is not in NATIVE_HOST_AUDITS or REPLY_PATH_AUDITS ` +
+    `(expected sha ${expectedSha ?? "none"}, nativeTreeOid ${nativeTreeOid ?? "unrecorded"}, ` +
+    `audited keys: ${auditedKeys}; draft: ${draftPath ?? "unrecorded"}); refusing collection before probes run`
+  warn(message)
+  throw new Error(message)
+}
+
+/** Finalize the existing attempt without breaking its source-audited host-input citations. */
+export function finalizeHeadlessAttempt(
+  draft: Pick<RunDraft, "rawReplies" | "runId" | "runtimeIdentity">,
+  attempt: CollectorAttempt,
+  definitions: readonly Pick<ProbeDefinition, "id" | "libHostRecipes">[],
+): void {
+  const hostKeys = Object.keys(draft.rawReplies).filter((key) => key.startsWith("collector.hostRecipes."))
+  if (hostKeys.length === 0) {
+    recordCollectorAttempt(draft, attempt)
+    return
+  }
+  const staged = { rawReplies: { ...draft.rawReplies } }
+  recordCollectorAttempt(staged, attempt)
+  const oldRaw = draft.rawReplies["collector.collectionAttempt"]
+  const newRaw = staged.rawReplies["collector.collectionAttempt"]
+  if (oldRaw === newRaw) return
+  const previous = readCollectorAttempt(draft.rawReplies)
+  const next = readCollectorAttempt(staged.rawReplies)
+  if (!oldRaw || !newRaw || !previous?.startedAt || !next) {
+    throw new Error("Headless attempt finalization requires the original recorded start")
+  }
+  if (
+    !isDeepStrictEqual(
+      { ...previous, result: undefined, error: undefined },
+      { ...next, result: undefined, error: undefined },
+    )
+  ) {
+    throw new Error("Headless attempt finalization changed ids, start or retained host inputs")
+  }
+  if (previous.result === "completed" || previous.result === "failed" || previous.result === "cancelled") {
+    if (previous.result === next.result) return
+    throw new Error("Headless attempt finalization cannot change a terminal outcome")
+  }
+  if (previous.result !== undefined && previous.result !== "started") {
+    throw new Error("Headless attempt finalization requires a started or legacy attempt")
+  }
+  if (next.result !== "completed" && next.result !== "failed" && next.result !== "cancelled") {
+    throw new Error("Headless attempt finalization requires a terminal outcome")
+  }
+  if (!draft.runtimeIdentity) throw new Error("Headless attempt finalization lacks measured runtime identity")
+  const oldDigest = collectorAttemptDigest(oldRaw)
+  const newDigest = collectorAttemptDigest(newRaw)
+  const records = hostKeys.map((key) => {
+    const featureId = key.slice("collector.hostRecipes.".length)
+    const definition = definitions.find((candidate) => candidate.id === featureId)
+    if (!definition) {
+      throw new Error(`Headless attempt finalization lacks host expectations for ${featureId}`)
+    }
+    const expectations = definition.libHostRecipes ?? []
+    try {
+      const record = validateHostRecipeCauses(
+        "headless attempt finalization",
+        draft.runId,
+        featureId,
+        expectations,
+        draft.rawReplies,
+        draft.runtimeIdentity,
+      )
+      return { key, featureId, expectations, record }
+    } catch (error) {
+      if (error instanceof Error && error.message.endsWith("host recipe: stale declared-input digest")) {
+        throw new Error(`Headless host citation stale before finalization: ${featureId}`, { cause: error })
+      }
+      throw error
+    }
+  })
+  for (const { key, featureId, record } of records) {
+    let changed = false
+    const causes = record.causes.map((entry) => {
+      const cause = entry.cause
+      if (cause.kind !== "source-audited" || cause.citation.inputRecordRef !== "collector.collectionAttempt") {
+        return entry
+      }
+      if (cause.citation.sha256 !== oldDigest) {
+        throw new Error(`Headless host citation stale before finalization: ${featureId}`)
+      }
+      changed = true
+      return { ...entry, cause: { ...cause, citation: { ...cause.citation, sha256: newDigest } } }
+    })
+    if (changed) staged.rawReplies[key] = JSON.stringify({ ...record, causes })
+  }
+  for (const { featureId, expectations } of records) {
+    validateHostRecipeCauses(
+      "headless attempt finalization",
+      draft.runId,
+      featureId,
+      expectations,
+      staged.rawReplies,
+      draft.runtimeIdentity,
+    )
+  }
+  draft.rawReplies = staged.rawReplies
+}
 
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
@@ -56,12 +191,40 @@ interface HostQueryCapture {
   query: string
   response: string
   error: string | null
+  /** A-prime (@cto 4ac8b275): zero bytes beside a callback this harness did not reproduce. */
+  cause?: { kind: "harness-unreproduced"; callbacks: string[] }
+}
+
+/** The warning code an adapter reports for an engine callback it does not reproduce (termless kitty). */
+const UNREPRODUCED_CALLBACK = "UNREPRODUCED_CALLBACK"
+
+/** Per probe: each capture that reached an unreproduced callback, and whether any of them returned zero bytes. */
+interface UnreproducedRecord {
+  captures: { query: string; callbacks: string[] }[]
+  silent: boolean
+}
+
+/** Drain the adapter's warnings, keeping only the unreproduced callbacks, classified by code. */
+function drainUnreproduced(backend: TerminalBackend): string[] {
+  if (!hasExtension<WarningExtension>(backend, "warnings")) return []
+  const callbacks = backend
+    .getWarnings()
+    .filter((warning) => warning.code === UNREPRODUCED_CALLBACK)
+    .map((warning) => warning.message)
+  backend.clearWarnings()
+  return callbacks
 }
 
 /** Capture one query, including adapters that parse pending input on state reads. */
-export function feedCapture(backend: TerminalBackend, text: string, captures: HostQueryCapture[] | undefined): string {
+export function feedCapture(
+  backend: TerminalBackend,
+  text: string,
+  captures: HostQueryCapture[] | undefined,
+  unreproduced?: UnreproducedRecord,
+): string {
   let response = ""
   let error: string | null = null
+  let callbacks: string[] = []
   const previous = backend.onResponse
   try {
     // Pending input belongs to the previous listener, not this query.
@@ -71,12 +234,25 @@ export function feedCapture(backend: TerminalBackend, text: string, captures: Ho
     }
     backend.feed(encoder.encode(text))
     backend.getCursor()
+    if (unreproduced) {
+      callbacks = drainUnreproduced(backend)
+      if (callbacks.length) {
+        unreproduced.captures.push({ query: text, callbacks })
+        if (!response) unreproduced.silent = true
+      }
+    }
   } catch (cause) {
     error = errorMessage(cause)
     throw cause
   } finally {
     backend.onResponse = previous
-    captures?.push({ query: text, response, error })
+    const silent = callbacks.length > 0 && response === "" && error === null
+    captures?.push({
+      query: text,
+      response,
+      error,
+      ...(silent && { cause: { kind: "harness-unreproduced" as const, callbacks } }),
+    })
   }
   return response
 }
@@ -97,21 +273,24 @@ function sentinelOutcome(
   pattern: RegExp,
   proven: ProvenReplyPath,
   captures: HostQueryCapture[] | undefined,
+  unreproduced: UnreproducedRecord | undefined,
 ): TerminalQueryOutcome {
   const writeAt = Date.now()
-  const reply = feedCapture(backend, sequence, captures)
-  const answer = feedCapture(backend, DA1_QUERY, captures)
+  const reply = feedCapture(backend, sequence, captures, unreproduced)
+  const answer = feedCapture(backend, DA1_QUERY, captures, unreproduced)
   const raw = reply + answer
   const captured = { raw, rawBase64: Buffer.from(raw).toString("base64") }
   const read = readSentinelReply(raw, pattern)
   if (read.kind === "reply") return { match: read.match, reason: "reply", ...captured }
   // Only a DA1 answer in a capture of its own ends the query: a DA1-shaped answer in the query's capture
   // is the engine's reply to it (@dev/8 9ab12dbe S4, @cto 86260f80 rule 4).
-  if (readSentinelReply(answer, pattern).kind === "pending") {
+  const terminator = sentinelAnswer(answer)
+  if (!terminator) {
     return { match: read.match, reason: read.match ? "reply" : "timeout", ...captured }
   }
   const sentinel = { atMs: Date.now() - writeAt, graceMs: proven.graceMs }
-  if (read.match) return { match: read.match, reason: "reply", ...captured, sentinel }
+  const after = answer.slice(terminator.end).match(pattern)
+  if (after) return { match: [...after], reason: "reply", ...captured, sentinel }
   proven.onSentinel()
   return { match: null, reason: "sentinel", ...captured, sentinel }
 }
@@ -149,6 +328,7 @@ export function createLibProbeSource(
   proven: ProvenReplyPath | undefined,
   runtimeIdentity: HeadlessRuntimeIdentity | undefined,
   captures: HostQueryCapture[] | undefined,
+  unreproduced?: UnreproducedRecord,
 ): LibProbeSource {
   let cols: number
   try {
@@ -164,20 +344,37 @@ export function createLibProbeSource(
     hasExtension<HyperlinkExtension>(backend, "hyperlinks") && typeof backend.getHyperlinkAt === "function"
       ? backend.getHyperlinkAt.bind(backend)
       : undefined
+  const readDefaultColors =
+    hasExtension<DefaultColorsExtension>(backend, "default-colors") && typeof backend.getDefaultColors === "function"
+      ? backend.getDefaultColors.bind(backend)
+      : undefined
+  const readIconLabel = typeof backend.getIconLabel === "function" ? backend.getIconLabel.bind(backend) : undefined
+  const readClipboardState =
+    typeof backend.getClipboardState === "function" ? backend.getClipboardState.bind(backend) : undefined
+  const declaresMouseEncoding = backend.capabilities.extensions.has("mouse-encoding")
+  const candidateEncodeMouse = (backend as Partial<MouseEncodingExtension>).encodeMouse
+  if (declaresMouseEncoding && typeof candidateEncodeMouse !== "function") {
+    throw new Error(`${backend.name} declares capability extension "mouse-encoding" without an encodeMouse function`)
+  }
+  const encodeMouse =
+    declaresMouseEncoding && typeof candidateEncodeMouse === "function" ? candidateEncodeMouse.bind(backend) : undefined
   return {
     kind: "live",
     ...(runtimeIdentity && { runtimeIdentity }),
     cols,
     getHyperlinkAt: readLink,
+    getDefaultColors: readDefaultColors,
+    getIconLabel: readIconLabel,
+    getClipboardState: readClipboardState,
     feed(text) {
       backend.feed(encoder.encode(text))
     },
     feedCapture(text) {
-      return feedCapture(backend, text, captures)
+      return feedCapture(backend, text, captures, unreproduced)
     },
     ...(proven && {
       queryWithSentinelOutcome(sequence: string, pattern: RegExp) {
-        return sentinelOutcome(backend, sequence, pattern, proven, captures)
+        return sentinelOutcome(backend, sequence, pattern, proven, captures, unreproduced)
       },
     }),
     getCell(row, col) {
@@ -204,6 +401,12 @@ export function createLibProbeSource(
     getScrollback() {
       return backend.getScrollback()
     },
+    ...(backend.capabilities.productViewport?.available !== false && {
+      scrollViewport(delta: number) {
+        backend.scrollViewport(delta)
+      },
+    }),
+    ...(encodeMouse && { encodeMouse }),
     getTitle() {
       return backend.getTitle()
     },
@@ -265,6 +468,29 @@ function refusedClaimEvidence(result: ProbeCallbackResult): string {
 function withRefusedClaim(message: string, result: ProbeCallbackResult): string {
   const refused = refusedClaimEvidence(result)
   return refused ? `${message}; refused ${refused}` : message
+}
+
+/** A silent capture beside an unreproduced callback grades the harness, keeping the measured response beside it. */
+function harnessIncompleteResult(
+  backendName: string,
+  record: UnreproducedRecord,
+  measured: ProbeCallbackResult,
+): ProbeCallbackResult {
+  const callbacks = [...new Set(record.captures.flatMap((capture) => capture.callbacks))].join(", ")
+  return {
+    pass: false,
+    response: JSON.stringify({
+      unreproduced: { backend: backendName, captures: record.captures },
+      measuredResponse: measured.response ?? null,
+    }),
+    tests: [
+      {
+        id: HARNESS_INCOMPLETE_TEST,
+        status: "test-failure",
+        reason: `Harness incomplete: ${backendName} did not reproduce ${callbacks}; silence is not evidence`,
+      },
+    ],
+  }
 }
 
 /** A callback conclusion without its raw state cannot become a support claim. */
@@ -462,7 +688,7 @@ export async function collectBatch(
     let hostRecord: { runId: string; captures: HostQueryCapture[]; causes: RetainedHostRecipeCause[] } | undefined
     try {
       backend = await createBackend()
-      backend.init({ cols: 80, rows: 24 })
+      backend.init(HEADLESS_TERMINAL)
       const initializedRuntime = runtime
         ? {
             ...runtime,
@@ -504,7 +730,15 @@ export async function collectBatch(
             },
           }
         : undefined
-      const ctx = createLibProbeSource(backend, proven, initializedRuntime?.identity, hostRecord?.captures)
+      const unreproduced: UnreproducedRecord = { captures: [], silent: false }
+      drainUnreproduced(backend) // Nothing reported before this probe's first capture belongs to it.
+      const ctx = createLibProbeSource(
+        backend,
+        proven,
+        initializedRuntime?.identity,
+        hostRecord?.captures,
+        unreproduced,
+      )
       const callback = probe.lib(ctx)
       if (hostRecord) {
         const runId = hostRecord.runId
@@ -523,6 +757,17 @@ export async function collectBatch(
               recipe: entry.recipe,
               cause: { kind: cause.kind, missing: cause.missing, runId, eventRef: recordRef },
             })
+          } else if (cause.kind === "unimplemented") {
+            hostRecord.causes.push({
+              recipe: entry.recipe,
+              cause: {
+                kind: cause.kind,
+                missing: cause.missing,
+                runId,
+                artifactSha256: cause.artifactSha256,
+                citation: { sourceLocation: cause.sourceCitation },
+              },
+            })
           } else {
             const inputs = batch.rawReplies["collector.collectionAttempt"]
             if (inputs === undefined) throw new Error("Native host cause requires collector.collectionAttempt")
@@ -535,7 +780,7 @@ export async function collectBatch(
                 artifactSha256: cause.artifactSha256,
                 citation: {
                   inputRecordRef: "collector.collectionAttempt",
-                  sha256: createHash("sha256").update(inputs).digest("hex"),
+                  sha256: collectorAttemptDigest(inputs),
                   input: cause.missing,
                   sourceLocation: cause.sourceCitation,
                 },
@@ -568,9 +813,10 @@ export async function collectBatch(
           initializedRuntime?.identity,
         )
       }
-      callbackTests = callback.tests
-      criterionBranch = callback.criterionBranch
-      recordResult(batch, probe, callback)
+      const graded = unreproduced.silent ? harnessIncompleteResult(backendName, unreproduced, callback) : callback
+      callbackTests = graded.tests
+      criterionBranch = graded.criterionBranch
+      recordResult(batch, probe, graded)
     } catch (error) {
       const message = `headless ${backendName} probe ${probe.id}: ${errorMessage(error)}`
 

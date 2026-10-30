@@ -26,12 +26,11 @@
  *   the colour from one that paints it identically to the reference it was compared against, so
  *   both read inconclusive BY NAME. Deciding colour unsupported is a separate ruling.
  */
-import type { RegionReadback } from "./region-readback.ts"
+import { SENTINEL, type RegionReadback } from "./region-readback.ts"
 import type { ProbeCallbackResult } from "./types.ts"
 
 const SAMPLE = "AaBb"
 const REGION = { top: 3, left: 3, bottom: 3, right: 3 + SAMPLE.length - 1 } as const
-const SENTINEL = { row: 1, col: 1 } as const
 const CURSOR_ROW = 5
 
 interface ColourRow {

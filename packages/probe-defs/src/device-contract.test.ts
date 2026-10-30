@@ -116,6 +116,7 @@ const INERT_CELL: InertCell = {
   inverse: false,
   hidden: false,
   blink: false,
+  overline: false,
   fg: null,
   bg: null,
   wide: false,
@@ -231,17 +232,32 @@ test("every measurable Device contract row is satisfied by the echoing fixture i
   }
 })
 
-test("TERM_FEATURES fails with its unverified-source reason and no terminal observation", async () => {
+test("TERM_FEATURES stays not-tested for both parent environment values", async () => {
   const probe = deviceProbes.find((entry) => entry.id === "device.term-features")
   expect(probe?.term, "the TERM_FEATURES application callback exists").toBeDefined()
   if (!probe?.term) return
-  const result = await probe.term(deviceSources(echoingDevice()).term)
-  expect(result.observation).toBeUndefined()
-  expect(result.assertions).toBeUndefined()
-  const reason = process.env.TERM_FEATURES
-    ? "TERM_FEATURES advertised; source unverified"
-    : "TERM_FEATURES not advertised"
-  expect(result.tests).toMatchObject([expect.objectContaining({ status: "test-failure", reason })])
+  const prior = process.env.TERM_FEATURES
+  const secret = "sensitive-arbitrary-environment-value"
+  try {
+    const results = []
+    for (const value of [undefined, secret] as const) {
+      if (value === undefined) delete process.env.TERM_FEATURES
+      else process.env.TERM_FEATURES = value
+      const result = await probe.term(deviceSources(echoingDevice()).term)
+      results.push(result)
+      expect(result.notTested).toEqual({
+        reason: "no-semantic-observable",
+        noObservable: "terminal child environment",
+      })
+      expect(result.observation).toBeUndefined()
+      expect(result.tests).toBeUndefined()
+      expect(JSON.stringify(result)).not.toContain(secret)
+    }
+    expect(results[0]).toEqual(results[1])
+  } finally {
+    if (prior === undefined) delete process.env.TERM_FEATURES
+    else process.env.TERM_FEATURES = prior
+  }
 })
 
 test("a decided Device row is unsatisfied when the query reply is silent", async () => {

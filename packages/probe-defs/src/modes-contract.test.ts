@@ -12,6 +12,7 @@ import { decrpmStatus } from "./helpers.ts"
 import { modesProbes } from "./modes.ts"
 import {
   contractGaps,
+  libProbeSource,
   missingContractTests,
   regradeCommand,
   regradeRow,
@@ -221,11 +222,25 @@ test("the Modes contract names its focused tests, and every named file exists", 
 })
 
 test("the harness replays every Modes feature deterministically through DECRPM replay", async () => {
+  const headless = libProbeSource({
+    cols: 80,
+    feed: () => {},
+    getCell: () => {
+      throw new Error("Missing timing and event facilities cannot be established from cells")
+    },
+    getCursor: () => ({ x: 0, y: 0, visible: true, style: null }),
+  })
   for (const row of MODES_CONTRACT) {
     const term = modesTermSource(row.id)
     const probe = modesProbes.find((entry) => entry.id === row.id)
     expect(probe, `missing Modes probe ${row.id}`).toBeDefined()
     if (!probe) continue
+    if (row.id === "modes.decsclm" || row.id === "modes.color-scheme-reporting") {
+      const result = probe.lib!(headless)
+      expect(result.criterionBranch, row.id).toBe("headless-observable-review")
+      expect(result.tests, row.id).toMatchObject([{ id: "review", status: "test-todo" }])
+      expect((await regradeRow(probe, row, { headless })).after, row.id).toBeUndefined()
+    }
     expect(probe.lib !== null || probe.term !== null, `${row.id} has no callback`).toBe(true)
     const first = await regradeRow(probe, row, { term })
     const second = await regradeRow(probe, row, { term })

@@ -11,7 +11,8 @@ import { loadFeatures, type FeatureRecord } from "@terminfo/catalog"
 import { loadFullProbes } from "./probes.data"
 import type { ProbeData } from "./probes.data"
 import { loadCategories } from "./categories.ts"
-import { generateAnalysis } from "../../scripts/generate-analysis.ts"
+import { generateAnalysis, type AnalysisEntry } from "../../scripts/generate-analysis.ts"
+export type { AnalysisEntry } from "../../scripts/generate-analysis.ts"
 
 export type { ProbeData }
 
@@ -126,17 +127,6 @@ export const tagBodies: Record<string, string> = Object.fromEntries(
 
 export function tagLabel(tag: string): string {
   return tagLabels[tag] ?? tag.charAt(0).toUpperCase() + tag.slice(1).replace(/-/g, " ")
-}
-
-export interface AnalysisEntry {
-  analysis: string
-  date: string
-  changes?: string | null
-  runSha256?: string
-  measuredAt?: string
-  score?: { supported: number; all: number }
-  counts?: Record<import("@terminfo/probe-defs").ProbeStatus, number>
-  complete?: boolean
 }
 
 let _analysisCached: Record<string, AnalysisEntry> | null = null

@@ -40,7 +40,7 @@ export default {
       label: data.meta[b.name]?.label ?? b.name,
       description: data.meta[b.name]?.description ?? "",
       url: data.meta[b.name]?.url ?? "",
-      version: b.version,
+      version: b.versions.join(", "),
       type: b.type ?? "lib",
       platforms: b.platforms ?? [],
     }))
@@ -81,7 +81,7 @@ export default {
           label: data.meta[b.name]?.label ?? b.name,
           description: data.meta[b.name]?.description ?? "",
           url: data.meta[b.name]?.url ?? "",
-          version: b.version,
+          version: b.versions.join(", "),
           type: b.type ?? "lib",
           platforms: b.platforms ?? [],
           score: bs.score,

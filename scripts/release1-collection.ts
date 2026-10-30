@@ -25,7 +25,19 @@ import {
 import { dirname, join, resolve, sep } from "node:path"
 import { fileURLToPath } from "node:url"
 import { parse } from "yaml"
-import { initializeRunDraft, recordCollectionFailure, type RunDraft } from "@terminfo/probe-defs"
+import {
+  initializeRunDraft,
+  recordCollectionFailure,
+  recordCollectorSelection,
+  recordCollectorAttempt,
+  readCollectorAttempt,
+  readCollectorSelection,
+  resolveProbeIds,
+  collectorIds,
+  SOURCE_NEGATIVE_REVIEW,
+  type CollectorAttempt,
+  type RunDraft,
+} from "@terminfo/probe-defs"
 import { buildFullProjectRows } from "../docs/data/full-project.ts"
 import { aggregateCurrentResults, currentCoverageSentence, type CurrentAggregate } from "../docs/data/release-scope.ts"
 import { decodeCollectorDraft } from "@terminfo/run-parser"
@@ -36,12 +48,7 @@ import { parseJsonStrict, parseRun, parseSuiteManifest } from "@terminfo/run-par
 import { frozenSuiteIdFor } from "../packages/admin/suite-manifest.ts"
 import { assertPrivateCollectionOutput } from "../packages/admin/src/admit-collected-run.ts"
 import { loadCurrentResults, loadDefaultContextPolicy, reviewedContextFor } from "../docs/data/current-results.ts"
-import {
-  classifyDevelopmentRun,
-  consoleHostHeldResults,
-  readVerifiedArtifact,
-  statesFor as currentStatesFor,
-} from "../docs/data/selected-results.ts"
+import { classifyDevelopmentRun, consoleHostHeldResults, readVerifiedArtifact } from "../docs/data/selected-results.ts"
 import { parseInterpretations } from "./interpretations.ts"
 import { derivedSuiteManifest, probeSuiteSnapshot } from "../packages/admin/versions.ts"
 import { collectHeadlessRuns } from "../packages/probes/collect-headless.ts"
@@ -92,6 +99,24 @@ function linuxLiveArgs(kind: CollectionContext["kind"], id: string): string[] {
     "default",
     ...(kind === "mux" ? ["--mux", id] : []),
   ]
+}
+
+/** Discover the existing launcher's retained raw file on either successful or failed exit. */
+function linuxRawRun(output: string): string | undefined {
+  const runs = readdirSync(output, { withFileTypes: true }).filter((entry) => entry.isDirectory())
+  if (runs.length === 0) return undefined
+  const run = runs[0]
+  if (runs.length !== 1 || !run) {
+    throw new Error(`Linux launcher produced ${runs.length} run directories in ${output}; expected exactly one`)
+  }
+  for (const name of ["v3-run.json", "v3-run.draft.json", "v3-capture.json"]) {
+    const candidate = join(output, run.name, "raw", name)
+    if (!existsSync(candidate)) continue
+    const path = realpathSync(candidate)
+    if (!path.startsWith(`${output}${sep}`)) throw new Error(`Linux raw output escaped its private context: ${path}`)
+    return path
+  }
+  return undefined
 }
 
 /** A Linux app row runs the invocation the live pass declares; nothing is read back from a run. */
@@ -172,23 +197,29 @@ const localOwnedAppRow = (id: string): CollectionContext => ({
 })
 
 /** Route membership comes from the existing workflow matrix, not a second list of app IDs. */
-function hostedAppIds(os: "macos" | "windows"): ReadonlySet<string> {
+function hostedAppRows(os: "macos" | "windows"): Array<{ id: string; [key: string]: unknown }> {
   const path = join(ROOT, ".github", "workflows", `${os}-measurement.yml`)
   const workflow = parse(readFileSync(path, "utf8")) as {
-    jobs?: Record<string, { strategy?: { matrix?: { include?: Array<{ id?: unknown }> } } }>
+    on?: { workflow_dispatch?: { inputs?: { context_matrix?: { default?: unknown } } } }
   }
-  const rows = workflow?.jobs?.[`measure-${os}`]?.strategy?.matrix?.include
+  const declared = workflow?.on?.workflow_dispatch?.inputs?.context_matrix?.default
+  if (typeof declared !== "string") throw new Error(`${path}: expected context_matrix JSON string default`)
+  const matrix = parseJsonStrict(`${path}: context_matrix default`, declared) as {
+    include?: Array<{ id?: unknown; [key: string]: unknown }>
+  }
+  const rows = matrix?.include
   if (!Array.isArray(rows) || rows.length === 0) throw new Error(`${path}: expected nonempty measure-${os} app matrix`)
-  const ids = new Set<string>()
   for (const row of rows) {
     if (typeof row?.id !== "string" || row.id.length === 0) throw new Error(`${path}: matrix app is missing its id`)
-    ids.add(row.id)
   }
-  return ids
+  return rows as Array<{ id: string; [key: string]: unknown }>
 }
 
 function collectionRoutes(expected: readonly CensusContext[]): CollectionContext[] {
-  const hosted = { macos: hostedAppIds("macos"), windows: hostedAppIds("windows") }
+  const hosted = {
+    macos: new Set(hostedAppRows("macos").map((row) => row.id)),
+    windows: new Set(hostedAppRows("windows").map((row) => row.id)),
+  }
   const contexts: CollectionContext[] = []
   for (const { terminalId: id, os, kind } of expected) {
     if (kind === "lib") continue
@@ -288,6 +319,8 @@ export interface CollectionPass {
   sourceRevision: string
   inputSha256: Record<string, string>
   catalogIds: string[]
+  selection?: { contexts: string[]; ids?: string[] }
+  attempt?: CollectorAttempt
   transport?: {
     runner: string
     hostKeyFingerprint: string
@@ -434,7 +467,15 @@ export async function collectPass(
   frozenSuiteId?: string,
   ownedApp: OwnedAppTransportOptions = { runner: "local" },
   deferrals: NonNullable<NonNullable<CollectionPass["freeze"]>["deferrals"]> = [],
+  selection?: { contexts?: readonly string[]; ids?: readonly string[] },
 ): Promise<CollectionPass> {
+  const resolvedIds = selection?.ids === undefined ? undefined : resolveProbeIds(selection.ids)
+  if (resolvedIds?.result === "invalid") {
+    throw new Error(
+      `Unknown or duplicate probe IDs: ${[...resolvedIds.unknownIds, ...resolvedIds.duplicateIds].join(", ")}`,
+    )
+  }
+  const probeIds = resolvedIds?.probes.map((probe) => probe.id)
   const snapshot = probeSuiteSnapshot()
   const declaredFreeze =
     frozenSuiteId === undefined ? undefined : declaredCollectionFreeze(frozenSuiteId, snapshot.probeHash)
@@ -492,7 +533,12 @@ export async function collectPass(
   )
   const contextName = (context: CollectionContext): string =>
     context.kind === "lib" ? `${context.id}/headless` : `${context.id}/${context.os}`
-  const census = declared.filter((context) => !deferred.has(contextName(context)))
+  const requestedContexts = selection?.contexts ?? declared.map(contextName)
+  for (const context of requestedContexts) {
+    if (!canonical.some((row) => row.context === context)) throw new Error(`Unknown collection context ${context}`)
+  }
+  const selectedContexts = declared.filter((context) => requestedContexts.includes(contextName(context)))
+  const census = selectedContexts.filter((context) => !deferred.has(contextName(context)))
   const pass: CollectionPass = {
     mode: freeze ? "admit" : "development",
     ...(freeze && { freeze }),
@@ -501,7 +547,13 @@ export async function collectPass(
     sourceRevision,
     inputSha256,
     catalogIds,
-    contexts: declared
+    ...(selection && {
+      selection: {
+        contexts: selectedContexts.map(contextName),
+        ...(probeIds === undefined ? {} : { ids: probeIds }),
+      },
+    }),
+    contexts: selectedContexts
       .filter((context) => deferred.has(contextName(context)))
       .map((context) => ({
         context,
@@ -525,8 +577,18 @@ export async function collectPass(
       },
     })
     const path = join(directory, `${context.kind}-${context.id}-${context.os}.draft.json`)
+    recordCollectorSelection(draft, probeIds ?? snapshot.probes[context.kind])
+    if (probeIds?.length === 0) {
+      recordCollectorAttempt(draft, { ids: [], result: "empty" })
+      pass.contexts.push({ context, status: "not-started", rawRun: path, reason: "Explicit empty probe selection" })
+    }
     writeFileSync(path, `${JSON.stringify(draft, null, 2)}\n`, { flag: "wx" })
     drafts.set(coverageKey(context.kind, context.id, context.os), { draft, path })
+  }
+  if (census.length === 0 || probeIds?.length === 0) {
+    pass.attempt = { ids: probeIds ?? [], result: "empty" }
+    writeFileSync(join(directory, "pass.json"), `${JSON.stringify(pass, null, 2)}\n`, { flag: "wx" })
+    return pass
   }
   const suites = new Map([[snapshot.probeHash, derivedSuiteManifest(snapshot)]])
   const files = new Map<string, string[]>()
@@ -545,6 +607,7 @@ export async function collectPass(
               return [context.id, handed]
             }),
         ),
+        probeIds,
       )
       for (const failure of collected.failures) failures.set(failure.backend, failure.error)
       for (const path of collected.runs) {
@@ -581,22 +644,28 @@ export async function collectPass(
     inputSha256[join(ROOT, "bun.lock")] as string,
     pass.errors,
     drafts,
+    selection ? (probeIds ?? snapshot.probes.term) : undefined,
   )
   for (const context of census) {
     const row: CollectionPass["contexts"][number] = { context, status: "not-started" }
     pass.contexts.push(row)
     const handed = drafts.get(coverageKey(context.kind, context.id, context.os))
     if (!handed) throw new Error(`Context ${context.id} lost initialized draft`)
-    let startedAt: string | undefined
+    row.rawRun = handed.path
     try {
       let path: string
       if (context.route === "linux-container") {
         const output = join(directory, "linux", context.id)
         row.directory = output
         mkdirSync(output, { recursive: true })
-        startedAt = new Date().toISOString()
         runChild(
-          ["bash", "scripts/linux-container-run.sh", ...linuxLiveArgs(context.kind, context.id), output],
+          [
+            "bash",
+            "scripts/linux-container-run.sh",
+            ...linuxLiveArgs(context.kind, context.id),
+            ...(probeIds === undefined ? [] : ["--ids", probeIds.join(",")]),
+            output,
+          ],
           `${labelOf(context)} Linux collection`,
           {
             stdout: join(output, "launcher.stdout.log"),
@@ -609,21 +678,14 @@ export async function collectPass(
             TERMINFO_SOURCE_REVISION: sourceRevision,
           },
         )
-        const runs = readdirSync(output, { withFileTypes: true }).filter((entry) => entry.isDirectory())
-        if (runs.length !== 1 || !runs[0]) {
-          throw new Error(`Linux launcher produced ${runs.length} run directories in ${output}; expected exactly one`)
-        }
-        const finalPath = join(output, runs[0].name, "raw", "v3-run.json")
-        path = realpathSync(existsSync(finalPath) ? finalPath : join(output, runs[0].name, "raw", "v3-run.draft.json"))
-        if (!path.startsWith(`${output}${sep}`)) {
-          throw new Error(`Linux raw output escaped its private context: ${path}`)
-        }
+        const retained = linuxRawRun(output)
+        if (!retained) throw new Error(`Linux launcher produced no raw run in ${output}`)
+        path = retained
       } else if (context.route === "local-owned-app") {
         const output = join(directory, "owned-app", context.id)
         row.directory = output
         mkdirSync(output, { recursive: true })
         const command = ownedAppCommand(context, output, ownedApp, sourceRevision)
-        startedAt = new Date().toISOString()
         runChild(
           command.argv,
           command.label,
@@ -680,6 +742,11 @@ export async function collectPass(
       const header = JSON.parse(raw) as { schemaVersion?: unknown; sealedAt?: unknown }
       if (header.schemaVersion === 4 && header.sealedAt === undefined) {
         const decoded = decodeCollectorDraft(path, raw, derivedSuiteManifest(snapshot), sourceRevision)
+        if (decoded.kind === "empty-selection") {
+          row.status = "not-started"
+          row.reason = "Explicit empty probe selection"
+          continue
+        }
         if (decoded.run.runId !== handed.draft.runId) {
           throw new Error(`Collector changed logical runId for ${labelOf(context)}`)
         }
@@ -694,7 +761,12 @@ export async function collectPass(
         }
         if (
           decoded.run.results.some((result) =>
-            result.tests.some((check) => check.id === "review" && check.status === "test-todo"),
+            result.tests.some(
+              (check) =>
+                check.id === "review" &&
+                (check.status === "test-todo" ||
+                  (result.criterionBranch === SOURCE_NEGATIVE_REVIEW && check.status === "test-failure")),
+            ),
           ) &&
           Object.keys(decoded.run.rawReplies).some((key) => key.startsWith("collector.capture."))
         ) {
@@ -744,11 +816,75 @@ export async function collectPass(
       row.status = "classified"
     } catch (error) {
       row.error = `${labelOf(context)}: ${error instanceof Error ? error.message : String(error)}`
+      if ((context.route === "linux-container" || context.route === "hosted-workflow") && row.directory) {
+        try {
+          const actualPath =
+            context.route === "linux-container"
+              ? linuxRawRun(row.directory)
+              : row.rawRun !== handed.path
+                ? row.rawRun
+                : undefined
+          if (actualPath) {
+            row.rawRun = actualPath
+            // Bind failure custody only; canonical report/admission still validates the original bytes.
+            const actual = parseJsonStrict(actualPath, readFileSync(actualPath, "utf8")) as Partial<RunDraft> | null
+            const ids = [...(probeIds ?? snapshot.probes[context.kind])]
+            if (
+              !actual ||
+              actual.schemaVersion !== 4 ||
+              actual.source?.kind !== "live" ||
+              actual.runId !== handed.draft.runId ||
+              actual.sourceRevision !== sourceRevision ||
+              actual.probeHash !== snapshot.probeHash ||
+              actual.suiteId !== snapshot.probeHash ||
+              !actual.rawReplies
+            ) {
+              throw new Error(`Collector failure output differs from delegated identity: ${actualPath}`)
+            }
+            const actualSelection = readCollectorSelection(actual.rawReplies)
+            const actualAttempt = readCollectorAttempt(actual.rawReplies)
+            if (
+              !actualSelection ||
+              actualSelection.ids.join("\n") !== ids.join("\n") ||
+              !actualAttempt ||
+              actualAttempt.ids.join("\n") !== ids.join("\n")
+            ) {
+              throw new Error(`Collector failure output differs from delegated selection/attempt: ${actualPath}`)
+            }
+            row.status = actualAttempt.startedAt ? "failed" : "not-started"
+            continue
+          }
+        } catch (custodyError) {
+          row.reason = `Untrusted collector failure output: ${custodyError instanceof Error ? custodyError.message : String(custodyError)}`
+        }
+      }
       const retained = JSON.parse(readFileSync(handed.path, "utf8")) as RunDraft
-      if (startedAt) recordCollectionFailure(retained, startedAt, row.error, snapshot.probes[context.kind])
-      row.status = retained.results.some((result) => result.status === "test-failure") ? "failed" : "not-started"
-      if (!startedAt) {
-        for (const result of retained.results) if (result.status === "test-todo") result.reason = row.error
+      const previousAttempt = readCollectorAttempt(retained.rawReplies)
+      if (
+        previousAttempt?.result === "completed" ||
+        previousAttempt?.result === "failed" ||
+        previousAttempt?.result === "cancelled"
+      ) {
+        row.status = "failed"
+        continue
+      }
+      const actualStart = previousAttempt?.startedAt
+      const ids = [...(probeIds ?? snapshot.probes[context.kind])]
+      recordCollectorAttempt(retained, {
+        ...previousAttempt,
+        ids,
+        ...(actualStart && { startedAt: actualStart }),
+        result: "failed",
+        error: previousAttempt?.error ?? row.error,
+      })
+      if (actualStart) {
+        recordCollectionFailure(retained, actualStart, previousAttempt?.error ?? row.error, ids)
+      }
+      row.status = actualStart ? "failed" : "not-started"
+      if (!actualStart) {
+        for (const result of retained.results) {
+          if (result.status === "test-todo" && ids.includes(result.featureId)) result.reason = row.error
+        }
       }
       writeFileSync(handed.path, `${JSON.stringify(retained, null, 2)}\n`)
     }
@@ -834,8 +970,10 @@ function collectHostedArtifacts(
   lockSha256: string,
   errors: string[],
   drafts: ReadonlyMap<string, { draft: RunDraft; path: string }>,
+  probeIds?: readonly string[],
 ): Map<string, { directory: string; path?: string; error?: string }> {
   const results = new Map<string, { directory: string; path?: string; error?: string }>()
+  if (!census.some((context) => context.route === "hosted-workflow")) return results
   const root = join(directory, "hosted")
   const logs = (directory: string, step: string) => ({
     stdout: join(directory, `${step}.stdout.log`),
@@ -865,8 +1003,9 @@ function collectHostedArtifacts(
     return results
   }
   const dispatched: Array<{ os: string; contexts: CollectionContext[]; output: string; runId: string }> = []
-  for (const os of ["macos", "windows"]) {
+  for (const os of ["macos", "windows"] as const) {
     const contexts = census.filter((row) => row.route === "hosted-workflow" && row.os === os)
+    if (contexts.length === 0) continue
     const output = join(root, os)
     try {
       mkdirSync(output, { recursive: true })
@@ -893,6 +1032,16 @@ function collectHostedArtifacts(
                 }),
               ),
             )}`,
+            ...(probeIds === undefined
+              ? []
+              : [
+                  "--field",
+                  `context_matrix=${JSON.stringify({
+                    include: hostedAppRows(os).filter((row) => contexts.some((context) => context.id === row.id)),
+                  })}`,
+                  "--field",
+                  `probe_ids=${JSON.stringify(probeIds)}`,
+                ]),
           ],
           workflow,
           dispatchLogs,
@@ -986,7 +1135,6 @@ function collectHostedArtifacts(
             throw new Error(`artifact escaped private directory: ${result.directory}`)
           }
           const raw = join(result.directory, "run.json")
-          if (existsSync(raw)) result.path = raw
           const lock = join(result.directory, "collector-bun.lock")
           if (createHash("sha256").update(readFileSync(lock)).digest("hex") !== lockSha256) {
             throw new Error(`hosted dependency lock differs from pass lock: ${lock}`)
@@ -1008,6 +1156,28 @@ function collectHostedArtifacts(
           ) {
             throw new Error(`hosted collector build differs from pass source/suite: ${result.directory}`)
           }
+          // A failed canonical save still leaves the collector's original, delegated draft.
+          // It establishes failure custody only; the normal path still requires run.json.
+          const initialized = drafts.get(coverageKey(context.kind, context.id, context.os))
+          if (!initialized) throw new Error(`Missing hosted context draft ${context.id}`)
+          const draft = join(result.directory, "artifacts", `${initialized.draft.runId}.draft.json`)
+          const candidate = existsSync(raw) ? raw : existsSync(draft) ? draft : undefined
+          if (candidate) {
+            const path = realpathSync(candidate)
+            if (!path.startsWith(`${result.directory}${sep}`)) {
+              throw new Error(`hosted raw output escaped private context: ${path}`)
+            }
+            result.path = path
+          }
+          const exit = join(result.directory, "collector-exit")
+          if (existsSync(exit)) {
+            const status = readFileSync(exit, "utf8").trim()
+            if (!/^\d+$/.test(status)) throw new Error(`Invalid collector exit status in ${exit}`)
+            if (Number(status) !== 0) {
+              throw new Error(`collector exited ${status}; log ${join(result.directory, "collector.log")}`)
+            }
+          }
+          if (!existsSync(raw)) throw new Error(`hosted artifact has no validated raw run in ${result.directory}`)
         } catch (error) {
           result.error = error instanceof Error ? error.message : String(error)
         }
@@ -1142,6 +1312,8 @@ function usage(): never {
       "  --collect --admit  require the declared frozen suite; validate all contexts, plan all\n" +
       "           admissions, then place runs through the existing owner. No inclusion or publication.\n" +
       "  --deferrals  explicit frozen context/routeIssue/reason array; carried routes remain in the pass census.\n" +
+      "  --contexts <JSON-array>  canonical context IDs; omitted runs all, [] starts none.\n" +
+      "  --probe-ids <JSON-array>  exact probe IDs; omitted runs each context's full schedule, [] executes none.\n" +
       "  --owned-app-transport  where an owned-app row starts: local (default) or an existing ssh host.\n" +
       "           The host, stage and known-hosts file are environment configuration named here, never\n" +
       "           product content; the host's own authority is unchanged by the transport.\n" +
@@ -1166,6 +1338,8 @@ if (import.meta.main) {
   let outputDirectory: string | undefined
   let frozenSuite: string | undefined
   let deferralsPath: string | undefined
+  let contextsInput: string | undefined
+  let probeIdsInput: string | undefined
   let ownedAppRunner = "local"
   let ownedAppStage: string | undefined
   let ownedAppKnownHosts: string | undefined
@@ -1176,7 +1350,13 @@ if (import.meta.main) {
     else if (argv[index] === "--admit") admit = true
     else if (argv[index] === "--collect") collect = true
     else if (argv[index] === "--development") development = true
-    else if (argv[index] === "--output") {
+    else if (argv[index] === "--contexts") {
+      contextsInput = argv[++index]
+      if (contextsInput === undefined || contextsInput.startsWith("--")) usage()
+    } else if (argv[index] === "--probe-ids") {
+      probeIdsInput = argv[++index]
+      if (probeIdsInput === undefined || probeIdsInput.startsWith("--")) usage()
+    } else if (argv[index] === "--output") {
       outputDirectory = argv[++index]
       if (!outputDirectory || outputDirectory.startsWith("--")) usage()
     } else if (argv[index] === "--frozen-suite") {
@@ -1249,6 +1429,20 @@ if (import.meta.main) {
           ...(ownedAppRemoveStage ? { removeStage: true } : {}),
         },
         deferrals,
+        contextsInput === undefined && probeIdsInput === undefined
+          ? undefined
+          : {
+              ...(contextsInput === undefined
+                ? {}
+                : {
+                    contexts: collectorIds(parseJsonStrict("--contexts", contextsInput), "--contexts"),
+                  }),
+              ...(probeIdsInput === undefined
+                ? {}
+                : {
+                    ids: collectorIds(parseJsonStrict("--probe-ids", probeIdsInput), "--probe-ids"),
+                  }),
+            },
       )
       console.log(
         `${pass.mode === "admit" ? "Final collection" : "Private development"} pass: ${pass.directory}; cohort ${pass.complete ? "complete" : "incomplete"}`,
@@ -1259,7 +1453,11 @@ if (import.meta.main) {
         )
       }
       for (const error of pass.errors) console.error(error)
-      if (!pass.complete || pass.errors.length || pass.contexts.some((row) => row.status === "failed")) {
+      if (
+        ((!pass.selection || pass.mode === "admit") && !pass.complete && pass.attempt?.result !== "empty") ||
+        pass.errors.length ||
+        pass.contexts.some((row) => row.status === "failed" || row.error)
+      ) {
         process.exitCode = 1
       }
     } catch (error) {
@@ -1267,7 +1465,9 @@ if (import.meta.main) {
       process.exitCode = 1
     }
   } else {
-    if (development || outputDirectory || deferralsPath) usage()
+    if (development || outputDirectory || deferralsPath || contextsInput !== undefined || probeIdsInput !== undefined) {
+      usage()
+    }
     if (!admit) {
       if (runs.length > 0) usage()
       plan = true
@@ -1306,9 +1506,11 @@ if (import.meta.main) {
         census: fullContextCensus(CONTENT).contexts,
         catalogIds: Object.keys(loadFeatures(CONTENT)),
         requiredSuiteId,
-        candidates: admitted.map(({ key, run }) =>
-          candidateFromSelected(key, run, currentStatesFor(projection, run.runId)),
-        ),
+        candidates: admitted.map(({ key, run }) => {
+          const states = projection.table[run.runId]
+          if (!states) throw new Error(`Admitted original run ${run.runId} has no classified result row`)
+          return candidateFromSelected(key, run, states)
+        }),
         reviewed: loadDefaultContextPolicy(CONTENT),
       })
       for (const { key, run } of admitted) {

@@ -1,5 +1,5 @@
-import type { AssertionType, ProbeDefinition, ProbeCallbackResult, TermProbeSource, LibProbeSource } from "./types.ts"
-import { isBlank, parserStateResult, probe, utf8DecodingRefusal } from "./helpers.ts"
+import type { AssertionType, ProbeDefinition, ProbeCallbackResult, LibProbeSource } from "./types.ts"
+import { isBlank, parserStateResult, probe, tooSmall, utf8DecodingRefusal, validSize } from "./helpers.ts"
 import { regionReadbackProbes, type RegionReadbackRow } from "./region-readback-kind.ts"
 
 /**
@@ -87,24 +87,6 @@ function restoreDefaultTabs(write: (sequence: string) => void, cols: number): vo
   let sequence = "\x1b[3g"
   for (let col = 9; col <= cols; col += 8) sequence += `\x1b[1;${col}H\x1bH`
   write(sequence + "\x1b[1;1H")
-}
-
-function tooSmall(ctx: TermProbeSource, rows: number, cols: number): ProbeCallbackResult | undefined {
-  if (validSize(ctx.rows, rows) && validSize(ctx.cols, cols)) return undefined
-  return {
-    pass: false,
-    tests: [
-      {
-        id: "criterion",
-        status: "test-todo",
-        reason: `Text fixture needs at least ${rows}x${cols}; measured ${ctx.rows}x${ctx.cols}`,
-      },
-    ],
-  }
-}
-
-function validSize(value: number, minimum: number): boolean {
-  return Number.isSafeInteger(value) && value >= minimum
 }
 
 type CursorPosition = { row: number; col: number }

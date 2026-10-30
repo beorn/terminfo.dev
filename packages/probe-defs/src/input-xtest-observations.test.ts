@@ -7,7 +7,8 @@
 import { expect, test } from "vitest"
 import { inputProbes } from "./input.ts"
 import { modesProbes } from "./modes.ts"
-import type { ProbeCallbackResult, TermProbeSource } from "./types.ts"
+import type { LibMouseEvent, LibProbeSource, ProbeCallbackResult, TermProbeSource } from "./types.ts"
+import { readResponse } from "../../terminfo.dev/src/tty.ts"
 
 const xtestIds = ["input.xtest-key", "input.xtest-click", "input.xtest-wheel"] as const
 
@@ -60,6 +61,7 @@ function inputAndRead(
     clicks?: Record<number, string>
     clickReports?: string[]
     dragReports?: string[]
+    cellSize?: { width: number; height: number } | null
   },
   writes: string[] = [],
 ): { ctx: TermProbeSource; keys: string[]; clicks: number[]; drags: number[] } {
@@ -71,6 +73,18 @@ function inputAndRead(
   const ctx = term({
     write(text) {
       writes.push(text)
+    },
+    queryWithSentinelOutcome: async (sequence) => {
+      if (script.cellSize === null) return { match: null, reason: "sentinel", raw: "", rawBase64: "" }
+      const { width, height } = script.cellSize ?? { width: 16, height: 16 }
+      const raw =
+        sequence === "\x1b[16t"
+          ? `\x1b[6;${height};${width}t`
+          : sequence === "\x1b[14t"
+            ? `\x1b[4;${height * 24};${width * 80}t`
+            : undefined
+      if (raw === undefined) throw new Error(`Unexpected geometry query ${JSON.stringify(sequence)}`)
+      return { match: raw.match(/\x1b\[\d+;(\d+);(\d+)t/), reason: "reply", raw, rawBase64: "" }
     },
     input: {
       async injectKey(key) {
@@ -96,13 +110,13 @@ function inputAndRead(
         if (queued !== undefined) pending.push(queued)
       },
     },
-    readInput: async (_pattern, _timeoutMs, inject) => {
+    readInput: async (pattern, _timeoutMs, inject) => {
       listening = true
       try {
         if (!inject) throw new Error("readInput requires the inject callback so stdin is already listening")
         await inject()
         const next = pending.shift()
-        return next === undefined ? null : [next]
+        return next === undefined ? null : next.match(pattern)
       } finally {
         listening = false
       }
@@ -167,14 +181,27 @@ test("input.xtest-key aborts when plain a does not reach the app, and does not i
 
 test("input.xtest-key records interaction after plain-a control then ctrl+a", async () => {
   const writes: string[] = []
-  const { ctx, keys } = inputAndRead({ keys: { a: "a", "ctrl+a": "\x01" } }, writes)
+  const { ctx, keys } = inputAndRead({ keys: { a: "a", "ctrl+a": "\x1b[97;5u" } }, writes)
   const result = (await probe("input.xtest-key").term!(ctx)) as ProbeCallbackResult
   expect(keys).toEqual(["a", "ctrl+a"])
   expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "input_bytes" })
   expect(result.assertions?.[0]).toMatchObject({ kind: "positive", action: "xtest-key:ctrl+a" })
   const observed = JSON.parse(result.assertions?.[0]?.observed ?? "null") as Record<string, unknown>
-  expect(observed).toMatchObject({ control: "a", report: "\x01" })
+  expect(observed).toMatchObject({ control: "a", report: "\x1b[97;5u" })
 })
+
+// Existing delivery tests accepted any modified key; these reports deny the exact ctrl+a claim.
+test.each(["\x01", "\x1b[98;5u", "\x1b[27;5;98~", "\x1b[97;2u"])(
+  "input.xtest-key rejects the wrong encoding %j after a successful delivery control",
+  async (report) => {
+    const { ctx, keys } = inputAndRead({ keys: { a: "a", "ctrl+a": report } })
+    const result = await probe("input.xtest-key").term!(ctx)
+    expect(keys).toEqual(["a", "ctrl+a"])
+    expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "input_bytes" })
+    expect(result.assertions?.[0]).toMatchObject({ kind: "negative" })
+    expect(JSON.parse(result.response!)).toMatchObject({ control: "a", report })
+  },
+)
 
 test("input.xtest-click records interaction under 1000+1006 after a same-run control click", async () => {
   const writes: string[] = []
@@ -206,6 +233,17 @@ test("input.xtest-wheel records interaction under 1000+1006 after a control clic
   expect(result.assertions?.[0]).toMatchObject({ kind: "positive", action: "xtest-wheel:4" })
   const observed = JSON.parse(result.assertions?.[0]?.observed ?? "null") as Record<string, unknown>
   expect(observed).toMatchObject({ mode: "1000+1006", control: "\x1b[<0;10;10M", report: "\x1b[<64;10;10M" })
+})
+
+// Same transport, wrong event: delivery alone cannot establish the claimed button.
+test.each([
+  ["input.xtest-click", "\x1b[<64;10;10M"],
+  ["input.xtest-wheel", "\x1b[<0;10;10M"],
+])("%s rejects a different button's SGR report", async (id, report) => {
+  const { ctx } = inputAndRead({ clickReports: ["\x1b[<0;10;10M", report] })
+  const result = await probe(id).term!(ctx)
+  expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "input_bytes" })
+  expect(result.assertions?.[0]).toMatchObject({ kind: "negative" })
 })
 
 test("input.modify-other-keys is not tested without an OS XTEST adapter", async () => {
@@ -431,7 +469,40 @@ test("modes.application-keypad records supported interaction for KP_5 as SS3 u",
   expect(result.assertions?.[0]).toMatchObject({ kind: "positive", action: "application-keypad:KP_5" })
   const observed = JSON.parse(result.assertions?.[0]?.observed ?? "null") as Record<string, unknown>
   expect(observed).toMatchObject({ mode: "application-keypad", control: "a", report: "\x1bOu" })
+  expect(result.assertions?.[0]?.expected).toMatch(/SS3 u/)
 })
+
+// The real reader sees a byte stream, not one framed report per stdin chunk.
+test.each([
+  ["coalesced suffix", ["\x1bOu\x1b[12~"]],
+  ["coalesced prefix", ["\x1b[15~\x1bOu"]],
+  ["fragmented", ["\x1bO", "u\x1b[12~"]],
+  ["separate chunks", ["\x1bOu", "\x1b[12~"]],
+  ["coalesced OSC prefix", ["\x1b]lterm5\x1b\\\x1bOu"]],
+  ["separate OSC prefix", ["\x1b]lterm5\x1b\\", "\x1bOu"]],
+] as const)("modes.application-keypad reads SS3 u from %s through actual stdin", async (_label, chunks) => {
+  const ctx = term({
+    input: {
+      async injectKey(key) {
+        for (const bytes of key === "a" ? ["a"] : chunks) process.stdin.emit("data", Buffer.from(bytes))
+      },
+      async injectClick() {},
+    },
+    readInput: (pattern, timeout, inject) => readResponse(pattern, timeout ?? 1000, inject),
+  })
+  const result = await modeProbe("modes.application-keypad").term!(ctx)
+  expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "input_bytes" })
+  expect(JSON.parse(result.response ?? "null")).toMatchObject({ report: "\x1bOu" })
+})
+
+// The real input reader returns only regex matches: a digit inside another report is not KP_5.
+test.each(["15", "\x1b[15~", "\x1b[<0;15;1M", "\x1b]lterm5\x1b\\", "\x1b]5;0;rgb:ffff/ffff/ffff\x07"])(
+  "modes.application-keypad rejects unrelated input containing 5: %s",
+  async (report) => {
+    const { ctx } = inputAndRead({ keys: { a: "a", KP_5: report } })
+    await expect(modeProbe("modes.application-keypad").term!(ctx)).rejects.toThrow(/KP_5/)
+  },
+)
 
 test("modes.application-keypad records unsupported interaction when KP_5 still reports 5", async () => {
   const writes: string[] = []
@@ -495,20 +566,22 @@ test("modes.alt-scroll-1007 records supported interaction when wheel under 1007 
   expect(observed).toMatchObject({ mode: "1007", control, report })
 })
 
-test("modes.alt-scroll-1007 records unsupported interaction when wheel under 1007 still reports SGR", async () => {
-  const writes: string[] = []
-  const control = "\x1b[<0;10;5M"
-  const report = "\x1b[<64;10;5M"
-  const { ctx, clicks } = inputAndRead({ clickReports: [control, report] }, writes)
-  const result = (await modeProbe("modes.alt-scroll-1007").term!(ctx)) as ProbeCallbackResult
-  expect(clicks).toEqual([1, 4])
-  expect(writes.join("")).toContain("\x1b[?1007h")
-  expect(writes.join("")).toContain("\x1b[?1007l")
-  expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "input_bytes" })
-  expect(result.assertions?.[0]).toMatchObject({ kind: "negative", action: "alt-scroll-1007:4" })
-  const observed = JSON.parse(result.assertions?.[0]?.observed ?? "null") as Record<string, unknown>
-  expect(observed).toMatchObject({ mode: "1007", control, report })
-})
+test.each(["\x1b[<64;10;5M", "\x1b[B", "\x1bOA", "\x1bOB"])(
+  "modes.alt-scroll-1007 rejects non-CSI-A report %s",
+  async (report) => {
+    const writes: string[] = []
+    const control = "\x1b[<0;10;5M"
+    const { ctx, clicks } = inputAndRead({ clickReports: [control, report] }, writes)
+    const result = (await modeProbe("modes.alt-scroll-1007").term!(ctx)) as ProbeCallbackResult
+    expect(clicks).toEqual([1, 4])
+    expect(writes.join("")).toContain("\x1b[?1007h")
+    expect(writes.join("")).toContain("\x1b[?1007l")
+    expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "input_bytes" })
+    expect(result.assertions?.[0]).toMatchObject({ kind: "negative", action: "alt-scroll-1007:4" })
+    const observed = JSON.parse(result.assertions?.[0]?.observed ?? "null") as Record<string, unknown>
+    expect(observed).toMatchObject({ mode: "1007", control, report })
+  },
+)
 
 test("modes.alt-scroll-1007 throws when the 1007 wheel is silent after delivery control, and still resets 1007", async () => {
   const writes: string[] = []
@@ -606,6 +679,36 @@ test("input.pixel-mouse records unsupported interaction when 1016 still reports 
   expect(result.assertions?.[0]).toMatchObject({ kind: "negative", action: "pixel-mouse:1" })
   const observed = JSON.parse(result.assertions?.[0]?.observed ?? "null") as Record<string, unknown>
   expect(observed).toMatchObject({ mode: "1016", control: cell, report: cell })
+})
+
+// Distinctness alone also accepts shifted cell coordinates and pixels in an adjacent cell.
+test.each([
+  ["\x1b[<0;73;65M", "supported"],
+  ["\x1b[<0;80;80M", "supported"],
+  ["\x1b[<0;11;6M", "unsupported"],
+  ["\x1b[<0;72;65M", "unsupported"],
+  ["\x1b[<0;81;65M", "unsupported"],
+  ["\x1b[<0;73;64M", "unsupported"],
+  ["\x1b[<0;73;81M", "unsupported"],
+] as const)("input.pixel-mouse measures the predicted pixel box for %j", async (report, outcome) => {
+  const { ctx } = inputAndRead({
+    clickReports: ["\x1b[<0;10;5M", report],
+    cellSize: { width: 8, height: 16 },
+  })
+  const result = await probe("input.pixel-mouse").term!(ctx)
+  expect(result.observation).toMatchObject({ outcome, assertionType: "input_bytes" })
+  expect(result.assertions?.[0]?.kind).toBe(outcome === "supported" ? "positive" : "negative")
+})
+
+test("input.pixel-mouse keeps missing cell geometry as named coverage without a feature verdict", async () => {
+  const writes: string[] = []
+  const { ctx, clicks } = inputAndRead({ clickReports: ["\x1b[<0;10;5M", "\x1b[<0;80;80M"], cellSize: null }, writes)
+  const result = await probe("input.pixel-mouse").term!(ctx)
+  expect(result.notTested).toMatchObject({ noObservable: expect.stringContaining("no cell geometry") })
+  expect(result.observation).toBeUndefined()
+  expect(result.assertions ?? []).toEqual([])
+  expect(clicks).toEqual([1])
+  expect(writes).not.toContain("\x1b[?1016h")
 })
 
 test("input.pixel-mouse throws when the 1016 click is silent after delivery control, and still resets 1016", async () => {
@@ -967,4 +1070,271 @@ test("input.kitty-click-events stays inconclusive when the report does not match
     assertionType: "input_bytes",
   })
   expect(result.assertions).toBeUndefined()
+})
+
+function sgrBytes(button: number, x: number, y: number, suffix: "M" | "m" = "M"): Uint8Array {
+  const prefix = [String.fromCharCode(0x1b), "[", "<"].join("")
+  return new TextEncoder().encode(`${prefix}${String(button)};${String(x)};${String(y)}${suffix}`)
+}
+
+function libMouseSource(
+  overrides: {
+    extensions?: Iterable<string>
+    encodeMouse?: (event: LibMouseEvent) => Uint8Array | null
+  } = {},
+  feeds: string[] = [],
+  events: LibMouseEvent[] = [],
+): LibProbeSource {
+  return {
+    kind: "live",
+    cols: 80,
+    feed(text) {
+      feeds.push(text)
+    },
+    feedCapture() {
+      return ""
+    },
+    getCell: () => {
+      throw new Error("Unexpected getCell")
+    },
+    getCursor: () => {
+      throw new Error("Unexpected getCursor")
+    },
+    getMode: () => false,
+    getText: () => "",
+    getScrollback: () => ({ viewportOffset: 0, totalLines: 24, screenLines: 24 }),
+    getTitle: () => "",
+    reset() {},
+    ...(overrides.encodeMouse && {
+      encodeMouse(event: LibMouseEvent) {
+        events.push({ ...event })
+        return overrides.encodeMouse!(event)
+      },
+    }),
+    capabilities: {
+      truecolor: false,
+      kittyKeyboard: false,
+      kittyGraphics: false,
+      sixel: false,
+      osc8Hyperlinks: false,
+      semanticPrompts: false,
+      reflow: false,
+      unicode: "unknown",
+      extensions: new Set(overrides.extensions ?? ["mouse-encoding"]),
+    },
+  }
+}
+
+test("input.kitty-click-events declares libAssertionType input_bytes and returns notTestedResult when capability is absent or undeclared", () => {
+  const definition = probe("input.kitty-click-events")
+  expect(definition.libAssertionType).toBe("input_bytes")
+
+  const absent = definition.lib!(libMouseSource({ extensions: [] }))
+  expect(absent.notTested).toEqual({
+    reason: "no-semantic-observable",
+    noObservable: expect.stringMatching(/mouse-encoding/i),
+  })
+  expect(absent.observation).toBeUndefined()
+  expect(absent.criterionBranch).toBeUndefined()
+
+  const undeclaredMethod = definition.lib!(
+    libMouseSource({
+      extensions: [],
+      encodeMouse: (event) => sgrBytes(0, event.x + 1, event.y + 1),
+    }),
+  )
+  expect(undeclaredMethod.notTested).toEqual({
+    reason: "no-semantic-observable",
+    noObservable: expect.stringMatching(/undeclared|mouse-encoding/i),
+  })
+  expect(undeclaredMethod.observation).toBeUndefined()
+})
+
+test("input.kitty-click-events library arm returns inconclusive when the 1000+1006 delivery control returns null and resets mouse modes", () => {
+  const feeds: string[] = []
+  const events: LibMouseEvent[] = []
+  let modesOn = false
+  let calls = 0
+  const ctx = libMouseSource(
+    {
+      encodeMouse: (event) => {
+        calls += 1
+        if (calls === 1) return null
+        return modesOn ? sgrBytes(0, event.x + 1, event.y + 1) : null
+      },
+    },
+    feeds,
+    events,
+  )
+  const origFeed = ctx.feed.bind(ctx)
+  ctx.feed = (text: string) => {
+    origFeed(text)
+    if (text.includes("?1000h") && text.includes("?1006h")) modesOn = true
+    if (text.includes("?1006l") && text.includes("?1000l")) modesOn = false
+  }
+  const result = probe("input.kitty-click-events").lib!(ctx)
+  expect(events).toHaveLength(1)
+  expect(modesOn).toBe(false)
+  expect(feeds.at(-1)).toContain("?1006l")
+  expect(feeds.at(-1)).toContain("?1000l")
+  expect(ctx.encodeMouse!({ x: 4, y: 2, button: "left", action: "press" })).toBeNull()
+  expect(result.observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+    assertionType: "input_bytes",
+    note: expect.stringMatching(/delivery control/i),
+  })
+  expect(result.assertions).toBeUndefined()
+})
+
+test("input.kitty-click-events library arm throws when delivery control returns non-SGR bytes without coordinates and resets mouse modes", () => {
+  const feeds: string[] = []
+  const ctx = libMouseSource(
+    {
+      encodeMouse: () => new TextEncoder().encode("not-sgr"),
+    },
+    feeds,
+  )
+  expect(() => probe("input.kitty-click-events").lib!(ctx)).toThrow(/coordinates|delivery control/i)
+  expect(feeds.at(-1)).toContain("?1006l")
+  expect(feeds.at(-1)).toContain("?1000l")
+})
+
+test("input.kitty-click-events library arm returns inconclusive when the modes-off negative control outside the prompt still emits a report (C4)", () => {
+  const feeds: string[] = []
+  const events: LibMouseEvent[] = []
+  const ctx = libMouseSource(
+    {
+      encodeMouse: (event) => sgrBytes(0, event.x + 1, event.y + 1, event.action === "release" ? "m" : "M"),
+    },
+    feeds,
+    events,
+  )
+  const result = probe("input.kitty-click-events").lib!(ctx)
+  expect(result.observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+    assertionType: "input_bytes",
+    note: expect.stringMatching(/mouse modes still active|outside/i),
+  })
+  expect(result.assertions).toBeUndefined()
+  expect(feeds.some((chunk) => chunk.includes("133;B"))).toBe(true)
+})
+
+test("input.kitty-click-events library arm records unsupported when control passes, modes-off negative control is null, and prompt click is null", () => {
+  const feeds: string[] = []
+  const events: LibMouseEvent[] = []
+  let modesOn = false
+  const ctx = libMouseSource(
+    {
+      encodeMouse: (event) => {
+        if (!modesOn) return null
+        return sgrBytes(0, event.x + 1, event.y + 1, event.action === "release" ? "m" : "M")
+      },
+    },
+    feeds,
+    events,
+  )
+  const origFeed = ctx.feed.bind(ctx)
+  ctx.feed = (text: string) => {
+    origFeed(text)
+    if (text.includes("?1000h")) modesOn = true
+    if (text.includes("?1000l")) modesOn = false
+  }
+  const result = probe("input.kitty-click-events").lib!(ctx)
+  expect(result.observation).toMatchObject({
+    outcome: "unsupported",
+    assertionType: "input_bytes",
+  })
+  expect(result.assertions?.[0]).toMatchObject({
+    kind: "negative",
+    action: "kitty-click-events:1",
+    assertionType: "input_bytes",
+  })
+  expect(events.map((entry) => `${entry.action}:${String(entry.x)},${String(entry.y)}`)).toEqual([
+    "press:4,2",
+    "release:4,2",
+    "press:4,3",
+    "press:4,2",
+  ])
+})
+
+test("input.kitty-click-events library arm returns inconclusive when the prompt click report does not correlate with the control cell or button", () => {
+  let modesOn = false
+  let promptRow = -1
+  const ctx = libMouseSource({
+    encodeMouse: (event) => {
+      if (modesOn) {
+        return sgrBytes(0, event.x + 1, event.y + 1, event.action === "release" ? "m" : "M")
+      }
+      if (event.y + 1 === promptRow && event.action === "press") {
+        return sgrBytes(2, event.x + 9, event.y + 5, "M")
+      }
+      return null
+    },
+  })
+  const origFeed = ctx.feed.bind(ctx)
+  ctx.feed = (text: string) => {
+    origFeed(text)
+    if (text.includes("?1000h")) modesOn = true
+    if (text.includes("?1000l")) modesOn = false
+    if (text.includes("133;A;click_events=1")) promptRow = 3
+  }
+  const result = probe("input.kitty-click-events").lib!(ctx)
+  expect(result.observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+    assertionType: "input_bytes",
+    note: expect.stringMatching(/correlate/i),
+  })
+  expect(result.assertions).toBeUndefined()
+})
+
+test("input.kitty-click-events library arm records supported when control passes, modes-off negative control is null, and prompt click correlates", () => {
+  const feeds: string[] = []
+  const events: LibMouseEvent[] = []
+  let modesOn = false
+  let promptRow = -1
+  const ctx = libMouseSource(
+    {
+      encodeMouse: (event) => {
+        if (modesOn) {
+          return sgrBytes(0, event.x + 1, event.y + 1, event.action === "release" ? "m" : "M")
+        }
+        if (event.y + 1 === promptRow) {
+          return sgrBytes(0, event.x + 1, event.y + 1, event.action === "release" ? "m" : "M")
+        }
+        return null
+      },
+    },
+    feeds,
+    events,
+  )
+  const origFeed = ctx.feed.bind(ctx)
+  ctx.feed = (text: string) => {
+    origFeed(text)
+    if (text.includes("?1000h")) modesOn = true
+    if (text.includes("?1000l")) modesOn = false
+    if (text.includes("133;A;click_events=1")) promptRow = 3
+    if (text.includes("133;B")) promptRow = -1
+  }
+  const result = probe("input.kitty-click-events").lib!(ctx)
+  expect(result.observation).toMatchObject({
+    outcome: "supported",
+    assertionType: "input_bytes",
+  })
+  expect(result.assertions).toEqual([
+    expect.objectContaining({
+      kind: "positive",
+      action: "kitty-click-events:1",
+      assertionType: "input_bytes",
+    }),
+  ])
+  expect(events.map((entry) => `${entry.action}:${String(entry.x)},${String(entry.y)}`)).toEqual([
+    "press:4,2",
+    "release:4,2",
+    "press:4,3",
+    "press:4,2",
+    "release:4,2",
+  ])
 })

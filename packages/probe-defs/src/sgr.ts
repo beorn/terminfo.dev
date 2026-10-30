@@ -1,6 +1,13 @@
-import type { ProbeDefinition, ProbeCallbackResult, TermProbeSource, LibProbeSource } from "./types.ts"
+import type {
+  CaptureCells,
+  ObservationFrame,
+  ProbeDefinition,
+  ProbeCallbackResult,
+  TermProbeSource,
+  LibProbeSource,
+} from "./types.ts"
+import { frameDigests } from "./types.ts"
 import {
-  notTestedResult,
   parserStateResult,
   sameRgb,
   sgrProbe,
@@ -8,14 +15,225 @@ import {
   sgrCaptureTooSmall,
   sgrPlainFixtureTooSmall,
   sgrReadbackDecision,
+  type SgrCaptureFixture,
   type SgrReadback,
   probe,
 } from "./helpers.ts"
-import { captureRegionVerdict } from "./region-readback.ts"
+import { kittyWait } from "./kitty-capture.ts"
+import { captureRegionVerdict, cropPositionRefusal } from "./region-readback.ts"
 import { RESET_FAMILY_CAPTURE } from "./reset-family-capture.ts"
 import { COLOUR_CAPTURE, colourCaptureVerdict } from "./sgr-colour-capture.ts"
 
 const requestedUnderlineColor = { r: 255, g: 0, b: 128 }
+
+/**
+ * Blink is a phase in time, so one target frame decides nothing (#31812). The styled text is requested at these
+ * offsets from the first sample, with no write between: 750 ms crosses a 500 ms on/off cycle whatever phase the
+ * first sample lands on, where one fixed gap can land on the same phase twice. They are requested offsets: a
+ * producer that settles before each acquisition lands later, so each sample also records when it was invoked
+ * and the producer's own capture time.
+ */
+const BLINK_SAMPLE_OFFSETS_MS = [0, 250, 500, 750] as const
+
+/** Whether some styled value comes back after a different one (A,B,A in order): a settle only ever goes one way. */
+function returnsToEarlierValue(values: readonly string[]): boolean {
+  return values.some((value, index) =>
+    values
+      .slice(index + 1)
+      .some((later, offset) => later !== value && values.slice(index + offset + 2).includes(value)),
+  )
+}
+
+/**
+ * sgr.blink's pixel capture: a control of the plain line on row 1 and the unstyled text on row 3, then the same
+ * screen with the row-3 text styled, sampled four times; the cursor is parked on row 2. With a measured raster
+ * each frame is a region digest of the row-3 text and of the plain line, and the plain line's digest must hold
+ * across all five frames. Supported needs a styled value to come back after a different one: a one-way change
+ * (A,B,B,B) is also what a first sample caught before the fixture finished painting looks like, so it stays
+ * inconclusive, as do four equal samples, because no blink period is recorded for the terminal. A plain line that
+ * moves is redraw, scroll or cursor motion, never blink. Without a measured raster the five frames go to review.
+ */
+async function blinkCapture(ctx: TermProbeSource, fixture: SgrCaptureFixture): Promise<ProbeCallbackResult> {
+  const capture = ctx.capture
+  if (!capture) throw new Error("sgr.blink: SGR pixel capture requires a capture callback")
+  const { sequence, sample, row, col } = fixture
+  const styledCells = { top: row, left: col, bottom: row, right: col + sample.length - 1 }
+  const plainCells = { top: 1, left: col, bottom: 1, right: col + sample.length - 1 }
+  const geometry = ctx.captureGeometry?.geometry
+  const shoot = (role: "control" | "target", label: string, cells: CaptureCells) =>
+    capture(geometry ? { role, label, cells, pixelGeometry: geometry } : { role, label })
+  const screen = (styled: string) =>
+    `\x1b[0m\x1b[2J\x1b[1;${String(col)}H${sample}\x1b[${String(row)};${String(col)}H${styled}\x1b[0m\x1b[2;1H`
+  ctx.write(screen(sample))
+  const control = await shoot("control", "Unstyled text sample", styledCells)
+  const controlPlain = geometry ? await shoot("control", "Plain line, control", plainCells) : undefined
+  ctx.write(screen(sequence + sample))
+  const samples: Array<{
+    offsetMs: number
+    invokedMs: number
+    styled: ObservationFrame
+    plain?: ObservationFrame
+  }> = []
+  const start = Date.now()
+  for (const offsetMs of BLINK_SAMPLE_OFFSETS_MS) {
+    const wait = start + offsetMs - Date.now()
+    if (wait > 0) await kittyWait(wait)
+    const invokedMs = Date.now() - start
+    const styled = await shoot(
+      "target",
+      `sgr.blink styled text, sample requested at +${String(offsetMs)} ms`,
+      styledCells,
+    )
+    const plain = geometry
+      ? await shoot("control", `Plain line, sample requested at +${String(offsetMs)} ms`, plainCells)
+      : undefined
+    samples.push({ offsetMs, invokedMs, styled, ...(plain ? { plain } : {}) })
+  }
+  const styledFrames = samples.map((entry) => entry.styled)
+  const plainFrames = [
+    ...(controlPlain ? [controlPlain] : []),
+    ...samples.flatMap((entry) => (entry.plain ? [entry.plain] : [])),
+  ]
+  const frames = [control, ...styledFrames, ...plainFrames]
+  const timing = samples.map(({ offsetMs, invokedMs, styled, plain }) => ({
+    requestedOffsetMs: offsetMs,
+    invokedMs,
+    styledCapturedAt: styled.capturedAt,
+    ...(plain ? { plainCapturedAt: plain.capturedAt } : {}),
+  }))
+  // An undecided digest comparison leaves the retained frames for review, under the same named rows the
+  // pair path uses; a result with no rows is recorded as a test failure (#31812 first-line review).
+  const inconclusive = (note: string, observed: string): ProbeCallbackResult => ({
+    pass: false,
+    response: observed,
+    criterionBranch: "visual-review",
+    tests: [
+      { id: "capture", status: "supported", assertionRefs: [0] },
+      { id: "review", status: "test-todo", reason: note },
+    ],
+    observation: {
+      outcome: "inconclusive",
+      reason: "insufficient-evidence",
+      assertionType: "screenshot",
+      screenshotRef: styledFrames[0]?.ref,
+      frames,
+      note,
+    },
+    assertions: [{ assertionType: "screenshot" as const, kind: "positive", expected: note, observed }],
+  })
+  if (!geometry) {
+    const observed = JSON.stringify({
+      sample,
+      startRow: row,
+      startCol: col,
+      timing,
+      frames: frames.map((f) => f.label),
+    })
+    return {
+      pass: false,
+      response: observed,
+      criterionBranch: "visual-review",
+      tests: [
+        { id: "capture", status: "supported", assertionRefs: [0] },
+        {
+          id: "review",
+          status: "test-todo",
+          reason: "Valid control and four blink samples; required visual review pending",
+        },
+      ],
+      assertions: [
+        {
+          assertionType: "screenshot" as const,
+          kind: "positive",
+          expected:
+            "The styled text changes and then comes back to an earlier look across the four samples, while the plain line holds still in the control and every sample",
+          observed: JSON.stringify({ control, samples }),
+        },
+      ],
+      observation: {
+        outcome: "inconclusive",
+        reason: "insufficient-evidence",
+        assertionType: "screenshot",
+        screenshotRef: styledFrames[0]?.ref,
+        frames,
+        note: "No measured raster, so the samples cannot be compared by region digest; the control and four samples need review together",
+      },
+    }
+  }
+  const controlDigest = frameDigests(control).cells
+  const styled = styledFrames.map((frame) => frameDigests(frame).cells)
+  const plain = plainFrames.map((frame) => frameDigests(frame).cells)
+  const observed = JSON.stringify({
+    sample,
+    startRow: row,
+    startCol: col,
+    timing,
+    control: controlDigest,
+    styled,
+    plain,
+  })
+  if (
+    [controlDigest, ...styled, ...plain].some((digest) => digest === undefined) ||
+    plain.length !== styled.length + 1
+  ) {
+    return inconclusive(
+      "Blink needs one cell-aligned digest of the text and of the plain line in the control and in every sample",
+      observed,
+    )
+  }
+  for (const set of [[control, ...styledFrames], plainFrames]) {
+    const refusal = cropPositionRefusal({
+      id: "sgr.blink",
+      compared: set.map((frame) => ({
+        role: frame.label,
+        rectangle: frame.kind === "text-cells" ? undefined : frame.regionRectangle,
+      })),
+      response: observed,
+      frames,
+      screenshotRef: styledFrames[0]?.ref,
+    })
+    if (refusal) return refusal
+  }
+  if (new Set(plain).size > 1) {
+    return inconclusive(
+      "The plain line moved across the control and the samples, so a styled-text change could be redraw, scroll or cursor motion rather than blink",
+      observed,
+    )
+  }
+  const styledDigests = styled.filter((digest): digest is string => digest !== undefined)
+  if (returnsToEarlierValue(styledDigests)) {
+    return {
+      pass: true,
+      response: observed,
+      observation: {
+        outcome: "supported",
+        assertionType: "screenshot",
+        screenshotRef: styledFrames[0]?.ref,
+        frames,
+        note: "With no write between samples, the styled text's region digest changed and then came back to an earlier value, while the plain line held still in the control and every sample",
+      },
+      assertions: [
+        {
+          assertionType: "screenshot" as const,
+          kind: "positive",
+          expected:
+            "Four samples of the SGR 5 text, requested at +0/+250/+500/+750 ms with no write between: a styled region digest comes back after a different one, and the plain line's digest is the same in the control and every sample",
+          observed,
+        },
+      ],
+    }
+  }
+  if (new Set(styledDigests).size > 1) {
+    return inconclusive(
+      "The styled text changed one way and then held still; a first sample caught before the fixture finished painting looks the same, so a one-way change is not blink evidence",
+      observed,
+    )
+  }
+  return inconclusive(
+    "Four equal samples of the styled text; no blink period is recorded for this terminal, so equal samples cannot show it never blinks",
+    observed,
+  )
+}
 
 /**
  * An adapter that does not populate `underlineColor` reports null on every cell, so a cell fed an
@@ -43,12 +261,14 @@ export function sgrTermReadback(
       const refusal = sgrCaptureTooSmall(ctx, "SGR fixture")
       if (refusal) return refusal
     }
-    const decided = await sgrReadbackDecision(ctx, id, sequence, readback, setup)
+    const region = RESET_FAMILY_CAPTURE[id]
+    const independentSetup =
+      region && !region.noIndependentReference ? () => captureRegionVerdict(ctx, id, region, true) : undefined
+    const decided = await sgrReadbackDecision(ctx, id, sequence, readback, setup, independentSetup)
     if (decided) return decided
     // The readback may have written its sequence and query before returning no decisive answer, so a
     // named refusal from the region oracle after it is truthful QUERY evidence, never the zero-byte
     // "none" shape run-parser demands. A caller that wrote nothing still passes "none".
-    const region = RESET_FAMILY_CAPTURE[id]
     if (region) {
       const verdict = await captureRegionVerdict(ctx, id, region, true)
       if (verdict) return verdict
@@ -193,7 +413,9 @@ function rgbUnderlineProbe(id: string): ProbeDefinition {
         const state = { blueControl, greenControl, target }
         const expected = `${id}: X has explicit rgb(255,0,128) underline distinct from the reset/default B cell`
         const framed = blueControl.char === "A" && greenControl.char === "B" && target.char === "X"
-        if (framed && target.underlineColor == null) return notTestedResult(UNDERLINE_COLOR_UNEXPOSED, state)
+        if (framed && target.underlineColor == null) {
+          return parserStateResult(null, expected, state, undefined, UNDERLINE_COLOR_UNEXPOSED)
+        }
         if (
           blueControl.char !== "A" ||
           greenControl.char !== "B" ||
@@ -283,7 +505,13 @@ function measuredReset(
   const cleared = set.filter(shown).every((attribute) => measuredAttribute(after, attribute) === false)
   const retained = preserve.filter(shown).every((attribute) => measuredAttribute(after, attribute) === true)
   if (cleared && retained && (!set.some(shown) || !preserve.every(shown))) {
-    return notTestedResult(`${unshown.join(" and ")} on the styled setup cell in the headless readback`, state)
+    return parserStateResult(
+      null,
+      expected,
+      state,
+      undefined,
+      `${unshown.join(" and ")} on the styled setup cell in the headless readback`,
+    )
   }
   return parserStateResult(
     cleared && retained,
@@ -420,9 +648,12 @@ function namedColorProbe(id: string, channel: ColorChannel, firstCode: number, s
           return parserStateResult(false, expected, state)
         }
         if (!neutral && !a && !b) {
-          return notTestedResult(
-            `the ${channel} color field in the headless readback (neutral, SGR ${firstCode} and SGR ${secondCode} cells all read no color)`,
+          return parserStateResult(
+            null,
+            expected,
             state,
+            undefined,
+            `the ${channel} color field in the headless readback (neutral, SGR ${firstCode} and SGR ${secondCode} cells all read no color)`,
           )
         }
         return parserStateResult(
@@ -475,9 +706,12 @@ function indexedColorProbe(id: string, channel: ColorChannel): ProbeDefinition {
         // {r: index, g: 0, b: 0}; #30703), so it stays inconclusive until an in-probe control shows the
         // adapter resolves indices (@cto cd391424).
         if (!a || !b || !sameRgb(a, first) || !sameRgb(b, second)) {
-          return notTestedResult(
-            `direct RGB ${channel} readback matching the fed value (SGR ${sgr};2 reference cells A and B)`,
+          return parserStateResult(
+            null,
+            expected,
             state,
+            undefined,
+            `direct RGB ${channel} readback matching the fed value (SGR ${sgr};2 reference cells A and B)`,
           )
         }
         if (x && y && sameRgb(x, a) && sameRgb(y, b)) return parserStateResult(true, expected, state)
@@ -540,9 +774,12 @@ function truecolorProbe(id: string, channel: ColorChannel): ProbeDefinition {
           // #30701, @cto ruling C: a target that reads no color is a measured ignore while the
           // independent controls show two distinct colors; without them the channel is not shown.
           if (calibrated) return parserStateResult(false, expected, state)
-          return notTestedResult(
-            `independent ${channel} color controls (SGR ${ordinary[0]} and ${ordinary[1]}) distinguishable in the headless readback`,
+          return parserStateResult(
+            null,
+            expected,
             state,
+            undefined,
+            `independent ${channel} color controls (SGR ${ordinary[0]} and ${ordinary[1]}) distinguishable in the headless readback`,
           )
         }
         const preceding = controlSecond[channel]
@@ -594,10 +831,13 @@ function defaultColorProbe(id: string, channel: ColorChannel): ProbeDefinition {
         const resetColor = after[channel]
         if (!changed || sameCellColor(baseColor, changed) || resetColor === undefined) {
           // #30701, @cto ruling C: the colored X is the reference the reset is read against; a setup
-          // that reads back as the default leaves the reset with no observable (TEST TODO).
-          return notTestedResult(
-            `a colored ${channel} setup cell (SGR ${setup}) distinct from the default, and the reset cell's ${channel}, in the headless readback`,
+          // that reads back as the default leaves the reset with no observable.
+          return parserStateResult(
+            null,
+            expected,
             state,
+            undefined,
+            `a colored ${channel} setup cell (SGR ${setup}) distinct from the default, and the reset cell's ${channel}, in the headless readback`,
           )
         }
         return parserStateResult(sameCellColor(baseColor, resetColor), expected, state)
@@ -629,7 +869,7 @@ export const sgrProbes: ProbeDefinition[] = [
     "sgr.faint",
     "\x1b[2m",
     (cell) => cell.dim === true,
-    (cell) => (cell.dim === null ? "Cell producer does not report cell.dim" : null),
+    undefined,
     { require: [2] },
     "Cell readback cannot distinguish unsupported faint styling from an unreported or collapsed attribute",
   ),
@@ -638,7 +878,7 @@ export const sgrProbes: ProbeDefinition[] = [
     "sgr.italic",
     "\x1b[3m",
     (cell) => cell.italic === true,
-    (cell) => (cell.italic === null ? "Cell producer does not report cell.italic" : null),
+    undefined,
     { require: [3] },
     "Cell readback cannot distinguish unsupported italic styling from an unreported attribute",
   ),
@@ -690,7 +930,15 @@ export const sgrProbes: ProbeDefinition[] = [
     "Cell readback cannot distinguish unsupported dashed underline from a collapsed underline style",
   ),
 
-  sgrProbe("sgr.blink", "\x1b[5m", (cell) => cell.blink === true, undefined, { require: [5] }),
+  sgrProbe(
+    "sgr.blink",
+    "\x1b[5m",
+    (cell) => cell.blink === true,
+    undefined,
+    { require: [5] },
+    "Cell readback cannot distinguish unsupported blink styling from an unreported attribute",
+    blinkCapture,
+  ),
 
   sgrProbe("sgr.inverse", "\x1b[7m", (cell) => cell.inverse === true, undefined, { require: [7] }),
 
@@ -707,7 +955,7 @@ export const sgrProbes: ProbeDefinition[] = [
     "sgr.strikethrough",
     "\x1b[9m",
     (cell) => cell.strikethrough === true,
-    (cell) => (cell.strikethrough === null ? "Cell producer does not report cell.strikethrough" : null),
+    undefined,
     { require: [9] },
     "Cell readback cannot distinguish unsupported strikethrough from an unreported attribute",
   ),
@@ -715,8 +963,8 @@ export const sgrProbes: ProbeDefinition[] = [
   sgrProbe(
     "sgr.overline",
     "\x1b[53m",
-    (cell) => (cell.overline === undefined ? null : cell.overline === true),
-    (cell) => (cell.overline === undefined ? "cell.overline field not exposed" : null),
+    (cell) => (cell.overline == null ? null : cell.overline === true),
+    (cell) => (cell.overline == null ? "cell.overline field not exposed" : null),
     { require: [53] },
   ),
 
@@ -745,7 +993,7 @@ export const sgrProbes: ProbeDefinition[] = [
           "SGR 58 index 5/4 underline colors match the opposite SGR 38 palette controls, not their same-foreground defaults"
         const framed = default4.char === "A" && target5.char === "X" && default5.char === "B" && target4.char === "Y"
         if (framed && target5.underlineColor == null && target4.underlineColor == null) {
-          return notTestedResult(UNDERLINE_COLOR_UNEXPOSED, state)
+          return parserStateResult(null, expected, state, undefined, UNDERLINE_COLOR_UNEXPOSED)
         }
         if (
           default4.char !== "A" ||
@@ -808,7 +1056,9 @@ export const sgrProbes: ProbeDefinition[] = [
         const expected =
           "X has explicit underline rgb(255,0,128); SGR 59 restores Y to the measured reset-state C color"
         const framed = baseline.char === "C" && before.char === "X" && after.char === "Y"
-        if (framed && before.underlineColor == null) return notTestedResult(UNDERLINE_COLOR_UNEXPOSED, state)
+        if (framed && before.underlineColor == null) {
+          return parserStateResult(null, expected, state, undefined, UNDERLINE_COLOR_UNEXPOSED)
+        }
         if (
           baseline.char !== "C" ||
           before.char !== "X" ||

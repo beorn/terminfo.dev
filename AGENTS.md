@@ -359,33 +359,12 @@ docs/.vitepress/dist/              ← 250+ static HTML pages + sitemap.xml
 | API             | `/api`                | 1     | `api.md`                   |
 | About           | `/about`              | 1     | `about.md`                 |
 
-## Re-Probing All Terminals
+## Collecting changed probes
 
-After adding features or updating probes, re-probe everything to keep results at parity:
-
-```bash
-# 1. Headless backends (automated, fast, all backends in one run)
-cd /Users/beorn/Code/pim/km/vendor/terminfo.dev
-bunx --bun vitest run --config packages/probes/vitest.config.ts
-# Then update result files from vitest JSON output
-
-# 2. Real terminal apps (three categories)
-
-# Apps that can be auto-launched via AppleScript (Ghostty, iTerm2, Kitty, Terminal.app):
-bun terminfo probe app --all --force
-# These launch in hidden mode — apps briefly appear then hide.
-# DO NOT close terminal windows that appear — they're running the daemon.
-
-# Apps that need manual daemon start (Warp, VS Code, Cursor):
-# User must run `bun terminfo probe server --start` in each terminal,
-# then from here: `bun terminfo probe server --all`
-
-# 3. Refresh tracked public API snapshots, then build the deploy artifact
-bun scripts/generate-api.ts
-bun run build
-```
-
-**IMPORTANT**: Always re-probe ALL terminals when features change — partial updates leave terminals at different feature counts (e.g., 129 vs 134), which looks broken on the site.
+Use explicit context and probe IDs for the intended measurement; a probe change does not require unrelated terminal runs.
+Keep the full catalogue and suite unchanged, and retain each attempt's selection before execution.
+See [selected collection](docs/collect-selected-probes.md) for command inputs, empty outcomes and retained draft paths.
+Collection, admission and publication remain separate operations.
 
 ## Adding a New Terminal
 
@@ -398,7 +377,7 @@ bun run build
 
 1. Add probe to `packages/probe-defs/src/<category>.ts` (unified — covers both lib and term)
 2. Add metadata to `content/features.json` (name, slug, url, tags, body, probe, baseline)
-3. Re-probe all terminals (see "Re-Probing All Terminals" above)
+3. Collect the intended contexts and probes (see "Collecting changed probes" above)
 4. Add annotations for any unexpected failures
 5. Rebuild: `bun run build` — the build validates tags against `standards.json`
 
@@ -411,19 +390,20 @@ and [nullable declaration comments](packages/probe-defs/src/types.ts) for the di
 The catalog may declare a reviewed override for exactly two statuses, each with a
 `probeStatusReason`:
 
-- `"partial"` — the definition establishes acceptance only (an execution-only pending test): we can tell the
-  sequence was accepted, not that its effect happened. Examples: the SGR colour resets, OSC 8 and
-  the OSC 133 / OSC 633 prompt marks.
-- `"manual"` — support data comes from docs or manual testing and no automatable probe exists
-  (the nine `device.env-*` rows and `scrollback.viewport-hold-output`).
+- `"partial"` — an automated path leaves part of the effect or another route unmeasured.
+  Viewport hold measures the library arm while retaining the manual app UI recipe.
+- `"manual"` — support data comes from docs or manual testing and no automated measurement exists
+  (the nine `device.env-*` rows).
 
 An `"automated"` or `"unprobed"` override is not honoured; those derive from the definitions, so
 they cannot drift. `bun run validate` refuses any other override value, or an override with no
 reason.
 
 For `"manual"` and `"unprobed"` features, set the `probe` field to
-`"Manual verification required — no automated probe available."` and don't add a
-matching entry in `packages/probe-defs/`.
+`"Manual verification required — no automated probe available."`
+Viewport hold's library arm measures ordinary and synchronized output with qualified viewport controls.
+Its app arm names the missing actuator/readback and stays TEST TODO; registration supplies no app support measurement.
+See the canonical declaration contract above.
 
 For UI-owned viewport behavior, prefer `"manual"` plus an exact reproduction
 recipe over a fake automated probe. Examples: whether output while the user is

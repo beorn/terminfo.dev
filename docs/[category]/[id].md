@@ -23,7 +23,7 @@ const headlessBackends = backendNames.filter(b => b.type === 'lib')
 function termTooltip(r) {
   const parts = [r.label]
   if (r.description) parts.push(r.description)
-  if (r.version) parts.push('Version: ' + r.version)
+  if (r.version) parts.push('Source versions: ' + r.version)
   return parts.join('\n')
 }
 </script>
@@ -65,7 +65,7 @@ function termTooltip(r) {
   <span v-else-if="p.probeStatus === 'unprobed'" class="probe-badge probe-unprobed" title="Tracked but no verification yet — manual verification required">unprobed</span>
   <span v-else-if="p.probeStatus === 'undeclared'" class="probe-badge probe-undeclared" title="This probe's assertion type is not declared yet.">assertion type undeclared</span>
   <br><span v-html="p.probeMethod"></span>
-  <p class="probe-note">The probe definition describes the intended check. Open a reviewed result to see what was recorded for that subject and method.</p>
+  <p class="probe-note">The probe definition describes the intended test. Open a reviewed result to see what was recorded for that probe subject and assertion type.</p>
 </div>
 
 <div v-if="p.analysis" class="analysis">
@@ -88,7 +88,7 @@ function termTooltip(r) {
   <thead>
     <tr>
       <th>Terminal</th>
-      <th>Version</th>
+      <th>Source versions</th>
       <th>Support</th>
       <th>Notes</th>
     </tr>
@@ -117,7 +117,7 @@ function termTooltip(r) {
   <thead>
     <tr>
       <th>Backend</th>
-      <th>Version</th>
+      <th>Source versions</th>
       <th>Support</th>
       <th>Notes</th>
     </tr>

@@ -280,6 +280,64 @@ test.each([
   expect(onSentinel).not.toHaveBeenCalled()
 })
 
+test("a silent or unmatched query with a DA1-shaped pattern cannot match the terminator capture's DA1, while a query-capture DA1 reply still matches (#31844)", () => {
+  const da1Pattern = /\x1b\[\?([0-9;]+)c/
+  for (const queryReply of ["", "x"]) {
+    const onSentinel = vi.fn()
+    const ctx = sourceOf(
+      scripted((text) => (text === DA1_QUERY ? DA1 : queryReply)),
+      proven(onSentinel),
+    )
+    const raw = queryReply + DA1
+    expect(ctx.queryWithSentinelOutcome?.("\x1b[999999n", da1Pattern)).toStrictEqual({
+      match: null,
+      reason: "sentinel",
+      raw,
+      rawBase64: base64(raw),
+      sentinel: { atMs: expect.any(Number), graceMs: 250 },
+    })
+    expect(onSentinel).toHaveBeenCalledOnce()
+  }
+
+  for (const queryReply of [DA1, "\x1b[?62;4c"]) {
+    let call = 0
+    const onSentinel = vi.fn()
+    const ctx = sourceOf(
+      scripted(() => (call++ === 0 ? queryReply : DA1)),
+      proven(onSentinel),
+    )
+    const raw = queryReply + DA1
+    expect(ctx.queryWithSentinelOutcome?.("\x1b[c", da1Pattern)).toStrictEqual({
+      match: [queryReply, queryReply.slice(3, -1)],
+      reason: "reply",
+      raw,
+      rawBase64: base64(raw),
+    })
+    expect(onSentinel).not.toHaveBeenCalled()
+  }
+
+  const realSilentSentinel = vi.fn()
+  const realSilentCtx = sourceOf(createXtermBackend(), proven(realSilentSentinel))
+  expect(realSilentCtx.queryWithSentinelOutcome?.("\x1b[999999n", da1Pattern)).toStrictEqual({
+    match: null,
+    reason: "sentinel",
+    raw: DA1,
+    rawBase64: base64(DA1),
+    sentinel: { atMs: expect.any(Number), graceMs: 250 },
+  })
+  expect(realSilentSentinel).toHaveBeenCalledOnce()
+
+  const realGenuineSentinel = vi.fn()
+  const realGenuineCtx = sourceOf(createXtermBackend(), proven(realGenuineSentinel))
+  expect(realGenuineCtx.queryWithSentinelOutcome?.("\x1b[c", da1Pattern)).toStrictEqual({
+    match: [DA1, "1;2"],
+    reason: "reply",
+    raw: `${DA1}${DA1}`,
+    rawBase64: base64(`${DA1}${DA1}`),
+  })
+  expect(realGenuineSentinel).not.toHaveBeenCalled()
+})
+
 // An adapter that answers a query only after its engine has run the whole feed puts that answer after the
 // engine's DA1 answer when both share one feed, as libvterm's 14t did until #30549. The member's separate DA1
 // capture keeps the order a terminal gives, so such a reply is never read as "after the sentinel".
@@ -387,6 +445,7 @@ interface ArmCase {
 
 // One real arm per grader family, both two-step arms, and DECRQSS's second step after an SGR refusal.
 const ARM_CASES: ArmCase[] = [
+  { id: "extensions.osc0-icon-title", when: "silent", replies: {}, outcome: "inconclusive" },
   { id: "device.xtversion", when: "silent", replies: {}, outcome: "unsupported" },
   { id: "device.xtwinops-20", when: "silent", replies: {}, outcome: "unsupported" },
   { id: "device.decrqss", when: "silent", replies: {}, outcome: "unsupported" },
@@ -702,7 +761,7 @@ test.each(["changed", "unavailable"] as const)(
 
 // Same adapter/version/capabilities without the independent measurement cannot qualify.
 // H1/H2/H4/H6: explicit native-input unit fixture; no actual native engine qualification.
-test.each(["observed", "source-audited", "missing", "error", "late"] as const)(
+test.each(["observed", "source-audited", "unimplemented", "missing", "error", "late"] as const)(
   "retains and validates %s host custody before checkpointing the callback",
   async (mode) => {
     vi.spyOn(process.stderr, "write").mockImplementation(() => true)
@@ -776,7 +835,7 @@ test.each(["observed", "source-audited", "missing", "error", "late"] as const)(
                 : {
                     recipe: "color-request",
                     cause: {
-                      kind: "source-audited",
+                      kind: mode === "unimplemented" ? mode : "source-audited",
                       missing: "foreground-rgb",
                       artifactSha256: artifact,
                       sourceCitation: "fixture native colour request source",
@@ -845,11 +904,19 @@ test.each(["observed", "source-audited", "missing", "error", "late"] as const)(
               runId: draft.runId,
               ...(mode === "observed"
                 ? { eventRef: `collector.hostRecipes.${id}` }
-                : { citation: { inputRecordRef: "collector.collectionAttempt", input: "foreground-rgb" } }),
+                : mode === "source-audited"
+                  ? { citation: { inputRecordRef: "collector.collectionAttempt", input: "foreground-rgb" } }
+                  : { artifactSha256: artifact }),
             },
           },
         ],
       })
+      // A no-reply-path cause cites only its source: no declared host input stands behind it.
+      if (mode === "unimplemented") {
+        expect((retained as { causes: [{ cause: { citation: unknown } }] }).causes[0].cause.citation).toEqual({
+          sourceLocation: "fixture native colour request source",
+        })
+      }
     }
   },
 )

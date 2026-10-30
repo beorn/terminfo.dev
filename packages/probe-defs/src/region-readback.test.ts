@@ -98,6 +98,7 @@ function ownedWindow(options: {
   repaintAfterPolls: number | "never"
   regionDigest: Painter
   sentinelAnswers?: boolean
+  pixelMetadata?: boolean
   unstable?: boolean
   /**
    * The crop rectangle each read reports, keyed by that read's own label. Absent models a
@@ -164,6 +165,9 @@ function ownedWindow(options: {
       ...(regionRectangle ? { regionRectangle } : {}),
       frame,
     }
+    if (options.pixelMetadata) {
+      Object.assign(frame, { kind: "pixels", regionDigest: capture.regionDigest, pixelsDigest: capture.pixelsDigest })
+    }
     return capture
   }
   return { ctx, read, writes, timeline, requests }
@@ -193,7 +197,7 @@ test("a painted edit that reaches the expected frame is supported, from three wi
     "editing.delete-chars: post-sequence target",
     "editing.delete-chars: expected frame",
   ])
-  expect(result.observation.frames).toHaveLength(6)
+  expect(result.observation.frames).toHaveLength(8)
 })
 
 test("a terminal that leaves the edit in place is unsupported only because the witness proved the paint", async () => {
@@ -316,6 +320,7 @@ const PLANES = {
   edit: "\x1b[1;2H\x1b[1P",
   expected: "\x1b[1;1HBBB",
   ignored: "\x1b[1;1HCCC",
+  setupReference: "\x1b[1;1HDDD",
 } as const
 const PLANE_SPEC = { seed: PLANES.seed, edit: PLANES.edit, expected: PLANES.expected, ignored: PLANES.ignored }
 
@@ -325,6 +330,7 @@ function planePainter(applied: string, ignoredReadsAs?: string): Painter {
     const joined = writes.join("")
     if (ignoredReadsAs !== undefined && joined.includes(PLANES.ignored)) return ignoredReadsAs
     const planes: Array<[string, string]> = [
+      ["seed", PLANES.setupReference],
       ["ignored", PLANES.ignored],
       ["expected", PLANES.expected],
       ["target", PLANES.seed + PLANES.edit],
@@ -348,7 +354,7 @@ test("an ignored-attribute plane names the attribute-dropping run unsupported, b
   const result = await decide(fake, PLANE_SPEC)
   expect(result.observation.outcome).toBe("unsupported")
   expect(result.assertions?.[0]?.kind).toBe("negative")
-  expect(result.observation.frames).toHaveLength(8)
+  expect(result.observation.frames).toHaveLength(10)
   expect(regionReads(fake).map(({ label }) => label)).toEqual([
     "editing.delete-chars: capture stability 1",
     "editing.delete-chars: capture stability 2",
@@ -370,7 +376,68 @@ test("a spec with no ignored plane keeps its three-plane verdict", async () => {
   const fake = ownedWindow({ repaintAfterPolls: 1, regionDigest: painter({ applied: "edited" }) })
   const result = await decide(fake)
   expect(result.observation.outcome).toBe("supported")
-  expect(result.observation.frames).toHaveLength(6)
+  expect(result.observation.frames).toHaveLength(8)
+})
+
+test("a setup reference must equal the seed before either a verdict or a collapsed-control refusal", async () => {
+  for (const applied of ["expected", "seed", "ignored", "third"]) {
+    const fake = ownedWindow({
+      repaintAfterPolls: 1,
+      regionDigest: (writes) =>
+        writes.join("").includes(PLANES.setupReference) ? "independent-setup" : planePainter(applied)(writes),
+    })
+    const result = await decide(fake, { ...PLANE_SPEC, setupReference: PLANES.setupReference })
+    expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+    expect(result.observation.note).toContain("setup reference")
+    expect(result.observation.note).toContain("seed")
+    expect(result.observation.note).not.toContain("third distinct")
+    expect(result.assertions ?? []).toHaveLength(0)
+    expect(result.observation.frames).toHaveLength(12)
+  }
+  const fake = ownedWindow({
+    repaintAfterPolls: 1,
+    regionDigest: (writes) => (writes.join("").includes(PLANES.setupReference) ? "different-setup" : "same"),
+  })
+  const result = await decide(fake, { ...PLANE_SPEC, setupReference: PLANES.setupReference })
+  expect(result.observation.note).toContain("setup reference")
+  expect(result.observation.note).not.toContain("cannot separate")
+})
+
+test("a matching setup reference adds independent witnessed evidence", async () => {
+  for (const setupReference of [undefined, PLANES.setupReference]) {
+    const fake = ownedWindow({ repaintAfterPolls: 1, regionDigest: planePainter("expected") })
+    const result = await decide(fake, { ...PLANE_SPEC, ...(setupReference && { setupReference }) })
+    expect(result.observation.outcome).toBe("supported")
+    expect(result.observation.frames).toHaveLength(setupReference ? 12 : 10)
+    expect(regionReads(fake).map(({ label }) => label)).toEqual([
+      "editing.delete-chars: capture stability 1",
+      "editing.delete-chars: capture stability 2",
+      "editing.delete-chars: pre-edit seed",
+      "editing.delete-chars: post-sequence target",
+      "editing.delete-chars: expected frame",
+      "editing.delete-chars: ignored-attribute frame",
+      ...(setupReference ? ["editing.delete-chars: setup reference frame"] : []),
+    ])
+    const response = JSON.parse(result.response!)
+    expect(response).toMatchObject({
+      seed: "1,1,1,8|seed",
+      after: "1,1,1,8|expected",
+      expected: "1,1,1,8|expected",
+      ignored: "1,1,1,8|ignored",
+    })
+    if (setupReference) expect(response).toHaveProperty("setupReference", "1,1,1,8|seed")
+    else expect(response).not.toHaveProperty("setupReference")
+  }
+})
+
+test("a missing setup-reference digest raises instead of returning a reset verdict", async () => {
+  const fake = ownedWindow({ repaintAfterPolls: 1, regionDigest: planePainter("expected") })
+  const read = fake.read
+  fake.read = async (request) => {
+    const capture = await read(request)
+    return request.label.endsWith("setup reference frame") ? { ...capture, regionDigest: undefined! } : capture
+  }
+  await expect(decide(fake, { ...PLANE_SPEC, setupReference: PLANES.setupReference })).rejects.toThrow("digests")
 })
 
 test("a degenerate run whose seed frame reads as its expected frame is inconclusive by name", async () => {
@@ -564,7 +631,7 @@ test("a pixel query answered with a sentinel reports query evidence, not a zero-
   const fake = ownedWindow({ repaintAfterPolls: 1, regionDigest: () => "seed" })
   const ctx: TermProbeSource = {
     ...fake.ctx,
-    queryWithSentinelOutcome: async () => ({ match: null, reason: "sentinel", raw: "\x1b[c", rawBase64: "" }),
+    queryWithSentinelOutcome: async () => ({ match: null, reason: "sentinel", raw: "\x1b[?1;2c", rawBase64: "" }),
     capture: async (request) => ({
       role: request.role,
       label: request.label,
@@ -589,6 +656,14 @@ test("a pixel query answered with a sentinel reports query evidence, not a zero-
   expect(result.observation.outcome).toBe("inconclusive")
   expect(result.observation.assertionType).toBe("query_reply")
   expect(result.observation.note).toContain("CSI 16 t")
+  expect(result.tests).toMatchObject([
+    {
+      id: "criterion",
+      status: "test-failure",
+      reason: expect.stringContaining("this run cannot map cells onto the captured window"),
+    },
+  ])
+  expect(result.assertions).toBeUndefined()
 })
 
 /**
@@ -778,7 +853,7 @@ test("a degenerate seed-equals-expected run cites the frames it took", async () 
   expect(result.observation.outcome).toBe("inconclusive")
   expect(result.observation.assertionType).toBe("screenshot")
   expect(result.observation.screenshotRef).toBeDefined()
-  expect(result.observation.frames).toHaveLength(6)
+  expect(result.observation.frames).toHaveLength(8)
 })
 
 test("a paint-witness timeout cites the capture it took, so the run stays writable", async () => {
@@ -904,7 +979,7 @@ test("compared frames cropped at ONE position decide as before, so it is the rec
 
 test("a no-op is the measured negative only when the caller's ignored frame IS the seed frame", async () => {
   const fake = ownedWindow({ repaintAfterPolls: 1, regionDigest: planePainter("seed") })
-  const result = await decide(fake, { ...PLANES, ignored: PLANES.seed })
+  const result = await decide(fake, { ...PLANE_SPEC, ignored: PLANES.seed })
   expect(result.observation.outcome).toBe("unsupported")
   expect(result.assertions?.[0]?.kind).toBe("negative")
 })
@@ -967,7 +1042,7 @@ async function familyDecide(
 }
 
 function familyDigest(label: string, applied: string): string {
-  return label.endsWith("pre-edit seed")
+  return label.endsWith("pre-edit seed") || label.endsWith("setup reference frame")
     ? "seed"
     : label.endsWith("post-sequence target")
       ? applied
@@ -1019,7 +1094,7 @@ test("the nine reset-family rows declare one capture-region row each", () => {
   expect(Object.keys(RESET_FAMILY_CAPTURE).sort()).toEqual([...RESET_FAMILY_ROWS].sort())
 })
 
-test("every reset-family row keeps its witness and cursor out of the compared cells, and its ignored frame is the seed", () => {
+test("every reset-family row keeps its witness and cursor outside the compared cells", () => {
   for (const id of RESET_FAMILY_ROWS) {
     const row = familyRow(id)
     const insideRow = row.sentinel.row >= row.region.top && row.sentinel.row <= row.region.bottom
@@ -1029,7 +1104,10 @@ test("every reset-family row keeps its witness and cursor out of the compared ce
       row.cursorRow >= row.region.top && row.cursorRow <= row.region.bottom,
       `${id}: the cursor row lies outside the compared region`,
     ).toBe(false)
-    expect(row.ignored, `${id}: the ignored frame IS the seed frame`).toBe(row.seed)
+    if (id === "sgr.fg.default" || id === "sgr.bg.default" || (NO_REFERENCE_ROWS as readonly string[]).includes(id)) {
+      expect(row.ignored, `${id}: the ignored frame IS the seed frame`).toBe(row.seed)
+      expect(row.setupReference, `${id}: unchanged reference scope`).toBeUndefined()
+    }
     expect(row.expected, `${id}: the expected frame differs from the seed`).not.toBe(row.seed)
     expect(row.edit, `${id}: the edit repaints the compared cells in place`).toContain("\x1b[3;")
   }
@@ -1165,6 +1243,7 @@ interface StatefulTerminal {
   writes: string[]
   /** Every sequence it was queried with, in order. */
   queries: string[]
+  captures: string[]
 }
 
 interface StatefulOptions {
@@ -1174,6 +1253,10 @@ interface StatefulOptions {
   risClearsCells?: boolean
   /** Attributes the RESET UNDER TEST fails to clear: the row's cleared set minus this. */
   resetMisses?: readonly (SgrAttr | SgrColor)[]
+  ignoreBold?: "always" | "combined"
+  resetDropsBold?: boolean
+  resetAddsBold?: boolean
+  replies?: readonly string[]
 }
 
 /** A terminal that paints cells under real SGR state; `sgr0` lists what its SGR 0 actually clears. */
@@ -1183,13 +1266,14 @@ function statefulTerminal(sgr0: readonly SgrAttr[], options: StatefulOptions = {
   const cells = new Map<string, string>()
   const writes: string[] = []
   const queries: string[] = []
+  const captures: string[] = []
   let row = 1
   let col = 1
   let reads = 0
   const paint = () =>
     cells.set(
       `${row},${col}`,
-      `${state.bold ? "b" : "-"}${state.faint ? "f" : "-"}${state.italic ? "i" : "-"}${state.inverse ? "v" : "-"}${state.underline ? "u" : "-"}|${color.fg ?? ""}|${color.bg ?? ""}|${color.uc ?? ""}`,
+      `${state.bold ? "b" : "-"}${state.faint ? "f" : "-"}${state.italic ? "i" : "-"}${state.inverse ? "v" : "-"}${state.underline ? "u" : "-"}|${color.fg ?? ""}|${color.bg ?? ""}|${state.underline ? (color.uc ?? "") : ""}`,
     )
   const miss = new Set<SgrAttr | SgrColor>(options.resetMisses ?? [])
   const clear = (attribute: SgrAttr) => {
@@ -1208,8 +1292,11 @@ function statefulTerminal(sgr0: readonly SgrAttr[], options: StatefulOptions = {
         clearColour("fg")
         clearColour("bg")
         clearColour("uc")
-      } else if (code === 1) state.bold = true
-      else if (code === 2) state.faint = true
+      } else if (code === 1) {
+        if (options.ignoreBold !== "always" && !(options.ignoreBold === "combined" && codes.length > 1)) {
+          state.bold = true
+        }
+      } else if (code === 2) state.faint = true
       else if (code === 3) state.italic = true
       else if (code === 4 || code === 21) state.underline = true
       else if (code === 7) state.inverse = true
@@ -1218,10 +1305,16 @@ function statefulTerminal(sgr0: readonly SgrAttr[], options: StatefulOptions = {
         if (!miss.has("faint")) state.faint = false
       } else if (code === 23) {
         if (!miss.has("italic")) state.italic = false
+        if (options.resetDropsBold) state.bold = false
+        if (options.resetAddsBold) state.bold = true
       } else if (code === 24) {
         if (!miss.has("underline")) state.underline = false
+        if (options.resetDropsBold) state.bold = false
+        if (options.resetAddsBold) state.bold = true
       } else if (code === 27) {
         if (!miss.has("inverse")) state.inverse = false
+        if (options.resetDropsBold) state.bold = false
+        if (options.resetAddsBold) state.bold = true
       } else if (code >= 30 && code <= 37) color.fg = String(code)
       else if (code === 39) clearColour("fg")
       else if (code >= 40 && code <= 47) color.bg = String(code)
@@ -1283,6 +1376,7 @@ function statefulTerminal(sgr0: readonly SgrAttr[], options: StatefulOptions = {
     write,
     capture: async (request: { role: ObservationFrame["role"]; label: string; cells?: CaptureCells }) => {
       if (!request.cells) throw new Error("the stateful terminal is read by region")
+      captures.push(request.label)
       reads += 1
       const frame: ObservationFrame = {
         role: request.role,
@@ -1309,14 +1403,132 @@ function statefulTerminal(sgr0: readonly SgrAttr[], options: StatefulOptions = {
     queryOutcome: async () => ({ match: null, reason: "timeout" as const, raw: "", rawBase64: "" }),
     queryWithSentinelOutcome: async (sequence: string) => {
       queries.push(sequence)
+      if (options.replies) {
+        const reply = options.replies[queries.length - 1]
+        if (reply === undefined) throw new Error("Unexpected extra SGR readback")
+        const raw = `\x1bP1$r${reply}m\x1b\\`
+        return { match: [raw, reply], reason: "reply" as const, raw, rawBase64: Buffer.from(raw).toString("base64") }
+      }
       return { match: null, reason: "timeout" as const, raw: "", rawBase64: "" }
     },
     queryMode: async () => null,
   } as unknown as TermProbeSource
-  return { ctx, cells, snapshot, writes, queries }
+  return { ctx, cells, snapshot, writes, queries, captures }
 }
 
 const ALL_ATTRS: readonly SgrAttr[] = ["bold", "italic", "inverse", "underline", "faint"]
+
+// A reset verdict requires a separately witnessed FULL setup. Older models always honoured every
+// setter; those tests could not expose a reset graded after its preserved bold was never painted.
+const SELECTIVE_COMPANION_ROWS = [
+  "sgr.selective-reset.underline",
+  "sgr.selective-reset.italic",
+  "sgr.selective-reset.inverse",
+] as const
+
+test.each(
+  SELECTIVE_COMPANION_ROWS.flatMap((id) =>
+    (["always", "combined"] as const).flatMap((ignoreBold) =>
+      (["oracle", "callback"] as const).map((route) => ({ id, ignoreBold, route })),
+    ),
+  ),
+)("$id refuses an unestablished companion by name ($ignoreBold, $route)", async ({ id, ignoreBold, route }) => {
+  for (const fault of ["normal", "drops-bold", "adds-bold", "no-op"] as const) {
+    const cleared =
+      id === "sgr.selective-reset.underline" ? "underline" : id === "sgr.selective-reset.italic" ? "italic" : "inverse"
+    const terminal = statefulTerminal(ALL_ATTRS, {
+      ris: true,
+      ignoreBold,
+      resetDropsBold: fault === "drops-bold",
+      resetAddsBold: fault === "adds-bold",
+      resetMisses: fault === "no-op" ? [cleared] : [],
+      ...(route === "callback" && { replies: ["0", "0"] }),
+    })
+    const probe = sgrProbes.find((candidate) => candidate.id === id)
+    if (!probe?.term) throw new Error(`${id}: missing callback`)
+    const result =
+      route === "oracle" ? await captureRegionVerdict(terminal.ctx, id, familyRow(id)) : await probe.term(terminal.ctx)
+    const label = `${id}: ${ignoreBold}, ${fault}, ${route}`
+    expect(result?.observation?.outcome, label).toBe("inconclusive")
+    expect(result?.observation?.reason, label).toBe("insufficient-evidence")
+    expect(result?.observation?.note, label).toContain(
+      ignoreBold === "always" ? "ignored-attribute frame and the expected frame" : "setup reference",
+    )
+    expect(result?.assertions ?? [], label).toHaveLength(0)
+    if (route === "callback") {
+      expect(terminal.queries, label).toHaveLength(2)
+      expect(JSON.parse(result!.response!), label).toMatchObject({ baseline: "0", setup: "0" })
+    }
+  }
+})
+
+test.each(GRADED_ROWS)(
+  "%s uses qualified pixels when complete neutral SGR reports cannot establish setup",
+  async (id) => {
+    const terminal = statefulTerminal(ALL_ATTRS, { ris: true, replies: ["0", "0"] })
+    const probe = [...sgrProbes, ...resetProbes].find((candidate) => candidate.id === id)
+    if (!probe?.term) throw new Error(`${id}: missing callback`)
+    const result = await probe.term(terminal.ctx)
+    expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "screenshot" })
+    expect(result.assertions?.[0]?.kind).toBe("positive")
+    expect(terminal.queries).toHaveLength(2)
+    expect(terminal.captures.length).toBeGreaterThan(0)
+    expect(result.response).toContain('"baseline":"0"')
+    expect(result.response).toContain('"setup":"0"')
+    expect(result.observation?.note).toContain("independent capture oracle")
+    expect(terminal.writes.at(-1)).toBe("\x1b[0m")
+  },
+)
+
+test.each(SELECTIVE_COMPANION_ROWS)(
+  "%s measures a reset that also drops its established companion as unsupported",
+  async (id) => {
+    for (const route of ["oracle", "callback"] as const) {
+      const terminal = statefulTerminal(ALL_ATTRS, {
+        ris: true,
+        resetDropsBold: true,
+        ...(route === "callback" && { replies: ["0", "0"] }),
+      })
+      const probe = sgrProbes.find((candidate) => candidate.id === id)
+      if (!probe?.term) throw new Error(`${id}: missing callback`)
+      const result =
+        route === "oracle"
+          ? await captureRegionVerdict(terminal.ctx, id, familyRow(id))
+          : await probe.term(terminal.ctx)
+      expect(result?.observation, route).toMatchObject({ outcome: "unsupported", assertionType: "screenshot" })
+      expect(result?.assertions?.[0]?.kind, route).toBe("negative")
+      if (route === "callback") {
+        expect(terminal.queries).toHaveLength(2)
+        expect(JSON.parse(result!.response!)).toMatchObject({ baseline: "0", setup: "0" })
+      }
+    }
+  },
+)
+
+test("an unqualified setup retains an independent measurement refusal and propagates a capture error with cleanup", async () => {
+  const probe = sgrProbes.find((candidate) => candidate.id === "sgr.selective-reset.underline")
+  if (!probe?.term) throw new Error("missing selective underline callback")
+  const refused = statefulTerminal(ALL_ATTRS, { ris: true, replies: ["0", "0"] })
+  // Three rows pass the SGR caller's 3x34 preflight but fail the region oracle's fourth cursor row.
+  refused.ctx.rows = 3
+  const result = await probe.term(refused.ctx)
+  expect(result.observation).toBeUndefined()
+  expect(result.tests).toMatchObject([
+    { status: "test-failure", reason: expect.stringContaining("needs a measured grid") },
+  ])
+  expect(JSON.parse(result.response!)).toMatchObject({ baseline: "0", setup: "0" })
+  expect(refused.queries).toHaveLength(2)
+  expect(refused.captures).toEqual([])
+  expect(refused.writes.at(-1)).toBe("\x1b[0m")
+
+  const throwing = statefulTerminal(ALL_ATTRS, { ris: true, replies: ["0", "0"] })
+  throwing.ctx.capture = async () => {
+    throw new Error("setup capture failed")
+  }
+  await expect(probe.term(throwing.ctx)).rejects.toThrow("setup capture failed")
+  expect(throwing.queries).toHaveLength(2)
+  expect(throwing.writes.at(-1)).toBe("\x1b[0m")
+})
 
 /** Every subset, including the empty one: the exhaustive table's domain. */
 function subsets<T>(items: readonly T[]): T[][] {
@@ -1443,12 +1655,347 @@ test("no combination of a missed cleared attribute and a retained reference attr
         }
         const keepsOnlyResidual = keeps.every((attribute) => !cleared.includes(attribute))
         if (misses.length === 0 && keepsOnlyResidual && (GRADED_ROWS as readonly string[]).includes(id)) {
-          expect(
-            outcome,
-            `${label}: a correct reset retaining nothing from the cleared set must decide supported`,
-          ).toBe("supported")
+          if (keeps.length > 0) {
+            // A retained companion contaminates the neutral negative reference. It then equals
+            // the expected preserved companion, so even a correct reset lacks a discriminator.
+            expect(outcome, `${label}: retained companion collapses the negative reference`).toBe("inconclusive")
+            expect(result?.observation?.note, label).toContain("ignored-attribute frame and the expected frame")
+          } else {
+            expect(outcome, `${label}: independently qualified controls decide a correct reset`).toBe("supported")
+          }
         }
       }
     }
   }
+})
+
+// Declared visual signals use the same runtime entry and same witnessed planes as legacy rows.
+function declaredWindow(
+  applied: string,
+  options: { noChange?: boolean; stale?: boolean; metadata?: boolean } = {},
+): Fake {
+  const paint = planePainter(applied)
+  return ownedWindow({
+    repaintAfterPolls: options.stale ? "never" : 1,
+    regionDigest: (writes) => {
+      const value = paint(writes)
+      return options.noChange && value === "expected" ? "seed" : value
+    },
+    pixelMetadata: options.metadata ?? true,
+    cropFor: (label) =>
+      /baseline|paint witness/.test(label)
+        ? { x: 0, y: 32, width: 8, height: 16 }
+        : { x: 0, y: 0, width: 64, height: 16 },
+  })
+}
+
+const CHANGE_SIGNAL = { signal: "fixture.changed", expected: "change" as const }
+const NO_CHANGE_SIGNAL = { signal: "fixture.restored", expected: "no-change" as const }
+
+test.each([
+  ["expected", "supported", "positive"],
+  ["seed", "unsupported", "negative"],
+  ["ignored", "unsupported", "negative"],
+] as const)("declared visual change %s yields an explicit %s row", async (applied, status, kind) => {
+  const result = await decide(declaredWindow(applied), { ...PLANE_SPEC, discriminator: CHANGE_SIGNAL })
+  expect(result.tests).toEqual([{ id: "fixture.changed", status, assertionRefs: [0] }])
+  expect(result.assertions).toHaveLength(1)
+  expect(result.assertions?.[0]?.kind).toBe(kind)
+  expect(result.observation.screenshotRef).toBe(
+    result.observation.frames?.find((frame) => frame.role === "target")?.ref,
+  )
+})
+
+test.each([
+  ["seed", "supported"],
+  ["ignored", "unsupported"],
+] as const)("declared visual no-change %s uses its independent contrast for %s", async (applied, status) => {
+  const result = await decide(declaredWindow(applied, { noChange: true }), {
+    ...PLANE_SPEC,
+    discriminator: NO_CHANGE_SIGNAL,
+  })
+  expect(result.tests).toEqual([{ id: "fixture.restored", status, assertionRefs: [0] }])
+  expect(result.assertions).toHaveLength(1)
+})
+
+test("declared visual missing witness keeps review evidence execution-only", async () => {
+  const fake = declaredWindow("seed", { stale: true })
+  const result = await captureRegionReadbackDecision(
+    fake.ctx,
+    "visual",
+    spec({ ...PLANE_SPEC, discriminator: CHANGE_SIGNAL, timeoutMs: 5 }),
+    fake.read,
+  )
+  const response = JSON.parse(result?.response ?? "{}") as {
+    review?: { note?: string; screenshotRef?: string }
+  }
+  expect(result?.tests?.[0]).toMatchObject({ id: "review", status: "test-todo", reason: "no freshness witness" })
+  expect(result?.observation).toBeUndefined()
+  expect(result?.assertions).toBeUndefined()
+  expect(response.review?.note).toContain("no paint witness")
+  expect(response.review?.screenshotRef).toMatch(/^sha256:/)
+})
+
+// The ordinary fixture paints the target and sentinel together. A partial repaint can instead
+// clear the preceding glyph before the requested glyph (and the target) reaches the window.
+test.each([
+  ["intermediate clear", ["0", " "]],
+  ["missing clear return", [" ", "1"]],
+  ["missing glyph return", [" ", "1", " "]],
+] as const)("declared visual %s cannot establish requested paint", async (_fault, sentinelPaints) => {
+  const fake = declaredWindow("expected")
+  const read = fake.read
+  let targetStep = false
+  let sentinelReads = 0
+  const write = fake.ctx.write.bind(fake.ctx)
+  fake.ctx.write = (sequence) => {
+    if (sequence === `${PLANE_SPEC.seed}${PLANE_SPEC.edit}`) targetStep = true
+    if (sequence === PLANE_SPEC.expected || sequence === PLANE_SPEC.ignored) targetStep = false
+    write(sequence)
+  }
+  fake.read = async (request) => {
+    const captured = await read(request)
+    if (targetStep && key(request.region) === SENTINEL_CELL) {
+      const painted = sentinelPaints[Math.min(sentinelReads++, sentinelPaints.length - 1)]
+      captured.regionDigest = `sentinel|${painted}`
+      captured.pixelsDigest = `frame|seed|${painted}`
+      captured.frame.regionDigest = captured.regionDigest
+      captured.frame.pixelsDigest = captured.pixelsDigest
+    } else if (request.role === "target") {
+      captured.regionDigest = `${key(request.region)}|seed`
+      captured.frame.regionDigest = captured.regionDigest
+    }
+    return captured
+  }
+  const result = await captureRegionReadbackDecision(
+    fake.ctx,
+    "visual",
+    spec({ ...PLANE_SPEC, discriminator: CHANGE_SIGNAL, timeoutMs: 5 }),
+    fake.read,
+  )
+  expect(result?.tests).toEqual([{ id: "review", status: "test-todo", reason: "no freshness witness" }])
+  expect(result?.assertions).toBeUndefined()
+  expect(result?.observation).toBeUndefined()
+  const response = JSON.parse(result?.response ?? "{}") as { review?: { frames?: PixelObservationFrame[] } }
+  expect(response.review?.frames?.map((frame) => frame.regionDigest)).toEqual([
+    ...sentinelPaints.map((painted) => `sentinel|${painted}`),
+    `sentinel|${sentinelPaints.at(-1)}`,
+  ])
+})
+
+test("declared visual instability before a target frame keeps review evidence execution-only", async () => {
+  // Stability control captures cannot satisfy the writer's target-frame screenshot citation contract.
+  const fake = declaredWindow("seed", { metadata: true })
+  const read = fake.read
+  fake.read = async (request) => {
+    const captured = await read(request)
+    if (request.label.includes("capture stability")) {
+      captured.regionDigest += `-${request.label}`
+      captured.frame.regionDigest = captured.regionDigest
+    }
+    return captured
+  }
+  const result = await captureRegionReadbackDecision(
+    fake.ctx,
+    "visual",
+    spec({
+      ...PLANE_SPEC,
+      discriminator: CHANGE_SIGNAL,
+    }),
+    fake.read,
+  )
+
+  expect(result?.criterionBranch).toBe("visual-review")
+  expect(result?.tests?.[0]?.status).toBe("test-todo")
+  expect(result?.observation).toBeUndefined()
+  expect(result?.assertions).toBeUndefined()
+  const response = JSON.parse(result?.response ?? "{}") as {
+    review?: { note?: string; screenshotRef?: string; frames?: ObservationFrame[] }
+    originalResponse?: string | null
+  }
+  expect(response.review?.note).toBeTruthy()
+  expect(response.review?.screenshotRef).toMatch(/^sha256:/)
+  expect(response.originalResponse).toContain("stability")
+})
+
+test.each(["change", "no-change"] as const)(
+  "declared visual %s third frame stays explicit review",
+  async (expected) => {
+    const result = await decide(declaredWindow("third", { noChange: expected === "no-change" }), {
+      ...PLANE_SPEC,
+      discriminator: { signal: "fixture.signal", expected },
+    })
+    expect(result.tests?.[0]?.status).toBe("test-todo")
+    expect(result.tests?.[0]?.reason).toContain("third distinct frame")
+    expect(result.assertions).toBeUndefined()
+  },
+)
+
+test("declared visual no-change requires a distinct ignored contrast", async () => {
+  const result = await decide(declaredWindow("seed", { noChange: true }), {
+    ...PLANE_SPEC,
+    ignored: undefined,
+    discriminator: NO_CHANGE_SIGNAL,
+  })
+  expect(result.tests?.[0]?.status).toBe("test-todo")
+  expect(result.tests?.[0]?.reason).toContain("distinct ignored contrast")
+})
+
+test("declared visual collapsed references stay explicit review", async () => {
+  const fake = declaredWindow("expected")
+  const read = fake.read
+  fake.read = async (request) => {
+    const captured = await read(request)
+    if (request.label.endsWith("ignored-attribute frame")) {
+      captured.regionDigest = captured.regionDigest.replace("ignored", "expected")
+      Object.assign(captured.frame, { regionDigest: captured.regionDigest })
+    }
+    return captured
+  }
+  const result = await decide(fake, { ...PLANE_SPEC, discriminator: CHANGE_SIGNAL })
+  expect(result.tests?.[0]?.status).toBe("test-todo")
+  expect(result.tests?.[0]?.reason).toContain("cannot separate")
+})
+
+test("declared visual requires actual pixel crop metadata rather than wrapper fallback", async () => {
+  await expect(
+    decide(declaredWindow("expected", { metadata: false }), {
+      ...PLANE_SPEC,
+      discriminator: CHANGE_SIGNAL,
+    }),
+  ).rejects.toThrow(/actual pixel.*digest|pixel.*metadata/)
+})
+
+test("declared visual rejects text capture before terminal writes", async () => {
+  const fake = declaredWindow("expected")
+  fake.ctx.captureKind = "text-cells"
+  const result = await captureRegionReadbackDecision(
+    fake.ctx,
+    "visual",
+    spec({
+      ...PLANE_SPEC,
+      discriminator: CHANGE_SIGNAL,
+    }),
+    fake.read,
+  )
+  expect(result?.tests?.[0]?.status).toBe("test-todo")
+  expect(result?.tests?.[0]?.reason).toContain("pixel")
+  expect(fake.writes).toHaveLength(0)
+})
+
+test("declared visual missing reader is explicit review without writes", async () => {
+  const fake = declaredWindow("expected")
+  const result = await captureRegionReadbackDecision(fake.ctx, "visual", spec({ discriminator: CHANGE_SIGNAL }), null)
+  expect(result?.tests).toEqual([{ id: "review", status: "test-todo", reason: "no freshness witness" }])
+  expect(fake.writes).toHaveLength(0)
+})
+
+test.each(["missing crop", "mismatched digest", "text frame"] as const)(
+  "declared visual rejects %s from the reader",
+  async (fault) => {
+    const fake = declaredWindow("expected")
+    const read = fake.read
+    fake.read = async (request) => {
+      const captured = await read(request)
+      if (fault === "missing crop") delete captured.regionRectangle
+      else if (fault === "mismatched digest") captured.regionDigest = "wrapper-only"
+      else {
+        captured.frame = {
+          kind: "text-cells",
+          role: request.role,
+          ref: "sha256:text",
+          label: request.label,
+          capturedAt: 1,
+          cellDigest: "text",
+          frameDigest: "whole-text",
+          cellRectangle: request.region,
+        }
+      }
+      return captured
+    }
+    await expect(decide(fake, { ...PLANE_SPEC, discriminator: CHANGE_SIGNAL })).rejects.toThrow(/actual pixel.*digests/)
+  },
+)
+
+test.each(["change", "no-change"] as const)(
+  "declared visual %s requires the supplied setup qualification",
+  async (expected) => {
+    const result = await decide(
+      declaredWindow(expected === "change" ? "expected" : "seed", { noChange: expected === "no-change" }),
+      {
+        ...PLANE_SPEC,
+        setupReference: PLANES.ignored,
+        discriminator: { signal: "fixture.setup", expected },
+      },
+    )
+    expect(result.tests?.[0]?.status).toBe("test-todo")
+    expect(result.tests?.[0]?.reason).toContain("required setup was not established")
+    expect(result.assertions).toBeUndefined()
+  },
+)
+
+test("declared visual no-change collapsed contrast cannot support or oppose the claim", async () => {
+  const result = await decide(declaredWindow("seed", { noChange: true }), {
+    ...PLANE_SPEC,
+    ignored: PLANES.expected,
+    discriminator: NO_CHANGE_SIGNAL,
+  })
+  expect(result.tests?.[0]?.status).toBe("test-todo")
+  expect(result.tests?.[0]?.reason).toContain("cannot separate")
+  expect(result.assertions).toBeUndefined()
+})
+
+test("declared visual crop movement alone cannot witness target freshness", async () => {
+  const fake = declaredWindow("seed")
+  const read = fake.read
+  let targetBaseline: RegionCapture | undefined
+  fake.read = async (request) => {
+    const captured = await read(request)
+    if (request.label.endsWith("post-sequence target — baseline")) targetBaseline = captured
+    if (request.label.endsWith("post-sequence target — paint witness")) {
+      if (!targetBaseline?.regionRectangle) throw new Error("target witness baseline crop missing")
+      const moved = { ...captured.regionRectangle!, x: captured.regionRectangle!.x + 1 }
+      captured.regionRectangle = moved
+      captured.frame.regionRectangle = moved
+      // Keep the sentinel and whole frame unchanged: only sampling a shifted crop changes this digest.
+      captured.regionDigest = `${targetBaseline.regionDigest}:shifted-crop`
+      captured.frame.regionDigest = captured.regionDigest
+      captured.pixelsDigest = targetBaseline.pixelsDigest
+      captured.frame.pixelsDigest = captured.pixelsDigest
+    }
+    return captured
+  }
+  const write = fake.ctx.write.bind(fake.ctx)
+  let targetStep = false
+  fake.ctx.write = (sequence) => {
+    if (sequence === `${PLANE_SPEC.seed}${PLANE_SPEC.edit}`) targetStep = true
+    if (targetStep && sequence === "\x1b[3;1H1") {
+      // Model a stale sentinel while other frame captures can still be fresh.
+      fake.writes.push(sequence)
+      targetStep = false
+      return
+    }
+    write(sequence)
+  }
+
+  const result = await captureRegionReadbackDecision(
+    fake.ctx,
+    "visual",
+    spec({ ...PLANE_SPEC, discriminator: CHANGE_SIGNAL }),
+    fake.read,
+  )
+  const response = JSON.parse(result?.response ?? "{}") as {
+    review?: { note?: string; screenshotRef?: string; frames?: ObservationFrame[] }
+  }
+  expect(result?.tests?.[0]?.status).toBe("test-todo")
+  expect(result?.tests?.[0]?.reason).toContain("witness crop")
+  expect(result?.observation).toBeUndefined()
+  expect(result?.assertions).toBeUndefined()
+  expect(response.review?.note).toContain("0,32 8x16")
+  expect(response.review?.note).toContain("1,32 8x16")
+  expect(response.review?.frames?.map(({ regionRectangle }) => regionRectangle)).toEqual([
+    { x: 0, y: 32, width: 8, height: 16 },
+    { x: 1, y: 32, width: 8, height: 16 },
+  ])
+  expect(response.review?.screenshotRef).toMatch(/^sha256:/)
 })

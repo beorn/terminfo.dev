@@ -268,6 +268,8 @@ const EXTENSIONS_CONTRACT_SPEC: GroupContractSpec = {
     "packages/probe-defs/src/extensions-geometry.test.ts",
     "packages/probe-defs/src/extensions-qualification.test.ts",
     "packages/probe-defs/src/extensions-osc0-observations.test.ts",
+    "packages/probe-defs/src/kitty-capture.test.ts",
+    "packages/probe-defs/src/kitty-rows.test.ts",
   ],
 }
 
@@ -275,13 +277,17 @@ const EXECUTION_ONLY_INCONCLUSIVE_DISPOSITIONS: Readonly<
   Record<string, { status: "test-todo" | "test-failure"; reason: string }>
 > = {
   "extensions.truecolor": { status: "test-todo", reason: "No cursor response; RGB color was not measured" },
+  // Both kitty pixel rows now have a deciding observation; without the terminal's own pixel report
+  // the arm cannot map its rectangle onto cells and names the unanswered geometry queries.
   "extensions.kitty-graphics.animation": {
-    status: "test-todo",
-    reason: "No timed frame playback or pixel readback for Kitty animation",
+    status: "test-failure",
+    reason:
+      "extensions.kitty-graphics.animation: the terminal answered CSI 16 t (cell size in pixels) with timeout and CSI 14 t (text area in pixels) with timeout, so no cell size can be mapped, so this run cannot map cells onto the captured window",
   },
   "extensions.kitty-graphics.unicode-placeholders": {
-    status: "test-todo",
-    reason: "No pixel and placeholder-cell readback for Kitty Unicode placeholders",
+    status: "test-failure",
+    reason:
+      "extensions.kitty-graphics.unicode-placeholders: the terminal answered CSI 16 t (cell size in pixels) with timeout and CSI 14 t (text area in pixels) with timeout, so no cell size can be mapped, so this run cannot map cells onto the captured window",
   },
   "extensions.sixel": {
     status: "test-failure",
@@ -395,6 +401,7 @@ function inertModel(): HeadlessModel {
       inverse: false,
       hidden: false,
       blink: false,
+      overline: false,
       fg: null,
       bg: null,
       wide: false,
@@ -616,6 +623,16 @@ test("the extensions contract names its focused tests, and every named file exis
 
 test("the harness replays every extension feature deterministically", async () => {
   const headless = libProbeSource(inertModel())
+  const headlessReviews = new Set([
+    "extensions.kitty-graphics.animation",
+    "extensions.kitty-graphics.unicode-placeholders",
+    "extensions.sixel",
+    "extensions.semantic-prompts",
+    "extensions.osc7-cwd",
+    "extensions.osc-633-vscode",
+    "extensions.notifications",
+    "extensions.iterm2-images",
+  ])
   const term = replayTermProbeSource(new Map(), {
     queryCursorPosition: async () => ({ row: 0, col: 0 }),
   })
@@ -625,6 +642,12 @@ test("the harness replays every extension feature deterministically", async () =
     const probe = extensionsProbes.find((entry) => entry.id === row.id)
     expect(probe, `missing extension probe ${row.id}`).toBeDefined()
     if (!probe) continue
+    if (headlessReviews.has(row.id)) {
+      const result = probe.lib!(headless)
+      expect(result.criterionBranch, row.id).toBe("headless-observable-review")
+      expect(result.tests, row.id).toMatchObject([{ id: "review", status: "test-todo" }])
+      expect((await regradeRow(probe, row, { headless })).after, row.id).toBeUndefined()
+    }
     expect(probe.lib !== null || probe.term !== null, `${row.id} has no callback`).toBe(true)
     const first = await regradeRow(probe, row, { headless, term })
     const second = await regradeRow(probe, row, { headless, term })
@@ -703,12 +726,7 @@ test("a decided extension row reads unsatisfied when silent or unacknowledged", 
 })
 
 test("semantic observables omitted in headless mode return notTested without failing determinism", async () => {
-  const omittedProbes = [
-    "extensions.osc1-icon",
-    "extensions.osc117-reset-highlight-bg",
-    "extensions.osc119-reset-highlight-fg",
-    "extensions.font-ligatures",
-  ]
+  const omittedProbes = ["extensions.osc1-icon", "extensions.font-ligatures"]
   const headless = libProbeSource(inertModel())
   for (const id of omittedProbes) {
     const probe = extensionsProbes.find((p) => p.id === id)
@@ -732,5 +750,21 @@ test("a non-empty unparsed colour-stack readback fails with its raw reply retain
     expect(result.assertions, id).toBeUndefined()
     expect(result.tests, id).toMatchObject([expect.objectContaining({ status: "test-failure", reason: "no-response" })])
     expect(JSON.parse(result.response ?? "null"), id).toEqual({ query: "\x1b]10;?\x07", originalRaw: unparsed })
+  }
+})
+
+// Regression (#31754): the shared colour-stack helper served one sentence to both rows, so a green
+// push result reported "after color-stack pop". Each row must name its own operation.
+test("each colour-stack row names its own operation in the expected sentence", () => {
+  for (const [id, operation] of [
+    ["extensions.osc30001-color-stack-push", "push"],
+    ["extensions.osc30101-color-stack-pop", "pop"],
+  ] as const) {
+    const probe = extensionsProbes.find((p) => p.id === id)
+    const context = decidedSatisfactionSources(id)
+    if (!probe?.lib || !context.headless) throw new Error(`missing headless arm for ${id}`)
+    const result = probe.lib(context.headless)
+    expect(result?.assertions?.[0]?.expected, id).toContain(`color-stack ${operation}`)
+    expect(result?.assertions?.[0]?.expected, id).not.toContain(`color-stack ${operation === "push" ? "pop" : "push"}`)
   }
 })

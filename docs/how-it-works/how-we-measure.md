@@ -13,23 +13,23 @@ next:
 
 # How we measure
 
-We test terminal apps for real. The app runs in a virtual display in our lab, and each probe makes the check its feature needs: a reply, cursor measurement or, for visual effects, before-and-after screenshots. Terminal engines, the parsing cores inside terminals such as xterm.js or libvterm, have no window to capture. Termless, our headless harness, drives only those, and we read their cells, cursor and modes instead. An engine result says what the engine did, not what a desktop app draws.
+We test terminal apps for real. The app runs in a virtual display in our lab, and each probe makes the test its feature needs: a reply, cursor measurement or, for visual effects, before-and-after screenshots. Terminal engines, the parsing cores inside terminals such as xterm.js or libvterm, have no window to capture. Termless, our headless harness, drives only those, and we read their cells, cursor and modes instead. An engine result says what the engine did, not what a desktop app draws.
 
 Every current result comes from such a run, made in our lab or [contributed](/how-it-works/contribute-a-run) and passed through the same review. The [home page](/) shows what we cover now; each terminal's page names the version, configuration and run behind its results.
 
-A probe uses an **instrument** to collect evidence, for example, a protocol-reply reader, an engine-state reader, an owned screen capture, a terminal text-buffer reader or an input fixture. The instrument is separate from the rule that judges the evidence. A reply can establish a reported value; it cannot establish how a glyph or image was rendered.
+A probe collects evidence as one of five **assertion types**: `query_reply`, the terminal's answer to a query; `buffer_state`, the cells, cursor and modes read from the engine; `screenshot`, captured pixels; `input_bytes`, the bytes an app received for an OS input event; or `clipboard`, what an OSC 52 write put on the clipboard. What the probe read is separate from the rule that judges it. A reply can establish a reported value; it cannot establish how a glyph or image was rendered.
 
 An **observation** is what the probe recorded. An **assertion** compares expected with actual. The **result** is the reported conclusion. These meanings apply whether the decision comes from a valid automatic comparison or a required review of retained evidence.
 
 ## What one run does
 
-1. **Probe.** The bytes to send and the check to make. The probe set is frozen and named by a hash, so each run names the scheduled tests and records its measurements and coverage.
-2. **Run.** The lab uses a fresh terminal with a recorded configuration, window size and font; permission settings can differ between runs (see Test environment). Each probe sends its bytes, then reads the reply, measures behavior or captures frames for a visual check. In an engine, we read the engine's state instead.
+1. **Probe.** The bytes to send and the test to make. The probe set is frozen and named by a hash, so each run names the scheduled tests and records its measurements and coverage.
+2. **Run.** The lab uses a fresh terminal with a recorded configuration, window size and font; permission settings can differ between runs (see Test environment). Each probe sends its bytes, then reads the reply, measures behavior or captures frames for a visual test. In an engine, we read the engine's state instead.
 3. **Result.** Each current run records the measurement time, target version and configuration, five-status results, retained raw replies, assertions and screenshot references. Historical raw files retain their original format. Images are separate artifacts. Identity evidence depends on the target: app provenance can include executable hashes, while engine records identify the loaded source or binary. Missing identity evidence is not filled in. Sealed run bytes are never edited.
-4. **Review.** Required review happens before the current run is sealed. The reviewer records a name and a reason bound to the retained capture; permission to publish evidence is separate. Automated image tests can decide criteria with machine-readable comparisons. When a criterion requires independent visual review, that result remains TEST TODO and the capture stays unsealed until the review is complete. An attempted image check that cannot produce a valid result is TEST FAILURE ([How to read a result](/how-it-works/how-to-read-a-result)).
+4. **Review.** Required review happens before the current run is sealed. The reviewer records a name and a reason bound to the retained capture; permission to publish evidence is separate. Automated image tests can decide criteria with machine-readable comparisons. When a criterion requires independent visual review, that result remains TEST TODO and the capture stays unsealed until the review is complete. An attempted image test that cannot produce a valid result is TEST FAILURE ([How to read a result](/how-it-works/how-to-read-a-result)).
 5. **Publish.** Site, API and CLI show the same reviewed run. A site rebuild is not a new measurement; a result's time is when it was measured.
 
-Review assesses retained evidence; it is not an instrument. A review of one check does not clear a different unmet prerequisite. Collected but unsealed evidence, an admitted run and the result selected for the site are separate facts.
+Review assesses retained evidence; it is not a measurement. A review of one test does not clear a different unmet prerequisite. Collected but unsealed evidence, an admitted run and the result selected for the site are separate facts.
 
 A terminal may have one run per permission setting (clipboard access, for example). The home page shows the default; the terminal's page lists the others under "Version and configuration".
 

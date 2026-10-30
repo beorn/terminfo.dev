@@ -15,7 +15,13 @@ import type {
   LibProbeSource,
 } from "./types.ts"
 
-function captureSource(rows: number, cols: number, writes: string[], frames: ObservationFrame[]): TermProbeSource {
+function captureSource(
+  rows: number,
+  cols: number,
+  writes: string[],
+  frames: ObservationFrame[],
+  fresh = true,
+): TermProbeSource {
   return {
     kind: "live",
     rows,
@@ -28,12 +34,49 @@ function captureSource(rows: number, cols: number, writes: string[], frames: Obs
     queryOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
     queryWithSentinelOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
     queryMode: async () => null,
-    capture: async ({ role, label }) => {
+    captureGeometry: {
+      geometry: { cellWidth: 10, cellHeight: 20, textWidth: cols * 10, textHeight: rows * 20 },
+      source: "measured by complete raster calibration",
+    },
+    capture: async ({ role, label, cells, pixelGeometry }) => {
+      // Constructed pixel-equivalence planes exercise callback wiring, not font or terminal support.
+      // Witness values come from the glyph actually written outside each deciding crop.
+      const witness = fresh ? (writes.filter((entry) => /^\x1b\[\d+;\d+H.$/.test(entry)).at(-1) ?? "blank") : "stale"
+      const palette = label.includes("colors")
+      const sgr = /xt(push|pop)sgr/.test(label)
+      const restoration = /alt-screen\.exit|altscreen-47/.test(label)
+      let plane = "stable"
+      if (/paint witness|— baseline/.test(label)) plane = witness
+      else if (label.includes("post-sequence target") || label.endsWith("expected frame")) {
+        plane = palette ? "blue" : "expected"
+      } else if (label.endsWith("setup reference frame")) plane = "blue"
+      else if (label.endsWith("ignored-attribute frame")) plane = palette ? "green" : sgr ? "italic" : "seed"
+      else if (label.endsWith("pre-edit seed")) {
+        plane = palette
+          ? "blue"
+          : restoration
+            ? "expected"
+            : sgr && writes.some((entry) => entry.includes("\x1b[1;3m"))
+              ? "bold-italic"
+              : "seed"
+      }
       const frame = {
         role,
         label,
         capturedAt: frames.length + 1,
-        ref: `sha256:${String(frames.length + 1).repeat(64)}`,
+        ref: `sha256:${(frames.length + 1).toString(16).padStart(64, "0")}`,
+        ...(cells &&
+          pixelGeometry && {
+            kind: "pixels" as const,
+            regionDigest: plane,
+            pixelsDigest: `whole:${plane}`,
+            regionRectangle: {
+              x: (cells.left - 1) * pixelGeometry.cellWidth,
+              y: (cells.top - 1) * pixelGeometry.cellHeight,
+              width: (cells.right - cells.left + 1) * pixelGeometry.cellWidth,
+              height: (cells.bottom - cells.top + 1) * pixelGeometry.cellHeight,
+            },
+          }),
       }
       frames.push(frame)
       return frame
@@ -645,6 +688,64 @@ test("1049 exit keeps an unattributed entry failure inconclusive", () => {
   expect(result.assertions).toBeUndefined()
 })
 
+// #31388: an engine whose source implements no alternate screen cannot enter one, so its ?1049 exit is not an
+// "unattributed" result — it is an absence decided by source, the same shape as the audited title stack
+// (device.ts TITLE_STACK_UNIMPLEMENTED_AUDITS, @cto 863bef67). The audit must key on the loaded source
+// identity (integrity.repository + revision + treeOid + cleanTree), never on an adapter or engine name, so a
+// moved or locally modified source falls back to the existing inconclusive answer instead of inheriting a
+// negative. Recorded identity is the vt100 row of run 2026-10-30T01-34-04Z.
+const VT100_SOURCE_IDENTITY = {
+  kind: "js",
+  adapterVersion: "0.10.2",
+  termlessRevision: "d5e6248bfb080c3065f81b78c45bdfe1b37c06d6",
+  resolvedPath: "vendor/vterm/packages/vt100/src/index.ts",
+  integrity: {
+    kind: "source",
+    repository: "git@github.com:beorn/vterm.git",
+    revision: "53a9eb9291b7880f4dc6a39a6802301049997a72",
+    treeOid: "5ffc7ad9ae120d0bf93c64b0fdc712eb40892896",
+    cleanTree: true,
+  },
+  runtimeFormat: "js",
+  engineVersion: "0.9.0",
+} as const
+
+const withRuntimeIdentity = (context: LibProbeSource, runtimeIdentity: unknown): LibProbeSource =>
+  Object.assign(context, { runtimeIdentity }) as LibProbeSource
+
+test("1049 exit grades Unsupported by source citation when the loaded source has no alternate screen", () => {
+  const definition = alt1049Probe("exit")
+  const audited = alt1049Source("ignored-entry")
+  const result = definition.lib!(withRuntimeIdentity(audited.context, VT100_SOURCE_IDENTITY))
+  expect(result.observation).toMatchObject({
+    outcome: "unsupported",
+    assertionType: "buffer_state",
+    note: "negative by source citation",
+  })
+  expect(result.assertions).toMatchObject([{ kind: "negative", assertionType: "buffer_state" }])
+  expect(JSON.parse(result.response!)).toMatchObject({
+    sourceCitation: expect.stringContaining("packages/vt100/src/screen.ts:99"),
+  })
+})
+
+test("the same entry failure stays inconclusive on a moved, dirty or different source", () => {
+  const definition = alt1049Probe("exit")
+  const unauditedIdentities = [
+    { ...VT100_SOURCE_IDENTITY.integrity, revision: "0".repeat(40) },
+    { ...VT100_SOURCE_IDENTITY.integrity, treeOid: "0".repeat(40) },
+    { ...VT100_SOURCE_IDENTITY.integrity, cleanTree: false },
+  ]
+  for (const integrity of unauditedIdentities) {
+    const { context } = alt1049Source("ignored-entry")
+    const result = definition.lib!(withRuntimeIdentity(context, { ...VT100_SOURCE_IDENTITY, integrity }))
+    expect(result.observation, JSON.stringify(integrity)).toMatchObject({
+      outcome: "inconclusive",
+      reason: "insufficient-evidence",
+    })
+    expect(result.assertions, JSON.stringify(integrity)).toBeUndefined()
+  }
+})
+
 test("1049 constant-cursor context cannot pass as a saved-cursor restoration", () => {
   for (const id of ["enter", "exit"] as const) {
     const definition = alt1049Probe(id)
@@ -783,19 +884,15 @@ test("alt-screen exit capture frames the primary, alternate and restored buffers
   const writes: string[] = []
   const frames: ObservationFrame[] = []
   const result = await definition.term(captureSource(24, 80, writes, frames))
-  expect(writes).toContain("\x1b[?1049h")
+  expect(writes.some((entry) => entry.includes("\x1b[?1049h"))).toBe(true)
   expect(writes).toContain("\x1b[?1049l")
-  expect(frames.map(({ role }) => role)).toEqual(["control", "target", "target"])
-  expect(result.pass).toBe(false)
-  expect(result.observation).toMatchObject({
-    outcome: "inconclusive",
-    reason: "insufficient-evidence",
-    assertionType: "screenshot",
-    frames,
-    screenshotRef: frames[2]?.ref,
-    note: expect.stringContaining("independent pixel review"),
-  })
-  expect(result.assertions).toBeUndefined()
+  expect(result.tests).toMatchObject([
+    { id: "primary-marker-restored", status: "supported", assertionRefs: [0] },
+    { id: "alternate-marker-control", status: "supported", assertionRefs: [1] },
+    { id: "remaining-facets", status: "test-todo", reason: expect.stringMatching(/saved cursor.*scrollback/) },
+  ])
+  expect(result.assertions).toHaveLength(2)
+  expect(result.observation?.frames?.filter((frame) => frame.role === "target")).toHaveLength(1)
 })
 
 test.each(["modes.altscreen-47", "modes.altscreen-1047"] as const)(
@@ -806,6 +903,16 @@ test.each(["modes.altscreen-47", "modes.altscreen-1047"] as const)(
     const writes: string[] = []
     const frames: ObservationFrame[] = []
     const result = await definition.term(captureSource(24, 80, writes, frames))
+    if (id === "modes.altscreen-47") {
+      expect(result.tests).toMatchObject([
+        { id: "primary-marker-restored", status: "supported" },
+        { id: "alternate-marker-control", status: "supported" },
+        { id: "remaining-facets", status: "test-todo", reason: expect.stringContaining("next entry") },
+      ])
+      expect(result.assertions).toHaveLength(2)
+      expect(result.observation?.frames?.filter((frame) => frame.role === "target")).toHaveLength(1)
+      return
+    }
     expect(
       frames.map(({ role }) => role),
       id,
@@ -818,7 +925,6 @@ test.each(["modes.altscreen-47", "modes.altscreen-1047"] as const)(
       note: expect.stringContaining("independent pixel review"),
     })
     expect(result.observation?.frames, id).toHaveLength(3)
-    expect(result.assertions, id).toBeUndefined()
   },
 )
 
@@ -829,16 +935,36 @@ test("insert-replace capture contrasts replacement with IRM insertion", async ()
   const frames: ObservationFrame[] = []
   const result = await definition.term(captureSource(24, 80, writes, frames))
   expect(writes.some((entry) => entry.includes("\x1b[4h"))).toBe(true)
-  expect(frames.map(({ role }) => role)).toEqual(["control", "target"])
-  expect(result.pass).toBe(false)
-  expect(result.observation).toMatchObject({
-    outcome: "inconclusive",
-    reason: "insufficient-evidence",
-    assertionType: "screenshot",
-    frames,
-    note: expect.stringContaining("independent pixel review"),
+  expect(result.tests).toEqual([{ id: "inserted-cells", status: "supported", assertionRefs: [0] }])
+  expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "screenshot" })
+  expect(result.observation?.frames?.filter((frame) => frame.role === "target")).toHaveLength(1)
+  expect(frames.find((frame) => frame.label.endsWith("expected frame"))?.regionRectangle).toEqual({
+    x: 0,
+    y: 0,
+    width: 50,
+    height: 20,
   })
-  expect(result.assertions).toBeUndefined()
+})
+
+// Permanent-state replies are well formed but cannot prove the claimed set/reset toggle.
+test.each([
+  [1, 2, "supported"],
+  [3, 2, "unsupported"],
+  [1, 4, "unsupported"],
+  [3, 4, "unsupported"],
+] as const)("insert-replace measures toggle states %i then %i", async (on, off, outcome) => {
+  const definition = modesProbes.find((item) => item.id === "modes.insert-replace")
+  if (!definition?.term) throw new Error("Missing app IRM callback")
+  const writes: string[] = []
+  const ctx = captureSource(24, 80, writes, [])
+  const states = [on, off]
+  ctx.queryWithSentinel = async (_sequence, pattern) => pattern.exec(`\x1b[4;${states.shift()}$y`)
+  const result = await definition.term(ctx)
+  expect(result.observation).toMatchObject({ outcome, assertionType: "query_reply" })
+  expect(result.assertions?.[0]?.kind).toBe(outcome === "supported" ? "positive" : "negative")
+  expect(result.response).toContain(`Ps ${on}`)
+  expect(result.response).toContain(`Ps ${off}`)
+  expect(writes.at(-1)).toBe("\x1b[4l")
 })
 
 test("left/right margin capture contrasts an unconstrained write with a margin-confined wrap", async () => {
@@ -849,15 +975,14 @@ test("left/right margin capture contrasts an unconstrained write with a margin-c
   const result = await definition.term(captureSource(24, 80, writes, frames))
   expect(writes.some((entry) => entry.includes("\x1b[?69h"))).toBe(true)
   expect(writes.some((entry) => entry.includes("\x1b[3;6s"))).toBe(true)
-  expect(frames.map(({ role }) => role)).toEqual(["control", "target"])
-  expect(result.pass).toBe(false)
-  expect(result.observation).toMatchObject({
-    outcome: "inconclusive",
-    reason: "insufficient-evidence",
-    assertionType: "screenshot",
-    frames,
+  expect(result.tests).toEqual([{ id: "margin-wrap", status: "supported", assertionRefs: [0] }])
+  expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "screenshot" })
+  expect(frames.find((frame) => frame.label.endsWith("expected frame"))?.regionRectangle).toEqual({
+    x: 20,
+    y: 20,
+    width: 10,
+    height: 20,
   })
-  expect(result.assertions).toBeUndefined()
 })
 
 test("modes capture refuses undersized geometry before any bytes or frames", async () => {
@@ -898,19 +1023,47 @@ test.each([
     writes.some((entry) => entry.includes(marker)),
     id,
   ).toBe(true)
+  expect(result.observation, id).toMatchObject({ outcome: "supported", assertionType: "screenshot" })
+  expect(result.assertions, id).toHaveLength(id.includes("sgr") ? 2 : 1)
   expect(
-    frames.map(({ role }) => role),
+    result.tests?.every((row) => row.status === "supported"),
     id,
-  ).toEqual(["control", "target"])
-  expect(result.pass, id).toBe(false)
-  expect(result.observation, id).toMatchObject({
-    outcome: "inconclusive",
-    reason: "insufficient-evidence",
-    assertionType: "screenshot",
-    frames,
-    note: expect.stringContaining("independent pixel review"),
-  })
-  expect(result.assertions, id).toBeUndefined()
+  ).toBe(true)
+  expect(
+    result.assertions?.every((assertion) => assertion.kind === "positive"),
+    id,
+  ).toBe(true)
+  if (id.includes("sgr")) {
+    expect(result.tests).toEqual([
+      { id: "bold-restored", status: "supported", assertionRefs: [0] },
+      { id: "italic-cleared", status: "supported", assertionRefs: [1] },
+    ])
+  }
+  if (id === "modes.xtsave" || id === "modes.xtrestore") {
+    expect(writes.some((entry) => entry.includes("X".repeat(80) + "!"))).toBe(true)
+    expect(writes).toContain("\x1b[?7h")
+  }
+  if (id.includes("sgr")) {
+    // Early review has no target frame; both axes' unqualified capture citations must survive composition.
+    vi.useFakeTimers()
+    try {
+      const pending = definition.term(captureSource(24, 80, [], [], false))
+      const [stale] = await Promise.all([pending, vi.runAllTimersAsync()])
+      expect(stale.observation).toBeUndefined()
+      expect(stale.assertions).toBeUndefined()
+      expect(stale.tests).toMatchObject([
+        { id: "review", status: "test-todo", reason: expect.stringContaining("no freshness witness") },
+      ])
+      const retained = JSON.parse(stale.response ?? "{}") as { axes: string[] }
+      expect(retained.axes).toHaveLength(2)
+      for (const axis of retained.axes) {
+        const response = JSON.parse(axis) as { review: { screenshotRef: string } }
+        expect(response.review.screenshotRef).toMatch(/^sha256:/)
+      }
+    } finally {
+      vi.useRealTimers()
+    }
+  }
 })
 
 test.each(["modes.xtpushcolors", "modes.xtpopcolors"] as const)(
@@ -921,24 +1074,37 @@ test.each(["modes.xtpushcolors", "modes.xtpopcolors"] as const)(
     const writes: string[] = []
     const frames: ObservationFrame[] = []
     const result = await definition.term(captureSource(24, 80, writes, frames))
-    const note = result.observation?.note ?? ""
-    expect(note, id).toMatch(/Grade the roundtrip by Y alone/)
-    expect(note, id).toMatch(/a green Y means the pop did not restore/)
-    expect(note, id).toMatch(/Do not grade on X/)
-    expect(note, id).toMatch(/may recolor it blue/)
-    expect(note, id).toMatch(/palette-setup failure .* stays inconclusive/)
-    expect(note, id).not.toContain("blue X with blue Y")
-    expect(note, id).not.toContain("ignored push/pop")
+    expect(result.tests, id).toEqual([{ id: "palette-y-restored", status: "supported", assertionRefs: [0] }])
+    const compared = frames.filter((frame) =>
+      /(?:pre-edit seed|post-sequence target|expected frame|ignored-attribute frame|setup reference frame)$/.test(
+        frame.label,
+      ),
+    )
+    expect(compared, id).toHaveLength(5)
+    expect(
+      compared.every(
+        (frame) => JSON.stringify(frame.regionRectangle) === JSON.stringify({ x: 10, y: 0, width: 10, height: 20 }),
+      ),
+      id,
+    ).toBe(true)
+    expect(
+      writes.some((entry) => entry.includes("\x1b[38;2;0;0;255mY")),
+      id,
+    ).toBe(true)
+    expect(
+      writes.some((entry) => entry.includes("rgb:00/ff/00")),
+      id,
+    ).toBe(true)
   },
 )
 
 test("xt stack capture refuses undersized geometry before any bytes or frames", async () => {
   for (const [id, rows, cols, need] of [
-    ["modes.xtpushsgr", 2, 80, "3x6"],
+    ["modes.xtpushsgr", 2, 80, "5x6"],
     // XT-save/restore derives its wrap boundary from the measured width, so an undersized
     // fixture is under two rows or two columns, not an absolute column count.
-    ["modes.xtsave", 1, 80, "2x2"],
-    ["modes.xtpushcolors", 2, 80, "3x8"],
+    ["modes.xtsave", 1, 80, "4x2"],
+    ["modes.xtpushcolors", 2, 80, "4x8"],
   ] as const) {
     const definition = modesProbes.find((item) => item.id === id)
     if (!definition?.term) throw new Error(`Missing app callback for ${id}`)
@@ -1205,6 +1371,7 @@ test("modes.decsscls names a refused capture geometry instead of claiming the ru
   const frames: ObservationFrame[] = []
   const context = captureSource(24, 80, writes, frames)
   context.captureGeometryRefusal = "cell-to-pixel calibration answered no DA1 reply"
+  context.captureGeometry = undefined
   const result = await decsscls().term!(context)
   expect(result.notTested).toMatchObject({ reason: "no-semantic-observable" })
   expect(result.note).toContain("this run refused capture geometry: cell-to-pixel calibration answered no DA1 reply")

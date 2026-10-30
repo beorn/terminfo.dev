@@ -213,7 +213,7 @@ describe("popover trace panes for not-reviewed cells (#30565 AC3, AC4, @cto ruli
     expect(panes.tested.items).toEqual([
       { label: "Sent", code: "ESC [ 0 m  ESC [ 42 m ESC [ 49 m  ESC [ 0 m" },
       { label: "Query · reply", code: "ESC P $ q m ESC \\ ESC [ c" },
-      { label: "Reply", code: "ESC P 1 $ r 0 m ESC \\", text: "Observed: 0" },
+      { label: "Observed", code: "ESC P 1 $ r 0 m ESC \\", text: "Observed: 0" },
     ])
     expect(panes.tested.sourceLine).toBe(
       "Historical run c70e8c3c · 2026-10-19 · query_reply · presentation not reviewed",
@@ -228,7 +228,7 @@ describe("popover trace panes for not-reviewed cells (#30565 AC3, AC4, @cto ruli
     expect(panes.expected.behavior).toBe("sgr.bg.default: DECRQSS reports  after ESC [ 42 m ESC [ 49 m")
   })
 
-  it("renders an unlisted-reply cell with 'Reply not reviewed for publication.' and its identity state", () => {
+  it("renders an unlisted-reply cell with 'Observed bytes not reviewed for publication.' and its identity state", () => {
     const document = {
       version: 1 as const,
       runId: "trace-run-unlisted",
@@ -267,11 +267,11 @@ describe("popover trace panes for not-reviewed cells (#30565 AC3, AC4, @cto ruli
       subjectKind: "term",
     })
 
-    expect(panes.tested.text.toLowerCase()).toContain("reply not reviewed for publication")
+    expect(panes.tested.text.toLowerCase()).toContain("observed bytes not reviewed for publication")
     expect(panes.tested.items).toEqual([
       { label: "Sent", code: "ESC [ 0 m" },
       { label: "Query · reply", code: "ESC [ 21 t ESC [ c" },
-      { label: "Reply", text: "Reply not reviewed for publication." },
+      { label: "Observed", text: "Observed bytes not reviewed for publication." },
     ])
     expect(panes.tested.identityLine).toBe(
       "Identity verified in run file; admitted by kitty rule (DA1 ESC [ ?62;52; c, XTVERSION kitty(0.49.2)).",
@@ -324,7 +324,7 @@ describe("popover trace panes for not-reviewed cells (#30565 AC3, AC4, @cto ruli
     expect(queryPanes.tested.items).toEqual([
       { label: "Sent", code: "ESC [ 0 m" },
       { label: "Query · reply", code: "ESC [ 21 t ESC [ c" },
-      { label: "Reply", text: "Reply not reviewed for publication." },
+      { label: "Observed", text: "Observed bytes not reviewed for publication." },
     ])
     expect(queryPanes.tested.text).not.toContain("secret-title")
 
@@ -337,7 +337,7 @@ describe("popover trace panes for not-reviewed cells (#30565 AC3, AC4, @cto ruli
     const noQueryPanes = describeTracePanes(withoutQuery, { sequence: "ESC ] 52 ; c ; ? BEL", subjectKind: "term" })
     expect(noQueryPanes.tested.items).toEqual([
       { label: "Sent", text: "Input bytes were not stored by this run." },
-      { label: "Reply", text: "Reply not reviewed for publication." },
+      { label: "Observed", text: "Observed bytes not reviewed for publication." },
     ])
     expect(noQueryPanes.tested.text).not.toContain("secret-clipboard")
   })

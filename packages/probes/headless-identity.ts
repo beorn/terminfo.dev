@@ -44,14 +44,7 @@ export function replyDeliveryDecision(
       ...(runtime && { runtimeIdentity: runtime.identity }),
     }
   }
-  if (!declaration) {
-    return decide(
-      false,
-      backend === "libvterm"
-        ? "libvterm declares no complete reply delivery: engine output truncates before the adapter drains"
-        : `${backend} declares no reply delivery`,
-    )
-  }
+  if (!declaration) return decide(false, `${backend} declares no reply delivery`)
   if (!runtime) return decide(false, `${backend} has no measured runtime identity for reply delivery`)
   if (
     declaration.boundary !== "feed-and-getCursor" ||
@@ -366,6 +359,20 @@ function loadedAddon(adapterDirectory: string): { path: string; sha256: string }
   if (!loadedPath) throw new Error(`Native addon cache lost the loaded path in ${adapterDirectory}`)
   const path = realpathSync(loadedPath)
   return { path, sha256: sha256(readFileSync(path)) }
+}
+
+/**
+ * The `nativeTreeOid` recorded in the loaded native addon's `.receipt.json` (#31774).
+ * Kitty is typed `"native"` in `backends.json` but is a `kitty +runpy` subprocess bridge that loads no `.node` addon (#31810).
+ */
+export function readNativeArtifactTreeOid(adapterSpecifier: string, name?: string): string | undefined {
+  if (name === "kitty" || adapterSpecifier === "@termless/kitty" || adapterSpecifier.endsWith("/kitty")) {
+    return undefined
+  }
+  const adapter = resolvedPackage(adapterSpecifier, MODULE_PATH)
+  const loadedBinary = loadedAddon(adapter.directory)
+  const receipt: unknown = JSON.parse(readFileSync(`${loadedBinary.path}.receipt.json`, "utf8"))
+  return record(receipt) && typeof receipt.nativeTreeOid === "string" ? receipt.nativeTreeOid : undefined
 }
 
 function sidecarIdentity(

@@ -46,10 +46,10 @@ export async function handleStatus(): Promise<void> {
     throw new Error(`Cannot load versions catalog ${join(ROOT, "versions.json")}`, { cause })
   }
   const projection = loadCurrentResults(join(ROOT, "content")).projection
-  const current = Object.entries(projection.current).sort(([left], [right]) => left.localeCompare(right))
-  const headless = current.filter(([, run]) => run.subject.kind === "lib")
-  const apps = current.filter(([, run]) => run.subject.kind === "term")
-  const muxes = current.filter(([, run]) => run.subject.kind === "mux")
+  const current = Object.entries(projection.contexts).sort(([left], [right]) => left.localeCompare(right))
+  const headless = current.filter(([, run]) => run.subject?.kind === "lib")
+  const apps = current.filter(([, run]) => run.subject?.kind === "term")
+  const muxes = current.filter(([, run]) => run.subject?.kind === "mux")
   const headlessFeatures = new Set(headless.flatMap(([, run]) => run.catalogIds))
 
   console.log("\nterminfo.dev status\n")
@@ -69,7 +69,7 @@ export async function handleStatus(): Promise<void> {
   console.log(`    Headless observed feature IDs: ${headlessFeatures.size}`)
   for (const [key, run] of current) {
     console.log(
-      `    ${key} ${run.subject.version} (${run.runId}): ${run.score.supported}/${run.score.all} Supported / all · ${currentCoverageSentence(run, run.catalogIds)} · ${run.complete ? "complete" : "incomplete"}`,
+      `    ${key} (sources ${run.contributingRunIds.join(", ")}): ${run.score.supported}/${run.score.all} Supported / all · ${currentCoverageSentence(run, run.catalogIds)} · ${run.complete ? "complete" : "incomplete"}`,
     )
   }
   if (current.length === 0) console.log("    No current sealed runs; historical results remain available.")

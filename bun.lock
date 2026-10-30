@@ -84,6 +84,7 @@
         "@termless/wezterm": "0.10.2",
         "@termless/xtermjs": "0.10.2",
         "loggily": "0.13.0",
+        "vterm.js": "0.9.0",
       },
       "devDependencies": {
         "vitest": "4.1.10",
@@ -878,7 +879,7 @@
 
     "vt220.js": ["vt220.js@0.7.0", "", {}, "sha512-LaQqE706HcI5JrP9GiZZ6k4ZAGzxG4ASydJP4NiRqmoFMom/sXU5kaXd+it4fFR2df+l2MyucY5CU2EgnaJBjQ=="],
 
-    "vterm.js": ["vterm.js@0.7.0", "", {}, "sha512-IBz5lvkkxUAWrARDAgoda9n43JYq0McOfOnrTuLZY0VjRZ8FWQR1WaLoTNH1TwkU/y8fJOdmveJkqUNP4PPdyw=="],
+    "vterm.js": ["vterm.js@0.9.0", "", {}, "sha512-ynjCrhIaeBwa9OWgFuqHlG2q7UrjrbDHzry63UxCfaDIuoWkoLva5Jc/Vmz4FnYRvgtm7JiG2ZBZOcydPzymOQ=="],
 
     "vue": ["vue@3.5.43", "", { "dependencies": { "@vue/compiler-dom": "3.5.43", "@vue/compiler-sfc": "3.5.43", "@vue/runtime-dom": "3.5.43", "@vue/server-renderer": "3.5.43", "@vue/shared": "3.5.43" }, "peerDependencies": { "typescript": "*" }, "optionalPeers": ["typescript"] }, "sha512-o5qZoksdnjIKvW1srZ3ab7pcDNYAerBjRe54D0LBLfRdCYFrSgBHVXokMas35czQc0//lmx4/tuY4ZNQ+Rf2Ng=="],
 
@@ -901,6 +902,8 @@
     "@shikijs/primitive/@types/hast": ["@types/hast@3.0.5", "", { "dependencies": { "@types/unist": "*" } }, "sha512-rp/ezSWaD1m44dPKICGhiskI13nVr7qTloFwDa/IYkhhf5nzwP+zIQcIJh3WIFSBOy/H1PzB40jPjMDksN4F+g=="],
 
     "@silvery/syntax/shiki": ["shiki@4.4.3", "", { "dependencies": { "@shikijs/core": "4.4.3", "@shikijs/engine-javascript": "4.4.3", "@shikijs/engine-oniguruma": "4.4.3", "@shikijs/langs": "4.4.3", "@shikijs/themes": "4.4.3", "@shikijs/types": "4.4.3", "@shikijs/vscode-textmate": "^10.0.2", "@types/hast": "^3.0.5" } }, "sha512-Mb/GvXPHBAXdgGIcnfU5L3ldpn1XcxrGkPHwqgRx17/I2XRfqlFKk2vGkHWINn1kdXvzJZeuO3is6I9KLPFm0g=="],
+
+    "@termless/vterm/vterm.js": ["vterm.js@0.7.0", "", {}, "sha512-IBz5lvkkxUAWrARDAgoda9n43JYq0McOfOnrTuLZY0VjRZ8FWQR1WaLoTNH1TwkU/y8fJOdmveJkqUNP4PPdyw=="],
 
     "@vue/compiler-core/estree-walker": ["estree-walker@2.0.2", "", {}, "sha512-Rfkk/Mp/DL7JVje3u18FxFujQlTNR2q6QfMSMB7AvCBx91NGj/ba3kCfza0f6dVDbw7YlRf/nDrn7pQrCCyQ/w=="],
 

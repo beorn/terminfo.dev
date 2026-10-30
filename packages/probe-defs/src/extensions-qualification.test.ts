@@ -15,6 +15,128 @@ function callback(id: string) {
   return definition
 }
 
+// A consumed sentinel qualifies only the source-review evidence, never the audio, flash or font effect.
+test.each([
+  ["extensions.osc440-audio", "\x1b]440;bell.wav\x07", "vterm"],
+  ["extensions.osc555-flash", "\x1b]555\x07", "vterm"],
+  ["extensions.osc710-font-normal", "\x1b]710;monospace\x07", "vterm"],
+  ["extensions.osc9-progress", "\x1b]9;4;1;50\x07", "vterm"],
+  ["extensions.osc22-pointer", "\x1b]22;pointer\x07", "vterm"],
+  ["extensions.osc176-app-id", "\x1b]176;terminfo-test\x07", "vterm"],
+  ["extensions.osc666-termprop", "\x1b]666;test-prop=value\x07", "vterm"],
+  ["extensions.osc777-notify", "\x1b]777;notify;test;body\x07", "vterm"],
+  ["extensions.osc3008-context", "\x1b]3008;type=test\x07", "vterm"],
+  ["extensions.osc9-progress", "\x1b]9;4;1;50\x07", "xtermjs"],
+  ["extensions.osc22-pointer", "\x1b]22;pointer\x07", "xtermjs"],
+  ["extensions.osc176-app-id", "\x1b]176;terminfo-test\x07", "xtermjs"],
+  ["extensions.osc440-audio", "\x1b]440;bell.wav\x07", "xtermjs"],
+  ["extensions.osc555-flash", "\x1b]555\x07", "xtermjs"],
+  ["extensions.osc666-termprop", "\x1b]666;test-prop=value\x07", "xtermjs"],
+  ["extensions.osc710-font-normal", "\x1b]710;monospace\x07", "xtermjs"],
+  ["extensions.osc777-notify", "\x1b]777;notify;test;body\x07", "xtermjs"],
+  ["extensions.osc3008-context", "\x1b]3008;type=test\x07", "xtermjs"],
+])("%s retains an audited source-negative review only after its sentinel renders", (id, sequence, engine) => {
+  // Collector-input identities from the retained runs, not a loaded-engine attestation.
+  const identity =
+    engine === "xtermjs"
+      ? ({
+          kind: "js",
+          runtimeFormat: "js",
+          engineVersion: "6.0.0",
+          adapterVersion: "0.10.2",
+          termlessRevision: "84003d2c91610fe2743142675234a0fb3ec9cf1d",
+          resolvedPath:
+            "node_modules/.bun/@xterm+headless@6.0.0/node_modules/@xterm/headless/lib-headless/xterm-headless.js",
+          integrity: {
+            kind: "registry",
+            lockIntegrity:
+              "sha512-5Yj1QINYCyzrZtf8OFIHi47iQtI+0qYFPHmouEfG8dHNxbZ9Tb9YGSuLcsEwj9Z+OL75GJqPyJbyoFer80a2Hw==",
+          },
+        } as const)
+      : ({
+          kind: "js",
+          runtimeFormat: "js",
+          engineVersion: "0.9.0",
+          adapterVersion: "0.10.2",
+          termlessRevision: "2".repeat(40),
+          resolvedPath: "vendor/vterm/packages/vterm/src/index.ts",
+          integrity: {
+            kind: "source",
+            repository: "git@github.com:beorn/vterm.git",
+            revision: "53a9eb9291b7880f4dc6a39a6802301049997a72",
+            treeOid: "617ae6002c7befea7b3e43d11bf23e6b433e3d65",
+            cleanTree: true,
+          },
+        } as const)
+  const modes = [
+    "pinned",
+    "no-sentinel",
+    "foreign",
+    ...(engine === "xtermjs" ? ["changed-lock", "wrong-version", "wrong-adapter"] : ["changed-source", "dirty"]),
+  ]
+  for (const mode of modes) {
+    const writes: string[] = []
+    const source = {
+      runtimeIdentity: {
+        ...identity,
+        engineVersion: mode === "wrong-version" ? "6.0.1" : identity.engineVersion,
+        adapterVersion: mode === "wrong-adapter" ? "foreign" : identity.adapterVersion,
+        resolvedPath: mode === "foreign" ? "another-engine.ts" : identity.resolvedPath,
+        integrity:
+          identity.integrity.kind === "source"
+            ? {
+                ...identity.integrity,
+                revision: mode === "changed-source" ? "3".repeat(40) : identity.integrity.revision,
+                cleanTree: mode !== "dirty",
+              }
+            : {
+                ...identity.integrity,
+                lockIntegrity: mode === "changed-lock" ? "foreign" : identity.integrity.lockIntegrity,
+              },
+      },
+      feed: (bytes: string) => writes.push(bytes),
+      getCell: () => ({ char: mode === "no-sentinel" ? " " : "X" }),
+    } as unknown as LibProbeSource
+    const result = callback(id).lib!(source)
+    expect(result.observation?.outcome).not.toBe("supported")
+    if (mode === "pinned") {
+      expect(writes.join("")).toContain(sequence + "X")
+      expect(result.criterionBranch).toBe("source-negative-review")
+      expect(result.tests).toMatchObject([
+        {
+          id: "review",
+          status: "test-failure",
+          reason: expect.stringContaining(engine === "vterm" ? "53a9eb92" : "17a90b65"),
+        },
+      ])
+      expect(result.observation).toMatchObject({ outcome: "inconclusive", assertionType: "buffer_state" })
+      expect(JSON.parse(result.response!)).toMatchObject({
+        fed: writes.join(""),
+        sentinel: { char: "X" },
+        engineState: null,
+      })
+      expect(result.assertions).toMatchObject([
+        { kind: "negative", assertionType: "buffer_state", observed: result.response },
+      ])
+      if (engine === "xtermjs") {
+        expect(JSON.parse(result.response!)).toMatchObject({ runtimeIdentity: identity })
+        expect(result.tests).toMatchObject([{ reason: expect.stringContaining("packages/xtermjs/src/backend.ts") }])
+      }
+      if (engine === "vterm" && id === "extensions.osc9-progress") {
+        expect(result.tests).toMatchObject([
+          { reason: expect.stringMatching(/notification sink.*no progress subcode or state interpretation/) },
+        ])
+        expect(result.tests?.[0]?.reason).not.toContain("no case 9")
+      }
+    } else {
+      expect(result.criterionBranch).toBeUndefined()
+      expect(result.assertions).toBeUndefined()
+      expect(result.tests).toBeUndefined()
+      if (mode !== "no-sentinel") expect(writes).toEqual([])
+    }
+  }
+})
+
 // The initial/default query is silent; indexed painted cells are an independent palette witness.
 function indexedPalette(
   options: {
@@ -238,8 +360,17 @@ test("extensions.truecolor grades unexposed RGB targets against the independent 
   ])
   expect(ignored.observation).toMatchObject({ outcome: "unsupported", assertionType: "buffer_state" })
   const monochrome = run([null, null])
-  expect(monochrome.observation).toBeUndefined()
-  expect(monochrome.notTested?.noObservable).toContain("color controls")
+  expect(monochrome.notTested).toBeUndefined()
+  expect(monochrome.criterionBranch).toBe("source-negative-review")
+  expect(monochrome.tests).toEqual([
+    {
+      id: "review",
+      status: "test-failure",
+      reason: expect.stringContaining("color controls"),
+    },
+  ])
+  expect(monochrome.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+  expect(monochrome.assertions).toMatchObject([{ kind: "negative", assertionType: "buffer_state" }])
 })
 
 test("extensions.truecolor decides from the DECRQSS SGR report, the same oracle as sgr.fg.truecolor", async () => {
@@ -525,6 +656,160 @@ const appResetProbes = [
   ["extensions.osc113-reset-pointer-fg", 13, 113, undefined],
   ["extensions.osc114-reset-pointer-bg", 14, 114, undefined],
 ] as const
+
+// Direct state decides only after a distinct seed; query-only tests cannot detect a constant getter,
+// cross-slot mutation, or missing retention of nullable engine defaults.
+test.each([
+  ["extensions.osc110-reset-fg", 10, 110, "fg"],
+  ["extensions.osc111-reset-bg", 11, 111, "bg"],
+  ["extensions.osc112-reset-cursor", 12, 112, "cursor"],
+] as const)("%s qualifies only controlled direct default-color restoration", (id, setCode, resetCode, slot) => {
+  type Colors = {
+    fg: { r: number; g: number; b: number } | null
+    bg: { r: number; g: number; b: number } | null
+    cursor: { r: number; g: number; b: number } | null
+  }
+  const baseline: Colors = { fg: null, bg: { r: 1, g: 2, b: 3 }, cursor: { r: 4, g: 5, b: 6 } }
+  const seed = { r: 170, g: 187, b: 204 }
+  const seeded = { ...baseline, [slot]: seed }
+  const writesExpected = [`\x1b]${setCode};rgb:aa/bb/cc\x07`, `\x1b]${resetCode}\x07`]
+  const run = (readings: Array<Colors | Error>) => {
+    const writes: string[] = []
+    const result = callback(id).lib!({
+      getDefaultColors() {
+        const value = readings.shift()
+        if (value instanceof Error) throw value
+        if (!value) throw new Error("unexpected extra default-color read")
+        return value
+      },
+      feed: (bytes: string) => {
+        writes.push(bytes)
+      },
+      feedCapture: () => {
+        throw new Error("direct default-color arm must not query")
+      },
+    } as unknown as LibProbeSource)
+    return { result, writes }
+  }
+  const positive = run([baseline, seeded, baseline])
+  expect(positive.result.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
+  expect(positive.writes).toEqual(writesExpected)
+  const state = JSON.parse(positive.result.response!)
+  expect(state).toMatchObject({ baseline, seeded, restored: baseline, writes: writesExpected, seed })
+  expect(positive.result.assertions).toMatchObject([
+    { kind: "positive", assertionType: "buffer_state", observed: positive.result.response },
+  ])
+  const unset = { fg: null, bg: null, cursor: null }
+  const restoredUnset = run([unset, { ...unset, [slot]: seed }, unset])
+  expect(restoredUnset.result.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
+  expect(JSON.parse(restoredUnset.result.response!)).toMatchObject({
+    baseline: unset,
+    restored: unset,
+    writes: writesExpected,
+  })
+  const negative = run([baseline, seeded, seeded])
+  expect(negative.result.observation).toMatchObject({ outcome: "unsupported", assertionType: "buffer_state" })
+  expect(negative.result.assertions).toMatchObject([{ kind: "negative", observed: negative.result.response }])
+  const other = slot === "fg" ? "bg" : "fg"
+  for (const readings of [
+    [baseline, baseline, baseline],
+    [baseline, { ...seeded, [other]: seed }, baseline],
+    [baseline, seeded, { ...baseline, [other]: seed }],
+    [baseline, seeded, { ...baseline, [slot]: { r: 7, g: 8, b: 9 } }],
+    [baseline, new Error("seed read failed"), baseline],
+    [baseline, seeded, new Error("reset read failed")],
+    [new Error("baseline read failed")],
+    [
+      { fg: null, bg: null, cursor: null },
+      { fg: null, bg: null, cursor: null },
+      { fg: null, bg: null, cursor: null },
+    ],
+  ]) {
+    const expectedErrors = readings
+      .filter((reading): reading is Error => reading instanceof Error)
+      .map((error) => error.message)
+    const expectedWrites = readings[0] instanceof Error ? [] : writesExpected
+    const reviewed = run(readings)
+    expect(reviewed.result.criterionBranch).toBe("color-readback-review")
+    expect(reviewed.result.observation).toBeUndefined()
+    expect(reviewed.result.assertions).toBeUndefined()
+    expect(JSON.parse(reviewed.result.response!)).toMatchObject({ writes: expectedWrites, errors: expectedErrors })
+  }
+  const collision = { ...baseline, [slot]: seed }
+  const distinct = { r: 18, g: 52, b: 86 }
+  const collisionResult = run([collision, { ...collision, [slot]: distinct }, collision])
+  expect(collisionResult.result.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
+  expect(collisionResult.writes).toEqual([`\x1b]${setCode};rgb:12/34/56\x07`, writesExpected[1]])
+})
+
+test.each([
+  ["extensions.osc113-reset-pointer-fg", 13, 113],
+  ["extensions.osc114-reset-pointer-bg", 14, 114],
+] as const)(
+  "%s routes empty initial pointer-color readback with getDefaultColors to source-negative-review without inventing slots or writes",
+  (id, setCode, resetCode) => {
+    const query = `\x1b]${setCode};?\x07`
+    const defaultColors = { fg: null, bg: { r: 1, g: 2, b: 3 }, cursor: { r: 4, g: 5, b: 6 } }
+    const writes: string[] = []
+    const queries: string[] = []
+    const result = callback(id).lib!({
+      getDefaultColors: () => defaultColors,
+      feed: (bytes: string) => {
+        writes.push(bytes)
+      },
+      feedCapture: (bytes: string) => {
+        queries.push(bytes)
+        return ""
+      },
+    } as unknown as LibProbeSource)
+    expect(queries).toEqual([query])
+    expect(writes).toEqual([])
+    expect(result.criterionBranch).toBe("source-negative-review")
+    expect(result.notTested).toBeUndefined()
+    expect(result.tests).toEqual([
+      {
+        id: "review",
+        status: "test-failure",
+        reason: `OSC ${setCode} initial colour readback is missing and OSC ${resetCode} reset was not observed; default-color readback reports only fg, bg, and cursor, so pointer-colour support requires source review`,
+      },
+    ])
+    expect(result.observation).toEqual({
+      outcome: "inconclusive",
+      reason: "insufficient-evidence",
+      assertionType: "buffer_state",
+    })
+    const expected = `OSC ${resetCode} restores the prior OSC ${setCode} color after a verified change`
+    expect(result.assertions).toEqual([
+      {
+        assertionType: "buffer_state",
+        kind: "negative",
+        expected,
+        observed: result.response,
+      },
+    ])
+    expect(JSON.parse(result.response!)).toEqual({
+      query,
+      originalRaw: "",
+      defaultColors,
+    })
+
+    expect(() =>
+      callback(id).lib!({
+        getDefaultColors: () => {
+          throw new Error("default-color getter boom")
+        },
+        feed: () => {},
+        feedCapture: () => "",
+      } as unknown as LibProbeSource),
+    ).toThrow("default-color getter boom")
+
+    const withoutGetter = callback(id).lib!({
+      feed: () => {},
+      feedCapture: () => "",
+    } as unknown as LibProbeSource)
+    expect(withoutGetter.criterionBranch).toBe("color-readback-review")
+  },
+)
 
 test.each(appResetProbes)(
   "app %s reads the colour, sets it, reads the change, resets, and reads the restoration",
@@ -890,7 +1175,13 @@ test.each([
  * colour it held at run start, and a query reports it. `ignoresReset` models a terminal that consumes
  * the reset without restoring the slot.
  */
-function highlightTerminal(setCode: number, resetCode: number, initial: string, ignoresReset = false) {
+function highlightTerminal(
+  setCode: number,
+  resetCode: number,
+  initial: string,
+  ignoresReset = false,
+  ignoresSet = false,
+) {
   let colour = initial
   const writes: string[] = []
   const queries: string[] = []
@@ -900,7 +1191,7 @@ function highlightTerminal(setCode: number, resetCode: number, initial: string, 
     write: (bytes: string) => {
       writes.push(bytes)
       const set = new RegExp(`\\x1b\\]${setCode};rgb:([0-9a-f]{1,4}/[0-9a-f]{1,4}/[0-9a-f]{1,4})\\x07`, "i").exec(bytes)
-      if (set?.[1]) colour = set[1]
+      if (set?.[1] && !ignoresSet) colour = set[1]
       if (!ignoresReset && bytes === `\x1b]${resetCode}\x07`) colour = initial
     },
     queryWithSentinelOutcome: async (_sequence: string, pattern: RegExp) => {
@@ -920,7 +1211,16 @@ function highlightTerminal(setCode: number, resetCode: number, initial: string, 
     queryMode: async () => null,
     measureRenderedWidth: async () => null,
   } as unknown as TermProbeSource
-  return { ctx, writes, queries, colour: () => colour }
+  const lib = {
+    feed: ctx.write,
+    feedCapture: (bytes: string) => {
+      ctx.write(bytes)
+      queries.push(bytes)
+      return bytes === `\x1b]${setCode};?\x07` ? `\x1b]${setCode};rgb:${colour}\x07` : ""
+    },
+    getCell: () => ({ char: "X" }),
+  } as unknown as LibProbeSource
+  return { ctx, lib, writes, queries, colour: () => colour }
 }
 
 test.each([
@@ -965,25 +1265,56 @@ test.each([
 })
 
 test.each([
-  ["extensions.osc117-reset-highlight-bg", null],
-  ["extensions.osc119-reset-highlight-fg", null],
-] as const)("%s declares its headless arm without a typed observable (%s), never parser state", (id, assertionType) => {
+  ["extensions.osc117-reset-highlight-bg", 17, 117],
+  ["extensions.osc119-reset-highlight-fg", 19, 119],
+] as const)("%s grades the headless reset only after a distinct verified change", (id, setCode, resetCode) => {
   const definition = callback(id)
-  expect(definition.libAssertionType).toBe(assertionType)
+  expect(definition.libAssertionType).toBe("query_reply")
+  for (const ignoresReset of [false, true]) {
+    const fixture = highlightTerminal(setCode, resetCode, "1111/2222/3333", ignoresReset)
+    const result = definition.lib!(fixture.lib)
+    expect(result.observation).toMatchObject({
+      outcome: ignoresReset ? "unsupported" : "supported",
+      assertionType: "query_reply",
+    })
+    expect(fixture.queries[0]).toBe(`\x1b]${setCode};?\x07`)
+    expect(fixture.colour()).toBe("1111/2222/3333")
+  }
+  for (const fixture of [
+    highlightTerminal(setCode, resetCode, ""),
+    highlightTerminal(setCode, resetCode, "1111/2222/3333", false, true),
+  ]) {
+    const result = definition.lib!(fixture.lib)
+    expect(result.observation?.outcome).not.toBe("supported")
+    expect(result.observation?.outcome).not.toBe("unsupported")
+    expect(result.tests ?? result.observation).toBeDefined()
+  }
+  const silent = highlightTerminal(setCode, resetCode, "")
+  const result = definition.lib!({
+    ...silent.lib,
+    queryWithSentinelOutcome: () => ({
+      match: null,
+      reason: "sentinel",
+      raw: "\x1b[?1;2c",
+      rawBase64: btoa("\x1b[?1;2c"),
+    }),
+  })
+  expect(result.observation).toBeUndefined()
+  expect(result.tests).toMatchObject([{ id: "criterion", status: "test-failure", reason: expect.any(String) }])
 })
 
-// Actual run772ff2a6, vterm source1cfc325f/tree2ee13d2: no font/window geometry.
+// Actual runb9697318, vterm source53a9eb92/tree617ae600: no font/window geometry.
 // Q8 requires independent review of this context limit, never automatic Untestable.
 const geometryRuntime = {
   kind: "js",
   adapterVersion: "0.10.2",
-  termlessRevision: "f57e9d6b4add561f37e21c8e679d28c617111be6",
+  termlessRevision: "8b8664540f365fa0ba1d9b6400d3c4d1a160582c",
   resolvedPath: "vendor/vterm/packages/vterm/src/index.ts",
   integrity: {
     kind: "source",
     repository: "git@github.com:beorn/vterm.git",
-    revision: "1cfc325f3aedd4617e437ee76e6a03fc2cc16438",
-    treeOid: "2ee13d2cb894e86ee9575dd6945f42028df44966",
+    revision: "53a9eb9291b7880f4dc6a39a6802301049997a72",
+    treeOid: "617ae6002c7befea7b3e43d11bf23e6b433e3d65",
     cleanTree: true,
   },
   runtimeFormat: "js",

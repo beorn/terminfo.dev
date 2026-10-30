@@ -65,6 +65,7 @@ function headless(overrides: Partial<LibProbeSource> = {}): LibProbeSource {
       inverse: false,
       hidden: false,
       blink: false,
+      overline: false,
       fg: null,
       bg: null,
       wide: false,
@@ -493,6 +494,7 @@ function eraseCellsHeadless(
         inverse: false,
         hidden: false,
         blink: false,
+        overline: false,
         fg: null,
         bg: null,
         wide: false,
@@ -839,6 +841,7 @@ test("background erase measures a blank target that carries the seeded backgroun
           inverse: false,
           hidden: false,
           blink: false,
+          overline: false,
           fg: null,
           bg: (phase === "after" ? afterBg : phase === "seed" ? seedBg : null) ?? null,
           wide: false,
@@ -855,15 +858,31 @@ test("background erase measures a blank target that carries the seeded backgroun
   expect(run(background, background, "X").observation).toMatchObject({ outcome: "unsupported" })
   // A different colour is not the seeded one: the relative claim is exact on this adapter.
   expect(run(background, other).observation).toMatchObject({ outcome: "unsupported" })
-  // #30701 (@cto ruling C): the seed characters arrived without the painted background, so the claim's
-  // reference is uncalibrated: a coverage record naming it (TEST TODO), never a verdict.
+  // #31379: the seed characters arrived without the painted background, so the claim's reference is
+  // uncalibrated and routes to source-negative-review for engine/adapter audit.
   const unseeded = run(null, background)
-  expect(unseeded.observation).toBeUndefined()
-  expect(unseeded.notTested).toEqual({
-    reason: "no-semantic-observable",
-    noObservable: expect.stringContaining("the seed's painted bg"),
+  expect(unseeded.notTested).toBeUndefined()
+  expect(unseeded.criterionBranch).toBe("source-negative-review")
+  expect(unseeded.tests).toEqual([
+    {
+      id: "review",
+      status: "test-failure",
+      reason: expect.stringContaining("the seed's painted bg"),
+    },
+  ])
+  expect(unseeded.observation).toEqual({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+    assertionType: "buffer_state",
   })
-  expect(unseeded.assertions).toBeUndefined()
+  expect(unseeded.assertions).toEqual([
+    {
+      assertionType: "buffer_state",
+      kind: "negative",
+      expected: row.expected,
+      observed: unseeded.response!,
+    },
+  ])
   // A seed whose measured character is not the row's own means the fixture never landed, so nothing
   // may be graded from it.
   const wrongSeed = run(background, background, " ", "?")
@@ -903,6 +922,7 @@ test("an unread default-background colour cannot qualify the painted seed", () =
           inverse: false,
           hidden: false,
           blink: false,
+          overline: false,
           fg: null,
           // The default-background seed never reports its colour; the painted seed does.
           bg: phase === "default" ? undefined : { r: 130, g: 20, b: 70 },
@@ -948,6 +968,7 @@ test("a step that throws still feeds the row's reset", () => {
             inverse: false,
             hidden: false,
             blink: false,
+            overline: false,
             fg: null,
             bg: phase === "seed" ? { r: 130, g: 20, b: 70 } : null,
             wide: false,
@@ -986,6 +1007,7 @@ test("a constant default background cannot establish the painted seed", () => {
         inverse: false,
         hidden: false,
         blink: false,
+        overline: false,
         fg: null,
         bg: constant,
         wide: false,
@@ -1027,6 +1049,7 @@ test("an unread background on the erased cells is named inconclusive", () => {
           inverse: false,
           hidden: false,
           blink: false,
+          overline: false,
           fg: null,
           bg: phase === "after" ? undefined : phase === "seed" ? { r: 1, g: 2, b: 3 } : null,
           wide: false,

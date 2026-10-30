@@ -166,7 +166,7 @@ In practice, control sequences use the 7-bit form starting with `ESC` (byte `0x1
 
 SGR (Select Graphic Rendition) sequences control every visual aspect of text: **bold**, **italic**, **underline** (5 styles including curly, dotted, and dashed), **256-color** and **truecolor** (24-bit RGB) foregrounds and backgrounds, **strikethrough**, **overline**, and **inverse video**. SGR uses the `m` suffix: `ESC[1m` for bold, `ESC[38;2;255;0;0m` for red truecolor foreground.
 
-Basic attributes such as bold and palette colors are common, while extended underline styles and colors vary by implementation. Kitty documents curly underline as `SGR 4:3`; check the selected result’s method before treating accepted syntax as visible styling.
+Basic attributes such as bold and palette colors are common, while extended underline styles and colors vary by implementation. Kitty documents curly underline as `SGR 4:3`; check the selected result’s assertion type before treating accepted syntax as visible styling.
 
 <p class="category-link"><a class="hover-link" href="/sgr">View SGR features &rarr;</a></p>
 
@@ -236,7 +236,7 @@ Modern terminal extensions beyond the traditional VT specification: **Kitty keyb
 
 ### Graphics — Inline Images
 
-DEC’s Sixel format and the Kitty graphics protocol enable inline image display in terminals. Kitty’s [0.4.0 changelog](https://sw.kovidgoyal.net/kitty/changelog/) dates its graphics implementation to October 22, 2017. Graphics support varies by terminal and version. Sixel predates Kitty graphics, and the two protocols define different image transport and placement behavior. Check the selected terminal version and measured method before relying on either.
+DEC’s Sixel format and the Kitty graphics protocol enable inline image display in terminals. Kitty’s [0.4.0 changelog](https://sw.kovidgoyal.net/kitty/changelog/) dates its graphics implementation to October 22, 2017. Graphics support varies by terminal and version. Sixel predates Kitty graphics, and the two protocols define different image transport and placement behavior. Check the selected terminal version and measured assertion type before relying on either.
 
 <p class="category-link"><a class="hover-link" href="/extensions">View Graphics features &rarr;</a></p>
 

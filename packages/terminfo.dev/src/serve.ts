@@ -30,9 +30,14 @@ import {
   type PixelGeometrySource,
   type PixelGeometry,
   type CapturedRunDraft,
+  type RunDraft,
   type ProbeSubject,
   initializeRunDraft,
   recordCollectionFailure,
+  recordCollectorSelection,
+  recordCollectorAttempt,
+  collectorIds,
+  resolveProbeIds,
   type ProbeSuiteManifest,
   type TermProbeSource,
   type TerminalQueryOutcome,
@@ -369,18 +374,22 @@ function assertHostedIdentity(detected: string, owner: OwnedTerminal, platform: 
   }
 }
 
+type ProbeCollectionOptions = {
+  ids?: string[]
+  out?: NodeJS.WriteStream
+  terminalAppOwner?: TerminalAppOwnerAssertion
+  processOwner?: ProcessOwnerAssertion
+  expectedLaunchRunId?: string
+  captureRunId?: string
+  intendedSubject?: Partial<ProbeSubject>
+}
+
 /** The same source-tree collector powers daemon and inline CLI entry points. */
-export async function collectProbeRun(
-  options: {
-    ids?: string[]
-    out?: NodeJS.WriteStream
-    terminalAppOwner?: TerminalAppOwnerAssertion
-    processOwner?: ProcessOwnerAssertion
-    expectedLaunchRunId?: string
-    captureRunId?: string
-    intendedSubject?: Partial<ProbeSubject>
-  } = {},
-): Promise<CapturedRunDraft> {
+export function collectProbeRun(
+  options?: Omit<ProbeCollectionOptions, "ids"> & { ids?: undefined },
+): Promise<CapturedRunDraft>
+export function collectProbeRun(options: ProbeCollectionOptions): Promise<RunDraft | CapturedRunDraft>
+export async function collectProbeRun(options: ProbeCollectionOptions = {}): Promise<RunDraft | CapturedRunDraft> {
   const out = options.out ?? process.stdout
   const captureRunId =
     options.captureRunId ?? (process.env.TERMINFO_CAPTURE_RUN_ID || undefined) ?? randomBytes(16).toString("hex")
@@ -397,11 +406,18 @@ export async function collectProbeRun(
       ...(process.env.TERMINFO_TARGET_VERSION && { version: process.env.TERMINFO_TARGET_VERSION }),
     },
   })
+  let selectedIds = [...(options.ids ?? manifest.probes.term)]
+  recordCollectorSelection(draft, selectedIds)
   const draftDirectory = process.env.TERMINFO_CAPTURE_DIRECTORY || join(homedir(), ".terminfo-dev", "http-responses")
   mkdirSync(draftDirectory, { recursive: true, mode: 0o700 })
   const draftPath = join(draftDirectory, `${captureRunId}.draft.json`)
   writeFileSync(draftPath, `${JSON.stringify(draft)}\n`, { flag: "wx", mode: 0o600 })
   const checkpoint = () => writeFileSync(draftPath, `${JSON.stringify(draft)}\n`, { mode: 0o600 })
+  if (options.ids?.length === 0) {
+    recordCollectorAttempt(draft, { ids: selectedIds, result: "empty" })
+    checkpoint()
+    return draft
+  }
   let collectionStartedAt: string | undefined
   let delegatedIds = manifest.probes.term.filter((id) => !options.ids || options.ids.includes(id))
   try {
@@ -445,7 +461,12 @@ export async function collectProbeRun(
       throw new Error("Mux runtime provenance envelope has unexpected fields")
     }
     const muxSubject = envelope ? parseSubject(envelope.subject, provenancePath ?? "mux runtime provenance") : undefined
-    delegatedIds = manifest.probes[muxSubject ? "mux" : "term"].filter((id) => !options.ids || options.ids.includes(id))
+    delegatedIds = manifest.probes[muxSubject ? "mux" : "term"].filter((id) => !options.ids || selectedIds.includes(id))
+    if (options.ids === undefined) {
+      selectedIds = [...delegatedIds]
+      recordCollectorSelection(draft, selectedIds)
+      checkpoint()
+    }
     if (
       muxSubject &&
       (muxSubject.kind !== "mux" || muxSubject.os !== terminal.os || muxSubject.osVersion !== terminal.osVersion)
@@ -783,9 +804,10 @@ export async function collectProbeRun(
         }
       }
       collectionStartedAt = new Date().toISOString()
-      draft.rawReplies["collector.collectionAttempt"] = JSON.stringify({
+      recordCollectorAttempt(draft, {
+        result: "started",
         startedAt: collectionStartedAt,
-        ids: delegatedIds,
+        ids: selectedIds,
       })
       checkpoint()
       batch = await withRawMode(
@@ -848,7 +870,7 @@ export async function collectProbeRun(
               // names the refusal in its row, and the suite completes (28785). Only a timeout aborts.
               if (preflightDarwinCapture) await preflightDarwinCapture()
               const result = await runProbeBatch({
-                ids: options.ids,
+                ids: options.ids === undefined ? undefined : selectedIds,
                 out,
                 captureRunId,
                 draft,
@@ -892,9 +914,6 @@ export async function collectProbeRun(
     } finally {
       await ownedTerminal?.dispose()
     }
-    batch.rawReplies["collector.selection"] = JSON.stringify({
-      ids: options.ids ?? manifest.probes[muxSubject ? "mux" : "term"],
-    })
     if (ownedTerminal) batch.rawReplies["collector.terminalOwnership"] = ownedTerminal.summary
     if (clipboard) batch.rawReplies["collector.clipboardFixture"] = clipboard.summary
     const measuredVersion =
@@ -959,15 +978,26 @@ export async function collectProbeRun(
       retainedTextSnapshots,
       textQualificationStartedAt ? { scope: "probe", startedAt: textQualificationStartedAt } : undefined,
     )
+    recordCollectorAttempt(captured, { ids: selectedIds, startedAt: collectionStartedAt, result: "completed" })
     Object.assign(draft, captured)
     checkpoint()
     return captured
   } catch (error) {
     const diagnostic = error instanceof Error ? error.message : String(error)
-    if (collectionStartedAt) recordCollectionFailure(draft, collectionStartedAt, diagnostic, delegatedIds)
-    else {
+    const result = error instanceof Error && error.name === "AbortError" ? "cancelled" : "failed"
+    recordCollectorAttempt(draft, {
+      ids: selectedIds,
+      ...(collectionStartedAt && { startedAt: collectionStartedAt }),
+      result,
+      error: diagnostic,
+    })
+    if (result === "failed" && collectionStartedAt) {
+      recordCollectionFailure(draft, collectionStartedAt, diagnostic, delegatedIds)
+    } else if (result === "failed") {
       draft.rawReplies["collector.prerequisite"] = diagnostic
-      for (const result of draft.results) if (result.status === "test-todo") result.reason = diagnostic
+      for (const row of draft.results) {
+        if (row.status === "test-todo" && selectedIds.includes(row.featureId)) row.reason = diagnostic
+      }
     }
     checkpoint()
     throw error
@@ -1038,11 +1068,14 @@ export function startDaemon(port = 0): void {
     } catch {
       throw new Error("Invalid TERMINFO_PROBE_IDS JSON")
     }
-    if (!Array.isArray(value) || value.length === 0) throw new Error("TERMINFO_PROBE_IDS requires a nonempty array")
-    const invalid = value.filter((id) => typeof id !== "string" || !ALL_PROBES.some((probe) => probe.id === id))
-    if (invalid.length) throw new Error(`Unknown or inapplicable TERMINFO_PROBE_IDS: ${JSON.stringify(invalid)}`)
-    if (new Set(value).size !== value.length) throw new Error(`Duplicate TERMINFO_PROBE_IDS: ${JSON.stringify(value)}`)
-    ids = value as string[]
+    ids = collectorIds(value, "TERMINFO_PROBE_IDS")
+    const resolved = resolveProbeIds(ids)
+    if (resolved.result === "invalid") {
+      if (resolved.unknownIds.length) {
+        throw new Error(`Unknown or inapplicable TERMINFO_PROBE_IDS: ${JSON.stringify(resolved.unknownIds)}`)
+      }
+      throw new Error(`Duplicate TERMINFO_PROBE_IDS: ${JSON.stringify(ids)}`)
+    }
   }
   const terminal = detectTerminal()
   const token = randomBytes(32).toString("hex")
@@ -1087,6 +1120,7 @@ export function startDaemon(port = 0): void {
       }
 
       if (url.pathname === "/probe") {
+        let requestedIds = ids
         let terminalAppOwner: TerminalAppOwnerAssertion | undefined
         let processOwner: ProcessOwnerAssertion | undefined
         if (req.method === "POST") {
@@ -1096,11 +1130,12 @@ export function startDaemon(port = 0): void {
               !body ||
               typeof body !== "object" ||
               Array.isArray(body) ||
-              Object.keys(body).some((key) => key !== "terminalAppOwner" && key !== "processOwner") ||
+              Object.keys(body).some((key) => key !== "terminalAppOwner" && key !== "processOwner" && key !== "ids") ||
               ("terminalAppOwner" in body && "processOwner" in body)
             ) {
               throw new Error("Invalid probe request shape")
             }
+            if ("ids" in body) requestedIds = collectorIds(body.ids, "probe request ids")
             if ("terminalAppOwner" in body) {
               terminalAppOwner = parseTerminalAppOwner(body.terminalAppOwner)
               if (terminalAppOwner.launchRunId !== runId || terminalAppOwner.workerPid !== process.pid) {
@@ -1113,9 +1148,9 @@ export function startDaemon(port = 0): void {
                 throw new Error("Process owner assertion differs from this daemon's launch run or PID")
               }
             }
-          } catch {
+          } catch (error) {
             res.statusCode = 400
-            res.end(JSON.stringify({ error: "Invalid or mismatched owned-terminal owner assertion" }))
+            res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }))
             return
           }
         } else if (req.method !== "GET") {
@@ -1123,15 +1158,21 @@ export function startDaemon(port = 0): void {
           res.end(JSON.stringify({ error: "Probe collection requires GET or POST" }))
           return
         }
-        console.log(s.dim(`[${new Date().toISOString()}] Running ${ids?.length ?? ALL_PROBES.length} probes...`))
+        console.log(
+          s.dim(`[${new Date().toISOString()}] Running ${requestedIds?.length ?? ALL_PROBES.length} probes...`),
+        )
         const run = await collectProbeRun({
-          ...(ids && { ids }),
+          ...(requestedIds !== undefined && { ids: requestedIds }),
           terminalAppOwner,
           processOwner,
           expectedLaunchRunId: runId,
         })
         console.log(
-          s.dim(`Captured ${run.results.length} explicit probe results; draft ${run.runId} awaits final writer`),
+          s.dim(
+            requestedIds?.length === 0
+              ? `Empty selection; draft ${run.runId} retained; no probes executed`
+              : `Collected selected probe results; draft ${run.runId} awaits final writer`,
+          ),
         )
         res.end(JSON.stringify(run))
         return

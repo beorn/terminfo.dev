@@ -30,15 +30,17 @@ function candidate(
 ): ContextCandidate {
   return {
     key: `${overrides.kind}:${overrides.terminalId}@${overrides.os}`,
-    runId: `run-${overrides.terminalId}-${overrides.os}`,
     permissions: null,
-    version: "1.0.0",
-    measuredAt: "2026-10-17T00:00:00Z",
-    suiteId: suite,
-    suiteFreshness: "current",
-    suiteRelation: "release",
     results: recorded(catalogIds),
     states: {},
+    sources: [
+      {
+        runId: `run-${overrides.terminalId}-${overrides.os}`,
+        measuredAt: "2026-10-17T00:00:00Z",
+        suiteId: suite,
+        suiteRelation: "release",
+      },
+    ],
     ...overrides,
   }
 }
@@ -48,6 +50,63 @@ const other: CensusContext = { context: "xterm/linux", terminalId: "xterm", os: 
 const engine: CensusContext = { context: "libvterm/headless", terminalId: "libvterm", os: "headless", kind: "lib" }
 
 describe("full-scope rows", () => {
+  // CTO436fd774: showing retained off-suite support must not raise the required-suite release score.
+  // Whole-run fixtures cannot distinguish a visible retained cell from admitted release evidence.
+  it("keeps mixed required-suite scoring neutral while exposing held original cells", () => {
+    const onSuite = candidate({
+      kind: "term",
+      terminalId: "kitty",
+      os: "linux",
+      results: [...recorded(["a.one"], "supported"), ...recorded(["a.two", "b.one"])],
+    })
+    const oldSource = {
+      runId: "older-original",
+      measuredAt: "2026-10-16T00:00:00Z",
+      suiteId: "older-suite",
+      suiteRelation: "older" as const,
+    }
+    const oldResults = recorded(catalogIds, "supported")
+    const original = { ...onSuite.sources[0]!, results: onSuite.results! }
+    const older = { ...oldSource, results: oldResults }
+    const cells = Object.fromEntries(
+      catalogIds.map((id, index) => {
+        const run = index === 1 ? older : original
+        return [id, { origin: { runId: run.runId, resultId: id }, run, result: run.results[index]! }]
+      }),
+    )
+    const mixed = {
+      ...onSuite,
+      sources: [onSuite.sources[0]!, oldSource],
+      results: Object.values(cells).map((cell) => cell.result),
+      context: {
+        contextKey: onSuite.key,
+        cells,
+        catalogIds,
+        contributingRunIds: [original.runId, older.runId],
+        attempts: [],
+        missingIds: [],
+        counts: {},
+        score: { supported: 2, all: 3 },
+        complete: false,
+      },
+    } as unknown as ContextCandidate
+    const build = (entry: ContextCandidate) =>
+      buildFullProjectRows({ census: [app], catalogIds, candidates: [entry], requiredSuiteId: suite }).contexts[0]
+    const before = build(onSuite)
+    const after = build(mixed)
+    if (!before?.collected || !after?.collected) throw new Error("Both evidence-bearing contexts must remain collected")
+    expect(after.result.fraction).toBe(before.result.fraction)
+    expect(after.result.fraction).toBe("1/3")
+    expect(after).toMatchObject({ heldIds: ["a.two"], sources: mixed.sources })
+    expect(after.observations[1]).toMatchObject({
+      id: "a.two",
+      state: "supported",
+      origin: { runId: older.runId, resultId: "a.two" },
+      suiteId: "older-suite",
+      measuredAt: older.measuredAt,
+      hold: "retained from suite older-suite, measured 2026-10-16T00:00:00Z; not release evidence",
+    })
+  })
   it("scores a collected context over the whole catalog", () => {
     const rows = buildFullProjectRows({
       census: [app],
@@ -67,7 +126,7 @@ describe("full-scope rows", () => {
     if (!row?.collected) throw new Error("expected a collected row")
     expect(row.result.fraction).toBe("1/3")
     expect(row.result.complete).toBe(false)
-    expect(row.observations).toEqual([
+    expect(row.observations).toMatchObject([
       { id: "a.one", state: "supported", method: null, note: null, reason: null },
       { id: "a.two", state: "unsupported", method: null, note: null, reason: null },
       { id: "b.one", state: "test-todo", method: null, note: null, reason: null },
@@ -80,7 +139,21 @@ describe("full-scope rows", () => {
     const rows = buildFullProjectRows({
       census: [app],
       catalogIds,
-      candidates: [candidate({ kind: "term", terminalId: "kitty", os: "linux", suiteId: "an-older-suite" })],
+      candidates: [
+        candidate({
+          kind: "term",
+          terminalId: "kitty",
+          os: "linux",
+          sources: [
+            {
+              runId: "older-original",
+              suiteId: "an-older-suite",
+              suiteRelation: "older",
+              measuredAt: "2026-10-17T00:00:00Z",
+            },
+          ],
+        }),
+      ],
       requiredSuiteId: suite,
     })
     const [row] = rows.contexts
@@ -90,7 +163,7 @@ describe("full-scope rows", () => {
       os: "linux",
       kind: "term",
       collected: false,
-      cause: "selected run is on suite an-older-suite; required suite-current",
+      cause: "selected run is on suite an-older-suite; required suite-current; sources older-original",
     })
     expect(rows.notCollected).toBe(1)
   })
@@ -162,7 +235,7 @@ describe("full-scope rows", () => {
     })
     const [row] = rows.contexts
     if (!row?.collected) throw new Error("expected a collected row")
-    expect(row.observations[0]).toEqual({
+    expect(row.observations[0]).toMatchObject({
       id: "a.one",
       state: "test-failure",
       method: "buffer_state",

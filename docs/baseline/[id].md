@@ -47,7 +47,7 @@ function termTooltip(b) {
   if (score) parts.push(coverageLabel(score))
   if (b.description) parts.push(b.description)
   if (b.type) parts.push('Type: ' + b.type)
-  if (b.version) parts.push('Version: ' + b.version)
+  if (b.version) parts.push('Source versions: ' + b.version)
   if (b.url) parts.push(b.url)
   return parts.join('\n') || b.label
 }
@@ -57,7 +57,7 @@ function barSegmentItems(s, segment) {
   for (const f of features) {
     if (isEnvironmentGroup(f.id)) continue
     // The reader classified every cell once; this reads that state. The raw cell is read for its NOTE
-    // only (a raw field, not a classification), exactly as the compare page reads its evidence method.
+    // only (a raw field, not a classification), exactly as the compare page reads its assertion type.
     const entry = data.selectedByBackend[s.name]
     const state = entry?.states[f.id]
     if (state !== segment) continue
@@ -133,9 +133,9 @@ function platformIcons(b) {
 
 <div v-if="appScores.length > 0" class="summary">
   <div v-for="s in appScores" :key="s.name" class="summary-row">
-    <a class="summary-name hover-link" :href="'/terminals/' + s.slug" :aria-label="'Terminal: ' + s.label + (s.version ? '; Version: ' + s.version : '')" :title="s.label" :data-tooltip="termTooltip(s)"><span class="summary-name-text">{{ s.label }}</span></a>
+    <a class="summary-name hover-link" :href="'/terminals/' + s.slug" :aria-label="'Terminal: ' + s.label + (s.version ? '; Source versions: ' + s.version : '')" :title="s.label" :data-tooltip="termTooltip(s)"><span class="summary-name-text">{{ s.label }}</span></a>
     <span class="summary-platforms" v-html="platformIcons(s)"></span>
-    <span class="summary-version" tabindex="0" :aria-label="'Version: ' + s.version" :title="s.version" :data-tooltip="'Version: ' + s.version"><span class="summary-version-text">{{ s.version }}</span></span>
+    <span class="summary-version" tabindex="0" :aria-label="'Source versions: ' + s.version" :title="s.version" :data-tooltip="'Source versions: ' + s.version"><span class="summary-version-text">{{ s.version }}</span></span>
     <div class="summary-bar" :aria-label="coverageLabel(s)">
       <div v-for="segment in barSegments" :key="segment.id" class="bar-segment"
         :class="'bar-' + ({ untestable: 'inconclusive', 'test-todo': 'untested', 'test-failure': 'errors' }[segment.id] || segment.id)" :style="{ width: barWidth(s, segment.id) }">

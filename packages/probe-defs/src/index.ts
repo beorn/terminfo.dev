@@ -10,6 +10,7 @@ export type {
   ExecutionOnlyProbeCallbackResult,
   ProbeSourceKind,
   NoSemanticObservable,
+  LibMouseEvent,
   LibProbeSource,
   TermProbeSource,
   TerminalQueryOutcome,
@@ -58,6 +59,11 @@ export type {
 } from "./types.ts"
 export {
   SOURCE_NEGATIVE_REVIEW,
+  SEMANTIC_PROMPT_SOURCE_REVIEW,
+  REPLY_PATH_AUDIT_REVIEW,
+  HARNESS_INCOMPLETE_TEST,
+  HEADLESS_OBSERVABLE_REVIEW,
+  UNTESTABLE_ONLY_REVIEW_BRANCHES,
   sgrProbe,
   cursorProbe,
   decrpmModeProbe,
@@ -146,6 +152,29 @@ export const ALL_PROBES = [
   ...clipboardProbes,
 ]
 
+/** Resolve execution inputs without changing the full catalogue or suite membership. */
+export function resolveProbeIds(
+  ids: readonly string[],
+):
+  | { result: "resolved" | "empty"; probes: import("./types.ts").ProbeDefinition[] }
+  | { result: "invalid"; unknownIds: string[]; duplicateIds: string[] } {
+  const known = new Set(ALL_PROBES.map((probe) => probe.id))
+  const seen = new Set<string>()
+  const unknownIds = new Set<string>()
+  const duplicateIds = new Set<string>()
+  for (const id of ids) {
+    if (!known.has(id)) unknownIds.add(id)
+    if (seen.has(id)) duplicateIds.add(id)
+    seen.add(id)
+  }
+  if (unknownIds.size || duplicateIds.size) {
+    return { result: "invalid", unknownIds: [...unknownIds], duplicateIds: [...duplicateIds] }
+  }
+  return { result: ids.length ? "resolved" : "empty", probes: ALL_PROBES.filter((probe) => seen.has(probe.id)) }
+}
+
+export { collectorIds } from "./helpers.ts"
+
 export {
   sgrProbes,
   cursorProbes,
@@ -163,6 +192,7 @@ export {
 }
 
 export { splitDecidableBasis } from "./decidable-basis.ts"
+export { nativeHostRecipeResult } from "./native-host-audit.ts"
 export type { DecidableBasis } from "./decidable-basis.ts"
 export { ENVIRONMENT_GROUP_IDS, gradedFeatureIds, isEnvironmentGroup } from "./environment-groups.ts"
 export type { EnvironmentGroupId } from "./environment-groups.ts"
@@ -176,6 +206,8 @@ export { PROBE_STATUSES } from "./types.ts"
 export type {
   ProbeStatus,
   ProbeAttempt,
+  CollectorSelection,
+  CollectorAttempt,
   ProbeResult,
   ProbeTestResult,
   ProbeTestInput,
@@ -186,6 +218,14 @@ export type {
 } from "./types.ts"
 export { initializeRunDraft, finalizeProbeResult, sealRunDraft } from "./helpers.ts"
 
-export { recordExecutedProbe, recordCollectionFailure } from "./helpers.ts"
+export {
+  recordExecutedProbe,
+  recordCollectionFailure,
+  readCollectorSelection,
+  readCollectorAttempt,
+  recordCollectorSelection,
+  recordCollectorAttempt,
+  collectorAttemptDigest,
+} from "./helpers.ts"
 
 export { assessTextQualification, type TextQualificationAssessment } from "./text-qualification.ts"
