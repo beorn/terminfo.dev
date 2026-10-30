@@ -575,6 +575,13 @@ for (const id of COLOUR_IDS) {
     expect(result.observation?.note ?? "").toContain("ignores the colour")
     expect(result.assertions).toBeUndefined()
     expect(result.pass).toBe(false)
+    expect(result.tests).toContainEqual(
+      expect.objectContaining({
+        id: "review",
+        status: "test-todo",
+        reason: "colour oracle cannot distinguish ignored from identical paint against the current reference",
+      }),
+    )
   })
 }
 

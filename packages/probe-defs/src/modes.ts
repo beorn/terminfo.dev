@@ -1322,6 +1322,14 @@ export const modesProbes: ProbeDefinition[] = [
         return {
           pass: false,
           response: JSON.stringify(pos),
+          criterionBranch: HEADLESS_OBSERVABLE_REVIEW,
+          tests: [
+            {
+              id: "review",
+              status: "test-todo",
+              reason: "Cursor responsiveness after exit does not measure the restored buffer",
+            },
+          ],
           observation: {
             outcome: "inconclusive",
             reason: "insufficient-evidence",
@@ -1527,6 +1535,14 @@ export const modesProbes: ProbeDefinition[] = [
         return {
           pass: false,
           response: JSON.stringify(pos),
+          criterionBranch: HEADLESS_OBSERVABLE_REVIEW,
+          tests: [
+            {
+              id: "review",
+              status: "test-todo",
+              reason: "Cursor advance does not measure whether X displaced the existing cells",
+            },
+          ],
           observation: {
             outcome: "inconclusive",
             reason: "insufficient-evidence",

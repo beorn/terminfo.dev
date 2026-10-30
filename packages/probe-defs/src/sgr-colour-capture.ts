@@ -26,6 +26,7 @@
  *   the colour from one that paints it identically to the reference it was compared against, so
  *   both read inconclusive BY NAME. Deciding colour unsupported is a separate ruling.
  */
+import { HEADLESS_OBSERVABLE_REVIEW } from "./helpers.ts"
 import { SENTINEL, type RegionReadback } from "./region-readback.ts"
 import type { ProbeCallbackResult } from "./types.ts"
 
@@ -152,6 +153,14 @@ export function colourCaptureVerdict(id: string, verdict: ProbeCallbackResult): 
     return {
       ...rest,
       pass: false,
+      criterionBranch: HEADLESS_OBSERVABLE_REVIEW,
+      tests: [
+        {
+          id: "review",
+          status: "test-todo",
+          reason: "colour oracle cannot distinguish ignored from identical paint against the current reference",
+        },
+      ],
       observation: {
         ...observation,
         outcome: "inconclusive",

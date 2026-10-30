@@ -496,6 +496,13 @@ test("cursor replies do not qualify app scrollback contents or region behavior",
     })
     expect(result.assertions ?? [], id).toEqual([])
     expect(result.response, id).toBeTruthy()
+    expect(result.tests, id).toContainEqual(
+      expect.objectContaining({
+        id: "review",
+        status: "test-todo",
+        reason: expect.stringContaining("does not measure"),
+      }),
+    )
   }
 
   // A region row is graded from the window it cannot read, never from a cursor reply: with no owned

@@ -276,23 +276,17 @@ export function unmeasuredCellResult(
   position: { row: number; col: number } | null,
   feature: string,
 ): ProbeCallbackResult {
+  if (position) {
+    const reason = `Cursor response does not measure ${feature}`
+    return {
+      ...reviewResult(HEADLESS_OBSERVABLE_REVIEW, reason, reason, { position }),
+      response: `${position.row};${position.col}`,
+    }
+  }
   return {
     pass: false,
-    ...(position && { response: `${position.row};${position.col}` }),
-    note: position ? `Cursor response does not measure ${feature}` : `No cursor response after ${feature}`,
-    ...(position === null
-      ? {
-          tests: [{ id: "criterion", status: "test-failure", reason: `No cursor response after ${feature}` }] as [
-            { id: string; status: "test-failure"; reason: string },
-          ],
-        }
-      : {
-          observation: {
-            outcome: "inconclusive",
-            reason: position ? "insufficient-evidence" : "no-response",
-            assertionType: "query_reply",
-          },
-        }),
+    note: `No cursor response after ${feature}`,
+    tests: [{ id: "criterion", status: "test-failure", reason: `No cursor response after ${feature}` }],
   }
 }
 
