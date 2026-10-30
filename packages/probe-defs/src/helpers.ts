@@ -1224,10 +1224,19 @@ export function cellWidthTransition(reads: CellWidthTransitionReads): ProbeCallb
       enabled: reads.enabled.cursor,
     })
   }
+  // A measured move outranks a refusal, but the contradiction stays visible in the cell's reason.
+  const refusedYetMoved =
+    moved && (reads.decrpm === 0 || reads.decrpm === 4)
+      ? `DECRPM mode 3 reads ${decrpmReading(reads.decrpm)} while the sweep measured ${initial} -> ${target} -> ${initial}`
+      : undefined
   return {
     pass: moved,
     response,
-    observation: { outcome: moved ? "supported" : "unsupported", assertionType: "buffer_state" },
+    observation: {
+      outcome: moved ? "supported" : "unsupported",
+      assertionType: "buffer_state",
+      ...(refusedYetMoved && { note: refusedYetMoved }),
+    },
     assertions: [
       {
         assertionType: "buffer_state",

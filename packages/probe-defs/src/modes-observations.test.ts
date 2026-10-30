@@ -234,6 +234,15 @@ test.each([0, 4] as const)("DECCOLM keeps a refused mode named inconclusive at D
   ])
 })
 
+test("DECCOLM grades a measured move supported and names a refusing DECRPM reading beside it", () => {
+  const { context } = cellWidthContext({ width: 80, decrpm: "\x1b[?3;0$y" })
+  const result = headlessDeccolm()(context)
+  expect(result.observation).toMatchObject({
+    outcome: "supported",
+    note: "DECRPM mode 3 reads not recognized (Ps 0) while the sweep measured 80 -> 132 -> 80",
+  })
+})
+
 test("DECCOLM names autowrap off rather than claiming a width", () => {
   const { context } = cellWidthContext({ width: 80, wrap: false })
   const result = headlessDeccolm()(context)
