@@ -1608,14 +1608,17 @@ export function initializeRunDraft(input: {
   if (input.manifest.schemaVersion !== 4) {
     throw new Error("Current run writer requires a schemaVersion 4 suite manifest")
   }
-  assertLiveSource(input.source)
+  assertCurrentSource(input.source)
+  if (input.source.kind === "trace" && input.source.captureRunId === input.runId) {
+    throw new Error("Trace source capture runId must differ from the assertion runId")
+  }
   const ids = input.manifest.catalogIds
   if (!ids || ids.length === 0 || new Set(ids).size !== ids.length) {
     throw new Error(`Suite ${input.manifest.probeHash} requires a nonempty unique frozen catalogIds set`)
   }
   return {
     schemaVersion: 4,
-    source: { kind: input.source.kind },
+    source: input.source.kind === "live" ? { kind: "live" } : { ...input.source, trace: { ...input.source.trace } },
     runId: input.runId,
     suiteId: input.manifest.probeHash,
     probeHash: input.manifest.probeHash,
@@ -1659,7 +1662,10 @@ export function finalizeProbeResult(input: Omit<ProbeResult, "status">): ProbeRe
 
 /** Seal only measured/enriched identity; pending required review keeps the same draft open. */
 export function sealRunDraft(draft: RunDraft, sealedAt = new Date().toISOString()): CurrentProbeRun {
-  assertLiveSource(draft.source)
+  assertCurrentSource(draft.source)
+  if (draft.source.kind === "trace" && draft.source.captureRunId === draft.runId) {
+    throw new Error("Trace source capture runId must differ from the assertion runId")
+  }
   if (draft.schemaVersion !== 4) throw new Error("Current run writer requires schemaVersion 4")
   if (!draft.subject || !draft.identity || !draft.measuredAt || !draft.origin) {
     throw new Error(`Run ${draft.runId} has no complete measured identity to seal; retain its private draft`)
@@ -1686,10 +1692,33 @@ export function sealRunDraft(draft: RunDraft, sealedAt = new Date().toISOString(
   }
 }
 
-function assertLiveSource(source: RunDraft["source"]): void {
-  const kind = (source as { kind?: unknown } | undefined)?.kind
-  if (kind === "trace") throw new Error("trace probe source has no implementation at this source; see recorder #30932")
-  if (kind !== "live") throw new Error("Current run writer requires an explicit live probe source")
+function assertCurrentSource(source: unknown): asserts source is RunDraft["source"] {
+  const object = (value: unknown): value is Record<string, unknown> =>
+    value !== null && typeof value === "object" && !Array.isArray(value)
+  const keys = (value: Record<string, unknown>, expected: string[]) =>
+    Object.keys(value).length === expected.length && expected.every((key) => Object.hasOwn(value, key))
+  const nonempty = (value: unknown): value is string => typeof value === "string" && value.trim().length > 0
+  if (!object(source)) throw new Error("Current run writer requires an explicit probe source")
+  if (source.kind === "live" && keys(source, ["kind"])) return
+  if (source.kind !== "trace") throw new Error("Current run writer requires exactly { kind: live } or a trace source")
+  if (
+    !keys(source, ["kind", "trace", "captureRunId", "captureSuiteId", "captureSourceRevision"]) ||
+    !object(source.trace) ||
+    !keys(source.trace, ["path", "sha256"]) ||
+    !nonempty(source.trace.path) ||
+    /^(?:[\\/]|[a-z]:)/i.test(source.trace.path) ||
+    source.trace.path.split(/[\\/]/).includes("..") ||
+    typeof source.trace.sha256 !== "string" ||
+    !/^[0-9a-f]{64}$/.test(source.trace.sha256) ||
+    !nonempty(source.captureRunId) ||
+    !nonempty(source.captureSuiteId) ||
+    typeof source.captureSourceRevision !== "string" ||
+    !/^[0-9a-f]{40}$/.test(source.captureSourceRevision)
+  ) {
+    throw new Error(
+      "Invalid trace probe source: require relative artifact path/SHA256 and capture run, suite and source revision",
+    )
+  }
 }
 
 /** Execute the declared callback's proposition once; readers consume this recorded result. */

@@ -10,6 +10,7 @@ import type {
   ObservationFrame,
   ProbeAssertion,
   RunOrigin,
+  RunDraft,
   TextQualification,
   TextCellsObservationFrame,
 } from "../../packages/probe-defs/src/types.ts"
@@ -300,7 +301,7 @@ export interface CellEvidence {
 }
 
 export interface EvidenceDocument {
-  source?: { kind: "live" }
+  source?: RunDraft["source"]
   version: 4
   runId: string
   runSha256: string

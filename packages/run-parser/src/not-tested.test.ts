@@ -6,7 +6,7 @@
  * @testonly none
  */
 import { describe, expect, it } from "vitest"
-import type { ProbeSuiteManifest } from "@terminfo/probe-defs"
+import { initializeRunDraft, sealRunDraft, type ProbeSuiteManifest } from "@terminfo/probe-defs"
 import { parseRun, parseSuiteManifest } from "./index.ts"
 
 const catalog = ["alpha", "beta", "gamma"]
@@ -187,42 +187,71 @@ describe("sealed current runs", () => {
   }
   // v1-v3 fixtures cannot detect a current reader/writer retaining the displaced wire names.
   // This pending-only run claims no successful measurement or native qualification.
-  it("reads schema 4 live source, subject and tests without restoring displaced wire names", () => {
+  // Phase0: historical/live-only fixtures cannot detect lost capture identity in a replay result.
+  it.each([
+    { kind: "live" as const },
+    {
+      kind: "trace" as const,
+      trace: { path: "traces/capture.json", sha256: "ab".repeat(32) },
+      captureRunId: "original-capture",
+      captureSuiteId: suite.probeHash,
+      captureSourceRevision: "2".repeat(40),
+    },
+  ])("preserves schema 4 $kind source through initialization, sealing and reading", (source) => {
     const { target, intendedContext, results, ...metadata } = current()
     const raw = {
       ...metadata,
       schemaVersion: 4,
-      source: { kind: "live" },
-      subject: { ...target, kind: "term" },
-      intendedSubject: { ...intendedContext, kind: "term" },
+      source,
+      subject: { ...target, kind: "term" as const },
+      intendedSubject: { ...intendedContext, kind: "term" as const },
       results: results.map(({ checks, ...result }) => ({ ...result, tests: checks })),
     }
+    const draft = initializeRunDraft({
+      runId: raw.runId,
+      sourceRevision: raw.sourceRevision,
+      source,
+      intendedSubject: raw.intendedSubject,
+      manifest: { ...currentSuite, schemaVersion: 4 },
+    })
+    expect(draft.source).toEqual(source)
+    const sealed = sealRunDraft(
+      {
+        ...draft,
+        subject: raw.subject,
+        identity: "unverified",
+        measuredAt: raw.measuredAt,
+        origin: { kind: "collector" },
+      },
+      raw.sealedAt,
+    )
+    expect(sealed.source).toEqual(source)
     const loaded = parseRun(
       "current-v4.json",
-      JSON.stringify(raw),
+      JSON.stringify(sealed),
       catalog,
       new Map([[suite.probeHash, { ...currentSuite, schemaVersion: 4 }]]),
     )
     expect(loaded).toMatchObject({
       schemaVersion: 4,
-      source: { kind: "live" },
+      source,
       subject: raw.subject,
       intendedSubject: raw.intendedSubject,
-      results: raw.results,
+      results: draft.results,
     })
     expect(loaded).not.toHaveProperty("target")
     expect(loaded).not.toHaveProperty("intendedContext")
     for (const result of loaded.results!) expect(result).not.toHaveProperty("checks")
   })
   // The old reader accepted arbitrary extra keys; the new wire must have one spelling per fact.
-  it("requires a live source and refuses displaced or unknown schema-4 keys by name", () => {
+  it("requires a bound source and refuses displaced or unknown schema-4 keys by name", () => {
     const { target, intendedContext, results, ...metadata } = current()
     const raw = {
       ...metadata,
       schemaVersion: 4,
       source: { kind: "live" },
-      subject: { ...target, kind: "term" },
-      intendedSubject: { ...intendedContext, kind: "term" },
+      subject: { ...target, kind: "term" as const },
+      intendedSubject: { ...intendedContext, kind: "term" as const },
       results: results.map(({ checks, ...result }) => ({ ...result, tests: checks })),
     }
     const parseV4 = (value: unknown) =>
@@ -254,7 +283,60 @@ describe("sealed current runs", () => {
         runtimeIdentity: { kind: "js", engineVersion: "different-version" },
       }),
     ).toThrow(`conflicts with subject.version ${target.version}`)
-    expect(() => parseV4({ ...raw, source: { kind: "trace" } })).toThrow(/trace probe source has no implementation/)
+    expect(() => parseV4({ ...raw, source: { kind: "trace" } })).toThrow(/trace source/)
+    const traceSource = {
+      kind: "trace",
+      trace: { path: "traces/capture.json", sha256: "ab".repeat(32) },
+      captureRunId: "original-capture",
+      captureSuiteId: suite.probeHash,
+      captureSourceRevision: "2".repeat(40),
+    }
+    // Phase0's immutable artifact pointer cannot escape its store or lose its capture identity.
+    // Old live-only controls do not exercise a structurally complete, but invalid, trace.
+    const invalidSources = [
+      { ...traceSource, captureRunId: raw.runId },
+      { kind: "live", trace: traceSource.trace },
+      { ...traceSource, version: 1 },
+      ...[
+        "",
+        "  ",
+        "/capture.json",
+        "\\capture.json",
+        "C:\\capture.json",
+        "../capture.json",
+        "traces/../capture.json",
+        "traces\\..\\capture.json",
+      ].map((path) => ({ ...traceSource, trace: { ...traceSource.trace, path } })),
+      ...["", "not-a-sha", "ab".repeat(31)].map((sha256) => ({
+        ...traceSource,
+        trace: { ...traceSource.trace, sha256 },
+      })),
+      { ...traceSource, trace: { ...traceSource.trace, format: "viprobe.call-log" } },
+      ...["captureRunId", "captureSuiteId", "captureSourceRevision"].map((key) => ({ ...traceSource, [key]: "" })),
+      { ...traceSource, captureSourceRevision: "not-a-revision" },
+      {
+        kind: "trace",
+        trace: traceSource.trace,
+        capturedRunId: "wrong-prefix",
+        captureSuiteId: suite.probeHash,
+        captureSourceRevision: "2".repeat(40),
+      },
+    ]
+    for (const source of invalidSources) {
+      expect(() => parseV4({ ...raw, source }), JSON.stringify(source)).toThrow(/source/)
+      expect(
+        () =>
+          initializeRunDraft({
+            runId: raw.runId,
+            sourceRevision: raw.sourceRevision,
+            source: source as never,
+            intendedSubject: raw.intendedSubject,
+            manifest: { ...currentSuite, schemaVersion: 4 },
+          }),
+        JSON.stringify(source),
+      ).toThrow(/source/)
+      expect(() => sealRunDraft({ ...raw, source } as never), JSON.stringify(source)).toThrow(/source/)
+    }
     expect(() => parseV4({ ...raw, target })).toThrow(/target/)
     expect(() => parseV4({ ...raw, mystery: true })).toThrow(/mystery/)
     expect(() => parseV4({ ...raw, results: raw.results.map((result) => ({ ...result, checks: [] })) })).toThrow(

@@ -311,7 +311,7 @@ interface CurrentTraceCell extends TraceRecord {
 }
 
 export interface TraceDocument<Cell> {
-  source?: { kind: "live" }
+  source?: CurrentSelectedVersion["source"]
   version: 1
   runId: string
   runSha256: string
@@ -483,7 +483,7 @@ function traceRecord(
 type TraceVersion = Pick<SelectedVersion, "runId" | "sha256" | "measuredAt" | "identity" | "identityAdmission"> & {
   sourceRevision: string | null
   schemaVersion?: 1 | 2 | 3 | 4
-  source?: { kind: "live" }
+  source?: CurrentSelectedVersion["source"]
 }
 
 function traceDocument<Cell>(

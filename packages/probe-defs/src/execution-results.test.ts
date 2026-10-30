@@ -618,8 +618,8 @@ it("records execution-only TODO and FAILURE tests, ignoring legacy pass even whe
 })
 
 // Source identity was previously absent. The writer must name it rather than infer live or
-// accept trace before the recorder/replay implementation owned by #30932 exists.
-it("starts schema 4 drafts with explicit live source and rejects unimplemented trace", () => {
+// accept a trace with no retained artifact and capture identity.
+it("starts schema 4 drafts with explicit live source and rejects an unbound trace", () => {
   const input = {
     runId: "source-boundary",
     sourceRevision: "1".repeat(40),
@@ -638,7 +638,5 @@ it("starts schema 4 drafts with explicit live source and rejects unimplemented t
     source: { kind: "live" },
     intendedSubject: { kind: "term", id: "kitty" },
   })
-  expect(() => initializeRunDraft({ ...input, source: { kind: "trace" } } as never)).toThrow(
-    /trace.*no implementation/i,
-  )
+  expect(() => initializeRunDraft({ ...input, source: { kind: "trace" } } as never)).toThrow(/trace/i)
 })
