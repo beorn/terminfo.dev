@@ -404,8 +404,9 @@ it.each([
             }),
           )
         }
-        if (args[1] === "watch")
+        if (args[1] === "watch") {
           return respond("workflow fixture result", inputChange.startsWith("macos-") ? 1 : mac ? 0 : 1)
+        }
         if (args[1] === "download") {
           const artifacts = args[args.indexOf("--dir") + 1]
           if (typeof artifacts !== "string") throw new Error("expected hosted artifact output directory")

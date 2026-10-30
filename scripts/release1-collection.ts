@@ -1164,16 +1164,18 @@ function collectHostedArtifacts(
           const candidate = existsSync(raw) ? raw : existsSync(draft) ? draft : undefined
           if (candidate) {
             const path = realpathSync(candidate)
-            if (!path.startsWith(`${result.directory}${sep}`))
+            if (!path.startsWith(`${result.directory}${sep}`)) {
               throw new Error(`hosted raw output escaped private context: ${path}`)
+            }
             result.path = path
           }
           const exit = join(result.directory, "collector-exit")
           if (existsSync(exit)) {
             const status = readFileSync(exit, "utf8").trim()
             if (!/^\d+$/.test(status)) throw new Error(`Invalid collector exit status in ${exit}`)
-            if (Number(status) !== 0)
+            if (Number(status) !== 0) {
               throw new Error(`collector exited ${status}; log ${join(result.directory, "collector.log")}`)
+            }
           }
           if (!existsSync(raw)) throw new Error(`hosted artifact has no validated raw run in ${result.directory}`)
         } catch (error) {
