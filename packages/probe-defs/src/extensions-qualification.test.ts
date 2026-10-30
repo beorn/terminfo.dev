@@ -35,6 +35,15 @@ test.each([
   ["extensions.osc710-font-normal", "\x1b]710;monospace\x07", "xtermjs"],
   ["extensions.osc777-notify", "\x1b]777;notify;test;body\x07", "xtermjs"],
   ["extensions.osc3008-context", "\x1b]3008;type=test\x07", "xtermjs"],
+  ["extensions.osc9-progress", "\x1b]9;4;1;50\x07", "vt100"],
+  ["extensions.osc22-pointer", "\x1b]22;pointer\x07", "vt100"],
+  ["extensions.osc176-app-id", "\x1b]176;terminfo-test\x07", "vt100"],
+  ["extensions.osc440-audio", "\x1b]440;bell.wav\x07", "vt100"],
+  ["extensions.osc555-flash", "\x1b]555\x07", "vt100"],
+  ["extensions.osc666-termprop", "\x1b]666;test-prop=value\x07", "vt100"],
+  ["extensions.osc710-font-normal", "\x1b]710;monospace\x07", "vt100"],
+  ["extensions.osc777-notify", "\x1b]777;notify;test;body\x07", "vt100"],
+  ["extensions.osc3008-context", "\x1b]3008;type=test\x07", "vt100"],
 ])("%s retains an audited source-negative review only after its sentinel renders", (id, sequence, engine) => {
   // Collector-input identities from the retained runs, not a loaded-engine attestation.
   const identity =
@@ -59,12 +68,15 @@ test.each([
           engineVersion: "0.9.0",
           adapterVersion: "0.10.2",
           termlessRevision: "2".repeat(40),
-          resolvedPath: "vendor/vterm/packages/vterm/src/index.ts",
+          resolvedPath: `vendor/vterm/packages/${engine}/src/index.ts`,
           integrity: {
             kind: "source",
             repository: "git@github.com:beorn/vterm.git",
             revision: "53a9eb9291b7880f4dc6a39a6802301049997a72",
-            treeOid: "617ae6002c7befea7b3e43d11bf23e6b433e3d65",
+            treeOid:
+              engine === "vt100"
+                ? "5ffc7ad9ae120d0bf93c64b0fdc712eb40892896"
+                : "617ae6002c7befea7b3e43d11bf23e6b433e3d65",
             cleanTree: true,
           },
         } as const)
@@ -72,7 +84,9 @@ test.each([
     "pinned",
     "no-sentinel",
     "foreign",
-    ...(engine === "xtermjs" ? ["changed-lock", "wrong-version", "wrong-adapter"] : ["changed-source", "dirty"]),
+    ...(engine === "xtermjs"
+      ? ["changed-lock", "wrong-version", "wrong-adapter"]
+      : ["changed-source", "changed-tree", "wrong-version", "dirty"]),
   ]
   for (const mode of modes) {
     const writes: string[] = []
@@ -87,6 +101,7 @@ test.each([
             ? {
                 ...identity.integrity,
                 revision: mode === "changed-source" ? "3".repeat(40) : identity.integrity.revision,
+                treeOid: mode === "changed-tree" ? "4".repeat(40) : identity.integrity.treeOid,
                 cleanTree: mode !== "dirty",
               }
             : {
@@ -106,7 +121,7 @@ test.each([
         {
           id: "review",
           status: "test-failure",
-          reason: expect.stringContaining(engine === "vterm" ? "53a9eb92" : "17a90b65"),
+          reason: expect.stringContaining(engine === "xtermjs" ? "17a90b65" : "53a9eb92"),
         },
       ])
       expect(result.observation).toMatchObject({ outcome: "inconclusive", assertionType: "buffer_state" })
@@ -127,6 +142,12 @@ test.each([
           { reason: expect.stringMatching(/notification sink.*no progress subcode or state interpretation/) },
         ])
         expect(result.tests?.[0]?.reason).not.toContain("no case 9")
+      }
+      if (engine === "vt100") {
+        expect(result.tests?.[0]?.reason).toContain("screen.ts:504-520 handleOSC switch, cases 0/1/2 only")
+        expect(result.tests?.[0]?.reason).not.toContain("notification sink")
+        expect(result.tests?.[0]?.reason).not.toContain("3921-3923")
+        if (id === "extensions.osc9-progress") expect(result.tests?.[0]?.reason).toContain("no case 9")
       }
     } else {
       expect(result.criterionBranch).toBeUndefined()
