@@ -122,6 +122,12 @@ test.each([
         expect(JSON.parse(result.response!)).toMatchObject({ runtimeIdentity: identity })
         expect(result.tests).toMatchObject([{ reason: expect.stringContaining("packages/xtermjs/src/backend.ts") }])
       }
+      if (engine === "vterm" && id === "extensions.osc9-progress") {
+        expect(result.tests).toMatchObject([
+          { reason: expect.stringMatching(/notification sink.*no progress subcode or state interpretation/) },
+        ])
+        expect(result.tests?.[0]?.reason).not.toContain("no case 9")
+      }
     } else {
       expect(result.criterionBranch).toBeUndefined()
       expect(result.assertions).toBeUndefined()
