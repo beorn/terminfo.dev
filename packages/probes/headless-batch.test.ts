@@ -36,6 +36,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest"
 import { collectBatch, createLibProbeSource, feedCapture } from "./headless-batch.ts"
 import { finalizeCollectedDraft } from "../terminfo.dev/src/capture-writer.ts"
 import { cellWidthTransition } from "../probe-defs/src/helpers.ts"
+import { validateCurrentAssertions } from "../run-parser/src/observations.ts"
 import retainedDeccolm from "./fixtures/deccolm-retained.json"
 
 /** Feature captures only; collector qualification metadata is asserted in sentinel-member.test.ts. */
@@ -73,6 +74,10 @@ test.each(retainedDeccolm.rows)("DECCOLM retained $engine state survives the str
   expect(repaired.results).toMatchObject([{ status: sample.expected, assertionType: "buffer_state" }])
   expect(repaired.rawReplies[definition.id]).toBe(sample.raw)
   expect(repaired.assertions[0]!.observed).toBe(sample.raw)
+  // The canonical reader checks every buffer-state assertion, including the separate gate assertion.
+  expect(() =>
+    validateCurrentAssertions(repaired.assertions, repaired.rawReplies, repaired.results, "lib", sample.engine),
+  ).not.toThrow()
   expect(
     repaired.assertions.every(
       (assertion) => assertion.kind === (sample.expected === "supported" ? "positive" : "negative"),

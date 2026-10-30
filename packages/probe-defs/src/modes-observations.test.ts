@@ -245,7 +245,7 @@ test("DECCOLM re-seeds before each of its five 133-X sweeps and runs gate contro
       expect.objectContaining({
         kind: "positive",
         expected: expect.stringContaining("before and after the transition"),
-        observed: "gateBefore=80, gateAfter=80",
+        observed: result.response,
       }),
     ]),
   )
@@ -334,8 +334,9 @@ test.each([
     const result = headlessDeccolm()(context)
     expect(result.observation).toMatchObject({ outcome: "inconclusive", note: "gate not honoured" })
     expect(result.assertions).toEqual([
-      expect.objectContaining({ assertionType: "buffer_state", kind: "negative", observed: `${phase}=132` }),
+      expect.objectContaining({ assertionType: "buffer_state", kind: "negative", observed: result.response }),
     ])
+    expect(JSON.parse(result.response!)[phase]).toMatchObject({ width: 132 })
     expect(result.tests).toMatchObject([
       expect.objectContaining({ status: "test-failure", reason: expect.stringContaining(`"${phase}"`) }),
     ])

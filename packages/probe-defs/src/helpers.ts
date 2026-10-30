@@ -1199,16 +1199,15 @@ function gateNotHonoured(response: string, held: number, phase: string, sweep: {
       assertionType: "buffer_state",
       kind: "negative",
       expected: `?40 closed holds the width at ${held} when mode 3 is set`,
-      observed: `${phase}=${sweep.width}`,
+      observed: response,
     },
   ])
 }
 
 /**
- * The DECCOLM decision (#31381, @cto cee6d003). A measured no-change is Unsupported only where the
- * engine did not refuse the mode: `Ps 0` or `Ps 4` alongside an unchanged width is inconclusive
- * named, because an engine that says it does not know the mode has not been shown to implement it
- * wrongly. A silent `18 t` decides by width; an `18 t` that answers and disagrees is a named FAILURE.
+ * The DECCOLM decision (#31381, @cto cee6d003, 9e841266). The measured sweep decides: unchanged width
+ * with ?40 held is Unsupported whatever DECRPM reads. Refusing Ps 0/4 readings remain in the note.
+ * A silent `18 t` decides by width; an answering `18 t` disagreement is a named FAILURE.
  */
 export function cellWidthTransition(reads: CellWidthTransitionReads): ProbeCallbackResult {
   const response = JSON.stringify(reads)
@@ -1286,7 +1285,7 @@ export function cellWidthTransition(reads: CellWidthTransitionReads): ProbeCallb
               assertionType: "buffer_state",
               kind: "positive",
               expected: `?40 closed holds the width at ${initial} when mode 3 is set, before and after the transition`,
-              observed: `gateBefore=${reads.gateBefore.width}, gateAfter=${reads.gateAfter.width}`,
+              observed: response,
             } as const,
           ]
         : []),
