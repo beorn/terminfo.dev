@@ -1954,8 +1954,16 @@ export const modesProbes: ProbeDefinition[] = [
           decrpm,
           reply18t: { initial: initial18t, enabled: enabled18t, restored: restored18t },
         })
-        if (replyNotes.length && result.observation) {
-          result.observation.note = [result.observation.note, ...replyNotes].filter(Boolean).join("; ")
+        if (replyNotes.length) {
+          if (result.observation) {
+            result.observation.note = [result.observation.note, ...replyNotes].filter(Boolean).join("; ")
+          } else {
+            for (const test of result.tests ?? []) {
+              if (test.status === "test-failure") {
+                test.reason = [test.reason, ...replyNotes].filter(Boolean).join("; ")
+              }
+            }
+          }
         }
         return result
       } finally {
