@@ -343,6 +343,10 @@ const DECRQSS_DECSCL: DeviceReply = {
  */
 const TITLE_STACK_UNIMPLEMENTED_AUDITS: ReadonlyMap<string, string> = new Map([
   [
+    "5c38594a17329b24e826f785d3156d6e498490517835f12b0730eeab2fc63da7",
+    "ghostty 5714ed07a1012573261b7b7e3ed2add9c1504496 src/terminal/stream.zig:1825-1843 dispatches .title_push and .title_pop; src/termio/stream_handler.zig:343-346 has .title_push, .title_pop => {} // Unimplemented, and termless vendor/ghostty-web/ghostty-wasm-api.patch:675-676 (inner patch sha256 70a624b6, WASM 5c38594a, 31392) keeps .title_push and .title_pop as no-ops",
+  ],
+  [
     "d80a8110258a124fb6ff52a6fe149b8e39b5180d986907cc9fb7dc9143c3f3d9",
     "ghostty 5714ed07a1012573261b7b7e3ed2add9c1504496 src/terminal/stream.zig:1825-1843 dispatches .title_push and .title_pop; src/termio/stream_handler.zig:343-346 has .title_push, .title_pop => {} // Unimplemented, and termless vendor/ghostty-web/ghostty-wasm-api.patch keeps .title_push and .title_pop as no-ops",
   ],
