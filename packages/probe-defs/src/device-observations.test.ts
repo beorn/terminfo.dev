@@ -965,14 +965,57 @@ describe("device contracts without prior coverage", () => {
     } as unknown as LibProbeSource)
     expect(feeds).toEqual(["\x1b]2;test-title\x07"])
     expect(headlessResult.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
-    // A different title is malformed for this query rather than a measured negative:
-    // XTWINOPS 21 has no contradiction rule, unlike XTWINOPS 20.
+    // A complete answer with a different title contradicts the exact-title criterion.
     const other = probe.headless({
       feed: () => undefined,
       feedCapture: () => "\x1b]lother-title\x07",
     } as unknown as LibProbeSource)
-    expect(other.observation).toMatchObject({ outcome: "inconclusive", reason: "invalid-reply" })
+    expect(other.observation).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
+    expect(other.assertions).toMatchObject([{ kind: "negative", observed: "\x1b]lother-title\x07" }])
   })
+
+  test.each(["app", "lib-query", "lib-capture"] as const)(
+    "XTWINOPS 21 %s distinguishes complete title answers from incomplete, unrelated and late output",
+    async (route) => {
+      const probe = callback("device.xtwinops-21")
+      const run = async (raw: string, reason: TerminalQueryOutcome["reason"] = "reply") => {
+        const script = terminalScript({ "\x1b[21t": { raw, reason } })
+        if (route === "app") {
+          return probe.terminal({ ...script.ctx, write: () => undefined })
+        }
+        if (route === "lib-query") {
+          return probe.headless({ ...script.lib, feed: () => undefined })
+        }
+        return probe.headless({ feed: () => undefined, feedCapture: () => raw } as unknown as LibProbeSource)
+      }
+      for (const terminator of ["\x07", "\x1b\\"]) {
+        for (const payload of ["", "other-title", "test-title-plus"]) {
+          const frame = `\x1b]l${payload}${terminator}`
+          const result = await run(frame)
+          expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
+          expect(result.assertions).toMatchObject([{ kind: "negative", observed: frame }])
+          expect(result.response).toBe(frame)
+        }
+        const frame = `\x1b]ltest-title${terminator}`
+        const result = await run(frame)
+        expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
+        expect(result.assertions).toMatchObject([{ kind: "positive", observed: frame }])
+      }
+      for (const raw of ["\x1b]l", "\x1b]lother-title", "\x1b]lother-title\x1b]4;1;rgb:00/00/00\x07"]) {
+        const result = await run(raw)
+        expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "invalid-reply" })
+        expect(result.assertions).toBeUndefined()
+      }
+      for (const raw of ["\x1b]Lother-icon\x07", "\x1b]52;c;Zm9v\x07"]) {
+        const result = await run(raw)
+        expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "no-response" })
+        expect(result.assertions).toBeUndefined()
+      }
+      const late = await run("\x1b[?62;52;c\x1b]lother-title\x07", "sentinel")
+      expect(late.observation).toMatchObject({ outcome: "inconclusive", reason: "no-response" })
+      expect(late.assertions).toBeUndefined()
+    },
+  )
 
   // 27914: xterm's XTREPORTCOLORS reply carries a DEC-private `?` the documented
   // CSI Pm # Q form does not show (measured: CSI ? 0 ; 1 # Q on xterm 411, while
@@ -1009,18 +1052,18 @@ describe("device contracts without prior coverage", () => {
   })
 })
 
-// Actual run772ff2a6, vterm source1cfc325f/tree2ee13d2: no font/window geometry.
+// Actual run388fa7b54f74bfe5d9bfbecef7e4d924, vterm source53a9eb9/tree617ae60: no font/window geometry.
 // Q8 requires independent review of this context limit, never automatic Untestable.
 const geometryRuntime = {
   kind: "js",
   adapterVersion: "0.10.2",
-  termlessRevision: "f57e9d6b4add561f37e21c8e679d28c617111be6",
+  termlessRevision: "8b8664540f365fa0ba1d9b6400d3c4d1a160582c",
   resolvedPath: "vendor/vterm/packages/vterm/src/index.ts",
   integrity: {
     kind: "source",
     repository: "git@github.com:beorn/vterm.git",
-    revision: "1cfc325f3aedd4617e437ee76e6a03fc2cc16438",
-    treeOid: "2ee13d2cb894e86ee9575dd6945f42028df44966",
+    revision: "53a9eb9291b7880f4dc6a39a6802301049997a72",
+    treeOid: "617ae6002c7befea7b3e43d11bf23e6b433e3d65",
     cleanTree: true,
   },
   runtimeFormat: "js",
