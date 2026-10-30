@@ -117,11 +117,16 @@ test.each(retainedDeccolm.rows)("DECCOLM retained $engine state survives the str
     results: repaired.results,
     assertions: repaired.assertions,
   }
-  expect(() =>
-    parseRun(sample.engine, JSON.stringify(captured), manifest.catalogIds, new Map([[manifest.probeHash, manifest]]), {
+  const parsed = parseRun(
+    sample.engine,
+    JSON.stringify(captured),
+    manifest.catalogIds,
+    new Map([[manifest.probeHash, manifest]]),
+    {
       mode: "capture",
-    }),
-  ).not.toThrow()
+    },
+  )
+  expect(parsed.results).toMatchObject([{ featureId: definition.id, status: sample.expected }])
   expect(
     repaired.assertions.every(
       (assertion) => assertion.kind === (sample.expected === "supported" ? "positive" : "negative"),
