@@ -1148,6 +1148,17 @@ function colorStackResult(
 
 /** Source identities qualify a required review, never the target effect itself. */
 const ABSENT_OSC_ENGINES = {
+  vt100: {
+    kind: "source",
+    engineVersion: "0.9.0",
+    resolvedPath: "vendor/vterm/packages/vt100/src/index.ts",
+    repository: "git@github.com:beorn/vterm.git",
+    revision: "53a9eb9291b7880f4dc6a39a6802301049997a72",
+    treeOid: "5ffc7ad9ae120d0bf93c64b0fdc712eb40892896",
+    codes: [9, 22, 176, 440, 555, 666, 710, 777, 3008],
+    sourceCitation:
+      "vt100 53a9eb9291b7880f4dc6a39a6802301049997a72 packages/vt100/src/screen.ts:504-520 handleOSC switch, cases 0/1/2 only",
+  },
   vterm: {
     kind: "source",
     engineVersion: "0.9.0",
@@ -1218,7 +1229,7 @@ function sourceAbsentOsc(id: string, code: number, sequence: string, effect: str
       },
       sentinel.char === "X" ? undefined : "No rendered X cell to evaluate",
       sentinel.char === "X"
-        ? audit.kind === "source" && code === 9
+        ? audit === ABSENT_OSC_ENGINES.vterm && code === 9
           ? `${audit.sourceCitation}; screen.ts:3921-3923 notification sink stores every OSC 9 value, with no progress subcode or state interpretation; independent source review required`
           : `${audit.sourceCitation}: no case ${code} or ${effect} target writer; independent source review required`
         : undefined,

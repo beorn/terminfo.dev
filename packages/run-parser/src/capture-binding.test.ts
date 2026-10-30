@@ -28,7 +28,8 @@ import {
 } from "@terminfo/probe-defs"
 import { fakeProbeResult } from "@terminfo/probe-defs/testing/fake-probe-result"
 import { applyCaptureDecision, retainCaptureBinding, parseRun, decodeCollectorDraft } from "./index.ts"
-import { finalizeHeadlessAttempt } from "../../probes/headless-batch.ts"
+import { finalizeHeadlessAttempt, createLibProbeSource } from "../../probes/headless-batch.ts"
+import { createVt100Backend } from "@termless/vt100"
 import { libProbeSource } from "../../probe-defs/src/testing/group-harness.ts"
 import { createSemanticSurface } from "../../probe-defs/src/testing/semantic-surface.ts"
 
@@ -759,6 +760,88 @@ const setup = (
   }
   return { draft, artifact, decision }
 }
+
+// Generic source-review fixtures cannot catch an unqualified real producer or its lost source citation.
+it("vt100 OSC9 source review reaches the canonical decision consumer without vterm's notification citation", () => {
+  const featureId = "extensions.osc9-progress"
+  const definition = ALL_PROBES.find((entry) => entry.id === featureId)
+  const backend = createVt100Backend()
+  backend.init({ cols: 80, rows: 24 })
+  try {
+    const { draft, artifact, decision } = setup(
+      undefined,
+      { runId: "vt100-osc9-review", startedAt: "2026-10-30T16:00:00.000Z" },
+      (draft) => {
+        if (!definition?.lib) throw new Error("Missing OSC9 library callback")
+        draft.intendedSubject = { kind: "lib", id: "vt100", version: "0.9.0" }
+        draft.subject!.version = "0.9.0"
+        // Exact collector-input identity; this fixture does not attest a loaded production engine.
+        draft.runtimeIdentity = {
+          kind: "js",
+          runtimeFormat: "js",
+          engineVersion: "0.9.0",
+          adapterVersion: "0.10.2",
+          termlessRevision: "8b8664540f365fa0ba1d9b6400d3c4d1a160582c",
+          resolvedPath: "vendor/vterm/packages/vt100/src/index.ts",
+          integrity: {
+            kind: "source",
+            repository: "git@github.com:beorn/vterm.git",
+            revision: "53a9eb9291b7880f4dc6a39a6802301049997a72",
+            treeOid: "5ffc7ad9ae120d0bf93c64b0fdc712eb40892896",
+            cleanTree: true,
+          },
+        }
+        const result = definition.lib(createLibProbeSource(backend, undefined, draft.runtimeIdentity, undefined))
+        expect(result.criterionBranch).toBe("source-negative-review")
+        expect(result.tests?.[0]?.reason).toContain("screen.ts:504-520 handleOSC switch, cases 0/1/2 only")
+        expect(result.tests?.[0]?.reason).not.toContain("notification sink")
+        expect(JSON.parse(result.response!)).toMatchObject({ sentinel: { char: "X" } })
+        draft.rawReplies[featureId] = result.response!
+        draft.rawReplies["collector.collectionAttempt"] = JSON.stringify({
+          ids: [featureId],
+          startedAt: "2026-10-30T16:00:00.000Z",
+        })
+        draft.assertions = result.assertions!.map((assertion) => ({ ...assertion, featureId, rawReplyRef: featureId }))
+        draft.results = [
+          recordExecutedProbe({
+            featureId,
+            attempt: { scope: "probe", startedAt: "2026-10-30T16:00:00.000Z" },
+            observation: result.observation && { ...result.observation, featureId, rawReplyRef: featureId },
+            assertions: draft.assertions,
+            tests: result.tests,
+            criterionBranch: result.criterionBranch,
+          }),
+        ]
+      },
+    )
+    expect(draft.results[0]!.status).toBe("test-failure")
+    const originals = { assertions: structuredClone(draft.assertions), rawReplies: structuredClone(draft.rawReplies) }
+    decision.decision = "unsupported"
+    decision.reason =
+      "Independent source review: vt100's exact OSC9 progress criterion has no handler or target writer at the pinned source."
+    applyCaptureDecision(draft, JSON.stringify(decision), "2026-10-30T16:01:00.000Z")
+    const manifest = {
+      probeHash: draft.probeHash,
+      adapterVersion: "3",
+      catalogIds: [featureId],
+      probes: { term: [], lib: [featureId], mux: [] },
+    }
+    const parsed = parseRun(
+      "vt100-osc9.json",
+      JSON.stringify(sealRunDraft(draft)),
+      [featureId],
+      new Map([[draft.probeHash, manifest]]),
+    )
+    expect(parsed.results?.[0]?.status).toBe("unsupported")
+    expect(parsed.results?.[0]?.reviewRef).toBe(`collector.review.${decision.id}`)
+    expect(parsed.rawReplies[artifact.rawReplyRef]).toBe(artifact.source)
+    for (const [key, value] of Object.entries(originals.rawReplies)) expect(parsed.rawReplies[key]).toBe(value)
+    expect(parsed.assertions.slice(0, originals.assertions.length)).toEqual(originals.assertions)
+    expect(parsed.assertions).toHaveLength(originals.assertions.length + 1)
+  } finally {
+    backend.destroy()
+  }
+})
 
 // The generic branch fixtures cannot catch a real definition left null: no review or binding is then produced.
 it.each(["device.term-features", "erase.screen.scrollback"])(
