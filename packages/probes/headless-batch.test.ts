@@ -35,6 +35,8 @@ import { join } from "node:path"
 import { afterEach, beforeEach, expect, test, vi } from "vitest"
 import { collectBatch, createLibProbeSource, feedCapture } from "./headless-batch.ts"
 import { finalizeCollectedDraft } from "../terminfo.dev/src/capture-writer.ts"
+import { cellWidthTransition } from "../probe-defs/src/helpers.ts"
+import retainedDeccolm from "./fixtures/deccolm-retained.json"
 
 /** Feature captures only; collector qualification metadata is asserted in sentinel-member.test.ts. */
 function probeReplies(batch: Awaited<ReturnType<typeof collectBatch>>) {
@@ -45,6 +47,38 @@ function probeReplies(batch: Awaited<ReturnType<typeof collectBatch>>) {
 async function backend() {
   return createXtermBackend()
 }
+
+// Callback-only tests missed the eight real collector refusals. Replay only their retained
+// state through the deciding callback and collector; this fixture does not execute these engines.
+test.each(retainedDeccolm.rows)("DECCOLM retained $engine state survives the strict collector", async (sample) => {
+  const definition = ALL_PROBES.find((entry) => entry.id === "modes.deccolm")!
+  const reads = JSON.parse(sample.raw) as Parameters<typeof cellWidthTransition>[0]
+  const callback = cellWidthTransition(reads)
+  expect(callback.response).toBe(sample.raw)
+  const collect = (result: ProbeCallbackResult) =>
+    collectBatch(backend, "xtermjs", [{ ...definition, lib: () => result }])
+  const legacy = await collect({
+    ...callback,
+    assertions: sample.legacyAssertions.map((assertion) => ({
+      ...assertion,
+      assertionType: "buffer_state" as const,
+      kind: assertion.kind === "positive" ? ("positive" as const) : ("negative" as const),
+    })),
+  })
+  expect(legacy.results).toMatchObject([{ status: "test-failure" }])
+  expect(legacy.results[0]!.tests[0]!.reason).toContain("lacks matching raw state and assertion")
+  expect(legacy.rawReplies[definition.id]).toBe(sample.raw)
+  const repaired = await collect(callback)
+  expect(repaired.results).toMatchObject([{ status: sample.expected, assertionType: "buffer_state" }])
+  expect(repaired.rawReplies[definition.id]).toBe(sample.raw)
+  expect(repaired.assertions[0]!.observed).toBe(sample.raw)
+  expect(
+    repaired.assertions.every(
+      (assertion) => assertion.kind === (sample.expected === "supported" ? "positive" : "negative"),
+    ),
+  ).toBe(true)
+  expect(callback.observation?.note).toContain(`initial=${reads.initial.kind === "width" ? reads.initial.width : ""}`)
+})
 
 // The old null arm left this real-source feature unattempted; fake callback tests cannot
 // catch a missing registry schedule or actuator forward at the production recorder boundary.

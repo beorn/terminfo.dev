@@ -1275,21 +1275,27 @@ export function cellWidthTransition(reads: CellWidthTransitionReads): ProbeCallb
     observation: {
       outcome: moved ? "supported" : "unsupported",
       assertionType: "buffer_state",
-      ...(refusedYetMoved && { note: refusedYetMoved }),
+      note: [`initial=${initial}, enabled=${reads.enabled.width}, restored=${reads.restored.width}`, refusedYetMoved]
+        .filter((part) => part !== undefined)
+        .join("; "),
     },
     assertions: [
       {
         assertionType: "buffer_state",
         kind: moved ? "positive" : "negative",
         expected: `DECCOLM changes measured columns ${initial} -> ${target} -> ${initial} with ?40 honoured`,
-        observed: `initial=${initial}, enabled=${reads.enabled.width}, restored=${reads.restored.width}`,
+        observed: response,
       },
-      {
-        assertionType: "buffer_state",
-        kind: "positive",
-        expected: `?40 closed holds the width at ${initial} when mode 3 is set, before and after the transition`,
-        observed: `gateBefore=${reads.gateBefore.width}, gateAfter=${reads.gateAfter.width}`,
-      },
+      ...(moved
+        ? [
+            {
+              assertionType: "buffer_state",
+              kind: "positive",
+              expected: `?40 closed holds the width at ${initial} when mode 3 is set, before and after the transition`,
+              observed: `gateBefore=${reads.gateBefore.width}, gateAfter=${reads.gateAfter.width}`,
+            } as const,
+          ]
+        : []),
     ],
   }
 }
