@@ -21,6 +21,11 @@ import * as xterm from "@termless/xtermjs"
 import { readCallLog } from "viprobe"
 import { captureEraseCalls, replayEraseCalls } from "./erase-replay.ts"
 
+vi.mock("@termless/xtermjs", async (original) => {
+  const actual = await original<typeof import("@termless/xtermjs")>()
+  return { ...actual, createXtermBackend: vi.fn(actual.createXtermBackend) }
+})
+
 test("real erase calls replay twice without opening a terminal backend", async (context) => {
   let latestStart: string | undefined
   const openedAt: Array<string | undefined> = []
@@ -31,17 +36,19 @@ test("real erase calls replay twice without opening a terminal backend", async (
     latestStart = dateString.call(new Date(start + tick++))
     return latestStart
   })
-  const createBackend = xterm.createXtermBackend
-  const opened = vi.spyOn(xterm, "createXtermBackend").mockImplementation(() => {
+  const createBackend = vi.mocked(xterm.createXtermBackend)
+  const actualCreateBackend = createBackend.getMockImplementation()
+  if (!actualCreateBackend) throw new Error("xterm backend mock lost its original implementation")
+  createBackend.mockImplementation(() => {
     openedAt.push(latestStart)
-    return createBackend()
+    return actualCreateBackend()
   })
   let captured: ReturnType<typeof captureEraseCalls>
   try {
     captured = captureEraseCalls(context)
   } finally {
     clock.mockRestore()
-    opened.mockRestore()
+    createBackend.mockImplementation(actualCreateBackend)
   }
   expect(openedAt).toHaveLength(11)
   for (const startedAt of openedAt) expect(startedAt).toEqual(expect.any(String))
@@ -220,7 +227,8 @@ test("real erase calls replay twice without opening a terminal backend", async (
   expect(() =>
     readEraseCapture(directory, substituteRaw("collector.callLog", JSON.stringify(unknownLog)), expected),
   ).toThrow(/version/)
-  const open = vi.spyOn(xterm, "createXtermBackend").mockImplementation(() => {
+  createBackend.mockClear()
+  const open = createBackend.mockImplementation(() => {
     throw new Error("Offline erase replay opened a live backend")
   })
   try {
@@ -231,7 +239,7 @@ test("real erase calls replay twice without opening a terminal backend", async (
     }
     expect(open).not.toHaveBeenCalled()
   } finally {
-    open.mockRestore()
+    createBackend.mockImplementation(actualCreateBackend)
     rmSync(directory, { recursive: true, force: true })
   }
 })
