@@ -908,7 +908,7 @@
     "tags": ["dec-private-modes", "xterm-extensions"],
     "group": "alt-screen",
     "body": "DECSET 1049 switches to the alternate screen buffer and saves the cursor position. The sequence is <code>ESC [ ? 1049 h</code>. The alternate screen is a separate buffer used by full-screen TUI applications (vim, less, htop, tmux) so they can render without disturbing the user's scrollback history.\n\nWhen the application exits and sends DECRST 1049, the terminal restores the original buffer contents and cursor position — the user's previous shell output reappears as if the TUI never ran. This is why closing vim brings back the terminal content that was there before.\n\nMode 1049 combines three operations: save cursor (DECSC), switch to alt screen (?47), and clear the alt screen. Universally supported in modern terminals.",
-    "probe": "App probe: query DECRPM for private mode 1049 with <code>CSI ? 1049 $ p</code>. Expected: set, reset or permanently set (Ps 1-3) is supported as mode recognition only; permanently reset (Ps 4) is unsupported, because the terminal knows the mode and cannot set it. Not recognized (Ps 0) is inconclusive, and no reply is TEST FAILURE. The App probe does not measure the alternate-buffer switch or cursor restore. Headless: with two primary rows seeded and the cursor parked, <code>CSI ? 1049 h</code> must switch to a cleared alternate buffer; a seeded span that is not blank is unsupported. The full seeded roundtrip is supported only when, after <code>CSI ? 1049 l</code>, both primary rows and the saved cursor are restored and the alternate marker has not leaked. A restore failure after a clean entry is inconclusive, because it cannot be attributed to entry; a fixture too small or a failed readback is also inconclusive.",
+    "probe": "App probe: query DECRPM for private mode 1049 with <code>CSI ? 1049 $ p</code>. Expected: DECRPM mode 1049 can be set.",
     "baseline": "core",
     "sequence": "ESC [ ? 1049 h"
   },
@@ -2153,7 +2153,7 @@
     "url": "https://contour-terminal.org/vt-extensions/color-palette-update-notifications/",
     "tags": ["xterm-extensions"],
     "body": "Private mode 2031 enables unsolicited notifications when the terminal's color scheme changes between dark and light. When enabled, the terminal sends <code>CSI ? 997 ; Ps n</code> (DECDSR) whenever the scheme changes, where Ps=1 for dark and Ps=2 for light.\n\nApplications can also synchronously query the current scheme via <code>CSI ? 997 n</code> (DECDSR 997). This solves a longstanding problem for TUI applications that need to adapt their color palette to the terminal's dark/light mode. Supported by iTerm2 (3.6.6+), tmux 3.6, Contour, foot, and kitty.",
-    "probe": "App probe: query DECRPM for mode 2031 with <code>CSI ? 2031 $ p</code>. Expected: set, reset or permanently set (Ps 1-3) is supported as recognition of color-scheme reporting; permanently reset (Ps 4) and not recognized (Ps 0) are unsupported, and no reply is TEST FAILURE. This does not test scheme update events.",
+    "probe": "App probe: query DECRPM for mode 2031 with <code>CSI ? 2031 $ p</code>. Expected: DECRPM mode 2031 can be set.",
     "baseline": "modern"
   },
   "modes.xtpushsgr": {
