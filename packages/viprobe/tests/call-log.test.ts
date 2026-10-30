@@ -5,7 +5,7 @@
  * @testonly none
  */
 import { expect, test } from "vitest"
-import { createCallLog, IncompleteReplay, readCallLog, withCallLog } from "../src/call-log.ts"
+import { createCallLog, IncompleteReplay, readCallLog, withCallLog } from "../src/index.ts"
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value)
@@ -48,7 +48,92 @@ test("canonical artifacts roundtrip byte-for-byte and replay real nested callbac
   expect(JSON.stringify(loaded)).toBe(bytes)
 })
 
+test("array validation rejects getters without evaluating persisted code", async () => {
+  const { bytes } = await capturedCallback()
+  const stored = record(JSON.parse(bytes))
+  if (!Array.isArray(stored.calls)) throw new Error("expected fixture calls")
+  const first = stored.calls[0]
+  let invoked = 0
+  Object.defineProperty(stored.calls, "0", {
+    configurable: true,
+    enumerable: true,
+    get() {
+      invoked++
+      return first
+    },
+  })
+  expect.soft(() => readCallLog(stored)).toThrow(IncompleteReplay)
+  expect(invoked).toBe(0)
+})
+
+test.each([null, false, 3, "scalar", { kind: "function" }])("rejects non-object root %j even without calls", (root) => {
+  expect(() => readCallLog({ format: "viprobe.call-log", version: 1, root, calls: [] })).toThrow(IncompleteReplay)
+})
+
+test("a completed empty object remains a valid zero-call capture", () => {
+  const log = createCallLog()
+  withCallLog({}, { mode: "record", log }).finish()
+  const bytes = JSON.stringify(log)
+  const loaded = readCallLog(JSON.parse(bytes))
+  withCallLog<object>(null, { mode: "replay", log: loaded }).finish()
+  expect(JSON.stringify(loaded)).toBe(bytes)
+})
+
+test("recording a callable root cannot silently bypass capture", () => {
+  expect(() => withCallLog(() => "uncaptured", { mode: "record", log: createCallLog() })).toThrow(IncompleteReplay)
+})
+
+test("special values and array metadata survive persisted replay", () => {
+  const subject = {
+    read: () => ({
+      negativeZero: -0,
+      numbers: [NaN, Infinity, -Infinity],
+      bigint: 42n,
+      bytes: new Uint8Array([0, 255]),
+      pattern: /x/gi,
+      set: new Set([undefined, 2]),
+      match: Object.assign(["x"], { index: 0, input: "x", groups: undefined }),
+    }),
+  }
+  const inspect = (context: typeof subject) => {
+    const value = context.read()
+    expect.soft(Object.is(value.negativeZero, -0)).toBe(true)
+    expect(Number.isNaN(value.numbers[0])).toBe(true)
+    expect(value.numbers.slice(1)).toEqual([Infinity, -Infinity])
+    expect(value.bigint).toBe(42n)
+    expect(value.bytes[1]).toBe(255)
+    expect(value.pattern.source).toBe("x")
+    expect(value.pattern.flags).toBe("gi")
+    expect(value.set.has(undefined)).toBe(true)
+    expect(value.match.index).toBe(0)
+    expect(value.match.input).toBe("x")
+    expect(Object.hasOwn(value.match, "groups")).toBe(true)
+    expect(value.match.groups).toBeUndefined()
+  }
+  const log = createCallLog()
+  const capture = withCallLog(subject, { mode: "record", log })
+  inspect(capture.context)
+  capture.finish()
+  const bytes = JSON.stringify(log)
+  const replay = withCallLog<typeof subject>(null, { mode: "replay", log: readCallLog(JSON.parse(bytes)) })
+  inspect(replay.context)
+  replay.finish()
+})
+
 const invalidArtifacts: Array<[string, (value: Record<string, unknown>) => void]> = [
+  [
+    "sparse calls",
+    (value) => {
+      value.calls = new Array(2)
+    },
+  ],
+  [
+    "extra array fields",
+    (value) => {
+      if (!Array.isArray(value.calls)) throw new Error("expected fixture calls")
+      Reflect.set(value.calls, "extra", true)
+    },
+  ],
   [
     "untagged private v1",
     (value) => {

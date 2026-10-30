@@ -128,7 +128,20 @@ function artifactKeys(value: Record<string, unknown>, path: string, required: st
 
 function artifactArray(value: unknown, path: string): unknown[] {
   if (!Array.isArray(value)) invalidArtifact(path, "expected array")
-  return value
+  if (
+    Object.getPrototypeOf(value) !== Array.prototype ||
+    Object.getOwnPropertySymbols(value).length ||
+    Object.getOwnPropertyNames(value).length !== value.length + 1
+  ) {
+    invalidArtifact(path, "expected dense array data without extra fields")
+  }
+  return Array.from({ length: value.length }, (_, index) => {
+    const descriptor = Object.getOwnPropertyDescriptor(value, String(index))
+    if (!descriptor || !("value" in descriptor))
+      invalidArtifact(`${path}[${index}]`, "expected array data, not a getter or hole")
+    const member: unknown = descriptor.value
+    return member
+  })
 }
 
 function artifactString(value: unknown, path: string): string {
@@ -282,6 +295,9 @@ export function readCallLog(input: unknown): CallLog {
   if (value.format !== "viprobe.call-log" || value.version !== 1)
     invalidArtifact("artifact", "unsupported format or version")
   const root = readEncoded(value.root, "root")
+  if (root === null || typeof root !== "object" || !["object", "array", "set", "bytes", "regexp"].includes(root.kind)) {
+    invalidArtifact("root", "recorded context must be an object")
+  }
   const calls = artifactArray(value.calls, "calls").map((item, id): MethodCall => {
     const path = `calls[${id}]`
     const call = artifactObject(item, path)
@@ -329,7 +345,7 @@ export function readCallLog(input: unknown): CallLog {
   })
   // Validate every graph reference before exposing a handle or any replay callback.
   for (const call of calls) {
-    let receiver = root
+    let receiver: Encoded = root
     let memberPath = call.path.slice("context.".length)
     for (const reference of call.path.matchAll(/#([0-9]+)/g)) {
       const parent = calls[Number(reference[1])]
@@ -428,7 +444,10 @@ export function withCallLog<Subject extends object>(
   function encode(input: unknown, seen = new Set<object>()): Encoded {
     const value = input && typeof input === "object" ? (originals.get(input) ?? input) : input
     if (value === null || typeof value === "string" || typeof value === "boolean") return value
-    if (typeof value === "number") return Number.isFinite(value) ? value : { kind: "number", value: String(value) }
+    if (typeof value === "number") {
+      if (Object.is(value, -0)) return { kind: "number", value: "-0" }
+      return Number.isFinite(value) ? value : { kind: "number", value: String(value) }
+    }
     if (typeof value === "undefined") return { kind: "undefined" }
     if (typeof value === "bigint") return { kind: "bigint", value: String(value) }
     if (typeof value === "function") return { kind: "function" }
@@ -687,7 +706,8 @@ export function withCallLog<Subject extends object>(
   }
 
   if (mode === "record") {
-    if (!subject) throw new Error("Record mode requires its live subject")
+    if (!subject || typeof subject !== "object")
+      throw new IncompleteReplay("record mode requires a live object context")
     if (state.started) throw new IncompleteReplay("record mode requires a fresh call log")
     state.started = true
     log.root = encode(subject)
