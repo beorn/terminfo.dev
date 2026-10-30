@@ -7,6 +7,7 @@ import {
   tooSmall,
   validSize,
   HEADLESS_OBSERVABLE_REVIEW,
+  libvtermHistoryReview,
 } from "./helpers.ts"
 import { regionReadbackProbes, type RegionReadbackRow } from "./region-readback-kind.ts"
 
@@ -372,6 +373,8 @@ export const scrollbackProbes: ProbeDefinition[] = [
     ...probe(
       "scrollback.accumulate",
       (ctx) => {
+        const review = libvtermHistoryReview(ctx)
+        if (review) return review
         const baseline = ctx.getScrollback()
         const rows = baseline.screenLines
         if (!validSize(rows, 1) || !validSize(ctx.cols, `line ${rows + 9}`.length)) {
@@ -462,6 +465,8 @@ export const scrollbackProbes: ProbeDefinition[] = [
     ...probe(
       "scrollback.total-lines",
       (ctx) => {
+        const review = libvtermHistoryReview(ctx)
+        if (review) return review
         const baseline = ctx.getScrollback()
         const rows = baseline.screenLines
         if (!validSize(rows, 1) || !validSize(ctx.cols, `line ${rows + 9}`.length)) {

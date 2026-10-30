@@ -102,6 +102,13 @@ contradiction, with no review row. An undeclared missing scroll control keeps or
 Scripted callback tests cover these branches and the exact two-phase arithmetic independently of
 engine versions; historical captures and grades are unchanged.
 
+ED3 and the two history-count library callbacks share an internal libvterm0.3.3 source/API review.
+It requires both the exact clean libvterm package tree and the loaded WASM hash, with the declared
+source repository, runtime format and versions. That branch performs no history reads or writes:
+the adapter reports screen extent, while retained history belongs to an embedding application.
+It retains the runtime and source citations for required independent review, without deciding
+Untestable or a negative. Every other identity keeps its existing measured criterion.
+
 **Callback and stored shapes are different.** Follow these names in [types.ts](src/types.ts):
 
 - `ProbeCallbackResult` has three arms: a measured `observation`; `notTested` coverage naming a missing semantic observable; or execution-only, nonempty TODO/FAILURE `tests`, each with a mandatory reason. Execution-only callbacks have no observation, assertions or coverage. Callbacks can select a criterion branch.

@@ -1,6 +1,6 @@
 import type { ObservationFrame, ProbeDefinition, ProbeCallbackResult, TermProbeSource } from "./types.ts"
 import { regionReadbackProbes, type RegionReadbackRow } from "./region-readback-kind.ts"
-import { probe, parserStateResult, notTestedResult } from "./helpers.ts"
+import { probe, parserStateResult, notTestedResult, libvtermHistoryReview } from "./helpers.ts"
 
 /**
  * The nine measured Erase rows, as one region-readback kind table (28450; @cto 218ec7fe's rule
@@ -481,6 +481,8 @@ export const eraseProbes: ProbeDefinition[] = [
     ...probe(
       "erase.screen.scrollback",
       (ctx) => {
+        const review = libvtermHistoryReview(ctx)
+        if (review) return review
         const expected = "ED3 removes measured scrollback while keeping screen geometry"
         const initial = ctx.getScrollback()
         const rows = initial.screenLines
