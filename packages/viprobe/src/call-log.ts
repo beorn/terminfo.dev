@@ -101,6 +101,268 @@ export function createCallLog(): CallLog {
   })
 }
 
+function invalidArtifact(path: string, reason: string): never {
+  throw new IncompleteReplay(`call log ${path}: ${reason}`)
+}
+
+function artifactObject(value: unknown, path: string): Record<string, unknown> {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) invalidArtifact(path, "expected object")
+  const prototype: unknown = Object.getPrototypeOf(value)
+  if (prototype !== Object.prototype && prototype !== null) invalidArtifact(path, "unexpected prototype")
+  if (Object.getOwnPropertySymbols(value).length) invalidArtifact(path, "symbol keys are not persisted fields")
+  return Object.fromEntries(
+    Object.entries(Object.getOwnPropertyDescriptors(value)).map(([key, descriptor]) => {
+      if (!("value" in descriptor)) invalidArtifact(`${path}.${key}`, "persisted getters are not data")
+      const member: unknown = descriptor.value
+      return [key, member]
+    }),
+  )
+}
+
+function artifactKeys(value: Record<string, unknown>, path: string, required: string[], optional: string[] = []): void {
+  const allowed = new Set([...required, ...optional])
+  if (required.some((key) => !Object.hasOwn(value, key)) || Object.keys(value).some((key) => !allowed.has(key))) {
+    invalidArtifact(path, "missing or unknown fields")
+  }
+}
+
+function artifactArray(value: unknown, path: string): unknown[] {
+  if (!Array.isArray(value)) invalidArtifact(path, "expected array")
+  return value
+}
+
+function artifactString(value: unknown, path: string): string {
+  if (typeof value !== "string") invalidArtifact(path, "expected string")
+  return value
+}
+
+function artifactNumber(value: unknown, path: string): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) invalidArtifact(path, "expected finite number")
+  return value
+}
+
+function readEncoded(input: unknown, path: string, ancestors = new Set<object>()): Encoded {
+  if (input === null || typeof input === "string" || typeof input === "boolean") return input
+  if (typeof input === "number") return artifactNumber(input, path)
+  const value = artifactObject(input, path)
+  if (typeof input !== "object" || input === null || ancestors.has(input)) invalidArtifact(path, "cyclic encoding")
+  ancestors.add(input)
+  const nested = (item: unknown, name: string) => readEncoded(item, `${path}.${name}`, ancestors)
+  const entries = (): Array<[string, Encoded]> => {
+    const keys = new Set<string>()
+    return artifactArray(value.entries, `${path}.entries`)
+      .map((entry, index): [string, Encoded] => {
+        const pair = artifactArray(entry, `${path}.entries[${index}]`)
+        if (pair.length !== 2) invalidArtifact(path, "encoded entry must be a pair")
+        const key = artifactString(pair[0], `${path}.entries[${index}].key`)
+        if (keys.has(key)) invalidArtifact(path, `duplicate encoded key ${key}`)
+        if (value.kind === "array" && (key === "length" || /^(0|[1-9][0-9]*)$/.test(key))) {
+          invalidArtifact(path, "array extra entry overwrites indexed storage")
+        }
+        keys.add(key)
+        return [key, nested(pair[1], `entries[${index}].value`)]
+      })
+      .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+  }
+  try {
+    switch (value.kind) {
+      case "undefined":
+      case "function":
+      case "accessor":
+        artifactKeys(value, path, ["kind"])
+        return { kind: value.kind }
+      case "number":
+      case "bigint":
+      case "bytes": {
+        artifactKeys(value, path, ["kind", "value"])
+        const encoded = artifactString(value.value, `${path}.value`)
+        if (value.kind === "number" && !["NaN", "Infinity", "-Infinity", "-0"].includes(encoded)) {
+          invalidArtifact(path, "invalid special number")
+        }
+        if (value.kind === "bigint" && (!/^-?(0|[1-9][0-9]*)$/.test(encoded) || encoded === "-0")) {
+          invalidArtifact(path, "invalid bigint")
+        }
+        if (value.kind === "bytes" && Buffer.from(encoded, "base64").toString("base64") !== encoded) {
+          invalidArtifact(path, "invalid canonical base64")
+        }
+        return { kind: value.kind, value: encoded }
+      }
+      case "regexp": {
+        artifactKeys(value, path, ["kind", "value", "flags"])
+        const source = artifactString(value.value, `${path}.value`)
+        const flags = artifactString(value.flags, `${path}.flags`)
+        try {
+          const expression = new RegExp(source, flags)
+          if (expression.source !== source || expression.flags !== flags) invalidArtifact(path, "noncanonical regexp")
+        } catch {
+          invalidArtifact(path, "invalid regexp")
+        }
+        return { kind: "regexp", value: source, flags }
+      }
+      case "set":
+        artifactKeys(value, path, ["kind", "values"])
+        return {
+          kind: "set",
+          values: artifactArray(value.values, `${path}.values`).map((item, i) => nested(item, `values[${i}]`)),
+        }
+      case "array":
+        artifactKeys(value, path, ["kind", "values", "entries"])
+        return {
+          kind: "array",
+          values: artifactArray(value.values, `${path}.values`).map((item, i) => nested(item, `values[${i}]`)),
+          entries: entries(),
+        }
+      case "object":
+        artifactKeys(value, path, ["kind", "entries"])
+        return { kind: "object", entries: entries() }
+      default:
+        return invalidArtifact(path, "unknown encoded value kind")
+    }
+  } finally {
+    ancestors.delete(input)
+  }
+}
+
+function readOutcome(value: Record<string, unknown>, path: string): Outcome {
+  if (value.finished !== true || typeof value.asynchronous !== "boolean")
+    invalidArtifact(path, "unfinished or invalid outcome")
+  const timing = artifactObject(value.timing, `${path}.timing`)
+  artifactKeys(timing, `${path}.timing`, ["startedAtMs", "startedPerformanceMs", "settledAtMs", "settledPerformanceMs"])
+  const parsed: Outcome = {
+    finished: true,
+    asynchronous: value.asynchronous,
+    timing: {
+      startedAtMs: artifactNumber(timing.startedAtMs, `${path}.startedAtMs`),
+      startedPerformanceMs: artifactNumber(timing.startedPerformanceMs, `${path}.startedPerformanceMs`),
+      settledAtMs: artifactNumber(timing.settledAtMs, `${path}.settledAtMs`),
+      settledPerformanceMs: artifactNumber(timing.settledPerformanceMs, `${path}.settledPerformanceMs`),
+    },
+  }
+  if (Object.hasOwn(value, "value") === Object.hasOwn(value, "error"))
+    invalidArtifact(path, "requires exactly one value or error")
+  if (Object.hasOwn(value, "value")) parsed.value = readEncoded(value.value, `${path}.value`)
+  else {
+    const error = artifactObject(value.error, `${path}.error`)
+    artifactKeys(error, `${path}.error`, ["name", "message"])
+    parsed.error = {
+      name: artifactString(error.name, `${path}.error.name`),
+      message: artifactString(error.message, `${path}.error.message`),
+    }
+  }
+  return parsed
+}
+
+function encodedMember(value: Encoded, key: string, path: string): Encoded {
+  if (value === null || typeof value !== "object") return invalidArtifact(path, "method reference traverses a scalar")
+  if (value.kind === "object" || value.kind === "array") {
+    const entry = value.entries.find(([name]) => name === key)
+    if (entry) return entry[1]
+    if (value.kind === "array" && /^(0|[1-9][0-9]*)$/.test(key)) {
+      const item = value.values[Number(key)]
+      if (item !== undefined) return item
+    }
+  }
+  const prototypes: Partial<Record<NonNullable<Exclude<Encoded, string | number | boolean>>["kind"], object>> = {
+    object: Object.prototype,
+    array: Array.prototype,
+    set: Set.prototype,
+    regexp: RegExp.prototype,
+    bytes: Uint8Array.prototype,
+  }
+  const prototype = prototypes[value.kind]
+  const descriptor = prototype && Object.getOwnPropertyDescriptor(prototype, key)
+  if (descriptor && typeof descriptor.value === "function") return { kind: "function" }
+  if (descriptor?.get) return { kind: "accessor" }
+  return invalidArtifact(path, `missing encoded member ${key}`)
+}
+
+export function readCallLog(input: unknown): CallLog {
+  const value = artifactObject(input, "artifact")
+  artifactKeys(value, "artifact", ["format", "version", "root", "calls"])
+  if (value.format !== "viprobe.call-log" || value.version !== 1)
+    invalidArtifact("artifact", "unsupported format or version")
+  const root = readEncoded(value.root, "root")
+  const calls = artifactArray(value.calls, "calls").map((item, id): MethodCall => {
+    const path = `calls[${id}]`
+    const call = artifactObject(item, path)
+    artifactKeys(
+      call,
+      path,
+      ["id", "path", "args", "callbacks", "timing", "finished", "asynchronous"],
+      ["value", "error"],
+    )
+    if (call.id !== id) invalidArtifact(path, "call IDs must match their ordered position")
+    const method = artifactString(call.path, `${path}.path`)
+    if (!method.startsWith("context.")) invalidArtifact(path, "invalid method path")
+    const args = artifactArray(call.args, `${path}.args`).map((arg, i) => readEncoded(arg, `${path}.args[${i}]`))
+    const callbacks = artifactArray(call.callbacks, `${path}.callbacks`).map((item, index): CallbackCall => {
+      const callbackPath = `${path}.callbacks[${index}]`
+      const callback = artifactObject(item, callbackPath)
+      artifactKeys(
+        callback,
+        callbackPath,
+        ["argument", "args", "path", "timing", "finished", "asynchronous"],
+        ["value", "error"],
+      )
+      const argument = artifactNumber(callback.argument, `${callbackPath}.argument`)
+      const target = args[argument]
+      if (
+        !Number.isSafeInteger(argument) ||
+        argument < 0 ||
+        !target ||
+        typeof target !== "object" ||
+        target.kind !== "function"
+      ) {
+        invalidArtifact(callbackPath, "callback must reference a function argument")
+      }
+      if (callback.path !== `${method}#${id}.callback${index}`) invalidArtifact(callbackPath, "invalid callback path")
+      return {
+        ...readOutcome(callback, callbackPath),
+        argument,
+        path: callback.path,
+        args: artifactArray(callback.args, `${callbackPath}.args`).map((arg, i) =>
+          readEncoded(arg, `${callbackPath}.args[${i}]`),
+        ),
+      }
+    })
+    return { ...readOutcome(call, path), id, path: method, args, callbacks }
+  })
+  // Validate every graph reference before exposing a handle or any replay callback.
+  for (const call of calls) {
+    let receiver = root
+    let memberPath = call.path.slice("context.".length)
+    for (const reference of call.path.matchAll(/#([0-9]+)/g)) {
+      const parent = calls[Number(reference[1])]
+      if (!parent || parent.id >= call.id || !call.path.startsWith(`${parent.path}#${parent.id}.`))
+        invalidArtifact(call.path, "dangling or forward call reference")
+      const suffix = call.path.slice((reference.index ?? 0) + reference[0].length)
+      const result = /^\.result(?=\.|#|$)/.exec(suffix)
+      const callback = /^\.callback([0-9]+)\.arg([0-9]+)(?=\.|#|$)/.exec(suffix)
+      const target = result
+        ? parent.value
+        : callback
+          ? parent.callbacks[Number(callback[1])]?.args[Number(callback[2])]
+          : undefined
+      if (target === undefined) invalidArtifact(call.path, "invalid outcome or callback argument reference")
+      receiver = target
+      const remainder = suffix.slice((result ?? callback)?.[0].length ?? 0)
+      if (!remainder.startsWith(".")) invalidArtifact(call.path, "reference has no member path")
+      memberPath = remainder.slice(1)
+    }
+    const accessor = memberPath.endsWith("#get")
+    if (accessor) memberPath = memberPath.slice(0, -4)
+    for (const member of memberPath.split(".")) receiver = encodedMember(receiver, member, call.path)
+    if (receiver === null || typeof receiver !== "object" || receiver.kind !== (accessor ? "accessor" : "function")) {
+      invalidArtifact(call.path, "method path does not identify a callable member")
+    }
+  }
+  return new CallLogHandle({
+    data: { format: "viprobe.call-log", version: 1, root, calls },
+    started: true,
+    complete: true,
+  })
+}
+
 function namedError(error: unknown): { name: string; message: string } {
   return error instanceof Error
     ? { name: error.name, message: error.message }
