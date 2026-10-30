@@ -863,7 +863,7 @@
     "tags": ["xterm-extensions"],
     "baseline": "modern",
     "body": "The fixterms/CSI u encoding reports keypresses as CSI codepoint ; modifiers u sequences. This was the precursor to the Kitty keyboard protocol and provides unambiguous key identification for terminal applications.\n\nCSI u came from the 'fixterms' effort to repair ambiguous keyboard input without replacing the whole terminal protocol. It reports Unicode code points plus modifiers, making Ctrl-I distinguishable from Tab and Ctrl-M from Enter. Kitty's keyboard protocol is the richer successor, but CSI u remains an important compatibility step.",
-    "probe": "Query keyboard mode flags and check if the terminal supports CSI u encoding for key events. Expected: the acknowledged flags include mask 1."
+    "probe": "Query keyboard mode flags. Expected: the acknowledged flags include mask 1."
   },
   "input.pixel-mouse": {
     "name": "Pixel Mouse Reporting (1016)",
