@@ -390,9 +390,11 @@ export function createLibProbeSource(
     getScrollback() {
       return backend.getScrollback()
     },
-    scrollViewport(delta: number) {
-      backend.scrollViewport(delta)
-    },
+    ...(backend.capabilities.productViewport?.available !== false && {
+      scrollViewport(delta: number) {
+        backend.scrollViewport(delta)
+      },
+    }),
     getTitle() {
       return backend.getTitle()
     },

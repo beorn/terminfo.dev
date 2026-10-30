@@ -812,6 +812,8 @@ export interface LibProbeSource {
     osc8Hyperlinks: boolean
     semanticPrompts: boolean
     reflow: boolean
+    /** Audited library-interface absence; undefined is undeclared. Retain the reason in capture state. */
+    productViewport?: { available: false; reason: string }
     unicode: string
     extensions: Set<string>
   }

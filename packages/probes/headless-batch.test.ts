@@ -8,6 +8,7 @@
 /* oxlint-disable typescript/no-deprecated -- Exercise the production TerminalBackend adapter boundary. */
 import { createXtermBackend } from "@termless/xtermjs"
 import { createVtermBackend } from "@termless/vterm"
+import { createWeztermBackend } from "@termless/wezterm"
 import { resolve as resolveLibvterm } from "@termless/libvterm"
 import { resolve as resolveVt100 } from "@termless/vt100"
 import { resolve as resolveVt220 } from "@termless/vt220"
@@ -18,6 +19,9 @@ import {
   ALL_PROBES,
   SEMANTIC_PROMPT_SOURCE_REVIEW,
   HARNESS_INCOMPLETE_TEST,
+  HEADLESS_OBSERVABLE_REVIEW,
+  initializeRunDraft,
+  type CapturedRunDraft,
   type ProbeCallbackResult,
   type ProbeDefinition,
 } from "@terminfo/probe-defs"
@@ -30,6 +34,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, beforeEach, expect, test, vi } from "vitest"
 import { collectBatch, createLibProbeSource, feedCapture } from "./headless-batch.ts"
+import { finalizeCollectedDraft } from "../terminfo.dev/src/capture-writer.ts"
 
 /** Feature captures only; collector qualification metadata is asserted in sentinel-member.test.ts. */
 function probeReplies(batch: Awaited<ReturnType<typeof collectBatch>>) {
@@ -96,20 +101,128 @@ test("the real viewport Scrollback contract replays deterministically and satisf
   }
 })
 
-test("real vterm partial drift is inconclusive rather than an unqualified negative", async () => {
+// #31804 repaired the pinned engine's anchor; #31803 merges second and retains the real witness.
+test("real vterm holds the absolute viewport anchor in both output phases", async () => {
   const probe = ALL_PROBES.find((entry) => entry.id === "scrollback.viewport-hold-output")
   if (!probe?.lib) throw new Error("Missing scrollback.viewport-hold-output headless callback")
   const backend = await createVtermBackend()
   backend.init({ cols: 80, rows: 24 })
   try {
     const result = probe.lib(createLibProbeSource(backend, undefined, undefined, undefined))
-    expect(result.observation?.outcome).toBe("inconclusive")
-    expect(result.assertions).toBeUndefined()
-    expect(JSON.parse(result.response!)).toMatchObject({ ordinary: { outcome: "drift" } })
+    expect(result.observation?.outcome).toBe("supported")
+    expect(result.assertions).toMatchObject([{ kind: "positive", assertionType: "buffer_state" }])
+    expect(JSON.parse(result.response!)).toMatchObject({
+      ordinary: { outcome: "hold", markerObserved: true },
+      synchronized: { outcome: "hold", markerObserved: true },
+    })
   } finally {
     backend.destroy()
   }
 })
+
+// Scripted callback tests cannot detect a producer declaration lost at the real adapter/collector/writer boundary.
+// These are private unit captures: no source-derived Untestable decision or identity verification is applied.
+test.each([
+  ["wezterm", async () => createWeztermBackend()],
+  ["libvterm", resolveLibvterm],
+] as const)(
+  "retains %s viewport absence through production collection and immutable writer binding",
+  async (name, producer) => {
+    const id = "scrollback.viewport-hold-output"
+    const declaredBackend = await producer()
+    const declaration = declaredBackend.capabilities.productViewport
+    expect(declaration).toMatchObject({
+      available: false,
+      reason: expect.stringContaining(name === "wezterm" ? "Screen" : "libvterm"),
+    })
+    declaredBackend.destroy()
+    // Carry the real producer's declaration on the existing JS harness: absence performs no engine I/O,
+    // and this transport contract must run without the optional WezTerm native addon (including hosted CI).
+    // An xterm-named carrier also proves omission is capability-derived rather than an engine-name list.
+    const factory = async () => {
+      const value = createXtermBackend()
+      value.capabilities.productViewport = declaration
+      return value
+    }
+    const instance = await factory()
+    instance.init({ cols: 80, rows: 24 })
+    try {
+      const source = createLibProbeSource(instance, undefined, undefined, undefined)
+      expect(source.capabilities.productViewport).toEqual(declaration)
+      expect(source.scrollViewport).toBeUndefined()
+    } finally {
+      instance.destroy()
+    }
+    const draft = initializeRunDraft({
+      source: { kind: "live" },
+      runId: `viewport-absence-${name}`,
+      sourceRevision: "a".repeat(40),
+      intendedSubject: { kind: "lib", id: name },
+      manifest: {
+        schemaVersion: 4,
+        probeHash: "viewport-absence-suite",
+        adapterVersion: "3",
+        catalogIds: [id],
+        probes: { term: [], mux: [], lib: [id] },
+      },
+    })
+    const batch = await collectBatch(factory, name, registryDefinitions([id]), draft)
+    expect(batch.results).toMatchObject([
+      {
+        featureId: id,
+        status: "test-todo",
+        criterionBranch: HEADLESS_OBSERVABLE_REVIEW,
+        tests: [{ id: "review", status: "test-todo", reason: declaration!.reason }],
+      },
+    ])
+    expect(batch.observations).toEqual([])
+    expect(batch.assertions).toEqual([])
+    expect(JSON.parse(batch.rawReplies[id]!)).toMatchObject({ productViewport: declaration, runtimeIdentity: null })
+    const captured: CapturedRunDraft = {
+      ...draft,
+      subject: {
+        kind: "lib",
+        id: name,
+        version: "unit-fixture",
+        os: "linux",
+        osVersion: null,
+        outerTerminal: null,
+        mux: null,
+        config: null,
+        permissions: null,
+      },
+      identity: "unverified",
+      measuredAt: "2026-10-30T01:00:00.000Z",
+      origin: { kind: "collector" },
+      rawReplies: { ...draft.rawReplies, ...batch.rawReplies },
+      assertions: batch.assertions,
+      results: batch.results,
+    }
+    const finalized = finalizeCollectedDraft(captured)
+    expect(finalized.sealedAt).toBeUndefined()
+    if (finalized.sealedAt !== undefined) throw new Error("Expected pending viewport review draft")
+    expect(finalized.results).toEqual(batch.results)
+    const key = `collector.capture.${id}`
+    const binding = finalized.rawReplies[key]!
+    expect(JSON.parse(binding)).toMatchObject({
+      featureId: id,
+      criterionBranch: HEADLESS_OBSERVABLE_REVIEW,
+      rawReplyRefs: expect.arrayContaining([expect.objectContaining({ key: id })]),
+    })
+    // A declaration removed or reason changed after collection must bind different bytes, never reuse approval.
+    for (const mutation of ["declaration", "reason"]) {
+      const changed = structuredClone(captured)
+      const raw = JSON.parse(changed.rawReplies[id]!) as { productViewport?: { available: false; reason: string } }
+      if (mutation === "declaration") delete raw.productViewport
+      else raw.productViewport!.reason += " changed audit"
+      changed.rawReplies[id] = JSON.stringify(raw)
+      expect(finalizeCollectedDraft(changed).rawReplies[key]).not.toBe(binding)
+      const alreadyBound = structuredClone(finalized)
+      alreadyBound.rawReplies[id] = changed.rawReplies[id]!
+      expect(() => retainCaptureBinding(alreadyBound, id)).toThrow()
+    }
+  },
+)
 
 // libvterm exposes no mode getter; its real cell behavior still decides wrapping.
 test("null mode metadata classes A/B retain measured wrapping, unknown cleanup and raw state", async () => {
