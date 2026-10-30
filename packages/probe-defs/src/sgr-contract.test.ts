@@ -342,3 +342,60 @@ test.each([
   expect(run(null, " ").criterionBranch).toBeUndefined()
   expect(run(null, " ").assertions).toBeUndefined()
 })
+
+// #31766: these causes came from the retained VT100/VT220/libvterm/Rust states.
+// A reset without a distinct colored seed is unmeasured, even when its parser lacks the setup.
+test.each(["sgr.fg.default", "sgr.bg.default", "sgr.underline-color-reset"])(
+  "%s names its missing colored seed as TODO without changing the retained state",
+  (id) => {
+    const probe = sgrProbes.find((entry) => entry.id === id)!
+    const cells: TableCell[] = [
+      { char: "C", underline: "single" },
+      { char: "X" },
+      { char: id === "sgr.underline-color-reset" ? "Y" : "R" },
+    ]
+    const result = probe.lib!(libProbeSource(cellsModel(cells)))
+    expect(result.criterionBranch).toBe("headless-observable-review")
+    expect(result.tests).toContainEqual(
+      expect.objectContaining({
+        id: "review",
+        status: "test-todo",
+        reason: expect.stringContaining("distinct colored seed"),
+      }),
+    )
+    expect(result.assertions).toBeUndefined()
+    const state = JSON.parse(result.response!)
+    expect(state.before).toMatchObject({ char: "X", fg: null, bg: null, underlineColor: null })
+    expect(state.after.char).toBe(cells[2]!.char)
+
+    // A missing fixture cell is a different cause; it must not inherit the seed TODO.
+    const missing = probe.lib!(libProbeSource(cellsModel([{ char: " " }, ...cells.slice(1)])))
+    expect(missing.tests?.some((row) => row.status === "test-todo")).not.toBe(true)
+  },
+)
+
+test.each(["sgr.selective-reset.bold", "sgr.selective-reset.italic"])(
+  "%s keeps an incomplete compound criterion as a named FAILURE",
+  (id) => {
+    const probe = sgrProbes.find((entry) => entry.id === id)!
+    const result = probe.lib!(
+      libProbeSource(
+        cellsModel([
+          { char: "C", dim: null, italic: null },
+          { char: "X", bold: true, dim: null, italic: null },
+          { char: "Y", bold: id.endsWith("italic"), dim: null, italic: null },
+        ]),
+      ),
+    )
+    expect(result.criterionBranch).toBe("source-negative-review")
+    expect(result.tests).toContainEqual(
+      expect.objectContaining({
+        id: "review",
+        status: "test-failure",
+        reason: expect.stringContaining("complete compound criterion pending"),
+      }),
+    )
+    expect(result.observation?.outcome).toBe("inconclusive")
+    expect(JSON.parse(result.response!).before).toMatchObject({ bold: true, dim: null, italic: null })
+  },
+)

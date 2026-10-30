@@ -9,6 +9,8 @@ import type {
 import { frameDigests } from "./types.ts"
 import {
   parserStateResult,
+  reviewResult,
+  HEADLESS_OBSERVABLE_REVIEW,
   sameRgb,
   sgrProbe,
   sgrCaptureFrames,
@@ -510,7 +512,7 @@ function measuredReset(
       expected,
       state,
       undefined,
-      `${unshown.join(" and ")} on the styled setup cell in the headless readback`,
+      `complete compound criterion pending: ${unshown.join(" and ")} on the styled setup cell in the headless readback`,
     )
   }
   return parserStateResult(
@@ -832,13 +834,8 @@ function defaultColorProbe(id: string, channel: ColorChannel): ProbeDefinition {
         if (!changed || sameCellColor(baseColor, changed) || resetColor === undefined) {
           // #30701, @cto ruling C: the colored X is the reference the reset is read against; a setup
           // that reads back as the default leaves the reset with no observable.
-          return parserStateResult(
-            null,
-            expected,
-            state,
-            undefined,
-            `a colored ${channel} setup cell (SGR ${setup}) distinct from the default, and the reset cell's ${channel}, in the headless readback`,
-          )
+          const reason = `No distinct colored seed for ${id}: a colored ${channel} setup cell (SGR ${setup}) distinct from the default, and the reset cell's ${channel}, in the headless readback`
+          return reviewResult(HEADLESS_OBSERVABLE_REVIEW, reason, reason, state)
         }
         return parserStateResult(sameCellColor(baseColor, resetColor), expected, state)
       },
@@ -1057,7 +1054,8 @@ export const sgrProbes: ProbeDefinition[] = [
           "X has explicit underline rgb(255,0,128); SGR 59 restores Y to the measured reset-state C color"
         const framed = baseline.char === "C" && before.char === "X" && after.char === "Y"
         if (framed && before.underlineColor == null) {
-          return parserStateResult(null, expected, state, undefined, UNDERLINE_COLOR_UNEXPOSED)
+          const reason = "No distinct colored seed for SGR 59: the setup cell exposes no explicit underline color"
+          return reviewResult(HEADLESS_OBSERVABLE_REVIEW, reason, reason, state)
         }
         if (
           baseline.char !== "C" ||
@@ -1077,7 +1075,9 @@ export const sgrProbes: ProbeDefinition[] = [
           !sameRgb(before.underlineColor, requestedUnderlineColor) ||
           (baseline.underlineColor && sameRgb(baseline.underlineColor, requestedUnderlineColor))
         ) {
-          return parserStateResult(null, expected, state, "Requested colored underline prerequisite was not observed")
+          const reason =
+            "No distinct colored seed for SGR 59: requested colored underline prerequisite was not observed"
+          return reviewResult(HEADLESS_OBSERVABLE_REVIEW, reason, reason, state)
         }
         if (after.underlineColor && sameRgb(after.underlineColor, before.underlineColor)) {
           return parserStateResult(false, expected, state)
