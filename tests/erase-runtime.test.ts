@@ -8,9 +8,26 @@
 import { mkdtemp, readFile, readdir, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
-import { expect, test } from "vitest"
+import { expect, test, vi } from "vitest"
 import { createVitest } from "vitest/node"
 import CensusReporter from "../packages/admin/reporter.ts"
+
+test("production erase configuration isolates reports for repeated invocations", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "terminfo-replay-config-"))
+  vi.doMock("../packages/probes/erase-store.ts", () => ({ ERASE_REPLAY_ROOT: directory }))
+  try {
+    const { default: configure } = await import("../packages/probes/erase.vitest.config.ts")
+    const first = await configure({ command: "serve", mode: "test" })
+    const second = await configure({ command: "serve", mode: "test" })
+    expect(first.test?.attachmentsDir).not.toBe(second.test?.attachmentsDir)
+    for (const config of [first, second]) {
+      expect(config.test?.attachmentsDir?.startsWith(directory + "/")).toBe(true)
+    }
+  } finally {
+    vi.doUnmock("../packages/probes/erase-store.ts")
+    await rm(directory, { recursive: true, force: true })
+  }
+})
 
 test.for(["success", "deciding", "precondition", "replay-failure", "painted-seed"] as const)(
   "actual erase entry persists domain results: %s",
