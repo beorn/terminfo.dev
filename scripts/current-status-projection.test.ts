@@ -97,6 +97,41 @@ function supportedBaseline() {
 // Existing selection tests exercise v1/v2 observation grading; they cannot prove that v3 selection
 // reads the stored five statuses and frozen denominator without applying later interpretations.
 describe("current execution projection", () => {
+  // #31713 AC1/AC2: a public cell must explain explicit nonselection without claiming an attempted test.
+  // Existing subset cases protect prior results and scores, but never inspect an untouched cell's explanation.
+  // @failure Unselected and selected-but-unstarted cells both lose their scheduling distinction in site/API output.
+  // @level l2 @consumer publicResults shared site/API mapping; no new production seam.
+  it("explains an unselected row separately from a selected but unstarted row", () => {
+    const results = todos().map((result) => ({ ...result, reason: "Required probe test has not started" }))
+    const value = raw(results)
+    const selectedIds = [ids[0]!, ids[2]!]
+    const run = parse({
+      ...value,
+      rawReplies: {
+        ...value.rawReplies,
+        "collector.selection": JSON.stringify({ ids: selectedIds }),
+        "collector.collectionAttempt": JSON.stringify({
+          ids: selectedIds,
+          result: "failed",
+          error: "Collection failed before any callback started",
+        }),
+      },
+    })
+    const retained = JSON.stringify(run.results)
+    const projection = projectResults([run], [], ids, { currentProbeHash: suite.probeHash }, [])
+    const published = publicResults(projection, new Map()).projection.contexts["term:kitty"]!
+    expect(published.cells[ids[1]!]!.attempt).toEqual({ scope: "none" })
+    expect(published.cells[ids[1]!]!.status).toBe("test-todo")
+    expect(published.cells[ids[2]!]!.reason ?? "").not.toMatch(/not selected/i)
+    expect(JSON.stringify(run.results)).toBe(retained)
+    expect(published.cells[ids[1]!]!.reason ?? "").toMatch(/not selected/i)
+    expect(published.cells[ids[1]!]!.presentation).toEqual({ state: "not-reviewed" })
+    const legacy = parse(value)
+    const legacyProjection = projectResults([legacy], [], ids, { currentProbeHash: suite.probeHash }, [])
+    const legacyPublic = publicResults(legacyProjection, new Map()).projection.contexts["term:kitty"]!
+    expect(legacyPublic.cells[ids[1]!]!.reason).toBeUndefined()
+  })
+
   // CTO contract: only contributing original dates may supersede a reviewed host generation.
   // Existing cell-composition cases do not exercise the picker or a newer no-output attempt.
   it("does not let a newer attempt supersede original evidence from another host generation", () => {

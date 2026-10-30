@@ -1,6 +1,7 @@
 /** The sole site/API mapping. Presentation decisions are not repository privacy controls. */
 import { createHash } from "node:crypto"
 import { resultTextQualification } from "../../packages/run-parser/src/observations.ts"
+import { isEnvironmentGroup, readCollectorSelection } from "@terminfo/probe-defs"
 import type {
   ProbeResult,
   ProbeStatus,
@@ -330,6 +331,17 @@ export function publicResults(projection: SelectedProjection, subjects: Readonly
     const decision = version.presentations[result.featureId]
     const approved = decision?.presentsEvidence === true
     const hold = result.tests.find((check) => check.id === "console-host")?.reason
+    const selection =
+      result.status === "test-todo" && result.attempt.scope === "none" && !isEnvironmentGroup(result.featureId)
+        ? readCollectorSelection(version.rawReplies)
+        : undefined
+    // Scheduling facts explain an untouched row without presenting unreviewed callback evidence.
+    const reason =
+      selection && !selection.ids.includes(result.featureId)
+        ? "Not selected for this collection; no test was attempted."
+        : approved
+          ? result.reason
+          : undefined
     const mapped: PublicProbeResult = {
       featureId: result.featureId,
       status: result.status,
@@ -342,7 +354,7 @@ export function publicResults(projection: SelectedProjection, subjects: Readonly
         ...(check.assertionRefs && { assertionRefs: [...check.assertionRefs] }),
       })),
       ...(result.assertionType && { assertionType: result.assertionType }),
-      ...(approved && result.reason !== undefined && { reason: result.reason }),
+      ...(reason !== undefined && { reason }),
       ...(hold !== undefined && { hold }),
       presentation: { state: "not-reviewed" },
     }
