@@ -525,7 +525,8 @@ function kittyClickEventsLib(ctx: LibProbeSource): ProbeCallbackResult {
     "Click inside a main-screen OSC 133 prompt marked click_events=1 reports SGR mouse while mouse modes are off"
   const csi = MOUSE_SET.slice(0, 2)
   ctx.feed(MOUSE_SET)
-  let control: string | null
+  let control: string | null = null
+  let controlCompleted = false
   try {
     control = decodeMouseReport(encodeMouse({ x: cell.x, y: cell.y, button: "left", action: "press" }))
     if (control === null) {
@@ -552,12 +553,14 @@ function kittyClickEventsLib(ctx: LibProbeSource): ProbeCallbackResult {
       throw new Error(`click delivery control ${JSON.stringify(control)} carries no SGR cell coordinates`)
     }
     encodeMouse({ x: cell.x, y: cell.y, button: "left", action: "release" })
-  } catch (error) {
-    ctx.feed(MOUSE_RESET)
-    throw error
+    controlCompleted = true
+  } finally {
+    if (!controlCompleted) {
+      ctx.feed(MOUSE_RESET)
+    }
   }
-  const observedBase = { marker: "OSC 133;A;click_events=1", control, pointer: targetPoint }
   try {
+    const observedBase = { marker: "OSC 133;A;click_events=1", control, pointer: targetPoint }
     const pad = " ".repeat(Math.max(0, targetPoint.x - 2))
     ctx.feed(`${csi}${String(targetPoint.y)};1H${KITTY_CLICK_START}$ ${pad}`)
     ctx.feed(MOUSE_RESET)

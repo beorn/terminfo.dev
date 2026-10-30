@@ -1047,18 +1047,34 @@ test("input.kitty-click-events declares libAssertionType input_bytes and returns
   expect(undeclaredMethod.observation).toBeUndefined()
 })
 
-test("input.kitty-click-events library arm returns inconclusive when the 1000+1006 delivery control returns null", () => {
+test("input.kitty-click-events library arm returns inconclusive when the 1000+1006 delivery control returns null and resets mouse modes", () => {
   const feeds: string[] = []
   const events: LibMouseEvent[] = []
+  let modesOn = false
+  let calls = 0
   const ctx = libMouseSource(
     {
-      encodeMouse: () => null,
+      encodeMouse: (event) => {
+        calls += 1
+        if (calls === 1) return null
+        return modesOn ? sgrBytes(0, event.x + 1, event.y + 1) : null
+      },
     },
     feeds,
     events,
   )
+  const origFeed = ctx.feed.bind(ctx)
+  ctx.feed = (text: string) => {
+    origFeed(text)
+    if (text.includes("?1000h") && text.includes("?1006h")) modesOn = true
+    if (text.includes("?1006l") && text.includes("?1000l")) modesOn = false
+  }
   const result = probe("input.kitty-click-events").lib!(ctx)
   expect(events).toHaveLength(1)
+  expect(modesOn).toBe(false)
+  expect(feeds.at(-1)).toContain("?1006l")
+  expect(feeds.at(-1)).toContain("?1000l")
+  expect(ctx.encodeMouse!({ x: 4, y: 2, button: "left", action: "press" })).toBeNull()
   expect(result.observation).toMatchObject({
     outcome: "inconclusive",
     reason: "insufficient-evidence",
@@ -1068,11 +1084,17 @@ test("input.kitty-click-events library arm returns inconclusive when the 1000+10
   expect(result.assertions).toBeUndefined()
 })
 
-test("input.kitty-click-events library arm throws when delivery control returns non-SGR bytes without coordinates", () => {
-  const ctx = libMouseSource({
-    encodeMouse: () => new TextEncoder().encode("not-sgr"),
-  })
+test("input.kitty-click-events library arm throws when delivery control returns non-SGR bytes without coordinates and resets mouse modes", () => {
+  const feeds: string[] = []
+  const ctx = libMouseSource(
+    {
+      encodeMouse: () => new TextEncoder().encode("not-sgr"),
+    },
+    feeds,
+  )
   expect(() => probe("input.kitty-click-events").lib!(ctx)).toThrow(/coordinates|delivery control/i)
+  expect(feeds.at(-1)).toContain("?1006l")
+  expect(feeds.at(-1)).toContain("?1000l")
 })
 
 test("input.kitty-click-events library arm returns inconclusive when the modes-off negative control outside the prompt still emits a report (C4)", () => {
