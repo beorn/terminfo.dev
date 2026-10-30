@@ -350,7 +350,7 @@ function seedColorReadback(capture: (write: string) => string, slot: string, pat
     setterRaw,
     seededRaw,
     color,
-    verified: setterRaw === "" && frame === seededRaw && color !== null && sameRgb(color, seededCurrentColor),
+    verified: setterRaw === "" && frame === seededRaw && color !== null && sameRgbText(color, seededCurrentColor),
   }
 }
 
@@ -803,7 +803,12 @@ function colorResetProbe(setCode: number, resetCode: number, index?: number): Pr
         // events, so OSC 4 grades the engine-delivered (index, rgb) event and OSC 104 grades the
         // typed restore event rather than the restored default value, which is ours (#31735, @cto 863bef67).
         if (indexed && before && seeded && !sameRgbCells(before, seed) && sameRgbCells(seeded, seed)) {
-          if (same && fresh && sameRgbCells(fresh, before) && !(restored && sameRgb(restored, seededCurrentColor))) {
+          if (
+            same &&
+            fresh &&
+            sameRgbCells(fresh, before) &&
+            !(restored && sameRgbText(restored, seededCurrentColor))
+          ) {
             return answer(
               parserStateResult(
                 true,
@@ -842,7 +847,7 @@ function colorResetProbe(setCode: number, resetCode: number, index?: number): Pr
             ),
           )
         }
-        if (control.verified && restored && sameRgb(restored, seededCurrentColor)) {
+        if (control.verified && restored && sameRgbText(restored, seededCurrentColor)) {
           return answer({
             pass: false,
             response,
@@ -905,7 +910,7 @@ function colorResetProbe(setCode: number, resetCode: number, index?: number): Pr
           },
         }
       }
-      if (!sameRgb(changed, requested)) {
+      if (!sameRgbText(changed, requested)) {
         if (highlightColorSlot) {
           return {
             pass: false,
@@ -920,7 +925,7 @@ function colorResetProbe(setCode: number, resetCode: number, index?: number): Pr
         }
         return colorSetIgnoredResult(response, setCode)
       }
-      const pass = sameRgb(restored, original)
+      const pass = sameRgbText(restored, original)
       return {
         pass,
         response,
@@ -988,7 +993,7 @@ function colorSetIgnoredResult(response: string, setCode: number): ProbeCallback
   }
 }
 
-function sameRgb(left: string, right: string): boolean {
+function sameRgbText(left: string, right: string): boolean {
   const channels = (color: string) =>
     color
       .slice(4)
@@ -1000,7 +1005,7 @@ function sameRgb(left: string, right: string): boolean {
 }
 
 function probeForeground(before: string): string {
-  return sameRgb(before, "rgb:aa/bb/cc") ? "rgb:12/34/56" : "rgb:aa/bb/cc"
+  return sameRgbText(before, "rgb:aa/bb/cc") ? "rgb:12/34/56" : "rgb:aa/bb/cc"
 }
 
 /**
@@ -1057,10 +1062,10 @@ async function colorResetAppProbe(
       },
     }
   }
-  if (!sameRgb(changed.rgb, requested)) {
+  if (!sameRgbText(changed.rgb, requested)) {
     return colorSetIgnoredResult(response, spec.setCode)
   }
-  const pass = sameRgb(restored.rgb, before.rgb)
+  const pass = sameRgbText(restored.rgb, before.rgb)
   return {
     pass,
     response,
@@ -1115,8 +1120,8 @@ function colorStackResult(
   restored: string,
   operation: "push" | "pop",
 ): ProbeCallbackResult {
-  const changedAsRequested = sameRgb(changed, requested)
-  const restoredOriginal = sameRgb(restored, before)
+  const changedAsRequested = sameRgbText(changed, requested)
+  const restoredOriginal = sameRgbText(restored, before)
   const pass = changedAsRequested && restoredOriginal
   const response = JSON.stringify({ before, changed, restored })
   const note = pass

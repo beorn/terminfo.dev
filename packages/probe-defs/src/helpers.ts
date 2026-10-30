@@ -1083,6 +1083,29 @@ export function isBlank(char: string): boolean {
   return char === "" || char === " "
 }
 
+export function validSize(value: number, minimum: number): boolean {
+  return Number.isSafeInteger(value) && value >= minimum
+}
+
+export function tooSmall(
+  ctx: TermProbeSource,
+  rows: number,
+  cols: number,
+  fixture = "Text fixture",
+): ProbeCallbackResult | undefined {
+  if (validSize(ctx.rows, rows) && validSize(ctx.cols, cols)) return undefined
+  return {
+    pass: false,
+    tests: [
+      {
+        id: "criterion",
+        status: "test-todo",
+        reason: `${fixture} needs at least ${rows}x${cols}; measured ${ctx.rows}x${ctx.cols}`,
+      },
+    ],
+  }
+}
+
 /**
  * Simple probe — for probes that need custom logic on both sides.
  */

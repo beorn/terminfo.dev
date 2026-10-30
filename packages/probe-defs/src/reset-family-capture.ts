@@ -10,11 +10,10 @@
  *   SGR 0) and reset.ts (reset.sgr) on owned contexts.
  * @testonly none
  */
-import type { RegionReadback } from "./region-readback.ts"
+import { SENTINEL, type RegionReadback } from "./region-readback.ts"
 
 /** The cells the row compares: the two YY cells, never the XX cells nor the witness. */
 const REGION = { top: 3, left: 5, bottom: 3, right: 6 } as const
-const SENTINEL = { row: 1, col: 1 } as const
 const CURSOR_ROW = 4
 
 /**

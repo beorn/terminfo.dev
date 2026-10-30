@@ -1,9 +1,5 @@
 import type { ProbeDefinition } from "./types.ts"
-import { parserStateResult, probe, utf8DecodingRefusal } from "./helpers.ts"
-
-function validSize(value: number, minimum: number): boolean {
-  return Number.isSafeInteger(value) && value >= minimum
-}
+import { parserStateResult, probe, utf8DecodingRefusal, validSize } from "./helpers.ts"
 
 export const unicodeProbes: ProbeDefinition[] = [
   {

@@ -42,6 +42,9 @@ import { utf8DecodingRefusal } from "./helpers.ts"
 export type CellRegion = CaptureCells
 export type PixelGeometry = CapturePixelGeometry
 
+/** The shared top-left paint-witness cell used by capture-region families whose target cells sit below row 1. */
+export const SENTINEL = { row: 1, col: 1 } as const
+
 /** One capture checkpoint's cell-aligned read, from a run whose capture adapter is installed. */
 export interface RegionCapture {
   /** Raw-pixel digest of the requested region. */

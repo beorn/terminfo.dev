@@ -1,5 +1,13 @@
-import type { ProbeDefinition, ProbeCallbackResult, TermProbeSource, LibProbeSource } from "./types.ts"
-import { probe, parserStateResult, notTestedResult, reviewResult, HEADLESS_OBSERVABLE_REVIEW } from "./helpers.ts"
+import type { ProbeDefinition, ProbeCallbackResult, LibProbeSource } from "./types.ts"
+import {
+  probe,
+  parserStateResult,
+  notTestedResult,
+  reviewResult,
+  tooSmall,
+  validSize,
+  HEADLESS_OBSERVABLE_REVIEW,
+} from "./helpers.ts"
 import { regionReadbackProbes, type RegionReadbackRow } from "./region-readback-kind.ts"
 
 /**
@@ -180,24 +188,6 @@ export const scrollbackReadbackRows: readonly RegionReadbackRow[] = [
     controlNote: "The measured rows did not move as a full-screen scroll, so the reset cannot be read",
   },
 ]
-
-function tooSmall(ctx: TermProbeSource, rows: number, cols: number): ProbeCallbackResult | undefined {
-  if (validSize(ctx.rows, rows) && validSize(ctx.cols, cols)) return undefined
-  return {
-    pass: false,
-    tests: [
-      {
-        id: "criterion",
-        status: "test-todo",
-        reason: `Scrollback fixture needs at least ${rows}x${cols}; measured ${ctx.rows}x${ctx.cols}`,
-      },
-    ],
-  }
-}
-
-function validSize(value: number, minimum: number): boolean {
-  return Number.isSafeInteger(value) && value >= minimum
-}
 
 /** Hold is measured at an inward anchor; output readability is checked only back at bottom. */
 function viewportHold(ctx: LibProbeSource): ProbeCallbackResult {
@@ -395,7 +385,7 @@ export const scrollbackProbes: ProbeDefinition[] = [
       async (ctx) => {
         const capture = ctx.capture
         if (capture) {
-          const refusal = tooSmall(ctx, 3, `line-${ctx.rows + 9}`.length)
+          const refusal = tooSmall(ctx, 3, `line-${ctx.rows + 9}`.length, "Scrollback fixture")
           if (refusal) return refusal
           try {
             ctx.write("\x1b[0m\x1b[2J\x1b[H")
@@ -435,7 +425,7 @@ export const scrollbackProbes: ProbeDefinition[] = [
             ctx.write("\x1b[0m\x1b[2J\x1b[H")
           }
         }
-        const refusal = tooSmall(ctx, 1, `line-${ctx.rows + 9}`.length)
+        const refusal = tooSmall(ctx, 1, `line-${ctx.rows + 9}`.length, "Scrollback fixture")
         if (refusal) return refusal
         const rows = ctx.rows
         ctx.write("\x1b[2J\x1b[H") // clear + home
@@ -486,7 +476,7 @@ export const scrollbackProbes: ProbeDefinition[] = [
       async (ctx) => {
         const capture = ctx.capture
         if (capture) {
-          const refusal = tooSmall(ctx, 5, `total-${ctx.rows + 9}`.length)
+          const refusal = tooSmall(ctx, 5, `total-${ctx.rows + 9}`.length, "Scrollback fixture")
           if (refusal) return refusal
           try {
             ctx.write("\x1b[0m\x1b[2J\x1b[H")
@@ -525,7 +515,7 @@ export const scrollbackProbes: ProbeDefinition[] = [
             ctx.write("\x1b[0m\x1b[2J\x1b[H")
           }
         }
-        const refusal = tooSmall(ctx, 5, `total-${ctx.rows + 9}`.length)
+        const refusal = tooSmall(ctx, 5, `total-${ctx.rows + 9}`.length, "Scrollback fixture")
         if (refusal) return refusal
         ctx.write("\x1b[2J\x1b[H") // clear
         for (let i = 0; i < ctx.rows + 10; i++) ctx.write(`total-${i}\n`)
