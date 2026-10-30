@@ -17,36 +17,76 @@ function callback(id: string) {
 
 // A consumed sentinel qualifies only the source-review evidence, never the audio, flash or font effect.
 test.each([
-  ["extensions.osc440-audio", "\x1b]440;bell.wav\x07"],
-  ["extensions.osc555-flash", "\x1b]555\x07"],
-  ["extensions.osc710-font-normal", "\x1b]710;monospace\x07"],
-])("%s retains a pinned vterm source-negative review only after its sentinel renders", (id, sequence) => {
-  const identity = {
-    kind: "js",
-    runtimeFormat: "js",
-    engineVersion: "0.9.0",
-    adapterVersion: "0.10.2",
-    termlessRevision: "2".repeat(40),
-    resolvedPath: "vendor/vterm/packages/vterm/src/index.ts",
-    integrity: {
-      kind: "source",
-      repository: "git@github.com:beorn/vterm.git",
-      revision: "53a9eb9291b7880f4dc6a39a6802301049997a72",
-      treeOid: "617ae6002c7befea7b3e43d11bf23e6b433e3d65",
-      cleanTree: true,
-    },
-  } as const
-  for (const mode of ["pinned", "no-sentinel", "foreign", "changed-source", "dirty"] as const) {
+  ["extensions.osc440-audio", "\x1b]440;bell.wav\x07", "vterm"],
+  ["extensions.osc555-flash", "\x1b]555\x07", "vterm"],
+  ["extensions.osc710-font-normal", "\x1b]710;monospace\x07", "vterm"],
+  ["extensions.osc9-progress", "\x1b]9;4;1;50\x07", "xtermjs"],
+  ["extensions.osc22-pointer", "\x1b]22;pointer\x07", "xtermjs"],
+  ["extensions.osc176-app-id", "\x1b]176;terminfo-test\x07", "xtermjs"],
+  ["extensions.osc440-audio", "\x1b]440;bell.wav\x07", "xtermjs"],
+  ["extensions.osc555-flash", "\x1b]555\x07", "xtermjs"],
+  ["extensions.osc666-termprop", "\x1b]666;test-prop=value\x07", "xtermjs"],
+  ["extensions.osc710-font-normal", "\x1b]710;monospace\x07", "xtermjs"],
+  ["extensions.osc777-notify", "\x1b]777;notify;test;body\x07", "xtermjs"],
+  ["extensions.osc3008-context", "\x1b]3008;type=test\x07", "xtermjs"],
+])("%s retains an audited source-negative review only after its sentinel renders", (id, sequence, engine) => {
+  // Collector-input identities from the retained runs, not a loaded-engine attestation.
+  const identity =
+    engine === "xtermjs"
+      ? ({
+          kind: "js",
+          runtimeFormat: "js",
+          engineVersion: "6.0.0",
+          adapterVersion: "0.10.2",
+          termlessRevision: "84003d2c91610fe2743142675234a0fb3ec9cf1d",
+          resolvedPath:
+            "node_modules/.bun/@xterm+headless@6.0.0/node_modules/@xterm/headless/lib-headless/xterm-headless.js",
+          integrity: {
+            kind: "registry",
+            lockIntegrity:
+              "sha512-5Yj1QINYCyzrZtf8OFIHi47iQtI+0qYFPHmouEfG8dHNxbZ9Tb9YGSuLcsEwj9Z+OL75GJqPyJbyoFer80a2Hw==",
+          },
+        } as const)
+      : ({
+          kind: "js",
+          runtimeFormat: "js",
+          engineVersion: "0.9.0",
+          adapterVersion: "0.10.2",
+          termlessRevision: "2".repeat(40),
+          resolvedPath: "vendor/vterm/packages/vterm/src/index.ts",
+          integrity: {
+            kind: "source",
+            repository: "git@github.com:beorn/vterm.git",
+            revision: "53a9eb9291b7880f4dc6a39a6802301049997a72",
+            treeOid: "617ae6002c7befea7b3e43d11bf23e6b433e3d65",
+            cleanTree: true,
+          },
+        } as const)
+  const modes = [
+    "pinned",
+    "no-sentinel",
+    "foreign",
+    ...(engine === "xtermjs" ? ["changed-lock", "wrong-version", "wrong-adapter"] : ["changed-source", "dirty"]),
+  ]
+  for (const mode of modes) {
     const writes: string[] = []
     const source = {
       runtimeIdentity: {
         ...identity,
+        engineVersion: mode === "wrong-version" ? "6.0.1" : identity.engineVersion,
+        adapterVersion: mode === "wrong-adapter" ? "foreign" : identity.adapterVersion,
         resolvedPath: mode === "foreign" ? "another-engine.ts" : identity.resolvedPath,
-        integrity: {
-          ...identity.integrity,
-          revision: mode === "changed-source" ? "3".repeat(40) : identity.integrity.revision,
-          cleanTree: mode !== "dirty",
-        },
+        integrity:
+          identity.integrity.kind === "source"
+            ? {
+                ...identity.integrity,
+                revision: mode === "changed-source" ? "3".repeat(40) : identity.integrity.revision,
+                cleanTree: mode !== "dirty",
+              }
+            : {
+                ...identity.integrity,
+                lockIntegrity: mode === "changed-lock" ? "foreign" : identity.integrity.lockIntegrity,
+              },
       },
       feed: (bytes: string) => writes.push(bytes),
       getCell: () => ({ char: mode === "no-sentinel" ? " " : "X" }),
@@ -57,7 +97,11 @@ test.each([
       expect(writes.join("")).toContain(sequence + "X")
       expect(result.criterionBranch).toBe("source-negative-review")
       expect(result.tests).toMatchObject([
-        { id: "review", status: "test-failure", reason: expect.stringContaining("53a9eb92") },
+        {
+          id: "review",
+          status: "test-failure",
+          reason: expect.stringContaining(engine === "vterm" ? "53a9eb92" : "17a90b65"),
+        },
       ])
       expect(result.observation).toMatchObject({ outcome: "inconclusive", assertionType: "buffer_state" })
       expect(JSON.parse(result.response!)).toMatchObject({
@@ -68,6 +112,10 @@ test.each([
       expect(result.assertions).toMatchObject([
         { kind: "negative", assertionType: "buffer_state", observed: result.response },
       ])
+      if (engine === "xtermjs") {
+        expect(JSON.parse(result.response!).runtimeIdentity).toEqual(identity)
+        expect(result.tests).toMatchObject([{ reason: expect.stringContaining("packages/xtermjs/src/backend.ts") }])
+      }
     } else {
       expect(result.criterionBranch).toBeUndefined()
       expect(result.assertions).toBeUndefined()
