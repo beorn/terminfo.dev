@@ -330,10 +330,13 @@ measured sentinel grace window uses the shared DECRPM criterion with its orderin
 Ps 4 is negative and Ps 0 is inconclusive. Later bytes outside the capture still fail at the collector.
 The generic mode-behavior grader is unchanged.
 
-Headless DECCOLM reads ordered CSI 18t geometry before the mode change, while changed, and after restoration.
-It enables the ?40 policy gate before switching 80→132→80, or reverses the order from an initial 132 columns.
-It uses existing `feedCapture`; `cols` remains the initialization reading. No resize is manufactured inside the probe.
-An unanswered first 18t names that missing observable; malformed or incomplete attempted geometry stays inconclusive.
+Headless DECCOLM decides width from five re-seeded 133-X cell/cursor sweeps, including closed-?40 controls
+before and after the enabled 80→132→80 transition (mirrored from an initial132). CSI18t only corroborates
+the sweeps; disagreement is a named failure and silence does not erase measured width. Both gates must hold.
+The deciding assertion retains the exact raw response; its width summary and any contradicting DECRPM Ps0/4
+reading remain in the observation note. Supported carries a separate positive gate assertion; Unsupported
+retains the gate condition in its compound negative and both readings in raw state, without a positive assertion.
+The original mode width is restored in finally on readback/capture errors. No resize or new observable is manufactured.
 Headless DECSCLM names its missing presentation-timing capture; headless 2031 names its missing host palette actuator
 and persistent event listener. Mode recognition or enabled metadata cannot decide those effects.
 

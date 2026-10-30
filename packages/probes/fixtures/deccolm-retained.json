@@ -1,0 +1,183 @@
+{
+  "sourceRevision": "c29a3d3999afee60998e2c6e7f0b3dc1f17e38ba",
+  "suiteId": "382eabbe400c",
+  "purpose": "Retained raw-state projection for callback/collector regression; originals remain TEST FAILURE, no replay grades",
+  "rows": [
+    {
+      "engine": "vt220",
+      "expected": "unsupported",
+      "runId": "085000d89c9ab874d03c0759c3fb2d63",
+      "originalPath": "/hh/main.hab/state/instruments/terminfo-remeasure/runs/2026-10-30T16-34-04-788Z-6b1d07a369be/pass-GJHZS8/lib/vt220-0.9.0-linux-085000d89c9ab874d03c0759c3fb2d63.draft.json",
+      "originalSha256": "6bcb073bb11067398b6e272e8751f55c49d041e37fbc2645981af6f8d3463130",
+      "raw": "{\"initial\":{\"kind\":\"width\",\"width\":80,\"cursor\":{\"col\":53,\"row\":1,\"x\":53,\"y\":1,\"visible\":true,\"style\":\"block\"}},\"gateBefore\":{\"kind\":\"width\",\"width\":80,\"cursor\":{\"col\":53,\"row\":1,\"x\":53,\"y\":1,\"visible\":true,\"style\":\"block\"}},\"enabled\":{\"kind\":\"width\",\"width\":80,\"cursor\":{\"col\":53,\"row\":1,\"x\":53,\"y\":1,\"visible\":true,\"style\":\"block\"}},\"restored\":{\"kind\":\"width\",\"width\":80,\"cursor\":{\"col\":53,\"row\":1,\"x\":53,\"y\":1,\"visible\":true,\"style\":\"block\"}},\"gateAfter\":{\"kind\":\"width\",\"width\":80,\"cursor\":{\"col\":53,\"row\":1,\"x\":53,\"y\":1,\"visible\":true,\"style\":\"block\"}},\"decrpm\":null,\"reply18t\":{\"initial\":80,\"enabled\":80,\"restored\":80}}",
+      "legacyAssertions": [
+        {
+          "assertionType": "buffer_state",
+          "kind": "negative",
+          "expected": "DECCOLM changes measured columns 80 -> 132 -> 80 with ?40 honoured",
+          "observed": "initial=80, enabled=80, restored=80"
+        },
+        {
+          "assertionType": "buffer_state",
+          "kind": "positive",
+          "expected": "?40 closed holds the width at 80 when mode 3 is set, before and after the transition",
+          "observed": "gateBefore=80, gateAfter=80"
+        }
+      ]
+    },
+    {
+      "engine": "kitty",
+      "expected": "unsupported",
+      "runId": "50e9793a61912534970054b6bdf6748f",
+      "originalPath": "/hh/main.hab/state/instruments/terminfo-remeasure/runs/2026-10-30T16-34-04-788Z-6b1d07a369be/pass-GJHZS8/lib/kitty-0.49.2-linux-50e9793a61912534970054b6bdf6748f.draft.json",
+      "originalSha256": "78d10f1c6896169513728c62942f5145b66b589f4277fed18215d4af0cd4d53e",
+      "raw": "{\"initial\":{\"kind\":\"width\",\"width\":80,\"cursor\":{\"col\":53,\"row\":1,\"x\":53,\"y\":1,\"visible\":true,\"style\":\"block\"}},\"gateBefore\":{\"kind\":\"width\",\"width\":80,\"cursor\":{\"col\":53,\"row\":1,\"x\":53,\"y\":1,\"visible\":true,\"style\":\"block\"}},\"enabled\":{\"kind\":\"width\",\"width\":80,\"cursor\":{\"col\":53,\"row\":1,\"x\":53,\"y\":1,\"visible\":true,\"style\":\"block\"}},\"restored\":{\"kind\":\"width\",\"width\":80,\"cursor\":{\"col\":53,\"row\":1,\"x\":53,\"y\":1,\"visible\":true,\"style\":\"block\"}},\"gateAfter\":{\"kind\":\"width\",\"width\":80,\"cursor\":{\"col\":53,\"row\":1,\"x\":53,\"y\":1,\"visible\":true,\"style\":\"block\"}},\"decrpm\":2,\"reply18t\":{\"initial\":80,\"enabled\":80,\"restored\":80}}",
+      "legacyAssertions": [
+        {
+          "assertionType": "buffer_state",
+          "kind": "negative",
+          "expected": "DECCOLM changes measured columns 80 -> 132 -> 80 with ?40 honoured",
+          "observed": "initial=80, enabled=80, restored=80"
+        },
+        {
+          "assertionType": "buffer_state",
+          "kind": "positive",
+          "expected": "?40 closed holds the width at 80 when mode 3 is set, before and after the transition",
+          "observed": "gateBefore=80, gateAfter=80"
+        }
+      ]
+    },
+    {
+      "engine": "vt100",
+      "expected": "unsupported",
+      "runId": "ebf917a128c7e71db21f613433131743",
+      "originalPath": "/hh/main.hab/state/instruments/terminfo-remeasure/runs/2026-10-30T16-34-04-788Z-6b1d07a369be/pass-GJHZS8/lib/vt100-0.9.0-linux-ebf917a128c7e71db21f613433131743.draft.json",
+      "originalSha256": "d37f072da0359273e7fe532bcb302a2da973bf9df1f03262e3d60f7ed1cd61e5",
+      "raw": "{\"initial\":{\"kind\":\"width\",\"width\":80,\"cursor\":{\"col\":53,\"row\":1,\"x\":53,\"y\":1,\"visible\":true,\"style\":\"block\"}},\"gateBefore\":{\"kind\":\"width\",\"width\":80,\"cursor\":{\"col\":53,\"row\":1,\"x\":53,\"y\":1,\"visible\":true,\"style\":\"block\"}},\"enabled\":{\"kind\":\"width\",\"width\":80,\"cursor\":{\"col\":53,\"row\":1,\"x\":53,\"y\":1,\"visible\":true,\"style\":\"block\"}},\"restored\":{\"kind\":\"width\",\"width\":80,\"cursor\":{\"col\":53,\"row\":1,\"x\":53,\"y\":1,\"visible\":true,\"style\":\"block\"}},\"gateAfter\":{\"kind\":\"width\",\"width\":80,\"cursor\":{\"col\":53,\"row\":1,\"x\":53,\"y\":1,\"visible\":true,\"style\":\"block\"}},\"decrpm\":null,\"reply18t\":{\"initial\":80,\"enabled\":80,\"restored\":80}}",
+      "legacyAssertions": [
+        {
+          "assertionType": "buffer_state",
+          "kind": "negative",
+          "expected": "DECCOLM changes measured columns 80 -> 132 -> 80 with ?40 honoured",
+          "observed": "initial=80, enabled=80, restored=80"
+        },
+        {
+          "assertionType": "buffer_state",
+          "kind": "positive",
+          "expected": "?40 closed holds the width at 80 when mode 3 is set, before and after the transition",
+          "observed": "gateBefore=80, gateAfter=80"
+        }
+      ]
+    },
+    {
+      "engine": "vt100-rust",
+      "expected": "unsupported",
+      "runId": "bf95600257a199a4a36f6591fadd673f",
+      "originalPath": "/hh/main.hab/state/instruments/terminfo-remeasure/runs/2026-10-30T16-34-04-788Z-6b1d07a369be/pass-GJHZS8/lib/vt100-rust-0.16.2-linux-bf95600257a199a4a36f6591fadd673f.draft.json",
+      "originalSha256": "092e04609a55cf44939208e2368ee0b5c65ee63c61684fe91163e702f1212fb7",
+      "raw": "{\"initial\":{\"kind\":\"width\",\"width\":80,\"cursor\":{\"col\":53,\"row\":1,\"x\":53,\"y\":1,\"visible\":true,\"style\":\"block\"}},\"gateBefore\":{\"kind\":\"width\",\"width\":80,\"cursor\":{\"col\":53,\"row\":1,\"x\":53,\"y\":1,\"visible\":true,\"style\":\"block\"}},\"enabled\":{\"kind\":\"width\",\"width\":80,\"cursor\":{\"col\":53,\"row\":1,\"x\":53,\"y\":1,\"visible\":true,\"style\":\"block\"}},\"restored\":{\"kind\":\"width\",\"width\":80,\"cursor\":{\"col\":53,\"row\":1,\"x\":53,\"y\":1,\"visible\":true,\"style\":\"block\"}},\"gateAfter\":{\"kind\":\"width\",\"width\":80,\"cursor\":{\"col\":53,\"row\":1,\"x\":53,\"y\":1,\"visible\":true,\"style\":\"block\"}},\"decrpm\":null,\"reply18t\":{\"initial\":null,\"enabled\":null,\"restored\":null}}",
+      "legacyAssertions": [
+        {
+          "assertionType": "buffer_state",
+          "kind": "negative",
+          "expected": "DECCOLM changes measured columns 80 -> 132 -> 80 with ?40 honoured",
+          "observed": "initial=80, enabled=80, restored=80"
+        },
+        {
+          "assertionType": "buffer_state",
+          "kind": "positive",
+          "expected": "?40 closed holds the width at 80 when mode 3 is set, before and after the transition",
+          "observed": "gateBefore=80, gateAfter=80"
+        }
+      ]
+    },
+    {
+      "engine": "vterm",
+      "expected": "unsupported",
+      "runId": "c1c192e28f08d8efe7c1b283961c9d46",
+      "originalPath": "/hh/main.hab/state/instruments/terminfo-remeasure/runs/2026-10-30T16-34-04-788Z-6b1d07a369be/pass-GJHZS8/lib/vterm-0.9.0-linux-c1c192e28f08d8efe7c1b283961c9d46.draft.json",
+      "originalSha256": "c9ebf2ceaac9fc4465a9ea0f1dca1a5a33a73251589715fb64c40c8f4cba6bf6",
+      "raw": "{\"initial\":{\"kind\":\"width\",\"width\":80,\"cursor\":{\"col\":53,\"row\":1,\"x\":53,\"y\":1,\"visible\":true,\"style\":\"block\"}},\"gateBefore\":{\"kind\":\"width\",\"width\":80,\"cursor\":{\"col\":53,\"row\":1,\"x\":53,\"y\":1,\"visible\":true,\"style\":\"block\"}},\"enabled\":{\"kind\":\"width\",\"width\":80,\"cursor\":{\"col\":53,\"row\":1,\"x\":53,\"y\":1,\"visible\":true,\"style\":\"block\"}},\"restored\":{\"kind\":\"width\",\"width\":80,\"cursor\":{\"col\":53,\"row\":1,\"x\":53,\"y\":1,\"visible\":true,\"style\":\"block\"}},\"gateAfter\":{\"kind\":\"width\",\"width\":80,\"cursor\":{\"col\":53,\"row\":1,\"x\":53,\"y\":1,\"visible\":true,\"style\":\"block\"}},\"decrpm\":2,\"reply18t\":{\"initial\":80,\"enabled\":80,\"restored\":80}}",
+      "legacyAssertions": [
+        {
+          "assertionType": "buffer_state",
+          "kind": "negative",
+          "expected": "DECCOLM changes measured columns 80 -> 132 -> 80 with ?40 honoured",
+          "observed": "initial=80, enabled=80, restored=80"
+        },
+        {
+          "assertionType": "buffer_state",
+          "kind": "positive",
+          "expected": "?40 closed holds the width at 80 when mode 3 is set, before and after the transition",
+          "observed": "gateBefore=80, gateAfter=80"
+        }
+      ]
+    },
+    {
+      "engine": "wezterm",
+      "expected": "unsupported",
+      "runId": "560aac15d036d4ed8096d713be65d2c5",
+      "originalPath": "/hh/main.hab/state/instruments/terminfo-remeasure/runs/2026-10-30T16-34-04-788Z-6b1d07a369be/pass-GJHZS8/lib/wezterm-0.1.0-fork.5-linux-560aac15d036d4ed8096d713be65d2c5.draft.json",
+      "originalSha256": "99fa791c82f44763e31b2af40a3a93fcc1ba9b9960e737c960a03c3368f5a442",
+      "raw": "{\"initial\":{\"kind\":\"width\",\"width\":80,\"cursor\":{\"col\":53,\"row\":1,\"x\":53,\"y\":1,\"visible\":true,\"style\":\"block\"}},\"gateBefore\":{\"kind\":\"width\",\"width\":80,\"cursor\":{\"col\":53,\"row\":1,\"x\":53,\"y\":1,\"visible\":true,\"style\":\"block\"}},\"enabled\":{\"kind\":\"width\",\"width\":80,\"cursor\":{\"col\":53,\"row\":1,\"x\":53,\"y\":1,\"visible\":true,\"style\":\"block\"}},\"restored\":{\"kind\":\"width\",\"width\":80,\"cursor\":{\"col\":53,\"row\":1,\"x\":53,\"y\":1,\"visible\":true,\"style\":\"block\"}},\"gateAfter\":{\"kind\":\"width\",\"width\":80,\"cursor\":{\"col\":53,\"row\":1,\"x\":53,\"y\":1,\"visible\":true,\"style\":\"block\"}},\"decrpm\":2,\"reply18t\":{\"initial\":80,\"enabled\":80,\"restored\":80}}",
+      "legacyAssertions": [
+        {
+          "assertionType": "buffer_state",
+          "kind": "negative",
+          "expected": "DECCOLM changes measured columns 80 -> 132 -> 80 with ?40 honoured",
+          "observed": "initial=80, enabled=80, restored=80"
+        },
+        {
+          "assertionType": "buffer_state",
+          "kind": "positive",
+          "expected": "?40 closed holds the width at 80 when mode 3 is set, before and after the transition",
+          "observed": "gateBefore=80, gateAfter=80"
+        }
+      ]
+    },
+    {
+      "engine": "ghostty-native",
+      "expected": "supported",
+      "runId": "d054f9e5d763990155d4109edc97dac4",
+      "originalPath": "/hh/main.hab/state/instruments/terminfo-remeasure/runs/2026-10-30T16-34-04-788Z-6b1d07a369be/pass-GJHZS8/lib/ghostty-native-1.3.1-linux-d054f9e5d763990155d4109edc97dac4.draft.json",
+      "originalSha256": "73e0358e5f9c128823e7a2cd3166152ba79339690310259c41c5ffca9d7c1f0c",
+      "raw": "{\"initial\":{\"kind\":\"width\",\"width\":80,\"cursor\":{\"col\":53,\"row\":1,\"x\":53,\"y\":1,\"visible\":true,\"style\":\"block\"}},\"gateBefore\":{\"kind\":\"width\",\"width\":80,\"cursor\":{\"col\":53,\"row\":1,\"x\":53,\"y\":1,\"visible\":true,\"style\":\"block\"}},\"enabled\":{\"kind\":\"width\",\"width\":132,\"cursor\":{\"col\":1,\"row\":1,\"x\":1,\"y\":1,\"visible\":true,\"style\":\"block\"}},\"restored\":{\"kind\":\"width\",\"width\":80,\"cursor\":{\"col\":53,\"row\":1,\"x\":53,\"y\":1,\"visible\":true,\"style\":\"block\"}},\"gateAfter\":{\"kind\":\"width\",\"width\":80,\"cursor\":{\"col\":53,\"row\":1,\"x\":53,\"y\":1,\"visible\":true,\"style\":\"block\"}},\"decrpm\":null,\"reply18t\":{\"initial\":null,\"enabled\":null,\"restored\":null}}",
+      "legacyAssertions": [
+        {
+          "assertionType": "buffer_state",
+          "kind": "positive",
+          "expected": "DECCOLM changes measured columns 80 -> 132 -> 80 with ?40 honoured",
+          "observed": "initial=80, enabled=132, restored=80"
+        },
+        {
+          "assertionType": "buffer_state",
+          "kind": "positive",
+          "expected": "?40 closed holds the width at 80 when mode 3 is set, before and after the transition",
+          "observed": "gateBefore=80, gateAfter=80"
+        }
+      ]
+    },
+    {
+      "engine": "ghostty",
+      "expected": "supported",
+      "runId": "eeaf9ab04ced4402460a2c62f3857945",
+      "originalPath": "/hh/main.hab/state/instruments/terminfo-remeasure/runs/2026-10-30T16-34-04-788Z-6b1d07a369be/pass-GJHZS8/lib/ghostty-0.4.0-linux-eeaf9ab04ced4402460a2c62f3857945.draft.json",
+      "originalSha256": "58dfe09452cfa6b3c16ed2f0a9d7a66f5978abb50509e4ab8029577364b9f619",
+      "raw": "{\"initial\":{\"kind\":\"width\",\"width\":80,\"cursor\":{\"col\":53,\"row\":1,\"x\":53,\"y\":1,\"visible\":true,\"style\":\"block\"}},\"gateBefore\":{\"kind\":\"width\",\"width\":80,\"cursor\":{\"col\":53,\"row\":1,\"x\":53,\"y\":1,\"visible\":true,\"style\":\"block\"}},\"enabled\":{\"kind\":\"width\",\"width\":132,\"cursor\":{\"col\":1,\"row\":1,\"x\":1,\"y\":1,\"visible\":true,\"style\":\"block\"}},\"restored\":{\"kind\":\"width\",\"width\":80,\"cursor\":{\"col\":53,\"row\":1,\"x\":53,\"y\":1,\"visible\":true,\"style\":\"block\"}},\"gateAfter\":{\"kind\":\"width\",\"width\":80,\"cursor\":{\"col\":53,\"row\":1,\"x\":53,\"y\":1,\"visible\":true,\"style\":\"block\"}},\"decrpm\":null,\"reply18t\":{\"initial\":80,\"enabled\":132,\"restored\":80}}",
+      "legacyAssertions": [
+        {
+          "assertionType": "buffer_state",
+          "kind": "positive",
+          "expected": "DECCOLM changes measured columns 80 -> 132 -> 80 with ?40 honoured",
+          "observed": "initial=80, enabled=132, restored=80"
+        },
+        {
+          "assertionType": "buffer_state",
+          "kind": "positive",
+          "expected": "?40 closed holds the width at 80 when mode 3 is set, before and after the transition",
+          "observed": "gateBefore=80, gateAfter=80"
+        }
+      ]
+    }
+  ]
+}

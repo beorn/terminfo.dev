@@ -197,6 +197,31 @@ test("DECCOLM cell width moves 80 -> 132 -> 80 with ?40 honoured", () => {
   expect(state.width).toBe(80)
 })
 
+// Successful cleanup cannot catch a throw after a mode set, especially the final closed-gate sweep.
+test.each([
+  { width: 80, failure: "gateAfter" },
+  { width: 132, failure: "gateAfter" },
+  { width: 80, failure: "enabled18t" },
+  { width: 132, failure: "enabled18t" },
+] as const)("DECCOLM restores initial $width after $failure throws", ({ width, failure }) => {
+  const { context, state } = cellWidthContext({ width })
+  let reads = 0
+  const cursor = context.getCursor.bind(context)
+  const capture = context.feedCapture.bind(context)
+  context.getCursor = () => {
+    if (failure === "gateAfter" && ++reads === 5) throw new Error("width readback failed")
+    return cursor()
+  }
+  context.feedCapture = (query) => {
+    if (failure === "enabled18t" && query === "\x1b[18t" && ++reads === 2) throw new Error("width readback failed")
+    return capture(query)
+  }
+  expect(() => headlessDeccolm()(context)).toThrow("width readback failed")
+  expect(state.width).toBe(width)
+  expect(state.gate).toBe(true)
+  expect(state.writes.at(-1)).toBe(`${width === 132 ? "\x1b[?3h" : "\x1b[?3l"}\x1b[?40h`)
+})
+
 // cee6d003: re-seed before every sweep, and only the 133rd X proves W=132.
 test("DECCOLM re-seeds before each of its five 133-X sweeps and runs gate control A before ?40 opens", () => {
   const { context, state } = cellWidthContext({ width: 80 })
@@ -270,7 +295,7 @@ test("DECCOLM grades a measured move supported and names a refusing DECRPM readi
   const result = headlessDeccolm()(context)
   expect(result.observation).toMatchObject({
     outcome: "supported",
-    note: "DECRPM mode 3 reads not recognized (Ps 0) while the sweep measured 80 -> 132 -> 80",
+    note: expect.stringContaining("DECRPM mode 3 reads not recognized (Ps 0) while the sweep measured 80 -> 132 -> 80"),
   })
 })
 
