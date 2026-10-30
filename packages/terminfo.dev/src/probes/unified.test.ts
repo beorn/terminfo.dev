@@ -10,6 +10,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, expect, it, vi } from "vitest"
+import { readCallLog } from "viprobe"
 import {
   ALL_PROBES,
   initializeRunDraft,
@@ -49,6 +50,16 @@ const noGeometry = {
 }
 
 const probeHash = "f".repeat(12)
+/** New canonical recorder artifacts coexist with byte-identical legacy reply values. */
+function legacyReplies(replies: Record<string, string>): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(replies).filter(([key, bytes]) => {
+      if (!key.endsWith(".callLog")) return true
+      expect(JSON.stringify(readCallLog(JSON.parse(bytes)))).toBe(bytes)
+      return false
+    }),
+  )
+}
 // A callback that never returns must still have an actual attempt in the retained checkpoint.
 it("checkpoints the native attempt before invoking its callback", async () => {
   const probe = ALL_PROBES.find((entry) => entry.id === "modes.bracketed-paste")!
@@ -194,8 +205,8 @@ it.each([
       expect(decodedLegacy.observations).toEqual([])
       expect(legacy.ungradedDiagnostics).toEqual({ [id]: refusal })
       expect(decodedLegacy.ungradedDiagnostics).toEqual({ [id]: refusal })
-      expect(legacy.rawReplies).toEqual({ [id]: trace, ...sharedOwnership })
-      expect(decodedLegacy.rawReplies).toEqual({ [id]: trace, ...sharedOwnership })
+      expect(legacyReplies(legacy.rawReplies)).toEqual({ [id]: trace, ...sharedOwnership })
+      expect(legacyReplies(decodedLegacy.rawReplies)).toEqual({ [id]: trace, ...sharedOwnership })
       expect(legacy.assertions).toEqual([])
       expect(decodedLegacy.assertions).toEqual([])
       expect(legacy.screenshotRefs).toEqual([])
@@ -209,8 +220,8 @@ it.each([
         ...sharedOwnership,
         ...(response === undefined ? {} : { [`${id}.callbackResponse`]: response }),
       }
-      expect(explicit.rawReplies).toEqual(expectedReplies)
-      expect(decodedExplicit.rawReplies).toEqual(expectedReplies)
+      expect(legacyReplies(explicit.rawReplies)).toEqual(expectedReplies)
+      expect(legacyReplies(decodedExplicit.rawReplies)).toEqual(expectedReplies)
     } finally {
       definition.term = original
     }
@@ -275,8 +286,8 @@ it.each([
       expect(decodedExplicit.ungradedDiagnostics).toEqual({})
       expect(explicit.assertions).toEqual([])
       expect(decodedExplicit.assertions).toEqual([])
-      expect(explicit.rawReplies).toEqual({ [id]: trace, ...sharedOwnership })
-      expect(decodedExplicit.rawReplies).toEqual({ [id]: trace, ...sharedOwnership })
+      expect(legacyReplies(explicit.rawReplies)).toEqual({ [id]: trace, ...sharedOwnership })
+      expect(legacyReplies(decodedExplicit.rawReplies)).toEqual({ [id]: trace, ...sharedOwnership })
       expect(explicit.suiteComplete).toBe(false)
       expect(decodedExplicit.suiteComplete).toBe(false)
       expect(decodedExplicit.identity).toBe("unverified")
@@ -291,8 +302,8 @@ it.each([
       expect(decodedLegacy.observations).toEqual([])
       expect(legacy.ungradedDiagnostics).toEqual({ [id]: refusal })
       expect(decodedLegacy.ungradedDiagnostics).toEqual({ [id]: refusal })
-      expect(legacy.rawReplies).toEqual({ [id]: trace, ...sharedOwnership })
-      expect(decodedLegacy.rawReplies).toEqual({ [id]: trace, ...sharedOwnership })
+      expect(legacyReplies(legacy.rawReplies)).toEqual({ [id]: trace, ...sharedOwnership })
+      expect(legacyReplies(decodedLegacy.rawReplies)).toEqual({ [id]: trace, ...sharedOwnership })
       expect(legacy.assertions).toEqual([])
       expect(decodedLegacy.assertions).toEqual([])
       expect(decodedLegacy.suiteComplete).toBe(false)
@@ -366,6 +377,9 @@ it("lets reviewed DECRPM queries run while refusing cursor and title-writing cal
     ids: ["modes.bracketed-paste", "modes.color-scheme-reporting", "cursor.move.absolute", "device.xtwinops-20"],
   })
   expect(writes).toEqual(["\x1b[?2004$p\x1b[c", "\x1b[?2031$p\x1b[c"])
+  const retained = batch.rawReplies["modes.bracketed-paste.callLog"]
+  expect(retained).toBeDefined()
+  expect(JSON.stringify(readCallLog(JSON.parse(retained!)))).toBe(retained)
   expect(batch.observations.find((item) => item.featureId === "modes.bracketed-paste")).toMatchObject({
     outcome: "supported",
     assertionType: "query_reply",

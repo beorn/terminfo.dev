@@ -18,8 +18,13 @@ import {
   readResponse,
   withRawMode,
   withTTYOperation,
+  withTTYQueryTrace,
+  writeTTY,
+  type TTYTraceEvent,
+  type TTYQueryTrace,
 } from "./tty.ts"
 import { sentinelGraceMs } from "@terminfo/probe-defs"
+import { IncompleteReplay, readCallLog, type CallLog } from "viprobe"
 import { sentinelNegativeResult } from "../../probe-defs/src/helpers.ts"
 
 const originalWrite = process.stdout.write
@@ -35,6 +40,166 @@ function reply(bytes: string) {
 }
 
 describe("TTY transaction replies", () => {
+  it.each([false, true])(
+    "refuses a completed TTY artifact after failed injection (reply settled: %s)",
+    async (settled) => {
+      const queries: TTYQueryTrace[] = []
+      const events: TTYTraceEvent[] = []
+      let published = false
+      const listeners = process.stdin.listenerCount("data")
+      const failure = new Error("Input injection lost custody")
+      const attempt = withTTYQueryTrace(
+        queries,
+        events,
+        () =>
+          readResponse(/^a/, 50, async () => {
+            if (settled) {
+              reply("a")
+              for (let index = 0; index < 10; index++) await Promise.resolve()
+            }
+            throw failure
+          }),
+        {
+          onLog() {
+            published = true
+          },
+        },
+      )
+      if (settled) {
+        await expect(attempt).rejects.toBe(failure)
+      } else {
+        await expect(attempt).rejects.toBeInstanceOf(IncompleteReplay)
+        await expect(attempt).rejects.toMatchObject({ cause: failure })
+      }
+      await expect(attempt).rejects.toThrow(/Input injection lost custody/)
+      expect(published).toBe(false)
+      if (settled) {
+        expect(queries).toEqual([{ sequence: "", reason: "reply", raw: "a", rawBase64: "YQ==", match: ["a"] }])
+        expect(events).toEqual([{ kind: "query", ...queries[0] }])
+      } else {
+        expect(queries).toEqual([])
+        expect(events).toEqual([])
+      }
+      expect(process.stdin.listenerCount("data")).toBe(listeners)
+    },
+  )
+
+  it("retains sentinel ordering facts through offline TTY replay", async () => {
+    const queries: TTYQueryTrace[] = []
+    const events: TTYTraceEvent[] = []
+    let captured: CallLog | undefined
+    const sentinel = "\x1b[?1;2c"
+    const response = "\x1b[8;24;80t"
+    const out = {
+      write() {
+        reply(sentinel)
+        setTimeout(() => reply(response), 1)
+        return true
+      },
+    } as unknown as NodeJS.WriteStream
+    const body = () => queryWithSentinelOutcome("\x1b[18t", /\x1b\[8;(\d+);(\d+)t/, 100, 20)
+    const measured = await withTTYOperation(
+      () =>
+        withTTYQueryTrace(queries, events, body, {
+          onLog(log) {
+            captured = log
+          },
+        }),
+      out,
+    )
+    expect(measured.sentinel).toEqual({ atMs: expect.any(Number), graceMs: 20 })
+    expect(queries).toEqual([
+      {
+        sequence: "\x1b[18t\x1b[c",
+        reason: "reply",
+        raw: sentinel + response,
+        rawBase64: Buffer.from(sentinel + response).toString("base64"),
+        match: [response, "24", "80"],
+        sentinel: measured.sentinel,
+      },
+    ])
+    expect(events).toEqual([{ kind: "query", ...queries[0] }])
+    const replayQueries: TTYQueryTrace[] = []
+    const replayEvents: TTYTraceEvent[] = []
+    const offline = {
+      write() {
+        throw new Error("Offline sentinel replay attempted native I/O")
+      },
+    } as unknown as NodeJS.WriteStream
+    const replayed = await withTTYOperation(
+      () =>
+        withTTYQueryTrace(replayQueries, replayEvents, body, {
+          mode: "replay",
+          log: readCallLog(JSON.parse(JSON.stringify(captured))),
+        }),
+      offline,
+    )
+    expect(replayed).toEqual(measured)
+    expect(replayQueries).toEqual(queries)
+    expect(replayEvents).toEqual(events)
+  })
+
+  // The generic recorder replacement must retain this legacy projection, including the
+  // response that arrives between two synchronous injection writes, before Promise settlement.
+  it("retains legacy write/query fields in observed response order", async () => {
+    const queries: TTYQueryTrace[] = []
+    const events: TTYTraceEvent[] = []
+    const written: string[] = []
+    let captured: CallLog | undefined
+    const out = {
+      write(sequence: string) {
+        written.push(sequence)
+        return true
+      },
+    } as unknown as NodeJS.WriteStream
+    const body = async () => {
+      writeTTY("before")
+      expect(
+        await readResponse(/^a/, 50, async () => {
+          writeTTY("inject")
+          reply("a")
+          writeTTY("after-reply")
+        }),
+      ).toEqual(["a"])
+    }
+    await withTTYOperation(
+      () =>
+        withTTYQueryTrace(queries, events, body, {
+          onLog(log) {
+            captured = log
+          },
+        }),
+      out,
+    )
+    const query = { sequence: "", reason: "reply" as const, raw: "a", rawBase64: "YQ==", match: ["a"] }
+    expect(written).toEqual(["before", "inject", "after-reply"])
+    expect(queries).toEqual([query])
+    expect(events).toEqual([
+      { kind: "write", sequence: "before" },
+      { kind: "write", sequence: "inject" },
+      { kind: "query", ...query },
+      { kind: "write", sequence: "after-reply" },
+    ])
+    expect(captured).toBeDefined()
+    const replayQueries: TTYQueryTrace[] = []
+    const replayEvents: TTYTraceEvent[] = []
+    const offline = {
+      write() {
+        throw new Error("Offline TTY replay attempted a live write")
+      },
+    } as unknown as NodeJS.WriteStream
+    await withTTYOperation(
+      () =>
+        withTTYQueryTrace(replayQueries, replayEvents, body, {
+          mode: "replay",
+          log: readCallLog(JSON.parse(JSON.stringify(captured))),
+        }),
+      offline,
+    )
+    expect(replayQueries).toEqual(queries)
+    expect(replayEvents).toEqual(events)
+  })
+
   it("checks a scoped owner before nested queries and releases it with the operation", async () => {
     const failure = new Error("attachment continuity lost")
     const writes: string[] = []

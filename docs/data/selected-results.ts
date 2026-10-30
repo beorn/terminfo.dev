@@ -13,6 +13,7 @@ import {
   type ObservationFrame,
   type ProbeSubject,
   type RunOrigin,
+  type RunDraft,
   type UngradedDiagnostic,
   type ProbeSuiteManifest,
   type TextQualification,
@@ -151,7 +152,7 @@ export interface SelectedExclusion {
 export interface CurrentSelectedVersion {
   schemaVersion: 3 | 4
   /** Recorded by schema 4; historical source absence remains absence. */
-  source?: { kind: "live" }
+  source?: RunDraft["source"]
   runId: string
   subject: ProbeSubject
   measuredAt: string

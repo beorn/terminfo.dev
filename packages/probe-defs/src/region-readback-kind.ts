@@ -368,7 +368,7 @@ function cellsMatch(
 }
 
 /** Row-by-row equality: a grid with the wrong number of rows can never match. */
-function gridMatch(
+export function gridMatch(
   measured: readonly (readonly MeasuredCell[])[],
   expected: readonly (readonly RegionReadbackCell[])[],
   reference?: readonly (readonly MeasuredCell[])[],
@@ -589,7 +589,21 @@ function regionReadbackSpec(
  * capture cannot read a window back at all, so that arm refuses by NAME and writes nothing: a
  * fixture that can only answer "inconclusive" is not evidence, and is deleted rather than kept.
  */
-export function regionReadbackProbe(row: RegionReadbackRow): ProbeDefinition {
+export function cursorMatch(actual: { x: number; y: number }, expected: { x: number; y: number }): boolean {
+  return actual.x === expected.x && actual.y === expected.y
+}
+
+// Internal check integration; package-root factory signatures remain unchanged.
+export function regionReadbackProbe(
+  row: RegionReadbackRow,
+  checks?: {
+    grid(kind: "precondition" | "assertion", ...args: Parameters<typeof gridMatch>): boolean
+    cursor(...args: Parameters<typeof cursorMatch>): boolean
+  },
+): ProbeDefinition {
+  const grid = (kind: "precondition" | "assertion", ...args: Parameters<typeof gridMatch>) =>
+    checks ? checks.grid(kind, ...args) : gridMatch(...args)
+  const cursorCheck = checks?.cursor ?? cursorMatch
   const geometry = assertRegionReadbackShape(row)
   const readback = regionReadbackSpec(row, geometry)
   return {
@@ -616,7 +630,7 @@ export function regionReadbackProbe(row: RegionReadbackRow): ProbeDefinition {
         if (baselineRow !== undefined) {
           ctx.feed(baselineRow.seed)
           baseline = readGrid(ctx, geometry)
-          if (!gridMatch(baseline, baselineRow.cells)) {
+          if (!grid("precondition", baseline, baselineRow.cells)) {
             return parserStateResult(
               null,
               row.expected,
@@ -639,7 +653,7 @@ export function regionReadbackProbe(row: RegionReadbackRow): ProbeDefinition {
             `${row.id}: the backend does not report ${unreadSeed} on the seed, so the claim cannot be read`,
           )
         }
-        if (!gridMatch(before, row.before)) {
+        if (!grid("precondition", before, row.before)) {
           // #30701, @cto ruling C: a seed whose only miss is an attribute the row paints (inverse, a
           // background) leaves the claim's reference uncalibrated (TEST TODO naming it). Any other miss,
           // missing characters or an attribute the seed declares absent, is a fixture that never
@@ -681,7 +695,7 @@ export function regionReadbackProbe(row: RegionReadbackRow): ProbeDefinition {
           if (!step.cursor) continue
           const cursor = ctx.getCursor()
           setup.push({ x: cursor.x, y: cursor.y })
-          if (cursor.x !== step.cursor.x || cursor.y !== step.cursor.y) {
+          if (!cursorCheck(cursor, step.cursor)) {
             return parserStateResult(
               null,
               row.expected,
@@ -705,7 +719,7 @@ export function regionReadbackProbe(row: RegionReadbackRow): ProbeDefinition {
           return cell !== undefined && sameCell(cell, control.char)
         })
         return parserStateResult(
-          controlsValid ? gridMatch(after, row.after, before) : null,
+          controlsValid ? grid("assertion", after, row.after, before) : null,
           row.expected,
           { before: responseGrid(before, row.before), setup, after: responseGrid(after, row.after) },
           controlsValid ? undefined : row.controlNote,
@@ -744,5 +758,5 @@ export function regionReadbackProbe(row: RegionReadbackRow): ProbeDefinition {
 
 /** A kind table: one probe per row, in row order. */
 export function regionReadbackProbes(rows: readonly RegionReadbackRow[]): ProbeDefinition[] {
-  return rows.map(regionReadbackProbe)
+  return rows.map((row) => regionReadbackProbe(row))
 }

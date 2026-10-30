@@ -94,7 +94,7 @@ type ReadObservation = HistoricalProbeRun["observations"][number]
 type ReadAssertion = HistoricalProbeRun["assertions"][number]
 export type LoadedRun = LoadedRunFields &
   (
-    | { schemaVersion: 4; source: { kind: "live" }; assertions: ProbeAssertion[]; observations: Observation[] }
+    | { schemaVersion: 4; source: RunDraft["source"]; assertions: ProbeAssertion[]; observations: Observation[] }
     | { schemaVersion: 1 | 2 | 3; source?: never; assertions: ReadAssertion[]; observations: ReadObservation[] }
   )
 
@@ -112,6 +112,45 @@ const asString = (value: unknown, path: string, name: string): string =>
   nonempty(value) ? value : fail(path, `missing ${name}`)
 const nullableString = (value: unknown, path: string, name: string): string | null =>
   value === null ? null : asString(value, path, name)
+
+function parseCurrentSource(value: unknown, path: string): RunDraft["source"] {
+  if (!object(value)) fail(path, "schema 4 requires source")
+  const keys = (record: Record<string, unknown>, expected: string[]) =>
+    Object.keys(record).length === expected.length && expected.every((key) => Object.hasOwn(record, key))
+  if (value.kind === "live" && keys(value, ["kind"])) return { kind: "live" }
+  if (
+    value.kind !== "trace" ||
+    !keys(value, ["kind", "trace", "captureRunId", "captureSuiteId", "captureSourceRevision"]) ||
+    !object(value.trace) ||
+    !keys(value.trace, ["path", "sha256"])
+  ) {
+    fail(path, "invalid source; require exactly { kind: live } or a bound trace source")
+  }
+  const artifact = value.trace
+  if (
+    !nonempty(artifact.path) ||
+    !artifact.path.trim() ||
+    /^(?:[\\/]|[a-z]:)/i.test(artifact.path) ||
+    artifact.path.split(/[\\/]/).includes("..") ||
+    typeof artifact.sha256 !== "string" ||
+    !/^[0-9a-f]{64}$/.test(artifact.sha256) ||
+    !nonempty(value.captureRunId) ||
+    !value.captureRunId.trim() ||
+    !nonempty(value.captureSuiteId) ||
+    !value.captureSuiteId.trim() ||
+    typeof value.captureSourceRevision !== "string" ||
+    !/^[0-9a-f]{40}$/.test(value.captureSourceRevision)
+  ) {
+    fail(path, "invalid trace source artifact reference or capture identity")
+  }
+  return {
+    kind: "trace",
+    trace: { path: artifact.path, sha256: artifact.sha256 },
+    captureRunId: value.captureRunId,
+    captureSuiteId: value.captureSuiteId,
+    captureSourceRevision: value.captureSourceRevision,
+  }
+}
 
 function rejectUnknownFields(
   value: Record<string, unknown>,
@@ -1698,16 +1737,18 @@ export function parseRun(
         path,
         "schema 4 run",
       )
-      if (!object(raw.source)) fail(path, "schema 4 requires source")
-      if (raw.source.kind === "trace") fail(path, "trace probe source has no implementation at this source")
-      if (Object.keys(raw.source).join(",") !== "kind" || raw.source.kind !== "live") {
-        fail(path, "invalid source; schema 4 requires { kind: live }")
-      }
+      parseCurrentSource(raw.source, path)
     }
     if (!current && Object.hasOwn(raw, "results")) fail(path, "v2 run cannot contain legacy boolean results")
     const subject = parseSubject(raw[subjectKey], path, schemaVersion)
     const runtimeIdentity = parseRuntimeIdentity(raw.runtimeIdentity, subject, path, schemaVersion)
     const runId = asString(raw.runId, path, "runId")
+    if (schemaVersion === 4) {
+      const source = parseCurrentSource(raw.source, path)
+      if (source.kind === "trace" && source.captureRunId === runId) {
+        fail(path, "trace source capture runId must differ from the assertion runId")
+      }
+    }
     if (!["verified", "unverified", "disputed"].includes(String(raw.identity))) fail(path, "invalid identity")
     if (!object(raw.origin) || !["collector", "community-issue", "manual-capture"].includes(String(raw.origin.kind))) {
       fail(path, "invalid origin")
@@ -1974,7 +2015,7 @@ export function parseRun(
       path,
       sha256,
       schemaVersion: raw.schemaVersion,
-      ...(schemaVersion === 4 ? { source: { kind: "live" as const } } : {}),
+      ...(schemaVersion === 4 ? { source: parseCurrentSource(raw.source, path) } : {}),
       ...(current
         ? {
             results,
@@ -2201,7 +2242,7 @@ export function decodeCollectorDraft(
       const initialized = initializeRunDraft({
         runId: value.runId as string,
         sourceRevision: collectorRevision,
-        source: { kind: "live" },
+        source: parseCurrentSource(value.source, path),
         intendedSubject: intended as Partial<ProbeSubject>,
         manifest: manifest as ProbeSuiteManifest & { schemaVersion: 4 },
       })

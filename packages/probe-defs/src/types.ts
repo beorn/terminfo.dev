@@ -159,7 +159,15 @@ export interface ProbeResult {
 /** A private in-flight run; intended subject is never measured identity/provenance. */
 export interface RunDraft {
   schemaVersion: 4
-  source: { kind: ProbeSourceKind }
+  source:
+    | { kind: "live" }
+    | {
+        kind: "trace"
+        trace: { path: string; sha256: string }
+        captureRunId: string
+        captureSuiteId: string
+        captureSourceRevision: string
+      }
   runId: string
   suiteId: string
   probeHash: string
@@ -212,8 +220,8 @@ export type ObservationReason = (typeof OBSERVATION_REASONS)[number]
 /** Class of the retained deciding observation, independent of assertion polarity and capture payload kind. */
 export const ASSERTION_TYPES = ["query_reply", "buffer_state", "screenshot", "input_bytes", "clipboard"] as const
 export type AssertionType = (typeof ASSERTION_TYPES)[number]
-/** Trace is added with its recorder/replay implementation (#30932), without a schema bump. */
-export type ProbeSourceKind = "live"
+/** Source identity is retained by schema 4 without changing historical run formats. */
+export type ProbeSourceKind = RunDraft["source"]["kind"]
 
 /** The program whose console buffer a TEXT read returned. */
 export interface ConsoleBufferOwner {

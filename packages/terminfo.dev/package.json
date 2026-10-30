@@ -47,6 +47,9 @@
     "react": "19.3.1",
     "silvery": "0.26.0"
   },
+  "devDependencies": {
+    "viprobe": "workspace:*"
+  },
   "engines": {
     "node": ">=24"
   }

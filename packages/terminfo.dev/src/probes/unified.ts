@@ -38,6 +38,7 @@ import {
   readResponse,
   withTTYOperation,
   withTTYQueryTrace,
+  writeTTY,
   type TTYQueryTrace,
   type TTYTraceEvent,
 } from "../tty.ts"
@@ -68,15 +69,11 @@ export interface Probe {
 
 /** Build a TermProbeSource from the tty.ts helpers */
 function createTermProbeSource({
-  out,
-  events,
   probe,
   geometry,
   utf8Decoding,
   captureGeometryRefusal,
 }: {
-  out: NodeJS.WriteStream
-  events?: TTYTraceEvent[]
   probe: ProbeDefinition
   geometry?: Pick<Extract<GeometryMeasurement, { status: "measured" }>, "rows" | "cols">
   utf8Decoding: () => Promise<Utf8DecodingReading>
@@ -93,8 +90,7 @@ function createTermProbeSource({
   return {
     kind: "live",
     write(text: string) {
-      events?.push({ kind: "write", sequence: text })
-      out.write(text)
+      writeTTY(text)
     },
     async queryCursorPosition() {
       const result = await queryCursorPosition()
@@ -388,7 +384,11 @@ export async function runProbeBatch(
       const queries: TTYQueryTrace[] = []
       const events: TTYTraceEvent[] = []
       let decoding: Utf8DecodingReading | undefined
-      decodingAttempt = withTTYQueryTrace(queries, events, measureUtf8Decoding)
+      decodingAttempt = withTTYQueryTrace(queries, events, measureUtf8Decoding, {
+        onLog(log) {
+          batch.rawReplies["collector.utf8Decoding.callLog"] = JSON.stringify(log)
+        },
+      })
         .then((reading) => {
           decoding = reading
           return reading
@@ -503,8 +503,6 @@ export async function runProbeBatch(
       }
     }
     const probeSource = createTermProbeSource({
-      out,
-      events,
       probe,
       geometry: preGeometry?.status === "measured" ? preGeometry : undefined,
       utf8Decoding: readUtf8Decoding,
@@ -613,8 +611,6 @@ export async function runProbeBatch(
           preparationGrid = { rows: current.rows, cols: current.cols }
         }
         const preparationSource = createTermProbeSource({
-          out,
-          events: calibrationEvents,
           probe: { ...probe, termNeedsGeometry: true },
           geometry: preparationGrid,
           utf8Decoding: readUtf8Decoding,
@@ -623,12 +619,20 @@ export async function runProbeBatch(
         // Outside the per-probe catch: an unproved restore fails the RUN, not one feature.
         await withTTYOperation(
           () =>
-            withTTYQueryTrace(calibrationQueries, calibrationEvents, () =>
-              prepareCapture({
-                source: preparationSource,
-                featureId: calibrationId,
-                recordCapture: (captured) => recordCapture(calibrationId, calibrationCaptures, captured),
-              }),
+            withTTYQueryTrace(
+              calibrationQueries,
+              calibrationEvents,
+              () =>
+                prepareCapture({
+                  source: preparationSource,
+                  featureId: calibrationId,
+                  recordCapture: (captured) => recordCapture(calibrationId, calibrationCaptures, captured),
+                }),
+              {
+                onLog(log) {
+                  batch.rawReplies[calibrationId + ".callLog"] = JSON.stringify(log)
+                },
+              },
             ),
           out,
           verify,
@@ -675,9 +679,18 @@ export async function runProbeBatch(
       try {
         result = await withTTYOperation(
           () =>
-            withTTYQueryTrace(queries, events, async () => {
-              return callback(probeSource)
-            }),
+            withTTYQueryTrace(
+              queries,
+              events,
+              async () => {
+                return callback(probeSource)
+              },
+              {
+                onLog(log) {
+                  batch.rawReplies[probe.id + ".callLog"] = JSON.stringify(log)
+                },
+              },
+            ),
           out,
           verify,
         )

@@ -1,6 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks"
 import { openSync } from "node:fs"
 import { WriteStream } from "node:tty"
+import { createCallLog, withCallLog, readCallLog, IncompleteReplay, type CallLog } from "viprobe"
 import type { TerminalQueryOutcome, Utf8DecodingReading, RenderedWidthResult } from "@terminfo/probe-defs"
 import {
   decrpmReplyPattern,
@@ -62,15 +63,143 @@ export interface TTYQueryTrace {
   sentinel?: { atMs: number; graceMs: number }
 }
 export type TTYTraceEvent = { kind: "write"; sequence: string } | ({ kind: "query" } & TTYQueryTrace)
-const queryTraceContext = new AsyncLocalStorage<{ queries: TTYQueryTrace[]; events: TTYTraceEvent[] }>()
+type RecordedResponse = { response: QueryOutcome; eventAtPerformanceMs: number }
+const nativeTTYHost = {
+  write(sequence: string, _purpose: "command" | "query"): void {
+    currentTTYOutput().write(sequence)
+  },
+  matchResponse: matchResponseNative,
+}
+const queryTraceContext = new AsyncLocalStorage<{ host: typeof nativeTTYHost }>()
+
+/** Standalone helpers intentionally use native I/O outside a recording/replay scope. */
+function ttyHost(): typeof nativeTTYHost {
+  return queryTraceContext.getStore()?.host ?? nativeTTYHost
+}
+
+function traceRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+}
+
+function projectedQuery(value: unknown): QueryOutcome {
+  if (
+    !traceRecord(value) ||
+    !["reply", "timeout", "sentinel"].includes(String(value.reason)) ||
+    typeof value.raw !== "string" ||
+    typeof value.rawBase64 !== "string" ||
+    !(value.match === null || (Array.isArray(value.match) && value.match.every((item) => typeof item === "string")))
+  ) {
+    throw new IncompleteReplay("TTY call log contains an invalid query outcome")
+  }
+  const sentinel = value.sentinel
+  let measuredSentinel: QueryOutcome["sentinel"]
+  if (sentinel !== undefined) {
+    if (
+      !traceRecord(sentinel) ||
+      typeof sentinel.atMs !== "number" ||
+      !Number.isFinite(sentinel.atMs) ||
+      typeof sentinel.graceMs !== "number" ||
+      !Number.isFinite(sentinel.graceMs)
+    ) {
+      throw new IncompleteReplay("TTY call log contains invalid sentinel timing")
+    }
+    measuredSentinel = { atMs: sentinel.atMs, graceMs: sentinel.graceMs }
+  }
+  return {
+    reason: value.reason as QueryOutcome["reason"],
+    raw: value.raw,
+    rawBase64: value.rawBase64,
+    match: value.match === null ? null : [...value.match],
+    ...(measuredSentinel === undefined ? {} : { sentinel: measuredSentinel }),
+  }
+}
+
+/** The generic reader owns decoding; this host only projects its own operation contract. */
+function projectTTYLog(log: CallLog): { queries: TTYQueryTrace[]; events: TTYTraceEvent[] } {
+  const rows: Array<{ at: number; index: number; event: TTYTraceEvent }> = []
+  let index = 0
+  readCallLog(JSON.parse(JSON.stringify(log)), {
+    onOperation(operation) {
+      const position = index++
+      if (operation.path === "context.write") {
+        const [sequence, purpose] = operation.args
+        if (typeof sequence !== "string" || (purpose !== "command" && purpose !== "query")) {
+          throw new IncompleteReplay("TTY call log contains invalid write arguments")
+        }
+        if (purpose === "command") {
+          rows.push({
+            at: operation.outcome.timing.startedPerformanceMs,
+            index: position,
+            event: { kind: "write", sequence },
+          })
+        }
+      } else if (operation.path === "context.matchResponse" && "value" in operation.outcome) {
+        const value = operation.outcome.value
+        const sequence = operation.args[4]
+        if (
+          typeof sequence !== "string" ||
+          !traceRecord(value) ||
+          typeof value.eventAtPerformanceMs !== "number" ||
+          !Number.isFinite(value.eventAtPerformanceMs)
+        ) {
+          throw new IncompleteReplay("TTY call log contains invalid response ordering")
+        }
+        rows.push({
+          at: value.eventAtPerformanceMs,
+          index: position,
+          event: { kind: "query", sequence, ...projectedQuery(value.response) },
+        })
+      }
+    },
+  })
+  rows.sort((left, right) => left.at - right.at || left.index - right.index)
+  const events = rows.map((row) => row.event)
+  const queries = events.flatMap((event) => {
+    if (event.kind !== "query") return []
+    const { kind: _kind, ...query } = event
+    return [query]
+  })
+  return { events, queries }
+}
 
 /** Scope all direct and helper queries to the probe that initiated them. */
-export function withTTYQueryTrace<T>(
+export async function withTTYQueryTrace<T>(
   queries: TTYQueryTrace[],
   events: TTYTraceEvent[],
   fn: () => Promise<T>,
+  options?: { mode?: "record" | "replay"; log?: CallLog; onLog?: (log: CallLog) => void },
 ): Promise<T> {
-  return queryTraceContext.run({ queries, events }, fn)
+  const mode = options?.mode ?? "record"
+  if (mode === "replay" && !options?.log) throw new IncompleteReplay("TTY replay requires a validated call log")
+  const log = options?.log ?? createCallLog()
+  const session =
+    mode === "record"
+      ? withCallLog(nativeTTYHost, { mode, log })
+      : withCallLog<typeof nativeTTYHost>(null, { mode, log })
+  let scopeFailure: unknown
+  let scopeFailed = false
+  try {
+    return await queryTraceContext.run({ host: session.context }, fn)
+  } catch (error) {
+    scopeFailed = true
+    scopeFailure = error
+    throw error
+  } finally {
+    try {
+      session.finish()
+    } catch (error) {
+      if (scopeFailed && error instanceof IncompleteReplay) {
+        error.cause = scopeFailure
+        const reason = scopeFailure instanceof Error ? scopeFailure.message : String(scopeFailure)
+        error.message = "TTY trace could not finish: " + error.message + "; scope failed: " + reason
+      }
+      throw error
+    }
+    const projected = projectTTYLog(log)
+    queries.push(...projected.queries)
+    events.push(...projected.events)
+    if (!scopeFailed) options?.onLog?.(log)
+  }
 }
 
 /** Serialize whole terminal operations; queries inside one operation run inline. */
@@ -118,12 +247,11 @@ function currentTTYOutput(): NodeJS.WriteStream {
   return lease?.active ? lease.out : process.stdout
 }
 
-function writeTTY(sequence: string): void {
-  queryTraceContext.getStore()?.events.push({ kind: "write", sequence })
-  currentTTYOutput().write(sequence)
+export function writeTTY(sequence: string): void {
+  ttyHost().write(sequence, "command")
 }
 
-function matchResponse(
+async function matchResponse(
   pattern: RegExp,
   timeoutMs: number,
   write?: () => void,
@@ -132,7 +260,18 @@ function matchResponse(
   graceMs: number = sentinelGraceMs(),
   deferTimer?: (start: () => void, cancel: () => void) => void,
 ): Promise<QueryOutcome> {
-  const trace = queryTraceContext.getStore()
+  return (await ttyHost().matchResponse(pattern, timeoutMs, write, sentinel, sequence, graceMs, deferTimer)).response
+}
+
+function matchResponseNative(
+  pattern: RegExp,
+  timeoutMs: number,
+  write?: () => void,
+  sentinel = false,
+  sequence = "",
+  graceMs: number = sentinelGraceMs(),
+  deferTimer?: (start: () => void, cancel: () => void) => void,
+): Promise<RecordedResponse> {
   return new Promise((resolve) => {
     const chunks: Buffer[] = []
     let buf = ""
@@ -164,9 +303,8 @@ function matchResponse(
         rawBase64: Buffer.concat(chunks).toString("base64"),
         ...(facts ? { sentinel: facts } : {}),
       }
-      trace?.queries.push({ sequence, ...outcome })
-      trace?.events.push({ kind: "query", sequence, ...outcome })
-      resolve(outcome)
+      // Observe arrival here, before an injection can write again in the same turn.
+      resolve({ response: outcome, eventAtPerformanceMs: performance.now() })
     }
 
     const onData = (chunk: Buffer) => {
@@ -314,7 +452,7 @@ export type QueryOutcome = TerminalQueryOutcome
 /** Return the response disposition and exact received bytes for a plain query. */
 export async function queryOutcome(sequence: string, responsePattern: RegExp, timeoutMs = 1000): Promise<QueryOutcome> {
   return withTTYOperation(() =>
-    matchResponse(responsePattern, timeoutMs, () => currentTTYOutput().write(sequence), false, sequence),
+    matchResponse(responsePattern, timeoutMs, () => ttyHost().write(sequence, "query"), false, sequence),
   )
 }
 
@@ -333,7 +471,7 @@ export async function queryWithSentinelOutcome(
     matchResponse(
       responsePattern,
       timeoutMs,
-      () => currentTTYOutput().write(sequence + "\x1b[c"),
+      () => ttyHost().write(sequence + "\x1b[c", "query"),
       true,
       sequence + "\x1b[c",
       graceMs,

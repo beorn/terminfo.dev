@@ -1,5 +1,5 @@
 import type { ObservationFrame, ProbeDefinition, ProbeCallbackResult, TermProbeSource } from "./types.ts"
-import { regionReadbackProbes, type RegionReadbackRow } from "./region-readback-kind.ts"
+import { regionReadbackProbe, type RegionReadbackRow } from "./region-readback-kind.ts"
 import { probe, parserStateResult, notTestedResult, libvtermHistoryReview } from "./helpers.ts"
 
 /**
@@ -474,39 +474,65 @@ async function scrollbackEraseApp(ctx: TermProbeSource): Promise<ProbeCallbackRe
   }
 }
 
-export const eraseProbes: ProbeDefinition[] = [
-  ...regionReadbackProbes(eraseReadbackRows),
+type HistoryState = ReturnType<import("./types.ts").LibProbeSource["getScrollback"]>
 
-  {
-    ...probe(
-      "erase.screen.scrollback",
-      (ctx) => {
-        const review = libvtermHistoryReview(ctx)
-        if (review) return review
-        const expected = "ED3 removes measured scrollback while keeping screen geometry"
-        const initial = ctx.getScrollback()
-        const rows = initial.screenLines
-        if (!Number.isSafeInteger(rows) || rows < 1 || rows > 1000) {
-          return parserStateResult(null, expected, { initial }, "Need a measured screen size for history setup")
-        }
-        ctx.feed("\r\n".repeat(rows + 2))
-        const before = ctx.getScrollback()
-        if (!Number.isSafeInteger(before.totalLines) || before.totalLines <= rows || before.screenLines !== rows) {
-          return parserStateResult(null, expected, { initial, before }, "No measured scrollback to erase")
-        }
-        ctx.feed("\x1b[3J")
-        const after = ctx.getScrollback()
-        const measured =
-          Number.isSafeInteger(after.totalLines) && after.totalLines >= rows && after.screenLines === rows
-        return parserStateResult(
-          measured ? after.totalLines === rows : null,
-          expected,
-          { before, after },
-          measured ? undefined : "Scrollback readback or geometry changed unexpectedly",
-        )
-      },
-      scrollbackEraseApp,
-    ),
-    termNeedsGeometry: true,
+// These are the original ED3 predicates, shared by legacy and retained native checks.
+export const eraseHistoryPredicates = {
+  screenRows(rows: number) {
+    return Number.isSafeInteger(rows) && rows >= 1 && rows <= 1000
   },
-]
+  history(before: HistoryState, rows: number) {
+    return Number.isSafeInteger(before.totalLines) && before.totalLines > rows && before.screenLines === rows
+  },
+  geometry(after: HistoryState, rows: number) {
+    return Number.isSafeInteger(after.totalLines) && after.totalLines >= rows && after.screenLines === rows
+  },
+  erased(after: HistoryState, rows: number) {
+    return after.totalLines === rows
+  },
+}
+
+export function createEraseProbes(
+  checks?: NonNullable<Parameters<typeof regionReadbackProbe>[1]> & {
+    history: typeof eraseHistoryPredicates
+  },
+): ProbeDefinition[] {
+  const history = checks?.history ?? eraseHistoryPredicates
+  return [
+    ...eraseReadbackRows.map((row) => regionReadbackProbe(row, checks)),
+
+    {
+      ...probe(
+        "erase.screen.scrollback",
+        (ctx) => {
+          const review = libvtermHistoryReview(ctx)
+          if (review) return review
+          const expected = "ED3 removes measured scrollback while keeping screen geometry"
+          const initial = ctx.getScrollback()
+          const rows = initial.screenLines
+          if (!history.screenRows(rows)) {
+            return parserStateResult(null, expected, { initial }, "Need a measured screen size for history setup")
+          }
+          ctx.feed("\r\n".repeat(rows + 2))
+          const before = ctx.getScrollback()
+          if (!history.history(before, rows)) {
+            return parserStateResult(null, expected, { initial, before }, "No measured scrollback to erase")
+          }
+          ctx.feed("\x1b[3J")
+          const after = ctx.getScrollback()
+          const measured = history.geometry(after, rows)
+          return parserStateResult(
+            measured ? history.erased(after, rows) : null,
+            expected,
+            { before, after },
+            measured ? undefined : "Scrollback readback or geometry changed unexpectedly",
+          )
+        },
+        scrollbackEraseApp,
+      ),
+      termNeedsGeometry: true,
+    },
+  ]
+}
+
+export const eraseProbes = createEraseProbes()
