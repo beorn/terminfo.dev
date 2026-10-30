@@ -98,6 +98,7 @@ function ownedWindow(options: {
   repaintAfterPolls: number | "never"
   regionDigest: Painter
   sentinelAnswers?: boolean
+  pixelMetadata?: boolean
   unstable?: boolean
   /**
    * The crop rectangle each read reports, keyed by that read's own label. Absent models a
@@ -163,6 +164,9 @@ function ownedWindow(options: {
       pixelsDigest: `frame|${screen}|${glyph}${suffix}`,
       ...(regionRectangle ? { regionRectangle } : {}),
       frame,
+    }
+    if (options.pixelMetadata) {
+      Object.assign(frame, { kind: "pixels", regionDigest: capture.regionDigest, pixelsDigest: capture.pixelsDigest })
     }
     return capture
   }
@@ -1655,4 +1659,234 @@ test("no combination of a missed cleared attribute and a retained reference attr
       }
     }
   }
+})
+
+// Declared visual signals use the same runtime entry and same witnessed planes as legacy rows.
+function declaredWindow(
+  applied: string,
+  options: { noChange?: boolean; stale?: boolean; metadata?: boolean } = {},
+): Fake {
+  const paint = planePainter(applied)
+  return ownedWindow({
+    repaintAfterPolls: options.stale ? "never" : 1,
+    regionDigest: (writes) => {
+      const value = paint(writes)
+      return options.noChange && value === "expected" ? "seed" : value
+    },
+    pixelMetadata: options.metadata ?? true,
+    cropFor: (label) =>
+      /baseline|paint witness/.test(label)
+        ? { x: 0, y: 32, width: 8, height: 16 }
+        : { x: 0, y: 0, width: 64, height: 16 },
+  })
+}
+
+const CHANGE_SIGNAL = { signal: "fixture.changed", expected: "change" as const }
+const NO_CHANGE_SIGNAL = { signal: "fixture.restored", expected: "no-change" as const }
+
+test.each([
+  ["expected", "supported", "positive"],
+  ["seed", "unsupported", "negative"],
+  ["ignored", "unsupported", "negative"],
+] as const)("declared visual change %s yields an explicit %s row", async (applied, status, kind) => {
+  const result = await decide(declaredWindow(applied), { ...PLANE_SPEC, discriminator: CHANGE_SIGNAL })
+  expect(result.tests).toEqual([{ id: "fixture.changed", status, assertionRefs: [0] }])
+  expect(result.assertions).toHaveLength(1)
+  expect(result.assertions?.[0]?.kind).toBe(kind)
+})
+
+test.each([
+  ["seed", "supported"],
+  ["ignored", "unsupported"],
+] as const)("declared visual no-change %s uses its independent contrast for %s", async (applied, status) => {
+  const result = await decide(declaredWindow(applied, { noChange: true }), {
+    ...PLANE_SPEC,
+    discriminator: NO_CHANGE_SIGNAL,
+  })
+  expect(result.tests).toEqual([{ id: "fixture.restored", status, assertionRefs: [0] }])
+  expect(result.assertions).toHaveLength(1)
+})
+
+test("declared visual missing witness names review without asserting a negative", async () => {
+  const result = await decide(declaredWindow("seed", { stale: true }), {
+    ...PLANE_SPEC,
+    discriminator: CHANGE_SIGNAL,
+    timeoutMs: 5,
+  })
+  expect(result.tests?.[0]?.id).toBe("review")
+  expect(result.tests?.[0]?.status).toBe("test-todo")
+  expect(result.tests?.[0]?.reason).toBe("no freshness witness")
+  expect(result.assertions).toBeUndefined()
+})
+
+test.each(["change", "no-change"] as const)(
+  "declared visual %s third frame stays explicit review",
+  async (expected) => {
+    const result = await decide(declaredWindow("third", { noChange: expected === "no-change" }), {
+      ...PLANE_SPEC,
+      discriminator: { signal: "fixture.signal", expected },
+    })
+    expect(result.tests?.[0]?.status).toBe("test-todo")
+    expect(result.tests?.[0]?.reason).toContain("third distinct frame")
+    expect(result.assertions).toBeUndefined()
+  },
+)
+
+test("declared visual no-change requires a distinct ignored contrast", async () => {
+  const result = await decide(declaredWindow("seed", { noChange: true }), {
+    ...PLANE_SPEC,
+    ignored: undefined,
+    discriminator: NO_CHANGE_SIGNAL,
+  })
+  expect(result.tests?.[0]?.status).toBe("test-todo")
+  expect(result.tests?.[0]?.reason).toContain("distinct ignored contrast")
+})
+
+test("declared visual collapsed references stay explicit review", async () => {
+  const fake = declaredWindow("expected")
+  const read = fake.read
+  fake.read = async (request) => {
+    const captured = await read(request)
+    if (request.label.endsWith("ignored-attribute frame")) {
+      captured.regionDigest = captured.regionDigest.replace("ignored", "expected")
+      Object.assign(captured.frame, { regionDigest: captured.regionDigest })
+    }
+    return captured
+  }
+  const result = await decide(fake, { ...PLANE_SPEC, discriminator: CHANGE_SIGNAL })
+  expect(result.tests?.[0]?.status).toBe("test-todo")
+  expect(result.tests?.[0]?.reason).toContain("cannot separate")
+})
+
+test("declared visual requires actual pixel crop metadata rather than wrapper fallback", async () => {
+  await expect(
+    decide(declaredWindow("expected", { metadata: false }), {
+      ...PLANE_SPEC,
+      discriminator: CHANGE_SIGNAL,
+    }),
+  ).rejects.toThrow(/actual pixel.*digest|pixel.*metadata/)
+})
+
+test("declared visual rejects text capture before terminal writes", async () => {
+  const fake = declaredWindow("expected")
+  fake.ctx.captureKind = "text-cells"
+  const result = await captureRegionReadbackDecision(
+    fake.ctx,
+    "visual",
+    spec({
+      ...PLANE_SPEC,
+      discriminator: CHANGE_SIGNAL,
+    }),
+    fake.read,
+  )
+  expect(result?.tests?.[0]?.status).toBe("test-todo")
+  expect(result?.tests?.[0]?.reason).toContain("pixel")
+  expect(fake.writes).toHaveLength(0)
+})
+
+test("declared visual missing reader is explicit review without writes", async () => {
+  const fake = declaredWindow("expected")
+  const result = await captureRegionReadbackDecision(fake.ctx, "visual", spec({ discriminator: CHANGE_SIGNAL }), null)
+  expect(result?.tests).toEqual([{ id: "review", status: "test-todo", reason: "no freshness witness" }])
+  expect(fake.writes).toHaveLength(0)
+})
+
+test.each(["missing crop", "mismatched digest", "text frame"] as const)(
+  "declared visual rejects %s from the reader",
+  async (fault) => {
+    const fake = declaredWindow("expected")
+    const read = fake.read
+    fake.read = async (request) => {
+      const captured = await read(request)
+      if (fault === "missing crop") delete captured.regionRectangle
+      else if (fault === "mismatched digest") captured.regionDigest = "wrapper-only"
+      else {
+        captured.frame = {
+          kind: "text-cells",
+          role: request.role,
+          ref: "sha256:text",
+          label: request.label,
+          capturedAt: 1,
+          cellDigest: "text",
+          frameDigest: "whole-text",
+          cellRectangle: request.region,
+        }
+      }
+      return captured
+    }
+    await expect(decide(fake, { ...PLANE_SPEC, discriminator: CHANGE_SIGNAL })).rejects.toThrow(/actual pixel.*digests/)
+  },
+)
+
+test.each(["change", "no-change"] as const)(
+  "declared visual %s requires the supplied setup qualification",
+  async (expected) => {
+    const result = await decide(
+      declaredWindow(expected === "change" ? "expected" : "seed", { noChange: expected === "no-change" }),
+      {
+        ...PLANE_SPEC,
+        setupReference: PLANES.ignored,
+        discriminator: { signal: "fixture.setup", expected },
+      },
+    )
+    expect(result.tests?.[0]?.status).toBe("test-todo")
+    expect(result.tests?.[0]?.reason).toContain("required setup was not established")
+    expect(result.assertions).toBeUndefined()
+  },
+)
+
+test("declared visual no-change collapsed contrast cannot support or oppose the claim", async () => {
+  const result = await decide(declaredWindow("seed", { noChange: true }), {
+    ...PLANE_SPEC,
+    ignored: PLANES.expected,
+    discriminator: NO_CHANGE_SIGNAL,
+  })
+  expect(result.tests?.[0]?.status).toBe("test-todo")
+  expect(result.tests?.[0]?.reason).toContain("cannot separate")
+  expect(result.assertions).toBeUndefined()
+})
+
+test("declared visual crop movement alone cannot witness target freshness", async () => {
+  const fake = declaredWindow("seed")
+  const read = fake.read
+  let targetBaseline: RegionCapture | undefined
+  fake.read = async (request) => {
+    const captured = await read(request)
+    if (request.label.endsWith("post-sequence target — baseline")) targetBaseline = captured
+    if (request.label.endsWith("post-sequence target — paint witness")) {
+      if (!targetBaseline?.regionRectangle) throw new Error("target witness baseline crop missing")
+      const moved = { ...captured.regionRectangle!, x: captured.regionRectangle!.x + 1 }
+      captured.regionRectangle = moved
+      captured.frame.regionRectangle = moved
+      // Keep the sentinel and whole frame unchanged: only sampling a shifted crop changes this digest.
+      captured.regionDigest = `${targetBaseline.regionDigest}:shifted-crop`
+      captured.frame.regionDigest = captured.regionDigest
+      captured.pixelsDigest = targetBaseline.pixelsDigest
+      captured.frame.pixelsDigest = captured.pixelsDigest
+    }
+    return captured
+  }
+  const write = fake.ctx.write.bind(fake.ctx)
+  let targetStep = false
+  fake.ctx.write = (sequence) => {
+    if (sequence === `${PLANE_SPEC.seed}${PLANE_SPEC.edit}`) targetStep = true
+    if (targetStep && sequence === "\x1b[3;1H1") {
+      // Model a stale sentinel while other frame captures can still be fresh.
+      fake.writes.push(sequence)
+      targetStep = false
+      return
+    }
+    write(sequence)
+  }
+
+  const result = await decide(fake, { ...PLANE_SPEC, discriminator: CHANGE_SIGNAL })
+  expect(result.tests?.[0]?.status).toBe("test-todo")
+  expect(result.tests?.[0]?.reason).toContain("witness crop")
+  expect(result.tests?.[0]?.reason).toContain("0,32 8x16")
+  expect(result.tests?.[0]?.reason).toContain("1,32 8x16")
+  expect(result.observation.frames?.map(({ regionRectangle }) => regionRectangle)).toEqual([
+    { x: 0, y: 32, width: 8, height: 16 },
+    { x: 1, y: 32, width: 8, height: 16 },
+  ])
+  expect(result.assertions).toBeUndefined()
 })

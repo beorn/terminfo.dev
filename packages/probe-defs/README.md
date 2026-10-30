@@ -218,6 +218,14 @@ Native execution can also change the recorded result: for example, a measured re
 
 **Frames are evidence, not verdicts.** `ObservationFrame` distinguishes pixel frames from `text-cells` frames; pixel and cell rectangles/digests are not interchangeable.
 
+Declared visual criteria use [region readback](src/region-readback.ts) to compare stable,
+cell-aligned pixel crops against independently painted references behind a paint witness.
+Expected-change and expected-no-change claims have separate controls; an unchanged frame
+without freshness evidence remains review TEST TODO. Each decided signal retains its own
+assertion. Missing discriminators and unmeasured feature facets remain named review rows;
+cursor-shape cell and blink-phase sampling belongs to #31812. Historical frames acquire no
+new comparison or grade.
+
 `TermProbeSource.capture` supplies owned pixel capture; `cells` is a separate terminal-text route for declared cell readback. [Region readback](src/region-readback.ts) and callbacks evaluate the resulting evidence.
 
 **Timed and composited rows decide by pixels, never by an acknowledgement.** The kitty animation and

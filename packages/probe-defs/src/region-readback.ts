@@ -93,6 +93,8 @@ export function collectorRegionRead(ctx: TermProbeSource): RegionRead | null {
 export interface RegionReadback {
   /** The cells the verdict compares. The witness cell and the cursor row lie outside it. */
   region: CellRegion
+  /** One visual signal and whether its qualified expected frame changes the seed. Omit for legacy decisions. */
+  discriminator?: { signal: string; expected: "change" | "no-change" }
   /** The reserved one-cell paint witness, outside every compared region. */
   sentinel: { row: number; col: number }
   /** The row the fixture parks the cursor on before each witness; excluded from every region. */
@@ -336,10 +338,13 @@ async function awaitPaintWitness(options: {
   baseline: RegionCapture
   timeoutMs: number
   pollMs: number
+  /** Declared pixel decisions cannot treat a crop shift as a paint witness. */
+  requireSameCrop?: boolean
   /** How this run sees its frames: the timeout branch names it rather than claiming pixels. */
   assertionType?: "screenshot" | "buffer_state"
 }): Promise<{ witness: RegionCapture } | ProbeCallbackResult> {
-  const { read, id, label, witnessCell, pixelGeometry, geometrySource, baseline, timeoutMs, pollMs } = options
+  const { read, id, label, witnessCell, pixelGeometry, geometrySource, baseline, timeoutMs, pollMs, requireSameCrop } =
+    options
   const assertionType = options.assertionType ?? "screenshot"
   const deadline = Date.now() + timeoutMs
   for (;;) {
@@ -349,6 +354,22 @@ async function awaitPaintWitness(options: {
       region: witnessCell,
       pixelGeometry,
     })
+    if (
+      requireSameCrop &&
+      (!baseline.regionRectangle ||
+        !painted.regionRectangle ||
+        !sameRectangle(baseline.regionRectangle, painted.regionRectangle))
+    ) {
+      const baselineCrop = baseline.regionRectangle ? rectangleSpelling(baseline.regionRectangle) : "missing"
+      const paintedCrop = painted.regionRectangle ? rectangleSpelling(painted.regionRectangle) : "missing"
+      return inconclusive(
+        id,
+        `${id}: paint witness crop moved between its baseline (${baselineCrop}) and witness capture (${paintedCrop}); the changed crop cannot establish freshness`,
+        "insufficient-evidence",
+        assertionType,
+        { screenshotRef: painted.frame.ref, frames: [baseline.frame, painted.frame] },
+      )
+    }
     if (painted.regionDigest !== baseline.regionDigest) return { witness: painted }
     const frameMoved = painted.pixelsDigest !== baseline.pixelsDigest
     if (Date.now() >= deadline) {
@@ -795,7 +816,59 @@ export async function captureRegionReadbackDecision(
     ...(assertionType === "screenshot" && ref !== undefined ? { screenshotRef: ref } : {}),
     frames,
   })
-  if (!read) return null
+  const discriminator = spec.discriminator
+  // Declared visual rows must tell the writer exactly why review remains open. Legacy callers
+  // retain their existing observation-only result, including its historical timeout semantics.
+  const review = (result: ProbeCallbackResult, reason?: string): ProbeCallbackResult =>
+    discriminator
+      ? {
+          ...result,
+          criterionBranch: "visual-review",
+          tests: [
+            {
+              id: "review",
+              status: "test-todo",
+              reason: reason ?? result.observation?.note ?? `${id}: insufficient visual evidence`,
+            },
+          ],
+        }
+      : result
+  if (!read) return discriminator ? review(refused(id, "no freshness witness"), "no freshness witness") : null
+  if (discriminator && ctx.captureKind === "text-cells") {
+    return refused(id, `${id}: declared visual signal requires pixel capture`)
+  }
+  if (discriminator) {
+    const capture = read
+    read = async (request) => {
+      const measured = await capture(request)
+      const frame = measured.frame
+      const rectangle = measured.regionRectangle
+      const geometry = request.pixelGeometry
+      if (
+        frame.kind === "text-cells" ||
+        !frame.regionDigest ||
+        !frame.pixelsDigest ||
+        frame.regionDigest !== measured.regionDigest ||
+        frame.pixelsDigest !== measured.pixelsDigest ||
+        !rectangle ||
+        !frame.regionRectangle ||
+        !sameRectangle(rectangle, frame.regionRectangle) ||
+        !geometry ||
+        ![rectangle.x, rectangle.y, rectangle.width, rectangle.height].every(Number.isInteger) ||
+        rectangle.x < 0 ||
+        rectangle.y < 0 ||
+        rectangle.width <= 0 ||
+        rectangle.height <= 0 ||
+        rectangle.width !== (request.region.right - request.region.left + 1) * geometry.cellWidth ||
+        rectangle.height !== (request.region.bottom - request.region.top + 1) * geometry.cellHeight
+      ) {
+        throw new Error(
+          `${id}: declared visual capture requires actual pixel region/whole digests and matching cell-sized crop metadata (${request.label})`,
+        )
+      }
+      return measured
+    }
+  }
   const refusal = regionRefusal(id, spec, ctx.rows, ctx.cols, ctx.captureKind === "text-cells")
   if (refusal) return refusal
   if (spec.requiresUtf8 === true) {
@@ -852,7 +925,7 @@ export async function captureRegionReadbackDecision(
           pixelGeometry: spec.pixelGeometry,
         }),
     )
-    if (instability) return instability
+    if (instability) return review(instability)
     for (const [index, step] of steps.entries()) {
       ctx.write(step.writes)
       ctx.write(park)
@@ -874,9 +947,12 @@ export async function captureRegionReadbackDecision(
         baseline,
         timeoutMs,
         pollMs,
+        requireSameCrop: discriminator !== undefined,
         assertionType,
       })
-      if (!witnessed(result)) return result
+      if (!witnessed(result)) {
+        return review(result, result.observation?.reason === "timeout" ? "no freshness witness" : undefined)
+      }
       frames.push(result.witness.frame)
       const measured = await read({
         role: step.role,
@@ -917,6 +993,7 @@ export async function captureRegionReadbackDecision(
       expected,
       ...(ignored !== undefined && { ignored }),
       ...(setupReference !== undefined && { setupReference }),
+      ...(discriminator && { discriminator }),
     })
     const cropRefusal = cropPositionRefusal({
       id,
@@ -936,32 +1013,48 @@ export async function captureRegionReadbackDecision(
     if (cropRefusal) return cropRefusal
     if (setupReference !== undefined && seed !== setupReference) {
       const note = `${id}: the seed frame does not match the independent setup reference; required setup was not established (seed ${seed}, reference ${setupReference})`
-      return {
+      return review({
         ...inconclusive(id, note, "insufficient-evidence", assertionType, cite(frames.at(-1)?.ref, frames)),
         response: observed,
-      }
+      })
     }
-    if (seed === expected) {
-      return inconclusive(
-        id,
-        `${id}: the seed frame and the expected frame read the same cells, so this run cannot separate them`,
-        "insufficient-evidence",
-        assertionType,
-        cite(frames[3]?.ref, frames),
+    if (discriminator?.expected === "no-change" && (seed !== expected || ignored === undefined)) {
+      return review({
+        ...inconclusive(
+          id,
+          `${id}: no-change requires a matching independent expected frame and a distinct ignored contrast`,
+          "insufficient-evidence",
+          assertionType,
+          cite(frames[3]?.ref, frames),
+        ),
+        response: observed,
+      })
+    }
+    if (seed === expected && discriminator?.expected !== "no-change") {
+      return review(
+        inconclusive(
+          id,
+          `${id}: the seed frame and the expected frame read the same cells, so this run cannot separate them`,
+          "insufficient-evidence",
+          assertionType,
+          cite(frames[3]?.ref, frames),
+        ),
       )
     }
     if (ignored !== undefined && ignored === expected) {
-      return inconclusive(
-        id,
-        `${id}: the ignored-attribute frame and the expected frame read the same cells, so this run cannot separate them`,
-        "insufficient-evidence",
-        assertionType,
-        cite(frames[3]?.ref, frames),
+      return review(
+        inconclusive(
+          id,
+          `${id}: the ignored-attribute frame and the expected frame read the same cells, so this run cannot separate them`,
+          "insufficient-evidence",
+          assertionType,
+          cite(frames[3]?.ref, frames),
+        ),
       )
     }
     const supported = after === expected
     // The decision table below is tested branch by branch:
-    //   seed == expected             -> inconclusive, named (the run cannot separate them)
+    //   seed == expected             -> inconclusive, except declared no-change with a distinct ignored control
     //   expected == ignored          -> inconclusive, named (the run cannot separate them)
     //   after == expected            -> supported
     //   after == seed                -> unsupported (the sequence left the screen untouched)
@@ -971,8 +1064,10 @@ export async function captureRegionReadbackDecision(
     // negative branch, so a frame cannot be called a negative while it is also the expected one.
     // A frame equal to `seed` is the sequence leaving the screen untouched; a frame equal to
     // `ignored` is the sequence running while dropping the attribute the row claims. Both are
-    // measured negatives of the same claim, so both read `unsupported`, never `inconclusive`.
-    const unsupported = after === seed || (ignored !== undefined && after === ignored)
+    // measured negatives of a change claim. A declared no-change instead requires seed == expected;
+    // only its distinct ignored control can establish the measured negative.
+    const unsupported =
+      (discriminator?.expected !== "no-change" && after === seed) || (ignored !== undefined && after === ignored)
     if (!supported && !unsupported) {
       // The three compared planes are pairwise distinct: the seed and the expected frame already
       // differ (the earlier `seed === expected` branch would have fired otherwise), and `after`
@@ -993,7 +1088,7 @@ export async function captureRegionReadbackDecision(
           ? "this exact pixel-region digest cannot say which rendering axis differed — glyph edges, background attributes, and layout all change it — so it cannot tell an incorrect effect from a rendering difference"
           : "this exact cell digest covers the characters and, only where this arm reports them, the attributes — so it cannot say which of the two differed, and an attribute-only difference this arm does not report is invisible to it"
       const note = `${id}: a third distinct frame: the sequence changed the screen (after != seed) but not into the expected frame; ${axes} (compared frames: ${ignored === undefined ? "seed" : "seed, ignored-attribute"}, expected)`
-      return {
+      return review({
         pass: false,
         response: observed,
         observation: {
@@ -1003,10 +1098,20 @@ export async function captureRegionReadbackDecision(
           ...cite(frames[3]?.ref, frames),
           note,
         },
-      }
+      })
     }
     return {
       pass: supported,
+      ...(discriminator && {
+        criterionBranch: discriminator.signal,
+        tests: [
+          {
+            id: discriminator.signal,
+            status: supported ? ("supported" as const) : ("unsupported" as const),
+            assertionRefs: [0],
+          },
+        ],
+      }),
       response: observed,
       observation: {
         outcome: supported ? "supported" : "unsupported",
@@ -1020,7 +1125,7 @@ export async function captureRegionReadbackDecision(
         {
           assertionType: assertionType,
           kind: supported ? "positive" : "negative",
-          expected: `${id}: cell-aligned region ${JSON.stringify(spec.region)} equals the same-run expected frame after ${JSON.stringify(spec.edit)}, behind a paint witness in cell ${spec.sentinel.row},${spec.sentinel.col}`,
+          expected: `${id}${discriminator ? ` (${discriminator.signal}, expected ${discriminator.expected})` : ""}: cell-aligned region ${JSON.stringify(spec.region)} equals the same-run expected frame after ${JSON.stringify(spec.edit)}, behind a paint witness in cell ${spec.sentinel.row},${spec.sentinel.col}`,
           observed: after,
         },
       ],

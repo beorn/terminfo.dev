@@ -534,7 +534,8 @@ export const cursorProbes: ProbeDefinition[] = [
               {
                 id: "review",
                 status: "test-todo",
-                reason: "Cursor shape frames captured; required independent review pending; cursor cell is unmeasured",
+                reason:
+                  "Cursor shape frames captured; review pending: undeclared cursor discriminator #31812 (cursor cell and blink phase unmeasured)",
               },
             ],
             assertions: [
