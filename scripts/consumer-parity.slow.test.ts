@@ -973,6 +973,7 @@ describe("selected-run consumer parity", () => {
             wire: "00000000-0000-4000-8000-000000000000",
             at: "2026-10-30T12:00:00-07:00",
           },
+          acceptedSha256: "a".repeat(64),
         },
       }
       const presented = publicResults(projection, targets)

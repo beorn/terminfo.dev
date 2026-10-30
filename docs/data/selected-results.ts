@@ -1,4 +1,5 @@
 /** Reviewed selection and projection for terminal observations. */
+import { createHash } from "node:crypto"
 import { existsSync, readFileSync, readdirSync } from "node:fs"
 import { isAbsolute, join } from "node:path"
 import { aggregateCurrentResults, treeMovedPastRelease, type SuiteRelation } from "./release-scope.ts"
@@ -167,12 +168,16 @@ export interface CurrentSelectedVersion {
   assertions: ReadAssertion[]
   origin: RunOrigin
   textQualification?: TextQualification
-  /** Each keeps its accepted record, a reviewed cell's lineage; the public API omits presentations. */
+  /**
+   * Each keeps its accepted record and the sha256 of the committed interpretation record (its JSON serialization as
+   * parsed), a reviewed cell's lineage; the public API omits presentations.
+   */
   presentations: Record<
     string,
     Pick<Interpretation, "id" | "reviewer" | "reason" | "sources"> & {
       presentsEvidence: boolean
       accepted: NonNullable<Interpretation["accepted"]>
+      acceptedSha256: string
     }
   >
   identityAdmission?: IdentityAdmission
@@ -589,6 +594,7 @@ export function projectResults(
         sources: [...entry.sources],
         presentsEvidence: entry.presentsEvidence as boolean,
         accepted: { ...(entry.accepted as NonNullable<Interpretation["accepted"]>) },
+        acceptedSha256: createHash("sha256").update(JSON.stringify(entry), "utf8").digest("hex"),
       }
     }
     const version: CurrentSelectedVersion = {
