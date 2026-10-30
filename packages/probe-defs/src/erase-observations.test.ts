@@ -858,31 +858,21 @@ test("background erase measures a blank target that carries the seeded backgroun
   expect(run(background, background, "X").observation).toMatchObject({ outcome: "unsupported" })
   // A different colour is not the seeded one: the relative claim is exact on this adapter.
   expect(run(background, other).observation).toMatchObject({ outcome: "unsupported" })
-  // #31379: the seed characters arrived without the painted background, so the claim's reference is
-  // uncalibrated and routes to source-negative-review for engine/adapter audit.
+  // #31940: an unpainted seed is an execution precondition failure, never a negative erase claim.
   const unseeded = run(null, background)
   expect(unseeded.notTested).toBeUndefined()
-  expect(unseeded.criterionBranch).toBe("source-negative-review")
+  expect(unseeded.criterionBranch).toBeUndefined()
   expect(unseeded.tests).toEqual([
     {
-      id: "review",
+      id: "criterion",
       status: "test-failure",
-      reason: expect.stringContaining("the seed's painted bg"),
+      reason: expect.stringContaining(
+        "PreconditionFailed: precondition failed: seed cells not painted (expected bg at",
+      ),
     },
   ])
-  expect(unseeded.observation).toEqual({
-    outcome: "inconclusive",
-    reason: "insufficient-evidence",
-    assertionType: "buffer_state",
-  })
-  expect(unseeded.assertions).toEqual([
-    {
-      assertionType: "buffer_state",
-      kind: "negative",
-      expected: row.expected,
-      observed: unseeded.response!,
-    },
-  ])
+  expect(unseeded.observation).toBeUndefined()
+  expect(unseeded.assertions).toBeUndefined()
   // A seed whose measured character is not the row's own means the fixture never landed, so nothing
   // may be graded from it.
   const wrongSeed = run(background, background, " ", "?")

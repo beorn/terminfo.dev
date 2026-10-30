@@ -155,13 +155,14 @@ export async function runEraseReplay(context: TestContext, directory: string): P
           criterionBranch: result.criterionBranch,
           observation: result.observation && { ...result.observation, featureId, rawReplyRef: featureId },
           coverage: result.notTested && { ...result.notTested, featureId, rawReplyRef: featureId },
-          diagnostic: precondition
-            ? {
-                kind: "collector-error",
-                name: "PreconditionFailed",
-                message: "Erase precondition failed: " + precondition.matcher,
-              }
-            : undefined,
+          diagnostic:
+            precondition && !result.tests?.some((test) => test.id === "criterion" && test.status === "test-failure")
+              ? {
+                  kind: "collector-error",
+                  name: "PreconditionFailed",
+                  message: "Erase precondition failed: " + precondition.matcher,
+                }
+              : undefined,
           rawReplyRef: featureId,
         })
         const index = assertion.results.findIndex((entry) => entry.featureId === featureId)

@@ -126,7 +126,7 @@ test("installed Vitest preserves task-owned checks and awaited reporter attachme
   }
 }, 60_000)
 
-test.for(["success", "capture-failure", "deciding", "precondition", "replay-failure"] as const)(
+test.for(["success", "capture-failure", "deciding", "precondition", "replay-failure", "painted-seed"] as const)(
   "actual erase entry persists domain results: %s",
   async (mode) => {
     const directory = await mkdtemp(join(tmpdir(), "terminfo-erase-run-"))
@@ -167,7 +167,7 @@ test.for(["success", "capture-failure", "deciding", "precondition", "replay-fail
           ? { supported: 11 }
           : mode === "deciding"
             ? { supported: 10, unsupported: 1 }
-            : mode === "precondition"
+            : mode === "precondition" || mode === "painted-seed"
               ? { supported: 10, "test-failure": 1 }
               : { "test-failure": 11 }
       expect(report).toMatchObject({ counts })
@@ -212,14 +212,28 @@ test.for(["success", "capture-failure", "deciding", "precondition", "replay-fail
         ).toEqual(
           Object.fromEntries(record.checks[runIndex]!.map(({ featureId, startedAt }) => [featureId, startedAt])),
         )
-        const character = selected.find(({ featureId }) => featureId === "erase.character")
+        const target = mode === "painted-seed" ? "erase.el-with-attrs" : "erase.character"
+        const character = selected.find(({ featureId }) => featureId === target)
         expect(character?.status).toBe(
-          mode === "deciding" ? "unsupported" : mode === "precondition" ? "test-failure" : "supported",
+          mode === "deciding"
+            ? "unsupported"
+            : mode === "precondition" || mode === "painted-seed"
+              ? "test-failure"
+              : "supported",
         )
+        if (mode === "painted-seed") {
+          const live = JSON.parse(await readFile(join(directory, "painted-seed-live.json"), "utf8"))
+          expect(live).not.toHaveProperty("observation")
+          expect(live).not.toHaveProperty("assertions")
+          expect(character?.criterionBranch).toBeUndefined()
+          expect(live).toHaveProperty(
+            "tests",
+            character?.tests.map(({ id, status, reason }) => ({ id, status, reason })),
+          )
+          expect(character?.tests.every(({ assertionRefs }) => assertionRefs?.length === 0)).toBe(true)
+        }
         expect(
-          selected
-            .filter(({ featureId }) => featureId !== "erase.character")
-            .every(({ status }) => status === "supported"),
+          selected.filter(({ featureId }) => featureId !== target).every(({ status }) => status === "supported"),
         ).toBe(true)
       }
       for (const path of record.files) expect(JSON.parse(await readFile(path, "utf8"))).toBeTruthy()
