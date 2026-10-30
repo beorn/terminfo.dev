@@ -119,7 +119,6 @@ test("installed Vitest preserves task-owned checks and awaited reporter attachme
       expect(artifactBytes.get(task.id)).toEqual(retainedChecks)
       expect(finalRecordBytes.get(task.id)).toEqual({ taskId: task.id, checks, retainedChecks })
     }
-    console.info(JSON.stringify({ vitest: version, completed, artifacts: [...artifacts.values()] }))
   } finally {
     await runtime.close()
     await rm(directory, { recursive: true, force: true })

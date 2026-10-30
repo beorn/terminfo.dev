@@ -1,5 +1,5 @@
 /** Explicit private erase capture/assertion run; does not change the all-engine diagnostic suite. */
-import { isAbsolute } from "node:path"
+import { isAbsolute, join } from "node:path"
 import { defineConfig } from "vitest/config"
 import CensusReporter from "../admin/reporter.ts"
 const directory = process.env.TERMINFO_ARTIFACT_ROOT
@@ -8,6 +8,7 @@ if (!directory || !isAbsolute(directory)) {
 }
 export default defineConfig({
   test: {
+    attachmentsDir: join(directory, "vitest-attachments"),
     include: ["packages/probes/erase-replay.probe.ts"],
     provide: { eraseArtifactRoot: directory },
     reporters: ["default", new CensusReporter(directory)],
