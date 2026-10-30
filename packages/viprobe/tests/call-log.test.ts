@@ -7,6 +7,45 @@
 import { expect, test } from "vitest"
 import { createCallLog, IncompleteReplay, readCallLog, withCallLog } from "../src/index.ts"
 
+// readResponse hands start/cancel functions through its registration callback.
+// Object-only callback fixtures cannot prove that invoking these effects is recorded and replayed.
+test("deferred callback functions remain ordered operations after persistence", async () => {
+  const subject = {
+    listen(register: (start: () => void, cancel: () => void) => void): Promise<string> {
+      return new Promise((resolve) =>
+        register(
+          () => resolve("reply"),
+          () => resolve("cancelled"),
+        ),
+      )
+    },
+  }
+  const log = createCallLog()
+  const capture = withCallLog(subject, { mode: "record", log })
+  let start: (() => void) | undefined
+  const pending = capture.context.listen((begin) => {
+    start = begin
+  })
+  if (!start) throw new Error("Registration did not provide a start function")
+  start()
+  expect(await pending).toBe("reply")
+  capture.finish()
+  const bytes = JSON.stringify(log)
+  const replay = withCallLog<typeof subject>(null, { mode: "replay", log: readCallLog(JSON.parse(bytes)) })
+  let replayStart: (() => void) | undefined
+  const replayed = replay.context.listen((begin) => {
+    replayStart = begin
+  })
+  if (!replayStart) throw new Error("Replay registration did not provide a start function")
+  replayStart()
+  expect(await replayed).toBe("reply")
+  replay.finish()
+  expect(JSON.stringify(readCallLog(JSON.parse(bytes)))).toBe(bytes)
+  const skipped = withCallLog<typeof subject>(null, { mode: "replay", log: readCallLog(JSON.parse(bytes)) })
+  expect(await skipped.context.listen(() => {})).toBe("reply")
+  expect(() => skipped.finish()).toThrow(IncompleteReplay)
+})
+
 // The TTY host needs decoded display data without a second decoder or executable replay handles.
 test("validated operation projection is ordered, inert and detached from canonical bytes", async () => {
   let getterReads = 0

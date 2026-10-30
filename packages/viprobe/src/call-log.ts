@@ -392,12 +392,14 @@ export function readCallLog(
       if (target === undefined) invalidArtifact(call.path, "invalid outcome or callback argument reference")
       receiver = target
       const remainder = suffix.slice((result ?? callback)?.[0].length ?? 0)
-      if (!remainder.startsWith(".")) invalidArtifact(call.path, "reference has no member path")
-      memberPath = remainder.slice(1)
+      if (remainder !== "" && !remainder.startsWith(".")) invalidArtifact(call.path, "reference has no member path")
+      memberPath = remainder === "" ? "" : remainder.slice(1)
     }
     const accessor = memberPath.endsWith("#get")
     if (accessor) memberPath = memberPath.slice(0, -4)
-    for (const member of memberPath.split(".")) receiver = encodedMember(receiver, member, call.path)
+    if (memberPath !== "") {
+      for (const member of memberPath.split(".")) receiver = encodedMember(receiver, member, call.path)
+    }
     if (receiver === null || typeof receiver !== "object" || receiver.kind !== (accessor ? "accessor" : "function")) {
       invalidArtifact(call.path, "method path does not identify a callable member")
     }
@@ -491,8 +493,9 @@ function decodeValue(value: Encoded, projection = false): unknown {
       if (projection) return Object.freeze({ kind: "set", values: Object.freeze(value.values.map(decode)) })
       return new Set(value.values.map(decode))
     case "bytes":
-      if (projection)
+      if (projection) {
         return Object.freeze({ kind: "bytes", length: Buffer.from(value.value, "base64").length, base64: value.value })
+      }
       return new Uint8Array(Buffer.from(value.value, "base64"))
     case "array": {
       const array = Object.assign(
@@ -639,7 +642,12 @@ export function withCallLog<Subject extends object>(
       })
   }
 
-  function recordCall(target: object, method: (...args: unknown[]) => unknown, path: string, args: unknown[]): unknown {
+  function recordCall(
+    target: unknown,
+    method: (...args: unknown[]) => unknown,
+    path: string,
+    args: unknown[],
+  ): unknown {
     if (closed) return incomplete(`recording session already finished: ${path}`)
     const timing = startTiming()
     const call: MethodCall = {
@@ -746,8 +754,13 @@ export function withCallLog<Subject extends object>(
   }
 
   function wrap(value: unknown, path: string): unknown {
-    if (value === null || typeof value !== "object") return value
+    if (value === null || (typeof value !== "object" && typeof value !== "function")) return value
     const proxy = new Proxy(value, {
+      apply(target, receiver, args: unknown[]) {
+        return mode === "record"
+          ? recordCall(receiver, target as (...args: unknown[]) => unknown, path, args)
+          : replayCall(path, args)
+      },
       get(target, property) {
         const memberPath = `${path}.${typeof property === "symbol" ? String(property) : property}`
         const descriptor = Object.getOwnPropertyDescriptor(target, property)
