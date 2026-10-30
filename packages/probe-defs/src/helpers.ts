@@ -276,24 +276,64 @@ export function unmeasuredCellResult(
   position: { row: number; col: number } | null,
   feature: string,
 ): ProbeCallbackResult {
+  if (position) {
+    const reason = `Cursor response does not measure ${feature}`
+    return {
+      ...reviewResult(HEADLESS_OBSERVABLE_REVIEW, reason, reason, { position }),
+      response: `${position.row};${position.col}`,
+    }
+  }
   return {
     pass: false,
-    ...(position && { response: `${position.row};${position.col}` }),
-    note: position ? `Cursor response does not measure ${feature}` : `No cursor response after ${feature}`,
-    ...(position === null
-      ? {
-          tests: [{ id: "criterion", status: "test-failure", reason: `No cursor response after ${feature}` }] as [
-            { id: string; status: "test-failure"; reason: string },
-          ],
-        }
-      : {
-          observation: {
-            outcome: "inconclusive",
-            reason: position ? "insufficient-evidence" : "no-response",
-            assertionType: "query_reply",
-          },
-        }),
+    note: `No cursor response after ${feature}`,
+    tests: [{ id: "criterion", status: "test-failure", reason: `No cursor response after ${feature}` }],
   }
+}
+
+/** Internal callback mapping for a nonnumeric width reading; numeric criteria stay with each probe. */
+export function renderedWidthFailure(
+  reading: unknown,
+  probeId: string,
+  stage: string,
+  response: string,
+): ProbeCallbackResult {
+  const unknownKind = (kind: unknown): never => {
+    throw new Error(`${probeId}: width transport: unknown kind ${String(kind)}`)
+  }
+  if (!reading || typeof reading !== "object" || Array.isArray(reading)) return unknownKind(undefined)
+  const value = reading as Record<string, unknown>
+  if (value.kind === "no-reply" && typeof value.step === "string" && value.step.length > 0) {
+    return {
+      pass: false,
+      response,
+      tests: [
+        {
+          id: "criterion",
+          status: "test-todo",
+          reason: `${stage} width: no cursor-position readback at ${value.step}`,
+        },
+      ],
+    }
+  }
+  if (value.kind === "control-mismatch" || value.kind === "wrapped") {
+    const observed = value.observed
+    if (!observed || typeof observed !== "object" || Array.isArray(observed)) return unknownKind(value.kind)
+    const position = observed as Record<string, unknown>
+    if (
+      typeof position.row !== "number" ||
+      typeof position.col !== "number" ||
+      !Number.isFinite(position.row) ||
+      !Number.isFinite(position.col)
+    ) {
+      return unknownKind(value.kind)
+    }
+    if (value.kind === "control-mismatch" && (typeof value.step !== "string" || value.step.length === 0)) {
+      return unknownKind(value.kind)
+    }
+    const reason = `${stage} width ${value.kind}${value.kind === "control-mismatch" ? ` at ${String(value.step)}` : ""}: observed ${position.row};${position.col}`
+    return { pass: false, response, tests: [{ id: "criterion", status: "test-failure", reason }] }
+  }
+  return unknownKind(value.kind)
 }
 
 /**

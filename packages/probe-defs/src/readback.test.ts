@@ -53,7 +53,7 @@ function kittySource(answer: boolean, resets = true, permanent = false): TermPro
       if (bytes.includes("\x1b[4l")) irm = false
     },
     queryCursorPosition: async () => ({ row: 1, col: 2 }),
-    measureRenderedWidth: async () => null,
+    measureRenderedWidth: async () => ({ kind: "no-reply", step: "sample" }) as const,
     query: async () => null,
     // DECRQM answers with the Ps: DECTCEM (private 25) and IRM (ANSI 4) from live state, or Ps 4 for a terminal
     // that knows both modes and cannot set them (#30557 r2).

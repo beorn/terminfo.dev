@@ -891,11 +891,16 @@ test.each(appOnlyEffects)("%s cursor replies do not prove the advertised effect"
   const answered = await run(position)
   expect(answered.pass, id).toBe(false)
   expect(answered.response, id).toBe("3;1")
-  expect(answered.observation, id).toMatchObject({
-    outcome: "inconclusive",
-    reason: "insufficient-evidence",
-    assertionType: "query_reply",
-  })
+  expect(answered.observation, id).toBeUndefined()
+  expect(answered.criterionBranch, id).toBe("headless-observable-review")
+  expect(answered.notTested, id).toMatchObject({ reason: "no-semantic-observable" })
+  expect(answered.tests, id).toContainEqual(
+    expect.objectContaining({
+      id: "review",
+      status: "test-todo",
+      reason: expect.stringMatching(/^Cursor response does not measure /),
+    }),
+  )
   expect(answered.assertions, id).toBeUndefined()
 
   const silent = await run(null)
@@ -1209,7 +1214,7 @@ function highlightTerminal(
     queryWithSentinel: async () => null,
     queryOutcome: async () => ({ match: null, reason: "timeout" as const, raw: "", rawBase64: "" }),
     queryMode: async () => null,
-    measureRenderedWidth: async () => null,
+    measureRenderedWidth: async () => ({ kind: "no-reply", step: "sample" }) as const,
   } as unknown as TermProbeSource
   const lib = {
     feed: ctx.write,

@@ -276,6 +276,25 @@ const EXTENSIONS_CONTRACT_SPEC: GroupContractSpec = {
 const EXECUTION_ONLY_INCONCLUSIVE_DISPOSITIONS: Readonly<
   Record<string, { status: "test-todo" | "test-failure"; reason: string }>
 > = {
+  "extensions.osc22-pointer": { status: "test-todo", reason: "Cursor response does not measure OSC 22 pointer shape" },
+  "extensions.osc777-notify": {
+    status: "test-todo",
+    reason: "Cursor response does not measure OSC 777 notification delivery",
+  },
+  "extensions.osc666-termprop": {
+    status: "test-todo",
+    reason: "Cursor response does not measure OSC 666 terminal property",
+  },
+  "extensions.osc3008-context": {
+    status: "test-todo",
+    reason: "Cursor response does not measure OSC 3008 systemd context",
+  },
+  "extensions.osc176-app-id": {
+    status: "test-todo",
+    reason: "Cursor response does not measure OSC 176 Wayland app-id",
+  },
+  "extensions.osc555-flash": { status: "test-todo", reason: "Cursor response does not measure OSC 555 screen flash" },
+  "extensions.osc440-audio": { status: "test-todo", reason: "Cursor response does not measure OSC 440 audio playback" },
   "extensions.truecolor": { status: "test-todo", reason: "No cursor response; RGB color was not measured" },
   // Both kitty pixel rows now have a deciding observation; without the terminal's own pixel report
   // the arm cannot map its rectangle onto cells and names the unanswered geometry queries.

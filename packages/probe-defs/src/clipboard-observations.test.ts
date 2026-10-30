@@ -20,7 +20,7 @@ function termSource(overrides: Partial<TermProbeSource>): TermProbeSource {
     kind: "live",
     write() {},
     queryCursorPosition: async () => ({ row: 1, col: 1 }),
-    measureRenderedWidth: async () => null,
+    measureRenderedWidth: async () => ({ kind: "no-reply", step: "sample" }) as const,
     query: async () => null,
     queryOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
     queryWithSentinel: async () => null,

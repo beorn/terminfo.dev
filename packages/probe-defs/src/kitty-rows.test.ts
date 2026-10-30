@@ -18,7 +18,7 @@ const GEOMETRY = {
 
 interface Surface {
   /** Region digests handed out in capture order; the last one repeats. */
-  readonly region: readonly string[]
+  readonly region: readonly (string | undefined)[]
   /** Digests for captures of the layout-guard rectangle, in capture order; the last one repeats. */
   readonly guard?: readonly string[]
   /** Whole-window digests handed out for captures that name no cells. */
@@ -59,7 +59,7 @@ function surface(options: Surface) {
       writes.push(bytes)
     },
     queryCursorPosition: async () => ({ row: 1, col: 1 }),
-    measureRenderedWidth: async () => null,
+    measureRenderedWidth: async () => ({ kind: "no-reply", step: "sample" }) as const,
     query: async () => null,
     queryWithSentinel: async () => null,
     queryOutcome: async (sequence) => {
@@ -131,6 +131,34 @@ function term(id: string) {
   const definition = extensionsProbes.find((probe) => probe.id === id)
   if (!definition?.term) throw new Error(`${id} needs an application callback`)
   return definition.term
+}
+
+for (const featureId of ["extensions.kitty-graphics.animation", "extensions.kitty-graphics.unicode-placeholders"]) {
+  test(`${featureId} names missing cell-aligned region readback without dropping frames`, async () => {
+    const { context } = surface({ region: [undefined] })
+    const result = await term(featureId)(context)
+    expect(result.tests).toEqual([
+      {
+        id: "review",
+        status: "test-todo",
+        reason: expect.stringContaining("this arm supplied no cell-aligned region, so nothing could be compared"),
+      },
+    ])
+    expect(result.criterionBranch).toBe("headless-observable-review")
+    expect(result.observation?.frames?.length).toBeGreaterThan(0)
+    expect(result.observation?.outcome).toBe("inconclusive")
+    expect(result.assertions).toBeUndefined()
+  })
+
+  test(`${featureId} names the text-only pixel readback gap`, async () => {
+    const { context, captures } = surface({ region: ["unused"] })
+    context.captureKind = "text-cells"
+    const result = await term(featureId)(context)
+    expect(result.tests).toEqual([{ id: "review", status: "test-todo", reason: expect.stringContaining("pixels") }])
+    expect(result.criterionBranch).toBe("headless-observable-review")
+    expect(captures).toHaveLength(0)
+    expect(result.assertions).toBeUndefined()
+  })
 }
 
 test("animation decides from two target frames with no write between them", async () => {

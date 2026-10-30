@@ -58,7 +58,7 @@ function terminal(replies: Record<string, string>): TermProbeSource {
     rows: 24,
     write: () => {},
     queryCursorPosition: async () => null,
-    measureRenderedWidth: async () => null,
+    measureRenderedWidth: async () => ({ kind: "no-reply", step: "sample" }) as const,
     query: async (sequence: string, pattern: RegExp) => outcome(sequence, pattern).match,
     queryWithSentinel: async (sequence: string, pattern: RegExp) => outcome(sequence, pattern).match,
     queryOutcome: async (sequence: string, pattern: RegExp) => outcome(sequence, pattern),

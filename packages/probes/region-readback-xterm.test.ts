@@ -124,7 +124,7 @@ test.each(["erase.character", "modes.alt-screen.exit", "modes.altscreen-1047", "
         return textCellsFrame(checkpoint, read, Date.now()).frame
       },
       queryCursorPosition: async () => null,
-      measureRenderedWidth: async () => null,
+      measureRenderedWidth: async () => ({ kind: "no-reply", step: "sample" }) as const,
       query: async () => null,
       queryWithSentinel: async () => null,
       queryOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),

@@ -1,7 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks"
 import { openSync } from "node:fs"
 import { WriteStream } from "node:tty"
-import type { TerminalQueryOutcome, Utf8DecodingReading } from "@terminfo/probe-defs"
+import type { TerminalQueryOutcome, Utf8DecodingReading, RenderedWidthResult } from "@terminfo/probe-defs"
 import {
   decrpmReplyPattern,
   decrpmStatus,
@@ -375,25 +375,40 @@ export async function queryCursorPosition(): Promise<[number, number] | null> {
 /**
  * Measure from a verified 1;1 origin, rejecting a sample that wraps to another row.
  */
-export async function measureRenderedWidth(text: string): Promise<number | null> {
+export async function measureRenderedWidth(text: string): Promise<RenderedWidthResult> {
   return withTTYOperation(async () => {
     writeTTY("\x1b7")
     try {
       writeTTY("\x1b[2;1H")
       const secondRow = await queryCursorPosition()
-      if (secondRow?.[0] !== 2 || secondRow[1] !== 1) return null
+      if (!secondRow) return { kind: "no-reply", step: "origin" }
+      if (secondRow[0] !== 2 || secondRow[1] !== 1) {
+        return { kind: "control-mismatch", step: "origin", observed: { row: secondRow[0], col: secondRow[1] } }
+      }
 
       writeTTY("\x1b[1;1HA")
       const ascii = await queryCursorPosition()
-      if (ascii?.[0] !== 1 || ascii[1] !== 2) return null
+      if (!ascii) return { kind: "no-reply", step: "ascii" }
+      if (ascii[0] !== 1 || ascii[1] !== 2) {
+        return { kind: "control-mismatch", step: "ascii", observed: { row: ascii[0], col: ascii[1] } }
+      }
 
       writeTTY("\x1b[1;1H" + text)
       const pos = await queryCursorPosition()
-      if (pos?.[0] !== 1 || !Number.isSafeInteger(pos[1]) || pos[1] <= 1) return null
+      if (!pos) return { kind: "no-reply", step: "sample" }
+      if (pos[0] > 1) return { kind: "wrapped", observed: { row: pos[0], col: pos[1] } }
+      if (pos[0] !== 1 || !Number.isSafeInteger(pos[1]) || pos[1] <= 1) {
+        return { kind: "control-mismatch", step: "sample", observed: { row: pos[0], col: pos[1] } }
+      }
 
       writeTTY("A")
       const next = await queryCursorPosition()
-      return next?.[0] === 1 && next[1] === pos[1] + 1 ? pos[1] - 1 : null
+      if (!next) return { kind: "no-reply", step: "trailing" }
+      if (next[0] > 1) return { kind: "wrapped", observed: { row: next[0], col: next[1] } }
+      if (next[0] !== 1 || next[1] !== pos[1] + 1) {
+        return { kind: "control-mismatch", step: "trailing", observed: { row: next[0], col: next[1] } }
+      }
+      return pos[1] - 1
     } finally {
       writeTTY("\x1b8")
     }
