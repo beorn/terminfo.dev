@@ -25,7 +25,6 @@ import {
   decrpmResult,
   decrpmPs,
   decrpmReplyPattern,
-  reviewResult,
   sweepCellWidth,
   cellWidthTransition,
   type DecrpmPs,
@@ -1906,31 +1905,36 @@ export const modesProbes: ProbeDefinition[] = [
         const match = geometryReply.exec(ctx.feedCapture("\x1b[18t"))
         return match ? Number(match[2]) : null
       }
-      // Open the 80/132 policy gate before measuring anything. The collector destroys this probe's
-      // disposable backend; no unavailable prior ?40 state is invented for cleanup.
-      ctx.feed("\x1b[?40h")
+      // Close the 80/132 policy gate for the baseline and gate control A. The collector destroys this
+      // probe's disposable backend; no unavailable prior ?40 state is invented for cleanup.
+      ctx.feed("\x1b[?40l")
       const initial = sweepCellWidth(ctx)
       const initial18t = reply18t()
       const mirror = initial.kind === "width" && initial.width === 132
       const change = mirror ? "\x1b[?3l" : "\x1b[?3h"
       const restore = mirror ? "\x1b[?3h" : "\x1b[?3l"
+      // Gate control A: with ?40 closed the mode must not move the width.
       ctx.feed(change)
+      const gateBefore = sweepCellWidth(ctx)
+      ctx.feed(restore + "\x1b[?40h" + change)
       const enabled = sweepCellWidth(ctx)
       const enabled18t = reply18t()
       ctx.feed(restore)
       const restored = sweepCellWidth(ctx)
-      // Gate control, negative direction: with ?40 closed the mode must not move the width again.
+      const restored18t = reply18t()
+      // Gate control B: with ?40 closed again the mode must not move the width a second time.
       ctx.feed("\x1b[?40l" + change)
-      const gate = sweepCellWidth(ctx)
+      const gateAfter = sweepCellWidth(ctx)
       ctx.feed(restore + "\x1b[?40h")
       const decrpm = decrpmPs(decrpmReplyPattern(3).exec(ctx.feedCapture("\x1b[?3$p"))?.[1])
       return cellWidthTransition({
         initial,
+        gateBefore,
         enabled,
         restored,
-        gate,
+        gateAfter,
         decrpm,
-        reply18t: { initial: initial18t, enabled: enabled18t },
+        reply18t: { initial: initial18t, enabled: enabled18t, restored: restored18t },
       })
     },
     async term(ctx) {

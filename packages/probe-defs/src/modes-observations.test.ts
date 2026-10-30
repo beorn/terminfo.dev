@@ -99,7 +99,9 @@ function headlessDeccolm(): (ctx: LibProbeSource) => ProbeCallbackResult {
 /**
  * A four-state cell model. Width moves only when ?40 is open, unless `honoursModeWithoutGate`
  * says the engine ignores the gate; `ignoresMode` is an engine that accepts the mode and does not
- * move; `replyWidth` makes a silent `18 t` answer with a width of its own.
+ * move; `replyWidth` makes a silent `18 t` answer with a width of its own, and `replies` scripts each
+ * `18 t` answer in call order. `stickyGate` ignores ?40l once ?40 was opened; `wideWidth` is the
+ * width ?3h sets.
  */
 function cellWidthContext(options: {
   width: 80 | 132
@@ -109,8 +111,12 @@ function cellWidthContext(options: {
   decrpm?: string
   replyWidth?: number
   answers18t?: boolean
+  replies?: Array<number | null>
+  stickyGate?: boolean
+  wideWidth?: number
 }) {
   const state = { width: options.width as number, gate: false, cursor: { x: 0, y: 0 }, writes: [] as string[] }
+  let replyCall = 0
   const context = {
     cols: options.width,
     getCursor: () => ({ ...state.cursor, visible: true, style: null }),
@@ -118,9 +124,9 @@ function cellWidthContext(options: {
       state.writes.push(text)
       for (const match of text.matchAll(/\x1b\[\?(\d+)([hl])/g)) {
         const on = match[2] === "h"
-        if (match[1] === "40") state.gate = on
+        if (match[1] === "40") state.gate = on || (options.stickyGate === true && state.gate)
         if (match[1] === "3" && !options.ignoresMode && (state.gate || options.honoursModeWithoutGate)) {
-          state.width = on ? 132 : 80
+          state.width = on ? (options.wideWidth ?? 132) : 80
         }
       }
       if (text.includes("\x1b[2J")) state.cursor = { x: 0, y: 0 }
@@ -136,6 +142,10 @@ function cellWidthContext(options: {
     feedCapture(sequence: string) {
       state.writes.push(sequence)
       if (sequence !== "\x1b[18t") return options.decrpm ?? ""
+      if (options.replies) {
+        const width = options.replies[replyCall++]
+        return width === null || width === undefined ? "" : `\x1b[8;24;${width}t`
+      }
       if (options.answers18t) return `\x1b[8;24;${state.width}t`
       return options.replyWidth === undefined ? "" : `\x1b[8;24;${options.replyWidth}t`
     },
@@ -151,8 +161,47 @@ test("DECCOLM cell width moves 80 -> 132 -> 80 with ?40 honoured", () => {
     expect.arrayContaining([expect.objectContaining({ assertionType: "buffer_state", kind: "positive" })]),
   )
   const wire = state.writes.join("")
-  expect(wire.indexOf("\x1b[?40h")).toBeLessThan(wire.indexOf("\x1b[?3h"))
+  // The enabling change follows ?40h; the first ?3h is gate control A, sent with ?40 closed.
+  expect(wire).toContain("\x1b[?40h\x1b[?3h")
   expect(state.width).toBe(80)
+})
+
+// cee6d003: re-seed before every sweep, and only the 133rd X proves W=132.
+test("DECCOLM re-seeds before each of its five 133-X sweeps and runs gate control A before ?40 opens", () => {
+  const { context, state } = cellWidthContext({ width: 80 })
+  const result = headlessDeccolm()(context)
+  expect(result.observation).toMatchObject({ outcome: "supported" })
+  const sweeps = state.writes.flatMap((write, index) => (/^X+$/.test(write) ? [index] : []))
+  expect(sweeps).toHaveLength(5)
+  for (const index of sweeps) {
+    expect(state.writes[index]).toBe("X".repeat(133))
+    expect(state.writes[index - 1]).toContain("\x1b[2J\x1b[H")
+  }
+  const wire = state.writes.join("")
+  const closed = wire.indexOf("\x1b[?40l")
+  const firstChange = wire.indexOf("\x1b[?3h")
+  const opened = wire.indexOf("\x1b[?40h")
+  expect(closed).toBeLessThan(firstChange)
+  expect(firstChange).toBeLessThan(opened)
+  expect(wire.slice(firstChange, opened)).toContain("X".repeat(133))
+  expect(result.assertions).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        kind: "positive",
+        expected: expect.stringContaining("before and after the transition"),
+        observed: "gateBefore=80, gateAfter=80",
+      }),
+    ]),
+  )
+})
+
+test("DECCOLM names a no-wrap reading after the change as the 133rd X not wrapping, never 132", () => {
+  const { context } = cellWidthContext({ width: 80, wideWidth: 140 })
+  const result = headlessDeccolm()(context)
+  expect(result.observation).toMatchObject({ outcome: "inconclusive", note: "133rd X did not wrap" })
+  expect(result.tests).toMatchObject([
+    expect.objectContaining({ status: "test-failure", reason: expect.stringContaining('"x":133,"y":0') }),
+  ])
 })
 
 test("DECCOLM cell width moves 132 -> 80 -> 132 with ?40 honoured", () => {
@@ -194,23 +243,35 @@ test("DECCOLM names autowrap off rather than claiming a width", () => {
   ])
 })
 
-test("DECCOLM refuses a width outside 80/132 instead of rounding it", () => {
+test("DECCOLM refuses an initial width outside 80/132 instead of rounding it", () => {
   const { context } = cellWidthContext({ width: 100 as 80, ignoresMode: true })
   const result = headlessDeccolm()(context)
-  expect(result.observation).toMatchObject({ outcome: "inconclusive", note: "width outside 80/132" })
+  expect(result.observation).toMatchObject({ outcome: "inconclusive", note: "initial width outside 80/132" })
   expect(result.tests).toMatchObject([
-    expect.objectContaining({ status: "test-failure", reason: expect.stringContaining("width outside 80/132") }),
+    expect.objectContaining({
+      status: "test-failure",
+      reason: expect.stringContaining('initial width outside 80/132: {"kind":"unmeasured"'),
+    }),
   ])
 })
 
-test("DECCOLM records a mode that moves the width without ?40 as the gate not holding", () => {
-  const { context } = cellWidthContext({ width: 80, honoursModeWithoutGate: true })
-  const result = headlessDeccolm()(context)
-  expect(result.observation).toMatchObject({ outcome: "inconclusive", note: "gate not honoured" })
-  expect(result.tests).toMatchObject([
-    expect.objectContaining({ status: "test-failure", reason: expect.stringContaining("gate not honoured") }),
-  ])
-})
+test.each([
+  ["before the transition", { honoursModeWithoutGate: true }, "gateBefore"],
+  ["after the transition", { stickyGate: true }, "gateAfter"],
+] as const)(
+  "DECCOLM records a mode that moves the width with ?40 closed %s as the gate not holding",
+  (_when, gate, phase) => {
+    const { context } = cellWidthContext({ width: 80, ...gate })
+    const result = headlessDeccolm()(context)
+    expect(result.observation).toMatchObject({ outcome: "inconclusive", note: "gate not honoured" })
+    expect(result.assertions).toEqual([
+      expect.objectContaining({ assertionType: "buffer_state", kind: "negative", observed: `${phase}=132` }),
+    ])
+    expect(result.tests).toMatchObject([
+      expect.objectContaining({ status: "test-failure", reason: expect.stringContaining(`"${phase}"`) }),
+    ])
+  },
+)
 
 test("DECCOLM treats an answering 18t that disagrees with the sweep as a failure", () => {
   const { context } = cellWidthContext({ width: 80, ignoresMode: true, replyWidth: 100 })
@@ -218,6 +279,15 @@ test("DECCOLM treats an answering 18t that disagrees with the sweep as a failure
   expect(result.observation).toBeUndefined()
   expect(result.tests).toMatchObject([
     expect.objectContaining({ status: "test-failure", reason: "18t/sweep disagreement W=80 vs 100 (initial)" }),
+  ])
+})
+
+test("DECCOLM compares the restored 18t with the restored sweep too", () => {
+  const { context } = cellWidthContext({ width: 80, replies: [80, 132, 132] })
+  const result = headlessDeccolm()(context)
+  expect(result.observation).toBeUndefined()
+  expect(result.tests).toMatchObject([
+    expect.objectContaining({ status: "test-failure", reason: "18t/sweep disagreement W=80 vs 132 (restored)" }),
   ])
 })
 
