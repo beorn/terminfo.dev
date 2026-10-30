@@ -402,11 +402,13 @@ test.each([
       ["L", "I", "N", "E", "1"],
       ["L", "I", "N", "E", "2"],
       ["L", "I", "N", "E", "3"],
+      ["", "", "", "", ""],
     ],
     [
       ["", "", "", "", ""],
       ["L", "I", "N", "E", "1"],
       ["L", "I", "N", "E", "2"],
+      ["L", "I", "N", "E", "3"],
     ],
   ],
 ] as const)(
@@ -418,10 +420,12 @@ test.each([
     // The blank row the operation inserts must come from the operation, never from losing a marker: a
     // marker lost inside the compared grid is a different screen, which reads unsupported, not support.
     const lostMarker = after.map((cells, index) => (index === 1 ? cells.map(() => "?") : cells))
+    const lostLastMarker = after.map((cells, index) => (index === after.length - 1 ? cells.map(() => "?") : cells))
     for (const [effect, screens, outcome] of [
       ["shift", { [row.seed]: before, [operation]: after }, "supported"],
       ["no-op", { [row.seed]: before }, "unsupported"],
       ["lost-marker", { [row.seed]: before, [operation]: lostMarker }, "unsupported"],
+      ["lost-last-marker", { [row.seed]: before, [operation]: lostLastMarker }, "unsupported"],
       ["missing-seed", { [row.seed]: before.map((cells) => cells.map(() => "?")) }, "inconclusive"],
     ] as const) {
       const result = probe.lib(declaredScreen(screens, 5))
