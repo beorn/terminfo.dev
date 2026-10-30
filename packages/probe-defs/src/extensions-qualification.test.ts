@@ -1291,18 +1291,18 @@ test.each([
   expect(result.tests).toMatchObject([{ id: "criterion", status: "test-failure", reason: expect.any(String) }])
 })
 
-// Actual run772ff2a6, vterm source1cfc325f/tree2ee13d2: no font/window geometry.
+// Actual runb9697318, vterm source53a9eb92/tree617ae600: no font/window geometry.
 // Q8 requires independent review of this context limit, never automatic Untestable.
 const geometryRuntime = {
   kind: "js",
   adapterVersion: "0.10.2",
-  termlessRevision: "f57e9d6b4add561f37e21c8e679d28c617111be6",
+  termlessRevision: "8b8664540f365fa0ba1d9b6400d3c4d1a160582c",
   resolvedPath: "vendor/vterm/packages/vterm/src/index.ts",
   integrity: {
     kind: "source",
     repository: "git@github.com:beorn/vterm.git",
-    revision: "1cfc325f3aedd4617e437ee76e6a03fc2cc16438",
-    treeOid: "2ee13d2cb894e86ee9575dd6945f42028df44966",
+    revision: "53a9eb9291b7880f4dc6a39a6802301049997a72",
+    treeOid: "617ae6002c7befea7b3e43d11bf23e6b433e3d65",
     cleanTree: true,
   },
   runtimeFormat: "js",
