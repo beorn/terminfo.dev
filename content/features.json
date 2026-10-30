@@ -2743,7 +2743,7 @@
     "url": "https://vt100.net/docs/vt510-rm/DECSSCLS.html",
     "tags": ["vt510"],
     "body": "DECSSCLS (Set Scroll Speed) controls scrolling presentation. The sequence is <code>CSI Ps SP p</code>, with a space intermediate before the final <code>p</code>. The VT510 reference manual defines default or 0–3 as 9 lines per second, 4–8 as 18 lines per second, and 9 as jump scrolling as fast as lines are received. User Features Locked can inhibit changes.\n\nThese values describe presentation timing, so accepting the bytes without an error does not establish support. A measurement needs a controlled line burst, timed observations of the target terminal's scrolling, and controls for the default rate and jump scrolling.",
-    "probe": "Not measured: compare timed scroll presentation for a fixed line burst at the documented rates, with default-rate and jump-scroll controls; restore the prior setting.",
+    "probe": "Term probe: time the presentation of a fixed line burst at the requested DECSSCLS rate, with a jump-scroll control. Expected: the marker band reaches its settled row between the two target frames and text moves through the witness region, while the jump control stays identical and the band's first capture lands inside the throttled window, whose length the probe computes at run time. The headless parser paints no frames, so it is not measured.",
     "baseline": "legacy"
   },
   "modes.decsclm": {
