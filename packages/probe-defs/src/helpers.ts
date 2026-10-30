@@ -324,10 +324,12 @@ export function renderedWidthFailure(
       typeof position.col !== "number" ||
       !Number.isFinite(position.row) ||
       !Number.isFinite(position.col)
-    )
+    ) {
       return unknownKind(value.kind)
-    if (value.kind === "control-mismatch" && (typeof value.step !== "string" || value.step.length === 0))
+    }
+    if (value.kind === "control-mismatch" && (typeof value.step !== "string" || value.step.length === 0)) {
       return unknownKind(value.kind)
+    }
     const reason = `${stage} width ${value.kind}${value.kind === "control-mismatch" ? ` at ${String(value.step)}` : ""}: observed ${position.row};${position.col}`
     return { pass: false, response, tests: [{ id: "criterion", status: "test-failure", reason }] }
   }

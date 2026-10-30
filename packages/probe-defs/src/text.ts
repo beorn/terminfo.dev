@@ -810,8 +810,9 @@ export const textProbes: ProbeDefinition[] = [
         if (decoding) return decoding
         const ascii = await ctx.measureRenderedWidth("AA")
         const width = await ctx.measureRenderedWidth("\u{1f389}")
-        if (typeof ascii !== "number")
+        if (typeof ascii !== "number") {
           return renderedWidthFailure(ascii, "text.wide.emoji", "ASCII", JSON.stringify({ ascii, width }))
+        }
         if (ascii !== 2) {
           const reason = `ASCII width control: expected 2, got ${ascii}`
           return {
@@ -826,8 +827,9 @@ export const textProbes: ProbeDefinition[] = [
             },
           }
         }
-        if (typeof width !== "number")
+        if (typeof width !== "number") {
           return renderedWidthFailure(width, "text.wide.emoji", "sample", JSON.stringify({ ascii, width }))
+        }
         const pass = width === 2
         return {
           pass,
@@ -871,8 +873,9 @@ export const textProbes: ProbeDefinition[] = [
         if (decoding) return decoding
         const ascii = await ctx.measureRenderedWidth("AA")
         const width = await ctx.measureRenderedWidth("\u4e2d")
-        if (typeof ascii !== "number")
+        if (typeof ascii !== "number") {
           return renderedWidthFailure(ascii, "text.wide.cjk", "ASCII", JSON.stringify({ ascii, width }))
+        }
         if (ascii !== 2) {
           const reason = `ASCII width control: expected 2, got ${ascii}`
           return {
@@ -887,8 +890,9 @@ export const textProbes: ProbeDefinition[] = [
             },
           }
         }
-        if (typeof width !== "number")
+        if (typeof width !== "number") {
           return renderedWidthFailure(width, "text.wide.cjk", "sample", JSON.stringify({ ascii, width }))
+        }
         const pass = width === 2
         return {
           pass,
@@ -1166,8 +1170,9 @@ export const textProbes: ProbeDefinition[] = [
         if (decoding) return decoding
         const ascii = await ctx.measureRenderedWidth("A")
         const width = await ctx.measureRenderedWidth("e\u0301")
-        if (typeof ascii !== "number")
+        if (typeof ascii !== "number") {
           return renderedWidthFailure(ascii, "text.combining", "ASCII", JSON.stringify({ ascii, width }))
+        }
         if (ascii !== 1) {
           const reason = `ASCII width control: expected 1, got ${ascii}`
           return {
@@ -1182,8 +1187,9 @@ export const textProbes: ProbeDefinition[] = [
             },
           }
         }
-        if (typeof width !== "number")
+        if (typeof width !== "number") {
           return renderedWidthFailure(width, "text.combining", "sample", JSON.stringify({ ascii, width }))
+        }
         const pass = width === 1
         return {
           pass,
@@ -1498,8 +1504,9 @@ export const textProbes: ProbeDefinition[] = [
         if (decoding) return decoding
         const ascii = await ctx.measureRenderedWidth("AA")
         const width = await ctx.measureRenderedWidth("\u{1F1FA}\u{1F1F8}")
-        if (typeof ascii !== "number")
+        if (typeof ascii !== "number") {
           return renderedWidthFailure(ascii, "text.wide.emoji-flags", "ASCII", JSON.stringify({ ascii, width }))
+        }
         if (ascii !== 2) {
           const reason = `ASCII width control: expected 2, got ${ascii}`
           return {
@@ -1514,8 +1521,9 @@ export const textProbes: ProbeDefinition[] = [
             },
           }
         }
-        if (typeof width !== "number")
+        if (typeof width !== "number") {
           return renderedWidthFailure(width, "text.wide.emoji-flags", "sample", JSON.stringify({ ascii, width }))
+        }
         const pass = width === 2
         return {
           pass,
@@ -1546,8 +1554,9 @@ export const textProbes: ProbeDefinition[] = [
         if (decoding) return decoding
         const ascii = await ctx.measureRenderedWidth("AA")
         const width = await ctx.measureRenderedWidth("\u263A\uFE0F")
-        if (typeof ascii !== "number")
+        if (typeof ascii !== "number") {
           return renderedWidthFailure(ascii, "text.wide.emoji-vs16", "ASCII", JSON.stringify({ ascii, width }))
+        }
         if (ascii !== 2) {
           const reason = `ASCII width control: expected 2, got ${ascii}`
           return {
@@ -1562,8 +1571,9 @@ export const textProbes: ProbeDefinition[] = [
             },
           }
         }
-        if (typeof width !== "number")
+        if (typeof width !== "number") {
           return renderedWidthFailure(width, "text.wide.emoji-vs16", "sample", JSON.stringify({ ascii, width }))
+        }
         const pass = width === 2
         return {
           pass,
@@ -1594,8 +1604,9 @@ export const textProbes: ProbeDefinition[] = [
         if (decoding) return decoding
         const ascii = await ctx.measureRenderedWidth("AA")
         const width = await ctx.measureRenderedWidth("\u{1F468}\u200D\u{1F469}\u200D\u{1F467}")
-        if (typeof ascii !== "number")
+        if (typeof ascii !== "number") {
           return renderedWidthFailure(ascii, "text.wide.emoji-zwj", "ASCII", JSON.stringify({ ascii, width }))
+        }
         if (ascii !== 2) {
           const reason = `ASCII width control: expected 2, got ${ascii}`
           return {
@@ -1610,8 +1621,9 @@ export const textProbes: ProbeDefinition[] = [
             },
           }
         }
-        if (typeof width !== "number")
+        if (typeof width !== "number") {
           return renderedWidthFailure(width, "text.wide.emoji-zwj", "sample", JSON.stringify({ ascii, width }))
+        }
         const pass = width === 2
         return {
           pass,

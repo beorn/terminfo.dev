@@ -41,8 +41,9 @@ export const unicodeProbes: ProbeDefinition[] = [
         const decoding = await utf8DecodingRefusal(ctx, "unicode.east-asian-ambiguous")
         if (decoding) return decoding
         const width = await ctx.measureRenderedWidth("●")
-        if (typeof width !== "number")
+        if (typeof width !== "number") {
           return renderedWidthFailure(width, "unicode.east-asian-ambiguous", "sample", JSON.stringify({ width }))
+        }
         const pass = width === 1 || width === 2
         return {
           pass,
@@ -110,8 +111,9 @@ export const unicodeProbes: ProbeDefinition[] = [
         const decoding = await utf8DecodingRefusal(ctx, "unicode.grapheme-cursor")
         if (decoding) return decoding
         const width = await ctx.measureRenderedWidth("\u{1F468}\u200D\u{1F469}\u200D\u{1F467}")
-        if (typeof width !== "number")
+        if (typeof width !== "number") {
           return renderedWidthFailure(width, "unicode.grapheme-cursor", "sample", JSON.stringify({ width }))
+        }
         return {
           pass: width === 2,
           note: width === 2 ? undefined : `width=${width}, expected 2`,
