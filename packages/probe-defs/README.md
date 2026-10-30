@@ -92,10 +92,10 @@ TODO because it has no live terminal UI scroll actuator; its manual UI recipe re
 
 The optional library capability `productViewport: { available: false, reason }` explicitly declares
 that the library subject has no product viewport; an absent declaration means undeclared. The
-collector omits the probe source's scroll control for that declaration. Before any phase action, the
-viewport callback retains the declaration and exact reason plus measured `runtimeIdentity` (null
-when missing), and selects `headless-observable-review` with named scroll-control coverage. It creates
-no phase measurements or assertions and stays TEST TODO until independent per-engine source review
+collector omits the probe source's scroll control for that declaration. Before any phase action or
+OSC720 history I/O, the viewport-hold and OSC720 callbacks retain the declaration and exact reason plus
+`runtimeIdentity` (null when missing), and select `headless-observable-review` with named scroll-control
+coverage. They create no measurements or assertions and stay TEST TODO until independent per-engine source review
 decides Untestable with the same reason. Missing runtime identity bars that source-based decision.
 A declaration of absence paired with a present scroll control is an inconclusive apparatus
 contradiction, with no review row. An undeclared missing scroll control keeps ordinary named coverage.
