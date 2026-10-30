@@ -673,15 +673,16 @@ export async function captureRegionVerdict(
   }
   const reported = await captureRegionGeometry(ctx, id, spec, callerHasQuery)
   if ("pass" in reported) return reported
-  return afterCallerBytes(
-    await captureRegionReadbackDecision(
-      ctx,
-      id,
-      { ...spec, pixelGeometry: reported.geometry, geometrySource: reported.source },
-      read,
-    ),
-    callerHasQuery,
+  const decided = await captureRegionReadbackDecision(
+    ctx,
+    id,
+    { ...spec, pixelGeometry: reported.geometry, geometrySource: reported.source },
+    read,
   )
+  // A completed declared visual review is a deliberate TODO, including after caller query bytes.
+  // Geometry and bounds refusals took earlier paths and keep their existing failure disposition.
+  if (spec.discriminator && decided?.criterionBranch === "visual-review") return decided
+  return afterCallerBytes(decided, callerHasQuery)
 }
 
 /**
@@ -819,20 +820,33 @@ export async function captureRegionReadbackDecision(
   const discriminator = spec.discriminator
   // Declared visual rows must tell the writer exactly why review remains open. Legacy callers
   // retain their existing observation-only result, including its historical timeout semantics.
-  const review = (result: ProbeCallbackResult, reason?: string): ProbeCallbackResult =>
-    discriminator
-      ? {
-          ...result,
-          criterionBranch: "visual-review",
-          tests: [
-            {
-              id: "review",
-              status: "test-todo",
-              reason: reason ?? result.observation?.note ?? `${id}: insufficient visual evidence`,
-            },
-          ],
-        }
-      : result
+  const review = (result: ProbeCallbackResult, reason?: string): ProbeCallbackResult => {
+    if (!discriminator) return result
+    const reviewReason = reason ?? result.observation?.note ?? `${id}: insufficient visual evidence`
+    const targetFrameExists = result.observation?.frames?.some((frame) => frame.role === "target") ?? false
+    if (result.observation && !targetFrameExists) {
+      const { observation, assertions, ...execution } = result
+      void assertions
+      return {
+        ...execution,
+        criterionBranch: "visual-review",
+        tests: [{ id: "review", status: "test-todo", reason: reviewReason }],
+        response: JSON.stringify({
+          ...(result.response === undefined ? {} : { originalResponse: result.response }),
+          review: {
+            note: observation.note,
+            ...(observation.screenshotRef === undefined ? {} : { screenshotRef: observation.screenshotRef }),
+            ...(observation.frames === undefined ? {} : { frames: observation.frames }),
+          },
+        }),
+      }
+    }
+    return {
+      ...result,
+      criterionBranch: "visual-review",
+      tests: [{ id: "review", status: "test-todo", reason: reviewReason }],
+    }
+  }
   if (!read) return discriminator ? review(refused(id, "no freshness witness"), "no freshness witness") : null
   if (discriminator && ctx.captureKind === "text-cells") {
     return refused(id, `${id}: declared visual signal requires pixel capture`)

@@ -8,7 +8,13 @@ import { expect, test, vi } from "vitest"
 import { modesProbes } from "./modes.ts"
 import type { CaptureRectangle, CaptureRequest, ObservationFrame, TermProbeSource, LibProbeSource } from "./types.ts"
 
-function captureSource(rows: number, cols: number, writes: string[], frames: ObservationFrame[]): TermProbeSource {
+function captureSource(
+  rows: number,
+  cols: number,
+  writes: string[],
+  frames: ObservationFrame[],
+  fresh = true,
+): TermProbeSource {
   return {
     kind: "live",
     rows,
@@ -28,7 +34,7 @@ function captureSource(rows: number, cols: number, writes: string[], frames: Obs
     capture: async ({ role, label, cells, pixelGeometry }) => {
       // Constructed pixel-equivalence planes exercise callback wiring, not font or terminal support.
       // Witness values come from the glyph actually written outside each deciding crop.
-      const witness = writes.filter((entry) => /^\x1b\[\d+;\d+H.$/.test(entry)).at(-1) ?? "blank"
+      const witness = fresh ? (writes.filter((entry) => /^\x1b\[\d+;\d+H.$/.test(entry)).at(-1) ?? "blank") : "stale"
       const palette = label.includes("colors")
       const sgr = /xt(push|pop)sgr/.test(label)
       const restoration = /alt-screen\.exit|altscreen-47/.test(label)
@@ -915,6 +921,24 @@ test.each([
   if (id === "modes.xtsave" || id === "modes.xtrestore") {
     expect(writes.some((entry) => entry.includes("X".repeat(80) + "!"))).toBe(true)
     expect(writes).toContain("\x1b[?7h")
+  }
+  if (id.includes("sgr")) {
+    // Early review has no target frame; both axes' unqualified capture citations must survive composition.
+    vi.useFakeTimers()
+    try {
+      const pending = definition.term(captureSource(24, 80, [], [], false))
+      const [stale] = await Promise.all([pending, vi.runAllTimersAsync()])
+      expect(stale.observation).toBeUndefined()
+      expect(stale.assertions).toBeUndefined()
+      expect(stale.tests).toMatchObject([
+        { id: "review", status: "test-todo", reason: expect.stringContaining("no freshness witness") },
+      ])
+      const retained = JSON.parse(stale.response ?? "{}")
+      expect(retained.axes).toHaveLength(2)
+      for (const axis of retained.axes) expect(JSON.parse(axis).review.screenshotRef).toMatch(/^sha256:/)
+    } finally {
+      vi.useRealTimers()
+    }
   }
 })
 

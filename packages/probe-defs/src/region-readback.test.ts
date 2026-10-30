@@ -1707,16 +1707,57 @@ test.each([
   expect(result.assertions).toHaveLength(1)
 })
 
-test("declared visual missing witness names review without asserting a negative", async () => {
-  const result = await decide(declaredWindow("seed", { stale: true }), {
-    ...PLANE_SPEC,
-    discriminator: CHANGE_SIGNAL,
-    timeoutMs: 5,
-  })
-  expect(result.tests?.[0]?.id).toBe("review")
-  expect(result.tests?.[0]?.status).toBe("test-todo")
-  expect(result.tests?.[0]?.reason).toBe("no freshness witness")
-  expect(result.assertions).toBeUndefined()
+test("declared visual missing witness keeps review evidence execution-only", async () => {
+  const fake = declaredWindow("seed", { stale: true })
+  const result = await captureRegionReadbackDecision(
+    fake.ctx,
+    "visual",
+    spec({ ...PLANE_SPEC, discriminator: CHANGE_SIGNAL, timeoutMs: 5 }),
+    fake.read,
+  )
+  const response = JSON.parse(result?.response ?? "{}") as {
+    review?: { note?: string; screenshotRef?: string }
+  }
+  expect(result?.tests?.[0]).toMatchObject({ id: "review", status: "test-todo", reason: "no freshness witness" })
+  expect(result?.observation).toBeUndefined()
+  expect(result?.assertions).toBeUndefined()
+  expect(response.review?.note).toContain("no paint witness")
+  expect(response.review?.screenshotRef).toMatch(/^sha256:/)
+})
+
+test("declared visual instability before a target frame keeps review evidence execution-only", async () => {
+  // Stability control captures cannot satisfy the writer's target-frame screenshot citation contract.
+  const fake = declaredWindow("seed", { metadata: true })
+  const read = fake.read
+  fake.read = async (request) => {
+    const captured = await read(request)
+    if (request.label.includes("capture stability")) {
+      captured.regionDigest += `-${request.label}`
+      captured.frame.regionDigest = captured.regionDigest
+    }
+    return captured
+  }
+  const result = await captureRegionReadbackDecision(
+    fake.ctx,
+    "visual",
+    spec({
+      ...PLANE_SPEC,
+      discriminator: CHANGE_SIGNAL,
+    }),
+    fake.read,
+  )
+
+  expect(result?.criterionBranch).toBe("visual-review")
+  expect(result?.tests?.[0]?.status).toBe("test-todo")
+  expect(result?.observation).toBeUndefined()
+  expect(result?.assertions).toBeUndefined()
+  const response = JSON.parse(result?.response ?? "{}") as {
+    review?: { note?: string; screenshotRef?: string; frames?: ObservationFrame[] }
+    originalResponse?: string | null
+  }
+  expect(response.review?.note).toBeTruthy()
+  expect(response.review?.screenshotRef).toMatch(/^sha256:/)
+  expect(response.originalResponse).toContain("stability")
 })
 
 test.each(["change", "no-change"] as const)(
@@ -1879,14 +1920,24 @@ test("declared visual crop movement alone cannot witness target freshness", asyn
     write(sequence)
   }
 
-  const result = await decide(fake, { ...PLANE_SPEC, discriminator: CHANGE_SIGNAL })
-  expect(result.tests?.[0]?.status).toBe("test-todo")
-  expect(result.tests?.[0]?.reason).toContain("witness crop")
-  expect(result.tests?.[0]?.reason).toContain("0,32 8x16")
-  expect(result.tests?.[0]?.reason).toContain("1,32 8x16")
-  expect(result.observation.frames?.map(({ regionRectangle }) => regionRectangle)).toEqual([
+  const result = await captureRegionReadbackDecision(
+    fake.ctx,
+    "visual",
+    spec({ ...PLANE_SPEC, discriminator: CHANGE_SIGNAL }),
+    fake.read,
+  )
+  const response = JSON.parse(result?.response ?? "{}") as {
+    review?: { note?: string; screenshotRef?: string; frames?: ObservationFrame[] }
+  }
+  expect(result?.tests?.[0]?.status).toBe("test-todo")
+  expect(result?.tests?.[0]?.reason).toContain("witness crop")
+  expect(result?.observation).toBeUndefined()
+  expect(result?.assertions).toBeUndefined()
+  expect(response.review?.note).toContain("0,32 8x16")
+  expect(response.review?.note).toContain("1,32 8x16")
+  expect(response.review?.frames?.map(({ regionRectangle }) => regionRectangle)).toEqual([
     { x: 0, y: 32, width: 8, height: 16 },
     { x: 1, y: 32, width: 8, height: 16 },
   ])
-  expect(result.assertions).toBeUndefined()
+  expect(response.review?.screenshotRef).toMatch(/^sha256:/)
 })

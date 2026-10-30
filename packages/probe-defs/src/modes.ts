@@ -236,6 +236,7 @@ async function xtSgrStackCapture(ctx: TermProbeSource, id: string, label: string
       return {
         pass: false,
         criterionBranch: "visual-review",
+        response: JSON.stringify({ label, axes: results.map((result) => result.response) }),
         tests: [
           {
             id: "review",

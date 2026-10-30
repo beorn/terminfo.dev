@@ -2593,22 +2593,25 @@ it.each([
     let captures = 0
     const pixelGeometry = { cellWidth: 8, cellHeight: 16, textWidth: 640, textHeight: 384 }
     const digest = (value: string) => `sha256:${createHash("sha256").update(value).digest("hex")}`
-    process.stdout.write = (() => true) as typeof process.stdout.write
-    try {
-      const pending = runProbeBatch({
-        ids: [id],
-        draft,
-        ownedTerminal: geometryOwner(measured(24, 80)),
-        prepareCapture: async ({ source }) => {
-          source.captureGeometry = { geometry: pixelGeometry, source: "measured by complete raster calibration" }
-        },
-        capture: async ({ role, label, cells }) => {
-          const capturedAt = ++captures
-          const lowerLabel = label.toLowerCase()
-          // Constructed fixture planes prove that the collector maps each requested crop to pixels
-          // and carries the witness through the new reader. The distinct third target stays unknown
-          // to the comparison; it is never evidence of terminal qualification.
-          const phase = lowerLabel.includes("stability")
+    const makeCapture =
+      (unchangingPixels = false) =>
+      async ({
+        role,
+        label,
+        cells,
+      }: {
+        role: "control" | "target" | "alternate" | "restored"
+        label: string
+        cells?: { top: number; left: number; bottom: number; right: number }
+      }) => {
+        const capturedAt = ++captures
+        const lowerLabel = label.toLowerCase()
+        // Constructed fixture planes prove that the collector maps each requested crop to pixels
+        // and carries the witness through the new reader. The distinct third target stays unknown
+        // to the comparison; it is never evidence of terminal qualification.
+        const phase = unchangingPixels
+          ? "unchanged"
+          : lowerLabel.includes("stability")
             ? "stable"
             : lowerLabel.includes("paint witness")
               ? "painted"
@@ -2625,31 +2628,41 @@ it.each([
                         : lowerLabel.includes("setup reference")
                           ? "seed"
                           : "fixture"
-          const regionRectangle = cells
-            ? {
-                x: (cells.left - 1) * pixelGeometry.cellWidth,
-                y: (cells.top - 1) * pixelGeometry.cellHeight,
-                width: (cells.right - cells.left + 1) * pixelGeometry.cellWidth,
-                height: (cells.bottom - cells.top + 1) * pixelGeometry.cellHeight,
-              }
-            : undefined
-          return {
-            frame: {
-              role,
-              label,
-              capturedAt,
-              ref: `sha256:${createHash("sha256").update(`fixture frame ${capturedAt}`).digest("hex")}`,
-              ...(cells && regionRectangle
-                ? {
-                    pixelsDigest: digest(`whole:${phase}`),
-                    regionDigest: digest(`crop:${cells.top},${cells.left},${cells.bottom},${cells.right}:${phase}`),
-                    regionRectangle,
-                  }
-                : {}),
-            },
-            trace: {},
-          }
+        const regionRectangle = cells
+          ? {
+              x: (cells.left - 1) * pixelGeometry.cellWidth,
+              y: (cells.top - 1) * pixelGeometry.cellHeight,
+              width: (cells.right - cells.left + 1) * pixelGeometry.cellWidth,
+              height: (cells.bottom - cells.top + 1) * pixelGeometry.cellHeight,
+            }
+          : undefined
+        return {
+          frame: {
+            role,
+            label,
+            capturedAt,
+            ref: `sha256:${createHash("sha256").update(`fixture frame ${capturedAt}`).digest("hex")}`,
+            ...(cells && regionRectangle
+              ? {
+                  pixelsDigest: digest(`whole:${phase}`),
+                  regionDigest: digest(`crop:${cells.top},${cells.left},${cells.bottom},${cells.right}:${phase}`),
+                  regionRectangle,
+                }
+              : {}),
+          },
+          trace: {},
+        }
+      }
+    process.stdout.write = (() => true) as typeof process.stdout.write
+    try {
+      const pending = runProbeBatch({
+        ids: [id],
+        draft,
+        ownedTerminal: geometryOwner(measured(24, 80)),
+        prepareCapture: async ({ source }) => {
+          source.captureGeometry = { geometry: pixelGeometry, source: "measured by complete raster calibration" }
         },
+        capture: makeCapture(),
       })
       const [batch] = await Promise.all([pending, vi.runAllTimersAsync()])
       expect(batch.ungradedDiagnostics).toEqual({})
@@ -2712,6 +2725,48 @@ it.each([
         )
         expect(read.results?.[0]).toMatchObject({ status: "untestable", frames: result.frames })
         expect(read.assertions).toEqual([])
+        if (id === "modes.insert-replace") {
+          const noFreshDraft = initializeRunDraft({
+            runId: `native-visual-no-freshness-${id}`,
+            sourceRevision,
+            source: { kind: "live" },
+            manifest: ownManifest,
+            intendedSubject: { kind: "term", id: "kitty", version: "0.49.1" },
+          })
+          noFreshDraft.subject = structuredClone(draft.subject)
+          noFreshDraft.identity = "verified"
+          noFreshDraft.measuredAt = "2026-10-29T15:02:00.000Z"
+          noFreshDraft.origin = { kind: "collector" }
+          const unchangedPending = runProbeBatch({
+            ids: [id],
+            draft: noFreshDraft,
+            ownedTerminal: geometryOwner(measured(24, 80)),
+            prepareCapture: async ({ source }) => {
+              source.captureGeometry = { geometry: pixelGeometry, source: "measured by complete raster calibration" }
+            },
+            capture: makeCapture(true),
+          })
+          const [unchanged] = await Promise.all([unchangedPending, vi.runAllTimersAsync()])
+          expect(unchanged.ungradedDiagnostics).toEqual({})
+          const noFreshDecoded = decodeCollectorRun(
+            "native-visual-no-freshness.json",
+            JSON.stringify({ ...asRun(unchanged), screenshotRefs: unchanged.screenshotRefs }),
+            ownManifest,
+            sourceRevision,
+          ).run
+          expect(unchanged.observations).toEqual([])
+          expect(noFreshDecoded.observations).toEqual([])
+          expect(unchanged.results.find((entry) => entry.featureId === id)).toMatchObject({
+            status: "test-todo",
+            tests: [
+              expect.objectContaining({
+                id: "review",
+                status: "test-todo",
+                reason: expect.stringContaining("no freshness witness"),
+              }),
+            ],
+          })
+        }
         return
       }
       expect(result).toMatchObject({
