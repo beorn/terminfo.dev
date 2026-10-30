@@ -38,8 +38,8 @@ const MODIFY_OTHER_KEYS_3_REPORT = /\x1b\[(?:27;\d+;\d+~|\d+;\d+u)|i/
 const MODIFY_OTHER_KEYS_ENCODING = /\x1b\[(?:27;\d+;105~|105;\d+u)/
 const DECKPAM = "\x1b="
 const DECKPNM = "\x1b>"
-const APPLICATION_KEYPAD_REPORT = /\x1bOu|5/
-const APPLICATION_KEYPAD_ENCODING = /\x1bOu/
+const APPLICATION_KEYPAD_REPORT = /^(?:\x1bOu|5)$/
+const APPLICATION_KEYPAD_ENCODING = /^\x1bOu$/
 const PIXEL_MOUSE_SET = "\x1b[?1016h"
 const PIXEL_MOUSE_RESET = "\x1b[?1016l"
 const URXVT_MOUSE_SET = "\x1b[?1015h"
@@ -57,7 +57,7 @@ const ALT_SCREEN_RESET = "\x1b[?1049l"
 const ALT_SCROLL_SET = "\x1b[?1007h"
 const ALT_SCROLL_RESET = "\x1b[?1007l"
 const ALT_SCROLL_OR_SGR = /\x1b(?:\[(?:<\d+;\d+;\d+[Mm]|[AB])|O[AB])/
-const ALT_SCROLL_ENCODING = /\x1b(?:\[[AB]|O[AB])/
+const ALT_SCROLL_ENCODING = /^\x1b\[A$/
 const KITTY_CLICK_START = "\x1b]133;A;click_events=1\x07"
 const KITTY_CLICK_END = "\x1b]133;B\x07"
 const SGR_MOUSE_PRESS = /\x1b\[<\d+;\d+;\d+M/
@@ -183,7 +183,7 @@ export async function applicationKeypad(ctx: TermProbeSource): Promise<ProbeCall
       throw new Error("XTEST application keypad KP_5 did not reach the app after a successful delivery control")
     }
     const observed = { mode: "application-keypad", control, report }
-    const expected = "OS XTEST KP_5 report under DECKPAM after plain-a delivery control"
+    const expected = "OS XTEST KP_5 report as SS3 u under DECKPAM after plain-a delivery control"
     if (APPLICATION_KEYPAD_ENCODING.test(report)) {
       return interactionResult("application-keypad:KP_5", expected, observed)
     }
@@ -421,11 +421,15 @@ async function xtestClick(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
     if (!report) {
       throw new Error("XTEST click did not reach the app after a successful 1000+1006 delivery control")
     }
-    return interactionResult("xtest-click:1", "OS XTEST button-1 report under 1000+1006 after same-run control click", {
+    const expected = "OS XTEST button-1 report under 1000+1006 after same-run control click"
+    const observed = {
       mode: "1000+1006",
       control,
       report,
-    })
+    }
+    return /^\x1b\[<0;\d+;\d+[Mm]$/.test(report)
+      ? interactionResult("xtest-click:1", expected, observed)
+      : unsupportedInteraction("xtest-click:1", expected, observed)
   })
 }
 
@@ -444,11 +448,15 @@ async function xtestWheel(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
     if (!report) {
       throw new Error("XTEST wheel did not reach the app after a successful 1000+1006 delivery control")
     }
-    return interactionResult("xtest-wheel:4", "OS XTEST wheel-4 report under 1000+1006 after same-run control click", {
+    const expected = "OS XTEST wheel-4 report under 1000+1006 after same-run control click"
+    const observed = {
       mode: "1000+1006",
       control,
       report,
-    })
+    }
+    return /^\x1b\[<64;\d+;\d+M$/.test(report)
+      ? interactionResult("xtest-wheel:4", expected, observed)
+      : unsupportedInteraction("xtest-wheel:4", expected, observed)
   })
 }
 
