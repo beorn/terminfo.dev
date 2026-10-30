@@ -196,8 +196,24 @@ it.runIf(OWNED_LAYOUT)(
         `admit-run binds HEAD to the draft's sourceRevision; commit the dirty suite sources first:\n${dirtySources}`,
       )
     }
+    const colourReadback = [
+      "extensions.osc110-reset-fg",
+      "extensions.osc111-reset-bg",
+      "extensions.osc112-reset-cursor",
+      "extensions.osc113-reset-pointer-fg",
+      "extensions.osc114-reset-pointer-bg",
+      "extensions.osc30001-color-stack-push",
+      "extensions.osc30101-color-stack-pop",
+    ]
     const dir = directory()
-    const collection = await collectHeadlessRuns(["xtermjs"], dir)
+    // Exercise the review journey with its own witnesses; unrelated catalogue additions must not expand it.
+    const collection = await collectHeadlessRuns(["xtermjs"], dir, undefined, [
+      "editing.decsace",
+      "extensions.osc104-reset-palette",
+      ...colourReadback,
+      "input.kitty-click-events",
+      "modes.synchronized-output",
+    ])
     expect(collection.failures).toEqual([])
     const draftPath = collection.runs[0]!
     expect(draftPath).toMatch(/\.draft\.json$/)
@@ -221,15 +237,6 @@ it.runIf(OWNED_LAYOUT)(
       reason: "Indexed colour resolved at read",
       tests: [expect.objectContaining({ id: "criterion", status: "supported" })],
     })
-    const colourReadback = [
-      "extensions.osc110-reset-fg",
-      "extensions.osc111-reset-bg",
-      "extensions.osc112-reset-cursor",
-      "extensions.osc113-reset-pointer-fg",
-      "extensions.osc114-reset-pointer-bg",
-      "extensions.osc30001-color-stack-push",
-      "extensions.osc30101-color-stack-pop",
-    ]
     for (const featureId of colourReadback) {
       expect(
         draft.results.find((row) => row.featureId === featureId),
@@ -251,46 +258,7 @@ it.runIf(OWNED_LAYOUT)(
       assertionType: "input_bytes",
       tests: [expect.objectContaining({ id: "criterion", status: "unsupported" })],
     })
-    expect(pending).toEqual([
-      "editing.decsace",
-      "extensions.clipboard-paste",
-      "extensions.font-ligatures",
-      "extensions.iterm2-images",
-      "extensions.kitty-graphics.animation",
-      "extensions.kitty-graphics.unicode-placeholders",
-      "extensions.notifications",
-      "extensions.osc-633-vscode",
-      "extensions.osc133-a",
-      "extensions.osc133-b",
-      "extensions.osc133-c",
-      "extensions.osc133-d",
-      "extensions.osc133-p",
-      "extensions.osc633-a",
-      "extensions.osc633-b",
-      "extensions.osc633-c",
-      "extensions.osc633-d",
-      "extensions.osc633-e",
-      "extensions.osc633-p",
-      "extensions.osc7-cwd",
-      "extensions.semantic-prompts",
-      "extensions.sixel",
-      "input.button-event-mouse",
-      "input.modify-other-keys",
-      "input.modify-other-keys-3",
-      "input.pixel-mouse",
-      "input.urxvt-mouse",
-      "input.x10-mouse",
-      "input.xtest-click",
-      "input.xtest-key",
-      "input.xtest-wheel",
-      "modes.alt-scroll-1007",
-      "modes.application-keypad",
-      "modes.color-scheme-reporting",
-      "modes.decsclm",
-      "modes.decsscls",
-      "modes.reverse-video",
-      "modes.synchronized-output",
-    ])
+    expect(pending).toEqual(["editing.decsace", "modes.synchronized-output"])
     const decision = (featureId: string, reason: string) =>
       JSON.stringify({
         id: `round-trip-${featureId}`,
