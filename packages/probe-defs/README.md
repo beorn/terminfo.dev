@@ -116,6 +116,14 @@ Callbacks currently perform I/O and judge it in the same implementation. There i
 
 The five `AssertionType` values classify an actually retained deciding observation: `query_reply`, `buffer_state`, `screenshot`, `input_bytes` and `clipboard`. Pixel versus text-cells capture payloads and positive versus negative assertion polarity remain separate facts. An OSC 52 write decided by independent clipboard readback is `clipboard`; paste decided by `readInput` is `input_bytes`, including its existing control/report envelope and performed action.
 
+The XTEST key criterion requires the ctrl+a modified-key encoding after its plain-a delivery
+control; a bare control byte or another modified key does not meet it. Pixel mouse reporting
+uses the existing terminal-reported cell geometry to predict the pixel box of the control
+click's cell and retains that geometry with the target report. Missing cell geometry stays
+named TEST TODO. The two scroll-region recipes seed and preserve a nonblank marker immediately
+above the requested top row. The insert/replace query criterion requires set then reset
+(Ps 1 then 2); permanent-state replies retain their numeric readings and fail that toggle claim.
+
 Reset-family capture recipes can supply an optional `RegionReadback.setupReference`: an independently
 authored full setup, painted behind the existing witness. The seed must match it before any verdict.
 Companion rows also compare a neutral ignored frame against the expected preserved attribute; missing

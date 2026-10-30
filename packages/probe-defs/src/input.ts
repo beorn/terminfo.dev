@@ -1,6 +1,7 @@
 import type { LibProbeSource, ProbeDefinition, ProbeCallbackResult, TermProbeSource } from "./types.ts"
 import { notTestedResult, osInputReviewResult, probe } from "./helpers.ts"
 import { kittyKeyboardFlagProbe } from "./extensions.ts"
+import { queryPixelGeometry, type PixelGeometry } from "./region-readback.ts"
 
 export const inputProbes: ProbeDefinition[] = [
   probe("input.modify-other-keys", () => headlessXtestReview("key injection"), modifyOtherKeys2, "input_bytes"),
@@ -29,6 +30,7 @@ const MOUSE_SET = "\x1b[?1000h\x1b[?1006h"
 const MOUSE_RESET = "\x1b[?1000l\x1b[?1006l"
 const PLAIN_A = /^a/
 const MODIFIED_KEY = /\x01|\x1b\[(?:27;\d+;\d+~|\d+;\d+u)/
+const CTRL_A_ENCODING = /^\x1b\[(?:27;5;97~|97;5u)$/
 const SGR_MOUSE = /\x1b\[<\d+;\d+;\d+[Mm]/
 const MODIFY_OTHER_KEYS_2 = "\x1b[>4;2m"
 const MODIFY_OTHER_KEYS_3 = "\x1b[>4;3m"
@@ -237,10 +239,11 @@ async function xtestKey(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   if (!report) {
     throw new Error("XTEST modified key did not reach the app after a successful delivery control")
   }
-  return interactionResult("xtest-key:ctrl+a", "OS XTEST ctrl+a report after plain-a delivery control", {
-    control,
-    report,
-  })
+  const observed = { control, report }
+  const expected = "OS XTEST ctrl+a report after plain-a delivery control"
+  return CTRL_A_ENCODING.test(report)
+    ? interactionResult("xtest-key:ctrl+a", expected, observed)
+    : unsupportedInteraction("xtest-key:ctrl+a", expected, observed)
 }
 
 async function withMouseModes<T>(ctx: TermProbeSource, work: () => Promise<T>): Promise<T> {
@@ -258,10 +261,17 @@ function sgrMouseCoords(report: string): { x: number; y: number } | undefined {
   return { x: Number(match[1]), y: Number(match[2]) }
 }
 
-function pixelCoordsDistinct(control: string, report: string): boolean {
+function pixelCoordsWithin(control: string, report: string, geometry: PixelGeometry): boolean {
   const cell = sgrMouseCoords(control)
   const pixel = sgrMouseCoords(report)
-  return cell !== undefined && pixel !== undefined && (pixel.x !== cell.x || pixel.y !== cell.y)
+  return (
+    cell !== undefined &&
+    pixel !== undefined &&
+    pixel.x > (cell.x - 1) * geometry.cellWidth &&
+    pixel.x <= cell.x * geometry.cellWidth &&
+    pixel.y > (cell.y - 1) * geometry.cellHeight &&
+    pixel.y <= cell.y * geometry.cellHeight
+  )
 }
 
 function isUrxvtMouse(report: string): boolean {
@@ -387,6 +397,10 @@ async function pixelMouse(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
       SGR_MOUSE,
       "XTEST delivery control failed: click under 1000+1006 did not reach the app",
     )
+    const measured = await queryPixelGeometry(ctx)
+    if ("missing" in measured) {
+      return notTestedResult(`no cell geometry: ${measured.missing}`, { control, geometry: measured })
+    }
     ctx.write(PIXEL_MOUSE_SET)
     try {
       const report = (await readInput(SGR_MOUSE, 1000, () => input.injectClick(1)))?.[0]
@@ -395,9 +409,9 @@ async function pixelMouse(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
           "XTEST 1016 pixel-mouse click did not reach the app after a successful 1000+1006 delivery control",
         )
       }
-      const observed = { mode: "1016", control, report }
+      const observed = { mode: "1016", control, report, geometry: measured.geometry, geometrySource: measured.source }
       const expected = "OS XTEST click report under 1016 with pixel coordinates after 1000+1006 delivery control"
-      if (pixelCoordsDistinct(control, report)) {
+      if (pixelCoordsWithin(control, report, measured.geometry)) {
         return interactionResult("pixel-mouse:1", expected, observed)
       }
       return unsupportedInteraction("pixel-mouse:1", expected, observed)
