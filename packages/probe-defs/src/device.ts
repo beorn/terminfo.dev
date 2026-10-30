@@ -436,13 +436,21 @@ function titleStackHeadless(ctx: LibProbeSource, expected: string): ProbeCallbac
       )
     }
   }
+  if (original !== "pushed-title" || changed !== "new-title") {
+    // No title readback means this adapter exposes no title observable, which decides neither operation
+    // (Ghostty native reads empty at all three steps, #31387); it takes the headless observable review.
+    const note = "Title setup was not observable"
+    return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
+      original,
+      changed,
+      restored,
+    })
+  }
   return parserStateResult(
     null,
     expected,
     { original, changed, restored },
-    original !== "pushed-title" || changed !== "new-title"
-      ? "Title setup was not observable"
-      : "Title push/pop did not restore the old title; the failing operation is unknown",
+    "Title push/pop did not restore the old title; the failing operation is unknown",
   )
 }
 

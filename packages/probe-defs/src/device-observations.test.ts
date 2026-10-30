@@ -638,13 +638,27 @@ describe("window-operation qualification", () => {
     expect(icon.headless(headlessIcon).observation?.outcome).not.toBe("supported")
   })
 
+  // A title setup that reads back wrong decides neither operation: no observation, the headless observable review.
+  const UNOBSERVABLE_TITLE_SETUP = {
+    note: "Title setup was not observable",
+    notTested: { reason: "no-semantic-observable", noObservable: "Title setup was not observable" },
+    criterionBranch: "headless-observable-review",
+    tests: [
+      {
+        id: "review",
+        status: "test-todo",
+        reason: "Headless observable review required: Title setup was not observable",
+      },
+    ],
+  }
+
   // AC3: a failed push/pop pair cannot identify which individual operation failed.
   // The prior case only covered failed setup; final WezTerm raw has valid setup and failed restoration.
   test.each(["device.xtwinops-22", "device.xtwinops-23"])("%s qualifies the complete title round trip", (id) => {
     for (const [titles, outcome] of [
       [["pushed-title", "new-title", "pushed-title"], "supported"],
       [["pushed-title", "new-title", "new-title"], "inconclusive"],
-      [["test-icon", "test-icon", "test-icon"], "inconclusive"],
+      [["test-icon", "test-icon", "test-icon"], "review"],
     ] as const) {
       let index = 0
       const context = {
@@ -656,8 +670,15 @@ describe("window-operation qualification", () => {
         },
       } as unknown as LibProbeSource
       const result = callback(id).headless(context)
-      expect(result.observation).toMatchObject({ outcome, assertionType: "buffer_state" })
       expect(result.response).toBe(JSON.stringify({ original: titles[0], changed: titles[1], restored: titles[2] }))
+      if (outcome === "review") {
+        // An unobservable setup decides neither operation (#31387).
+        expect(result).toMatchObject(UNOBSERVABLE_TITLE_SETUP)
+        expect(result.observation).toBeUndefined()
+        expect(result.assertions).toBeUndefined()
+        continue
+      }
+      expect(result.observation).toMatchObject({ outcome, assertionType: "buffer_state" })
       if (outcome === "inconclusive") {
         expect(result.observation?.reason).toBe("insufficient-evidence")
         expect(result.assertions).toBeUndefined()
@@ -670,7 +691,8 @@ describe("window-operation qualification", () => {
   // #31735, #31387, @cto 863bef67: when both CSI 22;0t and CSI 23;0t are source-audited as unimplemented in the loaded
   // binary artifact (ghostty 0.4.0 stream_handler.zig:343-346; libvterm 0.3.3 state.c:978; vt100-rust 0.16.2
   // perform.rs:132-156; wezterm 0.1.0-fork.5 terminalstate/mod.rs:2090-2095), an observed setup + un-restored title
-  // grades Unsupported by source citation; failed setup or unaudited artifacts stay inconclusive.
+  // grades Unsupported by source citation; failed setup takes the headless observable review and unaudited artifacts
+  // stay inconclusive.
   test.each([
     ["d80a8110258a124fb6ff52a6fe149b8e39b5180d986907cc9fb7dc9143c3f3d9", "stream_handler.zig:343-346"],
     ["5937bd79139ee5856bcf1bd619cc44fcd2d750d3def3066a74956678cdaaaeb2", "src/state.c:978"],
@@ -718,13 +740,10 @@ describe("window-operation qualification", () => {
         const positive = callback(id).headless(makeCtx(["pushed-title", "new-title", "pushed-title"]))
         expect(positive.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
 
-        // Unobservable setup stays inconclusive even on an audited artifact.
+        // Unobservable setup takes the headless observable review even on an audited artifact (#31387).
         const unobservable = callback(id).headless(makeCtx(["", "", ""]))
-        expect(unobservable.observation).toMatchObject({
-          outcome: "inconclusive",
-          reason: "insufficient-evidence",
-          note: "Title setup was not observable",
-        })
+        expect(unobservable).toMatchObject(UNOBSERVABLE_TITLE_SETUP)
+        expect(unobservable.observation).toBeUndefined()
 
         // Unaudited digest stays inconclusive.
         const unaudited = callback(id).headless(makeCtx(["pushed-title", "new-title", "new-title"], "f".repeat(64)))
@@ -797,13 +816,10 @@ describe("window-operation qualification", () => {
         const positive = callback(id).headless(makeCtx(["pushed-title", "new-title", "pushed-title"]))
         expect(positive.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
 
-        // Unobservable setup stays inconclusive even on an audited source tree.
+        // Unobservable setup takes the headless observable review even on an audited source tree (#31387).
         const unobservable = callback(id).headless(makeCtx(["", "", ""]))
-        expect(unobservable.observation).toMatchObject({
-          outcome: "inconclusive",
-          reason: "insufficient-evidence",
-          note: "Title setup was not observable",
-        })
+        expect(unobservable).toMatchObject(UNOBSERVABLE_TITLE_SETUP)
+        expect(unobservable.observation).toBeUndefined()
 
         // Any dirty or mutated source identity stays inconclusive.
         for (const mutated of [

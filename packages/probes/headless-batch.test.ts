@@ -1829,3 +1829,55 @@ test("refuses an unaudited native artifact up front before probe collection with
   ).not.toThrow()
   expect(kittyWarnings).toEqual([])
 })
+
+// 31387: Ghostty native's adapter reports an empty title after OSC 2, so the title-stack round trip observes
+// nothing. A rowless inconclusive was folded to TEST FAILURE as a callback defect; an unobservable setup takes
+// the headless observable review instead, with the three empty readings retained as raw state.
+const TITLE_STACK_IDS = ["device.xtwinops-22", "device.xtwinops-23"] as const
+
+function expectTitleSetupReview(batch: Awaited<ReturnType<typeof collectBatch>>): void {
+  expect(batch.results).toMatchObject(
+    TITLE_STACK_IDS.map((featureId) => ({
+      featureId,
+      status: "test-todo",
+      criterionBranch: HEADLESS_OBSERVABLE_REVIEW,
+      tests: [
+        {
+          id: "review",
+          status: "test-todo",
+          reason: "Headless observable review required: Title setup was not observable",
+        },
+      ],
+    })),
+  )
+  expect(batch.observations).toEqual([])
+  expect(batch.assertions).toEqual([])
+  for (const id of TITLE_STACK_IDS) {
+    expect(JSON.parse(batch.rawReplies[id]!)).toEqual({ original: "", changed: "", restored: "" })
+  }
+}
+
+test("an adapter that reports no title gives the title-stack cells a headless observable review", async () => {
+  const batch = await collectBatch(
+    async () => {
+      const value = createXtermBackend()
+      vi.spyOn(value, "getTitle").mockReturnValue("")
+      return value
+    },
+    "xtermjs",
+    registryDefinitions(TITLE_STACK_IDS),
+  )
+  expectTitleSetupReview(batch)
+})
+
+test.skipIf(!ghosttyNativeAvailable)(
+  `real Ghostty native title-stack cells are a headless observable review${ghosttyNativeAvailable ? "" : " (NOT MEASURED: native addon unavailable)"}`,
+  async () => {
+    const batch = await collectBatch(
+      async () => createGhosttyNativeBackend(),
+      "ghostty-native",
+      registryDefinitions(TITLE_STACK_IDS),
+    )
+    expectTitleSetupReview(batch)
+  },
+)
