@@ -23,6 +23,10 @@ import {
   queryDecrpm,
   decrpmReading,
   decrpmResult,
+  decrpmPs,
+  decrpmReplyPattern,
+  sweepCellWidth,
+  cellWidthTransition,
   type DecrpmPs,
 } from "./helpers.ts"
 import { applicationKeypad, altScroll1007 } from "./input.ts"
@@ -1881,85 +1885,62 @@ export const modesProbes: ProbeDefinition[] = [
   // ?1005 — UTF-8 mouse encoding (legacy)
   decrpmModeProbe("modes.utf8-mouse-1005", 1005, headlessDecrpmArm(1005)),
 
-  // ?3 — DECCOLM 80/132 column switch
-  decrpmModeProbe("modes.deccolm", 3, (ctx) => {
-    const before = ctx.feedCapture("\x1b[18t")
-    if (before.length === 0) return notTestedResult("18t unanswered", { before })
-    const geometryReply = /\x1b\[8;([1-9][0-9]*);([1-9][0-9]*)t/
-    const initial = geometryReply.exec(before)
-    const initialCols = Number(initial?.[2])
-    if (!initial || !Number.isSafeInteger(Number(initial[1])) || !Number.isSafeInteger(initialCols)) {
-      return {
-        pass: false,
-        response: JSON.stringify({ before }),
-        observation: {
-          outcome: "inconclusive",
-          assertionType: "query_reply",
-          reason: "invalid-reply",
-          note: "Initial 18t did not return a complete positive row/column geometry",
-        },
+  // ?3 — DECCOLM 80/132 column switch, decided by cell state, 18t only corroborating (#31381, cee6d003)
+  {
+    id: "modes.deccolm",
+    termWrites: "query",
+    termAssertionType: "query_reply",
+    libAssertionType: "buffer_state",
+    lib: (ctx) => {
+      if (typeof (ctx as { getCursor?: unknown }).getCursor !== "function") {
+        return reviewResult(
+          "no-cell-width-readback",
+          "Library probe source exposes no cell-width readback; required independent review of the retained raw state pending",
+          "no cell-width readback",
+          { cols: ctx.cols },
+        )
       }
-    }
-    if (initialCols !== 80 && initialCols !== 132) {
-      return {
-        pass: false,
-        response: JSON.stringify({ before }),
-        observation: {
-          outcome: "inconclusive",
-          assertionType: "query_reply",
-          reason: "insufficient-evidence",
-          note: "DECCOLM requires an initial measured width of 80 or 132 columns",
-        },
+      const geometryReply = /\x1b\[8;([1-9][0-9]*);([1-9][0-9]*)t/
+      const reply18t = () => {
+        const match = geometryReply.exec(ctx.feedCapture("\x1b[18t"))
+        return match ? Number(match[2]) : null
       }
-    }
-
-    const targetCols = initialCols === 80 ? 132 : 80
-    const change = initialCols === 80 ? "\x1b[?3h" : "\x1b[?3l"
-    const restore = initialCols === 80 ? "\x1b[?3l" : "\x1b[?3h"
-    // Open the 80/132 policy gate before measuring the effect. The collector destroys this
-    // probe's disposable backend; no unavailable prior ?40 state is invented for cleanup.
-    ctx.feed("\x1b[?40h")
-    let enabled: string
-    try {
+      // Close the 80/132 policy gate for the baseline and gate control A. The collector destroys this
+      // probe's disposable backend; no unavailable prior ?40 state is invented for cleanup.
+      ctx.feed("\x1b[?40l")
+      const initial = sweepCellWidth(ctx)
+      const initial18t = reply18t()
+      const mirror = initial.kind === "width" && initial.width === 132
+      const change = mirror ? "\x1b[?3l" : "\x1b[?3h"
+      const restore = mirror ? "\x1b[?3h" : "\x1b[?3l"
+      // Gate control A: with ?40 closed the mode must not move the width.
       ctx.feed(change)
-      enabled = ctx.feedCapture("\x1b[18t")
-    } finally {
+      const gateBefore = sweepCellWidth(ctx)
+      ctx.feed(restore + "\x1b[?40h" + change)
+      const enabled = sweepCellWidth(ctx)
+      const enabled18t = reply18t()
       ctx.feed(restore)
-    }
-    const restored = ctx.feedCapture("\x1b[18t")
-    const response = JSON.stringify({ before, enabled, restored })
-    const measured = [enabled, restored].map((reply) => geometryReply.exec(reply))
-    if (
-      measured.some(
-        (match) => !match || !Number.isSafeInteger(Number(match[1])) || !Number.isSafeInteger(Number(match[2])),
-      )
-    ) {
-      return {
-        pass: false,
-        response,
-        observation: {
-          outcome: "inconclusive",
-          assertionType: "query_reply",
-          reason: enabled.length === 0 || restored.length === 0 ? "no-response" : "invalid-reply",
-          note: "DECCOLM did not measure complete enabled and restored 18t geometry",
-        },
-      }
-    }
-    const pass = Number(measured[0]?.[2]) === targetCols && Number(measured[1]?.[2]) === initialCols
-    return {
-      pass,
-      response,
-      observation: { outcome: pass ? "supported" : "unsupported", assertionType: "query_reply" },
-      assertions: [
-        {
-          assertionType: "query_reply",
-          kind: pass ? "positive" : "negative",
-          expected: `DECCOLM changes measured columns ${initialCols} -> ${targetCols} -> ${initialCols} after ?40 is enabled`,
-          observed: response,
-        },
-      ],
-    }
-  }),
+      const restored = sweepCellWidth(ctx)
+      const restored18t = reply18t()
+      // Gate control B: with ?40 closed again the mode must not move the width a second time.
+      ctx.feed("\x1b[?40l" + change)
+      const gateAfter = sweepCellWidth(ctx)
+      ctx.feed(restore + "\x1b[?40h")
+      const decrpm = decrpmPs(decrpmReplyPattern(3).exec(ctx.feedCapture("\x1b[?3$p"))?.[1])
+      return cellWidthTransition({
+        initial,
+        gateBefore,
+        enabled,
+        restored,
+        gateAfter,
+        decrpm,
+        reply18t: { initial: initial18t, enabled: enabled18t, restored: restored18t },
+      })
+    },
+    async term(ctx) {
+      return decrpmResult(await queryDecrpm(ctx, 3), 3)
+    },
+  },
 
   // ?4 — DECSCLM needs presentation timing, not mode recognition or final parser state.
   decrpmModeProbe("modes.decsclm", 4, () => {
