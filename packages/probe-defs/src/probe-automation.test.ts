@@ -404,6 +404,7 @@ describe("qualified clipboard roundtrip", () => {
 describe("reply-path audit", () => {
   // #31692: data-derived cases cannot detect an omitted current-artifact OSC99 audit.
   test.each([
+    ["5c38594a17329b24e826f785d3156d6e498490517835f12b0730eeab2fc63da7", "parser-rejected"],
     ["d80a8110258a124fb6ff52a6fe149b8e39b5180d986907cc9fb7dc9143c3f3d9", "parser-rejected"],
     ["77b69f9f22c4126359be864fcce97afad8f84615053e21d335ba6348a8d3e1d7", "parser-rejected"],
     ["8872ab0fc56429489b52cd5d3b5a293032c3ec7dbbb71545d237945c3ef525f3", "parser-rejected"],
@@ -470,6 +471,23 @@ describe("reply-path audit", () => {
       expect(rebuilt![id]).toMatchObject({ query: audit.query, kind: audit.kind })
       expect(rebuilt![id]!.matches).toBe(audit.matches)
       expect(rebuilt![id]!.citation).toContain(core)
+    }
+  })
+
+  // #31392, @cto 34bea86e: Ghostty WASM 5c38594a only adds viewport getters/exports to the d80a8110 facade, so every
+  // d80a8110 row is rebound as its own data row with the same query, kind and matching, and the old rows stay.
+  test("the rebuilt Ghostty WASM 5c38594a retains every d80a8110 audit", () => {
+    const prior = REPLY_PATH_AUDITS.get("d80a8110258a124fb6ff52a6fe149b8e39b5180d986907cc9fb7dc9143c3f3d9")!
+    const rebuilt = REPLY_PATH_AUDITS.get("5c38594a17329b24e826f785d3156d6e498490517835f12b0730eeab2fc63da7")!
+    expect(rebuilt).toBeDefined()
+    expect(rebuilt).not.toBe(prior)
+    expect(Object.keys(rebuilt).sort()).toEqual(Object.keys(prior).sort())
+    expect(Object.keys(rebuilt)).toHaveLength(49)
+    for (const [id, audit] of Object.entries(rebuilt)) {
+      expect(audit).toMatchObject({ query: prior[id]!.query, kind: prior[id]!.kind })
+      expect(audit.matches).toBe(prior[id]!.matches)
+      expect(audit.citation).toContain("5714ed07")
+      expect(audit.citation).not.toContain("d80a8110")
     }
   })
 
@@ -855,6 +873,7 @@ describe("reply-path audit", () => {
     expect([...REPLY_PATH_AUDITS.keys()].sort()).toEqual([
       "0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3",
       "17d155feee5df8fa30266b9a354bbe66e39484d08218de5e03dc3bb2f199a0a3",
+      "5c38594a17329b24e826f785d3156d6e498490517835f12b0730eeab2fc63da7",
       "77b69f9f22c4126359be864fcce97afad8f84615053e21d335ba6348a8d3e1d7",
       "7c43302dde147c6f7959b7bda7045ff375c71288da1af5667ffca2bf95beb2bf",
       "8872ab0fc56429489b52cd5d3b5a293032c3ec7dbbb71545d237945c3ef525f3",
