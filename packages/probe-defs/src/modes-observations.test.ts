@@ -138,6 +138,7 @@ function cellWidthContext(options: {
   width: 80 | 132
   wrap?: boolean
   ignoresMode?: boolean
+  ignoresReset?: boolean
   honoursModeWithoutGate?: boolean
   decrpm?: string
   replyWidth?: number
@@ -156,7 +157,12 @@ function cellWidthContext(options: {
       for (const match of text.matchAll(/\x1b\[\?(\d+)([hl])/g)) {
         const on = match[2] === "h"
         if (match[1] === "40") state.gate = on || (options.stickyGate === true && state.gate)
-        if (match[1] === "3" && !options.ignoresMode && (state.gate || options.honoursModeWithoutGate)) {
+        if (
+          match[1] === "3" &&
+          !options.ignoresMode &&
+          !(options.ignoresReset && !on) &&
+          (state.gate || options.honoursModeWithoutGate)
+        ) {
           state.width = on ? (options.wideWidth ?? 132) : 80
         }
       }
@@ -274,6 +280,15 @@ test("DECCOLM grades a no-change by an engine that accepted the mode as unsuppor
   expect(result.tests).toBeUndefined()
 })
 
+test("DECCOLM names a set that moved width but a reset that did not restore it", () => {
+  const { context } = cellWidthContext({ width: 80, ignoresReset: true })
+  const result = headlessDeccolm()(context)
+  expect(result.observation).toMatchObject({
+    outcome: "unsupported",
+    note: expect.stringContaining("set moved width to 132, reset did not restore 80"),
+  })
+})
+
 test.each([0, 4] as const)("DECCOLM grades unchanged measured width unsupported at DECRPM Ps %i", (ps) => {
   const { context } = cellWidthContext({ width: 80, ignoresMode: true, decrpm: `\x1b[?3;${ps}$y` })
   const result = headlessDeccolm()(context)
@@ -336,7 +351,7 @@ test.each([
     expect(result.assertions).toEqual([
       expect.objectContaining({ assertionType: "buffer_state", kind: "negative", observed: result.response }),
     ])
-    expect(JSON.parse(result.response!)[phase]).toMatchObject({ width: 132 })
+    expect(JSON.parse(result.response!)).toMatchObject({ [phase]: { width: 132 } })
     expect(result.tests).toMatchObject([
       expect.objectContaining({ status: "test-failure", reason: expect.stringContaining(`"${phase}"`) }),
     ])

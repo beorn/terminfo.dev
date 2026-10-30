@@ -1262,13 +1262,21 @@ export function cellWidthTransition(reads: CellWidthTransitionReads): ProbeCallb
     reads.decrpm === 0 || reads.decrpm === 4
       ? `DECRPM mode 3 reads ${decrpmReading(reads.decrpm)} while the sweep measured ${initial} -> ${reads.enabled.width} -> ${reads.restored.width}`
       : undefined
+  const partialTransition =
+    reads.enabled.width === target && reads.restored.width !== initial
+      ? `set moved width to ${target}, reset did not restore ${initial}`
+      : undefined
   return {
     pass: moved,
     response,
     observation: {
       outcome: moved ? "supported" : "unsupported",
       assertionType: "buffer_state",
-      note: [`initial=${initial}, enabled=${reads.enabled.width}, restored=${reads.restored.width}`, decrpmNote]
+      note: [
+        `initial=${initial}, enabled=${reads.enabled.width}, restored=${reads.restored.width}`,
+        decrpmNote,
+        partialTransition,
+      ]
         .filter((part) => part !== undefined)
         .join("; "),
     },

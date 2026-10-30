@@ -27,7 +27,7 @@ import {
 } from "@terminfo/probe-defs"
 import { fakeProbeResult } from "@terminfo/probe-defs/testing/fake-probe-result"
 import { regradeRow, satisfiesContract, type GroupContract } from "../probe-defs/src/testing/group-harness.ts"
-import { validateObservation, retainCaptureBinding } from "@terminfo/run-parser"
+import { validateObservation, retainCaptureBinding, parseRun } from "@terminfo/run-parser"
 import { spawnSync } from "node:child_process"
 import { mkdtempSync, readFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -36,7 +36,6 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest"
 import { collectBatch, createLibProbeSource, feedCapture } from "./headless-batch.ts"
 import { finalizeCollectedDraft } from "../terminfo.dev/src/capture-writer.ts"
 import { cellWidthTransition } from "../probe-defs/src/helpers.ts"
-import { validateCurrentAssertions } from "../run-parser/src/observations.ts"
 import retainedDeccolm from "./fixtures/deccolm-retained.json"
 
 /** Feature captures only; collector qualification metadata is asserted in sentinel-member.test.ts. */
@@ -74,9 +73,54 @@ test.each(retainedDeccolm.rows)("DECCOLM retained $engine state survives the str
   expect(repaired.results).toMatchObject([{ status: sample.expected, assertionType: "buffer_state" }])
   expect(repaired.rawReplies[definition.id]).toBe(sample.raw)
   expect(repaired.assertions[0]!.observed).toBe(sample.raw)
-  // The canonical reader checks every buffer-state assertion, including the separate gate assertion.
+  // Unit metadata is explicitly unverified; it grants no historical suite or engine attestation.
+  const manifest = {
+    schemaVersion: 4 as const,
+    probeHash: "deccolm-reader-fixture",
+    adapterVersion: "fixture",
+    catalogIds: [definition.id],
+    probes: { term: [], mux: [], lib: [definition.id] },
+  }
+  const draft = initializeRunDraft({
+    source: { kind: "live" },
+    runId: `deccolm-reader-${sample.engine}`,
+    sourceRevision: "a".repeat(40),
+    intendedSubject: { kind: "lib", id: "xtermjs" },
+    manifest,
+  })
+  const captured: CapturedRunDraft = {
+    ...draft,
+    subject: {
+      kind: "lib",
+      id: "xtermjs",
+      version: "fixture",
+      os: "linux",
+      osVersion: null,
+      outerTerminal: null,
+      mux: null,
+      config: null,
+      permissions: null,
+    },
+    identity: "unverified",
+    runtimeIdentity: {
+      kind: "js",
+      engineVersion: "fixture",
+      adapterVersion: "fixture",
+      termlessRevision: "fixture",
+      resolvedPath: "fixture/xtermjs",
+      integrity: { kind: "registry", lockIntegrity: "fixture" },
+      runtimeFormat: "js",
+    },
+    measuredAt: "2026-10-30T18:34:00.000Z",
+    origin: { kind: "collector" },
+    rawReplies: { ...draft.rawReplies, ...repaired.rawReplies },
+    results: repaired.results,
+    assertions: repaired.assertions,
+  }
   expect(() =>
-    validateCurrentAssertions(repaired.assertions, repaired.rawReplies, repaired.results, "lib", sample.engine),
+    parseRun(sample.engine, JSON.stringify(captured), manifest.catalogIds, new Map([[manifest.probeHash, manifest]]), {
+      mode: "capture",
+    }),
   ).not.toThrow()
   expect(
     repaired.assertions.every(
