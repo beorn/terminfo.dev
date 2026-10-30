@@ -38,10 +38,52 @@ interface MethodCall extends Outcome {
   callbacks: CallbackCall[]
 }
 
-interface CallLog {
+interface StoredCallLog {
+  format: "viprobe.call-log"
   version: 1
   root: Encoded
   calls: MethodCall[]
+}
+
+const handleBrand = Symbol("CallLog")
+export interface CallLog {
+  readonly [handleBrand]: true
+}
+
+interface LogState {
+  data: StoredCallLog
+  started: boolean
+  complete: boolean
+}
+
+const handles = new WeakMap<CallLog, LogState>()
+
+function canonicalValue(value: unknown): unknown {
+  if (value === null || typeof value !== "object") return value
+  if (Array.isArray(value)) return value.map(canonicalValue)
+  return Object.fromEntries(
+    Object.keys(value)
+      .sort()
+      .flatMap((key) => {
+        const member: unknown = Reflect.get(value, key)
+        return member === undefined ? [] : [[key, canonicalValue(member)]]
+      }),
+  )
+}
+
+class CallLogHandle implements CallLog {
+  readonly [handleBrand] = true
+
+  constructor(state: LogState) {
+    handles.set(this, state)
+    Object.freeze(this)
+  }
+
+  toJSON(): unknown {
+    const state = handles.get(this)
+    if (!state?.complete) throw new IncompleteReplay("call log recording has not completed")
+    return canonicalValue(state.data)
+  }
 }
 
 export class IncompleteReplay extends Error {
@@ -52,7 +94,11 @@ export class IncompleteReplay extends Error {
 }
 
 export function createCallLog(): CallLog {
-  return { version: 1, root: null, calls: [] }
+  return new CallLogHandle({
+    data: { format: "viprobe.call-log", version: 1, root: null, calls: [] },
+    started: false,
+    complete: false,
+  })
 }
 
 function namedError(error: unknown): { name: string; message: string } {
@@ -91,13 +137,25 @@ function settleTiming(timing: CallTiming): void {
 }
 
 export function withCallLog<Subject extends object>(
+  subject: Subject,
+  options: { mode: "record"; log: CallLog },
+): { context: Subject; finish: () => void }
+export function withCallLog<Subject extends object>(
+  subject: null,
+  options: { mode: "replay"; log: CallLog },
+): { context: Subject; finish: () => void }
+export function withCallLog<Subject extends object>(
   subject: Subject | null,
   options: { mode: "record" | "replay"; log: CallLog },
 ): { context: Subject; finish: () => void } {
-  const { mode, log } = options
+  const { mode } = options
+  const state = handles.get(options.log)
+  if (!state) throw new IncompleteReplay("call log handle required; persisted data must be validated first")
+  const log = state.data
   const originals = new WeakMap<object, object>()
   let cursor = 0
   let pending = 0
+  let closed = false
   let failure: IncompleteReplay | undefined
 
   function incomplete(message: string): never {
@@ -112,8 +170,8 @@ export function withCallLog<Subject extends object>(
     if (typeof value === "undefined") return { kind: "undefined" }
     if (typeof value === "bigint") return { kind: "bigint", value: String(value) }
     if (typeof value === "function") return { kind: "function" }
-    if (typeof value !== "object") throw new Error(`Scratch call log cannot encode ${typeof value}`)
-    if (seen.has(value)) throw new Error("Scratch call log cannot encode cyclic values")
+    if (typeof value !== "object") return incomplete(`call log cannot encode ${typeof value}`)
+    if (seen.has(value)) return incomplete("call log cannot encode cyclic values")
     seen.add(value)
     try {
       if (value instanceof RegExp) return { kind: "regexp", value: value.source, flags: value.flags }
@@ -127,17 +185,19 @@ export function withCallLog<Subject extends object>(
           values: value.map((item) => encode(item, seen)),
           entries: Object.entries(value)
             .filter(([key]) => !/^(0|[1-9][0-9]*)$/.test(key))
+            .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
             .map(([key, entry]) => [key, encode(entry, seen)]),
         }
       }
       const prototype: unknown = Object.getPrototypeOf(value)
       if (prototype !== Object.prototype && prototype !== null) {
-        throw new Error(`Scratch call log cannot encode prototype ${Object.prototype.toString.call(value)}`)
+        return incomplete(`call log cannot encode prototype ${Object.prototype.toString.call(value)}`)
       }
       return {
         kind: "object",
         entries: Object.entries(Object.getOwnPropertyDescriptors(value))
           .filter(([, descriptor]) => descriptor.enumerable)
+          .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
           .map(([key, descriptor]) => [
             key,
             "value" in descriptor ? encode(descriptor.value, seen) : { kind: "accessor" },
@@ -234,6 +294,7 @@ export function withCallLog<Subject extends object>(
   }
 
   function recordCall(target: object, method: (...args: unknown[]) => unknown, path: string, args: unknown[]): unknown {
+    if (closed) return incomplete(`recording session already finished: ${path}`)
     const timing = startTiming()
     const call: MethodCall = {
       id: log.calls.length,
@@ -248,6 +309,7 @@ export function withCallLog<Subject extends object>(
     const supplied = args.map((value, argument) => {
       if (typeof value !== "function") return value
       return (...callbackArgs: unknown[]) => {
+        if (closed) return incomplete(`recording session already finished: ${path}`)
         const callback: CallbackCall = {
           argument,
           args: callbackArgs.map((entry) => encode(entry)),
@@ -326,6 +388,7 @@ export function withCallLog<Subject extends object>(
   }
 
   function replayCall(path: string, args: unknown[]): unknown {
+    if (closed) return incomplete(`replay session already finished: ${path}`)
     const result = replayCallOutcome(path, args)
     if (promise(result)) {
       pending++
@@ -363,9 +426,13 @@ export function withCallLog<Subject extends object>(
 
   if (mode === "record") {
     if (!subject) throw new Error("Record mode requires its live subject")
-    if (log.calls.length) throw new Error("Record mode requires a fresh scratch log")
+    if (state.started) throw new IncompleteReplay("record mode requires a fresh call log")
+    state.started = true
     log.root = encode(subject)
-  } else if (subject !== null) throw new Error("Replay refuses a live subject")
+  } else {
+    if (subject !== null) throw new Error("Replay refuses a live subject")
+    if (!state.complete) throw new IncompleteReplay("replay requires a completed call log")
+  }
   const context = wrap(mode === "record" ? subject : decode(log.root), "context") as Subject
   return {
     context,
@@ -378,6 +445,8 @@ export function withCallLog<Subject extends object>(
         incomplete("call log has unfinished asynchronous calls")
       }
       if (mode === "replay" && cursor !== log.calls.length) incomplete(`${log.calls.length - cursor} unconsumed calls`)
+      if (mode === "record") state.complete = true
+      closed = true
     },
   }
 }
