@@ -464,7 +464,7 @@ test.each([
   })
   const result = await modeProbe("modes.application-keypad").term!(ctx)
   expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "input_bytes" })
-  expect(JSON.parse(result.response ?? "null").report).toBe("\x1bOu")
+  expect(JSON.parse(result.response ?? "null")).toMatchObject({ report: "\x1bOu" })
 })
 
 // The real input reader returns only regex matches: a digit inside another report is not KP_5.
