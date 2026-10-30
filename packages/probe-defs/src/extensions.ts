@@ -3748,6 +3748,7 @@ export const extensionsProbes: ProbeDefinition[] = [
     // Feed the ConEmu progress form; consumption alone does not measure progress display.
     sourceAbsentOsc("extensions.osc9-progress", 9, "\x1b]9;4;1;50\x07", "progress"),
     () => Promise.resolve(unmeasuredStateEffect("OSC 9;4 progress display")),
+    null,
   ),
 
   // OSC 66 — text sizing protocol (Kitty, sets text scale/cell width)
@@ -3970,6 +3971,7 @@ export const extensionsProbes: ProbeDefinition[] = [
       const pos = await ctx.queryCursorPosition()
       return unmeasuredCellResult(pos, "OSC 22 pointer shape")
     },
+    null,
   ),
 
   // Query capabilities without displaying a notification or requiring desktop access.
@@ -4011,6 +4013,7 @@ export const extensionsProbes: ProbeDefinition[] = [
       const pos = await ctx.queryCursorPosition()
       return unmeasuredCellResult(pos, "OSC 777 notification delivery")
     },
+    null,
   ),
 
   // OSC 666 — VTE termprop
@@ -4023,6 +4026,7 @@ export const extensionsProbes: ProbeDefinition[] = [
       const pos = await ctx.queryCursorPosition()
       return unmeasuredCellResult(pos, "OSC 666 terminal property")
     },
+    null,
   ),
 
   // OSC 3008 — systemd context
@@ -4035,6 +4039,7 @@ export const extensionsProbes: ProbeDefinition[] = [
       const pos = await ctx.queryCursorPosition()
       return unmeasuredCellResult(pos, "OSC 3008 systemd context")
     },
+    null,
   ),
 
   // OSC 113 — reset pointer fg color
@@ -4092,6 +4097,7 @@ export const extensionsProbes: ProbeDefinition[] = [
       const pos = await ctx.queryCursorPosition()
       return unmeasuredCellResult(pos, "OSC 176 Wayland app-id")
     },
+    null,
   ),
 
   // OSC 555 — foot screen flash (visual bell)
