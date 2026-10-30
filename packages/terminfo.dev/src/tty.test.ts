@@ -18,6 +18,10 @@ import {
   readResponse,
   withRawMode,
   withTTYOperation,
+  withTTYQueryTrace,
+  writeTTY,
+  type TTYTraceEvent,
+  type TTYQueryTrace,
 } from "./tty.ts"
 import { sentinelGraceMs } from "@terminfo/probe-defs"
 import { sentinelNegativeResult } from "../../probe-defs/src/helpers.ts"
@@ -35,6 +39,43 @@ function reply(bytes: string) {
 }
 
 describe("TTY transaction replies", () => {
+  // The generic recorder replacement must retain this legacy projection, including the
+  // response that arrives between two synchronous injection writes, before Promise settlement.
+  it("retains legacy write/query fields in observed response order", async () => {
+    const queries: TTYQueryTrace[] = []
+    const events: TTYTraceEvent[] = []
+    const written: string[] = []
+    const out = {
+      write(sequence: string) {
+        written.push(sequence)
+        return true
+      },
+    } as unknown as NodeJS.WriteStream
+    await withTTYOperation(
+      () =>
+        withTTYQueryTrace(queries, events, async () => {
+          writeTTY("before")
+          expect(
+            await readResponse(/^a/, 50, async () => {
+              writeTTY("inject")
+              reply("a")
+              writeTTY("after-reply")
+            }),
+          ).toEqual(["a"])
+        }),
+      out,
+    )
+    const query = { sequence: "", reason: "reply" as const, raw: "a", rawBase64: "YQ==", match: ["a"] }
+    expect(written).toEqual(["before", "inject", "after-reply"])
+    expect(queries).toEqual([query])
+    expect(events).toEqual([
+      { kind: "write", sequence: "before" },
+      { kind: "write", sequence: "inject" },
+      { kind: "query", ...query },
+      { kind: "write", sequence: "after-reply" },
+    ])
+  })
+
   it("checks a scoped owner before nested queries and releases it with the operation", async () => {
     const failure = new Error("attachment continuity lost")
     const writes: string[] = []

@@ -118,7 +118,7 @@ function currentTTYOutput(): NodeJS.WriteStream {
   return lease?.active ? lease.out : process.stdout
 }
 
-function writeTTY(sequence: string): void {
+export function writeTTY(sequence: string): void {
   queryTraceContext.getStore()?.events.push({ kind: "write", sequence })
   currentTTYOutput().write(sequence)
 }
