@@ -84,6 +84,7 @@
         "@termless/wezterm": "0.10.2",
         "@termless/xtermjs": "0.10.2",
         "loggily": "0.13.0",
+        "viprobe": "workspace:*",
         "vterm.js": "0.9.0",
       },
       "devDependencies": {

@@ -17,9 +17,13 @@ test("installed Vitest preserves task-owned checks and awaited reporter attachme
   const artifacts = new Map<string, RuntimeArtifact>()
   const artifactBytes = new Map<string, unknown>()
   const finalRecordBytes = new Map<string, unknown>()
+  const matcherEvaluations: number[] = []
   const completed: Array<{ id: string; name: string; state: string; errors: string[]; attachmentsReady: boolean }> = []
   const directory = await mkdtemp(join(tmpdir(), "terminfo-vitest-runtime-"))
   const reporter: Reporter = {
+    onTestModuleCollected(module) {
+      for (const error of module.errors()) console.error("runtime fixture collection: " + error.message)
+    },
     async onTestCaseArtifactRecord(task, artifact) {
       if (artifact.type !== "terminfo:runtime-proof") return
       const path = artifact.attachments?.[0]?.path
@@ -30,7 +34,16 @@ test("installed Vitest preserves task-owned checks and awaited reporter attachme
     // Public TaskMeta survives failed tasks; final records are persisted here, never through final annotate.
     async onTestCaseResult(task) {
       const finalRecord = task.meta().terminfoRuntimeProof
-      if (!finalRecord) throw new Error("Vitest did not deliver the failed task's final metadata")
+      const evaluations = task.meta().terminfoMatcherEvaluations
+      if (typeof evaluations === "number") matcherEvaluations.push(evaluations)
+      if (!finalRecord)
+        throw new Error(
+          "Vitest did not deliver the failed task's final metadata: " +
+            task
+              .result()
+              .errors?.map((error) => error.message)
+              .join("; "),
+        )
       const path = join(directory, `${task.id}.final.json`)
       await writeFile(path, JSON.stringify(finalRecord))
       finalRecordBytes.set(task.id, JSON.parse(await readFile(path, "utf8")))
@@ -55,6 +68,7 @@ test("installed Vitest preserves task-owned checks and awaited reporter attachme
   try {
     await runtime.start()
     expect(completed).toHaveLength(2)
+    expect(Math.max(...matcherEvaluations)).toBe(4)
     expect(new Set(completed.map((task) => task.id)).size).toBe(2)
     for (const [label, value] of [
       ["left", 10],
@@ -72,8 +86,29 @@ test("installed Vitest preserves task-owned checks and awaited reporter attachme
         { taskId: task.id, label, received: value, expected: value, ok: true },
       ]
       expect(artifacts.get(task.id)).toMatchObject({ taskId: task.id, checks })
-      expect(artifactBytes.get(task.id)).toEqual(checks)
-      expect(finalRecordBytes.get(task.id)).toEqual({ taskId: task.id, checks })
+      const retainedChecks = [
+        {
+          step: 1,
+          kind: "assertion",
+          matcher: "toRecorderRuntimeEqual",
+          arguments: [value + 1],
+          expected: value + 1,
+          actual: value,
+          ok: false,
+        },
+        {
+          step: 2,
+          kind: "precondition",
+          matcher: "toRecorderRuntimeEqual",
+          arguments: [value],
+          expected: value,
+          actual: value,
+          ok: true,
+        },
+      ]
+      expect(artifacts.get(task.id)?.retainedChecks).toEqual(retainedChecks)
+      expect(artifactBytes.get(task.id)).toEqual(retainedChecks)
+      expect(finalRecordBytes.get(task.id)).toEqual({ taskId: task.id, checks, retainedChecks })
     }
     console.info(JSON.stringify({ vitest: version, completed, artifacts: [...artifacts.values()] }))
   } finally {

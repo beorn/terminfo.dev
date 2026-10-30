@@ -1,7 +1,8 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { expect, recordArtifact, test, type MatcherState, type RunnerTestCase, type TestArtifactBase } from "vitest"
+import { recordArtifact, test, type TestArtifactBase } from "vitest"
+import { withChecks, type RetainedCheck } from "../checks.ts"
 
 interface Check {
   taskId: string
@@ -15,11 +16,13 @@ export interface RuntimeArtifact extends TestArtifactBase {
   type: "terminfo:runtime-proof"
   taskId: string
   checks: Check[]
+  retainedChecks: readonly RetainedCheck[]
 }
 
 interface RuntimeFinalRecord {
   taskId: string
   checks: Check[]
+  retainedChecks: readonly RetainedCheck[]
 }
 
 const artifactKey = Symbol("terminfo-runtime-proof")
@@ -29,23 +32,25 @@ declare module "vitest" {
   }
   interface TaskMeta {
     terminfoRuntimeProof?: RuntimeFinalRecord
+    terminfoMatcherEvaluations?: number
   }
   interface Matchers<R extends void | Promise<void> = void | Promise<void>, T = unknown> {
     toRecorderRuntimeEqual(expected: number): R
   }
 }
 
-const sessions = new WeakMap<Readonly<RunnerTestCase>, { label: string; checks: Check[] }>()
-expect.extend({
-  toRecorderRuntimeEqual(this: MatcherState & { task?: RunnerTestCase }, received: number, expected: number) {
-    const task = this.task
-    const session = task && sessions.get(task)
-    if (!task || !session) throw new Error("The public matcher task did not identify its test session")
-    const pass = received === expected
-    session.checks.push({ taskId: task.id, label: session.label, received, expected, ok: pass })
-    return { pass, actual: received, expected, message: () => "runtime proof deliberately includes a soft mismatch" }
+let matcherEvaluations = 0
+const matchers = {
+  toRecorderRuntimeEqual(received: number, expected: number) {
+    matcherEvaluations++
+    return {
+      pass: received === expected,
+      actual: received,
+      expected,
+      message: () => "runtime proof deliberately includes a soft mismatch",
+    }
   },
-})
+}
 
 let arrivals = 0
 let release: () => void
@@ -59,24 +64,37 @@ test.concurrent.for([
   ["right", 20],
 ] as const)("native soft continuation %s", async ([label, value], context) => {
   const checks: Check[] = []
-  sessions.set(context.task, { label, checks })
+  let retainedChecks: readonly RetainedCheck[] = []
+  const session = withChecks(context, { mode: "replay", matchers })
   const directory = await mkdtemp(join(tmpdir(), "terminfo-runtime-checks-"))
   try {
-    context.expect.soft(value).toRecorderRuntimeEqual(value + 1)
+    session.check("toRecorderRuntimeEqual", value, value + 1)
     if (++arrivals === 2) release()
     await bothRunning
-    context.expect.soft(value).toRecorderRuntimeEqual(value)
+    session.precondition("toRecorderRuntimeEqual", value, value)
+    retainedChecks = session.finish()
+    for (const check of retainedChecks) {
+      checks.push({
+        taskId: context.task.id,
+        label,
+        received: check.actual as number,
+        expected: check.expected as number,
+        ok: check.ok,
+      })
+    }
+    context.task.meta.terminfoMatcherEvaluations = matcherEvaluations
     const path = join(directory, "checks.json")
-    await writeFile(path, JSON.stringify(checks))
+    await writeFile(path, JSON.stringify(retainedChecks))
     const artifact: RuntimeArtifact = {
       type: "terminfo:runtime-proof",
       taskId: context.task.id,
       checks,
+      retainedChecks,
       attachments: [{ path, contentType: "application/json" }],
     }
     await recordArtifact(context.task, artifact)
   } finally {
-    context.task.meta.terminfoRuntimeProof = { taskId: context.task.id, checks }
+    context.task.meta.terminfoRuntimeProof = { taskId: context.task.id, checks, retainedChecks }
     await rm(directory, { recursive: true, force: true })
   }
 })
