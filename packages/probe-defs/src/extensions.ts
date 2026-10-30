@@ -1150,17 +1150,19 @@ function colorStackResult(
 const ABSENT_OSC_ENGINES = {
   vt100: {
     kind: "source",
+    runtimeFormat: "js",
     engineVersion: "0.9.0",
     resolvedPath: "vendor/vterm/packages/vt100/src/index.ts",
     repository: "git@github.com:beorn/vterm.git",
     revision: "53a9eb9291b7880f4dc6a39a6802301049997a72",
     treeOid: "5ffc7ad9ae120d0bf93c64b0fdc712eb40892896",
-    codes: [9, 22, 176, 440, 555, 666, 710, 777, 3008],
+    codes: [8, 9, 22, 176, 440, 555, 666, 710, 777, 3008],
     sourceCitation:
       "vt100 53a9eb9291b7880f4dc6a39a6802301049997a72 packages/vt100/src/screen.ts:504-520 handleOSC switch, cases 0/1/2 only",
   },
   vterm: {
     kind: "source",
+    runtimeFormat: "js",
     engineVersion: "0.9.0",
     resolvedPath: "vendor/vterm/packages/vterm/src/index.ts",
     repository: "git@github.com:beorn/vterm.git",
@@ -1180,37 +1182,105 @@ const ABSENT_OSC_ENGINES = {
     sourceCitation:
       "@xterm/headless 6.0.0 bundle SHA256 17a90b650cf6b77cce2b98c4063884d43545e4ce177a54b76ccfc906f1aacaed, map SHA256 780e782badc8189491a469c9277b783e01911882ea84417b31e71294ea927d98: InputHandler.ts:292-331 OSC registrations and :201-203 logging-only fallback, OscParser.ts:145-146 fallback dispatch, CoreTerminal.ts:236-237 embedder hook; termless 84003d2c91610fe2743142675234a0fb3ec9cf1d packages/xtermjs/src/backend.ts registers no OSC handler",
   },
+  vt220: {
+    kind: "source",
+    runtimeFormat: "js",
+    engineVersion: "0.9.0",
+    resolvedPath: "vendor/vterm/packages/vt220/src/index.ts",
+    repository: "git@github.com:beorn/vterm.git",
+    revision: "53a9eb9291b7880f4dc6a39a6802301049997a72",
+    treeOid: "69366752918a6086c639123799cc3ac68d8083a0",
+    codes: [8],
+    sourceCitation:
+      "vt220 53a9eb9291b7880f4dc6a39a6802301049997a72 packages/vt220/src/screen.ts:703-718 handleOSC switch, cases 0/1/2 only",
+  },
+  libvterm: {
+    kind: "source",
+    runtimeFormat: "wasm",
+    engineVersion: "0.3.3",
+    adapterVersion: "0.10.2",
+    termlessRevision: "8b8664540f365fa0ba1d9b6400d3c4d1a160582c",
+    resolvedPath: "vendor/termless/packages/libvterm/src/index.ts",
+    repository: "git@github.com:beorn/termless.git",
+    revision: "8b8664540f365fa0ba1d9b6400d3c4d1a160582c",
+    treeOid: "11fe1c686758b41038ba25f10b4482a8e2dc4b5b",
+    binaryPath: "vendor/termless/packages/libvterm/wasm/libvterm.wasm",
+    binarySha256: "5937bd79139ee5856bcf1bd619cc44fcd2d750d3def3066a74956678cdaaaeb2",
+    codes: [8],
+    sourceCitation:
+      "libvterm 9d6d2112335080312ef8c36667fa717ded4f7daf/v0.3.3 src/state.c:1777-1808 handles OSC 0/1/2/52 only; Termless 8b8664540f365fa0ba1d9b6400d3c4d1a160582c packages/libvterm/build/flat-api.c and src/backend.ts install no OSC fallback",
+  },
+  vt100Rust: {
+    kind: "native",
+    engineVersion: "0.16.2",
+    adapterVersion: "0.10.2",
+    termlessRevision: "8b8664540f365fa0ba1d9b6400d3c4d1a160582c",
+    binaryPath: "vendor/termless/packages/vt100-rust/termless-vt100-rust.node",
+    binarySha256: "0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3",
+    sourceCommit: "6ffc0df79756fcc259d87131681641606540e512",
+    buildHash: "7ab9ccc7744fbf5ae24c5ebb2748a144817e696f7f93959fa90a335d11646f68",
+    lockSha256: "4cf037e4efa648ca41d08b30ef5c4ce7ada29ad61fcad45a7d1aa97bf55391c6",
+    codes: [8],
+    sourceCitation:
+      "vt100 0.16.2 src/perform.rs:198-238 dispatches OSC 8 to unhandled_osc; src/callbacks.rs:66 is a no-op; Termless packages/vt100-rust/native/src/lib.rs:21-54 at 6ffc0df79756fcc259d87131681641606540e512 installs no unhandled_osc override",
+  },
 } as const
+
+function absentOscAudit(identity: LibProbeSource["runtimeIdentity"], code: number) {
+  if (!identity) return undefined
+  return Object.values(ABSENT_OSC_ENGINES).find((expected) => {
+    if (identity.engineVersion !== expected.engineVersion || !expected.codes.some((value) => value === code)) {
+      return false
+    }
+    if (expected.kind === "native") {
+      return (
+        identity.kind === "native" &&
+        identity.adapterVersion === expected.adapterVersion &&
+        identity.termlessRevision === expected.termlessRevision &&
+        identity.loadedBinary.path === expected.binaryPath &&
+        identity.loadedBinary.sha256 === expected.binarySha256 &&
+        identity.provenance.sha256 === expected.binarySha256 &&
+        identity.provenance.sourceCommit === expected.sourceCommit &&
+        identity.provenance.buildHash === expected.buildHash &&
+        identity.provenance.lockSha256 === expected.lockSha256
+      )
+    }
+    if (identity.kind !== "js") return false
+    if (expected.kind === "registry") {
+      return (
+        identity.runtimeFormat === "js" &&
+        identity.integrity.kind === "registry" &&
+        identity.adapterVersion === expected.adapterVersion &&
+        identity.resolvedPath.endsWith(expected.pathSuffix) &&
+        identity.integrity.lockIntegrity === expected.lockIntegrity
+      )
+    }
+    if (
+      identity.runtimeFormat !== expected.runtimeFormat ||
+      identity.integrity.kind !== "source" ||
+      identity.resolvedPath !== expected.resolvedPath ||
+      !identity.integrity.cleanTree ||
+      identity.integrity.repository !== expected.repository ||
+      identity.integrity.revision !== expected.revision ||
+      identity.integrity.treeOid !== expected.treeOid
+    ) {
+      return false
+    }
+    return (
+      expected.runtimeFormat === "js" ||
+      (identity.runtimeFormat === "wasm" &&
+        identity.adapterVersion === expected.adapterVersion &&
+        identity.termlessRevision === expected.termlessRevision &&
+        identity.loadedBinary.path === expected.binaryPath &&
+        identity.loadedBinary.sha256 === expected.binarySha256)
+    )
+  })
+}
 
 function sourceAbsentOsc(id: string, code: number, sequence: string, effect: string) {
   return (ctx: LibProbeSource): ProbeCallbackResult => {
     const identity = ctx.runtimeIdentity
-    const audit =
-      identity?.kind === "js" && identity.runtimeFormat === "js"
-        ? Object.values(ABSENT_OSC_ENGINES).find((expected) => {
-            if (identity.engineVersion !== expected.engineVersion || !expected.codes.some((value) => value === code)) {
-              return false
-            }
-            switch (identity.integrity.kind) {
-              case "source":
-                return (
-                  expected.kind === "source" &&
-                  identity.resolvedPath === expected.resolvedPath &&
-                  identity.integrity.cleanTree &&
-                  identity.integrity.repository === expected.repository &&
-                  identity.integrity.revision === expected.revision &&
-                  identity.integrity.treeOid === expected.treeOid
-                )
-              case "registry":
-                return (
-                  expected.kind === "registry" &&
-                  identity.adapterVersion === expected.adapterVersion &&
-                  identity.resolvedPath.endsWith(expected.pathSuffix) &&
-                  identity.integrity.lockIntegrity === expected.lockIntegrity
-                )
-            }
-          })
-        : undefined
+    const audit = absentOscAudit(identity, code)
     if (!audit) {
       return notTestedResult(`OSC ${code} ${effect}: no audited library target readback at this runtime`, {})
     }
@@ -3343,6 +3413,16 @@ export const extensionsProbes: ProbeDefinition[] = [
         const charsMatch = cells.every((cell, index) => cell.char === expectedChars[index])
         if (charsMatch && !reported) {
           const identity = ctx.runtimeIdentity
+          const audit = absentOscAudit(identity, 8)
+          if (audit) {
+            return parserStateResult(
+              null,
+              "extensions.osc8: the pinned engine handles OSC 8 and associates the exact URI with LINK cells only",
+              { chars: cells.map((cell) => cell.char), links, runtimeIdentity: identity },
+              undefined,
+              `${audit.sourceCitation}; no OSC 8 target writer; independent source review required`,
+            )
+          }
           const adapter = identity
             ? `${identity.kind === "js" ? identity.resolvedPath : identity.loadedBinary.path} at Termless ${identity.termlessRevision}`
             : "Adapter (runtime identity unavailable)"

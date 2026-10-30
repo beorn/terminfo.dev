@@ -1603,6 +1603,139 @@ describe("OSC 8 link metadata observation", () => {
     expect(JSON.parse(result.response ?? "")).toMatchObject({ links: Array(6).fill({ reported: false }) })
   })
 
+  // These are the four retained runtime tuples from #31385, not a loaded-engine attestation.
+  const absentOsc8Runtimes = [
+    ...(["vt100", "vt220"] as const).map(
+      (engine) =>
+        [
+          engine,
+          {
+            kind: "js",
+            runtimeFormat: "js",
+            engineVersion: "0.9.0",
+            adapterVersion: "0.10.2",
+            termlessRevision: "8b8664540f365fa0ba1d9b6400d3c4d1a160582c",
+            resolvedPath: `vendor/vterm/packages/${engine}/src/index.ts`,
+            integrity: {
+              kind: "source",
+              repository: "git@github.com:beorn/vterm.git",
+              revision: "53a9eb9291b7880f4dc6a39a6802301049997a72",
+              treeOid:
+                engine === "vt100"
+                  ? "5ffc7ad9ae120d0bf93c64b0fdc712eb40892896"
+                  : "69366752918a6086c639123799cc3ac68d8083a0",
+              cleanTree: true,
+            },
+          },
+        ] as const,
+    ),
+    [
+      "libvterm",
+      {
+        kind: "js",
+        runtimeFormat: "wasm",
+        engineVersion: "0.3.3",
+        adapterVersion: "0.10.2",
+        termlessRevision: "8b8664540f365fa0ba1d9b6400d3c4d1a160582c",
+        resolvedPath: "vendor/termless/packages/libvterm/src/index.ts",
+        integrity: {
+          kind: "source",
+          repository: "git@github.com:beorn/termless.git",
+          revision: "8b8664540f365fa0ba1d9b6400d3c4d1a160582c",
+          treeOid: "11fe1c686758b41038ba25f10b4482a8e2dc4b5b",
+          cleanTree: true,
+        },
+        loadedBinary: {
+          path: "vendor/termless/packages/libvterm/wasm/libvterm.wasm",
+          sha256: "5937bd79139ee5856bcf1bd619cc44fcd2d750d3def3066a74956678cdaaaeb2",
+        },
+      },
+    ],
+    [
+      "vt100-rust",
+      {
+        kind: "native",
+        engineVersion: "0.16.2",
+        adapterVersion: "0.10.2",
+        termlessRevision: "8b8664540f365fa0ba1d9b6400d3c4d1a160582c",
+        loadedBinary: {
+          path: "vendor/termless/packages/vt100-rust/termless-vt100-rust.node",
+          sha256: "0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3",
+        },
+        provenance: {
+          sha256: "0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3",
+          sourceCommit: "6ffc0df79756fcc259d87131681641606540e512",
+          buildHash: "7ab9ccc7744fbf5ae24c5ebb2748a144817e696f7f93959fa90a335d11646f68",
+          toolchain:
+            "rustc 1.94.0 (4a4ef493e 2026-03-02) (built from a source tarball); cargo 1.94.0 (85eff7c80 2026-01-15)",
+          lockSha256: "4cf037e4efa648ca41d08b30ef5c4ce7ada29ad61fcad45a7d1aa97bf55391c6",
+        },
+      },
+    ],
+  ] as const satisfies readonly (readonly [string, NonNullable<LibProbeSource["runtimeIdentity"]>])[]
+
+  test.each(absentOsc8Runtimes)(
+    "%s emits source-review assertions only for its audited OSC8 identity",
+    (_engine, identity) => {
+      const p = probe("extensions.osc8")
+      if (!p.lib) throw new Error("OSC 8 needs headless callback")
+      const unreported = linkedSource(Array(6).fill(undefined), false)
+      const result = p.lib({ ...unreported, runtimeIdentity: identity })
+      expect(result.criterionBranch).toBe("source-negative-review")
+      expect(result.tests).toMatchObject([{ id: "review", status: "test-failure" }])
+      expect(result.observation).toMatchObject({ outcome: "inconclusive", assertionType: "buffer_state" })
+      expect(result.assertions).toMatchObject([
+        { kind: "negative", assertionType: "buffer_state", observed: result.response },
+      ])
+      expect(JSON.parse(result.response ?? "")).toMatchObject({
+        chars: [..."ALINKZ"],
+        links: Array(6).fill({ reported: false }),
+        runtimeIdentity: identity,
+      })
+
+      const foreignIdentities: NonNullable<LibProbeSource["runtimeIdentity"]>[] = [
+        { ...identity, engineVersion: "unreviewed-version" },
+      ]
+      if (identity.kind === "js" && identity.integrity.kind === "source") {
+        foreignIdentities.push(
+          { ...identity, resolvedPath: "unreviewed/entry.ts" },
+          { ...identity, integrity: { ...identity.integrity, repository: "unreviewed-repository" } },
+          { ...identity, integrity: { ...identity.integrity, revision: "0".repeat(40) } },
+          { ...identity, integrity: { ...identity.integrity, treeOid: "0".repeat(40) } },
+          { ...identity, integrity: { ...identity.integrity, cleanTree: false } },
+        )
+      }
+      if ("loadedBinary" in identity) {
+        foreignIdentities.push(
+          { ...identity, adapterVersion: "unreviewed-version" },
+          { ...identity, termlessRevision: "0".repeat(40) },
+          { ...identity, loadedBinary: { ...identity.loadedBinary, path: "unreviewed/binary" } },
+          { ...identity, loadedBinary: { ...identity.loadedBinary, sha256: "0".repeat(64) } },
+        )
+      }
+      if (identity.kind === "native") {
+        for (const key of ["sha256", "sourceCommit", "buildHash", "lockSha256"] as const) {
+          foreignIdentities.push({ ...identity, provenance: { ...identity.provenance, [key]: "unreviewed" } })
+        }
+      }
+      for (const runtimeIdentity of foreignIdentities) {
+        const foreign = p.lib({ ...unreported, runtimeIdentity })
+        expect(foreign.criterionBranch).toBe(HEADLESS_OBSERVABLE_REVIEW)
+        expect(foreign.assertions).toBeUndefined()
+      }
+      const broken = p.lib({
+        ...unreported,
+        runtimeIdentity: identity,
+        getCell: () => ({ ...context({}).getCell(0, 0), char: "?" }),
+      })
+      expect(broken.criterionBranch).toBeUndefined()
+      expect(broken.assertions).toBeUndefined()
+      const observed = p.lib({ ...linkedSource(positions), runtimeIdentity: identity })
+      expect(observed.observation?.outcome).toBe("supported")
+      expect(observed.criterionBranch).toBeUndefined()
+    },
+  )
+
   test("application CPR consumption remains inconclusive", async () => {
     const p = probe("extensions.osc8")
     if (!p.term) throw new Error("OSC 8 needs application callback")
