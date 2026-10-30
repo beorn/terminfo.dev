@@ -64,7 +64,7 @@ test("production erase domain fault", async (context) => {
       backend.destroy()
     }
   }
-  const record = await runEraseReplay(context, inject("eraseArtifactRoot"))
+  const record = await runEraseReplay(context)
   if (live) {
     const capture = record.files[0]
     if (!capture) throw new Error("Missing painted-seed capture artifact")

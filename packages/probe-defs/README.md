@@ -2,7 +2,7 @@
 
 `@terminfo/probe-defs` defines term feature probes, their observations and the shared run model. Start at the [exports and probe registry](src/index.ts); [types.ts](src/types.ts) owns the record types.
 
-This describes the implemented system. Callbacks still perform live I/O and evaluate it together. The private viprobe package supplies the ordered record/read/replay core. Both TTY recording owners now derive their legacy display events from validated call logs. The selected eleven-probe erase runner reuses the existing region/history predicates through task-owned native checks and replays actual xterm.js effects offline. Artifact provenance, final domain mapping/reporting and delivery remain unfinished under recorder #30932; no stored grades or current admission change.
+This describes the implemented system. Callbacks still perform live I/O and evaluate it together. The private viprobe package supplies the ordered record/read/replay core. Both TTY recording owners derive their legacy display events from validated call logs. The selected eleven-probe erase runner captures actual xterm.js effects once and reasserts them twice offline with task-owned checks, bound artifact provenance and domain reporting. Its artifacts remain under the fixed private `~/.terminfo-dev/replays` root, with a separate directory per attempt. The wider collector migration and reassert CLI remain unfinished under recorder #30932; no stored grades or current admission change.
 
 ## Vocabulary and current code
 

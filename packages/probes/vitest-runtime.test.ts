@@ -130,6 +130,8 @@ test.for(["success", "capture-failure", "deciding", "precondition", "replay-fail
   "actual erase entry persists domain results: %s",
   async (mode) => {
     const directory = await mkdtemp(join(tmpdir(), "terminfo-erase-run-"))
+    const home = mode === "capture-failure" ? join(directory, "blocked-home") : directory
+    if (mode === "capture-failure") await writeFile(home, "a file cannot own a replay directory")
     const reporter = new CensusReporter(directory)
     const nativeStates: string[] = []
     const runtime = await createVitest({
@@ -138,8 +140,9 @@ test.for(["success", "capture-failure", "deciding", "precondition", "replay-fail
       include: [
         mode === "success" || mode === "capture-failure" ? "erase-replay.probe.ts" : "fixtures/erase-fault.fixture.ts",
       ],
+      setupFiles: ["fixtures/erase-home.fixture.ts"],
       provide: {
-        eraseArtifactRoot: mode === "capture-failure" ? "relative-store-is-invalid" : directory,
+        eraseTestHome: home,
         eraseFault: mode === "success" || mode === "capture-failure" ? "deciding" : mode,
       },
       reporters: [
@@ -172,7 +175,7 @@ test.for(["success", "capture-failure", "deciding", "precondition", "replay-fail
               : { "test-failure": 11 }
       expect(report).toMatchObject({ counts })
       if (mode === "capture-failure") {
-        expect(record.error).toMatch(/explicit absolute path/)
+        expect(record.error).toMatch(/ENOTDIR/)
         expect(record.assertions).toEqual([])
         expect(record.failureResults).toHaveLength(11)
         expect(record.failureResults?.every(({ status }) => status === "test-failure")).toBe(true)
@@ -193,6 +196,10 @@ test.for(["success", "capture-failure", "deciding", "precondition", "replay-fail
         return
       }
       expect(record.error).toBeUndefined()
+      expect(record.files.length).toBeGreaterThan(0)
+      expect(record.files.every((path) => path.startsWith(join(directory, ".terminfo-dev", "replays") + "/"))).toBe(
+        true,
+      )
       expect(record.assertions).toHaveLength(2)
       expect(new Set([record.captureRunId, ...record.assertions.map(({ runId }) => runId)]).size).toBe(3)
       const outcomes = record.checks.map((records) => records.map(({ startedAt: _startedAt, ...outcome }) => outcome))
@@ -222,7 +229,9 @@ test.for(["success", "capture-failure", "deciding", "precondition", "replay-fail
               : "supported",
         )
         if (mode === "painted-seed") {
-          const live = JSON.parse(await readFile(join(directory, "painted-seed-live.json"), "utf8"))
+          const capture = record.files[0]
+          if (!capture) throw new Error("Missing painted-seed capture path")
+          const live = JSON.parse(await readFile(join(dirname(capture), "painted-seed-live.json"), "utf8"))
           expect(live).not.toHaveProperty("observation")
           expect(live).not.toHaveProperty("assertions")
           expect(character?.criterionBranch).toBeUndefined()
