@@ -246,6 +246,11 @@ it.runIf(OWNED_LAYOUT)(
       criterionBranch: SOURCE_NEGATIVE_REVIEW,
       tests: [expect.objectContaining({ id: "review", status: "test-failure" })],
     })
+    expect(draft.results.find((row) => row.featureId === "input.kitty-click-events")).toMatchObject({
+      status: "unsupported",
+      assertionType: "input_bytes",
+      tests: [expect.objectContaining({ id: "criterion", status: "unsupported" })],
+    })
     expect(pending).toEqual([
       "editing.decsace",
       "extensions.clipboard-paste",
@@ -270,7 +275,6 @@ it.runIf(OWNED_LAYOUT)(
       "extensions.semantic-prompts",
       "extensions.sixel",
       "input.button-event-mouse",
-      "input.kitty-click-events",
       "input.modify-other-keys",
       "input.modify-other-keys-3",
       "input.pixel-mouse",

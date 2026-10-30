@@ -802,6 +802,11 @@ export interface LibProbeSource {
    * viewport scroll state ignores both. Absent, a viewport reading cannot qualify a negative.
    */
   scrollViewport?(delta: number): void
+  /**
+   * Library mouse-event encoder delegate, wired by `createLibProbeSource` only when
+   * `capabilities.extensions.has("mouse-encoding")` and `typeof backend.encodeMouse === "function"` (#31798, @cto C3).
+   */
+  encodeMouse?(event: LibMouseEvent): Uint8Array | null
   getTitle(): string
   reset(): void
   capabilities: {
@@ -851,6 +856,17 @@ export interface TerminalQueryOutcome {
    * sentinel". Absent when nothing answered DA1.
    */
   sentinel?: { atMs: number; graceMs: number }
+}
+
+/** Library mouse-event input matching `@termless/core` `MouseEvent` (#31798). */
+export interface LibMouseEvent {
+  x: number
+  y: number
+  button: "left" | "middle" | "right" | "none" | "wheelUp" | "wheelDown"
+  action: "press" | "release" | "move"
+  shift?: boolean
+  ctrl?: boolean
+  alt?: boolean
 }
 
 /** Independently observed text selection in an owned disposable display. */

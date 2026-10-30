@@ -10,6 +10,7 @@ export type {
   ExecutionOnlyProbeCallbackResult,
   ProbeSourceKind,
   NoSemanticObservable,
+  LibMouseEvent,
   LibProbeSource,
   TermProbeSource,
   TerminalQueryOutcome,

@@ -1,4 +1,4 @@
-import type { ProbeDefinition, ProbeCallbackResult, TermProbeSource } from "./types.ts"
+import type { LibProbeSource, ProbeDefinition, ProbeCallbackResult, TermProbeSource } from "./types.ts"
 import { notTestedResult, osInputReviewResult, probe } from "./helpers.ts"
 import { kittyKeyboardFlagProbe } from "./extensions.ts"
 
@@ -20,8 +20,8 @@ export const inputProbes: ProbeDefinition[] = [
   probe("input.xtest-click", () => headlessXtestReview("click injection"), xtestClick, "input_bytes"),
   probe("input.xtest-wheel", () => headlessXtestReview("wheel injection"), xtestWheel, "input_bytes"),
   {
-    ...probe("input.kitty-click-events", () => headlessXtestReview("click injection"), kittyClickEvents, "input_bytes"),
-    libAssertionType: null,
+    ...probe("input.kitty-click-events", kittyClickEventsLib, kittyClickEvents, "input_bytes"),
+    libAssertionType: "input_bytes",
   },
 ]
 
@@ -504,5 +504,107 @@ async function kittyClickEvents(ctx: TermProbeSource): Promise<ProbeCallbackResu
     return interactionResult("kitty-click-events:1", expected, observed)
   } finally {
     ctx.write(`${KITTY_CLICK_END}\x1b[${point.y};1H\x1b[2K\x1b[H`)
+  }
+}
+
+function decodeMouseReport(bytes: Uint8Array | null): string | null {
+  return bytes === null ? null : new TextDecoder().decode(bytes)
+}
+
+function kittyClickEventsLib(ctx: LibProbeSource): ProbeCallbackResult {
+  if (!ctx.capabilities.extensions.has("mouse-encoding") || typeof ctx.encodeMouse !== "function") {
+    return notTestedResult("library mouse-event encoding (undeclared mouse-encoding extension)", {
+      mouseEncoding: false,
+    })
+  }
+  const encodeMouse = ctx.encodeMouse
+  const cell = { x: 4, y: 2 } as const
+  const targetPoint = { x: cell.x + 1, y: cell.y + 1 }
+  const nonPromptCell = { x: cell.x, y: cell.y + 1 } as const
+  const expected =
+    "Click inside a main-screen OSC 133 prompt marked click_events=1 reports SGR mouse while mouse modes are off"
+  const csi = MOUSE_SET.slice(0, 2)
+  ctx.feed(MOUSE_SET)
+  let control: string | null = null
+  let controlCompleted = false
+  try {
+    control = decodeMouseReport(encodeMouse({ x: cell.x, y: cell.y, button: "left", action: "press" }))
+    if (control === null) {
+      const observed = { marker: "OSC 133;A;click_events=1", control: null, pointer: targetPoint, report: null }
+      return {
+        pass: false,
+        response: JSON.stringify(observed),
+        observation: {
+          outcome: "inconclusive",
+          reason: "insufficient-evidence",
+          assertionType: "input_bytes",
+          note: "Library mouse encoding delivery control under 1000+1006 returned null",
+        },
+      }
+    }
+    const point = sgrMouseCoords(control)
+    if (
+      !point ||
+      !SGR_MOUSE_PRESS.test(control) ||
+      sgrMouseButton(control) !== 0 ||
+      point.x !== targetPoint.x ||
+      point.y !== targetPoint.y
+    ) {
+      throw new Error(`click delivery control ${JSON.stringify(control)} carries no SGR cell coordinates`)
+    }
+    encodeMouse({ x: cell.x, y: cell.y, button: "left", action: "release" })
+    controlCompleted = true
+  } finally {
+    if (!controlCompleted) {
+      ctx.feed(MOUSE_RESET)
+    }
+  }
+  try {
+    const observedBase = { marker: "OSC 133;A;click_events=1", control, pointer: targetPoint }
+    const pad = " ".repeat(Math.max(0, targetPoint.x - 2))
+    ctx.feed(`${csi}${String(targetPoint.y)};1H${KITTY_CLICK_START}$ ${pad}`)
+    ctx.feed(MOUSE_RESET)
+    const negativeControl = decodeMouseReport(
+      encodeMouse({ x: nonPromptCell.x, y: nonPromptCell.y, button: "left", action: "press" }),
+    )
+    if (negativeControl !== null) {
+      const observed = { ...observedBase, negativeControl, report: null }
+      return {
+        pass: false,
+        response: JSON.stringify(observed),
+        observation: {
+          outcome: "inconclusive",
+          reason: "insufficient-evidence",
+          assertionType: "input_bytes",
+          note: "Negative control outside the marked prompt still emitted a mouse report after 1000+1006 reset (mouse modes still active)",
+        },
+      }
+    }
+    const report = decodeMouseReport(encodeMouse({ x: cell.x, y: cell.y, button: "left", action: "press" }))
+    const observed = { ...observedBase, negativeControl: null, report }
+    if (report === null) return unsupportedInteraction("kitty-click-events:1", expected, observed)
+    encodeMouse({ x: cell.x, y: cell.y, button: "left", action: "release" })
+    const reported = sgrMouseCoords(report)
+    if (
+      !SGR_MOUSE_PRESS.test(report) ||
+      sgrMouseButton(report) !== 0 ||
+      !reported ||
+      reported.x !== targetPoint.x ||
+      reported.y !== targetPoint.y
+    ) {
+      return {
+        pass: false,
+        response: JSON.stringify(observed),
+        observation: {
+          outcome: "inconclusive",
+          reason: "insufficient-evidence",
+          assertionType: "input_bytes",
+          note: "A click report arrived but did not correlate with the control click's button and cell",
+        },
+      }
+    }
+    return interactionResult("kitty-click-events:1", expected, observed)
+  } finally {
+    ctx.feed(`${KITTY_CLICK_END}${csi}${String(targetPoint.y)};1H${csi}2K${csi}H${MOUSE_RESET}`)
   }
 }
