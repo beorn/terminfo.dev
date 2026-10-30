@@ -40,6 +40,56 @@ function reply(bytes: string) {
 }
 
 describe("TTY transaction replies", () => {
+  // A silent configured writer must retain the actual query timeout, not a guessed default.
+  // Existing byte/order replay assertions did not notice when projection discarded this argument.
+  it("retains the actual silent-query timeout and sent bytes through recording and replay", async () => {
+    const queries: TTYQueryTrace[] = []
+    const events: TTYTraceEvent[] = []
+    let captured: CallLog | undefined
+    const body = () => queryOutcome("\x1b[6n", /\x1b\[(\d+);(\d+)R/, 37)
+    const measured = await withTTYOperation(
+      () =>
+        withTTYQueryTrace(queries, events, body, {
+          onLog(log) {
+            captured = log
+          },
+        }),
+      {
+        write() {
+          return true
+        },
+      } as unknown as NodeJS.WriteStream,
+    )
+    expect(measured.reason).toBe("timeout")
+    expect(queries).toEqual([
+      expect.objectContaining({ sequence: "\x1b[6n", timeoutMs: 37, reason: "timeout", raw: "" }),
+    ])
+    const argumentsSeen: unknown[][] = []
+    readCallLog(JSON.parse(JSON.stringify(captured)), {
+      onOperation(operation) {
+        if (operation.path === "context.matchResponse") argumentsSeen.push([...operation.args])
+      },
+    })
+    expect(argumentsSeen).toHaveLength(1)
+    expect(argumentsSeen[0]?.[1]).toBe(37)
+    expect(argumentsSeen[0]?.[4]).toBe("\x1b[6n")
+    const replayQueries: TTYQueryTrace[] = []
+    const replayed = await withTTYOperation(
+      () =>
+        withTTYQueryTrace(replayQueries, [], body, {
+          mode: "replay",
+          log: readCallLog(JSON.parse(JSON.stringify(captured))),
+        }),
+      {
+        write() {
+          throw new Error("Silent-query replay attempted native I/O")
+        },
+      } as unknown as NodeJS.WriteStream,
+    )
+    expect(replayed).toEqual(measured)
+    expect(replayQueries).toEqual(queries)
+  })
+
   it.each([false, true])(
     "refuses a completed TTY artifact after failed injection (reply settled: %s)",
     async (settled) => {
@@ -74,7 +124,9 @@ describe("TTY transaction replies", () => {
       await expect(attempt).rejects.toThrow(/Input injection lost custody/)
       expect(published).toBe(false)
       if (settled) {
-        expect(queries).toEqual([{ sequence: "", reason: "reply", raw: "a", rawBase64: "YQ==", match: ["a"] }])
+        expect(queries).toEqual([
+          { sequence: "", timeoutMs: 50, reason: "reply", raw: "a", rawBase64: "YQ==", match: ["a"] },
+        ])
         expect(events).toEqual([{ kind: "query", ...queries[0] }])
       } else {
         expect(queries).toEqual([])
@@ -111,6 +163,7 @@ describe("TTY transaction replies", () => {
     expect(queries).toEqual([
       {
         sequence: "\x1b[18t\x1b[c",
+        timeoutMs: 100,
         reason: "reply",
         raw: sentinel + response,
         rawBase64: Buffer.from(sentinel + response).toString("base64"),
@@ -171,7 +224,7 @@ describe("TTY transaction replies", () => {
         }),
       out,
     )
-    const query = { sequence: "", reason: "reply" as const, raw: "a", rawBase64: "YQ==", match: ["a"] }
+    const query = { sequence: "", timeoutMs: 50, reason: "reply" as const, raw: "a", rawBase64: "YQ==", match: ["a"] }
     expect(written).toEqual(["before", "inject", "after-reply"])
     expect(queries).toEqual([query])
     expect(events).toEqual([

@@ -55,6 +55,7 @@ export function wasCollectorOpenedControllingTTY(out: NodeJS.WriteStream): boole
 }
 export interface TTYQueryTrace {
   sequence: string
+  timeoutMs: number
   reason: QueryOutcome["reason"]
   raw: string
   rawBase64: string
@@ -136,8 +137,10 @@ function projectTTYLog(log: CallLog): { queries: TTYQueryTrace[]; events: TTYTra
       } else if (operation.path === "context.matchResponse" && "value" in operation.outcome) {
         const value = operation.outcome.value
         const sequence = operation.args[4]
+        const timeoutMs = operation.args[1]
         if (
           typeof sequence !== "string" ||
+          typeof timeoutMs !== "number" ||
           !traceRecord(value) ||
           typeof value.eventAtPerformanceMs !== "number" ||
           !Number.isFinite(value.eventAtPerformanceMs)
@@ -147,7 +150,7 @@ function projectTTYLog(log: CallLog): { queries: TTYQueryTrace[]; events: TTYTra
         rows.push({
           at: value.eventAtPerformanceMs,
           index: position,
-          event: { kind: "query", sequence, ...projectedQuery(value.response) },
+          event: { kind: "query", sequence, timeoutMs, ...projectedQuery(value.response) },
         })
       }
     },
