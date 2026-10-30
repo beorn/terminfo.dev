@@ -306,7 +306,7 @@ export function decideKittyAnimation(evidence: KittyAnimationEvidence): KittyVer
   if (missing) {
     return {
       outcome: "inconclusive",
-      note: `Kitty animation: the ${missing[0]} arm reported a frame with no region digest, so the pair cannot be compared`,
+      note: `Kitty animation ${missing[0]}: this arm supplied no cell-aligned region, so nothing could be compared`,
       decidedBy: "a missing region digest",
     }
   }
@@ -403,28 +403,28 @@ export function decideKittyPlaceholders(evidence: KittyPlaceholderEvidence): Kit
   if (withFirst === undefined || withSecond === undefined) {
     return {
       outcome: "inconclusive",
-      note: "Kitty unicode placeholders: a placeholder frame reported no region digest, so nothing was compared",
+      note: "Kitty unicode placeholders: this arm supplied no cell-aligned region, so nothing could be compared (placeholder frame)",
       decidedBy: "a missing region digest",
     }
   }
   if (guardWith === undefined || guardWithout === undefined) {
     return {
       outcome: "inconclusive",
-      note: "Kitty unicode placeholders: the layout guard reported no region digest in one of the two states, so a changed layout could be read as a painted image",
+      note: "Kitty unicode placeholders: this arm supplied no cell-aligned region, so nothing could be compared (layout guard)",
       decidedBy: "a missing region digest",
     }
   }
   if (evidence.withoutImage === undefined) {
     return {
       outcome: "inconclusive",
-      note: "Kitty unicode placeholders: the without-image control reported no region digest",
+      note: "Kitty unicode placeholders: this arm supplied no cell-aligned region, so nothing could be compared (without-image control)",
       decidedBy: "a missing region digest",
     }
   }
   if (evidence.blank === undefined || evidence.ordinary === undefined) {
     return {
       outcome: "inconclusive",
-      note: "Kitty unicode placeholders: the ordinary-placement control reported no region digest",
+      note: "Kitty unicode placeholders: this arm supplied no cell-aligned region, so nothing could be compared (ordinary-placement control)",
       decidedBy: "a missing region digest",
     }
   }

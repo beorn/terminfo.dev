@@ -2114,6 +2114,8 @@ function placementOutcomeResult(placement: TerminalQueryOutcome, imageId: number
 function kittyUnobservableResult(id: string, note: string): ProbeCallbackResult {
   return {
     pass: false,
+    criterionBranch: HEADLESS_OBSERVABLE_REVIEW,
+    tests: [{ id: "review", status: "test-todo", reason: `${id}: ${note}` }],
     response: JSON.stringify({ id, note }),
     observation: {
       outcome: "inconclusive",
@@ -2995,6 +2997,12 @@ export const extensionsProbes: ProbeDefinition[] = [
             frames,
             note: verdict.note,
           },
+          ...(verdict.decidedBy === "a missing region digest"
+            ? {
+                criterionBranch: HEADLESS_OBSERVABLE_REVIEW,
+                tests: [{ id: "review" as const, status: "test-todo" as const, reason: verdict.note }],
+              }
+            : {}),
           ...(verdict.outcome === "inconclusive"
             ? {}
             : {
@@ -3173,6 +3181,12 @@ export const extensionsProbes: ProbeDefinition[] = [
             frames,
             note: verdict.note,
           },
+          ...(verdict.decidedBy === "a missing region digest"
+            ? {
+                criterionBranch: HEADLESS_OBSERVABLE_REVIEW,
+                tests: [{ id: "review" as const, status: "test-todo" as const, reason: verdict.note }],
+              }
+            : {}),
           ...(verdict.outcome === "inconclusive"
             ? {}
             : {
