@@ -260,7 +260,7 @@ describe("audited native host recipe callers", () => {
   test.each([
     "11c87e7e7f23e6f224e9dc8c3296b0a91f5453a42038e5ad049aafa864f9bd50",
     "d280c3fd2129f42db0d7154d6e66f5582a67fa1faf1e82ab463b6b8286f126d0",
-    "67736cf8d7d96156ac921566713032a445bfd8564e499f5e715c3c7f077d8af6",
+    "32d76284e5a3c7673fafbbc83a16717fa0a1c1811c7d659d982176a53ceb1aa9",
   ])("the Alacritty artifact %s cites its OSC 52 read and leaves CSI 14 t measured", (alacritty) => {
     const silent = (id: string) =>
       probe(id).lib!(

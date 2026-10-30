@@ -1504,3 +1504,112 @@ test("retains execution-only failure bytes despite pass true and rejects a typed
     { featureId: "declared-null", outcome: "error", reason: "collector-error" },
   ])
 })
+
+// #31774 (@cto 5429c292 Q1.2): an unaudited native artifact must be refused once up front before any probe runs,
+// with one sentence on stderr and in the run record naming loaded sha, expected sha, nativeTreeOid, and audited keys;
+// no per-probe errors, no sentinel degradation, and no secondary throw in finalizeHeadlessAttempt.
+test("refuses an unaudited native artifact up front before probe collection with loaded sha, expected sha, nativeTreeOid, and audited keys", async () => {
+  const { initializeRunDraft, readCollectorAttempt, recordCollectionFailure, recordCollectorAttempt } =
+    await import("@terminfo/probe-defs")
+  const { NATIVE_HOST_AUDITS } = await import("../probe-defs/src/native-host-audit.ts")
+  const { REPLY_PATH_AUDITS } = await import("../probe-defs/src/reply-path-audit.ts")
+  const { assertAuditedNativeArtifact, finalizeHeadlessAttempt } = await import("./headless-batch.ts")
+  const loadedSha = "67736cf8d7d96156ac921566713032a445bfd8564e499f5e715c3c7f077d8af6"
+  const expectedSha = "32d76284e5a3c7673fafbbc83a16717fa0a1c1811c7d659d982176a53ceb1aa9"
+  const nativeTreeOid = "4c4fb801b537704068deac6b8df24ed86a68cf35"
+  const runtimeIdentity = {
+    kind: "native" as const,
+    engineVersion: "0.26.0",
+    adapterVersion: "0.1.0",
+    termlessRevision: "cd5cd5172680fd240ee3445dea96289793bc2d59",
+    loadedBinary: {
+      path: "vendor/termless/packages/alacritty/termless-alacritty-native.node",
+      sha256: loadedSha,
+    },
+    provenance: {
+      sha256: loadedSha,
+      sourceCommit: "cd5cd5172680fd240ee3445dea96289793bc2d59",
+      buildHash: "94ef4fbf1e21d454c70a39efaf9cfde1ebabe57a0f9cdb186fef782cfb1ff8ce",
+      toolchain: "rustc 1.94.0",
+      lockSha256: "1f89f2579b7d786a116d8fefb8267c4af076bd3a3893adcf14b00c4466740497",
+    },
+  }
+  const declaration = {
+    boundary: "feed-and-getCursor" as const,
+    adapterSources: [{ path: "packages/alacritty/src/index.ts", blobOid: "b4154cbd6ef4a83ce2cbf3dcf26ff13d645efd05" }],
+    engine: { kind: "native" as const, sha256: expectedSha },
+  }
+  // Audited artifact passes without emitting a warning or throwing.
+  const draftPath = "pass-s93GZY/lib-alacritty-unknown.draft.json"
+  const warnings: string[] = []
+  expect(() =>
+    assertAuditedNativeArtifact(
+      "alacritty",
+      {
+        ...runtimeIdentity,
+        loadedBinary: { ...runtimeIdentity.loadedBinary, sha256: expectedSha },
+        provenance: { ...runtimeIdentity.provenance, sha256: expectedSha },
+      },
+      declaration,
+      nativeTreeOid,
+      draftPath,
+      (line) => warnings.push(line),
+    ),
+  ).not.toThrow()
+  expect(warnings).toEqual([])
+
+  // Unaudited artifact refuses up front before any probe runs.
+  const ids = ["extensions.osc10-fg-color", "device.primary-da"]
+  const startedAt = "2026-10-29T22:34:03.743Z"
+  const draft = initializeRunDraft({
+    source: { kind: "live" },
+    runId: "alacritty-unaudited-preflight",
+    sourceRevision: "a".repeat(40),
+    intendedSubject: { kind: "lib", id: "alacritty" },
+    manifest: {
+      schemaVersion: 4,
+      probeHash: "suite-hash",
+      adapterVersion: "4",
+      catalogIds: ids,
+      probes: { term: [], mux: [], lib: ids },
+    },
+  })
+  recordCollectorAttempt(draft, { result: "started", startedAt, ids, hostInputs: { "foreground-rgb": "not-supplied" } })
+  draft.runtimeIdentity = runtimeIdentity
+
+  let caught: Error | undefined
+  try {
+    assertAuditedNativeArtifact("alacritty", runtimeIdentity, declaration, nativeTreeOid, draftPath, (line) =>
+      warnings.push(line),
+    )
+  } catch (error) {
+    caught = error as Error
+    finalizeHeadlessAttempt(
+      draft,
+      {
+        ...readCollectorAttempt(draft.rawReplies),
+        ids,
+        startedAt,
+        result: "failed",
+        error: caught.message,
+      },
+      registryDefinitions(ids),
+    )
+    recordCollectionFailure(draft, startedAt, caught.message, ids)
+  }
+
+  expect(caught).toBeDefined()
+  expect(warnings).toEqual([caught!.message])
+  expect(caught!.message).toContain(loadedSha)
+  expect(caught!.message).toContain(`expected sha ${expectedSha}`)
+  expect(caught!.message).toContain(`nativeTreeOid ${nativeTreeOid}`)
+  expect(caught!.message).toContain(`draft: ${draftPath}`)
+  for (const key of [...NATIVE_HOST_AUDITS.keys(), ...REPLY_PATH_AUDITS.keys()]) {
+    expect(caught!.message).toContain(key.slice(0, 12))
+  }
+  expect(draft.rawReplies["collector.failure"]).toBe(caught!.message)
+  expect(draft.rawReplies["collector.finalizationFailure"]).toBeUndefined()
+  expect(draft.rawReplies["collector.replyPath"]).toBeUndefined()
+  expect(Object.keys(draft.rawReplies).filter((key) => key.startsWith("collector.hostRecipes."))).toEqual([])
+  expect(draft.results.every((row) => row.attempt.scope === "collection" && row.reason === caught!.message)).toBe(true)
+})

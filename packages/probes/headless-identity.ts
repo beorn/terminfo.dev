@@ -361,6 +361,14 @@ function loadedAddon(adapterDirectory: string): { path: string; sha256: string }
   return { path, sha256: sha256(readFileSync(path)) }
 }
 
+/** The `nativeTreeOid` recorded in the loaded native addon's `.receipt.json` (#31774). */
+export function readNativeArtifactTreeOid(adapterSpecifier: string): string | undefined {
+  const adapter = resolvedPackage(adapterSpecifier, MODULE_PATH)
+  const loadedBinary = loadedAddon(adapter.directory)
+  const receipt: unknown = JSON.parse(readFileSync(`${loadedBinary.path}.receipt.json`, "utf8"))
+  return record(receipt) && typeof receipt.nativeTreeOid === "string" ? receipt.nativeTreeOid : undefined
+}
+
 function sidecarIdentity(
   adapterDirectory: string,
   adapterVersion: string,

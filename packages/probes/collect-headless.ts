@@ -7,7 +7,7 @@ import { mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, writeF
 import { release, tmpdir } from "node:os"
 import { basename, dirname, join, resolve } from "node:path"
 import { pathToFileURL, fileURLToPath } from "node:url"
-import { manifest, type TerminalBackend } from "@termless/core"
+import { hasExtension, manifest, type ReplyDeliveryExtension, type TerminalBackend } from "@termless/core"
 import {
   ALL_PROBES,
   initializeRunDraft,
@@ -23,7 +23,7 @@ import {
 import { parseRun } from "@terminfo/run-parser"
 import { derivedSuiteManifest, probeSuiteSnapshot } from "../admin/versions.ts"
 import { saveDaemonProbeRun } from "../terminfo.dev/src/capture-writer.ts"
-import { collectBatch, errorMessage, finalizeHeadlessAttempt } from "./headless-batch.ts"
+import { assertAuditedNativeArtifact, collectBatch, errorMessage, finalizeHeadlessAttempt } from "./headless-batch.ts"
 import { HEADLESS_TERMINAL, declaredHostInputs } from "./headless-terminal.ts"
 import { owningCheckout } from "./termless-root.ts"
 
@@ -151,7 +151,7 @@ async function collectOne(name: string, directory: string): Promise<string> {
   let collectionStartedAt: string | undefined
   let backend: TerminalBackend | undefined
   try {
-    const { headlessRuntimeIdentity } = await import("./headless-identity.ts")
+    const { headlessRuntimeIdentity, readNativeArtifactTreeOid } = await import("./headless-identity.ts")
     if (name === "kitty" && !process.env.KITTY_BINARY) {
       throw new Error("Kitty requires KITTY_BINARY from a pinned Nix shell")
     }
@@ -183,6 +183,18 @@ async function collectOne(name: string, directory: string): Promise<string> {
     const runtimeIdentity = await headlessRuntimeIdentity(name, entry.package, entry.type)
     draft.runtimeIdentity = runtimeIdentity
     checkpoint()
+    if (entry.type === "native") {
+      const declaration = hasExtension<ReplyDeliveryExtension>(loaded, "reply-delivery")
+        ? loaded.replyDelivery
+        : undefined
+      assertAuditedNativeArtifact(
+        name,
+        runtimeIdentity,
+        declaration,
+        readNativeArtifactTreeOid(entry.package),
+        draftPath,
+      )
+    }
     backend = undefined
     loaded.destroy()
     const batch = await collectBatch(
