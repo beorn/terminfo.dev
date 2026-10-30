@@ -334,11 +334,12 @@ const DECRQSS_DECSCL: DeviceReply = {
 }
 
 /**
- * Exact loaded WASM artifacts whose source implements neither CSI 22 ; 0 t (push) nor CSI 23 ; 0 t (pop)
- * (#31735, @cto 863bef67). A black-box push/pop round trip that observes { original: "pushed-title",
- * changed: "new-title", restored: "new-title" } cannot separate a broken push from a broken pop on an
- * unaudited engine, but when the loaded artifact's source implements neither operation and holds no title
- * stack, both device.xtwinops-22 and device.xtwinops-23 are decided Unsupported by source citation.
+ * Exact loaded binary artifacts and clean JS source trees whose source implements neither CSI 22 ; 0 t (push)
+ * nor CSI 23 ; 0 t (pop) (#31735, #31387, @cto 863bef67). A black-box push/pop round trip that observes
+ * { original: "pushed-title", changed: "new-title", restored: "new-title" } cannot separate a broken push from a
+ * broken pop on an unaudited engine, but when the loaded artifact's or pinned source tree's implementation has
+ * neither operation and holds no title stack, both device.xtwinops-22 and device.xtwinops-23 are decided
+ * Unsupported by source citation.
  */
 const TITLE_STACK_UNIMPLEMENTED_AUDITS: ReadonlyMap<string, string> = new Map([
   [
@@ -348,6 +349,36 @@ const TITLE_STACK_UNIMPLEMENTED_AUDITS: ReadonlyMap<string, string> = new Map([
   [
     "5937bd79139ee5856bcf1bd619cc44fcd2d750d3def3066a74956678cdaaaeb2",
     "libvterm 0.3.3 src/state.c:978 on_csi has no case 0x74 ('t') and VTermState holds no title stack, so neither CSI 22;0t nor CSI 23;0t is implemented",
+  ],
+  [
+    "0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3",
+    "vt100 0.16.2 src/perform.rs:132-156 csi_dispatch 't' handles only op 8 (resize) and forwards all other ops to Callbacks::unhandled_csi (empty by default at src/callbacks.rs:55-63); termless 6ffc0df79756fcc259d87131681641606540e512 packages/vt100-rust/native/src/lib.rs:8-54 TerminalCallbacks stores only title: String with no title stack and does not override unhandled_csi, so neither CSI 22;0t nor CSI 23;0t is implemented",
+  ],
+  [
+    "0f56a805793d7d829daa617f1323aacff0d73fe868747b0d077c6af315e2aab8",
+    "tattoy-wezterm-escape-parser 0.1.0-1 src/csi.rs:2633-2644 parses CSI 22;0t as Window::PushIconAndWindowTitle and CSI 23;0t as Window::PopIconAndWindowTitle; tattoy-wezterm-term 0.1.0-fork.5 src/terminalstate/performer.rs:509 dispatches CSI::Window to perform_csi_window, where src/terminalstate/mod.rs:2090-2095 matches PopIconAndWindowTitle..PushWindowTitle => {} and TerminalState at src/terminalstate/mod.rs:334-337 holds only title: String and icon_title: Option<String> with no title stack",
+  ],
+])
+
+const TITLE_STACK_UNIMPLEMENTED_SOURCE_TREES: ReadonlyMap<
+  string,
+  { readonly resolvedPath: string; readonly sourceCitation: string }
+> = new Map([
+  [
+    "5ffc7ad9ae120d0bf93c64b0fdc712eb40892896",
+    {
+      resolvedPath: "vendor/vterm/packages/vt100/src/index.ts",
+      sourceCitation:
+        'vterm 53a9eb9291b7880f4dc6a39a6802301049997a72 packages/vt100/src/screen.ts:251-358 handleCSI has no case "t" and createScreen at packages/vt100/src/screen.ts:130 holds only title = "" with no title stack, so neither CSI 22;0t nor CSI 23;0t is implemented',
+    },
+  ],
+  [
+    "69366752918a6086c639123799cc3ac68d8083a0",
+    {
+      resolvedPath: "vendor/vterm/packages/vt220/src/index.ts",
+      sourceCitation:
+        'vterm 53a9eb9291b7880f4dc6a39a6802301049997a72 packages/vt220/src/screen.ts:305-428 handleCSI has no case "t" and createScreen at packages/vt220/src/screen.ts:104,176 holds only title = "" with no title stack, so neither CSI 22;0t nor CSI 23;0t is implemented',
+    },
   ],
 ])
 
@@ -375,6 +406,35 @@ function titleStackHeadless(ctx: LibProbeSource, expected: string): ProbeCallbac
       { original, changed, restored, artifactSha256, sourceCitation },
       "negative by source citation",
     )
+  }
+  if (
+    original === "pushed-title" &&
+    changed === "new-title" &&
+    restored === "new-title" &&
+    identity?.kind === "js" &&
+    identity.runtimeFormat === "js" &&
+    identity.engineVersion === "0.9.0" &&
+    identity.integrity.kind === "source" &&
+    identity.integrity.cleanTree &&
+    identity.integrity.repository === "git@github.com:beorn/vterm.git" &&
+    identity.integrity.revision === "53a9eb9291b7880f4dc6a39a6802301049997a72"
+  ) {
+    const sourceAudit = TITLE_STACK_UNIMPLEMENTED_SOURCE_TREES.get(identity.integrity.treeOid)
+    if (sourceAudit !== undefined && sourceAudit.resolvedPath === identity.resolvedPath) {
+      return parserStateResult(
+        false,
+        expected,
+        {
+          original,
+          changed,
+          restored,
+          revision: identity.integrity.revision,
+          treeOid: identity.integrity.treeOid,
+          sourceCitation: sourceAudit.sourceCitation,
+        },
+        "negative by source citation",
+      )
+    }
   }
   return parserStateResult(
     null,
