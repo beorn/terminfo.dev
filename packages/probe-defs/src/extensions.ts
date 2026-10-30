@@ -4058,6 +4058,7 @@ export const extensionsProbes: ProbeDefinition[] = [
       const pos = await ctx.queryCursorPosition()
       return unmeasuredCellResult(pos, "OSC 555 screen flash")
     },
+    null,
   ),
 
   // OSC 440 — mintty audio sound
@@ -4070,6 +4071,7 @@ export const extensionsProbes: ProbeDefinition[] = [
       const pos = await ctx.queryCursorPosition()
       return unmeasuredCellResult(pos, "OSC 440 audio playback")
     },
+    null,
   ),
 
   // OSC 7770 — mintty font size query/set
