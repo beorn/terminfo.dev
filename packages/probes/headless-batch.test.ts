@@ -1612,4 +1612,40 @@ test("refuses an unaudited native artifact up front before probe collection with
   expect(draft.rawReplies["collector.replyPath"]).toBeUndefined()
   expect(Object.keys(draft.rawReplies).filter((key) => key.startsWith("collector.hostRecipes."))).toEqual([])
   expect(draft.results.every((row) => row.attempt.scope === "collection" && row.reason === caught!.message)).toBe(true)
+
+  // #31810: kitty is typed "native" in backends.json but is a `kitty +runpy` subprocess bridge that loads
+  // no .node addon; evaluating readNativeArtifactTreeOid(entry.package) as an argument to assertAuditedNativeArtifact
+  // must never ask require.cache for a loaded native addon in packages/kitty.
+  const { readNativeArtifactTreeOid } = await import("./headless-identity.ts")
+  const kittyIdentity = {
+    kind: "native" as const,
+    engineVersion: "0.49.2",
+    adapterVersion: "0.10.2",
+    termlessRevision: "07628619c7b5b5f74de1536df16dab0bc62676b6",
+    loadedBinary: {
+      path: "/nix/store/fbpk67n6fd9kb95vl7ksrc7pkh3gx3qx-kitty-official-binary-0.49.2/bin/kitty",
+      sha256: "bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886",
+    },
+    provenance: {
+      sha256: "bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886",
+      sourceCommit: "07628619c7b5b5f74de1536df16dab0bc62676b6",
+      buildHash: "88e840e1b8e7f09edf3464ee33df8753fd5107838de15bccb6ea59e0dd6cc9c3",
+      toolchain: "Nix kitty +runpy",
+      lockSha256: "282d1098337a5705a7c1d13188a74d2fe34565766619e8d6b21a48d5b67451be",
+    },
+  }
+  const kittyWarnings: string[] = []
+  expect(readNativeArtifactTreeOid("@termless/kitty")).toBeUndefined()
+  expect(readNativeArtifactTreeOid("@termless/kitty", "kitty")).toBeUndefined()
+  expect(() =>
+    assertAuditedNativeArtifact(
+      "kitty",
+      kittyIdentity,
+      undefined,
+      readNativeArtifactTreeOid("@termless/kitty", "kitty"),
+      "pass-qd5XqF/lib-kitty-unknown.draft.json",
+      (line) => kittyWarnings.push(line),
+    ),
+  ).not.toThrow()
+  expect(kittyWarnings).toEqual([])
 })
