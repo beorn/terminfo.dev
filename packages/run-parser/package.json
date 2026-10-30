@@ -17,6 +17,7 @@
   },
   "devDependencies": {
     "@termless/vt100": "0.10.2",
+    "@termless/vt220": "0.10.2",
     "tsdown": "0.23.0",
     "typescript": "6.0.3"
   },

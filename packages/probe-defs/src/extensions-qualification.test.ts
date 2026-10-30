@@ -44,6 +44,15 @@ test.each([
   ["extensions.osc710-font-normal", "\x1b]710;monospace\x07", "vt100"],
   ["extensions.osc777-notify", "\x1b]777;notify;test;body\x07", "vt100"],
   ["extensions.osc3008-context", "\x1b]3008;type=test\x07", "vt100"],
+  ["extensions.osc9-progress", "\x1b]9;4;1;50\x07", "vt220"],
+  ["extensions.osc22-pointer", "\x1b]22;pointer\x07", "vt220"],
+  ["extensions.osc176-app-id", "\x1b]176;terminfo-test\x07", "vt220"],
+  ["extensions.osc440-audio", "\x1b]440;bell.wav\x07", "vt220"],
+  ["extensions.osc555-flash", "\x1b]555\x07", "vt220"],
+  ["extensions.osc666-termprop", "\x1b]666;test-prop=value\x07", "vt220"],
+  ["extensions.osc710-font-normal", "\x1b]710;monospace\x07", "vt220"],
+  ["extensions.osc777-notify", "\x1b]777;notify;test;body\x07", "vt220"],
+  ["extensions.osc3008-context", "\x1b]3008;type=test\x07", "vt220"],
 ])("%s retains an audited source-negative review only after its sentinel renders", (id, sequence, engine) => {
   // Collector-input identities from the retained runs, not a loaded-engine attestation.
   const identity =
@@ -76,7 +85,9 @@ test.each([
             treeOid:
               engine === "vt100"
                 ? "5ffc7ad9ae120d0bf93c64b0fdc712eb40892896"
-                : "617ae6002c7befea7b3e43d11bf23e6b433e3d65",
+                : engine === "vt220"
+                  ? "69366752918a6086c639123799cc3ac68d8083a0"
+                  : "617ae6002c7befea7b3e43d11bf23e6b433e3d65",
             cleanTree: true,
           },
         } as const)
@@ -84,6 +95,7 @@ test.each([
     "pinned",
     "no-sentinel",
     "foreign",
+    ...(engine === "vt220" ? ["wrong-package"] : []),
     ...(engine === "xtermjs"
       ? ["changed-lock", "wrong-version", "wrong-adapter"]
       : ["changed-source", "changed-tree", "wrong-version", "dirty"]),
@@ -101,7 +113,12 @@ test.each([
             ? {
                 ...identity.integrity,
                 revision: mode === "changed-source" ? "3".repeat(40) : identity.integrity.revision,
-                treeOid: mode === "changed-tree" ? "4".repeat(40) : identity.integrity.treeOid,
+                treeOid:
+                  mode === "changed-tree"
+                    ? "4".repeat(40)
+                    : mode === "wrong-package"
+                      ? "5ffc7ad9ae120d0bf93c64b0fdc712eb40892896"
+                      : identity.integrity.treeOid,
                 cleanTree: mode !== "dirty",
               }
             : {
@@ -145,6 +162,14 @@ test.each([
       }
       if (engine === "vt100") {
         expect(result.tests?.[0]?.reason).toContain("screen.ts:504-520 handleOSC switch, cases 0/1/2 only")
+        expect(result.tests?.[0]?.reason).not.toContain("notification sink")
+        expect(result.tests?.[0]?.reason).not.toContain("3921-3923")
+        if (id === "extensions.osc9-progress") expect(result.tests?.[0]?.reason).toContain("no case 9")
+      }
+      if (engine === "vt220") {
+        expect(result.tests?.[0]?.reason).toContain(
+          "screen.ts:703-718 handleOSC: no-semicolon return; cases 0/1/2 only",
+        )
         expect(result.tests?.[0]?.reason).not.toContain("notification sink")
         expect(result.tests?.[0]?.reason).not.toContain("3921-3923")
         if (id === "extensions.osc9-progress") expect(result.tests?.[0]?.reason).toContain("no case 9")
