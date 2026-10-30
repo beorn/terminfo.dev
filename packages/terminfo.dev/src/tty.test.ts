@@ -40,33 +40,49 @@ function reply(bytes: string) {
 }
 
 describe("TTY transaction replies", () => {
-  it("refuses a completed TTY artifact when an injection cancels its pending reader", async () => {
-    const queries: TTYQueryTrace[] = []
-    const events: TTYTraceEvent[] = []
-    let published = false
-    const listeners = process.stdin.listenerCount("data")
-    const failure = new Error("Input injection lost custody")
-    const attempt = withTTYQueryTrace(
-      queries,
-      events,
-      () =>
-        readResponse(/^a/, 50, async () => {
-          throw failure
-        }),
-      {
-        onLog() {
-          published = true
+  it.each([false, true])(
+    "refuses a completed TTY artifact after failed injection (reply settled: %s)",
+    async (settled) => {
+      const queries: TTYQueryTrace[] = []
+      const events: TTYTraceEvent[] = []
+      let published = false
+      const listeners = process.stdin.listenerCount("data")
+      const failure = new Error("Input injection lost custody")
+      const attempt = withTTYQueryTrace(
+        queries,
+        events,
+        () =>
+          readResponse(/^a/, 50, async () => {
+            if (settled) {
+              reply("a")
+              for (let index = 0; index < 10; index++) await Promise.resolve()
+            }
+            throw failure
+          }),
+        {
+          onLog() {
+            published = true
+          },
         },
-      },
-    )
-    await expect(attempt).rejects.toBeInstanceOf(IncompleteReplay)
-    await expect(attempt).rejects.toMatchObject({ cause: failure })
-    await expect(attempt).rejects.toThrow(/Input injection lost custody/)
-    expect(published).toBe(false)
-    expect(queries).toEqual([])
-    expect(events).toEqual([])
-    expect(process.stdin.listenerCount("data")).toBe(listeners)
-  })
+      )
+      if (settled) {
+        await expect(attempt).rejects.toBe(failure)
+      } else {
+        await expect(attempt).rejects.toBeInstanceOf(IncompleteReplay)
+        await expect(attempt).rejects.toMatchObject({ cause: failure })
+      }
+      await expect(attempt).rejects.toThrow(/Input injection lost custody/)
+      expect(published).toBe(false)
+      if (settled) {
+        expect(queries).toEqual([{ sequence: "", reason: "reply", raw: "a", rawBase64: "YQ==", match: ["a"] }])
+        expect(events).toEqual([{ kind: "query", ...queries[0] }])
+      } else {
+        expect(queries).toEqual([])
+        expect(events).toEqual([])
+      }
+      expect(process.stdin.listenerCount("data")).toBe(listeners)
+    },
+  )
 
   it("retains sentinel ordering facts through offline TTY replay", async () => {
     const queries: TTYQueryTrace[] = []

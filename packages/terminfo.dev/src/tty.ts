@@ -198,7 +198,7 @@ export async function withTTYQueryTrace<T>(
     const projected = projectTTYLog(log)
     queries.push(...projected.queries)
     events.push(...projected.events)
-    options?.onLog?.(log)
+    if (!scopeFailed) options?.onLog?.(log)
   }
 }
 

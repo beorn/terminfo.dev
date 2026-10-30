@@ -52,6 +52,7 @@ declare module "vitest" {
 }
 
 export async function runEraseReplay(context: TestContext, directory: string): Promise<EraseRunRecord> {
+  const startedAt = new Date().toISOString()
   const finalRecord: EraseRunRecord = { assertions: [], checks: [], files: [] }
   let failure: unknown
   let failed = false
@@ -63,7 +64,7 @@ export async function runEraseReplay(context: TestContext, directory: string): P
     finalRecord.failureResults = eraseProbes.map(({ id }) =>
       recordExecutedProbe({
         featureId: id,
-        attempt: { scope: "probe", startedAt: new Date().toISOString() },
+        attempt: { scope: "collection", startedAt },
         assertions: [],
         diagnostic: { kind: "collector-error", name: error instanceof Error ? error.name : "Error", message },
       }),
@@ -137,7 +138,7 @@ export async function runEraseReplay(context: TestContext, directory: string): P
       }
       const validated = readEraseCapture(directory, source, expected)
       const records = replayEraseCalls(validated.log, context)
-      for (const { featureId, result, checks } of records) {
+      for (const { featureId, startedAt, result, checks } of records) {
         if (!ALL_PROBES.some(({ id }) => id === featureId)) {
           throw new Error("Erase result outside catalogue: " + featureId)
         }
@@ -148,7 +149,7 @@ export async function runEraseReplay(context: TestContext, directory: string): P
         const precondition = checks.find((check) => check.kind === "precondition" && !check.ok)
         const domain = recordExecutedProbe({
           featureId,
-          attempt: { scope: "probe", startedAt: new Date().toISOString() },
+          attempt: { scope: "probe", startedAt },
           assertions: assertion.assertions,
           tests: result.tests,
           criterionBranch: result.criterionBranch,

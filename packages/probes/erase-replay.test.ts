@@ -22,7 +22,30 @@ import { readCallLog } from "viprobe"
 import { captureEraseCalls, replayEraseCalls } from "./erase-replay.ts"
 
 test("real erase calls replay twice without opening a terminal backend", async (context) => {
-  const captured = captureEraseCalls(context)
+  let latestStart: string | undefined
+  const openedAt: Array<string | undefined> = []
+  const dateString = Date.prototype.toISOString
+  const start = Date.now()
+  let tick = 0
+  const clock = vi.spyOn(Date.prototype, "toISOString").mockImplementation(() => {
+    latestStart = dateString.call(new Date(start + tick++))
+    return latestStart
+  })
+  const createBackend = xterm.createXtermBackend
+  const opened = vi.spyOn(xterm, "createXtermBackend").mockImplementation(() => {
+    openedAt.push(latestStart)
+    return createBackend()
+  })
+  let captured: ReturnType<typeof captureEraseCalls>
+  try {
+    captured = captureEraseCalls(context)
+  } finally {
+    clock.mockRestore()
+    opened.mockRestore()
+  }
+  expect(openedAt).toHaveLength(11)
+  for (const startedAt of openedAt) expect(startedAt).toEqual(expect.any(String))
+  expect(captured.results.map((record) => Reflect.get(record, "startedAt"))).toEqual(openedAt)
   expect(captured.results.map(({ featureId }) => featureId)).toEqual([
     "erase.character",
     "erase.line.right",

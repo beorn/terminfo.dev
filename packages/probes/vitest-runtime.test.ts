@@ -176,6 +176,7 @@ test.for(["success", "capture-failure", "deciding", "precondition", "replay-fail
         expect(record.assertions).toEqual([])
         expect(record.failureResults).toHaveLength(11)
         expect(record.failureResults?.every(({ status }) => status === "test-failure")).toBe(true)
+        expect(record.failureResults?.every(({ attempt }) => attempt.scope === "collection")).toBe(true)
         return
       }
       if (mode === "replay-failure") {
@@ -188,17 +189,22 @@ test.for(["success", "capture-failure", "deciding", "precondition", "replay-fail
         ).toBe(true)
         expect(record.failureResults).toHaveLength(11)
         expect(record.failureResults?.every(({ status }) => status === "test-failure")).toBe(true)
+        expect(record.failureResults?.every(({ attempt }) => attempt.scope === "collection")).toBe(true)
         return
       }
       expect(record.error).toBeUndefined()
       expect(record.assertions).toHaveLength(2)
       expect(new Set([record.captureRunId, ...record.assertions.map(({ runId }) => runId)]).size).toBe(3)
-      expect(record.checks[1]).toEqual(record.checks[0])
-      for (const run of record.assertions) {
+      const outcomes = record.checks.map((records) => records.map(({ startedAt: _startedAt, ...outcome }) => outcome))
+      expect(outcomes[1]).toEqual(outcomes[0])
+      for (const [runIndex, run] of record.assertions.entries()) {
         expect(run.source).toMatchObject({ kind: "trace", captureRunId: record.captureRunId })
         expect(run.results).toHaveLength(273)
         const selected = run.results.filter(({ attempt }) => attempt.scope !== "none")
         expect(selected).toHaveLength(11)
+        expect(selected.map(({ attempt }) => (attempt.scope === "none" ? undefined : attempt.startedAt))).toEqual(
+          record.checks[runIndex]?.map(({ startedAt }) => startedAt),
+        )
         const character = selected.find(({ featureId }) => featureId === "erase.character")
         expect(character?.status).toBe(
           mode === "deciding" ? "unsupported" : mode === "precondition" ? "test-failure" : "supported",

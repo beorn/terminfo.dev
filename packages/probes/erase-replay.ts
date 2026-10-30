@@ -9,7 +9,12 @@ import { createCallLog, withCallLog, type CallLog } from "viprobe"
 import { createLibProbeSource } from "./headless-batch.ts"
 import { HEADLESS_TERMINAL } from "./headless-terminal.ts"
 
-type EraseRecord = { featureId: string; result: ProbeCallbackResult; checks: readonly RetainedCheck[] }
+type EraseRecord = {
+  featureId: string
+  startedAt: string
+  result: ProbeCallbackResult
+  checks: readonly RetainedCheck[]
+}
 type EraseHost = { open(featureId: string, geometry: typeof HEADLESS_TERMINAL): LibProbeSource; close(): void }
 
 function liveHost(): EraseHost {
@@ -49,6 +54,7 @@ const matchers = {
 
 function execute(host: EraseHost, context: TestContext, mode: "record" | "replay"): EraseRecord[] {
   return eraseProbes.map((definition) => {
+    const startedAt = new Date().toISOString()
     const source = host.open(definition.id, HEADLESS_TERMINAL)
     let result: ProbeCallbackResult
     let retained: readonly RetainedCheck[]
@@ -75,7 +81,7 @@ function execute(host: EraseHost, context: TestContext, mode: "record" | "replay
     } finally {
       host.close()
     }
-    return { featureId: definition.id, result, checks: retained }
+    return { featureId: definition.id, startedAt, result, checks: retained }
   })
 }
 
