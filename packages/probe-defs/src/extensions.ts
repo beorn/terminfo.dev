@@ -583,8 +583,8 @@ function oscSimpleQueryProbe(
             identity.integrity.kind === "source" &&
             identity.integrity.cleanTree &&
             identity.integrity.repository === "git@github.com:beorn/vterm.git" &&
-            identity.integrity.revision === "1cfc325f3aedd4617e437ee76e6a03fc2cc16438" &&
-            identity.integrity.treeOid === "2ee13d2cb894e86ee9575dd6945f42028df44966"
+            identity.integrity.revision === "53a9eb9291b7880f4dc6a39a6802301049997a72" &&
+            identity.integrity.treeOid === "617ae6002c7befea7b3e43d11bf23e6b433e3d65"
           ) {
             return reviewResult(
               "headless-geometry-review",
@@ -595,7 +595,7 @@ function oscSimpleQueryProbe(
                 raw,
                 runtimeIdentity: identity,
                 sourceCitation:
-                  "vterm screen.ts at 1cfc325f: ScreenOptions has no physical font metrics; OSC1337 ReportCellSize and OSC776 deliberately report unknown zero dimensions (#30575)",
+                  "vterm screen.ts at 53a9eb92: ScreenOptions has no physical font metrics; OSC1337 ReportCellSize and OSC776 deliberately report unknown zero dimensions (#30575)",
               },
             )
           }
