@@ -27,19 +27,31 @@ import { COLOUR_CAPTURE, colourCaptureVerdict } from "./sgr-colour-capture.ts"
 const requestedUnderlineColor = { r: 255, g: 0, b: 128 }
 
 /**
- * Blink is a phase in time, so one target frame decides nothing (#31812). The styled text is sampled at these
+ * Blink is a phase in time, so one target frame decides nothing (#31812). The styled text is requested at these
  * offsets from the first sample, with no write between: 750 ms crosses a 500 ms on/off cycle whatever phase the
- * first sample lands on, where one fixed gap can land on the same phase twice.
+ * first sample lands on, where one fixed gap can land on the same phase twice. They are requested offsets: a
+ * producer that settles before each acquisition lands later, so each sample also records when it was invoked
+ * and the producer's own capture time.
  */
 const BLINK_SAMPLE_OFFSETS_MS = [0, 250, 500, 750] as const
 
+/** Whether some styled value comes back after a different one (A,B,A in order): a settle only ever goes one way. */
+function returnsToEarlierValue(values: readonly string[]): boolean {
+  return values.some((value, index) =>
+    values
+      .slice(index + 1)
+      .some((later, offset) => later !== value && values.slice(index + offset + 2).includes(value)),
+  )
+}
+
 /**
- * sgr.blink's pixel capture: an unstyled control, then the styled sample with a plain line of the same text on
- * row 1 and the cursor parked on row 2, sampled four times. With a measured raster each sample is a region
- * digest of the styled text and of the plain line. Some styled pair differing while the plain line holds still
- * is Supported. A plain line that moves is redraw, scroll or cursor motion, never blink. Four equal styled
- * samples stay inconclusive, because no blink period is recorded for the terminal, so they cannot show it never
- * blinks. Without a measured raster the five frames go to review together.
+ * sgr.blink's pixel capture: a control of the plain line on row 1 and the unstyled text on row 3, then the same
+ * screen with the row-3 text styled, sampled four times; the cursor is parked on row 2. With a measured raster
+ * each frame is a region digest of the row-3 text and of the plain line, and the plain line's digest must hold
+ * across all five frames. Supported needs a styled value to come back after a different one: a one-way change
+ * (A,B,B,B) is also what a first sample caught before the fixture finished painting looks like, so it stays
+ * inconclusive, as do four equal samples, because no blink period is recorded for the terminal. A plain line that
+ * moves is redraw, scroll or cursor motion, never blink. Without a measured raster the five frames go to review.
  */
 async function blinkCapture(ctx: TermProbeSource, fixture: SgrCaptureFixture): Promise<ProbeCallbackResult> {
   const capture = ctx.capture
@@ -50,27 +62,45 @@ async function blinkCapture(ctx: TermProbeSource, fixture: SgrCaptureFixture): P
   const geometry = ctx.captureGeometry?.geometry
   const shoot = (role: "control" | "target", label: string, cells: CaptureCells) =>
     capture(geometry ? { role, label, cells, pixelGeometry: geometry } : { role, label })
-  ctx.write(`\x1b[0m\x1b[2J\x1b[${String(row)};${String(col)}H${sample}`)
+  const screen = (styled: string) =>
+    `\x1b[0m\x1b[2J\x1b[1;${String(col)}H${sample}\x1b[${String(row)};${String(col)}H${styled}\x1b[0m\x1b[2;1H`
+  ctx.write(screen(sample))
   const control = await shoot("control", "Unstyled text sample", styledCells)
-  ctx.write(
-    `\x1b[0m\x1b[2J\x1b[1;${String(col)}H${sample}\x1b[${String(row)};${String(col)}H${sequence}${sample}\x1b[0m\x1b[2;1H`,
-  )
-  const samples: Array<{ offsetMs: number; elapsedMs: number; styled: ObservationFrame; plain?: ObservationFrame }> = []
+  const controlPlain = geometry ? await shoot("control", "Plain line, control", plainCells) : undefined
+  ctx.write(screen(sequence + sample))
+  const samples: Array<{
+    offsetMs: number
+    invokedMs: number
+    styled: ObservationFrame
+    plain?: ObservationFrame
+  }> = []
   const start = Date.now()
   for (const offsetMs of BLINK_SAMPLE_OFFSETS_MS) {
     const wait = start + offsetMs - Date.now()
     if (wait > 0) await kittyWait(wait)
-    const elapsedMs = Date.now() - start
-    const styled = await shoot("target", `sgr.blink styled text, sample at +${String(offsetMs)} ms`, styledCells)
+    const invokedMs = Date.now() - start
+    const styled = await shoot(
+      "target",
+      `sgr.blink styled text, sample requested at +${String(offsetMs)} ms`,
+      styledCells,
+    )
     const plain = geometry
-      ? await shoot("control", `Plain line, sample at +${String(offsetMs)} ms`, plainCells)
+      ? await shoot("control", `Plain line, sample requested at +${String(offsetMs)} ms`, plainCells)
       : undefined
-    samples.push({ offsetMs, elapsedMs, styled, ...(plain ? { plain } : {}) })
+    samples.push({ offsetMs, invokedMs, styled, ...(plain ? { plain } : {}) })
   }
   const styledFrames = samples.map((entry) => entry.styled)
-  const plainFrames = samples.flatMap((entry) => (entry.plain ? [entry.plain] : []))
+  const plainFrames = [
+    ...(controlPlain ? [controlPlain] : []),
+    ...samples.flatMap((entry) => (entry.plain ? [entry.plain] : [])),
+  ]
   const frames = [control, ...styledFrames, ...plainFrames]
-  const timing = samples.map(({ offsetMs, elapsedMs }) => ({ offsetMs, elapsedMs }))
+  const timing = samples.map(({ offsetMs, invokedMs, styled, plain }) => ({
+    requestedOffsetMs: offsetMs,
+    invokedMs,
+    styledCapturedAt: styled.capturedAt,
+    ...(plain ? { plainCapturedAt: plain.capturedAt } : {}),
+  }))
   const inconclusive = (note: string, observed: string): ProbeCallbackResult => ({
     pass: false,
     response: observed,
@@ -109,7 +139,7 @@ async function blinkCapture(ctx: TermProbeSource, fixture: SgrCaptureFixture): P
           assertionType: "screenshot" as const,
           kind: "positive",
           expected:
-            "The styled text changes between some pair of the four samples while the rest of the screen holds still",
+            "The styled text changes and then comes back to an earlier look across the four samples, while the plain line holds still in the control and every sample",
           observed: JSON.stringify({ control, samples }),
         },
       ],
@@ -123,12 +153,24 @@ async function blinkCapture(ctx: TermProbeSource, fixture: SgrCaptureFixture): P
       },
     }
   }
+  const controlDigest = frameDigests(control).cells
   const styled = styledFrames.map((frame) => frameDigests(frame).cells)
   const plain = plainFrames.map((frame) => frameDigests(frame).cells)
-  const observed = JSON.stringify({ sample, startRow: row, startCol: col, timing, styled, plain })
-  if ([...styled, ...plain].some((digest) => digest === undefined) || plain.length !== styled.length) {
+  const observed = JSON.stringify({
+    sample,
+    startRow: row,
+    startCol: col,
+    timing,
+    control: controlDigest,
+    styled,
+    plain,
+  })
+  if (
+    [controlDigest, ...styled, ...plain].some((digest) => digest === undefined) ||
+    plain.length !== styled.length + 1
+  ) {
     return inconclusive(
-      "Blink needs one cell-aligned digest per sample of the styled text and the plain line",
+      "Blink needs one cell-aligned digest of the text and of the plain line in the control and in every sample",
       observed,
     )
   }
@@ -147,11 +189,12 @@ async function blinkCapture(ctx: TermProbeSource, fixture: SgrCaptureFixture): P
   }
   if (new Set(plain).size > 1) {
     return inconclusive(
-      "The plain line moved between samples, so a styled-text change could be redraw, scroll or cursor motion rather than blink",
+      "The plain line moved across the control and the samples, so a styled-text change could be redraw, scroll or cursor motion rather than blink",
       observed,
     )
   }
-  if (new Set(styled).size > 1) {
+  const styledDigests = styled.filter((digest): digest is string => digest !== undefined)
+  if (returnsToEarlierValue(styledDigests)) {
     return {
       pass: true,
       response: observed,
@@ -160,18 +203,24 @@ async function blinkCapture(ctx: TermProbeSource, fixture: SgrCaptureFixture): P
         assertionType: "screenshot",
         screenshotRef: styledFrames[0]?.ref,
         frames,
-        note: "The styled text's region digest changed between samples taken with no write between, while the plain line held still",
+        note: "With no write between samples, the styled text's region digest changed and then came back to an earlier value, while the plain line held still in the control and every sample",
       },
       assertions: [
         {
           assertionType: "screenshot" as const,
           kind: "positive",
           expected:
-            "Four samples of the SGR 5 text over 750 ms with no write between: some pair differs in the styled text's region digest while the plain line's digest is the same in every sample",
+            "Four samples of the SGR 5 text, requested at +0/+250/+500/+750 ms with no write between: a styled region digest comes back after a different one, and the plain line's digest is the same in the control and every sample",
           observed,
         },
       ],
     }
+  }
+  if (new Set(styledDigests).size > 1) {
+    return inconclusive(
+      "The styled text changed one way and then held still; a first sample caught before the fixture finished painting looks the same, so a one-way change is not blink evidence",
+      observed,
+    )
   }
   return inconclusive(
     "Four equal samples of the styled text; no blink period is recorded for this terminal, so equal samples cannot show it never blinks",
