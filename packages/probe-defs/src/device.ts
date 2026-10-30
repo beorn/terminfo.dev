@@ -6,11 +6,100 @@ import {
   notTestedResult,
   replyFrame,
   reviewResult,
+  HEADLESS_OBSERVABLE_REVIEW,
   sentinelAnswer,
   sentinelNegativeResult,
   sentinelSilenceResult,
 } from "./helpers.ts"
 import { nativeHostRecipeResult } from "./native-host-audit.ts"
+
+// The individual integrated APIs return parser/readback backends, not a terminal-owned application child.
+// These citations were read at this Termless pin; runtime identity alone is not the source audit.
+const TERM_FEATURES_API_REVISION = "6ffc0df79756fcc259d87131681641606540e512"
+const TERM_FEATURES_API_CITATIONS: Readonly<Record<string, readonly [string, string]>> = {
+  "vendor/vterm/packages/vterm/src/index.ts": [
+    "vterm",
+    "packages/vterm/src/backend.ts:63 createVtermBackend integrates the vterm Screen as a TerminalBackend with no application-child environment API",
+  ],
+  "vendor/vterm/packages/vt220/src/index.ts": [
+    "vt220",
+    "packages/vt220/src/backend.ts:39 createVt220Backend integrates the vt220 Screen as a TerminalBackend with no application-child environment API",
+  ],
+  "vendor/vterm/packages/vt100/src/index.ts": [
+    "vt100",
+    "packages/vt100/src/backend.ts:42 createVt100Backend integrates the vt100 Screen as a TerminalBackend with no application-child environment API",
+  ],
+  "vendor/termless/packages/vt100-rust/termless-vt100-rust.node": [
+    "vt100-rust",
+    "packages/vt100-rust/src/backend.ts:174 createVt100RustBackend returns TerminalBackend",
+  ],
+  "vendor/termless/packages/wezterm/termless-wezterm.node": [
+    "wezterm",
+    "packages/wezterm/src/backend.ts:197 createWeztermBackend returns TerminalBackend",
+  ],
+  "vendor/termless/packages/alacritty/termless-alacritty-native.node": [
+    "alacritty",
+    "packages/alacritty/src/backend.ts:151 createAlacrittyBackend returns TerminalBackend",
+  ],
+  "vendor/termless/packages/ghostty-native/termless-ghostty-native.node": [
+    "ghostty-native",
+    "packages/ghostty-native/src/backend.ts:217 createGhosttyNativeBackend returns TerminalBackend",
+  ],
+  "vendor/termless/packages/libvterm/src/index.ts": [
+    "libvterm",
+    "packages/libvterm/src/backend.ts:168 createLibvtermBackend returns the parser/readback LegacyBackend",
+  ],
+}
+
+function termFeaturesLibraryReview(ctx: LibProbeSource): ProbeCallbackResult {
+  const identity = ctx.runtimeIdentity
+  if (!identity || identity.termlessRevision !== TERM_FEATURES_API_REVISION) {
+    return notTestedResult("TERM_FEATURES: no pinned engine API source audit at this runtime", {})
+  }
+  const entry = identity.kind === "native" ? identity.loadedBinary.path : identity.resolvedPath
+  let citation = TERM_FEATURES_API_CITATIONS[entry]
+  if (
+    identity.kind === "js" &&
+    identity.integrity.kind === "registry" &&
+    identity.engineVersion === "6.0.0" &&
+    identity.resolvedPath.endsWith("/@xterm/headless/lib-headless/xterm-headless.js")
+  ) {
+    citation = [
+      "xtermjs",
+      "packages/xtermjs/src/backend.ts:145 createXtermBackend integrates @xterm/headless as an in-process TerminalBackend",
+    ]
+  } else if (
+    identity.kind === "js" &&
+    identity.runtimeFormat === "wasm" &&
+    identity.engineVersion === "0.4.0" &&
+    identity.resolvedPath.endsWith("/ghostty-web/dist/ghostty-web.js")
+  ) {
+    citation = [
+      "ghostty",
+      "packages/ghostty/src/backend.ts:249 createGhosttyBackend returns TerminalBackend over the ghostty-web core",
+    ]
+  } else if (
+    identity.kind === "native" &&
+    identity.loadedBinary.sha256 === "bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886"
+  ) {
+    citation = [
+      "kitty",
+      "packages/kitty/src/backend.ts:250-315 createKittyBackend exposes parser/readback via +runpy bridge; that helper subprocess is not a terminal-owned application child",
+    ]
+  }
+  if (!citation) return notTestedResult("TERM_FEATURES: no engine-specific API source citation at this runtime", {})
+  const note =
+    "TERM_FEATURES is a terminal program's child-environment export; this library API spawns no application child process"
+  return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
+    audit: {
+      engine: citation[0],
+      engineVersion: identity.engineVersion,
+      sourceCitation: `${citation[1]}; Termless@${TERM_FEATURES_API_REVISION} src/terminal/types.ts:275-320 TerminalBackend has no application-child environment API`,
+      apiRevision: TERM_FEATURES_API_REVISION,
+      runtimeIdentity: identity,
+    },
+  })
+}
 
 /** These patterns match complete answers to the specific query, not arbitrary consumed output. */
 interface DeviceReply {
@@ -490,7 +579,12 @@ export const deviceProbes: ProbeDefinition[] = [
     malformed: /\x1bP>\|/,
     expected: "complete XTVERSION DCS >| printable name/version ST",
   }),
-  probe("device.term-features", null, () => Promise.resolve(notTestedResult("terminal child environment", {})), null),
+  probe(
+    "device.term-features",
+    termFeaturesLibraryReview,
+    () => Promise.resolve(notTestedResult("terminal child environment", {})),
+    null,
+  ),
 
   // DSR ?996 — color-scheme query: CSI ? 996 n → CSI ? 997 ; Ps n
   {

@@ -48,6 +48,17 @@ Both source interfaces carry `readonly kind: ProbeSourceKind` directly. The only
 
 The [shared execution helpers](src/helpers.ts) initialize every catalog member as `test-todo` with no attempt, then record only the work actually performed.
 
+TERM_FEATURES means a terminal program's export into its child environment. Its library arm performs
+no I/O and retains a `headless-observable-review` row with the API boundary and loaded runtime for
+per-engine source review. Only a non-author Untestable decision can discharge it; it creates no
+observation or assertion. The application arm remains TEST TODO until terminal-owned child readback exists.
+
+The pinned vterm 0.9.0 library arms for OSC 440, 555 and 710 feed their exact commands and a cell-X
+consumption control. A rendered X retains `source-negative-review`, its actual fed/cell state and a
+negative buffer-state assertion for independent review of the absent handler at source1cfc325f.
+The control does not measure audio, flash or font state; that target remains explicitly unexposed.
+Other identities keep named coverage, and a missing X grants no source-review negative.
+
 OSC99 capability detection has both library and term query arms. They share the nonce/title
 criterion and never display a notification. Unqualified library capture silence stays inconclusive;
 only the existing qualified sentinel path can establish a negative reply result. Current artifact

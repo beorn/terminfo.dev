@@ -1141,6 +1141,38 @@ function colorStackResult(
   }
 }
 
+/** Only this audited engine pin can use source rejection for these otherwise unobservable effects. */
+function vtermAbsentOsc(id: string, code: number, sequence: string, effect: string) {
+  return (ctx: LibProbeSource): ProbeCallbackResult => {
+    const identity = ctx.runtimeIdentity
+    if (
+      identity?.kind !== "js" ||
+      identity.runtimeFormat !== "js" ||
+      identity.engineVersion !== "0.9.0" ||
+      identity.resolvedPath !== "vendor/vterm/packages/vterm/src/index.ts" ||
+      identity.integrity.kind !== "source" ||
+      !identity.integrity.cleanTree ||
+      identity.integrity.repository !== "git@github.com:beorn/vterm.git" ||
+      identity.integrity.revision !== "1cfc325f3aedd4617e437ee76e6a03fc2cc16438" ||
+      identity.integrity.treeOid !== "2ee13d2cb894e86ee9575dd6945f42028df44966"
+    ) {
+      return notTestedResult(`OSC ${code} ${effect}: no audited library target readback at this runtime`, {})
+    }
+    const fed = "\x1b[1;1H\x1b[2K" + sequence + "X"
+    ctx.feed(fed)
+    const sentinel = ctx.getCell(0, 0)
+    return parserStateResult(
+      null,
+      `${id}: the engine handles OSC ${code} (a ${effect} handler exists at the pinned source)`,
+      { fed, sentinel, engineState: null, engineStateReason: `No ${effect} target state is exposed at this pin` },
+      sentinel.char === "X" ? undefined : "No rendered X cell to evaluate",
+      sentinel.char === "X"
+        ? `vterm 1cfc325f3aedd4617e437ee76e6a03fc2cc16438 packages/vterm/src/screen.ts:3593-4053: handleOSC's switch (code) has no case ${code} or ${effect} target writer; independent source review required`
+        : undefined,
+    )
+  }
+}
+
 function promptConsumptionResult(consumed: boolean | null): ProbeCallbackResult {
   const note =
     consumed === null
@@ -4019,7 +4051,7 @@ export const extensionsProbes: ProbeDefinition[] = [
   // OSC 555 — foot screen flash (visual bell)
   probe(
     "extensions.osc555-flash",
-    null, // Headless: visual bell is a UI animation, not in the cell grid
+    vtermAbsentOsc("extensions.osc555-flash", 555, "\x1b]555\x07", "flash"),
     async (ctx) => {
       ctx.write("\x1b[1;1H\x1b[2K")
       ctx.write("\x1b]555\x07")
@@ -4031,7 +4063,7 @@ export const extensionsProbes: ProbeDefinition[] = [
   // OSC 440 — mintty audio sound
   probe(
     "extensions.osc440-audio",
-    null, // Headless: audio playback is not observable from the cell grid
+    vtermAbsentOsc("extensions.osc440-audio", 440, "\x1b]440;bell.wav\x07", "audio"),
     async (ctx) => {
       ctx.write("\x1b[1;1H\x1b[2K")
       ctx.write("\x1b]440;bell.wav\x07")
@@ -4079,7 +4111,7 @@ export const extensionsProbes: ProbeDefinition[] = [
   // OSC 710 — rxvt-unicode set normal font
   probe(
     "extensions.osc710-font-normal",
-    null, // Headless: font selection is not observable in the cell grid
+    vtermAbsentOsc("extensions.osc710-font-normal", 710, "\x1b]710;monospace\x07", "font"),
     () => Promise.resolve(unmeasuredStateEffect("OSC 710 font selection")),
   ),
 

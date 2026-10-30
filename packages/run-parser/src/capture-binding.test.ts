@@ -759,6 +759,94 @@ const setup = (
   }
   return { draft, artifact, decision }
 }
+
+// The generic branch fixtures cannot catch a real definition left null: no review or binding is then produced.
+it("TERM_FEATURES library coverage reaches an immutable Untestable review without I/O or assertions", () => {
+  const featureId = "device.term-features"
+  const definition = ALL_PROBES.find((entry) => entry.id === featureId)
+  const { draft, artifact, decision } = setup(
+    undefined,
+    {
+      runId: "term-features-library-review",
+      startedAt: "2026-10-29T23:00:00.000Z",
+    },
+    (draft) => {
+      if (!definition?.lib) throw new Error("TERM_FEATURES has no library review arm")
+      // Collector-input fixture at the audited engine/API pin; this does not attest a loaded engine.
+      draft.intendedSubject = { kind: "lib", id: "vterm", version: "0.9.0" }
+      draft.subject!.id = "vterm"
+      draft.subject!.version = "0.9.0"
+      draft.runtimeIdentity = {
+        kind: "js",
+        runtimeFormat: "js",
+        engineVersion: "0.9.0",
+        adapterVersion: "0.10.2",
+        termlessRevision: "6ffc0df79756fcc259d87131681641606540e512",
+        resolvedPath: "vendor/vterm/packages/vterm/src/index.ts",
+        integrity: {
+          kind: "source",
+          repository: "git@github.com:beorn/vterm.git",
+          revision: "1cfc325f3aedd4617e437ee76e6a03fc2cc16438",
+          treeOid: "2ee13d2cb894e86ee9575dd6945f42028df44966",
+          cleanTree: true,
+        },
+      }
+      const result = definition.lib({
+        runtimeIdentity: draft.runtimeIdentity,
+        feed: () => {
+          throw new Error("TERM_FEATURES must not feed")
+        },
+        feedCapture: () => {
+          throw new Error("TERM_FEATURES must not query")
+        },
+      } as unknown as LibProbeSource)
+      expect(result.criterionBranch).toBe(HEADLESS_OBSERVABLE_REVIEW)
+      expect(result.observation).toBeUndefined()
+      expect(result.assertions).toBeUndefined()
+      expect(JSON.parse(result.response!)).toMatchObject({ audit: { runtimeIdentity: draft.runtimeIdentity } })
+      expect(JSON.parse(result.response!)).toMatchObject({
+        audit: {
+          engine: "vterm",
+          apiRevision: "6ffc0df79756fcc259d87131681641606540e512",
+          sourceCitation: expect.stringContaining("packages/vterm/src/backend.ts:63"),
+        },
+      })
+      expect(result.notTested?.noObservable).toContain("child-environment export")
+      draft.rawReplies[featureId] = result.response!
+      draft.results = [
+        recordExecutedProbe({
+          featureId,
+          attempt: { scope: "probe", startedAt: draft.measuredAt! },
+          coverage: result.notTested && { ...result.notTested, featureId, rawReplyRef: featureId },
+          assertions: [],
+          tests: result.tests,
+          criterionBranch: result.criterionBranch,
+        }),
+      ]
+    },
+  )
+  expect(draft.results[0]!.status).toBe("test-todo")
+  decision.reason = draft.results[0]!.tests[0]!.reason!
+  applyCaptureDecision(draft, JSON.stringify(decision), "2026-10-29T23:01:00.000Z")
+  const manifest = {
+    probeHash: draft.probeHash,
+    adapterVersion: "3",
+    catalogIds: [featureId],
+    probes: { term: [], lib: [featureId], mux: [] },
+  }
+  const parsed = parseRun(
+    "term-features.json",
+    JSON.stringify(sealRunDraft(draft)),
+    [featureId],
+    new Map([[draft.probeHash, manifest]]),
+  )
+  expect(parsed.results?.[0]?.status).toBe("untestable")
+  expect(parsed.rawReplies[artifact.rawReplyRef]).toBe(artifact.source)
+  expect(parsed.assertions).toEqual([])
+  expect(JSON.parse(parsed.rawReplies[featureId]!)).toMatchObject({
+    audit: { sourceCitation: expect.stringContaining("packages/vterm/src/backend.ts:63") },
+  })
+})
 // Source-only prompt review is approved evidence, not a measured assertion. These explicit
 // collector-input fixtures exercise the canonical seam; they do not attest an engine build.
 function semanticPromptCapture(status: "supported" | "unsupported" = "supported") {
