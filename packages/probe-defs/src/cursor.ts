@@ -7,6 +7,7 @@ import {
 } from "./types.ts"
 import {
   cursorProbe,
+  HEADLESS_OBSERVABLE_REVIEW,
   cursorStyleReadbackDecision,
   decrpmReading,
   parserStateResult,
@@ -1343,6 +1344,15 @@ export const cursorProbes: ProbeDefinition[] = [
           return {
             pass: false,
             response: JSON.stringify({ rows, measured }),
+            criterionBranch: HEADLESS_OBSERVABLE_REVIEW,
+            tests: [
+              {
+                id: "review",
+                status: "test-todo",
+                reason:
+                  "DECOM CPR is region-relative; the physical row 5 and the margins still need an independent observable",
+              },
+            ],
             observation: {
               outcome: "inconclusive",
               reason: "insufficient-evidence",

@@ -5,10 +5,29 @@
  * @testonly none
  */
 import { expect, test } from "vitest"
-import { decrpmModeProbe, cursorProbe, parserStateResult, sgrProbe, type DecrpmPs } from "./helpers.ts"
+import {
+  decrpmModeProbe,
+  cursorProbe,
+  parserStateResult,
+  sgrProbe,
+  unmeasuredCellResult,
+  type DecrpmPs,
+} from "./helpers.ts"
 import { sgrProbes } from "./sgr.ts"
 import { resetProbes } from "./reset.ts"
 import type { TermProbeSource, LibProbeSource } from "./types.ts"
+
+test("a received cursor cannot measure changed cells and retains a named TODO", () => {
+  const result = unmeasuredCellResult({ row: 2, col: 3 }, "changed cells")
+  expect(result.tests).toContainEqual(
+    expect.objectContaining({
+      id: "review",
+      status: "test-todo",
+      reason: "Cursor response does not measure changed cells",
+    }),
+  )
+  expect(result.response).toBe("2;3")
+})
 
 const baseCell = {
   char: "X",
@@ -74,7 +93,7 @@ function terminal(overrides: Partial<TermProbeSource> = {}): TermProbeSource {
     kind: "live",
     write() {},
     queryCursorPosition: async () => null,
-    measureRenderedWidth: async () => null,
+    measureRenderedWidth: async () => ({ kind: "no-reply", step: "sample" }) as const,
     query: async () => null,
     queryWithSentinel: async () => null,
     queryOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),

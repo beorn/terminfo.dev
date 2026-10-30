@@ -18,7 +18,7 @@ function app(overrides: Partial<TermProbeSource> = {}): TermProbeSource {
     kind: "live",
     write() {},
     queryCursorPosition: async () => null,
-    measureRenderedWidth: async () => null,
+    measureRenderedWidth: async () => ({ kind: "no-reply", step: "sample" }) as const,
     query: async () => null,
     queryWithSentinel: async () => null,
     queryOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
@@ -85,6 +85,68 @@ function cursorQueue(...positions: Array<{ row: number; col: number } | null>) {
   return async () => (index < positions.length ? positions[index++] : null) ?? null
 }
 
+// #31849: received fixture coordinates and absent CPRs are different causes.
+test.each(["text.basic", "text.tab", "text.hts", "text.wrap"])(
+  "%s names a received wrong home as fixture FAILURE, without diagnosing its provider",
+  async (id) => {
+    const result = await byId(id).term(
+      app({
+        cols: 80,
+        queryMode: async () => "set",
+        queryCursorPosition: cursorQueue({ row: 2, col: 7 }),
+      }),
+    )
+    expect(result.tests).toContainEqual({
+      id: "criterion",
+      status: "test-failure",
+      reason: "fixture not qualified: home 1;1, got 2;7",
+    })
+    expect(JSON.stringify(result)).not.toContain("provider is not position-sensitive")
+    expect(result.response).toContain('"row":2,"col":7')
+  },
+)
+
+test.each([
+  ["text.basic", []],
+  ["text.basic", [{ row: 1, col: 1 }]],
+  ["text.tab", []],
+  ["text.tab", [{ row: 1, col: 1 }]],
+  [
+    "text.tab",
+    [
+      { row: 1, col: 1 },
+      { row: 1, col: 9 },
+    ],
+  ],
+  ["text.wrap", []],
+] as const)("%s names absent cursor readback as TODO after %j", async (id, positions) => {
+  const result = await byId(id).term(
+    app({
+      cols: 80,
+      queryMode: async () => "set",
+      queryCursorPosition: cursorQueue(...positions, null),
+    }),
+  )
+  expect(result.tests).toContainEqual({
+    id: "criterion",
+    status: "test-todo",
+    reason: "no cursor-position readback",
+  })
+})
+
+test("the combined tab fixture names a received wrong comparison stop as FAILURE", async () => {
+  const result = await byId("text.tab").term(
+    app({
+      queryCursorPosition: cursorQueue({ row: 1, col: 1 }, { row: 1, col: 8 }, { row: 1, col: 6 }),
+    }),
+  )
+  expect(result.tests).toContainEqual({
+    id: "criterion",
+    status: "test-failure",
+    reason: "fixture not qualified: expected 1;9, got 1;8",
+  })
+})
+
 test("text width claims require an ASCII control and the named sample", async () => {
   for (const id of [
     "text.wide.emoji",
@@ -111,6 +173,42 @@ test("text width claims require an ASCII control and the named sample", async ()
     expect(invalid.observation, id).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
     expect(invalid.assertions, id).toBeUndefined()
   }
+})
+
+// The one measurement API must reach every width family before any numeric predicate.
+test.each([
+  "text.wide.emoji",
+  "text.wide.cjk",
+  "text.combining",
+  "text.wide.emoji-flags",
+  "text.wide.emoji-vs16",
+  "text.wide.emoji-zwj",
+  "unicode.east-asian-ambiguous",
+  "unicode.grapheme-cursor",
+])("%s preserves the width reader's named causes", async (id) => {
+  for (const [reading, status, evidence] of [
+    [{ kind: "no-reply", step: "sample" }, "test-todo", "sample"],
+    [{ kind: "control-mismatch", step: "ascii", observed: { row: 1, col: 3 } }, "test-failure", "1;3"],
+    [{ kind: "wrapped", observed: { row: 2, col: 4 } }, "test-failure", "2;4"],
+  ] as const) {
+    const result = await byId(id).term(
+      app({
+        measureRenderedWidth: async (sample) => (sample === "AA" ? 2 : sample === "A" ? 1 : reading),
+      }),
+    )
+    expect(result.tests, id).toContainEqual(
+      expect.objectContaining({
+        id: "criterion",
+        status,
+        reason: expect.stringContaining(evidence),
+      }),
+    )
+    expect(result.assertions, id).toBeUndefined()
+    expect(result.response, id).toContain(reading.kind)
+  }
+  const malformed = app()
+  Reflect.set(malformed, "measureRenderedWidth", async () => ({ kind: "future" }))
+  await expect(byId(id).term(malformed)).rejects.toThrow(`${id}: width transport: unknown kind future`)
 })
 
 // 28752: a wide-sample row compares plainly written glyphs, so it assumes the run decodes plain
@@ -470,7 +568,9 @@ test("grapheme ID measures the ZWJ sample width, including headless cell state",
   expect(result.assertions).toMatchObject([{ kind: "positive", expected: "2", observed: "2" }])
   const missing = await probe.term(app())
   expect(missing.observation).toBeUndefined()
-  expect(missing.tests).toEqual([{ id: "criterion", status: "test-failure", reason: "Cannot measure width" }])
+  expect(missing.tests).toEqual([
+    { id: "criterion", status: "test-todo", reason: "sample width: no cursor-position readback at sample" },
+  ])
 
   const sample = "👨‍👩‍👧"
   const blank = headless().getCell(0, 0)
@@ -612,7 +712,7 @@ test("text.wrap negative controls: unqualified control, spoofing, wrong target, 
     app({ cols: 61, queryMode: async () => "set", queryCursorPosition: cursorQueue(null) }),
   )
   expect(missingHome.observation).toBeUndefined()
-  expect(missingHome.tests).toEqual([{ id: "criterion", status: "test-failure", reason: "no-response" }])
+  expect(missingHome.tests).toEqual([{ id: "criterion", status: "test-todo", reason: "no cursor-position readback" }])
 
   const missingControl = await byId("text.wrap").term(
     app({ cols: 61, queryMode: async () => "set", queryCursorPosition: cursorQueue({ row: 1, col: 1 }, null) }),
@@ -706,7 +806,7 @@ test("text.tab and text.hts grade the combined HT/HTS fixture from qualified seq
 
     const missing = await byId(id).term(app({ cols: 80, queryCursorPosition: cursorQueue(null) }))
     expect(missing.observation, id).toBeUndefined()
-    expect(missing.tests, id).toEqual([{ id: "criterion", status: "test-failure", reason: "no-response" }])
+    expect(missing.tests, id).toEqual([{ id: "criterion", status: "test-todo", reason: "no cursor-position readback" }])
   }
 })
 

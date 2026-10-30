@@ -517,7 +517,7 @@ function colourTerminal(mode: Mode, palette: Palette, geometry = { rows: ROWS, c
       paint(screen, text, mode, palette, mode === "deferred-paint" && firstColourPaint)
     },
     queryCursorPosition: async () => ({ row: screen.row + 1, col: screen.col + 1 }),
-    measureRenderedWidth: async () => null,
+    measureRenderedWidth: async () => ({ kind: "no-reply", step: "sample" }) as const,
     query: async () => null,
     queryWithSentinel: async () => null,
     queryOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
@@ -575,6 +575,13 @@ for (const id of COLOUR_IDS) {
     expect(result.observation?.note ?? "").toContain("ignores the colour")
     expect(result.assertions).toBeUndefined()
     expect(result.pass).toBe(false)
+    expect(result.tests).toContainEqual(
+      expect.objectContaining({
+        id: "review",
+        status: "test-todo",
+        reason: "colour oracle cannot distinguish ignored from identical paint against the current reference",
+      }),
+    )
   })
 }
 

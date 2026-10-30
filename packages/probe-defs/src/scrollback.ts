@@ -418,6 +418,15 @@ export const scrollbackProbes: ProbeDefinition[] = [
                 control: control.label,
                 target: target.label,
               }),
+              criterionBranch: HEADLESS_OBSERVABLE_REVIEW,
+              tests: [
+                {
+                  id: "review",
+                  status: "test-todo",
+                  reason:
+                    "A line numbering beyond the TOP control shows the viewport scrolled past one screen; whether the terminal retained those lines as scrollback history, and how many, is not readable from the screen",
+                },
+              ],
               observation: {
                 outcome: "inconclusive",
                 reason: "insufficient-evidence",
@@ -446,6 +455,8 @@ export const scrollbackProbes: ProbeDefinition[] = [
         return {
           pass: false,
           response: JSON.stringify(pos),
+          criterionBranch: HEADLESS_OBSERVABLE_REVIEW,
+          tests: [{ id: "review", status: "test-todo", reason: "Cursor position does not measure scrollback history" }],
           observation: {
             outcome: "inconclusive",
             reason: "insufficient-evidence",
@@ -508,6 +519,15 @@ export const scrollbackProbes: ProbeDefinition[] = [
                 control: control.label,
                 target: target.label,
               }),
+              criterionBranch: HEADLESS_OBSERVABLE_REVIEW,
+              tests: [
+                {
+                  id: "review",
+                  status: "test-todo",
+                  reason:
+                    "The TOP control leaving the top of the screen after more lines than a screen can hold shows the viewport scrolled past its height; retained-history existence and count are not readable from the screen",
+                },
+              ],
               observation: {
                 outcome: "inconclusive",
                 reason: "insufficient-evidence",
@@ -533,6 +553,10 @@ export const scrollbackProbes: ProbeDefinition[] = [
         return {
           pass: false,
           response: JSON.stringify(pos),
+          criterionBranch: HEADLESS_OBSERVABLE_REVIEW,
+          tests: [
+            { id: "review", status: "test-todo", reason: "Cursor position does not measure total scrollback lines" },
+          ],
           observation: {
             outcome: "inconclusive",
             reason: "insufficient-evidence",

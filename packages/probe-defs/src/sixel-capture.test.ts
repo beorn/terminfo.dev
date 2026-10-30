@@ -82,7 +82,7 @@ test("a pixel arm that reports no geometry refuses by name before painting anyth
     },
     queryCursorPosition: async () => null,
     queryMode: async () => null,
-    measureRenderedWidth: async () => null,
+    measureRenderedWidth: async () => ({ kind: "no-reply", step: "sample" }) as const,
   } as unknown as TermProbeSource
   const definition = extensionsProbes.find((probe) => probe.id === "extensions.sixel")
   if (!definition?.term) throw new Error("missing app extension callback for extensions.sixel")
@@ -125,7 +125,7 @@ function calibratedPixelArm(geometry = GEOMETRY, captureKind: "pixels" | "text-c
     },
     queryCursorPosition: async () => null,
     queryMode: async () => null,
-    measureRenderedWidth: async () => null,
+    measureRenderedWidth: async () => ({ kind: "no-reply", step: "sample" }) as const,
   } as unknown as TermProbeSource
   return { context, writes }
 }

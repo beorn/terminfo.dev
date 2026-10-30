@@ -722,7 +722,7 @@ describe("private finite daemon startup", () => {
       mock.module("./packages/terminfo.dev/src/tty.ts", () => ({ ...tty,
         withRawMode: async (cb) => cb(), drainStdin: async () => {},
         query: async () => null, queryWithSentinel: async () => null, queryOutcome: async () => silent,
-        queryCursorPosition: async () => null, measureRenderedWidth: async () => null,
+        queryCursorPosition: async () => null, measureRenderedWidth: async () => ({ kind: "no-reply", step: "sample" } as const),
         measureUtf8Decoding: async () => "silent", queryMode: async () => null, readResponse: async () => null,
         queryWithSentinelOutcome: async (sequence, pattern) => {
           const reply = sequence === "\\x1b[14t" ? "\\x1b[4;467;860t"
@@ -821,7 +821,7 @@ describe("private finite daemon startup", () => {
       mock.module("./packages/terminfo.dev/src/tty.ts", () => ({ ...tty,
         withRawMode: async (cb) => cb(), drainStdin: async () => {},
         query: async () => null, queryWithSentinel: async () => null, queryOutcome: async () => silent,
-        queryCursorPosition: async () => null, measureRenderedWidth: async () => null,
+        queryCursorPosition: async () => null, measureRenderedWidth: async () => ({ kind: "no-reply", step: "sample" } as const),
         measureUtf8Decoding: async () => "silent", queryMode: async () => null, readResponse: async () => null,
         queryWithSentinelOutcome: async (sequence, pattern) => {
           const reply = sequence === "\\x1b[16t" ? (reportedCellSize ?? "\\x1b[?6c")
@@ -966,7 +966,7 @@ describe("private finite daemon startup", () => {
         withRawMode: async (cb) => cb(), drainStdin: async () => {},
         query: async () => null, queryWithSentinel: async () => null,
         queryOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
-        queryCursorPosition: async () => null, measureRenderedWidth: async () => null,
+        queryCursorPosition: async () => null, measureRenderedWidth: async () => ({ kind: "no-reply", step: "sample" } as const),
         measureUtf8Decoding: async () => "silent", queryMode: async () => null, readResponse: async () => null,
         queryWithSentinelOutcome: async (sequence, pattern) => {
           // The collector's OWN geometry corroboration asks CSI 18 t before the pre-flight, with a

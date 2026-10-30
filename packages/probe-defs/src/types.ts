@@ -845,6 +845,17 @@ export type Utf8Decoding = "utf8" | "8-bit"
  */
 export type Utf8DecodingReading = Utf8Decoding | "silent" | "unusable"
 
+/** A measured width, or the exact missing/wrong fixture readback that prevents one. */
+export type RenderedWidthResult =
+  | number
+  | { kind: "no-reply"; step: "origin" | "ascii" | "sample" | "trailing" }
+  | {
+      kind: "control-mismatch"
+      step: "origin" | "ascii" | "sample" | "trailing"
+      observed: { row: number; col: number }
+    }
+  | { kind: "wrapped"; observed: { row: number; col: number } }
+
 /** Source for terminal probing (async TTY I/O) */
 export interface TerminalQueryOutcome {
   match: string[] | null
@@ -895,7 +906,7 @@ export interface TermProbeSource {
   }
   write(text: string): void
   queryCursorPosition(): Promise<{ row: number; col: number } | null>
-  measureRenderedWidth(text: string): Promise<number | null>
+  measureRenderedWidth(text: string): Promise<RenderedWidthResult>
   query(sequence: string, pattern: RegExp, timeoutMs?: number): Promise<string[] | null>
   queryWithSentinel(sequence: string, pattern: RegExp, timeoutMs?: number): Promise<string[] | null>
   queryOutcome(sequence: string, pattern: RegExp, timeoutMs?: number): Promise<TerminalQueryOutcome>
