@@ -388,6 +388,12 @@ describe("current execution projection", () => {
           reason: "Inspect this original result",
           sources: [],
           presentsEvidence: true,
+          accepted: {
+            by: "fixture-acceptor",
+            wire: "00000000-0000-4000-8000-000000000000",
+            at: "2026-10-30T12:00:00-07:00",
+          },
+          acceptedSha256: "a".repeat(64),
         }
       }
       const reviewedPublic = publicResults(projection, new Map())
@@ -737,6 +743,8 @@ it("keeps the retained failed text read's qualification link without widening cu
     reason: "Present retained failure",
     sources: [],
     presentsEvidence: true,
+    accepted: { by: "fixture-acceptor", wire: "00000000-0000-4000-8000-000000000000", at: "2026-10-30T12:00:00-07:00" },
+    acceptedSha256: "a".repeat(64),
   }
   const published = publicResults(projection, new Map())
   const evidenceUrl = `/api/v3/evidence/${run.sha256}.json`
