@@ -92,8 +92,8 @@ export function withChecks<M extends MatcherMap>(
   context: TestContext,
   options: { mode: "record" | "replay"; matchers: M },
 ): {
-  check<K extends keyof M & string>(matcher: K, ...parameters: Parameters<M[K]>): void
-  precondition<K extends keyof M & string>(matcher: K, ...parameters: Parameters<M[K]>): void
+  check<K extends keyof M & string>(matcher: K, ...parameters: Parameters<M[K]>): boolean
+  precondition<K extends keyof M & string>(matcher: K, ...parameters: Parameters<M[K]>): boolean
   finish(): readonly RetainedCheck[]
 } {
   if (sessions.has(context.task)) throw new IncompleteReplay("Task already has a Terminfo check session")
@@ -107,6 +107,11 @@ export function withChecks<M extends MatcherMap>(
     try {
       const [received, ...args] = parameters
       context.expect.soft(received).toTerminfoCheck(name, ...args)
+      const retained = session.checks.at(-1)
+      if (!retained || retained.step !== session.active.step) {
+        return incomplete(session, "Native matcher did not retain its result")
+      }
+      return retained.ok
     } catch (error) {
       return incomplete(
         session,

@@ -10,8 +10,8 @@ import * as xterm from "@termless/xtermjs"
 import { readCallLog } from "viprobe"
 import { captureEraseCalls, replayEraseCalls } from "./erase-replay.ts"
 
-test("real erase calls replay twice without opening a terminal backend", () => {
-  const captured = captureEraseCalls()
+test("real erase calls replay twice without opening a terminal backend", (context) => {
+  const captured = captureEraseCalls(context)
   expect(captured.results.map(({ featureId }) => featureId)).toEqual([
     "erase.character",
     "erase.line.right",
@@ -25,11 +25,21 @@ test("real erase calls replay twice without opening a terminal backend", () => {
     "erase.el-with-attrs",
     "erase.screen.scrollback",
   ])
+  for (const record of captured.results) {
+    expect(record.checks.length, record.featureId).toBeGreaterThan(1)
+    expect(
+      record.checks.some(({ kind }) => kind === "precondition"),
+      record.featureId,
+    ).toBe(true)
+    expect(record.checks.at(-1)?.kind, record.featureId).toBe("assertion")
+    expect(record.checks.map(({ step }) => step)).toEqual(record.checks.map((_, index) => index + 1))
+  }
   // Call-log canonicalization sorts object keys. Compare the structured diagnostic
   // evidence, not the incidental key order inside the legacy JSON strings.
   const evidence = (records: typeof captured.results) =>
-    records.map(({ featureId, result }) => ({
+    records.map(({ featureId, result, checks }) => ({
       featureId,
+      checks,
       ...result,
       response: result.response === undefined ? undefined : JSON.parse(result.response),
       assertions: result.assertions?.map((assertion) => ({
@@ -52,7 +62,7 @@ test("real erase calls replay twice without opening a terminal backend", () => {
   })
   try {
     for (let attempt = 0; attempt < 2; attempt++) {
-      expect(evidence(replayEraseCalls(readCallLog(JSON.parse(bytes))))).toEqual(evidence(captured.results))
+      expect(evidence(replayEraseCalls(readCallLog(JSON.parse(bytes)), context))).toEqual(evidence(captured.results))
     }
     expect(open).not.toHaveBeenCalled()
   } finally {

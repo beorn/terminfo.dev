@@ -98,10 +98,14 @@ test.concurrent.for([
   const session = withChecks(context, { mode: "replay", matchers })
   const directory = await mkdtemp(join(tmpdir(), "terminfo-runtime-checks-"))
   try {
-    session.check("toRecorderRuntimeEqual", value, value + 1)
+    if (session.check("toRecorderRuntimeEqual", value, value + 1) !== false) {
+      throw new Error("Native failed check did not return its single retained false result")
+    }
     if (++arrivals === 2) release()
     await bothRunning
-    session.precondition("toRecorderRuntimeEqual", value, value)
+    if (session.precondition("toRecorderRuntimeEqual", value, value) !== true) {
+      throw new Error("Native successful precondition did not return its single retained true result")
+    }
     retainedChecks = session.finish()
     for (const check of retainedChecks) {
       checks.push({
