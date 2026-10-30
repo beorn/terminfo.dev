@@ -123,8 +123,9 @@ function parseCurrentSource(value: unknown, path: string): RunDraft["source"] {
     !keys(value, ["kind", "trace", "captureRunId", "captureSuiteId", "captureSourceRevision"]) ||
     !object(value.trace) ||
     !keys(value.trace, ["path", "sha256"])
-  )
+  ) {
     fail(path, "invalid source; require exactly { kind: live } or a bound trace source")
+  }
   const artifact = value.trace
   if (
     !nonempty(artifact.path) ||
@@ -139,8 +140,9 @@ function parseCurrentSource(value: unknown, path: string): RunDraft["source"] {
     !value.captureSuiteId.trim() ||
     typeof value.captureSourceRevision !== "string" ||
     !/^[0-9a-f]{40}$/.test(value.captureSourceRevision)
-  )
+  ) {
     fail(path, "invalid trace source artifact reference or capture identity")
+  }
   return {
     kind: "trace",
     trace: { path: artifact.path, sha256: artifact.sha256 },

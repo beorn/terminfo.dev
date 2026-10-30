@@ -42,7 +42,7 @@ test("installed Vitest preserves task-owned checks and awaited reporter attachme
       const finalRecord = task.meta().terminfoRuntimeProof
       const evaluations = task.meta().terminfoMatcherEvaluations
       if (typeof evaluations === "number") matcherEvaluations.push(evaluations)
-      if (!finalRecord)
+      if (!finalRecord) {
         throw new Error(
           "Vitest did not deliver the failed task's final metadata: " +
             task
@@ -50,6 +50,7 @@ test("installed Vitest preserves task-owned checks and awaited reporter attachme
               .errors?.map((error) => error.message)
               .join("; "),
         )
+      }
       const path = join(directory, `${task.id}.final.json`)
       await writeFile(path, JSON.stringify(finalRecord))
       finalRecordBytes.set(task.id, JSON.parse(await readFile(path, "utf8")))

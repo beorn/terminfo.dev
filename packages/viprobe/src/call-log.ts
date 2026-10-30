@@ -137,8 +137,9 @@ function artifactArray(value: unknown, path: string): unknown[] {
   }
   return Array.from({ length: value.length }, (_, index) => {
     const descriptor = Object.getOwnPropertyDescriptor(value, String(index))
-    if (!descriptor || !("value" in descriptor))
+    if (!descriptor || !("value" in descriptor)) {
       invalidArtifact(`${path}[${index}]`, "expected array data, not a getter or hole")
+    }
     const member: unknown = descriptor.value
     return member
   })
@@ -237,8 +238,9 @@ function readEncoded(input: unknown, path: string, ancestors = new Set<object>()
 }
 
 function readOutcome(value: Record<string, unknown>, path: string): Outcome {
-  if (value.finished !== true || typeof value.asynchronous !== "boolean")
+  if (value.finished !== true || typeof value.asynchronous !== "boolean") {
     invalidArtifact(path, "unfinished or invalid outcome")
+  }
   const timing = artifactObject(value.timing, `${path}.timing`)
   artifactKeys(timing, `${path}.timing`, ["startedAtMs", "startedPerformanceMs", "settledAtMs", "settledPerformanceMs"])
   const parsed: Outcome = {
@@ -251,8 +253,9 @@ function readOutcome(value: Record<string, unknown>, path: string): Outcome {
       settledPerformanceMs: artifactNumber(timing.settledPerformanceMs, `${path}.settledPerformanceMs`),
     },
   }
-  if (Object.hasOwn(value, "value") === Object.hasOwn(value, "error"))
+  if (Object.hasOwn(value, "value") === Object.hasOwn(value, "error")) {
     invalidArtifact(path, "requires exactly one value or error")
+  }
   if (Object.hasOwn(value, "value")) parsed.value = readEncoded(value.value, `${path}.value`)
   else {
     const error = artifactObject(value.error, `${path}.error`)
@@ -292,8 +295,9 @@ function encodedMember(value: Encoded, key: string, path: string): Encoded {
 export function readCallLog(input: unknown): CallLog {
   const value = artifactObject(input, "artifact")
   artifactKeys(value, "artifact", ["format", "version", "root", "calls"])
-  if (value.format !== "viprobe.call-log" || value.version !== 1)
+  if (value.format !== "viprobe.call-log" || value.version !== 1) {
     invalidArtifact("artifact", "unsupported format or version")
+  }
   const root = readEncoded(value.root, "root")
   if (root === null || typeof root !== "object" || !["object", "array", "set", "bytes", "regexp"].includes(root.kind)) {
     invalidArtifact("root", "recorded context must be an object")
@@ -349,8 +353,9 @@ export function readCallLog(input: unknown): CallLog {
     let memberPath = call.path.slice("context.".length)
     for (const reference of call.path.matchAll(/#([0-9]+)/g)) {
       const parent = calls[Number(reference[1])]
-      if (!parent || parent.id >= call.id || !call.path.startsWith(`${parent.path}#${parent.id}.`))
+      if (!parent || parent.id >= call.id || !call.path.startsWith(`${parent.path}#${parent.id}.`)) {
         invalidArtifact(call.path, "dangling or forward call reference")
+      }
       const suffix = call.path.slice((reference.index ?? 0) + reference[0].length)
       const result = /^\.result(?=\.|#|$)/.exec(suffix)
       const callback = /^\.callback([0-9]+)\.arg([0-9]+)(?=\.|#|$)/.exec(suffix)
@@ -706,8 +711,9 @@ export function withCallLog<Subject extends object>(
   }
 
   if (mode === "record") {
-    if (!subject || typeof subject !== "object")
+    if (!subject || typeof subject !== "object") {
       throw new IncompleteReplay("record mode requires a live object context")
+    }
     if (state.started) throw new IncompleteReplay("record mode requires a fresh call log")
     state.started = true
     log.root = encode(subject)
