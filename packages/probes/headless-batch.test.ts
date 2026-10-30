@@ -1267,7 +1267,7 @@ test("a result with no observation keeps its response and refused assertions", a
 })
 
 // 30585: a grader that got no reply names that as its reason, and the reason is the record of the missing raw.
-// The recorder admits it as measured, publishes no verdict and synthesizes nothing into rawReplies.
+// The observation keeps its measured reason; a rowless callback is a writer defect and synthesizes no raw reply.
 test("admits an inconclusive no-response result with its named reason and no synthesized raw", async () => {
   const batch = await collectBatch(backend, "xtermjs", [
     definition(
@@ -1285,7 +1285,11 @@ test("admits an inconclusive no-response result with its named reason and no syn
   expect(batch.assertions).toStrictEqual([])
   expect(probeReplies(batch)).toStrictEqual({})
   expect(batch.results).toStrictEqual([
-    expect.objectContaining({ featureId: "silent", status: "test-failure", reason: "no-response" }),
+    expect.objectContaining({
+      featureId: "silent",
+      status: "test-failure",
+      reason: "writer default: inconclusive observation without test rows; callback defect",
+    }),
   ])
   expect(batch.results[0]).not.toHaveProperty("rawReplyRef")
   validateObservation(batch.observations[0]!, "run", batch.rawReplies, batch.assertions)
