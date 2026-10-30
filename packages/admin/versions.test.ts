@@ -243,7 +243,7 @@ test("text claims derive only from explicitly eligible app definitions and survi
 
 // 30035 AC2/AC4: real suite declarations must retain the reviewed character-only boundary.
 // Synthetic forwarding tests cannot detect an unmarked or blanket-promoted production definition.
-test("the trusted manifest declares exactly the 37 reviewed character claims without expanding capabilities", () => {
+test("the trusted manifest declares exactly the 40 reviewed character claims without expanding capabilities", () => {
   const manifest = derivedSuiteManifest()
   expect(manifest.textClaims).toEqual([
     "charsets.dec-line-drawing",
@@ -272,6 +272,9 @@ test("the trusted manifest declares exactly the 37 reviewed character claims wit
     "erase.screen.all",
     "erase.screen.below",
     "erase.selective",
+    "modes.alt-screen.exit",
+    "modes.altscreen-1047",
+    "modes.insert-replace",
     "modes.origin",
     "reset.decaln",
     "scrollback.alt-screen",

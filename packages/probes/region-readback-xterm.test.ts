@@ -99,45 +99,67 @@ test.each(["complete", "shape-refused", "restore-mode", "restore-grid"] as const
 
 // App callbacks share a screen; the fresh headless backends below cannot expose this failure.
 // Use the real parser and strict mapper so a previous Unicode probe cannot become an ASCII read.
-test("an ASCII region fixture prepares its screen before reading a preceding Unicode probe", async () => {
-  const backend = createXtermBackend()
-  backend.init({ rows: 24, cols: 80 })
-  const encode = (text: string) => new TextEncoder().encode(text)
-  backend.feed(encode("\x1b[H👨‍👩‍👧"))
-  const probe = probeDefs.ALL_PROBES.find((entry) => entry.id === "erase.character")
-  if (!probe?.term) throw new Error("Missing erase.character app callback")
-  const context: probeDefs.TermProbeSource = {
-    kind: "live",
-    rows: 24,
-    cols: 80,
-    captureKind: "text-cells",
-    write: (bytes) => backend.feed(encode(bytes)),
-    cells: async (checkpoint) => {
-      const lines = backend.getLines().map((row) => row.map((cell) => cell.char || " ").join(""))
-      const mapped = mapSnapshotToCells(lines, 80, 24, 0)
-      const read =
-        typeof mapped === "string"
-          ? { status: "refused" as const, reason: mapped }
-          : { status: "read" as const, app: "iterm2" as const, cells: mapped }
-      return textCellsFrame(checkpoint, read, Date.now()).frame
-    },
-    queryCursorPosition: async () => null,
-    measureRenderedWidth: async () => ({ kind: "no-reply", step: "sample" }) as const,
-    query: async () => null,
-    queryWithSentinel: async () => null,
-    queryOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
-    queryWithSentinelOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
-    queryMode: async () => null,
-    readInput: async () => null,
-  }
-  try {
-    await expect(probe.term(context)).resolves.toMatchObject({
-      observation: { outcome: "supported", assertionType: "buffer_state" },
-    })
-  } finally {
-    backend.destroy()
-  }
-})
+test.each(["erase.character", "modes.alt-screen.exit", "modes.altscreen-1047", "modes.insert-replace"])(
+  "%s ASCII region fixture prepares its screen before reading a preceding Unicode probe",
+  async (id) => {
+    const backend = createXtermBackend()
+    backend.init({ rows: 24, cols: 80 })
+    const encode = (text: string) => new TextEncoder().encode(text)
+    backend.feed(encode("\x1b[H👨‍👩‍👧"))
+    const probe = probeDefs.ALL_PROBES.find((entry) => entry.id === id)
+    if (!probe?.term) throw new Error(`Missing ${id} app callback`)
+    const context: probeDefs.TermProbeSource = {
+      kind: "live",
+      rows: 24,
+      cols: 80,
+      captureKind: "text-cells",
+      write: (bytes) => backend.feed(encode(bytes)),
+      cells: async (checkpoint) => {
+        const lines = backend.getLines().map((row) => row.map((cell) => cell.char || " ").join(""))
+        const mapped = mapSnapshotToCells(lines, 80, 24, 0)
+        const read =
+          typeof mapped === "string"
+            ? { status: "refused" as const, reason: mapped }
+            : { status: "read" as const, app: "iterm2" as const, cells: mapped }
+        return textCellsFrame(checkpoint, read, Date.now()).frame
+      },
+      queryCursorPosition: async () => null,
+      measureRenderedWidth: async () => ({ kind: "no-reply", step: "sample" }) as const,
+      query: async () => null,
+      queryWithSentinel: async () => null,
+      queryOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
+      queryWithSentinelOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
+      queryMode: async () => null,
+      readInput: async () => null,
+    }
+    try {
+      const result = await probe.term(context)
+      expect(result.observation, JSON.stringify(result)).toMatchObject({
+        outcome: "supported",
+        assertionType: "buffer_state",
+      })
+      expect(result.assertions?.length).toBeGreaterThan(0)
+      expect(result.assertions?.every((assertion) => assertion.assertionType === "buffer_state")).toBe(true)
+      expect(result.observation?.screenshotRef).toBeUndefined()
+      expect(result.observation?.frames?.every((frame) => frame.kind === "text-cells")).toBe(true)
+      if (id === "modes.alt-screen.exit" || id === "modes.altscreen-1047") {
+        expect(result.tests).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              id: "remaining-facets",
+              status: "test-todo",
+              reason: expect.stringMatching(
+                id === "modes.altscreen-1047" ? /clear.*exit/i : /saved cursor.*scrollback/,
+              ),
+            }),
+          ]),
+        )
+      }
+    } finally {
+      backend.destroy()
+    }
+  },
+)
 
 /**
  * Every kind table the package EXPORTS, discovered rather than hand-typed. The list used to be

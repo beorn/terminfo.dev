@@ -679,13 +679,13 @@ test("underline color reset needs both an observed colored before cell and defau
   const missingBefore = probe.lib(
     withCells({ ...baseCell, underline: true, underlineColor: undefined }, { ...baseCell, char: "Y", underline: true }),
   )
-  expect(missingBefore.notTested).toBeUndefined()
-  expect(missingBefore.criterionBranch).toBe("source-negative-review")
+  expect(missingBefore.notTested).toMatchObject({ reason: "no-semantic-observable" })
+  expect(missingBefore.criterionBranch).toBe("headless-observable-review")
   expect(missingBefore.tests).toEqual([
-    { id: "review", status: "test-failure", reason: expect.stringContaining("cell.underlineColor") },
+    { id: "review", status: "test-todo", reason: expect.stringContaining("distinct colored seed") },
   ])
-  expect(missingBefore.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
-  expect(missingBefore.assertions).toMatchObject([{ kind: "negative", observed: missingBefore.response }])
+  expect(missingBefore.observation).toBeUndefined()
+  expect(missingBefore.assertions).toBeUndefined()
 
   const missingAfter = probe.lib(
     withCells(
@@ -1078,15 +1078,15 @@ test("SGR 39 and 49 restore the measured default, including concrete RGB default
     const ignored = run([baseline, colored, colored])
     expect(ignored?.observation, id).toMatchObject({ outcome: "unsupported", assertionType: "buffer_state" })
     expect(ignored?.assertions, id).toMatchObject([{ kind: "negative", observed: ignored?.response }])
-    // #31379: a setup that reads back as the default leaves the reset no reference and routes to source-negative-review.
+    // #31766: a setup that reads back as the default leaves the reset no distinct colored seed.
     const uncalibrated = run([baseline, baseline, baseline])
-    expect(uncalibrated?.notTested, id).toBeUndefined()
-    expect(uncalibrated?.criterionBranch, id).toBe("source-negative-review")
+    expect(uncalibrated?.notTested, id).toMatchObject({ reason: "no-semantic-observable" })
+    expect(uncalibrated?.criterionBranch, id).toBe("headless-observable-review")
     expect(uncalibrated?.tests, id).toEqual([
-      { id: "review", status: "test-failure", reason: expect.stringContaining("setup cell") },
+      { id: "review", status: "test-todo", reason: expect.stringContaining("setup cell") },
     ])
-    expect(uncalibrated?.observation, id).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
-    expect(uncalibrated?.assertions, id).toMatchObject([{ kind: "negative", observed: uncalibrated?.response }])
+    expect(uncalibrated?.observation, id).toBeUndefined()
+    expect(uncalibrated?.assertions, id).toBeUndefined()
   }
 })
 

@@ -81,7 +81,7 @@ const MODES_CONTRACT: GroupContract = [
       "Alt-scroll 1007: wheel-4 reports CSI A after 1000+1006 click delivery control on alt-screen; remaining SGR is unsupported",
   },
   { id: "modes.utf8-mouse-1005", expected: "decided", claim: "DECRPM 1005 recognizes UTF-8 mouse" },
-  { id: "modes.deccolm", expected: "decided", claim: "DECRPM 3 recognizes 132-column mode" },
+  { id: "modes.deccolm", expected: "decided", claim: "Cell width moves 80 -> 132 -> 80 with ?40 honoured" },
   { id: "modes.decsclm", expected: "decided", claim: "DECRPM 4 recognizes smooth-scroll mode" },
   { id: "modes.color-scheme-reporting", expected: "decided", claim: "DECRPM 2031 recognizes color-scheme reporting" },
   {

@@ -52,6 +52,12 @@ Both source interfaces carry `readonly kind: ProbeSourceKind` directly. The only
 
 The [shared execution helpers](src/helpers.ts) initialize every catalog member as `test-todo` with no attempt, then record only the work actually performed.
 
+Library SGR 39/49/59 resets without a distinct colored setup retain their actual cell state on a
+named `headless-observable-review` TEST TODO row. That missing prerequisite cannot establish a
+reset negative. Compound attribute resets with unshown setup attributes retain a named
+`source-negative-review` TEST FAILURE until the complete criterion is reviewed; a partial reset
+does not decide the whole claim. Other source-negative style reviews keep their existing failures.
+
 TERM_FEATURES means a terminal program's export into its child environment. Its library arm performs
 no I/O and retains a `headless-observable-review` row with the API boundary and loaded runtime for
 per-engine source review. Only a non-author Untestable decision can discharge it; it creates no
@@ -251,6 +257,14 @@ cursor-shape cell and blink-phase sampling belongs to #31812. Historical frames 
 new comparison or grade.
 
 `TermProbeSource.capture` supplies owned pixel capture; `cells` is a separate terminal-text route for declared cell readback. [Region readback](src/region-readback.ts) and callbacks evaluate the resulting evidence.
+
+The app exit/1047/insert-mode rows declare character readback and use that same region oracle.
+Exit and 1047 paint primary then alternate markers; leaving the alternate is compared with a plainly
+painted primary reference. Text reads use the existing character change criterion; pixel reads retain
+their declared freshness checks. An unqualified entry leaves any failed exit roundtrip as named TODO,
+never an exit negative. A restored primary marker still leaves exact 1047 clear-on-exit and 1049 saved
+cursor/scrollback unmeasured. Same-1047 re-entry does not prove clearing. IRM keeps its query-first
+positives and recognized negatives; only an undecided query reaches the existing insertion fixture.
 
 **Timed and composited rows decide by pixels, never by an acknowledgement.** The kitty animation and
 unicode-placeholder rows read `capture` and compare region digests as raw bytes; neither a `_G` reply nor

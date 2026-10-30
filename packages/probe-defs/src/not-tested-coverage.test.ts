@@ -144,17 +144,12 @@ const sourceNegativeBranchFeatures = [
     "SGR 58 index 5/4 underline colors match the opposite SGR 38 palette controls, not their same-foreground defaults",
     "the underline color field (cell.underlineColor): the headless readback reports none on a cell fed an explicit SGR 58 color",
   ],
-  [
-    "sgr.underline-color-reset",
-    ["C", "X", "Y"],
-    "X has explicit underline rgb(255,0,128); SGR 59 restores Y to the measured reset-state C color",
-    "the underline color field (cell.underlineColor): the headless readback reports none on a cell fed an explicit SGR 58 color",
-  ],
+  // Seedless SGR59/default-color cases are named TODOs, covered by sgr-contract.test.ts.
   [
     "sgr.selective-reset.italic",
     ["C", "X", "Y"],
     "sgr.selective-reset.italic: measured setup attributes clear on Y and unrelated attributes remain set",
-    "italic and bold on the styled setup cell in the headless readback",
+    "complete compound criterion pending: italic and bold on the styled setup cell in the headless readback",
   ],
   [
     "sgr.fg.standard",
@@ -173,12 +168,6 @@ const sourceNegativeBranchFeatures = [
     ["C", "A", "B", "X", "Y"],
     "sgr.fg.truecolor: two distinct direct-RGB samples are exposed at their exact requested values",
     "independent fg color controls (SGR 31 and 34) distinguishable in the headless readback",
-  ],
-  [
-    "sgr.fg.default",
-    ["C", "X", "R"],
-    "sgr.fg.default: reset R restores the measured C fg after a distinct colored X",
-    "a colored fg setup cell (SGR 31) distinct from the default, and the reset cell's fg, in the headless readback",
   ],
   [
     "extensions.truecolor",
