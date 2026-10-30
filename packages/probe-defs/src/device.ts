@@ -15,7 +15,7 @@ import { nativeHostRecipeResult } from "./native-host-audit.ts"
 
 // The individual integrated APIs return parser/readback backends, not a terminal-owned application child.
 // These citations were read at this Termless pin; runtime identity alone is not the source audit.
-const TERM_FEATURES_API_REVISION = "07628619c7b5b5f74de1536df16dab0bc62676b6"
+const TERM_FEATURES_API_REVISION = "d5e6248bfb080c3065f81b78c45bdfe1b37c06d6"
 const TERM_FEATURES_API_CITATIONS: Readonly<Record<string, readonly [string, string]>> = {
   "vendor/vterm/packages/vterm/src/index.ts": [
     "vterm",
