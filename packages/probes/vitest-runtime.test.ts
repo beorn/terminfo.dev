@@ -8,11 +8,28 @@
  */
 import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
-import { dirname, join } from "node:path"
+import { dirname, join, resolve } from "node:path"
 import { expect, test } from "vitest"
 import CensusReporter from "../admin/reporter.ts"
 import { createVitest, version, type Reporter } from "vitest/node"
 import type { RuntimeArtifact } from "./fixtures/vitest-runtime.fixture.ts"
+
+test("production erase configuration isolates reports for repeated invocations", async () => {
+  const directories: string[] = []
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const runtime = await createVitest({
+      root: resolve(dirname(import.meta.filename), "../.."),
+      config: join(dirname(import.meta.filename), "erase.vitest.config.ts"),
+      watch: false,
+    })
+    try {
+      directories.push(runtime.config.attachmentsDir)
+    } finally {
+      await runtime.close()
+    }
+  }
+  expect(directories[0]).not.toBe(directories[1])
+})
 
 test("installed Vitest preserves task-owned checks and awaited reporter attachments", async () => {
   expect(version).toBe("5.0.4")
