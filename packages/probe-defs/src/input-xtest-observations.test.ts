@@ -8,6 +8,7 @@ import { expect, test } from "vitest"
 import { inputProbes } from "./input.ts"
 import { modesProbes } from "./modes.ts"
 import type { LibMouseEvent, LibProbeSource, ProbeCallbackResult, TermProbeSource } from "./types.ts"
+import { readResponse } from "../../terminfo.dev/src/tty.ts"
 
 const xtestIds = ["input.xtest-key", "input.xtest-click", "input.xtest-wheel"] as const
 
@@ -443,6 +444,27 @@ test("modes.application-keypad records supported interaction for KP_5 as SS3 u",
   const observed = JSON.parse(result.assertions?.[0]?.observed ?? "null") as Record<string, unknown>
   expect(observed).toMatchObject({ mode: "application-keypad", control: "a", report: "\x1bOu" })
   expect(result.assertions?.[0]?.expected).toMatch(/SS3 u/)
+})
+
+// The real reader sees a byte stream, not one framed report per stdin chunk.
+test.each([
+  ["coalesced suffix", ["\x1bOu\x1b[12~"]],
+  ["coalesced prefix", ["\x1b[15~\x1bOu"]],
+  ["fragmented", ["\x1bO", "u\x1b[12~"]],
+  ["separate chunks", ["\x1bOu", "\x1b[12~"]],
+] as const)("modes.application-keypad reads SS3 u from %s through actual stdin", async (_label, chunks) => {
+  const ctx = term({
+    input: {
+      async injectKey(key) {
+        for (const bytes of key === "a" ? ["a"] : chunks) process.stdin.emit("data", Buffer.from(bytes))
+      },
+      async injectClick() {},
+    },
+    readInput: (pattern, timeout, inject) => readResponse(pattern, timeout ?? 1000, inject),
+  })
+  const result = await modeProbe("modes.application-keypad").term!(ctx)
+  expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "input_bytes" })
+  expect(JSON.parse(result.response ?? "null").report).toBe("\x1bOu")
 })
 
 // The real input reader returns only regex matches: a digit inside another report is not KP_5.

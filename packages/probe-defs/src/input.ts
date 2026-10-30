@@ -38,7 +38,8 @@ const MODIFY_OTHER_KEYS_3_REPORT = /\x1b\[(?:27;\d+;\d+~|\d+;\d+u)|i/
 const MODIFY_OTHER_KEYS_ENCODING = /\x1b\[(?:27;\d+;105~|105;\d+u)/
 const DECKPAM = "\x1b="
 const DECKPNM = "\x1b>"
-const APPLICATION_KEYPAD_REPORT = /^(?:\x1bOu|5)$/
+// Match within the input stream; a numeric fallback cannot be a CSI parameter or part of a multi-digit token.
+const APPLICATION_KEYPAD_REPORT = /\x1bOu|(?<![0-?\[])5(?![0-9])/
 const APPLICATION_KEYPAD_ENCODING = /^\x1bOu$/
 const PIXEL_MOUSE_SET = "\x1b[?1016h"
 const PIXEL_MOUSE_RESET = "\x1b[?1016l"
