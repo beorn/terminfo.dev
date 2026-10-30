@@ -1469,7 +1469,7 @@ export const modesProbes: ProbeDefinition[] = [
           const off = await queryDecrpm(ctx, 4, "ansi")
           if (off !== null && off !== 0) {
             // The stored reading keeps the Ps (#30557 r2): a permanent state (Ps 3 or 4) fails the toggle.
-            const ok = (on === 1 || on === 3) && (off === 2 || off === 4)
+            const ok = on === 1 && off === 2
             return {
               pass: ok,
               response: JSON.stringify({ on: decrpmReading(on), off: decrpmReading(off) }),

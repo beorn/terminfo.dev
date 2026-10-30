@@ -825,8 +825,8 @@ test("DECSTBM retains support only when the region's inner rows actually move", 
   const probe = scrollbackProbes.find((item) => item.id === "scrollback.decstbm")
   if (!probe?.lib) throw new Error("missing decstbm callback")
   const row = readbackRow("scrollback.decstbm")
-  const before = [["F"], [""], ["A"], ["B"], ["C"]]
-  const after = [["F"], [""], ["B"], ["C"], [""]]
+  const before = [["F"], ["S"], ["A"], ["B"], ["C"]]
+  const after = [["F"], ["S"], ["B"], ["C"], [""]]
   // FIXED on row 1 is the row's control and survives either way, so a row that graded the control
   // alone would read supported on a surface that scrolled nothing. The inner rows are the claim.
   const still = probe.lib(declaredScreen({ [row.seed]: before }))
@@ -1020,6 +1020,46 @@ test.each([
 })
 
 const digest = (value: string): string => `sha256:${createHash("sha256").update(value).digest("hex")}`
+
+// A region beginning one or more rows too high must move a nonblank adjacent control.
+// The older ignored-region controls leave that row blank and miss this narrower fault.
+test.each([
+  ["scrollback.set-region", "\x1b[5;10r", "\x1b[2;10r", 3],
+  ["scrollback.decstbm", "\x1b[3;6r", "\x1b[2;6r", 1],
+] as const)("%s witnesses the exact region top in both callback arms", async (id, requested, wrong, adjacent) => {
+  const definition = findScrollback(id)
+  for (const replace of [false, true]) {
+    const surface = createSemanticSurface()
+    const ctx = libProbeSource(surface)
+    const feed = ctx.feed.bind(ctx)
+    ctx.feed = (bytes) => feed(replace ? bytes.replaceAll(requested, wrong) : bytes)
+    const lib = definition.lib!(ctx)
+    const app = regionReadbackApp(12, 61)
+    const write = app.context.write.bind(app.context)
+    app.context.write = (bytes) => write(replace ? bytes.replaceAll(requested, wrong) : bytes)
+    const capture = app.context.capture!.bind(app.context)
+    const adjacentReadings: string[] = []
+    app.context.capture = async (request) => {
+      if (request.label.endsWith("pre-edit seed") || request.label.endsWith("post-sequence target")) {
+        adjacentReadings.push(app.surface.getCell(adjacent, 0).char)
+      }
+      return capture(request)
+    }
+    const term = await definition.term!(app.context)
+    if (!replace) {
+      expect(surface.getCell(adjacent, 0).char).toBe("S")
+      expect(adjacentReadings).toEqual(["S", "S"])
+    }
+    for (const result of [lib, term]) {
+      if (replace) {
+        expect(result.observation?.outcome).not.toBe("supported")
+        expect(result.pass).toBe(false)
+      } else {
+        expect(result.observation?.outcome).toBe("supported")
+      }
+    }
+  }
+})
 
 /**
  * A `TermProbeSource` over this repository's own semantic terminal. The app callbacks run for real, and

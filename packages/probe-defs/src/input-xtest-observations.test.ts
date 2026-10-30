@@ -61,6 +61,7 @@ function inputAndRead(
     clicks?: Record<number, string>
     clickReports?: string[]
     dragReports?: string[]
+    cellSize?: { width: number; height: number } | null
   },
   writes: string[] = [],
 ): { ctx: TermProbeSource; keys: string[]; clicks: number[]; drags: number[] } {
@@ -72,6 +73,18 @@ function inputAndRead(
   const ctx = term({
     write(text) {
       writes.push(text)
+    },
+    queryWithSentinelOutcome: async (sequence) => {
+      if (script.cellSize === null) return { match: null, reason: "sentinel", raw: "", rawBase64: "" }
+      const { width, height } = script.cellSize ?? { width: 16, height: 16 }
+      const raw =
+        sequence === "\x1b[16t"
+          ? `\x1b[6;${height};${width}t`
+          : sequence === "\x1b[14t"
+            ? `\x1b[4;${height * 24};${width * 80}t`
+            : undefined
+      if (raw === undefined) throw new Error(`Unexpected geometry query ${JSON.stringify(sequence)}`)
+      return { match: raw.match(/\x1b\[\d+;(\d+);(\d+)t/), reason: "reply", raw, rawBase64: "" }
     },
     input: {
       async injectKey(key) {
@@ -168,14 +181,27 @@ test("input.xtest-key aborts when plain a does not reach the app, and does not i
 
 test("input.xtest-key records interaction after plain-a control then ctrl+a", async () => {
   const writes: string[] = []
-  const { ctx, keys } = inputAndRead({ keys: { a: "a", "ctrl+a": "\x01" } }, writes)
+  const { ctx, keys } = inputAndRead({ keys: { a: "a", "ctrl+a": "\x1b[97;5u" } }, writes)
   const result = (await probe("input.xtest-key").term!(ctx)) as ProbeCallbackResult
   expect(keys).toEqual(["a", "ctrl+a"])
   expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "input_bytes" })
   expect(result.assertions?.[0]).toMatchObject({ kind: "positive", action: "xtest-key:ctrl+a" })
   const observed = JSON.parse(result.assertions?.[0]?.observed ?? "null") as Record<string, unknown>
-  expect(observed).toMatchObject({ control: "a", report: "\x01" })
+  expect(observed).toMatchObject({ control: "a", report: "\x1b[97;5u" })
 })
+
+// Existing delivery tests accepted any modified key; these reports deny the exact ctrl+a claim.
+test.each(["\x01", "\x1b[98;5u", "\x1b[27;5;98~", "\x1b[97;2u"])(
+  "input.xtest-key rejects the wrong encoding %j after a successful delivery control",
+  async (report) => {
+    const { ctx, keys } = inputAndRead({ keys: { a: "a", "ctrl+a": report } })
+    const result = await probe("input.xtest-key").term!(ctx)
+    expect(keys).toEqual(["a", "ctrl+a"])
+    expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "input_bytes" })
+    expect(result.assertions?.[0]).toMatchObject({ kind: "negative" })
+    expect(JSON.parse(result.response!)).toMatchObject({ control: "a", report })
+  },
+)
 
 test("input.xtest-click records interaction under 1000+1006 after a same-run control click", async () => {
   const writes: string[] = []
@@ -653,6 +679,36 @@ test("input.pixel-mouse records unsupported interaction when 1016 still reports 
   expect(result.assertions?.[0]).toMatchObject({ kind: "negative", action: "pixel-mouse:1" })
   const observed = JSON.parse(result.assertions?.[0]?.observed ?? "null") as Record<string, unknown>
   expect(observed).toMatchObject({ mode: "1016", control: cell, report: cell })
+})
+
+// Distinctness alone also accepts shifted cell coordinates and pixels in an adjacent cell.
+test.each([
+  ["\x1b[<0;73;65M", "supported"],
+  ["\x1b[<0;80;80M", "supported"],
+  ["\x1b[<0;11;6M", "unsupported"],
+  ["\x1b[<0;72;65M", "unsupported"],
+  ["\x1b[<0;81;65M", "unsupported"],
+  ["\x1b[<0;73;64M", "unsupported"],
+  ["\x1b[<0;73;81M", "unsupported"],
+] as const)("input.pixel-mouse measures the predicted pixel box for %j", async (report, outcome) => {
+  const { ctx } = inputAndRead({
+    clickReports: ["\x1b[<0;10;5M", report],
+    cellSize: { width: 8, height: 16 },
+  })
+  const result = await probe("input.pixel-mouse").term!(ctx)
+  expect(result.observation).toMatchObject({ outcome, assertionType: "input_bytes" })
+  expect(result.assertions?.[0]?.kind).toBe(outcome === "supported" ? "positive" : "negative")
+})
+
+test("input.pixel-mouse keeps missing cell geometry as named coverage without a feature verdict", async () => {
+  const writes: string[] = []
+  const { ctx, clicks } = inputAndRead({ clickReports: ["\x1b[<0;10;5M", "\x1b[<0;80;80M"], cellSize: null }, writes)
+  const result = await probe("input.pixel-mouse").term!(ctx)
+  expect(result.notTested).toMatchObject({ noObservable: expect.stringContaining("no cell geometry") })
+  expect(result.observation).toBeUndefined()
+  expect(result.assertions ?? []).toEqual([])
+  expect(clicks).toEqual([1])
+  expect(writes).not.toContain("\x1b[?1016h")
 })
 
 test("input.pixel-mouse throws when the 1016 click is silent after delivery control, and still resets 1016", async () => {

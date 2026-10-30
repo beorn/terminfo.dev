@@ -906,6 +906,27 @@ test("insert-replace capture contrasts replacement with IRM insertion", async ()
   })
 })
 
+// Permanent-state replies are well formed but cannot prove the claimed set/reset toggle.
+test.each([
+  [1, 2, "supported"],
+  [3, 2, "unsupported"],
+  [1, 4, "unsupported"],
+  [3, 4, "unsupported"],
+] as const)("insert-replace measures toggle states %i then %i", async (on, off, outcome) => {
+  const definition = modesProbes.find((item) => item.id === "modes.insert-replace")
+  if (!definition?.term) throw new Error("Missing app IRM callback")
+  const writes: string[] = []
+  const ctx = captureSource(24, 80, writes, [])
+  const states = [on, off]
+  ctx.queryWithSentinel = async (_sequence, pattern) => pattern.exec(`\x1b[4;${states.shift()}$y`)
+  const result = await definition.term(ctx)
+  expect(result.observation).toMatchObject({ outcome, assertionType: "query_reply" })
+  expect(result.assertions?.[0]?.kind).toBe(outcome === "supported" ? "positive" : "negative")
+  expect(result.response).toContain(`Ps ${on}`)
+  expect(result.response).toContain(`Ps ${off}`)
+  expect(writes.at(-1)).toBe("\x1b[4l")
+})
+
 test("left/right margin capture contrasts an unconstrained write with a margin-confined wrap", async () => {
   const definition = modesProbes.find((item) => item.id === "modes.left-right-margin")
   if (!definition?.term) throw new Error("Missing app margin callback")
