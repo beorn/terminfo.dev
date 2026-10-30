@@ -85,6 +85,68 @@ function cursorQueue(...positions: Array<{ row: number; col: number } | null>) {
   return async () => (index < positions.length ? positions[index++] : null) ?? null
 }
 
+// #31849: received fixture coordinates and absent CPRs are different causes.
+test.each(["text.basic", "text.tab", "text.hts", "text.wrap"])(
+  "%s names a received wrong home as fixture FAILURE, without diagnosing its provider",
+  async (id) => {
+    const result = await byId(id).term(
+      app({
+        cols: 80,
+        queryMode: async () => "set",
+        queryCursorPosition: cursorQueue({ row: 2, col: 7 }),
+      }),
+    )
+    expect(result.tests).toContainEqual({
+      id: "criterion",
+      status: "test-failure",
+      reason: "fixture not qualified: home 1;1, got 2;7",
+    })
+    expect(JSON.stringify(result)).not.toContain("provider is not position-sensitive")
+    expect(result.response).toContain('"row":2,"col":7')
+  },
+)
+
+test.each([
+  ["text.basic", []],
+  ["text.basic", [{ row: 1, col: 1 }]],
+  ["text.tab", []],
+  ["text.tab", [{ row: 1, col: 1 }]],
+  [
+    "text.tab",
+    [
+      { row: 1, col: 1 },
+      { row: 1, col: 9 },
+    ],
+  ],
+  ["text.wrap", []],
+] as const)("%s names absent cursor readback as TODO after %j", async (id, positions) => {
+  const result = await byId(id).term(
+    app({
+      cols: 80,
+      queryMode: async () => "set",
+      queryCursorPosition: cursorQueue(...positions, null),
+    }),
+  )
+  expect(result.tests).toContainEqual({
+    id: "criterion",
+    status: "test-todo",
+    reason: "no cursor-position readback",
+  })
+})
+
+test("the combined tab fixture names a received wrong comparison stop as FAILURE", async () => {
+  const result = await byId("text.tab").term(
+    app({
+      queryCursorPosition: cursorQueue({ row: 1, col: 1 }, { row: 1, col: 8 }, { row: 1, col: 6 }),
+    }),
+  )
+  expect(result.tests).toContainEqual({
+    id: "criterion",
+    status: "test-failure",
+    reason: "fixture not qualified: expected 1;9, got 1;8",
+  })
+})
+
 test("text width claims require an ASCII control and the named sample", async () => {
   for (const id of [
     "text.wide.emoji",
@@ -612,7 +674,7 @@ test("text.wrap negative controls: unqualified control, spoofing, wrong target, 
     app({ cols: 61, queryMode: async () => "set", queryCursorPosition: cursorQueue(null) }),
   )
   expect(missingHome.observation).toBeUndefined()
-  expect(missingHome.tests).toEqual([{ id: "criterion", status: "test-failure", reason: "no-response" }])
+  expect(missingHome.tests).toEqual([{ id: "criterion", status: "test-todo", reason: "no cursor-position readback" }])
 
   const missingControl = await byId("text.wrap").term(
     app({ cols: 61, queryMode: async () => "set", queryCursorPosition: cursorQueue({ row: 1, col: 1 }, null) }),
@@ -706,7 +768,7 @@ test("text.tab and text.hts grade the combined HT/HTS fixture from qualified seq
 
     const missing = await byId(id).term(app({ cols: 80, queryCursorPosition: cursorQueue(null) }))
     expect(missing.observation, id).toBeUndefined()
-    expect(missing.tests, id).toEqual([{ id: "criterion", status: "test-failure", reason: "no-response" }])
+    expect(missing.tests, id).toEqual([{ id: "criterion", status: "test-todo", reason: "no cursor-position readback" }])
   }
 })
 

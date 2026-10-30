@@ -109,37 +109,63 @@ function tabCombinedResult(
 ): ProbeCallbackResult {
   const response = JSON.stringify({ cols, home, comparison, owned })
   if (!home) {
-    return { pass: false, response, tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }] }
+    return {
+      pass: false,
+      response,
+      tests: [{ id: "criterion", status: "test-todo", reason: "no cursor-position readback" }],
+    }
   }
   if (home.row !== 1 || home.col !== 1) {
     return {
       pass: false,
       response,
+      tests: [
+        {
+          id: "criterion",
+          status: "test-failure",
+          reason: `fixture not qualified: home 1;1, got ${home.row};${home.col}`,
+        },
+      ],
       observation: {
         outcome: "inconclusive",
         reason: "insufficient-evidence",
         assertionType: "query_reply",
-        note: "Measured home position was not row 1, column 1; the cursor-query provider is not position-sensitive",
+        note: `fixture not qualified: home 1;1, got ${home.row};${home.col}`,
       },
     }
   }
   if (!comparison) {
-    return { pass: false, response, tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }] }
+    return {
+      pass: false,
+      response,
+      tests: [{ id: "criterion", status: "test-todo", reason: "no cursor-position readback" }],
+    }
   }
   if (comparison.row !== 1 || comparison.col !== 9) {
     return {
       pass: false,
       response,
+      tests: [
+        {
+          id: "criterion",
+          status: "test-failure",
+          reason: `fixture not qualified: expected 1;9, got ${comparison.row};${comparison.col}`,
+        },
+      ],
       observation: {
         outcome: "inconclusive",
         reason: "insufficient-evidence",
         assertionType: "query_reply",
-        note: "Comparison stop at column 9 was not established; fixture setup not qualified",
+        note: `fixture not qualified: expected 1;9, got ${comparison.row};${comparison.col}`,
       },
     }
   }
   if (!owned) {
-    return { pass: false, response, tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }] }
+    return {
+      pass: false,
+      response,
+      tests: [{ id: "criterion", status: "test-todo", reason: "no cursor-position readback" }],
+    }
   }
   const expected = "combined HT/HTS fixture advances to the nearest owned stop at row 1, column 6"
   if (owned.row === 1 && owned.col === 6) {
@@ -452,24 +478,37 @@ export const textProbes: ProbeDefinition[] = [
         ctx.write("\x1b[1;1H\x1b[2K") // clear line, move to 1;1
         const before = await ctx.queryCursorPosition()
         if (!before) {
-          return { pass: false, tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }] }
+          return {
+            pass: false,
+            tests: [{ id: "criterion", status: "test-todo", reason: "no cursor-position readback" }],
+          }
         }
         if (before.row !== 1 || before.col !== 1) {
           return {
             pass: false,
             response: JSON.stringify({ before }),
+            tests: [
+              {
+                id: "criterion",
+                status: "test-failure",
+                reason: `fixture not qualified: home 1;1, got ${before.row};${before.col}`,
+              },
+            ],
             observation: {
               outcome: "inconclusive",
               reason: "insufficient-evidence",
               assertionType: "query_reply",
-              note: "Measured home position was not row 1, column 1; the cursor-query provider is not position-sensitive",
+              note: `fixture not qualified: home 1;1, got ${before.row};${before.col}`,
             },
           }
         }
         ctx.write("Hello")
         const pos = await ctx.queryCursorPosition()
         if (!pos) {
-          return { pass: false, tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }] }
+          return {
+            pass: false,
+            tests: [{ id: "criterion", status: "test-todo", reason: "no cursor-position readback" }],
+          }
         }
         const pass = pos.row === 1 && pos.col === 6
         return {
@@ -627,18 +666,25 @@ export const textProbes: ProbeDefinition[] = [
           return {
             pass: false,
             response: JSON.stringify({ cols, decawm }),
-            tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }],
+            tests: [{ id: "criterion", status: "test-todo", reason: "no cursor-position readback" }],
           }
         }
         if (home.row !== 1 || home.col !== 1) {
           return {
             pass: false,
             response: JSON.stringify({ cols, decawm, home }),
+            tests: [
+              {
+                id: "criterion",
+                status: "test-failure",
+                reason: `fixture not qualified: home 1;1, got ${home.row};${home.col}`,
+              },
+            ],
             observation: {
               outcome: "inconclusive",
               reason: "insufficient-evidence",
               assertionType: "query_reply",
-              note: "Measured home position was not row 1, column 1; the cursor-query provider is not position-sensitive",
+              note: `fixture not qualified: home 1;1, got ${home.row};${home.col}`,
             },
           }
         }
