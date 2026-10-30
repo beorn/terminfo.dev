@@ -176,10 +176,25 @@ export async function withTTYQueryTrace<T>(
     mode === "record"
       ? withCallLog(nativeTTYHost, { mode, log })
       : withCallLog<typeof nativeTTYHost>(null, { mode, log })
+  let scopeFailure: unknown
+  let scopeFailed = false
   try {
     return await queryTraceContext.run({ host: session.context }, fn)
+  } catch (error) {
+    scopeFailed = true
+    scopeFailure = error
+    throw error
   } finally {
-    session.finish()
+    try {
+      session.finish()
+    } catch (error) {
+      if (scopeFailed && error instanceof IncompleteReplay) {
+        error.cause = scopeFailure
+        const reason = scopeFailure instanceof Error ? scopeFailure.message : String(scopeFailure)
+        error.message = "TTY trace could not finish: " + error.message + "; scope failed: " + reason
+      }
+      throw error
+    }
     const projected = projectTTYLog(log)
     queries.push(...projected.queries)
     events.push(...projected.events)

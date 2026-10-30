@@ -24,7 +24,7 @@ import {
   type TTYQueryTrace,
 } from "./tty.ts"
 import { sentinelGraceMs } from "@terminfo/probe-defs"
-import { readCallLog, type CallLog } from "viprobe"
+import { IncompleteReplay, readCallLog, type CallLog } from "viprobe"
 import { sentinelNegativeResult } from "../../probe-defs/src/helpers.ts"
 
 const originalWrite = process.stdout.write
@@ -40,6 +40,34 @@ function reply(bytes: string) {
 }
 
 describe("TTY transaction replies", () => {
+  it("refuses a completed TTY artifact when an injection cancels its pending reader", async () => {
+    const queries: TTYQueryTrace[] = []
+    const events: TTYTraceEvent[] = []
+    let published = false
+    const listeners = process.stdin.listenerCount("data")
+    const failure = new Error("Input injection lost custody")
+    const attempt = withTTYQueryTrace(
+      queries,
+      events,
+      () =>
+        readResponse(/^a/, 50, async () => {
+          throw failure
+        }),
+      {
+        onLog() {
+          published = true
+        },
+      },
+    )
+    await expect(attempt).rejects.toBeInstanceOf(IncompleteReplay)
+    await expect(attempt).rejects.toMatchObject({ cause: failure })
+    await expect(attempt).rejects.toThrow(/Input injection lost custody/)
+    expect(published).toBe(false)
+    expect(queries).toEqual([])
+    expect(events).toEqual([])
+    expect(process.stdin.listenerCount("data")).toBe(listeners)
+  })
+
   it("retains sentinel ordering facts through offline TTY replay", async () => {
     const queries: TTYQueryTrace[] = []
     const events: TTYTraceEvent[] = []
