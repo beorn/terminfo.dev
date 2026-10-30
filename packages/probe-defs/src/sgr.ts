@@ -101,9 +101,16 @@ async function blinkCapture(ctx: TermProbeSource, fixture: SgrCaptureFixture): P
     styledCapturedAt: styled.capturedAt,
     ...(plain ? { plainCapturedAt: plain.capturedAt } : {}),
   }))
+  // An undecided digest comparison leaves the retained frames for review, under the same named rows the
+  // pair path uses; a result with no rows is recorded as a test failure (#31812 first-line review).
   const inconclusive = (note: string, observed: string): ProbeCallbackResult => ({
     pass: false,
     response: observed,
+    criterionBranch: "visual-review",
+    tests: [
+      { id: "capture", status: "supported", assertionRefs: [0] },
+      { id: "review", status: "test-todo", reason: note },
+    ],
     observation: {
       outcome: "inconclusive",
       reason: "insufficient-evidence",
