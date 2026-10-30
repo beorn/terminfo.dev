@@ -451,6 +451,7 @@ it("names the writer default when an inconclusive capture callback omits its tes
     undefined,
     "normal control",
   )
+  if (!callback.observation) throw new Error("Expected the existing captured visual-review observation")
   expect(callback.observation?.outcome).toBe("inconclusive")
   const { tests: _omitted, ...rowless } = callback
   const result = record(rowless)
