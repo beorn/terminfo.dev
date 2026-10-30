@@ -947,20 +947,26 @@ export async function captureRegionReadbackDecision(
     const { refusal: instability, stability } = await captureStabilityPair(
       id,
       assertionType,
-      () =>
-        read({
+      async () => {
+        const measured = await read({
           role: "control",
           label: `${id}: capture stability 1`,
           region: spec.region,
           pixelGeometry: spec.pixelGeometry,
-        }),
-      () =>
-        read({
+        })
+        frames.push(measured.frame)
+        return measured
+      },
+      async () => {
+        const measured = await read({
           role: "control",
           label: `${id}: capture stability 2`,
           region: spec.region,
           pixelGeometry: spec.pixelGeometry,
-        }),
+        })
+        frames.push(measured.frame)
+        return measured
+      },
     )
     if (instability) return review(instability)
     for (const [index, step] of steps.entries()) {

@@ -197,7 +197,7 @@ test("a painted edit that reaches the expected frame is supported, from three wi
     "editing.delete-chars: post-sequence target",
     "editing.delete-chars: expected frame",
   ])
-  expect(result.observation.frames).toHaveLength(6)
+  expect(result.observation.frames).toHaveLength(8)
 })
 
 test("a terminal that leaves the edit in place is unsupported only because the witness proved the paint", async () => {
@@ -354,7 +354,7 @@ test("an ignored-attribute plane names the attribute-dropping run unsupported, b
   const result = await decide(fake, PLANE_SPEC)
   expect(result.observation.outcome).toBe("unsupported")
   expect(result.assertions?.[0]?.kind).toBe("negative")
-  expect(result.observation.frames).toHaveLength(8)
+  expect(result.observation.frames).toHaveLength(10)
   expect(regionReads(fake).map(({ label }) => label)).toEqual([
     "editing.delete-chars: capture stability 1",
     "editing.delete-chars: capture stability 2",
@@ -376,7 +376,7 @@ test("a spec with no ignored plane keeps its three-plane verdict", async () => {
   const fake = ownedWindow({ repaintAfterPolls: 1, regionDigest: painter({ applied: "edited" }) })
   const result = await decide(fake)
   expect(result.observation.outcome).toBe("supported")
-  expect(result.observation.frames).toHaveLength(6)
+  expect(result.observation.frames).toHaveLength(8)
 })
 
 test("a setup reference must equal the seed before either a verdict or a collapsed-control refusal", async () => {
@@ -392,7 +392,7 @@ test("a setup reference must equal the seed before either a verdict or a collaps
     expect(result.observation.note).toContain("seed")
     expect(result.observation.note).not.toContain("third distinct")
     expect(result.assertions ?? []).toHaveLength(0)
-    expect(result.observation.frames).toHaveLength(10)
+    expect(result.observation.frames).toHaveLength(12)
   }
   const fake = ownedWindow({
     repaintAfterPolls: 1,
@@ -403,12 +403,12 @@ test("a setup reference must equal the seed before either a verdict or a collaps
   expect(result.observation.note).not.toContain("cannot separate")
 })
 
-test("a matching setup reference adds one witnessed frame and old specs keep their four frames", async () => {
+test("a matching setup reference adds independent witnessed evidence", async () => {
   for (const setupReference of [undefined, PLANES.setupReference]) {
     const fake = ownedWindow({ repaintAfterPolls: 1, regionDigest: planePainter("expected") })
     const result = await decide(fake, { ...PLANE_SPEC, ...(setupReference && { setupReference }) })
     expect(result.observation.outcome).toBe("supported")
-    expect(result.observation.frames).toHaveLength(setupReference ? 10 : 8)
+    expect(result.observation.frames).toHaveLength(setupReference ? 12 : 10)
     expect(regionReads(fake).map(({ label }) => label)).toEqual([
       "editing.delete-chars: capture stability 1",
       "editing.delete-chars: capture stability 2",
@@ -845,7 +845,7 @@ test("a degenerate seed-equals-expected run cites the frames it took", async () 
   expect(result.observation.outcome).toBe("inconclusive")
   expect(result.observation.assertionType).toBe("screenshot")
   expect(result.observation.screenshotRef).toBeDefined()
-  expect(result.observation.frames).toHaveLength(6)
+  expect(result.observation.frames).toHaveLength(8)
 })
 
 test("a paint-witness timeout cites the capture it took, so the run stays writable", async () => {

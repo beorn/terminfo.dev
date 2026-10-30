@@ -227,7 +227,7 @@ cell-aligned pixel crops against independently painted references behind a paint
 For each declared frame, the sentinel must complete a same-crop space→glyph→space→glyph
 roundtrip with exact repeatable digests; an intermediate clear alone cannot qualify paint.
 This relies on faithful current captures and ordered terminal paint, not arbitrary adapter replay
-or compositor completion. Missing roundtrip returns retain `no freshness witness` review.
+or compositor completion. Missing roundtrip returns retain `no freshness witness` review. Both initial stability captures remain in the result frames because response-backed assertions cite their cell and whole-image digests.
 Expected-change and expected-no-change claims have separate controls; an unchanged frame
 without freshness evidence remains review TEST TODO. Each decided signal retains its own
 assertion. Missing discriminators and unmeasured feature facets remain named review rows;

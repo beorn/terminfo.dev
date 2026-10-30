@@ -2619,9 +2619,13 @@ it.each([
               : lowerLabel.includes("pre-edit seed")
                 ? "seed"
                 : lowerLabel.includes("post-sequence target")
-                  ? "third"
+                  ? id === "modes.alt-screen.exit"
+                    ? "seed"
+                    : "third"
                   : lowerLabel.includes("expected frame")
-                    ? "expected"
+                    ? id === "modes.alt-screen.exit"
+                      ? "seed"
+                      : "expected"
                     : lowerLabel.includes("ignored-attribute")
                       ? "ignored"
                       : lowerLabel.includes("setup reference")
@@ -2670,6 +2674,30 @@ it.each([
       const [batch] = await Promise.all([pending, vi.runAllTimersAsync()])
       expect(batch.ungradedDiagnostics).toEqual({})
       const result = batch.results.find((entry) => entry.featureId === id)!
+      if (id === "modes.alt-screen.exit") {
+        // A real successful alternate-marker control cites the initial stability pair in its response.
+        // Those cleared-canvas digests differ from every later primary/alternate/witness capture.
+        expect(result.tests).toMatchObject([
+          { id: "primary-marker-restored", status: "supported", assertionRefs: [0] },
+          { id: "alternate-marker-control", status: "supported", assertionRefs: [1] },
+          { id: "remaining-facets", status: "test-todo" },
+        ])
+        expect(batch.assertions).toHaveLength(2)
+        Object.assign(draft.rawReplies, batch.rawReplies)
+        draft.results = batch.results
+        draft.assertions = batch.assertions
+        draft.screenshotRefs = batch.screenshotRefs
+        const read = parseRun(
+          "native-visual-stability-fixture.json",
+          JSON.stringify(sealRunDraft(draft)),
+          [id],
+          new Map([[probeHash, ownManifest]]),
+        )
+        expect(read.results?.[0]).toMatchObject({ status: "test-todo", frames: result.frames })
+        expect(read.results?.[0]?.frames?.filter((frame) => frame.label.includes("capture stability"))).toHaveLength(2)
+        expect(read.assertions).toHaveLength(2)
+        return
+      }
       if (batch.assertions.length === 0) {
         expect(result).toMatchObject({ status: "test-todo" })
         expect(result.tests.some((check) => check.status === "test-todo")).toBe(true)
