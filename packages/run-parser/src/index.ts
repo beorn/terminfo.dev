@@ -761,7 +761,7 @@ export function parseCaptureDecision(
   schemaVersion: 2 | 3 | 4 = 4,
 ): CaptureDecision {
   if (!object(value)) fail(path, "invalid pre-seal capture decision")
-  for (const key of ["runSha256", "observation", "verifiesIdentity", "presentsEvidence", "origin"]) {
+  for (const key of ["runSha256", "observation", "verifiesIdentity", "presentsEvidence", "accepted", "origin"]) {
     if (Object.hasOwn(value, key)) fail(path, `pre-seal capture decision cannot set ${key}`)
   }
   for (const key of ["id", "runId", "featureId", "reviewer", "reason"]) {

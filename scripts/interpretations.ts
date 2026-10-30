@@ -37,13 +37,39 @@ function interpretationSubject(
 
 export const hasPresentationDecision = (entry: object): boolean => Object.hasOwn(entry, "presentsEvidence")
 
+const MESSAGE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+const ISO_WITH_OFFSET = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/
+
+/** The entry is the record; its acceptance names the non-author acceptor, their GO message id and when. */
+function validateAccepted(entry: Record<string, unknown>, id: string, path: string): void {
+  const accepted = entry.accepted
+  if (!object(accepted)) fail(path, `presentation ${id} requires accepted`)
+  for (const key of Object.keys(accepted)) {
+    if (!["by", "wire", "at"].includes(key)) fail(path, `presentation ${id} cannot set accepted.${key}`)
+  }
+  if (!nonempty(accepted.by) || accepted.by === entry.reviewer) {
+    fail(path, `presentation ${id} requires a non-author accepted.by`)
+  }
+  if (typeof accepted.wire !== "string" || !MESSAGE_ID.test(accepted.wire)) {
+    fail(path, `presentation ${id} requires accepted.wire as a full message id`)
+  }
+  if (typeof accepted.at !== "string" || !ISO_WITH_OFFSET.test(accepted.at) || Number.isNaN(Date.parse(accepted.at))) {
+    fail(path, `presentation ${id} requires accepted.at as an ISO time with an offset`)
+  }
+}
+
 export function validatePresentationShape(
   entry: Record<string, unknown>,
   path: string,
   catalog: ReadonlySet<string>,
 ): void {
-  if (!hasPresentationDecision(entry)) return
   const id = nonempty(entry.id) ? entry.id : "unnamed"
+  if (!hasPresentationDecision(entry)) {
+    if (Object.hasOwn(entry, "accepted")) {
+      fail(path, `interpretation ${id} cannot set accepted without a presentation decision`)
+    }
+    return
+  }
   if (typeof entry.presentsEvidence !== "boolean") fail(path, `presentation ${id}: invalid presentsEvidence`)
   for (const field of ["reviewed", "verifiesIdentity", "observation", "origin"]) {
     if (Object.hasOwn(entry, field)) fail(path, `presentation ${id} cannot set ${field}`)
@@ -58,6 +84,7 @@ export function validatePresentationShape(
   if (!nonempty(entry.reviewer) || !nonempty(entry.reason)) {
     fail(path, `presentation ${id} requires reviewer and reason`)
   }
+  validateAccepted(entry, id, path)
   if (!Array.isArray(entry.sources) || entry.sources.length === 0 || !entry.sources.every(nonempty)) {
     fail(path, `presentation ${id} requires sources`)
   }
