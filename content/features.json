@@ -908,7 +908,7 @@
     "tags": ["dec-private-modes", "xterm-extensions"],
     "group": "alt-screen",
     "body": "DECSET 1049 switches to the alternate screen buffer and saves the cursor position. The sequence is <code>ESC [ ? 1049 h</code>. The alternate screen is a separate buffer used by full-screen TUI applications (vim, less, htop, tmux) so they can render without disturbing the user's scrollback history.\n\nWhen the application exits and sends DECRST 1049, the terminal restores the original buffer contents and cursor position — the user's previous shell output reappears as if the TUI never ran. This is why closing vim brings back the terminal content that was there before.\n\nMode 1049 combines three operations: save cursor (DECSC), switch to alt screen (?47), and clear the alt screen. Universally supported in modern terminals.",
-    "probe": "App probe: query DECRPM for private mode 1049. A set/reset reply establishes mode recognition only; unknown or no reply from the attempted query is TEST FAILURE. This does not measure the alternate-buffer switch or cursor restore.",
+    "probe": "App probe: query DECRPM for private mode 1049 with <code>CSI ? 1049 $ p</code>. Expected: set, reset or permanently set (Ps 1-3) is supported as mode recognition only; permanently reset (Ps 4) is unsupported, because the terminal knows the mode and cannot set it. Not recognized (Ps 0) is inconclusive, and no reply is TEST FAILURE. The App probe does not measure the alternate-buffer switch or cursor restore. Headless: with two primary rows seeded and the cursor parked, <code>CSI ? 1049 h</code> must switch to a cleared alternate buffer; a seeded span that is not blank is unsupported. The full seeded roundtrip is supported only when, after <code>CSI ? 1049 l</code>, both primary rows and the saved cursor are restored and the alternate marker has not leaked. A restore failure after a clean entry is inconclusive, because it cannot be attributed to entry; a fixture too small or a failed readback is also inconclusive.",
     "baseline": "core",
     "sequence": "ESC [ ? 1049 h"
   },
@@ -929,7 +929,7 @@
     "url": "https://cirw.in/blog/bracketed-paste",
     "tags": ["dec-private-modes", "xterm-extensions"],
     "body": "Bracketed paste mode wraps pasted text in special escape sequences so applications can distinguish pasted content from typed input. Enable with <code>ESC [ ? 2004 h</code>. When active, pasted text is bracketed between <code>ESC [ 200 ~</code> (start) and <code>ESC [ 201 ~</code> (end).\n\nThis is a security feature: without bracketed paste, pasting text containing newlines into a shell prompt would immediately execute commands. With bracketed paste, the shell can treat the entire paste as literal text. This also enables editors to handle paste correctly — vim can enter paste mode automatically, preserving indentation rather than auto-indenting each line.\n\nWidely adopted. Most modern shells (bash, zsh, fish) and editors (vim, emacs) enable bracketed paste by default.",
-    "probe": "App probe: query DECRPM for private mode 2004. A set/reset reply establishes mode recognition only; unknown or no reply from the attempted query is TEST FAILURE. This does not measure paste delimiters.",
+    "probe": "App probe: query DECRPM for private mode 2004 with <code>CSI ? 2004 $ p</code>. Expected: set, reset or permanently set (Ps 1-3) is supported as mode recognition only; permanently reset (Ps 4) is unsupported, because the terminal knows the mode and cannot set it. Not recognized (Ps 0) is inconclusive, and no reply is TEST FAILURE. This does not measure paste delimiters.",
     "baseline": "modern",
     "sequence": "ESC [ ? 2004 h"
   },
@@ -939,7 +939,7 @@
     "url": "https://gitlab.freedesktop.org/terminal-wg/specifications/-/merge_requests/2",
     "tags": ["dec-private-modes"],
     "body": "Synchronized output prevents flicker during screen updates by batching terminal output. The application sends <code>ESC [ ? 2026 h</code> before a render and <code>ESC [ ? 2026 l</code> after. The terminal buffers all output between these markers and renders it as a single atomic frame.\n\nWithout synchronized output, complex TUI updates (clearing screen, repositioning cursor, writing content) may partially render between frames, causing visible tearing or flicker. This is especially noticeable over slow connections or with complex layouts.\n\nThis protocol was proposed by the terminal-wg (Terminal Working Group) and adopted by Ghostty, Kitty, WezTerm, foot, Contour, and other modern terminals. It has become the standard way to achieve flicker-free TUI rendering.",
-    "probe": "App probe: query DECRPM for private mode 2026. A set/reset reply establishes mode recognition only; unknown or no reply from the attempted query is TEST FAILURE. This does not measure atomic frame rendering.",
+    "probe": "App probe: query DECRPM for private mode 2026 with <code>CSI ? 2026 $ p</code>. Expected: set, reset or permanently set (Ps 1-3) is supported as mode recognition only; permanently reset (Ps 4) is unsupported, because the terminal knows the mode and cannot set it. Not recognized (Ps 0) is inconclusive, and no reply is TEST FAILURE. This does not measure atomic frame rendering.",
     "baseline": "modern",
     "sequence": "ESC [ ? 2026 h"
   },
@@ -949,7 +949,7 @@
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-Mouse-Tracking",
     "tags": ["dec-private-modes", "xterm-extensions"],
     "body": "DECSET 1000 enables basic mouse click reporting (Normal tracking mode). The sequence is <code>ESC [ ? 1000 h</code>. When enabled, button press and release events are reported to the application. The legacy X10 encoding reports coordinates as single bytes offset by 32, limiting reports to the first 223 columns/rows. For larger terminals, use SGR mouse mode (DECSET 1006) instead.",
-    "probe": "App probe: query DECRPM for private mode 1000. A set/reset reply establishes mode recognition only; unknown or no reply from the attempted query is TEST FAILURE. This does not measure mouse event bytes.",
+    "probe": "App probe: query DECRPM for private mode 1000 with <code>CSI ? 1000 $ p</code>. Expected: set, reset or permanently set (Ps 1-3) is supported as mode recognition only; permanently reset (Ps 4) is unsupported, because the terminal knows the mode and cannot set it. Not recognized (Ps 0) is inconclusive, and no reply is TEST FAILURE. This does not measure mouse event bytes.",
     "baseline": "modern",
     "sequence": "ESC [ ? 1000 h"
   },
@@ -959,7 +959,7 @@
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
     "tags": ["dec-private-modes", "xterm-extensions"],
     "body": "SGR mouse mode replaces the legacy X10 mouse encoding with a format that supports arbitrarily large coordinates. Enable with <code>ESC [ ? 1006 h</code> (in addition to a tracking mode like ?1000 or ?1003). Mouse events are reported as <code>ESC [ &lt; button ; col ; row M</code> for press and <code>ESC [ &lt; button ; col ; row m</code> for release.\n\nThe SGR format solves critical limitations of legacy mouse reporting: coordinates are decimal (no 223-column limit), button press and release are distinguishable by the final character (M vs m), and the format is unambiguous (no byte-value collisions with control characters). All modern TUI frameworks use SGR mouse mode.",
-    "probe": "App probe: query DECRPM for private mode 1006. A set/reset reply establishes mode recognition only; unknown or no reply from the attempted query is TEST FAILURE. This does not measure SGR-encoded mouse event bytes.",
+    "probe": "App probe: query DECRPM for private mode 1006 with <code>CSI ? 1006 $ p</code>. Expected: set, reset or permanently set (Ps 1-3) is supported as mode recognition only; permanently reset (Ps 4) is unsupported, because the terminal knows the mode and cannot set it. Not recognized (Ps 0) is inconclusive, and no reply is TEST FAILURE. This does not measure SGR-encoded mouse event bytes.",
     "baseline": "modern",
     "sequence": "ESC [ ? 1006 h"
   },
@@ -969,7 +969,7 @@
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
     "tags": ["dec-private-modes", "xterm-extensions"],
     "body": "DECSET 1003 enables all-motion mouse tracking — the terminal reports mouse movement events even when no button is pressed. The sequence is <code>ESC [ ? 1003 h</code>. This generates significantly more traffic than normal tracking (?1000) or button-event tracking (?1002), so applications should only enable it when hover effects are needed.",
-    "probe": "App probe: query DECRPM for private mode 1003. A set/reset reply establishes mode recognition only; unknown or no reply from the attempted query is TEST FAILURE. This does not measure motion event bytes.",
+    "probe": "App probe: query DECRPM for private mode 1003 with <code>CSI ? 1003 $ p</code>. Expected: set, reset or permanently set (Ps 1-3) is supported as mode recognition only; permanently reset (Ps 4) is unsupported, because the terminal knows the mode and cannot set it. Not recognized (Ps 0) is inconclusive, and no reply is TEST FAILURE. This does not measure motion event bytes.",
     "baseline": "modern",
     "sequence": "ESC [ ? 1003 h"
   },
@@ -979,7 +979,7 @@
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-FocusIn_FocusOut",
     "tags": ["dec-private-modes", "xterm-extensions"],
     "body": "DECSET 1004 enables focus in/out event reporting. The sequence is <code>ESC [ ? 1004 h</code>. When the terminal window gains focus, it sends <code>ESC [ I</code>; when it loses focus, it sends <code>ESC [ O</code>. Applications use this to pause animations, dim the UI, or refresh data when the user returns to the window.",
-    "probe": "App probe: query DECRPM for private mode 1004. A set/reset reply establishes mode recognition only; unknown or no reply from the attempted query is TEST FAILURE. This does not measure focus event bytes.",
+    "probe": "App probe: query DECRPM for private mode 1004 with <code>CSI ? 1004 $ p</code>. Expected: set, reset or permanently set (Ps 1-3) is supported as mode recognition only; permanently reset (Ps 4) is unsupported, because the terminal knows the mode and cannot set it. Not recognized (Ps 0) is inconclusive, and no reply is TEST FAILURE. This does not measure focus event bytes.",
     "baseline": "modern",
     "sequence": "ESC [ ? 1004 h"
   },
@@ -989,7 +989,7 @@
     "url": "https://vt100.net/docs/vt510-rm/DECSCNM.html",
     "tags": ["dec-private-modes", "vt510"],
     "body": "DECSCNM (Screen Mode) swaps the default foreground and background colors for the entire screen. Enable with <code>ESC [ ? 5 h</code>, disable with <code>ESC [ ? 5 l</code>. This is a global mode that affects all displayed content, distinct from SGR 7 which only affects individual character cells.",
-    "probe": "App probe: query DECRPM for private mode 5. A set/reset reply establishes mode recognition only; unknown or no reply from the attempted query is TEST FAILURE. This does not measure rendered colors.",
+    "probe": "App probe: query DECRPM for private mode 5 with <code>CSI ? 5 $ p</code>. Expected: set, reset or permanently set (Ps 1-3) is supported as mode recognition only; permanently reset (Ps 4) is unsupported, because the terminal knows the mode and cannot set it. Not recognized (Ps 0) is inconclusive, and no reply is TEST FAILURE. This does not measure rendered colors.",
     "baseline": "core",
     "sequence": "ESC [ ? 5 h"
   },
@@ -1028,7 +1028,7 @@
     "url": "https://vt100.net/docs/vt510-rm/DECCKM.html",
     "tags": ["dec-private-modes", "vt100"],
     "body": "DECCKM changes the escape sequences generated by arrow keys. Enable with <code>ESC [ ? 1 h</code>. In normal mode, arrow keys send CSI sequences (<code>ESC [ A</code>); in application mode, they send SS3 sequences (<code>ESC O A</code>). Full-screen applications typically enable application cursor mode to get unambiguous key input.",
-    "probe": "App probe: query DECRPM for private mode 1. A set/reset reply establishes mode recognition only; unknown or no reply from the attempted query is TEST FAILURE. This does not measure generated cursor-key bytes.",
+    "probe": "App probe: query DECRPM for private mode 1 with <code>CSI ? 1 $ p</code>. Expected: set, reset or permanently set (Ps 1-3) is supported as mode recognition only; permanently reset (Ps 4) is unsupported, because the terminal knows the mode and cannot set it. Not recognized (Ps 0) is inconclusive, and no reply is TEST FAILURE. This does not measure generated cursor-key bytes.",
     "baseline": "modern",
     "sequence": "ESC [ ? 1 h"
   },
@@ -2144,7 +2144,7 @@
     "url": "https://sw.kovidgoyal.net/kitty/clipboard/",
     "tags": ["osc", "kitty-extensions"],
     "body": "OSC 5522 is the Kitty advanced clipboard protocol, extending OSC 52 with MIME type support, rich content handling, and authorization tokens. It can carry multiple MIME types, such as text/plain, text/html and image/png, in a clipboard operation.\n\nA DECRPM response for mode 5522 establishes protocol recognition. It does not establish clipboard read or write permission, MIME transfer, or paste-event behavior.",
-    "probe": "Query mode 5522 with <code>CSI ? 5522 $ p</code> and parse its DECRPM reply. A positive report establishes protocol recognition only; it does not read or write the clipboard.",
+    "probe": "Query mode 5522 with <code>CSI ? 5522 $ p</code> and parse its DECRPM reply. Expected: set, reset or permanently set (Ps 1-3) is supported as protocol recognition only; permanently reset (Ps 4) is unsupported. Not recognized (Ps 0) answered before the DA1 sentinel is unsupported, while Ps 0 arriving after the sentinel is inconclusive. No complete reply in the deciding window is TEST FAILURE. This does not read or write the clipboard.",
     "baseline": "rich"
   },
   "modes.color-scheme-reporting": {
@@ -2153,7 +2153,7 @@
     "url": "https://contour-terminal.org/vt-extensions/color-palette-update-notifications/",
     "tags": ["xterm-extensions"],
     "body": "Private mode 2031 enables unsolicited notifications when the terminal's color scheme changes between dark and light. When enabled, the terminal sends <code>CSI ? 997 ; Ps n</code> (DECDSR) whenever the scheme changes, where Ps=1 for dark and Ps=2 for light.\n\nApplications can also synchronously query the current scheme via <code>CSI ? 997 n</code> (DECDSR 997). This solves a longstanding problem for TUI applications that need to adapt their color palette to the terminal's dark/light mode. Supported by iTerm2 (3.6.6+), tmux 3.6, Contour, foot, and kitty.",
-    "probe": "Check DECRPM for mode 2031. Fallback: query current scheme via <code>DECDSR 997</code> and check for response.",
+    "probe": "App probe: query DECRPM for mode 2031 with <code>CSI ? 2031 $ p</code>. Expected: set, reset or permanently set (Ps 1-3) is supported as recognition of color-scheme reporting; permanently reset (Ps 4) and not recognized (Ps 0) are unsupported, and no reply is TEST FAILURE. This does not test scheme update events.",
     "baseline": "modern"
   },
   "modes.xtpushsgr": {
@@ -2752,7 +2752,7 @@
     "url": "https://vt100.net/docs/vt510-rm/DECSCLM.html",
     "tags": ["vt510", "dec-private-modes"],
     "body": "DECSCLM (Scrolling Mode) toggles between smooth and jump scrolling via <code>CSI ? 4 h</code> (smooth) and <code>CSI ? 4 l</code> (jump). On the original VT100, smooth scrolling animated text line-by-line at a visible speed, while jump scrolling snapped instantly — a noticeable difference on 1978 CRT hardware.\n\nOn modern terminals this distinction is largely cosmetic. Most terminals either ignore DECSCLM entirely or treat it as a no-op since rendering is already instantaneous. Contour implements it for completeness. xterm supports it and actually does render line-by-line in smooth mode, creating a retro scrolling effect.",
-    "probe": "App probe: query DECRPM for private mode 4. A set/reset reply establishes mode recognition only; unknown or no reply from the attempted query is TEST FAILURE. This does not measure smooth-scroll timing.",
+    "probe": "App probe: query DECRPM for private mode 4 with <code>CSI ? 4 $ p</code>. Expected: set, reset or permanently set (Ps 1-3) is supported as mode recognition only; permanently reset (Ps 4) is unsupported, because the terminal knows the mode and cannot set it. Not recognized (Ps 0) is inconclusive, and no reply is TEST FAILURE. This does not measure smooth-scroll timing.",
     "baseline": "legacy"
   },
   "device.dsr-996-color-scheme": {
