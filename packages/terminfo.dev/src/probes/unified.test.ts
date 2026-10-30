@@ -2600,7 +2600,7 @@ it.each([
         label,
         cells,
       }: {
-        role: "control" | "target" | "alternate" | "restored"
+        role: "control" | "target"
         label: string
         cells?: { top: number; left: number; bottom: number; right: number }
       }) => {

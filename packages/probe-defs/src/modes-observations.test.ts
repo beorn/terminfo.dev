@@ -40,11 +40,11 @@ function captureSource(
       const restoration = /alt-screen\.exit|altscreen-47/.test(label)
       let plane = "stable"
       if (/paint witness|— baseline/.test(label)) plane = witness
-      else if (label.includes("post-sequence target") || label.endsWith("expected frame"))
+      else if (label.includes("post-sequence target") || label.endsWith("expected frame")) {
         plane = palette ? "blue" : "expected"
-      else if (label.endsWith("setup reference frame")) plane = "blue"
+      } else if (label.endsWith("setup reference frame")) plane = "blue"
       else if (label.endsWith("ignored-attribute frame")) plane = palette ? "green" : sgr ? "italic" : "seed"
-      else if (label.endsWith("pre-edit seed"))
+      else if (label.endsWith("pre-edit seed")) {
         plane = palette
           ? "blue"
           : restoration
@@ -52,6 +52,7 @@ function captureSource(
             : sgr && writes.some((entry) => entry.includes("\x1b[1;3m"))
               ? "bold-italic"
               : "seed"
+      }
       const frame = {
         role,
         label,
@@ -913,11 +914,12 @@ test.each([
     result.assertions?.every((assertion) => assertion.kind === "positive"),
     id,
   ).toBe(true)
-  if (id.includes("sgr"))
+  if (id.includes("sgr")) {
     expect(result.tests).toEqual([
       { id: "bold-restored", status: "supported", assertionRefs: [0] },
       { id: "italic-cleared", status: "supported", assertionRefs: [1] },
     ])
+  }
   if (id === "modes.xtsave" || id === "modes.xtrestore") {
     expect(writes.some((entry) => entry.includes("X".repeat(80) + "!"))).toBe(true)
     expect(writes).toContain("\x1b[?7h")
@@ -933,9 +935,12 @@ test.each([
       expect(stale.tests).toMatchObject([
         { id: "review", status: "test-todo", reason: expect.stringContaining("no freshness witness") },
       ])
-      const retained = JSON.parse(stale.response ?? "{}")
+      const retained = JSON.parse(stale.response ?? "{}") as { axes: string[] }
       expect(retained.axes).toHaveLength(2)
-      for (const axis of retained.axes) expect(JSON.parse(axis).review.screenshotRef).toMatch(/^sha256:/)
+      for (const axis of retained.axes) {
+        const response = JSON.parse(axis) as { review: { screenshotRef: string } }
+        expect(response.review.screenshotRef).toMatch(/^sha256:/)
+      }
     } finally {
       vi.useRealTimers()
     }
