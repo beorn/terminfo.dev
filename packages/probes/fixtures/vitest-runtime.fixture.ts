@@ -17,10 +17,18 @@ export interface RuntimeArtifact extends TestArtifactBase {
   checks: Check[]
 }
 
+interface RuntimeFinalRecord {
+  taskId: string
+  checks: Check[]
+}
+
 const artifactKey = Symbol("terminfo-runtime-proof")
 declare module "vitest" {
   interface TestArtifactRegistry {
     [artifactKey]: RuntimeArtifact
+  }
+  interface TaskMeta {
+    terminfoRuntimeProof?: RuntimeFinalRecord
   }
   interface Matchers<R extends void | Promise<void> = void | Promise<void>, T = unknown> {
     toRecorderRuntimeEqual(expected: number): R
@@ -45,31 +53,30 @@ const bothRunning = new Promise<void>((resolve) => {
   release = resolve
 })
 
-// Reporter records must also be complete, so an unrelated early throw cannot qualify.
-test.concurrent.fails.for([
+// These remain real failed tasks; the outer test verifies the exact soft failure and final records.
+test.concurrent.for([
   ["left", 10],
   ["right", 20],
 ] as const)("native soft continuation %s", async ([label, value], context) => {
   const checks: Check[] = []
   sessions.set(context.task, { label, checks })
-  context.expect.soft(value).toRecorderRuntimeEqual(value + 1)
-  if (++arrivals === 2) release()
-  await bothRunning
-  context.expect.soft(value).toRecorderRuntimeEqual(value)
-  const body = JSON.stringify(checks)
   const directory = await mkdtemp(join(tmpdir(), "terminfo-runtime-checks-"))
-  const path = join(directory, "checks.json")
-  await writeFile(path, body)
-  const artifact: RuntimeArtifact = {
-    type: "terminfo:runtime-proof",
-    taskId: context.task.id,
-    checks,
-    attachments: [{ path, contentType: "application/json" }],
-  }
   try {
+    context.expect.soft(value).toRecorderRuntimeEqual(value + 1)
+    if (++arrivals === 2) release()
+    await bothRunning
+    context.expect.soft(value).toRecorderRuntimeEqual(value)
+    const path = join(directory, "checks.json")
+    await writeFile(path, JSON.stringify(checks))
+    const artifact: RuntimeArtifact = {
+      type: "terminfo:runtime-proof",
+      taskId: context.task.id,
+      checks,
+      attachments: [{ path, contentType: "application/json" }],
+    }
     await recordArtifact(context.task, artifact)
-    await context.annotate(label, "terminfo:runtime-proof", { path, contentType: "application/json" })
   } finally {
+    context.task.meta.terminfoRuntimeProof = { taskId: context.task.id, checks }
     await rm(directory, { recursive: true, force: true })
   }
 })
