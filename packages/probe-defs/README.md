@@ -72,8 +72,12 @@ source identity (revision53a9eb92, package tree5ffc7ad9, vt100 entry path). Its 
 at screen.ts:504-520 has cases0/1/2 only. The OSC9 notification-sink citation is specific to the
 vterm entry; vt100 records its own absent-handler citation. These paths retain a pending source
 review, never an automatic grade or a measured target effect.
+The vt220 0.9.0 arms qualify the same nine commands at revision53a9eb92, package
+tree69366752 and the vt220 entry path. Its screen.ts:703-718 handleOSC returns
+without a semicolon and otherwise handles only cases0/1/2. Its OSC9 records the
+generic absent-handler citation, never vterm's notification-sink citation.
 Other identities keep named coverage, and a missing X grants no source-review negative.
-OSC 9 specifically names the engine's notification sink and lack of progress subcode/state
+Vterm's OSC 9 specifically names its notification sink and lack of progress subcode/state
 interpretation; it never claims that the OSC 9 handler is absent. The other audited codes
 retain their absent-case source reasons. A decision still requires independent review bound
 to a fresh exact-run capture; these qualifiers do not approve old captures or application arms.
