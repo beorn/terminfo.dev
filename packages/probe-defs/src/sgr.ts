@@ -1,4 +1,12 @@
-import type { ProbeDefinition, ProbeCallbackResult, TermProbeSource, LibProbeSource } from "./types.ts"
+import type {
+  CaptureCells,
+  ObservationFrame,
+  ProbeDefinition,
+  ProbeCallbackResult,
+  TermProbeSource,
+  LibProbeSource,
+} from "./types.ts"
+import { frameDigests } from "./types.ts"
 import {
   parserStateResult,
   sameRgb,
@@ -7,14 +15,169 @@ import {
   sgrCaptureTooSmall,
   sgrPlainFixtureTooSmall,
   sgrReadbackDecision,
+  type SgrCaptureFixture,
   type SgrReadback,
   probe,
 } from "./helpers.ts"
-import { captureRegionVerdict } from "./region-readback.ts"
+import { kittyWait } from "./kitty-capture.ts"
+import { captureRegionVerdict, cropPositionRefusal } from "./region-readback.ts"
 import { RESET_FAMILY_CAPTURE } from "./reset-family-capture.ts"
 import { COLOUR_CAPTURE, colourCaptureVerdict } from "./sgr-colour-capture.ts"
 
 const requestedUnderlineColor = { r: 255, g: 0, b: 128 }
+
+/**
+ * Blink is a phase in time, so one target frame decides nothing (#31812). The styled text is sampled at these
+ * offsets from the first sample, with no write between: 750 ms crosses a 500 ms on/off cycle whatever phase the
+ * first sample lands on, where one fixed gap can land on the same phase twice.
+ */
+const BLINK_SAMPLE_OFFSETS_MS = [0, 250, 500, 750] as const
+
+/**
+ * sgr.blink's pixel capture: an unstyled control, then the styled sample with a plain line of the same text on
+ * row 1 and the cursor parked on row 2, sampled four times. With a measured raster each sample is a region
+ * digest of the styled text and of the plain line. Some styled pair differing while the plain line holds still
+ * is Supported. A plain line that moves is redraw, scroll or cursor motion, never blink. Four equal styled
+ * samples stay inconclusive, because no blink period is recorded for the terminal, so they cannot show it never
+ * blinks. Without a measured raster the five frames go to review together.
+ */
+async function blinkCapture(ctx: TermProbeSource, fixture: SgrCaptureFixture): Promise<ProbeCallbackResult> {
+  const capture = ctx.capture
+  if (!capture) throw new Error("sgr.blink: SGR pixel capture requires a capture callback")
+  const { sequence, sample, row, col } = fixture
+  const styledCells = { top: row, left: col, bottom: row, right: col + sample.length - 1 }
+  const plainCells = { top: 1, left: col, bottom: 1, right: col + sample.length - 1 }
+  const geometry = ctx.captureGeometry?.geometry
+  const shoot = (role: "control" | "target", label: string, cells: CaptureCells) =>
+    capture(geometry ? { role, label, cells, pixelGeometry: geometry } : { role, label })
+  ctx.write(`\x1b[0m\x1b[2J\x1b[${String(row)};${String(col)}H${sample}`)
+  const control = await shoot("control", "Unstyled text sample", styledCells)
+  ctx.write(
+    `\x1b[0m\x1b[2J\x1b[1;${String(col)}H${sample}\x1b[${String(row)};${String(col)}H${sequence}${sample}\x1b[0m\x1b[2;1H`,
+  )
+  const samples: Array<{ offsetMs: number; elapsedMs: number; styled: ObservationFrame; plain?: ObservationFrame }> = []
+  const start = Date.now()
+  for (const offsetMs of BLINK_SAMPLE_OFFSETS_MS) {
+    const wait = start + offsetMs - Date.now()
+    if (wait > 0) await kittyWait(wait)
+    const elapsedMs = Date.now() - start
+    const styled = await shoot("target", `sgr.blink styled text, sample at +${String(offsetMs)} ms`, styledCells)
+    const plain = geometry
+      ? await shoot("control", `Plain line, sample at +${String(offsetMs)} ms`, plainCells)
+      : undefined
+    samples.push({ offsetMs, elapsedMs, styled, ...(plain ? { plain } : {}) })
+  }
+  const styledFrames = samples.map((entry) => entry.styled)
+  const plainFrames = samples.flatMap((entry) => (entry.plain ? [entry.plain] : []))
+  const frames = [control, ...styledFrames, ...plainFrames]
+  const timing = samples.map(({ offsetMs, elapsedMs }) => ({ offsetMs, elapsedMs }))
+  const inconclusive = (note: string, observed: string): ProbeCallbackResult => ({
+    pass: false,
+    response: observed,
+    observation: {
+      outcome: "inconclusive",
+      reason: "insufficient-evidence",
+      assertionType: "screenshot",
+      screenshotRef: styledFrames[0]?.ref,
+      frames,
+      note,
+    },
+    assertions: [{ assertionType: "screenshot" as const, kind: "positive", expected: note, observed }],
+  })
+  if (!geometry) {
+    const observed = JSON.stringify({
+      sample,
+      startRow: row,
+      startCol: col,
+      timing,
+      frames: frames.map((f) => f.label),
+    })
+    return {
+      pass: false,
+      response: observed,
+      criterionBranch: "visual-review",
+      tests: [
+        { id: "capture", status: "supported", assertionRefs: [0] },
+        {
+          id: "review",
+          status: "test-todo",
+          reason: "Valid control and four blink samples; required visual review pending",
+        },
+      ],
+      assertions: [
+        {
+          assertionType: "screenshot" as const,
+          kind: "positive",
+          expected:
+            "The styled text changes between some pair of the four samples while the rest of the screen holds still",
+          observed: JSON.stringify({ control, samples }),
+        },
+      ],
+      observation: {
+        outcome: "inconclusive",
+        reason: "insufficient-evidence",
+        assertionType: "screenshot",
+        screenshotRef: styledFrames[0]?.ref,
+        frames,
+        note: "No measured raster, so the samples cannot be compared by region digest; the control and four samples need review together",
+      },
+    }
+  }
+  const styled = styledFrames.map((frame) => frameDigests(frame).cells)
+  const plain = plainFrames.map((frame) => frameDigests(frame).cells)
+  const observed = JSON.stringify({ sample, startRow: row, startCol: col, timing, styled, plain })
+  if ([...styled, ...plain].some((digest) => digest === undefined) || plain.length !== styled.length) {
+    return inconclusive(
+      "Blink needs one cell-aligned digest per sample of the styled text and the plain line",
+      observed,
+    )
+  }
+  for (const set of [[control, ...styledFrames], plainFrames]) {
+    const refusal = cropPositionRefusal({
+      id: "sgr.blink",
+      compared: set.map((frame) => ({
+        role: frame.label,
+        rectangle: frame.kind === "text-cells" ? undefined : frame.regionRectangle,
+      })),
+      response: observed,
+      frames,
+      screenshotRef: styledFrames[0]?.ref,
+    })
+    if (refusal) return refusal
+  }
+  if (new Set(plain).size > 1) {
+    return inconclusive(
+      "The plain line moved between samples, so a styled-text change could be redraw, scroll or cursor motion rather than blink",
+      observed,
+    )
+  }
+  if (new Set(styled).size > 1) {
+    return {
+      pass: true,
+      response: observed,
+      observation: {
+        outcome: "supported",
+        assertionType: "screenshot",
+        screenshotRef: styledFrames[0]?.ref,
+        frames,
+        note: "The styled text's region digest changed between samples taken with no write between, while the plain line held still",
+      },
+      assertions: [
+        {
+          assertionType: "screenshot" as const,
+          kind: "positive",
+          expected:
+            "Four samples of the SGR 5 text over 750 ms with no write between: some pair differs in the styled text's region digest while the plain line's digest is the same in every sample",
+          observed,
+        },
+      ],
+    }
+  }
+  return inconclusive(
+    "Four equal samples of the styled text; no blink period is recorded for this terminal, so equal samples cannot show it never blinks",
+    observed,
+  )
+}
 
 /**
  * An adapter that does not populate `underlineColor` reports null on every cell, so a cell fed an
@@ -718,6 +881,7 @@ export const sgrProbes: ProbeDefinition[] = [
     undefined,
     { require: [5] },
     "Cell readback cannot distinguish unsupported blink styling from an unreported attribute",
+    blinkCapture,
   ),
 
   sgrProbe("sgr.inverse", "\x1b[7m", (cell) => cell.inverse === true, undefined, { require: [7] }),

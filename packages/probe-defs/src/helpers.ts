@@ -699,6 +699,12 @@ export async function sgrCaptureFrames(
   }
 }
 
+/** The SGR pixel fixture: the attribute's sequence and the text sample it styles at a 1-based row and column. */
+export type SgrCaptureFixture = Readonly<{ sequence: string; sample: string; row: number; col: number }>
+
+/** A probe-owned pixel capture, for an attribute one control/target pair cannot show (sgr.blink, #31812). */
+export type SgrCapture = (ctx: TermProbeSource, fixture: SgrCaptureFixture) => Promise<ProbeCallbackResult>
+
 export function sgrProbe(
   id: string,
   sequence: string,
@@ -706,6 +712,7 @@ export function sgrProbe(
   noObservableWhen?: (cell: ReturnType<LibProbeSource["getCell"]>) => string | null,
   readback?: SgrReadback,
   sourceReviewReason?: string,
+  capture?: SgrCapture,
 ): ProbeDefinition {
   return {
     id,
@@ -749,6 +756,7 @@ export function sgrProbe(
         if (refusal) return refusal
         const sample = "AaBb 0123456789 - terminal text"
         try {
+          if (capture) return await capture(ctx, { sequence, sample, row: 3, col: 3 })
           return await sgrCaptureFrames(
             ctx,
             "\x1b[0m\x1b[2J\x1b[3;3H" + sample,

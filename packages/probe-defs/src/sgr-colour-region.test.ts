@@ -696,13 +696,14 @@ for (const id of REVIEW_IDS) {
     const { ctx } = colourTerminal("render", PALETTES[0] as Palette)
     const result = await run(id, ctx)
     if (id === "sgr.blink") {
+      // Steady colour pixels are four equal blink samples (#31812): inconclusive, never a colour grade.
       expect(result.observation).toMatchObject({
         outcome: "inconclusive",
         assertionType: "screenshot",
         reason: "insufficient-evidence",
-        note: "Control and target pixels captured; visual interpretation requires review",
+        note: expect.stringContaining("no blink period is recorded"),
       })
-      expect(result.observation?.frames).toHaveLength(2)
+      expect(result.observation?.frames?.length).toBeGreaterThanOrEqual(5)
       expect(result.assertions).toMatchObject([
         { kind: "positive", assertionType: "screenshot", observed: expect.any(String) },
       ])
