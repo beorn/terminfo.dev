@@ -46,7 +46,7 @@ The terminfo database (and its predecessor, termcap) is the traditional solution
 
 The limitation is the coverage of the selected entry and of the application reading it. Standard terminfo names do not describe every newer protocol, but ncurses supports user-defined Boolean, numeric, and string capabilities. Its documented extensions include `RGB` and mouse controls. [ncurses user_caps(5)](https://invisible-island.net/ncurses/man/user_caps.5.html)
 
-Extended names still need a producer, an installed entry, and applications that understand them. Moreover, a terminfo entry describes expected behavior; it does not record what happened in a live check. This is why runtime observations complement the database rather than replace it. [ncurses terminfo(5)](https://invisible-island.net/ncurses/man/terminfo.5.html)
+Extended names still need a producer, an installed entry, and applications that understand them. Moreover, a terminfo entry describes expected behavior; it does not record what happened in a live test. This is why runtime observations complement the database rather than replace it. [ncurses terminfo(5)](https://invisible-island.net/ncurses/man/terminfo.5.html)
 
 ## DA1 (Primary Device Attributes)
 
@@ -76,7 +76,7 @@ Using a version table requires maintaining its entries as implementations change
 
 Runtime probing asks what a terminal did in a specified test. A measured reply or effect can answer that test's question more directly than an environment variable or a database entry, but only for the behavior actually observed.
 
-A width test can write a sample character and measure the cursor position afterward. The measured distance says how wide that sample was in that environment; a missing reply after an attempted query is TEST FAILURE. Writing test content changes the terminal, so this check needs a verified disposable test environment. Other probes use DECRPM queries, OSC response parsing, and DA1 sentinels.
+A width test can write a sample character and measure the cursor position afterward. The measured distance says how wide that sample was in that environment; a missing reply after an attempted query is TEST FAILURE. Writing test content changes the terminal, so this test needs a verified disposable test environment. Other probes use DECRPM queries, OSC response parsing, and DA1 sentinels.
 
 [Termless](https://termless.dev) instantiates a headless emulator and reads back its parser state. In an ordinary terminal, the `npx terminfo.dev` CLI runs reviewed queries and skips state-changing tests unless a verified disposable test environment is available. The site displays those skipped tests as TEST TODO; the raw run preserves the collector's original fields. A query reply establishes only the property it reports; rendering and interaction require their own observations.
 
@@ -94,7 +94,7 @@ Terminfo describes capabilities associated with a `$TERM` entry, including [user
 | **DA1**           | Reported device-attribute codes, or a sentinel reply              | Not exact product identity or proof of unrelated behavior             |
 | **DECRPM**        | Reported recognition and state of one private mode                | Only the responding layer and requested mode; not behavioral proof    |
 | **XTVERSION**     | Implementation-supplied name/version text when answered           | May identify an intermediate layer; a lookup predicts behavior        |
-| **Runtime check** | Observation of one executed query or behavior                     | Scope is limited to the actual path and observation                   |
+| **Runtime test** | Observation of one executed query or behavior                     | Scope is limited to the actual path and observation                   |
 
 SSH can carry terminal input and output, but it does not guarantee that environment variables are forwarded or that a multiplexer passes a query to the outer terminal. [OpenSSH sshd_config(5)](https://man.openbsd.org/sshd_config); [tmux manual](https://github.com/tmux/tmux/blob/master/tmux.1)
 
