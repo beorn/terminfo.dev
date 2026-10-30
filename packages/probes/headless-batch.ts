@@ -16,6 +16,7 @@ import {
   readSentinelReply,
   recordExecutedProbe,
   ASSERTION_TYPES,
+  sentinelAnswer,
   sentinelGraceMs,
   collectorAttemptDigest,
   readCollectorAttempt,
@@ -283,11 +284,13 @@ function sentinelOutcome(
   if (read.kind === "reply") return { match: read.match, reason: "reply", ...captured }
   // Only a DA1 answer in a capture of its own ends the query: a DA1-shaped answer in the query's capture
   // is the engine's reply to it (@dev/8 9ab12dbe S4, @cto 86260f80 rule 4).
-  if (readSentinelReply(answer, pattern).kind === "pending") {
+  const terminator = sentinelAnswer(answer)
+  if (!terminator) {
     return { match: read.match, reason: read.match ? "reply" : "timeout", ...captured }
   }
   const sentinel = { atMs: Date.now() - writeAt, graceMs: proven.graceMs }
-  if (read.match) return { match: read.match, reason: "reply", ...captured, sentinel }
+  const after = answer.slice(terminator.end).match(pattern)
+  if (after) return { match: [...after], reason: "reply", ...captured, sentinel }
   proven.onSentinel()
   return { match: null, reason: "sentinel", ...captured, sentinel }
 }
