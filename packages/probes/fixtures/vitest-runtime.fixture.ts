@@ -62,6 +62,7 @@ const bothRunning = new Promise<void>((resolve) => {
 // A caught integration error must not certify an empty result while its matcher is still running.
 test("a matcher cannot finish its own active check session", (context) => {
   let prematureCount: number | null = null
+  let caughtAtCall: string | undefined
   const session = withChecks(context, {
     mode: "replay",
     matchers: {
@@ -73,7 +74,8 @@ test("a matcher cannot finish its own active check session", (context) => {
   })
   try {
     session.check("toFinishInsideMatcher", 1)
-  } catch {
+  } catch (error) {
+    caughtAtCall = error instanceof Error ? error.message : String(error)
     // Deliberately caught: the runner-owned finish must still reject this session.
   }
   let finishThrew = false
@@ -82,6 +84,7 @@ test("a matcher cannot finish its own active check session", (context) => {
   } catch (error) {
     finishThrew = error instanceof Error && error.name === "IncompleteReplay"
   }
+  if (caughtAtCall !== undefined && !finishThrew) throw new Error("Caught matcher error was forgotten: " + caughtAtCall)
   context.task.meta.terminfoCheckContract = { finishThrew, prematureCount }
 })
 

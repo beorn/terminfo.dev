@@ -292,7 +292,32 @@ function encodedMember(value: Encoded, key: string, path: string): Encoded {
   return invalidArtifact(path, `missing encoded member ${key}`)
 }
 
-export function readCallLog(input: unknown): CallLog {
+/**
+ * Validate the whole artifact before handing out an opaque handle or projected data.
+ * Projection uses frozen inert views: function/accessor => {kind}; RegExp =>
+ * {kind:"regexp",source,flags}; Set => {kind:"set",values}; bytes =>
+ * {kind:"bytes",length,base64}. Arrays/objects are recursively frozen. These
+ * display-only snapshots never expose captured code, live instances or replay.
+ * Observer errors propagate unchanged and stop further delivery.
+ */
+export function readCallLog(
+  input: unknown,
+  options?: {
+    readonly onOperation?: (operation: {
+      readonly path: string
+      readonly args: readonly unknown[]
+      readonly outcome: {
+        readonly asynchronous: boolean
+        readonly timing: {
+          readonly startedAtMs: number
+          readonly startedPerformanceMs: number
+          readonly settledAtMs: number
+          readonly settledPerformanceMs: number
+        }
+      } & ({ readonly value: unknown } | { readonly error: { readonly name: string; readonly message: string } })
+    }) => void
+  },
+): CallLog {
   const value = artifactObject(input, "artifact")
   artifactKeys(value, "artifact", ["format", "version", "root", "calls"])
   if (value.format !== "viprobe.call-log" || value.version !== 1) {
@@ -377,6 +402,28 @@ export function readCallLog(input: unknown): CallLog {
       invalidArtifact(call.path, "method path does not identify a callable member")
     }
   }
+  if (options?.onOperation) {
+    // Build every view before callback zero, so a failed projection cannot leak a prefix.
+    const operations = calls.map((call) => {
+      const timing = Object.freeze({
+        startedAtMs: call.timing.startedAtMs,
+        startedPerformanceMs: call.timing.startedPerformanceMs,
+        settledAtMs: artifactNumber(call.timing.settledAtMs, call.path),
+        settledPerformanceMs: artifactNumber(call.timing.settledPerformanceMs, call.path),
+      })
+      const outcome = call.error
+        ? { error: Object.freeze({ ...call.error }) }
+        : call.value === undefined
+          ? invalidArtifact(call.path, "completed projection has no outcome")
+          : { value: decodeValue(call.value, true) }
+      return Object.freeze({
+        path: call.path,
+        args: Object.freeze(call.args.map((arg) => decodeValue(arg, true))),
+        outcome: Object.freeze({ ...outcome, asynchronous: call.asynchronous, timing }),
+      })
+    })
+    for (const operation of operations) options.onOperation(operation)
+  }
   return new CallLogHandle({
     data: { format: "viprobe.call-log", version: 1, root, calls },
     started: true,
@@ -417,6 +464,68 @@ function startTiming(): CallTiming {
 function settleTiming(timing: CallTiming): void {
   timing.settledAtMs = Date.now()
   timing.settledPerformanceMs = performance.now()
+}
+
+function decodeValue(value: Encoded, projection = false): unknown {
+  const decode = (entry: Encoded) => decodeValue(entry, projection)
+  if (value === null || typeof value !== "object") return value
+  switch (value.kind) {
+    case "undefined":
+      return undefined
+    case "number":
+      return Number(value.value)
+    case "bigint":
+      return BigInt(value.value)
+    case "function":
+      if (projection) return Object.freeze({ kind: "function" })
+      return () => {
+        throw new Error("Replay method escaped its decorator")
+      }
+    case "accessor":
+      if (projection) return Object.freeze({ kind: "accessor" })
+      throw new Error("Unknown scratch value kind accessor")
+    case "regexp":
+      if (projection) return Object.freeze({ kind: "regexp", source: value.value, flags: value.flags })
+      return new RegExp(value.value, value.flags)
+    case "set":
+      if (projection) return Object.freeze({ kind: "set", values: Object.freeze(value.values.map(decode)) })
+      return new Set(value.values.map(decode))
+    case "bytes":
+      if (projection)
+        return Object.freeze({ kind: "bytes", length: Buffer.from(value.value, "base64").length, base64: value.value })
+      return new Uint8Array(Buffer.from(value.value, "base64"))
+    case "array": {
+      const array = Object.assign(
+        value.values.map(decode),
+        Object.fromEntries(value.entries.map(([key, entry]) => [key, decode(entry)])),
+      )
+      return projection ? Object.freeze(array) : array
+    }
+    case "object": {
+      const restored: Record<string, unknown> = {}
+      for (const [key, entry] of value.entries) {
+        if (!projection && entry !== null && typeof entry === "object" && entry.kind === "accessor") {
+          Object.defineProperty(restored, key, {
+            enumerable: true,
+            configurable: true,
+            get() {
+              throw new Error("Replay accessor escaped its decorator")
+            },
+          })
+        } else {
+          Object.defineProperty(restored, key, {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: decode(entry),
+          })
+        }
+      }
+      return projection ? Object.freeze(restored) : restored
+    }
+    default:
+      throw new Error(`Unknown scratch value kind ${value.kind}`)
+  }
 }
 
 export function withCallLog<Subject extends object>(
@@ -494,56 +603,7 @@ export function withCallLog<Subject extends object>(
     }
   }
 
-  function decode(value: Encoded): unknown {
-    if (value === null || typeof value !== "object") return value
-    switch (value.kind) {
-      case "undefined":
-        return undefined
-      case "number":
-        return Number(value.value)
-      case "bigint":
-        return BigInt(value.value)
-      case "function":
-        return () => {
-          throw new Error("Replay method escaped its decorator")
-        }
-      case "regexp":
-        return new RegExp(value.value, value.flags)
-      case "set":
-        return new Set(value.values.map(decode))
-      case "bytes":
-        return new Uint8Array(Buffer.from(value.value, "base64"))
-      case "array":
-        return Object.assign(
-          value.values.map(decode),
-          Object.fromEntries(value.entries.map(([key, entry]) => [key, decode(entry)])),
-        )
-      case "object": {
-        const restored: Record<string, unknown> = {}
-        for (const [key, entry] of value.entries) {
-          if (entry !== null && typeof entry === "object" && entry.kind === "accessor") {
-            Object.defineProperty(restored, key, {
-              enumerable: true,
-              configurable: true,
-              get() {
-                throw new Error("Replay accessor escaped its decorator")
-              },
-            })
-          } else {
-            Object.defineProperty(restored, key, {
-              enumerable: true,
-              configurable: true,
-              writable: true,
-              value: decode(entry),
-            })
-          }
-        }
-        return restored
-      }
-      default:
-        throw new Error(`Unknown scratch value kind ${value.kind}`)
-    }
-  }
+  const decode = (value: Encoded) => decodeValue(value)
 
   function finishOutcome(outcome: Outcome, value: unknown): unknown {
     outcome.value = encode(value)

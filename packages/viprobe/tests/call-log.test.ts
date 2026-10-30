@@ -7,6 +7,141 @@
 import { expect, test } from "vitest"
 import { createCallLog, IncompleteReplay, readCallLog, withCallLog } from "../src/index.ts"
 
+// The TTY host needs decoded display data without a second decoder or executable replay handles.
+test("validated operation projection is ordered, inert and detached from canonical bytes", async () => {
+  let getterReads = 0
+  let functionCalls = 0
+  const argument = {
+    bytes: new Uint8Array([0, 255]),
+    pattern: /reply/gi,
+    values: new Set(["one", "two"]),
+    callback: () => {
+      functionCalls++
+    },
+    get lazy() {
+      getterReads++
+      return "not read"
+    },
+  }
+  const log = createCallLog()
+  const capture = withCallLog(
+    {
+      async inspect(_argument: typeof argument, _callback: () => void) {
+        return { observed: true }
+      },
+      fail() {
+        throw new TypeError("retained failure")
+      },
+    },
+    { mode: "record", log },
+  )
+  await capture.context.inspect(argument, () => {
+    functionCalls++
+  })
+  expect(() => capture.context.fail()).toThrow("retained failure")
+  capture.finish()
+  const bytes = JSON.stringify(log)
+  const seen: unknown[] = []
+  const loaded = readCallLog(JSON.parse(bytes), { onOperation: (operation) => seen.push(operation) })
+  const timing = {
+    startedAtMs: expect.any(Number),
+    startedPerformanceMs: expect.any(Number),
+    settledAtMs: expect.any(Number),
+    settledPerformanceMs: expect.any(Number),
+  }
+  expect(seen).toEqual([
+    {
+      path: "context.inspect",
+      args: [
+        {
+          bytes: { kind: "bytes", length: 2, base64: "AP8=" },
+          pattern: { kind: "regexp", source: "reply", flags: "gi" },
+          values: { kind: "set", values: ["one", "two"] },
+          callback: { kind: "function" },
+          lazy: { kind: "accessor" },
+        },
+        { kind: "function" },
+      ],
+      outcome: { asynchronous: true, value: { observed: true }, timing },
+    },
+    {
+      path: "context.fail",
+      args: [],
+      outcome: { asynchronous: false, error: { name: "TypeError", message: "retained failure" }, timing },
+    },
+  ])
+  expect(getterReads).toBe(0)
+  expect(functionCalls).toBe(0)
+  const mutate = (value: unknown): void => {
+    if (value === null || typeof value !== "object") return
+    expect(Object.isFrozen(value)).toBe(true)
+    expect(Reflect.set(value, "projectionMutation", true)).toBe(false)
+    for (const entry of Object.values(value)) mutate(entry)
+  }
+  for (const operation of seen) mutate(operation)
+  expect(JSON.stringify(loaded)).toBe(bytes)
+  expect(JSON.stringify(readCallLog(JSON.parse(bytes)))).toBe(bytes)
+  expect(JSON.stringify(log)).toBe(bytes)
+})
+
+test("an invalid trailing operation cannot deliver a partial projection", () => {
+  const log = createCallLog()
+  const capture = withCallLog(
+    {
+      read(callback?: () => number) {
+        callback?.()
+        return "value"
+      },
+    },
+    { mode: "record", log },
+  )
+  capture.context.read()
+  capture.context.read(() => 1)
+  capture.finish()
+  for (const target of ["operation", "callback"]) {
+    const raw = JSON.parse(JSON.stringify(log))
+    if (target === "operation") raw.calls[1].finished = false
+    else raw.calls[1].callbacks[0].finished = false
+    let projected = 0
+    expect(() =>
+      readCallLog(raw, {
+        onOperation: () => {
+          projected++
+        },
+      }),
+    ).toThrow(IncompleteReplay)
+    expect(projected).toBe(0)
+  }
+})
+
+test("a projection observer error stops delivery without changing the artifact", () => {
+  const log = createCallLog()
+  const capture = withCallLog(
+    {
+      read() {
+        return "value"
+      },
+    },
+    { mode: "record", log },
+  )
+  capture.context.read()
+  capture.context.read()
+  capture.finish()
+  const bytes = JSON.stringify(log)
+  const failure = new Error("display projection failed")
+  let projected = 0
+  expect(() =>
+    readCallLog(JSON.parse(bytes), {
+      onOperation: () => {
+        projected++
+        throw failure
+      },
+    }),
+  ).toThrow(failure)
+  expect(projected).toBe(1)
+  expect(JSON.stringify(readCallLog(JSON.parse(bytes)))).toBe(bytes)
+})
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value)
 }
