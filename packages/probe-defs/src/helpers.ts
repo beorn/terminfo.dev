@@ -1002,6 +1002,135 @@ export function decrpmResult(ps: DecrpmPs | null, modeNum: number): ProbeCallbac
   }
 }
 
+/**
+ * The width a re-seeded `X` sweep proves from the engine's own cursor, or the named reason it proves
+ * none (#31381, @cto cee6d003). The deciding observation is buffer state: no reply writer, no CPR.
+ */
+export type CellWidthSweep =
+  | { kind: "width"; width: 80 | 132; cursor: { x: number; y: number } }
+  | { kind: "unmeasured"; reason: "autowrap off" | "width outside 80/132"; cursor: { x: number; y: number } }
+
+const CELL_WIDTH_SEED = "\x1b[0m\x1b[2J\x1b[H"
+
+/**
+ * Re-seed, then write 133 `X`s. The 133rd `X` is what separates the two admitted widths: at 80 the
+ * cursor lands at row 1 col 53, at 132 the 133rd wraps and lands at row 1 col 1 — 132 is proven
+ * exactly and never rounded up from `W >= 132`. A terminal that never wrapped reads row 0, which is
+ * the named `autowrap off` control (79 = 80 columns, 131 = 132); every other reading is
+ * `width outside 80/132`. The sweep decides from buffer state alone: no reply writer, no CPR.
+ */
+export function sweepCellWidth(ctx: Pick<LibProbeSource, "feed" | "getCursor">): CellWidthSweep {
+  ctx.feed(CELL_WIDTH_SEED)
+  ctx.feed("X".repeat(133))
+  const cursor = ctx.getCursor()
+  if (cursor.y === 1 && cursor.x === 53) return { kind: "width", width: 80, cursor }
+  if (cursor.y === 1 && cursor.x === 1) return { kind: "width", width: 132, cursor }
+  if (cursor.y === 0 && (cursor.x === 79 || cursor.x === 131)) {
+    return { kind: "unmeasured", reason: "autowrap off", cursor }
+  }
+  return { kind: "unmeasured", reason: "width outside 80/132", cursor }
+}
+
+/** One DECCOLM measurement: both gate controls, the roundtrip, and the reply that only corroborates. */
+export interface CellWidthTransitionReads {
+  /** `?40h` set, mode 3 untouched: the baseline the transition is measured from. */
+  initial: CellWidthSweep
+  /** After the mode was set in the direction the baseline implies. */
+  enabled: CellWidthSweep
+  /** After the mode was restored. */
+  restored: CellWidthSweep
+  /** `?40` closed and the mode re-set: the gate must hold the width `restored` left behind. */
+  gate: CellWidthSweep
+  /** DECRPM `Ps` for mode 3; `null` when the engine answered nothing. */
+  decrpm: DecrpmPs | null
+  /** Columns an answering `18 t` reported for each phase; `null` = silent, which is not a datum. */
+  reply18t: { initial: number | null; enabled: number | null }
+}
+
+/** A named inconclusive: its typed test row carries the observed reading that named it. */
+function cellWidthNamed(response: string, name: string, observed: object): ProbeCallbackResult {
+  return {
+    pass: false,
+    response,
+    observation: {
+      outcome: "inconclusive",
+      assertionType: "buffer_state",
+      reason: "insufficient-evidence",
+      note: name,
+    },
+    tests: [{ id: "criterion", status: "test-failure", reason: `${name}: ${JSON.stringify(observed)}` }],
+  }
+}
+
+/**
+ * The DECCOLM decision (#31381, @cto cee6d003). A measured no-change is Unsupported only where the
+ * engine did not refuse the mode: `Ps 0` or `Ps 4` alongside an unchanged width is inconclusive
+ * named, because an engine that says it does not know the mode has not been shown to implement it
+ * wrongly. A silent `18 t` decides by width; an `18 t` that answers and disagrees is a named FAILURE.
+ */
+export function cellWidthTransition(reads: CellWidthTransitionReads): ProbeCallbackResult {
+  const response = JSON.stringify(reads)
+  const unmeasured = [reads.initial, reads.enabled, reads.restored, reads.gate].find(
+    (sweep) => sweep.kind === "unmeasured",
+  )
+  if (unmeasured?.kind === "unmeasured") return cellWidthNamed(response, unmeasured.reason, unmeasured)
+  if (
+    reads.initial.kind !== "width" ||
+    reads.enabled.kind !== "width" ||
+    reads.restored.kind !== "width" ||
+    reads.gate.kind !== "width"
+  ) {
+    return cellWidthNamed(response, "width outside 80/132", reads)
+  }
+  const initial = reads.initial.width
+  const target = initial === 80 ? 132 : 80
+  if (reads.gate.width !== reads.restored.width) {
+    return cellWidthNamed(response, "gate not honoured", { restored: reads.restored, gate: reads.gate })
+  }
+  const corroboration: ReadonlyArray<readonly [string, Extract<CellWidthSweep, { kind: "width" }>, number | null]> = [
+    ["initial", reads.initial, reads.reply18t.initial],
+    ["enabled", reads.enabled, reads.reply18t.enabled],
+  ]
+  for (const [phase, sweep, claimed] of corroboration) {
+    if (claimed !== null && claimed !== sweep.width) {
+      return {
+        pass: false,
+        response,
+        tests: [
+          {
+            id: "criterion",
+            status: "test-failure",
+            reason: `18t/sweep disagreement W=${sweep.width} vs ${claimed} (${phase})`,
+          },
+        ],
+      }
+    }
+  }
+  const moved = reads.enabled.width === target && reads.restored.width === initial
+  if (!moved && (reads.decrpm === 0 || reads.decrpm === 4)) {
+    return cellWidthNamed(response, "mode not recognized/settable", { decrpm: reads.decrpm })
+  }
+  return {
+    pass: moved,
+    response,
+    observation: { outcome: moved ? "supported" : "unsupported", assertionType: "buffer_state" },
+    assertions: [
+      {
+        assertionType: "buffer_state",
+        kind: moved ? "positive" : "negative",
+        expected: `DECCOLM changes measured columns ${initial} -> ${target} -> ${initial} with ?40 honoured`,
+        observed: `initial=${initial}, enabled=${reads.enabled.width}, restored=${reads.restored.width}`,
+      },
+      {
+        assertionType: "buffer_state",
+        kind: "positive",
+        expected: `?40 closed holds the width at ${reads.restored.width} when mode 3 is re-set`,
+        observed: `gate=${reads.gate.width}`,
+      },
+    ],
+  }
+}
+
 /** Check if a cell character is blank (empty or space). */
 export function isBlank(char: string): boolean {
   return char === "" || char === " "
