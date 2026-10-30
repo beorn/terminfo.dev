@@ -1155,7 +1155,7 @@ const ABSENT_OSC_ENGINES = {
     repository: "git@github.com:beorn/vterm.git",
     revision: "53a9eb9291b7880f4dc6a39a6802301049997a72",
     treeOid: "617ae6002c7befea7b3e43d11bf23e6b433e3d65",
-    codes: [440, 555, 710],
+    codes: [9, 22, 176, 440, 555, 666, 710, 777, 3008],
     sourceCitation:
       "vterm 53a9eb9291b7880f4dc6a39a6802301049997a72 packages/vterm/src/screen.ts:3596-4055 handleOSC switch",
   },
@@ -1218,7 +1218,9 @@ function sourceAbsentOsc(id: string, code: number, sequence: string, effect: str
       },
       sentinel.char === "X" ? undefined : "No rendered X cell to evaluate",
       sentinel.char === "X"
-        ? `${audit.sourceCitation}: no case ${code} or ${effect} target writer; independent source review required`
+        ? audit.kind === "source" && code === 9
+          ? `${audit.sourceCitation}; screen.ts:3921-3923 notification sink stores every OSC 9 value, with no progress subcode or state interpretation; independent source review required`
+          : `${audit.sourceCitation}: no case ${code} or ${effect} target writer; independent source review required`
         : undefined,
     )
   }

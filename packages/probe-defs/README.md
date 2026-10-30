@@ -57,11 +57,15 @@ no I/O and retains a `headless-observable-review` row with the API boundary and 
 per-engine source review. Only a non-author Untestable decision can discharge it; it creates no
 observation or assertion. The application arm remains TEST TODO until terminal-owned child readback exists.
 
-The pinned vterm 0.9.0 library arms for OSC 440, 555 and 710 feed their exact commands and a cell-X
+The pinned vterm 0.9.0 library arms for OSC 9, 22, 176, 440, 555, 666, 710, 777 and 3008 feed their exact commands and a cell-X
 consumption control. A rendered X retains `source-negative-review`, its actual fed/cell state and a
-negative buffer-state assertion for independent review of the absent handler at source53a9eb92.
-The control does not measure audio, flash or font state; that target remains explicitly unexposed.
+negative buffer-state assertion for independent review of the target implementation at source53a9eb92.
+The control proves parser consumption, not a target effect; target state remains explicitly unexposed.
 Other identities keep named coverage, and a missing X grants no source-review negative.
+OSC 9 specifically names the engine's notification sink and lack of progress subcode/state
+interpretation; it never claims that the OSC 9 handler is absent. The other audited codes
+retain their absent-case source reasons. A decision still requires independent review bound
+to a fresh exact-run capture; these qualifiers do not approve old captures or application arms.
 
 The same helper covers @xterm/headless6.0.0 OSC9/22/176/440/555/666/710/777/3008 at its audited registry integrity and adapter0.10.2.
 It retains the bundle/map and adapter citations plus the executing runtime identity for independent source review.
