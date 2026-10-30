@@ -125,6 +125,11 @@ describe("current execution projection", () => {
     expect(published.cells[ids[2]!]!.reason ?? "").not.toMatch(/not selected/i)
     expect(JSON.stringify(run.results)).toBe(retained)
     expect(published.cells[ids[1]!]!.reason ?? "").toMatch(/not selected/i)
+    expect(published.cells[ids[1]!]!.presentation).toEqual({ state: "not-reviewed" })
+    const legacy = parse(value)
+    const legacyProjection = projectResults([legacy], [], ids, { currentProbeHash: suite.probeHash }, [])
+    const legacyPublic = publicResults(legacyProjection, new Map()).projection.contexts["term:kitty"]!
+    expect(legacyPublic.cells[ids[1]!]!.reason).toBeUndefined()
   })
 
   // CTO contract: only contributing original dates may supersede a reviewed host generation.
