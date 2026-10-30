@@ -167,9 +167,13 @@ export interface CurrentSelectedVersion {
   assertions: ReadAssertion[]
   origin: RunOrigin
   textQualification?: TextQualification
+  /** Each keeps its accepted record, a reviewed cell's lineage; the public API omits presentations. */
   presentations: Record<
     string,
-    Pick<Interpretation, "id" | "reviewer" | "reason" | "sources"> & { presentsEvidence: boolean }
+    Pick<Interpretation, "id" | "reviewer" | "reason" | "sources"> & {
+      presentsEvidence: boolean
+      accepted: NonNullable<Interpretation["accepted"]>
+    }
   >
   identityAdmission?: IdentityAdmission
   suiteRelation: SuiteRelation
@@ -584,6 +588,7 @@ export function projectResults(
         reason: entry.reason,
         sources: [...entry.sources],
         presentsEvidence: entry.presentsEvidence as boolean,
+        accepted: { ...(entry.accepted as NonNullable<Interpretation["accepted"]>) },
       }
     }
     const version: CurrentSelectedVersion = {

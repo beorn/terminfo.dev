@@ -968,6 +968,11 @@ describe("selected-run consumer parity", () => {
           reason: "reviewed retained evidence",
           sources: ["https://example.org/review"],
           presentsEvidence: true,
+          accepted: {
+            by: "fixture-acceptor",
+            wire: "00000000-0000-4000-8000-000000000000",
+            at: "2026-10-30T12:00:00-07:00",
+          },
         },
       }
       const presented = publicResults(projection, targets)
