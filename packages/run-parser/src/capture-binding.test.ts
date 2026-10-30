@@ -792,7 +792,7 @@ it.each(["device.term-features", "erase.screen.scrollback"])(
               integrity: {
                 kind: "source",
                 repository: "git@github.com:beorn/termless.git",
-                revision: "8a1740b2d9f9b07105ffb1f62785c0ca9e513cf7",
+                revision: "38e45ab87acee6bd7d7766df571e754991fd45d8",
                 treeOid: "d47c013290cf7a9cb1dae316fd77c66a11a2925a",
                 cleanTree: true,
               },
