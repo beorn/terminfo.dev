@@ -1611,6 +1611,19 @@ function feedScrollbackHistory(ctx: LibProbeSource): void {
 
 function osc720ScrollProbe(): ProbeDefinition["lib"] {
   return (ctx) => {
+    const declared = ctx.capabilities.productViewport
+    if (declared?.available === false) {
+      const state = { productViewport: declared, runtimeIdentity: ctx.runtimeIdentity ?? null }
+      if (ctx.scrollViewport) {
+        return parserStateResult(
+          null,
+          OSC720_CLAIM,
+          state,
+          "Product viewport declared absent but scroll control is present",
+        )
+      }
+      return reviewResult(HEADLESS_OBSERVABLE_REVIEW, declared.reason, "scrollback viewport scroll control", state)
+    }
     feedScrollbackHistory(ctx)
     const before = ctx.getScrollback()
     if (before.totalLines <= before.screenLines || before.viewportOffset <= 0) {

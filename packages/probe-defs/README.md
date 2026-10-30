@@ -98,15 +98,22 @@ TODO because it has no live terminal UI scroll actuator; its manual UI recipe re
 
 The optional library capability `productViewport: { available: false, reason }` explicitly declares
 that the library subject has no product viewport; an absent declaration means undeclared. The
-collector omits the probe source's scroll control for that declaration. Before any phase action, the
-viewport callback retains the declaration and exact reason plus measured `runtimeIdentity` (null
-when missing), and selects `headless-observable-review` with named scroll-control coverage. It creates
-no phase measurements or assertions and stays TEST TODO until independent per-engine source review
+collector omits the probe source's scroll control for that declaration. Before any phase action or
+OSC720 history I/O, the viewport-hold and OSC720 callbacks retain the declaration and exact reason plus
+`runtimeIdentity` (null when missing), and select `headless-observable-review` with named scroll-control
+coverage. They create no measurements or assertions and stay TEST TODO until independent per-engine source review
 decides Untestable with the same reason. Missing runtime identity bars that source-based decision.
 A declaration of absence paired with a present scroll control is an inconclusive apparatus
 contradiction, with no review row. An undeclared missing scroll control keeps ordinary named coverage.
 Scripted callback tests cover these branches and the exact two-phase arithmetic independently of
 engine versions; historical captures and grades are unchanged.
+
+ED3 and the two history-count library callbacks share an internal libvterm0.3.3 source/API review.
+It requires both the exact clean libvterm package tree and the loaded WASM hash, with the declared
+source repository, runtime format and versions. That branch performs no history reads or writes:
+the adapter reports screen extent, while retained history belongs to an embedding application.
+It retains the runtime and source citations for required independent review, without deciding
+Untestable or a negative. Every other identity keeps its existing measured criterion.
 
 **Callback and stored shapes are different.** Follow these names in [types.ts](src/types.ts):
 

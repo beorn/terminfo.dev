@@ -110,6 +110,62 @@ function osc720() {
   return definition.lib
 }
 
+// The existing movement controls cannot detect loss of a declared absence before history I/O.
+// Retain source-review evidence, including missing identity, without inventing a measurement.
+test.each([
+  { identity: false, actuator: false },
+  { identity: true, actuator: false },
+  { identity: false, actuator: true },
+])("OSC720 declared viewport absence preserves review boundary %j", ({ identity, actuator }) => {
+  const source = viewportModel({ scrollableViewport: true, honorsOsc720: true })
+  const productViewport = { available: false as const, reason: "Fixture library exposes no product viewport" }
+  source.capabilities.productViewport = productViewport
+  if (!actuator) delete source.scrollViewport
+  const runtimeIdentity: LibProbeSource["runtimeIdentity"] = {
+    kind: "js",
+    runtimeFormat: "js",
+    resolvedPath: "/fixtures/viewport.js",
+    engineVersion: "fixture",
+    adapterVersion: "fixture",
+    termlessRevision: "fixture",
+    integrity: { kind: "registry", lockIntegrity: "sha512:fixture" },
+  }
+  let historyCalls = 0
+  source.feed = () => {
+    historyCalls++
+  }
+  source.getScrollback = () => {
+    historyCalls++
+    return { totalLines: 24, screenLines: 24, viewportOffset: 0 }
+  }
+  const result = osc720()({ ...source, ...(identity ? { runtimeIdentity } : {}) })
+  if (actuator) {
+    expect(result.observation?.outcome).toBe("inconclusive")
+    expect(result.note).toMatch(/declared absent.*scroll control.*present/)
+    expect(result.criterionBranch).toBeUndefined()
+    expect(result.notTested).toBeUndefined()
+  } else {
+    expect(result).toMatchObject({
+      criterionBranch: "headless-observable-review",
+      notTested: { noObservable: "scrollback viewport scroll control" },
+      tests: [{ id: "review", status: "test-todo", reason: productViewport.reason }],
+    })
+    expect(result.observation).toBeUndefined()
+  }
+  expect(result.assertions).toBeUndefined()
+  expect(JSON.parse(result.response!)).toEqual({ productViewport, runtimeIdentity: identity ? runtimeIdentity : null })
+  expect(historyCalls).toBe(0)
+})
+
+test("OSC720 missing an undeclared actuator stays coverage, without a source review", () => {
+  const source = viewportModel({ scrollableViewport: true, honorsOsc720: true })
+  delete source.scrollViewport
+  const result = osc720()(source)
+  expect(result.notTested?.noObservable).toBe("scrollback viewport scroll control")
+  expect(result.criterionBranch).toBeUndefined()
+  expect(result.observation?.outcome).not.toBe("unsupported")
+})
+
 test("a pinned viewport that never moves records coverage, not a measured Unsupported", () => {
   const result = osc720()(viewportModel({ scrollableViewport: false, honorsOsc720: false }))
   expect(result.notTested?.reason).toBe("no-semantic-observable")

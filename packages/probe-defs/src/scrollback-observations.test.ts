@@ -7,6 +7,7 @@
 import { expect, test } from "vitest"
 import { createHash } from "node:crypto"
 import { scrollbackProbes, scrollbackReadbackRows } from "./scrollback.ts"
+import { eraseProbes } from "./erase.ts"
 import type { ObservationFrame, TermProbeSource, LibProbeSource } from "./types.ts"
 import { libProbeSource } from "./testing/group-harness.ts"
 import { createSemanticSurface } from "./testing/semantic-surface.ts"
@@ -52,6 +53,97 @@ function headless(overrides: Partial<LibProbeSource> = {}): LibProbeSource {
     ...overrides,
   }
 }
+
+// Existing history tests exercise real counts, not the exact libvterm adapter's absent history API.
+// This table owns identity qualification across the three callbacks; no numeric stub detection.
+type WasmRuntime = Extract<NonNullable<LibProbeSource["runtimeIdentity"]>, { runtimeFormat: "wasm" }>
+const historyRuntime: WasmRuntime = {
+  kind: "js",
+  runtimeFormat: "wasm",
+  engineVersion: "0.3.3",
+  adapterVersion: "0.10.2",
+  termlessRevision: "8a1740b2d9f9b07105ffb1f62785c0ca9e513cf7",
+  resolvedPath: "vendor/termless/packages/libvterm/src/index.ts",
+  integrity: {
+    kind: "source",
+    repository: "git@github.com:beorn/termless.git",
+    revision: "38e45ab87acee6bd7d7766df571e754991fd45d8",
+    treeOid: "d47c013290cf7a9cb1dae316fd77c66a11a2925a",
+    cleanTree: true,
+  },
+  loadedBinary: {
+    path: "vendor/termless/packages/libvterm/wasm/libvterm.wasm",
+    sha256: "5937bd79139ee5856bcf1bd619cc44fcd2d750d3def3066a74956678cdaaaeb2",
+  },
+}
+const sourceIntegrity = historyRuntime.integrity
+if (sourceIntegrity.kind !== "source") throw new Error("History fixture needs source integrity")
+const historyIdentities: [string, LibProbeSource["runtimeIdentity"], boolean][] = [
+  ["qualified", historyRuntime, true],
+  [
+    "same package at another commit",
+    {
+      ...historyRuntime,
+      termlessRevision: "e".repeat(40),
+      integrity: { ...sourceIntegrity, revision: "e".repeat(40) },
+    },
+    true,
+  ],
+  ["wrong tree", { ...historyRuntime, integrity: { ...sourceIntegrity, treeOid: "f".repeat(40) } }, false],
+  [
+    "wrong WASM",
+    { ...historyRuntime, loadedBinary: { ...historyRuntime.loadedBinary, sha256: "f".repeat(64) } },
+    false,
+  ],
+  ["dirty source", { ...historyRuntime, integrity: { ...sourceIntegrity, cleanTree: false } }, false],
+  ["registry source", { ...historyRuntime, integrity: { kind: "registry", lockIntegrity: "sha512:fixture" } }, false],
+  [
+    "wrong repository",
+    { ...historyRuntime, integrity: { ...sourceIntegrity, repository: "git@github.com:fixture/other.git" } },
+    false,
+  ],
+  ["wrong engine version", { ...historyRuntime, engineVersion: "0.3.4" }, false],
+  ["wrong adapter version", { ...historyRuntime, adapterVersion: "0.10.3" }, false],
+  ["JavaScript format", { ...historyRuntime, runtimeFormat: "js" }, false],
+  ["missing identity", undefined, false],
+]
+const historyCases = ["erase.screen.scrollback", "scrollback.accumulate", "scrollback.total-lines"].flatMap((id) =>
+  historyIdentities.map(([name, runtimeIdentity, eligible]) => ({ id, name, runtimeIdentity, eligible })),
+)
+test.each(historyCases)("history count review qualifies $id: $name", ({ id, runtimeIdentity, eligible }) => {
+  const definition = [...eraseProbes, ...scrollbackProbes].find((entry) => entry.id === id)
+  if (!definition?.lib) throw new Error(`Missing ${id} library callback`)
+  let calls = 0
+  const result = definition.lib(
+    headless({
+      runtimeIdentity,
+      feed: () => {
+        calls++
+      },
+      getScrollback: () => {
+        calls++
+        return { totalLines: 24, screenLines: 24, viewportOffset: 0 }
+      },
+    }),
+  )
+  if (!eligible) {
+    expect(result.criterionBranch, id).not.toBe("headless-observable-review")
+    expect(calls, id).toBeGreaterThan(0)
+    return
+  }
+  expect(result, id).toMatchObject({
+    criterionBranch: "headless-observable-review",
+    notTested: { noObservable: "retained scrollback history count" },
+    tests: [{ id: "review", status: "test-todo", reason: expect.stringContaining("libvterm") }],
+  })
+  expect(result.observation, id).toBeUndefined()
+  expect(result.assertions, id).toBeUndefined()
+  expect(JSON.parse(result.response!), id).toMatchObject({
+    runtimeIdentity,
+    sourceCitation: expect.stringContaining("getScrollback"),
+  })
+  expect(calls, id).toBe(0)
+})
 
 // These controls decide whether a viewport reading can grade support. Older scrollback
 // tests cover parser regions/history, but never exercise viewport motion or output anchoring.

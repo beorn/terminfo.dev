@@ -761,92 +761,134 @@ const setup = (
 }
 
 // The generic branch fixtures cannot catch a real definition left null: no review or binding is then produced.
-it("TERM_FEATURES library coverage reaches an immutable Untestable review without I/O or assertions", () => {
-  const featureId = "device.term-features"
-  const definition = ALL_PROBES.find((entry) => entry.id === featureId)
-  const { draft, artifact, decision } = setup(
-    undefined,
-    {
-      runId: "term-features-library-review",
-      startedAt: "2026-10-29T23:00:00.000Z",
-    },
-    (draft) => {
-      if (!definition?.lib) throw new Error("TERM_FEATURES has no library review arm")
-      // Collector-input fixture at the audited engine/API pin; this does not attest a loaded engine.
-      draft.intendedSubject = { kind: "lib", id: "vterm", version: "0.9.0" }
-      draft.subject!.id = "vterm"
-      draft.subject!.version = "0.9.0"
-      draft.runtimeIdentity = {
-        kind: "js",
-        runtimeFormat: "js",
-        engineVersion: "0.9.0",
-        adapterVersion: "0.10.2",
-        termlessRevision: "8b8664540f365fa0ba1d9b6400d3c4d1a160582c",
-        resolvedPath: "vendor/vterm/packages/vterm/src/index.ts",
-        integrity: {
-          kind: "source",
-          repository: "git@github.com:beorn/vterm.git",
-          revision: "1cfc325f3aedd4617e437ee76e6a03fc2cc16438",
-          treeOid: "2ee13d2cb894e86ee9575dd6945f42028df44966",
-          cleanTree: true,
-        },
-      }
-      const result = definition.lib({
-        runtimeIdentity: draft.runtimeIdentity,
-        feed: () => {
-          throw new Error("TERM_FEATURES must not feed")
-        },
-        feedCapture: () => {
-          throw new Error("TERM_FEATURES must not query")
-        },
-      } as unknown as LibProbeSource)
-      expect(result.criterionBranch).toBe(HEADLESS_OBSERVABLE_REVIEW)
-      expect(result.observation).toBeUndefined()
-      expect(result.assertions).toBeUndefined()
-      expect(JSON.parse(result.response!)).toMatchObject({ audit: { runtimeIdentity: draft.runtimeIdentity } })
-      expect(JSON.parse(result.response!)).toMatchObject({
-        audit: {
-          engine: "vterm",
-          apiRevision: "8b8664540f365fa0ba1d9b6400d3c4d1a160582c",
-          sourceCitation: expect.stringContaining("packages/vterm/src/backend.ts:63"),
-        },
-      })
-      expect(result.notTested?.noObservable).toContain("child-environment export")
-      draft.rawReplies[featureId] = result.response!
-      draft.results = [
-        recordExecutedProbe({
-          featureId,
-          attempt: { scope: "probe", startedAt: draft.measuredAt! },
-          coverage: result.notTested && { ...result.notTested, featureId, rawReplyRef: featureId },
-          assertions: [],
-          tests: result.tests,
-          criterionBranch: result.criterionBranch,
-        }),
-      ]
-    },
-  )
-  expect(draft.results[0]!.status).toBe("test-todo")
-  decision.reason = draft.results[0]!.tests[0]!.reason!
-  applyCaptureDecision(draft, JSON.stringify(decision), "2026-10-29T23:01:00.000Z")
-  const manifest = {
-    probeHash: draft.probeHash,
-    adapterVersion: "3",
-    catalogIds: [featureId],
-    probes: { term: [], lib: [featureId], mux: [] },
-  }
-  const parsed = parseRun(
-    "term-features.json",
-    JSON.stringify(sealRunDraft(draft)),
-    [featureId],
-    new Map([[draft.probeHash, manifest]]),
-  )
-  expect(parsed.results?.[0]?.status).toBe("untestable")
-  expect(parsed.rawReplies[artifact.rawReplyRef]).toBe(artifact.source)
-  expect(parsed.assertions).toEqual([])
-  expect(JSON.parse(parsed.rawReplies[featureId]!)).toMatchObject({
-    audit: { sourceCitation: expect.stringContaining("packages/vterm/src/backend.ts:63") },
-  })
-})
+it.each(["device.term-features", "erase.screen.scrollback"])(
+  "%s library coverage reaches an immutable Untestable review without I/O or assertions",
+  (featureId) => {
+    const history = featureId === "erase.screen.scrollback"
+    const citation = history ? "getScrollback" : "packages/vterm/src/backend.ts:63"
+    const definition = ALL_PROBES.find((entry) => entry.id === featureId)
+    const { draft, artifact, decision } = setup(
+      undefined,
+      {
+        runId: `${featureId}-library-review`,
+        startedAt: "2026-10-29T23:00:00.000Z",
+      },
+      (draft) => {
+        if (!definition?.lib) throw new Error(`${featureId} has no library review arm`)
+        // Collector-input fixture at the audited engine/API pin; this does not attest a loaded engine.
+        const engine = history ? "libvterm" : "vterm"
+        const version = history ? "0.3.3" : "0.9.0"
+        draft.intendedSubject = { kind: "lib", id: engine, version }
+        draft.subject!.id = engine
+        draft.subject!.version = version
+        draft.runtimeIdentity = history
+          ? {
+              kind: "js",
+              runtimeFormat: "wasm",
+              engineVersion: version,
+              adapterVersion: "0.10.2",
+              termlessRevision: "8a1740b2d9f9b07105ffb1f62785c0ca9e513cf7",
+              resolvedPath: "vendor/termless/packages/libvterm/src/index.ts",
+              integrity: {
+                kind: "source",
+                repository: "git@github.com:beorn/termless.git",
+                revision: "38e45ab87acee6bd7d7766df571e754991fd45d8",
+                treeOid: "d47c013290cf7a9cb1dae316fd77c66a11a2925a",
+                cleanTree: true,
+              },
+              loadedBinary: {
+                path: "vendor/termless/packages/libvterm/wasm/libvterm.wasm",
+                sha256: "5937bd79139ee5856bcf1bd619cc44fcd2d750d3def3066a74956678cdaaaeb2",
+              },
+            }
+          : {
+              kind: "js",
+              runtimeFormat: "js",
+              engineVersion: "0.9.0",
+              adapterVersion: "0.10.2",
+              termlessRevision: "8b8664540f365fa0ba1d9b6400d3c4d1a160582c",
+              resolvedPath: "vendor/vterm/packages/vterm/src/index.ts",
+              integrity: {
+                kind: "source",
+                repository: "git@github.com:beorn/vterm.git",
+                revision: "1cfc325f3aedd4617e437ee76e6a03fc2cc16438",
+                treeOid: "2ee13d2cb894e86ee9575dd6945f42028df44966",
+                cleanTree: true,
+              },
+            }
+        const result = definition.lib({
+          runtimeIdentity: draft.runtimeIdentity,
+          feed: () => {
+            throw new Error("Source/API review must not feed")
+          },
+          feedCapture: () => {
+            throw new Error("Source/API review must not query")
+          },
+          getScrollback: () => {
+            throw new Error("Source/API review must not read unobservable history")
+          },
+        } as unknown as LibProbeSource)
+        expect(result.criterionBranch).toBe(HEADLESS_OBSERVABLE_REVIEW)
+        expect(result.observation).toBeUndefined()
+        expect(result.assertions).toBeUndefined()
+        const retained = JSON.parse(result.response!)
+        const audit = {
+          runtimeIdentity: draft.runtimeIdentity,
+          sourceCitation: expect.stringContaining(citation),
+        }
+        expect(retained).toMatchObject(history ? audit : { audit })
+        if (!history) {
+          expect(retained).toMatchObject({
+            audit: {
+              engine: "vterm",
+              apiRevision: "8b8664540f365fa0ba1d9b6400d3c4d1a160582c",
+              sourceCitation: expect.stringContaining("packages/vterm/src/backend.ts:63"),
+            },
+          })
+        }
+        expect(result.notTested?.noObservable).toContain(
+          history ? "retained scrollback history count" : "child-environment export",
+        )
+        draft.rawReplies[featureId] = result.response!
+        draft.results = [
+          recordExecutedProbe({
+            featureId,
+            attempt: { scope: "probe", startedAt: draft.measuredAt! },
+            coverage: result.notTested && { ...result.notTested, featureId, rawReplyRef: featureId },
+            assertions: [],
+            tests: result.tests,
+            criterionBranch: result.criterionBranch,
+          }),
+        ]
+      },
+    )
+    expect(draft.results[0]!.status).toBe("test-todo")
+    decision.reason = draft.results[0]!.tests[0]!.reason!
+    applyCaptureDecision(draft, JSON.stringify(decision), "2026-10-29T23:01:00.000Z")
+    const manifest = {
+      probeHash: draft.probeHash,
+      adapterVersion: "3",
+      catalogIds: [featureId],
+      probes: { term: [], lib: [featureId], mux: [] },
+    }
+    const parsed = parseRun(
+      "term-features.json",
+      JSON.stringify(sealRunDraft(draft)),
+      [featureId],
+      new Map([[draft.probeHash, manifest]]),
+    )
+    expect(parsed.results?.[0]?.status).toBe("untestable")
+    expect(parsed.rawReplies[artifact.rawReplyRef]).toBe(artifact.source)
+    expect(parsed.assertions).toEqual([])
+    const retained = JSON.parse(parsed.rawReplies[featureId]!)
+    const audit = {
+      sourceCitation: expect.stringContaining(citation),
+      runtimeIdentity: draft.runtimeIdentity,
+    }
+    expect(retained).toMatchObject(history ? audit : { audit })
+    expect(parsed.rawReplies[featureId]).toBe(draft.rawReplies[featureId])
+  },
+)
 // Source-only prompt review is approved evidence, not a measured assertion. These explicit
 // collector-input fixtures exercise the canonical seam; they do not attest an engine build.
 function semanticPromptCapture(status: "supported" | "unsupported" = "supported") {

@@ -1342,6 +1342,35 @@ export const UNTESTABLE_ONLY_REVIEW_BRANCHES: ReadonlySet<string> = new Set([
   HEADLESS_OBSERVABLE_REVIEW,
 ])
 
+/** Exact source/API audit; an embedding application's history is a different subject. */
+export function libvtermHistoryReview(ctx: LibProbeSource): ProbeCallbackResult | undefined {
+  const identity = ctx.runtimeIdentity
+  if (
+    !identity ||
+    identity.kind !== "js" ||
+    identity.runtimeFormat !== "wasm" ||
+    identity.engineVersion !== "0.3.3" ||
+    identity.adapterVersion !== "0.10.2" ||
+    identity.integrity.kind !== "source" ||
+    identity.integrity.repository !== "git@github.com:beorn/termless.git" ||
+    !identity.integrity.cleanTree ||
+    identity.integrity.treeOid !== "d47c013290cf7a9cb1dae316fd77c66a11a2925a" ||
+    identity.loadedBinary.sha256 !== "5937bd79139ee5856bcf1bd619cc44fcd2d750d3def3066a74956678cdaaaeb2"
+  ) {
+    return undefined
+  }
+  return reviewResult(
+    HEADLESS_OBSERVABLE_REVIEW,
+    "libvterm v0.3.3 exposes no retained scrollback history count; history belongs to an embedding application",
+    "retained scrollback history count",
+    {
+      runtimeIdentity: identity,
+      sourceCitation:
+        "packages/libvterm/src/backend.ts:421-434 getScrollback reports the screen extent, not retained history; raw libvterm 9d6d2112335080312ef8c36667fa717ded4f7daf include/vterm.h:541-543 and src/screen.c:208-226,676-681,830-837 hand history rows to the embedding application",
+    },
+  )
+}
+
 /** The collector's test row for a capture that reached an engine callback its adapter does not reproduce. */
 export const HARNESS_INCOMPLETE_TEST = "harness"
 
