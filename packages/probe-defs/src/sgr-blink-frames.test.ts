@@ -7,6 +7,7 @@
  * @testonly none
  */
 import { expect, test } from "vitest"
+import { recordExecutedProbe } from "./helpers.ts"
 import { sgrProbes } from "./sgr.ts"
 import type { CaptureCells, ObservationFrame, TermProbeSource } from "./types.ts"
 
@@ -91,6 +92,34 @@ test("a first sample caught before the fixture finished painting (A,B,B,B) is no
   const result = await blink().term!(context)
   expect(result.observation).toMatchObject({ outcome: "inconclusive", note: expect.stringContaining("one way") })
   expect(result.pass).toBe(false)
+})
+
+test("an undecided blink is recorded as review pending, never a test failure; a return is recorded Supported", async () => {
+  // @dev/10's fold proof (#31812 r2): a rowless inconclusive result persisted as TEST FAILURE.
+  const record = (result: Awaited<ReturnType<NonNullable<ReturnType<typeof blink>["term"]>>>) =>
+    recordExecutedProbe({
+      featureId: "sgr.blink",
+      attempt: { scope: "probe", startedAt: "2026-10-30T03:00:00.000Z" },
+      // The collector stamps the callback's observation and each assertion with its feature before the fold.
+      ...(result.observation ? { observation: { ...result.observation, featureId: "sgr.blink" } } : {}),
+      assertions: (result.assertions ?? []).map((assertion) => ({ ...assertion, featureId: "sgr.blink" })),
+      ...(result.tests ? { tests: result.tests } : {}),
+      ...(result.criterionBranch ? { criterionBranch: result.criterionBranch } : {}),
+    })
+  for (const styled of [
+    ["partial", "steady", "steady", "steady"],
+    ["on", "on", "on", "on"],
+  ]) {
+    const { context } = app({ styled, plain: STEADY_PLAIN, geometry: true })
+    const result = await blink().term!(context)
+    expect(result.tests).toMatchObject([
+      { id: "capture", status: "supported" },
+      { id: "review", status: "test-todo" },
+    ])
+    expect(record(result).status).not.toBe("test-failure")
+  }
+  const { context } = app({ styled: ["on", "off", "on", "off"], plain: STEADY_PLAIN, geometry: true })
+  expect(record(await blink().term!(context)).status).toBe("supported")
 })
 
 test("a one-way change later in the window (A,A,B,B) is not blink either", async () => {
