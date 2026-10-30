@@ -131,7 +131,7 @@ test.each(headlessObservableFeatures)(
   },
 )
 
-const sourceNegativeBranchFeatures = [
+const headlessStateFeatures = [
   [
     "sgr.underline.color",
     ["A", "B", "X"],
@@ -178,8 +178,8 @@ const sourceNegativeBranchFeatures = [
   [
     "erase.el-with-attrs",
     ["X", "X", "X", "X", "X"],
-    "EL carries the current background onto the erased cells",
-    "erase.el-with-attrs: the seed's painted bg on the region cells in the headless readback (the seed characters arrived without it)",
+    null, // Unpainted setup cannot establish an erase claim.
+    "PreconditionFailed: precondition failed: seed cells not painted (expected bg at",
   ],
   [
     "editing.decsace",
@@ -195,8 +195,8 @@ const sourceNegativeBranchFeatures = [
   ],
 ] as const
 
-test.each(sourceNegativeBranchFeatures)(
-  "%s routes unexposed headless colour/reset/buffer state to source-negative-review",
+test.each(headlessStateFeatures)(
+  "%s distinguishes failed setup from unexposed headless colour/reset/buffer state",
   (id, chars, expected, reason) => {
     const definition = ALL_PROBES.find((probe) => probe.id === id)
     if (!definition?.lib) throw new Error(`missing headless ${id}`)
@@ -222,6 +222,15 @@ test.each(sourceNegativeBranchFeatures)(
     } as unknown as LibProbeSource)
     expect(result.pass).toBe(false)
     expect(result.notTested).toBeUndefined()
+    if (expected === null) {
+      expect(result.criterionBranch).toBeUndefined()
+      expect(result.tests).toEqual([
+        { id: "criterion", status: "test-failure", reason: expect.stringContaining(reason) },
+      ])
+      expect(result.observation).toBeUndefined()
+      expect(result.assertions).toBeUndefined()
+      return
+    }
     expect(result.criterionBranch).toBe("source-negative-review")
     expect(result.tests).toEqual([{ id: "review", status: "test-failure", reason }])
     expect(result.observation).toEqual({
