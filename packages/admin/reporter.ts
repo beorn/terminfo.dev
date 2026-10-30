@@ -1,61 +1,37 @@
-/**
- * Census reporter — shows feature matrix instead of pass/fail noise.
- */
+/** Persist retained domain results after native task metadata and attachments arrive. */
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs"
+import { join } from "node:path"
+import type { Reporter } from "vitest/node"
+import type { EraseRunRecord } from "../probes/erase-run.ts"
 
-export default class CensusReporter {
-  onInit() {
-    console.log("\n@termless/probes\n")
-  }
-
-  onCollected(files?: any[]) {
-    console.log(`  Collected: ${files?.length ?? 0} files`)
-  }
-
-  onTaskUpdate() {
-    // Called for each test result
-  }
-
-  async onFinished(files?: any[], _errors?: unknown[], _coverage?: unknown, _time?: number) {
-    if (!files?.length) {
-      console.log("No probe result files found.")
-      return
+export default class CensusReporter implements Reporter {
+  readonly records: EraseRunRecord[] = []
+  private readonly ready = new Set<string>()
+  constructor(private readonly directory: string) {}
+  onTestCaseArtifactRecord: NonNullable<Reporter["onTestCaseArtifactRecord"]> = async (task, artifact) => {
+    if (artifact.type !== "terminfo:erase") return
+    for (const attachment of artifact.attachments ?? []) {
+      if (!attachment.path) throw new Error("Erase attachment has no persisted path")
+      JSON.parse(readFileSync(attachment.path, "utf8"))
     }
-
-    const backends = new Map<string, { yes: number; no: number; partial: number; total: number }>()
-
-    for (const file of files) {
-      this.walk(file, [], backends)
-    }
-
-    for (const [name, counts] of backends) {
-      const pct = Math.round((counts.yes / (counts.total || 1)) * 100)
-      console.log(`  ${name.padEnd(14)} ${counts.yes}/${counts.total} (${pct}%)`)
-    }
-
-    console.log("")
-    process.exitCode = 0
+    this.ready.add(task.id)
   }
-
-  private walk(task: any, path: string[], backends: Map<string, any>) {
-    if (task.tasks) {
-      const newPath = task.name ? [...path, task.name] : path
-      for (const child of task.tasks) {
-        this.walk(child, newPath, backends)
-      }
-    } else if (task.type === "test" && task.result) {
-      const backend = path.length >= 2 ? path[path.length - 2]! : "unknown"
-      if (!backends.has(backend)) {
-        backends.set(backend, { yes: 0, no: 0, partial: 0, total: 0 })
-      }
-      const counts = backends.get(backend)!
-      counts.total++
-      if (task.result.state === "pass") {
-        const hasNotes = task.meta?.notes
-        if (hasNotes) counts.partial++
-        else counts.yes++
-      } else {
-        counts.no++
-      }
-    }
+  onTestCaseResult: NonNullable<Reporter["onTestCaseResult"]> = async (task) => {
+    const record = task.meta().terminfoErase
+    if (!record) throw new Error("Erase task has no runner-owned final metadata: " + task.name)
+    if (!record.error && !this.ready.has(task.id))
+      throw new Error("Erase task completed before its attachments arrived")
+    const results =
+      record.failureResults ?? record.assertions.at(-1)?.results.filter((entry) => entry.attempt.scope !== "none")
+    if (!results?.length) throw new Error("Erase task has no retained domain results: " + task.name)
+    const counts: Record<string, number> = {}
+    for (const result of results) counts[result.status] = (counts[result.status] ?? 0) + 1
+    mkdirSync(this.directory, { recursive: true })
+    writeFileSync(
+      join(this.directory, encodeURIComponent(task.id) + ".report.json"),
+      JSON.stringify({ record, counts }, null, 2),
+      { flag: "wx" },
+    )
+    this.records.push(record)
   }
 }

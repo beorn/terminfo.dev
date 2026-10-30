@@ -1,5 +1,5 @@
 /**
- * @failure Recorder checks lose their task, evaluate twice, stop at a soft mismatch, or reach the reporter before attachments finish.
+ * @failure Recorder checks lose their task, evaluate twice, stop at a soft mismatch, reach the reporter before attachments finish, or get reported from native pass counts instead of retained domain results.
  * @level l2
  * @consumer The approved Phase0 Terminfo recorder/check adapter on installed Vitest5.0.4.
  * @reach runs an isolated Vitest fixture with concurrent native soft failures, TaskMeta and artifact delivery.
@@ -9,6 +9,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { expect, test } from "vitest"
+import CensusReporter from "../admin/reporter.ts"
 import { createVitest, version, type Reporter } from "vitest/node"
 import type { RuntimeArtifact } from "./fixtures/vitest-runtime.fixture.ts"
 
@@ -124,3 +125,38 @@ test("installed Vitest preserves task-owned checks and awaited reporter attachme
     await rm(directory, { recursive: true, force: true })
   }
 }, 60_000)
+
+test("actual erase entry persists two trace assertions and reports domain results", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "terminfo-erase-run-"))
+  const reporter = new CensusReporter(directory)
+  const runtime = await createVitest({
+    root: dirname(import.meta.filename),
+    config: false,
+    include: ["erase-replay.probe.ts"],
+    provide: { eraseArtifactRoot: directory },
+    reporters: [reporter],
+    attachmentsDir: join(directory, "vitest-attachments"),
+    watch: false,
+    maxWorkers: 1,
+  })
+  try {
+    await runtime.start()
+    expect(reporter.records).toHaveLength(1)
+    const record = reporter.records[0]!
+    expect(record.error).toBeUndefined()
+    expect(record.assertions).toHaveLength(2)
+    expect(new Set([record.captureRunId, ...record.assertions.map(({ runId }) => runId)]).size).toBe(3)
+    expect(record.checks[1]).toEqual(record.checks[0])
+    for (const run of record.assertions) {
+      expect(run.source).toMatchObject({ kind: "trace", captureRunId: record.captureRunId })
+      expect(run.results).toHaveLength(273)
+      const selected = run.results.filter(({ attempt }) => attempt.scope !== "none")
+      expect(selected).toHaveLength(11)
+      expect(selected.every(({ status }) => status === "supported")).toBe(true)
+    }
+    for (const path of record.files) expect(JSON.parse(await readFile(path, "utf8"))).toBeTruthy()
+  } finally {
+    await runtime.close()
+    await rm(directory, { recursive: true, force: true })
+  }
+})
