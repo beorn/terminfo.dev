@@ -86,14 +86,14 @@ Terminfo describes capabilities associated with a `$TERM` entry, including [user
 
 ## Comparing Detection Methods
 
-| Method            | What it provides                                                  | Important limit                                                       |
-| ----------------- | ----------------------------------------------------------------- | --------------------------------------------------------------------- |
-| **$TERM**         | Name of the selected terminal description                         | May name a multiplexer or compatibility entry; not a live test        |
-| **$COLORTERM**    | Conventional direct-color hint                                    | May be absent or stale; not a color-rendering test                    |
-| **terminfo**      | Capabilities declared by an installed entry, including extensions | Entry and application must understand the capability; not a live test |
-| **DA1**           | Reported device-attribute codes, or a sentinel reply              | Not exact product identity or proof of unrelated behavior             |
-| **DECRPM**        | Reported recognition and state of one private mode                | Only the responding layer and requested mode; not behavioral proof    |
-| **XTVERSION**     | Implementation-supplied name/version text when answered           | May identify an intermediate layer; a lookup predicts behavior        |
+| Method           | What it provides                                                  | Important limit                                                       |
+| ---------------- | ----------------------------------------------------------------- | --------------------------------------------------------------------- |
+| **$TERM**        | Name of the selected terminal description                         | May name a multiplexer or compatibility entry; not a live test        |
+| **$COLORTERM**   | Conventional direct-color hint                                    | May be absent or stale; not a color-rendering test                    |
+| **terminfo**     | Capabilities declared by an installed entry, including extensions | Entry and application must understand the capability; not a live test |
+| **DA1**          | Reported device-attribute codes, or a sentinel reply              | Not exact product identity or proof of unrelated behavior             |
+| **DECRPM**       | Reported recognition and state of one private mode                | Only the responding layer and requested mode; not behavioral proof    |
+| **XTVERSION**    | Implementation-supplied name/version text when answered           | May identify an intermediate layer; a lookup predicts behavior        |
 | **Runtime test** | Observation of one executed query or behavior                     | Scope is limited to the actual path and observation                   |
 
 SSH can carry terminal input and output, but it does not guarantee that environment variables are forwarded or that a multiplexer passes a query to the outer terminal. [OpenSSH sshd_config(5)](https://man.openbsd.org/sshd_config); [tmux manual](https://github.com/tmux/tmux/blob/master/tmux.1)
