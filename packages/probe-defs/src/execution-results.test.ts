@@ -76,7 +76,17 @@ it.each([
   expect(readCollectorSelection(draft.rawReplies)?.ids).toEqual(collection.ids)
   expect(readCollectorAttempt(draft.rawReplies)).toEqual(collection)
   expect(draft.results.map((result) => result.attempt)).toEqual([{ scope: "none" }, { scope: "none" }])
+  // Raw-row acceptance: run-level selection alone cannot explain an untouched row.
+  for (const result of draft.results) {
+    expect(result.reason).toMatch(
+      collection.ids.some((id) => id === result.featureId) ? /has not started/i : /not selected/i,
+    )
+  }
   expect(draft.runId).toBe("selected-attempt")
+  // The accepted raw contract must be stable when native dispatch records the same schedule again.
+  const retained = JSON.stringify(draft)
+  recordCollectorSelection(draft, collection.ids)
+  expect(JSON.stringify(draft)).toBe(retained)
 })
 
 it("keeps legacy absence distinct from malformed or newly completed collection evidence", () => {
@@ -121,6 +131,16 @@ it("records collection failure only for delegated unfinished IDs", () => {
   expect(draft.results[1]?.attempt).toEqual({ scope: "none" })
   expect(draft.results[2]?.attempt).toEqual({ scope: "none" })
   expect(draft.results[3]).toBe(decided)
+  // Raw selection must preserve attempted results while a still-unstarted native schedule changes.
+  const failed = structuredClone(draft.results[0])
+  recordCollectorSelection(draft, ["unscheduled"])
+  expect(draft.results[0]).toEqual(failed)
+  expect(draft.results[3]).toBe(decided)
+  expect(draft.results[1]!.reason).toMatch(/has not started/i)
+  expect(draft.results[2]!.reason).toMatch(/not selected/i)
+  recordCollectorSelection(draft, ["unimplemented"])
+  expect(draft.results[1]!.reason).toMatch(/not selected/i)
+  expect(draft.results[2]!.reason).toMatch(/has not started/i)
 })
 const frames: ObservationFrame[] = [
   {

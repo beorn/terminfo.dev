@@ -364,7 +364,11 @@ These run statuses are separate from the catalog's [probe-coverage labels](../..
 The existing registry exports `resolveProbeIds`; collectors share its typed resolution rather than duplicate ID lookup.
 Selection changes the callback schedule, while initialized drafts retain the full catalogue and the original suite hash.
 The existing `collector.selection` and `collector.collectionAttempt` records retain intent, actual start and outcome.
+`recordCollectorSelection` also labels untouched TODO rows outside that schedule as not selected; selected rows retain
+their not-started reason. Repeated selection updates preserve attempted results and restore still-unstarted selected rows.
 The canonical draft decoder distinguishes captured runs from explicitly empty initialized drafts; empty drafts contain no measured identity or emitted result.
+It accepts the original initialized empty draft or that same draft annotated by the selection writer, without normalizing
+either stored form. Any other changed row remains invalid; historical captures are not rewritten.
 
 The five admin routes share definitions, but do not all execute or persist through the same path:
 

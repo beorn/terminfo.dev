@@ -90,8 +90,22 @@ export function readCollectorAttempt(rawReplies: Record<string, string>): Collec
   return { ...value, ids } as CollectorAttempt
 }
 
+const UNSTARTED_PROBE_REASON = "Required probe test has not started"
+const UNSELECTED_PROBE_REASON = "Not selected for this collection; no test was attempted."
+
 export function recordCollectorSelection(draft: RunDraft, ids: readonly string[]): void {
   draft.rawReplies["collector.selection"] = JSON.stringify({ ids })
+  const selected = new Set(ids)
+  for (const result of draft.results) {
+    if (
+      result.status === "test-todo" &&
+      result.attempt.scope === "none" &&
+      result.tests.length === 0 &&
+      (result.reason === UNSTARTED_PROBE_REASON || result.reason === UNSELECTED_PROBE_REASON)
+    ) {
+      result.reason = selected.has(result.featureId) ? UNSTARTED_PROBE_REASON : UNSELECTED_PROBE_REASON
+    }
+  }
 }
 
 export function recordCollectorAttempt(draft: Pick<RunDraft, "rawReplies">, attempt: CollectorAttempt): void {
@@ -1636,7 +1650,7 @@ export function initializeRunDraft(input: {
       status: "test-todo",
       attempt: { scope: "none" },
       tests: [],
-      reason: "Required probe test has not started",
+      reason: UNSTARTED_PROBE_REASON,
     })),
     rawReplies: {},
     assertions: [],

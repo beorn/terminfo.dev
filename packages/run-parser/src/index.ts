@@ -12,6 +12,7 @@ import {
   PROBE_STATUSES,
   finalizeProbeResult,
   initializeRunDraft,
+  recordCollectorSelection,
   readCollectorSelection,
   readCollectorAttempt,
   collectorAttemptDigest,
@@ -2218,7 +2219,8 @@ export function decodeCollectorDraft(
         })
       }
       const selection = readCollectorSelection(records)
-      if (!selection || selection.ids.length || attempt.ids.length) refuse("collector.selection.ids")
+      if (!selection) return refuse("collector.selection.ids")
+      if (selection.ids.length || attempt.ids.length) refuse("collector.selection.ids")
       if (attempt.startedAt !== undefined) refuse("collector.collectionAttempt.startedAt")
       if (manifest.schemaVersion !== 4) refuse("schemaVersion")
       if (!nonempty(value.runId)) refuse("runId")
@@ -2246,7 +2248,11 @@ export function decodeCollectorDraft(
         intendedSubject: intended as Partial<ProbeSubject>,
         manifest: manifest as ProbeSuiteManifest & { schemaVersion: 4 },
       })
-      const difference = initializedDraftDifference(value, { ...initialized, rawReplies: records })
+      let difference = initializedDraftDifference(value, { ...initialized, rawReplies: records })
+      if (difference) {
+        recordCollectorSelection(initialized, selection.ids)
+        difference = initializedDraftDifference(value, { ...initialized, rawReplies: records })
+      }
       if (difference) refuse(difference)
       return {
         kind: "empty-selection",
