@@ -916,7 +916,8 @@ describe("private finite daemon startup", () => {
     `)
     expect(result.stderr).toBe("")
     expect(result.status).toBe(0)
-  })
+    // Six collector attempts share the child. Let its 10 s process limit fail before the outer test.
+  }, 15_000)
 
   // @cto, 28785 REVISE round 2 must 2: pin EVERY classification site of queryPixelGeometry with
   // one table. A timeout - nothing answered at all, DA1 included - is the one transient cause, and
