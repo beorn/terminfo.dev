@@ -136,7 +136,6 @@ function oscReplyResult(
   raw: string,
   frame: string | null,
   expected: string,
-  prefix: RegExp,
   sentinel?: { atMs: number; graceMs: number },
 ): ProbeCallbackResult {
   if (frame) {
@@ -162,7 +161,7 @@ function oscReplyResult(
     response: raw,
     observation: {
       outcome: "inconclusive",
-      reason: prefix.test(raw) ? "invalid-reply" : "no-response",
+      reason: "invalid-reply",
       assertionType: "query_reply",
       note,
     },
@@ -174,8 +173,8 @@ function oscReplyResult(
  * Live's grading of one OSC query outcome. A library probe source on a proven reply path offers the same
  * outcome through `queryWithSentinelOutcome` (#30554), so both arms grade through here.
  */
-function oscOutcomeResult(reply: TerminalQueryOutcome, expected: string, prefix: RegExp): ProbeCallbackResult {
-  return oscReplyResult(reply.raw, replyFrame(reply), expected, prefix, reply.sentinel)
+function oscOutcomeResult(reply: TerminalQueryOutcome, expected: string): ProbeCallbackResult {
+  return oscReplyResult(reply.raw, replyFrame(reply), expected, reply.sentinel)
 }
 
 function unverifiedEffect(ctx: TermProbeSource, note: string, response?: string): ProbeCallbackResult {
@@ -216,7 +215,7 @@ function sixelDa1Result(raw: string, frame: string | null): ProbeCallbackResult 
       response: raw,
       observation: {
         outcome: "inconclusive",
-        reason: raw.includes("\x1b[?") ? "invalid-reply" : "no-response",
+        reason: "invalid-reply",
         assertionType: "query_reply",
         note,
       },
@@ -245,19 +244,13 @@ const SIXEL_GEOMETRY_REPLY = /\x1b\[\?2;[0-9;]*S/
 
 /** Live's grading of one Sixel geometry outcome, shared by both arms (#30554). */
 function sixelGeometryOutcomeResult(reply: TerminalQueryOutcome): ProbeCallbackResult {
-  return sixelGeometryResult(
-    reply.raw,
-    replyFrame(reply),
-    reply.reason === "timeout" ? "timeout" : "no-response",
-    reply.sentinel,
-  )
+  return sixelGeometryResult(reply.raw, replyFrame(reply), reply.sentinel)
 }
 
 /** A read of current Sixel geometry; protocol failure and silence never establish a negative. */
 function sixelGeometryResult(
   raw: string,
   frame: string | null,
-  missingReason: "no-response" | "timeout",
   sentinel?: { atMs: number; graceMs: number },
 ): ProbeCallbackResult {
   // xterm replies with CSI ? Pi ; Ps ; Pv S, but omits the value on failure, so the
@@ -284,7 +277,7 @@ function sixelGeometryResult(
       observation: {
         outcome: "inconclusive",
         assertionType: "query_reply",
-        reason: malformed ? "invalid-reply" : missingReason,
+        reason: "invalid-reply",
         note,
       },
       tests: [{ id: "criterion", status: "test-failure", reason: note }],
@@ -400,7 +393,6 @@ function oscColorQueryProbe(id: string, oscCode: number, index?: number): ProbeD
   const slot = `${oscCode}${index === undefined ? "" : `;${index}`}`
   const querySeq = `\x1b]${slot};?\x07`
   const pattern = new RegExp(`\\x1b\\]${slot};rgb:[0-9a-f]{1,4}/[0-9a-f]{1,4}/[0-9a-f]{1,4}(?:\\x07|\\x1b\\\\)`, "i")
-  const prefix = new RegExp(`\\x1b\\]${slot};`)
   const expected = `Complete OSC ${oscCode}${index === undefined ? "" : ` index-${index}`} color reply`
   const reviewInitialValue = oscCode === 10 || oscCode === 11 || oscCode === 12 || (oscCode === 4 && index === 0)
   const hostInput: HostInputName | undefined =
@@ -422,7 +414,7 @@ function oscColorQueryProbe(id: string, oscCode: number, index?: number): ProbeD
           if (ctx.queryWithSentinelOutcome) {
             const outcome = ctx.queryWithSentinelOutcome(querySeq, pattern)
             silence = sentinelSilenceResult(outcome, expected)
-            if (!reviewInitialValue || !silence) return oscOutcomeResult(outcome, expected, prefix)
+            if (!reviewInitialValue || !silence) return oscOutcomeResult(outcome, expected)
           }
           const raw = silence ? "" : ctx.feedCapture(querySeq)
           const answer = (result: ProbeCallbackResult) =>
@@ -430,7 +422,7 @@ function oscColorQueryProbe(id: string, oscCode: number, index?: number): ProbeD
               ? result
               : nativeHostRecipeResult(ctx, result, "color-request", hostInput, querySeq, raw === "")
           if (raw !== "" || !reviewInitialValue) {
-            return answer(oscReplyResult(raw, pattern.exec(raw)?.[0] ?? null, expected, prefix))
+            return answer(oscReplyResult(raw, pattern.exec(raw)?.[0] ?? null, expected))
           }
 
           const reset = `\x1b]${oscCode + 100}${index === undefined ? "" : `;${index}`}\x07`
@@ -453,11 +445,11 @@ function oscColorQueryProbe(id: string, oscCode: number, index?: number): ProbeD
           }
           if (silence) return answer(silence)
           return answer({
-            ...oscReplyResult(raw, null, expected, prefix),
+            ...oscReplyResult(raw, null, expected),
             response: JSON.stringify(state),
           })
         },
-        async (ctx) => oscOutcomeResult(await ctx.queryWithSentinelOutcome(querySeq, pattern), expected, prefix),
+        async (ctx) => oscOutcomeResult(await ctx.queryWithSentinelOutcome(querySeq, pattern), expected),
         "query_reply",
       ),
     ),
@@ -579,7 +571,6 @@ function oscSimpleQueryProbe(
   id: string,
   query: string,
   pattern: RegExp,
-  prefix: RegExp,
   expected: string,
 ): ProbeDefinition {
   return {
@@ -590,8 +581,8 @@ function oscSimpleQueryProbe(
           const outcome = ctx.queryWithSentinelOutcome?.(query, pattern)
           const raw = outcome ? outcome.raw : ctx.feedCapture(query)
           const result = outcome
-            ? oscOutcomeResult(outcome, expected, prefix)
-            : oscReplyResult(raw, pattern.exec(raw)?.[0] ?? null, expected, prefix)
+            ? oscOutcomeResult(outcome, expected)
+            : oscReplyResult(raw, pattern.exec(raw)?.[0] ?? null, expected)
           const zeroGeometry =
             (id === "extensions.osc1337-cellsize" &&
               /^\x1b\]1337;ReportCellSize=0;0\x1b\\(?:\x1b\[\?[0-9]+(?:;[0-9]+)*c)?$/.test(raw)) ||
@@ -609,7 +600,7 @@ function oscSimpleQueryProbe(
           }
           return result
         },
-        async (ctx) => oscOutcomeResult(await ctx.queryWithSentinelOutcome(query, pattern), expected, prefix),
+        async (ctx) => oscOutcomeResult(await ctx.queryWithSentinelOutcome(query, pattern), expected),
         "query_reply",
       ),
     ),
@@ -899,11 +890,11 @@ function colorResetProbe(setCode: number, resetCode: number, index?: number): Pr
           )
         }
         return answer({
-          ...oscReplyResult(originalRaw, null, `OSC ${setCode} color before reset`, new RegExp(`\\x1b\\]${setCode};`)),
+          ...oscReplyResult(originalRaw, null, `OSC ${setCode} color before reset`),
           response,
         })
       }
-      return oscReplyResult(originalRaw, null, `OSC ${setCode} color before reset`, new RegExp(`\\x1b\\]${setCode};`))
+      return oscReplyResult(originalRaw, null, `OSC ${setCode} color before reset`)
     }
     const requested = probeForeground(original)
     let mustReset = false
@@ -1044,7 +1035,6 @@ async function colorResetAppProbe(
     `\\x1b\\]${spec.setCode};${indexPart}(rgb:[0-9a-f]{1,4}/[0-9a-f]{1,4}/[0-9a-f]{1,4})(?:\\x07|\\x1b\\\\)`,
     "i",
   )
-  const prefix = new RegExp(`\\x1b\\]${spec.setCode};`)
   const read = async () => {
     const outcome = await ctx.queryWithSentinelOutcome(query, reply)
     return { outcome, rgb: outcome.match?.[1] ?? null }
@@ -1055,7 +1045,6 @@ async function colorResetAppProbe(
       before.outcome.raw,
       null,
       `Complete OSC ${spec.setCode} color reply`,
-      prefix,
       before.outcome.sentinel,
     )
   }
@@ -3865,7 +3854,6 @@ export const extensionsProbes: ProbeDefinition[] = [
     // iTerm2 documents both forms: height;width, and the newer height;width;scale (pixels per point). WezTerm sends the
     // newer one (27915: `ReportCellSize=16.5;7.5;1.3`).
     /\x1b\]1337;ReportCellSize=[1-9][0-9]*(?:\.[0-9]+)?;[1-9][0-9]*(?:\.[0-9]+)?(?:;[0-9]+(?:\.[0-9]+)?)?(?:\x07|\x1b\\)/,
-    /\x1b\]1337;ReportCellSize=/,
     "Complete OSC 1337 ReportCellSize reply with two positive dimensions and an optional scale",
   ),
 
@@ -3874,7 +3862,6 @@ export const extensionsProbes: ProbeDefinition[] = [
     "extensions.osc1337-capabilities",
     "\x1b]1337;Capabilities\x07",
     /\x1b\]1337;Capabilities=[^\x07\x1b]*(?:\x07|\x1b\\)/,
-    /\x1b\]1337;Capabilities=/,
     "Complete OSC 1337 Capabilities reply",
   ),
 
@@ -4062,7 +4049,6 @@ export const extensionsProbes: ProbeDefinition[] = [
     "extensions.osc5-special-color",
     "\x1b]5;0;?\x07",
     /\x1b\]5;0;rgb:[0-9a-f]{1,4}\/[0-9a-f]{1,4}\/[0-9a-f]{1,4}(?:\x07|\x1b\\)/i,
-    /\x1b\]5;0;/,
     "Complete OSC 5 index-0 color reply",
   ),
 
@@ -4265,7 +4251,6 @@ export const extensionsProbes: ProbeDefinition[] = [
     "extensions.osc7770-font-size",
     "\x1b]7770;?\x07",
     /\x1b\]7770;[0-9]+(?:\x07|\x1b\\)/,
-    /\x1b\]7770;/,
     "Complete OSC 7770 font-size reply",
   ),
 
@@ -4274,7 +4259,6 @@ export const extensionsProbes: ProbeDefinition[] = [
     "extensions.osc7777-font-window-size",
     "\x1b]7777;?\x07",
     /\x1b\]7777;[0-9]+(?:\x07|\x1b\\)/,
-    /\x1b\]7777;/,
     "Complete OSC 7777 window-size reply",
   ),
 
@@ -4283,7 +4267,6 @@ export const extensionsProbes: ProbeDefinition[] = [
     "extensions.osc701-locale",
     "\x1b]701;?\x07",
     /\x1b\]701;[A-Za-z0-9_.-]+(?:\x07|\x1b\\)/,
-    /\x1b\]701;/,
     "Complete OSC 701 locale reply",
   ),
 
@@ -4292,7 +4275,6 @@ export const extensionsProbes: ProbeDefinition[] = [
     "extensions.osc702-version",
     "\x1b]702;?\x07",
     /\x1b\]702;[A-Za-z0-9_.-]+;[A-Za-z0-9_.-]+;[0-9]+;[0-9]+(?:\x07|\x1b\\)/,
-    /\x1b\]702;/,
     "Complete OSC 702 version reply",
   ),
 
@@ -4322,7 +4304,6 @@ export const extensionsProbes: ProbeDefinition[] = [
     "extensions.osc776-cell-size",
     "\x1b]776\x07",
     /\x1b\]776;[1-9][0-9]*;[1-9][0-9]*;[0-9]+(?:\x07|\x1b\\)/,
-    /\x1b\]776;/,
     "Complete OSC 776 cell-size reply with positive width and height",
   ),
 
@@ -4356,7 +4337,7 @@ export const extensionsProbes: ProbeDefinition[] = [
           }
           const raw = ctx.feedCapture(SIXEL_GEOMETRY_QUERY)
           const frame = SIXEL_GEOMETRY_REPLY.exec(raw)?.[0] ?? null
-          return sixelGeometryResult(raw, frame, "no-response")
+          return sixelGeometryResult(raw, frame)
         },
         async (ctx) =>
           sixelGeometryOutcomeResult(

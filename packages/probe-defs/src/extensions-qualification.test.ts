@@ -18,7 +18,7 @@ test.each([
   ["extensions.sixel-geometry-report", "Sixel geometry", "\x1b[?2;brokenS"],
 ] as const)("%s marks only an empty raw reply", async (id, kind, malformed) => {
   const definition = callback(id)
-  for (const raw of ["", malformed]) {
+  for (const raw of ["", malformed, "unrelated output"]) {
     const query = async (_sequence: string, pattern: RegExp) => ({
       match: pattern.exec(raw),
       reason: "timeout" as const,
@@ -37,6 +37,7 @@ test.each([
       } else {
         expect(result).not.toHaveProperty("replyFailureTestIds")
         expect(result.tests?.[0]?.reason).toBe(`Malformed ${kind} reply: ${JSON.stringify(raw)}`)
+        expect(result.observation?.reason).toBe("invalid-reply")
       }
     }
   }
@@ -697,7 +698,7 @@ test("OSC 702 accepts complete 4-field vendor version frames and keeps query ech
       expect(result.response, raw).toBe(raw)
       expect(result.observation, raw).toMatchObject({
         outcome: "inconclusive",
-        reason: "no-response",
+        reason: "invalid-reply",
         assertionType: "query_reply",
       })
       expect(result.assertions, raw).toBeUndefined()
