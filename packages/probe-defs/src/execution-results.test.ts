@@ -11,6 +11,8 @@ import {
   recordExecutedProbe,
   finalizeProbeResult,
   replyFailure,
+  decrpmResult,
+  unmeasuredCellResult,
   withReplyFailureEvidence,
   recordCollectionFailure,
   initializeRunDraft,
@@ -45,7 +47,7 @@ const attempt = { scope: "probe" as const, startedAt: "2026-10-21T05:00:00.000Z"
 it("strips callback-only reply metadata from stored result and draft serialization", () => {
   const callback = withReplyFailureEvidence("sgr.bold", replyFailure("No cursor reply"), {
     producer: "TTY",
-    attempts: [{ sequence: "\x1b[6n", received: "", timeoutMs: 37 }],
+    attempts: [{ sequence: "\x1b[6n", received: "", timeoutMs: 37, match: null, reason: "timeout" }],
   })
   const input = {
     featureId: "sgr.bold",
@@ -77,29 +79,66 @@ it("strips callback-only reply metadata from stored result and draft serializati
 })
 
 // One formatter owns the evidence template; unrelated failure reasons and grades stay untouched.
+it("retains each query's own state when a failed query is followed by a matching cleanup reply", () => {
+  const result = withReplyFailureEvidence("cursor.fixture", replyFailure("no parsable cursor position reply"), {
+    producer: "TTY",
+    attempts: [
+      { sequence: "\x1b[6n", received: "\x1b[1;1R", timeoutMs: 41, match: ["\x1b[1;1R", "1", "1"], reason: "reply" },
+      { sequence: "\x1b[6n", received: "garbage", timeoutMs: 37, match: null, reason: "timeout" },
+      { sequence: "\x1b[6n", received: "\x1b[2;3R", timeoutMs: 53, match: ["\x1b[2;3R", "2", "3"], reason: "reply" },
+    ],
+  })
+  expect(result.tests?.[0]).toMatchObject({ id: "criterion", status: "test-failure" })
+  expect(result.tests?.[0]?.reason).toBe(
+    'no parsable cursor position reply; query 1: sent "\\u001b[6n"; received "\\u001b[1;1R"; matched | query 2: sent "\\u001b[6n"; received "garbage"; timeout 37 ms | query 3: sent "\\u001b[6n"; received "\\u001b[2;3R"; matched',
+  )
+})
+
+it.each([
+  {
+    kind: "cursor",
+    result: () => unmeasuredCellResult(null, "changed cells"),
+    reason: "no parsable cursor position reply",
+  },
+  { kind: "DECRPM", result: () => decrpmResult(null, 7), reason: "no usable DECRPM reply" },
+])("marks an erased $kind reading without asserting silence", ({ result, reason }) => {
+  const callback = result()
+  expect(callback).toHaveProperty("replyFailureTestIds", ["criterion"])
+  expect(callback.tests?.[0]).toMatchObject({ status: "test-failure", reason: expect.stringContaining(reason) })
+  expect(callback.tests?.[0]?.reason).toContain("the public projection returned null and retained no bytes")
+})
+
 it.each([
   {
     producer: "TTY" as const,
-    attempts: [{ sequence: "\x1b[6n", received: "", timeoutMs: 37 }],
-    expected: 'sent "\\u001b[6n"; received ""; timeout 37 ms',
+    attempts: [{ sequence: "\x1b[6n", received: "", timeoutMs: 37, match: null, reason: "timeout" as const }],
+    expected: 'query 1: sent "\\u001b[6n"; received ""; timeout 37 ms',
   },
   {
     producer: "headless" as const,
     attempts: [{ sequence: "\x1b[6n", received: "\x1b?", timeoutMs: null }],
     expected: 'sent "\\u001b[6n"; received "\\u001b?"; synchronous feed and getCursor boundary',
   },
+  {
+    producer: "TTY" as const,
+    attempts: [
+      { sequence: "\x1b[6n", received: "\x1b[?1;2c", timeoutMs: 37, match: null, reason: "sentinel" as const },
+    ],
+    expected: 'query 1: sent "\\u001b[6n"; received "\\u001b[?1;2c"; no match',
+  },
   { producer: "TTY" as const, attempts: [], expected: "no completed TTY trace for this query" },
   { producer: "headless" as const, attempts: [], expected: "no headless capture recorded" },
-])("retains only explicitly marked $producer failure evidence", ({ producer, attempts, expected }) => {
+])("retains only explicitly marked $producer failure evidence", (evidence) => {
+  const { expected } = evidence
   const callback = replyFailure("No cursor reply")
   const unrelated = { id: "setup", status: "test-failure" as const, reason: "Fixture not established" }
   callback.tests.push(unrelated)
-  const result = withReplyFailureEvidence("cursor.position-report", callback, { producer, attempts })
+  const result = withReplyFailureEvidence("cursor.position-report", callback, evidence)
   expect(result.tests?.[0]).toMatchObject({ id: "criterion", status: "test-failure" })
   expect(result.tests?.[0]?.reason).toBe(`No cursor reply; ${expected}`)
   expect(result.tests?.[1]).toBe(unrelated)
   const unmarked: ProbeCallbackResult = { pass: false, tests: [unrelated] }
-  expect(withReplyFailureEvidence("cursor.position-report", unmarked, { producer, attempts })).toBe(unmarked)
+  expect(withReplyFailureEvidence("cursor.position-report", unmarked, evidence)).toBe(unmarked)
   expect(callback.tests[0].reason).toBe("No cursor reply")
 })
 
@@ -305,11 +344,19 @@ it("preserves producer-specific native geometry refusal reasons without appendin
   for (const [id, col, reason] of [
     ["sgr.underline-color-reset", 9, "Cursor advance does not verify the reset rendered"],
     ["sgr.selective-reset.bold", 9, "Cursor did not reach the expected position"],
-    ["fixture.sgr", null, "No cursor response"],
+    [
+      "fixture.sgr",
+      null,
+      "no parsable cursor position reply; the public projection returned null and retained no bytes",
+    ],
     ["sgr.underline-color-indexed", null, "No cursor response"],
     ["sgr.underline-color-reset", null, "No cursor response"],
     ["sgr.selective-reset.bold", null, "no-response"],
-    ["modes.xtpushsgr", null, "no-response"],
+    [
+      "modes.xtpushsgr",
+      null,
+      "no parsable cursor position reply; the public projection returned null and retained no bytes",
+    ],
     ["reset.sgr", null, "no-response"],
   ] as const) {
     const callback = await rows.find((row) => row.id === id)!.term!({
@@ -398,8 +445,13 @@ it("preserves native callback note fallback for unmeasured widths and TERM_FEATU
       write() {},
       queryCursorPosition: async () => null,
     } as unknown as TermProbeSource)
-    expect(missing.note).toMatch(/^No cursor response after /)
-    expect(record(missing)).toMatchObject({ status: "test-failure", reason: missing.note })
+    expect(missing).toHaveProperty("replyFailureTestIds", ["criterion"])
+    expect(record(missing)).toMatchObject({
+      status: "test-failure",
+      reason: expect.stringMatching(
+        /^no parsable cursor position reply after .*; the public projection returned null and retained no bytes$/,
+      ),
+    })
   }
   for (const row of unicodeProbes) {
     if (!["unicode.east-asian-ambiguous", "unicode.grapheme-cursor"].includes(row.id)) continue

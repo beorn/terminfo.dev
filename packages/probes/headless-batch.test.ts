@@ -21,7 +21,6 @@ import {
   HARNESS_INCOMPLETE_TEST,
   HEADLESS_OBSERVABLE_REVIEW,
   initializeRunDraft,
-  replyFailure,
   type CapturedRunDraft,
   type ProbeCallbackResult,
   type ProbeDefinition,
@@ -37,6 +36,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest"
 import { collectBatch, createLibProbeSource, feedCapture } from "./headless-batch.ts"
 import { finalizeCollectedDraft } from "../terminfo.dev/src/capture-writer.ts"
 import { cellWidthTransition } from "../probe-defs/src/helpers.ts"
+import { replyFailure } from "../probe-defs/src/helpers.ts"
 import retainedDeccolm from "./fixtures/deccolm-retained.json"
 
 /** Feature captures only; collector qualification metadata is asserted in sentinel-member.test.ts. */

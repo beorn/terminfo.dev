@@ -704,6 +704,8 @@ export async function runProbeBatch(
           sequence: query.sequence,
           received: query.raw,
           timeoutMs: query.timeoutMs,
+          match: query.match,
+          reason: query.reason,
         })),
       })
       callbackTests = result.tests
