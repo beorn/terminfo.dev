@@ -458,7 +458,7 @@ it.each([
   {
     producer: "headless" as const,
     attempts: [{ sequence: "\x1b[6n", received: "\x1b?", timeoutMs: null }],
-    expected: 'sent "\\u001b[6n"; received "\\u001b?"; synchronous feed and getCursor boundary',
+    expected: 'sent "\\u001b[6n"; received "\\u001b?"; synchronous feed and getCursor boundary; timeout not applicable',
   },
   {
     producer: "TTY" as const,

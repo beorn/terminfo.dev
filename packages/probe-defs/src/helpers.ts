@@ -83,7 +83,11 @@ export function withReplyFailureEvidence(
                 ? `timeout ${entry.timeoutMs} ms`
                 : "no match",
         }))
-      : evidence.attempts.map((entry) => ({ ...entry, prefix: "", state: "synchronous feed and getCursor boundary" }))
+      : evidence.attempts.map((entry) => ({
+          ...entry,
+          prefix: "",
+          state: "synchronous feed and getCursor boundary; timeout not applicable",
+        }))
   const detail = entries.length
     ? entries
         .map(
