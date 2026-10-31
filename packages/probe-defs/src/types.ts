@@ -495,6 +495,8 @@ export interface ProbeSuiteManifest {
   adapterVersion: string
   /** Complete frozen membership, distinct from callback schedules. Absent only in historical suites. */
   catalogIds?: string[]
+  /** Whole raw catalogue entries at collection time; absent only in historical declarations. */
+  catalogEntrySha256?: Record<string, string>
   probes: Record<ProbeSubject["kind"], string[]>
   textClaims?: string[]
   textQualification?: TextQualificationSpec
@@ -725,11 +727,33 @@ export interface HistoricalInterpretation {
 }
 
 /** A pre-seal review binds capture bytes rather than circularly hashing the resulting run. */
+export interface CaptureEvidence {
+  algorithm: "evidence-output-v1"
+  sha256: string
+  /** Immutable pre-review outputs, retained to explain which component changed. */
+  projection: {
+    subject: Pick<ProbeSubject, "kind" | "id" | "version" | "os">
+    runtimeIdentity: Record<string, unknown> | null
+    feature: { featureId: string; catalogEntrySha256: string }
+    cell: {
+      rawReplies: Array<{ key: string; sha256: string }>
+      tests: Array<Pick<ProbeTestResult, "id" | "status" | "reason">>
+      assertions: Array<Omit<ProbeAssertion, "assertionType"> & { assertionType?: AssertionType }>
+      frames: Array<Record<string, unknown>>
+      criterionBranch?: string
+      assertionType?: AssertionType
+      host?: Pick<ConsoleBufferOwner, "image" | "executableSha256">
+      replyPath?: { declaration: unknown; decision: unknown }
+    }
+  }
+}
+
 export interface CaptureDecision {
   id: string
   runId: string
   featureId: string
   captureSha256: string
+  evidence?: CaptureEvidence
   decision: "supported" | "unsupported" | "untestable"
   reviewed: true
   reviewer: string

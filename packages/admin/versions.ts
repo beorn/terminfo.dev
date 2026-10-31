@@ -5,7 +5,7 @@ import { createHash } from "node:crypto"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { execFileSync } from "node:child_process"
-import { loadFeatures } from "@terminfo/catalog"
+import { loadFeatures, loadFeatureEntryHashes } from "@terminfo/catalog"
 import { ALL_PROBES, TEXT_QUALIFICATION_SPEC, type ProbeSuiteManifest } from "@terminfo/probe-defs"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -104,6 +104,7 @@ export interface ProbeSuiteSnapshot {
   probeHash: string
   adapterVersion: string
   catalogIds: string[]
+  catalogEntrySha256: Record<string, string>
   probes: ProbeSuiteManifest["probes"]
   textClaims?: string[]
   textQualification?: ProbeSuiteManifest["textQualification"]
@@ -115,8 +116,10 @@ export interface ProbeSuiteSnapshot {
 export function probeSuiteSnapshot(repoRoot: string = REPO_ROOT): ProbeSuiteSnapshot {
   const hash = createHash("md5")
   const catalogIds = Object.keys(loadFeatures(join(repoRoot, "content"))).sort()
+  const catalogEntrySha256 = { ...loadFeatureEntryHashes(join(repoRoot, "content")) }
   hash.update("catalogIds")
   hash.update(JSON.stringify(catalogIds))
+  hash.update(JSON.stringify(catalogEntrySha256))
 
   const probeFiles = readdirSync(join(repoRoot, "packages", "probes"))
     .filter((f) => f.endsWith(".probe.ts"))
@@ -161,6 +164,7 @@ export function probeSuiteSnapshot(repoRoot: string = REPO_ROOT): ProbeSuiteSnap
     probeHash: hash.digest("hex").slice(0, 12),
     adapterVersion,
     catalogIds,
+    catalogEntrySha256,
     probes: { term: app, lib: headless, mux: [...app] },
     sourcePaths,
   }
@@ -182,6 +186,7 @@ export function derivedSuiteManifest(
     adapterVersion: snapshot.adapterVersion,
     probes: snapshot.probes,
     catalogIds: [...snapshot.catalogIds],
+    catalogEntrySha256: { ...snapshot.catalogEntrySha256 },
     ...(snapshot.textClaims === undefined ? {} : { textClaims: snapshot.textClaims }),
     ...(snapshot.textQualification === undefined ? {} : { textQualification: snapshot.textQualification }),
     ...(freeze === undefined ? {} : { freeze: { release: freeze.release, at: freeze.at } }),

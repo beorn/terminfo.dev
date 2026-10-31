@@ -11,7 +11,7 @@ import {
   uncommittedCollectorDirt,
   type ProbeSuiteSnapshot,
 } from "./versions.ts"
-import { parseSuiteManifest } from "@terminfo/run-parser"
+import { parseSuiteManifest, canonicalJson } from "@terminfo/run-parser"
 
 export { derivedSuiteManifest, uncommittedCollectorDirt }
 
@@ -82,6 +82,9 @@ function verifyValue(value: ProbeSuiteManifest, path: string, snapshot: ProbeSui
   if (value.adapterVersion !== snapshot.adapterVersion) throw new Error(`Suite adapter version mismatch: ${path}`)
   if (!sameStrings(value.catalogIds, snapshot.catalogIds)) {
     throw new Error(`Suite catalogue membership mismatch: ${path}`)
+  }
+  if (canonicalJson(value.catalogEntrySha256) !== canonicalJson(snapshot.catalogEntrySha256)) {
+    throw new Error(`Suite catalogue entry hashes mismatch: ${path}`)
   }
   for (const kind of KINDS) {
     if (!sameStrings(value.probes[kind], snapshot.probes[kind])) {

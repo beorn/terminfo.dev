@@ -652,8 +652,9 @@ const setup = (
   observed?: string,
   sourceNegative?: { runId: string; startedAt: string },
   beforeBinding?: (draft: RunDraft) => void,
+  featureOverride?: string,
 ) => {
-  const featureId = sourceNegative ? "sgr.faint" : "sgr.bold"
+  const featureId = featureOverride ?? (sourceNegative ? "sgr.faint" : "sgr.bold")
   const subject = sourceNegative
     ? { kind: "lib" as const, id: "vt100", version: "0.8.0", permissions: null }
     : { kind: "term" as const, id: "kitty", version: "0.46.2", permissions: "pixels" }
@@ -1149,6 +1150,185 @@ describe("semantic prompt source review", () => {
 // Existing final-run SHA review tests cannot catch a circular pre-seal binding or status changes
 // authorized by a different capture. This exercises the actual execution helper and exact bytes.
 describe("immutable pre-seal capture binding", () => {
+  // Each review route must reach the same new-key reader; legacy tests require same-run
+  // bindings and cannot expose a route that still compares the origin capture SHA.
+  it.each([
+    ["source-negative-review", "sgr.faint", "unsupported"],
+    ["os-input-review", "input.xtest-key", "untestable"],
+    ["headless-observable-review", "extensions.sixel", "untestable"],
+    ["headless-geometry-review", "device.xtwinops-14", "untestable"],
+    ["semantic-prompt-source-review", "extensions.osc133-a", "supported"],
+  ] as const)("carries %s through application and the sealed reader", (branch, featureId, outcome) => {
+    const make = (runId: string, suite: string) =>
+      setup(
+        '{"retained":"state"}',
+        { runId, startedAt: "2026-10-27T11:00:00.000Z" },
+        (draft) => {
+          draft.probeHash = draft.suiteId = suite
+          if (branch === SEMANTIC_PROMPT_SOURCE_REVIEW) draft.assertions = []
+          draft.results[0] = recordExecutedProbe({
+            featureId,
+            attempt: { scope: "probe", startedAt: "2026-10-27T11:00:00.000Z" },
+            ...(branch !== SEMANTIC_PROMPT_SOURCE_REVIEW && {
+              observation: {
+                featureId,
+                outcome: "inconclusive" as const,
+                reason: "insufficient-evidence" as const,
+                assertionType: "buffer_state" as const,
+                rawReplyRef: featureId,
+              },
+            }),
+            assertions: draft.assertions,
+            tests: [
+              {
+                id: "review",
+                status: branch === "source-negative-review" ? "test-failure" : "test-todo",
+                reason: "Independent source review pending",
+              },
+            ],
+            criterionBranch: branch,
+          })
+        },
+        featureId,
+      )
+    const origin = make("kind-origin", "old-suite"),
+      current = make("kind-current", "new-suite")
+    const artifact = retainCaptureBinding(origin.draft, featureId, "a".repeat(64))
+    retainCaptureBinding(current.draft, featureId, "a".repeat(64))
+    const decision = {
+      ...origin.decision,
+      decision: outcome,
+      evidence: artifact.evidence,
+      sources: ["vterm@3333333333333333333333333333333333333333:screen.ts:1"],
+    }
+    const before = structuredClone(current.draft.assertions),
+      bytes = JSON.stringify(decision)
+    applyCaptureDecision(current.draft, bytes, "2026-10-27T11:02:00.000Z", undefined, "a".repeat(64))
+    expect(current.draft.results[0]!.status).toBe(outcome)
+    expect(current.draft.rawReplies["collector.review.review-bold"]).toBe(bytes)
+    expect(current.draft.assertions.slice(0, before.length)).toEqual(before)
+    const manifest = {
+      schemaVersion: 4 as const,
+      probeHash: "new-suite",
+      adapterVersion: "3",
+      catalogIds: [featureId],
+      catalogEntrySha256: { [featureId]: "a".repeat(64) },
+      probes: { term: [], lib: [featureId], mux: [] },
+    }
+    expect(
+      parseRun(
+        "carried.json",
+        JSON.stringify(sealRunDraft(current.draft)),
+        manifest.catalogIds,
+        new Map([[manifest.probeHash, manifest]]),
+      ).results?.[0]?.status,
+    ).toBe(outcome)
+  })
+
+  // Component changes must lapse only the affected review. The old whole-suite tests do
+  // not bind original reason text or a single catalogue entry, and cannot prove that rule.
+  it.each(["catalogue", "raw bytes", "expected", "reason", "runtime"] as const)(
+    "names changed %s in an evidence-bound lapse",
+    (part) => {
+      const origin = setup('{"faint":false}', { runId: "component-origin", startedAt: "2026-10-27T11:00:00.000Z" })
+      const current = setup(
+        '{"faint":false}',
+        { runId: "component-current", startedAt: "2026-10-27T11:00:00.000Z" },
+        (draft) => {
+          if (part === "raw bytes") {
+            draft.rawReplies["sgr.faint"] = '{"faint":true}'
+            draft.assertions[0]!.observed = draft.rawReplies["sgr.faint"]!
+          }
+          if (part === "expected") draft.assertions[0]!.expected = "a different criterion"
+          if (part === "reason") draft.results[0]!.tests[0]!.reason = "a different source-review prerequisite"
+          if (part === "runtime" && draft.runtimeIdentity) draft.runtimeIdentity.adapterVersion = "different-adapter"
+        },
+      )
+      const evidence = retainCaptureBinding(origin.draft, "sgr.faint", "a".repeat(64)).evidence
+      const currentHash = (part === "catalogue" ? "b" : "a").repeat(64)
+      retainCaptureBinding(current.draft, "sgr.faint", currentHash)
+      applyCaptureDecision(
+        current.draft,
+        JSON.stringify({ ...origin.decision, evidence, decision: "unsupported" }),
+        "2026-10-27T11:02:00.000Z",
+        undefined,
+        currentHash,
+      )
+      expect(current.draft.results[0]!.status).toBe("test-failure")
+      expect(current.draft.results[0]!.reason).toContain(
+        {
+          catalogue: "feature",
+          "raw bytes": "cell.rawReplies",
+          expected: "cell.assertions",
+          reason: "cell.tests",
+          runtime: "runtimeIdentity",
+        }[part],
+      )
+    },
+  )
+
+  // Output-key acceptance: the existing same-suite source-negative fixture cannot catch
+  // a review being needlessly lost when only the run, suite, source or checkout path changes.
+  it("carries an explicitly evidence-bound decision across a different run and suite", () => {
+    const observed = '{"faint":false}'
+    const origin = setup(observed, { runId: "evidence-origin", startedAt: "2026-10-27T11:00:00.000Z" })
+    const current = setup(observed, { runId: "evidence-current", startedAt: "2026-10-27T11:01:00.000Z" }, (draft) => {
+      draft.probeHash = draft.suiteId = "different-suite"
+      draft.sourceRevision = "5".repeat(40)
+      if (draft.runtimeIdentity?.kind === "js") draft.runtimeIdentity.resolvedPath = "/new/checkout/vt100/index.ts"
+    })
+    // Literal reviewed preimage: its independently recorded SHA must keep the original
+    // capture digest's old meaning, and the applier must compare actual current evidence.
+    const projection = {
+      cell: {
+        assertionType: "buffer_state",
+        assertions: [
+          {
+            assertionType: "buffer_state",
+            expected: "changed faint=true; restored faint=false",
+            featureId: "sgr.faint",
+            kind: "negative",
+            observed,
+            rawReplyRef: "sgr.faint",
+          },
+        ],
+        criterionBranch: "source-negative-review",
+        frames: [],
+        rawReplies: [{ key: "sgr.faint", sha256: "1ec72955c1f0c335d797d8c7a5f02f59208820de4e168ca74e2a5a918c563ac9" }],
+        tests: [{ id: "review", reason: "Required source-negative review pending", status: "test-failure" }],
+      },
+      feature: { catalogEntrySha256: "a".repeat(64), featureId: "sgr.faint" },
+      runtimeIdentity: {
+        adapterVersion: "0.10.2",
+        engineVersion: "0.8.0",
+        integrity: {
+          cleanTree: true,
+          kind: "source",
+          repository: "vterm",
+          revision: "3".repeat(40),
+          treeOid: "4".repeat(40),
+        },
+        kind: "js",
+        runtimeFormat: "js",
+        termlessRevision: "2".repeat(40),
+      },
+      subject: { id: "vt100", kind: "lib", os: "linux", version: "0.8.0" },
+    }
+    const evidence = {
+      algorithm: "evidence-output-v1",
+      sha256: "507fa80e7d265d73364af71ad1b847bcf86a74b36baa97715569d50165b47712",
+      projection,
+    }
+    const decision = { ...origin.decision, decision: "unsupported", evidence }
+    const decisionBytes = JSON.stringify(decision)
+    current.draft.rawReplies["collector.evidence.sgr.faint"] = JSON.stringify(evidence)
+    applyCaptureDecision(current.draft, decisionBytes, "2026-10-27T11:02:00.000Z", undefined, "a".repeat(64))
+    expect(current.draft.results[0]!.status).toBe("unsupported")
+    expect(current.draft.rawReplies["collector.review.review-bold"]).toBe(decisionBytes)
+    expect(origin.decision.runId).toBe("evidence-origin")
+    expect(current.draft.runtimeIdentity).toMatchObject({ resolvedPath: "/new/checkout/vt100/index.ts" })
+  })
+
   // Existing review fixtures supply the pending row; this crosses the actual SGR producer boundary.
   it.each(["unsupported", "untestable"] as const)("decides an actual null SGR readback as %s", (outcome) => {
     const model = createSemanticSurface()

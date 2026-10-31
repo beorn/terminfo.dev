@@ -158,7 +158,7 @@ export function parseInterpretations(path: string, source: string, catalogIds: r
     if (new Set(entry.supersedes).size !== entry.supersedes.length || entry.supersedes.includes(id)) {
       fail(path, `duplicate/self supersedes for ${id}`)
     }
-    if (Object.hasOwn(entry, "captureSha256") || Object.hasOwn(entry, "decision")) {
+    if (Object.hasOwn(entry, "captureSha256") || Object.hasOwn(entry, "decision") || Object.hasOwn(entry, "evidence")) {
       normalized.push(parseCaptureDecision(entry, `${path}: capture ${id}`, catalog, decodedScope.historical ? 3 : 4))
       continue
     }

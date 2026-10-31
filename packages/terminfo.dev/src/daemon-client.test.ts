@@ -24,7 +24,7 @@ import {
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, expect, it, vi } from "vitest"
-import { parseRun } from "@terminfo/run-parser"
+import { parseRun, retainCaptureBinding } from "@terminfo/run-parser"
 import { initializeRunDraft, recordCollectorSelection, recordCollectorAttempt } from "@terminfo/probe-defs"
 import type { CapturedRunDraft as CollectedProbeRun, ProbeSuiteManifest } from "@terminfo/probe-defs"
 import {
@@ -98,6 +98,93 @@ afterEach(async () => {
   server = undefined
   root = undefined
 })
+
+// AC loader/finalizer selection: parser-only carry cannot prove conflict handling or immutable writer custody.
+it.each(["single", "duplicates", "conflict", "changed"] as const)(
+  "selects evidence-bound reviews through the immutable final writer: %s",
+  (selection) => {
+    root = mkdtempSync(join(tmpdir(), "terminfo-evidence-writer-"))
+    const old = collectorRun()
+    old.results[0]!.tests = [
+      { id: "review", status: "test-todo", attempt: { scope: "none" }, reason: "Required context review pending" },
+    ]
+    const featureId = old.results[0]!.featureId
+    const entryHash = "a".repeat(64)
+    const binding = retainCaptureBinding(old, featureId, entryHash)
+    const decision = {
+      id: "context-evidence",
+      runId: old.runId,
+      featureId,
+      captureSha256: binding.sha256,
+      evidence: binding.evidence,
+      decision: "untestable",
+      reviewed: true,
+      reviewer: "reviewer",
+      reason: "This stream-only context cannot receive device-status replies",
+      scope: {
+        subject: { kind: "term", id: "kitty" },
+        versions: ["0.49.1", "0.49.1"],
+        suites: [old.probeHash, old.probeHash],
+      },
+      sources: ["retained fixture capture"],
+      supersedes: [],
+    }
+    const current = collectorRun()
+    current.runId = "fresh-evidence-run"
+    current.probeHash = current.suiteId = "123456abcdef"
+    current.results = structuredClone(old.results)
+    const original = structuredClone(current)
+    const source = JSON.stringify(decision)
+    const decisions = [{ source, startedAt: "2026-10-31T18:00:00.000Z" }]
+    if (selection === "duplicates" || selection === "conflict") {
+      decisions.push({
+        source: JSON.stringify({
+          ...decision,
+          id: "second-evidence",
+          ...(selection === "conflict" && { reason: "A different review conclusion" }),
+        }),
+        startedAt: "2026-10-31T18:00:00.000Z",
+      })
+    }
+    const report: unknown[] = []
+    const manifest = {
+      ...trustedReceipt.manifest,
+      probeHash: current.probeHash,
+      catalogEntrySha256: { [featureId]: selection === "changed" ? "b".repeat(64) : entryHash },
+    }
+    const path = saveDaemonProbeRun(current, root, undefined, {
+      manifest,
+      decisions,
+      origin: () => undefined,
+      carry: true,
+      report: (entry) => report.push(entry),
+    })
+    const bytes = readFileSync(path, "utf8")
+    const final = JSON.parse(bytes) as CollectedProbeRun
+    expect(current).toEqual(original)
+    expect(final.assertions.slice(0, original.assertions.length)).toEqual(original.assertions)
+    expect(report).toHaveLength(1)
+    if (selection === "single" || selection === "duplicates") {
+      expect(path).not.toMatch(/\.draft\.json$/)
+      expect(final.results[0]!.status).toBe("untestable")
+      expect(final.rawReplies["collector.review.context-evidence"]).toBe(source)
+      expect(report[0]).toMatchObject({
+        featureId,
+        newRule: "carried",
+        duplicates: selection === "duplicates" ? ["second-evidence"] : [],
+      })
+      expect(parseRun(path, bytes, [featureId], new Map([[manifest.probeHash, manifest]])).results?.[0]?.status).toBe(
+        "untestable",
+      )
+    } else {
+      expect(path).toMatch(/\.draft\.json$/)
+      expect(final.results[0]!.status).toBe("test-todo")
+      expect(Object.keys(final.rawReplies).filter((key) => key.startsWith("collector.review."))).toEqual([])
+      expect(report[0]).toMatchObject({ featureId, newRule: selection === "conflict" ? "conflict" : "lapsed" })
+      expect(JSON.stringify(report)).toContain(selection === "conflict" ? "second-evidence" : "feature")
+    }
+  },
+)
 
 it("keeps the Darwin editor IPC path short despite a long per-user temporary directory", () => {
   root = mkdtempSync(join(tmpdir(), "terminfo-owned-"))

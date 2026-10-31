@@ -108,6 +108,7 @@ test("the declared manifest carries only the derived record", () => {
   const manifest = derivedSuiteManifest(probeSuiteSnapshot())
   expect(Object.keys(manifest).sort()).toEqual([
     "adapterVersion",
+    "catalogEntrySha256",
     "catalogIds",
     "probeHash",
     "probes",
@@ -124,6 +125,7 @@ test("current suite verification and persistence reject altered text declaration
     probeHash: "c".repeat(12),
     adapterVersion: "1.0.0",
     catalogIds: ["attributes", "character"],
+    catalogEntrySha256: { attributes: "a".repeat(64), character: "b".repeat(64) },
     probes: { term: ["character", "attributes"], lib: [], mux: ["character", "attributes"] },
     sourcePaths: [],
     textClaims: ["character"],
@@ -206,6 +208,7 @@ const snapshotOf = (probeHash: string): ProbeSuiteSnapshot => ({
   probeHash,
   adapterVersion: "1.0.0",
   catalogIds: ["fixture.catalogue"],
+  catalogEntrySha256: { "fixture.catalogue": "a".repeat(64) },
   probes: { term: [], lib: [], mux: [] },
   sourcePaths: [],
 })

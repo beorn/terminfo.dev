@@ -77,3 +77,14 @@ export function parseJsonStrict(path: string, source: string): unknown {
   rejectDuplicateKeys(source, path)
   return parsed
 }
+
+/** Hashable JSON: object key order is incidental; array order and string bytes are evidence. */
+export function canonicalJson(value: unknown): string {
+  return JSON.stringify(value, (_key: string, current: unknown): unknown =>
+    current !== null && typeof current === "object" && !Array.isArray(current)
+      ? Object.fromEntries(
+          Object.entries(current).sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0)),
+        )
+      : current,
+  )
+}

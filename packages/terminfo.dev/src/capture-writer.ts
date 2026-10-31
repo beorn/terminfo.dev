@@ -23,6 +23,109 @@ export interface CaptureReviewInput {
   startedAt: string
 }
 
+export interface CaptureReviewReport {
+  featureId: string
+  evidenceSha256?: string
+  oldRule: Array<{ id: string; status: "carried" | "lapsed"; reason?: string }>
+  candidates: Array<{ id: string; status: "carried" | "lapsed"; reason?: string }>
+  newRule: "carried" | "lapsed" | "conflict" | "pending"
+  selected?: string
+  duplicates: string[]
+  reason: string
+}
+
+/** Selection only: both shadow rules and the chosen decision use the canonical applier. */
+function carryCaptureReviews(
+  captured: CollectedProbeRun,
+  reviews: NonNullable<Parameters<typeof finalizeCollectedDraft>[2]>,
+): void {
+  const catalog = new Set(reviews.manifest.catalogIds ?? captured.results.map((result) => result.featureId))
+  const inputs = reviews.decisions.map((input) => ({
+    ...input,
+    decision: parseCaptureDecision(parseJsonStrict("capture review", input.source), "capture review", catalog),
+  }))
+  for (const result of captured.results) {
+    if (
+      !result.tests.some(
+        (test) =>
+          test.id === "review" &&
+          (test.status === "test-todo" ||
+            (result.criterionBranch === SOURCE_NEGATIVE_REVIEW && test.status === "test-failure")),
+      )
+    )
+      continue
+    const candidates = inputs.filter(
+      ({ decision }) =>
+        decision.featureId === result.featureId &&
+        decision.scope.subject.kind === captured.subject.kind &&
+        decision.scope.subject.id === captured.subject.id,
+    )
+    const report: CaptureReviewReport = {
+      featureId: result.featureId,
+      oldRule: [],
+      candidates: [],
+      newRule: candidates.length ? "lapsed" : "pending",
+      duplicates: [],
+      reason: "No accepted decision for this subject and feature",
+    }
+    const hash = reviews.manifest.catalogEntrySha256?.[result.featureId]
+    const retained = hash === undefined ? undefined : retainCaptureBinding(captured, result.featureId, hash).evidence
+    if (retained) report.evidenceSha256 = retained.sha256
+    const matching: typeof candidates = []
+    for (const input of candidates) {
+      // This private comparison never changes or promotes the accepted source record.
+      const { evidence: _newKey, ...oldDecision } = input.decision
+      const old = structuredClone(captured)
+      try {
+        applyCaptureDecision(old, JSON.stringify(oldDecision), input.startedAt)
+        const reason = old.rawReplies[`collector.review.${input.decision.id}.lapse`]
+        report.oldRule.push({ id: input.decision.id, status: reason ? "lapsed" : "carried", ...(reason && { reason }) })
+      } catch (error) {
+        report.oldRule.push({
+          id: input.decision.id,
+          status: "lapsed",
+          reason: error instanceof Error ? error.message : String(error),
+        })
+      }
+      if (!input.decision.evidence) {
+        report.candidates.push({
+          id: input.decision.id,
+          status: "lapsed",
+          reason: "Explicit evidence-output decision required; historical record unchanged",
+        })
+        continue
+      }
+      const shadow = structuredClone(captured)
+      applyCaptureDecision(shadow, input.source, input.startedAt, undefined, hash)
+      const reason = shadow.rawReplies[`collector.review.${input.decision.id}.lapse`]
+      report.candidates.push({
+        id: input.decision.id,
+        status: reason ? "lapsed" : "carried",
+        ...(reason && { reason }),
+      })
+      if (!reason) matching.push(input)
+    }
+    const first = matching[0]
+    if (first) {
+      const conflicts = matching.some(
+        ({ decision }) => decision.decision !== first.decision.decision || decision.reason !== first.decision.reason,
+      )
+      report.newRule = conflicts ? "conflict" : "carried"
+      report.reason = conflicts
+        ? `Conflicting evidence-matched decisions: ${matching.map(({ decision }) => decision.id).join(", ")}`
+        : "Evidence output unchanged"
+      if (!conflicts) {
+        applyCaptureDecision(captured, first.source, first.startedAt, undefined, hash)
+        report.selected = first.decision.id
+        report.duplicates = matching.slice(1).map(({ decision }) => decision.id)
+      }
+    } else if (candidates.length) {
+      report.reason = report.candidates.map((candidate) => `${candidate.id}: ${candidate.reason}`).join("; ")
+    }
+    reviews.report?.(report)
+  }
+}
+
 /** Enrich the same capture before seal; pending review is a valid private draft. */
 export function finalizeCollectedDraft(
   run: CollectedProbeRun,
@@ -31,6 +134,9 @@ export function finalizeCollectedDraft(
     manifest: ProbeSuiteManifest
     decisions: readonly CaptureReviewInput[]
     origin: (runId: string) => { path: string; source: string } | undefined
+    /** Natural collection supplies accepted, already supersession-filtered decisions. */
+    carry?: boolean
+    report?: (entry: CaptureReviewReport) => void
   },
 ): CollectedProbeRun | CurrentProbeRun {
   if (run.schemaVersion !== 4 || !Array.isArray(run.results)) {
@@ -70,10 +176,11 @@ export function finalizeCollectedDraft(
             (result.criterionBranch === SOURCE_NEGATIVE_REVIEW && check.status === "test-failure")),
       )
     ) {
-      retainCaptureBinding(captured, result.featureId)
+      retainCaptureBinding(captured, result.featureId, reviews?.manifest.catalogEntrySha256?.[result.featureId])
     }
   }
-  for (const review of reviews?.decisions ?? []) {
+  if (reviews?.carry) carryCaptureReviews(captured, reviews)
+  for (const review of reviews?.carry ? [] : (reviews?.decisions ?? [])) {
     const decision = parseCaptureDecision(
       parseJsonStrict("capture review", review.source),
       "capture review",
@@ -83,6 +190,7 @@ export function finalizeCollectedDraft(
     let originBinding: string | undefined
     if (
       reviews &&
+      decision.evidence === undefined &&
       result?.criterionBranch === SOURCE_NEGATIVE_REVIEW &&
       decision.runId !== captured.runId &&
       decision.scope.suites[0] === captured.probeHash &&
@@ -108,7 +216,13 @@ export function finalizeCollectedDraft(
         }
       }
     }
-    applyCaptureDecision(captured, review.source, review.startedAt, originBinding)
+    applyCaptureDecision(
+      captured,
+      review.source,
+      review.startedAt,
+      originBinding,
+      reviews?.manifest.catalogEntrySha256?.[decision.featureId],
+    )
   }
   if (
     captured.results.some((result) =>
@@ -146,7 +260,9 @@ export function saveDaemonProbeRun(
   // Keep the original pending bytes; the existing private writer needs no second store.
   const reviewedPending =
     captured.sealedAt === undefined &&
-    Object.keys(captured.rawReplies).some((key) => key.startsWith("collector.review."))
+    Object.keys(captured.rawReplies).some(
+      (key) => key.startsWith("collector.review.") || key.startsWith("collector.evidence."),
+    )
   const bytes = `${JSON.stringify(captured, null, 2)}\n`
   const snapshot = reviewedPending ? `.${createHash("sha256").update(bytes).digest("hex")}` : ""
   const file = join(

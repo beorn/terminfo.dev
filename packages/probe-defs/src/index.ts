@@ -216,6 +216,7 @@ export type {
   RunDraft,
   CurrentProbeRun,
   CaptureDecision,
+  CaptureEvidence,
   HistoricalInterpretation,
 } from "./types.ts"
 export { initializeRunDraft, finalizeProbeResult, sealRunDraft } from "./helpers.ts"

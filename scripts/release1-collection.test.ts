@@ -286,6 +286,7 @@ it.each([
         ? vi.spyOn(versions, "probeSuiteSnapshot").mockReturnValue({
             ...parseSuiteManifest(manifestPath, readFileSync(manifestPath, "utf8")),
             catalogIds: Object.keys(catalog.loadFeatures(CONTENT)).sort(),
+            catalogEntrySha256: { ...catalog.loadFeatureEntryHashes(CONTENT) },
             ...(textCase && {
               schemaVersion: 4 as const,
               probes: {
@@ -1766,7 +1767,11 @@ it.each([
           (entry) => entry.context.kind === "term" && entry.context.id === "alacritty" && entry.context.os === "linux",
         )!
         expect(appRow.status, appRow.error).toBe("pending-review")
-        expect(readdirSync(dirname(appRow.rawRun!))).toEqual(["v3-run.draft.json"])
+        const snapshots = readdirSync(dirname(appRow.rawRun!))
+        expect(snapshots).toContain("v3-run.draft.json")
+        expect(snapshots).toHaveLength(2)
+        expect(appRow.rawRun).not.toBe(join(dirname(appRow.rawRun!), "v3-run.draft.json"))
+        expect(appRow.reviewBindings?.[0]).toMatchObject({ newRule: "pending", duplicates: [] })
       }
     } else {
       expect(row.status).toBe("not-started")

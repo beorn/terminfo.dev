@@ -19,8 +19,9 @@
  * loader does not model (`latestRelease`). This module is the ONE reader's door, not the writer's.
  */
 import { existsSync, readFileSync } from "node:fs"
+import { createHash } from "node:crypto"
 import { isAbsolute, join } from "node:path"
-import { parseJsonStrict } from "@terminfo/run-parser"
+import { parseJsonStrict, canonicalJson } from "@terminfo/run-parser"
 
 /** One feature catalog entry, keyed by its probe dot-path id in `content/features.json`. */
 export interface FeatureRecord {
@@ -232,10 +233,21 @@ export function loadFeatures(contentDir: string): FeatureCatalog {
   const path = join(contentDir, "features.json")
   const root = readObject(contentDir, "features.json")
   const catalog: Record<string, FeatureRecord> = {}
-  for (const [id, raw] of entries(path, root)) catalog[id] = parseFeature(path, id, raw)
+  const entryHashes: Record<string, string> = {}
+  for (const [id, raw] of entries(path, root)) {
+    catalog[id] = parseFeature(path, id, raw)
+    entryHashes[id] = createHash("sha256").update(canonicalJson(raw), "utf8").digest("hex")
+  }
   const frozen = Object.freeze(catalog)
+  cache.set(`${contentDir}#feature-entry-hashes`, Object.freeze(entryHashes))
   cache.set(cacheKey, frozen)
   return frozen
+}
+
+/** Whole original entries, including unknown keys, from the same parse as loadFeatures. */
+export function loadFeatureEntryHashes(contentDir: string): Readonly<Record<string, string>> {
+  loadFeatures(contentDir)
+  return cache.get(`${contentDir}#feature-entry-hashes`) as Readonly<Record<string, string>>
 }
 
 type LabelSource = Readonly<Record<string, Pick<TerminalRecord, "label" | "kind" | "headlessLabel">>>

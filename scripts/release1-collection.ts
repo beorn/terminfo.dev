@@ -34,7 +34,6 @@ import {
   readCollectorSelection,
   resolveProbeIds,
   collectorIds,
-  SOURCE_NEGATIVE_REVIEW,
   type CollectorAttempt,
   type RunDraft,
 } from "@terminfo/probe-defs"
@@ -42,6 +41,7 @@ import { buildFullProjectRows } from "../docs/data/full-project.ts"
 import { aggregateCurrentResults, currentCoverageSentence, type CurrentAggregate } from "../docs/data/release-scope.ts"
 import { decodeCollectorDraft } from "@terminfo/run-parser"
 import { saveDaemonProbeRun } from "../packages/terminfo.dev/src/daemon-client.ts"
+import type { CaptureReviewReport } from "../packages/terminfo.dev/src/capture-writer.ts"
 import { loadFeatures } from "@terminfo/catalog"
 import { fullContextCensus, type CensusContext } from "../docs/data/full-census.ts"
 import { parseJsonStrict, parseRun, parseSuiteManifest } from "@terminfo/run-parser"
@@ -49,7 +49,7 @@ import { frozenSuiteIdFor } from "../packages/admin/suite-manifest.ts"
 import { assertPrivateCollectionOutput } from "../packages/admin/src/admit-collected-run.ts"
 import { loadCurrentResults, loadDefaultContextPolicy, reviewedContextFor } from "../docs/data/current-results.ts"
 import { classifyDevelopmentRun, consoleHostHeldResults, readVerifiedArtifact } from "../docs/data/selected-results.ts"
-import { parseInterpretations } from "./interpretations.ts"
+import { parseInterpretations, activeInterpretations } from "./interpretations.ts"
 import { derivedSuiteManifest, probeSuiteSnapshot } from "../packages/admin/versions.ts"
 import { collectHeadlessRuns } from "../packages/probes/collect-headless.ts"
 import { admitRun, planAdmission, type AdmissionPlan } from "./admit-run.ts"
@@ -337,6 +337,7 @@ export interface CollectionPass {
     admittedPath?: string
     classification?: ReturnType<typeof classifyDevelopmentRun>
     summary?: CurrentAggregate
+    reviewBindings?: CaptureReviewReport[]
     transport?: CollectionPass["transport"]
     error?: string
     reason?: string
@@ -501,7 +502,9 @@ export async function collectPass(
   const sourceRevision = execFileSync("git", ["rev-parse", "HEAD"], { cwd: ROOT, encoding: "utf8" }).trim()
   const catalogIds = Object.keys(loadFeatures(CONTENT))
   const interpretationsPath = join(CONTENT, "interpretations.json")
-  parseInterpretations(interpretationsPath, readFileSync(interpretationsPath, "utf8"), catalogIds)
+  const acceptedDecisions = activeInterpretations(
+    parseInterpretations(interpretationsPath, readFileSync(interpretationsPath, "utf8"), catalogIds),
+  ).filter((entry) => "captureSha256" in entry)
   const inputSha256: Record<string, string> = {}
   for (const path of new Set([
     ...snapshot.sourcePaths.map((path) => join(ROOT, path)),
@@ -759,30 +762,30 @@ export async function collectPass(
             `raw draft does not identify the expected current schema-4 ${context.kind}:${context.id} context`,
           )
         }
-        if (
-          decoded.run.results.some((result) =>
-            result.tests.some(
-              (check) =>
-                check.id === "review" &&
-                (check.status === "test-todo" ||
-                  (result.criterionBranch === SOURCE_NEGATIVE_REVIEW && check.status === "test-failure")),
-            ),
-          ) &&
-          Object.keys(decoded.run.rawReplies).some((key) => key.startsWith("collector.capture."))
-        ) {
-          row.status = "pending-review"
-          row.reason = "Valid capture; required review pending (unsealed)"
-          continue
-        }
+        row.reviewBindings = []
         path = saveDaemonProbeRun(
           {
             ...decoded.run,
             rawReplies: {
               ...decoded.run.rawReplies,
-              "collector.httpResponseSha256": decoded.run.rawReplies["collector.httpResponseSha256"] ?? decoded.sha256,
+              ...(!Object.keys(decoded.run.rawReplies).some((key) => key.startsWith("collector.capture.")) && {
+                "collector.httpResponseSha256":
+                  decoded.run.rawReplies["collector.httpResponseSha256"] ?? decoded.sha256,
+              }),
             },
           },
           dirname(path),
+          undefined,
+          {
+            manifest: derivedSuiteManifest(snapshot),
+            decisions: acceptedDecisions.map((decision) => ({
+              source: JSON.stringify(decision),
+              startedAt: new Date().toISOString(),
+            })),
+            origin: () => undefined,
+            carry: true,
+            report: (entry) => row.reviewBindings!.push(entry),
+          },
         )
         if (path.endsWith(".draft.json")) {
           row.rawRun = path
