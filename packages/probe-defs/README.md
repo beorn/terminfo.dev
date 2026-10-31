@@ -325,8 +325,8 @@ decisions retain that initialized instance's identity. `collector.replyPath` ret
 declaration and measured identity once, alongside each feature's eligibility result and named
 withholding reason. Each distinct withholding reason is reported once per batch.
 
-Source-backed collection runs from the hh root with vendored Termless source. A dist-only install
-without the imported source binding loses sentinel eligibility loudly; silence stays inconclusive.
+Source-backed collection requires an owned hh checkout with vendored Termless source. A dist-only
+install without the imported source binding refuses collection loudly; silence stays inconclusive.
 Libvterm currently withholds the declaration because engine output can truncate before the adapter
 drains, even though its adapter now drains all queued output. Ghostty also declares no complete path.
 The existing two captures, shared classifier, DA1 control and G1 late-byte grace still decide the read;

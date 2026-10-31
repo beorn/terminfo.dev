@@ -100,91 +100,126 @@ afterEach(async () => {
 })
 
 // AC loader/finalizer selection: parser-only carry cannot prove conflict handling or immutable writer custody.
-it.each(["single", "duplicates", "conflict", "changed"] as const)(
-  "selects evidence-bound reviews through the immutable final writer: %s",
-  (selection) => {
-    root = mkdtempSync(join(tmpdir(), "terminfo-evidence-writer-"))
-    const old = collectorRun()
-    old.results[0]!.tests = [
-      { id: "review", status: "test-todo", attempt: { scope: "none" }, reason: "Required context review pending" },
-    ]
-    const featureId = old.results[0]!.featureId
-    const entryHash = "a".repeat(64)
-    const binding = retainCaptureBinding(old, featureId, entryHash)
-    const decision = {
-      id: "context-evidence",
-      runId: old.runId,
-      featureId,
-      captureSha256: binding.sha256,
-      evidence: binding.evidence,
-      decision: "untestable",
-      reviewed: true,
-      reviewer: "reviewer",
-      reason: "This stream-only context cannot receive device-status replies",
-      scope: {
-        subject: { kind: "term", id: "kitty" },
-        versions: ["0.49.1", "0.49.1"],
-        suites: [old.probeHash, old.probeHash],
-      },
-      sources: ["retained fixture capture"],
-      supersedes: [],
-    }
-    const current = collectorRun()
-    current.runId = "fresh-evidence-run"
-    current.probeHash = current.suiteId = "123456abcdef"
-    current.results = structuredClone(old.results)
-    const original = structuredClone(current)
-    const source = JSON.stringify(decision)
-    const decisions = [{ source, startedAt: "2026-10-31T18:00:00.000Z" }]
-    if (selection === "duplicates" || selection === "conflict") {
-      decisions.push({
-        source: JSON.stringify({
-          ...decision,
-          id: "second-evidence",
-          ...(selection === "conflict" && { reason: "A different review conclusion" }),
-        }),
-        startedAt: "2026-10-31T18:00:00.000Z",
-      })
-    }
-    const report: unknown[] = []
-    const manifest = {
-      ...trustedReceipt.manifest,
-      probeHash: current.probeHash,
-      catalogEntrySha256: { [featureId]: selection === "changed" ? "b".repeat(64) : entryHash },
-    }
-    const path = saveDaemonProbeRun(current, root, undefined, {
-      manifest,
-      decisions,
-      origin: () => undefined,
-      carry: true,
-      report: (entry) => report.push(entry),
+it.each([
+  "single",
+  "duplicates",
+  "conflict",
+  "changed",
+  "missing-catalog",
+  "non-capture",
+  "historical-target",
+] as const)("selects evidence-bound reviews through the immutable final writer: %s", (selection) => {
+  root = mkdtempSync(join(tmpdir(), "terminfo-evidence-writer-"))
+  const old = collectorRun()
+  old.results[0]!.tests = [
+    { id: "review", status: "test-todo", attempt: { scope: "none" }, reason: "Required context review pending" },
+  ]
+  const featureId = old.results[0]!.featureId
+  const entryHash = "a".repeat(64)
+  const binding = retainCaptureBinding(old, featureId, entryHash)
+  const decision = {
+    id: "context-evidence",
+    runId: old.runId,
+    featureId,
+    captureSha256: binding.sha256,
+    evidence: binding.evidence,
+    decision: "untestable",
+    reviewed: true,
+    reviewer: "reviewer",
+    reason: "This stream-only context cannot receive device-status replies",
+    scope: {
+      subject: { kind: "term", id: "kitty" },
+      versions: ["0.49.1", "0.49.1"],
+      suites: [old.probeHash, old.probeHash],
+    },
+    sources: ["retained fixture capture"],
+    supersedes: [],
+  }
+  const current = collectorRun()
+  current.runId = "fresh-evidence-run"
+  current.probeHash = current.suiteId = "123456abcdef"
+  current.results = structuredClone(old.results)
+  const original = structuredClone(current)
+  const source = JSON.stringify(decision)
+  const decisions = [{ source, startedAt: "2026-10-31T18:00:00.000Z" }]
+  if (selection === "duplicates" || selection === "conflict") {
+    decisions.push({
+      source: JSON.stringify({
+        ...decision,
+        id: "second-evidence",
+        ...(selection === "conflict" && { reason: "A different review conclusion" }),
+      }),
+      startedAt: "2026-10-31T18:00:00.000Z",
     })
-    const bytes = readFileSync(path, "utf8")
-    const final = JSON.parse(bytes) as CollectedProbeRun
-    expect(current).toEqual(original)
-    expect(final.assertions.slice(0, original.assertions.length)).toEqual(original.assertions)
-    expect(report).toHaveLength(1)
-    if (selection === "single" || selection === "duplicates") {
-      expect(path).not.toMatch(/\.draft\.json$/)
-      expect(final.results[0]!.status).toBe("untestable")
-      expect(final.rawReplies["collector.review.context-evidence"]).toBe(source)
-      expect(report[0]).toMatchObject({
-        featureId,
-        newRule: "carried",
-        duplicates: selection === "duplicates" ? ["second-evidence"] : [],
-      })
-      expect(parseRun(path, bytes, [featureId], new Map([[manifest.probeHash, manifest]])).results?.[0]?.status).toBe(
-        "untestable",
-      )
-    } else {
-      expect(path).toMatch(/\.draft\.json$/)
-      expect(final.results[0]!.status).toBe("test-todo")
-      expect(Object.keys(final.rawReplies).filter((key) => key.startsWith("collector.review."))).toEqual([])
-      expect(report[0]).toMatchObject({ featureId, newRule: selection === "conflict" ? "conflict" : "lapsed" })
-      expect(JSON.stringify(report)).toContain(selection === "conflict" ? "second-evidence" : "feature")
+  }
+  if (selection === "non-capture" || selection === "historical-target") {
+    const skipped =
+      selection === "historical-target"
+        ? {
+            ...decision,
+            id: "skipped-history",
+            evidence: undefined,
+            scope: { ...decision.scope, subject: undefined, target: { kind: "app", id: "kitty" } },
+          }
+        : {
+            id: "skipped-history",
+            runId: old.runId,
+            runSha256: "c".repeat(64),
+            reviewer: "reviewer",
+            reason: "Old identity review",
+            verifiesIdentity: true,
+            featureId,
+            scope: decision.scope,
+            sources: ["historical run"],
+            supersedes: [],
+          }
+    decisions.push({ source: JSON.stringify(skipped), startedAt: "2026-10-31T18:00:00.000Z" })
+  }
+  const report: unknown[] = []
+  const manifest = {
+    ...trustedReceipt.manifest,
+    probeHash: current.probeHash,
+    ...(selection === "missing-catalog" && { catalogIds: undefined }),
+    catalogEntrySha256: { [featureId]: selection === "changed" ? "b".repeat(64) : entryHash },
+  }
+  const path = saveDaemonProbeRun(current, root, undefined, {
+    manifest,
+    decisions,
+    origin: () => undefined,
+    carry: true,
+    report: (entry) => report.push(entry),
+  })
+  const bytes = readFileSync(path, "utf8")
+  const final = JSON.parse(bytes) as CollectedProbeRun
+  expect(current).toEqual(original)
+  expect(final.assertions.slice(0, original.assertions.length)).toEqual(original.assertions)
+  expect(report).toHaveLength(1)
+  if (["single", "duplicates", "non-capture", "historical-target"].includes(selection)) {
+    expect(path).not.toMatch(/\.draft\.json$/)
+    expect(final.results[0]!.status).toBe("untestable")
+    expect(final.rawReplies["collector.review.context-evidence"]).toBe(source)
+    expect(report[0]).toMatchObject({
+      featureId,
+      newRule: "carried",
+      duplicates: selection === "duplicates" ? ["second-evidence"] : [],
+    })
+    if (selection === "non-capture" || selection === "historical-target") {
+      expect(JSON.stringify(report)).toContain("skipped-history")
+      expect(JSON.stringify(report).toLowerCase()).toContain("skipped")
     }
-  },
-)
+    expect(parseRun(path, bytes, [featureId], new Map([[manifest.probeHash, manifest]])).results?.[0]?.status).toBe(
+      "untestable",
+    )
+  } else {
+    expect(path).toMatch(/\.draft\.json$/)
+    expect(final.results[0]!.status).toBe("test-todo")
+    expect(Object.keys(final.rawReplies).filter((key) => key.startsWith("collector.review."))).toEqual([])
+    expect(report[0]).toMatchObject({ featureId, newRule: selection === "conflict" ? "conflict" : "lapsed" })
+    expect(JSON.stringify(report)).toContain(
+      selection === "conflict" ? "second-evidence" : selection === "missing-catalog" ? "catalogIds" : "feature",
+    )
+  }
+})
 
 // Peer finding1 / per-cell selection AC: a refused record must not discard another cell's valid carry.
 // Single-cell cases above cannot expose a whole-context exception that loses both outputs.

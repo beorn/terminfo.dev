@@ -26,6 +26,7 @@ import {
   readCollectorAttempt,
   type HostRecipeExpectation,
   type HeadlessRuntimeIdentity,
+  type CaptureEvidence,
 } from "@terminfo/probe-defs"
 import { fakeProbeResult } from "@terminfo/probe-defs/testing/fake-probe-result"
 import { applyCaptureDecision, retainCaptureBinding, parseRun, decodeCollectorDraft, canonicalJson } from "./index.ts"
@@ -1232,6 +1233,10 @@ describe("immutable pre-seal capture binding", () => {
       boolean
     >
     const binary = { path: false, sha256: true } satisfies Record<keyof Native["loadedBinary"], boolean>
+    const registry = { kind: true, lockIntegrity: true } satisfies Record<
+      keyof Extract<JS["integrity"], { kind: "registry" }>,
+      boolean
+    >
     const provenance = {
       sha256: true,
       sourceCommit: true,
@@ -1286,6 +1291,9 @@ describe("immutable pre-seal capture binding", () => {
       }
       if (identity.kind === "native") {
         expect(Object.keys(projection.provenance as object).sort()).toEqual(Object.keys(provenance).sort())
+      }
+      if (identity.kind === "js" && identity.integrity.kind === "registry") {
+        expect(Object.keys(projection.integrity as object).sort()).toEqual(Object.keys(registry).sort())
       }
       if ("loadedBinary" in identity) {
         expect(Object.keys(projection.loadedBinary as object)).toEqual(
@@ -1467,6 +1475,11 @@ describe("immutable pre-seal capture binding", () => {
         { runId, startedAt: "2026-10-27T11:00:00.000Z" },
         (draft) => {
           draft.probeHash = draft.suiteId = suite
+          draft.rawReplies["collector.replyPath"] = JSON.stringify({
+            decisions: {
+              [featureId]: { member: false, reason: "Fixture has no reply-delivery declaration" },
+            },
+          })
           if (branch === SEMANTIC_PROMPT_SOURCE_REVIEW) draft.assertions = []
           draft.results[0] = recordExecutedProbe({
             featureId,
@@ -2476,3 +2489,101 @@ it.each(["revision", "tree", "dirty", "writerless"] as const)(
     if (field === "dirty") expect(current.draft.results[0]!.reason).toContain("dirty source tree")
   },
 )
+
+// The allowlist must exclude unreviewed registry fields; complete typed fixtures miss accidental spreads.
+it.each(["js", "wasm"] as const)("enumerates registry integrity fields for %s", (format) => {
+  const make = (extra: string) =>
+    setup("state", { runId: extra, startedAt: "2026-10-27T11:00:00.000Z" }, (draft) => {
+      if (draft.runtimeIdentity?.kind !== "js") throw new Error("Expected JS fixture")
+      const integrity = { kind: "registry" as const, lockIntegrity: "sha512-fixed", unreviewedMetadata: extra }
+      draft.runtimeIdentity =
+        format === "wasm"
+          ? {
+              ...draft.runtimeIdentity,
+              runtimeFormat: "wasm",
+              loadedBinary: { path: "/fixture.wasm", sha256: "a".repeat(64) },
+              integrity,
+            }
+          : { ...draft.runtimeIdentity, runtimeFormat: "js", integrity }
+    })
+  const origin = make("origin"),
+    current = make("current"),
+    hash = "a".repeat(64)
+  const evidence = retainCaptureBinding(origin.draft, "sgr.faint", hash).evidence
+  retainCaptureBinding(current.draft, "sgr.faint", hash)
+  applyCaptureDecision(
+    current.draft,
+    JSON.stringify({ ...origin.decision, evidence, decision: "unsupported" }),
+    "2026-10-27T11:02:00.000Z",
+    undefined,
+    hash,
+  )
+  expect(current.draft.results[0]!.status).toBe("unsupported")
+})
+
+// Both captures lacking a required component must not become evidence equality.
+it.each(["not-object", "missing-decision", "missing-declaration"] as const)(
+  "lapses a missing reply-path component: %s",
+  (missing) => {
+    const make = (runId: string) =>
+      setup("state", { runId, startedAt: "2026-10-27T11:00:00.000Z" }, (draft) => {
+        draft.results[0]!.criterionBranch = "headless-observable-review"
+        draft.results[0]!.tests[0]!.status = "test-todo"
+        draft.results[0] = finalizeProbeResult(draft.results[0]!)
+        draft.rawReplies["collector.replyPath"] = JSON.stringify(
+          missing === "not-object"
+            ? []
+            : missing === "missing-decision"
+              ? { declaration: {}, decisions: {} }
+              : { decisions: { "sgr.faint": { member: true, reason: "Qualified" } } },
+        )
+      })
+    const origin = make("origin"),
+      current = make("current"),
+      hash = "a".repeat(64)
+    const evidence = retainCaptureBinding(origin.draft, "sgr.faint", hash).evidence
+    retainCaptureBinding(current.draft, "sgr.faint", hash)
+    applyCaptureDecision(
+      current.draft,
+      JSON.stringify({ ...origin.decision, evidence }),
+      "2026-10-27T11:02:00.000Z",
+      undefined,
+      hash,
+    )
+    expect(current.draft.results[0]!.status).toBe("test-todo")
+    expect(current.draft.results[0]!.reason).toContain("replyPath")
+  },
+)
+
+// A sealed reader must name a missing original review row, never borrow its applied replacement.
+it("names a missing preimage review row in the canonical reader", () => {
+  const { draft, decision } = setup('{"retained":"state"}', {
+    runId: "missing-preimage",
+    startedAt: "2026-10-27T11:00:00.000Z",
+  })
+  const hash = "a".repeat(64),
+    artifact = retainCaptureBinding(draft, "sgr.faint", hash)
+  applyCaptureDecision(
+    draft,
+    JSON.stringify({ ...decision, evidence: artifact.evidence }),
+    "2026-10-27T11:02:00.000Z",
+    undefined,
+    hash,
+  )
+  const final = structuredClone(sealRunDraft(draft)),
+    retained = JSON.parse(final.rawReplies["collector.evidence.sgr.faint"]!) as CaptureEvidence
+  retained.projection.cell.tests = []
+  retained.sha256 = createHash("sha256").update(canonicalJson(retained.projection)).digest("hex")
+  final.rawReplies["collector.evidence.sgr.faint"] = canonicalJson(retained)
+  const manifest = {
+    schemaVersion: 4 as const,
+    probeHash: final.probeHash,
+    adapterVersion: "fixture",
+    catalogIds: ["sgr.faint"],
+    catalogEntrySha256: { "sgr.faint": hash },
+    probes: { term: [], lib: ["sgr.faint"], mux: [] },
+  }
+  expect(() =>
+    parseRun("sealed.json", JSON.stringify(final), manifest.catalogIds, new Map([[manifest.probeHash, manifest]])),
+  ).toThrow("cell.tests.review preimage unavailable")
+})

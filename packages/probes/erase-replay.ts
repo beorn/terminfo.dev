@@ -2,9 +2,11 @@
 import type { TestContext } from "vitest"
 import { withChecks, type RetainedCheck } from "./checks.ts"
 import { createXtermBackend } from "@termless/xtermjs"
+import { fileURLToPath } from "node:url"
+import { readAdapterSources, verifyAdapterSources } from "./headless-identity.ts"
 import { eraseProbes, createEraseProbes, eraseHistoryPredicates } from "../probe-defs/src/erase.ts"
 import { gridMatch, cursorMatch } from "../probe-defs/src/region-readback-kind.ts"
-import type { LibProbeSource, ProbeCallbackResult } from "@terminfo/probe-defs"
+import type { HeadlessRuntimeIdentity, LibProbeSource, ProbeCallbackResult } from "@terminfo/probe-defs"
 import { createCallLog, withCallLog, type CallLog } from "viprobe"
 import { createLibProbeSource } from "./headless-batch.ts"
 import { HEADLESS_TERMINAL } from "./headless-terminal.ts"
@@ -17,13 +19,26 @@ type EraseRecord = {
 }
 type EraseHost = { open(featureId: string, geometry: typeof HEADLESS_TERMINAL): LibProbeSource; close(): void }
 
-function liveHost(): EraseHost {
+function liveHost(identity: HeadlessRuntimeIdentity): EraseHost {
   let backend: ReturnType<typeof createXtermBackend> | undefined
   return {
     open(_featureId, geometry) {
       if (backend) throw new Error("Erase host already owns an open backend")
       backend = createXtermBackend()
       backend.init(geometry)
+      try {
+        identity.adapterSources = readAdapterSources("xtermjs", backend)
+        verifyAdapterSources("xtermjs", {
+          identity,
+          adapterPath: fileURLToPath(import.meta.resolve("@termless/xtermjs")),
+          adapterPackage: "@termless/xtermjs",
+          adapterType: "js",
+        })
+      } catch (error) {
+        backend.destroy()
+        backend = undefined
+        throw error
+      }
       return createLibProbeSource(backend, undefined, undefined, undefined)
     },
     close() {
@@ -85,9 +100,12 @@ function execute(host: EraseHost, context: TestContext, mode: "record" | "replay
   })
 }
 
-export function captureEraseCalls(context: TestContext): { log: CallLog; results: EraseRecord[] } {
+export function captureEraseCalls(
+  context: TestContext,
+  identity: HeadlessRuntimeIdentity,
+): { log: CallLog; results: EraseRecord[] } {
   const log = createCallLog()
-  const session = withCallLog(liveHost(), { mode: "record", log })
+  const session = withCallLog(liveHost(identity), { mode: "record", log })
   try {
     return { log, results: execute(session.context, context, "record") }
   } finally {

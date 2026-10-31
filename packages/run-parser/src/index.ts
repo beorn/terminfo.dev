@@ -1100,7 +1100,7 @@ function evidenceRuntimeIdentity(identity: HeadlessRuntimeIdentity | undefined):
             treeOid: identity.integrity.treeOid,
             cleanTree: identity.integrity.cleanTree,
           }
-        : identity.integrity,
+        : { kind: "registry", lockIntegrity: identity.integrity.lockIntegrity },
     ...(identity.runtimeFormat === "wasm" && { loadedBinary: { sha256: identity.loadedBinary.sha256 } }),
   }
 }
@@ -1148,16 +1148,13 @@ function captureEvidence(
   let replyPath: CaptureEvidence["projection"]["cell"]["replyPath"]
   if (draft.rawReplies["collector.replyPath"] !== undefined) {
     const qualification = parseJsonStrict("collector.replyPath", draft.rawReplies["collector.replyPath"])
-    if (
-      result.criterionBranch !== SOURCE_NEGATIVE_REVIEW &&
-      object(qualification) &&
-      object(qualification.decisions) &&
-      Object.hasOwn(qualification.decisions, featureId)
-    ) {
-      const decision = qualification.decisions[featureId]
+    if (result.criterionBranch !== SOURCE_NEGATIVE_REVIEW) {
+      const decision =
+        object(qualification) && object(qualification.decisions) ? qualification.decisions[featureId] : undefined
+      replyPath = { declaration: object(qualification) ? qualification.declaration : undefined, decision }
       if (object(decision)) {
         const { runtimeIdentity: _identity, ...cellDecision } = decision
-        replyPath = { declaration: qualification.declaration, decision: cellDecision }
+        replyPath.decision = cellDecision
       }
     }
   }
@@ -1178,7 +1175,8 @@ function captureEvidence(
           test.id === "review" && test.reviewRef !== undefined
             ? preimage?.cell.tests.find((entry) => entry.id === test.id)
             : test
-        const retained = original ?? test
+        if (original === undefined) throw new Error(`Capture ${featureId} cell.tests.review preimage unavailable`)
+        const retained = original
         return {
           id: retained.id,
           status: retained.status,
@@ -1266,7 +1264,24 @@ function validateCaptureBinding(
     const retainedBytes = draft.rawReplies[`collector.evidence.${decision.featureId}`]
     if (retainedBytes === undefined) return lapse(["retained evidence projection unavailable"])
     const retained = parseCaptureEvidence(parseJsonStrict(path, retainedBytes), path, decision.featureId)
+    if (
+      result?.tests.some((test) => test.id === "review" && test.reviewRef !== undefined) &&
+      !retained.projection.cell.tests.some((test) => test.id === "review")
+    ) {
+      fail(path, "cell.tests.review preimage unavailable")
+    }
     const current = captureEvidence(draft, decision.featureId, catalogEntrySha256, retained.projection)
+    const replyPath = current.projection.cell.replyPath
+    if (
+      replyPath !== undefined &&
+      (!object(replyPath.decision) ||
+        typeof replyPath.decision.member !== "boolean" ||
+        typeof replyPath.decision.reason !== "string" ||
+        (replyPath.declaration !== undefined && !object(replyPath.declaration)) ||
+        (replyPath.decision.member === true && !object(replyPath.declaration)))
+    ) {
+      return lapse(["cell.replyPath qualification unavailable"])
+    }
     if (current.sha256 !== retained.sha256) fail(path, "retained evidence differs from current capture")
     const original = decision.evidence.projection
     if (

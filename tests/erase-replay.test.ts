@@ -27,6 +27,7 @@ vi.mock("@termless/xtermjs", async (original) => {
 })
 
 test("real erase calls replay twice without opening a terminal backend", async (context) => {
+  const runtimeIdentity = await headlessRuntimeIdentity("xtermjs", "@termless/xtermjs", "js")
   let latestStart: string | undefined
   const openedAt: Array<string | undefined> = []
   const dateString = Date.prototype.toISOString
@@ -45,7 +46,8 @@ test("real erase calls replay twice without opening a terminal backend", async (
   })
   let captured: ReturnType<typeof captureEraseCalls>
   try {
-    captured = captureEraseCalls(context)
+    captured = captureEraseCalls(context, runtimeIdentity)
+    expect(runtimeIdentity.adapterSources?.length).toBeGreaterThan(0)
   } finally {
     clock.mockRestore()
     createBackend.mockImplementation(actualCreateBackend)
@@ -99,7 +101,6 @@ test("real erase calls replay twice without opening a terminal backend", async (
     ).toBe(true)
   }
   const manifest = derivedSuiteManifest()
-  const runtimeIdentity = await headlessRuntimeIdentity("xtermjs", "@termless/xtermjs", "js")
   const sourceRevision = execFileSync("git", ["rev-parse", "HEAD"], {
     cwd: fileURLToPath(new URL("..", import.meta.url)),
     encoding: "utf8",

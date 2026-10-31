@@ -39,11 +39,43 @@ function carryCaptureReviews(
   captured: CollectedProbeRun,
   reviews: NonNullable<Parameters<typeof finalizeCollectedDraft>[2]>,
 ): void {
-  const catalog = new Set(reviews.manifest.catalogIds ?? captured.results.map((result) => result.featureId))
-  const inputs = reviews.decisions.map((input) => ({
-    ...input,
-    decision: parseCaptureDecision(parseJsonStrict("capture review", input.source), "capture review", catalog),
-  }))
+  const pending = captured.results.filter((result) =>
+    result.tests.some(
+      (test) =>
+        test.id === "review" &&
+        (test.status === "test-todo" ||
+          (result.criterionBranch === SOURCE_NEGATIVE_REVIEW && test.status === "test-failure")),
+    ),
+  )
+  if (reviews.manifest.catalogIds === undefined) {
+    for (const result of pending) {
+      reviews.report?.({
+        featureId: result.featureId,
+        oldRule: [],
+        candidates: [],
+        newRule: "lapsed",
+        duplicates: [],
+        reason: "manifest.catalogIds unavailable; capture reviews not applied",
+      })
+    }
+    return
+  }
+  const catalog = new Set(reviews.manifest.catalogIds)
+  const skipped: Array<{ id: string; featureId?: string }> = []
+  const inputs = reviews.decisions.flatMap((input) => {
+    const value = parseJsonStrict("capture review", input.source)
+    if (typeof value !== "object" || value === null || Array.isArray(value)) {
+      throw new Error("capture review: accepted record requires an id")
+    }
+    const record = value as Record<string, unknown>
+    if (typeof record.id !== "string") throw new Error("capture review: accepted record requires an id")
+    const historical = typeof record.scope === "object" && record.scope !== null && "target" in record.scope
+    if (historical || !("captureSha256" in record || "decision" in record || "evidence" in record)) {
+      skipped.push({ id: record.id, ...(typeof record.featureId === "string" && { featureId: record.featureId }) })
+      return []
+    }
+    return [{ ...input, decision: parseCaptureDecision(value, "capture review", catalog) }]
+  })
   for (const result of captured.results) {
     if (
       !result.tests.some(
@@ -64,7 +96,13 @@ function carryCaptureReviews(
     const report: CaptureReviewReport = {
       featureId: result.featureId,
       oldRule: [],
-      candidates: [],
+      candidates: skipped
+        .filter((entry) => entry.featureId === undefined || entry.featureId === result.featureId)
+        .map(({ id }) => ({
+          id,
+          status: "refused",
+          reason: "Non-capture/historical interpretation skipped; source unchanged",
+        })),
       newRule: candidates.length ? "lapsed" : "pending",
       duplicates: [],
       reason: "No accepted decision for this subject and feature",

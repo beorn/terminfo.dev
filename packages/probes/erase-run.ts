@@ -103,7 +103,7 @@ export async function runEraseReplay(context: TestContext): Promise<EraseRunReco
       measuredAt,
       origin: { kind: "collector" },
     }
-    const recorded = captureEraseCalls(context)
+    const recorded = captureEraseCalls(context, runtimeIdentity)
     capture.rawReplies["collector.callLog"] = JSON.stringify(recorded.log)
     capture.rawReplies["collector.captureChecks"] = JSON.stringify(recorded.results)
     capture.rawReplies["collector.traceManifest"] = JSON.stringify({

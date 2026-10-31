@@ -11,6 +11,7 @@ import { dirname, join } from "node:path"
 import { expect, test, vi } from "vitest"
 import { createVitest } from "vitest/node"
 import CensusReporter from "../packages/admin/reporter.ts"
+import type { CapturedRunDraft } from "@terminfo/probe-defs"
 
 test("production erase configuration isolates reports for repeated invocations", async () => {
   const directory = await mkdtemp(join(tmpdir(), "terminfo-replay-config-"))
@@ -88,6 +89,16 @@ test.for(["success", "deciding", "precondition", "replay-failure", "painted-seed
         return
       }
       expect(record.error).toBeUndefined()
+      // Accepted identity requirement: real erase captures must bind the imported adapter,
+      // which the previous outcome-only assertions did not inspect.
+      for (const run of record.assertions) {
+        expect(run.runtimeIdentity?.adapterSources?.length).toBeGreaterThan(0)
+        expect(run.runtimeIdentity?.adapterSources?.every(({ blobOid }) => /^[a-f0-9]{40}$/.test(blobOid))).toBe(true)
+      }
+      const capturePath = record.files[0]
+      if (!capturePath) throw new Error("Missing real erase capture")
+      const capture = JSON.parse(await readFile(capturePath, "utf8")) as CapturedRunDraft
+      expect(capture.runtimeIdentity?.adapterSources).toEqual(record.assertions[0]?.runtimeIdentity?.adapterSources)
       expect(record.files.length).toBeGreaterThan(0)
       expect(record.files.every((path) => path.startsWith(join(directory, ".terminfo-dev", "replays") + "/"))).toBe(
         true,

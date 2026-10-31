@@ -12,7 +12,7 @@ import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
-import { afterAll, expect, test } from "vitest"
+import { afterAll, expect, test, vi } from "vitest"
 import { loadFeatures, loadFeatureEntryHashes, loadTerminals } from "./index.ts"
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -147,5 +147,22 @@ test("hashes whole raw entries canonically while keeping unrelated features inde
     const changed = hashes(name, { ...base, unknown })
     expect(changed["a.one"]).not.toBe(original["a.one"])
     expect(changed["b.two"]).toBe(original["b.two"])
+  }
+})
+
+// Hash-cache availability is required; valid-cache fixtures cannot expose a missing cache entry.
+test("names the missing catalogue entry hash cache instead of returning an empty spread", () => {
+  const dir = fixture("missing-hash-cache", {
+    "features.json": { "a.one": { name: "A", slug: "a", body: "b", probe: "p", baseline: "x" } },
+  })
+  loadFeatures(dir)
+  const get = Map.prototype.get
+  const spy = vi.spyOn(Map.prototype, "get").mockImplementation(function (this: Map<unknown, unknown>, key) {
+    return key === dir + "#feature-entry-hashes" ? undefined : get.call(this, key)
+  })
+  try {
+    expect(() => loadFeatureEntryHashes(dir)).toThrow("feature-entry-hashes")
+  } finally {
+    spy.mockRestore()
   }
 })

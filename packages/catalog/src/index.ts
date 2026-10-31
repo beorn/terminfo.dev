@@ -247,7 +247,9 @@ export function loadFeatures(contentDir: string): FeatureCatalog {
 /** Whole original entries, including unknown keys, from the same parse as loadFeatures. */
 export function loadFeatureEntryHashes(contentDir: string): Readonly<Record<string, string>> {
   loadFeatures(contentDir)
-  return cache.get(`${contentDir}#feature-entry-hashes`) as Readonly<Record<string, string>>
+  const hashes = cache.get(`${contentDir}#feature-entry-hashes`)
+  if (hashes === undefined) throw new Error(`Catalogue feature-entry-hashes unavailable: ${contentDir}`)
+  return hashes as Readonly<Record<string, string>>
 }
 
 type LabelSource = Readonly<Record<string, Pick<TerminalRecord, "label" | "kind" | "headlessLabel">>>
