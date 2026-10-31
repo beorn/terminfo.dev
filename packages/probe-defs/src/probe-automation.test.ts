@@ -4298,6 +4298,76 @@ describe("partial probe automation candidates", () => {
     }
   })
 
+  // #32026: explicit callbacks catch missing OSC633 codes and the distinct OSC133;D subcode.
+  // Existing data-derived reply-audit cases never exercise these source-negative buffer-state arms.
+  test.each([
+    [
+      "vt100",
+      "5ffc7ad9ae120d0bf93c64b0fdc712eb40892896",
+      "99833d737402f9d1d8e3e257e3a255d8aa1facc3",
+      "88fca587dd459fd34da3405e93cc3793cb4a1cf8",
+    ],
+    [
+      "vt220",
+      "69366752918a6086c639123799cc3ac68d8083a0",
+      "601dd26eb7e753a5396ebdf72f1ef8ee2cc4355f",
+      "fe2970bf029f2c4c52a253364fe3e86659985856",
+    ],
+  ])(
+    "%s semantic source audits require matching identity and rendered X",
+    (engine, treeOid, indexBlob, backendBlob) => {
+      const runtimeIdentity = {
+        kind: "js",
+        runtimeFormat: "js",
+        engineVersion: "0.9.0",
+        adapterVersion: "0.10.2",
+        termlessRevision: "2d97417328b7b1d086f9396b9a1731216ed134cc",
+        resolvedPath: `vendor/vterm/packages/${engine}/src/index.ts`,
+        integrity: {
+          kind: "source",
+          repository: "git@github.com:beorn/vterm.git",
+          revision: "53a9eb9291b7880f4dc6a39a6802301049997a72",
+          treeOid: treeOid!,
+          cleanTree: true,
+        },
+        adapterSources: [
+          { path: `packages/${engine}/src/index.ts`, blobOid: indexBlob! },
+          { path: `packages/${engine}/src/backend.ts`, blobOid: backendBlob! },
+        ],
+      } satisfies NonNullable<LibProbeSource["runtimeIdentity"]>
+      const cases = [
+        ...OSC_SEMANTIC_MARK_CASES.filter(
+          ([id]) => id.startsWith("extensions.osc633-") || id === "extensions.osc133-d",
+        ),
+        ["extensions.osc-633-vscode", "\x1b]633;A\x07"],
+      ] as const
+      for (const [id, sequence] of cases) {
+        const feeds: string[] = []
+        const run = (identity: NonNullable<LibProbeSource["runtimeIdentity"]>, char = "X") =>
+          probe(id!).lib!(
+            context({
+              runtimeIdentity: identity,
+              feed: (text) => {
+                feeds.push(text)
+              },
+              getCell: () => ({ ...context({}).getCell(0, 0), char }),
+            }),
+          )
+        const result = run(runtimeIdentity)
+        expect(feeds, id).toEqual([`\x1b[1;1H\x1b[2K${sequence}X`])
+        expect(result.criterionBranch, id).toBe("source-negative-review")
+        expect(result.assertions, id).toMatchObject([{ kind: "negative", assertionType: "buffer_state" }])
+        expect(run(runtimeIdentity, "?").assertions, id).toBeUndefined()
+        expect(
+          run({ ...runtimeIdentity, integrity: { ...runtimeIdentity.integrity, treeOid: "0".repeat(40) } })
+            .criterionBranch,
+          id,
+        ).not.toBe("source-negative-review")
+        expect(run({ ...runtimeIdentity, adapterSources: [] }).criterionBranch, id).not.toBe("source-negative-review")
+      }
+    },
+  )
+
   test("semantic prompt OSC consumption and CPR do not claim prompt integration", async () => {
     // Constant 1;2 CPR for every read must never qualify as a measured home / target / control sequence.
     for (const id of OSC_SEMANTIC_MARK_IDS) {

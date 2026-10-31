@@ -1179,7 +1179,8 @@ const ABSENT_OSC_ENGINES = {
     engineVersion: "0.9.0",
     repository: "git@github.com:beorn/vterm.git",
     treeOid: "5ffc7ad9ae120d0bf93c64b0fdc712eb40892896",
-    codes: [8, 9, 22, 176, 440, 555, 666, 710, 777, 3008],
+    codes: [8, 9, 22, 133, 176, 440, 555, 633, 666, 710, 777, 3008],
+    subcodes: ["133;D"],
     sourceCitation:
       "vt100 53a9eb9291b7880f4dc6a39a6802301049997a72 packages/vt100/src/screen.ts:504-520 handleOSC switch, cases 0/1/2 only",
   },
@@ -1189,7 +1190,8 @@ const ABSENT_OSC_ENGINES = {
     engineVersion: "0.9.0",
     repository: "git@github.com:beorn/vterm.git",
     treeOid: "69366752918a6086c639123799cc3ac68d8083a0",
-    codes: [8, 9, 22, 176, 440, 555, 666, 710, 777, 3008],
+    codes: [8, 9, 22, 133, 176, 440, 555, 633, 666, 710, 777, 3008],
+    subcodes: ["133;D"],
     sourceCitation:
       "vt220 53a9eb9291b7880f4dc6a39a6802301049997a72 packages/vt220/src/screen.ts:703-718 handleOSC: no-semicolon return; cases 0/1/2 only",
   },
