@@ -6,9 +6,10 @@
  */
 import { expect, test } from "vitest"
 import { extensionsProbes } from "./extensions.ts"
+import { deviceProbes, TERM_FEATURES_API_CITATIONS } from "./device.ts"
 import { replayTermProbeSource } from "./testing/group-harness.ts"
-import { SOURCE_TREE_AUDITS } from "./helpers.ts"
-import type { TermProbeSource, LibProbeSource } from "./types.ts"
+import { ADAPTER_SOURCE_AUDITS, SOURCE_TREE_AUDITS } from "./helpers.ts"
+import type { HeadlessRuntimeIdentity, TermProbeSource, LibProbeSource } from "./types.ts"
 
 // Callback intent is distinct from producer formatting: malformed bytes must never opt into
 // silence evidence. Existing reply qualification cases did not inspect that execution contract.
@@ -55,12 +56,179 @@ const xtermOscIdentity = {
   engineVersion: "6.0.0",
   adapterVersion: "0.10.2",
   termlessRevision: "84003d2c91610fe2743142675234a0fb3ec9cf1d",
+  adapterSources: [
+    { path: "packages/xtermjs/src/index.ts", blobOid: "550e10110ec2baaf326d2958319b03ee8208feba" },
+    { path: "packages/xtermjs/src/backend.ts", blobOid: "923e41d80147e4f136719e46ce9a2fc7dfb31683" },
+  ],
   resolvedPath: "node_modules/.bun/@xterm+headless@6.0.0/node_modules/@xterm/headless/lib-headless/xterm-headless.js",
   integrity: {
     kind: "registry",
     lockIntegrity: "sha512-5Yj1QINYCyzrZtf8OFIHi47iQtI+0qYFPHmouEfG8dHNxbZ9Tb9YGSuLcsEwj9Z+OL75GJqPyJbyoFer80a2Hw==",
   },
 } as const
+
+const auditedArtifacts: readonly HeadlessRuntimeIdentity[] = [
+  {
+    kind: "native",
+    engineVersion: "0.26.0",
+    adapterVersion: "0.10.2",
+    termlessRevision: "f736cce4",
+    loadedBinary: {
+      path: "/relocated/alacritty.node",
+      sha256: "32d76284e5a3c7673fafbbc83a16717fa0a1c1811c7d659d982176a53ceb1aa9",
+    },
+    provenance: {
+      sha256: "32d76284e5a3c7673fafbbc83a16717fa0a1c1811c7d659d982176a53ceb1aa9",
+      sourceCommit: "cd5cd5172680fd240ee3445dea96289793bc2d59",
+      buildHash: "94ef4fbf1e21d454c70a39efaf9cfde1ebabe57a0f9cdb186fef782cfb1ff8ce",
+      lockSha256: "1f89f2579b7d786a116d8fefb8267c4af076bd3a3893adcf14b00c4466740497",
+      toolchain: "retained build receipt",
+    },
+    adapterSources: [
+      { path: "packages/alacritty/src/index.ts", blobOid: "b4154cbd6ef4a83ce2cbf3dcf26ff13d645efd05" },
+      { path: "packages/alacritty/src/backend.ts", blobOid: "3c2cd926fa2a20ff686aecc4c77d7cd908e2e9df" },
+      { path: "packages/alacritty/native/src/lib.rs", blobOid: "f8d4ef7a2c4f389dd80ecbd3f9dae38600446a1e" },
+      { path: "src/load-native.ts", blobOid: "34e142550085450ab02138184626716ad0d6b546" },
+    ],
+  },
+  {
+    kind: "js",
+    runtimeFormat: "wasm",
+    engineVersion: "0.3.3",
+    adapterVersion: "0.10.2",
+    termlessRevision: "f736cce4",
+    resolvedPath: "/relocated/libvterm/index.ts",
+    integrity: {
+      kind: "source",
+      repository: "git@github.com:beorn/termless.git",
+      revision: "f736cce4",
+      treeOid: "changed-wrapper-tree",
+      cleanTree: true,
+    },
+    loadedBinary: {
+      path: "/relocated/libvterm.wasm",
+      sha256: "5937bd79139ee5856bcf1bd619cc44fcd2d750d3def3066a74956678cdaaaeb2",
+    },
+    adapterSources: [
+      { path: "packages/libvterm/src/index.ts", blobOid: "2b4708b1081e701b99893ca055ded781dc46cf25" },
+      { path: "packages/libvterm/src/backend.ts", blobOid: "9191b6f79617372717848713411b78ac2faa353e" },
+      { path: "packages/libvterm/src/wasm-bindings.ts", blobOid: "2bbd4d5cf59b8d53db8f5c0329d2ed7853c43e45" },
+      { path: "packages/libvterm/wasm/libvterm.js", blobOid: "973341a8e2303d25cb17f1a36d491aad6c55b3a1" },
+    ],
+  },
+]
+
+test("TERM_FEATURES audit enumerates only files bound by the declared adapter sources", () => {
+  for (const [engine, [, path]] of Object.entries(TERM_FEATURES_API_CITATIONS)) {
+    const declared = ADAPTER_SOURCE_AUDITS[engine as keyof typeof ADAPTER_SOURCE_AUDITS]
+    expect(Object.keys(declared), engine).toContain(path)
+    expect((declared as Readonly<Record<string, string>>)[path], engine).toMatch(/^[a-f0-9]{40}$/)
+  }
+  for (const identity of auditedArtifacts) {
+    const definition = deviceProbes.find((entry) => entry.id === "device.term-features")!
+    for (const source of identity.adapterSources!) {
+      const result = definition.lib!({
+        runtimeIdentity: {
+          ...identity,
+          adapterSources: identity.adapterSources!.filter((entry) => entry.path !== source.path),
+        },
+      } as unknown as LibProbeSource)
+      expect(result.criterionBranch, source.path).not.toBe("headless-observable-review")
+    }
+  }
+})
+
+test("OSC 8 missing-observer review excludes adapter locators and global revisions", () => {
+  const identity = structuredClone(auditedArtifacts[1]!)
+  identity.adapterSources = []
+  const source = (runtimeIdentity: HeadlessRuntimeIdentity) =>
+    ({
+      runtimeIdentity,
+      feed: () => undefined,
+      getCell: (_row: number, col: number) => ({ char: "ALINKZ"[col] }),
+      capabilities: { extensions: new Set() },
+    }) as unknown as LibProbeSource
+  const result = callback("extensions.osc8").lib!(source(identity))
+  expect(result.criterionBranch).toBe("headless-observable-review")
+  const relocated = structuredClone(identity)
+  relocated.termlessRevision = "different-global-revision"
+  if (relocated.kind === "js") relocated.resolvedPath = "/relocated/wrapper.ts"
+  if (relocated.kind === "native" || relocated.runtimeFormat === "wasm") {
+    relocated.loadedBinary.path = "/relocated/engine"
+  }
+  expect(callback("extensions.osc8").lib!(source(relocated))).toEqual(result)
+})
+
+test.each(auditedArtifacts)(
+  "$kind source audits survive provenance moves but not engine/adapter changes",
+  (identity) => {
+    const definition = callback(identity.kind === "native" ? "extensions.osc440-audio" : "extensions.osc8")
+    const source = (runtimeIdentity: HeadlessRuntimeIdentity): LibProbeSource =>
+      ({
+        runtimeIdentity,
+        feed: () => undefined,
+        getCell: (_row: number, col: number) => ({ char: identity.kind === "native" ? "X" : "ALINKZ"[col] }),
+        capabilities: { extensions: new Set() },
+      }) as unknown as LibProbeSource
+    const result = definition.lib!(source(identity))
+    expect(result.criterionBranch).toBe("source-negative-review")
+    expect(result.response).not.toContain("runtimeIdentity")
+    const moved = structuredClone(identity)
+    moved.termlessRevision = "another-provenance-only-revision"
+    if (moved.kind === "native" || moved.runtimeFormat === "wasm") moved.loadedBinary.path = "/another/location"
+    if (moved.kind === "js") {
+      moved.resolvedPath = "/another/wrapper.ts"
+      if (moved.integrity.kind === "source") {
+        moved.integrity.revision = "another-wrapper-revision"
+        moved.integrity.treeOid = "another-wrapper-tree"
+      }
+    }
+    expect(definition.lib!(source(moved))).toEqual(result)
+    const changes: ((changed: HeadlessRuntimeIdentity) => void)[] = [
+      (changed) => {
+        changed.engineVersion = "foreign"
+      },
+      (changed) => {
+        changed.adapterVersion = "foreign"
+      },
+      (changed) => {
+        changed.adapterSources = undefined
+      },
+      (changed) => {
+        changed.adapterSources = []
+      },
+      (changed) => {
+        changed.adapterSources = changed.adapterSources!.slice(1)
+      },
+      (changed) => {
+        changed.adapterSources = changed.adapterSources!.map((entry) => ({ ...entry, blobOid: "0".repeat(40) }))
+      },
+      (changed) => {
+        if (changed.kind === "native" || changed.runtimeFormat === "wasm") changed.loadedBinary.sha256 = "0".repeat(64)
+      },
+    ]
+    if (identity.kind === "native") {
+      for (const field of ["sha256", "sourceCommit", "buildHash", "lockSha256"] as const) {
+        changes.push((changed) => {
+          if (changed.kind === "native") changed.provenance[field] = "foreign"
+        })
+      }
+    }
+    for (const change of changes) {
+      const changed = structuredClone(identity)
+      change(changed)
+      expect(definition.lib!(source(changed)).criterionBranch).not.toBe("source-negative-review")
+    }
+    const termFeatures = deviceProbes.find((entry) => entry.id === "device.term-features")!
+    const apiReview = termFeatures.lib!(source(identity))
+    expect(apiReview.criterionBranch).toBe("headless-observable-review")
+    expect(apiReview.response).not.toContain("runtimeIdentity")
+    expect(termFeatures.lib!(source(moved))).toEqual(apiReview)
+    expect(termFeatures.lib!(source({ ...identity, adapterSources: [] })).criterionBranch).not.toBe(
+      "headless-observable-review",
+    )
+  },
+)
 
 // A consumed sentinel qualifies only the source-review evidence, never the audio, flash or font effect.
 test.each([
@@ -111,6 +279,21 @@ test.each([
           engineVersion: "0.9.0",
           adapterVersion: "0.10.2",
           termlessRevision: "2".repeat(40),
+          adapterSources:
+            engine === "vt100"
+              ? [
+                  { path: "packages/vt100/src/index.ts", blobOid: "99833d737402f9d1d8e3e257e3a255d8aa1facc3" },
+                  { path: "packages/vt100/src/backend.ts", blobOid: "88fca587dd459fd34da3405e93cc3793cb4a1cf8" },
+                ]
+              : engine === "vt220"
+                ? [
+                    { path: "packages/vt220/src/index.ts", blobOid: "601dd26eb7e753a5396ebdf72f1ef8ee2cc4355f" },
+                    { path: "packages/vt220/src/backend.ts", blobOid: "fe2970bf029f2c4c52a253364fe3e86659985856" },
+                  ]
+                : [
+                    { path: "packages/vterm/src/index.ts", blobOid: "cb5719799dcdd5ae24e6fcf0dcad9965035ce54c" },
+                    { path: "packages/vterm/src/backend.ts", blobOid: "8599e301dd046b1264403069289477ab65d71d3a" },
+                  ],
           resolvedPath: `vendor/vterm/packages/${engine}/src/index.ts`,
           integrity: {
             kind: "source",
@@ -165,7 +348,7 @@ test.each([
     } as unknown as LibProbeSource
     const result = callback(id).lib!(source)
     expect(result.observation?.outcome).not.toBe("supported")
-    if (mode === "pinned") {
+    if (mode === "pinned" || mode === "foreign" || mode === "changed-source") {
       expect(writes.join("")).toContain(sequence + "X")
       expect(result.criterionBranch).toBe("source-negative-review")
       expect(result.tests).toMatchObject([
@@ -185,7 +368,7 @@ test.each([
         { kind: "negative", assertionType: "buffer_state", observed: result.response },
       ])
       if (engine === "xtermjs") {
-        expect(JSON.parse(result.response!)).toMatchObject({ runtimeIdentity: identity })
+        expect(JSON.parse(result.response!)).not.toHaveProperty("runtimeIdentity")
         expect(result.tests).toMatchObject([{ reason: expect.stringContaining("packages/xtermjs/src/backend.ts") }])
       }
       if (engine === "vterm" && id === "extensions.osc9-progress") {
@@ -209,7 +392,7 @@ test.each([
         if (id === "extensions.osc9-progress") expect(result.tests?.[0]?.reason).toContain("no case 9")
       }
     } else {
-      expect(result.criterionBranch).toBeUndefined()
+      expect(result.criterionBranch, `${engine}: ${mode}`).toBeUndefined()
       expect(result.assertions).toBeUndefined()
       expect(result.tests).toBeUndefined()
       if (mode !== "no-sentinel") expect(writes).toEqual([])
@@ -1539,10 +1722,10 @@ test.each([
           originalRaw: "",
           sentinel: { char: "X" },
           engineState: null,
-          runtimeIdentity: identity,
           fed: calls[1],
         })
         expect(retained).toMatchObject({ fed: expect.stringContaining(`\x1b]${setCode};rgb:`) })
+        expect(retained).not.toHaveProperty("runtimeIdentity")
         expect(retained).toMatchObject({ fed: expect.stringContaining(`\x1b]${resetCode}\x07X`) })
         if (mode === "sentinel") {
           expect(retained).toMatchObject({ initialSentinel: { reason: "sentinel", raw: "\x1b[?1;2c" } })
@@ -1640,7 +1823,8 @@ test.each(geometryReplies)("$id retains audited geometry limits for required rev
     expect(result.tests).toMatchObject([{ id: "review", status: "test-todo" }])
     expect(result.observation).toBeUndefined()
     const state = JSON.parse(result.response!)
-    expect(state).toMatchObject({ raw, runtimeIdentity: geometryRuntime })
+    expect(state).toMatchObject({ raw })
+    expect(state).not.toHaveProperty("runtimeIdentity")
   }
 })
 
@@ -1686,7 +1870,8 @@ test.each(geometryReplies)("$id reports source tree drift before geometry gradin
         expect(result.observation).toBeUndefined()
         expect(result.assertions).toBeUndefined()
         expect(result.notTested).toBeUndefined()
-        expect(JSON.parse(result.response!)).toMatchObject({ raw: reply, runtimeIdentity })
+        expect(JSON.parse(result.response!)).toMatchObject({ raw: reply })
+        expect(JSON.parse(result.response!)).not.toHaveProperty("runtimeIdentity")
       }
     }
   }

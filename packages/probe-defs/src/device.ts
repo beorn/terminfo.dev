@@ -12,93 +12,91 @@ import {
   sentinelNegativeResult,
   sentinelSilenceResult,
   vtermGeometryReview,
+  ADAPTER_SOURCE_AUDITS,
+  auditedAdapterSources,
 } from "./helpers.ts"
 import { nativeHostRecipeResult } from "./native-host-audit.ts"
+import { evidenceRuntimeIdentity } from "./runtime-identity.ts"
 
-// The individual integrated APIs return parser/readback backends, not a terminal-owned application child.
-// These citations were read at this Termless pin; runtime identity alone is not the source audit.
-const TERM_FEATURES_API_REVISION = "8b8664540f365fa0ba1d9b6400d3c4d1a160582c"
-const TERM_FEATURES_API_CITATIONS: Readonly<Record<string, readonly [string, string]>> = {
-  "vendor/vterm/packages/vterm/src/index.ts": [
-    "vterm",
-    "packages/vterm/src/backend.ts:63 createVtermBackend integrates the vterm Screen as a TerminalBackend with no application-child environment API",
+export const TERM_FEATURES_API_CITATIONS = {
+  vterm: [
+    "0.9.0",
+    "packages/vterm/src/backend.ts",
+    "createVtermBackend integrates the vterm Screen as a TerminalBackend with no application-child environment API",
   ],
-  "vendor/vterm/packages/vt220/src/index.ts": [
-    "vt220",
-    "packages/vt220/src/backend.ts:39 createVt220Backend integrates the vt220 Screen as a TerminalBackend with no application-child environment API",
+  vt220: [
+    "0.9.0",
+    "packages/vt220/src/backend.ts",
+    "createVt220Backend integrates the vt220 Screen as a TerminalBackend with no application-child environment API",
   ],
-  "vendor/vterm/packages/vt100/src/index.ts": [
-    "vt100",
-    "packages/vt100/src/backend.ts:42 createVt100Backend integrates the vt100 Screen as a TerminalBackend with no application-child environment API",
+  vt100: [
+    "0.9.0",
+    "packages/vt100/src/backend.ts",
+    "createVt100Backend integrates the vt100 Screen as a TerminalBackend with no application-child environment API",
   ],
-  "vendor/termless/packages/vt100-rust/termless-vt100-rust.node": [
-    "vt100-rust",
-    "packages/vt100-rust/src/backend.ts:174 createVt100RustBackend returns TerminalBackend",
+  vt100Rust: [
+    "0.16.2",
+    "packages/vt100-rust/src/backend.ts",
+    "createVt100RustBackend returns an in-process TerminalBackend with no application child",
   ],
-  "vendor/termless/packages/wezterm/termless-wezterm.node": [
-    "wezterm",
-    "packages/wezterm/src/backend.ts:197 createWeztermBackend returns TerminalBackend",
+  wezterm: [
+    "0.1.0-fork.5",
+    "packages/wezterm/src/backend.ts",
+    "createWeztermBackend returns an in-process TerminalBackend with no application child",
   ],
-  "vendor/termless/packages/alacritty/termless-alacritty-native.node": [
-    "alacritty",
-    "packages/alacritty/src/backend.ts:151 createAlacrittyBackend returns TerminalBackend",
+  alacritty: [
+    "0.26.0",
+    "packages/alacritty/src/backend.ts",
+    "createAlacrittyBackend returns an in-process TerminalBackend with no application child",
   ],
-  "vendor/termless/packages/ghostty-native/termless-ghostty-native.node": [
-    "ghostty-native",
-    "packages/ghostty-native/src/backend.ts:217 createGhosttyNativeBackend returns TerminalBackend",
+  ghosttyNative: [
+    "1.3.1",
+    "packages/ghostty-native/src/backend.ts",
+    "createGhosttyNativeBackend returns an in-process TerminalBackend with no application child",
   ],
-  "vendor/termless/packages/libvterm/src/index.ts": [
-    "libvterm",
-    "packages/libvterm/src/backend.ts:168 createLibvtermBackend returns the parser/readback LegacyBackend",
+  libvterm: [
+    "0.3.3",
+    "packages/libvterm/src/backend.ts",
+    "createLibvtermBackend returns the parser/readback LegacyBackend with no application child",
   ],
-}
+  xtermjs: [
+    "6.0.0",
+    "packages/xtermjs/src/backend.ts",
+    "createXtermBackend integrates @xterm/headless as an in-process TerminalBackend",
+  ],
+  ghostty: [
+    "0.4.0",
+    "packages/ghostty/src/backend.ts",
+    "createGhosttyBackend returns LegacyBackend over the ghostty-web core with no application child",
+  ],
+  kitty: [
+    "0.49.2",
+    "packages/kitty/src/backend.ts",
+    "createKittyBackend exposes parser/readback via +runpy bridge; that helper subprocess is not a terminal-owned application child",
+  ],
+} as const
 
 function termFeaturesLibraryReview(ctx: LibProbeSource): ProbeCallbackResult {
-  const identity = ctx.runtimeIdentity
-  if (!identity || identity.termlessRevision !== TERM_FEATURES_API_REVISION) {
+  const identity = evidenceRuntimeIdentity(ctx.runtimeIdentity)
+  if (!identity) {
     return notTestedResult("TERM_FEATURES: no pinned engine API source audit at this runtime", {})
   }
-  const entry = identity.kind === "native" ? identity.loadedBinary.path : identity.resolvedPath
-  let citation = TERM_FEATURES_API_CITATIONS[entry]
-  if (
-    identity.kind === "js" &&
-    identity.integrity.kind === "registry" &&
-    identity.engineVersion === "6.0.0" &&
-    identity.resolvedPath.endsWith("/@xterm/headless/lib-headless/xterm-headless.js")
-  ) {
-    citation = [
-      "xtermjs",
-      "packages/xtermjs/src/backend.ts:171-174 createXtermBackend integrates @xterm/headless as an in-process TerminalBackend",
-    ]
-  } else if (
-    identity.kind === "js" &&
-    identity.runtimeFormat === "wasm" &&
-    identity.engineVersion === "0.4.0" &&
-    identity.resolvedPath.endsWith("/ghostty-web/dist/ghostty-web.js")
-  ) {
-    citation = [
-      "ghostty",
-      "packages/ghostty/src/backend.ts:249-252 createGhosttyBackend returns LegacyBackend over the ghostty-web core",
-    ]
-  } else if (
-    identity.kind === "native" &&
-    identity.loadedBinary.sha256 === "bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886"
-  ) {
-    citation = [
-      "kitty",
-      "packages/kitty/src/backend.ts:250-315 createKittyBackend exposes parser/readback via +runpy bridge; that helper subprocess is not a terminal-owned application child",
-    ]
-  }
-  if (!citation) return notTestedResult("TERM_FEATURES: no engine-specific API source citation at this runtime", {})
+  const entry = (Object.keys(TERM_FEATURES_API_CITATIONS) as (keyof typeof TERM_FEATURES_API_CITATIONS)[]).find(
+    (engine) =>
+      identity.engineVersion === TERM_FEATURES_API_CITATIONS[engine][0] &&
+      auditedAdapterSources(ctx.runtimeIdentity, engine),
+  )
+  if (!entry) return notTestedResult("TERM_FEATURES: no engine-specific API source citation at this runtime", {})
+  const [, sourcePath, sourceCitation] = TERM_FEATURES_API_CITATIONS[entry]
+  const blobOid = (ADAPTER_SOURCE_AUDITS[entry] as Readonly<Record<string, string>>)[sourcePath]
   const note =
     "TERM_FEATURES is a terminal program's child-environment export; this library API spawns no application child process"
   return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
     audit: {
-      engine: citation[0],
+      engine: entry,
       engineVersion: identity.engineVersion,
-      sourceCitation: `${citation[1]}; Termless@${TERM_FEATURES_API_REVISION} src/terminal/types.ts:277-317 TerminalBackend has no application-child environment API`,
-      apiRevision: TERM_FEATURES_API_REVISION,
-      runtimeIdentity: identity,
+      sourceCitation,
+      blobOid,
     },
   })
 }
@@ -350,14 +348,10 @@ const TITLE_STACK_UNIMPLEMENTED_AUDITS: ReadonlyMap<string, string> = new Map([
   ],
 ])
 
-const TITLE_STACK_UNIMPLEMENTED_SOURCE_TREES: ReadonlyMap<
-  string,
-  { readonly resolvedPath: string; readonly sourceCitation: string }
-> = new Map([
+const TITLE_STACK_UNIMPLEMENTED_SOURCE_TREES: ReadonlyMap<string, { readonly sourceCitation: string }> = new Map([
   [
     "5ffc7ad9ae120d0bf93c64b0fdc712eb40892896",
     {
-      resolvedPath: "vendor/vterm/packages/vt100/src/index.ts",
       sourceCitation:
         'vterm 53a9eb9291b7880f4dc6a39a6802301049997a72 packages/vt100/src/screen.ts:251-358 handleCSI has no case "t" and createScreen at packages/vt100/src/screen.ts:130 holds only title = "" with no title stack, so neither CSI 22;0t nor CSI 23;0t is implemented',
     },
@@ -365,7 +359,6 @@ const TITLE_STACK_UNIMPLEMENTED_SOURCE_TREES: ReadonlyMap<
   [
     "69366752918a6086c639123799cc3ac68d8083a0",
     {
-      resolvedPath: "vendor/vterm/packages/vt220/src/index.ts",
       sourceCitation:
         'vterm 53a9eb9291b7880f4dc6a39a6802301049997a72 packages/vt220/src/screen.ts:305-428 handleCSI has no case "t" and createScreen at packages/vt220/src/screen.ts:104,176 holds only title = "" with no title stack, so neither CSI 22;0t nor CSI 23;0t is implemented',
     },
@@ -383,8 +376,8 @@ function titleStackHeadless(ctx: LibProbeSource, expected: string): ProbeCallbac
   if (original === "pushed-title" && changed === "new-title" && restored === "pushed-title") {
     return parserStateResult(true, expected, { original, changed, restored })
   }
-  const identity = ctx.runtimeIdentity
-  const artifactSha256 = identity !== undefined && "loadedBinary" in identity ? identity.loadedBinary.sha256 : undefined
+  const identity = evidenceRuntimeIdentity(ctx.runtimeIdentity)
+  const artifactSha256 = identity !== null && "loadedBinary" in identity ? identity.loadedBinary.sha256 : undefined
   const sourceCitation =
     original === "pushed-title" && changed === "new-title" && restored === "new-title" && artifactSha256 !== undefined
       ? TITLE_STACK_UNIMPLEMENTED_AUDITS.get(artifactSha256)
@@ -406,11 +399,10 @@ function titleStackHeadless(ctx: LibProbeSource, expected: string): ProbeCallbac
     identity.engineVersion === "0.9.0" &&
     identity.integrity.kind === "source" &&
     identity.integrity.cleanTree &&
-    identity.integrity.repository === "git@github.com:beorn/vterm.git" &&
-    identity.integrity.revision === "53a9eb9291b7880f4dc6a39a6802301049997a72"
+    identity.integrity.repository === "git@github.com:beorn/vterm.git"
   ) {
     const sourceAudit = TITLE_STACK_UNIMPLEMENTED_SOURCE_TREES.get(identity.integrity.treeOid)
-    if (sourceAudit !== undefined && sourceAudit.resolvedPath === identity.resolvedPath) {
+    if (sourceAudit !== undefined) {
       return parserStateResult(
         false,
         expected,
@@ -418,7 +410,6 @@ function titleStackHeadless(ctx: LibProbeSource, expected: string): ProbeCallbac
           original,
           changed,
           restored,
-          revision: identity.integrity.revision,
           treeOid: identity.integrity.treeOid,
           sourceCitation: sourceAudit.sourceCitation,
         },

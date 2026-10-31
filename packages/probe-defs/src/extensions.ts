@@ -35,7 +35,9 @@ import {
   sgrCaptureFrames,
   sgrCaptureTooSmall,
   unmeasuredCellResult,
+  auditedAdapterSources,
 } from "./helpers.ts"
+import { evidenceRuntimeIdentity } from "./runtime-identity.ts"
 import { nativeHostRecipeResult } from "./native-host-audit.ts"
 import { sgrTermReadback } from "./sgr.ts"
 import {
@@ -725,7 +727,6 @@ function colorResetProbe(id: string, setCode: number, resetCode: number, index?:
               sentinel,
               engineState: null,
               engineStateReason: "No highlight colour set or reset target state is exposed at this pin",
-              runtimeIdentity: ctx.runtimeIdentity,
             },
             sentinel.char === "X" ? undefined : "No rendered X cell to evaluate",
             sentinel.char === "X"
@@ -1176,9 +1177,7 @@ const ABSENT_OSC_ENGINES = {
     kind: "source",
     runtimeFormat: "js",
     engineVersion: "0.9.0",
-    resolvedPath: "vendor/vterm/packages/vt100/src/index.ts",
     repository: "git@github.com:beorn/vterm.git",
-    revision: "53a9eb9291b7880f4dc6a39a6802301049997a72",
     treeOid: "5ffc7ad9ae120d0bf93c64b0fdc712eb40892896",
     codes: [8, 9, 22, 176, 440, 555, 666, 710, 777, 3008],
     sourceCitation:
@@ -1188,9 +1187,7 @@ const ABSENT_OSC_ENGINES = {
     kind: "source",
     runtimeFormat: "js",
     engineVersion: "0.9.0",
-    resolvedPath: "vendor/vterm/packages/vt220/src/index.ts",
     repository: "git@github.com:beorn/vterm.git",
-    revision: "53a9eb9291b7880f4dc6a39a6802301049997a72",
     treeOid: "69366752918a6086c639123799cc3ac68d8083a0",
     codes: [8, 9, 22, 176, 440, 555, 666, 710, 777, 3008],
     sourceCitation:
@@ -1200,9 +1197,7 @@ const ABSENT_OSC_ENGINES = {
     kind: "source",
     runtimeFormat: "js",
     engineVersion: "0.9.0",
-    resolvedPath: "vendor/vterm/packages/vterm/src/index.ts",
     repository: "git@github.com:beorn/vterm.git",
-    revision: "53a9eb9291b7880f4dc6a39a6802301049997a72",
     treeOid: SOURCE_TREE_AUDITS.vterm.treeOid,
     codes: [9, 22, 176, 440, 555, 666, 710, 777, 3008],
     reviewReasons: [
@@ -1219,7 +1214,6 @@ const ABSENT_OSC_ENGINES = {
     kind: "registry",
     engineVersion: "6.0.0",
     adapterVersion: "0.10.2",
-    pathSuffix: "/@xterm/headless/lib-headless/xterm-headless.js",
     lockIntegrity: "sha512-5Yj1QINYCyzrZtf8OFIHi47iQtI+0qYFPHmouEfG8dHNxbZ9Tb9YGSuLcsEwj9Z+OL75GJqPyJbyoFer80a2Hw==",
     codes: [9, 17, 19, 22, 117, 119, 176, 440, 555, 666, 710, 777, 3008],
     sourceCitation:
@@ -1230,12 +1224,6 @@ const ABSENT_OSC_ENGINES = {
     runtimeFormat: "wasm",
     engineVersion: "0.3.3",
     adapterVersion: "0.10.2",
-    termlessRevision: "2d97417328b7b1d086f9396b9a1731216ed134cc",
-    resolvedPath: "vendor/termless/packages/libvterm/src/index.ts",
-    repository: "git@github.com:beorn/termless.git",
-    revision: "2d97417328b7b1d086f9396b9a1731216ed134cc",
-    treeOid: SOURCE_TREE_AUDITS.libvterm.treeOid,
-    binaryPath: "vendor/termless/packages/libvterm/wasm/libvterm.wasm",
     binarySha256: "5937bd79139ee5856bcf1bd619cc44fcd2d750d3def3066a74956678cdaaaeb2",
     codes: [8],
     sourceCitation:
@@ -1245,8 +1233,6 @@ const ABSENT_OSC_ENGINES = {
     kind: "native",
     engineVersion: "1.3.1",
     adapterVersion: "0.10.2",
-    termlessRevision: "2d97417328b7b1d086f9396b9a1731216ed134cc",
-    binaryPath: "vendor/termless/packages/ghostty-native/termless-ghostty-native.node",
     binarySha256: "5a8030c0f3f9fa52e9c1f82d28ae711ef21e3072a4b82fbe98076fedf314c945",
     sourceCommit: "332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28",
     buildHash: "740541f7a527884ed17034c3ab8c66d457cdd14e013774b6bf75c7c99670a7d7",
@@ -1265,8 +1251,6 @@ const ABSENT_OSC_ENGINES = {
     kind: "native",
     engineVersion: "0.26.0",
     adapterVersion: "0.10.2",
-    termlessRevision: "2d97417328b7b1d086f9396b9a1731216ed134cc",
-    binaryPath: "vendor/termless/packages/alacritty/termless-alacritty-native.node",
     binarySha256: "32d76284e5a3c7673fafbbc83a16717fa0a1c1811c7d659d982176a53ceb1aa9",
     sourceCommit: "cd5cd5172680fd240ee3445dea96289793bc2d59",
     buildHash: "94ef4fbf1e21d454c70a39efaf9cfde1ebabe57a0f9cdb186fef782cfb1ff8ce",
@@ -1286,8 +1270,6 @@ const ABSENT_OSC_ENGINES = {
     kind: "native",
     engineVersion: "0.1.0-fork.5",
     adapterVersion: "0.10.2",
-    termlessRevision: "2d97417328b7b1d086f9396b9a1731216ed134cc",
-    binaryPath: "vendor/termless/packages/wezterm/termless-wezterm.node",
     binarySha256: "0f56a805793d7d829daa617f1323aacff0d73fe868747b0d077c6af315e2aab8",
     sourceCommit: "5afcc676d49c02902ef35112893e2ae35efb0d5e",
     buildHash: "1bc38c0ad4e95754ef42b5de57d4829864984099b2e4422008de7c5b96c875df",
@@ -1312,8 +1294,6 @@ const ABSENT_OSC_ENGINES = {
     kind: "native",
     engineVersion: "0.16.2",
     adapterVersion: "0.10.2",
-    termlessRevision: "2d97417328b7b1d086f9396b9a1731216ed134cc",
-    binaryPath: "vendor/termless/packages/vt100-rust/termless-vt100-rust.node",
     binarySha256: "0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3",
     sourceCommit: "6ffc0df79756fcc259d87131681641606540e512",
     buildHash: "7ab9ccc7744fbf5ae24c5ebb2748a144817e696f7f93959fa90a335d11646f68",
@@ -1325,58 +1305,55 @@ const ABSENT_OSC_ENGINES = {
 } as const
 
 function absentOscAudit(identity: LibProbeSource["runtimeIdentity"], code: number | "133;D") {
-  if (!identity) return undefined
-  return Object.values(ABSENT_OSC_ENGINES).find((expected) => {
+  const measured = evidenceRuntimeIdentity(identity)
+  if (!measured) return undefined
+  return Object.entries(ABSENT_OSC_ENGINES).find(([engine, expected]) => {
     const member =
       typeof code === "number"
         ? expected.codes.some((value) => value === code)
         : "subcodes" in expected && expected.subcodes.some((value) => value === code)
-    if (identity.engineVersion !== expected.engineVersion || !member) {
+    if (
+      measured.engineVersion !== expected.engineVersion ||
+      !member ||
+      !auditedAdapterSources(identity, engine as keyof typeof ABSENT_OSC_ENGINES)
+    ) {
       return false
     }
     if (expected.kind === "native") {
       return (
-        identity.kind === "native" &&
-        identity.adapterVersion === expected.adapterVersion &&
-        identity.termlessRevision === expected.termlessRevision &&
-        identity.loadedBinary.path === expected.binaryPath &&
-        identity.loadedBinary.sha256 === expected.binarySha256 &&
-        identity.provenance.sha256 === expected.binarySha256 &&
-        identity.provenance.sourceCommit === expected.sourceCommit &&
-        identity.provenance.buildHash === expected.buildHash &&
-        identity.provenance.lockSha256 === expected.lockSha256
+        measured.kind === "native" &&
+        measured.adapterVersion === expected.adapterVersion &&
+        measured.loadedBinary.sha256 === expected.binarySha256 &&
+        measured.provenance.sha256 === expected.binarySha256 &&
+        measured.provenance.sourceCommit === expected.sourceCommit &&
+        measured.provenance.buildHash === expected.buildHash &&
+        measured.provenance.lockSha256 === expected.lockSha256
       )
     }
-    if (identity.kind !== "js") return false
+    if (measured.kind !== "js") return false
     if (expected.kind === "registry") {
       return (
-        identity.runtimeFormat === "js" &&
-        identity.integrity.kind === "registry" &&
-        identity.adapterVersion === expected.adapterVersion &&
-        identity.resolvedPath.endsWith(expected.pathSuffix) &&
-        identity.integrity.lockIntegrity === expected.lockIntegrity
+        measured.runtimeFormat === "js" &&
+        measured.integrity.kind === "registry" &&
+        measured.adapterVersion === expected.adapterVersion &&
+        measured.integrity.lockIntegrity === expected.lockIntegrity
       )
     }
-    if (
-      identity.runtimeFormat !== expected.runtimeFormat ||
-      identity.integrity.kind !== "source" ||
-      identity.resolvedPath !== expected.resolvedPath ||
-      !identity.integrity.cleanTree ||
-      identity.integrity.repository !== expected.repository ||
-      identity.integrity.revision !== expected.revision ||
-      identity.integrity.treeOid !== expected.treeOid
-    ) {
-      return false
+    if (expected.runtimeFormat === "wasm") {
+      return (
+        measured.runtimeFormat === "wasm" &&
+        measured.adapterVersion === expected.adapterVersion &&
+        measured.loadedBinary.sha256 === expected.binarySha256
+      )
     }
     return (
-      expected.runtimeFormat === "js" ||
-      (identity.runtimeFormat === "wasm" &&
-        identity.adapterVersion === expected.adapterVersion &&
-        identity.termlessRevision === expected.termlessRevision &&
-        identity.loadedBinary.path === expected.binaryPath &&
-        identity.loadedBinary.sha256 === expected.binarySha256)
+      measured.runtimeFormat === "js" &&
+      measured.integrity.kind === "source" &&
+      measured.integrity.cleanTree &&
+      measured.integrity.repository === expected.repository &&
+      measured.integrity.treeOid === expected.treeOid
     )
-  })
+  })?.[1]
 }
 
 function sourceAbsentOsc(id: string, code: number | "133;D", sequence: string, effect: string) {
@@ -1399,7 +1376,6 @@ function sourceAbsentOsc(id: string, code: number | "133;D", sequence: string, e
         sentinel,
         engineState: null,
         engineStateReason: `No ${effect} target state is exposed at this pin`,
-        runtimeIdentity: identity,
       },
       sentinel.char === "X" ? undefined : "No rendered X cell to evaluate",
       sentinel.char === "X"
@@ -1814,7 +1790,7 @@ function osc720ScrollProbe(): ProbeDefinition["lib"] {
   return (ctx) => {
     const declared = ctx.capabilities.productViewport
     if (declared?.available === false) {
-      const state = { productViewport: declared, runtimeIdentity: ctx.runtimeIdentity ?? null }
+      const state = { productViewport: declared }
       if (ctx.scrollViewport) {
         return parserStateResult(
           null,
@@ -3518,13 +3494,13 @@ export const extensionsProbes: ProbeDefinition[] = [
             return parserStateResult(
               null,
               "extensions.osc8: the pinned engine handles OSC 8 and associates the exact URI with LINK cells only",
-              { chars: cells.map((cell) => cell.char), links, runtimeIdentity: identity },
+              { chars: cells.map((cell) => cell.char), links },
               undefined,
               `${audit.sourceCitation}; no OSC 8 target writer; independent source review required`,
             )
           }
           const adapter = identity
-            ? `${identity.kind === "js" ? identity.resolvedPath : identity.loadedBinary.path} at Termless ${identity.termlessRevision}`
+            ? `Engine ${identity.engineVersion}, adapter ${identity.adapterVersion}`
             : "Adapter (runtime identity unavailable)"
           const note = `${adapter} exposes no OSC 8 URI observer (getHyperlinkAt); link metadata unobservable`
           return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {

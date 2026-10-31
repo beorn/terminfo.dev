@@ -153,7 +153,7 @@ test.each([
     expect(result.observation).toBeUndefined()
   }
   expect(result.assertions).toBeUndefined()
-  expect(JSON.parse(result.response!)).toEqual({ productViewport, runtimeIdentity: identity ? runtimeIdentity : null })
+  expect(JSON.parse(result.response!)).toEqual({ productViewport })
   expect(historyCalls).toBe(0)
 })
 

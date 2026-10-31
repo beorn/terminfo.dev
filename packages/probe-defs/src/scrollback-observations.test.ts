@@ -11,7 +11,6 @@ import { eraseProbes } from "./erase.ts"
 import type { ObservationFrame, TermProbeSource, LibProbeSource } from "./types.ts"
 import { libProbeSource } from "./testing/group-harness.ts"
 import { createSemanticSurface } from "./testing/semantic-surface.ts"
-import { SOURCE_TREE_AUDITS } from "./helpers.ts"
 
 function headless(overrides: Partial<LibProbeSource> = {}): LibProbeSource {
   return {
@@ -64,6 +63,12 @@ const historyRuntime: WasmRuntime = {
   engineVersion: "0.3.3",
   adapterVersion: "0.10.2",
   termlessRevision: "8a1740b2d9f9b07105ffb1f62785c0ca9e513cf7",
+  adapterSources: [
+    { path: "packages/libvterm/src/index.ts", blobOid: "2b4708b1081e701b99893ca055ded781dc46cf25" },
+    { path: "packages/libvterm/src/backend.ts", blobOid: "9191b6f79617372717848713411b78ac2faa353e" },
+    { path: "packages/libvterm/src/wasm-bindings.ts", blobOid: "2bbd4d5cf59b8d53db8f5c0329d2ed7853c43e45" },
+    { path: "packages/libvterm/wasm/libvterm.js", blobOid: "973341a8e2303d25cb17f1a36d491aad6c55b3a1" },
+  ],
   resolvedPath: "vendor/termless/packages/libvterm/src/index.ts",
   integrity: {
     kind: "source",
@@ -91,37 +96,46 @@ const historyIdentities: [string, LibProbeSource["runtimeIdentity"], boolean | "
     true,
   ],
   ...[
-    ["wrong tree", {}],
-    ["wrong tree and adapter", { adapterVersion: "0.10.3" }],
-    ["wrong tree and WASM", { loadedBinary: { ...historyRuntime.loadedBinary, sha256: "f".repeat(64) } }],
+    ["wrong tree", {}, true],
+    ["wrong tree and adapter", { adapterVersion: "0.10.3" }, false],
+    ["wrong tree and WASM", { loadedBinary: { ...historyRuntime.loadedBinary, sha256: "f".repeat(64) } }, "drift"],
   ].map(
-    ([name, overrides]) =>
+    ([name, overrides, eligible]) =>
       [
         name,
         { ...historyRuntime, ...(overrides as object), integrity: { ...sourceIntegrity, treeOid: "f".repeat(40) } },
-        "drift",
-      ] as [string, LibProbeSource["runtimeIdentity"], "drift"],
+        eligible,
+      ] as [string, LibProbeSource["runtimeIdentity"], boolean | "drift"],
   ),
   [
     "wrong tree and dirty source",
     { ...historyRuntime, integrity: { ...sourceIntegrity, cleanTree: false, treeOid: "f".repeat(40) } },
-    "drift",
+    true,
   ],
   [
     "wrong WASM",
     { ...historyRuntime, loadedBinary: { ...historyRuntime.loadedBinary, sha256: "f".repeat(64) } },
-    false,
+    "drift",
   ],
   [
     "foreign entry with another tree",
     { ...historyRuntime, resolvedPath: "foreign/index.ts", integrity: { ...sourceIntegrity, treeOid: "f".repeat(40) } },
-    false,
+    true,
   ],
-  ["dirty source", { ...historyRuntime, integrity: { ...sourceIntegrity, cleanTree: false } }, false],
-  ["registry source", { ...historyRuntime, integrity: { kind: "registry", lockIntegrity: "sha512:fixture" } }, false],
+  ["dirty source", { ...historyRuntime, integrity: { ...sourceIntegrity, cleanTree: false } }, true],
+  ["registry source", { ...historyRuntime, integrity: { kind: "registry", lockIntegrity: "sha512:fixture" } }, true],
   [
     "wrong repository",
     { ...historyRuntime, integrity: { ...sourceIntegrity, repository: "git@github.com:fixture/other.git" } },
+    true,
+  ],
+  ["missing adapter blobs", { ...historyRuntime, adapterSources: undefined }, false],
+  [
+    "changed adapter blobs",
+    {
+      ...historyRuntime,
+      adapterSources: historyRuntime.adapterSources!.map((source) => ({ ...source, blobOid: "f".repeat(40) })),
+    },
     false,
   ],
   ["wrong engine version", { ...historyRuntime, engineVersion: "0.3.4" }, false],
@@ -133,13 +147,6 @@ const historyCases = ["erase.screen.scrollback", "scrollback.accumulate", "scrol
   historyIdentities.map(([name, runtimeIdentity, eligible]) => ({ id, name, runtimeIdentity, eligible })),
 )
 test.each(historyCases)("history count review qualifies $id: $name", ({ id, runtimeIdentity, eligible }) => {
-  expect({
-    resolvedPath: historyRuntime.resolvedPath,
-    runtimeFormat: historyRuntime.runtimeFormat,
-    engineVersion: historyRuntime.engineVersion,
-    repository: sourceIntegrity.repository,
-    treeOid: sourceIntegrity.treeOid,
-  }).toEqual(SOURCE_TREE_AUDITS.libvterm)
   const definition = [...eraseProbes, ...scrollbackProbes].find((entry) => entry.id === id)
   if (!definition?.lib) throw new Error(`Missing ${id} library callback`)
   let calls = 0
@@ -160,13 +167,13 @@ test.each(historyCases)("history count review qualifies $id: $name", ({ id, runt
       {
         id: "criterion",
         status: "test-failure",
-        reason: `source identity drift: expected ${sourceIntegrity.treeOid}, read ${"f".repeat(40)}`,
+        reason: `binary identity drift: expected ${historyRuntime.loadedBinary.sha256}, read ${"f".repeat(64)}`,
       },
     ])
     expect(result.observation, id).toBeUndefined()
     expect(result.assertions, id).toBeUndefined()
     expect(result.notTested, id).toBeUndefined()
-    expect(JSON.parse(result.response!), id).toMatchObject({ runtimeIdentity })
+    expect(result.response, id).not.toContain("runtimeIdentity")
     expect(calls, id).toBe(0)
     return
   }
@@ -183,9 +190,9 @@ test.each(historyCases)("history count review qualifies $id: $name", ({ id, runt
   expect(result.observation, id).toBeUndefined()
   expect(result.assertions, id).toBeUndefined()
   expect(JSON.parse(result.response!), id).toMatchObject({
-    runtimeIdentity,
     sourceCitation: expect.stringContaining("getScrollback"),
   })
+  expect(result.response, id).not.toContain("runtimeIdentity")
   expect(calls, id).toBe(0)
 })
 
@@ -421,7 +428,6 @@ test.each([true, false])(
     expect(result.assertions).toBeUndefined()
     expect(JSON.parse(result.response!)).toEqual({
       productViewport,
-      runtimeIdentity: withIdentity ? runtimeIdentity : null,
       baseline: {},
       anchor: {},
       control: {},
@@ -450,7 +456,6 @@ test("viewport declared absent with a present actuator is an inconclusive appara
   expect(result.assertions).toBeUndefined()
   expect(JSON.parse(result.response!)).toMatchObject({
     productViewport: fixture.source.capabilities.productViewport,
-    runtimeIdentity: null,
     ordinary: {},
     synchronized: {},
   })

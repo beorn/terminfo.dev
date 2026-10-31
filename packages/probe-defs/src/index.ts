@@ -1,3 +1,4 @@
+export { evidenceRuntimeIdentity } from "./runtime-identity.ts"
 export type {
   HostInputName,
   HostRecipeName,

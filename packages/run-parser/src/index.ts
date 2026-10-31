@@ -43,6 +43,7 @@ import {
   type TextQualificationSpec,
   type TextQualificationShape,
   type TextCellsObservationFrame,
+  evidenceRuntimeIdentity,
 } from "@terminfo/probe-defs"
 import {
   parseObservation,
@@ -1067,44 +1068,6 @@ function captureBindingSource(
   })
 }
 
-/** Engine tree and adapter bytes bind evidence; commits and filesystem locators remain provenance. */
-function evidenceRuntimeIdentity(identity: HeadlessRuntimeIdentity | undefined): Record<string, unknown> | null {
-  if (identity === undefined) return null
-  const common = {
-    kind: identity.kind,
-    engineVersion: identity.engineVersion,
-    adapterVersion: identity.adapterVersion,
-    adapterSources: identity.adapterSources?.length ? identity.adapterSources : null,
-  }
-  if (identity.kind === "native") {
-    return {
-      ...common,
-      loadedBinary: { sha256: identity.loadedBinary.sha256 },
-      provenance: {
-        sha256: identity.provenance.sha256,
-        sourceCommit: identity.provenance.sourceCommit,
-        buildHash: identity.provenance.buildHash,
-        toolchain: identity.provenance.toolchain,
-        lockSha256: identity.provenance.lockSha256,
-      },
-    }
-  }
-  return {
-    ...common,
-    runtimeFormat: identity.runtimeFormat,
-    integrity:
-      identity.integrity.kind === "source"
-        ? {
-            kind: "source",
-            repository: identity.integrity.repository,
-            treeOid: identity.integrity.treeOid,
-            cleanTree: identity.integrity.cleanTree,
-          }
-        : { kind: "registry", lockIntegrity: identity.integrity.lockIntegrity },
-    ...(identity.runtimeFormat === "wasm" && { loadedBinary: { sha256: identity.loadedBinary.sha256 } }),
-  }
-}
-
 /** The same preimage is used by retention, application and the canonical reader. */
 function captureEvidence(
   draft: Parameters<typeof captureBindingSource>[0],
@@ -1286,6 +1249,7 @@ function validateCaptureBinding(
     const original = decision.evidence.projection
     if (
       draft.runtimeIdentity?.kind === "js" &&
+      draft.runtimeIdentity.runtimeFormat === "js" &&
       draft.runtimeIdentity.integrity.kind === "source" &&
       draft.runtimeIdentity.integrity.cleanTree !== true
     ) {
