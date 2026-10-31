@@ -463,6 +463,30 @@ The writer checks intended id/version against known measured values without repl
 
 Required reviews are applied before sealing. While a review remains pending, the writer keeps an unsealed `.draft.json`; once sealed, enrichment cannot change those result bytes.
 
+New capture decisions explicitly carry `evidence: { algorithm: "evidence-output-v1", sha256, projection }` beside
+the original `captureSha256`. The projection binds subject kind/id/version/os, the loaded engine's stable
+identity and native build provenance, that engine's reply-delivery `adapterSources` path/blobOid pairs,
+the whole raw feature entry's canonical SHA256, and the cell's original tests, assertions, raw bytes,
+criterion, frames and host evidence. Object keys are sorted; array order, nulls and string bytes remain exact.
+The catalog computes entry hashes during its existing parse; the suite manifest freezes them in
+`catalogEntrySha256`. The reader uses that manifest, never the live catalog.
+
+Run ids, suite/source revisions, global `termlessRevision`, filesystem locators, timestamps, attempt
+envelopes and reviewer-derived assertions are provenance rather than equality inputs. For non-source-negative
+cells, the projection also retains the structured reply-delivery declaration and only that feature's
+qualification decision; its nested runtime identity is already bound by the stable identity above.
+Source-negative cells retain the engine's adapter identity without including the global qualification map.
+An absent adapter identity or historical manifest without entry hashes grants no new-key carry. Old decisions
+remain under their original rule and are never promoted or rewritten.
+
+Natural collection loads accepted decisions through the existing interpretations parser and supersession
+chain, then supplies them to the same capture writer. One evidence match applies; matching decisions with
+the same exact verdict and reason are recorded as duplicates. Conflicting matches or changed evidence leave
+review pending, with named components in each context's `reviewBindings` report in `pass.json`. The report
+records old-rule and new-rule results for every pending review cell. Original decision source strings,
+capture raw values and assertion prefixes remain retained; each enriched pending draft is another immutable
+snapshot in the existing output directory. Seal and admission remain separate checks.
+
 [admit-collected-run.ts](../admin/src/admit-collected-run.ts) keeps the private response/run first. App and mux output-directory mode stops there; their default mode and the server route also attempt admission.
 
 Admission is a separate operation owned by [run-admission.ts](../admin/run-admission.ts), exposed through [scripts/admit-run.ts](../../scripts/admit-run.ts). Pending review stays private, not admitted.
@@ -499,10 +523,10 @@ Three rules follow, and each has cost a reader time:
   points at. They are not projected, and reading one measures nothing the instrument records.
 - **A recorded decision does not move a measured cell.** Decisions are applied by `applyCaptureDecision` in the
   [capture writer](../terminfo.dev/src/capture-writer.ts) while a run is finalized, so they shape the draft at capture time. A
-  decision recorded after its draft was captured has no path back into that draft: the cell keeps the pre-decision status until
-  the probe is captured again. In the hourly remeasure route no decision reaches the draft at all: the collector it spawns calls
-  `saveDaemonProbeRun(run, directory)` with no review manifest, so a `source-negative-review` cell stays `test-failure` in
-  `cells.json` however it was reviewed, and this instrument's notes must be read as measurements rather than as site status.
+  decision recorded after its draft was captured has no path back into that immutable draft. During natural collection,
+  the pass finalizer now supplies accepted interpretations and the trusted current manifest to that same writer before
+  assigning `rawRun`. Cells project from the resulting snapshot; an unmatched required source review stays `test-failure`.
+  These remain private measurements, separate from admission and site status.
 
 Worked example, from the run written 2026-10-31 06:34 UTC. `pass.json` holds 11 rows, all `pending-review`, each naming one
 draft; `cells.json` holds those same 11 engines at 273 feature ids each. The directory also holds 11 `lib-*-unknown.draft.json`

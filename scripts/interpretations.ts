@@ -124,8 +124,21 @@ export function validatePresentationSupersession(entries: readonly Interpretatio
   }
 }
 
-export function parseInterpretations(path: string, source: string, catalogIds: readonly string[]): Interpretation[] {
-  const raw = parseJsonStrict(path, source)
+export function parseInterpretations(
+  path: string,
+  source: string,
+  catalogIds: readonly string[],
+  sources?: Map<string, string>,
+): Interpretation[] {
+  const entrySources: string[] = []
+  const raw = parseJsonStrict(
+    path,
+    source,
+    sources &&
+      ((index, bytes) => {
+        entrySources[index] = bytes
+      }),
+  )
   if (!Array.isArray(raw)) fail(path, "interpretations must be an array")
   const normalized: Interpretation[] = []
   const ids = new Set<string>()
@@ -220,6 +233,13 @@ export function parseInterpretations(path: string, source: string, catalogIds: r
     } as unknown as Interpretation)
   }
   validatePresentationSupersession(normalized, path)
+  if (sources) {
+    for (const [index, entry] of normalized.entries()) {
+      const bytes = entrySources[index]
+      if (bytes === undefined) fail(path, `missing original interpretation source ${entry.id}`)
+      sources.set(entry.id, bytes)
+    }
+  }
   return normalized
 }
 

@@ -808,6 +808,60 @@ export function parseOuterApp(
   }
 }
 
+/** One decoder for accepted and retained evidence projections. */
+function parseCaptureEvidence(value: unknown, path: string, featureId: string): CaptureEvidence {
+  if (
+    !object(value) ||
+    value.algorithm !== "evidence-output-v1" ||
+    typeof value.sha256 !== "string" ||
+    !/^[0-9a-f]{64}$/.test(value.sha256) ||
+    !object(value.projection) ||
+    !object(value.projection.subject) ||
+    !object(value.projection.feature) ||
+    !object(value.projection.cell)
+  ) {
+    fail(path, "invalid evidence-output decision projection or digest")
+  }
+  const { subject, feature, cell } = value.projection
+  if (
+    !["term", "lib", "mux"].includes(String(subject.kind)) ||
+    !nonempty(subject.id) ||
+    !nonempty(subject.version) ||
+    !nonempty(subject.os) ||
+    feature.featureId !== featureId ||
+    typeof feature.catalogEntrySha256 !== "string" ||
+    !/^[0-9a-f]{64}$/.test(feature.catalogEntrySha256) ||
+    !Array.isArray(cell.tests) ||
+    !cell.tests.every(
+      (test) =>
+        object(test) &&
+        nonempty(test.id) &&
+        ["supported", "unsupported", "untestable", "test-todo", "test-failure"].includes(String(test.status)) &&
+        (test.reason === undefined || typeof test.reason === "string"),
+    ) ||
+    !Array.isArray(cell.rawReplies) ||
+    !cell.rawReplies.every(
+      (reply) =>
+        object(reply) && nonempty(reply.key) && typeof reply.sha256 === "string" && /^[0-9a-f]{64}$/.test(reply.sha256),
+    ) ||
+    !Array.isArray(cell.assertions) ||
+    !cell.assertions.every(
+      (assertion) =>
+        object(assertion) &&
+        assertion.featureId === featureId &&
+        typeof assertion.expected === "string" &&
+        typeof assertion.observed === "string",
+    ) ||
+    !Array.isArray(cell.frames) ||
+    !cell.frames.every(object) ||
+    (value.projection.runtimeIdentity !== null && !object(value.projection.runtimeIdentity)) ||
+    value.sha256 !== createHash("sha256").update(canonicalJson(value.projection), "utf8").digest("hex")
+  ) {
+    fail(path, "invalid evidence-output decision projection or digest")
+  }
+  return value as unknown as CaptureEvidence
+}
+
 /** Typed feature review of immutable capture bytes, separate from final-run admission review. */
 export function parseCaptureDecision(
   value: unknown,
@@ -830,27 +884,8 @@ export function parseCaptureDecision(
     fail(path, "invalid pre-seal capture SHA256")
   }
   if (value.evidence !== undefined) {
-    const evidence = value.evidence
-    if (
-      !object(evidence) ||
-      evidence.algorithm !== "evidence-output-v1" ||
-      typeof evidence.sha256 !== "string" ||
-      !/^[0-9a-f]{64}$/.test(evidence.sha256) ||
-      !object(evidence.projection) ||
-      !object(evidence.projection.subject) ||
-      !object(evidence.projection.feature) ||
-      !object(evidence.projection.cell) ||
-      !Array.isArray(evidence.projection.cell.tests) ||
-      !Array.isArray(evidence.projection.cell.rawReplies) ||
-      !Array.isArray(evidence.projection.cell.assertions) ||
-      !Array.isArray(evidence.projection.cell.frames) ||
-      evidence.projection.feature.featureId !== value.featureId ||
-      typeof evidence.projection.feature.catalogEntrySha256 !== "string" ||
-      !/^[0-9a-f]{64}$/.test(evidence.projection.feature.catalogEntrySha256) ||
-      evidence.sha256 !== createHash("sha256").update(canonicalJson(evidence.projection), "utf8").digest("hex")
-    ) {
-      fail(path, "invalid evidence-output decision projection or digest")
-    }
+    if (schemaVersion !== 4) fail(path, "evidence-output decisions require current schema 4")
+    parseCaptureEvidence(value.evidence, path, String(value.featureId))
   }
   const scope = value.scope
   const subjectKey = schemaVersion === 4 ? "subject" : "target"
@@ -1016,13 +1051,16 @@ function captureBindingSource(
 }
 
 /** Every digest/version/commit field is identity; filesystem locators remain on the run only. */
-function evidenceRuntimeIdentity(identity: HeadlessRuntimeIdentity | undefined): Record<string, unknown> | null {
+function evidenceRuntimeIdentity(
+  identity: HeadlessRuntimeIdentity | undefined,
+  adapterSources: unknown,
+): Record<string, unknown> | null {
   if (identity === undefined) return null
   const common = {
     kind: identity.kind,
     engineVersion: identity.engineVersion,
     adapterVersion: identity.adapterVersion,
-    termlessRevision: identity.termlessRevision,
+    adapterSources,
   }
   if (identity.kind === "native") {
     return {
@@ -1056,7 +1094,13 @@ function captureEvidence(
   if (!result) throw new Error(`Capture feature ${featureId} is outside frozen catalogue`)
   const derived = new Set(
     result.tests
-      .filter((test) => test.id === "review" && test.reviewRef !== undefined)
+      .filter(
+        (test) =>
+          test.id === "review" &&
+          test.reviewRef !== undefined &&
+          test.status !== "test-failure" &&
+          test.status !== "test-todo",
+      )
       .flatMap((test) => test.assertionRefs ?? []),
   )
   const assertions = draft.assertions.filter(
@@ -1080,10 +1124,35 @@ function captureEvidence(
     return { ...content, ...(/^sha256:[0-9a-f]{64}$/.test(ref) && { ref }) }
   })
   let replyPath: CaptureEvidence["projection"]["cell"]["replyPath"]
-  if (result.criterionBranch !== SOURCE_NEGATIVE_REVIEW && draft.rawReplies["collector.replyPath"] !== undefined) {
+  let adapterSources: unknown = null
+  if (draft.rawReplies["collector.replyPath"] !== undefined) {
     const qualification = parseJsonStrict("collector.replyPath", draft.rawReplies["collector.replyPath"])
-    if (object(qualification) && object(qualification.decisions) && Object.hasOwn(qualification.decisions, featureId)) {
-      replyPath = { declaration: qualification.declaration, decision: qualification.decisions[featureId] }
+    if (
+      object(qualification) &&
+      object(qualification.declaration) &&
+      Array.isArray(qualification.declaration.adapterSources) &&
+      qualification.declaration.adapterSources.length &&
+      qualification.declaration.adapterSources.every(
+        (source) =>
+          object(source) &&
+          typeof source.path === "string" &&
+          typeof source.blobOid === "string" &&
+          /^[0-9a-f]{40}$/.test(source.blobOid),
+      )
+    ) {
+      adapterSources = qualification.declaration.adapterSources
+    }
+    if (
+      result.criterionBranch !== SOURCE_NEGATIVE_REVIEW &&
+      object(qualification) &&
+      object(qualification.decisions) &&
+      Object.hasOwn(qualification.decisions, featureId)
+    ) {
+      const decision = qualification.decisions[featureId]
+      if (object(decision)) {
+        const { runtimeIdentity: _identity, ...cellDecision } = decision
+        replyPath = { declaration: qualification.declaration, decision: cellDecision }
+      }
     }
   }
   const subject = draft.subject ?? draft.intendedSubject
@@ -1094,7 +1163,7 @@ function captureEvidence(
       version: subject.version,
       os: subject.os,
     } as CaptureEvidence["projection"]["subject"],
-    runtimeIdentity: evidenceRuntimeIdentity(draft.runtimeIdentity),
+    runtimeIdentity: evidenceRuntimeIdentity(draft.runtimeIdentity, adapterSources),
     feature: { featureId, catalogEntrySha256 },
     cell: {
       rawReplies,
@@ -1142,7 +1211,14 @@ export function retainCaptureBinding(
     throw new Error(`Capture ${featureId} binding is immutable`)
   }
   draft.rawReplies[rawReplyRef] = source
-  const evidence = catalogEntrySha256 === undefined ? undefined : captureEvidence(draft, featureId, catalogEntrySha256)
+  const retainedBytes = draft.rawReplies[`collector.evidence.${featureId}`]
+  const preimage =
+    retainedBytes === undefined
+      ? undefined
+      : parseCaptureEvidence(parseJsonStrict("capture evidence", retainedBytes), "capture evidence", featureId)
+          .projection
+  const evidence =
+    catalogEntrySha256 === undefined ? undefined : captureEvidence(draft, featureId, catalogEntrySha256, preimage)
   if (evidence) {
     const key = `collector.evidence.${featureId}`,
       bytes = canonicalJson(evidence)
@@ -1169,6 +1245,12 @@ function validateCaptureBinding(
 ): string | undefined {
   const source = draft.rawReplies[`collector.capture.${decision.featureId}`]
   const result = draft.results.find((entry) => entry.featureId === decision.featureId)
+  if (
+    result?.criterionBranch === SEMANTIC_PROMPT_SOURCE_REVIEW &&
+    (draft.subject?.kind !== "lib" || !draft.runtimeIdentity)
+  ) {
+    fail(path, `${decision.featureId} semantic source review requires a lib subject and runtimeIdentity`)
+  }
   if (decision.evidence !== undefined) {
     if (!source || source !== captureBindingSource(draft, decision.featureId)) {
       fail(path, "capture context/source/suite/evidence binding changed")
@@ -1177,26 +1259,18 @@ function validateCaptureBinding(
     if (catalogEntrySha256 === undefined) return lapse(["catalogue entry identity unavailable"])
     const retainedBytes = draft.rawReplies[`collector.evidence.${decision.featureId}`]
     if (retainedBytes === undefined) return lapse(["retained evidence projection unavailable"])
-    const retained = parseJsonStrict(path, retainedBytes)
-    if (
-      !object(retained) ||
-      retained.algorithm !== "evidence-output-v1" ||
-      !object(retained.projection) ||
-      retained.sha256 !== createHash("sha256").update(canonicalJson(retained.projection), "utf8").digest("hex")
-    ) {
-      fail(path, "retained evidence projection digest mismatch")
-    }
-    const current = captureEvidence(
-      draft,
-      decision.featureId,
-      catalogEntrySha256,
-      retained.projection as unknown as CaptureEvidence["projection"],
-    )
+    const retained = parseCaptureEvidence(parseJsonStrict(path, retainedBytes), path, decision.featureId)
+    const current = captureEvidence(draft, decision.featureId, catalogEntrySha256, retained.projection)
     if (current.sha256 !== retained.sha256) fail(path, "retained evidence differs from current capture")
     const original = decision.evidence.projection
+    if (current.projection.runtimeIdentity?.adapterSources === null) {
+      return lapse(["adapter source identity unavailable"])
+    }
+    const originalFields: Record<string, unknown> = { ...original }
+    const currentFields: Record<string, unknown> = { ...current.projection }
     const changed = [
-      ...(["subject", "runtimeIdentity", "feature"] as const).filter(
-        (key) => canonicalJson(original[key]) !== canonicalJson(current.projection[key]),
+      ...[...new Set([...Object.keys(originalFields), ...Object.keys(currentFields)])].filter(
+        (key) => key !== "cell" && canonicalJson(originalFields[key]) !== canonicalJson(currentFields[key]),
       ),
       ...[...new Set([...Object.keys(original.cell), ...Object.keys(current.projection.cell)])]
         .filter(
@@ -1218,12 +1292,6 @@ function validateCaptureBinding(
       changed.push("subject")
     }
     return changed.length ? lapse([...new Set(changed)]) : undefined
-  }
-  if (
-    result?.criterionBranch === SEMANTIC_PROMPT_SOURCE_REVIEW &&
-    (draft.subject?.kind !== "lib" || !draft.runtimeIdentity)
-  ) {
-    fail(path, `${decision.featureId} semantic source review requires a lib subject and runtimeIdentity`)
   }
   if (historicalSource === undefined && result?.criterionBranch === SOURCE_NEGATIVE_REVIEW) {
     const currentSource = captureBindingSource(draft, decision.featureId)

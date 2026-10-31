@@ -52,8 +52,9 @@ function carryCaptureReviews(
           (test.status === "test-todo" ||
             (result.criterionBranch === SOURCE_NEGATIVE_REVIEW && test.status === "test-failure")),
       )
-    )
+    ) {
       continue
+    }
     const candidates = inputs.filter(
       ({ decision }) =>
         decision.featureId === result.featureId &&
@@ -75,7 +76,7 @@ function carryCaptureReviews(
     for (const input of candidates) {
       // This private comparison never changes or promotes the accepted source record.
       const { evidence: _newKey, ...oldDecision } = input.decision
-      const old = structuredClone(captured)
+      const old = globalThis.structuredClone(captured)
       try {
         applyCaptureDecision(old, JSON.stringify(oldDecision), input.startedAt)
         const reason = old.rawReplies[`collector.review.${input.decision.id}.lapse`]
@@ -95,7 +96,7 @@ function carryCaptureReviews(
         })
         continue
       }
-      const shadow = structuredClone(captured)
+      const shadow = globalThis.structuredClone(captured)
       applyCaptureDecision(shadow, input.source, input.startedAt, undefined, hash)
       const reason = shadow.rawReplies[`collector.review.${input.decision.id}.lapse`]
       report.candidates.push({

@@ -502,8 +502,9 @@ export async function collectPass(
   const sourceRevision = execFileSync("git", ["rev-parse", "HEAD"], { cwd: ROOT, encoding: "utf8" }).trim()
   const catalogIds = Object.keys(loadFeatures(CONTENT))
   const interpretationsPath = join(CONTENT, "interpretations.json")
+  const decisionSources = new Map<string, string>()
   const acceptedDecisions = activeInterpretations(
-    parseInterpretations(interpretationsPath, readFileSync(interpretationsPath, "utf8"), catalogIds),
+    parseInterpretations(interpretationsPath, readFileSync(interpretationsPath, "utf8"), catalogIds, decisionSources),
   ).filter((entry) => "captureSha256" in entry)
   const inputSha256: Record<string, string> = {}
   for (const path of new Set([
@@ -762,7 +763,8 @@ export async function collectPass(
             `raw draft does not identify the expected current schema-4 ${context.kind}:${context.id} context`,
           )
         }
-        row.reviewBindings = []
+        const reviewBindings: CaptureReviewReport[] = []
+        row.reviewBindings = reviewBindings
         path = saveDaemonProbeRun(
           {
             ...decoded.run,
@@ -779,12 +781,16 @@ export async function collectPass(
           {
             manifest: derivedSuiteManifest(snapshot),
             decisions: acceptedDecisions.map((decision) => ({
-              source: JSON.stringify(decision),
+              source:
+                decisionSources.get(decision.id) ??
+                (() => {
+                  throw new Error(`Missing accepted decision source ${decision.id}`)
+                })(),
               startedAt: new Date().toISOString(),
             })),
             origin: () => undefined,
             carry: true,
-            report: (entry) => row.reviewBindings!.push(entry),
+            report: (entry) => reviewBindings.push(entry),
           },
         )
         if (path.endsWith(".draft.json")) {

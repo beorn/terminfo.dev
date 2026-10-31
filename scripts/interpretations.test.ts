@@ -5,7 +5,7 @@
  * @testonly none
  */
 import { describe, expect, test } from "vitest"
-import { parseInterpretations } from "./interpretations.ts"
+import { parseInterpretations, activeInterpretations } from "./interpretations.ts"
 
 const CATALOG = ["charsets.utf8"]
 const WIRE = "91c0b861-0a43-4d6f-9c55-1f2e3d4c5b6a"
@@ -32,6 +32,17 @@ function presentation(overrides: Record<string, unknown> = {}): Record<string, u
 }
 
 const parse = (entries: unknown[]) => parseInterpretations("interpretations.json", JSON.stringify(entries), CATALOG)
+
+// AC original decision bytes: parse/normalize/serialize loses whitespace and escaped protocol/reason strings.
+test("retains exact member source bytes while selecting the existing supersession chain", () => {
+  const first = JSON.stringify(presentation(), null, 2).replace("Present", "\\u0050resent")
+  const second = JSON.stringify(presentation({ id: "later-review", supersedes: ["review-vterm-utf8"] }), null, 4)
+  const sources = new Map<string, string>()
+  const parsed = parseInterpretations("interpretations.json", `[\n ${first},\n ${second}\n]`, CATALOG, sources)
+  expect(sources.get("review-vterm-utf8")).toBe(first)
+  expect(sources.get("later-review")).toBe(second)
+  expect(activeInterpretations(parsed).map((entry) => entry.id)).toEqual(["later-review"])
+})
 
 describe("a presentation decision carries its acceptance", () => {
   test("an accepted presentation parses and keeps its acceptance", () => {

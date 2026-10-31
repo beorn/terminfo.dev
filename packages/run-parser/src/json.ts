@@ -4,7 +4,7 @@ function fail(path: string, message: string): never {
 }
 
 /** JSON.parse drops duplicate keys. Reject them before any evidence is selected. */
-function rejectDuplicateKeys(source: string, path: string): void {
+function rejectDuplicateKeys(source: string, path: string, arrayEntry?: (index: number, source: string) => void): void {
   let i = 0
   const ws = () => {
     // JSON.parse has already checked syntax; JSON whitespace is exactly these four bytes.
@@ -24,7 +24,7 @@ function rejectDuplicateKeys(source: string, path: string): void {
       if (source[i++] === '"') break
     }
   }
-  const value = (): void => {
+  const value = (depth = 0): void => {
     ws()
     if (source[i] === "{") {
       i++
@@ -38,7 +38,7 @@ function rejectDuplicateKeys(source: string, path: string): void {
         keys.add(key)
         ws()
         i++ // colon, already syntax-checked by JSON.parse
-        value()
+        value(depth + 1)
         ws()
         if (source[i] === ",") {
           i++
@@ -49,8 +49,11 @@ function rejectDuplicateKeys(source: string, path: string): void {
     } else if (source[i] === "[") {
       i++
       ws()
+      let index = 0
       while (source[i] !== "]") {
-        value()
+        const start = i
+        value(depth + 1)
+        if (depth === 0) arrayEntry?.(index++, source.slice(start, i))
         ws()
         if (source[i] === ",") {
           i++
@@ -67,14 +70,18 @@ function rejectDuplicateKeys(source: string, path: string): void {
   value()
 }
 
-export function parseJsonStrict(path: string, source: string): unknown {
+export function parseJsonStrict(
+  path: string,
+  source: string,
+  arrayEntry?: (index: number, source: string) => void,
+): unknown {
   let parsed: unknown
   try {
     parsed = JSON.parse(source)
   } catch (error) {
     fail(path, `invalid JSON: ${String(error)}`)
   }
-  rejectDuplicateKeys(source, path)
+  rejectDuplicateKeys(source, path, arrayEntry)
   return parsed
 }
 

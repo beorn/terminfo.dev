@@ -25,9 +25,10 @@ import {
   ALL_PROBES,
   readCollectorAttempt,
   type HostRecipeExpectation,
+  type HeadlessRuntimeIdentity,
 } from "@terminfo/probe-defs"
 import { fakeProbeResult } from "@terminfo/probe-defs/testing/fake-probe-result"
-import { applyCaptureDecision, retainCaptureBinding, parseRun, decodeCollectorDraft } from "./index.ts"
+import { applyCaptureDecision, retainCaptureBinding, parseRun, decodeCollectorDraft, canonicalJson } from "./index.ts"
 import { finalizeHeadlessAttempt, createLibProbeSource } from "../../probes/headless-batch.ts"
 import { createVt100Backend } from "@termless/vt100"
 import { createVt220Backend } from "@termless/vt220"
@@ -741,6 +742,14 @@ const setup = (
         cleanTree: true,
       },
     }
+    draft.rawReplies["collector.replyPath"] = JSON.stringify({
+      declaration: {
+        boundary: "feed-and-getCursor",
+        adapterSources: [{ path: "packages/vt100/src/index.ts", blobOid: "b".repeat(40) }],
+        engine: { kind: "source", repository: "vterm", treeOid: "4".repeat(40) },
+      },
+      decisions: {},
+    })
     draft.results[0] = recordExecutedProbe({
       featureId,
       attempt: { scope: "probe", startedAt: sourceNegative.startedAt },
@@ -1150,6 +1159,277 @@ describe("semantic prompt source review", () => {
 // Existing final-run SHA review tests cannot catch a circular pre-seal binding or status changes
 // authorized by a different capture. This exercises the actual execution helper and exact bytes.
 describe("immutable pre-seal capture binding", () => {
+  // Historical decisions/manifests are immutable; absent new data cannot be mistaken for equal evidence.
+  it.each(["manifest", "retained", "old-record", "extra-component"] as const)(
+    "keeps missing %s evidence pending",
+    (missing) => {
+      const origin = setup("state", { runId: "missing-origin", startedAt: "2026-10-27T11:00:00.000Z" })
+      const current = setup("state", { runId: "missing-current", startedAt: "2026-10-27T11:00:00.000Z" }, (draft) => {
+        draft.probeHash = draft.suiteId = "new-suite"
+      })
+      const hash = "a".repeat(64),
+        binding = retainCaptureBinding(origin.draft, "sgr.faint", hash)
+      if (missing !== "retained") retainCaptureBinding(current.draft, "sgr.faint", hash)
+      const evidence = structuredClone(binding.evidence!)
+      if (missing === "extra-component") {
+        Object.assign(evidence.projection, { additionalEvidence: "a new component" })
+        evidence.sha256 = createHash("sha256").update(canonicalJson(evidence.projection)).digest("hex")
+      }
+      const source = JSON.stringify({
+        ...origin.decision,
+        decision: "unsupported",
+        ...(missing !== "old-record" && { evidence }),
+      })
+      applyCaptureDecision(
+        current.draft,
+        source,
+        "2026-10-27T11:02:00.000Z",
+        undefined,
+        missing === "manifest" ? undefined : hash,
+      )
+      expect(current.draft.results[0]!.status).toBe("test-failure")
+      expect(current.draft.rawReplies["collector.review.review-bold"]).toBe(source)
+      expect(current.draft.results[0]!.reason).toContain(
+        missing === "manifest"
+          ? "catalogue entry identity unavailable"
+          : missing === "retained"
+            ? "retained evidence projection unavailable"
+            : missing === "extra-component"
+              ? "additionalEvidence"
+              : "lapsed",
+      )
+    },
+  )
+  // The scope ruling requires new runtime type fields to force a deliberate key decision.
+  // Digest-only fixtures cannot catch a future stable field accidentally being omitted.
+  it("accounts explicitly for every runtime identity and native provenance field", () => {
+    type JS = Extract<HeadlessRuntimeIdentity, { kind: "js"; runtimeFormat: "js" }>
+    type WASM = Extract<HeadlessRuntimeIdentity, { runtimeFormat: "wasm" }>
+    type Native = Extract<HeadlessRuntimeIdentity, { kind: "native" }>
+    const js = {
+      kind: true,
+      engineVersion: true,
+      adapterVersion: true,
+      termlessRevision: false,
+      resolvedPath: false,
+      runtimeFormat: true,
+      integrity: true,
+    } satisfies Record<keyof JS, boolean>
+    const wasm = { ...js, loadedBinary: true } satisfies Record<keyof WASM, boolean>
+    const native = {
+      kind: true,
+      engineVersion: true,
+      adapterVersion: true,
+      termlessRevision: false,
+      loadedBinary: true,
+      provenance: true,
+    } satisfies Record<keyof Native, boolean>
+    const binary = { path: false, sha256: true } satisfies Record<keyof Native["loadedBinary"], boolean>
+    const provenance = {
+      sha256: true,
+      sourceCommit: true,
+      buildHash: true,
+      toolchain: true,
+      lockSha256: true,
+    } satisfies Record<keyof Native["provenance"], boolean>
+    const { draft } = setup("state", { runId: "field-policy", startedAt: "2026-10-27T11:00:00.000Z" })
+    const common = { engineVersion: "1", adapterVersion: "2", termlessRevision: "3".repeat(40) }
+    const identities: HeadlessRuntimeIdentity[] = [
+      draft.runtimeIdentity!,
+      {
+        ...common,
+        kind: "js",
+        runtimeFormat: "wasm",
+        resolvedPath: "/fixture.wasm",
+        integrity: { kind: "registry", lockIntegrity: "sha512-fixture" },
+        loadedBinary: { path: "/fixture.wasm", sha256: "a".repeat(64) },
+      },
+      {
+        ...common,
+        kind: "native",
+        loadedBinary: { path: "/fixture.node", sha256: "a".repeat(64) },
+        provenance: {
+          sha256: "a".repeat(64),
+          sourceCommit: "b".repeat(40),
+          buildHash: "c".repeat(64),
+          toolchain: "clang-20",
+          lockSha256: "d".repeat(64),
+        },
+      },
+    ]
+    for (const identity of identities) {
+      const fresh = structuredClone(draft)
+      fresh.runtimeIdentity = identity
+      delete fresh.rawReplies["collector.capture.sgr.faint"]
+      const projection = retainCaptureBinding(fresh, "sgr.faint", "a".repeat(64)).evidence!.projection.runtimeIdentity!
+      const policy = identity.kind === "native" ? native : identity.runtimeFormat === "wasm" ? wasm : js
+      expect(Object.keys(projection).sort()).toEqual(
+        [
+          ...Object.entries(policy)
+            .filter(([, keep]) => keep)
+            .map(([key]) => key),
+          "adapterSources",
+        ].sort(),
+      )
+      if (identity.kind === "native") {
+        expect(Object.keys(projection.provenance as object).sort()).toEqual(Object.keys(provenance).sort())
+      }
+      if ("loadedBinary" in identity) {
+        expect(Object.keys(projection.loadedBinary as object)).toEqual(
+          Object.entries(binary)
+            .filter(([, keep]) => keep)
+            .map(([key]) => key),
+        )
+      }
+    }
+  })
+
+  // Amended key: a Termless merge and checkout move preserve evidence; adapter or native build changes lapse.
+  it.each(["revision", "path", "adapter", "binary", "sourceCommit", "buildHash", "toolchain", "lockSha256"] as const)(
+    "compares stable native provenance and adapter blobs: %s",
+    (field) => {
+      const make = (changed: boolean) =>
+        setup(
+          "state",
+          { runId: changed ? "native-current" : "native-origin", startedAt: "2026-10-27T11:00:00.000Z" },
+          (draft) => {
+            draft.runtimeIdentity = {
+              kind: "native",
+              engineVersion: "1",
+              adapterVersion: "2",
+              termlessRevision: changed && field === "revision" ? "f".repeat(40) : "2".repeat(40),
+              loadedBinary: {
+                path: changed && field === "path" ? "/moved.node" : "/fixture.node",
+                sha256: changed && field === "binary" ? "f".repeat(64) : "a".repeat(64),
+              },
+              provenance: {
+                sha256: "a".repeat(64),
+                sourceCommit: changed && field === "sourceCommit" ? "f".repeat(40) : "b".repeat(40),
+                buildHash: changed && field === "buildHash" ? "f".repeat(64) : "c".repeat(64),
+                toolchain: changed && field === "toolchain" ? "clang-21" : "clang-20",
+                lockSha256: changed && field === "lockSha256" ? "f".repeat(64) : "d".repeat(64),
+              },
+            }
+            if (changed && field === "adapter") {
+              draft.rawReplies["collector.replyPath"] = JSON.stringify({
+                declaration: {
+                  adapterSources: [{ path: "packages/vt100/src/index.ts", blobOid: "f".repeat(40) }],
+                },
+                decisions: {},
+              })
+            }
+          },
+        )
+      const origin = make(false),
+        current = make(true)
+      const evidence = retainCaptureBinding(origin.draft, "sgr.faint", "a".repeat(64)).evidence
+      retainCaptureBinding(current.draft, "sgr.faint", "a".repeat(64))
+      applyCaptureDecision(
+        current.draft,
+        JSON.stringify({ ...origin.decision, evidence, decision: "unsupported" }),
+        "2026-10-27T11:02:00.000Z",
+        undefined,
+        "a".repeat(64),
+      )
+      expect(current.draft.results[0]!.status).toBe(
+        field === "revision" || field === "path" ? "unsupported" : "test-failure",
+      )
+      if (field !== "revision" && field !== "path") {
+        expect(current.draft.results[0]!.reason).toContain("runtimeIdentity")
+      }
+    },
+  )
+  // Each review route must reach the same new-key reader; legacy tests require same-run
+  it.each([
+    "other-cell",
+    "adapter",
+    "decision",
+    "revision",
+    "frame-path",
+    "frame-bytes",
+    "frame-label",
+    "frame-digest",
+    "frame-rectangle",
+    "missing-adapter",
+  ] as const)("keeps reply-path and frame evidence scoped to its cell: %s", (field) => {
+    const make = (changed: boolean) =>
+      setup(
+        "state",
+        { runId: changed ? "cell-current" : "cell-origin", startedAt: "2026-10-27T11:00:00.000Z" },
+        (draft) => {
+          draft.results[0]!.criterionBranch = "headless-observable-review"
+          draft.results[0]!.tests[0]!.status = "test-todo"
+          draft.results[0] = finalizeProbeResult(draft.results[0]!)
+          if (changed && field === "revision" && draft.runtimeIdentity) {
+            draft.runtimeIdentity.termlessRevision = "f".repeat(40)
+          }
+          const frameKey = changed && field === "frame-path" ? "moved.frame" : "original.frame"
+          draft.rawReplies[frameKey] =
+            changed && field === "frame-bytes" ? "different frame bytes" : "exact frame bytes"
+          draft.results[0]!.frames = [
+            {
+              kind: "pixels",
+              role: "target",
+              label: changed && field === "frame-label" ? "changed" : "target",
+              ref: changed && field === "frame-path" ? "/moved.png" : "/original.png",
+              capturedAt: changed ? 2 : 1,
+              sourceRef: frameKey,
+              pixelsDigest: (changed && field === "frame-digest" ? "f" : "a").repeat(64),
+              regionRectangle: { x: changed && field === "frame-rectangle" ? 2 : 1, y: 1, width: 8, height: 16 },
+            },
+          ]
+          draft.rawReplies["collector.replyPath"] = JSON.stringify({
+            declaration: {
+              boundary: "feed-and-getCursor",
+              adapterSources:
+                changed && field === "missing-adapter"
+                  ? []
+                  : [
+                      {
+                        path: "packages/vt100/src/index.ts",
+                        blobOid: (changed && field === "adapter" ? "f" : "b").repeat(40),
+                      },
+                    ],
+              engine: { kind: "source", repository: "vterm", treeOid: "4".repeat(40) },
+            },
+            decisions: {
+              "sgr.faint": {
+                member: !(changed && field === "decision"),
+                reason: "Qualification result",
+                runtimeIdentity: draft.runtimeIdentity,
+              },
+              "other.feature": { member: changed && field === "other-cell" },
+            },
+          })
+        },
+      )
+    const origin = make(false),
+      current = make(true),
+      hash = "a".repeat(64)
+    const evidence = retainCaptureBinding(origin.draft, "sgr.faint", hash).evidence
+    retainCaptureBinding(current.draft, "sgr.faint", hash)
+    applyCaptureDecision(
+      current.draft,
+      JSON.stringify({ ...origin.decision, evidence }),
+      "2026-10-27T11:02:00.000Z",
+      undefined,
+      hash,
+    )
+    const carried = ["other-cell", "revision", "frame-path"].includes(field)
+    expect(current.draft.results[0]!.status).toBe(carried ? "untestable" : "test-todo")
+    if (!carried) {
+      expect(current.draft.results[0]!.reason).toContain(
+        field === "missing-adapter"
+          ? "adapter source identity unavailable"
+          : field === "frame-bytes"
+            ? "cell.rawReplies"
+            : field.startsWith("frame-")
+              ? "cell.frames"
+              : "replyPath",
+      )
+    }
+  })
+
   // Each review route must reach the same new-key reader; legacy tests require same-run
   // bindings and cannot expose a route that still compares the origin capture SHA.
   it.each([
@@ -1207,6 +1487,7 @@ describe("immutable pre-seal capture binding", () => {
     expect(current.draft.results[0]!.status).toBe(outcome)
     expect(current.draft.rawReplies["collector.review.review-bold"]).toBe(bytes)
     expect(current.draft.assertions.slice(0, before.length)).toEqual(before)
+    expect(retainCaptureBinding(current.draft, featureId, "a".repeat(64)).evidence).toEqual(artifact.evidence)
     const manifest = {
       schemaVersion: 4 as const,
       probeHash: "new-suite",
@@ -1310,13 +1591,13 @@ describe("immutable pre-seal capture binding", () => {
         },
         kind: "js",
         runtimeFormat: "js",
-        termlessRevision: "2".repeat(40),
+        adapterSources: [{ path: "packages/vt100/src/index.ts", blobOid: "b".repeat(40) }],
       },
       subject: { id: "vt100", kind: "lib", os: "linux", version: "0.8.0" },
     }
     const evidence = {
       algorithm: "evidence-output-v1",
-      sha256: "507fa80e7d265d73364af71ad1b847bcf86a74b36baa97715569d50165b47712",
+      sha256: "c3c8ffc0057401fa84b786b5d8da0a234ae1612636b6a6e9f73e08fdc53999a9",
       projection,
     }
     const decision = { ...origin.decision, decision: "unsupported", evidence }

@@ -13,7 +13,7 @@ import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { afterAll, expect, test } from "vitest"
-import { loadFeatures, loadTerminals } from "./index.ts"
+import { loadFeatures, loadFeatureEntryHashes, loadTerminals } from "./index.ts"
 
 const here = dirname(fileURLToPath(import.meta.url))
 const repoContent = join(here, "..", "..", "..", "content")
@@ -121,4 +121,31 @@ test("parses a directory once: the second call returns the same frozen object", 
   const first = loadFeatures(repoContent)
   expect(loadFeatures(repoContent)).toBe(first)
   expect(Object.isFrozen(first)).toBe(true)
+})
+
+// AC frozen whole-entry identity: normalized FeatureRecord drops these unknown fields and misses their edits.
+test("hashes whole raw entries canonically while keeping unrelated features independent", () => {
+  const base = { name: "A", slug: "a", body: "b", probe: "p", baseline: "x", unknown: { z: null, a: [" x", "y"] } }
+  const hashes = (name: string, first: unknown, second: unknown = base) =>
+    loadFeatureEntryHashes(fixture(name, { "features.json": { "a.one": first, "b.two": second } }))
+  const original = hashes("hash-original", base)
+  expect(
+    hashes("hash-reordered", {
+      unknown: { a: [" x", "y"], z: null },
+      baseline: "x",
+      probe: "p",
+      body: "b",
+      slug: "a",
+      name: "A",
+    }),
+  ).toEqual(original)
+  for (const [name, unknown] of [
+    ["null-absent", { a: [" x", "y"] }],
+    ["array-order", { z: null, a: ["y", " x"] }],
+    ["string-bytes", { z: null, a: ["x", "y"] }],
+  ] as const) {
+    const changed = hashes(name, { ...base, unknown })
+    expect(changed["a.one"]).not.toBe(original["a.one"])
+    expect(changed["b.two"]).toBe(original["b.two"])
+  }
 })
