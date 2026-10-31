@@ -139,7 +139,6 @@ async function appSavedCursor(
     const response = JSON.stringify({ setup, displaced: displacedPosition, final })
     if (!final) {
       return {
-        pass: false,
         response,
         ...replyFailure("no parsable cursor position reply; the public projection returned null and retained no bytes"),
       }
@@ -625,7 +624,6 @@ export const cursorProbes: ProbeDefinition[] = [
           const pos = await ctx.queryCursorPosition()
           if (!pos) {
             return {
-              pass: false,
               response: JSON.stringify({ measured }),
               ...replyFailure(
                 "no parsable cursor position reply; the public projection returned null and retained no bytes",
@@ -812,7 +810,6 @@ export const cursorProbes: ProbeDefinition[] = [
         const inconclusive = (note?: string): ProbeCallbackResult =>
           !note
             ? {
-                pass: false,
                 response: JSON.stringify({ measured }),
                 ...replyFailure(
                   "no parsable cursor position reply; the public projection returned null and retained no bytes",
@@ -984,7 +981,6 @@ export const cursorProbes: ProbeDefinition[] = [
         const origin = await ctx.queryCursorPosition()
         if (!origin) {
           return {
-            pass: false,
             ...replyFailure(
               "no parsable cursor position reply; the public projection returned null and retained no bytes",
             ),
@@ -1006,7 +1002,6 @@ export const cursorProbes: ProbeDefinition[] = [
         const edge = await ctx.queryCursorPosition()
         if (!edge) {
           return {
-            pass: false,
             response: JSON.stringify({ origin, edge }),
             ...replyFailure(
               "no parsable cursor position reply; the public projection returned null and retained no bytes",
@@ -1029,7 +1024,6 @@ export const cursorProbes: ProbeDefinition[] = [
         const beforeTarget = await ctx.queryCursorPosition()
         if (!beforeTarget) {
           return {
-            pass: false,
             response: JSON.stringify({ origin, edge, beforeTarget }),
             ...replyFailure(
               "no parsable cursor position reply; the public projection returned null and retained no bytes",
@@ -1055,7 +1049,6 @@ export const cursorProbes: ProbeDefinition[] = [
         const response = JSON.stringify({ rows, cols, origin, edge, beforeTarget, final })
         if (!final) {
           return {
-            pass: false,
             response,
             ...replyFailure(
               "no parsable cursor position reply; the public projection returned null and retained no bytes",
@@ -1147,7 +1140,6 @@ export const cursorProbes: ProbeDefinition[] = [
         const inconclusive = (note?: string): ProbeCallbackResult =>
           !note
             ? {
-                pass: false,
                 response: JSON.stringify({ rows, measured }),
                 ...replyFailure(
                   "no parsable cursor position reply; the public projection returned null and retained no bytes",
@@ -1337,7 +1329,6 @@ export const cursorProbes: ProbeDefinition[] = [
           const bottom = await ask("region-bottom")
           if (!top || !second || !bottom) {
             return {
-              pass: false,
               response: JSON.stringify({ rows, measured }),
               ...replyFailure(
                 "no parsable cursor position reply; the public projection returned null and retained no bytes",
