@@ -402,6 +402,18 @@ describe("qualified clipboard roundtrip", () => {
 })
 
 describe("reply-path audit", () => {
+  // #30711: data-derived cases cannot detect omission of the independently reproduced current artifact.
+  // The pinned native tree is unchanged; all 53 predecessor citations must survive verbatim.
+  test("the fresh native 5a8030c0 artifact retains all 53 d70f2f8a reply citations", () => {
+    const prior = REPLY_PATH_AUDITS.get("d70f2f8adb5dfcb6a7d75d23e11a60ba3671844b930a3f66970a709f65ee1346")!
+    const rebuilt = REPLY_PATH_AUDITS.get("5a8030c0f3f9fa52e9c1f82d28ae711ef21e3072a4b82fbe98076fedf314c945")
+    expect(rebuilt).toBeDefined()
+    expect(rebuilt).not.toBe(prior)
+    expect(Object.keys(rebuilt!).sort()).toEqual(Object.keys(prior).sort())
+    expect(Object.keys(rebuilt!)).toHaveLength(53)
+    expect(rebuilt).toEqual(prior)
+  })
+
   // #31692: data-derived cases cannot detect an omitted current-artifact OSC99 audit.
   test.each([
     ["5c38594a17329b24e826f785d3156d6e498490517835f12b0730eeab2fc63da7", "parser-rejected"],
@@ -933,11 +945,12 @@ describe("reply-path audit", () => {
     expect(raw.trace.at(-1)).toEqual({ write: query, error: "Error: stack attempt failed" })
   })
 
-  test("covers all eleven audited artifacts", () => {
-    // Three Ghostty WASM artifacts at 5714ed07, five native artifacts at 332b2aef, and three vt100-rust builds.
+  test("keeps the explicit audited artifact inventory", () => {
+    // Fixed artifact keys catch omitted rebuild rows; data-derived callback cases alone would miss them.
     expect([...REPLY_PATH_AUDITS.keys()].sort()).toEqual([
       "0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3",
       "17d155feee5df8fa30266b9a354bbe66e39484d08218de5e03dc3bb2f199a0a3",
+      "5a8030c0f3f9fa52e9c1f82d28ae711ef21e3072a4b82fbe98076fedf314c945",
       "5c38594a17329b24e826f785d3156d6e498490517835f12b0730eeab2fc63da7",
       "77b69f9f22c4126359be864fcce97afad8f84615053e21d335ba6348a8d3e1d7",
       "7c43302dde147c6f7959b7bda7045ff375c71288da1af5667ffca2bf95beb2bf",
