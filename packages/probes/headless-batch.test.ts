@@ -68,7 +68,7 @@ test.each([false, true])("retains only marked synchronous reply failure evidence
   expect(result.status).toBe("test-failure")
   expect(result.reason).toBe(
     marked
-      ? 'No probe reply; sent "\\u001b[9999n"; received ""; synchronous feed and getCursor boundary'
+      ? 'No probe reply; sent "\\u001b[9999n"; received ""; synchronous feed and getCursor boundary; timeout not applicable'
       : "No probe reply",
   )
   expect(JSON.stringify(batch)).not.toContain("replyFailureTestIds")
