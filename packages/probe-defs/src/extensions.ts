@@ -27,6 +27,8 @@ import {
   replyFailure,
   cancelReplyFailure,
   reviewResult,
+  vtermGeometryReview,
+  SOURCE_TREE_AUDITS,
   sameRgb as sameRgbCells,
   sentinelNegativeResult,
   sentinelSilenceResult,
@@ -580,36 +582,20 @@ function oscSimpleQueryProbe(
           const result = outcome
             ? oscOutcomeResult(outcome, expected, prefix)
             : oscReplyResult(raw, pattern.exec(raw)?.[0] ?? null, expected, prefix)
-          const identity = ctx.runtimeIdentity
           const zeroGeometry =
             (id === "extensions.osc1337-cellsize" &&
               /^\x1b\]1337;ReportCellSize=0;0\x1b\\(?:\x1b\[\?[0-9]+(?:;[0-9]+)*c)?$/.test(raw)) ||
             (id === "extensions.osc776-cell-size" &&
               /^\x1b\]776;0;0;0\x1b\\(?:\x1b\[\?[0-9]+(?:;[0-9]+)*c)?$/.test(raw))
-          if (
-            zeroGeometry &&
-            result.observation?.outcome === "inconclusive" &&
-            identity?.kind === "js" &&
-            identity.runtimeFormat === "js" &&
-            identity.resolvedPath === "vendor/vterm/packages/vterm/src/index.ts" &&
-            identity.integrity.kind === "source" &&
-            identity.integrity.cleanTree &&
-            identity.integrity.repository === "git@github.com:beorn/vterm.git" &&
-            identity.integrity.revision === "53a9eb9291b7880f4dc6a39a6802301049997a72" &&
-            identity.integrity.treeOid === "617ae6002c7befea7b3e43d11bf23e6b433e3d65"
-          ) {
-            return reviewResult(
-              "headless-geometry-review",
-              "Required independent review of the audited headless context and retained zero geometry reply pending",
-              "Audited vterm headless subject has no physical font cell dimensions",
-              {
-                query,
-                raw,
-                runtimeIdentity: identity,
-                sourceCitation:
-                  "vterm screen.ts at 53a9eb92: ScreenOptions has no physical font metrics; OSC1337 ReportCellSize and OSC776 deliberately report unknown zero dimensions (#30575)",
-              },
-            )
+          if (id === "extensions.osc1337-cellsize" || id === "extensions.osc776-cell-size") {
+            const review = vtermGeometryReview(ctx, zeroGeometry && result.observation?.outcome === "inconclusive", {
+              query,
+              raw,
+              noObservable: "Audited vterm headless subject has no physical font cell dimensions",
+              sourceCitation:
+                "vterm screen.ts at 53a9eb92: ScreenOptions has no physical font metrics; OSC1337 ReportCellSize and OSC776 deliberately report unknown zero dimensions (#30575)",
+            })
+            if (review) return review
           }
           return result
         },
@@ -1191,7 +1177,7 @@ const ABSENT_OSC_ENGINES = {
     resolvedPath: "vendor/vterm/packages/vterm/src/index.ts",
     repository: "git@github.com:beorn/vterm.git",
     revision: "53a9eb9291b7880f4dc6a39a6802301049997a72",
-    treeOid: "617ae6002c7befea7b3e43d11bf23e6b433e3d65",
+    treeOid: SOURCE_TREE_AUDITS.vterm.treeOid,
     codes: [9, 22, 176, 440, 555, 666, 710, 777, 3008],
     sourceCitation:
       "vterm 53a9eb9291b7880f4dc6a39a6802301049997a72 packages/vterm/src/screen.ts:3596-4055 handleOSC switch",
@@ -1215,7 +1201,7 @@ const ABSENT_OSC_ENGINES = {
     resolvedPath: "vendor/termless/packages/libvterm/src/index.ts",
     repository: "git@github.com:beorn/termless.git",
     revision: "2d97417328b7b1d086f9396b9a1731216ed134cc",
-    treeOid: "d47c013290cf7a9cb1dae316fd77c66a11a2925a",
+    treeOid: SOURCE_TREE_AUDITS.libvterm.treeOid,
     binaryPath: "vendor/termless/packages/libvterm/wasm/libvterm.wasm",
     binarySha256: "5937bd79139ee5856bcf1bd619cc44fcd2d750d3def3066a74956678cdaaaeb2",
     codes: [8],

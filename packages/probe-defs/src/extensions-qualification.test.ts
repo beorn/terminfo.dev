@@ -7,6 +7,7 @@
 import { expect, test } from "vitest"
 import { extensionsProbes } from "./extensions.ts"
 import { replayTermProbeSource } from "./testing/group-harness.ts"
+import { SOURCE_TREE_AUDITS } from "./helpers.ts"
 import type { TermProbeSource, LibProbeSource } from "./types.ts"
 
 // Callback intent is distinct from producer formatting: malformed bytes must never opt into
@@ -1417,6 +1418,13 @@ const geometryReplies = [
 ] as const
 
 test.each(geometryReplies)("$id retains audited geometry limits for required review", ({ id, raw }) => {
+  expect({
+    resolvedPath: geometryRuntime.resolvedPath,
+    runtimeFormat: geometryRuntime.runtimeFormat,
+    engineVersion: geometryRuntime.engineVersion,
+    repository: geometryRuntime.integrity.repository,
+    treeOid: geometryRuntime.integrity.treeOid,
+  }).toEqual(SOURCE_TREE_AUDITS.vterm)
   for (const sentinel of [false, true]) {
     const ctx = {
       feedCapture: () => raw,
@@ -1458,4 +1466,58 @@ test.each(geometryReplies)("$id requires audited source and complete zero geomet
   }
   const ctx = { feedCapture: () => positive, runtimeIdentity: geometryRuntime } as unknown as LibProbeSource
   expect(callback(id).lib!(ctx).observation?.outcome).toBe("supported")
+})
+
+// The source failure precedes zero/positive/malformed geometry and cannot depend on the install path.
+test.each(geometryReplies)("$id reports source tree drift before geometry grading", ({ id, raw, positive }) => {
+  for (const overrides of [{}, { adapterVersion: "other" }]) {
+    for (const cleanTree of [true, false]) {
+      const runtimeIdentity = {
+        ...geometryRuntime,
+        ...overrides,
+        integrity: { ...geometryRuntime.integrity, cleanTree, treeOid: "f".repeat(40) },
+      }
+      for (const reply of [raw, positive, "malformed"]) {
+        const result = callback(id).lib!({ feedCapture: () => reply, runtimeIdentity } as unknown as LibProbeSource)
+        expect(result.tests).toEqual([
+          {
+            id: "criterion",
+            status: "test-failure",
+            reason: `source identity drift: expected ${geometryRuntime.integrity.treeOid}, read ${"f".repeat(40)}`,
+          },
+        ])
+        expect(result.observation).toBeUndefined()
+        expect(result.assertions).toBeUndefined()
+        expect(result.notTested).toBeUndefined()
+        expect(JSON.parse(result.response!)).toMatchObject({ raw: reply, runtimeIdentity })
+      }
+    }
+  }
+})
+
+// Same repository/version has three distinct audited entry paths; siblings must not acquire vterm drift.
+test.each(geometryReplies)("$id distinguishes sibling source entries", ({ id, raw }) => {
+  const baseline = callback(id).lib!({ feedCapture: () => raw } as unknown as LibProbeSource)
+  for (const [engine, treeOid] of [
+    ["vt100", "5ffc7ad9ae120d0bf93c64b0fdc712eb40892896"],
+    ["vt220", "69366752918a6086c639123799cc3ac68d8083a0"],
+  ]) {
+    const runtimeIdentity = {
+      ...geometryRuntime,
+      resolvedPath: `vendor/vterm/packages/${engine}/src/index.ts`,
+      integrity: { ...geometryRuntime.integrity, treeOid },
+    }
+    expect(callback(id).lib!({ feedCapture: () => raw, runtimeIdentity } as unknown as LibProbeSource)).toEqual(
+      baseline,
+    )
+    const changedVterm = { ...runtimeIdentity, resolvedPath: geometryRuntime.resolvedPath }
+    expect(
+      callback(id).lib!({ feedCapture: () => raw, runtimeIdentity: changedVterm } as unknown as LibProbeSource).tests,
+    ).toMatchObject([
+      {
+        status: "test-failure",
+        reason: `source identity drift: expected ${geometryRuntime.integrity.treeOid}, read ${treeOid}`,
+      },
+    ])
+  }
 })

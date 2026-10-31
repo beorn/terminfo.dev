@@ -122,7 +122,14 @@ It requires both the exact clean libvterm package tree and the loaded WASM hash,
 source repository, runtime format and versions. That branch performs no history reads or writes:
 the adapter reports screen extent, while retained history belongs to an embedding application.
 It retains the runtime and source citations for required independent review, without deciding
-Untestable or a negative. Every other identity keeps its existing measured criterion.
+Untestable or a negative. Matching-tree and unknown-engine identities keep their existing criteria.
+
+The libvterm history and four audited vterm geometry callbacks report a changed source tree as
+`criterion` TEST FAILURE: `source identity drift: expected <oid>, read <oid>`.
+A known engine matches identity kind, runtime format, source repository, engine version and exact
+repository-relative entry path. The entry path distinguishes vterm, vt100 and vt220 within their shared repository/version.
+Tree drift is checked before clean-tree, adapter, binary and revision qualifiers; those keep their existing roles when the tree matches.
+History fails before stub I/O; geometry retains its actual query and reply before reporting drift, whatever the reply shape.
 
 **Callback and stored shapes are different.** Follow these names in [types.ts](src/types.ts):
 
