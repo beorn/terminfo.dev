@@ -1579,7 +1579,7 @@ test.each([
         assertionType: "query_reply",
       })
       expect(fixture.queries[0]).toBe(query)
-      expect(fixture.writes).not.toContain(expect.stringContaining("\x1b[2K"))
+      expect(fixture.writes.some((bytes) => bytes.includes("\x1b[2K"))).toBe(false)
     }
   },
 )
