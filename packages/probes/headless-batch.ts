@@ -42,6 +42,7 @@ import type {
 import { validateHostRecipeCauses } from "@terminfo/run-parser"
 import {
   headlessRuntimeIdentity,
+  readAdapterSources,
   replyDeliveryDecision,
   type HeadlessProbeRuntime,
   type ReplyPathDecision,
@@ -700,7 +701,10 @@ export async function collectBatch(
       const initializedRuntime = runtime
         ? {
             ...runtime,
-            identity: await headlessRuntimeIdentity(backendName, runtime.adapterPackage, runtime.adapterType),
+            identity: {
+              ...(await headlessRuntimeIdentity(backendName, runtime.adapterPackage, runtime.adapterType)),
+              adapterSources: readAdapterSources(backendName, backend),
+            },
           }
         : undefined
       const declaration = hasExtension<ReplyDeliveryExtension>(backend, "reply-delivery")

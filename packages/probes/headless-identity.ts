@@ -6,7 +6,7 @@ import { readFileSync, readdirSync, realpathSync, statSync } from "node:fs"
 import { basename, dirname, join, relative, resolve } from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 import type { HeadlessRuntimeIdentity } from "@terminfo/probe-defs"
-import type { ReplyDeliveryExtension } from "@termless/core"
+import type { AdapterSourcesExtension, ReplyDeliveryExtension } from "@termless/core"
 import { owningCheckout } from "./termless-root.ts"
 
 /** The already measured module/engine used by this worker's backend factory. */
@@ -25,6 +25,65 @@ export interface ReplyPathDecision {
   readonly reason: string
   readonly declaration?: ReplyDelivery
   readonly runtimeIdentity?: HeadlessRuntimeIdentity
+}
+
+/** Read the adapter's one declared identity without granting reply-delivery capability. */
+export function readAdapterSources(
+  backend: string,
+  adapter: { capabilities: { extensions: ReadonlySet<string> } } & Partial<AdapterSourcesExtension>,
+): NonNullable<HeadlessRuntimeIdentity["adapterSources"]> {
+  const sources =
+    adapter.capabilities.extensions.has("adapter-sources") && typeof adapter.getAdapterSources === "function"
+      ? adapter.getAdapterSources()
+      : undefined
+  if (!Array.isArray(sources) || !sources.length) {
+    throw new Error(`adapter source identity undeclared for ${backend}`)
+  }
+  return sources
+}
+
+/** Verify the declared adapter bytes once per collected runtime, including writerless engines. */
+export function verifyAdapterSources(backend: string, runtime: HeadlessProbeRuntime): void {
+  const sources = runtime.identity.adapterSources
+  if (!Array.isArray(sources) || !sources.length) {
+    throw new Error(`adapter source identity undeclared for ${backend}`)
+  }
+  try {
+    const entry = realpathSync(runtime.adapterPath)
+    const checkout = owningCheckout(entry, runtime.adapterPackage)
+    if (git(checkout, "rev-parse", "HEAD") !== runtime.identity.termlessRevision) {
+      throw new Error("adapter revision differs from the measured runtime")
+    }
+    const entryPath = relative(checkout, entry)
+    if (!sources.some((source) => source.path === entryPath)) {
+      throw new Error(`adapterSources does not bind the imported entry ${entryPath}`)
+    }
+    for (const source of sources) {
+      if (
+        !record(source) ||
+        typeof source.path !== "string" ||
+        typeof source.blobOid !== "string" ||
+        !/^[a-f0-9]{40}$/.test(source.blobOid)
+      ) {
+        throw new Error("adapterSources has no path/blobOid binding")
+      }
+      const path = realpathSync(resolve(checkout, source.path))
+      if (!inside(path, checkout) || relative(checkout, path) !== source.path) {
+        throw new Error(`adapterSources path is outside its imported checkout: ${source.path}`)
+      }
+      git(checkout, "ls-files", "--error-unmatch", source.path)
+      const actual = git(checkout, "hash-object", path)
+      if (actual !== source.blobOid) {
+        throw new Error(
+          `adapter source declaration stale for ${backend}: adapterSources.${source.path} declared ${source.blobOid}, actual ${actual}`,
+        )
+      }
+    }
+  } catch (cause) {
+    const detail = cause instanceof Error ? cause.message : String(cause)
+    if (detail.startsWith(`adapter source declaration stale for ${backend}:`)) throw cause
+    throw new Error(`adapter source verification failed for ${backend}: ${detail}`, { cause })
+  }
 }
 
 /** One eligibility comparison; neither an adapter declaration nor versions authenticate source. */
@@ -102,41 +161,8 @@ export function replyDeliveryDecision(
     return decide(false, `${backend} reply delivery has no recognized audited engine binding`)
   }
 
-  try {
-    // Resolve from the exact URL imported for resolve(), never a neighboring vendor checkout.
-    const entry = realpathSync(runtime.adapterPath)
-    const checkout = owningCheckout(entry, runtime.adapterPackage)
-    if (git(checkout, "rev-parse", "HEAD") !== identity.termlessRevision) {
-      return decide(false, `${backend} reply delivery adapter revision differs from the measured runtime`)
-    }
-    const entryPath = relative(checkout, entry)
-    if (!declaration.adapterSources.some((source) => source.path === entryPath)) {
-      return decide(false, `${backend} reply delivery adapterSources does not bind the imported entry ${entryPath}`)
-    }
-    for (const source of declaration.adapterSources) {
-      if (!record(source) || typeof source.path !== "string" || typeof source.blobOid !== "string") {
-        return decide(false, `${backend} reply delivery adapterSources has no path/blobOid binding`)
-      }
-      const path = realpathSync(resolve(checkout, source.path))
-      if (!inside(path, checkout) || relative(checkout, path) !== source.path) {
-        return decide(
-          false,
-          `${backend} reply delivery adapterSources path is outside its imported checkout: ${source.path}`,
-        )
-      }
-      git(checkout, "ls-files", "--error-unmatch", source.path)
-      // hash-object reads the bytes actually imported, including an edit before its commit.
-      const actual = git(checkout, "hash-object", path)
-      if (actual !== source.blobOid) {
-        return decide(
-          false,
-          `${backend} reply delivery adapterSources.${source.path} differs: expected ${source.blobOid}, actual ${actual}`,
-        )
-      }
-    }
-  } catch (cause) {
-    const detail = cause instanceof Error ? cause.message : String(cause)
-    return decide(false, `${backend} source-backed reply delivery unavailable (dist-only loses coverage): ${detail}`)
+  if (JSON.stringify(declaration.adapterSources) !== JSON.stringify(identity.adapterSources)) {
+    return decide(false, `${backend} reply delivery adapterSources differs from the verified runtime`)
   }
   return decide(true, `${backend} declares complete reply delivery bound to its loaded source and engine`)
 }

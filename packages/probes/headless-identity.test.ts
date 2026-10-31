@@ -446,7 +446,7 @@ function runReplyDecision(mode: string) {
       import { createHash } from "node:crypto";
       import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
       import { join, relative } from "node:path";
-      const { headlessRuntimeIdentity, replyDeliveryDecision } = await import(${JSON.stringify(fixture.identityHref)});
+      const { headlessRuntimeIdentity, replyDeliveryDecision, verifyAdapterSources, readAdapterSources } = await import(${JSON.stringify(fixture.identityHref)});
       const root = ${JSON.stringify(fixture.root)}, adapterRoot = ${JSON.stringify(fixture.termless)};
       const engineRoot = ${JSON.stringify(fixture.vterm)}, mode = ${JSON.stringify(mode)};
       const git = (root, ...args) => execFileSync("git", ["-C", root, ...args], {encoding:"utf8"}).trim();
@@ -517,7 +517,17 @@ function runReplyDecision(mode: string) {
         writeFileSync(join(pkg,"index.js"),"export {}\\n");
         runtime.adapterPath = join(pkg,"index.js");
       }
+      identity.adapterSources = mode === "undeclared" ? undefined : declaration.adapterSources;
       const warnings = [];
+      try {
+        if (mode === "unadvertised") readAdapterSources("unit-adapter", {capabilities:{extensions:new Set()},getAdapterSources:()=>declaration.adapterSources});
+        verifyAdapterSources("unit-adapter", runtime);
+      }
+      catch (error) {
+        process.stdout.write(JSON.stringify({result:{member:false,reason:error.message},warnings:[error.message],engineVersion:identity.engineVersion,collectorError:error.message}));
+        process.exit(0);
+      }
+      if (mode === "verified-once") writeFileSync(entry, readFileSync(entry,"utf8")+"\\n// must not hash again\\n");
       const result = replyDeliveryDecision("unit-adapter",mode === "absent" ? undefined : declaration,mode === "identity" ? undefined : runtime,line => warnings.push(line));
       process.stdout.write(JSON.stringify({result,warnings,engineVersion:identity.engineVersion}));
       `,
@@ -528,6 +538,9 @@ function runReplyDecision(mode: string) {
 
 test.each([
   ["match", true, "bound to its loaded source"],
+  ["verified-once", true, "bound to its loaded source"],
+  ["undeclared", false, "adapter source identity undeclared for unit-adapter"],
+  ["unadvertised", false, "adapter source identity undeclared for unit-adapter"],
   ["adapter", false, "adapterSources"],
   ["engine", false, "treeOid"],
   ["dirty", false, "cleanTree"],
@@ -544,9 +557,9 @@ test.each([
   ["native-empty-digests", false, "sha256"],
   ["native-adapter", false, "adapterSources"],
   ["native-entry", false, "imported entry"],
-  ["entry", false, "source binding"],
+  ["entry", false, "identity undeclared"],
   ["outside", false, "outside its imported checkout"],
-  ["dist", false, "dist-only loses coverage"],
+  ["dist", false, "adapter source verification failed"],
   ["absent", false, "declares no reply delivery"],
   ["identity", false, "no measured runtime identity"],
 ] as const)("reply eligibility %s uses source/engine facts, not unchanged versions", (mode, member, reason) => {
@@ -556,7 +569,15 @@ test.each([
     engineVersion: string
     result: { member: boolean; reason: string }
     warnings: string[]
+    collectorError?: string
   }
+  if (["adapter", "native-adapter"].includes(mode)) {
+    expect(body.collectorError).toMatch(
+      /^adapter source declaration stale for unit-adapter:.*declared [a-f0-9]{40}, actual [a-f0-9]{40}/,
+    )
+  }
+  if (["undeclared", "unadvertised"].includes(mode))
+    expect(body.collectorError).toBe("adapter source identity undeclared for unit-adapter")
   expect(body.engineVersion).toBe("0.7.1")
   expect(body.result.member).toBe(member)
   expect(body.result.reason).toContain(reason)

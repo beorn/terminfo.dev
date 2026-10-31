@@ -169,6 +169,7 @@ test.each(["extensions.osc117-reset-highlight-bg", "extensions.osc119-reset-high
       engineVersion: "6.0.0",
       adapterVersion: "0.10.2",
       termlessRevision: "2d97417328b7b1d086f9396b9a1731216ed134cc",
+      adapterSources: createXtermBackend().getAdapterSources(),
       resolvedPath:
         "node_modules/.bun/@xterm+headless@6.0.0/node_modules/@xterm/headless/lib-headless/xterm-headless.js",
       integrity: {
@@ -258,6 +259,7 @@ test("Wezterm prompt source reviews survive actual collection and capture bindin
     engineVersion: "0.1.0-fork.5",
     adapterVersion: "0.10.2",
     termlessRevision: "2d97417328b7b1d086f9396b9a1731216ed134cc",
+    adapterSources: createXtermBackend().getAdapterSources(),
     loadedBinary: {
       path: "vendor/termless/packages/wezterm/termless-wezterm.node",
       sha256: "0f56a805793d7d829daa617f1323aacff0d73fe868747b0d077c6af315e2aab8",

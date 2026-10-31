@@ -151,7 +151,8 @@ async function collectOne(name: string, directory: string): Promise<string> {
   let collectionStartedAt: string | undefined
   let backend: TerminalBackend | undefined
   try {
-    const { headlessRuntimeIdentity, readNativeArtifactTreeOid } = await import("./headless-identity.ts")
+    const { headlessRuntimeIdentity, readNativeArtifactTreeOid, readAdapterSources, verifyAdapterSources } =
+      await import("./headless-identity.ts")
     if (name === "kitty" && !process.env.KITTY_BINARY) {
       throw new Error("Kitty requires KITTY_BINARY from a pinned Nix shell")
     }
@@ -181,6 +182,13 @@ async function collectOne(name: string, directory: string): Promise<string> {
     loaded.init(HEADLESS_TERMINAL)
     loaded.getCell(0, 0)
     const runtimeIdentity = await headlessRuntimeIdentity(name, entry.package, entry.type)
+    runtimeIdentity.adapterSources = readAdapterSources(name, loaded)
+    verifyAdapterSources(name, {
+      identity: runtimeIdentity,
+      adapterPath,
+      adapterPackage: entry.package,
+      adapterType: entry.type,
+    })
     draft.runtimeIdentity = runtimeIdentity
     checkpoint()
     if (entry.type === "native" && name !== "kitty") {

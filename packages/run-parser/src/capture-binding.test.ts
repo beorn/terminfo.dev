@@ -733,6 +733,7 @@ const setup = (
       engineVersion: "0.8.0",
       adapterVersion: "0.10.2",
       termlessRevision: "2".repeat(40),
+      adapterSources: [{ path: "packages/vt100/src/index.ts", blobOid: "b".repeat(40) }],
       resolvedPath: "/fixtures/vt100/index.ts",
       integrity: {
         kind: "source",
@@ -1211,6 +1212,7 @@ describe("immutable pre-seal capture binding", () => {
       engineVersion: true,
       adapterVersion: true,
       termlessRevision: false,
+      adapterSources: true,
       resolvedPath: false,
       runtimeFormat: true,
       integrity: true,
@@ -1221,9 +1223,14 @@ describe("immutable pre-seal capture binding", () => {
       engineVersion: true,
       adapterVersion: true,
       termlessRevision: false,
+      adapterSources: true,
       loadedBinary: true,
       provenance: true,
     } satisfies Record<keyof Native, boolean>
+    const source = { kind: true, repository: true, revision: false, treeOid: true, cleanTree: true } satisfies Record<
+      keyof Extract<JS["integrity"], { kind: "source" }>,
+      boolean
+    >
     const binary = { path: false, sha256: true } satisfies Record<keyof Native["loadedBinary"], boolean>
     const provenance = {
       sha256: true,
@@ -1268,9 +1275,16 @@ describe("immutable pre-seal capture binding", () => {
           ...Object.entries(policy)
             .filter(([, keep]) => keep)
             .map(([key]) => key),
-          "adapterSources",
         ].sort(),
       )
+      if (identity.kind === "js" && identity.integrity.kind === "source") {
+        expect(Object.keys(projection.integrity as object).sort()).toEqual(
+          Object.entries(source)
+            .filter(([, keep]) => keep)
+            .map(([key]) => key)
+            .sort(),
+        )
+      }
       if (identity.kind === "native") {
         expect(Object.keys(projection.provenance as object).sort()).toEqual(Object.keys(provenance).sort())
       }
@@ -1298,6 +1312,12 @@ describe("immutable pre-seal capture binding", () => {
               engineVersion: "1",
               adapterVersion: "2",
               termlessRevision: changed && field === "revision" ? "f".repeat(40) : "2".repeat(40),
+              adapterSources: [
+                {
+                  path: "packages/vt100/src/index.ts",
+                  blobOid: (changed && field === "adapter" ? "f" : "b").repeat(40),
+                },
+              ],
               loadedBinary: {
                 path: changed && field === "path" ? "/moved.node" : "/fixture.node",
                 sha256: changed && field === "binary" ? "f".repeat(64) : "a".repeat(64),
@@ -1363,6 +1383,8 @@ describe("immutable pre-seal capture binding", () => {
           if (changed && field === "revision" && draft.runtimeIdentity) {
             draft.runtimeIdentity.termlessRevision = "f".repeat(40)
           }
+          if (changed && field === "missing-adapter" && draft.runtimeIdentity)
+            delete draft.runtimeIdentity.adapterSources
           const frameKey = changed && field === "frame-path" ? "moved.frame" : "original.frame"
           draft.rawReplies[frameKey] =
             changed && field === "frame-bytes" ? "different frame bytes" : "exact frame bytes"
@@ -1586,7 +1608,6 @@ describe("immutable pre-seal capture binding", () => {
           cleanTree: true,
           kind: "source",
           repository: "vterm",
-          revision: "3".repeat(40),
           treeOid: "4".repeat(40),
         },
         kind: "js",
@@ -1597,7 +1618,7 @@ describe("immutable pre-seal capture binding", () => {
     }
     const evidence = {
       algorithm: "evidence-output-v1",
-      sha256: "c3c8ffc0057401fa84b786b5d8da0a234ae1612636b6a6e9f73e08fdc53999a9",
+      sha256: "24cf4b61f729a28263a97cf634a4ec157ca1ea2c9c5348c989cc487b1316019a",
       projection,
     }
     const decision = { ...origin.decision, decision: "unsupported", evidence }
@@ -2424,3 +2445,34 @@ it("validates historical review bindings against original keys and assertion byt
     parseRun("changed.json", JSON.stringify(changed), [featureId], new Map([[manifest.probeHash, manifest]])),
   ).toThrow(/binding changed/)
 })
+
+// Universal adapter identity: existing delivery-backed fixtures cannot prove writerless
+// reviews carry, nor distinguish source provenance from the bytes of the engine tree.
+it.each(["revision", "tree", "dirty", "writerless"] as const)(
+  "binds source outputs independently of source commit and reply capability: %s",
+  (field) => {
+    const origin = setup("state", { runId: "source-origin", startedAt: "2026-10-27T11:00:00.000Z" })
+    const current = setup("state", { runId: "source-current", startedAt: "2026-10-27T11:00:00.000Z" }, (draft) => {
+      if (draft.runtimeIdentity?.kind !== "js" || draft.runtimeIdentity.integrity.kind !== "source") {
+        throw new Error("Expected source fixture")
+      }
+      if (field === "revision") draft.runtimeIdentity.integrity.revision = "f".repeat(40)
+      if (field === "tree") draft.runtimeIdentity.integrity.treeOid = "f".repeat(40)
+      if (field === "dirty") draft.runtimeIdentity.integrity.cleanTree = false
+      if (field === "writerless") delete draft.rawReplies["collector.replyPath"]
+    })
+    const evidence = retainCaptureBinding(origin.draft, "sgr.faint", "a".repeat(64)).evidence
+    retainCaptureBinding(current.draft, "sgr.faint", "a".repeat(64))
+    applyCaptureDecision(
+      current.draft,
+      JSON.stringify({ ...origin.decision, evidence, decision: "unsupported" }),
+      "2026-10-27T11:02:00.000Z",
+      undefined,
+      "a".repeat(64),
+    )
+    expect(current.draft.results[0]!.status).toBe(
+      field === "revision" || field === "writerless" ? "unsupported" : "test-failure",
+    )
+    if (field === "dirty") expect(current.draft.results[0]!.reason).toContain("dirty source tree")
+  },
+)

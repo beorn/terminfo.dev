@@ -555,6 +555,8 @@ export type EngineIntegrity =
   | { kind: "source"; repository: string; revision: string; treeOid: string; cleanTree: boolean }
 
 interface HeadlessRuntimeBase {
+  /** Verified by current collectors; absent in historical captures. */
+  adapterSources?: readonly { readonly path: string; readonly blobOid: string }[]
   engineVersion: string
   adapterVersion: string
   termlessRevision: string

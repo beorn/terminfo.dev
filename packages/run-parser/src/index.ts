@@ -228,6 +228,21 @@ function parseRuntimeIdentity(
   }
   const adapterVersion = asString(value.adapterVersion, path, "runtimeIdentity.adapterVersion")
   const termlessRevision = asString(value.termlessRevision, path, "runtimeIdentity.termlessRevision")
+  let adapterSources: HeadlessRuntimeIdentity["adapterSources"]
+  if (value.adapterSources !== undefined) {
+    if (!Array.isArray(value.adapterSources) || !value.adapterSources.length) {
+      fail(path, "runtimeIdentity.adapterSources must be nonempty")
+    }
+    adapterSources = value.adapterSources.map((source, index) => {
+      if (!object(source)) fail(path, `runtimeIdentity.adapterSources[${index}] must bind path/blobOid`)
+      const sourcePath = asString(source.path, path, `runtimeIdentity.adapterSources[${index}].path`)
+      const blobOid = asString(source.blobOid, path, `runtimeIdentity.adapterSources[${index}].blobOid`)
+      if (!/^[0-9a-f]{40}$/.test(blobOid)) {
+        fail(path, `runtimeIdentity.adapterSources[${index}].blobOid must be Git blob OID`)
+      }
+      return { path: sourcePath, blobOid }
+    })
+  }
   const sha256 = (digest: unknown, field: string): string => {
     const parsed = asString(digest, path, field)
     if (!/^[0-9a-f]{64}$/.test(parsed)) fail(path, `${field} must be SHA256`)
@@ -281,6 +296,7 @@ function parseRuntimeIdentity(
       integrity,
       adapterVersion,
       termlessRevision,
+      ...(adapterSources && { adapterSources }),
     }
     if (runtimeFormat === "wasm") return { ...common, runtimeFormat, loadedBinary: loadedBinary(value.loadedBinary) }
     if (value.loadedBinary !== undefined) fail(path, "pure JS runtimeIdentity cannot claim loadedBinary")
@@ -306,6 +322,7 @@ function parseRuntimeIdentity(
     provenance,
     adapterVersion,
     termlessRevision,
+    ...(adapterSources && { adapterSources }),
   }
 }
 
@@ -1050,17 +1067,14 @@ function captureBindingSource(
   })
 }
 
-/** Every digest/version/commit field is identity; filesystem locators remain on the run only. */
-function evidenceRuntimeIdentity(
-  identity: HeadlessRuntimeIdentity | undefined,
-  adapterSources: unknown,
-): Record<string, unknown> | null {
+/** Engine tree and adapter bytes bind evidence; commits and filesystem locators remain provenance. */
+function evidenceRuntimeIdentity(identity: HeadlessRuntimeIdentity | undefined): Record<string, unknown> | null {
   if (identity === undefined) return null
   const common = {
     kind: identity.kind,
     engineVersion: identity.engineVersion,
     adapterVersion: identity.adapterVersion,
-    adapterSources,
+    adapterSources: identity.adapterSources?.length ? identity.adapterSources : null,
   }
   if (identity.kind === "native") {
     return {
@@ -1078,7 +1092,15 @@ function evidenceRuntimeIdentity(
   return {
     ...common,
     runtimeFormat: identity.runtimeFormat,
-    integrity: identity.integrity,
+    integrity:
+      identity.integrity.kind === "source"
+        ? {
+            kind: "source",
+            repository: identity.integrity.repository,
+            treeOid: identity.integrity.treeOid,
+            cleanTree: identity.integrity.cleanTree,
+          }
+        : identity.integrity,
     ...(identity.runtimeFormat === "wasm" && { loadedBinary: { sha256: identity.loadedBinary.sha256 } }),
   }
 }
@@ -1124,24 +1146,8 @@ function captureEvidence(
     return { ...content, ...(/^sha256:[0-9a-f]{64}$/.test(ref) && { ref }) }
   })
   let replyPath: CaptureEvidence["projection"]["cell"]["replyPath"]
-  let adapterSources: unknown = null
   if (draft.rawReplies["collector.replyPath"] !== undefined) {
     const qualification = parseJsonStrict("collector.replyPath", draft.rawReplies["collector.replyPath"])
-    if (
-      object(qualification) &&
-      object(qualification.declaration) &&
-      Array.isArray(qualification.declaration.adapterSources) &&
-      qualification.declaration.adapterSources.length &&
-      qualification.declaration.adapterSources.every(
-        (source) =>
-          object(source) &&
-          typeof source.path === "string" &&
-          typeof source.blobOid === "string" &&
-          /^[0-9a-f]{40}$/.test(source.blobOid),
-      )
-    ) {
-      adapterSources = qualification.declaration.adapterSources
-    }
     if (
       result.criterionBranch !== SOURCE_NEGATIVE_REVIEW &&
       object(qualification) &&
@@ -1163,7 +1169,7 @@ function captureEvidence(
       version: subject.version,
       os: subject.os,
     } as CaptureEvidence["projection"]["subject"],
-    runtimeIdentity: evidenceRuntimeIdentity(draft.runtimeIdentity, adapterSources),
+    runtimeIdentity: evidenceRuntimeIdentity(draft.runtimeIdentity),
     feature: { featureId, catalogEntrySha256 },
     cell: {
       rawReplies,
@@ -1263,6 +1269,13 @@ function validateCaptureBinding(
     const current = captureEvidence(draft, decision.featureId, catalogEntrySha256, retained.projection)
     if (current.sha256 !== retained.sha256) fail(path, "retained evidence differs from current capture")
     const original = decision.evidence.projection
+    if (
+      draft.runtimeIdentity?.kind === "js" &&
+      draft.runtimeIdentity.integrity.kind === "source" &&
+      draft.runtimeIdentity.integrity.cleanTree !== true
+    ) {
+      return lapse(["dirty source tree"])
+    }
     if (current.projection.runtimeIdentity?.adapterSources === null) {
       return lapse(["adapter source identity unavailable"])
     }

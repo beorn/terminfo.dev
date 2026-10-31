@@ -465,13 +465,19 @@ Required reviews are applied before sealing. While a review remains pending, the
 
 New capture decisions explicitly carry `evidence: { algorithm: "evidence-output-v1", sha256, projection }` beside
 the original `captureSha256`. The projection binds subject kind/id/version/os, the loaded engine's stable
-identity and native build provenance, that engine's reply-delivery `adapterSources` path/blobOid pairs,
+identity and native build provenance, that engine's `runtimeIdentity.adapterSources` path/blobOid pairs,
 the whole raw feature entry's canonical SHA256, and the cell's original tests, assertions, raw bytes,
 criterion, frames and host evidence. Object keys are sorted; array order, nulls and string bytes remain exact.
 The catalog computes entry hashes during its existing parse; the suite manifest freezes them in
 `catalogEntrySha256`. The reader uses that manifest, never the live catalog.
 
-Run ids, suite/source revisions, global `termlessRevision`, filesystem locators, timestamps, attempt
+Every library backend declares the `adapter-sources` extension from its one adapter registry.
+Reply-delivery declarations, when present, share that registry's same source array; identity alone grants no reply capability.
+The collector verifies declared blobs against tracked imported source bytes once per runtime, then compares per-instance declarations.
+Missing identity or stale declarations are named collector errors. Historical captures may omit this field.
+Source engines bind repository and tree OID with `cleanTree: true`; dirty source leaves a review pending with a named reason.
+
+Run ids, suite/source revisions, source-integrity commit revisions, global `termlessRevision`, filesystem locators, timestamps, attempt
 envelopes and reviewer-derived assertions are provenance rather than equality inputs. For non-source-negative
 cells, the projection also retains the structured reply-delivery declaration and only that feature's
 qualification decision; its nested runtime identity is already bound by the stable identity above.
@@ -484,8 +490,7 @@ chain, then supplies them to the same capture writer. One evidence match applies
 the same exact verdict and reason are recorded as duplicates. Conflicting matches or changed evidence leave
 review pending, with named components in each context's `reviewBindings` report in `pass.json`.
 A candidate that fails an application prerequisite is reported as refused; other cells can still carry.
-The report
-records old-rule and new-rule results for every pending review cell. Original decision source strings,
+The report records old-rule and new-rule results for every pending review cell. Original decision source strings,
 capture raw values and assertion prefixes remain retained; each enriched pending draft is another immutable
 snapshot in the existing output directory. Seal and admission remain separate checks.
 
