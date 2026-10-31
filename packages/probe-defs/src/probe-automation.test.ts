@@ -797,19 +797,28 @@ describe("reply-path audit", () => {
   // @failure OSC0 dropped per-query outcomes and left DA-only captures to the generic writer failure.
   // @level l0 @consumer Both registered OSC0 callbacks; producer evidence is covered by execution-results.
   // Real DA-only bytes from the current seven-engine capture reproduce the missing-target branch.
-  test.each([["lib", "sentinel"], ["term", "sentinel"], ["lib", "timeout"], ["term", "timeout"]] as const)("OSC 0 names both missing targets and their distinct outcomes: %s/%s", async (route, titleReason) => {
+  test.each([
+    ["lib", "sentinel"],
+    ["term", "sentinel"],
+    ["lib", "timeout"],
+    ["term", "timeout"],
+  ] as const)("OSC 0 names both missing targets and their distinct outcomes: %s/%s", async (route, titleReason) => {
     const outcome = (sequence: string): TerminalQueryOutcome => ({
       match: null,
       reason: sequence === "\x1b[20t" ? "sentinel" : titleReason,
       raw: sequence === "\x1b[20t" || titleReason === "sentinel" ? "\x1b[?1;2c" : "",
-      rawBase64: sequence === "\x1b[20t" || titleReason === "sentinel" ? Buffer.from("\x1b[?1;2c").toString("base64") : "",
+      rawBase64:
+        sequence === "\x1b[20t" || titleReason === "sentinel" ? Buffer.from("\x1b[?1;2c").toString("base64") : "",
     })
     const definition = probe("extensions.osc0-icon-title")
-    const result = route === "lib"
-      ? definition.lib!(context({ queryWithSentinelOutcome: outcome }))
-      : await definition.term!(terminalSource({ queryWithSentinelOutcome: async (sequence) => outcome(sequence) }))
+    const result =
+      route === "lib"
+        ? definition.lib!(context({ queryWithSentinelOutcome: outcome }))
+        : await definition.term!(terminalSource({ queryWithSentinelOutcome: async (sequence) => outcome(sequence) }))
     expect(result).toMatchObject({
-      tests: [{ id: "criterion", status: "test-failure", reason: expect.stringContaining("icon label (CSI 20 t): sentinel") }],
+      tests: [
+        { id: "criterion", status: "test-failure", reason: expect.stringContaining("icon label (CSI 20 t): sentinel") },
+      ],
       replyFailureTestIds: ["criterion"],
     })
     expect(result.tests?.[0].reason).toContain(`window title (CSI 21 t): ${titleReason}`)
@@ -817,25 +826,35 @@ describe("reply-path audit", () => {
     expect(result.assertions).toBeUndefined()
   })
 
-  test.each(["lib", "term"] as const)("OSC 0 names only the missing target after the other replied: %s", async (route) => {
-    const outcome = (sequence: string): TerminalQueryOutcome => ({
-      match: sequence === "\x1b[20t" ? ["\x1b]Losc0-icon-title\x07", "osc0-icon-title"] : null,
-      reason: sequence === "\x1b[20t" ? "reply" : "sentinel",
-      raw: sequence === "\x1b[20t" ? "\x1b]Losc0-icon-title\x07" : "\x1b[?1;2c",
-      rawBase64: "",
-    })
-    const definition = probe("extensions.osc0-icon-title")
-    const result = route === "lib"
-      ? definition.lib!(context({ queryWithSentinelOutcome: outcome }))
-      : await definition.term!(terminalSource({ queryWithSentinelOutcome: async (sequence) => outcome(sequence) }))
-    expect(result).toMatchObject({ tests: [{ status: "test-failure", reason: expect.stringContaining("window title (CSI 21 t): sentinel") }] })
-    expect(result.tests?.[0].reason).not.toContain("icon label (CSI 20 t):")
-    expect(JSON.parse(result.response!)).toMatchObject({ iconLabel: "osc0-icon-title", windowTitle: null })
-  })
+  test.each(["lib", "term"] as const)(
+    "OSC 0 names only the missing target after the other replied: %s",
+    async (route) => {
+      const outcome = (sequence: string): TerminalQueryOutcome => ({
+        match: sequence === "\x1b[20t" ? ["\x1b]Losc0-icon-title\x07", "osc0-icon-title"] : null,
+        reason: sequence === "\x1b[20t" ? "reply" : "sentinel",
+        raw: sequence === "\x1b[20t" ? "\x1b]Losc0-icon-title\x07" : "\x1b[?1;2c",
+        rawBase64: "",
+      })
+      const definition = probe("extensions.osc0-icon-title")
+      const result =
+        route === "lib"
+          ? definition.lib!(context({ queryWithSentinelOutcome: outcome }))
+          : await definition.term!(terminalSource({ queryWithSentinelOutcome: async (sequence) => outcome(sequence) }))
+      expect(result).toMatchObject({
+        tests: [{ status: "test-failure", reason: expect.stringContaining("window title (CSI 21 t): sentinel") }],
+      })
+      expect(result.tests?.[0].reason).not.toContain("icon label (CSI 20 t):")
+      expect(JSON.parse(result.response!)).toMatchObject({ iconLabel: "osc0-icon-title", windowTitle: null })
+    },
+  )
 
   test("OSC 0 without a query outcome names the synchronous capture boundary", () => {
     const result = probe("extensions.osc0-icon-title").lib!(context({ feedCapture: () => "\x1b[?1;2c" }))
-    expect(result).toMatchObject({ tests: [{ status: "test-failure", reason: expect.stringContaining("icon label (CSI 20 t): feedCapture boundary") }] })
+    expect(result).toMatchObject({
+      tests: [
+        { status: "test-failure", reason: expect.stringContaining("icon label (CSI 20 t): feedCapture boundary") },
+      ],
+    })
     expect(result.tests?.[0].reason).toContain("window title (CSI 21 t): feedCapture boundary")
     expect(result.tests?.[0].reason).not.toContain("timeout")
   })

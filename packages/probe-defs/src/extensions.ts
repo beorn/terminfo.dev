@@ -3558,16 +3558,23 @@ export const extensionsProbes: ProbeDefinition[] = [
         const windowTitle = titleOutcome
           ? (titleOutcome.match?.[1] ?? null)
           : (OSC0_TITLE_REPLY.exec(title)?.[1] ?? null)
-        return osc0IconTitleResult(iconLabel, windowTitle, { icon, title }, {
-          icon: iconOutcome ? iconOutcome.reason : "feedCapture boundary",
-          title: titleOutcome ? titleOutcome.reason : "feedCapture boundary",
-        })
+        return osc0IconTitleResult(
+          iconLabel,
+          windowTitle,
+          { icon, title },
+          {
+            icon: iconOutcome ? iconOutcome.reason : "feedCapture boundary",
+            title: titleOutcome ? titleOutcome.reason : "feedCapture boundary",
+          },
+        )
       },
       async (ctx) => {
         ctx.write(`\x1b]0;${OSC0_PAYLOAD}\x07`)
         const icon = await ctx.queryWithSentinelOutcome(OSC0_ICON_QUERY, OSC0_ICON_REPLY)
         const title = await ctx.queryWithSentinelOutcome(OSC0_TITLE_QUERY, OSC0_TITLE_REPLY)
-        return osc0IconTitleResult(icon.match?.[1] ?? null, title.match?.[1] ?? null,
+        return osc0IconTitleResult(
+          icon.match?.[1] ?? null,
+          title.match?.[1] ?? null,
           { icon: icon.raw, title: title.raw },
           { icon: icon.reason, title: title.reason },
         )
