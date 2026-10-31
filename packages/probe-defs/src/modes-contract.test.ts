@@ -20,6 +20,7 @@ import {
   satisfiesContract,
   type GroupContract,
   type GroupContractSpec,
+  type StoredQuery,
 } from "./testing/group-harness.ts"
 
 /** The 29 Modes features of 28450 slice B; ids drawn from modes.ts, claims are the contract. */
@@ -121,6 +122,62 @@ const MODES_CONTRACT: GroupContract = [
       "DECSSCLS: with a stable jump control, a target whose marker band reaches its settled row between a frame inside the measured throttled window and one after it scrolls at 9 lines/s, and a band already in place inside that window ignores the rate",
   },
 ]
+
+test.each([
+  "modes.alt-screen.exit",
+  "modes.insert-replace",
+  "modes.altscreen-1048",
+  "modes.xtpushsgr",
+  "modes.xtpopsgr",
+  "modes.xtsave",
+  "modes.xtrestore",
+  "modes.xtpushcolors",
+  "modes.xtpopcolors",
+])("%s marks a null cursor projection without inferring silence", async (id) => {
+  const definition = modesProbes.find((entry) => entry.id === id)!
+  const positions =
+    id === "modes.altscreen-1048"
+      ? [
+          { row: 5, col: 10 },
+          { row: 15, col: 20 },
+        ]
+      : []
+  const result = await definition.term!(
+    replayTermProbeSource(new Map(), { queryCursorPosition: async () => positions.shift() ?? null }),
+  )
+  expect(result).toHaveProperty("replyFailureTestIds", ["criterion"])
+  expect(result.tests?.[0]).toMatchObject({
+    status: "test-failure",
+    reason: expect.stringContaining("no parsable cursor position reply"),
+  })
+})
+
+test.each([null, 0, 4])("alternate-buffer Ps %s keeps null distinct from usable mode replies", async (ps) => {
+  const definition = modesProbes.find((entry) => entry.id === "modes.altscreen-1047")!
+  const replies = new Map<string, StoredQuery>(
+    ps === null
+      ? []
+      : [
+          [
+            "\x1b[?1047$p",
+            {
+              sequence: "\x1b[?1047$p",
+              match: [`\x1b[?1047;${ps}$y`, String(ps)],
+              raw: `\x1b[?1047;${ps}$y`,
+              reason: "reply",
+            },
+          ],
+        ],
+  )
+  const result = await definition.term!(replayTermProbeSource(replies))
+  if (ps === null) {
+    expect(result).toHaveProperty("replyFailureTestIds", ["criterion"])
+    expect(result.tests?.[0]?.reason).toContain("no usable DECRPM reply")
+  } else {
+    expect(result).not.toHaveProperty("replyFailureTestIds")
+    expect(result.observation?.outcome).toBe(ps === 4 ? "unsupported" : "inconclusive")
+  }
+})
 
 const MODES_CONTRACT_SPEC: GroupContractSpec = {
   group: "modes",
@@ -260,7 +317,12 @@ test("each Modes row retains its measured grade or named execution disposition u
       const result = await probe.term?.(term)
       expect(result?.observation).toBeUndefined()
       expect(result?.assertions).toBeUndefined()
-      expect(result?.tests).toMatchObject([expect.objectContaining({ status: "test-failure", reason: "no-response" })])
+      expect(result?.tests).toMatchObject([
+        expect.objectContaining({
+          status: "test-failure",
+          reason: "no parsable cursor position reply; the public projection returned null and retained no bytes",
+        }),
+      ])
       continue
     }
     if (row.id === "modes.origin" || row.id === "modes.left-right-margin") {
@@ -282,7 +344,12 @@ test("each Modes row retains its measured grade or named execution disposition u
       const result = await probe.term?.(term)
       expect(result?.observation).toBeUndefined()
       expect(result?.assertions).toBeUndefined()
-      expect(result?.tests).toMatchObject([expect.objectContaining({ status: "test-failure", reason: "no-response" })])
+      expect(result?.tests).toMatchObject([
+        expect.objectContaining({
+          status: "test-failure",
+          reason: "no parsable cursor position reply; the public projection returned null and retained no bytes",
+        }),
+      ])
       continue
     }
     if (row.id === "modes.altscreen-47" || row.id === "modes.altscreen-1048") {
@@ -316,7 +383,13 @@ test("each Modes row retains its measured grade or named execution disposition u
       const result = await probe.term(term)
       expect(result.observation).toBeUndefined()
       expect(result.assertions).toBeUndefined()
-      expect(result.tests).toEqual([{ id: "criterion", status: "test-failure", reason: "no-response" }])
+      expect(result.tests).toEqual([
+        {
+          id: "criterion",
+          status: "test-failure",
+          reason: "no parsable cursor position reply; the public projection returned null and retained no bytes",
+        },
+      ])
       continue
     }
     const graded = await regradeRow(probe, row, { term })
@@ -337,6 +410,9 @@ test("a decided Modes row is unsatisfied when DECRPM is silent", async () => {
   expect(result?.observation).toBeUndefined()
   expect(result?.assertions).toBeUndefined()
   expect(result?.tests).toMatchObject([
-    expect.objectContaining({ status: "test-failure", reason: "No DECRPM response" }),
+    expect.objectContaining({
+      status: "test-failure",
+      reason: "no usable DECRPM reply; the public projection returned null and retained no bytes",
+    }),
   ])
 })

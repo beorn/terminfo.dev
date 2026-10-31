@@ -46,10 +46,21 @@ export function cancelReplyFailure(result: ProbeCallbackResult): ProbeCallbackRe
 export function withReplyFailureEvidence(
   featureId: string,
   result: ProbeCallbackResult,
-  evidence: {
-    producer: "TTY" | "headless"
-    attempts: readonly { sequence: string; received: string; timeoutMs: number | null }[]
-  },
+  evidence:
+    | {
+        producer: "TTY"
+        attempts: readonly {
+          sequence: string
+          received: string
+          timeoutMs: number
+          match: readonly string[] | null
+          reason: TerminalQueryOutcome["reason"]
+        }[]
+      }
+    | {
+        producer: "headless"
+        attempts: readonly { sequence: string; received: string; timeoutMs: null }[]
+      },
 ): ProbeCallbackResult {
   if (!("replyFailureTestIds" in result) || !result.replyFailureTestIds?.length) return result
   const marked = new Set(result.replyFailureTestIds)
@@ -60,11 +71,24 @@ export function withReplyFailureEvidence(
       )
     }
   }
-  const detail = evidence.attempts.length
-    ? evidence.attempts
+  const entries =
+    evidence.producer === "TTY"
+      ? evidence.attempts.map((entry, index) => ({
+          ...entry,
+          prefix: `query ${index + 1}: `,
+          state:
+            entry.match !== null
+              ? "matched"
+              : entry.reason === "timeout"
+                ? `timeout ${entry.timeoutMs} ms`
+                : "no match",
+        }))
+      : evidence.attempts.map((entry) => ({ ...entry, prefix: "", state: "synchronous feed and getCursor boundary" }))
+  const detail = entries.length
+    ? entries
         .map(
           (entry) =>
-            `sent ${JSON.stringify(entry.sequence)}; received ${JSON.stringify(entry.received)}; ${entry.timeoutMs === null ? "synchronous feed and getCursor boundary" : `timeout ${entry.timeoutMs} ms`}`,
+            `${entry.prefix}sent ${JSON.stringify(entry.sequence)}; received ${JSON.stringify(entry.received)}; ${entry.state}`,
         )
         .join(" | ")
     : evidence.producer === "TTY"
@@ -351,11 +375,9 @@ export function unmeasuredCellResult(
       response: `${position.row};${position.col}`,
     }
   }
-  return {
-    pass: false,
-    note: `No cursor response after ${feature}`,
-    tests: [{ id: "criterion", status: "test-failure", reason: `No cursor response after ${feature}` }],
-  }
+  return replyFailure(
+    `no parsable cursor position reply after ${feature}; the public projection returned null and retained no bytes`,
+  )
 }
 
 /** Internal callback mapping for a nonnumeric width reading; numeric criteria stay with each probe. */
@@ -882,11 +904,9 @@ export function sgrProbe(
       ctx.write(sequence + "X\x1b[0m")
       const pos = await ctx.queryCursorPosition()
       if (!pos) {
-        return {
-          pass: false,
-          note: "No cursor response",
-          tests: [{ id: "criterion", status: "test-failure", reason: "No cursor response" }],
-        }
+        return replyFailure(
+          "no parsable cursor position reply; the public projection returned null and retained no bytes",
+        )
       }
       // Cursor should be at col 2 (wrote 1 char "X")
       return {
@@ -1133,11 +1153,7 @@ export function decrpmReading(ps: DecrpmPs): string {
  */
 export function decrpmResult(ps: DecrpmPs | null, modeNum: number): ProbeCallbackResult {
   if (ps === null) {
-    return {
-      pass: false,
-      note: "No DECRPM response",
-      tests: [{ id: "criterion", status: "test-failure", reason: "No DECRPM response" }],
-    }
+    return replyFailure("no usable DECRPM reply; the public projection returned null and retained no bytes")
   }
   const reading = decrpmReading(ps)
   if (ps === 0) {

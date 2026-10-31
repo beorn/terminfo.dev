@@ -15,10 +15,10 @@ import {
   ALL_PROBES,
   initializeRunDraft,
   sealRunDraft,
-  replyFailure,
   type ProbeSuiteManifest,
   type TextQualification,
 } from "@terminfo/probe-defs"
+import { replyFailure } from "../../../probe-defs/src/helpers.ts"
 import {
   applyCaptureDecision,
   retainCaptureBinding,
@@ -63,7 +63,7 @@ it.each([false, true])("attaches completed TTY evidence only to marked failure r
     const result = batch.results.find((entry) => entry.featureId === probe.id)!
     expect(result.status).toBe("test-failure")
     expect(result.reason).toBe(
-      marked ? 'No probe reply; sent "\\u001b[6n"; received ""; timeout 37 ms' : "No probe reply",
+      marked ? 'No probe reply; query 1: sent "\\u001b[6n"; received ""; timeout 37 ms' : "No probe reply",
     )
     expect(JSON.parse(batch.rawReplies[probe.id + ".trace"]!)).toMatchObject({
       queries: [{ sequence: "\x1b[6n", timeoutMs: 37, reason: "timeout", raw: "" }],

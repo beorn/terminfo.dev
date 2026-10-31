@@ -11,6 +11,7 @@ import type {
 import { frameDigests } from "./types.ts"
 import {
   probe,
+  replyFailure,
   decrpmModeProbe,
   headlessDecrpmArm,
   parserStateResult,
@@ -1363,7 +1364,9 @@ export const modesProbes: ProbeDefinition[] = [
         }
         const pos = await ctx.queryCursorPosition()
         if (!pos) {
-          return { pass: false, tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }] }
+          return replyFailure(
+            "no parsable cursor position reply; the public projection returned null and retained no bytes",
+          )
         }
         return {
           pass: false,
@@ -1580,7 +1583,9 @@ export const modesProbes: ProbeDefinition[] = [
         }
         const pos = await ctx.queryCursorPosition()
         if (!pos) {
-          return { pass: false, tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }] }
+          return replyFailure(
+            "no parsable cursor position reply; the public projection returned null and retained no bytes",
+          )
         }
         return {
           pass: false,
@@ -1712,33 +1717,20 @@ export const modesProbes: ProbeDefinition[] = [
         const ps = await queryDecrpm(ctx, 1047)
         // Ps 4 says the terminal knows 1047 and cannot set it: the shared grader marks it unsupported (#30557 r2).
         if (ps === 4) return decrpmResult(ps, 1047)
+        if (ps === null) {
+          return replyFailure(
+            "no usable DECRPM reply; alternate-buffer clearing was not measured; the public projection returned null and retained no bytes",
+          )
+        }
         return {
           pass: false,
-          ...(ps !== null && { response: decrpmReading(ps) }),
-          ...(ps === null
-            ? {
-                tests: [
-                  {
-                    id: "criterion",
-                    status: "test-failure",
-                    reason:
-                      ps === null
-                        ? "No DECRPM reply; alternate-buffer clearing was not measured"
-                        : "DECRPM status does not measure alternate-buffer clearing",
-                  },
-                ] as [{ id: string; status: "test-failure"; reason: string }],
-              }
-            : {
-                observation: {
-                  outcome: "inconclusive",
-                  reason: ps === null ? "no-response" : "insufficient-evidence",
-                  assertionType: "query_reply",
-                  note:
-                    ps === null
-                      ? "No DECRPM reply; alternate-buffer clearing was not measured"
-                      : "DECRPM status does not measure alternate-buffer clearing",
-                },
-              }),
+          response: decrpmReading(ps),
+          observation: {
+            outcome: "inconclusive",
+            reason: "insufficient-evidence",
+            assertionType: "query_reply",
+            note: "DECRPM status does not measure alternate-buffer clearing",
+          },
         }
       },
       "query_reply",
@@ -1862,7 +1854,9 @@ export const modesProbes: ProbeDefinition[] = [
         }
         const pos = await ctx.queryCursorPosition()
         if (!pos) {
-          return { pass: false, tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }] }
+          return replyFailure(
+            "no parsable cursor position reply; the public projection returned null and retained no bytes",
+          )
         }
         const measured = { before, displaced, after: pos }
         const pass = pos.row === 5 && pos.col === 10
@@ -2056,7 +2050,9 @@ export const modesProbes: ProbeDefinition[] = [
         try {
           const pos = await ctx.queryCursorPosition()
           if (!pos) {
-            return { pass: false, tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }] }
+            return replyFailure(
+              "no parsable cursor position reply; the public projection returned null and retained no bytes",
+            )
           }
           return {
             pass: false,
@@ -2089,7 +2085,9 @@ export const modesProbes: ProbeDefinition[] = [
         ctx.write("\x1b[#}")
         const pos = await ctx.queryCursorPosition()
         if (!pos) {
-          return { pass: false, tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }] }
+          return replyFailure(
+            "no parsable cursor position reply; the public projection returned null and retained no bytes",
+          )
         }
         return {
           pass: false,
@@ -2118,7 +2116,9 @@ export const modesProbes: ProbeDefinition[] = [
         try {
           const pos = await ctx.queryCursorPosition()
           if (!pos) {
-            return { pass: false, tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }] }
+            return replyFailure(
+              "no parsable cursor position reply; the public projection returned null and retained no bytes",
+            )
           }
           return {
             pass: false,
@@ -2150,7 +2150,9 @@ export const modesProbes: ProbeDefinition[] = [
         ctx.write("\x1b[?7r")
         const pos = await ctx.queryCursorPosition()
         if (!pos) {
-          return { pass: false, tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }] }
+          return replyFailure(
+            "no parsable cursor position reply; the public projection returned null and retained no bytes",
+          )
         }
         return {
           pass: false,
@@ -2179,7 +2181,9 @@ export const modesProbes: ProbeDefinition[] = [
         try {
           const pos = await ctx.queryCursorPosition()
           if (!pos) {
-            return { pass: false, tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }] }
+            return replyFailure(
+              "no parsable cursor position reply; the public projection returned null and retained no bytes",
+            )
           }
           return {
             pass: false,
@@ -2211,7 +2215,9 @@ export const modesProbes: ProbeDefinition[] = [
         ctx.write("\x1b[#Q")
         const pos = await ctx.queryCursorPosition()
         if (!pos) {
-          return { pass: false, tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }] }
+          return replyFailure(
+            "no parsable cursor position reply; the public projection returned null and retained no bytes",
+          )
         }
         return {
           pass: false,
