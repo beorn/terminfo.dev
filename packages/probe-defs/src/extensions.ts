@@ -2724,7 +2724,6 @@ function osc0IconTitleResult(
     ]
     const note = `no complete OSC 0 target reply: ${missing.join("; ")}`
     return {
-      pass: false,
       response,
       note,
       ...replyFailure(note),

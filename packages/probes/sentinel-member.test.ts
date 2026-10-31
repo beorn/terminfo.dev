@@ -440,12 +440,12 @@ interface ArmCase {
   when: string
   /** The engine's reply to each query; anything unnamed is silent. DA1 always answers. */
   replies: Readonly<Record<string, string>>
-  outcome: "unsupported" | "inconclusive"
+  outcome: "unsupported" | "inconclusive" | "test-failure"
 }
 
 // One real arm per grader family, both two-step arms, and DECRQSS's second step after an SGR refusal.
 const ARM_CASES: ArmCase[] = [
-  { id: "extensions.osc0-icon-title", when: "silent", replies: {}, outcome: "inconclusive" },
+  { id: "extensions.osc0-icon-title", when: "silent", replies: {}, outcome: "test-failure" },
   { id: "device.xtversion", when: "silent", replies: {}, outcome: "unsupported" },
   { id: "device.xtwinops-20", when: "silent", replies: {}, outcome: "unsupported" },
   { id: "device.decrqss", when: "silent", replies: {}, outcome: "unsupported" },
@@ -470,7 +470,11 @@ test.each(ARM_CASES)(
     const { ctx, outcomes } = recordingSource((text) => (text === DA1_QUERY ? DA1 : (replies[text] ?? "")))
     const headless = lib(ctx)
     expect(outcomes.length, id).toBeGreaterThan(0)
-    expect(headless.observation?.outcome, id).toBe(outcome)
+    if (outcome === "test-failure") {
+      expect(headless.tests, id).toMatchObject([{ status: outcome }])
+      expect(headless.replyFailureTestIds, id).toEqual(["criterion"])
+      expect(headless.observation, id).toBeUndefined()
+    } else expect(headless.observation?.outcome, id).toBe(outcome)
     if (outcome === "unsupported") expect(headless.observation?.note, id).toBe("negative by sentinel")
     expect(headless).toStrictEqual(await term(replayingLive(outcomes)))
     // Without the member the arm keeps today's capture-only reading, where silence never grades.

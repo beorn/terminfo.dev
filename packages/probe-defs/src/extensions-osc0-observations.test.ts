@@ -90,14 +90,13 @@ test("the termless arm reads a complete wrong icon payload as unsupported", () =
   expect(result.assertions?.map(({ kind }) => kind)).toEqual(["negative", "positive"])
 })
 
-test("the termless arm names a missing title reply as inconclusive, never unsupported", () => {
+test("the termless arm names a missing title reply as a test failure, never unsupported", () => {
   const result = termlessCallback()(lib({ [ICON_QUERY]: `\x1b]L${PAYLOAD}\x07` }))
-  expect(result.observation).toMatchObject({
-    outcome: "inconclusive",
-    reason: "insufficient-evidence",
-    assertionType: "query_reply",
-  })
-  expect(result.observation?.note).toContain("window title (CSI 21 t)")
+  expect(result.tests).toMatchObject([
+    { status: "test-failure", reason: expect.stringContaining("window title (CSI 21 t): feedCapture boundary") },
+  ])
+  expect(result.replyFailureTestIds).toEqual(["criterion"])
+  expect(result.observation).toBeUndefined()
 })
 
 // The existing lib cases cover an absent member. These cases pin the newly joined qualified route:
@@ -105,8 +104,8 @@ test("the termless arm names a missing title reply as inconclusive, never unsupp
 test.each([
   { when: "exact reports", replies: exactReplies, outcome: "supported" },
   { when: "wrong icon", replies: { ...exactReplies, [ICON_QUERY]: "\x1b]Lother-icon\x07" }, outcome: "unsupported" },
-  { when: "missing title", replies: { [ICON_QUERY]: exactReplies[ICON_QUERY] }, outcome: "inconclusive" },
-  { when: "sentinel silence", replies: {}, outcome: "inconclusive" },
+  { when: "missing title", replies: { [ICON_QUERY]: exactReplies[ICON_QUERY] }, outcome: "test-failure" },
+  { when: "sentinel silence", replies: {}, outcome: "test-failure" },
 ])("the qualified termless arm retains both query traces for $when", ({ replies, outcome }) => {
   const queries: string[] = []
   const writes: string[] = []
@@ -130,15 +129,18 @@ test.each([
     }
   }
   const result = termlessCallback()(ctx)
-  expect(result.observation?.outcome).toBe(outcome)
+  if (outcome === "test-failure") expect(result.tests).toMatchObject([{ status: outcome }])
+  else expect(result.observation?.outcome).toBe(outcome)
   expect(queries).toEqual([ICON_QUERY, TITLE_QUERY])
   expect(writes).toEqual([`\x1b]0;${PAYLOAD}\x07`])
   expect(JSON.parse(result.response!)).toMatchObject({
     icon: ((replies as Record<string, string>)[ICON_QUERY] ?? "") + "\x1b[?1;2c",
     title: ((replies as Record<string, string>)[TITLE_QUERY] ?? "") + "\x1b[?1;2c",
   })
-  if (outcome === "inconclusive") {
-    expect(result.observation).toMatchObject({ reason: "insufficient-evidence" })
+  if (outcome === "test-failure") {
+    expect(result.tests?.[0].reason).toContain("window title (CSI 21 t): sentinel")
+    expect(result.replyFailureTestIds).toEqual(["criterion"])
+    expect(result.observation).toBeUndefined()
     expect(result.assertions?.some(({ kind }) => kind === "negative")).not.toBe(true)
   }
 })
@@ -154,12 +156,11 @@ test("the sentinel app arm reads a complete wrong title payload as unsupported",
   expect(result.assertions?.map(({ kind }) => kind)).toEqual(["positive", "negative"])
 })
 
-test("the sentinel app arm names a missing icon reply as inconclusive", async () => {
+test("the sentinel app arm names a missing icon reply as a test failure", async () => {
   const result = await termCallback()(terminal({ [TITLE_QUERY]: `\x1b]l${PAYLOAD}\x07` }))
-  expect(result.observation).toMatchObject({
-    outcome: "inconclusive",
-    reason: "insufficient-evidence",
-    assertionType: "query_reply",
-  })
-  expect(result.observation?.note).toContain("icon label (CSI 20 t)")
+  expect(result.tests).toMatchObject([
+    { status: "test-failure", reason: expect.stringContaining("icon label (CSI 20 t): timeout") },
+  ])
+  expect(result.replyFailureTestIds).toEqual(["criterion"])
+  expect(result.observation).toBeUndefined()
 })
