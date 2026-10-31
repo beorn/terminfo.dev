@@ -1228,9 +1228,40 @@ const ABSENT_OSC_ENGINES = {
     engineVersion: "0.3.3",
     adapterVersion: "0.10.2",
     binarySha256: "5937bd79139ee5856bcf1bd619cc44fcd2d750d3def3066a74956678cdaaaeb2",
-    codes: [8],
+    codes: [8, 9, 22, 176, 440, 555, 666, 710, 777, 3008],
     sourceCitation:
       "libvterm 9d6d2112335080312ef8c36667fa717ded4f7daf/v0.3.3 src/state.c:1777-1808 handles OSC 0/1/2/52 only; Termless 2d97417328b7b1d086f9396b9a1731216ed134cc packages/libvterm/build/flat-api.c and src/backend.ts install no OSC fallback",
+  },
+  ghostty: {
+    kind: "source",
+    runtimeFormat: "wasm",
+    engineVersion: "0.4.0",
+    adapterVersion: "0.10.2",
+    binarySha256: "5c38594a17329b24e826f785d3156d6e498490517835f12b0730eeab2fc63da7",
+    codes: [176, 440, 555, 666, 710, 3008],
+    sourceCitation:
+      "Ghostty WASM core5714ed07a1012573261b7b7e3ed2add9c1504496 src/terminal/osc.zig:551-566,779-800,891-1002,1047-1075 parser states reject OSC176/3008/440/555/666/710; :1708-1715 returns null before ResponseHandler. Artifact5c38594a17329b24e826f785d3156d6e498490517835f12b0730eeab2fc63da7; OSC9/777 binding losses and OSC22 mouse_shape are excluded",
+  },
+  kitty: {
+    kind: "native",
+    engineVersion: "0.49.2",
+    adapterVersion: "0.10.2",
+    binarySha256: "bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886",
+    sourceCommit: "f736cce493439cf9d651297c2a920cb61fa05fb5",
+    buildHash: "88e840e1b8e7f09edf3464ee33df8753fd5107838de15bccb6ea59e0dd6cc9c3",
+    lockSha256: "282d1098337a5705a7c1d13188a74d2fe34565766619e8d6b21a48d5b67451be",
+    codes: [176, 440, 555, 666, 710, 3008],
+    reviewReasons: [
+      { code: 440, reason: "kitty/vt-parser.c:653 explicitly ignores OSC440 audio" },
+      { code: 666, reason: "kitty/vt-parser.c:655 explicitly ignores OSC666 term properties" },
+      {
+        code: 3008,
+        reason:
+          "kitty/vt-parser.c:658-661 dispatches osc_context; kitty/window.py:1582-1583 is empty and Termless packages/kitty/build/bridge.py:164 maps it to no_reply",
+      },
+    ],
+    sourceCitation:
+      "kitty0.49.2 sourceb2cb871254fbdac19a085188813c8dfb258b95cd kitty/vt-parser.c:546-670 has no cases176/555/710, explicitly ignores440/666, and dispatches3008 to the empty Window.osc_context; official-binary archive SHA256d573618b911e9c461bd421b96c13c74c7f1cb2f1ac9c327818d4ff84366cf5c6; Termless f736cce493439cf9d651297c2a920cb61fa05fb5 packages/kitty/build/bridge.py:164-182. OSC9/777 binding losses and OSC22 pointer handler are excluded",
   },
   ghosttyNative: {
     kind: "native",
@@ -1301,9 +1332,9 @@ const ABSENT_OSC_ENGINES = {
     sourceCommit: "6ffc0df79756fcc259d87131681641606540e512",
     buildHash: "7ab9ccc7744fbf5ae24c5ebb2748a144817e696f7f93959fa90a335d11646f68",
     lockSha256: "4cf037e4efa648ca41d08b30ef5c4ce7ada29ad61fcad45a7d1aa97bf55391c6",
-    codes: [8],
+    codes: [8, 9, 22, 176, 440, 555, 666, 710, 777, 3008],
     sourceCitation:
-      "vt100 0.16.2 src/perform.rs:198-238 dispatches OSC 8 to unhandled_osc; src/callbacks.rs:66 is a no-op; Termless packages/vt100-rust/native/src/lib.rs:21-54 at 6ffc0df79756fcc259d87131681641606540e512 installs no unhandled_osc override",
+      "vt100 0.16.2 src/perform.rs:198-238 dispatches unmatched OSCs to unhandled_osc; src/callbacks.rs:66 is a no-op; Termless packages/vt100-rust/native/src/lib.rs:21-54 at 6ffc0df79756fcc259d87131681641606540e512 installs no unhandled_osc override",
   },
 } as const
 
