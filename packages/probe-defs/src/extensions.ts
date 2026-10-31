@@ -567,12 +567,7 @@ function highlightResetProbe(id: string, setCode: number, resetCode: number): Pr
   }
 }
 
-function oscSimpleQueryProbe(
-  id: string,
-  query: string,
-  pattern: RegExp,
-  expected: string,
-): ProbeDefinition {
+function oscSimpleQueryProbe(id: string, query: string, pattern: RegExp, expected: string): ProbeDefinition {
   return {
     ...queryOnly(
       probe(
@@ -1041,12 +1036,7 @@ async function colorResetAppProbe(
   }
   const before = await read()
   if (!before.rgb) {
-    return oscReplyResult(
-      before.outcome.raw,
-      null,
-      `Complete OSC ${spec.setCode} color reply`,
-      before.outcome.sentinel,
-    )
+    return oscReplyResult(before.outcome.raw, null, `Complete OSC ${spec.setCode} color reply`, before.outcome.sentinel)
   }
   const requested = probeForeground(before.rgb)
   const reset = `\x1b]${spec.resetCode}${spec.index === undefined ? "" : `;${spec.index}`}\x07`
