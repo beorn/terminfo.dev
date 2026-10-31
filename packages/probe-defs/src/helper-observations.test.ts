@@ -333,7 +333,13 @@ test("SGR consumption stays inconclusive while headless cell state supports an a
 
   const silent = await probe.term(terminal())
   expect(silent.observation).toBeUndefined()
-  expect(silent.tests).toEqual([{ id: "criterion", status: "test-failure", reason: "No cursor response" }])
+  expect(silent.tests).toEqual([
+    {
+      id: "criterion",
+      status: "test-failure",
+      reason: "no parsable cursor position reply; the public projection returned null and retained no bytes",
+    },
+  ])
 
   const supported = probe.lib(headless({ getCell: () => ({ ...baseCell, bold: true }) }))
   expect(supported.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
@@ -1263,6 +1269,12 @@ test("DECRPM recognizes explicit set/reset/unknown without changing an existing 
   expect(unknown.assertions).toBeUndefined()
   const missing = await decrpm.term(makeSource(null))
   expect(missing.observation).toBeUndefined()
-  expect(missing.tests).toEqual([{ id: "criterion", status: "test-failure", reason: "No DECRPM response" }])
+  expect(missing.tests).toEqual([
+    {
+      id: "criterion",
+      status: "test-failure",
+      reason: "no usable DECRPM reply; the public projection returned null and retained no bytes",
+    },
+  ])
   expect(written).toEqual([])
 })
