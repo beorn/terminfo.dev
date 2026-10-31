@@ -49,6 +49,25 @@ async function backend() {
   return createXtermBackend()
 }
 
+// A registered callback can lose its marker while a synthetic marked callback still passes.
+// Missing qualification must not turn its configured, silent writer into producer absence.
+test("retains registered reply failure evidence when the writer is unqualified", async () => {
+  const id = "device.dsr-996-color-scheme"
+  const definition = ALL_PROBES.find((entry) => entry.id === id)!
+  const batch = await collectBatch(backend, "xtermjs", [definition])
+  const replyPath = JSON.parse(batch.rawReplies["collector.replyPath"]!)
+  expect(replyPath.decisions[id]).toMatchObject({
+    member: false,
+    reason: "xtermjs has no measured runtime identity for reply delivery",
+  })
+  const result = batch.results[0]!
+  expect(result.status).toBe("test-failure")
+  expect(result.reason).toContain(`sent ${JSON.stringify("\x1b[?996n")}; received ""`)
+  expect(result.reason).toContain("synchronous feed and getCursor boundary; timeout not applicable")
+  expect(result.tests).toMatchObject([{ id: "criterion", status: "test-failure", rawReplyRef: id }])
+  expect(batch.rawReplies[id]).toBe("")
+})
+
 // The collector must use actual feedCapture evidence only when the callback requests it.
 // Callback-only tests cannot establish this production adapter/sink boundary.
 test.each([false, true])("retains only marked synchronous reply failure evidence (marked: %s)", async (marked) => {
