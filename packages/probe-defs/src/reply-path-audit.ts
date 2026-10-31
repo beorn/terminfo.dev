@@ -1087,9 +1087,14 @@ export const REPLY_PATH_AUDITS: ReadonlyMap<string, Readonly<Record<string, Repl
       },
     },
   ],
-  // #30711: fresh native artifact at Termless2d974173; native tree03033e2d and core332b2aef unchanged.
-  // All 53 d70f2f8a source citations carry verbatim; prior commit-qualified pointers remain historical.
-  // Code/data reproduced after strip-debug; full-file hash differs in path/cache-dependent debug sections.
+  // #30711: physical artifact SHA-256 5a8030c0f3f9fa52e9c1f82d28ae711ef21e3072a4b82fbe98076fedf314c945.
+  // Code identity after objcopy --strip-debug: 7b349b8203fd625932beeae55f6328e7e8cd15b5f69bc6ac5d0056a333de1353.
+  // The original and both independent rebuilds match that code identity; the full-file SHA was not reproduced
+  // because DWARF embeds absolute build paths and Zig cache object names. The key names the physical file.
+  // Ghostty source332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28; Termless source2d97417328b7b1d086f9396b9a1731216ed134cc.
+  // The actual store d70f2f8a binary strips to the SAME code identity; both builds use the same Ghostty core above.
+  // Native tree03033e2d and wrapper tree8810d9d2 are unchanged; all 53 d70f2f8a source citations carry verbatim.
+  // The getDefaultColors :571 pointer stays qualified at Termless5afcc676 (the same function is :576 at2d974173).
   [
     "5a8030c0f3f9fa52e9c1f82d28ae711ef21e3072a4b82fbe98076fedf314c945",
     {
