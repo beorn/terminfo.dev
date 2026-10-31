@@ -253,6 +253,15 @@ it.each([
     expect(writes.at(-1)).toMatch(/^\x1b\[3g.*\x1b\[1;1H$/s)
   }
   expect(callback).toHaveProperty("replyFailureTestIds", ["criterion"])
+  if (id === "cursor.move.back") {
+    expect(callback.note).toBe(
+      [
+        "Cursor origin readback returned null",
+        "Cursor setup readback returned null",
+        "Cursor movement readback returned null",
+      ][readings.length - 1],
+    )
+  }
   const stored = record(withReplyFailureEvidence(id, callback, { producer: "TTY", attempts }))
   expect(stored.status).toBe("test-failure")
   expect(stored.reason).toContain(

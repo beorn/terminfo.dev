@@ -948,10 +948,10 @@ export function cursorProbe(
   ): ProbeCallbackResult => ({
     pass: false,
     response: JSON.stringify({ origin, setup: setupPosition, final }),
-    note,
     ...(reason === "no-response"
       ? replyFailure("no parsable cursor position reply; the public projection returned null and retained no bytes")
       : { observation: { outcome: "inconclusive", reason, assertionType, note } }),
+    note,
   })
   return {
     id,
