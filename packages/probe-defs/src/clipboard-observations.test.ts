@@ -8,6 +8,7 @@
  */
 import { describe, expect, test } from "vitest"
 import { ALL_PROBES, type ClipboardFixture, type ProbeCallbackResult, type TermProbeSource } from "./index.ts"
+import { recordExecutedProbe, withReplyFailureEvidence } from "./helpers.ts"
 
 function writeProbe() {
   const probe = ALL_PROBES.find((item) => item.id === "extensions.osc52-write")
@@ -106,48 +107,69 @@ describe("live OSC 52 write ordering", () => {
     expect(result.assertions).toBeUndefined()
   })
 
-  test("missing CPR cannot authorize a positive read and still restores the owned fixture", async () => {
-    const events: string[] = []
-    let clipboard = "baseline"
-    const result = await writeProbe()(
-      termSource({
-        write(sequence) {
-          clipboard = writtenNonce(sequence)
-          events.push("osc-write")
-        },
-        queryCursorPosition: async () => {
-          events.push("cpr-missing")
-          return null
-        },
-        withClipboardFixture: async (work) => {
-          try {
-            return await work({
-              readText: async () => {
-                events.push("independent-read")
-                return clipboard
-              },
-              writeText: async (text) => {
-                clipboard = text
-              },
-            })
-          } finally {
-            clipboard = "baseline"
-            events.push("restore")
-          }
-        },
-      }),
-    )
-    expect(events).toEqual(["osc-write", "cpr-missing", "restore"])
-    expect(result.observation).toBeUndefined()
-    expect(result.assertions).toBeUndefined()
-    expect(result.tests).toMatchObject([
-      expect.objectContaining({
-        status: "test-failure",
-        reason: "No cursor reply after OSC 52 write; clipboard contents were not measured",
-      }),
-    ])
-    expect(clipboard).toBe("baseline")
-  })
+  test.each(["extensions.osc52-write", "extensions.osc52-clipboard"])(
+    "%s retains missing CPR evidence without reading clipboard and restores the fixture",
+    async (id) => {
+      const events: string[] = []
+      let clipboard = "baseline"
+      const callback = ALL_PROBES.find((item) => item.id === id)?.term
+      if (!callback) throw new Error(`Missing clipboard callback ${id}`)
+      const result = await callback(
+        termSource({
+          write(sequence) {
+            clipboard = writtenNonce(sequence)
+            events.push("osc-write")
+          },
+          queryCursorPosition: async () => {
+            events.push("cpr-missing")
+            return null
+          },
+          withClipboardFixture: async (work) => {
+            try {
+              return await work({
+                readText: async () => {
+                  events.push("independent-read")
+                  return clipboard
+                },
+                writeText: async (text) => {
+                  clipboard = text
+                },
+              })
+            } finally {
+              clipboard = "baseline"
+              events.push("restore")
+            }
+          },
+        }),
+      )
+      expect(events).toEqual(["osc-write", "cpr-missing", "restore"])
+      expect(result.observation).toBeUndefined()
+      expect(result.assertions).toBeUndefined()
+      expect(result).toHaveProperty("replyFailureTestIds", ["criterion"])
+      expect(result.tests).toMatchObject([
+        expect.objectContaining({
+          status: "test-failure",
+          reason: expect.stringContaining(
+            "no parsable cursor position reply; the public projection returned null and retained no bytes",
+          ),
+        }),
+      ])
+      const evidence = withReplyFailureEvidence(id, result, {
+        producer: "TTY",
+        attempts: [{ sequence: "\x1b[6n", received: "\x1b?", timeoutMs: 37, match: null, reason: "timeout" }],
+      })
+      const stored = recordExecutedProbe({
+        featureId: id,
+        tests: evidence.tests,
+        assertions: [],
+        attempt: { scope: "probe", startedAt: "2026-10-21T05:00:00.000Z" },
+      })
+      expect(stored.status).toBe("test-failure")
+      expect(stored.reason).toContain('sent "\\u001b[6n"; received "\\u001b?"; timeout 37 ms')
+      expect(stored).not.toHaveProperty("replyFailureTestIds")
+      expect(clipboard).toBe("baseline")
+    },
+  )
 })
 
 function pasteProbe() {

@@ -87,6 +87,11 @@ it.each([
   ["term", "device.dsr-996-color-scheme"],
   ["lib", "editing.decrqcra"],
   ["term", "editing.decrqcra"],
+  ["lib", "extensions.osc52-clipboard"],
+  ["lib", "extensions.osc52-write"],
+  ["lib", "extensions.osc52-read"],
+  ["term", "extensions.osc52-clipboard"],
+  ["term", "extensions.osc52-read"],
 ] as const)("retains empty raw query evidence for %s %s", async (kind, id) => {
   const definition = ALL_PROBES.find((entry) => entry.id === id)!
   const captures: { sequence: string; received: string }[] = []
@@ -94,11 +99,29 @@ it.each([
     captures.push({ sequence, received: "" })
     return ""
   }
+  let clipboard = ""
   const callback =
     kind === "lib"
       ? definition.lib!({ feed() {}, feedCapture: capture } as unknown as LibProbeSource)
       : await definition.term!({
-          write() {},
+          write(sequence: string) {
+            const frame = /\x1b\]52;c;([^\x07]+)\x07/.exec(sequence)
+            if (frame) clipboard = atob(frame[1]!)
+          },
+          queryCursorPosition: async () => ({ row: 1, col: 1 }),
+          withClipboardFixture: async (work: Parameters<NonNullable<TermProbeSource["withClipboardFixture"]>>[0]) =>
+            work({
+              readText: async () => clipboard,
+              writeText: async (text: string) => {
+                clipboard = text
+              },
+            }),
+          queryOutcome: async (sequence: string) => ({
+            raw: capture(sequence),
+            rawBase64: "",
+            match: null,
+            reason: "timeout",
+          }),
           queryWithSentinelOutcome: async (sequence: string) => ({
             raw: capture(sequence),
             rawBase64: "",
@@ -170,6 +193,10 @@ it.each([
   ["text.cht", [[1, 1], null], undefined],
   ["text.cbt", [null], undefined],
   ["text.cbt", [[1, 21], null], undefined],
+  ["extensions.osc66-text-sizing", [null], undefined],
+  ["extensions.osc66-text-sizing", [[1, 1], null, [1, 5]], undefined],
+  ["extensions.osc66-text-sizing", [[1, 1], [1, 3], null], undefined],
+  ["extensions.osc66-text-sizing", [[1, 1], null, null], undefined],
 ] as const)("retains erased cursor evidence for %s with readings %j", async (id, readings, cleanup) => {
   const definition = ALL_PROBES.find((entry) => entry.id === id)!
   const writes: string[] = []

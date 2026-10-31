@@ -1869,7 +1869,10 @@ describe("Kitty protocol detection", () => {
     expect(missing.observation).toBeUndefined()
     expect(missing.assertions).toBeUndefined()
     expect(missing.tests).toMatchObject([
-      expect.objectContaining({ status: "test-failure", reason: "No baseline cursor response" }),
+      expect.objectContaining({
+        status: "test-failure",
+        reason: "no parsable cursor position reply; the public projection returned null and retained no bytes",
+      }),
     ])
   })
 

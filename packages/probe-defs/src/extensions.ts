@@ -2512,7 +2512,7 @@ function headlessClipboardResult(response: string, nonce: string): ProbeCallback
         ? "OSC 52 c replied with data other than the written nonce"
         : "No OSC 52 c query response from the isolated backend"
   if (response.length === 0) {
-    return { pass: false, response, note, tests: [{ id: "criterion", status: "test-failure", reason: note }] }
+    return { ...replyFailure(note), response, note }
   }
   return {
     pass: false,
@@ -2538,7 +2538,7 @@ function clipboardQueryResult(outcome: TerminalQueryOutcome, expected: string): 
   if (!frame || outcome.reason !== "reply" || !outcome.match) {
     const reason = outcome.raw ? "invalid-reply" : "no-response"
     if (outcome.raw.length === 0) {
-      return { pass: false, tests: [{ id: "criterion", status: "test-failure", reason: "No complete OSC 52 c reply" }] }
+      return replyFailure("No complete OSC 52 c reply")
     }
     return {
       pass: false,
@@ -2596,16 +2596,9 @@ async function liveClipboardProbe(
       // The independent clipboard read below is still the evidence of its effect.
       const cursor = await ctx.queryCursorPosition()
       if (!cursor) {
-        return {
-          pass: false,
-          tests: [
-            {
-              id: "criterion",
-              status: "test-failure",
-              reason: "No cursor reply after OSC 52 write; clipboard contents were not measured",
-            },
-          ],
-        }
+        return replyFailure(
+          "no parsable cursor position reply; the public projection returned null and retained no bytes",
+        )
       }
       const measured = await fixture.readText()
       if (measured !== nonce) {
@@ -3940,10 +3933,9 @@ export const extensionsProbes: ProbeDefinition[] = [
         ctx.write("\x1b[1;1H\x1b[2K\r")
         const before = await ctx.queryCursorPosition()
         if (!before) {
-          return {
-            pass: false,
-            tests: [{ id: "criterion", status: "test-failure", reason: "No baseline cursor response" }],
-          }
+          return replyFailure(
+            "no parsable cursor position reply; the public projection returned null and retained no bytes",
+          )
         }
         if (before.row !== 1 || before.col !== 1) {
           const note = `OSC 66 baseline cursor did not reach home: ${before.row};${before.col}`
@@ -3964,10 +3956,9 @@ export const extensionsProbes: ProbeDefinition[] = [
         ctx.write("\x1b]66;s=2; \x07")
         const scale = await ctx.queryCursorPosition()
         if (!width || !scale) {
-          return {
-            pass: false,
-            tests: [{ id: "criterion", status: "test-failure", reason: "Missing cursor response for text sizing" }],
-          }
+          return replyFailure(
+            "no parsable cursor position reply; the public projection returned null and retained no bytes",
+          )
         }
         return textSizingResult(before, width, scale, "query_reply")
       },
