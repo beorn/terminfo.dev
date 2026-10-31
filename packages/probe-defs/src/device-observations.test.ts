@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest"
 import { deviceProbes } from "./device.ts"
-import { recordExecutedProbe } from "./helpers.ts"
+import { recordExecutedProbe, SOURCE_TREE_AUDITS } from "./helpers.ts"
 import type { TermProbeSource, LibProbeSource, TerminalQueryOutcome } from "./types.ts"
 
 const replies = [
@@ -1084,6 +1084,12 @@ const geometryReplies = [
 ] as const
 
 test.each(geometryReplies)("$id retains audited geometry limits for required review", ({ id, raw }) => {
+  expect({
+    runtimeFormat: geometryRuntime.runtimeFormat,
+    engineVersion: geometryRuntime.engineVersion,
+    repository: geometryRuntime.integrity.repository,
+    treeOid: geometryRuntime.integrity.treeOid,
+  }).toEqual(SOURCE_TREE_AUDITS.vterm)
   for (const sentinel of [false, true]) {
     const ctx = {
       feedCapture: () => raw,
@@ -1125,4 +1131,31 @@ test.each(geometryReplies)("$id requires audited source and complete zero geomet
   }
   const ctx = { feedCapture: () => positive, runtimeIdentity: geometryRuntime } as unknown as LibProbeSource
   expect(callback(id).headless(ctx).observation?.outcome).toBe("supported")
+})
+
+// A changed known engine must not disappear behind reply shape, location or another failed qualifier.
+test.each(geometryReplies)("$id reports source tree drift before geometry grading", ({ id, raw, positive }) => {
+  for (const overrides of [{}, { resolvedPath: "/another/install/vterm/index.ts" }, { adapterVersion: "other" }]) {
+    for (const cleanTree of [true, false]) {
+      const runtimeIdentity = {
+        ...geometryRuntime,
+        ...overrides,
+        integrity: { ...geometryRuntime.integrity, cleanTree, treeOid: "f".repeat(40) },
+      }
+      for (const reply of [raw, positive, "malformed"]) {
+        const result = callback(id).headless({ feedCapture: () => reply, runtimeIdentity } as unknown as LibProbeSource)
+        expect(result.tests).toEqual([
+          {
+            id: "criterion",
+            status: "test-failure",
+            reason: `source identity drift: expected ${geometryRuntime.integrity.treeOid}, read ${"f".repeat(40)}`,
+          },
+        ])
+        expect(result.observation).toBeUndefined()
+        expect(result.assertions).toBeUndefined()
+        expect(result.notTested).toBeUndefined()
+        expect(JSON.parse(result.response!)).toMatchObject({ raw: reply, runtimeIdentity })
+      }
+    }
+  }
 })

@@ -10,6 +10,7 @@ import {
   sentinelAnswer,
   sentinelNegativeResult,
   sentinelSilenceResult,
+  vtermGeometryReview,
 } from "./helpers.ts"
 import { nativeHostRecipeResult } from "./native-host-audit.ts"
 
@@ -247,34 +248,18 @@ function deviceQuery(spec: DeviceReply): ProbeDefinition {
       const result = outcome
         ? deviceOutcomeResult(spec, outcome)
         : deviceReplyResult(spec, raw, responsePattern.exec(raw)?.[0] ?? null, "sentinel")
-      const identity = ctx.runtimeIdentity
       const zeroGeometry =
         (spec.id === "device.xtwinops-14" && /^\x1b\[4;0;0t(?:\x1b\[\?[0-9]+(?:;[0-9]+)*c)?$/.test(raw)) ||
         (spec.id === "device.xtwinops-16" && /^\x1b\[6;0;0t(?:\x1b\[\?[0-9]+(?:;[0-9]+)*c)?$/.test(raw))
-      if (
-        zeroGeometry &&
-        result.observation?.outcome === "inconclusive" &&
-        identity?.kind === "js" &&
-        identity.runtimeFormat === "js" &&
-        identity.resolvedPath === "vendor/vterm/packages/vterm/src/index.ts" &&
-        identity.integrity.kind === "source" &&
-        identity.integrity.cleanTree &&
-        identity.integrity.repository === "git@github.com:beorn/vterm.git" &&
-        identity.integrity.revision === "53a9eb9291b7880f4dc6a39a6802301049997a72" &&
-        identity.integrity.treeOid === "617ae6002c7befea7b3e43d11bf23e6b433e3d65"
-      ) {
-        return reviewResult(
-          "headless-geometry-review",
-          "Required independent review of the audited headless context and retained zero geometry reply pending",
-          "Audited vterm headless subject has no font or window pixel geometry",
-          {
-            query: spec.query,
-            raw,
-            runtimeIdentity: identity,
-            sourceCitation:
-              "vterm screen.ts at 53a9eb9: ScreenOptions has no physical font/window metrics; XTWINOPS14/16 deliberately report unknown zero dimensions (#30575)",
-          },
-        )
+      if (spec.id === "device.xtwinops-14" || spec.id === "device.xtwinops-16") {
+        const review = vtermGeometryReview(ctx, zeroGeometry && result.observation?.outcome === "inconclusive", {
+          query: spec.query,
+          raw,
+          noObservable: "Audited vterm headless subject has no font or window pixel geometry",
+          sourceCitation:
+            "vterm screen.ts at 53a9eb9: ScreenOptions has no physical font/window metrics; XTWINOPS14/16 deliberately report unknown zero dimensions (#30575)",
+        })
+        if (review) return review
       }
       return hostPixels
         ? nativeHostRecipeResult(

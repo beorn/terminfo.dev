@@ -1363,19 +1363,100 @@ export const UNTESTABLE_ONLY_REVIEW_BRANCHES: ReadonlySet<string> = new Set([
   HEADLESS_OBSERVABLE_REVIEW,
 ])
 
+/** Audited package trees have one home; paths are evidence, never a known-engine discriminator. */
+export const SOURCE_TREE_AUDITS = {
+  libvterm: {
+    runtimeFormat: "wasm",
+    engineVersion: "0.3.3",
+    repository: "git@github.com:beorn/termless.git",
+    treeOid: "d47c013290cf7a9cb1dae316fd77c66a11a2925a",
+  },
+  vterm: {
+    runtimeFormat: "js",
+    engineVersion: "0.9.0",
+    repository: "git@github.com:beorn/vterm.git",
+    treeOid: "617ae6002c7befea7b3e43d11bf23e6b433e3d65",
+  },
+} as const
+
+function sourceTreeDrift(
+  identity: LibProbeSource["runtimeIdentity"],
+  expected: (typeof SOURCE_TREE_AUDITS)[keyof typeof SOURCE_TREE_AUDITS],
+  state: object = {},
+): ProbeCallbackResult | undefined {
+  if (
+    identity?.kind !== "js" ||
+    identity.runtimeFormat !== expected.runtimeFormat ||
+    identity.integrity.kind !== "source" ||
+    identity.integrity.repository !== expected.repository ||
+    identity.engineVersion !== expected.engineVersion ||
+    identity.integrity.treeOid === expected.treeOid
+  ) {
+    return undefined
+  }
+  return {
+    pass: false,
+    response: JSON.stringify({
+      runtimeIdentity: identity,
+      expectedTreeOid: expected.treeOid,
+      readTreeOid: identity.integrity.treeOid,
+      ...state,
+    }),
+    tests: [
+      {
+        id: "criterion",
+        status: "test-failure",
+        reason: `source identity drift: expected ${expected.treeOid}, read ${identity.integrity.treeOid}`,
+      },
+    ],
+  }
+}
+
+/** The two geometry surfaces share their identity qualifier, retaining their own query and zero-reply checks. */
+export function vtermGeometryReview(
+  ctx: LibProbeSource,
+  zeroGeometry: boolean,
+  evidence: { query: string; raw: string; noObservable: string; sourceCitation: string },
+): ProbeCallbackResult | undefined {
+  const identity = ctx.runtimeIdentity
+  const drift = sourceTreeDrift(identity, SOURCE_TREE_AUDITS.vterm, { query: evidence.query, raw: evidence.raw })
+  if (drift) return drift
+  if (
+    !zeroGeometry ||
+    identity?.kind !== "js" ||
+    identity.runtimeFormat !== "js" ||
+    identity.resolvedPath !== "vendor/vterm/packages/vterm/src/index.ts" ||
+    identity.integrity.kind !== "source" ||
+    !identity.integrity.cleanTree ||
+    identity.integrity.repository !== SOURCE_TREE_AUDITS.vterm.repository ||
+    identity.integrity.revision !== "53a9eb9291b7880f4dc6a39a6802301049997a72" ||
+    identity.integrity.treeOid !== SOURCE_TREE_AUDITS.vterm.treeOid
+  ) {
+    return undefined
+  }
+  return reviewResult(
+    "headless-geometry-review",
+    "Required independent review of the audited headless context and retained zero geometry reply pending",
+    evidence.noObservable,
+    { query: evidence.query, raw: evidence.raw, runtimeIdentity: identity, sourceCitation: evidence.sourceCitation },
+  )
+}
+
 /** Exact source/API audit; an embedding application's history is a different subject. */
 export function libvtermHistoryReview(ctx: LibProbeSource): ProbeCallbackResult | undefined {
   const identity = ctx.runtimeIdentity
+  const drift = sourceTreeDrift(identity, SOURCE_TREE_AUDITS.libvterm)
+  if (drift) return drift
   if (
     !identity ||
     identity.kind !== "js" ||
     identity.runtimeFormat !== "wasm" ||
-    identity.engineVersion !== "0.3.3" ||
+    identity.engineVersion !== SOURCE_TREE_AUDITS.libvterm.engineVersion ||
     identity.adapterVersion !== "0.10.2" ||
     identity.integrity.kind !== "source" ||
-    identity.integrity.repository !== "git@github.com:beorn/termless.git" ||
+    identity.integrity.repository !== SOURCE_TREE_AUDITS.libvterm.repository ||
     !identity.integrity.cleanTree ||
-    identity.integrity.treeOid !== "d47c013290cf7a9cb1dae316fd77c66a11a2925a" ||
+    identity.integrity.treeOid !== SOURCE_TREE_AUDITS.libvterm.treeOid ||
     identity.loadedBinary.sha256 !== "5937bd79139ee5856bcf1bd619cc44fcd2d750d3def3066a74956678cdaaaeb2"
   ) {
     return undefined

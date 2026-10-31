@@ -11,6 +11,7 @@ import { eraseProbes } from "./erase.ts"
 import type { ObservationFrame, TermProbeSource, LibProbeSource } from "./types.ts"
 import { libProbeSource } from "./testing/group-harness.ts"
 import { createSemanticSurface } from "./testing/semantic-surface.ts"
+import { SOURCE_TREE_AUDITS } from "./helpers.ts"
 
 function headless(overrides: Partial<LibProbeSource> = {}): LibProbeSource {
   return {
@@ -78,7 +79,7 @@ const historyRuntime: WasmRuntime = {
 }
 const sourceIntegrity = historyRuntime.integrity
 if (sourceIntegrity.kind !== "source") throw new Error("History fixture needs source integrity")
-const historyIdentities: [string, LibProbeSource["runtimeIdentity"], boolean][] = [
+const historyIdentities: [string, LibProbeSource["runtimeIdentity"], boolean | "drift"][] = [
   ["qualified", historyRuntime, true],
   [
     "same package at another commit",
@@ -89,7 +90,24 @@ const historyIdentities: [string, LibProbeSource["runtimeIdentity"], boolean][] 
     },
     true,
   ],
-  ["wrong tree", { ...historyRuntime, integrity: { ...sourceIntegrity, treeOid: "f".repeat(40) } }, false],
+  ...[
+    ["wrong tree", {}],
+    ["wrong tree at another path", { resolvedPath: "/another/install/libvterm/index.ts" }],
+    ["wrong tree and adapter", { adapterVersion: "0.10.3" }],
+    ["wrong tree and WASM", { loadedBinary: { ...historyRuntime.loadedBinary, sha256: "f".repeat(64) } }],
+  ].map(
+    ([name, overrides]) =>
+      [
+        name,
+        { ...historyRuntime, ...(overrides as object), integrity: { ...sourceIntegrity, treeOid: "f".repeat(40) } },
+        "drift",
+      ] as [string, LibProbeSource["runtimeIdentity"], "drift"],
+  ),
+  [
+    "wrong tree and dirty source",
+    { ...historyRuntime, integrity: { ...sourceIntegrity, cleanTree: false, treeOid: "f".repeat(40) } },
+    "drift",
+  ],
   [
     "wrong WASM",
     { ...historyRuntime, loadedBinary: { ...historyRuntime.loadedBinary, sha256: "f".repeat(64) } },
@@ -111,6 +129,12 @@ const historyCases = ["erase.screen.scrollback", "scrollback.accumulate", "scrol
   historyIdentities.map(([name, runtimeIdentity, eligible]) => ({ id, name, runtimeIdentity, eligible })),
 )
 test.each(historyCases)("history count review qualifies $id: $name", ({ id, runtimeIdentity, eligible }) => {
+  expect({
+    runtimeFormat: historyRuntime.runtimeFormat,
+    engineVersion: historyRuntime.engineVersion,
+    repository: sourceIntegrity.repository,
+    treeOid: sourceIntegrity.treeOid,
+  }).toEqual(SOURCE_TREE_AUDITS.libvterm)
   const definition = [...eraseProbes, ...scrollbackProbes].find((entry) => entry.id === id)
   if (!definition?.lib) throw new Error(`Missing ${id} library callback`)
   let calls = 0
@@ -126,6 +150,21 @@ test.each(historyCases)("history count review qualifies $id: $name", ({ id, runt
       },
     }),
   )
+  if (eligible === "drift") {
+    expect(result.tests, id).toEqual([
+      {
+        id: "criterion",
+        status: "test-failure",
+        reason: `source identity drift: expected ${sourceIntegrity.treeOid}, read ${"f".repeat(40)}`,
+      },
+    ])
+    expect(result.observation, id).toBeUndefined()
+    expect(result.assertions, id).toBeUndefined()
+    expect(result.notTested, id).toBeUndefined()
+    expect(JSON.parse(result.response!), id).toMatchObject({ runtimeIdentity })
+    expect(calls, id).toBe(0)
+    return
+  }
   if (!eligible) {
     expect(result.criterionBranch, id).not.toBe("headless-observable-review")
     expect(calls, id).toBeGreaterThan(0)
