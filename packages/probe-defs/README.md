@@ -443,6 +443,50 @@ Admission is a separate operation owned by [run-admission.ts](../admin/run-admis
 
 That owner checks the run, suite and cited artifacts before placing admitted content. A private collection, successful test or sealed result alone does not mean site data has been published.
 
+## How a draft becomes a published cell
+
+`cells.json` is the status source for reported coverage: one `engine -> featureId -> status` map, written by the remeasure
+instrument and read by the coverage views. A `draft.json` is not that map, and neither a draft nor a count of its results
+substitutes for it.
+
+The projection is one row, one draft, statuses copied verbatim. The instrument reads `pass.json`; for each entry it takes the
+engine from `context.id` and the draft from that row's own `rawRun`, then writes each result status into the cell for its
+feature id, so a cell always states what the named draft said:
+
+```ts
+for (const result of draft.results) {
+  engineCells[result.featureId] = result.status
+  counts.set(result.status, (counts.get(result.status) ?? 0) + 1)
+}
+```
+
+That loop is `readCells()` in `tools/terminfo-remeasure.ts` in the `hh` dev repo, not in this package: this package owns the
+draft, the dev repo owns its projection.
+
+Three rules follow, and each has cost a reader time:
+
+- **A row that was not measured contributes no cells, whatever its draft says.** `unmeasured()` refuses a row whose status is not
+  `pending-review`, `classified` or `admitted`, or whose `rawRun` is missing on disk. A draft left behind by a failed context is
+  not evidence about a cell, and the instrument's line names that draft rather than a cell for exactly this reason.
+- **The draft that counts is the one its row names, not the newest in the directory.** A pass directory also holds drafts no row
+  points at. They are not projected, and reading one measures nothing that is published.
+- **A recorded decision does not move a published cell.** Decisions are applied by `applyCaptureDecision` in the
+  [capture writer](../terminfo.dev/src/capture-writer.ts) while a run is finalized, so they shape the draft at capture time. A
+  decision recorded after its draft was captured has no path back into that draft: the cell keeps the pre-decision status until
+  the probe is captured again.
+
+Worked example, from the run published 2026-10-31 06:34 UTC. `pass.json` holds 11 rows, all `pending-review`, each naming one
+draft; `cells.json` holds those same 11 engines at 273 feature ids each. The directory also holds 11 `lib-*-unknown.draft.json`
+files, so 22 drafts project to 11 engines rather than 22. Those 11 unprojected drafts happen to be status-identical to the
+pinned ones the rows name, so choosing wrongly is harmless here; that is a property of this run, not a rule to rely on. Within a
+draft there is nothing to disambiguate either: all 22 drafts carry 273 results over 273 distinct feature ids, so the loop above
+never overwrites, and "several results per `featureId`" is not a live hazard.
+
+Read status from `cells.json`. Counting results across draft files, or reading a draft whose row was refused, yields statuses no
+cell carries — which is indistinguishable, at the time, from a regression. The 2026-10-30 ghostty case that motivated this
+section is consistent with exactly that, and with reading another run's draft; neither run is on hand to separate the two, so it
+stays open rather than being claimed as explained here.
+
 The [execution and seal-boundary tests](src/execution-results.test.ts) exercise these distinctions without collecting new terminal data.
 
 `measureRenderedWidth` returns a number or a named readback cause: `no-reply` with its step,
