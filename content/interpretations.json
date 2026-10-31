@@ -8991,5 +8991,1931 @@
       },
       "sha256": "d39d5a6a045958e25f1fe444212a0b8f6c6a9f60af8ebc7ca6dc095bac18c50f"
     }
+  },
+  {
+    "id": "cto-vterm48-extensions.clipboard-paste-ev3",
+    "supersedes": ["cto-vterm48-extensions.clipboard-paste-ev2"],
+    "runId": "88165881f29e545ff63853338ff7e37f",
+    "featureId": "extensions.clipboard-paste",
+    "captureSha256": "28a59d7279306afb837d4fb4c126513d85a76a26161d9d795c622cbe1df07080",
+    "decision": "untestable",
+    "reviewed": true,
+    "reviewer": "@cto",
+    "reason": "Independent source review at vterm 53a9eb9291b7880f4dc6a39a6802301049997a72 (tree 617ae6002c7befea7b3e43d11bf23e6b433e3d65, clean) packages/vterm/src/screen.ts: the engine tracks bracketed paste as mode state only (DECSET 2004 :3023-3024, DECRQM 2004 :2867-2868, state :1252, mode name :1514) and has no paste path at all (git grep -i paste over screen.ts at the pin: only the bracketedPaste names above). Termless bd7305591fc65946f17498173ef601f5a749ce82 has no paste encoder in src/ or packages/vterm/src (packages/vterm/src/viewport-adapter.ts:691 onPaste is an embedder event sink, not a lib probe surface), and the probe itself records that the library probe source injects no OS-level input. How pasted text enters the terminal is host input with no headless observable and no engine API for the lib cell. Untestable; the terminal arm carries the paste criterion. Retained raw state is the os-input-review placeholder ({input:false} or the measured mode readings; no bytes are injected in the headless lib context); this decision rests on the pinned engine and host sources, not on the placeholder. It regenerates the @cto decision of the same text for run 11886cd3 (never applied) on the fresh run; nothing about the engine or host encoder changed between the pins (Termless diff 2d974173..bd730559 over src/terminal/key-encoding.ts, key-mapping.ts, packages/vterm/src/viewport-adapter.ts, packages/xtermjs/src/backend.ts: empty). Re-issued 2026-10-31 13:2x PDT on the #32008 universal-key evidence: Termless moved bd730559 -> f736cce4 (vterm adapter backend.ts blob eadcd257 -> 8599e301, the adapter-sources extension; viewport-adapter.ts unchanged per the vterm-only delta); the cited file claims re-read at the exact-head GO. Re-bound 2026-10-31 to the Terminfo 44467e4e catalogue entry after a body-only prose merge moved its catalogue hash (Amendment 5 pending); decision, capture and sources unchanged from the superseded ev2 record.",
+    "scope": {
+      "subject": {
+        "kind": "lib",
+        "id": "vterm",
+        "version": "0.9.0",
+        "os": "linux"
+      },
+      "versions": ["0.9.0", "0.9.0"],
+      "suites": ["ac2088e663ff", "ac2088e663ff"]
+    },
+    "sources": [
+      "vterm 53a9eb9291b7880f4dc6a39a6802301049997a72 (tree 617ae6002c7befea7b3e43d11bf23e6b433e3d65, clean) packages/vterm/src/screen.ts: handleOSC :3596-4055 (case list in the reasons), :3613-3631 OSC 133, :3924-3941 OSC 633, :3921-3923 OSC 9 sink, :3988-3991 OSC 776, :4042-4053 OSC 1337, :2566-2612 XTWINOPS, :4106-4133 handleAPC, :588 getSemanticZones, :589 getSixelImages, :2854/:2867-2868/:2870-2871/:2876-2877/:2880/:2894-2895 DECRQM, :2944-2945 DECSCNM, :2972-2983 DECSET arms, :3023-3024 DECSET 2004, :3029-3030 DECSET 2031, :3043-3044 DECSET 1007, :4583-4589 DECKPAM/DECKPNM, :5482 getMode, :1271 host-encoder comment",
+      "Termless bd7305591fc65946f17498173ef601f5a749ce82 packages/vterm/src/backend.ts:25 import encodeKeyToAnsi, :75-85 createScreen options (no kittyGraphicsImages, no font), :203-204 getMode, :258 comment, :261-265 kittyGraphics false, :306 iterm2Images declaration, :335 encodeKey; packages/vterm/src/viewport-adapter.ts:477-480 mouse mode mapping, :691 onPaste; src/terminal/key-encoding.ts keyToAnsi(key) delegate; src/terminal/key-mapping.ts 193 lines, 0 keypad/modifyOtherKeys entries; packages/xtermjs/src/backend.ts:823 encodeKey: encodeKeyToAnsi; git diff --stat 2d974173..bd730559 over those files: empty",
+      "terminfo 9a127ea6a1cf5209715a536d400f22f496294ecf packages/probe-defs/src/extensions.ts:1199-1216 ABSENT_OSC_ENGINES.vterm (codes, reviewReasons, sourceCitation), :1360-1382 js qualifier match; packages/probe-defs/src/input.ts:7-27 lib callbacks; packages/probe-defs/src/modes.ts application-keypad lib callback; packages/run-parser/src/index.ts:811 decision values, :1400-1435 semantic-prompt-source-review binding",
+      "intake file 32000-vterm-fresh-review-intake.json (retained in the @dev/3 resume-20261028 workspace) sha256 54234b3e82827ecdd5b9996ccff9ecd8356e64ef0452ea5a6f3945b4e6a903bd; run f7817716a8a63020bf92f02631d6bc47 suite 1e7fca79d06c; merged root b7ed29245cc7ae500dd14ac2da45b6be622d5f97; @cto earlier vterm decisions for the dead run 11886cd3 (files 30695-vterm13-first-admission-decisions-v1.json 67dbf760, 30695-vterm13-encoder-three-decisions-v1.json abdf39ef; never applied) regenerated here"
+    ],
+    "evidence": {
+      "algorithm": "evidence-output-v1",
+      "projection": {
+        "cell": {
+          "assertions": [],
+          "criterionBranch": "os-input-review",
+          "frames": [],
+          "rawReplies": [
+            {
+              "key": "extensions.clipboard-paste",
+              "sha256": "0408d11c45de32a40f90daf4f847d9893ccef72754cf89b0a328905e8ad65e93"
+            }
+          ],
+          "replyPath": {
+            "decision": {
+              "member": true,
+              "reason": "vterm declares complete reply delivery bound to its loaded source and engine"
+            },
+            "declaration": {
+              "adapterSources": [
+                {
+                  "blobOid": "cb5719799dcdd5ae24e6fcf0dcad9965035ce54c",
+                  "path": "packages/vterm/src/index.ts"
+                },
+                {
+                  "blobOid": "8599e301dd046b1264403069289477ab65d71d3a",
+                  "path": "packages/vterm/src/backend.ts"
+                }
+              ],
+              "boundary": "feed-and-getCursor",
+              "engine": {
+                "kind": "source",
+                "repository": "git@github.com:beorn/vterm.git",
+                "treeOid": "617ae6002c7befea7b3e43d11bf23e6b433e3d65"
+              }
+            }
+          },
+          "tests": [
+            {
+              "id": "review",
+              "reason": "Library probe source injects no OS-level input; required independent review of the retained raw state pending",
+              "status": "test-todo"
+            }
+          ]
+        },
+        "feature": {
+          "catalogEntrySha256": "d85246ba0e7a0c78b3e2c21f855069a8dc1f9b29cea7efc49588fc4734c3a7c3",
+          "featureId": "extensions.clipboard-paste"
+        },
+        "runtimeIdentity": {
+          "adapterSources": [
+            {
+              "blobOid": "cb5719799dcdd5ae24e6fcf0dcad9965035ce54c",
+              "path": "packages/vterm/src/index.ts"
+            },
+            {
+              "blobOid": "8599e301dd046b1264403069289477ab65d71d3a",
+              "path": "packages/vterm/src/backend.ts"
+            }
+          ],
+          "adapterVersion": "0.10.2",
+          "engineVersion": "0.9.0",
+          "integrity": {
+            "cleanTree": true,
+            "kind": "source",
+            "repository": "git@github.com:beorn/vterm.git",
+            "treeOid": "617ae6002c7befea7b3e43d11bf23e6b433e3d65"
+          },
+          "kind": "js",
+          "runtimeFormat": "js"
+        },
+        "subject": {
+          "id": "vterm",
+          "kind": "lib",
+          "os": "linux",
+          "version": "0.9.0"
+        }
+      },
+      "sha256": "285ae45d830ee1dcb4b79c36f77e79182ff0b2fecd4960e77c61abda06272705"
+    }
+  },
+  {
+    "id": "cto-vterm48-extensions.font-ligatures-ev3",
+    "supersedes": ["cto-vterm48-extensions.font-ligatures-ev2"],
+    "runId": "88165881f29e545ff63853338ff7e37f",
+    "featureId": "extensions.font-ligatures",
+    "captureSha256": "865f9dfed5968839f7e21e90250370ae45ed76eeca531cca7984cbc234de23e7",
+    "decision": "untestable",
+    "reviewed": true,
+    "reviewer": "@cto",
+    "reason": "Independent source review at vterm 53a9eb9291b7880f4dc6a39a6802301049997a72 (tree 617ae6002c7befea7b3e43d11bf23e6b433e3d65, clean) packages/vterm/src/screen.ts: the engine is a parser and screen model with no font, glyph or shaping stage (git grep -i ligature|shaping|glyph over screen.ts at the pin: 0 hits); the criterion is renderer glyph substitution of the retained sample '!= -> => <= =='. No headless observable and no engine API can exist for a library. Untestable for the lib cell; the terminal arm compares rendered frames. Re-issued 2026-10-31 13:2x PDT on the #32008 universal-key evidence (same vterm tree 617ae600, adapter backend.ts blob eadcd257 -> 8599e301). Re-bound 2026-10-31 to the Terminfo 44467e4e catalogue entry after a body-only prose merge moved its catalogue hash (Amendment 5 pending); decision, capture and sources unchanged from the superseded ev2 record.",
+    "scope": {
+      "subject": {
+        "kind": "lib",
+        "id": "vterm",
+        "version": "0.9.0",
+        "os": "linux"
+      },
+      "versions": ["0.9.0", "0.9.0"],
+      "suites": ["ac2088e663ff", "ac2088e663ff"]
+    },
+    "sources": [
+      "vterm 53a9eb9291b7880f4dc6a39a6802301049997a72 (tree 617ae6002c7befea7b3e43d11bf23e6b433e3d65, clean) packages/vterm/src/screen.ts: handleOSC :3596-4055 (case list in the reasons), :3613-3631 OSC 133, :3924-3941 OSC 633, :3921-3923 OSC 9 sink, :3988-3991 OSC 776, :4042-4053 OSC 1337, :2566-2612 XTWINOPS, :4106-4133 handleAPC, :588 getSemanticZones, :589 getSixelImages, :2854/:2867-2868/:2870-2871/:2876-2877/:2880/:2894-2895 DECRQM, :2944-2945 DECSCNM, :2972-2983 DECSET arms, :3023-3024 DECSET 2004, :3029-3030 DECSET 2031, :3043-3044 DECSET 1007, :4583-4589 DECKPAM/DECKPNM, :5482 getMode, :1271 host-encoder comment",
+      "Termless bd7305591fc65946f17498173ef601f5a749ce82 packages/vterm/src/backend.ts:25 import encodeKeyToAnsi, :75-85 createScreen options (no kittyGraphicsImages, no font), :203-204 getMode, :258 comment, :261-265 kittyGraphics false, :306 iterm2Images declaration, :335 encodeKey; packages/vterm/src/viewport-adapter.ts:477-480 mouse mode mapping, :691 onPaste; src/terminal/key-encoding.ts keyToAnsi(key) delegate; src/terminal/key-mapping.ts 193 lines, 0 keypad/modifyOtherKeys entries; packages/xtermjs/src/backend.ts:823 encodeKey: encodeKeyToAnsi; git diff --stat 2d974173..bd730559 over those files: empty",
+      "terminfo 9a127ea6a1cf5209715a536d400f22f496294ecf packages/probe-defs/src/extensions.ts:1199-1216 ABSENT_OSC_ENGINES.vterm (codes, reviewReasons, sourceCitation), :1360-1382 js qualifier match; packages/probe-defs/src/input.ts:7-27 lib callbacks; packages/probe-defs/src/modes.ts application-keypad lib callback; packages/run-parser/src/index.ts:811 decision values, :1400-1435 semantic-prompt-source-review binding",
+      "intake file 32000-vterm-fresh-review-intake.json (retained in the @dev/3 resume-20261028 workspace) sha256 54234b3e82827ecdd5b9996ccff9ecd8356e64ef0452ea5a6f3945b4e6a903bd; run f7817716a8a63020bf92f02631d6bc47 suite 1e7fca79d06c; merged root b7ed29245cc7ae500dd14ac2da45b6be622d5f97; @cto earlier vterm decisions for the dead run 11886cd3 (files 30695-vterm13-first-admission-decisions-v1.json 67dbf760, 30695-vterm13-encoder-three-decisions-v1.json abdf39ef; never applied) regenerated here"
+    ],
+    "evidence": {
+      "algorithm": "evidence-output-v1",
+      "projection": {
+        "cell": {
+          "assertions": [],
+          "criterionBranch": "headless-observable-review",
+          "frames": [],
+          "rawReplies": [
+            {
+              "key": "extensions.font-ligatures",
+              "sha256": "ad62da07a399c314997cf1375c6fd3cec2f42d85baff0ab0edd42dd24b0dfb44"
+            }
+          ],
+          "replyPath": {
+            "decision": {
+              "member": true,
+              "reason": "vterm declares complete reply delivery bound to its loaded source and engine"
+            },
+            "declaration": {
+              "adapterSources": [
+                {
+                  "blobOid": "cb5719799dcdd5ae24e6fcf0dcad9965035ce54c",
+                  "path": "packages/vterm/src/index.ts"
+                },
+                {
+                  "blobOid": "8599e301dd046b1264403069289477ab65d71d3a",
+                  "path": "packages/vterm/src/backend.ts"
+                }
+              ],
+              "boundary": "feed-and-getCursor",
+              "engine": {
+                "kind": "source",
+                "repository": "git@github.com:beorn/vterm.git",
+                "treeOid": "617ae6002c7befea7b3e43d11bf23e6b433e3d65"
+              }
+            }
+          },
+          "tests": [
+            {
+              "id": "review",
+              "reason": "Headless observable review required: Font ligatures are renderer glyph shaping; the headless parser shapes no glyphs",
+              "status": "test-todo"
+            }
+          ]
+        },
+        "feature": {
+          "catalogEntrySha256": "5f8c70da88eec923e82e04141f689e35dd220e2e0da173b2699c6c9056d5d7f2",
+          "featureId": "extensions.font-ligatures"
+        },
+        "runtimeIdentity": {
+          "adapterSources": [
+            {
+              "blobOid": "cb5719799dcdd5ae24e6fcf0dcad9965035ce54c",
+              "path": "packages/vterm/src/index.ts"
+            },
+            {
+              "blobOid": "8599e301dd046b1264403069289477ab65d71d3a",
+              "path": "packages/vterm/src/backend.ts"
+            }
+          ],
+          "adapterVersion": "0.10.2",
+          "engineVersion": "0.9.0",
+          "integrity": {
+            "cleanTree": true,
+            "kind": "source",
+            "repository": "git@github.com:beorn/vterm.git",
+            "treeOid": "617ae6002c7befea7b3e43d11bf23e6b433e3d65"
+          },
+          "kind": "js",
+          "runtimeFormat": "js"
+        },
+        "subject": {
+          "id": "vterm",
+          "kind": "lib",
+          "os": "linux",
+          "version": "0.9.0"
+        }
+      },
+      "sha256": "2d30f6e735aee514d0fcd709519d8cce54b4cbda2d2bc0eedf2ac2e56b75d437"
+    }
+  },
+  {
+    "id": "cto-vterm48-input.button-event-mouse-ev3",
+    "supersedes": ["cto-vterm48-input.button-event-mouse-ev2"],
+    "runId": "88165881f29e545ff63853338ff7e37f",
+    "featureId": "input.button-event-mouse",
+    "captureSha256": "37f5ff234575ed6e7b981e002853fe571a37ef565b6640bac7ecf621603035c6",
+    "decision": "untestable",
+    "reviewed": true,
+    "reviewer": "@cto",
+    "reason": "Independent source review at vterm 53a9eb9291b7880f4dc6a39a6802301049997a72 (tree 617ae6002c7befea7b3e43d11bf23e6b433e3d65, clean) packages/vterm/src/screen.ts: DECSET 1002 (button-event tracking) is tracked as mode state only (:2977 case 1002, together with :2975-2983 setting mouseTracking/mouseTrackingMode for 9/1000/1002/1003/1015/1016, :2988 sgrMouse, :3041 utf8MouseMode); the engine contains no mouse event encoder (git grep encodeMouse|mouseEvent|wheel over packages/vterm/src at the pin: 0 hits outside the mode names), and Termless bd7305591fc65946f17498173ef601f5a749ce82 packages/vterm/src/viewport-adapter.ts:477-480 only maps the tracked mode for an embedder. The cell's criterion is the encoded mouse report byte stream, which has no headless observable and no engine API to bind. Untestable for the lib cell; the terminal arm carries the XTEST criterion. Retained raw state is the os-input-review placeholder ({input:false} or the measured mode readings; no bytes are injected in the headless lib context); this decision rests on the pinned engine and host sources, not on the placeholder. It regenerates the @cto decision of the same text for run 11886cd3 (never applied) on the fresh run; nothing about the engine or host encoder changed between the pins (Termless diff 2d974173..bd730559 over src/terminal/key-encoding.ts, key-mapping.ts, packages/vterm/src/viewport-adapter.ts, packages/xtermjs/src/backend.ts: empty). Re-issued 2026-10-31 13:2x PDT on the #32008 universal-key evidence: Termless moved bd730559 -> f736cce4 (vterm adapter backend.ts blob eadcd257 -> 8599e301, the adapter-sources extension; viewport-adapter.ts unchanged per the vterm-only delta); the cited file claims re-read at the exact-head GO. Re-bound 2026-10-31 to the Terminfo 44467e4e catalogue entry after a body-only prose merge moved its catalogue hash (Amendment 5 pending); decision, capture and sources unchanged from the superseded ev2 record.",
+    "scope": {
+      "subject": {
+        "kind": "lib",
+        "id": "vterm",
+        "version": "0.9.0",
+        "os": "linux"
+      },
+      "versions": ["0.9.0", "0.9.0"],
+      "suites": ["ac2088e663ff", "ac2088e663ff"]
+    },
+    "sources": [
+      "vterm 53a9eb9291b7880f4dc6a39a6802301049997a72 (tree 617ae6002c7befea7b3e43d11bf23e6b433e3d65, clean) packages/vterm/src/screen.ts: handleOSC :3596-4055 (case list in the reasons), :3613-3631 OSC 133, :3924-3941 OSC 633, :3921-3923 OSC 9 sink, :3988-3991 OSC 776, :4042-4053 OSC 1337, :2566-2612 XTWINOPS, :4106-4133 handleAPC, :588 getSemanticZones, :589 getSixelImages, :2854/:2867-2868/:2870-2871/:2876-2877/:2880/:2894-2895 DECRQM, :2944-2945 DECSCNM, :2972-2983 DECSET arms, :3023-3024 DECSET 2004, :3029-3030 DECSET 2031, :3043-3044 DECSET 1007, :4583-4589 DECKPAM/DECKPNM, :5482 getMode, :1271 host-encoder comment",
+      "Termless bd7305591fc65946f17498173ef601f5a749ce82 packages/vterm/src/backend.ts:25 import encodeKeyToAnsi, :75-85 createScreen options (no kittyGraphicsImages, no font), :203-204 getMode, :258 comment, :261-265 kittyGraphics false, :306 iterm2Images declaration, :335 encodeKey; packages/vterm/src/viewport-adapter.ts:477-480 mouse mode mapping, :691 onPaste; src/terminal/key-encoding.ts keyToAnsi(key) delegate; src/terminal/key-mapping.ts 193 lines, 0 keypad/modifyOtherKeys entries; packages/xtermjs/src/backend.ts:823 encodeKey: encodeKeyToAnsi; git diff --stat 2d974173..bd730559 over those files: empty",
+      "terminfo 9a127ea6a1cf5209715a536d400f22f496294ecf packages/probe-defs/src/extensions.ts:1199-1216 ABSENT_OSC_ENGINES.vterm (codes, reviewReasons, sourceCitation), :1360-1382 js qualifier match; packages/probe-defs/src/input.ts:7-27 lib callbacks; packages/probe-defs/src/modes.ts application-keypad lib callback; packages/run-parser/src/index.ts:811 decision values, :1400-1435 semantic-prompt-source-review binding",
+      "intake file 32000-vterm-fresh-review-intake.json (retained in the @dev/3 resume-20261028 workspace) sha256 54234b3e82827ecdd5b9996ccff9ecd8356e64ef0452ea5a6f3945b4e6a903bd; run f7817716a8a63020bf92f02631d6bc47 suite 1e7fca79d06c; merged root b7ed29245cc7ae500dd14ac2da45b6be622d5f97; @cto earlier vterm decisions for the dead run 11886cd3 (files 30695-vterm13-first-admission-decisions-v1.json 67dbf760, 30695-vterm13-encoder-three-decisions-v1.json abdf39ef; never applied) regenerated here"
+    ],
+    "evidence": {
+      "algorithm": "evidence-output-v1",
+      "projection": {
+        "cell": {
+          "assertions": [],
+          "criterionBranch": "os-input-review",
+          "frames": [],
+          "rawReplies": [
+            {
+              "key": "input.button-event-mouse",
+              "sha256": "0408d11c45de32a40f90daf4f847d9893ccef72754cf89b0a328905e8ad65e93"
+            }
+          ],
+          "replyPath": {
+            "decision": {
+              "member": true,
+              "reason": "vterm declares complete reply delivery bound to its loaded source and engine"
+            },
+            "declaration": {
+              "adapterSources": [
+                {
+                  "blobOid": "cb5719799dcdd5ae24e6fcf0dcad9965035ce54c",
+                  "path": "packages/vterm/src/index.ts"
+                },
+                {
+                  "blobOid": "8599e301dd046b1264403069289477ab65d71d3a",
+                  "path": "packages/vterm/src/backend.ts"
+                }
+              ],
+              "boundary": "feed-and-getCursor",
+              "engine": {
+                "kind": "source",
+                "repository": "git@github.com:beorn/vterm.git",
+                "treeOid": "617ae6002c7befea7b3e43d11bf23e6b433e3d65"
+              }
+            }
+          },
+          "tests": [
+            {
+              "id": "review",
+              "reason": "Library probe source injects no OS-level input; required independent review of the retained raw state pending",
+              "status": "test-todo"
+            }
+          ]
+        },
+        "feature": {
+          "catalogEntrySha256": "3c46b89688c65234a0d44e2332c97fc98524afe5512b3c38a8ced3454bbeda05",
+          "featureId": "input.button-event-mouse"
+        },
+        "runtimeIdentity": {
+          "adapterSources": [
+            {
+              "blobOid": "cb5719799dcdd5ae24e6fcf0dcad9965035ce54c",
+              "path": "packages/vterm/src/index.ts"
+            },
+            {
+              "blobOid": "8599e301dd046b1264403069289477ab65d71d3a",
+              "path": "packages/vterm/src/backend.ts"
+            }
+          ],
+          "adapterVersion": "0.10.2",
+          "engineVersion": "0.9.0",
+          "integrity": {
+            "cleanTree": true,
+            "kind": "source",
+            "repository": "git@github.com:beorn/vterm.git",
+            "treeOid": "617ae6002c7befea7b3e43d11bf23e6b433e3d65"
+          },
+          "kind": "js",
+          "runtimeFormat": "js"
+        },
+        "subject": {
+          "id": "vterm",
+          "kind": "lib",
+          "os": "linux",
+          "version": "0.9.0"
+        }
+      },
+      "sha256": "15a80696b6b22c685ef77d2bcb3164acd5746dd04c397b3635d7ae05c8d52321"
+    }
+  },
+  {
+    "id": "cto-vterm48-input.modify-other-keys-ev3",
+    "supersedes": ["cto-vterm48-input.modify-other-keys-ev2"],
+    "runId": "88165881f29e545ff63853338ff7e37f",
+    "featureId": "input.modify-other-keys",
+    "captureSha256": "1ed1c3832b0e9bdfd050f6ba3bb29833c04df0695ee16fb517339dc95151d3df",
+    "decision": "untestable",
+    "reviewed": true,
+    "reviewer": "@cto",
+    "reason": "Independent source review at vterm 53a9eb9291b7880f4dc6a39a6802301049997a72 (tree 617ae6002c7befea7b3e43d11bf23e6b433e3d65, clean) packages/vterm/src/screen.ts: the engine has no modifyOtherKeys state at all — git grep for modifyOther|'> 4'|modifyOtherKeys over packages/vterm/src at the pin: 0 hits — so CSI > 4;2 m is parsed as an unknown private parameter sequence and changes nothing readable, and the engine contains no key encoder (screen.ts:1271, separation of concerns). The host encoder is Termless core: Termless bd7305591fc65946f17498173ef601f5a749ce82 packages/vterm/src/backend.ts:335 wires encodeKey: encodeKeyToAnsi imported from @termless/core (:25); src/terminal/key-encoding.ts delegates to keyToAnsi(key) with no backend or mode argument, and src/terminal/key-mapping.ts (193 lines) has no keypad, KP_, applicationKeypad or modifyOtherKeys entry; the xtermjs backend wires the same core encoder (packages/xtermjs/src/backend.ts:823), so no Termless backend encodes keys from engine mode state. The backend.ts:258 comment '(encodeKeyToAnsi reads the mode from the backend)' is false at this pin (Termless defect, not evidence). The cell's criterion is the modified-key byte stream under modifyOtherKeys level 2; no headless observable of it exists and no engine API could expose one. Untestable for the lib cell; the terminal arm carries the XTEST key-injection criterion. The false Termless modifyOtherKeys capability declaration was removed under #32001 (merged in root b7ed2924), so this run's capability set no longer claims it. Retained raw state is the os-input-review placeholder ({input:false} or the measured mode readings; no bytes are injected in the headless lib context); this decision rests on the pinned engine and host sources, not on the placeholder. It regenerates the @cto decision of the same text for run 11886cd3 (never applied) on the fresh run; nothing about the engine or host encoder changed between the pins (Termless diff 2d974173..bd730559 over src/terminal/key-encoding.ts, key-mapping.ts, packages/vterm/src/viewport-adapter.ts, packages/xtermjs/src/backend.ts: empty). Re-issued 2026-10-31 13:2x PDT on the #32008 universal-key evidence: Termless moved bd730559 -> f736cce4 (vterm adapter backend.ts blob eadcd257 -> 8599e301, the adapter-sources extension; viewport-adapter.ts unchanged per the vterm-only delta); the cited file claims re-read at the exact-head GO. Re-bound 2026-10-31 to the Terminfo 44467e4e catalogue entry after a body-only prose merge moved its catalogue hash (Amendment 5 pending); decision, capture and sources unchanged from the superseded ev2 record.",
+    "scope": {
+      "subject": {
+        "kind": "lib",
+        "id": "vterm",
+        "version": "0.9.0",
+        "os": "linux"
+      },
+      "versions": ["0.9.0", "0.9.0"],
+      "suites": ["ac2088e663ff", "ac2088e663ff"]
+    },
+    "sources": [
+      "vterm 53a9eb9291b7880f4dc6a39a6802301049997a72 (tree 617ae6002c7befea7b3e43d11bf23e6b433e3d65, clean) packages/vterm/src/screen.ts: handleOSC :3596-4055 (case list in the reasons), :3613-3631 OSC 133, :3924-3941 OSC 633, :3921-3923 OSC 9 sink, :3988-3991 OSC 776, :4042-4053 OSC 1337, :2566-2612 XTWINOPS, :4106-4133 handleAPC, :588 getSemanticZones, :589 getSixelImages, :2854/:2867-2868/:2870-2871/:2876-2877/:2880/:2894-2895 DECRQM, :2944-2945 DECSCNM, :2972-2983 DECSET arms, :3023-3024 DECSET 2004, :3029-3030 DECSET 2031, :3043-3044 DECSET 1007, :4583-4589 DECKPAM/DECKPNM, :5482 getMode, :1271 host-encoder comment",
+      "Termless bd7305591fc65946f17498173ef601f5a749ce82 packages/vterm/src/backend.ts:25 import encodeKeyToAnsi, :75-85 createScreen options (no kittyGraphicsImages, no font), :203-204 getMode, :258 comment, :261-265 kittyGraphics false, :306 iterm2Images declaration, :335 encodeKey; packages/vterm/src/viewport-adapter.ts:477-480 mouse mode mapping, :691 onPaste; src/terminal/key-encoding.ts keyToAnsi(key) delegate; src/terminal/key-mapping.ts 193 lines, 0 keypad/modifyOtherKeys entries; packages/xtermjs/src/backend.ts:823 encodeKey: encodeKeyToAnsi; git diff --stat 2d974173..bd730559 over those files: empty",
+      "terminfo 9a127ea6a1cf5209715a536d400f22f496294ecf packages/probe-defs/src/extensions.ts:1199-1216 ABSENT_OSC_ENGINES.vterm (codes, reviewReasons, sourceCitation), :1360-1382 js qualifier match; packages/probe-defs/src/input.ts:7-27 lib callbacks; packages/probe-defs/src/modes.ts application-keypad lib callback; packages/run-parser/src/index.ts:811 decision values, :1400-1435 semantic-prompt-source-review binding",
+      "intake file 32000-vterm-fresh-review-intake.json (retained in the @dev/3 resume-20261028 workspace) sha256 54234b3e82827ecdd5b9996ccff9ecd8356e64ef0452ea5a6f3945b4e6a903bd; run f7817716a8a63020bf92f02631d6bc47 suite 1e7fca79d06c; merged root b7ed29245cc7ae500dd14ac2da45b6be622d5f97; @cto earlier vterm decisions for the dead run 11886cd3 (files 30695-vterm13-first-admission-decisions-v1.json 67dbf760, 30695-vterm13-encoder-three-decisions-v1.json abdf39ef; never applied) regenerated here"
+    ],
+    "evidence": {
+      "algorithm": "evidence-output-v1",
+      "projection": {
+        "cell": {
+          "assertions": [],
+          "criterionBranch": "os-input-review",
+          "frames": [],
+          "rawReplies": [
+            {
+              "key": "input.modify-other-keys",
+              "sha256": "0408d11c45de32a40f90daf4f847d9893ccef72754cf89b0a328905e8ad65e93"
+            }
+          ],
+          "replyPath": {
+            "decision": {
+              "member": true,
+              "reason": "vterm declares complete reply delivery bound to its loaded source and engine"
+            },
+            "declaration": {
+              "adapterSources": [
+                {
+                  "blobOid": "cb5719799dcdd5ae24e6fcf0dcad9965035ce54c",
+                  "path": "packages/vterm/src/index.ts"
+                },
+                {
+                  "blobOid": "8599e301dd046b1264403069289477ab65d71d3a",
+                  "path": "packages/vterm/src/backend.ts"
+                }
+              ],
+              "boundary": "feed-and-getCursor",
+              "engine": {
+                "kind": "source",
+                "repository": "git@github.com:beorn/vterm.git",
+                "treeOid": "617ae6002c7befea7b3e43d11bf23e6b433e3d65"
+              }
+            }
+          },
+          "tests": [
+            {
+              "id": "review",
+              "reason": "Library probe source injects no OS-level input; required independent review of the retained raw state pending",
+              "status": "test-todo"
+            }
+          ]
+        },
+        "feature": {
+          "catalogEntrySha256": "9917cabf61d1fd541d18d95cb09f579a84804f7d69373a6188547386484cce61",
+          "featureId": "input.modify-other-keys"
+        },
+        "runtimeIdentity": {
+          "adapterSources": [
+            {
+              "blobOid": "cb5719799dcdd5ae24e6fcf0dcad9965035ce54c",
+              "path": "packages/vterm/src/index.ts"
+            },
+            {
+              "blobOid": "8599e301dd046b1264403069289477ab65d71d3a",
+              "path": "packages/vterm/src/backend.ts"
+            }
+          ],
+          "adapterVersion": "0.10.2",
+          "engineVersion": "0.9.0",
+          "integrity": {
+            "cleanTree": true,
+            "kind": "source",
+            "repository": "git@github.com:beorn/vterm.git",
+            "treeOid": "617ae6002c7befea7b3e43d11bf23e6b433e3d65"
+          },
+          "kind": "js",
+          "runtimeFormat": "js"
+        },
+        "subject": {
+          "id": "vterm",
+          "kind": "lib",
+          "os": "linux",
+          "version": "0.9.0"
+        }
+      },
+      "sha256": "0200ec29ec2a4a74cde567c979fcd58a51649afc163e9fd73fda248667a9f7f1"
+    }
+  },
+  {
+    "id": "cto-vterm48-input.modify-other-keys-3-ev3",
+    "supersedes": ["cto-vterm48-input.modify-other-keys-3-ev2"],
+    "runId": "88165881f29e545ff63853338ff7e37f",
+    "featureId": "input.modify-other-keys-3",
+    "captureSha256": "116a88ab35a7ae8b3ee8f4c48ad48f654a70b812321b27c86ae3b3f6adbbf773",
+    "decision": "untestable",
+    "reviewed": true,
+    "reviewer": "@cto",
+    "reason": "Independent source review at vterm 53a9eb9291b7880f4dc6a39a6802301049997a72 (tree 617ae6002c7befea7b3e43d11bf23e6b433e3d65, clean) packages/vterm/src/screen.ts: the engine has no modifyOtherKeys state at all — git grep for modifyOther|'> 4'|modifyOtherKeys over packages/vterm/src at the pin: 0 hits — so CSI > 4;3 m is parsed as an unknown private parameter sequence and changes nothing readable, and the engine contains no key encoder (screen.ts:1271, separation of concerns). The host encoder is Termless core: Termless bd7305591fc65946f17498173ef601f5a749ce82 packages/vterm/src/backend.ts:335 wires encodeKey: encodeKeyToAnsi imported from @termless/core (:25); src/terminal/key-encoding.ts delegates to keyToAnsi(key) with no backend or mode argument, and src/terminal/key-mapping.ts (193 lines) has no keypad, KP_, applicationKeypad or modifyOtherKeys entry; the xtermjs backend wires the same core encoder (packages/xtermjs/src/backend.ts:823), so no Termless backend encodes keys from engine mode state. The backend.ts:258 comment '(encodeKeyToAnsi reads the mode from the backend)' is false at this pin (Termless defect, not evidence). The cell's criterion is the modified-key byte stream under modifyOtherKeys level 3; no headless observable of it exists and no engine API could expose one. Untestable for the lib cell; the terminal arm carries the XTEST key-injection criterion. The false Termless modifyOtherKeys capability declaration was removed under #32001 (merged in root b7ed2924), so this run's capability set no longer claims it. Retained raw state is the os-input-review placeholder ({input:false} or the measured mode readings; no bytes are injected in the headless lib context); this decision rests on the pinned engine and host sources, not on the placeholder. It regenerates the @cto decision of the same text for run 11886cd3 (never applied) on the fresh run; nothing about the engine or host encoder changed between the pins (Termless diff 2d974173..bd730559 over src/terminal/key-encoding.ts, key-mapping.ts, packages/vterm/src/viewport-adapter.ts, packages/xtermjs/src/backend.ts: empty). Re-issued 2026-10-31 13:2x PDT on the #32008 universal-key evidence: Termless moved bd730559 -> f736cce4 (vterm adapter backend.ts blob eadcd257 -> 8599e301, the adapter-sources extension; viewport-adapter.ts unchanged per the vterm-only delta); the cited file claims re-read at the exact-head GO. Re-bound 2026-10-31 to the Terminfo 44467e4e catalogue entry after a body-only prose merge moved its catalogue hash (Amendment 5 pending); decision, capture and sources unchanged from the superseded ev2 record.",
+    "scope": {
+      "subject": {
+        "kind": "lib",
+        "id": "vterm",
+        "version": "0.9.0",
+        "os": "linux"
+      },
+      "versions": ["0.9.0", "0.9.0"],
+      "suites": ["ac2088e663ff", "ac2088e663ff"]
+    },
+    "sources": [
+      "vterm 53a9eb9291b7880f4dc6a39a6802301049997a72 (tree 617ae6002c7befea7b3e43d11bf23e6b433e3d65, clean) packages/vterm/src/screen.ts: handleOSC :3596-4055 (case list in the reasons), :3613-3631 OSC 133, :3924-3941 OSC 633, :3921-3923 OSC 9 sink, :3988-3991 OSC 776, :4042-4053 OSC 1337, :2566-2612 XTWINOPS, :4106-4133 handleAPC, :588 getSemanticZones, :589 getSixelImages, :2854/:2867-2868/:2870-2871/:2876-2877/:2880/:2894-2895 DECRQM, :2944-2945 DECSCNM, :2972-2983 DECSET arms, :3023-3024 DECSET 2004, :3029-3030 DECSET 2031, :3043-3044 DECSET 1007, :4583-4589 DECKPAM/DECKPNM, :5482 getMode, :1271 host-encoder comment",
+      "Termless bd7305591fc65946f17498173ef601f5a749ce82 packages/vterm/src/backend.ts:25 import encodeKeyToAnsi, :75-85 createScreen options (no kittyGraphicsImages, no font), :203-204 getMode, :258 comment, :261-265 kittyGraphics false, :306 iterm2Images declaration, :335 encodeKey; packages/vterm/src/viewport-adapter.ts:477-480 mouse mode mapping, :691 onPaste; src/terminal/key-encoding.ts keyToAnsi(key) delegate; src/terminal/key-mapping.ts 193 lines, 0 keypad/modifyOtherKeys entries; packages/xtermjs/src/backend.ts:823 encodeKey: encodeKeyToAnsi; git diff --stat 2d974173..bd730559 over those files: empty",
+      "terminfo 9a127ea6a1cf5209715a536d400f22f496294ecf packages/probe-defs/src/extensions.ts:1199-1216 ABSENT_OSC_ENGINES.vterm (codes, reviewReasons, sourceCitation), :1360-1382 js qualifier match; packages/probe-defs/src/input.ts:7-27 lib callbacks; packages/probe-defs/src/modes.ts application-keypad lib callback; packages/run-parser/src/index.ts:811 decision values, :1400-1435 semantic-prompt-source-review binding",
+      "intake file 32000-vterm-fresh-review-intake.json (retained in the @dev/3 resume-20261028 workspace) sha256 54234b3e82827ecdd5b9996ccff9ecd8356e64ef0452ea5a6f3945b4e6a903bd; run f7817716a8a63020bf92f02631d6bc47 suite 1e7fca79d06c; merged root b7ed29245cc7ae500dd14ac2da45b6be622d5f97; @cto earlier vterm decisions for the dead run 11886cd3 (files 30695-vterm13-first-admission-decisions-v1.json 67dbf760, 30695-vterm13-encoder-three-decisions-v1.json abdf39ef; never applied) regenerated here"
+    ],
+    "evidence": {
+      "algorithm": "evidence-output-v1",
+      "projection": {
+        "cell": {
+          "assertions": [],
+          "criterionBranch": "os-input-review",
+          "frames": [],
+          "rawReplies": [
+            {
+              "key": "input.modify-other-keys-3",
+              "sha256": "0408d11c45de32a40f90daf4f847d9893ccef72754cf89b0a328905e8ad65e93"
+            }
+          ],
+          "replyPath": {
+            "decision": {
+              "member": true,
+              "reason": "vterm declares complete reply delivery bound to its loaded source and engine"
+            },
+            "declaration": {
+              "adapterSources": [
+                {
+                  "blobOid": "cb5719799dcdd5ae24e6fcf0dcad9965035ce54c",
+                  "path": "packages/vterm/src/index.ts"
+                },
+                {
+                  "blobOid": "8599e301dd046b1264403069289477ab65d71d3a",
+                  "path": "packages/vterm/src/backend.ts"
+                }
+              ],
+              "boundary": "feed-and-getCursor",
+              "engine": {
+                "kind": "source",
+                "repository": "git@github.com:beorn/vterm.git",
+                "treeOid": "617ae6002c7befea7b3e43d11bf23e6b433e3d65"
+              }
+            }
+          },
+          "tests": [
+            {
+              "id": "review",
+              "reason": "Library probe source injects no OS-level input; required independent review of the retained raw state pending",
+              "status": "test-todo"
+            }
+          ]
+        },
+        "feature": {
+          "catalogEntrySha256": "871bb5df0b5911c4d2b0e4076befc771ba327c6fcfaf15b5bb1c84464a33d7ca",
+          "featureId": "input.modify-other-keys-3"
+        },
+        "runtimeIdentity": {
+          "adapterSources": [
+            {
+              "blobOid": "cb5719799dcdd5ae24e6fcf0dcad9965035ce54c",
+              "path": "packages/vterm/src/index.ts"
+            },
+            {
+              "blobOid": "8599e301dd046b1264403069289477ab65d71d3a",
+              "path": "packages/vterm/src/backend.ts"
+            }
+          ],
+          "adapterVersion": "0.10.2",
+          "engineVersion": "0.9.0",
+          "integrity": {
+            "cleanTree": true,
+            "kind": "source",
+            "repository": "git@github.com:beorn/vterm.git",
+            "treeOid": "617ae6002c7befea7b3e43d11bf23e6b433e3d65"
+          },
+          "kind": "js",
+          "runtimeFormat": "js"
+        },
+        "subject": {
+          "id": "vterm",
+          "kind": "lib",
+          "os": "linux",
+          "version": "0.9.0"
+        }
+      },
+      "sha256": "e40873c0ff530b32288a786351f5c3c0dc0361af82aa27b9d1f45b67b47ef387"
+    }
+  },
+  {
+    "id": "cto-vterm48-input.pixel-mouse-ev3",
+    "supersedes": ["cto-vterm48-input.pixel-mouse-ev2"],
+    "runId": "88165881f29e545ff63853338ff7e37f",
+    "featureId": "input.pixel-mouse",
+    "captureSha256": "e19ff1d215a0e5820ec38f28fb66ff3b905f9f6ff637a6096e9aa9bf3b7bdc3f",
+    "decision": "untestable",
+    "reviewed": true,
+    "reviewer": "@cto",
+    "reason": "Independent source review at vterm 53a9eb9291b7880f4dc6a39a6802301049997a72 (tree 617ae6002c7befea7b3e43d11bf23e6b433e3d65, clean) packages/vterm/src/screen.ts: DECSET 1016 (SGR pixel encoding) is tracked as mode state only (:2980 case 1016, together with :2975-2983 setting mouseTracking/mouseTrackingMode for 9/1000/1002/1003/1015/1016, :2988 sgrMouse, :3041 utf8MouseMode); the engine contains no mouse event encoder (git grep encodeMouse|mouseEvent|wheel over packages/vterm/src at the pin: 0 hits outside the mode names), and Termless bd7305591fc65946f17498173ef601f5a749ce82 packages/vterm/src/viewport-adapter.ts:477-480 only maps the tracked mode for an embedder. The cell's criterion is the encoded mouse report byte stream, which has no headless observable and no engine API to bind. Untestable for the lib cell; the terminal arm carries the XTEST criterion. Retained raw state is the os-input-review placeholder ({input:false} or the measured mode readings; no bytes are injected in the headless lib context); this decision rests on the pinned engine and host sources, not on the placeholder. It regenerates the @cto decision of the same text for run 11886cd3 (never applied) on the fresh run; nothing about the engine or host encoder changed between the pins (Termless diff 2d974173..bd730559 over src/terminal/key-encoding.ts, key-mapping.ts, packages/vterm/src/viewport-adapter.ts, packages/xtermjs/src/backend.ts: empty). Re-issued 2026-10-31 13:2x PDT on the #32008 universal-key evidence: Termless moved bd730559 -> f736cce4 (vterm adapter backend.ts blob eadcd257 -> 8599e301, the adapter-sources extension; viewport-adapter.ts unchanged per the vterm-only delta); the cited file claims re-read at the exact-head GO. Re-bound 2026-10-31 to the Terminfo 44467e4e catalogue entry after a body-only prose merge moved its catalogue hash (Amendment 5 pending); decision, capture and sources unchanged from the superseded ev2 record.",
+    "scope": {
+      "subject": {
+        "kind": "lib",
+        "id": "vterm",
+        "version": "0.9.0",
+        "os": "linux"
+      },
+      "versions": ["0.9.0", "0.9.0"],
+      "suites": ["ac2088e663ff", "ac2088e663ff"]
+    },
+    "sources": [
+      "vterm 53a9eb9291b7880f4dc6a39a6802301049997a72 (tree 617ae6002c7befea7b3e43d11bf23e6b433e3d65, clean) packages/vterm/src/screen.ts: handleOSC :3596-4055 (case list in the reasons), :3613-3631 OSC 133, :3924-3941 OSC 633, :3921-3923 OSC 9 sink, :3988-3991 OSC 776, :4042-4053 OSC 1337, :2566-2612 XTWINOPS, :4106-4133 handleAPC, :588 getSemanticZones, :589 getSixelImages, :2854/:2867-2868/:2870-2871/:2876-2877/:2880/:2894-2895 DECRQM, :2944-2945 DECSCNM, :2972-2983 DECSET arms, :3023-3024 DECSET 2004, :3029-3030 DECSET 2031, :3043-3044 DECSET 1007, :4583-4589 DECKPAM/DECKPNM, :5482 getMode, :1271 host-encoder comment",
+      "Termless bd7305591fc65946f17498173ef601f5a749ce82 packages/vterm/src/backend.ts:25 import encodeKeyToAnsi, :75-85 createScreen options (no kittyGraphicsImages, no font), :203-204 getMode, :258 comment, :261-265 kittyGraphics false, :306 iterm2Images declaration, :335 encodeKey; packages/vterm/src/viewport-adapter.ts:477-480 mouse mode mapping, :691 onPaste; src/terminal/key-encoding.ts keyToAnsi(key) delegate; src/terminal/key-mapping.ts 193 lines, 0 keypad/modifyOtherKeys entries; packages/xtermjs/src/backend.ts:823 encodeKey: encodeKeyToAnsi; git diff --stat 2d974173..bd730559 over those files: empty",
+      "terminfo 9a127ea6a1cf5209715a536d400f22f496294ecf packages/probe-defs/src/extensions.ts:1199-1216 ABSENT_OSC_ENGINES.vterm (codes, reviewReasons, sourceCitation), :1360-1382 js qualifier match; packages/probe-defs/src/input.ts:7-27 lib callbacks; packages/probe-defs/src/modes.ts application-keypad lib callback; packages/run-parser/src/index.ts:811 decision values, :1400-1435 semantic-prompt-source-review binding",
+      "intake file 32000-vterm-fresh-review-intake.json (retained in the @dev/3 resume-20261028 workspace) sha256 54234b3e82827ecdd5b9996ccff9ecd8356e64ef0452ea5a6f3945b4e6a903bd; run f7817716a8a63020bf92f02631d6bc47 suite 1e7fca79d06c; merged root b7ed29245cc7ae500dd14ac2da45b6be622d5f97; @cto earlier vterm decisions for the dead run 11886cd3 (files 30695-vterm13-first-admission-decisions-v1.json 67dbf760, 30695-vterm13-encoder-three-decisions-v1.json abdf39ef; never applied) regenerated here"
+    ],
+    "evidence": {
+      "algorithm": "evidence-output-v1",
+      "projection": {
+        "cell": {
+          "assertions": [],
+          "criterionBranch": "os-input-review",
+          "frames": [],
+          "rawReplies": [
+            {
+              "key": "input.pixel-mouse",
+              "sha256": "0408d11c45de32a40f90daf4f847d9893ccef72754cf89b0a328905e8ad65e93"
+            }
+          ],
+          "replyPath": {
+            "decision": {
+              "member": true,
+              "reason": "vterm declares complete reply delivery bound to its loaded source and engine"
+            },
+            "declaration": {
+              "adapterSources": [
+                {
+                  "blobOid": "cb5719799dcdd5ae24e6fcf0dcad9965035ce54c",
+                  "path": "packages/vterm/src/index.ts"
+                },
+                {
+                  "blobOid": "8599e301dd046b1264403069289477ab65d71d3a",
+                  "path": "packages/vterm/src/backend.ts"
+                }
+              ],
+              "boundary": "feed-and-getCursor",
+              "engine": {
+                "kind": "source",
+                "repository": "git@github.com:beorn/vterm.git",
+                "treeOid": "617ae6002c7befea7b3e43d11bf23e6b433e3d65"
+              }
+            }
+          },
+          "tests": [
+            {
+              "id": "review",
+              "reason": "Library probe source injects no OS-level input; required independent review of the retained raw state pending",
+              "status": "test-todo"
+            }
+          ]
+        },
+        "feature": {
+          "catalogEntrySha256": "376ea830acb4a4f849c9928e09576c8d3d3ba0d3d6fbaaa1f1017a4e17926efe",
+          "featureId": "input.pixel-mouse"
+        },
+        "runtimeIdentity": {
+          "adapterSources": [
+            {
+              "blobOid": "cb5719799dcdd5ae24e6fcf0dcad9965035ce54c",
+              "path": "packages/vterm/src/index.ts"
+            },
+            {
+              "blobOid": "8599e301dd046b1264403069289477ab65d71d3a",
+              "path": "packages/vterm/src/backend.ts"
+            }
+          ],
+          "adapterVersion": "0.10.2",
+          "engineVersion": "0.9.0",
+          "integrity": {
+            "cleanTree": true,
+            "kind": "source",
+            "repository": "git@github.com:beorn/vterm.git",
+            "treeOid": "617ae6002c7befea7b3e43d11bf23e6b433e3d65"
+          },
+          "kind": "js",
+          "runtimeFormat": "js"
+        },
+        "subject": {
+          "id": "vterm",
+          "kind": "lib",
+          "os": "linux",
+          "version": "0.9.0"
+        }
+      },
+      "sha256": "dcd220cd6cc106c137f78ad355597fa73e4aa96d93390ad23506e4afbd9e4703"
+    }
+  },
+  {
+    "id": "cto-vterm48-input.urxvt-mouse-ev3",
+    "supersedes": ["cto-vterm48-input.urxvt-mouse-ev2"],
+    "runId": "88165881f29e545ff63853338ff7e37f",
+    "featureId": "input.urxvt-mouse",
+    "captureSha256": "709c01252d5cf23e39b220e221d61f41fcd1e65f7096a03def3466e124ea5c6c",
+    "decision": "untestable",
+    "reviewed": true,
+    "reviewer": "@cto",
+    "reason": "Independent source review at vterm 53a9eb9291b7880f4dc6a39a6802301049997a72 (tree 617ae6002c7befea7b3e43d11bf23e6b433e3d65, clean) packages/vterm/src/screen.ts: DECSET 1015 (urxvt encoding) is tracked as mode state only (:2979 case 1015, together with :2975-2983 setting mouseTracking/mouseTrackingMode for 9/1000/1002/1003/1015/1016, :2988 sgrMouse, :3041 utf8MouseMode); the engine contains no mouse event encoder (git grep encodeMouse|mouseEvent|wheel over packages/vterm/src at the pin: 0 hits outside the mode names), and Termless bd7305591fc65946f17498173ef601f5a749ce82 packages/vterm/src/viewport-adapter.ts:477-480 only maps the tracked mode for an embedder. The cell's criterion is the encoded mouse report byte stream, which has no headless observable and no engine API to bind. Untestable for the lib cell; the terminal arm carries the XTEST criterion. Retained raw state is the os-input-review placeholder ({input:false} or the measured mode readings; no bytes are injected in the headless lib context); this decision rests on the pinned engine and host sources, not on the placeholder. It regenerates the @cto decision of the same text for run 11886cd3 (never applied) on the fresh run; nothing about the engine or host encoder changed between the pins (Termless diff 2d974173..bd730559 over src/terminal/key-encoding.ts, key-mapping.ts, packages/vterm/src/viewport-adapter.ts, packages/xtermjs/src/backend.ts: empty). Re-issued 2026-10-31 13:2x PDT on the #32008 universal-key evidence: Termless moved bd730559 -> f736cce4 (vterm adapter backend.ts blob eadcd257 -> 8599e301, the adapter-sources extension; viewport-adapter.ts unchanged per the vterm-only delta); the cited file claims re-read at the exact-head GO. Re-bound 2026-10-31 to the Terminfo 44467e4e catalogue entry after a body-only prose merge moved its catalogue hash (Amendment 5 pending); decision, capture and sources unchanged from the superseded ev2 record.",
+    "scope": {
+      "subject": {
+        "kind": "lib",
+        "id": "vterm",
+        "version": "0.9.0",
+        "os": "linux"
+      },
+      "versions": ["0.9.0", "0.9.0"],
+      "suites": ["ac2088e663ff", "ac2088e663ff"]
+    },
+    "sources": [
+      "vterm 53a9eb9291b7880f4dc6a39a6802301049997a72 (tree 617ae6002c7befea7b3e43d11bf23e6b433e3d65, clean) packages/vterm/src/screen.ts: handleOSC :3596-4055 (case list in the reasons), :3613-3631 OSC 133, :3924-3941 OSC 633, :3921-3923 OSC 9 sink, :3988-3991 OSC 776, :4042-4053 OSC 1337, :2566-2612 XTWINOPS, :4106-4133 handleAPC, :588 getSemanticZones, :589 getSixelImages, :2854/:2867-2868/:2870-2871/:2876-2877/:2880/:2894-2895 DECRQM, :2944-2945 DECSCNM, :2972-2983 DECSET arms, :3023-3024 DECSET 2004, :3029-3030 DECSET 2031, :3043-3044 DECSET 1007, :4583-4589 DECKPAM/DECKPNM, :5482 getMode, :1271 host-encoder comment",
+      "Termless bd7305591fc65946f17498173ef601f5a749ce82 packages/vterm/src/backend.ts:25 import encodeKeyToAnsi, :75-85 createScreen options (no kittyGraphicsImages, no font), :203-204 getMode, :258 comment, :261-265 kittyGraphics false, :306 iterm2Images declaration, :335 encodeKey; packages/vterm/src/viewport-adapter.ts:477-480 mouse mode mapping, :691 onPaste; src/terminal/key-encoding.ts keyToAnsi(key) delegate; src/terminal/key-mapping.ts 193 lines, 0 keypad/modifyOtherKeys entries; packages/xtermjs/src/backend.ts:823 encodeKey: encodeKeyToAnsi; git diff --stat 2d974173..bd730559 over those files: empty",
+      "terminfo 9a127ea6a1cf5209715a536d400f22f496294ecf packages/probe-defs/src/extensions.ts:1199-1216 ABSENT_OSC_ENGINES.vterm (codes, reviewReasons, sourceCitation), :1360-1382 js qualifier match; packages/probe-defs/src/input.ts:7-27 lib callbacks; packages/probe-defs/src/modes.ts application-keypad lib callback; packages/run-parser/src/index.ts:811 decision values, :1400-1435 semantic-prompt-source-review binding",
+      "intake file 32000-vterm-fresh-review-intake.json (retained in the @dev/3 resume-20261028 workspace) sha256 54234b3e82827ecdd5b9996ccff9ecd8356e64ef0452ea5a6f3945b4e6a903bd; run f7817716a8a63020bf92f02631d6bc47 suite 1e7fca79d06c; merged root b7ed29245cc7ae500dd14ac2da45b6be622d5f97; @cto earlier vterm decisions for the dead run 11886cd3 (files 30695-vterm13-first-admission-decisions-v1.json 67dbf760, 30695-vterm13-encoder-three-decisions-v1.json abdf39ef; never applied) regenerated here"
+    ],
+    "evidence": {
+      "algorithm": "evidence-output-v1",
+      "projection": {
+        "cell": {
+          "assertions": [],
+          "criterionBranch": "os-input-review",
+          "frames": [],
+          "rawReplies": [
+            {
+              "key": "input.urxvt-mouse",
+              "sha256": "0408d11c45de32a40f90daf4f847d9893ccef72754cf89b0a328905e8ad65e93"
+            }
+          ],
+          "replyPath": {
+            "decision": {
+              "member": true,
+              "reason": "vterm declares complete reply delivery bound to its loaded source and engine"
+            },
+            "declaration": {
+              "adapterSources": [
+                {
+                  "blobOid": "cb5719799dcdd5ae24e6fcf0dcad9965035ce54c",
+                  "path": "packages/vterm/src/index.ts"
+                },
+                {
+                  "blobOid": "8599e301dd046b1264403069289477ab65d71d3a",
+                  "path": "packages/vterm/src/backend.ts"
+                }
+              ],
+              "boundary": "feed-and-getCursor",
+              "engine": {
+                "kind": "source",
+                "repository": "git@github.com:beorn/vterm.git",
+                "treeOid": "617ae6002c7befea7b3e43d11bf23e6b433e3d65"
+              }
+            }
+          },
+          "tests": [
+            {
+              "id": "review",
+              "reason": "Library probe source injects no OS-level input; required independent review of the retained raw state pending",
+              "status": "test-todo"
+            }
+          ]
+        },
+        "feature": {
+          "catalogEntrySha256": "1ed4f707ecfac29b18cf8e7c48b6234e601aa2ee26105bcbcf6a8395dd1b2902",
+          "featureId": "input.urxvt-mouse"
+        },
+        "runtimeIdentity": {
+          "adapterSources": [
+            {
+              "blobOid": "cb5719799dcdd5ae24e6fcf0dcad9965035ce54c",
+              "path": "packages/vterm/src/index.ts"
+            },
+            {
+              "blobOid": "8599e301dd046b1264403069289477ab65d71d3a",
+              "path": "packages/vterm/src/backend.ts"
+            }
+          ],
+          "adapterVersion": "0.10.2",
+          "engineVersion": "0.9.0",
+          "integrity": {
+            "cleanTree": true,
+            "kind": "source",
+            "repository": "git@github.com:beorn/vterm.git",
+            "treeOid": "617ae6002c7befea7b3e43d11bf23e6b433e3d65"
+          },
+          "kind": "js",
+          "runtimeFormat": "js"
+        },
+        "subject": {
+          "id": "vterm",
+          "kind": "lib",
+          "os": "linux",
+          "version": "0.9.0"
+        }
+      },
+      "sha256": "8621966ffe4f006a9bf3b6625ea5b54e1c6eaf64752ba1df551b63a6c1d2ead2"
+    }
+  },
+  {
+    "id": "cto-vterm48-input.x10-mouse-ev3",
+    "supersedes": ["cto-vterm48-input.x10-mouse-ev2"],
+    "runId": "88165881f29e545ff63853338ff7e37f",
+    "featureId": "input.x10-mouse",
+    "captureSha256": "09a0a2b237fd87f66e9c827523979c7d6524823b119b08ef945d419fcfbfc036",
+    "decision": "untestable",
+    "reviewed": true,
+    "reviewer": "@cto",
+    "reason": "Independent source review at vterm 53a9eb9291b7880f4dc6a39a6802301049997a72 (tree 617ae6002c7befea7b3e43d11bf23e6b433e3d65, clean) packages/vterm/src/screen.ts: DECSET 9 (X10 mouse) is tracked as mode state only (:2975 case 9, together with :2975-2983 setting mouseTracking/mouseTrackingMode for 9/1000/1002/1003/1015/1016, :2988 sgrMouse, :3041 utf8MouseMode); the engine contains no mouse event encoder (git grep encodeMouse|mouseEvent|wheel over packages/vterm/src at the pin: 0 hits outside the mode names), and Termless bd7305591fc65946f17498173ef601f5a749ce82 packages/vterm/src/viewport-adapter.ts:477-480 only maps the tracked mode for an embedder. The cell's criterion is the encoded mouse report byte stream, which has no headless observable and no engine API to bind. Untestable for the lib cell; the terminal arm carries the XTEST criterion. Retained raw state is the os-input-review placeholder ({input:false} or the measured mode readings; no bytes are injected in the headless lib context); this decision rests on the pinned engine and host sources, not on the placeholder. It regenerates the @cto decision of the same text for run 11886cd3 (never applied) on the fresh run; nothing about the engine or host encoder changed between the pins (Termless diff 2d974173..bd730559 over src/terminal/key-encoding.ts, key-mapping.ts, packages/vterm/src/viewport-adapter.ts, packages/xtermjs/src/backend.ts: empty). Re-issued 2026-10-31 13:2x PDT on the #32008 universal-key evidence: Termless moved bd730559 -> f736cce4 (vterm adapter backend.ts blob eadcd257 -> 8599e301, the adapter-sources extension; viewport-adapter.ts unchanged per the vterm-only delta); the cited file claims re-read at the exact-head GO. Re-bound 2026-10-31 to the Terminfo 44467e4e catalogue entry after a body-only prose merge moved its catalogue hash (Amendment 5 pending); decision, capture and sources unchanged from the superseded ev2 record.",
+    "scope": {
+      "subject": {
+        "kind": "lib",
+        "id": "vterm",
+        "version": "0.9.0",
+        "os": "linux"
+      },
+      "versions": ["0.9.0", "0.9.0"],
+      "suites": ["ac2088e663ff", "ac2088e663ff"]
+    },
+    "sources": [
+      "vterm 53a9eb9291b7880f4dc6a39a6802301049997a72 (tree 617ae6002c7befea7b3e43d11bf23e6b433e3d65, clean) packages/vterm/src/screen.ts: handleOSC :3596-4055 (case list in the reasons), :3613-3631 OSC 133, :3924-3941 OSC 633, :3921-3923 OSC 9 sink, :3988-3991 OSC 776, :4042-4053 OSC 1337, :2566-2612 XTWINOPS, :4106-4133 handleAPC, :588 getSemanticZones, :589 getSixelImages, :2854/:2867-2868/:2870-2871/:2876-2877/:2880/:2894-2895 DECRQM, :2944-2945 DECSCNM, :2972-2983 DECSET arms, :3023-3024 DECSET 2004, :3029-3030 DECSET 2031, :3043-3044 DECSET 1007, :4583-4589 DECKPAM/DECKPNM, :5482 getMode, :1271 host-encoder comment",
+      "Termless bd7305591fc65946f17498173ef601f5a749ce82 packages/vterm/src/backend.ts:25 import encodeKeyToAnsi, :75-85 createScreen options (no kittyGraphicsImages, no font), :203-204 getMode, :258 comment, :261-265 kittyGraphics false, :306 iterm2Images declaration, :335 encodeKey; packages/vterm/src/viewport-adapter.ts:477-480 mouse mode mapping, :691 onPaste; src/terminal/key-encoding.ts keyToAnsi(key) delegate; src/terminal/key-mapping.ts 193 lines, 0 keypad/modifyOtherKeys entries; packages/xtermjs/src/backend.ts:823 encodeKey: encodeKeyToAnsi; git diff --stat 2d974173..bd730559 over those files: empty",
+      "terminfo 9a127ea6a1cf5209715a536d400f22f496294ecf packages/probe-defs/src/extensions.ts:1199-1216 ABSENT_OSC_ENGINES.vterm (codes, reviewReasons, sourceCitation), :1360-1382 js qualifier match; packages/probe-defs/src/input.ts:7-27 lib callbacks; packages/probe-defs/src/modes.ts application-keypad lib callback; packages/run-parser/src/index.ts:811 decision values, :1400-1435 semantic-prompt-source-review binding",
+      "intake file 32000-vterm-fresh-review-intake.json (retained in the @dev/3 resume-20261028 workspace) sha256 54234b3e82827ecdd5b9996ccff9ecd8356e64ef0452ea5a6f3945b4e6a903bd; run f7817716a8a63020bf92f02631d6bc47 suite 1e7fca79d06c; merged root b7ed29245cc7ae500dd14ac2da45b6be622d5f97; @cto earlier vterm decisions for the dead run 11886cd3 (files 30695-vterm13-first-admission-decisions-v1.json 67dbf760, 30695-vterm13-encoder-three-decisions-v1.json abdf39ef; never applied) regenerated here"
+    ],
+    "evidence": {
+      "algorithm": "evidence-output-v1",
+      "projection": {
+        "cell": {
+          "assertions": [],
+          "criterionBranch": "os-input-review",
+          "frames": [],
+          "rawReplies": [
+            {
+              "key": "input.x10-mouse",
+              "sha256": "0408d11c45de32a40f90daf4f847d9893ccef72754cf89b0a328905e8ad65e93"
+            }
+          ],
+          "replyPath": {
+            "decision": {
+              "member": true,
+              "reason": "vterm declares complete reply delivery bound to its loaded source and engine"
+            },
+            "declaration": {
+              "adapterSources": [
+                {
+                  "blobOid": "cb5719799dcdd5ae24e6fcf0dcad9965035ce54c",
+                  "path": "packages/vterm/src/index.ts"
+                },
+                {
+                  "blobOid": "8599e301dd046b1264403069289477ab65d71d3a",
+                  "path": "packages/vterm/src/backend.ts"
+                }
+              ],
+              "boundary": "feed-and-getCursor",
+              "engine": {
+                "kind": "source",
+                "repository": "git@github.com:beorn/vterm.git",
+                "treeOid": "617ae6002c7befea7b3e43d11bf23e6b433e3d65"
+              }
+            }
+          },
+          "tests": [
+            {
+              "id": "review",
+              "reason": "Library probe source injects no OS-level input; required independent review of the retained raw state pending",
+              "status": "test-todo"
+            }
+          ]
+        },
+        "feature": {
+          "catalogEntrySha256": "990e3c8b2ae45c25a071bd4959b47c7f309b7621f83c9bc2ffa37941888c8943",
+          "featureId": "input.x10-mouse"
+        },
+        "runtimeIdentity": {
+          "adapterSources": [
+            {
+              "blobOid": "cb5719799dcdd5ae24e6fcf0dcad9965035ce54c",
+              "path": "packages/vterm/src/index.ts"
+            },
+            {
+              "blobOid": "8599e301dd046b1264403069289477ab65d71d3a",
+              "path": "packages/vterm/src/backend.ts"
+            }
+          ],
+          "adapterVersion": "0.10.2",
+          "engineVersion": "0.9.0",
+          "integrity": {
+            "cleanTree": true,
+            "kind": "source",
+            "repository": "git@github.com:beorn/vterm.git",
+            "treeOid": "617ae6002c7befea7b3e43d11bf23e6b433e3d65"
+          },
+          "kind": "js",
+          "runtimeFormat": "js"
+        },
+        "subject": {
+          "id": "vterm",
+          "kind": "lib",
+          "os": "linux",
+          "version": "0.9.0"
+        }
+      },
+      "sha256": "685401b20d2a061923ed9224c109a2bd793884398689e0a39fa92f1246ef03de"
+    }
+  },
+  {
+    "id": "cto-vterm48-input.xtest-click-ev3",
+    "supersedes": ["cto-vterm48-input.xtest-click-ev2"],
+    "runId": "88165881f29e545ff63853338ff7e37f",
+    "featureId": "input.xtest-click",
+    "captureSha256": "6b2b6dd7018b72e4fa52add8ecdeaa0829f5cf9eea254f4e134906bf6b79037f",
+    "decision": "untestable",
+    "reviewed": true,
+    "reviewer": "@cto",
+    "reason": "Independent source review at vterm 53a9eb9291b7880f4dc6a39a6802301049997a72 (tree 617ae6002c7befea7b3e43d11bf23e6b433e3d65, clean) packages/vterm/src/screen.ts: the cell's criterion is OS-level click injection (X11 XTEST) observed through the terminal's encoded report. A library runs under no display server and has no input path other than its byte feed (process(); git grep -i XTEST|xdotool|inject over screen.ts at the pin: 0 hits), and the headless lib probe injects nothing (its own headlessXtestReview reason). No headless observable and no engine API can exist for this cell. Untestable for the lib cell; the terminal arm carries the XTEST criterion. Retained raw state is the os-input-review placeholder ({input:false} or the measured mode readings; no bytes are injected in the headless lib context); this decision rests on the pinned engine and host sources, not on the placeholder. It regenerates the @cto decision of the same text for run 11886cd3 (never applied) on the fresh run; nothing about the engine or host encoder changed between the pins (Termless diff 2d974173..bd730559 over src/terminal/key-encoding.ts, key-mapping.ts, packages/vterm/src/viewport-adapter.ts, packages/xtermjs/src/backend.ts: empty). Re-issued 2026-10-31 13:2x PDT on the #32008 universal-key evidence (same vterm tree 617ae600, adapter backend.ts blob eadcd257 -> 8599e301). Re-bound 2026-10-31 to the Terminfo 44467e4e catalogue entry after a body-only prose merge moved its catalogue hash (Amendment 5 pending); decision, capture and sources unchanged from the superseded ev2 record.",
+    "scope": {
+      "subject": {
+        "kind": "lib",
+        "id": "vterm",
+        "version": "0.9.0",
+        "os": "linux"
+      },
+      "versions": ["0.9.0", "0.9.0"],
+      "suites": ["ac2088e663ff", "ac2088e663ff"]
+    },
+    "sources": [
+      "vterm 53a9eb9291b7880f4dc6a39a6802301049997a72 (tree 617ae6002c7befea7b3e43d11bf23e6b433e3d65, clean) packages/vterm/src/screen.ts: handleOSC :3596-4055 (case list in the reasons), :3613-3631 OSC 133, :3924-3941 OSC 633, :3921-3923 OSC 9 sink, :3988-3991 OSC 776, :4042-4053 OSC 1337, :2566-2612 XTWINOPS, :4106-4133 handleAPC, :588 getSemanticZones, :589 getSixelImages, :2854/:2867-2868/:2870-2871/:2876-2877/:2880/:2894-2895 DECRQM, :2944-2945 DECSCNM, :2972-2983 DECSET arms, :3023-3024 DECSET 2004, :3029-3030 DECSET 2031, :3043-3044 DECSET 1007, :4583-4589 DECKPAM/DECKPNM, :5482 getMode, :1271 host-encoder comment",
+      "Termless bd7305591fc65946f17498173ef601f5a749ce82 packages/vterm/src/backend.ts:25 import encodeKeyToAnsi, :75-85 createScreen options (no kittyGraphicsImages, no font), :203-204 getMode, :258 comment, :261-265 kittyGraphics false, :306 iterm2Images declaration, :335 encodeKey; packages/vterm/src/viewport-adapter.ts:477-480 mouse mode mapping, :691 onPaste; src/terminal/key-encoding.ts keyToAnsi(key) delegate; src/terminal/key-mapping.ts 193 lines, 0 keypad/modifyOtherKeys entries; packages/xtermjs/src/backend.ts:823 encodeKey: encodeKeyToAnsi; git diff --stat 2d974173..bd730559 over those files: empty",
+      "terminfo 9a127ea6a1cf5209715a536d400f22f496294ecf packages/probe-defs/src/extensions.ts:1199-1216 ABSENT_OSC_ENGINES.vterm (codes, reviewReasons, sourceCitation), :1360-1382 js qualifier match; packages/probe-defs/src/input.ts:7-27 lib callbacks; packages/probe-defs/src/modes.ts application-keypad lib callback; packages/run-parser/src/index.ts:811 decision values, :1400-1435 semantic-prompt-source-review binding",
+      "intake file 32000-vterm-fresh-review-intake.json (retained in the @dev/3 resume-20261028 workspace) sha256 54234b3e82827ecdd5b9996ccff9ecd8356e64ef0452ea5a6f3945b4e6a903bd; run f7817716a8a63020bf92f02631d6bc47 suite 1e7fca79d06c; merged root b7ed29245cc7ae500dd14ac2da45b6be622d5f97; @cto earlier vterm decisions for the dead run 11886cd3 (files 30695-vterm13-first-admission-decisions-v1.json 67dbf760, 30695-vterm13-encoder-three-decisions-v1.json abdf39ef; never applied) regenerated here"
+    ],
+    "evidence": {
+      "algorithm": "evidence-output-v1",
+      "projection": {
+        "cell": {
+          "assertions": [],
+          "criterionBranch": "os-input-review",
+          "frames": [],
+          "rawReplies": [
+            {
+              "key": "input.xtest-click",
+              "sha256": "0408d11c45de32a40f90daf4f847d9893ccef72754cf89b0a328905e8ad65e93"
+            }
+          ],
+          "replyPath": {
+            "decision": {
+              "member": true,
+              "reason": "vterm declares complete reply delivery bound to its loaded source and engine"
+            },
+            "declaration": {
+              "adapterSources": [
+                {
+                  "blobOid": "cb5719799dcdd5ae24e6fcf0dcad9965035ce54c",
+                  "path": "packages/vterm/src/index.ts"
+                },
+                {
+                  "blobOid": "8599e301dd046b1264403069289477ab65d71d3a",
+                  "path": "packages/vterm/src/backend.ts"
+                }
+              ],
+              "boundary": "feed-and-getCursor",
+              "engine": {
+                "kind": "source",
+                "repository": "git@github.com:beorn/vterm.git",
+                "treeOid": "617ae6002c7befea7b3e43d11bf23e6b433e3d65"
+              }
+            }
+          },
+          "tests": [
+            {
+              "id": "review",
+              "reason": "Library probe source injects no OS-level input; required independent review of the retained raw state pending",
+              "status": "test-todo"
+            }
+          ]
+        },
+        "feature": {
+          "catalogEntrySha256": "c98bb040ea7a9f606b46c180d98e99eff8fb0488f894bdfcbde7d541af52e7ee",
+          "featureId": "input.xtest-click"
+        },
+        "runtimeIdentity": {
+          "adapterSources": [
+            {
+              "blobOid": "cb5719799dcdd5ae24e6fcf0dcad9965035ce54c",
+              "path": "packages/vterm/src/index.ts"
+            },
+            {
+              "blobOid": "8599e301dd046b1264403069289477ab65d71d3a",
+              "path": "packages/vterm/src/backend.ts"
+            }
+          ],
+          "adapterVersion": "0.10.2",
+          "engineVersion": "0.9.0",
+          "integrity": {
+            "cleanTree": true,
+            "kind": "source",
+            "repository": "git@github.com:beorn/vterm.git",
+            "treeOid": "617ae6002c7befea7b3e43d11bf23e6b433e3d65"
+          },
+          "kind": "js",
+          "runtimeFormat": "js"
+        },
+        "subject": {
+          "id": "vterm",
+          "kind": "lib",
+          "os": "linux",
+          "version": "0.9.0"
+        }
+      },
+      "sha256": "dfe9f848ce387649ffcb51e410abdda09afd609671412af5ada259d9d634a5d3"
+    }
+  },
+  {
+    "id": "cto-vterm48-input.xtest-key-ev3",
+    "supersedes": ["cto-vterm48-input.xtest-key-ev2"],
+    "runId": "88165881f29e545ff63853338ff7e37f",
+    "featureId": "input.xtest-key",
+    "captureSha256": "6a3e2cf975850209ff8f758e0adfddde5727b9ac7f8f44243440b513b6af77c1",
+    "decision": "untestable",
+    "reviewed": true,
+    "reviewer": "@cto",
+    "reason": "Independent source review at vterm 53a9eb9291b7880f4dc6a39a6802301049997a72 (tree 617ae6002c7befea7b3e43d11bf23e6b433e3d65, clean) packages/vterm/src/screen.ts: the cell's criterion is OS-level key injection (X11 XTEST) observed through the terminal's encoded report. A library runs under no display server and has no input path other than its byte feed (process(); git grep -i XTEST|xdotool|inject over screen.ts at the pin: 0 hits), and the headless lib probe injects nothing (its own headlessXtestReview reason). No headless observable and no engine API can exist for this cell. Untestable for the lib cell; the terminal arm carries the XTEST criterion. Retained raw state is the os-input-review placeholder ({input:false} or the measured mode readings; no bytes are injected in the headless lib context); this decision rests on the pinned engine and host sources, not on the placeholder. It regenerates the @cto decision of the same text for run 11886cd3 (never applied) on the fresh run; nothing about the engine or host encoder changed between the pins (Termless diff 2d974173..bd730559 over src/terminal/key-encoding.ts, key-mapping.ts, packages/vterm/src/viewport-adapter.ts, packages/xtermjs/src/backend.ts: empty). Re-issued 2026-10-31 13:2x PDT on the #32008 universal-key evidence (same vterm tree 617ae600, adapter backend.ts blob eadcd257 -> 8599e301). Re-bound 2026-10-31 to the Terminfo 44467e4e catalogue entry after a body-only prose merge moved its catalogue hash (Amendment 5 pending); decision, capture and sources unchanged from the superseded ev2 record.",
+    "scope": {
+      "subject": {
+        "kind": "lib",
+        "id": "vterm",
+        "version": "0.9.0",
+        "os": "linux"
+      },
+      "versions": ["0.9.0", "0.9.0"],
+      "suites": ["ac2088e663ff", "ac2088e663ff"]
+    },
+    "sources": [
+      "vterm 53a9eb9291b7880f4dc6a39a6802301049997a72 (tree 617ae6002c7befea7b3e43d11bf23e6b433e3d65, clean) packages/vterm/src/screen.ts: handleOSC :3596-4055 (case list in the reasons), :3613-3631 OSC 133, :3924-3941 OSC 633, :3921-3923 OSC 9 sink, :3988-3991 OSC 776, :4042-4053 OSC 1337, :2566-2612 XTWINOPS, :4106-4133 handleAPC, :588 getSemanticZones, :589 getSixelImages, :2854/:2867-2868/:2870-2871/:2876-2877/:2880/:2894-2895 DECRQM, :2944-2945 DECSCNM, :2972-2983 DECSET arms, :3023-3024 DECSET 2004, :3029-3030 DECSET 2031, :3043-3044 DECSET 1007, :4583-4589 DECKPAM/DECKPNM, :5482 getMode, :1271 host-encoder comment",
+      "Termless bd7305591fc65946f17498173ef601f5a749ce82 packages/vterm/src/backend.ts:25 import encodeKeyToAnsi, :75-85 createScreen options (no kittyGraphicsImages, no font), :203-204 getMode, :258 comment, :261-265 kittyGraphics false, :306 iterm2Images declaration, :335 encodeKey; packages/vterm/src/viewport-adapter.ts:477-480 mouse mode mapping, :691 onPaste; src/terminal/key-encoding.ts keyToAnsi(key) delegate; src/terminal/key-mapping.ts 193 lines, 0 keypad/modifyOtherKeys entries; packages/xtermjs/src/backend.ts:823 encodeKey: encodeKeyToAnsi; git diff --stat 2d974173..bd730559 over those files: empty",
+      "terminfo 9a127ea6a1cf5209715a536d400f22f496294ecf packages/probe-defs/src/extensions.ts:1199-1216 ABSENT_OSC_ENGINES.vterm (codes, reviewReasons, sourceCitation), :1360-1382 js qualifier match; packages/probe-defs/src/input.ts:7-27 lib callbacks; packages/probe-defs/src/modes.ts application-keypad lib callback; packages/run-parser/src/index.ts:811 decision values, :1400-1435 semantic-prompt-source-review binding",
+      "intake file 32000-vterm-fresh-review-intake.json (retained in the @dev/3 resume-20261028 workspace) sha256 54234b3e82827ecdd5b9996ccff9ecd8356e64ef0452ea5a6f3945b4e6a903bd; run f7817716a8a63020bf92f02631d6bc47 suite 1e7fca79d06c; merged root b7ed29245cc7ae500dd14ac2da45b6be622d5f97; @cto earlier vterm decisions for the dead run 11886cd3 (files 30695-vterm13-first-admission-decisions-v1.json 67dbf760, 30695-vterm13-encoder-three-decisions-v1.json abdf39ef; never applied) regenerated here"
+    ],
+    "evidence": {
+      "algorithm": "evidence-output-v1",
+      "projection": {
+        "cell": {
+          "assertions": [],
+          "criterionBranch": "os-input-review",
+          "frames": [],
+          "rawReplies": [
+            {
+              "key": "input.xtest-key",
+              "sha256": "0408d11c45de32a40f90daf4f847d9893ccef72754cf89b0a328905e8ad65e93"
+            }
+          ],
+          "replyPath": {
+            "decision": {
+              "member": true,
+              "reason": "vterm declares complete reply delivery bound to its loaded source and engine"
+            },
+            "declaration": {
+              "adapterSources": [
+                {
+                  "blobOid": "cb5719799dcdd5ae24e6fcf0dcad9965035ce54c",
+                  "path": "packages/vterm/src/index.ts"
+                },
+                {
+                  "blobOid": "8599e301dd046b1264403069289477ab65d71d3a",
+                  "path": "packages/vterm/src/backend.ts"
+                }
+              ],
+              "boundary": "feed-and-getCursor",
+              "engine": {
+                "kind": "source",
+                "repository": "git@github.com:beorn/vterm.git",
+                "treeOid": "617ae6002c7befea7b3e43d11bf23e6b433e3d65"
+              }
+            }
+          },
+          "tests": [
+            {
+              "id": "review",
+              "reason": "Library probe source injects no OS-level input; required independent review of the retained raw state pending",
+              "status": "test-todo"
+            }
+          ]
+        },
+        "feature": {
+          "catalogEntrySha256": "7dd9f1f6a5d488e12b84c902bfcc5b7d05eb69e4995da4381c318cfa23a001a8",
+          "featureId": "input.xtest-key"
+        },
+        "runtimeIdentity": {
+          "adapterSources": [
+            {
+              "blobOid": "cb5719799dcdd5ae24e6fcf0dcad9965035ce54c",
+              "path": "packages/vterm/src/index.ts"
+            },
+            {
+              "blobOid": "8599e301dd046b1264403069289477ab65d71d3a",
+              "path": "packages/vterm/src/backend.ts"
+            }
+          ],
+          "adapterVersion": "0.10.2",
+          "engineVersion": "0.9.0",
+          "integrity": {
+            "cleanTree": true,
+            "kind": "source",
+            "repository": "git@github.com:beorn/vterm.git",
+            "treeOid": "617ae6002c7befea7b3e43d11bf23e6b433e3d65"
+          },
+          "kind": "js",
+          "runtimeFormat": "js"
+        },
+        "subject": {
+          "id": "vterm",
+          "kind": "lib",
+          "os": "linux",
+          "version": "0.9.0"
+        }
+      },
+      "sha256": "e7553c36786b1984d232e16c898fb68ed92157b83e647936e5d41bd81712066e"
+    }
+  },
+  {
+    "id": "cto-vterm48-input.xtest-wheel-ev3",
+    "supersedes": ["cto-vterm48-input.xtest-wheel-ev2"],
+    "runId": "88165881f29e545ff63853338ff7e37f",
+    "featureId": "input.xtest-wheel",
+    "captureSha256": "d5f72a1e4f5186e86e7dc6bebcd7623a3d923405d90479d940da13706808b13a",
+    "decision": "untestable",
+    "reviewed": true,
+    "reviewer": "@cto",
+    "reason": "Independent source review at vterm 53a9eb9291b7880f4dc6a39a6802301049997a72 (tree 617ae6002c7befea7b3e43d11bf23e6b433e3d65, clean) packages/vterm/src/screen.ts: the cell's criterion is OS-level wheel injection (X11 XTEST) observed through the terminal's encoded report. A library runs under no display server and has no input path other than its byte feed (process(); git grep -i XTEST|xdotool|inject over screen.ts at the pin: 0 hits), and the headless lib probe injects nothing (its own headlessXtestReview reason). No headless observable and no engine API can exist for this cell. Untestable for the lib cell; the terminal arm carries the XTEST criterion. Retained raw state is the os-input-review placeholder ({input:false} or the measured mode readings; no bytes are injected in the headless lib context); this decision rests on the pinned engine and host sources, not on the placeholder. It regenerates the @cto decision of the same text for run 11886cd3 (never applied) on the fresh run; nothing about the engine or host encoder changed between the pins (Termless diff 2d974173..bd730559 over src/terminal/key-encoding.ts, key-mapping.ts, packages/vterm/src/viewport-adapter.ts, packages/xtermjs/src/backend.ts: empty). Re-issued 2026-10-31 13:2x PDT on the #32008 universal-key evidence (same vterm tree 617ae600, adapter backend.ts blob eadcd257 -> 8599e301). Re-bound 2026-10-31 to the Terminfo 44467e4e catalogue entry after a body-only prose merge moved its catalogue hash (Amendment 5 pending); decision, capture and sources unchanged from the superseded ev2 record.",
+    "scope": {
+      "subject": {
+        "kind": "lib",
+        "id": "vterm",
+        "version": "0.9.0",
+        "os": "linux"
+      },
+      "versions": ["0.9.0", "0.9.0"],
+      "suites": ["ac2088e663ff", "ac2088e663ff"]
+    },
+    "sources": [
+      "vterm 53a9eb9291b7880f4dc6a39a6802301049997a72 (tree 617ae6002c7befea7b3e43d11bf23e6b433e3d65, clean) packages/vterm/src/screen.ts: handleOSC :3596-4055 (case list in the reasons), :3613-3631 OSC 133, :3924-3941 OSC 633, :3921-3923 OSC 9 sink, :3988-3991 OSC 776, :4042-4053 OSC 1337, :2566-2612 XTWINOPS, :4106-4133 handleAPC, :588 getSemanticZones, :589 getSixelImages, :2854/:2867-2868/:2870-2871/:2876-2877/:2880/:2894-2895 DECRQM, :2944-2945 DECSCNM, :2972-2983 DECSET arms, :3023-3024 DECSET 2004, :3029-3030 DECSET 2031, :3043-3044 DECSET 1007, :4583-4589 DECKPAM/DECKPNM, :5482 getMode, :1271 host-encoder comment",
+      "Termless bd7305591fc65946f17498173ef601f5a749ce82 packages/vterm/src/backend.ts:25 import encodeKeyToAnsi, :75-85 createScreen options (no kittyGraphicsImages, no font), :203-204 getMode, :258 comment, :261-265 kittyGraphics false, :306 iterm2Images declaration, :335 encodeKey; packages/vterm/src/viewport-adapter.ts:477-480 mouse mode mapping, :691 onPaste; src/terminal/key-encoding.ts keyToAnsi(key) delegate; src/terminal/key-mapping.ts 193 lines, 0 keypad/modifyOtherKeys entries; packages/xtermjs/src/backend.ts:823 encodeKey: encodeKeyToAnsi; git diff --stat 2d974173..bd730559 over those files: empty",
+      "terminfo 9a127ea6a1cf5209715a536d400f22f496294ecf packages/probe-defs/src/extensions.ts:1199-1216 ABSENT_OSC_ENGINES.vterm (codes, reviewReasons, sourceCitation), :1360-1382 js qualifier match; packages/probe-defs/src/input.ts:7-27 lib callbacks; packages/probe-defs/src/modes.ts application-keypad lib callback; packages/run-parser/src/index.ts:811 decision values, :1400-1435 semantic-prompt-source-review binding",
+      "intake file 32000-vterm-fresh-review-intake.json (retained in the @dev/3 resume-20261028 workspace) sha256 54234b3e82827ecdd5b9996ccff9ecd8356e64ef0452ea5a6f3945b4e6a903bd; run f7817716a8a63020bf92f02631d6bc47 suite 1e7fca79d06c; merged root b7ed29245cc7ae500dd14ac2da45b6be622d5f97; @cto earlier vterm decisions for the dead run 11886cd3 (files 30695-vterm13-first-admission-decisions-v1.json 67dbf760, 30695-vterm13-encoder-three-decisions-v1.json abdf39ef; never applied) regenerated here"
+    ],
+    "evidence": {
+      "algorithm": "evidence-output-v1",
+      "projection": {
+        "cell": {
+          "assertions": [],
+          "criterionBranch": "os-input-review",
+          "frames": [],
+          "rawReplies": [
+            {
+              "key": "input.xtest-wheel",
+              "sha256": "0408d11c45de32a40f90daf4f847d9893ccef72754cf89b0a328905e8ad65e93"
+            }
+          ],
+          "replyPath": {
+            "decision": {
+              "member": true,
+              "reason": "vterm declares complete reply delivery bound to its loaded source and engine"
+            },
+            "declaration": {
+              "adapterSources": [
+                {
+                  "blobOid": "cb5719799dcdd5ae24e6fcf0dcad9965035ce54c",
+                  "path": "packages/vterm/src/index.ts"
+                },
+                {
+                  "blobOid": "8599e301dd046b1264403069289477ab65d71d3a",
+                  "path": "packages/vterm/src/backend.ts"
+                }
+              ],
+              "boundary": "feed-and-getCursor",
+              "engine": {
+                "kind": "source",
+                "repository": "git@github.com:beorn/vterm.git",
+                "treeOid": "617ae6002c7befea7b3e43d11bf23e6b433e3d65"
+              }
+            }
+          },
+          "tests": [
+            {
+              "id": "review",
+              "reason": "Library probe source injects no OS-level input; required independent review of the retained raw state pending",
+              "status": "test-todo"
+            }
+          ]
+        },
+        "feature": {
+          "catalogEntrySha256": "8ca528f5240f2413b6ce9805e4e86f00f75a3b586d644ae886b6ecb85736b6e8",
+          "featureId": "input.xtest-wheel"
+        },
+        "runtimeIdentity": {
+          "adapterSources": [
+            {
+              "blobOid": "cb5719799dcdd5ae24e6fcf0dcad9965035ce54c",
+              "path": "packages/vterm/src/index.ts"
+            },
+            {
+              "blobOid": "8599e301dd046b1264403069289477ab65d71d3a",
+              "path": "packages/vterm/src/backend.ts"
+            }
+          ],
+          "adapterVersion": "0.10.2",
+          "engineVersion": "0.9.0",
+          "integrity": {
+            "cleanTree": true,
+            "kind": "source",
+            "repository": "git@github.com:beorn/vterm.git",
+            "treeOid": "617ae6002c7befea7b3e43d11bf23e6b433e3d65"
+          },
+          "kind": "js",
+          "runtimeFormat": "js"
+        },
+        "subject": {
+          "id": "vterm",
+          "kind": "lib",
+          "os": "linux",
+          "version": "0.9.0"
+        }
+      },
+      "sha256": "2af5f59bfe3d859a4e1cd7bf9aaf40fd41430ae4f8d7eed6e3f7d7c1145ada94"
+    }
+  },
+  {
+    "id": "cto-vterm48-modes.alt-scroll-1007-ev3",
+    "supersedes": ["cto-vterm48-modes.alt-scroll-1007-ev2"],
+    "runId": "88165881f29e545ff63853338ff7e37f",
+    "featureId": "modes.alt-scroll-1007",
+    "captureSha256": "476dfd9feb6860bbd75b0d5244f4d46771d4d238b5228acb83fe036691dcc2aa",
+    "decision": "untestable",
+    "reviewed": true,
+    "reviewer": "@cto",
+    "reason": "Independent source review at vterm 53a9eb9291b7880f4dc6a39a6802301049997a72 (tree 617ae6002c7befea7b3e43d11bf23e6b433e3d65, clean) packages/vterm/src/screen.ts: DECSET 1007 sets altScrollMode only (:3043-3044; DECRQM :2894-2895); the engine has no wheel or mouse event encoder (0 hits for encodeMouse|mouseEvent|wheel in packages/vterm/src at the pin), so wheel-as-cursor-keys on the alternate screen has no headless observable and no engine API to bind. Untestable for the lib cell; the terminal arm carries the XTEST wheel criterion. Retained raw state is the os-input-review placeholder ({input:false} or the measured mode readings; no bytes are injected in the headless lib context); this decision rests on the pinned engine and host sources, not on the placeholder. It regenerates the @cto decision of the same text for run 11886cd3 (never applied) on the fresh run; nothing about the engine or host encoder changed between the pins (Termless diff 2d974173..bd730559 over src/terminal/key-encoding.ts, key-mapping.ts, packages/vterm/src/viewport-adapter.ts, packages/xtermjs/src/backend.ts: empty). Re-issued 2026-10-31 13:2x PDT on the #32008 universal-key evidence (same vterm tree 617ae600, adapter backend.ts blob eadcd257 -> 8599e301). Re-bound 2026-10-31 to the Terminfo 44467e4e catalogue entry after a body-only prose merge moved its catalogue hash (Amendment 5 pending); decision, capture and sources unchanged from the superseded ev2 record.",
+    "scope": {
+      "subject": {
+        "kind": "lib",
+        "id": "vterm",
+        "version": "0.9.0",
+        "os": "linux"
+      },
+      "versions": ["0.9.0", "0.9.0"],
+      "suites": ["ac2088e663ff", "ac2088e663ff"]
+    },
+    "sources": [
+      "vterm 53a9eb9291b7880f4dc6a39a6802301049997a72 (tree 617ae6002c7befea7b3e43d11bf23e6b433e3d65, clean) packages/vterm/src/screen.ts: handleOSC :3596-4055 (case list in the reasons), :3613-3631 OSC 133, :3924-3941 OSC 633, :3921-3923 OSC 9 sink, :3988-3991 OSC 776, :4042-4053 OSC 1337, :2566-2612 XTWINOPS, :4106-4133 handleAPC, :588 getSemanticZones, :589 getSixelImages, :2854/:2867-2868/:2870-2871/:2876-2877/:2880/:2894-2895 DECRQM, :2944-2945 DECSCNM, :2972-2983 DECSET arms, :3023-3024 DECSET 2004, :3029-3030 DECSET 2031, :3043-3044 DECSET 1007, :4583-4589 DECKPAM/DECKPNM, :5482 getMode, :1271 host-encoder comment",
+      "Termless bd7305591fc65946f17498173ef601f5a749ce82 packages/vterm/src/backend.ts:25 import encodeKeyToAnsi, :75-85 createScreen options (no kittyGraphicsImages, no font), :203-204 getMode, :258 comment, :261-265 kittyGraphics false, :306 iterm2Images declaration, :335 encodeKey; packages/vterm/src/viewport-adapter.ts:477-480 mouse mode mapping, :691 onPaste; src/terminal/key-encoding.ts keyToAnsi(key) delegate; src/terminal/key-mapping.ts 193 lines, 0 keypad/modifyOtherKeys entries; packages/xtermjs/src/backend.ts:823 encodeKey: encodeKeyToAnsi; git diff --stat 2d974173..bd730559 over those files: empty",
+      "terminfo 9a127ea6a1cf5209715a536d400f22f496294ecf packages/probe-defs/src/extensions.ts:1199-1216 ABSENT_OSC_ENGINES.vterm (codes, reviewReasons, sourceCitation), :1360-1382 js qualifier match; packages/probe-defs/src/input.ts:7-27 lib callbacks; packages/probe-defs/src/modes.ts application-keypad lib callback; packages/run-parser/src/index.ts:811 decision values, :1400-1435 semantic-prompt-source-review binding",
+      "intake file 32000-vterm-fresh-review-intake.json (retained in the @dev/3 resume-20261028 workspace) sha256 54234b3e82827ecdd5b9996ccff9ecd8356e64ef0452ea5a6f3945b4e6a903bd; run f7817716a8a63020bf92f02631d6bc47 suite 1e7fca79d06c; merged root b7ed29245cc7ae500dd14ac2da45b6be622d5f97; @cto earlier vterm decisions for the dead run 11886cd3 (files 30695-vterm13-first-admission-decisions-v1.json 67dbf760, 30695-vterm13-encoder-three-decisions-v1.json abdf39ef; never applied) regenerated here"
+    ],
+    "evidence": {
+      "algorithm": "evidence-output-v1",
+      "projection": {
+        "cell": {
+          "assertions": [],
+          "criterionBranch": "os-input-review",
+          "frames": [],
+          "rawReplies": [
+            {
+              "key": "modes.alt-scroll-1007",
+              "sha256": "0408d11c45de32a40f90daf4f847d9893ccef72754cf89b0a328905e8ad65e93"
+            }
+          ],
+          "replyPath": {
+            "decision": {
+              "member": true,
+              "reason": "vterm declares complete reply delivery bound to its loaded source and engine"
+            },
+            "declaration": {
+              "adapterSources": [
+                {
+                  "blobOid": "cb5719799dcdd5ae24e6fcf0dcad9965035ce54c",
+                  "path": "packages/vterm/src/index.ts"
+                },
+                {
+                  "blobOid": "8599e301dd046b1264403069289477ab65d71d3a",
+                  "path": "packages/vterm/src/backend.ts"
+                }
+              ],
+              "boundary": "feed-and-getCursor",
+              "engine": {
+                "kind": "source",
+                "repository": "git@github.com:beorn/vterm.git",
+                "treeOid": "617ae6002c7befea7b3e43d11bf23e6b433e3d65"
+              }
+            }
+          },
+          "tests": [
+            {
+              "id": "review",
+              "reason": "Library probe source injects no OS-level input; required independent review of the retained raw state pending",
+              "status": "test-todo"
+            }
+          ]
+        },
+        "feature": {
+          "catalogEntrySha256": "6e0f359ffc9a9c707249e847369a20f9d72bc5ac844ab15a5c080a3f498c52d0",
+          "featureId": "modes.alt-scroll-1007"
+        },
+        "runtimeIdentity": {
+          "adapterSources": [
+            {
+              "blobOid": "cb5719799dcdd5ae24e6fcf0dcad9965035ce54c",
+              "path": "packages/vterm/src/index.ts"
+            },
+            {
+              "blobOid": "8599e301dd046b1264403069289477ab65d71d3a",
+              "path": "packages/vterm/src/backend.ts"
+            }
+          ],
+          "adapterVersion": "0.10.2",
+          "engineVersion": "0.9.0",
+          "integrity": {
+            "cleanTree": true,
+            "kind": "source",
+            "repository": "git@github.com:beorn/vterm.git",
+            "treeOid": "617ae6002c7befea7b3e43d11bf23e6b433e3d65"
+          },
+          "kind": "js",
+          "runtimeFormat": "js"
+        },
+        "subject": {
+          "id": "vterm",
+          "kind": "lib",
+          "os": "linux",
+          "version": "0.9.0"
+        }
+      },
+      "sha256": "f80a04a927bc08eb3d5911c8bea213ce33d888202c341d0ce4be47a93018921b"
+    }
+  },
+  {
+    "id": "cto-vterm48-modes.application-keypad-ev3",
+    "supersedes": ["cto-vterm48-modes.application-keypad-ev2"],
+    "runId": "88165881f29e545ff63853338ff7e37f",
+    "featureId": "modes.application-keypad",
+    "captureSha256": "40da1f9d293b8f1b786cf818709b0185fd87a54ff1c54691aa762f332ee96715",
+    "decision": "untestable",
+    "reviewed": true,
+    "reviewer": "@cto",
+    "reason": "Independent source review at vterm 53a9eb9291b7880f4dc6a39a6802301049997a72 (tree 617ae6002c7befea7b3e43d11bf23e6b433e3d65, clean) packages/vterm/src/screen.ts: the engine tracks application keypad mode only — DECKPAM ESC = sets applicationKeypad (:4583-4584), DECKPNM ESC > clears it (:4588-4589), DECSET/DECRST 66 (DECNKM) sets it (:2972-2973), DECRQM 66 reports it (:2854), getMode('applicationKeypad') returns it (:5482), and the run retained the mode readings through getMode. The engine deliberately contains no key encoder: screen.ts:1271 states that key encoding belongs to the host '(e.g. termless's encodeKeyToAnsi), not here — separation of concerns', and git grep for keypad|encodeKey|keyToAnsi over packages/vterm/src at the pin finds only the mode state above. The host encoder is Termless core: Termless bd7305591fc65946f17498173ef601f5a749ce82 packages/vterm/src/backend.ts:335 wires encodeKey: encodeKeyToAnsi imported from @termless/core (:25); src/terminal/key-encoding.ts delegates to keyToAnsi(key) with no backend or mode argument, and src/terminal/key-mapping.ts (193 lines) has no keypad, KP_, applicationKeypad or modifyOtherKeys entry; the xtermjs backend wires the same core encoder (packages/xtermjs/src/backend.ts:823), so no Termless backend encodes keys from engine mode state. The backend.ts:258 comment '(encodeKeyToAnsi reads the mode from the backend)' is false at this pin (Termless defect, not evidence). The cell's criterion is the encoded KP_5 byte stream (SS3 u under DECKPAM, 5 under DECKPNM); no headless observable of it exists and no engine API could expose one, exactly as ruled for the mouse-report cells. Untestable for the lib cell; the terminal arm carries the XTEST keypad criterion. Retained raw state is the os-input-review placeholder ({input:false} or the measured mode readings; no bytes are injected in the headless lib context); this decision rests on the pinned engine and host sources, not on the placeholder. It regenerates the @cto decision of the same text for run 11886cd3 (never applied) on the fresh run; nothing about the engine or host encoder changed between the pins (Termless diff 2d974173..bd730559 over src/terminal/key-encoding.ts, key-mapping.ts, packages/vterm/src/viewport-adapter.ts, packages/xtermjs/src/backend.ts: empty). Re-issued 2026-10-31 13:2x PDT on the #32008 universal-key evidence: Termless moved bd730559 -> f736cce4 (vterm adapter backend.ts blob eadcd257 -> 8599e301, the adapter-sources extension; viewport-adapter.ts unchanged per the vterm-only delta); the cited file claims re-read at the exact-head GO. Re-bound 2026-10-31 to the Terminfo 44467e4e catalogue entry after a body-only prose merge moved its catalogue hash (Amendment 5 pending); decision, capture and sources unchanged from the superseded ev2 record.",
+    "scope": {
+      "subject": {
+        "kind": "lib",
+        "id": "vterm",
+        "version": "0.9.0",
+        "os": "linux"
+      },
+      "versions": ["0.9.0", "0.9.0"],
+      "suites": ["ac2088e663ff", "ac2088e663ff"]
+    },
+    "sources": [
+      "vterm 53a9eb9291b7880f4dc6a39a6802301049997a72 (tree 617ae6002c7befea7b3e43d11bf23e6b433e3d65, clean) packages/vterm/src/screen.ts: handleOSC :3596-4055 (case list in the reasons), :3613-3631 OSC 133, :3924-3941 OSC 633, :3921-3923 OSC 9 sink, :3988-3991 OSC 776, :4042-4053 OSC 1337, :2566-2612 XTWINOPS, :4106-4133 handleAPC, :588 getSemanticZones, :589 getSixelImages, :2854/:2867-2868/:2870-2871/:2876-2877/:2880/:2894-2895 DECRQM, :2944-2945 DECSCNM, :2972-2983 DECSET arms, :3023-3024 DECSET 2004, :3029-3030 DECSET 2031, :3043-3044 DECSET 1007, :4583-4589 DECKPAM/DECKPNM, :5482 getMode, :1271 host-encoder comment",
+      "Termless bd7305591fc65946f17498173ef601f5a749ce82 packages/vterm/src/backend.ts:25 import encodeKeyToAnsi, :75-85 createScreen options (no kittyGraphicsImages, no font), :203-204 getMode, :258 comment, :261-265 kittyGraphics false, :306 iterm2Images declaration, :335 encodeKey; packages/vterm/src/viewport-adapter.ts:477-480 mouse mode mapping, :691 onPaste; src/terminal/key-encoding.ts keyToAnsi(key) delegate; src/terminal/key-mapping.ts 193 lines, 0 keypad/modifyOtherKeys entries; packages/xtermjs/src/backend.ts:823 encodeKey: encodeKeyToAnsi; git diff --stat 2d974173..bd730559 over those files: empty",
+      "terminfo 9a127ea6a1cf5209715a536d400f22f496294ecf packages/probe-defs/src/extensions.ts:1199-1216 ABSENT_OSC_ENGINES.vterm (codes, reviewReasons, sourceCitation), :1360-1382 js qualifier match; packages/probe-defs/src/input.ts:7-27 lib callbacks; packages/probe-defs/src/modes.ts application-keypad lib callback; packages/run-parser/src/index.ts:811 decision values, :1400-1435 semantic-prompt-source-review binding",
+      "intake file 32000-vterm-fresh-review-intake.json (retained in the @dev/3 resume-20261028 workspace) sha256 54234b3e82827ecdd5b9996ccff9ecd8356e64ef0452ea5a6f3945b4e6a903bd; run f7817716a8a63020bf92f02631d6bc47 suite 1e7fca79d06c; merged root b7ed29245cc7ae500dd14ac2da45b6be622d5f97; @cto earlier vterm decisions for the dead run 11886cd3 (files 30695-vterm13-first-admission-decisions-v1.json 67dbf760, 30695-vterm13-encoder-three-decisions-v1.json abdf39ef; never applied) regenerated here"
+    ],
+    "evidence": {
+      "algorithm": "evidence-output-v1",
+      "projection": {
+        "cell": {
+          "assertions": [],
+          "criterionBranch": "os-input-review",
+          "frames": [],
+          "rawReplies": [
+            {
+              "key": "modes.application-keypad",
+              "sha256": "d6e044510c9aae5924d05e614260a23b718bff0f6332916b58631a929f7724e6"
+            }
+          ],
+          "replyPath": {
+            "decision": {
+              "member": true,
+              "reason": "vterm declares complete reply delivery bound to its loaded source and engine"
+            },
+            "declaration": {
+              "adapterSources": [
+                {
+                  "blobOid": "cb5719799dcdd5ae24e6fcf0dcad9965035ce54c",
+                  "path": "packages/vterm/src/index.ts"
+                },
+                {
+                  "blobOid": "8599e301dd046b1264403069289477ab65d71d3a",
+                  "path": "packages/vterm/src/backend.ts"
+                }
+              ],
+              "boundary": "feed-and-getCursor",
+              "engine": {
+                "kind": "source",
+                "repository": "git@github.com:beorn/vterm.git",
+                "treeOid": "617ae6002c7befea7b3e43d11bf23e6b433e3d65"
+              }
+            }
+          },
+          "tests": [
+            {
+              "id": "review",
+              "reason": "Library probe source injects no OS-level input; required independent review of the retained raw state pending",
+              "status": "test-todo"
+            }
+          ]
+        },
+        "feature": {
+          "catalogEntrySha256": "3ca0491c6509b6fc4a1f62854d51021be138a90416278374d34eda4ccdf62aed",
+          "featureId": "modes.application-keypad"
+        },
+        "runtimeIdentity": {
+          "adapterSources": [
+            {
+              "blobOid": "cb5719799dcdd5ae24e6fcf0dcad9965035ce54c",
+              "path": "packages/vterm/src/index.ts"
+            },
+            {
+              "blobOid": "8599e301dd046b1264403069289477ab65d71d3a",
+              "path": "packages/vterm/src/backend.ts"
+            }
+          ],
+          "adapterVersion": "0.10.2",
+          "engineVersion": "0.9.0",
+          "integrity": {
+            "cleanTree": true,
+            "kind": "source",
+            "repository": "git@github.com:beorn/vterm.git",
+            "treeOid": "617ae6002c7befea7b3e43d11bf23e6b433e3d65"
+          },
+          "kind": "js",
+          "runtimeFormat": "js"
+        },
+        "subject": {
+          "id": "vterm",
+          "kind": "lib",
+          "os": "linux",
+          "version": "0.9.0"
+        }
+      },
+      "sha256": "83cbafd2896d2826bef2054d922a2ec2f1d6201c7001b653d7dd817f6531f9af"
+    }
+  },
+  {
+    "id": "cto-vterm48-modes.color-scheme-reporting-ev3",
+    "supersedes": ["cto-vterm48-modes.color-scheme-reporting-ev2"],
+    "runId": "88165881f29e545ff63853338ff7e37f",
+    "featureId": "modes.color-scheme-reporting",
+    "captureSha256": "5cf781151d0c39430f9a2d91593179dcc8e75ec2af7b8a30e6916aa20c4cc60d",
+    "decision": "untestable",
+    "reviewed": true,
+    "reviewer": "@cto",
+    "reason": "Independent source review at vterm 53a9eb9291b7880f4dc6a39a6802301049997a72 (tree 617ae6002c7befea7b3e43d11bf23e6b433e3d65, clean) packages/vterm/src/screen.ts: DECSET 2031 sets colorSchemeReporting (:3029-3030; state :1293, DECRQM :2876-2877) and the solicited query CSI ? 997 n is answered with a constant ESC [ ? 997 ; 1 n (:2915-2917); the engine has no colour-scheme actuator (0 hits for setColorScheme|preferDark|\"light\"|\"dark\"|schemeChange in packages/vterm/src at the pin) and no unsolicited notification path, so the criterion (an unsolicited report when the host scheme changes) has no headless observable and no engine API to bind. Untestable for the lib cell; the terminal arm drives the host palette. Retained raw state is the os-input-review placeholder ({input:false} or the measured mode readings; no bytes are injected in the headless lib context); this decision rests on the pinned engine and host sources, not on the placeholder. It regenerates the @cto decision of the same text for run 11886cd3 (never applied) on the fresh run; nothing about the engine or host encoder changed between the pins (Termless diff 2d974173..bd730559 over src/terminal/key-encoding.ts, key-mapping.ts, packages/vterm/src/viewport-adapter.ts, packages/xtermjs/src/backend.ts: empty). Re-issued 2026-10-31 13:2x PDT on the #32008 universal-key evidence (same vterm tree 617ae600, adapter backend.ts blob eadcd257 -> 8599e301). Re-bound 2026-10-31 to the Terminfo 44467e4e catalogue entry after a body-only prose merge moved its catalogue hash (Amendment 5 pending); decision, capture and sources unchanged from the superseded ev2 record.",
+    "scope": {
+      "subject": {
+        "kind": "lib",
+        "id": "vterm",
+        "version": "0.9.0",
+        "os": "linux"
+      },
+      "versions": ["0.9.0", "0.9.0"],
+      "suites": ["ac2088e663ff", "ac2088e663ff"]
+    },
+    "sources": [
+      "vterm 53a9eb9291b7880f4dc6a39a6802301049997a72 (tree 617ae6002c7befea7b3e43d11bf23e6b433e3d65, clean) packages/vterm/src/screen.ts: handleOSC :3596-4055 (case list in the reasons), :3613-3631 OSC 133, :3924-3941 OSC 633, :3921-3923 OSC 9 sink, :3988-3991 OSC 776, :4042-4053 OSC 1337, :2566-2612 XTWINOPS, :4106-4133 handleAPC, :588 getSemanticZones, :589 getSixelImages, :2854/:2867-2868/:2870-2871/:2876-2877/:2880/:2894-2895 DECRQM, :2944-2945 DECSCNM, :2972-2983 DECSET arms, :3023-3024 DECSET 2004, :3029-3030 DECSET 2031, :3043-3044 DECSET 1007, :4583-4589 DECKPAM/DECKPNM, :5482 getMode, :1271 host-encoder comment",
+      "Termless bd7305591fc65946f17498173ef601f5a749ce82 packages/vterm/src/backend.ts:25 import encodeKeyToAnsi, :75-85 createScreen options (no kittyGraphicsImages, no font), :203-204 getMode, :258 comment, :261-265 kittyGraphics false, :306 iterm2Images declaration, :335 encodeKey; packages/vterm/src/viewport-adapter.ts:477-480 mouse mode mapping, :691 onPaste; src/terminal/key-encoding.ts keyToAnsi(key) delegate; src/terminal/key-mapping.ts 193 lines, 0 keypad/modifyOtherKeys entries; packages/xtermjs/src/backend.ts:823 encodeKey: encodeKeyToAnsi; git diff --stat 2d974173..bd730559 over those files: empty",
+      "terminfo 9a127ea6a1cf5209715a536d400f22f496294ecf packages/probe-defs/src/extensions.ts:1199-1216 ABSENT_OSC_ENGINES.vterm (codes, reviewReasons, sourceCitation), :1360-1382 js qualifier match; packages/probe-defs/src/input.ts:7-27 lib callbacks; packages/probe-defs/src/modes.ts application-keypad lib callback; packages/run-parser/src/index.ts:811 decision values, :1400-1435 semantic-prompt-source-review binding",
+      "intake file 32000-vterm-fresh-review-intake.json (retained in the @dev/3 resume-20261028 workspace) sha256 54234b3e82827ecdd5b9996ccff9ecd8356e64ef0452ea5a6f3945b4e6a903bd; run f7817716a8a63020bf92f02631d6bc47 suite 1e7fca79d06c; merged root b7ed29245cc7ae500dd14ac2da45b6be622d5f97; @cto earlier vterm decisions for the dead run 11886cd3 (files 30695-vterm13-first-admission-decisions-v1.json 67dbf760, 30695-vterm13-encoder-three-decisions-v1.json abdf39ef; never applied) regenerated here"
+    ],
+    "evidence": {
+      "algorithm": "evidence-output-v1",
+      "projection": {
+        "cell": {
+          "assertions": [],
+          "criterionBranch": "headless-observable-review",
+          "frames": [],
+          "rawReplies": [
+            {
+              "key": "modes.color-scheme-reporting",
+              "sha256": "a31b5ceca9670d766687a459d3848493bbbc778d0833ce8bee19a2a18989fcdf"
+            }
+          ],
+          "replyPath": {
+            "decision": {
+              "member": true,
+              "reason": "vterm declares complete reply delivery bound to its loaded source and engine"
+            },
+            "declaration": {
+              "adapterSources": [
+                {
+                  "blobOid": "cb5719799dcdd5ae24e6fcf0dcad9965035ce54c",
+                  "path": "packages/vterm/src/index.ts"
+                },
+                {
+                  "blobOid": "8599e301dd046b1264403069289477ab65d71d3a",
+                  "path": "packages/vterm/src/backend.ts"
+                }
+              ],
+              "boundary": "feed-and-getCursor",
+              "engine": {
+                "kind": "source",
+                "repository": "git@github.com:beorn/vterm.git",
+                "treeOid": "617ae6002c7befea7b3e43d11bf23e6b433e3d65"
+              }
+            }
+          },
+          "tests": [
+            {
+              "id": "review",
+              "reason": "Headless observable review required: Mode 2031 requires a host palette actuator and persistent unsolicited-event listener",
+              "status": "test-todo"
+            }
+          ]
+        },
+        "feature": {
+          "catalogEntrySha256": "45cfcfa30b4299c84c779b9150b68b10469f5e937c6283616c9369179627cc11",
+          "featureId": "modes.color-scheme-reporting"
+        },
+        "runtimeIdentity": {
+          "adapterSources": [
+            {
+              "blobOid": "cb5719799dcdd5ae24e6fcf0dcad9965035ce54c",
+              "path": "packages/vterm/src/index.ts"
+            },
+            {
+              "blobOid": "8599e301dd046b1264403069289477ab65d71d3a",
+              "path": "packages/vterm/src/backend.ts"
+            }
+          ],
+          "adapterVersion": "0.10.2",
+          "engineVersion": "0.9.0",
+          "integrity": {
+            "cleanTree": true,
+            "kind": "source",
+            "repository": "git@github.com:beorn/vterm.git",
+            "treeOid": "617ae6002c7befea7b3e43d11bf23e6b433e3d65"
+          },
+          "kind": "js",
+          "runtimeFormat": "js"
+        },
+        "subject": {
+          "id": "vterm",
+          "kind": "lib",
+          "os": "linux",
+          "version": "0.9.0"
+        }
+      },
+      "sha256": "ecddd9f6861e2a6ccfc9a36c8e3215ce7a2907bd6d088f83cc20c7308a2a3a0a"
+    }
+  },
+  {
+    "id": "cto-vterm48-modes.decsclm-ev3",
+    "supersedes": ["cto-vterm48-modes.decsclm-ev2"],
+    "runId": "88165881f29e545ff63853338ff7e37f",
+    "featureId": "modes.decsclm",
+    "captureSha256": "806e8f0a26bc5d3781bebddccb94d224d50117c702fd81461a4e4397fb4ed78d",
+    "decision": "untestable",
+    "reviewed": true,
+    "reviewer": "@cto",
+    "reason": "Independent source review at vterm 53a9eb9291b7880f4dc6a39a6802301049997a72 (tree 617ae6002c7befea7b3e43d11bf23e6b433e3d65, clean) packages/vterm/src/screen.ts: the engine paints no frames and has no smooth-scroll presentation state (0 hits for smooth|DECSCLM in screen.ts at the pin); its DEC private mode 4 arm is labelled IRM insert mode (:2941), a quirk noted for vterm, not a scroll implementation. DECSCLM is presentation timing with no headless observable and nothing to bind. Untestable for the lib cell; the terminal arm captures timed frames. Retained raw state is the os-input-review placeholder ({input:false} or the measured mode readings; no bytes are injected in the headless lib context); this decision rests on the pinned engine and host sources, not on the placeholder. It regenerates the @cto decision of the same text for run 11886cd3 (never applied) on the fresh run; nothing about the engine or host encoder changed between the pins (Termless diff 2d974173..bd730559 over src/terminal/key-encoding.ts, key-mapping.ts, packages/vterm/src/viewport-adapter.ts, packages/xtermjs/src/backend.ts: empty). Re-issued 2026-10-31 13:2x PDT on the #32008 universal-key evidence (same vterm tree 617ae600, adapter backend.ts blob eadcd257 -> 8599e301). Re-bound 2026-10-31 to the Terminfo 44467e4e catalogue entry after a body-only prose merge moved its catalogue hash (Amendment 5 pending); decision, capture and sources unchanged from the superseded ev2 record.",
+    "scope": {
+      "subject": {
+        "kind": "lib",
+        "id": "vterm",
+        "version": "0.9.0",
+        "os": "linux"
+      },
+      "versions": ["0.9.0", "0.9.0"],
+      "suites": ["ac2088e663ff", "ac2088e663ff"]
+    },
+    "sources": [
+      "vterm 53a9eb9291b7880f4dc6a39a6802301049997a72 (tree 617ae6002c7befea7b3e43d11bf23e6b433e3d65, clean) packages/vterm/src/screen.ts: handleOSC :3596-4055 (case list in the reasons), :3613-3631 OSC 133, :3924-3941 OSC 633, :3921-3923 OSC 9 sink, :3988-3991 OSC 776, :4042-4053 OSC 1337, :2566-2612 XTWINOPS, :4106-4133 handleAPC, :588 getSemanticZones, :589 getSixelImages, :2854/:2867-2868/:2870-2871/:2876-2877/:2880/:2894-2895 DECRQM, :2944-2945 DECSCNM, :2972-2983 DECSET arms, :3023-3024 DECSET 2004, :3029-3030 DECSET 2031, :3043-3044 DECSET 1007, :4583-4589 DECKPAM/DECKPNM, :5482 getMode, :1271 host-encoder comment",
+      "Termless bd7305591fc65946f17498173ef601f5a749ce82 packages/vterm/src/backend.ts:25 import encodeKeyToAnsi, :75-85 createScreen options (no kittyGraphicsImages, no font), :203-204 getMode, :258 comment, :261-265 kittyGraphics false, :306 iterm2Images declaration, :335 encodeKey; packages/vterm/src/viewport-adapter.ts:477-480 mouse mode mapping, :691 onPaste; src/terminal/key-encoding.ts keyToAnsi(key) delegate; src/terminal/key-mapping.ts 193 lines, 0 keypad/modifyOtherKeys entries; packages/xtermjs/src/backend.ts:823 encodeKey: encodeKeyToAnsi; git diff --stat 2d974173..bd730559 over those files: empty",
+      "terminfo 9a127ea6a1cf5209715a536d400f22f496294ecf packages/probe-defs/src/extensions.ts:1199-1216 ABSENT_OSC_ENGINES.vterm (codes, reviewReasons, sourceCitation), :1360-1382 js qualifier match; packages/probe-defs/src/input.ts:7-27 lib callbacks; packages/probe-defs/src/modes.ts application-keypad lib callback; packages/run-parser/src/index.ts:811 decision values, :1400-1435 semantic-prompt-source-review binding",
+      "intake file 32000-vterm-fresh-review-intake.json (retained in the @dev/3 resume-20261028 workspace) sha256 54234b3e82827ecdd5b9996ccff9ecd8356e64ef0452ea5a6f3945b4e6a903bd; run f7817716a8a63020bf92f02631d6bc47 suite 1e7fca79d06c; merged root b7ed29245cc7ae500dd14ac2da45b6be622d5f97; @cto earlier vterm decisions for the dead run 11886cd3 (files 30695-vterm13-first-admission-decisions-v1.json 67dbf760, 30695-vterm13-encoder-three-decisions-v1.json abdf39ef; never applied) regenerated here"
+    ],
+    "evidence": {
+      "algorithm": "evidence-output-v1",
+      "projection": {
+        "cell": {
+          "assertions": [],
+          "criterionBranch": "headless-observable-review",
+          "frames": [],
+          "rawReplies": [
+            {
+              "key": "modes.decsclm",
+              "sha256": "2caa8a1cd0a3edc7a716e14df501f6ca495838ba1907f56829e445800bb882c3"
+            }
+          ],
+          "replyPath": {
+            "decision": {
+              "member": true,
+              "reason": "vterm declares complete reply delivery bound to its loaded source and engine"
+            },
+            "declaration": {
+              "adapterSources": [
+                {
+                  "blobOid": "cb5719799dcdd5ae24e6fcf0dcad9965035ce54c",
+                  "path": "packages/vterm/src/index.ts"
+                },
+                {
+                  "blobOid": "8599e301dd046b1264403069289477ab65d71d3a",
+                  "path": "packages/vterm/src/backend.ts"
+                }
+              ],
+              "boundary": "feed-and-getCursor",
+              "engine": {
+                "kind": "source",
+                "repository": "git@github.com:beorn/vterm.git",
+                "treeOid": "617ae6002c7befea7b3e43d11bf23e6b433e3d65"
+              }
+            }
+          },
+          "tests": [
+            {
+              "id": "review",
+              "reason": "Headless observable review required: DECSCLM requires presentation timing capture",
+              "status": "test-todo"
+            }
+          ]
+        },
+        "feature": {
+          "catalogEntrySha256": "19cffe3be9af10dcfc32652bdbd9ca45d4c25581c2431c97d42f12adee8008c8",
+          "featureId": "modes.decsclm"
+        },
+        "runtimeIdentity": {
+          "adapterSources": [
+            {
+              "blobOid": "cb5719799dcdd5ae24e6fcf0dcad9965035ce54c",
+              "path": "packages/vterm/src/index.ts"
+            },
+            {
+              "blobOid": "8599e301dd046b1264403069289477ab65d71d3a",
+              "path": "packages/vterm/src/backend.ts"
+            }
+          ],
+          "adapterVersion": "0.10.2",
+          "engineVersion": "0.9.0",
+          "integrity": {
+            "cleanTree": true,
+            "kind": "source",
+            "repository": "git@github.com:beorn/vterm.git",
+            "treeOid": "617ae6002c7befea7b3e43d11bf23e6b433e3d65"
+          },
+          "kind": "js",
+          "runtimeFormat": "js"
+        },
+        "subject": {
+          "id": "vterm",
+          "kind": "lib",
+          "os": "linux",
+          "version": "0.9.0"
+        }
+      },
+      "sha256": "0d49ed3948b55a5e5ae9c14f6bd7c025db95aaf549ee19a76fddaa49650506d7"
+    }
+  },
+  {
+    "id": "cto-vterm48-modes.decsscls-ev3",
+    "supersedes": ["cto-vterm48-modes.decsscls-ev2"],
+    "runId": "88165881f29e545ff63853338ff7e37f",
+    "featureId": "modes.decsscls",
+    "captureSha256": "3946fb78e264f05ce07e959c2c387fa83420935df7dba8c9a9e97b681496feb7",
+    "decision": "untestable",
+    "reviewed": true,
+    "reviewer": "@cto",
+    "reason": "Independent source review at vterm 53a9eb9291b7880f4dc6a39a6802301049997a72 (tree 617ae6002c7befea7b3e43d11bf23e6b433e3d65, clean) packages/vterm/src/screen.ts: no CSI Ps SP p handler exists (0 hits for DECSSCLS|scrollSpeed|\" p\" in screen.ts at the pin) and the engine paints no frames, so scroll speed has no headless observable and nothing to bind. Untestable for the lib cell; the terminal arm captures timed frames. A parser-rejection source negative for this code would be a new input result shape (three gates) and is not implied here. Retained raw state is the os-input-review placeholder ({input:false} or the measured mode readings; no bytes are injected in the headless lib context); this decision rests on the pinned engine and host sources, not on the placeholder. It regenerates the @cto decision of the same text for run 11886cd3 (never applied) on the fresh run; nothing about the engine or host encoder changed between the pins (Termless diff 2d974173..bd730559 over src/terminal/key-encoding.ts, key-mapping.ts, packages/vterm/src/viewport-adapter.ts, packages/xtermjs/src/backend.ts: empty). Re-issued 2026-10-31 13:2x PDT on the #32008 universal-key evidence (same vterm tree 617ae600, adapter backend.ts blob eadcd257 -> 8599e301). Re-bound 2026-10-31 to the Terminfo 44467e4e catalogue entry after a body-only prose merge moved its catalogue hash (Amendment 5 pending); decision, capture and sources unchanged from the superseded ev2 record.",
+    "scope": {
+      "subject": {
+        "kind": "lib",
+        "id": "vterm",
+        "version": "0.9.0",
+        "os": "linux"
+      },
+      "versions": ["0.9.0", "0.9.0"],
+      "suites": ["ac2088e663ff", "ac2088e663ff"]
+    },
+    "sources": [
+      "vterm 53a9eb9291b7880f4dc6a39a6802301049997a72 (tree 617ae6002c7befea7b3e43d11bf23e6b433e3d65, clean) packages/vterm/src/screen.ts: handleOSC :3596-4055 (case list in the reasons), :3613-3631 OSC 133, :3924-3941 OSC 633, :3921-3923 OSC 9 sink, :3988-3991 OSC 776, :4042-4053 OSC 1337, :2566-2612 XTWINOPS, :4106-4133 handleAPC, :588 getSemanticZones, :589 getSixelImages, :2854/:2867-2868/:2870-2871/:2876-2877/:2880/:2894-2895 DECRQM, :2944-2945 DECSCNM, :2972-2983 DECSET arms, :3023-3024 DECSET 2004, :3029-3030 DECSET 2031, :3043-3044 DECSET 1007, :4583-4589 DECKPAM/DECKPNM, :5482 getMode, :1271 host-encoder comment",
+      "Termless bd7305591fc65946f17498173ef601f5a749ce82 packages/vterm/src/backend.ts:25 import encodeKeyToAnsi, :75-85 createScreen options (no kittyGraphicsImages, no font), :203-204 getMode, :258 comment, :261-265 kittyGraphics false, :306 iterm2Images declaration, :335 encodeKey; packages/vterm/src/viewport-adapter.ts:477-480 mouse mode mapping, :691 onPaste; src/terminal/key-encoding.ts keyToAnsi(key) delegate; src/terminal/key-mapping.ts 193 lines, 0 keypad/modifyOtherKeys entries; packages/xtermjs/src/backend.ts:823 encodeKey: encodeKeyToAnsi; git diff --stat 2d974173..bd730559 over those files: empty",
+      "terminfo 9a127ea6a1cf5209715a536d400f22f496294ecf packages/probe-defs/src/extensions.ts:1199-1216 ABSENT_OSC_ENGINES.vterm (codes, reviewReasons, sourceCitation), :1360-1382 js qualifier match; packages/probe-defs/src/input.ts:7-27 lib callbacks; packages/probe-defs/src/modes.ts application-keypad lib callback; packages/run-parser/src/index.ts:811 decision values, :1400-1435 semantic-prompt-source-review binding",
+      "intake file 32000-vterm-fresh-review-intake.json (retained in the @dev/3 resume-20261028 workspace) sha256 54234b3e82827ecdd5b9996ccff9ecd8356e64ef0452ea5a6f3945b4e6a903bd; run f7817716a8a63020bf92f02631d6bc47 suite 1e7fca79d06c; merged root b7ed29245cc7ae500dd14ac2da45b6be622d5f97; @cto earlier vterm decisions for the dead run 11886cd3 (files 30695-vterm13-first-admission-decisions-v1.json 67dbf760, 30695-vterm13-encoder-three-decisions-v1.json abdf39ef; never applied) regenerated here"
+    ],
+    "evidence": {
+      "algorithm": "evidence-output-v1",
+      "projection": {
+        "cell": {
+          "assertions": [],
+          "criterionBranch": "headless-observable-review",
+          "frames": [],
+          "rawReplies": [
+            {
+              "key": "modes.decsscls",
+              "sha256": "2caa8a1cd0a3edc7a716e14df501f6ca495838ba1907f56829e445800bb882c3"
+            }
+          ],
+          "replyPath": {
+            "decision": {
+              "member": true,
+              "reason": "vterm declares complete reply delivery bound to its loaded source and engine"
+            },
+            "declaration": {
+              "adapterSources": [
+                {
+                  "blobOid": "cb5719799dcdd5ae24e6fcf0dcad9965035ce54c",
+                  "path": "packages/vterm/src/index.ts"
+                },
+                {
+                  "blobOid": "8599e301dd046b1264403069289477ab65d71d3a",
+                  "path": "packages/vterm/src/backend.ts"
+                }
+              ],
+              "boundary": "feed-and-getCursor",
+              "engine": {
+                "kind": "source",
+                "repository": "git@github.com:beorn/vterm.git",
+                "treeOid": "617ae6002c7befea7b3e43d11bf23e6b433e3d65"
+              }
+            }
+          },
+          "tests": [
+            {
+              "id": "review",
+              "reason": "Headless observable review required: DECSSCLS controls presentation timing; the headless parser paints no frames",
+              "status": "test-todo"
+            }
+          ]
+        },
+        "feature": {
+          "catalogEntrySha256": "b46fa48cbf3a0bac2acdd5cb7d2f393941d3594975e6fc043891f16f7ba61602",
+          "featureId": "modes.decsscls"
+        },
+        "runtimeIdentity": {
+          "adapterSources": [
+            {
+              "blobOid": "cb5719799dcdd5ae24e6fcf0dcad9965035ce54c",
+              "path": "packages/vterm/src/index.ts"
+            },
+            {
+              "blobOid": "8599e301dd046b1264403069289477ab65d71d3a",
+              "path": "packages/vterm/src/backend.ts"
+            }
+          ],
+          "adapterVersion": "0.10.2",
+          "engineVersion": "0.9.0",
+          "integrity": {
+            "cleanTree": true,
+            "kind": "source",
+            "repository": "git@github.com:beorn/vterm.git",
+            "treeOid": "617ae6002c7befea7b3e43d11bf23e6b433e3d65"
+          },
+          "kind": "js",
+          "runtimeFormat": "js"
+        },
+        "subject": {
+          "id": "vterm",
+          "kind": "lib",
+          "os": "linux",
+          "version": "0.9.0"
+        }
+      },
+      "sha256": "b418b0f1963e8dc2dbf4786b1eec6b6d2c6ad5333b0af0bbba4bee347adfed20"
+    }
+  },
+  {
+    "id": "cto-vterm48-device.xtwinops-14-ev3",
+    "supersedes": ["cto-vterm48-device.xtwinops-14-ev2"],
+    "runId": "88165881f29e545ff63853338ff7e37f",
+    "featureId": "device.xtwinops-14",
+    "captureSha256": "6dc09dd97646de77b81cf36b2dbe3c7a2cd6b9967d2cb447a3b47be956610709",
+    "decision": "untestable",
+    "reviewed": true,
+    "reviewer": "@cto",
+    "reason": "Independent source review at vterm 53a9eb9291b7880f4dc6a39a6802301049997a72 (tree 617ae6002c7befea7b3e43d11bf23e6b433e3d65, clean) packages/vterm/src/screen.ts: the XTWINOPS arm :2566-2612 case 14 (:2603-2604) answers CSI 14 t with the constant reply ESC[4;0;0t (recorded raw \\u001b[4;0;0t); the engine holds no pixel geometry and exposes no API to set or read one, so a headless lib has no text-area pixel size to measure. Untestable in the lib arm with this citation; the terminal arm measures real geometry. Replaces the unsupported decision of run f7817716: a constant zero reply from an engine without geometry is not a negative, and a review-only geometry cell accepts only untestable (run-parser index.ts:1185-1191). Re-issued 2026-10-31 13:2x PDT on the #32008 universal-key evidence (same vterm tree 617ae600, adapter backend.ts blob eadcd257 -> 8599e301). Re-bound 2026-10-31 to the Terminfo 44467e4e catalogue entry after a body-only prose merge moved its catalogue hash (Amendment 5 pending); decision, capture and sources unchanged from the superseded ev2 record.",
+    "scope": {
+      "subject": {
+        "kind": "lib",
+        "id": "vterm",
+        "version": "0.9.0",
+        "os": "linux"
+      },
+      "versions": ["0.9.0", "0.9.0"],
+      "suites": ["ac2088e663ff", "ac2088e663ff"]
+    },
+    "sources": [
+      "vterm 53a9eb9291b7880f4dc6a39a6802301049997a72 (tree 617ae6002c7befea7b3e43d11bf23e6b433e3d65, clean) packages/vterm/src/screen.ts: handleOSC :3596-4055 (case list in the reasons), :3613-3631 OSC 133, :3924-3941 OSC 633, :3921-3923 OSC 9 sink, :3988-3991 OSC 776, :4042-4053 OSC 1337, :2566-2612 XTWINOPS, :4106-4133 handleAPC, :588 getSemanticZones, :589 getSixelImages, :2854/:2867-2868/:2870-2871/:2876-2877/:2880/:2894-2895 DECRQM, :2944-2945 DECSCNM, :2972-2983 DECSET arms, :3023-3024 DECSET 2004, :3029-3030 DECSET 2031, :3043-3044 DECSET 1007, :4583-4589 DECKPAM/DECKPNM, :5482 getMode, :1271 host-encoder comment",
+      "Termless bd7305591fc65946f17498173ef601f5a749ce82 packages/vterm/src/backend.ts:25 import encodeKeyToAnsi, :75-85 createScreen options (no kittyGraphicsImages, no font), :203-204 getMode, :258 comment, :261-265 kittyGraphics false, :306 iterm2Images declaration, :335 encodeKey; packages/vterm/src/viewport-adapter.ts:477-480 mouse mode mapping, :691 onPaste; src/terminal/key-encoding.ts keyToAnsi(key) delegate; src/terminal/key-mapping.ts 193 lines, 0 keypad/modifyOtherKeys entries; packages/xtermjs/src/backend.ts:823 encodeKey: encodeKeyToAnsi; git diff --stat 2d974173..bd730559 over those files: empty",
+      "terminfo 9a127ea6a1cf5209715a536d400f22f496294ecf packages/probe-defs/src/extensions.ts:1199-1216 ABSENT_OSC_ENGINES.vterm (codes, reviewReasons, sourceCitation), :1360-1382 js qualifier match; packages/probe-defs/src/input.ts:7-27 lib callbacks; packages/probe-defs/src/modes.ts application-keypad lib callback; packages/run-parser/src/index.ts:811 decision values, :1400-1435 semantic-prompt-source-review binding",
+      "intake file 32000-vterm-fresh-review-intake.json (retained in the @dev/3 resume-20261028 workspace) sha256 54234b3e82827ecdd5b9996ccff9ecd8356e64ef0452ea5a6f3945b4e6a903bd; run f7817716a8a63020bf92f02631d6bc47 suite 1e7fca79d06c; merged root b7ed29245cc7ae500dd14ac2da45b6be622d5f97; @cto earlier vterm decisions for the dead run 11886cd3 (files 30695-vterm13-first-admission-decisions-v1.json 67dbf760, 30695-vterm13-encoder-three-decisions-v1.json abdf39ef; never applied) regenerated here"
+    ],
+    "evidence": {
+      "algorithm": "evidence-output-v1",
+      "projection": {
+        "cell": {
+          "assertions": [],
+          "criterionBranch": "headless-geometry-review",
+          "frames": [],
+          "rawReplies": [
+            {
+              "key": "device.xtwinops-14",
+              "sha256": "a0f372c92d06e9a03720a2585cd21bb2a7dca4eeb6c4c2f3cb8f23efedc831c1"
+            }
+          ],
+          "replyPath": {
+            "decision": {
+              "member": true,
+              "reason": "vterm declares complete reply delivery bound to its loaded source and engine"
+            },
+            "declaration": {
+              "adapterSources": [
+                {
+                  "blobOid": "cb5719799dcdd5ae24e6fcf0dcad9965035ce54c",
+                  "path": "packages/vterm/src/index.ts"
+                },
+                {
+                  "blobOid": "8599e301dd046b1264403069289477ab65d71d3a",
+                  "path": "packages/vterm/src/backend.ts"
+                }
+              ],
+              "boundary": "feed-and-getCursor",
+              "engine": {
+                "kind": "source",
+                "repository": "git@github.com:beorn/vterm.git",
+                "treeOid": "617ae6002c7befea7b3e43d11bf23e6b433e3d65"
+              }
+            }
+          },
+          "tests": [
+            {
+              "id": "review",
+              "reason": "Required independent review of the audited headless context and retained zero geometry reply pending",
+              "status": "test-todo"
+            }
+          ]
+        },
+        "feature": {
+          "catalogEntrySha256": "bcdea4c4750cd831732ea98487ff90bacc49e2a7b21f5917a148a61f5838203e",
+          "featureId": "device.xtwinops-14"
+        },
+        "runtimeIdentity": {
+          "adapterSources": [
+            {
+              "blobOid": "cb5719799dcdd5ae24e6fcf0dcad9965035ce54c",
+              "path": "packages/vterm/src/index.ts"
+            },
+            {
+              "blobOid": "8599e301dd046b1264403069289477ab65d71d3a",
+              "path": "packages/vterm/src/backend.ts"
+            }
+          ],
+          "adapterVersion": "0.10.2",
+          "engineVersion": "0.9.0",
+          "integrity": {
+            "cleanTree": true,
+            "kind": "source",
+            "repository": "git@github.com:beorn/vterm.git",
+            "treeOid": "617ae6002c7befea7b3e43d11bf23e6b433e3d65"
+          },
+          "kind": "js",
+          "runtimeFormat": "js"
+        },
+        "subject": {
+          "id": "vterm",
+          "kind": "lib",
+          "os": "linux",
+          "version": "0.9.0"
+        }
+      },
+      "sha256": "0a57c529d98dd0ce3aab42da80c1555e63eaa3d705bd298b050bbe6d939dc1bd"
+    }
+  },
+  {
+    "id": "cto-vterm48-device.xtwinops-16-ev3",
+    "supersedes": ["cto-vterm48-device.xtwinops-16-ev2"],
+    "runId": "88165881f29e545ff63853338ff7e37f",
+    "featureId": "device.xtwinops-16",
+    "captureSha256": "d9ebf481955cf04ef4b8404b1244d884790e8447e01c9f52027cf9f432a2de4b",
+    "decision": "untestable",
+    "reviewed": true,
+    "reviewer": "@cto",
+    "reason": "Independent source review at vterm 53a9eb9291b7880f4dc6a39a6802301049997a72 (tree 617ae6002c7befea7b3e43d11bf23e6b433e3d65, clean) packages/vterm/src/screen.ts: the XTWINOPS arm :2566-2612 case 16 (:2606-2607) answers CSI 16 t with the constant reply ESC[6;0;0t (recorded raw \\u001b[6;0;0t); the engine holds no cell pixel geometry and exposes no API to set or read one, so a headless lib has no cell size to measure. Untestable in the lib arm with this citation; the terminal arm measures real geometry. Replaces the unsupported decision of run f7817716 on the same grounds as XTWINOPS 14 (run-parser index.ts:1185-1191). Re-issued 2026-10-31 13:2x PDT on the #32008 universal-key evidence (same vterm tree 617ae600, adapter backend.ts blob eadcd257 -> 8599e301). Re-bound 2026-10-31 to the Terminfo 44467e4e catalogue entry after a body-only prose merge moved its catalogue hash (Amendment 5 pending); decision, capture and sources unchanged from the superseded ev2 record.",
+    "scope": {
+      "subject": {
+        "kind": "lib",
+        "id": "vterm",
+        "version": "0.9.0",
+        "os": "linux"
+      },
+      "versions": ["0.9.0", "0.9.0"],
+      "suites": ["ac2088e663ff", "ac2088e663ff"]
+    },
+    "sources": [
+      "vterm 53a9eb9291b7880f4dc6a39a6802301049997a72 (tree 617ae6002c7befea7b3e43d11bf23e6b433e3d65, clean) packages/vterm/src/screen.ts: handleOSC :3596-4055 (case list in the reasons), :3613-3631 OSC 133, :3924-3941 OSC 633, :3921-3923 OSC 9 sink, :3988-3991 OSC 776, :4042-4053 OSC 1337, :2566-2612 XTWINOPS, :4106-4133 handleAPC, :588 getSemanticZones, :589 getSixelImages, :2854/:2867-2868/:2870-2871/:2876-2877/:2880/:2894-2895 DECRQM, :2944-2945 DECSCNM, :2972-2983 DECSET arms, :3023-3024 DECSET 2004, :3029-3030 DECSET 2031, :3043-3044 DECSET 1007, :4583-4589 DECKPAM/DECKPNM, :5482 getMode, :1271 host-encoder comment",
+      "Termless bd7305591fc65946f17498173ef601f5a749ce82 packages/vterm/src/backend.ts:25 import encodeKeyToAnsi, :75-85 createScreen options (no kittyGraphicsImages, no font), :203-204 getMode, :258 comment, :261-265 kittyGraphics false, :306 iterm2Images declaration, :335 encodeKey; packages/vterm/src/viewport-adapter.ts:477-480 mouse mode mapping, :691 onPaste; src/terminal/key-encoding.ts keyToAnsi(key) delegate; src/terminal/key-mapping.ts 193 lines, 0 keypad/modifyOtherKeys entries; packages/xtermjs/src/backend.ts:823 encodeKey: encodeKeyToAnsi; git diff --stat 2d974173..bd730559 over those files: empty",
+      "terminfo 9a127ea6a1cf5209715a536d400f22f496294ecf packages/probe-defs/src/extensions.ts:1199-1216 ABSENT_OSC_ENGINES.vterm (codes, reviewReasons, sourceCitation), :1360-1382 js qualifier match; packages/probe-defs/src/input.ts:7-27 lib callbacks; packages/probe-defs/src/modes.ts application-keypad lib callback; packages/run-parser/src/index.ts:811 decision values, :1400-1435 semantic-prompt-source-review binding",
+      "intake file 32000-vterm-fresh-review-intake.json (retained in the @dev/3 resume-20261028 workspace) sha256 54234b3e82827ecdd5b9996ccff9ecd8356e64ef0452ea5a6f3945b4e6a903bd; run f7817716a8a63020bf92f02631d6bc47 suite 1e7fca79d06c; merged root b7ed29245cc7ae500dd14ac2da45b6be622d5f97; @cto earlier vterm decisions for the dead run 11886cd3 (files 30695-vterm13-first-admission-decisions-v1.json 67dbf760, 30695-vterm13-encoder-three-decisions-v1.json abdf39ef; never applied) regenerated here"
+    ],
+    "evidence": {
+      "algorithm": "evidence-output-v1",
+      "projection": {
+        "cell": {
+          "assertions": [],
+          "criterionBranch": "headless-geometry-review",
+          "frames": [],
+          "rawReplies": [
+            {
+              "key": "device.xtwinops-16",
+              "sha256": "8b609b3a2eb321743338136355894f8ec99861aa4f732b902b3c677b0a53da55"
+            }
+          ],
+          "replyPath": {
+            "decision": {
+              "member": true,
+              "reason": "vterm declares complete reply delivery bound to its loaded source and engine"
+            },
+            "declaration": {
+              "adapterSources": [
+                {
+                  "blobOid": "cb5719799dcdd5ae24e6fcf0dcad9965035ce54c",
+                  "path": "packages/vterm/src/index.ts"
+                },
+                {
+                  "blobOid": "8599e301dd046b1264403069289477ab65d71d3a",
+                  "path": "packages/vterm/src/backend.ts"
+                }
+              ],
+              "boundary": "feed-and-getCursor",
+              "engine": {
+                "kind": "source",
+                "repository": "git@github.com:beorn/vterm.git",
+                "treeOid": "617ae6002c7befea7b3e43d11bf23e6b433e3d65"
+              }
+            }
+          },
+          "tests": [
+            {
+              "id": "review",
+              "reason": "Required independent review of the audited headless context and retained zero geometry reply pending",
+              "status": "test-todo"
+            }
+          ]
+        },
+        "feature": {
+          "catalogEntrySha256": "f59bca8997730731f49ddfd878a7f3da623d2349893bf454540a7de4ead3e24d",
+          "featureId": "device.xtwinops-16"
+        },
+        "runtimeIdentity": {
+          "adapterSources": [
+            {
+              "blobOid": "cb5719799dcdd5ae24e6fcf0dcad9965035ce54c",
+              "path": "packages/vterm/src/index.ts"
+            },
+            {
+              "blobOid": "8599e301dd046b1264403069289477ab65d71d3a",
+              "path": "packages/vterm/src/backend.ts"
+            }
+          ],
+          "adapterVersion": "0.10.2",
+          "engineVersion": "0.9.0",
+          "integrity": {
+            "cleanTree": true,
+            "kind": "source",
+            "repository": "git@github.com:beorn/vterm.git",
+            "treeOid": "617ae6002c7befea7b3e43d11bf23e6b433e3d65"
+          },
+          "kind": "js",
+          "runtimeFormat": "js"
+        },
+        "subject": {
+          "id": "vterm",
+          "kind": "lib",
+          "os": "linux",
+          "version": "0.9.0"
+        }
+      },
+      "sha256": "7acb38037822b74069e8dec2491ec7a959dd73ca326c64683202a0f2273de97b"
+    }
   }
 ]
