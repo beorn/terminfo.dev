@@ -857,8 +857,8 @@ const VT100_SOURCE_IDENTITY = {
   integrity: {
     kind: "source",
     repository: "git@github.com:beorn/vterm.git",
-    revision: "53a9eb9291b7880f4dc6a39a6802301049997a72",
-    treeOid: "5ffc7ad9ae120d0bf93c64b0fdc712eb40892896",
+    revision: "f6d3f26b52dc46e54a76e4a2e21647fd3cf26edb",
+    treeOid: "97f1da77dea90f664aeb678b919a35673f893ef1",
     cleanTree: true,
   },
   runtimeFormat: "js",

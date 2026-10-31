@@ -350,17 +350,17 @@ const TITLE_STACK_UNIMPLEMENTED_AUDITS: ReadonlyMap<string, string> = new Map([
 
 const TITLE_STACK_UNIMPLEMENTED_SOURCE_TREES: ReadonlyMap<string, { readonly sourceCitation: string }> = new Map([
   [
-    "5ffc7ad9ae120d0bf93c64b0fdc712eb40892896",
+    "97f1da77dea90f664aeb678b919a35673f893ef1",
     {
       sourceCitation:
-        'vterm 53a9eb9291b7880f4dc6a39a6802301049997a72 packages/vt100/src/screen.ts:251-358 handleCSI has no case "t" and createScreen at packages/vt100/src/screen.ts:130 holds only title = "" with no title stack, so neither CSI 22;0t nor CSI 23;0t is implemented',
+        'vterm f6d3f26b52dc46e54a76e4a2e21647fd3cf26edb packages/vt100/src/screen.ts:251-358 handleCSI has no case "t" and createScreen at packages/vt100/src/screen.ts:130 holds only title = "" with no title stack, so neither CSI 22;0t nor CSI 23;0t is implemented',
     },
   ],
   [
-    "69366752918a6086c639123799cc3ac68d8083a0",
+    "307baeacad6171889503303135f6f930aab04b2e",
     {
       sourceCitation:
-        'vterm 53a9eb9291b7880f4dc6a39a6802301049997a72 packages/vt220/src/screen.ts:305-428 handleCSI has no case "t" and createScreen at packages/vt220/src/screen.ts:104,176 holds only title = "" with no title stack, so neither CSI 22;0t nor CSI 23;0t is implemented',
+        'vterm f6d3f26b52dc46e54a76e4a2e21647fd3cf26edb packages/vt220/src/screen.ts:305-428 handleCSI has no case "t" and createScreen at packages/vt220/src/screen.ts:104,176 holds only title = "" with no title stack, so neither CSI 22;0t nor CSI 23;0t is implemented',
     },
   ],
 ])
