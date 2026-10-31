@@ -35,7 +35,6 @@ import { join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { afterEach, beforeEach, expect, test, vi } from "vitest"
 import { collectBatch, createLibProbeSource, feedCapture } from "./headless-batch.ts"
-import { headlessRuntimeIdentity } from "./headless-identity.ts"
 import { finalizeCollectedDraft } from "../terminfo.dev/src/capture-writer.ts"
 import { cellWidthTransition } from "../probe-defs/src/helpers.ts"
 import { replyFailure } from "../probe-defs/src/helpers.ts"
@@ -52,12 +51,26 @@ async function backend() {
 }
 
 // 31299: callback-only assertions miss a typed source review that the capture parser rejects.
-// Keep the real registered callback, measured adapter identity, collector and parser on one path.
+// Keep the real registered callback, pinned identity fixture, adapter, collector and parser on one path.
 test.each(["extensions.osc117-reset-highlight-bg", "extensions.osc119-reset-highlight-fg"])(
   "%s retains a readable pending source review through the actual collector",
   async (id) => {
     const definition = ALL_PROBES.find((entry) => entry.id === id)!
-    const identity = await headlessRuntimeIdentity("xtermjs", "@termless/xtermjs", "js")
+    // Source-audit input, not an attestation of this runner's checkout. Standalone CI has no owned siblings.
+    const identity = {
+      kind: "js",
+      runtimeFormat: "js",
+      engineVersion: "6.0.0",
+      adapterVersion: "0.10.2",
+      termlessRevision: "2d97417328b7b1d086f9396b9a1731216ed134cc",
+      resolvedPath:
+        "node_modules/.bun/@xterm+headless@6.0.0/node_modules/@xterm/headless/lib-headless/xterm-headless.js",
+      integrity: {
+        kind: "registry",
+        lockIntegrity:
+          "sha512-5Yj1QINYCyzrZtf8OFIHi47iQtI+0qYFPHmouEfG8dHNxbZ9Tb9YGSuLcsEwj9Z+OL75GJqPyJbyoFer80a2Hw==",
+      },
+    } as const
     const manifest = {
       schemaVersion: 4 as const,
       probeHash: "reset-parser-contract-fixture",
