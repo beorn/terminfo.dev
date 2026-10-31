@@ -25,6 +25,7 @@ import {
   readSentinelReply,
   replyFrame,
   replyFailure,
+  cancelReplyFailure,
   reviewResult,
   sameRgb as sameRgbCells,
   sentinelNegativeResult,
@@ -1614,8 +1615,7 @@ function colorStackProbe(ownSequence: typeof colorPush | typeof colorPop): Probe
         }
         if (result) {
           // Cleanup failure supersedes reply absence; do not attach reply evidence to that failure.
-          const unmarked = result as { replyFailureTestIds?: readonly string[] }
-          delete unmarked.replyFailureTestIds
+          cancelReplyFailure(result)
           result.pass = false
           result.note = note
           result.tests = [{ id: "criterion", status: "test-failure", reason: note }]

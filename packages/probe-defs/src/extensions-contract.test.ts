@@ -9,6 +9,7 @@
 import { expect, test } from "vitest"
 import { join } from "node:path"
 import { extensionsProbes } from "./extensions.ts"
+import { withReplyFailureEvidence } from "./helpers.ts"
 import {
   contractGaps,
   libProbeSource,
@@ -798,6 +799,24 @@ test.each([
       expect(result.tests?.[0]?.reason, id).toBe(`Malformed OSC 10 reply: ${JSON.stringify(raw)}`)
     }
   }
+})
+
+test("colour-stack cleanup cancels reply intent on the returned failure object", () => {
+  const definition = extensionsProbes.find((entry) => entry.id === "extensions.osc30001-color-stack-push")!
+  const original = "rgb:1010/2020/3030"
+  const replies = [`\x1b]10;${original}\x07`, "", `\x1b]10;${original}\x07`]
+  const result = definition.lib!(
+    libProbeSource({
+      ...inertModel(),
+      feedCapture: () => replies.shift() ?? "",
+      feed(sequence) {
+        if (sequence === `\x1b]10;${original}\x07`) throw new Error("cleanup restore unavailable")
+      },
+    }),
+  )
+  expect(result.tests).toMatchObject([{ status: "test-failure", reason: expect.stringContaining("cleanup") }])
+  expect(result).not.toHaveProperty("replyFailureTestIds")
+  expect(withReplyFailureEvidence(definition.id, result, { producer: "headless", attempts: [] })).toBe(result)
 })
 
 // Regression (#31754): the shared colour-stack helper served one sentence to both rows, so a green

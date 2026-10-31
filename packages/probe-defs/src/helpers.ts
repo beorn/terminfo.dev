@@ -35,6 +35,13 @@ export function replyFailure(reason: string): ExecutionOnlyProbeCallbackResult {
   }
 }
 
+/** An operational cleanup failure replaces reply intent on the object already being returned. */
+export function cancelReplyFailure(result: ProbeCallbackResult): ProbeCallbackResult {
+  const unmarked = result as { replyFailureTestIds?: readonly string[] }
+  delete unmarked.replyFailureTestIds
+  return result
+}
+
 /** Add completed producer evidence only where the callback explicitly requested it. */
 export function withReplyFailureEvidence(
   featureId: string,
