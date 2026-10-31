@@ -323,6 +323,51 @@ test.each([
   if ("resolvedAtPaint" in options) expect(result.observation?.note).toContain("resolved at paint")
 })
 
+// #31955 (@cto 758ee3b5): the initial-query sentinel decides a host-slot reset only when the seeded control
+// did not establish a live path, and every host slot keeps the control bytes beside its sentinel negative.
+function silentHostSlot(code: 10 | 11 | 12, seeded: string, restored: string) {
+  const replies = [seeded, restored]
+  return {
+    feed() {},
+    feedCapture: (write: string) => (write === `\x1b]${code};?\x07` ? (replies.shift() ?? "") : ""),
+    queryWithSentinelOutcome: () => ({
+      match: null,
+      reason: "sentinel",
+      raw: "\x1b[?1;2c",
+      rawBase64: Buffer.from("\x1b[?1;2c").toString("base64"),
+      sentinel: { atMs: 1, graceMs: 250 },
+    }),
+  } as unknown as LibProbeSource
+}
+
+test.each([10, 11, 12] as const)("OSC %i reset reviews a verified control instead of the initial sentinel", (code) => {
+  const source = silentHostSlot(code, `\x1b]${code};rgb:aaaa/bbbb/cccc\x07`, `\x1b]${code};rgb:1111/2222/3333\x07`)
+  const result = callback(`extensions.osc${code + 100}-reset-${{ 10: "fg", 11: "bg", 12: "cursor" }[code]}`).lib!(
+    source,
+  )
+  expect(result.observation?.note).not.toBe("negative by sentinel")
+  expect(result.tests).toMatchObject([{ id: "review", status: "test-todo" }])
+  expect(JSON.stringify(result)).toContain("reset produced neither the baseline nor the verified seed")
+})
+
+test.each([10, 11, 12] as const)("OSC %i reset sentinel negative carries the control bytes", (code) => {
+  const source = silentHostSlot(code, "", "")
+  const result = callback(`extensions.osc${code + 100}-reset-${{ 10: "fg", 11: "bg", 12: "cursor" }[code]}`).lib!(
+    source,
+  )
+  expect(result.observation).toMatchObject({ outcome: "unsupported", note: "negative by sentinel" })
+  expect(JSON.parse(result.assertions![0]!.note!)).toMatchObject({
+    query: `\x1b]${code};?\x07`,
+    originalRaw: "",
+    controls: [
+      { write: `\x1b]${code};rgb:aa/bb/cc\x07`, response: "" },
+      { write: `\x1b]${code};?\x07`, response: "" },
+      { write: `\x1b]${code + 100}\x07`, response: "" },
+      { write: `\x1b]${code};?\x07`, response: "" },
+    ],
+  })
+})
+
 test("OSC104 keeps sentinel reply bytes and retains unqualified cell readings beside them", () => {
   const result = callback("extensions.osc104-reset-palette").lib!(
     indexedPalette({ sentinel: true, ignoresSeed: true }).source,
