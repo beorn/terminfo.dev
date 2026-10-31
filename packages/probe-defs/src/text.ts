@@ -2,6 +2,7 @@ import type { AssertionType, ProbeDefinition, ProbeCallbackResult, LibProbeSourc
 import {
   isBlank,
   parserStateResult,
+  replyFailure,
   probe,
   tooSmall,
   utf8DecodingRefusal,
@@ -230,6 +231,11 @@ function tabClearResult(
   const response = JSON.stringify({ cols, ...positions })
   const { oldFirst, oldSecond, oldThird, after } = positions
   if (!oldFirst || !oldSecond || !oldThird || !after) {
+    if (assertionType === "query_reply")
+      return {
+        response,
+        ...replyFailure("no parsable cursor position reply; the public projection returned null and retained no bytes"),
+      }
     return {
       pass: false,
       response,
@@ -562,7 +568,9 @@ export const textProbes: ProbeDefinition[] = [
         ctx.write("\n") // LF
         const pos = await ctx.queryCursorPosition()
         if (!before || !pos) {
-          return { pass: false, tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }] }
+          return replyFailure(
+            "no parsable cursor position reply; the public projection returned null and retained no bytes",
+          )
         }
         if (before.row !== 3 || before.col !== 5) {
           return {
@@ -641,31 +649,21 @@ export const textProbes: ProbeDefinition[] = [
           }
         }
         const decawm = await ctx.queryMode(DECAWM_MODE)
+        if (decawm === null)
+          return {
+            response: JSON.stringify({ cols, decawm }),
+            ...replyFailure("no usable DECRPM reply; the public projection returned null and retained no bytes"),
+          }
         if (decawm !== "set") {
           return {
             pass: false,
             response: JSON.stringify({ cols, decawm }),
-            ...(decawm === null
-              ? {
-                  tests: [
-                    {
-                      id: "criterion",
-                      status: "test-failure",
-                      reason: "DECAWM setup did not reply",
-                    },
-                  ] as [{ id: string; status: "test-failure"; reason: string }],
-                }
-              : {
-                  observation: {
-                    outcome: "inconclusive",
-                    reason: decawm === null ? "no-response" : "insufficient-evidence",
-                    assertionType: "query_reply",
-                    note:
-                      decawm === null
-                        ? "DECAWM setup did not reply"
-                        : `DECAWM measured ${decawm}; right-margin wrap not qualified`,
-                  },
-                }),
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              assertionType: "query_reply",
+              note: `DECAWM measured ${decawm}; right-margin wrap not qualified`,
+            },
           }
         }
         ctx.write("\x1b[1;1H")
@@ -701,9 +699,10 @@ export const textProbes: ProbeDefinition[] = [
         const control = await ctx.queryCursorPosition()
         if (!control) {
           return {
-            pass: false,
             response: JSON.stringify({ cols, decawm, home }),
-            tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }],
+            ...replyFailure(
+              "no parsable cursor position reply; the public projection returned null and retained no bytes",
+            ),
           }
         }
         if (control.row !== 1 || control.col !== cols) {
@@ -723,9 +722,10 @@ export const textProbes: ProbeDefinition[] = [
         const target = await ctx.queryCursorPosition()
         if (!target) {
           return {
-            pass: false,
             response: JSON.stringify({ cols, decawm, home, control }),
-            tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }],
+            ...replyFailure(
+              "no parsable cursor position reply; the public projection returned null and retained no bytes",
+            ),
           }
         }
         const pass = target.row === 2 && target.col === 2
@@ -938,7 +938,9 @@ export const textProbes: ProbeDefinition[] = [
         ctx.write("\r") // CR
         const pos = await ctx.queryCursorPosition()
         if (!before || !pos) {
-          return { pass: false, tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }] }
+          return replyFailure(
+            "no parsable cursor position reply; the public projection returned null and retained no bytes",
+          )
         }
         if (before.row !== 1 || before.col !== 3) {
           return {
@@ -996,7 +998,9 @@ export const textProbes: ProbeDefinition[] = [
         ctx.write("\b") // BS
         const pos = await ctx.queryCursorPosition()
         if (!before || !pos) {
-          return { pass: false, tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }] }
+          return replyFailure(
+            "no parsable cursor position reply; the public projection returned null and retained no bytes",
+          )
         }
         if (before.row !== 1 || before.col !== 5) {
           return {
@@ -1053,7 +1057,9 @@ export const textProbes: ProbeDefinition[] = [
         ctx.write("\x1bD") // IND
         const pos = await ctx.queryCursorPosition()
         if (!before || !pos) {
-          return { pass: false, tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }] }
+          return replyFailure(
+            "no parsable cursor position reply; the public projection returned null and retained no bytes",
+          )
         }
         if (before.row !== 3 || before.col !== 5) {
           return {
@@ -1110,7 +1116,9 @@ export const textProbes: ProbeDefinition[] = [
         ctx.write("\x1bE") // NEL
         const pos = await ctx.queryCursorPosition()
         if (!before || !pos) {
-          return { pass: false, tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }] }
+          return replyFailure(
+            "no parsable cursor position reply; the public projection returned null and retained no bytes",
+          )
         }
         if (before.row !== 3 || before.col !== 5) {
           return {
@@ -1357,38 +1365,31 @@ export const textProbes: ProbeDefinition[] = [
         try {
           installTabFixture(ctx.write)
           const start = await ctx.queryCursorPosition()
-          if (!start || start.row !== 1 || start.col !== 1) {
+          if (start === null)
+            return {
+              response: JSON.stringify({ start }),
+              ...replyFailure(
+                "no parsable cursor position reply; the public projection returned null and retained no bytes",
+              ),
+            }
+          if (start.row !== 1 || start.col !== 1) {
             return {
               pass: false,
               response: JSON.stringify({ start }),
-              ...(start === null
-                ? {
-                    tests: [
-                      {
-                        id: "criterion",
-                        status: "test-failure",
-                        reason: "CHT starting position was not measured at row 1, column 1",
-                      },
-                    ] as [{ id: string; status: "test-failure"; reason: string }],
-                  }
-                : {
-                    observation: {
-                      outcome: "inconclusive",
-                      reason: start ? "insufficient-evidence" : "no-response",
-                      assertionType: "query_reply",
-                      note: "CHT starting position was not measured at row 1, column 1",
-                    },
-                  }),
+              observation: {
+                outcome: "inconclusive",
+                reason: "insufficient-evidence",
+                assertionType: "query_reply",
+                note: "CHT starting position was not measured at row 1, column 1",
+              },
             }
           }
           ctx.write("\x1b[2I")
           const position = await ctx.queryCursorPosition()
           if (!position) {
-            return {
-              pass: false,
-              note: "No cursor response",
-              tests: [{ id: "criterion", status: "test-failure", reason: "No cursor response" }],
-            }
+            return replyFailure(
+              "no parsable cursor position reply; the public projection returned null and retained no bytes",
+            )
           }
           return tabPositionResult(position, 17, "query_reply")
         } finally {
@@ -1448,38 +1449,31 @@ export const textProbes: ProbeDefinition[] = [
           installTabFixture(ctx.write)
           ctx.write("\x1b[1;21H")
           const start = await ctx.queryCursorPosition()
-          if (!start || start.row !== 1 || start.col !== 21) {
+          if (start === null)
+            return {
+              response: JSON.stringify({ start }),
+              ...replyFailure(
+                "no parsable cursor position reply; the public projection returned null and retained no bytes",
+              ),
+            }
+          if (start.row !== 1 || start.col !== 21) {
             return {
               pass: false,
               response: JSON.stringify({ start }),
-              ...(start === null
-                ? {
-                    tests: [
-                      {
-                        id: "criterion",
-                        status: "test-failure",
-                        reason: "CBT starting position was not measured at row 1, column 21",
-                      },
-                    ] as [{ id: string; status: "test-failure"; reason: string }],
-                  }
-                : {
-                    observation: {
-                      outcome: "inconclusive",
-                      reason: start ? "insufficient-evidence" : "no-response",
-                      assertionType: "query_reply",
-                      note: "CBT starting position was not measured at row 1, column 21",
-                    },
-                  }),
+              observation: {
+                outcome: "inconclusive",
+                reason: "insufficient-evidence",
+                assertionType: "query_reply",
+                note: "CBT starting position was not measured at row 1, column 21",
+              },
             }
           }
           ctx.write("\x1b[Z")
           const position = await ctx.queryCursorPosition()
           if (!position) {
-            return {
-              pass: false,
-              note: "No cursor response",
-              tests: [{ id: "criterion", status: "test-failure", reason: "No cursor response" }],
-            }
+            return replyFailure(
+              "no parsable cursor position reply; the public projection returned null and retained no bytes",
+            )
           }
           return tabPositionResult(position, 17, "query_reply")
         } finally {

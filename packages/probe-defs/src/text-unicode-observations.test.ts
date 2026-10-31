@@ -473,7 +473,13 @@ test("TBC leaves failed setup, narrow geometry and absent or malformed cursor ev
     }),
   )
   expect(appResult.observation).toBeUndefined()
-  expect(appResult.tests).toMatchObject([{ id: "criterion", status: "test-failure", reason: "no-response" }])
+  expect(appResult.tests).toMatchObject([
+    {
+      id: "criterion",
+      status: "test-failure",
+      reason: "no parsable cursor position reply; the public projection returned null and retained no bytes",
+    },
+  ])
   expect(missing.writes.at(-1)).toContain("\x1b[1;73H\x1bH")
 })
 
@@ -525,10 +531,7 @@ test.each([
       {
         id: "criterion",
         status: "test-failure",
-        reason:
-          id === "text.cht"
-            ? "CHT starting position was not measured at row 1, column 1"
-            : "CBT starting position was not measured at row 1, column 21",
+        reason: "no parsable cursor position reply; the public projection returned null and retained no bytes",
       },
     ])
     expect(missing.assertions).toBeUndefined()
@@ -718,7 +721,13 @@ test("text.wrap negative controls: unqualified control, spoofing, wrong target, 
     app({ cols: 61, queryMode: async () => "set", queryCursorPosition: cursorQueue({ row: 1, col: 1 }, null) }),
   )
   expect(missingControl.observation).toBeUndefined()
-  expect(missingControl.tests).toEqual([{ id: "criterion", status: "test-failure", reason: "no-response" }])
+  expect(missingControl.tests).toEqual([
+    {
+      id: "criterion",
+      status: "test-failure",
+      reason: "no parsable cursor position reply; the public projection returned null and retained no bytes",
+    },
+  ])
 
   const missingTarget = await byId("text.wrap").term(
     app({
@@ -728,12 +737,18 @@ test("text.wrap negative controls: unqualified control, spoofing, wrong target, 
     }),
   )
   expect(missingTarget.observation).toBeUndefined()
-  expect(missingTarget.tests).toEqual([{ id: "criterion", status: "test-failure", reason: "no-response" }])
+  expect(missingTarget.tests).toEqual([
+    {
+      id: "criterion",
+      status: "test-failure",
+      reason: "no parsable cursor position reply; the public projection returned null and retained no bytes",
+    },
+  ])
 
   for (const [mode, reason] of [
     ["reset", "insufficient-evidence"],
     ["unknown", "insufficient-evidence"],
-    [null, "no-response"],
+    [null, "no usable DECRPM reply; the public projection returned null and retained no bytes"],
   ] as const) {
     const writes: string[] = []
     const result = await byId("text.wrap").term(
@@ -748,7 +763,13 @@ test("text.wrap negative controls: unqualified control, spoofing, wrong target, 
     )
     if (mode === null) {
       expect(result.observation).toBeUndefined()
-      expect(result.tests).toEqual([{ id: "criterion", status: "test-failure", reason: "DECAWM setup did not reply" }])
+      expect(result.tests).toEqual([
+        {
+          id: "criterion",
+          status: "test-failure",
+          reason: "no usable DECRPM reply; the public projection returned null and retained no bytes",
+        },
+      ])
     } else {
       expect(result.observation, String(mode)).toMatchObject({
         outcome: "inconclusive",

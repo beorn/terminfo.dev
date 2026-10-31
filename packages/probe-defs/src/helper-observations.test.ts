@@ -1121,7 +1121,13 @@ test("all ten SGR color TTY replies remain inconclusive and restore style", asyn
       expect(writes.at(-1), id).toBe("\x1b[0m")
       const silent = await probe.term(terminal())
       expect(silent.observation, id).toBeUndefined()
-      expect(silent.tests, id).toEqual([{ id: "criterion", status: "test-failure", reason: "No cursor response" }])
+      expect(silent.tests, id).toEqual([
+        {
+          id: "criterion",
+          status: "test-failure",
+          reason: "no parsable cursor position reply; the public projection returned null and retained no bytes",
+        },
+      ])
     }
   }
   const color = sgrProbes.find((item) => item.id === "sgr.fg.standard")
@@ -1168,7 +1174,13 @@ test("SGR reset cursor replies remain inconclusive and style cleanup runs on que
   if (!probe?.term) throw new Error("missing sgr.reset terminal callback")
   const silence = await probe.term(terminal())
   expect(silence.observation).toBeUndefined()
-  expect(silence.tests).toEqual([{ id: "criterion", status: "test-failure", reason: "no-response" }])
+  expect(silence.tests).toEqual([
+    {
+      id: "criterion",
+      status: "test-failure",
+      reason: "no parsable cursor position reply; the public projection returned null and retained no bytes",
+    },
+  ])
   expect(silence.assertions).toBeUndefined()
   const writes: string[] = []
   await expect(

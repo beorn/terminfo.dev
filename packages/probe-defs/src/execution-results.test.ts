@@ -147,6 +147,29 @@ it.each([
   ["scrollback.total-lines", [null], undefined],
   ["unicode.wrap-boundary", [null], undefined],
   ["unicode.tab-stops", [null], undefined],
+  ["sgr.underline-color-indexed", [null], "\u001b[0m"],
+  ["sgr.underline-color-reset", [null], "\u001b[0m"],
+  ["sgr.selective-reset.bold", [null], "\u001b[0m"],
+  ["text.newline", [null, [4, 5]], undefined],
+  ["text.newline", [[3, 5], null], undefined],
+  ["text.cr", [null, [1, 1]], undefined],
+  ["text.cr", [[1, 3], null], undefined],
+  ["text.backspace", [null, [1, 4]], undefined],
+  ["text.backspace", [[1, 5], null], undefined],
+  ["text.index", [null, [4, 5]], undefined],
+  ["text.index", [[3, 5], null], undefined],
+  ["text.next-line", [null, [4, 1]], undefined],
+  ["text.next-line", [[3, 5], null], undefined],
+  ["text.wrap", [[1, 1], null], undefined],
+  ["text.wrap", [[1, 1], [1, 80], null], undefined],
+  ["text.tbc", [null, [1, 17], [1, 25], [1, 80]], undefined],
+  ["text.tbc", [[1, 9], null, [1, 25], [1, 80]], undefined],
+  ["text.tbc", [[1, 9], [1, 17], null, [1, 80]], undefined],
+  ["text.tbc", [[1, 9], [1, 17], [1, 25], null], undefined],
+  ["text.cht", [null], undefined],
+  ["text.cht", [[1, 1], null], undefined],
+  ["text.cbt", [null], undefined],
+  ["text.cbt", [[1, 21], null], undefined],
 ] as const)("retains erased cursor evidence for %s with readings %j", async (id, readings, cleanup) => {
   const definition = ALL_PROBES.find((entry) => entry.id === id)!
   const writes: string[] = []
@@ -162,10 +185,17 @@ it.each([
     rows: 24,
     cols: 80,
     write: (sequence: string) => writes.push(sequence),
-    ...(id === "reset.sgr" && {
+    ...((id === "reset.sgr" || id.startsWith("sgr.")) && {
       queryWithSentinelOutcome: async (sequence: string) => {
         attempts.push({ sequence, received: "", timeoutMs: 37, match: null, reason: "timeout" })
         return { raw: "", rawBase64: "", match: null, reason: "timeout" }
+      },
+    }),
+    ...(id === "text.wrap" && {
+      queryMode: async (mode: number) => {
+        const received = `\x1b[?${mode};1$y`
+        attempts.push({ sequence: `\x1b[?${mode}$p`, received, timeoutMs: 37, match: [received], reason: "reply" })
+        return "set"
       },
     }),
     queryCursorPosition: async () => {
@@ -183,9 +213,11 @@ it.each([
     },
   } as unknown as TermProbeSource)
   expect(cursorReads).toBe(readings.length)
-  expect(attempts).toHaveLength(readings.length + (id === "reset.sgr" ? 1 : 0))
+  expect(attempts).toHaveLength(
+    readings.length + (id === "reset.sgr" || id.startsWith("sgr.") || id === "text.wrap" ? 1 : 0),
+  )
   if (cleanup) expect(writes.at(-1)).toBe(cleanup)
-  if (id === "unicode.tab-stops") {
+  if (["unicode.tab-stops", "text.tbc", "text.cht", "text.cbt"].includes(id)) {
     expect(writes.at(-1)).toMatch(/^\x1b\[3g.*\x1b\[1;1H$/s)
   }
   expect(callback).toHaveProperty("replyFailureTestIds", ["criterion"])
@@ -199,6 +231,29 @@ it.each([
       `query ${index + 1}: sent ${JSON.stringify(entry.sequence)}; received ${JSON.stringify(entry.received)}`,
     )
   }
+  expect(stored).not.toHaveProperty("replyFailureTestIds")
+})
+
+it("retains erased DECAWM evidence before wrap emits fixture bytes", async () => {
+  const writes: string[] = []
+  const callback = await ALL_PROBES.find((entry) => entry.id === "text.wrap")!.term!({
+    rows: 24,
+    cols: 80,
+    write: (sequence: string) => writes.push(sequence),
+    queryMode: async () => null,
+  } as unknown as TermProbeSource)
+  expect(writes).toEqual([])
+  expect(callback).toHaveProperty("replyFailureTestIds", ["criterion"])
+  expect(callback.response).toBe(JSON.stringify({ cols: 80, decawm: null }))
+  const stored = record(
+    withReplyFailureEvidence("text.wrap", callback, {
+      producer: "TTY",
+      attempts: [{ sequence: "\x1b[?7$p", received: "\x1b?", timeoutMs: 37, match: null, reason: "timeout" }],
+    }),
+  )
+  expect(stored.status).toBe("test-failure")
+  expect(stored.reason).toContain("no usable DECRPM reply; the public projection returned null and retained no bytes")
+  expect(stored.reason).toContain('query 1: sent "\\u001b[?7$p"; received "\\u001b?"')
   expect(stored).not.toHaveProperty("replyFailureTestIds")
 })
 
@@ -472,9 +527,21 @@ it("preserves producer-specific native geometry refusal reasons without appendin
       null,
       "no parsable cursor position reply; the public projection returned null and retained no bytes",
     ],
-    ["sgr.underline-color-indexed", null, "No cursor response"],
-    ["sgr.underline-color-reset", null, "No cursor response"],
-    ["sgr.selective-reset.bold", null, "no-response"],
+    [
+      "sgr.underline-color-indexed",
+      null,
+      "no parsable cursor position reply; the public projection returned null and retained no bytes",
+    ],
+    [
+      "sgr.underline-color-reset",
+      null,
+      "no parsable cursor position reply; the public projection returned null and retained no bytes",
+    ],
+    [
+      "sgr.selective-reset.bold",
+      null,
+      "no parsable cursor position reply; the public projection returned null and retained no bytes",
+    ],
     [
       "modes.xtpushsgr",
       null,
@@ -622,9 +689,9 @@ it("preserves native callback note fallback for unmeasured widths and TERM_FEATU
   }
 })
 
-// Tab helpers retain native observation-note fallback. Both checksum arms instead publish
+// Tab and checksum replies publish
 // explicit reply failures, so their reason is independent of the callback note.
-it("preserves tab note fallbacks and explicit checksum reply failures", async () => {
+it("preserves explicit tab and checksum reply failures", async () => {
   for (const [id, startCol] of [
     ["text.cht", 1],
     ["text.cbt", 21],
@@ -638,7 +705,10 @@ it("preserves tab note fallbacks and explicit checksum reply failures", async ()
       queryCursorPosition: async () => (++reads === 1 ? { row: 1, col: startCol } : null),
     } as unknown as TermProbeSource)
     expect(reads).toBe(2)
-    expect(record(callback)).toMatchObject({ status: "test-failure", reason: "No cursor response" })
+    expect(record(callback)).toMatchObject({
+      status: "test-failure",
+      reason: "no parsable cursor position reply; the public projection returned null and retained no bytes",
+    })
   }
   const checksum = editingProbes.find((row) => row.id === "editing.decrqcra")!
   const native = await checksum.term!({

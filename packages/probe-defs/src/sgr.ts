@@ -9,6 +9,7 @@ import type {
 import { frameDigests } from "./types.ts"
 import {
   parserStateResult,
+  replyFailure,
   reviewResult,
   HEADLESS_OBSERVABLE_REVIEW,
   sameRgb,
@@ -314,11 +315,9 @@ async function consumedSgr(
     ctx.write(sequence + "X")
     const pos = await ctx.queryCursorPosition()
     if (!pos) {
-      return {
-        pass: false,
-        note: "No cursor response",
-        tests: [{ id: "criterion", status: "test-failure", reason: "No cursor response" }],
-      }
+      return replyFailure(
+        "no parsable cursor position reply; the public projection returned null and retained no bytes",
+      )
     }
     return {
       pass: false,
@@ -373,11 +372,9 @@ async function consumedSgrReset(
     ctx.write(setup + "X" + reset + "Y")
     const pos = await ctx.queryCursorPosition()
     if (!pos) {
-      return {
-        pass: false,
-        note: "No cursor response",
-        tests: [{ id: "criterion", status: "test-failure", reason: "No cursor response" }],
-      }
+      return replyFailure(
+        "no parsable cursor position reply; the public projection returned null and retained no bytes",
+      )
     }
     return {
       pass: false,
@@ -554,10 +551,9 @@ async function consumedResetSgr(
     ctx.write(`${setup}X${reset}Y`)
     const pos = await ctx.queryCursorPosition()
     if (!pos) {
-      return {
-        pass: false,
-        tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }],
-      }
+      return replyFailure(
+        "no parsable cursor position reply; the public projection returned null and retained no bytes",
+      )
     }
     const advanced = pos.row === 1 && pos.col === 3
     return {
