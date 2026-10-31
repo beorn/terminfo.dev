@@ -538,7 +538,8 @@ test("editing.decsace without a capture adapter still clears its DECSACE extent"
     {
       id: "criterion",
       status: "test-failure",
-      reason: "No cursor response after attributes set by DECCARA under a DECSACE extent",
+      reason:
+        "no parsable cursor position reply after attributes set by DECCARA under a DECSACE extent; the public projection returned null and retained no bytes",
     },
   ])
   // The no-capture branch runs no lifecycle, so the mode reset is its own job: DECSACE 2 is set and
