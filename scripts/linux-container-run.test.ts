@@ -495,8 +495,8 @@ describe("frame-less container run", () => {
   })
 })
 
-it.each(["absent", "stale"])("host readback uses receipt identity with %s caller exports", (caller) => {
-  const command = readFileSync(launcher, "utf8").match(/^(?:TERMINFO_[A-Z_]+="[^\n]*\n?)+bun -e '[\s\S]*?^'/m)
+it.each(["absent", "stale"])("host readback imports from CODE root with %s caller exports", (caller) => {
+  const command = readFileSync(launcher, "utf8").match(/^(?:TERMINFO_[A-Z_]+="[^\n]*\n?)+bun [^\n]*-e '[\s\S]*?^'/m)
   if (!command) throw new Error("Host Bun readback command not found in Linux launcher")
   const env = { ...process.env }
   delete env.TERMINFO_PROBE_HASH
@@ -505,21 +505,26 @@ it.each(["absent", "stale"])("host readback uses receipt identity with %s caller
     env.TERMINFO_PROBE_HASH = "c".repeat(12)
     env.TERMINFO_SOURCE_REVISION = "d".repeat(40)
   }
+  // Execute the real finalizer through capture validation; the old environment-only
+  // echo hid its relative import failure when the launcher was called from CODE.
+  writeFileSync(join(dir, "v3-capture.json"), "{}")
   const result = spawnSync(
     "bash",
     [
       "-c",
-      `suite_hash=$1 source_revision=$2 raw=$3
-bun() { command bun -e 'console.log(JSON.stringify({probeHash:process.env.TERMINFO_PROBE_HASH,sourceRevision:process.env.TERMINFO_SOURCE_REVISION,raw:process.env.TERMINFO_CAPTURE_RAW,output:process.env.TERMINFO_CAPTURE_OUTPUT}))'; }
+      `suite_hash=$1 source_revision=$2 raw=$3 vendor_root=$4
+bun() { command bun -e 'console.log(JSON.stringify({probeHash:process.env.TERMINFO_PROBE_HASH,sourceRevision:process.env.TERMINFO_SOURCE_REVISION,raw:process.env.TERMINFO_CAPTURE_RAW,output:process.env.TERMINFO_CAPTURE_OUTPUT}))'; command bun "$@"; }
 ${command[0]}`,
       "_",
       "a".repeat(12),
       "b".repeat(40),
       dir,
+      fileURLToPath(new URL("../", import.meta.url)),
     ],
-    { encoding: "utf8", env },
+    { encoding: "utf8", env, cwd: fileURLToPath(new URL("../../../", import.meta.url)) },
   )
-  expect(result.status, result.stderr).toBe(0)
+  expect(result.status).not.toBe(0)
+  expect(result.stderr).toContain("Invalid collector capture; retained original response")
   expect(JSON.parse(result.stdout)).toEqual({
     probeHash: "a".repeat(12),
     sourceRevision: "b".repeat(40),

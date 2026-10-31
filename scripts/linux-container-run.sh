@@ -874,7 +874,6 @@ fi
 
 usage() {
   echo "Usage: $0 --target kitty|xterm|ghostty|wezterm|alacritty [--preset baseline|current|default] --clipboard-profile default|allow|deny-read [--mux tmux|screen] [--ids ID,ID] OUTPUT_DIRECTORY" >&2
-  echo "Run it from inside vendor/terminfo.dev: the final step imports packages/... relative to cwd." >&2
   echo "A source-tree collector also needs TERMINFO_PROBE_HASH and TERMINFO_SOURCE_REVISION" >&2
   echo "  from sourceSuiteEnvironment() in packages/admin/versions.ts, or serve.ts refuses the run." >&2
   exit 2
@@ -1216,7 +1215,7 @@ jq -e --arg run "$run_id" --arg profile "$clipboard_profile" --arg sha "$clipboa
   echo "Container clipboard fixture differs from exact retained receipt" >&2; exit 2;
 }
 TERMINFO_PROBE_HASH="$suite_hash" TERMINFO_SOURCE_REVISION="$source_revision" \
-TERMINFO_CAPTURE_RAW="$raw/v3-capture.json" TERMINFO_CAPTURE_OUTPUT="$raw" bun -e '
+TERMINFO_CAPTURE_RAW="$raw/v3-capture.json" TERMINFO_CAPTURE_OUTPUT="$raw" bun --cwd "$vendor_root" -e '
   import {readFileSync,writeFileSync} from "node:fs";
   import {join} from "node:path";
   import {readRetainedDaemonProbeResponse,finalizeCollectedDraft} from "./packages/terminfo.dev/src/daemon-client.ts";
