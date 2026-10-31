@@ -95,9 +95,21 @@ negative buffer-state assertions with pending source review, never an automatic 
 A different tuple, missing X, or OSC22/777/9 receives no such assertion from this entry.
 Historical captures stay unchanged; fresh emitted rows need new independent decisions.
 
+Alacritty0.26.0 uses the same native qualifier at the audited32d76284 artifact,
+Termless2d974173 and exact source/build/lock provenance for
+OSC9/17/19/22/117/119/176/440/555/666/710/777/3008.
+The pinned vte0.15.0 dispatcher has no cases for twelve of these codes.
+OSC22 is parsed into set_mouse_cursor_icon, whose empty Handler default is not
+overridden by alacritty_terminal0.26.0 Term; its review reason states that distinction.
+Private per-entry reasons also preserve the existing vterm9 and Ghostty3008 text.
+Nine command callbacks and two paired highlight resets retain pending independent
+buffer-state source review only with the qualified identity and rendered X.
+Direct OSC17/19 queries keep their reply route; OSC8/1/7/1337 remain outside this entry.
+This qualifier does not approve historical captures or grade a target effect.
+
 The two highlight resets (OSC 17/117 and 19/119) query the initial colour first.
 A real colour reply follows the measured reset criterion. Only an empty initial
-reply at the audited xterm.js identity can enter source review, and both set and
+reply at an audited xterm.js or Alacritty identity can enter source review, and both set and
 reset codes must belong to the same audited entry. The callback feeds the exact
 set/reset commands and an X control, retaining the query, reply, runtime and
 control state as buffer-state source evidence. The measured reply route remains

@@ -1864,6 +1864,18 @@ describe("GhosttyNative audited OSC source review", () => {
     },
   } as const satisfies NonNullable<LibProbeSource["runtimeIdentity"]>
 
+  test("the parsed OSC3008 review reason remains byte-identical", () => {
+    const result = probe("extensions.osc3008-context").lib!(
+      context({
+        runtimeIdentity: identity,
+        getCell: () => ({ ...context({}).getCell(0, 0), char: "X" }),
+      }),
+    )
+    expect(result.tests?.[0]?.reason).toBe(
+      "Ghostty 332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28 src/terminal/osc.zig:535-641 rejects OSC176/440/555/666/710; :747 parses OSC3008 context_signal, dropped at src/terminal/stream.zig:2050-2059 (SHA256 3ddc5e27d6a6f48ea99399bb886b52e7bebb68c94397a3ba008a7c3eb6c01a9b); Termless 2d97417328b7b1d086f9396b9a1731216ed134cc packages/ghostty-native/native/src/main.zig:80 -> Terminal.zig:264 -> stream_readonly.zig:20 selects that readonly stream; parsed by osc.zig:747 context_signal, dropped unimplemented at stream.zig:2056-2059; independent source review required",
+    )
+  })
+
   test.each([
     ["extensions.osc176-app-id", 176],
     ["extensions.osc440-audio", 440],
@@ -1915,6 +1927,162 @@ describe("GhosttyNative audited OSC source review", () => {
       expect(result.assertions).toBeUndefined()
     },
   )
+})
+
+/**
+ * @failure Alacritty's thirteen audited OSC codes lose pending review or acquire assertions without a qualified artifact and X.
+ * @level l0
+ * @consumer Eleven library callbacks; existing engine fixtures do not cover this native tuple or parsed22 default.
+ * @testonly none
+ */
+describe("Alacritty audited OSC source review", () => {
+  // Retained Linux capture run fdf3e7dc; fixture identity is not a loaded-engine attestation.
+  const identity = {
+    kind: "native",
+    engineVersion: "0.26.0",
+    adapterVersion: "0.10.2",
+    termlessRevision: "2d97417328b7b1d086f9396b9a1731216ed134cc",
+    loadedBinary: {
+      path: "vendor/termless/packages/alacritty/termless-alacritty-native.node",
+      sha256: "32d76284e5a3c7673fafbbc83a16717fa0a1c1811c7d659d982176a53ceb1aa9",
+    },
+    provenance: {
+      sha256: "32d76284e5a3c7673fafbbc83a16717fa0a1c1811c7d659d982176a53ceb1aa9",
+      sourceCommit: "cd5cd5172680fd240ee3445dea96289793bc2d59",
+      buildHash: "94ef4fbf1e21d454c70a39efaf9cfde1ebabe57a0f9cdb186fef782cfb1ff8ce",
+      toolchain:
+        "rustc 1.94.0 (4a4ef493e 2026-03-02) (built from a source tarball); cargo 1.94.0 (85eff7c80 2026-01-15)",
+      lockSha256: "1f89f2579b7d786a116d8fefb8267c4af076bd3a3893adcf14b00c4466740497",
+    },
+  } as const satisfies NonNullable<LibProbeSource["runtimeIdentity"]>
+
+  test.each([
+    ["extensions.osc9-progress", "9"],
+    ["extensions.osc22-pointer", "22"],
+    ["extensions.osc176-app-id", "176"],
+    ["extensions.osc440-audio", "440"],
+    ["extensions.osc555-flash", "555"],
+    ["extensions.osc666-termprop", "666"],
+    ["extensions.osc710-font-normal", "710"],
+    ["extensions.osc777-notify", "777"],
+    ["extensions.osc3008-context", "3008"],
+    ["extensions.osc117-reset-highlight-bg", "17/117"],
+    ["extensions.osc119-reset-highlight-fg", "19/119"],
+  ] as const)("%s requires exact native identity, silence and rendered X", (id, codes) => {
+    const callback = probe(id).lib!
+    const writes: string[] = []
+    const source = context({
+      runtimeIdentity: identity,
+      feed: (bytes) => {
+        writes.push(bytes)
+      },
+      getCell: () => ({ ...context({}).getCell(0, 0), char: "X" }),
+    })
+    const result = callback(source)
+    expect(result.criterionBranch).toBe("source-negative-review")
+    expect(result.tests).toMatchObject([{ id: "review", status: "test-failure" }])
+    expect(result.observation).toMatchObject({ outcome: "inconclusive", assertionType: "buffer_state" })
+    expect(result.assertions).toMatchObject([
+      { kind: "negative", assertionType: "buffer_state", observed: result.response },
+    ])
+    expect(JSON.parse(result.response!)).toMatchObject({ sentinel: { char: "X" }, runtimeIdentity: identity })
+    expect(writes.some((bytes) => bytes.endsWith("X"))).toBe(true)
+    const reason = result.tests?.[0]?.reason ?? ""
+    if (codes === "22") {
+      expect(writes).toContain("\x1b[1;1H\x1b[2K\x1b]22;pointer\x07X")
+      expect(reason).toContain("vte 0.15.0 src/ansi.rs:1455-1461")
+      expect(reason).toContain("src/ansi.rs:703-704")
+      expect(reason).not.toContain("no case 22")
+    } else {
+      expect(reason).toContain(`no case ${codes}`)
+    }
+    if (codes.includes("/")) {
+      const setCode = codes.split("/")[0]
+      const answered = callback({ ...source, feedCapture: () => `\x1b]${setCode};rgb:aa/bb/cc\x07` })
+      expect(answered.criterionBranch).not.toBe("source-negative-review")
+      expect(answered.observation?.assertionType).toBe("query_reply")
+    }
+    const foreignIdentities = [
+      { ...identity, engineVersion: "unreviewed" },
+      { ...identity, adapterVersion: "unreviewed" },
+      { ...identity, termlessRevision: "0".repeat(40) },
+      { ...identity, loadedBinary: { ...identity.loadedBinary, path: "unreviewed/binary" } },
+      { ...identity, loadedBinary: { ...identity.loadedBinary, sha256: "0".repeat(64) } },
+      ...(["sha256", "sourceCommit", "buildHash", "lockSha256"] as const).map((key) => ({
+        ...identity,
+        provenance: { ...identity.provenance, [key]: "unreviewed" },
+      })),
+    ]
+    for (const runtimeIdentity of foreignIdentities) {
+      const foreign = callback({ ...source, runtimeIdentity })
+      expect(foreign.criterionBranch).not.toBe("source-negative-review")
+      expect(foreign.assertions).toBeUndefined()
+    }
+    const unknown = callback({ ...source, runtimeIdentity: undefined })
+    expect(unknown.criterionBranch).not.toBe("source-negative-review")
+    expect(unknown.assertions).toBeUndefined()
+    const broken = callback({ ...source, getCell: () => context({}).getCell(0, 0) })
+    expect(broken.criterionBranch).toBeUndefined()
+    expect(broken.assertions).toBeUndefined()
+  })
+
+  test.each([
+    ["extensions.osc17-highlight-bg", 17],
+    ["extensions.osc19-highlight-fg", 19],
+  ] as const)("%s retains its direct query route", (id, code) => {
+    const silent = probe(id).lib!(context({ runtimeIdentity: identity }))
+    expect(silent.criterionBranch).not.toBe("source-negative-review")
+    expect(silent.assertions).toBeUndefined()
+    const result = probe(id).lib!(
+      context({
+        runtimeIdentity: identity,
+        feedCapture: () => `\x1b]${code};rgb:aa/bb/cc\x07`,
+      }),
+    )
+    expect(result.criterionBranch).not.toBe("source-negative-review")
+    expect(result.observation?.assertionType).toBe("query_reply")
+    expect(result.observation?.outcome).toBe("supported")
+  })
+
+  test.each(["extensions.osc8", "extensions.osc1-icon", "extensions.osc7-cwd", "extensions.osc1337-cellsize"])(
+    "%s stays outside this source audit",
+    (id) => {
+      const result = probe(id).lib!(
+        context({
+          runtimeIdentity: identity,
+          getCell: (col) => ({ ...context({}).getCell(0, 0), char: id === "extensions.osc8" ? "ALINKZ"[col]! : "X" }),
+        }),
+      )
+      expect(result.criterionBranch).not.toBe("source-negative-review")
+      expect(result.assertions).toBeUndefined()
+    },
+  )
+
+  test("consolidation preserves the full vterm OSC9 reason", () => {
+    const result = probe("extensions.osc9-progress").lib!(
+      context({
+        runtimeIdentity: {
+          kind: "js",
+          runtimeFormat: "js",
+          engineVersion: "0.9.0",
+          adapterVersion: "0.10.2",
+          termlessRevision: "2d97417328b7b1d086f9396b9a1731216ed134cc",
+          resolvedPath: "vendor/vterm/packages/vterm/src/index.ts",
+          integrity: {
+            kind: "source",
+            repository: "git@github.com:beorn/vterm.git",
+            revision: "53a9eb9291b7880f4dc6a39a6802301049997a72",
+            treeOid: "617ae6002c7befea7b3e43d11bf23e6b433e3d65",
+            cleanTree: true,
+          },
+        },
+        getCell: () => ({ ...context({}).getCell(0, 0), char: "X" }),
+      }),
+    )
+    expect(result.tests?.[0]?.reason).toBe(
+      "vterm 53a9eb9291b7880f4dc6a39a6802301049997a72 packages/vterm/src/screen.ts:3596-4055 handleOSC switch; screen.ts:3921-3923 notification sink stores every OSC 9 value, with no progress subcode or state interpretation; independent source review required",
+    )
+  })
 })
 
 /**
