@@ -124,6 +124,66 @@ it.each([
   expect(stored).not.toHaveProperty("replyFailureTestIds")
 })
 
+// These eleven cursor exits lost reply evidence after a nullable CPR projection. Existing
+// protocol tests pin measured outcomes, but never carry these failures through the recorder.
+it.each([
+  ["cursor.ansi-save", [null], undefined],
+  ["cursor.ansi-save", [[3, 5], null], "\x1b[u"],
+  ["cursor.ansi-save", [[3, 5], [10, 15], null], "\x1b[u"],
+  ["cursor.ansi-restore", [[4, 6], [12, 18], null], "\x1b[u"],
+  ["cursor.save-restore", [[3, 5], null], "\x1b8"],
+  ["cursor.position-report", [null], undefined],
+  ["cursor.reverse-wrap", [null], "\x1b[?45l"],
+  ["cursor.cup-boundaries", [null], undefined],
+  ["cursor.cup-boundaries", [[1, 1], null], undefined],
+  ["cursor.cup-boundaries", [[1, 1], [24, 80], null], undefined],
+  ["cursor.cup-boundaries", [[1, 1], [24, 80], [1, 1], null], undefined],
+  ["cursor.cud-past-bottom", [null], undefined],
+  ["cursor.cup-scroll-region", [null, [2, 1], [11, 1]], "\x1b[r"],
+] as const)("retains erased cursor evidence for %s with readings %j", async (id, readings, cleanup) => {
+  const definition = ALL_PROBES.find((entry) => entry.id === id)!
+  const writes: string[] = []
+  const attempts: {
+    sequence: string
+    received: string
+    timeoutMs: number
+    match: string[] | null
+    reason: "reply" | "timeout"
+  }[] = []
+  const callback = await definition.term!({
+    rows: 24,
+    cols: 80,
+    write: (sequence: string) => writes.push(sequence),
+    queryCursorPosition: async () => {
+      if (attempts.length >= readings.length) throw new Error(`Unexpected extra CPR for ${id}`)
+      const reading = readings[attempts.length]!
+      const received = reading ? `\x1b[${reading[0]};${reading[1]}R` : "\x1b?"
+      attempts.push({
+        sequence: "\x1b[6n",
+        received,
+        timeoutMs: 37,
+        match: reading ? [received] : null,
+        reason: reading ? "reply" : "timeout",
+      })
+      return reading ? { row: reading[0], col: reading[1] } : null
+    },
+  } as unknown as TermProbeSource)
+  expect(attempts).toHaveLength(readings.length)
+  if (cleanup) expect(writes.at(-1)).toBe(cleanup)
+  expect(callback).toHaveProperty("replyFailureTestIds", ["criterion"])
+  const stored = record(withReplyFailureEvidence(id, callback, { producer: "TTY", attempts }))
+  expect(stored.status).toBe("test-failure")
+  expect(stored.reason).toContain(
+    "no parsable cursor position reply; the public projection returned null and retained no bytes",
+  )
+  for (const [index, entry] of attempts.entries()) {
+    expect(stored.reason).toContain(
+      `query ${index + 1}: sent ${JSON.stringify(entry.sequence)}; received ${JSON.stringify(entry.received)}`,
+    )
+  }
+  expect(stored).not.toHaveProperty("replyFailureTestIds")
+})
+
 it("retains each query's own state when a failed query is followed by a matching cleanup reply", () => {
   const result = withReplyFailureEvidence("cursor.fixture", replyFailure("no parsable cursor position reply"), {
     producer: "TTY",
@@ -541,8 +601,8 @@ it("preserves native callback note fallback for unmeasured widths and TERM_FEATU
   }
 })
 
-// These helpers serve both source kinds. Native used callback.note as the missing observation
-// note, while lib did not; changing the shared helper would silently alter headless reasons.
+// Tab helpers retain native observation-note fallback. Both checksum arms instead publish
+// explicit reply failures, so their reason is independent of the callback note.
 it("preserves tab note fallbacks and explicit checksum reply failures", async () => {
   for (const [id, startCol] of [
     ["text.cht", 1],

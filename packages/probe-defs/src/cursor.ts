@@ -101,15 +101,7 @@ async function appSavedCursor(
       pass: false,
       response: JSON.stringify({ setup }),
       ...(setup === null
-        ? {
-            tests: [
-              {
-                id: "criterion",
-                status: "test-failure",
-                reason: "Save fixture initial CUP was not measured at its target",
-              },
-            ] as [{ id: string; status: "test-failure"; reason: string }],
-          }
+        ? replyFailure("no parsable cursor position reply; the public projection returned null and retained no bytes")
         : {
             observation: {
               outcome: "inconclusive",
@@ -130,15 +122,7 @@ async function appSavedCursor(
         pass: false,
         response: JSON.stringify({ setup, displaced: displacedPosition }),
         ...(displacedPosition === null
-          ? {
-              tests: [
-                {
-                  id: "criterion",
-                  status: "test-failure",
-                  reason: "Save fixture displacement was not measured at its target",
-                },
-              ] as [{ id: string; status: "test-failure"; reason: string }],
-            }
+          ? replyFailure("no parsable cursor position reply; the public projection returned null and retained no bytes")
           : {
               observation: {
                 outcome: "inconclusive",
@@ -157,7 +141,7 @@ async function appSavedCursor(
       return {
         pass: false,
         response,
-        tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }],
+        ...replyFailure("no parsable cursor position reply; the public projection returned null and retained no bytes"),
       }
     }
     const pass = final.row === initial.row && final.col === initial.col
@@ -643,7 +627,9 @@ export const cursorProbes: ProbeDefinition[] = [
             return {
               pass: false,
               response: JSON.stringify({ measured }),
-              tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }],
+              ...replyFailure(
+                "no parsable cursor position reply; the public projection returned null and retained no bytes",
+              ),
             }
           }
           measured.push({ expected: step.row + ";" + step.col, report: pos })
@@ -828,7 +814,9 @@ export const cursorProbes: ProbeDefinition[] = [
             ? {
                 pass: false,
                 response: JSON.stringify({ measured }),
-                tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }],
+                ...replyFailure(
+                  "no parsable cursor position reply; the public projection returned null and retained no bytes",
+                ),
               }
             : {
                 pass: false,
@@ -995,7 +983,12 @@ export const cursorProbes: ProbeDefinition[] = [
         ctx.write("\x1b[1;1H")
         const origin = await ctx.queryCursorPosition()
         if (!origin) {
-          return { pass: false, tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }] }
+          return {
+            pass: false,
+            ...replyFailure(
+              "no parsable cursor position reply; the public projection returned null and retained no bytes",
+            ),
+          }
         }
         if (origin.row !== 1 || origin.col !== 1) {
           return {
@@ -1015,7 +1008,9 @@ export const cursorProbes: ProbeDefinition[] = [
           return {
             pass: false,
             response: JSON.stringify({ origin, edge }),
-            tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }],
+            ...replyFailure(
+              "no parsable cursor position reply; the public projection returned null and retained no bytes",
+            ),
           }
         }
         if (edge.row !== rows || edge.col !== cols) {
@@ -1036,7 +1031,9 @@ export const cursorProbes: ProbeDefinition[] = [
           return {
             pass: false,
             response: JSON.stringify({ origin, edge, beforeTarget }),
-            tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }],
+            ...replyFailure(
+              "no parsable cursor position reply; the public projection returned null and retained no bytes",
+            ),
           }
         }
         if (beforeTarget.row !== 1 || beforeTarget.col !== 1) {
@@ -1060,7 +1057,9 @@ export const cursorProbes: ProbeDefinition[] = [
           return {
             pass: false,
             response,
-            tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }],
+            ...replyFailure(
+              "no parsable cursor position reply; the public projection returned null and retained no bytes",
+            ),
           }
         }
         const pass = final.row === rows && final.col === cols
@@ -1150,7 +1149,9 @@ export const cursorProbes: ProbeDefinition[] = [
             ? {
                 pass: false,
                 response: JSON.stringify({ rows, measured }),
-                tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }],
+                ...replyFailure(
+                  "no parsable cursor position reply; the public projection returned null and retained no bytes",
+                ),
               }
             : {
                 pass: false,
@@ -1338,7 +1339,9 @@ export const cursorProbes: ProbeDefinition[] = [
             return {
               pass: false,
               response: JSON.stringify({ rows, measured }),
-              tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }],
+              ...replyFailure(
+                "no parsable cursor position reply; the public projection returned null and retained no bytes",
+              ),
             }
           }
           const relative = [top, second, bottom].map((sample) => sample.row + ";" + sample.col).join(", ")
