@@ -6,6 +6,7 @@ import {
   HEADLESS_OBSERVABLE_REVIEW,
   notTestedResult,
   parserStateResult,
+  replyFailure,
   probe,
   queryDecrpm,
   reviewResult,
@@ -140,7 +141,9 @@ export const resetProbes: ProbeDefinition[] = [
         ctx.write("X")
         const pos = await ctx.queryCursorPosition()
         if (!pos) {
-          return { pass: false, tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }] }
+          return replyFailure(
+            "no parsable cursor position reply; the public projection returned null and retained no bytes",
+          )
         }
         return {
           pass: false,
@@ -191,12 +194,16 @@ export const resetProbes: ProbeDefinition[] = [
         ctx.write("\x1b[5;5H") // Move somewhere away from 1;1
         const before = await ctx.queryCursorPosition()
         if (!before) {
-          return { pass: false, tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }] }
+          return replyFailure(
+            "no parsable cursor position reply; the public projection returned null and retained no bytes",
+          )
         }
         ctx.write("\x1bc") // RIS — full reset
         const pos = await ctx.queryCursorPosition()
         if (!pos) {
-          return { pass: false, tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }] }
+          return replyFailure(
+            "no parsable cursor position reply; the public projection returned null and retained no bytes",
+          )
         }
         const measured = { before, after: pos }
         const setup = before.row === 5 && before.col === 5

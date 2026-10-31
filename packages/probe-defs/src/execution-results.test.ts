@@ -124,7 +124,7 @@ it.each([
   expect(stored).not.toHaveProperty("replyFailureTestIds")
 })
 
-// These eleven cursor exits lost reply evidence after a nullable CPR projection. Existing
+// These nullable CPR exits lost reply evidence after a public projection. Existing
 // protocol tests pin measured outcomes, but never carry these failures through the recorder.
 it.each([
   ["cursor.ansi-save", [null], undefined],
@@ -140,6 +140,13 @@ it.each([
   ["cursor.cup-boundaries", [[1, 1], [24, 80], [1, 1], null], undefined],
   ["cursor.cud-past-bottom", [null], undefined],
   ["cursor.cup-scroll-region", [null, [2, 1], [11, 1]], "\x1b[r"],
+  ["reset.sgr", [null], undefined],
+  ["reset.ris", [null], undefined],
+  ["reset.ris", [[5, 5], null], undefined],
+  ["scrollback.accumulate", [null], undefined],
+  ["scrollback.total-lines", [null], undefined],
+  ["unicode.wrap-boundary", [null], undefined],
+  ["unicode.tab-stops", [null], undefined],
 ] as const)("retains erased cursor evidence for %s with readings %j", async (id, readings, cleanup) => {
   const definition = ALL_PROBES.find((entry) => entry.id === id)!
   const writes: string[] = []
@@ -150,13 +157,20 @@ it.each([
     match: string[] | null
     reason: "reply" | "timeout"
   }[] = []
+  let cursorReads = 0
   const callback = await definition.term!({
     rows: 24,
     cols: 80,
     write: (sequence: string) => writes.push(sequence),
+    ...(id === "reset.sgr" && {
+      queryWithSentinelOutcome: async (sequence: string) => {
+        attempts.push({ sequence, received: "", timeoutMs: 37, match: null, reason: "timeout" })
+        return { raw: "", rawBase64: "", match: null, reason: "timeout" }
+      },
+    }),
     queryCursorPosition: async () => {
-      if (attempts.length >= readings.length) throw new Error(`Unexpected extra CPR for ${id}`)
-      const reading = readings[attempts.length]!
+      if (cursorReads >= readings.length) throw new Error(`Unexpected extra CPR for ${id}`)
+      const reading = readings[cursorReads++]!
       const received = reading ? `\x1b[${reading[0]};${reading[1]}R` : "\x1b?"
       attempts.push({
         sequence: "\x1b[6n",
@@ -168,8 +182,12 @@ it.each([
       return reading ? { row: reading[0], col: reading[1] } : null
     },
   } as unknown as TermProbeSource)
-  expect(attempts).toHaveLength(readings.length)
+  expect(cursorReads).toBe(readings.length)
+  expect(attempts).toHaveLength(readings.length + (id === "reset.sgr" ? 1 : 0))
   if (cleanup) expect(writes.at(-1)).toBe(cleanup)
+  if (id === "unicode.tab-stops") {
+    expect(writes.at(-1)).toMatch(/^\x1b\[3g.*\x1b\[1;1H$/s)
+  }
   expect(callback).toHaveProperty("replyFailureTestIds", ["criterion"])
   const stored = record(withReplyFailureEvidence(id, callback, { producer: "TTY", attempts }))
   expect(stored.status).toBe("test-failure")
@@ -462,7 +480,7 @@ it("preserves producer-specific native geometry refusal reasons without appendin
       null,
       "no parsable cursor position reply; the public projection returned null and retained no bytes",
     ],
-    ["reset.sgr", null, "no-response"],
+    ["reset.sgr", null, "no parsable cursor position reply; the public projection returned null and retained no bytes"],
   ] as const) {
     const callback = await rows.find((row) => row.id === id)!.term!({
       rows: 24,
@@ -597,7 +615,10 @@ it("preserves native callback note fallback for unmeasured widths and TERM_FEATU
       write() {},
       queryCursorPosition: async () => null,
     } as unknown as TermProbeSource)
-    expect(record(missing)).toMatchObject({ status: "test-failure", reason: "No cursor response" })
+    expect(record(missing)).toMatchObject({
+      status: "test-failure",
+      reason: "no parsable cursor position reply; the public projection returned null and retained no bytes",
+    })
   }
 })
 

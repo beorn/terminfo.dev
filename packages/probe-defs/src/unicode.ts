@@ -1,5 +1,12 @@
 import type { ProbeDefinition } from "./types.ts"
-import { parserStateResult, probe, utf8DecodingRefusal, validSize, renderedWidthFailure } from "./helpers.ts"
+import {
+  replyFailure,
+  parserStateResult,
+  probe,
+  utf8DecodingRefusal,
+  validSize,
+  renderedWidthFailure,
+} from "./helpers.ts"
 
 export const unicodeProbes: ProbeDefinition[] = [
   {
@@ -188,11 +195,9 @@ export const unicodeProbes: ProbeDefinition[] = [
         ctx.write("\u4e2d") // CJK char (2 cols wide)
         const pos = await ctx.queryCursorPosition()
         if (!pos) {
-          return {
-            pass: false,
-            note: "No cursor response",
-            tests: [{ id: "criterion", status: "test-failure", reason: "No cursor response" }],
-          }
+          return replyFailure(
+            "no parsable cursor position reply; the public projection returned null and retained no bytes",
+          )
         }
         const pass = pos.row === 2
         return {
@@ -274,11 +279,9 @@ export const unicodeProbes: ProbeDefinition[] = [
           ctx.write("A\tB")
           const pos = await ctx.queryCursorPosition()
           if (!pos) {
-            return {
-              pass: false,
-              note: "No cursor response",
-              tests: [{ id: "criterion", status: "test-failure", reason: "No cursor response" }],
-            }
+            return replyFailure(
+              "no parsable cursor position reply; the public projection returned null and retained no bytes",
+            )
           }
           const pass = pos.col === 10
           return {

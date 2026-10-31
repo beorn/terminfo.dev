@@ -2,6 +2,7 @@ import type { ProbeDefinition, ProbeCallbackResult, LibProbeSource } from "./typ
 import {
   probe,
   parserStateResult,
+  replyFailure,
   notTestedResult,
   reviewResult,
   tooSmall,
@@ -453,7 +454,9 @@ export const scrollbackProbes: ProbeDefinition[] = [
         }
         const pos = await ctx.queryCursorPosition()
         if (!pos) {
-          return { pass: false, tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }] }
+          return replyFailure(
+            "no parsable cursor position reply; the public projection returned null and retained no bytes",
+          )
         }
         return {
           pass: false,
@@ -553,7 +556,9 @@ export const scrollbackProbes: ProbeDefinition[] = [
         ctx.write("\x1b[5;1H") // move to row 5
         const pos = await ctx.queryCursorPosition()
         if (!pos) {
-          return { pass: false, tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }] }
+          return replyFailure(
+            "no parsable cursor position reply; the public projection returned null and retained no bytes",
+          )
         }
         return {
           pass: false,
