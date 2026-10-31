@@ -116,7 +116,7 @@ test.each(headlessObservableFeatures)(
         semanticPrompts: true,
         extensions: new Set(["osc7", "osc9", "iterm2Images"]),
       },
-      getMode: (mode: string) => (mode === "applicationCursor" ? (null as unknown as boolean) : false),
+      getMode: (mode: string) => (mode === "applicationCursor" ? null : false),
       getCell: (_row: number, col: number) => ({ char: "ALINKZ"[col] }),
     } as unknown as LibProbeSource
     const result = definition.lib(source)

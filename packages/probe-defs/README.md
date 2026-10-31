@@ -44,6 +44,9 @@ palette push/pop effects or graphics capabilities.
 - `term(ctx)` is asynchronous and uses a `TermProbeSource` for real-terminal I/O and any available owned capture, clipboard or input facilities.
 - A null arm has no implementation for that route. Ownership, geometry, text-readback and assertion-type declarations constrain the arms that do exist.
 
+Library `getMode` returns `boolean | null`: null names an unavailable adapter readback,
+not a reset state or a terminal-support verdict. Callbacks retain it explicitly.
+
 Both source interfaces carry `readonly kind: ProbeSourceKind` directly. Current runs retain exactly `source: { kind: "live" }` or `{ kind: "trace", trace: { path, sha256 }, captureRunId, captureSuiteId, captureSourceRevision }`. The trace path is relative to the artifact store and contains no parent segment; its SHA256 and capture identities are required. Initialization, sealing and the canonical reader validate and preserve this union without a schema bump. Call-log format/version remain inside the referenced artifact. Historical schema 2/3 bytes and readers are unchanged. This source declaration grants no capture, admission or publication.
 
 `termAssertionType` and `libAssertionType` declare a retained deciding-observation class. An explicit null means the callback runs without a typed deciding observable; undefined is temporarily undeclared (#28801). Neither means the callback arm itself is absent, and neither becomes a null observation or assertion type.

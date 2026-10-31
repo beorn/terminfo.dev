@@ -244,7 +244,7 @@ export const resetProbes: ProbeDefinition[] = [
         const after = ctx.getMode("applicationCursor")
         // #30701, @cto ruling C: a getMode that reports no applicationCursor state is a field the backend
         // does not expose (TEST TODO); an exposed mode that stayed off is still unmeasured.
-        if (typeof before !== "boolean") {
+        if (before === null || after === null) {
           const noObservable = "the application-cursor mode (DECCKM) state in the headless getMode readback"
           return reviewResult(
             HEADLESS_OBSERVABLE_REVIEW,

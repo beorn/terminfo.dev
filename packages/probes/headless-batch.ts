@@ -401,7 +401,7 @@ export function createLibProbeSource(
     getCursor() {
       return backend.getCursor()
     },
-    getMode(mode) {
+    getMode(mode): ReturnType<LibProbeSource["getMode"]> {
       return backend.getMode(mode as Parameters<TerminalBackend["getMode"]>[0])
     },
     getText() {

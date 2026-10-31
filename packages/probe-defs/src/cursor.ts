@@ -782,7 +782,7 @@ export const cursorProbes: ProbeDefinition[] = [
           return parserStateResult(cursor.y === 0 && cursor.x === cols - 1, expected, { cols, start, wrapped, cursor })
         } finally {
           ctx.feed("\x1b[?45l")
-          // #30574: the runtime getter can be null despite its current boolean type.
+          // Unknown mode metadata cannot determine the state to restore.
           if (originallyAutoWrap !== null) ctx.feed(originallyAutoWrap ? "\x1b[?7h" : "\x1b[?7l")
         }
       },

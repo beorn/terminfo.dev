@@ -3874,7 +3874,7 @@ describe("partial probe automation candidates", () => {
       const p = probe("modes.color-scheme-reporting")
       if (!p.lib) throw new Error("Missing headless color-scheme callback")
       const seen: string[] = []
-      const result = p.lib(context({ getMode: () => enabled as boolean, feed: (text) => seen.push(text) }))
+      const result = p.lib(context({ getMode: () => enabled, feed: (text) => seen.push(text) }))
       expect(result.notTested).toMatchObject({
         reason: "no-semantic-observable",
         noObservable: expect.stringMatching(/palette|color.scheme/i),
