@@ -231,16 +231,10 @@ function tabClearResult(
   const response = JSON.stringify({ cols, ...positions })
   const { oldFirst, oldSecond, oldThird, after } = positions
   if (!oldFirst || !oldSecond || !oldThird || !after) {
-    if (assertionType === "query_reply") {
-      return {
-        response,
-        ...replyFailure("no parsable cursor position reply; the public projection returned null and retained no bytes"),
-      }
-    }
+    // Library callers construct every position; only the cursor-reply path can be missing.
     return {
-      pass: false,
       response,
-      tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }],
+      ...replyFailure("no parsable cursor position reply; the public projection returned null and retained no bytes"),
     }
   }
   if (
@@ -288,17 +282,10 @@ function tabClearResult(
 }
 
 function tabPositionResult(
-  position: { row: number; col: number } | null,
+  position: { row: number; col: number },
   expectedCol: number,
   assertionType: AssertionType,
 ): ProbeCallbackResult {
-  if (!position) {
-    return {
-      pass: false,
-      note: "No cursor response",
-      tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }],
-    }
-  }
   const response = JSON.stringify(position)
   const pass = position.row === 1 && position.col === expectedCol
   return {

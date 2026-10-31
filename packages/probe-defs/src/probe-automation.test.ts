@@ -1431,7 +1431,7 @@ describe("Sixel geometry item-2 report", () => {
     expect(result).toMatchObject({ pass: false, response: raw })
     expect(result.observation).toMatchObject({
       outcome: "inconclusive",
-      reason: "no-response",
+      reason: "invalid-reply",
       assertionType: "query_reply",
     })
     expect(result.assertions).toBeUndefined()
@@ -1449,7 +1449,7 @@ describe("Sixel geometry item-2 report", () => {
   test("invalid Sixel replies retain query observations while silence records a named execution failure", async () => {
     for (const [raw, reason] of [
       ["\x1b[?2;3;0S", "insufficient-evidence"],
-      ["\x1b[?1;0;256S", "no-response"],
+      ["\x1b[?1;0;256S", "invalid-reply"],
       ["\x1b[?2;0;640S", "invalid-reply"],
       ["\x1b[?2;0;0;480S", "insufficient-evidence"],
       ["", "no-response"],
