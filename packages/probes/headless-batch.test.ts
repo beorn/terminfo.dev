@@ -77,6 +77,28 @@ test.each([false, true])("retains only marked synchronous reply failure evidence
 // Malformed corroborating replies must stay visible after the real callback/collector boundary;
 // valid retained-state fixtures cannot distinguish bad input from silence.
 test.each([
+  ["extensions.osc17-highlight-bg", "OSC"],
+  ["extensions.sixel-da1", "DA1"],
+  ["extensions.sixel-geometry-report", "Sixel geometry"],
+] as const)("%s stores malformed extension reply reasons", async (id, kind) => {
+  const definition = ALL_PROBES.find((entry) => entry.id === id)!
+  const reply = "garbage"
+  const batch = await collectBatch(backend, "xtermjs", [
+    {
+      ...definition,
+      lib(context) {
+        // Controlled received bytes exercise the actual callback and stored-row precedence.
+        return definition.lib!({ ...context, queryWithSentinelOutcome: undefined, feedCapture: () => reply })
+      },
+    },
+  ])
+  const reason = `Malformed ${kind} reply: ${JSON.stringify(reply)}`
+  expect(batch.results).toMatchObject([{ status: "test-failure", reason, tests: [{ reason }] }])
+  expect(batch.rawReplies[id]).toBe(reply)
+  expect(JSON.stringify(batch)).not.toContain("replyFailureTestIds")
+})
+
+test.each([
   { query: "\x1b[18t", reply: "not-a-size-reply", note: "Malformed 18t reply", disagree: false },
   {
     query: "\x1b[?3$p",

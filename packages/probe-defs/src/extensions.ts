@@ -152,6 +152,7 @@ function oscReplyResult(
   if (raw.length === 0) {
     return { ...replyFailure("no-response"), response: raw }
   }
+  const note = `Malformed OSC reply: ${JSON.stringify(raw)}`
   return {
     pass: false,
     response: raw,
@@ -159,8 +160,9 @@ function oscReplyResult(
       outcome: "inconclusive",
       reason: prefix.test(raw) ? "invalid-reply" : "no-response",
       assertionType: "query_reply",
+      note,
     },
-    tests: [{ id: "criterion", status: "test-failure", reason: `Malformed OSC reply: ${JSON.stringify(raw)}` }],
+    tests: [{ id: "criterion", status: "test-failure", reason: note }],
   }
 }
 
@@ -204,6 +206,7 @@ function sixelDa1Result(raw: string, frame: string | null): ProbeCallbackResult 
     if (raw.length === 0) {
       return { ...replyFailure("no-response"), response: raw }
     }
+    const note = `Malformed DA1 reply: ${JSON.stringify(raw)}`
     return {
       pass: false,
       response: raw,
@@ -211,8 +214,9 @@ function sixelDa1Result(raw: string, frame: string | null): ProbeCallbackResult 
         outcome: "inconclusive",
         reason: raw.includes("\x1b[?") ? "invalid-reply" : "no-response",
         assertionType: "query_reply",
+        note,
       },
-      tests: [{ id: "criterion", status: "test-failure", reason: `Malformed DA1 reply: ${JSON.stringify(raw)}` }],
+      tests: [{ id: "criterion", status: "test-failure", reason: note }],
     }
   }
   const advertised = (match[1]?.split(";") ?? []).includes("4")
@@ -258,7 +262,10 @@ function sixelGeometryResult(
   const reply = frame ? /\x1b\[\?2;([0-9]+)(?:;([0-9;]*))?S/.exec(frame) : null
   if (!reply) {
     const malformed = frame !== null
-    const note = malformed ? "Malformed Sixel geometry response" : "No Sixel geometry response for item 2"
+    const note =
+      raw.length > 0
+        ? `Malformed Sixel geometry reply: ${JSON.stringify(raw)}`
+        : "No Sixel geometry response for item 2"
     if (!malformed) {
       const silent = sentinelNegativeResult(raw, sentinel, "Complete Sixel geometry response for item 2")
       if (silent) return silent
@@ -276,9 +283,7 @@ function sixelGeometryResult(
         reason: malformed ? "invalid-reply" : missingReason,
         note,
       },
-      tests: [
-        { id: "criterion", status: "test-failure", reason: `Malformed Sixel geometry reply: ${JSON.stringify(raw)}` },
-      ],
+      tests: [{ id: "criterion", status: "test-failure", reason: note }],
     }
   }
   const status = Number(reply[1])
