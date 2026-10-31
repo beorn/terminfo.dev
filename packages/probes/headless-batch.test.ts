@@ -70,14 +70,19 @@ test("real vterm metadata reaches both registered callbacks and the batch produc
       expect(result.assertions, id).toMatchObject([{ kind: "positive", observed: result.response }])
       const observed = JSON.parse(result.response!)
       if (id === "extensions.osc7-cwd") {
-        expect(observed).toMatchObject({ before: "file://localhost/original", restored: "file://localhost/original" })
-        expect(observed.first).not.toBe(observed.second)
+        expect(observed).toMatchObject({
+          before: "file://localhost/original",
+          first: "file://localhost/terminfo-cwd-A",
+          second: "file://localhost/terminfo-cwd-B",
+          restored: "file://localhost/original",
+        })
         expect(value.getCwd()).toBe("file://localhost/original")
       } else {
-        expect(observed.before).toEqual(["previous notice"])
-        expect(observed.first).toEqual([...observed.before, expect.any(String)])
-        expect(observed.second).toEqual([...observed.first, expect.any(String)])
-        expect(observed.first.at(-1)).not.toBe(observed.second.at(-1))
+        expect(observed).toMatchObject({
+          before: ["previous notice"],
+          first: ["previous notice", "terminfo-notification-A"],
+          second: ["previous notice", "terminfo-notification-A", "terminfo-notification-B"],
+        })
       }
     }
   } finally {
@@ -96,7 +101,7 @@ test("real vterm metadata reaches both registered callbacks and the batch produc
   }
 })
 
-test.each(["extensions.osc7-cwd", "extensions.notifications"])(
+test.for(["extensions.osc7-cwd", "extensions.notifications"])(
   "%s distinguishes stale exposed metadata from an absent reader",
   async (id, context) => {
     const sibling = fileURLToPath(new URL("../../../termless/packages/vterm/src/backend.ts", import.meta.url))
