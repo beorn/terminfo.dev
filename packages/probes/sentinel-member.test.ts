@@ -54,6 +54,7 @@ async function scriptedRuntimeFixture() {
       const backend = createXtermBackend();
       backend.capabilities.extensions.add("reply-delivery");
       Object.defineProperty(backend, "replyDelivery", { configurable: true, value: declaration });
+      backend.getAdapterSources = () => declaration.adapterSources;
       if (script) backend.feed = bytes => {
         const reply = script(new TextDecoder().decode(bytes));
         if (reply) backend.onResponse?.(new TextEncoder().encode(reply));
@@ -97,6 +98,7 @@ async function scriptedRuntimeFixture() {
       adapterVersion: "unit-fixture",
       engineVersion: engine.slice(engine.lastIndexOf("@") + 1),
       termlessRevision: git("rev-parse", "HEAD"),
+      adapterSources: declaration.adapterSources,
       resolvedPath: "node_modules/@xterm/headless",
       integrity: { kind: "registry", lockIntegrity },
     },
@@ -104,6 +106,7 @@ async function scriptedRuntimeFixture() {
   const loaded = (await import(/* @vite-ignore */ pathToFileURL(entry).href)) as {
     create: (script: ((text: string) => string) | undefined, declaration: unknown) => TerminalBackend
   }
+  runtimeIdentityOwner.verifyAdapterSources("scripted-reply-fixture", runtime)
   return {
     runtime,
     declaration,
@@ -781,6 +784,7 @@ test.each(["observed", "source-audited", "unimplemented", "missing", "error", "l
         engineVersion: "fixture",
         adapterVersion: "fixture",
         termlessRevision: fixture.runtime.identity.termlessRevision,
+        adapterSources: fixture.declaration.adapterSources,
         loadedBinary: { path: "fixture.node", sha256: artifact },
         provenance: {
           sha256: artifact,
