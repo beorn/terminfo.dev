@@ -4298,7 +4298,7 @@ describe("partial probe automation candidates", () => {
     }
   })
 
-  // #32026: explicit callbacks catch missing OSC633 codes and the distinct OSC133;D subcode.
+  // #32026: explicit callbacks catch all 26 approved marks, including the distinct OSC133;D subcode.
   // Existing data-derived reply-audit cases never exercise these source-negative buffer-state arms.
   test.each([
     [
@@ -4336,9 +4336,8 @@ describe("partial probe automation candidates", () => {
         ],
       } satisfies NonNullable<LibProbeSource["runtimeIdentity"]>
       const cases = [
-        ...OSC_SEMANTIC_MARK_CASES.filter(
-          ([id]) => id.startsWith("extensions.osc633-") || id === "extensions.osc133-d",
-        ),
+        ...OSC_SEMANTIC_MARK_CASES,
+        ["extensions.semantic-prompts", "\x1b]133;A\x07"],
         ["extensions.osc-633-vscode", "\x1b]633;A\x07"],
       ] as const
       for (const [id, sequence] of cases) {

@@ -3608,6 +3608,9 @@ export const extensionsProbes: ProbeDefinition[] = [
   probe(
     "extensions.semantic-prompts",
     (ctx) => {
+      if (absentOscAudit(ctx.runtimeIdentity, 133)) {
+        return sourceAbsentOsc("extensions.semantic-prompts", 133, "\x1b]133;A\x07", "shell prompt integration")(ctx)
+      }
       const note = "Declared semantic-prompt capability does not establish shell prompt integration"
       return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
         declared: ctx.capabilities.semanticPrompts === true,
@@ -3790,7 +3793,11 @@ export const extensionsProbes: ProbeDefinition[] = [
   {
     ...probe(
       "extensions.osc133-a",
-      (ctx) => promptMarkResult(ctx, "\x1b]133;A\x07", "OSC 133;A prompt-start mark registration"),
+      (ctx) =>
+        promptMarkResult(ctx, "\x1b]133;A\x07", "OSC 133;A prompt-start mark registration", {
+          probeId: "extensions.osc133-a",
+          selector: 133,
+        }),
       (ctx) => promptMarkAppResult(ctx, "\x1b]133;A\x07", "OSC 133;A prompt-start mark registration"),
     ),
     libAssertionType: null,
@@ -3800,7 +3807,11 @@ export const extensionsProbes: ProbeDefinition[] = [
   {
     ...probe(
       "extensions.osc133-b",
-      (ctx) => promptMarkResult(ctx, "\x1b]133;B\x07", "OSC 133;B command-start mark registration"),
+      (ctx) =>
+        promptMarkResult(ctx, "\x1b]133;B\x07", "OSC 133;B command-start mark registration", {
+          probeId: "extensions.osc133-b",
+          selector: 133,
+        }),
       (ctx) => promptMarkAppResult(ctx, "\x1b]133;B\x07", "OSC 133;B command-start mark registration"),
     ),
     libAssertionType: null,
@@ -3810,7 +3821,11 @@ export const extensionsProbes: ProbeDefinition[] = [
   {
     ...probe(
       "extensions.osc133-c",
-      (ctx) => promptMarkResult(ctx, "\x1b]133;C\x07", "OSC 133;C command-executed mark registration"),
+      (ctx) =>
+        promptMarkResult(ctx, "\x1b]133;C\x07", "OSC 133;C command-executed mark registration", {
+          probeId: "extensions.osc133-c",
+          selector: 133,
+        }),
       (ctx) => promptMarkAppResult(ctx, "\x1b]133;C\x07", "OSC 133;C command-executed mark registration"),
     ),
     libAssertionType: null,
@@ -3834,7 +3849,11 @@ export const extensionsProbes: ProbeDefinition[] = [
   {
     ...probe(
       "extensions.osc133-p",
-      (ctx) => promptMarkResult(ctx, "\x1b]133;P;Cwd=/tmp\x07", "OSC 133;P properties mark registration"),
+      (ctx) =>
+        promptMarkResult(ctx, "\x1b]133;P;Cwd=/tmp\x07", "OSC 133;P properties mark registration", {
+          probeId: "extensions.osc133-p",
+          selector: 133,
+        }),
       (ctx) => promptMarkAppResult(ctx, "\x1b]133;P;Cwd=/tmp\x07", "OSC 133;P properties mark registration"),
     ),
     libAssertionType: null,
