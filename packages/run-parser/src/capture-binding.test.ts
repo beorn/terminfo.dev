@@ -2618,13 +2618,8 @@ it("carries evidence-bound review decisions unchanged across prose-only catalogu
   const proseEditedEntry: Record<string, unknown> = {
     ...originEntry,
     body: "Rewritten editorial body prose.",
-    description: "Added editorial description.",
-    notes: "Added editorial notes.",
-    references: ["ECMA-48 §8.3.117"],
-    links: ["https://ecma-international.org"],
-    "see-also": ["sgr.bold"],
   }
-  expect(FEATURE_ENTRY_PROSE_DENYLIST).toEqual(["body", "description", "notes", "references", "links", "see-also"])
+  expect(FEATURE_ENTRY_PROSE_DENYLIST).toEqual(["body"])
   const originHash = entryHash(originEntry)
   const proseEditedHash = entryHash(proseEditedEntry)
   expect(proseEditedHash).toBe(originHash)

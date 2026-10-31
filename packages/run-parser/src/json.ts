@@ -97,11 +97,11 @@ export function canonicalJson(value: unknown): string {
 }
 
 /**
- * Human-facing prose keys on a `content/features.json` catalogue entry that do not define the
- * criterion or probe contract, and are excluded from the bound entry digest (#32037, @cto d45ebed6).
+ * Human-facing prose keys that `FeatureRecord` in `content/features.json` carries at the pin and
+ * that are excluded from the bound entry digest (#32037, @cto d45ebed6 / 138596ae).
  * Unknown keys stay bound by default.
  */
-export const FEATURE_ENTRY_PROSE_DENYLIST = ["body", "description", "notes", "references", "links", "see-also"] as const
+export const FEATURE_ENTRY_PROSE_DENYLIST = ["body"] as const
 
 const FEATURE_ENTRY_PROSE_DENYSET = new Set<string>(FEATURE_ENTRY_PROSE_DENYLIST)
 

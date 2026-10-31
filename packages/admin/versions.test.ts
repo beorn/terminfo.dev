@@ -356,11 +356,6 @@ test("prose-only edits to content/features.json change no catalogEntrySha256 and
   const baseline = probeSuiteSnapshot()
   const proseEdited = withFeatures((bold) => {
     bold.body = "Editorial rewrite of sgr.bold body prose."
-    bold.description = "Editorial description."
-    bold.notes = "Editorial notes."
-    bold.references = ["ECMA-48 §8.3.117"]
-    bold.links = ["https://ecma-international.org"]
-    bold["see-also"] = ["sgr.faint"]
   })
   expect(proseEdited.catalogEntrySha256).toEqual(baseline.catalogEntrySha256)
   expect(proseEdited.probeHash).toBe(baseline.probeHash)

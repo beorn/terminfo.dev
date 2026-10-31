@@ -192,7 +192,7 @@ test("enumerates FeatureRecord keys against FEATURE_ENTRY_PROSE_DENYLIST and omi
     probeStatus: true,
     probeStatusReason: true,
   } satisfies Record<keyof FeatureRecord, boolean>
-  expect(FEATURE_ENTRY_PROSE_DENYLIST).toEqual(["body", "description", "notes", "references", "links", "see-also"])
+  expect(FEATURE_ENTRY_PROSE_DENYLIST).toEqual(["body"])
   const denylisted = new Set<string>(FEATURE_ENTRY_PROSE_DENYLIST)
   for (const [key, bound] of Object.entries(decisions)) {
     expect(!denylisted.has(key), key).toBe(bound)
@@ -210,11 +210,6 @@ test("enumerates FeatureRecord keys against FEATURE_ENTRY_PROSE_DENYLIST and omi
     tier1: "included",
     probeStatus: "supported",
     probeStatusReason: "reviewed",
-    description: "Original description.",
-    notes: "Original notes.",
-    references: ["ECMA-48"],
-    links: ["https://example.invalid"],
-    "see-also": ["sgr.faint"],
     unknown: { kept: 1 },
   }
   expect(Object.keys(boundFeatureEntry(base)).sort()).toEqual(
