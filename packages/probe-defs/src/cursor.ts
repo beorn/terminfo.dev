@@ -467,7 +467,7 @@ export const cursorProbes: ProbeDefinition[] = [
   // The setting is reportable through DECRQSS `$ q SP q` (the DECSCUSR selector), the same readback
   // class as device.decrqss's SGR (`$ q m`) and DECSTBM (`$ q r`) replies. A pixel pair of the
   // default and bar cursors cannot decide the shape without independent review, so the app arm asks
-  // the terminal for its own report first and only falls back to the pixel pair when it stays silent.
+  // the terminal for its own report first and falls back to the pixel pair when that report is unusable.
   {
     ...probe(
       "cursor.shape",
@@ -484,8 +484,8 @@ export const cursorProbes: ProbeDefinition[] = [
       async (ctx) => {
         const decided = await cursorStyleReadbackDecision(ctx, "\x1b[6 q", 6)
         if (decided) return decided
-        // The terminal's own DECRQSS cursor-style report was silent: keep the pixel control/target
-        // pair as the fallback evidence, which a reviewer resolves by eye.
+        // No usable cursor-style report survived the projection: keep the pixel control/target
+        // pair as fallback evidence, which a reviewer resolves by eye.
         if (!ctx.capture) {
           const note =
             "no usable DECRQSS cursor-style reply; the public projection returned null and retained no bytes; no pixel readback for shape"

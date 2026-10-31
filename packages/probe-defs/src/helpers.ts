@@ -1014,8 +1014,9 @@ export function cursorProbe(
       }
       ctx.write("\x1b[1;1H")
       const origin = await ctx.queryCursorPosition()
-      if (!origin)
+      if (!origin) {
         return inconclusive(null, null, null, "query_reply", "no-response", "Cursor origin readback returned null")
+      }
       if (origin.row !== 1 || origin.col !== 1) {
         return inconclusive(
           origin,
