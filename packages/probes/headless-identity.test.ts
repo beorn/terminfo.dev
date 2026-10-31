@@ -576,8 +576,9 @@ test.each([
       /^adapter source declaration stale for unit-adapter:.*declared [a-f0-9]{40}, actual [a-f0-9]{40}/,
     )
   }
-  if (["undeclared", "unadvertised"].includes(mode))
+  if (["undeclared", "unadvertised"].includes(mode)) {
     expect(body.collectorError).toBe("adapter source identity undeclared for unit-adapter")
+  }
   expect(body.engineVersion).toBe("0.7.1")
   expect(body.result.member).toBe(member)
   expect(body.result.reason).toContain(reason)

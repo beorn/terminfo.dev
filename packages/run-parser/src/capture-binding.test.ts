@@ -1271,11 +1271,10 @@ describe("immutable pre-seal capture binding", () => {
       const projection = retainCaptureBinding(fresh, "sgr.faint", "a".repeat(64)).evidence!.projection.runtimeIdentity!
       const policy = identity.kind === "native" ? native : identity.runtimeFormat === "wasm" ? wasm : js
       expect(Object.keys(projection).sort()).toEqual(
-        [
-          ...Object.entries(policy)
-            .filter(([, keep]) => keep)
-            .map(([key]) => key),
-        ].sort(),
+        Object.entries(policy)
+          .filter(([, keep]) => keep)
+          .map(([key]) => key)
+          .sort(),
       )
       if (identity.kind === "js" && identity.integrity.kind === "source") {
         expect(Object.keys(projection.integrity as object).sort()).toEqual(
@@ -1383,8 +1382,9 @@ describe("immutable pre-seal capture binding", () => {
           if (changed && field === "revision" && draft.runtimeIdentity) {
             draft.runtimeIdentity.termlessRevision = "f".repeat(40)
           }
-          if (changed && field === "missing-adapter" && draft.runtimeIdentity)
+          if (changed && field === "missing-adapter" && draft.runtimeIdentity) {
             delete draft.runtimeIdentity.adapterSources
+          }
           const frameKey = changed && field === "frame-path" ? "moved.frame" : "original.frame"
           draft.rawReplies[frameKey] =
             changed && field === "frame-bytes" ? "different frame bytes" : "exact frame bytes"
