@@ -141,10 +141,12 @@ History fails before stub I/O; geometry retains its actual query and reply befor
 
 The legacy callback `pass` still exists for the [diagnostic Vitest runner](../probes/run-unified.probe.ts), including the execution-only arm. Current collectors record observations/tests through `recordExecutedProbe`; even `pass: true` with an explicit FAILURE test stays failure. Cleanup #30929 removes `pass` from every arm.
 
-An execution-only callback can use `replyFailure` to mark the failure tests that need actual request evidence.
+A callback can mark explicit failure tests that need actual request evidence. An execution-only callback uses
+`replyFailure`; a measured callback can retain a partial observation while marking its required-reply failure.
 The callback-only `replyFailureTestIds` never enters a stored result or draft. After the callback returns,
 the TTY or headless producer uses `withReplyFailureEvidence` to append escaped sent/received bytes and the
-actual timeout or synchronous capture boundary to only those marked failure reasons. Grades, test IDs,
+actual timeout or synchronous capture boundary to only those marked failure-test reasons. Readers find the
+attempts in the stored criterion test's reason; the observation note and top-level summary stay unchanged. Grades, test IDs,
 criterion branches, observations and assertions remain callback-owned. Missing request records remain
 named failures; they do not prove that a producer is absent. Proved missing required capabilities or
 identity-bound declarations retain named TODOs without markers. Malformed replies, sentinel negatives

@@ -65,7 +65,7 @@ export function withReplyFailureEvidence(
   if (!("replyFailureTestIds" in result) || !result.replyFailureTestIds?.length) return result
   const marked = new Set(result.replyFailureTestIds)
   for (const id of marked) {
-    if (!result.tests.some((test) => test.id === id && test.status === "test-failure")) {
+    if (!result.tests?.some((test) => test.id === id && test.status === "test-failure")) {
       throw new Error(
         `Callback ${featureId} reply marker ${id} must name a test-failure test; fix the callback builder use`,
       )
@@ -96,7 +96,7 @@ export function withReplyFailureEvidence(
       : "no headless capture recorded"
   return {
     ...result,
-    tests: result.tests.map((test) =>
+    tests: result.tests?.map((test) =>
       marked.has(test.id) && test.status === "test-failure" ? { ...test, reason: `${test.reason}; ${detail}` } : test,
     ) as ExecutionOnlyProbeCallbackResult["tests"],
   }

@@ -33,11 +33,12 @@ import type {
   CaptureRectangle,
   ObservationFrame,
   ProbeCallbackResult,
+  MeasuredProbeCallbackResult,
   TermProbeSource,
   TerminalQueryOutcome,
 } from "./types.ts"
 import { frameDigests } from "./types.ts"
-import { utf8DecodingRefusal } from "./helpers.ts"
+import { replyFailure, utf8DecodingRefusal } from "./helpers.ts"
 
 export type CellRegion = CaptureCells
 export type PixelGeometry = CapturePixelGeometry
@@ -193,7 +194,7 @@ function inconclusive(
   reason: "timeout" | "insufficient-evidence",
   assertionType: AssertionType = "screenshot",
   citation?: { screenshotRef?: string; frames?: ObservationFrame[] },
-): ProbeCallbackResult {
+): MeasuredProbeCallbackResult {
   return {
     pass: false,
     observation: {
@@ -652,23 +653,28 @@ export async function captureRegionGeometry(
   // Keep the existing query sequence and answers. Only a retained answer can justify query_reply;
   // having sent geometry queries is not itself an observable.
   let retainedReply = false
+  let missingRequiredReply = false
   const reported =
     ctx.captureGeometry ??
     (await queryPixelGeometry({
       async queryWithSentinelOutcome(...args) {
         const outcome = await ctx.queryWithSentinelOutcome(...args)
         retainedReply ||= outcome.raw.length > 0
+        missingRequiredReply ||=
+          (args[0] === "\x1b[14t" || args[0] === "\x1b[18t") && outcome.reason === "timeout" && outcome.raw === ""
         return outcome
       },
     }))
   if ("missing" in reported) {
     const note = `${id}: ${reported.missing}, so this run cannot map cells onto the captured window`
     if (!retainedReply) {
+      if (missingRequiredReply) return replyFailure(note)
       return { pass: false, tests: [{ id: "criterion", status: "test-failure", reason: note }] }
     }
     return {
       ...inconclusive(id, note, "insufficient-evidence", "query_reply"),
       tests: [{ id: "criterion", status: "test-failure", reason: note }],
+      ...(missingRequiredReply ? { replyFailureTestIds: ["criterion"] } : {}),
     }
   }
   return reported

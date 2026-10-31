@@ -34,7 +34,7 @@ import type {
 import { RESET_FAMILY_CAPTURE } from "./reset-family-capture.ts"
 import { sgrProbes } from "./sgr.ts"
 import { resetProbes } from "./reset.ts"
-import { recordExecutedProbe } from "./helpers.ts"
+import { recordExecutedProbe, withReplyFailureEvidence } from "./helpers.ts"
 
 const SEED = "\x1b[1;1Hseed"
 const EDIT = "\x1b[1;3H\x1b[1P"
@@ -787,6 +787,66 @@ test("a terminal that answers neither CSI 16 t nor CSI 14 t names both replies i
   expect(queries.map(({ sequence }) => sequence)).toEqual(["\x1b[16t", "\x1b[14t"])
   expect(queries.every(({ outcome }) => outcome.raw === "" && outcome.reason === "timeout")).toBe(true)
   expect(JSON.stringify(queries)).toBe(raw)
+  expect(fake.requests).toEqual([])
+})
+
+// The geometry refusal tests above omit the producer formatter: they missed lost request
+// evidence when a partial reply and a required empty timeout coexist on one measured callback.
+test.each([
+  ["all empty", "", "", "", true, false],
+  ["missing text pixels", "\x1b[6;16;8t", "", "", true, true],
+  ["missing text cells", "\x1b[?6c", "\x1b[4;384;640t", "", true, true],
+  ["zero cell size", "\x1b[6;0;8t", "\x1b[4;384;640t", "", false, true],
+  ["nondivisible", "\x1b[?6c", "\x1b[4;384;641t", "\x1b[8;24;80t", false, true],
+  ["sentinel", "\x1b[6;16;8t", "\x1b[?6c", "", false, true],
+  ["malformed timeout", "\x1b[6;16;8t", "garbage", "", false, true],
+] as const)("retains required geometry failure evidence for %s", async (_, cell, pixels, cells, marked, observed) => {
+  const fake = ownedWindow({ repaintAfterPolls: 1, regionDigest: () => "seed" })
+  const attempts: Array<{
+    sequence: string
+    received: string
+    timeoutMs: number
+    match: string[] | null
+    reason: TerminalQueryOutcome["reason"]
+  }> = []
+  fake.ctx.queryWithSentinelOutcome = async (sequence, pattern) => {
+    const raw = sequence === "\x1b[16t" ? cell : sequence === "\x1b[14t" ? pixels : cells
+    const match = pattern.exec(raw)
+    const reason = match ? "reply" : raw === "\x1b[?6c" ? "sentinel" : "timeout"
+    attempts.push({ sequence, received: raw, timeoutMs: 37, match, reason })
+    return { raw, rawBase64: btoa(raw), match, reason }
+  }
+  const callback = await captureRegionGeometry(fake.ctx, "editing.delete-chars", spec())
+  if (!("pass" in callback)) throw new Error("Expected the current geometry refusal")
+  const observation = structuredClone(callback.observation)
+  const criterionReason = callback.tests?.[0]?.reason
+  expect(Boolean(observation)).toBe(observed)
+  expect("replyFailureTestIds" in callback ? callback.replyFailureTestIds : undefined).toEqual(
+    marked ? ["criterion"] : undefined,
+  )
+  const formatted = withReplyFailureEvidence("editing.delete-chars", callback, { producer: "TTY", attempts })
+  expect(formatted.observation).toEqual(observation)
+  const stored = recordExecutedProbe({
+    featureId: "editing.delete-chars",
+    attempt: { scope: "probe", startedAt: "2026-10-21T05:00:00.000Z" },
+    rawReplyRef: "editing.delete-chars",
+    ...(formatted.observation && {
+      observation: { ...formatted.observation, featureId: "editing.delete-chars", rawReplyRef: "editing.delete-chars" },
+    }),
+    assertions: [],
+    tests: formatted.tests,
+  })
+  expect(stored.status).toBe("test-failure")
+  expect(stored).not.toHaveProperty("replyFailureTestIds")
+  if (observed) expect(stored.reason).toBe(observation?.note)
+  if (marked) {
+    for (const entry of attempts) {
+      expect(stored.tests[0]?.reason).toContain(
+        `sent ${JSON.stringify(entry.sequence)}; received ${JSON.stringify(entry.received)}`,
+      )
+    }
+    expect(stored.tests[0]?.reason).toContain("timeout 37 ms")
+  } else expect(stored.tests[0]?.reason).toBe(criterionReason)
   expect(fake.requests).toEqual([])
 })
 

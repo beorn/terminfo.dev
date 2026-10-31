@@ -63,6 +63,8 @@ export type RetainedHostRecipeCause =
     }
 
 export interface MeasuredProbeCallbackResult extends ProbeExecutionTests {
+  /** Callback-only intent; producers append actual request evidence to these failure reasons. */
+  readonly replyFailureTestIds?: readonly string[]
   hostRecipeCauses?: readonly CallbackHostRecipeCause[]
   /** Historical raw documents carry it; the live collector reads only observation. */
   pass: boolean
@@ -75,6 +77,7 @@ export interface MeasuredProbeCallbackResult extends ProbeExecutionTests {
 }
 
 export interface NotTestedCoverageResult extends ProbeExecutionTests {
+  readonly replyFailureTestIds?: never
   hostRecipeCauses?: readonly CallbackHostRecipeCause[]
   pass: boolean
   note?: string

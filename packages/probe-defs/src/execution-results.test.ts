@@ -36,6 +36,7 @@ import { cropPositionRefusal } from "./region-readback.ts"
 import type {
   CollectorAttempt,
   LibProbeSource,
+  NotTestedCoverageResult,
   ObservationFrame,
   ProbeCallbackResult,
   TermProbeSource,
@@ -457,6 +458,22 @@ it("names a callback defect instead of ignoring an invalid reply marker", () => 
   expect(() => withReplyFailureEvidence("cursor.position-report", callback, { producer: "TTY", attempts: [] })).toThrow(
     /cursor\.position-report.*criterion.*test-failure/,
   )
+  const measured = {
+    pass: false,
+    observation: { outcome: "inconclusive" as const, assertionType: "query_reply" as const },
+    replyFailureTestIds: ["criterion"],
+  }
+  expect(() => withReplyFailureEvidence("device.geometry", measured, { producer: "TTY", attempts: [] })).toThrow(
+    /device\.geometry.*criterion.*test-failure/,
+  )
+  const markedCoverage = {
+    pass: false,
+    notTested: { reason: "no-semantic-observable" as const, noObservable: "test fixture" },
+    replyFailureTestIds: ["criterion"],
+  }
+  // @ts-expect-error Coverage cannot carry failure-evidence intent, even via structural assignment.
+  const forbiddenCoverage: NotTestedCoverageResult = markedCoverage
+  void forbiddenCoverage
 })
 
 // CTO consolidation contract: the registry owns unknown/duplicate IDs and catalogue ordering.
