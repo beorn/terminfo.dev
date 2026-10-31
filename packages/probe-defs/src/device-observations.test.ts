@@ -1110,7 +1110,8 @@ test.each(geometryReplies)("$id retains audited geometry limits for required rev
     expect(result.tests).toMatchObject([{ id: "review", status: "test-todo" }])
     expect(result.observation).toBeUndefined()
     const state = JSON.parse(result.response!)
-    expect(state).toMatchObject({ raw, runtimeIdentity: geometryRuntime })
+    expect(state).toMatchObject({ raw })
+    expect(state).not.toHaveProperty("runtimeIdentity")
   }
 })
 
@@ -1156,7 +1157,8 @@ test.each(geometryReplies)("$id reports source tree drift before geometry gradin
         expect(result.observation).toBeUndefined()
         expect(result.assertions).toBeUndefined()
         expect(result.notTested).toBeUndefined()
-        expect(JSON.parse(result.response!)).toMatchObject({ raw: reply, runtimeIdentity })
+        expect(JSON.parse(result.response!)).toMatchObject({ raw: reply })
+        expect(JSON.parse(result.response!)).not.toHaveProperty("runtimeIdentity")
       }
     }
   }

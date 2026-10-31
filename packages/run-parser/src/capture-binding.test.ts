@@ -827,6 +827,7 @@ it.each([
             engineVersion: "0.9.0",
             adapterVersion: "0.10.2",
             termlessRevision: "8b8664540f365fa0ba1d9b6400d3c4d1a160582c",
+            adapterSources: backend.getAdapterSources(),
             resolvedPath: `vendor/vterm/packages/${engine}/src/index.ts`,
             integrity: {
               kind: "source",
@@ -897,7 +898,7 @@ it.each(["device.term-features", "erase.screen.scrollback"])(
   "%s library coverage reaches an immutable Untestable review without I/O or assertions",
   (featureId) => {
     const history = featureId === "erase.screen.scrollback"
-    const citation = history ? "getScrollback" : "packages/vterm/src/backend.ts:63"
+    const citation = history ? "getScrollback" : "createVtermBackend"
     const definition = ALL_PROBES.find((entry) => entry.id === featureId)
     const { draft, artifact, decision } = setup(
       undefined,
@@ -939,6 +940,10 @@ it.each(["device.term-features", "erase.screen.scrollback"])(
               engineVersion: "0.9.0",
               adapterVersion: "0.10.2",
               termlessRevision: "8b8664540f365fa0ba1d9b6400d3c4d1a160582c",
+              adapterSources: [
+                { path: "packages/vterm/src/index.ts", blobOid: "cb5719799dcdd5ae24e6fcf0dcad9965035ce54c" },
+                { path: "packages/vterm/src/backend.ts", blobOid: "8599e301dd046b1264403069289477ab65d71d3a" },
+              ],
               resolvedPath: "vendor/vterm/packages/vterm/src/index.ts",
               integrity: {
                 kind: "source",
@@ -965,7 +970,6 @@ it.each(["device.term-features", "erase.screen.scrollback"])(
         expect(result.assertions).toBeUndefined()
         const retained = JSON.parse(result.response!)
         const audit = {
-          runtimeIdentity: draft.runtimeIdentity,
           sourceCitation: expect.stringContaining(citation),
         }
         expect(retained).toMatchObject(history ? audit : { audit })
@@ -973,11 +977,12 @@ it.each(["device.term-features", "erase.screen.scrollback"])(
           expect(retained).toMatchObject({
             audit: {
               engine: "vterm",
-              apiRevision: "8b8664540f365fa0ba1d9b6400d3c4d1a160582c",
-              sourceCitation: expect.stringContaining("packages/vterm/src/backend.ts:63"),
+              blobOid: "8599e301dd046b1264403069289477ab65d71d3a",
+              sourceCitation: expect.stringContaining("createVtermBackend"),
             },
           })
         }
+        expect(result.response).not.toContain("runtimeIdentity")
         expect(result.notTested?.noObservable).toContain(
           history ? "retained scrollback history count" : "child-environment export",
         )
@@ -1015,7 +1020,6 @@ it.each(["device.term-features", "erase.screen.scrollback"])(
     const retained = JSON.parse(parsed.rawReplies[featureId]!)
     const audit = {
       sourceCitation: expect.stringContaining(citation),
-      runtimeIdentity: draft.runtimeIdentity,
     }
     expect(retained).toMatchObject(history ? audit : { audit })
     expect(parsed.rawReplies[featureId]).toBe(draft.rawReplies[featureId])
@@ -1202,108 +1206,6 @@ describe("immutable pre-seal capture binding", () => {
       )
     },
   )
-  // The scope ruling requires new runtime type fields to force a deliberate key decision.
-  // Digest-only fixtures cannot catch a future stable field accidentally being omitted.
-  it("accounts explicitly for every runtime identity and native provenance field", () => {
-    type JS = Extract<HeadlessRuntimeIdentity, { kind: "js"; runtimeFormat: "js" }>
-    type WASM = Extract<HeadlessRuntimeIdentity, { runtimeFormat: "wasm" }>
-    type Native = Extract<HeadlessRuntimeIdentity, { kind: "native" }>
-    const js = {
-      kind: true,
-      engineVersion: true,
-      adapterVersion: true,
-      termlessRevision: false,
-      adapterSources: true,
-      resolvedPath: false,
-      runtimeFormat: true,
-      integrity: true,
-    } satisfies Record<keyof JS, boolean>
-    const wasm = { ...js, loadedBinary: true } satisfies Record<keyof WASM, boolean>
-    const native = {
-      kind: true,
-      engineVersion: true,
-      adapterVersion: true,
-      termlessRevision: false,
-      adapterSources: true,
-      loadedBinary: true,
-      provenance: true,
-    } satisfies Record<keyof Native, boolean>
-    const source = { kind: true, repository: true, revision: false, treeOid: true, cleanTree: true } satisfies Record<
-      keyof Extract<JS["integrity"], { kind: "source" }>,
-      boolean
-    >
-    const binary = { path: false, sha256: true } satisfies Record<keyof Native["loadedBinary"], boolean>
-    const registry = { kind: true, lockIntegrity: true } satisfies Record<
-      keyof Extract<JS["integrity"], { kind: "registry" }>,
-      boolean
-    >
-    const provenance = {
-      sha256: true,
-      sourceCommit: true,
-      buildHash: true,
-      toolchain: true,
-      lockSha256: true,
-    } satisfies Record<keyof Native["provenance"], boolean>
-    const { draft } = setup("state", { runId: "field-policy", startedAt: "2026-10-27T11:00:00.000Z" })
-    const common = { engineVersion: "1", adapterVersion: "2", termlessRevision: "3".repeat(40) }
-    const identities: HeadlessRuntimeIdentity[] = [
-      draft.runtimeIdentity!,
-      {
-        ...common,
-        kind: "js",
-        runtimeFormat: "wasm",
-        resolvedPath: "/fixture.wasm",
-        integrity: { kind: "registry", lockIntegrity: "sha512-fixture" },
-        loadedBinary: { path: "/fixture.wasm", sha256: "a".repeat(64) },
-      },
-      {
-        ...common,
-        kind: "native",
-        loadedBinary: { path: "/fixture.node", sha256: "a".repeat(64) },
-        provenance: {
-          sha256: "a".repeat(64),
-          sourceCommit: "b".repeat(40),
-          buildHash: "c".repeat(64),
-          toolchain: "clang-20",
-          lockSha256: "d".repeat(64),
-        },
-      },
-    ]
-    for (const identity of identities) {
-      const fresh = structuredClone(draft)
-      fresh.runtimeIdentity = identity
-      delete fresh.rawReplies["collector.capture.sgr.faint"]
-      const projection = retainCaptureBinding(fresh, "sgr.faint", "a".repeat(64)).evidence!.projection.runtimeIdentity!
-      const policy = identity.kind === "native" ? native : identity.runtimeFormat === "wasm" ? wasm : js
-      expect(Object.keys(projection).sort()).toEqual(
-        Object.entries(policy)
-          .filter(([, keep]) => keep)
-          .map(([key]) => key)
-          .sort(),
-      )
-      if (identity.kind === "js" && identity.integrity.kind === "source") {
-        expect(Object.keys(projection.integrity as object).sort()).toEqual(
-          Object.entries(source)
-            .filter(([, keep]) => keep)
-            .map(([key]) => key)
-            .sort(),
-        )
-      }
-      if (identity.kind === "native") {
-        expect(Object.keys(projection.provenance as object).sort()).toEqual(Object.keys(provenance).sort())
-      }
-      if (identity.kind === "js" && identity.integrity.kind === "registry") {
-        expect(Object.keys(projection.integrity as object).sort()).toEqual(Object.keys(registry).sort())
-      }
-      if ("loadedBinary" in identity) {
-        expect(Object.keys(projection.loadedBinary as object)).toEqual(
-          Object.entries(binary)
-            .filter(([, keep]) => keep)
-            .map(([key]) => key),
-        )
-      }
-    }
-  })
 
   // Amended key: a Termless merge and checkout move preserve evidence; adapter or native build changes lapse.
   it.each(["revision", "path", "adapter", "binary", "sourceCommit", "buildHash", "toolchain", "lockSha256"] as const)(

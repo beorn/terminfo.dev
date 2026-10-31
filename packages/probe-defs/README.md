@@ -59,9 +59,14 @@ reset negative. Compound attribute resets with unshown setup attributes retain a
 does not decide the whole claim. Other source-negative style reviews keep their existing failures.
 
 TERM_FEATURES means a terminal program's export into its child environment. Its library arm performs
-no I/O and retains a `headless-observable-review` row with the API boundary and loaded runtime for
+no I/O and retains a `headless-observable-review` row with the API boundary and audited adapter blob for
 per-engine source review. Only a non-author Untestable decision can discharge it; it creates no
 observation or assertion. The application arm remains TEST TODO until terminal-owned child readback exists.
+
+Source audits match the shared evidence identity and declared adapter source blobs, not global
+Termless revisions or host filesystem locators. Raw replies and observed payloads do not embed
+runtime identities; the record's allowlisted identity is their sole carrier. WASM engine identity
+uses the loaded binary digest, while wrapper repository/tree metadata remains provenance.
 
 The pinned vterm 0.9.0 library arms for OSC 9, 22, 176, 440, 555, 666, 710, 777 and 3008 feed their exact commands and a cell-X
 consumption control. A rendered X retains `source-negative-review`, its actual fed/cell state and a
