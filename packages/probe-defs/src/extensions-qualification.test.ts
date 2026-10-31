@@ -49,6 +49,19 @@ function callback(id: string) {
   return definition
 }
 
+const xtermOscIdentity = {
+  kind: "js",
+  runtimeFormat: "js",
+  engineVersion: "6.0.0",
+  adapterVersion: "0.10.2",
+  termlessRevision: "84003d2c91610fe2743142675234a0fb3ec9cf1d",
+  resolvedPath: "node_modules/.bun/@xterm+headless@6.0.0/node_modules/@xterm/headless/lib-headless/xterm-headless.js",
+  integrity: {
+    kind: "registry",
+    lockIntegrity: "sha512-5Yj1QINYCyzrZtf8OFIHi47iQtI+0qYFPHmouEfG8dHNxbZ9Tb9YGSuLcsEwj9Z+OL75GJqPyJbyoFer80a2Hw==",
+  },
+} as const
+
 // A consumed sentinel qualifies only the source-review evidence, never the audio, flash or font effect.
 test.each([
   ["extensions.osc440-audio", "\x1b]440;bell.wav\x07", "vterm"],
@@ -91,20 +104,7 @@ test.each([
   // Collector-input identities from the retained runs, not a loaded-engine attestation.
   const identity =
     engine === "xtermjs"
-      ? ({
-          kind: "js",
-          runtimeFormat: "js",
-          engineVersion: "6.0.0",
-          adapterVersion: "0.10.2",
-          termlessRevision: "84003d2c91610fe2743142675234a0fb3ec9cf1d",
-          resolvedPath:
-            "node_modules/.bun/@xterm+headless@6.0.0/node_modules/@xterm/headless/lib-headless/xterm-headless.js",
-          integrity: {
-            kind: "registry",
-            lockIntegrity:
-              "sha512-5Yj1QINYCyzrZtf8OFIHi47iQtI+0qYFPHmouEfG8dHNxbZ9Tb9YGSuLcsEwj9Z+OL75GJqPyJbyoFer80a2Hw==",
-          },
-        } as const)
+      ? xtermOscIdentity
       : ({
           kind: "js",
           runtimeFormat: "js",
@@ -1462,6 +1462,127 @@ test.each([
   expect(result.observation).toBeUndefined()
   expect(result.tests).toMatchObject([{ id: "criterion", status: "test-failure", reason: expect.any(String) }])
 })
+
+// The retained xtermjs cells at suite2e6321bffd4d lack the initial highlight reply.
+// Their existing prerequisite tests carry no audited identity; ordinary OSC review cases never enter this reset callback.
+test.each([
+  ["extensions.osc117-reset-highlight-bg", 17, 117],
+  ["extensions.osc119-reset-highlight-fg", 19, 119],
+] as const)(
+  "%s reviews an audited silent highlight query without overriding real replies",
+  (id, setCode, resetCode) => {
+    const definition = callback(id)
+    const query = `\x1b]${setCode};?\x07`
+    for (const mode of [
+      "pinned",
+      "sentinel",
+      "no-sentinel",
+      "malformed",
+      "vterm",
+      "changed-lock",
+      "wrong-version",
+      "wrong-adapter",
+    ] as const) {
+      const calls: string[] = []
+      const identity =
+        mode === "vterm"
+          ? geometryRuntime
+          : {
+              ...xtermOscIdentity,
+              engineVersion: mode === "wrong-version" ? "6.0.1" : xtermOscIdentity.engineVersion,
+              adapterVersion: mode === "wrong-adapter" ? "foreign" : xtermOscIdentity.adapterVersion,
+              integrity: {
+                ...xtermOscIdentity.integrity,
+                lockIntegrity: mode === "changed-lock" ? "foreign" : xtermOscIdentity.integrity.lockIntegrity,
+              },
+            }
+      const result = definition.lib!({
+        runtimeIdentity: identity,
+        feedCapture: (bytes: string) => {
+          calls.push(bytes)
+          return mode === "malformed" ? "unparsed colour reply" : ""
+        },
+        ...(mode === "sentinel" && {
+          queryWithSentinelOutcome: (bytes: string) => {
+            calls.push(bytes)
+            return {
+              match: null,
+              reason: "sentinel",
+              raw: "\x1b[?1;2c",
+              rawBase64: btoa("\x1b[?1;2c"),
+              sentinel: { atMs: 0, graceMs: 250 },
+            }
+          },
+        }),
+        feed: (bytes: string) => calls.push(bytes),
+        getCell: () => ({ char: mode === "no-sentinel" ? " " : "X" }),
+      } as unknown as LibProbeSource)
+      expect(calls[0]).toBe(query)
+      expect(result.observation?.outcome).not.toBe("supported")
+      expect(result.observation?.outcome).not.toBe("unsupported")
+      if (mode === "pinned" || mode === "sentinel") {
+        expect(result.criterionBranch).toBe("source-negative-review")
+        expect(result.observation).toMatchObject({
+          outcome: "inconclusive",
+          assertionType: definition.libAssertionType,
+        })
+        expect(result.tests).toMatchObject([
+          { id: "review", status: "test-failure", reason: expect.stringContaining("17a90b65") },
+        ])
+        expect(result.tests?.[0]?.reason).toContain(`no case ${setCode}/${resetCode}`)
+        expect(result.assertions).toMatchObject([
+          { kind: "negative", assertionType: "query_reply", observed: result.response },
+        ])
+        const retained = JSON.parse(result.response!)
+        expect(retained).toMatchObject({
+          query,
+          originalRaw: "",
+          sentinel: { char: "X" },
+          engineState: null,
+          runtimeIdentity: identity,
+          fed: calls[1],
+        })
+        expect(retained).toMatchObject({ fed: expect.stringContaining(`\x1b]${setCode};rgb:`) })
+        expect(retained).toMatchObject({ fed: expect.stringContaining(`\x1b]${resetCode}\x07X`) })
+        if (mode === "sentinel") {
+          expect(retained).toMatchObject({ initialSentinel: { reason: "sentinel", raw: "\x1b[?1;2c" } })
+        }
+      } else if (mode === "no-sentinel") {
+        expect(result.observation).toMatchObject({
+          outcome: "inconclusive",
+          assertionType: "query_reply",
+          note: "No rendered X cell to evaluate",
+        })
+        expect(result.criterionBranch).toBeUndefined()
+        expect(result.assertions).toBeUndefined()
+        expect(result.tests).toBeUndefined()
+      } else {
+        expect(calls).toEqual([query])
+        expect(result.observation).toBeUndefined()
+        expect(result.tests).toMatchObject([
+          {
+            id: "criterion",
+            status: "test-failure",
+            reason: `OSC ${setCode} initial highlight colour was not read back, so OSC ${resetCode} cannot be compared with it`,
+          },
+        ])
+        expect(result.assertions).toBeUndefined()
+      }
+    }
+    // A measured colour wins over the static absence audit, including a genuine reset negative.
+    for (const ignoresReset of [false, true]) {
+      const fixture = highlightTerminal(setCode, resetCode, "1111/2222/3333", ignoresReset)
+      const result = definition.lib!({ ...fixture.lib, runtimeIdentity: xtermOscIdentity })
+      expect(result.criterionBranch).toBeUndefined()
+      expect(result.observation).toMatchObject({
+        outcome: ignoresReset ? "unsupported" : "supported",
+        assertionType: "query_reply",
+      })
+      expect(fixture.queries[0]).toBe(query)
+      expect(fixture.writes).not.toContain(expect.stringContaining("\x1b[2K"))
+    }
+  },
+)
 
 // Actual runb9697318, vterm source53a9eb92/tree617ae600: no font/window geometry.
 // Q8 requires independent review of this context limit, never automatic Untestable.
