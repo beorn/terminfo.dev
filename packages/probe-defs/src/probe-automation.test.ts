@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto"
 import { describe, expect, test } from "vitest"
 import { ALL_PROBES, type LibProbeSource, type TermProbeSource, type TerminalQueryOutcome } from "./index.ts"
 import {
@@ -402,16 +403,18 @@ describe("qualified clipboard roundtrip", () => {
 })
 
 describe("reply-path audit", () => {
-  // #30711: data-derived cases cannot detect omission of the independently reproduced current artifact.
-  // The pinned native tree is unchanged; all 53 predecessor citations must survive verbatim.
-  test("the fresh native 5a8030c0 artifact retains all 53 d70f2f8a reply citations", () => {
-    const prior = REPLY_PATH_AUDITS.get("d70f2f8adb5dfcb6a7d75d23e11a60ba3671844b930a3f66970a709f65ee1346")!
+  // #31987: retain all 53 current audit values after retiring the duplicate predecessor key.
+  // Frozen from the independently verified 53/53 equality at 81aabd55, before removing d70.
+  test("the current native 5a8030c0 artifact retains its 53 frozen reply audits", () => {
     const rebuilt = REPLY_PATH_AUDITS.get("5a8030c0f3f9fa52e9c1f82d28ae711ef21e3072a4b82fbe98076fedf314c945")
     expect(rebuilt).toBeDefined()
-    expect(rebuilt).not.toBe(prior)
-    expect(Object.keys(rebuilt!).sort()).toEqual(Object.keys(prior).sort())
     expect(Object.keys(rebuilt!)).toHaveLength(53)
-    expect(rebuilt).toEqual(prior)
+    const entries = Object.keys(rebuilt!)
+      .sort()
+      .map((id) => [id, rebuilt![id]])
+    expect(createHash("sha256").update(JSON.stringify(entries)).digest("hex")).toBe(
+      "38e76b974a2ae00a894ffe18512a70cb9562c0ae9a62ef0a57c7005e3caf11d4",
+    )
   })
 
   // #31692: data-derived cases cannot detect an omitted current-artifact OSC99 audit.
@@ -439,8 +442,8 @@ describe("reply-path audit", () => {
   // The data-derived callback cases below cannot detect an omitted artifact or omitted row.
   test.each([
     {
-      name: "native overline",
-      digest: "d70f2f8adb5dfcb6a7d75d23e11a60ba3671844b930a3f66970a709f65ee1346",
+      name: "current native overline",
+      digest: "5a8030c0f3f9fa52e9c1f82d28ae711ef21e3072a4b82fbe98076fedf314c945",
       priors: [
         "ac12d6408c2049f1d720e9735d7eb69251d3eed868fc9ced58de98b3543f3e2e",
         "17d155feee5df8fa30266b9a354bbe66e39484d08218de5e03dc3bb2f199a0a3",
@@ -958,7 +961,6 @@ describe("reply-path audit", () => {
       "9a9505600721226b952ae9ac92552b42389aa6713872a9f4904528f425b7ecdf",
       "ac12d6408c2049f1d720e9735d7eb69251d3eed868fc9ced58de98b3543f3e2e",
       "b9109b5918707746420833dfc2eab3ea5bc7feec5fa93bee4cd6e824e74d0962",
-      "d70f2f8adb5dfcb6a7d75d23e11a60ba3671844b930a3f66970a709f65ee1346",
       "d80a8110258a124fb6ff52a6fe149b8e39b5180d986907cc9fb7dc9143c3f3d9",
       "f309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96",
     ])
