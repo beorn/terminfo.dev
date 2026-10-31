@@ -197,6 +197,11 @@ it.each([
   ["extensions.osc66-text-sizing", [[1, 1], null, [1, 5]], undefined],
   ["extensions.osc66-text-sizing", [[1, 1], [1, 3], null], undefined],
   ["extensions.osc66-text-sizing", [[1, 1], null, null], undefined],
+  ["cursor.move.back", [null], undefined],
+  ["cursor.move.back", [[1, 1], null], undefined],
+  ["cursor.move.back", [[1, 1], [1, 4], null], undefined],
+  ["modes.altscreen-1048", [null], undefined],
+  ["modes.altscreen-1048", [[5, 10], null], "\x1b[?1048l"],
 ] as const)("retains erased cursor evidence for %s with readings %j", async (id, readings, cleanup) => {
   const definition = ALL_PROBES.find((entry) => entry.id === id)!
   const writes: string[] = []
@@ -281,6 +286,83 @@ it("retains erased DECAWM evidence before wrap emits fixture bytes", async () =>
   expect(stored.status).toBe("test-failure")
   expect(stored.reason).toContain("no usable DECRPM reply; the public projection returned null and retained no bytes")
   expect(stored.reason).toContain('query 1: sent "\\u001b[?7$p"; received "\\u001b?"')
+  expect(stored).not.toHaveProperty("replyFailureTestIds")
+})
+
+// Initial null is a failed read; explicit Ps 0 is an answered but unrecognized mode.
+it.each([
+  ["modes.color-scheme-reporting", 2031, null],
+  ["reset.soft", 1, null],
+  ["reset.soft", 1, 0],
+] as const)("retains initial mode evidence for %s with Ps %s/%s", async (id, mode, ps) => {
+  const writes: string[] = []
+  const sequence = `\x1b[?${mode}$p`
+  const received = ps === null ? "\x1b?" : `\x1b[?${mode};${ps}$y`
+  const callback = await ALL_PROBES.find((entry) => entry.id === id)!.term!({
+    rows: 24,
+    cols: 80,
+    write: (s: string) => writes.push(s),
+    queryWithSentinel: async (sent: string, pattern: RegExp) => {
+      expect(sent).toBe(sequence)
+      return ps === null ? null : pattern.exec(received)
+    },
+  } as unknown as TermProbeSource)
+  expect(writes).toEqual([])
+  expect(callback.observation).toBeUndefined()
+  expect(callback.assertions).toBeUndefined()
+  if (ps === 0) expect(callback).not.toHaveProperty("replyFailureTestIds")
+  else expect(callback).toHaveProperty("replyFailureTestIds", ["criterion"])
+  const stored = record(
+    withReplyFailureEvidence(id, callback, {
+      producer: "TTY",
+      attempts: [
+        {
+          sequence,
+          received,
+          timeoutMs: 37,
+          match: ps === null ? null : [received],
+          reason: ps === null ? "timeout" : "reply",
+        },
+      ],
+    }),
+  )
+  expect(stored.status).toBe("test-failure")
+  if (ps === 0) {
+    expect(stored.reason).toBe("Cannot restore prior application-cursor mode without its readback")
+  } else {
+    expect(stored.reason).toContain("no usable DECRPM reply; the public projection returned null and retained no bytes")
+    expect(stored.reason).toContain(
+      `sent ${JSON.stringify(sequence)}; received ${JSON.stringify(received)}; timeout 37 ms`,
+    )
+  }
+  expect(stored).not.toHaveProperty("replyFailureTestIds")
+})
+
+// A refused DECRQSS reply becomes null without proving that the terminal emitted no bytes.
+it("retains unusable cursor-style reply evidence without a pixel fallback", async () => {
+  const writes: string[] = []
+  const sequence = "\x1bP$q q\x1b\\"
+  const received = "\x1bP0$r\x1b\\"
+  const callback = await ALL_PROBES.find((entry) => entry.id === "cursor.shape")!.term!({
+    write: (s: string) => writes.push(s),
+    queryWithSentinelOutcome: async (sent: string) => {
+      expect(sent).toBe(sequence)
+      return { raw: received, rawBase64: btoa(received), match: null, reason: "timeout" }
+    },
+  } as unknown as TermProbeSource)
+  expect(writes).toEqual(["\x1b[6 q", "\x1b[0 q"])
+  expect(callback).toHaveProperty("replyFailureTestIds", ["criterion"])
+  const stored = record(
+    withReplyFailureEvidence("cursor.shape", callback, {
+      producer: "TTY",
+      attempts: [{ sequence, received, timeoutMs: 37, match: null, reason: "timeout" }],
+    }),
+  )
+  expect(stored.status).toBe("test-failure")
+  expect(stored.reason).toContain("no usable DECRQSS cursor-style reply")
+  expect(stored.reason).toContain(
+    `sent ${JSON.stringify(sequence)}; received ${JSON.stringify(received)}; timeout 37 ms`,
+  )
   expect(stored).not.toHaveProperty("replyFailureTestIds")
 })
 

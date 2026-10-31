@@ -950,11 +950,7 @@ export function cursorProbe(
     response: JSON.stringify({ origin, setup: setupPosition, final }),
     note,
     ...(reason === "no-response"
-      ? {
-          tests: [{ id: "criterion", status: "test-failure", reason: note }] as [
-            ProbeTestInput & { status: "test-failure"; reason: string },
-          ],
-        }
+      ? replyFailure("no parsable cursor position reply; the public projection returned null and retained no bytes")
       : { observation: { outcome: "inconclusive", reason, assertionType, note } }),
   })
   return {
@@ -1018,7 +1014,8 @@ export function cursorProbe(
       }
       ctx.write("\x1b[1;1H")
       const origin = await ctx.queryCursorPosition()
-      if (!origin) return inconclusive(null, null, null, "query_reply", "no-response", "No cursor reply at origin")
+      if (!origin)
+        return inconclusive(null, null, null, "query_reply", "no-response", "Cursor origin readback returned null")
       if (origin.row !== 1 || origin.col !== 1) {
         return inconclusive(
           origin,
@@ -1032,7 +1029,7 @@ export function cursorProbe(
       if (setup) ctx.write(setup)
       const setupPosition = setup ? await ctx.queryCursorPosition() : origin
       if (!setupPosition) {
-        return inconclusive(origin, null, null, "query_reply", "no-response", "No cursor reply after setup")
+        return inconclusive(origin, null, null, "query_reply", "no-response", "Cursor setup readback returned null")
       }
       if (setup && !setupExpected) {
         return inconclusive(
@@ -1058,7 +1055,14 @@ export function cursorProbe(
       ctx.write(move)
       const final = await ctx.queryCursorPosition()
       if (!final) {
-        return inconclusive(origin, setupPosition, null, "query_reply", "no-response", "No cursor reply after movement")
+        return inconclusive(
+          origin,
+          setupPosition,
+          null,
+          "query_reply",
+          "no-response",
+          "Cursor movement readback returned null",
+        )
       }
       const response = JSON.stringify({ origin, setup: setupPosition, final })
       const pass = final.row === expected.row + 1 && final.col === expected.col + 1

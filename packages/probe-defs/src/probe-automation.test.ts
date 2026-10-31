@@ -3776,7 +3776,7 @@ describe("partial probe automation candidates", () => {
         expect(result.tests).toMatchObject([
           expect.objectContaining({
             status: "test-failure",
-            reason: "No DECRPM 2031 reply; update events were not tested",
+            reason: "no usable DECRPM reply; the public projection returned null and retained no bytes",
           }),
         ])
       } else {

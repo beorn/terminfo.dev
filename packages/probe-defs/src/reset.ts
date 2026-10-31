@@ -277,7 +277,10 @@ export const resetProbes: ProbeDefinition[] = [
           }
         }
         const before = await queryDecrpm(ctx, 1)
-        if (before === null || before === 0) {
+        if (before === null) {
+          return replyFailure("no usable DECRPM reply; the public projection returned null and retained no bytes")
+        }
+        if (before === 0) {
           return {
             pass: false,
             tests: [

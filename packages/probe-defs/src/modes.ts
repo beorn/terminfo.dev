@@ -1802,19 +1802,13 @@ export const modesProbes: ProbeDefinition[] = [
           return {
             pass: false,
             ...(before === null
-              ? {
-                  tests: [
-                    {
-                      id: "criterion",
-                      status: "test-failure",
-                      reason: "Cursor-save fixture did not establish its start position",
-                    },
-                  ] as [{ id: string; status: "test-failure"; reason: string }],
-                }
+              ? replyFailure(
+                  "no parsable cursor position reply; the public projection returned null and retained no bytes",
+                )
               : {
                   observation: {
                     outcome: "inconclusive",
-                    reason: before ? "insufficient-evidence" : "no-response",
+                    reason: "insufficient-evidence",
                     assertionType: "query_reply",
                     note: "Cursor-save fixture did not establish its start position",
                   },
@@ -1830,19 +1824,13 @@ export const modesProbes: ProbeDefinition[] = [
             return {
               pass: false,
               ...(displaced === null
-                ? {
-                    tests: [
-                      {
-                        id: "criterion",
-                        status: "test-failure",
-                        reason: "Cursor-save fixture did not measure displacement",
-                      },
-                    ] as [{ id: string; status: "test-failure"; reason: string }],
-                  }
+                ? replyFailure(
+                    "no parsable cursor position reply; the public projection returned null and retained no bytes",
+                  )
                 : {
                     observation: {
                       outcome: "inconclusive",
-                      reason: displaced ? "insufficient-evidence" : "no-response",
+                      reason: "insufficient-evidence",
                       assertionType: "query_reply",
                       note: "Cursor-save fixture did not measure displacement",
                     },
@@ -1991,46 +1979,39 @@ export const modesProbes: ProbeDefinition[] = [
       },
       async (ctx) => {
         const ps = await queryDecrpm(ctx, 2031)
+        if (ps === null) {
+          return {
+            ...replyFailure("no usable DECRPM reply; the public projection returned null and retained no bytes"),
+            note: "DECRPM 2031 readback returned null; update events were not tested",
+            response: undefined,
+          }
+        }
         // Ps 4 says the terminal knows the mode and cannot set it: unsupported, as decrpmResult grades it (#30557).
         const recognized = ps === 1 || ps === 2 || ps === 3
         const note =
-          ps === null
-            ? "No DECRPM 2031 reply; update events were not tested"
-            : ps === 0
-              ? "DECRPM 2031 explicitly unrecognized"
-              : ps === 4
-                ? "DECRPM 2031 permanently reset (Ps 4); the terminal cannot set it"
-                : `DECRPM 2031 recognized (${decrpmReading(ps)}); update events were not tested`
-        if (ps === null) {
-          return {
-            pass: recognized,
-            note,
-            response: undefined,
-            tests: [{ id: "criterion", status: "test-failure", reason: note }],
-          }
-        }
+          ps === 0
+            ? "DECRPM 2031 explicitly unrecognized"
+            : ps === 4
+              ? "DECRPM 2031 permanently reset (Ps 4); the terminal cannot set it"
+              : `DECRPM 2031 recognized (${decrpmReading(ps)}); update events were not tested`
         return {
           pass: recognized,
           note,
-          response: ps === null ? undefined : decrpmReading(ps),
+          response: decrpmReading(ps),
           observation: {
-            outcome: ps === null ? "inconclusive" : recognized ? "supported" : "unsupported",
+            outcome: recognized ? "supported" : "unsupported",
             assertionType: "query_reply",
-            ...(ps === null && { reason: "no-response" as const }),
             note,
           },
-          ...(ps !== null && {
-            assertions: [
-              {
-                assertionType: "query_reply" as const,
-                kind: recognized ? ("positive" as const) : ("negative" as const),
-                // Ps 4 is recognized and cannot be set: the assertion names that, as decrpmResult does (@dev/2 72304b0e).
-                expected:
-                  ps === 4 ? "DECRPM mode 2031 can be set" : "DECRPM 2031 recognizes color-scheme reporting mode",
-                observed: decrpmReading(ps),
-              },
-            ],
-          }),
+          assertions: [
+            {
+              assertionType: "query_reply" as const,
+              kind: recognized ? ("positive" as const) : ("negative" as const),
+              // Ps 4 is recognized and cannot be set: the assertion names that, as decrpmResult does (@dev/2 72304b0e).
+              expected: ps === 4 ? "DECRPM mode 2031 can be set" : "DECRPM 2031 recognizes color-scheme reporting mode",
+              observed: decrpmReading(ps),
+            },
+          ],
         }
       },
       "query_reply",

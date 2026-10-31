@@ -487,11 +487,11 @@ export const cursorProbes: ProbeDefinition[] = [
         // The terminal's own DECRQSS cursor-style report was silent: keep the pixel control/target
         // pair as the fallback evidence, which a reviewer resolves by eye.
         if (!ctx.capture) {
-          const note = "DECRQSS cursor-style report unanswered; no pixel readback for shape"
+          const note =
+            "no usable DECRQSS cursor-style reply; the public projection returned null and retained no bytes; no pixel readback for shape"
           return {
-            pass: false,
+            ...replyFailure(note),
             note,
-            tests: [{ id: "criterion", status: "test-failure", reason: note }],
           }
         }
         const control = await ctx.capture({ role: "control", label: "Default cursor shape" })

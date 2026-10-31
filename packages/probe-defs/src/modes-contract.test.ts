@@ -364,7 +364,7 @@ test("each Modes row retains its measured grade or named execution disposition u
           reason:
             row.id === "modes.altscreen-47"
               ? "Alternate buffer left unchanged; this probe does not measure its visible contents"
-              : "Cursor-save fixture did not establish its start position",
+              : "no parsable cursor position reply; the public projection returned null and retained no bytes",
         },
       ])
       continue

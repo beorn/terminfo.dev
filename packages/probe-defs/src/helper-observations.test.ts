@@ -1217,7 +1217,11 @@ test("cursor movement binds measured positions and parser state, never a missing
   const missingCursor = await cursor.term(terminal())
   expect(missingCursor.observation).toBeUndefined()
   expect(missingCursor.tests).toEqual([
-    { id: "criterion", status: "test-failure", reason: "No cursor reply at origin" },
+    {
+      id: "criterion",
+      status: "test-failure",
+      reason: "no parsable cursor position reply; the public projection returned null and retained no bytes",
+    },
   ])
   expect(missingCursor.response).toBe(JSON.stringify({ origin: null, setup: null, final: null }))
 
