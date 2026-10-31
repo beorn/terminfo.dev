@@ -99,15 +99,40 @@ it.each([
   ["lib", "extensions.osc52-read"],
   ["term", "extensions.osc52-clipboard"],
   ["term", "extensions.osc52-read"],
-] as const)("retains empty raw query evidence for %s %s %s", async (kind, id, refused?) => {
+  // These registered emitters were absent from the original evidence table. Their
+  // nonempty controls must remain unmarked even when parsing cannot produce a reply.
+  ...(
+    [
+      ["lib", "extensions.osc5522-clipboard"],
+      ["term", "extensions.osc5522-clipboard"],
+      ["lib", "extensions.osc117-reset-highlight-bg"],
+      ["term", "extensions.osc117-reset-highlight-bg"],
+      ["lib", "extensions.osc119-reset-highlight-fg"],
+      ["term", "extensions.osc119-reset-highlight-fg"],
+      ["lib", "extensions.kitty-keyboard"],
+      ["term", "extensions.kitty-keyboard"],
+      ["lib", "extensions.kitty-graphics"],
+      ["term", "extensions.kitty-graphics"],
+      ["lib", "extensions.osc0-icon-title"],
+      ["term", "extensions.osc0-icon-title"],
+    ] as const
+  ).flatMap(
+    ([kind, id]) =>
+      [
+        [kind, id, undefined, undefined],
+        [kind, id, undefined, "malformed"],
+      ] as const,
+  ),
+] as const)("retains empty raw query evidence for %s %s %s", async (kind, id, refused?, rawOverride?) => {
   const definition = ALL_PROBES.find((entry) => entry.id === id)!
   const captures: { sequence: string; received: string }[] = []
   const capture = (sequence: string) => {
     const received =
-      id === "device.decrqss" &&
+      rawOverride ??
+      (id === "device.decrqss" &&
       (sequence === "\x1bP$qm\x1b\\" || (refused === "DECSCL" && sequence === "\x1bP$qr\x1b\\"))
         ? "\x1bP0$r\x1b\\"
-        : ""
+        : "")
     captures.push({ sequence, received })
     return received
   }
@@ -140,7 +165,8 @@ it.each([
           queryWithSentinelOutcome: async (sequence: string, pattern: RegExp) => outcome(sequence, pattern),
         } as unknown as TermProbeSource)
   expect(captures.length).toBeGreaterThan(0)
-  expect(callback).toHaveProperty("replyFailureTestIds", ["criterion"])
+  if (rawOverride) expect(callback).not.toHaveProperty("replyFailureTestIds")
+  else expect(callback).toHaveProperty("replyFailureTestIds", ["criterion"])
   const result =
     kind === "lib"
       ? withReplyFailureEvidence(id, callback, {
@@ -152,6 +178,11 @@ it.each([
           attempts: captures.map((entry) => ({ ...entry, timeoutMs: 37, match: null, reason: "timeout" as const })),
         })
   const stored = record(result)
+  if (rawOverride) {
+    expect(result).toBe(callback)
+    expect(stored).toEqual(record(callback))
+    return
+  }
   expect(stored.status).toBe("test-failure")
   for (const entry of captures) {
     expect(stored.reason).toContain(

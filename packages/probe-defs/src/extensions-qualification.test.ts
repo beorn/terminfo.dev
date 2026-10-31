@@ -1381,6 +1381,36 @@ test.each([
   expect(silent.observation).toBeUndefined()
   expect(silent.tests).toMatchObject([expect.objectContaining({ status: "test-failure", reason: expect.any(String) })])
 
+  // Preserve the actual read outcome at all three stages: nullable parsing alone
+  // cannot distinguish silence from malformed or sentinel bytes, including after a set.
+  for (const stage of [0, 1, 2]) {
+    for (const raw of ["", "malformed", "\x1b[?1;2c"]) {
+      const fixture = highlightTerminal(setCode, resetCode, "1111/2222/3333")
+      let reads = 0
+      const result = await definition.term!({
+        ...fixture.ctx,
+        queryWithSentinelOutcome: async (sequence, pattern) => {
+          if (reads++ !== stage) return fixture.ctx.queryWithSentinelOutcome(sequence, pattern)
+          return {
+            raw,
+            rawBase64: btoa(raw),
+            match: pattern.exec(raw),
+            reason: raw === "\x1b[?1;2c" ? "sentinel" : "timeout",
+          }
+        },
+      })
+      expect(result.observation).toBeUndefined()
+      expect(result.note).toBeUndefined()
+      expect(result.tests?.[0]?.reason).toContain(
+        ["initial highlight colour is unknown", "known colour was not read back", "did not answer after"][stage]!,
+      )
+      if (raw === "") expect(result).toHaveProperty("replyFailureTestIds", ["criterion"])
+      else expect(result).not.toHaveProperty("replyFailureTestIds")
+      expect(fixture.colour()).toBe("1111/2222/3333")
+      if (stage > 0) expect(fixture.writes.at(-1)).toBe(`\x1b]${setCode};rgb:1111/2222/3333\x07`)
+    }
+  }
+
   // A terminal that starts on the default test colour still needs an observed change: a fixed set
   // colour would let both readings agree while the reset was ignored.
   const collisionIgnoring = highlightTerminal(setCode, resetCode, "3030/6060/9090", true)

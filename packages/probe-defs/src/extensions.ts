@@ -101,6 +101,7 @@ function osc5522DetectionResult(raw: string, replyMatched: boolean, afterSentine
   const unorderedLate = !afterSentinel && (window.kind === "answered" || window.kind === "unmatched")
   if (ps === null || unorderedLate) {
     const note = "OSC5522 detection has no complete matching reply in the deciding window"
+    if (raw === "") return replyFailure(note)
     return { pass: false, note, tests: [{ id: "criterion", status: "test-failure", reason: note }] }
   }
   // Only an on-time detector reply makes Ps0 negative; measured-late replies use the shared criterion.
@@ -491,13 +492,15 @@ function highlightResetProbe(id: string, setCode: number, resetCode: number): Pr
   const read = async (ctx: TermProbeSource) => {
     const reply = await ctx.queryWithSentinelOutcome(querySeq, pattern)
     const match = reply.match
-    if (reply.reason !== "reply" || !match) return null
+    if (reply.reason !== "reply" || !match) return { reply, colour: null }
     const [, r, g, b] = match
-    if (r === undefined || g === undefined || b === undefined) return null
-    return { raw: match[0] ?? "", rgb: `${r}/${g}/${b}` }
+    if (r === undefined || g === undefined || b === undefined) return { reply, colour: null }
+    return { reply, colour: { raw: match[0] ?? "", rgb: `${r}/${g}/${b}` } }
   }
-  const inconclusive = (note: string): ProbeCallbackResult => ({
+  const inconclusive = (note: string, reply?: TerminalQueryOutcome): ProbeCallbackResult => ({
+    ...(reply?.raw === "" ? replyFailure(note) : {}),
     pass: false,
+    note: undefined,
     tests: [{ id: "criterion", status: "test-failure", reason: note }] as [
       { id: string; status: "test-failure"; reason: string },
     ],
@@ -507,10 +510,12 @@ function highlightResetProbe(id: string, setCode: number, resetCode: number): Pr
       id,
       colorResetProbe(setCode, resetCode),
       async (ctx): Promise<ProbeCallbackResult> => {
-        const initial = await read(ctx)
+        const initialRead = await read(ctx)
+        const initial = initialRead.colour
         if (!initial) {
           return inconclusive(
             `${id}: OSC ${setCode} did not report a colour, so the initial highlight colour is unknown and a reset cannot be compared with it`,
+            initialRead.reply,
           )
         }
         // A set that the terminal reports back as the initial colour would let both readings agree
@@ -523,10 +528,12 @@ function highlightResetProbe(id: string, setCode: number, resetCode: number): Pr
         }
         try {
           ctx.write(`\x1b]${setCode};rgb:${known}\x07`)
-          const applied = await read(ctx)
+          const appliedRead = await read(ctx)
+          const applied = appliedRead.colour
           if (!applied) {
             return inconclusive(
               `${id}: the known colour was not read back after OSC ${setCode}; a reset cannot be graded against a set that did not apply`,
+              appliedRead.reply,
             )
           }
           if (applied.rgb !== known) {
@@ -535,8 +542,10 @@ function highlightResetProbe(id: string, setCode: number, resetCode: number): Pr
             )
           }
           ctx.write(`\x1b]${resetCode}\x07`)
-          const afterReset = await read(ctx)
-          if (!afterReset) return inconclusive(`${id}: OSC ${setCode} did not answer after OSC ${resetCode}`)
+          const resetRead = await read(ctx)
+          const afterReset = resetRead.colour
+          if (!afterReset)
+            return inconclusive(`${id}: OSC ${setCode} did not answer after OSC ${resetCode}`, resetRead.reply)
           const ok = afterReset.rgb === initial.rgb
           return {
             pass: ok,
@@ -712,14 +721,17 @@ function colorResetProbe(setCode: number, resetCode: number, index?: number): Pr
     const original = replyPattern.exec(originalRaw)?.[1]
     if (!original) {
       if (highlightColorSlot) {
+        const note = `OSC ${setCode} initial highlight colour was not read back, so OSC ${resetCode} cannot be compared with it`
         return {
+          ...(originalRaw === "" && !silence ? replyFailure(note) : {}),
           pass: false,
+          note: undefined,
           response: JSON.stringify({ query, originalRaw, initialSentinel }),
           tests: [
             {
               id: "criterion",
               status: "test-failure",
-              reason: `OSC ${setCode} initial highlight colour was not read back, so OSC ${resetCode} cannot be compared with it`,
+              reason: note,
             },
           ],
         }
@@ -1864,11 +1876,7 @@ function kittyInconclusive(
     response,
     note,
     ...(response.length === 0
-      ? {
-          tests: [{ id: "criterion", status: "test-failure", reason: note }] as [
-            { id: string; status: "test-failure"; reason: string },
-          ],
-        }
+      ? replyFailure(note)
       : { observation: { outcome: "inconclusive", assertionType: "query_reply", reason, note } }),
   }
 }
@@ -1943,10 +1951,8 @@ function unansweredQuery(reply: TerminalQueryOutcome, note: string): ProbeCallba
   if (silent) return silent
   if (reply.raw.length === 0) {
     return {
-      pass: false,
+      ...replyFailure(note),
       response: reply.raw,
-      note,
-      tests: [{ id: "criterion", status: "test-failure", reason: note }],
     }
   }
   return {
@@ -2738,11 +2744,7 @@ function osc0IconTitleResult(
       response,
       note,
       ...(raw.icon.length === 0 && raw.title.length === 0
-        ? {
-            tests: [{ id: "criterion", status: "test-failure", reason: note }] as [
-              { id: string; status: "test-failure"; reason: string },
-            ],
-          }
+        ? replyFailure(note)
         : {
             observation: {
               outcome: "inconclusive",
