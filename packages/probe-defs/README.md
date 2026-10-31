@@ -86,6 +86,15 @@ The same helper covers @xterm/headless6.0.0 OSC9/22/176/440/555/666/710/777/3008
 It retains the bundle/map and adapter citations plus the executing runtime identity for independent source review.
 The bundle hashes are audit evidence, not fields in the runtime identity; the embedder hook must also be checked at the captured Termless source.
 
+The two highlight resets (OSC 17/117 and 19/119) query the initial colour first.
+A real colour reply follows the measured reset criterion. Only an empty initial
+reply at the audited xterm.js identity can enter source review, and both set and
+reset codes must belong to the same audited entry. The callback feeds the exact
+set/reset commands and an X control, retaining the query, reply, runtime and
+control state as query-reply evidence. A rendered X retains a negative assertion
+and pending source review, never automatic Unsupported. A missing X retains no
+negative assertion or review; other identities keep the named prerequisite failure.
+
 OSC99 capability detection has both library and term query arms. They share the nonce/title
 criterion and never display a notification. Unqualified library capture silence stays inconclusive;
 only the existing qualified sentinel path can establish a negative reply result. Current artifact

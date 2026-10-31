@@ -500,7 +500,7 @@ function highlightResetProbe(id: string, setCode: number, resetCode: number): Pr
   return {
     ...probe(
       id,
-      colorResetProbe(setCode, resetCode),
+      colorResetProbe(id, setCode, resetCode),
       async (ctx): Promise<ProbeCallbackResult> => {
         const initialRead = await read(ctx)
         const initial = initialRead.colour
@@ -603,7 +603,7 @@ function oscSimpleQueryProbe(id: string, query: string, pattern: RegExp, expecte
   }
 }
 
-function colorResetProbe(setCode: number, resetCode: number, index?: number): ProbeDefinition["lib"] {
+function colorResetProbe(id: string, setCode: number, resetCode: number, index?: number): ProbeDefinition["lib"] {
   const hostColorSlot = [4, 10, 11, 12].includes(setCode)
   const highlightColorSlot = setCode === 17 || setCode === 19
   const indexPart = index === undefined ? "" : `${index};`
@@ -708,6 +708,31 @@ function colorResetProbe(setCode: number, resetCode: number, index?: number): Pr
     const original = replyPattern.exec(originalRaw)?.[1]
     if (!original) {
       if (highlightColorSlot) {
+        const audit = absentOscAudit(ctx.runtimeIdentity, setCode)
+        if (originalRaw === "" && audit && audit === absentOscAudit(ctx.runtimeIdentity, resetCode)) {
+          const fed = `\x1b[1;1H\x1b[2K\x1b]${setCode};rgb:${HIGHLIGHT_TEST_COLOURS[0]}\x07` + `\x1b]${resetCode}\x07X`
+          ctx.feed(fed)
+          const sentinel = ctx.getCell(0, 0)
+          return parserStateResult(
+            null,
+            `${id}: the engine handles OSC ${setCode}/${resetCode} (highlight set and reset handlers exist at the pinned source)`,
+            {
+              query,
+              originalRaw,
+              initialSentinel,
+              fed,
+              sentinel,
+              engineState: null,
+              engineStateReason: "No highlight colour set or reset target state is exposed at this pin",
+              runtimeIdentity: ctx.runtimeIdentity,
+            },
+            sentinel.char === "X" ? undefined : "No rendered X cell to evaluate",
+            sentinel.char === "X"
+              ? `${audit.sourceCitation}: no case ${setCode}/${resetCode} handler or highlight colour writer; independent source review required`
+              : undefined,
+            "query_reply",
+          )
+        }
         const note = `OSC ${setCode} initial highlight colour was not read back, so OSC ${resetCode} cannot be compared with it`
         return {
           ...(originalRaw === "" && !silence ? replyFailure(note) : {}),
@@ -1085,7 +1110,7 @@ function resetProbe(id: string, setCode: number, resetCode: number, index?: numb
   return {
     ...probe(
       id,
-      colorResetProbe(setCode, resetCode, index),
+      colorResetProbe(id, setCode, resetCode, index),
       (ctx) => colorResetAppProbe(ctx, { setCode, resetCode, index }),
       "query_reply",
     ),
@@ -1189,9 +1214,9 @@ const ABSENT_OSC_ENGINES = {
     adapterVersion: "0.10.2",
     pathSuffix: "/@xterm/headless/lib-headless/xterm-headless.js",
     lockIntegrity: "sha512-5Yj1QINYCyzrZtf8OFIHi47iQtI+0qYFPHmouEfG8dHNxbZ9Tb9YGSuLcsEwj9Z+OL75GJqPyJbyoFer80a2Hw==",
-    codes: [9, 22, 176, 440, 555, 666, 710, 777, 3008],
+    codes: [9, 17, 19, 22, 117, 119, 176, 440, 555, 666, 710, 777, 3008],
     sourceCitation:
-      "@xterm/headless 6.0.0 bundle SHA256 17a90b650cf6b77cce2b98c4063884d43545e4ce177a54b76ccfc906f1aacaed, map SHA256 780e782badc8189491a469c9277b783e01911882ea84417b31e71294ea927d98: InputHandler.ts:292-331 OSC registrations and :201-203 logging-only fallback, OscParser.ts:145-146 fallback dispatch, CoreTerminal.ts:236-237 embedder hook; termless 84003d2c91610fe2743142675234a0fb3ec9cf1d packages/xtermjs/src/backend.ts registers no OSC handler",
+      "@xterm/headless 6.0.0 bundle SHA256 17a90b650cf6b77cce2b98c4063884d43545e4ce177a54b76ccfc906f1aacaed, map SHA256 780e782badc8189491a469c9277b783e01911882ea84417b31e71294ea927d98: InputHandler.ts:292-338 OSC registrations (17/19/117/119 are comments only) and :201-203 logging-only fallback, OscParser.ts:145-146 fallback dispatch, CoreTerminal.ts:236-237 embedder hook; termless 2d97417328b7b1d086f9396b9a1731216ed134cc packages/xtermjs/src/backend.ts registers no OSC handler",
   },
   libvterm: {
     kind: "source",
