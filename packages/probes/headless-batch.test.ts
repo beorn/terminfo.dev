@@ -55,10 +55,13 @@ test("retains registered reply failure evidence when the writer is unqualified",
   const id = "device.dsr-996-color-scheme"
   const definition = ALL_PROBES.find((entry) => entry.id === id)!
   const batch = await collectBatch(backend, "xtermjs", [definition])
-  const replyPath = JSON.parse(batch.rawReplies["collector.replyPath"]!)
-  expect(replyPath.decisions[id]).toMatchObject({
-    member: false,
-    reason: "xtermjs has no measured runtime identity for reply delivery",
+  expect(JSON.parse(batch.rawReplies["collector.replyPath"]!)).toMatchObject({
+    decisions: {
+      [id]: {
+        member: false,
+        reason: "xtermjs has no measured runtime identity for reply delivery",
+      },
+    },
   })
   const result = batch.results[0]!
   expect(result.status).toBe("test-failure")
