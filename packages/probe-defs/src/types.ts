@@ -761,6 +761,10 @@ export interface LibProbeSource {
   }
   /** Icon name. Present only when the backend reports it separately from the window title. */
   getIconLabel?(): string
+  /** Exact OSC 7 URI; null is an observed unset slot, absent means no reader. */
+  getCwd?(): string | null
+  /** Copied parser notification payloads; this does not observe OS notification delivery. */
+  getNotifications?(): readonly string[]
   /** Present only when the backend exposes the engine's clipboard callback state. */
   getClipboardState?(): {
     writes: { selector: string; payload: string; text?: string; decodeError?: string }[]

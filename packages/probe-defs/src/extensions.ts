@@ -3739,23 +3739,48 @@ export const extensionsProbes: ProbeDefinition[] = [
   oscColorQueryProbe("extensions.osc11-bg-color", 11),
 
   // OSC 7 — current working directory
-  probe(
-    "extensions.osc7-cwd",
-    (ctx) => {
-      const note = "Declared OSC 7 capability does not establish working-directory metadata delivery"
-      return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
-        declared: ctx.capabilities.extensions.has("osc7"),
-      })
-    },
-    () => {
-      const note = "No working-directory metadata readback for OSC 7"
-      return Promise.resolve<ProbeCallbackResult>({
-        pass: false,
-        note,
-        tests: [{ id: "criterion", status: "test-todo", reason: note }],
-      })
-    },
-  ),
+  {
+    ...probe(
+      "extensions.osc7-cwd",
+      (ctx) => {
+        if (!ctx.getCwd) {
+          const note = "Declared OSC 7 capability does not establish working-directory metadata delivery"
+          return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
+            declared: ctx.capabilities.extensions.has("osc7"),
+          })
+        }
+        const before = ctx.getCwd()
+        const firstUri = "file://localhost/terminfo-cwd-A"
+        const secondUri = "file://localhost/terminfo-cwd-B"
+        const writes = [`\x1b]7;${firstUri}\x07`, `\x1b]7;${secondUri}\x07`, `\x1b]7;${before ?? ""}\x07`] as const
+        let first: string | null
+        let second: string | null
+        try {
+          ctx.feed(writes[0])
+          first = ctx.getCwd()
+          ctx.feed(writes[1])
+          second = ctx.getCwd()
+        } finally {
+          ctx.feed(writes[2])
+        }
+        const restored = ctx.getCwd()
+        return parserStateResult(
+          first === firstUri && second === secondUri && restored === before,
+          `OSC 7 stores successive exact URIs ${firstUri}, ${secondUri} and restores the original URI`,
+          { before, first, second, restored, writes },
+        )
+      },
+      () => {
+        const note = "No working-directory metadata readback for OSC 7"
+        return Promise.resolve<ProbeCallbackResult>({
+          pass: false,
+          note,
+          tests: [{ id: "criterion", status: "test-todo", reason: note }],
+        })
+      },
+    ),
+    libAssertionType: "buffer_state",
+  },
 
   // OSC 633 — VS Code shell integration
   probe(
@@ -3930,23 +3955,43 @@ export const extensionsProbes: ProbeDefinition[] = [
   },
 
   // OSC 9 — desktop notifications
-  probe(
-    "extensions.notifications",
-    (ctx) => {
-      const note = "Declared OSC 9 capability does not establish desktop notification delivery"
-      return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
-        declared: ctx.capabilities.extensions.has("osc9"),
-      })
-    },
-    () => {
-      const note = "No desktop notification delivery readback for OSC 9"
-      return Promise.resolve<ProbeCallbackResult>({
-        pass: false,
-        note,
-        tests: [{ id: "criterion", status: "test-todo", reason: note }],
-      })
-    },
-  ),
+  {
+    ...probe(
+      "extensions.notifications",
+      (ctx) => {
+        if (!ctx.getNotifications) {
+          const note = "Declared OSC 9 capability does not establish desktop notification delivery"
+          return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
+            declared: ctx.capabilities.extensions.has("osc9"),
+          })
+        }
+        const before = [...ctx.getNotifications()]
+        const firstMessage = "terminfo-notification-A"
+        const secondMessage = "terminfo-notification-B"
+        const writes = [`\x1b]9;${firstMessage}\x07`, `\x1b]9;${secondMessage}\x07`] as const
+        ctx.feed(writes[0])
+        const first = [...ctx.getNotifications()]
+        ctx.feed(writes[1])
+        const second = [...ctx.getNotifications()]
+        return parserStateResult(
+          JSON.stringify(first) === JSON.stringify([...before, firstMessage]) &&
+            JSON.stringify(second) === JSON.stringify([...before, firstMessage, secondMessage]),
+          "OSC 9 appends each exact notification payload in order and preserves earlier payloads",
+          { before, first, second, writes },
+          "Measures the parser notification sink, not OS notification delivery or OSC 9;4 progress",
+        )
+      },
+      () => {
+        const note = "No desktop notification delivery readback for OSC 9"
+        return Promise.resolve<ProbeCallbackResult>({
+          pass: false,
+          note,
+          tests: [{ id: "criterion", status: "test-todo", reason: note }],
+        })
+      },
+    ),
+    libAssertionType: "buffer_state",
+  },
 
   // OSC 1337 — iTerm2 inline images
   {

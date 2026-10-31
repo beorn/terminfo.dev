@@ -14,7 +14,7 @@ import { resolve as resolveVt100 } from "@termless/vt100"
 import { resolve as resolveVt220 } from "@termless/vt220"
 import { createKittyBackend, isKittyAvailable } from "@termless/kitty"
 import { createGhosttyNativeBackend, isGhosttyNativeAvailable } from "@termless/ghostty-native"
-import type { EmulatorWarning } from "@termless/core"
+import { hasExtension, type EmulatorWarning, type OscMetadataExtension } from "@termless/core"
 import {
   ALL_PROBES,
   SEMANTIC_PROMPT_SOURCE_REVIEW,
@@ -29,7 +29,7 @@ import { fakeProbeResult } from "@terminfo/probe-defs/testing/fake-probe-result"
 import { regradeRow, satisfiesContract, type GroupContract } from "../probe-defs/src/testing/group-harness.ts"
 import { validateObservation, retainCaptureBinding, parseRun } from "@terminfo/run-parser"
 import { spawnSync } from "node:child_process"
-import { mkdtempSync, readFileSync, rmSync } from "node:fs"
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -50,6 +50,106 @@ function probeReplies(batch: Awaited<ReturnType<typeof collectBatch>>) {
 async function backend() {
   return createXtermBackend()
 }
+
+// @failure Engine metadata is lost between the real adapter, source constructor and registered callbacks.
+// @level l1
+// @consumer Private headless OSC7 cwd and OSC9 notification measurements.
+test("real vterm metadata reaches both registered callbacks and the batch producer", async (context) => {
+  const sibling = fileURLToPath(new URL("../../../termless/packages/vterm/src/backend.ts", import.meta.url))
+  if (!existsSync(sibling)) context.skip(`Real-vterm metadata producer requires missing sibling ${sibling}`)
+  const ids = ["extensions.osc7-cwd", "extensions.notifications"]
+  const value = createVtermBackend({ cols: 80, rows: 24 })
+  try {
+    expect(hasExtension(value, "osc-metadata")).toBe(true)
+    if (!hasExtension<OscMetadataExtension>(value, "osc-metadata")) throw new Error("missing OSC metadata")
+    value.feed(new TextEncoder().encode("\x1b]7;file://localhost/original\x07\x1b]9;previous notice\x07"))
+    const source = createLibProbeSource(value, undefined, undefined, undefined)
+    for (const id of ids) {
+      const result = registryDefinitions([id])[0]!.lib!(source)
+      expect(result.observation, id).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
+      expect(result.assertions, id).toMatchObject([{ kind: "positive", observed: result.response }])
+      const observed = JSON.parse(result.response!)
+      if (id === "extensions.osc7-cwd") {
+        expect(observed).toMatchObject({ before: "file://localhost/original", restored: "file://localhost/original" })
+        expect(observed.first).not.toBe(observed.second)
+        expect(value.getCwd()).toBe("file://localhost/original")
+      } else {
+        expect(observed.before).toEqual(["previous notice"])
+        expect(observed.first).toEqual([...observed.before, expect.any(String)])
+        expect(observed.second).toEqual([...observed.first, expect.any(String)])
+        expect(observed.first.at(-1)).not.toBe(observed.second.at(-1))
+      }
+    }
+  } finally {
+    value.destroy()
+  }
+  const batch = await collectBatch(async () => createVtermBackend(), "vterm", registryDefinitions(ids))
+  expect(batch.results).toMatchObject(
+    ids.map((featureId) => ({ featureId, status: "supported", assertionType: "buffer_state" })),
+  )
+  expect(batch.ungradedDiagnostics).toEqual({})
+  expect(batch.observations).toHaveLength(2)
+  for (const id of ids) {
+    expect(batch.assertions.filter((assertion) => assertion.featureId === id)).toMatchObject([
+      { kind: "positive", assertionType: "buffer_state", observed: batch.rawReplies[id] },
+    ])
+  }
+})
+
+test.each(["extensions.osc7-cwd", "extensions.notifications"])(
+  "%s distinguishes stale exposed metadata from an absent reader",
+  async (id, context) => {
+    const sibling = fileURLToPath(new URL("../../../termless/packages/vterm/src/backend.ts", import.meta.url))
+    if (!existsSync(sibling)) context.skip(`Real-vterm metadata controls require missing sibling ${sibling}`)
+    const value = createVtermBackend({ cols: 80, rows: 24 })
+    try {
+      expect(hasExtension(value, "osc-metadata")).toBe(true)
+      const definition = registryDefinitions([id])[0]!
+      const source = createLibProbeSource(value, undefined, undefined, undefined)
+      if (id === "extensions.osc7-cwd") vi.spyOn(source, "getCwd").mockReturnValue("file://localhost/stale")
+      else vi.spyOn(source, "getNotifications").mockReturnValue(["stale notice"])
+      const stale = definition.lib!(source)
+      expect(stale.observation).toMatchObject({ outcome: "unsupported", assertionType: "buffer_state" })
+      expect(stale.assertions).toMatchObject([{ kind: "negative", observed: stale.response }])
+
+      value.capabilities.extensions.delete("osc-metadata")
+      const absent = createLibProbeSource(value, undefined, undefined, undefined)
+      expect(absent.getCwd).toBeUndefined()
+      expect(absent.getNotifications).toBeUndefined()
+      const feed = vi.spyOn(value, "feed")
+      const missing = definition.lib!(absent)
+      expect(missing.criterionBranch).toBe("headless-observable-review")
+      expect(missing.tests).toMatchObject([{ id: "review", status: "test-todo" }])
+      expect(missing.observation).toBeUndefined()
+      expect(missing.assertions).toBeUndefined()
+      expect(feed).not.toHaveBeenCalled()
+    } finally {
+      value.destroy()
+    }
+  },
+)
+
+test("cwd readback errors propagate after restoring the original metadata", async (context) => {
+  const sibling = fileURLToPath(new URL("../../../termless/packages/vterm/src/backend.ts", import.meta.url))
+  if (!existsSync(sibling)) context.skip(`Real-vterm cwd cleanup requires missing sibling ${sibling}`)
+  const value = createVtermBackend({ cols: 80, rows: 24 })
+  try {
+    expect(hasExtension(value, "osc-metadata")).toBe(true)
+    if (!hasExtension<OscMetadataExtension>(value, "osc-metadata")) throw new Error("missing OSC metadata")
+    value.feed(new TextEncoder().encode("\x1b]7;file://localhost/original\x07"))
+    const source = createLibProbeSource(value, undefined, undefined, undefined)
+    const read = source.getCwd!.bind(source)
+    vi.spyOn(source, "getCwd")
+      .mockImplementationOnce(read)
+      .mockImplementationOnce(() => {
+        throw new Error("metadata read failed")
+      })
+    expect(() => registryDefinitions(["extensions.osc7-cwd"])[0]!.lib!(source)).toThrow("metadata read failed")
+    expect(value.getCwd()).toBe("file://localhost/original")
+  } finally {
+    value.destroy()
+  }
+})
 
 // 31299: callback-only assertions miss a typed source review that the capture parser rejects.
 // Keep the real registered callback, pinned identity fixture, adapter, collector and parser on one path.

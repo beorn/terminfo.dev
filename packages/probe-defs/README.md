@@ -207,6 +207,17 @@ and creates no source-review row. Replay preserves that callback-provided cause 
 
 The OSC 1 library criterion requires separate icon readback and a verified OSC 2 window-title control; an icon update must preserve that title. Missing icon readback remains coverage, while a failed title control is an execution failure. Both labels are restored after the attempt. Library OSC 117/119 resets reuse the color-reset helper's initial-query, distinct verified seed and reset-query sequence. Missing initial highlight readback or an unverified seed cannot establish reset support or absence; the original highlight color is restored after the attempt.
 
+The OSC 7 and notification library criteria use optional `getCwd` and
+`getNotifications` readers from the backend's `osc-metadata` extension. OSC 7
+retains two successive exact URI readbacks and restores the original URI,
+including null for an unset slot. Notifications retain the original payloads
+and require two distinct OSC 9 messages to append in order without changing
+that prefix. The collector gives each probe its own disposable backend, so
+notification messages cannot leak into another probe. These are `buffer_state`
+observations of parser metadata, not a filesystem operation, OS notification
+or OSC 9;4 progress measurement. Missing readers keep the existing
+`headless-observable-review` tool gap; getter errors propagate.
+
 ## Evidence, capture and assertion
 
 Callbacks currently perform I/O and judge it in the same implementation. There is no general persisted callback transcript or independently replayable assertion API supplied by this package.
@@ -282,8 +293,8 @@ or broken text fixture cannot acquire that source assertion. Existing captures n
 new exact-run decisions; this source change does not annotate retained captures.
 Declared getters returning null report unlinked cells, so URI mismatches remain measured negatives; invalid declared getters still throw.
 
-The eight declaration-only library checks (Kitty animation and Unicode placeholders, Sixel,
-semantic prompts, OSC 7, OSC 633, notifications and iTerm2 images), an unaudited absent OSC 8 URI observer,
+The declaration-only library checks (Kitty animation and Unicode placeholders, Sixel,
+semantic prompts, OSC 633 and iTerm2 images), OSC 7 and notifications without their metadata readers, an unaudited absent OSC 8 URI observer,
 the DECSCLM/2031 missing timing or host-event facilities, and the four rendering-limit checks
 (font ligatures, DECSSCLS, reverse video and synchronized output) retain their existing coverage and raw
 state on `headless-observable-review`. Each carries a required review naming its missing observable.
