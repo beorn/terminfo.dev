@@ -20,6 +20,7 @@ import {
   satisfiesContract,
   type GroupContract,
   type GroupContractSpec,
+  type StoredQuery,
 } from "./testing/group-harness.ts"
 
 /** The 29 Modes features of 28450 slice B; ids drawn from modes.ts, claims are the contract. */
@@ -153,8 +154,20 @@ test.each([
 
 test.each([null, 0, 4])("alternate-buffer Ps %s keeps null distinct from usable mode replies", async (ps) => {
   const definition = modesProbes.find((entry) => entry.id === "modes.altscreen-1047")!
-  const replies = new Map<string, { raw: string; reason: "reply" }>(
-    ps === null ? [] : [["\x1b[?1047$p", { raw: `\x1b[?1047;${ps}$y`, reason: "reply" }]],
+  const replies = new Map<string, StoredQuery>(
+    ps === null
+      ? []
+      : [
+          [
+            "\x1b[?1047$p",
+            {
+              sequence: "\x1b[?1047$p",
+              match: [`\x1b[?1047;${ps}$y`, String(ps)],
+              raw: `\x1b[?1047;${ps}$y`,
+              reason: "reply",
+            },
+          ],
+        ],
   )
   const result = await definition.term!(replayTermProbeSource(replies))
   if (ps === null) {
