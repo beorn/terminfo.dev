@@ -231,11 +231,12 @@ function tabClearResult(
   const response = JSON.stringify({ cols, ...positions })
   const { oldFirst, oldSecond, oldThird, after } = positions
   if (!oldFirst || !oldSecond || !oldThird || !after) {
-    if (assertionType === "query_reply")
+    if (assertionType === "query_reply") {
       return {
         response,
         ...replyFailure("no parsable cursor position reply; the public projection returned null and retained no bytes"),
       }
+    }
     return {
       pass: false,
       response,
@@ -649,11 +650,12 @@ export const textProbes: ProbeDefinition[] = [
           }
         }
         const decawm = await ctx.queryMode(DECAWM_MODE)
-        if (decawm === null)
+        if (decawm === null) {
           return {
             response: JSON.stringify({ cols, decawm }),
             ...replyFailure("no usable DECRPM reply; the public projection returned null and retained no bytes"),
           }
+        }
         if (decawm !== "set") {
           return {
             pass: false,
@@ -1365,13 +1367,14 @@ export const textProbes: ProbeDefinition[] = [
         try {
           installTabFixture(ctx.write)
           const start = await ctx.queryCursorPosition()
-          if (start === null)
+          if (start === null) {
             return {
               response: JSON.stringify({ start }),
               ...replyFailure(
                 "no parsable cursor position reply; the public projection returned null and retained no bytes",
               ),
             }
+          }
           if (start.row !== 1 || start.col !== 1) {
             return {
               pass: false,
@@ -1449,13 +1452,14 @@ export const textProbes: ProbeDefinition[] = [
           installTabFixture(ctx.write)
           ctx.write("\x1b[1;21H")
           const start = await ctx.queryCursorPosition()
-          if (start === null)
+          if (start === null) {
             return {
               response: JSON.stringify({ start }),
               ...replyFailure(
                 "no parsable cursor position reply; the public projection returned null and retained no bytes",
               ),
             }
+          }
           if (start.row !== 1 || start.col !== 21) {
             return {
               pass: false,
