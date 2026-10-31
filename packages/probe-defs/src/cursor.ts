@@ -12,6 +12,7 @@ import {
   decrpmReading,
   parserStateResult,
   probe,
+  replyFailure,
   queryDecrpm,
   type DecrpmPs,
 } from "./helpers.ts"
@@ -574,7 +575,7 @@ export const cursorProbes: ProbeDefinition[] = [
         ctx.feed("\x1b[3;5H")
         const response = ctx.feedCapture("\x1b[6n")
         if (!response) {
-          return { pass: false, tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }] }
+          return replyFailure("no usable cursor position reply")
         }
         const match = response.startsWith("\x1b[") ? /^([1-9]\d*);([1-9]\d*)R$/.exec(response.slice(2)) : null
         const row = Number(match?.[1])

@@ -11,6 +11,7 @@ import {
 import {
   parserStateResult,
   probe,
+  replyFailure,
   REPLY_AFTER_SENTINEL_NOTE,
   sentinelAnswer,
   sentinelNegativeResult,
@@ -63,10 +64,9 @@ function checksumResult(first: string, second: string, lateNote?: string): Probe
   const outcome = matches ? ("supported" as const) : both ? ("unsupported" as const) : ("inconclusive" as const)
   if (first.length === 0 && second.length === 0) {
     return {
-      pass: matches,
+      ...replyFailure("no usable checksum reply"),
       response: JSON.stringify({ first, second }),
       note,
-      tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }],
     }
   }
   return {
@@ -944,15 +944,7 @@ const editingProbeDefinitions: ProbeDefinition[] = [
             response: reply.raw,
             note: "No complete checksum reply before the DA1 sentinel",
             ...(reply.raw.length === 0
-              ? {
-                  tests: [
-                    {
-                      id: "criterion",
-                      status: "test-failure",
-                      reason: "No complete checksum reply before the DA1 sentinel",
-                    },
-                  ] as [{ id: string; status: "test-failure"; reason: string }],
-                }
+              ? replyFailure("no usable checksum reply")
               : {
                   observation: {
                     outcome: "inconclusive",

@@ -3,6 +3,7 @@ import {
   REPLY_AFTER_SENTINEL_NOTE,
   parserStateResult,
   probe,
+  replyFailure,
   notTestedResult,
   replyFrame,
   reviewResult,
@@ -664,15 +665,7 @@ export const deviceProbes: ProbeDefinition[] = [
             note: "No valid DSR ?997 color-scheme response",
             response,
             ...(response.length === 0
-              ? {
-                  tests: [
-                    {
-                      id: "criterion",
-                      status: "test-failure",
-                      reason: response.includes("\x1b[?997;") ? "invalid-reply" : "no-response",
-                    },
-                  ] as [{ id: string; status: "test-failure"; reason: string }],
-                }
+              ? replyFailure("no usable DSR ?997 color-scheme reply")
               : {
                   observation: {
                     outcome: "inconclusive",
@@ -716,19 +709,7 @@ export const deviceProbes: ProbeDefinition[] = [
             note: "No valid DSR ?997 color-scheme response",
             response: reply.raw,
             ...(reply.raw.length === 0
-              ? {
-                  tests: [
-                    {
-                      id: "criterion",
-                      status: "test-failure",
-                      reason: reply.raw.includes("\x1b[?997;")
-                        ? "invalid-reply"
-                        : reply.reason === "timeout"
-                          ? "timeout"
-                          : "no-response",
-                    },
-                  ] as [{ id: string; status: "test-failure"; reason: string }],
-                }
+              ? replyFailure("no usable DSR ?997 color-scheme reply")
               : {
                   observation: {
                     outcome: "inconclusive",
