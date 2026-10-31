@@ -1840,6 +1840,84 @@ describe("OSC 8 link metadata observation", () => {
 })
 
 /**
+ * @failure Six audited native OSC targets lose their review route or acquire a negative at an unqualified identity/control.
+ * @level l0
+ * @consumer Library OSC callbacks; existing OSC8 cases do not cover these six memberships or the parsed3008 distinction.
+ * @testonly none
+ */
+describe("GhosttyNative audited OSC source review", () => {
+  const identity = {
+    kind: "native",
+    engineVersion: "1.3.1",
+    adapterVersion: "0.10.2",
+    termlessRevision: "2d97417328b7b1d086f9396b9a1731216ed134cc",
+    loadedBinary: {
+      path: "vendor/termless/packages/ghostty-native/termless-ghostty-native.node",
+      sha256: "5a8030c0f3f9fa52e9c1f82d28ae711ef21e3072a4b82fbe98076fedf314c945",
+    },
+    provenance: {
+      sha256: "5a8030c0f3f9fa52e9c1f82d28ae711ef21e3072a4b82fbe98076fedf314c945",
+      sourceCommit: "332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28",
+      buildHash: "740541f7a527884ed17034c3ab8c66d457cdd14e013774b6bf75c7c99670a7d7",
+      toolchain: "zig 0.15.2",
+      lockSha256: "3ec775507556db01d08055836b26183f629a9cbb0b5802a1566661e95988d74a",
+    },
+  } as const satisfies NonNullable<LibProbeSource["runtimeIdentity"]>
+
+  test.each([
+    ["extensions.osc176-app-id", 176],
+    ["extensions.osc440-audio", 440],
+    ["extensions.osc555-flash", 555],
+    ["extensions.osc666-termprop", 666],
+    ["extensions.osc710-font-normal", 710],
+    ["extensions.osc3008-context", 3008],
+  ] as const)("%s requires independent review only with the audited identity and X control", (id, code) => {
+    const callback = probe(id).lib!
+    const source = context({
+      runtimeIdentity: identity,
+      getCell: () => ({ ...context({}).getCell(0, 0), char: "X" }),
+    })
+    const result = callback(source)
+    expect(result.criterionBranch).toBe("source-negative-review")
+    expect(result.tests).toMatchObject([{ id: "review", status: "test-failure" }])
+    expect(result.observation).toMatchObject({ outcome: "inconclusive", assertionType: "buffer_state" })
+    expect(result.assertions).toMatchObject([{ kind: "negative", assertionType: "buffer_state" }])
+    expect(JSON.parse(result.response!)).toMatchObject({ sentinel: { char: "X" }, runtimeIdentity: identity })
+    const reason = result.tests?.[0]?.reason ?? ""
+    if (code === 3008) {
+      expect(reason).toContain("parsed by osc.zig:747 context_signal")
+      expect(reason).toContain("dropped unimplemented at stream.zig:2056-2059")
+    } else {
+      expect(reason).toContain(`no case ${code}`)
+    }
+    const foreign = callback({
+      ...source,
+      runtimeIdentity: { ...identity, loadedBinary: { ...identity.loadedBinary, sha256: "0".repeat(64) } },
+    })
+    expect(foreign.notTested).toMatchObject({ reason: "no-semantic-observable" })
+    expect(foreign.assertions).toBeUndefined()
+    const broken = callback({ ...source, getCell: () => context({}).getCell(0, 0) })
+    expect(broken.criterionBranch).toBeUndefined()
+    expect(broken.assertions).toBeUndefined()
+  })
+
+  test.each(["extensions.osc22-pointer", "extensions.osc777-notify", "extensions.osc9-progress"])(
+    "%s stays outside the six-code native audit",
+    (id) => {
+      const result = probe(id).lib!(
+        context({
+          runtimeIdentity: identity,
+          getCell: () => ({ ...context({}).getCell(0, 0), char: "X" }),
+        }),
+      )
+      expect(result.notTested).toMatchObject({ reason: "no-semantic-observable" })
+      expect(result.criterionBranch).toBeUndefined()
+      expect(result.assertions).toBeUndefined()
+    },
+  )
+})
+
+/**
  * @failure Reflow wrapping masquerades as resize support; ignored OSC sequences and misplaced OSC 66 baselines become false positives.
  * @level l0
  * @consumer Unified app and headless probe definitions.

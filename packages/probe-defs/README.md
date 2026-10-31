@@ -86,6 +86,15 @@ The same helper covers @xterm/headless6.0.0 OSC9/22/176/440/555/666/710/777/3008
 It retains the bundle/map and adapter citations plus the executing runtime identity for independent source review.
 The bundle hashes are audit evidence, not fields in the runtime identity; the embedder hook must also be checked at the captured Termless source.
 
+GhosttyNative1.3.1 uses that existing native qualifier for OSC176/440/555/666/710/3008
+at the audited5a8030c0 artifact, Termless2d974173 and exact source/build/lock provenance.
+The first five commands are parser-rejected at core332b2aef; OSC3008 is parsed as
+context_signal, then dropped by the generic stream selected through Terminal.vtStream.
+Its reason preserves that distinction. The exact runtime and rendered-X control retain
+negative buffer-state assertions with pending source review, never an automatic grade.
+A different tuple, missing X, or OSC22/777/9 receives no such assertion from this entry.
+Historical captures stay unchanged; fresh emitted rows need new independent decisions.
+
 The two highlight resets (OSC 17/117 and 19/119) query the initial colour first.
 A real colour reply follows the measured reset criterion. Only an empty initial
 reply at the audited xterm.js identity can enter source review, and both set and
