@@ -24,7 +24,7 @@
  *
  * @fakes @terminfo/probe-defs
  */
-import type { LibProbeSource } from "../types.ts"
+import type { LibProbeSource, ModeState } from "../types.ts"
 import type { HeadlessModel } from "./group-harness.ts"
 
 type Rgb = { readonly r: number; readonly g: number; readonly b: number }
@@ -290,7 +290,7 @@ export interface SemanticSurfaceOptions {
 /** A semantic headless surface plus the state reads the Reset probes need. */
 export interface SemanticSurface extends HeadlessModel {
   getText(): string
-  getMode(mode: string): boolean
+  getMode(mode: string): ModeState
   reset(): void
 }
 
@@ -987,7 +987,7 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
     getMode(mode: string) {
       if (mode === "applicationCursor") return applicationCursor
       if (mode === "altScreen") return altScreen
-      return false
+      return null
     },
     reset() {
       softReset()

@@ -46,6 +46,18 @@ const baseCell = {
   wide: false,
 }
 
+// @failure Missing reset readback is interpreted as a measured reset (null becomes !null).
+// @level l0
+// @consumer DECSTR headless observations.
+test("DECSTR retains unknown after-state instead of claiming a measured reset", () => {
+  const probe = resetProbes.find((entry) => entry.id === "reset.soft")
+  if (!probe?.lib) throw new Error("Missing reset.soft library arm")
+  let reads = 0
+  const result = probe.lib(headless({ getMode: () => (reads++ === 0 ? true : null) }))
+  expect(result.observation).toBeUndefined()
+  expect(result.tests).toContainEqual(expect.objectContaining({ status: "test-todo" }))
+})
+
 function headless(overrides: Partial<LibProbeSource> = {}): LibProbeSource {
   return {
     kind: "live",
@@ -223,7 +235,7 @@ test("headless reset.sgr grades the measured styles and reset.soft needs an expo
   const unstyled = sgr({})
   expect(unstyled.observation).toBeUndefined()
   expect(unstyled.notTested?.noObservable).toContain("styled control")
-  const soft = find("reset.soft")(headless({ getMode: () => null as unknown as boolean }))
+  const soft = find("reset.soft")(headless({ getMode: () => null }))
   expect(soft.observation).toBeUndefined()
   expect(soft.notTested).toEqual({ reason: "no-semantic-observable", noObservable: expect.stringContaining("DECCKM") })
   expect(soft.criterionBranch).toBe("headless-observable-review")

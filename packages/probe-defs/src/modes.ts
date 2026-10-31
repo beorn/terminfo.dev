@@ -1426,7 +1426,7 @@ export const modesProbes: ProbeDefinition[] = [
         next,
       })
     } finally {
-      // #30574: the runtime getter can be null despite its current boolean type.
+      // Unknown mode metadata cannot determine the state to restore.
       if (originallyEnabled !== null) ctx.feed(originallyEnabled ? "\x1b[?7h" : "\x1b[?7l")
     }
   }),
@@ -1624,7 +1624,7 @@ export const modesProbes: ProbeDefinition[] = [
     (ctx) => {
       ctx.feed("\x1b=")
       const onMode = ctx.getMode("applicationKeypad")
-      // #30574: retain unknown runtime mode state until the public type is widened.
+      // Preserve unknown mode metadata separately from a measured reset state.
       const on = onMode === null ? null : onMode === true
       ctx.feed("\x1b>")
       const offMode = ctx.getMode("applicationKeypad")

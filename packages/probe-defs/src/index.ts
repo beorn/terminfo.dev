@@ -12,6 +12,7 @@ export type {
   NoSemanticObservable,
   LibMouseEvent,
   LibProbeSource,
+  ModeState,
   TermProbeSource,
   RenderedWidthResult,
   TerminalQueryOutcome,

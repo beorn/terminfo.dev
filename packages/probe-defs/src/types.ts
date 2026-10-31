@@ -1,3 +1,6 @@
+/** A mode readback; null means this source does not expose the requested state. */
+export type ModeState = boolean | null
+
 /** A probe ran and retained raw state, but this environment exposes no applicable observable for the claim. */
 export interface NoSemanticObservable {
   /** Closed reason for a coverage record. */
@@ -837,7 +840,7 @@ export interface LibProbeSource {
     wide: boolean
   }
   getCursor(): { x: number; y: number; visible: boolean | null; style: string | null }
-  getMode(mode: string): boolean
+  getMode(mode: string): ModeState
   getText(): string
   getScrollback(): { viewportOffset: number; totalLines: number; screenLines: number }
   /**
