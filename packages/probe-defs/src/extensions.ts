@@ -38,6 +38,7 @@ import {
   auditedAdapterSources,
 } from "./helpers.ts"
 import { evidenceRuntimeIdentity } from "./runtime-identity.ts"
+import { replyPathAuditFor } from "./reply-path-audit.ts"
 import { nativeHostRecipeResult } from "./native-host-audit.ts"
 import { sgrTermReadback } from "./sgr.ts"
 import {
@@ -3016,6 +3017,7 @@ export const extensionsProbes: ProbeDefinition[] = [
   probe(
     "extensions.kitty-graphics.animation",
     (ctx) => {
+      if (replyPathAuditFor(ctx, "extensions.kitty-graphics.animation")) ctx.feedCapture(GRAPHICS_QUERY)
       const note = "Declared Kitty graphics capability does not establish timed animation playback"
       return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
         declared: ctx.capabilities.kittyGraphics === true,
@@ -3201,6 +3203,7 @@ export const extensionsProbes: ProbeDefinition[] = [
   probe(
     "extensions.kitty-graphics.unicode-placeholders",
     (ctx) => {
+      if (replyPathAuditFor(ctx, "extensions.kitty-graphics.unicode-placeholders")) ctx.feedCapture(GRAPHICS_QUERY)
       const note = "Declared Kitty graphics capability does not establish Unicode placeholder rendering"
       return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
         declared: ctx.capabilities.kittyGraphics === true,
@@ -3995,6 +3998,9 @@ export const extensionsProbes: ProbeDefinition[] = [
     ...probe(
       "extensions.iterm2-images",
       (ctx) => {
+        if (replyPathAuditFor(ctx, "extensions.iterm2-images")) {
+          ctx.feedCapture("\x1b]1337;File=inline=1;width=8px;height=8px:" + ITERM2_RED_PNG + "\x07")
+        }
         const note = "Declared iTerm2 image capability does not establish rendered image pixels"
         return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
           declared: ctx.capabilities.extensions.has("iterm2Images"),
