@@ -482,7 +482,9 @@ remain under their original rule and are never promoted or rewritten.
 Natural collection loads accepted decisions through the existing interpretations parser and supersession
 chain, then supplies them to the same capture writer. One evidence match applies; matching decisions with
 the same exact verdict and reason are recorded as duplicates. Conflicting matches or changed evidence leave
-review pending, with named components in each context's `reviewBindings` report in `pass.json`. The report
+review pending, with named components in each context's `reviewBindings` report in `pass.json`.
+A candidate that fails an application prerequisite is reported as refused; other cells can still carry.
+The report
 records old-rule and new-rule results for every pending review cell. Original decision source strings,
 capture raw values and assertion prefixes remain retained; each enriched pending draft is another immutable
 snapshot in the existing output directory. Seal and admission remain separate checks.

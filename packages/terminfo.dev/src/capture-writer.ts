@@ -27,7 +27,7 @@ export interface CaptureReviewReport {
   featureId: string
   evidenceSha256?: string
   oldRule: Array<{ id: string; status: "carried" | "lapsed"; reason?: string }>
-  candidates: Array<{ id: string; status: "carried" | "lapsed"; reason?: string }>
+  candidates: Array<{ id: string; status: "carried" | "lapsed" | "refused"; reason?: string }>
   newRule: "carried" | "lapsed" | "conflict" | "pending"
   selected?: string
   duplicates: string[]
@@ -97,7 +97,16 @@ function carryCaptureReviews(
         continue
       }
       const shadow = globalThis.structuredClone(captured)
-      applyCaptureDecision(shadow, input.source, input.startedAt, undefined, hash)
+      try {
+        applyCaptureDecision(shadow, input.source, input.startedAt, undefined, hash)
+      } catch (error) {
+        report.candidates.push({
+          id: input.decision.id,
+          status: "refused",
+          reason: error instanceof Error ? error.message : String(error),
+        })
+        continue
+      }
       const reason = shadow.rawReplies[`collector.review.${input.decision.id}.lapse`]
       report.candidates.push({
         id: input.decision.id,
@@ -121,6 +130,7 @@ function carryCaptureReviews(
         report.duplicates = matching.slice(1).map(({ decision }) => decision.id)
       }
     } else if (candidates.length) {
+      if (report.candidates.every((candidate) => candidate.status === "refused")) report.newRule = "pending"
       report.reason = report.candidates.map((candidate) => `${candidate.id}: ${candidate.reason}`).join("; ")
     }
     reviews.report?.(report)

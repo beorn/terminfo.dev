@@ -186,6 +186,84 @@ it.each(["single", "duplicates", "conflict", "changed"] as const)(
   },
 )
 
+// Peer finding1 / per-cell selection AC: a refused record must not discard another cell's valid carry.
+// Single-cell cases above cannot expose a whole-context exception that loses both outputs.
+it("saves a refused review cell beside an independently carried cell", () => {
+  root = mkdtempSync(join(tmpdir(), "terminfo-refused-candidate-"))
+  const origin = collectorRun()
+  origin.results[0]!.tests = [
+    { id: "review", status: "test-todo", attempt: { scope: "none" }, reason: "Review pending" },
+  ]
+  origin.results.push({ ...structuredClone(origin.results[0]!), featureId: "device.secondary-da" })
+  const hash = "a".repeat(64)
+  const manifest = {
+    ...trustedReceipt.manifest,
+    catalogIds: origin.results.map((result) => result.featureId),
+    catalogEntrySha256: { "device.primary-da": hash, "device.secondary-da": hash },
+    probes: { term: ["device.primary-da", "device.secondary-da"], lib: [], mux: [] },
+  }
+  const decisions = origin.results.map(({ featureId }, index) => {
+    const binding = retainCaptureBinding(origin, featureId, hash)
+    return {
+      source: JSON.stringify({
+        id: index === 0 ? "refused-cell" : "carried-cell",
+        runId: origin.runId,
+        featureId,
+        captureSha256: binding.sha256,
+        evidence: binding.evidence,
+        decision: index === 0 ? "supported" : "untestable",
+        reviewed: true,
+        reviewer: "reviewer",
+        reason: "Independent source review",
+        sources: ["fixture source"],
+        supersedes: [],
+        scope: {
+          subject: { kind: "term", id: "kitty" },
+          versions: ["0.49.1", "0.49.1"],
+          suites: [manifest.probeHash, manifest.probeHash],
+        },
+      }),
+      startedAt: "2026-10-31T19:00:00.000Z",
+    }
+  })
+  const current = collectorRun()
+  current.runId = "two-cell-current"
+  current.results = structuredClone(origin.results)
+  const report: unknown[] = []
+  const path = saveDaemonProbeRun(current, root, undefined, {
+    manifest,
+    decisions,
+    carry: true,
+    origin: () => undefined,
+    report: (entry) => report.push(entry),
+  })
+  const bytes = readFileSync(path, "utf8"),
+    final = JSON.parse(bytes) as CollectedProbeRun
+  expect(path).toMatch(/\.draft\.json$/)
+  expect(final.results.map((result) => result.status)).toEqual(["test-todo", "untestable"])
+  expect(report).toMatchObject([
+    {
+      featureId: "device.primary-da",
+      newRule: "pending",
+      candidates: [
+        {
+          id: "refused-cell",
+          status: "refused",
+          reason: expect.stringContaining("review requires retained TESTED/EXPECTED assertions"),
+        },
+      ],
+    },
+    { featureId: "device.secondary-da", newRule: "carried", selected: "carried-cell" },
+  ])
+  expect(final.rawReplies["collector.review.carried-cell"]).toBe(decisions[1]!.source)
+  expect(final.rawReplies["collector.review.refused-cell"]).toBeUndefined()
+  expect(
+    parseRun(path, bytes, manifest.catalogIds, new Map([[manifest.probeHash, manifest]]), {
+      mode: "capture",
+    }).results?.map((result) => result.status),
+  ).toEqual(["test-todo", "untestable"])
+})
+
 it("keeps the Darwin editor IPC path short despite a long per-user temporary directory", () => {
   root = mkdtempSync(join(tmpdir(), "terminfo-owned-"))
   const longTemporaryDirectory = join(root, "darwin-per-user-cache-".repeat(3))
