@@ -544,8 +544,9 @@ function highlightResetProbe(id: string, setCode: number, resetCode: number): Pr
           ctx.write(`\x1b]${resetCode}\x07`)
           const resetRead = await read(ctx)
           const afterReset = resetRead.colour
-          if (!afterReset)
+          if (!afterReset) {
             return inconclusive(`${id}: OSC ${setCode} did not answer after OSC ${resetCode}`, resetRead.reply)
+          }
           const ok = afterReset.rgb === initial.rgb
           return {
             pass: ok,
