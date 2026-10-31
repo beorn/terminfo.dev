@@ -79,6 +79,51 @@ it("strips callback-only reply metadata from stored result and draft serializati
 })
 
 // One formatter owns the evidence template; unrelated failure reasons and grades stay untouched.
+// Configured raw query callbacks must opt into evidence before the recorder stores their failure.
+// Existing protocol fixtures pin grades, but did not pass these empty branches through the formatter.
+it.each([
+  ["lib", "cursor.position-report"],
+  ["lib", "device.dsr-996-color-scheme"],
+  ["term", "device.dsr-996-color-scheme"],
+  ["lib", "editing.decrqcra"],
+  ["term", "editing.decrqcra"],
+] as const)("retains empty raw query evidence for %s %s", async (kind, id) => {
+  const definition = ALL_PROBES.find((entry) => entry.id === id)!
+  const captures: { sequence: string; received: string }[] = []
+  const capture = (sequence: string) => {
+    captures.push({ sequence, received: "" })
+    return ""
+  }
+  const callback =
+    kind === "lib"
+      ? definition.lib!({ feed() {}, feedCapture: capture } as unknown as LibProbeSource)
+      : await definition.term!({
+          write() {},
+          queryWithSentinelOutcome: async (sequence: string) => ({
+            raw: capture(sequence),
+            rawBase64: "",
+            match: null,
+            reason: "timeout",
+          }),
+        } as unknown as TermProbeSource)
+  expect(captures.length).toBeGreaterThan(0)
+  expect(callback).toHaveProperty("replyFailureTestIds", ["criterion"])
+  const result =
+    kind === "lib"
+      ? withReplyFailureEvidence(id, callback, {
+          producer: "headless",
+          attempts: captures.map((entry) => ({ ...entry, timeoutMs: null })),
+        })
+      : withReplyFailureEvidence(id, callback, {
+          producer: "TTY",
+          attempts: captures.map((entry) => ({ ...entry, timeoutMs: 37, match: null, reason: "timeout" as const })),
+        })
+  const stored = record(result)
+  expect(stored.status).toBe("test-failure")
+  expect(stored.reason).toContain(`sent ${JSON.stringify(captures[0]!.sequence)}; received ""`)
+  expect(stored).not.toHaveProperty("replyFailureTestIds")
+})
+
 it("retains each query's own state when a failed query is followed by a matching cleanup reply", () => {
   const result = withReplyFailureEvidence("cursor.fixture", replyFailure("no parsable cursor position reply"), {
     producer: "TTY",
@@ -498,7 +543,7 @@ it("preserves native callback note fallback for unmeasured widths and TERM_FEATU
 
 // These helpers serve both source kinds. Native used callback.note as the missing observation
 // note, while lib did not; changing the shared helper would silently alter headless reasons.
-it("preserves native note fallback at shared tab and checksum call sites without changing lib reasons", async () => {
+it("preserves tab note fallbacks and explicit checksum reply failures", async () => {
   for (const [id, startCol] of [
     ["text.cht", 1],
     ["text.cbt", 21],
@@ -521,10 +566,10 @@ it("preserves native note fallback at shared tab and checksum call sites without
   } as unknown as TermProbeSource)
   expect(record(native)).toMatchObject({
     status: "test-failure",
-    reason: "No complete checksum reply before the DA1 sentinel",
+    reason: "no usable checksum reply",
   })
   const lib = await checksum.lib!({ feed() {}, feedCapture: () => "" } as unknown as LibProbeSource)
-  expect(record(lib)).toMatchObject({ status: "test-failure", reason: "no-response" })
+  expect(record(lib)).toMatchObject({ status: "test-failure", reason: "no usable checksum reply" })
 })
 // Prior tests only inspected the retained frames/inconclusive observation. These exercise both real
 // callback branches through the production result recorder and seal boundary, where the bug lived.
