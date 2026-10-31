@@ -4478,6 +4478,8 @@ describe("partial probe automation candidates", () => {
         const result = run(runtimeIdentity)
         expect(feeds, id).toEqual([`\x1b[1;1H\x1b[2K${sequence}X`])
         expect(result.criterionBranch, id).toBe("source-negative-review")
+        // A null declaration makes the real collector refuse this typed result (#32026 branch capture).
+        expect(probe(id).libAssertionType, id).not.toBeNull()
         expect(result.assertions, id).toMatchObject([{ kind: "negative", assertionType: "buffer_state" }])
         expect(run(runtimeIdentity, "?").assertions, id).toBeUndefined()
         expect(

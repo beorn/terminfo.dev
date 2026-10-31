@@ -3803,7 +3803,7 @@ export const extensionsProbes: ProbeDefinition[] = [
         }),
       (ctx) => promptMarkAppResult(ctx, "\x1b]133;A\x07", "OSC 133;A prompt-start mark registration"),
     ),
-    libAssertionType: null,
+    libAssertionType: "buffer_state",
   },
 
   // OSC 133;B — command start (FTCS_COMMAND_START)
@@ -3817,7 +3817,7 @@ export const extensionsProbes: ProbeDefinition[] = [
         }),
       (ctx) => promptMarkAppResult(ctx, "\x1b]133;B\x07", "OSC 133;B command-start mark registration"),
     ),
-    libAssertionType: null,
+    libAssertionType: "buffer_state",
   },
 
   // OSC 133;C — command executed (FTCS_COMMAND_EXECUTED)
@@ -3831,7 +3831,7 @@ export const extensionsProbes: ProbeDefinition[] = [
         }),
       (ctx) => promptMarkAppResult(ctx, "\x1b]133;C\x07", "OSC 133;C command-executed mark registration"),
     ),
-    libAssertionType: null,
+    libAssertionType: "buffer_state",
   },
 
   // OSC 133;D — command finished with exit code (FTCS_COMMAND_FINISHED)
@@ -3859,7 +3859,7 @@ export const extensionsProbes: ProbeDefinition[] = [
         }),
       (ctx) => promptMarkAppResult(ctx, "\x1b]133;P;Cwd=/tmp\x07", "OSC 133;P properties mark registration"),
     ),
-    libAssertionType: null,
+    libAssertionType: "buffer_state",
   },
 
   // OSC 633 sub-commands — VS Code shell integration markers
