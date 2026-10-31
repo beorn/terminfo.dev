@@ -13,7 +13,14 @@ import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { afterAll, expect, test, vi } from "vitest"
-import { loadFeatures, loadFeatureEntryHashes, loadTerminals } from "./index.ts"
+import {
+  FEATURE_ENTRY_PROSE_DENYLIST,
+  boundFeatureEntry,
+  loadFeatures,
+  loadFeatureEntryHashes,
+  loadTerminals,
+  type FeatureRecord,
+} from "./index.ts"
 
 const here = dirname(fileURLToPath(import.meta.url))
 const repoContent = join(here, "..", "..", "..", "content")
@@ -164,5 +171,77 @@ test("names the missing catalogue entry hash cache instead of returning an empty
     expect(() => loadFeatureEntryHashes(dir)).toThrow("feature-entry-hashes")
   } finally {
     spy.mockRestore()
+  }
+})
+
+// #32037 AC1/AC2/AC4 (@cto d45ebed6): existing whole-entry hash tests only exercise unknown-field mutations and
+// key reordering, so they miss prose keys still entering loadFeatureEntryHashes or a new FeatureRecord key landing
+// without an explicit bind/denylist decision.
+test("enumerates FeatureRecord keys against FEATURE_ENTRY_PROSE_DENYLIST and omits only denylisted prose keys from hashes", () => {
+  const decisions = {
+    name: true,
+    slug: true,
+    body: false,
+    probe: true,
+    baseline: true,
+    url: true,
+    tags: true,
+    sequence: true,
+    group: true,
+    tier1: true,
+    probeStatus: true,
+    probeStatusReason: true,
+  } satisfies Record<keyof FeatureRecord, boolean>
+  expect(FEATURE_ENTRY_PROSE_DENYLIST).toEqual(["body", "description", "notes", "references", "links", "see-also"])
+  const denylisted = new Set<string>(FEATURE_ENTRY_PROSE_DENYLIST)
+  for (const [key, bound] of Object.entries(decisions)) {
+    expect(!denylisted.has(key), key).toBe(bound)
+  }
+  const base: Record<string, unknown> = {
+    name: "Bold (SGR 1)",
+    slug: "bold",
+    body: "Original body prose.",
+    probe: "Send ESC[1m",
+    baseline: "ecma-48",
+    url: "/features/sgr/bold",
+    tags: ["sgr"],
+    sequence: "CSI 1 m",
+    group: "sgr",
+    tier1: "included",
+    probeStatus: "supported",
+    probeStatusReason: "reviewed",
+    description: "Original description.",
+    notes: "Original notes.",
+    references: ["ECMA-48"],
+    links: ["https://example.invalid"],
+    "see-also": ["sgr.faint"],
+    unknown: { kept: 1 },
+  }
+  expect(Object.keys(boundFeatureEntry(base)).sort()).toEqual(
+    Object.keys(base)
+      .filter((key) => !denylisted.has(key))
+      .sort(),
+  )
+  const hashes = (name: string, entry: Record<string, unknown>) =>
+    loadFeatureEntryHashes(fixture(name, { "features.json": { "sgr.bold": entry } }))["sgr.bold"]
+  const original = hashes("prose-denylist-base", base)
+  for (const proseKey of FEATURE_ENTRY_PROSE_DENYLIST) {
+    expect(hashes(`prose-changed-${proseKey}`, { ...base, [proseKey]: `edited-${proseKey}` }), proseKey).toBe(original)
+  }
+  for (const [boundKey, nextValue] of [
+    ["name", "Bold Updated"],
+    ["slug", "bold-updated"],
+    ["probe", "Send ESC[1;2m"],
+    ["baseline", "vt100"],
+    ["url", "/features/sgr/bold-2"],
+    ["tags", ["sgr", "style"]],
+    ["sequence", "CSI 2 m"],
+    ["group", "style"],
+    ["tier1", "excluded"],
+    ["probeStatus", "unsupported"],
+    ["probeStatusReason", "updated reason"],
+    ["unknown", { kept: 2 }],
+  ] as const) {
+    expect(hashes(`bound-changed-${boundKey}`, { ...base, [boundKey]: nextValue }), boundKey).not.toBe(original)
   }
 })

@@ -29,7 +29,15 @@ import {
   type CaptureEvidence,
 } from "@terminfo/probe-defs"
 import { fakeProbeResult } from "@terminfo/probe-defs/testing/fake-probe-result"
-import { applyCaptureDecision, retainCaptureBinding, parseRun, decodeCollectorDraft, canonicalJson } from "./index.ts"
+import {
+  applyCaptureDecision,
+  retainCaptureBinding,
+  parseRun,
+  decodeCollectorDraft,
+  canonicalJson,
+  FEATURE_ENTRY_PROSE_DENYLIST,
+  boundFeatureEntry,
+} from "./index.ts"
 import { finalizeHeadlessAttempt, createLibProbeSource } from "../../probes/headless-batch.ts"
 import { createVt100Backend } from "@termless/vt100"
 import { createVt220Backend } from "@termless/vt220"
@@ -2586,4 +2594,95 @@ it("names a missing preimage review row in the canonical reader", () => {
   expect(() =>
     parseRun("sealed.json", JSON.stringify(final), manifest.catalogIds, new Map([[manifest.probeHash, manifest]])),
   ).toThrow("cell.tests.review preimage unavailable")
+})
+
+// #32037 AC1/AC2/AC3 (@cto d45ebed6): existing feature-hash binding tests pass synthetic hex digests, so they miss
+// prose-only catalogue edits changing the bound entry hash, refusing in-place re-retain, or lapsing review decisions.
+it("carries evidence-bound review decisions unchanged across prose-only catalogue edits and lapses on bound/unknown edits", () => {
+  const entryHash = (entry: Record<string, unknown>) =>
+    createHash("sha256")
+      .update(canonicalJson(boundFeatureEntry(entry)), "utf8")
+      .digest("hex")
+  const originEntry: Record<string, unknown> = {
+    name: "Faint / Dim (SGR 2)",
+    slug: "faint",
+    body: "Original body prose before the 147-entry editorial merge.",
+    probe: "Send ESC[2m",
+    baseline: "ecma-48",
+    url: "/features/sgr/faint",
+    tags: ["sgr"],
+    sequence: "CSI 2 m",
+    group: "sgr",
+    tier1: "included",
+  }
+  const proseEditedEntry: Record<string, unknown> = {
+    ...originEntry,
+    body: "Rewritten editorial body prose.",
+    description: "Added editorial description.",
+    notes: "Added editorial notes.",
+    references: ["ECMA-48 §8.3.117"],
+    links: ["https://ecma-international.org"],
+    "see-also": ["sgr.bold"],
+  }
+  expect(FEATURE_ENTRY_PROSE_DENYLIST).toEqual(["body", "description", "notes", "references", "links", "see-also"])
+  const originHash = entryHash(originEntry)
+  const proseEditedHash = entryHash(proseEditedEntry)
+  expect(proseEditedHash).toBe(originHash)
+
+  const origin = setup('{"retained":"state"}', { runId: "prose-origin", startedAt: "2026-10-27T11:00:00.000Z" })
+  const originEvidence = retainCaptureBinding(origin.draft, "sgr.faint", originHash).evidence
+  const beforeReRetain = structuredClone(origin.draft.rawReplies)
+  expect(retainCaptureBinding(origin.draft, "sgr.faint", proseEditedHash).evidence).toEqual(originEvidence)
+  expect(origin.draft.rawReplies).toEqual(beforeReRetain)
+
+  const current = setup('{"retained":"state"}', { runId: "prose-current", startedAt: "2026-10-27T11:00:00.000Z" })
+  retainCaptureBinding(current.draft, "sgr.faint", proseEditedHash)
+  applyCaptureDecision(
+    current.draft,
+    JSON.stringify({ ...origin.decision, evidence: originEvidence, decision: "supported" }),
+    "2026-10-27T11:02:00.000Z",
+    undefined,
+    proseEditedHash,
+  )
+  expect(current.draft.results[0]!.status).toBe("supported")
+  expect(current.draft.rawReplies[`collector.review.${origin.decision.id}.lapse`]).toBeUndefined()
+  const sealed = sealRunDraft(current.draft)
+  const manifest = {
+    schemaVersion: 4 as const,
+    probeHash: sealed.probeHash,
+    adapterVersion: "fixture",
+    catalogIds: ["sgr.faint"],
+    catalogEntrySha256: { "sgr.faint": proseEditedHash },
+    probes: { term: [], lib: ["sgr.faint"], mux: [] },
+  }
+  expect(
+    parseRun(
+      "prose-sealed.json",
+      JSON.stringify(sealed),
+      manifest.catalogIds,
+      new Map([[manifest.probeHash, manifest]]),
+    ).results?.[0]?.status,
+  ).toBe("supported")
+
+  for (const [label, mutatedEntry] of [
+    ["probe", { ...originEntry, probe: "Send ESC[2;22m" }],
+    ["unknown", { ...originEntry, unmodeledCriterionField: true }],
+  ] as const) {
+    const mutatedHash = entryHash(mutatedEntry)
+    expect(mutatedHash, label).not.toBe(originHash)
+    expect(() => retainCaptureBinding(origin.draft, "sgr.faint", mutatedHash), label).toThrow(
+      "Capture sgr.faint evidence binding is immutable",
+    )
+    const lapsed = setup('{"retained":"state"}', { runId: `lapsed-${label}`, startedAt: "2026-10-27T11:00:00.000Z" })
+    retainCaptureBinding(lapsed.draft, "sgr.faint", mutatedHash)
+    applyCaptureDecision(
+      lapsed.draft,
+      JSON.stringify({ ...origin.decision, evidence: originEvidence }),
+      "2026-10-27T11:02:00.000Z",
+      undefined,
+      mutatedHash,
+    )
+    expect(lapsed.draft.results[0]!.status, label).toBe("test-failure")
+    expect(lapsed.draft.results[0]!.reason, label).toContain("feature")
+  }
 })

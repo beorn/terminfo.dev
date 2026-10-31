@@ -21,7 +21,8 @@
 import { existsSync, readFileSync } from "node:fs"
 import { createHash } from "node:crypto"
 import { isAbsolute, join } from "node:path"
-import { parseJsonStrict, canonicalJson } from "@terminfo/run-parser"
+import { parseJsonStrict, canonicalJson, boundFeatureEntry } from "@terminfo/run-parser"
+export { FEATURE_ENTRY_PROSE_DENYLIST, boundFeatureEntry } from "@terminfo/run-parser"
 
 /** One feature catalog entry, keyed by its probe dot-path id in `content/features.json`. */
 export interface FeatureRecord {
@@ -236,7 +237,9 @@ export function loadFeatures(contentDir: string): FeatureCatalog {
   const entryHashes: Record<string, string> = {}
   for (const [id, raw] of entries(path, root)) {
     catalog[id] = parseFeature(path, id, raw)
-    entryHashes[id] = createHash("sha256").update(canonicalJson(raw), "utf8").digest("hex")
+    entryHashes[id] = createHash("sha256")
+      .update(canonicalJson(boundFeatureEntry(raw)), "utf8")
+      .digest("hex")
   }
   const frozen = Object.freeze(catalog)
   cache.set(`${contentDir}#feature-entry-hashes`, Object.freeze(entryHashes))
@@ -244,7 +247,7 @@ export function loadFeatures(contentDir: string): FeatureCatalog {
   return frozen
 }
 
-/** Whole original entries, including unknown keys, from the same parse as loadFeatures. */
+/** Canonical catalogue entries minus `FEATURE_ENTRY_PROSE_DENYLIST`, including unknown keys, from the same parse as loadFeatures. */
 export function loadFeatureEntryHashes(contentDir: string): Readonly<Record<string, string>> {
   loadFeatures(contentDir)
   const hashes = cache.get(`${contentDir}#feature-entry-hashes`)

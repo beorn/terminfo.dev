@@ -5,7 +5,8 @@
  * @testonly none
  * @reach fs-walk vendor/terminfo.dev/content/features.json vendor/terminfo.dev/packages/probe-defs/src/** vendor/terminfo.dev/packages/probes/** vendor/terminfo.dev/packages/terminfo.dev/src/** vendor/terminfo.dev/packages/run-parser/src/** vendor/terminfo.dev/packages/admin/**
  */
-import { readFileSync } from "node:fs"
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
 import { dirname, join, relative } from "node:path"
 import { fileURLToPath } from "node:url"
 import ts from "typescript"
@@ -327,4 +328,53 @@ test("suite hashing distinguishes an explicit null declaration from absence", ()
   } finally {
     changed.declaration = "original"
   }
+})
+
+// #32037 AC3 (@cto d45ebed6): existing suite-hash tests only exercise unscheduled ID additions and adapter source
+// edits, so they miss prose-only edits in content/features.json minting a new suite id or changing catalogEntrySha256.
+test("prose-only edits to content/features.json change no catalogEntrySha256 and mint no new suite id", () => {
+  const rawFeatures = JSON.parse(readFileSync(join(SUITE_ROOT, "content", "features.json"), "utf8")) as Record<
+    string,
+    unknown
+  >
+  const withFeatures = (mutate: (bold: Record<string, unknown>) => void) => {
+    const dir = mkdtempSync(join(tmpdir(), "terminfo-suite-prose-"))
+    try {
+      for (const top of ["packages", "scripts", "docs", ".github"]) {
+        symlinkSync(join(SUITE_ROOT, top), join(dir, top))
+      }
+      mkdirSync(join(dir, "content"), { recursive: true })
+      symlinkSync(join(SUITE_ROOT, "content", "terminals.json"), join(dir, "content", "terminals.json"))
+      const copy = structuredClone(rawFeatures)
+      mutate(copy["sgr.bold"] as Record<string, unknown>)
+      writeFileSync(join(dir, "content", "features.json"), JSON.stringify(copy))
+      return probeSuiteSnapshot(dir)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  }
+  const baseline = probeSuiteSnapshot()
+  const proseEdited = withFeatures((bold) => {
+    bold.body = "Editorial rewrite of sgr.bold body prose."
+    bold.description = "Editorial description."
+    bold.notes = "Editorial notes."
+    bold.references = ["ECMA-48 §8.3.117"]
+    bold.links = ["https://ecma-international.org"]
+    bold["see-also"] = ["sgr.faint"]
+  })
+  expect(proseEdited.catalogEntrySha256).toEqual(baseline.catalogEntrySha256)
+  expect(proseEdited.probeHash).toBe(baseline.probeHash)
+  expect(derivedSuiteManifest(proseEdited)).toEqual(derivedSuiteManifest(baseline))
+
+  const probeEdited = withFeatures((bold) => {
+    bold.probe = `${String(bold.probe)} (edited probe method)`
+  })
+  expect(probeEdited.catalogEntrySha256["sgr.bold"]).not.toBe(baseline.catalogEntrySha256["sgr.bold"])
+  expect(probeEdited.probeHash).not.toBe(baseline.probeHash)
+
+  const unknownEdited = withFeatures((bold) => {
+    bold.unknownContractField = "bound-by-default"
+  })
+  expect(unknownEdited.catalogEntrySha256["sgr.bold"]).not.toBe(baseline.catalogEntrySha256["sgr.bold"])
+  expect(unknownEdited.probeHash).not.toBe(baseline.probeHash)
 })
