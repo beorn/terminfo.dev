@@ -875,9 +875,18 @@ function colorResetProbe(setCode: number, resetCode: number, index?: number): Pr
           })
         }
         if (silence) {
-          // Keep the deciding DA1 bytes intact; optional cell/control evidence accompanies its assertion.
+          // A verified control established a live path, so the initial silence no longer decides (@cto 758ee3b5).
+          if (control.verified) {
+            return answer(
+              colorReadbackReviewResult(
+                `OSC ${resetCode}: reset produced neither the baseline nor the verified seed; independent review required`,
+                state,
+              ),
+            )
+          }
+          // Keep the deciding DA1 bytes intact; every host slot's control evidence accompanies its assertion.
           return answer(
-            indexed && silence.observation
+            silence.observation
               ? { ...silence, assertions: silence.assertions?.map((assertion) => ({ ...assertion, note: response })) }
               : silence,
           )
