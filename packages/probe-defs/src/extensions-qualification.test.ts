@@ -1429,7 +1429,7 @@ test.each([
   ["extensions.osc119-reset-highlight-fg", 19, 119],
 ] as const)("%s grades the headless reset only after a distinct verified change", (id, setCode, resetCode) => {
   const definition = callback(id)
-  expect(definition.libAssertionType).toBe("query_reply")
+  expect(definition.libAssertionType).toBeUndefined() // #28801: measured reply and source-review routes differ.
   for (const ignoresReset of [false, true]) {
     const fixture = highlightTerminal(setCode, resetCode, "1111/2222/3333", ignoresReset)
     const result = definition.lib!(fixture.lib)
@@ -1524,14 +1524,14 @@ test.each([
         expect(result.criterionBranch).toBe("source-negative-review")
         expect(result.observation).toMatchObject({
           outcome: "inconclusive",
-          assertionType: definition.libAssertionType,
+          assertionType: "buffer_state",
         })
         expect(result.tests).toMatchObject([
           { id: "review", status: "test-failure", reason: expect.stringContaining("17a90b65") },
         ])
         expect(result.tests?.[0]?.reason).toContain(`no case ${setCode}/${resetCode}`)
         expect(result.assertions).toMatchObject([
-          { kind: "negative", assertionType: "query_reply", observed: result.response },
+          { kind: "negative", assertionType: "buffer_state", observed: result.response },
         ])
         const retained = JSON.parse(result.response!)
         expect(retained).toMatchObject({
@@ -1550,7 +1550,7 @@ test.each([
       } else if (mode === "no-sentinel") {
         expect(result.observation).toMatchObject({
           outcome: "inconclusive",
-          assertionType: "query_reply",
+          assertionType: "buffer_state",
           note: "No rendered X cell to evaluate",
         })
         expect(result.criterionBranch).toBeUndefined()

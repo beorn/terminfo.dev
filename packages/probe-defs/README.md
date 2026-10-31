@@ -91,7 +91,10 @@ A real colour reply follows the measured reset criterion. Only an empty initial
 reply at the audited xterm.js identity can enter source review, and both set and
 reset codes must belong to the same audited entry. The callback feeds the exact
 set/reset commands and an X control, retaining the query, reply, runtime and
-control state as query-reply evidence. A rendered X retains a negative assertion
+control state as buffer-state source evidence. The measured reply route remains
+query-reply evidence; these two lib arms stay temporarily undeclared under #28801
+because a single assertion-type declaration cannot state both routes.
+A rendered X retains a negative assertion
 and pending source review, never automatic Unsupported. A missing X retains no
 negative assertion or review; other identities keep the named prerequisite failure.
 

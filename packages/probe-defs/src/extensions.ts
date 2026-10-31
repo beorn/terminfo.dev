@@ -563,7 +563,8 @@ function highlightResetProbe(id: string, setCode: number, resetCode: number): Pr
     // The callback mutates the highlight slot, so the collector must hold a disposable receipt:
     // the same classification the OSC 10-14 reset probes carry.
     termNeedsDisposable: true,
-    libAssertionType: "query_reply",
+    // The lib arm mixes measured query_reply and source-review buffer_state routes;
+    // one declaration cannot state both, so it stays temporarily undeclared under #28801.
   }
 }
 
@@ -730,7 +731,6 @@ function colorResetProbe(id: string, setCode: number, resetCode: number, index?:
             sentinel.char === "X"
               ? `${audit.sourceCitation}: no case ${setCode}/${resetCode} handler or highlight colour writer; independent source review required`
               : undefined,
-            "query_reply",
           )
         }
         const note = `OSC ${setCode} initial highlight colour was not read back, so OSC ${resetCode} cannot be compared with it`

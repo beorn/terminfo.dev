@@ -32,8 +32,10 @@ import { spawnSync } from "node:child_process"
 import { mkdtempSync, readFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { fileURLToPath } from "node:url"
 import { afterEach, beforeEach, expect, test, vi } from "vitest"
 import { collectBatch, createLibProbeSource, feedCapture } from "./headless-batch.ts"
+import { headlessRuntimeIdentity } from "./headless-identity.ts"
 import { finalizeCollectedDraft } from "../terminfo.dev/src/capture-writer.ts"
 import { cellWidthTransition } from "../probe-defs/src/helpers.ts"
 import { replyFailure } from "../probe-defs/src/helpers.ts"
@@ -48,6 +50,73 @@ function probeReplies(batch: Awaited<ReturnType<typeof collectBatch>>) {
 async function backend() {
   return createXtermBackend()
 }
+
+// 31299: callback-only assertions miss a typed source review that the capture parser rejects.
+// Keep the real registered callback, measured adapter identity, collector and parser on one path.
+test.each(["extensions.osc117-reset-highlight-bg", "extensions.osc119-reset-highlight-fg"])(
+  "%s retains a readable pending source review through the actual collector",
+  async (id) => {
+    const definition = ALL_PROBES.find((entry) => entry.id === id)!
+    const identity = await headlessRuntimeIdentity("xtermjs", "@termless/xtermjs", "js")
+    const manifest = {
+      schemaVersion: 4 as const,
+      probeHash: "reset-parser-contract-fixture",
+      adapterVersion: "fixture",
+      catalogIds: [id],
+      probes: { term: [], mux: [], lib: [id] },
+    }
+    const draft = initializeRunDraft({
+      source: { kind: "live" },
+      runId: `reset-parser-contract-${id}`,
+      sourceRevision: "a".repeat(40),
+      intendedSubject: { kind: "lib", id: "xtermjs" },
+      manifest,
+    })
+    const batch = await collectBatch(backend, "xtermjs", [definition], draft, undefined, {
+      identity,
+      adapterPath: Bun.resolveSync("@termless/xtermjs", fileURLToPath(import.meta.url)),
+      adapterPackage: "@termless/xtermjs",
+      adapterType: "js",
+    })
+    const captured: CapturedRunDraft = {
+      ...draft,
+      subject: {
+        kind: "lib",
+        id: "xtermjs",
+        version: identity.engineVersion,
+        os: "linux",
+        osVersion: null,
+        outerTerminal: null,
+        mux: null,
+        config: null,
+        permissions: null,
+      },
+      identity: "unverified",
+      runtimeIdentity: identity,
+      measuredAt: new Date().toISOString(),
+      origin: { kind: "collector" },
+      rawReplies: { ...draft.rawReplies, ...batch.rawReplies },
+      results: batch.results,
+      assertions: batch.assertions,
+    }
+    const parsed = parseRun(
+      `${id}.capture.json`,
+      JSON.stringify(captured),
+      manifest.catalogIds,
+      new Map([[manifest.probeHash, manifest]]),
+      { mode: "capture" },
+    )
+    expect(parsed.results).toMatchObject([
+      {
+        featureId: id,
+        status: "test-failure",
+        assertionType: "buffer_state",
+        criterionBranch: "source-negative-review",
+        tests: [{ id: "review", status: "test-failure" }],
+      },
+    ])
+  },
+)
 
 // A registered callback can lose its marker while a synthetic marked callback still passes.
 // Missing qualification must not turn its configured, silent writer into producer absence.
