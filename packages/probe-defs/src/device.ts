@@ -211,7 +211,7 @@ function deviceReplyResult(
         ? "timeout"
         : "no-response"
   if (raw.length === 0) {
-    return { pass: false, response: raw, tests: [{ id: "criterion", status: "test-failure", reason: missingReason }] }
+    return { ...replyFailure(`${missingReason}; expected ${spec.expected}`), response: raw }
   }
   return {
     pass: false,
@@ -458,15 +458,8 @@ function decrqssAfterRefusal(
   const setting = spec === DECRQSS_DECSTBM ? "DECSTBM" : "DECSCL"
   if (second.raw.length === 0) {
     return {
-      pass: false,
+      ...replyFailure(`${refused}; ${setting} unanswered; DECRQSS facility still speaks; expected ${spec.expected}`),
       response: second.raw,
-      tests: [
-        {
-          id: "criterion",
-          status: "test-failure",
-          reason: `${refused}; ${setting} unanswered; DECRQSS facility still speaks`,
-        },
-      ],
     }
   }
   const secondFrame = replyFrame(second)

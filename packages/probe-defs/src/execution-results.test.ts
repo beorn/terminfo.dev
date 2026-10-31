@@ -85,6 +85,12 @@ it.each([
   ["lib", "cursor.position-report"],
   ["lib", "device.dsr-996-color-scheme"],
   ["term", "device.dsr-996-color-scheme"],
+  ["lib", "device.status-report"],
+  ["term", "device.status-report"],
+  ["lib", "device.decrqss", "DECSTBM"],
+  ["term", "device.decrqss", "DECSTBM"],
+  ["lib", "device.decrqss", "DECSCL"],
+  ["term", "device.decrqss", "DECSCL"],
   ["lib", "editing.decrqcra"],
   ["term", "editing.decrqcra"],
   ["lib", "extensions.osc52-clipboard"],
@@ -92,17 +98,30 @@ it.each([
   ["lib", "extensions.osc52-read"],
   ["term", "extensions.osc52-clipboard"],
   ["term", "extensions.osc52-read"],
-] as const)("retains empty raw query evidence for %s %s", async (kind, id) => {
+] as const)("retains empty raw query evidence for %s %s %s", async (kind, id, refused?) => {
   const definition = ALL_PROBES.find((entry) => entry.id === id)!
   const captures: { sequence: string; received: string }[] = []
   const capture = (sequence: string) => {
-    captures.push({ sequence, received: "" })
-    return ""
+    const received =
+      id === "device.decrqss" &&
+      (sequence === "\x1bP$qm\x1b\\" || (refused === "DECSCL" && sequence === "\x1bP$qr\x1b\\"))
+        ? "\x1bP0$r\x1b\\"
+        : ""
+    captures.push({ sequence, received })
+    return received
+  }
+  const outcome = (sequence: string, pattern: RegExp) => {
+    const raw = capture(sequence)
+    return { raw, rawBase64: btoa(raw), match: pattern.exec(raw), reason: raw ? "reply" : "timeout" }
   }
   let clipboard = ""
   const callback =
     kind === "lib"
-      ? definition.lib!({ feed() {}, feedCapture: capture } as unknown as LibProbeSource)
+      ? definition.lib!({
+          feed() {},
+          feedCapture: capture,
+          ...(id === "device.decrqss" && { queryWithSentinelOutcome: outcome }),
+        } as unknown as LibProbeSource)
       : await definition.term!({
           write(sequence: string) {
             const frame = /\x1b\]52;c;([^\x07]+)\x07/.exec(sequence)
@@ -116,18 +135,8 @@ it.each([
                 clipboard = text
               },
             }),
-          queryOutcome: async (sequence: string) => ({
-            raw: capture(sequence),
-            rawBase64: "",
-            match: null,
-            reason: "timeout",
-          }),
-          queryWithSentinelOutcome: async (sequence: string) => ({
-            raw: capture(sequence),
-            rawBase64: "",
-            match: null,
-            reason: "timeout",
-          }),
+          queryOutcome: async (sequence: string, pattern: RegExp) => outcome(sequence, pattern),
+          queryWithSentinelOutcome: async (sequence: string, pattern: RegExp) => outcome(sequence, pattern),
         } as unknown as TermProbeSource)
   expect(captures.length).toBeGreaterThan(0)
   expect(callback).toHaveProperty("replyFailureTestIds", ["criterion"])
@@ -143,7 +152,11 @@ it.each([
         })
   const stored = record(result)
   expect(stored.status).toBe("test-failure")
-  expect(stored.reason).toContain(`sent ${JSON.stringify(captures[0]!.sequence)}; received ""`)
+  for (const entry of captures) {
+    expect(stored.reason).toContain(
+      `sent ${JSON.stringify(entry.sequence)}; received ${JSON.stringify(entry.received)}`,
+    )
+  }
   expect(stored).not.toHaveProperty("replyFailureTestIds")
 })
 

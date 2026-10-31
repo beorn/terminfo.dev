@@ -454,7 +454,8 @@ describe("device query observations", () => {
       })
       expect(recorded.status).toBe("test-failure")
       expect(recorded.assertionType).toBeUndefined()
-      expect(recorded.reason).toBe("SGR refused; DECSTBM unanswered; DECRQSS facility still speaks")
+      expect(recorded.reason).toContain("SGR refused; DECSTBM unanswered; DECRQSS facility still speaks")
+      expect(recorded.reason).toContain("complete DECRQSS status 1 DECSTBM margins ending r and ST")
     }
     expect(emptyScript.queries).toEqual([DECRQSS_SGR_QUERY, DECRQSS_DECSTBM_QUERY])
     expect(libraryQueries).toEqual([DECRQSS_SGR_QUERY, DECRQSS_DECSTBM_QUERY])
