@@ -445,6 +445,26 @@ describe("reply-path audit", () => {
       ),
     ).toBeUndefined()
   })
+  // #32026: a listed key of the other kind must not fire through the wrong identity branch.
+  test("source-tree and artifact key shapes never cross identity kinds", () => {
+    const treeOid = "5ffc7ad9ae120d0bf93c64b0fdc712eb40892896"
+    const sha256 = "5c38594a17329b24e826f785d3156d6e498490517835f12b0730eeab2fc63da7"
+    expect(
+      replyPathAuditFor(
+        context({
+          runtimeIdentity: {
+            ...nativeIdentity,
+            loadedBinary: { path: "fixture.node", sha256: treeOid },
+            provenance: { ...nativeIdentity.provenance, sha256: treeOid },
+          },
+        }),
+        "modes.application-cursor",
+      ),
+    ).toBeUndefined()
+    expect(
+      replyPathAuditFor(context({ runtimeIdentity: sourceIdentity(sha256) }), "extensions.osc99-kitty-notify"),
+    ).toBeUndefined()
+  })
   test("native reply audit returns the unchanged artifactSha256 member", () => {
     const sha256 = "5c38594a17329b24e826f785d3156d6e498490517835f12b0730eeab2fc63da7"
     const audit = REPLY_PATH_AUDITS.get(sha256)!["extensions.osc99-kitty-notify"]!
@@ -616,22 +636,26 @@ describe("reply-path audit", () => {
       expect(audit.citation).toContain("5714ed07")
     }
   })
-  const cells = [...REPLY_PATH_AUDITS].flatMap(([sha256, audits]) =>
-    Object.entries(audits).map(([id, audit]) => ({ sha256, id, audit })),
+  const indexedCells = [...REPLY_PATH_AUDITS].flatMap(([auditKey, audits]) =>
+    Object.entries(audits).map(([id, audit]) => ({ auditKey, id, audit })),
   )
-  const identity = (sha256: string): NonNullable<LibProbeSource["runtimeIdentity"]> =>
-    sha256.length === 40
-      ? sourceIdentity(sha256)
+  const cells = [
+    ...indexedCells.filter(({ auditKey }) => /^[0-9a-f]{64}$/.test(auditKey)),
+    ...indexedCells.filter(({ auditKey }) => /^[0-9a-f]{40}$/.test(auditKey)),
+  ]
+  const identity = (auditKey: string): NonNullable<LibProbeSource["runtimeIdentity"]> =>
+    /^[0-9a-f]{40}$/.test(auditKey)
+      ? sourceIdentity(auditKey)
       : {
           ...nativeIdentity,
-          loadedBinary: { path: "audited.wasm", sha256 },
-          provenance: { ...nativeIdentity.provenance, sha256 },
+          loadedBinary: { path: "audited.wasm", sha256: auditKey },
+          provenance: { ...nativeIdentity.provenance, sha256: auditKey },
         }
-  const run = (id: string, sha256: string, reply: (sequence: string) => string) => {
+  const run = (id: string, auditKey: string, reply: (sequence: string) => string) => {
     const sent: string[] = []
     const result = probe(id).lib!(
       context({
-        runtimeIdentity: identity(sha256),
+        runtimeIdentity: identity(auditKey),
         feedCapture(sequence) {
           sent.push(sequence)
           return reply(sequence)
@@ -1303,11 +1327,11 @@ describe("reply-path audit", () => {
     expect(result.note).toContain("p")
   })
 
-  test.each(cells)("$id on $sha256", ({ sha256, id, audit }) => {
+  test.each(cells)("$id on $auditKey", ({ auditKey, id, audit }) => {
     const unlisted = run(id, "f".repeat(64), () => "")
     expect(JSON.stringify(unlisted.result)).not.toContain("replyPathAudit")
 
-    const silent = run(id, sha256, () => "")
+    const silent = run(id, auditKey, () => "")
     const matched = silent.sent.filter((sequence) =>
       audit.matches === "prefix" ? sequence.startsWith(audit.query) : sequence === audit.query,
     )
@@ -1316,7 +1340,7 @@ describe("reply-path audit", () => {
     expect(state).toEqual({
       ...(audit.kind === "parser-rejected" && { rejection: "parser" }),
       replyPathAudit: {
-        ...(sha256.length === 40 ? { sourceTreeOid: sha256 } : { artifactSha256: sha256 }),
+        ...(/^[0-9a-f]{40}$/.test(auditKey) ? { sourceTreeOid: auditKey } : { artifactSha256: auditKey }),
         featureId: id,
         ...audit,
         captures: matched.length,
@@ -1344,7 +1368,7 @@ describe("reply-path audit", () => {
 
     const answer = (sequence: string) =>
       (audit.matches === "prefix" ? sequence.startsWith(audit.query) : sequence === audit.query) ? "\x1b" : ""
-    expect(run(id, sha256, answer).result).toEqual(run(id, "f".repeat(64), answer).result)
+    expect(run(id, auditKey, answer).result).toEqual(run(id, "f".repeat(64), answer).result)
   })
 })
 

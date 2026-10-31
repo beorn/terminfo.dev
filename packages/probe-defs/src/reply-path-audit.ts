@@ -168,7 +168,8 @@ const GHOSTTY_WASM_DISABLED_KITTY_AUDIT: ReplyPathAudit = {
 }
 
 /**
- * Source audits of exact engines that cannot reply, keyed by loaded-artifact sha256 or source treeOid, then featureId.
+ * Source audits of exact engines that cannot reply, keyed by 64-lowercase-hex loaded-artifact SHA-256 or
+ * 40-lowercase-hex source treeOid, then featureId. Identity kinds never share the other key shape.
  * Data only: each cell has its own citation and is reviewed as data. Unlisted identity/feature pairs keep the measured
  * result. A listed source tree matches only when cleanTree === true; dirty source keeps the measured result too.
  */
@@ -3217,13 +3218,14 @@ export function replyPathAuditFor(
   const identity = ctx.runtimeIdentity
   if (identity === undefined) return undefined
   if (identity.kind === "js" && identity.runtimeFormat === "js" && identity.integrity.kind === "source") {
-    if (!identity.integrity.cleanTree) return undefined
+    if (!identity.integrity.cleanTree || !/^[0-9a-f]{40}$/.test(identity.integrity.treeOid)) return undefined
     const sourceTreeOid = identity.integrity.treeOid
     const audit = REPLY_PATH_AUDITS.get(sourceTreeOid)?.[featureId]
     return audit === undefined ? undefined : { sourceTreeOid, audit }
   }
   if (!("loadedBinary" in identity)) return undefined
   const artifactSha256 = identity.loadedBinary.sha256
+  if (!/^[0-9a-f]{64}$/.test(artifactSha256)) return undefined
   const audit = REPLY_PATH_AUDITS.get(artifactSha256)?.[featureId]
   return audit === undefined ? undefined : { artifactSha256, audit }
 }
