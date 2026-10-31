@@ -6,6 +6,7 @@ import {
   type HyperlinkExtension,
   type DefaultColorsExtension,
   type MouseEncodingExtension,
+  type OscMetadataExtension,
   type ReplyDeliveryExtension,
   type TerminalBackend,
   type WarningExtension,
@@ -350,6 +351,10 @@ export function createLibProbeSource(
       ? backend.getDefaultColors.bind(backend)
       : undefined
   const readIconLabel = typeof backend.getIconLabel === "function" ? backend.getIconLabel.bind(backend) : undefined
+  const metadata = hasExtension<OscMetadataExtension>(backend, "osc-metadata") ? backend : undefined
+  const readCwd = typeof metadata?.getCwd === "function" ? metadata.getCwd.bind(metadata) : undefined
+  const readNotifications =
+    typeof metadata?.getNotifications === "function" ? metadata.getNotifications.bind(metadata) : undefined
   const readClipboardState =
     typeof backend.getClipboardState === "function" ? backend.getClipboardState.bind(backend) : undefined
   const declaresMouseEncoding = backend.capabilities.extensions.has("mouse-encoding")
@@ -366,6 +371,8 @@ export function createLibProbeSource(
     getHyperlinkAt: readLink,
     getDefaultColors: readDefaultColors,
     getIconLabel: readIconLabel,
+    getCwd: readCwd,
+    getNotifications: readNotifications,
     getClipboardState: readClipboardState,
     feed(text) {
       backend.feed(encoder.encode(text))
