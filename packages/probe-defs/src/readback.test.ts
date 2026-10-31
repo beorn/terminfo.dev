@@ -121,7 +121,13 @@ test.each(["sgr.bold", "cursor.hide", "modes.insert-replace"] as const)(
     expect(result.pass).toBe(false)
     if (id === "modes.insert-replace") {
       // IRM falls through to its cell fixture; a missing cursor reply is an execution failure, not a verdict.
-      expect(result.tests).toEqual([{ id: "criterion", status: "test-failure", reason: "no-response" }])
+      expect(result.tests).toEqual([
+        {
+          id: "criterion",
+          status: "test-failure",
+          reason: "no parsable cursor position reply; the public projection returned null and retained no bytes",
+        },
+      ])
       expect(result.observation).toBeUndefined()
       expect(result.assertions).toBeUndefined()
     } else {
