@@ -107,6 +107,21 @@ buffer-state source review only with the qualified identity and rendered X.
 Direct OSC17/19 queries keep their reply route; OSC8/1/7/1337 remain outside this entry.
 This qualifier does not approve historical captures or grade a target effect.
 
+Wezterm0.1.0-fork.5 uses the same native qualifier at artifact0f56a805,
+Termless2d974173 and exact source/build/lock provenance. Its numeric membership is
+OSC22/176/440/555/633/666/710/720/3008, absent from the pinned parser's osc_entries.
+The private literal133;D selector records the parsed CommandStatus arm that does nothing;
+it never selects133A/B/C/P. OSC9 progress and777 notifications remain outside this entry.
+Seven ordinary callbacks,133D, six633 members and the633 aggregate retain pending
+buffer-state source reviews with rendered X. The aggregate cites whole-opcode absence,
+not member decisions. Only the seven D/633 member declarations change from null to
+buffer_state; other identities retain their existing untyped semantic-review route.
+OSC720 enters this source route only when productViewport is declared absent and no
+scrollViewport control exists. Contradictory declarations and measured viewport paths
+retain their existing checks. The reason names parser absence, screen/history ownership
+and the wrapper's no-op viewport. All sixteen routes require fresh independent decisions;
+none automatically grades a target or changes historical captures or application arms.
+
 The two highlight resets (OSC 17/117 and 19/119) query the initial colour first.
 A real colour reply follows the measured reset criterion. Only an empty initial
 reply at an audited xterm.js or Alacritty identity can enter source review, and both set and

@@ -134,6 +134,114 @@ test.each(["extensions.osc117-reset-highlight-bg", "extensions.osc119-reset-high
   },
 )
 
+// @failure A typed D/633 source review under libAssertionType:null becomes a collector error.
+// @level l1 @consumer collectBatch plus capture parser; callback tests cannot catch declaration rejection.
+test("Wezterm prompt source reviews survive actual collection and capture binding", async () => {
+  const ids = [
+    "extensions.osc133-d",
+    "extensions.osc633-a",
+    "extensions.osc633-b",
+    "extensions.osc633-c",
+    "extensions.osc633-d",
+    "extensions.osc633-e",
+    "extensions.osc633-p",
+  ]
+  // Deliberately use the existing JS backend with a mocked identity. This tests producer mechanics,
+  // not native execution/attestation, and runs without the owned vterm or ghostty sibling sources.
+  const identity = {
+    kind: "native",
+    engineVersion: "0.1.0-fork.5",
+    adapterVersion: "0.10.2",
+    termlessRevision: "2d97417328b7b1d086f9396b9a1731216ed134cc",
+    loadedBinary: {
+      path: "vendor/termless/packages/wezterm/termless-wezterm.node",
+      sha256: "0f56a805793d7d829daa617f1323aacff0d73fe868747b0d077c6af315e2aab8",
+    },
+    provenance: {
+      sha256: "0f56a805793d7d829daa617f1323aacff0d73fe868747b0d077c6af315e2aab8",
+      sourceCommit: "5afcc676d49c02902ef35112893e2ae35efb0d5e",
+      buildHash: "1bc38c0ad4e95754ef42b5de57d4829864984099b2e4422008de7c5b96c875df",
+      toolchain:
+        "rustc 1.94.0 (4a4ef493e 2026-03-02) (built from a source tarball); cargo 1.94.0 (85eff7c80 2026-01-15)",
+      lockSha256: "8eaeab733cced8d47feb223d773d5ae158b2e6af8c994f993d4071d9ba3231d4",
+    },
+  } as const
+  vi.spyOn(headlessIdentity, "headlessRuntimeIdentity").mockResolvedValue(identity)
+  const manifest = {
+    schemaVersion: 4 as const,
+    probeHash: "wezterm-prompt-parser-contract-fixture",
+    adapterVersion: "fixture",
+    catalogIds: ids,
+    probes: { term: [], mux: [], lib: ids },
+  }
+  const draft = initializeRunDraft({
+    source: { kind: "live" },
+    runId: "wezterm-prompt-parser-contract",
+    sourceRevision: "a".repeat(40),
+    intendedSubject: { kind: "lib", id: "wezterm" },
+    manifest,
+  })
+  const batch = await collectBatch(backend, "wezterm", registryDefinitions(ids), draft, undefined, {
+    identity,
+    adapterPath: Bun.resolveSync("@termless/xtermjs", fileURLToPath(import.meta.url)),
+    adapterPackage: "@termless/xtermjs",
+    adapterType: "js",
+  })
+  const captured: CapturedRunDraft = {
+    ...draft,
+    subject: {
+      kind: "lib",
+      id: "wezterm",
+      version: identity.engineVersion,
+      os: "linux",
+      osVersion: null,
+      outerTerminal: null,
+      mux: null,
+      config: null,
+      permissions: null,
+    },
+    identity: "unverified",
+    runtimeIdentity: identity,
+    measuredAt: new Date().toISOString(),
+    origin: { kind: "collector" },
+    rawReplies: { ...draft.rawReplies, ...batch.rawReplies },
+    results: batch.results,
+    assertions: batch.assertions,
+  }
+  for (const id of ids) {
+    const row = captured.results.find((entry) => entry.featureId === id)!
+    expect(row).toMatchObject({
+      featureId: id,
+      status: "test-failure",
+      assertionType: "buffer_state",
+      criterionBranch: "source-negative-review",
+      tests: [{ id: "review", status: "test-failure" }],
+    })
+    const binding = retainCaptureBinding(captured, id)
+    if (typeof binding.source !== "string") throw new Error("Expected retained capture binding JSON")
+    expect(JSON.parse(binding.source)).toMatchObject({
+      runtimeIdentity: {
+        kind: "native",
+        engineVersion: "0.1.0-fork.5",
+        adapterVersion: "0.10.2",
+        termlessRevision: "2d97417328b7b1d086f9396b9a1731216ed134cc",
+        loadedBinary: { sha256: "0f56a805793d7d829daa617f1323aacff0d73fe868747b0d077c6af315e2aab8" },
+      },
+    })
+  }
+  const parsed = parseRun(
+    "wezterm-prompt.capture.json",
+    JSON.stringify(captured),
+    ids,
+    new Map([[manifest.probeHash, manifest]]),
+    { mode: "capture" },
+  )
+  expect(parsed.results).toHaveLength(7)
+  expect(
+    parsed.results?.every((row) => row.criterionBranch === "source-negative-review" && row.status === "test-failure"),
+  ).toBe(true)
+})
+
 // A registered callback can lose its marker while a synthetic marked callback still passes.
 // Missing qualification must not turn its configured, silent writer into producer absence.
 test("retains registered reply failure evidence when the writer is unqualified", async () => {
