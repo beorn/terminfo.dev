@@ -55,7 +55,7 @@ import {
 } from "./observations.ts"
 export { parseObservationFrames, validateObservation, validateObservationOutcome } from "./observations.ts"
 import { parseJsonStrict, canonicalJson } from "./json.ts"
-export { parseJsonStrict, canonicalJson } from "./json.ts"
+export { parseJsonStrict, canonicalJson, FEATURE_ENTRY_PROSE_DENYLIST, boundFeatureEntry } from "./json.ts"
 import { ALACRITTY_VERSION_PATTERN, PLACEHOLDER, parseAppLaunchReceipt, parseDerivedSourceTree } from "./app-launch.ts"
 
 export { ALACRITTY_VERSION_PATTERN, parseAppLaunchReceipt, parseDerivedSourceTree }

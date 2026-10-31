@@ -95,3 +95,21 @@ export function canonicalJson(value: unknown): string {
       : current,
   )
 }
+
+/**
+ * Human-facing prose keys that `FeatureRecord` in `content/features.json` carries at the pin and
+ * that are excluded from the bound entry digest (#32037, @cto d45ebed6 / 138596ae).
+ * Unknown keys stay bound by default.
+ */
+export const FEATURE_ENTRY_PROSE_DENYLIST = ["body"] as const
+
+const FEATURE_ENTRY_PROSE_DENYSET = new Set<string>(FEATURE_ENTRY_PROSE_DENYLIST)
+
+/** The canonical catalogue entry minus its denylisted human-facing prose keys; unknown keys still bind. */
+export function boundFeatureEntry(raw: Readonly<Record<string, unknown>>): Record<string, unknown> {
+  const bound: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(raw)) {
+    if (!FEATURE_ENTRY_PROSE_DENYSET.has(key)) bound[key] = value
+  }
+  return bound
+}
