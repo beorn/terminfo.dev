@@ -1990,8 +1990,9 @@ describe("Alacritty audited OSC source review", () => {
     const reason = result.tests?.[0]?.reason ?? ""
     if (codes === "22") {
       expect(writes).toContain("\x1b[1;1H\x1b[2K\x1b]22;pointer\x07X")
-      expect(reason).toContain("vte 0.15.0 src/ansi.rs:1455-1461")
-      expect(reason).toContain("src/ansi.rs:703-704")
+      expect(reason).toBe(
+        "alacritty_terminal 0.26.0 with vte 0.15.0 src/ansi.rs:1329-1523 OSC dispatch (22 parsed, other audited codes unhandled); src/term/mod.rs:1059-2272 Term Handler; Termless 2d97417328b7b1d086f9396b9a1731216ed134cc packages/alacritty/native/src/lib.rs:285-338 owns Term<EventProxy> and advances the vte processor into it; parsed by vte 0.15.0 src/ansi.rs:1455-1461 into set_mouse_cursor_icon; Handler default src/ansi.rs:703-704 is empty and alacritty_terminal 0.26.0 src/term/mod.rs:1059-2272 supplies no override; independent source review required",
+      )
       expect(reason).not.toContain("no case 22")
     } else {
       expect(reason).toContain(`no case ${codes}`)
@@ -2082,6 +2083,167 @@ describe("Alacritty audited OSC source review", () => {
     expect(result.tests?.[0]?.reason).toBe(
       "vterm 53a9eb9291b7880f4dc6a39a6802301049997a72 packages/vterm/src/screen.ts:3596-4055 handleOSC switch; screen.ts:3921-3923 notification sink stores every OSC 9 value, with no progress subcode or state interpretation; independent source review required",
     )
+  })
+})
+
+/**
+ * @failure Wezterm source-negative reviews escape their exact artifact, command and rendered-X qualification.
+ * @level l0
+ * @consumer Registered OSC library callbacks; native tuple, D-only and viewport precedence coverage.
+ * @testonly none
+ */
+describe("Wezterm audited OSC source review", () => {
+  // Retained run0214f61e identity; this fixture does not attest a loaded native engine.
+  const identity = {
+    kind: "native",
+    engineVersion: "0.1.0-fork.5",
+    adapterVersion: "0.10.2",
+    termlessRevision: "2d97417328b7b1d086f9396b9a1731216ed134cc",
+    loadedBinary: {
+      path: "vendor/termless/packages/wezterm/termless-wezterm.node",
+      sha256: "0f56a805793d7d829daa617f1323aacff0d73fe868747b0d077c6af315e2aab8",
+    },
+    provenance: {
+      sha256: "0f56a805793d7d829daa617f1323aacff0d73fe868747b0d077c6af315e2aab8",
+      sourceCommit: "5afcc676d49c02902ef35112893e2ae35efb0d5e",
+      buildHash: "1bc38c0ad4e95754ef42b5de57d4829864984099b2e4422008de7c5b96c875df",
+      toolchain:
+        "rustc 1.94.0 (4a4ef493e 2026-03-02) (built from a source tarball); cargo 1.94.0 (85eff7c80 2026-01-15)",
+      lockSha256: "8eaeab733cced8d47feb223d773d5ae158b2e6af8c994f993d4071d9ba3231d4",
+    },
+  } as const satisfies NonNullable<LibProbeSource["runtimeIdentity"]>
+
+  // @failure Exact native source reviews are lost or attached to foreign artifacts/unrendered commands.
+  // @level l0 @consumer Registered OSC library callbacks; no prior fixture covers this source tuple or D-only selection.
+  test.each([
+    ["extensions.osc22-pointer", "\x1b]22;pointer\x07"],
+    ["extensions.osc176-app-id", "\x1b]176;terminfo-test\x07"],
+    ["extensions.osc440-audio", "\x1b]440;bell.wav\x07"],
+    ["extensions.osc555-flash", "\x1b]555\x07"],
+    ["extensions.osc666-termprop", "\x1b]666;test-prop=value\x07"],
+    ["extensions.osc710-font-normal", "\x1b]710;monospace\x07"],
+    ["extensions.osc3008-context", "\x1b]3008;type=test\x07"],
+    ["extensions.osc133-d", "\x1b]133;D;0\x07"],
+    ...OSC_SEMANTIC_MARK_CASES.filter(([id]) => id.startsWith("extensions.osc633-")),
+    ["extensions.osc-633-vscode", "\x1b]633;A\x07"],
+    ["extensions.osc720-scroll-up", "\x1b]720\x07"],
+  ] as const)("%s retains a pending source review only for its qualified artifact and X", (id, sequence) => {
+    const writes: string[] = []
+    const source = context({
+      runtimeIdentity: identity,
+      feed: (bytes) => {
+        writes.push(bytes)
+      },
+      getCell: () => ({ ...context({}).getCell(0, 0), char: "X" }),
+      capabilities: {
+        ...context({}).capabilities,
+        productViewport: { available: false, reason: "Fixture has no product viewport" },
+      },
+    })
+    const callback = probe(id).lib!
+    const result = callback(source)
+    expect(result.criterionBranch).toBe("source-negative-review")
+    expect(result.tests).toMatchObject([{ id: "review", status: "test-failure" }])
+    expect(result.observation).toMatchObject({ outcome: "inconclusive", assertionType: "buffer_state" })
+    expect(result.assertions).toMatchObject([
+      { kind: "negative", assertionType: "buffer_state", observed: result.response },
+    ])
+    expect(writes).toEqual(["\x1b[1;1H\x1b[2K" + sequence + "X"])
+    expect(JSON.parse(result.response!)).toMatchObject({
+      sentinel: { char: "X" },
+      engineState: null,
+      runtimeIdentity: identity,
+    })
+    const reason = result.tests?.[0]?.reason ?? ""
+    if (id === "extensions.osc133-d") {
+      expect(reason).toBe(
+        "tattoy-wezterm-escape-parser 0.1.0-1 src/osc.rs:457-505 osc_entries (SHA256 fd26b6d6254c46ef880fbcc03ba418d67e9049c875e71cca6f18f4df76a0924f), parse errors become Unspecified at :155-167; tattoy-wezterm-term 0.1.0-fork.5 src/terminalstate/performer.rs:772-781 logs Unspecified; Termless 2d97417328b7b1d086f9396b9a1731216ed134cc packages/wezterm/native/src/lib.rs:236-243 advances the pinned Terminal; parsed by osc.rs:793-806 into CommandStatus, dropped by the empty performer.rs:900-902 arm; independent source review required",
+      )
+    } else if (id === "extensions.osc720-scroll-up") {
+      expect(reason).toBe(
+        "tattoy-wezterm-escape-parser 0.1.0-1 src/osc.rs:457-505 osc_entries (SHA256 fd26b6d6254c46ef880fbcc03ba418d67e9049c875e71cca6f18f4df76a0924f), parse errors become Unspecified at :155-167; tattoy-wezterm-term 0.1.0-fork.5 src/terminalstate/performer.rs:772-781 logs Unspecified; Termless 2d97417328b7b1d086f9396b9a1731216ed134cc packages/wezterm/native/src/lib.rs:236-243 advances the pinned Terminal; no case 720; wezterm-term src/screen.rs:15-45,335,493,522-527 stores screen/history, not a product viewport; Termless packages/wezterm/native/src/lib.rs:448-461 returns viewport_offset 0 and scroll_viewport is a no-op; independent source review required",
+      )
+    } else {
+      expect(reason).toContain(`no case ${sequence.slice(2).split(/[;\x07]/)[0]}`)
+    }
+    const foreignIdentities = [
+      { ...identity, engineVersion: "unreviewed" },
+      { ...identity, adapterVersion: "unreviewed" },
+      { ...identity, termlessRevision: "0".repeat(40) },
+      { ...identity, loadedBinary: { ...identity.loadedBinary, path: "foreign/binary" } },
+      { ...identity, loadedBinary: { ...identity.loadedBinary, sha256: "0".repeat(64) } },
+      ...(["sha256", "sourceCommit", "buildHash", "lockSha256"] as const).map((key) => ({
+        ...identity,
+        provenance: { ...identity.provenance, [key]: "unreviewed" },
+      })),
+    ]
+    for (const runtimeIdentity of [...foreignIdentities, undefined]) {
+      const foreign = callback({ ...source, runtimeIdentity })
+      expect(foreign.criterionBranch).not.toBe("source-negative-review")
+      expect(foreign.assertions).toBeUndefined()
+    }
+    const missingX = callback({ ...source, getCell: () => context({}).getCell(0, 0) })
+    expect(missingX.criterionBranch).toBeUndefined()
+    expect(missingX.assertions).toBeUndefined()
+  })
+
+  test("handled 133 members, progress, notifications and OSC1/7 keep their existing routes", () => {
+    const ids = [
+      "extensions.osc133-a",
+      "extensions.osc133-b",
+      "extensions.osc133-c",
+      "extensions.osc133-p",
+      "extensions.osc9-progress",
+      "extensions.osc777-notify",
+      "extensions.notifications",
+      "extensions.osc1-icon",
+      "extensions.osc7-cwd",
+    ]
+    for (const id of ids) {
+      let x = 0
+      const result = probe(id).lib!(
+        context({
+          runtimeIdentity: identity,
+          feed: (bytes) => {
+            x = bytes.endsWith("X") ? 1 : 0
+          },
+          getCursor: () => ({ x, y: 0, visible: true, style: "block" }),
+          getCell: () => ({ ...context({}).getCell(0, 0), char: "X" }),
+        }),
+      )
+      expect(result.criterionBranch).not.toBe("source-negative-review")
+      expect(result.assertions).toBeUndefined()
+      if (id.startsWith("extensions.osc133-")) {
+        expect(result.criterionBranch).toBe("semantic-prompt-source-review")
+        expect(result.tests).toMatchObject([{ id: "review", status: "test-todo" }])
+      }
+    }
+  })
+
+  test("qualified OSC720 identity preserves a moving viewport and rejects contradictory declarations", () => {
+    let offset = 1
+    const source = context({
+      runtimeIdentity: identity,
+      feed: (bytes) => {
+        if (bytes.includes("\x1b]720")) offset = 0
+      },
+      getScrollback: () => ({ viewportOffset: offset, totalLines: 4, screenLines: 3 }),
+      scrollViewport: (delta) => {
+        offset = Math.max(0, Math.min(1, offset + delta))
+      },
+      reset: () => {
+        offset = 1
+      },
+    })
+    const callback = probe("extensions.osc720-scroll-up").lib!
+    expect(callback(source).observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
+    const contradictory = callback({
+      ...source,
+      capabilities: { ...source.capabilities, productViewport: { available: false, reason: "Absent fixture" } },
+    })
+    expect(contradictory.note).toBe("Product viewport declared absent but scroll control is present")
+    expect(contradictory.assertions).toBeUndefined()
+    expect(contradictory.criterionBranch).toBeUndefined()
   })
 })
 

@@ -1282,6 +1282,32 @@ const ABSENT_OSC_ENGINES = {
     sourceCitation:
       "alacritty_terminal 0.26.0 with vte 0.15.0 src/ansi.rs:1329-1523 OSC dispatch (22 parsed, other audited codes unhandled); src/term/mod.rs:1059-2272 Term Handler; Termless 2d97417328b7b1d086f9396b9a1731216ed134cc packages/alacritty/native/src/lib.rs:285-338 owns Term<EventProxy> and advances the vte processor into it",
   },
+  wezterm: {
+    kind: "native",
+    engineVersion: "0.1.0-fork.5",
+    adapterVersion: "0.10.2",
+    termlessRevision: "2d97417328b7b1d086f9396b9a1731216ed134cc",
+    binaryPath: "vendor/termless/packages/wezterm/termless-wezterm.node",
+    binarySha256: "0f56a805793d7d829daa617f1323aacff0d73fe868747b0d077c6af315e2aab8",
+    sourceCommit: "5afcc676d49c02902ef35112893e2ae35efb0d5e",
+    buildHash: "1bc38c0ad4e95754ef42b5de57d4829864984099b2e4422008de7c5b96c875df",
+    lockSha256: "8eaeab733cced8d47feb223d773d5ae158b2e6af8c994f993d4071d9ba3231d4",
+    codes: [22, 176, 440, 555, 633, 666, 710, 720, 3008],
+    subcodes: ["133;D"],
+    reviewReasons: [
+      {
+        code: "133;D",
+        reason: "parsed by osc.rs:793-806 into CommandStatus, dropped by the empty performer.rs:900-902 arm",
+      },
+      {
+        code: 720,
+        reason:
+          "no case 720; wezterm-term src/screen.rs:15-45,335,493,522-527 stores screen/history, not a product viewport; Termless packages/wezterm/native/src/lib.rs:448-461 returns viewport_offset 0 and scroll_viewport is a no-op",
+      },
+    ],
+    sourceCitation:
+      "tattoy-wezterm-escape-parser 0.1.0-1 src/osc.rs:457-505 osc_entries (SHA256 fd26b6d6254c46ef880fbcc03ba418d67e9049c875e71cca6f18f4df76a0924f), parse errors become Unspecified at :155-167; tattoy-wezterm-term 0.1.0-fork.5 src/terminalstate/performer.rs:772-781 logs Unspecified; Termless 2d97417328b7b1d086f9396b9a1731216ed134cc packages/wezterm/native/src/lib.rs:236-243 advances the pinned Terminal",
+  },
   vt100Rust: {
     kind: "native",
     engineVersion: "0.16.2",
@@ -1298,10 +1324,14 @@ const ABSENT_OSC_ENGINES = {
   },
 } as const
 
-function absentOscAudit(identity: LibProbeSource["runtimeIdentity"], code: number) {
+function absentOscAudit(identity: LibProbeSource["runtimeIdentity"], code: number | "133;D") {
   if (!identity) return undefined
   return Object.values(ABSENT_OSC_ENGINES).find((expected) => {
-    if (identity.engineVersion !== expected.engineVersion || !expected.codes.some((value) => value === code)) {
+    const member =
+      typeof code === "number"
+        ? expected.codes.some((value) => value === code)
+        : "subcodes" in expected && expected.subcodes.some((value) => value === code)
+    if (identity.engineVersion !== expected.engineVersion || !member) {
       return false
     }
     if (expected.kind === "native") {
@@ -1349,7 +1379,7 @@ function absentOscAudit(identity: LibProbeSource["runtimeIdentity"], code: numbe
   })
 }
 
-function sourceAbsentOsc(id: string, code: number, sequence: string, effect: string) {
+function sourceAbsentOsc(id: string, code: number | "133;D", sequence: string, effect: string) {
   return (ctx: LibProbeSource): ProbeCallbackResult => {
     const identity = ctx.runtimeIdentity
     const audit = absentOscAudit(identity, code)
@@ -1402,7 +1432,15 @@ function promptConsumptionResult(consumed: boolean | null): ProbeCallbackResult 
  * qualified sequence records the named no-semantic-observable coverage. A consumed-but-unqualified
  * read, and a missing cell, stay a real consumption observation — never not-tested.
  */
-function promptMarkResult(ctx: LibProbeSource, sequence: string, noObservable: string): ProbeCallbackResult {
+function promptMarkResult(
+  ctx: LibProbeSource,
+  sequence: string,
+  noObservable: string,
+  sourceReview?: { probeId: string; selector: number | "133;D" },
+): ProbeCallbackResult {
+  if (sourceReview && absentOscAudit(ctx.runtimeIdentity, sourceReview.selector)) {
+    return sourceAbsentOsc(sourceReview.probeId, sourceReview.selector, sequence, noObservable)(ctx)
+  }
   ctx.feed("\x1b[1;1H")
   const home = ctx.getCursor()
   ctx.feed(sequence + "X")
@@ -1784,6 +1822,9 @@ function osc720ScrollProbe(): ProbeDefinition["lib"] {
           state,
           "Product viewport declared absent but scroll control is present",
         )
+      }
+      if (absentOscAudit(ctx.runtimeIdentity, 720)) {
+        return sourceAbsentOsc("extensions.osc720-scroll-up", 720, "\x1b]720\x07", "scrollback viewport")(ctx)
       }
       return reviewResult(HEADLESS_OBSERVABLE_REVIEW, declared.reason, "scrollback viewport scroll control", state)
     }
@@ -3720,6 +3761,9 @@ export const extensionsProbes: ProbeDefinition[] = [
   probe(
     "extensions.osc-633-vscode",
     (ctx) => {
+      if (absentOscAudit(ctx.runtimeIdentity, 633)) {
+        return sourceAbsentOsc("extensions.osc-633-vscode", 633, "\x1b]633;A\x07", "VS Code shell integration")(ctx)
+      }
       const note = "Declared semantic-prompt capability does not establish VS Code OSC 633 shell integration"
       return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
         declared: ctx.capabilities.semanticPrompts === true,
@@ -3773,10 +3817,14 @@ export const extensionsProbes: ProbeDefinition[] = [
   {
     ...probe(
       "extensions.osc133-d",
-      (ctx) => promptMarkResult(ctx, "\x1b]133;D;0\x07", "OSC 133;D command-finished mark registration"),
+      (ctx) =>
+        promptMarkResult(ctx, "\x1b]133;D;0\x07", "OSC 133;D command-finished mark registration", {
+          probeId: "extensions.osc133-d",
+          selector: "133;D",
+        }),
       (ctx) => promptMarkAppResult(ctx, "\x1b]133;D;0\x07", "OSC 133;D command-finished mark registration"),
     ),
-    libAssertionType: null,
+    libAssertionType: "buffer_state",
   },
 
   // OSC 133;P — properties (Cwd, CmdLine, etc.)
@@ -3796,40 +3844,56 @@ export const extensionsProbes: ProbeDefinition[] = [
   {
     ...probe(
       "extensions.osc633-a",
-      (ctx) => promptMarkResult(ctx, "\x1b]633;A\x07", "OSC 633;A prompt-start mark registration"),
+      (ctx) =>
+        promptMarkResult(ctx, "\x1b]633;A\x07", "OSC 633;A prompt-start mark registration", {
+          probeId: "extensions.osc633-a",
+          selector: 633,
+        }),
       (ctx) => promptMarkAppResult(ctx, "\x1b]633;A\x07", "OSC 633;A prompt-start mark registration"),
     ),
-    libAssertionType: null,
+    libAssertionType: "buffer_state",
   },
 
   // OSC 633;B — prompt end (mirrors 133;B)
   {
     ...probe(
       "extensions.osc633-b",
-      (ctx) => promptMarkResult(ctx, "\x1b]633;B\x07", "OSC 633;B prompt-end mark registration"),
+      (ctx) =>
+        promptMarkResult(ctx, "\x1b]633;B\x07", "OSC 633;B prompt-end mark registration", {
+          probeId: "extensions.osc633-b",
+          selector: 633,
+        }),
       (ctx) => promptMarkAppResult(ctx, "\x1b]633;B\x07", "OSC 633;B prompt-end mark registration"),
     ),
-    libAssertionType: null,
+    libAssertionType: "buffer_state",
   },
 
   // OSC 633;C — pre-execution (mirrors 133;C)
   {
     ...probe(
       "extensions.osc633-c",
-      (ctx) => promptMarkResult(ctx, "\x1b]633;C\x07", "OSC 633;C pre-execution mark registration"),
+      (ctx) =>
+        promptMarkResult(ctx, "\x1b]633;C\x07", "OSC 633;C pre-execution mark registration", {
+          probeId: "extensions.osc633-c",
+          selector: 633,
+        }),
       (ctx) => promptMarkAppResult(ctx, "\x1b]633;C\x07", "OSC 633;C pre-execution mark registration"),
     ),
-    libAssertionType: null,
+    libAssertionType: "buffer_state",
   },
 
   // OSC 633;D — command finished with exit code (mirrors 133;D)
   {
     ...probe(
       "extensions.osc633-d",
-      (ctx) => promptMarkResult(ctx, "\x1b]633;D;0\x07", "OSC 633;D command-finished mark registration"),
+      (ctx) =>
+        promptMarkResult(ctx, "\x1b]633;D;0\x07", "OSC 633;D command-finished mark registration", {
+          probeId: "extensions.osc633-d",
+          selector: 633,
+        }),
       (ctx) => promptMarkAppResult(ctx, "\x1b]633;D;0\x07", "OSC 633;D command-finished mark registration"),
     ),
-    libAssertionType: null,
+    libAssertionType: "buffer_state",
   },
 
   // OSC 633;E — set commandline with verification nonce (unique to OSC 633)
@@ -3837,7 +3901,10 @@ export const extensionsProbes: ProbeDefinition[] = [
     ...probe(
       "extensions.osc633-e",
       (ctx) =>
-        promptMarkResult(ctx, "\x1b]633;E;ls -la;nonce123\x07", "OSC 633;E commandline-with-nonce mark registration"),
+        promptMarkResult(ctx, "\x1b]633;E;ls -la;nonce123\x07", "OSC 633;E commandline-with-nonce mark registration", {
+          probeId: "extensions.osc633-e",
+          selector: 633,
+        }),
       (ctx) =>
         promptMarkAppResult(
           ctx,
@@ -3845,17 +3912,21 @@ export const extensionsProbes: ProbeDefinition[] = [
           "OSC 633;E commandline-with-nonce mark registration",
         ),
     ),
-    libAssertionType: null,
+    libAssertionType: "buffer_state",
   },
 
   // OSC 633;P — VS Code-specific properties (Cwd, IsWindows, git status)
   {
     ...probe(
       "extensions.osc633-p",
-      (ctx) => promptMarkResult(ctx, "\x1b]633;P;Cwd=/tmp\x07", "OSC 633;P properties mark registration"),
+      (ctx) =>
+        promptMarkResult(ctx, "\x1b]633;P;Cwd=/tmp\x07", "OSC 633;P properties mark registration", {
+          probeId: "extensions.osc633-p",
+          selector: 633,
+        }),
       (ctx) => promptMarkAppResult(ctx, "\x1b]633;P;Cwd=/tmp\x07", "OSC 633;P properties mark registration"),
     ),
-    libAssertionType: null,
+    libAssertionType: "buffer_state",
   },
 
   // OSC 9 — desktop notifications
