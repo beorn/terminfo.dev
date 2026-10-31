@@ -2714,25 +2714,20 @@ function osc0IconTitleResult(
   iconLabel: string | null,
   windowTitle: string | null,
   raw: { icon: string; title: string },
+  reasons: Record<"icon" | "title", TerminalQueryOutcome["reason"] | "feedCapture boundary">,
 ): ProbeCallbackResult {
   const response = JSON.stringify({ ...raw, iconLabel, windowTitle })
   if (iconLabel === null || windowTitle === null) {
-    const missing = iconLabel === null ? "icon label (CSI 20 t)" : "window title (CSI 21 t)"
-    const note = `no complete ${missing} reply`
+    const missing = [
+      ...(iconLabel === null ? [`icon label (CSI 20 t): ${reasons.icon}`] : []),
+      ...(windowTitle === null ? [`window title (CSI 21 t): ${reasons.title}`] : []),
+    ]
+    const note = `no complete OSC 0 target reply: ${missing.join("; ")}`
     return {
       pass: false,
       response,
       note,
-      ...(raw.icon.length === 0 && raw.title.length === 0
-        ? replyFailure(note)
-        : {
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              assertionType: "query_reply",
-              note,
-            },
-          }),
+      ...replyFailure(note),
     }
   }
   const iconMatches = iconLabel === OSC0_PAYLOAD
@@ -3563,16 +3558,19 @@ export const extensionsProbes: ProbeDefinition[] = [
         const windowTitle = titleOutcome
           ? (titleOutcome.match?.[1] ?? null)
           : (OSC0_TITLE_REPLY.exec(title)?.[1] ?? null)
-        return osc0IconTitleResult(iconLabel, windowTitle, { icon, title })
+        return osc0IconTitleResult(iconLabel, windowTitle, { icon, title }, {
+          icon: iconOutcome ? iconOutcome.reason : "feedCapture boundary",
+          title: titleOutcome ? titleOutcome.reason : "feedCapture boundary",
+        })
       },
       async (ctx) => {
         ctx.write(`\x1b]0;${OSC0_PAYLOAD}\x07`)
         const icon = await ctx.queryWithSentinelOutcome(OSC0_ICON_QUERY, OSC0_ICON_REPLY)
         const title = await ctx.queryWithSentinelOutcome(OSC0_TITLE_QUERY, OSC0_TITLE_REPLY)
-        return osc0IconTitleResult(icon.match?.[1] ?? null, title.match?.[1] ?? null, {
-          icon: icon.raw,
-          title: title.raw,
-        })
+        return osc0IconTitleResult(icon.match?.[1] ?? null, title.match?.[1] ?? null,
+          { icon: icon.raw, title: title.raw },
+          { icon: icon.reason, title: title.reason },
+        )
       },
       "query_reply",
     ),

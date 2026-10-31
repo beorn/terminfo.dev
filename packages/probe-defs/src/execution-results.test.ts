@@ -100,7 +100,7 @@ it.each([
   ["term", "extensions.osc52-clipboard"],
   ["term", "extensions.osc52-read"],
   // These registered emitters were absent from the original evidence table. Their
-  // nonempty controls must remain unmarked even when parsing cannot produce a reply.
+  // nonempty controls remain unmarked except OSC 0, which requires both target replies.
   ...(
     [
       ["lib", "extensions.osc5522-clipboard"],
@@ -165,8 +165,9 @@ it.each([
           queryWithSentinelOutcome: async (sequence: string, pattern: RegExp) => outcome(sequence, pattern),
         } as unknown as TermProbeSource)
   expect(captures.length).toBeGreaterThan(0)
-  if (rawOverride) expect(callback).not.toHaveProperty("replyFailureTestIds")
-  else expect(callback).toHaveProperty("replyFailureTestIds", ["criterion"])
+  const expectedReplyFailure = !rawOverride || id === "extensions.osc0-icon-title"
+  if (expectedReplyFailure) expect(callback).toHaveProperty("replyFailureTestIds", ["criterion"])
+  else expect(callback).not.toHaveProperty("replyFailureTestIds")
   const result =
     kind === "lib"
       ? withReplyFailureEvidence(id, callback, {
@@ -178,7 +179,7 @@ it.each([
           attempts: captures.map((entry) => ({ ...entry, timeoutMs: 37, match: null, reason: "timeout" as const })),
         })
   const stored = record(result)
-  if (rawOverride) {
+  if (!expectedReplyFailure) {
     expect(result).toBe(callback)
     expect(stored).toEqual(record(callback))
     return
