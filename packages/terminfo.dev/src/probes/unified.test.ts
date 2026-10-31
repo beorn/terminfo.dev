@@ -1974,7 +1974,7 @@ it("keeps today's graceful absence row when no capture callback is installed", a
     {
       status: "test-failure",
       featureId: "cursor.shape",
-      reason: "DECRQSS cursor-style report unanswered; no pixel readback for shape",
+      reason: expect.stringMatching(/no usable DECRQSS cursor-style reply;.*no pixel readback for shape/),
     },
   ])
   expect(batch.ungradedDiagnostics).toEqual({})
