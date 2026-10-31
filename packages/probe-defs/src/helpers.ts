@@ -1363,15 +1363,17 @@ export const UNTESTABLE_ONLY_REVIEW_BRANCHES: ReadonlySet<string> = new Set([
   HEADLESS_OBSERVABLE_REVIEW,
 ])
 
-/** Audited package trees have one home; paths are evidence, never a known-engine discriminator. */
+/** Audited source entries have one home; their paths are repository-relative identities, not checkout locations. */
 export const SOURCE_TREE_AUDITS = {
   libvterm: {
+    resolvedPath: "vendor/termless/packages/libvterm/src/index.ts",
     runtimeFormat: "wasm",
     engineVersion: "0.3.3",
     repository: "git@github.com:beorn/termless.git",
     treeOid: "d47c013290cf7a9cb1dae316fd77c66a11a2925a",
   },
   vterm: {
+    resolvedPath: "vendor/vterm/packages/vterm/src/index.ts",
     runtimeFormat: "js",
     engineVersion: "0.9.0",
     repository: "git@github.com:beorn/vterm.git",
@@ -1387,6 +1389,7 @@ function sourceTreeDrift(
   if (
     identity?.kind !== "js" ||
     identity.runtimeFormat !== expected.runtimeFormat ||
+    identity.resolvedPath !== expected.resolvedPath ||
     identity.integrity.kind !== "source" ||
     identity.integrity.repository !== expected.repository ||
     identity.engineVersion !== expected.engineVersion ||

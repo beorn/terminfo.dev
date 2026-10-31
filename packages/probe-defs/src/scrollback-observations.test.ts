@@ -92,7 +92,6 @@ const historyIdentities: [string, LibProbeSource["runtimeIdentity"], boolean | "
   ],
   ...[
     ["wrong tree", {}],
-    ["wrong tree at another path", { resolvedPath: "/another/install/libvterm/index.ts" }],
     ["wrong tree and adapter", { adapterVersion: "0.10.3" }],
     ["wrong tree and WASM", { loadedBinary: { ...historyRuntime.loadedBinary, sha256: "f".repeat(64) } }],
   ].map(
@@ -113,6 +112,11 @@ const historyIdentities: [string, LibProbeSource["runtimeIdentity"], boolean | "
     { ...historyRuntime, loadedBinary: { ...historyRuntime.loadedBinary, sha256: "f".repeat(64) } },
     false,
   ],
+  [
+    "foreign entry with another tree",
+    { ...historyRuntime, resolvedPath: "foreign/index.ts", integrity: { ...sourceIntegrity, treeOid: "f".repeat(40) } },
+    false,
+  ],
   ["dirty source", { ...historyRuntime, integrity: { ...sourceIntegrity, cleanTree: false } }, false],
   ["registry source", { ...historyRuntime, integrity: { kind: "registry", lockIntegrity: "sha512:fixture" } }, false],
   [
@@ -130,6 +134,7 @@ const historyCases = ["erase.screen.scrollback", "scrollback.accumulate", "scrol
 )
 test.each(historyCases)("history count review qualifies $id: $name", ({ id, runtimeIdentity, eligible }) => {
   expect({
+    resolvedPath: historyRuntime.resolvedPath,
     runtimeFormat: historyRuntime.runtimeFormat,
     engineVersion: historyRuntime.engineVersion,
     repository: sourceIntegrity.repository,
