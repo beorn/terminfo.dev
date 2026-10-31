@@ -35,6 +35,7 @@ import { join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { afterEach, beforeEach, expect, test, vi } from "vitest"
 import { collectBatch, createLibProbeSource, feedCapture } from "./headless-batch.ts"
+import * as headlessIdentity from "./headless-identity.ts"
 import { finalizeCollectedDraft } from "../terminfo.dev/src/capture-writer.ts"
 import { cellWidthTransition } from "../probe-defs/src/helpers.ts"
 import { replyFailure } from "../probe-defs/src/helpers.ts"
@@ -71,6 +72,8 @@ test.each(["extensions.osc117-reset-highlight-bg", "extensions.osc119-reset-high
           "sha512-5Yj1QINYCyzrZtf8OFIHi47iQtI+0qYFPHmouEfG8dHNxbZ9Tb9YGSuLcsEwj9Z+OL75GJqPyJbyoFer80a2Hw==",
       },
     } as const
+    // collectBatch re-reads identity after init; keep that read on the same fixture too.
+    vi.spyOn(headlessIdentity, "headlessRuntimeIdentity").mockResolvedValue(identity)
     const manifest = {
       schemaVersion: 4 as const,
       probeHash: "reset-parser-contract-fixture",
