@@ -809,10 +809,18 @@ describe("window-operation qualification", () => {
           original: "pushed-title",
           changed: "new-title",
           restored: "new-title",
-          revision: "53a9eb9291b7880f4dc6a39a6802301049997a72",
           treeOid,
           sourceCitation: expect.stringContaining(cite),
         })
+        expect(JSON.parse(negative.response!)).not.toHaveProperty("revision")
+        for (const provenance of [
+          { ...baseIdentity, integrity: { ...baseIdentity.integrity, revision: "f".repeat(40) } },
+          { ...baseIdentity, resolvedPath: "/relocated/adapter.ts" },
+        ]) {
+          expect(callback(id).headless(makeCtx(["pushed-title", "new-title", "new-title"], provenance))).toEqual(
+            negative,
+          )
+        }
 
         // Real restoration still wins over the audit table.
         const positive = callback(id).headless(makeCtx(["pushed-title", "new-title", "pushed-title"]))
@@ -826,10 +834,8 @@ describe("window-operation qualification", () => {
         // Any dirty or mutated source identity stays inconclusive.
         for (const mutated of [
           { ...baseIdentity, integrity: { ...baseIdentity.integrity, cleanTree: false } },
-          { ...baseIdentity, integrity: { ...baseIdentity.integrity, revision: "f".repeat(40) } },
           { ...baseIdentity, integrity: { ...baseIdentity.integrity, treeOid: "f".repeat(40) } },
           { ...baseIdentity, integrity: { ...baseIdentity.integrity, repository: "git@github.com:other/vterm.git" } },
-          { ...baseIdentity, resolvedPath: "vendor/vterm/packages/other/src/index.ts" },
         ]) {
           const res = callback(id).headless(makeCtx(["pushed-title", "new-title", "new-title"], mutated))
           expect(res.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })

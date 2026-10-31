@@ -138,6 +138,26 @@ test("TERM_FEATURES audit enumerates only files bound by the declared adapter so
   }
 })
 
+test("OSC 8 missing-observer review excludes adapter locators and global revisions", () => {
+  const identity = structuredClone(auditedArtifacts[1]!)
+  identity.adapterSources = []
+  const source = (runtimeIdentity: HeadlessRuntimeIdentity) =>
+    ({
+      runtimeIdentity,
+      feed: () => undefined,
+      getCell: (_row: number, col: number) => ({ char: "ALINKZ"[col] }),
+      capabilities: { extensions: new Set() },
+    }) as unknown as LibProbeSource
+  const result = callback("extensions.osc8").lib!(source(identity))
+  expect(result.criterionBranch).toBe("headless-observable-review")
+  const relocated = structuredClone(identity)
+  relocated.termlessRevision = "different-global-revision"
+  if (relocated.kind === "js") relocated.resolvedPath = "/relocated/wrapper.ts"
+  if (relocated.kind === "native" || relocated.runtimeFormat === "wasm")
+    relocated.loadedBinary.path = "/relocated/engine"
+  expect(callback("extensions.osc8").lib!(source(relocated))).toEqual(result)
+})
+
 test.each(auditedArtifacts)(
   "$kind source audits survive provenance moves but not engine/adapter changes",
   (identity) => {

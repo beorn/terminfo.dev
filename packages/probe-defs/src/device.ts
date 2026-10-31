@@ -348,14 +348,10 @@ const TITLE_STACK_UNIMPLEMENTED_AUDITS: ReadonlyMap<string, string> = new Map([
   ],
 ])
 
-const TITLE_STACK_UNIMPLEMENTED_SOURCE_TREES: ReadonlyMap<
-  string,
-  { readonly resolvedPath: string; readonly sourceCitation: string }
-> = new Map([
+const TITLE_STACK_UNIMPLEMENTED_SOURCE_TREES: ReadonlyMap<string, { readonly sourceCitation: string }> = new Map([
   [
     "5ffc7ad9ae120d0bf93c64b0fdc712eb40892896",
     {
-      resolvedPath: "vendor/vterm/packages/vt100/src/index.ts",
       sourceCitation:
         'vterm 53a9eb9291b7880f4dc6a39a6802301049997a72 packages/vt100/src/screen.ts:251-358 handleCSI has no case "t" and createScreen at packages/vt100/src/screen.ts:130 holds only title = "" with no title stack, so neither CSI 22;0t nor CSI 23;0t is implemented',
     },
@@ -363,7 +359,6 @@ const TITLE_STACK_UNIMPLEMENTED_SOURCE_TREES: ReadonlyMap<
   [
     "69366752918a6086c639123799cc3ac68d8083a0",
     {
-      resolvedPath: "vendor/vterm/packages/vt220/src/index.ts",
       sourceCitation:
         'vterm 53a9eb9291b7880f4dc6a39a6802301049997a72 packages/vt220/src/screen.ts:305-428 handleCSI has no case "t" and createScreen at packages/vt220/src/screen.ts:104,176 holds only title = "" with no title stack, so neither CSI 22;0t nor CSI 23;0t is implemented',
     },
@@ -381,8 +376,8 @@ function titleStackHeadless(ctx: LibProbeSource, expected: string): ProbeCallbac
   if (original === "pushed-title" && changed === "new-title" && restored === "pushed-title") {
     return parserStateResult(true, expected, { original, changed, restored })
   }
-  const identity = ctx.runtimeIdentity
-  const artifactSha256 = identity !== undefined && "loadedBinary" in identity ? identity.loadedBinary.sha256 : undefined
+  const identity = evidenceRuntimeIdentity(ctx.runtimeIdentity)
+  const artifactSha256 = identity !== null && "loadedBinary" in identity ? identity.loadedBinary.sha256 : undefined
   const sourceCitation =
     original === "pushed-title" && changed === "new-title" && restored === "new-title" && artifactSha256 !== undefined
       ? TITLE_STACK_UNIMPLEMENTED_AUDITS.get(artifactSha256)
@@ -404,11 +399,10 @@ function titleStackHeadless(ctx: LibProbeSource, expected: string): ProbeCallbac
     identity.engineVersion === "0.9.0" &&
     identity.integrity.kind === "source" &&
     identity.integrity.cleanTree &&
-    identity.integrity.repository === "git@github.com:beorn/vterm.git" &&
-    identity.integrity.revision === "53a9eb9291b7880f4dc6a39a6802301049997a72"
+    identity.integrity.repository === "git@github.com:beorn/vterm.git"
   ) {
     const sourceAudit = TITLE_STACK_UNIMPLEMENTED_SOURCE_TREES.get(identity.integrity.treeOid)
-    if (sourceAudit !== undefined && sourceAudit.resolvedPath === identity.resolvedPath) {
+    if (sourceAudit !== undefined) {
       return parserStateResult(
         false,
         expected,
@@ -416,7 +410,6 @@ function titleStackHeadless(ctx: LibProbeSource, expected: string): ProbeCallbac
           original,
           changed,
           restored,
-          revision: identity.integrity.revision,
           treeOid: identity.integrity.treeOid,
           sourceCitation: sourceAudit.sourceCitation,
         },

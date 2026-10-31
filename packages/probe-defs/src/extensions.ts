@@ -3500,7 +3500,7 @@ export const extensionsProbes: ProbeDefinition[] = [
             )
           }
           const adapter = identity
-            ? `${identity.kind === "js" ? identity.resolvedPath : identity.loadedBinary.path} at Termless ${identity.termlessRevision}`
+            ? `Engine ${identity.engineVersion}, adapter ${identity.adapterVersion}`
             : "Adapter (runtime identity unavailable)"
           const note = `${adapter} exposes no OSC 8 URI observer (getHyperlinkAt); link metadata unobservable`
           return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
