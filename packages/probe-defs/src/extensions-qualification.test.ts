@@ -153,8 +153,9 @@ test("OSC 8 missing-observer review excludes adapter locators and global revisio
   const relocated = structuredClone(identity)
   relocated.termlessRevision = "different-global-revision"
   if (relocated.kind === "js") relocated.resolvedPath = "/relocated/wrapper.ts"
-  if (relocated.kind === "native" || relocated.runtimeFormat === "wasm")
+  if (relocated.kind === "native" || relocated.runtimeFormat === "wasm") {
     relocated.loadedBinary.path = "/relocated/engine"
+  }
   expect(callback("extensions.osc8").lib!(source(relocated))).toEqual(result)
 })
 

@@ -1592,23 +1592,31 @@ export function vtermGeometryReview(
 
 /** Exact source/API audit; an embedding application's history is a different subject. */
 export function libvtermHistoryReview(ctx: LibProbeSource): ProbeCallbackResult | undefined {
-  const identity = ctx.runtimeIdentity
-  const drift = sourceTreeDrift(identity, SOURCE_TREE_AUDITS.libvterm)
-  if (drift) return drift
+  const identity = evidenceRuntimeIdentity(ctx.runtimeIdentity)
   if (
     !identity ||
     identity.kind !== "js" ||
     identity.runtimeFormat !== "wasm" ||
     identity.engineVersion !== SOURCE_TREE_AUDITS.libvterm.engineVersion ||
-    identity.adapterVersion !== "0.10.2" ||
-    identity.integrity.kind !== "source" ||
-    identity.integrity.repository !== SOURCE_TREE_AUDITS.libvterm.repository ||
-    !identity.integrity.cleanTree ||
-    identity.integrity.treeOid !== SOURCE_TREE_AUDITS.libvterm.treeOid ||
-    identity.loadedBinary.sha256 !== "5937bd79139ee5856bcf1bd619cc44fcd2d750d3def3066a74956678cdaaaeb2"
+    identity.adapterVersion !== "0.10.2"
   ) {
     return undefined
   }
+  const expectedBinarySha256 = "5937bd79139ee5856bcf1bd619cc44fcd2d750d3def3066a74956678cdaaaeb2"
+  if (identity.loadedBinary.sha256 !== expectedBinarySha256) {
+    return {
+      pass: false,
+      response: JSON.stringify({ expectedBinarySha256, readBinarySha256: identity.loadedBinary.sha256 }),
+      tests: [
+        {
+          id: "criterion",
+          status: "test-failure",
+          reason: `binary identity drift: expected ${expectedBinarySha256}, read ${identity.loadedBinary.sha256}`,
+        },
+      ],
+    }
+  }
+  if (!auditedAdapterSources(ctx.runtimeIdentity, "libvterm")) return undefined
   return reviewResult(
     HEADLESS_OBSERVABLE_REVIEW,
     "libvterm v0.3.3 exposes no retained scrollback history count; history belongs to an embedding application",

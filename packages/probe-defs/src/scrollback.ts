@@ -216,13 +216,11 @@ function viewportHold(ctx: LibProbeSource): ProbeCallbackResult {
     ordinary: PhaseResult
     synchronized: PhaseResult
     productViewport?: LibProbeSource["capabilities"]["productViewport"]
-    runtimeIdentity?: LibProbeSource["runtimeIdentity"] | null
   } = { baseline: {}, anchor: {}, control: {}, ordinary: {}, synchronized: {} }
   const expected = "Viewport stays anchored during ordinary and synchronized output without keyboard input"
   const declared = ctx.capabilities.productViewport
   if (declared?.available === false) {
     state.productViewport = declared
-    state.runtimeIdentity = ctx.runtimeIdentity ?? null
     if (ctx.scrollViewport) {
       return parserStateResult(null, expected, state, "Product viewport declared absent but scroll control is present")
     }
