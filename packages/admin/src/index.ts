@@ -131,6 +131,27 @@ probe
 const review = program
   .command("review")
   .description("Review explicit retained captures; private files only, JSON stdout")
+function reviewContext(value: string): IntakeOptions["context"] {
+  const parsed: unknown = JSON.parse(value)
+  if (
+    typeof parsed !== "object" ||
+    parsed === null ||
+    Array.isArray(parsed) ||
+    !("kind" in parsed) ||
+    typeof parsed.kind !== "string" ||
+    !["term", "lib", "mux"].includes(parsed.kind) ||
+    !("id" in parsed) ||
+    typeof parsed.id !== "string" ||
+    !parsed.id
+  ) {
+    throw new Error("Explicit context requires kind, id and OS for term/mux")
+  }
+  const os = "os" in parsed ? parsed.os : undefined
+  if ((os !== undefined && typeof os !== "string") || (parsed.kind !== "lib" && !os)) {
+    throw new Error("Explicit context requires kind, id and OS for term/mux")
+  }
+  return { ...parsed, kind: parsed.kind, id: parsed.id, ...(os === undefined ? {} : { os }) }
+}
 review.addHelpSection("Resources:", [
   ["intake", "Requires retained run/pass, explicit context, frozen suite registry and two pinned Git repositories"],
   ["apply", "Requires issuer-edited intake; preserves exact decision bytes and always leaves output unsealed"],
@@ -141,9 +162,7 @@ review
   .command("intake")
   .description("Write an issuer-editable citation index; no verdicts or timestamps are invented")
   .requiredOption("--input <path>", "Absolute retained run or pass.json path; never latest/glob")
-  .requiredOption("--context <json>", "Explicit {kind,id,os} context (os required for term/mux)", (value: string) =>
-    JSON.parse(value),
-  )
+  .requiredOption("--context <json>", "Explicit {kind,id,os} context (os required for term/mux)", reviewContext)
   .requiredOption("--suite-root <path>", "Absolute repository with trusted content/suites/<suite>.json")
   .requiredOption("--terminfo-repo <path>", "Absolute Terminfo source repository")
   .requiredOption("--terminfo-commit <sha>", "Full 40-hex pinned Terminfo commit")

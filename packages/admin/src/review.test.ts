@@ -274,10 +274,12 @@ test.each(["decision-hash", "source-entry", "missing-object", "external-sha", "s
   "refuses %s without rewriting inputs",
   async (fault) => {
     const f = await prepared()
-    if (fault === "decision-hash") f.index.decisions[0].source += " "
+    const indexed = f.index.decisions[0]
+    if (!indexed) throw new Error("Fixture requires an indexed decision")
+    if (fault === "decision-hash") indexed.source += " "
     if (fault === "source-entry" || fault === "missing-object") {
-      const citation = f.index.decisions[0].citations[0]
-      if (citation.kind !== "git") throw new Error("Fixture requires a Git citation")
+      const citation = indexed.citations[0]
+      if (!citation || citation.kind !== "git") throw new Error("Fixture requires a Git citation")
       if (fault === "source-entry") citation.endLine = 4
       else citation.path = "required-missing-source.ts"
     }
@@ -298,14 +300,14 @@ test.each(["decision-hash", "source-entry", "missing-object", "external-sha", "s
       ]
     }
     if (fault === "missing-object") {
-      const citation = f.index.decisions[0].citations[0]
-      if (citation.kind !== "git") throw new Error("Fixture requires a Git citation")
+      const citation = indexed.citations[0]
+      if (!citation || citation.kind !== "git") throw new Error("Fixture requires a Git citation")
       const source = JSON.stringify({
         ...(JSON.parse(f.source) as CaptureDecision),
         sources: [`terminfo.dev@${citation.commit}:${citation.path}:L1-L3`],
       })
-      f.index.decisions[0].source = source
-      f.index.decisions[0].sha256 = sha(source)
+      indexed.source = source
+      indexed.sha256 = sha(source)
     }
     if (fault === "stale-binding") {
       const run = JSON.parse(f.original) as CapturedRunDraft
@@ -460,9 +462,10 @@ test.each(["pin", "failed-pass", "reference-bypass"])("refuses misleading source
       /status|failed|measured/i,
     )
   } else {
-    f.index.decisions[0].citations = [
-      { kind: "reference", sourceIndex: 0, text: (JSON.parse(f.source) as CaptureDecision).sources[0] },
-    ]
+    const indexed = f.index.decisions[0],
+      entry = (JSON.parse(f.source) as CaptureDecision).sources[0]
+    if (!indexed || entry === undefined) throw new Error("Fixture requires an indexed decision and source entry")
+    indexed.citations = [{ kind: "reference", sourceIndex: 0, text: entry }]
     f.save()
     expect(() => f.api.applyReview(f.applyOptions)).toThrow(/code|citation|classification/i)
   }
@@ -563,9 +566,12 @@ test("semantic source review retains no invented observation assertions", async 
   writeFileSync(f.options.output, JSON.stringify(index))
   const receipt = api.applyReview(f.applyOptions),
     output = JSON.parse(readFileSync(receipt.output!, "utf8")) as CapturedRunDraft
+  const result = output.results[0],
+    review = result?.tests[0]
+  if (!result || !review) throw new Error("Fixture requires a reviewed result")
   expect(output.assertions).toEqual([])
-  expect(output.results[0].tests[0].assertionRefs).toEqual([])
-  expect(output.results[0].status).toBe("supported")
+  expect(review.assertionRefs).toEqual([])
+  expect(result.status).toBe("supported")
   expect(output.rawReplies[`collector.review.review-decision`]).toBe(source)
 })
 
