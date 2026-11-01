@@ -162,7 +162,8 @@ test("one DECRPM reading serves the app query, the ANSI query and the headless a
 })
 
 // #32099: existing reply cases omit runtimeIdentity and miss source-audit overrides.
-// Independent pins copied from pass-3XQsvM rawRun runtimeIdentity, not production constants.
+// Independent source fixtures from pass-3XQsvM, rekeyed to 0.10.1 after proving both parsers unchanged.
+// These are qualifier inputs, not an attestation that the historical run loaded the newer package.
 const capturedModeEngines = [
   {
     engine: "vt100",
@@ -174,12 +175,12 @@ const capturedModeEngines = [
       integrity: {
         kind: "source",
         repository: "git@github.com:beorn/vterm.git",
-        revision: "6cc7eef05cde6a8578479c6cdb480f606758eb2c",
-        treeOid: "d5ee344ab5b971184ba2c43ed60460656340417c",
+        revision: "bd3d32aea2f1994376a71adfc55b92705eedbd8c",
+        treeOid: "1eaac257cf9ff8d8ece752c8e6edc04b9ddaa6cf",
         cleanTree: true,
       },
       runtimeFormat: "js",
-      engineVersion: "0.10.0",
+      engineVersion: "0.10.1",
       adapterSources: [
         {
           path: "packages/vt100/src/index.ts",
@@ -187,7 +188,7 @@ const capturedModeEngines = [
         },
         {
           path: "packages/vt100/src/backend.ts",
-          blobOid: "855dd71fba878d968d16c82846578190b7350eea",
+          blobOid: "cdb8be8c5ebbba68a5920cfa4df27c9deb31745a",
         },
       ],
     },
@@ -202,12 +203,12 @@ const capturedModeEngines = [
       integrity: {
         kind: "source",
         repository: "git@github.com:beorn/vterm.git",
-        revision: "6cc7eef05cde6a8578479c6cdb480f606758eb2c",
-        treeOid: "9a320c4d5cd0e0b60bb2e6ea4f020ce5eb54ae53",
+        revision: "bd3d32aea2f1994376a71adfc55b92705eedbd8c",
+        treeOid: "d504616ae458b8b0fa9fa365034c30bd35f55ee8",
         cleanTree: true,
       },
       runtimeFormat: "js",
-      engineVersion: "0.10.0",
+      engineVersion: "0.10.1",
       adapterSources: [
         {
           path: "packages/vt220/src/index.ts",
@@ -215,7 +216,7 @@ const capturedModeEngines = [
         },
         {
           path: "packages/vt220/src/backend.ts",
-          blobOid: "1a16d66067bcaf71a2d96900ae046a1601482add",
+          blobOid: "7369e3710e36aa649372fd09011ecfdd6ba47c73",
         },
       ],
     },

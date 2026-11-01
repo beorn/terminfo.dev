@@ -746,18 +746,18 @@ test("source-qualified 2026/2031 mixed criteria survive collection and capture p
       termlessRevision: "8be31bfc35c0359e39a836b1d397f49e7176c97f",
       ...(name === "vt100"
         ? ({
-            engineVersion: "0.10.0",
+            engineVersion: "0.10.1",
             resolvedPath: "vendor/vterm/packages/vt100/src/index.ts",
             integrity: {
               kind: "source",
               repository: "git@github.com:beorn/vterm.git",
-              revision: "6cc7eef05cde6a8578479c6cdb480f606758eb2c",
-              treeOid: "d5ee344ab5b971184ba2c43ed60460656340417c",
+              revision: "bd3d32aea2f1994376a71adfc55b92705eedbd8c",
+              treeOid: "1eaac257cf9ff8d8ece752c8e6edc04b9ddaa6cf",
               cleanTree: true,
             },
             adapterSources: [
               { path: "packages/vt100/src/index.ts", blobOid: "99833d737402f9d1d8e3e257e3a255d8aa1facc3" },
-              { path: "packages/vt100/src/backend.ts", blobOid: "855dd71fba878d968d16c82846578190b7350eea" },
+              { path: "packages/vt100/src/backend.ts", blobOid: "cdb8be8c5ebbba68a5920cfa4df27c9deb31745a" },
             ],
           } as const)
         : ({
