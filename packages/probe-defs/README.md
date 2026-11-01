@@ -234,7 +234,7 @@ reflow capability. A hand-built source without the member keeps the named no-I/O
 `cols` retains its original meaning; it is not post-resize geometry. Fresh ASCII wrap controls qualify
 the actual width effects through cells, because adapter dimensions can merely mirror a request.
 The main-screen fixture seeds distinct soft-wrapped text and explicit CRLF lines before each resize,
-parks the cursor below them, and measures growth12→20 and shrink20→12 independently. It retains
+verifies the cursor is parked below them, and measures growth12→20 and shrink20→12 independently. It retains
 ordered feeds, requested sizes and actual cell/cursor/scrollback reads in the existing response JSON.
 Only exact content-preserving layouts supply main-phase buffer-state assertions; failed controls,
 lost characters and mixed phase outcomes retain required FAILURE tests. Finally restores the initial

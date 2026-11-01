@@ -102,13 +102,17 @@ test.each([false, true])("production reflow controls ignore the capability decla
 // @failure A no-op resize, discarded wrap boundaries or lost characters become reflow support.
 // @level l1
 // @consumer Reflow criterion and canonical required-test fold.
-test.each(["no-op", "hard-boundary", "content-loss"] as const)(
+test.each(["no-op", "hard-boundary", "content-loss", "cursor-on-target"] as const)(
   "reflow retains a named failure for %s",
   async (fault) => {
     const batch = await collectBatch(
       async () => {
         const value = createXtermBackend()
         const resize = value.resize.bind(value)
+        if (fault === "cursor-on-target") {
+          const getCursor = value.getCursor.bind(value)
+          value.getCursor = () => ({ ...getCursor(), x: 0, y: 0 })
+        }
         value.resize = (cols, rows) => {
           if (fault === "no-op") return
           // Fault injection at the engine boundary: LF removes the old continuation without changing
@@ -134,7 +138,7 @@ test.each(["no-op", "hard-boundary", "content-loss"] as const)(
     } else {
       expect(observed).toMatchObject({
         phases:
-          fault === "no-op"
+          fault === "no-op" || fault === "cursor-on-target"
             ? [{ outcome: "invalid" }, { outcome: "invalid" }]
             : [{ outcome: "invalid" }, { outcome: "reflow" }],
       })

@@ -2998,13 +2998,18 @@ function mainScreenReflow(ctx: LibProbeSource): ProbeCallbackResult {
       feed(`${state.fixture.soft}\r\n${state.fixture.hard.join("\r\n")}\r\n`)
       feed(`\x1b[${height - 2};1H`)
       const before = read(`${id}.before`, from)
-      if (!matches(before, layout(from))) {
+      const parked =
+        before.cursor.x === 0 &&
+        Number.isSafeInteger(before.cursor.y) &&
+        before.cursor.y >= layout(from).length &&
+        before.cursor.y < height
+      if (!matches(before, layout(from)) || !parked) {
         state.phases.push({
           id,
           from,
           to,
           outcome: "invalid",
-          reason: "Soft-wrap and explicit-newline seed cells did not qualify",
+          reason: "Soft-wrap and explicit-newline seed cells or cursor exclusion did not qualify",
         })
         continue
       }
