@@ -228,13 +228,15 @@ it.each(["empty", "prerequisite", "completed", "cancelled", "failed", "unknown"]
   },
 )
 
-it("prepares Linux capture once and retains font-source receipt in the final visual evidence binding", () => {
-  home = mkdtempSync(join(tmpdir(), "terminfo-serve-linux-origin-"))
-  const result = spawnSync(
-    process.execPath,
-    [
-      "-e",
-      String.raw`
+it.each(["absent", "failed to load", "inconclusive", "source-capable"])(
+  "retains %s font proof and its named TODO reason in final Linux visual evidence",
+  (proofState) => {
+    home = mkdtempSync(join(tmpdir(), "terminfo-serve-linux-origin-"))
+    const result = spawnSync(
+      process.execPath,
+      [
+        "-e",
+        String.raw`
     import { mock } from "bun:test"
     import assert from "node:assert/strict"
     import { readFileSync, writeFileSync } from "node:fs"
@@ -252,7 +254,10 @@ it("prepares Linux capture once and retains font-source receipt in the final vis
       capturedAt: 1, label: "origin witness" }, trace: { captureCommand: "fixture raw capture" } }
     const digest = seed => createHash("sha256").update(seed).digest("hex")
     // Synthetic receipt bytes exercise custody, not a claim about installed fonts or HarfBuzz.
-    const fontReceipt = JSON.stringify({ fixture: "synthetic font-source receipt", family: "JetBrains Mono",
+    const proofState = process.env.FONT_CONTROL_PROOF_STATE
+    const fontReceipt = proofState === "absent" ? "DejaVu Sans Mono | /fixture/dejavu.ttf" : JSON.stringify({
+      fixture: "synthetic font-source receipt", proofState, reason: "synthetic source-control state",
+      requestedFamily: "JetBrains Mono", face: "/fixture/JetBrainsMono-Regular.ttf",
       source: { path: "/fixture/JetBrainsMono-Regular.ttf", sha256: digest("fixture font bytes") },
       harfbuzz: { version: "fixture", text: "!= -> => <= ==", featuresOn: "liga=1,calt=1",
         featuresOff: "liga=0,calt=0", on: "fixture substituted clusters", off: "fixture separate clusters" } })
@@ -357,6 +362,10 @@ it("prepares Linux capture once and retains font-source receipt in the final vis
     for (const captured of [run, persisted]) {
       const row = captured.results.find(row => row.featureId === visualId)
       assert.equal(row.status, "test-todo", "fixture source receipt does not grade the visual result")
+      assert.ok(row.reason.includes("#32062 font control") && row.reason.includes(proofState),
+        "cell TODO names its control gap and actual proof state")
+      assert.equal(row.tests.find(test => test.id === "review").reason, row.reason,
+        "review TODO and cell expose the same source-control state")
       assert.equal(row.rawReplyRef, visualId, "retain the probe's own capture trace")
       assert.equal(row.tests.find(test => test.id === "review").rawReplyRef, fontKey,
         "existing review-test reference explicitly binds font-source receipt")
@@ -367,26 +376,28 @@ it("prepares Linux capture once and retains font-source receipt in the final vis
         "current evidence cell includes exact receipt bytes; legacy rawReplyRefs alone are insufficient")
     }
   `,
-    ],
-    {
-      cwd: packageRoot,
-      encoding: "utf8",
-      timeout: 10_000,
-      env: {
-        ...process.env,
-        HOME: home,
-        TERMINFO_CAPTURE_DIRECTORY: join(home, "captures"),
-        TERMINFO_RUNTIME_PROVENANCE: join(home, "runtime.json"),
-        TERMINFO_CLIPBOARD_FIXTURE_RECEIPT: "",
-        TERMINFO_DISPOSABLE_RECEIPT: "",
-        TERMINFO_TARGET_ID: "",
-        TERMINFO_TARGET_VERSION: "",
+      ],
+      {
+        cwd: packageRoot,
+        encoding: "utf8",
+        timeout: 10_000,
+        env: {
+          ...process.env,
+          FONT_CONTROL_PROOF_STATE: proofState,
+          HOME: home,
+          TERMINFO_CAPTURE_DIRECTORY: join(home, "captures"),
+          TERMINFO_RUNTIME_PROVENANCE: join(home, "runtime.json"),
+          TERMINFO_CLIPBOARD_FIXTURE_RECEIPT: "",
+          TERMINFO_DISPOSABLE_RECEIPT: "",
+          TERMINFO_TARGET_ID: "",
+          TERMINFO_TARGET_VERSION: "",
+        },
       },
-    },
-  )
-  expect(result.error, result.stderr).toBeUndefined()
-  expect(result.status, result.stderr).toBe(0)
-})
+    )
+    expect(result.error, result.stderr).toBeUndefined()
+    expect(result.status, result.stderr).toBe(0)
+  },
+)
 
 async function startTestDaemon(
   source = `import { startDaemon } from "./packages/terminfo.dev/src/serve.ts"; await startDaemon()`,

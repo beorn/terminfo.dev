@@ -91,6 +91,9 @@ afterEach(() => {
 type FontControlReceipt = {
   status: string
   reason: string
+  proofState: string
+  requestedFamily: string
+  face: string
   sample: string
   source: { path: string; sha256: string }
   launch: { args: string[]; path: string; fontconfig: string; fontconfigBytes: string }
@@ -174,6 +177,9 @@ it("font control retains capable glyph IDs, exact font hash and the actual priva
   expect(fixture.result.status, fixture.result.stderr).toBe(0)
   const receipt = JSON.parse(readFileSync(join(fixture.output, "font.txt"), "utf8")) as FontControlReceipt
   expect(receipt.status).toBe("source-capable")
+  expect(receipt.proofState).toBe("source-capable")
+  expect(receipt.requestedFamily).toBe("JetBrains Mono")
+  expect(receipt.face).toBe(realpathSync(fixture.font))
   expect(receipt.source).toMatchObject({
     path: realpathSync(fixture.font),
     sha256: createHash("sha256").update(readFileSync(fixture.font)).digest("hex"),
@@ -209,6 +215,8 @@ it("font control keeps different positions with unchanged glyph IDs TEST TODO", 
   expect(fixture.result.status, fixture.result.stderr).toBe(0)
   const receipt = JSON.parse(readFileSync(join(fixture.output, "font.txt"), "utf8")) as FontControlReceipt
   expect(receipt.status).toBe("test-todo")
+  expect(receipt.proofState).toBe("inconclusive")
+  expect(receipt.reason).toContain("control #32062")
   expect(receipt.reason).toMatch(/glyph|substitut|ligatur/i)
   expect(receipt.harfbuzz.on).not.toBe(receipt.harfbuzz.off)
   expect(fontGlyphIds(receipt.harfbuzz.on)).toEqual(fontGlyphIds(receipt.harfbuzz.off))
@@ -220,6 +228,8 @@ it("missing or failed HarfBuzz retains a named TEST TODO receipt instead of abor
     expect(fixture.result.status, fixture.result.stderr).toBe(0)
     const receipt = JSON.parse(readFileSync(join(fixture.output, "font.txt"), "utf8")) as FontControlReceipt
     expect(receipt.status).toBe("test-todo")
+    expect(receipt.proofState).toBe(scenario === "missing" ? "absent" : "failed to load")
+    expect(receipt.reason).toContain("control #32062")
     expect(receipt.reason).toMatch(/hb-shape|HarfBuzz|missing|failed/i)
     if (scenario === "failed") expect(receipt.harfbuzz.stderr).toContain("fixture HB failure 41")
     expect(receipt).not.toHaveProperty("observation")

@@ -12,7 +12,7 @@ PROBE_BATCH_TIMEOUT_SECONDS=600
 prepare_font_control() {
   local output=$1 family=$2
   shift 2
-  local font='' font_sha='' matched='' pin='' config='' version='' reason='' status=test-todo
+  local font='' font_sha='' matched='' pin='' config='' version='' reason='' status=test-todo proof_state=absent
   local sample='!= -> => <= ==' args
   mkdir -p "$output/font-source"
   : > "$output/font-on.json"
@@ -21,9 +21,10 @@ prepare_font_control() {
   : > "$output/fontconfig.xml"
   args=$(jq -cn --args '$ARGS.positional' -- "$@")
   if ! font=$(fc-match -f '%{file}\n' "$family:style=Regular" 2>> "$output/font-control.stderr"); then
-    reason="Font control32062: fc-match failed for $family"
+    proof_state='failed to load'
+    reason="Font control #32062: fc-match failed for $family"
   elif [[ ! -r "$font" ]]; then
-    reason="Font control32062: selected font file is missing: $font"
+    reason="Font control #32062: selected font file is missing: $font"
   else
     font=$(readlink -f "$font")
     font_sha=$(sha256sum "$font" | cut -d ' ' -f 1)
@@ -34,34 +35,41 @@ prepare_font_control() {
       "$output/font-source" "$output/font-cache" > "$config"
     export FONTCONFIG_FILE="$config"
     if ! matched=$(fc-match -f '%{file}\n' "$family:style=Regular" 2>> "$output/font-control.stderr"); then
-      reason='Font control32062: private fontconfig lookup failed'
+      proof_state='failed to load'
+      reason='Font control #32062: private fontconfig lookup failed'
     elif [[ "$(readlink -f "$matched")" != "$font" ]]; then
-      reason='Font control32062: private fontconfig did not resolve the exact pinned file'
+      proof_state=inconclusive
+      reason='Font control #32062: private fontconfig did not resolve the exact pinned file'
     elif ! command -v hb-shape > /dev/null; then
-      reason='Font control32062: missing declared hb-shape utility'
+      reason='Font control #32062: missing declared hb-shape utility'
     elif ! version=$(hb-shape --version 2>> "$output/font-control.stderr"); then
-      reason='Font control32062: HarfBuzz version lookup failed'
+      proof_state='failed to load'
+      reason='Font control #32062: HarfBuzz version lookup failed'
     elif ! hb-shape --output-format=json --no-glyph-names --features=liga=1,calt=1 \
         "$font" "$sample" > "$output/font-on.json" 2>> "$output/font-control.stderr" ||
       ! hb-shape --output-format=json --no-glyph-names --features=liga=0,calt=0 \
         "$font" "$sample" > "$output/font-off.json" 2>> "$output/font-control.stderr"; then
-      reason='Font control32062: HarfBuzz shaping failed; retained stdout and stderr'
+      proof_state='failed to load'
+      reason='Font control #32062: HarfBuzz shaping failed; retained stdout and stderr'
     elif ! jq -e -s 'length == 2
         and all(.[]; type == "array" and length > 0 and all(.[]; (.g | type) == "number"))
         and ((.[0] | map(.g)) != (.[1] | map(.g)))' \
         "$output/font-on.json" "$output/font-off.json" > /dev/null 2>> "$output/font-control.stderr"; then
-      reason='Font control32062: no proven ligature glyph-sequence difference with liga/calt on versus off'
+      proof_state=inconclusive
+      reason='Font control #32062: no proven ligature glyph-sequence difference with liga/calt on versus off'
     else
       status=source-capable
+      proof_state=source-capable
     fi
   fi
   if [[ -n "$reason" ]]; then printf '%s; font remains TEST TODO, no typed review\n' "$reason" >&2; fi
-  jq -n --arg status "$status" --arg reason "$reason" --arg family "$family" --arg sample "$sample" \
+  jq -n --arg status "$status" --arg reason "$reason" --arg proofState "$proof_state" --arg family "$family" --arg sample "$sample" \
     --arg path "$font" --arg sha "$font_sha" --arg pin "$pin" --arg config "$config" --arg matched "$matched" \
     --argjson args "$args" --rawfile configBytes "$output/fontconfig.xml" \
     --arg version "$version" --rawfile on "$output/font-on.json" \
     --rawfile off "$output/font-off.json" --rawfile stderr "$output/font-control.stderr" '
-    {status:$status,reason:$reason,family:$family,sample:$sample,source:{path:$path,sha256:$sha},
+    {control:"font control #32062",status:$status,reason:$reason,proofState:$proofState,
+      requestedFamily:$family,face:$path,sample:$sample,source:{path:$path,sha256:$sha},
       launch:{args:$args,path:$pin,fontconfig:$config,fontconfigBytes:$configBytes,matched:$matched},
       harfbuzz:{version:$version,featuresOn:"liga=1,calt=1",featuresOff:"liga=0,calt=0",on:$on,off:$off,stderr:$stderr}}
     ' > "$output/font.txt"
