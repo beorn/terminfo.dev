@@ -702,6 +702,7 @@ describe("window-operation qualification", () => {
     ["7ebe1b994b58ca867dcd19e9cdeb10b8839b6c1f0dbdea024f875a9f57560a23", "src/state.c:978"],
     ["0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3", "src/perform.rs:132-156"],
     ["dc3b24de6e91416f66b1953ce101991ef7e78602ce1b5d357f65832c9b96b326", "src/perform.rs:132-156"],
+    ["6722b331de7489c14cb599d939e5d2314f054220728f83c5c29f454e70273e47", "src/terminalstate/mod.rs:2090-2095"],
     ["0f56a805793d7d829daa617f1323aacff0d73fe868747b0d077c6af315e2aab8", "src/terminalstate/mod.rs:2090-2095"],
   ] as const)(
     "audited title-stack artifact %s grades Unsupported by source only after observed setup",

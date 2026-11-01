@@ -839,6 +839,88 @@ const setup = (
   return { draft, artifact, decision }
 }
 
+// #32014: the three grading decisions cannot represent a buildable, unbuilt readback.
+// Exercise the owner boundary through sealing and canonical reread, including both binding rules.
+describe("named tool-gap capture decisions", () => {
+  it.each([
+    { sourceNegative: false, evidence: false },
+    { sourceNegative: true, evidence: false },
+    { sourceNegative: false, evidence: true },
+    { sourceNegative: true, evidence: true },
+  ])("seals and rereads a named TODO without deriving assertions: %j", ({ sourceNegative, evidence }) => {
+    const { draft, decision } = setup(
+      sourceNegative ? JSON.stringify({ faint: false }) : "NO",
+      sourceNegative ? { runId: "tool-gap-source", startedAt: "2026-10-21T05:00:00.000Z" } : undefined,
+    )
+    const featureId = decision.featureId
+    const entryHash = "a".repeat(64)
+    const bound = evidence ? retainCaptureBinding(draft, featureId, entryHash).evidence : undefined
+    const review = {
+      ...decision,
+      ...(bound && { evidence: bound }),
+      decision: "tool-gap",
+      reason: "Presentation readback is unbuilt; owner @si/terminfo/30211-terminfo-273/32014-tool-gap-decision-value",
+    }
+    const source = JSON.stringify(review)
+    const original = structuredClone(draft)
+    expect(() => sealRunDraft(draft)).toThrow(/review pending/)
+    applyCaptureDecision(draft, source, "2026-10-21T05:01:00.000Z", undefined, evidence ? entryHash : undefined)
+    expect(draft.assertions).toEqual(original.assertions)
+    for (const [key, bytes] of Object.entries(original.rawReplies)) expect(draft.rawReplies[key]).toBe(bytes)
+    expect(draft.results[0]!.tests.filter((test) => test.id === "review")).toEqual([])
+    expect(draft.results[0]!.tests.find((test) => test.id === "criterion")).toMatchObject({
+      status: "test-todo",
+      reason: review.reason,
+      reviewRef: "collector.review.review-bold",
+      assertionRefs: [],
+    })
+    const sealed = sealRunDraft(draft)
+    const manifest = {
+      schemaVersion: 4 as const,
+      probeHash: draft.probeHash,
+      adapterVersion: "3",
+      catalogIds: [featureId],
+      probes: { term: sourceNegative ? [] : [featureId], lib: sourceNegative ? [featureId] : [], mux: [] },
+      ...(evidence && { catalogEntrySha256: { [featureId]: entryHash } }),
+    }
+    const read = (value: unknown) =>
+      parseRun("tool-gap.json", JSON.stringify(value), [featureId], new Map([[draft.probeHash, manifest]]))
+    const parsed = read(sealed)
+    expect(parsed.results?.[0]).toMatchObject({ status: "test-todo", reason: review.reason })
+    expect(parsed.rawReplies["collector.review.review-bold"]).toBe(source)
+    expect(parsed.assertions).toEqual(original.assertions)
+    const changed = structuredClone(sealed)
+    changed.rawReplies[featureId] = sourceNegative ? JSON.stringify({ faint: true }) : "changed capture bytes"
+    if (sourceNegative) changed.assertions[0]!.observed = changed.rawReplies[featureId]!
+    expect(() => read(changed)).toThrow(/binding changed|retained evidence differs/)
+  })
+
+  it("requires a reason and preserves an unrelated required failure", () => {
+    const { draft, decision } = setup(undefined, undefined, (draft) => {
+      draft.results[0]!.tests.push({
+        id: "transport",
+        status: "test-failure",
+        reason: "Transport capture failed independently of the missing readback",
+        attempt: { scope: "none" },
+      })
+    })
+    const review = { ...decision, decision: "tool-gap", reason: "" }
+    expect(() => applyCaptureDecision(draft, JSON.stringify(review), "2026-10-21T05:01:00.000Z")).toThrow(
+      /requires reason/,
+    )
+    review.reason = "Readback unbuilt; owner @si/terminfo/30211-terminfo-273/32014-tool-gap-decision-value"
+    applyCaptureDecision(draft, JSON.stringify(review), "2026-10-21T05:01:00.000Z")
+    expect(draft.results[0]!.status).toBe("test-failure")
+    expect(draft.results[0]!.tests.find((test) => test.id === "transport")).toEqual({
+      id: "transport",
+      status: "test-failure",
+      reason: "Transport capture failed independently of the missing readback",
+      attempt: { scope: "none" },
+    })
+    expect(sealRunDraft(draft).results[0]!.status).toBe("test-failure")
+  })
+})
+
 // Generic source-review fixtures cannot catch an unqualified real producer or its lost source citation.
 it.each([
   {
@@ -1007,7 +1089,7 @@ it.each(["device.term-features", "erase.screen.scrollback"])(
               termlessRevision: "8b8664540f365fa0ba1d9b6400d3c4d1a160582c",
               adapterSources: [
                 { path: "packages/vterm/src/index.ts", blobOid: "cb5719799dcdd5ae24e6fcf0dcad9965035ce54c" },
-                { path: "packages/vterm/src/backend.ts", blobOid: "e7eb83f44a4ae1368cbf7b78ef6783219757002a" },
+                { path: "packages/vterm/src/backend.ts", blobOid: "ae08fca0a071207d6dfc1ec2735ea6b3e72c0e18" },
               ],
               resolvedPath: "vendor/vterm/packages/vterm/src/index.ts",
               integrity: {
@@ -1042,7 +1124,7 @@ it.each(["device.term-features", "erase.screen.scrollback"])(
           expect(retained).toMatchObject({
             audit: {
               engine: "vterm",
-              blobOid: "e7eb83f44a4ae1368cbf7b78ef6783219757002a",
+              blobOid: "ae08fca0a071207d6dfc1ec2735ea6b3e72c0e18",
               sourceCitation: expect.stringContaining("createVtermBackend"),
             },
           })

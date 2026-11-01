@@ -444,6 +444,35 @@ test.each(hostedMacApps)("$id uses measured Mac app identity, retaining its embe
   expect(assessRunAdmission(darwin, [], evidence)).toMatchObject({ accepted: true })
 })
 
+// #32014: naming an instrument gap reviews one cell, not a community submission.
+// Existing admission tests have no curated tool-gap record and cannot catch that accidental grant.
+test("a tool-gap review cannot grant community-run admission", () => {
+  const { run, evidence } = hostedMacAdmissionFixture(hostedMacApps[0]!)
+  const community = { ...run, origin: { ...run.origin, kind: "community-issue" as const } }
+  const gap = {
+    id: "fixture-tool-gap",
+    decision: "tool-gap" as const,
+    runId: run.runId,
+    runSha256: run.sha256,
+    featureId: run.observations[0]!.featureId,
+    reviewed: true,
+    reviewer: "fixture-reviewer",
+    reason: "Readback unbuilt; instrument #32014",
+    scope: {
+      subject: { kind: run.subject.kind, id: run.subject.id },
+      versions: [run.subject.version, run.subject.version] as [string, string],
+      suites: [run.suiteId, run.suiteId] as [string, string],
+    },
+    sources: ["fixture-cell-review"],
+    supersedes: ["fixture-embedded-review"],
+  }
+  expect(assessRunAdmission(community, [], evidence)).toMatchObject({ accepted: false, reason: "community-unreviewed" })
+  expect(assessRunAdmission(community, [gap], evidence)).toMatchObject({
+    accepted: false,
+    reason: "community-unreviewed",
+  })
+})
+
 test.each(hostedMacApps)("$id cannot substitute copied launch metadata for cited Mac receipt bytes", (app) => {
   const { run, evidence } = hostedMacAdmissionFixture(app)
   for (const citation of [undefined, JSON.stringify({ kind: "shared" })]) {

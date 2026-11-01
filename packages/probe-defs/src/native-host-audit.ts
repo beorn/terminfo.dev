@@ -84,6 +84,17 @@ export const NATIVE_HOST_AUDITS: ReadonlyMap<string, NativeHostSourceCitations> 
     },
   ],
   [
+    "6722b331de7489c14cb599d939e5d2314f054220728f83c5c29f454e70273e47",
+    {
+      "clipboard-load": {
+        kind: "unimplemented",
+        citation:
+          "tattoy-wezterm-term 0.1.0-fork.5 terminalstate/performer.rs:788 drops OperatingSystemCommand::QuerySelection; terminal.rs:13-19 Clipboard has only set_contents, so no build of this engine answers an OSC 52 read",
+      },
+    },
+  ],
+
+  [
     "0f56a805793d7d829daa617f1323aacff0d73fe868747b0d077c6af315e2aab8",
     {
       "clipboard-load": {

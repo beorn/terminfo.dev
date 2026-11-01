@@ -260,6 +260,7 @@ describe("audited native host recipe callers", () => {
     "84da518e3f298a0ed75f186db6e39d87e99b8f0c8508dd7252ec0cafee77fe12",
     "78c05a7155ffb48b351de181cce13a5d996c3472f545f674dc34177fe27bae01",
     "0f56a805793d7d829daa617f1323aacff0d73fe868747b0d077c6af315e2aab8",
+    "6722b331de7489c14cb599d939e5d2314f054220728f83c5c29f454e70273e47",
   ])("the WezTerm artifact %s cites its OSC 52 read and leaves CSI 14 t measured", (wezterm) => {
     const silent = (id: string) =>
       probe(id).lib!(
@@ -2561,26 +2562,26 @@ describe("Alacritty audited OSC source review", () => {
  * @testonly none
  */
 describe("Wezterm audited OSC source review", () => {
-  // Retained run0214f61e identity; this fixture does not attest a loaded native engine.
+  // Current rebuilt WezTerm tuple fixture; this does not attest a loaded native engine.
   const identity = {
     kind: "native",
     engineVersion: "0.1.0-fork.5",
     adapterSources: [
       { path: "packages/wezterm/src/index.ts", blobOid: "512606c5270ffd0cff55c1b70f5b3eda18a92df0" },
-      { path: "packages/wezterm/src/backend.ts", blobOid: "43464f5118e4442b3910fad63e3b3e3998af6214" },
-      { path: "packages/wezterm/native/src/lib.rs", blobOid: "b83bbf08bb20c6b7965cd0b6492a827707644a8f" },
+      { path: "packages/wezterm/src/backend.ts", blobOid: "42a196995a5f8845ab2e3bb6227192556c470071" },
+      { path: "packages/wezterm/native/src/lib.rs", blobOid: "445f5484027aebbea01a641a96dd92dfea273693" },
       { path: "src/load-native.ts", blobOid: "34e142550085450ab02138184626716ad0d6b546" },
     ],
     adapterVersion: "0.10.2",
-    termlessRevision: "2d97417328b7b1d086f9396b9a1731216ed134cc",
+    termlessRevision: "83b22ab3f99ff3c2f3e43bcfce346c1374f540e1",
     loadedBinary: {
       path: "vendor/termless/packages/wezterm/termless-wezterm.node",
-      sha256: "0f56a805793d7d829daa617f1323aacff0d73fe868747b0d077c6af315e2aab8",
+      sha256: "6722b331de7489c14cb599d939e5d2314f054220728f83c5c29f454e70273e47",
     },
     provenance: {
-      sha256: "0f56a805793d7d829daa617f1323aacff0d73fe868747b0d077c6af315e2aab8",
-      sourceCommit: "5afcc676d49c02902ef35112893e2ae35efb0d5e",
-      buildHash: "1bc38c0ad4e95754ef42b5de57d4829864984099b2e4422008de7c5b96c875df",
+      sha256: "6722b331de7489c14cb599d939e5d2314f054220728f83c5c29f454e70273e47",
+      sourceCommit: "83b22ab3f99ff3c2f3e43bcfce346c1374f540e1",
+      buildHash: "94a2d6025d3dc9e62debb7cbe388b3ad5113394d0ab6746d6baa58475fbe9c56",
       toolchain:
         "rustc 1.94.0 (4a4ef493e 2026-03-02) (built from a source tarball); cargo 1.94.0 (85eff7c80 2026-01-15)",
       lockSha256: "8eaeab733cced8d47feb223d773d5ae158b2e6af8c994f993d4071d9ba3231d4",
@@ -2631,11 +2632,11 @@ describe("Wezterm audited OSC source review", () => {
     const reason = result.tests?.[0]?.reason ?? ""
     if (id === "extensions.osc133-d") {
       expect(reason).toBe(
-        "tattoy-wezterm-escape-parser 0.1.0-1 src/osc.rs:457-505 osc_entries (SHA256 fd26b6d6254c46ef880fbcc03ba418d67e9049c875e71cca6f18f4df76a0924f), parse errors become Unspecified at :155-167; tattoy-wezterm-term 0.1.0-fork.5 src/terminalstate/performer.rs:772-781 logs Unspecified; Termless 2d97417328b7b1d086f9396b9a1731216ed134cc packages/wezterm/native/src/lib.rs:236-243 advances the pinned Terminal; parsed by osc.rs:793-806 into CommandStatus, dropped by the empty performer.rs:900-902 arm; independent source review required",
+        "tattoy-wezterm-escape-parser 0.1.0-1 src/osc.rs:457-505 osc_entries (SHA256 fd26b6d6254c46ef880fbcc03ba418d67e9049c875e71cca6f18f4df76a0924f), parse errors become Unspecified at :155-167; tattoy-wezterm-term 0.1.0-fork.5 src/terminalstate/performer.rs:772-781 logs Unspecified; Termless 83b22ab3f99ff3c2f3e43bcfce346c1374f540e1 packages/wezterm/native/src/lib.rs:237-245 advances the same pinned Terminal; absolute-row reader changes leave parsing, config and reply delivery unchanged; parsed by osc.rs:793-806 into CommandStatus, dropped by the empty performer.rs:900-902 arm; independent source review required",
       )
     } else if (id === "extensions.osc720-scroll-up") {
       expect(reason).toBe(
-        "tattoy-wezterm-escape-parser 0.1.0-1 src/osc.rs:457-505 osc_entries (SHA256 fd26b6d6254c46ef880fbcc03ba418d67e9049c875e71cca6f18f4df76a0924f), parse errors become Unspecified at :155-167; tattoy-wezterm-term 0.1.0-fork.5 src/terminalstate/performer.rs:772-781 logs Unspecified; Termless 2d97417328b7b1d086f9396b9a1731216ed134cc packages/wezterm/native/src/lib.rs:236-243 advances the pinned Terminal; no case 720; wezterm-term src/screen.rs:15-45,335,493,522-527 stores screen/history, not a product viewport; Termless packages/wezterm/native/src/lib.rs:448-461 returns viewport_offset 0 and scroll_viewport is a no-op; independent source review required",
+        "tattoy-wezterm-escape-parser 0.1.0-1 src/osc.rs:457-505 osc_entries (SHA256 fd26b6d6254c46ef880fbcc03ba418d67e9049c875e71cca6f18f4df76a0924f), parse errors become Unspecified at :155-167; tattoy-wezterm-term 0.1.0-fork.5 src/terminalstate/performer.rs:772-781 logs Unspecified; Termless 83b22ab3f99ff3c2f3e43bcfce346c1374f540e1 packages/wezterm/native/src/lib.rs:237-245 advances the same pinned Terminal; absolute-row reader changes leave parsing, config and reply delivery unchanged; no case 720; wezterm-term src/screen.rs:15-45,335,493,522-527 stores screen/history, not a product viewport; Termless packages/wezterm/native/src/lib.rs:442-455 returns viewport_offset 0 and scroll_viewport is a no-op; independent source review required",
       )
     } else {
       expect(reason).toContain(`no case ${sequence.slice(2).split(/[;\x07]/)[0]}`)

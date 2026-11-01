@@ -65,8 +65,8 @@ export const ADAPTER_SOURCE_AUDITS = {
   },
   wezterm: {
     "packages/wezterm/src/index.ts": "512606c5270ffd0cff55c1b70f5b3eda18a92df0",
-    "packages/wezterm/src/backend.ts": "43464f5118e4442b3910fad63e3b3e3998af6214",
-    "packages/wezterm/native/src/lib.rs": "b83bbf08bb20c6b7965cd0b6492a827707644a8f",
+    "packages/wezterm/src/backend.ts": "42a196995a5f8845ab2e3bb6227192556c470071",
+    "packages/wezterm/native/src/lib.rs": "445f5484027aebbea01a641a96dd92dfea273693",
     "src/load-native.ts": "34e142550085450ab02138184626716ad0d6b546",
   },
   vt100Rust: {
@@ -76,7 +76,7 @@ export const ADAPTER_SOURCE_AUDITS = {
   kitty: {
     "packages/kitty/src/index.ts": "3f207f911646613cdc3d8b04f155f0686a96a077",
     "packages/kitty/src/backend.ts": "5e98a200eab31eeef6505e81470d350637b5959c",
-    "packages/kitty/build/bridge.py": "c20ef9dbc3f975e00a73224cd39a2be81e96ab4e",
+    "packages/kitty/build/bridge.py": "02b4fb4c49975c4b9f9856385f1e6a5acd2492df",
   },
 } as const
 

@@ -16,6 +16,7 @@ import { projectResults, maskRunnerStorePath, projectedContextKey } from "../doc
 import { currentCoverageSentence } from "../docs/data/release-scope.ts"
 import { candidateFromSelected, pickContextRun } from "../docs/data/run-selection.ts"
 import { readCellEvidence } from "../docs/data/evidence-reader.ts"
+import { parseInterpretations, activeInterpretations, validatePresentationSupersession } from "./interpretations.ts"
 
 // Explicit schema-3 wire fixture; current public results use tests and assertionType.
 type Schema3Result = Omit<ProbeResult, "tests" | "assertionType"> & { checks: ProbeResult["tests"]; evidence?: string }
@@ -97,6 +98,113 @@ function supportedBaseline() {
 // Existing selection tests exercise v1/v2 observation grading; they cannot prove that v3 selection
 // reads the stored five statuses and frozen denominator without applying later interpretations.
 describe("current execution projection", () => {
+  // #32014: presentation withdrawal only hides evidence, so existing presentation cases
+  // cannot catch a wrong embedded Untestable remaining in status/count/selection readers.
+  it("withdraws an embedded review through one exact-run TODO projection without rewriting the sealed capture", () => {
+    const root = join(import.meta.dirname, "..", "content")
+    const path = join(root, "probes-apps/alacritty-0.17.0-linux-f504922f67f074794c588cf3a14e2114.json")
+    const bytes = readFileSync(path, "utf8")
+    const manifestPath = join(root, "suites/4b01b0117e18.json")
+    const manifest = parseSuiteManifest(manifestPath, readFileSync(manifestPath, "utf8"))
+    const catalog = manifest.catalogIds!
+    const run = parseRun(path, bytes, catalog, new Map([[manifest.probeHash, manifest]]))
+    expect(run.sha256).toBe("658c9ccca5e72be694c7714cb8d5788c828a0ed2f06d537d1c17948ba8440082")
+    const featureId = "extensions.font-ligatures"
+    const original = structuredClone(run)
+    const overlay = {
+      id: "fixture-tool-gap-ligatures",
+      decision: "tool-gap",
+      reviewed: true,
+      reviewer: "fixture-reviewer",
+      reason: "no ligature-capable face pinned; instrument #32062 font control",
+      runId: run.runId,
+      runSha256: run.sha256,
+      featureId,
+      scope: {
+        subject: { kind: run.subject.kind, id: run.subject.id },
+        versions: [run.subject.version, run.subject.version],
+        suites: [run.suiteId, run.suiteId],
+      },
+      sources: ["fixture withdrawal of the retained embedded review; not an identity or admission grant"],
+      supersedes: ["cto-31280-extensions.font-ligatures-20261031"],
+    }
+    const decode = (value: unknown, runs = [run]) =>
+      parseInterpretations("tool-gap.json", JSON.stringify([value]), catalog, undefined, runs)
+    // Explicit working input exercises context composition while the original unverified identity remains unadmitted.
+    const policy = { currentProbeHash: run.probeHash!, workingRuns: [run] }
+    const before = projectResults([run], [], catalog, policy, [])
+    const entries = decode(overlay)
+    const projection = projectResults([run], entries, catalog, policy, [])
+    const key = "term:alacritty"
+    const history = projection.history[key]![0]!
+    expect(projection.table[run.runId]![featureId]).toBe("test-todo")
+    expect(history.results.find((result) => result.featureId === featureId)).toMatchObject({
+      status: "test-todo",
+      reason: overlay.reason,
+      tests: expect.arrayContaining([expect.objectContaining({ id: "criterion", status: "test-todo" })]),
+    })
+    expect(history.counts.untestable).toBe(before.history[key]![0]!.counts.untestable - 1)
+    expect(history.counts["test-todo"]).toBe(before.history[key]![0]!.counts["test-todo"] + 1)
+    const selected = projection.contexts[key]!
+    expect(selected.cells[featureId]!.result.status).toBe("test-todo")
+    expect(
+      candidateFromSelected(key, selected, projection.table[run.runId]!, projection)!.results.find(
+        (result) => result.featureId === featureId,
+      )!.status,
+    ).toBe("test-todo")
+    const published = publicResults(projection, new Map()).projection
+    expect(published.history[key]![0]!.results.find((result) => result.featureId === featureId)!.status).toBe(
+      "test-todo",
+    )
+    expect(published.contexts[key]!.cells[featureId]!.status).toBe("test-todo")
+    expect(projection.exclusions).toEqual(before.exclusions)
+    for (const result of run.results!) {
+      if (result.featureId !== featureId) {
+        expect(history.results.find((entry) => entry.featureId === result.featureId)).toEqual(result)
+      }
+    }
+    expect(() => decode(overlay, [])).toThrow(/requires sealed run.*f504922f/)
+    expect(() => activeInterpretations(entries)).toThrow(/requires sealed run.*f504922f/)
+    expect(() => validatePresentationSupersession(entries, "overlay")).toThrow(/requires sealed run.*f504922f/)
+    expect(activeInterpretations(entries, [run])).toEqual(entries)
+    for (const change of [
+      { runId: "different-run" },
+      { runSha256: "a".repeat(64) },
+      { featureId: "sgr.blink" },
+      { supersedes: ["unknown-embedded-review"] },
+    ]) {
+      expect(() => decode({ ...overlay, ...change })).toThrow(/requires sealed run|SHA256|feature|embedded/)
+    }
+    // A known curated ID must not bypass the same-cell embedded-target requirement.
+    // The unknown-ID controls above miss this graph branch entirely.
+    const curated = parseInterpretations(
+      "real curated store",
+      readFileSync(join(root, "interpretations.json"), "utf8"),
+      catalog,
+      undefined,
+      [run],
+    )
+    const unrelated = curated.find((entry) => entry.id === "cto-vterm48-extensions.clipboard-paste-ev1")
+    expect(unrelated).toBeDefined()
+    expect(run.rawReplies[`collector.review.${unrelated!.id}`]).toBeUndefined()
+    expect(() =>
+      parseInterpretations(
+        "known unrelated target",
+        JSON.stringify([unrelated, { ...overlay, supersedes: [unrelated!.id] }]),
+        catalog,
+        undefined,
+        [run],
+      ),
+    ).toThrow(/missing embedded review/)
+    const invalidEntries = [unrelated!, { ...entries[0]!, supersedes: [unrelated!.id] }]
+    expect(() => activeInterpretations(invalidEntries, [run])).toThrow(/missing embedded review/)
+    expect(() => validatePresentationSupersession(invalidEntries, "known unrelated target", [run])).toThrow(
+      /missing embedded review/,
+    )
+    expect(run).toEqual(original)
+    expect(readFileSync(path, "utf8")).toBe(bytes)
+  })
+
   // #31713 AC1/AC2: a public cell must explain explicit nonselection without claiming an attempted test.
   // Existing subset cases protect prior results and scores, but never inspect an untouched cell's explanation.
   // @failure Unselected and selected-but-unstarted cells both lose their scheduling distinction in site/API output.

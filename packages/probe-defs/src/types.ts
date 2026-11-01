@@ -707,6 +707,8 @@ export interface RunProvenance {
 
 export interface HistoricalInterpretation {
   id: string
+  /** An exact sealed-run overlay names buildable instrumentation work without rewriting the capture. */
+  decision?: "tool-gap"
   /** A review of identity or community origin must name the exact immutable run. */
   runId?: string
   /** SHA256 of the exact raw run bytes; a review cannot move to another capture. */
@@ -759,7 +761,7 @@ export interface CaptureDecision {
   featureId: string
   captureSha256: string
   evidence?: CaptureEvidence
-  decision: "supported" | "unsupported" | "untestable"
+  decision: "supported" | "unsupported" | "untestable" | "tool-gap"
   reviewed: true
   reviewer: string
   reason: string
