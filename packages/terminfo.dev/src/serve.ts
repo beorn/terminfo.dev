@@ -993,8 +993,9 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
                 ? receipt.proofState
                 : "inconclusive"
               detail = `retained proof state ${receipt.proofState}; independent visual review pending`
-              if ("reason" in receipt && typeof receipt.reason === "string" && receipt.reason !== "")
+              if ("reason" in receipt && typeof receipt.reason === "string" && receipt.reason !== "") {
                 detail += `: ${receipt.reason}`
+              }
             }
           } catch (error) {
             detail = `cannot read structured fixture.font: ${error instanceof Error ? error.message : String(error)}`
