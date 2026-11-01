@@ -322,37 +322,73 @@ test.each(["decision-hash", "source-entry", "missing-object", "external-sha", "s
   },
 )
 
-// R5: absent optional sources must stay loudly unverified while a matching present file verifies.
-test.each([false, true])("external source presence is reported truthfully: %s", async (present) => {
-  const f = await prepared("untestable"),
-    path = "optional/engine.rs",
-    bytes = "source bytes"
-  if (present) {
-    mkdirSync(join(f.directory, "optional"))
-    writeFileSync(join(f.directory, path), bytes)
-  }
-  const source = JSON.stringify({
-    ...(JSON.parse(f.source) as CaptureDecision),
-    sources: [`${path} sha256:${sha(bytes)}`],
-  })
-  f.index.decisions = [
-    {
-      source,
-      startedAt,
-      sha256: sha(source),
-      citations: [{ kind: "external", sourceIndex: 0, root: f.directory, path, sha256: sha(bytes) }],
-    },
-  ]
-  f.save()
-  const diagnostic = vi.spyOn(console, "error").mockImplementation(() => {})
-  try {
-    const receipt = f.api.applyReview(f.applyOptions)
-    expect(receipt.citations).toContain(present ? `verified: ${path}` : `unverified: ${path} (tree absent)`)
-    expect(readFileSync(f.applyOptions.receipt, "utf8")).toContain(present ? "verified:" : "unverified:")
-    expect(diagnostic.mock.calls).toEqual(present ? [] : [[`unverified: ${path} (tree absent)`]])
-  } finally {
-    diagnostic.mockRestore()
-  }
+// R2: existing coverage kept the root present, so missed missing files and non-ENOENT stat failures.
+test.each(["absent-root", "present", "missing-file", "invalid-root"])(
+  "external source presence is reported truthfully: %s",
+  async (state) => {
+    const f = await prepared("untestable"),
+      path = "optional/engine.rs",
+      bytes = "source bytes",
+      root = join(f.directory, "external", "tree")
+    if (state === "present") {
+      mkdirSync(join(root, "optional"), { recursive: true })
+      writeFileSync(join(root, path), bytes)
+    } else if (state === "missing-file") {
+      mkdirSync(root, { recursive: true })
+    } else if (state === "invalid-root") {
+      writeFileSync(join(f.directory, "external"), "not a directory")
+    }
+    const source = JSON.stringify({
+      ...(JSON.parse(f.source) as CaptureDecision),
+      sources: [`${path} sha256:${sha(bytes)}`],
+    })
+    f.index.decisions = [
+      {
+        source,
+        startedAt,
+        sha256: sha(source),
+        citations: [{ kind: "external", sourceIndex: 0, root, path, sha256: sha(bytes) }],
+      },
+    ]
+    f.save()
+    const diagnostic = vi.spyOn(console, "error").mockImplementation(() => {})
+    try {
+      if (state === "missing-file" || state === "invalid-root") {
+        expect(() => f.api.applyReview(f.applyOptions)).toThrow(
+          /decisions\[0\].*citations\[0\].*sources\[0\].*(ENOENT|ENOTDIR)/,
+        )
+        expect(() => readFileSync(f.applyOptions.receipt)).toThrow(/ENOENT/)
+        expect(readFileSync(f.input, "utf8")).toBe(f.original)
+        return
+      }
+      const receipt = f.api.applyReview(f.applyOptions)
+      expect(receipt.citations).toContain(
+        state === "present" ? `verified: ${path}` : `unverified: ${root} (tree absent)`,
+      )
+      expect(readFileSync(f.applyOptions.receipt, "utf8")).toContain(state === "present" ? "verified:" : "unverified:")
+      expect(diagnostic.mock.calls).toEqual(state === "present" ? [] : [[`unverified: ${root} (tree absent)`]])
+    } finally {
+      diagnostic.mockRestore()
+    }
+  },
+)
+
+// R2: the source-receipt fallback must not hide registry lookup errors other than ENOENT.
+test("registry inspection refuses a non-directory parent instead of falling back", async () => {
+  const api = await import("./review.ts"),
+    f = intakeFixture("valid", false)
+  f.options.suiteRoot = join(f.directory, "blocked-registry")
+  writeFileSync(f.options.suiteRoot, "not a directory")
+  expect(() => api.intakeReview(f.options)).toThrow(/blocked-registry.*ENOTDIR|ENOTDIR.*blocked-registry/)
+  expect(() => readFileSync(f.options.output)).toThrow(/ENOENT/)
+})
+
+// Diagnostic fold: invalid later entries must identify their own decision, before any postimage write.
+test("a non-object decision identifies its index", async () => {
+  const f = await prepared()
+  writeFileSync(f.options.output, JSON.stringify({ ...f.index, decisions: [...f.index.decisions, null] }))
+  expect(() => f.api.applyReview(f.applyOptions)).toThrow(/decisions\[1\].*record/)
+  expect(() => readFileSync(f.applyOptions.receipt)).toThrow(/ENOENT/)
 })
 
 // R1/R6: no writer test exercises an explicit empty issuer scope or ambiguous pass rawRun selection.

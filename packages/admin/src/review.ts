@@ -1,7 +1,7 @@
 /** Explicit retained-capture review: issuer index, pinned citations and private immutable application. */
 import { spawnSync } from "node:child_process"
 import { createHash } from "node:crypto"
-import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs"
+import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs"
 import { dirname, isAbsolute, join, relative, resolve } from "node:path"
 import { isDeepStrictEqual } from "node:util"
 import type { CaptureDecision, CapturedRunDraft } from "@terminfo/probe-defs"
@@ -48,6 +48,15 @@ type Index = {
 }
 const record = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v)
 const sha = (v: string | Buffer) => createHash("sha256").update(v).digest("hex")
+function present(path: string): boolean {
+  try {
+    lstatSync(path)
+    return true
+  } catch (cause) {
+    if (record(cause) && cause.code === "ENOENT") return false
+    throw new Error(`Cannot inspect ${path}: ${cause instanceof Error ? cause.message : String(cause)}`, { cause })
+  }
+}
 function absolute(path: string): string {
   if (typeof path !== "string" || !isAbsolute(path)) throw new Error(`Absolute path required: ${String(path)}`)
   return resolve(path)
@@ -113,7 +122,7 @@ function trustedManifest(options: IntakeOptions, suite: string) {
   if (receipt.collectorRevision !== pin.commit) throw new Error("Source receipt commit mismatch")
   if (receipt.manifest.probeHash !== suite) throw new Error("Source receipt suite mismatch")
   const manifest = parseSuiteManifest(producer, canonicalJson(receipt.manifest))
-  if (existsSync(path)) {
+  if (present(path)) {
     const target = readExplicitSuiteTarget(options.suiteRoot, suite)
     for (const key of [
       "schemaVersion",
@@ -254,73 +263,80 @@ export function intakeReview(options: IntakeOptions) {
     empty: index.pending.length === 0,
   }
 }
-function citations(input: IndexedDecision, decision: CaptureDecision, index: Index): string[] {
+function citations(input: IndexedDecision, decision: CaptureDecision, index: Index, decisionIndex: number): string[] {
+  const label = `decisions[${decisionIndex}]`
   if (typeof input.source !== "string" || !/^[a-f0-9]{64}$/.test(input.sha256) || sha(input.source) !== input.sha256) {
-    throw new Error("Decision byte hash mismatch")
+    throw new Error(`${label}: Decision byte hash mismatch`)
   }
   if (!Array.isArray(input.citations) || input.citations.length !== decision.sources.length) {
-    throw new Error("Every decision source entry requires one explicit citation classification")
+    throw new Error(`${label}: Every decision source entry requires one explicit citation classification`)
   }
   const seen = new Set<number>()
-  return input.citations.map((citation) => {
-    if (!record(citation) || !Number.isInteger(citation.sourceIndex) || seen.has(citation.sourceIndex)) {
-      throw new Error("Invalid/duplicate citation source index")
-    }
-    seen.add(citation.sourceIndex)
-    let rendered: string, status: string
-    if (citation.kind === "git") {
-      const pin = index.sources[citation.repo]
-      if (
-        !pin ||
-        citation.commit !== pin.commit ||
-        typeof citation.path !== "string" ||
-        isAbsolute(citation.path) ||
-        citation.path.split("/").some((part) => !part || part === "." || part === "..") ||
-        !Number.isInteger(citation.startLine) ||
-        !Number.isInteger(citation.endLine) ||
-        citation.startLine < 1 ||
-        citation.endLine < citation.startLine
-      ) {
-        throw new Error("Invalid pinned source citation")
+  return input.citations.map((citation, citationIndex) => {
+    const location = `${label}.citations[${citationIndex}]${record(citation) && Number.isInteger(citation.sourceIndex) ? ` sources[${citation.sourceIndex}]` : ""}`
+    try {
+      if (!record(citation) || !Number.isInteger(citation.sourceIndex) || seen.has(citation.sourceIndex)) {
+        throw new Error("Invalid/duplicate citation source index")
       }
-      rendered = `${citation.repo}@${citation.commit}:${citation.path}:L${citation.startLine}-L${citation.endLine}`
-      const blob = new TextDecoder("utf-8", { fatal: true }).decode(
-        git(pin, ["show", `${pin.commit}:${citation.path}`]),
-      )
-      const lines = blob.endsWith("\n") ? blob.slice(0, -1).split("\n") : blob.split("\n")
-      if (citation.endLine > lines.length) throw new Error(`Source citation line range absent: ${rendered}`)
-      status = `verified: ${rendered}`
-    } else if (citation.kind === "external") {
-      if (
-        typeof citation.path !== "string" ||
-        isAbsolute(citation.path) ||
-        citation.path.split("/").some((part) => !part || part === "." || part === "..")
-      ) {
-        throw new Error("External citation requires a portable source path")
-      }
-      const localPath = join(absolute(citation.root), citation.path)
-      if (!/^[a-f0-9]{64}$/.test(citation.sha256)) {
-        throw new Error(`External citation requires file SHA256: ${citation.path}`)
-      }
-      rendered = `${citation.path} sha256:${citation.sha256}`
-      if (!existsSync(localPath)) status = `unverified: ${citation.path} (tree absent)`
-      else {
-        if (sha(readFileSync(localPath)) !== citation.sha256) {
-          throw new Error(`External source SHA256 mismatch: ${citation.path}`)
+      seen.add(citation.sourceIndex)
+      let rendered: string, status: string
+      if (citation.kind === "git") {
+        const pin = index.sources[citation.repo]
+        if (
+          !pin ||
+          citation.commit !== pin.commit ||
+          typeof citation.path !== "string" ||
+          isAbsolute(citation.path) ||
+          citation.path.split("/").some((part) => !part || part === "." || part === "..") ||
+          !Number.isInteger(citation.startLine) ||
+          !Number.isInteger(citation.endLine) ||
+          citation.startLine < 1 ||
+          citation.endLine < citation.startLine
+        ) {
+          throw new Error("Invalid pinned source citation")
         }
-        status = `verified: ${citation.path}`
+        rendered = `${citation.repo}@${citation.commit}:${citation.path}:L${citation.startLine}-L${citation.endLine}`
+        const blob = new TextDecoder("utf-8", { fatal: true }).decode(
+          git(pin, ["show", `${pin.commit}:${citation.path}`]),
+        )
+        const lines = blob.endsWith("\n") ? blob.slice(0, -1).split("\n") : blob.split("\n")
+        if (citation.endLine > lines.length) throw new Error(`Source citation line range absent: ${rendered}`)
+        status = `verified: ${rendered}`
+      } else if (citation.kind === "external") {
+        if (
+          typeof citation.path !== "string" ||
+          isAbsolute(citation.path) ||
+          citation.path.split("/").some((part) => !part || part === "." || part === "..")
+        ) {
+          throw new Error("External citation requires a portable source path")
+        }
+        const localPath = join(absolute(citation.root), citation.path)
+        if (!/^[a-f0-9]{64}$/.test(citation.sha256)) {
+          throw new Error(`External citation requires file SHA256: ${citation.path}`)
+        }
+        rendered = `${citation.path} sha256:${citation.sha256}`
+        const root = absolute(citation.root)
+        if (!present(root)) status = `unverified: ${root} (tree absent)`
+        else {
+          if (sha(readFileSync(localPath)) !== citation.sha256) {
+            throw new Error(`External source SHA256 mismatch: ${citation.path}`)
+          }
+          status = `verified: ${citation.path}`
+        }
+      } else if (citation.kind === "reference" && typeof citation.text === "string" && citation.text.length) {
+        if (/^(terminfo\.dev|termless)@/.test(citation.text) || / sha256:[a-f0-9]{64}$/.test(citation.text)) {
+          throw new Error("Code citation requires git/external classification")
+        }
+        rendered = citation.text
+        status = `reference (not code-verified): ${citation.text}`
+      } else throw new Error("Unknown source citation classification")
+      if (decision.sources[citation.sourceIndex] !== rendered) {
+        throw new Error(`Citation does not exactly match decision sources[${citation.sourceIndex}]: ${rendered}`)
       }
-    } else if (citation.kind === "reference" && typeof citation.text === "string" && citation.text.length) {
-      if (/^(terminfo\.dev|termless)@/.test(citation.text) || / sha256:[a-f0-9]{64}$/.test(citation.text)) {
-        throw new Error("Code citation requires git/external classification")
-      }
-      rendered = citation.text
-      status = `reference (not code-verified): ${citation.text}`
-    } else throw new Error("Unknown source citation classification")
-    if (decision.sources[citation.sourceIndex] !== rendered) {
-      throw new Error(`Citation does not exactly match decision sources[${citation.sourceIndex}]: ${rendered}`)
+      return status
+    } catch (cause) {
+      throw new Error(`${location}: ${cause instanceof Error ? cause.message : String(cause)}`, { cause })
     }
-    return status
   })
 }
 function checkPreservation(
@@ -397,13 +413,17 @@ export function applyReview(options: { intake: string; output: string; receipt: 
     receiptPath = destination(options.receipt, index)
   if (existsSync(receiptPath)) throw new Error(`Receipt already exists: ${receiptPath}`)
   const verified: string[] = [],
-    decisions = index.decisions.map((input) => {
+    decisions = index.decisions.map((input, decisionIndex) => {
+      const label = `decisions[${decisionIndex}]`
+      if (!record(input) || typeof input.source !== "string") {
+        throw new Error(`${label}: decision entry requires a record with a source string`)
+      }
       const decision = parseCaptureDecision(
-        parseJsonStrict("review decision", input.source),
-        "review decision",
+        parseJsonStrict(`${label}.source`, input.source),
+        `${label}.source`,
         new Set(current.manifest.catalogIds),
       )
-      verified.push(...citations(input, decision, index))
+      verified.push(...citations(input, decision, index, decisionIndex))
       return { decision, source: input.source, startedAt: input.startedAt }
     })
   let written: string | null = null
