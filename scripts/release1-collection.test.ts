@@ -1785,9 +1785,9 @@ it.each([
           .filter((name) => name.endsWith(".draft.json"))
           .map((name) => join(pass.directory, "lib", name))
         expect(libDrafts).toEqual([row.rawRun])
-        const collectionReceipt = JSON.parse(
-          readFileSync(join(pass.directory, "lib", "collection.json"), "utf8"),
-        ) as { runs: string[] }
+        const collectionReceipt = JSON.parse(readFileSync(join(pass.directory, "lib", "collection.json"), "utf8")) as {
+          runs: string[]
+        }
         expect(collectionReceipt.runs).toEqual([row.rawRun])
         expect(collectionReceipt.runs.every((entry) => existsSync(entry))).toBe(true)
         const appRow = pass.contexts.find(
