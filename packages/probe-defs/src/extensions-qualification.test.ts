@@ -96,30 +96,30 @@ const auditedArtifacts: readonly HeadlessRuntimeIdentity[] = [
     runtimeFormat: "wasm",
     engineVersion: "0.3.3",
     adapterVersion: "0.10.2",
-    termlessRevision: "f736cce4",
+    termlessRevision: "f8d2aeb7a7a30f0215fd628bbbb1f1e5cd0a91be",
     resolvedPath: "/relocated/libvterm/index.ts",
     integrity: {
       kind: "source",
       repository: "git@github.com:beorn/termless.git",
-      revision: "f736cce4",
+      revision: "f8d2aeb7a7a30f0215fd628bbbb1f1e5cd0a91be",
       treeOid: "changed-wrapper-tree",
       cleanTree: true,
     },
     loadedBinary: {
       path: "/relocated/libvterm.wasm",
-      sha256: "7ebe1b994b58ca867dcd19e9cdeb10b8839b6c1f0dbdea024f875a9f57560a23",
+      sha256: "3d67045bb43c5e4081c70dc58088af8f735416c20df2d7843d765e5aad8ef62a",
     },
     adapterSources: [
       { path: "packages/libvterm/src/index.ts", blobOid: "2b4708b1081e701b99893ca055ded781dc46cf25" },
-      { path: "packages/libvterm/src/backend.ts", blobOid: "caa5dc6c4ac4e3dac45977466919d2c1dcd3e851" },
+      { path: "packages/libvterm/src/backend.ts", blobOid: "eb513ccd443e30c7a869a8ba41f8126e1c0ddf00" },
       { path: "packages/libvterm/src/wasm-bindings.ts", blobOid: "2bbd4d5cf59b8d53db8f5c0329d2ed7853c43e45" },
       { path: "packages/libvterm/wasm/libvterm.js", blobOid: "1e784be87614ab924b96844009919b7c21ce150e" },
     ],
   },
 ]
 
-// #32026: frozen engine and adapter tuples from retained captures. The existing two-artifact
-// checks cover OSC8/alacritty440, so they miss absent rows/codes in this 30-cell source batch.
+// Source-audit callback fixtures; libvterm follows the current rebuilt artifact, not a retained capture.
+// The existing two-artifact checks cover OSC8/alacritty440, so they miss this absent-row/code batch.
 const absentOscBatch = [
   { engine: "libvterm", identity: auditedArtifacts[1]!, codes: [9, 22, 176, 3008, 440, 555, 666, 710, 777] },
   {
