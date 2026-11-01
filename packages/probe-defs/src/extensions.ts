@@ -3067,6 +3067,7 @@ function mainScreenReflow(ctx: LibProbeSource): ProbeCallbackResult {
     cells: string[][]
     cursor: ReturnType<LibProbeSource["getCursor"]>
     scrollback: ReturnType<LibProbeSource["getScrollback"]>
+    invalid?: string
   }
   type Phase = {
     id: string
@@ -3074,6 +3075,10 @@ function mainScreenReflow(ctx: LibProbeSource): ProbeCallbackResult {
     to: number
     outcome: "reflow" | "preserved-wraps" | "truncated" | "invalid"
     reason: string
+  }
+  type HistoryPhase = Omit<Phase, "outcome"> & {
+    outcome: Phase["outcome"] | "not-retained"
+    status: "supported" | "unsupported" | "test-todo" | "test-failure"
   }
   const state = {
     declaredReflow: ctx.capabilities.reflow === true,
@@ -3087,6 +3092,7 @@ function mainScreenReflow(ctx: LibProbeSource): ProbeCallbackResult {
     >,
     reads: {} as Record<string, Frame>,
     phases: [] as Phase[],
+    historyPhases: [] as HistoryPhase[],
   }
   const feed = (text: string) => {
     state.actions.push({ kind: "feed", text })
@@ -3096,35 +3102,51 @@ function mainScreenReflow(ctx: LibProbeSource): ProbeCallbackResult {
     state.actions.push({ kind: "resize", cols, rows: height })
     resizeSource.call(ctx, cols, height)
   }
+  let readBound = height
   const read = (name: string, sampleColumns: number): Frame => {
     const scrollback = ctx.getScrollback()
-    const top = scrollback.totalLines - scrollback.screenLines
+    const invalid =
+      !Number.isSafeInteger(scrollback.totalLines) ||
+      scrollback.screenLines !== height ||
+      scrollback.totalLines < height ||
+      scrollback.totalLines > readBound
+        ? `Invalid buffer counts: totalLines=${scrollback.totalLines}, screenLines=${scrollback.screenLines}, expected screenLines=${height}, maximum totalLines=${readBound}`
+        : undefined
     const frame = {
       sampleColumns,
       scrollback,
       cursor: ctx.getCursor(),
-      cells: Array.from({ length: height }, (_, row) =>
-        Array.from({ length: sampleColumns }, (_, col) => ctx.getCell(top + row, col).char),
-      ),
+      ...(invalid && { invalid }),
+      cells: invalid
+        ? []
+        : Array.from({ length: scrollback.totalLines }, (_, row) =>
+            Array.from({ length: sampleColumns }, (_, col) => ctx.getCell(row, col).char),
+          ),
     }
     state.reads[name] = frame
     state.actions.push({ kind: "read", name })
     return frame
   }
-  const matches = (frame: Frame, lines: string[]) =>
-    frame.scrollback.screenLines === height &&
-    frame.scrollback.totalLines === height &&
-    frame.scrollback.viewportOffset === 0 &&
+  const matchesCells = (frame: Frame, lines: string[], start = 0, count = frame.cells.length) =>
+    !frame.invalid &&
+    frame.cells.length >= start + count &&
+    lines.length <= count &&
     lines.every((line) => line.length <= frame.sampleColumns) &&
-    frame.cells.every((row, index) => {
+    frame.cells.slice(start, start + count).every((row, index) => {
       const expected = lines[index] ?? ""
       return row.every((char, col) => (col < expected.length ? char === expected[col] : char === "" || char === " "))
     })
+  const matches = (frame: Frame, lines: string[]) =>
+    frame.scrollback.totalLines === height && frame.scrollback.viewportOffset === 0 && matchesCells(frame, lines)
   const clear = () => feed("\x1b[?1049l\x1b[?7h\x1b[2J\x1b[H")
-  const widthControl = (name: string, columns: number) => {
+  const widthControl = (name: string, columns: number, history = false) => {
     clear()
     feed("W".repeat(columns) + "Z")
-    return matches(read(name, columns), ["W".repeat(columns), "Z"])
+    const frame = read(name, columns)
+    const lines = ["W".repeat(columns), "Z"]
+    return history
+      ? matchesCells(frame, lines, frame.scrollback.totalLines - frame.scrollback.screenLines, height)
+      : matches(frame, lines)
   }
   const layout = (columns: number) =>
     columns === 12 ? ["ABCDEFGHIJKL", "MNOPQR", ...state.fixture.hard] : [state.fixture.soft, ...state.fixture.hard]
@@ -3192,6 +3214,92 @@ function mainScreenReflow(ctx: LibProbeSource): ProbeCallbackResult {
               : "Pre-existing physical wrap boundaries remained with all target characters preserved"
       state.phases.push({ id, from, to, outcome, reason })
     }
+    for (const [id, from, to] of [
+      ["history-grow", 12, 20],
+      ["history-shrink", 20, 12],
+    ] as const) {
+      // Reset is essential here: ED2 clears the active screen, not the retained buffer.
+      state.actions.push({ kind: "reset" })
+      ctx.reset()
+      readBound = height
+      resize(from)
+      const fresh = read(`${id}.fresh`, from)
+      const record = (outcome: HistoryPhase["outcome"], reason: string) => {
+        state.historyPhases.push({
+          id,
+          from,
+          to,
+          outcome,
+          reason,
+          status:
+            outcome === "not-retained"
+              ? "test-todo"
+              : outcome === "invalid"
+                ? "test-failure"
+                : outcome === "reflow"
+                  ? "supported"
+                  : "unsupported",
+        })
+      }
+      if (!matches(fresh, []) || !widthControl(`${id}.control-before`, from)) {
+        record("invalid", fresh.invalid ?? "Fresh history fixture or initial width control did not qualify")
+        continue
+      }
+      const witnesses = Array.from({ length: 2 * height }, (_, index) => `R${String(index).padStart(3, "0")}`)
+      const beforeLines = [...layout(from), ...witnesses]
+      // Include the screen extent in the feed-derived bound, but never allocate from unchecked counts.
+      readBound = beforeLines.length + height
+      clear()
+      feed([state.fixture.soft, ...state.fixture.hard, ...witnesses].join("\r\n"))
+      const before = read(`${id}.before`, from)
+      const retained = before.scrollback.totalLines - before.scrollback.screenLines
+      if (before.invalid) {
+        record("invalid", before.invalid)
+        continue
+      }
+      if (retained === 0) {
+        record("not-retained", "engine retained no history")
+        continue
+      }
+      // Starting at a fresh buffer, every scroll must still be retained to keep the first target row.
+      // H >= target height alone is insufficient: bounded engines can already have evicted the target.
+      const requiredHistory = beforeLines.length - height
+      if (retained < requiredHistory) {
+        record("not-retained", `target not fully retained (H=${retained}, need ${requiredHistory})`)
+        continue
+      }
+      if (before.scrollback.totalLines !== beforeLines.length || !matchesCells(before, beforeLines)) {
+        record("invalid", "Complete retained seed, hard witnesses or blank tails did not qualify")
+        continue
+      }
+      resize(to)
+      // Preserve the target before the destructive control; control uses this same resized state.
+      const after = read(`${id}.after`, to)
+      const control = widthControl(`${id}.control-after`, to, true)
+      const reflowed = [...layout(to), ...witnesses]
+      const preserved = beforeLines.map((line) => line.slice(0, to))
+      const outcome =
+        !control || after.invalid
+          ? "invalid"
+          : after.scrollback.totalLines === reflowed.length && matchesCells(after, reflowed)
+            ? "reflow"
+            : after.scrollback.totalLines === preserved.length && matchesCells(after, preserved)
+              ? to < from
+                ? "truncated"
+                : "preserved-wraps"
+              : "invalid"
+      record(
+        outcome,
+        after.invalid ??
+          (!control
+            ? "Post-resize width control did not wrap at the requested column"
+            : outcome === "invalid"
+              ? "Resize matched neither complete retained layout; loss or eviction is unresolved"
+              : outcome === "reflow"
+                ? "Retained soft line reflowed; all explicit boundaries, hard witnesses and blank tails were conserved"
+                : "Retained physical rows were preserved or clipped; all hard witnesses and blank tails were conserved"),
+      )
+    }
   } catch (error) {
     primary = { error }
     throw error
@@ -3217,11 +3325,11 @@ function mainScreenReflow(ctx: LibProbeSource): ProbeCallbackResult {
   }
   const pending = [
     ...state.phases.filter((phase) => phase.outcome !== "reflow").map((phase) => `${phase.id}: ${phase.reason}`),
-    "Main-screen phases only; alternate-screen and scrollback reflow are not measured",
+    "History phase evidence retained without a cross-facet fold; alternate-screen reflow is not measured",
   ].join("; ")
   const response = JSON.stringify(state)
-  const assertions = state.phases
-    .filter((phase) => phase.outcome !== "invalid")
+  const assertions = [...state.phases, ...state.historyPhases]
+    .filter((phase) => phase.outcome !== "invalid" && phase.outcome !== "not-retained")
     .map((phase) => ({
       assertionType: "buffer_state" as const,
       kind: phase.outcome === "reflow" ? ("positive" as const) : ("negative" as const),
@@ -3262,7 +3370,6 @@ function mainScreenReflow(ctx: LibProbeSource): ProbeCallbackResult {
           ]
         : []),
       { id: "alternate-screen", status: "test-todo", reason: "Alternate-screen reflow has not been measured" },
-      { id: "scrollback", status: "test-todo", reason: "Scrollback reflow has not been measured" },
     ],
   }
 }
