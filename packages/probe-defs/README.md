@@ -53,6 +53,14 @@ An unmeasurable witness or changed geometry is recorded as a named refusal, neve
 Library `getMode` returns `boolean | null`: null names an unavailable adapter readback,
 not a reset state or a terminal-support verdict. Callbacks retain it explicitly.
 
+OSC52 write/roundtrip callbacks retain qualified read-sentinel silence as a named TEST TODO
+when no clipboard-state witness is wired; a read negative cannot measure the write.
+OSC5522 detection checks the existing DECAWM mode-7 DECRPM control after qualified target
+silence. Qualified silence from both queries names an unmet detection prerequisite as TEST TODO,
+retaining both raw windows. A control reply leaves target silence as TEST FAILURE; complete,
+on-time target Ps0 remains Unsupported. Unqualified, malformed and late target replies keep
+their existing criteria. Historical captures and selected results are unchanged.
+
 The library reverse-video, synchronized-output and colour-scheme-reporting cells
 measure mode recognition using the engine's DECRPM reply after enabling the mode.
 Set, reset or permanently set is Supported; unrecognized or permanently reset is

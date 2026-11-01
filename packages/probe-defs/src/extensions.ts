@@ -4482,9 +4482,25 @@ export const extensionsProbes: ProbeDefinition[] = [
           const pattern = decrpmReplyPattern(5522)
           if (ctx.queryWithSentinelOutcome) {
             const reply = ctx.queryWithSentinelOutcome("\x1b[?5522$p", pattern)
+            let response = reply.raw
+            if (sentinelSilenceResult(reply, "OSC5522 detection reply") !== null) {
+              // Use the existing device.decrpm control (DECAWM), in this same callback/run.
+              const control = ctx.queryWithSentinelOutcome("\x1b[?7$p", decrpmReplyPattern(7))
+              response = JSON.stringify({ detection: reply.raw, decrpmPrerequisite: control.raw })
+              if (sentinelSilenceResult(control, "DECRPM prerequisite reply") !== null) {
+                const reason =
+                  "OSC5522 detection prerequisite unmet: no complete DECRPM reply for DECAWM mode 7; protocol recognition cannot be observed."
+                return {
+                  pass: false,
+                  response,
+                  note: reason,
+                  tests: [{ id: "criterion", status: "test-todo", reason }],
+                }
+              }
+            }
             return {
               ...osc5522DetectionResult(reply.raw, replyFrame(reply) !== null, reply.sentinel !== undefined),
-              response: reply.raw,
+              response,
             }
           }
           const raw = ctx.feedCapture("\x1b[?5522$p")

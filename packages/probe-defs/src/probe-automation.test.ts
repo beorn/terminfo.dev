@@ -3010,6 +3010,50 @@ describe("Kitty protocol detection", () => {
     }
   })
 
+  // AC4: missing DECRQM readback is a prerequisite gap; target silence on a working path remains failure.
+  // Existing Ps fixtures cover target replies, but never query the prerequisite after qualified silence.
+  test("OSC 5522 names only a measured missing DECRPM prerequisite", () => {
+    const p = probe("extensions.osc5522-clipboard")
+    const da1 = "\x1b[?1;2c"
+    for (const [control, qualified, expected] of [
+      [da1, true, "test-todo"],
+      ["\x1b[?7;1$y" + da1, true, "test-failure"],
+      ["\x1b[?7;0$y" + da1, true, "test-failure"],
+      [da1, false, "test-failure"],
+      ["junk" + da1, true, "test-failure"],
+    ] as const) {
+      const queries: string[] = []
+      const result = p.lib!(
+        context({
+          queryWithSentinelOutcome(sequence, pattern) {
+            queries.push(sequence)
+            const raw = sequence === "\x1b[?5522$p" ? da1 : control
+            const match = raw.match(pattern)
+            return {
+              raw,
+              rawBase64: btoa(raw),
+              match,
+              reason: match ? "reply" : qualified ? "sentinel" : "timeout",
+              ...(qualified && { sentinel: { atMs: 1, graceMs: 250 } }),
+            }
+          },
+        }),
+      )
+      expect(result.tests?.[0]?.status).toBe(expected)
+      expect(queries).toEqual(qualified ? ["\x1b[?5522$p", "\x1b[?7$p"] : ["\x1b[?5522$p"])
+      expect(result.observation).toBeUndefined()
+      expect(result.assertions).toBeUndefined()
+      if (expected === "test-todo") {
+        expect(result.tests?.[0]?.reason).toBe(
+          "OSC5522 detection prerequisite unmet: no complete DECRPM reply for DECAWM mode 7; protocol recognition cannot be observed.",
+        )
+        expect(JSON.parse(result.response!)).toEqual({ detection: da1, decrpmPrerequisite: da1 })
+      } else if (qualified) {
+        expect(JSON.parse(result.response!)).toEqual({ detection: da1, decrpmPrerequisite: control })
+      } else expect(result.response).toBe(da1)
+    }
+  })
+
   // Q16: retained bytes outside the matching reply window must never become a detector negative.
   // Happy-path Ps fixtures do not distinguish a valid target negative from a late frame in raw evidence.
   test.each([
