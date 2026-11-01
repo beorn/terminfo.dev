@@ -38,6 +38,7 @@ import { parseDisposableReceipt } from "../packages/terminfo.dev/src/disposable-
 import { derivedSuiteManifest } from "./suite-manifest.ts"
 import { frozenSuiteIdFor } from "../docs/data/load-release-scope.ts"
 import muxIdentity from "../packages/terminfo.dev/src/fixtures/mux-identity.json"
+import { serializeOuterLaunchRecord } from "../packages/admin/src/outer-launch.ts"
 
 const temporaryPaths: string[] = []
 afterEach(() => {
@@ -598,6 +599,117 @@ test.each(muxIdentity.specimens)(
     })
   },
 )
+
+test("Darwin mux custody joins the attachment platform to both declared operating systems", () => {
+  // Admission-only control: existing protocol specimens plus an in-memory custody record do not
+  // qualify a native Darwin run. Its matching control must pass before either OS is changed.
+  const outerPath = runFixture()
+  const snapshot = probeSuiteSnapshot()
+  const manifest = derivedSuiteManifest(snapshot)
+  const outer = parseRun(
+    outerPath,
+    readFileSync(outerPath, "utf8"),
+    snapshot.catalogIds,
+    new Map([[manifest.probeHash, manifest]]),
+  )
+  const specimen = muxIdentity.specimens[0]!
+  const muxManifest = parseSuiteManifest(
+    "mux-identity-suite.json",
+    JSON.stringify({
+      probeHash: specimen.run.probeHash,
+      adapterVersion: "fixture",
+      probes: { app: [], headless: [], mux: muxIdentity.featureIds },
+    }),
+  )
+  const launchRunId = "12".repeat(16)
+  const executablePath = "/Applications/kitty.app/Contents/MacOS/kitty"
+  const bootId = "A1B2C3D4-1111-2222-3333-444455556666"
+  const outerTerminal = { pid: 55770, startedAtEpochSeconds: 1792678806 }
+  const digest = (text: string) => createHash("sha256").update(text).digest("hex")
+  const launch = serializeOuterLaunchRecord({
+    launchRunId,
+    executablePath,
+    outerTerminal,
+    bootId,
+    marker: { flag: "--config", value: `/tmp/kitty-${launchRunId}.conf` },
+    identityFile: { path: "/tmp/run/owner-tty.txt", sha256: digest("owner tty") },
+    runFileSha256: digest("run config"),
+    autoUpdate: {
+      key: "SUEnableAutomaticChecks",
+      value: "0",
+      plistPath: "/tmp/run/preferences.plist",
+      plistSha256: digest("preferences"),
+    },
+  })
+  const hop = (
+    pid: number,
+    ppid: number,
+    uid: number,
+    startedAtEpochSeconds: number,
+    executablePath: string,
+    ttyRdev: number | null,
+  ) => ({ pid, ppid, uid, startedAtEpochSeconds, executablePath, ttyRdev })
+  const attachment = {
+    platform: "darwin",
+    mux: specimen.mux,
+    bootId,
+    receiptSha256: digest(launch),
+    launchRunId,
+    captureRunId: specimen.run.runId,
+    preflightCollector: { pid: 95, startedAtEpochSeconds: 1792678700 },
+    outerShell: { pid: 55772, startedAtEpochSeconds: 1792678807, ttyRdev: 268435456 },
+    outerTerminal,
+    collector: { pid: 55803, startedAtEpochSeconds: 1792678808, ttyRdev: 268435459 },
+    attachedClient: { pid: 55802, startedAtEpochSeconds: 1792678808, ttyRdev: 268435456 },
+    chain: [
+      hop(55803, 55800, 501, 1792678808, "/Users/codi/.bun/bin/bun", 268435459),
+      hop(55800, 55772, 501, 1792678808, "/usr/local/bin/tmux", 268435456),
+      hop(55772, 55771, 501, 1792678807, "/bin/bash", 268435456),
+      hop(55771, 55770, 0, 1792678807, "/usr/bin/login", 268435456),
+      hop(55770, 55757, 501, 1792678806, executablePath, null),
+    ],
+    executable: { path: "/usr/local/bin/tmux", sha256: digest("tmux"), version: specimen.version },
+    config: { path: "/tmp/run/tmux.conf", sha256: digest("") },
+    socketPath: "/tmp/run/mux.sock",
+    session: "owned",
+  }
+  const parsed = parseRun(
+    "darwin-mux-control.json",
+    JSON.stringify({
+      ...specimen.run,
+      target: {
+        ...specimen.run.target,
+        kind: "mux",
+        id: specimen.mux,
+        version: specimen.version,
+        os: "macos",
+        mux: specimen.mux,
+        config: attachment.config.path,
+      },
+    }),
+    muxIdentity.featureIds,
+    new Map([[muxManifest.probeHash, muxManifest]]),
+  )
+  const run = {
+    ...parsed,
+    rawReplies: { ...parsed.rawReplies, "collector.terminalOwnership": JSON.stringify({ muxAttachment: attachment }) },
+    outerApp: {
+      subject: { ...outer.subject, os: "macos" },
+      rawReplies: { ...outer.rawReplies, "collector.outerLaunch": launch },
+      provenance: outer.provenance,
+    },
+  }
+  expect(assessRunAdmission(run, [], { mode: "historical" })).toMatchObject({ accepted: true })
+  for (const candidate of [
+    { ...run, subject: { ...run.subject, os: null } },
+    { ...run, outerApp: { ...run.outerApp, subject: { ...run.outerApp.subject, os: null } } },
+  ]) {
+    expect.soft(assessRunAdmission(candidate, [], { mode: "historical" })).toMatchObject({
+      accepted: false,
+      reason: "mux-attachment-invalid",
+    })
+  }
+})
 
 // AC1: Windows has no XTVERSION profile. The measured portable executable version must supply
 // whole-run identity, and comparison is byte-exact; macOS parser cases cannot prove this decision.

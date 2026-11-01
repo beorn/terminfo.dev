@@ -327,6 +327,12 @@ function muxFixtureMatches(run: LoadedRun, attachment: ReturnType<typeof parseMu
         `Darwin mux run ${run.runId} cites owner launch receipt ${attachment.receiptSha256} but names no outer app run`,
       )
     }
+    if (!isDarwin(run.subject.os) || !isDarwin(run.outerApp.subject.os)) {
+      throw new ReceiptRefusal(
+        "mux-attachment-invalid",
+        `Darwin mux run ${run.runId} cites a darwin owner launch receipt but reports os ${run.subject.os ?? "unknown"} and outer os ${run.outerApp.subject.os ?? "unknown"}`,
+      )
+    }
     const source = run.outerApp.rawReplies["collector.outerLaunch"]
     if (source === undefined) {
       throw new ReceiptRefusal(
