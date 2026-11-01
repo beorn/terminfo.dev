@@ -56,6 +56,7 @@ function viewportModel(options: {
     return { viewportOffset: viewportTop, totalLines: rows, screenLines: screenRows }
   }
   return {
+    backendName: "scripted-model",
     kind: "live",
     cols: 80,
     capabilities: {

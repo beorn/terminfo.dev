@@ -60,6 +60,7 @@ test("DECSTR retains unknown after-state instead of claiming a measured reset", 
 
 function headless(overrides: Partial<LibProbeSource> = {}): LibProbeSource {
   return {
+    backendName: "scripted-model",
     kind: "live",
     cols: 80,
     feed() {},

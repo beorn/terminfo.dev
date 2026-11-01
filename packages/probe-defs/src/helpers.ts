@@ -1224,7 +1224,8 @@ export function decrpmModeProbe(
 /**
  * The headless arm of a DECRQM mode criterion (#30543): the engine's own DECRPM reply, read by the same parser and
  * graded by the same decrpmResult as the app arm, whenever the adapter delivers one; otherwise the review branch.
- * The adapter's getMode value rides along as context only, never as evidence.
+ * Default callers retain getMode as context only. The six-mode requireReadback opt-in requires the
+ * engine's set/reset reply pair and independently agreeing adapter reads; a binding gap stays TODO.
  * The branch keys on the observed reply, never on an engine name.
  */
 export function headlessDecrpmArm(
@@ -1258,7 +1259,8 @@ export function headlessDecrpmArm(
         const response = JSON.stringify(state)
         const setPs = decrpmPs(decrpmReplyPattern(modeNum).exec(setReply)?.[1])
         const resetPs = decrpmPs(decrpmReplyPattern(modeNum).exec(resetReply)?.[1])
-        const presentation = modeNum === 4 ? "; smooth-scroll presentation unmeasured in lib arm" : ""
+        const facet = modeNum === 4 ? "smooth-scroll presentation unmeasured in lib arm" : modeUnmeasuredFacet(modeNum)
+        const presentation = facet === undefined ? "" : `; ${facet}`
         if (modeNum === 4 && insertBefore !== null && insertAfter !== null && insertBefore !== insertAfter) {
           const note = `DEC private4 changed ANSI insertMode; engine conflation (32002, vterm screen.ts:2941 / vt220 screen.ts:472)${presentation}`
           return {
@@ -1318,7 +1320,7 @@ export function headlessDecrpmArm(
             tests: [{ id: "criterion", status: "test-todo", reason }],
           }
         }
-        const note = `DECRPM mode ${modeNum}: set/reset replies and getMode agree${presentation}; ${decrpmResult(setPs, modeNum).note ?? "mode recognition measured"}`
+        const note = `DECRPM mode ${modeNum}: set/reset replies and getMode agree${presentation}`
         return {
           pass: true,
           response,
@@ -1358,6 +1360,16 @@ export function headlessDecrpmArm(
   }
 }
 
+function modeUnmeasuredFacet(modeNum: number): string | undefined {
+  return modeNum === 2031
+    ? "scheme-change report (CSI ? 997 ; Ps n, unsolicited) unmeasured; recognition measured"
+    : modeNum === 5
+      ? "presentation (inverted frame) unmeasured; protocol measured"
+      : modeNum === 2026
+        ? "presentation (tearing, scroll cadence) unmeasured; protocol measured"
+        : undefined
+}
+
 const DECRPM_WORDS: Record<DecrpmPs, string> = {
   0: "not recognized",
   1: "set",
@@ -1384,14 +1396,7 @@ export function decrpmResult(ps: DecrpmPs | null, modeNum: number): ProbeCallbac
   }
   const reading = decrpmReading(ps)
   // CTO 62ab5adc: modes 5, 2026 and 2031 grade protocol recognition; their named effects remain unmeasured.
-  const unmeasuredFacet =
-    modeNum === 2031
-      ? "scheme-change report (CSI ? 997 ; Ps n, unsolicited) unmeasured; recognition measured"
-      : modeNum === 5
-        ? "presentation (inverted frame) unmeasured; protocol measured"
-        : modeNum === 2026
-          ? "presentation (tearing, scroll cadence) unmeasured; protocol measured"
-          : undefined
+  const unmeasuredFacet = modeUnmeasuredFacet(modeNum)
   if (ps === 0) {
     if (unmeasuredFacet) {
       const note = `DECRPM mode ${modeNum}: ${reading}; ${unmeasuredFacet}`

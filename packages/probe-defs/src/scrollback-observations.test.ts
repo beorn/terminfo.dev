@@ -14,6 +14,7 @@ import { createSemanticSurface } from "./testing/semantic-surface.ts"
 
 function headless(overrides: Partial<LibProbeSource> = {}): LibProbeSource {
   return {
+    backendName: "scripted-model",
     kind: "live",
     cols: 61,
     feed() {},

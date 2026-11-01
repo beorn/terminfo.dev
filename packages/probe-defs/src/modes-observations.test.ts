@@ -18,6 +18,7 @@ import type {
 
 // The existing mode contract exercises app replies; it misses these library
 // callbacks retaining presentation reviews even when the engine answers DECRPM.
+// S8 requires the mutable reply pair and independent mode reads; presentation stays unmeasured.
 test.each([
   ["modes.reverse-video", 5, "presentation (inverted frame) unmeasured; protocol measured"],
   ["modes.synchronized-output", 2026, "presentation (tearing, scroll cadence) unmeasured; protocol measured"],
@@ -26,20 +27,25 @@ test.each([
     2031,
     "scheme-change report (CSI ? 997 ; Ps n, unsolicited) unmeasured; recognition measured",
   ],
-] as const)("%s library criterion grades its own DECRPM reply", (id, mode, facet) => {
+] as const)("%s library criterion retains its strict roundtrip and unmeasured facet", (id, mode, facet) => {
   const definition = modesProbes.find((entry) => entry.id === id)
   if (!definition?.lib) throw new Error(`Missing library callback for ${id}`)
   for (const ps of [1, 2, 3, 4, 0, null] as const) {
     const queries: string[] = []
+    let enabled = false
     const reply = ps === null ? "" : `\x1b[?${mode};${ps}$y`
+    const resetReply = ps === null ? "" : `\x1b[?${mode};2$y`
     const source = libProbeSource({
       cols: 80,
-      feed() {},
+      feed(sequence) {
+        if (sequence === `\x1b[?${mode}h`) enabled = true
+        if (sequence === `\x1b[?${mode}l`) enabled = false
+      },
       feedCapture(sequence) {
         queries.push(sequence)
-        return sequence === `\x1b[?${mode}$p` ? reply : ""
+        return sequence === `\x1b[?${mode}$p` ? (enabled ? reply : resetReply) : ""
       },
-      getMode: () => false,
+      getMode: () => enabled,
       getText: () => "",
       getCell() {
         throw new Error("Mode-state criterion must use the engine reply")
@@ -60,19 +66,24 @@ test.each([
         },
       ])
       expect(result.assertions ?? []).toEqual([])
+    } else if (ps === 3) {
+      expect(result.observation?.outcome).toBe("inconclusive")
+      expect(result.tests).toEqual(expect.arrayContaining([expect.objectContaining({ status: "test-todo" })]))
+      expect(result.assertions ?? []).toEqual([])
+      expect(result.note).toContain(facet)
     } else {
       expect(result.observation, `${id}: Ps ${ps}`).toMatchObject({
-        outcome: ps === 0 || ps === 4 ? "unsupported" : "supported",
+        outcome: ps === 1 ? "supported" : "unsupported",
         assertionType: "query_reply",
         note: expect.stringContaining(facet),
       })
       expect(result.note).toContain(facet)
       expect(result.assertions).toMatchObject([
-        { assertionType: "query_reply", kind: ps === 0 || ps === 4 ? "negative" : "positive" },
+        { assertionType: "query_reply", kind: ps === 1 ? "positive" : "negative" },
       ])
-      expect(JSON.parse(result.response!)).toMatchObject({ reply })
+      expect(JSON.parse(result.response!)).toMatchObject({ setReply: reply, resetReply })
     }
-    expect(queries).toEqual([`\x1b[?${mode}$p`])
+    expect(queries).toEqual([`\x1b[?${mode}$p`, `\x1b[?${mode}$p`])
     // Exact source reviews use buffer_state; real replies above retain their
     // query_reply observation and assertions through the dynamic declaration.
     expect(definition.libAssertionType).toBeUndefined()

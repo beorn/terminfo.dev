@@ -33,6 +33,7 @@ function probe(id: string) {
 
 function context(overrides: Partial<LibProbeSource>): LibProbeSource {
   return {
+    backendName: "scripted-model",
     kind: "live",
     cols: 80,
     feed() {},

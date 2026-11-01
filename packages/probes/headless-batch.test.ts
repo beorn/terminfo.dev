@@ -52,6 +52,26 @@ async function backend() {
   return createXtermBackend()
 }
 
+// @failure A real collector source drops backend.name and turns the adapter-binding TODO into an undefined label.
+// @consumer The registered six-mode callback through createLibProbeSource and canonical batch recording.
+test("adapter-binding TODO names the initialized backend", async () => {
+  const definition = registryDefinitions(["modes.synchronized-output"])[0]!
+  const batch = await collectBatch(
+    async () => {
+      const value = createXtermBackend()
+      vi.spyOn(value, "getMode").mockReturnValue(null)
+      return value
+    },
+    "xtermjs",
+    [definition],
+  )
+  expect(batch.ungradedDiagnostics).toEqual({})
+  expect(batch.results).toMatchObject([
+    { status: "test-todo", tests: [{ id: "criterion", reason: "adapter binding xterm syncOutput" }] },
+  ])
+  expect(batch.assertions).toEqual([])
+})
+
 function reflowEvidence(batch: Awaited<ReturnType<typeof collectBatch>>) {
   return JSON.parse(batch.rawReplies["extensions.reflow"]!) as {
     declaredReflow: boolean
@@ -1425,7 +1445,7 @@ test("source-qualified 2026/2031 mixed criteria survive collection and capture p
           { assertionType: "query_reply", kind: id === "modes.synchronized-output" ? "positive" : "negative" },
         ])
         expect(JSON.parse(batch.rawReplies[id]!), id).toMatchObject({
-          reply: id === "modes.synchronized-output" ? "\x1b[?2026;1$y" : "\x1b[?2031;0$y",
+          setReply: id === "modes.synchronized-output" ? "\x1b[?2026;1$y" : "\x1b[?2031;0$y",
         })
       }
     }

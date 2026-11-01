@@ -70,13 +70,19 @@ stable earlier history and the existing cell/cursor consumption controls.
 The reader does not expose bounded zones. Sixel records contain raw payloads and
 DCS start positions; storage does not establish raster rendering or cell geometry.
 
-The library reverse-video, synchronized-output and colour-scheme-reporting cells
-measure mode recognition using the engine's DECRPM reply after enabling the mode.
-Set, reset or permanently set is Supported; unrecognized or permanently reset is
-Unsupported. Silence retains a named TEST TODO. Reverse-video and synchronized
-output name presentation as unmeasured; colour-scheme reporting names the
-scheme-change report as unmeasured. DECSCLM and DECSSCLS retain their independent
-presentation-review paths. The existing application-arm criteria are unchanged.
+The library alternate-scroll, application-keypad, reverse-video, synchronized-output,
+colour-scheme-reporting and DECSCLM cells use the existing DECRPM helper's opt-in
+`requireReadback` criterion. Supported requires Ps1 after set, Ps2 after reset and
+agreeing `getMode` readings. Ps0/2/4 after set is an engine negative. A null or
+mismatched adapter reading retains a criterion TEST TODO named
+`adapter binding <backend.name> <mode>`; the name is display-only and never selects
+a status or route. Existing other DECRPM criteria retain their prior readings.
+Private4 additionally checks that it does not change ANSI `insertMode`; an observed
+flip is engine conflation, independently of its reply (the existing private4 issue32002).
+Presentation remains unmeasured for reverse-video/synchronized-output, the actual
+scheme-change report remains unmeasured for2031, and smooth-scroll presentation
+remains unmeasured in the library arm. DECSSCLS is a speed parameter outside
+`getMode`, retaining its presentation-review path. Application criteria are unchanged.
 
 Both source interfaces carry `readonly kind: ProbeSourceKind` directly. Current runs retain exactly `source: { kind: "live" }` or `{ kind: "trace", trace: { path, sha256 }, captureRunId, captureSuiteId, captureSourceRevision }`. The trace path is relative to the artifact store and contains no parent segment; its SHA256 and capture identities are required. Initialization, sealing and the canonical reader validate and preserve this union without a schema bump. Call-log format/version remain inside the referenced artifact. Historical schema 2/3 bytes and readers are unchanged. This source declaration grants no capture, admission or publication.
 
@@ -568,7 +574,7 @@ The deciding assertion retains the exact raw response; its width summary and any
 reading remain in the observation note. Supported carries a separate positive gate assertion; Unsupported
 retains the gate condition in its compound negative and both readings in raw state, without a positive assertion.
 The original mode width is restored in finally on readback/capture errors. No resize or new observable is manufactured.
-Headless DECSCLM names its missing presentation-timing capture; headless 2031 names its missing host palette actuator
+Headless DECSCLM names smooth-scroll presentation as unmeasured in its mode-state criterion; headless2031 names its missing host palette actuator
 and persistent event listener. Mode recognition or enabled metadata cannot decide those effects.
 
 These run statuses are separate from the catalog's [probe-coverage labels](../../docs/data/probe-status.ts), such as `automated`, `partial` and `manual`, which describe the available test definitions.
