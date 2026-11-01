@@ -249,10 +249,10 @@ The seven host-input library rows (`input.xtest-key`, `input.xtest-click`, `inpu
 This remains a review TODO until an independent `applyCaptureDecision` binds Untestable to that
 exact engine capture. There is no standing class rule, callback grade or change to earlier captures.
 
-Four term mode criteria opt into `decrpmModeProbe`'s set check: reverse video5, synchronized output2026,
-DECSCLM4 and color-scheme reporting2031. Snapshot Ps1/3 is Supported without mutation; Ps0/4 is
-Unsupported without mutation. Snapshot Ps2 sends DECSET, queries again and restores DECRST:
-Ps1/3 is Supported; a retained Ps2 is Unsupported with "recognized but DECSET refused (mode kept reset)".
+Four term mode criteria opt into `decrpmModeProbe`'s set check: reverse video 5, synchronized output 2026,
+DECSCLM 4 and color-scheme reporting 2031. Snapshot Ps 1/3 is Supported without mutation; Ps 0/4 is
+Unsupported without mutation. Snapshot Ps 2 sends DECSET, queries again and restores DECRST:
+Ps 1/3 is Supported; a retained Ps 2 is Unsupported with "recognized but DECSET refused (mode kept reset)".
 No reply is TODO "no DECRPM reply"; an attempted set still restores the reset snapshot.
 These callbacks require the existing disposable-terminal authority. Their limitation is
 "presentation (tearing, scroll cadence, inverted frame) unmeasured; protocol measured".
