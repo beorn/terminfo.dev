@@ -1266,7 +1266,7 @@ const ABSENT_OSC_ENGINES = {
       },
     ],
     sourceCitation:
-      "kitty0.49.2 sourceb2cb871254fbdac19a085188813c8dfb258b95cd kitty/vt-parser.c:546-670 has no cases176/555/710, explicitly ignores440/666, and dispatches3008 to the empty Window.osc_context; official-binary archive SHA256d573618b911e9c461bd421b96c13c74c7f1cb2f1ac9c327818d4ff84366cf5c6; Termless 623e57c8639f0baf09a737a89c8cd6c02da8587d packages/kitty/build/bridge.py:233-251. OSC9/777 binding losses and OSC22 pointer handler are excluded",
+      "kitty0.49.2 sourceb2cb871254fbdac19a085188813c8dfb258b95cd kitty/vt-parser.c:546-670 has no cases176/555/710, explicitly ignores440/666, and dispatches3008 to the empty Window.osc_context; official-binary archive SHA256d573618b911e9c461bd421b96c13c74c7f1cb2f1ac9c327818d4ff84366cf5c6; Termless cb0b686447d88de2481537e97d94f0155070dd18 packages/kitty/build/bridge.py:233-251. OSC9/777 binding losses and OSC22 pointer handler are excluded",
   },
   ghosttyNative: {
     kind: "native",
