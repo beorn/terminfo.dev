@@ -557,11 +557,50 @@ test("source-qualified 2026/2031 mixed criteria survive collection and capture p
     ["xtermjs", backend],
   ] as const) {
     const adapterPackage = `@termless/${name}`
-    const measured = await headlessIdentity.headlessRuntimeIdentity(name, adapterPackage, "js")
-    const instance = await producer()
-    instance.init({ cols: 80, rows: 24 })
-    const identity = { ...measured, adapterSources: headlessIdentity.readAdapterSources(name, instance) }
-    instance.destroy()
+    // Source-audit inputs, not this host's checkout attestation. These pins match the existing
+    // headless-decrpm capturedModeEngines and OSC117 xterm fixtures; standalone CI has no owned vterm.
+    const identity = {
+      kind: "js",
+      runtimeFormat: "js",
+      adapterVersion: "0.10.2",
+      termlessRevision: "8be31bfc35c0359e39a836b1d397f49e7176c97f",
+      ...(name === "vt100"
+        ? ({
+            engineVersion: "0.10.0",
+            resolvedPath: "vendor/vterm/packages/vt100/src/index.ts",
+            integrity: {
+              kind: "source",
+              repository: "git@github.com:beorn/vterm.git",
+              revision: "6cc7eef05cde6a8578479c6cdb480f606758eb2c",
+              treeOid: "d5ee344ab5b971184ba2c43ed60460656340417c",
+              cleanTree: true,
+            },
+            adapterSources: [
+              { path: "packages/vt100/src/index.ts", blobOid: "99833d737402f9d1d8e3e257e3a255d8aa1facc3" },
+              { path: "packages/vt100/src/backend.ts", blobOid: "855dd71fba878d968d16c82846578190b7350eea" },
+            ],
+          } as const)
+        : ({
+            engineVersion: "6.0.0",
+            resolvedPath:
+              "node_modules/.bun/@xterm+headless@6.0.0/node_modules/@xterm/headless/lib-headless/xterm-headless.js",
+            integrity: {
+              kind: "registry",
+              lockIntegrity:
+                "sha512-5Yj1QINYCyzrZtf8OFIHi47iQtI+0qYFPHmouEfG8dHNxbZ9Tb9YGSuLcsEwj9Z+OL75GJqPyJbyoFer80a2Hw==",
+            },
+            adapterSources: [
+              { path: "packages/xtermjs/src/index.ts", blobOid: "550e10110ec2baaf326d2958319b03ee8208feba" },
+              { path: "packages/xtermjs/src/backend.ts", blobOid: "481fe005c5801cbb5e6ba4c8677f577e02122e4e" },
+            ],
+          } as const)),
+    } as const
+    // collectBatch re-reads identity and adapter metadata after init; both use this audit fixture.
+    vi.spyOn(headlessIdentity, "headlessRuntimeIdentity").mockResolvedValue(identity)
+    const carrier = async () => {
+      const value = await producer()
+      return Object.assign(value, { getAdapterSources: () => identity.adapterSources })
+    }
     const manifest = {
       schemaVersion: 4 as const,
       probeHash: "mode-source-composition-fixture",
@@ -578,7 +617,7 @@ test("source-qualified 2026/2031 mixed criteria survive collection and capture p
     })
     const definitions = registryDefinitions(ids)
     for (const definition of definitions) expect(definition.libAssertionType, definition.id).toBeUndefined()
-    const batch = await collectBatch(producer, name, definitions, draft, undefined, {
+    const batch = await collectBatch(carrier, name, definitions, draft, undefined, {
       identity,
       adapterPath: Bun.resolveSync(adapterPackage, fileURLToPath(import.meta.url)),
       adapterPackage,
