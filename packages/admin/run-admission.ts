@@ -70,8 +70,9 @@ export function loadStoredRuns(contentDir: string, catalog: readonly string[]): 
       .sort()) {
       const path = join(suitesDir, file)
       const manifest = parseSuiteManifest(path, readFileSync(path, "utf8"))
-      if (file !== `${manifest.probeHash}.json`)
+      if (file !== `${manifest.probeHash}.json`) {
         throw new Error(`${path}: suite filename does not match ${manifest.probeHash}`)
+      }
       suites.set(manifest.probeHash, manifest)
     }
   }
