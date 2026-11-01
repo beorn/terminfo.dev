@@ -801,6 +801,8 @@ export interface LibProbeSource {
   }
   /** Width read back from the backend after initialization, never inferred from cursor behavior. */
   readonly cols: number
+  /** Controlled engine resize. Production sources always forward the required backend operation. */
+  resize?(cols: number, rows: number): void
   feed(text: string): void
   feedCapture(text: string): string
   /**

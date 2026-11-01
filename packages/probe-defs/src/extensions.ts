@@ -2886,6 +2886,236 @@ function osc0IconTitleResult(
   }
 }
 
+function mainScreenReflow(ctx: LibProbeSource): ProbeCallbackResult {
+  const note = "No controlled resize and cell-content readback to measure reflow"
+  const resizeSource = ctx.resize
+  if (!resizeSource) return notTestedResult(note, { declaredReflow: ctx.capabilities.reflow === true })
+  const initial = { cols: ctx.cols, scrollback: ctx.getScrollback() }
+  const height = initial.scrollback.screenLines
+  if (
+    !Number.isSafeInteger(height) ||
+    height < 8 ||
+    initial.scrollback.totalLines !== height ||
+    initial.scrollback.viewportOffset !== 0
+  ) {
+    return {
+      pass: false,
+      response: JSON.stringify(initial),
+      note: "Reflow fixture needs a fresh bottom main buffer with at least eight screen rows",
+      tests: [
+        {
+          id: "criterion",
+          status: "test-failure",
+          reason: "Reflow fixture has invalid geometry or pre-existing history",
+        },
+      ],
+    }
+  }
+  type Frame = {
+    sampleColumns: number
+    cells: string[][]
+    cursor: ReturnType<LibProbeSource["getCursor"]>
+    scrollback: ReturnType<LibProbeSource["getScrollback"]>
+  }
+  type Phase = {
+    id: string
+    from: number
+    to: number
+    outcome: "reflow" | "preserved-wraps" | "truncated" | "invalid"
+    reason: string
+  }
+  const state = {
+    declaredReflow: ctx.capabilities.reflow === true,
+    initial,
+    fixture: { soft: "ABCDEFGHIJKLMNOPQR", hard: ["HARD-a", "HARD-b"] },
+    actions: [] as Array<
+      | { kind: "feed"; text: string }
+      | { kind: "resize"; cols: number; rows: number }
+      | { kind: "read"; name: string }
+      | { kind: "reset" }
+    >,
+    reads: {} as Record<string, Frame>,
+    phases: [] as Phase[],
+  }
+  const feed = (text: string) => {
+    state.actions.push({ kind: "feed", text })
+    ctx.feed(text)
+  }
+  const resize = (cols: number) => {
+    state.actions.push({ kind: "resize", cols, rows: height })
+    resizeSource.call(ctx, cols, height)
+  }
+  const read = (name: string, sampleColumns: number): Frame => {
+    const scrollback = ctx.getScrollback()
+    const top = scrollback.totalLines - scrollback.screenLines
+    const frame = {
+      sampleColumns,
+      scrollback,
+      cursor: ctx.getCursor(),
+      cells: Array.from({ length: height }, (_, row) =>
+        Array.from({ length: sampleColumns }, (_, col) => ctx.getCell(top + row, col).char),
+      ),
+    }
+    state.reads[name] = frame
+    state.actions.push({ kind: "read", name })
+    return frame
+  }
+  const matches = (frame: Frame, lines: string[]) =>
+    frame.scrollback.screenLines === height &&
+    frame.scrollback.totalLines === height &&
+    frame.scrollback.viewportOffset === 0 &&
+    lines.every((line) => line.length <= frame.sampleColumns) &&
+    frame.cells.every((row, index) => {
+      const expected = lines[index] ?? ""
+      return row.every((char, col) => (col < expected.length ? char === expected[col] : char === "" || char === " "))
+    })
+  const clear = () => feed("\x1b[?1049l\x1b[?7h\x1b[2J\x1b[H")
+  const widthControl = (name: string, columns: number) => {
+    clear()
+    feed("W".repeat(columns) + "Z")
+    return matches(read(name, columns), ["W".repeat(columns), "Z"])
+  }
+  const layout = (columns: number) =>
+    columns === 12 ? ["ABCDEFGHIJKL", "MNOPQR", ...state.fixture.hard] : [state.fixture.soft, ...state.fixture.hard]
+  let primary: { error: unknown } | undefined
+  try {
+    for (const [id, from, to] of [
+      ["main-grow", 12, 20],
+      ["main-shrink", 20, 12],
+    ] as const) {
+      resize(from)
+      if (!widthControl(`${id}.control-before`, from)) {
+        state.phases.push({
+          id,
+          from,
+          to,
+          outcome: "invalid",
+          reason: "Initial width control did not wrap at the requested column",
+        })
+        continue
+      }
+      clear()
+      feed(`${state.fixture.soft}\r\n${state.fixture.hard.join("\r\n")}\r\n`)
+      feed(`\x1b[${height - 2};1H`)
+      const before = read(`${id}.before`, from)
+      const parked =
+        before.cursor.x === 0 &&
+        Number.isSafeInteger(before.cursor.y) &&
+        before.cursor.y >= layout(from).length &&
+        before.cursor.y < height
+      if (!matches(before, layout(from)) || !parked) {
+        state.phases.push({
+          id,
+          from,
+          to,
+          outcome: "invalid",
+          reason: "Soft-wrap and explicit-newline seed cells or cursor exclusion did not qualify",
+        })
+        continue
+      }
+      resize(to)
+      const after = read(`${id}.after`, to)
+      const control = widthControl(`${id}.control-after`, to)
+      const outcome = !control
+        ? "invalid"
+        : matches(after, layout(to))
+          ? "reflow"
+          : matches(
+                after,
+                layout(from).map((line) => line.slice(0, to)),
+              )
+            ? to < from
+              ? "truncated"
+              : "preserved-wraps"
+            : "invalid"
+      const reason = !control
+        ? "Post-resize width control did not wrap at the requested column"
+        : outcome === "invalid"
+          ? "Resize produced neither the reflowed layout nor the expected physical rows clipped to the new width"
+          : outcome === "reflow"
+            ? id === "main-grow"
+              ? "Pre-existing soft wraps joined; explicit newlines and all target characters were preserved"
+              : "The pre-existing long line wrapped at the narrower width; explicit newlines and all target characters were preserved"
+            : outcome === "truncated"
+              ? "Each pre-existing physical row was clipped to the narrower width without reflow; explicit newline rows stayed in place"
+              : "Pre-existing physical wrap boundaries remained with all target characters preserved"
+      state.phases.push({ id, from, to, outcome, reason })
+    }
+  } catch (error) {
+    primary = { error }
+    throw error
+  } finally {
+    const failures: unknown[] = primary ? [primary.error] : []
+    for (const cleanup of [
+      () => resize(initial.cols),
+      () => {
+        state.actions.push({ kind: "reset" })
+        ctx.reset()
+      },
+    ]) {
+      try {
+        cleanup()
+      } catch (error) {
+        failures.push(error)
+      }
+    }
+    if (failures.length > (primary ? 1 : 0)) {
+      const messages = failures.map((error) => (error instanceof Error ? error.message : String(error))).join("; ")
+      throw new AggregateError(failures, `Reflow cleanup failed: ${messages}`, { cause: failures[0] })
+    }
+  }
+  const pending = [
+    ...state.phases.filter((phase) => phase.outcome !== "reflow").map((phase) => `${phase.id}: ${phase.reason}`),
+    "Main-screen phases only; alternate-screen and scrollback reflow are not measured",
+  ].join("; ")
+  const response = JSON.stringify(state)
+  const assertions = state.phases
+    .filter((phase) => phase.outcome !== "invalid")
+    .map((phase) => ({
+      assertionType: "buffer_state" as const,
+      kind: phase.outcome === "reflow" ? ("positive" as const) : ("negative" as const),
+      expected: `${phase.id}: reflow at the new width with conserved content and explicit newline boundaries`,
+      observed: response,
+    }))
+  return {
+    pass: false,
+    response,
+    note: pending,
+    observation: {
+      outcome: "inconclusive",
+      reason: "insufficient-evidence",
+      assertionType: "buffer_state",
+      note: pending,
+    },
+    ...(assertions.length > 0 && { assertions }),
+    tests: [
+      ...state.phases.map((phase) => ({
+        id: phase.id,
+        status:
+          phase.outcome === "invalid"
+            ? ("test-failure" as const)
+            : phase.outcome === "reflow"
+              ? ("supported" as const)
+              : ("unsupported" as const),
+        reason: phase.reason,
+      })),
+      ...(state.phases.every((phase) => phase.outcome !== "invalid") &&
+      new Set(state.phases.map((phase) => phase.outcome === "reflow")).size > 1
+        ? [
+            {
+              id: "criterion",
+              status: "test-failure" as const,
+              reason:
+                "Growth and shrink have different reflow outcomes; the combined main-screen criterion is unresolved",
+            },
+          ]
+        : []),
+      { id: "alternate-screen", status: "test-todo", reason: "Alternate-screen reflow has not been measured" },
+      { id: "scrollback", status: "test-todo", reason: "Scrollback reflow has not been measured" },
+    ],
+  }
+}
+
 export const extensionsProbes: ProbeDefinition[] = [
   // Truecolor — capability flag (termless) or SGR parse check (term)
   {
@@ -3626,22 +3856,17 @@ export const extensionsProbes: ProbeDefinition[] = [
     libAssertionType: "buffer_state",
   },
 
-  // Current wrapping and a declared backend capability do not measure reflow after resize.
-  probe(
-    "extensions.reflow",
-    (ctx) => {
-      const note = "No controlled resize and cell-content readback to measure reflow"
-      return notTestedResult(note, { declaredReflow: ctx.capabilities.reflow === true })
-    },
-    () => {
+  {
+    ...probe("extensions.reflow", mainScreenReflow, () => {
       const note = "No controlled resize and cell-content readback to measure reflow"
       return Promise.resolve<ProbeCallbackResult>({
         pass: false,
         note,
         tests: [{ id: "criterion", status: "test-todo", reason: note }],
       })
-    },
-  ),
+    }),
+    libAssertionType: "buffer_state",
+  },
 
   // Semantic prompts (OSC 133)
   probe(

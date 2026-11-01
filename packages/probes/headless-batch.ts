@@ -369,6 +369,9 @@ export function createLibProbeSource(
     kind: "live",
     ...(runtimeIdentity && { runtimeIdentity }),
     cols,
+    resize(cols, rows) {
+      backend.resize(cols, rows)
+    },
     getHyperlinkAt: readLink,
     getDefaultColors: readDefaultColors,
     getIconLabel: readIconLabel,
