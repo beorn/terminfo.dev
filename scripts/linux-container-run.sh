@@ -7,6 +7,66 @@ set -euo pipefail
 # 180s attach SIGTERM'd wezterm at 177s before classify. Do not split these.
 PROBE_BATCH_TIMEOUT_SECONDS=600
 
+# Calibrate the source face independently of the terminal. A missing proof is a named tool gap,
+# never an engine grade. The private fontconfig has exactly one immutable file to prevent fallback.
+prepare_font_control() {
+  local output=$1 family=$2
+  shift 2
+  local font='' font_sha='' matched='' pin='' config='' version='' reason='' status=test-todo
+  local sample='!= -> => <= ==' args
+  mkdir -p "$output/font-source"
+  : > "$output/font-on.json"
+  : > "$output/font-off.json"
+  : > "$output/font-control.stderr"
+  : > "$output/fontconfig.xml"
+  args=$(jq -cn --args '$ARGS.positional' -- "$@")
+  if ! font=$(fc-match -f '%{file}\n' "$family:style=Regular" 2>> "$output/font-control.stderr"); then
+    reason="Font control32062: fc-match failed for $family"
+  elif [[ ! -r "$font" ]]; then
+    reason="Font control32062: selected font file is missing: $font"
+  else
+    font=$(readlink -f "$font")
+    font_sha=$(sha256sum "$font" | cut -d ' ' -f 1)
+    pin="$output/font-source/face.ttf"
+    ln -s "$font" "$pin"
+    config="$output/fontconfig.xml"
+    printf '<fontconfig><dir>%s</dir><cachedir>%s</cachedir></fontconfig>\n' \
+      "$output/font-source" "$output/font-cache" > "$config"
+    export FONTCONFIG_FILE="$config"
+    if ! matched=$(fc-match -f '%{file}\n' "$family:style=Regular" 2>> "$output/font-control.stderr"); then
+      reason='Font control32062: private fontconfig lookup failed'
+    elif [[ "$(readlink -f "$matched")" != "$font" ]]; then
+      reason='Font control32062: private fontconfig did not resolve the exact pinned file'
+    elif ! command -v hb-shape > /dev/null; then
+      reason='Font control32062: missing declared hb-shape utility'
+    elif ! version=$(hb-shape --version 2>> "$output/font-control.stderr"); then
+      reason='Font control32062: HarfBuzz version lookup failed'
+    elif ! hb-shape --output-format=json --no-glyph-names --features=liga=1,calt=1 \
+        "$font" "$sample" > "$output/font-on.json" 2>> "$output/font-control.stderr" ||
+      ! hb-shape --output-format=json --no-glyph-names --features=liga=0,calt=0 \
+        "$font" "$sample" > "$output/font-off.json" 2>> "$output/font-control.stderr"; then
+      reason='Font control32062: HarfBuzz shaping failed; retained stdout and stderr'
+    elif ! jq -e -s 'length == 2
+        and all(.[]; type == "array" and length > 0 and all(.[]; (.g | type) == "number"))
+        and ((.[0] | map(.g)) != (.[1] | map(.g)))' \
+        "$output/font-on.json" "$output/font-off.json" > /dev/null 2>> "$output/font-control.stderr"; then
+      reason='Font control32062: no proven ligature glyph-sequence difference with liga/calt on versus off'
+    else
+      status=source-capable
+    fi
+  fi
+  if [[ -n "$reason" ]]; then printf '%s; font remains TEST TODO, no typed review\n' "$reason" >&2; fi
+  jq -n --arg status "$status" --arg reason "$reason" --arg family "$family" --arg sample "$sample" \
+    --arg path "$font" --arg sha "$font_sha" --arg pin "$pin" --arg config "$config" --arg matched "$matched" \
+    --argjson args "$args" --rawfile configBytes "$output/fontconfig.xml" \
+    --arg version "$version" --rawfile on "$output/font-on.json" \
+    --rawfile off "$output/font-off.json" --rawfile stderr "$output/font-control.stderr" '
+    {status:$status,reason:$reason,family:$family,sample:$sample,source:{path:$path,sha256:$sha},
+      launch:{args:$args,path:$pin,fontconfig:$config,fontconfigBytes:$configBytes,matched:$matched},
+      harfbuzz:{version:$version,featuresOn:"liga=1,calt=1",featuresOff:"liga=0,calt=0",on:$on,off:$off,stderr:$stderr}}
+    ' > "$output/font.txt"
+}
+
 # The same file is copied into the content-addressed runner input and serves
 # as the container entry point. This is execution tooling, not a probe engine.
 compose_receipt() {
@@ -378,7 +438,7 @@ if [[ "${1:-}" == "--inside" ]]; then
     kitty)
       target_launch_args=(--config NONE --class "terminfo-$target_id-container-daemon"
         -o remember_window_size=no -o initial_window_width=800 -o initial_window_height=600
-        -o 'font_family=DejaVu Sans Mono' -o font_size=16)
+        -o 'font_family=JetBrains Mono' -o font_size=16)
       # kitty --version prints one line, "kitty 0.49.2 created by Kovid Goyal": the version is the
       # SECOND word, so the default last-word parse would read "Goyal" and refuse the run (27929 D1).
       parse_version() {
@@ -425,7 +485,7 @@ if [[ "${1:-}" == "--inside" ]]; then
       # configuration error and opens a SECOND owned window, which the one-window check below
       # refuses. Measured 2026-10-07 in ghostty-visual-default-image: `--window-title=` -> 2 visible
       # owned windows, `--title=` -> exactly 1. (27892)
-      target_launch_args=(--font-family='DejaVu Sans Mono' --font-size=16
+      target_launch_args=(--font-family='JetBrains Mono' --font-size=16
         --title="terminfo-$target_id-container-daemon")
       target_command_lead=(-e)
       # Measured 2026-10-07 in ghostty-visual-default-image: XTVERSION "ghostty 1.3.1", DA1 "?62;...".
@@ -543,7 +603,10 @@ if [[ "${1:-}" == "--inside" ]]; then
   # several numbers is refused by name. The line kept is the one parse_version reads, and the full
   # report stays in /out/executable-version.txt and in the app's own daemon log.
   executable_version=$(head -n 1 /out/executable-version.txt)
-  fc-match -f '%{family} | %{file}\n' 'DejaVu Sans Mono' > /out/font.txt
+  case "$target_id" in
+    kitty|ghostty) prepare_font_control /out 'JetBrains Mono' "${target_launch_args[@]}" ;;
+    *) fc-match -f '%{family} | %{file}\n' 'DejaVu Sans Mono' > /out/font.txt ;;
+  esac
 
   xvfb_pid=
   helper_pid=

@@ -19,6 +19,7 @@ import {
   readdirSync,
   realpathSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs"
 import { tmpdir } from "node:os"
@@ -83,6 +84,154 @@ beforeEach(() => {
 
 afterEach(() => {
   rmSync(dir, { recursive: true, force: true })
+})
+
+// #32062: argument-only coverage misses an unexecuted or incorrectly calibrated font receipt.
+// Owned tool doubles test producer mechanics, without claiming actual font shaping support.
+type FontControlReceipt = {
+  status: string
+  reason: string
+  sample: string
+  source: { path: string; sha256: string }
+  launch: { args: string[]; path: string; fontconfig: string; fontconfigBytes: string }
+  harfbuzz: { version: string; on: string; off: string; stderr: string }
+}
+const fontGlyphIds = (raw: string) => (JSON.parse(raw) as { g: number }[]).map((glyph) => glyph.g)
+
+function fontControl(scenario: "capable" | "positions-only" | "missing" | "failed") {
+  const root = join(dir, scenario),
+    bin = join(root, "bin"),
+    output = join(root, "out")
+  mkdirSync(bin, { recursive: true })
+  mkdirSync(output)
+  for (const tool of [
+    "jq",
+    "sha256sum",
+    "cut",
+    "readlink",
+    "mkdir",
+    "ln",
+  ]) {
+    const found = spawnSync("bash", ["-c", 'command -v "$1"', "_", tool], { encoding: "utf8" })
+    if (found.status !== 0) throw new Error(`Missing declared test utility ${tool}: ${found.stderr}`)
+    symlinkSync(found.stdout.trim(), join(bin, tool))
+  }
+  const font = join(root, "JetBrainsMono-Regular.ttf"),
+    log = join(root, "hb-args.txt")
+  writeFileSync(font, "synthetic exact font bytes; not a font-capability claim")
+  const executable = (name: string, body: string) => {
+    const path = join(bin, name)
+    writeFileSync(path, `#!/usr/bin/bash\n${body}\n`)
+    chmodSync(path, 0o755)
+  }
+  executable(
+    "fc-match",
+    String.raw`
+for arg in "$@"; do
+  case "$arg" in
+    *'%{family}'*'%{file}'*) printf 'JetBrains Mono | %s\n' "$FIXTURE_FONT"; exit 0;;
+    *'%{file}'*) printf '%s\n' "$FIXTURE_FONT"; exit 0;;
+    *'%{family}'*) printf 'JetBrains Mono\n'; exit 0;;
+  esac
+done
+exit 2`,
+  )
+  executable("fc-cache", "exit 0")
+  if (scenario !== "missing") {
+    executable(
+      "hb-shape",
+      String.raw`
+if [[ "$*" == *--version* ]]; then printf 'hb-shape fixture-version\n'; exit 0; fi
+printf '%s\n' "$*" >> "$FIXTURE_HB_LOG"
+if [[ "$FIXTURE_SCENARIO" == failed ]]; then echo 'fixture HB failure 41' >&2; exit 41; fi
+if [[ "$*" == *liga=1,calt=1* ]]; then
+  if [[ "$FIXTURE_SCENARIO" == capable ]]; then printf '[{"g":501,"cl":0,"ax":20}]\n'
+  else printf '[{"g":17,"cl":0,"ax":999,"dx":4}]\n'; fi
+else printf '[{"g":17,"cl":0,"ax":10,"dx":0}]\n'; fi`,
+    )
+  }
+  const args = ["--config", "NONE", "--override", "font_family=JetBrains Mono"]
+  const result = spawnSync(
+    "/usr/bin/bash",
+    [
+      "-c",
+      String.raw`
+source "$1"
+shift
+output=$1
+shift
+prepare_font_control "$output" "JetBrains Mono" "$@"
+printf '%s' "$FONTCONFIG_FILE" > "$output/exported-fontconfig.txt"
+`,
+      "_",
+      launcher,
+      output,
+      ...args,
+    ],
+    {
+      encoding: "utf8",
+      env: { ...process.env, PATH: bin, FIXTURE_FONT: font, FIXTURE_HB_LOG: log, FIXTURE_SCENARIO: scenario },
+    },
+  )
+  return { result, output, font, args, log }
+}
+
+it("font control retains capable glyph IDs, exact font hash and the actual private launch pin", () => {
+  const fixture = fontControl("capable")
+  expect(fixture.result.status, fixture.result.stderr).toBe(0)
+  const receipt = JSON.parse(readFileSync(join(fixture.output, "font.txt"), "utf8")) as FontControlReceipt
+  expect(receipt.status).toBe("source-capable")
+  expect(receipt.source).toMatchObject({
+    path: realpathSync(fixture.font),
+    sha256: createHash("sha256").update(readFileSync(fixture.font)).digest("hex"),
+  })
+  expect(receipt.sample).toBe("!= -> => <= ==")
+  expect(receipt.launch.args).toEqual(fixture.args)
+  expect(realpathSync(receipt.launch.path)).toBe(realpathSync(fixture.font))
+  expect(readFileSync(join(fixture.output, "exported-fontconfig.txt"), "utf8")).toBe(receipt.launch.fontconfig)
+  const xml = readFileSync(receipt.launch.fontconfig, "utf8")
+  expect(receipt.launch.fontconfigBytes).toBe(xml)
+  expect(xml).not.toContain("<include")
+  const fontDirs = [...xml.matchAll(/<dir(?:\s[^>]*)?>([^<]+)<\/dir>/g)].map((match) => match[1]!)
+  expect(fontDirs).toHaveLength(1)
+  expect(readdirSync(fontDirs[0]!)).toEqual([receipt.launch.path.split("/").at(-1)])
+  expect(receipt.harfbuzz.version).toContain("fixture-version")
+  expect(fontGlyphIds(receipt.harfbuzz.on)).toEqual([501])
+  expect(fontGlyphIds(receipt.harfbuzz.off)).toEqual([17])
+  const calls = readFileSync(fixture.log, "utf8")
+  for (const argument of [
+    fixture.font,
+    "--output-format=json",
+    "--no-glyph-names",
+    "--features=liga=1,calt=1",
+    "--features=liga=0,calt=0",
+    receipt.sample,
+  ]) {
+    expect(calls).toContain(argument)
+  }
+})
+
+it("font control keeps different positions with unchanged glyph IDs TEST TODO", () => {
+  const fixture = fontControl("positions-only")
+  expect(fixture.result.status, fixture.result.stderr).toBe(0)
+  const receipt = JSON.parse(readFileSync(join(fixture.output, "font.txt"), "utf8")) as FontControlReceipt
+  expect(receipt.status).toBe("test-todo")
+  expect(receipt.reason).toMatch(/glyph|substitut|ligatur/i)
+  expect(receipt.harfbuzz.on).not.toBe(receipt.harfbuzz.off)
+  expect(fontGlyphIds(receipt.harfbuzz.on)).toEqual(fontGlyphIds(receipt.harfbuzz.off))
+})
+
+it("missing or failed HarfBuzz retains a named TEST TODO receipt instead of aborting or grading an engine", () => {
+  for (const scenario of ["missing", "failed"] as const) {
+    const fixture = fontControl(scenario)
+    expect(fixture.result.status, fixture.result.stderr).toBe(0)
+    const receipt = JSON.parse(readFileSync(join(fixture.output, "font.txt"), "utf8")) as FontControlReceipt
+    expect(receipt.status).toBe("test-todo")
+    expect(receipt.reason).toMatch(/hb-shape|HarfBuzz|missing|failed/i)
+    if (scenario === "failed") expect(receipt.harfbuzz.stderr).toContain("fixture HB failure 41")
+    expect(receipt).not.toHaveProperty("observation")
+    expect(receipt).not.toHaveProperty("assertions")
+  }
 })
 
 // The producer must bind disposable authority to the mux without relabeling Kitty's

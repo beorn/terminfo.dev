@@ -275,6 +275,16 @@ reason names each negative or invalid phase and that phase's reason. Remaining f
 - Unicode, cursor-on-wrapped-line cases and terminal-app resize remain unmeasured; this ASCII
   main-screen slice grants no broader support, exact-run decision, seal or admission.
 
+For Linux Kitty/Ghostty font-ligature review, the launcher pins one exact font file through a private
+fontconfig directory. Its receipt retains that file's SHA256, launch arguments and HarfBuzz glyph
+sequences for `!= -> => <= ==` with liga/calt on and off. A glyph-ID difference proves source-face
+capability independently of the renderer; position differences alone do not. The collector retains
+the validated `fixture.font` bytes as `collector.fontSource`, referenced by the existing review test
+so the current capture binding includes their hash. With this proof, spaced-control and contiguous
+target frames decide Supported or Unsupported by review. Missing or inconclusive proof leaves
+Test TODO naming font control; it writes no typed review and never means Untestable on a pixel arm.
+This does not change earlier captures or xterm's rendering pin.
+
 Callbacks currently perform I/O and judge it in the same implementation. There is no general persisted callback transcript or independently replayable assertion API supplied by this package.
 
 The five `AssertionType` values classify an actually retained deciding observation: `query_reply`, `buffer_state`, `screenshot`, `input_bytes` and `clipboard`. Pixel versus text-cells capture payloads and positive versus negative assertion polarity remain separate facts. An OSC 52 write decided by independent clipboard readback is `clipboard`; paste decided by `readInput` is `input_bytes`, including its existing control/report envelope and performed action.
