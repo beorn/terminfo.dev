@@ -1232,10 +1232,10 @@ const ABSENT_OSC_ENGINES = {
     runtimeFormat: "wasm",
     engineVersion: "0.3.3",
     adapterVersion: "0.10.2",
-    binarySha256: "5937bd79139ee5856bcf1bd619cc44fcd2d750d3def3066a74956678cdaaaeb2",
+    binarySha256: "7ebe1b994b58ca867dcd19e9cdeb10b8839b6c1f0dbdea024f875a9f57560a23",
     codes: [8, 9, 22, 176, 440, 555, 666, 710, 777, 3008],
     sourceCitation:
-      "libvterm 9d6d2112335080312ef8c36667fa717ded4f7daf/v0.3.3 src/state.c:1777-1808 handles OSC 0/1/2/52 only; Termless 2d97417328b7b1d086f9396b9a1731216ed134cc packages/libvterm/build/flat-api.c and src/backend.ts install no OSC fallback",
+      "libvterm 9d6d2112335080312ef8c36667fa717ded4f7daf/v0.3.3 src/state.c:1777-1808 handles OSC 0/1/2/52 only; Termless 37c3e9af11f59259ee200633df3c57bc28c34f90 packages/libvterm/build/flat-api.c installs output and OSC52 selection callbacks only; src/backend.ts forwards native input and installs no OSC fallback",
   },
   ghostty: {
     kind: "source",

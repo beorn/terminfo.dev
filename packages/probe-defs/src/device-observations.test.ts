@@ -699,7 +699,7 @@ describe("window-operation qualification", () => {
     ["ce01cd0d1ae000dd88948f3817924cc85303874070cab39430967ebdf14877f3", "stream_handler.zig:343-346"],
     ["5c38594a17329b24e826f785d3156d6e498490517835f12b0730eeab2fc63da7", "stream_handler.zig:343-346"],
     ["d80a8110258a124fb6ff52a6fe149b8e39b5180d986907cc9fb7dc9143c3f3d9", "stream_handler.zig:343-346"],
-    ["5937bd79139ee5856bcf1bd619cc44fcd2d750d3def3066a74956678cdaaaeb2", "src/state.c:978"],
+    ["7ebe1b994b58ca867dcd19e9cdeb10b8839b6c1f0dbdea024f875a9f57560a23", "src/state.c:978"],
     ["0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3", "src/perform.rs:132-156"],
     ["0f56a805793d7d829daa617f1323aacff0d73fe868747b0d077c6af315e2aab8", "src/terminalstate/mod.rs:2090-2095"],
   ] as const)(

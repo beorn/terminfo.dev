@@ -107,13 +107,13 @@ const auditedArtifacts: readonly HeadlessRuntimeIdentity[] = [
     },
     loadedBinary: {
       path: "/relocated/libvterm.wasm",
-      sha256: "5937bd79139ee5856bcf1bd619cc44fcd2d750d3def3066a74956678cdaaaeb2",
+      sha256: "7ebe1b994b58ca867dcd19e9cdeb10b8839b6c1f0dbdea024f875a9f57560a23",
     },
     adapterSources: [
       { path: "packages/libvterm/src/index.ts", blobOid: "2b4708b1081e701b99893ca055ded781dc46cf25" },
-      { path: "packages/libvterm/src/backend.ts", blobOid: "6ae281ac2862dfe7fe79e0bd144f9343756659bf" },
+      { path: "packages/libvterm/src/backend.ts", blobOid: "caa5dc6c4ac4e3dac45977466919d2c1dcd3e851" },
       { path: "packages/libvterm/src/wasm-bindings.ts", blobOid: "2bbd4d5cf59b8d53db8f5c0329d2ed7853c43e45" },
-      { path: "packages/libvterm/wasm/libvterm.js", blobOid: "973341a8e2303d25cb17f1a36d491aad6c55b3a1" },
+      { path: "packages/libvterm/wasm/libvterm.js", blobOid: "1e784be87614ab924b96844009919b7c21ce150e" },
     ],
   },
 ]
