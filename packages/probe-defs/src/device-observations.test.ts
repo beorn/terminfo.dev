@@ -758,12 +758,12 @@ describe("window-operation qualification", () => {
   test.each([
     [
       "vendor/vterm/packages/vt100/src/index.ts",
-      "97f1da77dea90f664aeb678b919a35673f893ef1",
+      "d5ee344ab5b971184ba2c43ed60460656340417c",
       "packages/vt100/src/screen.ts:251-358",
     ],
     [
       "vendor/vterm/packages/vt220/src/index.ts",
-      "307baeacad6171889503303135f6f930aab04b2e",
+      "9a320c4d5cd0e0b60bb2e6ea4f020ce5eb54ae53",
       "packages/vt220/src/screen.ts:305-428",
     ],
   ] as const)(
@@ -773,14 +773,14 @@ describe("window-operation qualification", () => {
         const baseIdentity = {
           kind: "js" as const,
           runtimeFormat: "js" as const,
-          engineVersion: "0.9.0",
+          engineVersion: "0.10.0",
           adapterVersion: "0.10.2",
           termlessRevision: "d5e6248bfb080c3065f81b78c45bdfe1b37c06d6",
           resolvedPath,
           integrity: {
             kind: "source" as const,
             repository: "git@github.com:beorn/vterm.git",
-            revision: "f6d3f26b52dc46e54a76e4a2e21647fd3cf26edb",
+            revision: "6cc7eef05cde6a8578479c6cdb480f606758eb2c",
             treeOid,
             cleanTree: true,
           },
@@ -1071,12 +1071,12 @@ const geometryRuntime = {
   integrity: {
     kind: "source",
     repository: "git@github.com:beorn/vterm.git",
-    revision: "f6d3f26b52dc46e54a76e4a2e21647fd3cf26edb",
-    treeOid: "24434d10612d8da4efb697ea39ae21f005477fe6",
+    revision: "6cc7eef05cde6a8578479c6cdb480f606758eb2c",
+    treeOid: "d7bc627e039005ee913b0b244ff9a2ee2235746a",
     cleanTree: true,
   },
   runtimeFormat: "js",
-  engineVersion: "0.9.0",
+  engineVersion: "0.10.0",
 } as const
 const geometryReplies = [
   {
@@ -1175,8 +1175,8 @@ test.each(geometryReplies)("$id reports source tree drift before geometry gradin
 test.each(geometryReplies)("$id distinguishes sibling source entries", ({ id, raw }) => {
   const baseline = callback(id).headless({ feedCapture: () => raw } as unknown as LibProbeSource)
   for (const [engine, treeOid] of [
-    ["vt100", "97f1da77dea90f664aeb678b919a35673f893ef1"],
-    ["vt220", "307baeacad6171889503303135f6f930aab04b2e"],
+    ["vt100", "d5ee344ab5b971184ba2c43ed60460656340417c"],
+    ["vt220", "9a320c4d5cd0e0b60bb2e6ea4f020ce5eb54ae53"],
   ]) {
     const runtimeIdentity = {
       ...geometryRuntime,

@@ -276,19 +276,19 @@ test.each([
       : ({
           kind: "js",
           runtimeFormat: "js",
-          engineVersion: "0.9.0",
+          engineVersion: "0.10.0",
           adapterVersion: "0.10.2",
           termlessRevision: "2".repeat(40),
           adapterSources:
             engine === "vt100"
               ? [
                   { path: "packages/vt100/src/index.ts", blobOid: "99833d737402f9d1d8e3e257e3a255d8aa1facc3" },
-                  { path: "packages/vt100/src/backend.ts", blobOid: "1205e36ffd0fe662d35dad8a41ea2cd55c46f30b" },
+                  { path: "packages/vt100/src/backend.ts", blobOid: "855dd71fba878d968d16c82846578190b7350eea" },
                 ]
               : engine === "vt220"
                 ? [
                     { path: "packages/vt220/src/index.ts", blobOid: "601dd26eb7e753a5396ebdf72f1ef8ee2cc4355f" },
-                    { path: "packages/vt220/src/backend.ts", blobOid: "13b78d6bcf1b7f1635644574358653640c86e79c" },
+                    { path: "packages/vt220/src/backend.ts", blobOid: "1a16d66067bcaf71a2d96900ae046a1601482add" },
                   ]
                 : [
                     { path: "packages/vterm/src/index.ts", blobOid: "cb5719799dcdd5ae24e6fcf0dcad9965035ce54c" },
@@ -298,13 +298,13 @@ test.each([
           integrity: {
             kind: "source",
             repository: "git@github.com:beorn/vterm.git",
-            revision: "f6d3f26b52dc46e54a76e4a2e21647fd3cf26edb",
+            revision: "6cc7eef05cde6a8578479c6cdb480f606758eb2c",
             treeOid:
               engine === "vt100"
-                ? "97f1da77dea90f664aeb678b919a35673f893ef1"
+                ? "d5ee344ab5b971184ba2c43ed60460656340417c"
                 : engine === "vt220"
-                  ? "307baeacad6171889503303135f6f930aab04b2e"
-                  : "24434d10612d8da4efb697ea39ae21f005477fe6",
+                  ? "9a320c4d5cd0e0b60bb2e6ea4f020ce5eb54ae53"
+                  : "d7bc627e039005ee913b0b244ff9a2ee2235746a",
             cleanTree: true,
           },
         } as const)
@@ -334,7 +334,7 @@ test.each([
                   mode === "changed-tree"
                     ? "4".repeat(40)
                     : mode === "wrong-package"
-                      ? "97f1da77dea90f664aeb678b919a35673f893ef1"
+                      ? "d5ee344ab5b971184ba2c43ed60460656340417c"
                       : identity.integrity.treeOid,
                 cleanTree: mode !== "dirty",
               }
@@ -355,7 +355,7 @@ test.each([
         {
           id: "review",
           status: "test-failure",
-          reason: expect.stringContaining(engine === "xtermjs" ? "17a90b65" : "f6d3f26b"),
+          reason: expect.stringContaining(engine === "xtermjs" ? "17a90b65" : "6cc7eef0"),
         },
       ])
       expect(result.observation).toMatchObject({ outcome: "inconclusive", assertionType: "buffer_state" })
@@ -1767,7 +1767,7 @@ test.each([
   },
 )
 
-// Geometry audit re-pinned to f6d3f26b; original runb9697318 used source53a9eb92/tree617ae600.
+// Geometry audit re-pinned to 6cc7eef0; original runb9697318 used source53a9eb92/tree617ae600.
 // Q8 requires independent review of this context limit, never automatic Untestable.
 const geometryRuntime = {
   kind: "js",
@@ -1777,12 +1777,12 @@ const geometryRuntime = {
   integrity: {
     kind: "source",
     repository: "git@github.com:beorn/vterm.git",
-    revision: "f6d3f26b52dc46e54a76e4a2e21647fd3cf26edb",
-    treeOid: "24434d10612d8da4efb697ea39ae21f005477fe6",
+    revision: "6cc7eef05cde6a8578479c6cdb480f606758eb2c",
+    treeOid: "d7bc627e039005ee913b0b244ff9a2ee2235746a",
     cleanTree: true,
   },
   runtimeFormat: "js",
-  engineVersion: "0.9.0",
+  engineVersion: "0.10.0",
 } as const
 const geometryReplies = [
   {
@@ -1881,8 +1881,8 @@ test.each(geometryReplies)("$id reports source tree drift before geometry gradin
 test.each(geometryReplies)("$id distinguishes sibling source entries", ({ id, raw }) => {
   const baseline = callback(id).lib!({ feedCapture: () => raw } as unknown as LibProbeSource)
   for (const [engine, treeOid] of [
-    ["vt100", "97f1da77dea90f664aeb678b919a35673f893ef1"],
-    ["vt220", "307baeacad6171889503303135f6f930aab04b2e"],
+    ["vt100", "d5ee344ab5b971184ba2c43ed60460656340417c"],
+    ["vt220", "9a320c4d5cd0e0b60bb2e6ea4f020ce5eb54ae53"],
   ]) {
     const runtimeIdentity = {
       ...geometryRuntime,

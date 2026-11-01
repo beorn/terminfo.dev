@@ -857,12 +857,12 @@ const VT100_SOURCE_IDENTITY = {
   integrity: {
     kind: "source",
     repository: "git@github.com:beorn/vterm.git",
-    revision: "f6d3f26b52dc46e54a76e4a2e21647fd3cf26edb",
-    treeOid: "97f1da77dea90f664aeb678b919a35673f893ef1",
+    revision: "6cc7eef05cde6a8578479c6cdb480f606758eb2c",
+    treeOid: "d5ee344ab5b971184ba2c43ed60460656340417c",
     cleanTree: true,
   },
   runtimeFormat: "js",
-  engineVersion: "0.9.0",
+  engineVersion: "0.10.0",
 } as const
 
 const withRuntimeIdentity = (context: LibProbeSource, runtimeIdentity: unknown): LibProbeSource =>

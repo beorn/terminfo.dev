@@ -592,7 +592,7 @@ function oscSimpleQueryProbe(id: string, query: string, pattern: RegExp, expecte
               raw,
               noObservable: "Audited vterm headless subject has no physical font cell dimensions",
               sourceCitation:
-                "vterm screen.ts at f6d3f26b: ScreenOptions has no physical font metrics; OSC1337 ReportCellSize and OSC776 deliberately report unknown zero dimensions (#30575)",
+                "vterm screen.ts at 6cc7eef0: ScreenOptions has no physical font metrics; OSC1337 ReportCellSize and OSC776 deliberately report unknown zero dimensions (#30575)",
             })
             if (review) return review
           }
@@ -1176,27 +1176,27 @@ const ABSENT_OSC_ENGINES = {
   vt100: {
     kind: "source",
     runtimeFormat: "js",
-    engineVersion: "0.9.0",
+    engineVersion: "0.10.0",
     repository: "git@github.com:beorn/vterm.git",
-    treeOid: "97f1da77dea90f664aeb678b919a35673f893ef1",
+    treeOid: "d5ee344ab5b971184ba2c43ed60460656340417c",
     codes: [8, 9, 22, 176, 440, 555, 666, 710, 777, 3008],
     sourceCitation:
-      "vt100 f6d3f26b52dc46e54a76e4a2e21647fd3cf26edb packages/vt100/src/screen.ts:504-520 handleOSC switch, cases 0/1/2 only",
+      "vt100 6cc7eef05cde6a8578479c6cdb480f606758eb2c packages/vt100/src/screen.ts:504-520 handleOSC switch, cases 0/1/2 only",
   },
   vt220: {
     kind: "source",
     runtimeFormat: "js",
-    engineVersion: "0.9.0",
+    engineVersion: "0.10.0",
     repository: "git@github.com:beorn/vterm.git",
-    treeOid: "307baeacad6171889503303135f6f930aab04b2e",
+    treeOid: "9a320c4d5cd0e0b60bb2e6ea4f020ce5eb54ae53",
     codes: [8, 9, 22, 176, 440, 555, 666, 710, 777, 3008],
     sourceCitation:
-      "vt220 f6d3f26b52dc46e54a76e4a2e21647fd3cf26edb packages/vt220/src/screen.ts:703-718 handleOSC: no-semicolon return; cases 0/1/2 only",
+      "vt220 6cc7eef05cde6a8578479c6cdb480f606758eb2c packages/vt220/src/screen.ts:703-718 handleOSC: no-semicolon return; cases 0/1/2 only",
   },
   vterm: {
     kind: "source",
     runtimeFormat: "js",
-    engineVersion: "0.9.0",
+    engineVersion: "0.10.0",
     repository: "git@github.com:beorn/vterm.git",
     treeOid: SOURCE_TREE_AUDITS.vterm.treeOid,
     codes: [9, 22, 176, 440, 555, 666, 710, 777, 3008],
@@ -1208,7 +1208,7 @@ const ABSENT_OSC_ENGINES = {
       },
     ],
     sourceCitation:
-      "vterm f6d3f26b52dc46e54a76e4a2e21647fd3cf26edb packages/vterm/src/screen.ts:3596-4055 handleOSC switch",
+      "vterm 6cc7eef05cde6a8578479c6cdb480f606758eb2c packages/vterm/src/screen.ts:3596-4055 handleOSC switch",
   },
   xtermjs: {
     kind: "registry",

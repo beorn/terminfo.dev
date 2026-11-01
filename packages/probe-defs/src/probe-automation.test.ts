@@ -1720,16 +1720,16 @@ describe("OSC 8 link metadata observation", () => {
           {
             kind: "js",
             runtimeFormat: "js",
-            engineVersion: "0.9.0",
+            engineVersion: "0.10.0",
             adapterSources:
               engine === "vt100"
                 ? [
                     { path: "packages/vt100/src/index.ts", blobOid: "99833d737402f9d1d8e3e257e3a255d8aa1facc3" },
-                    { path: "packages/vt100/src/backend.ts", blobOid: "1205e36ffd0fe662d35dad8a41ea2cd55c46f30b" },
+                    { path: "packages/vt100/src/backend.ts", blobOid: "855dd71fba878d968d16c82846578190b7350eea" },
                   ]
                 : [
                     { path: "packages/vt220/src/index.ts", blobOid: "601dd26eb7e753a5396ebdf72f1ef8ee2cc4355f" },
-                    { path: "packages/vt220/src/backend.ts", blobOid: "13b78d6bcf1b7f1635644574358653640c86e79c" },
+                    { path: "packages/vt220/src/backend.ts", blobOid: "1a16d66067bcaf71a2d96900ae046a1601482add" },
                   ],
             adapterVersion: "0.10.2",
             termlessRevision: "8b8664540f365fa0ba1d9b6400d3c4d1a160582c",
@@ -1737,11 +1737,11 @@ describe("OSC 8 link metadata observation", () => {
             integrity: {
               kind: "source",
               repository: "git@github.com:beorn/vterm.git",
-              revision: "f6d3f26b52dc46e54a76e4a2e21647fd3cf26edb",
+              revision: "6cc7eef05cde6a8578479c6cdb480f606758eb2c",
               treeOid:
                 engine === "vt100"
-                  ? "97f1da77dea90f664aeb678b919a35673f893ef1"
-                  : "307baeacad6171889503303135f6f930aab04b2e",
+                  ? "d5ee344ab5b971184ba2c43ed60460656340417c"
+                  : "9a320c4d5cd0e0b60bb2e6ea4f020ce5eb54ae53",
               cleanTree: true,
             },
           },
@@ -2179,7 +2179,7 @@ describe("Alacritty audited OSC source review", () => {
         runtimeIdentity: {
           kind: "js",
           runtimeFormat: "js",
-          engineVersion: "0.9.0",
+          engineVersion: "0.10.0",
           adapterSources: [
             { path: "packages/vterm/src/index.ts", blobOid: "cb5719799dcdd5ae24e6fcf0dcad9965035ce54c" },
             { path: "packages/vterm/src/backend.ts", blobOid: "e7eb83f44a4ae1368cbf7b78ef6783219757002a" },
@@ -2190,8 +2190,8 @@ describe("Alacritty audited OSC source review", () => {
           integrity: {
             kind: "source",
             repository: "git@github.com:beorn/vterm.git",
-            revision: "f6d3f26b52dc46e54a76e4a2e21647fd3cf26edb",
-            treeOid: "24434d10612d8da4efb697ea39ae21f005477fe6",
+            revision: "6cc7eef05cde6a8578479c6cdb480f606758eb2c",
+            treeOid: "d7bc627e039005ee913b0b244ff9a2ee2235746a",
             cleanTree: true,
           },
         },
@@ -2199,7 +2199,7 @@ describe("Alacritty audited OSC source review", () => {
       }),
     )
     expect(result.tests?.[0]?.reason).toBe(
-      "vterm f6d3f26b52dc46e54a76e4a2e21647fd3cf26edb packages/vterm/src/screen.ts:3596-4055 handleOSC switch; screen.ts:3921-3923 notification sink stores every OSC 9 value, with no progress subcode or state interpretation; independent source review required",
+      "vterm 6cc7eef05cde6a8578479c6cdb480f606758eb2c packages/vterm/src/screen.ts:3596-4055 handleOSC switch; screen.ts:3921-3923 notification sink stores every OSC 9 value, with no progress subcode or state interpretation; independent source review required",
     )
   })
 })

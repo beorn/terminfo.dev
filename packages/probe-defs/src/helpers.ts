@@ -29,11 +29,11 @@ import { evidenceRuntimeIdentity } from "./runtime-identity.ts"
 export const ADAPTER_SOURCE_AUDITS = {
   vt100: {
     "packages/vt100/src/index.ts": "99833d737402f9d1d8e3e257e3a255d8aa1facc3",
-    "packages/vt100/src/backend.ts": "1205e36ffd0fe662d35dad8a41ea2cd55c46f30b",
+    "packages/vt100/src/backend.ts": "855dd71fba878d968d16c82846578190b7350eea",
   },
   vt220: {
     "packages/vt220/src/index.ts": "601dd26eb7e753a5396ebdf72f1ef8ee2cc4355f",
-    "packages/vt220/src/backend.ts": "13b78d6bcf1b7f1635644574358653640c86e79c",
+    "packages/vt220/src/backend.ts": "1a16d66067bcaf71a2d96900ae046a1601482add",
   },
   vterm: {
     "packages/vterm/src/index.ts": "cb5719799dcdd5ae24e6fcf0dcad9965035ce54c",
@@ -1521,9 +1521,9 @@ export const SOURCE_TREE_AUDITS = {
   vterm: {
     resolvedPath: "vendor/vterm/packages/vterm/src/index.ts",
     runtimeFormat: "js",
-    engineVersion: "0.9.0",
+    engineVersion: "0.10.0",
     repository: "git@github.com:beorn/vterm.git",
-    treeOid: "24434d10612d8da4efb697ea39ae21f005477fe6",
+    treeOid: "d7bc627e039005ee913b0b244ff9a2ee2235746a",
   },
 } as const
 
@@ -1577,7 +1577,7 @@ export function vtermGeometryReview(
     identity.integrity.kind !== "source" ||
     !identity.integrity.cleanTree ||
     identity.integrity.repository !== SOURCE_TREE_AUDITS.vterm.repository ||
-    identity.integrity.revision !== "f6d3f26b52dc46e54a76e4a2e21647fd3cf26edb" ||
+    identity.integrity.revision !== "6cc7eef05cde6a8578479c6cdb480f606758eb2c" ||
     identity.integrity.treeOid !== SOURCE_TREE_AUDITS.vterm.treeOid
   ) {
     return undefined
