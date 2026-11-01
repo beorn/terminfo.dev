@@ -17,7 +17,7 @@ const context = (): LibProbeSource =>
   ({
     cols: 80,
     rows: 24,
-    capabilities: {},
+    capabilities: { extensions: new Set<string>() },
     feed: () => {},
     feedCapture: () => "$y",
     getMode: () => false,

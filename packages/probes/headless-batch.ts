@@ -7,6 +7,8 @@ import {
   type DefaultColorsExtension,
   type MouseEncodingExtension,
   type OscMetadataExtension,
+  type SemanticMarkExtension,
+  type SixelStorageExtension,
   type ReplyDeliveryExtension,
   type TerminalBackend,
   type WarningExtension,
@@ -356,6 +358,14 @@ export function createLibProbeSource(
   const readCwd = typeof metadata?.getCwd === "function" ? metadata.getCwd.bind(metadata) : undefined
   const readNotifications =
     typeof metadata?.getNotifications === "function" ? metadata.getNotifications.bind(metadata) : undefined
+  const readSemanticMarks =
+    hasExtension<SemanticMarkExtension>(backend, "semantic-marks") && typeof backend.getSemanticMarks === "function"
+      ? backend.getSemanticMarks.bind(backend)
+      : undefined
+  const readSixelImages =
+    hasExtension<SixelStorageExtension>(backend, "sixel-storage") && typeof backend.getSixelImages === "function"
+      ? backend.getSixelImages.bind(backend)
+      : undefined
   const readClipboardState =
     typeof backend.getClipboardState === "function" ? backend.getClipboardState.bind(backend) : undefined
   const declaresMouseEncoding = backend.capabilities.extensions.has("mouse-encoding")
@@ -377,6 +387,8 @@ export function createLibProbeSource(
     getIconLabel: readIconLabel,
     getCwd: readCwd,
     getNotifications: readNotifications,
+    getSemanticMarks: readSemanticMarks,
+    getSixelImages: readSixelImages,
     getClipboardState: readClipboardState,
     feed(text) {
       backend.feed(encoder.encode(text))
