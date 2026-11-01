@@ -292,7 +292,7 @@ test("the harness replays every Modes feature deterministically through DECRPM r
     const probe = modesProbes.find((entry) => entry.id === row.id)
     expect(probe, `missing Modes probe ${row.id}`).toBeDefined()
     if (!probe) continue
-    if (row.id === "modes.decsclm" || row.id === "modes.color-scheme-reporting") {
+    if (row.id === "modes.decsclm") {
       const result = probe.lib!(headless)
       expect(result.criterionBranch, row.id).toBe("headless-observable-review")
       expect(result.tests, row.id).toMatchObject([{ id: "review", status: "test-todo" }])

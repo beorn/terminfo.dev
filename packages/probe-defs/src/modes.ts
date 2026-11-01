@@ -1438,34 +1438,16 @@ export const modesProbes: ProbeDefinition[] = [
   decrpmModeProbe("modes.focus-tracking", 1004, headlessDecrpmArm(1004, "focusTracking")),
 
   // Reverse video
-  decrpmModeProbe(
-    "modes.reverse-video",
-    5,
-    (ctx) => {
-      ctx.feed("\x1b[?5h")
-      const note = "rendered colors (pixels)"
-      return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
-        mode: ctx.getMode("reverseVideo"),
-      })
-    },
-    true,
-  ),
+  {
+    ...decrpmModeProbe("modes.reverse-video", 5, headlessDecrpmArm(5), true),
+    libAssertionType: "query_reply",
+  },
 
   // Synchronized output
-  decrpmModeProbe(
-    "modes.synchronized-output",
-    2026,
-    (ctx) => {
-      ctx.feed("\x1b[?2026h")
-      ctx.feed("Hello")
-      ctx.feed("\x1b[?2026l")
-      const note = "frame timing"
-      return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
-        text: ctx.getText(),
-      })
-    },
-    true,
-  ),
+  {
+    ...decrpmModeProbe("modes.synchronized-output", 2026, headlessDecrpmArm(2026), true),
+    libAssertionType: "query_reply",
+  },
 
   // Origin mode
   ...regionReadbackProbes(modesReadbackRows),
@@ -1985,17 +1967,12 @@ export const modesProbes: ProbeDefinition[] = [
   {
     ...probe(
       "modes.color-scheme-reporting",
-      () => {
-        const note = "Mode 2031 requires a host palette actuator and persistent unsolicited-event listener"
-        return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
-          paletteActuator: false,
-          persistentListener: false,
-        })
-      },
+      headlessDecrpmArm(2031),
       decrpmModeProbe("modes.color-scheme-reporting", 2031, null, true).term,
       "query_reply",
     ),
     termNeedsDisposable: true,
+    libAssertionType: "query_reply",
   },
 
   // XTPUSHSGR — push SGR stack (CSI # {)

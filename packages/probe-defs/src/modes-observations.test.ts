@@ -1,11 +1,12 @@
 /**
- * @failure Mode app probes mutate unsnapshotted state, fail restoration, or confuse reset recognition with enabled protocol state.
+ * @failure Mode probes mutate unsnapshotted state, fail restoration, or discard a library mode-state reply as an unmeasured presentation effect.
  * @level l1
  * @consumer Owned app mode observations and reviewed support cells.
  * @testonly none
  */
 import { expect, test, vi } from "vitest"
 import { modesProbes } from "./modes.ts"
+import { libProbeSource } from "./testing/group-harness.ts"
 import type {
   CaptureRectangle,
   CaptureRequest,
@@ -14,6 +15,61 @@ import type {
   TermProbeSource,
   LibProbeSource,
 } from "./types.ts"
+
+// The existing mode contract exercises app replies; it misses these library
+// callbacks retaining presentation reviews even when the engine answers DECRPM.
+test.each([
+  ["modes.reverse-video", 5, "presentation (tearing, scroll cadence, inverted frame) unmeasured; protocol measured"],
+  [
+    "modes.synchronized-output",
+    2026,
+    "presentation (tearing, scroll cadence, inverted frame) unmeasured; protocol measured",
+  ],
+  ["modes.color-scheme-reporting", 2031, "scheme-change report (DSR ?996n) unmeasured; recognition measured"],
+] as const)("%s library criterion grades its own DECRPM reply", (id, mode, facet) => {
+  const definition = modesProbes.find((entry) => entry.id === id)
+  if (!definition?.lib) throw new Error(`Missing library callback for ${id}`)
+  for (const ps of [1, 2, 0, null] as const) {
+    const queries: string[] = []
+    const reply = ps === null ? "" : `\x1b[?${mode};${ps}$y`
+    const source = libProbeSource({
+      cols: 80,
+      feed() {},
+      feedCapture(sequence) {
+        queries.push(sequence)
+        return sequence === `\x1b[?${mode}$p` ? reply : ""
+      },
+      getMode: () => false,
+      getText: () => "",
+      getCell() {
+        throw new Error("Mode-state criterion must use the engine reply")
+      },
+      getCursor() {
+        throw new Error("Mode-state criterion must use the engine reply")
+      },
+    })
+    const result = definition.lib(source)
+    if (ps === null) {
+      expect(result.tests, `${id}: silence`).toEqual(
+        expect.arrayContaining([expect.objectContaining({ status: "test-todo" })]),
+      )
+      expect(result.assertions ?? []).toEqual([])
+    } else {
+      expect(result.observation, `${id}: Ps ${ps}`).toMatchObject({
+        outcome: ps === 0 ? "unsupported" : "supported",
+        assertionType: "query_reply",
+        note: expect.stringContaining(facet),
+      })
+      expect(result.note).toContain(facet)
+      expect(result.assertions).toMatchObject([
+        { assertionType: "query_reply", kind: ps === 0 ? "negative" : "positive" },
+      ])
+      expect(JSON.parse(result.response!).reply).toBe(reply)
+    }
+    expect(queries).toEqual([`\x1b[?${mode}$p`])
+    expect(definition.libAssertionType).toBe("query_reply")
+  }
+})
 
 function captureSource(
   rows: number,

@@ -9,15 +9,9 @@ import { expect, test } from "vitest"
 import { ALL_PROBES, SEMANTIC_PROMPT_SOURCE_REVIEW } from "./index.ts"
 import type { LibProbeSource } from "./types.ts"
 
-// The 5 scheduled headless features whose raw state is measurable but whose claim is not. The seven DECRQM
-// mode features left this list with #30543: their headless arm grades the engine's own DECRPM reply.
-const notTestedFeatures = [
-  "extensions.osc1-icon",
-  "modes.application-keypad",
-  "modes.reverse-video",
-  "modes.synchronized-output",
-  "sgr.overline",
-]
+// Remaining headless features whose raw state is measurable but whose claim is not.
+// DECRPM mode-state criteria grade the engine's own reply in modes-observations.test.ts.
+const notTestedFeatures = ["extensions.osc1-icon", "modes.application-keypad", "sgr.overline"]
 
 const context = (): LibProbeSource =>
   ({
@@ -75,11 +69,6 @@ const headlessObservableFeatures = [
   ],
   ["modes.decsclm", "DECSCLM requires presentation timing capture", { presentation: false }],
   [
-    "modes.color-scheme-reporting",
-    "Mode 2031 requires a host palette actuator and persistent unsolicited-event listener",
-    { paletteActuator: false, persistentListener: false },
-  ],
-  [
     "extensions.osc8",
     "Adapter (runtime identity unavailable) exposes no OSC 8 URI observer (getHyperlinkAt); link metadata unobservable",
     { chars: [..."ALINKZ"], links: Array.from({ length: 6 }, () => ({ reported: false })) },
@@ -94,8 +83,6 @@ const headlessObservableFeatures = [
     "presentation speed: headless engines paint no frames and expose no scroll-speed state",
     { presentation: false },
   ],
-  ["modes.reverse-video", "rendered colors (pixels)", { mode: false }],
-  ["modes.synchronized-output", "frame timing", { text: "" }],
   [
     "reset.soft",
     "the application-cursor mode (DECCKM) state in the headless getMode readback",
@@ -253,8 +240,8 @@ test.each(headlessStateFeatures)(
   },
 )
 
-test("the 5 headless not-tested features emit named coverage from measured state", () => {
-  expect(notTestedFeatures).toHaveLength(5)
+test("the 3 remaining headless not-tested features emit named coverage from measured state", () => {
+  expect(notTestedFeatures).toHaveLength(3)
   for (const id of notTestedFeatures) {
     const definition = ALL_PROBES.find((probe) => probe.id === id)
     if (!definition?.lib) throw new Error(`missing headless ${id}`)
