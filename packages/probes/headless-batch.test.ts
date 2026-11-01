@@ -244,7 +244,12 @@ test("real vterm metadata reaches both registered callbacks and the batch produc
       const result = registryDefinitions([id])[0]!.lib!(source)
       expect(result.observation, id).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
       expect(result.assertions, id).toMatchObject([{ kind: "positive", observed: result.response }])
-      const observed = JSON.parse(result.response!)
+      const observed = JSON.parse(result.response!) as {
+        first: unknown[]
+        second: unknown[]
+        before: unknown[]
+        secondBefore: unknown[]
+      }
       if (id === "extensions.osc7-cwd") {
         expect(observed).toMatchObject({
           before: "file://localhost/original",
@@ -441,11 +446,11 @@ test("real vterm Sixel storage sharpens the TODO reason without grading renderin
     expect(result.criterionBranch).toBe(HEADLESS_OBSERVABLE_REVIEW)
     expect(result.tests).toMatchObject([{ status: "test-todo" }])
     expect(result.observation).toBeUndefined()
-    expect(JSON.parse(result.response!).storage).toMatchObject({ retained: true })
+    expect(JSON.parse(result.response!)).toMatchObject({ storage: { retained: true } })
     vi.spyOn(source, "getSixelImages").mockReturnValue([])
     const stale = definition.lib!(source)
     expect(stale.tests).toMatchObject([{ status: "test-todo" }])
-    expect(JSON.parse(stale.response!).storage).toMatchObject({ retained: false })
+    expect(JSON.parse(stale.response!)).toMatchObject({ storage: { retained: false } })
     expect(stale.note).not.toBe(result.note)
   } finally {
     value.destroy()

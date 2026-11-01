@@ -435,7 +435,7 @@ test.each([
                   ]
                 : [
                     { path: "packages/vterm/src/index.ts", blobOid: "cb5719799dcdd5ae24e6fcf0dcad9965035ce54c" },
-                    { path: "packages/vterm/src/backend.ts", blobOid: "ae08fca0a071207d6dfc1ec2735ea6b3e72c0e18" },
+                    { path: "packages/vterm/src/backend.ts", blobOid: "308a934578c044ae95feaa29299531d9aa9eb4f7" },
                   ],
           resolvedPath: `vendor/vterm/packages/${engine}/src/index.ts`,
           integrity: {
