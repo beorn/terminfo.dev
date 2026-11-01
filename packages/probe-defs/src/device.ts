@@ -251,13 +251,18 @@ function deviceQuery(spec: DeviceReply): ProbeDefinition {
         (spec.id === "device.xtwinops-14" && /^\x1b\[4;0;0t(?:\x1b\[\?[0-9]+(?:;[0-9]+)*c)?$/.test(raw)) ||
         (spec.id === "device.xtwinops-16" && /^\x1b\[6;0;0t(?:\x1b\[\?[0-9]+(?:;[0-9]+)*c)?$/.test(raw))
       if (spec.id === "device.xtwinops-14" || spec.id === "device.xtwinops-16") {
-        const review = vtermGeometryReview(ctx, zeroGeometry && result.observation?.outcome === "inconclusive", {
-          query: spec.query,
-          raw,
-          noObservable: "Audited vterm headless subject has no font or window pixel geometry",
-          sourceCitation:
-            "vterm screen.ts at 53a9eb9: ScreenOptions has no physical font/window metrics; XTWINOPS14/16 deliberately report unknown zero dimensions (#30575)",
-        })
+        const review = vtermGeometryReview(
+          ctx,
+          zeroGeometry && result.observation?.outcome === "inconclusive",
+          {
+            query: spec.query,
+            raw,
+            noObservable: "Audited vterm headless subject has no font or window pixel geometry",
+            sourceCitation:
+              "vterm screen.ts at 53a9eb9: ScreenOptions has no physical font/window metrics; XTWINOPS14/16 deliberately report unknown zero dimensions (#30575)",
+          },
+          result,
+        )
         if (review) return review
       }
       return hostPixels
