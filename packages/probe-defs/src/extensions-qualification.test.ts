@@ -118,6 +118,115 @@ const auditedArtifacts: readonly HeadlessRuntimeIdentity[] = [
   },
 ]
 
+// #32026: frozen engine and adapter tuples from retained captures. The existing two-artifact
+// checks cover OSC8/alacritty440, so they miss absent rows/codes in this 30-cell source batch.
+const absentOscBatch = [
+  { engine: "libvterm", identity: auditedArtifacts[1]!, codes: [9, 22, 176, 3008, 440, 555, 666, 710, 777] },
+  {
+    engine: "ghostty",
+    identity: {
+      kind: "js",
+      runtimeFormat: "wasm",
+      engineVersion: "0.4.0",
+      adapterVersion: "0.10.2",
+      termlessRevision: "f736cce493439cf9d651297c2a920cb61fa05fb5",
+      resolvedPath: "/fixture/ghostty/index.js",
+      integrity: {
+        kind: "source",
+        repository: "git@github.com:beorn/termless.git",
+        revision: "f736cce493439cf9d651297c2a920cb61fa05fb5",
+        treeOid: "d5302357ba7d86ae224d0b72acefb045e2fe5d81",
+        cleanTree: true,
+      },
+      loadedBinary: {
+        path: "/fixture/ghostty.wasm",
+        sha256: "ce01cd0d1ae000dd88948f3817924cc85303874070cab39430967ebdf14877f3",
+      },
+      adapterSources: [
+        { path: "packages/ghostty/src/index.ts", blobOid: "f4b9d9f3e13cc515b23abc739cab21bf971e8585" },
+        { path: "packages/ghostty/src/backend.ts", blobOid: "a3b02f433481d8635fa737d8f5e049626346f14d" },
+      ],
+    },
+    codes: [176, 3008, 440, 555, 666, 710],
+  },
+  ...[
+    {
+      engine: "vt100Rust",
+      engineVersion: "0.16.2",
+      sha256: "0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3",
+      sourceCommit: "6ffc0df79756fcc259d87131681641606540e512",
+      buildHash: "7ab9ccc7744fbf5ae24c5ebb2748a144817e696f7f93959fa90a335d11646f68",
+      lockSha256: "4cf037e4efa648ca41d08b30ef5c4ce7ada29ad61fcad45a7d1aa97bf55391c6",
+      adapterSources: [
+        { path: "packages/vt100-rust/src/index.ts", blobOid: "3ddb74f3ae1f79bb356952103853232f69211268" },
+        { path: "packages/vt100-rust/src/backend.ts", blobOid: "7586cdcfd6918ee0eb07accec52a3fde141b410d" },
+      ],
+      codes: [9, 22, 176, 3008, 440, 555, 666, 710, 777],
+    },
+    {
+      engine: "kitty",
+      engineVersion: "0.49.2",
+      sha256: "bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886",
+      sourceCommit: "f736cce493439cf9d651297c2a920cb61fa05fb5",
+      buildHash: "88e840e1b8e7f09edf3464ee33df8753fd5107838de15bccb6ea59e0dd6cc9c3",
+      lockSha256: "282d1098337a5705a7c1d13188a74d2fe34565766619e8d6b21a48d5b67451be",
+      adapterSources: [
+        { path: "packages/kitty/src/index.ts", blobOid: "3f207f911646613cdc3d8b04f155f0686a96a077" },
+        { path: "packages/kitty/src/backend.ts", blobOid: "0a7e276a158e9ad9bae547ad92233cf3e777f256" },
+        { path: "packages/kitty/build/bridge.py", blobOid: "c5af1cd5fd0e054a96a603c20ab8278f655b462d" },
+      ],
+      codes: [176, 3008, 440, 555, 666, 710],
+    },
+  ].map(({ engine, engineVersion, sha256, sourceCommit, buildHash, lockSha256, adapterSources, codes }) => ({
+    engine,
+    codes,
+    identity: {
+      kind: "native" as const,
+      engineVersion,
+      adapterVersion: "0.10.2",
+      termlessRevision: "f736cce493439cf9d651297c2a920cb61fa05fb5",
+      loadedBinary: { path: "/fixture/native", sha256 },
+      provenance: { sha256, sourceCommit, buildHash, lockSha256, toolchain: "retained build provenance" },
+      adapterSources,
+    },
+  })),
+] satisfies readonly { engine: string; identity: HeadlessRuntimeIdentity; codes: readonly number[] }[]
+
+test.each(absentOscBatch)(
+  "$engine source-negative OSC batch requires the exact engine, adapter and X control",
+  ({ identity, codes }) => {
+    const features: Record<number, string> = {
+      9: "osc9-progress",
+      22: "osc22-pointer",
+      176: "osc176-app-id",
+      3008: "osc3008-context",
+      440: "osc440-audio",
+      555: "osc555-flash",
+      666: "osc666-termprop",
+      710: "osc710-font-normal",
+      777: "osc777-notify",
+    }
+    for (const code of codes) {
+      const definition = callback(`extensions.${features[code]}`)
+      const run = (runtimeIdentity: HeadlessRuntimeIdentity, char = "X") =>
+        definition.lib!({
+          runtimeIdentity,
+          feed: () => undefined,
+          getCell: () => ({ char }),
+        } as unknown as LibProbeSource)
+      const result = run(identity)
+      // Keep every missing protocol row visible while retaining one identity-contract case per engine.
+      expect.soft(result.criterionBranch, String(code)).toBe("source-negative-review")
+      expect.soft(result.assertions, String(code)).toMatchObject([{ assertionType: "buffer_state", kind: "negative" }])
+      expect(run(identity, "?").assertions, String(code)).toBeUndefined()
+      expect(run({ ...identity, adapterSources: [] }).criterionBranch, String(code)).not.toBe("source-negative-review")
+      expect(run({ ...identity, engineVersion: "wrong" }).criterionBranch, String(code)).not.toBe(
+        "source-negative-review",
+      )
+    }
+  },
+)
+
 test("TERM_FEATURES audit enumerates only files bound by the declared adapter sources", () => {
   for (const [engine, [, path]] of Object.entries(TERM_FEATURES_API_CITATIONS)) {
     const declared = ADAPTER_SOURCE_AUDITS[engine as keyof typeof ADAPTER_SOURCE_AUDITS]

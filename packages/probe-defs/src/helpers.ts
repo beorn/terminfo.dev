@@ -23,7 +23,7 @@ import type {
   LibProbeSource,
   TermProbeSource,
 } from "./types.ts"
-import { replyPathAuditFor, type ReplyPathAudit } from "./reply-path-audit.ts"
+import { replyPathAuditFor } from "./reply-path-audit.ts"
 import { evidenceRuntimeIdentity } from "./runtime-identity.ts"
 
 export const ADAPTER_SOURCE_AUDITS = {
@@ -1173,7 +1173,7 @@ export function decrpmModeProbe(
     id,
     termWrites: "query",
     termAssertionType: "query_reply",
-    lib: termlessFn,
+    lib: termlessFn && ((ctx) => replyPathAudited(id, ctx, termlessFn)),
     async term(ctx) {
       return decrpmResult(await queryDecrpm(ctx, modeNum), modeNum)
     },
@@ -1673,7 +1673,7 @@ function replyPathAudited(
   })
   const measured = lib(recorded)
   if (captures.length === 0 || captures.some(({ reply }) => reply.length > 0)) return measured
-  const review = replyPathReviewResult(id, entry.artifactSha256, entry.audit, captures, measured)
+  const review = replyPathReviewResult(id, entry, captures, measured)
   return measured.hostRecipeCauses ? { ...review, hostRecipeCauses: measured.hostRecipeCauses } : review
 }
 
@@ -1684,12 +1684,12 @@ function replyPathAudited(
  */
 function replyPathReviewResult(
   id: string,
-  artifactSha256: string,
-  audit: ReplyPathAudit,
+  entry: NonNullable<ReturnType<typeof replyPathAuditFor>>,
   captures: readonly { text: string; reply: string }[],
   measured: ProbeCallbackResult,
 ): ProbeCallbackResult {
-  const replyPathAudit = { artifactSha256, featureId: id, ...audit, captures: captures.length, replyBytes: 0 }
+  const { audit, ...identityKey } = entry
+  const replyPathAudit = { ...identityKey, featureId: id, ...audit, captures: captures.length, replyBytes: 0 }
   const measuredResponse = measured.response ?? null
   if (audit.kind === "no-reply-path") {
     return reviewResult(
