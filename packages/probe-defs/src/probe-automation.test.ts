@@ -419,6 +419,7 @@ describe("reply-path audit", () => {
 
   // #31692: data-derived cases cannot detect an omitted current-artifact OSC99 audit.
   test.each([
+    ["ce01cd0d1ae000dd88948f3817924cc85303874070cab39430967ebdf14877f3", "parser-rejected"],
     ["5c38594a17329b24e826f785d3156d6e498490517835f12b0730eeab2fc63da7", "parser-rejected"],
     ["d80a8110258a124fb6ff52a6fe149b8e39b5180d986907cc9fb7dc9143c3f3d9", "parser-rejected"],
     ["77b69f9f22c4126359be864fcce97afad8f84615053e21d335ba6348a8d3e1d7", "parser-rejected"],
@@ -486,6 +487,26 @@ describe("reply-path audit", () => {
       expect(rebuilt![id]).toMatchObject({ query: audit.query, kind: audit.kind })
       expect(rebuilt![id]!.matches).toBe(audit.matches)
       expect(rebuilt![id]!.citation).toContain(core)
+    }
+  })
+
+  // #32024: Ghostty WASM ce01cd0d answers request_mode / request_mode_unknown, so device.decrpm and
+  // extensions.osc5522-clipboard leave the no-reply-path table while every other 5c38594a row is rebound unchanged.
+  test("the rebuilt Ghostty WASM ce01cd0d retains all 5c38594a audits except the two DECRQM rows", () => {
+    const prior = REPLY_PATH_AUDITS.get("5c38594a17329b24e826f785d3156d6e498490517835f12b0730eeab2fc63da7")!
+    const rebuilt = REPLY_PATH_AUDITS.get("ce01cd0d1ae000dd88948f3817924cc85303874070cab39430967ebdf14877f3")!
+    expect(rebuilt).toBeDefined()
+    const dropped = ["device.decrpm", "extensions.osc5522-clipboard"]
+    for (const id of dropped) expect(rebuilt[id]).toBeUndefined()
+    const carried = Object.keys(prior).filter((id) => !dropped.includes(id))
+    expect(carried).toHaveLength(47)
+    for (const id of carried) {
+      const audit = rebuilt[id]!
+      expect(audit).toMatchObject({ query: prior[id]!.query, kind: prior[id]!.kind })
+      expect(audit.matches).toBe(prior[id]!.matches)
+      expect(audit.citation).toContain("5714ed07")
+      expect(audit.citation).not.toContain("5c38594a")
+      expect(audit.citation).not.toContain("request_mode")
     }
   })
 
@@ -962,6 +983,7 @@ describe("reply-path audit", () => {
       "9a9505600721226b952ae9ac92552b42389aa6713872a9f4904528f425b7ecdf",
       "ac12d6408c2049f1d720e9735d7eb69251d3eed868fc9ced58de98b3543f3e2e",
       "b9109b5918707746420833dfc2eab3ea5bc7feec5fa93bee4cd6e824e74d0962",
+      "ce01cd0d1ae000dd88948f3817924cc85303874070cab39430967ebdf14877f3",
       "d80a8110258a124fb6ff52a6fe149b8e39b5180d986907cc9fb7dc9143c3f3d9",
       "f309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96",
     ])
