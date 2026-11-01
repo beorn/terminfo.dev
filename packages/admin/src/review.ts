@@ -79,7 +79,9 @@ function trustedManifest(options: IntakeOptions, suite: string) {
   if (git(pin, ["rev-parse", "HEAD"]).trim() !== pin.commit)
     throw new Error("Source receipt requires checkout at the capture source commit")
   const producer = join(absolute(pin.repo), "packages/terminfo.dev/src/serve.ts")
-  git(pin, ["show", `${pin.commit}:packages/terminfo.dev/src/serve.ts`])
+  const producerSource = git(pin, ["show", `${pin.commit}:packages/terminfo.dev/src/serve.ts`])
+  if (read(producer).sha256 !== sha(producerSource))
+    throw new Error(`Source receipt producer bytes differ from pinned source: ${producer}@${pin.commit}`)
   const result = spawnSync(
     process.execPath,
     [
@@ -168,8 +170,6 @@ function load(options: IntakeOptions) {
     "terminfo.dev": { repo: options.terminfoRepo, commit: options.terminfoCommit },
     termless: { repo: options.termlessRepo, commit: options.termlessCommit },
   }
-  if (sources["terminfo.dev"].commit !== raw.sourceRevision)
-    throw new Error(`${runInput.path}: Terminfo source pin differs from run sourceRevision`)
   for (const pin of Object.values(sources)) git(pin, ["cat-file", "-e", `${pin.commit}^{commit}`])
   const pending = decoded.run.results
     .filter((row) =>

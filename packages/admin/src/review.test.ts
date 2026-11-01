@@ -547,3 +547,13 @@ test.each(["dirty", "catalogue"])("registry still checks its pinned source: %s",
   }
   expect(() => api.intakeReview(f.options)).toThrow(mode === "dirty" ? /uncommitted/ : /registry.*identity/i)
 })
+
+// R1: self-reported clean state cannot prove the filesystem producer is the pinned Git blob.
+// The refusal propagation case above leaves producer bytes intact and misses this substitution.
+test("refuses altered producer bytes even when they return the same trusted receipt", async () => {
+  const api = await import("./review.ts"), f = intakeFixture()
+  writeFileSync(f.producer, `${readFileSync(f.producer, "utf8")}\n// locally altered producer\n`)
+  expect(() => api.intakeReview(f.options)).toThrow(
+    `Source receipt producer bytes differ from pinned source: ${f.producer}@${f.options.terminfoCommit}`,
+  )
+})
