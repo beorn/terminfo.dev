@@ -2046,3 +2046,38 @@ test.each(geometryReplies)("$id distinguishes sibling source entries", ({ id, ra
     ])
   }
 })
+
+// #31398: source-negative batch tests never drive the missing-icon-getter early return.
+test.each([
+  ["alacritty", auditedArtifacts[0]!, "ansi.rs:1349-1361"],
+  ["ghostty", absentOscBatch.find((entry) => entry.engine === "ghostty")!.identity, "stream.zig:2017-2021"],
+] as const)(
+  "%s intrinsic OSC1 discard keeps the original stimulus and state for review",
+  (_engine, identity, citation) => {
+    const writes: string[] = []
+    let title = "original"
+    const source = {
+      runtimeIdentity: identity,
+      getTitle: () => title,
+      feed: (bytes: string) => {
+        writes.push(bytes)
+        title = "after"
+      },
+    } as unknown as LibProbeSource
+    const result = callback("extensions.osc1-icon").lib!(source)
+    expect(writes).toEqual(["\x1b]1;test-icon\x07"])
+    expect(JSON.parse(result.response!)).toEqual({ before: "original", after: "after" })
+    expect(result.criterionBranch).toBe("source-negative-review")
+    expect(result.tests).toMatchObject([
+      { id: "review", status: "test-failure", reason: expect.stringContaining(citation) },
+    ])
+    expect(result.observation).toMatchObject({ outcome: "inconclusive", assertionType: "buffer_state" })
+    expect(result.assertions).toMatchObject([{ kind: "negative", assertionType: "buffer_state" }])
+    const foreign = callback("extensions.osc1-icon").lib!({
+      ...source,
+      runtimeIdentity: { ...identity, adapterSources: [] },
+    })
+    expect(foreign.notTested).toMatchObject({ reason: "no-semantic-observable" })
+    expect(foreign.criterionBranch).toBeUndefined()
+  },
+)

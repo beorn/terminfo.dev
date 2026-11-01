@@ -2457,7 +2457,7 @@
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
     "tags": ["osc", "xterm-extensions"],
     "body": "OSC 117 resets the selection highlight background color to the terminal's default. The sequence is <code>ESC ] 117 BEL</code>. The highlight background is set via OSC 17. Terminals that support customizable selection colors use this to restore the default appearance. Support is limited to xterm and terminals with full xterm color protocol compatibility.\n\nNeither <code>OSC 17</code> nor <code>OSC 117</code> dispatches in tmux 3.6 (input.c:2633-2688), so the initial readback prerequisite fails before any reset could be graded: a missing reply here is not a reset-conformance negative.",
-    "probe": "Send <code>OSC 117 BEL</code> and verify the terminal remains responsive (sequence consumed without error).",
+    "probe": "Read the original highlight colour, set and verify a distinct colour, then send the reset and verify the original colour is restored. Liveness alone does not establish reset behavior.",
     "baseline": "rich",
     "sequence": "ESC ] 117 BEL"
   },
@@ -2467,7 +2467,7 @@
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
     "tags": ["osc", "xterm-extensions"],
     "body": "OSC 119 resets the selection highlight foreground color to the terminal's default. The sequence is <code>ESC ] 119 BEL</code>. The highlight foreground is set via OSC 19. Like OSC 117, this is part of the xterm extended color reset protocol. Support is primarily in xterm itself, with partial adoption in other terminals that implement the full xterm color management suite.\n\nNeither <code>OSC 19</code> nor <code>OSC 119</code> dispatches in tmux 3.6 (input.c:2633-2688): the same qualified initial-colour limitation applies, and a missing reply is not a reset-conformance negative.",
-    "probe": "Send <code>OSC 119 BEL</code> and verify the terminal remains responsive (sequence consumed without error).",
+    "probe": "Read the original highlight colour, set and verify a distinct colour, then send the reset and verify the original colour is restored. Liveness alone does not establish reset behavior.",
     "baseline": "rich",
     "sequence": "ESC ] 119 BEL"
   },
