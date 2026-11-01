@@ -37,7 +37,7 @@ export const ADAPTER_SOURCE_AUDITS = {
   },
   vterm: {
     "packages/vterm/src/index.ts": "cb5719799dcdd5ae24e6fcf0dcad9965035ce54c",
-    "packages/vterm/src/backend.ts": "e7eb83f44a4ae1368cbf7b78ef6783219757002a",
+    "packages/vterm/src/backend.ts": "ae08fca0a071207d6dfc1ec2735ea6b3e72c0e18",
   },
   xtermjs: {
     "packages/xtermjs/src/index.ts": "550e10110ec2baaf326d2958319b03ee8208feba",
