@@ -19,6 +19,17 @@ type NativeHostSourceCitations = Readonly<Partial<Record<Exclude<HostRecipeName,
  * from runtime. A host gains causes only through its own audit here; no host inherits another's citations.
  */
 export const NATIVE_HOST_AUDITS: ReadonlyMap<string, NativeHostSourceCitations> = new Map([
+  // Kitty: the official 0.49.2 launcher (kitty-official-binary) behind the Termless bridge (#32091).
+  [
+    "bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886",
+    {
+      "clipboard-load": {
+        kind: "source-audited",
+        citation:
+          "kitty b2cb871254fbdac19a085188813c8dfb258b95cd kitty/clipboard.py:624-635 handle_read_request and :701-724 ask_to_read_clipboard: default clipboard_control read-clipboard-ask routes to ask_to_read_clipboard -> boss.confirm (or choose Allow/Always/Deny/Ban, default Deny) and answers the child nothing until a human decides; Termless 623e57c8639f0baf09a737a89c8cd6c02da8587d packages/kitty/build/bridge.py HeadlessBoss.confirm/choose record the prompt and answer nothing; this harness supplies no clipboard read permission",
+      },
+    },
+  ],
   // Rebuilt for term.colors() indexed/named cell color resolution (31735, 31774); reply and host-input routes unchanged.
   [
     "32d76284e5a3c7673fafbbc83a16717fa0a1c1811c7d659d982176a53ceb1aa9",

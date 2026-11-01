@@ -1262,11 +1262,11 @@ const ABSENT_OSC_ENGINES = {
       {
         code: 3008,
         reason:
-          "kitty/vt-parser.c:658-661 dispatches osc_context; kitty/window.py:1582-1583 is empty and Termless packages/kitty/build/bridge.py:224 maps it to no_reply",
+          "kitty/vt-parser.c:658-661 dispatches osc_context; kitty/window.py:1582-1583 is empty and Termless packages/kitty/build/bridge.py:236 maps it to no_reply",
       },
     ],
     sourceCitation:
-      "kitty0.49.2 sourceb2cb871254fbdac19a085188813c8dfb258b95cd kitty/vt-parser.c:546-670 has no cases176/555/710, explicitly ignores440/666, and dispatches3008 to the empty Window.osc_context; official-binary archive SHA256d573618b911e9c461bd421b96c13c74c7f1cb2f1ac9c327818d4ff84366cf5c6; Termless 33cd2af74677ed62c7865b47261cfbdf191de53b packages/kitty/build/bridge.py:224-242. OSC9/777 binding losses and OSC22 pointer handler are excluded",
+      "kitty0.49.2 sourceb2cb871254fbdac19a085188813c8dfb258b95cd kitty/vt-parser.c:546-670 has no cases176/555/710, explicitly ignores440/666, and dispatches3008 to the empty Window.osc_context; official-binary archive SHA256d573618b911e9c461bd421b96c13c74c7f1cb2f1ac9c327818d4ff84366cf5c6; Termless 623e57c8639f0baf09a737a89c8cd6c02da8587d packages/kitty/build/bridge.py:233-251. OSC9/777 binding losses and OSC22 pointer handler are excluded",
   },
   ghosttyNative: {
     kind: "native",
