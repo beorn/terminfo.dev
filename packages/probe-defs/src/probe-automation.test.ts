@@ -4148,22 +4148,31 @@ describe("partial probe automation candidates", () => {
     expect(seen).toEqual([])
   })
 
-  // Q17: enabled metadata cannot supply a host palette actuator or persistent unsolicited-event listener.
-  // The native DECRPM recognition table below never exercises this library coverage boundary.
+  // Mode metadata cannot substitute for the library arm's required DECRPM reply.
+  // The recognition table covers answered queries; this case owns missing replies and cleanup.
   test.each([true, false, null] as const)(
-    "mode 2031 names missing palette-event observation despite metadata %s",
+    "mode 2031 retains missing DECRPM coverage despite metadata %s",
     (enabled) => {
       const p = probe("modes.color-scheme-reporting")
       if (!p.lib) throw new Error("Missing headless color-scheme callback")
       const seen: string[] = []
-      const result = p.lib(context({ getMode: () => enabled, feed: (text) => seen.push(text) }))
+      const result = p.lib(
+        context({
+          getMode: () => enabled,
+          feed: (text) => seen.push(text),
+          feedCapture: (text) => {
+            seen.push(text)
+            return ""
+          },
+        }),
+      )
       expect(result.notTested).toMatchObject({
         reason: "no-semantic-observable",
-        noObservable: expect.stringMatching(/palette|color.scheme/i),
+        noObservable: "DECRPM reply to CSI ? 2031 $ p",
       })
       expect(result.observation).toBeUndefined()
       expect(result.assertions).toBeUndefined()
-      expect(seen).toEqual([])
+      expect(seen).toEqual(["\x1b[?2031h", "\x1b[?2031$p", "\x1b[?2031l"])
     },
   )
 

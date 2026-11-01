@@ -972,7 +972,8 @@ test("null mode metadata classes A/B retain measured wrapping, unknown cleanup a
     assertionType: "buffer_state",
   })
   expect.soft(writes).not.toContain("\x1b[?7l")
-  expect.soft(writes).not.toContain("\x1b[?2031l")
+  // Mode 2031 now measures DECRPM recognition and resets its enabled query state, even with null metadata.
+  expect.soft(writes).toContain("\x1b[?2031l")
   expect.soft(JSON.parse(batch.rawReplies["modes.application-keypad"]!)).toMatchObject({ on: null, off: null })
   // #30702: the margin and alternate-screen arms read the cells, so their raw state is the seeded frames.
   expect.soft(JSON.parse(batch.rawReplies["modes.left-right-margin"]!)).toMatchObject({
@@ -1310,9 +1311,9 @@ function definition(
 
 // AC3: independent feature results cannot depend on a previous probe's state.
 // Existing cases check one callback or trust RIS; libvterm retains reverse-screen state after RIS.
-for (const [name, create] of [
-  ["libvterm", resolveLibvterm],
-  ["xtermjs", async () => createXtermBackend()],
+for (const [name, create, reverseVideoOutcome] of [
+  ["libvterm", resolveLibvterm, "supported"],
+  ["xtermjs", async () => createXtermBackend(), "unsupported"],
 ] as const) {
   test(`${name} isolates independent mode and SGR probes in either order`, async () => {
     const definitions = ["modes.reverse-video", "sgr.inverse"].map((id) => {
@@ -1326,11 +1327,12 @@ for (const [name, create] of [
         outcome: "supported",
         assertionType: "buffer_state",
       })
-      expect(batch.observations.find((item) => item.featureId === "modes.reverse-video")).toBeUndefined()
-      expect(batch.notTested.find((item) => item.featureId === "modes.reverse-video")).toMatchObject({
-        reason: "no-semantic-observable",
-        noObservable: "rendered colors (pixels)",
+      expect(batch.observations.find((item) => item.featureId === "modes.reverse-video")).toMatchObject({
+        outcome: reverseVideoOutcome,
+        assertionType: "query_reply",
+        note: expect.stringMatching(/presentation .* unmeasured; protocol measured/),
       })
+      expect(batch.notTested.find((item) => item.featureId === "modes.reverse-video")).toBeUndefined()
     }
   })
 }
