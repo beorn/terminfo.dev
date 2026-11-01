@@ -87,16 +87,36 @@ test.each([false, true])("production reflow controls ignore the capability decla
         expect.objectContaining({ id: "main-grow", status: "supported" }),
         expect.objectContaining({ id: "main-shrink", status: "supported" }),
         expect.objectContaining({ id: "alternate-screen", status: "test-todo" }),
-        expect.objectContaining({ id: "scrollback", status: "test-todo" }),
       ]),
     },
   ])
   expect(batch.assertions).toMatchObject([
     { kind: "positive", assertionType: "buffer_state", observed: batch.rawReplies["extensions.reflow"] },
     { kind: "positive", assertionType: "buffer_state", observed: batch.rawReplies["extensions.reflow"] },
+    { kind: "positive", assertionType: "buffer_state", observed: batch.rawReplies["extensions.reflow"] },
+    { kind: "positive", assertionType: "buffer_state", observed: batch.rawReplies["extensions.reflow"] },
   ])
   const observed = JSON.parse(batch.rawReplies["extensions.reflow"]!)
   expect(observed).toMatchObject({ declaredReflow: declared, phases: [{ outcome: "reflow" }, { outcome: "reflow" }] })
+  // Main-only coverage cannot detect lost history or hard-line boundaries. Check the actual full
+  // buffer, including every hard witness, while the feature remains pending for the unapproved fold.
+  expect(observed.historyPhases).toMatchObject([
+    { id: "history-grow", outcome: "reflow", status: "supported" },
+    { id: "history-shrink", outcome: "reflow", status: "supported" },
+  ])
+  for (const id of ["history-grow", "history-shrink"]) {
+    const before = observed.reads[`${id}.before`]
+    const after = observed.reads[`${id}.after`]
+    expect(before.scrollback.totalLines - before.scrollback.screenLines).toBeGreaterThan(4)
+    expect(after.cells).toHaveLength(after.scrollback.totalLines)
+    const lines = after.cells.map((row: string[]) => row.join("").trimEnd())
+    expect(lines.slice(0, id === "history-grow" ? 3 : 4)).toEqual(
+      id === "history-grow"
+        ? ["ABCDEFGHIJKLMNOPQR", "HARD-a", "HARD-b"]
+        : ["ABCDEFGHIJKL", "MNOPQR", "HARD-a", "HARD-b"],
+    )
+    expect(lines.slice(-48)).toEqual(Array.from({ length: 48 }, (_, i) => `R${String(i).padStart(3, "0")}`))
+  }
 })
 
 // @failure A genuine non-reflowing engine truncates on shrink and is mislabeled as a broken probe.
@@ -118,7 +138,6 @@ test.each([
         expect.objectContaining({ id: "main-grow", status: "unsupported" }),
         expect.objectContaining({ id: "main-shrink", status: "unsupported" }),
         expect.objectContaining({ id: "alternate-screen", status: "test-todo" }),
-        expect.objectContaining({ id: "scrollback", status: "test-todo" }),
       ]),
     },
   ])
@@ -126,8 +145,136 @@ test.each([
   expect(JSON.parse(batch.rawReplies["extensions.reflow"]!)).toMatchObject({
     phases: [{ outcome: "preserved-wraps" }, { outcome: "truncated" }],
   })
-  expect(batch.assertions.map((assertion) => assertion.kind)).toEqual(["negative", "negative"])
+  expect(
+    batch.assertions.filter((assertion) => assertion.expected.startsWith("main-")).map((assertion) => assertion.kind),
+  ).toEqual(["negative", "negative"])
+  const history = JSON.parse(batch.rawReplies["extensions.reflow"]!).historyPhases
+  if (name === "libvterm") {
+    expect(history).toMatchObject([
+      { status: "test-todo", reason: "engine retained no history" },
+      { status: "test-todo", reason: "engine retained no history" },
+    ])
+    expect(batch.assertions).toHaveLength(2)
+  } else {
+    expect(history).toMatchObject([
+      { outcome: "preserved-wraps", status: "unsupported" },
+      { outcome: "truncated", status: "unsupported" },
+    ])
+    expect(batch.assertions.map((assertion) => assertion.kind)).toEqual([
+      "negative",
+      "negative",
+      "negative",
+      "negative",
+    ])
+    const observed = JSON.parse(batch.rawReplies["extensions.reflow"]!)
+    for (const id of ["history-grow", "history-shrink"]) {
+      const after = observed.reads[`${id}.after`]
+      const lines = after.cells.map((row: string[]) => row.join("").trimEnd())
+      expect(lines.slice(0, id === "history-grow" ? 4 : 3)).toEqual(
+        id === "history-grow" ? ["ABCDEFGHIJKL", "MNOPQR", "HARD-a", "HARD-b"] : ["ABCDEFGHIJKL", "HARD-a", "HARD-b"],
+      )
+      expect(lines.slice(-48)).toEqual(Array.from({ length: 48 }, (_, i) => `R${String(i).padStart(3, "0")}`))
+    }
+  }
 })
+
+// @failure A bounded retention limit is called Unsupported instead of naming unavailable target rows.
+// @level l1
+// @consumer Real xterm retained-buffer limits through the canonical collector.
+test.each([2, 8])("reflow names a partially retained target without adding an assertion (limit %s)", async (limit) => {
+  const batch = await collectBatch(
+    async () => {
+      const value = createXtermBackend()
+      const init = value.init.bind(value)
+      value.init = (options) => init({ ...options, scrollbackLimit: limit })
+      return value
+    },
+    "xtermjs",
+    registryDefinitions(["extensions.reflow"]),
+  )
+  expect(batch.ungradedDiagnostics).toEqual({})
+  expect(batch.results[0]!.status).toBe("test-todo")
+  expect(batch.assertions).toHaveLength(2)
+  expect(JSON.parse(batch.rawReplies["extensions.reflow"]!).historyPhases).toMatchObject([
+    { status: "test-todo", reason: `target not fully retained (H=${limit}, need 28)` },
+    { status: "test-todo", reason: `target not fully retained (H=${limit}, need 27)` },
+  ])
+})
+
+// @failure History corruption or an invalid control becomes a negative; huge counts trigger unbounded reads;
+// a viewport position prevents an otherwise complete absolute-buffer measurement.
+// @level l1
+// @consumer Registered callback with real xterm effects and source-boundary faults.
+test.each(["witness-loss", "width-control", "bad-counts", "viewport"] as const)(
+  "history reflow retains qualified evidence for %s without changing the feature fold",
+  async (fault) => {
+    const definition = registryDefinitions(["extensions.reflow"])[0]!
+    const batch = await collectBatch(backend, "xtermjs", [
+      {
+        ...definition,
+        lib(ctx) {
+          const feed = ctx.feed.bind(ctx)
+          const resize = ctx.resize!.bind(ctx)
+          const reset = ctx.reset.bind(ctx)
+          const cell = ctx.getCell.bind(ctx)
+          const scrollback = ctx.getScrollback.bind(ctx)
+          let seeded = false
+          let resized = false
+          let control = false
+          ctx.feed = (text) => {
+            if (text.includes("\r\nR000")) seeded = true
+            if (seeded && resized && text.startsWith("W")) {
+              control = true
+              if (fault === "width-control") text = text.slice(0, -1)
+            }
+            feed(text)
+          }
+          ctx.resize = (cols, rows) => {
+            resize(cols, rows)
+            if (seeded) resized = true
+          }
+          ctx.reset = () => {
+            reset()
+            seeded = false
+            resized = false
+            control = false
+          }
+          ctx.getScrollback = () => {
+            const value = scrollback()
+            if (seeded && fault === "bad-counts") return { ...value, totalLines: Number.MAX_SAFE_INTEGER }
+            if (seeded && fault === "viewport") return { ...value, viewportOffset: 1, viewportTop: 1 }
+            return value
+          }
+          ctx.getCell = (row, col) => {
+            if (seeded && fault === "bad-counts") throw new Error("Unbounded history read attempted")
+            const value = cell(row, col)
+            return seeded && resized && !control && fault === "witness-loss" && value.char === "R" && col === 0
+              ? { ...value, char: "X" }
+              : value
+          }
+          return definition.lib!(ctx)
+        },
+      },
+    ])
+    expect(batch.ungradedDiagnostics).toEqual({})
+    expect(batch.results[0]!.status).toBe("test-todo")
+    const observed = JSON.parse(batch.rawReplies["extensions.reflow"]!)
+    expect(observed.historyPhases.map((phase: { status: string }) => phase.status)).toEqual(
+      fault === "viewport" ? ["supported", "supported"] : ["test-failure", "test-failure"],
+    )
+    expect(batch.assertions).toHaveLength(fault === "viewport" ? 4 : 2)
+    if (fault === "bad-counts") {
+      expect(observed.historyPhases[0].reason).toContain("totalLines=9007199254740991")
+      expect(observed.reads["history-grow.before"].cells).toEqual([])
+    }
+    if (fault === "witness-loss") {
+      expect(observed.historyPhases[0].reason).toContain("neither complete retained layout")
+    }
+    if (fault === "width-control") {
+      expect(observed.historyPhases[0].reason).toContain("Post-resize width control")
+    }
+  },
+)
 
 // @failure A no-op resize, discarded wrap boundaries or lost characters become reflow support.
 // @level l1
@@ -162,7 +309,11 @@ test.each(["no-op", "hard-boundary", "content-loss", "cursor-on-target"] as cons
     const observed = JSON.parse(batch.rawReplies["extensions.reflow"]!)
     if (fault === "hard-boundary") {
       expect(observed).toMatchObject({ phases: [{ outcome: "preserved-wraps" }, { outcome: "reflow" }] })
-      expect(batch.assertions.map((assertion) => assertion.kind)).toEqual(["negative", "positive"])
+      expect(
+        batch.assertions
+          .filter((assertion) => assertion.expected.startsWith("main-"))
+          .map((assertion) => assertion.kind),
+      ).toEqual(["negative", "positive"])
       expect(batch.results[0]!.tests).toContainEqual(
         expect.objectContaining({ id: "criterion", status: "test-failure" }),
       )
@@ -181,51 +332,64 @@ test.each(["no-op", "hard-boundary", "content-loss", "cursor-on-target"] as cons
 // @failure A failed cell read leaks resized state, or restoration failure skips reset and masks causes.
 // @level l1
 // @consumer Disposable reflow source lifetime, including diagnostic callers.
-test.each([false, true])(
-  "reflow restores geometry and attempts reset after a read error (cleanup faults %s)",
-  (failCleanup) => {
-    const value = createXtermBackend()
-    value.init({ cols: 80, rows: 24 })
-    const source = createLibProbeSource(value, undefined, undefined, undefined)
-    const readError = new Error("cell read failed")
-    const resizeError = new Error("geometry restoration failed")
-    const resetError = new Error("source reset failed")
-    const resize = source.resize!.bind(source)
-    const reset = source.reset.bind(source)
-    let resetAttempted = false
-    source.getCell = () => {
-      throw readError
-    }
-    source.resize = (cols, rows) => {
-      if (failCleanup && cols === 80) throw resizeError
-      resize(cols, rows)
-    }
-    source.reset = () => {
-      resetAttempted = true
-      if (failCleanup) throw resetError
-      reset()
-    }
+test.each([
+  { failCleanup: false, history: false },
+  { failCleanup: true, history: false },
+  { failCleanup: false, history: true },
+  { failCleanup: true, history: true },
+])("reflow restores geometry and attempts reset after a read error (%j)", ({ failCleanup, history }) => {
+  const value = createXtermBackend()
+  value.init({ cols: 80, rows: 24 })
+  const source = createLibProbeSource(value, undefined, undefined, undefined)
+  const readError = new Error("cell read failed")
+  const resizeError = new Error("geometry restoration failed")
+  const resetError = new Error("source reset failed")
+  const resize = source.resize!.bind(source)
+  const reset = source.reset.bind(source)
+  const feed = source.feed.bind(source)
+  const cell = source.getCell.bind(source)
+  let historySeeded = false
+  let cleaning = false
+  let resetAttempted = false
+  source.feed = (text) => {
+    if (text.includes("\r\nR000")) historySeeded = true
+    feed(text)
+  }
+  source.getCell = (row, col) => {
+    if (!history || historySeeded) throw readError
+    return cell(row, col)
+  }
+  source.resize = (cols, rows) => {
+    if (cols === 80) cleaning = true
+    if (failCleanup && cols === 80) throw resizeError
+    resize(cols, rows)
+  }
+  source.reset = () => {
+    if (cleaning) resetAttempted = true
+    if (failCleanup && cleaning) throw resetError
+    reset()
+    historySeeded = false
+  }
+  try {
+    let caught: unknown
     try {
-      let caught: unknown
-      try {
-        registryDefinitions(["extensions.reflow"])[0]!.lib!(source)
-      } catch (error) {
-        caught = error
-      }
-      expect(resetAttempted).toBe(true)
-      if (failCleanup) {
-        expect(caught).toBeInstanceOf(AggregateError)
-        expect((caught as AggregateError).errors).toEqual([readError, resizeError, resetError])
-      } else {
-        expect(caught).toBe(readError)
-        expect(value.getRow(0)).toHaveLength(80)
-        expect(value.getText().trim()).toBe("")
-      }
-    } finally {
-      value.destroy()
+      registryDefinitions(["extensions.reflow"])[0]!.lib!(source)
+    } catch (error) {
+      caught = error
     }
-  },
-)
+    expect(resetAttempted).toBe(true)
+    if (failCleanup) {
+      expect(caught).toBeInstanceOf(AggregateError)
+      expect((caught as AggregateError).errors).toEqual([readError, resizeError, resetError])
+    } else {
+      expect(caught).toBe(readError)
+      expect(value.getRow(0)).toHaveLength(80)
+      expect(value.getText().trim()).toBe("")
+    }
+  } finally {
+    value.destroy()
+  }
+})
 
 // @failure Engine metadata is lost between the real adapter, source constructor and registered callbacks.
 // @level l1
