@@ -71,17 +71,17 @@ Termless revisions or host filesystem locators. Raw replies and observed payload
 runtime identities; the record's allowlisted identity is their sole carrier. WASM engine identity
 uses the loaded binary digest, while wrapper repository/tree metadata remains provenance.
 
-The pinned vterm 0.9.0 library arms for OSC 9, 22, 176, 440, 555, 666, 710, 777 and 3008 feed their exact commands and a cell-X
+The pinned vterm 0.10.0 library arms for OSC 9, 22, 176, 440, 555, 666, 710, 777 and 3008 feed their exact commands and a cell-X
 consumption control. A rendered X retains `source-negative-review`, its actual fed/cell state and a
-negative buffer-state assertion for independent review of the target implementation at source53a9eb92.
+negative buffer-state assertion for independent review of the target implementation at source6cc7eef0.
 The control proves parser consumption, not a target effect; target state remains explicitly unexposed.
-The vt100 0.9.0 arms use the same nine commands and control only at their independently audited
-source identity (revision53a9eb92, package tree5ffc7ad9, vt100 entry path). Its handleOSC switch
+The vt100 0.10.0 arms use the same nine commands and control only at their independently audited
+source identity (revision6cc7eef0, package treed5ee344a, vt100 entry path). Its handleOSC switch
 at screen.ts:504-520 has cases0/1/2 only. The OSC9 notification-sink citation is specific to the
 vterm entry; vt100 records its own absent-handler citation. These paths retain a pending source
 review, never an automatic grade or a measured target effect.
-The vt220 0.9.0 arms qualify the same nine commands at revision53a9eb92, package
-tree69366752 and the vt220 entry path. Its screen.ts:703-718 handleOSC returns
+The vt220 0.10.0 arms qualify the same nine commands at revision6cc7eef0, package
+tree9a320c4d and the vt220 entry path. Its screen.ts:703-718 handleOSC returns
 without a semicolon and otherwise handles only cases0/1/2. Its OSC9 records the
 generic absent-handler citation, never vterm's notification-sink citation.
 Other identities keep named coverage, and a missing X grants no source-review negative.
@@ -292,7 +292,7 @@ Cell `dim`, `italic`, `strikethrough` and `blink` readbacks are required `boolea
 The OSC 8 library criterion requires exact per-cell URI metadata, including unlinked controls.
 An absent `hyperlinks` observer with valid fixture text retains named coverage (TEST TODO) and raw cell/link state,
 identifying the loaded adapter path and Termless revision when measured runtime identity is available.
-For the audited vt100/vt220 0.9.0 source tuples, libvterm 0.3.3 WASM tuple and vt100-rust 0.16.2
+For the audited vt100/vt220 0.10.0 source tuples, libvterm 0.3.3 WASM tuple and vt100-rust 0.16.2
 native tuple in `ABSENT_OSC_ENGINES`, the same ALINKZ fixture instead retains `source-negative-review`
 and a negative buffer-state assertion. Qualification binds the source path, revision and clean package
 tree, or the native build provenance; WASM/native tuples also bind the loaded artifact digest.

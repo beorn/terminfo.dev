@@ -29,53 +29,53 @@ import { evidenceRuntimeIdentity } from "./runtime-identity.ts"
 export const ADAPTER_SOURCE_AUDITS = {
   vt100: {
     "packages/vt100/src/index.ts": "99833d737402f9d1d8e3e257e3a255d8aa1facc3",
-    "packages/vt100/src/backend.ts": "88fca587dd459fd34da3405e93cc3793cb4a1cf8",
+    "packages/vt100/src/backend.ts": "855dd71fba878d968d16c82846578190b7350eea",
   },
   vt220: {
     "packages/vt220/src/index.ts": "601dd26eb7e753a5396ebdf72f1ef8ee2cc4355f",
-    "packages/vt220/src/backend.ts": "fe2970bf029f2c4c52a253364fe3e86659985856",
+    "packages/vt220/src/backend.ts": "1a16d66067bcaf71a2d96900ae046a1601482add",
   },
   vterm: {
     "packages/vterm/src/index.ts": "cb5719799dcdd5ae24e6fcf0dcad9965035ce54c",
-    "packages/vterm/src/backend.ts": "8599e301dd046b1264403069289477ab65d71d3a",
+    "packages/vterm/src/backend.ts": "e7eb83f44a4ae1368cbf7b78ef6783219757002a",
   },
   xtermjs: {
     "packages/xtermjs/src/index.ts": "550e10110ec2baaf326d2958319b03ee8208feba",
-    "packages/xtermjs/src/backend.ts": "923e41d80147e4f136719e46ce9a2fc7dfb31683",
+    "packages/xtermjs/src/backend.ts": "481fe005c5801cbb5e6ba4c8677f577e02122e4e",
   },
   ghostty: {
     "packages/ghostty/src/index.ts": "f4b9d9f3e13cc515b23abc739cab21bf971e8585",
-    "packages/ghostty/src/backend.ts": "a3b02f433481d8635fa737d8f5e049626346f14d",
+    "packages/ghostty/src/backend.ts": "603d090e4542f2ea08229539059df6e525e736de",
   },
   libvterm: {
     "packages/libvterm/src/index.ts": "2b4708b1081e701b99893ca055ded781dc46cf25",
-    "packages/libvterm/src/backend.ts": "9191b6f79617372717848713411b78ac2faa353e",
+    "packages/libvterm/src/backend.ts": "6ae281ac2862dfe7fe79e0bd144f9343756659bf",
     "packages/libvterm/src/wasm-bindings.ts": "2bbd4d5cf59b8d53db8f5c0329d2ed7853c43e45",
     "packages/libvterm/wasm/libvterm.js": "973341a8e2303d25cb17f1a36d491aad6c55b3a1",
   },
   ghosttyNative: {
     "packages/ghostty-native/src/index.ts": "35c9e35a5d60625ce1135b65ff38ae9278495a18",
-    "packages/ghostty-native/src/backend.ts": "772d0c051539c367452632d029cb3505c30168c2",
+    "packages/ghostty-native/src/backend.ts": "5b39135cef9cf8fa58aebc92e990f94b671983b9",
   },
   alacritty: {
     "packages/alacritty/src/index.ts": "b4154cbd6ef4a83ce2cbf3dcf26ff13d645efd05",
-    "packages/alacritty/src/backend.ts": "3c2cd926fa2a20ff686aecc4c77d7cd908e2e9df",
+    "packages/alacritty/src/backend.ts": "4210383129879c4e8756e6975674632cf69ecce9",
     "packages/alacritty/native/src/lib.rs": "f8d4ef7a2c4f389dd80ecbd3f9dae38600446a1e",
     "src/load-native.ts": "34e142550085450ab02138184626716ad0d6b546",
   },
   wezterm: {
     "packages/wezterm/src/index.ts": "512606c5270ffd0cff55c1b70f5b3eda18a92df0",
-    "packages/wezterm/src/backend.ts": "0eba480a028ed0f8f054e89cbe621c3fa22f4737",
+    "packages/wezterm/src/backend.ts": "43464f5118e4442b3910fad63e3b3e3998af6214",
     "packages/wezterm/native/src/lib.rs": "b83bbf08bb20c6b7965cd0b6492a827707644a8f",
     "src/load-native.ts": "34e142550085450ab02138184626716ad0d6b546",
   },
   vt100Rust: {
     "packages/vt100-rust/src/index.ts": "3ddb74f3ae1f79bb356952103853232f69211268",
-    "packages/vt100-rust/src/backend.ts": "7586cdcfd6918ee0eb07accec52a3fde141b410d",
+    "packages/vt100-rust/src/backend.ts": "e24139c7ecc4935b060040091bb1520256cffced",
   },
   kitty: {
     "packages/kitty/src/index.ts": "3f207f911646613cdc3d8b04f155f0686a96a077",
-    "packages/kitty/src/backend.ts": "0a7e276a158e9ad9bae547ad92233cf3e777f256",
+    "packages/kitty/src/backend.ts": "048836c6cd7881d277e72119539cd0a1f9fd4193",
     "packages/kitty/build/bridge.py": "c5af1cd5fd0e054a96a603c20ab8278f655b462d",
   },
 } as const
@@ -1521,9 +1521,9 @@ export const SOURCE_TREE_AUDITS = {
   vterm: {
     resolvedPath: "vendor/vterm/packages/vterm/src/index.ts",
     runtimeFormat: "js",
-    engineVersion: "0.9.0",
+    engineVersion: "0.10.0",
     repository: "git@github.com:beorn/vterm.git",
-    treeOid: "617ae6002c7befea7b3e43d11bf23e6b433e3d65",
+    treeOid: "d7bc627e039005ee913b0b244ff9a2ee2235746a",
   },
 } as const
 
@@ -1577,7 +1577,7 @@ export function vtermGeometryReview(
     identity.integrity.kind !== "source" ||
     !identity.integrity.cleanTree ||
     identity.integrity.repository !== SOURCE_TREE_AUDITS.vterm.repository ||
-    identity.integrity.revision !== "53a9eb9291b7880f4dc6a39a6802301049997a72" ||
+    identity.integrity.revision !== "6cc7eef05cde6a8578479c6cdb480f606758eb2c" ||
     identity.integrity.treeOid !== SOURCE_TREE_AUDITS.vterm.treeOid
   ) {
     return undefined
