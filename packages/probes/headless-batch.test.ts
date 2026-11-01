@@ -492,7 +492,7 @@ test.each(["extensions.osc117-reset-highlight-bg", "extensions.osc119-reset-high
       engineVersion: "6.0.0",
       adapterVersion: "0.10.2",
       termlessRevision: "2d97417328b7b1d086f9396b9a1731216ed134cc",
-      // Source-audit fixture at Termless 493881fd, independent of this runner's adapter revision.
+      // Source-audit fixture at Termless 677a377f, independent of this runner's adapter revision.
       adapterSources: [
         { path: "packages/xtermjs/src/index.ts", blobOid: "550e10110ec2baaf326d2958319b03ee8208feba" },
         { path: "packages/xtermjs/src/backend.ts", blobOid: "79bc4dc6a1060d073f12d59ecd6b941cadfe91dd" },
