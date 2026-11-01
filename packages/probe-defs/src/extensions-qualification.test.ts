@@ -242,7 +242,11 @@ test("kitty OSC source review survives a Termless revision move and lapses on a 
     710: "osc710-font-normal",
   }
   const run = (runtimeIdentity: HeadlessRuntimeIdentity, code: number) =>
-    callback(`extensions.${features[code]}`).lib!({ runtimeIdentity, feed: () => undefined, getCell: () => ({ char: "X" }) } as unknown as LibProbeSource)
+    callback(`extensions.${features[code]}`).lib!({
+      runtimeIdentity,
+      feed: () => undefined,
+      getCell: () => ({ char: "X" }),
+    } as unknown as LibProbeSource)
   const moved = { ...identity, termlessRevision: "d9d4505514a2f5a3fd0a0e1a3a0c2c5b7d8e9f01" }
   const otherBinary = "0".repeat(64)
   const rebuilt = {
