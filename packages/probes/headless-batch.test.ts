@@ -286,8 +286,9 @@ test.each(["witness-loss", "width-control", "bad-counts", "control-counts", "vie
           }
           ctx.getScrollback = () => {
             const value = scrollback()
-            if (seeded && (fault === "bad-counts" || (fault === "control-counts" && control)))
+            if (seeded && (fault === "bad-counts" || (fault === "control-counts" && control))) {
               return { ...value, totalLines: Number.MAX_SAFE_INTEGER }
+            }
             if (seeded && fault === "viewport") return { ...value, viewportOffset: 1, viewportTop: 1 }
             return value
           }
