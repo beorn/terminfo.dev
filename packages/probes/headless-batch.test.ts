@@ -53,6 +53,61 @@ async function backend() {
 }
 
 function reflowEvidence(batch: Awaited<ReturnType<typeof collectBatch>>) {
+  // F4: the real collector's mixed-polarity evidence must also survive the canonical reader.
+  // This is explicitly unverified unit metadata, as in the existing DECCOLM reader fixture below;
+  // it grants no engine attestation, captured-cut identity, admission or publication.
+  const id = "extensions.reflow"
+  const manifest = {
+    schemaVersion: 4 as const,
+    probeHash: "reflow-reader-fixture",
+    adapterVersion: "fixture",
+    catalogIds: [id],
+    probes: { term: [], mux: [], lib: [id] },
+  }
+  const draft = initializeRunDraft({
+    source: { kind: "live" },
+    runId: "reflow-reader-fixture",
+    sourceRevision: "a".repeat(40),
+    intendedSubject: { kind: "lib", id: "xtermjs" },
+    manifest,
+  })
+  const captured: CapturedRunDraft = {
+    ...draft,
+    subject: {
+      kind: "lib",
+      id: "xtermjs",
+      version: "fixture",
+      os: "linux",
+      osVersion: null,
+      outerTerminal: null,
+      mux: null,
+      config: null,
+      permissions: null,
+    },
+    identity: "unverified",
+    runtimeIdentity: {
+      kind: "js",
+      engineVersion: "fixture",
+      adapterVersion: "fixture",
+      termlessRevision: "fixture",
+      resolvedPath: "fixture/xtermjs",
+      integrity: { kind: "registry", lockIntegrity: "fixture" },
+      runtimeFormat: "js",
+    },
+    measuredAt: "2026-11-01T13:00:00.000Z",
+    origin: { kind: "collector" },
+    rawReplies: batch.rawReplies,
+    results: batch.results,
+    assertions: batch.assertions,
+  }
+  const parsed = parseRun(
+    "reflow.capture.json",
+    JSON.stringify(captured),
+    manifest.catalogIds,
+    new Map([[manifest.probeHash, manifest]]),
+    { mode: "capture" },
+  )
+  expect(parsed.results).toEqual(batch.results)
   return JSON.parse(batch.rawReplies["extensions.reflow"]!) as {
     declaredReflow: boolean
     phases: Array<{ outcome: string }>
@@ -68,7 +123,8 @@ function mainAndHistoryAssertions(batch: Awaited<ReturnType<typeof collectBatch>
   return batch.assertions.filter(({ expected }) => expected.startsWith("main-") || expected.startsWith("history-"))
 }
 
-// @failure A production source silently omits resize, or a main-screen measurement grades unmeasured reflow facets.
+// @failure Four qualified main/history phases stay pending or an alternate negative vetoes ASCII reflow.
+// CTO F4a/g: existing evidence-only assertions missed feature promotion and history-row reference ownership.
 // @level l1
 // @consumer Registered reflow callback through the real headless source and canonical batch result.
 test.each([false, true])("production reflow controls ignore the capability declaration (%s)", async (declared) => {
@@ -123,26 +179,31 @@ test.each([false, true])("production reflow controls ignore the capability decla
   expect(batch.results).toMatchObject([
     {
       featureId: "extensions.reflow",
-      status: "test-todo",
+      status: "supported",
+      reason: expect.stringContaining(
+        "ASCII reflow measured on main screen and retained history; wide characters, cursor on a wrapped line and terminal-app resize unmeasured",
+      ),
       assertionType: "buffer_state",
       tests: expect.arrayContaining([
         expect.objectContaining({ id: "main-grow", status: "supported" }),
         expect.objectContaining({ id: "main-shrink", status: "supported" }),
-        expect.objectContaining({ id: "alternate-screen", status: "test-todo" }),
-        expect.objectContaining({
-          id: "scrollback",
-          status: "test-todo",
-          reason: "Retained-history evidence recorded; cross-facet fold not approved",
-        }),
+        expect.objectContaining({ id: "history-grow", status: "supported" }),
+        expect.objectContaining({ id: "history-shrink", status: "supported" }),
       ]),
     },
   ])
-  // F1: a supported main row must cite only its own measured phase. Status/polarity checks
-  // miss the collector default attaching history and alternate negatives to both main rows.
-  expect(batch.results[0]!.tests.slice(0, 2).map(({ id, assertionRefs }) => ({ id, assertionRefs }))).toEqual([
-    { id: "main-grow", assertionRefs: [0] },
-    { id: "main-shrink", assertionRefs: [1] },
+  expect(batch.results[0]!.reason).toContain("reported, not graded")
+  // F4g: checking status alone misses default-all references and references borrowed from another phase.
+  expect(batch.results[0]!.tests.map(({ id }) => id)).toEqual([
+    "main-grow",
+    "main-shrink",
+    "history-grow",
+    "history-shrink",
   ])
+  for (const row of batch.results[0]!.tests) {
+    expect(row.assertionRefs).toHaveLength(1)
+    expect(row.assertionRefs!.map((index) => batch.assertions[index]!.expected.split(":")[0])).toEqual([row.id])
+  }
   expect(mainAndHistoryAssertions(batch)).toMatchObject([
     { kind: "positive", assertionType: "buffer_state", observed: batch.rawReplies["extensions.reflow"] },
     { kind: "positive", assertionType: "buffer_state", observed: batch.rawReplies["extensions.reflow"] },
@@ -152,7 +213,7 @@ test.each([false, true])("production reflow controls ignore the capability decla
   const observed = reflowEvidence(batch)
   expect(observed).toMatchObject({ declaredReflow: declared, phases: [{ outcome: "reflow" }, { outcome: "reflow" }] })
   // Main-only coverage cannot detect lost history or hard-line boundaries. Check the actual full
-  // buffer, including every hard witness, while the feature remains pending for the unapproved fold.
+  // buffer, including every hard witness, independently of the required-test fold.
   expect(observed.historyPhases).toMatchObject([
     { id: "history-grow", outcome: "reflow", status: "supported" },
     { id: "history-shrink", outcome: "reflow", status: "supported" },
@@ -175,6 +236,7 @@ test.each([false, true])("production reflow controls ignore the capability decla
 // @failure A genuine non-reflowing engine truncates on shrink and is mislabeled as a broken probe.
 // @level l1
 // @consumer Real collector phase rows and the required-test fold; xterm-only cases miss this negative.
+// CTO F4d: a measured main negative cannot skip missing history; the old placeholders hid that precedence.
 test.each([
   ["vt100", resolveVt100],
   ["libvterm", resolveLibvterm],
@@ -184,18 +246,19 @@ test.each([
   expect(batch.results).toMatchObject([
     {
       featureId: "extensions.reflow",
-      status: "test-todo",
+      status: name === "libvterm" ? "test-todo" : "unsupported",
       reason: expect.stringContaining("main-grow"),
       tests: expect.arrayContaining([
         // libvterm keeps its default reflow option off; these are internal observations, not a final grade.
         expect.objectContaining({ id: "main-grow", status: "unsupported" }),
         expect.objectContaining({ id: "main-shrink", status: "unsupported" }),
-        expect.objectContaining({ id: "alternate-screen", status: "test-todo" }),
-        expect.objectContaining({
-          id: "scrollback",
-          status: "test-todo",
-          reason: "Retained-history evidence recorded; cross-facet fold not approved",
-        }),
+        ...["history-grow", "history-shrink"].map((id) =>
+          expect.objectContaining({
+            id,
+            status: name === "libvterm" ? "test-todo" : "unsupported",
+            ...(name === "libvterm" && { reason: "engine retained no history", assertionRefs: [] }),
+          }),
+        ),
       ]),
     },
   ])
@@ -239,6 +302,7 @@ test.each([
 // @failure A bounded retention limit is called Unsupported instead of naming unavailable target rows.
 // @level l1
 // @consumer Real xterm retained-buffer limits through the canonical collector.
+// CTO F4c: a corrupt short tail must fail the feature; existing coverage only checked its raw phase failure.
 test.each([
   { limit: 2, corrupt: false },
   { limit: 8, corrupt: false },
@@ -270,7 +334,7 @@ test.each([
     ],
   )
   expect(batch.ungradedDiagnostics).toEqual({})
-  expect(batch.results[0]!.status).toBe("test-todo")
+  expect(batch.results[0]!.status).toBe(corrupt ? "test-failure" : "test-todo")
   expect(mainAndHistoryAssertions(batch)).toHaveLength(2)
   expect(reflowEvidence(batch).historyPhases).toMatchObject(
     corrupt
@@ -289,8 +353,9 @@ test.each([
 // a viewport position prevents an otherwise complete absolute-buffer measurement.
 // @level l1
 // @consumer Registered callback with real xterm effects and source-boundary faults.
+// CTO F4c: required history failures beat positive main phases; the prior test required aggregate TODO.
 test.each(["witness-loss", "width-control", "bad-counts", "control-counts", "viewport"] as const)(
-  "history reflow retains qualified evidence for %s without changing the feature fold",
+  "history reflow folds qualified required evidence for %s",
   async (fault) => {
     const definition = registryDefinitions(["extensions.reflow"])[0]!
     const batch = await collectBatch(backend, "xtermjs", [
@@ -343,7 +408,7 @@ test.each(["witness-loss", "width-control", "bad-counts", "control-counts", "vie
       },
     ])
     expect(batch.ungradedDiagnostics).toEqual({})
-    expect(batch.results[0]!.status).toBe("test-todo")
+    expect(batch.results[0]!.status).toBe(fault === "viewport" ? "supported" : "test-failure")
     const observed = reflowEvidence(batch)
     expect(observed.historyPhases.map((phase: { status: string }) => phase.status)).toEqual(
       fault === "viewport" ? ["supported", "supported"] : ["test-failure", "test-failure"],
@@ -367,6 +432,7 @@ test.each(["witness-loss", "width-control", "bad-counts", "control-counts", "vie
 // @failure Qualified alternate positives are omitted, or their polarity is folded against another buffer.
 // @level l1
 // @consumer Actual vterm alternate resize/readback; the xterm case above supplies complete physical negatives.
+// CTO F4b: main positive/history negative is an engine limit, not a cross-buffer failure or perpetual TODO.
 test("alternate reflow records real vterm logical layouts without cross-buffer grading", async () => {
   const batch = await collectBatch(
     async () => createVtermBackend(),
@@ -393,12 +459,14 @@ test("alternate reflow records real vterm logical layouts without cross-buffer g
     "negative",
     "negative",
   ])
-  expect(batch.results[0]!.status).toBe("test-todo")
+  expect(batch.results[0]!.status).toBe("unsupported")
+  expect(batch.results[0]!.reason).toContain("history-grow")
+  expect(batch.results[0]!.reason).toContain("history-shrink")
   expect(batch.results[0]!.tests.map(({ id, status }) => ({ id, status }))).toEqual([
     { id: "main-grow", status: "supported" },
     { id: "main-shrink", status: "supported" },
-    { id: "alternate-screen", status: "test-todo" },
-    { id: "scrollback", status: "test-todo" },
+    { id: "history-grow", status: "unsupported" },
+    { id: "history-shrink", status: "unsupported" },
   ])
 })
 
@@ -406,6 +474,8 @@ test("alternate reflow records real vterm logical layouts without cross-buffer g
 // @level l1
 // @consumer Alternate-only raw evidence through the registered callback and production source.
 // Existing main/history tests never enter alternate; mode tests never resize its target.
+// CTO F4e: invalid alternate evidence remains reported but cannot veto four qualified graded phases.
+// Prior aggregate TODO assertions could not detect an accidental alternate-failure fold.
 // F2/F3: require the deciding reason; setup failures must stay invalid even when mode identity
 // is false or unavailable. Status-only cases miss a removed identity check or the wrong failing control.
 test.each([
@@ -531,12 +601,13 @@ test.each([
       },
     ])
     expect(batch.ungradedDiagnostics).toEqual({})
-    expect(batch.results[0]!.status).toBe("test-todo")
+    expect(batch.results[0]!.status).toBe("supported")
+    expect(batch.results[0]!.reason).toContain("reported, not graded")
     expect(batch.results[0]!.tests.map(({ id, status }) => ({ id, status }))).toEqual([
       { id: "main-grow", status: "supported" },
       { id: "main-shrink", status: "supported" },
-      { id: "alternate-screen", status: "test-todo" },
-      { id: "scrollback", status: "test-todo" },
+      { id: "history-grow", status: "supported" },
+      { id: "history-shrink", status: "supported" },
     ])
     const phases = reflowEvidence(batch).alternatePhases
     expect(phases.map((phase) => phase.status)).toEqual([status, status])
