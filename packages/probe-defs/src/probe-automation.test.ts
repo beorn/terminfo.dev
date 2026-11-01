@@ -7,7 +7,7 @@ import {
   REPLY_PATH_AUDIT_REVIEW,
   probe as defineProbe,
 } from "./helpers.ts"
-import { REPLY_PATH_AUDITS } from "./reply-path-audit.ts"
+import { REPLY_PATH_AUDITS, replyPathAuditFor } from "./reply-path-audit.ts"
 
 const OSC_SEMANTIC_MARK_CASES = [
   ["extensions.osc133-a", "\x1b]133;A\x07"],
@@ -403,6 +403,109 @@ describe("qualified clipboard roundtrip", () => {
 })
 
 describe("reply-path audit", () => {
+  const sourceIdentity = (treeOid: string, cleanTree = true): NonNullable<LibProbeSource["runtimeIdentity"]> => ({
+    kind: "js",
+    runtimeFormat: "js",
+    engineVersion: "0.9.0",
+    adapterVersion: "0.10.2",
+    termlessRevision: "2d97417328b7b1d086f9396b9a1731216ed134cc",
+    resolvedPath: `vendor/vterm/packages/${treeOid === "5ffc7ad9ae120d0bf93c64b0fdc712eb40892896" ? "vt100" : "vt220"}/src/index.ts`,
+    integrity: {
+      kind: "source",
+      repository: "git@github.com:beorn/vterm.git",
+      revision: "53a9eb9291b7880f4dc6a39a6802301049997a72",
+      treeOid,
+      cleanTree,
+    },
+  })
+  // #32026: source-key matching, dirty-source fallback, and the unchanged native return contract.
+  // Prior binary-only fixtures could not expose a source audit silently retaining the measured result.
+  test.each(["5ffc7ad9ae120d0bf93c64b0fdc712eb40892896", "69366752918a6086c639123799cc3ac68d8083a0"])(
+    "a clean source tree returns its sourceTreeOid audit: %s",
+    (treeOid) => {
+      const result = replyPathAuditFor(
+        context({ runtimeIdentity: sourceIdentity(treeOid) }),
+        "modes.application-cursor",
+      )
+      expect(result).toEqual({
+        sourceTreeOid: treeOid,
+        audit: {
+          query: "\x1b[?1$p",
+          kind: "parser-rejected",
+          citation: expect.stringContaining(treeOid),
+        },
+      })
+    },
+  )
+  test("a dirty listed source tree retains the measured result", () => {
+    expect(
+      replyPathAuditFor(
+        context({ runtimeIdentity: sourceIdentity("5ffc7ad9ae120d0bf93c64b0fdc712eb40892896", false) }),
+        "modes.application-cursor",
+      ),
+    ).toBeUndefined()
+  })
+  // #32026: a listed key of the other kind must not fire through the wrong identity branch.
+  test("source-tree and artifact key shapes never cross identity kinds", () => {
+    const treeOid = "5ffc7ad9ae120d0bf93c64b0fdc712eb40892896"
+    const sha256 = "5c38594a17329b24e826f785d3156d6e498490517835f12b0730eeab2fc63da7"
+    expect(
+      replyPathAuditFor(
+        context({
+          runtimeIdentity: {
+            ...nativeIdentity,
+            loadedBinary: { path: "fixture.node", sha256: treeOid },
+            provenance: { ...nativeIdentity.provenance, sha256: treeOid },
+          },
+        }),
+        "modes.application-cursor",
+      ),
+    ).toBeUndefined()
+    expect(
+      replyPathAuditFor(context({ runtimeIdentity: sourceIdentity(sha256) }), "extensions.osc99-kitty-notify"),
+    ).toBeUndefined()
+  })
+  test("native reply audit returns the unchanged artifactSha256 member", () => {
+    const sha256 = "5c38594a17329b24e826f785d3156d6e498490517835f12b0730eeab2fc63da7"
+    const audit = REPLY_PATH_AUDITS.get(sha256)!["extensions.osc99-kitty-notify"]!
+    expect(replyPathAuditFor(context({ runtimeIdentity: identity(sha256) }), "extensions.osc99-kitty-notify")).toEqual({
+      artifactSha256: sha256,
+      audit,
+    })
+  })
+  test.each(["5ffc7ad9ae120d0bf93c64b0fdc712eb40892896", "69366752918a6086c639123799cc3ac68d8083a0"])(
+    "all seven source DECRPM callbacks retain truthful tree provenance: %s",
+    (treeOid) => {
+      for (const [id, mode] of [
+        ["modes.application-cursor", 1],
+        ["modes.bracketed-paste", 2004],
+        ["modes.focus-tracking", 1004],
+        ["modes.mouse-all", 1003],
+        ["modes.mouse-sgr", 1006],
+        ["modes.mouse-tracking", 1000],
+        ["modes.utf8-mouse-1005", 1005],
+      ] as const) {
+        const silent = run(id, treeOid, () => "")
+        expect(silent.sent, id).toContain(`\x1b[?${mode}$p`)
+        expect(silent.result.observation, id).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
+        const state = JSON.parse(silent.result.response!)
+        expect(state, id).toMatchObject({
+          replyPathAudit: {
+            sourceTreeOid: treeOid,
+            citation: expect.stringContaining(treeOid),
+            captures: 1,
+            replyBytes: 0,
+          },
+        })
+        expect(state, id).not.toHaveProperty("replyPathAudit.artifactSha256")
+        const reply = () => `\x1b[?${mode};1$y`
+        expect(run(id, treeOid, reply).result, id).toEqual(run(id, "f".repeat(64), reply).result)
+        const dirty = probe(id).lib!(context({ runtimeIdentity: sourceIdentity(treeOid, false) }))
+        expect(dirty.observation?.outcome, id).not.toBe("unsupported")
+        expect(dirty.response ?? "", id).not.toContain("replyPathAudit")
+      }
+    },
+  )
   // #31987: retain all 53 current audit values after retiring the duplicate predecessor key.
   // Frozen from the independently verified 53/53 equality at 81aabd55, before removing d70.
   test("the current native 5a8030c0 artifact retains its 53 frozen reply audits", () => {
@@ -496,11 +599,20 @@ describe("reply-path audit", () => {
     const rebuilt = REPLY_PATH_AUDITS.get("5c38594a17329b24e826f785d3156d6e498490517835f12b0730eeab2fc63da7")!
     expect(rebuilt).toBeDefined()
     expect(rebuilt).not.toBe(prior)
-    expect(Object.keys(rebuilt).sort()).toEqual(Object.keys(prior).sort())
-    expect(Object.keys(rebuilt)).toHaveLength(49)
+    expect(Object.keys(rebuilt).sort()).toEqual(
+      [
+        ...Object.keys(prior),
+        "extensions.kitty-graphics.animation",
+        "extensions.kitty-graphics.unicode-placeholders",
+        "extensions.iterm2-images",
+      ].sort(),
+    )
+    expect(Object.keys(rebuilt)).toHaveLength(52)
     for (const [id, audit] of Object.entries(rebuilt)) {
-      expect(audit).toMatchObject({ query: prior[id]!.query, kind: prior[id]!.kind })
-      expect(audit.matches).toBe(prior[id]!.matches)
+      if (prior[id]) {
+        expect(audit).toMatchObject({ query: prior[id]!.query, kind: prior[id]!.kind })
+        expect(audit.matches).toBe(prior[id]!.matches)
+      }
       expect(audit.citation).toContain("5714ed07")
       expect(audit.citation).not.toContain("d80a8110")
     }
@@ -524,19 +636,26 @@ describe("reply-path audit", () => {
       expect(audit.citation).toContain("5714ed07")
     }
   })
-  const cells = [...REPLY_PATH_AUDITS].flatMap(([sha256, audits]) =>
-    Object.entries(audits).map(([id, audit]) => ({ sha256, id, audit })),
+  const indexedCells = [...REPLY_PATH_AUDITS].flatMap(([auditKey, audits]) =>
+    Object.entries(audits).map(([id, audit]) => ({ auditKey, id, audit })),
   )
-  const identity = (sha256: string): NonNullable<LibProbeSource["runtimeIdentity"]> => ({
-    ...nativeIdentity,
-    loadedBinary: { path: "audited.wasm", sha256 },
-    provenance: { ...nativeIdentity.provenance, sha256 },
-  })
-  const run = (id: string, sha256: string, reply: (sequence: string) => string) => {
+  const cells = [
+    ...indexedCells.filter(({ auditKey }) => /^[0-9a-f]{64}$/.test(auditKey)),
+    ...indexedCells.filter(({ auditKey }) => /^[0-9a-f]{40}$/.test(auditKey)),
+  ]
+  const identity = (auditKey: string): NonNullable<LibProbeSource["runtimeIdentity"]> =>
+    /^[0-9a-f]{40}$/.test(auditKey)
+      ? sourceIdentity(auditKey)
+      : {
+          ...nativeIdentity,
+          loadedBinary: { path: "audited.wasm", sha256: auditKey },
+          provenance: { ...nativeIdentity.provenance, sha256: auditKey },
+        }
+  const run = (id: string, auditKey: string, reply: (sequence: string) => string) => {
     const sent: string[] = []
     const result = probe(id).lib!(
       context({
-        runtimeIdentity: identity(sha256),
+        runtimeIdentity: identity(auditKey),
         feedCapture(sequence) {
           sent.push(sequence)
           return reply(sequence)
@@ -545,6 +664,32 @@ describe("reply-path audit", () => {
     )
     return { result, sent }
   }
+
+  // #32026: these three callbacks previously returned before sending any protocol bytes,
+  // so adding data alone would never trigger the source audit. The real callback owns that boundary.
+  test.each([
+    ["extensions.kitty-graphics.animation", "\x1b_G"],
+    ["extensions.kitty-graphics.unicode-placeholders", "\x1b_G"],
+    ["extensions.iterm2-images", "\x1b]1337;"],
+  ])("Ghostty WASM %s sends the audited prerequisite and retains ordinary replies", (id, prefix) => {
+    const sha256 = "5c38594a17329b24e826f785d3156d6e498490517835f12b0730eeab2fc63da7"
+    const silent = run(id!, sha256, () => "")
+    expect(silent.sent.some((query) => query.startsWith(prefix!))).toBe(true)
+    expect(silent.result.observation).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
+    const state = JSON.parse(silent.result.response!)
+    expect(state).toMatchObject({
+      replyPathAudit: {
+        artifactSha256: sha256,
+        kind: "parser-rejected",
+        replyBytes: 0,
+        citation: expect.stringContaining("5714ed07"),
+      },
+    })
+    const ordinary = run(id!, "f".repeat(64), () => "")
+    expect(ordinary.sent).toEqual([])
+    expect(ordinary.result.criterionBranch).toBe(HEADLESS_OBSERVABLE_REVIEW)
+    expect(run(id!, sha256, () => "\x1b").result).toEqual(ordinary.result)
+  })
 
   // #31377 AC1: explicit membership catches omitted audits that data-derived cases cannot see.
   // The current Rust/WASM captures execute these queries but lack the source-bound branch (CTO d6f8c7de).
@@ -948,14 +1093,16 @@ describe("reply-path audit", () => {
     expect(raw.trace.at(-1)).toEqual({ write: query, error: "Error: stack attempt failed" })
   })
 
-  test("keeps the explicit audited artifact inventory", () => {
-    // Fixed artifact keys catch omitted rebuild rows; data-derived callback cases alone would miss them.
+  test("keeps the explicit audited artifact and source-tree inventory", () => {
+    // Fixed engine keys catch omitted rebuild/source rows; data-derived cases alone would miss them.
     expect([...REPLY_PATH_AUDITS.keys()].sort()).toEqual([
       "0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3",
       "17d155feee5df8fa30266b9a354bbe66e39484d08218de5e03dc3bb2f199a0a3",
       "5a8030c0f3f9fa52e9c1f82d28ae711ef21e3072a4b82fbe98076fedf314c945",
       "5c38594a17329b24e826f785d3156d6e498490517835f12b0730eeab2fc63da7",
+      "5ffc7ad9ae120d0bf93c64b0fdc712eb40892896",
       "61fb182e3381ab1c52d94b63a9e33163bbfb89ede419af022f71f4438bfe0b03",
+      "69366752918a6086c639123799cc3ac68d8083a0",
       "77b69f9f22c4126359be864fcce97afad8f84615053e21d335ba6348a8d3e1d7",
       "7c43302dde147c6f7959b7bda7045ff375c71288da1af5667ffca2bf95beb2bf",
       "8872ab0fc56429489b52cd5d3b5a293032c3ec7dbbb71545d237945c3ef525f3",
@@ -1181,11 +1328,11 @@ describe("reply-path audit", () => {
     expect(result.note).toContain("p")
   })
 
-  test.each(cells)("$id on $sha256", ({ sha256, id, audit }) => {
+  test.each(cells)("$id on $auditKey", ({ auditKey, id, audit }) => {
     const unlisted = run(id, "f".repeat(64), () => "")
     expect(JSON.stringify(unlisted.result)).not.toContain("replyPathAudit")
 
-    const silent = run(id, sha256, () => "")
+    const silent = run(id, auditKey, () => "")
     const matched = silent.sent.filter((sequence) =>
       audit.matches === "prefix" ? sequence.startsWith(audit.query) : sequence === audit.query,
     )
@@ -1194,7 +1341,7 @@ describe("reply-path audit", () => {
     expect(state).toEqual({
       ...(audit.kind === "parser-rejected" && { rejection: "parser" }),
       replyPathAudit: {
-        artifactSha256: sha256,
+        ...(/^[0-9a-f]{40}$/.test(auditKey) ? { sourceTreeOid: auditKey } : { artifactSha256: auditKey }),
         featureId: id,
         ...audit,
         captures: matched.length,
@@ -1222,7 +1369,7 @@ describe("reply-path audit", () => {
 
     const answer = (sequence: string) =>
       (audit.matches === "prefix" ? sequence.startsWith(audit.query) : sequence === audit.query) ? "\x1b" : ""
-    expect(run(id, sha256, answer).result).toEqual(run(id, "f".repeat(64), answer).result)
+    expect(run(id, auditKey, answer).result).toEqual(run(id, "f".repeat(64), answer).result)
   })
 })
 
@@ -4409,6 +4556,77 @@ describe("partial probe automation candidates", () => {
       expect(result.observation).toMatchObject({ outcome, assertionType: "query_reply" })
     }
   })
+
+  // #32026: explicit callbacks catch all 26 approved marks, including the distinct OSC133;D subcode.
+  // Existing data-derived reply-audit cases never exercise these source-negative buffer-state arms.
+  test.each([
+    [
+      "vt100",
+      "5ffc7ad9ae120d0bf93c64b0fdc712eb40892896",
+      "99833d737402f9d1d8e3e257e3a255d8aa1facc3",
+      "88fca587dd459fd34da3405e93cc3793cb4a1cf8",
+    ],
+    [
+      "vt220",
+      "69366752918a6086c639123799cc3ac68d8083a0",
+      "601dd26eb7e753a5396ebdf72f1ef8ee2cc4355f",
+      "fe2970bf029f2c4c52a253364fe3e86659985856",
+    ],
+  ])(
+    "%s semantic source audits require matching identity and rendered X",
+    (engine, treeOid, indexBlob, backendBlob) => {
+      const runtimeIdentity = {
+        kind: "js",
+        runtimeFormat: "js",
+        engineVersion: "0.9.0",
+        adapterVersion: "0.10.2",
+        termlessRevision: "2d97417328b7b1d086f9396b9a1731216ed134cc",
+        resolvedPath: `vendor/vterm/packages/${engine}/src/index.ts`,
+        integrity: {
+          kind: "source",
+          repository: "git@github.com:beorn/vterm.git",
+          revision: "53a9eb9291b7880f4dc6a39a6802301049997a72",
+          treeOid: treeOid!,
+          cleanTree: true,
+        },
+        adapterSources: [
+          { path: `packages/${engine}/src/index.ts`, blobOid: indexBlob! },
+          { path: `packages/${engine}/src/backend.ts`, blobOid: backendBlob! },
+        ],
+      } satisfies NonNullable<LibProbeSource["runtimeIdentity"]>
+      const cases = [
+        ...OSC_SEMANTIC_MARK_CASES,
+        ["extensions.semantic-prompts", "\x1b]133;A\x07"],
+        ["extensions.osc-633-vscode", "\x1b]633;A\x07"],
+      ] as const
+      for (const [id, sequence] of cases) {
+        const feeds: string[] = []
+        const run = (identity: NonNullable<LibProbeSource["runtimeIdentity"]>, char = "X") =>
+          probe(id!).lib!(
+            context({
+              runtimeIdentity: identity,
+              feed: (text) => {
+                feeds.push(text)
+              },
+              getCell: () => ({ ...context({}).getCell(0, 0), char }),
+            }),
+          )
+        const result = run(runtimeIdentity)
+        expect(feeds, id).toEqual([`\x1b[1;1H\x1b[2K${sequence}X`])
+        expect(result.criterionBranch, id).toBe("source-negative-review")
+        // A null declaration makes the real collector refuse this typed result (#32026 branch capture).
+        expect(probe(id).libAssertionType, id).not.toBeNull()
+        expect(result.assertions, id).toMatchObject([{ kind: "negative", assertionType: "buffer_state" }])
+        expect(run(runtimeIdentity, "?").assertions, id).toBeUndefined()
+        expect(
+          run({ ...runtimeIdentity, integrity: { ...runtimeIdentity.integrity, treeOid: "0".repeat(40) } })
+            .criterionBranch,
+          id,
+        ).not.toBe("source-negative-review")
+        expect(run({ ...runtimeIdentity, adapterSources: [] }).criterionBranch, id).not.toBe("source-negative-review")
+      }
+    },
+  )
 
   test("semantic prompt OSC consumption and CPR do not claim prompt integration", async () => {
     // Constant 1;2 CPR for every read must never qualify as a measured home / target / control sequence.
