@@ -846,7 +846,7 @@ test.each([
   expect(writes.at(-1), id).toBe("\x1b[0m\x1b[2J\x1b[H")
 })
 
-test("invalid headless rows and narrow DECSTBM geometry refuse before writes", async () => {
+test("invalid headless geometry retains named coverage and cleanup", async () => {
   // The two model probes read `getScrollback().screenLines`; a count that is not a safe integer is
   // not a measured grid, so they refuse without feeding a byte.
   for (const id of ["scrollback.accumulate", "scrollback.total-lines"]) {
@@ -867,8 +867,7 @@ test("invalid headless rows and narrow DECSTBM geometry refuse before writes", a
       expect(feeds).toEqual([])
     }
   }
-  // A region row is refused on the width of the region it compares: the parser arm addresses rows
-  // directly, so a grid narrower than the row's own cells cannot carry the fixture at all.
+  // A grid narrower than the compared region cannot carry the fixture; refuse before writes.
   for (const id of ["scrollback.scroll-up", "scrollback.scroll-down", "scrollback.decstbm-reset"]) {
     const probe = scrollbackProbes.find((item) => item.id === id)
     if (!probe?.lib) throw new Error(`Missing ${id} headless callback`)
@@ -1191,17 +1190,7 @@ test.each(["scrollback.set-region", "scrollback.alt-screen", "scrollback.decstbm
   (id) => {
     const probe = scrollbackProbes.find((item) => item.id === id)
     if (!probe?.lib) throw new Error(`Missing ${id} headless callback`)
-    const surface = createSemanticSurface()
-    const result = probe.lib(
-      libProbeSource({
-        ...surface,
-        // This semantic model exposes screen cells and a history count, rather than retained cells.
-        getCell: (absoluteRow, col) => {
-          const { totalLines, screenLines } = surface.getScrollback()
-          return surface.getCell(absoluteRow - (totalLines - screenLines), col)
-        },
-      }),
-    )
+    const result = probe.lib(libProbeSource(createSemanticSurface()))
     expect(result.observation?.outcome, id).toBe("supported")
     // A decided row carries its assertion, never a bare outcome.
     expect(result.assertions ?? [], id).not.toEqual([])
