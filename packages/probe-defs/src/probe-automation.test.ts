@@ -3188,7 +3188,16 @@ describe("Kitty protocol detection", () => {
         }
       } else {
         expect(measuredSilence.observation).toBeUndefined()
-        expect(measuredSilence.tests).toMatchObject([{ status: "test-failure" }])
+        expect(measuredSilence.assertions).toBeUndefined()
+        expect(measuredSilence.response).toBe(da1)
+        expect(measuredSilence.tests).toEqual([
+          {
+            id: "criterion",
+            status: "test-todo",
+            reason:
+              "clipboard write unobservable: OSC 52 read is a sentinel negative on this engine and no clipboard-state witness is wired.",
+          },
+        ])
       }
 
       const liveWrites: string[] = []
