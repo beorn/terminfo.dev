@@ -760,12 +760,12 @@ describe("window-operation qualification", () => {
   test.each([
     [
       "vendor/vterm/packages/vt100/src/index.ts",
-      "d5ee344ab5b971184ba2c43ed60460656340417c",
+      "1eaac257cf9ff8d8ece752c8e6edc04b9ddaa6cf",
       "packages/vt100/src/screen.ts:251-358",
     ],
     [
       "vendor/vterm/packages/vt220/src/index.ts",
-      "9a320c4d5cd0e0b60bb2e6ea4f020ce5eb54ae53",
+      "d504616ae458b8b0fa9fa365034c30bd35f55ee8",
       "packages/vt220/src/screen.ts:305-428",
     ],
   ] as const)(
@@ -775,14 +775,14 @@ describe("window-operation qualification", () => {
         const baseIdentity = {
           kind: "js" as const,
           runtimeFormat: "js" as const,
-          engineVersion: "0.10.0",
+          engineVersion: "0.10.1",
           adapterVersion: "0.10.2",
           termlessRevision: "d5e6248bfb080c3065f81b78c45bdfe1b37c06d6",
           resolvedPath,
           integrity: {
             kind: "source" as const,
             repository: "git@github.com:beorn/vterm.git",
-            revision: "6cc7eef05cde6a8578479c6cdb480f606758eb2c",
+            revision: "bd3d32aea2f1994376a71adfc55b92705eedbd8c",
             treeOid,
             cleanTree: true,
           },
@@ -1073,12 +1073,12 @@ const geometryRuntime = {
   integrity: {
     kind: "source",
     repository: "git@github.com:beorn/vterm.git",
-    revision: "6cc7eef05cde6a8578479c6cdb480f606758eb2c",
+    revision: "bd3d32aea2f1994376a71adfc55b92705eedbd8c",
     treeOid: "d7bc627e039005ee913b0b244ff9a2ee2235746a",
     cleanTree: true,
   },
   runtimeFormat: "js",
-  engineVersion: "0.10.0",
+  engineVersion: "0.10.1",
 } as const
 const geometryReplies = [
   {
@@ -1177,8 +1177,8 @@ test.each(geometryReplies)("$id reports source tree drift before geometry gradin
 test.each(geometryReplies)("$id distinguishes sibling source entries", ({ id, raw }) => {
   const baseline = callback(id).headless({ feedCapture: () => raw } as unknown as LibProbeSource)
   for (const [engine, treeOid] of [
-    ["vt100", "d5ee344ab5b971184ba2c43ed60460656340417c"],
-    ["vt220", "9a320c4d5cd0e0b60bb2e6ea4f020ce5eb54ae53"],
+    ["vt100", "1eaac257cf9ff8d8ece752c8e6edc04b9ddaa6cf"],
+    ["vt220", "d504616ae458b8b0fa9fa365034c30bd35f55ee8"],
   ]) {
     const runtimeIdentity = {
       ...geometryRuntime,
@@ -1201,7 +1201,7 @@ test.each(geometryReplies)("$id distinguishes sibling source entries", ({ id, ra
   }
 })
 
-// #32060: the 17:34 PDT run measured vterm 0.10.0 against a gate pinned to 0.9.0, and the row read
+// #32060: the 17:34 PDT run measured vterm 0.10.1 against a gate pinned to 0.9.0, and the row read
 // "writer default: ... callback defect". No test drove the gate with the audited subject at another identity.
 test.each(geometryReplies)(
   "$id names both identities when the audited subject misses the review pin",
@@ -1215,12 +1215,12 @@ test.each(geometryReplies)(
         treeOid: "617ae6002c7befea7b3e43d11bf23e6b433e3d65",
       },
     }
-    const pinned = "review pinned to vterm 0.10.0 6cc7eef05cde tree d7bc627e0390"
+    const pinned = "review pinned to vterm 0.10.1 6cc7eef05cde tree d7bc627e0390"
     for (const [runtimeIdentity, side] of [
       [loaded, "loaded vterm 0.9.0 53a9eb92aa11 tree 617ae6002c7b"],
       [
         { ...geometryRuntime, integrity: { ...geometryRuntime.integrity, cleanTree: false } },
-        "loaded vterm 0.10.0 6cc7eef05cde tree d7bc627e0390 dirty",
+        "loaded vterm 0.10.1 6cc7eef05cde tree d7bc627e0390 dirty",
       ],
     ] as const) {
       const result = callback(id).headless({ feedCapture: () => raw, runtimeIdentity } as unknown as LibProbeSource)
