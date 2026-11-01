@@ -547,6 +547,12 @@ The writer checks intended id/version against known measured values without repl
 
 Required reviews are applied before sealing. While a review remains pending, the writer keeps an unsealed `.draft.json`; once sealed, enrichment cannot change those result bytes.
 
+A reviewed capture decision may name `tool-gap` when the observable is buildable but its instrument is unbuilt.
+Its required reason names the missing instrument and its owning issue. The existing applier replaces that
+pending `review` test with a `criterion` TEST TODO, preserving the decision bytes and original capture evidence.
+It creates no assertions. Other failed tests retain precedence; a tool gap is not an impossibility or a support grade.
+The run can then seal, and its canonical reader and result counts retain `test-todo`.
+
 New capture decisions explicitly carry `evidence: { algorithm: "evidence-output-v1", sha256, projection }` beside
 the original `captureSha256`. The projection binds subject kind/id/version/os, the loaded engine's stable
 identity and native build provenance, that engine's `runtimeIdentity.adapterSources` path/blobOid pairs,

@@ -759,7 +759,7 @@ export interface CaptureDecision {
   featureId: string
   captureSha256: string
   evidence?: CaptureEvidence
-  decision: "supported" | "unsupported" | "untestable"
+  decision: "supported" | "unsupported" | "untestable" | "tool-gap"
   reviewed: true
   reviewer: string
   reason: string
