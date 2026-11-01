@@ -603,6 +603,33 @@ The writer checks intended id/version against known measured values without repl
 
 Required reviews are applied before sealing. While a review remains pending, the writer keeps an unsealed `.draft.json`; once sealed, enrichment cannot change those result bytes.
 
+The internal admin `review intake` and `review apply` commands reuse that writer for private review.
+Intake reads only an explicitly named retained run, or the named context's `pass.contexts[].rawRun`,
+with its trusted frozen suite and explicitly pinned Terminfo/Termless repositories.
+An existing suite declaration is read through `readExplicitSuiteTarget`. For an unregistered private
+run, intake executes the existing `getTrustedSuiteReceipt` producer from the named checkout at the
+run's own source commit. That producer verifies the loaded suite, checkout revision and clean
+collector inputs; no manifest is reconstructed from the run or written to the registry.
+Intake and apply receipts name the chosen registry/source-receipt path, producer, pin and manifest SHA256.
+Only measured pass rows (`pending-review`, `classified`, `admitted`) may supply `rawRun`.
+The issuer edits the intake's `decisions` array: each entry holds exact canonical decision `source`
+bytes, actual `startedAt`, their SHA256, and a `citations` index into that decision's `sources[]`.
+Each Git citation renders exactly as `terminfo.dev@<40-hex-commit>:<repo-relative-path>:L<first>-L<last>`
+(or `termless@...`); external citations render as `<portable-source-path> sha256:<file-sha256>`.
+The external tree's absolute lookup `root` lives only in the private index, never in the decision.
+The full citation must be the corresponding decision source string, so the retained decision is
+independently re-verifiable without the index. Non-code references are explicitly classified and
+are never reported as Git-verified. An absent external path reports `unverified: <path> (tree absent)`;
+a present file requires its matching recorded SHA256. Required Git objects must resolve.
+Apply verifies bindings, assertion prefixes, original raw values, result membership/order and
+non-target rows, exact appended review records/assertions, and canonical readback. It always passes
+the writer's `keepDraft: true` review option: even the last completed review stays unsealed.
+Collector callers omit that option and retain their sealing behavior. The commands never invoke
+selection, seal, admission or publication operations. Files are explicit absolute private outputs,
+created exclusively with mode 0600; empty decisions produce only a no-op receipt. See `bun admin review --help`
+and each subcommand's help for required inputs. The two real shadow comparisons remain required
+before retiring manual review steps.
+
 A reviewed capture decision may name `tool-gap` when the observable is buildable but its instrument is unbuilt.
 Its required reason names the missing instrument and its owning issue. The existing applier replaces that
 pending `review` test with a `criterion` TEST TODO, preserving the decision bytes and original capture evidence.
