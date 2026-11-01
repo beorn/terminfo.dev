@@ -1326,9 +1326,9 @@ const ABSENT_OSC_ENGINES = {
     kind: "native",
     engineVersion: "0.1.0-fork.5",
     adapterVersion: "0.10.2",
-    binarySha256: "0f56a805793d7d829daa617f1323aacff0d73fe868747b0d077c6af315e2aab8",
-    sourceCommit: "5afcc676d49c02902ef35112893e2ae35efb0d5e",
-    buildHash: "1bc38c0ad4e95754ef42b5de57d4829864984099b2e4422008de7c5b96c875df",
+    binarySha256: "6722b331de7489c14cb599d939e5d2314f054220728f83c5c29f454e70273e47",
+    sourceCommit: "83b22ab3f99ff3c2f3e43bcfce346c1374f540e1",
+    buildHash: "94a2d6025d3dc9e62debb7cbe388b3ad5113394d0ab6746d6baa58475fbe9c56",
     lockSha256: "8eaeab733cced8d47feb223d773d5ae158b2e6af8c994f993d4071d9ba3231d4",
     codes: [22, 176, 440, 555, 633, 666, 710, 720, 3008],
     subcodes: ["133;D"],
@@ -1340,11 +1340,11 @@ const ABSENT_OSC_ENGINES = {
       {
         code: 720,
         reason:
-          "no case 720; wezterm-term src/screen.rs:15-45,335,493,522-527 stores screen/history, not a product viewport; Termless packages/wezterm/native/src/lib.rs:448-461 returns viewport_offset 0 and scroll_viewport is a no-op",
+          "no case 720; wezterm-term src/screen.rs:15-45,335,493,522-527 stores screen/history, not a product viewport; Termless packages/wezterm/native/src/lib.rs:442-455 returns viewport_offset 0 and scroll_viewport is a no-op",
       },
     ],
     sourceCitation:
-      "tattoy-wezterm-escape-parser 0.1.0-1 src/osc.rs:457-505 osc_entries (SHA256 fd26b6d6254c46ef880fbcc03ba418d67e9049c875e71cca6f18f4df76a0924f), parse errors become Unspecified at :155-167; tattoy-wezterm-term 0.1.0-fork.5 src/terminalstate/performer.rs:772-781 logs Unspecified; Termless 2d97417328b7b1d086f9396b9a1731216ed134cc packages/wezterm/native/src/lib.rs:236-243 advances the pinned Terminal",
+      "tattoy-wezterm-escape-parser 0.1.0-1 src/osc.rs:457-505 osc_entries (SHA256 fd26b6d6254c46ef880fbcc03ba418d67e9049c875e71cca6f18f4df76a0924f), parse errors become Unspecified at :155-167; tattoy-wezterm-term 0.1.0-fork.5 src/terminalstate/performer.rs:772-781 logs Unspecified; Termless 83b22ab3f99ff3c2f3e43bcfce346c1374f540e1 packages/wezterm/native/src/lib.rs:237-245 advances the same pinned Terminal; absolute-row reader changes leave parsing, config and reply delivery unchanged",
   },
   vt100Rust: {
     kind: "native",

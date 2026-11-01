@@ -444,22 +444,22 @@ test("Wezterm prompt source reviews survive actual collection and capture bindin
     kind: "native",
     engineVersion: "0.1.0-fork.5",
     adapterVersion: "0.10.2",
-    termlessRevision: "2d97417328b7b1d086f9396b9a1731216ed134cc",
+    termlessRevision: "83b22ab3f99ff3c2f3e43bcfce346c1374f540e1",
     // The JS carrier exercises collection; the qualified identity belongs to audited WezTerm sources.
     adapterSources: [
       { path: "packages/wezterm/src/index.ts", blobOid: "512606c5270ffd0cff55c1b70f5b3eda18a92df0" },
-      { path: "packages/wezterm/src/backend.ts", blobOid: "43464f5118e4442b3910fad63e3b3e3998af6214" },
-      { path: "packages/wezterm/native/src/lib.rs", blobOid: "b83bbf08bb20c6b7965cd0b6492a827707644a8f" },
+      { path: "packages/wezterm/src/backend.ts", blobOid: "42a196995a5f8845ab2e3bb6227192556c470071" },
+      { path: "packages/wezterm/native/src/lib.rs", blobOid: "445f5484027aebbea01a641a96dd92dfea273693" },
       { path: "src/load-native.ts", blobOid: "34e142550085450ab02138184626716ad0d6b546" },
     ],
     loadedBinary: {
       path: "vendor/termless/packages/wezterm/termless-wezterm.node",
-      sha256: "0f56a805793d7d829daa617f1323aacff0d73fe868747b0d077c6af315e2aab8",
+      sha256: "6722b331de7489c14cb599d939e5d2314f054220728f83c5c29f454e70273e47",
     },
     provenance: {
-      sha256: "0f56a805793d7d829daa617f1323aacff0d73fe868747b0d077c6af315e2aab8",
-      sourceCommit: "5afcc676d49c02902ef35112893e2ae35efb0d5e",
-      buildHash: "1bc38c0ad4e95754ef42b5de57d4829864984099b2e4422008de7c5b96c875df",
+      sha256: "6722b331de7489c14cb599d939e5d2314f054220728f83c5c29f454e70273e47",
+      sourceCommit: "83b22ab3f99ff3c2f3e43bcfce346c1374f540e1",
+      buildHash: "94a2d6025d3dc9e62debb7cbe388b3ad5113394d0ab6746d6baa58475fbe9c56",
       toolchain:
         "rustc 1.94.0 (4a4ef493e 2026-03-02) (built from a source tarball); cargo 1.94.0 (85eff7c80 2026-01-15)",
       lockSha256: "8eaeab733cced8d47feb223d773d5ae158b2e6af8c994f993d4071d9ba3231d4",
@@ -529,8 +529,8 @@ test("Wezterm prompt source reviews survive actual collection and capture bindin
         kind: "native",
         engineVersion: "0.1.0-fork.5",
         adapterVersion: "0.10.2",
-        termlessRevision: "2d97417328b7b1d086f9396b9a1731216ed134cc",
-        loadedBinary: { sha256: "0f56a805793d7d829daa617f1323aacff0d73fe868747b0d077c6af315e2aab8" },
+        termlessRevision: "83b22ab3f99ff3c2f3e43bcfce346c1374f540e1",
+        loadedBinary: { sha256: "6722b331de7489c14cb599d939e5d2314f054220728f83c5c29f454e70273e47" },
       },
     })
   }
