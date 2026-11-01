@@ -1,0 +1,174 @@
+{
+  "schemaVersion": 4,
+  "source": {
+    "kind": "live"
+  },
+  "runId": "88c8d56b8585e3d84b4855b5166dc23b",
+  "suiteId": "c26b5b2de9fb",
+  "probeHash": "c26b5b2de9fb",
+  "sourceRevision": "7816475f2189001d4e9d0ae0c4aab2dbf3737588",
+  "intendedSubject": {
+    "kind": "lib",
+    "id": "kitty",
+    "os": "linux"
+  },
+  "results": [
+    {
+      "featureId": "extensions.osc52-clipboard",
+      "attempt": {
+        "scope": "probe",
+        "startedAt": "2026-11-01T04:40:24.715Z"
+      },
+      "tests": [
+        {
+          "id": "criterion",
+          "status": "supported",
+          "attempt": {
+            "scope": "probe",
+            "startedAt": "2026-11-01T04:40:24.715Z"
+          },
+          "assertionRefs": [0],
+          "rawReplyRef": "extensions.osc52-clipboard",
+          "reason": "Isolated backend returned the exact OSC 52 clipboard nonce; read under harness-supplied clipboard_control write-clipboard write-primary read-clipboard read-primary; kitty's default read-clipboard-ask asks a human before answering a read"
+        }
+      ],
+      "assertionType": "query_reply",
+      "rawReplyRef": "extensions.osc52-clipboard",
+      "reason": "Isolated backend returned the exact OSC 52 clipboard nonce; read under harness-supplied clipboard_control write-clipboard write-primary read-clipboard read-primary; kitty's default read-clipboard-ask asks a human before answering a read",
+      "status": "supported"
+    },
+    {
+      "featureId": "extensions.osc52-read",
+      "attempt": {
+        "scope": "probe",
+        "startedAt": "2026-11-01T04:40:25.703Z"
+      },
+      "tests": [
+        {
+          "id": "criterion",
+          "status": "supported",
+          "attempt": {
+            "scope": "probe",
+            "startedAt": "2026-11-01T04:40:25.703Z"
+          },
+          "assertionRefs": [2],
+          "rawReplyRef": "extensions.osc52-read",
+          "reason": "Isolated backend returned the exact OSC 52 clipboard nonce; read under harness-supplied clipboard_control write-clipboard write-primary read-clipboard read-primary; kitty's default read-clipboard-ask asks a human before answering a read"
+        }
+      ],
+      "assertionType": "query_reply",
+      "rawReplyRef": "extensions.osc52-read",
+      "reason": "Isolated backend returned the exact OSC 52 clipboard nonce; read under harness-supplied clipboard_control write-clipboard write-primary read-clipboard read-primary; kitty's default read-clipboard-ask asks a human before answering a read",
+      "status": "supported"
+    },
+    {
+      "featureId": "extensions.osc52-write",
+      "attempt": {
+        "scope": "probe",
+        "startedAt": "2026-11-01T04:40:25.317Z"
+      },
+      "tests": [
+        {
+          "id": "criterion",
+          "status": "supported",
+          "attempt": {
+            "scope": "probe",
+            "startedAt": "2026-11-01T04:40:25.317Z"
+          },
+          "assertionRefs": [1],
+          "rawReplyRef": "extensions.osc52-write",
+          "reason": "engine copy_to_clipboard callback read via getClipboardState, no reply bytes; text terminfo-osc52-98b05d52-0b1c-4e70-bc87-3b72be189746"
+        }
+      ],
+      "assertionType": "query_reply",
+      "rawReplyRef": "extensions.osc52-write",
+      "reason": "engine copy_to_clipboard callback read via getClipboardState, no reply bytes; text terminfo-osc52-98b05d52-0b1c-4e70-bc87-3b72be189746",
+      "status": "supported"
+    }
+  ],
+  "rawReplies": {
+    "collector.selection": "{\"ids\":[\"extensions.osc52-clipboard\",\"extensions.osc52-write\",\"extensions.osc52-read\"]}",
+    "collector.collectionAttempt": "{\"ids\":[\"extensions.osc52-clipboard\",\"extensions.osc52-write\",\"extensions.osc52-read\"],\"startedAt\":\"2026-11-01T04:40:24.504Z\",\"hostInputs\":{\"foreground-rgb\":\"not-supplied\",\"background-rgb\":\"not-supplied\",\"cursor-rgb\":\"not-supplied\",\"palette-entry-rgb\":\"not-supplied\",\"pixel-geometry\":\"{\\\"cellWidth\\\":10,\\\"cellHeight\\\":20}\",\"clipboard-read-permission\":\"clipboard_control write-clipboard write-primary read-clipboard read-primary\"},\"result\":\"completed\"}",
+    "collector.replyPath": "{\"backend\":\"kitty\",\"runtimeIdentity\":{\"kind\":\"native\",\"engineVersion\":\"0.49.2\",\"adapterVersion\":\"0.10.2\",\"termlessRevision\":\"785d8a9e026ed173a45a6e62642dc70ed7c162f6\",\"loadedBinary\":{\"path\":\"/nix/store/fbpk67n6fd9kb95vl7ksrc7pkh3gx3qx-kitty-official-binary-0.49.2/bin/kitty\",\"sha256\":\"bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886\"},\"provenance\":{\"sha256\":\"bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886\",\"sourceCommit\":\"b2cb871254fbdac19a085188813c8dfb258b95cd\",\"buildHash\":\"88e840e1b8e7f09edf3464ee33df8753fd5107838de15bccb6ea59e0dd6cc9c3\",\"toolchain\":\"Nix /nix/store/fbpk67n6fd9kb95vl7ksrc7pkh3gx3qx-kitty-official-binary-0.49.2; narHash sha256-THskGDdyHQGsNNMEPUs7CxW2YWTSxv4REQ6k4gvf+b0=; source archive /nix/store/kw9sbgr6haym99r3ppavnyzl43vb954x-kitty-0.49.2-x86_64.txz sha256 d573618b911e9c461bd421b96c13c74c7f1cb2f1ac9c327818d4ff84366cf5c6; kitty +runpy\",\"lockSha256\":\"282d1098337a5705a7c1d13188a74d2fe34565766619e8d6b21a48d5b67451be\"},\"adapterSources\":[{\"path\":\"packages/kitty/src/index.ts\",\"blobOid\":\"3f207f911646613cdc3d8b04f155f0686a96a077\"},{\"path\":\"packages/kitty/src/backend.ts\",\"blobOid\":\"5e98a200eab31eeef6505e81470d350637b5959c\"},{\"path\":\"packages/kitty/build/bridge.py\",\"blobOid\":\"7736a826f38162406a46a530727464b066431392\"}]},\"decisions\":{\"extensions.osc52-clipboard\":{\"member\":true,\"reason\":\"kitty declares complete reply delivery bound to its loaded source and engine\",\"runtimeIdentity\":{\"kind\":\"native\",\"engineVersion\":\"0.49.2\",\"adapterVersion\":\"0.10.2\",\"termlessRevision\":\"785d8a9e026ed173a45a6e62642dc70ed7c162f6\",\"loadedBinary\":{\"path\":\"/nix/store/fbpk67n6fd9kb95vl7ksrc7pkh3gx3qx-kitty-official-binary-0.49.2/bin/kitty\",\"sha256\":\"bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886\"},\"provenance\":{\"sha256\":\"bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886\",\"sourceCommit\":\"b2cb871254fbdac19a085188813c8dfb258b95cd\",\"buildHash\":\"88e840e1b8e7f09edf3464ee33df8753fd5107838de15bccb6ea59e0dd6cc9c3\",\"toolchain\":\"Nix /nix/store/fbpk67n6fd9kb95vl7ksrc7pkh3gx3qx-kitty-official-binary-0.49.2; narHash sha256-THskGDdyHQGsNNMEPUs7CxW2YWTSxv4REQ6k4gvf+b0=; source archive /nix/store/kw9sbgr6haym99r3ppavnyzl43vb954x-kitty-0.49.2-x86_64.txz sha256 d573618b911e9c461bd421b96c13c74c7f1cb2f1ac9c327818d4ff84366cf5c6; kitty +runpy\",\"lockSha256\":\"282d1098337a5705a7c1d13188a74d2fe34565766619e8d6b21a48d5b67451be\"},\"adapterSources\":[{\"path\":\"packages/kitty/src/index.ts\",\"blobOid\":\"3f207f911646613cdc3d8b04f155f0686a96a077\"},{\"path\":\"packages/kitty/src/backend.ts\",\"blobOid\":\"5e98a200eab31eeef6505e81470d350637b5959c\"},{\"path\":\"packages/kitty/build/bridge.py\",\"blobOid\":\"7736a826f38162406a46a530727464b066431392\"}]},\"hostRecipes\":[{\"recipe\":\"clipboard-load\",\"query\":\"\\u001b]52;c;?\\u0007\",\"missing\":[\"clipboard-read-permission\"]}]},\"extensions.osc52-write\":{\"member\":true,\"reason\":\"kitty declares complete reply delivery bound to its loaded source and engine\",\"runtimeIdentity\":{\"kind\":\"native\",\"engineVersion\":\"0.49.2\",\"adapterVersion\":\"0.10.2\",\"termlessRevision\":\"785d8a9e026ed173a45a6e62642dc70ed7c162f6\",\"loadedBinary\":{\"path\":\"/nix/store/fbpk67n6fd9kb95vl7ksrc7pkh3gx3qx-kitty-official-binary-0.49.2/bin/kitty\",\"sha256\":\"bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886\"},\"provenance\":{\"sha256\":\"bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886\",\"sourceCommit\":\"b2cb871254fbdac19a085188813c8dfb258b95cd\",\"buildHash\":\"88e840e1b8e7f09edf3464ee33df8753fd5107838de15bccb6ea59e0dd6cc9c3\",\"toolchain\":\"Nix /nix/store/fbpk67n6fd9kb95vl7ksrc7pkh3gx3qx-kitty-official-binary-0.49.2; narHash sha256-THskGDdyHQGsNNMEPUs7CxW2YWTSxv4REQ6k4gvf+b0=; source archive /nix/store/kw9sbgr6haym99r3ppavnyzl43vb954x-kitty-0.49.2-x86_64.txz sha256 d573618b911e9c461bd421b96c13c74c7f1cb2f1ac9c327818d4ff84366cf5c6; kitty +runpy\",\"lockSha256\":\"282d1098337a5705a7c1d13188a74d2fe34565766619e8d6b21a48d5b67451be\"},\"adapterSources\":[{\"path\":\"packages/kitty/src/index.ts\",\"blobOid\":\"3f207f911646613cdc3d8b04f155f0686a96a077\"},{\"path\":\"packages/kitty/src/backend.ts\",\"blobOid\":\"5e98a200eab31eeef6505e81470d350637b5959c\"},{\"path\":\"packages/kitty/build/bridge.py\",\"blobOid\":\"7736a826f38162406a46a530727464b066431392\"}]},\"hostRecipes\":[{\"recipe\":\"clipboard-load\",\"query\":\"\\u001b]52;c;?\\u0007\",\"missing\":[\"clipboard-read-permission\"]}]},\"extensions.osc52-read\":{\"member\":true,\"reason\":\"kitty declares complete reply delivery bound to its loaded source and engine\",\"runtimeIdentity\":{\"kind\":\"native\",\"engineVersion\":\"0.49.2\",\"adapterVersion\":\"0.10.2\",\"termlessRevision\":\"785d8a9e026ed173a45a6e62642dc70ed7c162f6\",\"loadedBinary\":{\"path\":\"/nix/store/fbpk67n6fd9kb95vl7ksrc7pkh3gx3qx-kitty-official-binary-0.49.2/bin/kitty\",\"sha256\":\"bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886\"},\"provenance\":{\"sha256\":\"bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886\",\"sourceCommit\":\"b2cb871254fbdac19a085188813c8dfb258b95cd\",\"buildHash\":\"88e840e1b8e7f09edf3464ee33df8753fd5107838de15bccb6ea59e0dd6cc9c3\",\"toolchain\":\"Nix /nix/store/fbpk67n6fd9kb95vl7ksrc7pkh3gx3qx-kitty-official-binary-0.49.2; narHash sha256-THskGDdyHQGsNNMEPUs7CxW2YWTSxv4REQ6k4gvf+b0=; source archive /nix/store/kw9sbgr6haym99r3ppavnyzl43vb954x-kitty-0.49.2-x86_64.txz sha256 d573618b911e9c461bd421b96c13c74c7f1cb2f1ac9c327818d4ff84366cf5c6; kitty +runpy\",\"lockSha256\":\"282d1098337a5705a7c1d13188a74d2fe34565766619e8d6b21a48d5b67451be\"},\"adapterSources\":[{\"path\":\"packages/kitty/src/index.ts\",\"blobOid\":\"3f207f911646613cdc3d8b04f155f0686a96a077\"},{\"path\":\"packages/kitty/src/backend.ts\",\"blobOid\":\"5e98a200eab31eeef6505e81470d350637b5959c\"},{\"path\":\"packages/kitty/build/bridge.py\",\"blobOid\":\"7736a826f38162406a46a530727464b066431392\"}]},\"hostRecipes\":[{\"recipe\":\"clipboard-load\",\"query\":\"\\u001b]52;c;?\\u0007\",\"missing\":[\"clipboard-read-permission\"]}]}},\"declaration\":{\"boundary\":\"feed-and-getCursor\",\"engine\":{\"kind\":\"native\",\"sha256\":\"bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886\"},\"adapterSources\":[{\"path\":\"packages/kitty/src/index.ts\",\"blobOid\":\"3f207f911646613cdc3d8b04f155f0686a96a077\"},{\"path\":\"packages/kitty/src/backend.ts\",\"blobOid\":\"5e98a200eab31eeef6505e81470d350637b5959c\"},{\"path\":\"packages/kitty/build/bridge.py\",\"blobOid\":\"7736a826f38162406a46a530727464b066431392\"}]}}",
+    "collector.hostRecipes.extensions.osc52-clipboard": "{\"runId\":\"88c8d56b8585e3d84b4855b5166dc23b\",\"captures\":[{\"query\":\"\\u001b]52;c;?\\u0007\",\"response\":\"\\u001b]52;c;dGVybWluZm8tb3NjNTItZjE5YmZmZWQtYTAwMy00MzlkLTlkMGUtOTgxM2ExZDU1NTRk\\u001b\\\\\",\"error\":null},{\"query\":\"\\u001b[c\",\"response\":\"\\u001b[?62;52;c\",\"error\":null}],\"causes\":[]}",
+    "extensions.osc52-clipboard": "\u001b]52;c;dGVybWluZm8tb3NjNTItZjE5YmZmZWQtYTAwMy00MzlkLTlkMGUtOTgxM2ExZDU1NTRk\u001b\\\u001b[?62;52;c",
+    "collector.hostRecipes.extensions.osc52-write": "{\"runId\":\"88c8d56b8585e3d84b4855b5166dc23b\",\"captures\":[{\"query\":\"\\u001b]52;c;?\\u0007\",\"response\":\"\\u001b]52;c;dGVybWluZm8tb3NjNTItOThiMDVkNTItMGIxYy00ZTcwLWJjODctM2I3MmJlMTg5NzQ2\\u001b\\\\\",\"error\":null},{\"query\":\"\\u001b[c\",\"response\":\"\\u001b[?62;52;c\",\"error\":null}],\"causes\":[]}",
+    "extensions.osc52-write": "{\"selector\":\"c\",\"payload\":\"dGVybWluZm8tb3NjNTItOThiMDVkNTItMGIxYy00ZTcwLWJjODctM2I3MmJlMTg5NzQ2\"}",
+    "collector.hostRecipes.extensions.osc52-read": "{\"runId\":\"88c8d56b8585e3d84b4855b5166dc23b\",\"captures\":[{\"query\":\"\\u001b]52;c;?\\u0007\",\"response\":\"\\u001b]52;c;dGVybWluZm8tb3NjNTItODg1MmUzYmItOGIyOS00ODBjLThmMWItZWIwYTdmYTIxZjFj\\u001b\\\\\",\"error\":null},{\"query\":\"\\u001b[c\",\"response\":\"\\u001b[?62;52;c\",\"error\":null}],\"causes\":[]}",
+    "extensions.osc52-read": "\u001b]52;c;dGVybWluZm8tb3NjNTItODg1MmUzYmItOGIyOS00ODBjLThmMWItZWIwYTdmYTIxZjFj\u001b\\\u001b[?62;52;c"
+  },
+  "assertions": [
+    {
+      "featureId": "extensions.osc52-clipboard",
+      "assertionType": "query_reply",
+      "kind": "positive",
+      "expected": "OSC 52 c query returns the exact written nonce",
+      "observed": "\u001b]52;c;dGVybWluZm8tb3NjNTItZjE5YmZmZWQtYTAwMy00MzlkLTlkMGUtOTgxM2ExZDU1NTRk\u001b\\",
+      "rawReplyRef": "extensions.osc52-clipboard"
+    },
+    {
+      "featureId": "extensions.osc52-write",
+      "assertionType": "query_reply",
+      "kind": "positive",
+      "expected": "{\"selector\":\"c\",\"payload\":\"dGVybWluZm8tb3NjNTItOThiMDVkNTItMGIxYy00ZTcwLWJjODctM2I3MmJlMTg5NzQ2\"}",
+      "observed": "{\"selector\":\"c\",\"payload\":\"dGVybWluZm8tb3NjNTItOThiMDVkNTItMGIxYy00ZTcwLWJjODctM2I3MmJlMTg5NzQ2\"}",
+      "rawReplyRef": "extensions.osc52-write"
+    },
+    {
+      "featureId": "extensions.osc52-read",
+      "assertionType": "query_reply",
+      "kind": "positive",
+      "expected": "OSC 52 c query returns the exact written nonce",
+      "observed": "\u001b]52;c;dGVybWluZm8tb3NjNTItODg1MmUzYmItOGIyOS00ODBjLThmMWItZWIwYTdmYTIxZjFj\u001b\\",
+      "rawReplyRef": "extensions.osc52-read"
+    }
+  ],
+  "screenshotRefs": [],
+  "runtimeIdentity": {
+    "kind": "native",
+    "engineVersion": "0.49.2",
+    "adapterVersion": "0.10.2",
+    "termlessRevision": "785d8a9e026ed173a45a6e62642dc70ed7c162f6",
+    "loadedBinary": {
+      "path": "/nix/store/fbpk67n6fd9kb95vl7ksrc7pkh3gx3qx-kitty-official-binary-0.49.2/bin/kitty",
+      "sha256": "bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886"
+    },
+    "provenance": {
+      "sha256": "bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886",
+      "sourceCommit": "b2cb871254fbdac19a085188813c8dfb258b95cd",
+      "buildHash": "88e840e1b8e7f09edf3464ee33df8753fd5107838de15bccb6ea59e0dd6cc9c3",
+      "toolchain": "Nix /nix/store/fbpk67n6fd9kb95vl7ksrc7pkh3gx3qx-kitty-official-binary-0.49.2; narHash sha256-THskGDdyHQGsNNMEPUs7CxW2YWTSxv4REQ6k4gvf+b0=; source archive /nix/store/kw9sbgr6haym99r3ppavnyzl43vb954x-kitty-0.49.2-x86_64.txz sha256 d573618b911e9c461bd421b96c13c74c7f1cb2f1ac9c327818d4ff84366cf5c6; kitty +runpy",
+      "lockSha256": "282d1098337a5705a7c1d13188a74d2fe34565766619e8d6b21a48d5b67451be"
+    },
+    "adapterSources": [
+      {
+        "path": "packages/kitty/src/index.ts",
+        "blobOid": "3f207f911646613cdc3d8b04f155f0686a96a077"
+      },
+      {
+        "path": "packages/kitty/src/backend.ts",
+        "blobOid": "5e98a200eab31eeef6505e81470d350637b5959c"
+      },
+      {
+        "path": "packages/kitty/build/bridge.py",
+        "blobOid": "7736a826f38162406a46a530727464b066431392"
+      }
+    ]
+  },
+  "subject": {
+    "kind": "lib",
+    "id": "kitty",
+    "version": "0.49.2",
+    "os": "linux",
+    "osVersion": "7.0.0-34-generic",
+    "outerTerminal": null,
+    "mux": null,
+    "config": "80x24 default Termless backend",
+    "permissions": null
+  },
+  "identity": "unverified",
+  "measuredAt": "2026-11-01T04:40:26.294Z",
+  "origin": {
+    "kind": "collector"
+  }
+}
