@@ -58,7 +58,7 @@ const xtermOscIdentity = {
   termlessRevision: "84003d2c91610fe2743142675234a0fb3ec9cf1d",
   adapterSources: [
     { path: "packages/xtermjs/src/index.ts", blobOid: "550e10110ec2baaf326d2958319b03ee8208feba" },
-    { path: "packages/xtermjs/src/backend.ts", blobOid: "923e41d80147e4f136719e46ce9a2fc7dfb31683" },
+    { path: "packages/xtermjs/src/backend.ts", blobOid: "481fe005c5801cbb5e6ba4c8677f577e02122e4e" },
   ],
   resolvedPath: "node_modules/.bun/@xterm+headless@6.0.0/node_modules/@xterm/headless/lib-headless/xterm-headless.js",
   integrity: {
@@ -86,7 +86,7 @@ const auditedArtifacts: readonly HeadlessRuntimeIdentity[] = [
     },
     adapterSources: [
       { path: "packages/alacritty/src/index.ts", blobOid: "b4154cbd6ef4a83ce2cbf3dcf26ff13d645efd05" },
-      { path: "packages/alacritty/src/backend.ts", blobOid: "3c2cd926fa2a20ff686aecc4c77d7cd908e2e9df" },
+      { path: "packages/alacritty/src/backend.ts", blobOid: "4210383129879c4e8756e6975674632cf69ecce9" },
       { path: "packages/alacritty/native/src/lib.rs", blobOid: "f8d4ef7a2c4f389dd80ecbd3f9dae38600446a1e" },
       { path: "src/load-native.ts", blobOid: "34e142550085450ab02138184626716ad0d6b546" },
     ],
@@ -111,7 +111,7 @@ const auditedArtifacts: readonly HeadlessRuntimeIdentity[] = [
     },
     adapterSources: [
       { path: "packages/libvterm/src/index.ts", blobOid: "2b4708b1081e701b99893ca055ded781dc46cf25" },
-      { path: "packages/libvterm/src/backend.ts", blobOid: "9191b6f79617372717848713411b78ac2faa353e" },
+      { path: "packages/libvterm/src/backend.ts", blobOid: "6ae281ac2862dfe7fe79e0bd144f9343756659bf" },
       { path: "packages/libvterm/src/wasm-bindings.ts", blobOid: "2bbd4d5cf59b8d53db8f5c0329d2ed7853c43e45" },
       { path: "packages/libvterm/wasm/libvterm.js", blobOid: "973341a8e2303d25cb17f1a36d491aad6c55b3a1" },
     ],
@@ -283,28 +283,28 @@ test.each([
             engine === "vt100"
               ? [
                   { path: "packages/vt100/src/index.ts", blobOid: "99833d737402f9d1d8e3e257e3a255d8aa1facc3" },
-                  { path: "packages/vt100/src/backend.ts", blobOid: "88fca587dd459fd34da3405e93cc3793cb4a1cf8" },
+                  { path: "packages/vt100/src/backend.ts", blobOid: "1205e36ffd0fe662d35dad8a41ea2cd55c46f30b" },
                 ]
               : engine === "vt220"
                 ? [
                     { path: "packages/vt220/src/index.ts", blobOid: "601dd26eb7e753a5396ebdf72f1ef8ee2cc4355f" },
-                    { path: "packages/vt220/src/backend.ts", blobOid: "fe2970bf029f2c4c52a253364fe3e86659985856" },
+                    { path: "packages/vt220/src/backend.ts", blobOid: "13b78d6bcf1b7f1635644574358653640c86e79c" },
                   ]
                 : [
                     { path: "packages/vterm/src/index.ts", blobOid: "cb5719799dcdd5ae24e6fcf0dcad9965035ce54c" },
-                    { path: "packages/vterm/src/backend.ts", blobOid: "8599e301dd046b1264403069289477ab65d71d3a" },
+                    { path: "packages/vterm/src/backend.ts", blobOid: "e7eb83f44a4ae1368cbf7b78ef6783219757002a" },
                   ],
           resolvedPath: `vendor/vterm/packages/${engine}/src/index.ts`,
           integrity: {
             kind: "source",
             repository: "git@github.com:beorn/vterm.git",
-            revision: "53a9eb9291b7880f4dc6a39a6802301049997a72",
+            revision: "f6d3f26b52dc46e54a76e4a2e21647fd3cf26edb",
             treeOid:
               engine === "vt100"
-                ? "5ffc7ad9ae120d0bf93c64b0fdc712eb40892896"
+                ? "97f1da77dea90f664aeb678b919a35673f893ef1"
                 : engine === "vt220"
-                  ? "69366752918a6086c639123799cc3ac68d8083a0"
-                  : "617ae6002c7befea7b3e43d11bf23e6b433e3d65",
+                  ? "307baeacad6171889503303135f6f930aab04b2e"
+                  : "24434d10612d8da4efb697ea39ae21f005477fe6",
             cleanTree: true,
           },
         } as const)
@@ -334,7 +334,7 @@ test.each([
                   mode === "changed-tree"
                     ? "4".repeat(40)
                     : mode === "wrong-package"
-                      ? "5ffc7ad9ae120d0bf93c64b0fdc712eb40892896"
+                      ? "97f1da77dea90f664aeb678b919a35673f893ef1"
                       : identity.integrity.treeOid,
                 cleanTree: mode !== "dirty",
               }
@@ -355,7 +355,7 @@ test.each([
         {
           id: "review",
           status: "test-failure",
-          reason: expect.stringContaining(engine === "xtermjs" ? "17a90b65" : "53a9eb92"),
+          reason: expect.stringContaining(engine === "xtermjs" ? "17a90b65" : "f6d3f26b"),
         },
       ])
       expect(result.observation).toMatchObject({ outcome: "inconclusive", assertionType: "buffer_state" })
@@ -1767,7 +1767,7 @@ test.each([
   },
 )
 
-// Actual runb9697318, vterm source53a9eb92/tree617ae600: no font/window geometry.
+// Geometry audit re-pinned to f6d3f26b; original runb9697318 used source53a9eb92/tree617ae600.
 // Q8 requires independent review of this context limit, never automatic Untestable.
 const geometryRuntime = {
   kind: "js",
@@ -1777,8 +1777,8 @@ const geometryRuntime = {
   integrity: {
     kind: "source",
     repository: "git@github.com:beorn/vterm.git",
-    revision: "53a9eb9291b7880f4dc6a39a6802301049997a72",
-    treeOid: "617ae6002c7befea7b3e43d11bf23e6b433e3d65",
+    revision: "f6d3f26b52dc46e54a76e4a2e21647fd3cf26edb",
+    treeOid: "24434d10612d8da4efb697ea39ae21f005477fe6",
     cleanTree: true,
   },
   runtimeFormat: "js",
@@ -1881,8 +1881,8 @@ test.each(geometryReplies)("$id reports source tree drift before geometry gradin
 test.each(geometryReplies)("$id distinguishes sibling source entries", ({ id, raw }) => {
   const baseline = callback(id).lib!({ feedCapture: () => raw } as unknown as LibProbeSource)
   for (const [engine, treeOid] of [
-    ["vt100", "5ffc7ad9ae120d0bf93c64b0fdc712eb40892896"],
-    ["vt220", "69366752918a6086c639123799cc3ac68d8083a0"],
+    ["vt100", "97f1da77dea90f664aeb678b919a35673f893ef1"],
+    ["vt220", "307baeacad6171889503303135f6f930aab04b2e"],
   ]) {
     const runtimeIdentity = {
       ...geometryRuntime,

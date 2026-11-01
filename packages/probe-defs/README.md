@@ -73,15 +73,15 @@ uses the loaded binary digest, while wrapper repository/tree metadata remains pr
 
 The pinned vterm 0.9.0 library arms for OSC 9, 22, 176, 440, 555, 666, 710, 777 and 3008 feed their exact commands and a cell-X
 consumption control. A rendered X retains `source-negative-review`, its actual fed/cell state and a
-negative buffer-state assertion for independent review of the target implementation at source53a9eb92.
+negative buffer-state assertion for independent review of the target implementation at sourcef6d3f26b.
 The control proves parser consumption, not a target effect; target state remains explicitly unexposed.
 The vt100 0.9.0 arms use the same nine commands and control only at their independently audited
-source identity (revision53a9eb92, package tree5ffc7ad9, vt100 entry path). Its handleOSC switch
+source identity (revisionf6d3f26b, package tree97f1da77, vt100 entry path). Its handleOSC switch
 at screen.ts:504-520 has cases0/1/2 only. The OSC9 notification-sink citation is specific to the
 vterm entry; vt100 records its own absent-handler citation. These paths retain a pending source
 review, never an automatic grade or a measured target effect.
-The vt220 0.9.0 arms qualify the same nine commands at revision53a9eb92, package
-tree69366752 and the vt220 entry path. Its screen.ts:703-718 handleOSC returns
+The vt220 0.9.0 arms qualify the same nine commands at revisionf6d3f26b, package
+tree307baeac and the vt220 entry path. Its screen.ts:703-718 handleOSC returns
 without a semicolon and otherwise handles only cases0/1/2. Its OSC9 records the
 generic absent-handler citation, never vterm's notification-sink citation.
 Other identities keep named coverage, and a missing X grants no source-review negative.

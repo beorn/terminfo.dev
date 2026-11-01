@@ -592,7 +592,7 @@ function oscSimpleQueryProbe(id: string, query: string, pattern: RegExp, expecte
               raw,
               noObservable: "Audited vterm headless subject has no physical font cell dimensions",
               sourceCitation:
-                "vterm screen.ts at 53a9eb92: ScreenOptions has no physical font metrics; OSC1337 ReportCellSize and OSC776 deliberately report unknown zero dimensions (#30575)",
+                "vterm screen.ts at f6d3f26b: ScreenOptions has no physical font metrics; OSC1337 ReportCellSize and OSC776 deliberately report unknown zero dimensions (#30575)",
             })
             if (review) return review
           }
@@ -1178,20 +1178,20 @@ const ABSENT_OSC_ENGINES = {
     runtimeFormat: "js",
     engineVersion: "0.9.0",
     repository: "git@github.com:beorn/vterm.git",
-    treeOid: "5ffc7ad9ae120d0bf93c64b0fdc712eb40892896",
+    treeOid: "97f1da77dea90f664aeb678b919a35673f893ef1",
     codes: [8, 9, 22, 176, 440, 555, 666, 710, 777, 3008],
     sourceCitation:
-      "vt100 53a9eb9291b7880f4dc6a39a6802301049997a72 packages/vt100/src/screen.ts:504-520 handleOSC switch, cases 0/1/2 only",
+      "vt100 f6d3f26b52dc46e54a76e4a2e21647fd3cf26edb packages/vt100/src/screen.ts:504-520 handleOSC switch, cases 0/1/2 only",
   },
   vt220: {
     kind: "source",
     runtimeFormat: "js",
     engineVersion: "0.9.0",
     repository: "git@github.com:beorn/vterm.git",
-    treeOid: "69366752918a6086c639123799cc3ac68d8083a0",
+    treeOid: "307baeacad6171889503303135f6f930aab04b2e",
     codes: [8, 9, 22, 176, 440, 555, 666, 710, 777, 3008],
     sourceCitation:
-      "vt220 53a9eb9291b7880f4dc6a39a6802301049997a72 packages/vt220/src/screen.ts:703-718 handleOSC: no-semicolon return; cases 0/1/2 only",
+      "vt220 f6d3f26b52dc46e54a76e4a2e21647fd3cf26edb packages/vt220/src/screen.ts:703-718 handleOSC: no-semicolon return; cases 0/1/2 only",
   },
   vterm: {
     kind: "source",
@@ -1208,7 +1208,7 @@ const ABSENT_OSC_ENGINES = {
       },
     ],
     sourceCitation:
-      "vterm 53a9eb9291b7880f4dc6a39a6802301049997a72 packages/vterm/src/screen.ts:3596-4055 handleOSC switch",
+      "vterm f6d3f26b52dc46e54a76e4a2e21647fd3cf26edb packages/vterm/src/screen.ts:3596-4055 handleOSC switch",
   },
   xtermjs: {
     kind: "registry",
