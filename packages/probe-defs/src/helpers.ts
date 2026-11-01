@@ -1271,12 +1271,15 @@ export function decrpmResult(ps: DecrpmPs | null, modeNum: number): ProbeCallbac
     return replyFailure("no usable DECRPM reply; the public projection returned null and retained no bytes")
   }
   const reading = decrpmReading(ps)
+  // CTO 62ab5adc: modes 5, 2026 and 2031 grade protocol recognition; their named effects remain unmeasured.
   const unmeasuredFacet =
     modeNum === 2031
-      ? "scheme-change report (DSR ?996n) unmeasured; recognition measured"
-      : modeNum === 5 || modeNum === 2026
-        ? "presentation (tearing, scroll cadence, inverted frame) unmeasured; protocol measured"
-        : undefined
+      ? "scheme-change report (CSI ? 997 ; Ps n, unsolicited) unmeasured; recognition measured"
+      : modeNum === 5
+        ? "presentation (inverted frame) unmeasured; protocol measured"
+        : modeNum === 2026
+          ? "presentation (tearing, scroll cadence) unmeasured; protocol measured"
+          : undefined
   if (ps === 0) {
     if (unmeasuredFacet) {
       const note = `DECRPM mode ${modeNum}: ${reading}; ${unmeasuredFacet}`

@@ -19,17 +19,17 @@ import type {
 // The existing mode contract exercises app replies; it misses these library
 // callbacks retaining presentation reviews even when the engine answers DECRPM.
 test.each([
-  ["modes.reverse-video", 5, "presentation (tearing, scroll cadence, inverted frame) unmeasured; protocol measured"],
+  ["modes.reverse-video", 5, "presentation (inverted frame) unmeasured; protocol measured"],
+  ["modes.synchronized-output", 2026, "presentation (tearing, scroll cadence) unmeasured; protocol measured"],
   [
-    "modes.synchronized-output",
-    2026,
-    "presentation (tearing, scroll cadence, inverted frame) unmeasured; protocol measured",
+    "modes.color-scheme-reporting",
+    2031,
+    "scheme-change report (CSI ? 997 ; Ps n, unsolicited) unmeasured; recognition measured",
   ],
-  ["modes.color-scheme-reporting", 2031, "scheme-change report (DSR ?996n) unmeasured; recognition measured"],
 ] as const)("%s library criterion grades its own DECRPM reply", (id, mode, facet) => {
   const definition = modesProbes.find((entry) => entry.id === id)
   if (!definition?.lib) throw new Error(`Missing library callback for ${id}`)
-  for (const ps of [1, 2, 0, null] as const) {
+  for (const ps of [1, 2, 3, 4, 0, null] as const) {
     const queries: string[] = []
     const reply = ps === null ? "" : `\x1b[?${mode};${ps}$y`
     const source = libProbeSource({
@@ -50,19 +50,25 @@ test.each([
     })
     const result = definition.lib(source)
     if (ps === null) {
-      expect(result.tests, `${id}: silence`).toEqual(
-        expect.arrayContaining([expect.objectContaining({ status: "test-todo" })]),
-      )
+      expect(result.criterionBranch, `${id}: silence`).toBe("os-input-review")
+      expect(result.tests, `${id}: silence`).toEqual([
+        {
+          id: "review",
+          status: "test-todo",
+          reason:
+            "The adapter delivered no DECRPM reply from the engine; required independent review of the retained raw state pending",
+        },
+      ])
       expect(result.assertions ?? []).toEqual([])
     } else {
       expect(result.observation, `${id}: Ps ${ps}`).toMatchObject({
-        outcome: ps === 0 ? "unsupported" : "supported",
+        outcome: ps === 0 || ps === 4 ? "unsupported" : "supported",
         assertionType: "query_reply",
         note: expect.stringContaining(facet),
       })
       expect(result.note).toContain(facet)
       expect(result.assertions).toMatchObject([
-        { assertionType: "query_reply", kind: ps === 0 ? "negative" : "positive" },
+        { assertionType: "query_reply", kind: ps === 0 || ps === 4 ? "negative" : "positive" },
       ])
       expect(JSON.parse(result.response!)).toMatchObject({ reply })
     }
