@@ -727,10 +727,6 @@ function withModeSourceReview(definition: ProbeDefinition): ProbeDefinition {
       const key = modeSourceKey(identity)
       const audit = key === undefined ? undefined : MODE_COMMAND_SOURCE_AUDITS.get(key)
       const fallback = (reason: string, state: object = {}): ProbeCallbackResult => {
-        if (Object.keys(state).length === 0) {
-          for (const test of prior.tests ?? []) test.reason = `${test.reason ?? "Mode review required"}; ${reason}`
-          return prior
-        }
         const noObservable = `${prior.notTested?.noObservable ?? "Mode deciding observable unavailable"}; ${reason}`
         const result = reviewResult(
           prior.criterionBranch ?? HEADLESS_OBSERVABLE_REVIEW,
@@ -738,11 +734,14 @@ function withModeSourceReview(definition: ProbeDefinition): ProbeDefinition {
           noObservable,
           { priorResponse: prior.response, ...state },
         )
-        return result
+        // Stack priors can have no test rows. Always emit the named TODO, retaining the original raw state.
+        return Object.keys(state).length === 0 && prior.response !== undefined
+          ? { ...result, response: prior.response }
+          : result
       }
       if (!audit) {
         // Other loaded engines retain their original callback. Missing/changed source never gains an assertion.
-        if (!identity) return fallback("Mode source identity missing")
+        if (!identity) return prior
         if (!("resolvedPath" in identity)) return prior
         const integrity = identity.integrity
         const knownTree =
@@ -752,10 +751,22 @@ function withModeSourceReview(definition: ProbeDefinition): ProbeDefinition {
           )
         if (!knownTree && !/(?:vt100|vt220)/.test(identity.resolvedPath)) return prior
         if (integrity.kind === "source" && !integrity.cleanTree) return fallback("Mode source identity is dirty")
-        return fallback(`Mode source identity is foreign or entry moved: ${key ?? identity.resolvedPath}`)
+        const sameSource =
+          integrity.kind === "source" &&
+          [...MODE_COMMAND_SOURCE_AUDITS.keys()].some((entry) =>
+            entry.startsWith(`${integrity.repository}@${integrity.revision}:${integrity.treeOid}:`),
+          )
+        return fallback(
+          sameSource
+            ? `Mode source entry moved: ${identity.resolvedPath}`
+            : `Mode source identity has foreign source: ${key ?? identity.resolvedPath}`,
+        )
       }
-      if (identity?.engineVersion !== "0.10.0" || !auditedAdapterSources(identity, audit.engine)) {
-        return fallback("Mode source identity has a foreign engine version or adapter source; no qualified readback")
+      if (identity?.engineVersion !== "0.10.0") {
+        return fallback(`Mode source engine version differs: ${identity?.engineVersion}; expected 0.10.0`)
+      }
+      if (!auditedAdapterSources(identity, audit.engine)) {
+        return fallback("Mode source adapter source differs from the audited blobs; no qualified readback")
       }
       if (heldMode !== undefined) {
         if (heldMode !== 1 && audit.engine !== "vt100") return prior

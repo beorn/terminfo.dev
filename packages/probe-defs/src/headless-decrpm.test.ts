@@ -379,6 +379,31 @@ test.each(capturedModeEngines)(
   },
 )
 
+// #32099 review: stack priors had no tests, so appending only to prior.tests lost the named cause.
+test.each(capturedModeEngines)(
+  "$engine names each source identity failure for mode and stack priors",
+  ({ identity }) => {
+    const changes = [
+      { value: { ...identity, resolvedPath: "moved/index.ts" }, reason: /entry moved/i },
+      { value: { ...identity, integrity: { ...identity.integrity, cleanTree: false } }, reason: /dirty/i },
+      {
+        value: { ...identity, integrity: { ...identity.integrity, treeOid: "0".repeat(40) } },
+        reason: /foreign source/i,
+      },
+      { value: { ...identity, adapterSources: [] }, reason: /adapter source/i },
+      { value: { ...identity, engineVersion: "foreign" }, reason: /engine version/i },
+    ]
+    for (const { id } of absentCommands) {
+      for (const { value, reason } of changes) {
+        const result = headless(id)(capturedModeContext(value).source) as ModeResult
+        expect.soft(result.tests, id).toMatchObject([{ status: "test-todo", reason: expect.stringMatching(reason) }])
+        expect.soft(result.assertions, id).toBeUndefined()
+        expect.soft(result.criterionBranch, id).not.toBe("source-negative-review")
+      }
+    }
+  },
+)
+
 test.each(capturedModeEngines)("$engine actual DECRPM deciding reply wins over source review", ({ identity }) => {
   for (const { id, number } of features) {
     for (const [ps, outcome, kind] of [
