@@ -286,7 +286,8 @@ hard witnesses, without a final newline. Coherent counts bound every absolute-bu
 fed rows plus screen height; invalid extents retain their counts without allocating from them.
 Before resize, all target rows must remain in history and the complete seeded layout must match.
 No retained history and an evicted or incompletely retained target have distinct named TODO reasons
-without assertions. After resize, complete reflow supplies a positive assertion; exact physical-row
+without assertions, after the surviving rows match the expected fed tail. A corrupt short buffer
+is invalid evidence, not unavailable coverage. After resize, complete reflow supplies a positive assertion; exact physical-row
 preservation/clipping supplies a negative only with every hard witness and blank tail conserved.
 Neither complete model is a named invalid phase, including ambiguous loss or eviction. The destructive
 width control follows target readback on the same resized state, reading the active screen at H+s;
@@ -298,8 +299,9 @@ the cross-facet fold is approved. Qualified main-phase results, including two ne
 truncating engine, keep the feature pending. Invalid or conflicting main phases still make it fail;
 its reason names each negative or invalid main phase and that phase's reason. Remaining facets are:
 
-- Alternate-screen behavior retains its named TODO test. History evidence replaces the old
-  unmeasured scrollback placeholder without deciding the full feature.
+- Alternate-screen behavior retains its named TODO test. The required scrollback TODO remains,
+  naming recorded history evidence and the unapproved cross-facet fold. Only that later approved
+  fold can retire the row; history phase evidence alone cannot release the feature.
 - A default-config observation is not engine capability absence. Libvterm0.3 exposes
   `vterm_screen_enable_reflow`, disabled unless the embedder enables it. Before a future final fold,
   either the adapter enables that option with the fact recorded in the response, or a default-off

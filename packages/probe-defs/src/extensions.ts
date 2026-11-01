@@ -3257,15 +3257,20 @@ function mainScreenReflow(ctx: LibProbeSource): ProbeCallbackResult {
         record("invalid", before.invalid)
         continue
       }
-      if (retained === 0) {
-        record("not-retained", "engine retained no history")
-        continue
-      }
       // Starting at a fresh buffer, every scroll must still be retained to keep the first target row.
       // H >= target height alone is insufficient: bounded engines can already have evicted the target.
       const requiredHistory = beforeLines.length - height
       if (retained < requiredHistory) {
-        record("not-retained", `target not fully retained (H=${retained}, need ${requiredHistory})`)
+        if (!matchesCells(before, beforeLines.slice(-before.scrollback.totalLines))) {
+          record("invalid", "Retained buffer does not match the fed tail; target retention is unresolved")
+        } else {
+          record(
+            "not-retained",
+            retained === 0
+              ? "engine retained no history"
+              : `target not fully retained (H=${retained}, need ${requiredHistory})`,
+          )
+        }
         continue
       }
       if (before.scrollback.totalLines !== beforeLines.length || !matchesCells(before, beforeLines)) {
@@ -3276,6 +3281,7 @@ function mainScreenReflow(ctx: LibProbeSource): ProbeCallbackResult {
       // Preserve the target before the destructive control; control uses this same resized state.
       const after = read(`${id}.after`, to)
       const control = widthControl(`${id}.control-after`, to, true)
+      const invalidControl = state.reads[`${id}.control-after`]?.invalid
       const reflowed = [...layout(to), ...witnesses]
       const preserved = beforeLines.map((line) => line.slice(0, to))
       const outcome =
@@ -3291,6 +3297,7 @@ function mainScreenReflow(ctx: LibProbeSource): ProbeCallbackResult {
       record(
         outcome,
         after.invalid ??
+          invalidControl ??
           (!control
             ? "Post-resize width control did not wrap at the requested column"
             : outcome === "invalid"
@@ -3370,6 +3377,11 @@ function mainScreenReflow(ctx: LibProbeSource): ProbeCallbackResult {
           ]
         : []),
       { id: "alternate-screen", status: "test-todo", reason: "Alternate-screen reflow has not been measured" },
+      {
+        id: "scrollback",
+        status: "test-todo",
+        reason: "Retained-history evidence recorded; cross-facet fold not approved",
+      },
     ],
   }
 }

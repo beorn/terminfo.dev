@@ -96,6 +96,11 @@ test.each([false, true])("production reflow controls ignore the capability decla
         expect.objectContaining({ id: "main-grow", status: "supported" }),
         expect.objectContaining({ id: "main-shrink", status: "supported" }),
         expect.objectContaining({ id: "alternate-screen", status: "test-todo" }),
+        expect.objectContaining({
+          id: "scrollback",
+          status: "test-todo",
+          reason: "Retained-history evidence recorded; cross-facet fold not approved",
+        }),
       ]),
     },
   ])
@@ -147,6 +152,11 @@ test.each([
         expect.objectContaining({ id: "main-grow", status: "unsupported" }),
         expect.objectContaining({ id: "main-shrink", status: "unsupported" }),
         expect.objectContaining({ id: "alternate-screen", status: "test-todo" }),
+        expect.objectContaining({
+          id: "scrollback",
+          status: "test-todo",
+          reason: "Retained-history evidence recorded; cross-facet fold not approved",
+        }),
       ]),
     },
   ])
@@ -190,7 +200,12 @@ test.each([
 // @failure A bounded retention limit is called Unsupported instead of naming unavailable target rows.
 // @level l1
 // @consumer Real xterm retained-buffer limits through the canonical collector.
-test.each([2, 8])("reflow names a partially retained target without adding an assertion (limit %s)", async (limit) => {
+test.each([
+  { limit: 2, corrupt: false },
+  { limit: 8, corrupt: false },
+  { limit: 8, corrupt: true },
+])("reflow names only a coherent partially retained target as unavailable (%j)", async ({ limit, corrupt }) => {
+  const definition = registryDefinitions(["extensions.reflow"])[0]!
   const batch = await collectBatch(
     async () => {
       const value = createXtermBackend()
@@ -199,22 +214,43 @@ test.each([2, 8])("reflow names a partially retained target without adding an as
       return value
     },
     "xtermjs",
-    registryDefinitions(["extensions.reflow"]),
+    [
+      {
+        ...definition,
+        lib(ctx) {
+          if (corrupt) {
+            const cell = ctx.getCell.bind(ctx)
+            ctx.getCell = (row, col) => {
+              const value = cell(row, col)
+              return col === 0 && value.char === "R" ? { ...value, char: "X" } : value
+            }
+          }
+          return definition.lib!(ctx)
+        },
+      },
+    ],
   )
   expect(batch.ungradedDiagnostics).toEqual({})
   expect(batch.results[0]!.status).toBe("test-todo")
   expect(batch.assertions).toHaveLength(2)
-  expect(reflowEvidence(batch).historyPhases).toMatchObject([
-    { status: "test-todo", reason: `target not fully retained (H=${limit}, need 28)` },
-    { status: "test-todo", reason: `target not fully retained (H=${limit}, need 27)` },
-  ])
+  expect(reflowEvidence(batch).historyPhases).toMatchObject(
+    corrupt
+      ? [
+          { status: "test-failure", reason: expect.stringContaining("does not match the fed tail") },
+          { status: "test-failure", reason: expect.stringContaining("does not match the fed tail") },
+        ]
+      : [
+          { status: "test-todo", reason: `target not fully retained (H=${limit}, need 28)` },
+          { status: "test-todo", reason: `target not fully retained (H=${limit}, need 27)` },
+        ],
+  )
 })
 
 // @failure History corruption or an invalid control becomes a negative; huge counts trigger unbounded reads;
 // a viewport position prevents an otherwise complete absolute-buffer measurement.
 // @level l1
 // @consumer Registered callback with real xterm effects and source-boundary faults.
-test.each(["witness-loss", "width-control", "bad-counts", "viewport"] as const)(
+test.each(["witness-loss", "width-control", "bad-counts", "control-counts", "viewport"] as const)(
   "history reflow retains qualified evidence for %s without changing the feature fold",
   async (fault) => {
     const definition = registryDefinitions(["extensions.reflow"])[0]!
@@ -250,7 +286,8 @@ test.each(["witness-loss", "width-control", "bad-counts", "viewport"] as const)(
           }
           ctx.getScrollback = () => {
             const value = scrollback()
-            if (seeded && fault === "bad-counts") return { ...value, totalLines: Number.MAX_SAFE_INTEGER }
+            if (seeded && (fault === "bad-counts" || (fault === "control-counts" && control)))
+              return { ...value, totalLines: Number.MAX_SAFE_INTEGER }
             if (seeded && fault === "viewport") return { ...value, viewportOffset: 1, viewportTop: 1 }
             return value
           }
@@ -272,9 +309,11 @@ test.each(["witness-loss", "width-control", "bad-counts", "viewport"] as const)(
       fault === "viewport" ? ["supported", "supported"] : ["test-failure", "test-failure"],
     )
     expect(batch.assertions).toHaveLength(fault === "viewport" ? 4 : 2)
-    if (fault === "bad-counts") {
+    if (fault === "bad-counts" || fault === "control-counts") {
       expect(observed.historyPhases[0]!.reason).toContain("totalLines=9007199254740991")
-      expect(observed.reads["history-grow.before"]!.cells).toEqual([])
+      expect(
+        observed.reads[fault === "bad-counts" ? "history-grow.before" : "history-grow.control-after"]!.cells,
+      ).toEqual([])
     }
     if (fault === "witness-loss") {
       expect(observed.historyPhases[0]!.reason).toContain("neither complete retained layout")
