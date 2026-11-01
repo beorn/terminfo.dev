@@ -1221,8 +1221,8 @@ export function decrpmModeProbe(
 /**
  * The headless arm of a DECRQM mode criterion (#30543): the engine's own DECRPM reply, read by the same parser and
  * graded by the same decrpmResult as the app arm, whenever the adapter delivers one; otherwise the review branch.
- * The adapter's getMode value rides along as context only, never as evidence (libvterm hard-codes it; wezterm
- * derives part of it from a byte scan). The branch keys on the observed reply, never on an engine name.
+ * The adapter's getMode value rides along as context only, never as evidence.
+ * The branch keys on the observed reply, never on an engine name.
  */
 export function headlessDecrpmArm(modeNum: number, modeName?: string): (ctx: LibProbeSource) => ProbeCallbackResult {
   return (ctx) => {
@@ -1719,7 +1719,7 @@ export function libvtermHistoryReview(ctx: LibProbeSource): ProbeCallbackResult 
     "retained scrollback history count",
     {
       sourceCitation:
-        "Termless37c3e9af packages/libvterm/src/backend.ts:427-440 getScrollback reports the screen extent, not retained history; raw libvterm 9d6d2112335080312ef8c36667fa717ded4f7daf include/vterm.h:541-543 and src/screen.c:208-226,676-681,830-837 hand history rows to the embedding application",
+        "Termless 6939d82b84a6bf2989dd0650329779e324790dda packages/libvterm/src/backend.ts:429-445 getScrollback reports the screen extent, not retained history; raw libvterm 9d6d2112335080312ef8c36667fa717ded4f7daf include/vterm.h:541-543 and src/screen.c:208-226,676-681,830-837 hand history rows to the embedding application",
     },
   )
 }
