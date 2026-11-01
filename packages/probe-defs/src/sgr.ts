@@ -31,12 +31,13 @@ const requestedUnderlineColor = { r: 255, g: 0, b: 128 }
 
 /**
  * Blink is a phase in time, so one target frame decides nothing (#31812). The styled text is requested at these
- * offsets from the first sample, with no write between: 750 ms crosses a 500 ms on/off cycle whatever phase the
- * first sample lands on, where one fixed gap can land on the same phase twice. They are requested offsets: a
- * producer that settles before each acquisition lands later, so each sample also records when it was invoked
- * and the producer's own capture time.
+ * offsets from the first sample, with no write between. Supported needs a sample to return to an earlier sample's
+ * look (@cto 18528242), which takes two transitions: 2000 ms is two 500 ms on/off periods, so nine samples 250 ms
+ * apart show a return whatever phase the first lands on (#32083; 750 ms held one transition at some phases).
+ * They are requested offsets: a producer that settles before each acquisition lands later, so each sample also
+ * records when it was invoked and the producer's own capture time.
  */
-const BLINK_SAMPLE_OFFSETS_MS = [0, 250, 500, 750] as const
+const BLINK_SAMPLE_OFFSETS_MS = [0, 250, 500, 750, 1000, 1250, 1500, 1750, 2000] as const
 
 /** Whether some styled value comes back after a different one (A,B,A in order): a settle only ever goes one way. */
 function returnsToEarlierValue(values: readonly string[]): boolean {
@@ -49,12 +50,12 @@ function returnsToEarlierValue(values: readonly string[]): boolean {
 
 /**
  * sgr.blink's pixel capture: a control of the plain line on row 1 and the unstyled text on row 3, then the same
- * screen with the row-3 text styled, sampled four times; the cursor is parked on row 2. With a measured raster
+ * screen with the row-3 text styled, sampled nine times; the cursor is parked on row 2. With a measured raster
  * each frame is a region digest of the row-3 text and of the plain line, and the plain line's digest must hold
- * across all five frames. Supported needs a styled value to come back after a different one: a one-way change
+ * across all ten frames. Supported needs a styled value to come back after a different one: a one-way change
  * (A,B,B,B) is also what a first sample caught before the fixture finished painting looks like, so it stays
- * inconclusive, as do four equal samples, because no blink period is recorded for the terminal. A plain line that
- * moves is redraw, scroll or cursor motion, never blink. Without a measured raster the five frames go to review.
+ * inconclusive, as do nine equal samples, because no blink period is recorded for the terminal. A plain line that
+ * moves is redraw, scroll or cursor motion, never blink. Without a measured raster the ten frames go to review.
  */
 async function blinkCapture(ctx: TermProbeSource, fixture: SgrCaptureFixture): Promise<ProbeCallbackResult> {
   const capture = ctx.capture
@@ -141,7 +142,7 @@ async function blinkCapture(ctx: TermProbeSource, fixture: SgrCaptureFixture): P
         {
           id: "review",
           status: "test-todo",
-          reason: "Valid control and four blink samples; required visual review pending",
+          reason: "Valid control and nine blink samples; required visual review pending",
         },
       ],
       assertions: [
@@ -149,7 +150,7 @@ async function blinkCapture(ctx: TermProbeSource, fixture: SgrCaptureFixture): P
           assertionType: "screenshot" as const,
           kind: "positive",
           expected:
-            "The styled text changes and then comes back to an earlier look across the four samples, while the plain line holds still in the control and every sample",
+            "The styled text changes and then comes back to an earlier look across the nine samples, while the plain line holds still in the control and every sample",
           observed: JSON.stringify({ control, samples }),
         },
       ],
@@ -159,7 +160,7 @@ async function blinkCapture(ctx: TermProbeSource, fixture: SgrCaptureFixture): P
         assertionType: "screenshot",
         screenshotRef: styledFrames[0]?.ref,
         frames,
-        note: "No measured raster, so the samples cannot be compared by region digest; the control and four samples need review together",
+        note: "No measured raster, so the samples cannot be compared by region digest; the control and nine samples need review together",
       },
     }
   }
@@ -220,7 +221,7 @@ async function blinkCapture(ctx: TermProbeSource, fixture: SgrCaptureFixture): P
           assertionType: "screenshot" as const,
           kind: "positive",
           expected:
-            "Four samples of the SGR 5 text, requested at +0/+250/+500/+750 ms with no write between: a styled region digest comes back after a different one, and the plain line's digest is the same in the control and every sample",
+            "Nine samples of the SGR 5 text, requested every 250 ms from +0 to +2000 ms with no write between: a styled region digest comes back after a different one, and the plain line's digest is the same in the control and every sample",
           observed,
         },
       ],
@@ -233,7 +234,7 @@ async function blinkCapture(ctx: TermProbeSource, fixture: SgrCaptureFixture): P
     )
   }
   return inconclusive(
-    "Four equal samples of the styled text; no blink period is recorded for this terminal, so equal samples cannot show it never blinks",
+    "Nine equal samples of the styled text; no blink period is recorded for this terminal, so equal samples cannot show it never blinks",
     observed,
   )
 }
