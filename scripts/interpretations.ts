@@ -114,6 +114,12 @@ function supersessionTarget(
     if (prior) return prior
     fail(path, `interpretation ${entry.id} supersedes unknown ${priorId}`)
   }
+  if (prior) {
+    fail(
+      path,
+      `tool-gap ${entry.id}: target ${priorId} is a curated record; withdraw it through the store, not an exact-run overlay`,
+    )
+  }
   const run = runs.find((run) => run.runId === entry.runId)
   if (!run?.sealedAt) fail(path, `tool-gap ${entry.id} requires sealed run ${entry.runId} to resolve ${priorId}`)
   if (run.sha256 !== entry.runSha256) fail(path, `tool-gap ${entry.id}: run SHA256 mismatch`)
@@ -129,7 +135,7 @@ function supersessionTarget(
   if (embedded.id !== priorId || embedded.featureId !== entry.featureId) {
     fail(path, `tool-gap ${entry.id}: embedded review ${priorId} feature/id mismatch`)
   }
-  return prior ?? embedded
+  return embedded
 }
 
 export function validatePresentationSupersession(

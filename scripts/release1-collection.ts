@@ -865,7 +865,7 @@ export async function collectPass(
         textSnapshots.set(ref, readVerifiedArtifact(dirname(path), ref, path, "text-snapshot"))
       }
       if (!run.results || !run.catalogIds) throw new Error("Current run lacks frozen results")
-      row.summary = aggregateCurrentResults(consoleHostHeldResults(run), run.catalogIds)
+      row.summary = aggregateCurrentResults(consoleHostHeldResults(run, []), run.catalogIds)
       row.classification = classifyDevelopmentRun(run)
       row.status = "classified"
     } catch (error) {

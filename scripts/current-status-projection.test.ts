@@ -175,7 +175,7 @@ describe("current execution projection", () => {
     ]) {
       expect(() => decode({ ...overlay, ...change })).toThrow(/requires sealed run|SHA256|feature|embedded/)
     }
-    // A known curated ID must not bypass the same-cell embedded-target requirement.
+    // A known curated ID must be withdrawn through the store, not an exact-run overlay.
     // The unknown-ID controls above miss this graph branch entirely.
     const curated = parseInterpretations(
       "real curated store",
@@ -195,12 +195,35 @@ describe("current execution projection", () => {
         undefined,
         [run],
       ),
-    ).toThrow(/missing embedded review/)
+    ).toThrow(/target .* is a curated record/)
     const invalidEntries = [unrelated!, { ...entries[0]!, supersedes: [unrelated!.id] }]
-    expect(() => activeInterpretations(invalidEntries, [run])).toThrow(/missing embedded review/)
+    expect(() => activeInterpretations(invalidEntries, [run])).toThrow(/target .* is a curated record/)
     expect(() => validatePresentationSupersession(invalidEntries, "known unrelated target", [run])).toThrow(
-      /missing embedded review/,
+      /target .* is a curated record/,
     )
+    // Exact-run withdrawal must not deactivate a global store record, even when a
+    // later capture embeds its ID. The absent-embedded-ID control above cannot catch this.
+    const storedFont = curated.find(
+      (entry) => entry.featureId === featureId && "captureSha256" in entry && entry.supersedes.length === 0,
+    )
+    if (!storedFont) throw new Error("Expected real curated font decision for the carried-ID control")
+    const embeddedId = overlay.supersedes[0]!
+    const carried = parseRun(
+      "carried-store-id.fixture.json",
+      bytes.replaceAll(embeddedId, storedFont.id),
+      catalog,
+      new Map([[manifest.probeHash, manifest]]),
+    )
+    expect(carried.rawReplies[`collector.review.${storedFont.id}`]).toBeDefined()
+    expect(() =>
+      parseInterpretations(
+        "embedded curated target",
+        JSON.stringify([storedFont, { ...overlay, runSha256: carried.sha256, supersedes: [storedFont.id] }]),
+        catalog,
+        undefined,
+        [carried],
+      ),
+    ).toThrow(/target .* is a curated record/)
     expect(run).toEqual(original)
     expect(readFileSync(path, "utf8")).toBe(bytes)
   })
