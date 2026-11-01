@@ -3442,9 +3442,17 @@ function mainScreenReflow(ctx: LibProbeSource): ProbeCallbackResult {
         } else if (result.outcome !== "invalid" && (identity.restored !== false || identity.after !== false)) {
           result = phase("identity-unavailable", "alternate buffer identity unavailable")
         }
-      } else if (identity.before === false && identity.entered === false) {
+      } else if (
+        evidence.roundtrip.observation?.outcome === "unsupported" &&
+        identity.before === false &&
+        identity.entered === false
+      ) {
         result = phase("not-entered", "alternate buffer not entered")
-      } else if (identity.entered !== undefined && (identity.before === null || identity.entered === null)) {
+      } else if (
+        evidence.roundtrip.observation?.outcome === "unsupported" &&
+        identity.entered !== undefined &&
+        (identity.before === null || identity.entered === null)
+      ) {
         result = phase("identity-unavailable", "alternate buffer identity unavailable")
       } else {
         result = phase(
@@ -3484,16 +3492,15 @@ function mainScreenReflow(ctx: LibProbeSource): ProbeCallbackResult {
     "History and alternate-screen phase evidence retained without a cross-facet fold",
   ].join("; ")
   const response = JSON.stringify(state)
-  const assertions = [...state.phases, ...state.historyPhases, ...state.alternatePhases]
-    .filter(
-      (phase) => phase.outcome === "reflow" || phase.outcome === "preserved-wraps" || phase.outcome === "truncated",
-    )
-    .map((phase) => ({
-      assertionType: "buffer_state" as const,
-      kind: phase.outcome === "reflow" ? ("positive" as const) : ("negative" as const),
-      expected: `${phase.id}: reflow at the new width with conserved content and explicit newline boundaries`,
-      observed: response,
-    }))
+  const assertedPhases = [...state.phases, ...state.historyPhases, ...state.alternatePhases].filter(
+    (phase) => phase.outcome === "reflow" || phase.outcome === "preserved-wraps" || phase.outcome === "truncated",
+  )
+  const assertions = assertedPhases.map((phase) => ({
+    assertionType: "buffer_state" as const,
+    kind: phase.outcome === "reflow" ? ("positive" as const) : ("negative" as const),
+    expected: `${phase.id}: reflow at the new width with conserved content and explicit newline boundaries`,
+    observed: response,
+  }))
   return {
     pass: false,
     response,
@@ -3515,6 +3522,7 @@ function mainScreenReflow(ctx: LibProbeSource): ProbeCallbackResult {
               ? ("supported" as const)
               : ("unsupported" as const),
         reason: phase.reason,
+        assertionRefs: assertedPhases.flatMap((asserted, index) => (asserted.id === phase.id ? [index] : [])),
       })),
       ...(state.phases.every((phase) => phase.outcome !== "invalid") &&
       new Set(state.phases.map((phase) => phase.outcome === "reflow")).size > 1
@@ -3524,6 +3532,9 @@ function mainScreenReflow(ctx: LibProbeSource): ProbeCallbackResult {
               status: "test-failure" as const,
               reason:
                 "Growth and shrink have different reflow outcomes; the combined main-screen criterion is unresolved",
+              assertionRefs: assertedPhases.flatMap((phase, index) =>
+                phase.id === "main-grow" || phase.id === "main-shrink" ? [index] : [],
+              ),
             },
           ]
         : []),

@@ -137,6 +137,12 @@ test.each([false, true])("production reflow controls ignore the capability decla
       ]),
     },
   ])
+  // F1: a supported main row must cite only its own measured phase. Status/polarity checks
+  // miss the collector default attaching history and alternate negatives to both main rows.
+  expect(batch.results[0]!.tests.slice(0, 2).map(({ id, assertionRefs }) => ({ id, assertionRefs }))).toEqual([
+    { id: "main-grow", assertionRefs: [0] },
+    { id: "main-shrink", assertionRefs: [1] },
+  ])
   expect(mainAndHistoryAssertions(batch)).toMatchObject([
     { kind: "positive", assertionType: "buffer_state", observed: batch.rawReplies["extensions.reflow"] },
     { kind: "positive", assertionType: "buffer_state", observed: batch.rawReplies["extensions.reflow"] },
@@ -400,16 +406,59 @@ test("alternate reflow records real vterm logical layouts without cross-buffer g
 // @level l1
 // @consumer Alternate-only raw evidence through the registered callback and production source.
 // Existing main/history tests never enter alternate; mode tests never resize its target.
+// F2/F3: require the deciding reason; setup failures must stay invalid even when mode identity
+// is false or unavailable. Status-only cases miss a removed identity check or the wrong failing control.
 test.each([
   { fault: "missing-mode", status: "test-todo", reason: "alternate buffer identity unavailable" },
   { fault: "target-mode-missing", status: "test-todo", reason: "alternate buffer identity unavailable" },
   { fault: "no-entry", status: "test-todo", reason: "alternate buffer not entered" },
-  { fault: "bogus-mode", status: "test-failure" },
-  { fault: "hard-row", status: "test-failure" },
-  { fault: "blank-tail", status: "test-failure" },
-  { fault: "control-switch", status: "test-failure" },
-  { fault: "slot-read", status: "test-failure" },
-  { fault: "restore", status: "test-failure" },
+  {
+    fault: "bogus-mode",
+    status: "test-failure",
+    reason: expect.stringContaining("did not clear the seeded primary spans"),
+  },
+  {
+    fault: "hard-row",
+    status: "test-failure",
+    reason: "Alternate resize matched neither complete layout, including hard rows and blank tails",
+  },
+  {
+    fault: "blank-tail",
+    status: "test-failure",
+    reason: "Alternate resize matched neither complete layout, including hard rows and blank tails",
+  },
+  {
+    fault: "control-switch",
+    status: "test-failure",
+    reason: "Post-resize alternate width control did not wrap at the requested column",
+  },
+  {
+    fault: "control-identity",
+    status: "test-failure",
+    reason: "Alternate buffer identity changed during target or width-control readback",
+  },
+  { fault: "slot-read", status: "test-failure", reason: "Alternate measurement failed: alternate slot read failed" },
+  { fault: "restore", status: "test-failure", reason: expect.stringContaining("PRIMARY-A not restored") },
+  {
+    fault: "marker-missing-false",
+    status: "test-failure",
+    reason: "Alternate isolation did not qualify: Alternate marker was not measured",
+  },
+  {
+    fault: "marker-readback-false",
+    status: "test-failure",
+    reason: "Alternate isolation did not qualify: Alternate-marker readback failed",
+  },
+  {
+    fault: "marker-missing-null",
+    status: "test-failure",
+    reason: "Alternate isolation did not qualify: Alternate marker was not measured",
+  },
+  {
+    fault: "marker-readback-null",
+    status: "test-failure",
+    reason: "Alternate isolation did not qualify: Alternate-marker readback failed",
+  },
 ] as const)(
   "alternate reflow qualifies identity and complete target evidence (%s)",
   async ({ fault, status, ...row }) => {
@@ -427,13 +476,18 @@ test.each([
           let seeded = false
           let resized = false
           let control = false
+          let marker = false
           ctx.getMode = (name) => {
+            if (name === "altScreen" && fault.endsWith("-false")) return false
+            if (name === "altScreen" && fault.endsWith("-null")) return null
             if (name === "altScreen" && fault === "missing-mode") return null
             if (name === "altScreen" && fault === "target-mode-missing" && seeded && resized && !control) return null
             if (name === "altScreen" && fault === "bogus-mode") return entered
+            if (name === "altScreen" && fault === "control-identity" && control) return false
             return mode(name)
           }
           ctx.feed = (text) => {
+            if (text.includes("ALT-MARK")) marker = true
             if (text.includes("\x1b[?1049h")) {
               entered = true
               if (fault === "no-entry" || fault === "bogus-mode") return
@@ -451,13 +505,15 @@ test.each([
           }
           ctx.reset = () => {
             reset()
-            entered = seeded = resized = control = false
+            entered = seeded = resized = control = marker = false
           }
           ctx.getCell = (r, c) => {
+            if (marker && fault.startsWith("marker-readback-")) throw new Error("alternate marker readback failed")
             if (seeded && mode("altScreen") === true && fault === "slot-read") {
               throw new Error("alternate slot read failed")
             }
             const value = cell(r, c)
+            if (marker && fault.startsWith("marker-missing-") && r === 0 && c === 0) return { ...value, char: "X" }
             if (fault === "restore" && entered && seeded && mode("altScreen") === false && r === 0 && c === 0) {
               return { ...value, char: "X" }
             }
@@ -484,7 +540,7 @@ test.each([
     ])
     const phases = reflowEvidence(batch).alternatePhases
     expect(phases.map((phase) => phase.status)).toEqual([status, status])
-    if ("reason" in row) expect(phases.map((phase) => phase.reason)).toEqual([row.reason, row.reason])
+    expect(phases.map((phase) => phase.reason)).toEqual([row.reason, row.reason])
     expect(batch.assertions.filter(({ expected }) => expected.startsWith("alternate-"))).toEqual([])
     expect(mainAndHistoryAssertions(batch)).toHaveLength(4)
   },
@@ -529,7 +585,7 @@ test.each(["no-op", "hard-boundary", "content-loss", "cursor-on-target"] as cons
           .map((assertion) => assertion.kind),
       ).toEqual(["negative", "positive"])
       expect(batch.results[0]!.tests).toContainEqual(
-        expect.objectContaining({ id: "criterion", status: "test-failure" }),
+        expect.objectContaining({ id: "criterion", status: "test-failure", assertionRefs: [0, 1] }),
       )
     } else {
       expect(observed).toMatchObject({
@@ -539,6 +595,10 @@ test.each(["no-op", "hard-boundary", "content-loss", "cursor-on-target"] as cons
             : [{ outcome: "invalid" }, { outcome: "reflow" }],
       })
       expect(mainAndHistoryAssertions(batch).every((assertion) => assertion.kind === "positive")).toBe(true)
+      if (fault === "no-op" || fault === "cursor-on-target") {
+        // Invalid main phases have no own assertion; history/alternate evidence cannot stand in for one.
+        expect(batch.results[0]!.tests.slice(0, 2).map((row) => row.assertionRefs)).toEqual([[], []])
+      }
     }
   },
 )
