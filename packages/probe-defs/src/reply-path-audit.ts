@@ -159,10 +159,6 @@ const VT100_RUST_GRAPHICS_AUDIT: ReplyPathAudit = {
     "vt100-rust 0.16.2 artifactf309015f: registry/src/index.crates.io-1949cf8c6b5b557f/vte-0.15.0/src/lib.rs:377 ESC_ enters SosPmApcString; :182 routes payload only to anywhere (:438-451 controls only), discarding it before any vt100 callback; Perform:761-815 exposes no APC hook. Cargo.lock vte0.15.0 checksuma5924018406ce0063cd67f8e008104968b74b563ee1b85dde3ed1f7cb87d3dbd; vt1000.16.2 checksum054ff75fb8fa83e609e685106df4faeffdf3a735d3c74ebce97ec557d5d36fd9; display's a=t prerequisite is discarded before any placement can be attempted",
 }
 
-const VT100_DECRPM_CITATION =
-  "vt100 0.10.0 release6cc7eef05cde6a8578479c6cdb480f606758eb2c source treed5ee344ab5b971184ba2c43ed60460656340417c packages/vt100/src/screen.ts:360-364 handleCSIPrivate rejects DECRQM intermediate $ and final p before any mode handler; no DECRPM writer"
-const VT220_DECRPM_CITATION =
-  "vt220 0.10.0 release6cc7eef05cde6a8578479c6cdb480f606758eb2c source tree9a320c4d5cd0e0b60bb2e6ea4f020ce5eb54ae53 packages/vt220/src/screen.ts:444-447 handleCSIPrivate rejects DECRQM intermediate $; :463 rejects final p before any mode handler; no DECRPM writer"
 const GHOSTTY_WASM_DISABLED_KITTY_AUDIT: ReplyPathAudit = {
   query: "\x1b_G",
   matches: "prefix",
@@ -191,30 +187,6 @@ export const REPLY_PATH_AUDITS: ReadonlyMap<string, Readonly<Record<string, Repl
   string,
   Readonly<Record<string, ReplyPathAudit>>
 >([
-  [
-    "d5ee344ab5b971184ba2c43ed60460656340417c",
-    {
-      "modes.application-cursor": { query: "\x1b[?1$p", kind: "parser-rejected", citation: VT100_DECRPM_CITATION },
-      "modes.bracketed-paste": { query: "\x1b[?2004$p", kind: "parser-rejected", citation: VT100_DECRPM_CITATION },
-      "modes.focus-tracking": { query: "\x1b[?1004$p", kind: "parser-rejected", citation: VT100_DECRPM_CITATION },
-      "modes.mouse-all": { query: "\x1b[?1003$p", kind: "parser-rejected", citation: VT100_DECRPM_CITATION },
-      "modes.mouse-sgr": { query: "\x1b[?1006$p", kind: "parser-rejected", citation: VT100_DECRPM_CITATION },
-      "modes.mouse-tracking": { query: "\x1b[?1000$p", kind: "parser-rejected", citation: VT100_DECRPM_CITATION },
-      "modes.utf8-mouse-1005": { query: "\x1b[?1005$p", kind: "parser-rejected", citation: VT100_DECRPM_CITATION },
-    },
-  ],
-  [
-    "9a320c4d5cd0e0b60bb2e6ea4f020ce5eb54ae53",
-    {
-      "modes.application-cursor": { query: "\x1b[?1$p", kind: "parser-rejected", citation: VT220_DECRPM_CITATION },
-      "modes.bracketed-paste": { query: "\x1b[?2004$p", kind: "parser-rejected", citation: VT220_DECRPM_CITATION },
-      "modes.focus-tracking": { query: "\x1b[?1004$p", kind: "parser-rejected", citation: VT220_DECRPM_CITATION },
-      "modes.mouse-all": { query: "\x1b[?1003$p", kind: "parser-rejected", citation: VT220_DECRPM_CITATION },
-      "modes.mouse-sgr": { query: "\x1b[?1006$p", kind: "parser-rejected", citation: VT220_DECRPM_CITATION },
-      "modes.mouse-tracking": { query: "\x1b[?1000$p", kind: "parser-rejected", citation: VT220_DECRPM_CITATION },
-      "modes.utf8-mouse-1005": { query: "\x1b[?1005$p", kind: "parser-rejected", citation: VT220_DECRPM_CITATION },
-    },
-  ],
   // Ghostty WASM rebuilt to answer DA1, DA2, XTVERSION, DECRQSS and XTGETTCAP (#32057, @cto 25157a35). The inner patch
   // delta from ce01cd0d ADDS .device_attributes (primary in core's clipboard-deny form, secondary), .xtversion and the
   // dcs_hook/dcs_put/dcs_unhook arms routed through core's dcs.Handler, all transcribed from core 5714ed07

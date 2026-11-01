@@ -547,6 +547,112 @@ test("Wezterm prompt source reviews survive actual collection and capture bindin
   ).toBe(true)
 })
 
+// #32099: callback-only tests miss a source buffer_state result rejected by an
+// inherited query_reply declaration. The JS carrier tests composition, not engine attestation.
+test("source-qualified 2026/2031 mixed criteria survive collection and capture parsing", async () => {
+  const ids = ["modes.synchronized-output", "modes.color-scheme-reporting"]
+  const identity = {
+    kind: "js",
+    runtimeFormat: "js",
+    engineVersion: "0.10.0",
+    adapterVersion: "0.10.2",
+    termlessRevision: "8be31bfc35c0359e39a836b1d397f49e7176c97f",
+    resolvedPath: "vendor/vterm/packages/vt100/src/index.ts",
+    integrity: {
+      kind: "source",
+      repository: "git@github.com:beorn/vterm.git",
+      revision: "6cc7eef05cde6a8578479c6cdb480f606758eb2c",
+      treeOid: "d5ee344ab5b971184ba2c43ed60460656340417c",
+      cleanTree: true,
+    },
+    adapterSources: [
+      { path: "packages/vt100/src/index.ts", blobOid: "99833d737402f9d1d8e3e257e3a255d8aa1facc3" },
+      { path: "packages/vt100/src/backend.ts", blobOid: "855dd71fba878d968d16c82846578190b7350eea" },
+    ],
+  } as const
+  vi.spyOn(headlessIdentity, "headlessRuntimeIdentity").mockResolvedValue(identity)
+  const manifest = {
+    schemaVersion: 4 as const,
+    probeHash: "mode-source-composition-fixture",
+    adapterVersion: "fixture",
+    catalogIds: ids,
+    probes: { term: [], mux: [], lib: ids },
+  }
+  const draft = initializeRunDraft({
+    source: { kind: "live" },
+    runId: "mode-source-composition",
+    sourceRevision: "a".repeat(40),
+    intendedSubject: { kind: "lib", id: "vt100" },
+    manifest,
+  })
+  const definitions = registryDefinitions(ids)
+  for (const definition of definitions) expect(definition.libAssertionType, definition.id).toBeUndefined()
+  const batch = await collectBatch(
+    async () => {
+      const value = await backend()
+      value.getAdapterSources = () => identity.adapterSources
+      return value
+    },
+    "vt100",
+    definitions,
+    draft,
+    undefined,
+    {
+      identity,
+      adapterPath: Bun.resolveSync("@termless/xtermjs", fileURLToPath(import.meta.url)),
+      adapterPackage: "@termless/xtermjs",
+      adapterType: "js",
+    },
+  )
+  const captured: CapturedRunDraft = {
+    ...draft,
+    subject: {
+      kind: "lib",
+      id: "vt100",
+      version: identity.engineVersion,
+      os: "linux",
+      osVersion: null,
+      outerTerminal: null,
+      mux: null,
+      config: null,
+      permissions: null,
+    },
+    identity: "unverified",
+    runtimeIdentity: identity,
+    measuredAt: new Date().toISOString(),
+    origin: { kind: "collector" },
+    rawReplies: { ...draft.rawReplies, ...batch.rawReplies },
+    results: batch.results,
+    assertions: batch.assertions,
+  }
+  for (const id of ids) {
+    expect(
+      captured.results.find((entry) => entry.featureId === id),
+      id,
+    ).toMatchObject({
+      status: "test-failure",
+      assertionType: "buffer_state",
+      criterionBranch: "source-negative-review",
+    })
+    expect(JSON.stringify(batch.ungradedDiagnostics[id] ?? {}), id).not.toContain("collector-error")
+  }
+  const parsed = parseRun(
+    "mode-source.capture.json",
+    JSON.stringify(captured),
+    ids,
+    new Map([[manifest.probeHash, manifest]]),
+    { mode: "capture" },
+  )
+  expect(parsed.results).toHaveLength(2)
+  for (const row of parsed.results ?? []) {
+    expect(row).toMatchObject({
+      status: "test-failure",
+      assertionType: "buffer_state",
+      criterionBranch: "source-negative-review",
+    })
+  }
+})
+
 // A registered callback can lose its marker while a synthetic marked callback still passes.
 // Missing qualification must not turn its configured, silent writer into producer absence.
 test("retains registered reply failure evidence when the writer is unqualified", async () => {
