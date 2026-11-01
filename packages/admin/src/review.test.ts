@@ -13,11 +13,24 @@ import { afterEach, expect, test, vi } from "vitest"
 import {
   initializeRunDraft,
   recordExecutedProbe,
+  type CaptureDecision,
   type CapturedRunDraft,
+  type CurrentProbeRun,
   type ProbeSuiteManifest,
 } from "@terminfo/probe-defs"
 import { retainCaptureBinding, parseRun } from "@terminfo/run-parser"
 import { saveDaemonProbeRun } from "../../terminfo.dev/src/capture-writer.ts"
+
+type FixtureCitation = { sourceIndex: number } & (
+  | { kind: "git"; repo: "terminfo.dev"; commit: string; path: string; startLine: number; endLine: number }
+  | { kind: "external"; root: string; path: string; sha256: string }
+  | { kind: "reference"; text: string }
+)
+type FixtureIndex = {
+  run: { sha256: string }
+  pending: unknown[]
+  decisions: Array<{ source: string; startedAt: string; sha256: string; citations: FixtureCitation[] }>
+}
 
 const roots: string[] = []
 afterEach(() => {
@@ -155,7 +168,7 @@ test("completed review stays draft only when requested; collector default still 
       .results?.[0]?.status,
   ).toBe("untestable")
   const collected = saveDaemonProbeRun(run, temporary(), undefined, reviews)
-  expect(JSON.parse(readFileSync(collected, "utf8")).sealedAt).toEqual(expect.any(String))
+  expect((JSON.parse(readFileSync(collected, "utf8")) as CurrentProbeRun).sealedAt).toEqual(expect.any(String))
 })
 
 function intakeFixture(mode = "valid", registered = true) {
@@ -171,7 +184,11 @@ function intakeFixture(mode = "valid", registered = true) {
   delete f.run.rawReplies["collector.capture.device.primary-da"]
   delete f.run.rawReplies["collector.evidence.device.primary-da"]
   const binding = retainCaptureBinding(f.run, "device.primary-da", f.manifest.catalogEntrySha256!["device.primary-da"])
-  f.source = JSON.stringify({ ...JSON.parse(f.source), captureSha256: binding.sha256, evidence: binding.evidence })
+  f.source = JSON.stringify({
+    ...(JSON.parse(f.source) as CaptureDecision),
+    captureSha256: binding.sha256,
+    evidence: binding.evidence,
+  })
   const input = join(directory, "retained.draft.json")
   const original = `${JSON.stringify(f.run)}\r\n`
   writeFileSync(input, original)
@@ -199,9 +216,9 @@ async function prepared(verdict = "supported") {
   const api = await import("./review.ts"),
     f = intakeFixture()
   api.intakeReview(f.options)
-  const index = JSON.parse(readFileSync(f.options.output, "utf8"))
+  const index = JSON.parse(readFileSync(f.options.output, "utf8")) as FixtureIndex
   const entry = `terminfo.dev@${f.options.terminfoCommit}:AGENTS.md:L1-L3`
-  const source = JSON.stringify({ ...JSON.parse(f.source), decision: verdict, sources: [entry] })
+  const source = JSON.stringify({ ...(JSON.parse(f.source) as CaptureDecision), decision: verdict, sources: [entry] })
   index.decisions = [
     {
       source,
@@ -238,7 +255,7 @@ test.each(["supported", "unsupported", "untestable", "tool-gap"])(
     expect(readFileSync(f.input, "utf8")).toBe(f.original)
     expect(readFileSync(f.manifestPath)).toEqual(frozen)
     for (const path of sentinels) expect(readFileSync(path, "utf8")).toBe("unchanged downstream bytes\n")
-    const after = JSON.parse(readFileSync(receipt.output!, "utf8"))
+    const after = JSON.parse(readFileSync(receipt.output!, "utf8")) as CapturedRunDraft
     expect(after).not.toHaveProperty("sealedAt")
     expect(after.results.map((r: { featureId: string }) => r.featureId)).toEqual(f.run.results.map((r) => r.featureId))
     expect(after.results[1]).toEqual(f.run.results[1])
@@ -258,12 +275,19 @@ test.each(["decision-hash", "source-entry", "missing-object", "external-sha", "s
   async (fault) => {
     const f = await prepared()
     if (fault === "decision-hash") f.index.decisions[0].source += " "
-    if (fault === "source-entry") f.index.decisions[0].citations[0].endLine = 4
-    if (fault === "missing-object") f.index.decisions[0].citations[0].path = "required-missing-source.ts"
+    if (fault === "source-entry" || fault === "missing-object") {
+      const citation = f.index.decisions[0].citations[0]
+      if (citation.kind !== "git") throw new Error("Fixture requires a Git citation")
+      if (fault === "source-entry") citation.endLine = 4
+      else citation.path = "required-missing-source.ts"
+    }
     if (fault === "external-sha") {
       const path = "external.rs"
       writeFileSync(join(f.directory, path), "present tree")
-      const source = JSON.stringify({ ...JSON.parse(f.source), sources: [`${path} sha256:${"0".repeat(64)}`] })
+      const source = JSON.stringify({
+        ...(JSON.parse(f.source) as CaptureDecision),
+        sources: [`${path} sha256:${"0".repeat(64)}`],
+      })
       f.index.decisions = [
         {
           source,
@@ -275,15 +299,16 @@ test.each(["decision-hash", "source-entry", "missing-object", "external-sha", "s
     }
     if (fault === "missing-object") {
       const citation = f.index.decisions[0].citations[0]
+      if (citation.kind !== "git") throw new Error("Fixture requires a Git citation")
       const source = JSON.stringify({
-        ...JSON.parse(f.source),
+        ...(JSON.parse(f.source) as CaptureDecision),
         sources: [`terminfo.dev@${citation.commit}:${citation.path}:L1-L3`],
       })
       f.index.decisions[0].source = source
       f.index.decisions[0].sha256 = sha(source)
     }
     if (fault === "stale-binding") {
-      const run = JSON.parse(f.original)
+      const run = JSON.parse(f.original) as CapturedRunDraft
       run.rawReplies["device.primary-da"] = "changed reply"
       writeFileSync(f.input, JSON.stringify(run))
       f.index.run.sha256 = sha(JSON.stringify(run))
@@ -304,7 +329,10 @@ test.each([false, true])("external source presence is reported truthfully: %s", 
     mkdirSync(join(f.directory, "optional"))
     writeFileSync(join(f.directory, path), bytes)
   }
-  const source = JSON.stringify({ ...JSON.parse(f.source), sources: [`${path} sha256:${sha(bytes)}`] })
+  const source = JSON.stringify({
+    ...(JSON.parse(f.source) as CaptureDecision),
+    sources: [`${path} sha256:${sha(bytes)}`],
+  })
   f.index.decisions = [
     {
       source,
@@ -336,7 +364,7 @@ test("empty intake/apply is explicit and pass selection refuses absent or mismat
   run.rawReplies = {}
   writeFileSync(f.input, JSON.stringify(run))
   api.intakeReview(f.options)
-  const index = JSON.parse(readFileSync(f.options.output, "utf8"))
+  const index = JSON.parse(readFileSync(f.options.output, "utf8")) as FixtureIndex
   expect(index.pending).toEqual([])
   expect(index.decisions).toEqual([])
   expect(api.applyReview(f.applyOptions)).toMatchObject({ output: null, decisionsApplied: 0, empty: true })
@@ -432,7 +460,9 @@ test.each(["pin", "failed-pass", "reference-bypass"])("refuses misleading source
       /status|failed|measured/i,
     )
   } else {
-    f.index.decisions[0].citations = [{ kind: "reference", sourceIndex: 0, text: JSON.parse(f.source).sources[0] }]
+    f.index.decisions[0].citations = [
+      { kind: "reference", sourceIndex: 0, text: (JSON.parse(f.source) as CaptureDecision).sources[0] },
+    ]
     f.save()
     expect(() => f.api.applyReview(f.applyOptions)).toThrow(/code|citation|classification/i)
   }
@@ -454,7 +484,7 @@ test.each(["valid", "suite", "commit", "dirty"])(
       )
     } else {
       const result = api.intakeReview(opts),
-        index = JSON.parse(readFileSync(opts.output, "utf8"))
+        index = JSON.parse(readFileSync(opts.output, "utf8")) as FixtureIndex
       expect(result.manifest).toMatchObject({
         kind: "source-receipt",
         producer,
@@ -516,10 +546,10 @@ test("semantic source review retains no invented observation assertions", async 
   writeFileSync(f.manifestPath, JSON.stringify(manifest))
   writeFileSync(join(f.options.terminfoRepo, "fixture-manifest.json"), JSON.stringify(manifest))
   api.intakeReview({ ...f.options, context: { kind: "lib", id: "vt100", os: "linux" } })
-  const index = JSON.parse(readFileSync(f.options.output, "utf8")),
+  const index = JSON.parse(readFileSync(f.options.output, "utf8")) as FixtureIndex,
     text = "Independent source row names parser arm and mark state"
   const source = JSON.stringify({
-    ...JSON.parse(f.source),
+    ...(JSON.parse(f.source) as CaptureDecision),
     featureId,
     captureSha256: binding.sha256,
     evidence: binding.evidence,
@@ -532,7 +562,7 @@ test("semantic source review retains no invented observation assertions", async 
   ]
   writeFileSync(f.options.output, JSON.stringify(index))
   const receipt = api.applyReview(f.applyOptions),
-    output = JSON.parse(readFileSync(receipt.output!, "utf8"))
+    output = JSON.parse(readFileSync(receipt.output!, "utf8")) as CapturedRunDraft
   expect(output.assertions).toEqual([])
   expect(output.results[0].tests[0].assertionRefs).toEqual([])
   expect(output.results[0].status).toBe("supported")

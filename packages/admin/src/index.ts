@@ -26,6 +26,7 @@
 import { Command, json } from "@silvery/commander"
 import { collectorIds } from "@terminfo/probe-defs"
 import { ensureSourceSuiteEnvironment } from "../versions.ts"
+import type { IntakeOptions } from "./review.ts"
 
 const program = new Command().name("terminfo").description("Terminal feature testing for terminfo.dev")
 
@@ -149,7 +150,7 @@ review
   .requiredOption("--termless-repo <path>", "Absolute Termless source repository")
   .requiredOption("--termless-commit <sha>", "Full 40-hex pinned Termless commit")
   .requiredOption("--output <path>", "Absolute new private intake file outside source repositories")
-  .action(async (opts) => {
+  .actionMerged(async (opts: IntakeOptions) => {
     try {
       const { intakeReview } = await import("./review.ts")
       console.log(JSON.stringify(intakeReview(opts)))
@@ -167,7 +168,7 @@ review
   )
   .requiredOption("--output <directory>", "Absolute private draft directory outside source repositories")
   .requiredOption("--receipt <path>", "Absolute new private JSON receipt; missing required resources fail loudly")
-  .action(async (opts) => {
+  .actionMerged(async (opts: { intake: string; output: string; receipt: string }) => {
     try {
       const { applyReview } = await import("./review.ts")
       console.log(JSON.stringify(applyReview(opts)))
