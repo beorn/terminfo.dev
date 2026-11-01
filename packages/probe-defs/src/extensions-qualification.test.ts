@@ -167,7 +167,7 @@ const absentOscBatch = [
       engine: "kitty",
       engineVersion: "0.49.2",
       sha256: "bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886",
-      sourceCommit: "356984aeea7ae66e08bf0135978179d6294321a8",
+      sourceCommit: "b2cb871254fbdac19a085188813c8dfb258b95cd",
       buildHash: "88e840e1b8e7f09edf3464ee33df8753fd5107838de15bccb6ea59e0dd6cc9c3",
       lockSha256: "282d1098337a5705a7c1d13188a74d2fe34565766619e8d6b21a48d5b67451be",
       adapterSources: [
@@ -226,6 +226,28 @@ test.each(absentOscBatch)(
     }
   },
 )
+
+// #32087: kitty's provenance.sourceCommit is kitty's own upstream commit, so a Termless pin move
+// (termlessRevision) keeps the six kitty OSC reviews, while a different kitty binary does not.
+test("kitty OSC source review survives a Termless revision move and lapses on a different binary", () => {
+  const kitty = absentOscBatch.find((entry) => entry.engine === "kitty")!
+  const run = (runtimeIdentity: HeadlessRuntimeIdentity, code: number) =>
+    callback(
+      `extensions.${{ 176: "osc176-app-id", 3008: "osc3008-context", 440: "osc440-audio", 555: "osc555-flash", 666: "osc666-termprop", 710: "osc710-font-normal" }[code]}`,
+    ).lib!({ runtimeIdentity, feed: () => undefined, getCell: () => ({ char: "X" }) } as unknown as LibProbeSource)
+  const moved = { ...kitty.identity, termlessRevision: "d9d4505514a2f5a3fd0a0e1a3a0c2c5b7d8e9f01" }
+  const otherBinary = "0".repeat(64)
+  const rebuilt = {
+    ...kitty.identity,
+    loadedBinary: { ...kitty.identity.loadedBinary, sha256: otherBinary },
+    provenance: { ...kitty.identity.provenance, sha256: otherBinary },
+  }
+  for (const code of kitty.codes) {
+    expect(kitty.identity.provenance.sourceCommit).toBe("b2cb871254fbdac19a085188813c8dfb258b95cd")
+    expect(run(moved, code).criterionBranch, String(code)).toBe("source-negative-review")
+    expect(run(rebuilt, code).criterionBranch, String(code)).not.toBe("source-negative-review")
+  }
+})
 
 test("TERM_FEATURES audit enumerates only files bound by the declared adapter sources", () => {
   for (const [engine, [, path]] of Object.entries(TERM_FEATURES_API_CITATIONS)) {
