@@ -36,7 +36,7 @@ import * as admission from "./admit-run.ts"
 import { loadSelectedResults } from "../docs/data/selected-results.ts"
 import { loadStoredRuns } from "../packages/admin/run-admission.ts"
 import * as catalog from "@terminfo/catalog"
-import { parseRun, parseSuiteManifest } from "@terminfo/run-parser"
+import { parseCaptureDecision, parseRun, parseSuiteManifest } from "@terminfo/run-parser"
 import * as versions from "../packages/admin/versions.ts"
 import { frozenSuiteIdFor } from "../packages/admin/suite-manifest.ts"
 import * as headless from "../packages/probes/collect-headless.ts"
@@ -122,15 +122,18 @@ it.each(["projection", "admission", "collection"] as const)(
       "probes-mux/screen-5.0.2-linux-ff1d93308fe7f5044d692f7da0fcfe2b.json",
       "probes-mux/tmux-3.8-linux-ea920f3547c0e7f0ced0f80b277f2939.json",
     ]
-    const targetIds = new Set(paths.map((path) => JSON.parse(readFileSync(join(CONTENT, path), "utf8")).runId))
     const runs = loadStoredRuns(CONTENT, Object.keys(catalog.loadFeatures(CONTENT))).filter((run) =>
-      targetIds.has(run.runId),
+      paths.includes(relative(CONTENT, run.path)),
     )
     expect(runs).toHaveLength(3)
     const overlays = runs.flatMap((run) =>
       ["extensions.font-ligatures", "sgr.blink"].map((featureId) => {
         const cell = run.results!.find((result) => result.featureId === featureId)!
-        const embedded = JSON.parse(run.rawReplies[cell.reviewRef!]!)
+        const embedded = parseCaptureDecision(
+          JSON.parse(run.rawReplies[cell.reviewRef!]!),
+          "fixture embedded review",
+          new Set(run.catalogIds ?? []),
+        )
         return {
           id: `fixture-gap-${run.subject.id}-${featureId}`,
           decision: "tool-gap",
@@ -171,7 +174,9 @@ it.each(["projection", "admission", "collection"] as const)(
     const baseline = await invoke()
     const storePath = join(CONTENT, "interpretations.json")
     const original = readFileSync(storePath, "utf8")
-    const fixtureBytes = JSON.stringify([...JSON.parse(original), ...overlays])
+    const stored: unknown = JSON.parse(original)
+    if (!Array.isArray(stored)) throw new Error("Expected curated interpretation array")
+    const fixtureBytes = JSON.stringify([...stored, ...overlays])
     const fixturePath = join(fingerprintFixture.directory, `${entry}-overlays.json`)
     writeFileSync(fixturePath, fixtureBytes)
     fingerprintFixture.files[storePath] = fixturePath
