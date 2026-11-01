@@ -694,7 +694,7 @@ test("Darwin mux custody joins the attachment platform to both declared operatin
     ...parsed,
     rawReplies: { ...parsed.rawReplies, "collector.terminalOwnership": JSON.stringify({ muxAttachment: attachment }) },
     outerApp: {
-      subject: { ...outer.subject, os: "macos" },
+      subject: { ...outer.subject, kind: "term" as const, os: "macos" },
       rawReplies: { ...outer.rawReplies, "collector.outerLaunch": launch },
       provenance: outer.provenance,
     },
