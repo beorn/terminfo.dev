@@ -49,6 +49,7 @@ const KIND_TABLE_ROWS = editingReadbackRows.map((row) => ({
 /** A minimal LibProbeSource the declared screens below override. */
 function headless(overrides: Partial<LibProbeSource> = {}): LibProbeSource {
   return {
+    backendName: "scripted-model",
     kind: "live",
     cols: 24,
     feed() {},

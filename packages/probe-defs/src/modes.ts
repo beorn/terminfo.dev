@@ -19,7 +19,6 @@ import {
   notTestedResult,
   reviewResult,
   HEADLESS_OBSERVABLE_REVIEW,
-  osInputReviewResult,
   sameRgb,
   isBlank,
   queryDecrpm,
@@ -701,13 +700,7 @@ const ABSENT_MODE_COMMANDS: Readonly<Record<string, number | readonly string[]>>
 function withModeSourceReview(definition: ProbeDefinition): ProbeDefinition {
   const command = ABSENT_MODE_COMMANDS[definition.id]
   const heldMode =
-    definition.id === "modes.application-cursor"
-      ? 1
-      : definition.id === "modes.reverse-video"
-        ? 5
-        : definition.id === "modes.application-keypad"
-          ? 66
-          : undefined
+    definition.id === "modes.application-cursor" ? 1 : definition.id === "modes.reverse-video" ? 5 : undefined
   const original = definition.lib
   if (!original || (command === undefined && heldMode === undefined)) return definition
   return {
@@ -1672,13 +1665,18 @@ const modeDefinitions: ProbeDefinition[] = [
 
   // Reverse video
   {
-    ...decrpmModeProbe("modes.reverse-video", 5, headlessDecrpmArm(5), true),
+    ...decrpmModeProbe("modes.reverse-video", 5, headlessDecrpmArm(5, "reverseVideo", { requireReadback: true }), true),
     libAssertionType: "query_reply",
   },
 
   // Synchronized output
   {
-    ...decrpmModeProbe("modes.synchronized-output", 2026, headlessDecrpmArm(2026), true),
+    ...decrpmModeProbe(
+      "modes.synchronized-output",
+      2026,
+      headlessDecrpmArm(2026, "syncOutput", { requireReadback: true }),
+      true,
+    ),
     libAssertionType: "query_reply",
   },
 
@@ -1847,15 +1845,52 @@ const modeDefinitions: ProbeDefinition[] = [
   probe(
     "modes.application-keypad",
     (ctx) => {
-      ctx.feed("\x1b=")
-      const onMode = ctx.getMode("applicationKeypad")
-      // Preserve unknown mode metadata separately from a measured reset state.
-      const on = onMode === null ? null : onMode === true
-      ctx.feed("\x1b>")
-      const offMode = ctx.getMode("applicationKeypad")
-      // #30574: unknown is not a measured failure to disable the mode.
-      const off = offMode === null ? null : offMode === false
-      return osInputReviewResult("keypad input", { on, off })
+      let resetSent = false
+      try {
+        ctx.feed("\x1b=")
+        const setMode = ctx.getMode("applicationKeypad")
+        ctx.feed("\x1b>")
+        resetSent = true
+        const resetMode = ctx.getMode("applicationKeypad")
+        const response = JSON.stringify({ setMode, resetMode })
+        const facet = "keypad key encoding unmeasured; mode state measured"
+        if (setMode === true && resetMode === false) {
+          const note = `DECKPAM set/reset state agrees; ${facet}`
+          return {
+            pass: true,
+            response,
+            note,
+            observation: { outcome: "supported", assertionType: "buffer_state", note },
+            assertions: [
+              {
+                assertionType: "buffer_state",
+                kind: "positive",
+                expected: "DECKPAM true then DECKPNM false",
+                observed: response,
+              },
+            ],
+          }
+        }
+        const reason =
+          setMode === null || resetMode === null
+            ? `adapter binding ${ctx.backendName} applicationKeypad`
+            : `DECKPAM state pair: set ${setMode}, reset ${resetMode}`
+        const note = `${reason}; ${facet}`
+        return {
+          pass: false,
+          response,
+          note,
+          observation: {
+            outcome: "inconclusive",
+            assertionType: "buffer_state",
+            reason: "insufficient-evidence",
+            note,
+          },
+          tests: [{ id: "criterion", status: "test-todo", reason }],
+        }
+      } finally {
+        if (!resetSent) ctx.feed("\x1b>")
+      }
     },
     applicationKeypad,
     "input_bytes",
@@ -2094,7 +2129,7 @@ const modeDefinitions: ProbeDefinition[] = [
   // ?1007 — alt-scroll: wheel-as-cursor-keys on alt-screen (decided-row move off DECRPM)
   probe(
     "modes.alt-scroll-1007",
-    () => osInputReviewResult("OS-level XTEST wheel injection", { input: false }),
+    headlessDecrpmArm(1007, "altScroll", { requireReadback: true }),
     altScroll1007,
     "input_bytes",
   ),
@@ -2183,24 +2218,14 @@ const modeDefinitions: ProbeDefinition[] = [
   },
 
   // ?4 — DECSCLM needs presentation timing, not mode recognition or final parser state.
-  decrpmModeProbe(
-    "modes.decsclm",
-    4,
-    () => {
-      const note = "DECSCLM requires presentation timing capture"
-      return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
-        presentation: false,
-      })
-    },
-    true,
-  ),
+  decrpmModeProbe("modes.decsclm", 4, headlessDecrpmArm(4, "smoothScroll", { requireReadback: true }), true),
 
   // Mode 2031 — color scheme reporting (dark/light mode notifications)
   // Adopted by: iTerm2, tmux 3.6, Contour, foot, kitty
   {
     ...probe(
       "modes.color-scheme-reporting",
-      headlessDecrpmArm(2031),
+      headlessDecrpmArm(2031, "colorSchemeReporting", { requireReadback: true }),
       decrpmModeProbe("modes.color-scheme-reporting", 2031, null, true).term,
       "query_reply",
     ),

@@ -52,6 +52,26 @@ async function backend() {
   return createXtermBackend()
 }
 
+// @failure A real collector source drops backend.name and turns the adapter-binding TODO into an undefined label.
+// @consumer The registered six-mode callback through createLibProbeSource and canonical batch recording.
+test("adapter-binding TODO names the initialized backend", async () => {
+  const definition = registryDefinitions(["modes.synchronized-output"])[0]!
+  const batch = await collectBatch(
+    async () => {
+      const value = createXtermBackend()
+      vi.spyOn(value, "getMode").mockReturnValue(null)
+      return value
+    },
+    "xtermjs",
+    [definition],
+  )
+  expect(batch.ungradedDiagnostics).toEqual({})
+  expect(batch.results).toMatchObject([
+    { status: "test-todo", tests: [{ id: "criterion", reason: "adapter binding xterm syncOutput" }] },
+  ])
+  expect(batch.assertions).toEqual([])
+})
+
 function reflowEvidence(batch: Awaited<ReturnType<typeof collectBatch>>) {
   // F4: the real collector's mixed-polarity evidence must also survive the canonical reader.
   // This is explicitly unverified unit metadata, as in the existing DECCOLM reader fixture below;
@@ -1496,7 +1516,7 @@ test("source-qualified 2026/2031 mixed criteria survive collection and capture p
           { assertionType: "query_reply", kind: id === "modes.synchronized-output" ? "positive" : "negative" },
         ])
         expect(JSON.parse(batch.rawReplies[id]!), id).toMatchObject({
-          reply: id === "modes.synchronized-output" ? "\x1b[?2026;1$y" : "\x1b[?2031;0$y",
+          setReply: id === "modes.synchronized-output" ? "\x1b[?2026;1$y" : "\x1b[?2031;0$y",
         })
       }
     }
@@ -1951,7 +1971,12 @@ test("null mode metadata classes A/B retain measured wrapping, unknown cleanup a
   expect.soft(writes).not.toContain("\x1b[?7l")
   // Mode 2031 now measures DECRPM recognition and resets its enabled query state, even with null metadata.
   expect.soft(writes).toContain("\x1b[?2031l")
-  expect.soft(JSON.parse(batch.rawReplies["modes.application-keypad"]!)).toMatchObject({ on: null, off: null })
+  expect.soft(JSON.parse(batch.rawReplies["modes.application-keypad"]!)).toMatchObject({
+    setMode: null,
+    resetMode: null,
+  })
+  expect.soft(writes).toContain("\x1b=")
+  expect.soft(writes).toContain("\x1b>")
   // #30702: the margin and alternate-screen arms read the cells, so their raw state is the seeded frames.
   expect.soft(JSON.parse(batch.rawReplies["modes.left-right-margin"]!)).toMatchObject({
     seed: "ABCDEFGH",
@@ -1962,7 +1987,7 @@ test("null mode metadata classes A/B retain measured wrapping, unknown cleanup a
   }
   expect(batch.results.find((row) => row.featureId === "modes.application-keypad")).toMatchObject({
     status: "test-todo",
-    criterionBranch: "os-input-review",
+    reason: expect.stringContaining("adapter binding libvterm applicationKeypad"),
   })
 })
 
@@ -1994,7 +2019,7 @@ test.each([0, 1, 4] as const)(
 
 // Missing-input callback tests never exercised the production recorder, so these
 // OS-window criteria stayed generic TODOs with no review a collector could retain.
-test("requests review for headless OS-input criteria without fabricating app delivery", async () => {
+test("separates mode readback from headless OS-input review without fabricating app delivery", async () => {
   const ids = [
     "input.xtest-key",
     "input.xtest-click",
@@ -2009,10 +2034,7 @@ test("requests review for headless OS-input criteria without fabricating app del
     "modes.alt-scroll-1007",
     "modes.application-keypad",
   ]
-  const coverage = (id: string) =>
-    id === "modes.application-keypad"
-      ? { reason: /keypad input/, raw: { on: expect.any(Boolean), off: expect.any(Boolean) } }
-      : { reason: /OS-level XTEST/, raw: { input: false } }
+  const modeIds = new Set(["modes.alt-scroll-1007", "modes.application-keypad"])
   const definitions = ids.map((id) => {
     const found = ALL_PROBES.find((probe) => probe.id === id)
     if (!found) throw new Error(`Missing registry definition ${id}`)
@@ -2020,12 +2042,26 @@ test("requests review for headless OS-input criteria without fabricating app del
   })
   const batch = await collectBatch(backend, "xtermjs", definitions)
   expect(batch.results).toHaveLength(ids.length)
-  expect(batch.observations).toEqual([])
-  expect(batch.assertions).toEqual([])
+  expect(batch.observations).toMatchObject([
+    { featureId: "modes.alt-scroll-1007", outcome: "unsupported", assertionType: "query_reply" },
+    { featureId: "modes.application-keypad", outcome: "supported", assertionType: "buffer_state" },
+  ])
+  expect(batch.assertions).toMatchObject([
+    { featureId: "modes.alt-scroll-1007", kind: "negative" },
+    { featureId: "modes.application-keypad", kind: "positive" },
+  ])
   expect(batch.ungradedDiagnostics).toEqual({})
   for (const result of batch.results) {
+    if (modeIds.has(result.featureId)) {
+      expect(result.status).toBe(result.featureId === "modes.application-keypad" ? "supported" : "unsupported")
+      expect(result.assertionType).toBe(
+        result.featureId === "modes.application-keypad" ? "buffer_state" : "query_reply",
+      )
+      expect(batch.notTested.some((row) => row.featureId === result.featureId)).toBe(false)
+      continue
+    }
     expect(result.status, result.featureId).toBe("test-todo")
-    const expected = coverage(result.featureId)
+    const expected = { reason: /OS-level XTEST/, raw: { input: false } }
     expect(result.reason, result.featureId).toMatch(expected.reason)
     expect(result.rawReplyRef, result.featureId).toBe(result.featureId)
     expect(JSON.parse(batch.rawReplies[result.featureId]!), result.featureId).toMatchObject(expected.raw)

@@ -779,6 +779,8 @@ export type Interpretation = HistoricalInterpretation | CaptureDecision
 
 /** Source for library probing (synchronous cell-state access) */
 export interface LibProbeSource {
+  /** Existing adapter name, retained only for human-readable binding diagnostics. */
+  readonly backendName: string
   readonly kind: ProbeSourceKind
   /** The collector's measured loaded module/engine, never inferred from capabilities or versions. */
   readonly runtimeIdentity?: HeadlessRuntimeIdentity

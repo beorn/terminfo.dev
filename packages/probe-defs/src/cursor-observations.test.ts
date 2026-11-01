@@ -157,6 +157,7 @@ function appGoto(rows: number, cols: number, opts: { noClamp?: boolean; ignoreCu
 
 function headless(x: number, y: number, rows = 24, reply = ""): LibProbeSource {
   return {
+    backendName: "scripted-model",
     kind: "live",
     cols: 80,
     feed() {},

@@ -264,6 +264,7 @@ export function libProbeSource(model: HeadlessModel): LibProbeSource {
     return lines.join("\n")
   }
   const source: LibProbeSource = {
+    backendName: "scripted-model",
     kind: "live",
     getHyperlinkAt: () => null,
     feedCapture: (text) => {
