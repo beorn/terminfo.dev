@@ -596,7 +596,7 @@ function oscSimpleQueryProbe(id: string, query: string, pattern: RegExp, expecte
                 raw,
                 noObservable: "Audited vterm headless subject has no physical font cell dimensions",
                 sourceCitation:
-                  "vterm screen.ts at 6cc7eef0: ScreenOptions has no physical font metrics; OSC1337 ReportCellSize and OSC776 deliberately report unknown zero dimensions (#30575)",
+                  "vterm screen.ts at bd3d32ae: ScreenOptions has no physical font metrics; OSC1337 ReportCellSize and OSC776 deliberately report unknown zero dimensions (#30575)",
               },
               result,
             )
@@ -1182,31 +1182,31 @@ const ABSENT_OSC_ENGINES = {
   vt100: {
     kind: "source",
     runtimeFormat: "js",
-    engineVersion: "0.10.0",
+    engineVersion: "0.10.1",
     repository: "git@github.com:beorn/vterm.git",
-    treeOid: "d5ee344ab5b971184ba2c43ed60460656340417c",
+    treeOid: "1eaac257cf9ff8d8ece752c8e6edc04b9ddaa6cf",
     codes: [1, 8, 9, 17, 19, 22, 117, 119, 133, 176, 440, 555, 633, 666, 710, 777, 3008],
     subcodes: ["133;D"],
     reviewReasons: [{ code: 1, reason: "screen.ts:504-520 case 1 is ignored; no icon-name state is stored" }],
     sourceCitation:
-      "vt100 6cc7eef05cde6a8578479c6cdb480f606758eb2c packages/vt100/src/screen.ts:504-520 handleOSC switch, cases 0/1/2 only",
+      "vt100 bd3d32aea2f1994376a71adfc55b92705eedbd8c packages/vt100/src/screen.ts:504-520 handleOSC switch, cases 0/1/2 only",
   },
   vt220: {
     kind: "source",
     runtimeFormat: "js",
-    engineVersion: "0.10.0",
+    engineVersion: "0.10.1",
     repository: "git@github.com:beorn/vterm.git",
-    treeOid: "9a320c4d5cd0e0b60bb2e6ea4f020ce5eb54ae53",
+    treeOid: "d504616ae458b8b0fa9fa365034c30bd35f55ee8",
     codes: [1, 8, 9, 17, 19, 22, 117, 119, 133, 176, 440, 555, 633, 666, 710, 777, 3008],
     subcodes: ["133;D"],
     reviewReasons: [{ code: 1, reason: "screen.ts:703-718 case 1 is ignored; no icon-name state is stored" }],
     sourceCitation:
-      "vt220 6cc7eef05cde6a8578479c6cdb480f606758eb2c packages/vt220/src/screen.ts:703-718 handleOSC: no-semicolon return; cases 0/1/2 only",
+      "vt220 bd3d32aea2f1994376a71adfc55b92705eedbd8c packages/vt220/src/screen.ts:703-718 handleOSC: no-semicolon return; cases 0/1/2 only",
   },
   vterm: {
     kind: "source",
     runtimeFormat: "js",
-    engineVersion: "0.10.0",
+    engineVersion: "0.10.1",
     repository: "git@github.com:beorn/vterm.git",
     treeOid: SOURCE_TREE_AUDITS.vterm.treeOid,
     codes: [9, 22, 176, 440, 555, 666, 710, 777, 3008],
@@ -1218,7 +1218,7 @@ const ABSENT_OSC_ENGINES = {
       },
     ],
     sourceCitation:
-      "vterm 6cc7eef05cde6a8578479c6cdb480f606758eb2c packages/vterm/src/screen.ts:3596-4055 handleOSC switch",
+      "vterm bd3d32aea2f1994376a71adfc55b92705eedbd8c packages/vterm/src/screen.ts:3596-4055 handleOSC switch",
   },
   xtermjs: {
     kind: "registry",
@@ -1302,9 +1302,9 @@ const ABSENT_OSC_ENGINES = {
     kind: "native",
     engineVersion: "0.26.0",
     adapterVersion: "0.10.2",
-    binarySha256: "8232209bd7273d68eb0bc9a71c5acf94fd8ebd96612604ff901c09c4d6cb8344",
-    sourceCommit: "be67d1c7f542ee54a713500604d771a4aa8daa30",
-    buildHash: "fe1651e09a5d7e191586ed8f90a945ae479a9a1976a3776d852646e824c7ace1",
+    binarySha256: "21d4b43c1d4c401c5b9f8114de85b3e837605242363c322c2dcb37e4a42fba61",
+    sourceCommit: "824119c28b46bd701b222a91df0da860f0307950",
+    buildHash: "634c14c5258327eff925d20d24918098c9aee92c1e6291e0ca770d2677015171",
     lockSha256: "1f89f2579b7d786a116d8fefb8267c4af076bd3a3893adcf14b00c4466740497",
     codes: [1, 9, 17, 19, 22, 117, 119, 176, 440, 555, 666, 710, 777, 3008],
     reviewReasons: [
@@ -1320,7 +1320,7 @@ const ABSENT_OSC_ENGINES = {
       },
     ],
     sourceCitation:
-      "alacritty_terminal 0.26.0 with vte 0.15.0 src/ansi.rs:1329-1523 OSC dispatch (22 parsed, other audited codes unhandled); src/term/mod.rs:1059-2272 Term Handler; Termless be67d1c7f542ee54a713500604d771a4aa8daa30 packages/alacritty/native/src/lib.rs:285-338 owns Term<EventProxy> and advances the same vte processor into it; absolute-row getter changes leave Config, OSC dispatch and reply handling unchanged",
+      "alacritty_terminal 0.26.0 with vte 0.15.0 src/ansi.rs:1329-1523 OSC dispatch (22 parsed, other audited codes unhandled); src/term/mod.rs:1059-2272 Term Handler; Termless 824119c28b46bd701b222a91df0da860f0307950 packages/alacritty/native/src/lib.rs:285-338 owns Term<EventProxy> and advances the same vte processor into it; alternate-scroll readback changes leave Config, OSC dispatch and reply handling unchanged",
   },
   wezterm: {
     kind: "native",
