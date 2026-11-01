@@ -20,17 +20,17 @@ import { evidenceRuntimeIdentity } from "./runtime-identity.ts"
 
 export const TERM_FEATURES_API_CITATIONS = {
   vterm: [
-    "0.10.0",
+    "0.10.1",
     "packages/vterm/src/backend.ts",
     "createVtermBackend integrates the vterm Screen as a TerminalBackend with no application-child environment API",
   ],
   vt220: [
-    "0.10.0",
+    "0.10.1",
     "packages/vt220/src/backend.ts",
     "createVt220Backend integrates the vt220 Screen as a TerminalBackend with no application-child environment API",
   ],
   vt100: [
-    "0.10.0",
+    "0.10.1",
     "packages/vt100/src/backend.ts",
     "createVt100Backend integrates the vt100 Screen as a TerminalBackend with no application-child environment API",
   ],
@@ -376,17 +376,17 @@ const TITLE_STACK_UNIMPLEMENTED_AUDITS: ReadonlyMap<string, string> = new Map([
 
 const TITLE_STACK_UNIMPLEMENTED_SOURCE_TREES: ReadonlyMap<string, { readonly sourceCitation: string }> = new Map([
   [
-    "d5ee344ab5b971184ba2c43ed60460656340417c",
+    "1eaac257cf9ff8d8ece752c8e6edc04b9ddaa6cf",
     {
       sourceCitation:
-        'vterm 6cc7eef05cde6a8578479c6cdb480f606758eb2c packages/vt100/src/screen.ts:251-358 handleCSI has no case "t" and createScreen at packages/vt100/src/screen.ts:130 holds only title = "" with no title stack, so neither CSI 22;0t nor CSI 23;0t is implemented',
+        'vterm bd3d32aea2f1994376a71adfc55b92705eedbd8c packages/vt100/src/screen.ts:251-358 handleCSI has no case "t" and createScreen at packages/vt100/src/screen.ts:130 holds only title = "" with no title stack, so neither CSI 22;0t nor CSI 23;0t is implemented',
     },
   ],
   [
-    "9a320c4d5cd0e0b60bb2e6ea4f020ce5eb54ae53",
+    "d504616ae458b8b0fa9fa365034c30bd35f55ee8",
     {
       sourceCitation:
-        'vterm 6cc7eef05cde6a8578479c6cdb480f606758eb2c packages/vt220/src/screen.ts:305-428 handleCSI has no case "t" and createScreen at packages/vt220/src/screen.ts:104,176 holds only title = "" with no title stack, so neither CSI 22;0t nor CSI 23;0t is implemented',
+        'vterm bd3d32aea2f1994376a71adfc55b92705eedbd8c packages/vt220/src/screen.ts:305-428 handleCSI has no case "t" and createScreen at packages/vt220/src/screen.ts:104,176 holds only title = "" with no title stack, so neither CSI 22;0t nor CSI 23;0t is implemented',
     },
   ],
 ])
@@ -422,7 +422,7 @@ function titleStackHeadless(ctx: LibProbeSource, expected: string): ProbeCallbac
     restored === "new-title" &&
     identity?.kind === "js" &&
     identity.runtimeFormat === "js" &&
-    identity.engineVersion === "0.10.0" &&
+    identity.engineVersion === "0.10.1" &&
     identity.integrity.kind === "source" &&
     identity.integrity.cleanTree &&
     identity.integrity.repository === "git@github.com:beorn/vterm.git"

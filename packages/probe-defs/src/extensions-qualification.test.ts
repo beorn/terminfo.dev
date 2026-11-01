@@ -72,22 +72,22 @@ const auditedArtifacts: readonly HeadlessRuntimeIdentity[] = [
     kind: "native",
     engineVersion: "0.26.0",
     adapterVersion: "0.10.2",
-    termlessRevision: "be67d1c7f542ee54a713500604d771a4aa8daa30",
+    termlessRevision: "824119c28b46bd701b222a91df0da860f0307950",
     loadedBinary: {
       path: "/relocated/alacritty.node",
-      sha256: "8232209bd7273d68eb0bc9a71c5acf94fd8ebd96612604ff901c09c4d6cb8344",
+      sha256: "21d4b43c1d4c401c5b9f8114de85b3e837605242363c322c2dcb37e4a42fba61",
     },
     provenance: {
-      sha256: "8232209bd7273d68eb0bc9a71c5acf94fd8ebd96612604ff901c09c4d6cb8344",
-      sourceCommit: "be67d1c7f542ee54a713500604d771a4aa8daa30",
-      buildHash: "fe1651e09a5d7e191586ed8f90a945ae479a9a1976a3776d852646e824c7ace1",
+      sha256: "21d4b43c1d4c401c5b9f8114de85b3e837605242363c322c2dcb37e4a42fba61",
+      sourceCommit: "824119c28b46bd701b222a91df0da860f0307950",
+      buildHash: "634c14c5258327eff925d20d24918098c9aee92c1e6291e0ca770d2677015171",
       lockSha256: "1f89f2579b7d786a116d8fefb8267c4af076bd3a3893adcf14b00c4466740497",
       toolchain: "retained build receipt",
     },
     adapterSources: [
       { path: "packages/alacritty/src/index.ts", blobOid: "b4154cbd6ef4a83ce2cbf3dcf26ff13d645efd05" },
       { path: "packages/alacritty/src/backend.ts", blobOid: "4210383129879c4e8756e6975674632cf69ecce9" },
-      { path: "packages/alacritty/native/src/lib.rs", blobOid: "f6bd100a60de8bcbc54e28b4c293ca6920cbc18d" },
+      { path: "packages/alacritty/native/src/lib.rs", blobOid: "e4720590d652773f1e89caf2b5cb399ee9112e39" },
       { path: "src/load-native.ts", blobOid: "34e142550085450ab02138184626716ad0d6b546" },
     ],
   },
@@ -412,26 +412,26 @@ test.each([
   ["extensions.osc777-notify", "\x1b]777;notify;test;body\x07", "vt220"],
   ["extensions.osc3008-context", "\x1b]3008;type=test\x07", "vt220"],
 ])("%s retains an audited source-negative review only after its sentinel renders", (id, sequence, engine) => {
-  // Collector-input identities from the retained runs, not a loaded-engine attestation.
+  // Collector-input fixtures rekeyed to 0.10.1 after the parser audit, not a loaded-engine attestation.
   const identity =
     engine === "xtermjs"
       ? xtermOscIdentity
       : ({
           kind: "js",
           runtimeFormat: "js",
-          engineVersion: "0.10.0",
+          engineVersion: "0.10.1",
           adapterVersion: "0.10.2",
           termlessRevision: "2".repeat(40),
           adapterSources:
             engine === "vt100"
               ? [
                   { path: "packages/vt100/src/index.ts", blobOid: "99833d737402f9d1d8e3e257e3a255d8aa1facc3" },
-                  { path: "packages/vt100/src/backend.ts", blobOid: "855dd71fba878d968d16c82846578190b7350eea" },
+                  { path: "packages/vt100/src/backend.ts", blobOid: "cdb8be8c5ebbba68a5920cfa4df27c9deb31745a" },
                 ]
               : engine === "vt220"
                 ? [
                     { path: "packages/vt220/src/index.ts", blobOid: "601dd26eb7e753a5396ebdf72f1ef8ee2cc4355f" },
-                    { path: "packages/vt220/src/backend.ts", blobOid: "1a16d66067bcaf71a2d96900ae046a1601482add" },
+                    { path: "packages/vt220/src/backend.ts", blobOid: "7369e3710e36aa649372fd09011ecfdd6ba47c73" },
                   ]
                 : [
                     { path: "packages/vterm/src/index.ts", blobOid: "cb5719799dcdd5ae24e6fcf0dcad9965035ce54c" },
@@ -441,13 +441,13 @@ test.each([
           integrity: {
             kind: "source",
             repository: "git@github.com:beorn/vterm.git",
-            revision: "6cc7eef05cde6a8578479c6cdb480f606758eb2c",
+            revision: "bd3d32aea2f1994376a71adfc55b92705eedbd8c",
             treeOid:
               engine === "vt100"
-                ? "d5ee344ab5b971184ba2c43ed60460656340417c"
+                ? "1eaac257cf9ff8d8ece752c8e6edc04b9ddaa6cf"
                 : engine === "vt220"
-                  ? "9a320c4d5cd0e0b60bb2e6ea4f020ce5eb54ae53"
-                  : "d7bc627e039005ee913b0b244ff9a2ee2235746a",
+                  ? "d504616ae458b8b0fa9fa365034c30bd35f55ee8"
+                  : "f10a184811894462b9ca7b65d6aab8ffd2fdd0bd",
             cleanTree: true,
           },
         } as const)
@@ -477,7 +477,7 @@ test.each([
                   mode === "changed-tree"
                     ? "4".repeat(40)
                     : mode === "wrong-package"
-                      ? "d5ee344ab5b971184ba2c43ed60460656340417c"
+                      ? "1eaac257cf9ff8d8ece752c8e6edc04b9ddaa6cf"
                       : identity.integrity.treeOid,
                 cleanTree: mode !== "dirty",
               }
@@ -498,7 +498,7 @@ test.each([
         {
           id: "review",
           status: "test-failure",
-          reason: expect.stringContaining(engine === "xtermjs" ? "17a90b65" : "6cc7eef0"),
+          reason: expect.stringContaining(engine === "xtermjs" ? "17a90b65" : "bd3d32ae"),
         },
       ])
       expect(result.observation).toMatchObject({ outcome: "inconclusive", assertionType: "buffer_state" })
@@ -1910,7 +1910,7 @@ test.each([
   },
 )
 
-// Geometry audit re-pinned to 6cc7eef0; original runb9697318 used source53a9eb92/tree617ae600.
+// Geometry audit re-pinned to bd3d32ae; original runb9697318 used source53a9eb92/tree617ae600.
 // Q8 requires independent review of this context limit, never automatic Untestable.
 const geometryRuntime = {
   kind: "js",
@@ -1920,12 +1920,12 @@ const geometryRuntime = {
   integrity: {
     kind: "source",
     repository: "git@github.com:beorn/vterm.git",
-    revision: "6cc7eef05cde6a8578479c6cdb480f606758eb2c",
-    treeOid: "d7bc627e039005ee913b0b244ff9a2ee2235746a",
+    revision: "bd3d32aea2f1994376a71adfc55b92705eedbd8c",
+    treeOid: "f10a184811894462b9ca7b65d6aab8ffd2fdd0bd",
     cleanTree: true,
   },
   runtimeFormat: "js",
-  engineVersion: "0.10.0",
+  engineVersion: "0.10.1",
 } as const
 const geometryReplies = [
   {
@@ -2024,8 +2024,8 @@ test.each(geometryReplies)("$id reports source tree drift before geometry gradin
 test.each(geometryReplies)("$id distinguishes sibling source entries", ({ id, raw }) => {
   const baseline = callback(id).lib!({ feedCapture: () => raw } as unknown as LibProbeSource)
   for (const [engine, treeOid] of [
-    ["vt100", "d5ee344ab5b971184ba2c43ed60460656340417c"],
-    ["vt220", "9a320c4d5cd0e0b60bb2e6ea4f020ce5eb54ae53"],
+    ["vt100", "1eaac257cf9ff8d8ece752c8e6edc04b9ddaa6cf"],
+    ["vt220", "d504616ae458b8b0fa9fa365034c30bd35f55ee8"],
   ]) {
     const runtimeIdentity = {
       ...geometryRuntime,

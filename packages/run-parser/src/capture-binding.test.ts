@@ -844,13 +844,13 @@ it.each([
   {
     engine: "vt100",
     createBackend: createVt100Backend,
-    treeOid: "d5ee344ab5b971184ba2c43ed60460656340417c",
+    treeOid: "1eaac257cf9ff8d8ece752c8e6edc04b9ddaa6cf",
     sourceCitation: "screen.ts:504-520 handleOSC switch, cases 0/1/2 only",
   },
   {
     engine: "vt220",
     createBackend: createVt220Backend,
-    treeOid: "9a320c4d5cd0e0b60bb2e6ea4f020ce5eb54ae53",
+    treeOid: "d504616ae458b8b0fa9fa365034c30bd35f55ee8",
     sourceCitation: "screen.ts:703-718 handleOSC: no-semicolon return; cases 0/1/2 only",
   },
 ])(
@@ -866,32 +866,32 @@ it.each([
         { runId: `${engine}-osc9-review`, startedAt: "2026-10-30T16:00:00.000Z" },
         (draft) => {
           if (!definition?.lib) throw new Error("Missing OSC9 library callback")
-          draft.intendedSubject = { kind: "lib", id: engine, version: "0.10.0" }
+          draft.intendedSubject = { kind: "lib", id: engine, version: "0.10.1" }
           draft.subject!.id = engine
-          draft.subject!.version = "0.10.0"
+          draft.subject!.version = "0.10.1"
           // Exact collector-input identity; this fixture does not attest a loaded production engine.
           draft.runtimeIdentity = {
             kind: "js",
             runtimeFormat: "js",
-            engineVersion: "0.10.0",
+            engineVersion: "0.10.1",
             adapterVersion: "0.10.2",
             termlessRevision: "8b8664540f365fa0ba1d9b6400d3c4d1a160582c",
-            // Audited collector input at Termless 493881fd, including standalone 0.10.2 adapters.
+            // Collector identity fixture rekeyed to the 0.10.1 parser audit; not a historical load attestation.
             adapterSources:
               engine === "vt100"
                 ? [
                     { path: "packages/vt100/src/index.ts", blobOid: "99833d737402f9d1d8e3e257e3a255d8aa1facc3" },
-                    { path: "packages/vt100/src/backend.ts", blobOid: "855dd71fba878d968d16c82846578190b7350eea" },
+                    { path: "packages/vt100/src/backend.ts", blobOid: "cdb8be8c5ebbba68a5920cfa4df27c9deb31745a" },
                   ]
                 : [
                     { path: "packages/vt220/src/index.ts", blobOid: "601dd26eb7e753a5396ebdf72f1ef8ee2cc4355f" },
-                    { path: "packages/vt220/src/backend.ts", blobOid: "1a16d66067bcaf71a2d96900ae046a1601482add" },
+                    { path: "packages/vt220/src/backend.ts", blobOid: "7369e3710e36aa649372fd09011ecfdd6ba47c73" },
                   ],
             resolvedPath: `vendor/vterm/packages/${engine}/src/index.ts`,
             integrity: {
               kind: "source",
               repository: "git@github.com:beorn/vterm.git",
-              revision: "6cc7eef05cde6a8578479c6cdb480f606758eb2c",
+              revision: "bd3d32aea2f1994376a71adfc55b92705eedbd8c",
               treeOid,
               cleanTree: true,
             },
@@ -969,7 +969,7 @@ it.each(["device.term-features", "erase.screen.scrollback"])(
         if (!definition?.lib) throw new Error(`${featureId} has no library review arm`)
         // Collector-input fixture at the audited engine/API pin; this does not attest a loaded engine.
         const engine = history ? "libvterm" : "vterm"
-        const version = history ? "0.3.3" : "0.10.0"
+        const version = history ? "0.3.3" : "0.10.1"
         draft.intendedSubject = { kind: "lib", id: engine, version }
         draft.subject!.id = engine
         draft.subject!.version = version
@@ -1002,19 +1002,19 @@ it.each(["device.term-features", "erase.screen.scrollback"])(
           : {
               kind: "js",
               runtimeFormat: "js",
-              engineVersion: "0.10.0",
+              engineVersion: "0.10.1",
               adapterVersion: "0.10.2",
               termlessRevision: "8b8664540f365fa0ba1d9b6400d3c4d1a160582c",
               adapterSources: [
                 { path: "packages/vterm/src/index.ts", blobOid: "cb5719799dcdd5ae24e6fcf0dcad9965035ce54c" },
-                { path: "packages/vterm/src/backend.ts", blobOid: "e7eb83f44a4ae1368cbf7b78ef6783219757002a" },
+                { path: "packages/vterm/src/backend.ts", blobOid: "ae08fca0a071207d6dfc1ec2735ea6b3e72c0e18" },
               ],
               resolvedPath: "vendor/vterm/packages/vterm/src/index.ts",
               integrity: {
                 kind: "source",
                 repository: "git@github.com:beorn/vterm.git",
-                revision: "1cfc325f3aedd4617e437ee76e6a03fc2cc16438",
-                treeOid: "2ee13d2cb894e86ee9575dd6945f42028df44966",
+                revision: "bd3d32aea2f1994376a71adfc55b92705eedbd8c",
+                treeOid: "f10a184811894462b9ca7b65d6aab8ffd2fdd0bd",
                 cleanTree: true,
               },
             }
@@ -1042,7 +1042,7 @@ it.each(["device.term-features", "erase.screen.scrollback"])(
           expect(retained).toMatchObject({
             audit: {
               engine: "vterm",
-              blobOid: "e7eb83f44a4ae1368cbf7b78ef6783219757002a",
+              blobOid: "ae08fca0a071207d6dfc1ec2735ea6b3e72c0e18",
               sourceCitation: expect.stringContaining("createVtermBackend"),
             },
           })

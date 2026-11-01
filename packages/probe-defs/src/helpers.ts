@@ -29,11 +29,11 @@ import { evidenceRuntimeIdentity } from "./runtime-identity.ts"
 export const ADAPTER_SOURCE_AUDITS = {
   vt100: {
     "packages/vt100/src/index.ts": "99833d737402f9d1d8e3e257e3a255d8aa1facc3",
-    "packages/vt100/src/backend.ts": "855dd71fba878d968d16c82846578190b7350eea",
+    "packages/vt100/src/backend.ts": "cdb8be8c5ebbba68a5920cfa4df27c9deb31745a",
   },
   vt220: {
     "packages/vt220/src/index.ts": "601dd26eb7e753a5396ebdf72f1ef8ee2cc4355f",
-    "packages/vt220/src/backend.ts": "1a16d66067bcaf71a2d96900ae046a1601482add",
+    "packages/vt220/src/backend.ts": "7369e3710e36aa649372fd09011ecfdd6ba47c73",
   },
   vterm: {
     "packages/vterm/src/index.ts": "cb5719799dcdd5ae24e6fcf0dcad9965035ce54c",
@@ -60,7 +60,7 @@ export const ADAPTER_SOURCE_AUDITS = {
   alacritty: {
     "packages/alacritty/src/index.ts": "b4154cbd6ef4a83ce2cbf3dcf26ff13d645efd05",
     "packages/alacritty/src/backend.ts": "4210383129879c4e8756e6975674632cf69ecce9",
-    "packages/alacritty/native/src/lib.rs": "f6bd100a60de8bcbc54e28b4c293ca6920cbc18d",
+    "packages/alacritty/native/src/lib.rs": "e4720590d652773f1e89caf2b5cb399ee9112e39",
     "src/load-native.ts": "34e142550085450ab02138184626716ad0d6b546",
   },
   wezterm: {
@@ -1587,9 +1587,9 @@ export const SOURCE_TREE_AUDITS = {
   vterm: {
     resolvedPath: "vendor/vterm/packages/vterm/src/index.ts",
     runtimeFormat: "js",
-    engineVersion: "0.10.0",
+    engineVersion: "0.10.1",
     repository: "git@github.com:beorn/vterm.git",
-    treeOid: "d7bc627e039005ee913b0b244ff9a2ee2235746a",
+    treeOid: "f10a184811894462b9ca7b65d6aab8ffd2fdd0bd",
   },
 } as const
 
@@ -1626,7 +1626,7 @@ function sourceTreeDrift(
   }
 }
 
-const VTERM_GEOMETRY_REVISION = "6cc7eef05cde6a8578479c6cdb480f606758eb2c"
+const VTERM_GEOMETRY_REVISION = "bd3d32aea2f1994376a71adfc55b92705eedbd8c"
 
 /**
  * The geometry gate's identity miss: the audited subject loaded at another source identity. The disposition stays
