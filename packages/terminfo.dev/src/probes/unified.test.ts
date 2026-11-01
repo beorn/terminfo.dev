@@ -400,18 +400,17 @@ it("refuses a structural terminal owner even with the same claimed capture ID", 
   ])
 })
 
-it("lets reviewed DECRPM queries run while refusing cursor and title-writing callbacks", async () => {
+it("allows query-only DECRPM and refuses callbacks requiring disposable ownership", async () => {
   const writes: string[] = []
   process.stdout.write = ((text: string) => {
     writes.push(text)
     if (text === "\x1b[?2004$p\x1b[c") process.stdin.emit("data", Buffer.from("\x1b[?2004;2$y"))
-    if (text === "\x1b[?2031$p\x1b[c") process.stdin.emit("data", Buffer.from("\x1b[?2031;2$y"))
     return true
   }) as typeof process.stdout.write
   const batch = await runProbeBatch({
     ids: ["modes.bracketed-paste", "modes.color-scheme-reporting", "cursor.move.absolute", "device.xtwinops-20"],
   })
-  expect(writes).toEqual(["\x1b[?2004$p\x1b[c", "\x1b[?2031$p\x1b[c"])
+  expect(writes).toEqual(["\x1b[?2004$p\x1b[c"])
   const retained = batch.rawReplies["modes.bracketed-paste.callLog"]
   expect(retained).toBeDefined()
   expect(JSON.stringify(readCallLog(JSON.parse(retained!)))).toBe(retained)
@@ -419,11 +418,7 @@ it("lets reviewed DECRPM queries run while refusing cursor and title-writing cal
     outcome: "supported",
     assertionType: "query_reply",
   })
-  expect(batch.observations.find((item) => item.featureId === "modes.color-scheme-reporting")).toMatchObject({
-    outcome: "supported",
-    assertionType: "query_reply",
-  })
-  for (const id of ["cursor.move.absolute", "device.xtwinops-20"]) {
+  for (const id of ["modes.color-scheme-reporting", "cursor.move.absolute", "device.xtwinops-20"]) {
     expect(batch.results.find((item) => item.featureId === id)).toMatchObject({ status: "test-todo" })
     expect(JSON.parse(batch.rawReplies[id]!)).toMatchObject({ writes: [], queries: [], events: [] })
   }

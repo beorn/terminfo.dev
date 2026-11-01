@@ -91,7 +91,7 @@ const headlessObservableFeatures = [
   ],
   [
     "modes.decsscls",
-    "DECSSCLS controls presentation timing; the headless parser paints no frames",
+    "presentation speed: headless engines paint no frames and expose no scroll-speed state",
     { presentation: false },
   ],
   ["modes.reverse-video", "rendered colors (pixels)", { mode: false }],
@@ -124,7 +124,11 @@ test.each(headlessObservableFeatures)(
     expect(JSON.parse(result.response!)).toEqual(state)
     expect(result.criterionBranch).toBe("headless-observable-review")
     expect(result.tests).toEqual([
-      { id: "review", status: "test-todo", reason: `Headless observable review required: ${noObservable}` },
+      {
+        id: "review",
+        status: "test-todo",
+        reason: id === "modes.decsscls" ? noObservable : `Headless observable review required: ${noObservable}`,
+      },
     ])
     expect(result.observation).toBeUndefined()
     expect(result.assertions).toBeUndefined()
