@@ -11,7 +11,7 @@ import type { LibProbeSource } from "./types.ts"
 
 // Remaining headless features whose raw state is measurable but whose claim is not.
 // DECRPM mode-state criteria grade the engine's own reply in modes-observations.test.ts.
-const notTestedFeatures = ["extensions.osc1-icon", "modes.application-keypad", "sgr.overline"]
+const notTestedFeatures = ["extensions.osc1-icon", "sgr.overline"]
 
 const context = (): LibProbeSource =>
   ({
@@ -67,7 +67,6 @@ const headlessObservableFeatures = [
     "Declared iTerm2 image capability does not establish rendered image pixels",
     { declared: true },
   ],
-  ["modes.decsclm", "DECSCLM requires presentation timing capture", { presentation: false }],
   [
     "extensions.osc8",
     "Adapter (runtime identity unavailable) exposes no OSC 8 URI observer (getHyperlinkAt); link metadata unobservable",
@@ -121,6 +120,59 @@ test.each(headlessObservableFeatures)(
     expect(result.assertions).toBeUndefined()
   },
 )
+
+// S8 requires a missing DECRPM reply to retain its named review and both measured phases.
+// The presentation table cannot exercise this protocol arm; positive mode tests supply valid replies.
+test("modes.decsclm retains missing DECRPM coverage and measured state for required review", () => {
+  const definition = ALL_PROBES.find((probe) => probe.id === "modes.decsclm")
+  if (!definition?.lib) throw new Error("missing headless modes.decsclm")
+  const result = definition.lib(context())
+  expect(result.notTested).toEqual({
+    reason: "no-semantic-observable",
+    noObservable: "DECRPM reply to CSI ? 4 $ p",
+  })
+  expect(JSON.parse(result.response!)).toEqual({
+    setReply: "$y",
+    resetReply: "$y",
+    setMode: false,
+    resetMode: false,
+    insertBefore: false,
+    insertAfter: false,
+  })
+  expect(result.criterionBranch).toBe("os-input-review")
+  expect(result.tests).toEqual([
+    {
+      id: "review",
+      status: "test-todo",
+      reason:
+        "The adapter delivered no DECRPM reply from the engine; required independent review of the retained raw state pending",
+    },
+  ])
+  expect(result.observation).toBeUndefined()
+  expect(result.assertions).toBeUndefined()
+})
+
+// S8 retains an unchanged non-null DECKPAM pair as criterion TODO, never missing coverage or a grade.
+// The generic no-observable table cannot express it; mode tests do not exercise this minimal source.
+test("modes.application-keypad retains its unchanged measured state as a named criterion TODO", () => {
+  const definition = ALL_PROBES.find((probe) => probe.id === "modes.application-keypad")
+  if (!definition?.lib) throw new Error("missing headless modes.application-keypad")
+  const result = definition.lib(context())
+  expect(result.notTested).toBeUndefined()
+  expect(JSON.parse(result.response!)).toEqual({ setMode: false, resetMode: false })
+  expect(result.pass).toBe(false)
+  expect(result.tests).toEqual([
+    { id: "criterion", status: "test-todo", reason: "DECKPAM state pair: set false, reset false" },
+  ])
+  expect(result.observation).toEqual({
+    outcome: "inconclusive",
+    assertionType: "buffer_state",
+    reason: "insufficient-evidence",
+    note: "DECKPAM state pair: set false, reset false; keypad key encoding unmeasured; mode state measured",
+  })
+  expect(result.note).toBe(result.observation?.note)
+  expect(result.assertions).toBeUndefined()
+})
 
 const headlessStateFeatures = [
   [
@@ -240,8 +292,8 @@ test.each(headlessStateFeatures)(
   },
 )
 
-test("the 3 remaining headless not-tested features emit named coverage from measured state", () => {
-  expect(notTestedFeatures).toHaveLength(3)
+test("the 2 remaining headless not-tested features emit named coverage from measured state", () => {
+  expect(notTestedFeatures).toHaveLength(2)
   for (const id of notTestedFeatures) {
     const definition = ALL_PROBES.find((probe) => probe.id === id)
     if (!definition?.lib) throw new Error(`missing headless ${id}`)
