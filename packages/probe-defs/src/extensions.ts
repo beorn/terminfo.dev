@@ -4484,12 +4484,21 @@ export const extensionsProbes: ProbeDefinition[] = [
             const reply = ctx.queryWithSentinelOutcome("\x1b[?5522$p", pattern)
             let response = reply.raw
             if (sentinelSilenceResult(reply, "OSC5522 detection reply") !== null) {
-              // Use the existing device.decrpm control (DECAWM), in this same callback/run.
-              const control = ctx.queryWithSentinelOutcome("\x1b[?7$p", decrpmReplyPattern(7))
-              response = JSON.stringify({ detection: reply.raw, decrpmPrerequisite: control.raw })
-              if (sentinelSilenceResult(control, "DECRPM prerequisite reply") !== null) {
+              // Current library DECRQM siblings in device.ts/modes.ts; one silent mode is insufficient.
+              const controls = []
+              let allSilent = true
+              for (const mode of [7, 2004, 1, 1000, 1004, 5, 2026, 1006, 1003, 1005, 3, 2031]) {
+                const control = ctx.queryWithSentinelOutcome(`\x1b[?${mode}$p`, decrpmReplyPattern(mode))
+                controls.push({ mode, raw: control.raw })
+                if (sentinelSilenceResult(control, "DECRPM prerequisite reply") === null) {
+                  allSilent = false
+                  break
+                }
+              }
+              response = JSON.stringify({ detection: reply.raw, decrpmSiblings: controls })
+              if (allSilent) {
                 const reason =
-                  "OSC5522 detection prerequisite unmet: no complete DECRPM reply for DECAWM mode 7; protocol recognition cannot be observed."
+                  "OSC5522 detection prerequisite unmet: no complete DECRPM reply from same-run sibling queries; protocol recognition cannot be observed."
                 return {
                   pass: false,
                   response,

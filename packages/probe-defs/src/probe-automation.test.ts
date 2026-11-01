@@ -3040,17 +3040,52 @@ describe("Kitty protocol detection", () => {
         }),
       )
       expect(result.tests?.[0]?.status).toBe(expected)
-      expect(queries).toEqual(qualified ? ["\x1b[?5522$p", "\x1b[?7$p"] : ["\x1b[?5522$p"])
+      expect(queries[0]).toBe("\x1b[?5522$p")
+      if (qualified) expect(queries[1]).toBe("\x1b[?7$p")
+      else expect(queries).toHaveLength(1)
       expect(result.observation).toBeUndefined()
       expect(result.assertions).toBeUndefined()
       if (expected === "test-todo") {
         expect(result.tests?.[0]?.reason).toBe(
-          "OSC5522 detection prerequisite unmet: no complete DECRPM reply for DECAWM mode 7; protocol recognition cannot be observed.",
+          "OSC5522 detection prerequisite unmet: no complete DECRPM reply from same-run sibling queries; protocol recognition cannot be observed.",
         )
-        expect(JSON.parse(result.response!)).toEqual({ detection: da1, decrpmPrerequisite: da1 })
+        const retained = JSON.parse(result.response!)
+        expect(retained.detection).toBe(da1)
+        expect(retained.decrpmSiblings.length).toBeGreaterThan(1)
+        expect(retained.decrpmSiblings.every((sibling: { raw: string }) => sibling.raw === da1)).toBe(true)
       } else if (qualified) {
-        expect(JSON.parse(result.response!)).toEqual({ detection: da1, decrpmPrerequisite: control })
+        expect(JSON.parse(result.response!)).toEqual({ detection: da1, decrpmSiblings: [{ mode: 7, raw: control }] })
       } else expect(result.response).toBe(da1)
+    }
+
+    // A different same-run sibling can answer while DECAWM stays silent (peer AC4 counterexample).
+    for (const [id, mode] of [
+      ["modes.synchronized-output", 2026],
+      ["modes.color-scheme-reporting", 2031],
+    ] as const) {
+      const ctx = context({
+        feedCapture: (sequence) => (sequence === `\x1b[?${mode}$p` ? `\x1b[?${mode};1$y` : ""),
+        queryWithSentinelOutcome(sequence, pattern) {
+          const raw = sequence === `\x1b[?${mode}$p` ? `\x1b[?${mode};1$y${da1}` : da1
+          const match = raw.match(pattern)
+          return {
+            raw,
+            rawBase64: btoa(raw),
+            match,
+            reason: match ? "reply" : "sentinel",
+            sentinel: { atMs: 1, graceMs: 250 },
+          }
+        },
+      })
+      expect(probe(id).lib!(ctx).observation?.outcome).toBe("supported")
+      const target = p.lib!(ctx)
+      expect(target.tests?.[0]?.status).toBe("test-failure")
+      expect(JSON.parse(target.response!).decrpmSiblings).toContainEqual({
+        mode,
+        raw: `\x1b[?${mode};1$y${da1}`,
+      })
+      expect(target.observation).toBeUndefined()
+      expect(target.assertions).toBeUndefined()
     }
   })
 

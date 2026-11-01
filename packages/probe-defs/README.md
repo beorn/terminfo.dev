@@ -55,9 +55,9 @@ not a reset state or a terminal-support verdict. Callbacks retain it explicitly.
 
 OSC52 write/roundtrip callbacks retain qualified read-sentinel silence as a named TEST TODO
 when no clipboard-state witness is wired; a read negative cannot measure the write.
-OSC5522 detection checks the existing DECAWM mode-7 DECRPM control after qualified target
-silence. Qualified silence from both queries names an unmet detection prerequisite as TEST TODO,
-retaining both raw windows. A control reply leaves target silence as TEST FAILURE; complete,
+OSC5522 detection checks the current library DECRQM sibling-query family after qualified target
+silence. Qualified silence from every control names an unmet detection prerequisite as TEST TODO,
+retaining each raw window. Any control reply leaves target silence as TEST FAILURE; complete,
 on-time target Ps0 remains Unsupported. Unqualified, malformed and late target replies keep
 their existing criteria. Historical captures and selected results are unchanged.
 
