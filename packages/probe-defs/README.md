@@ -53,6 +53,14 @@ An unmeasurable witness or changed geometry is recorded as a named refusal, neve
 Library `getMode` returns `boolean | null`: null names an unavailable adapter readback,
 not a reset state or a terminal-support verdict. Callbacks retain it explicitly.
 
+The library reverse-video, synchronized-output and colour-scheme-reporting cells
+measure mode recognition using the engine's DECRPM reply after enabling the mode.
+Set, reset or permanently set is Supported; unrecognized or permanently reset is
+Unsupported. Silence retains a named TEST TODO. Reverse-video and synchronized
+output name presentation as unmeasured; colour-scheme reporting names the
+scheme-change report as unmeasured. DECSCLM and DECSSCLS retain their independent
+presentation-review paths. The existing application-arm criteria are unchanged.
+
 Both source interfaces carry `readonly kind: ProbeSourceKind` directly. Current runs retain exactly `source: { kind: "live" }` or `{ kind: "trace", trace: { path, sha256 }, captureRunId, captureSuiteId, captureSourceRevision }`. The trace path is relative to the artifact store and contains no parent segment; its SHA256 and capture identities are required. Initialization, sealing and the canonical reader validate and preserve this union without a schema bump. Call-log format/version remain inside the referenced artifact. Historical schema 2/3 bytes and readers are unchanged. This source declaration grants no capture, admission or publication.
 
 `termAssertionType` and `libAssertionType` declare a retained deciding-observation class. An explicit null means the callback runs without a typed deciding observable; undefined is temporarily undeclared (#28801). Neither means the callback arm itself is absent, and neither becomes a null observation or assertion type.

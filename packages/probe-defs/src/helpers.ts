@@ -1262,14 +1262,42 @@ export function decrpmReading(ps: DecrpmPs): string {
 /**
  * The one grader of a DECRPM reading, shared by the app arm and the headless arm (#30557, @cto 254dd9cf):
  * Ps 1, 2 and 3 grade supported; Ps 4 grades unsupported, because the terminal says it knows the mode and
- * that the mode cannot be set (xterm.js answers exactly that for 1005); Ps 0 and no reply are inconclusive.
+ * that the mode cannot be set (xterm.js answers exactly that for 1005). The three
+ * protocol-only criteria below also grade an explicit Ps 0 as unsupported;
+ * other modes retain their existing inconclusive Ps 0 result.
  */
 export function decrpmResult(ps: DecrpmPs | null, modeNum: number): ProbeCallbackResult {
   if (ps === null) {
     return replyFailure("no usable DECRPM reply; the public projection returned null and retained no bytes")
   }
   const reading = decrpmReading(ps)
+  // CTO 62ab5adc: modes 5, 2026 and 2031 grade protocol recognition; their named effects remain unmeasured.
+  const unmeasuredFacet =
+    modeNum === 2031
+      ? "scheme-change report (CSI ? 997 ; Ps n, unsolicited) unmeasured; recognition measured"
+      : modeNum === 5
+        ? "presentation (inverted frame) unmeasured; protocol measured"
+        : modeNum === 2026
+          ? "presentation (tearing, scroll cadence) unmeasured; protocol measured"
+          : undefined
   if (ps === 0) {
+    if (unmeasuredFacet) {
+      const note = `DECRPM mode ${modeNum}: ${reading}; ${unmeasuredFacet}`
+      return {
+        pass: false,
+        note,
+        response: reading,
+        observation: { outcome: "unsupported", assertionType: "query_reply", note },
+        assertions: [
+          {
+            assertionType: "query_reply",
+            kind: "negative",
+            expected: `DECRPM mode ${modeNum} recognized (set or reset)`,
+            observed: reading,
+          },
+        ],
+      }
+    }
     return {
       pass: false,
       note: `DECRPM mode ${modeNum}: not recognized; mode behavior unmeasured`,
@@ -1283,7 +1311,7 @@ export function decrpmResult(ps: DecrpmPs | null, modeNum: number): ProbeCallbac
     }
   }
   if (ps === 4) {
-    const note = `DECRPM mode ${modeNum}: ${reading}; the terminal knows the mode and cannot set it`
+    const note = `DECRPM mode ${modeNum}: ${reading}; the terminal knows the mode and cannot set it${unmeasuredFacet ? `; ${unmeasuredFacet}` : ""}`
     return {
       pass: false,
       note,
@@ -1299,11 +1327,12 @@ export function decrpmResult(ps: DecrpmPs | null, modeNum: number): ProbeCallbac
       ],
     }
   }
+  const note = `DECRPM mode ${modeNum}: ${reading}${unmeasuredFacet ? `; ${unmeasuredFacet}` : ""}`
   return {
     pass: true,
-    note: `DECRPM mode ${modeNum}: ${reading}`,
+    note,
     response: reading,
-    observation: { outcome: "supported", assertionType: "query_reply" },
+    observation: { outcome: "supported", assertionType: "query_reply", ...(unmeasuredFacet && { note }) },
     assertions: [
       {
         assertionType: "query_reply" as const,
