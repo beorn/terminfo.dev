@@ -599,7 +599,13 @@ test("source-qualified 2026/2031 mixed criteria survive collection and capture p
     vi.spyOn(headlessIdentity, "headlessRuntimeIdentity").mockResolvedValue(identity)
     const carrier = async () => {
       const value = await producer()
-      return Object.assign(value, { getAdapterSources: () => identity.adapterSources })
+      return Object.assign(value, {
+        capabilities: {
+          ...value.capabilities,
+          extensions: new Set([...(value.capabilities.extensions ?? []), "adapter-sources"]),
+        },
+        getAdapterSources: () => identity.adapterSources,
+      })
     }
     const manifest = {
       schemaVersion: 4 as const,
