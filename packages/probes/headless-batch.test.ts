@@ -384,7 +384,7 @@ test.for(VTERM_MARK_CASES)(
         outcome: "unsupported",
         assertionType: "buffer_state",
       })
-      value.capabilities.extensions.delete("semantic-marks")
+      Object.defineProperty(value, "getSemanticMarks", { value: undefined })
       const absent = createLibProbeSource(value, undefined, undefined, undefined)
       const missing = definition.lib!(absent)
       expect(missing.criterionBranch).toBe(HEADLESS_OBSERVABLE_REVIEW)
@@ -395,6 +395,39 @@ test.for(VTERM_MARK_CASES)(
     }
   },
 )
+
+// @failure Engines declaring semanticPrompts without the semantic-marks extension lose their decidable source review.
+// @level l1
+// @consumer WezTerm's three and Ghostty-native's six semantic start-marker callback routes.
+test("wezterm and ghostty-native without a declared mark reader retain source review", () => {
+  // An actual JS terminal supplies consumption/cursor controls; these metadata-only
+  // route checks neither execute nor attest either optional native engine.
+  for (const [engine, selectors] of [
+    ["wezterm", [133]],
+    ["ghostty-native", [133, 633]],
+  ] as const) {
+    const value = createXtermBackend({ cols: 80, rows: 24 })
+    try {
+      const original = createLibProbeSource(value, undefined, undefined, undefined)
+      const source: LibProbeSource = {
+        ...original,
+        capabilities: { ...original.capabilities, semanticPrompts: true },
+      }
+      expect(source.capabilities.extensions.has("semantic-marks"), engine).toBe(false)
+      expect(source.getSemanticMarks, engine).toBeUndefined()
+      for (const selector of selectors) {
+        for (const mark of ["a", "b", "c"]) {
+          const id = `extensions.osc${selector}-${mark}`
+          const result = registryDefinitions([id])[0]!.lib!(source)
+          expect(result.criterionBranch, `${engine} ${id}`).toBe(SEMANTIC_PROMPT_SOURCE_REVIEW)
+          expect(result.observation, `${engine} ${id}`).toBeUndefined()
+        }
+      }
+    } finally {
+      value.destroy()
+    }
+  }
+})
 
 // @failure A moving reader with the wrong marker type, position or append count passes a freshness-only check.
 // @level l1

@@ -1527,7 +1527,7 @@ function promptMarkResult(
       },
     )
   }
-  if (markType && ctx.capabilities.semanticPrompts) {
+  if (markType && ctx.capabilities.extensions.has("semantic-marks")) {
     const note = `${noObservable}: getSemanticMarks readback is unavailable`
     return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
       home,

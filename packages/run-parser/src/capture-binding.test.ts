@@ -1089,7 +1089,7 @@ it.each(["device.term-features", "erase.screen.scrollback"])(
               termlessRevision: "8b8664540f365fa0ba1d9b6400d3c4d1a160582c",
               adapterSources: [
                 { path: "packages/vterm/src/index.ts", blobOid: "cb5719799dcdd5ae24e6fcf0dcad9965035ce54c" },
-                { path: "packages/vterm/src/backend.ts", blobOid: "ae08fca0a071207d6dfc1ec2735ea6b3e72c0e18" },
+                { path: "packages/vterm/src/backend.ts", blobOid: "308a934578c044ae95feaa29299531d9aa9eb4f7" },
               ],
               resolvedPath: "vendor/vterm/packages/vterm/src/index.ts",
               integrity: {
@@ -1124,7 +1124,7 @@ it.each(["device.term-features", "erase.screen.scrollback"])(
           expect(retained).toMatchObject({
             audit: {
               engine: "vterm",
-              blobOid: "ae08fca0a071207d6dfc1ec2735ea6b3e72c0e18",
+              blobOid: "308a934578c044ae95feaa29299531d9aa9eb4f7",
               sourceCitation: expect.stringContaining("createVtermBackend"),
             },
           })
