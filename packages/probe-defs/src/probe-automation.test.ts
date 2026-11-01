@@ -4375,7 +4375,7 @@ describe("partial probe automation candidates", () => {
     const p = probe("modes.color-scheme-reporting")
     for (const [ps, outcome] of [
       [1, "supported"],
-      [2, "supported"],
+      [2, "unsupported"],
       [3, "supported"],
       [4, "unsupported"],
       [0, "unsupported"],
@@ -4397,8 +4397,8 @@ describe("partial probe automation candidates", () => {
         expect(result.assertions).toBeUndefined()
         expect(result.tests).toMatchObject([
           expect.objectContaining({
-            status: "test-failure",
-            reason: "no usable DECRPM reply; the public projection returned null and retained no bytes",
+            status: "test-todo",
+            reason: "no DECRPM reply",
           }),
         ])
       } else {
@@ -4406,7 +4406,11 @@ describe("partial probe automation candidates", () => {
       }
       if (ps === 4) {
         expect(result.assertions, "Ps 4").toMatchObject([
-          { kind: "negative", expected: "DECRPM mode 2031 can be set", observed: "permanently reset (Ps 4)" },
+          {
+            kind: "negative",
+            expected: "DECRPM mode 2031 set or permanently set",
+            observed: JSON.stringify({ snapshot: 4 }),
+          },
         ])
       }
     }

@@ -1,5 +1,5 @@
 /**
- * @failure Four DEC mode app probes mutate terminal state or treat CPR responsiveness as mode recognition.
+ * @failure Mode app probes mutate unsnapshotted state, fail restoration, or confuse reset recognition with enabled protocol state.
  * @level l1
  * @consumer Owned app mode observations and reviewed support cells.
  * @testonly none
@@ -118,8 +118,59 @@ function captureSource(
 const modes = [
   { id: "modes.utf8-mouse-1005", number: 1005 },
   { id: "modes.deccolm", number: 3 },
-  { id: "modes.decsclm", number: 4 },
 ] as const
+
+// These four claims require settable protocol state, not the old recognition-only Ps 2.
+// Existing query-only cases never checked the snapshot, DECSET result or restoration.
+test.each([
+  ["modes.reverse-video", 5],
+  ["modes.synchronized-output", 2026],
+  ["modes.decsclm", 4],
+  ["modes.color-scheme-reporting", 2031],
+] as const)("%s grades protocol state and restores only a reset snapshot", async (id, mode) => {
+  const definition = modesProbes.find((entry) => entry.id === id)!
+  for (const [snapshot, enabled, outcome] of [
+    [2, 2, "unsupported"],
+    [1, null, "supported"],
+    [3, null, "supported"],
+    [0, null, "unsupported"],
+    [4, null, "unsupported"],
+    [2, 1, "supported"],
+    [2, 3, "supported"],
+    [null, null, null],
+    [2, null, null],
+  ] as const) {
+    const events: string[] = []
+    const replies = [snapshot, enabled]
+    const context = captureSource(24, 80, [], [])
+    context.write = (bytes) => {
+      events.push(bytes)
+    }
+    context.queryWithSentinel = async (sequence, pattern) => {
+      events.push(sequence)
+      const ps = replies.shift()
+      return ps == null ? null : pattern.exec(`\x1b[?${mode};${ps}$y`)
+    }
+    const result = await definition.term!(context)
+    expect(events).toEqual(
+      snapshot === 2 ? [`\x1b[?${mode}$p`, `\x1b[?${mode}h`, `\x1b[?${mode}$p`, `\x1b[?${mode}l`] : [`\x1b[?${mode}$p`],
+    )
+    if (outcome === null) {
+      expect(result.observation).toBeUndefined()
+      expect(result.tests).toEqual([{ id: "criterion", status: "test-todo", reason: "no DECRPM reply" }])
+    } else {
+      expect(result.observation).toMatchObject({ outcome, assertionType: "query_reply" })
+      expect(result.note).toContain(
+        "presentation (tearing, scroll cadence, inverted frame) unmeasured; protocol measured",
+      )
+      if (snapshot === 2 && enabled === 2) {
+        expect(result.note).toContain("recognized but DECSET refused (mode kept reset)")
+      }
+    }
+  }
+  expect(definition.termWrites).toBeUndefined()
+  expect(definition.termNeedsDisposable).toBe(true)
+})
 
 function headlessDeccolm(): (ctx: LibProbeSource) => ProbeCallbackResult {
   const definition = modesProbes.find((entry) => entry.id === "modes.deccolm")

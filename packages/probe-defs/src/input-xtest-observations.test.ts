@@ -7,10 +7,67 @@
 import { expect, test } from "vitest"
 import { inputProbes } from "./input.ts"
 import { modesProbes } from "./modes.ts"
+import { extensionsProbes } from "./extensions.ts"
 import type { LibMouseEvent, LibProbeSource, ProbeCallbackResult, TermProbeSource } from "./types.ts"
 import { readResponse } from "../../terminfo.dev/src/tty.ts"
 
 const xtestIds = ["input.xtest-key", "input.xtest-click", "input.xtest-wheel"] as const
+
+// Fixed per-capture review reasons must reach the real callbacks, without grading at callback time.
+// Existing input fixtures checked absence of observations, not this retained review contract.
+test.each([
+  "input.xtest-key",
+  "input.xtest-click",
+  "input.xtest-wheel",
+  "input.button-event-mouse",
+  "input.pixel-mouse",
+  "input.urxvt-mouse",
+  "input.x10-mouse",
+  "extensions.clipboard-paste",
+  "modes.decsscls",
+])("%s retains its by-design lib review for a bound decision", (id) => {
+  const definition = [...inputProbes, ...extensionsProbes, ...modesProbes].find((entry) => entry.id === id)!
+  const result = definition.lib!({ kind: "live" } as LibProbeSource)
+  expect(result.observation).toBeUndefined()
+  expect(result.criterionBranch).toBe(id === "modes.decsscls" ? "headless-observable-review" : "os-input-review")
+  expect(result.tests).toEqual([
+    {
+      id: "review",
+      status: "test-todo",
+      reason:
+        id === "modes.decsscls"
+          ? "presentation speed: headless engines paint no frames and expose no scroll-speed state"
+          : "Lib arm: the engine consumes bytes and has no input surface; host input encoding is measured in the terminal arm.",
+    },
+  ])
+})
+
+test.each([
+  "input.xtest-key",
+  "input.xtest-click",
+  "input.xtest-wheel",
+  "input.button-event-mouse",
+  "input.pixel-mouse",
+  "input.urxvt-mouse",
+  "input.x10-mouse",
+  "input.modify-other-keys",
+  "input.modify-other-keys-3",
+  "extensions.clipboard-paste",
+  "modes.application-keypad",
+  "modes.alt-scroll-1007",
+])("%s names real-surface injection only when the input path is missing", async (id) => {
+  const definition = [...inputProbes, ...extensionsProbes, ...modesProbes].find((entry) => entry.id === id)!
+  for (const missing of ["input", "readInput"] as const) {
+    const context = term({
+      input: { injectKey: async () => {}, injectClick: async () => {} },
+      readInput: async () => null,
+    })
+    context[missing] = undefined
+    const result = await definition.term!(context)
+    expect(result.observation).toBeUndefined()
+    expect(result.notTested?.noObservable).toBe("real-surface input injection (XTEST/CGEvent)")
+  }
+})
 
 function probe(id: string) {
   const definition = inputProbes.find((candidate) => candidate.id === id)

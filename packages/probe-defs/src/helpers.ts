@@ -1168,14 +1168,51 @@ export function decrpmModeProbe(
   id: string,
   modeNum: number,
   termlessFn: ((ctx: LibProbeSource) => ProbeCallbackResult) | null,
+  verifySet = false,
 ): ProbeDefinition {
   return {
     id,
-    termWrites: "query",
+    ...(verifySet ? { termNeedsDisposable: true as const } : { termWrites: "query" as const }),
     termAssertionType: "query_reply",
     lib: termlessFn,
     async term(ctx) {
-      return decrpmResult(await queryDecrpm(ctx, modeNum), modeNum)
+      if (!verifySet) return decrpmResult(await queryDecrpm(ctx, modeNum), modeNum)
+      const snapshot = await queryDecrpm(ctx, modeNum)
+      let ps = snapshot
+      if (snapshot === 2) {
+        try {
+          ctx.write(`\x1b[?${modeNum}h`)
+          ps = await queryDecrpm(ctx, modeNum)
+        } finally {
+          ctx.write(`\x1b[?${modeNum}l`)
+        }
+      }
+      const response = JSON.stringify({ snapshot, ...(snapshot === 2 ? { afterSet: ps } : {}) })
+      if (ps === null) {
+        return {
+          pass: false,
+          response,
+          note: "no DECRPM reply",
+          tests: [{ id: "criterion", status: "test-todo", reason: "no DECRPM reply" }],
+        }
+      }
+      const supported = ps === 1 || ps === 3
+      const reading = decrpmReading(ps)
+      const note = `${snapshot === 2 && ps === 2 ? "recognized but DECSET refused (mode kept reset)" : `DECRPM mode ${modeNum}: ${reading}`}; presentation (tearing, scroll cadence, inverted frame) unmeasured; protocol measured`
+      return {
+        pass: supported,
+        response,
+        note,
+        observation: { outcome: supported ? "supported" : "unsupported", assertionType: "query_reply", note },
+        assertions: [
+          {
+            assertionType: "query_reply",
+            kind: supported ? "positive" : "negative",
+            expected: `DECRPM mode ${modeNum} set or permanently set`,
+            observed: response,
+          },
+        ],
+      }
     },
   }
 }

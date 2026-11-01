@@ -1438,24 +1438,34 @@ export const modesProbes: ProbeDefinition[] = [
   decrpmModeProbe("modes.focus-tracking", 1004, headlessDecrpmArm(1004, "focusTracking")),
 
   // Reverse video
-  decrpmModeProbe("modes.reverse-video", 5, (ctx) => {
-    ctx.feed("\x1b[?5h")
-    const note = "rendered colors (pixels)"
-    return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
-      mode: ctx.getMode("reverseVideo"),
-    })
-  }),
+  decrpmModeProbe(
+    "modes.reverse-video",
+    5,
+    (ctx) => {
+      ctx.feed("\x1b[?5h")
+      const note = "rendered colors (pixels)"
+      return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
+        mode: ctx.getMode("reverseVideo"),
+      })
+    },
+    true,
+  ),
 
   // Synchronized output
-  decrpmModeProbe("modes.synchronized-output", 2026, (ctx) => {
-    ctx.feed("\x1b[?2026h")
-    ctx.feed("Hello")
-    ctx.feed("\x1b[?2026l")
-    const note = "frame timing"
-    return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
-      text: ctx.getText(),
-    })
-  }),
+  decrpmModeProbe(
+    "modes.synchronized-output",
+    2026,
+    (ctx) => {
+      ctx.feed("\x1b[?2026h")
+      ctx.feed("Hello")
+      ctx.feed("\x1b[?2026l")
+      const note = "frame timing"
+      return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
+        text: ctx.getText(),
+      })
+    },
+    true,
+  ),
 
   // Origin mode
   ...regionReadbackProbes(modesReadbackRows),
@@ -1958,12 +1968,17 @@ export const modesProbes: ProbeDefinition[] = [
   },
 
   // ?4 — DECSCLM needs presentation timing, not mode recognition or final parser state.
-  decrpmModeProbe("modes.decsclm", 4, () => {
-    const note = "DECSCLM requires presentation timing capture"
-    return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
-      presentation: false,
-    })
-  }),
+  decrpmModeProbe(
+    "modes.decsclm",
+    4,
+    () => {
+      const note = "DECSCLM requires presentation timing capture"
+      return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
+        presentation: false,
+      })
+    },
+    true,
+  ),
 
   // Mode 2031 — color scheme reporting (dark/light mode notifications)
   // Adopted by: iTerm2, tmux 3.6, Contour, foot, kitty
@@ -1977,46 +1992,10 @@ export const modesProbes: ProbeDefinition[] = [
           persistentListener: false,
         })
       },
-      async (ctx) => {
-        const ps = await queryDecrpm(ctx, 2031)
-        if (ps === null) {
-          return {
-            ...replyFailure("no usable DECRPM reply; the public projection returned null and retained no bytes"),
-            note: "DECRPM 2031 readback returned null; update events were not tested",
-            response: undefined,
-          }
-        }
-        // Ps 4 says the terminal knows the mode and cannot set it: unsupported, as decrpmResult grades it (#30557).
-        const recognized = ps === 1 || ps === 2 || ps === 3
-        const note =
-          ps === 0
-            ? "DECRPM 2031 explicitly unrecognized"
-            : ps === 4
-              ? "DECRPM 2031 permanently reset (Ps 4); the terminal cannot set it"
-              : `DECRPM 2031 recognized (${decrpmReading(ps)}); update events were not tested`
-        return {
-          pass: recognized,
-          note,
-          response: decrpmReading(ps),
-          observation: {
-            outcome: recognized ? "supported" : "unsupported",
-            assertionType: "query_reply",
-            note,
-          },
-          assertions: [
-            {
-              assertionType: "query_reply" as const,
-              kind: recognized ? ("positive" as const) : ("negative" as const),
-              // Ps 4 is recognized and cannot be set: the assertion names that, as decrpmResult does (@dev/2 72304b0e).
-              expected: ps === 4 ? "DECRPM mode 2031 can be set" : "DECRPM 2031 recognizes color-scheme reporting mode",
-              observed: decrpmReading(ps),
-            },
-          ],
-        }
-      },
+      decrpmModeProbe("modes.color-scheme-reporting", 2031, null, true).term,
       "query_reply",
     ),
-    termWrites: "query",
+    termNeedsDisposable: true,
   },
 
   // XTPUSHSGR — push SGR stack (CSI # {)
@@ -2222,8 +2201,8 @@ export const modesProbes: ProbeDefinition[] = [
     ...probe(
       "modes.decsscls",
       () => {
-        const note = "DECSSCLS controls presentation timing; the headless parser paints no frames"
-        return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
+        const note = "presentation speed: headless engines paint no frames and expose no scroll-speed state"
+        return reviewResult(HEADLESS_OBSERVABLE_REVIEW, note, note, {
           presentation: false,
         })
       },

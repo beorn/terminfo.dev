@@ -2736,7 +2736,7 @@ function escapeRegex(value: string): string {
 async function clipboardPaste(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   const input = ctx.input
   const readInput = ctx.readInput
-  if (!input || !readInput) return notTestedResult("OS-level XTEST paste injection", { input: false })
+  if (!input || !readInput) return notTestedResult("real-surface input injection (XTEST/CGEvent)", { input: false })
   if (!ctx.withClipboardFixture) return notTestedResult("owned disposable clipboard paste", { clipboard: false })
   return ctx.withClipboardFixture(async (fixture) => {
     const control = (await readInput(/^a/, 1000, () => input.injectKey("a")))?.[0]
@@ -3703,7 +3703,12 @@ export const extensionsProbes: ProbeDefinition[] = [
 
   probe(
     "extensions.clipboard-paste",
-    () => osInputReviewResult("OS-level XTEST paste injection", { input: false }),
+    () =>
+      osInputReviewResult(
+        "OS-level XTEST paste injection",
+        { input: false },
+        "Lib arm: the engine consumes bytes and has no input surface; host input encoding is measured in the terminal arm.",
+      ),
     clipboardPaste,
     "input_bytes",
   ),
