@@ -803,13 +803,13 @@ it.each([
   {
     engine: "vt100",
     createBackend: createVt100Backend,
-    treeOid: "5ffc7ad9ae120d0bf93c64b0fdc712eb40892896",
+    treeOid: "d5ee344ab5b971184ba2c43ed60460656340417c",
     sourceCitation: "screen.ts:504-520 handleOSC switch, cases 0/1/2 only",
   },
   {
     engine: "vt220",
     createBackend: createVt220Backend,
-    treeOid: "69366752918a6086c639123799cc3ac68d8083a0",
+    treeOid: "9a320c4d5cd0e0b60bb2e6ea4f020ce5eb54ae53",
     sourceCitation: "screen.ts:703-718 handleOSC: no-semicolon return; cases 0/1/2 only",
   },
 ])(
@@ -832,7 +832,7 @@ it.each([
           draft.runtimeIdentity = {
             kind: "js",
             runtimeFormat: "js",
-            engineVersion: "0.9.0",
+            engineVersion: "0.10.0",
             adapterVersion: "0.10.2",
             termlessRevision: "8b8664540f365fa0ba1d9b6400d3c4d1a160582c",
             // Audited collector input at Termless 493881fd, including standalone 0.10.2 adapters.
@@ -840,17 +840,17 @@ it.each([
               engine === "vt100"
                 ? [
                     { path: "packages/vt100/src/index.ts", blobOid: "99833d737402f9d1d8e3e257e3a255d8aa1facc3" },
-                    { path: "packages/vt100/src/backend.ts", blobOid: "88fca587dd459fd34da3405e93cc3793cb4a1cf8" },
+                    { path: "packages/vt100/src/backend.ts", blobOid: "855dd71fba878d968d16c82846578190b7350eea" },
                   ]
                 : [
                     { path: "packages/vt220/src/index.ts", blobOid: "601dd26eb7e753a5396ebdf72f1ef8ee2cc4355f" },
-                    { path: "packages/vt220/src/backend.ts", blobOid: "fe2970bf029f2c4c52a253364fe3e86659985856" },
+                    { path: "packages/vt220/src/backend.ts", blobOid: "1a16d66067bcaf71a2d96900ae046a1601482add" },
                   ],
             resolvedPath: `vendor/vterm/packages/${engine}/src/index.ts`,
             integrity: {
               kind: "source",
               repository: "git@github.com:beorn/vterm.git",
-              revision: "53a9eb9291b7880f4dc6a39a6802301049997a72",
+              revision: "6cc7eef05cde6a8578479c6cdb480f606758eb2c",
               treeOid,
               cleanTree: true,
             },
@@ -941,7 +941,7 @@ it.each(["device.term-features", "erase.screen.scrollback"])(
               termlessRevision: "8a1740b2d9f9b07105ffb1f62785c0ca9e513cf7",
               adapterSources: [
                 { path: "packages/libvterm/src/index.ts", blobOid: "2b4708b1081e701b99893ca055ded781dc46cf25" },
-                { path: "packages/libvterm/src/backend.ts", blobOid: "9191b6f79617372717848713411b78ac2faa353e" },
+                { path: "packages/libvterm/src/backend.ts", blobOid: "6ae281ac2862dfe7fe79e0bd144f9343756659bf" },
                 { path: "packages/libvterm/src/wasm-bindings.ts", blobOid: "2bbd4d5cf59b8d53db8f5c0329d2ed7853c43e45" },
                 { path: "packages/libvterm/wasm/libvterm.js", blobOid: "973341a8e2303d25cb17f1a36d491aad6c55b3a1" },
               ],
@@ -961,12 +961,12 @@ it.each(["device.term-features", "erase.screen.scrollback"])(
           : {
               kind: "js",
               runtimeFormat: "js",
-              engineVersion: "0.9.0",
+              engineVersion: "0.10.0",
               adapterVersion: "0.10.2",
               termlessRevision: "8b8664540f365fa0ba1d9b6400d3c4d1a160582c",
               adapterSources: [
                 { path: "packages/vterm/src/index.ts", blobOid: "cb5719799dcdd5ae24e6fcf0dcad9965035ce54c" },
-                { path: "packages/vterm/src/backend.ts", blobOid: "8599e301dd046b1264403069289477ab65d71d3a" },
+                { path: "packages/vterm/src/backend.ts", blobOid: "e7eb83f44a4ae1368cbf7b78ef6783219757002a" },
               ],
               resolvedPath: "vendor/vterm/packages/vterm/src/index.ts",
               integrity: {
@@ -1001,7 +1001,7 @@ it.each(["device.term-features", "erase.screen.scrollback"])(
           expect(retained).toMatchObject({
             audit: {
               engine: "vterm",
-              blobOid: "8599e301dd046b1264403069289477ab65d71d3a",
+              blobOid: "e7eb83f44a4ae1368cbf7b78ef6783219757002a",
               sourceCitation: expect.stringContaining("createVtermBackend"),
             },
           })

@@ -172,7 +172,7 @@ test.each(["extensions.osc117-reset-highlight-bg", "extensions.osc119-reset-high
       // Source-audit fixture at Termless 493881fd, independent of this runner's adapter revision.
       adapterSources: [
         { path: "packages/xtermjs/src/index.ts", blobOid: "550e10110ec2baaf326d2958319b03ee8208feba" },
-        { path: "packages/xtermjs/src/backend.ts", blobOid: "923e41d80147e4f136719e46ce9a2fc7dfb31683" },
+        { path: "packages/xtermjs/src/backend.ts", blobOid: "481fe005c5801cbb5e6ba4c8677f577e02122e4e" },
       ],
       resolvedPath:
         "node_modules/.bun/@xterm+headless@6.0.0/node_modules/@xterm/headless/lib-headless/xterm-headless.js",
@@ -272,7 +272,7 @@ test("Wezterm prompt source reviews survive actual collection and capture bindin
     // The JS carrier exercises collection; the qualified identity belongs to audited WezTerm sources.
     adapterSources: [
       { path: "packages/wezterm/src/index.ts", blobOid: "512606c5270ffd0cff55c1b70f5b3eda18a92df0" },
-      { path: "packages/wezterm/src/backend.ts", blobOid: "0eba480a028ed0f8f054e89cbe621c3fa22f4737" },
+      { path: "packages/wezterm/src/backend.ts", blobOid: "43464f5118e4442b3910fad63e3b3e3998af6214" },
       { path: "packages/wezterm/native/src/lib.rs", blobOid: "b83bbf08bb20c6b7965cd0b6492a827707644a8f" },
       { path: "src/load-native.ts", blobOid: "34e142550085450ab02138184626716ad0d6b546" },
     ],
