@@ -4057,7 +4057,7 @@ export const extensionsProbes: ProbeDefinition[] = [
         if (absentOscAudit(ctx.runtimeIdentity, 133)) {
           return sourceAbsentOsc("extensions.semantic-prompts", 133, "\x1b]133;A\x07", "shell prompt integration")(ctx)
         }
-        if (ctx.getSemanticMarks) {
+        if (ctx.capabilities.extensions.has("semantic-marks")) {
           return promptMarkResult(ctx, "\x1b]133;A\x07", "OSC 133 prompt-start mark registration", {
             probeId: "extensions.semantic-prompts",
             selector: 133,
@@ -4231,7 +4231,7 @@ export const extensionsProbes: ProbeDefinition[] = [
         if (absentOscAudit(ctx.runtimeIdentity, 633)) {
           return sourceAbsentOsc("extensions.osc-633-vscode", 633, "\x1b]633;A\x07", "VS Code shell integration")(ctx)
         }
-        if (ctx.getSemanticMarks) {
+        if (ctx.capabilities.extensions.has("semantic-marks")) {
           return promptMarkResult(ctx, "\x1b]633;A\x07", "OSC 633 prompt-start mark registration", {
             probeId: "extensions.osc-633-vscode",
             selector: 633,

@@ -375,6 +375,12 @@ test.skipIf(!isKittyAvailable())(
         expect(start.criterionBranch, id).toBe(SEMANTIC_PROMPT_SOURCE_REVIEW)
         expect(start.observation, id).toBeUndefined()
       }
+      // The umbrella callbacks have their own dispatch gates; A/C alone cannot catch a callable-only gate there.
+      for (const id of ["extensions.semantic-prompts", "extensions.osc-633-vscode"]) {
+        const umbrella = registryDefinitions([id])[0]!.lib!(source)
+        expect(umbrella.criterionBranch, id).toBe(HEADLESS_OBSERVABLE_REVIEW)
+        expect(umbrella.observation, id).toBeUndefined()
+      }
       const cached = source.getSemanticMarks!()
       const reader = vi.spyOn(source, "getSemanticMarks").mockReturnValue(cached)
       expect(definition.lib!(source).observation).toMatchObject({ outcome: "unsupported" })
@@ -435,6 +441,8 @@ test.for(VTERM_MARK_CASES)(
       const missing = definition.lib!(absent)
       expect(missing.criterionBranch).toBe(HEADLESS_OBSERVABLE_REVIEW)
       expect(missing.tests).toMatchObject([{ id: "review", status: "test-todo" }])
+      // Generic umbrella TODOs share this branch but do not identify the declared reader's missing tool.
+      expect(missing.note, id).toContain("semantic-marks getSemanticMarks readback is unavailable")
       expect(missing.observation).toBeUndefined()
     } finally {
       value.destroy()
