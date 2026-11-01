@@ -884,6 +884,38 @@ test("invalid headless rows and narrow DECSTBM geometry refuse before writes", a
     })
     expect(feeds, `${id} cols=${columns - 1}`).toEqual([])
   }
+  const reset = scrollbackProbes.find((item) => item.id === "scrollback.decstbm-reset")
+  if (!reset?.lib) throw new Error("Missing DECSTBM reset library callback")
+  // Bad extents cannot select an absolute row, including when the edit changes the reported geometry.
+  for (const invalid of [
+    { screenLines: Number.NaN, totalLines: 24 },
+    { screenLines: 1, totalLines: 24 },
+    { screenLines: 24, totalLines: 23 },
+    { screenLines: 24, totalLines: Number.POSITIVE_INFINITY },
+    { screenLines: 24, totalLines: 24.5 },
+  ]) {
+    for (const phase of ["seed", "after"] as const) {
+      const feeds: string[] = []
+      let reads = 0
+      const result = reset.lib(
+        headless({
+          feed: (sequence) => feeds.push(sequence),
+          getCell: (row) => ({ char: row === 0 ? "A" : "" }) as ReturnType<LibProbeSource["getCell"]>,
+          getScrollback: () => ({
+            viewportOffset: 0,
+            ...(phase === "seed" || reads++ > 0 ? invalid : { screenLines: 24, totalLines: 24 }),
+          }),
+        }),
+      )
+      expect(result.observation, `${phase}: ${JSON.stringify(invalid)}`).toMatchObject({
+        outcome: "inconclusive",
+        reason: "insufficient-evidence",
+        note: expect.stringContaining("coherent retained-buffer extents"),
+      })
+      expect(result.assertions).toBeUndefined()
+      expect(feeds.at(-1)).toBe("\x1b[r")
+    }
+  }
   const decstbm = scrollbackProbes.find((item) => item.id === "scrollback.decstbm")
   if (!decstbm?.term) throw new Error("Missing scrollback.decstbm app callback")
   const { context, writes } = silentAppSource(12, 1)
@@ -949,10 +981,12 @@ test("interior-region SU reads the compared cells, never the scrollback model", 
   if (!probe?.lib) throw new Error("missing scroll-up callback")
   const row = readbackRow("scrollback.scroll-up")
   const after = [["A"], ["C"], ["D"], [""], ["E"]]
+  const surface = declaredScreen({ [row.seed]: [["A"], ["B"], ["C"], ["D"], ["E"]], "\x1b[S": after }, 4)
   const result = probe.lib({
-    ...declaredScreen({ [row.seed]: [["A"], ["B"], ["C"], ["D"], ["E"]], "\x1b[S": after }, 4),
+    ...surface,
     // A surface with history already behind the viewport still scrolls the screen the row compares.
     getScrollback: () => ({ viewportOffset: 3, totalLines: 999, screenLines: 5 }),
+    getCell: (absoluteRow, col) => surface.getCell(absoluteRow - 994, col),
   })
   expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
 })
@@ -993,12 +1027,20 @@ test("DECSTBM reset is graded from the region readback, never from scrollback gr
   // that leaves the compared rows where they were is a measured negative, however much history it
   // claims to have grown.
   const surface = declaredScreen({ [row.seed]: [["A"], [""]] })
+  let history = 987
+  let scrolls = 0
   const result = probe.lib({
     ...surface,
-    getScrollback: () => ({ viewportOffset: 0, screenLines: 12, totalLines: 999 }),
+    feed: (sequence) => {
+      surface.feed(sequence)
+      if (sequence === "\x1b[S" && ++scrolls === 2) history++
+    },
+    getScrollback: () => ({ viewportOffset: 0, screenLines: 12, totalLines: history + 12 }),
+    getCell: (absoluteRow, col) => surface.getCell(absoluteRow - history, col),
   })
   expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "buffer_state" })
   expect(result.assertions).toMatchObject([{ kind: "negative" }])
+  expect(JSON.parse(result.response ?? "null")).toMatchObject({ before: [["A"], [""]], after: [["A"], [""]] })
 })
 
 function captureApp(rows: number, cols: number) {
@@ -1149,7 +1191,17 @@ test.each(["scrollback.set-region", "scrollback.alt-screen", "scrollback.decstbm
   (id) => {
     const probe = scrollbackProbes.find((item) => item.id === id)
     if (!probe?.lib) throw new Error(`Missing ${id} headless callback`)
-    const result = probe.lib(libProbeSource(createSemanticSurface()))
+    const surface = createSemanticSurface()
+    const result = probe.lib(
+      libProbeSource({
+        ...surface,
+        // This semantic model exposes screen cells and a history count, rather than retained cells.
+        getCell: (absoluteRow, col) => {
+          const { totalLines, screenLines } = surface.getScrollback()
+          return surface.getCell(absoluteRow - (totalLines - screenLines), col)
+        },
+      }),
+    )
     expect(result.observation?.outcome, id).toBe("supported")
     // A decided row carries its assertion, never a bare outcome.
     expect(result.assertions ?? [], id).not.toEqual([])

@@ -53,6 +53,11 @@ An unmeasurable witness or changed geometry is recorded as a named refusal, neve
 Library `getMode` returns `boolean | null`: null names an unavailable adapter readback,
 not a reset state or a terminal-support verdict. Callbacks retain it explicitly.
 
+Region-readback fixtures address the active screen with CUP. Their library reads translate each
+screen row into the retained buffer using one coherent `totalLines - screenLines` origin per frame,
+independent of the scrolled viewport. Invalid or insufficient extents retain named inconclusive
+evidence; they never establish an engine negative.
+
 The library reverse-video, synchronized-output and colour-scheme-reporting cells
 measure mode recognition using the engine's DECRPM reply after enabling the mode.
 Set, reset or permanently set is Supported; unrecognized or permanently reset is

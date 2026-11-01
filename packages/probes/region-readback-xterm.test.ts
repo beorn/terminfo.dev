@@ -15,7 +15,7 @@ import { createXtermBackend } from "@termless/xtermjs"
 import * as probeDefs from "@terminfo/probe-defs"
 import type { RegionReadbackRow } from "@terminfo/probe-defs"
 import { expect, test, vi } from "vitest"
-import { collectBatch } from "./headless-batch.ts"
+import { collectBatch, createLibProbeSource } from "./headless-batch.ts"
 import { mapSnapshotToCells } from "../terminfo.dev/src/darwin-terminal-text.ts"
 import { textCellsFrame } from "../terminfo.dev/src/serve.ts"
 import { collectTextQualification } from "../terminfo.dev/src/text-qualification.ts"
@@ -198,6 +198,36 @@ const XTERM_ABSENT = [
   "editing.deccara",
   "editing.decrara",
 ]
+
+// Screen fixtures must read CUP-addressed cells even with retained history and a scrolled viewport.
+// The fresh, empty backends in the whole-kind census cannot expose this coordinate mismatch.
+test.each([false, true])("DECSTBM reset reads the active screen with retained history (scrolled=%s)", (scrolled) => {
+  const backend = createXtermBackend()
+  backend.init({ rows: 24, cols: 80 })
+  const encode = (value: string) => new TextEncoder().encode(value)
+  try {
+    backend.feed(encode(Array.from({ length: 36 }, (_, row) => `S${String(row).padStart(2, "0")}`).join("\r\n")))
+    const history = backend.getScrollback()
+    expect(history.totalLines - history.screenLines).toBe(12)
+    backend.feed(encode("\x1b[2J\x1b[H"))
+    if (scrolled) {
+      backend.scrollViewport(-4)
+      expect(backend.getScrollback().viewportOffset).toBeLessThan(12)
+    }
+    const probe = probeDefs.ALL_PROBES.find((entry) => entry.id === "scrollback.decstbm-reset")
+    if (!probe?.lib) throw new Error("Missing DECSTBM reset library callback")
+    const result = probe.lib(createLibProbeSource(backend, undefined, undefined, undefined))
+    expect(result.observation, JSON.stringify(result)).toMatchObject({
+      outcome: "supported",
+      assertionType: "buffer_state",
+    })
+    expect(result.assertions).toMatchObject([{ kind: "positive" }])
+    expect(JSON.parse(result.response ?? "null")).toMatchObject({ before: [["A"], [""]], after: [[""], ["A"]] })
+    expect(backend.getCell(0, 0).char).toBe("S")
+  } finally {
+    backend.destroy()
+  }
+})
 
 // Parser-readback fixtures are deliberately unqualified in both workspace and published installs.
 function createUnqualifiedXtermBackend() {
