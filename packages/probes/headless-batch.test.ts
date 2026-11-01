@@ -1903,9 +1903,9 @@ test("null mode metadata classes A/B retain measured wrapping, unknown cleanup a
   expect.soft(JSON.parse(batch.rawReplies["modes.application-keypad"]!)).toMatchObject({
     setMode: null,
     resetMode: null,
-    setReply: "\x1b[?66;0$y",
-    resetReply: "\x1b[?66;0$y",
   })
+  expect.soft(writes).toContain("\x1b=")
+  expect.soft(writes).toContain("\x1b>")
   // #30702: the margin and alternate-screen arms read the cells, so their raw state is the seeded frames.
   expect.soft(JSON.parse(batch.rawReplies["modes.left-right-margin"]!)).toMatchObject({
     seed: "ABCDEFGH",
@@ -1915,9 +1915,8 @@ test("null mode metadata classes A/B retain measured wrapping, unknown cleanup a
     expect.soft(JSON.parse(batch.rawReplies[id]!), id).toMatchObject({ seedA: "PRIMARY-A", seedB: "PRIMARY-B" })
   }
   expect(batch.results.find((row) => row.featureId === "modes.application-keypad")).toMatchObject({
-    // The engine's explicit Ps0 negative decides independently of nullable adapter metadata.
-    status: "unsupported",
-    assertionType: "query_reply",
+    status: "test-todo",
+    reason: expect.stringContaining("adapter binding libvterm applicationKeypad"),
   })
 })
 
@@ -1974,7 +1973,7 @@ test("separates mode readback from headless OS-input review without fabricating 
   expect(batch.results).toHaveLength(ids.length)
   expect(batch.observations).toMatchObject([
     { featureId: "modes.alt-scroll-1007", outcome: "unsupported", assertionType: "query_reply" },
-    { featureId: "modes.application-keypad", outcome: "supported", assertionType: "query_reply" },
+    { featureId: "modes.application-keypad", outcome: "supported", assertionType: "buffer_state" },
   ])
   expect(batch.assertions).toMatchObject([
     { featureId: "modes.alt-scroll-1007", kind: "negative" },
@@ -1984,7 +1983,9 @@ test("separates mode readback from headless OS-input review without fabricating 
   for (const result of batch.results) {
     if (modeIds.has(result.featureId)) {
       expect(result.status).toBe(result.featureId === "modes.application-keypad" ? "supported" : "unsupported")
-      expect(result.assertionType).toBe("query_reply")
+      expect(result.assertionType).toBe(
+        result.featureId === "modes.application-keypad" ? "buffer_state" : "query_reply",
+      )
       expect(batch.notTested.some((row) => row.featureId === result.featureId)).toBe(false)
       continue
     }

@@ -70,14 +70,19 @@ stable earlier history and the existing cell/cursor consumption controls.
 The reader does not expose bounded zones. Sixel records contain raw payloads and
 DCS start positions; storage does not establish raster rendering or cell geometry.
 
-The library alternate-scroll, application-keypad, reverse-video, synchronized-output,
+The library alternate-scroll, reverse-video, synchronized-output,
 colour-scheme-reporting and DECSCLM cells use the existing DECRPM helper's opt-in
 `requireReadback` criterion. Supported requires Ps1 after set, Ps2 after reset and
 agreeing `getMode` readings. Ps0/2/4 after set is an engine negative. A null or
 mismatched adapter reading retains a criterion TEST TODO named
 `adapter binding <backend.name> <mode>`; the name is display-only and never selects
 a status or route. Existing other DECRPM criteria retain their prior readings.
-Private4 additionally checks that it does not change ANSI `insertMode`; an observed
+Application-keypad instead measures `ESC =` / `ESC >` (DECKPAM/DECKPNM) with
+`applicationKeypad` true then false, without DECRQM. Null readings stay named
+adapter-binding TODO; other non-null pairs stay criterion TODO naming both states.
+Keypad encoding and wheel-to-cursor-key translation remain unmeasured.
+Private4 additionally requires non-null ANSI `insertMode` readings before and after
+set and checks that they do not change; an observed
 flip is engine conflation, independently of its reply (the existing private4 issue32002).
 Presentation remains unmeasured for reverse-video/synchronized-output, the actual
 scheme-change report remains unmeasured for2031, and smooth-scroll presentation

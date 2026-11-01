@@ -700,13 +700,7 @@ const ABSENT_MODE_COMMANDS: Readonly<Record<string, number | readonly string[]>>
 function withModeSourceReview(definition: ProbeDefinition): ProbeDefinition {
   const command = ABSENT_MODE_COMMANDS[definition.id]
   const heldMode =
-    definition.id === "modes.application-cursor"
-      ? 1
-      : definition.id === "modes.reverse-video"
-        ? 5
-        : definition.id === "modes.application-keypad"
-          ? 66
-          : undefined
+    definition.id === "modes.application-cursor" ? 1 : definition.id === "modes.reverse-video" ? 5 : undefined
   const original = definition.lib
   if (!original || (command === undefined && heldMode === undefined)) return definition
   return {
@@ -1850,7 +1844,54 @@ const modeDefinitions: ProbeDefinition[] = [
   // Application keypad: DECKPAM then KP_5 encoding (SS3 u vs 5)
   probe(
     "modes.application-keypad",
-    headlessDecrpmArm(66, "applicationKeypad", { requireReadback: true }),
+    (ctx) => {
+      let resetSent = false
+      try {
+        ctx.feed("\x1b=")
+        const setMode = ctx.getMode("applicationKeypad")
+        ctx.feed("\x1b>")
+        resetSent = true
+        const resetMode = ctx.getMode("applicationKeypad")
+        const response = JSON.stringify({ setMode, resetMode })
+        const facet = "keypad key encoding unmeasured; mode state measured"
+        if (setMode === true && resetMode === false) {
+          const note = `DECKPAM set/reset state agrees; ${facet}`
+          return {
+            pass: true,
+            response,
+            note,
+            observation: { outcome: "supported", assertionType: "buffer_state", note },
+            assertions: [
+              {
+                assertionType: "buffer_state",
+                kind: "positive",
+                expected: "DECKPAM true then DECKPNM false",
+                observed: response,
+              },
+            ],
+          }
+        }
+        const reason =
+          setMode === null || resetMode === null
+            ? `adapter binding ${ctx.backendName} applicationKeypad`
+            : `DECKPAM state pair: set ${setMode}, reset ${resetMode}`
+        const note = `${reason}; ${facet}`
+        return {
+          pass: false,
+          response,
+          note,
+          observation: {
+            outcome: "inconclusive",
+            assertionType: "buffer_state",
+            reason: "insufficient-evidence",
+            note,
+          },
+          tests: [{ id: "criterion", status: "test-todo", reason }],
+        }
+      } finally {
+        if (!resetSent) ctx.feed("\x1b>")
+      }
+    },
     applicationKeypad,
     "input_bytes",
   ),

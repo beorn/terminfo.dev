@@ -1259,10 +1259,15 @@ export function headlessDecrpmArm(
         const response = JSON.stringify(state)
         const setPs = decrpmPs(decrpmReplyPattern(modeNum).exec(setReply)?.[1])
         const resetPs = decrpmPs(decrpmReplyPattern(modeNum).exec(resetReply)?.[1])
-        const facet = modeNum === 4 ? "smooth-scroll presentation unmeasured in lib arm" : modeUnmeasuredFacet(modeNum)
+        const facet =
+          modeNum === 4
+            ? "smooth-scroll presentation unmeasured in lib arm"
+            : modeNum === 1007
+              ? "wheel-to-cursor-key translation unmeasured; protocol measured"
+              : modeUnmeasuredFacet(modeNum)
         const presentation = facet === undefined ? "" : `; ${facet}`
         if (modeNum === 4 && insertBefore !== null && insertAfter !== null && insertBefore !== insertAfter) {
-          const note = `DEC private4 changed ANSI insertMode; engine conflation (32002, vterm screen.ts:2941 / vt220 screen.ts:472)${presentation}`
+          const note = `DEC private4 changed ANSI insertMode; engine conflation (#32002)${presentation}`
           return {
             pass: false,
             response,
@@ -1302,11 +1307,14 @@ export function headlessDecrpmArm(
             "The adapter delivered no DECRPM reply from the engine; required independent review of the retained raw state pending",
           )
         }
+        const insertBindingGap = modeNum === 4 && (insertBefore === null || insertAfter === null)
         const bindingGap = setMode !== true || resetMode !== false
-        if (bindingGap || setPs !== 1 || resetPs !== 2) {
-          const reason = bindingGap
-            ? `adapter binding ${ctx.backendName} ${key}`
-            : `DECRPM mode ${modeNum}: set/reset reply pair unavailable`
+        if (bindingGap || insertBindingGap || setPs !== 1 || resetPs !== 2) {
+          const reason = insertBindingGap
+            ? `adapter binding ${ctx.backendName} insertMode`
+            : bindingGap
+              ? `adapter binding ${ctx.backendName} ${key}`
+              : `DECRPM mode ${modeNum}: set Ps ${setPs}, reset Ps ${resetPs}`
           return {
             pass: false,
             response,

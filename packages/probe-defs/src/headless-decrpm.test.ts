@@ -12,7 +12,6 @@ import type { LibProbeSource } from "./types.ts"
 
 const readbackModes = [
   { id: "modes.alt-scroll-1007", number: 1007, mode: "altScroll" },
-  { id: "modes.application-keypad", number: 66, mode: "applicationKeypad" },
   { id: "modes.synchronized-output", number: 2026, mode: "syncOutput" },
   { id: "modes.color-scheme-reporting", number: 2031, mode: "colorSchemeReporting" },
   { id: "modes.decsclm", number: 4, mode: "smoothScroll" },
@@ -27,15 +26,19 @@ function readbackContext(
     setMode?: boolean | null
     resetMode?: boolean | null
     conflatesInsert?: boolean
+    insertBefore?: boolean | null
+    insertAfter?: boolean | null
   } = {},
 ) {
   let enabled = false
   const queries: string[] = []
   const reads: string[] = []
+  const writes: string[] = []
   const source = {
     ...context("", false, [], []),
     backendName: "scripted-engine",
     feed(text: string) {
+      writes.push(text)
       if (text === `\x1b[?${number}h` || text === "\x1b=") enabled = true
       if (text === `\x1b[?${number}l` || text === "\x1b>") enabled = false
     },
@@ -46,7 +49,10 @@ function readbackContext(
     },
     getMode(mode: string) {
       reads.push(mode)
-      if (mode === "insertMode") return options.conflatesInsert === true && enabled
+      if (mode === "insertMode") {
+        const value = enabled ? options.insertAfter : options.insertBefore
+        return value === undefined ? options.conflatesInsert === true && enabled : value
+      }
       return enabled
         ? options.setMode === undefined
           ? true
@@ -56,8 +62,58 @@ function readbackContext(
           : options.resetMode
     },
   } as LibProbeSource
-  return { source, queries, reads }
+  return { source, queries, reads, writes }
 }
+
+// @failure DECNKM mode66 produces false negatives for the catalogue's ESC=/ESC> DECKPAM feature.
+test("application keypad measures DECKPAM state without a DECRQM query", () => {
+  const { source, queries, writes } = readbackContext(66, { setPs: 0 })
+  const result = headless("modes.application-keypad")(source) as ReturnType<
+    NonNullable<(typeof modesProbes)[number]["lib"]>
+  >
+  expect(writes).toEqual(["\x1b=", "\x1b>"])
+  expect(queries).toEqual([])
+  expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
+  expect(result.assertions).toEqual([expect.objectContaining({ kind: "positive", observed: result.response })])
+  expect(result.note).toContain("keypad key encoding unmeasured; mode state measured")
+})
+
+// @failure A missing DECKPAM readback is misclassified as engine absence.
+test.each([
+  { setMode: null, resetMode: false },
+  { setMode: true, resetMode: null },
+])("application keypad null reader stays named TODO: %j", (options) => {
+  const { source } = readbackContext(66, options)
+  const result = headless("modes.application-keypad")(source) as ReturnType<
+    NonNullable<(typeof modesProbes)[number]["lib"]>
+  >
+  expect(result.tests).toEqual([
+    { id: "criterion", status: "test-todo", reason: "adapter binding scripted-engine applicationKeypad" },
+  ])
+  expect(result.assertions ?? []).toEqual([])
+})
+
+// @failure A DECKPAM reader's unchanged non-null state is incorrectly graded Unsupported.
+test("application keypad inconsistent non-null pair stays criterion TODO", () => {
+  const { source } = readbackContext(66, { setMode: false, resetMode: true })
+  const result = headless("modes.application-keypad")(source) as ReturnType<
+    NonNullable<(typeof modesProbes)[number]["lib"]>
+  >
+  expect(result.tests).toEqual([
+    { id: "criterion", status: "test-todo", reason: "DECKPAM state pair: set false, reset true" },
+  ])
+  expect(result.assertions ?? []).toEqual([])
+})
+
+// @failure Private4 is called Supported when the independent IRM conflation check could not run.
+test.each([{ insertBefore: null }, { insertAfter: null }])("private4 requires both IRM readings: %j", (options) => {
+  const { source } = readbackContext(4, options)
+  const result = headless("modes.decsclm")(source) as ReturnType<NonNullable<(typeof modesProbes)[number]["lib"]>>
+  expect(result.tests).toEqual([
+    { id: "criterion", status: "test-todo", reason: "adapter binding scripted-engine insertMode" },
+  ])
+  expect(result.assertions ?? []).toEqual([])
+})
 
 // @failure An S8 library cell is supported without both reply polarities and agreeing adapter reads.
 // @consumer The six registered mode library callbacks; the legacy seven-definition table below stays unchanged.
@@ -65,6 +121,7 @@ test.each(readbackModes)("$id requires the set/reset reply and reader pair", ({ 
   const { source, queries, reads } = readbackContext(number)
   const result = headless(id)(source) as ReturnType<NonNullable<(typeof modesProbes)[number]["lib"]>>
   expect(result.observation?.outcome).toBe("supported")
+  if (number === 1007) expect(result.note).toContain("wheel-to-cursor-key translation unmeasured; protocol measured")
   expect(queries).toEqual([`\x1b[?${number}$p`, `\x1b[?${number}$p`])
   expect(reads.filter((key) => key === mode)).toHaveLength(2)
 })
@@ -89,8 +146,8 @@ test.each([
 
 // @failure An engine's explicit negative after DECSET is confused with an unavailable adapter reader.
 test.each([0, 2, 4])("strict mode Ps%s after set is an engine negative even without a reader", (setPs) => {
-  const { source } = readbackContext(66, { setPs, setMode: null, resetMode: null })
-  const result = headless("modes.application-keypad")(source) as ReturnType<
+  const { source } = readbackContext(2026, { setPs, setMode: null, resetMode: null })
+  const result = headless("modes.synchronized-output")(source) as ReturnType<
     NonNullable<(typeof modesProbes)[number]["lib"]>
   >
   expect(result.observation?.outcome).toBe("unsupported")
@@ -390,12 +447,7 @@ function capturedModeContext(identity: LibProbeSource["runtimeIdentity"], behavi
 test.each(capturedModeEngines)("$engine held modes retain named TODOs", ({ engine, identity }) => {
   for (const [id, held] of [
     ["modes.application-cursor", "1"],
-    ...(engine === "vt100"
-      ? [
-          ["modes.reverse-video", "5"],
-          ["modes.application-keypad", "66"],
-        ]
-      : []),
+    ...(engine === "vt100" ? [["modes.reverse-video", "5"]] : []),
   ]) {
     const result = headless(id!)(capturedModeContext(identity).source) as ModeResult
     expect.soft(result.tests, id).toEqual(expect.arrayContaining([expect.objectContaining({ status: "test-todo" })]))
