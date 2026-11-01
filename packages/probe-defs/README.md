@@ -59,10 +59,15 @@ independent of the scrolled viewport. Invalid or insufficient extents retain nam
 evidence; they never establish an engine negative.
 
 Library `getSemanticMarks` and `getSixelImages` are optional copied-state readers.
-The collector forwards each only when its `semantic-marks` or `sixel-storage`
-extension is declared and the method is callable; absence is not an empty array.
-Marks contain prompt/command/output starts at their screen positions when inserted,
-without bounded zones or completion fields. Sixel records contain raw payloads and
+The collector forwards each only when its extension is declared and the method is callable;
+absence is not an empty array. The same `getSemanticMarks` reader serves `semantic-marks`
+(prompt/command/output starts at their screen positions when inserted) and
+`semantic-command-end` (command-end entries with the exact raw status string and no coordinates).
+Engines exposing both kinds declare both keys. Start and end probes use their respective
+declarations; a command-end-only reader never decides positional start support.
+OSC133D requires two newly appended entries carrying distinct injected raw statuses,
+stable earlier history and the existing cell/cursor consumption controls.
+The reader does not expose bounded zones. Sixel records contain raw payloads and
 DCS start positions; storage does not establish raster rendering or cell geometry.
 
 The library reverse-video, synchronized-output and colour-scheme-reporting cells

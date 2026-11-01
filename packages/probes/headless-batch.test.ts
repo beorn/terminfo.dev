@@ -354,6 +354,52 @@ const VTERM_MARK_CASES = [
   ["extensions.osc633-c", 633, "output"],
 ] as const
 
+// @failure A command-end-only native reader misgrades A/C or accepts cached/wrong raw status as a new D event.
+// @level l1
+// @consumer Registered OSC133D and start callbacks through the actual Kitty collector source.
+// Existing private callback tests cannot observe the public reader binding or the deciding callback route.
+test.skipIf(!isKittyAvailable())(
+  "Kitty command-end reader preserves start review and witnesses fresh raw D statuses",
+  () => {
+    const value = createKittyBackend({ cols: 80, rows: 24 })
+    try {
+      const source = createLibProbeSource(value, undefined, undefined, undefined)
+      const definition = registryDefinitions(["extensions.osc133-d"])[0]!
+      const result = definition.lib!(source)
+      expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
+      const observed = JSON.parse(result.response!)
+      expect(observed.first.at(-1)).toEqual({ type: "command-end", rawStatus: "0" })
+      expect(observed.second.at(-1)).toEqual({ type: "command-end", rawStatus: "17" })
+      for (const id of ["extensions.osc133-a", "extensions.osc133-c"]) {
+        const start = registryDefinitions([id])[0]!.lib!(source)
+        expect(start.criterionBranch, id).toBe(SEMANTIC_PROMPT_SOURCE_REVIEW)
+        expect(start.observation, id).toBeUndefined()
+      }
+      const cached = source.getSemanticMarks!()
+      const reader = vi.spyOn(source, "getSemanticMarks").mockReturnValue(cached)
+      expect(definition.lib!(source).observation).toMatchObject({ outcome: "unsupported" })
+      reader.mockRestore()
+      const realReader = source.getSemanticMarks!.bind(source)
+      vi.spyOn(source, "getSemanticMarks").mockImplementation(() =>
+        realReader().map((mark) => (mark.type === "command-end" ? { ...mark, rawStatus: "wrong" } : mark)),
+      )
+      expect(definition.lib!(source).observation).toMatchObject({ outcome: "unsupported" })
+      value.capabilities.extensions.delete("semantic-command-end")
+      const undeclared = createLibProbeSource(value, undefined, undefined, undefined)
+      expect(undeclared.getSemanticMarks).toBeUndefined()
+      expect(definition.lib!(undeclared).criterionBranch).toBe(SEMANTIC_PROMPT_SOURCE_REVIEW)
+      value.capabilities.extensions.add("semantic-command-end")
+      Object.defineProperty(value, "getSemanticMarks", { value: undefined })
+      const missing = definition.lib!(createLibProbeSource(value, undefined, undefined, undefined))
+      expect(missing.criterionBranch).toBe(HEADLESS_OBSERVABLE_REVIEW)
+      expect(missing.note).toContain("getSemanticMarks")
+      expect(missing.observation).toBeUndefined()
+    } finally {
+      value.destroy()
+    }
+  },
+)
+
 // @failure A registered semantic callback grades consumption or cached records instead of new typed, positioned marks.
 // @level l1
 // @consumer Eight vterm semantic cells through the real adapter, collector and registry.
@@ -439,8 +485,12 @@ test.for(["type", "position", "count"] as const)("rejects fresh mark readback wi
     const actual = source.getSemanticMarks!
     vi.spyOn(source, "getSemanticMarks").mockImplementation(() => {
       const marks = actual()
-      if (fault === "type") return marks.map((mark) => ({ ...mark, type: "command" as const }))
-      if (fault === "position") return marks.map((mark) => ({ ...mark, startCol: mark.startCol + 1 }))
+      if (fault === "type") {
+        return marks.map((mark) => (mark.type === "command-end" ? mark : { ...mark, type: "command" as const }))
+      }
+      if (fault === "position") {
+        return marks.map((mark) => (mark.type === "command-end" ? mark : { ...mark, startCol: mark.startCol + 1 }))
+      }
       return marks.flatMap((mark) => [mark, { ...mark }])
     })
     const result = registryDefinitions(["extensions.osc133-a"])[0]!.lib!(source)

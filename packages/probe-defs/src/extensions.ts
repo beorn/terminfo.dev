@@ -1477,10 +1477,13 @@ function promptMarkResult(
   ctx.feed("\x1b[1;1H")
   const home = ctx.getCursor()
   const markType = sourceReview?.markType
-  const readMarks = ctx.getSemanticMarks?.bind(ctx)
-  const before = markType && readMarks ? readMarks() : undefined
+  const commandEnd = sourceReview?.selector === "133;D"
+  const readerKey = markType ? "semantic-marks" : commandEnd ? "semantic-command-end" : undefined
+  const declared = readerKey !== undefined && ctx.capabilities.extensions.has(readerKey)
+  const readMarks = declared ? ctx.getSemanticMarks?.bind(ctx) : undefined
+  const before = readMarks ? readMarks() : undefined
   ctx.feed(sequence + "X")
-  const first = markType && readMarks ? readMarks() : undefined
+  const first = readMarks ? readMarks() : undefined
   const cell = ctx.getCell(0, 0)
   const target = ctx.getCursor()
   ctx.feed("\x1b[1;1H")
@@ -1489,6 +1492,48 @@ function promptMarkResult(
   const qualified =
     consumed && home.x === 0 && home.y === 0 && target.x === 1 && target.y === 0 && control.x === 0 && control.y === 0
   if (!qualified) return promptConsumptionResult(consumed)
+  if (commandEnd && readMarks && before && first) {
+    ctx.feed("\x1b[2;3H")
+    const secondBefore = readMarks()
+    const secondSequence = "\x1b]133;D;17\x07"
+    ctx.feed(secondSequence + "X")
+    const second = readMarks()
+    const secondCell = ctx.getCell(1, 2)
+    const secondCursor = ctx.getCursor()
+    ctx.feed("\x1b[1;1H")
+    const firstMark = first[before.length]
+    const secondMark = second[secondBefore.length]
+    return parserStateResult(
+      first.length === before.length + 1 &&
+        firstMark?.type === "command-end" &&
+        firstMark.rawStatus === "0" &&
+        second.length === secondBefore.length + 1 &&
+        secondMark?.type === "command-end" &&
+        secondMark.rawStatus === "17" &&
+        before.every((mark, index) => JSON.stringify(mark) === JSON.stringify(first[index])) &&
+        first.length === secondBefore.length &&
+        first.every((mark, index) => JSON.stringify(mark) === JSON.stringify(secondBefore[index])) &&
+        secondBefore.every((mark, index) => JSON.stringify(mark) === JSON.stringify(second[index])) &&
+        secondCell.char === "X" &&
+        secondCursor.x === 3 &&
+        secondCursor.y === 1,
+      "Each target feed appends exactly one command-end with its exact raw status and preserves earlier history",
+      {
+        sequence,
+        secondSequence,
+        home,
+        target,
+        control,
+        cell: cell.char,
+        before,
+        first,
+        secondBefore,
+        second,
+        secondCell: secondCell.char,
+        secondCursor,
+      },
+    )
+  }
   if (markType && readMarks && before && first) {
     ctx.feed("\x1b[2;3H")
     const secondBefore = readMarks()
@@ -1527,8 +1572,8 @@ function promptMarkResult(
       },
     )
   }
-  if (markType && ctx.capabilities.extensions.has("semantic-marks")) {
-    const note = `${noObservable}: getSemanticMarks readback is unavailable`
+  if (declared) {
+    const note = `${noObservable}: ${readerKey} getSemanticMarks readback is unavailable`
     return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
       home,
       target,

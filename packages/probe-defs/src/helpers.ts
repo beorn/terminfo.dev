@@ -76,7 +76,7 @@ export const ADAPTER_SOURCE_AUDITS = {
   },
   kitty: {
     "packages/kitty/src/index.ts": "3f207f911646613cdc3d8b04f155f0686a96a077",
-    "packages/kitty/src/backend.ts": "5e98a200eab31eeef6505e81470d350637b5959c",
+    "packages/kitty/src/backend.ts": "8f053f3435800a53860549021fe09b3e775d3499",
     "packages/kitty/build/bridge.py": "02b4fb4c49975c4b9f9856385f1e6a5acd2492df",
   },
 } as const

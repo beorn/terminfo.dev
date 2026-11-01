@@ -796,12 +796,18 @@ export interface LibProbeSource {
   getCwd?(): string | null
   /** Copied parser notification payloads; this does not observe OS notification delivery. */
   getNotifications?(): readonly string[]
-  /** Copied start markers at zero-based screen positions when inserted; absent means no reader. */
-  getSemanticMarks?(): readonly {
-    readonly type: "prompt" | "command" | "output"
-    readonly startRow: number
-    readonly startCol: number
-  }[]
+  /** Copied entries selected by semantic-marks (starts) or semantic-command-end (raw completion); absent means no reader. */
+  getSemanticMarks?(): readonly (
+    | {
+        readonly type: "prompt" | "command" | "output"
+        readonly startRow: number
+        readonly startCol: number
+      }
+    | {
+        readonly type: "command-end"
+        readonly rawStatus: string
+      }
+  )[]
   /** Copied raw payloads and DCS start positions, without raster rendering or cell geometry. */
   getSixelImages?(): readonly {
     readonly data: string
