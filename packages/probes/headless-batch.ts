@@ -359,7 +359,9 @@ export function createLibProbeSource(
   const readNotifications =
     typeof metadata?.getNotifications === "function" ? metadata.getNotifications.bind(metadata) : undefined
   const readSemanticMarks =
-    hasExtension<SemanticMarkExtension>(backend, "semantic-marks") && typeof backend.getSemanticMarks === "function"
+    (hasExtension<SemanticMarkExtension>(backend, "semantic-marks") ||
+      hasExtension<SemanticMarkExtension>(backend, "semantic-command-end")) &&
+    typeof backend.getSemanticMarks === "function"
       ? backend.getSemanticMarks.bind(backend)
       : undefined
   const readSixelImages =
