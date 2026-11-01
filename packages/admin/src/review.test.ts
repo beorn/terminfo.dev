@@ -442,11 +442,11 @@ test.each(["valid", "suite", "commit", "dirty"])(
     const opts = f.options,
       producer = f.producer,
       pin = opts.terminfoCommit
-    if (mode !== "valid")
+    if (mode !== "valid") {
       expect(() => api.intakeReview(opts)).toThrow(
         mode === "dirty" ? /uncommitted/ : mode === "suite" ? /receipt suite mismatch/ : /receipt commit mismatch/,
       )
-    else {
+    } else {
       const result = api.intakeReview(opts),
         index = JSON.parse(readFileSync(opts.output, "utf8"))
       expect(result.manifest).toMatchObject({
@@ -551,7 +551,8 @@ test.each(["dirty", "catalogue"])("registry still checks its pinned source: %s",
 // R1: self-reported clean state cannot prove the filesystem producer is the pinned Git blob.
 // The refusal propagation case above leaves producer bytes intact and misses this substitution.
 test("refuses altered producer bytes even when they return the same trusted receipt", async () => {
-  const api = await import("./review.ts"), f = intakeFixture()
+  const api = await import("./review.ts"),
+    f = intakeFixture()
   writeFileSync(f.producer, `${readFileSync(f.producer, "utf8")}\n// locally altered producer\n`)
   expect(() => api.intakeReview(f.options)).toThrow(
     `Source receipt producer bytes differ from pinned source: ${f.producer}@${f.options.terminfoCommit}`,
