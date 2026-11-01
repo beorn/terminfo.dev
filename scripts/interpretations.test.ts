@@ -44,6 +44,15 @@ test("retains exact member source bytes while selecting the existing supersessio
   expect(activeInterpretations(parsed).map((entry) => entry.id)).toEqual(["later-review"])
 })
 
+test("ordinary curated unknown targets and cycles remain invalid", () => {
+  expect(() => parse([presentation({ supersedes: ["absent-curated-id"] })])).toThrow(/supersedes unknown/)
+  const cycle = parse([
+    presentation({ id: "first", supersedes: ["second"] }),
+    presentation({ id: "second", supersedes: ["first"] }),
+  ])
+  expect(() => activeInterpretations(cycle)).toThrow(/supersession cycle/)
+})
+
 describe("a presentation decision carries its acceptance", () => {
   test("an accepted presentation parses and keeps its acceptance", () => {
     expect(parse([presentation()])).toMatchObject([

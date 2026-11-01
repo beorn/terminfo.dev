@@ -1,6 +1,6 @@
 /** Reviewed selection and projection for terminal observations. */
 import { createHash } from "node:crypto"
-import { existsSync, readFileSync, readdirSync } from "node:fs"
+import { existsSync, readFileSync } from "node:fs"
 import { isAbsolute, join } from "node:path"
 import { aggregateCurrentResults, treeMovedPastRelease, type SuiteRelation } from "./release-scope.ts"
 import { loadFeatures } from "@terminfo/catalog"
@@ -15,7 +15,6 @@ import {
   type RunOrigin,
   type RunDraft,
   type UngradedDiagnostic,
-  type ProbeSuiteManifest,
   type TextQualification,
   finalizeProbeResult,
   type TextQualificationAssessment,
@@ -24,7 +23,7 @@ import {
   readCollectorSelection,
   readCollectorAttempt,
 } from "@terminfo/probe-defs"
-import { type LoadedRun, parseSuiteManifest, parseRun, parseJsonStrict } from "@terminfo/run-parser"
+import { type LoadedRun, parseJsonStrict } from "@terminfo/run-parser"
 import {
   canConcludeObservation,
   textQualificationFailure,
@@ -33,6 +32,7 @@ import {
 } from "../../packages/run-parser/src/observations.ts"
 import {
   assessRunAdmission,
+  loadStoredRuns,
   RETAINED_ARTIFACT_KINDS,
   verifyRetainedArtifact,
   type IdentityAdmission,
@@ -146,8 +146,8 @@ export interface SelectedExclusion {
 
 /**
  * A current row is the collector's sealed result, never an observation regraded by this reader, with one
- * named exception: the Windows console-host rule (`consoleHostHeldResults`, #30720). A second exception
- * goes to @cto first.
+ * two reviewed exceptions through consoleHostHeldResults: Windows console-host (#30720) and exact-run
+ * tool-gap withdrawal of an embedded review (#32014, CTO776bc352).
  */
 export interface CurrentSelectedVersion {
   schemaVersion: 3 | 4
@@ -290,17 +290,31 @@ export type { TextQualificationAssessment } from "@terminfo/probe-defs"
  * host passes queries straight through is held here (under-counted), never mislabeled. Whoever adds such
  * a context changes this scope on purpose.
  */
-/** A current run's sealed results as this reader counts them: unchanged but for the console-host rule. */
-export function consoleHostHeldResults(run: LoadedRun): ProbeResult[] {
+/** Both reviewed TODO rules share this one per-run projection; sealed source objects remain immutable. */
+export function consoleHostHeldResults(run: LoadedRun, interpretations: readonly Interpretation[] = []): ProbeResult[] {
   if (!run.results) throw new Error(`Run ${run.runId} has no current sealed results`)
   return run.results.map((result) => {
-    const hold = consoleHostHold(run, result, result.status)
-    if (hold === undefined) return result
-    const { status: _sealed, ...unsealed } = result
+    const gaps = interpretations.filter(
+      (entry) =>
+        entry.decision === "tool-gap" && entry.runSha256 && entry.featureId === result.featureId && applies(entry, run),
+    )
+    if (gaps.length > 1) throw new Error(`Run ${run.runId}/${result.featureId}: conflicting active tool-gap overlays`)
+    const gap = gaps[0]
+    const reason = gap?.reason ?? consoleHostHold(run, result, result.status)
+    if (reason === undefined) return result
+    const { status: _sealed, reviewRef, ...unsealed } = result
+    const test = {
+      id: gap ? "criterion" : "console-host",
+      status: "test-todo" as const,
+      attempt: gap ? result.attempt : { scope: "none" as const },
+      reason,
+      ...(gap && { assertionRefs: [] }),
+    }
     return finalizeProbeResult({
       ...unsealed,
-      tests: [...result.tests, { id: "console-host", status: "test-todo", attempt: { scope: "none" }, reason: hold }],
-      reason: hold,
+      ...(!gap && reviewRef !== undefined && { reviewRef }),
+      tests: gap ? result.tests.map((prior) => (prior.id === "review" ? test : prior)) : [...result.tests, test],
+      reason,
     })
   })
 }
@@ -558,15 +572,16 @@ export function projectResults(
     treeMovedPastRelease: treeMovedPastRelease(policy.currentProbeHash, releaseSuiteId),
   }
   const table: Record<string, Record<string, ProbeStatus>> = {}
-  validatePresentationSupersession(interpretations, "interpretations")
-  const active = activeInterpretations(interpretations)
+  const resolvedRuns = [...runs, ...(policy.workingRuns ?? [])]
+  validatePresentationSupersession(interpretations, "interpretations", resolvedRuns)
+  const active = activeInterpretations(interpretations, resolvedRuns)
   const acceptedRuns: LoadedRun[] = []
   const baselineRunIds: string[] = []
   for (const run of currentRuns) {
     if (!run.results || !run.catalogIds || !run.sealedAt || !run.probeHash || !run.sourceRevision) {
       throw new Error(`Current run ${run.runId} lacks its sealed execution contract`)
     }
-    const results = consoleHostHeldResults(run)
+    const results = consoleHostHeldResults(run, active)
     const aggregate = aggregateCurrentResults(results, run.catalogIds)
     const counts = aggregate.counts
     const states = Object.fromEntries(results.map((result) => [result.featureId, result.status]))
@@ -674,6 +689,7 @@ export function projectResults(
           versions.map((version) => [contextKey(version.subject), key] as const),
         ),
       ),
+      active,
     ),
   }
 }
@@ -709,6 +725,7 @@ function composeContextSummaries(
   workingAttempts: readonly SelectedAttemptInput[],
   catalogIds: readonly string[],
   contextKeys: ReadonlyMap<string, string>,
+  interpretations: readonly Interpretation[],
 ): Record<string, SelectedContextSummary> {
   const runsById = new Map<string, LoadedRun>()
   for (const run of [...acceptedRuns, ...workingRuns]) {
@@ -763,7 +780,7 @@ function composeContextSummaries(
       cells[result.featureId] = { origin: { runId: run.runId, resultId: result.featureId }, run, result }
     }
     for (const run of baselines) {
-      for (const result of consoleHostHeldResults(run)) remember(run, result)
+      for (const result of consoleHostHeldResults(run, interpretations)) remember(run, result)
     }
     const selected = candidates.flatMap((run) => {
       const selection = readCollectorSelection(run.rawReplies)
@@ -772,7 +789,7 @@ function composeContextSummaries(
     selected.sort(compareContextAttempts)
     const attempts: SelectedContextAttempt[] = []
     for (const { run, selection, attempt } of selected) {
-      const results = consoleHostHeldResults(run)
+      const results = consoleHostHeldResults(run, interpretations)
       // A real initialized TODO is useful missing-evidence data when no prior cell exists; it
       // never replaces a prior cell and never becomes an emitted measurement.
       for (const result of results) {
@@ -917,45 +934,24 @@ export function loadSelectedResults(
   const featuresPath = join(contentDir, "features.json")
   if (!existsSync(featuresPath)) fail(featuresPath, "missing required catalog")
   const catalog = Object.keys(loadFeatures(contentDir))
-  const suites = new Map<string, ProbeSuiteManifest>()
-  const suitesDir = join(contentDir, "suites")
-  if (existsSync(suitesDir)) {
-    for (const file of readdirSync(suitesDir)
-      .filter((name) => name.endsWith(".json"))
-      .sort()) {
-      const path = join(suitesDir, file)
-      const manifest = parseSuiteManifest(path, readFileSync(path, "utf8"))
-      if (file !== `${manifest.probeHash}.json`) fail(path, `suite filename does not match ${manifest.probeHash}`)
-      suites.set(manifest.probeHash, manifest)
-    }
-  }
-  const runs: LoadedRun[] = []
+  const runs = loadStoredRuns(contentDir, catalog)
   const verifiedArtifacts = new Set<string>()
   const textSnapshots = new Map<string, Uint8Array>()
-  for (const dir of ["probes-apps", "probes-mux", "probes-libs"]) {
-    const path = join(contentDir, dir)
-    if (!existsSync(path)) fail(path, "missing required probe directory")
-    for (const file of readdirSync(path)
-      .filter((f) => f.endsWith(".json") && f !== "unified.json")
-      .sort()) {
-      const runPath = join(path, file)
-      const run = parseRun(runPath, readFileSync(runPath, "utf8"), catalog, suites)
-      for (const ref of run.screenshotRefs) {
-        if (verifiedArtifacts.has(`screenshot:${ref}`)) continue
-        readVerifiedArtifact(contentDir, ref, runPath, "screenshot")
-        verifiedArtifacts.add(`screenshot:${ref}`)
-      }
-      for (const ref of run.textSnapshotRefs ?? []) {
-        if (verifiedArtifacts.has(`text-snapshot:${ref}`)) continue
-        textSnapshots.set(ref, readVerifiedArtifact(contentDir, ref, runPath, "text-snapshot"))
-        verifiedArtifacts.add(`text-snapshot:${ref}`)
-      }
-      runs.push(run)
+  for (const run of runs) {
+    for (const ref of run.screenshotRefs) {
+      if (verifiedArtifacts.has(`screenshot:${ref}`)) continue
+      readVerifiedArtifact(contentDir, ref, run.path, "screenshot")
+      verifiedArtifacts.add(`screenshot:${ref}`)
+    }
+    for (const ref of run.textSnapshotRefs ?? []) {
+      if (verifiedArtifacts.has(`text-snapshot:${ref}`)) continue
+      textSnapshots.set(ref, readVerifiedArtifact(contentDir, ref, run.path, "text-snapshot"))
+      verifiedArtifacts.add(`text-snapshot:${ref}`)
     }
   }
   const interpretationsPath = join(contentDir, "interpretations.json")
   const interpretations = existsSync(interpretationsPath)
-    ? parseInterpretations(interpretationsPath, readFileSync(interpretationsPath, "utf8"), catalog)
+    ? parseInterpretations(interpretationsPath, readFileSync(interpretationsPath, "utf8"), catalog, undefined, runs)
     : []
   return projectResults(
     runs,

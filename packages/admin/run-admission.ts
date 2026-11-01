@@ -60,6 +60,35 @@ const RUN_DIRS: Record<ProbeSubject["kind"], string> = {
   mux: "probes-mux",
 }
 
+/** One corpus read: LoadedRun.sha256 is parseRun's hash of the exact bytes read once here. */
+export function loadStoredRuns(contentDir: string, catalog: readonly string[]): LoadedRun[] {
+  const suites = new Map<string, ProbeSuiteManifest>()
+  const suitesDir = join(contentDir, "suites")
+  if (existsSync(suitesDir)) {
+    for (const file of readdirSync(suitesDir)
+      .filter((name) => name.endsWith(".json"))
+      .sort()) {
+      const path = join(suitesDir, file)
+      const manifest = parseSuiteManifest(path, readFileSync(path, "utf8"))
+      if (file !== `${manifest.probeHash}.json`)
+        throw new Error(`${path}: suite filename does not match ${manifest.probeHash}`)
+      suites.set(manifest.probeHash, manifest)
+    }
+  }
+  const runs: LoadedRun[] = []
+  for (const dir of [RUN_DIRS.term, RUN_DIRS.mux, RUN_DIRS.lib]) {
+    const path = join(contentDir, dir)
+    if (!existsSync(path)) throw new Error(`${path}: missing required probe directory`)
+    for (const file of readdirSync(path)
+      .filter((name) => name.endsWith(".json") && name !== "unified.json")
+      .sort()) {
+      const runPath = join(path, file)
+      runs.push(parseRun(runPath, readFileSync(runPath, "utf8"), catalog, suites))
+    }
+  }
+  return runs
+}
+
 export interface IdentityAdmission {
   rule: string
   da1?: string
@@ -475,7 +504,12 @@ export function assessRunAdmission(
   | { accepted: false; reason: AdmissionExclusionCode; detail?: string; identityAdmission: null } {
   const identityAdmission = identityMatch(run)
   const reviewed = active.some(
-    (entry) => entry.runId === run.runId && entry.runSha256 === run.sha256 && applies(entry, run) && entry.reviewed,
+    (entry) =>
+      entry.decision !== "tool-gap" &&
+      entry.runId === run.runId &&
+      entry.runSha256 === run.sha256 &&
+      applies(entry, run) &&
+      entry.reviewed,
   )
   try {
     const reason = admissionRefusal(run, active, reviewed, identityAdmission)
@@ -582,8 +616,10 @@ export function planAdmission(
   const ids = catalogIds()
   const loaded = parseRun(source, readFileSync(source, "utf8"), ids, new Map([[manifest.probeHash, manifest]]))
   const interpretationsPath = join(CONTENT_DIR, "interpretations.json")
+  const resolvedRuns = [loaded, ...loadStoredRuns(CONTENT_DIR, ids).filter((run) => run.runId !== loaded.runId)]
   const interpretations = activeInterpretations(
-    parseInterpretations(interpretationsPath, readFileSync(interpretationsPath, "utf8"), ids),
+    parseInterpretations(interpretationsPath, readFileSync(interpretationsPath, "utf8"), ids, undefined, resolvedRuns),
+    resolvedRuns,
   )
   const assessment = assessRunAdmission(loaded, interpretations, {
     receiptPath: join(dirname(source), RECEIPT_BESIDE_RUN),

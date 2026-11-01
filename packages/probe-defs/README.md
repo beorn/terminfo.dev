@@ -553,6 +553,13 @@ pending `review` test with a `criterion` TEST TODO, preserving the decision byte
 It creates no assertions. Other failed tests retain precedence; a tool gap is not an impossibility or a support grade.
 The run can then seal, and its canonical reader and result counts retain `test-todo`.
 
+A curated `tool-gap` overlay may also supersede an embedded `collector.review.*` decision on an exact
+sealed `runId` and `runSha256`, for the same feature and scope. Supersession readers require that parsed
+sealed run to resolve the target; missing runs or mismatched identities remain errors. The existing
+per-run TODO projection shares its application with the console-host rule, so version tables, counts,
+selected contexts and public results agree while the sealed source stays byte-identical. This cell-level
+review grants no identity or community-submission approval, and implies no global withdrawal on future captures.
+
 New capture decisions explicitly carry `evidence: { algorithm: "evidence-output-v1", sha256, projection }` beside
 the original `captureSha256`. The projection binds subject kind/id/version/os, the loaded engine's stable
 identity and native build provenance, that engine's `runtimeIdentity.adapterSources` path/blobOid pairs,
