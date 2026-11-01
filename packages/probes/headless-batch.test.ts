@@ -244,7 +244,7 @@ test("real vterm metadata reaches both registered callbacks and the batch produc
       const result = registryDefinitions([id])[0]!.lib!(source)
       expect(result.observation, id).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
       expect(result.assertions, id).toMatchObject([{ kind: "positive", observed: result.response }])
-      const observed = JSON.parse(result.response!)
+      const observed = JSON.parse(result.response!) as { first: unknown[]; second: unknown[] }
       if (id === "extensions.osc7-cwd") {
         expect(observed).toMatchObject({
           before: "file://localhost/original",
