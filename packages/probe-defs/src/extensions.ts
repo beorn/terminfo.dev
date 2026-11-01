@@ -1461,21 +1461,26 @@ function promptConsumptionResult(consumed: boolean | null): ProbeCallbackResult 
  * C154 — a consumed semantic prompt mark proves consumption, not that the mark registered.
  * Read the measured home / target / control sequence from the real cursor and cell state so a
  * provider that answers a constant cursor position cannot satisfy all three positions; only a
- * qualified sequence records the named no-semantic-observable coverage. A consumed-but-unqualified
- * read, and a missing cell, stay a real consumption observation — never not-tested.
+ * qualified sequence can witness new start markers through an exposed reader. Without one it
+ * retains the applicable named review. A consumed-but-unqualified read, and a missing cell, stay
+ * a real consumption observation — never not-tested.
  */
 function promptMarkResult(
   ctx: LibProbeSource,
   sequence: string,
   noObservable: string,
-  sourceReview?: { probeId: string; selector: number | "133;D" },
+  sourceReview?: { probeId: string; selector: number | "133;D"; markType?: "prompt" | "command" | "output" },
 ): ProbeCallbackResult {
   if (sourceReview && absentOscAudit(ctx.runtimeIdentity, sourceReview.selector)) {
     return sourceAbsentOsc(sourceReview.probeId, sourceReview.selector, sequence, noObservable)(ctx)
   }
   ctx.feed("\x1b[1;1H")
   const home = ctx.getCursor()
+  const markType = sourceReview?.markType
+  const readMarks = ctx.getSemanticMarks?.bind(ctx)
+  const before = markType && readMarks ? readMarks() : undefined
   ctx.feed(sequence + "X")
+  const first = markType && readMarks ? readMarks() : undefined
   const cell = ctx.getCell(0, 0)
   const target = ctx.getCursor()
   ctx.feed("\x1b[1;1H")
@@ -1484,6 +1489,54 @@ function promptMarkResult(
   const qualified =
     consumed && home.x === 0 && home.y === 0 && target.x === 1 && target.y === 0 && control.x === 0 && control.y === 0
   if (!qualified) return promptConsumptionResult(consumed)
+  if (markType && readMarks) {
+    ctx.feed("\x1b[2;3H")
+    const secondBefore = readMarks()
+    ctx.feed(sequence + "X")
+    const second = readMarks()
+    const secondCell = ctx.getCell(1, 2)
+    const secondCursor = ctx.getCursor()
+    ctx.feed("\x1b[1;1H")
+    const firstMark = first![before!.length]
+    const secondMark = second[secondBefore.length]
+    return parserStateResult(
+      first!.length === before!.length + 1 &&
+        firstMark?.type === markType &&
+        firstMark.startRow === 0 &&
+        firstMark.startCol === 0 &&
+        second.length === secondBefore.length + 1 &&
+        secondMark?.type === markType &&
+        secondMark.startRow === 1 &&
+        secondMark.startCol === 2 &&
+        secondCell.char === "X" &&
+        secondCursor.x === 3 &&
+        secondCursor.y === 1,
+      `Each target feed appends exactly one ${markType} start at its observed screen position`,
+      {
+        sequence,
+        home,
+        target,
+        control,
+        cell: cell.char,
+        before,
+        first,
+        secondBefore,
+        second,
+        secondCell: secondCell.char,
+        secondCursor,
+      },
+    )
+  }
+  if (markType && ctx.capabilities.semanticPrompts) {
+    const note = `${noObservable}: getSemanticMarks readback is unavailable`
+    return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
+      home,
+      target,
+      control,
+      cell: cell.char,
+      declared: true,
+    })
+  }
   return reviewResult(
     SEMANTIC_PROMPT_SOURCE_REVIEW,
     "Independent review must determine whether the pinned engine source parses this OSC 133 / 633 mark and exposes mark or zone state; citation per cell required for supported, unsupported or Untestable",
@@ -3709,6 +3762,36 @@ export const extensionsProbes: ProbeDefinition[] = [
     ...probe(
       "extensions.sixel",
       (ctx) => {
+        if (ctx.getSixelImages) {
+          ctx.feed("\x1b[1;1H")
+          const before = ctx.getSixelImages()
+          const firstData = "#1;2;100;0;0~"
+          ctx.feed(`\x1bPq${firstData}\x1b\\`)
+          const first = ctx.getSixelImages()
+          ctx.feed("\x1b[2;3H")
+          const secondBefore = ctx.getSixelImages()
+          const secondData = "#2;2;0;100;0!2~"
+          ctx.feed(`\x1bPq${secondData}\x1b\\`)
+          const second = ctx.getSixelImages()
+          const firstImage = first[before.length]
+          const secondImage = second[secondBefore.length]
+          const retained =
+            first.length === before.length + 1 &&
+            firstImage?.data === firstData &&
+            firstImage.row === 0 &&
+            firstImage.col === 0 &&
+            second.length === secondBefore.length + 1 &&
+            secondImage?.data === secondData &&
+            secondImage.row === 1 &&
+            secondImage.col === 2
+          const note = retained
+            ? "payload retained at row/col; no raster; cell geometry unmeasured"
+            : "Sixel payload/position readback did not show new stored records; no raster; cell geometry unmeasured"
+          return reviewResult(HEADLESS_OBSERVABLE_REVIEW, note, note, {
+            declared: ctx.capabilities.sixel === true,
+            storage: { retained, before, first, secondBefore, second },
+          })
+        }
         const note = "Declared Sixel capability does not establish rendered pixels"
         return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
           declared: ctx.capabilities.sixel === true,
@@ -3922,26 +4005,35 @@ export const extensionsProbes: ProbeDefinition[] = [
   },
 
   // Semantic prompts (OSC 133)
-  probe(
-    "extensions.semantic-prompts",
-    (ctx) => {
-      if (absentOscAudit(ctx.runtimeIdentity, 133)) {
-        return sourceAbsentOsc("extensions.semantic-prompts", 133, "\x1b]133;A\x07", "shell prompt integration")(ctx)
-      }
-      const note = "Declared semantic-prompt capability does not establish shell prompt integration"
-      return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
-        declared: ctx.capabilities.semanticPrompts === true,
-      })
-    },
-    () => {
-      const note = "No shell prompt integration metadata or behavior readback for OSC 133"
-      return Promise.resolve<ProbeCallbackResult>({
-        pass: false,
-        note,
-        tests: [{ id: "criterion", status: "test-todo", reason: note }],
-      })
-    },
-  ),
+  {
+    ...probe(
+      "extensions.semantic-prompts",
+      (ctx) => {
+        if (absentOscAudit(ctx.runtimeIdentity, 133)) {
+          return sourceAbsentOsc("extensions.semantic-prompts", 133, "\x1b]133;A\x07", "shell prompt integration")(ctx)
+        }
+        if (ctx.getSemanticMarks)
+          return promptMarkResult(ctx, "\x1b]133;A\x07", "OSC 133 prompt-start mark registration", {
+            probeId: "extensions.semantic-prompts",
+            selector: 133,
+            markType: "prompt",
+          })
+        const note = "Declared semantic-prompt capability does not establish shell prompt integration"
+        return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
+          declared: ctx.capabilities.semanticPrompts === true,
+        })
+      },
+      () => {
+        const note = "No shell prompt integration metadata or behavior readback for OSC 133"
+        return Promise.resolve<ProbeCallbackResult>({
+          pass: false,
+          note,
+          tests: [{ id: "criterion", status: "test-todo", reason: note }],
+        })
+      },
+    ),
+    libAssertionType: "buffer_state",
+  },
 
   // OSC 2 — window title
   {
@@ -4086,26 +4178,35 @@ export const extensionsProbes: ProbeDefinition[] = [
   },
 
   // OSC 633 — VS Code shell integration
-  probe(
-    "extensions.osc-633-vscode",
-    (ctx) => {
-      if (absentOscAudit(ctx.runtimeIdentity, 633)) {
-        return sourceAbsentOsc("extensions.osc-633-vscode", 633, "\x1b]633;A\x07", "VS Code shell integration")(ctx)
-      }
-      const note = "Declared semantic-prompt capability does not establish VS Code OSC 633 shell integration"
-      return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
-        declared: ctx.capabilities.semanticPrompts === true,
-      })
-    },
-    () => {
-      const note = "No VS Code shell integration metadata or behavior readback for OSC 633"
-      return Promise.resolve<ProbeCallbackResult>({
-        pass: false,
-        note,
-        tests: [{ id: "criterion", status: "test-todo", reason: note }],
-      })
-    },
-  ),
+  {
+    ...probe(
+      "extensions.osc-633-vscode",
+      (ctx) => {
+        if (absentOscAudit(ctx.runtimeIdentity, 633)) {
+          return sourceAbsentOsc("extensions.osc-633-vscode", 633, "\x1b]633;A\x07", "VS Code shell integration")(ctx)
+        }
+        if (ctx.getSemanticMarks)
+          return promptMarkResult(ctx, "\x1b]633;A\x07", "OSC 633 prompt-start mark registration", {
+            probeId: "extensions.osc-633-vscode",
+            selector: 633,
+            markType: "prompt",
+          })
+        const note = "Declared semantic-prompt capability does not establish VS Code OSC 633 shell integration"
+        return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
+          declared: ctx.capabilities.semanticPrompts === true,
+        })
+      },
+      () => {
+        const note = "No VS Code shell integration metadata or behavior readback for OSC 633"
+        return Promise.resolve<ProbeCallbackResult>({
+          pass: false,
+          note,
+          tests: [{ id: "criterion", status: "test-todo", reason: note }],
+        })
+      },
+    ),
+    libAssertionType: "buffer_state",
+  },
 
   // OSC 133 sub-commands — semantic prompt markers (FinalTerm)
   // Each probe sends the marker followed by "X" and verifies "X" landed at cell (0,0),
@@ -4119,6 +4220,7 @@ export const extensionsProbes: ProbeDefinition[] = [
         promptMarkResult(ctx, "\x1b]133;A\x07", "OSC 133;A prompt-start mark registration", {
           probeId: "extensions.osc133-a",
           selector: 133,
+          markType: "prompt",
         }),
       (ctx) => promptMarkAppResult(ctx, "\x1b]133;A\x07", "OSC 133;A prompt-start mark registration"),
     ),
@@ -4133,6 +4235,7 @@ export const extensionsProbes: ProbeDefinition[] = [
         promptMarkResult(ctx, "\x1b]133;B\x07", "OSC 133;B command-start mark registration", {
           probeId: "extensions.osc133-b",
           selector: 133,
+          markType: "command",
         }),
       (ctx) => promptMarkAppResult(ctx, "\x1b]133;B\x07", "OSC 133;B command-start mark registration"),
     ),
@@ -4147,6 +4250,7 @@ export const extensionsProbes: ProbeDefinition[] = [
         promptMarkResult(ctx, "\x1b]133;C\x07", "OSC 133;C command-executed mark registration", {
           probeId: "extensions.osc133-c",
           selector: 133,
+          markType: "output",
         }),
       (ctx) => promptMarkAppResult(ctx, "\x1b]133;C\x07", "OSC 133;C command-executed mark registration"),
     ),
@@ -4192,6 +4296,7 @@ export const extensionsProbes: ProbeDefinition[] = [
         promptMarkResult(ctx, "\x1b]633;A\x07", "OSC 633;A prompt-start mark registration", {
           probeId: "extensions.osc633-a",
           selector: 633,
+          markType: "prompt",
         }),
       (ctx) => promptMarkAppResult(ctx, "\x1b]633;A\x07", "OSC 633;A prompt-start mark registration"),
     ),
@@ -4206,6 +4311,7 @@ export const extensionsProbes: ProbeDefinition[] = [
         promptMarkResult(ctx, "\x1b]633;B\x07", "OSC 633;B prompt-end mark registration", {
           probeId: "extensions.osc633-b",
           selector: 633,
+          markType: "command",
         }),
       (ctx) => promptMarkAppResult(ctx, "\x1b]633;B\x07", "OSC 633;B prompt-end mark registration"),
     ),
@@ -4220,6 +4326,7 @@ export const extensionsProbes: ProbeDefinition[] = [
         promptMarkResult(ctx, "\x1b]633;C\x07", "OSC 633;C pre-execution mark registration", {
           probeId: "extensions.osc633-c",
           selector: 633,
+          markType: "output",
         }),
       (ctx) => promptMarkAppResult(ctx, "\x1b]633;C\x07", "OSC 633;C pre-execution mark registration"),
     ),

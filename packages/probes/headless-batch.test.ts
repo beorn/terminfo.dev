@@ -343,6 +343,115 @@ test.for(["semantic-marks", "sixel-storage"] as const)(
   },
 )
 
+const VTERM_MARK_CASES = [
+  ["extensions.semantic-prompts", 133, "prompt"],
+  ["extensions.osc133-a", 133, "prompt"],
+  ["extensions.osc133-b", 133, "command"],
+  ["extensions.osc133-c", 133, "output"],
+  ["extensions.osc-633-vscode", 633, "prompt"],
+  ["extensions.osc633-a", 633, "prompt"],
+  ["extensions.osc633-b", 633, "command"],
+  ["extensions.osc633-c", 633, "output"],
+] as const
+
+// @failure A registered semantic callback grades consumption or cached records instead of new typed, positioned marks.
+// @level l1
+// @consumer Eight vterm semantic cells through the real adapter, collector and registry.
+test.for(VTERM_MARK_CASES)(
+  "%s decides new marks and distinguishes stale/missing readers",
+  async ([id, selector, type]) => {
+    const value = createVtermBackend({ cols: 80, rows: 24 })
+    try {
+      value.feed(new TextEncoder().encode(`\x1b[7;8H\x1b]${selector};C\x07`))
+      const source = createLibProbeSource(value, undefined, undefined, undefined)
+      const definition = registryDefinitions([id])[0]!
+      const result = definition.lib!(source)
+      expect(result.observation, id).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
+      expect(result.assertions, id).toMatchObject([{ kind: "positive", observed: result.response }])
+      const observed = JSON.parse(result.response!)
+      expect(observed.first.at(-1)).toEqual({ type, startRow: 0, startCol: 0 })
+      expect(observed.second.at(-1)).toEqual({ type, startRow: 1, startCol: 2 })
+      expect(observed.first).toHaveLength(observed.before.length + 1)
+      expect(observed.second).toHaveLength(observed.secondBefore.length + 1)
+      const cached = value.getSemanticMarks()
+      vi.spyOn(source, "getSemanticMarks").mockReturnValue(cached)
+      expect(definition.lib!(source).observation).toMatchObject({
+        outcome: "unsupported",
+        assertionType: "buffer_state",
+      })
+      value.capabilities.extensions.delete("semantic-marks")
+      const absent = createLibProbeSource(value, undefined, undefined, undefined)
+      const missing = definition.lib!(absent)
+      expect(missing.criterionBranch).toBe(HEADLESS_OBSERVABLE_REVIEW)
+      expect(missing.tests).toMatchObject([{ id: "review", status: "test-todo" }])
+      expect(missing.observation).toBeUndefined()
+    } finally {
+      value.destroy()
+    }
+  },
+)
+
+// @failure A moving reader with the wrong marker type, position or append count passes a freshness-only check.
+// @level l1
+// @consumer The registered semantic start-marker predicate.
+test.for(["type", "position", "count"] as const)("rejects fresh mark readback with wrong %s", (fault) => {
+  const value = createVtermBackend({ cols: 80, rows: 24 })
+  try {
+    const source = createLibProbeSource(value, undefined, undefined, undefined)
+    const actual = source.getSemanticMarks!
+    vi.spyOn(source, "getSemanticMarks").mockImplementation(() => {
+      const marks = actual()
+      if (fault === "type") return marks.map((mark) => ({ ...mark, type: "command" as const }))
+      if (fault === "position") return marks.map((mark) => ({ ...mark, startCol: mark.startCol + 1 }))
+      return marks.flatMap((mark) => [mark, { ...mark }])
+    })
+    const result = registryDefinitions(["extensions.osc133-a"])[0]!.lib!(source)
+    expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "buffer_state" })
+    expect(result.assertions).toMatchObject([{ kind: "negative", observed: result.response }])
+  } finally {
+    value.destroy()
+  }
+})
+
+// @failure Observed start markers never become actual supported results through the production batch writer.
+// @level l1
+// @consumer The eight run-decided vterm mark cells in the collected result model.
+test("real vterm mark observations survive the registered batch producer", async () => {
+  const ids = VTERM_MARK_CASES.map(([id]) => id)
+  const batch = await collectBatch(async () => createVtermBackend(), "vterm", registryDefinitions(ids))
+  expect(batch.results).toMatchObject(
+    ids.map((featureId) => ({ featureId, status: "supported", assertionType: "buffer_state" })),
+  )
+  expect(batch.observations).toHaveLength(ids.length)
+  expect(batch.assertions).toMatchObject(
+    ids.map((featureId) => ({ featureId, kind: "positive", assertionType: "buffer_state" })),
+  )
+})
+
+// @failure Raw Sixel storage is promoted to rendering support, or the partial reason claims storage from a stale reader.
+// @level l1
+// @consumer The Sixel rendering cell, with its separately retained storage facet.
+test("real vterm Sixel storage sharpens the TODO reason without grading rendering", () => {
+  const value = createVtermBackend({ cols: 80, rows: 24 })
+  try {
+    const source = createLibProbeSource(value, undefined, undefined, undefined)
+    const definition = registryDefinitions(["extensions.sixel"])[0]!
+    const result = definition.lib!(source)
+    expect(result.note).toBe("payload retained at row/col; no raster; cell geometry unmeasured")
+    expect(result.criterionBranch).toBe(HEADLESS_OBSERVABLE_REVIEW)
+    expect(result.tests).toMatchObject([{ status: "test-todo" }])
+    expect(result.observation).toBeUndefined()
+    expect(JSON.parse(result.response!).storage).toMatchObject({ retained: true })
+    vi.spyOn(source, "getSixelImages").mockReturnValue([])
+    const stale = definition.lib!(source)
+    expect(stale.tests).toMatchObject([{ status: "test-todo" }])
+    expect(JSON.parse(stale.response!).storage).toMatchObject({ retained: false })
+    expect(stale.note).not.toBe(result.note)
+  } finally {
+    value.destroy()
+  }
+})
+
 test("cwd readback errors propagate after restoring the original metadata", async (context) => {
   const sibling = fileURLToPath(new URL("../../../termless/packages/vterm/src/backend.ts", import.meta.url))
   if (!existsSync(sibling)) context.skip(`Real-vterm cwd cleanup requires missing sibling ${sibling}`)
