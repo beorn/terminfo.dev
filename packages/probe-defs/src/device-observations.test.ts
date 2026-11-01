@@ -695,6 +695,7 @@ describe("window-operation qualification", () => {
   // grades Unsupported by source citation; failed setup takes the headless observable review and unaudited artifacts
   // stay inconclusive.
   test.each([
+    ["1f23e13db5bda55ab54943461b83a5d642bf8d2050a452fbe7871927383dfe9f", "stream_handler.zig:343-346"],
     ["ce01cd0d1ae000dd88948f3817924cc85303874070cab39430967ebdf14877f3", "stream_handler.zig:343-346"],
     ["5c38594a17329b24e826f785d3156d6e498490517835f12b0730eeab2fc63da7", "stream_handler.zig:343-346"],
     ["d80a8110258a124fb6ff52a6fe149b8e39b5180d986907cc9fb7dc9143c3f3d9", "stream_handler.zig:343-346"],
