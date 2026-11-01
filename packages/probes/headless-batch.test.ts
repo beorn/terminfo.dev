@@ -99,6 +99,36 @@ test.each([false, true])("production reflow controls ignore the capability decla
   expect(observed).toMatchObject({ declaredReflow: declared, phases: [{ outcome: "reflow" }, { outcome: "reflow" }] })
 })
 
+// @failure A genuine non-reflowing engine truncates on shrink and is mislabeled as a broken probe.
+// @level l1
+// @consumer Real collector phase rows and the required-test fold; xterm-only cases miss this negative.
+test.each([
+  ["vt100", resolveVt100],
+  ["libvterm", resolveLibvterm],
+] as const)("reflow retains measured truncation on %s without failing the feature", async (name, producer) => {
+  const batch = await collectBatch(producer, name, registryDefinitions(["extensions.reflow"]))
+  expect(batch.ungradedDiagnostics).toEqual({})
+  expect(batch.results).toMatchObject([
+    {
+      featureId: "extensions.reflow",
+      status: "test-todo",
+      reason: expect.stringContaining("main-grow"),
+      tests: expect.arrayContaining([
+        // libvterm keeps its default reflow option off; these are internal observations, not a final grade.
+        expect.objectContaining({ id: "main-grow", status: "unsupported" }),
+        expect.objectContaining({ id: "main-shrink", status: "unsupported" }),
+        expect.objectContaining({ id: "alternate-screen", status: "test-todo" }),
+        expect.objectContaining({ id: "scrollback", status: "test-todo" }),
+      ]),
+    },
+  ])
+  expect(batch.results[0]!.reason).toContain("main-shrink")
+  expect(JSON.parse(batch.rawReplies["extensions.reflow"]!)).toMatchObject({
+    phases: [{ outcome: "preserved-wraps" }, { outcome: "truncated" }],
+  })
+  expect(batch.assertions.map((assertion) => assertion.kind)).toEqual(["negative", "negative"])
+})
+
 // @failure A no-op resize, discarded wrap boundaries or lost characters become reflow support.
 // @level l1
 // @consumer Reflow criterion and canonical required-test fold.
@@ -128,6 +158,7 @@ test.each(["no-op", "hard-boundary", "content-loss", "cursor-on-target"] as cons
     )
     expect(batch.ungradedDiagnostics).toEqual({})
     expect(batch.results[0]!.status).toBe("test-failure")
+    expect(batch.results[0]!.reason).toContain("main-grow:")
     const observed = JSON.parse(batch.rawReplies["extensions.reflow"]!)
     if (fault === "hard-boundary") {
       expect(observed).toMatchObject({ phases: [{ outcome: "preserved-wraps" }, { outcome: "reflow" }] })

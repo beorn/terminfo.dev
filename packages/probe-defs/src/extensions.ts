@@ -2921,7 +2921,7 @@ function mainScreenReflow(ctx: LibProbeSource): ProbeCallbackResult {
     id: string
     from: number
     to: number
-    outcome: "reflow" | "preserved-wraps" | "invalid"
+    outcome: "reflow" | "preserved-wraps" | "truncated" | "invalid"
     reason: string
   }
   const state = {
@@ -3020,16 +3020,25 @@ function mainScreenReflow(ctx: LibProbeSource): ProbeCallbackResult {
         ? "invalid"
         : matches(after, layout(to))
           ? "reflow"
-          : matches(after, layout(from))
-            ? "preserved-wraps"
+          : matches(
+                after,
+                layout(from).map((line) => line.slice(0, to)),
+              )
+            ? to < from
+              ? "truncated"
+              : "preserved-wraps"
             : "invalid"
       const reason = !control
         ? "Post-resize width control did not wrap at the requested column"
         : outcome === "invalid"
-          ? "Resize lost content or produced unexpected logical line boundaries"
+          ? "Resize produced neither the reflowed layout nor the expected physical rows clipped to the new width"
           : outcome === "reflow"
-            ? "Pre-existing soft wraps reflowed; explicit newlines and all target characters were preserved"
-            : "Pre-existing physical wrap boundaries remained with all target characters preserved"
+            ? id === "main-grow"
+              ? "Pre-existing soft wraps joined; explicit newlines and all target characters were preserved"
+              : "The pre-existing long line wrapped at the narrower width; explicit newlines and all target characters were preserved"
+            : outcome === "truncated"
+              ? "Each pre-existing physical row was clipped to the narrower width without reflow; explicit newline rows stayed in place"
+              : "Pre-existing physical wrap boundaries remained with all target characters preserved"
       state.phases.push({ id, from, to, outcome, reason })
     }
   } catch (error) {
@@ -3055,14 +3064,17 @@ function mainScreenReflow(ctx: LibProbeSource): ProbeCallbackResult {
       throw new AggregateError(failures, `Reflow cleanup failed: ${messages}`, { cause: failures[0] })
     }
   }
-  const pending = "Main-screen phases only; alternate-screen and scrollback reflow are not measured"
+  const pending = [
+    ...state.phases.filter((phase) => phase.outcome !== "reflow").map((phase) => `${phase.id}: ${phase.reason}`),
+    "Main-screen phases only; alternate-screen and scrollback reflow are not measured",
+  ].join("; ")
   const response = JSON.stringify(state)
   const assertions = state.phases
     .filter((phase) => phase.outcome !== "invalid")
     .map((phase) => ({
       assertionType: "buffer_state" as const,
       kind: phase.outcome === "reflow" ? ("positive" as const) : ("negative" as const),
-      expected: `${phase.id}: soft-wrap reflow with conserved content and explicit newline boundaries`,
+      expected: `${phase.id}: reflow at the new width with conserved content and explicit newline boundaries`,
       observed: response,
     }))
   return {
@@ -3088,7 +3100,7 @@ function mainScreenReflow(ctx: LibProbeSource): ProbeCallbackResult {
         reason: phase.reason,
       })),
       ...(state.phases.every((phase) => phase.outcome !== "invalid") &&
-      new Set(state.phases.map((phase) => phase.outcome)).size > 1
+      new Set(state.phases.map((phase) => phase.outcome === "reflow")).size > 1
         ? [
             {
               id: "criterion",

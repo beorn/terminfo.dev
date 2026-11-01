@@ -233,14 +233,18 @@ source forwards it directly to the existing required backend operation, regardle
 reflow capability. A hand-built source without the member keeps the named no-I/O TODO. Initialized
 `cols` retains its original meaning; it is not post-resize geometry. Fresh ASCII wrap controls qualify
 the actual width effects through cells, because adapter dimensions can merely mirror a request.
-The main-screen fixture seeds distinct soft-wrapped text and explicit CRLF lines before each resize,
-verifies the cursor is parked below them, and measures growth12→20 and shrink20→12 independently. It retains
-ordered feeds, requested sizes and actual cell/cursor/scrollback reads in the existing response JSON.
-Only exact content-preserving layouts supply main-phase buffer-state assertions; failed controls,
-lost characters and mixed phase outcomes retain required FAILURE tests. Finally restores the initial
-dimensions and resets the source, attempting both cleanup operations and preserving all causes.
+The main-screen fixture seeds an 18-character line and distinct CRLF lines before each resize,
+verifies the cursor is parked below them, and measures growth12→20 and shrink20→12 independently.
+The line starts soft-wrapped for growth and unwrapped for shrink. Ordered feeds, requested sizes
+and actual cell/cursor/scrollback reads remain in the existing response JSON. Exact reflowed layouts
+supply positive main-phase buffer-state assertions. Preserved physical rows on growth and the same
+rows clipped to 12 columns on shrink supply negative assertions. Failed controls, unexpected cells or
+boundaries, and conflicting positive/negative phases retain required FAILURE tests. Finally restores
+the initial dimensions and resets the source, attempting both operations and preserving all causes.
 
-Remaining reflow facets keep the whole feature pending, even when a main phase is positive or negative:
+Qualified main-phase results, including the two negatives from a truncating engine, keep the whole
+feature pending for the remaining facets. Invalid or conflicting phases make the feature fail; its
+reason names each negative or invalid phase and that phase's reason. Remaining facets are:
 
 - Alternate-screen and scrollback behavior retain separate named TODO tests until measured.
 - A default-config observation is not engine capability absence. Libvterm0.3 exposes
