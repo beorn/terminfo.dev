@@ -172,8 +172,14 @@ const absentOscBatch = [
       lockSha256: "282d1098337a5705a7c1d13188a74d2fe34565766619e8d6b21a48d5b67451be",
       adapterSources: [
         { path: "packages/kitty/src/index.ts", blobOid: "3f207f911646613cdc3d8b04f155f0686a96a077" },
-        { path: "packages/kitty/src/backend.ts", blobOid: "8f053f3435800a53860549021fe09b3e775d3499" },
-        { path: "packages/kitty/build/bridge.py", blobOid: "4b9576285f8a217e324be305a788ac48f0af4196" },
+        { path: "packages/kitty/src/backend.ts", blobOid: "1b7367a9737d1292618ea34a1c451bf3273c3b35" },
+        { path: "packages/kitty/build/bridge.py", blobOid: "f9585e3ac10209eedd1bc8550bcb1a4a1b286f27" },
+        { path: "packages/kitty/build/layout.c", blobOid: "49c0beef4424190e89d2884eac5efe4da50e3630" },
+        { path: "packages/kitty/build/native-mode-layout.json", blobOid: "6bd0f2d5b6936f8f6298e4cb9ae4b228172a9502" },
+        {
+          path: "packages/kitty/build/native-mode-layout.receipt.json",
+          blobOid: "b4c699ca3b37c928ffde1e98ebbd3fa885f6bbe8",
+        },
       ],
       codes: [176, 3008, 440, 555, 666, 710],
     },
