@@ -3049,10 +3049,13 @@ describe("Kitty protocol detection", () => {
         expect(result.tests?.[0]?.reason).toBe(
           "OSC5522 detection prerequisite unmet: no complete DECRPM reply from same-run sibling queries; protocol recognition cannot be observed.",
         )
-        const retained = JSON.parse(result.response!)
-        expect(retained.detection).toBe(da1)
-        expect(retained.decrpmSiblings.length).toBeGreaterThan(1)
-        expect(retained.decrpmSiblings.every((sibling: { raw: string }) => sibling.raw === da1)).toBe(true)
+        expect(JSON.parse(result.response!)).toMatchObject({
+          detection: da1,
+          decrpmSiblings: expect.arrayContaining([
+            { mode: 7, raw: da1 },
+            { mode: 2031, raw: da1 },
+          ]),
+        })
       } else if (qualified) {
         expect(JSON.parse(result.response!)).toEqual({ detection: da1, decrpmSiblings: [{ mode: 7, raw: control }] })
       } else expect(result.response).toBe(da1)
@@ -3080,9 +3083,9 @@ describe("Kitty protocol detection", () => {
       expect(probe(id).lib!(ctx).observation?.outcome).toBe("supported")
       const target = p.lib!(ctx)
       expect(target.tests?.[0]?.status).toBe("test-failure")
-      expect(JSON.parse(target.response!).decrpmSiblings).toContainEqual({
-        mode,
-        raw: `\x1b[?${mode};1$y${da1}`,
+      expect(JSON.parse(target.response!)).toMatchObject({
+        detection: da1,
+        decrpmSiblings: expect.arrayContaining([{ mode, raw: `\x1b[?${mode};1$y${da1}` }]),
       })
       expect(target.observation).toBeUndefined()
       expect(target.assertions).toBeUndefined()
