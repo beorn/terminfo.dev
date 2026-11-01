@@ -4819,7 +4819,7 @@ describe("partial probe automation candidates", () => {
         runtimeFormat: "js",
         engineVersion: "0.10.0",
         adapterVersion: "0.10.2",
-        termlessRevision: "83b22ab3f99ff3c2f3e43bcfce346c1374f540e1",
+        termlessRevision: "2d97417328b7b1d086f9396b9a1731216ed134cc",
         resolvedPath: `vendor/vterm/packages/${engine}/src/index.ts`,
         integrity: {
           kind: "source",
