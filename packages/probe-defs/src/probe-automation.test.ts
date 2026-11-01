@@ -4233,27 +4233,34 @@ describe("headless charset cell evidence", () => {
 })
 
 describe("partial probe automation candidates", () => {
-  // Q17: a mode-state reply cannot substitute for the absent presentation-timing observer.
-  test("modes.decsclm names missing presentation timing instead of attempting a mode-state criterion", () => {
+  // S8: state recognition is measurable while the independent presentation facet remains unmeasured.
+  test("modes.decsclm measures mode state and names unmeasured smooth-scroll presentation", () => {
     const p = probe("modes.decsclm")
     if (!p.lib) throw new Error("Missing headless DECSCLM callback")
     const seen: string[] = []
+    let enabled = false
     const result = p.lib(
       context({
-        feed: (text) => seen.push(text),
+        feed: (text) => {
+          seen.push(text)
+          if (text === "\x1b[?4h") enabled = true
+          if (text === "\x1b[?4l") enabled = false
+        },
+        getMode: (mode) => (mode === "insertMode" ? false : enabled),
         feedCapture: (text) => {
           seen.push(text)
-          return "\x1b[?4;1$y"
+          return enabled ? "\x1b[?4;1$y" : "\x1b[?4;2$y"
         },
       }),
     )
-    expect(result.notTested).toMatchObject({
-      reason: "no-semantic-observable",
-      noObservable: expect.stringMatching(/presentation.*tim|scroll.*tim/i),
+    expect(result.observation).toMatchObject({
+      outcome: "supported",
+      assertionType: "query_reply",
+      note: expect.stringContaining("smooth-scroll presentation unmeasured in lib arm"),
     })
-    expect(result.observation).toBeUndefined()
-    expect(result.assertions).toBeUndefined()
-    expect(seen).toEqual([])
+    expect(result.notTested).toBeUndefined()
+    expect(result.assertions).toMatchObject([{ kind: "positive", assertionType: "query_reply" }])
+    expect(seen).toEqual(["\x1b[?4h", "\x1b[?4$p", "\x1b[?4l", "\x1b[?4$p"])
   })
 
   // Mode metadata cannot substitute for the library arm's required DECRPM reply.
@@ -4280,7 +4287,7 @@ describe("partial probe automation candidates", () => {
       })
       expect(result.observation).toBeUndefined()
       expect(result.assertions).toBeUndefined()
-      expect(seen).toEqual(["\x1b[?2031h", "\x1b[?2031$p", "\x1b[?2031l"])
+      expect(seen).toEqual(["\x1b[?2031h", "\x1b[?2031$p", "\x1b[?2031l", "\x1b[?2031$p"])
     },
   )
 
