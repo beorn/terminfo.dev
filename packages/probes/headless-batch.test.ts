@@ -367,7 +367,7 @@ test.skipIf(!isKittyAvailable())(
       const definition = registryDefinitions(["extensions.osc133-d"])[0]!
       const result = definition.lib!(source)
       expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
-    const observed = JSON.parse(result.response!) as { first: unknown[]; second: unknown[] }
+      const observed = JSON.parse(result.response!) as { first: unknown[]; second: unknown[] }
       expect(observed.first.at(-1)).toEqual({ type: "command-end", rawStatus: "0" })
       expect(observed.second.at(-1)).toEqual({ type: "command-end", rawStatus: "17" })
       for (const id of ["extensions.osc133-a", "extensions.osc133-c"]) {
