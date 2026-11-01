@@ -65,21 +65,21 @@ const historyRuntime: WasmRuntime = {
   termlessRevision: "8a1740b2d9f9b07105ffb1f62785c0ca9e513cf7",
   adapterSources: [
     { path: "packages/libvterm/src/index.ts", blobOid: "2b4708b1081e701b99893ca055ded781dc46cf25" },
-    { path: "packages/libvterm/src/backend.ts", blobOid: "6ae281ac2862dfe7fe79e0bd144f9343756659bf" },
+    { path: "packages/libvterm/src/backend.ts", blobOid: "caa5dc6c4ac4e3dac45977466919d2c1dcd3e851" },
     { path: "packages/libvterm/src/wasm-bindings.ts", blobOid: "2bbd4d5cf59b8d53db8f5c0329d2ed7853c43e45" },
-    { path: "packages/libvterm/wasm/libvterm.js", blobOid: "973341a8e2303d25cb17f1a36d491aad6c55b3a1" },
+    { path: "packages/libvterm/wasm/libvterm.js", blobOid: "1e784be87614ab924b96844009919b7c21ce150e" },
   ],
   resolvedPath: "vendor/termless/packages/libvterm/src/index.ts",
   integrity: {
     kind: "source",
     repository: "git@github.com:beorn/termless.git",
     revision: "38e45ab87acee6bd7d7766df571e754991fd45d8",
-    treeOid: "d47c013290cf7a9cb1dae316fd77c66a11a2925a",
+    treeOid: "d17653a18a964f38a6cf19130d2b8f63cccadefb",
     cleanTree: true,
   },
   loadedBinary: {
     path: "vendor/termless/packages/libvterm/wasm/libvterm.wasm",
-    sha256: "5937bd79139ee5856bcf1bd619cc44fcd2d750d3def3066a74956678cdaaaeb2",
+    sha256: "7ebe1b994b58ca867dcd19e9cdeb10b8839b6c1f0dbdea024f875a9f57560a23",
   },
 }
 const sourceIntegrity = historyRuntime.integrity

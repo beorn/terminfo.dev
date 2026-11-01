@@ -352,6 +352,10 @@ const TITLE_STACK_UNIMPLEMENTED_AUDITS: ReadonlyMap<string, string> = new Map([
     "libvterm 0.3.3 src/state.c:978 on_csi has no case 0x74 ('t') and VTermState holds no title stack, so neither CSI 22;0t nor CSI 23;0t is implemented",
   ],
   [
+    "7ebe1b994b58ca867dcd19e9cdeb10b8839b6c1f0dbdea024f875a9f57560a23",
+    "libvterm 9d6d2112335080312ef8c36667fa717ded4f7daf/v0.3.3 src/state.c:978-1543 on_csi has no final t and src/vterm_internal.h:55-174 VTermState holds no title stack; Termless37c3e9af packages/libvterm/build/flat-api.c:125-198 holds only the current title and staging fragments, and src/backend.ts:263-278 forwards native input, so neither CSI 22;0t nor CSI 23;0t is implemented",
+  ],
+  [
     "0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3",
     "vt100 0.16.2 src/perform.rs:132-156 csi_dispatch 't' handles only op 8 (resize) and forwards all other ops to Callbacks::unhandled_csi (empty by default at src/callbacks.rs:55-63); termless 6ffc0df79756fcc259d87131681641606540e512 packages/vt100-rust/native/src/lib.rs:8-54 TerminalCallbacks stores only title: String with no title stack and does not override unhandled_csi, so neither CSI 22;0t nor CSI 23;0t is implemented",
   ],

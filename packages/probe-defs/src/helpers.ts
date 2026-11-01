@@ -49,9 +49,9 @@ export const ADAPTER_SOURCE_AUDITS = {
   },
   libvterm: {
     "packages/libvterm/src/index.ts": "2b4708b1081e701b99893ca055ded781dc46cf25",
-    "packages/libvterm/src/backend.ts": "6ae281ac2862dfe7fe79e0bd144f9343756659bf",
+    "packages/libvterm/src/backend.ts": "caa5dc6c4ac4e3dac45977466919d2c1dcd3e851",
     "packages/libvterm/src/wasm-bindings.ts": "2bbd4d5cf59b8d53db8f5c0329d2ed7853c43e45",
-    "packages/libvterm/wasm/libvterm.js": "973341a8e2303d25cb17f1a36d491aad6c55b3a1",
+    "packages/libvterm/wasm/libvterm.js": "1e784be87614ab924b96844009919b7c21ce150e",
   },
   ghosttyNative: {
     "packages/ghostty-native/src/index.ts": "35c9e35a5d60625ce1135b65ff38ae9278495a18",
@@ -1553,7 +1553,7 @@ export const SOURCE_TREE_AUDITS = {
     runtimeFormat: "wasm",
     engineVersion: "0.3.3",
     repository: "git@github.com:beorn/termless.git",
-    treeOid: "d47c013290cf7a9cb1dae316fd77c66a11a2925a",
+    treeOid: "d17653a18a964f38a6cf19130d2b8f63cccadefb",
   },
   vterm: {
     resolvedPath: "vendor/vterm/packages/vterm/src/index.ts",
@@ -1668,7 +1668,7 @@ export function libvtermHistoryReview(ctx: LibProbeSource): ProbeCallbackResult 
   ) {
     return undefined
   }
-  const expectedBinarySha256 = "5937bd79139ee5856bcf1bd619cc44fcd2d750d3def3066a74956678cdaaaeb2"
+  const expectedBinarySha256 = "7ebe1b994b58ca867dcd19e9cdeb10b8839b6c1f0dbdea024f875a9f57560a23"
   if (identity.loadedBinary.sha256 !== expectedBinarySha256) {
     return {
       pass: false,
@@ -1689,7 +1689,7 @@ export function libvtermHistoryReview(ctx: LibProbeSource): ProbeCallbackResult 
     "retained scrollback history count",
     {
       sourceCitation:
-        "packages/libvterm/src/backend.ts:421-434 getScrollback reports the screen extent, not retained history; raw libvterm 9d6d2112335080312ef8c36667fa717ded4f7daf include/vterm.h:541-543 and src/screen.c:208-226,676-681,830-837 hand history rows to the embedding application",
+        "Termless37c3e9af packages/libvterm/src/backend.ts:427-440 getScrollback reports the screen extent, not retained history; raw libvterm 9d6d2112335080312ef8c36667fa717ded4f7daf include/vterm.h:541-543 and src/screen.c:208-226,676-681,830-837 hand history rows to the embedding application",
     },
   )
 }
