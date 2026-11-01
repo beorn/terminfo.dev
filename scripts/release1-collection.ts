@@ -20,6 +20,7 @@ import {
   readFileSync,
   readdirSync,
   realpathSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs"
 import { dirname, join, resolve, sep } from "node:path"
@@ -580,7 +581,23 @@ export async function collectPass(
         os: context.kind === "lib" ? process.platform : context.os,
       },
     })
-    const path = join(directory, `${context.kind}-${context.id}-${context.os}.draft.json`)
+    let path: string
+    if (context.kind === "lib") {
+      // #32038 (@cto a6dbdad3): the pre-resolution headless draft is an intermediate for forensics,
+      // written under <pass>/first-pass/<engine>.draft.json outside the pass output set.
+      const firstPass = join(directory, "first-pass")
+      mkdirSync(firstPass, { recursive: true })
+      const firstPassReadme = join(firstPass, "README.md")
+      if (!existsSync(firstPassReadme)) {
+        writeFileSync(
+          firstPassReadme,
+          "# Historical first-pass drafts\n\nPre-resolution intermediate drafts retained for collector forensics, not run outputs; `../pass.json` (`contexts[].rawRun`) is the sole authority for which draft was graded.\n",
+        )
+      }
+      path = join(firstPass, `${context.id}.draft.json`)
+    } else {
+      path = join(directory, `${context.kind}-${context.id}-${context.os}.draft.json`)
+    }
     recordCollectorSelection(draft, probeIds ?? snapshot.probes[context.kind])
     if (probeIds?.length === 0) {
       recordCollectorAttempt(draft, { ids: [], result: "empty" })
@@ -765,6 +782,7 @@ export async function collectPass(
         }
         const reviewBindings: CaptureReviewReport[] = []
         row.reviewBindings = reviewBindings
+        const previousPath = path
         path = saveDaemonProbeRun(
           {
             ...decoded.run,
@@ -793,6 +811,24 @@ export async function collectPass(
             report: (entry) => reviewBindings.push(entry),
           },
         )
+        // #32038 (@cto a6dbdad3): keep only the identity-resolved, carried draft that pass.json names in <pass>/lib/,
+        // and update <pass>/lib/collection.json runs[] before unlinking the intermediate so the receipt never dangles.
+        if (context.kind === "lib" && path !== previousPath && previousPath.endsWith(".draft.json")) {
+          const collectionPath = join(dirname(previousPath), "collection.json")
+          if (!existsSync(collectionPath)) {
+            throw new Error(`Missing headless collection receipt ${collectionPath}`)
+          }
+          const receipt = JSON.parse(readFileSync(collectionPath, "utf8")) as {
+            runs?: unknown
+            [key: string]: unknown
+          }
+          if (!Array.isArray(receipt.runs) || !receipt.runs.includes(previousPath)) {
+            throw new Error(`Headless collection receipt ${collectionPath} does not list ${previousPath} in runs`)
+          }
+          receipt.runs = receipt.runs.map((entry: unknown) => (entry === previousPath ? path : entry))
+          writeFileSync(collectionPath, `${JSON.stringify(receipt, null, 2)}\n`)
+          unlinkSync(previousPath)
+        }
         if (path.endsWith(".draft.json")) {
           row.rawRun = path
           row.status = "pending-review"
