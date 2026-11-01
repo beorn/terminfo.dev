@@ -2492,10 +2492,16 @@ function headlessOsc52Write(ctx: LibProbeSource): ProbeCallbackResult {
   ctx.feed(`\x1b]52;c;${encoded}\x07`)
   const retained = ctx.getClipboardState()
   // #32091: the declared clipboard-load recipe query still runs, so a native host route retains its capture. The
-  // verdict below reads only the engine's retained write; the query's reply or silence does not grade it.
+  // verdict below reads only the engine's retained write; the query's reply or silence does not grade it, and a
+  // silent read carries the audited host-input cause (kitty's default read-clipboard-ask waits on a human).
   const query = "\x1b]52;c;?\x07"
-  if (ctx.queryWithSentinelOutcome) ctx.queryWithSentinelOutcome(query, osc52Reply)
-  else ctx.feedCapture(query)
+  const outcome = ctx.queryWithSentinelOutcome?.(query, osc52Reply)
+  const raw = outcome ? outcome.raw : ctx.feedCapture(query)
+  const readEmpty = outcome
+    ? sentinelSilenceResult(outcome, "OSC 52 c query returns the exact written nonce") !== null || raw === ""
+    : raw === ""
+  const explain = (result: ProbeCallbackResult) =>
+    nativeHostRecipeResult(ctx, result, "clipboard-load", "clipboard-read-permission", query, readEmpty)
   const writes = retained.writes.map((write) => ({ selector: write.selector, payload: write.payload }))
   const match = retained.writes.find((write) => write.selector === "c" && write.payload === encoded)
   const note = [
@@ -2511,18 +2517,20 @@ function headlessOsc52Write(ctx: LibProbeSource): ProbeCallbackResult {
     .join("; ")
   const expected = JSON.stringify({ selector: "c", payload: encoded })
   if (match) {
-    return parserStateResult(
-      true,
-      expected,
-      { selector: match.selector, payload: match.payload },
-      note,
-      undefined,
-      "query_reply",
+    return explain(
+      parserStateResult(
+        true,
+        expected,
+        { selector: match.selector, payload: match.payload },
+        note,
+        undefined,
+        "query_reply",
+      ),
     )
   }
   const state = { writes }
-  if (writes.length === 0) return parserStateResult(false, expected, state, note, undefined, "query_reply")
-  return parserStateResult(null, expected, state, note, undefined, "query_reply")
+  if (writes.length === 0) return explain(parserStateResult(false, expected, state, note, undefined, "query_reply"))
+  return explain(parserStateResult(null, expected, state, note, undefined, "query_reply"))
 }
 
 function headlessOsc52WriteWithoutWitness(ctx: LibProbeSource): ProbeCallbackResult {
