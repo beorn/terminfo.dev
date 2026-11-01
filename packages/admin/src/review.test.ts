@@ -9,7 +9,7 @@ import { createHash } from "node:crypto"
 import { mkdtempSync, readFileSync, rmSync, mkdirSync, writeFileSync, statSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
-import { afterEach, expect, test } from "vitest"
+import { afterEach, expect, test, vi } from "vitest"
 import {
   initializeRunDraft,
   recordExecutedProbe,
@@ -314,9 +314,15 @@ test.each([false, true])("external source presence is reported truthfully: %s", 
     },
   ]
   f.save()
-  const receipt = f.api.applyReview(f.applyOptions)
-  expect(receipt.citations).toContain(present ? `verified: ${path}` : `unverified: ${path} (tree absent)`)
-  expect(readFileSync(f.applyOptions.receipt, "utf8")).toContain(present ? "verified:" : "unverified:")
+  const diagnostic = vi.spyOn(console, "error").mockImplementation(() => {})
+  try {
+    const receipt = f.api.applyReview(f.applyOptions)
+    expect(receipt.citations).toContain(present ? `verified: ${path}` : `unverified: ${path} (tree absent)`)
+    expect(readFileSync(f.applyOptions.receipt, "utf8")).toContain(present ? "verified:" : "unverified:")
+    expect(diagnostic.mock.calls).toEqual(present ? [] : [[`unverified: ${path} (tree absent)`]])
+  } finally {
+    diagnostic.mockRestore()
+  }
 })
 
 // R1/R6: no writer test exercises an explicit empty issuer scope or ambiguous pass rawRun selection.
