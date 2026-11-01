@@ -2,9 +2,10 @@
  * A content root for tests that need a real round after the old runs leave `content/` (#30764 M4).
  *
  * The probes, receipts and interpretations are checked-in copies of what the round contained on
- * 2026-10-22 (the three probes folders, `receipts/`, `interpretations.json`); everything the delete KEEPS —
- * suites, categories, features, baselines, the curated catalogs — is copied live from `content/`, so a
- * fixture never drifts from the shipped catalogs. One temporary root per process.
+ * 2026-10-22 (the three probes folders, `receipts/`, `interpretations.json`). The fixture also owns its
+ * default-context policy snapshot. Suites, categories, features, baselines and the curated catalogs
+ * are copied live from `content/`, so the fixture follows the shipped catalogs without importing
+ * live context-selection decisions. One temporary root per process.
  */
 import { cpSync, mkdirSync, mkdtempSync, readdirSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -13,8 +14,15 @@ import { dirname, join } from "node:path"
 const REPO = join(import.meta.dirname, "..")
 const FIXTURES = import.meta.dirname
 const RUN_FOLDERS = ["probes-apps", "probes-libs", "probes-mux"] as const
-/** Generated or deleted by the round itself; a fixture carries its own pruned copy instead. */
-const NOT_COPIED = new Set(["analysis.json", "interpretations.json", ...RUN_FOLDERS, "receipts", "artifacts"])
+/** Round-owned inputs; a fixture carries its own retained copies instead. */
+const NOT_COPIED = new Set([
+  "analysis.json",
+  "interpretations.json",
+  "default-contexts.json",
+  ...RUN_FOLDERS,
+  "receipts",
+  "artifacts",
+])
 
 let cached: string | undefined
 
@@ -38,6 +46,7 @@ export function fixtureContentDir(): string {
   cpSync(join(FIXTURES, "receipts"), join(dir, "receipts"), { recursive: true })
   cpSync(join(FIXTURES, "artifacts"), join(dir, "artifacts"), { recursive: true })
   cpSync(join(FIXTURES, "interpretations.json"), join(dir, "interpretations.json"))
+  cpSync(join(FIXTURES, "default-contexts.json"), join(dir, "default-contexts.json"))
   cached = dir
   return dir
 }

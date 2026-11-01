@@ -39,12 +39,12 @@
       ]
     },
     "app:alacritty": {
-      "contextKey": "app:alacritty@[\"app\",\"alacritty\",\"windows\",\"10.0.26100\",null,null,null,null]",
-      "reviewer": "@cto (ruling d06f9a8c, 2026-10-22)",
-      "reason": "Only context of app:alacritty on suite 8165331b: hosted Windows run 20eb3ab6 (10-21 common cut). The macOS hardware row (d436c4ec) and the Linux container runs are on older suites. Re-record to the macOS context when a current-suite macOS run admits (final cut, #30711).",
+      "contextKey": "term:alacritty",
+      "reviewer": "@dev/10 (Chief scope 1562e542, 2026-10-31)",
+      "reason": "The Windows context left the current projection when the retained Alacritty Linux run was admitted. Select the sole projected context under the existing reviewed-context rule: run f504922f67f074794c588cf3a14e2114 on frozen suite 4b01b0117e18. This selects the context accepted by the composed readers, not current-release-suite coverage or publication approval.",
       "sources": [
-        "content/probes-apps/alacritty-0.17.0-windows-20eb3ab6d830e196eb3fa08dade7740a.json",
-        "content/receipts/20eb3ab6d830e196eb3fa08dade7740a.json"
+        "content/probes-apps/alacritty-0.17.0-linux-f504922f67f074794c588cf3a14e2114.json",
+        "content/receipts/f504922f67f074794c588cf3a14e2114.json"
       ]
     },
     "app:wezterm": {
