@@ -2491,6 +2491,11 @@ function headlessOsc52Write(ctx: LibProbeSource): ProbeCallbackResult {
   const encoded = btoa(nonce)
   ctx.feed(`\x1b]52;c;${encoded}\x07`)
   const retained = ctx.getClipboardState()
+  // #32091: the declared clipboard-load recipe query still runs, so a native host route retains its capture. The
+  // verdict below reads only the engine's retained write; the query's reply or silence does not grade it.
+  const query = "\x1b]52;c;?\x07"
+  if (ctx.queryWithSentinelOutcome) ctx.queryWithSentinelOutcome(query, osc52Reply)
+  else ctx.feedCapture(query)
   const writes = retained.writes.map((write) => ({ selector: write.selector, payload: write.payload }))
   const match = retained.writes.find((write) => write.selector === "c" && write.payload === encoded)
   const note = [
