@@ -726,14 +726,16 @@ it.each([
             "sgr.bold",
           ])
           const retained = JSON.parse(
-            readFileSync(join(pass.directory, "lib-xtermjs-unknown.draft.json"), "utf8"),
+            readFileSync(join(pass.directory, "first-pass", "xtermjs.draft.json"), "utf8"),
           ) as RunDraft
+          expect(existsSync(join(pass.directory, "first-pass", "README.md"))).toBe(true)
+          expect(existsSync(join(pass.directory, "lib-xtermjs-unknown.draft.json"))).toBe(false)
           expect(readCollectorSelection(retained.rawReplies)).toEqual({ ids: ["sgr.bold"] })
           // A downstream parser refusal belongs to the pass row, not the finished collector's record.
           // Existing error rows have no terminal attempt to preserve.
           if (inputChange === "completed-collector-error") {
             expect(readCollectorAttempt(retained.rawReplies)?.result).toBe("completed")
-            expect(readFileSync(join(pass.directory, "lib-xtermjs-unknown.draft.json"), "utf8")).toBe(
+            expect(readFileSync(join(pass.directory, "first-pass", "xtermjs.draft.json"), "utf8")).toBe(
               completedDraftBytes,
             )
             expect(pass.contexts[0]?.error).toMatch(/current schema-4/)
@@ -1540,6 +1542,7 @@ it("records the host-written transport receipt as evidence and refuses anything 
 it.each([
   "matching",
   "source-negative-pending",
+  "missing-collection-receipt",
   "foreign-run",
   "foreign-context",
   "admitted",
@@ -1669,7 +1672,7 @@ it.each([
         measuredAt: specimen.measuredAt,
         ...(fault !== "foreign-context" && { runtimeIdentity: specimen.runtimeIdentity }),
       }
-      if (fault === "source-negative-pending") {
+      if (fault === "source-negative-pending" || fault === "missing-collection-receipt") {
         run.results[0]!.status = "test-failure"
         run.results[0]!.criterionBranch = SOURCE_NEGATIVE_REVIEW
         run.results[0]!.attempt = { scope: "probe", startedAt: measuredAt }
@@ -1725,9 +1728,17 @@ it.each([
         })
       } else retainCaptureBinding(run as never, run.results[0]!.featureId)
       const path =
-        fault === "source-negative-pending" ? saveDaemonProbeRun(run as never, output) : join(output, "pending.json")
-      if (fault !== "source-negative-pending") writeFileSync(path, JSON.stringify(run))
-      return { directory: output, requested: ["xtermjs"], runs: [path], failures: [] }
+        fault === "source-negative-pending" || fault === "missing-collection-receipt"
+          ? saveDaemonProbeRun(run as never, output)
+          : join(output, "pending.json")
+      if (fault !== "source-negative-pending" && fault !== "missing-collection-receipt") {
+        writeFileSync(path, JSON.stringify(run))
+      }
+      const collection = { directory: output, requested: ["xtermjs"], runs: [path], failures: [] }
+      if (fault !== "missing-collection-receipt") {
+        writeFileSync(join(output, "collection.json"), `${JSON.stringify(collection, null, 2)}\n`, { flag: "wx" })
+      }
+      return collection
     })
   try {
     const deferrals = finalCollection
@@ -1763,6 +1774,22 @@ it.each([
     if (fault === "matching" || fault === "source-negative-pending") {
       expect(row.status, row.error).toBe("pending-review")
       if (fault === "source-negative-pending") {
+        // #32038 (@cto a6dbdad3): pre-resolution headless drafts live under first-pass/<engine>.draft.json,
+        // and the pass output set holds exactly one draft per measured engine — the file pass.json names.
+        expect(existsSync(join(pass.directory, "first-pass", "xtermjs.draft.json"))).toBe(true)
+        expect(existsSync(join(pass.directory, "first-pass", "README.md"))).toBe(true)
+        expect(
+          readdirSync(pass.directory).filter((name) => name.startsWith("lib-") && name.endsWith(".draft.json")),
+        ).toEqual([])
+        const libDrafts = readdirSync(join(pass.directory, "lib"))
+          .filter((name) => name.endsWith(".draft.json"))
+          .map((name) => join(pass.directory, "lib", name))
+        expect(libDrafts).toEqual([row.rawRun])
+        const collectionReceipt = JSON.parse(readFileSync(join(pass.directory, "lib", "collection.json"), "utf8")) as {
+          runs: string[]
+        }
+        expect(collectionReceipt.runs).toEqual([row.rawRun])
+        expect(collectionReceipt.runs.every((entry) => existsSync(entry))).toBe(true)
         const appRow = pass.contexts.find(
           (entry) => entry.context.kind === "term" && entry.context.id === "alacritty" && entry.context.os === "linux",
         )!
@@ -1773,6 +1800,10 @@ it.each([
         expect(appRow.rawRun).not.toBe(join(dirname(appRow.rawRun!), "v3-run.draft.json"))
         expect(appRow.reviewBindings?.[0]).toMatchObject({ newRule: "pending", duplicates: [] })
       }
+    } else if (fault === "missing-collection-receipt") {
+      expect(row.status).toBe("not-started")
+      expect(row.error).toMatch(/Missing headless collection receipt .*collection\.json/)
+      expect(row.rawRun && existsSync(row.rawRun)).toBe(true)
     } else {
       expect(row.status).toBe("not-started")
       expect(row.error).toMatch(

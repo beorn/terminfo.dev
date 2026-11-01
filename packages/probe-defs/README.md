@@ -563,8 +563,10 @@ Three rules follow, and each has cost a reader time:
 - **A row that was not measured contributes no cells, whatever its draft says.** `unmeasured()` refuses a row whose status is not
   `pending-review`, `classified` or `admitted`, or whose `rawRun` is missing on disk. A draft left behind by a failed context is
   not evidence about a cell, and the instrument's line names that draft rather than a cell for exactly this reason.
-- **The draft that counts is the one its row names, not the newest in the directory.** A pass directory also holds drafts no row
-  points at. They are not projected, and reading one measures nothing the instrument records.
+- **`pass.json` (`contexts[].rawRun`) is the sole authority for which draft was graded; every reader resolves through
+  `contexts[].rawRun` and refuses by name when it is missing.** Pre-resolution headless intermediates are written under
+  `<pass>/first-pass/<engine>.draft.json` for forensics, and the pass directory's output set holds one identity-resolved
+  draft per measured engine, the exact file `pass.json` names.
 - **A recorded decision does not move a measured cell.** Decisions are applied by `applyCaptureDecision` in the
   [capture writer](../terminfo.dev/src/capture-writer.ts) while a run is finalized, so they shape the draft at capture time. A
   decision recorded after its draft was captured has no path back into that immutable draft. During natural collection,

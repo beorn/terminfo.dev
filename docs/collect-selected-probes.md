@@ -19,7 +19,7 @@ To inspect empty-selection behavior without starting a worker:
 bun scripts/release1-collection.ts --collect --development --output "$HOME/.terminfo-dev/selected-empty" --contexts '["xtermjs/headless"]' --probe-ids '[]'
 ```
 
-The printed pass directory contains `pass.json`. Its `selection` names the resolved inputs and its context rows point through `rawRun` to the original run or draft.
+The printed pass directory contains `pass.json`, which is the sole authority for which `rawRun` was graded (every reader resolves through `contexts[].rawRun` and refuses by name when it is missing; pre-resolution headless drafts live under `first-pass/<engine>.draft.json` for forensics, outside the pass output set). Its `selection` names the resolved inputs and its context rows point through `rawRun` to the original run or draft.
 For each selected context, the draft records `rawReplies["collector.selection"]` before dispatch.
 Decode that JSON string to read `ids`; decode `rawReplies["collector.collectionAttempt"]` to read the typed outcome.
 
