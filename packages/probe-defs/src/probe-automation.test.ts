@@ -363,7 +363,7 @@ describe("qualified clipboard roundtrip", () => {
   const da1 = "\x1b[?1;2c"
   const frame = (data: string) => `\x1b]52;c;${btoa(data)}\x07`
   const cases = [
-    { when: "clean sentinel silence", raw: da1, reason: "sentinel", sentinel: true, cause: true, failure: true },
+    { when: "clean sentinel silence", raw: da1, reason: "sentinel", sentinel: true, cause: true, todo: true },
     { when: "whole empty buffer", raw: "", reason: "timeout", sentinel: false, cause: true, failure: true },
     // Each pair has the same callback-visible bytes in both worlds. Neither world's cause is inferable.
     { when: "unmatched: empty query / junk plus DA1", raw: "ZZZ" + da1, reason: "sentinel", sentinel: true },
@@ -379,7 +379,7 @@ describe("qualified clipboard roundtrip", () => {
       reason: "sentinel",
       sentinel: true,
       cause: true,
-      failure: true,
+      todo: true,
     },
     { when: "DA1-shaped query then real DA1", raw: da1 + da1, reason: "sentinel", sentinel: true },
     { when: "DA1 followed by non-matching junk", raw: da1 + "ZZZ", reason: "sentinel", sentinel: true },
@@ -415,7 +415,18 @@ describe("qualified clipboard roundtrip", () => {
             { recipe: "clipboard-load", cause: { kind: "source-audited", artifactSha256: artifact } },
           ])
         } else expect(result.hostRecipeCauses, row.when).toBeUndefined()
-        if ("failure" in row && row.failure) {
+        if ("todo" in row && row.todo) {
+          expect(result.tests, row.when).toEqual([
+            {
+              id: "criterion",
+              status: "test-todo",
+              reason:
+                "clipboard write unobservable: OSC 52 read is a sentinel negative on this engine and no clipboard-state witness is wired.",
+            },
+          ])
+          expect(result.observation, row.when).toBeUndefined()
+          expect(result.assertions, row.when).toBeUndefined()
+        } else if ("failure" in row && row.failure) {
           expect(result.tests, row.when).toContainEqual({
             id: "criterion",
             status: "test-failure",

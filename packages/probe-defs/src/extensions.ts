@@ -2586,15 +2586,22 @@ function headlessClipboardRoundtrip(ctx: LibProbeSource): ProbeCallbackResult {
   const outcome = ctx.queryWithSentinelOutcome?.(query, osc52Reply)
   const raw = outcome ? outcome.raw : ctx.feedCapture(query)
   // CTO d5f41664: unmatched/partial bytes lose the old per-capture empty attribution deliberately.
-  // The existing silence classifier supplies only the host-input fact, never this write's verdict.
-  const empty = outcome
-    ? sentinelSilenceResult(outcome, "OSC 52 c query returns the exact written nonce") !== null || raw === ""
-    : raw === ""
+  // A qualified read negative leaves the write unobservable unless a clipboard-state witness is wired.
+  const readNegative = outcome
+    ? sentinelSilenceResult(outcome, "OSC 52 c query returns the exact written nonce") !== null
+    : false
+  const empty = readNegative || raw === ""
+  const writeUnobservable = readNegative && typeof ctx.getClipboardState !== "function"
+  const reason =
+    "clipboard write unobservable: OSC 52 read is a sentinel negative on this engine and no clipboard-state witness is wired."
+  const result: ProbeCallbackResult = writeUnobservable
+    ? { pass: false, note: reason, tests: [{ id: "criterion", status: "test-todo", reason }] }
+    : headlessClipboardResult(empty ? "" : raw, nonce)
   return withClipboardControlNote(
     ctx,
     nativeHostRecipeResult(
       ctx,
-      { ...headlessClipboardResult(empty ? "" : raw, nonce), response: raw },
+      { ...result, response: raw },
       "clipboard-load",
       "clipboard-read-permission",
       query,
