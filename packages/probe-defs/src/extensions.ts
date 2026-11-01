@@ -4050,7 +4050,7 @@ export const extensionsProbes: ProbeDefinition[] = [
             return await sgrCaptureFrames(
               ctx,
               "\x1b[0m\x1b[2J\x1b[H",
-              "\x1b[0m\x1b[2J\x1b[3;3H\x1b]1337;File=inline=1;width=8px;height=8px:" + ITERM2_RED_PNG + "\x07",
+              "\x1b[0m\x1b[2J\x1b[3;3H\x1b]1337;File=inline=1;width=8px;height=8px:" + ITERM2_RED_PNG + "\x07\x1b[1;1H",
               "extensions.iterm2-images",
               { startRow: 3, startCol: 3, image: "8x8 solid red PNG" },
               "A red inline image appears only if the OSC 1337 payload was decoded; compare against the blank control",
