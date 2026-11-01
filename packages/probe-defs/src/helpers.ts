@@ -55,7 +55,7 @@ export const ADAPTER_SOURCE_AUDITS = {
   },
   ghosttyNative: {
     "packages/ghostty-native/src/index.ts": "35c9e35a5d60625ce1135b65ff38ae9278495a18",
-    "packages/ghostty-native/src/backend.ts": "5b39135cef9cf8fa58aebc92e990f94b671983b9",
+    "packages/ghostty-native/src/backend.ts": "f5832c21a5837f636effa3ee2dfc1f8a4e7b8b25",
   },
   alacritty: {
     "packages/alacritty/src/index.ts": "b4154cbd6ef4a83ce2cbf3dcf26ff13d645efd05",

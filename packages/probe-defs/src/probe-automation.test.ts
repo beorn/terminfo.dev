@@ -533,9 +533,9 @@ describe("reply-path audit", () => {
       }
     },
   )
-  // #31987: retain all 53 current audit values after retiring the duplicate predecessor key.
+  // #31987: retain all 53 historical audit values after retiring the duplicate predecessor key.
   // Frozen from the independently verified 53/53 equality at 81aabd55, before removing d70.
-  test("the current native 5a8030c0 artifact retains its 53 frozen reply audits", () => {
+  test("the historical native 5a8030c0 artifact retains its 53 frozen reply audits", () => {
     const rebuilt = REPLY_PATH_AUDITS.get("5a8030c0f3f9fa52e9c1f82d28ae711ef21e3072a4b82fbe98076fedf314c945")
     expect(rebuilt).toBeDefined()
     expect(Object.keys(rebuilt!)).toHaveLength(53)
@@ -580,7 +580,7 @@ describe("reply-path audit", () => {
       core: "332b2aef",
     },
     {
-      name: "current native overline",
+      name: "historical native overline",
       digest: "5a8030c0f3f9fa52e9c1f82d28ae711ef21e3072a4b82fbe98076fedf314c945",
       priors: [
         "ac12d6408c2049f1d720e9735d7eb69251d3eed868fc9ced58de98b3543f3e2e",
@@ -2260,18 +2260,18 @@ describe("GhosttyNative audited OSC source review", () => {
     engineVersion: "1.3.1",
     adapterSources: [
       { path: "packages/ghostty-native/src/index.ts", blobOid: "35c9e35a5d60625ce1135b65ff38ae9278495a18" },
-      { path: "packages/ghostty-native/src/backend.ts", blobOid: "5b39135cef9cf8fa58aebc92e990f94b671983b9" },
+      { path: "packages/ghostty-native/src/backend.ts", blobOid: "f5832c21a5837f636effa3ee2dfc1f8a4e7b8b25" },
     ],
     adapterVersion: "0.10.2",
-    termlessRevision: "2d97417328b7b1d086f9396b9a1731216ed134cc",
+    termlessRevision: "723acd11346edfcf3bfd0614c1a44a3828512a9f",
     loadedBinary: {
       path: "vendor/termless/packages/ghostty-native/termless-ghostty-native.node",
-      sha256: "5a8030c0f3f9fa52e9c1f82d28ae711ef21e3072a4b82fbe98076fedf314c945",
+      sha256: "d6e23fe62d56de795c6fa783a6c5025fc5b1238e739839de8b4b3737eca0c43e",
     },
     provenance: {
-      sha256: "5a8030c0f3f9fa52e9c1f82d28ae711ef21e3072a4b82fbe98076fedf314c945",
+      sha256: "d6e23fe62d56de795c6fa783a6c5025fc5b1238e739839de8b4b3737eca0c43e",
       sourceCommit: "332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28",
-      buildHash: "740541f7a527884ed17034c3ab8c66d457cdd14e013774b6bf75c7c99670a7d7",
+      buildHash: "bcb9aac9409e23717f3c5952d0ab062da27395e9df69b980a4c5d026246f5a14",
       toolchain: "zig 0.15.2",
       lockSha256: "3ec775507556db01d08055836b26183f629a9cbb0b5802a1566661e95988d74a",
     },
@@ -2290,7 +2290,7 @@ describe("GhosttyNative audited OSC source review", () => {
     expect(foreign.assertions).toBeUndefined()
   })
 
-  test("the parsed OSC3008 review reason remains byte-identical", () => {
+  test("the parsed OSC3008 reason names the current wrapper and unchanged engine drop", () => {
     const result = probe("extensions.osc3008-context").lib!(
       context({
         runtimeIdentity: identity,
@@ -2298,7 +2298,7 @@ describe("GhosttyNative audited OSC source review", () => {
       }),
     )
     expect(result.tests?.[0]?.reason).toBe(
-      "Ghostty 332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28 src/terminal/osc.zig:535-641 rejects OSC176/440/555/666/710; :747 parses OSC3008 context_signal, dropped at src/terminal/stream.zig:2050-2059 (SHA256 3ddc5e27d6a6f48ea99399bb886b52e7bebb68c94397a3ba008a7c3eb6c01a9b); Termless 2d97417328b7b1d086f9396b9a1731216ed134cc packages/ghostty-native/native/src/main.zig:80 -> Terminal.zig:264 -> stream_readonly.zig:20 selects that readonly stream; parsed by osc.zig:747 context_signal, dropped unimplemented at stream.zig:2056-2059; independent source review required",
+      "Ghostty 332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28 src/terminal/osc.zig:535-641 rejects OSC176/440/555/666/710; :747 parses OSC3008 context_signal, dropped at src/terminal/stream.zig:2050-2059 (SHA256 3ddc5e27d6a6f48ea99399bb886b52e7bebb68c94397a3ba008a7c3eb6c01a9b); Termless 723acd11346edfcf3bfd0614c1a44a3828512a9f packages/ghostty-native/native/src/main.zig:38-39 wraps ReadonlyHandler, :76 forwards unhandled actions to readonly.vt, :85 creates ResponseStream and :141 initializes Terminal.vtHandler; parsed by osc.zig:747 context_signal, dropped unimplemented at stream.zig:2056-2059; independent source review required",
     )
   })
 
