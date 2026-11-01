@@ -291,7 +291,7 @@ export type { TextQualificationAssessment } from "@terminfo/probe-defs"
  * a context changes this scope on purpose.
  */
 /** Both reviewed TODO rules share this one per-run projection; sealed source objects remain immutable. */
-export function consoleHostHeldResults(run: LoadedRun, interpretations: readonly Interpretation[] = []): ProbeResult[] {
+export function consoleHostHeldResults(run: LoadedRun, interpretations: readonly Interpretation[]): ProbeResult[] {
   if (!run.results) throw new Error(`Run ${run.runId} has no current sealed results`)
   return run.results.map((result) => {
     const gaps = interpretations.filter(
@@ -398,7 +398,7 @@ export function classifyDevelopmentRun(run: LoadedRun): {
   return {
     mode: "development",
     runId: run.runId,
-    states: Object.fromEntries(consoleHostHeldResults(run).map((result) => [result.featureId, result.status])),
+    states: Object.fromEntries(consoleHostHeldResults(run, []).map((result) => [result.featureId, result.status])),
   }
 }
 

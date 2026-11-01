@@ -58,6 +58,13 @@ screen row into the retained buffer using one coherent `totalLines - screenLines
 independent of the scrolled viewport. Invalid or insufficient extents retain named inconclusive
 evidence; they never establish an engine negative.
 
+Library `getSemanticMarks` and `getSixelImages` are optional copied-state readers.
+The collector forwards each only when its `semantic-marks` or `sixel-storage`
+extension is declared and the method is callable; absence is not an empty array.
+Marks contain prompt/command/output starts at their screen positions when inserted,
+without bounded zones or completion fields. Sixel records contain raw payloads and
+DCS start positions; storage does not establish raster rendering or cell geometry.
+
 The library reverse-video, synchronized-output and colour-scheme-reporting cells
 measure mode recognition using the engine's DECRPM reply after enabling the mode.
 Set, reset or permanently set is Supported; unrecognized or permanently reset is
