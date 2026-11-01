@@ -228,6 +228,28 @@ or OSC 9;4 progress measurement. Missing readers keep the existing
 
 ## Evidence, capture and assertion
 
+The library reflow callback uses the optional `LibProbeSource.resize` control; every production
+source forwards it directly to the existing required backend operation, regardless of the declared
+reflow capability. A hand-built source without the member keeps the named no-I/O TODO. Initialized
+`cols` retains its original meaning; it is not post-resize geometry. Fresh ASCII wrap controls qualify
+the actual width effects through cells, because adapter dimensions can merely mirror a request.
+The main-screen fixture seeds distinct soft-wrapped text and explicit CRLF lines before each resize,
+parks the cursor below them, and measures growth12→20 and shrink20→12 independently. It retains
+ordered feeds, requested sizes and actual cell/cursor/scrollback reads in the existing response JSON.
+Only exact content-preserving layouts supply main-phase buffer-state assertions; failed controls,
+lost characters and mixed phase outcomes retain required FAILURE tests. Finally restores the initial
+dimensions and resets the source, attempting both cleanup operations and preserving all causes.
+
+Remaining reflow facets keep the whole feature pending, even when a main phase is positive or negative:
+
+- Alternate-screen and scrollback behavior retain separate named TODO tests until measured.
+- A default-config observation is not engine capability absence. Libvterm0.3 exposes
+  `vterm_screen_enable_reflow`, disabled unless the embedder enables it. Before a future final fold,
+  either the adapter enables that option with the fact recorded in the response, or a default-off
+  no-reflow observation routes to independent source review. This slice changes no engine option.
+- Unicode, cursor-on-wrapped-line cases and terminal-app resize remain unmeasured; this ASCII
+  main-screen slice grants no broader support, exact-run decision, seal or admission.
+
 Callbacks currently perform I/O and judge it in the same implementation. There is no general persisted callback transcript or independently replayable assertion API supplied by this package.
 
 The five `AssertionType` values classify an actually retained deciding observation: `query_reply`, `buffer_state`, `screenshot`, `input_bytes` and `clipboard`. Pixel versus text-cells capture payloads and positive versus negative assertion polarity remain separate facts. An OSC 52 write decided by independent clipboard readback is `clipboard`; paste decided by `readInput` is `input_bytes`, including its existing control/report envelope and performed action.

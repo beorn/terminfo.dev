@@ -24,6 +24,7 @@ import {
   type CapturedRunDraft,
   type ProbeCallbackResult,
   type ProbeDefinition,
+  type LibProbeSource,
 } from "@terminfo/probe-defs"
 import { fakeProbeResult } from "@terminfo/probe-defs/testing/fake-probe-result"
 import { regradeRow, satisfiesContract, type GroupContract } from "../probe-defs/src/testing/group-harness.ts"
@@ -50,6 +51,146 @@ function probeReplies(batch: Awaited<ReturnType<typeof collectBatch>>) {
 async function backend() {
   return createXtermBackend()
 }
+
+// @failure A production source silently omits resize, or a main-screen measurement grades unmeasured reflow facets.
+// @level l1
+// @consumer Registered reflow callback through the real headless source and canonical batch result.
+test.each([false, true])("production reflow controls ignore the capability declaration (%s)", async (declared) => {
+  const definition = registryDefinitions(["extensions.reflow"])[0]!
+  const batch = await collectBatch(
+    async () => {
+      const value = createXtermBackend()
+      // Vary metadata alone; the actual engine keeps its default configuration.
+      const capabilities = { ...value.capabilities, reflow: declared }
+      Object.defineProperty(value, "capabilities", { get: () => capabilities })
+      return value
+    },
+    "xtermjs",
+    [
+      {
+        ...definition,
+        lib(ctx: LibProbeSource) {
+          // Every production source uses this factory, independently of declared feature support.
+          expect(ctx).toHaveProperty("resize", expect.any(Function))
+          return definition.lib!(ctx)
+        },
+      },
+    ],
+  )
+  expect(batch.ungradedDiagnostics).toEqual({})
+  expect(batch.results).toMatchObject([
+    {
+      featureId: "extensions.reflow",
+      status: "test-todo",
+      assertionType: "buffer_state",
+      tests: expect.arrayContaining([
+        expect.objectContaining({ id: "main-grow", status: "supported" }),
+        expect.objectContaining({ id: "main-shrink", status: "supported" }),
+        expect.objectContaining({ id: "alternate-screen", status: "test-todo" }),
+        expect.objectContaining({ id: "scrollback", status: "test-todo" }),
+      ]),
+    },
+  ])
+  expect(batch.assertions).toMatchObject([
+    { kind: "positive", assertionType: "buffer_state", observed: batch.rawReplies["extensions.reflow"] },
+    { kind: "positive", assertionType: "buffer_state", observed: batch.rawReplies["extensions.reflow"] },
+  ])
+  const observed = JSON.parse(batch.rawReplies["extensions.reflow"]!)
+  expect(observed).toMatchObject({ declaredReflow: declared, phases: [{ outcome: "reflow" }, { outcome: "reflow" }] })
+})
+
+// @failure A no-op resize, discarded wrap boundaries or lost characters become reflow support.
+// @level l1
+// @consumer Reflow criterion and canonical required-test fold.
+test.each(["no-op", "hard-boundary", "content-loss"] as const)(
+  "reflow retains a named failure for %s",
+  async (fault) => {
+    const batch = await collectBatch(
+      async () => {
+        const value = createXtermBackend()
+        const resize = value.resize.bind(value)
+        value.resize = (cols, rows) => {
+          if (fault === "no-op") return
+          // Fault injection at the engine boundary: LF removes the old continuation without changing
+          // its characters; ECH instead removes a target character. Neither is a test-only emulator.
+          if (fault === "hard-boundary" && cols === 20) value.feed(new TextEncoder().encode("\x1b[H\n"))
+          resize(cols, rows)
+          if (fault === "content-loss" && cols === 20) value.feed(new TextEncoder().encode("\x1b[H\x1b[X"))
+        }
+        return value
+      },
+      "xtermjs",
+      registryDefinitions(["extensions.reflow"]),
+    )
+    expect(batch.ungradedDiagnostics).toEqual({})
+    expect(batch.results[0]!.status).toBe("test-failure")
+    const observed = JSON.parse(batch.rawReplies["extensions.reflow"]!)
+    if (fault === "hard-boundary") {
+      expect(observed).toMatchObject({ phases: [{ outcome: "preserved-wraps" }, { outcome: "reflow" }] })
+      expect(batch.assertions.map((assertion) => assertion.kind)).toEqual(["negative", "positive"])
+      expect(batch.results[0]!.tests).toContainEqual(
+        expect.objectContaining({ id: "criterion", status: "test-failure" }),
+      )
+    } else {
+      expect(observed).toMatchObject({
+        phases:
+          fault === "no-op"
+            ? [{ outcome: "invalid" }, { outcome: "invalid" }]
+            : [{ outcome: "invalid" }, { outcome: "reflow" }],
+      })
+      expect(batch.assertions.every((assertion) => assertion.kind === "positive")).toBe(true)
+    }
+  },
+)
+
+// @failure A failed cell read leaks resized state, or restoration failure skips reset and masks causes.
+// @level l1
+// @consumer Disposable reflow source lifetime, including diagnostic callers.
+test.each([false, true])(
+  "reflow restores geometry and attempts reset after a read error (cleanup faults %s)",
+  (failCleanup) => {
+    const value = createXtermBackend()
+    value.init({ cols: 80, rows: 24 })
+    const source = createLibProbeSource(value, undefined, undefined, undefined)
+    const readError = new Error("cell read failed")
+    const resizeError = new Error("geometry restoration failed")
+    const resetError = new Error("source reset failed")
+    const resize = source.resize!.bind(source)
+    const reset = source.reset.bind(source)
+    let resetAttempted = false
+    source.getCell = () => {
+      throw readError
+    }
+    source.resize = (cols, rows) => {
+      if (failCleanup && cols === 80) throw resizeError
+      resize(cols, rows)
+    }
+    source.reset = () => {
+      resetAttempted = true
+      if (failCleanup) throw resetError
+      reset()
+    }
+    try {
+      let caught: unknown
+      try {
+        registryDefinitions(["extensions.reflow"])[0]!.lib!(source)
+      } catch (error) {
+        caught = error
+      }
+      expect(resetAttempted).toBe(true)
+      if (failCleanup) {
+        expect(caught).toBeInstanceOf(AggregateError)
+        expect((caught as AggregateError).errors).toEqual([readError, resizeError, resetError])
+      } else {
+        expect(caught).toBe(readError)
+        expect(value.getRow(0)).toHaveLength(80)
+        expect(value.getText().trim()).toBe("")
+      }
+    } finally {
+      value.destroy()
+    }
+  },
+)
 
 // @failure Engine metadata is lost between the real adapter, source constructor and registered callbacks.
 // @level l1
