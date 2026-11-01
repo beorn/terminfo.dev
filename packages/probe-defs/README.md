@@ -463,6 +463,12 @@ The five admin routes share definitions, but do not all execute or persist throu
 - **Inline:** [admin/src/here.ts](../admin/src/here.ts) calls that same `collectProbeRun`, finalizes the draft and prints it or its summary. Printing a result is not admission.
 - **Mux:** [admin/src/mux.ts](../admin/src/mux.ts) runs a daemon through the multiplexer, collects its response and supplies the intended mux configuration to the shared writer.
 
+Multiplexer expectation declarations describe routing, not terminal support:
+
+- **`pass-through`**: the bytes reach the outer terminal and its reply returns to the pane.
+- **`mux-answered`**: the outcome the probe reads is decided inside tmux, either because tmux answers from its own state or because tmux's input parser consumes the query and emits nothing; in both the host terminal is never consulted.
+- **`unresolved`**: the route is not established at the pin.
+
 The [daemon client](../terminfo.dev/src/daemon-client.ts) retains HTTP responses. The [capture writer](../terminfo.dev/src/capture-writer.ts) finalizes enriched runs and writes immutable result snapshots.
 
 The writer checks intended id/version against known measured values without replacing them, but sets `subject.kind` from the intended term/mux subject and retains `intendedSubject` separately. Both current source and suite version are explicit inputs; a historical declaration cannot silently become a live writer's manifest.
