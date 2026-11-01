@@ -52,6 +52,15 @@ async function backend() {
   return createXtermBackend()
 }
 
+function reflowEvidence(batch: Awaited<ReturnType<typeof collectBatch>>) {
+  return JSON.parse(batch.rawReplies["extensions.reflow"]!) as {
+    declaredReflow: boolean
+    phases: Array<{ outcome: string }>
+    historyPhases: Array<{ id: string; status: string; outcome: string; reason: string }>
+    reads: Record<string, { cells: string[][]; scrollback: { totalLines: number; screenLines: number } }>
+  }
+}
+
 // @failure A production source silently omits resize, or a main-screen measurement grades unmeasured reflow facets.
 // @level l1
 // @consumer Registered reflow callback through the real headless source and canonical batch result.
@@ -96,7 +105,7 @@ test.each([false, true])("production reflow controls ignore the capability decla
     { kind: "positive", assertionType: "buffer_state", observed: batch.rawReplies["extensions.reflow"] },
     { kind: "positive", assertionType: "buffer_state", observed: batch.rawReplies["extensions.reflow"] },
   ])
-  const observed = JSON.parse(batch.rawReplies["extensions.reflow"]!)
+  const observed = reflowEvidence(batch)
   expect(observed).toMatchObject({ declaredReflow: declared, phases: [{ outcome: "reflow" }, { outcome: "reflow" }] })
   // Main-only coverage cannot detect lost history or hard-line boundaries. Check the actual full
   // buffer, including every hard witness, while the feature remains pending for the unapproved fold.
@@ -105,8 +114,8 @@ test.each([false, true])("production reflow controls ignore the capability decla
     { id: "history-shrink", outcome: "reflow", status: "supported" },
   ])
   for (const id of ["history-grow", "history-shrink"]) {
-    const before = observed.reads[`${id}.before`]
-    const after = observed.reads[`${id}.after`]
+    const before = observed.reads[`${id}.before`]!
+    const after = observed.reads[`${id}.after`]!
     expect(before.scrollback.totalLines - before.scrollback.screenLines).toBeGreaterThan(4)
     expect(after.cells).toHaveLength(after.scrollback.totalLines)
     const lines = after.cells.map((row: string[]) => row.join("").trimEnd())
@@ -142,13 +151,13 @@ test.each([
     },
   ])
   expect(batch.results[0]!.reason).toContain("main-shrink")
-  expect(JSON.parse(batch.rawReplies["extensions.reflow"]!)).toMatchObject({
+  expect(reflowEvidence(batch)).toMatchObject({
     phases: [{ outcome: "preserved-wraps" }, { outcome: "truncated" }],
   })
   expect(
     batch.assertions.filter((assertion) => assertion.expected.startsWith("main-")).map((assertion) => assertion.kind),
   ).toEqual(["negative", "negative"])
-  const history = JSON.parse(batch.rawReplies["extensions.reflow"]!).historyPhases
+  const history = reflowEvidence(batch).historyPhases
   if (name === "libvterm") {
     expect(history).toMatchObject([
       { status: "test-todo", reason: "engine retained no history" },
@@ -166,9 +175,9 @@ test.each([
       "negative",
       "negative",
     ])
-    const observed = JSON.parse(batch.rawReplies["extensions.reflow"]!)
+    const observed = reflowEvidence(batch)
     for (const id of ["history-grow", "history-shrink"]) {
-      const after = observed.reads[`${id}.after`]
+      const after = observed.reads[`${id}.after`]!
       const lines = after.cells.map((row: string[]) => row.join("").trimEnd())
       expect(lines.slice(0, id === "history-grow" ? 4 : 3)).toEqual(
         id === "history-grow" ? ["ABCDEFGHIJKL", "MNOPQR", "HARD-a", "HARD-b"] : ["ABCDEFGHIJKL", "HARD-a", "HARD-b"],
@@ -195,7 +204,7 @@ test.each([2, 8])("reflow names a partially retained target without adding an as
   expect(batch.ungradedDiagnostics).toEqual({})
   expect(batch.results[0]!.status).toBe("test-todo")
   expect(batch.assertions).toHaveLength(2)
-  expect(JSON.parse(batch.rawReplies["extensions.reflow"]!).historyPhases).toMatchObject([
+  expect(reflowEvidence(batch).historyPhases).toMatchObject([
     { status: "test-todo", reason: `target not fully retained (H=${limit}, need 28)` },
     { status: "test-todo", reason: `target not fully retained (H=${limit}, need 27)` },
   ])
@@ -258,20 +267,20 @@ test.each(["witness-loss", "width-control", "bad-counts", "viewport"] as const)(
     ])
     expect(batch.ungradedDiagnostics).toEqual({})
     expect(batch.results[0]!.status).toBe("test-todo")
-    const observed = JSON.parse(batch.rawReplies["extensions.reflow"]!)
+    const observed = reflowEvidence(batch)
     expect(observed.historyPhases.map((phase: { status: string }) => phase.status)).toEqual(
       fault === "viewport" ? ["supported", "supported"] : ["test-failure", "test-failure"],
     )
     expect(batch.assertions).toHaveLength(fault === "viewport" ? 4 : 2)
     if (fault === "bad-counts") {
-      expect(observed.historyPhases[0].reason).toContain("totalLines=9007199254740991")
-      expect(observed.reads["history-grow.before"].cells).toEqual([])
+      expect(observed.historyPhases[0]!.reason).toContain("totalLines=9007199254740991")
+      expect(observed.reads["history-grow.before"]!.cells).toEqual([])
     }
     if (fault === "witness-loss") {
-      expect(observed.historyPhases[0].reason).toContain("neither complete retained layout")
+      expect(observed.historyPhases[0]!.reason).toContain("neither complete retained layout")
     }
     if (fault === "width-control") {
-      expect(observed.historyPhases[0].reason).toContain("Post-resize width control")
+      expect(observed.historyPhases[0]!.reason).toContain("Post-resize width control")
     }
   },
 )
@@ -306,7 +315,7 @@ test.each(["no-op", "hard-boundary", "content-loss", "cursor-on-target"] as cons
     expect(batch.ungradedDiagnostics).toEqual({})
     expect(batch.results[0]!.status).toBe("test-failure")
     expect(batch.results[0]!.reason).toContain("main-grow:")
-    const observed = JSON.parse(batch.rawReplies["extensions.reflow"]!)
+    const observed = reflowEvidence(batch)
     if (fault === "hard-boundary") {
       expect(observed).toMatchObject({ phases: [{ outcome: "preserved-wraps" }, { outcome: "reflow" }] })
       expect(
