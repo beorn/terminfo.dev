@@ -10934,14 +10934,8 @@
         "version": "0.16.2",
         "os": "linux"
       },
-      "versions": [
-        "0.16.2",
-        "0.16.2"
-      ],
-      "suites": [
-        "2c23361d2223",
-        "2c23361d2223"
-      ]
+      "versions": ["0.16.2", "0.16.2"],
+      "suites": ["2c23361d2223", "2c23361d2223"]
     },
     "sources": [
       "vt100 0.16.2 src/perform.rs:157-164 csi_dispatch default arm -> Callbacks::unhandled_csi, empty by default (src/callbacks.rs:55-63). termless 6ffc0df7 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact 0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3, sourceCommit 6ffc0df79756fcc259d87131681641606540e512."
@@ -11020,14 +11014,8 @@
         "version": "0.16.2",
         "os": "linux"
       },
-      "versions": [
-        "0.16.2",
-        "0.16.2"
-      ],
-      "suites": [
-        "2c23361d2223",
-        "2c23361d2223"
-      ]
+      "versions": ["0.16.2", "0.16.2"],
+      "suites": ["2c23361d2223", "2c23361d2223"]
     },
     "sources": [
       "vte 0.15.0 src/lib.rs:207-209 collects '?'; vt100 0.16.2 src/perform.rs:176-183 '?' default arm -> Callbacks::unhandled_csi, empty by default (src/callbacks.rs:55-63). termless 6ffc0df7 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact 0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3, sourceCommit 6ffc0df79756fcc259d87131681641606540e512."
@@ -11106,14 +11094,8 @@
         "version": "0.16.2",
         "os": "linux"
       },
-      "versions": [
-        "0.16.2",
-        "0.16.2"
-      ],
-      "suites": [
-        "2c23361d2223",
-        "2c23361d2223"
-      ]
+      "versions": ["0.16.2", "0.16.2"],
+      "suites": ["2c23361d2223", "2c23361d2223"]
     },
     "sources": [
       "vte 0.15.0 src/lib.rs:351-354,292 dispatches DCS to Perform::hook/put/unhook, empty by default (src/lib.rs:779-789); vt100 0.16.2 src/perform.rs:33-239 overrides none. termless 6ffc0df7 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact 0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3, sourceCommit 6ffc0df79756fcc259d87131681641606540e512."
@@ -11192,14 +11174,8 @@
         "version": "0.16.2",
         "os": "linux"
       },
-      "versions": [
-        "0.16.2",
-        "0.16.2"
-      ],
-      "suites": [
-        "2c23361d2223",
-        "2c23361d2223"
-      ]
+      "versions": ["0.16.2", "0.16.2"],
+      "suites": ["2c23361d2223", "2c23361d2223"]
     },
     "sources": [
       "vte 0.15.0 src/lib.rs:207-209 collects '?'; vt100 0.16.2 src/perform.rs:176-183 '?' default arm -> Callbacks::unhandled_csi, empty by default (src/callbacks.rs:55-63). termless 6ffc0df7 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact 0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3, sourceCommit 6ffc0df79756fcc259d87131681641606540e512."
@@ -11278,14 +11254,8 @@
         "version": "0.16.2",
         "os": "linux"
       },
-      "versions": [
-        "0.16.2",
-        "0.16.2"
-      ],
-      "suites": [
-        "2c23361d2223",
-        "2c23361d2223"
-      ]
+      "versions": ["0.16.2", "0.16.2"],
+      "suites": ["2c23361d2223", "2c23361d2223"]
     },
     "sources": [
       "vt100 0.16.2 src/perform.rs:157-164 csi_dispatch default arm -> Callbacks::unhandled_csi, empty by default (src/callbacks.rs:55-63). termless 6ffc0df7 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact 0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3, sourceCommit 6ffc0df79756fcc259d87131681641606540e512."
@@ -11364,14 +11334,8 @@
         "version": "0.16.2",
         "os": "linux"
       },
-      "versions": [
-        "0.16.2",
-        "0.16.2"
-      ],
-      "suites": [
-        "2c23361d2223",
-        "2c23361d2223"
-      ]
+      "versions": ["0.16.2", "0.16.2"],
+      "suites": ["2c23361d2223", "2c23361d2223"]
     },
     "sources": [
       "vt100 0.16.2 src/perform.rs:186-194 intermediate arm -> Callbacks::unhandled_csi, empty by default (src/callbacks.rs:55-63). termless 6ffc0df7 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact 0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3, sourceCommit 6ffc0df79756fcc259d87131681641606540e512."
@@ -11450,14 +11414,8 @@
         "version": "0.16.2",
         "os": "linux"
       },
-      "versions": [
-        "0.16.2",
-        "0.16.2"
-      ],
-      "suites": [
-        "2c23361d2223",
-        "2c23361d2223"
-      ]
+      "versions": ["0.16.2", "0.16.2"],
+      "suites": ["2c23361d2223", "2c23361d2223"]
     },
     "sources": [
       "vt100 0.16.2 src/perform.rs:157-164 csi_dispatch default arm -> Callbacks::unhandled_csi, empty by default (src/callbacks.rs:55-63). termless 6ffc0df7 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact 0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3, sourceCommit 6ffc0df79756fcc259d87131681641606540e512."
@@ -11536,14 +11494,8 @@
         "version": "0.16.2",
         "os": "linux"
       },
-      "versions": [
-        "0.16.2",
-        "0.16.2"
-      ],
-      "suites": [
-        "2c23361d2223",
-        "2c23361d2223"
-      ]
+      "versions": ["0.16.2", "0.16.2"],
+      "suites": ["2c23361d2223", "2c23361d2223"]
     },
     "sources": [
       "vt100 0.16.2 src/perform.rs:186-194 intermediate arm -> Callbacks::unhandled_csi, empty by default (src/callbacks.rs:55-63). termless 6ffc0df7 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact 0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3, sourceCommit 6ffc0df79756fcc259d87131681641606540e512."
@@ -11622,14 +11574,8 @@
         "version": "0.16.2",
         "os": "linux"
       },
-      "versions": [
-        "0.16.2",
-        "0.16.2"
-      ],
-      "suites": [
-        "2c23361d2223",
-        "2c23361d2223"
-      ]
+      "versions": ["0.16.2", "0.16.2"],
+      "suites": ["2c23361d2223", "2c23361d2223"]
     },
     "sources": [
       "vte 0.15.0 src/lib.rs:351-354,292 dispatches DCS to Perform::hook/put/unhook, empty by default (src/lib.rs:779-789); vt100 0.16.2 src/perform.rs:33-239 overrides none. termless 6ffc0df7 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact 0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3, sourceCommit 6ffc0df79756fcc259d87131681641606540e512."
@@ -11708,14 +11654,8 @@
         "version": "0.16.2",
         "os": "linux"
       },
-      "versions": [
-        "0.16.2",
-        "0.16.2"
-      ],
-      "suites": [
-        "2c23361d2223",
-        "2c23361d2223"
-      ]
+      "versions": ["0.16.2", "0.16.2"],
+      "suites": ["2c23361d2223", "2c23361d2223"]
     },
     "sources": [
       "vte 0.15.0 src/lib.rs:351-354,292 dispatches DCS to Perform::hook/put/unhook, empty by default (src/lib.rs:779-789); vt100 0.16.2 src/perform.rs:33-239 overrides none. termless 6ffc0df7 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact 0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3, sourceCommit 6ffc0df79756fcc259d87131681641606540e512."
@@ -11794,14 +11734,8 @@
         "version": "0.16.2",
         "os": "linux"
       },
-      "versions": [
-        "0.16.2",
-        "0.16.2"
-      ],
-      "suites": [
-        "2c23361d2223",
-        "2c23361d2223"
-      ]
+      "versions": ["0.16.2", "0.16.2"],
+      "suites": ["2c23361d2223", "2c23361d2223"]
     },
     "sources": [
       "vt100 0.16.2 src/perform.rs:186-194 intermediate arm -> Callbacks::unhandled_csi, empty by default (src/callbacks.rs:55-63). termless 6ffc0df7 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact 0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3, sourceCommit 6ffc0df79756fcc259d87131681641606540e512."
@@ -11880,14 +11814,8 @@
         "version": "0.16.2",
         "os": "linux"
       },
-      "versions": [
-        "0.16.2",
-        "0.16.2"
-      ],
-      "suites": [
-        "2c23361d2223",
-        "2c23361d2223"
-      ]
+      "versions": ["0.16.2", "0.16.2"],
+      "suites": ["2c23361d2223", "2c23361d2223"]
     },
     "sources": [
       "vt100 0.16.2 src/perform.rs:186-194 intermediate arm -> Callbacks::unhandled_csi, empty by default (src/callbacks.rs:55-63). termless 6ffc0df7 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact 0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3, sourceCommit 6ffc0df79756fcc259d87131681641606540e512."
@@ -11966,14 +11894,8 @@
         "version": "0.16.2",
         "os": "linux"
       },
-      "versions": [
-        "0.16.2",
-        "0.16.2"
-      ],
-      "suites": [
-        "2c23361d2223",
-        "2c23361d2223"
-      ]
+      "versions": ["0.16.2", "0.16.2"],
+      "suites": ["2c23361d2223", "2c23361d2223"]
     },
     "sources": [
       "vt100 0.16.2 src/perform.rs:132-136 handles only CSI 8 t; other ops reach :147-155 -> Callbacks::unhandled_csi, empty by default (src/callbacks.rs:55-63). termless 6ffc0df7 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact 0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3, sourceCommit 6ffc0df79756fcc259d87131681641606540e512."
@@ -12052,14 +11974,8 @@
         "version": "0.16.2",
         "os": "linux"
       },
-      "versions": [
-        "0.16.2",
-        "0.16.2"
-      ],
-      "suites": [
-        "2c23361d2223",
-        "2c23361d2223"
-      ]
+      "versions": ["0.16.2", "0.16.2"],
+      "suites": ["2c23361d2223", "2c23361d2223"]
     },
     "sources": [
       "vt100 0.16.2 src/perform.rs:132-136 handles only CSI 8 t; other ops reach :147-155 -> Callbacks::unhandled_csi, empty by default (src/callbacks.rs:55-63). termless 6ffc0df7 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact 0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3, sourceCommit 6ffc0df79756fcc259d87131681641606540e512."
@@ -12138,14 +12054,8 @@
         "version": "0.16.2",
         "os": "linux"
       },
-      "versions": [
-        "0.16.2",
-        "0.16.2"
-      ],
-      "suites": [
-        "2c23361d2223",
-        "2c23361d2223"
-      ]
+      "versions": ["0.16.2", "0.16.2"],
+      "suites": ["2c23361d2223", "2c23361d2223"]
     },
     "sources": [
       "vt100 0.16.2 src/perform.rs:132-136 handles only CSI 8 t; other ops reach :147-155 -> Callbacks::unhandled_csi, empty by default (src/callbacks.rs:55-63). termless 6ffc0df7 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact 0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3, sourceCommit 6ffc0df79756fcc259d87131681641606540e512."
@@ -12224,14 +12134,8 @@
         "version": "0.16.2",
         "os": "linux"
       },
-      "versions": [
-        "0.16.2",
-        "0.16.2"
-      ],
-      "suites": [
-        "2c23361d2223",
-        "2c23361d2223"
-      ]
+      "versions": ["0.16.2", "0.16.2"],
+      "suites": ["2c23361d2223", "2c23361d2223"]
     },
     "sources": [
       "vt100 0.16.2 src/perform.rs:132-136 handles only CSI 8 t; other ops reach :147-155 -> Callbacks::unhandled_csi, empty by default (src/callbacks.rs:55-63). termless 6ffc0df7 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact 0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3, sourceCommit 6ffc0df79756fcc259d87131681641606540e512."
@@ -12310,14 +12214,8 @@
         "version": "0.16.2",
         "os": "linux"
       },
-      "versions": [
-        "0.16.2",
-        "0.16.2"
-      ],
-      "suites": [
-        "2c23361d2223",
-        "2c23361d2223"
-      ]
+      "versions": ["0.16.2", "0.16.2"],
+      "suites": ["2c23361d2223", "2c23361d2223"]
     },
     "sources": [
       "vt100 0.16.2 src/perform.rs:132-136 handles only CSI 8 t; other ops reach :147-155 -> Callbacks::unhandled_csi, empty by default (src/callbacks.rs:55-63). termless 6ffc0df7 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact 0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3, sourceCommit 6ffc0df79756fcc259d87131681641606540e512."
@@ -12396,14 +12294,8 @@
         "version": "0.16.2",
         "os": "linux"
       },
-      "versions": [
-        "0.16.2",
-        "0.16.2"
-      ],
-      "suites": [
-        "2c23361d2223",
-        "2c23361d2223"
-      ]
+      "versions": ["0.16.2", "0.16.2"],
+      "suites": ["2c23361d2223", "2c23361d2223"]
     },
     "sources": [
       "vt100 0.16.2 src/perform.rs:186-194 intermediate arm -> Callbacks::unhandled_csi, empty by default (src/callbacks.rs:55-63). termless 6ffc0df7 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact 0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3, sourceCommit 6ffc0df79756fcc259d87131681641606540e512."
@@ -12482,14 +12374,8 @@
         "version": "0.16.2",
         "os": "linux"
       },
-      "versions": [
-        "0.16.2",
-        "0.16.2"
-      ],
-      "suites": [
-        "2c23361d2223",
-        "2c23361d2223"
-      ]
+      "versions": ["0.16.2", "0.16.2"],
+      "suites": ["2c23361d2223", "2c23361d2223"]
     },
     "sources": [
       "registry/src/index.crates.io-1949cf8c6b5b557f/vt100-0.16.2/src/perform.rs:176-183 private ?u and :157-164 plain c dispatch Callbacks::unhandled_csi, empty at src/callbacks.rs:55-63. Cargo.lock vt100 checksum054ff75fb8fa83e609e685106df4faeffdf3a735d3c74ebce97ec557d5d36fd9; vte0.15.0 checksuma5924018406ce0063cd67f8e008104968b74b563ee1b85dde3ed1f7cb87d3dbd. termless 6ffc0df7 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact 0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3, sourceCommit 6ffc0df79756fcc259d87131681641606540e512."
@@ -12568,14 +12454,8 @@
         "version": "0.16.2",
         "os": "linux"
       },
-      "versions": [
-        "0.16.2",
-        "0.16.2"
-      ],
-      "suites": [
-        "2c23361d2223",
-        "2c23361d2223"
-      ]
+      "versions": ["0.16.2", "0.16.2"],
+      "suites": ["2c23361d2223", "2c23361d2223"]
     },
     "sources": [
       "registry/src/index.crates.io-1949cf8c6b5b557f/vt100-0.16.2/src/perform.rs:176-183 private ?u and :157-164 plain c dispatch Callbacks::unhandled_csi, empty at src/callbacks.rs:55-63. Cargo.lock vt100 checksum054ff75fb8fa83e609e685106df4faeffdf3a735d3c74ebce97ec557d5d36fd9; vte0.15.0 checksuma5924018406ce0063cd67f8e008104968b74b563ee1b85dde3ed1f7cb87d3dbd. termless 6ffc0df7 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact 0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3, sourceCommit 6ffc0df79756fcc259d87131681641606540e512."
@@ -12654,14 +12534,8 @@
         "version": "0.16.2",
         "os": "linux"
       },
-      "versions": [
-        "0.16.2",
-        "0.16.2"
-      ],
-      "suites": [
-        "2c23361d2223",
-        "2c23361d2223"
-      ]
+      "versions": ["0.16.2", "0.16.2"],
+      "suites": ["2c23361d2223", "2c23361d2223"]
     },
     "sources": [
       "registry/src/index.crates.io-1949cf8c6b5b557f/vt100-0.16.2/src/perform.rs:176-183 private ?u and :157-164 plain c dispatch Callbacks::unhandled_csi, empty at src/callbacks.rs:55-63. Cargo.lock vt100 checksum054ff75fb8fa83e609e685106df4faeffdf3a735d3c74ebce97ec557d5d36fd9; vte0.15.0 checksuma5924018406ce0063cd67f8e008104968b74b563ee1b85dde3ed1f7cb87d3dbd. termless 6ffc0df7 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact 0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3, sourceCommit 6ffc0df79756fcc259d87131681641606540e512."
@@ -12740,14 +12614,8 @@
         "version": "0.16.2",
         "os": "linux"
       },
-      "versions": [
-        "0.16.2",
-        "0.16.2"
-      ],
-      "suites": [
-        "2c23361d2223",
-        "2c23361d2223"
-      ]
+      "versions": ["0.16.2", "0.16.2"],
+      "suites": ["2c23361d2223", "2c23361d2223"]
     },
     "sources": [
       "registry/src/index.crates.io-1949cf8c6b5b557f/vt100-0.16.2/src/perform.rs:176-183 private ?u and :157-164 plain c dispatch Callbacks::unhandled_csi, empty at src/callbacks.rs:55-63. Cargo.lock vt100 checksum054ff75fb8fa83e609e685106df4faeffdf3a735d3c74ebce97ec557d5d36fd9; vte0.15.0 checksuma5924018406ce0063cd67f8e008104968b74b563ee1b85dde3ed1f7cb87d3dbd. termless 6ffc0df7 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact 0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3, sourceCommit 6ffc0df79756fcc259d87131681641606540e512."
@@ -12826,14 +12694,8 @@
         "version": "0.16.2",
         "os": "linux"
       },
-      "versions": [
-        "0.16.2",
-        "0.16.2"
-      ],
-      "suites": [
-        "2c23361d2223",
-        "2c23361d2223"
-      ]
+      "versions": ["0.16.2", "0.16.2"],
+      "suites": ["2c23361d2223", "2c23361d2223"]
     },
     "sources": [
       "registry/src/index.crates.io-1949cf8c6b5b557f/vt100-0.16.2/src/perform.rs:176-183 private ?u and :157-164 plain c dispatch Callbacks::unhandled_csi, empty at src/callbacks.rs:55-63. Cargo.lock vt100 checksum054ff75fb8fa83e609e685106df4faeffdf3a735d3c74ebce97ec557d5d36fd9; vte0.15.0 checksuma5924018406ce0063cd67f8e008104968b74b563ee1b85dde3ed1f7cb87d3dbd. termless 6ffc0df7 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact 0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3, sourceCommit 6ffc0df79756fcc259d87131681641606540e512."
@@ -12912,14 +12774,8 @@
         "version": "0.16.2",
         "os": "linux"
       },
-      "versions": [
-        "0.16.2",
-        "0.16.2"
-      ],
-      "suites": [
-        "2c23361d2223",
-        "2c23361d2223"
-      ]
+      "versions": ["0.16.2", "0.16.2"],
+      "suites": ["2c23361d2223", "2c23361d2223"]
     },
     "sources": [
       "registry/src/index.crates.io-1949cf8c6b5b557f/vt100-0.16.2/src/perform.rs:176-183 private ?u and :157-164 plain c dispatch Callbacks::unhandled_csi, empty at src/callbacks.rs:55-63. Cargo.lock vt100 checksum054ff75fb8fa83e609e685106df4faeffdf3a735d3c74ebce97ec557d5d36fd9; vte0.15.0 checksuma5924018406ce0063cd67f8e008104968b74b563ee1b85dde3ed1f7cb87d3dbd. termless 6ffc0df7 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact 0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3, sourceCommit 6ffc0df79756fcc259d87131681641606540e512."
@@ -12998,14 +12854,8 @@
         "version": "0.16.2",
         "os": "linux"
       },
-      "versions": [
-        "0.16.2",
-        "0.16.2"
-      ],
-      "suites": [
-        "2c23361d2223",
-        "2c23361d2223"
-      ]
+      "versions": ["0.16.2", "0.16.2"],
+      "suites": ["2c23361d2223", "2c23361d2223"]
     },
     "sources": [
       "vt100 0.16.2 src/perform.rs:132-136 handles only CSI 8 t; CSI 20 t and 21 t reach :147-155 -> Callbacks::unhandled_csi, empty by default (src/callbacks.rs:55-63); termless 6ffc0df7 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact 0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3, sourceCommit 6ffc0df79756fcc259d87131681641606540e512."
@@ -13084,14 +12934,8 @@
         "version": "0.16.2",
         "os": "linux"
       },
-      "versions": [
-        "0.16.2",
-        "0.16.2"
-      ],
-      "suites": [
-        "2c23361d2223",
-        "2c23361d2223"
-      ]
+      "versions": ["0.16.2", "0.16.2"],
+      "suites": ["2c23361d2223", "2c23361d2223"]
     },
     "sources": [
       "vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66). termless 6ffc0df7 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact 0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3, sourceCommit 6ffc0df79756fcc259d87131681641606540e512."
@@ -13170,14 +13014,8 @@
         "version": "0.16.2",
         "os": "linux"
       },
-      "versions": [
-        "0.16.2",
-        "0.16.2"
-      ],
-      "suites": [
-        "2c23361d2223",
-        "2c23361d2223"
-      ]
+      "versions": ["0.16.2", "0.16.2"],
+      "suites": ["2c23361d2223", "2c23361d2223"]
     },
     "sources": [
       "vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66). termless 6ffc0df7 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact 0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3, sourceCommit 6ffc0df79756fcc259d87131681641606540e512."
@@ -13256,14 +13094,8 @@
         "version": "0.16.2",
         "os": "linux"
       },
-      "versions": [
-        "0.16.2",
-        "0.16.2"
-      ],
-      "suites": [
-        "2c23361d2223",
-        "2c23361d2223"
-      ]
+      "versions": ["0.16.2", "0.16.2"],
+      "suites": ["2c23361d2223", "2c23361d2223"]
     },
     "sources": [
       "vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66). termless 6ffc0df7 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact 0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3, sourceCommit 6ffc0df79756fcc259d87131681641606540e512."
@@ -13342,14 +13174,8 @@
         "version": "0.16.2",
         "os": "linux"
       },
-      "versions": [
-        "0.16.2",
-        "0.16.2"
-      ],
-      "suites": [
-        "2c23361d2223",
-        "2c23361d2223"
-      ]
+      "versions": ["0.16.2", "0.16.2"],
+      "suites": ["2c23361d2223", "2c23361d2223"]
     },
     "sources": [
       "vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66). termless 6ffc0df7 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact 0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3, sourceCommit 6ffc0df79756fcc259d87131681641606540e512."
@@ -13428,14 +13254,8 @@
         "version": "0.16.2",
         "os": "linux"
       },
-      "versions": [
-        "0.16.2",
-        "0.16.2"
-      ],
-      "suites": [
-        "2c23361d2223",
-        "2c23361d2223"
-      ]
+      "versions": ["0.16.2", "0.16.2"],
+      "suites": ["2c23361d2223", "2c23361d2223"]
     },
     "sources": [
       "vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66). termless 6ffc0df7 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact 0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3, sourceCommit 6ffc0df79756fcc259d87131681641606540e512."
@@ -13514,14 +13334,8 @@
         "version": "0.16.2",
         "os": "linux"
       },
-      "versions": [
-        "0.16.2",
-        "0.16.2"
-      ],
-      "suites": [
-        "2c23361d2223",
-        "2c23361d2223"
-      ]
+      "versions": ["0.16.2", "0.16.2"],
+      "suites": ["2c23361d2223", "2c23361d2223"]
     },
     "sources": [
       "vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66). termless 6ffc0df7 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact 0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3, sourceCommit 6ffc0df79756fcc259d87131681641606540e512."
@@ -13600,14 +13414,8 @@
         "version": "0.16.2",
         "os": "linux"
       },
-      "versions": [
-        "0.16.2",
-        "0.16.2"
-      ],
-      "suites": [
-        "2c23361d2223",
-        "2c23361d2223"
-      ]
+      "versions": ["0.16.2", "0.16.2"],
+      "suites": ["2c23361d2223", "2c23361d2223"]
     },
     "sources": [
       "vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66). termless 6ffc0df7 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact 0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3, sourceCommit 6ffc0df79756fcc259d87131681641606540e512."
@@ -13686,14 +13494,8 @@
         "version": "0.16.2",
         "os": "linux"
       },
-      "versions": [
-        "0.16.2",
-        "0.16.2"
-      ],
-      "suites": [
-        "2c23361d2223",
-        "2c23361d2223"
-      ]
+      "versions": ["0.16.2", "0.16.2"],
+      "suites": ["2c23361d2223", "2c23361d2223"]
     },
     "sources": [
       "vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66). termless 6ffc0df7 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact 0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3, sourceCommit 6ffc0df79756fcc259d87131681641606540e512."
@@ -13772,14 +13574,8 @@
         "version": "0.16.2",
         "os": "linux"
       },
-      "versions": [
-        "0.16.2",
-        "0.16.2"
-      ],
-      "suites": [
-        "2c23361d2223",
-        "2c23361d2223"
-      ]
+      "versions": ["0.16.2", "0.16.2"],
+      "suites": ["2c23361d2223", "2c23361d2223"]
     },
     "sources": [
       "vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66). termless 6ffc0df7 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact 0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3, sourceCommit 6ffc0df79756fcc259d87131681641606540e512."
@@ -13858,14 +13654,8 @@
         "version": "0.16.2",
         "os": "linux"
       },
-      "versions": [
-        "0.16.2",
-        "0.16.2"
-      ],
-      "suites": [
-        "2c23361d2223",
-        "2c23361d2223"
-      ]
+      "versions": ["0.16.2", "0.16.2"],
+      "suites": ["2c23361d2223", "2c23361d2223"]
     },
     "sources": [
       "vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66). termless 6ffc0df7 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact 0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3, sourceCommit 6ffc0df79756fcc259d87131681641606540e512."
@@ -13944,14 +13734,8 @@
         "version": "0.16.2",
         "os": "linux"
       },
-      "versions": [
-        "0.16.2",
-        "0.16.2"
-      ],
-      "suites": [
-        "2c23361d2223",
-        "2c23361d2223"
-      ]
+      "versions": ["0.16.2", "0.16.2"],
+      "suites": ["2c23361d2223", "2c23361d2223"]
     },
     "sources": [
       "vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66). termless 6ffc0df7 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact 0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3, sourceCommit 6ffc0df79756fcc259d87131681641606540e512."
@@ -14030,14 +13814,8 @@
         "version": "0.16.2",
         "os": "linux"
       },
-      "versions": [
-        "0.16.2",
-        "0.16.2"
-      ],
-      "suites": [
-        "2c23361d2223",
-        "2c23361d2223"
-      ]
+      "versions": ["0.16.2", "0.16.2"],
+      "suites": ["2c23361d2223", "2c23361d2223"]
     },
     "sources": [
       "vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66). termless 6ffc0df7 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact 0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3, sourceCommit 6ffc0df79756fcc259d87131681641606540e512."
@@ -14116,14 +13894,8 @@
         "version": "0.16.2",
         "os": "linux"
       },
-      "versions": [
-        "0.16.2",
-        "0.16.2"
-      ],
-      "suites": [
-        "2c23361d2223",
-        "2c23361d2223"
-      ]
+      "versions": ["0.16.2", "0.16.2"],
+      "suites": ["2c23361d2223", "2c23361d2223"]
     },
     "sources": [
       "vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66). termless 6ffc0df7 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact 0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3, sourceCommit 6ffc0df79756fcc259d87131681641606540e512."
@@ -14202,14 +13974,8 @@
         "version": "0.16.2",
         "os": "linux"
       },
-      "versions": [
-        "0.16.2",
-        "0.16.2"
-      ],
-      "suites": [
-        "2c23361d2223",
-        "2c23361d2223"
-      ]
+      "versions": ["0.16.2", "0.16.2"],
+      "suites": ["2c23361d2223", "2c23361d2223"]
     },
     "sources": [
       "registry/src/index.crates.io-1949cf8c6b5b557f/vt100-0.16.2/src/perform.rs:234-236 dispatches unknown OSC21 to unhandled_osc, empty at src/callbacks.rs:66. Cargo.lock vt100 checksum054ff75fb8fa83e609e685106df4faeffdf3a735d3c74ebce97ec557d5d36fd9; vte0.15.0 checksuma5924018406ce0063cd67f8e008104968b74b563ee1b85dde3ed1f7cb87d3dbd. termless 6ffc0df7 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact 0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3, sourceCommit 6ffc0df79756fcc259d87131681641606540e512."
@@ -14288,14 +14054,8 @@
         "version": "0.16.2",
         "os": "linux"
       },
-      "versions": [
-        "0.16.2",
-        "0.16.2"
-      ],
-      "suites": [
-        "2c23361d2223",
-        "2c23361d2223"
-      ]
+      "versions": ["0.16.2", "0.16.2"],
+      "suites": ["2c23361d2223", "2c23361d2223"]
     },
     "sources": [
       "vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66). termless 6ffc0df7 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact 0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3, sourceCommit 6ffc0df79756fcc259d87131681641606540e512."
@@ -14374,14 +14134,8 @@
         "version": "0.16.2",
         "os": "linux"
       },
-      "versions": [
-        "0.16.2",
-        "0.16.2"
-      ],
-      "suites": [
-        "2c23361d2223",
-        "2c23361d2223"
-      ]
+      "versions": ["0.16.2", "0.16.2"],
+      "suites": ["2c23361d2223", "2c23361d2223"]
     },
     "sources": [
       "vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66). termless 6ffc0df7 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact 0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3, sourceCommit 6ffc0df79756fcc259d87131681641606540e512."
@@ -14460,14 +14214,8 @@
         "version": "0.16.2",
         "os": "linux"
       },
-      "versions": [
-        "0.16.2",
-        "0.16.2"
-      ],
-      "suites": [
-        "2c23361d2223",
-        "2c23361d2223"
-      ]
+      "versions": ["0.16.2", "0.16.2"],
+      "suites": ["2c23361d2223", "2c23361d2223"]
     },
     "sources": [
       "vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66). termless 6ffc0df7 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact 0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3, sourceCommit 6ffc0df79756fcc259d87131681641606540e512."
@@ -14546,14 +14294,8 @@
         "version": "0.16.2",
         "os": "linux"
       },
-      "versions": [
-        "0.16.2",
-        "0.16.2"
-      ],
-      "suites": [
-        "2c23361d2223",
-        "2c23361d2223"
-      ]
+      "versions": ["0.16.2", "0.16.2"],
+      "suites": ["2c23361d2223", "2c23361d2223"]
     },
     "sources": [
       "vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66). termless 6ffc0df7 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact 0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3, sourceCommit 6ffc0df79756fcc259d87131681641606540e512."
@@ -14632,14 +14374,8 @@
         "version": "0.16.2",
         "os": "linux"
       },
-      "versions": [
-        "0.16.2",
-        "0.16.2"
-      ],
-      "suites": [
-        "2c23361d2223",
-        "2c23361d2223"
-      ]
+      "versions": ["0.16.2", "0.16.2"],
+      "suites": ["2c23361d2223", "2c23361d2223"]
     },
     "sources": [
       "termless 6ffc0df7 packages/vt100-rust/native/src/lib.rs:50-52 paste_from_clipboard records the selector and writes no reply bytes. vt100 0.16.2 OSC 52 '?' calls paste_from_clipboard. Artifact 0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3, sourceCommit 6ffc0df79756fcc259d87131681641606540e512. Historical artifacts retain their own rows."
@@ -14718,14 +14454,8 @@
         "version": "0.16.2",
         "os": "linux"
       },
-      "versions": [
-        "0.16.2",
-        "0.16.2"
-      ],
-      "suites": [
-        "2c23361d2223",
-        "2c23361d2223"
-      ]
+      "versions": ["0.16.2", "0.16.2"],
+      "suites": ["2c23361d2223", "2c23361d2223"]
     },
     "sources": [
       "termless 6ffc0df7 packages/vt100-rust/native/src/lib.rs:50-52 paste_from_clipboard records the selector and writes no reply bytes. vt100 0.16.2 OSC 52 '?' calls paste_from_clipboard. Artifact 0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3, sourceCommit 6ffc0df79756fcc259d87131681641606540e512. Historical artifacts retain their own rows."
@@ -14804,14 +14534,8 @@
         "version": "0.16.2",
         "os": "linux"
       },
-      "versions": [
-        "0.16.2",
-        "0.16.2"
-      ],
-      "suites": [
-        "2c23361d2223",
-        "2c23361d2223"
-      ]
+      "versions": ["0.16.2", "0.16.2"],
+      "suites": ["2c23361d2223", "2c23361d2223"]
     },
     "sources": [
       "vte 0.15.0 src/lib.rs:207-209 collects '?'; vt100 0.16.2 src/perform.rs:176-183 '?' default arm -> Callbacks::unhandled_csi, empty by default (src/callbacks.rs:55-63). termless 6ffc0df7 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact 0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3, sourceCommit 6ffc0df79756fcc259d87131681641606540e512."
@@ -14890,14 +14614,8 @@
         "version": "0.16.2",
         "os": "linux"
       },
-      "versions": [
-        "0.16.2",
-        "0.16.2"
-      ],
-      "suites": [
-        "2c23361d2223",
-        "2c23361d2223"
-      ]
+      "versions": ["0.16.2", "0.16.2"],
+      "suites": ["2c23361d2223", "2c23361d2223"]
     },
     "sources": [
       "vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66). termless 6ffc0df7 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact 0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3, sourceCommit 6ffc0df79756fcc259d87131681641606540e512."
@@ -14976,14 +14694,8 @@
         "version": "0.16.2",
         "os": "linux"
       },
-      "versions": [
-        "0.16.2",
-        "0.16.2"
-      ],
-      "suites": [
-        "2c23361d2223",
-        "2c23361d2223"
-      ]
+      "versions": ["0.16.2", "0.16.2"],
+      "suites": ["2c23361d2223", "2c23361d2223"]
     },
     "sources": [
       "vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66). termless 6ffc0df7 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact 0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3, sourceCommit 6ffc0df79756fcc259d87131681641606540e512."
@@ -15062,14 +14774,8 @@
         "version": "0.16.2",
         "os": "linux"
       },
-      "versions": [
-        "0.16.2",
-        "0.16.2"
-      ],
-      "suites": [
-        "2c23361d2223",
-        "2c23361d2223"
-      ]
+      "versions": ["0.16.2", "0.16.2"],
+      "suites": ["2c23361d2223", "2c23361d2223"]
     },
     "sources": [
       "vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66). termless 6ffc0df7 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact 0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3, sourceCommit 6ffc0df79756fcc259d87131681641606540e512."
@@ -15148,14 +14854,8 @@
         "version": "0.16.2",
         "os": "linux"
       },
-      "versions": [
-        "0.16.2",
-        "0.16.2"
-      ],
-      "suites": [
-        "2c23361d2223",
-        "2c23361d2223"
-      ]
+      "versions": ["0.16.2", "0.16.2"],
+      "suites": ["2c23361d2223", "2c23361d2223"]
     },
     "sources": [
       "vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66). termless 6ffc0df7 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact 0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3, sourceCommit 6ffc0df79756fcc259d87131681641606540e512."
@@ -15234,14 +14934,8 @@
         "version": "0.16.2",
         "os": "linux"
       },
-      "versions": [
-        "0.16.2",
-        "0.16.2"
-      ],
-      "suites": [
-        "2c23361d2223",
-        "2c23361d2223"
-      ]
+      "versions": ["0.16.2", "0.16.2"],
+      "suites": ["2c23361d2223", "2c23361d2223"]
     },
     "sources": [
       "vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66). termless 6ffc0df7 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact 0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3, sourceCommit 6ffc0df79756fcc259d87131681641606540e512."
@@ -15320,14 +15014,8 @@
         "version": "0.16.2",
         "os": "linux"
       },
-      "versions": [
-        "0.16.2",
-        "0.16.2"
-      ],
-      "suites": [
-        "2c23361d2223",
-        "2c23361d2223"
-      ]
+      "versions": ["0.16.2", "0.16.2"],
+      "suites": ["2c23361d2223", "2c23361d2223"]
     },
     "sources": [
       "vte0.15.0 src/lib.rs:419-422 ends OSC on ESC and :554-587 forwards its semicolon-separated params to performer.osc_dispatch. vt1000.16.2 src/perform.rs:198-236 handles OSC0/1/2/52 only; OSC99 reaches callbacks.unhandled_osc at :234-236, whose default src/callbacks.rs:64-66 is empty. Exact cached crate SHA256 vt100054ff75fb8fa83e609e685106df4faeffdf3a735d3c74ebce97ec557d5d36fd9 and vtea5924018406ce0063cd67f8e008104968b74b563ee1b85dde3ed1f7cb87d3dbd. Audited family is Terminfo27541ce4 extensions.ts:3267-3312 capability query ESC]99;i=<nonce>:p=?;ST. termless 6ffc0df7 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact 0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3, sourceCommit 6ffc0df79756fcc259d87131681641606540e512."
@@ -15406,14 +15094,8 @@
         "version": "0.16.2",
         "os": "linux"
       },
-      "versions": [
-        "0.16.2",
-        "0.16.2"
-      ],
-      "suites": [
-        "2c23361d2223",
-        "2c23361d2223"
-      ]
+      "versions": ["0.16.2", "0.16.2"],
+      "suites": ["2c23361d2223", "2c23361d2223"]
     },
     "sources": [
       "vt100 0.16.2 src/perform.rs:157-164 csi_dispatch default arm -> Callbacks::unhandled_csi, empty by default (src/callbacks.rs:55-63). termless 6ffc0df7 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact 0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3, sourceCommit 6ffc0df79756fcc259d87131681641606540e512."
@@ -15492,14 +15174,8 @@
         "version": "0.16.2",
         "os": "linux"
       },
-      "versions": [
-        "0.16.2",
-        "0.16.2"
-      ],
-      "suites": [
-        "2c23361d2223",
-        "2c23361d2223"
-      ]
+      "versions": ["0.16.2", "0.16.2"],
+      "suites": ["2c23361d2223", "2c23361d2223"]
     },
     "sources": [
       "registry/src/index.crates.io-1949cf8c6b5b557f/vt100-0.16.2/src/perform.rs:176-183 dispatches private ?S to unhandled_csi, empty at src/callbacks.rs:55-63. Cargo.lock vt100 checksum054ff75fb8fa83e609e685106df4faeffdf3a735d3c74ebce97ec557d5d36fd9; vte0.15.0 checksuma5924018406ce0063cd67f8e008104968b74b563ee1b85dde3ed1f7cb87d3dbd. termless 6ffc0df7 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact 0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3, sourceCommit 6ffc0df79756fcc259d87131681641606540e512."
@@ -15578,14 +15254,8 @@
         "version": "0.16.2",
         "os": "linux"
       },
-      "versions": [
-        "0.16.2",
-        "0.16.2"
-      ],
-      "suites": [
-        "2c23361d2223",
-        "2c23361d2223"
-      ]
+      "versions": ["0.16.2", "0.16.2"],
+      "suites": ["2c23361d2223", "2c23361d2223"]
     },
     "sources": [
       "registry/src/index.crates.io-1949cf8c6b5b557f/vt100-0.16.2/src/perform.rs:176-183 private ?u and :157-164 plain c dispatch Callbacks::unhandled_csi, empty at src/callbacks.rs:55-63. Cargo.lock vt100 checksum054ff75fb8fa83e609e685106df4faeffdf3a735d3c74ebce97ec557d5d36fd9; vte0.15.0 checksuma5924018406ce0063cd67f8e008104968b74b563ee1b85dde3ed1f7cb87d3dbd. termless 6ffc0df7 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact 0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3, sourceCommit 6ffc0df79756fcc259d87131681641606540e512."
@@ -15664,14 +15334,8 @@
         "version": "0.16.2",
         "os": "linux"
       },
-      "versions": [
-        "0.16.2",
-        "0.16.2"
-      ],
-      "suites": [
-        "2c23361d2223",
-        "2c23361d2223"
-      ]
+      "versions": ["0.16.2", "0.16.2"],
+      "suites": ["2c23361d2223", "2c23361d2223"]
     },
     "sources": [
       "@cto 0f38a112, same ruling as da27bfb1 for vt100-rust: the crate hands CSI ? Ps $ p to an unhandled_csi hook for the embedder, and a hook that exists and is unimplemented is a no-op handler rather than a parser rejection; a reply written in the binding would be ours, not the engine response. @cto 27f3120a, confirmed in 73ff6373, names the discriminator this row turns on: a dispatcher with a complete case list and no embedder hook is parser-level absence (Unsupported); an unimplemented embedder hook is Untestable. This row is the second case - the hook exists (vt100 0.16.2 src/callbacks.rs:54-63, empty default body) and the termless binding never implements it (packages/vt100-rust/native/src/lib.rs:21-53) - so Unsupported would be wrong on this row. Probe reason: The adapter delivered no DECRPM reply from the engine; required independent review of the retained raw state pending"
@@ -15750,14 +15414,8 @@
         "version": "0.16.2",
         "os": "linux"
       },
-      "versions": [
-        "0.16.2",
-        "0.16.2"
-      ],
-      "suites": [
-        "2c23361d2223",
-        "2c23361d2223"
-      ]
+      "versions": ["0.16.2", "0.16.2"],
+      "suites": ["2c23361d2223", "2c23361d2223"]
     },
     "sources": [
       "@cto 0f38a112, same ruling as da27bfb1 for vt100-rust: the crate hands CSI ? Ps $ p to an unhandled_csi hook for the embedder, and a hook that exists and is unimplemented is a no-op handler rather than a parser rejection; a reply written in the binding would be ours, not the engine response. @cto 27f3120a, confirmed in 73ff6373, names the discriminator this row turns on: a dispatcher with a complete case list and no embedder hook is parser-level absence (Unsupported); an unimplemented embedder hook is Untestable. This row is the second case - the hook exists (vt100 0.16.2 src/callbacks.rs:54-63, empty default body) and the termless binding never implements it (packages/vt100-rust/native/src/lib.rs:21-53) - so Unsupported would be wrong on this row. Probe reason: The adapter delivered no DECRPM reply from the engine; required independent review of the retained raw state pending"
@@ -15836,14 +15494,8 @@
         "version": "0.16.2",
         "os": "linux"
       },
-      "versions": [
-        "0.16.2",
-        "0.16.2"
-      ],
-      "suites": [
-        "2c23361d2223",
-        "2c23361d2223"
-      ]
+      "versions": ["0.16.2", "0.16.2"],
+      "suites": ["2c23361d2223", "2c23361d2223"]
     },
     "sources": [
       "@cto 0f38a112, same ruling as da27bfb1 for vt100-rust: the crate hands CSI ? Ps $ p to an unhandled_csi hook for the embedder, and a hook that exists and is unimplemented is a no-op handler rather than a parser rejection; a reply written in the binding would be ours, not the engine response. @cto 27f3120a, confirmed in 73ff6373, names the discriminator this row turns on: a dispatcher with a complete case list and no embedder hook is parser-level absence (Unsupported); an unimplemented embedder hook is Untestable. This row is the second case - the hook exists (vt100 0.16.2 src/callbacks.rs:54-63, empty default body) and the termless binding never implements it (packages/vt100-rust/native/src/lib.rs:21-53) - so Unsupported would be wrong on this row. Probe reason: The adapter delivered no DECRPM reply from the engine; required independent review of the retained raw state pending"
@@ -15922,14 +15574,8 @@
         "version": "0.16.2",
         "os": "linux"
       },
-      "versions": [
-        "0.16.2",
-        "0.16.2"
-      ],
-      "suites": [
-        "2c23361d2223",
-        "2c23361d2223"
-      ]
+      "versions": ["0.16.2", "0.16.2"],
+      "suites": ["2c23361d2223", "2c23361d2223"]
     },
     "sources": [
       "@cto 0f38a112, same ruling as da27bfb1 for vt100-rust: the crate hands CSI ? Ps $ p to an unhandled_csi hook for the embedder, and a hook that exists and is unimplemented is a no-op handler rather than a parser rejection; a reply written in the binding would be ours, not the engine response. @cto 27f3120a, confirmed in 73ff6373, names the discriminator this row turns on: a dispatcher with a complete case list and no embedder hook is parser-level absence (Unsupported); an unimplemented embedder hook is Untestable. This row is the second case - the hook exists (vt100 0.16.2 src/callbacks.rs:54-63, empty default body) and the termless binding never implements it (packages/vt100-rust/native/src/lib.rs:21-53) - so Unsupported would be wrong on this row. Probe reason: The adapter delivered no DECRPM reply from the engine; required independent review of the retained raw state pending"
@@ -16008,14 +15654,8 @@
         "version": "0.16.2",
         "os": "linux"
       },
-      "versions": [
-        "0.16.2",
-        "0.16.2"
-      ],
-      "suites": [
-        "2c23361d2223",
-        "2c23361d2223"
-      ]
+      "versions": ["0.16.2", "0.16.2"],
+      "suites": ["2c23361d2223", "2c23361d2223"]
     },
     "sources": [
       "@cto 0f38a112, same ruling as da27bfb1 for vt100-rust: the crate hands CSI ? Ps $ p to an unhandled_csi hook for the embedder, and a hook that exists and is unimplemented is a no-op handler rather than a parser rejection; a reply written in the binding would be ours, not the engine response. @cto 27f3120a, confirmed in 73ff6373, names the discriminator this row turns on: a dispatcher with a complete case list and no embedder hook is parser-level absence (Unsupported); an unimplemented embedder hook is Untestable. This row is the second case - the hook exists (vt100 0.16.2 src/callbacks.rs:54-63, empty default body) and the termless binding never implements it (packages/vt100-rust/native/src/lib.rs:21-53) - so Unsupported would be wrong on this row. Probe reason: The adapter delivered no DECRPM reply from the engine; required independent review of the retained raw state pending"
@@ -16094,14 +15734,8 @@
         "version": "0.16.2",
         "os": "linux"
       },
-      "versions": [
-        "0.16.2",
-        "0.16.2"
-      ],
-      "suites": [
-        "2c23361d2223",
-        "2c23361d2223"
-      ]
+      "versions": ["0.16.2", "0.16.2"],
+      "suites": ["2c23361d2223", "2c23361d2223"]
     },
     "sources": [
       "@cto 0f38a112, same ruling as da27bfb1 for vt100-rust: the crate hands CSI ? Ps $ p to an unhandled_csi hook for the embedder, and a hook that exists and is unimplemented is a no-op handler rather than a parser rejection; a reply written in the binding would be ours, not the engine response. @cto 27f3120a, confirmed in 73ff6373, names the discriminator this row turns on: a dispatcher with a complete case list and no embedder hook is parser-level absence (Unsupported); an unimplemented embedder hook is Untestable. This row is the second case - the hook exists (vt100 0.16.2 src/callbacks.rs:54-63, empty default body) and the termless binding never implements it (packages/vt100-rust/native/src/lib.rs:21-53) - so Unsupported would be wrong on this row. Probe reason: The adapter delivered no DECRPM reply from the engine; required independent review of the retained raw state pending"
@@ -16180,14 +15814,8 @@
         "version": "0.16.2",
         "os": "linux"
       },
-      "versions": [
-        "0.16.2",
-        "0.16.2"
-      ],
-      "suites": [
-        "2c23361d2223",
-        "2c23361d2223"
-      ]
+      "versions": ["0.16.2", "0.16.2"],
+      "suites": ["2c23361d2223", "2c23361d2223"]
     },
     "sources": [
       "@cto 0f38a112, same ruling as da27bfb1 for vt100-rust: the crate hands CSI ? Ps $ p to an unhandled_csi hook for the embedder, and a hook that exists and is unimplemented is a no-op handler rather than a parser rejection; a reply written in the binding would be ours, not the engine response. @cto 27f3120a, confirmed in 73ff6373, names the discriminator this row turns on: a dispatcher with a complete case list and no embedder hook is parser-level absence (Unsupported); an unimplemented embedder hook is Untestable. This row is the second case - the hook exists (vt100 0.16.2 src/callbacks.rs:54-63, empty default body) and the termless binding never implements it (packages/vt100-rust/native/src/lib.rs:21-53) - so Unsupported would be wrong on this row. Probe reason: The adapter delivered no DECRPM reply from the engine; required independent review of the retained raw state pending"
