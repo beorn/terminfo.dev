@@ -102,6 +102,8 @@ test("each image target writes its own payload rather than a generic consumption
   const iterm = captureApp(24, 80)
   await find("extensions.iterm2-images").term!(iterm.context)
   expect(iterm.writes.some((write) => write.includes("\x1b]1337;File=inline=1"))).toBe(true)
+  // Parking must be inside the target write: the helper captures immediately after it.
+  expect(iterm.writes.find((write) => write.includes("\x1b]1337;File=inline=1"))).toMatch(/\x07\x1b\[1;1H$/)
   // Truecolor asks the terminal for its own SGR state instead of painting two RGB runs.
   const truecolor = captureApp(24, 80)
   await find("extensions.truecolor").term!(truecolor.context)
