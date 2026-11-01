@@ -23,6 +23,7 @@ import {
   readCollectorAttempt,
   recordCollectorSelection,
   recordCollectorAttempt,
+  parserStateResult,
 } from "./helpers.ts"
 import { extensionsProbes } from "./extensions.ts"
 import { deviceProbes } from "./device.ts"
@@ -969,7 +970,8 @@ it("keeps an explicit unattempted visual review TODO and the capture unsealed", 
 })
 
 // #31740: row-emission tests cannot pin whose reason the writer synthesizes when a callback forgets its rows.
-it("names the writer default when an inconclusive capture callback omits its test rows", async () => {
+// #32060 (@cto 32ad122f rule 1): a note the writer supplied outranks that default; only a noteless row takes it.
+it("keeps the writer's note, and names the writer default only without one, when a callback omits its test rows", async () => {
   let next = 0
   const aligned = frames.map((frame) => ({ ...frame, regionRectangle: frames[0]!.regionRectangle }))
   const callback = await sgrCaptureFrames(
@@ -984,8 +986,17 @@ it("names the writer default when an inconclusive capture callback omits its tes
   if (!callback.observation) throw new Error("Expected the existing captured visual-review observation")
   expect(callback.observation?.outcome).toBe("inconclusive")
   const { tests: _omitted, ...rowless } = callback
+  const note = callback.observation.note
+  if (!note) throw new Error("Expected the captured visual-review observation to carry its writer note")
   const result = record(rowless)
   expect(result).toMatchObject({
+    status: "test-failure",
+    reason: note,
+    tests: [{ id: "criterion", status: "test-failure", reason: note }],
+  })
+  expect(result.frames).toEqual(aligned)
+  const { note: _dropped, ...noteless } = callback.observation
+  expect(record({ ...rowless, observation: noteless })).toMatchObject({
     status: "test-failure",
     reason: "writer default: inconclusive observation without test rows; callback defect",
     tests: [
@@ -996,7 +1007,24 @@ it("names the writer default when an inconclusive capture callback omits its tes
       },
     ],
   })
-  expect(result.frames).toEqual(aligned)
+})
+
+// #32058: 200 source-negative review rows read the generic observation word while their one review test named the
+// cause; no existing test pins the row reason of a source-review result (every assertion of the word is on the
+// observation, which keeps it).
+it("takes a source-negative review row's reason from its review sentence, not the generic observation word", () => {
+  const sentence = "DECCARA not honoured, extent unobservable"
+  const callback = parserStateResult(false, "DECCARA applies bold", { cells: [] }, undefined, sentence)
+  expect(callback.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+  expect(callback.observation).not.toHaveProperty("note")
+  expect(record(callback)).toMatchObject({
+    status: "test-failure",
+    reason: sentence,
+    criterionBranch: "source-negative-review",
+    tests: [{ id: "review", status: "test-failure", reason: sentence }],
+  })
+  const noted = parserStateResult(false, "DECCARA applies bold", { cells: [] }, "Extent outside the grid", sentence)
+  expect(record(noted).reason).toBe("Extent outside the grid")
 })
 
 // The existing visual-review fixture does not exercise the measured, repairable locale prerequisite.

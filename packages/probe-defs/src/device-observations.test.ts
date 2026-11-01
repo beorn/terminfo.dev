@@ -1198,3 +1198,42 @@ test.each(geometryReplies)("$id distinguishes sibling source entries", ({ id, ra
     ])
   }
 })
+
+// #32060: the 17:34 PDT run measured vterm 0.10.0 against a gate pinned to 0.9.0, and the row read
+// "writer default: ... callback defect". No test drove the gate with the audited subject at another identity.
+test.each(geometryReplies)(
+  "$id names both identities when the audited subject misses the review pin",
+  ({ id, raw }) => {
+    const loaded = {
+      ...geometryRuntime,
+      engineVersion: "0.9.0",
+      integrity: {
+        ...geometryRuntime.integrity,
+        revision: "53a9eb92aa11bb22cc33dd44ee55ff6677889900",
+        treeOid: "617ae6002c7befea7b3e43d11bf23e6b433e3d65",
+      },
+    }
+    const pinned = "review pinned to vterm 0.10.0 6cc7eef05cde tree d7bc627e0390"
+    for (const [runtimeIdentity, side] of [
+      [loaded, "loaded vterm 0.9.0 53a9eb92aa11 tree 617ae6002c7b"],
+      [
+        { ...geometryRuntime, integrity: { ...geometryRuntime.integrity, cleanTree: false } },
+        "loaded vterm 0.10.0 6cc7eef05cde tree d7bc627e0390 dirty",
+      ],
+    ] as const) {
+      const result = callback(id).headless({ feedCapture: () => raw, runtimeIdentity } as unknown as LibProbeSource)
+      const note = `${pinned}; ${side}; no review applies at this identity`
+      expect(result.tests).toBeUndefined()
+      expect(result.notTested).toBeUndefined()
+      expect(result.observation).toMatchObject({ outcome: "inconclusive", note })
+      const row = recordExecutedProbe({
+        featureId: id,
+        attempt: { scope: "probe", startedAt: "2026-10-31T23:34:04.000Z" },
+        assertions: [],
+        ...(result.observation && { observation: { ...result.observation, featureId: id, rawReplyRef: id } }),
+      })
+      expect(row).toMatchObject({ status: "test-failure", reason: note })
+      expect(row.reason).not.toMatch(/writer default/)
+    }
+  },
+)

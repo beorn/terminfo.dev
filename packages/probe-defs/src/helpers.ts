@@ -1597,11 +1597,36 @@ function sourceTreeDrift(
   }
 }
 
+const VTERM_GEOMETRY_REVISION = "6cc7eef05cde6a8578479c6cdb480f606758eb2c"
+
+/**
+ * The geometry gate's identity miss: the audited subject loaded at another source identity. The disposition stays
+ * the measured result; only its sentence names both identities, never the writer default (#32060, @cto 32ad122f).
+ */
+function vtermGeometryIdentityMiss(
+  measured: ProbeCallbackResult,
+  loaded: { engineVersion: string; revision: string; treeOid: string; cleanTree: boolean },
+): ProbeCallbackResult {
+  const side = (identity: { engineVersion: string; revision: string; treeOid: string }) =>
+    `vterm ${identity.engineVersion} ${identity.revision.slice(0, 12)} tree ${identity.treeOid.slice(0, 12)}`
+  const pinned = {
+    engineVersion: SOURCE_TREE_AUDITS.vterm.engineVersion,
+    revision: VTERM_GEOMETRY_REVISION,
+    treeOid: SOURCE_TREE_AUDITS.vterm.treeOid,
+  }
+  const note = `review pinned to ${side(pinned)}; loaded ${side(loaded)}${loaded.cleanTree ? "" : " dirty"}; no review applies at this identity`
+  if (!("observation" in measured) || measured.observation === undefined) {
+    throw new Error("vterm geometry identity miss requires the measured inconclusive observation")
+  }
+  return { ...measured, observation: { ...measured.observation, note } }
+}
+
 /** The two geometry surfaces share their identity qualifier, retaining their own query and zero-reply checks. */
 export function vtermGeometryReview(
   ctx: LibProbeSource,
   zeroGeometry: boolean,
   evidence: { query: string; raw: string; noObservable: string; sourceCitation: string },
+  measured: ProbeCallbackResult,
 ): ProbeCallbackResult | undefined {
   const identity = ctx.runtimeIdentity
   const drift = sourceTreeDrift(identity, SOURCE_TREE_AUDITS.vterm, { query: evidence.query, raw: evidence.raw })
@@ -1610,14 +1635,18 @@ export function vtermGeometryReview(
     !zeroGeometry ||
     identity?.kind !== "js" ||
     identity.runtimeFormat !== "js" ||
-    identity.resolvedPath !== "vendor/vterm/packages/vterm/src/index.ts" ||
+    identity.resolvedPath !== SOURCE_TREE_AUDITS.vterm.resolvedPath ||
     identity.integrity.kind !== "source" ||
-    !identity.integrity.cleanTree ||
-    identity.integrity.repository !== SOURCE_TREE_AUDITS.vterm.repository ||
-    identity.integrity.revision !== "6cc7eef05cde6a8578479c6cdb480f606758eb2c" ||
-    identity.integrity.treeOid !== SOURCE_TREE_AUDITS.vterm.treeOid
+    identity.integrity.repository !== SOURCE_TREE_AUDITS.vterm.repository
   ) {
     return undefined
+  }
+  if (
+    !identity.integrity.cleanTree ||
+    identity.integrity.revision !== VTERM_GEOMETRY_REVISION ||
+    identity.integrity.treeOid !== SOURCE_TREE_AUDITS.vterm.treeOid
+  ) {
+    return vtermGeometryIdentityMiss(measured, { engineVersion: identity.engineVersion, ...identity.integrity })
   }
   return reviewResult(
     "headless-geometry-review",
@@ -2050,10 +2079,24 @@ export function recordExecutedProbe(input: {
           ? "test-todo"
           : "test-failure"
   const diagnosticReason = diagnostic?.kind === "collector-error" ? diagnostic.message : diagnostic?.note
+  // A reason the writer supplied outranks the writer default, which fires only when nothing else names the cause.
+  // The generic observation word names nothing: a recorded test's own sentence reaches the row through
+  // finalizeProbeResult instead (@cto 32ad122f; #32058, #32060).
+  const writerDefault = !input.tests && !diagnostic && !coverage && observation?.outcome === "inconclusive"
+  const genericYieldsToTests =
+    input.tests !== undefined &&
+    !diagnostic &&
+    observation?.outcome === "inconclusive" &&
+    observation.reason === "insufficient-evidence"
   const reason =
-    !input.tests && !diagnostic && !coverage && observation?.outcome === "inconclusive"
+    diagnosticReason ??
+    observation?.note ??
+    coverage?.noObservable ??
+    (writerDefault
       ? "writer default: inconclusive observation without test rows; callback defect"
-      : (diagnosticReason ?? observation?.note ?? coverage?.noObservable ?? observation?.reason)
+      : genericYieldsToTests
+        ? undefined
+        : observation?.reason)
   const rawReplyRef = observation?.rawReplyRef ?? coverage?.rawReplyRef ?? input.rawReplyRef
   return finalizeProbeResult({
     featureId,

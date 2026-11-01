@@ -588,13 +588,18 @@ function oscSimpleQueryProbe(id: string, query: string, pattern: RegExp, expecte
             (id === "extensions.osc776-cell-size" &&
               /^\x1b\]776;0;0;0\x1b\\(?:\x1b\[\?[0-9]+(?:;[0-9]+)*c)?$/.test(raw))
           if (id === "extensions.osc1337-cellsize" || id === "extensions.osc776-cell-size") {
-            const review = vtermGeometryReview(ctx, zeroGeometry && result.observation?.outcome === "inconclusive", {
-              query,
-              raw,
-              noObservable: "Audited vterm headless subject has no physical font cell dimensions",
-              sourceCitation:
-                "vterm screen.ts at 6cc7eef0: ScreenOptions has no physical font metrics; OSC1337 ReportCellSize and OSC776 deliberately report unknown zero dimensions (#30575)",
-            })
+            const review = vtermGeometryReview(
+              ctx,
+              zeroGeometry && result.observation?.outcome === "inconclusive",
+              {
+                query,
+                raw,
+                noObservable: "Audited vterm headless subject has no physical font cell dimensions",
+                sourceCitation:
+                  "vterm screen.ts at 6cc7eef0: ScreenOptions has no physical font metrics; OSC1337 ReportCellSize and OSC776 deliberately report unknown zero dimensions (#30575)",
+              },
+              result,
+            )
             if (review) return review
           }
           return result
