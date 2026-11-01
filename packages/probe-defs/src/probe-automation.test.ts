@@ -195,6 +195,48 @@ describe("audited native host recipe callers", () => {
     },
   )
 
+  /**
+   * @failure #32091: kitty's default read-clipboard-ask prompt left its OSC 52 cells harness-incomplete.
+   * @consumer kitty extensions.osc52-write / osc52-read / osc52-clipboard lib arm
+   */
+  test("kitty's audited launcher grades the retained write and explains the silent read as host input", () => {
+    const kitty = "bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886"
+    const runtimeIdentity = {
+      ...nativeIdentity,
+      engineVersion: "0.49.2",
+      loadedBinary: { path: "/fixture/kitty", sha256: kitty },
+      provenance: { ...nativeIdentity.provenance, sha256: kitty },
+    }
+    const cause = {
+      recipe: "clipboard-load",
+      cause: {
+        kind: "source-audited",
+        missing: "clipboard-read-permission",
+        artifactSha256: kitty,
+        sourceCitation: expect.stringContaining("ask_to_read_clipboard"),
+      },
+    }
+    let fed = ""
+    const write = probe("extensions.osc52-write").lib!(
+      context({
+        runtimeIdentity,
+        feed(text) {
+          fed += text
+        },
+        feedCapture: () => "",
+        getClipboardState: () => ({
+          writes: [{ selector: "c", payload: /\x1b\]52;c;([A-Za-z0-9+/=]*)/.exec(fed)?.[1] ?? "" }],
+        }),
+      } as Partial<LibProbeSource>),
+    )
+    expect(write.observation?.outcome).toBe("supported")
+    expect(write.hostRecipeCauses).toEqual([cause])
+    for (const id of ["extensions.osc52-read", "extensions.osc52-clipboard"]) {
+      const read = probe(id).lib!(context({ runtimeIdentity, feedCapture: () => "" }))
+      expect(read.hostRecipeCauses, id).toEqual([cause])
+    }
+  })
+
   // A second native host (WezTerm) must never inherit another artifact's audited causes.
   test.each(["device.xtwinops-14", "extensions.osc52-read", "extensions.osc10-fg-color"])(
     "%s claims no host recipe cause for an unaudited native artifact",
