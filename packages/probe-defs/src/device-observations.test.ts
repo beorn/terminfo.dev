@@ -1202,7 +1202,7 @@ test.each(geometryReplies)("$id distinguishes sibling source entries", ({ id, ra
   }
 })
 
-// #32060: the 17:34 PDT run measured vterm 0.10.1 against a gate pinned to 0.9.0, and the row read
+// #32060: the 17:34 PDT run measured vterm 0.10.0 against a gate pinned to 0.9.0, and the row read
 // "writer default: ... callback defect". No test drove the gate with the audited subject at another identity.
 test.each(geometryReplies)(
   "$id names both identities when the audited subject misses the review pin",
