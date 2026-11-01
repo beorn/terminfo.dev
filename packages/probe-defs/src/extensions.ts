@@ -38,6 +38,7 @@ import {
   auditedAdapterSources,
 } from "./helpers.ts"
 import { evidenceRuntimeIdentity } from "./runtime-identity.ts"
+import { replyPathAuditFor } from "./reply-path-audit.ts"
 import { nativeHostRecipeResult } from "./native-host-audit.ts"
 import { sgrTermReadback } from "./sgr.ts"
 import {
@@ -1179,7 +1180,8 @@ const ABSENT_OSC_ENGINES = {
     engineVersion: "0.10.0",
     repository: "git@github.com:beorn/vterm.git",
     treeOid: "d5ee344ab5b971184ba2c43ed60460656340417c",
-    codes: [8, 9, 22, 176, 440, 555, 666, 710, 777, 3008],
+    codes: [8, 9, 22, 133, 176, 440, 555, 633, 666, 710, 777, 3008],
+    subcodes: ["133;D"],
     sourceCitation:
       "vt100 6cc7eef05cde6a8578479c6cdb480f606758eb2c packages/vt100/src/screen.ts:504-520 handleOSC switch, cases 0/1/2 only",
   },
@@ -1189,7 +1191,8 @@ const ABSENT_OSC_ENGINES = {
     engineVersion: "0.10.0",
     repository: "git@github.com:beorn/vterm.git",
     treeOid: "9a320c4d5cd0e0b60bb2e6ea4f020ce5eb54ae53",
-    codes: [8, 9, 22, 176, 440, 555, 666, 710, 777, 3008],
+    codes: [8, 9, 22, 133, 176, 440, 555, 633, 666, 710, 777, 3008],
+    subcodes: ["133;D"],
     sourceCitation:
       "vt220 6cc7eef05cde6a8578479c6cdb480f606758eb2c packages/vt220/src/screen.ts:703-718 handleOSC: no-semicolon return; cases 0/1/2 only",
   },
@@ -1225,9 +1228,40 @@ const ABSENT_OSC_ENGINES = {
     engineVersion: "0.3.3",
     adapterVersion: "0.10.2",
     binarySha256: "5937bd79139ee5856bcf1bd619cc44fcd2d750d3def3066a74956678cdaaaeb2",
-    codes: [8],
+    codes: [8, 9, 22, 176, 440, 555, 666, 710, 777, 3008],
     sourceCitation:
       "libvterm 9d6d2112335080312ef8c36667fa717ded4f7daf/v0.3.3 src/state.c:1777-1808 handles OSC 0/1/2/52 only; Termless 2d97417328b7b1d086f9396b9a1731216ed134cc packages/libvterm/build/flat-api.c and src/backend.ts install no OSC fallback",
+  },
+  ghostty: {
+    kind: "source",
+    runtimeFormat: "wasm",
+    engineVersion: "0.4.0",
+    adapterVersion: "0.10.2",
+    binarySha256: "ce01cd0d1ae000dd88948f3817924cc85303874070cab39430967ebdf14877f3",
+    codes: [176, 440, 555, 666, 710, 3008],
+    sourceCitation:
+      "Ghostty WASM core5714ed07a1012573261b7b7e3ed2add9c1504496 src/terminal/osc.zig:551-566,779-800,891-1002,1047-1075 parser states reject OSC176/3008/440/555/666/710; :1708-1715 returns null before ResponseHandler. Artifactce01cd0d1ae000dd88948f3817924cc85303874070cab39430967ebdf14877f3 only adds DECRPM reply actions; OSC9/777 binding losses and OSC22 mouse_shape are excluded",
+  },
+  kitty: {
+    kind: "native",
+    engineVersion: "0.49.2",
+    adapterVersion: "0.10.2",
+    binarySha256: "bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886",
+    sourceCommit: "356984aeea7ae66e08bf0135978179d6294321a8",
+    buildHash: "88e840e1b8e7f09edf3464ee33df8753fd5107838de15bccb6ea59e0dd6cc9c3",
+    lockSha256: "282d1098337a5705a7c1d13188a74d2fe34565766619e8d6b21a48d5b67451be",
+    codes: [176, 440, 555, 666, 710, 3008],
+    reviewReasons: [
+      { code: 440, reason: "kitty/vt-parser.c:653 explicitly ignores OSC440 audio" },
+      { code: 666, reason: "kitty/vt-parser.c:655 explicitly ignores OSC666 term properties" },
+      {
+        code: 3008,
+        reason:
+          "kitty/vt-parser.c:658-661 dispatches osc_context; kitty/window.py:1582-1583 is empty and Termless packages/kitty/build/bridge.py:164 maps it to no_reply",
+      },
+    ],
+    sourceCitation:
+      "kitty0.49.2 sourceb2cb871254fbdac19a085188813c8dfb258b95cd kitty/vt-parser.c:546-670 has no cases176/555/710, explicitly ignores440/666, and dispatches3008 to the empty Window.osc_context; official-binary archive SHA256d573618b911e9c461bd421b96c13c74c7f1cb2f1ac9c327818d4ff84366cf5c6; Termless 356984aeea7ae66e08bf0135978179d6294321a8 packages/kitty/build/bridge.py:164-182. OSC9/777 binding losses and OSC22 pointer handler are excluded",
   },
   ghosttyNative: {
     kind: "native",
@@ -1298,9 +1332,9 @@ const ABSENT_OSC_ENGINES = {
     sourceCommit: "6ffc0df79756fcc259d87131681641606540e512",
     buildHash: "7ab9ccc7744fbf5ae24c5ebb2748a144817e696f7f93959fa90a335d11646f68",
     lockSha256: "4cf037e4efa648ca41d08b30ef5c4ce7ada29ad61fcad45a7d1aa97bf55391c6",
-    codes: [8],
+    codes: [8, 9, 22, 176, 440, 555, 666, 710, 777, 3008],
     sourceCitation:
-      "vt100 0.16.2 src/perform.rs:198-238 dispatches OSC 8 to unhandled_osc; src/callbacks.rs:66 is a no-op; Termless packages/vt100-rust/native/src/lib.rs:21-54 at 6ffc0df79756fcc259d87131681641606540e512 installs no unhandled_osc override",
+      "vt100 0.16.2 src/perform.rs:198-238 dispatches unmatched OSCs to unhandled_osc; src/callbacks.rs:66 is a no-op; Termless packages/vt100-rust/native/src/lib.rs:21-54 at 6ffc0df79756fcc259d87131681641606540e512 installs no unhandled_osc override",
   },
 } as const
 
@@ -3014,6 +3048,7 @@ export const extensionsProbes: ProbeDefinition[] = [
   probe(
     "extensions.kitty-graphics.animation",
     (ctx) => {
+      if (replyPathAuditFor(ctx, "extensions.kitty-graphics.animation")) ctx.feedCapture(GRAPHICS_QUERY)
       const note = "Declared Kitty graphics capability does not establish timed animation playback"
       return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
         declared: ctx.capabilities.kittyGraphics === true,
@@ -3199,6 +3234,7 @@ export const extensionsProbes: ProbeDefinition[] = [
   probe(
     "extensions.kitty-graphics.unicode-placeholders",
     (ctx) => {
+      if (replyPathAuditFor(ctx, "extensions.kitty-graphics.unicode-placeholders")) ctx.feedCapture(GRAPHICS_QUERY)
       const note = "Declared Kitty graphics capability does not establish Unicode placeholder rendering"
       return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
         declared: ctx.capabilities.kittyGraphics === true,
@@ -3606,6 +3642,9 @@ export const extensionsProbes: ProbeDefinition[] = [
   probe(
     "extensions.semantic-prompts",
     (ctx) => {
+      if (absentOscAudit(ctx.runtimeIdentity, 133)) {
+        return sourceAbsentOsc("extensions.semantic-prompts", 133, "\x1b]133;A\x07", "shell prompt integration")(ctx)
+      }
       const note = "Declared semantic-prompt capability does not establish shell prompt integration"
       return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
         declared: ctx.capabilities.semanticPrompts === true,
@@ -3793,30 +3832,42 @@ export const extensionsProbes: ProbeDefinition[] = [
   {
     ...probe(
       "extensions.osc133-a",
-      (ctx) => promptMarkResult(ctx, "\x1b]133;A\x07", "OSC 133;A prompt-start mark registration"),
+      (ctx) =>
+        promptMarkResult(ctx, "\x1b]133;A\x07", "OSC 133;A prompt-start mark registration", {
+          probeId: "extensions.osc133-a",
+          selector: 133,
+        }),
       (ctx) => promptMarkAppResult(ctx, "\x1b]133;A\x07", "OSC 133;A prompt-start mark registration"),
     ),
-    libAssertionType: null,
+    libAssertionType: "buffer_state",
   },
 
   // OSC 133;B — command start (FTCS_COMMAND_START)
   {
     ...probe(
       "extensions.osc133-b",
-      (ctx) => promptMarkResult(ctx, "\x1b]133;B\x07", "OSC 133;B command-start mark registration"),
+      (ctx) =>
+        promptMarkResult(ctx, "\x1b]133;B\x07", "OSC 133;B command-start mark registration", {
+          probeId: "extensions.osc133-b",
+          selector: 133,
+        }),
       (ctx) => promptMarkAppResult(ctx, "\x1b]133;B\x07", "OSC 133;B command-start mark registration"),
     ),
-    libAssertionType: null,
+    libAssertionType: "buffer_state",
   },
 
   // OSC 133;C — command executed (FTCS_COMMAND_EXECUTED)
   {
     ...probe(
       "extensions.osc133-c",
-      (ctx) => promptMarkResult(ctx, "\x1b]133;C\x07", "OSC 133;C command-executed mark registration"),
+      (ctx) =>
+        promptMarkResult(ctx, "\x1b]133;C\x07", "OSC 133;C command-executed mark registration", {
+          probeId: "extensions.osc133-c",
+          selector: 133,
+        }),
       (ctx) => promptMarkAppResult(ctx, "\x1b]133;C\x07", "OSC 133;C command-executed mark registration"),
     ),
-    libAssertionType: null,
+    libAssertionType: "buffer_state",
   },
 
   // OSC 133;D — command finished with exit code (FTCS_COMMAND_FINISHED)
@@ -3837,10 +3888,14 @@ export const extensionsProbes: ProbeDefinition[] = [
   {
     ...probe(
       "extensions.osc133-p",
-      (ctx) => promptMarkResult(ctx, "\x1b]133;P;Cwd=/tmp\x07", "OSC 133;P properties mark registration"),
+      (ctx) =>
+        promptMarkResult(ctx, "\x1b]133;P;Cwd=/tmp\x07", "OSC 133;P properties mark registration", {
+          probeId: "extensions.osc133-p",
+          selector: 133,
+        }),
       (ctx) => promptMarkAppResult(ctx, "\x1b]133;P;Cwd=/tmp\x07", "OSC 133;P properties mark registration"),
     ),
-    libAssertionType: null,
+    libAssertionType: "buffer_state",
   },
 
   // OSC 633 sub-commands — VS Code shell integration markers
@@ -3979,6 +4034,9 @@ export const extensionsProbes: ProbeDefinition[] = [
     ...probe(
       "extensions.iterm2-images",
       (ctx) => {
+        if (replyPathAuditFor(ctx, "extensions.iterm2-images")) {
+          ctx.feedCapture("\x1b]1337;File=inline=1;width=8px;height=8px:" + ITERM2_RED_PNG + "\x07")
+        }
         const note = "Declared iTerm2 image capability does not establish rendered image pixels"
         return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
           declared: ctx.capabilities.extensions.has("iterm2Images"),
