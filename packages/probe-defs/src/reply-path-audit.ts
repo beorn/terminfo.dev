@@ -159,25 +159,81 @@ const VT100_RUST_GRAPHICS_AUDIT: ReplyPathAudit = {
     "vt100-rust 0.16.2 artifactf309015f: registry/src/index.crates.io-1949cf8c6b5b557f/vte-0.15.0/src/lib.rs:377 ESC_ enters SosPmApcString; :182 routes payload only to anywhere (:438-451 controls only), discarding it before any vt100 callback; Perform:761-815 exposes no APC hook. Cargo.lock vte0.15.0 checksuma5924018406ce0063cd67f8e008104968b74b563ee1b85dde3ed1f7cb87d3dbd; vt1000.16.2 checksum054ff75fb8fa83e609e685106df4faeffdf3a735d3c74ebce97ec557d5d36fd9; display's a=t prerequisite is discarded before any placement can be attempted",
 }
 
+const VT100_DECRPM_CITATION =
+  "vt100 0.10.0 release6cc7eef05cde6a8578479c6cdb480f606758eb2c source treed5ee344ab5b971184ba2c43ed60460656340417c packages/vt100/src/screen.ts:360-364 handleCSIPrivate rejects DECRQM intermediate $ and final p before any mode handler; no DECRPM writer"
+const VT220_DECRPM_CITATION =
+  "vt220 0.10.0 release6cc7eef05cde6a8578479c6cdb480f606758eb2c source tree9a320c4d5cd0e0b60bb2e6ea4f020ce5eb54ae53 packages/vt220/src/screen.ts:444-447 handleCSIPrivate rejects DECRQM intermediate $; :463 rejects final p before any mode handler; no DECRPM writer"
+const GHOSTTY_WASM_DISABLED_KITTY_AUDIT: ReplyPathAudit = {
+  query: "\x1b_G",
+  matches: "prefix",
+  kind: "parser-rejected",
+  citation:
+    "Ghostty WASM artifact5c38594a17329b24e826f785d3156d6e498490517835f12b0730eeab2fc63da7, core5714ed07a1012573261b7b7e3ed2add9c1504496: src/build/GhosttyZig.zig:20-25 forces oniguruma=false; src/terminal/build_options.zig derives kitty_graphics from oniguruma; src/terminal/apc.zig:31-39 sends APC G to ignore before any command, :63 returns null; Screen.zig:70 omits the image store. Upstream module build excludes kitty graphics (oniguruma=false); re-measure when a future artifact enables it",
+}
+const GHOSTTY_WASM_CE01_DISABLED_KITTY_AUDIT: ReplyPathAudit = {
+  ...GHOSTTY_WASM_DISABLED_KITTY_AUDIT,
+  citation:
+    "Ghostty WASM artifactce01cd0d1ae000dd88948f3817924cc85303874070cab39430967ebdf14877f3, core5714ed07a1012573261b7b7e3ed2add9c1504496: src/build/GhosttyZig.zig:20-25 forces oniguruma=false; src/terminal/build_options.zig:45 derives kitty_graphics from oniguruma; src/terminal/apc.zig:31-39 sends APC G to ignore before any command, :63 returns null; Screen.zig:70 omits the image store. The ce01 rebuild only forwards DECRPM actions; upstream module build still excludes kitty graphics (oniguruma=false); re-measure when a future artifact enables it",
+}
+const GHOSTTY_WASM_1F23_DISABLED_KITTY_AUDIT: ReplyPathAudit = {
+  ...GHOSTTY_WASM_DISABLED_KITTY_AUDIT,
+  citation:
+    "Ghostty WASM artifact1f23e13db5bda55ab54943461b83a5d642bf8d2050a452fbe7871927383dfe9f, core5714ed07a1012573261b7b7e3ed2add9c1504496: src/build/GhosttyZig.zig:20-25 forces oniguruma=false; src/terminal/build_options.zig:45 derives kitty_graphics from oniguruma; src/terminal/apc.zig:31-39 sends APC G to ignore before any command, :63 returns null; Screen.zig:70 omits the image store. The ce01 rebuild only forwards DECRPM actions; upstream module build still excludes kitty graphics (oniguruma=false); re-measure when a future artifact enables it",
+}
+
 /**
- * Source audits of exact artifacts that cannot reply, keyed by loaded-artifact sha256 — never a digest copied from
- * runtime — and then by featureId. Data only: a cell enters with its own citation and is reviewed as data. An
- * unlisted (artifact, feature) pair keeps the probe's measured result.
+ * Source audits of exact engines that cannot reply, keyed by 64-lowercase-hex loaded-artifact SHA-256 or
+ * 40-lowercase-hex source treeOid, then featureId. Identity kinds never share the other key shape.
+ * Data only: each cell has its own citation and is reviewed as data. Unlisted identity/feature pairs keep the measured
+ * result. A listed source tree matches only when cleanTree === true; dirty source keeps the measured result too.
  */
 export const REPLY_PATH_AUDITS: ReadonlyMap<string, Readonly<Record<string, ReplyPathAudit>>> = new Map<
   string,
   Readonly<Record<string, ReplyPathAudit>>
 >([
+  [
+    "d5ee344ab5b971184ba2c43ed60460656340417c",
+    {
+      "modes.application-cursor": { query: "\x1b[?1$p", kind: "parser-rejected", citation: VT100_DECRPM_CITATION },
+      "modes.bracketed-paste": { query: "\x1b[?2004$p", kind: "parser-rejected", citation: VT100_DECRPM_CITATION },
+      "modes.focus-tracking": { query: "\x1b[?1004$p", kind: "parser-rejected", citation: VT100_DECRPM_CITATION },
+      "modes.mouse-all": { query: "\x1b[?1003$p", kind: "parser-rejected", citation: VT100_DECRPM_CITATION },
+      "modes.mouse-sgr": { query: "\x1b[?1006$p", kind: "parser-rejected", citation: VT100_DECRPM_CITATION },
+      "modes.mouse-tracking": { query: "\x1b[?1000$p", kind: "parser-rejected", citation: VT100_DECRPM_CITATION },
+      "modes.utf8-mouse-1005": { query: "\x1b[?1005$p", kind: "parser-rejected", citation: VT100_DECRPM_CITATION },
+    },
+  ],
+  [
+    "9a320c4d5cd0e0b60bb2e6ea4f020ce5eb54ae53",
+    {
+      "modes.application-cursor": { query: "\x1b[?1$p", kind: "parser-rejected", citation: VT220_DECRPM_CITATION },
+      "modes.bracketed-paste": { query: "\x1b[?2004$p", kind: "parser-rejected", citation: VT220_DECRPM_CITATION },
+      "modes.focus-tracking": { query: "\x1b[?1004$p", kind: "parser-rejected", citation: VT220_DECRPM_CITATION },
+      "modes.mouse-all": { query: "\x1b[?1003$p", kind: "parser-rejected", citation: VT220_DECRPM_CITATION },
+      "modes.mouse-sgr": { query: "\x1b[?1006$p", kind: "parser-rejected", citation: VT220_DECRPM_CITATION },
+      "modes.mouse-tracking": { query: "\x1b[?1000$p", kind: "parser-rejected", citation: VT220_DECRPM_CITATION },
+      "modes.utf8-mouse-1005": { query: "\x1b[?1005$p", kind: "parser-rejected", citation: VT220_DECRPM_CITATION },
+    },
+  ],
   // Ghostty WASM rebuilt to answer DA1, DA2, XTVERSION, DECRQSS and XTGETTCAP (#32057, @cto 25157a35). The inner patch
   // delta from ce01cd0d ADDS .device_attributes (primary in core's clipboard-deny form, secondary), .xtversion and the
   // dcs_hook/dcs_put/dcs_unhook arms routed through core's dcs.Handler, all transcribed from core 5714ed07
   // src/termio/stream_handler.zig, and removes their no-op lines; core 5714ed07 is unchanged. device.primary-da,
   // device.secondary-da, device.xtversion, device.decrqss, device.xtgettcap and extensions.sixel-da1 (via DA1, no 4)
   // now reply and leave this table. The 12 ruled stays carry query, matches and kind unchanged with citations for this
-  // artifact; the other 29 ce01cd0d rows are carried unchanged except for naming this artifact.
+  // artifact; the other 32 ce01cd0d rows are carried unchanged except for naming this artifact.
   [
     "1f23e13db5bda55ab54943461b83a5d642bf8d2050a452fbe7871927383dfe9f",
     {
+      "extensions.kitty-graphics.animation": GHOSTTY_WASM_1F23_DISABLED_KITTY_AUDIT,
+      "extensions.kitty-graphics.unicode-placeholders": GHOSTTY_WASM_1F23_DISABLED_KITTY_AUDIT,
+      "extensions.iterm2-images": {
+        query: "\x1b]1337;",
+        matches: "prefix",
+        kind: "parser-rejected",
+        citation:
+          "Ghostty WASM artifact1f23e13db5bda55ab54943461b83a5d642bf8d2050a452fbe7871927383dfe9f, core5714ed07a1012573261b7b7e3ed2add9c1504496: src/terminal/osc.zig:196-221 Key has no OSC1337 command; Parser.end :1708-1715 returns null for the unrecognized command, before the WASM ResponseHandler; no inline image is stored. The ce01 rebuild only forwards DECRPM actions; the OSC parser is unchanged",
+      },
       "extensions.osc99-kitty-notify": {
         query: "\u001b]99;",
         matches: "prefix",
@@ -252,7 +308,7 @@ export const REPLY_PATH_AUDITS: ReadonlyMap<string, Readonly<Record<string, Repl
         query: "\u001b[=c",
         kind: "no-reply-path",
         citation:
-          'Ghostty WASM artifact 1f23e13db5bda55ab54943461b83a5d642bf8d2050a452fbe7871927383dfe9f, core 5714ed07a1012573261b7b7e3ed2add9c1504496, inner patch sha256 a4b6fc33 (#32057): Termless vendor/ghostty-web/ghostty-wasm-api.patch:683-688 answers .primary and .secondary as core src/termio/stream_handler.zig:743-755 does; core sends nothing for .tertiary (:757 else => log.warn "unimplemented device attributes req"), so DA3 stays silent here as in core; ghostty 5714ed07 src/terminal/stream.zig:1320-1338 device_attributes parses it',
+          "Ghostty WASM artifact 1f23e13db5bda55ab54943461b83a5d642bf8d2050a452fbe7871927383dfe9f, core 5714ed07a1012573261b7b7e3ed2add9c1504496, inner patch sha256 a4b6fc33 (#32057): Termless vendor/ghostty-web/ghostty-wasm-api.patch:683-688 answers .primary and .secondary as core src/termio/stream_handler.zig:743-755 does; core sends nothing for .tertiary (:757 else => log.warn \"unimplemented device attributes req\"), so DA3 stays silent here as in core; ghostty 5714ed07 src/terminal/stream.zig:1320-1338 device_attributes parses it",
       },
       "device.xtgetxres": {
         query: "\u001bP+Q7465726d4e616d65\u001b\\",
@@ -438,6 +494,15 @@ export const REPLY_PATH_AUDITS: ReadonlyMap<string, Readonly<Record<string, Repl
   [
     "ce01cd0d1ae000dd88948f3817924cc85303874070cab39430967ebdf14877f3",
     {
+      "extensions.kitty-graphics.animation": GHOSTTY_WASM_CE01_DISABLED_KITTY_AUDIT,
+      "extensions.kitty-graphics.unicode-placeholders": GHOSTTY_WASM_CE01_DISABLED_KITTY_AUDIT,
+      "extensions.iterm2-images": {
+        query: "\x1b]1337;",
+        matches: "prefix",
+        kind: "parser-rejected",
+        citation:
+          "Ghostty WASM artifactce01cd0d1ae000dd88948f3817924cc85303874070cab39430967ebdf14877f3, core5714ed07a1012573261b7b7e3ed2add9c1504496: src/terminal/osc.zig:196-221 Key has no OSC1337 command; Parser.end :1708-1715 returns null for the unrecognized command, before the WASM ResponseHandler; no inline image is stored. The ce01 rebuild only forwards DECRPM actions; the OSC parser is unchanged",
+      },
       "extensions.osc99-kitty-notify": {
         query: "\u001b]99;",
         matches: "prefix",
@@ -733,6 +798,15 @@ export const REPLY_PATH_AUDITS: ReadonlyMap<string, Readonly<Record<string, Repl
   [
     "5c38594a17329b24e826f785d3156d6e498490517835f12b0730eeab2fc63da7",
     {
+      "extensions.kitty-graphics.animation": GHOSTTY_WASM_DISABLED_KITTY_AUDIT,
+      "extensions.kitty-graphics.unicode-placeholders": GHOSTTY_WASM_DISABLED_KITTY_AUDIT,
+      "extensions.iterm2-images": {
+        query: "\x1b]1337;",
+        matches: "prefix",
+        kind: "parser-rejected",
+        citation:
+          "Ghostty WASM artifact5c38594a17329b24e826f785d3156d6e498490517835f12b0730eeab2fc63da7, core5714ed07a1012573261b7b7e3ed2add9c1504496: src/terminal/osc.zig:196-221 Key has no OSC1337 command; Parser.end :1708-1715 returns null for the unrecognized command, before the WASM ResponseHandler; no inline image is stored",
+      },
       "extensions.osc99-kitty-notify": {
         query: "\u001b]99;",
         matches: "prefix",
@@ -4012,14 +4086,22 @@ export const REPLY_PATH_AUDITS: ReadonlyMap<string, Readonly<Record<string, Repl
   ],
 ])
 
-/** The audited cell for this probe on the loaded artifact, if the table lists one. */
+/** The audited cell for this probe on the loaded binary or clean source tree, if the table lists one. */
 export function replyPathAuditFor(
   ctx: LibProbeSource,
   featureId: string,
-): { artifactSha256: string; audit: ReplyPathAudit } | undefined {
+): { artifactSha256: string; audit: ReplyPathAudit } | { sourceTreeOid: string; audit: ReplyPathAudit } | undefined {
   const identity = ctx.runtimeIdentity
-  if (identity === undefined || !("loadedBinary" in identity)) return undefined
+  if (identity === undefined) return undefined
+  if (identity.kind === "js" && identity.runtimeFormat === "js" && identity.integrity.kind === "source") {
+    if (!identity.integrity.cleanTree || !/^[0-9a-f]{40}$/.test(identity.integrity.treeOid)) return undefined
+    const sourceTreeOid = identity.integrity.treeOid
+    const audit = REPLY_PATH_AUDITS.get(sourceTreeOid)?.[featureId]
+    return audit === undefined ? undefined : { sourceTreeOid, audit }
+  }
+  if (!("loadedBinary" in identity)) return undefined
   const artifactSha256 = identity.loadedBinary.sha256
+  if (!/^[0-9a-f]{64}$/.test(artifactSha256)) return undefined
   const audit = REPLY_PATH_AUDITS.get(artifactSha256)?.[featureId]
   return audit === undefined ? undefined : { artifactSha256, audit }
 }
