@@ -175,6 +175,32 @@ describe("current execution projection", () => {
     ]) {
       expect(() => decode({ ...overlay, ...change })).toThrow(/requires sealed run|SHA256|feature|embedded/)
     }
+    // A known curated ID must not bypass the same-cell embedded-target requirement.
+    // The unknown-ID controls above miss this graph branch entirely.
+    const curated = parseInterpretations(
+      "real curated store",
+      readFileSync(join(root, "interpretations.json"), "utf8"),
+      catalog,
+      undefined,
+      [run],
+    )
+    const unrelated = curated.find((entry) => entry.id === "cto-vterm48-extensions.clipboard-paste-ev1")
+    expect(unrelated).toBeDefined()
+    expect(run.rawReplies[`collector.review.${unrelated!.id}`]).toBeUndefined()
+    expect(() =>
+      parseInterpretations(
+        "known unrelated target",
+        JSON.stringify([unrelated, { ...overlay, supersedes: [unrelated!.id] }]),
+        catalog,
+        undefined,
+        [run],
+      ),
+    ).toThrow(/missing embedded review/)
+    const invalidEntries = [unrelated!, { ...entries[0]!, supersedes: [unrelated!.id] }]
+    expect(() => activeInterpretations(invalidEntries, [run])).toThrow(/missing embedded review/)
+    expect(() => validatePresentationSupersession(invalidEntries, "known unrelated target", [run])).toThrow(
+      /missing embedded review/,
+    )
     expect(run).toEqual(original)
     expect(readFileSync(path, "utf8")).toBe(bytes)
   })

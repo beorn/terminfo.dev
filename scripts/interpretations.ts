@@ -118,7 +118,6 @@ function supersessionTarget(
   if (!run?.sealedAt) fail(path, `tool-gap ${entry.id} requires sealed run ${entry.runId} to resolve ${priorId}`)
   if (run.sha256 !== entry.runSha256) fail(path, `tool-gap ${entry.id}: run SHA256 mismatch`)
   if (!applies(entry, run)) fail(path, `tool-gap ${entry.id}: scope does not match exact run ${run.runId}`)
-  if (prior) return prior
   const source = run.rawReplies[`collector.review.${priorId}`]
   if (source === undefined) fail(path, `tool-gap ${entry.id}: missing embedded review ${priorId} in run ${run.runId}`)
   const embedded = parseCaptureDecision(
@@ -130,7 +129,7 @@ function supersessionTarget(
   if (embedded.id !== priorId || embedded.featureId !== entry.featureId) {
     fail(path, `tool-gap ${entry.id}: embedded review ${priorId} feature/id mismatch`)
   }
-  return embedded
+  return prior ?? embedded
 }
 
 export function validatePresentationSupersession(
