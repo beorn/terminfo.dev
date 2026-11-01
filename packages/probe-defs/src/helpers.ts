@@ -71,7 +71,7 @@ export const ADAPTER_SOURCE_AUDITS = {
   },
   vt100Rust: {
     "packages/vt100-rust/src/index.ts": "3ddb74f3ae1f79bb356952103853232f69211268",
-    "packages/vt100-rust/src/backend.ts": "e24139c7ecc4935b060040091bb1520256cffced",
+    "packages/vt100-rust/src/backend.ts": "abbbfd01d9e6ac880e02b00d9acccdc9ec70bc63",
   },
   kitty: {
     "packages/kitty/src/index.ts": "3f207f911646613cdc3d8b04f155f0686a96a077",

@@ -1333,13 +1333,13 @@ const ABSENT_OSC_ENGINES = {
     kind: "native",
     engineVersion: "0.16.2",
     adapterVersion: "0.10.2",
-    binarySha256: "0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3",
-    sourceCommit: "6ffc0df79756fcc259d87131681641606540e512",
-    buildHash: "7ab9ccc7744fbf5ae24c5ebb2748a144817e696f7f93959fa90a335d11646f68",
+    binarySha256: "dc3b24de6e91416f66b1953ce101991ef7e78602ce1b5d357f65832c9b96b326",
+    sourceCommit: "27297cf2a4a4e21b41ca3aafc7bc87ac36086fdf",
+    buildHash: "d5079c0f2a27be41c9a3f6b152d62da2bbf82fd189fdfb487b5a0c8b3ed8a654",
     lockSha256: "4cf037e4efa648ca41d08b30ef5c4ce7ada29ad61fcad45a7d1aa97bf55391c6",
     codes: [8, 9, 22, 176, 440, 555, 666, 710, 777, 3008],
     sourceCitation:
-      "vt100 0.16.2 src/perform.rs:198-238 dispatches unmatched OSCs to unhandled_osc; src/callbacks.rs:66 is a no-op; Termless packages/vt100-rust/native/src/lib.rs:21-54 at 6ffc0df79756fcc259d87131681641606540e512 installs no unhandled_osc override",
+      "vt100 0.16.2 src/perform.rs:198-238 dispatches unmatched OSCs to unhandled_osc; src/callbacks.rs:66 is a no-op; Termless packages/vt100-rust/native/src/lib.rs:21-54 at 27297cf2a4a4e21b41ca3aafc7bc87ac36086fdf installs title, icon and clipboard callbacks with no unhandled_osc override",
   },
 } as const
 
