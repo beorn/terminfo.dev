@@ -1227,8 +1227,116 @@ export function decrpmModeProbe(
  * The adapter's getMode value rides along as context only, never as evidence.
  * The branch keys on the observed reply, never on an engine name.
  */
-export function headlessDecrpmArm(modeNum: number, modeName?: string): (ctx: LibProbeSource) => ProbeCallbackResult {
+export function headlessDecrpmArm(
+  modeNum: number,
+  modeName: string,
+  options: { requireReadback: true },
+): (ctx: LibProbeSource) => ProbeCallbackResult
+export function headlessDecrpmArm(modeNum: number, modeName?: string): (ctx: LibProbeSource) => ProbeCallbackResult
+export function headlessDecrpmArm(
+  ...args:
+    | [modeNum: number, modeName?: string]
+    | [modeNum: number, modeName: string, options: { requireReadback: true }]
+): (ctx: LibProbeSource) => ProbeCallbackResult {
+  const [modeNum, modeName] = args
   return (ctx) => {
+    if (args.length === 3) {
+      // The strict overload requires a mode key; the name is display-only, never an engine selector.
+      const key = args[1]
+      const insertBefore = modeNum === 4 ? ctx.getMode("insertMode") : undefined
+      let resetSent = false
+      try {
+        ctx.feed(`\x1b[?${modeNum}h`)
+        const insertAfter = modeNum === 4 ? ctx.getMode("insertMode") : undefined
+        const setMode = ctx.getMode(key)
+        const setReply = ctx.feedCapture(`\x1b[?${modeNum}$p`)
+        ctx.feed(`\x1b[?${modeNum}l`)
+        resetSent = true
+        const resetMode = ctx.getMode(key)
+        const resetReply = ctx.feedCapture(`\x1b[?${modeNum}$p`)
+        const state = { setReply, resetReply, setMode, resetMode, insertBefore, insertAfter }
+        const response = JSON.stringify(state)
+        const setPs = decrpmPs(decrpmReplyPattern(modeNum).exec(setReply)?.[1])
+        const resetPs = decrpmPs(decrpmReplyPattern(modeNum).exec(resetReply)?.[1])
+        const presentation = modeNum === 4 ? "; smooth-scroll presentation unmeasured in lib arm" : ""
+        if (modeNum === 4 && insertBefore !== null && insertAfter !== null && insertBefore !== insertAfter) {
+          const note = `DEC private4 changed ANSI insertMode; engine conflation (32002, vterm screen.ts:2941 / vt220 screen.ts:472)${presentation}`
+          return {
+            pass: false,
+            response,
+            note,
+            observation: { outcome: "unsupported", assertionType: "buffer_state", note },
+            assertions: [
+              {
+                assertionType: "buffer_state",
+                kind: "negative",
+                expected: "DEC private4 leaves ANSI insertMode unchanged",
+                observed: response,
+              },
+            ],
+          }
+        }
+        if (setPs === 0 || setPs === 2 || setPs === 4) {
+          const note = `DECRPM mode ${modeNum} after DECSET: ${decrpmReading(setPs)}${presentation}`
+          return {
+            pass: false,
+            response,
+            note,
+            observation: { outcome: "unsupported", assertionType: "query_reply", note },
+            assertions: [
+              {
+                assertionType: "query_reply",
+                kind: "negative",
+                expected: `DECRPM mode ${modeNum} set after DECSET`,
+                observed: setReply,
+              },
+            ],
+          }
+        }
+        if (setPs === null) {
+          return osInputReviewResult(
+            `DECRPM reply to CSI ? ${modeNum} $ p`,
+            state,
+            "The adapter delivered no DECRPM reply from the engine; required independent review of the retained raw state pending",
+          )
+        }
+        const bindingGap = setMode !== true || resetMode !== false
+        if (bindingGap || setPs !== 1 || resetPs !== 2) {
+          const reason = bindingGap
+            ? `adapter binding ${ctx.backendName} ${key}`
+            : `DECRPM mode ${modeNum}: set/reset reply pair unavailable`
+          return {
+            pass: false,
+            response,
+            note: reason + presentation,
+            observation: {
+              outcome: "inconclusive",
+              assertionType: "query_reply",
+              reason: "insufficient-evidence",
+              note: reason + presentation,
+            },
+            tests: [{ id: "criterion", status: "test-todo", reason }],
+          }
+        }
+        const note = `DECRPM mode ${modeNum}: set/reset replies and getMode agree${presentation}; ${decrpmResult(setPs, modeNum).note ?? "mode recognition measured"}`
+        return {
+          pass: true,
+          response,
+          note,
+          observation: { outcome: "supported", assertionType: "query_reply", note },
+          assertions: [
+            {
+              assertionType: "query_reply",
+              kind: "positive",
+              expected: `DECRPM mode ${modeNum} Ps1/Ps2 with agreeing getMode`,
+              observed: response,
+            },
+          ],
+        }
+      } finally {
+        if (!resetSent) ctx.feed(`\x1b[?${modeNum}l`)
+      }
+    }
     ctx.feed(`\x1b[?${modeNum}h`)
     // Read the adapter's mode view before the query. vt100 and vt220 used to run `CSI ? 1 $ p` as a DECCKM
     // reset, so a getMode read after the query reported the mode already reset; since #30558 they ignore a

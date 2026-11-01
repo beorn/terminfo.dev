@@ -378,6 +378,7 @@ export function createLibProbeSource(
   const encodeMouse =
     declaresMouseEncoding && typeof candidateEncodeMouse === "function" ? candidateEncodeMouse.bind(backend) : undefined
   return {
+    backendName: backend.name,
     kind: "live",
     ...(runtimeIdentity && { runtimeIdentity }),
     cols,

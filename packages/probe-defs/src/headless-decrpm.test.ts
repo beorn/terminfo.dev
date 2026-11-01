@@ -10,6 +10,112 @@ import { decrpmPs, decrpmReplyPattern, decrpmStatus } from "./helpers.ts"
 import { modesProbes } from "./modes.ts"
 import type { LibProbeSource } from "./types.ts"
 
+const readbackModes = [
+  { id: "modes.alt-scroll-1007", number: 1007, mode: "altScroll" },
+  { id: "modes.application-keypad", number: 66, mode: "applicationKeypad" },
+  { id: "modes.synchronized-output", number: 2026, mode: "syncOutput" },
+  { id: "modes.color-scheme-reporting", number: 2031, mode: "colorSchemeReporting" },
+  { id: "modes.decsclm", number: 4, mode: "smoothScroll" },
+  { id: "modes.reverse-video", number: 5, mode: "reverseVideo" },
+] as const
+
+function readbackContext(
+  number: number,
+  options: {
+    setPs?: number
+    resetPs?: number
+    setMode?: boolean | null
+    resetMode?: boolean | null
+    conflatesInsert?: boolean
+  } = {},
+) {
+  let enabled = false
+  const queries: string[] = []
+  const reads: string[] = []
+  const source = {
+    ...context("", false, [], []),
+    backendName: "scripted-engine",
+    feed(text: string) {
+      if (text === `\x1b[?${number}h` || text === "\x1b=") enabled = true
+      if (text === `\x1b[?${number}l` || text === "\x1b>") enabled = false
+    },
+    feedCapture(text: string) {
+      queries.push(text)
+      const ps = enabled ? (options.setPs ?? 1) : (options.resetPs ?? 2)
+      return `\x1b[?${number};${ps}$y`
+    },
+    getMode(mode: string) {
+      reads.push(mode)
+      if (mode === "insertMode") return options.conflatesInsert === true && enabled
+      return enabled
+        ? options.setMode === undefined
+          ? true
+          : options.setMode
+        : options.resetMode === undefined
+          ? false
+          : options.resetMode
+    },
+  } as LibProbeSource
+  return { source, queries, reads }
+}
+
+// @failure An S8 library cell is supported without both reply polarities and agreeing adapter reads.
+// @consumer The six registered mode library callbacks; the legacy seven-definition table below stays unchanged.
+test.each(readbackModes)("$id requires the set/reset reply and reader pair", ({ id, number, mode }) => {
+  const { source, queries, reads } = readbackContext(number)
+  const result = headless(id)(source) as ReturnType<NonNullable<(typeof modesProbes)[number]["lib"]>>
+  expect(result.observation?.outcome).toBe("supported")
+  expect(queries).toEqual([`\x1b[?${number}$p`, `\x1b[?${number}$p`])
+  expect(reads.filter((key) => key === mode)).toHaveLength(2)
+})
+
+// @failure A positive engine roundtrip hides a null or disagreeing adapter binding as support or engine absence.
+test.each([
+  { setMode: null, resetMode: false },
+  { setMode: true, resetMode: null },
+  { setMode: false, resetMode: false },
+  { setMode: true, resetMode: true },
+])("a missing or disagreeing reader remains the named adapter TODO: %j", (options) => {
+  const { source } = readbackContext(2026, options)
+  const result = headless("modes.synchronized-output")(source) as ReturnType<
+    NonNullable<(typeof modesProbes)[number]["lib"]>
+  >
+  expect(result.tests).toMatchObject([
+    { id: "criterion", status: "test-todo", reason: "adapter binding scripted-engine syncOutput" },
+  ])
+  expect(result.observation?.outcome).toBe("inconclusive")
+  expect(result.assertions ?? []).toEqual([])
+})
+
+// @failure An engine's explicit negative after DECSET is confused with an unavailable adapter reader.
+test.each([0, 2, 4])("strict mode Ps%s after set is an engine negative even without a reader", (setPs) => {
+  const { source } = readbackContext(66, { setPs, setMode: null, resetMode: null })
+  const result = headless("modes.application-keypad")(source) as ReturnType<
+    NonNullable<(typeof modesProbes)[number]["lib"]>
+  >
+  expect(result.observation?.outcome).toBe("unsupported")
+  expect(result.assertions).toEqual(expect.arrayContaining([expect.objectContaining({ kind: "negative" })]))
+})
+
+// @failure A reset that never takes effect is called supported from its earlier enabled reply.
+test("strict support needs Ps2 after reset, not a permanently-set reply", () => {
+  const { source } = readbackContext(2026, { resetPs: 3 })
+  const result = headless("modes.synchronized-output")(source) as ReturnType<
+    NonNullable<(typeof modesProbes)[number]["lib"]>
+  >
+  expect(result.observation?.outcome).toBe("inconclusive")
+  expect(result.tests).toEqual(expect.arrayContaining([expect.objectContaining({ status: "test-todo" })]))
+})
+
+// @failure DEC-private4 mutates ANSI insertMode yet a positive DECRPM reply still establishes smooth-scroll support.
+test("private4/IRM conflation is an engine negative independently of DECRPM", () => {
+  const { source } = readbackContext(4, { conflatesInsert: true })
+  const result = headless("modes.decsclm")(source) as ReturnType<NonNullable<(typeof modesProbes)[number]["lib"]>>
+  expect(result.observation?.outcome).toBe("unsupported")
+  expect(JSON.stringify(result)).toContain("insertMode")
+  expect(JSON.stringify(result)).toContain("32002")
+})
+
 const features = [
   { id: "modes.bracketed-paste", number: 2004, mode: "bracketedPaste" },
   { id: "modes.application-cursor", number: 1, mode: "applicationCursor" },
