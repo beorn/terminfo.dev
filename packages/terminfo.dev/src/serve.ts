@@ -968,6 +968,14 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
       ...(textQualification === undefined ? {} : { textQualification }),
       results: batch.results,
     }
+    const fontReview = captured.results
+      .find((result) => result.featureId === "extensions.font-ligatures")
+      ?.tests.find((test) => test.id === "review")
+    if (provenance && fontReview) {
+      captured.rawReplies["collector.fontSource"] = provenance.fixture.font
+      // Current evidence projections bind explicit cell references, not unrelated collector fields.
+      fontReview.rawReplyRef = "collector.fontSource"
+    }
     recordTextQualificationTests(
       captured,
       manifest,
