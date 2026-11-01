@@ -300,12 +300,16 @@ boundaries and blank tails, actual buffer identity, and primary restoration in t
 Unknown identity and a measured entry that leaves the primary active have distinct named TODOs:
 `alternate buffer identity unavailable` and `alternate buffer not entered`. Neither is a reflow
 negative. Corrupt setup, inconsistent identity, failed controls/restoration and unmatched layouts
-retain invalid phase evidence. Slot errors retain their cause while measured/final leaves run;
+retain invalid phase evidence. A failed marker or readback before the measurement slot stays invalid,
+even when buffer identity is false or unavailable. Before the slot, only a clean failed-entry observation
+can yield an identity or no-entry TODO.
+Slot errors retain their cause while measured/final leaves run;
 outer cleanup independently attempts alternate exit, initial-width restoration and reset.
 
 History and alternate phases retain their statuses in the response and supply qualified assertions. They do not
 enter the required-test fold: all eleven feature outcomes stay at the pre-history baseline until
-the cross-facet fold is approved. Qualified main-phase results, including two negatives from a
+the cross-facet fold is approved. Each required main row cites its own phase's assertion; the combined
+main criterion cites only main assertions, never history or alternate evidence. Qualified main-phase results, including two negatives from a
 truncating engine, keep the feature pending. Invalid or conflicting main phases still make it fail;
 its reason names each negative or invalid main phase and that phase's reason. Remaining facets are:
 
