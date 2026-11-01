@@ -268,21 +268,21 @@ export const REPLY_PATH_AUDITS: ReadonlyMap<string, Readonly<Record<string, Repl
       "extensions.kitty-graphics": {
         query: "\u001b_G",
         matches: "prefix",
-        kind: "no-reply-path",
+        kind: "parser-rejected",
         citation:
           "Ghostty WASM artifact 1f23e13db5bda55ab54943461b83a5d642bf8d2050a452fbe7871927383dfe9f, core 5714ed07a1012573261b7b7e3ed2add9c1504496, inner patch sha256 a4b6fc33 (#32057): Termless vendor/ghostty-web/ghostty-wasm-api.patch:703-705 keeps .apc_start/.apc_end/.apc_put no-ops, and no APC arm could answer: core src/terminal/apc.zig:36-39 parses 'G' into .kitty only when comptime build_options.kitty_graphics, else .ignore, and :64-65 makes the kitty arm unreachable otherwise; src/terminal/build_options.zig:45 ties kitty_graphics to oniguruma, and src/build/GhosttyZig.zig:25 forces oniguruma=false for the Zig module lib-vt builds from (src/build/GhosttyLibVt.zig:28). Kitty graphics is compiled out of this artifact (@cto 25157a35); ghostty-native keeps it, so this stay is WASM-only",
       },
       "extensions.kitty-graphics.transmit": {
         query: "\u001b_G",
         matches: "prefix",
-        kind: "no-reply-path",
+        kind: "parser-rejected",
         citation:
           "Ghostty WASM artifact 1f23e13db5bda55ab54943461b83a5d642bf8d2050a452fbe7871927383dfe9f, core 5714ed07a1012573261b7b7e3ed2add9c1504496, inner patch sha256 a4b6fc33 (#32057): Termless vendor/ghostty-web/ghostty-wasm-api.patch:703-705 keeps .apc_start/.apc_end/.apc_put no-ops, and no APC arm could answer: core src/terminal/apc.zig:36-39 parses 'G' into .kitty only when comptime build_options.kitty_graphics, else .ignore, and :64-65 makes the kitty arm unreachable otherwise; src/terminal/build_options.zig:45 ties kitty_graphics to oniguruma, and src/build/GhosttyZig.zig:25 forces oniguruma=false for the Zig module lib-vt builds from (src/build/GhosttyLibVt.zig:28). Kitty graphics is compiled out of this artifact (@cto 25157a35); ghostty-native keeps it, so this stay is WASM-only",
       },
       "extensions.kitty-graphics.display": {
         query: "\u001b_G",
         matches: "prefix",
-        kind: "no-reply-path",
+        kind: "parser-rejected",
         citation:
           "Ghostty WASM artifact 1f23e13db5bda55ab54943461b83a5d642bf8d2050a452fbe7871927383dfe9f, core 5714ed07a1012573261b7b7e3ed2add9c1504496, inner patch sha256 a4b6fc33 (#32057): Termless vendor/ghostty-web/ghostty-wasm-api.patch:703-705 keeps .apc_start/.apc_end/.apc_put no-ops, and no APC arm could answer: core src/terminal/apc.zig:36-39 parses 'G' into .kitty only when comptime build_options.kitty_graphics, else .ignore, and :64-65 makes the kitty arm unreachable otherwise; src/terminal/build_options.zig:45 ties kitty_graphics to oniguruma, and src/build/GhosttyZig.zig:25 forces oniguruma=false for the Zig module lib-vt builds from (src/build/GhosttyLibVt.zig:28). Kitty graphics is compiled out of this artifact (@cto 25157a35); ghostty-native keeps it, so this stay is WASM-only; display cannot complete its a=t allocation prerequisite",
       },
@@ -308,7 +308,7 @@ export const REPLY_PATH_AUDITS: ReadonlyMap<string, Readonly<Record<string, Repl
         query: "\u001b[=c",
         kind: "no-reply-path",
         citation:
-          'Ghostty WASM artifact 1f23e13db5bda55ab54943461b83a5d642bf8d2050a452fbe7871927383dfe9f, core 5714ed07a1012573261b7b7e3ed2add9c1504496, inner patch sha256 a4b6fc33 (#32057): Termless vendor/ghostty-web/ghostty-wasm-api.patch:683-688 answers .primary and .secondary as core src/termio/stream_handler.zig:743-755 does; core sends nothing for .tertiary (:757 else => log.warn "unimplemented device attributes req"), so DA3 stays silent here as in core; ghostty 5714ed07 src/terminal/stream.zig:1320-1338 device_attributes parses it',
+          'Ghostty WASM artifact 1f23e13db5bda55ab54943461b83a5d642bf8d2050a452fbe7871927383dfe9f, core 5714ed07a1012573261b7b7e3ed2add9c1504496, inner patch sha256 a4b6fc33 (#32057): Termless vendor/ghostty-web/ghostty-wasm-api.patch:683-687 answers .primary and .secondary as core src/termio/stream_handler.zig:743-755 does; core sends nothing for .tertiary (:757 else => log.warn "unimplemented device attributes req"), so DA3 stays silent here as in core; ghostty 5714ed07 src/terminal/stream.zig:1320-1338 device_attributes parses it',
       },
       "device.xtgetxres": {
         query: "\u001bP+Q7465726d4e616d65\u001b\\",

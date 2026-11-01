@@ -632,7 +632,9 @@ describe("reply-path audit", () => {
     expect(Object.keys(stays).filter((id) => !carried.includes(id))).toEqual([])
     for (const id of carried) {
       const audit = rebuilt[id]!
-      expect(audit).toMatchObject({ query: prior[id]!.query, kind: prior[id]!.kind })
+      // @cto eed4de8b: APC 'G' is ignored at parse time when kitty graphics is compiled out (parser-rejected).
+      const kind = id.startsWith("extensions.kitty-graphics") && id in stays ? "parser-rejected" : prior[id]!.kind
+      expect(audit).toMatchObject({ query: prior[id]!.query, kind })
       expect(audit.matches).toBe(prior[id]!.matches)
       expect(audit.citation, id).toContain("5714ed07")
       expect(audit.citation, id).not.toContain("ce01cd0d")

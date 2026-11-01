@@ -140,7 +140,7 @@ const absentOscBatch = [
       },
       loadedBinary: {
         path: "/fixture/ghostty.wasm",
-        sha256: "ce01cd0d1ae000dd88948f3817924cc85303874070cab39430967ebdf14877f3",
+        sha256: "1f23e13db5bda55ab54943461b83a5d642bf8d2050a452fbe7871927383dfe9f",
       },
       adapterSources: [
         { path: "packages/ghostty/src/index.ts", blobOid: "f4b9d9f3e13cc515b23abc739cab21bf971e8585" },

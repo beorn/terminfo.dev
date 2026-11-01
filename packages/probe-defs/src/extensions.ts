@@ -1237,10 +1237,10 @@ const ABSENT_OSC_ENGINES = {
     runtimeFormat: "wasm",
     engineVersion: "0.4.0",
     adapterVersion: "0.10.2",
-    binarySha256: "ce01cd0d1ae000dd88948f3817924cc85303874070cab39430967ebdf14877f3",
+    binarySha256: "1f23e13db5bda55ab54943461b83a5d642bf8d2050a452fbe7871927383dfe9f",
     codes: [176, 440, 555, 666, 710, 3008],
     sourceCitation:
-      "Ghostty WASM core5714ed07a1012573261b7b7e3ed2add9c1504496 src/terminal/osc.zig:551-566,779-800,891-1002,1047-1075 parser states reject OSC176/3008/440/555/666/710; :1708-1715 returns null before ResponseHandler. Artifactce01cd0d1ae000dd88948f3817924cc85303874070cab39430967ebdf14877f3 only adds DECRPM reply actions; OSC9/777 binding losses and OSC22 mouse_shape are excluded",
+      "Ghostty WASM core5714ed07a1012573261b7b7e3ed2add9c1504496 src/terminal/osc.zig:551-566,779-800,891-1002,1047-1075 parser states reject OSC176/3008/440/555/666/710; :1708-1715 returns null before ResponseHandler. Artifact1f23e13db5bda55ab54943461b83a5d642bf8d2050a452fbe7871927383dfe9f adds DECRPM, DA1/DA2, XTVERSION, DECRQSS and XTGETTCAP reply actions and no OSC handler; OSC9/777 binding losses and OSC22 mouse_shape are excluded",
   },
   kitty: {
     kind: "native",
