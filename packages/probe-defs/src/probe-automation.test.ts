@@ -278,6 +278,33 @@ describe("audited native host recipe callers", () => {
     ])
   })
 
+  // The S6 rebuilds need their own host causes; historical artifact fixtures cannot catch a missing new row.
+  test.each([
+    "dc3b24de6e91416f66b1953ce101991ef7e78602ce1b5d357f65832c9b96b326",
+    "d6e23fe62d56de795c6fa783a6c5025fc5b1238e739839de8b4b3737eca0c43e",
+  ])("native artifact %s explains only empty clipboard and geometry replies", (sha256) => {
+    for (const [id, recipe] of [
+      ["device.xtwinops-14", "text-area-size"],
+      ["extensions.osc52-read", "clipboard-load"],
+    ] as const) {
+      const run = (response: string) =>
+        probe(id).lib!(
+          context({
+            runtimeIdentity: {
+              ...nativeIdentity,
+              loadedBinary: { path: "native.node", sha256 },
+              provenance: { ...nativeIdentity.provenance, sha256 },
+            },
+            feedCapture: () => response,
+          }),
+        )
+      expect(run("").hostRecipeCauses).toMatchObject([
+        { recipe, cause: { kind: "unimplemented", artifactSha256: sha256 } },
+      ])
+      expect(run("reply").hostRecipeCauses).toBeUndefined()
+    }
+  })
+
   // The Alacritty addon rebuilt at the declared pixel geometry answers CSI 14 t (31628), so only its OSC 52 read is cited.
   test("the Alacritty artifact 5d818656 cites its OSC 52 read and leaves CSI 14 t measured", () => {
     const alacritty = "5d818656c9d58c8c68bec9f7bca1a55cc65ccf9fc078f9a3da0b872a28bf547a"
@@ -508,9 +535,9 @@ describe("reply-path audit", () => {
       }
     },
   )
-  // #31987: retain all 53 current audit values after retiring the duplicate predecessor key.
+  // #31987: retain all 53 historical audit values after retiring the duplicate predecessor key.
   // Frozen from the independently verified 53/53 equality at 81aabd55, before removing d70.
-  test("the current native 5a8030c0 artifact retains its 53 frozen reply audits", () => {
+  test("the historical native 5a8030c0 artifact retains its 53 frozen reply audits", () => {
     const rebuilt = REPLY_PATH_AUDITS.get("5a8030c0f3f9fa52e9c1f82d28ae711ef21e3072a4b82fbe98076fedf314c945")
     expect(rebuilt).toBeDefined()
     expect(Object.keys(rebuilt!)).toHaveLength(53)
@@ -549,7 +576,13 @@ describe("reply-path audit", () => {
   // The data-derived callback cases below cannot detect an omitted artifact or omitted row.
   test.each([
     {
-      name: "current native overline",
+      name: "native nullable modes",
+      digest: "d6e23fe62d56de795c6fa783a6c5025fc5b1238e739839de8b4b3737eca0c43e",
+      priors: ["61fb182e3381ab1c52d94b63a9e33163bbfb89ede419af022f71f4438bfe0b03"],
+      core: "332b2aef",
+    },
+    {
+      name: "historical native overline",
       digest: "5a8030c0f3f9fa52e9c1f82d28ae711ef21e3072a4b82fbe98076fedf314c945",
       priors: [
         "ac12d6408c2049f1d720e9735d7eb69251d3eed868fc9ced58de98b3543f3e2e",
@@ -584,9 +617,11 @@ describe("reply-path audit", () => {
     expect(rebuilt).toBeDefined()
     expect(Object.keys(rebuilt!).sort()).toEqual(
       [
-        ...Object.keys(prior),
-        "extensions.osc99-kitty-notify",
-        ...(digest.startsWith("77b69f9f") ? wasmReadbackQueries.map(([id]) => id) : []),
+        ...new Set([
+          ...Object.keys(prior),
+          "extensions.osc99-kitty-notify",
+          ...(digest.startsWith("77b69f9f") ? wasmReadbackQueries.map(([id]) => id) : []),
+        ]),
       ].sort(),
     )
     for (const [id, audit] of Object.entries(prior)) {
@@ -1189,6 +1224,8 @@ describe("reply-path audit", () => {
     expect([...REPLY_PATH_AUDITS.keys()].sort()).toEqual(
       [
         "0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3",
+        "d6e23fe62d56de795c6fa783a6c5025fc5b1238e739839de8b4b3737eca0c43e",
+        "dc3b24de6e91416f66b1953ce101991ef7e78602ce1b5d357f65832c9b96b326",
         "17d155feee5df8fa30266b9a354bbe66e39484d08218de5e03dc3bb2f199a0a3",
         "1f23e13db5bda55ab54943461b83a5d642bf8d2050a452fbe7871927383dfe9f",
         "5a8030c0f3f9fa52e9c1f82d28ae711ef21e3072a4b82fbe98076fedf314c945",
@@ -1271,7 +1308,8 @@ describe("reply-path audit", () => {
   test.each([
     "b9109b5918707746420833dfc2eab3ea5bc7feec5fa93bee4cd6e824e74d0962",
     "0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3",
-  ])("vt100-rust %s lists the ruled twins and leaves a silent write not-tested", (sha) => {
+    "dc3b24de6e91416f66b1953ce101991ef7e78602ce1b5d357f65832c9b96b326",
+  ])("vt100-rust %s lists the ruled twins and keeps silent writes outside reply audits", (sha) => {
     const old = "f309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96"
     const noReply = [
       "cursor.position-report",
@@ -1350,10 +1388,16 @@ describe("reply-path audit", () => {
     expect(REPLY_PATH_AUDITS.get(old)?.["extensions.osc52-write"]?.kind).toBe("no-reply-path")
     expect(REPLY_PATH_AUDITS.get(old)?.["extensions.osc99-kitty-notify"]?.kind).toBe("no-reply-path")
     const silent = run("extensions.osc52-write", sha, () => "")
-    expect(silent.result.notTested).toEqual({
-      reason: "no-semantic-observable",
-      noObservable: "clipboard write state",
-    })
+    if (sha === "dc3b24de6e91416f66b1953ce101991ef7e78602ce1b5d357f65832c9b96b326") {
+      expect(silent.result.hostRecipeCauses).toMatchObject([
+        { recipe: "clipboard-load", cause: { kind: "unimplemented", artifactSha256: sha } },
+      ])
+    } else {
+      expect(silent.result.notTested).toEqual({
+        reason: "no-semantic-observable",
+        noObservable: "clipboard write state",
+      })
+    }
     expect(JSON.stringify(silent.result)).not.toContain("replyPathAudit")
     expect(run("extensions.osc52-write", old, () => "").result.criterionBranch).toBe(REPLY_PATH_AUDIT_REVIEW)
   })
@@ -1440,7 +1484,13 @@ describe("reply-path audit", () => {
         captures: matched.length,
         replyBytes: 0,
       },
-      measuredResponse: unlisted.result.response ?? null,
+      // This artifact also has its own clipboard host audit: empty roundtrip evidence survives
+      // instead of the unaudited artifact's no-observable fallback.
+      measuredResponse:
+        id === "extensions.osc52-write" &&
+        auditKey === "d6e23fe62d56de795c6fa783a6c5025fc5b1238e739839de8b4b3737eca0c43e"
+          ? ""
+          : (unlisted.result.response ?? null),
       ...(audit.kind === "no-reply-path" && audit.matches === "prefix" && { matchedQueries: matched }),
     })
     if (audit.kind === "no-reply-path") {
@@ -1462,7 +1512,11 @@ describe("reply-path audit", () => {
 
     const answer = (sequence: string) =>
       (audit.matches === "prefix" ? sequence.startsWith(audit.query) : sequence === audit.query) ? "\x1b" : ""
-    expect(run(id, auditKey, answer).result).toEqual(run(id, "f".repeat(64), answer).result)
+    // Host causes are independently audited metadata; a different artifact may gain one for
+    // a second, unanswered query even when the listed reply itself was measured.
+    const { hostRecipeCauses: _auditedHostCauses, ...answered } = run(id, auditKey, answer).result
+    const { hostRecipeCauses: _unlistedHostCauses, ...ordinary } = run(id, "f".repeat(64), answer).result
+    expect(answered).toEqual(ordinary)
   })
 })
 
@@ -2000,18 +2054,18 @@ describe("OSC 8 link metadata observation", () => {
         engineVersion: "0.16.2",
         adapterSources: [
           { path: "packages/vt100-rust/src/index.ts", blobOid: "3ddb74f3ae1f79bb356952103853232f69211268" },
-          { path: "packages/vt100-rust/src/backend.ts", blobOid: "e24139c7ecc4935b060040091bb1520256cffced" },
+          { path: "packages/vt100-rust/src/backend.ts", blobOid: "abbbfd01d9e6ac880e02b00d9acccdc9ec70bc63" },
         ],
         adapterVersion: "0.10.2",
         termlessRevision: "2d97417328b7b1d086f9396b9a1731216ed134cc",
         loadedBinary: {
           path: "vendor/termless/packages/vt100-rust/termless-vt100-rust.node",
-          sha256: "0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3",
+          sha256: "dc3b24de6e91416f66b1953ce101991ef7e78602ce1b5d357f65832c9b96b326",
         },
         provenance: {
-          sha256: "0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3",
-          sourceCommit: "6ffc0df79756fcc259d87131681641606540e512",
-          buildHash: "7ab9ccc7744fbf5ae24c5ebb2748a144817e696f7f93959fa90a335d11646f68",
+          sha256: "dc3b24de6e91416f66b1953ce101991ef7e78602ce1b5d357f65832c9b96b326",
+          sourceCommit: "27297cf2a4a4e21b41ca3aafc7bc87ac36086fdf",
+          buildHash: "d5079c0f2a27be41c9a3f6b152d62da2bbf82fd189fdfb487b5a0c8b3ed8a654",
           toolchain:
             "rustc 1.94.0 (4a4ef493e 2026-03-02) (built from a source tarball); cargo 1.94.0 (85eff7c80 2026-01-15)",
           lockSha256: "4cf037e4efa648ca41d08b30ef5c4ce7ada29ad61fcad45a7d1aa97bf55391c6",
@@ -2019,6 +2073,70 @@ describe("OSC 8 link metadata observation", () => {
       },
     ],
   ] as const satisfies readonly (readonly [string, NonNullable<LibProbeSource["runtimeIdentity"]>])[]
+
+  // #31398: explicit callback checks catch omitted memberships; existing OSC8 cases never run highlight resets or OSC1.
+  test.each(absentOsc8Runtimes)(
+    "%s routes both absent highlight resets only at the audited identity",
+    (_engine, identity) => {
+      for (const [id, set, reset] of [
+        ["extensions.osc117-reset-highlight-bg", 17, 117],
+        ["extensions.osc119-reset-highlight-fg", 19, 119],
+      ] as const) {
+        const writes: string[] = []
+        const source = context({
+          runtimeIdentity: identity,
+          feed: (bytes) => writes.push(bytes),
+          getCell: () => ({ ...context({}).getCell(0, 0), char: "X" }),
+        })
+        const result = probe(id).lib!(source)
+        expect(result.criterionBranch, id).toBe("source-negative-review")
+        expect(result.tests, id).toMatchObject([{ id: "review", status: "test-failure" }])
+        expect(result.assertions, id).toMatchObject([{ kind: "negative", assertionType: "buffer_state" }])
+        expect(writes, id).toContain(`\x1b[1;1H\x1b[2K\x1b]${set};rgb:3030/6060/9090\x07\x1b]${reset}\x07X`)
+        expect(
+          probe(id).lib!({ ...source, runtimeIdentity: { ...identity, engineVersion: "unreviewed" } }).criterionBranch,
+          id,
+        ).not.toBe("source-negative-review")
+        expect(probe(id).lib!({ ...source, getCell: () => context({}).getCell(0, 0) }).assertions, id).toBeUndefined()
+      }
+    },
+  )
+
+  test.each(absentOsc8Runtimes)(
+    "%s distinguishes intrinsic OSC1 absence from a missing adapter getter",
+    (engine, identity) => {
+      let title = "before"
+      const writes: string[] = []
+      const source = context({
+        runtimeIdentity: identity,
+        getTitle: () => title,
+        feed: (bytes) => {
+          writes.push(bytes)
+          title = "after"
+        },
+      })
+      const result = probe("extensions.osc1-icon").lib!(source)
+      expect(writes).toEqual(["\x1b]1;test-icon\x07"])
+      expect(JSON.parse(result.response!)).toEqual({ before: "before", after: "after" })
+      if (engine === "vt100" || engine === "vt220") {
+        expect(result.criterionBranch).toBe("source-negative-review")
+        expect(result.tests).toMatchObject([
+          { id: "review", status: "test-failure", reason: expect.stringContaining("case 1") },
+        ])
+        expect(result.observation).toMatchObject({ outcome: "inconclusive", assertionType: "buffer_state" })
+        expect(result.assertions).toMatchObject([{ kind: "negative", assertionType: "buffer_state" }])
+      } else {
+        expect(result.notTested).toMatchObject({ reason: "no-semantic-observable" })
+        expect(result.assertions).toBeUndefined()
+      }
+      const foreign = probe("extensions.osc1-icon").lib!({
+        ...source,
+        runtimeIdentity: { ...identity, engineVersion: "unreviewed" },
+      })
+      expect(foreign.notTested).toMatchObject({ reason: "no-semantic-observable" })
+      expect(foreign.criterionBranch).toBeUndefined()
+    },
+  )
 
   test.each(absentOsc8Runtimes)(
     "%s emits source-review assertions only for its audited OSC8 identity",
@@ -2142,24 +2260,37 @@ describe("GhosttyNative audited OSC source review", () => {
     engineVersion: "1.3.1",
     adapterSources: [
       { path: "packages/ghostty-native/src/index.ts", blobOid: "35c9e35a5d60625ce1135b65ff38ae9278495a18" },
-      { path: "packages/ghostty-native/src/backend.ts", blobOid: "5b39135cef9cf8fa58aebc92e990f94b671983b9" },
+      { path: "packages/ghostty-native/src/backend.ts", blobOid: "f5832c21a5837f636effa3ee2dfc1f8a4e7b8b25" },
     ],
     adapterVersion: "0.10.2",
-    termlessRevision: "2d97417328b7b1d086f9396b9a1731216ed134cc",
+    termlessRevision: "723acd11346edfcf3bfd0614c1a44a3828512a9f",
     loadedBinary: {
       path: "vendor/termless/packages/ghostty-native/termless-ghostty-native.node",
-      sha256: "5a8030c0f3f9fa52e9c1f82d28ae711ef21e3072a4b82fbe98076fedf314c945",
+      sha256: "d6e23fe62d56de795c6fa783a6c5025fc5b1238e739839de8b4b3737eca0c43e",
     },
     provenance: {
-      sha256: "5a8030c0f3f9fa52e9c1f82d28ae711ef21e3072a4b82fbe98076fedf314c945",
+      sha256: "d6e23fe62d56de795c6fa783a6c5025fc5b1238e739839de8b4b3737eca0c43e",
       sourceCommit: "332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28",
-      buildHash: "740541f7a527884ed17034c3ab8c66d457cdd14e013774b6bf75c7c99670a7d7",
+      buildHash: "bcb9aac9409e23717f3c5952d0ab062da27395e9df69b980a4c5d026246f5a14",
       toolchain: "zig 0.15.2",
       lockSha256: "3ec775507556db01d08055836b26183f629a9cbb0b5802a1566661e95988d74a",
     },
   } as const satisfies NonNullable<LibProbeSource["runtimeIdentity"]>
 
-  test("the parsed OSC3008 review reason remains byte-identical", () => {
+  test("OSC1 uses the current native ignore-handler audit without changing other missing getters", () => {
+    const result = probe("extensions.osc1-icon").lib!(context({ runtimeIdentity: identity }))
+    expect(result.criterionBranch).toBe("source-negative-review")
+    expect(result.tests).toMatchObject([
+      { id: "review", status: "test-failure", reason: expect.stringContaining("stream.zig:1982-1986") },
+    ])
+    const foreign = probe("extensions.osc1-icon").lib!(
+      context({ runtimeIdentity: { ...identity, loadedBinary: { ...identity.loadedBinary, sha256: "0".repeat(64) } } }),
+    )
+    expect(foreign.notTested).toMatchObject({ reason: "no-semantic-observable" })
+    expect(foreign.assertions).toBeUndefined()
+  })
+
+  test("the parsed OSC3008 reason names the current wrapper and unchanged engine drop", () => {
     const result = probe("extensions.osc3008-context").lib!(
       context({
         runtimeIdentity: identity,
@@ -2167,7 +2298,7 @@ describe("GhosttyNative audited OSC source review", () => {
       }),
     )
     expect(result.tests?.[0]?.reason).toBe(
-      "Ghostty 332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28 src/terminal/osc.zig:535-641 rejects OSC176/440/555/666/710; :747 parses OSC3008 context_signal, dropped at src/terminal/stream.zig:2050-2059 (SHA256 3ddc5e27d6a6f48ea99399bb886b52e7bebb68c94397a3ba008a7c3eb6c01a9b); Termless 2d97417328b7b1d086f9396b9a1731216ed134cc packages/ghostty-native/native/src/main.zig:80 -> Terminal.zig:264 -> stream_readonly.zig:20 selects that readonly stream; parsed by osc.zig:747 context_signal, dropped unimplemented at stream.zig:2056-2059; independent source review required",
+      "Ghostty 332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28 src/terminal/osc.zig:535-641 rejects OSC176/440/555/666/710; :747 parses OSC3008 context_signal, dropped at src/terminal/stream.zig:2050-2059 (SHA256 3ddc5e27d6a6f48ea99399bb886b52e7bebb68c94397a3ba008a7c3eb6c01a9b); Termless 723acd11346edfcf3bfd0614c1a44a3828512a9f packages/ghostty-native/native/src/main.zig:38-39 wraps ReadonlyHandler, :76 forwards unhandled actions to readonly.vt, :85 creates ResponseStream and :141 initializes Terminal.vtHandler; parsed by osc.zig:747 context_signal, dropped unimplemented at stream.zig:2056-2059; independent source review required",
     )
   })
 
@@ -2377,7 +2508,7 @@ describe("Alacritty audited OSC source review", () => {
     expect(result.observation?.outcome).toBe("supported")
   })
 
-  test.each(["extensions.osc8", "extensions.osc1-icon", "extensions.osc7-cwd", "extensions.osc1337-cellsize"])(
+  test.each(["extensions.osc8", "extensions.osc7-cwd", "extensions.osc1337-cellsize"])(
     "%s stays outside this source audit",
     (id) => {
       const result = probe(id).lib!(

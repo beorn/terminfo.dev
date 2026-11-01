@@ -654,3 +654,10 @@ unqualified source remains named TODO. Actual DECRPM replies retain their origin
 Stored mode1 on both engines, and5/66 on vt100, remain held instrumentation TODO. The private
 mixed-observable arms use the existing undeclared assertion type so query replies and reviewed
 buffer state both survive actual collection. Other engines and terminal callbacks retain their behavior.
+
+The exact-runtime source audit also covers highlight set/reset absence for vt100, vt220, libvterm and
+vt100-rust. A silent query plus rendered X retains independent source review for OSC117/119; it
+does not establish a measured reset negative. A missing OSC1 icon getter retains source review only
+for pinned vt100, vt220, Alacritty and Ghostty WASM/native engines whose own dispatch discards the
+icon name. Other missing icon observers retain their existing coverage result. The review keeps
+the actual OSC1 stimulus and before/after title state; title behavior alone is not icon support.
