@@ -40,6 +40,7 @@ import {
 import { evidenceRuntimeIdentity } from "./runtime-identity.ts"
 import { replyPathAuditFor } from "./reply-path-audit.ts"
 import { nativeHostRecipeResult } from "./native-host-audit.ts"
+import { measureAlternateReflow } from "./modes.ts"
 import { sgrTermReadback } from "./sgr.ts"
 import {
   beginCaptureLifecycle,
@@ -3080,6 +3081,7 @@ function mainScreenReflow(ctx: LibProbeSource): ProbeCallbackResult {
     outcome: Phase["outcome"] | "not-retained"
     status: "supported" | "unsupported" | "test-todo" | "test-failure"
   }
+  type AlternatePhase = NonNullable<ReturnType<typeof measureAlternateReflow>["measurement"]>
   const state = {
     declaredReflow: ctx.capabilities.reflow === true,
     initial,
@@ -3093,6 +3095,16 @@ function mainScreenReflow(ctx: LibProbeSource): ProbeCallbackResult {
     reads: {} as Record<string, Frame>,
     phases: [] as Phase[],
     historyPhases: [] as HistoryPhase[],
+    alternatePhases: [] as AlternatePhase[],
+    alternateRoundtrips: {} as Record<
+      string,
+      {
+        roundtrip: ProbeCallbackResult
+        measurement?: AlternatePhase
+        measurementError?: string
+        identity: Record<string, boolean | null>
+      }
+    >,
   }
   const feed = (text: string) => {
     state.actions.push({ kind: "feed", text })
@@ -3138,9 +3150,9 @@ function mainScreenReflow(ctx: LibProbeSource): ProbeCallbackResult {
     })
   const matches = (frame: Frame, lines: string[]) =>
     frame.scrollback.totalLines === height && frame.scrollback.viewportOffset === 0 && matchesCells(frame, lines)
-  const clear = () => feed("\x1b[?1049l\x1b[?7h\x1b[2J\x1b[H")
-  const widthControl = (name: string, columns: number, history = false) => {
-    clear()
+  const clear = (alternate = false) => feed(`${alternate ? "" : "\x1b[?1049l"}\x1b[?7h\x1b[2J\x1b[H`)
+  const widthControl = (name: string, columns: number, history = false, alternate = false) => {
+    clear(alternate)
     feed("W".repeat(columns) + "Z")
     const frame = read(name, columns)
     const lines = ["W".repeat(columns), "Z"]
@@ -3151,6 +3163,7 @@ function mainScreenReflow(ctx: LibProbeSource): ProbeCallbackResult {
   const layout = (columns: number) =>
     columns === 12 ? ["ABCDEFGHIJKL", "MNOPQR", ...state.fixture.hard] : [state.fixture.soft, ...state.fixture.hard]
   let primary: { error: unknown } | undefined
+  const measurementFailures: unknown[] = []
   try {
     for (const [id, from, to] of [
       ["main-grow", 12, 20],
@@ -3307,12 +3320,148 @@ function mainScreenReflow(ctx: LibProbeSource): ProbeCallbackResult {
                 : "Retained physical rows were preserved or clipped; all hard witnesses and blank tails were conserved"),
       )
     }
+    for (const [id, from, to] of [
+      ["alternate-grow", 12, 20],
+      ["alternate-shrink", 20, 12],
+    ] as const) {
+      state.actions.push({ kind: "reset" })
+      ctx.reset()
+      readBound = height
+      resize(from)
+      const fresh = read(`${id}.fresh`, from)
+      const phase = (outcome: AlternatePhase["outcome"], reason: string): AlternatePhase => ({
+        id,
+        from,
+        to,
+        outcome,
+        reason,
+        status:
+          outcome === "identity-unavailable" || outcome === "not-entered"
+            ? "test-todo"
+            : outcome === "invalid"
+              ? "test-failure"
+              : outcome === "reflow"
+                ? "supported"
+                : "unsupported",
+      })
+      if (!matches(fresh, [])) {
+        state.alternatePhases.push(phase("invalid", fresh.invalid ?? "Fresh alternate fixture did not qualify"))
+        continue
+      }
+      const identity: Record<string, boolean | null> = { before: ctx.getMode("altScreen") }
+      // Log the shared roundtrip's feeds as well as the fixture's. Read actual mode state immediately
+      // after its measured enter/leave; the declaration bit is never a buffer-identity witness.
+      const roundtripSource = Object.create(ctx) as LibProbeSource
+      roundtripSource.feed = (text) => {
+        feed(text)
+        if (text === "\x1b[?1049h") identity.entered = ctx.getMode("altScreen")
+        if (text === "\x1b[?1049l") identity.restored = ctx.getMode("altScreen")
+      }
+      let slotFailure: { error: unknown } | undefined
+      const evidence = measureAlternateReflow(roundtripSource, () => {
+        try {
+          if (identity.before === true || identity.entered === false) {
+            return phase("invalid", "Alternate identity contradicts the measured primary isolation")
+          }
+          if (identity.before !== false || identity.entered !== true) {
+            return phase("identity-unavailable", "alternate buffer identity unavailable")
+          }
+          if (!widthControl(`${id}.control-before`, from, false, true)) {
+            return phase("invalid", "Initial alternate width control did not wrap at the requested column")
+          }
+          clear(true)
+          feed(`${state.fixture.soft}\r\n${state.fixture.hard.join("\r\n")}\r\n`)
+          feed(`\x1b[${height - 2};1H`)
+          const before = read(`${id}.before`, from)
+          const parked =
+            before.cursor.x === 0 &&
+            Number.isSafeInteger(before.cursor.y) &&
+            before.cursor.y >= layout(from).length &&
+            before.cursor.y < height
+          identity.seed = ctx.getMode("altScreen")
+          if (!matches(before, layout(from)) || !parked || identity.seed === false) {
+            return phase("invalid", "Alternate seed cells, blank tails, geometry, cursor or identity did not qualify")
+          }
+          if (identity.seed !== true) return phase("identity-unavailable", "alternate buffer identity unavailable")
+          resize(to)
+          const after = read(`${id}.after`, to)
+          identity.target = ctx.getMode("altScreen")
+          // Destructive control stays on this same resized alternate state, after target readback.
+          const control = widthControl(`${id}.control-after`, to, false, true)
+          identity.control = ctx.getMode("altScreen")
+          const layoutOutcome = matches(after, layout(to))
+            ? "reflow"
+            : matches(
+                  after,
+                  layout(from).map((line) => line.slice(0, to)),
+                )
+              ? to < from
+                ? "truncated"
+                : "preserved-wraps"
+              : "invalid"
+          const outcome =
+            !control || layoutOutcome === "invalid" || identity.target === false || identity.control === false
+              ? "invalid"
+              : identity.target !== true || identity.control !== true
+                ? "identity-unavailable"
+                : layoutOutcome
+          return phase(
+            outcome,
+            !control
+              ? "Post-resize alternate width control did not wrap at the requested column"
+              : identity.target === false || identity.control === false
+                ? "Alternate buffer identity changed during target or width-control readback"
+                : outcome === "identity-unavailable"
+                  ? "alternate buffer identity unavailable"
+                  : outcome === "invalid"
+                    ? "Alternate resize matched neither complete layout, including hard rows and blank tails"
+                    : outcome === "reflow"
+                      ? "Alternate soft line reflowed; explicit boundaries and complete blank tails were conserved"
+                      : "Alternate physical rows were preserved or clipped; all hard rows and blank tails were conserved",
+          )
+        } catch (error) {
+          slotFailure = { error }
+          throw error
+        }
+      })
+      // Keep original causes outside the JSON evidence. A later cleanup failure must not hide a
+      // slot error merely because the shared leaves succeeded and returned its invalid phase.
+      if (slotFailure) measurementFailures.push(slotFailure.error)
+      identity.after = ctx.getMode("altScreen")
+      state.alternateRoundtrips[id] = { ...evidence, identity }
+      let result: AlternatePhase
+      if (evidence.measurementError !== undefined) {
+        result = phase("invalid", `Alternate measurement failed: ${evidence.measurementError}`)
+      } else if (evidence.measurement) {
+        result = evidence.measurement
+        if (!evidence.roundtrip.pass || identity.restored === true || identity.after === true) {
+          result = phase(
+            "invalid",
+            `Primary restoration after alternate measurement did not qualify: ${evidence.roundtrip.note ?? evidence.roundtrip.response}`,
+          )
+        } else if (result.outcome !== "invalid" && (identity.restored !== false || identity.after !== false)) {
+          result = phase("identity-unavailable", "alternate buffer identity unavailable")
+        }
+      } else if (identity.before === false && identity.entered === false) {
+        result = phase("not-entered", "alternate buffer not entered")
+      } else if (identity.entered !== undefined && (identity.before === null || identity.entered === null)) {
+        result = phase("identity-unavailable", "alternate buffer identity unavailable")
+      } else {
+        result = phase(
+          "invalid",
+          `Alternate isolation did not qualify: ${evidence.roundtrip.note ?? evidence.roundtrip.response}`,
+        )
+      }
+      state.alternatePhases.push(result)
+    }
   } catch (error) {
     primary = { error }
     throw error
   } finally {
-    const failures: unknown[] = primary ? [primary.error] : []
+    const failures: unknown[] = [...measurementFailures, ...(primary ? [primary.error] : [])]
+    const beforeCleanup = failures.length
     for (const cleanup of [
+      () => feed("\x1b[?1049l"),
       () => resize(initial.cols),
       () => {
         state.actions.push({ kind: "reset" })
@@ -3325,18 +3474,20 @@ function mainScreenReflow(ctx: LibProbeSource): ProbeCallbackResult {
         failures.push(error)
       }
     }
-    if (failures.length > (primary ? 1 : 0)) {
+    if (failures.length > beforeCleanup || (primary && measurementFailures.length > 0)) {
       const messages = failures.map((error) => (error instanceof Error ? error.message : String(error))).join("; ")
       throw new AggregateError(failures, `Reflow cleanup failed: ${messages}`, { cause: failures[0] })
     }
   }
   const pending = [
     ...state.phases.filter((phase) => phase.outcome !== "reflow").map((phase) => `${phase.id}: ${phase.reason}`),
-    "History phase evidence retained without a cross-facet fold; alternate-screen reflow is not measured",
+    "History and alternate-screen phase evidence retained without a cross-facet fold",
   ].join("; ")
   const response = JSON.stringify(state)
-  const assertions = [...state.phases, ...state.historyPhases]
-    .filter((phase) => phase.outcome !== "invalid" && phase.outcome !== "not-retained")
+  const assertions = [...state.phases, ...state.historyPhases, ...state.alternatePhases]
+    .filter(
+      (phase) => phase.outcome === "reflow" || phase.outcome === "preserved-wraps" || phase.outcome === "truncated",
+    )
     .map((phase) => ({
       assertionType: "buffer_state" as const,
       kind: phase.outcome === "reflow" ? ("positive" as const) : ("negative" as const),
@@ -3376,7 +3527,11 @@ function mainScreenReflow(ctx: LibProbeSource): ProbeCallbackResult {
             },
           ]
         : []),
-      { id: "alternate-screen", status: "test-todo", reason: "Alternate-screen reflow has not been measured" },
+      {
+        id: "alternate-screen",
+        status: "test-todo",
+        reason: "Alternate-screen evidence recorded; cross-facet fold not approved",
+      },
       {
         id: "scrollback",
         status: "test-todo",

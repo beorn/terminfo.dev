@@ -293,14 +293,24 @@ Neither complete model is a named invalid phase, including ambiguous loss or evi
 width control follows target readback on the same resized state, reading the active screen at H+s;
 history matching has no viewport-position predicate.
 
-History phases retain their statuses in the response and supply qualified assertions. They do not
+Alternate-screen growth and shrink reuse the seeded 1049 roundtrip used by the mode probes.
+The sparse target and its post-resize width control stay in the same alternate buffer; target cells
+are read before the destructive control. A reflow assertion requires complete target cells, hard
+boundaries and blank tails, actual buffer identity, and primary restoration in that same roundtrip.
+Unknown identity and a measured entry that leaves the primary active have distinct named TODOs:
+`alternate buffer identity unavailable` and `alternate buffer not entered`. Neither is a reflow
+negative. Corrupt setup, inconsistent identity, failed controls/restoration and unmatched layouts
+retain invalid phase evidence. Slot errors retain their cause while measured/final leaves run;
+outer cleanup independently attempts alternate exit, initial-width restoration and reset.
+
+History and alternate phases retain their statuses in the response and supply qualified assertions. They do not
 enter the required-test fold: all eleven feature outcomes stay at the pre-history baseline until
 the cross-facet fold is approved. Qualified main-phase results, including two negatives from a
 truncating engine, keep the feature pending. Invalid or conflicting main phases still make it fail;
 its reason names each negative or invalid main phase and that phase's reason. Remaining facets are:
 
-- Alternate-screen behavior retains its named TODO test. The required scrollback TODO remains,
-  naming recorded history evidence and the unapproved cross-facet fold. Only that later approved
+- Alternate-screen and scrollback retain their required TODO tests,
+  naming recorded evidence and the unapproved cross-facet fold. Only that later approved
   fold can retire the row; history phase evidence alone cannot release the feature.
 - A default-config observation is not engine capability absence. Libvterm0.3 exposes
   `vterm_screen_enable_reflow`, disabled unless the embedder enables it. Before a future final fold,
