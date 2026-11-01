@@ -3487,9 +3487,13 @@ function mainScreenReflow(ctx: LibProbeSource): ProbeCallbackResult {
       throw new AggregateError(failures, `Reflow cleanup failed: ${messages}`, { cause: failures[0] })
     }
   }
-  const pending = [
-    ...state.phases.filter((phase) => phase.outcome !== "reflow").map((phase) => `${phase.id}: ${phase.reason}`),
-    "History and alternate-screen phase evidence retained without a cross-facet fold",
+  const gradedPhases = [...state.phases, ...state.historyPhases]
+  const resultNote = [
+    gradedPhases.every((phase) => phase.outcome === "reflow")
+      ? "ASCII reflow measured on main screen and retained history; wide characters, cursor on a wrapped line and terminal-app resize unmeasured"
+      : "Main-screen and retained-history ASCII reflow attempted; wide characters, cursor on a wrapped line and terminal-app resize unmeasured",
+    ...gradedPhases.map((phase) => `${phase.id}: ${phase.reason}`),
+    `Alternate screen (reported, not graded): ${state.alternatePhases.map((phase) => `${phase.id}: ${phase.reason}`).join("; ")}`,
   ].join("; ")
   const response = JSON.stringify(state)
   const assertedPhases = [...state.phases, ...state.historyPhases, ...state.alternatePhases].filter(
@@ -3504,12 +3508,12 @@ function mainScreenReflow(ctx: LibProbeSource): ProbeCallbackResult {
   return {
     pass: false,
     response,
-    note: pending,
+    note: resultNote,
     observation: {
       outcome: "inconclusive",
       reason: "insufficient-evidence",
       assertionType: "buffer_state",
-      note: pending,
+      note: resultNote,
     },
     ...(assertions.length > 0 && { assertions }),
     tests: [
@@ -3538,16 +3542,12 @@ function mainScreenReflow(ctx: LibProbeSource): ProbeCallbackResult {
             },
           ]
         : []),
-      {
-        id: "alternate-screen",
-        status: "test-todo",
-        reason: "Alternate-screen evidence recorded; cross-facet fold not approved",
-      },
-      {
-        id: "scrollback",
-        status: "test-todo",
-        reason: "Retained-history evidence recorded; cross-facet fold not approved",
-      },
+      ...state.historyPhases.map((phase) => ({
+        id: phase.id,
+        status: phase.status,
+        reason: phase.reason,
+        assertionRefs: assertedPhases.flatMap((asserted, index) => (asserted.id === phase.id ? [index] : [])),
+      })),
     ],
   }
 }

@@ -306,22 +306,28 @@ can yield an identity or no-entry TODO.
 Slot errors retain their cause while measured/final leaves run;
 outer cleanup independently attempts alternate exit, initial-width restoration and reset.
 
-History and alternate phases retain their statuses in the response and supply qualified assertions. They do not
-enter the required-test fold: all eleven feature outcomes stay at the pre-history baseline until
-the cross-facet fold is approved. Each required main row cites its own phase's assertion; the combined
-main criterion cites only main assertions, never history or alternate evidence. Qualified main-phase results, including two negatives from a
-truncating engine, keep the feature pending. Invalid or conflicting main phases still make it fail;
-its reason names each negative or invalid main phase and that phase's reason. Remaining facets are:
+The library criterion requires main-screen growth/shrink and retained-history growth/shrink.
+Each required row cites only its own phase's assertions; the existing mixed-main criterion cites
+only main assertions. The shared finalizer gives required failures precedence over TODOs, then
+measured negatives, then support. Main reflow with retained physical history is Unsupported;
+missing qualified history remains TODO, and corrupt tails or unmatched layouts remain failures.
+The reason names the graded phases and their results.
 
-- Alternate-screen and scrollback retain their required TODO tests,
-  naming recorded evidence and the unapproved cross-facet fold. Only that later approved
-  fold can retire the row; history phase evidence alone cannot release the feature.
-- A default-config observation is not engine capability absence. Libvterm0.3 exposes
-  `vterm_screen_enable_reflow`, disabled unless the embedder enables it. Before a future final fold,
-  either the adapter enables that option with the fact recorded in the response, or a default-off
-  no-reflow observation routes to independent source review. This slice changes no engine option.
-- Unicode, cursor-on-wrapped-line cases and terminal-app resize remain unmeasured; this ASCII
-  main-screen slice grants no broader support, exact-run decision, seal or admission.
+Alternate-screen phases retain their statuses, positive/negative assertions and raw response but
+do not decide the grade: full-screen apps redraw on resize, and intentional physical-row preservation
+there does not negate main-screen or history reflow. The reason reports alternate results as not graded.
+Invalid alternate evidence stays visible without vetoing the graded phases; cleanup failures still error.
+
+Supported reasons state: "ASCII reflow measured on main screen and retained history; wide characters,
+cursor on a wrapped line and terminal-app resize unmeasured". No broader coverage is inferred, and
+the separate terminal-app arm remains TODO. Private apparatus results grant no exact-run decision,
+seal or admission; the native absolute-row consumer hold remains with independent batch review.
+
+A default-config observation is not engine capability absence. Libvterm0.3 exposes
+`vterm_screen_enable_reflow`, disabled unless the embedder enables it, and the current adapter
+retains no history, keeping this criterion TODO. Its one future qualification route installs
+scrollback callbacks, enables reflow and records the setting with the next adapter re-pin.
+A source review of default-off behavior cannot replace that recorded enablement. This slice changes no adapter.
 
 The Linux Kitty/Ghostty launcher pins one exact font file for the entire run, with no fallback face,
 through a private fontconfig directory. Its receipt retains that file's SHA256, launch arguments and HarfBuzz glyph
