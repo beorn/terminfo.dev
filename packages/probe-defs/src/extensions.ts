@@ -1262,7 +1262,7 @@ const ABSENT_OSC_ENGINES = {
       {
         code: 3008,
         reason:
-          "kitty/vt-parser.c:658-661 dispatches osc_context; kitty/window.py:1582-1583 is empty and Termless packages/kitty/build/bridge.py:242 maps it to no_reply",
+          "kitty/vt-parser.c:658-661 dispatches osc_context; kitty/window.py:1582-1583 is empty and Termless packages/kitty/build/bridge.py:243 maps it to no_reply",
       },
     ],
     sourceCitation:

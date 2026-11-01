@@ -173,7 +173,7 @@ const absentOscBatch = [
       adapterSources: [
         { path: "packages/kitty/src/index.ts", blobOid: "3f207f911646613cdc3d8b04f155f0686a96a077" },
         { path: "packages/kitty/src/backend.ts", blobOid: "5e98a200eab31eeef6505e81470d350637b5959c" },
-        { path: "packages/kitty/build/bridge.py", blobOid: "7736a826f38162406a46a530727464b066431392" },
+        { path: "packages/kitty/build/bridge.py", blobOid: "c20ef9dbc3f975e00a73224cd39a2be81e96ab4e" },
       ],
       codes: [176, 3008, 440, 555, 666, 710],
     },
