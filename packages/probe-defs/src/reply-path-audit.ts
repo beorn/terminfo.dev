@@ -308,7 +308,7 @@ export const REPLY_PATH_AUDITS: ReadonlyMap<string, Readonly<Record<string, Repl
         query: "\u001b[=c",
         kind: "no-reply-path",
         citation:
-          "Ghostty WASM artifact 1f23e13db5bda55ab54943461b83a5d642bf8d2050a452fbe7871927383dfe9f, core 5714ed07a1012573261b7b7e3ed2add9c1504496, inner patch sha256 a4b6fc33 (#32057): Termless vendor/ghostty-web/ghostty-wasm-api.patch:683-688 answers .primary and .secondary as core src/termio/stream_handler.zig:743-755 does; core sends nothing for .tertiary (:757 else => log.warn \"unimplemented device attributes req\"), so DA3 stays silent here as in core; ghostty 5714ed07 src/terminal/stream.zig:1320-1338 device_attributes parses it",
+          'Ghostty WASM artifact 1f23e13db5bda55ab54943461b83a5d642bf8d2050a452fbe7871927383dfe9f, core 5714ed07a1012573261b7b7e3ed2add9c1504496, inner patch sha256 a4b6fc33 (#32057): Termless vendor/ghostty-web/ghostty-wasm-api.patch:683-688 answers .primary and .secondary as core src/termio/stream_handler.zig:743-755 does; core sends nothing for .tertiary (:757 else => log.warn "unimplemented device attributes req"), so DA3 stays silent here as in core; ghostty 5714ed07 src/terminal/stream.zig:1320-1338 device_attributes parses it',
       },
       "device.xtgetxres": {
         query: "\u001bP+Q7465726d4e616d65\u001b\\",
