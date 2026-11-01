@@ -1302,9 +1302,9 @@ const ABSENT_OSC_ENGINES = {
     kind: "native",
     engineVersion: "0.26.0",
     adapterVersion: "0.10.2",
-    binarySha256: "32d76284e5a3c7673fafbbc83a16717fa0a1c1811c7d659d982176a53ceb1aa9",
-    sourceCommit: "cd5cd5172680fd240ee3445dea96289793bc2d59",
-    buildHash: "94ef4fbf1e21d454c70a39efaf9cfde1ebabe57a0f9cdb186fef782cfb1ff8ce",
+    binarySha256: "8232209bd7273d68eb0bc9a71c5acf94fd8ebd96612604ff901c09c4d6cb8344",
+    sourceCommit: "be67d1c7f542ee54a713500604d771a4aa8daa30",
+    buildHash: "fe1651e09a5d7e191586ed8f90a945ae479a9a1976a3776d852646e824c7ace1",
     lockSha256: "1f89f2579b7d786a116d8fefb8267c4af076bd3a3893adcf14b00c4466740497",
     codes: [1, 9, 17, 19, 22, 117, 119, 176, 440, 555, 666, 710, 777, 3008],
     reviewReasons: [
@@ -1320,7 +1320,7 @@ const ABSENT_OSC_ENGINES = {
       },
     ],
     sourceCitation:
-      "alacritty_terminal 0.26.0 with vte 0.15.0 src/ansi.rs:1329-1523 OSC dispatch (22 parsed, other audited codes unhandled); src/term/mod.rs:1059-2272 Term Handler; Termless 2d97417328b7b1d086f9396b9a1731216ed134cc packages/alacritty/native/src/lib.rs:285-338 owns Term<EventProxy> and advances the vte processor into it",
+      "alacritty_terminal 0.26.0 with vte 0.15.0 src/ansi.rs:1329-1523 OSC dispatch (22 parsed, other audited codes unhandled); src/term/mod.rs:1059-2272 Term Handler; Termless be67d1c7f542ee54a713500604d771a4aa8daa30 packages/alacritty/native/src/lib.rs:285-338 owns Term<EventProxy> and advances the same vte processor into it; absolute-row getter changes leave Config, OSC dispatch and reply handling unchanged",
   },
   wezterm: {
     kind: "native",

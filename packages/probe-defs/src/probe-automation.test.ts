@@ -330,6 +330,7 @@ describe("audited native host recipe callers", () => {
     "11c87e7e7f23e6f224e9dc8c3296b0a91f5453a42038e5ad049aafa864f9bd50",
     "d280c3fd2129f42db0d7154d6e66f5582a67fa1faf1e82ab463b6b8286f126d0",
     "32d76284e5a3c7673fafbbc83a16717fa0a1c1811c7d659d982176a53ceb1aa9",
+    "8232209bd7273d68eb0bc9a71c5acf94fd8ebd96612604ff901c09c4d6cb8344",
   ])("the Alacritty artifact %s cites its OSC 52 read and leaves CSI 14 t measured", (alacritty) => {
     const silent = (id: string) =>
       probe(id).lib!(
@@ -2382,26 +2383,26 @@ describe("GhosttyNative audited OSC source review", () => {
  * @testonly none
  */
 describe("Alacritty audited OSC source review", () => {
-  // Retained Linux capture run fdf3e7dc; fixture identity is not a loaded-engine attestation.
+  // Current absolute-row build receipt; fixture identity is not a loaded-engine attestation.
   const identity = {
     kind: "native",
     engineVersion: "0.26.0",
     adapterSources: [
       { path: "packages/alacritty/src/index.ts", blobOid: "b4154cbd6ef4a83ce2cbf3dcf26ff13d645efd05" },
       { path: "packages/alacritty/src/backend.ts", blobOid: "4210383129879c4e8756e6975674632cf69ecce9" },
-      { path: "packages/alacritty/native/src/lib.rs", blobOid: "f8d4ef7a2c4f389dd80ecbd3f9dae38600446a1e" },
+      { path: "packages/alacritty/native/src/lib.rs", blobOid: "f6bd100a60de8bcbc54e28b4c293ca6920cbc18d" },
       { path: "src/load-native.ts", blobOid: "34e142550085450ab02138184626716ad0d6b546" },
     ],
     adapterVersion: "0.10.2",
-    termlessRevision: "2d97417328b7b1d086f9396b9a1731216ed134cc",
+    termlessRevision: "be67d1c7f542ee54a713500604d771a4aa8daa30",
     loadedBinary: {
       path: "vendor/termless/packages/alacritty/termless-alacritty-native.node",
-      sha256: "32d76284e5a3c7673fafbbc83a16717fa0a1c1811c7d659d982176a53ceb1aa9",
+      sha256: "8232209bd7273d68eb0bc9a71c5acf94fd8ebd96612604ff901c09c4d6cb8344",
     },
     provenance: {
-      sha256: "32d76284e5a3c7673fafbbc83a16717fa0a1c1811c7d659d982176a53ceb1aa9",
-      sourceCommit: "cd5cd5172680fd240ee3445dea96289793bc2d59",
-      buildHash: "94ef4fbf1e21d454c70a39efaf9cfde1ebabe57a0f9cdb186fef782cfb1ff8ce",
+      sha256: "8232209bd7273d68eb0bc9a71c5acf94fd8ebd96612604ff901c09c4d6cb8344",
+      sourceCommit: "be67d1c7f542ee54a713500604d771a4aa8daa30",
+      buildHash: "fe1651e09a5d7e191586ed8f90a945ae479a9a1976a3776d852646e824c7ace1",
       toolchain:
         "rustc 1.94.0 (4a4ef493e 2026-03-02) (built from a source tarball); cargo 1.94.0 (85eff7c80 2026-01-15)",
       lockSha256: "1f89f2579b7d786a116d8fefb8267c4af076bd3a3893adcf14b00c4466740497",
@@ -2444,7 +2445,7 @@ describe("Alacritty audited OSC source review", () => {
     if (codes === "22") {
       expect(writes).toContain("\x1b[1;1H\x1b[2K\x1b]22;pointer\x07X")
       expect(reason).toBe(
-        "alacritty_terminal 0.26.0 with vte 0.15.0 src/ansi.rs:1329-1523 OSC dispatch (22 parsed, other audited codes unhandled); src/term/mod.rs:1059-2272 Term Handler; Termless 2d97417328b7b1d086f9396b9a1731216ed134cc packages/alacritty/native/src/lib.rs:285-338 owns Term<EventProxy> and advances the vte processor into it; parsed by vte 0.15.0 src/ansi.rs:1455-1461 into set_mouse_cursor_icon; Handler default src/ansi.rs:703-704 is empty and alacritty_terminal 0.26.0 src/term/mod.rs:1059-2272 supplies no override; independent source review required",
+        "alacritty_terminal 0.26.0 with vte 0.15.0 src/ansi.rs:1329-1523 OSC dispatch (22 parsed, other audited codes unhandled); src/term/mod.rs:1059-2272 Term Handler; Termless be67d1c7f542ee54a713500604d771a4aa8daa30 packages/alacritty/native/src/lib.rs:285-338 owns Term<EventProxy> and advances the same vte processor into it; absolute-row getter changes leave Config, OSC dispatch and reply handling unchanged; parsed by vte 0.15.0 src/ansi.rs:1455-1461 into set_mouse_cursor_icon; Handler default src/ansi.rs:703-704 is empty and alacritty_terminal 0.26.0 src/term/mod.rs:1059-2272 supplies no override; independent source review required",
       )
       expect(reason).not.toContain("no case 22")
     } else {

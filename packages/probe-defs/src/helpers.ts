@@ -60,7 +60,7 @@ export const ADAPTER_SOURCE_AUDITS = {
   alacritty: {
     "packages/alacritty/src/index.ts": "b4154cbd6ef4a83ce2cbf3dcf26ff13d645efd05",
     "packages/alacritty/src/backend.ts": "4210383129879c4e8756e6975674632cf69ecce9",
-    "packages/alacritty/native/src/lib.rs": "f8d4ef7a2c4f389dd80ecbd3f9dae38600446a1e",
+    "packages/alacritty/native/src/lib.rs": "f6bd100a60de8bcbc54e28b4c293ca6920cbc18d",
     "src/load-native.ts": "34e142550085450ab02138184626716ad0d6b546",
   },
   wezterm: {
