@@ -310,6 +310,39 @@ test.for(["extensions.osc7-cwd", "extensions.notifications"])(
   },
 )
 
+// @failure Declared native readers are lost at the collector binding, or undeclared/non-callable readers are exposed.
+// @level l1
+// @consumer Semantic-mark and Sixel storage callbacks through the actual LibProbeSource.
+test.for(["semantic-marks", "sixel-storage"] as const)(
+  "real vterm %s readback is forwarded only when declared and callable",
+  async (extension, context) => {
+    const sibling = fileURLToPath(new URL("../../../termless/packages/vterm/src/backend.ts", import.meta.url))
+    if (!existsSync(sibling)) context.skip(`Real-vterm reader binding requires missing sibling ${sibling}`)
+    const value = createVtermBackend({ cols: 80, rows: 24 })
+    const method = extension === "semantic-marks" ? "getSemanticMarks" : "getSixelImages"
+    try {
+      const source = createLibProbeSource(value, undefined, undefined, undefined)
+      expect(source[method]).toBeTypeOf("function")
+      if (extension === "semantic-marks") {
+        expect(source.getSemanticMarks!()).toEqual([])
+        source.feed("\x1b[2;3H\x1b]133;B\x07")
+        expect(source.getSemanticMarks!()).toEqual([{ type: "command", startRow: 1, startCol: 2 }])
+      } else {
+        expect(source.getSixelImages!()).toEqual([])
+        source.feed("\x1b[2;3H\x1bPq#1;2;100;0;0~\x1b\\")
+        expect(source.getSixelImages!()).toEqual([{ data: "#1;2;100;0;0~", row: 1, col: 2 }])
+      }
+      value.capabilities.extensions.delete(extension)
+      expect(createLibProbeSource(value, undefined, undefined, undefined)[method]).toBeUndefined()
+      value.capabilities.extensions.add(extension)
+      expect(Reflect.deleteProperty(value, method)).toBe(true)
+      expect(createLibProbeSource(value, undefined, undefined, undefined)[method]).toBeUndefined()
+    } finally {
+      value.destroy()
+    }
+  },
+)
+
 test("cwd readback errors propagate after restoring the original metadata", async (context) => {
   const sibling = fileURLToPath(new URL("../../../termless/packages/vterm/src/backend.ts", import.meta.url))
   if (!existsSync(sibling)) context.skip(`Real-vterm cwd cleanup requires missing sibling ${sibling}`)
