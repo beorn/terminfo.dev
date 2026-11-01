@@ -13,6 +13,7 @@ import { join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { afterEach, expect, it, vi } from "vitest"
 import {
+  HEADLESS_OBSERVABLE_REVIEW,
   readCollectorAttempt,
   SOURCE_NEGATIVE_REVIEW,
   type CapturedRunDraft,
@@ -208,6 +209,7 @@ it.runIf(OWNED_LAYOUT)(
     const dir = directory()
     // Exercise the review journey with its own witnesses; unrelated catalogue additions must not expand it.
     const collection = await collectHeadlessRuns(["xtermjs"], dir, undefined, [
+      "device.term-features",
       "editing.decsace",
       "extensions.osc104-reset-palette",
       ...colourReadback,
@@ -258,7 +260,18 @@ it.runIf(OWNED_LAYOUT)(
       assertionType: "input_bytes",
       tests: [expect.objectContaining({ id: "criterion", status: "unsupported" })],
     })
-    expect(pending).toEqual(["editing.decsace", "modes.synchronized-output"])
+    // Synchronized output now has a measured protocol criterion; it cannot stand in for a pending review.
+    expect(draft.results.find((row) => row.featureId === "modes.synchronized-output")).toMatchObject({
+      status: "supported",
+      assertionType: "query_reply",
+      tests: [expect.objectContaining({ id: "criterion", status: "supported" })],
+    })
+    expect(draft.results.find((row) => row.featureId === "device.term-features")).toMatchObject({
+      status: "test-todo",
+      criterionBranch: HEADLESS_OBSERVABLE_REVIEW,
+      tests: [expect.objectContaining({ id: "review", status: "test-todo" })],
+    })
+    expect(pending).toEqual(["device.term-features", "editing.decsace"])
     const decision = (featureId: string, reason: string) =>
       JSON.stringify({
         id: `round-trip-${featureId}`,
@@ -280,9 +293,9 @@ it.runIf(OWNED_LAYOUT)(
     const reason = (featureId: string) =>
       featureId === "editing.decsace"
         ? "The DECCARA witness is absent, so this review cannot decide DECSACE extent"
-        : `Embedded xterm.js injects no OS-level input, so ${featureId} has no path to the engine`
-    const reviewed = pending.slice(0, -1)
-    const sealing = pending[pending.length - 1]!
+        : "The library API spawns no application child process to observe its TERM_FEATURES export"
+    const sealing = "device.term-features"
+    const reviewed = pending.filter((featureId) => featureId !== sealing)
     const reviewPaths = reviewed.map((featureId, index) => {
       const path = join(dir, `review-${index}.json`)
       writeFileSync(path, decision(featureId, reason(featureId)))
