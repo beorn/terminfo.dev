@@ -56,10 +56,10 @@ function read(path: string) {
   const bytes = readFileSync(absolute(path))
   return { path, bytes, source: new TextDecoder("utf-8", { fatal: true }).decode(bytes), sha256: sha(bytes) }
 }
-function git(pin: Pin, args: string[]): string {
+function git(pin: Pin, args: string[]): Buffer {
   absolute(pin.repo)
   if (!/^[a-f0-9]{40}$/.test(pin.commit)) throw new Error(`Full 40-hex source commit required: ${pin.commit}`)
-  const result = spawnSync("git", args, { cwd: pin.repo, encoding: "utf8", maxBuffer: 16 * 1024 * 1024 })
+  const result = spawnSync("git", args, { cwd: pin.repo, maxBuffer: 16 * 1024 * 1024 })
   if (result.error || result.status !== 0)
     throw new Error(`Cannot resolve source ${pin.repo}@${pin.commit}: ${result.error?.message ?? result.stderr}`)
   return result.stdout
@@ -76,7 +76,7 @@ function trustedManifest(options: IntakeOptions, suite: string) {
   if (!/^[a-f0-9]{12}$/.test(suite)) throw new Error(`Invalid capture suite: ${suite}`)
   const path = join(absolute(options.suiteRoot), "content", "suites", `${suite}.json`)
   const pin = { repo: options.terminfoRepo, commit: options.terminfoCommit }
-  if (git(pin, ["rev-parse", "HEAD"]).trim() !== pin.commit)
+  if (git(pin, ["rev-parse", "HEAD"]).toString("utf8").trim() !== pin.commit)
     throw new Error("Source receipt requires checkout at the capture source commit")
   const producer = join(absolute(pin.repo), "packages/terminfo.dev/src/serve.ts")
   const producerSource = git(pin, ["show", `${pin.commit}:packages/terminfo.dev/src/serve.ts`])
@@ -259,7 +259,7 @@ function citations(input: IndexedDecision, decision: CaptureDecision, index: Ind
       )
         throw new Error("Invalid pinned source citation")
       rendered = `${citation.repo}@${citation.commit}:${citation.path}:L${citation.startLine}-L${citation.endLine}`
-      const blob = git(pin, ["show", `${pin.commit}:${citation.path}`])
+      const blob = new TextDecoder("utf-8", { fatal: true }).decode(git(pin, ["show", `${pin.commit}:${citation.path}`]))
       const lines = blob.endsWith("\n") ? blob.slice(0, -1).split("\n") : blob.split("\n")
       if (citation.endLine > lines.length) throw new Error(`Source citation line range absent: ${rendered}`)
       status = `verified: ${rendered}`
