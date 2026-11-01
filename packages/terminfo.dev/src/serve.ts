@@ -579,29 +579,18 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
      * before its first callback. An intrinsic missing report does not prevent measurement; a transient
      * query failure aborts. The recorded fact names the measured authority or the actual refusal.
      */
-    let preflightDarwinCapture: (() => Promise<void>) | undefined
+    let preflightPixelCapture: (() => Promise<void>) | undefined
     let captureCalibration: CaptureCalibrationFact | undefined
     let input: Awaited<ReturnType<typeof createLinuxInput>> | undefined
-    /**
-     * The ONE Darwin pixel-capture install, for the hosted arm and the owned-process arm alike (@cto
-     * D5, #30518): the adapter photographs the terminal's `appPid`, the pid that arm's owner proof verified.
-     *
-     * The cells read comes FIRST. When the terminal can read its own cells that is its capture path, and
-     * a pixel adapter installed afterwards would replace a text frame with a calibration these apps
-     * refuse by design, so preflight and the pixel install are skipped entirely.
-     */
-    const installDarwinCapture = async (terminal: OwnedTerminal) => {
-      if (installTextCapture(terminal) || !captureDirectory) return
-      const appPid = terminal.appPid
-      if (!appPid) throw new Error(`Verified ${kind} terminal has no measured app PID for capture`)
-      const darwinCapture = await createDarwinCapture(captureDirectory, { appPid })
-      // C1: one install census, taken before the adapter could refuse anything. C2: a refused frame never
-      // adds its own preCapture census here — those stay in their traces, unmerged.
-      const { installCensus } = darwinCapture
+    const installPixelCapture = (
+      adapter: Pick<Awaited<ReturnType<typeof createDarwinCapture>>, "capture" | "captureRaw">,
+      installCensus?: DarwinInstallCensus,
+    ) => {
+      const platform = process.platform === "linux" ? "Linux" : "Darwin"
       let textOrigin: Awaited<ReturnType<typeof calibrateCaptureOrigin>> | undefined
       let calibrationError: Error | undefined
       const noGeometry = (message: string) => {
-        const error = new Error(`Darwin capture calibration refused: ${message}`)
+        const error = new Error(`${platform} capture calibration refused: ${message}`)
         error.name = "UndeclaredTerminalGeometry"
         return error
       }
@@ -612,7 +601,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
         capture = async (checkpoint) => {
           if (calibrationError) throw calibrationError
           if (!checkpoint.cells && !checkpoint.pixelGeometry) {
-            const result = await darwinCapture.captureRaw(checkpoint)
+            const result = await adapter.captureRaw(checkpoint)
             return result.result
           }
           if (!textOrigin) throw noGeometry("no witnessed text-area origin is available")
@@ -626,7 +615,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
           ) {
             throw noGeometry("terminal pixel geometry changed after origin calibration")
           }
-          return darwinCapture.capture(checkpoint, textOrigin)
+          return adapter.capture(checkpoint, textOrigin)
         }
         prepareCapture = async ({ source: probeSource, featureId, recordCapture }) => {
           try {
@@ -635,7 +624,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
               pixelGeometry: reportedGeometry,
               timeoutMs: DEFAULT_TIMEOUT_MS,
               captureRaw: async (label, deadline) => {
-                const result = await darwinCapture.captureRaw({ featureId, role: "control", label }, deadline)
+                const result = await adapter.captureRaw({ featureId, role: "control", label }, deadline)
                 recordCapture(result.result)
                 return result.decoded
               },
@@ -670,7 +659,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
           }
         }
       }
-      preflightDarwinCapture = async () => {
+      preflightPixelCapture = async () => {
         const queries: CaptureCalibrationQuery[] = []
         const report = await queryPixelGeometry({
           queryWithSentinelOutcome: async (sequence, pattern, timeoutMs) => {
@@ -696,7 +685,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
               .map((query) => `${query.sequence} = ${query.reason} (${JSON.stringify(query.raw)})`)
               .join("; ")
             const error = new Error(
-              `Darwin capture calibration could not be measured: ${report.missing}. A needed reply timed out, so REPEAT THE RUN. Replies read: ${read}`,
+              `${platform} capture calibration could not be measured: ${report.missing}. A needed reply timed out, so REPEAT THE RUN. Replies read: ${read}`,
             )
             error.name = "TerminalGeometryUnmeasurable"
             throw error
@@ -709,9 +698,16 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
         installCapture(report.geometry, queries)
       }
     }
+    const installDarwinCapture = async (terminal: OwnedTerminal) => {
+      if (installTextCapture(terminal) || !captureDirectory) return
+      const appPid = terminal.appPid
+      if (!appPid) throw new Error(`Verified ${kind} terminal has no measured app PID for capture`)
+      const darwinCapture = await createDarwinCapture(captureDirectory, { appPid })
+      installPixelCapture(darwinCapture, darwinCapture.installCensus)
+    }
     if (captureDirectory && process.platform === "linux") {
       if (!executable) throw new Error("Configured Linux capture lacks measured executable")
-      capture = await createLinuxCapture(captureDirectory, executable)
+      installPixelCapture(await createLinuxCapture(captureDirectory, executable))
       input = await createLinuxInput(executable)
     } else if (provenancePath) {
       // A controlled Linux run with no capture directory cannot make a frame, so a probe that needs
@@ -868,7 +864,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
               // a terminal whose OWN cell size cannot be mapped is refused here and installs nothing, so no
               // row is handed an adapter that can only throw: every probe takes its own no-capture branch,
               // names the refusal in its row, and the suite completes (28785). Only a timeout aborts.
-              if (preflightDarwinCapture) await preflightDarwinCapture()
+              if (preflightPixelCapture) await preflightPixelCapture()
               const result = await runProbeBatch({
                 ids: options.ids === undefined ? undefined : selectedIds,
                 out,

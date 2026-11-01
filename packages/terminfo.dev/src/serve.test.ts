@@ -228,6 +228,136 @@ it.each(["empty", "prerequisite", "completed", "cancelled", "failed", "unknown"]
   },
 )
 
+it("prepares Linux capture once and preserves the measured origin across graded checkpoints", () => {
+  home = mkdtempSync(join(tmpdir(), "terminfo-serve-linux-origin-"))
+  const result = spawnSync(
+    process.execPath,
+    [
+      "-e",
+      String.raw`
+    import { mock } from "bun:test"
+    import assert from "node:assert/strict"
+    import { readFileSync, writeFileSync } from "node:fs"
+    import { join } from "node:path"
+    import { createHash } from "node:crypto"
+    Object.defineProperty(process, "platform", { value: "linux" })
+    const unified = await import("./packages/terminfo.dev/src/probes/unified.ts")
+    const tty = await import("./packages/terminfo.dev/src/tty.ts")
+    const linux = await import("./packages/terminfo.dev/src/linux-capture.ts")
+    const hash = "a".repeat(12), revision = "b".repeat(40)
+    const pixelGeometry = { cellWidth: 9, cellHeight: 22, textWidth: 720, textHeight: 528 }
+    const measured = { origin: { x: 13, y: 57 }, pixelGeometry, basis: "fixture complete raster" }
+    const decoded = { width: 800, height: 600, rgba: Buffer.alloc(800 * 600 * 4) }
+    const raw = { frame: { role: "control", ref: "sha256:" + "c".repeat(64), sourceRef: "sha256:" + "d".repeat(64),
+      capturedAt: 1, label: "origin witness" }, trace: { captureCommand: "fixture raw capture" } }
+    const digest = seed => createHash("sha256").update(seed).digest("hex")
+    const provenance = { executable: { path: "/fixture/kitty", sha256: digest("fixture executable"), version: "kitty 0.49.2" },
+      sourceArtifact: { url: "https://example.invalid/kitty.tar", sha256: digest("fixture source artifact") },
+      runtime: { imageId: "sha256:" + digest("fixture image"), imageTarSha256: digest("fixture image tar"), arch: "amd64",
+        nixLockRevision: "2".repeat(40), sourceRevision: revision, cleanTree: true, suiteHash: hash },
+      fixture: { definition: "fixture", config: "--config NONE", font: "fixture", geometry: "80x24", display: "fixture", gl: "fixture" } }
+    writeFileSync(process.env.TERMINFO_RUNTIME_PROVENANCE, JSON.stringify(provenance))
+    globalThis.__TERMINFO_BUNDLED_SUITE__ = { manifest: { schemaVersion: 4,
+      catalogIds: Object.keys((await import("@terminfo/catalog")).loadFeatures(process.cwd() + "/content")).sort(),
+      probeHash: hash, probes: { term: unified.ALL_PROBES.map(probe => probe.id).sort(), mux: [], lib: [] }
+    }, collectorRevision: revision }
+    let calibrations = 0, rawCaptures = 0, source
+    const checkpoints = [
+      { featureId: "device.xtversion", role: "control", label: "sparse frame", cells: { top: 1, left: 1, bottom: 1, right: 1 }, pixelGeometry },
+      { featureId: "device.xtversion", role: "target", label: "filled frame", cells: { top: 24, left: 80, bottom: 24, right: 80 }, pixelGeometry }
+    ]
+    const capturedCheckpoints = []
+    mock.module("./packages/terminfo.dev/src/detect.ts", () => ({ detectTerminal: () => ({
+      name: "kitty", version: "0.49.2", os: "linux", osVersion: "fixture"
+    }) }))
+    mock.module("./packages/terminfo.dev/src/tty.ts", () => ({ ...tty,
+      withRawMode: async callback => callback(), drainStdin: async () => {},
+      queryWithSentinelOutcome: async (sequence, pattern) => {
+        const reply = sequence === "\x1b[16t" ? "\x1b[6;22;9t"
+          : sequence === "\x1b[14t" ? "\x1b[4;528;720t"
+          : sequence === "\x1b[18t" ? "\x1b[8;24;80t" : "\x1bP>|kitty(0.49.2)\x1b\\"
+        return { raw: reply, rawBase64: Buffer.from(reply).toString("base64"), match: pattern.exec(reply), reason: "reply" }
+      }
+    }))
+    mock.module("./packages/terminfo.dev/src/linux-input.ts", () => ({ createLinuxInput: async () => undefined }))
+    mock.module("./packages/terminfo.dev/src/linux-capture.ts", () => ({ ...linux, createLinuxCapture: async (directory, executable) => {
+      assert.equal(directory, process.env.TERMINFO_CAPTURE_DIRECTORY)
+      assert.deepEqual(executable, { path: provenance.executable.path, sha256: provenance.executable.sha256 })
+      return {
+        captureRaw: async (checkpoint) => {
+          rawCaptures++
+          assert.equal(checkpoint.featureId, "collector.captureCalibration")
+          assert.equal(checkpoint.role, "control")
+          assert.equal(checkpoint.label, "origin witness")
+          return { result: raw, decoded }
+        },
+        capture: async (checkpoint, origin) => {
+          assert.equal(calibrations, 1, "graded captures follow the one batch calibration")
+          assert.strictEqual(origin, measured, "every graded capture receives the unchanged measured origin")
+          assert.strictEqual(origin.pixelGeometry, pixelGeometry)
+          capturedCheckpoints.push(checkpoint)
+          return { frame: { role: checkpoint.role, label: checkpoint.label, capturedAt: 2,
+            ref: "sha256:" + (capturedCheckpoints.length === 1 ? "a" : "b").repeat(64) }, trace: {} }
+        }
+      }
+    } }))
+    mock.module("./packages/terminfo.dev/src/capture-calibration.ts", () => ({ calibrateCaptureOrigin: async options => {
+      calibrations++
+      assert.strictEqual(options.ctx, source)
+      assert.equal(capturedCheckpoints.length, 0, "calibration precedes probe captures")
+      assert.strictEqual(await options.captureRaw("origin witness", Date.now() + 1000), decoded)
+      return measured
+    } }))
+    mock.module("./packages/terminfo.dev/src/probes/unified.ts", () => ({ ...unified, runProbeBatch: async options => {
+      assert.equal(typeof options.prepareCapture, "function", "Linux serve installation must prepare capture before probe callbacks")
+      source = { kind: "live", rows: 24, cols: 80 }
+      const retained = []
+      await options.prepareCapture({ source, featureId: "collector.captureCalibration", recordCapture: result => retained.push(result) })
+      assert.equal(calibrations, 1)
+      assert.strictEqual(source.captureGeometry.geometry, pixelGeometry)
+      assert.deepEqual(retained, [raw], "raw calibration evidence reaches batch retention")
+      for (const checkpoint of checkpoints) await options.capture(checkpoint)
+      assert.deepEqual(capturedCheckpoints, checkpoints)
+      assert.equal(calibrations, 1, "later checkpoints must reuse the batch measurement")
+      const batch = { results: options.draft.results, rawReplies: { "collector.captureCalibration.trace": JSON.stringify({ captures: retained }) },
+        observations: [], assertions: [], screenshotRefs: retained.map(result => result.frame.ref), ungradedDiagnostics: {}, suiteComplete: false }
+      options.onCheckpoint(batch)
+      const persisted = JSON.parse(readFileSync(join(process.env.TERMINFO_CAPTURE_DIRECTORY, options.captureRunId + ".draft.json"), "utf8"))
+      assert.deepEqual(persisted.screenshotRefs, [raw.frame.ref])
+      assert.deepEqual(JSON.parse(persisted.rawReplies["collector.captureCalibration.trace"]).captures, [raw])
+      return batch
+    } }))
+    const { collectProbeRun } = await import("./packages/terminfo.dev/src/serve.ts")
+    const run = await collectProbeRun({ ids: ["device.xtversion"] })
+    assert.equal(calibrations, 1)
+    assert.equal(rawCaptures, 1)
+    assert.deepEqual(run.screenshotRefs, [raw.frame.ref])
+    assert.deepEqual(JSON.parse(run.rawReplies["collector.captureCalibration.trace"]).captures, [raw])
+    const persisted = JSON.parse(readFileSync(join(process.env.TERMINFO_CAPTURE_DIRECTORY, run.runId + ".draft.json"), "utf8"))
+    assert.deepEqual(persisted.screenshotRefs, [raw.frame.ref])
+    assert.deepEqual(JSON.parse(persisted.rawReplies["collector.captureCalibration.trace"]).captures, [raw])
+  `,
+    ],
+    {
+      cwd: packageRoot,
+      encoding: "utf8",
+      timeout: 10_000,
+      env: {
+        ...process.env,
+        HOME: home,
+        TERMINFO_CAPTURE_DIRECTORY: join(home, "captures"),
+        TERMINFO_RUNTIME_PROVENANCE: join(home, "runtime.json"),
+        TERMINFO_CLIPBOARD_FIXTURE_RECEIPT: "",
+        TERMINFO_DISPOSABLE_RECEIPT: "",
+        TERMINFO_TARGET_ID: "",
+        TERMINFO_TARGET_VERSION: "",
+      },
+    },
+  )
+  expect(result.error, result.stderr).toBeUndefined()
+  expect(result.status, result.stderr).toBe(0)
+})
+
 async function startTestDaemon(
   source = `import { startDaemon } from "./packages/terminfo.dev/src/serve.ts"; await startDaemon()`,
   environment: Record<string, string | undefined> = {},

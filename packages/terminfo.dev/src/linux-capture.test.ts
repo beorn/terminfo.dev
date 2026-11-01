@@ -20,16 +20,9 @@ import { spawnSync } from "node:child_process"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, expect, test } from "vitest"
-import {
-  createLinuxCapture,
-  drawnSurface,
-  PNG_CONVERSION_ARGS,
-  screenPixels,
-  textAreaOrigin,
-  windowPixels,
-} from "./linux-capture.ts"
+import { createLinuxCapture, PNG_CONVERSION_ARGS, screenPixels, windowPixels } from "./linux-capture.ts"
 
-import { capturePixels, cellRectangle, command, finishCapture, type CapturedFrame } from "./capture-core.ts"
+import { capturePixels, cellRectangle, command, finishCapture } from "./capture-core.ts"
 
 const temporary: string[] = []
 const originalPath = process.env.PATH
@@ -258,10 +251,10 @@ test.runIf(process.platform === "linux")(
   "a delayed capture keeps the original window and leaves the daemon event loop available",
   async () => {
     const { directory, started, finished, release, stdin } = fixture()
-    const capture = await createLinuxCapture(join(directory, "frames"), liveExecutable())
+    const { captureRaw } = await createLinuxCapture(join(directory, "frames"), liveExecutable())
     // A new search would now select a different window; capture must keep its original target.
     process.env.TEST_CAPTURE_WINDOWS = "99"
-    const pending = capture({ featureId: "fixture", role: "control", label: "fixture frame" })
+    const pending = captureRaw({ featureId: "fixture", role: "control", label: "fixture frame" })
     for (let n = 0; n < 100 && !existsSync(started); n++) await new Promise((resolve) => setTimeout(resolve, 10))
     expect(existsSync(started)).toBe(true)
     let eventLoopTicked = false
@@ -273,7 +266,7 @@ test.runIf(process.platform === "linux")(
     expect(existsSync(finished)).toBe(false)
 
     writeFileSync(release, "continue")
-    const result = await pending
+    const { result } = await pending
     expect(result.frame.ref).toMatch(/^sha256:[a-f0-9]{64}$/)
     expect(readFileSync(stdin, "utf8")).toBe("xwd-window-42")
   },
@@ -284,9 +277,9 @@ test.runIf(process.platform === "linux").each(["before", "during"] as const)(
   async (when) => {
     const { directory, started, release } = fixture()
     const frames = join(directory, "frames")
-    const capture = await createLinuxCapture(frames, liveExecutable())
+    const { captureRaw } = await createLinuxCapture(frames, liveExecutable())
     if (when === "before") process.env.TEST_CAPTURE_OWNER_PID = "1"
-    const pending = capture({ featureId: "fixture", role: "target", label: "owned frame" })
+    const pending = captureRaw({ featureId: "fixture", role: "target", label: "owned frame" })
     const rejected = expect(pending).rejects.toThrow("no longer belongs to Kitty")
     if (when === "during") {
       for (let n = 0; n < 500 && !existsSync(started); n++) await new Promise((resolve) => setTimeout(resolve, 10))
@@ -310,8 +303,8 @@ test.runIf(process.platform === "linux").each(["before", "during"] as const)(
     if (when === "before") {
       await expect(create).rejects.toThrow("visible top-level")
     } else {
-      const capture = await create
-      const pending = capture({ featureId: "fixture", role: "target", label: "owned frame" })
+      const { captureRaw } = await create
+      const pending = captureRaw({ featureId: "fixture", role: "target", label: "owned frame" })
       const rejected = expect(pending).rejects.toThrow("visible top-level")
       for (let n = 0; n < 500 && !existsSync(started); n++) await new Promise((resolve) => setTimeout(resolve, 10))
       expect(existsSync(started)).toBe(true)
@@ -353,8 +346,8 @@ test.runIf(process.platform === "linux")(
     process.env.TEST_CAPTURE_MAGICK_ARGS = argsPath
     // The fixture xwd waits for this file before it hands over the frame, as a real capture does.
     writeFileSync(release, "continue")
-    const capture = await createLinuxCapture(join(directory, "frames"), liveExecutable())
-    await capture({ featureId: "fixture", role: "control", label: "fixture frame" })
+    const { captureRaw } = await createLinuxCapture(join(directory, "frames"), liveExecutable())
+    await captureRaw({ featureId: "fixture", role: "control", label: "fixture frame" })
     // Later magick calls decode the frame for pixels; the conversion is the first one.
     // The literal pin, not the constant: a dropped flag has to fail here even where magick is absent.
     expect(readFileSync(argsPath, "utf8").trim().split("\n").slice(0, PNG_CONVERSION_ARGS.length)).toEqual([
@@ -454,97 +447,9 @@ test.skipIf(realMagick === undefined)(
   60_000,
 )
 
-/** One captured frame painted a colour per pixel, exactly as the collector's rgba buffer holds it. */
-function painted(
-  width: number,
-  height: number,
-  paint: (x: number, y: number) => [number, number, number],
-): CapturedFrame {
-  const rgba = Buffer.alloc(width * height * 4)
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const at = (y * width + x) * 4
-      const [red, green, blue] = paint(x, y)
-      rgba[at] = red
-      rgba[at + 1] = green
-      rgba[at + 2] = blue
-      rgba[at + 3] = 255
-    }
-  }
-  return { width, height, rgba }
-}
-
-/**
- * The retained ghostty 1.3.1 frame of run 5f91eb10b6…, decoded by hand: an 800x600 window with a
- * border, a client-side title bar across y 0..55, and the terminal's OWN pixels (its default
- * #282c34 background) at x 5..794, y 56..594. The terminal reports a 780x528 text area over 60x22
- * cells of 13x24.
- */
 const GHOSTTY_GEOMETRY = { cellWidth: 13, cellHeight: 24, textWidth: 780, textHeight: 528 }
-function ghosttyFrame(): CapturedFrame {
-  return painted(800, 600, (x, y) =>
-    x < 5 || x > 794 || y < 5 || y > 594 ? [77, 77, 81] : y <= 55 ? [46, 46, 50] : [40, 44, 52],
-  )
-}
-
-test("the terminal's own surface is measured from the frame, not assumed to be the window (#28756)", () => {
-  const measurement = drawnSurface(ghosttyFrame())
-  expect(measurement.surface).toEqual({ x: 5, y: 56, width: 790, height: 539 })
-  expect(measurement.basis).toMatch(/covers rows 56\.\.594 and columns 5\.\.794/)
-})
-
-test("a frame that hides its own background names the surface it could not measure", () => {
-  // One colour per row: no single colour covers half of any row AND column, so none is claimed.
-  const measurement = drawnSurface(painted(6, 6, (x, y) => [y, x, 0]))
-  expect(measurement.surface).toBeNull()
-  expect(measurement.basis).toMatch(/no one colour covers half of any row and column of the 6x6 frame/)
-})
-
-test("ghostty 1.3.1's title bar places row 1 in the text area, not under it (#28756)", () => {
-  // The retained frame's row-1 glyphs are lowercase `qqq`, ink rows y 60..75. Centring the text
-  // area in the WINDOW reads y 36..60 and misses them, which is why the seed frame and the expected
-  // frame compared byte-identical and the row was inconclusive.
-  const placement = textAreaOrigin({ frame: ghosttyFrame(), pixelGeometry: GHOSTTY_GEOMETRY })
-  expect(placement.origin).toEqual({ x: 10, y: 62 })
-  expect(placement.basis).toMatch(/centring the reported 780x528 text area/)
-  const row = cellRectangle({
-    cells: { top: 1, left: 1, bottom: 1, right: 3 },
-    pixelGeometry: GHOSTTY_GEOMETRY,
-    textOrigin: placement.origin,
-    windowWidth: 800,
-    windowHeight: 600,
-  })
-  expect(row).toEqual({ x: 10, y: 62, width: 39, height: 24 })
-  const ink = { top: 60, bottom: 75 }
-  const reads = (rectangle: { y: number; height: number }) =>
-    Math.max(rectangle.y, ink.top) <= Math.min(rectangle.y + rectangle.height - 1, ink.bottom)
-  expect(reads(row)).toBe(true)
-  expect(
-    reads(
-      cellRectangle({
-        cells: { top: 1, left: 1, bottom: 1, right: 3 },
-        pixelGeometry: GHOSTTY_GEOMETRY,
-        textOrigin: { x: Math.round((800 - 780) / 2), y: Math.round((600 - 528) / 2) },
-        windowWidth: 800,
-        windowHeight: 600,
-      }),
-    ),
-  ).toBe(false)
-})
-
-test("a surface too small to hold the reported text area falls back to the window, by name", () => {
-  // The terminal's pixels cover rows 0..399 only: they cannot hold a 780x528 text area, so the
-  // placement says so and uses the whole window, which is the previous behaviour.
-  const frame = painted(800, 600, (_x, y) => (y < 400 ? [40, 44, 52] : [y - 400, y - 400, y - 400]))
-  const placement = textAreaOrigin({ frame, pixelGeometry: { textWidth: 780, textHeight: 528 } })
-  expect(placement.surface).toEqual({ x: 0, y: 0, width: 800, height: 600 })
-  expect(placement.origin).toEqual({ x: 10, y: 36 })
-  expect(placement.basis).toMatch(/smaller than the reported 780x528 text area/)
-  expect(placement.basis).toMatch(/placing the text area in the whole 800x600 frame/)
-})
 
 test("cells map to window pixels from the text area's own measured origin", () => {
-  // The origin arrives measured (textAreaOrigin); cells count from the text area's top-left corner.
   expect(
     cellRectangle({
       cells: { top: 2, left: 3, bottom: 2, right: 4 },
@@ -554,25 +459,6 @@ test("cells map to window pixels from the text area's own measured origin", () =
       windowHeight: 600,
     }),
   ).toEqual({ x: 96, y: 188, width: 16, height: 16 })
-})
-
-test("a fractional text-area inset lands on a whole pixel", () => {
-  // 800 - 793 leaves an odd inset: half of it rounds, rather than truncating a column width. A
-  // frame the terminal fills edge to edge has the window as its surface.
-  const placement = textAreaOrigin({
-    frame: painted(800, 600, () => [0, 0, 0]),
-    pixelGeometry: { textWidth: 793, textHeight: 600 },
-  })
-  expect(placement.origin).toEqual({ x: 4, y: 0 })
-  expect(
-    cellRectangle({
-      cells: { top: 1, left: 1, bottom: 1, right: 8 },
-      pixelGeometry: { cellWidth: 13, cellHeight: 25, textWidth: 793, textHeight: 600 },
-      textOrigin: placement.origin,
-      windowWidth: 800,
-      windowHeight: 600,
-    }),
-  ).toEqual({ x: 4, y: 0, width: 104, height: 25 })
 })
 
 test("a rectangle that leaves the window is loud, never clipped", () => {
@@ -666,8 +552,8 @@ test.runIf(process.platform === "linux")(
     process.env.TEST_CAPTURE_WIDTH = "1304"
     process.env.TEST_CAPTURE_HEIGHT = "814"
     writeFileSync(release, "continue")
-    const capture = await createLinuxCapture(join(directory, "frames"), liveExecutable())
-    const result = await capture({
+    const { captureRaw } = await createLinuxCapture(join(directory, "frames"), liveExecutable())
+    const { result } = await captureRaw({
       featureId: "editing.delete-chars",
       role: "target",
       label: "xterm window",
@@ -703,20 +589,38 @@ test.runIf(process.platform === "linux")(
     process.env.TEST_CAPTURE_WIDTH = "800"
     process.env.TEST_CAPTURE_HEIGHT = "600"
     process.env.TEST_CAPTURE_CHROME_ROWS = "56"
+    process.env.TEST_CAPTURE_HEIGHT = "595"
     writeFileSync(release, "continue")
-    const capture = await createLinuxCapture(join(directory, "frames"), liveExecutable())
-    const result = await capture({
-      featureId: "fixture.title-bar",
-      role: "target",
-      label: "fixture window",
-      cells: { top: 1, left: 1, bottom: 1, right: 3 },
-      pixelGeometry: { cellWidth: 13, cellHeight: 24, textWidth: 780, textHeight: 528 },
-    })
-    expect(result.trace.textArea).toMatchObject({
-      origin: { x: 10, y: 64 },
-      surface: { x: 0, y: 56, width: 800, height: 544 },
-    })
-    expect(result.trace.rectangle).toEqual({ x: 10, y: 64, width: 39, height: 24 })
+    const { capture } = await createLinuxCapture(join(directory, "frames"), liveExecutable())
+    const registration = { origin: { x: 10, y: 56 }, basis: "collector complete witnessed raster" }
+    const result = await capture(
+      {
+        featureId: "fixture.title-bar",
+        role: "target",
+        label: "fixture window",
+        cells: { top: 1, left: 1, bottom: 1, right: 3 },
+        pixelGeometry: GHOSTTY_GEOMETRY,
+      },
+      registration,
+    )
+    process.env.TEST_CAPTURE_CHROME_ROWS = "59"
+    const changed = await capture(
+      {
+        featureId: "fixture.title-bar",
+        role: "target",
+        label: "changed dominant colour",
+        cells: { top: 1, left: 1, bottom: 1, right: 3 },
+        pixelGeometry: GHOSTTY_GEOMETRY,
+      },
+      registration,
+    )
+    expect([result.trace.textArea, changed.trace.textArea]).toMatchObject([
+      { origin: { x: 10, y: 56 } },
+      { origin: { x: 10, y: 56 } },
+    ])
+    expect(changed.frame.pixelsDigest).not.toBe(result.frame.pixelsDigest)
+    expect(changed.frame.regionRectangle).toEqual(result.frame.regionRectangle)
+    expect(result.trace.rectangle).toEqual({ x: 10, y: 56, width: 39, height: 24 })
     // The frame carries the same rectangle as the trace, beside the digest cut from it, so a
     // row oracle can tell two frames' crops apart (29580).
     expect(result.frame.regionRectangle).toEqual(result.trace.rectangle)
@@ -724,7 +628,7 @@ test.runIf(process.platform === "linux")(
       "magick",
       "xwd:-",
       "-crop",
-      "39x24+10+64",
+      "39x24+10+56",
       "+repage",
       "-depth",
       "8",
@@ -740,9 +644,9 @@ test.runIf(process.platform === "linux")("capture 1306x816 vs window 1304x814 na
   process.env.TEST_CAPTURE_HEIGHT = "814"
   process.env.TEST_CAPTURE_FORCE_CAPTURE = "1306x816"
   writeFileSync(release, "continue")
-  const capture = await createLinuxCapture(join(directory, "frames"), liveExecutable())
+  const { captureRaw } = await createLinuxCapture(join(directory, "frames"), liveExecutable())
   await expect(
-    capture({
+    captureRaw({
       featureId: "editing.delete-chars",
       role: "target",
       label: "xterm window",

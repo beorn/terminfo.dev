@@ -99,67 +99,9 @@ export interface CapturedFrame {
   rgba: Uint8Array
 }
 
-/** The terminal's own surface in one captured frame, or the named reason it could not be measured. */
-export interface SurfaceMeasurement {
-  surface: CaptureRectangle | null
-  basis: string
-}
-
-/** Where the terminal's own text area sits in the captured window, and on what basis. */
-export interface TextAreaPlacement {
-  /** The text area's top-left corner, in the captured window's own pixels. */
-  origin: { x: number; y: number }
-  /** The surface the text area was placed inside. */
-  surface: CaptureRectangle
-  /** What that surface is and why, verbatim, for the capture trace: never a silent placement. */
-  basis: string
-}
-
-/**
- * Place the terminal's reported text area inside the terminal's OWN surface, centred within it the
- * way the reported size is centred within the window today. The window is the wrong box whenever the
- * client area carries its own title bar, and the measured surface is the right one; a frame with no
- * measurable surface, or one too small to hold the reported text area, falls back to the whole
- * window — the previous behaviour — and names that fallback in `basis`.
- */
-export function textAreaOrigin(input: {
-  frame: { width: number; height: number }
-  measurement: SurfaceMeasurement
-  pixelGeometry: { textWidth: number; textHeight: number }
-}): TextAreaPlacement {
-  const { frame, pixelGeometry, measurement } = input
-  if (
-    !Number.isSafeInteger(pixelGeometry.textWidth) ||
-    !Number.isSafeInteger(pixelGeometry.textHeight) ||
-    pixelGeometry.textWidth < 1 ||
-    pixelGeometry.textHeight < 1
-  ) {
-    throw new Error(`A text area of ${pixelGeometry.textWidth}x${pixelGeometry.textHeight} pixels is not a text area`)
-  }
-  const measured = measurement.surface
-  const whole = { x: 0, y: 0, width: frame.width, height: frame.height }
-  const holds = (rectangle: CaptureRectangle) =>
-    pixelGeometry.textWidth <= rectangle.width && pixelGeometry.textHeight <= rectangle.height
-  const surface = measured !== null && holds(measured) ? measured : whole
-  const basis =
-    measured === null
-      ? `${measurement.basis}; placing the text area in the whole ${frame.width}x${frame.height} frame`
-      : surface === measured
-        ? `${measurement.basis}; centring the reported ${pixelGeometry.textWidth}x${pixelGeometry.textHeight} text area in it`
-        : `${measurement.basis}, smaller than the reported ${pixelGeometry.textWidth}x${pixelGeometry.textHeight} text area; placing the text area in the whole ${frame.width}x${frame.height} frame`
-  return {
-    origin: {
-      x: surface.x + Math.round((surface.width - pixelGeometry.textWidth) / 2),
-      y: surface.y + Math.round((surface.height - pixelGeometry.textHeight) / 2),
-    },
-    surface,
-    basis,
-  }
-}
-
 /**
  * Map a cell-aligned region to an absolute rectangle from the terminal's OWN pixel report and the
- * text area's own measured origin (see textAreaOrigin), and from nothing else: a window width
+ * text area's own witnessed origin, and from nothing else: a window width
  * divided by a column count is a guess, and this rectangle decides pixels. A rectangle that leaves
  * the window is a loud error, not a clipped crop, because a clipped crop would silently compare the
  * wrong cells. The one exception is a measured text area whose window cuts its last row or column:
