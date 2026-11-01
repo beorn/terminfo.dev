@@ -237,6 +237,33 @@ describe("audited native host recipe callers", () => {
     ])
   })
 
+  // The S6 rebuilds need their own host causes; historical artifact fixtures cannot catch a missing new row.
+  test.each([
+    "dc3b24de6e91416f66b1953ce101991ef7e78602ce1b5d357f65832c9b96b326",
+    "d6e23fe62d56de795c6fa783a6c5025fc5b1238e739839de8b4b3737eca0c43e",
+  ])("native artifact %s explains only empty clipboard and geometry replies", (sha256) => {
+    for (const [id, recipe] of [
+      ["device.xtwinops-14", "text-area-size"],
+      ["extensions.osc52-read", "clipboard-load"],
+    ] as const) {
+      const run = (response: string) =>
+        probe(id).lib!(
+          context({
+            runtimeIdentity: {
+              ...nativeIdentity,
+              loadedBinary: { path: "native.node", sha256 },
+              provenance: { ...nativeIdentity.provenance, sha256 },
+            },
+            feedCapture: () => response,
+          }),
+        )
+      expect(run("").hostRecipeCauses).toMatchObject([
+        { recipe, cause: { kind: "unimplemented", artifactSha256: sha256 } },
+      ])
+      expect(run("reply").hostRecipeCauses).toBeUndefined()
+    }
+  })
+
   // The Alacritty addon rebuilt at the declared pixel geometry answers CSI 14 t (31628), so only its OSC 52 read is cited.
   test("the Alacritty artifact 5d818656 cites its OSC 52 read and leaves CSI 14 t measured", () => {
     const alacritty = "5d818656c9d58c8c68bec9f7bca1a55cc65ccf9fc078f9a3da0b872a28bf547a"
@@ -547,6 +574,12 @@ describe("reply-path audit", () => {
   // The data-derived callback cases below cannot detect an omitted artifact or omitted row.
   test.each([
     {
+      name: "native nullable modes",
+      digest: "d6e23fe62d56de795c6fa783a6c5025fc5b1238e739839de8b4b3737eca0c43e",
+      priors: ["61fb182e3381ab1c52d94b63a9e33163bbfb89ede419af022f71f4438bfe0b03"],
+      core: "332b2aef",
+    },
+    {
       name: "current native overline",
       digest: "5a8030c0f3f9fa52e9c1f82d28ae711ef21e3072a4b82fbe98076fedf314c945",
       priors: [
@@ -582,9 +615,11 @@ describe("reply-path audit", () => {
     expect(rebuilt).toBeDefined()
     expect(Object.keys(rebuilt!).sort()).toEqual(
       [
-        ...Object.keys(prior),
-        "extensions.osc99-kitty-notify",
-        ...(digest.startsWith("77b69f9f") ? wasmReadbackQueries.map(([id]) => id) : []),
+        ...new Set([
+          ...Object.keys(prior),
+          "extensions.osc99-kitty-notify",
+          ...(digest.startsWith("77b69f9f") ? wasmReadbackQueries.map(([id]) => id) : []),
+        ]),
       ].sort(),
     )
     for (const [id, audit] of Object.entries(prior)) {
@@ -1187,6 +1222,8 @@ describe("reply-path audit", () => {
     expect([...REPLY_PATH_AUDITS.keys()].sort()).toEqual(
       [
         "0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3",
+        "d6e23fe62d56de795c6fa783a6c5025fc5b1238e739839de8b4b3737eca0c43e",
+        "dc3b24de6e91416f66b1953ce101991ef7e78602ce1b5d357f65832c9b96b326",
         "17d155feee5df8fa30266b9a354bbe66e39484d08218de5e03dc3bb2f199a0a3",
         "1f23e13db5bda55ab54943461b83a5d642bf8d2050a452fbe7871927383dfe9f",
         "5a8030c0f3f9fa52e9c1f82d28ae711ef21e3072a4b82fbe98076fedf314c945",
@@ -1271,7 +1308,8 @@ describe("reply-path audit", () => {
   test.each([
     "b9109b5918707746420833dfc2eab3ea5bc7feec5fa93bee4cd6e824e74d0962",
     "0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3",
-  ])("vt100-rust %s lists the ruled twins and leaves a silent write not-tested", (sha) => {
+    "dc3b24de6e91416f66b1953ce101991ef7e78602ce1b5d357f65832c9b96b326",
+  ])("vt100-rust %s lists the ruled twins and keeps silent writes outside reply audits", (sha) => {
     const old = "f309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96"
     const noReply = [
       "cursor.position-report",
@@ -1350,10 +1388,16 @@ describe("reply-path audit", () => {
     expect(REPLY_PATH_AUDITS.get(old)?.["extensions.osc52-write"]?.kind).toBe("no-reply-path")
     expect(REPLY_PATH_AUDITS.get(old)?.["extensions.osc99-kitty-notify"]?.kind).toBe("no-reply-path")
     const silent = run("extensions.osc52-write", sha, () => "")
-    expect(silent.result.notTested).toEqual({
-      reason: "no-semantic-observable",
-      noObservable: "clipboard write state",
-    })
+    if (sha === "dc3b24de6e91416f66b1953ce101991ef7e78602ce1b5d357f65832c9b96b326") {
+      expect(silent.result.hostRecipeCauses).toMatchObject([
+        { recipe: "clipboard-load", cause: { kind: "unimplemented", artifactSha256: sha } },
+      ])
+    } else {
+      expect(silent.result.notTested).toEqual({
+        reason: "no-semantic-observable",
+        noObservable: "clipboard write state",
+      })
+    }
     expect(JSON.stringify(silent.result)).not.toContain("replyPathAudit")
     expect(run("extensions.osc52-write", old, () => "").result.criterionBranch).toBe(REPLY_PATH_AUDIT_REVIEW)
   })
@@ -1440,7 +1484,13 @@ describe("reply-path audit", () => {
         captures: matched.length,
         replyBytes: 0,
       },
-      measuredResponse: unlisted.result.response ?? null,
+      // This artifact also has its own clipboard host audit: empty roundtrip evidence survives
+      // instead of the unaudited artifact's no-observable fallback.
+      measuredResponse:
+        id === "extensions.osc52-write" &&
+        auditKey === "d6e23fe62d56de795c6fa783a6c5025fc5b1238e739839de8b4b3737eca0c43e"
+          ? ""
+          : (unlisted.result.response ?? null),
       ...(audit.kind === "no-reply-path" && audit.matches === "prefix" && { matchedQueries: matched }),
     })
     if (audit.kind === "no-reply-path") {
@@ -1462,7 +1512,11 @@ describe("reply-path audit", () => {
 
     const answer = (sequence: string) =>
       (audit.matches === "prefix" ? sequence.startsWith(audit.query) : sequence === audit.query) ? "\x1b" : ""
-    expect(run(id, auditKey, answer).result).toEqual(run(id, "f".repeat(64), answer).result)
+    // Host causes are independently audited metadata; a different artifact may gain one for
+    // a second, unanswered query even when the listed reply itself was measured.
+    const { hostRecipeCauses: _auditedHostCauses, ...answered } = run(id, auditKey, answer).result
+    const { hostRecipeCauses: _unlistedHostCauses, ...ordinary } = run(id, "f".repeat(64), answer).result
+    expect(answered).toEqual(ordinary)
   })
 })
 
@@ -2000,18 +2054,18 @@ describe("OSC 8 link metadata observation", () => {
         engineVersion: "0.16.2",
         adapterSources: [
           { path: "packages/vt100-rust/src/index.ts", blobOid: "3ddb74f3ae1f79bb356952103853232f69211268" },
-          { path: "packages/vt100-rust/src/backend.ts", blobOid: "e24139c7ecc4935b060040091bb1520256cffced" },
+          { path: "packages/vt100-rust/src/backend.ts", blobOid: "abbbfd01d9e6ac880e02b00d9acccdc9ec70bc63" },
         ],
         adapterVersion: "0.10.2",
         termlessRevision: "2d97417328b7b1d086f9396b9a1731216ed134cc",
         loadedBinary: {
           path: "vendor/termless/packages/vt100-rust/termless-vt100-rust.node",
-          sha256: "0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3",
+          sha256: "dc3b24de6e91416f66b1953ce101991ef7e78602ce1b5d357f65832c9b96b326",
         },
         provenance: {
-          sha256: "0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3",
-          sourceCommit: "6ffc0df79756fcc259d87131681641606540e512",
-          buildHash: "7ab9ccc7744fbf5ae24c5ebb2748a144817e696f7f93959fa90a335d11646f68",
+          sha256: "dc3b24de6e91416f66b1953ce101991ef7e78602ce1b5d357f65832c9b96b326",
+          sourceCommit: "27297cf2a4a4e21b41ca3aafc7bc87ac36086fdf",
+          buildHash: "d5079c0f2a27be41c9a3f6b152d62da2bbf82fd189fdfb487b5a0c8b3ed8a654",
           toolchain:
             "rustc 1.94.0 (4a4ef493e 2026-03-02) (built from a source tarball); cargo 1.94.0 (85eff7c80 2026-01-15)",
           lockSha256: "4cf037e4efa648ca41d08b30ef5c4ce7ada29ad61fcad45a7d1aa97bf55391c6",

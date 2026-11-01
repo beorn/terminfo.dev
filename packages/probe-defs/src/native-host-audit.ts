@@ -19,6 +19,37 @@ type NativeHostSourceCitations = Readonly<Partial<Record<Exclude<HostRecipeName,
  * from runtime. A host gains causes only through its own audit here; no host inherits another's citations.
  */
 export const NATIVE_HOST_AUDITS: ReadonlyMap<string, NativeHostSourceCitations> = new Map([
+  // S6 native mode-readback rebuilds: their independent two-checkout receipts bind these source audits.
+  [
+    "dc3b24de6e91416f66b1953ce101991ef7e78602ce1b5d357f65832c9b96b326",
+    {
+      "clipboard-load": {
+        kind: "unimplemented",
+        citation:
+          "vt100 0.16.2 src/perform.rs:212-221 dispatches OSC 52 '?' to paste_from_clipboard; termless 27297cf2 packages/vt100-rust/native/src/lib.rs:50-53 records only paste_selector and writes no reply bytes",
+      },
+      "text-area-size": {
+        kind: "unimplemented",
+        citation:
+          "vt100 0.16.2 src/perform.rs:132-156 handles only CSI 8 t, forwarding CSI 14 t to the empty src/callbacks.rs:55-63 unhandled_csi; termless 27297cf2 packages/vt100-rust/native/src/lib.rs:21-54 installs no override or reply writer",
+      },
+    },
+  ],
+  [
+    "d6e23fe62d56de795c6fa783a6c5025fc5b1238e739839de8b4b3737eca0c43e",
+    {
+      "clipboard-load": {
+        kind: "unimplemented",
+        citation:
+          "termless 723acd11 packages/ghostty-native/native/src/main.zig:38-83 ResponseHandler writes only mode, DSR 5/6 and kitty keyboard replies, forwarding clipboard_contents to ghostty 332b2aef src/terminal/stream_readonly.zig:176-196 where it is ignored without a writer",
+      },
+      "text-area-size": {
+        kind: "unimplemented",
+        citation:
+          "termless 723acd11 packages/ghostty-native/native/src/main.zig:38-83 ResponseHandler forwards size_report to ghostty 332b2aef src/terminal/stream_readonly.zig:176-196 where it is ignored; the wrapper supplies no reply path for CSI 14 t",
+      },
+    },
+  ],
   // Rebuilt for term.colors() indexed/named cell color resolution (31735, 31774); reply and host-input routes unchanged.
   [
     "32d76284e5a3c7673fafbbc83a16717fa0a1c1811c7d659d982176a53ceb1aa9",
