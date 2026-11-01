@@ -38,6 +38,12 @@ palette push/pop effects or graphics capabilities.
 
 ## From definition to recorded result
 
+Linux and Darwin pixel collectors share the complete-raster calibration in
+[`capture-calibration.ts`](../terminfo.dev/src/capture-calibration.ts). Before the first probe callback,
+one calibration witnesses the grid origin and every cell pitch, then confirms identical surface and cursor restoration.
+The batch carries that measured origin and geometry into every cell crop; changing screen content cannot move them.
+An unmeasurable witness or changed geometry is recorded as a named refusal, never replaced by frame-colour centring.
+
 **A definition is executable, not a saved result.** `ProbeDefinition` identifies a feature and supplies either or both callback arms:
 
 - `lib(ctx)` is synchronous and reads a `LibProbeSource` backed by a headless engine.

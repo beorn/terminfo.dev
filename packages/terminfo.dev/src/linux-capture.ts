@@ -24,14 +24,7 @@ export function assertLiveExecutable(pid: number, expected: LiveExecutable): voi
   }
 }
 
-import {
-  command,
-  finishCapture,
-  textAreaOrigin as placeTextArea,
-  type CapturedFrame,
-  type SurfaceMeasurement,
-  type TextAreaPlacement,
-} from "./capture-core.ts"
+import { command, decodeCapture, finishCapture, type NamedTextOrigin } from "./capture-core.ts"
 
 function digest(bytes: Buffer): string {
   return createHash("sha256").update(bytes).digest("hex")
@@ -54,101 +47,6 @@ export const PNG_CONVERSION_ARGS = [
   "",
   "png:-",
 ] as const
-
-/**
- * The terminal's own drawing surface in one captured frame: the region the terminal painted, which
- * is the text area's container and nothing else.
- *
- * Why not the window. A client-side-decorated window (ghostty, wezterm) draws a title bar and a
- * border INTO its client area, so the window and the terminal's surface disagree by a title bar's
- * height. The retained ghostty 1.3.1 frame of run 5f91eb10b6 shows an 800x600 window whose reported
- * text area is 780x528, while the terminal's own pixels only start 56 down: the window-centred
- * text area lands 20 pixels too high and row 1's crop reads the blank band under the title bar
- * (#28756). A window the window manager decorates draws nothing inside its client area, its surface
- * IS the window, and this measurement is then the identity.
- *
- * The measurement needs no colour of its own: a terminal paints its own background across its whole
- * surface, so the frame's most common colour IS that background, and the surface is the run of rows
- * and columns it covers. A frame whose content hides its background — a full-screen fill — has no
- * measurable surface, and says so by name instead of guessing one.
- */
-export function drawnSurface(frame: CapturedFrame): SurfaceMeasurement {
-  const { width, height, rgba } = frame
-  if (
-    !Number.isSafeInteger(width) ||
-    !Number.isSafeInteger(height) ||
-    width < 1 ||
-    height < 1 ||
-    rgba.length !== width * height * 4
-  ) {
-    throw new Error(`A ${width}x${height} captured frame is ${width * height * 4} rgba bytes; got ${rgba.length}`)
-  }
-  // Read through a view, never by bare index: every byte lies inside the frame the length above
-  // pins, and a read outside it is a loud RangeError rather than an undefined that would silently
-  // count colour 0 as a background nobody painted.
-  const pixels = new DataView(rgba.buffer, rgba.byteOffset, rgba.byteLength)
-  const colourAt = (at: number) =>
-    (pixels.getUint8(at) << 16) | (pixels.getUint8(at + 1) << 8) | pixels.getUint8(at + 2)
-  const counts = new Map<number, number>()
-  for (let index = 0; index < width * height; index++) {
-    const colour = colourAt(index * 4)
-    counts.set(colour, (counts.get(colour) ?? 0) + 1)
-  }
-  let background = -1
-  let painted = 0
-  for (const [colour, count] of counts) {
-    if (count > painted) {
-      painted = count
-      background = colour
-    }
-  }
-  // Each array is sized to the rows and columns that index it, so the `?? 0` below is the zero a
-  // counter starts at, never a swallowed miss.
-  const rows = new Uint32Array(height)
-  const columns = new Uint32Array(width)
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      if (colourAt((y * width + x) * 4) === background) {
-        rows[y] = (rows[y] ?? 0) + 1
-        columns[x] = (columns[x] ?? 0) + 1
-      }
-    }
-  }
-  let top = -1
-  let bottom = -1
-  for (let y = 0; y < height; y++) {
-    if ((rows[y] ?? 0) * 2 > width) {
-      if (top < 0) top = y
-      bottom = y
-    }
-  }
-  let left = -1
-  let right = -1
-  for (let x = 0; x < width; x++) {
-    if ((columns[x] ?? 0) * 2 > height) {
-      if (left < 0) left = x
-      right = x
-    }
-  }
-  if (top < 0 || left < 0) {
-    return {
-      surface: null,
-      basis: `no one colour covers half of any row and column of the ${width}x${height} frame`,
-    }
-  }
-  return {
-    surface: { x: left, y: top, width: right - left + 1, height: bottom - top + 1 },
-    basis: `the ${width}x${height} frame's most common colour covers rows ${top}..${bottom} and columns ${left}..${right}`,
-  }
-}
-
-/** Preserve Linux's measured-colour placement; the shared core receives its named basis. */
-export function textAreaOrigin(input: {
-  frame: CapturedFrame
-  pixelGeometry: { textWidth: number; textHeight: number }
-}): TextAreaPlacement {
-  return placeTextArea({ ...input, measurement: drawnSurface(input.frame) })
-}
 
 /** The window's own pixel size, parsed from xdotool getwindowgeometry --shell. */
 export function windowPixels(geometry: string): { width: number; height: number } {
@@ -202,7 +100,7 @@ export function kittyAncestor(executable: LiveExecutable): number {
 }
 
 /** Optional Linux adapter. Once configured, every ownership/capture failure is loud. */
-export async function createLinuxCapture(directory: string, executable: LiveExecutable): Promise<ProbeCapture> {
+export async function createLinuxCapture(directory: string, executable: LiveExecutable) {
   if (process.platform !== "linux" || !process.env.DISPLAY) {
     throw new Error("Linux capture requires Linux and the owned DISPLAY")
   }
@@ -227,11 +125,13 @@ export async function createLinuxCapture(directory: string, executable: LiveExec
   if (roots.length === 0 || roots.some((root) => !Number.isSafeInteger(root))) {
     throw new Error("Cannot identify DISPLAY root windows for capture")
   }
-  async function assertOwned() {
+  async function assertOwned(deadline?: number) {
     if (kittyAncestor(executable) !== kittyPid) throw new Error("Collector terminal process changed during capture")
-    const owner = (await command("xdotool", ["getwindowpid", ownedWindowId])).toString().trim()
+    const owner = (await command("xdotool", ["getwindowpid", ownedWindowId], undefined, deadline)).toString().trim()
     if (owner !== String(kittyPid)) throw new Error(`Capture window ${windowId} no longer belongs to Kitty ${kittyPid}`)
-    const visible = (await command("xdotool", ["search", "--onlyvisible", "--maxdepth", "1", "--name", ".*"]))
+    const visible = (
+      await command("xdotool", ["search", "--onlyvisible", "--maxdepth", "1", "--name", ".*"], undefined, deadline)
+    )
       .toString()
       .trim()
       .split(/\s+/)
@@ -252,29 +152,28 @@ export async function createLinuxCapture(directory: string, executable: LiveExec
   if (window.width > screen.width || window.height > screen.height) {
     throw new Error(`window ${window.width}x${window.height} exceeds the ${screen.width}x${screen.height} screen`)
   }
-  return async ({ featureId, role, label, cells, pixelGeometry }) => {
+  const acquire = async (featureId: string, deadline?: number) => {
     // Static-frame settling is recorded; callbacks own any temporal schedule.
     await new Promise<void>((resolve) => {
       setTimeout(resolve, 150)
     })
-    await assertOwned()
-    const before = (await command("xdotool", ["getwindowgeometry", "--shell", windowId])).toString()
+    await assertOwned(deadline)
+    const before = (
+      await command("xdotool", ["getwindowgeometry", "--shell", windowId], undefined, deadline)
+    ).toString()
     if (before !== geometry) throw new Error(`Capture window ${windowId} geometry changed during ${featureId}`)
-    const original = await command("xwd", ["-id", windowId, "-nobdrs", "-silent"])
+    const original = await command("xwd", ["-id", windowId, "-nobdrs", "-silent"], undefined, deadline)
     const capturedAt = Date.now()
-    const png = await command("magick", [...PNG_CONVERSION_ARGS], original)
+    const png = await command("magick", [...PNG_CONVERSION_ARGS], original, deadline)
     if (!png.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) {
       throw new Error(`Capture conversion did not produce PNG bytes for ${featureId}`)
     }
-    await assertOwned()
-    const after = (await command("xdotool", ["getwindowgeometry", "--shell", windowId])).toString()
+    await assertOwned(deadline)
+    const after = (await command("xdotool", ["getwindowgeometry", "--shell", windowId], undefined, deadline)).toString()
     if (after !== geometry) throw new Error(`Capture window ${windowId} geometry changed during ${featureId}`)
-    return finishCapture({
-      directory,
-      checkpoint: { featureId, role, label, cells, pixelGeometry },
-      source: { bytes: original, format: "xwd", width: window.width, height: window.height, capturedAt },
+    return {
+      source: { bytes: original, format: "xwd" as const, width: window.width, height: window.height, capturedAt },
       png,
-      origin: ({ frame, pixelGeometry }) => textAreaOrigin({ frame, pixelGeometry }),
       trace: {
         featureId,
         collectorPid: process.pid,
@@ -285,6 +184,26 @@ export async function createLinuxCapture(directory: string, executable: LiveExec
         converter,
         settleMs: 150,
       },
-    })
+    }
   }
+  const capture = async (checkpoint: Parameters<ProbeCapture>[0], origin: NamedTextOrigin) => {
+    const acquired = await acquire(checkpoint.featureId)
+    return finishCapture({ directory, checkpoint, ...acquired, origin })
+  }
+  const captureRaw = async (checkpoint: Parameters<ProbeCapture>[0], deadline?: number) => {
+    const acquired = await acquire(checkpoint.featureId, deadline)
+    const decoded = await decodeCapture({ source: acquired.source, featureId: checkpoint.featureId, deadline })
+    const result = await finishCapture({
+      directory,
+      checkpoint: { ...checkpoint, cells: undefined, pixelGeometry: undefined },
+      ...acquired,
+      decoded,
+      deadline,
+      origin: () => {
+        throw new Error("Linux calibration raw capture cannot map cells before a named origin")
+      },
+    })
+    return { decoded, result }
+  }
+  return { capture, captureRaw }
 }
