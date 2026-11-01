@@ -596,7 +596,7 @@ function oscSimpleQueryProbe(id: string, query: string, pattern: RegExp, expecte
                 raw,
                 noObservable: "Audited vterm headless subject has no physical font cell dimensions",
                 sourceCitation:
-                  "vterm screen.ts at 6cc7eef0: ScreenOptions has no physical font metrics; OSC1337 ReportCellSize and OSC776 deliberately report unknown zero dimensions (#30575)",
+                  "vterm screen.ts at bd3d32ae: ScreenOptions has no physical font metrics; OSC1337 ReportCellSize and OSC776 deliberately report unknown zero dimensions (#30575)",
               },
               result,
             )
@@ -1182,31 +1182,31 @@ const ABSENT_OSC_ENGINES = {
   vt100: {
     kind: "source",
     runtimeFormat: "js",
-    engineVersion: "0.10.0",
+    engineVersion: "0.10.1",
     repository: "git@github.com:beorn/vterm.git",
-    treeOid: "d5ee344ab5b971184ba2c43ed60460656340417c",
+    treeOid: "1eaac257cf9ff8d8ece752c8e6edc04b9ddaa6cf",
     codes: [1, 8, 9, 17, 19, 22, 117, 119, 133, 176, 440, 555, 633, 666, 710, 777, 3008],
     subcodes: ["133;D"],
     reviewReasons: [{ code: 1, reason: "screen.ts:504-520 case 1 is ignored; no icon-name state is stored" }],
     sourceCitation:
-      "vt100 6cc7eef05cde6a8578479c6cdb480f606758eb2c packages/vt100/src/screen.ts:504-520 handleOSC switch, cases 0/1/2 only",
+      "vt100 bd3d32aea2f1994376a71adfc55b92705eedbd8c packages/vt100/src/screen.ts:504-520 handleOSC switch, cases 0/1/2 only",
   },
   vt220: {
     kind: "source",
     runtimeFormat: "js",
-    engineVersion: "0.10.0",
+    engineVersion: "0.10.1",
     repository: "git@github.com:beorn/vterm.git",
-    treeOid: "9a320c4d5cd0e0b60bb2e6ea4f020ce5eb54ae53",
+    treeOid: "d504616ae458b8b0fa9fa365034c30bd35f55ee8",
     codes: [1, 8, 9, 17, 19, 22, 117, 119, 133, 176, 440, 555, 633, 666, 710, 777, 3008],
     subcodes: ["133;D"],
     reviewReasons: [{ code: 1, reason: "screen.ts:703-718 case 1 is ignored; no icon-name state is stored" }],
     sourceCitation:
-      "vt220 6cc7eef05cde6a8578479c6cdb480f606758eb2c packages/vt220/src/screen.ts:703-718 handleOSC: no-semicolon return; cases 0/1/2 only",
+      "vt220 bd3d32aea2f1994376a71adfc55b92705eedbd8c packages/vt220/src/screen.ts:703-718 handleOSC: no-semicolon return; cases 0/1/2 only",
   },
   vterm: {
     kind: "source",
     runtimeFormat: "js",
-    engineVersion: "0.10.0",
+    engineVersion: "0.10.1",
     repository: "git@github.com:beorn/vterm.git",
     treeOid: SOURCE_TREE_AUDITS.vterm.treeOid,
     codes: [9, 22, 176, 440, 555, 666, 710, 777, 3008],
@@ -1218,7 +1218,7 @@ const ABSENT_OSC_ENGINES = {
       },
     ],
     sourceCitation:
-      "vterm 6cc7eef05cde6a8578479c6cdb480f606758eb2c packages/vterm/src/screen.ts:3596-4055 handleOSC switch",
+      "vterm bd3d32aea2f1994376a71adfc55b92705eedbd8c packages/vterm/src/screen.ts:3596-4055 handleOSC switch",
   },
   xtermjs: {
     kind: "registry",

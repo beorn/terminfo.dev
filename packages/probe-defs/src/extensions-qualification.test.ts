@@ -412,14 +412,14 @@ test.each([
   ["extensions.osc777-notify", "\x1b]777;notify;test;body\x07", "vt220"],
   ["extensions.osc3008-context", "\x1b]3008;type=test\x07", "vt220"],
 ])("%s retains an audited source-negative review only after its sentinel renders", (id, sequence, engine) => {
-  // Collector-input identities from the retained runs, not a loaded-engine attestation.
+  // Collector-input fixtures rekeyed to 0.10.1 after the parser audit, not a loaded-engine attestation.
   const identity =
     engine === "xtermjs"
       ? xtermOscIdentity
       : ({
           kind: "js",
           runtimeFormat: "js",
-          engineVersion: "0.10.0",
+          engineVersion: "0.10.1",
           adapterVersion: "0.10.2",
           termlessRevision: "2".repeat(40),
           adapterSources:
@@ -441,13 +441,13 @@ test.each([
           integrity: {
             kind: "source",
             repository: "git@github.com:beorn/vterm.git",
-            revision: "6cc7eef05cde6a8578479c6cdb480f606758eb2c",
+            revision: "bd3d32aea2f1994376a71adfc55b92705eedbd8c",
             treeOid:
               engine === "vt100"
-                ? "d5ee344ab5b971184ba2c43ed60460656340417c"
+                ? "1eaac257cf9ff8d8ece752c8e6edc04b9ddaa6cf"
                 : engine === "vt220"
-                  ? "9a320c4d5cd0e0b60bb2e6ea4f020ce5eb54ae53"
-                  : "d7bc627e039005ee913b0b244ff9a2ee2235746a",
+                  ? "d504616ae458b8b0fa9fa365034c30bd35f55ee8"
+                  : "f10a184811894462b9ca7b65d6aab8ffd2fdd0bd",
             cleanTree: true,
           },
         } as const)
@@ -477,7 +477,7 @@ test.each([
                   mode === "changed-tree"
                     ? "4".repeat(40)
                     : mode === "wrong-package"
-                      ? "d5ee344ab5b971184ba2c43ed60460656340417c"
+                      ? "1eaac257cf9ff8d8ece752c8e6edc04b9ddaa6cf"
                       : identity.integrity.treeOid,
                 cleanTree: mode !== "dirty",
               }
@@ -498,7 +498,7 @@ test.each([
         {
           id: "review",
           status: "test-failure",
-          reason: expect.stringContaining(engine === "xtermjs" ? "17a90b65" : "6cc7eef0"),
+          reason: expect.stringContaining(engine === "xtermjs" ? "17a90b65" : "bd3d32ae"),
         },
       ])
       expect(result.observation).toMatchObject({ outcome: "inconclusive", assertionType: "buffer_state" })
@@ -1910,7 +1910,7 @@ test.each([
   },
 )
 
-// Geometry audit re-pinned to 6cc7eef0; original runb9697318 used source53a9eb92/tree617ae600.
+// Geometry audit re-pinned to bd3d32ae; original runb9697318 used source53a9eb92/tree617ae600.
 // Q8 requires independent review of this context limit, never automatic Untestable.
 const geometryRuntime = {
   kind: "js",
@@ -1920,12 +1920,12 @@ const geometryRuntime = {
   integrity: {
     kind: "source",
     repository: "git@github.com:beorn/vterm.git",
-    revision: "6cc7eef05cde6a8578479c6cdb480f606758eb2c",
-    treeOid: "d7bc627e039005ee913b0b244ff9a2ee2235746a",
+    revision: "bd3d32aea2f1994376a71adfc55b92705eedbd8c",
+    treeOid: "f10a184811894462b9ca7b65d6aab8ffd2fdd0bd",
     cleanTree: true,
   },
   runtimeFormat: "js",
-  engineVersion: "0.10.0",
+  engineVersion: "0.10.1",
 } as const
 const geometryReplies = [
   {
@@ -2024,8 +2024,8 @@ test.each(geometryReplies)("$id reports source tree drift before geometry gradin
 test.each(geometryReplies)("$id distinguishes sibling source entries", ({ id, raw }) => {
   const baseline = callback(id).lib!({ feedCapture: () => raw } as unknown as LibProbeSource)
   for (const [engine, treeOid] of [
-    ["vt100", "d5ee344ab5b971184ba2c43ed60460656340417c"],
-    ["vt220", "9a320c4d5cd0e0b60bb2e6ea4f020ce5eb54ae53"],
+    ["vt100", "1eaac257cf9ff8d8ece752c8e6edc04b9ddaa6cf"],
+    ["vt220", "d504616ae458b8b0fa9fa365034c30bd35f55ee8"],
   ]) {
     const runtimeIdentity = {
       ...geometryRuntime,

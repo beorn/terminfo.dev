@@ -1587,9 +1587,9 @@ export const SOURCE_TREE_AUDITS = {
   vterm: {
     resolvedPath: "vendor/vterm/packages/vterm/src/index.ts",
     runtimeFormat: "js",
-    engineVersion: "0.10.0",
+    engineVersion: "0.10.1",
     repository: "git@github.com:beorn/vterm.git",
-    treeOid: "d7bc627e039005ee913b0b244ff9a2ee2235746a",
+    treeOid: "f10a184811894462b9ca7b65d6aab8ffd2fdd0bd",
   },
 } as const
 
@@ -1626,7 +1626,7 @@ function sourceTreeDrift(
   }
 }
 
-const VTERM_GEOMETRY_REVISION = "6cc7eef05cde6a8578479c6cdb480f606758eb2c"
+const VTERM_GEOMETRY_REVISION = "bd3d32aea2f1994376a71adfc55b92705eedbd8c"
 
 /**
  * The geometry gate's identity miss: the audited subject loaded at another source identity. The disposition stays
