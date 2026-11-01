@@ -2553,14 +2553,12 @@ function headlessOsc52WriteWithoutWitness(ctx: LibProbeSource): ProbeCallbackRes
  */
 function withClipboardControlNote(ctx: LibProbeSource, result: ProbeCallbackResult): ProbeCallbackResult {
   const control = typeof ctx.getClipboardState === "function" ? ctx.getClipboardState().control : undefined
-  if (control === undefined) return result
+  // Only a measured observation carries the note; a not-tested result keeps its own reason.
+  const observation = result.observation
+  if (control === undefined || observation === undefined) return result
   const note = `read under harness-supplied clipboard_control ${control.join(" ")}; kitty's default read-clipboard-ask asks a human before answering a read`
   const join = (prior: string | undefined) => (prior ? `${prior}; ${note}` : note)
-  return {
-    ...result,
-    note: join(result.note),
-    ...(result.observation && { observation: { ...result.observation, note: join(result.observation.note) } }),
-  }
+  return { ...result, note: join(result.note), observation: { ...observation, note: join(observation.note) } }
 }
 
 function headlessClipboardRoundtrip(ctx: LibProbeSource): ProbeCallbackResult {
