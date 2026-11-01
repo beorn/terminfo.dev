@@ -181,6 +181,18 @@ async function collectOne(name: string, directory: string): Promise<string> {
     backend = loaded
     loaded.init(HEADLESS_TERMINAL)
     loaded.getCell(0, 0)
+    // An engine that reports its own clipboard_control (Termless kitty) declares the read permission it runs under.
+    const clipboardControl =
+      typeof loaded.getClipboardState === "function" ? loaded.getClipboardState().control : undefined
+    if (clipboardControl !== undefined) {
+      recordCollectorAttempt(draft, {
+        result: "started",
+        startedAt: collectionStartedAt,
+        ids,
+        hostInputs: declaredHostInputs(clipboardControl),
+      })
+      checkpoint()
+    }
     const runtimeIdentity = await headlessRuntimeIdentity(name, entry.package, entry.type)
     runtimeIdentity.adapterSources = readAdapterSources(name, loaded)
     verifyAdapterSources(name, {

@@ -554,6 +554,47 @@ it("the real Kitty capture parses its silent OSC 52 reads by their harness cause
   expect(kittyCapture("no-cause")).toThrow(/missing cause for captured empty target response/)
 })
 
+// The Kitty capture after #32091 (@cto 38d14547 option A; launcher sha256 bb65c2d5, Termless 785d8a9), trimmed to its three
+// OSC 52 probes: the headless window reports clipboard_control read-clipboard, the collector declares the read
+// permission supplied from it, and every OSC 52 cell measures with no host-recipe cause.
+const KITTY_OSC52_SUPPLIED = readFileSync(
+  new URL("./fixtures/kitty-osc52-supplied.capture.json", import.meta.url),
+  "utf8",
+)
+it("the Kitty capture with its supplied clipboard read permission parses every OSC 52 cell as measured", () => {
+  const run = JSON.parse(KITTY_OSC52_SUPPLIED) as RunDraft & { results: { featureId: string }[]; probeHash: string }
+  const ids = run.results.map((result) => result.featureId)
+  const manifest = {
+    schemaVersion: 4 as const,
+    probeHash: run.probeHash,
+    adapterVersion: "4",
+    catalogIds: ids,
+    probes: { term: [], lib: ids, mux: [] },
+  }
+  const attempt = JSON.parse(run.rawReplies["collector.collectionAttempt"]!) as { hostInputs: Record<string, string> }
+  expect(attempt.hostInputs["clipboard-read-permission"]).toBe(
+    "clipboard_control write-clipboard write-primary read-clipboard read-primary",
+  )
+  for (const id of ids) {
+    const record = JSON.parse(run.rawReplies[`collector.hostRecipes.${id}`]!) as { causes: unknown[] }
+    expect(record.causes, id).toEqual([])
+  }
+  const parsed = parseRun(
+    "kitty-osc52-supplied.json",
+    JSON.stringify(run),
+    ids,
+    new Map([[manifest.probeHash, manifest]]),
+    {
+      mode: "capture",
+    },
+  )
+  expect((parsed.results ?? []).map((result) => [result.featureId, result.status])).toEqual([
+    ["extensions.osc52-clipboard", "supported"],
+    ["extensions.osc52-read", "supported"],
+    ["extensions.osc52-write", "supported"],
+  ])
+})
+
 // The WezTerm capture of the addon rebuilt with the declared pixel geometry (run 777ffa79, addon sha256 78c05a71, termless
 // 71cac2c3; 31551) trimmed to its four pixel probes and its OSC 52 read (@cto ff19ee09). The engine answered every pixel
 // query from the declared 800x480 text area; its OSC 52 read stayed silent and carries the artifact's audit cause.

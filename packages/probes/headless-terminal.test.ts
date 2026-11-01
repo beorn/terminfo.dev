@@ -18,3 +18,12 @@ it("declares the pixel geometry every engine is initialized with, and no other h
     expect(inputs[name], name).toBe("not-supplied")
   }
 })
+
+// #32091: a read permission is declared supplied only from the clipboard_control the loaded engine reports.
+it("declares the clipboard read permission only from an engine-reported control that grants it", () => {
+  const control = ["write-clipboard", "write-primary", "read-clipboard", "read-primary"]
+  expect(declaredHostInputs(control)["clipboard-read-permission"]).toBe(`clipboard_control ${control.join(" ")}`)
+  const asks = ["write-clipboard", "write-primary", "read-clipboard-ask", "read-primary-ask"]
+  expect(declaredHostInputs(asks)["clipboard-read-permission"]).toBe("not-supplied")
+  expect(declaredHostInputs()["clipboard-read-permission"]).toBe("not-supplied")
+})

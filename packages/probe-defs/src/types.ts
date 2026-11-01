@@ -798,6 +798,8 @@ export interface LibProbeSource {
   getClipboardState?(): {
     writes: { selector: string; payload: string; text?: string; decodeError?: string }[]
     pasteSelector?: string
+    /** The engine's effective clipboard_control, when it reports one (Termless kitty) */
+    control?: readonly string[]
   }
   /** Width read back from the backend after initialization, never inferred from cursor behavior. */
   readonly cols: number

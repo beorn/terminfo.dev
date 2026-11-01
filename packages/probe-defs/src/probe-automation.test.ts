@@ -7,6 +7,7 @@ import {
   REPLY_PATH_AUDIT_REVIEW,
   probe as defineProbe,
 } from "./helpers.ts"
+import { NATIVE_HOST_AUDITS } from "./native-host-audit.ts"
 import { REPLY_PATH_AUDITS, replyPathAuditFor } from "./reply-path-audit.ts"
 
 const OSC_SEMANTIC_MARK_CASES = [
@@ -194,6 +195,46 @@ describe("audited native host recipe callers", () => {
       }
     },
   )
+
+  /**
+   * @failure #32091: kitty's default read-clipboard-ask prompt held every OSC 52 read for a human, so osc52-read would
+   * have published Unsupported for a host input the harness never supplied.
+   * @consumer kitty extensions.osc52-write / osc52-read / osc52-clipboard lib arm
+   */
+  test("kitty's supplied read permission measures its OSC 52 cells and names the option, with no audited cause", () => {
+    const kitty = "bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886"
+    expect(NATIVE_HOST_AUDITS.has(kitty)).toBe(false)
+    const runtimeIdentity = {
+      ...nativeIdentity,
+      engineVersion: "0.49.2",
+      loadedBinary: { path: "/fixture/kitty", sha256: kitty },
+      provenance: { ...nativeIdentity.provenance, sha256: kitty },
+    }
+    const control = ["write-clipboard", "write-primary", "read-clipboard", "read-primary"]
+    const kittyContext = () => {
+      let stored = ""
+      return context({
+        runtimeIdentity,
+        feed(text) {
+          stored = /\x1b\]52;c;([A-Za-z0-9+/=]+)/.exec(text)?.[1] ?? stored
+        },
+        // kitty's legacy OSC 52 encoder answers a permitted read with the stored payload.
+        feedCapture: (text) => (text === "\x1b]52;c;?\x07" ? `\x1b]52;c;${stored}\x1b\\` : ""),
+        getClipboardState: () => ({ writes: [{ selector: "c", payload: stored }], control }),
+      } as Partial<LibProbeSource>)
+    }
+    const write = probe("extensions.osc52-write").lib!(kittyContext())
+    expect(write.observation?.outcome).toBe("supported")
+    expect(write.hostRecipeCauses).toBeUndefined()
+    for (const id of ["extensions.osc52-read", "extensions.osc52-clipboard"]) {
+      const read = probe(id).lib!(kittyContext())
+      expect(read.observation?.outcome, id).toBe("supported")
+      expect(read.hostRecipeCauses, id).toBeUndefined()
+      expect(read.note, id).toContain(`harness-supplied clipboard_control ${control.join(" ")}`)
+      expect(read.note, id).toContain("read-clipboard-ask")
+      expect(read.observation?.note, id).toContain(`harness-supplied clipboard_control ${control.join(" ")}`)
+    }
+  })
 
   // A second native host (WezTerm) must never inherit another artifact's audited causes.
   test.each(["device.xtwinops-14", "extensions.osc52-read", "extensions.osc10-fg-color"])(

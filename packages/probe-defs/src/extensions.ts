@@ -1262,11 +1262,11 @@ const ABSENT_OSC_ENGINES = {
       {
         code: 3008,
         reason:
-          "kitty/vt-parser.c:658-661 dispatches osc_context; kitty/window.py:1582-1583 is empty and Termless packages/kitty/build/bridge.py:164 maps it to no_reply",
+          "kitty/vt-parser.c:658-661 dispatches osc_context; kitty/window.py:1582-1583 is empty and Termless packages/kitty/build/bridge.py:242 maps it to no_reply",
       },
     ],
     sourceCitation:
-      "kitty0.49.2 sourceb2cb871254fbdac19a085188813c8dfb258b95cd kitty/vt-parser.c:546-670 has no cases176/555/710, explicitly ignores440/666, and dispatches3008 to the empty Window.osc_context; official-binary archive SHA256d573618b911e9c461bd421b96c13c74c7f1cb2f1ac9c327818d4ff84366cf5c6; Termless 356984aeea7ae66e08bf0135978179d6294321a8 packages/kitty/build/bridge.py:164-182. OSC9/777 binding losses and OSC22 pointer handler are excluded",
+      "kitty0.49.2 sourceb2cb871254fbdac19a085188813c8dfb258b95cd kitty/vt-parser.c:546-670 has no cases176/555/710, explicitly ignores440/666, and dispatches3008 to the empty Window.osc_context; official-binary archive SHA256d573618b911e9c461bd421b96c13c74c7f1cb2f1ac9c327818d4ff84366cf5c6; Termless 785d8a9e026ed173a45a6e62642dc70ed7c162f6 packages/kitty/build/bridge.py:239-257. OSC9/777 binding losses and OSC22 pointer handler are excluded",
   },
   ghosttyNative: {
     kind: "native",
@@ -2491,6 +2491,17 @@ function headlessOsc52Write(ctx: LibProbeSource): ProbeCallbackResult {
   const encoded = btoa(nonce)
   ctx.feed(`\x1b]52;c;${encoded}\x07`)
   const retained = ctx.getClipboardState()
+  // #32091: the declared clipboard-load recipe query still runs, so a native host route retains its capture. The
+  // verdict below reads only the engine's retained write; the query's reply or silence does not grade it, and a
+  // silent read carries the audited host-input cause (kitty's default read-clipboard-ask waits on a human).
+  const query = "\x1b]52;c;?\x07"
+  const outcome = ctx.queryWithSentinelOutcome?.(query, osc52Reply)
+  const raw = outcome ? outcome.raw : ctx.feedCapture(query)
+  const readEmpty = outcome
+    ? sentinelSilenceResult(outcome, "OSC 52 c query returns the exact written nonce") !== null || raw === ""
+    : raw === ""
+  const explain = (result: ProbeCallbackResult) =>
+    nativeHostRecipeResult(ctx, result, "clipboard-load", "clipboard-read-permission", query, readEmpty)
   const writes = retained.writes.map((write) => ({ selector: write.selector, payload: write.payload }))
   const match = retained.writes.find((write) => write.selector === "c" && write.payload === encoded)
   const note = [
@@ -2506,18 +2517,20 @@ function headlessOsc52Write(ctx: LibProbeSource): ProbeCallbackResult {
     .join("; ")
   const expected = JSON.stringify({ selector: "c", payload: encoded })
   if (match) {
-    return parserStateResult(
-      true,
-      expected,
-      { selector: match.selector, payload: match.payload },
-      note,
-      undefined,
-      "query_reply",
+    return explain(
+      parserStateResult(
+        true,
+        expected,
+        { selector: match.selector, payload: match.payload },
+        note,
+        undefined,
+        "query_reply",
+      ),
     )
   }
   const state = { writes }
-  if (writes.length === 0) return parserStateResult(false, expected, state, note, undefined, "query_reply")
-  return parserStateResult(null, expected, state, note, undefined, "query_reply")
+  if (writes.length === 0) return explain(parserStateResult(false, expected, state, note, undefined, "query_reply"))
+  return explain(parserStateResult(null, expected, state, note, undefined, "query_reply"))
 }
 
 function headlessOsc52WriteWithoutWitness(ctx: LibProbeSource): ProbeCallbackResult {
@@ -2534,6 +2547,20 @@ function headlessOsc52WriteWithoutWitness(ctx: LibProbeSource): ProbeCallbackRes
   return notTestedResult("clipboard write state", { response: "" })
 }
 
+/**
+ * #32091: an engine that reports its clipboard permission option (Termless kitty) ran the read under it. Name it on the
+ * result, since kitty's own default (read-clipboard-ask) would hold the read for a human instead of answering.
+ */
+function withClipboardControlNote(ctx: LibProbeSource, result: ProbeCallbackResult): ProbeCallbackResult {
+  const control = typeof ctx.getClipboardState === "function" ? ctx.getClipboardState().control : undefined
+  // Only a measured observation carries the note; a not-tested result keeps its own reason.
+  const observation = result.observation
+  if (control === undefined || observation === undefined) return result
+  const note = `read under harness-supplied clipboard_control ${control.join(" ")}; kitty's default read-clipboard-ask asks a human before answering a read`
+  const join = (prior: string | undefined) => (prior ? `${prior}; ${note}` : note)
+  return { ...result, note: join(result.note), observation: { ...observation, note: join(observation.note) } }
+}
+
 function headlessClipboardRoundtrip(ctx: LibProbeSource): ProbeCallbackResult {
   const nonce = `terminfo-osc52-${randomUUID()}`
   const encoded = btoa(nonce)
@@ -2546,13 +2573,16 @@ function headlessClipboardRoundtrip(ctx: LibProbeSource): ProbeCallbackResult {
   const empty = outcome
     ? sentinelSilenceResult(outcome, "OSC 52 c query returns the exact written nonce") !== null || raw === ""
     : raw === ""
-  return nativeHostRecipeResult(
+  return withClipboardControlNote(
     ctx,
-    { ...headlessClipboardResult(empty ? "" : raw, nonce), response: raw },
-    "clipboard-load",
-    "clipboard-read-permission",
-    query,
-    empty,
+    nativeHostRecipeResult(
+      ctx,
+      { ...headlessClipboardResult(empty ? "" : raw, nonce), response: raw },
+      "clipboard-load",
+      "clipboard-read-permission",
+      query,
+      empty,
+    ),
   )
 }
 
@@ -2563,23 +2593,29 @@ function headlessClipboardRead(ctx: LibProbeSource): ProbeCallbackResult {
   if (ctx.queryWithSentinelOutcome) {
     const outcome = ctx.queryWithSentinelOutcome("\x1b]52;c;?\x07", osc52Reply)
     const silence = sentinelSilenceResult(outcome, "OSC 52 c query returns the exact written nonce")
-    return nativeHostRecipeResult(
+    return withClipboardControlNote(
       ctx,
-      silence ?? headlessClipboardResult(outcome.raw, nonce),
-      "clipboard-load",
-      "clipboard-read-permission",
-      "\x1b]52;c;?\x07",
-      silence !== null,
+      nativeHostRecipeResult(
+        ctx,
+        silence ?? headlessClipboardResult(outcome.raw, nonce),
+        "clipboard-load",
+        "clipboard-read-permission",
+        "\x1b]52;c;?\x07",
+        silence !== null,
+      ),
     )
   }
   const raw = ctx.feedCapture("\x1b]52;c;?\x07")
-  return nativeHostRecipeResult(
+  return withClipboardControlNote(
     ctx,
-    headlessClipboardResult(raw, nonce),
-    "clipboard-load",
-    "clipboard-read-permission",
-    "\x1b]52;c;?\x07",
-    raw === "",
+    nativeHostRecipeResult(
+      ctx,
+      headlessClipboardResult(raw, nonce),
+      "clipboard-load",
+      "clipboard-read-permission",
+      "\x1b]52;c;?\x07",
+      raw === "",
+    ),
   )
 }
 
