@@ -102,12 +102,12 @@ Termless revisions or host filesystem locators. Raw replies and observed payload
 runtime identities; the record's allowlisted identity is their sole carrier. WASM engine identity
 uses the loaded binary digest, while wrapper repository/tree metadata remains provenance.
 
-The current libvterm v0.3.3 source audits bind WASM `7ebe1b99`, adapter blob
-`caa5dc6c` and loader blob `1e784be8`. Its OSC52 selection callbacks do not add
-retained history, a title stack or other OSC handlers. History and absent-OSC
-qualification use those exact artifact and adapter pins; title-stack absence
-also retains the previously audited binary entry. Historical capture records
-keep the identities they measured.
+The current libvterm v0.3.3 source audits bind WASM `3d67045b`, adapter blob
+`eb513ccd` and loader blob `1e784be8`. Its OSC52 selection callbacks and native
+reverse-property observation do not add retained history, a title stack or other
+OSC handlers. History and absent-OSC qualification use those exact artifact and
+adapter pins; title-stack absence also retains the previously audited `7ebe1b99`
+binary entry. Historical capture records keep the identities they measured.
 
 The pinned vterm 0.10.1 library arms for OSC 9, 22, 176, 440, 555, 666, 710, 777 and 3008 feed their exact commands and a cell-X
 consumption control. A rendered X retains `source-negative-review`, its actual fed/cell state and a

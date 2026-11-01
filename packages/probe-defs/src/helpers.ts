@@ -49,7 +49,7 @@ export const ADAPTER_SOURCE_AUDITS = {
   },
   libvterm: {
     "packages/libvterm/src/index.ts": "2b4708b1081e701b99893ca055ded781dc46cf25",
-    "packages/libvterm/src/backend.ts": "caa5dc6c4ac4e3dac45977466919d2c1dcd3e851",
+    "packages/libvterm/src/backend.ts": "eb513ccd443e30c7a869a8ba41f8126e1c0ddf00",
     "packages/libvterm/src/wasm-bindings.ts": "2bbd4d5cf59b8d53db8f5c0329d2ed7853c43e45",
     "packages/libvterm/wasm/libvterm.js": "1e784be87614ab924b96844009919b7c21ce150e",
   },
@@ -1221,8 +1221,8 @@ export function decrpmModeProbe(
 /**
  * The headless arm of a DECRQM mode criterion (#30543): the engine's own DECRPM reply, read by the same parser and
  * graded by the same decrpmResult as the app arm, whenever the adapter delivers one; otherwise the review branch.
- * The adapter's getMode value rides along as context only, never as evidence (libvterm hard-codes it; wezterm
- * derives part of it from a byte scan). The branch keys on the observed reply, never on an engine name.
+ * The adapter's getMode value rides along as context only, never as evidence.
+ * The branch keys on the observed reply, never on an engine name.
  */
 export function headlessDecrpmArm(modeNum: number, modeName?: string): (ctx: LibProbeSource) => ProbeCallbackResult {
   return (ctx) => {
@@ -1583,7 +1583,7 @@ export const SOURCE_TREE_AUDITS = {
     runtimeFormat: "wasm",
     engineVersion: "0.3.3",
     repository: "git@github.com:beorn/termless.git",
-    treeOid: "d17653a18a964f38a6cf19130d2b8f63cccadefb",
+    treeOid: "ae0b11bb808b8c402c168869d7caa5a5f62566c2",
   },
   vterm: {
     resolvedPath: "vendor/vterm/packages/vterm/src/index.ts",
@@ -1698,7 +1698,7 @@ export function libvtermHistoryReview(ctx: LibProbeSource): ProbeCallbackResult 
   ) {
     return undefined
   }
-  const expectedBinarySha256 = "7ebe1b994b58ca867dcd19e9cdeb10b8839b6c1f0dbdea024f875a9f57560a23"
+  const expectedBinarySha256 = "3d67045bb43c5e4081c70dc58088af8f735416c20df2d7843d765e5aad8ef62a"
   if (identity.loadedBinary.sha256 !== expectedBinarySha256) {
     return {
       pass: false,
@@ -1719,7 +1719,7 @@ export function libvtermHistoryReview(ctx: LibProbeSource): ProbeCallbackResult 
     "retained scrollback history count",
     {
       sourceCitation:
-        "Termless37c3e9af packages/libvterm/src/backend.ts:427-440 getScrollback reports the screen extent, not retained history; raw libvterm 9d6d2112335080312ef8c36667fa717ded4f7daf include/vterm.h:541-543 and src/screen.c:208-226,676-681,830-837 hand history rows to the embedding application",
+        "Termless 6939d82b84a6bf2989dd0650329779e324790dda packages/libvterm/src/backend.ts:429-445 getScrollback reports the screen extent, not retained history; raw libvterm 9d6d2112335080312ef8c36667fa717ded4f7daf include/vterm.h:541-543 and src/screen.c:208-226,676-681,830-837 hand history rows to the embedding application",
     },
   )
 }

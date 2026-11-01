@@ -1543,14 +1543,13 @@ test.each([
   },
 )
 
-// libvterm exposes no mode getter; its real cell behavior still decides wrapping.
+// Nullable mode metadata still permits measured wrapping from actual cell behavior.
 test("null mode metadata classes A/B retain measured wrapping, unknown cleanup and raw state", async () => {
   const writes: string[] = []
   const factory = async () => {
     const value = await resolveLibvterm()
-    // libvterm's WASM bridge exposes no modes. Termless answers null only from #30549, which the
-    // published @termless/libvterm 0.10.2 that CI installs predates, so pin the null reading here:
-    // the subject is terminfo's null-mode consumers, not the termless version.
+    // Pin nullable metadata independently of each adapter's available native readers.
+    // The subject is Terminfo's null-mode consumers, not native reader availability.
     vi.spyOn(value, "getMode").mockReturnValue(null as unknown as boolean)
     const feed = value.feed.bind(value)
     vi.spyOn(value, "feed").mockImplementation((bytes) => {
