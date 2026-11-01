@@ -232,6 +232,7 @@ describe("audited native host recipe callers", () => {
       expect(read.hostRecipeCauses, id).toBeUndefined()
       expect(read.note, id).toContain(`harness-supplied clipboard_control ${control.join(" ")}`)
       expect(read.note, id).toContain("read-clipboard-ask")
+      expect(read.observation?.note, id).toContain(`harness-supplied clipboard_control ${control.join(" ")}`)
     }
   })
 

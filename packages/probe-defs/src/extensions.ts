@@ -2555,7 +2555,12 @@ function withClipboardControlNote(ctx: LibProbeSource, result: ProbeCallbackResu
   const control = typeof ctx.getClipboardState === "function" ? ctx.getClipboardState().control : undefined
   if (control === undefined) return result
   const note = `read under harness-supplied clipboard_control ${control.join(" ")}; kitty's default read-clipboard-ask asks a human before answering a read`
-  return { ...result, note: result.note ? `${result.note}; ${note}` : note }
+  const join = (prior: string | undefined) => (prior ? `${prior}; ${note}` : note)
+  return {
+    ...result,
+    note: join(result.note),
+    ...(result.observation && { observation: { ...result.observation, note: join(result.observation.note) } }),
+  }
 }
 
 function headlessClipboardRoundtrip(ctx: LibProbeSource): ProbeCallbackResult {
