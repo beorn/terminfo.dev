@@ -127,6 +127,56 @@ probe
 
 // ── report ──
 
+const review = program
+  .command("review")
+  .description("Review explicit retained captures; private files only, JSON stdout")
+review.addHelpSection("Resources:", [
+  ["intake", "Requires retained run/pass, explicit context, frozen suite registry and two pinned Git repositories"],
+  ["apply", "Requires issuer-edited intake; preserves exact decision bytes and always leaves output unsealed"],
+  ["Empty scope", "No pending rows produces empty intake; no decisions produces a no-op receipt"],
+  ["Failures", "Missing required inputs/citations fail on stderr; absent optional external sources report unverified"],
+])
+review
+  .command("intake")
+  .description("Write an issuer-editable citation index; no verdicts or timestamps are invented")
+  .requiredOption("--input <path>", "Absolute retained run or pass.json path; never latest/glob")
+  .requiredOption("--context <json>", "Explicit {kind,id,os} context (os required for term/mux)", (value: string) =>
+    JSON.parse(value),
+  )
+  .requiredOption("--suite-root <path>", "Absolute repository with trusted content/suites/<suite>.json")
+  .requiredOption("--terminfo-repo <path>", "Absolute Terminfo source repository")
+  .requiredOption("--terminfo-commit <sha>", "Full 40-hex pinned Terminfo commit")
+  .requiredOption("--termless-repo <path>", "Absolute Termless source repository")
+  .requiredOption("--termless-commit <sha>", "Full 40-hex pinned Termless commit")
+  .requiredOption("--output <path>", "Absolute new private intake file outside source repositories")
+  .action(async (opts) => {
+    try {
+      const { intakeReview } = await import("./review.ts")
+      console.log(JSON.stringify(intakeReview(opts)))
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error))
+      process.exitCode = 1
+    }
+  })
+review
+  .command("apply")
+  .description("Apply exact issuer decisions to a new immutable draft; no downstream operation")
+  .requiredOption(
+    "--intake <path>",
+    "Absolute issuer-edited index with exact decision bytes, actual timestamp, SHA256 and citations",
+  )
+  .requiredOption("--output <directory>", "Absolute private draft directory outside source repositories")
+  .requiredOption("--receipt <path>", "Absolute new private JSON receipt; missing required resources fail loudly")
+  .action(async (opts) => {
+    try {
+      const { applyReview } = await import("./review.ts")
+      console.log(JSON.stringify(applyReview(opts)))
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error))
+      process.exitCode = 1
+    }
+  })
+
 program
   .command("report")
   .description("Show saved probe results")
