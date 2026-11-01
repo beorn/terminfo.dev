@@ -248,6 +248,7 @@ export function satisfiesContract(row: ContractRow, observation: ObservationOutc
 export interface HeadlessModel extends Partial<LibProbeSource> {
   readonly cols: number
   feed(text: string): void
+  /** These semantic models address their active screen, rather than retained history. */
   getCell(row: number, col: number): ReturnType<LibProbeSource["getCell"]>
   getCursor(): ReturnType<LibProbeSource["getCursor"]>
 }
@@ -262,7 +263,7 @@ export function libProbeSource(model: HeadlessModel): LibProbeSource {
     }
     return lines.join("\n")
   }
-  return {
+  const source: LibProbeSource = {
     kind: "live",
     getHyperlinkAt: () => null,
     feedCapture: (text) => {
@@ -287,10 +288,14 @@ export function libProbeSource(model: HeadlessModel): LibProbeSource {
     },
     ...model,
     getCursor: model.getCursor,
-    getCell: model.getCell,
+    getCell: (row, col) => {
+      const { totalLines, screenLines } = source.getScrollback()
+      return model.getCell(row - (totalLines - screenLines), col)
+    },
     feed: model.feed,
     cols: model.cols,
   }
+  return source
 }
 
 /** A stored query, the shape scripts/decrqss-regrade.test.ts replays. */
