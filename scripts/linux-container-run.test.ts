@@ -104,14 +104,7 @@ function fontControl(scenario: "capable" | "positions-only" | "missing" | "faile
     output = join(root, "out")
   mkdirSync(bin, { recursive: true })
   mkdirSync(output)
-  for (const tool of [
-    "jq",
-    "sha256sum",
-    "cut",
-    "readlink",
-    "mkdir",
-    "ln",
-  ]) {
+  for (const tool of ["jq", "sha256sum", "cut", "readlink", "mkdir", "ln"]) {
     const found = spawnSync("bash", ["-c", 'command -v "$1"', "_", tool], { encoding: "utf8" })
     if (found.status !== 0) throw new Error(`Missing declared test utility ${tool}: ${found.stderr}`)
     symlinkSync(found.stdout.trim(), join(bin, tool))
