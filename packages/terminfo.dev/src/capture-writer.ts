@@ -185,6 +185,8 @@ export function finalizeCollectedDraft(
     origin: (runId: string) => { path: string; source: string } | undefined
     /** Natural collection supplies accepted, already supersession-filtered decisions. */
     carry?: boolean
+    /** Private review application never seals, even when every required review completes. */
+    keepDraft?: boolean
     report?: (entry: CaptureReviewReport) => void
   },
 ): CollectedProbeRun | CurrentProbeRun {
@@ -285,7 +287,7 @@ export function finalizeCollectedDraft(
   ) {
     return captured
   }
-  return sealRunDraft(captured)
+  return reviews?.keepDraft ? captured : sealRunDraft(captured)
 }
 
 /** Preserve one immutable final run, or explicit pending-review draft, under its measured identity. */
