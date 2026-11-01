@@ -1489,7 +1489,7 @@ function promptMarkResult(
   const qualified =
     consumed && home.x === 0 && home.y === 0 && target.x === 1 && target.y === 0 && control.x === 0 && control.y === 0
   if (!qualified) return promptConsumptionResult(consumed)
-  if (markType && readMarks) {
+  if (markType && readMarks && before && first) {
     ctx.feed("\x1b[2;3H")
     const secondBefore = readMarks()
     ctx.feed(sequence + "X")
@@ -1497,10 +1497,10 @@ function promptMarkResult(
     const secondCell = ctx.getCell(1, 2)
     const secondCursor = ctx.getCursor()
     ctx.feed("\x1b[1;1H")
-    const firstMark = first![before!.length]
+    const firstMark = first[before.length]
     const secondMark = second[secondBefore.length]
     return parserStateResult(
-      first!.length === before!.length + 1 &&
+      first.length === before.length + 1 &&
         firstMark?.type === markType &&
         firstMark.startRow === 0 &&
         firstMark.startCol === 0 &&
@@ -4012,12 +4012,13 @@ export const extensionsProbes: ProbeDefinition[] = [
         if (absentOscAudit(ctx.runtimeIdentity, 133)) {
           return sourceAbsentOsc("extensions.semantic-prompts", 133, "\x1b]133;A\x07", "shell prompt integration")(ctx)
         }
-        if (ctx.getSemanticMarks)
+        if (ctx.getSemanticMarks) {
           return promptMarkResult(ctx, "\x1b]133;A\x07", "OSC 133 prompt-start mark registration", {
             probeId: "extensions.semantic-prompts",
             selector: 133,
             markType: "prompt",
           })
+        }
         const note = "Declared semantic-prompt capability does not establish shell prompt integration"
         return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
           declared: ctx.capabilities.semanticPrompts === true,
@@ -4185,12 +4186,13 @@ export const extensionsProbes: ProbeDefinition[] = [
         if (absentOscAudit(ctx.runtimeIdentity, 633)) {
           return sourceAbsentOsc("extensions.osc-633-vscode", 633, "\x1b]633;A\x07", "VS Code shell integration")(ctx)
         }
-        if (ctx.getSemanticMarks)
+        if (ctx.getSemanticMarks) {
           return promptMarkResult(ctx, "\x1b]633;A\x07", "OSC 633 prompt-start mark registration", {
             probeId: "extensions.osc-633-vscode",
             selector: 633,
             markType: "prompt",
           })
+        }
         const note = "Declared semantic-prompt capability does not establish VS Code OSC 633 shell integration"
         return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
           declared: ctx.capabilities.semanticPrompts === true,
