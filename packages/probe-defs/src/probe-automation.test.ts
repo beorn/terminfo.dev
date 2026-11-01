@@ -331,6 +331,7 @@ describe("audited native host recipe callers", () => {
     "d280c3fd2129f42db0d7154d6e66f5582a67fa1faf1e82ab463b6b8286f126d0",
     "32d76284e5a3c7673fafbbc83a16717fa0a1c1811c7d659d982176a53ceb1aa9",
     "8232209bd7273d68eb0bc9a71c5acf94fd8ebd96612604ff901c09c4d6cb8344",
+    "21d4b43c1d4c401c5b9f8114de85b3e837605242363c322c2dcb37e4a42fba61",
   ])("the Alacritty artifact %s cites its OSC 52 read and leaves CSI 14 t measured", (alacritty) => {
     const silent = (id: string) =>
       probe(id).lib!(
@@ -2383,26 +2384,26 @@ describe("GhosttyNative audited OSC source review", () => {
  * @testonly none
  */
 describe("Alacritty audited OSC source review", () => {
-  // Current absolute-row build receipt; fixture identity is not a loaded-engine attestation.
+  // Current alternate-scroll build receipt; fixture identity is not a loaded-engine attestation.
   const identity = {
     kind: "native",
     engineVersion: "0.26.0",
     adapterSources: [
       { path: "packages/alacritty/src/index.ts", blobOid: "b4154cbd6ef4a83ce2cbf3dcf26ff13d645efd05" },
       { path: "packages/alacritty/src/backend.ts", blobOid: "4210383129879c4e8756e6975674632cf69ecce9" },
-      { path: "packages/alacritty/native/src/lib.rs", blobOid: "f6bd100a60de8bcbc54e28b4c293ca6920cbc18d" },
+      { path: "packages/alacritty/native/src/lib.rs", blobOid: "e4720590d652773f1e89caf2b5cb399ee9112e39" },
       { path: "src/load-native.ts", blobOid: "34e142550085450ab02138184626716ad0d6b546" },
     ],
     adapterVersion: "0.10.2",
-    termlessRevision: "be67d1c7f542ee54a713500604d771a4aa8daa30",
+    termlessRevision: "824119c28b46bd701b222a91df0da860f0307950",
     loadedBinary: {
       path: "vendor/termless/packages/alacritty/termless-alacritty-native.node",
-      sha256: "8232209bd7273d68eb0bc9a71c5acf94fd8ebd96612604ff901c09c4d6cb8344",
+      sha256: "21d4b43c1d4c401c5b9f8114de85b3e837605242363c322c2dcb37e4a42fba61",
     },
     provenance: {
-      sha256: "8232209bd7273d68eb0bc9a71c5acf94fd8ebd96612604ff901c09c4d6cb8344",
-      sourceCommit: "be67d1c7f542ee54a713500604d771a4aa8daa30",
-      buildHash: "fe1651e09a5d7e191586ed8f90a945ae479a9a1976a3776d852646e824c7ace1",
+      sha256: "21d4b43c1d4c401c5b9f8114de85b3e837605242363c322c2dcb37e4a42fba61",
+      sourceCommit: "824119c28b46bd701b222a91df0da860f0307950",
+      buildHash: "634c14c5258327eff925d20d24918098c9aee92c1e6291e0ca770d2677015171",
       toolchain:
         "rustc 1.94.0 (4a4ef493e 2026-03-02) (built from a source tarball); cargo 1.94.0 (85eff7c80 2026-01-15)",
       lockSha256: "1f89f2579b7d786a116d8fefb8267c4af076bd3a3893adcf14b00c4466740497",
@@ -2445,7 +2446,7 @@ describe("Alacritty audited OSC source review", () => {
     if (codes === "22") {
       expect(writes).toContain("\x1b[1;1H\x1b[2K\x1b]22;pointer\x07X")
       expect(reason).toBe(
-        "alacritty_terminal 0.26.0 with vte 0.15.0 src/ansi.rs:1329-1523 OSC dispatch (22 parsed, other audited codes unhandled); src/term/mod.rs:1059-2272 Term Handler; Termless be67d1c7f542ee54a713500604d771a4aa8daa30 packages/alacritty/native/src/lib.rs:285-338 owns Term<EventProxy> and advances the same vte processor into it; absolute-row getter changes leave Config, OSC dispatch and reply handling unchanged; parsed by vte 0.15.0 src/ansi.rs:1455-1461 into set_mouse_cursor_icon; Handler default src/ansi.rs:703-704 is empty and alacritty_terminal 0.26.0 src/term/mod.rs:1059-2272 supplies no override; independent source review required",
+        "alacritty_terminal 0.26.0 with vte 0.15.0 src/ansi.rs:1329-1523 OSC dispatch (22 parsed, other audited codes unhandled); src/term/mod.rs:1059-2272 Term Handler; Termless 824119c28b46bd701b222a91df0da860f0307950 packages/alacritty/native/src/lib.rs:285-338 owns Term<EventProxy> and advances the same vte processor into it; alternate-scroll readback changes leave Config, OSC dispatch and reply handling unchanged; parsed by vte 0.15.0 src/ansi.rs:1455-1461 into set_mouse_cursor_icon; Handler default src/ansi.rs:703-704 is empty and alacritty_terminal 0.26.0 src/term/mod.rs:1059-2272 supplies no override; independent source review required",
       )
       expect(reason).not.toContain("no case 22")
     } else {

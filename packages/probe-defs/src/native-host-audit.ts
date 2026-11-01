@@ -19,6 +19,17 @@ type NativeHostSourceCitations = Readonly<Partial<Record<Exclude<HostRecipeName,
  * from runtime. A host gains causes only through its own audit here; no host inherits another's citations.
  */
 export const NATIVE_HOST_AUDITS: ReadonlyMap<string, NativeHostSourceCitations> = new Map([
+  // Termless 824119c2 alternate-scroll rebuild: Config, EventProxy and replies are unchanged.
+  [
+    "21d4b43c1d4c401c5b9f8114de85b3e837605242363c322c2dcb37e4a42fba61",
+    {
+      "clipboard-load": {
+        kind: "source-audited",
+        citation:
+          "alacritty_terminal 0.26.0 term/mod.rs:356-380 defaults OSC52 to OnlyCopy; Termless 824119c2 packages/alacritty/native/src/lib.rs:311-319 changes only scrolling_history from Config::default, and EventProxy::send_event:48-89 has no ClipboardLoad handler; this harness supplies no clipboard read permission",
+      },
+    },
+  ],
   // Termless be67d1c7 absolute-row rebuild: Config, EventProxy and the reply path were independently re-audited.
   [
     "8232209bd7273d68eb0bc9a71c5acf94fd8ebd96612604ff901c09c4d6cb8344",
