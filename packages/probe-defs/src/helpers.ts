@@ -53,6 +53,7 @@ export const ADAPTER_SOURCE_AUDITS = {
     "packages/libvterm/src/wasm-bindings.ts": "2bbd4d5cf59b8d53db8f5c0329d2ed7853c43e45",
     "packages/libvterm/wasm/libvterm.js": "1e784be87614ab924b96844009919b7c21ce150e",
   },
+  // Retained native-row rebuild: both TS blobs are unchanged; the exact native receipt and artifact audits bind Zig.
   ghosttyNative: {
     "packages/ghostty-native/src/index.ts": "35c9e35a5d60625ce1135b65ff38ae9278495a18",
     "packages/ghostty-native/src/backend.ts": "f5832c21a5837f636effa3ee2dfc1f8a4e7b8b25",

@@ -283,6 +283,7 @@ describe("audited native host recipe callers", () => {
   test.each([
     "dc3b24de6e91416f66b1953ce101991ef7e78602ce1b5d357f65832c9b96b326",
     "d6e23fe62d56de795c6fa783a6c5025fc5b1238e739839de8b4b3737eca0c43e",
+    "e58288d0b62448bf746ad77e58a4e9523c1baabb080d6fc6723f76caf29d2bb0",
   ])("native artifact %s explains only empty clipboard and geometry replies", (sha256) => {
     for (const [id, recipe] of [
       ["device.xtwinops-14", "text-area-size"],
@@ -577,6 +578,15 @@ describe("reply-path audit", () => {
   // #31385: rebuilding cell readback must retain all applicable audits, including #31377's graphics prefixes.
   // The data-derived callback cases below cannot detect an omitted artifact or omitted row.
   test.each([
+    {
+      name: "native absolute retained rows",
+      digest: "e58288d0b62448bf746ad77e58a4e9523c1baabb080d6fc6723f76caf29d2bb0",
+      priors: [
+        "d6e23fe62d56de795c6fa783a6c5025fc5b1238e739839de8b4b3737eca0c43e",
+        "61fb182e3381ab1c52d94b63a9e33163bbfb89ede419af022f71f4438bfe0b03",
+      ],
+      core: "332b2aef",
+    },
     {
       name: "native nullable modes",
       digest: "d6e23fe62d56de795c6fa783a6c5025fc5b1238e739839de8b4b3737eca0c43e",
@@ -1227,6 +1237,7 @@ describe("reply-path audit", () => {
       [
         "0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3",
         "d6e23fe62d56de795c6fa783a6c5025fc5b1238e739839de8b4b3737eca0c43e",
+        "e58288d0b62448bf746ad77e58a4e9523c1baabb080d6fc6723f76caf29d2bb0",
         "dc3b24de6e91416f66b1953ce101991ef7e78602ce1b5d357f65832c9b96b326",
         "17d155feee5df8fa30266b9a354bbe66e39484d08218de5e03dc3bb2f199a0a3",
         "1f23e13db5bda55ab54943461b83a5d642bf8d2050a452fbe7871927383dfe9f",
@@ -1490,7 +1501,10 @@ describe("reply-path audit", () => {
       // instead of the unaudited artifact's no-observable fallback.
       measuredResponse:
         id === "extensions.osc52-write" &&
-        auditKey === "d6e23fe62d56de795c6fa783a6c5025fc5b1238e739839de8b4b3737eca0c43e"
+        [
+          "d6e23fe62d56de795c6fa783a6c5025fc5b1238e739839de8b4b3737eca0c43e",
+          "e58288d0b62448bf746ad77e58a4e9523c1baabb080d6fc6723f76caf29d2bb0",
+        ].includes(auditKey)
           ? ""
           : (unlisted.result.response ?? null),
       ...(audit.kind === "no-reply-path" && audit.matches === "prefix" && { matchedQueries: matched }),
@@ -2265,15 +2279,15 @@ describe("GhosttyNative audited OSC source review", () => {
       { path: "packages/ghostty-native/src/backend.ts", blobOid: "f5832c21a5837f636effa3ee2dfc1f8a4e7b8b25" },
     ],
     adapterVersion: "0.10.2",
-    termlessRevision: "723acd11346edfcf3bfd0614c1a44a3828512a9f",
+    termlessRevision: "c75b06744bfad28bfdd72667f8c5cae9d6169efe",
     loadedBinary: {
       path: "vendor/termless/packages/ghostty-native/termless-ghostty-native.node",
-      sha256: "d6e23fe62d56de795c6fa783a6c5025fc5b1238e739839de8b4b3737eca0c43e",
+      sha256: "e58288d0b62448bf746ad77e58a4e9523c1baabb080d6fc6723f76caf29d2bb0",
     },
     provenance: {
-      sha256: "d6e23fe62d56de795c6fa783a6c5025fc5b1238e739839de8b4b3737eca0c43e",
+      sha256: "e58288d0b62448bf746ad77e58a4e9523c1baabb080d6fc6723f76caf29d2bb0",
       sourceCommit: "332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28",
-      buildHash: "bcb9aac9409e23717f3c5952d0ab062da27395e9df69b980a4c5d026246f5a14",
+      buildHash: "cdc9bd7bfc65602d9739e17cf28b5570410f39eb2335cb046484df7bbb573067",
       toolchain: "zig 0.15.2",
       lockSha256: "3ec775507556db01d08055836b26183f629a9cbb0b5802a1566661e95988d74a",
     },
@@ -2300,7 +2314,7 @@ describe("GhosttyNative audited OSC source review", () => {
       }),
     )
     expect(result.tests?.[0]?.reason).toBe(
-      "Ghostty 332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28 src/terminal/osc.zig:535-641 rejects OSC176/440/555/666/710; :747 parses OSC3008 context_signal, dropped at src/terminal/stream.zig:2050-2059 (SHA256 3ddc5e27d6a6f48ea99399bb886b52e7bebb68c94397a3ba008a7c3eb6c01a9b); Termless 723acd11346edfcf3bfd0614c1a44a3828512a9f packages/ghostty-native/native/src/main.zig:38-39 wraps ReadonlyHandler, :76 forwards unhandled actions to readonly.vt, :85 creates ResponseStream and :141 initializes Terminal.vtHandler; parsed by osc.zig:747 context_signal, dropped unimplemented at stream.zig:2056-2059; independent source review required",
+      "Ghostty 332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28 src/terminal/osc.zig:535-641 rejects OSC176/440/555/666/710; :747 parses OSC3008 context_signal, dropped at src/terminal/stream.zig:2050-2059 (SHA256 3ddc5e27d6a6f48ea99399bb886b52e7bebb68c94397a3ba008a7c3eb6c01a9b); Termless c75b06744bfad28bfdd72667f8c5cae9d6169efe packages/ghostty-native/native/src/main.zig:38-39 wraps ReadonlyHandler, :76 forwards unhandled actions to readonly.vt, :85 creates ResponseStream and :141 initializes Terminal.vtHandler; parsed by osc.zig:747 context_signal, dropped unimplemented at stream.zig:2056-2059; independent source review required",
     )
   })
 
