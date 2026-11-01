@@ -244,12 +244,7 @@ test("real vterm metadata reaches both registered callbacks and the batch produc
       const result = registryDefinitions([id])[0]!.lib!(source)
       expect(result.observation, id).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
       expect(result.assertions, id).toMatchObject([{ kind: "positive", observed: result.response }])
-      const observed = JSON.parse(result.response!) as {
-        first: unknown[]
-        second: unknown[]
-        before: unknown[]
-        secondBefore: unknown[]
-      }
+      const observed = JSON.parse(result.response!)
       if (id === "extensions.osc7-cwd") {
         expect(observed).toMatchObject({
           before: "file://localhost/original",
@@ -373,7 +368,12 @@ test.for(VTERM_MARK_CASES)(
       const result = definition.lib!(source)
       expect(result.observation, id).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
       expect(result.assertions, id).toMatchObject([{ kind: "positive", observed: result.response }])
-      const observed = JSON.parse(result.response!)
+      const observed = JSON.parse(result.response!) as {
+        first: unknown[]
+        second: unknown[]
+        before: unknown[]
+        secondBefore: unknown[]
+      }
       expect(observed.first.at(-1)).toEqual({ type, startRow: 0, startCol: 0 })
       expect(observed.second.at(-1)).toEqual({ type, startRow: 1, startCol: 2 })
       expect(observed.first).toHaveLength(observed.before.length + 1)
