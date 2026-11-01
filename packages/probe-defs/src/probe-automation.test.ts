@@ -522,6 +522,7 @@ describe("reply-path audit", () => {
 
   // #31692: data-derived cases cannot detect an omitted current-artifact OSC99 audit.
   test.each([
+    ["1f23e13db5bda55ab54943461b83a5d642bf8d2050a452fbe7871927383dfe9f", "parser-rejected"],
     ["ce01cd0d1ae000dd88948f3817924cc85303874070cab39430967ebdf14877f3", "parser-rejected"],
     ["5c38594a17329b24e826f785d3156d6e498490517835f12b0730eeab2fc63da7", "parser-rejected"],
     ["d80a8110258a124fb6ff52a6fe149b8e39b5180d986907cc9fb7dc9143c3f3d9", "parser-rejected"],
@@ -590,6 +591,59 @@ describe("reply-path audit", () => {
       expect(rebuilt![id]).toMatchObject({ query: audit.query, kind: audit.kind })
       expect(rebuilt![id]!.matches).toBe(audit.matches)
       expect(rebuilt![id]!.citation).toContain(core)
+    }
+  })
+
+  // #32057, @cto 25157a35: Ghostty WASM 1f23e13d answers DA1, DA2, XTVERSION, DECRQSS and XTGETTCAP, so their six cells
+  // leave the table; the 12 ruled stays keep query, matches and kind with citations for this artifact, and the other 32
+  // ce01cd0d rows are rebound with only the artifact renamed.
+  test("the rebuilt Ghostty WASM 1f23e13d drops the six routed cells and re-cites the 12 ruled stays", () => {
+    const priorSha = "ce01cd0d1ae000dd88948f3817924cc85303874070cab39430967ebdf14877f3"
+    const sha = "1f23e13db5bda55ab54943461b83a5d642bf8d2050a452fbe7871927383dfe9f"
+    const prior = REPLY_PATH_AUDITS.get(priorSha)!
+    const rebuilt = REPLY_PATH_AUDITS.get(sha)!
+    expect(rebuilt).toBeDefined()
+    const routed = [
+      "device.decrqss",
+      "device.primary-da",
+      "device.secondary-da",
+      "device.xtgettcap",
+      "device.xtversion",
+      "extensions.sixel-da1",
+    ]
+    // Each stay names the line its ruling rests on.
+    const stays: Record<string, string> = {
+      "device.dsr-996-color-scheme": "stream_handler.zig:793",
+      "device.tertiary-da": "stream_handler.zig:743-755",
+      "device.xtgetxres": "dcs.zig:80-93",
+      "device.xtwinops-14": "Termio.zig:524-531",
+      "device.xtwinops-16": "Termio.zig:532-539",
+      "device.xtwinops-21": "title-report=false",
+      "extensions.kitty-graphics": "build_options.zig:45",
+      "extensions.kitty-graphics.display": "build_options.zig:45",
+      "extensions.kitty-graphics.transmit": "build_options.zig:45",
+      "extensions.osc52-clipboard": "ESC[?62;22c",
+      "extensions.osc52-read": "ESC[?62;22c",
+      "extensions.osc52-write": "ESC[?62;22c",
+    }
+    const carried = Object.keys(prior).filter((id) => !routed.includes(id))
+    expect(carried).toHaveLength(44)
+    expect(Object.keys(rebuilt).sort()).toEqual(carried.sort())
+    expect(Object.keys(stays).filter((id) => !carried.includes(id))).toEqual([])
+    for (const id of carried) {
+      const audit = rebuilt[id]!
+      expect(audit).toMatchObject({ query: prior[id]!.query, kind: prior[id]!.kind })
+      expect(audit.matches).toBe(prior[id]!.matches)
+      expect(audit.citation, id).toContain("5714ed07")
+      expect(audit.citation, id).not.toContain("ce01cd0d")
+      if (id in stays) {
+        expect(audit.citation, id).toContain(stays[id]!)
+        continue
+      }
+      const renamed = prior[id]!.citation.replaceAll(priorSha, sha)
+        .replace(/(artifact|WASM) ce01cd0d([ ,])/, "$1 1f23e13d$2")
+        .replace("the DECRPM reply rebuild (#32024)", "the DA/XTVERSION/DCS reply rebuild (#32057)")
+      expect(audit.citation, id).toBe(renamed)
     }
   })
 
@@ -1132,6 +1186,7 @@ describe("reply-path audit", () => {
       [
         "0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3",
         "17d155feee5df8fa30266b9a354bbe66e39484d08218de5e03dc3bb2f199a0a3",
+        "1f23e13db5bda55ab54943461b83a5d642bf8d2050a452fbe7871927383dfe9f",
         "5a8030c0f3f9fa52e9c1f82d28ae711ef21e3072a4b82fbe98076fedf314c945",
         "5c38594a17329b24e826f785d3156d6e498490517835f12b0730eeab2fc63da7",
         "d5ee344ab5b971184ba2c43ed60460656340417c",

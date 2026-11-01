@@ -175,6 +175,11 @@ const GHOSTTY_WASM_CE01_DISABLED_KITTY_AUDIT: ReplyPathAudit = {
   citation:
     "Ghostty WASM artifactce01cd0d1ae000dd88948f3817924cc85303874070cab39430967ebdf14877f3, core5714ed07a1012573261b7b7e3ed2add9c1504496: src/build/GhosttyZig.zig:20-25 forces oniguruma=false; src/terminal/build_options.zig:45 derives kitty_graphics from oniguruma; src/terminal/apc.zig:31-39 sends APC G to ignore before any command, :63 returns null; Screen.zig:70 omits the image store. The ce01 rebuild only forwards DECRPM actions; upstream module build still excludes kitty graphics (oniguruma=false); re-measure when a future artifact enables it",
 }
+const GHOSTTY_WASM_1F23_DISABLED_KITTY_AUDIT: ReplyPathAudit = {
+  ...GHOSTTY_WASM_DISABLED_KITTY_AUDIT,
+  citation:
+    "Ghostty WASM artifact1f23e13db5bda55ab54943461b83a5d642bf8d2050a452fbe7871927383dfe9f, core5714ed07a1012573261b7b7e3ed2add9c1504496: src/build/GhosttyZig.zig:20-25 forces oniguruma=false; src/terminal/build_options.zig:45 derives kitty_graphics from oniguruma; src/terminal/apc.zig:31-39 sends APC G to ignore before any command, :63 returns null; Screen.zig:70 omits the image store. The ce01 rebuild only forwards DECRPM actions; upstream module build still excludes kitty graphics (oniguruma=false); re-measure when a future artifact enables it",
+}
 
 /**
  * Source audits of exact engines that cannot reply, keyed by 64-lowercase-hex loaded-artifact SHA-256 or
@@ -208,6 +213,277 @@ export const REPLY_PATH_AUDITS: ReadonlyMap<string, Readonly<Record<string, Repl
       "modes.mouse-sgr": { query: "\x1b[?1006$p", kind: "parser-rejected", citation: VT220_DECRPM_CITATION },
       "modes.mouse-tracking": { query: "\x1b[?1000$p", kind: "parser-rejected", citation: VT220_DECRPM_CITATION },
       "modes.utf8-mouse-1005": { query: "\x1b[?1005$p", kind: "parser-rejected", citation: VT220_DECRPM_CITATION },
+    },
+  ],
+  // Ghostty WASM rebuilt to answer DA1, DA2, XTVERSION, DECRQSS and XTGETTCAP (#32057, @cto 25157a35). The inner patch
+  // delta from ce01cd0d ADDS .device_attributes (primary in core's clipboard-deny form, secondary), .xtversion and the
+  // dcs_hook/dcs_put/dcs_unhook arms routed through core's dcs.Handler, all transcribed from core 5714ed07
+  // src/termio/stream_handler.zig, and removes their no-op lines; core 5714ed07 is unchanged. device.primary-da,
+  // device.secondary-da, device.xtversion, device.decrqss, device.xtgettcap and extensions.sixel-da1 (via DA1, no 4)
+  // now reply and leave this table. The 12 ruled stays carry query, matches and kind unchanged with citations for this
+  // artifact; the other 32 ce01cd0d rows are carried unchanged except for naming this artifact.
+  [
+    "1f23e13db5bda55ab54943461b83a5d642bf8d2050a452fbe7871927383dfe9f",
+    {
+      "extensions.kitty-graphics.animation": GHOSTTY_WASM_1F23_DISABLED_KITTY_AUDIT,
+      "extensions.kitty-graphics.unicode-placeholders": GHOSTTY_WASM_1F23_DISABLED_KITTY_AUDIT,
+      "extensions.iterm2-images": {
+        query: "\x1b]1337;",
+        matches: "prefix",
+        kind: "parser-rejected",
+        citation:
+          "Ghostty WASM artifact1f23e13db5bda55ab54943461b83a5d642bf8d2050a452fbe7871927383dfe9f, core5714ed07a1012573261b7b7e3ed2add9c1504496: src/terminal/osc.zig:196-221 Key has no OSC1337 command; Parser.end :1708-1715 returns null for the unrecognized command, before the WASM ResponseHandler; no inline image is stored. The ce01 rebuild only forwards DECRPM actions; the OSC parser is unchanged",
+      },
+      "extensions.osc99-kitty-notify": {
+        query: "\u001b]99;",
+        matches: "prefix",
+        kind: "parser-rejected",
+        citation:
+          "Ghostty WASM 1f23e13d, core 5714ed07a1012573261b7b7e3ed2add9c1504496: src/terminal/osc.zig:556-565 puts first9 in state9; :1076-1081 accepts only semicolon there, so second9 invalidates OSC99; :554 clears complete and :1708-1714 returns null. Parser.zig:270-273 emits osc_dispatch only for nonnull commands. The actual WASM write path is Termless vendor/ghostty-web/ghostty-wasm-api.patch ResponseStream(ResponseHandler), nextSlice; no notification action is reached. Audited family is Terminfo27541ce4 extensions.ts:3267-3312 capability query ESC]99;i=<nonce>:p=?;ST, not desktop delivery.",
+      },
+      "extensions.osc0-icon-title": {
+        query: "\u001b[20t",
+        kind: "parser-rejected",
+        citation:
+          "Ghostty WASM artifact 1f23e13db5bda55ab54943461b83a5d642bf8d2050a452fbe7871927383dfe9f, core 5714ed07a1012573261b7b7e3ed2add9c1504496; Termless vendor/ghostty-web/ghostty-wasm-api.patch constructs ResponseStream(ResponseHandler) and feeds it; size_report formats only .csi_18_t (copied from src/termio/Termio.zig:540-546) and leaves .csi_14_t/.csi_16_t/.csi_21_t silent. Core src/terminal/stream.zig:1793-1849 XTWINOPS accepts 14/16/18/21 and 22/23, but 20 reaches the unimplemented-parameter arm before any handler. Terminfo 27541ce40cea4baaaa5a34171ad059e08d295d19 packages/probe-defs/src/extensions.ts:2245-2254,2759-2770 requires BOTH icon20 and title21 exact payload replies; icon20 is necessary.",
+      },
+      "extensions.osc52-clipboard": {
+        query: "\u001b]52;c;?\u0007",
+        kind: "no-reply-path",
+        citation:
+          "Ghostty WASM artifact 1f23e13db5bda55ab54943461b83a5d642bf8d2050a452fbe7871927383dfe9f, core 5714ed07a1012573261b7b7e3ed2add9c1504496, inner patch sha256 a4b6fc33 (#32057): Termless vendor/ghostty-web/ghostty-wasm-api.patch:711 keeps .clipboard_contents a no-op: the shim has no clipboard storage, host callback or reply append, and its DA1 accordingly answers core's clipboard-deny form ESC[?62;22c (core src/termio/stream_handler.zig:743-751). Core src/terminal/osc.zig:941-975 parses OSC52 kind/data; stream.zig:2022-2026 dispatches clipboard_contents. Terminfo 27541ce40cea4baaaa5a34171ad059e08d295d19 packages/probe-defs/src/extensions.ts:1942-1961,2789-2793 requires exact nonce roundtrip via this read query, not write consumption.",
+      },
+      "extensions.osc52-read": {
+        query: "\u001b]52;c;?\u0007",
+        kind: "no-reply-path",
+        citation:
+          "Ghostty WASM artifact 1f23e13db5bda55ab54943461b83a5d642bf8d2050a452fbe7871927383dfe9f, core 5714ed07a1012573261b7b7e3ed2add9c1504496, inner patch sha256 a4b6fc33 (#32057): Termless vendor/ghostty-web/ghostty-wasm-api.patch:711 keeps .clipboard_contents a no-op: the shim has no clipboard storage, host callback or reply append, and its DA1 accordingly answers core's clipboard-deny form ESC[?62;22c (core src/termio/stream_handler.zig:743-751). Core src/terminal/osc.zig:941-975 parses OSC52 kind/data; stream.zig:2022-2026 dispatches clipboard_contents. Terminfo 27541ce40cea4baaaa5a34171ad059e08d295d19 packages/probe-defs/src/extensions.ts:1965-1988,2812-2814 seeds an isolated nonce and requires this read query to return it.",
+      },
+      "extensions.osc52-write": {
+        query: "\u001b]52;c;?\u0007",
+        kind: "no-reply-path",
+        citation:
+          "Ghostty WASM artifact 1f23e13db5bda55ab54943461b83a5d642bf8d2050a452fbe7871927383dfe9f, core 5714ed07a1012573261b7b7e3ed2add9c1504496, inner patch sha256 a4b6fc33 (#32057): Termless vendor/ghostty-web/ghostty-wasm-api.patch:711 keeps .clipboard_contents a no-op: the shim has no clipboard storage, host callback or reply append, and its DA1 accordingly answers core's clipboard-deny form ESC[?62;22c (core src/termio/stream_handler.zig:743-751). Core src/terminal/osc.zig:941-975 parses OSC52 kind/data; stream.zig:2022-2026 dispatches clipboard_contents. Terminfo 27541ce40cea4baaaa5a34171ad059e08d295d19 packages/probe-defs/src/extensions.ts:1942-1961,2801-2805 uses the nonce roundtrip callback; its necessary observation is this exact readback query, not standalone write success.",
+      },
+      "extensions.kitty-graphics": {
+        query: "\u001b_G",
+        matches: "prefix",
+        kind: "no-reply-path",
+        citation:
+          "Ghostty WASM artifact 1f23e13db5bda55ab54943461b83a5d642bf8d2050a452fbe7871927383dfe9f, core 5714ed07a1012573261b7b7e3ed2add9c1504496, inner patch sha256 a4b6fc33 (#32057): Termless vendor/ghostty-web/ghostty-wasm-api.patch:703-705 keeps .apc_start/.apc_end/.apc_put no-ops, and no APC arm could answer: core src/terminal/apc.zig:36-39 parses 'G' into .kitty only when comptime build_options.kitty_graphics, else .ignore, and :64-65 makes the kitty arm unreachable otherwise; src/terminal/build_options.zig:45 ties kitty_graphics to oniguruma, and src/build/GhosttyZig.zig:25 forces oniguruma=false for the Zig module lib-vt builds from (src/build/GhosttyLibVt.zig:28). Kitty graphics is compiled out of this artifact (@cto 25157a35); ghostty-native keeps it, so this stay is WASM-only",
+      },
+      "extensions.kitty-graphics.transmit": {
+        query: "\u001b_G",
+        matches: "prefix",
+        kind: "no-reply-path",
+        citation:
+          "Ghostty WASM artifact 1f23e13db5bda55ab54943461b83a5d642bf8d2050a452fbe7871927383dfe9f, core 5714ed07a1012573261b7b7e3ed2add9c1504496, inner patch sha256 a4b6fc33 (#32057): Termless vendor/ghostty-web/ghostty-wasm-api.patch:703-705 keeps .apc_start/.apc_end/.apc_put no-ops, and no APC arm could answer: core src/terminal/apc.zig:36-39 parses 'G' into .kitty only when comptime build_options.kitty_graphics, else .ignore, and :64-65 makes the kitty arm unreachable otherwise; src/terminal/build_options.zig:45 ties kitty_graphics to oniguruma, and src/build/GhosttyZig.zig:25 forces oniguruma=false for the Zig module lib-vt builds from (src/build/GhosttyLibVt.zig:28). Kitty graphics is compiled out of this artifact (@cto 25157a35); ghostty-native keeps it, so this stay is WASM-only",
+      },
+      "extensions.kitty-graphics.display": {
+        query: "\u001b_G",
+        matches: "prefix",
+        kind: "no-reply-path",
+        citation:
+          "Ghostty WASM artifact 1f23e13db5bda55ab54943461b83a5d642bf8d2050a452fbe7871927383dfe9f, core 5714ed07a1012573261b7b7e3ed2add9c1504496, inner patch sha256 a4b6fc33 (#32057): Termless vendor/ghostty-web/ghostty-wasm-api.patch:703-705 keeps .apc_start/.apc_end/.apc_put no-ops, and no APC arm could answer: core src/terminal/apc.zig:36-39 parses 'G' into .kitty only when comptime build_options.kitty_graphics, else .ignore, and :64-65 makes the kitty arm unreachable otherwise; src/terminal/build_options.zig:45 ties kitty_graphics to oniguruma, and src/build/GhosttyZig.zig:25 forces oniguruma=false for the Zig module lib-vt builds from (src/build/GhosttyLibVt.zig:28). Kitty graphics is compiled out of this artifact (@cto 25157a35); ghostty-native keeps it, so this stay is WASM-only; display cannot complete its a=t allocation prerequisite",
+      },
+      "extensions.osc21-kitty-color": {
+        query: "\u001b]21;foreground=?\u001b\\",
+        kind: "parser-rejected",
+        citation:
+          "Query path unchanged by the DA/XTVERSION/DCS reply rebuild (#32057): ghostty-web 0.4.0 artifact 1f23e13d, core 5714ed07: termless vendor/ghostty-web/ghostty-wasm-api.patch ResponseStream.init -> src/terminal/stream.zig:497-501 Parser.init -> Parser.zig:230 osc_parser.init(null); osc.zig:845-851 rejects OSC21 without an allocator before any handler",
+      },
+      "extensions.sixel-geometry-report": {
+        query: "\u001b[?2;1;0S",
+        kind: "parser-rejected",
+        citation:
+          "Query path unchanged by the DA/XTVERSION/DCS reply rebuild (#32057): ghostty-web 0.4.0 artifact 1f23e13d, core 5714ed07: src/terminal/parse_table.zig:324 collects '?' as a CSI intermediate, Parser.zig:312-320 retains it; stream.zig:1173-1188 handles S only without intermediates and ignores '?' before any handler; termless vendor/ghostty-web/ghostty-wasm-api.patch selects this stream",
+      },
+      "device.dsr-996-color-scheme": {
+        query: "\u001b[?996n",
+        kind: "no-reply-path",
+        citation:
+          "Ghostty WASM artifact 1f23e13db5bda55ab54943461b83a5d642bf8d2050a452fbe7871927383dfe9f, core 5714ed07a1012573261b7b7e3ed2add9c1504496, inner patch sha256 a4b6fc33 (#32057): Termless vendor/ghostty-web/ghostty-wasm-api.patch:821-823 keeps .color_scheme a no-op ('Not supported in WASM context'): core answers it through the app surface (src/termio/stream_handler.zig:793 surfaceMessageWriter .report_color_scheme), which this artifact has none of; ghostty 5714ed07 src/terminal/stream.zig:1528-1556 device_status color_scheme parses it",
+      },
+      "device.tertiary-da": {
+        query: "\u001b[=c",
+        kind: "no-reply-path",
+        citation:
+          "Ghostty WASM artifact 1f23e13db5bda55ab54943461b83a5d642bf8d2050a452fbe7871927383dfe9f, core 5714ed07a1012573261b7b7e3ed2add9c1504496, inner patch sha256 a4b6fc33 (#32057): Termless vendor/ghostty-web/ghostty-wasm-api.patch:683-688 answers .primary and .secondary as core src/termio/stream_handler.zig:743-755 does; core sends nothing for .tertiary (:757 else => log.warn \"unimplemented device attributes req\"), so DA3 stays silent here as in core; ghostty 5714ed07 src/terminal/stream.zig:1320-1338 device_attributes parses it",
+      },
+      "device.xtgetxres": {
+        query: "\u001bP+Q7465726d4e616d65\u001b\\",
+        kind: "no-reply-path",
+        citation:
+          "Ghostty WASM artifact 1f23e13db5bda55ab54943461b83a5d642bf8d2050a452fbe7871927383dfe9f, core 5714ed07a1012573261b7b7e3ed2add9c1504496, inner patch sha256 a4b6fc33 (#32057): Termless vendor/ghostty-web/ghostty-wasm-api.patch:698-700 routes dcs_hook/dcs_put/dcs_unhook to core's src/terminal/dcs.zig Handler; dcs.zig:80-93 builds a command for the '+' intermediate only with final 'q' (XTGETTCAP), and 'Q' (XTGETXRES) returns null, so core itself has no reply",
+      },
+      "device.xtreportcolors": {
+        query: "\u001b[#R",
+        kind: "parser-rejected",
+        citation:
+          "Query path unchanged by the DA/XTVERSION/DCS reply rebuild (#32057): ghostty 5714ed07 src/terminal/stream.zig:1977 no 'R' final: 'unimplemented CSI action'",
+      },
+      "device.xtwinops-14": {
+        query: "\u001b[14t",
+        kind: "no-reply-path",
+        citation:
+          "Ghostty WASM artifact 1f23e13db5bda55ab54943461b83a5d642bf8d2050a452fbe7871927383dfe9f, core 5714ed07a1012573261b7b7e3ed2add9c1504496, inner patch sha256 a4b6fc33 (#32057): Termless vendor/ghostty-web/ghostty-wasm-api.patch:676 leaves .csi_14_t silent: the shim holds no cell pixel size, which core formats it from (src/termio/Termio.zig:524-531, self.size.cell); ghostty 5714ed07 src/terminal/stream.zig:1797-1803 size_report csi_14_t parses it",
+      },
+      "device.xtwinops-16": {
+        query: "\u001b[16t",
+        kind: "no-reply-path",
+        citation:
+          "Ghostty WASM artifact 1f23e13db5bda55ab54943461b83a5d642bf8d2050a452fbe7871927383dfe9f, core 5714ed07a1012573261b7b7e3ed2add9c1504496, inner patch sha256 a4b6fc33 (#32057): Termless vendor/ghostty-web/ghostty-wasm-api.patch:676 leaves .csi_16_t silent: the shim holds no cell pixel size, which core formats it from (src/termio/Termio.zig:532-539, self.size.cell); ghostty 5714ed07 src/terminal/stream.zig:1804-1810 size_report csi_16_t parses it",
+      },
+      "device.xtwinops-20": {
+        query: "\u001b[20t",
+        kind: "parser-rejected",
+        citation:
+          "Query path unchanged by the DA/XTVERSION/DCS reply rebuild (#32057): ghostty 5714ed07 src/terminal/stream.zig:1844-1847 'ignoring CSI t with unimplemented parameter'",
+      },
+      "device.xtwinops-21": {
+        query: "\u001b[21t",
+        kind: "no-reply-path",
+        citation:
+          "Ghostty WASM artifact 1f23e13db5bda55ab54943461b83a5d642bf8d2050a452fbe7871927383dfe9f, core 5714ed07a1012573261b7b7e3ed2add9c1504496, inner patch sha256 a4b6fc33 (#32057): Termless vendor/ghostty-web/ghostty-wasm-api.patch:676 leaves .csi_21_t silent, as core with its default config does: src/Surface.zig:911-915 answers report_title only if config.title_report, and src/config/Config.zig:2087 defaults title-report to false (disabled by default, title-report=false; @cto 25157a35); ghostty 5714ed07 src/terminal/stream.zig:1818-1824 size_report csi_21_t parses it",
+      },
+      "editing.decrqcra": {
+        query: "\u001b[1;1;1;1;1;5*y",
+        kind: "parser-rejected",
+        citation:
+          "Query path unchanged by the DA/XTVERSION/DCS reply rebuild (#32057): ghostty 5714ed07 src/terminal/stream.zig:1977 no 'y' final: 'unimplemented CSI action'",
+      },
+      "extensions.osc10-fg-color": {
+        query: "\u001b]10;?\u0007",
+        kind: "parser-rejected",
+        citation:
+          "Query path unchanged by the DA/XTVERSION/DCS reply rebuild (#32057): ghostty-web 0.4.0 WASM constructs its stream without an OSC allocator (termless vendor/ghostty-web/ghostty-wasm-api.patch ResponseStream.init → ghostty 5714ed07 src/terminal/stream.zig:497-501 → src/terminal/Parser.zig:230 osc_parser .init(null)); src/terminal/osc.zig:604-607 rejects OSC 10 with a null allocator. ghostty 5714ed07 parses this only under initAlloc (stream.zig:506-510); ghostty-web 0.4.0 constructs the stream with init, so the limit is the WASM build's, not the grammar's",
+      },
+      "extensions.osc104-reset-palette": {
+        query: "\u001b]4;0;?\u0007",
+        kind: "parser-rejected",
+        citation:
+          "Query path unchanged by the DA/XTVERSION/DCS reply rebuild (#32057): seed query OSC 4: ghostty-web 0.4.0 WASM constructs its stream without an OSC allocator (termless vendor/ghostty-web/ghostty-wasm-api.patch ResponseStream.init → ghostty 5714ed07 src/terminal/stream.zig:497-501 → src/terminal/Parser.zig:230 osc_parser .init(null)); src/terminal/osc.zig:904-907 rejects OSC 4 with a null allocator, and OSC 104 itself is guarded the same way (osc.zig:626-629). ghostty 5714ed07 parses this only under initAlloc (stream.zig:506-510); ghostty-web 0.4.0 constructs the stream with init, so the limit is the WASM build's, not the grammar's",
+      },
+      "extensions.osc11-bg-color": {
+        query: "\u001b]11;?\u0007",
+        kind: "parser-rejected",
+        citation:
+          "Query path unchanged by the DA/XTVERSION/DCS reply rebuild (#32057): ghostty-web 0.4.0 WASM constructs its stream without an OSC allocator (termless vendor/ghostty-web/ghostty-wasm-api.patch ResponseStream.init → ghostty 5714ed07 src/terminal/stream.zig:497-501 → src/terminal/Parser.zig:230 osc_parser .init(null)); src/terminal/osc.zig:645-648 rejects OSC 11 with a null allocator. ghostty 5714ed07 parses this only under initAlloc (stream.zig:506-510); ghostty-web 0.4.0 constructs the stream with init, so the limit is the WASM build's, not the grammar's",
+      },
+      "extensions.osc110-reset-fg": {
+        query: "\u001b]10;?\u0007",
+        kind: "parser-rejected",
+        citation:
+          "Query path unchanged by the DA/XTVERSION/DCS reply rebuild (#32057): seed query OSC 10: ghostty-web 0.4.0 WASM constructs its stream without an OSC allocator (termless vendor/ghostty-web/ghostty-wasm-api.patch ResponseStream.init → ghostty 5714ed07 src/terminal/stream.zig:497-501 → src/terminal/Parser.zig:230 osc_parser .init(null)); src/terminal/osc.zig:604-607 rejects OSC 10 with a null allocator, and OSC 110 itself is guarded the same way (osc.zig:657-661). ghostty 5714ed07 parses this only under initAlloc (stream.zig:506-510); ghostty-web 0.4.0 constructs the stream with init, so the limit is the WASM build's, not the grammar's",
+      },
+      "extensions.osc111-reset-bg": {
+        query: "\u001b]11;?\u0007",
+        kind: "parser-rejected",
+        citation:
+          "Query path unchanged by the DA/XTVERSION/DCS reply rebuild (#32057): seed query OSC 11: ghostty-web 0.4.0 WASM constructs its stream without an OSC allocator (termless vendor/ghostty-web/ghostty-wasm-api.patch ResponseStream.init → ghostty 5714ed07 src/terminal/stream.zig:497-501 → src/terminal/Parser.zig:230 osc_parser .init(null)); src/terminal/osc.zig:645-648 rejects OSC 11 with a null allocator, and OSC 111 itself is guarded the same way (osc.zig:657-661). ghostty 5714ed07 parses this only under initAlloc (stream.zig:506-510); ghostty-web 0.4.0 constructs the stream with init, so the limit is the WASM build's, not the grammar's",
+      },
+      "extensions.osc112-reset-cursor": {
+        query: "\u001b]12;?\u0007",
+        kind: "parser-rejected",
+        citation:
+          "Query path unchanged by the DA/XTVERSION/DCS reply rebuild (#32057): seed query OSC 12: ghostty-web 0.4.0 WASM constructs its stream without an OSC allocator (termless vendor/ghostty-web/ghostty-wasm-api.patch ResponseStream.init → ghostty 5714ed07 src/terminal/stream.zig:497-501 → src/terminal/Parser.zig:230 osc_parser .init(null)); src/terminal/osc.zig:690-693 rejects OSC 12 with a null allocator, and OSC 112 itself is guarded the same way (osc.zig:657-661). ghostty 5714ed07 parses this only under initAlloc (stream.zig:506-510); ghostty-web 0.4.0 constructs the stream with init, so the limit is the WASM build's, not the grammar's",
+      },
+      "extensions.osc113-reset-pointer-fg": {
+        query: "\u001b]13;?\u0007",
+        kind: "parser-rejected",
+        citation:
+          "Query path unchanged by the DA/XTVERSION/DCS reply rebuild (#32057): seed query OSC 13: ghostty-web 0.4.0 WASM constructs its stream without an OSC allocator (termless vendor/ghostty-web/ghostty-wasm-api.patch ResponseStream.init → ghostty 5714ed07 src/terminal/stream.zig:497-501 → src/terminal/Parser.zig:230 osc_parser .init(null)); src/terminal/osc.zig:707-710 rejects OSC 13 with a null allocator, and OSC 113 itself is guarded the same way (osc.zig:657-661). ghostty 5714ed07 parses this only under initAlloc (stream.zig:506-510); ghostty-web 0.4.0 constructs the stream with init, so the limit is the WASM build's, not the grammar's",
+      },
+      "extensions.osc114-reset-pointer-bg": {
+        query: "\u001b]14;?\u0007",
+        kind: "parser-rejected",
+        citation:
+          "Query path unchanged by the DA/XTVERSION/DCS reply rebuild (#32057): seed query OSC 14: ghostty-web 0.4.0 WASM constructs its stream without an OSC allocator (termless vendor/ghostty-web/ghostty-wasm-api.patch ResponseStream.init → ghostty 5714ed07 src/terminal/stream.zig:497-501 → src/terminal/Parser.zig:230 osc_parser .init(null)); src/terminal/osc.zig:730-733 rejects OSC 14 with a null allocator, and OSC 114 itself is guarded the same way (osc.zig:657-661). ghostty 5714ed07 parses this only under initAlloc (stream.zig:506-510); ghostty-web 0.4.0 constructs the stream with init, so the limit is the WASM build's, not the grammar's",
+      },
+      "extensions.osc12-cursor-color": {
+        query: "\u001b]12;?\u0007",
+        kind: "parser-rejected",
+        citation:
+          "Query path unchanged by the DA/XTVERSION/DCS reply rebuild (#32057): ghostty-web 0.4.0 WASM constructs its stream without an OSC allocator (termless vendor/ghostty-web/ghostty-wasm-api.patch ResponseStream.init → ghostty 5714ed07 src/terminal/stream.zig:497-501 → src/terminal/Parser.zig:230 osc_parser .init(null)); src/terminal/osc.zig:690-693 rejects OSC 12 with a null allocator. ghostty 5714ed07 parses this only under initAlloc (stream.zig:506-510); ghostty-web 0.4.0 constructs the stream with init, so the limit is the WASM build's, not the grammar's",
+      },
+      "extensions.osc1337-capabilities": {
+        query: "\u001b]1337;Capabilities\u0007",
+        kind: "parser-rejected",
+        citation:
+          "Query path unchanged by the DA/XTVERSION/DCS reply rebuild (#32057): ghostty 5714ed07 src/terminal/osc.zig:723-726 @\"133\" + '7' -> invalid",
+      },
+      "extensions.osc1337-cellsize": {
+        query: "\u001b]1337;ReportCellSize\u0007",
+        kind: "parser-rejected",
+        citation:
+          "Query path unchanged by the DA/XTVERSION/DCS reply rebuild (#32057): ghostty 5714ed07 src/terminal/osc.zig:723-726 @\"133\" + '7' -> invalid",
+      },
+      "extensions.osc17-highlight-bg": {
+        query: "\u001b]17;?\u0007",
+        kind: "parser-rejected",
+        citation:
+          "Query path unchanged by the DA/XTVERSION/DCS reply rebuild (#32057): ghostty-web 0.4.0 WASM constructs its stream without an OSC allocator (termless vendor/ghostty-web/ghostty-wasm-api.patch ResponseStream.init → ghostty 5714ed07 src/terminal/stream.zig:497-501 → src/terminal/Parser.zig:230 osc_parser .init(null)); src/terminal/osc.zig:781-784 rejects OSC 17 with a null allocator. ghostty 5714ed07 parses this only under initAlloc (stream.zig:506-510); ghostty-web 0.4.0 constructs the stream with init, so the limit is the WASM build's, not the grammar's",
+      },
+      "extensions.osc19-highlight-fg": {
+        query: "\u001b]19;?\u0007",
+        kind: "parser-rejected",
+        citation:
+          "Query path unchanged by the DA/XTVERSION/DCS reply rebuild (#32057): ghostty-web 0.4.0 WASM constructs its stream without an OSC allocator (termless vendor/ghostty-web/ghostty-wasm-api.patch ResponseStream.init → ghostty 5714ed07 src/terminal/stream.zig:497-501 → src/terminal/Parser.zig:230 osc_parser .init(null)); src/terminal/osc.zig:815-818 rejects OSC 19 with a null allocator. ghostty 5714ed07 parses this only under initAlloc (stream.zig:506-510); ghostty-web 0.4.0 constructs the stream with init, so the limit is the WASM build's, not the grammar's",
+      },
+      "extensions.osc30001-color-stack-push": {
+        query: "\u001b]10;?\u0007",
+        kind: "parser-rejected",
+        citation:
+          "Query path unchanged by the DA/XTVERSION/DCS reply rebuild (#32057): the probe sends only the seed OSC 10 query: ghostty-web 0.4.0 WASM constructs its stream without an OSC allocator (termless vendor/ghostty-web/ghostty-wasm-api.patch ResponseStream.init → ghostty 5714ed07 src/terminal/stream.zig:497-501 → src/terminal/Parser.zig:230 osc_parser .init(null)); src/terminal/osc.zig:604-607 rejects OSC 10 with a null allocator. OSC 30001 itself, never sent, is outside the grammar (osc.zig:556-566 accepts no OSC number starting with 3). ghostty 5714ed07 parses this only under initAlloc (stream.zig:506-510); ghostty-web 0.4.0 constructs the stream with init, so the limit is the WASM build's, not the grammar's",
+      },
+      "extensions.osc30101-color-stack-pop": {
+        query: "\u001b]10;?\u0007",
+        kind: "parser-rejected",
+        citation:
+          "Query path unchanged by the DA/XTVERSION/DCS reply rebuild (#32057): the probe sends only the seed OSC 10 query: ghostty-web 0.4.0 WASM constructs its stream without an OSC allocator (termless vendor/ghostty-web/ghostty-wasm-api.patch ResponseStream.init → ghostty 5714ed07 src/terminal/stream.zig:497-501 → src/terminal/Parser.zig:230 osc_parser .init(null)); src/terminal/osc.zig:604-607 rejects OSC 10 with a null allocator. OSC 30101 itself, never sent, is outside the grammar (osc.zig:556-566 accepts no OSC number starting with 3). ghostty 5714ed07 parses this only under initAlloc (stream.zig:506-510); ghostty-web 0.4.0 constructs the stream with init, so the limit is the WASM build's, not the grammar's",
+      },
+      "extensions.osc4-palette": {
+        query: "\u001b]4;0;?\u0007",
+        kind: "parser-rejected",
+        citation:
+          "Query path unchanged by the DA/XTVERSION/DCS reply rebuild (#32057): ghostty-web 0.4.0 WASM constructs its stream without an OSC allocator (termless vendor/ghostty-web/ghostty-wasm-api.patch ResponseStream.init → ghostty 5714ed07 src/terminal/stream.zig:497-501 → src/terminal/Parser.zig:230 osc_parser .init(null)); src/terminal/osc.zig:904-907 rejects OSC 4 with a null allocator. ghostty 5714ed07 parses this only under initAlloc (stream.zig:506-510); ghostty-web 0.4.0 constructs the stream with init, so the limit is the WASM build's, not the grammar's",
+      },
+      "extensions.osc5-special-color": {
+        query: "\u001b]5;0;?\u0007",
+        kind: "parser-rejected",
+        citation:
+          "Query path unchanged by the DA/XTVERSION/DCS reply rebuild (#32057): ghostty-web 0.4.0 WASM constructs its stream without an OSC allocator (termless vendor/ghostty-web/ghostty-wasm-api.patch ResponseStream.init → ghostty 5714ed07 src/terminal/stream.zig:497-501 → src/terminal/Parser.zig:230 osc_parser .init(null)); src/terminal/osc.zig:923-926 rejects OSC 5 with a null allocator. ghostty 5714ed07 parses this only under initAlloc (stream.zig:506-510); ghostty-web 0.4.0 constructs the stream with init, so the limit is the WASM build's, not the grammar's",
+      },
+      "extensions.osc701-locale": {
+        query: "\u001b]701;?\u0007",
+        kind: "parser-rejected",
+        citation:
+          "Query path unchanged by the DA/XTVERSION/DCS reply rebuild (#32057): ghostty 5714ed07 src/terminal/osc.zig:979-990 @\"7\" + '0' -> invalid",
+      },
+      "extensions.osc702-version": {
+        query: "\u001b]702;?\u0007",
+        kind: "parser-rejected",
+        citation:
+          "Query path unchanged by the DA/XTVERSION/DCS reply rebuild (#32057): ghostty 5714ed07 src/terminal/osc.zig:979-990 @\"7\" + '0' -> invalid",
+      },
+      "extensions.osc776-cell-size": {
+        query: "\u001b]776\u0007",
+        kind: "parser-rejected",
+        citation:
+          "Query path unchanged by the DA/XTVERSION/DCS reply rebuild (#32057): ghostty 5714ed07 src/terminal/osc.zig:991-995 @\"77\" + '6' -> invalid",
+      },
+      "extensions.osc7770-font-size": {
+        query: "\u001b]7770;?\u0007",
+        kind: "parser-rejected",
+        citation:
+          "Query path unchanged by the DA/XTVERSION/DCS reply rebuild (#32057): ghostty 5714ed07 src/terminal/osc.zig:996-1002 @\"777\" + '0' -> invalid",
+      },
+      "extensions.osc7777-font-window-size": {
+        query: "\u001b]7777;?\u0007",
+        kind: "parser-rejected",
+        citation:
+          "Query path unchanged by the DA/XTVERSION/DCS reply rebuild (#32057): ghostty 5714ed07 src/terminal/osc.zig:996-1002 @\"777\" + '7' -> invalid",
+      },
     },
   ],
   // Ghostty WASM rebuilt to answer DECRPM (#32024, Termless bcebe2e9). The inner patch delta from 5c38594a only ADDS the
