@@ -825,9 +825,9 @@ it.each([
         { runId: `${engine}-osc9-review`, startedAt: "2026-10-30T16:00:00.000Z" },
         (draft) => {
           if (!definition?.lib) throw new Error("Missing OSC9 library callback")
-          draft.intendedSubject = { kind: "lib", id: engine, version: "0.9.0" }
+          draft.intendedSubject = { kind: "lib", id: engine, version: "0.10.0" }
           draft.subject!.id = engine
-          draft.subject!.version = "0.9.0"
+          draft.subject!.version = "0.10.0"
           // Exact collector-input identity; this fixture does not attest a loaded production engine.
           draft.runtimeIdentity = {
             kind: "js",
@@ -928,7 +928,7 @@ it.each(["device.term-features", "erase.screen.scrollback"])(
         if (!definition?.lib) throw new Error(`${featureId} has no library review arm`)
         // Collector-input fixture at the audited engine/API pin; this does not attest a loaded engine.
         const engine = history ? "libvterm" : "vterm"
-        const version = history ? "0.3.3" : "0.9.0"
+        const version = history ? "0.3.3" : "0.10.0"
         draft.intendedSubject = { kind: "lib", id: engine, version }
         draft.subject!.id = engine
         draft.subject!.version = version
