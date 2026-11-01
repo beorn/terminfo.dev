@@ -607,3 +607,16 @@ All width callbacks distinguish these before applying their numeric feature crit
 readback is named TEST TODO; wrong controls and wrapping are named TEST FAILURE. A wrong numeric
 ASCII control is also a fixture failure. Unknown transport kinds throw with the probe and kind
 named. `/query` retains the same result in its `width` field. JSON preserves the cause fields.
+
+The vt100/vt220 mode-family source review never infers mode absence from rejected DECRQM.
+At revision6cc7eef0, exact clean source/entry/package trees and audited adapter blobs qualify
+the six absent private modes2004/1004/1003/1006/1000/1005, plus1007/2026/2031 and the SGR/color
+stack commands. Each engine cites its own complete dispatcher and absent command case.
+Its own set/reset or stack pair runs between rendered X marks: consumed commands and leaked
+text retain different reasons, line and cursor state. This uses existing buffer-state
+`source-negative-review` with a negative assertion, inconclusive observation and review TEST FAILURE;
+it does not create a decision or automatically grade Unsupported. Missing X, moved line or
+unqualified source remains named TODO. Actual DECRPM replies retain their original result.
+Stored mode1 on both engines, and5/66 on vt100, remain held instrumentation TODO. The private
+mixed-observable arms use the existing undeclared assertion type so query replies and reviewed
+buffer state both survive actual collection. Other engines and terminal callbacks retain their behavior.
