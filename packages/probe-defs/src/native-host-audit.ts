@@ -46,6 +46,22 @@ export const NATIVE_HOST_AUDITS: ReadonlyMap<string, NativeHostSourceCitations> 
       },
     },
   ],
+  // Retained-row rebuild: ResponseHandler/ReadonlyHandler and host inputs remain as audited at this source.
+  [
+    "e58288d0b62448bf746ad77e58a4e9523c1baabb080d6fc6723f76caf29d2bb0",
+    {
+      "clipboard-load": {
+        kind: "unimplemented",
+        citation:
+          "termless c75b0674 packages/ghostty-native/native/src/main.zig:38-83 ResponseHandler writes only mode, DSR 5/6 and kitty keyboard replies, forwarding clipboard_contents to ghostty 332b2aef src/terminal/stream_readonly.zig:176-196 where it is ignored without a writer",
+      },
+      "text-area-size": {
+        kind: "unimplemented",
+        citation:
+          "termless c75b0674 packages/ghostty-native/native/src/main.zig:38-83 ResponseHandler forwards size_report to ghostty 332b2aef src/terminal/stream_readonly.zig:176-196 where it is ignored; the wrapper supplies no reply path for CSI 14 t",
+      },
+    },
+  ],
   [
     "d6e23fe62d56de795c6fa783a6c5025fc5b1238e739839de8b4b3737eca0c43e",
     {

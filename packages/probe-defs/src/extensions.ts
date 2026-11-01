@@ -1280,9 +1280,9 @@ const ABSENT_OSC_ENGINES = {
     kind: "native",
     engineVersion: "1.3.1",
     adapterVersion: "0.10.2",
-    binarySha256: "d6e23fe62d56de795c6fa783a6c5025fc5b1238e739839de8b4b3737eca0c43e",
+    binarySha256: "e58288d0b62448bf746ad77e58a4e9523c1baabb080d6fc6723f76caf29d2bb0",
     sourceCommit: "332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28",
-    buildHash: "bcb9aac9409e23717f3c5952d0ab062da27395e9df69b980a4c5d026246f5a14",
+    buildHash: "cdc9bd7bfc65602d9739e17cf28b5570410f39eb2335cb046484df7bbb573067",
     lockSha256: "3ec775507556db01d08055836b26183f629a9cbb0b5802a1566661e95988d74a",
     codes: [1, 176, 440, 555, 666, 710, 3008],
     reviewReasons: [
@@ -1296,7 +1296,7 @@ const ABSENT_OSC_ENGINES = {
       },
     ],
     sourceCitation:
-      "Ghostty 332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28 src/terminal/osc.zig:535-641 rejects OSC176/440/555/666/710; :747 parses OSC3008 context_signal, dropped at src/terminal/stream.zig:2050-2059 (SHA256 3ddc5e27d6a6f48ea99399bb886b52e7bebb68c94397a3ba008a7c3eb6c01a9b); Termless 723acd11346edfcf3bfd0614c1a44a3828512a9f packages/ghostty-native/native/src/main.zig:38-39 wraps ReadonlyHandler, :76 forwards unhandled actions to readonly.vt, :85 creates ResponseStream and :141 initializes Terminal.vtHandler",
+      "Ghostty 332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28 src/terminal/osc.zig:535-641 rejects OSC176/440/555/666/710; :747 parses OSC3008 context_signal, dropped at src/terminal/stream.zig:2050-2059 (SHA256 3ddc5e27d6a6f48ea99399bb886b52e7bebb68c94397a3ba008a7c3eb6c01a9b); Termless c75b06744bfad28bfdd72667f8c5cae9d6169efe packages/ghostty-native/native/src/main.zig:38-39 wraps ReadonlyHandler, :76 forwards unhandled actions to readonly.vt, :85 creates ResponseStream and :141 initializes Terminal.vtHandler",
   },
   alacritty: {
     kind: "native",
