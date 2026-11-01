@@ -344,7 +344,7 @@ it("retains erased DECAWM evidence before wrap emits fixture bytes", async () =>
   expect(stored).not.toHaveProperty("replyFailureTestIds")
 })
 
-// Initial null is a failed read; explicit Ps 0 is an answered but unrecognized mode.
+// Mode2031's missing protocol facility is TODO; reset's initial read still must succeed.
 it.each([
   ["modes.color-scheme-reporting", 2031, null],
   ["reset.soft", 1, null],
@@ -365,7 +365,7 @@ it.each([
   expect(writes).toEqual([])
   expect(callback.observation).toBeUndefined()
   expect(callback.assertions).toBeUndefined()
-  if (ps === 0) expect(callback).not.toHaveProperty("replyFailureTestIds")
+  if (ps === 0 || id === "modes.color-scheme-reporting") expect(callback).not.toHaveProperty("replyFailureTestIds")
   else expect(callback).toHaveProperty("replyFailureTestIds", ["criterion"])
   const stored = record(
     withReplyFailureEvidence(id, callback, {
@@ -381,8 +381,10 @@ it.each([
       ],
     }),
   )
-  expect(stored.status).toBe("test-failure")
-  if (ps === 0) {
+  expect(stored.status).toBe(id === "modes.color-scheme-reporting" ? "test-todo" : "test-failure")
+  if (id === "modes.color-scheme-reporting") {
+    expect(stored.reason).toBe("no DECRPM reply")
+  } else if (ps === 0) {
     expect(stored.reason).toBe("Cannot restore prior application-cursor mode without its readback")
   } else {
     expect(stored.reason).toContain("no usable DECRPM reply; the public projection returned null and retained no bytes")

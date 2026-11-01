@@ -9,17 +9,22 @@ export const inputProbes: ProbeDefinition[] = [
   // Negotiation only; actual key encoding requires an input-event observation.
   kittyKeyboardFlagProbe("input.csi-u", 1, 1),
 
-  probe("input.pixel-mouse", () => headlessXtestReview("click injection"), pixelMouse, "input_bytes"),
-  probe("input.urxvt-mouse", () => headlessXtestReview("click injection"), urxvtMouse, "input_bytes"),
-  probe("input.x10-mouse", () => headlessXtestReview("click injection"), x10Mouse, "input_bytes"),
+  probe("input.pixel-mouse", () => headlessXtestReview("click injection", true), pixelMouse, "input_bytes"),
+  probe("input.urxvt-mouse", () => headlessXtestReview("click injection", true), urxvtMouse, "input_bytes"),
+  probe("input.x10-mouse", () => headlessXtestReview("click injection", true), x10Mouse, "input_bytes"),
 
   probe("input.modify-other-keys-3", () => headlessXtestReview("key injection"), modifyOtherKeys3, "input_bytes"),
 
-  probe("input.button-event-mouse", () => headlessXtestReview("click injection"), buttonEventMouse, "input_bytes"),
+  probe(
+    "input.button-event-mouse",
+    () => headlessXtestReview("click injection", true),
+    buttonEventMouse,
+    "input_bytes",
+  ),
 
-  probe("input.xtest-key", () => headlessXtestReview("key injection"), xtestKey, "input_bytes"),
-  probe("input.xtest-click", () => headlessXtestReview("click injection"), xtestClick, "input_bytes"),
-  probe("input.xtest-wheel", () => headlessXtestReview("wheel injection"), xtestWheel, "input_bytes"),
+  probe("input.xtest-key", () => headlessXtestReview("key injection", true), xtestKey, "input_bytes"),
+  probe("input.xtest-click", () => headlessXtestReview("click injection", true), xtestClick, "input_bytes"),
+  probe("input.xtest-wheel", () => headlessXtestReview("wheel injection", true), xtestWheel, "input_bytes"),
   {
     ...probe("input.kitty-click-events", kittyClickEventsLib, kittyClickEvents, "input_bytes"),
     libAssertionType: "input_bytes",
@@ -66,13 +71,21 @@ const KITTY_CLICK_END = "\x1b]133;B\x07"
 const SGR_MOUSE_PRESS = /\x1b\[<\d+;\d+;\d+M/
 const SGR_MOUSE_RELEASE = /\x1b\[<\d+;\d+;\d+m/
 
-function xtestCoverage(kind: string): ProbeCallbackResult {
-  return notTestedResult(`OS-level XTEST ${kind}`, { input: false })
+function xtestCoverage(kind?: string): ProbeCallbackResult {
+  return notTestedResult(kind ? `OS-level XTEST ${kind}` : "real-surface input injection (XTEST/CGEvent)", {
+    input: false,
+  })
 }
 
 /** The headless arm of an XTEST criterion: the same coverage, with the required review selected. */
-function headlessXtestReview(kind: string): ProbeCallbackResult {
-  return osInputReviewResult(`OS-level XTEST ${kind}`, { input: false })
+function headlessXtestReview(kind: string, byDesign = false): ProbeCallbackResult {
+  return osInputReviewResult(
+    `OS-level XTEST ${kind}`,
+    { input: false },
+    byDesign
+      ? "Lib arm: the engine consumes bytes and has no input surface; host input encoding is measured in the terminal arm."
+      : undefined,
+  )
 }
 
 async function deliveryControl(
@@ -124,7 +137,7 @@ async function withModifyOtherKeys<T>(ctx: TermProbeSource, enable: string, work
 async function modifyOtherKeys2(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   const input = ctx.input
   const readInput = ctx.readInput
-  if (!input || !readInput) return xtestCoverage("key injection")
+  if (!input || !readInput) return xtestCoverage()
   return withModifyOtherKeys(ctx, MODIFY_OTHER_KEYS_2, async () => {
     const control = await deliveryControl(
       () => input.injectKey("a"),
@@ -148,7 +161,7 @@ async function modifyOtherKeys2(ctx: TermProbeSource): Promise<ProbeCallbackResu
 async function modifyOtherKeys3(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   const input = ctx.input
   const readInput = ctx.readInput
-  if (!input || !readInput) return xtestCoverage("key injection")
+  if (!input || !readInput) return xtestCoverage()
   const control = await deliveryControl(
     () => input.injectKey("a"),
     readInput,
@@ -172,7 +185,7 @@ async function modifyOtherKeys3(ctx: TermProbeSource): Promise<ProbeCallbackResu
 export async function applicationKeypad(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   const input = ctx.input
   const readInput = ctx.readInput
-  if (!input || !readInput) return xtestCoverage("key injection")
+  if (!input || !readInput) return xtestCoverage()
   const control = await deliveryControl(
     () => input.injectKey("a"),
     readInput,
@@ -199,7 +212,7 @@ export async function applicationKeypad(ctx: TermProbeSource): Promise<ProbeCall
 export async function altScroll1007(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   const input = ctx.input
   const readInput = ctx.readInput
-  if (!input || !readInput) return xtestCoverage("wheel injection")
+  if (!input || !readInput) return xtestCoverage()
   const control = await withMouseModes(ctx, async () =>
     deliveryControl(
       () => input.injectClick(1),
@@ -228,7 +241,7 @@ export async function altScroll1007(ctx: TermProbeSource): Promise<ProbeCallback
 async function xtestKey(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   const input = ctx.input
   const readInput = ctx.readInput
-  if (!input || !readInput) return xtestCoverage("key injection")
+  if (!input || !readInput) return xtestCoverage()
   const control = await deliveryControl(
     () => input.injectKey("a"),
     readInput,
@@ -296,7 +309,7 @@ function isButtonEventMotion(report: string): boolean {
 async function urxvtMouse(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   const input = ctx.input
   const readInput = ctx.readInput
-  if (!input || !readInput) return xtestCoverage("click injection")
+  if (!input || !readInput) return xtestCoverage()
   return withMouseModes(ctx, async () => {
     const control = await deliveryControl(
       () => input.injectClick(1),
@@ -327,7 +340,7 @@ async function urxvtMouse(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
 async function x10Mouse(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   const input = ctx.input
   const readInput = ctx.readInput
-  if (!input || !readInput) return xtestCoverage("click injection")
+  if (!input || !readInput) return xtestCoverage()
   return withMouseModes(ctx, async () => {
     const control = await deliveryControl(
       () => input.injectClick(1),
@@ -356,7 +369,7 @@ async function x10Mouse(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
 async function buttonEventMouse(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   const input = ctx.input
   const readInput = ctx.readInput
-  if (!input || !readInput) return xtestCoverage("click injection")
+  if (!input || !readInput) return xtestCoverage()
   const injectDrag = input.injectDrag
   if (!injectDrag) return xtestCoverage("drag injection")
   return withMouseModes(ctx, async () => {
@@ -389,7 +402,7 @@ async function buttonEventMouse(ctx: TermProbeSource): Promise<ProbeCallbackResu
 async function pixelMouse(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   const input = ctx.input
   const readInput = ctx.readInput
-  if (!input || !readInput) return xtestCoverage("click injection")
+  if (!input || !readInput) return xtestCoverage()
   return withMouseModes(ctx, async () => {
     const control = await deliveryControl(
       () => input.injectClick(1),
@@ -424,7 +437,7 @@ async function pixelMouse(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
 async function xtestClick(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   const input = ctx.input
   const readInput = ctx.readInput
-  if (!input || !readInput) return xtestCoverage("click injection")
+  if (!input || !readInput) return xtestCoverage()
   return withMouseModes(ctx, async () => {
     const control = await deliveryControl(
       () => input.injectClick(1),
@@ -451,7 +464,7 @@ async function xtestClick(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
 async function xtestWheel(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   const input = ctx.input
   const readInput = ctx.readInput
-  if (!input || !readInput) return xtestCoverage("wheel injection")
+  if (!input || !readInput) return xtestCoverage()
   return withMouseModes(ctx, async () => {
     const control = await deliveryControl(
       () => input.injectClick(1),

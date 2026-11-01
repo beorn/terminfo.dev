@@ -240,6 +240,29 @@ named TEST TODO. The two scroll-region recipes seed and preserve a nonblank mark
 above the requested top row. The insert/replace query criterion requires set then reset
 (Ps 1 then 2); permanent-state replies retain their numeric readings and fail that toggle claim.
 
+The twelve real-surface input term criteria retain genuine input measurements. Only an absent
+`input` or `readInput` facility selects the named TODO `real-surface input injection (XTEST/CGEvent)`.
+The seven host-input library rows (`input.xtest-key`, `input.xtest-click`, `input.xtest-wheel`,
+`input.button-event-mouse`, `input.pixel-mouse`, `input.urxvt-mouse`, `input.x10-mouse`) and
+`extensions.clipboard-paste` retain `os-input-review`, with reason
+"Lib arm: the engine consumes bytes and has no input surface; host input encoding is measured in the terminal arm."
+This remains a review TODO until an independent `applyCaptureDecision` binds Untestable to that
+exact engine capture. There is no standing class rule, callback grade or change to earlier captures.
+
+Four term mode criteria opt into `decrpmModeProbe`'s set check: reverse video5, synchronized output2026,
+DECSCLM4 and color-scheme reporting2031. Snapshot Ps1/3 is Supported without mutation; Ps0/4 is
+Unsupported without mutation. Snapshot Ps2 sends DECSET, queries again and restores DECRST:
+Ps1/3 is Supported; a retained Ps2 is Unsupported with "recognized but DECSET refused (mode kept reset)".
+No reply is TODO "no DECRPM reply"; an attempted set still restores the reset snapshot.
+These callbacks require the existing disposable-terminal authority. Their limitation is
+"presentation (tearing, scroll cadence, inverted frame) unmeasured; protocol measured".
+Every other mode keeps the default recognition-only path.
+
+DECSSCLS is CSI Ps SP p, not a DEC mode: its term criterion still requires timed screenshots.
+Its library arm stays `headless-observable-review` with null assertion type and reason
+"presentation speed: headless engines paint no frames and expose no scroll-speed state".
+Only the same independently bound per-capture decision route can grade that library cell Untestable.
+
 Reset-family capture recipes can supply an optional `RegionReadback.setupReference`: an independently
 authored full setup, painted behind the existing witness. The seed must match it before any verdict.
 Companion rows also compare a neutral ignored frame against the expected preserved attribute; missing
