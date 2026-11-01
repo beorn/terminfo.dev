@@ -577,7 +577,7 @@ test("source-qualified 2026/2031 mixed criteria survive collection and capture p
             },
             adapterSources: [
               { path: "packages/vt100/src/index.ts", blobOid: "99833d737402f9d1d8e3e257e3a255d8aa1facc3" },
-              { path: "packages/vt100/src/backend.ts", blobOid: "855dd71fba878d968d16c82846578190b7350eea" },
+              { path: "packages/vt100/src/backend.ts", blobOid: "cdb8be8c5ebbba68a5920cfa4df27c9deb31745a" },
             ],
           } as const)
         : ({

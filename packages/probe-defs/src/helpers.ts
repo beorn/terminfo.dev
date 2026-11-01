@@ -29,11 +29,11 @@ import { evidenceRuntimeIdentity } from "./runtime-identity.ts"
 export const ADAPTER_SOURCE_AUDITS = {
   vt100: {
     "packages/vt100/src/index.ts": "99833d737402f9d1d8e3e257e3a255d8aa1facc3",
-    "packages/vt100/src/backend.ts": "855dd71fba878d968d16c82846578190b7350eea",
+    "packages/vt100/src/backend.ts": "cdb8be8c5ebbba68a5920cfa4df27c9deb31745a",
   },
   vt220: {
     "packages/vt220/src/index.ts": "601dd26eb7e753a5396ebdf72f1ef8ee2cc4355f",
-    "packages/vt220/src/backend.ts": "1a16d66067bcaf71a2d96900ae046a1601482add",
+    "packages/vt220/src/backend.ts": "7369e3710e36aa649372fd09011ecfdd6ba47c73",
   },
   vterm: {
     "packages/vterm/src/index.ts": "cb5719799dcdd5ae24e6fcf0dcad9965035ce54c",

@@ -426,12 +426,12 @@ test.each([
             engine === "vt100"
               ? [
                   { path: "packages/vt100/src/index.ts", blobOid: "99833d737402f9d1d8e3e257e3a255d8aa1facc3" },
-                  { path: "packages/vt100/src/backend.ts", blobOid: "855dd71fba878d968d16c82846578190b7350eea" },
+                  { path: "packages/vt100/src/backend.ts", blobOid: "cdb8be8c5ebbba68a5920cfa4df27c9deb31745a" },
                 ]
               : engine === "vt220"
                 ? [
                     { path: "packages/vt220/src/index.ts", blobOid: "601dd26eb7e753a5396ebdf72f1ef8ee2cc4355f" },
-                    { path: "packages/vt220/src/backend.ts", blobOid: "1a16d66067bcaf71a2d96900ae046a1601482add" },
+                    { path: "packages/vt220/src/backend.ts", blobOid: "7369e3710e36aa649372fd09011ecfdd6ba47c73" },
                   ]
                 : [
                     { path: "packages/vterm/src/index.ts", blobOid: "cb5719799dcdd5ae24e6fcf0dcad9965035ce54c" },
