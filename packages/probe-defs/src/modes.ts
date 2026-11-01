@@ -11,6 +11,7 @@ import type {
 import { frameDigests } from "./types.ts"
 import {
   probe,
+  auditedAdapterSources,
   replyFailure,
   decrpmModeProbe,
   headlessDecrpmArm,
@@ -643,13 +644,164 @@ const ALT_SCREEN_UNIMPLEMENTED_AUDITS: ReadonlyMap<string, string> = new Map([
 ])
 
 /** The source citation for the loaded engine, or undefined when the exact source is not audited. */
-function altScreenAbsenceCitation(identity: HeadlessRuntimeIdentity | undefined): string | undefined {
+function modeSourceKey(identity: HeadlessRuntimeIdentity | undefined): string | undefined {
   if (identity === undefined || !("resolvedPath" in identity)) return undefined
   const integrity = identity.integrity
   if (integrity.kind !== "source" || !integrity.cleanTree) return undefined
-  return ALT_SCREEN_UNIMPLEMENTED_AUDITS.get(
-    `${integrity.repository}@${integrity.revision}:${integrity.treeOid}:${identity.resolvedPath}`,
-  )
+  return `${integrity.repository}@${integrity.revision}:${integrity.treeOid}:${identity.resolvedPath}`
+}
+
+function altScreenAbsenceCitation(identity: HeadlessRuntimeIdentity | undefined): string | undefined {
+  const key = modeSourceKey(identity)
+  return key === undefined ? undefined : ALT_SCREEN_UNIMPLEMENTED_AUDITS.get(key)
+}
+
+// CTO c6b2d1e7 (#32099): rejected DECRQM does not prove its mode absent.
+// Each complete dispatcher below establishes own-command absence at one exact source identity.
+const MODE_COMMAND_SOURCE_AUDITS = new Map([
+  [
+    "git@github.com:beorn/vterm.git@6cc7eef05cde6a8578479c6cdb480f606758eb2c:d5ee344ab5b971184ba2c43ed60460656340417c:vendor/vterm/packages/vt100/src/index.ts",
+    {
+      engine: "vt100" as const,
+      modes:
+        "packages/vt100/src/screen.ts:523-688 complete input dispatcher; :360-391 DECSET/DECRST h/l complete cases 1,5,6,7,25,66",
+      stack:
+        "packages/vt100/src/screen.ts:637-653 intermediate-drop dispatcher; :255-349 complete handleCSI has no finals {,},P,Q; no fallback mutation",
+    },
+  ],
+  [
+    "git@github.com:beorn/vterm.git@6cc7eef05cde6a8578479c6cdb480f606758eb2c:9a320c4d5cd0e0b60bb2e6ea4f020ce5eb54ae53:vendor/vterm/packages/vt220/src/index.ts",
+    {
+      engine: "vt220" as const,
+      modes:
+        "packages/vt220/src/screen.ts:722-907 complete input dispatcher; :444-492 DECSET/DECRST h/l complete cases 1,4,5,6,7,25,66",
+      stack:
+        "packages/vt220/src/screen.ts:836-863 complete CSI dispatcher; :430-442 complete intermediate dispatcher accepts only !p and >c, no #{,#},#P,#Q or fallback mutation",
+    },
+  ],
+])
+
+const ABSENT_MODE_COMMANDS: Readonly<Record<string, number | readonly string[]>> = {
+  "modes.bracketed-paste": 2004,
+  "modes.focus-tracking": 1004,
+  "modes.mouse-all": 1003,
+  "modes.mouse-sgr": 1006,
+  "modes.mouse-tracking": 1000,
+  "modes.utf8-mouse-1005": 1005,
+  "modes.alt-scroll-1007": 1007,
+  "modes.synchronized-output": 2026,
+  "modes.color-scheme-reporting": 2031,
+  "modes.xtpushsgr": ["\x1b[#{", "\x1b[#}"],
+  "modes.xtpopsgr": ["\x1b[#{", "\x1b[#}"],
+  "modes.xtpushcolors": ["\x1b[#P", "\x1b[#Q"],
+  "modes.xtpopcolors": ["\x1b[#P", "\x1b[#Q"],
+}
+
+/** Preserve actual deciding replies; source negatives require the own command between measured Xs. */
+function withModeSourceReview(definition: ProbeDefinition): ProbeDefinition {
+  const command = ABSENT_MODE_COMMANDS[definition.id]
+  const heldMode =
+    definition.id === "modes.application-cursor"
+      ? 1
+      : definition.id === "modes.reverse-video"
+        ? 5
+        : definition.id === "modes.application-keypad"
+          ? 66
+          : undefined
+  const original = definition.lib
+  if (!original || (command === undefined && heldMode === undefined)) return definition
+  return {
+    ...definition,
+    // Existing dynamic declaration: this arm may observe query_reply OR source-reviewed buffer_state.
+    libAssertionType: undefined,
+    lib(ctx) {
+      const prior = original(ctx)
+      if (
+        prior.observation?.assertionType === "query_reply" ||
+        prior.observation?.outcome === "supported" ||
+        prior.observation?.outcome === "unsupported"
+      ) {
+        return prior
+      }
+      const identity = ctx.runtimeIdentity
+      const key = modeSourceKey(identity)
+      const audit = key === undefined ? undefined : MODE_COMMAND_SOURCE_AUDITS.get(key)
+      const fallback = (reason: string, state: object = {}): ProbeCallbackResult => {
+        const noObservable = `${prior.notTested?.noObservable ?? "Mode deciding observable unavailable"}; ${reason}`
+        const result = reviewResult(
+          prior.criterionBranch ?? HEADLESS_OBSERVABLE_REVIEW,
+          `${prior.tests?.[0]?.reason ?? "Mode review required"}; ${reason}`,
+          noObservable,
+          { priorResponse: prior.response, ...state },
+        )
+        // Stack priors can have no test rows. Always emit the named TODO, retaining the original raw state.
+        return Object.keys(state).length === 0 && prior.response !== undefined
+          ? { ...result, response: prior.response }
+          : result
+      }
+      if (!audit) {
+        // Other loaded engines retain their original callback. Missing/changed source never gains an assertion.
+        if (!identity) return prior
+        if (!("resolvedPath" in identity)) return prior
+        const integrity = identity.integrity
+        const knownTree =
+          integrity.kind === "source" &&
+          ["d5ee344ab5b971184ba2c43ed60460656340417c", "9a320c4d5cd0e0b60bb2e6ea4f020ce5eb54ae53"].includes(
+            integrity.treeOid,
+          )
+        if (!knownTree && !/(?:vt100|vt220)/.test(identity.resolvedPath)) return prior
+        if (integrity.kind === "source" && !integrity.cleanTree) return fallback("Mode source identity is dirty")
+        const sameSource =
+          integrity.kind === "source" &&
+          [...MODE_COMMAND_SOURCE_AUDITS.keys()].some((entry) =>
+            entry.startsWith(`${integrity.repository}@${integrity.revision}:${integrity.treeOid}:`),
+          )
+        return fallback(
+          sameSource
+            ? `Mode source entry moved: ${identity.resolvedPath}`
+            : `Mode source identity has foreign source: ${key ?? identity.resolvedPath}`,
+        )
+      }
+      if (identity?.engineVersion !== "0.10.0") {
+        return fallback(`Mode source engine version differs: ${identity?.engineVersion}; expected 0.10.0`)
+      }
+      if (!auditedAdapterSources(identity, audit.engine)) {
+        return fallback("Mode source adapter source differs from the audited blobs; no qualified readback")
+      }
+      if (heldMode !== undefined) {
+        if (heldMode !== 1 && audit.engine !== "vt100") return prior
+        return fallback(
+          `Held mode ${heldMode}: own DECSET/DECRST case stores state; adapter tool gap TEST TODO, no deciding mode observable`,
+        )
+      }
+      if (command === undefined) return prior
+      const commands = typeof command === "number" ? [`\x1b[?${command}h`, `\x1b[?${command}l`] : command
+      const expected = `${definition.id} implements its own ${typeof command === "number" ? `DECSET/DECRST mode ${command}` : commands.join(" / ")} commands`
+      const citation = `${key}; ${typeof command === "number" ? audit.modes : audit.stack}; absent own command ${typeof command === "number" ? command : JSON.stringify(commands)}; discriminator 27f3120a`
+      const state = { commands, priorResponse: prior.response, citation }
+      if (!Number.isSafeInteger(ctx.cols) || ctx.cols < 4) {
+        return fallback("Mode control geometry unavailable: fewer than four columns", state)
+      }
+      ctx.feed("\x1b[2J\x1b[1;1H")
+      ctx.feed("X")
+      for (const bytes of commands) ctx.feed(bytes)
+      ctx.feed("X")
+      const position = ctx.getCursor()
+      if (position.y !== 0) {
+        return fallback("Mode X control moved line; source negative unavailable", { ...state, position })
+      }
+      if (!Number.isSafeInteger(position.x) || position.x < 2 || position.x >= ctx.cols) {
+        return fallback("Mode X control position missing or outside measured line", { ...state, position })
+      }
+      const line = Array.from({ length: position.x }, (_, col) => ctx.getCell(0, col).char).join("")
+      if (!line.startsWith("X") || !line.endsWith("X")) {
+        return fallback("Mode control missing first or last rendered X", { ...state, line, position })
+      }
+      const control = line === "XX" ? "consumed-without-effect" : "leaked-as-text"
+      const reason = `${citation}; own commands ${control}: ${JSON.stringify(line)} between rendered X marks`
+      return parserStateResult(false, expected, { ...state, line, position, control }, reason, reason)
+    },
+  }
 }
 
 /**
@@ -1316,7 +1468,7 @@ async function decsscls(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   }
 }
 
-export const modesProbes: ProbeDefinition[] = [
+const modeDefinitions: ProbeDefinition[] = [
   // Alt screen enter — measured roundtrip (narrow CTO-approved 1049 slice)
   decrpmModeProbe("modes.alt-screen.enter", 1049, (ctx) =>
     altScreenRoundtrip(
@@ -2193,3 +2345,5 @@ export const modesProbes: ProbeDefinition[] = [
     termNeedsGeometry: true,
   },
 ]
+
+export const modesProbes: ProbeDefinition[] = modeDefinitions.map(withModeSourceReview)

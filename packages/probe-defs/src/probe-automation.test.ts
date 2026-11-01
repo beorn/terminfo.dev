@@ -486,33 +486,6 @@ describe("reply-path audit", () => {
       cleanTree,
     },
   })
-  // #32026: source-key matching, dirty-source fallback, and the unchanged native return contract.
-  // Prior binary-only fixtures could not expose a source audit silently retaining the measured result.
-  test.each(["d5ee344ab5b971184ba2c43ed60460656340417c", "9a320c4d5cd0e0b60bb2e6ea4f020ce5eb54ae53"])(
-    "a clean source tree returns its sourceTreeOid audit: %s",
-    (treeOid) => {
-      const result = replyPathAuditFor(
-        context({ runtimeIdentity: sourceIdentity(treeOid) }),
-        "modes.application-cursor",
-      )
-      expect(result).toEqual({
-        sourceTreeOid: treeOid,
-        audit: {
-          query: "\x1b[?1$p",
-          kind: "parser-rejected",
-          citation: expect.stringContaining(treeOid),
-        },
-      })
-    },
-  )
-  test("a dirty listed source tree retains the measured result", () => {
-    expect(
-      replyPathAuditFor(
-        context({ runtimeIdentity: sourceIdentity("d5ee344ab5b971184ba2c43ed60460656340417c", false) }),
-        "modes.application-cursor",
-      ),
-    ).toBeUndefined()
-  })
   // #32026: a listed key of the other kind must not fire through the wrong identity branch.
   test("source-tree and artifact key shapes never cross identity kinds", () => {
     const treeOid = "d5ee344ab5b971184ba2c43ed60460656340417c"
@@ -542,7 +515,7 @@ describe("reply-path audit", () => {
     })
   })
   test.each(["d5ee344ab5b971184ba2c43ed60460656340417c", "9a320c4d5cd0e0b60bb2e6ea4f020ce5eb54ae53"])(
-    "all seven source DECRPM callbacks retain truthful tree provenance: %s",
+    "all seven source DECRPM rows are absent from the query audit: %s",
     (treeOid) => {
       for (const [id, mode] of [
         ["modes.application-cursor", 1],
@@ -553,19 +526,7 @@ describe("reply-path audit", () => {
         ["modes.mouse-tracking", 1000],
         ["modes.utf8-mouse-1005", 1005],
       ] as const) {
-        const silent = run(id, treeOid, () => "")
-        expect(silent.sent, id).toContain(`\x1b[?${mode}$p`)
-        expect(silent.result.observation, id).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
-        const state = JSON.parse(silent.result.response!)
-        expect(state, id).toMatchObject({
-          replyPathAudit: {
-            sourceTreeOid: treeOid,
-            citation: expect.stringContaining(treeOid),
-            captures: 1,
-            replyBytes: 0,
-          },
-        })
-        expect(state, id).not.toHaveProperty("replyPathAudit.artifactSha256")
+        expect(replyPathAuditFor(context({ runtimeIdentity: sourceIdentity(treeOid) }), id), id).toBeUndefined()
         const reply = () => `\x1b[?${mode};1$y`
         expect(run(id, treeOid, reply).result, id).toEqual(run(id, "f".repeat(64), reply).result)
         const dirty = probe(id).lib!(context({ runtimeIdentity: sourceIdentity(treeOid, false) }))
@@ -1269,9 +1230,7 @@ describe("reply-path audit", () => {
         "1f23e13db5bda55ab54943461b83a5d642bf8d2050a452fbe7871927383dfe9f",
         "5a8030c0f3f9fa52e9c1f82d28ae711ef21e3072a4b82fbe98076fedf314c945",
         "5c38594a17329b24e826f785d3156d6e498490517835f12b0730eeab2fc63da7",
-        "d5ee344ab5b971184ba2c43ed60460656340417c",
         "61fb182e3381ab1c52d94b63a9e33163bbfb89ede419af022f71f4438bfe0b03",
-        "9a320c4d5cd0e0b60bb2e6ea4f020ce5eb54ae53",
         "77b69f9f22c4126359be864fcce97afad8f84615053e21d335ba6348a8d3e1d7",
         "7c43302dde147c6f7959b7bda7045ff375c71288da1af5667ffca2bf95beb2bf",
         "8872ab0fc56429489b52cd5d3b5a293032c3ec7dbbb71545d237945c3ef525f3",

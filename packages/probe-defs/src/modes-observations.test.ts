@@ -73,7 +73,9 @@ test.each([
       expect(JSON.parse(result.response!)).toMatchObject({ reply })
     }
     expect(queries).toEqual([`\x1b[?${mode}$p`])
-    expect(definition.libAssertionType).toBe("query_reply")
+    // Exact source reviews use buffer_state; real replies above retain their
+    // query_reply observation and assertions through the dynamic declaration.
+    expect(definition.libAssertionType).toBeUndefined()
   }
 })
 

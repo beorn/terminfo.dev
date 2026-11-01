@@ -547,6 +547,115 @@ test("Wezterm prompt source reviews survive actual collection and capture bindin
   ).toBe(true)
 })
 
+// #32099: callback-only tests miss a source buffer_state result rejected by an
+// inherited query_reply declaration. Real engines must take different branches
+// through the same definitions, including xterm's actual mode2031 Ps0 negative.
+test("source-qualified 2026/2031 mixed criteria survive collection and capture parsing", async () => {
+  const ids = ["modes.synchronized-output", "modes.color-scheme-reporting"]
+  for (const [name, producer] of [
+    ["vt100", resolveVt100],
+    ["xtermjs", backend],
+  ] as const) {
+    const adapterPackage = `@termless/${name}`
+    const measured = await headlessIdentity.headlessRuntimeIdentity(name, adapterPackage, "js")
+    const instance = await producer()
+    instance.init({ cols: 80, rows: 24 })
+    const identity = { ...measured, adapterSources: headlessIdentity.readAdapterSources(name, instance) }
+    instance.destroy()
+    const manifest = {
+      schemaVersion: 4 as const,
+      probeHash: "mode-source-composition-fixture",
+      adapterVersion: "fixture",
+      catalogIds: ids,
+      probes: { term: [], mux: [], lib: ids },
+    }
+    const draft = initializeRunDraft({
+      source: { kind: "live" },
+      runId: `mode-source-composition-${name}`,
+      sourceRevision: "a".repeat(40),
+      intendedSubject: { kind: "lib", id: name },
+      manifest,
+    })
+    const definitions = registryDefinitions(ids)
+    for (const definition of definitions) expect(definition.libAssertionType, definition.id).toBeUndefined()
+    const batch = await collectBatch(producer, name, definitions, draft, undefined, {
+      identity,
+      adapterPath: Bun.resolveSync(adapterPackage, fileURLToPath(import.meta.url)),
+      adapterPackage,
+      adapterType: "js",
+    })
+    const captured: CapturedRunDraft = {
+      ...draft,
+      subject: {
+        kind: "lib",
+        id: name,
+        version: identity.engineVersion,
+        os: "linux",
+        osVersion: null,
+        outerTerminal: null,
+        mux: null,
+        config: null,
+        permissions: null,
+      },
+      identity: "unverified",
+      runtimeIdentity: identity,
+      measuredAt: new Date().toISOString(),
+      origin: { kind: "collector" },
+      rawReplies: { ...draft.rawReplies, ...batch.rawReplies },
+      results: batch.results,
+      assertions: batch.assertions,
+    }
+    for (const id of ids) {
+      expect(
+        captured.results.find((entry) => entry.featureId === id),
+        id,
+      ).toMatchObject(
+        name === "vt100"
+          ? {
+              status: "test-failure",
+              assertionType: "buffer_state",
+              criterionBranch: "source-negative-review",
+            }
+          : { status: id === "modes.synchronized-output" ? "supported" : "unsupported", assertionType: "query_reply" },
+      )
+      expect(JSON.stringify(batch.ungradedDiagnostics[id] ?? {}), id).not.toContain("collector-error")
+      if (name === "xtermjs") {
+        expect(
+          batch.assertions.filter((assertion) => assertion.featureId === id),
+          id,
+        ).toMatchObject([
+          { assertionType: "query_reply", kind: id === "modes.synchronized-output" ? "positive" : "negative" },
+        ])
+        expect(JSON.parse(batch.rawReplies[id]!), id).toMatchObject({
+          reply: id === "modes.synchronized-output" ? "\x1b[?2026;1$y" : "\x1b[?2031;0$y",
+        })
+      }
+    }
+    const parsed = parseRun(
+      "mode-source.capture.json",
+      JSON.stringify(captured),
+      ids,
+      new Map([[manifest.probeHash, manifest]]),
+      { mode: "capture" },
+    )
+    expect(parsed.results).toHaveLength(2)
+    for (const row of parsed.results ?? []) {
+      expect(row).toMatchObject(
+        name === "vt100"
+          ? {
+              status: "test-failure",
+              assertionType: "buffer_state",
+              criterionBranch: "source-negative-review",
+            }
+          : {
+              status: row.featureId === "modes.synchronized-output" ? "supported" : "unsupported",
+              assertionType: "query_reply",
+            },
+      )
+    }
+  }
+})
+
 // A registered callback can lose its marker while a synthetic marked callback still passes.
 // Missing qualification must not turn its configured, silent writer into producer absence.
 test("retains registered reply failure evidence when the writer is unqualified", async () => {
