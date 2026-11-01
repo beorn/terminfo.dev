@@ -394,6 +394,7 @@ test("review CLI offers help, emits JSON only, and reports missing resources on 
   const help = invoke(["intake", "--help"])
   expect(help.status).toBe(0)
   expect(help.stdout).toContain("--suite-root")
+  expect(help.stdout).toMatch(/pinned-source\s+receipt/)
   const flags = [
     "--input",
     f.input,
@@ -412,6 +413,22 @@ test("review CLI offers help, emits JSON only, and reports missing resources on 
     "--output",
     f.options.output,
   ]
+  // The CLI parser owns flag diagnostics; direct intake calls cannot catch a missing --context label.
+  for (const context of [
+    "{",
+    "{}",
+    '{"kind":"term","id":"kitty"}',
+    '{"kind":"mux","id":"tmux"}',
+    '{"kind":"term","os":"linux"}',
+    '{"id":"kitty","os":"linux"}',
+  ]) {
+    const malformed = [...flags]
+    malformed[malformed.indexOf("--context") + 1] = context
+    const rejected = invoke(["intake", ...malformed])
+    expect(rejected.status).not.toBe(0)
+    expect(rejected.stdout).toBe("")
+    expect(rejected.stderr).toContain("--context")
+  }
   const intake = invoke(["intake", ...flags])
   expect(intake.status, intake.stderr).toBe(0)
   expect(JSON.parse(intake.stdout)).toMatchObject({ pending: 1 })
