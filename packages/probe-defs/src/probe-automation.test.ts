@@ -557,7 +557,7 @@ describe("reply-path audit", () => {
 
   // #31692: data-derived cases cannot detect an omitted current-artifact OSC99 audit.
   test.each([
-    ["1f23e13db5bda55ab54943461b83a5d642bf8d2050a452fbe7871927383dfe9f", "parser-rejected"],
+    ["3c2398d5c537d9c10e86b0af69311977927fcdbe4738618df194cedbdd22574d", "parser-rejected"],
     ["ce01cd0d1ae000dd88948f3817924cc85303874070cab39430967ebdf14877f3", "parser-rejected"],
     ["5c38594a17329b24e826f785d3156d6e498490517835f12b0730eeab2fc63da7", "parser-rejected"],
     ["d80a8110258a124fb6ff52a6fe149b8e39b5180d986907cc9fb7dc9143c3f3d9", "parser-rejected"],
@@ -650,6 +650,17 @@ describe("reply-path audit", () => {
       expect(rebuilt![id]!.matches).toBe(audit.matches)
       expect(rebuilt![id]!.citation).toContain(core)
     }
+  })
+
+  // @failure The PageList-only rebuild loses or alters an existing source audit (#32121, @cto 656e2206).
+  // @level l0 @consumer replyPathAuditFor for the rebuilt loaded artifact; prior checks only cover older digests.
+  test("the zeroed-page Ghostty WASM carries every 1f23e13d reply audit unchanged", () => {
+    const oldSha = "1f23e13db5bda55ab54943461b83a5d642bf8d2050a452fbe7871927383dfe9f"
+    const newSha = "3c2398d5c537d9c10e86b0af69311977927fcdbe4738618df194cedbdd22574d"
+    const prior = REPLY_PATH_AUDITS.get(oldSha)
+    expect(prior).toBeDefined()
+    const renamed = JSON.parse(JSON.stringify(prior).replaceAll(oldSha, newSha).replaceAll("1f23e13d", "3c2398d5"))
+    expect(REPLY_PATH_AUDITS.get(newSha)).toEqual(renamed)
   })
 
   // #32057, @cto 25157a35: Ghostty WASM 1f23e13d answers DA1, DA2, XTVERSION, DECRQSS and XTGETTCAP, so their six cells
@@ -1251,6 +1262,7 @@ describe("reply-path audit", () => {
         "dc3b24de6e91416f66b1953ce101991ef7e78602ce1b5d357f65832c9b96b326",
         "17d155feee5df8fa30266b9a354bbe66e39484d08218de5e03dc3bb2f199a0a3",
         "1f23e13db5bda55ab54943461b83a5d642bf8d2050a452fbe7871927383dfe9f",
+        "3c2398d5c537d9c10e86b0af69311977927fcdbe4738618df194cedbdd22574d",
         "5a8030c0f3f9fa52e9c1f82d28ae711ef21e3072a4b82fbe98076fedf314c945",
         "5c38594a17329b24e826f785d3156d6e498490517835f12b0730eeab2fc63da7",
         "61fb182e3381ab1c52d94b63a9e33163bbfb89ede419af022f71f4438bfe0b03",
