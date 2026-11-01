@@ -895,7 +895,10 @@ export function parseCaptureDecision(
     if (!nonempty(value[key])) fail(path, `pre-seal capture decision requires ${key}`)
   }
   if (!catalog.has(String(value.featureId))) fail(path, "pre-seal capture decision feature is outside catalogue")
-  if (!["supported", "unsupported", "untestable"].includes(String(value.decision)) || value.reviewed !== true) {
+  if (
+    !["supported", "unsupported", "untestable", "tool-gap"].includes(String(value.decision)) ||
+    value.reviewed !== true
+  ) {
     fail(path, "pre-seal capture decision requires a typed reviewed decision")
   }
   if (typeof value.captureSha256 !== "string" || !/^[a-f0-9]{64}$/.test(value.captureSha256)) {
@@ -1135,8 +1138,8 @@ function captureEvidence(
       rawReplies,
       tests: result.tests.map((test) => {
         const original =
-          test.id === "review" && test.reviewRef !== undefined
-            ? preimage?.cell.tests.find((entry) => entry.id === test.id)
+          test.reviewRef !== undefined && (test.id === "review" || test.id === "criterion")
+            ? preimage?.cell.tests.find((entry) => entry.id === "review")
             : test
         if (original === undefined) throw new Error(`Capture ${featureId} cell.tests.review preimage unavailable`)
         const retained = original
@@ -1473,7 +1476,7 @@ export function applyCaptureDecision(
   let assertionRefs: number[] | undefined
   if (semanticSource) {
     assertionRefs = []
-  } else if (decision.decision !== "untestable") {
+  } else if (decision.decision !== "untestable" && decision.decision !== "tool-gap") {
     const captured = draft.assertions.filter((assertion) => assertion.featureId === decision.featureId)
     if (!captured.length || captured.some((assertion) => !assertion.expected || !assertion.observed)) {
       throw new Error(`Capture ${decision.featureId} review requires retained TESTED/EXPECTED assertions`)
@@ -1492,12 +1495,15 @@ export function applyCaptureDecision(
     if (test.id !== "review") return test
     return {
       ...test,
-      status: decision.decision,
+      ...(decision.decision === "tool-gap" && { id: "criterion" }),
+      status: decision.decision === "tool-gap" ? "test-todo" : decision.decision,
       attempt: { scope: "probe", startedAt },
       reviewRef,
       reason: decision.reason,
-      // Untestable creates no derived assertions: clear pending refs so the original capture stays bound.
-      ...(sourceNegative || assertionRefs ? { assertionRefs: assertionRefs ?? [] } : {}),
+      // Coverage creates no derived assertions; retain the original capture's assertion prefix.
+      ...(sourceNegative || assertionRefs || decision.decision === "tool-gap"
+        ? { assertionRefs: assertionRefs ?? [] }
+        : {}),
     }
   })
   draft.rawReplies[reviewRef] = source
@@ -2300,7 +2306,8 @@ export function parseRun(
               lapse
                 ? test.status !== (result.criterionBranch === SOURCE_NEGATIVE_REVIEW ? "test-failure" : "test-todo") ||
                   test.reason !== lapse
-                : test.status !== decision.decision
+                : test.status !== (decision.decision === "tool-gap" ? "test-todo" : decision.decision) ||
+                  (decision.decision === "tool-gap" && (test.id !== "criterion" || test.reason !== decision.reason))
             ) {
               fail(path, "capture decision differs from recorded test")
             }
