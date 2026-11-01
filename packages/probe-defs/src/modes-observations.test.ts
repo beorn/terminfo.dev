@@ -64,7 +64,7 @@ test.each([
       expect(result.assertions).toMatchObject([
         { assertionType: "query_reply", kind: ps === 0 ? "negative" : "positive" },
       ])
-      expect(JSON.parse(result.response!).reply).toBe(reply)
+      expect(JSON.parse(result.response!)).toMatchObject({ reply })
     }
     expect(queries).toEqual([`\x1b[?${mode}$p`])
     expect(definition.libAssertionType).toBe("query_reply")
