@@ -57,8 +57,15 @@ function reflowEvidence(batch: Awaited<ReturnType<typeof collectBatch>>) {
     declaredReflow: boolean
     phases: Array<{ outcome: string }>
     historyPhases: Array<{ id: string; status: string; outcome: string; reason: string }>
+    alternatePhases: Array<{ id: string; status: string; outcome: string; reason: string }>
+    alternateRoundtrips: Record<string, { roundtrip: { pass: boolean }; identity: Record<string, boolean | null> }>
+    actions: Array<{ kind: string; text?: string; name?: string }>
     reads: Record<string, { cells: string[][]; scrollback: { totalLines: number; screenLines: number } }>
   }
+}
+
+function mainAndHistoryAssertions(batch: Awaited<ReturnType<typeof collectBatch>>) {
+  return batch.assertions.filter(({ expected }) => expected.startsWith("main-") || expected.startsWith("history-"))
 }
 
 // @failure A production source silently omits resize, or a main-screen measurement grades unmeasured reflow facets.
@@ -87,6 +94,32 @@ test.each([false, true])("production reflow controls ignore the capability decla
     ],
   )
   expect(batch.ungradedDiagnostics).toEqual({})
+  // @failure Alternate reflow measurements never reach the real collector; existing main/history checks cannot detect that gap.
+  // @consumer CTO-approved alternate-only evidence, kept outside the required-test fold.
+  expect(reflowEvidence(batch).alternatePhases).toMatchObject([
+    { id: "alternate-grow", status: "unsupported", outcome: "preserved-wraps" },
+    { id: "alternate-shrink", status: "unsupported", outcome: "truncated" },
+  ])
+  expect(batch.assertions.filter(({ expected }) => expected.startsWith("alternate-")).map(({ kind }) => kind)).toEqual([
+    "negative",
+    "negative",
+  ])
+  const alternate = reflowEvidence(batch)
+  for (const { id } of alternate.alternatePhases) {
+    expect(alternate.alternateRoundtrips[id]).toMatchObject({
+      roundtrip: { pass: true },
+      identity: { before: false, entered: true, target: true, control: true, restored: false, after: false },
+    })
+    const target = alternate.actions.findIndex((action) => action.kind === "read" && action.name === `${id}.after`)
+    const control = alternate.actions.findIndex(
+      (action) => action.kind === "read" && action.name === `${id}.control-after`,
+    )
+    expect(target).toBeGreaterThanOrEqual(0)
+    expect(control).toBeGreaterThan(target)
+    const sameState = alternate.actions.slice(target + 1, control)
+    expect(sameState.some((action) => action.kind === "reset" || action.kind === "resize")).toBe(false)
+    expect(sameState.some((action) => /\x1b\[\?1049[hl]/.test(action.text ?? ""))).toBe(false)
+  }
   expect(batch.results).toMatchObject([
     {
       featureId: "extensions.reflow",
@@ -104,7 +137,7 @@ test.each([false, true])("production reflow controls ignore the capability decla
       ]),
     },
   ])
-  expect(batch.assertions).toMatchObject([
+  expect(mainAndHistoryAssertions(batch)).toMatchObject([
     { kind: "positive", assertionType: "buffer_state", observed: batch.rawReplies["extensions.reflow"] },
     { kind: "positive", assertionType: "buffer_state", observed: batch.rawReplies["extensions.reflow"] },
     { kind: "positive", assertionType: "buffer_state", observed: batch.rawReplies["extensions.reflow"] },
@@ -173,7 +206,7 @@ test.each([
       { status: "test-todo", reason: "engine retained no history" },
       { status: "test-todo", reason: "engine retained no history" },
     ])
-    expect(batch.assertions).toHaveLength(2)
+    expect(mainAndHistoryAssertions(batch)).toHaveLength(2)
   } else {
     expect(history).toMatchObject([
       { outcome: "preserved-wraps", status: "unsupported" },
@@ -232,7 +265,7 @@ test.each([
   )
   expect(batch.ungradedDiagnostics).toEqual({})
   expect(batch.results[0]!.status).toBe("test-todo")
-  expect(batch.assertions).toHaveLength(2)
+  expect(mainAndHistoryAssertions(batch)).toHaveLength(2)
   expect(reflowEvidence(batch).historyPhases).toMatchObject(
     corrupt
       ? [
@@ -309,7 +342,7 @@ test.each(["witness-loss", "width-control", "bad-counts", "control-counts", "vie
     expect(observed.historyPhases.map((phase: { status: string }) => phase.status)).toEqual(
       fault === "viewport" ? ["supported", "supported"] : ["test-failure", "test-failure"],
     )
-    expect(batch.assertions).toHaveLength(fault === "viewport" ? 4 : 2)
+    expect(mainAndHistoryAssertions(batch)).toHaveLength(fault === "viewport" ? 4 : 2)
     if (fault === "bad-counts" || fault === "control-counts") {
       expect(observed.historyPhases[0]!.reason).toContain("totalLines=9007199254740991")
       expect(
@@ -322,6 +355,138 @@ test.each(["witness-loss", "width-control", "bad-counts", "control-counts", "vie
     if (fault === "width-control") {
       expect(observed.historyPhases[0]!.reason).toContain("Post-resize width control")
     }
+  },
+)
+
+// @failure Qualified alternate positives are omitted, or their polarity is folded against another buffer.
+// @level l1
+// @consumer Actual vterm alternate resize/readback; the xterm case above supplies complete physical negatives.
+test("alternate reflow records real vterm logical layouts without cross-buffer grading", async () => {
+  const batch = await collectBatch(
+    async () => createVtermBackend(),
+    "vterm",
+    registryDefinitions(["extensions.reflow"]),
+  )
+  expect(batch.ungradedDiagnostics).toEqual({})
+  const observed = reflowEvidence(batch)
+  expect(observed.alternatePhases).toMatchObject([
+    { id: "alternate-grow", status: "supported", outcome: "reflow" },
+    { id: "alternate-shrink", status: "supported", outcome: "reflow" },
+  ])
+  const rows = (name: string, count: number) =>
+    observed.reads[name]!.cells.slice(0, count).map((row) => row.join("").trimEnd())
+  expect(rows("alternate-grow.before", 4)).toEqual(["ABCDEFGHIJKL", "MNOPQR", "HARD-a", "HARD-b"])
+  expect(rows("alternate-grow.after", 3)).toEqual(["ABCDEFGHIJKLMNOPQR", "HARD-a", "HARD-b"])
+  expect(rows("alternate-shrink.before", 3)).toEqual(["ABCDEFGHIJKLMNOPQR", "HARD-a", "HARD-b"])
+  expect(rows("alternate-shrink.after", 4)).toEqual(["ABCDEFGHIJKL", "MNOPQR", "HARD-a", "HARD-b"])
+  expect(batch.assertions.filter(({ expected }) => expected.startsWith("alternate-")).map(({ kind }) => kind)).toEqual([
+    "positive",
+    "positive",
+  ])
+  expect(batch.assertions.filter(({ expected }) => expected.startsWith("history-")).map(({ kind }) => kind)).toEqual([
+    "negative",
+    "negative",
+  ])
+  expect(batch.results[0]!.status).toBe("test-todo")
+  expect(batch.results[0]!.tests.map(({ id, status }) => ({ id, status }))).toEqual([
+    { id: "main-grow", status: "supported" },
+    { id: "main-shrink", status: "supported" },
+    { id: "alternate-screen", status: "test-todo" },
+    { id: "scrollback", status: "test-todo" },
+  ])
+})
+
+// @failure An unqualified alternate buffer or corrupt target/control becomes a reflow assertion.
+// @level l1
+// @consumer Alternate-only raw evidence through the registered callback and production source.
+// Existing main/history tests never enter alternate; mode tests never resize its target.
+test.each([
+  { fault: "missing-mode", status: "test-todo", reason: "alternate buffer identity unavailable" },
+  { fault: "target-mode-missing", status: "test-todo", reason: "alternate buffer identity unavailable" },
+  { fault: "no-entry", status: "test-todo", reason: "alternate buffer not entered" },
+  { fault: "bogus-mode", status: "test-failure" },
+  { fault: "hard-row", status: "test-failure" },
+  { fault: "blank-tail", status: "test-failure" },
+  { fault: "control-switch", status: "test-failure" },
+  { fault: "slot-read", status: "test-failure" },
+  { fault: "restore", status: "test-failure" },
+] as const)(
+  "alternate reflow qualifies identity and complete target evidence (%s)",
+  async ({ fault, status, ...row }) => {
+    const definition = registryDefinitions(["extensions.reflow"])[0]!
+    const batch = await collectBatch(backend, "xtermjs", [
+      {
+        ...definition,
+        lib(ctx) {
+          const feed = ctx.feed.bind(ctx)
+          const resize = ctx.resize!.bind(ctx)
+          const reset = ctx.reset.bind(ctx)
+          const mode = ctx.getMode.bind(ctx)
+          const cell = ctx.getCell.bind(ctx)
+          let entered = false
+          let seeded = false
+          let resized = false
+          let control = false
+          ctx.getMode = (name) => {
+            if (name === "altScreen" && fault === "missing-mode") return null
+            if (name === "altScreen" && fault === "target-mode-missing" && seeded && resized && !control) return null
+            if (name === "altScreen" && fault === "bogus-mode") return entered
+            return mode(name)
+          }
+          ctx.feed = (text) => {
+            if (text.includes("\x1b[?1049h")) {
+              entered = true
+              if (fault === "no-entry" || fault === "bogus-mode") return
+            }
+            if (mode("altScreen") === true && text.includes("ABCDEFGHIJKLMNOPQR")) seeded = true
+            if (seeded && resized && text.startsWith("W")) {
+              control = true
+              if (fault === "control-switch") feed("\x1b[?1049l")
+            }
+            feed(text)
+          }
+          ctx.resize = (cols, rows) => {
+            resize(cols, rows)
+            if (seeded && mode("altScreen") === true) resized = true
+          }
+          ctx.reset = () => {
+            reset()
+            entered = seeded = resized = control = false
+          }
+          ctx.getCell = (r, c) => {
+            if (seeded && mode("altScreen") === true && fault === "slot-read") {
+              throw new Error("alternate slot read failed")
+            }
+            const value = cell(r, c)
+            if (fault === "restore" && entered && seeded && mode("altScreen") === false && r === 0 && c === 0) {
+              return { ...value, char: "X" }
+            }
+            const corrupt =
+              seeded &&
+              resized &&
+              !control &&
+              mode("altScreen") === true &&
+              c === 0 &&
+              ((fault === "hard-row" && r === 2) || (fault === "blank-tail" && r === 23))
+            return corrupt ? { ...value, char: "X" } : value
+          }
+          return definition.lib!(ctx)
+        },
+      },
+    ])
+    expect(batch.ungradedDiagnostics).toEqual({})
+    expect(batch.results[0]!.status).toBe("test-todo")
+    expect(batch.results[0]!.tests.map(({ id, status }) => ({ id, status }))).toEqual([
+      { id: "main-grow", status: "supported" },
+      { id: "main-shrink", status: "supported" },
+      { id: "alternate-screen", status: "test-todo" },
+      { id: "scrollback", status: "test-todo" },
+    ])
+    const phases = reflowEvidence(batch).alternatePhases
+    expect(phases.map((phase) => phase.status)).toEqual([status, status])
+    if ("reason" in row) expect(phases.map((phase) => phase.reason)).toEqual([row.reason, row.reason])
+    expect(batch.assertions.filter(({ expected }) => expected.startsWith("alternate-"))).toEqual([])
+    expect(mainAndHistoryAssertions(batch)).toHaveLength(4)
   },
 )
 
@@ -373,10 +538,87 @@ test.each(["no-op", "hard-boundary", "content-loss", "cursor-on-target"] as cons
             ? [{ outcome: "invalid" }, { outcome: "invalid" }]
             : [{ outcome: "invalid" }, { outcome: "reflow" }],
       })
-      expect(batch.assertions.every((assertion) => assertion.kind === "positive")).toBe(true)
+      expect(mainAndHistoryAssertions(batch).every((assertion) => assertion.kind === "positive")).toBe(true)
     }
   },
 )
+
+// @failure A slot error is lost when measured/final leaves or later geometry/reset cleanup also fail.
+// @level l1
+// @consumer Approved shared alternate lifetime plus outer reflow cleanup; earlier tests cover only main/history errors.
+test.each([false, true])("alternate reflow retains slot and cleanup causes (leave fails=%s)", (failExit) => {
+  const value = createXtermBackend()
+  value.init({ cols: 80, rows: 24 })
+  const source = createLibProbeSource(value, undefined, undefined, undefined)
+  const slotError = new Error("alternate slot read failed")
+  const widthError = new Error("alternate width restoration failed")
+  const resetError = new Error("alternate reset failed")
+  const exitErrors: Error[] = []
+  const feed = source.feed.bind(source)
+  const cell = source.getCell.bind(source)
+  const resize = source.resize!.bind(source)
+  const reset = source.reset.bind(source)
+  let seeded = false
+  let poisoned = false
+  let restoring = false
+  let resetAttempted = false
+  source.feed = (text) => {
+    if (poisoned && failExit && text.includes("\x1b[?1049l")) {
+      const error = new Error(`alternate exit failure ${exitErrors.length + 1}`)
+      exitErrors.push(error)
+      throw error
+    }
+    if (value.getMode("altScreen") === true && text.includes("ABCDEFGHIJKLMNOPQR")) seeded = true
+    feed(text)
+  }
+  source.getCell = (row, col) => {
+    if (seeded && value.getMode("altScreen") === true) {
+      poisoned = true
+      throw slotError
+    }
+    return cell(row, col)
+  }
+  source.resize = (cols, rows) => {
+    if (cols === 80) {
+      restoring = true
+      throw widthError
+    }
+    resize(cols, rows)
+  }
+  source.reset = () => {
+    if (restoring) {
+      resetAttempted = true
+      throw resetError
+    }
+    reset()
+    seeded = false
+  }
+  try {
+    let caught: unknown
+    try {
+      registryDefinitions(["extensions.reflow"])[0]!.lib!(source)
+    } catch (error) {
+      caught = error
+    }
+    expect(caught).toBeInstanceOf(AggregateError)
+    expect(restoring).toBe(true)
+    expect(resetAttempted).toBe(true)
+    if (failExit) expect(exitErrors.length).toBeGreaterThanOrEqual(3)
+    const retained = new Set<unknown>()
+    const visit = (error: unknown) => {
+      if (retained.has(error)) return
+      retained.add(error)
+      if (error instanceof AggregateError) for (const nested of error.errors) visit(nested)
+      if (error instanceof Error && error.cause !== undefined) visit(error.cause)
+    }
+    visit(caught)
+    for (const error of [slotError, ...exitErrors, widthError, resetError]) {
+      expect(retained.has(error), error.message).toBe(true)
+    }
+  } finally {
+    value.destroy()
+  }
+})
 
 // @failure A failed cell read leaks resized state, or restoration failure skips reset and masks causes.
 // @level l1

@@ -804,6 +804,22 @@ function withModeSourceReview(definition: ProbeDefinition): ProbeDefinition {
   }
 }
 
+type AlternateReflowPhase = {
+  id: "alternate-grow" | "alternate-shrink"
+  from: 12 | 20
+  to: 12 | 20
+  outcome: "reflow" | "preserved-wraps" | "truncated" | "invalid" | "identity-unavailable" | "not-entered"
+  status: "supported" | "unsupported" | "test-todo" | "test-failure"
+  reason: string
+}
+
+type AltScreenRoundtripFacts = Readonly<{
+  before: Readonly<{ x: number; y: number }>
+  seedA: string
+  seedB: string
+  mark: string
+}>
+
 /**
  * One measured alternate-screen roundtrip, shared by the 1049 enter and exit callbacks and by the
  * ?47 and ?1047 callbacks (#30702). Existing ctx only: feed, getCell, getCursor, getScrollback and
@@ -825,6 +841,7 @@ function altScreenRoundtrip(
   screen: AltScreenMode,
   phase: "enter" | "exit" | "roundtrip",
   expected: string,
+  measureReflow?: (ctx: LibProbeSource, facts: AltScreenRoundtripFacts) => AlternateReflowPhase | undefined,
 ): ProbeCallbackResult {
   const enter = `\x1b[?${screen.mode}h`
   const leave = `\x1b[?${screen.mode}l`
@@ -873,6 +890,7 @@ function altScreenRoundtrip(
       "Parked pre-cursor was not measured at row 4/col 6",
     )
   }
+  let roundtripFailure: { error: unknown } | undefined
   try {
     ctx.feed(enter)
     let blankA: boolean
@@ -928,6 +946,7 @@ function altScreenRoundtrip(
     if (mark !== ALT_1049_MARK) {
       return parserStateResult(null, expected, { mark }, "Alternate marker was not measured")
     }
+    measureReflow?.(ctx, Object.freeze({ before: Object.freeze({ ...before }), seedA, seedB, mark }))
     ctx.feed(leave)
     let restoredA: string
     let restoredB: string
@@ -1005,8 +1024,70 @@ function altScreenRoundtrip(
         failures.join("; ") +
         "; cannot attribute failure to enter or exit: blank spans and ALT-MARK do not distinguish an alternate buffer from erasure, and cursor mismatch does not distinguish save from restore",
     )
+  } catch (error) {
+    roundtripFailure = { error }
+    throw error
   } finally {
-    ctx.feed(leave + "\x1b[0m")
+    // Existing mode callbacks retain their exact cleanup and error behavior. Reflow's inserted
+    // measurement must retain a failed measured leave as well as a failed finally-leave.
+    if (!measureReflow) ctx.feed(leave + "\x1b[0m")
+    else {
+      try {
+        ctx.feed(leave + "\x1b[0m")
+      } catch (error) {
+        if (!roundtripFailure) throw error
+        const errors = [roundtripFailure.error, error]
+        throw new AggregateError(
+          errors,
+          errors.map((cause) => (cause instanceof Error ? cause.message : String(cause))).join("; "),
+          { cause: errors[0] },
+        )
+      }
+    }
+  }
+}
+
+/** @internal Reflow-only measurement inside the existing, seeded 1049 roundtrip; not a mode grade. */
+export function measureAlternateReflow(
+  ctx: LibProbeSource,
+  measure: (ctx: LibProbeSource, facts: AltScreenRoundtripFacts) => AlternateReflowPhase,
+): { roundtrip: ProbeCallbackResult; measurement?: AlternateReflowPhase; measurementError?: string } {
+  let measurement: AlternateReflowPhase | undefined
+  let failure: { error: unknown } | undefined
+  let roundtrip: ProbeCallbackResult
+  try {
+    roundtrip = altScreenRoundtrip(
+      ctx,
+      ALT_SCREEN_1049,
+      "enter",
+      "Primary restored after alternate reflow",
+      (source, facts) => {
+        try {
+          measurement = measure(source, facts)
+          return measurement
+        } catch (error) {
+          // The slot cannot change roundtrip policy: both measured and final leaves still execute.
+          failure = { error }
+          // silent-fallback-allow: The caller records this error as an invalid phase; original causes remain available if cleanup also fails.
+          return undefined
+        }
+      },
+    )
+  } catch (error) {
+    if (!failure) throw error
+    const errors = [failure.error, error]
+    throw new AggregateError(
+      errors,
+      errors.map((cause) => (cause instanceof Error ? cause.message : String(cause))).join("; "),
+      { cause: errors[0] },
+    )
+  }
+  return {
+    roundtrip,
+    ...(measurement !== undefined && { measurement }),
+    ...(failure && {
+      measurementError: failure.error instanceof Error ? failure.error.message : String(failure.error),
+    }),
   }
 }
 
