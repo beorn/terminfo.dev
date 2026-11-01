@@ -1074,7 +1074,7 @@ const geometryRuntime = {
     kind: "source",
     repository: "git@github.com:beorn/vterm.git",
     revision: "bd3d32aea2f1994376a71adfc55b92705eedbd8c",
-    treeOid: "d7bc627e039005ee913b0b244ff9a2ee2235746a",
+    treeOid: "f10a184811894462b9ca7b65d6aab8ffd2fdd0bd",
     cleanTree: true,
   },
   runtimeFormat: "js",
@@ -1215,12 +1215,12 @@ test.each(geometryReplies)(
         treeOid: "617ae6002c7befea7b3e43d11bf23e6b433e3d65",
       },
     }
-    const pinned = "review pinned to vterm 0.10.1 6cc7eef05cde tree d7bc627e0390"
+    const pinned = "review pinned to vterm 0.10.1 bd3d32aea2f1 tree f10a18481189"
     for (const [runtimeIdentity, side] of [
       [loaded, "loaded vterm 0.9.0 53a9eb92aa11 tree 617ae6002c7b"],
       [
         { ...geometryRuntime, integrity: { ...geometryRuntime.integrity, cleanTree: false } },
-        "loaded vterm 0.10.1 6cc7eef05cde tree d7bc627e0390 dirty",
+        "loaded vterm 0.10.1 bd3d32aea2f1 tree f10a18481189 dirty",
       ],
     ] as const) {
       const result = callback(id).headless({ feedCapture: () => raw, runtimeIdentity } as unknown as LibProbeSource)
