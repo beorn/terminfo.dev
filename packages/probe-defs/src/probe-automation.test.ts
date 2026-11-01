@@ -667,29 +667,39 @@ describe("reply-path audit", () => {
 
   // #32026: these three callbacks previously returned before sending any protocol bytes,
   // so adding data alone would never trigger the source audit. The real callback owns that boundary.
-  test.each([
-    ["extensions.kitty-graphics.animation", "\x1b_G"],
-    ["extensions.kitty-graphics.unicode-placeholders", "\x1b_G"],
-    ["extensions.iterm2-images", "\x1b]1337;"],
-  ])("Ghostty WASM %s sends the audited prerequisite and retains ordinary replies", (id, prefix) => {
-    const sha256 = "5c38594a17329b24e826f785d3156d6e498490517835f12b0730eeab2fc63da7"
-    const silent = run(id!, sha256, () => "")
-    expect(silent.sent.some((query) => query.startsWith(prefix!))).toBe(true)
-    expect(silent.result.observation).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
-    const state = JSON.parse(silent.result.response!)
-    expect(state).toMatchObject({
-      replyPathAudit: {
-        artifactSha256: sha256,
-        kind: "parser-rejected",
-        replyBytes: 0,
-        citation: expect.stringContaining("5714ed07"),
-      },
-    })
-    const ordinary = run(id!, "f".repeat(64), () => "")
-    expect(ordinary.sent).toEqual([])
-    expect(ordinary.result.criterionBranch).toBe(HEADLESS_OBSERVABLE_REVIEW)
-    expect(run(id!, sha256, () => "\x1b").result).toEqual(ordinary.result)
-  })
+  // The DECRPM-only ce01 rebuild retains these parser rejections; the old artifact stays independently audited.
+  test.each(
+    [
+      ["extensions.kitty-graphics.animation", "\x1b_G"],
+      ["extensions.kitty-graphics.unicode-placeholders", "\x1b_G"],
+      ["extensions.iterm2-images", "\x1b]1337;"],
+    ].flatMap(([id, prefix]) =>
+      [
+        "5c38594a17329b24e826f785d3156d6e498490517835f12b0730eeab2fc63da7",
+        "ce01cd0d1ae000dd88948f3817924cc85303874070cab39430967ebdf14877f3",
+      ].map((sha256) => ({ id: id!, prefix: prefix!, sha256 })),
+    ),
+  )(
+    "Ghostty WASM $id at $sha256 sends the audited prerequisite and retains ordinary replies",
+    ({ id, prefix, sha256 }) => {
+      const silent = run(id!, sha256, () => "")
+      expect(silent.sent.some((query) => query.startsWith(prefix!))).toBe(true)
+      expect(silent.result.observation).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
+      const state = JSON.parse(silent.result.response!)
+      expect(state).toMatchObject({
+        replyPathAudit: {
+          artifactSha256: sha256,
+          kind: "parser-rejected",
+          replyBytes: 0,
+          citation: expect.stringContaining("5714ed07"),
+        },
+      })
+      const ordinary = run(id!, "f".repeat(64), () => "")
+      expect(ordinary.sent).toEqual([])
+      expect(ordinary.result.criterionBranch).toBe(HEADLESS_OBSERVABLE_REVIEW)
+      expect(run(id!, sha256, () => "\x1b").result).toEqual(ordinary.result)
+    },
+  )
 
   // #31377 AC1: explicit membership catches omitted audits that data-derived cases cannot see.
   // The current Rust/WASM captures execute these queries but lack the source-bound branch (CTO d6f8c7de).
@@ -1109,6 +1119,7 @@ describe("reply-path audit", () => {
       "9a9505600721226b952ae9ac92552b42389aa6713872a9f4904528f425b7ecdf",
       "ac12d6408c2049f1d720e9735d7eb69251d3eed868fc9ced58de98b3543f3e2e",
       "b9109b5918707746420833dfc2eab3ea5bc7feec5fa93bee4cd6e824e74d0962",
+      "ce01cd0d1ae000dd88948f3817924cc85303874070cab39430967ebdf14877f3",
       "d80a8110258a124fb6ff52a6fe149b8e39b5180d986907cc9fb7dc9143c3f3d9",
       "f309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96",
     ])

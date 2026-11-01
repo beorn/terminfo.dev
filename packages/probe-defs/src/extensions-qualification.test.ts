@@ -140,7 +140,7 @@ const absentOscBatch = [
       },
       loadedBinary: {
         path: "/fixture/ghostty.wasm",
-        sha256: "5c38594a17329b24e826f785d3156d6e498490517835f12b0730eeab2fc63da7",
+        sha256: "ce01cd0d1ae000dd88948f3817924cc85303874070cab39430967ebdf14877f3",
       },
       adapterSources: [
         { path: "packages/ghostty/src/index.ts", blobOid: "f4b9d9f3e13cc515b23abc739cab21bf971e8585" },
@@ -215,8 +215,9 @@ test.each(absentOscBatch)(
           getCell: () => ({ char }),
         } as unknown as LibProbeSource)
       const result = run(identity)
-      expect(result.criterionBranch, String(code)).toBe("source-negative-review")
-      expect(result.assertions, String(code)).toMatchObject([{ assertionType: "buffer_state", kind: "negative" }])
+      // Keep every missing protocol row visible while retaining one identity-contract case per engine.
+      expect.soft(result.criterionBranch, String(code)).toBe("source-negative-review")
+      expect.soft(result.assertions, String(code)).toMatchObject([{ assertionType: "buffer_state", kind: "negative" }])
       expect(run(identity, "?").assertions, String(code)).toBeUndefined()
       expect(run({ ...identity, adapterSources: [] }).criterionBranch, String(code)).not.toBe("source-negative-review")
       expect(run({ ...identity, engineVersion: "wrong" }).criterionBranch, String(code)).not.toBe(

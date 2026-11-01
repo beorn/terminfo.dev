@@ -170,6 +170,11 @@ const GHOSTTY_WASM_DISABLED_KITTY_AUDIT: ReplyPathAudit = {
   citation:
     "Ghostty WASM artifact5c38594a17329b24e826f785d3156d6e498490517835f12b0730eeab2fc63da7, core5714ed07a1012573261b7b7e3ed2add9c1504496: src/build/GhosttyZig.zig:20-25 forces oniguruma=false; src/terminal/build_options.zig derives kitty_graphics from oniguruma; src/terminal/apc.zig:31-39 sends APC G to ignore before any command, :63 returns null; Screen.zig:70 omits the image store. Upstream module build excludes kitty graphics (oniguruma=false); re-measure when a future artifact enables it",
 }
+const GHOSTTY_WASM_CE01_DISABLED_KITTY_AUDIT: ReplyPathAudit = {
+  ...GHOSTTY_WASM_DISABLED_KITTY_AUDIT,
+  citation:
+    "Ghostty WASM artifactce01cd0d1ae000dd88948f3817924cc85303874070cab39430967ebdf14877f3, core5714ed07a1012573261b7b7e3ed2add9c1504496: src/build/GhosttyZig.zig:20-25 forces oniguruma=false; src/terminal/build_options.zig:45 derives kitty_graphics from oniguruma; src/terminal/apc.zig:31-39 sends APC G to ignore before any command, :63 returns null; Screen.zig:70 omits the image store. The ce01 rebuild only forwards DECRPM actions; upstream module build still excludes kitty graphics (oniguruma=false); re-measure when a future artifact enables it",
+}
 
 /**
  * Source audits of exact engines that cannot reply, keyed by 64-lowercase-hex loaded-artifact SHA-256 or
@@ -203,6 +208,21 @@ export const REPLY_PATH_AUDITS: ReadonlyMap<string, Readonly<Record<string, Repl
       "modes.mouse-sgr": { query: "\x1b[?1006$p", kind: "parser-rejected", citation: VT220_DECRPM_CITATION },
       "modes.mouse-tracking": { query: "\x1b[?1000$p", kind: "parser-rejected", citation: VT220_DECRPM_CITATION },
       "modes.utf8-mouse-1005": { query: "\x1b[?1005$p", kind: "parser-rejected", citation: VT220_DECRPM_CITATION },
+    },
+  ],
+  // #32026 owns only these three image rows on the DECRPM-only rebuild. The broader #32024 reply audit carry is separate.
+  [
+    "ce01cd0d1ae000dd88948f3817924cc85303874070cab39430967ebdf14877f3",
+    {
+      "extensions.kitty-graphics.animation": GHOSTTY_WASM_CE01_DISABLED_KITTY_AUDIT,
+      "extensions.kitty-graphics.unicode-placeholders": GHOSTTY_WASM_CE01_DISABLED_KITTY_AUDIT,
+      "extensions.iterm2-images": {
+        query: "\x1b]1337;",
+        matches: "prefix",
+        kind: "parser-rejected",
+        citation:
+          "Ghostty WASM artifactce01cd0d1ae000dd88948f3817924cc85303874070cab39430967ebdf14877f3, core5714ed07a1012573261b7b7e3ed2add9c1504496: src/terminal/osc.zig:196-221 Key has no OSC1337 command; Parser.end :1708-1715 returns null for the unrecognized command, before the WASM ResponseHandler; no inline image is stored. The ce01 rebuild only forwards DECRPM actions; the OSC parser is unchanged",
+      },
     },
   ],
   // Ghostty WASM rebuilt to forward the core viewport (31392, @cto 34bea86e). The inner patch delta from d80a8110
