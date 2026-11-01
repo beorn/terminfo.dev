@@ -348,7 +348,7 @@ test.each(["extensions.osc117-reset-highlight-bg", "extensions.osc119-reset-high
       // Source-audit fixture at Termless 493881fd, independent of this runner's adapter revision.
       adapterSources: [
         { path: "packages/xtermjs/src/index.ts", blobOid: "550e10110ec2baaf326d2958319b03ee8208feba" },
-        { path: "packages/xtermjs/src/backend.ts", blobOid: "481fe005c5801cbb5e6ba4c8677f577e02122e4e" },
+        { path: "packages/xtermjs/src/backend.ts", blobOid: "79bc4dc6a1060d073f12d59ecd6b941cadfe91dd" },
       ],
       resolvedPath:
         "node_modules/.bun/@xterm+headless@6.0.0/node_modules/@xterm/headless/lib-headless/xterm-headless.js",

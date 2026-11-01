@@ -58,7 +58,7 @@ const xtermOscIdentity = {
   termlessRevision: "84003d2c91610fe2743142675234a0fb3ec9cf1d",
   adapterSources: [
     { path: "packages/xtermjs/src/index.ts", blobOid: "550e10110ec2baaf326d2958319b03ee8208feba" },
-    { path: "packages/xtermjs/src/backend.ts", blobOid: "481fe005c5801cbb5e6ba4c8677f577e02122e4e" },
+    { path: "packages/xtermjs/src/backend.ts", blobOid: "79bc4dc6a1060d073f12d59ecd6b941cadfe91dd" },
   ],
   resolvedPath: "node_modules/.bun/@xterm+headless@6.0.0/node_modules/@xterm/headless/lib-headless/xterm-headless.js",
   integrity: {
@@ -144,7 +144,7 @@ const absentOscBatch = [
       },
       adapterSources: [
         { path: "packages/ghostty/src/index.ts", blobOid: "f4b9d9f3e13cc515b23abc739cab21bf971e8585" },
-        { path: "packages/ghostty/src/backend.ts", blobOid: "603d090e4542f2ea08229539059df6e525e736de" },
+        { path: "packages/ghostty/src/backend.ts", blobOid: "7a917fe46b72d9870b898e71d440e7cb876b3fc1" },
       ],
     },
     codes: [176, 3008, 440, 555, 666, 710],
