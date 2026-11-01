@@ -115,7 +115,14 @@ function runRegistryIntegrity(name: string, version: string) {
 const kittyStore = "/nix/store/afvnxnvk3lchq4b0ihmhw93xc7x9q4py-kitty-0.49.2"
 const kittyDeriver = "/nix/store/7z13wj90r3kxc8pdxcdjqm81xqsj2444-kitty-0.49.2.drv"
 const kittySource = "/nix/store/nzf4mjj8bdhdn0mygayh03bigayxyly0-source"
-function runKittyIdentity(attrs: Record<string, unknown>, sourcePresent = true, unrelatedFirst = false) {
+// kitty.fast_data_types.KITTY_VCS_REV of the official 0.49.2 build (bb65c2d5) the headless collection loads.
+const kittyVcsRev = "b2cb871254fbdac19a085188813c8dfb258b95cd"
+function runKittyIdentity(
+  attrs: Record<string, unknown>,
+  sourcePresent = true,
+  unrelatedFirst = false,
+  vcsRev = kittyVcsRev,
+) {
   return spawnSync(
     process.execPath,
     [
@@ -131,7 +138,7 @@ function runKittyIdentity(attrs: Record<string, unknown>, sourcePresent = true, 
     fs.readFileSync = (path, ...args) => path === store + "/bin/kitty" ? Buffer.from("fixture kitty binary") : readFile(path, ...args);
     fs.statSync = (path, ...args) => path === source ? stat(${JSON.stringify(fixture.root)} + (${sourcePresent} ? "" : "/absent-source")) : stat(path, ...args);
     child.execFileSync = (command, args, options) => {
-      if (command === store + "/bin/kitty") return "kitty 0.49.2";
+      if (command === store + "/bin/kitty") return args[0] === "+runpy" ? ${JSON.stringify(vcsRev + "\n")} : "kitty 0.49.2";
       if (command !== "nix") return exec(command, args, options);
       if (args[0] === "path-info") return JSON.stringify({ [store]: { narHash: "sha256-" + "A".repeat(43) + "=", deriver } });
       if (args[0] === "derivation") return JSON.stringify({ version: 4, derivations: {
@@ -180,12 +187,22 @@ test.each([
     expect(identity).toMatchObject({
       engineVersion: "0.49.2",
       loadedBinary: { path: `${kittyStore}/bin/kitty` },
-      provenance: { toolchain: expect.stringContaining(`source directory ${kittySource} narHash sha256-`) },
+      provenance: {
+        sourceCommit: kittyVcsRev,
+        toolchain: expect.stringContaining(`source directory ${kittySource} narHash sha256-`),
+      },
     })
+    expect((identity as { termlessRevision?: string }).termlessRevision).not.toBe(kittyVcsRev)
   } else {
     expect(result.status).not.toBe(0)
     expect(result.stderr).toMatch(/source.*(?:derivation|declaration)|(?:derivation|declaration).*source/i)
   }
+})
+
+test("Kitty identity refuses a build that records no upstream source commit", () => {
+  const result = runKittyIdentity({ env: { src: kittySource } }, true, false, "")
+  expect(result.status).not.toBe(0)
+  expect(result.stderr).toContain('records no upstream source commit (KITTY_VCS_REV "")')
 })
 
 test("Kitty identity reports the absent declared source without realizing or substituting it", () => {

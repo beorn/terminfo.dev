@@ -526,6 +526,19 @@ function kittyIdentity(adapterVersion: string, termlessRevision: string): Headle
       ? `source archive ${sourcePath} sha256 ${sourceProof.sha256}`
       : `source directory ${sourcePath} narHash ${sourceProof.narHash}`
   const binarySha256 = sha256(readFileSync(path))
+  // #32087: the upstream commit the loaded kitty was built from, as its own build records it. The
+  // Termless revision is termlessRevision; reusing it here lapsed every kitty review at a Termless pin move.
+  const sourceCommit = execFileSync(
+    path,
+    ["+runpy", "from kitty.fast_data_types import KITTY_VCS_REV; print(KITTY_VCS_REV)"],
+    { encoding: "utf8" },
+  ).trim()
+  if (!/^[0-9a-f]{40}$/.test(sourceCommit)) {
+    throw new Error(
+      `Kitty ${path} records no upstream source commit (KITTY_VCS_REV ${JSON.stringify(sourceCommit)}); ` +
+        "headless identity needs a build that records it, such as nix build .#kitty-official",
+    )
+  }
   const lockSha256 = sha256(readFileSync(join(CODE_ROOT, "flake.lock")))
   const buildHash = sha256(
     JSON.stringify({ storePath, narHash: storeInfo.narHash, sourceProof, binarySha256, lockSha256 }),
@@ -538,7 +551,7 @@ function kittyIdentity(adapterVersion: string, termlessRevision: string): Headle
     loadedBinary: { path: recordedPath(path), sha256: binarySha256 },
     provenance: {
       sha256: binarySha256,
-      sourceCommit: termlessRevision,
+      sourceCommit,
       buildHash,
       toolchain: `Nix ${storePath}; narHash ${storeInfo.narHash}; ${sourceTag}; kitty +runpy`,
       lockSha256,
