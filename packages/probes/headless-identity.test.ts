@@ -192,7 +192,7 @@ test.each([
         toolchain: expect.stringContaining(`source directory ${kittySource} narHash sha256-`),
       },
     })
-    expect(identity.termlessRevision).not.toBe(kittyVcsRev)
+    expect((identity as { termlessRevision?: string }).termlessRevision).not.toBe(kittyVcsRev)
   } else {
     expect(result.status).not.toBe(0)
     expect(result.stderr).toMatch(/source.*(?:derivation|declaration)|(?:derivation|declaration).*source/i)

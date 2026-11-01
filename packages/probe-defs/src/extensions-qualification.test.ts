@@ -231,19 +231,27 @@ test.each(absentOscBatch)(
 // (termlessRevision) keeps the six kitty OSC reviews, while a different kitty binary does not.
 test("kitty OSC source review survives a Termless revision move and lapses on a different binary", () => {
   const kitty = absentOscBatch.find((entry) => entry.engine === "kitty")!
+  const identity = kitty.identity
+  if (identity.kind !== "native") throw new Error("kitty fixture is not a native identity")
+  const features: Record<number, string> = {
+    176: "osc176-app-id",
+    3008: "osc3008-context",
+    440: "osc440-audio",
+    555: "osc555-flash",
+    666: "osc666-termprop",
+    710: "osc710-font-normal",
+  }
   const run = (runtimeIdentity: HeadlessRuntimeIdentity, code: number) =>
-    callback(
-      `extensions.${{ 176: "osc176-app-id", 3008: "osc3008-context", 440: "osc440-audio", 555: "osc555-flash", 666: "osc666-termprop", 710: "osc710-font-normal" }[code]}`,
-    ).lib!({ runtimeIdentity, feed: () => undefined, getCell: () => ({ char: "X" }) } as unknown as LibProbeSource)
-  const moved = { ...kitty.identity, termlessRevision: "d9d4505514a2f5a3fd0a0e1a3a0c2c5b7d8e9f01" }
+    callback(`extensions.${features[code]}`).lib!({ runtimeIdentity, feed: () => undefined, getCell: () => ({ char: "X" }) } as unknown as LibProbeSource)
+  const moved = { ...identity, termlessRevision: "d9d4505514a2f5a3fd0a0e1a3a0c2c5b7d8e9f01" }
   const otherBinary = "0".repeat(64)
   const rebuilt = {
-    ...kitty.identity,
-    loadedBinary: { ...kitty.identity.loadedBinary, sha256: otherBinary },
-    provenance: { ...kitty.identity.provenance, sha256: otherBinary },
+    ...identity,
+    loadedBinary: { ...identity.loadedBinary, sha256: otherBinary },
+    provenance: { ...identity.provenance, sha256: otherBinary },
   }
   for (const code of kitty.codes) {
-    expect(kitty.identity.provenance.sourceCommit).toBe("b2cb871254fbdac19a085188813c8dfb258b95cd")
+    expect(identity.provenance.sourceCommit).toBe("b2cb871254fbdac19a085188813c8dfb258b95cd")
     expect(run(moved, code).criterionBranch, String(code)).toBe("source-negative-review")
     expect(run(rebuilt, code).criterionBranch, String(code)).not.toBe("source-negative-review")
   }
