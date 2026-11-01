@@ -280,11 +280,28 @@ rows clipped to 12 columns on shrink supply negative assertions. Failed controls
 boundaries, and conflicting positive/negative phases retain required FAILURE tests. Finally restores
 the initial dimensions and resets the source, attempting both operations and preserving all causes.
 
-Qualified main-phase results, including the two negatives from a truncating engine, keep the whole
-feature pending for the remaining facets. Invalid or conflicting phases make the feature fail; its
-reason names each negative or invalid phase and that phase's reason. Remaining facets are:
+The same callback measures retained-history growth and shrink in independently reset buffers.
+The soft line and explicit CRLF rows are followed by twice the screen height in uniquely numbered
+hard witnesses, without a final newline. Coherent counts bound every absolute-buffer read by the
+fed rows plus screen height; invalid extents retain their counts without allocating from them.
+Before resize, all target rows must remain in history and the complete seeded layout must match.
+No retained history and an evicted or incompletely retained target have distinct named TODO reasons
+without assertions, after the surviving rows match the expected fed tail. A corrupt short buffer
+is invalid evidence, not unavailable coverage. After resize, complete reflow supplies a positive assertion; exact physical-row
+preservation/clipping supplies a negative only with every hard witness and blank tail conserved.
+Neither complete model is a named invalid phase, including ambiguous loss or eviction. The destructive
+width control follows target readback on the same resized state, reading the active screen at H+s;
+history matching has no viewport-position predicate.
 
-- Alternate-screen and scrollback behavior retain separate named TODO tests until measured.
+History phases retain their statuses in the response and supply qualified assertions. They do not
+enter the required-test fold: all eleven feature outcomes stay at the pre-history baseline until
+the cross-facet fold is approved. Qualified main-phase results, including two negatives from a
+truncating engine, keep the feature pending. Invalid or conflicting main phases still make it fail;
+its reason names each negative or invalid main phase and that phase's reason. Remaining facets are:
+
+- Alternate-screen behavior retains its named TODO test. The required scrollback TODO remains,
+  naming recorded history evidence and the unapproved cross-facet fold. Only that later approved
+  fold can retire the row; history phase evidence alone cannot release the feature.
 - A default-config observation is not engine capability absence. Libvterm0.3 exposes
   `vterm_screen_enable_reflow`, disabled unless the embedder enables it. Before a future final fold,
   either the adapter enables that option with the fact recorded in the response, or a default-off
