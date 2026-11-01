@@ -607,3 +607,10 @@ All width callbacks distinguish these before applying their numeric feature crit
 readback is named TEST TODO; wrong controls and wrapping are named TEST FAILURE. A wrong numeric
 ASCII control is also a fixture failure. Unknown transport kinds throw with the probe and kind
 named. `/query` retains the same result in its `width` field. JSON preserves the cause fields.
+
+The exact-runtime source audit also covers highlight set/reset absence for vt100, vt220, libvterm and
+vt100-rust. A silent query plus rendered X retains independent source review for OSC117/119; it
+does not establish a measured reset negative. A missing OSC1 icon getter retains source review only
+for pinned vt100, vt220, Alacritty and Ghostty WASM/native engines whose own dispatch discards the
+icon name. Other missing icon observers retain their existing coverage result. The review keeps
+the actual OSC1 stimulus and before/after title state; title behavior alone is not icon support.

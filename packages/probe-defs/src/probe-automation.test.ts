@@ -2020,6 +2020,70 @@ describe("OSC 8 link metadata observation", () => {
     ],
   ] as const satisfies readonly (readonly [string, NonNullable<LibProbeSource["runtimeIdentity"]>])[]
 
+  // #31398: explicit callback checks catch omitted memberships; existing OSC8 cases never run highlight resets or OSC1.
+  test.each(absentOsc8Runtimes)(
+    "%s routes both absent highlight resets only at the audited identity",
+    (_engine, identity) => {
+      for (const [id, set, reset] of [
+        ["extensions.osc117-reset-highlight-bg", 17, 117],
+        ["extensions.osc119-reset-highlight-fg", 19, 119],
+      ] as const) {
+        const writes: string[] = []
+        const source = context({
+          runtimeIdentity: identity,
+          feed: (bytes) => writes.push(bytes),
+          getCell: () => ({ ...context({}).getCell(0, 0), char: "X" }),
+        })
+        const result = probe(id).lib!(source)
+        expect(result.criterionBranch, id).toBe("source-negative-review")
+        expect(result.tests, id).toMatchObject([{ id: "review", status: "test-failure" }])
+        expect(result.assertions, id).toMatchObject([{ kind: "negative", assertionType: "buffer_state" }])
+        expect(writes, id).toContain(`\x1b[1;1H\x1b[2K\x1b]${set};rgb:3030/6060/9090\x07\x1b]${reset}\x07X`)
+        expect(
+          probe(id).lib!({ ...source, runtimeIdentity: { ...identity, engineVersion: "unreviewed" } }).criterionBranch,
+          id,
+        ).not.toBe("source-negative-review")
+        expect(probe(id).lib!({ ...source, getCell: () => context({}).getCell(0, 0) }).assertions, id).toBeUndefined()
+      }
+    },
+  )
+
+  test.each(absentOsc8Runtimes)(
+    "%s distinguishes intrinsic OSC1 absence from a missing adapter getter",
+    (engine, identity) => {
+      let title = "before"
+      const writes: string[] = []
+      const source = context({
+        runtimeIdentity: identity,
+        getTitle: () => title,
+        feed: (bytes) => {
+          writes.push(bytes)
+          title = "after"
+        },
+      })
+      const result = probe("extensions.osc1-icon").lib!(source)
+      expect(writes).toEqual(["\x1b]1;test-icon\x07"])
+      expect(JSON.parse(result.response!)).toEqual({ before: "before", after: "after" })
+      if (engine === "vt100" || engine === "vt220") {
+        expect(result.criterionBranch).toBe("source-negative-review")
+        expect(result.tests).toMatchObject([
+          { id: "review", status: "test-failure", reason: expect.stringContaining("case 1") },
+        ])
+        expect(result.observation).toMatchObject({ outcome: "inconclusive", assertionType: "buffer_state" })
+        expect(result.assertions).toMatchObject([{ kind: "negative", assertionType: "buffer_state" }])
+      } else {
+        expect(result.notTested).toMatchObject({ reason: "no-semantic-observable" })
+        expect(result.assertions).toBeUndefined()
+      }
+      const foreign = probe("extensions.osc1-icon").lib!({
+        ...source,
+        runtimeIdentity: { ...identity, engineVersion: "unreviewed" },
+      })
+      expect(foreign.notTested).toMatchObject({ reason: "no-semantic-observable" })
+      expect(foreign.criterionBranch).toBeUndefined()
+    },
+  )
+
   test.each(absentOsc8Runtimes)(
     "%s emits source-review assertions only for its audited OSC8 identity",
     (_engine, identity) => {
@@ -2158,6 +2222,19 @@ describe("GhosttyNative audited OSC source review", () => {
       lockSha256: "3ec775507556db01d08055836b26183f629a9cbb0b5802a1566661e95988d74a",
     },
   } as const satisfies NonNullable<LibProbeSource["runtimeIdentity"]>
+
+  test("OSC1 uses the current native ignore-handler audit without changing other missing getters", () => {
+    const result = probe("extensions.osc1-icon").lib!(context({ runtimeIdentity: identity }))
+    expect(result.criterionBranch).toBe("source-negative-review")
+    expect(result.tests).toMatchObject([
+      { id: "review", status: "test-failure", reason: expect.stringContaining("stream.zig:1982-1986") },
+    ])
+    const foreign = probe("extensions.osc1-icon").lib!(
+      context({ runtimeIdentity: { ...identity, loadedBinary: { ...identity.loadedBinary, sha256: "0".repeat(64) } } }),
+    )
+    expect(foreign.notTested).toMatchObject({ reason: "no-semantic-observable" })
+    expect(foreign.assertions).toBeUndefined()
+  })
 
   test("the parsed OSC3008 review reason remains byte-identical", () => {
     const result = probe("extensions.osc3008-context").lib!(
@@ -2377,7 +2454,7 @@ describe("Alacritty audited OSC source review", () => {
     expect(result.observation?.outcome).toBe("supported")
   })
 
-  test.each(["extensions.osc8", "extensions.osc1-icon", "extensions.osc7-cwd", "extensions.osc1337-cellsize"])(
+  test.each(["extensions.osc8", "extensions.osc7-cwd", "extensions.osc1337-cellsize"])(
     "%s stays outside this source audit",
     (id) => {
       const result = probe(id).lib!(

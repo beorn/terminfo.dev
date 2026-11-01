@@ -1185,8 +1185,9 @@ const ABSENT_OSC_ENGINES = {
     engineVersion: "0.10.0",
     repository: "git@github.com:beorn/vterm.git",
     treeOid: "d5ee344ab5b971184ba2c43ed60460656340417c",
-    codes: [8, 9, 22, 133, 176, 440, 555, 633, 666, 710, 777, 3008],
+    codes: [1, 8, 9, 17, 19, 22, 117, 119, 133, 176, 440, 555, 633, 666, 710, 777, 3008],
     subcodes: ["133;D"],
+    reviewReasons: [{ code: 1, reason: "screen.ts:504-520 case 1 is ignored; no icon-name state is stored" }],
     sourceCitation:
       "vt100 6cc7eef05cde6a8578479c6cdb480f606758eb2c packages/vt100/src/screen.ts:504-520 handleOSC switch, cases 0/1/2 only",
   },
@@ -1196,8 +1197,9 @@ const ABSENT_OSC_ENGINES = {
     engineVersion: "0.10.0",
     repository: "git@github.com:beorn/vterm.git",
     treeOid: "9a320c4d5cd0e0b60bb2e6ea4f020ce5eb54ae53",
-    codes: [8, 9, 22, 133, 176, 440, 555, 633, 666, 710, 777, 3008],
+    codes: [1, 8, 9, 17, 19, 22, 117, 119, 133, 176, 440, 555, 633, 666, 710, 777, 3008],
     subcodes: ["133;D"],
+    reviewReasons: [{ code: 1, reason: "screen.ts:703-718 case 1 is ignored; no icon-name state is stored" }],
     sourceCitation:
       "vt220 6cc7eef05cde6a8578479c6cdb480f606758eb2c packages/vt220/src/screen.ts:703-718 handleOSC: no-semicolon return; cases 0/1/2 only",
   },
@@ -1233,7 +1235,7 @@ const ABSENT_OSC_ENGINES = {
     engineVersion: "0.3.3",
     adapterVersion: "0.10.2",
     binarySha256: "7ebe1b994b58ca867dcd19e9cdeb10b8839b6c1f0dbdea024f875a9f57560a23",
-    codes: [8, 9, 22, 176, 440, 555, 666, 710, 777, 3008],
+    codes: [8, 9, 17, 19, 22, 117, 119, 176, 440, 555, 666, 710, 777, 3008],
     sourceCitation:
       "libvterm 9d6d2112335080312ef8c36667fa717ded4f7daf/v0.3.3 src/state.c:1777-1808 handles OSC 0/1/2/52 only; Termless 37c3e9af11f59259ee200633df3c57bc28c34f90 packages/libvterm/build/flat-api.c installs output and OSC52 selection callbacks only; src/backend.ts forwards native input and installs no OSC fallback",
   },
@@ -1243,7 +1245,13 @@ const ABSENT_OSC_ENGINES = {
     engineVersion: "0.4.0",
     adapterVersion: "0.10.2",
     binarySha256: "1f23e13db5bda55ab54943461b83a5d642bf8d2050a452fbe7871927383dfe9f",
-    codes: [176, 440, 555, 666, 710, 3008],
+    codes: [1, 176, 440, 555, 666, 710, 3008],
+    reviewReasons: [
+      {
+        code: 1,
+        reason: "core5714ed07 src/terminal/stream.zig:2017-2021 logs and ignores OSC 1; no icon-name state is stored",
+      },
+    ],
     sourceCitation:
       "Ghostty WASM core5714ed07a1012573261b7b7e3ed2add9c1504496 src/terminal/osc.zig:551-566,779-800,891-1002,1047-1075 parser states reject OSC176/3008/440/555/666/710; :1708-1715 returns null before ResponseHandler. Artifact1f23e13db5bda55ab54943461b83a5d642bf8d2050a452fbe7871927383dfe9f adds DECRPM, DA1/DA2, XTVERSION, DECRQSS and XTGETTCAP reply actions and no OSC handler; OSC9/777 binding losses and OSC22 mouse_shape are excluded",
   },
@@ -1276,8 +1284,12 @@ const ABSENT_OSC_ENGINES = {
     sourceCommit: "332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28",
     buildHash: "740541f7a527884ed17034c3ab8c66d457cdd14e013774b6bf75c7c99670a7d7",
     lockSha256: "3ec775507556db01d08055836b26183f629a9cbb0b5802a1566661e95988d74a",
-    codes: [176, 440, 555, 666, 710, 3008],
+    codes: [1, 176, 440, 555, 666, 710, 3008],
     reviewReasons: [
+      {
+        code: 1,
+        reason: "core332b2aef src/terminal/stream.zig:1982-1986 logs and ignores OSC 1; no icon-name state is stored",
+      },
       {
         code: 3008,
         reason: "parsed by osc.zig:747 context_signal, dropped unimplemented at stream.zig:2056-2059",
@@ -1294,8 +1306,13 @@ const ABSENT_OSC_ENGINES = {
     sourceCommit: "cd5cd5172680fd240ee3445dea96289793bc2d59",
     buildHash: "94ef4fbf1e21d454c70a39efaf9cfde1ebabe57a0f9cdb186fef782cfb1ff8ce",
     lockSha256: "1f89f2579b7d786a116d8fefb8267c4af076bd3a3893adcf14b00c4466740497",
-    codes: [9, 17, 19, 22, 117, 119, 176, 440, 555, 666, 710, 777, 3008],
+    codes: [1, 9, 17, 19, 22, 117, 119, 176, 440, 555, 666, 710, 777, 3008],
     reviewReasons: [
+      {
+        code: 1,
+        reason:
+          "vte 0.15.0 src/ansi.rs:1349-1361 dispatches OSC 0/2 title only, with no case 1; unmatched OSC logs at :1523 and no icon-name state is stored",
+      },
       {
         code: 22,
         reason:
@@ -1337,7 +1354,7 @@ const ABSENT_OSC_ENGINES = {
     sourceCommit: "6ffc0df79756fcc259d87131681641606540e512",
     buildHash: "7ab9ccc7744fbf5ae24c5ebb2748a144817e696f7f93959fa90a335d11646f68",
     lockSha256: "4cf037e4efa648ca41d08b30ef5c4ce7ada29ad61fcad45a7d1aa97bf55391c6",
-    codes: [8, 9, 22, 176, 440, 555, 666, 710, 777, 3008],
+    codes: [8, 9, 17, 19, 22, 117, 119, 176, 440, 555, 666, 710, 777, 3008],
     sourceCitation:
       "vt100 0.16.2 src/perform.rs:198-238 dispatches unmatched OSCs to unhandled_osc; src/callbacks.rs:66 is a no-op; Termless packages/vt100-rust/native/src/lib.rs:21-54 at 6ffc0df79756fcc259d87131681641606540e512 installs no unhandled_osc override",
   },
@@ -4224,6 +4241,18 @@ export const extensionsProbes: ProbeDefinition[] = [
           const before = ctx.getTitle()
           ctx.feed("\x1b]1;test-icon\x07")
           const after = ctx.getTitle()
+          const audit = absentOscAudit(ctx.runtimeIdentity, 1)
+          if (audit) {
+            const reason =
+              "reviewReasons" in audit ? audit.reviewReasons.find((entry) => entry.code === 1)?.reason : undefined
+            return parserStateResult(
+              null,
+              "OSC 1 sets the icon name independently of the window title",
+              { before, after },
+              undefined,
+              `${audit.sourceCitation}${reason ? `; ${reason}` : ""}; independent source review required`,
+            )
+          }
           return notTestedResult("icon-name state", { before, after })
         }
         const before = { icon: ctx.getIconLabel(), title: ctx.getTitle() }
