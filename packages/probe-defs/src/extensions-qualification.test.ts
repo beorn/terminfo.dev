@@ -172,8 +172,8 @@ const absentOscBatch = [
       lockSha256: "282d1098337a5705a7c1d13188a74d2fe34565766619e8d6b21a48d5b67451be",
       adapterSources: [
         { path: "packages/kitty/src/index.ts", blobOid: "3f207f911646613cdc3d8b04f155f0686a96a077" },
-        { path: "packages/kitty/src/backend.ts", blobOid: "048836c6cd7881d277e72119539cd0a1f9fd4193" },
-        { path: "packages/kitty/build/bridge.py", blobOid: "c5af1cd5fd0e054a96a603c20ab8278f655b462d" },
+        { path: "packages/kitty/src/backend.ts", blobOid: "ccbb563ae46aac067835f0f0754374fe49e02531" },
+        { path: "packages/kitty/build/bridge.py", blobOid: "50aaff3aba391eb9e33a1af394c03c73bd86e0b2" },
       ],
       codes: [176, 3008, 440, 555, 666, 710],
     },
