@@ -634,11 +634,11 @@ const ALT_SCREEN_47: AltScreenMode = { mode: 47, clearsOnEnter: false, clearsOnE
  */
 const ALT_SCREEN_UNIMPLEMENTED_AUDITS: ReadonlyMap<string, string> = new Map([
   [
-    "git@github.com:beorn/vterm.git@6cc7eef05cde6a8578479c6cdb480f606758eb2c:d5ee344ab5b971184ba2c43ed60460656340417c:vendor/vterm/packages/vt100/src/index.ts",
+    "git@github.com:beorn/vterm.git@bd3d32aea2f1994376a71adfc55b92705eedbd8c:1eaac257cf9ff8d8ece752c8e6edc04b9ddaa6cf:vendor/vterm/packages/vt100/src/index.ts",
     "vterm packages/vt100/src/screen.ts:99 'Main screen buffer (no alternate screen in VT100)'; no CSI ? 1049 changes state in that source tree, so there is no alternate buffer for exit to leave",
   ],
   [
-    "git@github.com:beorn/vterm.git@6cc7eef05cde6a8578479c6cdb480f606758eb2c:9a320c4d5cd0e0b60bb2e6ea4f020ce5eb54ae53:vendor/vterm/packages/vt220/src/index.ts",
+    "git@github.com:beorn/vterm.git@bd3d32aea2f1994376a71adfc55b92705eedbd8c:d504616ae458b8b0fa9fa365034c30bd35f55ee8:vendor/vterm/packages/vt220/src/index.ts",
     "vterm packages/vt220/src/screen.ts:145 'Main screen buffer (no alternate screen in VT220)', with :90 listing the alternate screen among what it does not cover; no CSI ? 1049 changes state in that source tree",
   ],
 ])
@@ -660,7 +660,7 @@ function altScreenAbsenceCitation(identity: HeadlessRuntimeIdentity | undefined)
 // Each complete dispatcher below establishes own-command absence at one exact source identity.
 const MODE_COMMAND_SOURCE_AUDITS = new Map([
   [
-    "git@github.com:beorn/vterm.git@6cc7eef05cde6a8578479c6cdb480f606758eb2c:d5ee344ab5b971184ba2c43ed60460656340417c:vendor/vterm/packages/vt100/src/index.ts",
+    "git@github.com:beorn/vterm.git@bd3d32aea2f1994376a71adfc55b92705eedbd8c:1eaac257cf9ff8d8ece752c8e6edc04b9ddaa6cf:vendor/vterm/packages/vt100/src/index.ts",
     {
       engine: "vt100" as const,
       modes:
@@ -670,7 +670,7 @@ const MODE_COMMAND_SOURCE_AUDITS = new Map([
     },
   ],
   [
-    "git@github.com:beorn/vterm.git@6cc7eef05cde6a8578479c6cdb480f606758eb2c:9a320c4d5cd0e0b60bb2e6ea4f020ce5eb54ae53:vendor/vterm/packages/vt220/src/index.ts",
+    "git@github.com:beorn/vterm.git@bd3d32aea2f1994376a71adfc55b92705eedbd8c:d504616ae458b8b0fa9fa365034c30bd35f55ee8:vendor/vterm/packages/vt220/src/index.ts",
     {
       engine: "vt220" as const,
       modes:
@@ -746,7 +746,7 @@ function withModeSourceReview(definition: ProbeDefinition): ProbeDefinition {
         const integrity = identity.integrity
         const knownTree =
           integrity.kind === "source" &&
-          ["d5ee344ab5b971184ba2c43ed60460656340417c", "9a320c4d5cd0e0b60bb2e6ea4f020ce5eb54ae53"].includes(
+          ["1eaac257cf9ff8d8ece752c8e6edc04b9ddaa6cf", "d504616ae458b8b0fa9fa365034c30bd35f55ee8"].includes(
             integrity.treeOid,
           )
         if (!knownTree && !/(?:vt100|vt220)/.test(identity.resolvedPath)) return prior
@@ -762,8 +762,8 @@ function withModeSourceReview(definition: ProbeDefinition): ProbeDefinition {
             : `Mode source identity has foreign source: ${key ?? identity.resolvedPath}`,
         )
       }
-      if (identity?.engineVersion !== "0.10.0") {
-        return fallback(`Mode source engine version differs: ${identity?.engineVersion}; expected 0.10.0`)
+      if (identity?.engineVersion !== "0.10.1") {
+        return fallback(`Mode source engine version differs: ${identity?.engineVersion}; expected 0.10.1`)
       }
       if (!auditedAdapterSources(identity, audit.engine)) {
         return fallback("Mode source adapter source differs from the audited blobs; no qualified readback")

@@ -333,6 +333,7 @@ describe("audited native host recipe callers", () => {
     "d280c3fd2129f42db0d7154d6e66f5582a67fa1faf1e82ab463b6b8286f126d0",
     "32d76284e5a3c7673fafbbc83a16717fa0a1c1811c7d659d982176a53ceb1aa9",
     "8232209bd7273d68eb0bc9a71c5acf94fd8ebd96612604ff901c09c4d6cb8344",
+    "21d4b43c1d4c401c5b9f8114de85b3e837605242363c322c2dcb37e4a42fba61",
   ])("the Alacritty artifact %s cites its OSC 52 read and leaves CSI 14 t measured", (alacritty) => {
     const silent = (id: string) =>
       probe(id).lib!(
@@ -477,21 +478,21 @@ describe("reply-path audit", () => {
   const sourceIdentity = (treeOid: string, cleanTree = true): NonNullable<LibProbeSource["runtimeIdentity"]> => ({
     kind: "js",
     runtimeFormat: "js",
-    engineVersion: "0.10.0",
+    engineVersion: "0.10.1",
     adapterVersion: "0.10.2",
     termlessRevision: "2d97417328b7b1d086f9396b9a1731216ed134cc",
-    resolvedPath: `vendor/vterm/packages/${treeOid === "d5ee344ab5b971184ba2c43ed60460656340417c" ? "vt100" : "vt220"}/src/index.ts`,
+    resolvedPath: `vendor/vterm/packages/${treeOid === "1eaac257cf9ff8d8ece752c8e6edc04b9ddaa6cf" ? "vt100" : "vt220"}/src/index.ts`,
     integrity: {
       kind: "source",
       repository: "git@github.com:beorn/vterm.git",
-      revision: "6cc7eef05cde6a8578479c6cdb480f606758eb2c",
+      revision: "bd3d32aea2f1994376a71adfc55b92705eedbd8c",
       treeOid,
       cleanTree,
     },
   })
   // #32026: a listed key of the other kind must not fire through the wrong identity branch.
   test("source-tree and artifact key shapes never cross identity kinds", () => {
-    const treeOid = "d5ee344ab5b971184ba2c43ed60460656340417c"
+    const treeOid = "1eaac257cf9ff8d8ece752c8e6edc04b9ddaa6cf"
     const sha256 = "5c38594a17329b24e826f785d3156d6e498490517835f12b0730eeab2fc63da7"
     expect(
       replyPathAuditFor(
@@ -517,7 +518,7 @@ describe("reply-path audit", () => {
       audit,
     })
   })
-  test.each(["d5ee344ab5b971184ba2c43ed60460656340417c", "9a320c4d5cd0e0b60bb2e6ea4f020ce5eb54ae53"])(
+  test.each(["1eaac257cf9ff8d8ece752c8e6edc04b9ddaa6cf", "d504616ae458b8b0fa9fa365034c30bd35f55ee8"])(
     "all seven source DECRPM rows are absent from the query audit: %s",
     (treeOid) => {
       for (const [id, mode] of [
@@ -2008,16 +2009,16 @@ describe("OSC 8 link metadata observation", () => {
           {
             kind: "js",
             runtimeFormat: "js",
-            engineVersion: "0.10.0",
+            engineVersion: "0.10.1",
             adapterSources:
               engine === "vt100"
                 ? [
                     { path: "packages/vt100/src/index.ts", blobOid: "99833d737402f9d1d8e3e257e3a255d8aa1facc3" },
-                    { path: "packages/vt100/src/backend.ts", blobOid: "855dd71fba878d968d16c82846578190b7350eea" },
+                    { path: "packages/vt100/src/backend.ts", blobOid: "cdb8be8c5ebbba68a5920cfa4df27c9deb31745a" },
                   ]
                 : [
                     { path: "packages/vt220/src/index.ts", blobOid: "601dd26eb7e753a5396ebdf72f1ef8ee2cc4355f" },
-                    { path: "packages/vt220/src/backend.ts", blobOid: "1a16d66067bcaf71a2d96900ae046a1601482add" },
+                    { path: "packages/vt220/src/backend.ts", blobOid: "7369e3710e36aa649372fd09011ecfdd6ba47c73" },
                   ],
             adapterVersion: "0.10.2",
             termlessRevision: "8b8664540f365fa0ba1d9b6400d3c4d1a160582c",
@@ -2025,11 +2026,11 @@ describe("OSC 8 link metadata observation", () => {
             integrity: {
               kind: "source",
               repository: "git@github.com:beorn/vterm.git",
-              revision: "6cc7eef05cde6a8578479c6cdb480f606758eb2c",
+              revision: "bd3d32aea2f1994376a71adfc55b92705eedbd8c",
               treeOid:
                 engine === "vt100"
-                  ? "d5ee344ab5b971184ba2c43ed60460656340417c"
-                  : "9a320c4d5cd0e0b60bb2e6ea4f020ce5eb54ae53",
+                  ? "1eaac257cf9ff8d8ece752c8e6edc04b9ddaa6cf"
+                  : "d504616ae458b8b0fa9fa365034c30bd35f55ee8",
               cleanTree: true,
             },
           },
@@ -2398,26 +2399,26 @@ describe("GhosttyNative audited OSC source review", () => {
  * @testonly none
  */
 describe("Alacritty audited OSC source review", () => {
-  // Current absolute-row build receipt; fixture identity is not a loaded-engine attestation.
+  // Current alternate-scroll build receipt; fixture identity is not a loaded-engine attestation.
   const identity = {
     kind: "native",
     engineVersion: "0.26.0",
     adapterSources: [
       { path: "packages/alacritty/src/index.ts", blobOid: "b4154cbd6ef4a83ce2cbf3dcf26ff13d645efd05" },
       { path: "packages/alacritty/src/backend.ts", blobOid: "4210383129879c4e8756e6975674632cf69ecce9" },
-      { path: "packages/alacritty/native/src/lib.rs", blobOid: "f6bd100a60de8bcbc54e28b4c293ca6920cbc18d" },
+      { path: "packages/alacritty/native/src/lib.rs", blobOid: "e4720590d652773f1e89caf2b5cb399ee9112e39" },
       { path: "src/load-native.ts", blobOid: "34e142550085450ab02138184626716ad0d6b546" },
     ],
     adapterVersion: "0.10.2",
-    termlessRevision: "be67d1c7f542ee54a713500604d771a4aa8daa30",
+    termlessRevision: "824119c28b46bd701b222a91df0da860f0307950",
     loadedBinary: {
       path: "vendor/termless/packages/alacritty/termless-alacritty-native.node",
-      sha256: "8232209bd7273d68eb0bc9a71c5acf94fd8ebd96612604ff901c09c4d6cb8344",
+      sha256: "21d4b43c1d4c401c5b9f8114de85b3e837605242363c322c2dcb37e4a42fba61",
     },
     provenance: {
-      sha256: "8232209bd7273d68eb0bc9a71c5acf94fd8ebd96612604ff901c09c4d6cb8344",
-      sourceCommit: "be67d1c7f542ee54a713500604d771a4aa8daa30",
-      buildHash: "fe1651e09a5d7e191586ed8f90a945ae479a9a1976a3776d852646e824c7ace1",
+      sha256: "21d4b43c1d4c401c5b9f8114de85b3e837605242363c322c2dcb37e4a42fba61",
+      sourceCommit: "824119c28b46bd701b222a91df0da860f0307950",
+      buildHash: "634c14c5258327eff925d20d24918098c9aee92c1e6291e0ca770d2677015171",
       toolchain:
         "rustc 1.94.0 (4a4ef493e 2026-03-02) (built from a source tarball); cargo 1.94.0 (85eff7c80 2026-01-15)",
       lockSha256: "1f89f2579b7d786a116d8fefb8267c4af076bd3a3893adcf14b00c4466740497",
@@ -2460,7 +2461,7 @@ describe("Alacritty audited OSC source review", () => {
     if (codes === "22") {
       expect(writes).toContain("\x1b[1;1H\x1b[2K\x1b]22;pointer\x07X")
       expect(reason).toBe(
-        "alacritty_terminal 0.26.0 with vte 0.15.0 src/ansi.rs:1329-1523 OSC dispatch (22 parsed, other audited codes unhandled); src/term/mod.rs:1059-2272 Term Handler; Termless be67d1c7f542ee54a713500604d771a4aa8daa30 packages/alacritty/native/src/lib.rs:285-338 owns Term<EventProxy> and advances the same vte processor into it; absolute-row getter changes leave Config, OSC dispatch and reply handling unchanged; parsed by vte 0.15.0 src/ansi.rs:1455-1461 into set_mouse_cursor_icon; Handler default src/ansi.rs:703-704 is empty and alacritty_terminal 0.26.0 src/term/mod.rs:1059-2272 supplies no override; independent source review required",
+        "alacritty_terminal 0.26.0 with vte 0.15.0 src/ansi.rs:1329-1523 OSC dispatch (22 parsed, other audited codes unhandled); src/term/mod.rs:1059-2272 Term Handler; Termless 824119c28b46bd701b222a91df0da860f0307950 packages/alacritty/native/src/lib.rs:285-338 owns Term<EventProxy> and advances the same vte processor into it; alternate-scroll readback changes leave Config, OSC dispatch and reply handling unchanged; parsed by vte 0.15.0 src/ansi.rs:1455-1461 into set_mouse_cursor_icon; Handler default src/ansi.rs:703-704 is empty and alacritty_terminal 0.26.0 src/term/mod.rs:1059-2272 supplies no override; independent source review required",
       )
       expect(reason).not.toContain("no case 22")
     } else {
@@ -2544,7 +2545,7 @@ describe("Alacritty audited OSC source review", () => {
         runtimeIdentity: {
           kind: "js",
           runtimeFormat: "js",
-          engineVersion: "0.10.0",
+          engineVersion: "0.10.1",
           adapterSources: [
             { path: "packages/vterm/src/index.ts", blobOid: "cb5719799dcdd5ae24e6fcf0dcad9965035ce54c" },
             { path: "packages/vterm/src/backend.ts", blobOid: "308a934578c044ae95feaa29299531d9aa9eb4f7" },
@@ -2555,8 +2556,8 @@ describe("Alacritty audited OSC source review", () => {
           integrity: {
             kind: "source",
             repository: "git@github.com:beorn/vterm.git",
-            revision: "6cc7eef05cde6a8578479c6cdb480f606758eb2c",
-            treeOid: "d7bc627e039005ee913b0b244ff9a2ee2235746a",
+            revision: "bd3d32aea2f1994376a71adfc55b92705eedbd8c",
+            treeOid: "f10a184811894462b9ca7b65d6aab8ffd2fdd0bd",
             cleanTree: true,
           },
         },
@@ -2564,7 +2565,7 @@ describe("Alacritty audited OSC source review", () => {
       }),
     )
     expect(result.tests?.[0]?.reason).toBe(
-      "vterm 6cc7eef05cde6a8578479c6cdb480f606758eb2c packages/vterm/src/screen.ts:3596-4055 handleOSC switch; screen.ts:3921-3923 notification sink stores every OSC 9 value, with no progress subcode or state interpretation; independent source review required",
+      "vterm bd3d32aea2f1994376a71adfc55b92705eedbd8c packages/vterm/src/screen.ts:3596-4055 handleOSC switch; screen.ts:3921-3923 notification sink stores every OSC 9 value, with no progress subcode or state interpretation; independent source review required",
     )
   })
 })
@@ -4815,15 +4816,15 @@ describe("partial probe automation candidates", () => {
   test.each([
     [
       "vt100",
-      "d5ee344ab5b971184ba2c43ed60460656340417c",
+      "1eaac257cf9ff8d8ece752c8e6edc04b9ddaa6cf",
       "99833d737402f9d1d8e3e257e3a255d8aa1facc3",
-      "855dd71fba878d968d16c82846578190b7350eea",
+      "cdb8be8c5ebbba68a5920cfa4df27c9deb31745a",
     ],
     [
       "vt220",
-      "9a320c4d5cd0e0b60bb2e6ea4f020ce5eb54ae53",
+      "d504616ae458b8b0fa9fa365034c30bd35f55ee8",
       "601dd26eb7e753a5396ebdf72f1ef8ee2cc4355f",
-      "1a16d66067bcaf71a2d96900ae046a1601482add",
+      "7369e3710e36aa649372fd09011ecfdd6ba47c73",
     ],
   ])(
     "%s semantic source audits require matching identity and rendered X",
@@ -4831,14 +4832,14 @@ describe("partial probe automation candidates", () => {
       const runtimeIdentity = {
         kind: "js",
         runtimeFormat: "js",
-        engineVersion: "0.10.0",
+        engineVersion: "0.10.1",
         adapterVersion: "0.10.2",
         termlessRevision: "2d97417328b7b1d086f9396b9a1731216ed134cc",
         resolvedPath: `vendor/vterm/packages/${engine}/src/index.ts`,
         integrity: {
           kind: "source",
           repository: "git@github.com:beorn/vterm.git",
-          revision: "6cc7eef05cde6a8578479c6cdb480f606758eb2c",
+          revision: "bd3d32aea2f1994376a71adfc55b92705eedbd8c",
           treeOid: treeOid!,
           cleanTree: true,
         },
