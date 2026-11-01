@@ -169,7 +169,11 @@ test.each(["extensions.osc117-reset-highlight-bg", "extensions.osc119-reset-high
       engineVersion: "6.0.0",
       adapterVersion: "0.10.2",
       termlessRevision: "2d97417328b7b1d086f9396b9a1731216ed134cc",
-      adapterSources: createXtermBackend().getAdapterSources(),
+      // Source-audit fixture at Termless 493881fd, independent of this runner's adapter revision.
+      adapterSources: [
+        { path: "packages/xtermjs/src/index.ts", blobOid: "550e10110ec2baaf326d2958319b03ee8208feba" },
+        { path: "packages/xtermjs/src/backend.ts", blobOid: "923e41d80147e4f136719e46ce9a2fc7dfb31683" },
+      ],
       resolvedPath:
         "node_modules/.bun/@xterm+headless@6.0.0/node_modules/@xterm/headless/lib-headless/xterm-headless.js",
       integrity: {
@@ -194,7 +198,13 @@ test.each(["extensions.osc117-reset-highlight-bg", "extensions.osc119-reset-high
       intendedSubject: { kind: "lib", id: "xtermjs" },
       manifest,
     })
-    const batch = await collectBatch(backend, "xtermjs", [definition], draft, undefined, {
+    const carrier = async () => {
+      const value = await backend()
+      // Producer metadata and the mocked runtime describe the same historical audit fixture.
+      value.getAdapterSources = () => identity.adapterSources
+      return value
+    }
+    const batch = await collectBatch(carrier, "xtermjs", [definition], draft, undefined, {
       identity,
       adapterPath: Bun.resolveSync("@termless/xtermjs", fileURLToPath(import.meta.url)),
       adapterPackage: "@termless/xtermjs",
@@ -259,7 +269,13 @@ test("Wezterm prompt source reviews survive actual collection and capture bindin
     engineVersion: "0.1.0-fork.5",
     adapterVersion: "0.10.2",
     termlessRevision: "2d97417328b7b1d086f9396b9a1731216ed134cc",
-    adapterSources: createXtermBackend().getAdapterSources(),
+    // The JS carrier exercises collection; the qualified identity belongs to audited WezTerm sources.
+    adapterSources: [
+      { path: "packages/wezterm/src/index.ts", blobOid: "512606c5270ffd0cff55c1b70f5b3eda18a92df0" },
+      { path: "packages/wezterm/src/backend.ts", blobOid: "0eba480a028ed0f8f054e89cbe621c3fa22f4737" },
+      { path: "packages/wezterm/native/src/lib.rs", blobOid: "b83bbf08bb20c6b7965cd0b6492a827707644a8f" },
+      { path: "src/load-native.ts", blobOid: "34e142550085450ab02138184626716ad0d6b546" },
+    ],
     loadedBinary: {
       path: "vendor/termless/packages/wezterm/termless-wezterm.node",
       sha256: "0f56a805793d7d829daa617f1323aacff0d73fe868747b0d077c6af315e2aab8",
@@ -288,7 +304,13 @@ test("Wezterm prompt source reviews survive actual collection and capture bindin
     intendedSubject: { kind: "lib", id: "wezterm" },
     manifest,
   })
-  const batch = await collectBatch(backend, "wezterm", registryDefinitions(ids), draft, undefined, {
+  const carrier = async () => {
+    const value = await backend()
+    // The JS carrier's metadata belongs to this mocked WezTerm fixture, not the loaded JS engine.
+    value.getAdapterSources = () => identity.adapterSources
+    return value
+  }
+  const batch = await collectBatch(carrier, "wezterm", registryDefinitions(ids), draft, undefined, {
     identity,
     adapterPath: Bun.resolveSync("@termless/xtermjs", fileURLToPath(import.meta.url)),
     adapterPackage: "@termless/xtermjs",
@@ -692,7 +714,8 @@ test.each([
     ])
     expect(batch.observations).toEqual([])
     expect(batch.assertions).toEqual([])
-    expect(JSON.parse(batch.rawReplies[id]!)).toMatchObject({ productViewport: declaration, runtimeIdentity: null })
+    expect(JSON.parse(batch.rawReplies[id]!)).toMatchObject({ productViewport: declaration })
+    expect(JSON.parse(batch.rawReplies[id]!)).not.toHaveProperty("runtimeIdentity")
     const captured: CapturedRunDraft = {
       ...draft,
       subject: {

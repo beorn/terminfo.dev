@@ -835,7 +835,17 @@ it.each([
             engineVersion: "0.9.0",
             adapterVersion: "0.10.2",
             termlessRevision: "8b8664540f365fa0ba1d9b6400d3c4d1a160582c",
-            adapterSources: backend.getAdapterSources(),
+            // Audited collector input at Termless 493881fd, including standalone 0.10.2 adapters.
+            adapterSources:
+              engine === "vt100"
+                ? [
+                    { path: "packages/vt100/src/index.ts", blobOid: "99833d737402f9d1d8e3e257e3a255d8aa1facc3" },
+                    { path: "packages/vt100/src/backend.ts", blobOid: "88fca587dd459fd34da3405e93cc3793cb4a1cf8" },
+                  ]
+                : [
+                    { path: "packages/vt220/src/index.ts", blobOid: "601dd26eb7e753a5396ebdf72f1ef8ee2cc4355f" },
+                    { path: "packages/vt220/src/backend.ts", blobOid: "fe2970bf029f2c4c52a253364fe3e86659985856" },
+                  ],
             resolvedPath: `vendor/vterm/packages/${engine}/src/index.ts`,
             integrity: {
               kind: "source",
