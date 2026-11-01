@@ -80,7 +80,7 @@ export const ADAPTER_SOURCE_AUDITS = {
     "packages/kitty/build/bridge.py": "f9585e3ac10209eedd1bc8550bcb1a4a1b286f27",
     "packages/kitty/build/layout.c": "49c0beef4424190e89d2884eac5efe4da50e3630",
     "packages/kitty/build/native-mode-layout.json": "6bd0f2d5b6936f8f6298e4cb9ae4b228172a9502",
-    "packages/kitty/build/native-mode-layout.receipt.json": "b4c699ca3b37c928ffde1e98ebbd3fa885f6bbe8",
+    "packages/kitty/build/native-mode-layout.receipt.json": "02899a0c97f70eeba38f5030de1ba7ef4665b6f6",
   },
 } as const
 
