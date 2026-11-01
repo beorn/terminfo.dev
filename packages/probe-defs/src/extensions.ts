@@ -1247,7 +1247,7 @@ const ABSENT_OSC_ENGINES = {
     engineVersion: "0.49.2",
     adapterVersion: "0.10.2",
     binarySha256: "bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886",
-    sourceCommit: "f736cce493439cf9d651297c2a920cb61fa05fb5",
+    sourceCommit: "356984aeea7ae66e08bf0135978179d6294321a8",
     buildHash: "88e840e1b8e7f09edf3464ee33df8753fd5107838de15bccb6ea59e0dd6cc9c3",
     lockSha256: "282d1098337a5705a7c1d13188a74d2fe34565766619e8d6b21a48d5b67451be",
     codes: [176, 440, 555, 666, 710, 3008],
@@ -1261,7 +1261,7 @@ const ABSENT_OSC_ENGINES = {
       },
     ],
     sourceCitation:
-      "kitty0.49.2 sourceb2cb871254fbdac19a085188813c8dfb258b95cd kitty/vt-parser.c:546-670 has no cases176/555/710, explicitly ignores440/666, and dispatches3008 to the empty Window.osc_context; official-binary archive SHA256d573618b911e9c461bd421b96c13c74c7f1cb2f1ac9c327818d4ff84366cf5c6; Termless f736cce493439cf9d651297c2a920cb61fa05fb5 packages/kitty/build/bridge.py:164-182. OSC9/777 binding losses and OSC22 pointer handler are excluded",
+      "kitty0.49.2 sourceb2cb871254fbdac19a085188813c8dfb258b95cd kitty/vt-parser.c:546-670 has no cases176/555/710, explicitly ignores440/666, and dispatches3008 to the empty Window.osc_context; official-binary archive SHA256d573618b911e9c461bd421b96c13c74c7f1cb2f1ac9c327818d4ff84366cf5c6; Termless 356984aeea7ae66e08bf0135978179d6294321a8 packages/kitty/build/bridge.py:164-182. OSC9/777 binding losses and OSC22 pointer handler are excluded",
   },
   ghosttyNative: {
     kind: "native",

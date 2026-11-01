@@ -167,7 +167,7 @@ const absentOscBatch = [
       engine: "kitty",
       engineVersion: "0.49.2",
       sha256: "bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886",
-      sourceCommit: "f736cce493439cf9d651297c2a920cb61fa05fb5",
+      sourceCommit: "356984aeea7ae66e08bf0135978179d6294321a8",
       buildHash: "88e840e1b8e7f09edf3464ee33df8753fd5107838de15bccb6ea59e0dd6cc9c3",
       lockSha256: "282d1098337a5705a7c1d13188a74d2fe34565766619e8d6b21a48d5b67451be",
       adapterSources: [
