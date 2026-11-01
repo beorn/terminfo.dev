@@ -163,8 +163,9 @@ test.each([
       expect(result.note).toContain(
         "presentation (tearing, scroll cadence, inverted frame) unmeasured; protocol measured",
       )
-      if (snapshot === 2 && enabled === 2)
+      if (snapshot === 2 && enabled === 2) {
         expect(result.note).toContain("recognized but DECSET refused (mode kept reset)")
+      }
     }
   }
   expect(definition.termWrites).toBeUndefined()
