@@ -3314,6 +3314,38 @@ test.each([
   },
 )
 
+// Unit source-audit metadata, not runner checkout attestation. Standalone CI has no owned siblings.
+// Adapter sources are still read from each actual loaded backend below.
+const qualifiedOscIdentities = {
+  xtermjs: {
+    kind: "js",
+    runtimeFormat: "js",
+    engineVersion: "6.0.0",
+    adapterVersion: "0.10.2",
+    termlessRevision: "9f0d4a5cbbeb2b7d9263ef7e07699df16a1cafc7",
+    resolvedPath: "node_modules/.bun/@xterm+headless@6.0.0/node_modules/@xterm/headless/lib-headless/xterm-headless.js",
+    integrity: {
+      kind: "registry",
+      lockIntegrity: "sha512-5Yj1QINYCyzrZtf8OFIHi47iQtI+0qYFPHmouEfG8dHNxbZ9Tb9YGSuLcsEwj9Z+OL75GJqPyJbyoFer80a2Hw==",
+    },
+  },
+  vterm: {
+    kind: "js",
+    runtimeFormat: "js",
+    engineVersion: "0.10.1",
+    adapterVersion: "0.10.2",
+    termlessRevision: "9f0d4a5cbbeb2b7d9263ef7e07699df16a1cafc7",
+    resolvedPath: "vendor/vterm/packages/vterm/src/index.ts",
+    integrity: {
+      kind: "source",
+      repository: "git@github.com:beorn/vterm.git",
+      revision: "67dd3960746766ed47e2bb4b2ced6503a78549cc",
+      treeOid: "e9d67d4b4ba7cb4caf0d0824b3b272c10e4b229e",
+      cleanTree: true,
+    },
+  },
+} as const
+
 // 30581: a refused callback result keeps its response under its feature id and its refused observation and
 // assertions as text in the refusal, on every recorder branch, so the run file shows what the grader saw.
 test.each([
@@ -3334,10 +3366,11 @@ test.each([
 ] as const)("registered OSC0 declaration refuses $returned for the actual $name source", async (scenario) => {
   const value = await scenario.factory()
   const identity = {
-    ...(await headlessIdentity.headlessRuntimeIdentity(scenario.name, scenario.package, "js")),
+    ...qualifiedOscIdentities[scenario.name],
     adapterSources: headlessIdentity.readAdapterSources(scenario.name, value),
   }
   value.destroy()
+  vi.spyOn(headlessIdentity, "headlessRuntimeIdentity").mockResolvedValue(identity)
   const registered = registryDefinitions(["extensions.osc0-icon-title"])[0]!
   const batch = await collectBatch(
     scenario.factory,
@@ -3382,10 +3415,11 @@ test("real qualified OSC callbacks survive pending and unit-reviewed sealed read
   })
   const identityBackend = await backend()
   const identity = {
-    ...(await headlessIdentity.headlessRuntimeIdentity("xtermjs", "@termless/xtermjs", "js")),
+    ...qualifiedOscIdentities.xtermjs,
     adapterSources: headlessIdentity.readAdapterSources("xtermjs", identityBackend),
   }
   identityBackend.destroy()
+  vi.spyOn(headlessIdentity, "headlessRuntimeIdentity").mockResolvedValue(identity)
   const batch = await collectBatch(backend, "xtermjs", registryDefinitions(ids), draft, undefined, {
     identity,
     adapterPath: Bun.resolveSync("@termless/xtermjs", fileURLToPath(import.meta.url)),
