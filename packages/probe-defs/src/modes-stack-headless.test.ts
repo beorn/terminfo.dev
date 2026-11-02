@@ -341,7 +341,7 @@ test("modes.left-right-margin routes a readback whose ICH shows no shift to sour
   expect(result.tests).toEqual([
     {
       id: "review",
-      status: "test-failure",
+      status: "test-todo",
       reason: "ICH shifting row 1 right from column 3 in the headless readback (control frame not calibrated)",
     },
   ])

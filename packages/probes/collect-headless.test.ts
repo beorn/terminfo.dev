@@ -250,11 +250,11 @@ it.runIf(OWNED_LAYOUT)(
         tests: [expect.objectContaining({ id: "criterion", status: "unsupported" })],
       })
     }
-    // A missing DECCARA witness needs source review too; its failed review must keep the run private.
+    // A missing DECCARA witness remains pending source review; admission is separate from sealing.
     expect(draft.results.find((row) => row.featureId === "editing.decsace")).toMatchObject({
-      status: "test-failure",
+      status: "test-todo",
       criterionBranch: SOURCE_NEGATIVE_REVIEW,
-      tests: [expect.objectContaining({ id: "review", status: "test-failure" })],
+      tests: [expect.objectContaining({ id: "review", status: "test-todo" })],
     })
     expect(draft.results.find((row) => row.featureId === "input.kitty-click-events")).toMatchObject({
       status: "unsupported",

@@ -473,7 +473,7 @@ test.each(
   expect(result.criterionBranch).toBe("source-negative-review")
   expect(result.observation).toMatchObject({ outcome: "inconclusive", assertionType: "buffer_state" })
   expect(result.assertions).toMatchObject([{ kind: "negative", assertionType: "buffer_state" }])
-  expect(result.tests).toMatchObject([{ status: "test-failure" }])
+  expect(result.tests).toMatchObject([{ status: "test-todo" }])
   expect(JSON.parse(result.response!)).toMatchObject({ line: "XX", control: "consumed-without-effect" })
 })
 
@@ -521,7 +521,7 @@ test.each(capturedModeEngines)(
         expect.soft(result.assertions, id).toMatchObject([{ kind: "negative", assertionType: "buffer_state" }])
         expect
           .soft(result.tests, id)
-          .toEqual(expect.arrayContaining([expect.objectContaining({ status: "test-failure" })]))
+          .toEqual(expect.arrayContaining([expect.objectContaining({ status: "test-todo" })]))
         // Own DECSET/DECRST absence, not rejection of the separate query opcode.
         const state = JSON.parse(result.response!)
         expect.soft(state, id).toMatchObject({

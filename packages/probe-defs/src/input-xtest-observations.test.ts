@@ -1482,7 +1482,7 @@ test.each(
     expect(result.observation).toBeUndefined()
     expect(result.assertions).toBeUndefined()
     expect(result.tests).toMatchObject([
-      { id: "review", status: "test-failure", reason: expect.stringContaining("67dd3960") },
+      { id: "review", status: "test-todo", reason: expect.stringContaining("67dd3960") },
     ])
   } else if (identityCase === "drift") {
     expect(result.criterionBranch).toBeUndefined()

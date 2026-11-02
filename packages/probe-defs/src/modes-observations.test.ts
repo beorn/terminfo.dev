@@ -1459,7 +1459,7 @@ test.each([
     expect(result.tests).toEqual([
       {
         id: "review",
-        status: "test-failure",
+        status: "test-todo",
         reason:
           "CSI 9 SP p consumed with no visible effect; this library exposes no scroll-speed readback; decided only by an independent source review of the engine's CSI dispatcher",
       },

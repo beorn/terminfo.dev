@@ -354,7 +354,7 @@ test.each([
   const missing = run(null)
   expect(missing.notTested).toBeUndefined()
   expect(missing.criterionBranch).toBe("source-negative-review")
-  expect(missing.tests).toContainEqual(expect.objectContaining({ id: "review", status: "test-failure" }))
+  expect(missing.tests).toContainEqual(expect.objectContaining({ id: "review", status: "test-todo" }))
   expect(JSON.parse(missing.response!)).toEqual(expect.objectContaining({ [field]: null }))
   expect(missing.assertions).toContainEqual(
     expect.objectContaining({ kind: "negative", assertionType: "buffer_state" }),
@@ -421,7 +421,7 @@ test.each(["sgr.selective-reset.bold", "sgr.selective-reset.italic"])(
     expect(result.tests).toContainEqual(
       expect.objectContaining({
         id: "review",
-        status: "test-failure",
+        status: "test-todo",
         reason: expect.stringContaining("complete compound criterion pending"),
       }),
     )
@@ -441,7 +441,7 @@ test("a distinct reset seed with an unexposed reset cell keeps the existing FAIL
   }
   const result = sgrProbes.find((entry) => entry.id === "sgr.fg.default")!.lib!(source)
   expect(result.criterionBranch).toBe("source-negative-review")
-  expect(result.tests).toContainEqual(expect.objectContaining({ id: "review", status: "test-failure" }))
+  expect(result.tests).toContainEqual(expect.objectContaining({ id: "review", status: "test-todo" }))
 })
 
 test.each(["wrong requested color", "baseline already requested color"])(

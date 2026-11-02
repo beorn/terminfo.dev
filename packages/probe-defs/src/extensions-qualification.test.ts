@@ -612,7 +612,7 @@ test.each([
         expect(result.tests).toMatchObject([
           {
             id: "review",
-            status: "test-failure",
+            status: "test-todo",
             reason: expect.stringContaining(
               engine === "xtermjs" ? "17a90b65" : engine === "vterm" ? "67dd3960" : "9e99e4d2",
             ),
@@ -951,7 +951,7 @@ test("extensions.truecolor grades unexposed RGB targets against the independent 
   expect(monochrome.tests).toEqual([
     {
       id: "review",
-      status: "test-failure",
+      status: "test-todo",
       reason: expect.stringContaining("color controls"),
     },
   ])
@@ -1370,7 +1370,7 @@ test.each([
     expect(result.tests).toEqual([
       {
         id: "review",
-        status: "test-failure",
+        status: "test-todo",
         reason: `OSC ${setCode} initial colour readback is missing and OSC ${resetCode} reset was not observed; default-color readback reports only fg, bg, and cursor, so pointer-colour support requires source review`,
       },
     ])
@@ -2003,7 +2003,7 @@ test.each([
           assertionType: "buffer_state",
         })
         expect(result.tests).toMatchObject([
-          { id: "review", status: "test-failure", reason: expect.stringContaining("17a90b65") },
+          { id: "review", status: "test-todo", reason: expect.stringContaining("17a90b65") },
         ])
         expect(result.tests?.[0]?.reason).toContain(`no case ${setCode}/${resetCode}`)
         expect(result.tests?.[0]?.reason).toBe(
@@ -2234,7 +2234,7 @@ test.each([
     expect(JSON.parse(result.response!)).toEqual({ before: "original", after: "after" })
     expect(result.criterionBranch).toBe("source-negative-review")
     expect(result.tests).toMatchObject([
-      { id: "review", status: "test-failure", reason: expect.stringContaining(citation) },
+      { id: "review", status: "test-todo", reason: expect.stringContaining(citation) },
     ])
     expect(result.observation).toMatchObject({ outcome: "inconclusive", assertionType: "buffer_state" })
     expect(result.assertions).toMatchObject([{ kind: "negative", assertionType: "buffer_state" }])
@@ -2310,7 +2310,7 @@ test.each(["alacritty", "vt100-rust"])("%s absent mouse encodings require exact 
         expect(result.tests).toEqual([
           {
             id: "review",
-            status: "test-failure",
+            status: "test-todo",
             reason: expect.stringMatching(/1015.*1016.*independent source review required/),
           },
         ])
