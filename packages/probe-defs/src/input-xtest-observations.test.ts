@@ -1397,3 +1397,76 @@ test("input.kitty-click-events library arm records supported when control passes
     "release:4,2",
   ])
 })
+
+// @failure An unaudited input source negative is graded, or an audited negative stays OS-input TODO.
+// @consumer The four registered library callbacks; existing app and foreign mouse paths stay covered above.
+// Exact source, drift, dirt and foreign provenance are distinct outcomes, not backend-name aliases.
+test.each(
+  ["input.modify-other-keys", "input.modify-other-keys-3", "input.xtest-key", "input.kitty-click-events"].flatMap(
+    (id) =>
+      ["exact", "drift", "dirty", "foreign", "moved-path", "other-version", "other-format"].map(
+        (identityCase) => [id, identityCase] as const,
+      ),
+  ),
+)("%s retains the %s source qualification outcome", (id, identityCase) => {
+  const runtimeIdentity = {
+    kind: "js",
+    runtimeFormat: identityCase === "other-format" ? "wasm" : "js",
+    engineVersion: identityCase === "other-version" ? "unreviewed" : "0.10.1",
+    adapterVersion: "0.10.2",
+    termlessRevision: "a871f0e580e1b02fb5dbb7ed854f6de623e7858e",
+    resolvedPath: identityCase === "moved-path" ? "other/vterm/index.ts" : "vendor/vterm/packages/vterm/src/index.ts",
+    integrity: {
+      kind: "source",
+      repository: identityCase === "foreign" ? "git@example.test:foreign/engine.git" : "git@github.com:beorn/vterm.git",
+      revision: "67dd3960746766ed47e2bb4b2ced6503a78549cc",
+      treeOid: identityCase === "drift" ? "0".repeat(40) : "e9d67d4b4ba7cb4caf0d0824b3b272c10e4b229e",
+      cleanTree: identityCase !== "dirty",
+    },
+  } as const satisfies NonNullable<LibProbeSource["runtimeIdentity"]>
+  const source = { ...libMouseSource({ extensions: [] }), backendName: "vterm", runtimeIdentity }
+  const result = probe(id).lib!(source)
+  if (identityCase === "exact") {
+    expect(result.criterionBranch).toBe("source-negative-review")
+    expect(result.observation).toMatchObject({ outcome: "inconclusive", assertionType: "input_bytes" })
+    expect(result.assertions).toMatchObject([{ kind: "negative", assertionType: "input_bytes" }])
+    expect(result.tests).toMatchObject([
+      { id: "review", status: "test-failure", reason: expect.stringContaining("67dd3960") },
+    ])
+  } else if (identityCase === "drift") {
+    expect(result.criterionBranch).toBeUndefined()
+    expect(result.tests).toMatchObject([
+      { id: "criterion", status: "test-failure", reason: expect.stringContaining("source identity drift") },
+    ])
+    expect(result.assertions).toBeUndefined()
+  } else {
+    expect(result.criterionBranch).not.toBe("source-negative-review")
+    expect(result.observation).toBeUndefined()
+    expect(result.assertions).toBeUndefined()
+    const noObservable =
+      id === "input.kitty-click-events"
+        ? "shared core encoder carries no prompt state; vterm stores no click_events; #30936"
+        : "OS-level XTEST key injection"
+    expect(result).toEqual({
+      pass: false,
+      response: JSON.stringify(id === "input.kitty-click-events" ? { storedClickEvents: false } : { input: false }),
+      note: noObservable,
+      notTested: { reason: "no-semantic-observable", noObservable },
+      ...(id === "input.kitty-click-events"
+        ? {}
+        : {
+            criterionBranch: "os-input-review",
+            tests: [
+              {
+                id: "review",
+                status: "test-todo",
+                reason:
+                  id === "input.xtest-key"
+                    ? "Lib arm: the engine consumes bytes and has no input surface; host input encoding is measured in the terminal arm."
+                    : "Library probe source injects no OS-level input; required independent review of the retained raw state pending",
+              },
+            ],
+          }),
+    })
+  }
+})

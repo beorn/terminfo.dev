@@ -789,3 +789,13 @@ does not establish a measured reset negative. A missing OSC1 icon getter retains
 for pinned vt100, vt220, Alacritty and Ghostty WASM/native engines whose own dispatch discards the
 icon name. Other missing icon observers retain their existing coverage result. The review keeps
 the actual OSC1 stimulus and before/after title state; title behavior alone is not icon support.
+
+The four Vterm library input criteria (modify-other-keys, modify-other-keys-3,
+xtest-key and kitty-click-events) qualify source negatives only at the exact clean
+SOURCE_TREE_AUDITS.vterm identity. They retain input-byte negative assertions,
+inconclusive observations and required source-negative-review TEST FAILURE;
+no source decision or Unsupported grade is written. A changed tree at the same
+source identity retains the shared source-identity drift failure. Foreign or
+dirty identities retain their existing TODO. Kitty keeps its Vterm candidate
+boundary so unqualified Vterm builds cannot fall into the mouse-report path;
+other engines keep their existing callbacks. Terminal criteria are unchanged.

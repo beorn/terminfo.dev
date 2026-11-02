@@ -1722,7 +1722,7 @@ export const SOURCE_TREE_AUDITS = {
   },
 } as const
 
-function sourceTreeDrift(
+export function sourceTreeDrift(
   identity: LibProbeSource["runtimeIdentity"],
   expected: (typeof SOURCE_TREE_AUDITS)[keyof typeof SOURCE_TREE_AUDITS],
   state: object = {},

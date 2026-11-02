@@ -1,10 +1,28 @@
 import type { LibProbeSource, ProbeDefinition, ProbeCallbackResult, TermProbeSource } from "./types.ts"
-import { notTestedResult, osInputReviewResult, probe } from "./helpers.ts"
+import {
+  notTestedResult,
+  osInputReviewResult,
+  parserStateResult,
+  probe,
+  SOURCE_TREE_AUDITS,
+  sourceTreeDrift,
+} from "./helpers.ts"
 import { kittyKeyboardFlagProbe } from "./extensions.ts"
 import { queryPixelGeometry, type PixelGeometry } from "./region-readback.ts"
 
 export const inputProbes: ProbeDefinition[] = [
-  probe("input.modify-other-keys", () => headlessXtestReview("key injection"), modifyOtherKeys2, "input_bytes"),
+  probe(
+    "input.modify-other-keys",
+    (ctx) =>
+      vtermInputSourceReview(
+        ctx,
+        "OS XTEST ctrl+i report under modifyOtherKeys 2 after plain-a delivery control",
+        { input: false },
+        "Vterm 67dd3960746766ed47e2bb4b2ced6503a78549cc packages/vterm/src/screen.ts:4688 dispatches greater-than CSI to handleCSIGt at2771-2824, which handles only c/q/u, with no XTMODKEYS m handler or state; required source review pending",
+      ) ?? headlessXtestReview("key injection"),
+    modifyOtherKeys2,
+    "input_bytes",
+  ),
 
   // Negotiation only; actual key encoding requires an input-event observation.
   kittyKeyboardFlagProbe("input.csi-u", 1, 1),
@@ -13,11 +31,33 @@ export const inputProbes: ProbeDefinition[] = [
   probe("input.urxvt-mouse", (ctx) => mouseEncodingLib(ctx, "urxvt"), urxvtMouse, "input_bytes"),
   probe("input.x10-mouse", (ctx) => mouseEncodingLib(ctx, "x10"), x10Mouse, "input_bytes"),
 
-  probe("input.modify-other-keys-3", () => headlessXtestReview("key injection"), modifyOtherKeys3, "input_bytes"),
+  probe(
+    "input.modify-other-keys-3",
+    (ctx) =>
+      vtermInputSourceReview(
+        ctx,
+        "OS XTEST unmodified i report under modifyOtherKeys 3 after plain-a delivery control",
+        { input: false },
+        "Vterm 67dd3960746766ed47e2bb4b2ced6503a78549cc packages/vterm/src/screen.ts:4688 dispatches greater-than CSI to handleCSIGt at2771-2824, which handles only c/q/u, with no XTMODKEYS m handler or state; required source review pending",
+      ) ?? headlessXtestReview("key injection"),
+    modifyOtherKeys3,
+    "input_bytes",
+  ),
 
   probe("input.button-event-mouse", (ctx) => mouseEncodingLib(ctx, "button"), buttonEventMouse, "input_bytes"),
 
-  probe("input.xtest-key", () => headlessXtestReview("key injection", true), xtestKey, "input_bytes"),
+  probe(
+    "input.xtest-key",
+    (ctx) =>
+      vtermInputSourceReview(
+        ctx,
+        "OS XTEST ctrl+a report after plain-a delivery control",
+        { input: false },
+        "Vterm 67dd3960746766ed47e2bb4b2ced6503a78549cc packages/vterm/src/screen.ts:1273-1279 leaves key encoding to the host and defaults kitty flags to0; Termless a871f0e580e1b02fb5dbb7ed854f6de623e7858e packages/vterm/src/backend.ts:372 binds encodeKeyToAnsi, src/terminal/key-mapping.ts:107-122 maps Ctrl+A to0x01 rather than the criterion extended report; required source review pending",
+      ) ?? headlessXtestReview("key injection", true),
+    xtestKey,
+    "input_bytes",
+  ),
   probe("input.xtest-click", (ctx) => mouseEncodingLib(ctx, "click"), xtestClick, "input_bytes"),
   probe("input.xtest-wheel", (ctx) => mouseEncodingLib(ctx, "wheel"), xtestWheel, "input_bytes"),
   {
@@ -81,6 +121,30 @@ function headlessXtestReview(kind: string, byDesign = false): ProbeCallbackResul
       ? "Lib arm: the engine consumes bytes and has no input surface; host input encoding is measured in the terminal arm."
       : undefined,
   )
+}
+
+/** One exact source qualifier for the four audited input negatives; drift keeps the shared failure. */
+function vtermInputSourceReview(
+  ctx: LibProbeSource,
+  expected: string,
+  state: object,
+  sourceReviewReason: string,
+): ProbeCallbackResult | undefined {
+  const identity = ctx.runtimeIdentity
+  const audit = SOURCE_TREE_AUDITS.vterm
+  if (
+    identity?.kind === "js" &&
+    identity.runtimeFormat === audit.runtimeFormat &&
+    identity.resolvedPath === audit.resolvedPath &&
+    identity.engineVersion === audit.engineVersion &&
+    identity.integrity.kind === "source" &&
+    identity.integrity.repository === audit.repository &&
+    identity.integrity.treeOid === audit.treeOid &&
+    identity.integrity.cleanTree
+  ) {
+    return parserStateResult(false, expected, state, undefined, sourceReviewReason, "input_bytes")
+  }
+  return sourceTreeDrift(identity, audit, state)
 }
 
 async function deliveryControl(
@@ -601,7 +665,16 @@ function mouseEncodingLib(
 }
 
 function kittyClickEventsLib(ctx: LibProbeSource): ProbeCallbackResult {
+  const expected =
+    "Click inside a main-screen OSC 133 prompt marked click_events=1 reports SGR mouse while mouse modes are off"
   if (ctx.backendName === "vterm") {
+    const reviewed = vtermInputSourceReview(
+      ctx,
+      expected,
+      { storedClickEvents: false },
+      "Vterm 67dd3960746766ed47e2bb4b2ced6503a78549cc packages/vterm/src/screen.ts:3625-3642 stores OSC133 A/B/C zone positions from the first character and drops parameters, so click_events is never stored; required source review pending",
+    )
+    if (reviewed) return reviewed
     return notTestedResult("shared core encoder carries no prompt state; vterm stores no click_events; #30936", {
       storedClickEvents: false,
     })
@@ -615,8 +688,6 @@ function kittyClickEventsLib(ctx: LibProbeSource): ProbeCallbackResult {
   const cell = { x: 4, y: 2 } as const
   const targetPoint = { x: cell.x + 1, y: cell.y + 1 }
   const nonPromptCell = { x: cell.x, y: cell.y + 1 } as const
-  const expected =
-    "Click inside a main-screen OSC 133 prompt marked click_events=1 reports SGR mouse while mouse modes are off"
   const csi = MOUSE_SET.slice(0, 2)
   ctx.feed(MOUSE_SET)
   let control: string | null = null

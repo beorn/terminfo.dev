@@ -2219,6 +2219,61 @@ test.each([
   expect(parsed.assertions).toEqual(batch.assertions)
 })
 
+// @failure Callback source-review custody is lost when recorded as a real headless batch.
+// @consumer The four registered Vterm input callbacks through collectBatch; no capture or attestation.
+test("audited Vterm input negatives retain required source review through the collector", async () => {
+  const ids = ["input.modify-other-keys", "input.modify-other-keys-3", "input.xtest-key", "input.kitty-click-events"]
+  // Identity is a unit fixture; it does not attest this runner or grant collection/admission.
+  const identity = {
+    kind: "js",
+    runtimeFormat: "js",
+    engineVersion: "0.10.1",
+    adapterVersion: "0.10.2",
+    termlessRevision: "a871f0e580e1b02fb5dbb7ed854f6de623e7858e",
+    resolvedPath: "vendor/vterm/packages/vterm/src/index.ts",
+    adapterSources: [{ path: "packages/vterm/src/index.ts", blobOid: "a".repeat(40) }],
+    integrity: {
+      kind: "source",
+      repository: "git@github.com:beorn/vterm.git",
+      revision: "67dd3960746766ed47e2bb4b2ced6503a78549cc",
+      treeOid: "e9d67d4b4ba7cb4caf0d0824b3b272c10e4b229e",
+      cleanTree: true,
+    },
+  } as const
+  vi.spyOn(headlessIdentity, "headlessRuntimeIdentity").mockResolvedValue(identity)
+  const batch = await collectBatch(
+    async () => {
+      const value = createVtermBackend()
+      value.getAdapterSources = () => identity.adapterSources
+      return value
+    },
+    "vterm",
+    registryDefinitions(ids),
+    undefined,
+    undefined,
+    {
+      identity,
+      adapterPath: Bun.resolveSync("@termless/vterm", fileURLToPath(import.meta.url)),
+      adapterPackage: "@termless/vterm",
+      adapterType: "js",
+    },
+  )
+  expect(batch.ungradedDiagnostics).toEqual({})
+  expect(batch.results).toHaveLength(ids.length)
+  expect(batch.notTested).toEqual([])
+  for (const id of ids) {
+    expect(batch.results.find((row) => row.featureId === id)).toMatchObject({
+      status: "test-failure",
+      criterionBranch: "source-negative-review",
+      assertionType: "input_bytes",
+      tests: [{ id: "review", status: "test-failure", reason: expect.stringContaining("67dd3960") }],
+    })
+    expect(batch.assertions).toContainEqual(
+      expect.objectContaining({ featureId: id, kind: "negative", assertionType: "input_bytes" }),
+    )
+  }
+})
+
 // @failure Unknown state and named unavailable input become measured negatives, or programming errors become TODO.
 // @level l1
 // @consumer The production mouse library arm through the real collector.
