@@ -4926,7 +4926,7 @@ export const extensionsProbes: ProbeDefinition[] = [
               // Current library DECRQM siblings in device.ts/modes.ts; one silent mode is insufficient.
               const controls = []
               let allSilent = true
-              for (const mode of [7, 2004, 1, 1000, 1004, 5, 2026, 1006, 1003, 1005, 3, 2031]) {
+              for (const mode of [7, 2004, 1, 1000, 1004, 5, 2026, 1006, 1003, 1007, 1005, 3, 4, 2031]) {
                 const control = ctx.queryWithSentinelOutcome(`\x1b[?${mode}$p`, decrpmReplyPattern(mode))
                 controls.push({ mode, raw: control.raw })
                 if (sentinelSilenceResult(control, "DECRPM prerequisite reply") === null) {

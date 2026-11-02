@@ -3059,10 +3059,13 @@ describe("Kitty protocol detection", () => {
       } else expect(result.response).toBe(da1)
     }
 
-    // A different same-run sibling can answer while DECAWM stays silent (peer AC4 counterexample).
+    // AC4: any current library sibling can answer while DECAWM stays silent.
+    // The older 2026/2031 fixtures missed library modes added during composition.
     for (const [id, mode] of [
       ["modes.synchronized-output", 2026],
       ["modes.color-scheme-reporting", 2031],
+      ["modes.alt-scroll-1007", 1007],
+      ["modes.decsclm", 4],
     ] as const) {
       // The current sibling criterion checks set/reset replies AND adapter state.
       let enabled = false
@@ -3071,7 +3074,7 @@ describe("Kitty protocol detection", () => {
           if (sequence === `\x1b[?${mode}h`) enabled = true
           if (sequence === `\x1b[?${mode}l`) enabled = false
         },
-        getMode: () => enabled,
+        getMode: (name) => (name === "insertMode" ? false : enabled),
         feedCapture: (sequence) => (sequence === `\x1b[?${mode}$p` ? `\x1b[?${mode};${enabled ? 1 : 2}$y` : ""),
         queryWithSentinelOutcome(sequence, pattern) {
           const raw = sequence === `\x1b[?${mode}$p` ? `\x1b[?${mode};${enabled ? 1 : 2}$y${da1}` : da1
