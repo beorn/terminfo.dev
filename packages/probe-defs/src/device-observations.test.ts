@@ -95,6 +95,53 @@ const DECRQSS_DECSTBM_VALID = "\x1bP1$r1;24r\x1b\\"
 const DECRQSS_DECSCL_VALID = '\x1bP1$r62;1"p\x1b\\'
 const DA1 = "\x1b[?62;52;c"
 
+test.each([
+  { replies: [DECRQSS_SGR_VALID], outcome: "supported", observed: DECRQSS_SGR_VALID },
+  {
+    replies: [DECRQSS_REFUSAL, DECRQSS_DECSTBM_VALID],
+    outcome: "supported",
+    observed: DECRQSS_DECSTBM_VALID,
+    response: DECRQSS_DECSTBM_VALID,
+  },
+  {
+    replies: [DECRQSS_REFUSAL, DECRQSS_REFUSAL, DECRQSS_DECSCL_VALID],
+    outcome: "supported",
+    observed: DECRQSS_DECSCL_VALID,
+  },
+  { replies: [DECRQSS_REFUSAL, DECRQSS_REFUSAL, DECRQSS_REFUSAL], outcome: "inconclusive" },
+  { replies: [DECRQSS_REFUSAL, "\x1bP1$r"], outcome: "inconclusive" },
+  { replies: [DECRQSS_REFUSAL, ""], outcome: "test-failure" },
+])(
+  "plain library DECRQSS samples only after complete selector refusal: $replies",
+  ({ replies, outcome, observed, response }) => {
+    const selectors = [DECRQSS_SGR_QUERY, DECRQSS_DECSTBM_QUERY, DECRQSS_DECSCL_QUERY]
+    const queries: string[] = []
+    const result = callback("device.decrqss").headless({
+      feedCapture: (sequence: string) => {
+        const at = queries.length
+        queries.push(sequence)
+        const raw = replies[at]
+        if (raw === undefined) throw new Error(`unexpected selector ${JSON.stringify(sequence)}`)
+        return raw
+      },
+    } as unknown as LibProbeSource)
+    expect(queries).toEqual(selectors.slice(0, replies.length))
+    if (outcome === "test-failure") {
+      expect(result.observation).toBeUndefined()
+      expect(result.tests).toMatchObject([expect.objectContaining({ status: "test-failure" })])
+      return
+    }
+    expect(result.observation).toMatchObject({ outcome, assertionType: "query_reply" })
+    if (observed !== undefined) {
+      expect(result.assertions).toMatchObject([{ kind: "positive", observed }])
+      expect(result.response).toBe(response ?? replies.join(""))
+    } else {
+      expect(result.assertions).toBeUndefined()
+      expect(result.observation?.note).toContain("SGR refused")
+    }
+  },
+)
+
 function terminalScript(
   replies: Record<
     string,
@@ -332,7 +379,7 @@ describe("device query observations", () => {
       outcome: "inconclusive",
       reason: "insufficient-evidence",
       assertionType: "query_reply",
-      note: "Requested setting or name refused; other settings or names unmeasured",
+      note: "SGR refused; DECSTBM refused; DECSCL refused",
     })
     for (const [id, frame] of [
       ["device.xtgettcap", "\x1bP0+r\x1b\\"],
