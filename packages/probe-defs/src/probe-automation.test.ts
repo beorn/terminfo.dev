@@ -3064,10 +3064,17 @@ describe("Kitty protocol detection", () => {
       ["modes.synchronized-output", 2026],
       ["modes.color-scheme-reporting", 2031],
     ] as const) {
+      // The current sibling criterion checks set/reset replies AND adapter state.
+      let enabled = false
       const ctx = context({
-        feedCapture: (sequence) => (sequence === `\x1b[?${mode}$p` ? `\x1b[?${mode};1$y` : ""),
+        feed(sequence) {
+          if (sequence === `\x1b[?${mode}h`) enabled = true
+          if (sequence === `\x1b[?${mode}l`) enabled = false
+        },
+        getMode: () => enabled,
+        feedCapture: (sequence) => (sequence === `\x1b[?${mode}$p` ? `\x1b[?${mode};${enabled ? 1 : 2}$y` : ""),
         queryWithSentinelOutcome(sequence, pattern) {
-          const raw = sequence === `\x1b[?${mode}$p` ? `\x1b[?${mode};1$y${da1}` : da1
+          const raw = sequence === `\x1b[?${mode}$p` ? `\x1b[?${mode};${enabled ? 1 : 2}$y${da1}` : da1
           const match = raw.match(pattern)
           return {
             raw,
@@ -3083,7 +3090,7 @@ describe("Kitty protocol detection", () => {
       expect(target.tests?.[0]?.status).toBe("test-failure")
       expect(JSON.parse(target.response!)).toMatchObject({
         detection: da1,
-        decrpmSiblings: expect.arrayContaining([{ mode, raw: `\x1b[?${mode};1$y${da1}` }]),
+        decrpmSiblings: expect.arrayContaining([{ mode, raw: `\x1b[?${mode};2$y${da1}` }]),
       })
       expect(target.observation).toBeUndefined()
       expect(target.assertions).toBeUndefined()
