@@ -948,7 +948,7 @@ usage() {
   echo "A source-tree collector also needs TERMINFO_PROBE_HASH and TERMINFO_SOURCE_REVISION" >&2
   echo "  from sourceSuiteEnvironment() in packages/admin/versions.ts, or serve.ts refuses the run." >&2
   echo "Retains raw/v3-capture.json, then finalizes a private sibling." >&2
-  echo "That sibling seals automatically when no required review is pending." >&2
+  echo "That sibling stays an unsealed draft; release collection --freeze seals it and composes the final receipt." >&2
   echo "This launcher has no capture-only mode; do not use it for a raw-only authorization." >&2
   exit 2
 }
@@ -1293,13 +1293,15 @@ TERMINFO_CAPTURE_RAW="$raw/v3-capture.json" TERMINFO_CAPTURE_OUTPUT="$raw" bun -
   import {readFileSync,writeFileSync} from "node:fs";
   import {join} from "node:path";
   import {readRetainedDaemonProbeResponse,finalizeCollectedDraft} from "./packages/terminfo.dev/src/daemon-client.ts";
+  import {getTrustedSuiteReceipt} from "./packages/terminfo.dev/src/serve.ts";
   const directory=process.env.TERMINFO_CAPTURE_OUTPUT;
-  const retained=await readRetainedDaemonProbeResponse(new Response(readFileSync(process.env.TERMINFO_CAPTURE_RAW)),{directory:join(directory,"http-responses")});
+  let receipt;
+  const retained=await readRetainedDaemonProbeResponse(new Response(readFileSync(process.env.TERMINFO_CAPTURE_RAW)),{directory:join(directory,"http-responses"),get receipt(){return receipt=getTrustedSuiteReceipt();}});
   if(retained.kind==="empty-selection") throw new Error("Empty selection where a capture was required");
-  const run=finalizeCollectedDraft(retained.run);
+  const run=finalizeCollectedDraft(retained.run,undefined,{manifest:receipt.manifest,decisions:[],origin:()=>undefined,keepDraft:true});
   const path=join(directory,run.sealedAt===undefined?"v3-run.draft.json":"v3-run.json");
   writeFileSync(path,JSON.stringify(run,null,2)+"\n",{flag:"wx",mode:0o600});
-  console.error(run.sealedAt===undefined?"Valid capture; required review pending":"Sealed current schema-4 run");
+  console.error(run.sealedAt===undefined?"Valid unsealed capture; no final completion receipt":"Sealed current schema-4 run");
 '
 if [[ -f "$raw/v3-run.json" ]]; then
   compose_receipt "$raw/host-measured.json" "$raw/container-receipt.json" "$raw/run-receipt.json" "$raw/v3-run.json"

@@ -120,9 +120,7 @@ export function createDraft(
     ...(run.schemaVersion === 4 && !complete
       ? ["Current execution is incomplete: TEST TODO or TEST FAILURE remains."]
       : []),
-    ...(run.schemaVersion === 4 && !("sealedAt" in run)
-      ? ["Required review pending: this capture remains an unsealed draft."]
-      : []),
+    ...(run.schemaVersion === 4 && !("sealedAt" in run) ? ["Unsealed draft: not sealed or admitted."] : []),
     "",
     "## Measured context and coverage",
     "",

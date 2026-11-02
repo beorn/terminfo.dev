@@ -531,7 +531,12 @@ export async function collectHeadlessRuns(
           resolved.probes,
         )
       }
-      const finalPath = saveDaemonProbeRun(captured, directory)
+      const finalPath = saveDaemonProbeRun(captured, directory, undefined, {
+        manifest: derivedSuiteManifest(suite),
+        decisions: [],
+        origin: () => undefined,
+        keepDraft: true,
+      })
       parseRun(
         finalPath,
         readFileSync(finalPath, "utf8"),

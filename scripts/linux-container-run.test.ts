@@ -26,7 +26,9 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
-import type { LinuxMuxAttachmentProof } from "@terminfo/probe-defs"
+import { initializeRunDraft } from "@terminfo/probe-defs"
+import { derivedSuiteManifest, probeSuiteSnapshot } from "../packages/admin/versions.ts"
+import type { LinuxMuxAttachmentProof, CapturedRunDraft, CaptureEvidence } from "@terminfo/probe-defs"
 import { bindReceiptToRun, parseDisposableReceipt } from "../packages/terminfo.dev/src/disposable-receipt.ts"
 
 const launcher = fileURLToPath(new URL("./linux-container-run.sh", import.meta.url))
@@ -1004,4 +1006,85 @@ describe("declared probe-batch timeout is one value for curl and host attach", (
     expect(source).not.toMatch(/--max-time 120\b/)
     expect(source).not.toMatch(/timeout 180 docker start --attach/)
   })
+})
+
+// Raw finalization owns this decision; receipt-only tests never execute it with a valid capture.
+it.each([false, true])("retains a Linux raw draft without completion receipt, review=%s", (pending) => {
+  const source = readFileSync(launcher, "utf8")
+  const command = source.match(/^(?:TERMINFO_[A-Z_]+="[^\n]*\n?)+bun [^\n]*-e '[\s\S]*?^'/m)
+  if (!command) throw new Error("Host Bun readback command not found")
+  const receiptTail = source.slice(source.indexOf('if [[ -f "$raw/v3-run.json" ]]'))
+  if (!receiptTail.startsWith("if [[")) throw new Error("Host receipt completion block not found")
+  const suite = probeSuiteSnapshot()
+  const manifest = derivedSuiteManifest(suite)
+  const revision = spawnSync("git", ["rev-parse", "HEAD"], {
+    cwd: fileURLToPath(new URL("../", import.meta.url)),
+    encoding: "utf8",
+  }).stdout.trim()
+  const subject = {
+    kind: "term" as const,
+    id: "kitty",
+    version: "0.49.1",
+    os: "linux",
+    osVersion: null,
+    outerTerminal: null,
+    mux: null,
+    config: null,
+    permissions: null,
+  }
+  const capture = {
+    ...initializeRunDraft({
+      runId: "a".repeat(32),
+      manifest,
+      sourceRevision: revision,
+      source: { kind: "live" },
+      intendedSubject: subject,
+    }),
+    subject,
+    identity: "unverified",
+    measuredAt: "2026-11-02T12:00:00.000Z",
+    origin: { kind: "collector" },
+    screenshotRefs: [],
+  }
+  if (pending) {
+    capture.results.find((row) => row.featureId === "device.primary-da")!.tests = [
+      { id: "review", status: "test-todo", attempt: { scope: "none" }, reason: "Required context review pending" },
+    ]
+  }
+  writeFileSync(join(dir, "v3-capture.json"), JSON.stringify(capture))
+  // Only bypass dirty-checkout discovery: capture decoding and finalization remain real.
+  const fixtureCommand = command[0].replace(
+    "-e '",
+    `-e 'import {mock} from "bun:test"; mock.module("./packages/terminfo.dev/src/serve.ts",()=>({getTrustedSuiteReceipt:()=>JSON.parse(process.env.FIXTURE_RECEIPT)}));`,
+  )
+  const result = spawnSync(
+    "bash",
+    [
+      "-c",
+      `set -e\nsource "$5"\nsuite_hash=$1 source_revision=$2 raw=$3 run_dir=$3 vendor_root=$4\n${fixtureCommand}\n${receiptTail}`,
+      "_",
+      suite.probeHash,
+      revision,
+      dir,
+      fileURLToPath(new URL("../", import.meta.url)),
+      launcher,
+    ],
+    {
+      encoding: "utf8",
+      env: { ...process.env, FIXTURE_RECEIPT: JSON.stringify({ manifest, collectorRevision: revision }) },
+    },
+  )
+  expect(result.status, result.stderr).toBe(0)
+  expect(readdirSync(dir), `${result.stdout}\n${result.stderr}`).toContain("v3-run.draft.json")
+  expect(existsSync(join(dir, "v3-run.json"))).toBe(false)
+  expect(existsSync(join(dir, "run-receipt.json"))).toBe(false)
+  const saved = JSON.parse(readFileSync(join(dir, "v3-run.draft.json"), "utf8")) as CapturedRunDraft
+  expect(saved).not.toHaveProperty("sealedAt")
+  expect(result.stderr).toContain("unsealed")
+  if (pending) {
+    expect(
+      (JSON.parse(saved.rawReplies["collector.evidence.device.primary-da"]!) as CaptureEvidence).projection.feature
+        .catalogEntrySha256,
+    ).toBe(manifest.catalogEntrySha256!["device.primary-da"])
+  }
 })
