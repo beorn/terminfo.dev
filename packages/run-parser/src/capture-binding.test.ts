@@ -2629,6 +2629,18 @@ it("validates historical review bindings against original keys and assertion byt
   expect(parsed.results?.[0]?.status).toBe("supported")
   expect(parsed.results?.[0]).not.toHaveProperty("checks")
   expect(parsed.assertions[0]?.assertionType).toBe("query_reply")
+  // Schema 3 keeps measured-evidence validation even when its old checks resemble
+  // a current source-only review; the new producer exists only in schema 4.
+  const sourceOnly = structuredClone(raw)
+  sourceOnly.assertions = []
+  const sourceResult = sourceOnly.results[0]!
+  delete (sourceResult as { evidence?: string }).evidence
+  Object.assign(sourceResult, { status: "unsupported", criterionBranch: "source-negative-review" })
+  sourceResult.checks = [{ ...sourceResult.checks[1]!, status: "unsupported", assertionRefs: [] }]
+  sourceOnly.rawReplies["collector.review.old-review"] = JSON.stringify({ ...review, decision: "unsupported" })
+  expect(() => parseRun(
+    "old-source-only.json", JSON.stringify(sourceOnly), [featureId], new Map([[manifest.probeHash, manifest]]),
+  )).toThrow("support result requires measured evidence")
   const changed = { ...raw, rawReplies: { ...raw.rawReplies, [featureId]: "NO" } }
   expect(() =>
     parseRun("changed.json", JSON.stringify(changed), [featureId], new Map([[manifest.probeHash, manifest]])),
