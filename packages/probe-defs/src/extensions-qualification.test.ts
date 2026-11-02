@@ -5,6 +5,7 @@
  * @testonly none
  */
 import { expect, test } from "vitest"
+import { inputProbes } from "./input.ts"
 import { extensionsProbes } from "./extensions.ts"
 import { deviceProbes, TERM_FEATURES_API_CITATIONS } from "./device.ts"
 import { replayTermProbeSource } from "./testing/group-harness.ts"
@@ -250,7 +251,9 @@ test("ghostty OSC source review lapses on the pre-mouse-binding backend blob", (
   const old = {
     ...ghostty.identity,
     adapterSources: sources.map((source) =>
-      source.path === "packages/ghostty/src/backend.ts" ? { ...source, blobOid: "7a917fe46b72d9870b898e71d440e7cb876b3fc1" } : source,
+      source.path === "packages/ghostty/src/backend.ts"
+        ? { ...source, blobOid: "7a917fe46b72d9870b898e71d440e7cb876b3fc1" }
+        : source,
     ),
   }
   const features: Record<number, string> = {
@@ -2195,3 +2198,110 @@ test.each([
     expect(foreign.criterionBranch).toBeUndefined()
   },
 )
+
+// The native engines retain legacy encoding for unhandled 1015/1016. Shared encoder bytes cannot
+// grade either feature. Existing OSC fixtures qualify the same binary/build/adapter identity.
+// Existing mouse fixtures lacked native provenance and could not catch this false Unsupported.
+test.each(["alacritty", "vt100-rust"])("%s absent mouse encodings require exact native source review", (engine) => {
+  const identity =
+    engine === "alacritty"
+      ? auditedArtifacts[0]!
+      : absentOscBatch.find((entry) => entry.engine === "vt100Rust")!.identity
+  if (identity.kind !== "native") throw new Error("native mouse fixture requires a native identity")
+  const cases = {
+    exact: identity,
+    "wrong engine": { ...identity, engineVersion: "foreign" },
+    "wrong binary": { ...identity, loadedBinary: { ...identity.loadedBinary, sha256: "0".repeat(64) } },
+    "wrong receipt binary": { ...identity, provenance: { ...identity.provenance, sha256: "0".repeat(64) } },
+    "wrong native source": { ...identity, provenance: { ...identity.provenance, sourceCommit: "0".repeat(40) } },
+    "wrong build": { ...identity, provenance: { ...identity.provenance, buildHash: "0".repeat(64) } },
+    "wrong lock": { ...identity, provenance: { ...identity.provenance, lockSha256: "0".repeat(64) } },
+    "wrong adapter version": { ...identity, adapterVersion: "foreign" },
+    "missing adapter proof": { ...identity, adapterSources: [] },
+    "wrong adapter blob": {
+      ...identity,
+      adapterSources: identity.adapterSources?.map((source) => ({ ...source, blobOid: "0".repeat(40) })),
+    },
+    "missing identity": undefined,
+  }
+  for (const id of ["input.pixel-mouse", "input.urxvt-mouse"]) {
+    const definition = inputProbes.find((entry) => entry.id === id)!
+    for (const [qualification, runtimeIdentity] of Object.entries(cases)) {
+      let tracking = false
+      const feeds: string[] = []
+      const ctx = {
+        kind: "live",
+        backendName: engine,
+        runtimeIdentity,
+        capabilities: { extensions: new Set(["mouse-encoding"]) },
+        feed(text: string) {
+          feeds.push(text)
+          if (text.endsWith("l")) tracking = false
+          if (text.includes("?1000h")) tracking = true
+        },
+        getMode: () => tracking,
+        encodeMouse: () => (tracking ? new TextEncoder().encode("\x1b[M %#") : null),
+      } as unknown as LibProbeSource
+      const result = definition.lib!(ctx)
+      expect(result.pass, qualification).toBe(false)
+      expect(result.observation, qualification).toBeUndefined()
+      expect(result.assertions, qualification).toBeUndefined()
+      expect(tracking, qualification).toBe(false)
+      if (qualification === "exact") {
+        expect(result.criterionBranch).toBe("source-negative-review")
+        expect(result.tests).toEqual([
+          {
+            id: "review",
+            status: "test-failure",
+            reason: expect.stringMatching(/1015.*1016.*independent source review required/),
+          },
+        ])
+        expect(result.tests?.[0]?.reason).toContain(
+          engine === "alacritty" ? "alacritty_terminal 0.26.0" : "vt100 0.16.2",
+        )
+        expect(JSON.parse(result.response!)).toMatchObject({
+          report: "\x1b[M %#",
+          negativeControl: null,
+          tracking: true,
+        })
+      } else {
+        expect(result.criterionBranch, qualification).toBeUndefined()
+        expect(result.notTested?.noObservable, qualification).toMatch(/no qualified native mouse encoding source audit/)
+      }
+    }
+  }
+})
+
+// Same six registered arms: native absence changes only1015/1016, never engine-native Xterm/Ghostty.
+test.each(["xtermjs", "ghostty", "alacritty", "vt100-rust"])("%s keeps the other mouse encoding criteria", (engine) => {
+  const rows = [
+    ["input.pixel-mouse", "\x1b[<0;41;25M"],
+    ["input.urxvt-mouse", "\x1b[32;5;3M"],
+    ["input.x10-mouse", "\x1b[M %#"],
+    ["input.button-event-mouse", "\x1b[<32;5;3M"],
+    ["input.xtest-click", "\x1b[<0;5;3M"],
+    ["input.xtest-wheel", "\x1b[<64;5;3M"],
+  ]
+  for (const [id, report] of rows) {
+    if ((engine === "alacritty" || engine === "vt100-rust") && /(?:pixel|urxvt)-mouse/.test(id!)) continue
+    let tracking = false
+    const feeds: string[] = []
+    const result = inputProbes.find((entry) => entry.id === id)!.lib!({
+      kind: "live",
+      backendName: engine,
+      capabilities: { extensions: new Set(["mouse-encoding"]) },
+      feed(text: string) {
+        feeds.push(text)
+        tracking = !text.endsWith("l")
+      },
+      getMode: () => tracking,
+      encodeMouse: () => (tracking ? new TextEncoder().encode(report) : null),
+    } as unknown as LibProbeSource)
+    expect(result.pass, id).toBe(true)
+    expect(result.observation, id).toEqual({ outcome: "supported", assertionType: "input_bytes" })
+    expect(result.assertions?.[0]?.kind, id).toBe("positive")
+    expect(JSON.parse(result.response!), id).toEqual({ tracking: true, negativeControl: null, report })
+    expect(tracking, id).toBe(false)
+    expect(feeds.at(-1), id).toContain("1015;1016l")
+  }
+})

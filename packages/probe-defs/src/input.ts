@@ -1,6 +1,7 @@
 import type { LibProbeSource, ProbeDefinition, ProbeCallbackResult, TermProbeSource } from "./types.ts"
 import {
   notTestedResult,
+  reviewResult,
   osInputReviewResult,
   SOURCE_NEGATIVE_REVIEW,
   probe,
@@ -8,7 +9,7 @@ import {
   sourceTreeDrift,
   withModeSourceReview,
 } from "./helpers.ts"
-import { kittyKeyboardFlagProbe } from "./extensions.ts"
+import { auditedOscEngine, kittyKeyboardFlagProbe } from "./extensions.ts"
 import { queryPixelGeometry, type PixelGeometry } from "./region-readback.ts"
 
 const inputDefinitions: ProbeDefinition[] = [
@@ -649,6 +650,30 @@ function mouseEncodingLib(
     }
     const report = decodeMouseReport(ctx.encodeMouse(event))
     const observed = { tracking: enabled, negativeControl, report }
+    if (
+      (kind === "pixel" || kind === "urxvt") &&
+      (ctx.backendName === "alacritty" || ctx.backendName === "vt100-rust")
+    ) {
+      const mode = kind === "pixel" ? 1016 : 1015
+      const audited = auditedOscEngine(ctx.runtimeIdentity)
+      const audit = audited?.[1]
+      if (
+        audited?.[0] !== (ctx.backendName === "alacritty" ? "alacritty" : "vt100Rust") ||
+        !audit ||
+        !("absentMouseEncodings" in audit) ||
+        !audit.absentMouseEncodings.some((value) => value === mode)
+      ) {
+        return notTestedResult(
+          `${ctx.backendName}: no qualified native mouse encoding source audit for ${mode}`,
+          observed,
+        )
+      }
+      const reason = `${audit.mouseEncodingSourceCitation}; 1015/1016 shared encoder bytes are instrument output, not engine evidence; independent source review required`
+      return {
+        ...reviewResult(SOURCE_NEGATIVE_REVIEW, reason, `Native engine stores no mouse encoding ${mode}`, observed),
+        tests: [{ id: "review", status: "test-failure", reason }],
+      }
+    }
     return enabled && report === expected
       ? interactionResult(`mouse-encoding:${kind}`, expected, observed)
       : unsupportedInteraction(`mouse-encoding:${kind}`, expected, observed)

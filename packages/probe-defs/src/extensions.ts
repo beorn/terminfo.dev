@@ -1304,6 +1304,9 @@ const ABSENT_OSC_ENGINES = {
     engineVersion: "0.26.0",
     adapterVersion: "0.10.2",
     binarySha256: "21d4b43c1d4c401c5b9f8114de85b3e837605242363c322c2dcb37e4a42fba61",
+    absentMouseEncodings: [1015, 1016],
+    mouseEncodingSourceCitation:
+      "alacritty_terminal 0.26.0 src/term/mod.rs:55-87 TermMode stores SGR/UTF8 only; :1935-1941 ignores unknown private modes and :1958-1980 sets only SGR/UTF8 mouse encoding; vte 0.15.0 src/ansi.rs:896-933 PrivateMode mapping has no 1015/1016, so the previous encoding is retained",
     sourceCommit: "824119c28b46bd701b222a91df0da860f0307950",
     buildHash: "634c14c5258327eff925d20d24918098c9aee92c1e6291e0ca770d2677015171",
     lockSha256: "1f89f2579b7d786a116d8fefb8267c4af076bd3a3893adcf14b00c4466740497",
@@ -1352,6 +1355,9 @@ const ABSENT_OSC_ENGINES = {
     engineVersion: "0.16.2",
     adapterVersion: "0.10.2",
     binarySha256: "dc3b24de6e91416f66b1953ce101991ef7e78602ce1b5d357f65832c9b96b326",
+    absentMouseEncodings: [1015, 1016],
+    mouseEncodingSourceCitation:
+      "vt100 0.16.2 src/screen.rs:39-52 MouseProtocolEncoding stores Default/Utf8/Sgr only; :1139-1213 DECSET/DECRST handles only 1005/1006 encoding and sends unhandled 1015/1016 to the callback without changing the previous encoding",
     sourceCommit: "27297cf2a4a4e21b41ca3aafc7bc87ac36086fdf",
     buildHash: "d5079c0f2a27be41c9a3f6b152d62da2bbf82fd189fdfb487b5a0c8b3ed8a654",
     lockSha256: "4cf037e4efa648ca41d08b30ef5c4ce7ada29ad61fcad45a7d1aa97bf55391c6",
@@ -1361,7 +1367,7 @@ const ABSENT_OSC_ENGINES = {
   },
 } as const
 
-function auditedOscEngine(identity: LibProbeSource["runtimeIdentity"], code?: number | "133;D") {
+export function auditedOscEngine(identity: LibProbeSource["runtimeIdentity"], code?: number | "133;D") {
   const measured = evidenceRuntimeIdentity(identity)
   if (!measured) return undefined
   return Object.entries(ABSENT_OSC_ENGINES).find(([engine, expected]) => {
