@@ -1189,11 +1189,11 @@ test.each(["extensions.osc117-reset-highlight-bg", "extensions.osc119-reset-high
       runtimeFormat: "js",
       engineVersion: "6.0.0",
       adapterVersion: "0.10.2",
-      termlessRevision: "2d97417328b7b1d086f9396b9a1731216ed134cc",
-      // Source-audit fixture follows the diagnostic-only pixel-binding edit; response forwarding is unchanged.
+      termlessRevision: "9f0d4a5cbbeb2b7d9263ef7e07699df16a1cafc7",
+      // Source-audit fixture follows the supplied-pixel binding edit; response forwarding is unchanged.
       adapterSources: [
         { path: "packages/xtermjs/src/index.ts", blobOid: "550e10110ec2baaf326d2958319b03ee8208feba" },
-        { path: "packages/xtermjs/src/backend.ts", blobOid: "fbbb344f113d5b57bbb5dd429ed97c46b6cfa6e9" },
+        { path: "packages/xtermjs/src/backend.ts", blobOid: "72dc827b2026af7736de722f7ff986a04f3fe883" },
       ],
       resolvedPath:
         "node_modules/.bun/@xterm+headless@6.0.0/node_modules/@xterm/headless/lib-headless/xterm-headless.js",
