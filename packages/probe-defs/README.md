@@ -18,6 +18,8 @@ The five assertion types classify the deciding observation: `query_reply` reads 
 
 Status names remain supported, unsupported, untestable, TEST TODO and TEST FAILURE. The last two retain code values `test-todo` and `test-failure`; this vocabulary change does not change status or publication behavior.
 
+New pending source reviews use the existing TEST TODO status. Legacy captures retain their recorded source-negative review TEST FAILURE; readers accept both pending forms without rewriting history. The author supplies source-cited answers through the existing review intake/apply path, with the same capture digest and lapse checks; no independent per-result signer is required. A pending review is neither a feature failure nor a seal blocker. Actual failed criterion tests retain their precedence.
+
 The collection owner's frozen `CollectionPass.freeze.deferrals` records each carried context with its `routeIssue` and `reason`.
 `release1-collection --collect --admit --frozen-suite <id> --deferrals <json-file>` reads that explicit array before collection.
 Deferred contexts remain named in the pass census with their reason and no new measurement; existing context status values are unchanged.
@@ -57,7 +59,7 @@ OSC52 write/roundtrip callbacks retain qualified read-sentinel silence as a name
 when no clipboard-state witness is wired; a read negative cannot measure the write.
 The audited xterm composition instead uses the fixed OSC52/rendered-X control after a clean
 qualified read negative without a witness, retaining buffer-state `source-negative-review`
-as TEST FAILURE pending independent review, never automatic Unsupported.
+as TEST TODO pending source review, never automatic Unsupported.
 OSC5522 detection checks the current library DECRQM sibling-query family after qualified target
 silence. Qualified silence from every control names an unmet detection prerequisite as TEST TODO,
 retaining each raw window. Any control reply leaves target silence as TEST FAILURE; complete,
@@ -99,7 +101,7 @@ Presentation remains unmeasured for reverse-video/synchronized-output, the actua
 scheme-change report remains unmeasured for2031, and smooth-scroll presentation
 remains unmeasured in the library arm. DECSSCLS feeds `CSI 9 SP p` plus a marker and
 retains screen text and cursor state. Consumption without visible effect requires an
-independent source review (pending TEST FAILURE); leaked sequence text is a measured
+source review (pending TEST TODO); leaked sequence text is a measured
 negative, and a changed grid or misplaced marker stays inconclusive. Consumption does
 not prove handling or scroll-speed presentation. A source that stores speed without
 readback remains a TEST TODO tool gap when reviewed. Application criteria are unchanged.
@@ -117,12 +119,12 @@ The [shared execution helpers](src/helpers.ts) initialize every catalog member a
 Library SGR 39/49/59 resets without a distinct colored setup retain their actual cell state on a
 named `headless-observable-review` TEST TODO row. That missing prerequisite cannot establish a
 reset negative. Compound attribute resets with unshown setup attributes retain a named
-`source-negative-review` TEST FAILURE until the complete criterion is reviewed; a partial reset
+`source-negative-review` TEST TODO until the complete criterion is reviewed; a partial reset
 does not decide the whole claim. Other source-negative style reviews keep their existing failures.
 
 TERM_FEATURES means a terminal program's export into its child environment. Its library arm performs
 no I/O and retains a `headless-observable-review` row with the API boundary and audited adapter blob for
-per-engine source review. Only a non-author Untestable decision can discharge it; it creates no
+per-engine source review. Only a bound Untestable decision can discharge it; it creates no
 observation or assertion. The application arm remains TEST TODO until terminal-owned child readback exists.
 
 Source audits match the shared evidence identity and declared adapter source blobs, not global
@@ -637,11 +639,11 @@ The [daemon client](../terminfo.dev/src/daemon-client.ts) retains HTTP responses
 
 The writer checks intended id/version against known measured values without replacing them, but sets `subject.kind` from the intended term/mux subject and retains `intendedSubject` separately. Both current source and suite version are explicit inputs; a historical declaration cannot silently become a live writer's manifest.
 
-`sealRunDraft` requires complete measured identity and no pending required review; other `test-todo` results can remain in a sealed run.
+`sealRunDraft` requires complete measured identity and preserves pending review and other `test-todo` results in the sealed snapshot. The canonical reader accepts pending sealed captures without changing their recorded statuses. A lapsed answer keeps the incoming pending status: a new TODO remains TODO, and a retained legacy failure remains failure.
 
 Raw diagnostic collection retains an unsealed `.draft.json`, including captures with no required review or with carried reviews already resolved. `pending-review` means a measured, unsealed draft; it does not imply a required cell review remains. Drafts receive the same identity, suite, source, artifact, summary and classification checks as sealed runs. Development completion does not require sealing or admission.
 
-Required reviews are applied before sealing at an explicit END act. Release collection `--freeze` seals resolved drafts, composes the strict Linux completion receipt where applicable, then admits. Nonempty review apply or `admit-run --review` seals when reviews resolve; default admin admission is also explicit. Standalone diagnostic outputs have no zero-review admission route. Once sealed, enrichment cannot change those result bytes.
+Review answers use the existing pre-seal intake at an authorized act. A sealed pending snapshot stays immutable: a later author answer applies to the next capture, never to that snapshot. Release collection `--freeze` seals resolved drafts, composes the strict Linux completion receipt where applicable, then admits. Nonempty review apply or `admit-run --review` seals when reviews resolve; default admin admission is also explicit. Standalone diagnostic outputs have no zero-review admission route. Sealing a pending capture does not grant review application, admission or publication; the END hold on those acts remains.
 
 The internal admin `review intake` and `review apply` commands reuse that writer for private review.
 Intake reads only an explicitly named retained run, or the named context's `pass.contexts[].rawRun`,
@@ -753,7 +755,7 @@ Three rules follow, and each has cost a reader time:
   [capture writer](../terminfo.dev/src/capture-writer.ts) while a run is finalized, so they shape the draft at capture time. A
   decision recorded after its draft was captured has no path back into that immutable draft. During natural collection,
   the pass finalizer now supplies accepted interpretations and the trusted current manifest to that same writer before
-  assigning `rawRun`. Cells project from the resulting snapshot; an unmatched required source review stays `test-failure`.
+  assigning `rawRun`. Cells project from the resulting snapshot; a newly emitted unmatched source review stays `test-todo`. Retained snapshots keep their recorded statuses.
   These remain private measurements, separate from admission and site status.
 
 Worked example, from the run written 2026-10-31 06:34 UTC. `pass.json` holds 11 rows, all `pending-review`, each naming one
@@ -783,7 +785,7 @@ the six absent private modes2004/1004/1003/1006/1000/1005, plus1007/2026/2031 an
 stack commands. Each engine cites its own complete dispatcher and absent command case.
 Its own set/reset or stack pair runs between rendered X marks: consumed commands and leaked
 text retain different reasons, line and cursor state. This uses existing buffer-state
-`source-negative-review` with a negative assertion, inconclusive observation and review TEST FAILURE;
+`source-negative-review` with a negative assertion, inconclusive observation and review TEST TODO;
 it does not create a decision or automatically grade Unsupported. Missing X, moved line or
 unqualified source remains named TODO. Actual DECRPM replies retain their original result.
 Stored mode1 on both engines, and5/66 on vt100, remain held instrumentation TODO. The private
@@ -793,7 +795,7 @@ buffer state both survive actual collection. Other engines and terminal callback
 The same audit wraps the six library mouse-input rows for vt100/vt220: pixel, urxvt, X10,
 button-event, click and wheel. Their own absent mode commands run between the same rendered X
 controls. This is source-reviewed buffer state, not measured mouse-event bytes: it retains
-TEST FAILURE pending independent review, never automatic Unsupported. Other engines retain
+TEST TODO pending source review, never automatic Unsupported. Other engines retain
 their existing input callback and terminal input criteria stay unchanged.
 
 The exact-runtime source audit also covers highlight set/reset absence for vt100, vt220, libvterm and
@@ -806,7 +808,7 @@ the actual OSC1 stimulus and before/after title state; title behavior alone is n
 The four Vterm library input criteria (modify-other-keys, modify-other-keys-3,
 xtest-key and kitty-click-events) qualify source negatives only at the exact clean
 SOURCE_TREE_AUDITS.vterm identity. They retain raw state and a required
-source-negative-review TEST FAILURE, without a deciding observation or assertion:
+source-negative-review TEST TODO, without a deciding observation or assertion:
 a source audit performs no input event. No source decision or Unsupported grade is written. A changed tree at the same
 source identity retains the shared source-identity drift failure. Foreign or
 dirty identities retain their existing TODO. Kitty keeps its Vterm candidate

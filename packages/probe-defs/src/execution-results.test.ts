@@ -922,7 +922,7 @@ it("records the actual unequal-crop comparison as TEST FAILURE despite two retai
   expect(result.frames).toEqual(frames)
   expect(result.tests).toContainEqual(expect.objectContaining({ id: "comparison", status: "test-failure", attempt }))
 })
-it("keeps an explicit unattempted visual review TODO and the capture unsealed", async () => {
+it("keeps an explicit unattempted visual review TODO when the capture seals", async () => {
   let next = 0
   const callback = await sgrCaptureFrames(
     { write() {}, capture: async () => frames[next++]! } as unknown as TermProbeSource,
@@ -967,7 +967,7 @@ it("keeps an explicit unattempted visual review TODO and the capture unsealed", 
   draft.measuredAt = attempt.startedAt
   draft.origin = { kind: "collector" }
   draft.results = [result]
-  expect(() => sealRunDraft(draft)).toThrow(/review pending/)
+  expect(sealRunDraft(draft).results[0]!.status).toBe("test-todo")
 })
 
 // #31740: row-emission tests cannot pin whose reason the writer synthesizes when a callback forgets its rows.
@@ -1019,10 +1019,10 @@ it("takes a source-negative review row's reason from its review sentence, not th
   expect(callback.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
   expect(callback.observation).not.toHaveProperty("note")
   expect(record(callback)).toMatchObject({
-    status: "test-failure",
+    status: "test-todo",
     reason: sentence,
     criterionBranch: "source-negative-review",
-    tests: [{ id: "review", status: "test-failure", reason: sentence }],
+    tests: [{ id: "review", status: "test-todo", reason: sentence }],
   })
   const noted = parserStateResult(false, "DECCARA applies bold", { cells: [] }, "Extent outside the grid", sentence)
   expect(record(noted).reason).toBe("Extent outside the grid")

@@ -839,8 +839,68 @@ const setup = (
   return { draft, artifact, decision }
 }
 
+// @failure Pending captures cannot seal/parse, or legacy source-negative failures are silently regraded.
+// @level l1
+// @consumer sealRunDraft and canonical parseRun; existing fixtures cover resolved reviews only.
+it.each(["generic-todo", "source-negative-todo", "legacy-source-negative-failure", "implementation-todo"] as const)(
+  "seals and rereads pending %s without changing its recorded status",
+  (shape) => {
+    const sourceNegative = shape === "source-negative-todo" || shape === "legacy-source-negative-failure"
+    const expectedStatus = shape === "legacy-source-negative-failure" ? "test-failure" : "test-todo"
+    const { draft } = setup(
+      shape === "implementation-todo" ? undefined : sourceNegative ? JSON.stringify({ faint: false }) : "ACK",
+      sourceNegative ? { runId: "pending-source", startedAt: "2026-10-27T11:00:00.000Z" } : undefined,
+      (value) => {
+        value.results[0]!.tests.find((test) => test.id === "review")!.status = expectedStatus
+        value.results[0] = finalizeProbeResult(value.results[0]!)
+      },
+    )
+    if (shape === "implementation-todo") {
+      draft.results[0]!.tests = []
+      draft.results[0] = finalizeProbeResult(draft.results[0]!)
+    }
+    const featureId = draft.results[0]!.featureId
+    const manifest = {
+      schemaVersion: 4 as const,
+      probeHash: draft.probeHash,
+      adapterVersion: "3",
+      catalogIds: [featureId],
+      probes: { term: sourceNegative ? [] : [featureId], lib: sourceNegative ? [featureId] : [], mux: [] },
+    }
+    const sealed = sealRunDraft(draft, "2026-10-27T11:03:00.000Z")
+    const parsed = parseRun(
+      "pending.json",
+      JSON.stringify(sealed),
+      manifest.catalogIds,
+      new Map([[manifest.probeHash, manifest]]),
+    )
+    expect(parsed.results?.[0]?.status).toBe(expectedStatus)
+    if (shape === "implementation-todo") expect(parsed.results?.[0]?.tests).toEqual([])
+    else expect(parsed.results?.[0]?.tests.find((test) => test.id === "review")?.status).toBe(expectedStatus)
+    expect(draft).not.toHaveProperty("sealedAt")
+  },
+)
+
 // #32014: the three grading decisions cannot represent a buildable, unbuilt readback.
 // Exercise the owner boundary through sealing and canonical reread, including both binding rules.
+// @failure Normalizing pending status changes a binding already retained in the sealed set.
+// @level l1
+// @consumer retainCaptureBinding; synthetic legacy fixtures cannot prove compatibility with retained bytes.
+it("preserves the sealed Vterm source-negative capture binding byte for byte", () => {
+  const { sealedAt: _sealedAt, ...draft } = JSON.parse(
+    readFileSync(
+      new URL(
+        "../../../content/probes-libs/vterm-0.10.1-linux-a22f06ca-2505-4c0d-a518-b0b01f8bbe76.json",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  ) as RunDraft & { sealedAt: string }
+  const featureId = "extensions.osc176-app-id"
+  const before = draft.rawReplies[`collector.capture.${featureId}`]
+  expect(retainCaptureBinding(draft, featureId).source).toBe(before)
+})
+
 describe("named tool-gap capture decisions", () => {
   it.each([
     { sourceNegative: false, evidence: false },
@@ -863,7 +923,7 @@ describe("named tool-gap capture decisions", () => {
     }
     const source = JSON.stringify(review)
     const original = structuredClone(draft)
-    expect(() => sealRunDraft(draft)).toThrow(/review pending/)
+    expect(sealRunDraft(draft).results[0]!.status).toBe(draft.results[0]!.status)
     applyCaptureDecision(draft, source, "2026-10-21T05:01:00.000Z", undefined, evidence ? entryHash : undefined)
     expect(draft.assertions).toEqual(original.assertions)
     for (const [key, bytes] of Object.entries(original.rawReplies)) expect(draft.rawReplies[key]).toBe(bytes)
@@ -1008,7 +1068,7 @@ it.each([
           ]
         },
       )
-      expect(draft.results[0]!.status).toBe("test-failure")
+      expect(draft.results[0]!.status).toBe("test-todo")
       const originals = { assertions: structuredClone(draft.assertions), rawReplies: structuredClone(draft.rawReplies) }
       decision.decision = "unsupported"
       decision.reason = `Independent source review: ${engine}'s exact OSC9 progress criterion has no handler or target writer at the pinned source.`
@@ -1697,7 +1757,7 @@ describe("immutable pre-seal capture binding", () => {
       expect(current.draft.results[0]!.status).toBe("test-failure")
       expect(current.draft.results[0]!.reason).toMatch(/lapsed:.*runtimeIdentity/)
       expect(read(current.draft, true).results?.[0]?.status).toBe("test-failure")
-      expect(() => sealRunDraft(current.draft)).toThrow(/review pending/)
+      expect(sealRunDraft(current.draft).results[0]!.status).toBe("test-failure")
       return
     }
     const sealed = sealRunDraft(current.draft)
@@ -2085,42 +2145,49 @@ describe("immutable pre-seal capture binding", () => {
     expect(current.draft.rawReplies[`collector.review.${origin.decision.id}`]).toBe(decisionBytes)
     expect(current.draft.rawReplies[originKey]).toBe(origin.artifact.source)
   })
-  // B3/Amendment2: the parser must check attempted lapse custody too, without accepting a forged seal.
-  it("keeps a lapsed source review unsealed and verifies its origin bytes at the canonical reader", () => {
-    const origin = setup(JSON.stringify({ faint: false }), { runId: "origin", startedAt: "2026-10-27T11:00:00.000Z" })
-    const current = setup(
-      JSON.stringify({ faint: false }),
-      { runId: "current", startedAt: "2026-10-27T11:01:00.000Z" },
-      (draft) => {
-        draft.sourceRevision = "6".repeat(40)
-      },
-    )
-    origin.decision.decision = "unsupported"
-    applyCaptureDecision(
-      current.draft,
-      JSON.stringify(origin.decision),
-      "2026-10-27T11:02:00.000Z",
-      origin.artifact.source,
-    )
-    const manifest = {
-      schemaVersion: 4 as const,
-      probeHash: current.draft.probeHash,
-      adapterVersion: "3",
-      catalogIds: ["sgr.faint"],
-      probes: { term: [], lib: ["sgr.faint"], mux: [] },
-    }
-    const read = (value: unknown) =>
-      parseRun("lapsed.json", JSON.stringify(value), manifest.catalogIds, new Map([[manifest.probeHash, manifest]]), {
-        mode: "capture",
-      })
-    expect(() => sealRunDraft(current.draft)).toThrow(/review pending/)
-    expect(read(current.draft).results?.[0]?.status).toBe("test-failure")
-    expect(() => read({ ...current.draft, sealedAt: "2026-10-27T11:03:00.000Z" })).toThrow(/review pending/)
-    const key = `collector.review.${origin.decision.id}.capture`
-    expect(() =>
-      read({ ...current.draft, rawReplies: { ...current.draft.rawReplies, [key]: origin.artifact.source + " " } }),
-    ).toThrow(/origin.*digest/)
-  })
+  // @failure A lapse turns a new pending TODO into failure or loses legacy failure/origin custody.
+  // @level l1
+  // @consumer applyCaptureDecision and canonical parser; existing lapse fixtures use only legacy failures.
+  it.each(["test-todo", "test-failure"] as const)(
+    "keeps lapsed source review %s and verifies its origin bytes",
+    (status) => {
+      const origin = setup(JSON.stringify({ faint: false }), { runId: "origin", startedAt: "2026-10-27T11:00:00.000Z" })
+      const current = setup(
+        JSON.stringify({ faint: false }),
+        { runId: "current", startedAt: "2026-10-27T11:01:00.000Z" },
+        (draft) => {
+          draft.sourceRevision = "6".repeat(40)
+          draft.results[0]!.tests.find((test) => test.id === "review")!.status = status
+          draft.results[0] = finalizeProbeResult(draft.results[0]!)
+        },
+      )
+      origin.decision.decision = "unsupported"
+      applyCaptureDecision(
+        current.draft,
+        JSON.stringify(origin.decision),
+        "2026-10-27T11:02:00.000Z",
+        origin.artifact.source,
+      )
+      const manifest = {
+        schemaVersion: 4 as const,
+        probeHash: current.draft.probeHash,
+        adapterVersion: "3",
+        catalogIds: ["sgr.faint"],
+        probes: { term: [], lib: ["sgr.faint"], mux: [] },
+      }
+      const read = (value: unknown) =>
+        parseRun("lapsed.json", JSON.stringify(value), manifest.catalogIds, new Map([[manifest.probeHash, manifest]]), {
+          mode: "capture",
+        })
+      expect(current.draft.results[0]!.status).toBe(status)
+      expect(read(current.draft).results?.[0]?.status).toBe(status)
+      expect(read(sealRunDraft(current.draft)).results?.[0]?.status).toBe(status)
+      const key = `collector.review.${origin.decision.id}.capture`
+      expect(() =>
+        read({ ...current.draft, rawReplies: { ...current.draft.rawReplies, [key]: origin.artifact.source + " " } }),
+      ).toThrow(/origin.*digest/)
+    },
+  )
   // B3: no origin store is a named unavailable input, never a fabricated comparison or a throw.
   it("names an unavailable origin binding when different fresh capture bytes cannot be compared", () => {
     const origin = setup(JSON.stringify({ faint: false }), {
@@ -2328,9 +2395,10 @@ describe("immutable pre-seal capture binding", () => {
     expect(changed.draft.results[0]!.status).toBe("test-failure")
     expect(changed.draft.results[0]!.reason).toContain("bytes differ")
   })
-  it("keeps valid pending review unsealed, records the exact typed decision, then seals the same run", () => {
+  it("preserves a pending snapshot, then records the exact typed decision in the open draft", () => {
     const { draft, artifact, decision } = setup()
-    expect(() => sealRunDraft(draft)).toThrow(/review pending/)
+    const pending = sealRunDraft(draft)
+    expect(pending.results[0]!.status).toBe("test-todo")
     applyCaptureDecision(draft, JSON.stringify(decision), "2026-10-21T05:01:00.000Z")
     const sealed = sealRunDraft(draft)
     expect(sealed.runId).toBe("review-capture")
@@ -2449,21 +2517,6 @@ describe("immutable pre-seal capture binding", () => {
   })
 })
 
-// Writer refusal alone missed forged sealedAt at the canonical decoder boundary.
-it("refuses a supplied seal on pending review while accepting ordinary sealed implementation TODO", () => {
-  const { draft } = setup()
-  const manifest = {
-    probeHash: draft.probeHash,
-    adapterVersion: "3",
-    catalogIds: ["sgr.bold"],
-    probes: { term: ["sgr.bold"], lib: [], mux: [] },
-  }
-  const parse = (run: unknown) =>
-    parseRun("pending.json", JSON.stringify(run), ["sgr.bold"], new Map([[draft.probeHash, manifest]]))
-  expect(() => parse({ ...draft, sealedAt: "2026-10-21T05:01:00.000Z" })).toThrow(/review pending/)
-  draft.results[0]!.tests = []
-  expect(parse(sealRunDraft(draft)).results?.[0]?.status).toBe("test-todo")
-})
 // Existing parser-only pixel fixtures did not cross the production result recorder.
 it("preserves the pixel screenshot reference through recorder, seal and canonical parse", () => {
   const { draft } = setup()

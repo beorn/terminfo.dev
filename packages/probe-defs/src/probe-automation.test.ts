@@ -448,7 +448,7 @@ describe("qualified clipboard roundtrip", () => {
         expect(result.criterionBranch).toBe(SOURCE_NEGATIVE_REVIEW)
         expect(result.observation).toMatchObject({ outcome: "inconclusive", assertionType: "buffer_state" })
         expect(result.tests).toEqual([
-          { id: "review", status: "test-failure", reason: expect.stringContaining("InputHandler.ts:292-338") },
+          { id: "review", status: "test-todo", reason: expect.stringContaining("InputHandler.ts:292-338") },
         ])
         expect(result.assertions).toMatchObject([{ assertionType: "buffer_state", kind: "negative" }])
         snapshots.push(result.response!)
@@ -2252,7 +2252,7 @@ describe("OSC 8 link metadata observation", () => {
         })
         const result = probe(id).lib!(source)
         expect(result.criterionBranch, id).toBe("source-negative-review")
-        expect(result.tests, id).toMatchObject([{ id: "review", status: "test-failure" }])
+        expect(result.tests, id).toMatchObject([{ id: "review", status: "test-todo" }])
         expect(result.assertions, id).toMatchObject([{ kind: "negative", assertionType: "buffer_state" }])
         expect(writes, id).toContain(`\x1b[1;1H\x1b[2K\x1b]${set};rgb:3030/6060/9090\x07\x1b]${reset}\x07X`)
         expect(
@@ -2283,7 +2283,7 @@ describe("OSC 8 link metadata observation", () => {
       if (engine === "vt100" || engine === "vt220") {
         expect(result.criterionBranch).toBe("source-negative-review")
         expect(result.tests).toMatchObject([
-          { id: "review", status: "test-failure", reason: expect.stringContaining("case 1") },
+          { id: "review", status: "test-todo", reason: expect.stringContaining("case 1") },
         ])
         expect(result.observation).toMatchObject({ outcome: "inconclusive", assertionType: "buffer_state" })
         expect(result.assertions).toMatchObject([{ kind: "negative", assertionType: "buffer_state" }])
@@ -2308,7 +2308,7 @@ describe("OSC 8 link metadata observation", () => {
       const unreported = linkedSource(Array(6).fill(undefined), false)
       const result = p.lib({ ...unreported, runtimeIdentity: identity })
       expect(result.criterionBranch).toBe("source-negative-review")
-      expect(result.tests).toMatchObject([{ id: "review", status: "test-failure" }])
+      expect(result.tests).toMatchObject([{ id: "review", status: "test-todo" }])
       expect(result.observation).toMatchObject({ outcome: "inconclusive", assertionType: "buffer_state" })
       expect(result.assertions).toMatchObject([
         { kind: "negative", assertionType: "buffer_state", observed: result.response },
@@ -2443,7 +2443,7 @@ describe("GhosttyNative audited OSC source review", () => {
     const result = probe("extensions.osc1-icon").lib!(context({ runtimeIdentity: identity }))
     expect(result.criterionBranch).toBe("source-negative-review")
     expect(result.tests).toMatchObject([
-      { id: "review", status: "test-failure", reason: expect.stringContaining("stream.zig:1982-1986") },
+      { id: "review", status: "test-todo", reason: expect.stringContaining("stream.zig:1982-1986") },
     ])
     const foreign = probe("extensions.osc1-icon").lib!(
       context({ runtimeIdentity: { ...identity, loadedBinary: { ...identity.loadedBinary, sha256: "0".repeat(64) } } }),
@@ -2479,7 +2479,7 @@ describe("GhosttyNative audited OSC source review", () => {
     })
     const result = callback(source)
     expect(result.criterionBranch).toBe("source-negative-review")
-    expect(result.tests).toMatchObject([{ id: "review", status: "test-failure" }])
+    expect(result.tests).toMatchObject([{ id: "review", status: "test-todo" }])
     expect(result.observation).toMatchObject({ outcome: "inconclusive", assertionType: "buffer_state" })
     expect(result.assertions).toMatchObject([{ kind: "negative", assertionType: "buffer_state" }])
     expect(JSON.parse(result.response!)).toMatchObject({ sentinel: { char: "X" } })
@@ -2594,7 +2594,7 @@ describe("Alacritty audited OSC source review", () => {
     })
     const result = callback(source)
     expect(result.criterionBranch).toBe("source-negative-review")
-    expect(result.tests).toMatchObject([{ id: "review", status: "test-failure" }])
+    expect(result.tests).toMatchObject([{ id: "review", status: "test-todo" }])
     expect(result.observation).toMatchObject({ outcome: "inconclusive", assertionType: "buffer_state" })
     expect(result.assertions).toMatchObject([
       { kind: "negative", assertionType: "buffer_state", observed: result.response },
@@ -2778,7 +2778,7 @@ describe("Wezterm audited OSC source review", () => {
     const callback = probe(id).lib!
     const result = callback(source)
     expect(result.criterionBranch).toBe("source-negative-review")
-    expect(result.tests).toMatchObject([{ id: "review", status: "test-failure" }])
+    expect(result.tests).toMatchObject([{ id: "review", status: "test-todo" }])
     expect(result.observation).toMatchObject({ outcome: "inconclusive", assertionType: "buffer_state" })
     expect(result.assertions).toMatchObject([
       { kind: "negative", assertionType: "buffer_state", observed: result.response },

@@ -1263,10 +1263,10 @@ test.each(["extensions.osc117-reset-highlight-bg", "extensions.osc119-reset-high
     expect(parsed.results).toMatchObject([
       {
         featureId: id,
-        status: "test-failure",
+        status: "test-todo",
         assertionType: "buffer_state",
         criterionBranch: "source-negative-review",
-        tests: [{ id: "review", status: "test-failure" }],
+        tests: [{ id: "review", status: "test-todo" }],
       },
     ])
   },
@@ -1399,10 +1399,10 @@ test("DECSSCLS real-vterm pending source review survives collection and canonica
   expect(batch.results).toMatchObject([
     {
       featureId: id,
-      status: "test-failure",
+      status: "test-todo",
       assertionType: "buffer_state",
       criterionBranch: "source-negative-review",
-      tests: [{ id: "review", status: "test-failure" }],
+      tests: [{ id: "review", status: "test-todo" }],
     },
   ])
   expect(JSON.parse(batch.rawReplies[id]!)).toMatchObject({ cursor: { x: 1, y: 0 } })
@@ -1541,10 +1541,10 @@ test("Wezterm prompt source reviews survive actual collection and capture bindin
     const row = captured.results.find((entry) => entry.featureId === id)!
     expect(row).toMatchObject({
       featureId: id,
-      status: "test-failure",
+      status: "test-todo",
       assertionType: "buffer_state",
       criterionBranch: "source-negative-review",
-      tests: [{ id: "review", status: "test-failure" }],
+      tests: [{ id: "review", status: "test-todo" }],
     })
     const binding = retainCaptureBinding(captured, id)
     if (typeof binding.source !== "string") throw new Error("Expected retained capture binding JSON")
@@ -1691,7 +1691,7 @@ test("source-qualified mode and mouse criteria survive collection and capture pa
       ).toMatchObject(
         name !== "xtermjs"
           ? {
-              status: "test-failure",
+              status: "test-todo",
               assertionType: "buffer_state",
               criterionBranch: "source-negative-review",
             }
@@ -1741,7 +1741,7 @@ test("source-qualified mode and mouse criteria survive collection and capture pa
       expect(row).toMatchObject(
         name !== "xtermjs"
           ? {
-              status: "test-failure",
+              status: "test-todo",
               assertionType: "buffer_state",
               criterionBranch: "source-negative-review",
             }
@@ -2455,9 +2455,9 @@ test("audited Vterm input negatives retain required source review through the co
   expect(batch.notTested).toEqual([])
   for (const id of ids) {
     expect(batch.results.find((row) => row.featureId === id)).toMatchObject({
-      status: "test-failure",
+      status: "test-todo",
       criterionBranch: "source-negative-review",
-      tests: [{ id: "review", status: "test-failure", reason: expect.stringContaining("67dd3960") }],
+      tests: [{ id: "review", status: "test-todo", reason: expect.stringContaining("67dd3960") }],
     })
     expect(batch.results.find((row) => row.featureId === id)?.assertionType).toBeUndefined()
   }
@@ -3567,13 +3567,13 @@ test("real qualified OSC callbacks survive pending and unit-reviewed sealed read
     { featureId: ids[0], status: "supported", assertionType: "buffer_state" },
     {
       featureId: ids[1],
-      status: "test-failure",
+      status: "test-todo",
       assertionType: "buffer_state",
       criterionBranch: "source-negative-review",
     },
     {
       featureId: ids[2],
-      status: "test-failure",
+      status: "test-todo",
       assertionType: "buffer_state",
       criterionBranch: "source-negative-review",
     },
@@ -3604,7 +3604,7 @@ test("real qualified OSC callbacks survive pending and unit-reviewed sealed read
       mode: "capture",
     })
   expect(read(captured).results).toEqual(batch.results)
-  expect(() => sealRunDraft(captured)).toThrow("required review pending")
+  expect(read(sealRunDraft(captured)).results).toEqual(batch.results)
   const mislabeled = structuredClone(captured)
   for (const result of mislabeled.results.slice(1)) result.assertionType = "query_reply"
   for (const assertion of mislabeled.assertions.filter((entry) => entry.featureId !== ids[0])) {

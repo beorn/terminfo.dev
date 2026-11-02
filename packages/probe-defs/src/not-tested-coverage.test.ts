@@ -270,7 +270,7 @@ test.each(headlessStateFeatures)(
       return
     }
     expect(result.criterionBranch).toBe("source-negative-review")
-    expect(result.tests).toEqual([{ id: "review", status: "test-failure", reason }])
+    expect(result.tests).toEqual([{ id: "review", status: "test-todo", reason }])
     expect(result.observation).toEqual({
       outcome: "inconclusive",
       reason: "insufficient-evidence",

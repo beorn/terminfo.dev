@@ -488,7 +488,7 @@ test("editing.decsace with no inverse cell in either frame routes to source-nega
   expect(result.tests).toEqual([
     {
       id: "review",
-      status: "test-failure",
+      status: "test-todo",
       reason: "DECCARA not honoured, extent unobservable",
     },
   ])

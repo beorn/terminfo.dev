@@ -298,7 +298,7 @@ export function parserStateResult(
     ...(note && { note }),
     ...(sourceReview && {
       criterionBranch: SOURCE_NEGATIVE_REVIEW,
-      tests: [{ id: "review", status: "test-failure" as const, reason: sourceReviewReason }],
+      tests: [{ id: "review", status: "test-todo" as const, reason: sourceReviewReason }],
     }),
     observation: {
       outcome: sourceReview || pass === null ? "inconclusive" : pass ? "supported" : "unsupported",
@@ -2147,7 +2147,7 @@ export function finalizeProbeResult(input: Omit<ProbeResult, "status">): ProbeRe
   return { ...stored, status, ...(reason === undefined ? {} : { reason }) }
 }
 
-/** Seal only measured/enriched identity; pending required review keeps the same draft open. */
+/** Seal measured/enriched identity while preserving pending review statuses. */
 export function sealRunDraft(draft: RunDraft, sealedAt = new Date().toISOString()): CurrentProbeRun {
   assertCurrentSource(draft.source)
   if (draft.source.kind === "trace" && draft.source.captureRunId === draft.runId) {
@@ -2156,18 +2156,6 @@ export function sealRunDraft(draft: RunDraft, sealedAt = new Date().toISOString(
   if (draft.schemaVersion !== 4) throw new Error("Current run writer requires schemaVersion 4")
   if (!draft.subject || !draft.identity || !draft.measuredAt || !draft.origin) {
     throw new Error(`Run ${draft.runId} has no complete measured identity to seal; retain its private draft`)
-  }
-  if (
-    draft.results.some((result) =>
-      result.tests.some(
-        (test) =>
-          test.id === "review" &&
-          (test.status === "test-todo" ||
-            (result.criterionBranch === SOURCE_NEGATIVE_REVIEW && test.status === "test-failure")),
-      ),
-    )
-  ) {
-    throw new Error(`Run ${draft.runId} has a required review pending; retain its unsealed capture`)
   }
   return {
     ...draft,

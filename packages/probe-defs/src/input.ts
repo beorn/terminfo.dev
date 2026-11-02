@@ -146,7 +146,7 @@ function vtermInputSourceReview(
       pass: false,
       response: JSON.stringify(state),
       criterionBranch: SOURCE_NEGATIVE_REVIEW,
-      tests: [{ id: "review", status: "test-failure", reason: sourceReviewReason }],
+      tests: [{ id: "review", status: "test-todo", reason: sourceReviewReason }],
     }
   }
   return sourceTreeDrift(identity, audit, state)
@@ -669,10 +669,7 @@ function mouseEncodingLib(
         )
       }
       const reason = `${audit.mouseEncodingSourceCitation}; 1015/1016 shared encoder bytes are instrument output, not engine evidence; independent source review required`
-      return {
-        ...reviewResult(SOURCE_NEGATIVE_REVIEW, reason, `Native engine stores no mouse encoding ${mode}`, observed),
-        tests: [{ id: "review", status: "test-failure", reason }],
-      }
+      return reviewResult(SOURCE_NEGATIVE_REVIEW, reason, `Native engine stores no mouse encoding ${mode}`, observed)
     }
     return enabled && report === expected
       ? interactionResult(`mouse-encoding:${kind}`, expected, observed)

@@ -994,7 +994,9 @@ function captureBindingSource(
     result.tests
       .filter(
         (test) =>
-          test.id === "review" && (!sourceNegative || (test.reviewRef !== undefined && test.status !== "test-failure")),
+          test.id === "review" &&
+          (!sourceNegative ||
+            (test.reviewRef !== undefined && test.status !== "test-failure" && test.status !== "test-todo")),
       )
       .flatMap((test) => test.assertionRefs ?? []),
   )
@@ -1477,7 +1479,7 @@ export function applyCaptureDecision(
         test.id === "review"
           ? {
               ...test,
-              status: sourceNegative ? "test-failure" : "test-todo",
+              status: test.status,
               reason: lapse,
               reviewRef,
               attempt: { scope: "probe", startedAt },
@@ -2272,19 +2274,6 @@ export function parseRun(
       )
     }
     if (current && results) {
-      if (
-        raw.sealedAt !== undefined &&
-        results.some((result) =>
-          result.tests.some(
-            (test) =>
-              test.id === "review" &&
-              (test.status === "test-todo" ||
-                (result.criterionBranch === SOURCE_NEGATIVE_REVIEW && test.status === "test-failure")),
-          ),
-        )
-      ) {
-        fail(path, "required review pending; retain its unsealed capture")
-      }
       if (!object(raw[intendedKey])) fail(path, "current run requires intendedSubject")
       const captureRun = {
         runId,
@@ -2329,8 +2318,9 @@ export function parseRun(
           for (const test of result.tests.filter((test) => test.reviewRef === ref)) {
             if (
               lapse
-                ? test.status !== (result.criterionBranch === SOURCE_NEGATIVE_REVIEW ? "test-failure" : "test-todo") ||
-                  test.reason !== lapse
+                ? !(result.criterionBranch === SOURCE_NEGATIVE_REVIEW
+                    ? ["test-failure", "test-todo"].includes(test.status)
+                    : test.status === "test-todo") || test.reason !== lapse
                 : test.status !== (decision.decision === "tool-gap" ? "test-todo" : decision.decision) ||
                   (decision.decision === "tool-gap" && (test.id !== "criterion" || test.reason !== decision.reason))
             ) {
