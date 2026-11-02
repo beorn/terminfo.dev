@@ -2258,6 +2258,10 @@ test.each(["alacritty", "vt100-rust"])("%s absent mouse encodings require exact 
   if (identity.kind !== "native") throw new Error("native mouse fixture requires a native identity")
   const cases = {
     exact: identity,
+    "opposite valid engine":
+      engine === "alacritty"
+        ? absentOscBatch.find((entry) => entry.engine === "vt100Rust")!.identity
+        : auditedArtifacts[0]!,
     "wrong engine": { ...identity, engineVersion: "foreign" },
     "wrong binary": { ...identity, loadedBinary: { ...identity.loadedBinary, sha256: "0".repeat(64) } },
     "wrong receipt binary": { ...identity, provenance: { ...identity.provenance, sha256: "0".repeat(64) } },
@@ -2295,6 +2299,12 @@ test.each(["alacritty", "vt100-rust"])("%s absent mouse encodings require exact 
       expect(result.observation, qualification).toBeUndefined()
       expect(result.assertions, qualification).toBeUndefined()
       expect(tracking, qualification).toBe(false)
+      expect(feeds.at(-1), qualification).toBe("\x1b[?9;1000;1002;1003;1005;1006;1015;1016l")
+      expect(JSON.parse(result.response!), qualification).toMatchObject({
+        report: "\x1b[M %#",
+        negativeControl: null,
+        tracking: true,
+      })
       if (qualification === "exact") {
         expect(result.criterionBranch).toBe("source-negative-review")
         expect(result.tests).toEqual([
@@ -2307,11 +2317,6 @@ test.each(["alacritty", "vt100-rust"])("%s absent mouse encodings require exact 
         expect(result.tests?.[0]?.reason).toContain(
           engine === "alacritty" ? "alacritty_terminal 0.26.0" : "vt100 0.16.2",
         )
-        expect(JSON.parse(result.response!)).toMatchObject({
-          report: "\x1b[M %#",
-          negativeControl: null,
-          tracking: true,
-        })
       } else {
         expect(result.criterionBranch, qualification).toBeUndefined()
         expect(result.notTested?.noObservable, qualification).toMatch(/no qualified native mouse encoding source audit/)
