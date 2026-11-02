@@ -554,7 +554,7 @@ function mouseEncodingLib(
   }
   const reset = "\x1b[?9;1000;1002;1003;1005;1006;1015;1016l"
   const tracking = kind === "x10" ? 9 : kind === "button" ? 1002 : 1000
-  const encoding = kind === "x10" ? "" : `\x1b[?${kind === "pixel" ? 1016 : kind === "urxvt" ? 1015 : 1006}h`
+  const encoding = kind === "x10" ? "" : `\x1b[?${kind === "urxvt" ? 1015 : 1006}h`
   const event = {
     x: 4,
     y: 2,
@@ -571,6 +571,12 @@ function mouseEncodingLib(
   try {
     const negativeControl = decodeMouseReport(ctx.encodeMouse(event))
     if (negativeControl !== null) throw new Error("Mouse encoding emitted a report with tracking reset")
+    if (kind === "pixel") {
+      return notTestedResult("#31297: MouseEvent carries no pixel geometry", {
+        mouseEncoding: true,
+        pixelGeometry: false,
+      })
+    }
     ctx.feed(`\x1b[?${tracking}h${encoding}`)
     const enabled = ctx.getMode("mouseTracking")
     if (enabled === null) {
@@ -596,7 +602,9 @@ function mouseEncodingLib(
 
 function kittyClickEventsLib(ctx: LibProbeSource): ProbeCallbackResult {
   if (ctx.backendName === "vterm") {
-    return notTestedResult("vterm stored click_events prompt state unavailable; #30936", { storedClickEvents: false })
+    return notTestedResult("shared core encoder carries no prompt state; vterm stores no click_events; #30936", {
+      storedClickEvents: false,
+    })
   }
   if (!ctx.capabilities.extensions.has("mouse-encoding") || typeof ctx.encodeMouse !== "function") {
     return notTestedResult("library mouse-event encoding (undeclared mouse-encoding extension)", {
