@@ -464,6 +464,29 @@ export function projectedContextKey(subject: ProbeSubject, contextCount: number)
   return contextCount === 1 ? stem : `${stem}@${contextKey(subject)}`
 }
 
+/**
+ * The admitted context key of every accepted subject, from the projection's own `versions`: the map a working input
+ * is keyed through, so a working run never renames an admitted key.
+ */
+export function admittedContextKeys(
+  versions: Readonly<Record<string, readonly Pick<CurrentSelectedVersion, "subject">[]>>,
+): Map<string, string> {
+  return new Map(
+    Object.entries(versions).flatMap(([key, rows]) =>
+      rows.map((version) => [contextKey(version.subject), key] as const),
+    ),
+  )
+}
+
+/**
+ * The context key a WORKING (unadmitted) run takes: an admitted subject keeps its admitted key, and a working-only
+ * context takes the existing qualified form (the multi-context branch), even when it is the only working context for
+ * its target. The composed view and the preview's hourly raw view both key working runs through this one rule.
+ */
+export function workingSubjectKey(admitted: ReadonlyMap<string, string>, subject: ProbeSubject): string {
+  return admitted.get(contextKey(subject)) ?? projectedContextKey(subject, 2)
+}
+
 /** The eight fields `projectedContextKey` writes, in its order. */
 export type ProjectedContextKeyParts = readonly [
   string,
@@ -684,11 +707,7 @@ export function projectResults(
       policy.workingRuns ?? [],
       policy.workingAttempts ?? [],
       catalogIds,
-      new Map(
-        Object.entries(projection.versions).flatMap(([key, versions]) =>
-          versions.map((version) => [contextKey(version.subject), key] as const),
-        ),
-      ),
+      admittedContextKeys(projection.versions),
       active,
     ),
   }
@@ -736,10 +755,8 @@ function composeContextSummaries(
   const runs = [...runsById.values()]
   const baselineIds = new Set(baselineRunIds)
   const workingIds = new Set(workingRuns.map((run) => run.runId))
-  // Working inputs cannot rename an admitted key. Working-only contexts take the existing qualified
-  // form (the multi-context branch), even when they are the only working context for this target.
-  const keyFor = (run: LoadedRun): string =>
-    contextKeys.get(contextKey(run.subject)) ?? projectedContextKey(run.subject, 2)
+  // Working inputs cannot rename an admitted key; see workingSubjectKey.
+  const keyFor = (run: LoadedRun): string => workingSubjectKey(contextKeys, run.subject)
   const groups = new Map<string, LoadedRun[]>()
   for (const run of runs) {
     const key = keyFor(run)
