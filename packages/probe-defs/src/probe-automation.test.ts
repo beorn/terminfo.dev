@@ -2589,8 +2589,8 @@ describe("Alacritty audited OSC source review", () => {
           integrity: {
             kind: "source",
             repository: "git@github.com:beorn/vterm.git",
-            revision: "5fe28a449d1de5ca84ead724d1da1ea71fe8e036",
-            treeOid: "73323a4fdd44a5b2703efc3dfd7e343ebcc19d4b",
+            revision: "7e6c993c22b997e0193137bf8e4beca3952947aa",
+            treeOid: "30e32d569a520758827007bb195d54dbc8bf3413",
             cleanTree: true,
           },
         },
@@ -2598,7 +2598,7 @@ describe("Alacritty audited OSC source review", () => {
       }),
     )
     expect(result.tests?.[0]?.reason).toBe(
-      "vterm 5fe28a449d1de5ca84ead724d1da1ea71fe8e036 packages/vterm/src/screen.ts:3593-4052 handleOSC switch; screen.ts:3918-3920 notification sink stores every OSC 9 value, with no progress subcode or state interpretation; independent source review required",
+      "vterm 7e6c993c22b997e0193137bf8e4beca3952947aa packages/vterm/src/screen.ts:3587-4046 handleOSC switch; screen.ts:3912-3914 notification sink stores every OSC 9 value, with no progress subcode or state interpretation; independent source review required",
     )
   })
 })

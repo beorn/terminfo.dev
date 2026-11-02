@@ -259,7 +259,7 @@ function deviceQuery(spec: DeviceReply): ProbeDefinition {
             raw,
             noObservable: "Audited vterm headless subject has no font or window pixel geometry",
             sourceCitation:
-              "vterm 5fe28a449d1de5ca84ead724d1da1ea71fe8e036 packages/vterm/src/screen.ts:89-109 ScreenOptions has no physical font/window metrics; XTWINOPS14/16 at :2600-2605 deliberately report unknown zero dimensions (#30575)",
+              "vterm 7e6c993c22b997e0193137bf8e4beca3952947aa packages/vterm/src/screen.ts:89-109 ScreenOptions has no physical font/window metrics; XTWINOPS14/16 at :2600-2605 deliberately report unknown zero dimensions (#30575)",
           },
           result,
         )
