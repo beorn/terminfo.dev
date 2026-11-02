@@ -790,6 +790,12 @@ Stored mode1 on both engines, and5/66 on vt100, remain held instrumentation TODO
 mixed-observable arms use the existing undeclared assertion type so query replies and reviewed
 buffer state both survive actual collection. Other engines and terminal callbacks retain their behavior.
 
+The same audit wraps the six library mouse-input rows for vt100/vt220: pixel, urxvt, X10,
+button-event, click and wheel. Their own absent mode commands run between the same rendered X
+controls. This is source-reviewed buffer state, not measured mouse-event bytes: it retains
+TEST FAILURE pending independent review, never automatic Unsupported. Other engines retain
+their existing input callback and terminal input criteria stay unchanged.
+
 The exact-runtime source audit also covers highlight set/reset absence for vt100, vt220, libvterm and
 vt100-rust. A silent query plus rendered X retains independent source review for OSC117/119; it
 does not establish a measured reset negative. A missing OSC1 icon getter retains source review only

@@ -6,11 +6,12 @@ import {
   probe,
   SOURCE_TREE_AUDITS,
   sourceTreeDrift,
+  withModeSourceReview,
 } from "./helpers.ts"
 import { kittyKeyboardFlagProbe } from "./extensions.ts"
 import { queryPixelGeometry, type PixelGeometry } from "./region-readback.ts"
 
-export const inputProbes: ProbeDefinition[] = [
+const inputDefinitions: ProbeDefinition[] = [
   probe(
     "input.modify-other-keys",
     (ctx) =>
@@ -62,6 +63,8 @@ export const inputProbes: ProbeDefinition[] = [
     libAssertionType: "input_bytes",
   },
 ]
+
+export const inputProbes: ProbeDefinition[] = inputDefinitions.map(withModeSourceReview)
 
 const MOUSE_SET = "\x1b[?1000h\x1b[?1006h"
 const MOUSE_RESET = "\x1b[?1000l\x1b[?1006l"

@@ -1574,10 +1574,11 @@ test("Wezterm prompt source reviews survive actual collection and capture bindin
 // #32099: callback-only tests miss a source buffer_state result rejected by an
 // inherited query_reply declaration. Real engines must take different branches
 // through the same definitions, including xterm's actual mode2031 Ps0 negative.
-test("source-qualified 2026/2031 mixed criteria survive collection and capture parsing", async () => {
-  const ids = ["modes.synchronized-output", "modes.color-scheme-reporting"]
+test("source-qualified mode and mouse criteria survive collection and capture parsing", async () => {
+  const ids = ["modes.synchronized-output", "modes.color-scheme-reporting", "input.pixel-mouse"]
   for (const [name, producer] of [
     ["vt100", resolveVt100],
+    ["vt220", resolveVt220],
     ["xtermjs", backend],
   ] as const) {
     const adapterPackage = `@termless/${name}`
@@ -1588,21 +1589,30 @@ test("source-qualified 2026/2031 mixed criteria survive collection and capture p
       runtimeFormat: "js",
       adapterVersion: "0.10.2",
       termlessRevision: "8be31bfc35c0359e39a836b1d397f49e7176c97f",
-      ...(name === "vt100"
+      ...(name !== "xtermjs"
         ? ({
             engineVersion: "0.10.1",
-            resolvedPath: "vendor/vterm/packages/vt100/src/index.ts",
+            resolvedPath: `vendor/vterm/packages/${name}/src/index.ts`,
             integrity: {
               kind: "source",
               repository: "git@github.com:beorn/vterm.git",
               revision: "67dd3960746766ed47e2bb4b2ced6503a78549cc",
-              treeOid: "1eaac257cf9ff8d8ece752c8e6edc04b9ddaa6cf",
+              treeOid:
+                name === "vt100"
+                  ? "1eaac257cf9ff8d8ece752c8e6edc04b9ddaa6cf"
+                  : "fc6ff58f2f3e602b8ede99641f73cde997411f14",
               cleanTree: true,
             },
-            adapterSources: [
-              { path: "packages/vt100/src/index.ts", blobOid: "99833d737402f9d1d8e3e257e3a255d8aa1facc3" },
-              { path: "packages/vt100/src/backend.ts", blobOid: "cdb8be8c5ebbba68a5920cfa4df27c9deb31745a" },
-            ],
+            adapterSources:
+              name === "vt100"
+                ? [
+                    { path: "packages/vt100/src/index.ts", blobOid: "99833d737402f9d1d8e3e257e3a255d8aa1facc3" },
+                    { path: "packages/vt100/src/backend.ts", blobOid: "cdb8be8c5ebbba68a5920cfa4df27c9deb31745a" },
+                  ]
+                : [
+                    { path: "packages/vt220/src/index.ts", blobOid: "601dd26eb7e753a5396ebdf72f1ef8ee2cc4355f" },
+                    { path: "packages/vt220/src/backend.ts", blobOid: "7369e3710e36aa649372fd09011ecfdd6ba47c73" },
+                  ],
           } as const)
         : ({
             engineVersion: "6.0.0",
@@ -1679,13 +1689,16 @@ test("source-qualified 2026/2031 mixed criteria survive collection and capture p
         captured.results.find((entry) => entry.featureId === id),
         id,
       ).toMatchObject(
-        name === "vt100"
+        name !== "xtermjs"
           ? {
               status: "test-failure",
               assertionType: "buffer_state",
               criterionBranch: "source-negative-review",
             }
-          : { status: id === "modes.synchronized-output" ? "supported" : "unsupported", assertionType: "query_reply" },
+          : {
+              status: id === "modes.color-scheme-reporting" ? "unsupported" : "supported",
+              assertionType: id === "input.pixel-mouse" ? "input_bytes" : "query_reply",
+            },
       )
       expect(JSON.stringify(batch.ungradedDiagnostics[id] ?? {}), id).not.toContain("collector-error")
       if (name === "xtermjs") {
@@ -1693,10 +1706,26 @@ test("source-qualified 2026/2031 mixed criteria survive collection and capture p
           batch.assertions.filter((assertion) => assertion.featureId === id),
           id,
         ).toMatchObject([
-          { assertionType: "query_reply", kind: id === "modes.synchronized-output" ? "positive" : "negative" },
+          {
+            assertionType: id === "input.pixel-mouse" ? "input_bytes" : "query_reply",
+            kind: id === "modes.color-scheme-reporting" ? "negative" : "positive",
+          },
         ])
+        expect(JSON.parse(batch.rawReplies[id]!), id).toMatchObject(
+          id === "input.pixel-mouse"
+            ? {
+                report: "\x1b[<0;41;25M",
+              }
+            : {
+                setReply: id === "modes.synchronized-output" ? "\x1b[?2026;1$y" : "\x1b[?2031;0$y",
+              },
+        )
+      } else if (id === "input.pixel-mouse") {
         expect(JSON.parse(batch.rawReplies[id]!), id).toMatchObject({
-          setReply: id === "modes.synchronized-output" ? "\x1b[?2026;1$y" : "\x1b[?2031;0$y",
+          commands: ["\x1b[?1016h", "\x1b[?1016l"],
+          line: "XX",
+          position: { x: 2, y: 0 },
+          control: "consumed-without-effect",
         })
       }
     }
@@ -1707,18 +1736,18 @@ test("source-qualified 2026/2031 mixed criteria survive collection and capture p
       new Map([[manifest.probeHash, manifest]]),
       { mode: "capture" },
     )
-    expect(parsed.results).toHaveLength(2)
+    expect(parsed.results).toHaveLength(3)
     for (const row of parsed.results ?? []) {
       expect(row).toMatchObject(
-        name === "vt100"
+        name !== "xtermjs"
           ? {
               status: "test-failure",
               assertionType: "buffer_state",
               criterionBranch: "source-negative-review",
             }
           : {
-              status: row.featureId === "modes.synchronized-output" ? "supported" : "unsupported",
-              assertionType: "query_reply",
+              status: row.featureId === "modes.color-scheme-reporting" ? "unsupported" : "supported",
+              assertionType: row.featureId === "input.pixel-mouse" ? "input_bytes" : "query_reply",
             },
       )
     }
