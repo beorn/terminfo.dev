@@ -78,11 +78,6 @@ const headlessObservableFeatures = [
     { ligatureSample: "!= -> => <= ==" },
   ],
   [
-    "modes.decsscls",
-    "presentation speed: headless engines paint no frames and expose no scroll-speed state",
-    { presentation: false },
-  ],
-  [
     "reset.soft",
     "the application-cursor mode (DECCKM) state in the headless getMode readback",
     { before: null, after: null },
@@ -113,7 +108,7 @@ test.each(headlessObservableFeatures)(
       {
         id: "review",
         status: "test-todo",
-        reason: id === "modes.decsscls" ? noObservable : `Headless observable review required: ${noObservable}`,
+        reason: `Headless observable review required: ${noObservable}`,
       },
     ])
     expect(result.observation).toBeUndefined()

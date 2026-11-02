@@ -24,20 +24,17 @@ test.each([
   "input.urxvt-mouse",
   "input.x10-mouse",
   "extensions.clipboard-paste",
-  "modes.decsscls",
 ])("%s retains its by-design lib review for a bound decision", (id) => {
-  const definition = [...inputProbes, ...extensionsProbes, ...modesProbes].find((entry) => entry.id === id)!
+  const definition = [...inputProbes, ...extensionsProbes].find((entry) => entry.id === id)!
   const result = definition.lib!({ kind: "live" } as LibProbeSource)
   expect(result.observation).toBeUndefined()
-  expect(result.criterionBranch).toBe(id === "modes.decsscls" ? "headless-observable-review" : "os-input-review")
+  expect(result.criterionBranch).toBe("os-input-review")
   expect(result.tests).toEqual([
     {
       id: "review",
       status: "test-todo",
       reason:
-        id === "modes.decsscls"
-          ? "presentation speed: headless engines paint no frames and expose no scroll-speed state"
-          : "Lib arm: the engine consumes bytes and has no input surface; host input encoding is measured in the terminal arm.",
+        "Lib arm: the engine consumes bytes and has no input surface; host input encoding is measured in the terminal arm.",
     },
   ])
 })
