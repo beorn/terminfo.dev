@@ -947,6 +947,9 @@ usage() {
   echo "Usage: $0 --target kitty|xterm|ghostty|wezterm|alacritty [--preset baseline|current|default] --clipboard-profile default|allow|deny-read [--mux tmux|screen] [--ids ID,ID] OUTPUT_DIRECTORY" >&2
   echo "A source-tree collector also needs TERMINFO_PROBE_HASH and TERMINFO_SOURCE_REVISION" >&2
   echo "  from sourceSuiteEnvironment() in packages/admin/versions.ts, or serve.ts refuses the run." >&2
+  echo "Retains raw/v3-capture.json, then finalizes a private sibling." >&2
+  echo "That sibling seals automatically when no required review is pending." >&2
+  echo "This launcher has no capture-only mode; do not use it for a raw-only authorization." >&2
   exit 2
 }
 target_id=
