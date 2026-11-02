@@ -15,29 +15,23 @@ const xtestIds = ["input.xtest-key", "input.xtest-click", "input.xtest-wheel"] a
 
 // Fixed per-capture review reasons must reach the real callbacks, without grading at callback time.
 // Existing input fixtures checked absence of observations, not this retained review contract.
-test.each([
-  "input.xtest-key",
-  "input.xtest-click",
-  "input.xtest-wheel",
-  "input.button-event-mouse",
-  "input.pixel-mouse",
-  "input.urxvt-mouse",
-  "input.x10-mouse",
-  "extensions.clipboard-paste",
-])("%s retains its by-design lib review for a bound decision", (id) => {
-  const definition = [...inputProbes, ...extensionsProbes].find((entry) => entry.id === id)!
-  const result = definition.lib!({ kind: "live" } as LibProbeSource)
-  expect(result.observation).toBeUndefined()
-  expect(result.criterionBranch).toBe("os-input-review")
-  expect(result.tests).toEqual([
-    {
-      id: "review",
-      status: "test-todo",
-      reason:
-        "Lib arm: the engine consumes bytes and has no input surface; host input encoding is measured in the terminal arm.",
-    },
-  ])
-})
+test.each(["input.xtest-key", "extensions.clipboard-paste"])(
+  "%s retains its by-design lib review for a bound decision",
+  (id) => {
+    const definition = [...inputProbes, ...extensionsProbes].find((entry) => entry.id === id)!
+    const result = definition.lib!({ kind: "live" } as LibProbeSource)
+    expect(result.observation).toBeUndefined()
+    expect(result.criterionBranch).toBe("os-input-review")
+    expect(result.tests).toEqual([
+      {
+        id: "review",
+        status: "test-todo",
+        reason:
+          "Lib arm: the engine consumes bytes and has no input surface; host input encoding is measured in the terminal arm.",
+      },
+    ])
+  },
+)
 
 test.each([
   "input.xtest-key",
@@ -215,7 +209,10 @@ test.each(xtestIds)("%s is not tested without an OS XTEST adapter", async (id) =
   })
   expect(headless.notTested).toEqual({
     reason: "no-semantic-observable",
-    noObservable: expect.stringMatching(/XTEST|OS-level/i),
+    noObservable:
+      id === "input.xtest-key"
+        ? expect.stringMatching(/XTEST|OS-level/i)
+        : "adapter binding scripted-model: mouse-encoding extension unavailable",
   })
   expect(headless.observation).toBeUndefined()
 
@@ -686,7 +683,7 @@ test("input.pixel-mouse is not tested without an OS XTEST adapter", async () => 
   })
   expect(headless.notTested).toEqual({
     reason: "no-semantic-observable",
-    noObservable: expect.stringMatching(/XTEST|OS-level/i),
+    noObservable: "adapter binding scripted-model: mouse-encoding extension unavailable",
   })
   expect(headless.observation).toBeUndefined()
 
@@ -814,7 +811,7 @@ test("input.urxvt-mouse is not tested without an OS XTEST adapter", async () => 
   })
   expect(headless.notTested).toEqual({
     reason: "no-semantic-observable",
-    noObservable: expect.stringMatching(/XTEST|OS-level/i),
+    noObservable: "adapter binding scripted-model: mouse-encoding extension unavailable",
   })
   expect(headless.observation).toBeUndefined()
 
@@ -912,7 +909,7 @@ test("input.x10-mouse is not tested without an OS XTEST adapter", async () => {
   })
   expect(headless.notTested).toEqual({
     reason: "no-semantic-observable",
-    noObservable: expect.stringMatching(/XTEST|OS-level/i),
+    noObservable: "adapter binding scripted-model: mouse-encoding extension unavailable",
   })
   expect(headless.observation).toBeUndefined()
 
@@ -1010,7 +1007,7 @@ test("input.button-event-mouse is not tested without an OS XTEST adapter", async
   })
   expect(headless.notTested).toEqual({
     reason: "no-semantic-observable",
-    noObservable: expect.stringMatching(/XTEST|OS-level/i),
+    noObservable: "adapter binding scripted-model: mouse-encoding extension unavailable",
   })
   expect(headless.observation).toBeUndefined()
 

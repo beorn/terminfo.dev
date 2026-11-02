@@ -58,7 +58,7 @@ const xtermOscIdentity = {
   termlessRevision: "84003d2c91610fe2743142675234a0fb3ec9cf1d",
   adapterSources: [
     { path: "packages/xtermjs/src/index.ts", blobOid: "550e10110ec2baaf326d2958319b03ee8208feba" },
-    { path: "packages/xtermjs/src/backend.ts", blobOid: "79bc4dc6a1060d073f12d59ecd6b941cadfe91dd" },
+    { path: "packages/xtermjs/src/backend.ts", blobOid: "751d9fa074aa9c3519f2af1bb9d71222b3834e4e" },
   ],
   resolvedPath: "node_modules/.bun/@xterm+headless@6.0.0/node_modules/@xterm/headless/lib-headless/xterm-headless.js",
   integrity: {
@@ -441,7 +441,7 @@ test.each([
                   ]
                 : [
                     { path: "packages/vterm/src/index.ts", blobOid: "cb5719799dcdd5ae24e6fcf0dcad9965035ce54c" },
-                    { path: "packages/vterm/src/backend.ts", blobOid: "308a934578c044ae95feaa29299531d9aa9eb4f7" },
+                    { path: "packages/vterm/src/backend.ts", blobOid: "5d27c551161fe41af00ac587bd9484d6becbbc7a" },
                   ],
           resolvedPath: `vendor/vterm/packages/${engine}/src/index.ts`,
           integrity: {

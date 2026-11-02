@@ -37,11 +37,11 @@ export const ADAPTER_SOURCE_AUDITS = {
   },
   vterm: {
     "packages/vterm/src/index.ts": "cb5719799dcdd5ae24e6fcf0dcad9965035ce54c",
-    "packages/vterm/src/backend.ts": "308a934578c044ae95feaa29299531d9aa9eb4f7",
+    "packages/vterm/src/backend.ts": "5d27c551161fe41af00ac587bd9484d6becbbc7a",
   },
   xtermjs: {
     "packages/xtermjs/src/index.ts": "550e10110ec2baaf326d2958319b03ee8208feba",
-    "packages/xtermjs/src/backend.ts": "79bc4dc6a1060d073f12d59ecd6b941cadfe91dd",
+    "packages/xtermjs/src/backend.ts": "751d9fa074aa9c3519f2af1bb9d71222b3834e4e",
   },
   ghostty: {
     "packages/ghostty/src/index.ts": "f4b9d9f3e13cc515b23abc739cab21bf971e8585",

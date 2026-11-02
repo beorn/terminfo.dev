@@ -39,6 +39,7 @@ import { collectBatch, createLibProbeSource, feedCapture } from "./headless-batc
 import * as headlessIdentity from "./headless-identity.ts"
 import { finalizeCollectedDraft } from "../terminfo.dev/src/capture-writer.ts"
 import { cellWidthTransition } from "../probe-defs/src/helpers.ts"
+import { activeInterpretations, parseInterpretations } from "../../scripts/interpretations.ts"
 import { replyFailure } from "../probe-defs/src/helpers.ts"
 import retainedDeccolm from "./fixtures/deccolm-retained.json"
 
@@ -1189,10 +1190,10 @@ test.each(["extensions.osc117-reset-highlight-bg", "extensions.osc119-reset-high
       engineVersion: "6.0.0",
       adapterVersion: "0.10.2",
       termlessRevision: "2d97417328b7b1d086f9396b9a1731216ed134cc",
-      // Source-audit fixture at Termless 677a377f, independent of this runner's adapter revision.
+      // Source-audit fixture follows the diagnostic-only mouse error-prefix edit at Termless 4708a73.
       adapterSources: [
         { path: "packages/xtermjs/src/index.ts", blobOid: "550e10110ec2baaf326d2958319b03ee8208feba" },
-        { path: "packages/xtermjs/src/backend.ts", blobOid: "79bc4dc6a1060d073f12d59ecd6b941cadfe91dd" },
+        { path: "packages/xtermjs/src/backend.ts", blobOid: "751d9fa074aa9c3519f2af1bb9d71222b3834e4e" },
       ],
       resolvedPath:
         "node_modules/.bun/@xterm+headless@6.0.0/node_modules/@xterm/headless/lib-headless/xterm-headless.js",
@@ -2298,6 +2299,121 @@ test("xtermjs library mouse arms retain measured reports and pixel unavailabilit
     { featureId: ids[5], status: "supported" },
   ])
   expect(JSON.parse(batch.rawReplies[ids[2]!]!)).toMatchObject({ report: "\x1b[M %#" })
+})
+
+// @failure An old Untestable decision turns an absent library encoder into a fresh review or failure.
+// @level l1
+// @consumer Natural collection's accepted-decision carry and the canonical capture reader.
+test("a real non-declaring backend keeps mouse tool gaps plain TODO with its old accepted record", async () => {
+  const ids = [
+    "input.button-event-mouse",
+    "input.pixel-mouse",
+    "input.urxvt-mouse",
+    "input.x10-mouse",
+    "input.xtest-click",
+    "input.xtest-wheel",
+  ]
+  const actual = await resolveVt100()
+  try {
+    expect(actual.capabilities.extensions.has("mouse-encoding")).toBe(false)
+  } finally {
+    actual.destroy()
+  }
+  const batch = await collectBatch(resolveVt100, "vt100", registryDefinitions(ids))
+  expect(batch.results.map((row) => row.featureId)).toEqual(ids)
+  for (const row of batch.results) {
+    expect(row.status).toBe("test-todo")
+    expect(row.reason).toContain("mouse-encoding extension unavailable")
+    expect(row.criterionBranch).toBeUndefined()
+    expect(row.tests?.some((test) => test.id === "review" || test.reviewRef !== undefined)).not.toBe(true)
+    expect(JSON.parse(batch.rawReplies[row.featureId]!)).toEqual({ mouseEncoding: false })
+  }
+  expect(batch.assertions).toEqual([])
+  expect(batch.observations).toEqual([])
+  expect(batch.ungradedDiagnostics).toEqual({})
+  const records = JSON.parse(readFileSync(new URL("../../content/interpretations.json", import.meta.url), "utf8")) as {
+    id: string
+  }[]
+  const historical = records.find((record) => record.id === "by-design-32022-vt100-input-button-event-mouse")
+  if (!historical) throw new Error("Missing accepted vt100 mouse record in content/interpretations.json")
+  const sources = new Map<string, string>()
+  const accepted = activeInterpretations(
+    parseInterpretations("mouse-history-fixture", JSON.stringify([historical]), ids, sources),
+  )
+  expect(accepted).toHaveLength(1)
+  expect(accepted[0]).toMatchObject({ id: historical.id, decision: "untestable", featureId: ids[0] })
+  const manifest = {
+    schemaVersion: 4 as const,
+    probeHash: "mouse-gap-reader-fixture",
+    adapterVersion: "fixture",
+    catalogIds: ids,
+    probes: { term: [], mux: [], lib: ids },
+  }
+  const draft = initializeRunDraft({
+    source: { kind: "live" },
+    runId: "mouse-gap-reader-fixture",
+    sourceRevision: "a".repeat(40),
+    intendedSubject: { kind: "lib", id: "vt100" },
+    manifest,
+  })
+  // Existing unverified unit metadata; no runtime attestation, real capture or review actuation.
+  const captured: CapturedRunDraft = {
+    ...draft,
+    subject: {
+      kind: "lib",
+      id: "vt100",
+      version: "fixture",
+      os: "linux",
+      osVersion: null,
+      outerTerminal: null,
+      mux: null,
+      config: null,
+      permissions: null,
+    },
+    identity: "unverified",
+    runtimeIdentity: {
+      kind: "js",
+      engineVersion: "fixture",
+      adapterVersion: "fixture",
+      termlessRevision: "fixture",
+      resolvedPath: "fixture/vt100",
+      integrity: { kind: "registry", lockIntegrity: "fixture" },
+      runtimeFormat: "js",
+    },
+    measuredAt: "2026-11-02T07:05:00.000Z",
+    origin: { kind: "collector" },
+    rawReplies: batch.rawReplies,
+    results: batch.results,
+    assertions: batch.assertions,
+  }
+  const original = globalThis.structuredClone(captured)
+  const reports: unknown[] = []
+  const enriched = finalizeCollectedDraft(captured, undefined, {
+    manifest,
+    decisions: accepted.map((entry) => {
+      const source = sources.get(entry.id)
+      if (source === undefined) throw new Error(`Missing parsed historical decision source ${entry.id}`)
+      return { source, startedAt: "2026-11-01T13:00:00.000Z" }
+    }),
+    origin: () => undefined,
+    carry: true,
+    keepDraft: true,
+    report: (entry) => reports.push(entry),
+  })
+  expect(reports).toEqual([])
+  expect(enriched.results).toEqual(batch.results)
+  expect(enriched.rawReplies).toEqual(batch.rawReplies)
+  expect(enriched).not.toHaveProperty("sealedAt")
+  expect(captured).toEqual(original)
+  const parsed = parseRun(
+    "mouse-gap.capture.json",
+    JSON.stringify(enriched),
+    ids,
+    new Map([[manifest.probeHash, manifest]]),
+    { mode: "capture" },
+  )
+  expect(parsed.results).toEqual(batch.results)
+  expect(parsed.assertions).toEqual([])
 })
 
 test("input.kitty-click-events measures unsupported on xtermjs via the delegated mouse-encoding extension and enforces C3 wiring", async () => {
