@@ -28,7 +28,7 @@ import { fileURLToPath } from "node:url"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import { initializeRunDraft } from "@terminfo/probe-defs"
 import { derivedSuiteManifest, probeSuiteSnapshot } from "../packages/admin/versions.ts"
-import type { LinuxMuxAttachmentProof } from "@terminfo/probe-defs"
+import type { LinuxMuxAttachmentProof, CapturedRunDraft, CaptureEvidence } from "@terminfo/probe-defs"
 import { bindReceiptToRun, parseDisposableReceipt } from "../packages/terminfo.dev/src/disposable-receipt.ts"
 
 const launcher = fileURLToPath(new URL("./linux-container-run.sh", import.meta.url))
@@ -1078,12 +1078,13 @@ it.each([false, true])("retains a Linux raw draft without completion receipt, re
   expect(readdirSync(dir), `${result.stdout}\n${result.stderr}`).toContain("v3-run.draft.json")
   expect(existsSync(join(dir, "v3-run.json"))).toBe(false)
   expect(existsSync(join(dir, "run-receipt.json"))).toBe(false)
-  const saved = JSON.parse(readFileSync(join(dir, "v3-run.draft.json"), "utf8"))
+  const saved = JSON.parse(readFileSync(join(dir, "v3-run.draft.json"), "utf8")) as CapturedRunDraft
   expect(saved).not.toHaveProperty("sealedAt")
   expect(result.stderr).toContain("unsealed")
   if (pending) {
     expect(
-      JSON.parse(saved.rawReplies["collector.evidence.device.primary-da"]).projection.feature.catalogEntrySha256,
+      (JSON.parse(saved.rawReplies["collector.evidence.device.primary-da"]!) as CaptureEvidence).projection.feature
+        .catalogEntrySha256,
     ).toBe(manifest.catalogEntrySha256!["device.primary-da"])
   }
 })

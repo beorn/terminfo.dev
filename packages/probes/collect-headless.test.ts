@@ -17,6 +17,7 @@ import {
   readCollectorAttempt,
   SOURCE_NEGATIVE_REVIEW,
   type CapturedRunDraft,
+  type CaptureEvidence,
   type RunDraft,
 } from "@terminfo/probe-defs"
 import { parseRun } from "@terminfo/run-parser"
@@ -113,7 +114,8 @@ it.each([true, false])(
     expect(saved).not.toHaveProperty("sealedAt")
     if (pendingReview) {
       expect(
-        JSON.parse(saved.rawReplies["collector.evidence.device.primary-da"]!).projection.feature.catalogEntrySha256,
+        (JSON.parse(saved.rawReplies["collector.evidence.device.primary-da"]!) as CaptureEvidence).projection.feature
+          .catalogEntrySha256,
       ).toBe(suite.catalogEntrySha256!["device.primary-da"])
       expect(path).toMatch(/\.draft\.json$/)
       expect(saved).not.toHaveProperty("sealedAt")

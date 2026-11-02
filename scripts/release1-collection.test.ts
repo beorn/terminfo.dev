@@ -50,6 +50,11 @@ import {
   readCollectorSelection,
   readCollectorAttempt,
   type RunDraft,
+  type ProbeSubject,
+  type HeadlessRuntimeIdentity,
+  type CapturedRunDraft,
+  type CurrentProbeRun,
+  type CaptureEvidence,
 } from "@terminfo/probe-defs"
 import { aggregateCurrentResults } from "../docs/data/release-scope.ts"
 import {
@@ -1650,7 +1655,7 @@ it.each([
   const directory = mkdtempSync(join(tmpdir(), "terminfo-pending-handoff-"))
   const specimen = JSON.parse(
     readFileSync(join(ROUND, "probes-libs/xtermjs-6.0.0-linux-c19905bf-2d90-474c-9e1a-13805bb3c0c4.json"), "utf8"),
-  )
+  ) as { target: ProbeSubject; measuredAt: string; runtimeIdentity: HeadlessRuntimeIdentity }
   if (
     typeof specimen !== "object" ||
     specimen === null ||
@@ -1677,7 +1682,7 @@ it.each([
       })
     : undefined
   const acceptedReviews = carried
-    ? vi.spyOn(interpretations, "activeInterpretations").mockImplementation((entries) => entries)
+    ? vi.spyOn(interpretations, "activeInterpretations").mockImplementation((entries) => [...entries])
     : undefined
   const frozenSuite = finalCollection ? frozenSuiteIdFor(CONTENT, "candidate2") : undefined
   const currentSnapshot = versions.probeSuiteSnapshot()
@@ -1902,7 +1907,11 @@ it.each([
         run.results[0]!.tests = [
           { id: "review", status: "test-todo", attempt: { scope: "none" }, reason: "Required review pending" },
         ]
-        run.runtimeIdentity = { ...run.runtimeIdentity, adapterSources: [{ path: "fixture-adapter.ts", blobOid: "a".repeat(40) }] }
+        if (!run.runtimeIdentity) throw new Error("Carried library fixture requires runtime identity")
+        run.runtimeIdentity = {
+          ...run.runtimeIdentity,
+          adapterSources: [{ path: "fixture-adapter.ts", blobOid: "a".repeat(40) }],
+        }
         const binding = retainCaptureBinding(
           run as never,
           featureId,
@@ -1948,7 +1957,8 @@ it.each([
       }
       if (fault.startsWith("producer-")) {
         producerPath = path
-        producerBytes = readFileSync(path, "utf8")
+        const bytes = readFileSync(path, "utf8")
+        producerBytes = bytes
         if (fault === "producer-zero-review") {
           // A root keepDraft re-save adds the response digest under the same plain producer name.
           expect(() =>
@@ -1957,7 +1967,7 @@ it.each([
                 ...run,
                 rawReplies: {
                   ...run.rawReplies,
-                  "collector.httpResponseSha256": createHash("sha256").update(producerBytes).digest("hex"),
+                  "collector.httpResponseSha256": createHash("sha256").update(bytes).digest("hex"),
                 },
               } as never,
               output,
@@ -1999,13 +2009,17 @@ it.each([
         (entry) => entry.context.kind === "term" && entry.context.id === "alacritty" && entry.context.os === "linux",
       )!
       expect(linux.status, linux.error).toBe("classified")
-      const receipt = JSON.parse(readFileSync(join(dirname(linux.rawRun!), "run-receipt.json"), "utf8"))
+      const receipt = JSON.parse(readFileSync(join(dirname(linux.rawRun!), "run-receipt.json"), "utf8")) as Record<
+        string,
+        unknown
+      >
+      const final = JSON.parse(readFileSync(linux.rawRun!, "utf8")) as CurrentProbeRun
       expect(receipt.probeRun).toEqual({
         path: basename(linux.rawRun!),
-        runId: JSON.parse(readFileSync(linux.rawRun!, "utf8")).runId,
+        runId: final.runId,
         sha256: createHash("sha256").update(readFileSync(linux.rawRun!)).digest("hex"),
       })
-      expect(JSON.parse(readFileSync(linux.rawRun!, "utf8")).sealedAt).toBeTypeOf("string")
+      expect(final.sealedAt).toBeTypeOf("string")
       return
     }
     const row = pass.contexts.find((entry) => entry.context.kind === "lib" && entry.context.id === "xtermjs")!
@@ -2016,7 +2030,8 @@ it.each([
       ])
       expect(row.summary?.complete).toBe(true)
       expect(row.classification).toBeDefined()
-      expect(JSON.parse(readFileSync(row.rawRun!, "utf8")).results[0].status).toBe("untestable")
+      const retained = JSON.parse(readFileSync(row.rawRun!, "utf8")) as CapturedRunDraft
+      expect(retained.results[0]?.status).toBe("untestable")
       if (!finalCollection) {
         expect(row.status, row.error).toBe("pending-review")
         expect(row.rawRun).toMatch(/\.draft\.json$/)
@@ -2030,15 +2045,19 @@ it.each([
       expect(row.rawRun).toBe(producerPath)
       expect(readFileSync(row.rawRun!, "utf8")).toBe(producerBytes)
       if (fault === "producer-pending") {
-        const retained = JSON.parse(producerBytes!)
-        const featureId = retained.results[0].featureId
-        expect(JSON.parse(retained.rawReplies[`collector.evidence.${featureId}`]).projection.feature.catalogEntrySha256).toBe(
-          versions.probeSuiteSnapshot().catalogEntrySha256[featureId],
-        )
+        if (producerBytes === undefined) throw new Error("Missing retained producer fixture bytes")
+        const retained = JSON.parse(producerBytes) as CapturedRunDraft
+        const featureId = retained.results[0]!.featureId
+        expect(
+          (JSON.parse(retained.rawReplies[`collector.evidence.${featureId}`]!) as CaptureEvidence).projection.feature
+            .catalogEntrySha256,
+        ).toBe(versions.probeSuiteSnapshot().catalogEntrySha256[featureId])
       }
-      expect(JSON.parse(readFileSync(join(dirname(row.rawRun!), "collection.json"), "utf8")).runs).toEqual([
-        producerPath,
-      ])
+      const receipt = JSON.parse(readFileSync(join(dirname(row.rawRun!), "collection.json"), "utf8")) as Pick<
+        Awaited<ReturnType<typeof headless.collectHeadlessRuns>>,
+        "runs"
+      >
+      expect(receipt.runs).toEqual([producerPath])
       expect(row.summary).toBeDefined()
       expect(row.classification).toBeDefined()
       expect(row.reason).toBe("Valid measured capture; unsealed draft")

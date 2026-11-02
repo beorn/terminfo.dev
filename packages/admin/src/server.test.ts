@@ -15,6 +15,7 @@ import {
   ENVIRONMENT_GROUP_IDS,
   initializeRunDraft,
   type CapturedRunDraft,
+  type CaptureEvidence,
   type ProbeSuiteManifest,
 } from "@terminfo/probe-defs"
 import { saveDaemonProbeRun } from "../../terminfo.dev/src/daemon-client.ts"
@@ -157,7 +158,7 @@ it.each([
   ["here", false, true],
 ] as const)(
   "preserves %s coverage and collection custody (environment=%s, review=%s)",
-  async (command, environment, pending) => {
+  async (command, environment, pending: boolean = false) => {
     const manifest = {
       schemaVersion: 4 as const,
       probeHash: "abcdef123456",
@@ -224,9 +225,10 @@ it.each([
     const assertDraft = (saved: CapturedRunDraft) => {
       expect(saved).not.toHaveProperty("sealedAt")
       if (pending) {
-        expect(JSON.parse(saved.rawReplies["collector.evidence.sgr.bold"]!).projection.feature.catalogEntrySha256).toBe(
-          "b".repeat(64),
-        )
+        expect(
+          (JSON.parse(saved.rawReplies["collector.evidence.sgr.bold"]!) as CaptureEvidence).projection.feature
+            .catalogEntrySha256,
+        ).toBe("b".repeat(64))
       }
     }
     fixtures.receipt = { manifest, collectorRevision: manifest.sourceRevision }
@@ -245,7 +247,7 @@ it.each([
       writeFileSync(response, fixtures.raw)
       if (command === "retain") {
         const saved = admission.retainCollectedRun(run, response, undefined, join(fixtures.home!, "private"))
-        assertDraft(JSON.parse(readFileSync(saved, "utf8")))
+        assertDraft(JSON.parse(readFileSync(saved, "utf8")) as CapturedRunDraft)
         expect(readFileSync(join(fixtures.home!, "private", "response"), "utf8")).toBe(fixtures.raw)
       } else {
         vi.mocked(admission.admitCollectedRun).mockRestore()
@@ -266,7 +268,7 @@ it.each([
         process.argv = [argv[0]!, "app-harness.ts", path]
         vi.resetModules()
         await import("../app-harness.ts")
-        assertDraft(JSON.parse(readFileSync(path, "utf8")))
+        assertDraft(JSON.parse(readFileSync(path, "utf8")) as CapturedRunDraft)
         expect(existsSync(`${path}.done`)).toBe(true)
       } finally {
         process.argv = argv
@@ -277,7 +279,7 @@ it.each([
     else {
       if (pending) {
         await handleHere({ json: true })
-        assertDraft(JSON.parse(String(vi.mocked(console.log).mock.calls.at(-1)![0])))
+        assertDraft(JSON.parse(String(vi.mocked(console.log).mock.calls.at(-1)![0])) as CapturedRunDraft)
         vi.mocked(console.log).mockClear()
       }
       await handleHere({})

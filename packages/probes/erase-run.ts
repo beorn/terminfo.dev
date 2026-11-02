@@ -7,10 +7,8 @@ import { platform, release } from "node:os"
 import {
   ALL_PROBES,
   initializeRunDraft,
-  sealRunDraft,
   recordExecutedProbe,
   type CapturedRunDraft,
-  type CurrentProbeRun,
   type ProbeResult,
 } from "@terminfo/probe-defs"
 import {
@@ -30,7 +28,7 @@ import { ERASE_REPLAY_ROOT } from "./erase-store.ts"
 type EraseRecords = ReturnType<typeof replayEraseCalls>
 export interface EraseRunRecord {
   captureRunId?: string
-  assertions: CurrentProbeRun[]
+  assertions: CapturedRunDraft[]
   checks: EraseRecords[]
   files: string[]
   error?: string
@@ -172,12 +170,11 @@ export async function runEraseReplay(context: TestContext): Promise<EraseRunReco
         if (index < 0) throw new Error("Erase result missing from declared catalogue: " + featureId)
         assertion.results[index] = domain
       }
-      const sealed = sealRunDraft(assertion)
-      const path = join(directory, assertion.runId + ".assertion.json")
+      const path = join(directory, assertion.runId + ".assertion.draft.json")
       const checksPath = join(directory, assertion.runId + ".checks.json")
-      writeFileSync(path, JSON.stringify(sealed, null, 2), { flag: "wx" })
+      writeFileSync(path, JSON.stringify(assertion, null, 2), { flag: "wx" })
       writeFileSync(checksPath, JSON.stringify(records, null, 2), { flag: "wx" })
-      finalRecord.assertions.push(sealed)
+      finalRecord.assertions.push(assertion)
       finalRecord.checks.push(records)
       finalRecord.files.push(path, checksPath)
     }
