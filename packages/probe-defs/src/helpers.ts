@@ -45,7 +45,8 @@ export const ADAPTER_SOURCE_AUDITS = {
   },
   ghostty: {
     "packages/ghostty/src/index.ts": "f4b9d9f3e13cc515b23abc739cab21bf971e8585",
-    "packages/ghostty/src/backend.ts": "7a917fe46b72d9870b898e71d440e7cb876b3fc1",
+    // Mouse-encoding binding (termless 2719cfd) changes the backend blob; the WASM artifact and parser are unchanged.
+    "packages/ghostty/src/backend.ts": "560146d5f929f31a8f973f809d97f91cf0e23fd6",
   },
   libvterm: {
     "packages/libvterm/src/index.ts": "2b4708b1081e701b99893ca055ded781dc46cf25",

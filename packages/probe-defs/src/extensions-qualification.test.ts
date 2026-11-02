@@ -148,7 +148,7 @@ const absentOscBatch = [
       },
       adapterSources: [
         { path: "packages/ghostty/src/index.ts", blobOid: "f4b9d9f3e13cc515b23abc739cab21bf971e8585" },
-        { path: "packages/ghostty/src/backend.ts", blobOid: "7a917fe46b72d9870b898e71d440e7cb876b3fc1" },
+        { path: "packages/ghostty/src/backend.ts", blobOid: "560146d5f929f31a8f973f809d97f91cf0e23fd6" },
       ],
     },
     codes: [176, 3008, 440, 555, 666, 710],
@@ -238,6 +238,37 @@ test.each(absentOscBatch)(
     }
   },
 )
+
+// G3 (@cto 10:37 ghostty scope): the audit moved to the mouse-binding backend blob, so the pre-binding blob
+// must no longer reach any ghostty source-negative OSC review; the batch above proves the current blob does.
+test("ghostty OSC source review lapses on the pre-mouse-binding backend blob", () => {
+  const ghostty = absentOscBatch.find((entry) => entry.engine === "ghostty")!
+  const old = {
+    ...ghostty.identity,
+    adapterSources: ghostty.identity.adapterSources.map((source) =>
+      source.path === "packages/ghostty/src/backend.ts" ? { ...source, blobOid: "7a917fe46b72d9870b898e71d440e7cb876b3fc1" } : source,
+    ),
+  }
+  const features: Record<number, string> = {
+    176: "osc176-app-id",
+    3008: "osc3008-context",
+    440: "osc440-audio",
+    555: "osc555-flash",
+    666: "osc666-termprop",
+    710: "osc710-font-normal",
+  }
+  for (const code of ghostty.codes) {
+    const run = (runtimeIdentity: HeadlessRuntimeIdentity) =>
+      callback(`extensions.${features[code]}`).lib!({
+        runtimeIdentity,
+        capabilities: { extensions: new Set() },
+        feed: () => undefined,
+        getCell: () => ({ char: "X" }),
+      } as unknown as LibProbeSource)
+    expect(run(ghostty.identity).criterionBranch, String(code)).toBe("source-negative-review")
+    expect(run(old).criterionBranch, String(code)).not.toBe("source-negative-review")
+  }
+})
 
 // #32087: kitty's provenance.sourceCommit is kitty's own upstream commit, so a Termless pin move
 // (termlessRevision) keeps the six kitty OSC reviews, while a different kitty binary does not.
