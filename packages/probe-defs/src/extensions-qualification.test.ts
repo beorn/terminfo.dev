@@ -427,7 +427,7 @@ test.each([
           runtimeFormat: "js",
           engineVersion: "0.10.1",
           adapterVersion: "0.10.2",
-          termlessRevision: "2".repeat(40),
+          termlessRevision: engine === "vt220" ? "a871f0e580e1b02fb5dbb7ed854f6de623e7858e" : "2".repeat(40),
           adapterSources:
             engine === "vt100"
               ? [
@@ -448,14 +448,14 @@ test.each([
             kind: "source",
             repository: "git@github.com:beorn/vterm.git",
             revision:
-              engine === "vterm"
+              engine === "vterm" || engine === "vt220"
                 ? "67dd3960746766ed47e2bb4b2ced6503a78549cc"
                 : "bd3d32aea2f1994376a71adfc55b92705eedbd8c",
             treeOid:
               engine === "vt100"
                 ? "1eaac257cf9ff8d8ece752c8e6edc04b9ddaa6cf"
                 : engine === "vt220"
-                  ? "d504616ae458b8b0fa9fa365034c30bd35f55ee8"
+                  ? "fc6ff58f2f3e602b8ede99641f73cde997411f14"
                   : "e9d67d4b4ba7cb4caf0d0824b3b272c10e4b229e",
             cleanTree: true,
           },
@@ -508,7 +508,7 @@ test.each([
           id: "review",
           status: "test-failure",
           reason: expect.stringContaining(
-            engine === "xtermjs" ? "17a90b65" : engine === "vterm" ? "67dd3960" : "bd3d32ae",
+            engine === "xtermjs" ? "17a90b65" : engine === "vterm" || engine === "vt220" ? "67dd3960" : "bd3d32ae",
           ),
         },
       ])
@@ -539,7 +539,7 @@ test.each([
       }
       if (engine === "vt220") {
         expect(result.tests?.[0]?.reason).toContain(
-          "screen.ts:703-718 handleOSC: no-semicolon return; cases 0/1/2 only",
+          "screen.ts:700-715 handleOSC: no-semicolon return; cases 0/1/2 only",
         )
         expect(result.tests?.[0]?.reason).not.toContain("notification sink")
         expect(result.tests?.[0]?.reason).not.toContain("3921-3923")
