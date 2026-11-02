@@ -94,8 +94,12 @@ set and checks that they do not change; an observed
 flip is engine conflation, independently of its reply (the existing private4 issue32002).
 Presentation remains unmeasured for reverse-video/synchronized-output, the actual
 scheme-change report remains unmeasured for2031, and smooth-scroll presentation
-remains unmeasured in the library arm. DECSSCLS is a speed parameter outside
-`getMode`, retaining its presentation-review path. Application criteria are unchanged.
+remains unmeasured in the library arm. DECSSCLS feeds `CSI 9 SP p` plus a marker and
+retains screen text and cursor state. Consumption without visible effect requires an
+independent source review (pending TEST FAILURE); leaked sequence text is a measured
+negative, and a changed grid or misplaced marker stays inconclusive. Consumption does
+not prove handling or scroll-speed presentation. A source that stores speed without
+readback remains a TEST TODO tool gap when reviewed. Application criteria are unchanged.
 
 Both source interfaces carry `readonly kind: ProbeSourceKind` directly. Current runs retain exactly `source: { kind: "live" }` or `{ kind: "trace", trace: { path, sha256 }, captureRunId, captureSuiteId, captureSourceRevision }`. The trace path is relative to the artifact store and contains no parent segment; its SHA256 and capture identities are required. Initialization, sealing and the canonical reader validate and preserve this union without a schema bump. Call-log format/version remain inside the referenced artifact. Historical schema 2/3 bytes and readers are unchanged. This source declaration grants no capture, admission or publication.
 

@@ -1270,6 +1270,78 @@ test.each(["extensions.osc117-reset-highlight-bg", "extensions.osc119-reset-high
   },
 )
 
+// Q2/bar93: callback tests miss a typed buffer-state review rejected at the collector/parser boundary.
+test("DECSSCLS real-vterm pending source review survives collection and canonical parsing", async () => {
+  const id = "modes.decsscls"
+  const manifest = {
+    schemaVersion: 4 as const,
+    probeHash: "decsscls-parser-fixture",
+    adapterVersion: "fixture",
+    catalogIds: [id],
+    probes: { term: [], mux: [], lib: [id] },
+  }
+  const draft = initializeRunDraft({
+    source: { kind: "live" },
+    runId: "decsscls-parser-fixture",
+    sourceRevision: "a".repeat(40),
+    intendedSubject: { kind: "lib", id: "vterm" },
+    manifest,
+  })
+  const batch = await collectBatch(async () => createVtermBackend(), "vterm", registryDefinitions([id]), draft)
+  expect(batch.results).toMatchObject([
+    {
+      featureId: id,
+      status: "test-failure",
+      assertionType: "buffer_state",
+      criterionBranch: "source-negative-review",
+      tests: [{ id: "review", status: "test-failure" }],
+    },
+  ])
+  expect(JSON.parse(batch.rawReplies[id]!)).toMatchObject({ cursor: { x: 1, y: 0 } })
+  expect(JSON.parse(batch.rawReplies[id]!)).toMatchObject({ text: expect.stringMatching(/^Q\s*$/u) })
+  expect(batch.assertions).toMatchObject([{ kind: "negative", observed: batch.rawReplies[id] }])
+  const captured: CapturedRunDraft = {
+    ...draft,
+    subject: {
+      kind: "lib",
+      id: "vterm",
+      version: "fixture",
+      os: "linux",
+      osVersion: null,
+      outerTerminal: null,
+      mux: null,
+      config: null,
+      permissions: null,
+    },
+    identity: "unverified",
+    measuredAt: "2026-11-02T06:20:00.000Z",
+    // Private fixture metadata; this does not attest or admit the loaded engine.
+    runtimeIdentity: {
+      kind: "js",
+      runtimeFormat: "js",
+      engineVersion: "fixture",
+      adapterVersion: "fixture",
+      termlessRevision: "fixture",
+      resolvedPath: "fixture/vterm",
+      integrity: { kind: "registry", lockIntegrity: "fixture" },
+    },
+    origin: { kind: "collector" },
+    rawReplies: { ...draft.rawReplies, ...batch.rawReplies },
+    results: batch.results,
+    assertions: batch.assertions,
+  }
+  const finalized = finalizeCollectedDraft(captured)
+  expect(finalized.sealedAt).toBeUndefined()
+  const parsed = parseRun(
+    "decsscls.capture.json",
+    JSON.stringify(finalized),
+    manifest.catalogIds,
+    new Map([[manifest.probeHash, manifest]]),
+    { mode: "capture" },
+  )
+  expect(parsed.results).toEqual(batch.results)
+})
+
 // @failure A typed D/633 source review under libAssertionType:null becomes a collector error.
 // @level l1 @consumer collectBatch plus capture parser; callback tests cannot catch declaration rejection.
 test("Wezterm prompt source reviews survive actual collection and capture binding", async () => {

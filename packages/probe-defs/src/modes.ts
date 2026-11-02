@@ -2435,19 +2435,49 @@ const modeDefinitions: ProbeDefinition[] = [
   {
     ...probe(
       "modes.decsscls",
-      () => {
-        const note = "presentation speed: headless engines paint no frames and expose no scroll-speed state"
-        return reviewResult(HEADLESS_OBSERVABLE_REVIEW, note, note, {
-          presentation: false,
-        })
+      (ctx) => {
+        const expected = "CSI 9 SP p yields observable scroll-speed state or effect"
+        if (!Number.isSafeInteger(ctx.cols) || ctx.cols < 8) {
+          return parserStateResult(
+            null,
+            expected,
+            { cols: ctx.cols },
+            "Need eight measured columns for the parser control",
+          )
+        }
+        ctx.feed("\x1b[2J\x1b[H")
+        const seed = { text: ctx.getText(), cursor: ctx.getCursor() }
+        if (seed.text.trim() !== "" || seed.cursor.x !== 0 || seed.cursor.y !== 0) {
+          return parserStateResult(null, expected, seed, "DECSSCLS blank-screen control was not established")
+        }
+        ctx.feed("\x1b[9 pQ")
+        const state = { text: ctx.getText(), cursor: ctx.getCursor() }
+        const line = state.text.trimEnd()
+        if (line === "Q" && state.cursor.x === 1 && state.cursor.y === 0) {
+          return parserStateResult(
+            null,
+            expected,
+            state,
+            "CSI 9 SP p consumed with no visible effect; scroll-speed presentation remains unmeasured",
+            "CSI 9 SP p consumed with no visible effect; this library exposes no scroll-speed readback; decided only by an independent source review of the engine's CSI dispatcher",
+          )
+        }
+        if (["9 pQ", "[9 pQ", "\x1b[9 pQ"].includes(line) && state.cursor.x === line.length && state.cursor.y === 0) {
+          return parserStateResult(false, expected, state, "CSI 9 SP p leaked as text before the marker Q")
+        }
+        return parserStateResult(
+          null,
+          expected,
+          state,
+          "DECSSCLS marker was misplaced or the grid changed; scroll-speed effect unmeasured",
+        )
       },
       decsscls,
     ),
-    // The terminal arm captures timed frames and reports evidence "pixels"; the headless arm paints
-    // no frames and refuses before it measures, so its method is none — the canonical declaration
-    // for a refusal before measurement, the same rule input.kitty-click-events follows.
+    // The library measures parser consumption only; source review must decide an empty observation.
+    // Neither that measurement nor a stored speed can establish timed presentation support.
     termAssertionType: "screenshot",
-    libAssertionType: null,
+    libAssertionType: "buffer_state",
     termNeedsGeometry: true,
   },
 ]

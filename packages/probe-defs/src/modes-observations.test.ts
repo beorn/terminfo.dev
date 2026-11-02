@@ -1411,6 +1411,51 @@ test("xt stack capture refuses undersized geometry before any bytes or frames", 
   }
 })
 
+// Q2: the old presentation-only tests never exercised the library's consumed/leaked controls.
+test.each([
+  ["Q", 1, 0, "source-negative-review", "inconclusive"],
+  ["9 pQ", 4, 0, undefined, "unsupported"],
+  ["[9 pQ", 5, 0, undefined, "unsupported"],
+  ["Q", 1, 1, undefined, "inconclusive"],
+  ["Qchanged", 1, 0, undefined, "inconclusive"],
+] as const)("DECSSCLS library retains text %j at %i,%i", (text, x, y, branch, outcome) => {
+  const writes: string[] = []
+  let measured = false
+  const source = libProbeSource({
+    cols: 80,
+    feed(sequence) {
+      writes.push(sequence)
+      measured = sequence.includes("\x1b[9 p")
+    },
+    getText: () => (measured ? `${text}\n\n` : "\n\n"),
+    getCursor: () => ({ x: measured ? x : 0, y: measured ? y : 0, visible: true, style: "block" }),
+    getCell() {
+      throw new Error("DECSSCLS must use the existing text/cursor readers")
+    },
+  })
+  const result = modesProbes.find((entry) => entry.id === "modes.decsscls")!.lib!(source)
+  expect(writes.join("")).toContain("\x1b[9 pQ")
+  expect(result.criterionBranch).toBe(branch)
+  expect(result.observation).toMatchObject({ outcome, assertionType: "buffer_state" })
+  expect(JSON.parse(result.response!)).toMatchObject({ text: `${text}\n\n`, cursor: { x, y } })
+  if (branch) {
+    expect(result.tests).toEqual([
+      {
+        id: "review",
+        status: "test-failure",
+        reason:
+          "CSI 9 SP p consumed with no visible effect; this library exposes no scroll-speed readback; decided only by an independent source review of the engine's CSI dispatcher",
+      },
+    ])
+    expect(result.assertions).toMatchObject([
+      { kind: "negative", expected: "CSI 9 SP p yields observable scroll-speed state or effect" },
+    ])
+  } else {
+    expect(result.tests).toBeUndefined()
+    expect(result.assertions?.length ?? 0).toBe(outcome === "unsupported" ? 1 : 0)
+  }
+})
+
 const DECSSCLS_GEOMETRY = { cellWidth: 10, cellHeight: 20, textWidth: 800, textHeight: 480 } as const
 const DECSSCLS_RECTANGLE = { x: 0, y: 0, width: 800, height: 440 } as const
 const DECSSCLS_WITNESS = { top: 1, left: 1, bottom: 23, right: 80 } as const
