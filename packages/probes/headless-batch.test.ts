@@ -41,7 +41,7 @@ import * as headlessIdentity from "./headless-identity.ts"
 import { finalizeCollectedDraft } from "../terminfo.dev/src/capture-writer.ts"
 import { cellWidthTransition } from "../probe-defs/src/helpers.ts"
 import { activeInterpretations, parseInterpretations } from "../../scripts/interpretations.ts"
-import { replyFailure } from "../probe-defs/src/helpers.ts"
+import { ADAPTER_SOURCE_AUDITS, replyFailure } from "../probe-defs/src/helpers.ts"
 import retainedDeccolm from "./fixtures/deccolm-retained.json"
 
 /** Feature captures only; collector qualification metadata is asserted in sentinel-member.test.ts. */
@@ -1271,6 +1271,112 @@ test.each(["extensions.osc117-reset-highlight-bg", "extensions.osc119-reset-high
     ])
   },
 )
+
+// 31770 @cto a60bc57e N2: the unit cases in extensions-osc0-observations.test.ts call the OSC 0 callback
+// directly, so the collector wrapping of its control and getter failures was never fault-injected.
+// Real xterm backend, audited identity, registered callback and collectBatch on one path: a failed control
+// or a throwing getter must leave TEST FAILURE with both labels restored and no support or negative claim.
+test.each([
+  { fault: "none" },
+  { fault: "icon-control" },
+  { fault: "title-control" },
+  { fault: "icon-readback" },
+  { fault: "title-readback" },
+] as const)("audited xterm OSC 0 $fault survives the actual collector without a grade leak", async ({ fault }) => {
+  const id = "extensions.osc0-icon-title"
+  const identity = {
+    kind: "js",
+    runtimeFormat: "js",
+    engineVersion: "6.0.0",
+    adapterVersion: "0.10.2",
+    termlessRevision: "9f0d4a5cbbeb2b7d9263ef7e07699df16a1cafc7",
+    // The audited source table, not an attestation of this runner's checkout.
+    adapterSources: Object.entries(ADAPTER_SOURCE_AUDITS.xtermjs).map(([path, blobOid]) => ({ path, blobOid })),
+    resolvedPath: "node_modules/.bun/@xterm+headless@6.0.0/node_modules/@xterm/headless/lib-headless/xterm-headless.js",
+    integrity: {
+      kind: "registry",
+      lockIntegrity: "sha512-5Yj1QINYCyzrZtf8OFIHi47iQtI+0qYFPHmouEfG8dHNxbZ9Tb9YGSuLcsEwj9Z+OL75GJqPyJbyoFer80a2Hw==",
+    },
+  } as const
+  vi.spyOn(headlessIdentity, "headlessRuntimeIdentity").mockResolvedValue(identity)
+  const original = { icon: "saved-icon", title: "saved-title" }
+  let final: { icon: string; title: string } | undefined
+  let effectFed = false
+  const readbackError = new Error(`${fault} unavailable`)
+  const carrier = async () => {
+    const value = await backend()
+    value.getAdapterSources = () => identity.adapterSources
+    const feed = value.feed.bind(value)
+    const init = value.init.bind(value)
+    // collectBatch initializes the backend; the saved labels are set right after, before the callback.
+    value.init = (options) => {
+      init(options)
+      feed(new TextEncoder().encode(`\x1b]1;${original.icon}\x07\x1b]2;${original.title}\x07`))
+    }
+    const readIcon = value.getIconLabel!.bind(value)
+    const readTitle = value.getTitle.bind(value)
+    // Fault at the engine boundary: a dropped control setter, or a getter that fails after the effect.
+    value.feed = (data: Uint8Array) => {
+      const text = new TextDecoder().decode(data)
+      if (text.startsWith("\x1b]0;")) effectFed = true
+      if (fault === "icon-control" && text.startsWith("\x1b]1;osc0-icon-control")) return
+      if (fault === "title-control" && text.startsWith("\x1b]2;osc0-title-control")) return
+      feed(data)
+    }
+    value.getIconLabel = () => {
+      if (effectFed && fault === "icon-readback") throw readbackError
+      return readIcon()
+    }
+    value.getTitle = () => {
+      if (effectFed && fault === "title-readback") throw readbackError
+      return readTitle()
+    }
+    const destroy = value.destroy.bind(value)
+    value.destroy = () => {
+      final = { icon: readIcon(), title: readTitle() }
+      destroy()
+    }
+    return value
+  }
+  const batch = await collectBatch(carrier, "xtermjs", registryDefinitions([id]), undefined, undefined, {
+    identity,
+    adapterPath: Bun.resolveSync("@termless/xtermjs", fileURLToPath(import.meta.url)),
+    adapterPackage: "@termless/xtermjs",
+    adapterType: "js",
+  })
+  expect(final).toEqual(original)
+  expect(JSON.parse(batch.rawReplies["collector.replyPath"]!)).toMatchObject({
+    decisions: { [id]: { runtimeIdentity: identity } },
+  })
+  const observation = batch.observations.find((entry) => entry.featureId === id)
+  const result = batch.results.find((entry) => entry.featureId === id)
+  if (fault === "none") {
+    // Control: the audited state route is the one reached, so the fault rows below are not vacuous.
+    expect(effectFed).toBe(true)
+    expect(observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
+    expect(batch.assertions.filter((entry) => entry.featureId === id).map(({ kind }) => kind)).toContain("positive")
+    return
+  }
+  expect(effectFed).toBe(fault.endsWith("-readback"))
+  expect(result).toMatchObject({ status: "test-failure" })
+  expect(observation?.outcome).not.toBe("supported")
+  expect(observation?.outcome).not.toBe("unsupported")
+  expect(batch.assertions.filter((entry) => entry.featureId === id)).toEqual([])
+  if (fault.endsWith("-control")) {
+    expect(batch.ungradedDiagnostics).toEqual({})
+    expect(result!.tests).toMatchObject([
+      {
+        status: "test-failure",
+        reason: expect.stringContaining("OSC 0 independent icon/title controls were not both read back"),
+      },
+    ])
+  } else {
+    expect(batch.ungradedDiagnostics[id]).toMatchObject({
+      kind: "collector-error",
+      message: expect.stringContaining(`${fault} unavailable`),
+    })
+  }
+})
 
 // Q2/bar93: callback tests miss a typed buffer-state review rejected at the collector/parser boundary.
 test("DECSSCLS real-vterm pending source review survives collection and canonical parsing", async () => {
