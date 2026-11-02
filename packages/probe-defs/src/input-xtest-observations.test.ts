@@ -1411,7 +1411,9 @@ test.each(
 )("%s retains the %s source qualification outcome", (id, identityCase) => {
   const runtimeIdentity = {
     kind: "js",
-    runtimeFormat: identityCase === "other-format" ? "wasm" : "js",
+    ...(identityCase === "other-format"
+      ? { runtimeFormat: "wasm" as const, loadedBinary: { path: "fixture.wasm", sha256: "0".repeat(64) } }
+      : { runtimeFormat: "js" as const }),
     engineVersion: identityCase === "other-version" ? "unreviewed" : "0.10.1",
     adapterVersion: "0.10.2",
     termlessRevision: "a871f0e580e1b02fb5dbb7ed854f6de623e7858e",
