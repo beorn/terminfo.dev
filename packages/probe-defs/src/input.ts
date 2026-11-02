@@ -9,22 +9,17 @@ export const inputProbes: ProbeDefinition[] = [
   // Negotiation only; actual key encoding requires an input-event observation.
   kittyKeyboardFlagProbe("input.csi-u", 1, 1),
 
-  probe("input.pixel-mouse", () => headlessXtestReview("click injection", true), pixelMouse, "input_bytes"),
-  probe("input.urxvt-mouse", () => headlessXtestReview("click injection", true), urxvtMouse, "input_bytes"),
-  probe("input.x10-mouse", () => headlessXtestReview("click injection", true), x10Mouse, "input_bytes"),
+  probe("input.pixel-mouse", (ctx) => mouseEncodingLib(ctx, "pixel"), pixelMouse, "input_bytes"),
+  probe("input.urxvt-mouse", (ctx) => mouseEncodingLib(ctx, "urxvt"), urxvtMouse, "input_bytes"),
+  probe("input.x10-mouse", (ctx) => mouseEncodingLib(ctx, "x10"), x10Mouse, "input_bytes"),
 
   probe("input.modify-other-keys-3", () => headlessXtestReview("key injection"), modifyOtherKeys3, "input_bytes"),
 
-  probe(
-    "input.button-event-mouse",
-    () => headlessXtestReview("click injection", true),
-    buttonEventMouse,
-    "input_bytes",
-  ),
+  probe("input.button-event-mouse", (ctx) => mouseEncodingLib(ctx, "button"), buttonEventMouse, "input_bytes"),
 
   probe("input.xtest-key", () => headlessXtestReview("key injection", true), xtestKey, "input_bytes"),
-  probe("input.xtest-click", () => headlessXtestReview("click injection", true), xtestClick, "input_bytes"),
-  probe("input.xtest-wheel", () => headlessXtestReview("wheel injection", true), xtestWheel, "input_bytes"),
+  probe("input.xtest-click", (ctx) => mouseEncodingLib(ctx, "click"), xtestClick, "input_bytes"),
+  probe("input.xtest-wheel", (ctx) => mouseEncodingLib(ctx, "wheel"), xtestWheel, "input_bytes"),
   {
     ...probe("input.kitty-click-events", kittyClickEventsLib, kittyClickEvents, "input_bytes"),
     libAssertionType: "input_bytes",
@@ -547,7 +542,70 @@ function decodeMouseReport(bytes: Uint8Array | null): string | null {
   return bytes === null ? null : new TextDecoder().decode(bytes)
 }
 
+/** Library criteria measure the same event's report encoding; OS injection stays in the terminal arm. */
+function mouseEncodingLib(
+  ctx: LibProbeSource,
+  kind: "pixel" | "urxvt" | "x10" | "button" | "click" | "wheel",
+): ProbeCallbackResult {
+  if (!ctx.capabilities.extensions.has("mouse-encoding") || typeof ctx.encodeMouse !== "function") {
+    return notTestedResult(`adapter binding ${ctx.backendName}: mouse-encoding extension unavailable`, {
+      mouseEncoding: false,
+    })
+  }
+  const reset = "\x1b[?9;1000;1002;1003;1005;1006;1015;1016l"
+  const tracking = kind === "x10" ? 9 : kind === "button" ? 1002 : 1000
+  const encoding = kind === "x10" ? "" : `\x1b[?${kind === "urxvt" ? 1015 : 1006}h`
+  const event = {
+    x: 4,
+    y: 2,
+    button: kind === "wheel" ? "wheelUp" : "left",
+    action: kind === "button" ? "move" : "press",
+  } as const
+  const expected =
+    kind === "x10"
+      ? "\x1b[M %#"
+      : kind === "urxvt"
+        ? "\x1b[32;5;3M"
+        : `\x1b[<${kind === "button" ? 32 : kind === "wheel" ? 64 : 0};5;3M`
+  ctx.feed(reset)
+  try {
+    const negativeControl = decodeMouseReport(ctx.encodeMouse(event))
+    if (negativeControl !== null) throw new Error("Mouse encoding emitted a report with tracking reset")
+    if (kind === "pixel") {
+      return notTestedResult("#31297: MouseEvent carries no pixel geometry", {
+        mouseEncoding: true,
+        pixelGeometry: false,
+      })
+    }
+    ctx.feed(`\x1b[?${tracking}h${encoding}`)
+    const enabled = ctx.getMode("mouseTracking")
+    if (enabled === null) {
+      return notTestedResult(`adapter binding ${ctx.backendName}: mouseTracking unavailable`, { tracking: null })
+    }
+    const report = decodeMouseReport(ctx.encodeMouse(event))
+    const observed = { tracking: enabled, negativeControl, report }
+    return enabled && report === expected
+      ? interactionResult(`mouse-encoding:${kind}`, expected, observed)
+      : unsupportedInteraction(`mouse-encoding:${kind}`, expected, observed)
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith("mouse encoding unavailable:")) {
+      return notTestedResult(`${ctx.backendName}: ${error.message}; #31297`, {
+        mouseEncoding: true,
+        unavailable: error.message,
+      })
+    }
+    throw error
+  } finally {
+    ctx.feed(reset)
+  }
+}
+
 function kittyClickEventsLib(ctx: LibProbeSource): ProbeCallbackResult {
+  if (ctx.backendName === "vterm") {
+    return notTestedResult("shared core encoder carries no prompt state; vterm stores no click_events; #30936", {
+      storedClickEvents: false,
+    })
+  }
   if (!ctx.capabilities.extensions.has("mouse-encoding") || typeof ctx.encodeMouse !== "function") {
     return notTestedResult("library mouse-event encoding (undeclared mouse-encoding extension)", {
       mouseEncoding: false,

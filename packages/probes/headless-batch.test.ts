@@ -2094,15 +2094,9 @@ test.each([0, 1, 4] as const)(
 test("separates mode readback from headless OS-input review without fabricating app delivery", async () => {
   const ids = [
     "input.xtest-key",
-    "input.xtest-click",
-    "input.xtest-wheel",
     "extensions.clipboard-paste",
     "input.modify-other-keys",
     "input.modify-other-keys-3",
-    "input.pixel-mouse",
-    "input.urxvt-mouse",
-    "input.x10-mouse",
-    "input.button-event-mouse",
     "modes.alt-scroll-1007",
     "modes.application-keypad",
   ]
@@ -2154,6 +2148,156 @@ test("separates mode readback from headless OS-input review without fabricating 
       }),
     )
   }
+})
+
+// @failure A library mouse criterion borrows OS-input review instead of observing the real Vterm encoder.
+// @level l1
+// @consumer The production library collector and canonical capture parser.
+test.each([
+  ["input.x10-mouse", "\x1b[M %#"],
+  ["input.urxvt-mouse", "\x1b[32;5;3M"],
+  ["input.button-event-mouse", "\x1b[<32;5;3M"],
+  ["input.xtest-click", "\x1b[<0;5;3M"],
+  ["input.xtest-wheel", "\x1b[<64;5;3M"],
+])("Vterm %s mouse report survives real collector and canonical parser", async (id, report) => {
+  const batch = await collectBatch(async () => createVtermBackend(), "vterm", registryDefinitions([id]))
+  expect(batch.results).toMatchObject([{ featureId: id, status: "supported", assertionType: "input_bytes" }])
+  expect((JSON.parse(batch.rawReplies[id]!) as { report: string }).report).toBe(report)
+  expect(batch.assertions).toMatchObject([{ featureId: id, kind: "positive", assertionType: "input_bytes" }])
+  const manifest = {
+    schemaVersion: 4 as const,
+    probeHash: "mouse-reader-fixture",
+    adapterVersion: "fixture",
+    catalogIds: [id],
+    probes: { term: [], mux: [], lib: [id] },
+  }
+  const draft = initializeRunDraft({
+    source: { kind: "live" },
+    runId: "mouse-reader-fixture",
+    sourceRevision: "a".repeat(40),
+    intendedSubject: { kind: "lib", id: "vterm" },
+    manifest,
+  })
+  const captured: CapturedRunDraft = {
+    ...draft,
+    subject: {
+      kind: "lib",
+      id: "vterm",
+      version: "fixture",
+      os: "linux",
+      osVersion: null,
+      outerTerminal: null,
+      mux: null,
+      config: null,
+      permissions: null,
+    },
+    identity: "unverified",
+    runtimeIdentity: {
+      kind: "js",
+      engineVersion: "fixture",
+      adapterVersion: "fixture",
+      termlessRevision: "fixture",
+      resolvedPath: "fixture/vterm",
+      integrity: { kind: "registry", lockIntegrity: "fixture" },
+      runtimeFormat: "js",
+    },
+    measuredAt: "2026-11-02T06:25:00.000Z",
+    origin: { kind: "collector" },
+    rawReplies: batch.rawReplies,
+    results: batch.results,
+    assertions: batch.assertions,
+  }
+  const parsed = parseRun(
+    "mouse.capture.json",
+    JSON.stringify(captured),
+    [id],
+    new Map([[manifest.probeHash, manifest]]),
+    { mode: "capture" },
+  )
+  expect(parsed.results).toEqual(batch.results)
+  expect(parsed.assertions).toEqual(batch.assertions)
+})
+
+// @failure Unknown state and named unavailable input become measured negatives, or programming errors become TODO.
+// @level l1
+// @consumer The production mouse library arm through the real collector.
+test("mouse collector distinguishes unavailable state/pixels, measured no-report and unexpected errors", async () => {
+  const ids = ["input.pixel-mouse", "input.kitty-click-events"]
+  const pixel = await collectBatch(async () => createVtermBackend(), "vterm", registryDefinitions(ids))
+  expect(pixel.results).toMatchObject([
+    { featureId: ids[0], status: "test-todo", reason: "#31297: MouseEvent carries no pixel geometry" },
+    { featureId: ids[1], status: "test-todo", reason: expect.stringContaining("#30936") },
+  ])
+  const id = "input.x10-mouse"
+  for (const [state, expected] of [
+    [null, "test-todo"],
+    [true, "unsupported"],
+  ] as const) {
+    const batch = await collectBatch(
+      async () => {
+        const backend = createVtermBackend()
+        vi.spyOn(backend, "getMode").mockReturnValue(state)
+        vi.spyOn(backend, "encodeMouse").mockReturnValue(null)
+        return backend
+      },
+      "vterm",
+      registryDefinitions([id]),
+    )
+    expect(batch.results).toMatchObject([{ featureId: id, status: expected }])
+    if (state === null) expect(batch.assertions).toEqual([])
+    else expect(batch.assertions).toMatchObject([{ featureId: id, kind: "negative", assertionType: "input_bytes" }])
+  }
+  const broken = await collectBatch(
+    async () => {
+      const backend = createVtermBackend()
+      vi.spyOn(backend, "encodeMouse").mockImplementation(() => {
+        throw new Error("broken encoder invariant")
+      })
+      return backend
+    },
+    "vterm",
+    registryDefinitions([id]),
+  )
+  expect(broken.results).toMatchObject([{ featureId: id, status: "test-failure" }])
+})
+
+// @failure Cell coordinates are falsely accepted as a pixel-coordinate witness.
+// @level l1
+// @consumer The production pixel library criterion with its cell-only event contract.
+test("pixel library arm never grades a cell-coordinate encoder report", async () => {
+  const backend = createVtermBackend()
+  const encode = vi
+    .spyOn(backend, "encodeMouse")
+    .mockReturnValueOnce(null)
+    .mockReturnValue(new TextEncoder().encode("\x1b[<0;5;3M"))
+  const batch = await collectBatch(async () => backend, "vterm", registryDefinitions(["input.pixel-mouse"]))
+  expect(batch.results).toMatchObject([{ status: "test-todo", reason: "#31297: MouseEvent carries no pixel geometry" }])
+  expect(encode).toHaveBeenCalledTimes(1)
+  expect(batch.assertions).toEqual([])
+})
+
+// @failure A shared library arm turns a native delegated encoder's unavailable input into FAILURE.
+// @level l1
+// @consumer The production xtermjs mouse criteria through its own delegated engine encoder.
+test("xtermjs library mouse arms retain measured reports and pixel unavailability", async () => {
+  const ids = [
+    "input.button-event-mouse",
+    "input.pixel-mouse",
+    "input.urxvt-mouse",
+    "input.x10-mouse",
+    "input.xtest-click",
+    "input.xtest-wheel",
+  ]
+  const batch = await collectBatch(backend, "xtermjs", registryDefinitions(ids))
+  expect(batch.results.map(({ featureId, status }) => ({ featureId, status }))).toEqual([
+    { featureId: ids[0], status: "supported" },
+    { featureId: ids[1], status: "test-todo" },
+    { featureId: ids[2], status: "unsupported" },
+    { featureId: ids[3], status: "supported" },
+    { featureId: ids[4], status: "supported" },
+    { featureId: ids[5], status: "supported" },
+  ])
+  expect(JSON.parse(batch.rawReplies[ids[2]!]!)).toMatchObject({ report: "\x1b[M %#" })
 })
 
 test("input.kitty-click-events measures unsupported on xtermjs via the delegated mouse-encoding extension and enforces C3 wiring", async () => {
