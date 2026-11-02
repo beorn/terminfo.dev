@@ -372,6 +372,10 @@ const TITLE_STACK_UNIMPLEMENTED_AUDITS: ReadonlyMap<string, string> = new Map([
     "vt100 0.16.2 src/perform.rs:132-156 csi_dispatch 't' handles only op 8 (resize) and forwards all other ops to Callbacks::unhandled_csi (empty by default at src/callbacks.rs:55-63); termless 27297cf2a4a4e21b41ca3aafc7bc87ac36086fdf packages/vt100-rust/native/src/lib.rs:8-54 TerminalCallbacks stores title, icon_label, clipboard and paste_selector with no title stack and no unhandled_csi override, so neither CSI 22;0t nor CSI 23;0t is implemented",
   ],
   [
+    "84a5b6a3a40a7c16c6bae8b64534b730403df911498bb34bded68c3a17e2d408",
+    "vt100 0.16.2 src/perform.rs:132-156 csi_dispatch 't' handles only op 8 (resize) and forwards all other ops to Callbacks::unhandled_csi (empty by default at src/callbacks.rs:55-63); termless 286fddf6632e43ccd62f9050be41ec7b2908e43e packages/vt100-rust/native/src/lib.rs:8-54 TerminalCallbacks stores title, icon_label, clipboard and paste_selector with no title stack and no unhandled_csi override, so neither CSI 22;0t nor CSI 23;0t is implemented",
+  ],
+  [
     "6722b331de7489c14cb599d939e5d2314f054220728f83c5c29f454e70273e47",
     "tattoy-wezterm-escape-parser 0.1.0-1 src/csi.rs:2633-2644 parses CSI 22;0t as Window::PushIconAndWindowTitle and CSI 23;0t as Window::PopIconAndWindowTitle; tattoy-wezterm-term 0.1.0-fork.5 src/terminalstate/performer.rs:509 dispatches CSI::Window to perform_csi_window, where src/terminalstate/mod.rs:2090-2095 matches PopIconAndWindowTitle..PushWindowTitle => {} and TerminalState at src/terminalstate/mod.rs:334-337 holds only title: String and icon_title: Option<String> with no title stack",
   ],

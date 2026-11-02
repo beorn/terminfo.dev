@@ -1376,6 +1376,7 @@ describe("reply-path audit", () => {
         "e58288d0b62448bf746ad77e58a4e9523c1baabb080d6fc6723f76caf29d2bb0",
         "53f9a867cce594b4d50fb9508db9ce5d2d79fb4244a418548b7cb31fa50780d1",
         "dc3b24de6e91416f66b1953ce101991ef7e78602ce1b5d357f65832c9b96b326",
+        "84a5b6a3a40a7c16c6bae8b64534b730403df911498bb34bded68c3a17e2d408",
         "17d155feee5df8fa30266b9a354bbe66e39484d08218de5e03dc3bb2f199a0a3",
         "1f23e13db5bda55ab54943461b83a5d642bf8d2050a452fbe7871927383dfe9f",
         "3c2398d5c537d9c10e86b0af69311977927fcdbe4738618df194cedbdd22574d",
@@ -1460,6 +1461,7 @@ describe("reply-path audit", () => {
     "b9109b5918707746420833dfc2eab3ea5bc7feec5fa93bee4cd6e824e74d0962",
     "0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3",
     "dc3b24de6e91416f66b1953ce101991ef7e78602ce1b5d357f65832c9b96b326",
+    "84a5b6a3a40a7c16c6bae8b64534b730403df911498bb34bded68c3a17e2d408",
   ])("vt100-rust %s lists the ruled twins and keeps silent writes outside reply audits", (sha) => {
     const old = "f309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96"
     const noReply = [
@@ -1539,7 +1541,10 @@ describe("reply-path audit", () => {
     expect(REPLY_PATH_AUDITS.get(old)?.["extensions.osc52-write"]?.kind).toBe("no-reply-path")
     expect(REPLY_PATH_AUDITS.get(old)?.["extensions.osc99-kitty-notify"]?.kind).toBe("no-reply-path")
     const silent = run("extensions.osc52-write", sha, () => "")
-    if (sha === "dc3b24de6e91416f66b1953ce101991ef7e78602ce1b5d357f65832c9b96b326") {
+    if (
+      sha === "dc3b24de6e91416f66b1953ce101991ef7e78602ce1b5d357f65832c9b96b326" ||
+      sha === "84a5b6a3a40a7c16c6bae8b64534b730403df911498bb34bded68c3a17e2d408"
+    ) {
       expect(silent.result.hostRecipeCauses).toMatchObject([
         { recipe: "clipboard-load", cause: { kind: "unimplemented", artifactSha256: sha } },
       ])
@@ -2214,18 +2219,18 @@ describe("OSC 8 link metadata observation", () => {
         engineVersion: "0.16.2",
         adapterSources: [
           { path: "packages/vt100-rust/src/index.ts", blobOid: "3ddb74f3ae1f79bb356952103853232f69211268" },
-          { path: "packages/vt100-rust/src/backend.ts", blobOid: "abbbfd01d9e6ac880e02b00d9acccdc9ec70bc63" },
+          { path: "packages/vt100-rust/src/backend.ts", blobOid: "9b3477c0fedf8586430781e8f4d17019569af98b" },
         ],
         adapterVersion: "0.10.2",
         termlessRevision: "2d97417328b7b1d086f9396b9a1731216ed134cc",
         loadedBinary: {
           path: "vendor/termless/packages/vt100-rust/termless-vt100-rust.node",
-          sha256: "dc3b24de6e91416f66b1953ce101991ef7e78602ce1b5d357f65832c9b96b326",
+          sha256: "84a5b6a3a40a7c16c6bae8b64534b730403df911498bb34bded68c3a17e2d408",
         },
         provenance: {
-          sha256: "dc3b24de6e91416f66b1953ce101991ef7e78602ce1b5d357f65832c9b96b326",
-          sourceCommit: "27297cf2a4a4e21b41ca3aafc7bc87ac36086fdf",
-          buildHash: "d5079c0f2a27be41c9a3f6b152d62da2bbf82fd189fdfb487b5a0c8b3ed8a654",
+          sha256: "84a5b6a3a40a7c16c6bae8b64534b730403df911498bb34bded68c3a17e2d408",
+          sourceCommit: "286fddf6632e43ccd62f9050be41ec7b2908e43e",
+          buildHash: "30b232d295488042b0d6164e881e319dea8d7fae06ac766b3b568fd4832bf074",
           toolchain:
             "rustc 1.94.0 (4a4ef493e 2026-03-02) (built from a source tarball); cargo 1.94.0 (85eff7c80 2026-01-15)",
           lockSha256: "4cf037e4efa648ca41d08b30ef5c4ce7ada29ad61fcad45a7d1aa97bf55391c6",

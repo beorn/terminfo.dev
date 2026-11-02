@@ -43,6 +43,55 @@ const GHOSTTY_NATIVE_GRAPHICS_AUDIT: ReplyPathAudit = {
     "termless 0c409349 packages/ghostty-native/native/src/main.zig:81 vtStream() -> ghostty 332b2aef Terminal.zig:260-265 ReadonlyStream; stream.zig:736-738 forwards APC; stream_readonly.zig:168-173 ignores apc_start/apc_put/apc_end; native exports main.zig:48-65 provide no image-state or reply observer",
 }
 
+const VT100_RUST_84A_OSC52_READ_AUDIT: ReplyPathAudit = {
+  query: "\x1b]52;c;?\x07",
+  kind: "no-reply-path",
+  citation:
+    "termless 286fddf6 packages/vt100-rust/native/src/lib.rs:50-52 paste_from_clipboard records the selector and writes no reply bytes. vt100 0.16.2 OSC 52 '?' calls paste_from_clipboard. Artifact 84a5b6a3a40a7c16c6bae8b64534b730403df911498bb34bded68c3a17e2d408, sourceCommit 286fddf6632e43ccd62f9050be41ec7b2908e43e. Historical artifacts retain their own rows.",
+}
+
+/** Native callbacks on the reproducible 84a5b6a3 mouse-state rebuild: lib.rs:21-53 and Cargo.lock byte-identical to 27297cf2, re-read at 286fddf6. */
+const VT100_RUST_84A_LIB =
+  "termless 286fddf6 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. The mouse getters added at :350-379 read stored state and write no bytes. Artifact 84a5b6a3a40a7c16c6bae8b64534b730403df911498bb34bded68c3a17e2d408, sourceCommit 286fddf6632e43ccd62f9050be41ec7b2908e43e."
+
+const VT100_RUST_84A_KEYBOARD_AUDIT: ReplyPathAudit = {
+  query: "\x1b[?u\x1b[c",
+  kind: "no-reply-path",
+  citation: `registry/src/index.crates.io-1949cf8c6b5b557f/vt100-0.16.2/src/perform.rs:176-183 private ?u and :157-164 plain c dispatch Callbacks::unhandled_csi, empty at src/callbacks.rs:55-63. Cargo.lock vt100 checksum054ff75fb8fa83e609e685106df4faeffdf3a735d3c74ebce97ec557d5d36fd9; vte0.15.0 checksuma5924018406ce0063cd67f8e008104968b74b563ee1b85dde3ed1f7cb87d3dbd. ${VT100_RUST_84A_LIB}`,
+}
+
+const VT100_RUST_84A_GRAPHICS_AUDIT: ReplyPathAudit = {
+  query: "\x1b_G",
+  matches: "prefix",
+  kind: "parser-rejected",
+  citation: `registry/src/index.crates.io-1949cf8c6b5b557f/vte-0.15.0/src/lib.rs:377 ESC_ enters SosPmApcString; :182 routes payload only to anywhere (:438-451 controls only), discarding it before any vt100 callback; Perform:761-815 exposes no APC hook. Cargo.lock vte0.15.0 checksuma5924018406ce0063cd67f8e008104968b74b563ee1b85dde3ed1f7cb87d3dbd; vt1000.16.2 checksum054ff75fb8fa83e609e685106df4faeffdf3a735d3c74ebce97ec557d5d36fd9; display's a=t prerequisite is discarded before any placement can be attempted. ${VT100_RUST_84A_LIB}`,
+}
+
+const VT100_RUST_84A_OSC21_AUDIT: ReplyPathAudit = {
+  query: "\x1b]21;foreground=?\x1b\\",
+  kind: "no-reply-path",
+  citation: `registry/src/index.crates.io-1949cf8c6b5b557f/vt100-0.16.2/src/perform.rs:234-236 dispatches unknown OSC21 to unhandled_osc, empty at src/callbacks.rs:66. Cargo.lock vt100 checksum054ff75fb8fa83e609e685106df4faeffdf3a735d3c74ebce97ec557d5d36fd9; vte0.15.0 checksuma5924018406ce0063cd67f8e008104968b74b563ee1b85dde3ed1f7cb87d3dbd. ${VT100_RUST_84A_LIB}`,
+}
+
+const VT100_RUST_84A_SIXEL_DA_AUDIT: ReplyPathAudit = {
+  query: "\x1b[c",
+  kind: "no-reply-path",
+  citation: `vt100 0.16.2 src/perform.rs:157-164 csi_dispatch default arm -> Callbacks::unhandled_csi, empty by default (src/callbacks.rs:55-63). ${VT100_RUST_84A_LIB}`,
+}
+
+const VT100_RUST_84A_SIXEL_S_AUDIT: ReplyPathAudit = {
+  query: "\x1b[?2;1;0S",
+  kind: "no-reply-path",
+  citation: `registry/src/index.crates.io-1949cf8c6b5b557f/vt100-0.16.2/src/perform.rs:176-183 dispatches private ?S to unhandled_csi, empty at src/callbacks.rs:55-63. Cargo.lock vt100 checksum054ff75fb8fa83e609e685106df4faeffdf3a735d3c74ebce97ec557d5d36fd9; vte0.15.0 checksuma5924018406ce0063cd67f8e008104968b74b563ee1b85dde3ed1f7cb87d3dbd. ${VT100_RUST_84A_LIB}`,
+}
+
+const VT100_RUST_84A_OSC99_AUDIT: ReplyPathAudit = {
+  query: "\u001b]99;",
+  matches: "prefix",
+  kind: "no-reply-path",
+  citation: `vte0.15.0 src/lib.rs:419-422 ends OSC on ESC and :554-587 forwards its semicolon-separated params to performer.osc_dispatch. vt1000.16.2 src/perform.rs:198-236 handles OSC0/1/2/52 only; OSC99 reaches callbacks.unhandled_osc at :234-236, whose default src/callbacks.rs:64-66 is empty. Exact cached crate SHA256 vt100054ff75fb8fa83e609e685106df4faeffdf3a735d3c74ebce97ec557d5d36fd9 and vtea5924018406ce0063cd67f8e008104968b74b563ee1b85dde3ed1f7cb87d3dbd. Audited family is Terminfo27541ce4 extensions.ts:3267-3312 capability query ESC]99;i=<nonce>:p=?;ST. ${VT100_RUST_84A_LIB}`,
+}
+
 const VT100_RUST_DC3_OSC52_READ_AUDIT: ReplyPathAudit = {
   query: "\x1b]52;c;?\x07",
   kind: "no-reply-path",
@@ -4398,6 +4447,239 @@ export const REPLY_PATH_AUDITS: ReadonlyMap<string, Readonly<Record<string, Repl
         citation:
           "ghostty 332b2aef src/terminal/osc.zig:515-533 state3 ->30 accepts only0; OSC30101 rejects1 at state30 before a handler",
       },
+    },
+  ],
+  // vt100 0.16.2 mouse-state rebuild at termless 286fddf6 (#31295): two clean builds gave this sha256 with identical
+  // receipts (nativeTree f25eea39). lib.rs:21-53 callbacks and Cargo.lock are byte-identical to 27297cf2; each row re-read.
+  [
+    "84a5b6a3a40a7c16c6bae8b64534b730403df911498bb34bded68c3a17e2d408",
+    {
+      "cursor.position-report": {
+        query: "\u001b[6n",
+        kind: "no-reply-path",
+        citation: `vt100 0.16.2 src/perform.rs:157-164 csi_dispatch default arm -> Callbacks::unhandled_csi, empty by default (src/callbacks.rs:55-63). ${VT100_RUST_84A_LIB}`,
+      },
+      "device.decrpm": {
+        query: "\u001b[?7$p",
+        kind: "no-reply-path",
+        citation: `vte 0.15.0 src/lib.rs:207-209 collects '?'; vt100 0.16.2 src/perform.rs:176-183 '?' default arm -> Callbacks::unhandled_csi, empty by default (src/callbacks.rs:55-63). ${VT100_RUST_84A_LIB}`,
+      },
+      "device.decrqss": {
+        query: "\u001bP$qm\u001b\\",
+        kind: "no-reply-path",
+        citation: `vte 0.15.0 src/lib.rs:351-354,292 dispatches DCS to Perform::hook/put/unhook, empty by default (src/lib.rs:779-789); vt100 0.16.2 src/perform.rs:33-239 overrides none. ${VT100_RUST_84A_LIB}`,
+      },
+      "device.dsr-996-color-scheme": {
+        query: "\u001b[?996n",
+        kind: "no-reply-path",
+        citation: `vte 0.15.0 src/lib.rs:207-209 collects '?'; vt100 0.16.2 src/perform.rs:176-183 '?' default arm -> Callbacks::unhandled_csi, empty by default (src/callbacks.rs:55-63). ${VT100_RUST_84A_LIB}`,
+      },
+      "device.primary-da": {
+        query: "\u001b[c",
+        kind: "no-reply-path",
+        citation: `vt100 0.16.2 src/perform.rs:157-164 csi_dispatch default arm -> Callbacks::unhandled_csi, empty by default (src/callbacks.rs:55-63). ${VT100_RUST_84A_LIB}`,
+      },
+      "device.secondary-da": {
+        query: "\u001b[>c",
+        kind: "no-reply-path",
+        citation: `vt100 0.16.2 src/perform.rs:186-194 intermediate arm -> Callbacks::unhandled_csi, empty by default (src/callbacks.rs:55-63). ${VT100_RUST_84A_LIB}`,
+      },
+      "device.status-report": {
+        query: "\u001b[5n",
+        kind: "no-reply-path",
+        citation: `vt100 0.16.2 src/perform.rs:157-164 csi_dispatch default arm -> Callbacks::unhandled_csi, empty by default (src/callbacks.rs:55-63). ${VT100_RUST_84A_LIB}`,
+      },
+      "device.tertiary-da": {
+        query: "\u001b[=c",
+        kind: "no-reply-path",
+        citation: `vt100 0.16.2 src/perform.rs:186-194 intermediate arm -> Callbacks::unhandled_csi, empty by default (src/callbacks.rs:55-63). ${VT100_RUST_84A_LIB}`,
+      },
+      "device.xtgettcap": {
+        query: "\u001bP+q544e\u001b\\",
+        kind: "no-reply-path",
+        citation: `vte 0.15.0 src/lib.rs:351-354,292 dispatches DCS to Perform::hook/put/unhook, empty by default (src/lib.rs:779-789); vt100 0.16.2 src/perform.rs:33-239 overrides none. ${VT100_RUST_84A_LIB}`,
+      },
+      "device.xtgetxres": {
+        query: "\u001bP+Q7465726d4e616d65\u001b\\",
+        kind: "no-reply-path",
+        citation: `vte 0.15.0 src/lib.rs:351-354,292 dispatches DCS to Perform::hook/put/unhook, empty by default (src/lib.rs:779-789); vt100 0.16.2 src/perform.rs:33-239 overrides none. ${VT100_RUST_84A_LIB}`,
+      },
+      "device.xtreportcolors": {
+        query: "\u001b[#R",
+        kind: "no-reply-path",
+        citation: `vt100 0.16.2 src/perform.rs:186-194 intermediate arm -> Callbacks::unhandled_csi, empty by default (src/callbacks.rs:55-63). ${VT100_RUST_84A_LIB}`,
+      },
+      "device.xtversion": {
+        query: "\u001b[>0q",
+        kind: "no-reply-path",
+        citation: `vt100 0.16.2 src/perform.rs:186-194 intermediate arm -> Callbacks::unhandled_csi, empty by default (src/callbacks.rs:55-63). ${VT100_RUST_84A_LIB}`,
+      },
+      "device.xtwinops-14": {
+        query: "\u001b[14t",
+        kind: "no-reply-path",
+        citation: `vt100 0.16.2 src/perform.rs:132-136 handles only CSI 8 t; other ops reach :147-155 -> Callbacks::unhandled_csi, empty by default (src/callbacks.rs:55-63). ${VT100_RUST_84A_LIB}`,
+      },
+      "device.xtwinops-16": {
+        query: "\u001b[16t",
+        kind: "no-reply-path",
+        citation: `vt100 0.16.2 src/perform.rs:132-136 handles only CSI 8 t; other ops reach :147-155 -> Callbacks::unhandled_csi, empty by default (src/callbacks.rs:55-63). ${VT100_RUST_84A_LIB}`,
+      },
+      "device.xtwinops-18": {
+        query: "\u001b[18t",
+        kind: "no-reply-path",
+        citation: `vt100 0.16.2 src/perform.rs:132-136 handles only CSI 8 t; other ops reach :147-155 -> Callbacks::unhandled_csi, empty by default (src/callbacks.rs:55-63). ${VT100_RUST_84A_LIB}`,
+      },
+      "device.xtwinops-20": {
+        query: "\u001b[20t",
+        kind: "no-reply-path",
+        citation: `vt100 0.16.2 src/perform.rs:132-136 handles only CSI 8 t; other ops reach :147-155 -> Callbacks::unhandled_csi, empty by default (src/callbacks.rs:55-63). ${VT100_RUST_84A_LIB}`,
+      },
+      "device.xtwinops-21": {
+        query: "\u001b[21t",
+        kind: "no-reply-path",
+        citation: `vt100 0.16.2 src/perform.rs:132-136 handles only CSI 8 t; other ops reach :147-155 -> Callbacks::unhandled_csi, empty by default (src/callbacks.rs:55-63). ${VT100_RUST_84A_LIB}`,
+      },
+      "editing.decrqcra": {
+        query: "\u001b[1;1;1;1;1;5*y",
+        kind: "no-reply-path",
+        citation: `vt100 0.16.2 src/perform.rs:186-194 intermediate arm -> Callbacks::unhandled_csi, empty by default (src/callbacks.rs:55-63). ${VT100_RUST_84A_LIB}`,
+      },
+      "extensions.osc0-icon-title": {
+        query: "\u001b[20t",
+        kind: "no-reply-path",
+        citation: `vt100 0.16.2 src/perform.rs:132-136 handles only CSI 8 t; CSI 20 t and 21 t reach :147-155 -> Callbacks::unhandled_csi, empty by default (src/callbacks.rs:55-63); ${VT100_RUST_84A_LIB}`,
+      },
+      "extensions.osc10-fg-color": {
+        query: "\u001b]10;?\u0007",
+        kind: "no-reply-path",
+        citation: `vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66). ${VT100_RUST_84A_LIB}`,
+      },
+      "extensions.osc104-reset-palette": {
+        query: "\u001b]4;0;?\u0007",
+        kind: "no-reply-path",
+        citation: `vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66). ${VT100_RUST_84A_LIB}`,
+      },
+      "extensions.osc11-bg-color": {
+        query: "\u001b]11;?\u0007",
+        kind: "no-reply-path",
+        citation: `vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66). ${VT100_RUST_84A_LIB}`,
+      },
+      "extensions.osc110-reset-fg": {
+        query: "\u001b]10;?\u0007",
+        kind: "no-reply-path",
+        citation: `vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66). ${VT100_RUST_84A_LIB}`,
+      },
+      "extensions.osc111-reset-bg": {
+        query: "\u001b]11;?\u0007",
+        kind: "no-reply-path",
+        citation: `vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66). ${VT100_RUST_84A_LIB}`,
+      },
+      "extensions.osc112-reset-cursor": {
+        query: "\u001b]12;?\u0007",
+        kind: "no-reply-path",
+        citation: `vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66). ${VT100_RUST_84A_LIB}`,
+      },
+      "extensions.osc113-reset-pointer-fg": {
+        query: "\u001b]13;?\u0007",
+        kind: "no-reply-path",
+        citation: `vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66). ${VT100_RUST_84A_LIB}`,
+      },
+      "extensions.osc114-reset-pointer-bg": {
+        query: "\u001b]14;?\u0007",
+        kind: "no-reply-path",
+        citation: `vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66). ${VT100_RUST_84A_LIB}`,
+      },
+      "extensions.osc12-cursor-color": {
+        query: "\u001b]12;?\u0007",
+        kind: "no-reply-path",
+        citation: `vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66). ${VT100_RUST_84A_LIB}`,
+      },
+      "extensions.osc1337-capabilities": {
+        query: "\u001b]1337;Capabilities\u0007",
+        kind: "no-reply-path",
+        citation: `vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66). ${VT100_RUST_84A_LIB}`,
+      },
+      "extensions.osc1337-cellsize": {
+        query: "\u001b]1337;ReportCellSize\u0007",
+        kind: "no-reply-path",
+        citation: `vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66). ${VT100_RUST_84A_LIB}`,
+      },
+      "extensions.osc17-highlight-bg": {
+        query: "\u001b]17;?\u0007",
+        kind: "no-reply-path",
+        citation: `vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66). ${VT100_RUST_84A_LIB}`,
+      },
+      "extensions.osc19-highlight-fg": {
+        query: "\u001b]19;?\u0007",
+        kind: "no-reply-path",
+        citation: `vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66). ${VT100_RUST_84A_LIB}`,
+      },
+      "extensions.osc30001-color-stack-push": {
+        query: "\u001b]10;?\u0007",
+        kind: "no-reply-path",
+        citation: `vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66). ${VT100_RUST_84A_LIB}`,
+      },
+      "extensions.osc30101-color-stack-pop": {
+        query: "\u001b]10;?\u0007",
+        kind: "no-reply-path",
+        citation: `vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66). ${VT100_RUST_84A_LIB}`,
+      },
+      "extensions.osc4-palette": {
+        query: "\u001b]4;0;?\u0007",
+        kind: "no-reply-path",
+        citation: `vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66). ${VT100_RUST_84A_LIB}`,
+      },
+      "extensions.osc5-special-color": {
+        query: "\u001b]5;0;?\u0007",
+        kind: "no-reply-path",
+        citation: `vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66). ${VT100_RUST_84A_LIB}`,
+      },
+      "extensions.osc5522-clipboard": {
+        query: "\u001b[?5522$p",
+        kind: "no-reply-path",
+        citation: `vte 0.15.0 src/lib.rs:207-209 collects '?'; vt100 0.16.2 src/perform.rs:176-183 '?' default arm -> Callbacks::unhandled_csi, empty by default (src/callbacks.rs:55-63). ${VT100_RUST_84A_LIB}`,
+      },
+      "extensions.osc701-locale": {
+        query: "\u001b]701;?\u0007",
+        kind: "no-reply-path",
+        citation: `vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66). ${VT100_RUST_84A_LIB}`,
+      },
+      "extensions.osc702-version": {
+        query: "\u001b]702;?\u0007",
+        kind: "no-reply-path",
+        citation: `vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66). ${VT100_RUST_84A_LIB}`,
+      },
+      "extensions.osc776-cell-size": {
+        query: "\u001b]776\u0007",
+        kind: "no-reply-path",
+        citation: `vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66). ${VT100_RUST_84A_LIB}`,
+      },
+      "extensions.osc7770-font-size": {
+        query: "\u001b]7770;?\u0007",
+        kind: "no-reply-path",
+        citation: `vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66). ${VT100_RUST_84A_LIB}`,
+      },
+      "extensions.osc7777-font-window-size": {
+        query: "\u001b]7777;?\u0007",
+        kind: "no-reply-path",
+        citation: `vte 0.15.0 src/lib.rs:410-413 -> osc_dispatch; vt100 0.16.2 src/perform.rs:234-236 default arm (only OSC 0/1/2/52 at :200-233) -> Callbacks::unhandled_osc, empty by default (src/callbacks.rs:66). ${VT100_RUST_84A_LIB}`,
+      },
+      "extensions.kitty-graphics": VT100_RUST_84A_GRAPHICS_AUDIT,
+      "extensions.kitty-graphics.display": VT100_RUST_84A_GRAPHICS_AUDIT,
+      "extensions.kitty-graphics.transmit": VT100_RUST_84A_GRAPHICS_AUDIT,
+      "extensions.kitty-keyboard": VT100_RUST_84A_KEYBOARD_AUDIT,
+      "extensions.kitty-keyboard.disambiguate": VT100_RUST_84A_KEYBOARD_AUDIT,
+      "extensions.kitty-keyboard.report-all-keys": VT100_RUST_84A_KEYBOARD_AUDIT,
+      "extensions.kitty-keyboard.report-alternate": VT100_RUST_84A_KEYBOARD_AUDIT,
+      "extensions.kitty-keyboard.report-events": VT100_RUST_84A_KEYBOARD_AUDIT,
+      "extensions.kitty-keyboard.report-text": VT100_RUST_84A_KEYBOARD_AUDIT,
+      "extensions.osc21-kitty-color": VT100_RUST_84A_OSC21_AUDIT,
+      "extensions.osc52-clipboard": VT100_RUST_84A_OSC52_READ_AUDIT,
+      "extensions.osc52-read": VT100_RUST_84A_OSC52_READ_AUDIT,
+      "extensions.osc99-kitty-notify": VT100_RUST_84A_OSC99_AUDIT,
+      "extensions.sixel-da1": VT100_RUST_84A_SIXEL_DA_AUDIT,
+      "extensions.sixel-geometry-report": VT100_RUST_84A_SIXEL_S_AUDIT,
+      "input.csi-u": VT100_RUST_84A_KEYBOARD_AUDIT,
     },
   ],
   // vt100 0.16.2 Rust parser native artifact from termless 0c409349, built by its declared `nix shell .#native-tools`
