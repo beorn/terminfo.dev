@@ -948,6 +948,12 @@ export interface TerminalQueryOutcome {
 export interface LibMouseEvent {
   x: number
   y: number
+  /**
+   * Zero-based integer pixel offsets from the terminal-content top-left, in caller-supplied pixel space.
+   * Both axes must be in 0..Number.MAX_SAFE_INTEGER-1; SGR-pixel wire coordinates add 1 to each axis.
+   * Other mouse formats ignore this field.
+   */
+  pixel?: { x: number; y: number }
   button: "left" | "middle" | "right" | "none" | "wheelUp" | "wheelDown"
   action: "press" | "release" | "move"
   shift?: boolean
