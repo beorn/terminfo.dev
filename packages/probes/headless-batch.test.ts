@@ -2160,9 +2160,9 @@ test.each([
   ["input.xtest-click", "\x1b[<0;5;3M"],
   ["input.xtest-wheel", "\x1b[<64;5;3M"],
 ])("Vterm %s mouse report survives real collector and canonical parser", async (id, report) => {
-  const batch = await collectBatch(createVtermBackend, "vterm", registryDefinitions([id]))
+  const batch = await collectBatch(async () => createVtermBackend(), "vterm", registryDefinitions([id]))
   expect(batch.results).toMatchObject([{ featureId: id, status: "supported", assertionType: "input_bytes" }])
-  expect(JSON.parse(batch.rawReplies[id]!).report).toBe(report)
+  expect((JSON.parse(batch.rawReplies[id]!) as { report: string }).report).toBe(report)
   expect(batch.assertions).toMatchObject([{ featureId: id, kind: "positive", assertionType: "input_bytes" }])
   const manifest = {
     schemaVersion: 4 as const,
@@ -2223,7 +2223,7 @@ test.each([
 // @consumer The production mouse library arm through the real collector.
 test("mouse collector distinguishes unavailable state/pixels, measured no-report and unexpected errors", async () => {
   const ids = ["input.pixel-mouse", "input.kitty-click-events"]
-  const pixel = await collectBatch(createVtermBackend, "vterm", registryDefinitions(ids))
+  const pixel = await collectBatch(async () => createVtermBackend(), "vterm", registryDefinitions(ids))
   expect(pixel.results).toMatchObject([
     { featureId: ids[0], status: "test-todo", reason: expect.stringContaining("SGR-pixel needs pixel coordinates") },
     { featureId: ids[1], status: "test-todo", reason: expect.stringContaining("#30936") },
@@ -2234,7 +2234,7 @@ test("mouse collector distinguishes unavailable state/pixels, measured no-report
     [true, "unsupported"],
   ] as const) {
     const batch = await collectBatch(
-      () => {
+      async () => {
         const backend = createVtermBackend()
         vi.spyOn(backend, "getMode").mockReturnValue(state)
         vi.spyOn(backend, "encodeMouse").mockReturnValue(null)
@@ -2248,7 +2248,7 @@ test("mouse collector distinguishes unavailable state/pixels, measured no-report
     else expect(batch.assertions).toMatchObject([{ featureId: id, kind: "negative", assertionType: "input_bytes" }])
   }
   const broken = await collectBatch(
-    () => {
+    async () => {
       const backend = createVtermBackend()
       vi.spyOn(backend, "encodeMouse").mockImplementation(() => {
         throw new Error("broken encoder invariant")
