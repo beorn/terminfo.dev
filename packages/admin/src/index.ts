@@ -162,7 +162,7 @@ review.addHelpSection("Resources:", [
     "intake",
     "Requires retained run/pass, explicit context, frozen registry or pinned-source receipt, and two pinned Git repositories",
   ],
-  ["apply", "Requires issuer-edited intake; preserves exact decision bytes and always leaves output unsealed"],
+  ["apply", "Requires issuer-edited intake; preserves exact decision bytes"],
   ["Empty scope", "No pending rows produces empty intake; no decisions produces a no-op receipt"],
   ["Failures", "Missing required inputs/citations fail on stderr; absent optional external sources report unverified"],
 ])

@@ -59,11 +59,11 @@ export function readEraseCapture(
     bytes,
     expected.manifest.catalogIds ?? [],
     new Map([[expected.manifest.probeHash, expected.manifest]]),
+    { mode: "capture" },
   )
   if (
     capture.schemaVersion !== 4 ||
     capture.source?.kind !== "live" ||
-    !capture.sealedAt ||
     capture.runId !== source.captureRunId ||
     capture.suiteId !== source.captureSuiteId ||
     capture.suiteId !== expected.manifest.probeHash ||

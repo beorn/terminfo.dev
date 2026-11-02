@@ -147,10 +147,15 @@ program
           )
           return
         }
-        const captured = finalizeCollectedDraft(retained.run)
-        const raw = `${JSON.stringify(captured)}\n`
         const { getTrustedSuiteReceipt } = await import("./serve.ts")
         const receipt = getTrustedSuiteReceipt()
+        const captured = finalizeCollectedDraft(retained.run, undefined, {
+          manifest: receipt.manifest,
+          decisions: [],
+          origin: () => undefined,
+          keepDraft: true,
+        })
+        const raw = `${JSON.stringify(captured)}\n`
         const decoded = (captured.sealedAt === undefined ? decodeCollectorDraft : decodeCollectorRun)(
           "daemon final writer",
           raw,
@@ -194,7 +199,12 @@ program
         else console.log(message)
         return
       }
-      const captured = finalizeCollectedDraft(collected.run)
+      const captured = finalizeCollectedDraft(collected.run, undefined, {
+        manifest: collected.receipt.manifest,
+        decisions: [],
+        origin: () => undefined,
+        keepDraft: true,
+      })
       const raw = `${JSON.stringify(captured)}\n`
       const decoded = (captured.sealedAt === undefined ? decodeCollectorDraft : decodeCollectorRun)(
         "inline collector",
@@ -222,7 +232,7 @@ program
       console.log(`${data.subject.id} ${data.subject.version}: ${currentSupportedShare(aggregate)}`)
       console.log(currentCoverageSentence(aggregate, collected.receipt.manifest.catalogIds))
       console.log(
-        `Run ${data.runId}: ${"sealedAt" in data ? "sealed" : "required review pending; unsealed draft"}; ${aggregate.complete ? "complete" : "incomplete"}; identity unverified.`,
+        `Run ${data.runId}: ${"sealedAt" in data ? "sealed" : "unsealed draft; not admitted"}; ${aggregate.complete ? "complete" : "incomplete"}; identity unverified.`,
       )
     },
   )

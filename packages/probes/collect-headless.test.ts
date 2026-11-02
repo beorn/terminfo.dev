@@ -105,14 +105,16 @@ it.each([true, false])(
     })
     expect(readFileSync(capturePath, "utf8")).toBe(captureBytes)
     const suite = probeSuiteSnapshot()
-    parseRun(
-      path,
-      readFileSync(path, "utf8"),
-      suite.catalogIds!,
-      new Map([[suite.probeHash, suite]]),
-      pendingReview ? { mode: "capture" } : undefined,
-    )
+    parseRun(path, readFileSync(path, "utf8"), suite.catalogIds!, new Map([[suite.probeHash, suite]]), {
+      mode: "capture",
+    })
+    // Raw collection is never END; existing writer tests cannot observe coordinator custody.
+    expect(path).toMatch(/\.draft\.json$/)
+    expect(saved).not.toHaveProperty("sealedAt")
     if (pendingReview) {
+      expect(
+        JSON.parse(saved.rawReplies["collector.evidence.device.primary-da"]!).projection.feature.catalogEntrySha256,
+      ).toBe(suite.catalogEntrySha256!["device.primary-da"])
       expect(path).toMatch(/\.draft\.json$/)
       expect(saved).not.toHaveProperty("sealedAt")
       expect(saved.rawReplies["collector.capture.device.primary-da"]).toBeTruthy()
@@ -151,9 +153,6 @@ it.each([true, false])(
       expect(final.runId).toBe(saved.runId)
       expect(final.results?.find((row) => row.featureId === "device.primary-da")?.status).toBe("untestable")
       expect(readFileSync(path, "utf8")).toBe(pendingBytes)
-    } else {
-      expect(path).not.toMatch(/\.draft\.json$/)
-      expect(saved).toHaveProperty("sealedAt")
     }
   },
 )

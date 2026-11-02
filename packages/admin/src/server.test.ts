@@ -8,7 +8,7 @@ import { createHash } from "node:crypto"
 import { afterEach, beforeEach, expect, it, vi } from "vitest"
 import { createServer, type Server } from "node:http"
 import { once } from "node:events"
-import { mkdtempSync, readFileSync, rmSync, existsSync } from "node:fs"
+import { mkdtempSync, readFileSync, rmSync, existsSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
 import {
@@ -19,6 +19,7 @@ import {
 } from "@terminfo/probe-defs"
 import { saveDaemonProbeRun } from "../../terminfo.dev/src/daemon-client.ts"
 import * as collector from "../../terminfo.dev/src/serve.ts"
+import * as runAdmission from "../../../scripts/admit-run.ts"
 import * as admission from "./admit-collected-run.ts"
 import * as sourceEnvironment from "../versions.ts"
 import { handleServer } from "./server.ts"
@@ -51,9 +52,9 @@ vi.mock("../../terminfo.dev/src/daemon-client.ts", async (importOriginal) => {
   const original = await importOriginal<typeof import("../../terminfo.dev/src/daemon-client.ts")>()
   return {
     ...original,
-    saveDaemonProbeRun: vi.fn((run, directory, intended) => {
+    saveDaemonProbeRun: vi.fn((run, directory, intended, reviews) => {
       // Exercise the real exclusive writer without ever letting a regression write the repository corpus.
-      return original.saveDaemonProbeRun(run, join(fixtures.home!, "collected"), intended)
+      return original.saveDaemonProbeRun(run, join(fixtures.home!, "collected"), intended, reviews)
     }),
   }
 })
@@ -148,60 +149,152 @@ it.each([
   ["server", true],
   ["here", false],
   ["here", true],
-] as const)("prints %s coverage from its own environment catalogue: %s", async (command, environment) => {
-  const manifest = {
-    schemaVersion: 4 as const,
-    probeHash: "abcdef123456",
-    sourceRevision: "a".repeat(40),
-    generatedAt: "2026-10-25T00:00:00.000Z",
-    adapterVersion: "test",
-    catalogIds: ["sgr.bold", ...(environment ? ENVIRONMENT_GROUP_IDS : [])],
-    probes: { term: [], lib: [], mux: [] },
-  } satisfies ProbeSuiteManifest
-  const run: CapturedRunDraft = {
-    ...initializeRunDraft({
-      source: { kind: "live" },
-      runId: "1234567890abcdef1234567890abcdef",
-      sourceRevision: manifest.sourceRevision,
-      manifest,
-      intendedSubject: { kind: "term", id: "kitty", version: "0.49.1" },
-    }),
-    subject: {
-      kind: "term",
-      id: "kitty",
-      version: "0.49.1",
-      os: "linux",
-      osVersion: null,
-      outerTerminal: null,
-      mux: null,
-      config: null,
-      permissions: null,
-    },
-    identity: "unverified",
-    measuredAt: "2026-10-25T00:00:00.000Z",
-    origin: { kind: "collector" },
-  }
-  fixtures.receipt = { manifest, collectorRevision: manifest.sourceRevision }
-  fixtures.raw = JSON.stringify(run)
-  vi.spyOn(admission, "admitCollectedRun").mockReturnValue(join(fixtures.home!, "private.draft.json"))
-  vi.spyOn(sourceEnvironment, "ensureSourceSuiteEnvironment").mockReturnValue({
-    TERMINFO_PROBE_HASH: manifest.probeHash,
-    TERMINFO_SOURCE_REVISION: manifest.sourceRevision,
-  })
-  vi.mocked(collector.collectProbeRun).mockResolvedValue(run)
+  ["retain", false],
+  ["default", false],
+  ["harness", false],
+  ["harness", false, true],
+  ["retain", false, true],
+  ["here", false, true],
+] as const)(
+  "preserves %s coverage and collection custody (environment=%s, review=%s)",
+  async (command, environment, pending) => {
+    const manifest = {
+      schemaVersion: 4 as const,
+      probeHash: "abcdef123456",
+      sourceRevision: "a".repeat(40),
+      generatedAt: "2026-10-25T00:00:00.000Z",
+      adapterVersion: "test",
+      catalogIds: ["sgr.bold", ...(environment ? ENVIRONMENT_GROUP_IDS : [])],
+      catalogEntrySha256: { "sgr.bold": "b".repeat(64) },
+      probes: { term: [], lib: [], mux: [] },
+    } satisfies ProbeSuiteManifest
+    const run: CapturedRunDraft = {
+      ...initializeRunDraft({
+        source: { kind: "live" },
+        runId: "1234567890abcdef1234567890abcdef",
+        sourceRevision: manifest.sourceRevision,
+        manifest,
+        intendedSubject: { kind: "term", id: "kitty", version: "0.49.1" },
+      }),
+      subject: {
+        kind: "term",
+        id: "kitty",
+        version: "0.49.1",
+        os: "linux",
+        osVersion: null,
+        outerTerminal: null,
+        mux: null,
+        config: null,
+        permissions: null,
+      },
+      identity: "unverified",
+      measuredAt: "2026-10-25T00:00:00.000Z",
+      origin: { kind: "collector" },
+    }
+    if (pending) {
+      run.rawReplies["sgr.bold"] = "reply"
+      run.assertions = [
+        {
+          featureId: "sgr.bold",
+          kind: "positive",
+          assertionType: "query_reply",
+          expected: "reply",
+          observed: "reply",
+          rawReplyRef: "sgr.bold",
+        },
+      ]
+      run.results[0] = {
+        featureId: "sgr.bold",
+        status: "test-todo",
+        reason: "Independent review pending",
+        assertionType: "query_reply",
+        rawReplyRef: "sgr.bold",
+        attempt: { scope: "probe", startedAt: run.measuredAt },
+        tests: [
+          {
+            id: "capture",
+            status: "supported",
+            assertionRefs: [0],
+            attempt: { scope: "probe", startedAt: run.measuredAt },
+          },
+          { id: "review", status: "test-todo", reason: "Independent review pending", attempt: { scope: "none" } },
+        ],
+      }
+    }
+    const assertDraft = (saved: CapturedRunDraft) => {
+      expect(saved).not.toHaveProperty("sealedAt")
+      if (pending) {
+        expect(JSON.parse(saved.rawReplies["collector.evidence.sgr.bold"]!).projection.feature.catalogEntrySha256).toBe(
+          "b".repeat(64),
+        )
+      }
+    }
+    fixtures.receipt = { manifest, collectorRevision: manifest.sourceRevision }
+    fixtures.raw = JSON.stringify(run)
+    vi.spyOn(admission, "admitCollectedRun").mockReturnValue(join(fixtures.home!, "private.draft.json"))
+    vi.spyOn(sourceEnvironment, "ensureSourceSuiteEnvironment").mockReturnValue({
+      TERMINFO_PROBE_HASH: manifest.probeHash,
+      TERMINFO_SOURCE_REVISION: manifest.sourceRevision,
+    })
+    vi.mocked(collector.collectProbeRun).mockResolvedValue(run)
 
-  if (command === "server") await handleServer("kitty", {})
-  else await handleHere({})
+    // Existing coverage tests missed persistence: these routes must retain raw zero-review
+    // diagnostics, while default admin admission remains an explicit sealing boundary.
+    if (command === "retain" || command === "default") {
+      const response = join(fixtures.home!, "response")
+      writeFileSync(response, fixtures.raw)
+      if (command === "retain") {
+        const saved = admission.retainCollectedRun(run, response, undefined, join(fixtures.home!, "private"))
+        assertDraft(JSON.parse(readFileSync(saved, "utf8")))
+        expect(readFileSync(join(fixtures.home!, "private", "response"), "utf8")).toBe(fixtures.raw)
+      } else {
+        vi.mocked(admission.admitCollectedRun).mockRestore()
+        const plan = vi.spyOn(runAdmission, "planAdmission").mockImplementation(() => {
+          throw new Error("explicit admission reached")
+        })
+        expect(() => admission.admitCollectedRun(run, response)).toThrow("explicit admission reached")
+        const saved = plan.mock.calls[0]![0]
+        expect(JSON.parse(readFileSync(saved, "utf8"))).toHaveProperty("sealedAt")
+        expect(plan).toHaveBeenCalledTimes(1)
+      }
+      return
+    }
+    if (command === "harness") {
+      const argv = process.argv
+      const path = join(fixtures.home!, "harness.json")
+      try {
+        process.argv = [argv[0]!, "app-harness.ts", path]
+        vi.resetModules()
+        await import("../app-harness.ts")
+        assertDraft(JSON.parse(readFileSync(path, "utf8")))
+        expect(existsSync(`${path}.done`)).toBe(true)
+      } finally {
+        process.argv = argv
+      }
+      return
+    }
+    if (command === "server") await handleServer("kitty", {})
+    else {
+      if (pending) {
+        await handleHere({ json: true })
+        assertDraft(JSON.parse(String(vi.mocked(console.log).mock.calls.at(-1)![0])))
+        vi.mocked(console.log).mockClear()
+      }
+      await handleHere({})
+      expect(vi.mocked(console.log).mock.calls.flat().join(" ")).toContain("unsealed draft")
+      expect(vi.mocked(console.log).mock.calls.flat().join(" ")).not.toContain("required review pending")
+    }
 
-  const clause = environment ? " · 9 environment groups manual by design (catalogue), ungraded" : ""
-  const summary = vi
-    .mocked(console.log)
-    .mock.calls.map(([line]) => line)
-    .find((line) => line.includes("TEST FAILURE"))
-  const coverage = `0 Supported · 0 Unsupported · 0 Untestable · 1 TEST TODO · 0 TEST FAILURE${clause}`
-  expect(summary).toBe(
-    command === "server"
-      ? `  ${"kitty 0.49.1".padEnd(25)} Not measured yet · ${coverage} (identity unverified)`
-      : coverage,
-  )
-})
+    const clause = environment ? " · 9 environment groups manual by design (catalogue), ungraded" : ""
+    const summary = vi
+      .mocked(console.log)
+      .mock.calls.map(([line]) => line)
+      .find((line) => line.includes("TEST FAILURE"))
+    const coverage = `0 Supported · 0 Unsupported · 0 Untestable · 1 TEST TODO · 0 TEST FAILURE${clause}`
+    expect(summary).toBe(
+      command === "server"
+        ? `  ${"kitty 0.49.1".padEnd(25)} Not measured yet · ${coverage} (identity unverified)`
+        : coverage,
+    )
+  },
+)

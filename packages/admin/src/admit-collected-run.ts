@@ -3,6 +3,7 @@ import { constants, copyFileSync, lstatSync, mkdirSync, realpathSync } from "nod
 import { basename, dirname, join, relative, resolve, sep } from "node:path"
 import { fileURLToPath } from "node:url"
 import { saveDaemonProbeRun } from "../../terminfo.dev/src/daemon-client.ts"
+import { getTrustedSuiteReceipt } from "../../terminfo.dev/src/serve.ts"
 import { planAdmission, admitRun } from "../../../scripts/admit-run.ts"
 
 /** Check before creation, resolving existing symlinks without hiding missing or unreadable resources. */
@@ -49,7 +50,14 @@ export function retainCollectedRun(
     mkdirSync(directory, { recursive: true })
     copyFileSync(retainedResponsePath, original, constants.COPYFILE_EXCL)
   }
-  const source = saveDaemonProbeRun(run, directory, intended)
+  const source = saveDaemonProbeRun(
+    run,
+    directory,
+    intended,
+    outputDirectory === undefined
+      ? undefined
+      : { manifest: getTrustedSuiteReceipt().manifest, decisions: [], origin: () => undefined, keepDraft: true },
+  )
   console.log(`  Retained private collected run ${source}`)
   return source
 }
@@ -61,7 +69,7 @@ export function admitCollectedRun(
 ): string {
   const source = retainCollectedRun(run, retainedResponsePath, intended)
   if (source.endsWith(".draft.json")) {
-    console.log(`  Required capture review pending; private draft remains unsealed: ${source}`)
+    console.log(`  Unsealed private draft; not admitted: ${source}`)
     return source
   }
   const plan = planAdmission(source)

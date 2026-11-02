@@ -634,7 +634,9 @@ The writer checks intended id/version against known measured values without repl
 
 `sealRunDraft` requires complete measured identity and no pending required review; other `test-todo` results can remain in a sealed run.
 
-Required reviews are applied before sealing. While a review remains pending, the writer keeps an unsealed `.draft.json`; once sealed, enrichment cannot change those result bytes.
+Raw diagnostic collection retains an unsealed `.draft.json`, including captures with no required review or with carried reviews already resolved. `pending-review` means a measured, unsealed draft; it does not imply a required cell review remains. Drafts receive the same identity, suite, source, artifact, summary and classification checks as sealed runs. Development completion does not require sealing or admission.
+
+Required reviews are applied before sealing at an explicit END act. Release collection `--freeze` seals resolved drafts, composes the strict Linux completion receipt where applicable, then admits. Nonempty review apply or `admit-run --review` seals when reviews resolve; default admin admission is also explicit. Standalone diagnostic outputs have no zero-review admission route. Once sealed, enrichment cannot change those result bytes.
 
 The internal admin `review intake` and `review apply` commands reuse that writer for private review.
 Intake reads only an explicitly named retained run, or the named context's `pass.contexts[].rawRun`,

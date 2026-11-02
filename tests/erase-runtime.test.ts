@@ -5,13 +5,17 @@
  * @reach fs-walk <fixture-only: generated erase capture, assertions, reports and attachments>
  * @testonly none
  */
-import { mkdtemp, readFile, readdir, rm } from "node:fs/promises"
+import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
+import { createHash } from "node:crypto"
 import { dirname, join } from "node:path"
 import { expect, test, vi } from "vitest"
 import { createVitest } from "vitest/node"
 import CensusReporter from "../packages/admin/reporter.ts"
-import type { CapturedRunDraft } from "@terminfo/probe-defs"
+import { sealRunDraft, type CapturedRunDraft } from "@terminfo/probe-defs"
+import { derivedSuiteManifest, probeSuiteSnapshot } from "../packages/admin/versions.ts"
+import { readEraseCapture } from "../packages/probes/erase-capture.ts"
+import { HEADLESS_TERMINAL } from "../packages/probes/headless-terminal.ts"
 
 test("production erase configuration isolates reports for repeated invocations", async () => {
   const directory = await mkdtemp(join(tmpdir(), "terminfo-replay-config-"))
@@ -37,11 +41,17 @@ test.for(["success", "deciding", "precondition", "replay-failure", "painted-seed
     const home = directory
     const reporter = new CensusReporter(directory)
     const nativeStates: string[] = []
+    // Fixture runs validate raw custody, not whether another worker has committed its source edits.
+    const sourceSetup = join(directory, "source-fixture.ts")
+    await writeFile(
+      sourceSetup,
+      `import {vi} from "vitest"; vi.mock(${JSON.stringify(join(dirname(import.meta.filename), "../packages/admin/versions.ts"))}, async original => ({...await original(), uncommittedCollectorDirt: () => undefined}));`,
+    )
     const runtime = await createVitest({
       root: join(dirname(import.meta.filename), "../packages/probes"),
       config: false,
       include: [mode === "success" ? "erase-replay.probe.ts" : "fixtures/erase-fault.fixture.ts"],
-      setupFiles: ["fixtures/erase-home.fixture.ts"],
+      setupFiles: ["fixtures/erase-home.fixture.ts", sourceSetup],
       provide: {
         eraseTestHome: home,
         eraseFault: mode === "success" ? "deciding" : mode,
@@ -98,6 +108,37 @@ test.for(["success", "deciding", "precondition", "replay-failure", "painted-seed
       const capturePath = record.files[0]
       if (!capturePath) throw new Error("Missing real erase capture")
       const capture = JSON.parse(await readFile(capturePath, "utf8")) as CapturedRunDraft
+      // Raw custody differs from the explicit trace assertion END below.
+      expect(capturePath).toMatch(/\.draft\.json$/)
+      expect(capture).not.toHaveProperty("sealedAt")
+      if (mode === "success") {
+        // The raw reader must accept historical sealed inputs too, while its byte binding remains strict.
+        const source = record.assertions[0]!.source
+        if (source.kind !== "trace" || !capture.runtimeIdentity) throw new Error("Missing erase trace identity")
+        const expected = {
+          manifest: derivedSuiteManifest(probeSuiteSnapshot()),
+          sourceRevision: capture.sourceRevision,
+          subject: capture.subject,
+          runtimeIdentity: capture.runtimeIdentity,
+          geometry: HEADLESS_TERMINAL,
+        }
+        expect(readEraseCapture(dirname(capturePath), source, expected).capture.runId).toBe(capture.runId)
+        const historicalBytes = JSON.stringify(sealRunDraft(structuredClone(capture)))
+        const historicalPath = join(dirname(capturePath), "historical-capture.json")
+        await writeFile(historicalPath, historicalBytes)
+        const historicalSource = {
+          ...source,
+          trace: {
+            path: "historical-capture.json",
+            sha256: createHash("sha256").update(historicalBytes).digest("hex"),
+          },
+        }
+        expect(readEraseCapture(dirname(capturePath), historicalSource, expected).capture.runId).toBe(capture.runId)
+        await writeFile(historicalPath, historicalBytes + "\n")
+        expect(() => readEraseCapture(dirname(capturePath), historicalSource, expected)).toThrow(
+          "Erase artifact SHA256 differs",
+        )
+      }
       expect(capture.runtimeIdentity?.adapterSources).toEqual(record.assertions[0]?.runtimeIdentity?.adapterSources)
       expect(record.files.length).toBeGreaterThan(0)
       expect(record.files.every((path) => path.startsWith(join(directory, ".terminfo-dev", "replays") + "/"))).toBe(
@@ -108,6 +149,7 @@ test.for(["success", "deciding", "precondition", "replay-failure", "painted-seed
       const outcomes = record.checks.map((records) => records.map(({ startedAt: _startedAt, ...outcome }) => outcome))
       expect(outcomes[1]).toEqual(outcomes[0])
       for (const [runIndex, run] of record.assertions.entries()) {
+        expect(run).toHaveProperty("sealedAt")
         expect(run.source).toMatchObject({ kind: "trace", captureRunId: record.captureRunId })
         expect(run.results).toHaveLength(273)
         const selected = run.results.filter(({ attempt }) => attempt.scope !== "none")

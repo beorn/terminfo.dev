@@ -224,6 +224,128 @@ describe("public test CLI coverage uses the collected manifest", () => {
       rmSync(directory, { recursive: true, force: true })
     }
   })
+  // Raw CLI output is diagnostic custody, including runs with no pending review.
+  // Coverage summaries above never inspect emitted run bytes or the daemon finalizer.
+  it.each([
+    [false, false],
+    [true, false],
+    [false, true],
+    [true, true],
+    [false, false, true],
+  ])("retains an unsealed public draft (daemon=%s, review=%s, human=%s)", async (daemon, pending, human) => {
+    const manifest: ProbeSuiteManifest = {
+      schemaVersion: 4,
+      probeHash: "abcdef123456",
+      sourceRevision: "a".repeat(40),
+      generatedAt: "2026-10-25T00:00:00.000Z",
+      adapterVersion: "test",
+      catalogIds: ["sgr.bold"],
+      catalogEntrySha256: { "sgr.bold": "b".repeat(64) },
+      probes: { term: [], lib: [], mux: [] },
+    }
+    const run: CapturedRunDraft = {
+      ...initializeRunDraft({
+        source: { kind: "live" },
+        runId: "raw-cli-draft",
+        manifest,
+        sourceRevision: manifest.sourceRevision,
+        intendedSubject: { kind: "term", id: "kitty", version: "1" },
+      }),
+      subject: {
+        kind: "term",
+        id: "kitty",
+        version: "1",
+        os: "linux",
+        osVersion: null,
+        outerTerminal: null,
+        mux: null,
+        config: null,
+        permissions: null,
+      },
+      identity: "unverified",
+      measuredAt: "2026-10-25T00:00:00.000Z",
+      origin: { kind: "collector" },
+    }
+    if (pending) {
+      run.rawReplies["sgr.bold"] = "reply"
+      run.assertions = [
+        {
+          featureId: "sgr.bold",
+          kind: "positive",
+          assertionType: "query_reply",
+          expected: "reply",
+          observed: "reply",
+          rawReplyRef: "sgr.bold",
+        },
+      ]
+      run.results[0] = {
+        featureId: "sgr.bold",
+        status: "test-todo",
+        reason: "Independent review pending",
+        assertionType: "query_reply",
+        rawReplyRef: "sgr.bold",
+        attempt: { scope: "probe", startedAt: run.measuredAt },
+        tests: [
+          {
+            id: "capture",
+            status: "supported",
+            assertionRefs: [0],
+            attempt: { scope: "probe", startedAt: run.measuredAt },
+          },
+          { id: "review", status: "test-todo", reason: "Independent review pending", attempt: { scope: "none" } },
+        ],
+      }
+    }
+    vi.mocked(publicCollector.collectProbeRun).mockResolvedValue(run)
+    vi.mocked(publicCollector.getTrustedSuiteReceipt).mockReturnValue({
+      manifest,
+      collectorRevision: manifest.sourceRevision,
+    })
+    vi.mocked(publicCollector.listDaemons).mockReturnValue([
+      {
+        pid: 22,
+        port: 43210,
+        runId: "daemon",
+        token: "a".repeat(64),
+        terminal: "kitty",
+        terminalVersion: "1",
+        os: "linux",
+        osVersion: "fixture",
+        started: "2026-10-25T00:00:00.000Z",
+      },
+    ])
+    vi.mocked(daemonClient.requestDaemonProbe).mockResolvedValue(new Response(JSON.stringify(run)))
+    vi.mocked(daemonClient.readRetainedDaemonProbeResponse).mockResolvedValue({
+      kind: "captured",
+      run,
+      path: "/unused-retained-response",
+      sha256: "a".repeat(64),
+    })
+    const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true)
+    const stderr = vi.spyOn(console, "error").mockImplementation(() => {})
+    const output = vi.spyOn(console, "log").mockImplementation(() => {})
+    try {
+      await program.parseAsync(["test", ...(daemon ? ["kitty"] : []), ...(human ? [] : ["--json"])], { from: "user" })
+      if (human) {
+        const diagnostic = output.mock.calls.flat().join(" ")
+        expect(diagnostic).toContain("unsealed draft; not admitted")
+        expect(diagnostic).not.toContain("required review pending")
+        return
+      }
+      const saved = JSON.parse(String(stdout.mock.calls[0]?.[0]))
+      expect(saved.runId).toBe(run.runId)
+      expect(saved).not.toHaveProperty("sealedAt")
+      if (pending) {
+        expect(JSON.parse(saved.rawReplies["collector.evidence.sgr.bold"]).projection.feature.catalogEntrySha256).toBe(
+          "b".repeat(64),
+        )
+      }
+    } finally {
+      stdout.mockRestore()
+      stderr.mockRestore()
+      output.mockRestore()
+    }
+  })
   it("passes exact probe IDs into the existing daemon startup selection input", async () => {
     const before = process.env.TERMINFO_PROBE_IDS
     vi.mocked(publicCollector.startDaemon).mockClear()
