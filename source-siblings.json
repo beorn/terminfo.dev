@@ -36,7 +36,7 @@
     {
       "name": "@termless/xtermjs",
       "repository": "beorn/termless",
-      "commit": "539e4803eee45fcfe60369188c2189b57a06ae18",
+      "commit": "9f0d4a5cbbeb2b7d9263ef7e07699df16a1cafc7",
       "pack": true,
       "directory": "packages/xtermjs"
     },
