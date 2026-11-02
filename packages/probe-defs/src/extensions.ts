@@ -597,7 +597,7 @@ function oscSimpleQueryProbe(id: string, query: string, pattern: RegExp, expecte
                 raw,
                 noObservable: "Audited vterm headless subject has no physical font cell dimensions",
                 sourceCitation:
-                  "vterm screen.ts at bd3d32ae: ScreenOptions has no physical font metrics; OSC1337 ReportCellSize and OSC776 deliberately report unknown zero dimensions (#30575)",
+                  "vterm 5fe28a449d1de5ca84ead724d1da1ea71fe8e036 packages/vterm/src/screen.ts:89-109 ScreenOptions has no physical font metrics; OSC1337 ReportCellSize at :4041-4043 and OSC776 at :3985-3988 deliberately report unknown zero dimensions (#30575)",
               },
               result,
             )
@@ -1215,11 +1215,11 @@ const ABSENT_OSC_ENGINES = {
       {
         code: 9,
         reason:
-          "screen.ts:3921-3923 notification sink stores every OSC 9 value, with no progress subcode or state interpretation",
+          "screen.ts:3918-3920 notification sink stores every OSC 9 value, with no progress subcode or state interpretation",
       },
     ],
     sourceCitation:
-      "vterm bd3d32aea2f1994376a71adfc55b92705eedbd8c packages/vterm/src/screen.ts:3596-4055 handleOSC switch",
+      "vterm 5fe28a449d1de5ca84ead724d1da1ea71fe8e036 packages/vterm/src/screen.ts:3593-4052 handleOSC switch",
   },
   xtermjs: {
     kind: "registry",

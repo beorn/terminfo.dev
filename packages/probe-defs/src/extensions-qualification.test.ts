@@ -447,13 +447,16 @@ test.each([
           integrity: {
             kind: "source",
             repository: "git@github.com:beorn/vterm.git",
-            revision: "bd3d32aea2f1994376a71adfc55b92705eedbd8c",
+            revision:
+              engine === "vterm"
+                ? "5fe28a449d1de5ca84ead724d1da1ea71fe8e036"
+                : "bd3d32aea2f1994376a71adfc55b92705eedbd8c",
             treeOid:
               engine === "vt100"
                 ? "1eaac257cf9ff8d8ece752c8e6edc04b9ddaa6cf"
                 : engine === "vt220"
                   ? "d504616ae458b8b0fa9fa365034c30bd35f55ee8"
-                  : "f10a184811894462b9ca7b65d6aab8ffd2fdd0bd",
+                  : "73323a4fdd44a5b2703efc3dfd7e343ebcc19d4b",
             cleanTree: true,
           },
         } as const)
@@ -504,7 +507,9 @@ test.each([
         {
           id: "review",
           status: "test-failure",
-          reason: expect.stringContaining(engine === "xtermjs" ? "17a90b65" : "bd3d32ae"),
+          reason: expect.stringContaining(
+            engine === "xtermjs" ? "17a90b65" : engine === "vterm" ? "5fe28a44" : "bd3d32ae",
+          ),
         },
       ])
       expect(result.observation).toMatchObject({ outcome: "inconclusive", assertionType: "buffer_state" })
@@ -1916,7 +1921,7 @@ test.each([
   },
 )
 
-// Geometry audit re-pinned to bd3d32ae; original runb9697318 used source53a9eb92/tree617ae600.
+// Geometry fixture follows audited source5fe28a44; original runb9697318 used source53a9eb92/tree617ae600.
 // Q8 requires independent review of this context limit, never automatic Untestable.
 const geometryRuntime = {
   kind: "js",
@@ -1926,8 +1931,8 @@ const geometryRuntime = {
   integrity: {
     kind: "source",
     repository: "git@github.com:beorn/vterm.git",
-    revision: "2dd948165b5f08d51eae7374b148c2f2512c9714",
-    treeOid: "1b4c7735e1ab71668a0d7be552b9f26ce6bb8e4e",
+    revision: "5fe28a449d1de5ca84ead724d1da1ea71fe8e036",
+    treeOid: "73323a4fdd44a5b2703efc3dfd7e343ebcc19d4b",
     cleanTree: true,
   },
   runtimeFormat: "js",
