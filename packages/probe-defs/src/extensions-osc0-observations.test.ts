@@ -7,6 +7,7 @@
  */
 import { expect, test } from "vitest"
 import { extensionsProbes } from "./extensions.ts"
+import { ADAPTER_SOURCE_AUDITS } from "./helpers.ts"
 import type { TermProbeSource, LibProbeSource } from "./types.ts"
 
 const PAYLOAD = "osc0-icon-title"
@@ -72,10 +73,131 @@ const exactReplies = {
   [TITLE_QUERY]: `\x1b]l${PAYLOAD}\x07`,
 }
 
-test("both arms declare measuring query evidence, so the catalog can derive automated", () => {
+test("OSC 0 declares qualified library state evidence and application query evidence", () => {
   const definition = find()
   expect(definition.termAssertionType).toBe("query_reply")
-  expect(definition.libAssertionType).toBe("query_reply")
+  expect(definition.libAssertionType).toMatchObject({
+    when: expect.any(Function),
+    then: ["buffer_state"],
+    otherwise: ["query_reply"],
+  })
+})
+
+const auditedXtermFixtureIdentity = {
+  kind: "js",
+  runtimeFormat: "js",
+  engineVersion: "6.0.0",
+  adapterVersion: "0.10.2",
+  termlessRevision: "84003d2c91610fe2743142675234a0fb3ec9cf1d",
+  adapterSources: Object.entries(ADAPTER_SOURCE_AUDITS.xtermjs).map(([path, blobOid]) => ({ path, blobOid })),
+  resolvedPath: "/fixture/@xterm/headless/lib-headless/xterm-headless.js",
+  integrity: {
+    kind: "registry",
+    lockIntegrity: "sha512-5Yj1QINYCyzrZtf8OFIHi47iQtI+0qYFPHmouEfG8dHNxbZ9Tb9YGSuLcsEwj9Z+OL75GJqPyJbyoFer80a2Hw==",
+  },
+} as const
+
+test.each([
+  { fault: "none", outcome: "supported" },
+  { fault: "ignore-icon", outcome: "unsupported" },
+  { fault: "ignore-title", outcome: "unsupported" },
+  { fault: "icon-control", outcome: null },
+  { fault: "title-control", outcome: null },
+  { fault: "icon-readback", outcome: null },
+  { fault: "title-readback", outcome: null },
+] as const)("audited xterm OSC 0 checks BOTH setters and restores BOTH labels: $fault", ({ fault, outcome }) => {
+  const original = {
+    icon: fault === "ignore-icon" ? PAYLOAD : "saved-icon",
+    title: fault === "ignore-title" ? PAYLOAD : "saved-title",
+  }
+  const labels = { ...original }
+  const controls = { icon: false, title: false }
+  const verified = { icon: false, title: false }
+  let effectFed = false
+  const readbackError = new Error(`${fault} unavailable`)
+  const ctx = Object.assign(lib(exactReplies), {
+    runtimeIdentity: auditedXtermFixtureIdentity,
+    getIconLabel: () => {
+      if (effectFed && fault === "icon-readback") throw readbackError
+      if (controls.icon) verified.icon = true
+      return labels.icon
+    },
+    getTitle: () => {
+      if (effectFed && fault === "title-readback") throw readbackError
+      if (controls.title) verified.title = true
+      return labels.title
+    },
+    feed: (text: string) => {
+      for (const match of text.matchAll(/\x1b\]([012]);([^\x07\x1b]*)(?:\x07|\x1b\\)/g)) {
+        const [, code, value] = match
+        if (code === "0") {
+          effectFed = true
+          expect.soft(verified).toEqual({ icon: true, title: true })
+          expect.soft(labels.icon).not.toBe(labels.title)
+          expect.soft(labels.icon).not.toBe(PAYLOAD)
+          expect.soft(labels.title).not.toBe(PAYLOAD)
+          if (fault !== "ignore-icon") labels.icon = value!
+          if (fault !== "ignore-title") labels.title = value!
+        } else {
+          const member = code === "1" ? "icon" : "title"
+          if (value !== original[member]) {
+            controls[member] = true
+            verified[member] = false
+            if (fault === `${member}-control`) continue
+          }
+          labels[member] = value!
+        }
+      }
+    },
+  })
+  let result: ReturnType<ReturnType<typeof termlessCallback>> | undefined
+  let thrown: unknown
+  try {
+    result = termlessCallback()(ctx)
+  } catch (error) {
+    thrown = error
+  } finally {
+    expect.soft(labels).toEqual(original)
+  }
+  if (fault.endsWith("-readback") && thrown !== undefined) {
+    expect(thrown).toBe(readbackError)
+  } else {
+    expect(thrown).toBeUndefined()
+    expect(result).toBeDefined()
+    if (outcome === null) {
+      expect(result!.observation?.outcome).not.toBe("unsupported")
+      expect(result!.observation?.outcome).not.toBe("supported")
+      expect(result!.assertions?.some(({ kind }) => kind === "negative")).not.toBe(true)
+      expect(result!.tests).toMatchObject([{ status: "test-failure", reason: expect.any(String) }])
+    } else {
+      expect(result!.observation).toMatchObject({ outcome, assertionType: "buffer_state" })
+      expect(result!.assertions?.map(({ kind }) => kind)).toContain(outcome === "supported" ? "positive" : "negative")
+    }
+  }
+  if (fault.endsWith("-control")) expect(effectFed).toBe(false)
+  else expect(effectFed).toBe(true)
+})
+
+test.each(["foreign-identity", "missing-icon-getter"])("OSC 0 keeps query evidence with %s", (route) => {
+  const ctx = Object.assign(lib(exactReplies), {
+    runtimeIdentity: {
+      ...auditedXtermFixtureIdentity,
+      ...(route === "foreign-identity" ? { engineVersion: "not-xterm" } : {}),
+    },
+    ...(route === "foreign-identity"
+      ? {
+          getIconLabel: () => {
+            throw new Error("query route read icon state")
+          },
+        }
+      : {}),
+    getTitle: () => {
+      throw new Error("query route read title state")
+    },
+  })
+  const result = termlessCallback()(ctx)
+  expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
+  expect(result.assertions?.map(({ kind }) => kind)).toEqual(["positive", "positive"])
 })
 
 test("the termless arm supports OSC 0 only when both replies return the exact payload", () => {

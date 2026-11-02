@@ -1056,7 +1056,14 @@ export interface ProbeDefinition {
    * observable; undefined is temporarily undeclared (#28801), never equivalent to null. */
   termAssertionType?: AssertionType | null
   /** Same declaration contract as termAssertionType, for the library callback. */
-  libAssertionType?: AssertionType | null
+  libAssertionType?:
+    | AssertionType
+    | null
+    | {
+        readonly when: (source: Pick<LibProbeSource, "runtimeIdentity" | "getTitle" | "getIconLabel">) => boolean
+        readonly then: readonly [AssertionType, ...AssertionType[]]
+        readonly otherwise: readonly [AssertionType, ...AssertionType[]]
+      }
 }
 
 /** The only live run contract; v1/v2 are historical reader inputs. */

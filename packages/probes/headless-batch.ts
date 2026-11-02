@@ -27,6 +27,7 @@ import {
   withReplyFailureEvidence,
 } from "@terminfo/probe-defs"
 import type {
+  AssertionType,
   ProbeResult,
   RunDraft,
   NotTestedCoverage,
@@ -521,7 +522,12 @@ function harnessIncompleteResult(
 }
 
 /** A callback conclusion without its raw state cannot become a support claim. */
-function recordResult(batch: Batch, probe: ProbeDefinition, result: ProbeCallbackResult): void {
+function recordResult(
+  batch: Batch,
+  probe: ProbeDefinition,
+  result: ProbeCallbackResult,
+  declared: readonly AssertionType[] | null | undefined,
+): void {
   const id = probe.id
   if (result.notTested) {
     recordNotTested(batch, probe, result)
@@ -567,15 +573,14 @@ function recordResult(batch: Batch, probe: ProbeDefinition, result: ProbeCallbac
   }
   // Undefined is undeclared; null explicitly declares no deciding typed observable.
   // Keep the existing loud mismatch refusal; classification never turns null into an observation.
-  const declared = probe.libAssertionType
-  if (declared !== undefined && declared !== explicit.assertionType) {
+  if (declared !== undefined && (declared === null || !declared.includes(explicit.assertionType))) {
     batch.observations.push({
       featureId: id,
       outcome: "error",
       reason: "collector-error",
       assertionType: explicit.assertionType,
       note: withRefusedClaim(
-        `Lib callback ${id} declares ${String(declared)} but returned ${explicit.assertionType}`,
+        `Lib callback ${id} declares ${declared === null ? "null" : declared.join(", ")} but returned ${explicit.assertionType}`,
         result,
       ),
       ...(result.response !== undefined ? { rawReplyRef: id } : {}),
@@ -764,6 +769,19 @@ export async function collectBatch(
       drainUnreproduced(backend) // Nothing reported before this probe's first capture belongs to it.
       const replyCaptures = hostRecord?.captures ?? []
       const ctx = createLibProbeSource(backend, proven, initializedRuntime?.identity, replyCaptures, unreproduced)
+      const assertionDeclaration = probe.libAssertionType
+      let declaredAssertionTypes: readonly AssertionType[] | null | undefined
+      if (assertionDeclaration === null || assertionDeclaration === undefined) {
+        declaredAssertionTypes = assertionDeclaration
+      } else if (typeof assertionDeclaration === "string") {
+        declaredAssertionTypes = [assertionDeclaration]
+      } else {
+        const selected = assertionDeclaration.when(ctx)
+        if (typeof selected !== "boolean") {
+          throw new Error(`Lib callback ${probe.id} declaration predicate must return a boolean`)
+        }
+        declaredAssertionTypes = selected ? assertionDeclaration.then : assertionDeclaration.otherwise
+      }
       const callback = withReplyFailureEvidence(probe.id, probe.lib(ctx), {
         producer: "headless",
         attempts: replyCaptures.map((capture) => ({
@@ -848,7 +866,7 @@ export async function collectBatch(
       const graded = unreproduced.silent ? harnessIncompleteResult(backendName, unreproduced, callback) : callback
       callbackTests = graded.tests
       criterionBranch = graded.criterionBranch
-      recordResult(batch, probe, graded)
+      recordResult(batch, probe, graded, declaredAssertionTypes)
     } catch (error) {
       const message = `headless ${backendName} probe ${probe.id}: ${errorMessage(error)}`
 

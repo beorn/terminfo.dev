@@ -1226,7 +1226,7 @@ const ABSENT_OSC_ENGINES = {
     engineVersion: "6.0.0",
     adapterVersion: "0.10.2",
     lockIntegrity: "sha512-5Yj1QINYCyzrZtf8OFIHi47iQtI+0qYFPHmouEfG8dHNxbZ9Tb9YGSuLcsEwj9Z+OL75GJqPyJbyoFer80a2Hw==",
-    codes: [7, 9, 17, 19, 22, 117, 119, 176, 440, 555, 666, 710, 777, 3008],
+    codes: [7, 9, 17, 19, 22, 52, 117, 119, 176, 440, 555, 666, 710, 777, 3008],
     sourceCitation:
       "@xterm/headless 6.0.0 bundle SHA256 17a90b650cf6b77cce2b98c4063884d43545e4ce177a54b76ccfc906f1aacaed, map SHA256 780e782badc8189491a469c9277b783e01911882ea84417b31e71294ea927d98: InputHandler.ts:292-338 OSC registrations (17/19/117/119 are comments only) and :201-203 logging-only fallback, OscParser.ts:145-146 fallback dispatch, CoreTerminal.ts:236-237 embedder hook; termless 2d97417328b7b1d086f9396b9a1731216ed134cc packages/xtermjs/src/backend.ts registers no OSC handler",
   },
@@ -1361,14 +1361,15 @@ const ABSENT_OSC_ENGINES = {
   },
 } as const
 
-function absentOscAudit(identity: LibProbeSource["runtimeIdentity"], code: number | "133;D") {
+function auditedOscEngine(identity: LibProbeSource["runtimeIdentity"], code?: number | "133;D") {
   const measured = evidenceRuntimeIdentity(identity)
   if (!measured) return undefined
   return Object.entries(ABSENT_OSC_ENGINES).find(([engine, expected]) => {
     const member =
-      typeof code === "number"
+      code === undefined ||
+      (typeof code === "number"
         ? expected.codes.some((value) => value === code)
-        : "subcodes" in expected && expected.subcodes.some((value) => value === code)
+        : "subcodes" in expected && expected.subcodes.some((value) => value === code))
     if (
       measured.engineVersion !== expected.engineVersion ||
       !member ||
@@ -1410,7 +1411,21 @@ function absentOscAudit(identity: LibProbeSource["runtimeIdentity"], code: numbe
       measured.integrity.repository === expected.repository &&
       measured.integrity.treeOid === expected.treeOid
     )
-  })?.[1]
+  })
+}
+
+function absentOscAudit(identity: LibProbeSource["runtimeIdentity"], code: number | "133;D") {
+  return auditedOscEngine(identity, code)?.[1]
+}
+
+function auditedXtermState(
+  source: Pick<LibProbeSource, "runtimeIdentity" | "getTitle" | "getIconLabel">,
+): source is Pick<LibProbeSource, "runtimeIdentity" | "getTitle" | "getIconLabel"> & { getIconLabel(): string } {
+  return (
+    typeof source.getTitle === "function" &&
+    typeof source.getIconLabel === "function" &&
+    auditedOscEngine(source.runtimeIdentity)?.[0] === "xtermjs"
+  )
 }
 
 function sourceAbsentOsc(id: string, code: number | "133;D", sequence: string, effect: string) {
@@ -2600,6 +2615,7 @@ function textSizingResult(
  * binary keeps the measured roundtrip. A listed reply-path audit still replaces an empty capture.
  */
 const ENGINE_CLIPBOARD_NOTE = "engine copy_to_clipboard callback read via getClipboardState, no reply bytes"
+const OSC52_SOURCE_CONTROL = `\x1b]52;c;${btoa("terminfo-osc52-source-control")}\x07`
 
 function headlessOsc52Write(ctx: LibProbeSource): ProbeCallbackResult {
   if (typeof ctx.getClipboardState !== "function") return headlessOsc52WriteWithoutWitness(ctx)
@@ -2693,6 +2709,9 @@ function headlessClipboardRoundtrip(ctx: LibProbeSource): ProbeCallbackResult {
   const writeUnobservable = readNegative && typeof ctx.getClipboardState !== "function"
   const reason =
     "clipboard write unobservable: OSC 52 read is a sentinel negative on this engine and no clipboard-state witness is wired."
+  if (writeUnobservable && auditedXtermState(ctx)) {
+    return sourceAbsentOsc("OSC 52 clipboard write", 52, OSC52_SOURCE_CONTROL, "clipboard write")(ctx)
+  }
   const result: ProbeCallbackResult = writeUnobservable
     ? { pass: false, note: reason, tests: [{ id: "criterion", status: "test-todo", reason }] }
     : headlessClipboardResult(empty ? "" : raw, nonce)
@@ -4392,6 +4411,37 @@ export const extensionsProbes: ProbeDefinition[] = [
     ...probe(
       "extensions.osc0-icon-title",
       (ctx) => {
+        if (auditedXtermState(ctx)) {
+          const before = { icon: ctx.getIconLabel(), title: ctx.getTitle() }
+          const controls = {
+            icon: before.icon === "osc0-icon-control" ? "osc0-icon-control-2" : "osc0-icon-control",
+            title: before.title === "osc0-title-control" ? "osc0-title-control-2" : "osc0-title-control",
+          }
+          try {
+            ctx.feed(`\x1b]1;${controls.icon}\x07`)
+            ctx.feed(`\x1b]2;${controls.title}\x07`)
+            const controlled = { icon: ctx.getIconLabel(), title: ctx.getTitle() }
+            if (controlled.icon !== controls.icon || controlled.title !== controls.title) {
+              return {
+                response: JSON.stringify({ before, controls, controlled }),
+                ...replyFailure("OSC 0 independent icon/title controls were not both read back"),
+              }
+            }
+            ctx.feed(`\x1b]0;${OSC0_PAYLOAD}\x07`)
+            const after = { icon: ctx.getIconLabel(), title: ctx.getTitle() }
+            return parserStateResult(
+              after.icon === OSC0_PAYLOAD && after.title === OSC0_PAYLOAD,
+              "OSC 0 changes both independently controlled icon and title labels to its exact payload",
+              { before, controls, controlled, requested: OSC0_PAYLOAD, after },
+            )
+          } finally {
+            try {
+              ctx.feed(`\x1b]1;${before.icon}\x07`)
+            } finally {
+              ctx.feed(`\x1b]2;${before.title}\x07`)
+            }
+          }
+        }
         ctx.feed(`\x1b]0;${OSC0_PAYLOAD}\x07`)
         const iconOutcome = ctx.queryWithSentinelOutcome?.(OSC0_ICON_QUERY, OSC0_ICON_REPLY)
         const titleOutcome = ctx.queryWithSentinelOutcome?.(OSC0_TITLE_QUERY, OSC0_TITLE_REPLY)
@@ -4424,7 +4474,7 @@ export const extensionsProbes: ProbeDefinition[] = [
       },
       "query_reply",
     ),
-    libAssertionType: "query_reply",
+    libAssertionType: { when: auditedXtermState, then: ["buffer_state"], otherwise: ["query_reply"] },
   },
 
   // OSC 52 — clipboard
@@ -4435,14 +4485,14 @@ export const extensionsProbes: ProbeDefinition[] = [
       (ctx) => liveClipboardProbe(ctx, "roundtrip"),
       "query_reply",
     ),
-    libAssertionType: "query_reply",
+    libAssertionType: { when: auditedXtermState, then: ["query_reply", "buffer_state"], otherwise: ["query_reply"] },
     libHostRecipes: [{ recipe: "clipboard-load", query: "\x1b]52;c;?\x07", missing: ["clipboard-read-permission"] }],
   },
 
   // OSC 52 write — set clipboard (most terminals support this)
   {
     ...probe("extensions.osc52-write", headlessOsc52Write, (ctx) => liveClipboardProbe(ctx, "write"), "query_reply"),
-    libAssertionType: "query_reply",
+    libAssertionType: { when: auditedXtermState, then: ["query_reply", "buffer_state"], otherwise: ["query_reply"] },
     libHostRecipes: [{ recipe: "clipboard-load", query: "\x1b]52;c;?\x07", missing: ["clipboard-read-permission"] }],
   },
 

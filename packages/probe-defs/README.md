@@ -105,6 +105,8 @@ Both source interfaces carry `readonly kind: ProbeSourceKind` directly. Current 
 
 `termAssertionType` and `libAssertionType` declare a retained deciding-observation class. An explicit null means the callback runs without a typed deciding observable; undefined is temporarily undeclared (#28801). Neither means the callback arm itself is absent, and neither becomes a null observation or assertion type.
 
+The library declaration also accepts an inline `{ when, then, otherwise }` descriptor. Each branch is a nonempty set of distinct existing assertion classes. The headless collector evaluates the pure `when` predicate exactly once before the callback, using identity and getter presence without I/O, then requires the returned observation class to belong to that selected set. A thrown or non-boolean predicate is a collector error. The descriptor is never serialized: retained observations, assertions and results still carry one scalar class. Scalar, null and undefined declarations keep their existing meanings; application declarations remain scalar.
+
 `ALL_PROBES` collects the category definitions. A current `ProbeSuiteManifest` explicitly carries schema version 4 and separates complete `catalogIds` membership from the callback schedules in `probes.term`, `probes.lib` and `probes.mux`. Historical declarations normalize their schedules on read while retaining their original absent schema marker.
 
 The [shared execution helpers](src/helpers.ts) initialize every catalog member as `test-todo` with no attempt, then record only the work actually performed.
