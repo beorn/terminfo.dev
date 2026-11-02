@@ -1202,7 +1202,11 @@ export function decrpmModeProbe(
       }
       const supported = ps === 1 || ps === 3
       const reading = decrpmReading(ps)
-      const note = `${snapshot === 2 && ps === 2 ? "recognized but DECSET refused (mode kept reset)" : `DECRPM mode ${modeNum}: ${reading}`}; presentation (tearing, scroll cadence, inverted frame) unmeasured; protocol measured`
+      // Preserve the existing tail for other modes, including DECSCLM.
+      const facet =
+        modeUnmeasuredFacet(modeNum) ??
+        "presentation (tearing, scroll cadence, inverted frame) unmeasured; protocol measured"
+      const note = `${snapshot === 2 && ps === 2 ? "recognized but DECSET refused (mode kept reset)" : `DECRPM mode ${modeNum}: ${reading}`}; ${facet}${modeNum === 2031 ? "; the separate CSI ? 996 n query is unmeasured here" : ""}`
       return {
         pass: supported,
         response,
