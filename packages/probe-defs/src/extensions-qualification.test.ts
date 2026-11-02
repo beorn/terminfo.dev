@@ -90,7 +90,7 @@ const auditedArtifacts: readonly HeadlessRuntimeIdentity[] = [
     },
     adapterSources: [
       { path: "packages/alacritty/src/index.ts", blobOid: "b4154cbd6ef4a83ce2cbf3dcf26ff13d645efd05" },
-      { path: "packages/alacritty/src/backend.ts", blobOid: "4210383129879c4e8756e6975674632cf69ecce9" },
+      { path: "packages/alacritty/src/backend.ts", blobOid: "3f187a4b17ef7b86902008d05fb8d0d684328a06" },
       { path: "packages/alacritty/native/src/lib.rs", blobOid: "e4720590d652773f1e89caf2b5cb399ee9112e39" },
       { path: "src/load-native.ts", blobOid: "34e142550085450ab02138184626716ad0d6b546" },
     ],
