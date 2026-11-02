@@ -926,14 +926,14 @@ it.each([
   {
     engine: "vt100",
     createBackend: createVt100Backend,
-    treeOid: "1eaac257cf9ff8d8ece752c8e6edc04b9ddaa6cf",
-    sourceCitation: "screen.ts:504-520 handleOSC switch, cases 0/1/2 only",
+    treeOid: "b941dae48b25ae8825c394750bda5245c9d93dfa",
+    sourceCitation: "screen.ts:505-520 handleOSC switch, cases 0/1/2 only",
   },
   {
     engine: "vt220",
     createBackend: createVt220Backend,
-    treeOid: "fc6ff58f2f3e602b8ede99641f73cde997411f14",
-    sourceCitation: "screen.ts:700-715 handleOSC: no-semicolon return; cases 0/1/2 only",
+    treeOid: "4205f8936ad1848d1029729f3ada888cd61759a8",
+    sourceCitation: "screen.ts:701-716 handleOSC: no-semicolon return; cases 0/1/2 only",
   },
 ])(
   "$engine OSC9 source review reaches the canonical decision consumer without vterm's notification citation",
@@ -976,10 +976,7 @@ it.each([
             integrity: {
               kind: "source",
               repository: "git@github.com:beorn/vterm.git",
-              revision:
-                engine === "vt220"
-                  ? "67dd3960746766ed47e2bb4b2ced6503a78549cc"
-                  : "bd3d32aea2f1994376a71adfc55b92705eedbd8c",
+              revision: "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
               treeOid,
               cleanTree: true,
             },
