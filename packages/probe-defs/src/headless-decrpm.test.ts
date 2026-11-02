@@ -8,6 +8,7 @@
 import { expect, test } from "vitest"
 import { decrpmPs, decrpmReplyPattern, decrpmStatus } from "./helpers.ts"
 import { modesProbes } from "./modes.ts"
+import { inputProbes } from "./input.ts"
 import type { LibProbeSource } from "./types.ts"
 
 const readbackModes = [
@@ -445,6 +446,36 @@ function capturedModeContext(identity: LibProbeSource["runtimeIdentity"], behavi
   } as unknown as LibProbeSource
   return { source, fed, line: () => lines[0]!.join(""), position: () => ({ x, y }) }
 }
+
+// CTO45a/M5: input observer absence cannot hide these pinned engines own absent mouse modes.
+// Existing mode rows never execute the six input callbacks; existing source/adapter fallback tests stay unchanged.
+const mouseSourceCases = [
+  ["input.pixel-mouse", 1016],
+  ["input.urxvt-mouse", 1015],
+  ["input.x10-mouse", 9],
+  ["input.button-event-mouse", 1002],
+  ["input.xtest-click", 1000],
+  ["input.xtest-wheel", 1000],
+] as const
+
+test.each(
+  capturedModeEngines.flatMap(({ engine, identity }) =>
+    mouseSourceCases.map(([id, mode]) => ({ engine, identity, id, mode })),
+  ),
+)("$engine $id requires source review of its absent own mouse mode", ({ identity, id, mode }) => {
+  const fixture = capturedModeContext(identity)
+  const source = { ...fixture.source, capabilities: { ...fixture.source.capabilities, extensions: new Set<string>() } }
+  const result = inputProbes.find((entry) => entry.id === id)!.lib!(source)
+  expect(fixture.fed).toContain(`\x1b[?${mode}h`)
+  expect(fixture.fed).toContain(`\x1b[?${mode}l`)
+  expect(fixture.line()).toBe("XX")
+  expect(result.pass).toBe(false)
+  expect(result.criterionBranch).toBe("source-negative-review")
+  expect(result.observation).toMatchObject({ outcome: "inconclusive", assertionType: "buffer_state" })
+  expect(result.assertions).toMatchObject([{ kind: "negative", assertionType: "buffer_state" }])
+  expect(result.tests).toMatchObject([{ status: "test-failure" }])
+  expect(JSON.parse(result.response!)).toMatchObject({ line: "XX", control: "consumed-without-effect" })
+})
 
 test.each(capturedModeEngines)("$engine held modes retain named TODOs", ({ engine, identity }) => {
   for (const [id, held] of [
