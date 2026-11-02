@@ -1926,8 +1926,8 @@ const geometryRuntime = {
   integrity: {
     kind: "source",
     repository: "git@github.com:beorn/vterm.git",
-    revision: "bd3d32aea2f1994376a71adfc55b92705eedbd8c",
-    treeOid: "f10a184811894462b9ca7b65d6aab8ffd2fdd0bd",
+    revision: "2dd948165b5f08d51eae7374b148c2f2512c9714",
+    treeOid: "1b4c7735e1ab71668a0d7be552b9f26ce6bb8e4e",
     cleanTree: true,
   },
   runtimeFormat: "js",
