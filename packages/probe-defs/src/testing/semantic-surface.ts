@@ -234,7 +234,7 @@ function clusterWidth(cluster: string): number {
 }
 
 /** Apply SGR codes to an attribute set, the table `applySgr` and the rect attribute ops share. */
-function applyCodes(attributes: Attributes, codes: readonly number[]): Attributes {
+function applyCodes(attributes: Attributes, codes: readonly number[], mutations?: ReadonlySet<string>): Attributes {
   let next = attributes
   for (const code of codes) {
     if (code === 0) next = NO_ATTRIBUTES
@@ -253,7 +253,7 @@ function applyCodes(attributes: Attributes, codes: readonly number[]): Attribute
     else if (code === 29) next = { ...next, strikethrough: false }
     else if (code === 39) next = { ...next, fg: null }
     else if (code === 49) next = { ...next, bg: null }
-    else if (code === 53) next = { ...next, overline: true }
+    else if (code === 53 && !mutations?.has("overline-noop")) next = { ...next, overline: true }
     else if (code === 55) next = { ...next, overline: false }
     else if (code >= 40 && code <= 47) next = { ...next, bg: STANDARD_BG[code - 40] ?? null }
     else if (code >= 30 && code <= 37) next = { ...next, fg: STANDARD_FG[code - 30] ?? null }
@@ -262,7 +262,7 @@ function applyCodes(attributes: Attributes, codes: readonly number[]): Attribute
 }
 
 /** Reverse (toggle) the listed attribute codes in a set — DECRARA's per-cell effect. */
-function reverseCodes(attributes: Attributes, codes: readonly number[]): Attributes {
+function reverseCodes(attributes: Attributes, codes: readonly number[], mutations?: ReadonlySet<string>): Attributes {
   let next = attributes
   for (const code of codes) {
     if (code === 1) next = { ...next, bold: !next.bold }
@@ -272,7 +272,7 @@ function reverseCodes(attributes: Attributes, codes: readonly number[]): Attribu
     else if (code === 7) next = { ...next, inverse: !next.inverse }
     else if (code === 8) next = { ...next, hidden: !next.hidden }
     else if (code === 9) next = { ...next, strikethrough: !next.strikethrough }
-    else if (code === 53) next = { ...next, overline: !next.overline }
+    else if (code === 53 && !mutations?.has("overline-noop")) next = { ...next, overline: !next.overline }
   }
   return next
 }
@@ -612,7 +612,7 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
     const codes = params.slice(4)
     eachCellInExtent(params, (cell) => ({
       ...cell,
-      ...(reverse ? reverseCodes(cell, codes) : applyCodes(cell, codes)),
+      ...(reverse ? reverseCodes(cell, codes, mutations) : applyCodes(cell, codes, mutations)),
     }))
   }
 
@@ -683,7 +683,7 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
   }
 
   const applySgr = (params: readonly number[]): void => {
-    attributes = applyCodes(attributes, params.length === 0 ? [0] : params)
+    attributes = applyCodes(attributes, params.length === 0 ? [0] : params, mutations)
   }
 
   const softReset = (): void => {

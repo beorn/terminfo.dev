@@ -13,11 +13,13 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import {
   contractGaps,
+  inertLibProbeSource,
   loadGroupRows,
   requireStoredObservation,
   storedObservation,
   type NamedUnavailable,
 } from "./group-harness.ts"
+import { ALL_PROBES } from "../index.ts"
 
 function fixture(): { root: string; cleanup: () => void } {
   const root = mkdtempSync(join(tmpdir(), "group-harness-"))
@@ -120,3 +122,12 @@ test("contractGaps names a catalog-only id, unless the spec declares it named-un
   const bad: NamedUnavailable[] = [{ id: "group.bound", reason: "no-semantic-observable", noObservable: "x" }]
   expect(contractGaps(probes, withCatalog, bad).misdeclared).toEqual(["group.bound"])
 })
+
+test.each(ALL_PROBES.map((probe) => [probe.id, probe] as const))(
+  "do-nothing check: %s never reads supported on an inert LibProbeSource",
+  (_id, probe) => {
+    if (!probe.lib) return
+    const result = probe.lib(inertLibProbeSource())
+    expect(result.observation?.outcome).not.toBe("supported")
+  },
+)

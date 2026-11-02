@@ -299,6 +299,55 @@ export function libProbeSource(model: HeadlessModel): LibProbeSource {
   return source
 }
 
+/**
+ * Inert LibProbeSource for the catalogue-wide do-nothing check: feed ignored, no replies, every mode
+ * false, encodeMouse returns null, extensions empty, and every cell is an unstyled space.
+ */
+export function inertLibProbeSource(): LibProbeSource {
+  return {
+    backendName: "inert-model",
+    kind: "live",
+    cols: 80,
+    feed: () => {},
+    feedCapture: () => "",
+    getHyperlinkAt: () => null,
+    getCell: () => ({
+      char: " ",
+      bold: false,
+      dim: false,
+      italic: false,
+      underline: false,
+      underlineColor: null,
+      strikethrough: false,
+      inverse: false,
+      hidden: false,
+      blink: false,
+      overline: false,
+      fg: null,
+      bg: null,
+      wide: false,
+    }),
+    getCursor: () => ({ x: 0, y: 0, visible: true, style: null }),
+    getMode: () => false,
+    getText: () => "",
+    getScrollback: () => ({ viewportOffset: 0, totalLines: 24, screenLines: 24 }),
+    encodeMouse: () => null,
+    getTitle: () => "",
+    reset: () => {},
+    capabilities: {
+      truecolor: false,
+      kittyKeyboard: false,
+      kittyGraphics: false,
+      sixel: false,
+      osc8Hyperlinks: false,
+      semanticPrompts: false,
+      reflow: false,
+      unicode: "6.0.0",
+      extensions: new Set<string>(),
+    },
+  }
+}
+
 /** A stored query, the shape scripts/decrqss-regrade.test.ts replays. */
 export interface StoredQuery {
   readonly sequence: string

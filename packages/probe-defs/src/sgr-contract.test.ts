@@ -9,6 +9,7 @@
 import { expect, test } from "vitest"
 import { join } from "node:path"
 import { sgrProbes } from "./sgr.ts"
+import { createSemanticSurface } from "./testing/semantic-surface.ts"
 import {
   contractGaps,
   libProbeSource,
@@ -297,6 +298,34 @@ test("a row reading overline is notTested when the bit is null, bound when prese
     reason: "no-semantic-observable",
     noObservable: "cell.overline field not exposed",
   })
+})
+
+test("sgr.overline reads supported on createSemanticSurface and fails when overline-noop is active", async () => {
+  const row = SGR_CONTRACT.find((entry) => entry.id === "sgr.overline")
+  const probe = sgrProbes.find((entry) => entry.id === "sgr.overline")
+  expect(row, "the SGR contract names sgr.overline").toBeDefined()
+  expect(probe, "the SGR contract names a real sgr.overline probe").toBeDefined()
+  if (!row || !probe || !probe.lib) return
+
+  const positiveSource = libProbeSource(createSemanticSurface())
+  const positiveResult = probe.lib(positiveSource)
+  expect(positiveResult.observation?.outcome).toBe("supported")
+  expect(positiveResult.assertions ?? []).toContainEqual(
+    expect.objectContaining({ kind: "positive", assertionType: "buffer_state" }),
+  )
+  const positiveGraded = await regradeRow(probe, row, { headless: libProbeSource(createSemanticSurface()) })
+  expect(positiveGraded.after).toBe("supported")
+  expect(positiveGraded.satisfies).toBe(true)
+
+  const negativeSurface = createSemanticSurface({ mutations: ["overline-noop"] })
+  const negativeResult = probe.lib(libProbeSource(negativeSurface))
+  expect(negativeResult.observation?.outcome).not.toBe("supported")
+  expect(negativeSurface.getCell(0, 0).overline).toBe(false)
+  const negativeGraded = await regradeRow(probe, row, {
+    headless: libProbeSource(createSemanticSurface({ mutations: ["overline-noop"] })),
+  })
+  expect(negativeGraded.after).not.toBe("supported")
+  expect(negativeGraded.satisfies).toBe(false)
 })
 
 // One negative assertion, on bold: the table above is the positive proof for all 32 rows; this only
