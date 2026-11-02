@@ -42,17 +42,11 @@ test.for(["success", "deciding", "precondition", "replay-failure", "painted-seed
     const home = directory
     const reporter = new CensusReporter(directory)
     const nativeStates: string[] = []
-    // Fixture runs validate raw custody, not whether another worker has committed its source edits.
-    const sourceSetup = join(directory, "source-fixture.ts")
-    await writeFile(
-      sourceSetup,
-      `import {vi} from "vitest"; vi.mock(${JSON.stringify(join(dirname(import.meta.filename), "../packages/admin/versions.ts"))}, async original => ({...await original(), uncommittedCollectorDirt: () => undefined}));`,
-    )
     const runtime = await createVitest({
       root: join(dirname(import.meta.filename), "../packages/probes"),
       config: false,
       include: [mode === "success" ? "erase-replay.probe.ts" : "fixtures/erase-fault.fixture.ts"],
-      setupFiles: ["fixtures/erase-home.fixture.ts", sourceSetup],
+      setupFiles: ["fixtures/erase-home.fixture.ts"],
       provide: {
         eraseTestHome: home,
         eraseFault: mode === "success" ? "deciding" : mode,
