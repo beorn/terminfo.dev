@@ -2242,6 +2242,20 @@ test("audited Vterm input negatives retain required source review through the co
     },
   } as const
   vi.spyOn(headlessIdentity, "headlessRuntimeIdentity").mockResolvedValue(identity)
+  const manifest = {
+    schemaVersion: 4 as const,
+    probeHash: "vterm-input-source-review-parser-fixture",
+    adapterVersion: "fixture",
+    catalogIds: ids,
+    probes: { term: [], mux: [], lib: ids },
+  }
+  const draft = initializeRunDraft({
+    source: { kind: "live" },
+    runId: "vterm-input-source-review-parser-fixture",
+    sourceRevision: "a".repeat(40),
+    intendedSubject: { kind: "lib", id: "vterm" },
+    manifest,
+  })
   const batch = await collectBatch(
     async () => {
       const value = createVtermBackend()
@@ -2250,7 +2264,7 @@ test("audited Vterm input negatives retain required source review through the co
     },
     "vterm",
     registryDefinitions(ids),
-    undefined,
+    draft,
     undefined,
     {
       identity,
@@ -2259,6 +2273,36 @@ test("audited Vterm input negatives retain required source review through the co
       adapterType: "js",
     },
   )
+  const captured: CapturedRunDraft = {
+    ...draft,
+    subject: {
+      kind: "lib",
+      id: "vterm",
+      version: identity.engineVersion,
+      os: "linux",
+      osVersion: null,
+      outerTerminal: null,
+      mux: null,
+      config: null,
+      permissions: null,
+    },
+    identity: "unverified",
+    runtimeIdentity: identity,
+    measuredAt: "2026-11-02T10:14:58.000Z",
+    origin: { kind: "collector" },
+    rawReplies: batch.rawReplies,
+    results: batch.results,
+    assertions: batch.assertions,
+  }
+  const parsed = parseRun(
+    "vterm-input-source-review.capture.json",
+    JSON.stringify(captured),
+    ids,
+    new Map([[manifest.probeHash, manifest]]),
+    { mode: "capture" },
+  )
+  expect(parsed.results).toEqual(batch.results)
+  expect(parsed.assertions).toEqual([])
   expect(batch.ungradedDiagnostics).toEqual({})
   expect(batch.results).toHaveLength(ids.length)
   expect(batch.notTested).toEqual([])
@@ -2266,13 +2310,12 @@ test("audited Vterm input negatives retain required source review through the co
     expect(batch.results.find((row) => row.featureId === id)).toMatchObject({
       status: "test-failure",
       criterionBranch: "source-negative-review",
-      assertionType: "input_bytes",
       tests: [{ id: "review", status: "test-failure", reason: expect.stringContaining("67dd3960") }],
     })
-    expect(batch.assertions).toContainEqual(
-      expect.objectContaining({ featureId: id, kind: "negative", assertionType: "input_bytes" }),
-    )
+    expect(batch.results.find((row) => row.featureId === id)?.assertionType).toBeUndefined()
   }
+  expect(batch.assertions).toEqual([])
+  expect(batch.observations).toEqual([])
 })
 
 // @failure Unknown state and named unavailable input become measured negatives, or programming errors become TODO.
