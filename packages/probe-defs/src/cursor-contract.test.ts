@@ -3,14 +3,16 @@
  *   observation moves it - so a group step reinvents its own fixture and silently drifts.
  * @level l2
  * @consumer 28018 candidate-2 Cursor group (child 28020); second adopter of the 28453 harness.
- * @reach fs-walk vendor/terminfo.dev/packages/probe-defs/src/cursor-contract.test.ts vendor/terminfo.dev/packages/probe-defs/src/cursor-observations.test.ts
+ * @reach fs-walk vendor/terminfo.dev/packages/probe-defs/src/cursor-contract.test.ts vendor/terminfo.dev/packages/probe-defs/src/cursor-observations.test.ts vendor/terminfo.dev/packages/probe-defs/src/testing/semantic-surface.ts
  * @testonly none
  */
 import { expect, test } from "vitest"
 import { join } from "node:path"
 import { cursorProbes } from "./cursor.ts"
+import { createSemanticSurface } from "./testing/semantic-surface.ts"
 import {
   contractGaps,
+  inertLibProbeSource,
   libProbeSource,
   missingContractTests,
   regradeCommand,
@@ -92,228 +94,6 @@ const INERT_CELL: InertCell = {
   wide: false,
 }
 
-function inertModel(cols = 80): HeadlessModel {
-  return {
-    cols,
-    feed: () => {},
-    getCell: () => ({ ...INERT_CELL }),
-    getCursor: () => ({ x: 0, y: 0, visible: true, style: null }),
-  }
-}
-
-/**
- * One headless cursor that interprets the sequences the 22 probes feed. This is the satisfaction
- * binding (the contract predicate and probe agree), not a claim that a real terminal emits it.
- * A fresh model per re-grade, so leftover position cannot satisfy a later row.
- */
-function interpretingCursor(cols = 80, rows = 24): HeadlessModel {
-  let x = 0
-  let y = 0
-  let visible: boolean | null = true
-  let style: string | null = null
-  let saved = { x: 0, y: 0 }
-  let autoWrap = false
-  let reverseWrap = false
-  let originMode = false
-  let scrollTop = 0
-  let scrollBottom = rows - 1
-  let pendingWrap = false
-
-  const clamp = () => {
-    const top = originMode ? scrollTop : 0
-    const bottom = originMode ? scrollBottom : rows - 1
-    if (y < top) y = top
-    if (y > bottom) y = bottom
-    if (x < 0) x = 0
-    if (x >= cols) x = cols - 1
-  }
-
-  const param = (raw: string, fallback = 1): number => {
-    if (raw === "") return fallback
-    const value = Number(raw)
-    return Number.isSafeInteger(value) && value > 0 ? value : fallback
-  }
-
-  const applyCsi = (priv: string, params: string, inter: string, final: string) => {
-    const parts = params.split(";")
-    if (priv === "?") {
-      const mode = param(parts[0] ?? "", 0)
-      const set = final === "h"
-      if (mode === 25) visible = set
-      else if (mode === 7) autoWrap = set
-      else if (mode === 45) reverseWrap = set
-      else if (mode === 6) originMode = set
-      return
-    }
-    if (final === "H" || final === "f") {
-      const row = param(parts[0] ?? "", 1)
-      const col = param(parts[1] ?? "", 1)
-      y = (originMode ? scrollTop : 0) + row - 1
-      x = col - 1
-      pendingWrap = false
-      clamp()
-      return
-    }
-    if (final === "A") {
-      y -= param(parts[0] ?? "")
-      pendingWrap = false
-      clamp()
-      return
-    }
-    if (final === "B") {
-      y += param(parts[0] ?? "")
-      pendingWrap = false
-      clamp()
-      return
-    }
-    if (final === "C") {
-      x += param(parts[0] ?? "")
-      pendingWrap = false
-      clamp()
-      return
-    }
-    if (final === "D") {
-      x -= param(parts[0] ?? "")
-      pendingWrap = false
-      clamp()
-      return
-    }
-    if (final === "E") {
-      y += param(parts[0] ?? "")
-      x = 0
-      pendingWrap = false
-      clamp()
-      return
-    }
-    if (final === "F") {
-      y -= param(parts[0] ?? "")
-      x = 0
-      pendingWrap = false
-      clamp()
-      return
-    }
-    if (final === "G") {
-      x = param(parts[0] ?? "") - 1
-      pendingWrap = false
-      clamp()
-      return
-    }
-    if (final === "d") {
-      y = (originMode ? scrollTop : 0) + param(parts[0] ?? "") - 1
-      pendingWrap = false
-      clamp()
-      return
-    }
-    if (final === "`") {
-      x = param(parts[0] ?? "") - 1
-      pendingWrap = false
-      clamp()
-      return
-    }
-    if (final === "r") {
-      const top = param(parts[0] ?? "", 1)
-      const bottom = parts[1] === undefined || parts[1] === "" ? rows : param(parts[1], rows)
-      scrollTop = top - 1
-      scrollBottom = bottom - 1
-      return
-    }
-    if (final === "s") {
-      saved = { x, y }
-      return
-    }
-    if (final === "u") {
-      x = saved.x
-      y = saved.y
-      pendingWrap = false
-      return
-    }
-    if (final === "q" && inter === " ") {
-      style = param(parts[0] ?? "", 0) === 6 ? "beam" : "block"
-    }
-  }
-
-  const feed = (text: string) => {
-    let i = 0
-    while (i < text.length) {
-      const ch = text[i]
-      if (ch === "\x1b") {
-        const next = text[i + 1]
-        if (next === "[") {
-          i += 2
-          let priv = ""
-          if (text[i] === "?") {
-            priv = "?"
-            i += 1
-          }
-          const start = i
-          while (i < text.length && /[0-9;]/u.test(text[i] ?? "")) i += 1
-          const params = text.slice(start, i)
-          let inter = ""
-          while (i < text.length && (text[i] ?? "") >= " " && (text[i] ?? "") <= "/") {
-            inter += text[i]
-            i += 1
-          }
-          const final = text[i] ?? ""
-          if (final !== "") i += 1
-          applyCsi(priv, params, inter, final)
-          continue
-        }
-        if (next === "7") {
-          saved = { x, y }
-          i += 2
-          continue
-        }
-        if (next === "8") {
-          x = saved.x
-          y = saved.y
-          pendingWrap = false
-          i += 2
-          continue
-        }
-        i += 1
-        continue
-      }
-      if (ch === "\x08") {
-        if (x > 0) x -= 1
-        else if (reverseWrap && y > 0) {
-          y -= 1
-          x = cols - 1
-        }
-        pendingWrap = false
-        i += 1
-        continue
-      }
-      if (ch !== undefined && ch >= " ") {
-        if (pendingWrap && autoWrap) {
-          y += 1
-          x = 0
-          pendingWrap = false
-          clamp()
-        }
-        if (x === cols - 1) pendingWrap = true
-        else x += 1
-        i += 1
-        continue
-      }
-      i += 1
-    }
-  }
-
-  return {
-    cols,
-    feed,
-    getCell: () => ({ ...INERT_CELL }),
-    getCursor: () => ({ x, y, visible, style }),
-    getMode: (mode) => (mode === "autoWrap" ? autoWrap : false),
-    getScrollback: () => ({ viewportOffset: 0, totalLines: rows, screenLines: rows }),
-    feedCapture: (text) => {
-      if (text === "\x1b[6n") return `\x1b[${y + 1};${x + 1}R`
-      feed(text)
-      return ""
-    },
-  }
-}
-
 test("the Cursor contract covers every Cursor feature and names none unknown", () => {
   const gaps = contractGaps(cursorProbes, CURSOR_CONTRACT)
   expect(gaps.uncovered).toEqual([])
@@ -333,14 +113,14 @@ test("the Cursor contract names its focused tests, and every named file exists",
   for (const path of CURSOR_CONTRACT_SPEC.tests) expect(command).toContain(path)
 })
 
-test("the harness replays every Cursor feature deterministically (satisfaction is bound by the interpreter test below)", async () => {
+test("the harness replays every Cursor feature deterministically (satisfaction is bound by the semantic surface test below)", async () => {
   for (const row of CURSOR_CONTRACT) {
     const probe = cursorProbes.find((entry) => entry.id === row.id)
     expect(probe, `missing Cursor probe ${row.id}`).toBeDefined()
     if (!probe) continue
     expect(probe.lib !== null || probe.term !== null, `${row.id} has no callback`).toBe(true)
-    const first = await regradeRow(probe, row, { headless: libProbeSource(interpretingCursor()) })
-    const second = await regradeRow(probe, row, { headless: libProbeSource(interpretingCursor()) })
+    const first = await regradeRow(probe, row, { headless: libProbeSource(createSemanticSurface()) })
+    const second = await regradeRow(probe, row, { headless: libProbeSource(createSemanticSurface()) })
     expect(second.after, `${row.id} is not deterministic`).toBe(first.after)
     expect(second.satisfies, `${row.id} satisfaction is not deterministic`).toBe(first.satisfies)
     expect(first.satisfies, `${row.id} must route through satisfiesContract`).toBe(satisfiesContract(row, first.after))
@@ -352,11 +132,75 @@ test("every Cursor contract row is satisfied by the headless cursor state its cl
     const probe = cursorProbes.find((entry) => entry.id === row.id)
     expect(probe, `missing Cursor probe ${row.id}`).toBeDefined()
     if (!probe) continue
-    const graded = await regradeRow(probe, row, { headless: libProbeSource(interpretingCursor()) })
+    const graded = await regradeRow(probe, row, { headless: libProbeSource(createSemanticSurface()) })
     expect(graded.after, `${row.id} reads supported from its claim's cursor state`).toBe("supported")
     expect(graded.satisfies, `${row.id} satisfies its contract row`).toBe(true)
   }
 })
+
+const CURSOR_SEMANTIC_SURFACE_CONTROLS: readonly (readonly [id: string, mutation: string])[] = [
+  ["cursor.move.absolute", "cup-noop"],
+  ["cursor.move.home", "cup-home-noop"],
+  ["cursor.move.forward", "cuf-noop"],
+  ["cursor.move.back", "cub-noop"],
+  ["cursor.move.down", "cud-noop"],
+  ["cursor.move.up", "cuu-noop"],
+  ["cursor.hide", "dectcem-noop"],
+  ["cursor.shape", "decscusr-noop"],
+  ["cursor.horizontal-absolute", "cha-noop"],
+  ["cursor.next-line", "cnl-noop"],
+  ["cursor.position-report", "dsr-cpr-noop"],
+  ["cursor.ansi-save", "ansi-save-noop"],
+  ["cursor.ansi-restore", "ansi-restore-noop"],
+  ["cursor.save-restore", "decsc-noop"],
+  ["cursor.reverse-wrap", "reverse-wrap-noop"],
+  ["cursor.cup-boundaries", "cup-clamp-noop"],
+  ["cursor.cuu-past-top", "cuu-clamp-noop"],
+  ["cursor.cud-past-bottom", "cud-clamp-noop"],
+  ["cursor.vpa", "vpa-noop"],
+  ["cursor.cpl", "cpl-noop"],
+  ["cursor.hpa", "hpa-noop"],
+  ["cursor.cup-scroll-region", "decom-noop"],
+]
+
+test("CURSOR_SEMANTIC_SURFACE_CONTROLS covers all 22 Cursor contract rows with distinct mutations", () => {
+  expect(CURSOR_SEMANTIC_SURFACE_CONTROLS).toHaveLength(22)
+  expect(CURSOR_SEMANTIC_SURFACE_CONTROLS.map(([id]) => id).sort()).toEqual(CURSOR_CONTRACT.map((row) => row.id).sort())
+  expect(new Set(CURSOR_SEMANTIC_SURFACE_CONTROLS.map(([, mutation]) => mutation)).size).toBe(22)
+})
+
+test.each(CURSOR_SEMANTIC_SURFACE_CONTROLS)(
+  "%s never reads supported on inertLibProbeSource, reads supported on createSemanticSurface, and reads unsupported when %s is active",
+  async (id, mutation) => {
+    const row = CURSOR_CONTRACT.find((entry) => entry.id === id)
+    const probe = cursorProbes.find((entry) => entry.id === id)
+    expect(row, `the Cursor contract names ${id}`).toBeDefined()
+    expect(probe, `the Cursor contract names a real ${id} probe`).toBeDefined()
+    if (!row || !probe || !probe.lib) return
+
+    const inertResult = probe.lib(inertLibProbeSource())
+    expect(inertResult.pass).toBe(false)
+    expect(inertResult.observation?.outcome).not.toBe("supported")
+
+    const positiveResult = probe.lib(libProbeSource(createSemanticSurface()))
+    expect(positiveResult.pass).toBe(true)
+    expect(positiveResult.observation?.outcome).toBe("supported")
+    expect(positiveResult.assertions ?? []).toContainEqual(expect.objectContaining({ kind: "positive" }))
+    const positiveGraded = await regradeRow(probe, row, { headless: libProbeSource(createSemanticSurface()) })
+    expect(positiveGraded.after).toBe("supported")
+    expect(positiveGraded.satisfies).toBe(true)
+
+    const negativeResult = probe.lib(libProbeSource(createSemanticSurface({ mutations: [mutation] })))
+    expect(negativeResult.pass).toBe(false)
+    expect(negativeResult.observation?.outcome).toBe("unsupported")
+    expect(negativeResult.assertions ?? []).toContainEqual(expect.objectContaining({ kind: "negative" }))
+    const negativeGraded = await regradeRow(probe, row, {
+      headless: libProbeSource(createSemanticSurface({ mutations: [mutation] })),
+    })
+    expect(negativeGraded.after).toBe("unsupported")
+    expect(negativeGraded.satisfies).toBe(true)
+  },
+)
 
 test("cursor.shape is inconclusive when style readback is omitted, bound when present", async () => {
   const row = CURSOR_CONTRACT.find((entry) => entry.id === "cursor.shape")
@@ -364,13 +208,13 @@ test("cursor.shape is inconclusive when style readback is omitted, bound when pr
   expect(row, "the Cursor contract names cursor.shape").toBeDefined()
   expect(probe, "the Cursor contract names a real cursor.shape probe").toBeDefined()
   if (!row || !probe) return
-  const present = await regradeRow(probe, row, { headless: libProbeSource(interpretingCursor()) })
+  const present = await regradeRow(probe, row, { headless: libProbeSource(createSemanticSurface()) })
   expect(present.after).toBe("supported")
   expect(present.satisfies).toBe(true)
-  const omitted = await regradeRow(probe, row, { headless: libProbeSource(inertModel()) })
+  const omitted = await regradeRow(probe, row, { headless: inertLibProbeSource() })
   expect(omitted.after).toBe("inconclusive")
   expect(omitted.satisfies).toBe(false)
-  const result = probe.lib?.(libProbeSource(inertModel()))
+  const result = probe.lib?.(inertLibProbeSource())
   expect(result?.observation).toMatchObject({
     outcome: "inconclusive",
     reason: "insufficient-evidence",
