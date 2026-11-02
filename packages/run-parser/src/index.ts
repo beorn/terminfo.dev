@@ -1217,10 +1217,14 @@ function validateCaptureBinding(
   const result = draft.results.find((entry) => entry.featureId === decision.featureId)
   if (
     result &&
-    (result.criterionBranch === SEMANTIC_PROMPT_SOURCE_REVIEW || isSourceOnlyNegativeReview(result, draft.assertions)) &&
+    (result.criterionBranch === SEMANTIC_PROMPT_SOURCE_REVIEW ||
+      isSourceOnlyNegativeReview(result, draft.assertions)) &&
     (draft.subject?.kind !== "lib" || !draft.runtimeIdentity)
   ) {
-    fail(path, `${decision.featureId} ${result.criterionBranch === SEMANTIC_PROMPT_SOURCE_REVIEW ? "semantic " : ""}source review requires a lib subject and runtimeIdentity`)
+    fail(
+      path,
+      `${decision.featureId} ${result.criterionBranch === SEMANTIC_PROMPT_SOURCE_REVIEW ? "semantic " : ""}source review requires a lib subject and runtimeIdentity`,
+    )
   }
   if (decision.evidence !== undefined) {
     if (!source || source !== captureBindingSource(draft, decision.featureId)) {
@@ -1434,8 +1438,13 @@ export function applyCaptureDecision(
   if (sourceOnlyNegative && decision.decision === "supported") {
     throw new Error(`Capture ${decision.featureId} source-only negative review cannot establish support`)
   }
-  if ((semanticSource || (sourceOnlyNegative && decision.decision === "unsupported")) && !hasSourceReviewRow(decision)) {
-    throw new Error(`Capture ${decision.featureId} ${semanticSource ? "semantic " : ""}source review requires its source review row`)
+  if (
+    (semanticSource || (sourceOnlyNegative && decision.decision === "unsupported")) &&
+    !hasSourceReviewRow(decision)
+  ) {
+    throw new Error(
+      `Capture ${decision.featureId} ${semanticSource ? "semantic " : ""}source review requires its source review row`,
+    )
   }
   if (Object.hasOwn(draft.rawReplies, reviewRef)) throw new Error(`Capture review ${decision.id} already retained`)
   if (sourceNegative && decision.evidence === undefined && originBinding !== undefined) {
