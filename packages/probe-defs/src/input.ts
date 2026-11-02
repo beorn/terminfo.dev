@@ -720,8 +720,19 @@ function kittyClickEventsLib(ctx: LibProbeSource): ProbeCallbackResult {
   // @cto cac2b8dc: an adapter that encodes through termless's shared encodeMouseReport (no prompt or
   // click_events model) yields a null that is the instrument's limit, never engine evidence. Each such
   // engine is listed with its own citation rather than inheriting ghostty's.
+  // @cto bbf6f77f: once that engine's identity is qualified by auditedOscEngine, the same null becomes a
+  // source-negative review the author answers, not a plain not-tested; an unqualified identity keeps the
+  // plain coverage record, so a stale adapter or binary cannot borrow the audit.
   const sharedEncoderClickEventsLimit = SHARED_ENCODER_CLICK_EVENTS_LIMITS.get(ctx.backendName)
   if (sharedEncoderClickEventsLimit) {
+    if (auditedOscEngine(ctx.runtimeIdentity)) {
+      return reviewResult(
+        SOURCE_NEGATIVE_REVIEW,
+        `${sharedEncoderClickEventsLimit}; the shared encoder's null is instrument output, not engine evidence; independent source review required`,
+        "Native engine stores no OSC 133 prompt or click_events state",
+        { storedClickEvents: false },
+      )
+    }
     return notTestedResult(sharedEncoderClickEventsLimit, { storedClickEvents: false })
   }
   if (!ctx.capabilities.extensions.has("mouse-encoding") || typeof ctx.encodeMouse !== "function") {
