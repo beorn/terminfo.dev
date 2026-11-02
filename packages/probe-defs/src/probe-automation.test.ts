@@ -369,7 +369,7 @@ describe("qualified clipboard roundtrip", () => {
   const da1 = "\x1b[?1;2c"
   const frame = (data: string) => `\x1b]52;c;${btoa(data)}\x07`
   const cases = [
-    { when: "clean sentinel silence", raw: da1, reason: "sentinel", sentinel: true, cause: true, failure: true },
+    { when: "clean sentinel silence", raw: da1, reason: "sentinel", sentinel: true, cause: true, todo: true },
     { when: "whole empty buffer", raw: "", reason: "timeout", sentinel: false, cause: true, failure: true },
     // Each pair has the same callback-visible bytes in both worlds. Neither world's cause is inferable.
     { when: "unmatched: empty query / junk plus DA1", raw: "ZZZ" + da1, reason: "sentinel", sentinel: true },
@@ -385,7 +385,7 @@ describe("qualified clipboard roundtrip", () => {
       reason: "sentinel",
       sentinel: true,
       cause: true,
-      failure: true,
+      todo: true,
     },
     { when: "DA1-shaped query then real DA1", raw: da1 + da1, reason: "sentinel", sentinel: true },
     { when: "DA1 followed by non-matching junk", raw: da1 + "ZZZ", reason: "sentinel", sentinel: true },
@@ -421,7 +421,18 @@ describe("qualified clipboard roundtrip", () => {
             { recipe: "clipboard-load", cause: { kind: "source-audited", artifactSha256: artifact } },
           ])
         } else expect(result.hostRecipeCauses, row.when).toBeUndefined()
-        if ("failure" in row && row.failure) {
+        if ("todo" in row && row.todo) {
+          expect(result.tests, row.when).toEqual([
+            {
+              id: "criterion",
+              status: "test-todo",
+              reason:
+                "clipboard write unobservable: OSC 52 read is a sentinel negative on this engine and no clipboard-state witness is wired.",
+            },
+          ])
+          expect(result.observation, row.when).toBeUndefined()
+          expect(result.assertions, row.when).toBeUndefined()
+        } else if ("failure" in row && row.failure) {
           expect(result.tests, row.when).toContainEqual({
             id: "criterion",
             status: "test-failure",
@@ -2997,6 +3008,88 @@ describe("Kitty protocol detection", () => {
     }
   })
 
+  // AC4: missing DECRQM readback is a prerequisite gap; target silence on a working path remains failure.
+  // Existing Ps fixtures cover target replies, but never query the prerequisite after qualified silence.
+  test("OSC 5522 names only a measured missing DECRPM prerequisite", () => {
+    const p = probe("extensions.osc5522-clipboard")
+    const da1 = "\x1b[?1;2c"
+    for (const [control, qualified, expected] of [
+      [da1, true, "test-todo"],
+      ["\x1b[?7;1$y" + da1, true, "test-failure"],
+      ["\x1b[?7;0$y" + da1, true, "test-failure"],
+      [da1, false, "test-failure"],
+      ["junk" + da1, true, "test-failure"],
+    ] as const) {
+      const queries: string[] = []
+      const result = p.lib!(
+        context({
+          queryWithSentinelOutcome(sequence, pattern) {
+            queries.push(sequence)
+            const raw = sequence === "\x1b[?5522$p" ? da1 : control
+            const match = raw.match(pattern)
+            return {
+              raw,
+              rawBase64: btoa(raw),
+              match,
+              reason: match ? "reply" : qualified ? "sentinel" : "timeout",
+              ...(qualified && { sentinel: { atMs: 1, graceMs: 250 } }),
+            }
+          },
+        }),
+      )
+      expect(result.tests?.[0]?.status).toBe(expected)
+      expect(queries[0]).toBe("\x1b[?5522$p")
+      if (qualified) expect(queries[1]).toBe("\x1b[?7$p")
+      else expect(queries).toHaveLength(1)
+      expect(result.observation).toBeUndefined()
+      expect(result.assertions).toBeUndefined()
+      if (expected === "test-todo") {
+        expect(result.tests?.[0]?.reason).toBe(
+          "OSC5522 detection prerequisite unmet: no complete DECRPM reply from same-run sibling queries; protocol recognition cannot be observed.",
+        )
+        expect(JSON.parse(result.response!)).toMatchObject({
+          detection: da1,
+          decrpmSiblings: expect.arrayContaining([
+            { mode: 7, raw: da1 },
+            { mode: 2031, raw: da1 },
+          ]),
+        })
+      } else if (qualified) {
+        expect(JSON.parse(result.response!)).toEqual({ detection: da1, decrpmSiblings: [{ mode: 7, raw: control }] })
+      } else expect(result.response).toBe(da1)
+    }
+
+    // A different same-run sibling can answer while DECAWM stays silent (peer AC4 counterexample).
+    for (const [id, mode] of [
+      ["modes.synchronized-output", 2026],
+      ["modes.color-scheme-reporting", 2031],
+    ] as const) {
+      const ctx = context({
+        feedCapture: (sequence) => (sequence === `\x1b[?${mode}$p` ? `\x1b[?${mode};1$y` : ""),
+        queryWithSentinelOutcome(sequence, pattern) {
+          const raw = sequence === `\x1b[?${mode}$p` ? `\x1b[?${mode};1$y${da1}` : da1
+          const match = raw.match(pattern)
+          return {
+            raw,
+            rawBase64: btoa(raw),
+            match,
+            reason: match ? "reply" : "sentinel",
+            sentinel: { atMs: 1, graceMs: 250 },
+          }
+        },
+      })
+      expect(probe(id).lib!(ctx).observation?.outcome).toBe("supported")
+      const target = p.lib!(ctx)
+      expect(target.tests?.[0]?.status).toBe("test-failure")
+      expect(JSON.parse(target.response!)).toMatchObject({
+        detection: da1,
+        decrpmSiblings: expect.arrayContaining([{ mode, raw: `\x1b[?${mode};1$y${da1}` }]),
+      })
+      expect(target.observation).toBeUndefined()
+      expect(target.assertions).toBeUndefined()
+    }
+  })
+
   // Q16: retained bytes outside the matching reply window must never become a detector negative.
   // Happy-path Ps fixtures do not distinguish a valid target negative from a late frame in raw evidence.
   test.each([
@@ -3186,7 +3279,16 @@ describe("Kitty protocol detection", () => {
         }
       } else {
         expect(measuredSilence.observation).toBeUndefined()
-        expect(measuredSilence.tests).toMatchObject([{ status: "test-failure" }])
+        expect(measuredSilence.assertions).toBeUndefined()
+        expect(measuredSilence.response).toBe(da1)
+        expect(measuredSilence.tests).toEqual([
+          {
+            id: "criterion",
+            status: "test-todo",
+            reason:
+              "clipboard write unobservable: OSC 52 read is a sentinel negative on this engine and no clipboard-state witness is wired.",
+          },
+        ])
       }
 
       const liveWrites: string[] = []

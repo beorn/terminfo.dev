@@ -2685,15 +2685,22 @@ function headlessClipboardRoundtrip(ctx: LibProbeSource): ProbeCallbackResult {
   const outcome = ctx.queryWithSentinelOutcome?.(query, osc52Reply)
   const raw = outcome ? outcome.raw : ctx.feedCapture(query)
   // CTO d5f41664: unmatched/partial bytes lose the old per-capture empty attribution deliberately.
-  // The existing silence classifier supplies only the host-input fact, never this write's verdict.
-  const empty = outcome
-    ? sentinelSilenceResult(outcome, "OSC 52 c query returns the exact written nonce") !== null || raw === ""
-    : raw === ""
+  // A qualified read negative leaves the write unobservable unless a clipboard-state witness is wired.
+  const readNegative = outcome
+    ? sentinelSilenceResult(outcome, "OSC 52 c query returns the exact written nonce") !== null
+    : false
+  const empty = readNegative || raw === ""
+  const writeUnobservable = readNegative && typeof ctx.getClipboardState !== "function"
+  const reason =
+    "clipboard write unobservable: OSC 52 read is a sentinel negative on this engine and no clipboard-state witness is wired."
+  const result: ProbeCallbackResult = writeUnobservable
+    ? { pass: false, note: reason, tests: [{ id: "criterion", status: "test-todo", reason }] }
+    : headlessClipboardResult(empty ? "" : raw, nonce)
   return withClipboardControlNote(
     ctx,
     nativeHostRecipeResult(
       ctx,
-      { ...headlessClipboardResult(empty ? "" : raw, nonce), response: raw },
+      { ...result, response: raw },
       "clipboard-load",
       "clipboard-read-permission",
       query,
@@ -4914,9 +4921,34 @@ export const extensionsProbes: ProbeDefinition[] = [
           const pattern = decrpmReplyPattern(5522)
           if (ctx.queryWithSentinelOutcome) {
             const reply = ctx.queryWithSentinelOutcome("\x1b[?5522$p", pattern)
+            let response = reply.raw
+            if (sentinelSilenceResult(reply, "OSC5522 detection reply") !== null) {
+              // Current library DECRQM siblings in device.ts/modes.ts; one silent mode is insufficient.
+              const controls = []
+              let allSilent = true
+              for (const mode of [7, 2004, 1, 1000, 1004, 5, 2026, 1006, 1003, 1005, 3, 2031]) {
+                const control = ctx.queryWithSentinelOutcome(`\x1b[?${mode}$p`, decrpmReplyPattern(mode))
+                controls.push({ mode, raw: control.raw })
+                if (sentinelSilenceResult(control, "DECRPM prerequisite reply") === null) {
+                  allSilent = false
+                  break
+                }
+              }
+              response = JSON.stringify({ detection: reply.raw, decrpmSiblings: controls })
+              if (allSilent) {
+                const reason =
+                  "OSC5522 detection prerequisite unmet: no complete DECRPM reply from same-run sibling queries; protocol recognition cannot be observed."
+                return {
+                  pass: false,
+                  response,
+                  note: reason,
+                  tests: [{ id: "criterion", status: "test-todo", reason }],
+                }
+              }
+            }
             return {
               ...osc5522DetectionResult(reply.raw, replyFrame(reply) !== null, reply.sentinel !== undefined),
-              response: reply.raw,
+              response,
             }
           }
           const raw = ctx.feedCapture("\x1b[?5522$p")

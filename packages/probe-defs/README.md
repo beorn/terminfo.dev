@@ -53,6 +53,14 @@ An unmeasurable witness or changed geometry is recorded as a named refusal, neve
 Library `getMode` returns `boolean | null`: null names an unavailable adapter readback,
 not a reset state or a terminal-support verdict. Callbacks retain it explicitly.
 
+OSC52 write/roundtrip callbacks retain qualified read-sentinel silence as a named TEST TODO
+when no clipboard-state witness is wired; a read negative cannot measure the write.
+OSC5522 detection checks the current library DECRQM sibling-query family after qualified target
+silence. Qualified silence from every control names an unmet detection prerequisite as TEST TODO,
+retaining each raw window. Any control reply leaves target silence as TEST FAILURE; complete,
+on-time target Ps0 remains Unsupported. Unqualified, malformed and late target replies keep
+their existing criteria. Historical captures and selected results are unchanged.
+
 Region-readback fixtures address the active screen with CUP. Their library reads translate each
 screen row into the retained buffer using one coherent `totalLines - screenLines` origin per frame,
 independent of the scrolled viewport. Invalid or insufficient extents retain named inconclusive
