@@ -197,12 +197,29 @@ const modes = [
 
 // These four claims require settable protocol state, not the old recognition-only Ps 2.
 // Existing query-only cases never checked the snapshot, DECSET result or restoration.
+// The old shared-tail assertion also accepted other modes' unmeasured facets.
+// Keep the DECSCLM wording while checking each of the three corrected app tails.
 test.each([
-  ["modes.reverse-video", 5],
-  ["modes.synchronized-output", 2026],
-  ["modes.decsclm", 4],
-  ["modes.color-scheme-reporting", 2031],
-] as const)("%s grades protocol state and restores only a reset snapshot", async (id, mode) => {
+  [
+    "modes.reverse-video",
+    5,
+    "presentation (inverted frame) unmeasured; protocol measured",
+    ["tearing", "scroll cadence", "scheme-change"],
+  ],
+  [
+    "modes.synchronized-output",
+    2026,
+    "presentation (tearing, scroll cadence) unmeasured; protocol measured",
+    ["inverted frame", "scheme-change"],
+  ],
+  ["modes.decsclm", 4, "presentation (tearing, scroll cadence, inverted frame) unmeasured; protocol measured", []],
+  [
+    "modes.color-scheme-reporting",
+    2031,
+    "scheme-change report (CSI ? 997 ; Ps n, unsolicited) unmeasured; recognition measured; the separate CSI ? 996 n query is unmeasured here",
+    ["presentation", "inverted frame", "tearing"],
+  ],
+] as const)("%s grades protocol state and restores only a reset snapshot", async (id, mode, facet, irrelevant) => {
   const definition = modesProbes.find((entry) => entry.id === id)!
   for (const [snapshot, enabled, outcome] of [
     [2, 2, "unsupported"],
@@ -235,9 +252,8 @@ test.each([
       expect(result.tests).toEqual([{ id: "criterion", status: "test-todo", reason: "no DECRPM reply" }])
     } else {
       expect(result.observation).toMatchObject({ outcome, assertionType: "query_reply" })
-      expect(result.note).toContain(
-        "presentation (tearing, scroll cadence, inverted frame) unmeasured; protocol measured",
-      )
+      expect(result.note).toContain(facet)
+      for (const other of irrelevant) expect(result.note).not.toContain(other)
       if (snapshot === 2 && enabled === 2) {
         expect(result.note).toContain("recognized but DECSET refused (mode kept reset)")
       }

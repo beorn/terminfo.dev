@@ -814,7 +814,7 @@ describe("window-operation qualification", () => {
     ],
     [
       "vendor/vterm/packages/vt220/src/index.ts",
-      "d504616ae458b8b0fa9fa365034c30bd35f55ee8",
+      "fc6ff58f2f3e602b8ede99641f73cde997411f14",
       "packages/vt220/src/screen.ts:305-428",
     ],
   ] as const)(
@@ -826,12 +826,16 @@ describe("window-operation qualification", () => {
           runtimeFormat: "js" as const,
           engineVersion: "0.10.1",
           adapterVersion: "0.10.2",
-          termlessRevision: "d5e6248bfb080c3065f81b78c45bdfe1b37c06d6",
+          termlessRevision: resolvedPath.includes("/vt220/")
+            ? "a871f0e580e1b02fb5dbb7ed854f6de623e7858e"
+            : "d5e6248bfb080c3065f81b78c45bdfe1b37c06d6",
           resolvedPath,
           integrity: {
             kind: "source" as const,
             repository: "git@github.com:beorn/vterm.git",
-            revision: "bd3d32aea2f1994376a71adfc55b92705eedbd8c",
+            revision: resolvedPath.includes("/vt220/")
+              ? "67dd3960746766ed47e2bb4b2ced6503a78549cc"
+              : "bd3d32aea2f1994376a71adfc55b92705eedbd8c",
             treeOid,
             cleanTree: true,
           },
