@@ -792,9 +792,9 @@ the actual OSC1 stimulus and before/after title state; title behavior alone is n
 
 The four Vterm library input criteria (modify-other-keys, modify-other-keys-3,
 xtest-key and kitty-click-events) qualify source negatives only at the exact clean
-SOURCE_TREE_AUDITS.vterm identity. They retain input-byte negative assertions,
-inconclusive observations and required source-negative-review TEST FAILURE;
-no source decision or Unsupported grade is written. A changed tree at the same
+SOURCE_TREE_AUDITS.vterm identity. They retain raw state and a required
+source-negative-review TEST FAILURE, without a deciding observation or assertion:
+a source audit performs no input event. No source decision or Unsupported grade is written. A changed tree at the same
 source identity retains the shared source-identity drift failure. Foreign or
 dirty identities retain their existing TODO. Kitty keeps its Vterm candidate
 boundary so unqualified Vterm builds cannot fall into the mouse-report path;

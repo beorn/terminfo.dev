@@ -1519,6 +1519,7 @@ describe("immutable pre-seal capture binding", () => {
   // bindings and cannot expose a route that still compares the origin capture SHA.
   it.each([
     ["source-negative-review", "sgr.faint", "unsupported"],
+    ["source-negative-review", "input.xtest-key", "unsupported"],
     ["os-input-review", "input.xtest-key", "untestable"],
     ["headless-observable-review", "extensions.sixel", "untestable"],
     ["headless-geometry-review", "device.xtwinops-14", "untestable"],
@@ -1535,11 +1536,12 @@ describe("immutable pre-seal capture binding", () => {
               [featureId]: { member: false, reason: "Fixture has no reply-delivery declaration" },
             },
           })
-          if (branch === SEMANTIC_PROMPT_SOURCE_REVIEW) draft.assertions = []
+          const sourceOnly = branch === "source-negative-review" && featureId === "input.xtest-key"
+          if (branch === SEMANTIC_PROMPT_SOURCE_REVIEW || sourceOnly) draft.assertions = []
           draft.results[0] = recordExecutedProbe({
             featureId,
             attempt: { scope: "probe", startedAt: "2026-10-27T11:00:00.000Z" },
-            ...(branch !== SEMANTIC_PROMPT_SOURCE_REVIEW && {
+            ...(branch !== SEMANTIC_PROMPT_SOURCE_REVIEW && !sourceOnly && {
               observation: {
                 featureId,
                 outcome: "inconclusive" as const,

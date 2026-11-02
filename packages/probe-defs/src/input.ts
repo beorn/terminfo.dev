@@ -2,7 +2,7 @@ import type { LibProbeSource, ProbeDefinition, ProbeCallbackResult, TermProbeSou
 import {
   notTestedResult,
   osInputReviewResult,
-  parserStateResult,
+  SOURCE_NEGATIVE_REVIEW,
   probe,
   SOURCE_TREE_AUDITS,
   sourceTreeDrift,
@@ -16,7 +16,6 @@ export const inputProbes: ProbeDefinition[] = [
     (ctx) =>
       vtermInputSourceReview(
         ctx,
-        "OS XTEST ctrl+i report under modifyOtherKeys 2 after plain-a delivery control",
         { input: false },
         "Vterm 67dd3960746766ed47e2bb4b2ced6503a78549cc packages/vterm/src/screen.ts:4688 dispatches greater-than CSI to handleCSIGt at2771-2824, which handles only c/q/u, with no XTMODKEYS m handler or state; required source review pending",
       ) ?? headlessXtestReview("key injection"),
@@ -36,7 +35,6 @@ export const inputProbes: ProbeDefinition[] = [
     (ctx) =>
       vtermInputSourceReview(
         ctx,
-        "OS XTEST unmodified i report under modifyOtherKeys 3 after plain-a delivery control",
         { input: false },
         "Vterm 67dd3960746766ed47e2bb4b2ced6503a78549cc packages/vterm/src/screen.ts:4688 dispatches greater-than CSI to handleCSIGt at2771-2824, which handles only c/q/u, with no XTMODKEYS m handler or state; required source review pending",
       ) ?? headlessXtestReview("key injection"),
@@ -51,7 +49,6 @@ export const inputProbes: ProbeDefinition[] = [
     (ctx) =>
       vtermInputSourceReview(
         ctx,
-        "OS XTEST ctrl+a report after plain-a delivery control",
         { input: false },
         "Vterm 67dd3960746766ed47e2bb4b2ced6503a78549cc packages/vterm/src/screen.ts:1273-1279 leaves key encoding to the host and defaults kitty flags to0; Termless a871f0e580e1b02fb5dbb7ed854f6de623e7858e packages/vterm/src/backend.ts:372 binds encodeKeyToAnsi, src/terminal/key-mapping.ts:107-122 maps Ctrl+A to0x01 rather than the criterion extended report; required source review pending",
       ) ?? headlessXtestReview("key injection", true),
@@ -126,7 +123,6 @@ function headlessXtestReview(kind: string, byDesign = false): ProbeCallbackResul
 /** One exact source qualifier for the four audited input negatives; drift keeps the shared failure. */
 function vtermInputSourceReview(
   ctx: LibProbeSource,
-  expected: string,
   state: object,
   sourceReviewReason: string,
 ): ProbeCallbackResult | undefined {
@@ -142,7 +138,12 @@ function vtermInputSourceReview(
     identity.integrity.treeOid === audit.treeOid &&
     identity.integrity.cleanTree
   ) {
-    return parserStateResult(false, expected, state, undefined, sourceReviewReason, "input_bytes")
+    return {
+      pass: false,
+      response: JSON.stringify(state),
+      criterionBranch: SOURCE_NEGATIVE_REVIEW,
+      tests: [{ id: "review", status: "test-failure", reason: sourceReviewReason }],
+    }
   }
   return sourceTreeDrift(identity, audit, state)
 }
@@ -667,7 +668,6 @@ function kittyClickEventsLib(ctx: LibProbeSource): ProbeCallbackResult {
   if (ctx.backendName === "vterm") {
     const reviewed = vtermInputSourceReview(
       ctx,
-      expected,
       { storedClickEvents: false },
       "Vterm 67dd3960746766ed47e2bb4b2ced6503a78549cc packages/vterm/src/screen.ts:3625-3642 stores OSC133 A/B/C zone positions from the first character and drops parameters, so click_events is never stored; required source review pending",
     )

@@ -2218,6 +2218,10 @@ test.each([
   )
   expect(parsed.results).toEqual(batch.results)
   expect(parsed.assertions).toEqual(batch.assertions)
+  const actionless = structuredClone(captured)
+  delete actionless.assertions[0]!.action
+  expect(() => parseRun("mouse-actionless.capture.json", JSON.stringify(actionless), [id],
+    new Map([[manifest.probeHash, manifest]]), { mode: "capture" })).toThrow("requires the performed action")
 })
 
 // @failure Callback source-review custody is lost when recorded as a real headless batch.

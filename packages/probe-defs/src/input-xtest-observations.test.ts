@@ -1430,8 +1430,8 @@ test.each(
   const result = probe(id).lib!(source)
   if (identityCase === "exact") {
     expect(result.criterionBranch).toBe("source-negative-review")
-    expect(result.observation).toMatchObject({ outcome: "inconclusive", assertionType: "input_bytes" })
-    expect(result.assertions).toMatchObject([{ kind: "negative", assertionType: "input_bytes" }])
+    expect(result.observation).toBeUndefined()
+    expect(result.assertions).toBeUndefined()
     expect(result.tests).toMatchObject([
       { id: "review", status: "test-failure", reason: expect.stringContaining("67dd3960") },
     ])
