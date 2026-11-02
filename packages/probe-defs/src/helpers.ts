@@ -2352,7 +2352,7 @@ const MODE_COMMAND_SOURCE_AUDITS = new Map([
       modes:
         "packages/vt100/src/screen.ts:524-690 complete input dispatcher; :360-391 DECSET/DECRST h/l complete cases 1,5,6,7,25,66",
       stack:
-        "packages/vt100/src/screen.ts:638-654 intermediate-drop dispatcher; :255-349 complete handleCSI has no finals {,},P,Q; no fallback mutation",
+        "packages/vt100/src/screen.ts:638-654 intermediate-drop dispatcher; :251-358 complete handleCSI has no finals {,},P,Q; no fallback mutation",
     },
   ],
   [

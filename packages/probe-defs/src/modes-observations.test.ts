@@ -991,7 +991,7 @@ test("1049 exit keeps an unattributed entry failure inconclusive", () => {
 // identity (integrity.repository + revision + treeOid + cleanTree), never on an adapter or engine name, so a
 // moved or locally modified source falls back to the existing inconclusive answer instead of inheriting a
 // negative. Qualifier fixture rekeyed from the vt100 23:34 PST capture to parser repair9e99e4d2/treeb941dae4;
-// which is the tree that row cites and the only one it has ever measured.
+// Historical capture measured the old tree; this rekeyed fixture is qualification input, not capture attestation.
 const VT100_SOURCE_IDENTITY = {
   kind: "js",
   adapterVersion: "0.10.2",
