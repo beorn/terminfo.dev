@@ -17,12 +17,21 @@
  * `TERMINFO_SITE_OUT_DIR` roots every build write (see `./site-out.ts`), so this can run from a read-only landing.
  * While a rebuild runs it writes `rebuild.json` into that root, naming the revision being built TO; the health probe
  * reads it to answer `starting` (28268 AC4), so a mid-rebuild preview waits for readiness instead of reading stale.
+ *
+ * Hourly runs (@cto scope GO 2026-11-02): with `TERMINFO_SITE_WORKING_RUNS_DIR` set, the same rebuild check also
+ * compares the newest COMPLETE hourly re-measure run (`docs/data/working-runs.ts`) with the run the served stamp
+ * names, and a new one triggers ONE rebuild. That rebuild is not a code change: the served corpus stays the code's own,
+ * so it builds into `<out>/staging` while the previous build keeps serving, and swaps in only on success. A failed run
+ * rebuild keeps serving the previous build, says so on stderr, leaves the rebuild marker behind (as a failed code
+ * rebuild does), and is not retried for the same run. The check runs at start and on changes under the runs directory
+ * (an inotify watch inside this process; no new timer, service or gate).
  */
-import { execFileSync, spawnSync } from "node:child_process"
-import { existsSync, readFileSync, statSync } from "node:fs"
+import { execFileSync, spawn, spawnSync } from "node:child_process"
+import { existsSync, readFileSync, renameSync, rmSync, statSync, watch } from "node:fs"
 import { dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
-import { siteDistDir, writeSiteRebuildMarker } from "./site-out.ts"
+import { siteDistDir, siteOutRoot, writeSiteRebuildMarker } from "./site-out.ts"
+import { newestCompleteRun, siteWorkingRunsDir } from "../docs/data/working-runs.ts"
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..")
 const distDir = siteDistDir(repoRoot)
@@ -34,15 +43,25 @@ function landingRevision(): string {
   return execFileSync("git", ["-C", repoRoot, "rev-parse", "HEAD"], { encoding: "utf8" }).trim()
 }
 
-/** The revision the served output was built from, or null when there is no readable stamp. */
-function servedRevision(): string | null {
-  const stamp = join(distDir, "build.json")
-  if (!existsSync(stamp)) return null
+/** What a dist's own `/build.json` says it was built from: its code revision and the hourly run it shows. */
+export interface ServedStamp {
+  sourceCommit: string | null
+  workingRunId: string | null
+}
+
+/** The stamp of the output in `dir`, with nulls when there is no readable stamp. */
+export function readServedStamp(dir: string): ServedStamp {
+  const stamp = join(dir, "build.json")
+  if (!existsSync(stamp)) return { sourceCommit: null, workingRunId: null }
   try {
     const parsed: unknown = JSON.parse(readFileSync(stamp, "utf8"))
-    if (parsed === null || typeof parsed !== "object") return null
+    if (parsed === null || typeof parsed !== "object") return { sourceCommit: null, workingRunId: null }
     const source = (parsed as { sourceCommit?: unknown }).sourceCommit
-    return typeof source === "string" ? source : null
+    const run = (parsed as { workingRun?: { id?: unknown } }).workingRun?.id
+    return {
+      sourceCommit: typeof source === "string" ? source : null,
+      workingRunId: typeof run === "string" ? run : null,
+    }
   } catch (error) {
     // An unreadable or malformed stamp is not the same as an absent one: absent means "no build yet", but a stamp
     // that exists and cannot be parsed is a surprise worth a line, so the rebuild it triggers is attributable rather
@@ -52,8 +71,131 @@ function servedRevision(): string | null {
         error instanceof Error ? error.message : String(error)
       }); rebuilding`,
     )
-    return null
+    return { sourceCommit: null, workingRunId: null }
   }
+}
+
+/** The revision the served output was built from, or null when there is no readable stamp. */
+function servedRevision(): string | null {
+  return readServedStamp(distDir).sourceCommit
+}
+
+/**
+ * The one rebuild check: `code` when the served output is not this landing's revision (rebuild in place, no fallback),
+ * `run` when the code matches but a newer complete hourly run exists than the one the output shows, else null.
+ */
+export function rebuildReason(target: string, stamp: ServedStamp, newestRunId: string | null): "code" | "run" | null {
+  if (stamp.sourceCommit !== target) return "code"
+  if (newestRunId !== null && stamp.workingRunId !== newestRunId) return "run"
+  return null
+}
+
+type RunBuild = (env: NodeJS.ProcessEnv) => Promise<number | null>
+
+/** The real site build, run asynchronously so the previous build keeps serving while it runs. */
+const siteBuild: RunBuild = (env) =>
+  new Promise((resolve) => {
+    const child = spawn("bun", ["run", "build"], { cwd: repoRoot, stdio: "inherit", env })
+    child.on("error", (error) => {
+      console.error(`terminfo-site: cannot run the site build: ${error.message}`)
+      resolve(null)
+    })
+    child.on("exit", (code) => resolve(code))
+  })
+
+/**
+ * Rebuild for a new hourly run into `<outRoot>/staging` and swap the staged dist in only on success. On failure the
+ * served dist is untouched, the failure is printed on stderr, and the rebuild marker stays behind; returns false.
+ */
+export async function rebuildForRun(args: {
+  outRoot: string
+  target: string
+  runId: string
+  runBuild?: RunBuild
+}): Promise<boolean> {
+  const served = join(args.outRoot, "dist")
+  const staging = join(args.outRoot, "staging")
+  const stagedDist = join(staging, "dist")
+  const previous = readServedStamp(served).workingRunId ?? "none"
+  const fail = (cause: string): false => {
+    console.error(
+      `terminfo-site: rebuild for hourly run ${args.runId} failed (${cause}); still serving the previous build ` +
+        `(hourly run ${previous}) from ${served}; marker ${join(args.outRoot, "rebuild.json")} left in place`,
+    )
+    return false
+  }
+  console.log(
+    `terminfo-site: hourly run ${args.runId} is newer than the served ${previous} — rebuilding into ${staging}`,
+  )
+  const clearMarker = writeSiteRebuildMarker(args.target, { TERMINFO_SITE_OUT_DIR: args.outRoot })
+  // raw-delete-allow: standalone component repository without hh's removely; the staged dist is this program's own scratch output under its state root
+  rmSync(stagedDist, { recursive: true, force: true })
+  const status = await (args.runBuild ?? siteBuild)({
+    ...process.env,
+    TERMINFO_SITE_OUT_DIR: staging,
+    TERMINFO_SITE_CODE_GITLINK: args.target,
+  })
+  if (status !== 0) return fail(`site build exit ${String(status)}`)
+  const staged = readServedStamp(stagedDist)
+  if (staged.sourceCommit !== args.target || staged.workingRunId === null) {
+    return fail(`staged build stamped ${staged.sourceCommit ?? "nothing"} / run ${staged.workingRunId ?? "none"}`)
+  }
+  const retired = join(args.outRoot, "dist.previous")
+  // raw-delete-allow: standalone component repository without hh's removely; dist.previous is this program's own retired output
+  rmSync(retired, { recursive: true, force: true })
+  if (existsSync(served)) renameSync(served, retired)
+  renameSync(stagedDist, served)
+  // raw-delete-allow: standalone component repository without hh's removely; dist.previous is this program's own retired output
+  rmSync(retired, { recursive: true, force: true })
+  clearMarker?.()
+  console.log(`terminfo-site: now serving hourly run ${staged.workingRunId} (${args.target.slice(0, 10)})`)
+  return true
+}
+
+/**
+ * The hourly half of the rebuild check, for a process that is already serving: one rebuild per new complete run,
+ * never two at once, and never a retry of a run whose rebuild failed (a later run, or a restart, tries again).
+ */
+export function createRunRebuilder(args: { runsDir: string; outRoot: string; target: string; runBuild?: RunBuild }): {
+  check(): Promise<void>
+} {
+  const attempted = new Set<string>()
+  let running: Promise<void> | null = null
+  let again = false
+  const once = async (): Promise<void> => {
+    let newest: string
+    try {
+      newest = newestCompleteRun(args.runsDir).id
+    } catch (error) {
+      console.error(
+        `terminfo-site: cannot read hourly runs (${error instanceof Error ? error.message : String(error)}); ` +
+          "still serving the previous build",
+      )
+      return
+    }
+    const stamp = readServedStamp(join(args.outRoot, "dist"))
+    if (rebuildReason(args.target, stamp, newest) !== "run" || attempted.has(newest)) return
+    attempted.add(newest)
+    await rebuildForRun({ outRoot: args.outRoot, target: args.target, runId: newest, runBuild: args.runBuild })
+  }
+  const check = async (): Promise<void> => {
+    if (running) {
+      again = true
+      return running
+    }
+    running = (async () => {
+      do {
+        again = false
+        await once()
+      } while (again)
+    })()
+    try {
+      await running
+    } finally {
+      running = null
+    }
+  }
+  return { check }
 }
 
 function build(target: string): void {
@@ -137,10 +279,28 @@ export function createPreviewHandler(distDir: string): (request: Request) => Res
 
 function serveLanded(): void {
   const target = landingRevision()
+  const runsDir = siteWorkingRunsDir()
+  const outRoot = siteOutRoot()
+  if (runsDir !== undefined && outRoot === undefined) {
+    throw new Error(
+      "TERMINFO_SITE_WORKING_RUNS_DIR needs TERMINFO_SITE_OUT_DIR: an hourly rebuild stages beside the served build",
+    )
+  }
+  // A code mismatch rebuilds in place before serving, exactly as before; that build reads the newest hourly run itself.
   if (servedRevision() !== target) build(target)
 
   console.log(`terminfo-site: serving ${distDir} (${target.slice(0, 10)}) at http://${hostname}:${port}/`)
   Bun.serve({ hostname, port, fetch: createPreviewHandler(distDir) })
+  if (runsDir === undefined || outRoot === undefined) return
+  const rebuilder = createRunRebuilder({ runsDir, outRoot, target })
+  void rebuilder.check()
+  // The re-measure writes summary.json last; settle briefly after the last change so a half-written file is not read.
+  let settle: ReturnType<typeof setTimeout> | undefined
+  watch(runsDir, { recursive: true }, () => {
+    clearTimeout(settle)
+    settle = setTimeout(() => void rebuilder.check(), 5000)
+  })
+  console.log(`terminfo-site: rebuilding on each new complete hourly run under ${runsDir}`)
 }
 
 if (import.meta.main) serveLanded()

@@ -31,6 +31,7 @@ import { PROBE_STATUSES } from "@terminfo/probe-defs"
 import { parseJsonStrict } from "@terminfo/run-parser"
 import { loadFeatures } from "@terminfo/catalog"
 import { originalRunFor, readVerifiedArtifact } from "../docs/data/selected-results.ts"
+import { composeWorkingView, siteWorkingRun, type LoadedWorkingRun } from "../docs/data/working-runs.ts"
 import { publicResults, type CellEvidence, type HistoricalCellEvidence } from "../docs/data/public-results.ts"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -263,7 +264,11 @@ function writeEvidence(
 
 export function generateApi(
   outDir?: string,
-  options: { contentDir?: string } = {},
+  options: {
+    contentDir?: string
+    /** The hourly working run to show beside reviewed answers; undefined reads TERMINFO_SITE_WORKING_RUNS_DIR. */
+    working?: LoadedWorkingRun | null
+  } = {},
 ): {
   dataPath: string
   fileCount: number
@@ -274,7 +279,12 @@ export function generateApi(
   const resultsDir = options.contentDir ?? contentDir
   const featuresJson = loadFeaturesJson()
   const { projection } = loadCurrentResults(resultsDir)
-  const published = publicResults(projection, compatibilitySubjects(projection, resultsDir))
+  const reviewed = compatibilitySubjects(projection, resultsDir)
+  const published = publicResults(projection, reviewed)
+  // The internal preview's hourly raw view: read beside the accepted projection, never folded into it, so every
+  // accepted field below is byte-identical with or without it, and an unset variable emits no `working` key at all.
+  const working = options.working === undefined ? siteWorkingRun() : options.working
+  const workingView = working ? composeWorkingView(projection, reviewed, working) : null
   const runDocuments = new Map<string, Buffer>()
   const allFeatureIds = new Set(Object.keys(featuresJson))
 
@@ -346,6 +356,7 @@ export function generateApi(
     versions: currentGroups(published.projection.versions),
     history: currentGroups(published.projection.history),
     exclusions: published.projection.exclusions,
+    ...(workingView && { working: workingView }),
   }
   const v3Dir = outDir ? join(outDir, "api", "v3") : join(publicDir, "api", "v3")
   mkdirSync(v3Dir, { recursive: true })

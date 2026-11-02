@@ -18,6 +18,7 @@ import { candidateFromSelected, type ContextCandidate } from "./run-selection.ts
 import { statesFor } from "./selected-results.ts"
 import { fullContextCensus } from "./full-census.ts"
 import { buildFullProjectRows, type FullContextRow } from "./full-project.ts"
+import { siteWorkingView, type WorkingView } from "./working-runs.ts"
 
 const contentDir = join(import.meta.dirname, "..", "..", "content")
 
@@ -77,6 +78,11 @@ export interface FullProjectData {
     failures: number
     eligibleForConsideration: boolean
   }
+  /**
+   * The internal preview's newest complete hourly re-measure run, raw and unreviewed, beside the reviewed answers.
+   * Present only when TERMINFO_SITE_WORKING_RUNS_DIR is set; it feeds no count above.
+   */
+  working?: WorkingView
 }
 
 /** Every catalog row in the site's category order; an ungroupable id is refused, never dropped. */
@@ -221,6 +227,7 @@ export function loadFullProjectData(): FullProjectData {
   toolGaps.classes = [...classes.values()].sort((a, b) => a.name.localeCompare(b.name))
   toolGaps.eligibleForConsideration =
     boundInputs && toolGaps.membershipComplete && toolGaps.failures === 0 && toolGaps.unnamedTodo === 0
+  const working = siteWorkingView(contentDir)
   return {
     mode: "development",
     suiteId: requiredSuiteId,
@@ -234,6 +241,7 @@ export function loadFullProjectData(): FullProjectData {
     complete: rows.complete,
     recordedPositions: rows.recordedPositions,
     toolGaps,
+    ...(working && { working }),
   }
 }
 

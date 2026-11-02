@@ -4,6 +4,7 @@ import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
 import { generateApi } from "../../scripts/generate-api"
 import { buildStamp, createBuildMetadata } from "../../scripts/build-metadata"
+import { siteWorkingRun, workingRunStamp } from "../data/working-runs"
 import { siteCacheDir, siteDistDir } from "../../scripts/site-out"
 import { NOT_MEASURED_TEXT } from "../data/release-scope"
 import { glossaryLinksPlugin } from "./plugins/glossary-links"
@@ -21,6 +22,10 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 const docsDir = join(__dirname, "..")
 const contentDir = join(docsDir, "..", "content")
 const buildMetadata = createBuildMetadata(join(docsDir, ".."))
+// The hourly run this build shows beside reviewed answers (TERMINFO_SITE_WORKING_RUNS_DIR), chosen once per process so
+// the stamp names the run every page read (and why it could not be read, when its suite has no trusted manifest);
+// landed-serve compares it with the newest complete run. Unset: null, and build.json carries no workingRun field.
+const workingRun = siteWorkingRun()
 
 // --- Load data for sidebar generation ---
 
@@ -682,7 +687,9 @@ export default defineConfig({
     // snapshots; VitePress build owns the ignored deploy artifact.
     const { dataPath } = generateApi(siteConfig.outDir)
     console.log(`[API] Generated ${dataPath}`)
-    const metadataJson = JSON.stringify(buildMetadata, null, 2) + "\n"
+    const metadataJson =
+      JSON.stringify({ ...buildMetadata, ...(workingRun && { workingRun: workingRunStamp(workingRun) }) }, null, 2) +
+      "\n"
     writeFileSync(join(siteConfig.outDir, "build.json"), metadataJson)
     console.log(`[Build] Source ${buildMetadata.sourceCommit.slice(0, 10)} · ${buildMetadata.context}`)
   },

@@ -6,13 +6,14 @@ import { spawnSync } from "node:child_process"
 import { createHash } from "node:crypto"
 import { fileURLToPath } from "node:url"
 import { loadFeatures } from "@terminfo/catalog"
-import { parseJsonStrict, parseRun, type LoadedRun } from "@terminfo/run-parser"
+import { parseJsonStrict, type LoadedRun } from "@terminfo/run-parser"
 import { PROBE_STATUSES, readCollectorSelection, readCollectorAttempt } from "@terminfo/probe-defs"
 import { loadCurrentResults } from "../../../docs/data/current-results.ts"
 import { originalRunFor, type SelectedAttemptInput } from "../../../docs/data/selected-results.ts"
 import { fullContextCensus } from "../../../docs/data/full-census.ts"
 import { isStaleRelation } from "../../../docs/data/release-scope.ts"
 import { readExplicitSuiteTarget } from "../suite-manifest.ts"
+import { loadRawCapture } from "../raw-capture.ts"
 import { renderReport } from "../report.tsx"
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..")
@@ -219,11 +220,8 @@ async function rawScoreboard(paths: readonly string[], contentDir: string): Prom
       if (pass?.context && pass.context.context !== context.context) {
         throw new Error(`${path}: declared ${pass.context.context}; recorded ${context.context}`)
       }
-      const { manifest } = readExplicitSuiteTarget(ROOT, header.probeHash)
-      if (header.suiteId !== manifest.probeHash) {
-        throw new Error(`${path}: suiteId disagrees with manifest ${manifest.probeHash}`)
-      }
-      const run = parseRun(path, bytes, catalogIds, new Map([[manifest.probeHash, manifest]]), { mode: "capture" })
+      // The one raw-capture reader (shared with the preview site's hourly view); it throws on any invalid input.
+      const run = loadRawCapture(path, { root: ROOT, catalogIds, bytes })
       if (!run.results) throw new Error(`${path}: raw capture has no recorded results`)
       workingRuns.push(run)
       const totals: Record<string, number> = {}
