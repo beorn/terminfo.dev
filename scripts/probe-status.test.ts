@@ -174,19 +174,17 @@ describe("the real catalog", () => {
     expect(probeStatusOf("input.kitty-click-events", features)).toBe("automated")
   })
 
-  it("derives decsscls partial from its two declared arms, with no catalog override", () => {
+  it("derives decsscls automated from its two measuring arms, with no catalog override", () => {
     const features = loadFeatures(contentDir)
     const declaration = ALL_PROBES.find((entry) => entry.id === "modes.decsscls")
     expect(declaration, "modes.decsscls").toBeDefined()
-    // The terminal arm keeps timed frames and reads them as pixels; the headless arm paints no frames
-    // at all and refuses before measuring, so it declares the canonical refusal kind rather than a
-    // method it cannot run. Both removals fail at their own declaration assertion, and the underlying
-    // derivations differ: without "none" the row falls to null and would read undeclared, while
-    // without "pixels" the remaining "none" still derives partial.
+    // The terminal arm measures timed pixels; the library measures text/cursor parser state.
+    // Two concrete declarations derive automated coverage. That badge does not decide support:
+    // consumed-without-effect library observations still require an independent source review.
     expect(declaration?.termAssertionType).toBe("screenshot")
-    expect(declaration?.libAssertionType).toBeNull()
-    expect(derivedProbeStatus(declaration as ProbeDefinition)).toBe("partial")
-    expect(probeStatusOf("modes.decsscls", features)).toBe("partial")
+    expect(declaration?.libAssertionType).toBe("buffer_state")
+    expect(derivedProbeStatus(declaration as ProbeDefinition)).toBe("automated")
+    expect(probeStatusOf("modes.decsscls", features)).toBe("automated")
     // One home per truth: the derivation settles the badge, so the catalog carries no reviewed value
     // and no gate holds the row.
     expect(features["modes.decsscls"]?.probeStatus).toBeUndefined()
