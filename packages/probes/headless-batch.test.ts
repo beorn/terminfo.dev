@@ -1596,11 +1596,11 @@ test("source-qualified mode and mouse criteria survive collection and capture pa
             integrity: {
               kind: "source",
               repository: "git@github.com:beorn/vterm.git",
-              revision: "67dd3960746766ed47e2bb4b2ced6503a78549cc",
+              revision: "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
               treeOid:
                 name === "vt100"
-                  ? "1eaac257cf9ff8d8ece752c8e6edc04b9ddaa6cf"
-                  : "fc6ff58f2f3e602b8ede99641f73cde997411f14",
+                  ? "b941dae48b25ae8825c394750bda5245c9d93dfa"
+                  : "4205f8936ad1848d1029729f3ada888cd61759a8",
               cleanTree: true,
             },
             adapterSources:
@@ -2563,10 +2563,11 @@ test("xtermjs library mouse arms retain measured cell and supplied-pixel reports
   expect(JSON.parse(batch.rawReplies[ids[2]!]!)).toMatchObject({ report: "\x1b[M %#" })
 })
 
-// @failure An old Untestable decision turns an absent library encoder into a fresh review or failure.
+// @failure Legacy collection without runtime source identity loses ordinary mouse TODO or accepted-decision carry.
 // @level l1
 // @consumer Natural collection's accepted-decision carry and the canonical capture reader.
-test("a real non-declaring backend keeps mouse tool gaps plain TODO with its old accepted record", async () => {
+// This legacy path omits runtime source identity. The source-qualified journey above covers audited engines.
+test("legacy collection without source identity keeps mouse tool gaps TODO and its old accepted record", async () => {
   const ids = [
     "input.button-event-mouse",
     "input.pixel-mouse",

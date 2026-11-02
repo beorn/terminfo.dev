@@ -327,7 +327,7 @@ test("one DECRPM reading serves the app query, the ANSI query and the headless a
 
 // #32099: existing reply cases omit runtimeIdentity and miss source-audit overrides.
 // Independent source fixtures from pass-3XQsvM, rekeyed to 0.10.1 after proving both parsers unchanged,
-// then rekeyed again to engine 67dd3960 (vt220 tree fc6ff58f) when the mode audit rows moved. The adapter
+// then rekeyed to parser repair9e99e4d2 (VT100 b941dae4 / VT2204205f893). The adapter
 // blobs stay as captured: they are not consulted by the mode source key.
 // These are qualifier inputs, not an attestation that the historical run loaded the newer package.
 const capturedModeEngines = [
@@ -341,8 +341,8 @@ const capturedModeEngines = [
       integrity: {
         kind: "source",
         repository: "git@github.com:beorn/vterm.git",
-        revision: "67dd3960746766ed47e2bb4b2ced6503a78549cc",
-        treeOid: "1eaac257cf9ff8d8ece752c8e6edc04b9ddaa6cf",
+        revision: "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+        treeOid: "b941dae48b25ae8825c394750bda5245c9d93dfa",
         cleanTree: true,
       },
       runtimeFormat: "js",
@@ -369,8 +369,8 @@ const capturedModeEngines = [
       integrity: {
         kind: "source",
         repository: "git@github.com:beorn/vterm.git",
-        revision: "67dd3960746766ed47e2bb4b2ced6503a78549cc",
-        treeOid: "fc6ff58f2f3e602b8ede99641f73cde997411f14",
+        revision: "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+        treeOid: "4205f8936ad1848d1029729f3ada888cd61759a8",
         cleanTree: true,
       },
       runtimeFormat: "js",

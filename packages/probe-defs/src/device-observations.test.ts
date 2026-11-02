@@ -809,12 +809,12 @@ describe("window-operation qualification", () => {
   test.each([
     [
       "vendor/vterm/packages/vt100/src/index.ts",
-      "1eaac257cf9ff8d8ece752c8e6edc04b9ddaa6cf",
+      "b941dae48b25ae8825c394750bda5245c9d93dfa",
       "packages/vt100/src/screen.ts:251-358",
     ],
     [
       "vendor/vterm/packages/vt220/src/index.ts",
-      "fc6ff58f2f3e602b8ede99641f73cde997411f14",
+      "4205f8936ad1848d1029729f3ada888cd61759a8",
       "packages/vt220/src/screen.ts:305-428",
     ],
   ] as const)(
@@ -833,9 +833,7 @@ describe("window-operation qualification", () => {
           integrity: {
             kind: "source" as const,
             repository: "git@github.com:beorn/vterm.git",
-            revision: resolvedPath.includes("/vt220/")
-              ? "67dd3960746766ed47e2bb4b2ced6503a78549cc"
-              : "bd3d32aea2f1994376a71adfc55b92705eedbd8c",
+            revision: "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
             treeOid,
             cleanTree: true,
           },
@@ -1230,8 +1228,8 @@ test.each(geometryReplies)("$id reports source tree drift before geometry gradin
 test.each(geometryReplies)("$id distinguishes sibling source entries", ({ id, raw }) => {
   const baseline = callback(id).headless({ feedCapture: () => raw } as unknown as LibProbeSource)
   for (const [engine, treeOid] of [
-    ["vt100", "1eaac257cf9ff8d8ece752c8e6edc04b9ddaa6cf"],
-    ["vt220", "d504616ae458b8b0fa9fa365034c30bd35f55ee8"],
+    ["vt100", "b941dae48b25ae8825c394750bda5245c9d93dfa"],
+    ["vt220", "4205f8936ad1848d1029729f3ada888cd61759a8"],
   ]) {
     const runtimeIdentity = {
       ...geometryRuntime,
