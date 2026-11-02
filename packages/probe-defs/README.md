@@ -142,12 +142,12 @@ consumption control. A rendered X retains `source-negative-review`, its actual f
 negative buffer-state assertion for independent review of the target implementation at sourcebd3d32ae.
 The control proves parser consumption, not a target effect; target state remains explicitly unexposed.
 The vt100 0.10.1 arms use the same nine commands and control only at their independently audited
-source identity (revisionbd3d32ae, package tree1eaac257, vt100 entry path). Its handleOSC switch
-at screen.ts:504-520 has cases0/1/2 only. The OSC9 notification-sink citation is specific to the
+source identity (revision9e99e4d2, package treeb941dae4, vt100 entry path). Its handleOSC switch
+at screen.ts:505-520 has cases0/1/2 only. The OSC9 notification-sink citation is specific to the
 vterm entry; vt100 records its own absent-handler citation. These paths retain a pending source
 review, never an automatic grade or a measured target effect.
-The vt220 0.10.1 arms qualify the same nine commands at revision67dd3960746766ed47e2bb4b2ced6503a78549cc, package
-treefc6ff58f and the vt220 entry path. Its screen.ts:700-715 handleOSC returns
+The vt220 0.10.1 arms qualify the same nine commands at revision9e99e4d23cdc606fca258b1863aa2be7ae79eed3, package
+tree4205f893 and the vt220 entry path. Its screen.ts:701-716 handleOSC returns
 without a semicolon and otherwise handles only cases0/1/2. Its OSC9 records the
 generic absent-handler citation, never vterm's notification-sink citation.
 Other identities keep named coverage, and a missing X grants no source-review negative.

@@ -2346,23 +2346,23 @@ function modeSourceKey(identity: HeadlessRuntimeIdentity | undefined): string | 
 // Each complete dispatcher below establishes own-command absence at one exact source identity.
 const MODE_COMMAND_SOURCE_AUDITS = new Map([
   [
-    "git@github.com:beorn/vterm.git@67dd3960746766ed47e2bb4b2ced6503a78549cc:1eaac257cf9ff8d8ece752c8e6edc04b9ddaa6cf:vendor/vterm/packages/vt100/src/index.ts",
+    "git@github.com:beorn/vterm.git@9e99e4d23cdc606fca258b1863aa2be7ae79eed3:b941dae48b25ae8825c394750bda5245c9d93dfa:vendor/vterm/packages/vt100/src/index.ts",
     {
       engine: "vt100" as const,
       modes:
-        "packages/vt100/src/screen.ts:523-688 complete input dispatcher; :360-391 DECSET/DECRST h/l complete cases 1,5,6,7,25,66",
+        "packages/vt100/src/screen.ts:524-690 complete input dispatcher; :360-391 DECSET/DECRST h/l complete cases 1,5,6,7,25,66",
       stack:
-        "packages/vt100/src/screen.ts:637-653 intermediate-drop dispatcher; :255-349 complete handleCSI has no finals {,},P,Q; no fallback mutation",
+        "packages/vt100/src/screen.ts:638-654 intermediate-drop dispatcher; :255-349 complete handleCSI has no finals {,},P,Q; no fallback mutation",
     },
   ],
   [
-    "git@github.com:beorn/vterm.git@67dd3960746766ed47e2bb4b2ced6503a78549cc:fc6ff58f2f3e602b8ede99641f73cde997411f14:vendor/vterm/packages/vt220/src/index.ts",
+    "git@github.com:beorn/vterm.git@9e99e4d23cdc606fca258b1863aa2be7ae79eed3:4205f8936ad1848d1029729f3ada888cd61759a8:vendor/vterm/packages/vt220/src/index.ts",
     {
       engine: "vt220" as const,
       modes:
-        "packages/vt220/src/screen.ts:719-904 complete input dispatcher; :444-489 DECSET/DECRST h/l complete cases 1,5,6,7,25,66",
+        "packages/vt220/src/screen.ts:720-906 complete input dispatcher; :444-489 DECSET/DECRST h/l complete cases 1,5,6,7,25,66",
       stack:
-        "packages/vt220/src/screen.ts:833-860 complete CSI dispatcher; :430-442 complete intermediate dispatcher accepts only !p and >c, no #{,#},#P,#Q or fallback mutation",
+        "packages/vt220/src/screen.ts:834-861 complete CSI dispatcher; :430-442 complete intermediate dispatcher accepts only !p and >c, no #{,#},#P,#Q or fallback mutation",
     },
   ],
 ])
@@ -2432,7 +2432,7 @@ function withModeSourceReview(definition: ProbeDefinition): ProbeDefinition {
         const integrity = identity.integrity
         const knownTree =
           integrity.kind === "source" &&
-          ["1eaac257cf9ff8d8ece752c8e6edc04b9ddaa6cf", "fc6ff58f2f3e602b8ede99641f73cde997411f14"].includes(
+          ["b941dae48b25ae8825c394750bda5245c9d93dfa", "4205f8936ad1848d1029729f3ada888cd61759a8"].includes(
             integrity.treeOid,
           )
         if (!knownTree && !/(?:vt100|vt220)/.test(identity.resolvedPath)) return prior
