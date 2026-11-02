@@ -67,6 +67,9 @@ const xtermOscIdentity = {
   },
 } as const
 
+const xtermOscSourceCitation =
+  "@xterm/headless 6.0.0 bundle SHA256 17a90b650cf6b77cce2b98c4063884d43545e4ce177a54b76ccfc906f1aacaed, map SHA256 780e782badc8189491a469c9277b783e01911882ea84417b31e71294ea927d98: InputHandler.ts:292-338 OSC registrations (17/19/117/119 are comments only) and :201-203 logging-only fallback, OscParser.ts:145-146 fallback dispatch, CoreTerminal.ts:236-237 embedder hook; termless 2d97417328b7b1d086f9396b9a1731216ed134cc packages/xtermjs/src/backend.ts registers no OSC handler"
+
 const auditedArtifacts: readonly HeadlessRuntimeIdentity[] = [
   {
     kind: "native",
@@ -393,16 +396,16 @@ test.each([
   ["extensions.osc666-termprop", "\x1b]666;test-prop=value\x07", "vterm"],
   ["extensions.osc777-notify", "\x1b]777;notify;test;body\x07", "vterm"],
   ["extensions.osc3008-context", "\x1b]3008;type=test\x07", "vterm"],
-  ["extensions.osc9-progress", "\x1b]9;4;1;50\x07", "xtermjs"],
-  ["extensions.osc7-cwd", "\x1b]7;file://localhost/terminfo-cwd-A\x07", "xtermjs"],
-  ["extensions.osc22-pointer", "\x1b]22;pointer\x07", "xtermjs"],
-  ["extensions.osc176-app-id", "\x1b]176;terminfo-test\x07", "xtermjs"],
-  ["extensions.osc440-audio", "\x1b]440;bell.wav\x07", "xtermjs"],
-  ["extensions.osc555-flash", "\x1b]555\x07", "xtermjs"],
-  ["extensions.osc666-termprop", "\x1b]666;test-prop=value\x07", "xtermjs"],
-  ["extensions.osc710-font-normal", "\x1b]710;monospace\x07", "xtermjs"],
-  ["extensions.osc777-notify", "\x1b]777;notify;test;body\x07", "xtermjs"],
-  ["extensions.osc3008-context", "\x1b]3008;type=test\x07", "xtermjs"],
+  ["extensions.osc9-progress", "\x1b]9;4;1;50\x07", "xtermjs", "progress"],
+  ["extensions.osc7-cwd", "\x1b]7;file://localhost/terminfo-cwd-A\x07", "xtermjs", "working-directory"],
+  ["extensions.osc22-pointer", "\x1b]22;pointer\x07", "xtermjs", "pointer"],
+  ["extensions.osc176-app-id", "\x1b]176;terminfo-test\x07", "xtermjs", "app-id"],
+  ["extensions.osc440-audio", "\x1b]440;bell.wav\x07", "xtermjs", "audio"],
+  ["extensions.osc555-flash", "\x1b]555\x07", "xtermjs", "flash"],
+  ["extensions.osc666-termprop", "\x1b]666;test-prop=value\x07", "xtermjs", "terminal property"],
+  ["extensions.osc710-font-normal", "\x1b]710;monospace\x07", "xtermjs", "font"],
+  ["extensions.osc777-notify", "\x1b]777;notify;test;body\x07", "xtermjs", "notification"],
+  ["extensions.osc3008-context", "\x1b]3008;type=test\x07", "xtermjs", "systemd context"],
   ["extensions.osc9-progress", "\x1b]9;4;1;50\x07", "vt100"],
   ["extensions.osc22-pointer", "\x1b]22;pointer\x07", "vt100"],
   ["extensions.osc176-app-id", "\x1b]176;terminfo-test\x07", "vt100"],
@@ -421,7 +424,7 @@ test.each([
   ["extensions.osc710-font-normal", "\x1b]710;monospace\x07", "vt220"],
   ["extensions.osc777-notify", "\x1b]777;notify;test;body\x07", "vt220"],
   ["extensions.osc3008-context", "\x1b]3008;type=test\x07", "vt220"],
-])("%s retains an audited source-negative review only after its sentinel renders", (id, sequence, engine) => {
+])("%s retains an audited source-negative review only after its sentinel renders", (id, sequence, engine, effect) => {
   // Collector-input fixtures rekeyed to 0.10.1 after the parser audit, not a loaded-engine attestation.
   const identity =
     engine === "xtermjs"
@@ -537,6 +540,18 @@ test.each([
         { kind: "negative", assertionType: "buffer_state", observed: result.response },
       ])
       if (engine === "xtermjs") {
+        const code = /^extensions\.osc(\d+)/.exec(id)![1]
+        expect(result.response).toBe(
+          JSON.stringify({
+            fed: `\x1b[1;1H\x1b[2K${sequence}X`,
+            sentinel: { char: "X" },
+            engineState: null,
+            engineStateReason: `No ${effect} target state is exposed at this pin`,
+          }),
+        )
+        expect(result.tests?.[0]?.reason).toBe(
+          `${xtermOscSourceCitation}: no case ${code} or ${effect} target writer; independent source review required`,
+        )
         expect(JSON.parse(result.response!)).not.toHaveProperty("runtimeIdentity")
         expect(result.tests).toMatchObject([{ reason: expect.stringContaining("packages/xtermjs/src/backend.ts") }])
       }
@@ -989,6 +1004,21 @@ test.each(directReplies)("%s requires a complete, bound reply", async (id, frame
         expect(result.assertions, id).toBeUndefined()
       }
     }
+  }
+  if (id === "extensions.osc17-highlight-bg" || id === "extensions.osc19-highlight-fg") {
+    const silent = definition.lib!({
+      runtimeIdentity: xtermOscIdentity,
+      feedCapture: () => "",
+    } as unknown as LibProbeSource)
+    expect(JSON.stringify(silent)).toBe(
+      JSON.stringify({
+        pass: false,
+        note: "no-response",
+        tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }],
+        replyFailureTestIds: ["criterion"],
+        response: "",
+      }),
+    )
   }
 })
 
@@ -1887,10 +1917,25 @@ test.each([
           { id: "review", status: "test-failure", reason: expect.stringContaining("17a90b65") },
         ])
         expect(result.tests?.[0]?.reason).toContain(`no case ${setCode}/${resetCode}`)
+        expect(result.tests?.[0]?.reason).toBe(
+          `${xtermOscSourceCitation}: no case ${setCode}/${resetCode} handler or highlight colour writer; independent source review required`,
+        )
         expect(result.assertions).toMatchObject([
           { kind: "negative", assertionType: "buffer_state", observed: result.response },
         ])
         const retained = JSON.parse(result.response!)
+        if (mode === "pinned") {
+          expect(result.response).toBe(
+            JSON.stringify({
+              query,
+              originalRaw: "",
+              fed: `\x1b[1;1H\x1b[2K\x1b]${setCode};rgb:3030/6060/9090\x07\x1b]${resetCode}\x07X`,
+              sentinel: { char: "X" },
+              engineState: null,
+              engineStateReason: "No highlight colour set or reset target state is exposed at this pin",
+            }),
+          )
+        }
         expect(retained).toMatchObject({
           query,
           originalRaw: "",

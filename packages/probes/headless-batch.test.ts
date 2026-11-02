@@ -21,6 +21,7 @@ import {
   HARNESS_INCOMPLETE_TEST,
   HEADLESS_OBSERVABLE_REVIEW,
   initializeRunDraft,
+  sealRunDraft,
   type CapturedRunDraft,
   type ProbeCallbackResult,
   type ProbeDefinition,
@@ -28,7 +29,7 @@ import {
 } from "@terminfo/probe-defs"
 import { fakeProbeResult } from "@terminfo/probe-defs/testing/fake-probe-result"
 import { regradeRow, satisfiesContract, type GroupContract } from "../probe-defs/src/testing/group-harness.ts"
-import { validateObservation, retainCaptureBinding, parseRun } from "@terminfo/run-parser"
+import { validateObservation, retainCaptureBinding, applyCaptureDecision, parseRun } from "@terminfo/run-parser"
 import { spawnSync } from "node:child_process"
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -3315,6 +3316,170 @@ test.each([
 
 // 30581: a refused callback result keeps its response under its feature id and its refused observation and
 // assertions as text in the refusal, on every recorder branch, so the run file shows what the grader saw.
+test.each([
+  {
+    name: "xtermjs",
+    package: "@termless/xtermjs",
+    factory: backend,
+    returned: "query_reply",
+    declared: "buffer_state",
+  },
+  {
+    name: "vterm",
+    package: "@termless/vterm",
+    factory: async () => createVtermBackend(),
+    returned: "buffer_state",
+    declared: "query_reply",
+  },
+] as const)("registered OSC0 declaration refuses $returned for the actual $name source", async (scenario) => {
+  const value = await scenario.factory()
+  const identity = {
+    ...(await headlessIdentity.headlessRuntimeIdentity(scenario.name, scenario.package, "js")),
+    adapterSources: headlessIdentity.readAdapterSources(scenario.name, value),
+  }
+  value.destroy()
+  const registered = registryDefinitions(["extensions.osc0-icon-title"])[0]!
+  const batch = await collectBatch(
+    scenario.factory,
+    scenario.name,
+    [{ ...registered, lib: () => fakeProbeResult(scenario.returned) }],
+    undefined,
+    undefined,
+    {
+      identity,
+      adapterPath: Bun.resolveSync(scenario.package, fileURLToPath(import.meta.url)),
+      adapterPackage: scenario.package,
+      adapterType: "js",
+    },
+  )
+  expect(batch.ungradedDiagnostics).toEqual({})
+  expect(batch.observations).toMatchObject([
+    {
+      featureId: registered.id,
+      outcome: "error",
+      reason: "collector-error",
+      assertionType: scenario.returned,
+      note: expect.stringContaining(`declares ${scenario.declared} but returned ${scenario.returned}`),
+    },
+  ])
+})
+
+test("real qualified OSC callbacks survive pending and unit-reviewed sealed reader journeys", async () => {
+  const ids = ["extensions.osc0-icon-title", "extensions.osc52-clipboard", "extensions.osc52-write"]
+  const manifest = {
+    schemaVersion: 4 as const,
+    probeHash: "qualified-class-set-fixture",
+    adapterVersion: "fixture",
+    catalogIds: ids,
+    probes: { term: [], mux: [], lib: ids },
+  }
+  const draft = initializeRunDraft({
+    source: { kind: "live" },
+    runId: "qualified-class-set-unit-journey",
+    sourceRevision: "a".repeat(40),
+    intendedSubject: { kind: "lib", id: "xtermjs" },
+    manifest,
+  })
+  const identityBackend = await backend()
+  const identity = {
+    ...(await headlessIdentity.headlessRuntimeIdentity("xtermjs", "@termless/xtermjs", "js")),
+    adapterSources: headlessIdentity.readAdapterSources("xtermjs", identityBackend),
+  }
+  identityBackend.destroy()
+  const batch = await collectBatch(backend, "xtermjs", registryDefinitions(ids), draft, undefined, {
+    identity,
+    adapterPath: Bun.resolveSync("@termless/xtermjs", fileURLToPath(import.meta.url)),
+    adapterPackage: "@termless/xtermjs",
+    adapterType: "js",
+  })
+  expect(batch.ungradedDiagnostics).toEqual({})
+  expect(batch.results).toMatchObject([
+    { featureId: ids[0], status: "supported", assertionType: "buffer_state" },
+    {
+      featureId: ids[1],
+      status: "test-failure",
+      assertionType: "buffer_state",
+      criterionBranch: "source-negative-review",
+    },
+    {
+      featureId: ids[2],
+      status: "test-failure",
+      assertionType: "buffer_state",
+      criterionBranch: "source-negative-review",
+    },
+  ])
+  const captured: CapturedRunDraft = {
+    ...draft,
+    subject: {
+      kind: "lib",
+      id: "xtermjs",
+      version: identity.engineVersion,
+      os: "linux",
+      osVersion: null,
+      outerTerminal: null,
+      mux: null,
+      config: null,
+      permissions: null,
+    },
+    identity: "unverified",
+    runtimeIdentity: identity,
+    measuredAt: new Date().toISOString(),
+    origin: { kind: "collector" },
+    rawReplies: batch.rawReplies,
+    results: batch.results,
+    assertions: batch.assertions,
+  }
+  const read = (value: unknown) =>
+    parseRun("qualified-unit.capture.json", JSON.stringify(value), ids, new Map([[manifest.probeHash, manifest]]), {
+      mode: "capture",
+    })
+  expect(read(captured).results).toEqual(batch.results)
+  expect(() => sealRunDraft(captured)).toThrow("required review pending")
+  const mislabeled = structuredClone(captured)
+  for (const result of mislabeled.results.slice(1)) result.assertionType = "query_reply"
+  for (const assertion of mislabeled.assertions.filter((entry) => entry.featureId !== ids[0])) {
+    assertion.assertionType = "query_reply"
+  }
+  expect(() => read(mislabeled)).toThrow("requires a recorded parser-level rejection")
+  const invalidState = structuredClone(captured)
+  const stateAssertion = invalidState.assertions.find((entry) => entry.featureId === ids[1])!
+  stateAssertion.observed = "not-json"
+  invalidState.rawReplies[ids[1]!] = "not-json"
+  expect(() => read(invalidState)).toThrow("state snapshot")
+  const reviewed = structuredClone(captured)
+  const reviewedAt = new Date(Date.now() + 1000).toISOString()
+  for (const id of ids.slice(1)) {
+    const binding = retainCaptureBinding(reviewed, id)
+    applyCaptureDecision(
+      reviewed,
+      JSON.stringify({
+        id: `unit-only-${id}`,
+        runId: reviewed.runId,
+        featureId: id,
+        captureSha256: binding.sha256,
+        decision: "unsupported",
+        reviewed: true,
+        reviewer: "unit-fixture-independent-reviewer",
+        reason: "Unit-only reviewed absent handler; no production decision",
+        scope: {
+          subject: { kind: "lib", id: "xtermjs" },
+          versions: [identity.engineVersion, identity.engineVersion],
+          suites: [manifest.probeHash, manifest.probeHash],
+        },
+        sources: [binding.rawReplyRef, "unit-fixture:InputHandler.ts:292-338"],
+        supersedes: [],
+      }),
+      reviewedAt,
+    )
+  }
+  const sealed = sealRunDraft(reviewed, new Date(Date.now() + 2000).toISOString())
+  const parsed = read(sealed)
+  expect(parsed.results.map((result) => result.status)).toEqual(["supported", "unsupported", "unsupported"])
+  expect(parsed.results.map((result) => result.assertionType)).toEqual(["buffer_state", "buffer_state", "buffer_state"])
+  expect(parsed.assertions.slice(0, captured.assertions.length)).toEqual(captured.assertions)
+  expect(parsed.assertions).toHaveLength(captured.assertions.length + 2)
+})
+
 test.each([
   { selected: true, actual: "buffer_state", allowed: ["buffer_state"], outcome: "inconclusive" },
   { selected: false, actual: "query_reply", allowed: ["buffer_state"], outcome: "inconclusive" },
