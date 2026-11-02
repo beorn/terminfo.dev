@@ -105,18 +105,21 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
   })
 })
 
-const raw = (status: ProbeStatus, criterionBranch?: string) => ({
+const raw = (status: ProbeStatus, criterionBranch?: string, version = "1.0") => ({
   featureId: "a.one",
   status,
   ...(criterionBranch && { criterionBranch }),
   runId: "raw-run",
   suiteId: "suite-new",
+  version,
   measuredAt: "2026-11-02T21:36:00.000Z",
 })
-const reviewed = (status: ProbeStatus, suiteId = "suite-new") => ({
+const reviewed = (status: ProbeStatus, suiteId = "suite-new", criterionBranch?: string, version = "1.0") => ({
   status,
+  ...(criterionBranch && { criterionBranch }),
   runId: "accepted-run",
   suiteId,
+  version,
   measuredAt: "2026-10-20T00:00:00.000Z",
   suiteLabel: `older suite ${suiteId}`,
 })
@@ -164,6 +167,36 @@ describe("workingCell: reviewed stays the headline, raw sits beside it (requirem
     expect(cell.raw.display).toBe("pending review")
     expect(cell.raw.status).toBe("test-failure")
   })
+
+  // @cto REVISE R1 (11b52b66d): a REVIEWED answer keeps its source-negative-review branch (run-parser seals e.g. vterm
+  // kitty-click as unsupported through it); only a still-open TODO/FAILURE on that branch is pending.
+  it("shows a reviewed unsupported-by-source-review answer as unsupported", () => {
+    const cell = workingCell(raw("unsupported"), reviewed("unsupported", "suite-new", "source-negative-review"))
+    expect(cell.reviewed?.display).toBe("unsupported")
+  })
+
+  it("shows a pending raw cell beside it as pending review, never as differing", () => {
+    const cell = workingCell(
+      raw("test-failure", "source-negative-review"),
+      reviewed("unsupported", "suite-new", "source-negative-review"),
+    )
+    expect(cell.reviewed?.display).toBe("unsupported")
+    expect(cell.raw.display).toBe("pending review")
+    expect(cell.raw.pendingReview).toBe(true)
+    expect(cell.raw.differsFromReviewed).toBe(false)
+  })
+
+  // @cto REVISE R2: "differs" needs the same suite AND the same engine version.
+  it("never marks a same-suite disagreement across engine versions as differing, and carries both versions", () => {
+    const cell = workingCell(
+      raw("unsupported", undefined, "0.16.2"),
+      reviewed("supported", "suite-new", undefined, "0.15.0"),
+    )
+    expect(cell.relation).toBe("same-suite")
+    expect(cell.raw.differsFromReviewed).toBe(false)
+    expect(cell.raw.version).toBe("0.16.2")
+    expect(cell.reviewed?.version).toBe("0.15.0")
+  })
 })
 
 describe("raw cells never enter an accepted rollup (requirement 3)", () => {
@@ -182,7 +215,7 @@ describe("raw cells never enter an accepted rollup (requirement 3)", () => {
       suiteId: first.run.suiteId,
       sourceRevision: "0".repeat(40),
       measuredAt: "2026-11-02T21:36:00.000Z",
-      subject: { ...entry.selected.subject, version: "hourly" },
+      subject: { ...entry.selected.subject, version: first.run.subject.version },
       results: [
         { featureId: first.result.featureId, status: first.result.status, attempt: { scope: "none" }, tests: [] },
         {

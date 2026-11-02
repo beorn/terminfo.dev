@@ -15,7 +15,9 @@
  * - Raw never enters any score, count, completeness tier or rollup: this view is built AFTER the accepted projection
  *   and only reads it. No working run is ever passed into `loadCurrentResults`, whose composed contexts would fold
  *   raw cells into accepted context cells and their counts.
- * - A pending source review (criterionBranch `source-negative-review`) reads "pending review", not failure.
+ * - A pending source review (criterionBranch `source-negative-review` still at TEST TODO or TEST FAILURE) reads
+ *   "pending review", not failure; a reviewed answer on that branch (e.g. sealed unsupported) reads as its status.
+ * - "Differs from reviewed" needs the same suite AND the same engine version, and never marks a pending raw cell.
  */
 import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from "node:fs"
 import { join, resolve, sep } from "node:path"
@@ -226,6 +228,8 @@ export interface RawSide {
   criterionBranch?: string
   runId: string
   suiteId: string
+  /** The engine version the raw run measured. */
+  version: string
   measuredAt: string
 }
 
@@ -234,6 +238,8 @@ export interface ReviewedSide {
   criterionBranch?: string
   runId: string
   suiteId: string
+  /** The engine version the reviewed run measured; a different version never "differs". */
+  version: string
   measuredAt: string
   /** The reviewed run's existing suite label (`release suite …`, `older suite …`), shown unchanged. */
   suiteLabel: string
@@ -248,9 +254,18 @@ export interface WorkingCell {
   raw: RawSide & { label: typeof RAW_LABEL; display: string; pendingReview: boolean; differsFromReviewed: boolean }
 }
 
-const pending = (side: { criterionBranch?: string }): boolean => side.criterionBranch === SOURCE_NEGATIVE_REVIEW
+/**
+ * The one "pending review" rule: a source-negative-review row still open (TEST TODO or TEST FAILURE). A REVIEWED
+ * answer keeps that branch with its decided status (run-parser seals e.g. unsupported through it), so the branch
+ * alone never means pending.
+ */
+export function pendingReview(side: { status: ProbeStatus; criterionBranch?: string }): boolean {
+  return (
+    side.criterionBranch === SOURCE_NEGATIVE_REVIEW && (side.status === "test-todo" || side.status === "test-failure")
+  )
+}
 const display = (side: { status: ProbeStatus; criterionBranch?: string }): string =>
-  pending(side) ? "pending review" : side.status
+  pendingReview(side) ? "pending review" : side.status
 
 /** The per-cell provenance rule; pure, so the headline rule is tested without a corpus. */
 export function workingCell(raw: RawSide, reviewed: ReviewedSide | undefined): WorkingCell {
@@ -265,8 +280,12 @@ export function workingCell(raw: RawSide, reviewed: ReviewedSide | undefined): W
       ...raw,
       label: RAW_LABEL,
       display: display(raw),
-      pendingReview: pending(raw),
-      differsFromReviewed: relation === "same-suite" && reviewed?.status !== raw.status,
+      pendingReview: pendingReview(raw),
+      differsFromReviewed:
+        relation === "same-suite" &&
+        reviewed?.version === raw.version &&
+        !pendingReview(raw) &&
+        reviewed.status !== raw.status,
     },
   }
 }
@@ -330,6 +349,7 @@ export function composeWorkingView(
               ...(cell.result.criterionBranch !== undefined && { criterionBranch: cell.result.criterionBranch }),
               runId: cell.run.runId,
               suiteId: cell.run.probeHash ?? cell.run.suiteId,
+              version: cell.run.subject.version,
               measuredAt: cell.run.measuredAt,
               suiteLabel: originalRunFor(projection, review.contextKey, cell.run.runId).suiteFreshness,
             }
@@ -341,6 +361,7 @@ export function composeWorkingView(
           ...(result.criterionBranch !== undefined && { criterionBranch: result.criterionBranch }),
           runId: run.runId,
           suiteId,
+          version: run.subject.version,
           measuredAt: run.measuredAt,
         },
         reviewedSide,

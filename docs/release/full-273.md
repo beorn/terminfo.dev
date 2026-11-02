@@ -22,7 +22,7 @@ This page reads composed contexts with original sealed sources on the required s
   <h2 id="hourly-raw">Hourly re-measure: raw, unreviewed</h2>
   <p><strong>Hourly run <code>{{ data.working.run.id }}</code>, started {{ data.working.run.startedAt }}</strong>; newest capture {{ data.working.run.newestCaptureAt }}; suite <code v-for="suite in data.working.run.suites" :key="suite">{{ suite }} </code>. An old time here means the hourly re-measure has stalled.</p>
   <div v-if="data.working.unreadable" class="danger custom-block"><p class="custom-block-title">Hourly run not shown</p><p><strong>{{ data.working.unreadable.banner }}</strong></p><p>{{ data.working.unreadable.reason }}</p></div>
-  <p>{{ data.working.rule }} Where a reviewed answer exists it is the headline; the raw cell sits beside it and says <em>differs from reviewed</em> when it disagrees on the same suite. A pending source review reads <em>pending review</em>, not failure. Nothing on this page counts raw cells.</p>
+  <p>{{ data.working.rule }} Where a reviewed answer exists it is the headline; the raw cell sits beside it and says <em>differs from reviewed</em> when it disagrees on the same suite and engine version; each side names its version. A pending source review reads <em>pending review</em>, not failure. Nothing on this page counts raw cells.</p>
   <p v-if="data.working.unmeasured.length">Not measured in this run: <span v-for="row in data.working.unmeasured" :key="row.engine"><code>{{ row.engine }}</code> ({{ row.status }}: {{ row.reason }}) </span></p>
   <div v-for="context in data.working.contexts" :key="context.contextKey">
     <h3>{{ context.engine }} <small>raw, unreviewed &middot; {{ context.reviewedContextKey ? 'beside reviewed ' + context.reviewedContextKey : 'raw is the only answer' }}</small></h3>
@@ -33,8 +33,8 @@ This page reads composed contexts with original sealed sources on the required s
         <thead><tr><th>Feature</th><th>Reviewed (headline)</th><th>Raw, unreviewed</th></tr></thead>
         <tbody><tr v-for="cell in context.cells" :key="cell.featureId">
           <td><code>{{ cell.featureId }}</code></td>
-          <td><template v-if="cell.reviewed"><strong>{{ cell.reviewed.display }}</strong><br><small>run <code>{{ cell.reviewed.runId }}</code> &middot; {{ cell.reviewed.suiteLabel }} &middot; {{ cell.reviewed.measuredAt }}</small></template><template v-else>&mdash; no reviewed answer</template></td>
-          <td><strong v-if="cell.headline === 'raw'">{{ cell.raw.display }}</strong><template v-else>{{ cell.raw.display }}</template> <em>({{ cell.raw.label }})</em><strong v-if="cell.raw.differsFromReviewed"> &mdash; differs from reviewed</strong><br><small>run <code>{{ cell.raw.runId }}</code> &middot; suite <code>{{ cell.raw.suiteId }}</code> &middot; {{ cell.raw.measuredAt }}</small></td>
+          <td><template v-if="cell.reviewed"><strong>{{ cell.reviewed.display }}</strong><br><small>version {{ cell.reviewed.version }} &middot; run <code>{{ cell.reviewed.runId }}</code> &middot; {{ cell.reviewed.suiteLabel }} &middot; {{ cell.reviewed.measuredAt }}</small></template><template v-else>&mdash; no reviewed answer</template></td>
+          <td><strong v-if="cell.headline === 'raw'">{{ cell.raw.display }}</strong><template v-else>{{ cell.raw.display }}</template> <em>({{ cell.raw.label }})</em><strong v-if="cell.raw.differsFromReviewed"> &mdash; differs from reviewed</strong><br><small>version {{ cell.raw.version }} &middot; run <code>{{ cell.raw.runId }}</code> &middot; suite <code>{{ cell.raw.suiteId }}</code> &middot; {{ cell.raw.measuredAt }}</small></td>
         </tr></tbody>
       </table>
     </details>
