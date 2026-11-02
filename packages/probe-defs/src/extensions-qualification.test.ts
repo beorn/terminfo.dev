@@ -243,9 +243,13 @@ test.each(absentOscBatch)(
 // must no longer reach any ghostty source-negative OSC review; the batch above proves the current blob does.
 test("ghostty OSC source review lapses on the pre-mouse-binding backend blob", () => {
   const ghostty = absentOscBatch.find((entry) => entry.engine === "ghostty")!
+  const sources = ghostty.identity.adapterSources
+  if (!sources?.some((source) => source.path === "packages/ghostty/src/backend.ts")) {
+    throw new Error("ghostty fixture identity must declare packages/ghostty/src/backend.ts")
+  }
   const old = {
     ...ghostty.identity,
-    adapterSources: ghostty.identity.adapterSources.map((source) =>
+    adapterSources: sources.map((source) =>
       source.path === "packages/ghostty/src/backend.ts" ? { ...source, blobOid: "7a917fe46b72d9870b898e71d440e7cb876b3fc1" } : source,
     ),
   }
