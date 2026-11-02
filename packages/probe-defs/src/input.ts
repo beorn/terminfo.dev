@@ -679,6 +679,15 @@ function kittyClickEventsLib(ctx: LibProbeSource): ProbeCallbackResult {
       storedClickEvents: false,
     })
   }
+  // @cto cac2b8dc: an adapter that encodes through termless's shared encodeMouseReport (no prompt or
+  // click_events model) yields a null that is the instrument's limit, never engine evidence; every later
+  // shared-encoder adapter (e.g. the alacritty and vt100-rust bridges) takes this same branch with its own citation.
+  if (ctx.backendName === "ghostty") {
+    return notTestedResult(
+      "shared core encoder carries no prompt state; ghostty WASM core 5714ed07 prompt_start keeps no click_events (termless 2719cfd ghostty-wasm-api.patch:624-627); #30936",
+      { storedClickEvents: false },
+    )
+  }
   if (!ctx.capabilities.extensions.has("mouse-encoding") || typeof ctx.encodeMouse !== "function") {
     return notTestedResult("library mouse-event encoding (undeclared mouse-encoding extension)", {
       mouseEncoding: false,

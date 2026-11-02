@@ -1318,6 +1318,40 @@ test("input.kitty-click-events library arm records unsupported when control pass
   ])
 })
 
+// @cto cac2b8dc K3: a shared-encoder adapter's null is the instrument's limit, never engine evidence.
+test.each([
+  ["ghostty", "not-tested"],
+  ["xtermjs", "unsupported"],
+] as const)("input.kitty-click-events library arm on %s: shared-encoder null reads %s", (backendName, expected) => {
+  let modesOn = false
+  const base = libMouseSource({
+    encodeMouse: (event) =>
+      modesOn ? sgrBytes(0, event.x + 1, event.y + 1, event.action === "release" ? "m" : "M") : null,
+  })
+  const ctx: LibProbeSource = {
+    ...base,
+    backendName,
+    feed(text: string) {
+      if (text.includes("?1000h")) modesOn = true
+      if (text.includes("?1000l")) modesOn = false
+    },
+  }
+  const result = probe("input.kitty-click-events").lib!(ctx)
+  if (expected === "not-tested") {
+    const noObservable =
+      "shared core encoder carries no prompt state; ghostty WASM core 5714ed07 prompt_start keeps no click_events (termless 2719cfd ghostty-wasm-api.patch:624-627); #30936"
+    expect(result).toEqual({
+      pass: false,
+      response: JSON.stringify({ storedClickEvents: false }),
+      note: noObservable,
+      notTested: { reason: "no-semantic-observable", noObservable },
+    })
+  } else {
+    expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "input_bytes" })
+    expect(result.assertions?.[0]).toMatchObject({ kind: "negative", action: "kitty-click-events:1" })
+  }
+})
+
 test("input.kitty-click-events library arm returns inconclusive when the prompt click report does not correlate with the control cell or button", () => {
   let modesOn = false
   let promptRow = -1
