@@ -237,26 +237,29 @@ function clusterWidth(cluster: string): number {
 function applyCodes(attributes: Attributes, codes: readonly number[], mutations?: ReadonlySet<string>): Attributes {
   let next = attributes
   for (const code of codes) {
-    if (code === 0) next = NO_ATTRIBUTES
-    else if (code === 1) next = { ...next, bold: true }
-    else if (code === 2) next = { ...next, dim: true }
-    else if (code === 3) next = { ...next, italic: true }
-    else if (code === 5) next = { ...next, blink: true }
-    else if (code === 7) next = { ...next, inverse: true }
-    else if (code === 8) next = { ...next, hidden: true }
-    else if (code === 9) next = { ...next, strikethrough: true }
-    else if (code === 22) next = { ...next, bold: false, dim: false }
-    else if (code === 23) next = { ...next, italic: false }
+    if (code === 0 && !mutations?.has("sgr0-noop")) next = NO_ATTRIBUTES
+    else if (code === 1 && !mutations?.has("bold-noop")) next = { ...next, bold: true }
+    else if (code === 2 && !mutations?.has("faint-noop")) next = { ...next, dim: true }
+    else if (code === 3 && !mutations?.has("italic-noop")) next = { ...next, italic: true }
+    else if (code === 5 && !mutations?.has("blink-noop")) next = { ...next, blink: true }
+    else if (code === 7 && !mutations?.has("inverse-noop")) next = { ...next, inverse: true }
+    else if (code === 8 && !mutations?.has("hidden-noop")) next = { ...next, hidden: true }
+    else if (code === 9 && !mutations?.has("strikethrough-noop")) next = { ...next, strikethrough: true }
+    else if (code === 22 && !mutations?.has("sgr22-noop")) next = { ...next, bold: false, dim: false }
+    else if (code === 23 && !mutations?.has("sgr23-noop")) next = { ...next, italic: false }
     else if (code === 25) next = { ...next, blink: false }
-    else if (code === 27) next = { ...next, inverse: false }
+    else if (code === 27 && !mutations?.has("sgr27-noop")) next = { ...next, inverse: false }
     else if (code === 28) next = { ...next, hidden: false }
     else if (code === 29) next = { ...next, strikethrough: false }
-    else if (code === 39) next = { ...next, fg: null }
-    else if (code === 49) next = { ...next, bg: null }
+    else if (code === 39 && !mutations?.has("fg-default-noop")) next = { ...next, fg: null }
+    else if (code === 49 && !mutations?.has("bg-default-noop")) next = { ...next, bg: null }
     else if (code === 53 && !mutations?.has("overline-noop")) next = { ...next, overline: true }
     else if (code === 55) next = { ...next, overline: false }
-    else if (code >= 40 && code <= 47) next = { ...next, bg: STANDARD_BG[code - 40] ?? null }
-    else if (code >= 30 && code <= 37) next = { ...next, fg: STANDARD_FG[code - 30] ?? null }
+    else if (code >= 40 && code <= 47 && !mutations?.has("bg-standard-noop")) {
+      next = { ...next, bg: STANDARD_BG[code - 40] ?? null }
+    } else if (code >= 30 && code <= 37 && !mutations?.has("fg-standard-noop")) {
+      next = { ...next, fg: STANDARD_FG[code - 30] ?? null }
+    }
   }
   return next
 }
@@ -265,13 +268,13 @@ function applyCodes(attributes: Attributes, codes: readonly number[], mutations?
 function reverseCodes(attributes: Attributes, codes: readonly number[], mutations?: ReadonlySet<string>): Attributes {
   let next = attributes
   for (const code of codes) {
-    if (code === 1) next = { ...next, bold: !next.bold }
-    else if (code === 2) next = { ...next, dim: !next.dim }
-    else if (code === 3) next = { ...next, italic: !next.italic }
-    else if (code === 5) next = { ...next, blink: !next.blink }
-    else if (code === 7) next = { ...next, inverse: !next.inverse }
-    else if (code === 8) next = { ...next, hidden: !next.hidden }
-    else if (code === 9) next = { ...next, strikethrough: !next.strikethrough }
+    if (code === 1 && !mutations?.has("bold-noop")) next = { ...next, bold: !next.bold }
+    else if (code === 2 && !mutations?.has("faint-noop")) next = { ...next, dim: !next.dim }
+    else if (code === 3 && !mutations?.has("italic-noop")) next = { ...next, italic: !next.italic }
+    else if (code === 5 && !mutations?.has("blink-noop")) next = { ...next, blink: !next.blink }
+    else if (code === 7 && !mutations?.has("inverse-noop")) next = { ...next, inverse: !next.inverse }
+    else if (code === 8 && !mutations?.has("hidden-noop")) next = { ...next, hidden: !next.hidden }
+    else if (code === 9 && !mutations?.has("strikethrough-noop")) next = { ...next, strikethrough: !next.strikethrough }
     else if (code === 53 && !mutations?.has("overline-noop")) next = { ...next, overline: !next.overline }
   }
   return next

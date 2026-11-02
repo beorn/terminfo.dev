@@ -300,33 +300,59 @@ test("a row reading overline is notTested when the bit is null, bound when prese
   })
 })
 
-test("sgr.overline reads supported on createSemanticSurface and fails when overline-noop is active", async () => {
-  const row = SGR_CONTRACT.find((entry) => entry.id === "sgr.overline")
-  const probe = sgrProbes.find((entry) => entry.id === "sgr.overline")
-  expect(row, "the SGR contract names sgr.overline").toBeDefined()
-  expect(probe, "the SGR contract names a real sgr.overline probe").toBeDefined()
-  if (!row || !probe || !probe.lib) return
+const SGR_SEMANTIC_SURFACE_CONTROLS: readonly (readonly [
+  id: string,
+  mutation: string,
+  negativeOutcome: "inconclusive" | "unsupported",
+])[] = [
+  ["sgr.bold", "bold-noop", "inconclusive"],
+  ["sgr.faint", "faint-noop", "inconclusive"],
+  ["sgr.italic", "italic-noop", "inconclusive"],
+  ["sgr.blink", "blink-noop", "inconclusive"],
+  ["sgr.inverse", "inverse-noop", "inconclusive"],
+  ["sgr.hidden", "hidden-noop", "inconclusive"],
+  ["sgr.strikethrough", "strikethrough-noop", "inconclusive"],
+  ["sgr.overline", "overline-noop", "inconclusive"],
+  ["sgr.fg.standard", "fg-standard-noop", "inconclusive"],
+  ["sgr.bg.standard", "bg-standard-noop", "inconclusive"],
+  ["sgr.fg.default", "fg-default-noop", "unsupported"],
+  ["sgr.bg.default", "bg-default-noop", "unsupported"],
+  ["sgr.selective-reset.bold", "sgr22-noop", "unsupported"],
+  ["sgr.selective-reset.italic", "sgr23-noop", "unsupported"],
+  ["sgr.selective-reset.inverse", "sgr27-noop", "unsupported"],
+  ["sgr.reset", "sgr0-noop", "unsupported"],
+]
 
-  const positiveSource = libProbeSource(createSemanticSurface())
-  const positiveResult = probe.lib(positiveSource)
-  expect(positiveResult.observation?.outcome).toBe("supported")
-  expect(positiveResult.assertions ?? []).toContainEqual(
-    expect.objectContaining({ kind: "positive", assertionType: "buffer_state" }),
-  )
-  const positiveGraded = await regradeRow(probe, row, { headless: libProbeSource(createSemanticSurface()) })
-  expect(positiveGraded.after).toBe("supported")
-  expect(positiveGraded.satisfies).toBe(true)
+test.each(SGR_SEMANTIC_SURFACE_CONTROLS)(
+  "%s reads supported on createSemanticSurface and %s when %s is active",
+  async (id, mutation, negativeOutcome) => {
+    const row = SGR_CONTRACT.find((entry) => entry.id === id)
+    const probe = sgrProbes.find((entry) => entry.id === id)
+    expect(row, `the SGR contract names ${id}`).toBeDefined()
+    expect(probe, `the SGR contract names a real ${id} probe`).toBeDefined()
+    if (!row || !probe || !probe.lib) return
 
-  const negativeSurface = createSemanticSurface({ mutations: ["overline-noop"] })
-  const negativeResult = probe.lib(libProbeSource(negativeSurface))
-  expect(negativeResult.observation?.outcome).not.toBe("supported")
-  expect(negativeSurface.getCell(0, 0).overline).toBe(false)
-  const negativeGraded = await regradeRow(probe, row, {
-    headless: libProbeSource(createSemanticSurface({ mutations: ["overline-noop"] })),
-  })
-  expect(negativeGraded.after).not.toBe("supported")
-  expect(negativeGraded.satisfies).toBe(false)
-})
+    const positiveSource = libProbeSource(createSemanticSurface())
+    const positiveResult = probe.lib(positiveSource)
+    expect(positiveResult.observation?.outcome).toBe("supported")
+    expect(positiveResult.assertions ?? []).toContainEqual(
+      expect.objectContaining({ kind: "positive", assertionType: "buffer_state" }),
+    )
+    const positiveGraded = await regradeRow(probe, row, { headless: libProbeSource(createSemanticSurface()) })
+    expect(positiveGraded.after).toBe("supported")
+    expect(positiveGraded.satisfies).toBe(true)
+
+    const negativeSurface = createSemanticSurface({ mutations: [mutation] })
+    const negativeResult = probe.lib(libProbeSource(negativeSurface))
+    expect(negativeResult.pass).toBe(false)
+    expect(negativeResult.observation?.outcome).toBe(negativeOutcome)
+    const negativeGraded = await regradeRow(probe, row, {
+      headless: libProbeSource(createSemanticSurface({ mutations: [mutation] })),
+    })
+    expect(negativeGraded.after).toBe(negativeOutcome)
+    expect(negativeGraded.satisfies).toBe(negativeOutcome === "unsupported")
+  },
+)
 
 // One negative assertion, on bold: the table above is the positive proof for all 32 rows; this only
 // pins that an inert cell is not satisfied. It is deliberately NOT a per-row negative suite, because
