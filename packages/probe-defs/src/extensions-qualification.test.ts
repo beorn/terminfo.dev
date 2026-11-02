@@ -68,7 +68,7 @@ const xtermOscIdentity = {
 } as const
 
 const xtermOscSourceCitation =
-  "@xterm/headless 6.0.0 bundle SHA256 17a90b650cf6b77cce2b98c4063884d43545e4ce177a54b76ccfc906f1aacaed, map SHA256 780e782badc8189491a469c9277b783e01911882ea84417b31e71294ea927d98: InputHandler.ts:292-338 OSC registrations (17/19/117/119 are comments only) and :201-203 logging-only fallback, OscParser.ts:145-146 fallback dispatch, CoreTerminal.ts:236-237 embedder hook; termless 2d97417328b7b1d086f9396b9a1731216ed134cc packages/xtermjs/src/backend.ts registers no OSC handler"
+  "@xterm/headless 6.0.0 bundle SHA256 17a90b650cf6b77cce2b98c4063884d43545e4ce177a54b76ccfc906f1aacaed, map SHA256 780e782badc8189491a469c9277b783e01911882ea84417b31e71294ea927d98: InputHandler.ts:292-338 OSC registrations (17/19/117/119 are comments only) and :201-203 logging-only fallback, OscParser.ts:145-146 fallback dispatch, CoreTerminal.ts:236-237 embedder hook; termless 9f0d4a5cbbeb2b7d9263ef7e07699df16a1cafc7 packages/xtermjs/src/backend.ts (blob 72dc827b2026af7736de722f7ff986a04f3fe883) registers no OSC handler"
 
 const auditedArtifacts: readonly HeadlessRuntimeIdentity[] = [
   {
