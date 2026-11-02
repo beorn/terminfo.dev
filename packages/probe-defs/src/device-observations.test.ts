@@ -695,13 +695,15 @@ describe("window-operation qualification", () => {
   // grades Unsupported by source citation; failed setup takes the headless observable review and unaudited artifacts
   // stay inconclusive.
   test.each([
-    ["1f23e13db5bda55ab54943461b83a5d642bf8d2050a452fbe7871927383dfe9f", "stream_handler.zig:343-346"],
+    ["3c2398d5c537d9c10e86b0af69311977927fcdbe4738618df194cedbdd22574d", "stream_handler.zig:343-346"],
     ["ce01cd0d1ae000dd88948f3817924cc85303874070cab39430967ebdf14877f3", "stream_handler.zig:343-346"],
     ["5c38594a17329b24e826f785d3156d6e498490517835f12b0730eeab2fc63da7", "stream_handler.zig:343-346"],
     ["d80a8110258a124fb6ff52a6fe149b8e39b5180d986907cc9fb7dc9143c3f3d9", "stream_handler.zig:343-346"],
     ["7ebe1b994b58ca867dcd19e9cdeb10b8839b6c1f0dbdea024f875a9f57560a23", "src/state.c:978"],
+    ["3d67045bb43c5e4081c70dc58088af8f735416c20df2d7843d765e5aad8ef62a", "src/state.c:978"],
     ["0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3", "src/perform.rs:132-156"],
     ["dc3b24de6e91416f66b1953ce101991ef7e78602ce1b5d357f65832c9b96b326", "src/perform.rs:132-156"],
+    ["6722b331de7489c14cb599d939e5d2314f054220728f83c5c29f454e70273e47", "src/terminalstate/mod.rs:2090-2095"],
     ["0f56a805793d7d829daa617f1323aacff0d73fe868747b0d077c6af315e2aab8", "src/terminalstate/mod.rs:2090-2095"],
   ] as const)(
     "audited title-stack artifact %s grades Unsupported by source only after observed setup",
@@ -760,12 +762,12 @@ describe("window-operation qualification", () => {
   test.each([
     [
       "vendor/vterm/packages/vt100/src/index.ts",
-      "d5ee344ab5b971184ba2c43ed60460656340417c",
+      "1eaac257cf9ff8d8ece752c8e6edc04b9ddaa6cf",
       "packages/vt100/src/screen.ts:251-358",
     ],
     [
       "vendor/vterm/packages/vt220/src/index.ts",
-      "9a320c4d5cd0e0b60bb2e6ea4f020ce5eb54ae53",
+      "d504616ae458b8b0fa9fa365034c30bd35f55ee8",
       "packages/vt220/src/screen.ts:305-428",
     ],
   ] as const)(
@@ -775,14 +777,14 @@ describe("window-operation qualification", () => {
         const baseIdentity = {
           kind: "js" as const,
           runtimeFormat: "js" as const,
-          engineVersion: "0.10.0",
+          engineVersion: "0.10.1",
           adapterVersion: "0.10.2",
           termlessRevision: "d5e6248bfb080c3065f81b78c45bdfe1b37c06d6",
           resolvedPath,
           integrity: {
             kind: "source" as const,
             repository: "git@github.com:beorn/vterm.git",
-            revision: "6cc7eef05cde6a8578479c6cdb480f606758eb2c",
+            revision: "bd3d32aea2f1994376a71adfc55b92705eedbd8c",
             treeOid,
             cleanTree: true,
           },
@@ -1073,12 +1075,12 @@ const geometryRuntime = {
   integrity: {
     kind: "source",
     repository: "git@github.com:beorn/vterm.git",
-    revision: "6cc7eef05cde6a8578479c6cdb480f606758eb2c",
-    treeOid: "d7bc627e039005ee913b0b244ff9a2ee2235746a",
+    revision: "bd3d32aea2f1994376a71adfc55b92705eedbd8c",
+    treeOid: "f10a184811894462b9ca7b65d6aab8ffd2fdd0bd",
     cleanTree: true,
   },
   runtimeFormat: "js",
-  engineVersion: "0.10.0",
+  engineVersion: "0.10.1",
 } as const
 const geometryReplies = [
   {
@@ -1177,8 +1179,8 @@ test.each(geometryReplies)("$id reports source tree drift before geometry gradin
 test.each(geometryReplies)("$id distinguishes sibling source entries", ({ id, raw }) => {
   const baseline = callback(id).headless({ feedCapture: () => raw } as unknown as LibProbeSource)
   for (const [engine, treeOid] of [
-    ["vt100", "d5ee344ab5b971184ba2c43ed60460656340417c"],
-    ["vt220", "9a320c4d5cd0e0b60bb2e6ea4f020ce5eb54ae53"],
+    ["vt100", "1eaac257cf9ff8d8ece752c8e6edc04b9ddaa6cf"],
+    ["vt220", "d504616ae458b8b0fa9fa365034c30bd35f55ee8"],
   ]) {
     const runtimeIdentity = {
       ...geometryRuntime,
@@ -1215,12 +1217,12 @@ test.each(geometryReplies)(
         treeOid: "617ae6002c7befea7b3e43d11bf23e6b433e3d65",
       },
     }
-    const pinned = "review pinned to vterm 0.10.0 6cc7eef05cde tree d7bc627e0390"
+    const pinned = "review pinned to vterm 0.10.1 bd3d32aea2f1 tree f10a18481189"
     for (const [runtimeIdentity, side] of [
       [loaded, "loaded vterm 0.9.0 53a9eb92aa11 tree 617ae6002c7b"],
       [
         { ...geometryRuntime, integrity: { ...geometryRuntime.integrity, cleanTree: false } },
-        "loaded vterm 0.10.0 6cc7eef05cde tree d7bc627e0390 dirty",
+        "loaded vterm 0.10.1 bd3d32aea2f1 tree f10a18481189 dirty",
       ],
     ] as const) {
       const result = callback(id).headless({ feedCapture: () => raw, runtimeIdentity } as unknown as LibProbeSource)

@@ -102,12 +102,51 @@ export function validatePresentationShape(
   }
 }
 
-export function validatePresentationSupersession(entries: readonly Interpretation[], path: string): void {
+function supersessionTarget(
+  byId: ReadonlyMap<string, Interpretation>,
+  entry: Interpretation,
+  priorId: string,
+  path: string,
+  runs: readonly LoadedRun[],
+): Interpretation {
+  const prior = byId.get(priorId)
+  if (entry.decision !== "tool-gap" || !entry.runSha256) {
+    if (prior) return prior
+    fail(path, `interpretation ${entry.id} supersedes unknown ${priorId}`)
+  }
+  if (prior) {
+    fail(
+      path,
+      `tool-gap ${entry.id}: target ${priorId} is a curated record; withdraw it through the store, not an exact-run overlay`,
+    )
+  }
+  const run = runs.find((run) => run.runId === entry.runId)
+  if (!run?.sealedAt) fail(path, `tool-gap ${entry.id} requires sealed run ${entry.runId} to resolve ${priorId}`)
+  if (run.sha256 !== entry.runSha256) fail(path, `tool-gap ${entry.id}: run SHA256 mismatch`)
+  if (!applies(entry, run)) fail(path, `tool-gap ${entry.id}: scope does not match exact run ${run.runId}`)
+  const source = run.rawReplies[`collector.review.${priorId}`]
+  if (source === undefined) fail(path, `tool-gap ${entry.id}: missing embedded review ${priorId} in run ${run.runId}`)
+  const embedded = parseCaptureDecision(
+    parseJsonStrict(path, source),
+    path,
+    new Set(run.catalogIds ?? []),
+    run.schemaVersion === 3 ? 3 : 4,
+  )
+  if (embedded.id !== priorId || embedded.featureId !== entry.featureId) {
+    fail(path, `tool-gap ${entry.id}: embedded review ${priorId} feature/id mismatch`)
+  }
+  return embedded
+}
+
+export function validatePresentationSupersession(
+  entries: readonly Interpretation[],
+  path: string,
+  runs: readonly LoadedRun[] = [],
+): void {
   const byId = new Map(entries.map((entry) => [entry.id, entry]))
   for (const entry of entries) {
     for (const priorId of entry.supersedes) {
-      const prior = byId.get(priorId)
-      if (!prior) fail(path, `interpretation ${entry.id} supersedes unknown ${priorId}`)
+      const prior = supersessionTarget(byId, entry, priorId, path, runs)
       const currentPresentation = hasPresentationDecision(entry)
       const priorPresentation = hasPresentationDecision(prior)
       if (
@@ -129,6 +168,7 @@ export function parseInterpretations(
   source: string,
   catalogIds: readonly string[],
   sources?: Map<string, string>,
+  runs: readonly LoadedRun[] = [],
 ): Interpretation[] {
   const entrySources: string[] = []
   const raw = parseJsonStrict(
@@ -171,7 +211,34 @@ export function parseInterpretations(
     if (new Set(entry.supersedes).size !== entry.supersedes.length || entry.supersedes.includes(id)) {
       fail(path, `duplicate/self supersedes for ${id}`)
     }
-    if (Object.hasOwn(entry, "captureSha256") || Object.hasOwn(entry, "decision") || Object.hasOwn(entry, "evidence")) {
+    const toolGap = entry.decision === "tool-gap" && Object.hasOwn(entry, "runSha256")
+    if (toolGap) {
+      if (entry.reviewed !== true || !nonempty(entry.featureId) || !catalog.has(entry.featureId)) {
+        fail(path, `tool-gap ${id} requires a reviewed catalogue feature`)
+      }
+      if (
+        !entry.supersedes.length ||
+        entry.scope.versions[0] !== entry.scope.versions[1] ||
+        entry.scope.suites[0] !== entry.scope.suites[1]
+      ) {
+        fail(path, `tool-gap ${id} requires supersedes and exact version/suite scope`)
+      }
+      for (const key of [
+        "captureSha256",
+        "evidence",
+        "observation",
+        "verifiesIdentity",
+        "presentsEvidence",
+        "accepted",
+        "origin",
+      ]) {
+        if (Object.hasOwn(entry, key)) fail(path, `tool-gap ${id} cannot set ${key}`)
+      }
+    } else if (
+      Object.hasOwn(entry, "captureSha256") ||
+      Object.hasOwn(entry, "decision") ||
+      Object.hasOwn(entry, "evidence")
+    ) {
       normalized.push(parseCaptureDecision(entry, `${path}: capture ${id}`, catalog, decodedScope.historical ? 3 : 4))
       continue
     }
@@ -232,7 +299,7 @@ export function parseInterpretations(
       }),
     } as unknown as Interpretation)
   }
-  validatePresentationSupersession(normalized, path)
+  validatePresentationSupersession(normalized, path, runs)
   if (sources) {
     for (const [index, entry] of normalized.entries()) {
       const bytes = entrySources[index]
@@ -261,25 +328,27 @@ export function applies(entry: Interpretation, run: LoadedRun): boolean {
   )
 }
 
-export function activeInterpretations(entries: readonly Interpretation[]): Interpretation[] {
+export function activeInterpretations(
+  entries: readonly Interpretation[],
+  runs: readonly LoadedRun[] = [],
+): Interpretation[] {
   const byId = new Map(entries.map((entry) => [entry.id, entry]))
   if (byId.size !== entries.length) throw new Error("duplicate interpretation ID")
   const visited = new Set<string>()
   const visiting = new Set<string>()
   const superseded = new Set<string>()
-  const visit = (id: string): void => {
+  const visit = (entry: Interpretation): void => {
+    const id = entry.id
     if (visiting.has(id)) throw new Error(`interpretation supersession cycle at ${id}`)
     if (visited.has(id)) return
-    const entry = byId.get(id)
-    if (!entry) throw new Error(`unknown superseded interpretation ${id}`)
     visiting.add(id)
     for (const prior of entry.supersedes) {
       superseded.add(prior)
-      visit(prior)
+      visit(supersessionTarget(byId, entry, prior, "interpretations", runs))
     }
     visiting.delete(id)
     visited.add(id)
   }
-  for (const entry of entries) visit(entry.id)
+  for (const entry of entries) visit(entry)
   return entries.filter((entry) => !superseded.has(entry.id))
 }

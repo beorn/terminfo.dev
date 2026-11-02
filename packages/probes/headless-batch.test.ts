@@ -52,7 +52,99 @@ async function backend() {
   return createXtermBackend()
 }
 
-// @failure A production source silently omits resize, or a main-screen measurement grades unmeasured reflow facets.
+// @failure A real collector source drops backend.name and turns the adapter-binding TODO into an undefined label.
+// @consumer The registered six-mode callback through createLibProbeSource and canonical batch recording.
+test("adapter-binding TODO names the initialized backend", async () => {
+  const definition = registryDefinitions(["modes.synchronized-output"])[0]!
+  const batch = await collectBatch(
+    async () => {
+      const value = createXtermBackend()
+      vi.spyOn(value, "getMode").mockReturnValue(null)
+      return value
+    },
+    "xtermjs",
+    [definition],
+  )
+  expect(batch.ungradedDiagnostics).toEqual({})
+  expect(batch.results).toMatchObject([
+    { status: "test-todo", tests: [{ id: "criterion", reason: "adapter binding xterm syncOutput" }] },
+  ])
+  expect(batch.assertions).toEqual([])
+})
+
+function reflowEvidence(batch: Awaited<ReturnType<typeof collectBatch>>) {
+  // F4: the real collector's mixed-polarity evidence must also survive the canonical reader.
+  // This is explicitly unverified unit metadata, as in the existing DECCOLM reader fixture below;
+  // it grants no engine attestation, captured-cut identity, admission or publication.
+  const id = "extensions.reflow"
+  const manifest = {
+    schemaVersion: 4 as const,
+    probeHash: "reflow-reader-fixture",
+    adapterVersion: "fixture",
+    catalogIds: [id],
+    probes: { term: [], mux: [], lib: [id] },
+  }
+  const draft = initializeRunDraft({
+    source: { kind: "live" },
+    runId: "reflow-reader-fixture",
+    sourceRevision: "a".repeat(40),
+    intendedSubject: { kind: "lib", id: "xtermjs" },
+    manifest,
+  })
+  const captured: CapturedRunDraft = {
+    ...draft,
+    subject: {
+      kind: "lib",
+      id: "xtermjs",
+      version: "fixture",
+      os: "linux",
+      osVersion: null,
+      outerTerminal: null,
+      mux: null,
+      config: null,
+      permissions: null,
+    },
+    identity: "unverified",
+    runtimeIdentity: {
+      kind: "js",
+      engineVersion: "fixture",
+      adapterVersion: "fixture",
+      termlessRevision: "fixture",
+      resolvedPath: "fixture/xtermjs",
+      integrity: { kind: "registry", lockIntegrity: "fixture" },
+      runtimeFormat: "js",
+    },
+    measuredAt: "2026-11-01T13:00:00.000Z",
+    origin: { kind: "collector" },
+    rawReplies: batch.rawReplies,
+    results: batch.results,
+    assertions: batch.assertions,
+  }
+  const parsed = parseRun(
+    "reflow.capture.json",
+    JSON.stringify(captured),
+    manifest.catalogIds,
+    new Map([[manifest.probeHash, manifest]]),
+    { mode: "capture" },
+  )
+  expect(parsed.results).toEqual(batch.results)
+  return JSON.parse(batch.rawReplies["extensions.reflow"]!) as {
+    declaredReflow: boolean
+    phases: Array<{ outcome: string }>
+    historyPhases: Array<{ id: string; status: string; outcome: string; reason: string }>
+    alternatePhases: Array<{ id: string; status: string; outcome: string; reason: string }>
+    alternateRoundtrips: Record<string, { roundtrip: { pass: boolean }; identity: Record<string, boolean | null> }>
+    actions: Array<{ kind: string; text?: string; name?: string }>
+    reads: Record<string, { cells: string[][]; scrollback: { totalLines: number; screenLines: number } }>
+  }
+}
+
+function mainAndHistoryAssertions(batch: Awaited<ReturnType<typeof collectBatch>>) {
+  return batch.assertions.filter(({ expected }) => expected.startsWith("main-") || expected.startsWith("history-"))
+}
+
+// @failure Four qualified main/history phases stay pending or an alternate negative vetoes ASCII reflow.
+// CTO F4a/g: existing evidence-only assertions missed feature promotion and history-row reference ownership.
 // @level l1
 // @consumer Registered reflow callback through the real headless source and canonical batch result.
 test.each([false, true])("production reflow controls ignore the capability declaration (%s)", async (declared) => {
@@ -78,30 +170,93 @@ test.each([false, true])("production reflow controls ignore the capability decla
     ],
   )
   expect(batch.ungradedDiagnostics).toEqual({})
+  // @failure Alternate reflow measurements never reach the real collector; existing main/history checks cannot detect that gap.
+  // @consumer CTO-approved alternate-only evidence, kept outside the required-test fold.
+  expect(reflowEvidence(batch).alternatePhases).toMatchObject([
+    { id: "alternate-grow", status: "unsupported", outcome: "preserved-wraps" },
+    { id: "alternate-shrink", status: "unsupported", outcome: "truncated" },
+  ])
+  expect(batch.assertions.filter(({ expected }) => expected.startsWith("alternate-")).map(({ kind }) => kind)).toEqual([
+    "negative",
+    "negative",
+  ])
+  const alternate = reflowEvidence(batch)
+  for (const { id } of alternate.alternatePhases) {
+    expect(alternate.alternateRoundtrips[id]).toMatchObject({
+      roundtrip: { pass: true },
+      identity: { before: false, entered: true, target: true, control: true, restored: false, after: false },
+    })
+    const target = alternate.actions.findIndex((action) => action.kind === "read" && action.name === `${id}.after`)
+    const control = alternate.actions.findIndex(
+      (action) => action.kind === "read" && action.name === `${id}.control-after`,
+    )
+    expect(target).toBeGreaterThanOrEqual(0)
+    expect(control).toBeGreaterThan(target)
+    const sameState = alternate.actions.slice(target + 1, control)
+    expect(sameState.some((action) => action.kind === "reset" || action.kind === "resize")).toBe(false)
+    expect(sameState.some((action) => /\x1b\[\?1049[hl]/.test(action.text ?? ""))).toBe(false)
+  }
   expect(batch.results).toMatchObject([
     {
       featureId: "extensions.reflow",
-      status: "test-todo",
+      status: "supported",
+      reason: expect.stringContaining(
+        "ASCII reflow measured on main screen and retained history; wide characters, cursor on a wrapped line and terminal-app resize unmeasured",
+      ),
       assertionType: "buffer_state",
       tests: expect.arrayContaining([
         expect.objectContaining({ id: "main-grow", status: "supported" }),
         expect.objectContaining({ id: "main-shrink", status: "supported" }),
-        expect.objectContaining({ id: "alternate-screen", status: "test-todo" }),
-        expect.objectContaining({ id: "scrollback", status: "test-todo" }),
+        expect.objectContaining({ id: "history-grow", status: "supported" }),
+        expect.objectContaining({ id: "history-shrink", status: "supported" }),
       ]),
     },
   ])
-  expect(batch.assertions).toMatchObject([
+  expect(batch.results[0]!.reason).toContain("reported, not graded")
+  // F4g: checking status alone misses default-all references and references borrowed from another phase.
+  expect(batch.results[0]!.tests.map(({ id }) => id)).toEqual([
+    "main-grow",
+    "main-shrink",
+    "history-grow",
+    "history-shrink",
+  ])
+  for (const row of batch.results[0]!.tests) {
+    expect(row.assertionRefs).toHaveLength(1)
+    expect(row.assertionRefs!.map((index) => batch.assertions[index]!.expected.split(":")[0])).toEqual([row.id])
+  }
+  expect(mainAndHistoryAssertions(batch)).toMatchObject([
+    { kind: "positive", assertionType: "buffer_state", observed: batch.rawReplies["extensions.reflow"] },
+    { kind: "positive", assertionType: "buffer_state", observed: batch.rawReplies["extensions.reflow"] },
     { kind: "positive", assertionType: "buffer_state", observed: batch.rawReplies["extensions.reflow"] },
     { kind: "positive", assertionType: "buffer_state", observed: batch.rawReplies["extensions.reflow"] },
   ])
-  const observed = JSON.parse(batch.rawReplies["extensions.reflow"]!)
+  const observed = reflowEvidence(batch)
   expect(observed).toMatchObject({ declaredReflow: declared, phases: [{ outcome: "reflow" }, { outcome: "reflow" }] })
+  // Main-only coverage cannot detect lost history or hard-line boundaries. Check the actual full
+  // buffer, including every hard witness, independently of the required-test fold.
+  expect(observed.historyPhases).toMatchObject([
+    { id: "history-grow", outcome: "reflow", status: "supported" },
+    { id: "history-shrink", outcome: "reflow", status: "supported" },
+  ])
+  for (const id of ["history-grow", "history-shrink"]) {
+    const before = observed.reads[`${id}.before`]!
+    const after = observed.reads[`${id}.after`]!
+    expect(before.scrollback.totalLines - before.scrollback.screenLines).toBeGreaterThan(4)
+    expect(after.cells).toHaveLength(after.scrollback.totalLines)
+    const lines = after.cells.map((row: string[]) => row.join("").trimEnd())
+    expect(lines.slice(0, id === "history-grow" ? 3 : 4)).toEqual(
+      id === "history-grow"
+        ? ["ABCDEFGHIJKLMNOPQR", "HARD-a", "HARD-b"]
+        : ["ABCDEFGHIJKL", "MNOPQR", "HARD-a", "HARD-b"],
+    )
+    expect(lines.slice(-48)).toEqual(Array.from({ length: 48 }, (_, i) => `R${String(i).padStart(3, "0")}`))
+  }
 })
 
 // @failure A genuine non-reflowing engine truncates on shrink and is mislabeled as a broken probe.
 // @level l1
 // @consumer Real collector phase rows and the required-test fold; xterm-only cases miss this negative.
+// CTO F4d: a measured main negative cannot skip missing history; the old placeholders hid that precedence.
 test.each([
   ["vt100", resolveVt100],
   ["libvterm", resolveLibvterm],
@@ -111,23 +266,376 @@ test.each([
   expect(batch.results).toMatchObject([
     {
       featureId: "extensions.reflow",
-      status: "test-todo",
+      status: name === "libvterm" ? "test-todo" : "unsupported",
       reason: expect.stringContaining("main-grow"),
       tests: expect.arrayContaining([
         // libvterm keeps its default reflow option off; these are internal observations, not a final grade.
         expect.objectContaining({ id: "main-grow", status: "unsupported" }),
         expect.objectContaining({ id: "main-shrink", status: "unsupported" }),
-        expect.objectContaining({ id: "alternate-screen", status: "test-todo" }),
-        expect.objectContaining({ id: "scrollback", status: "test-todo" }),
+        ...["history-grow", "history-shrink"].map((id) =>
+          expect.objectContaining({
+            id,
+            status: name === "libvterm" ? "test-todo" : "unsupported",
+            ...(name === "libvterm" && { reason: "engine retained no history", assertionRefs: [] }),
+          }),
+        ),
       ]),
     },
   ])
   expect(batch.results[0]!.reason).toContain("main-shrink")
-  expect(JSON.parse(batch.rawReplies["extensions.reflow"]!)).toMatchObject({
+  expect(reflowEvidence(batch)).toMatchObject({
     phases: [{ outcome: "preserved-wraps" }, { outcome: "truncated" }],
   })
-  expect(batch.assertions.map((assertion) => assertion.kind)).toEqual(["negative", "negative"])
+  expect(
+    batch.assertions.filter((assertion) => assertion.expected.startsWith("main-")).map((assertion) => assertion.kind),
+  ).toEqual(["negative", "negative"])
+  const history = reflowEvidence(batch).historyPhases
+  if (name === "libvterm") {
+    expect(history).toMatchObject([
+      { status: "test-todo", reason: "engine retained no history" },
+      { status: "test-todo", reason: "engine retained no history" },
+    ])
+    expect(mainAndHistoryAssertions(batch)).toHaveLength(2)
+  } else {
+    expect(history).toMatchObject([
+      { outcome: "preserved-wraps", status: "unsupported" },
+      { outcome: "truncated", status: "unsupported" },
+    ])
+    expect(batch.assertions.map((assertion) => assertion.kind)).toEqual([
+      "negative",
+      "negative",
+      "negative",
+      "negative",
+    ])
+    const observed = reflowEvidence(batch)
+    for (const id of ["history-grow", "history-shrink"]) {
+      const after = observed.reads[`${id}.after`]!
+      const lines = after.cells.map((row: string[]) => row.join("").trimEnd())
+      expect(lines.slice(0, id === "history-grow" ? 4 : 3)).toEqual(
+        id === "history-grow" ? ["ABCDEFGHIJKL", "MNOPQR", "HARD-a", "HARD-b"] : ["ABCDEFGHIJKL", "HARD-a", "HARD-b"],
+      )
+      expect(lines.slice(-48)).toEqual(Array.from({ length: 48 }, (_, i) => `R${String(i).padStart(3, "0")}`))
+    }
+  }
 })
+
+// @failure A bounded retention limit is called Unsupported instead of naming unavailable target rows.
+// @level l1
+// @consumer Real xterm retained-buffer limits through the canonical collector.
+// CTO F4c: a corrupt short tail must fail the feature; existing coverage only checked its raw phase failure.
+test.each([
+  { limit: 2, corrupt: false },
+  { limit: 8, corrupt: false },
+  { limit: 8, corrupt: true },
+])("reflow names only a coherent partially retained target as unavailable (%j)", async ({ limit, corrupt }) => {
+  const definition = registryDefinitions(["extensions.reflow"])[0]!
+  const batch = await collectBatch(
+    async () => {
+      const value = createXtermBackend()
+      const init = value.init.bind(value)
+      value.init = (options) => init({ ...options, scrollbackLimit: limit })
+      return value
+    },
+    "xtermjs",
+    [
+      {
+        ...definition,
+        lib(ctx) {
+          if (corrupt) {
+            const cell = ctx.getCell.bind(ctx)
+            ctx.getCell = (row, col) => {
+              const value = cell(row, col)
+              return col === 0 && value.char === "R" ? { ...value, char: "X" } : value
+            }
+          }
+          return definition.lib!(ctx)
+        },
+      },
+    ],
+  )
+  expect(batch.ungradedDiagnostics).toEqual({})
+  expect(batch.results[0]!.status).toBe(corrupt ? "test-failure" : "test-todo")
+  expect(mainAndHistoryAssertions(batch)).toHaveLength(2)
+  expect(reflowEvidence(batch).historyPhases).toMatchObject(
+    corrupt
+      ? [
+          { status: "test-failure", reason: expect.stringContaining("does not match the fed tail") },
+          { status: "test-failure", reason: expect.stringContaining("does not match the fed tail") },
+        ]
+      : [
+          { status: "test-todo", reason: `target not fully retained (H=${limit}, need 28)` },
+          { status: "test-todo", reason: `target not fully retained (H=${limit}, need 27)` },
+        ],
+  )
+})
+
+// @failure History corruption or an invalid control becomes a negative; huge counts trigger unbounded reads;
+// a viewport position prevents an otherwise complete absolute-buffer measurement.
+// @level l1
+// @consumer Registered callback with real xterm effects and source-boundary faults.
+// CTO F4c: required history failures beat positive main phases; the prior test required aggregate TODO.
+test.each(["witness-loss", "width-control", "bad-counts", "control-counts", "viewport"] as const)(
+  "history reflow folds qualified required evidence for %s",
+  async (fault) => {
+    const definition = registryDefinitions(["extensions.reflow"])[0]!
+    const batch = await collectBatch(backend, "xtermjs", [
+      {
+        ...definition,
+        lib(ctx) {
+          const feed = ctx.feed.bind(ctx)
+          const resize = ctx.resize!.bind(ctx)
+          const reset = ctx.reset.bind(ctx)
+          const cell = ctx.getCell.bind(ctx)
+          const scrollback = ctx.getScrollback.bind(ctx)
+          let seeded = false
+          let resized = false
+          let control = false
+          ctx.feed = (text) => {
+            if (text.includes("\r\nR000")) seeded = true
+            if (seeded && resized && text.startsWith("W")) {
+              control = true
+              if (fault === "width-control") text = text.slice(0, -1)
+            }
+            feed(text)
+          }
+          ctx.resize = (cols, rows) => {
+            resize(cols, rows)
+            if (seeded) resized = true
+          }
+          ctx.reset = () => {
+            reset()
+            seeded = false
+            resized = false
+            control = false
+          }
+          ctx.getScrollback = () => {
+            const value = scrollback()
+            if (seeded && (fault === "bad-counts" || (fault === "control-counts" && control))) {
+              return { ...value, totalLines: Number.MAX_SAFE_INTEGER }
+            }
+            if (seeded && fault === "viewport") return { ...value, viewportOffset: 1, viewportTop: 1 }
+            return value
+          }
+          ctx.getCell = (row, col) => {
+            if (seeded && fault === "bad-counts") throw new Error("Unbounded history read attempted")
+            const value = cell(row, col)
+            return seeded && resized && !control && fault === "witness-loss" && value.char === "R" && col === 0
+              ? { ...value, char: "X" }
+              : value
+          }
+          return definition.lib!(ctx)
+        },
+      },
+    ])
+    expect(batch.ungradedDiagnostics).toEqual({})
+    expect(batch.results[0]!.status).toBe(fault === "viewport" ? "supported" : "test-failure")
+    const observed = reflowEvidence(batch)
+    expect(observed.historyPhases.map((phase: { status: string }) => phase.status)).toEqual(
+      fault === "viewport" ? ["supported", "supported"] : ["test-failure", "test-failure"],
+    )
+    expect(mainAndHistoryAssertions(batch)).toHaveLength(fault === "viewport" ? 4 : 2)
+    if (fault === "bad-counts" || fault === "control-counts") {
+      expect(observed.historyPhases[0]!.reason).toContain("totalLines=9007199254740991")
+      expect(
+        observed.reads[fault === "bad-counts" ? "history-grow.before" : "history-grow.control-after"]!.cells,
+      ).toEqual([])
+    }
+    if (fault === "witness-loss") {
+      expect(observed.historyPhases[0]!.reason).toContain("neither complete retained layout")
+    }
+    if (fault === "width-control") {
+      expect(observed.historyPhases[0]!.reason).toContain("Post-resize width control")
+    }
+  },
+)
+
+// @failure Qualified alternate positives are omitted, or their polarity is folded against another buffer.
+// @level l1
+// @consumer Actual vterm alternate resize/readback; the xterm case above supplies complete physical negatives.
+// CTO F4b: main positive/history negative is an engine limit, not a cross-buffer failure or perpetual TODO.
+test("alternate reflow records real vterm logical layouts without cross-buffer grading", async () => {
+  const batch = await collectBatch(
+    async () => createVtermBackend(),
+    "vterm",
+    registryDefinitions(["extensions.reflow"]),
+  )
+  expect(batch.ungradedDiagnostics).toEqual({})
+  const observed = reflowEvidence(batch)
+  expect(observed.alternatePhases).toMatchObject([
+    { id: "alternate-grow", status: "supported", outcome: "reflow" },
+    { id: "alternate-shrink", status: "supported", outcome: "reflow" },
+  ])
+  const rows = (name: string, count: number) =>
+    observed.reads[name]!.cells.slice(0, count).map((row) => row.join("").trimEnd())
+  expect(rows("alternate-grow.before", 4)).toEqual(["ABCDEFGHIJKL", "MNOPQR", "HARD-a", "HARD-b"])
+  expect(rows("alternate-grow.after", 3)).toEqual(["ABCDEFGHIJKLMNOPQR", "HARD-a", "HARD-b"])
+  expect(rows("alternate-shrink.before", 3)).toEqual(["ABCDEFGHIJKLMNOPQR", "HARD-a", "HARD-b"])
+  expect(rows("alternate-shrink.after", 4)).toEqual(["ABCDEFGHIJKL", "MNOPQR", "HARD-a", "HARD-b"])
+  expect(batch.assertions.filter(({ expected }) => expected.startsWith("alternate-")).map(({ kind }) => kind)).toEqual([
+    "positive",
+    "positive",
+  ])
+  expect(batch.assertions.filter(({ expected }) => expected.startsWith("history-")).map(({ kind }) => kind)).toEqual([
+    "negative",
+    "negative",
+  ])
+  expect(batch.results[0]!.status).toBe("unsupported")
+  expect(batch.results[0]!.reason).toContain("history-grow")
+  expect(batch.results[0]!.reason).toContain("history-shrink")
+  expect(batch.results[0]!.tests.map(({ id, status }) => ({ id, status }))).toEqual([
+    { id: "main-grow", status: "supported" },
+    { id: "main-shrink", status: "supported" },
+    { id: "history-grow", status: "unsupported" },
+    { id: "history-shrink", status: "unsupported" },
+  ])
+})
+
+// @failure An unqualified alternate buffer or corrupt target/control becomes a reflow assertion.
+// @level l1
+// @consumer Alternate-only raw evidence through the registered callback and production source.
+// Existing main/history tests never enter alternate; mode tests never resize its target.
+// CTO F4e: invalid alternate evidence remains reported but cannot veto four qualified graded phases.
+// Prior aggregate TODO assertions could not detect an accidental alternate-failure fold.
+// F2/F3: require the deciding reason; setup failures must stay invalid even when mode identity
+// is false or unavailable. Status-only cases miss a removed identity check or the wrong failing control.
+test.each([
+  { fault: "missing-mode", status: "test-todo", reason: "alternate buffer identity unavailable" },
+  { fault: "target-mode-missing", status: "test-todo", reason: "alternate buffer identity unavailable" },
+  { fault: "no-entry", status: "test-todo", reason: "alternate buffer not entered" },
+  {
+    fault: "bogus-mode",
+    status: "test-failure",
+    reason: expect.stringContaining("did not clear the seeded primary spans"),
+  },
+  {
+    fault: "hard-row",
+    status: "test-failure",
+    reason: "Alternate resize matched neither complete layout, including hard rows and blank tails",
+  },
+  {
+    fault: "blank-tail",
+    status: "test-failure",
+    reason: "Alternate resize matched neither complete layout, including hard rows and blank tails",
+  },
+  {
+    fault: "control-switch",
+    status: "test-failure",
+    reason: "Post-resize alternate width control did not wrap at the requested column",
+  },
+  {
+    fault: "control-identity",
+    status: "test-failure",
+    reason: "Alternate buffer identity changed during target or width-control readback",
+  },
+  { fault: "slot-read", status: "test-failure", reason: "Alternate measurement failed: alternate slot read failed" },
+  { fault: "restore", status: "test-failure", reason: expect.stringContaining("PRIMARY-A not restored") },
+  {
+    fault: "marker-missing-false",
+    status: "test-failure",
+    reason: "Alternate isolation did not qualify: Alternate marker was not measured",
+  },
+  {
+    fault: "marker-readback-false",
+    status: "test-failure",
+    reason: "Alternate isolation did not qualify: Alternate-marker readback failed",
+  },
+  {
+    fault: "marker-missing-null",
+    status: "test-failure",
+    reason: "Alternate isolation did not qualify: Alternate marker was not measured",
+  },
+  {
+    fault: "marker-readback-null",
+    status: "test-failure",
+    reason: "Alternate isolation did not qualify: Alternate-marker readback failed",
+  },
+] as const)(
+  "alternate reflow qualifies identity and complete target evidence (%s)",
+  async ({ fault, status, ...row }) => {
+    const definition = registryDefinitions(["extensions.reflow"])[0]!
+    const batch = await collectBatch(backend, "xtermjs", [
+      {
+        ...definition,
+        lib(ctx) {
+          const feed = ctx.feed.bind(ctx)
+          const resize = ctx.resize!.bind(ctx)
+          const reset = ctx.reset.bind(ctx)
+          const mode = ctx.getMode.bind(ctx)
+          const cell = ctx.getCell.bind(ctx)
+          let entered = false
+          let seeded = false
+          let resized = false
+          let control = false
+          let marker = false
+          ctx.getMode = (name) => {
+            if (name === "altScreen" && fault.endsWith("-false")) return false
+            if (name === "altScreen" && fault.endsWith("-null")) return null
+            if (name === "altScreen" && fault === "missing-mode") return null
+            if (name === "altScreen" && fault === "target-mode-missing" && seeded && resized && !control) return null
+            if (name === "altScreen" && fault === "bogus-mode") return entered
+            if (name === "altScreen" && fault === "control-identity" && control) return false
+            return mode(name)
+          }
+          ctx.feed = (text) => {
+            if (text.includes("ALT-MARK")) marker = true
+            if (text.includes("\x1b[?1049h")) {
+              entered = true
+              if (fault === "no-entry" || fault === "bogus-mode") return
+            }
+            if (mode("altScreen") === true && text.includes("ABCDEFGHIJKLMNOPQR")) seeded = true
+            if (seeded && resized && text.startsWith("W")) {
+              control = true
+              if (fault === "control-switch") feed("\x1b[?1049l")
+            }
+            feed(text)
+          }
+          ctx.resize = (cols, rows) => {
+            resize(cols, rows)
+            if (seeded && mode("altScreen") === true) resized = true
+          }
+          ctx.reset = () => {
+            reset()
+            entered = seeded = resized = control = marker = false
+          }
+          ctx.getCell = (r, c) => {
+            if (marker && fault.startsWith("marker-readback-")) throw new Error("alternate marker readback failed")
+            if (seeded && mode("altScreen") === true && fault === "slot-read") {
+              throw new Error("alternate slot read failed")
+            }
+            const value = cell(r, c)
+            if (marker && fault.startsWith("marker-missing-") && r === 0 && c === 0) return { ...value, char: "X" }
+            if (fault === "restore" && entered && seeded && mode("altScreen") === false && r === 0 && c === 0) {
+              return { ...value, char: "X" }
+            }
+            const corrupt =
+              seeded &&
+              resized &&
+              !control &&
+              mode("altScreen") === true &&
+              c === 0 &&
+              ((fault === "hard-row" && r === 2) || (fault === "blank-tail" && r === 23))
+            return corrupt ? { ...value, char: "X" } : value
+          }
+          return definition.lib!(ctx)
+        },
+      },
+    ])
+    expect(batch.ungradedDiagnostics).toEqual({})
+    expect(batch.results[0]!.status).toBe("supported")
+    expect(batch.results[0]!.reason).toContain("reported, not graded")
+    expect(batch.results[0]!.tests.map(({ id, status }) => ({ id, status }))).toEqual([
+      { id: "main-grow", status: "supported" },
+      { id: "main-shrink", status: "supported" },
+      { id: "history-grow", status: "supported" },
+      { id: "history-shrink", status: "supported" },
+    ])
+    const phases = reflowEvidence(batch).alternatePhases
+    expect(phases.map((phase) => phase.status)).toEqual([status, status])
+    expect(phases.map((phase) => phase.reason)).toEqual([row.reason, row.reason])
+    expect(batch.assertions.filter(({ expected }) => expected.startsWith("alternate-"))).toEqual([])
+    expect(mainAndHistoryAssertions(batch)).toHaveLength(4)
+  },
+)
 
 // @failure A no-op resize, discarded wrap boundaries or lost characters become reflow support.
 // @level l1
@@ -159,12 +667,16 @@ test.each(["no-op", "hard-boundary", "content-loss", "cursor-on-target"] as cons
     expect(batch.ungradedDiagnostics).toEqual({})
     expect(batch.results[0]!.status).toBe("test-failure")
     expect(batch.results[0]!.reason).toContain("main-grow:")
-    const observed = JSON.parse(batch.rawReplies["extensions.reflow"]!)
+    const observed = reflowEvidence(batch)
     if (fault === "hard-boundary") {
       expect(observed).toMatchObject({ phases: [{ outcome: "preserved-wraps" }, { outcome: "reflow" }] })
-      expect(batch.assertions.map((assertion) => assertion.kind)).toEqual(["negative", "positive"])
+      expect(
+        batch.assertions
+          .filter((assertion) => assertion.expected.startsWith("main-"))
+          .map((assertion) => assertion.kind),
+      ).toEqual(["negative", "positive"])
       expect(batch.results[0]!.tests).toContainEqual(
-        expect.objectContaining({ id: "criterion", status: "test-failure" }),
+        expect.objectContaining({ id: "criterion", status: "test-failure", assertionRefs: [0, 1] }),
       )
     } else {
       expect(observed).toMatchObject({
@@ -173,59 +685,153 @@ test.each(["no-op", "hard-boundary", "content-loss", "cursor-on-target"] as cons
             ? [{ outcome: "invalid" }, { outcome: "invalid" }]
             : [{ outcome: "invalid" }, { outcome: "reflow" }],
       })
-      expect(batch.assertions.every((assertion) => assertion.kind === "positive")).toBe(true)
+      expect(mainAndHistoryAssertions(batch).every((assertion) => assertion.kind === "positive")).toBe(true)
+      if (fault === "no-op" || fault === "cursor-on-target") {
+        // Invalid main phases have no own assertion; history/alternate evidence cannot stand in for one.
+        expect(batch.results[0]!.tests.slice(0, 2).map((row) => row.assertionRefs)).toEqual([[], []])
+      }
     }
   },
 )
 
+// @failure A slot error is lost when measured/final leaves or later geometry/reset cleanup also fail.
+// @level l1
+// @consumer Approved shared alternate lifetime plus outer reflow cleanup; earlier tests cover only main/history errors.
+test.each([false, true])("alternate reflow retains slot and cleanup causes (leave fails=%s)", (failExit) => {
+  const value = createXtermBackend()
+  value.init({ cols: 80, rows: 24 })
+  const source = createLibProbeSource(value, undefined, undefined, undefined)
+  const slotError = new Error("alternate slot read failed")
+  const widthError = new Error("alternate width restoration failed")
+  const resetError = new Error("alternate reset failed")
+  const exitErrors: Error[] = []
+  const feed = source.feed.bind(source)
+  const cell = source.getCell.bind(source)
+  const resize = source.resize!.bind(source)
+  const reset = source.reset.bind(source)
+  let seeded = false
+  let poisoned = false
+  let restoring = false
+  let resetAttempted = false
+  source.feed = (text) => {
+    if (poisoned && failExit && text.includes("\x1b[?1049l")) {
+      const error = new Error(`alternate exit failure ${exitErrors.length + 1}`)
+      exitErrors.push(error)
+      throw error
+    }
+    if (value.getMode("altScreen") === true && text.includes("ABCDEFGHIJKLMNOPQR")) seeded = true
+    feed(text)
+  }
+  source.getCell = (row, col) => {
+    if (seeded && value.getMode("altScreen") === true) {
+      poisoned = true
+      throw slotError
+    }
+    return cell(row, col)
+  }
+  source.resize = (cols, rows) => {
+    if (cols === 80) {
+      restoring = true
+      throw widthError
+    }
+    resize(cols, rows)
+  }
+  source.reset = () => {
+    if (restoring) {
+      resetAttempted = true
+      throw resetError
+    }
+    reset()
+    seeded = false
+  }
+  try {
+    let caught: unknown
+    try {
+      registryDefinitions(["extensions.reflow"])[0]!.lib!(source)
+    } catch (error) {
+      caught = error
+    }
+    expect(caught).toBeInstanceOf(AggregateError)
+    expect(restoring).toBe(true)
+    expect(resetAttempted).toBe(true)
+    if (failExit) expect(exitErrors.length).toBeGreaterThanOrEqual(3)
+    const retained = new Set<unknown>()
+    const visit = (error: unknown) => {
+      if (retained.has(error)) return
+      retained.add(error)
+      if (error instanceof AggregateError) for (const nested of error.errors) visit(nested)
+      if (error instanceof Error && error.cause !== undefined) visit(error.cause)
+    }
+    visit(caught)
+    for (const error of [slotError, ...exitErrors, widthError, resetError]) {
+      expect(retained.has(error), error.message).toBe(true)
+    }
+  } finally {
+    value.destroy()
+  }
+})
+
 // @failure A failed cell read leaks resized state, or restoration failure skips reset and masks causes.
 // @level l1
 // @consumer Disposable reflow source lifetime, including diagnostic callers.
-test.each([false, true])(
-  "reflow restores geometry and attempts reset after a read error (cleanup faults %s)",
-  (failCleanup) => {
-    const value = createXtermBackend()
-    value.init({ cols: 80, rows: 24 })
-    const source = createLibProbeSource(value, undefined, undefined, undefined)
-    const readError = new Error("cell read failed")
-    const resizeError = new Error("geometry restoration failed")
-    const resetError = new Error("source reset failed")
-    const resize = source.resize!.bind(source)
-    const reset = source.reset.bind(source)
-    let resetAttempted = false
-    source.getCell = () => {
-      throw readError
-    }
-    source.resize = (cols, rows) => {
-      if (failCleanup && cols === 80) throw resizeError
-      resize(cols, rows)
-    }
-    source.reset = () => {
-      resetAttempted = true
-      if (failCleanup) throw resetError
-      reset()
-    }
+test.each([
+  { failCleanup: false, history: false },
+  { failCleanup: true, history: false },
+  { failCleanup: false, history: true },
+  { failCleanup: true, history: true },
+])("reflow restores geometry and attempts reset after a read error (%j)", ({ failCleanup, history }) => {
+  const value = createXtermBackend()
+  value.init({ cols: 80, rows: 24 })
+  const source = createLibProbeSource(value, undefined, undefined, undefined)
+  const readError = new Error("cell read failed")
+  const resizeError = new Error("geometry restoration failed")
+  const resetError = new Error("source reset failed")
+  const resize = source.resize!.bind(source)
+  const reset = source.reset.bind(source)
+  const feed = source.feed.bind(source)
+  const cell = source.getCell.bind(source)
+  let historySeeded = false
+  let cleaning = false
+  let resetAttempted = false
+  source.feed = (text) => {
+    if (text.includes("\r\nR000")) historySeeded = true
+    feed(text)
+  }
+  source.getCell = (row, col) => {
+    if (!history || historySeeded) throw readError
+    return cell(row, col)
+  }
+  source.resize = (cols, rows) => {
+    if (cols === 80) cleaning = true
+    if (failCleanup && cols === 80) throw resizeError
+    resize(cols, rows)
+  }
+  source.reset = () => {
+    if (cleaning) resetAttempted = true
+    if (failCleanup && cleaning) throw resetError
+    reset()
+    historySeeded = false
+  }
+  try {
+    let caught: unknown
     try {
-      let caught: unknown
-      try {
-        registryDefinitions(["extensions.reflow"])[0]!.lib!(source)
-      } catch (error) {
-        caught = error
-      }
-      expect(resetAttempted).toBe(true)
-      if (failCleanup) {
-        expect(caught).toBeInstanceOf(AggregateError)
-        expect((caught as AggregateError).errors).toEqual([readError, resizeError, resetError])
-      } else {
-        expect(caught).toBe(readError)
-        expect(value.getRow(0)).toHaveLength(80)
-        expect(value.getText().trim()).toBe("")
-      }
-    } finally {
-      value.destroy()
+      registryDefinitions(["extensions.reflow"])[0]!.lib!(source)
+    } catch (error) {
+      caught = error
     }
-  },
-)
+    expect(resetAttempted).toBe(true)
+    if (failCleanup) {
+      expect(caught).toBeInstanceOf(AggregateError)
+      expect((caught as AggregateError).errors).toEqual([readError, resizeError, resetError])
+    } else {
+      expect(caught).toBe(readError)
+      expect(value.getRow(0)).toHaveLength(80)
+      expect(value.getText().trim()).toBe("")
+    }
+  } finally {
+    value.destroy()
+  }
+})
 
 // @failure Engine metadata is lost between the real adapter, source constructor and registered callbacks.
 // @level l1
@@ -310,6 +916,244 @@ test.for(["extensions.osc7-cwd", "extensions.notifications"])(
   },
 )
 
+// @failure Declared native readers are lost at the collector binding, or undeclared/non-callable readers are exposed.
+// @level l1
+// @consumer Semantic-mark and Sixel storage callbacks through the actual LibProbeSource.
+test.for(["semantic-marks", "sixel-storage"] as const)(
+  "real vterm %s readback is forwarded only when declared and callable",
+  async (extension, context) => {
+    const sibling = fileURLToPath(new URL("../../../termless/packages/vterm/src/backend.ts", import.meta.url))
+    if (!existsSync(sibling)) context.skip(`Real-vterm reader binding requires missing sibling ${sibling}`)
+    const value = createVtermBackend({ cols: 80, rows: 24 })
+    const method = extension === "semantic-marks" ? "getSemanticMarks" : "getSixelImages"
+    try {
+      const source = createLibProbeSource(value, undefined, undefined, undefined)
+      expect(source[method]).toBeTypeOf("function")
+      if (extension === "semantic-marks") {
+        expect(source.getSemanticMarks!()).toEqual([])
+        source.feed("\x1b[2;3H\x1b]133;B\x07")
+        expect(source.getSemanticMarks!()).toEqual([{ type: "command", startRow: 1, startCol: 2 }])
+      } else {
+        expect(source.getSixelImages!()).toEqual([])
+        source.feed("\x1b[2;3H\x1bPq#1;2;100;0;0~\x1b\\")
+        expect(source.getSixelImages!()).toEqual([{ data: "#1;2;100;0;0~", row: 1, col: 2 }])
+      }
+      value.capabilities.extensions.delete(extension)
+      expect(createLibProbeSource(value, undefined, undefined, undefined)[method]).toBeUndefined()
+      value.capabilities.extensions.add(extension)
+      expect(Reflect.deleteProperty(value, method)).toBe(true)
+      expect(createLibProbeSource(value, undefined, undefined, undefined)[method]).toBeUndefined()
+    } finally {
+      value.destroy()
+    }
+  },
+)
+
+const VTERM_MARK_CASES = [
+  ["extensions.semantic-prompts", 133, "prompt"],
+  ["extensions.osc133-a", 133, "prompt"],
+  ["extensions.osc133-b", 133, "command"],
+  ["extensions.osc133-c", 133, "output"],
+  ["extensions.osc-633-vscode", 633, "prompt"],
+  ["extensions.osc633-a", 633, "prompt"],
+  ["extensions.osc633-b", 633, "command"],
+  ["extensions.osc633-c", 633, "output"],
+] as const
+
+// @failure A command-end-only native reader misgrades A/C or accepts cached/wrong raw status as a new D event.
+// @level l1
+// @consumer Registered OSC133D and start callbacks through the actual Kitty collector source.
+// Existing private callback tests cannot observe the public reader binding or the deciding callback route.
+test.skipIf(!isKittyAvailable())(
+  "Kitty command-end reader preserves start review and witnesses fresh raw D statuses",
+  () => {
+    const value = createKittyBackend({ cols: 80, rows: 24 })
+    try {
+      const source = createLibProbeSource(value, undefined, undefined, undefined)
+      const definition = registryDefinitions(["extensions.osc133-d"])[0]!
+      const result = definition.lib!(source)
+      expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
+      const observed = JSON.parse(result.response!) as { first: unknown[]; second: unknown[] }
+      expect(observed.first.at(-1)).toEqual({ type: "command-end", rawStatus: "0" })
+      expect(observed.second.at(-1)).toEqual({ type: "command-end", rawStatus: "17" })
+      for (const id of ["extensions.osc133-a", "extensions.osc133-c"]) {
+        const start = registryDefinitions([id])[0]!.lib!(source)
+        expect(start.criterionBranch, id).toBe(SEMANTIC_PROMPT_SOURCE_REVIEW)
+        expect(start.observation, id).toBeUndefined()
+      }
+      // The umbrella callbacks have their own dispatch gates; A/C alone cannot catch a callable-only gate there.
+      for (const id of ["extensions.semantic-prompts", "extensions.osc-633-vscode"]) {
+        const umbrella = registryDefinitions([id])[0]!.lib!(source)
+        expect(umbrella.criterionBranch, id).toBe(HEADLESS_OBSERVABLE_REVIEW)
+        expect(umbrella.observation, id).toBeUndefined()
+      }
+      const cached = source.getSemanticMarks!()
+      const reader = vi.spyOn(source, "getSemanticMarks").mockReturnValue(cached)
+      expect(definition.lib!(source).observation).toMatchObject({ outcome: "unsupported" })
+      reader.mockRestore()
+      const realReader = source.getSemanticMarks!.bind(source)
+      vi.spyOn(source, "getSemanticMarks").mockImplementation(() =>
+        realReader().map((mark) => (mark.type === "command-end" ? { ...mark, rawStatus: "wrong" } : mark)),
+      )
+      expect(definition.lib!(source).observation).toMatchObject({ outcome: "unsupported" })
+      value.capabilities.extensions.delete("semantic-command-end")
+      const undeclared = createLibProbeSource(value, undefined, undefined, undefined)
+      expect(undeclared.getSemanticMarks).toBeUndefined()
+      expect(definition.lib!(undeclared).criterionBranch).toBe(SEMANTIC_PROMPT_SOURCE_REVIEW)
+      value.capabilities.extensions.add("semantic-command-end")
+      Object.defineProperty(value, "getSemanticMarks", { value: undefined })
+      const missing = definition.lib!(createLibProbeSource(value, undefined, undefined, undefined))
+      expect(missing.criterionBranch).toBe(HEADLESS_OBSERVABLE_REVIEW)
+      expect(missing.note).toContain("getSemanticMarks")
+      expect(missing.observation).toBeUndefined()
+    } finally {
+      value.destroy()
+    }
+  },
+)
+
+// @failure A registered semantic callback grades consumption or cached records instead of new typed, positioned marks.
+// @level l1
+// @consumer Eight vterm semantic cells through the real adapter, collector and registry.
+test.for(VTERM_MARK_CASES)(
+  "%s decides new marks and distinguishes stale/missing readers",
+  async ([id, selector, type]) => {
+    const value = createVtermBackend({ cols: 80, rows: 24 })
+    try {
+      value.feed(new TextEncoder().encode(`\x1b[7;8H\x1b]${selector};C\x07`))
+      const source = createLibProbeSource(value, undefined, undefined, undefined)
+      const definition = registryDefinitions([id])[0]!
+      const result = definition.lib!(source)
+      expect(result.observation, id).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
+      expect(result.assertions, id).toMatchObject([{ kind: "positive", observed: result.response }])
+      const observed = JSON.parse(result.response!) as {
+        first: unknown[]
+        second: unknown[]
+        before: unknown[]
+        secondBefore: unknown[]
+      }
+      expect(observed.first.at(-1)).toEqual({ type, startRow: 0, startCol: 0 })
+      expect(observed.second.at(-1)).toEqual({ type, startRow: 1, startCol: 2 })
+      expect(observed.first).toHaveLength(observed.before.length + 1)
+      expect(observed.second).toHaveLength(observed.secondBefore.length + 1)
+      const cached = value.getSemanticMarks()
+      vi.spyOn(source, "getSemanticMarks").mockReturnValue(cached)
+      expect(definition.lib!(source).observation).toMatchObject({
+        outcome: "unsupported",
+        assertionType: "buffer_state",
+      })
+      Object.defineProperty(value, "getSemanticMarks", { value: undefined })
+      const absent = createLibProbeSource(value, undefined, undefined, undefined)
+      const missing = definition.lib!(absent)
+      expect(missing.criterionBranch).toBe(HEADLESS_OBSERVABLE_REVIEW)
+      expect(missing.tests).toMatchObject([{ id: "review", status: "test-todo" }])
+      // Generic umbrella TODOs share this branch but do not identify the declared reader's missing tool.
+      expect(missing.note, id).toContain("semantic-marks getSemanticMarks readback is unavailable")
+      expect(missing.observation).toBeUndefined()
+    } finally {
+      value.destroy()
+    }
+  },
+)
+
+// @failure Engines declaring semanticPrompts without the semantic-marks extension lose their decidable source review.
+// @level l1
+// @consumer WezTerm's three and Ghostty-native's six semantic start-marker callback routes.
+test("wezterm and ghostty-native without a declared mark reader retain source review", () => {
+  // An actual JS terminal supplies consumption/cursor controls; these metadata-only
+  // route checks neither execute nor attest either optional native engine.
+  for (const [engine, selectors] of [
+    ["wezterm", [133]],
+    ["ghostty-native", [133, 633]],
+  ] as const) {
+    const value = createXtermBackend({ cols: 80, rows: 24 })
+    try {
+      const original = createLibProbeSource(value, undefined, undefined, undefined)
+      const source: LibProbeSource = {
+        ...original,
+        capabilities: { ...original.capabilities, semanticPrompts: true },
+      }
+      expect(source.capabilities.extensions.has("semantic-marks"), engine).toBe(false)
+      expect(source.getSemanticMarks, engine).toBeUndefined()
+      for (const selector of selectors) {
+        for (const mark of ["a", "b", "c"]) {
+          const id = `extensions.osc${selector}-${mark}`
+          const result = registryDefinitions([id])[0]!.lib!(source)
+          expect(result.criterionBranch, `${engine} ${id}`).toBe(SEMANTIC_PROMPT_SOURCE_REVIEW)
+          expect(result.observation, `${engine} ${id}`).toBeUndefined()
+        }
+      }
+    } finally {
+      value.destroy()
+    }
+  }
+})
+
+// @failure A moving reader with the wrong marker type, position or append count passes a freshness-only check.
+// @level l1
+// @consumer The registered semantic start-marker predicate.
+test.for(["type", "position", "count"] as const)("rejects fresh mark readback with wrong %s", (fault) => {
+  const value = createVtermBackend({ cols: 80, rows: 24 })
+  try {
+    const source = createLibProbeSource(value, undefined, undefined, undefined)
+    const actual = source.getSemanticMarks!
+    vi.spyOn(source, "getSemanticMarks").mockImplementation(() => {
+      const marks = actual()
+      if (fault === "type") {
+        return marks.map((mark) => (mark.type === "command-end" ? mark : { ...mark, type: "command" as const }))
+      }
+      if (fault === "position") {
+        return marks.map((mark) => (mark.type === "command-end" ? mark : { ...mark, startCol: mark.startCol + 1 }))
+      }
+      return marks.flatMap((mark) => [mark, { ...mark }])
+    })
+    const result = registryDefinitions(["extensions.osc133-a"])[0]!.lib!(source)
+    expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "buffer_state" })
+    expect(result.assertions).toMatchObject([{ kind: "negative", observed: result.response }])
+  } finally {
+    value.destroy()
+  }
+})
+
+// @failure Observed start markers never become actual supported results through the production batch writer.
+// @level l1
+// @consumer The eight run-decided vterm mark cells in the collected result model.
+test("real vterm mark observations survive the registered batch producer", async () => {
+  const ids = VTERM_MARK_CASES.map(([id]) => id)
+  const batch = await collectBatch(async () => createVtermBackend(), "vterm", registryDefinitions(ids))
+  expect(batch.results).toMatchObject(
+    ids.map((featureId) => ({ featureId, status: "supported", assertionType: "buffer_state" })),
+  )
+  expect(batch.observations).toHaveLength(ids.length)
+  expect(batch.assertions).toMatchObject(
+    ids.map((featureId) => ({ featureId, kind: "positive", assertionType: "buffer_state" })),
+  )
+})
+
+// @failure Raw Sixel storage is promoted to rendering support, or the partial reason claims storage from a stale reader.
+// @level l1
+// @consumer The Sixel rendering cell, with its separately retained storage facet.
+test("real vterm Sixel storage sharpens the TODO reason without grading rendering", () => {
+  const value = createVtermBackend({ cols: 80, rows: 24 })
+  try {
+    const source = createLibProbeSource(value, undefined, undefined, undefined)
+    const definition = registryDefinitions(["extensions.sixel"])[0]!
+    const result = definition.lib!(source)
+    expect(result.note).toBe("payload retained at row/col; no raster; cell geometry unmeasured")
+    expect(result.criterionBranch).toBe(HEADLESS_OBSERVABLE_REVIEW)
+    expect(result.tests).toMatchObject([{ status: "test-todo" }])
+    expect(result.observation).toBeUndefined()
+    expect(JSON.parse(result.response!)).toMatchObject({ storage: { retained: true } })
+    vi.spyOn(source, "getSixelImages").mockReturnValue([])
+    const stale = definition.lib!(source)
+    expect(stale.tests).toMatchObject([{ status: "test-todo" }])
+    expect(JSON.parse(stale.response!)).toMatchObject({ storage: { retained: false } })
+    expect(stale.note).not.toBe(result.note)
+  } finally {
+    value.destroy()
+  }
+})
+
 test("cwd readback errors propagate after restoring the original metadata", async (context) => {
   const sibling = fileURLToPath(new URL("../../../termless/packages/vterm/src/backend.ts", import.meta.url))
   if (!existsSync(sibling)) context.skip(`Real-vterm cwd cleanup requires missing sibling ${sibling}`)
@@ -345,10 +1189,10 @@ test.each(["extensions.osc117-reset-highlight-bg", "extensions.osc119-reset-high
       engineVersion: "6.0.0",
       adapterVersion: "0.10.2",
       termlessRevision: "2d97417328b7b1d086f9396b9a1731216ed134cc",
-      // Source-audit fixture at Termless 493881fd, independent of this runner's adapter revision.
+      // Source-audit fixture at Termless 677a377f, independent of this runner's adapter revision.
       adapterSources: [
         { path: "packages/xtermjs/src/index.ts", blobOid: "550e10110ec2baaf326d2958319b03ee8208feba" },
-        { path: "packages/xtermjs/src/backend.ts", blobOid: "481fe005c5801cbb5e6ba4c8677f577e02122e4e" },
+        { path: "packages/xtermjs/src/backend.ts", blobOid: "79bc4dc6a1060d073f12d59ecd6b941cadfe91dd" },
       ],
       resolvedPath:
         "node_modules/.bun/@xterm+headless@6.0.0/node_modules/@xterm/headless/lib-headless/xterm-headless.js",
@@ -444,22 +1288,22 @@ test("Wezterm prompt source reviews survive actual collection and capture bindin
     kind: "native",
     engineVersion: "0.1.0-fork.5",
     adapterVersion: "0.10.2",
-    termlessRevision: "2d97417328b7b1d086f9396b9a1731216ed134cc",
+    termlessRevision: "83b22ab3f99ff3c2f3e43bcfce346c1374f540e1",
     // The JS carrier exercises collection; the qualified identity belongs to audited WezTerm sources.
     adapterSources: [
       { path: "packages/wezterm/src/index.ts", blobOid: "512606c5270ffd0cff55c1b70f5b3eda18a92df0" },
-      { path: "packages/wezterm/src/backend.ts", blobOid: "43464f5118e4442b3910fad63e3b3e3998af6214" },
-      { path: "packages/wezterm/native/src/lib.rs", blobOid: "b83bbf08bb20c6b7965cd0b6492a827707644a8f" },
+      { path: "packages/wezterm/src/backend.ts", blobOid: "42a196995a5f8845ab2e3bb6227192556c470071" },
+      { path: "packages/wezterm/native/src/lib.rs", blobOid: "445f5484027aebbea01a641a96dd92dfea273693" },
       { path: "src/load-native.ts", blobOid: "34e142550085450ab02138184626716ad0d6b546" },
     ],
     loadedBinary: {
       path: "vendor/termless/packages/wezterm/termless-wezterm.node",
-      sha256: "0f56a805793d7d829daa617f1323aacff0d73fe868747b0d077c6af315e2aab8",
+      sha256: "6722b331de7489c14cb599d939e5d2314f054220728f83c5c29f454e70273e47",
     },
     provenance: {
-      sha256: "0f56a805793d7d829daa617f1323aacff0d73fe868747b0d077c6af315e2aab8",
-      sourceCommit: "5afcc676d49c02902ef35112893e2ae35efb0d5e",
-      buildHash: "1bc38c0ad4e95754ef42b5de57d4829864984099b2e4422008de7c5b96c875df",
+      sha256: "6722b331de7489c14cb599d939e5d2314f054220728f83c5c29f454e70273e47",
+      sourceCommit: "83b22ab3f99ff3c2f3e43bcfce346c1374f540e1",
+      buildHash: "94a2d6025d3dc9e62debb7cbe388b3ad5113394d0ab6746d6baa58475fbe9c56",
       toolchain:
         "rustc 1.94.0 (4a4ef493e 2026-03-02) (built from a source tarball); cargo 1.94.0 (85eff7c80 2026-01-15)",
       lockSha256: "8eaeab733cced8d47feb223d773d5ae158b2e6af8c994f993d4071d9ba3231d4",
@@ -529,8 +1373,8 @@ test("Wezterm prompt source reviews survive actual collection and capture bindin
         kind: "native",
         engineVersion: "0.1.0-fork.5",
         adapterVersion: "0.10.2",
-        termlessRevision: "2d97417328b7b1d086f9396b9a1731216ed134cc",
-        loadedBinary: { sha256: "0f56a805793d7d829daa617f1323aacff0d73fe868747b0d077c6af315e2aab8" },
+        termlessRevision: "83b22ab3f99ff3c2f3e43bcfce346c1374f540e1",
+        loadedBinary: { sha256: "6722b331de7489c14cb599d939e5d2314f054220728f83c5c29f454e70273e47" },
       },
     })
   }
@@ -545,6 +1389,160 @@ test("Wezterm prompt source reviews survive actual collection and capture bindin
   expect(
     parsed.results?.every((row) => row.criterionBranch === "source-negative-review" && row.status === "test-failure"),
   ).toBe(true)
+})
+
+// #32099: callback-only tests miss a source buffer_state result rejected by an
+// inherited query_reply declaration. Real engines must take different branches
+// through the same definitions, including xterm's actual mode2031 Ps0 negative.
+test("source-qualified 2026/2031 mixed criteria survive collection and capture parsing", async () => {
+  const ids = ["modes.synchronized-output", "modes.color-scheme-reporting"]
+  for (const [name, producer] of [
+    ["vt100", resolveVt100],
+    ["xtermjs", backend],
+  ] as const) {
+    const adapterPackage = `@termless/${name}`
+    // Source-audit inputs, not this host's checkout attestation. These pins match the existing
+    // headless-decrpm capturedModeEngines and OSC117 xterm fixtures; standalone CI has no owned vterm.
+    const identity = {
+      kind: "js",
+      runtimeFormat: "js",
+      adapterVersion: "0.10.2",
+      termlessRevision: "8be31bfc35c0359e39a836b1d397f49e7176c97f",
+      ...(name === "vt100"
+        ? ({
+            engineVersion: "0.10.1",
+            resolvedPath: "vendor/vterm/packages/vt100/src/index.ts",
+            integrity: {
+              kind: "source",
+              repository: "git@github.com:beorn/vterm.git",
+              revision: "bd3d32aea2f1994376a71adfc55b92705eedbd8c",
+              treeOid: "1eaac257cf9ff8d8ece752c8e6edc04b9ddaa6cf",
+              cleanTree: true,
+            },
+            adapterSources: [
+              { path: "packages/vt100/src/index.ts", blobOid: "99833d737402f9d1d8e3e257e3a255d8aa1facc3" },
+              { path: "packages/vt100/src/backend.ts", blobOid: "cdb8be8c5ebbba68a5920cfa4df27c9deb31745a" },
+            ],
+          } as const)
+        : ({
+            engineVersion: "6.0.0",
+            resolvedPath:
+              "node_modules/.bun/@xterm+headless@6.0.0/node_modules/@xterm/headless/lib-headless/xterm-headless.js",
+            integrity: {
+              kind: "registry",
+              lockIntegrity:
+                "sha512-5Yj1QINYCyzrZtf8OFIHi47iQtI+0qYFPHmouEfG8dHNxbZ9Tb9YGSuLcsEwj9Z+OL75GJqPyJbyoFer80a2Hw==",
+            },
+            adapterSources: [
+              { path: "packages/xtermjs/src/index.ts", blobOid: "550e10110ec2baaf326d2958319b03ee8208feba" },
+              { path: "packages/xtermjs/src/backend.ts", blobOid: "481fe005c5801cbb5e6ba4c8677f577e02122e4e" },
+            ],
+          } as const)),
+    } as const
+    // collectBatch re-reads identity and adapter metadata after init; both use this audit fixture.
+    vi.spyOn(headlessIdentity, "headlessRuntimeIdentity").mockResolvedValue(identity)
+    const carrier = async () => {
+      const value = await producer()
+      return Object.assign(value, {
+        capabilities: {
+          ...value.capabilities,
+          extensions: new Set([...(value.capabilities.extensions ?? []), "adapter-sources"]),
+        },
+        getAdapterSources: () => identity.adapterSources,
+      })
+    }
+    const manifest = {
+      schemaVersion: 4 as const,
+      probeHash: "mode-source-composition-fixture",
+      adapterVersion: "fixture",
+      catalogIds: ids,
+      probes: { term: [], mux: [], lib: ids },
+    }
+    const draft = initializeRunDraft({
+      source: { kind: "live" },
+      runId: `mode-source-composition-${name}`,
+      sourceRevision: "a".repeat(40),
+      intendedSubject: { kind: "lib", id: name },
+      manifest,
+    })
+    const definitions = registryDefinitions(ids)
+    for (const definition of definitions) expect(definition.libAssertionType, definition.id).toBeUndefined()
+    const batch = await collectBatch(carrier, name, definitions, draft, undefined, {
+      identity,
+      adapterPath: Bun.resolveSync(adapterPackage, fileURLToPath(import.meta.url)),
+      adapterPackage,
+      adapterType: "js",
+    })
+    const captured: CapturedRunDraft = {
+      ...draft,
+      subject: {
+        kind: "lib",
+        id: name,
+        version: identity.engineVersion,
+        os: "linux",
+        osVersion: null,
+        outerTerminal: null,
+        mux: null,
+        config: null,
+        permissions: null,
+      },
+      identity: "unverified",
+      runtimeIdentity: identity,
+      measuredAt: new Date().toISOString(),
+      origin: { kind: "collector" },
+      rawReplies: { ...draft.rawReplies, ...batch.rawReplies },
+      results: batch.results,
+      assertions: batch.assertions,
+    }
+    for (const id of ids) {
+      expect(
+        captured.results.find((entry) => entry.featureId === id),
+        id,
+      ).toMatchObject(
+        name === "vt100"
+          ? {
+              status: "test-failure",
+              assertionType: "buffer_state",
+              criterionBranch: "source-negative-review",
+            }
+          : { status: id === "modes.synchronized-output" ? "supported" : "unsupported", assertionType: "query_reply" },
+      )
+      expect(JSON.stringify(batch.ungradedDiagnostics[id] ?? {}), id).not.toContain("collector-error")
+      if (name === "xtermjs") {
+        expect(
+          batch.assertions.filter((assertion) => assertion.featureId === id),
+          id,
+        ).toMatchObject([
+          { assertionType: "query_reply", kind: id === "modes.synchronized-output" ? "positive" : "negative" },
+        ])
+        expect(JSON.parse(batch.rawReplies[id]!), id).toMatchObject({
+          setReply: id === "modes.synchronized-output" ? "\x1b[?2026;1$y" : "\x1b[?2031;0$y",
+        })
+      }
+    }
+    const parsed = parseRun(
+      "mode-source.capture.json",
+      JSON.stringify(captured),
+      ids,
+      new Map([[manifest.probeHash, manifest]]),
+      { mode: "capture" },
+    )
+    expect(parsed.results).toHaveLength(2)
+    for (const row of parsed.results ?? []) {
+      expect(row).toMatchObject(
+        name === "vt100"
+          ? {
+              status: "test-failure",
+              assertionType: "buffer_state",
+              criterionBranch: "source-negative-review",
+            }
+          : {
+              status: row.featureId === "modes.synchronized-output" ? "supported" : "unsupported",
+              assertionType: "query_reply",
+            },
+      )
+    }
+  }
 })
 
 // A registered callback can lose its marker while a synthetic marked callback still passes.
@@ -938,14 +1936,13 @@ test.each([
   },
 )
 
-// libvterm exposes no mode getter; its real cell behavior still decides wrapping.
+// Nullable mode metadata still permits measured wrapping from actual cell behavior.
 test("null mode metadata classes A/B retain measured wrapping, unknown cleanup and raw state", async () => {
   const writes: string[] = []
   const factory = async () => {
     const value = await resolveLibvterm()
-    // libvterm's WASM bridge exposes no modes. Termless answers null only from #30549, which the
-    // published @termless/libvterm 0.10.2 that CI installs predates, so pin the null reading here:
-    // the subject is terminfo's null-mode consumers, not the termless version.
+    // Pin nullable metadata independently of each adapter's available native readers.
+    // The subject is Terminfo's null-mode consumers, not native reader availability.
     vi.spyOn(value, "getMode").mockReturnValue(null as unknown as boolean)
     const feed = value.feed.bind(value)
     vi.spyOn(value, "feed").mockImplementation((bytes) => {
@@ -974,7 +1971,12 @@ test("null mode metadata classes A/B retain measured wrapping, unknown cleanup a
   expect.soft(writes).not.toContain("\x1b[?7l")
   // Mode 2031 now measures DECRPM recognition and resets its enabled query state, even with null metadata.
   expect.soft(writes).toContain("\x1b[?2031l")
-  expect.soft(JSON.parse(batch.rawReplies["modes.application-keypad"]!)).toMatchObject({ on: null, off: null })
+  expect.soft(JSON.parse(batch.rawReplies["modes.application-keypad"]!)).toMatchObject({
+    setMode: null,
+    resetMode: null,
+  })
+  expect.soft(writes).toContain("\x1b=")
+  expect.soft(writes).toContain("\x1b>")
   // #30702: the margin and alternate-screen arms read the cells, so their raw state is the seeded frames.
   expect.soft(JSON.parse(batch.rawReplies["modes.left-right-margin"]!)).toMatchObject({
     seed: "ABCDEFGH",
@@ -985,7 +1987,7 @@ test("null mode metadata classes A/B retain measured wrapping, unknown cleanup a
   }
   expect(batch.results.find((row) => row.featureId === "modes.application-keypad")).toMatchObject({
     status: "test-todo",
-    criterionBranch: "os-input-review",
+    reason: expect.stringContaining("adapter binding libvterm applicationKeypad"),
   })
 })
 
@@ -1017,7 +2019,7 @@ test.each([0, 1, 4] as const)(
 
 // Missing-input callback tests never exercised the production recorder, so these
 // OS-window criteria stayed generic TODOs with no review a collector could retain.
-test("requests review for headless OS-input criteria without fabricating app delivery", async () => {
+test("separates mode readback from headless OS-input review without fabricating app delivery", async () => {
   const ids = [
     "input.xtest-key",
     "input.xtest-click",
@@ -1032,10 +2034,7 @@ test("requests review for headless OS-input criteria without fabricating app del
     "modes.alt-scroll-1007",
     "modes.application-keypad",
   ]
-  const coverage = (id: string) =>
-    id === "modes.application-keypad"
-      ? { reason: /keypad input/, raw: { on: expect.any(Boolean), off: expect.any(Boolean) } }
-      : { reason: /OS-level XTEST/, raw: { input: false } }
+  const modeIds = new Set(["modes.alt-scroll-1007", "modes.application-keypad"])
   const definitions = ids.map((id) => {
     const found = ALL_PROBES.find((probe) => probe.id === id)
     if (!found) throw new Error(`Missing registry definition ${id}`)
@@ -1043,12 +2042,26 @@ test("requests review for headless OS-input criteria without fabricating app del
   })
   const batch = await collectBatch(backend, "xtermjs", definitions)
   expect(batch.results).toHaveLength(ids.length)
-  expect(batch.observations).toEqual([])
-  expect(batch.assertions).toEqual([])
+  expect(batch.observations).toMatchObject([
+    { featureId: "modes.alt-scroll-1007", outcome: "unsupported", assertionType: "query_reply" },
+    { featureId: "modes.application-keypad", outcome: "supported", assertionType: "buffer_state" },
+  ])
+  expect(batch.assertions).toMatchObject([
+    { featureId: "modes.alt-scroll-1007", kind: "negative" },
+    { featureId: "modes.application-keypad", kind: "positive" },
+  ])
   expect(batch.ungradedDiagnostics).toEqual({})
   for (const result of batch.results) {
+    if (modeIds.has(result.featureId)) {
+      expect(result.status).toBe(result.featureId === "modes.application-keypad" ? "supported" : "unsupported")
+      expect(result.assertionType).toBe(
+        result.featureId === "modes.application-keypad" ? "buffer_state" : "query_reply",
+      )
+      expect(batch.notTested.some((row) => row.featureId === result.featureId)).toBe(false)
+      continue
+    }
     expect(result.status, result.featureId).toBe("test-todo")
-    const expected = coverage(result.featureId)
+    const expected = { reason: /OS-level XTEST/, raw: { input: false } }
     expect(result.reason, result.featureId).toMatch(expected.reason)
     expect(result.rawReplyRef, result.featureId).toBe(result.featureId)
     expect(JSON.parse(batch.rawReplies[result.featureId]!), result.featureId).toMatchObject(expected.raw)

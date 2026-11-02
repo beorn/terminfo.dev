@@ -33,6 +33,7 @@ function probe(id: string) {
 
 function context(overrides: Partial<LibProbeSource>): LibProbeSource {
   return {
+    backendName: "scripted-model",
     kind: "live",
     cols: 80,
     feed() {},
@@ -260,6 +261,7 @@ describe("audited native host recipe callers", () => {
     "84da518e3f298a0ed75f186db6e39d87e99b8f0c8508dd7252ec0cafee77fe12",
     "78c05a7155ffb48b351de181cce13a5d996c3472f545f674dc34177fe27bae01",
     "0f56a805793d7d829daa617f1323aacff0d73fe868747b0d077c6af315e2aab8",
+    "6722b331de7489c14cb599d939e5d2314f054220728f83c5c29f454e70273e47",
   ])("the WezTerm artifact %s cites its OSC 52 read and leaves CSI 14 t measured", (wezterm) => {
     const silent = (id: string) =>
       probe(id).lib!(
@@ -282,6 +284,8 @@ describe("audited native host recipe callers", () => {
   test.each([
     "dc3b24de6e91416f66b1953ce101991ef7e78602ce1b5d357f65832c9b96b326",
     "d6e23fe62d56de795c6fa783a6c5025fc5b1238e739839de8b4b3737eca0c43e",
+    "e58288d0b62448bf746ad77e58a4e9523c1baabb080d6fc6723f76caf29d2bb0",
+    "53f9a867cce594b4d50fb9508db9ce5d2d79fb4244a418548b7cb31fa50780d1",
   ])("native artifact %s explains only empty clipboard and geometry replies", (sha256) => {
     for (const [id, recipe] of [
       ["device.xtwinops-14", "text-area-size"],
@@ -330,6 +334,8 @@ describe("audited native host recipe callers", () => {
     "11c87e7e7f23e6f224e9dc8c3296b0a91f5453a42038e5ad049aafa864f9bd50",
     "d280c3fd2129f42db0d7154d6e66f5582a67fa1faf1e82ab463b6b8286f126d0",
     "32d76284e5a3c7673fafbbc83a16717fa0a1c1811c7d659d982176a53ceb1aa9",
+    "8232209bd7273d68eb0bc9a71c5acf94fd8ebd96612604ff901c09c4d6cb8344",
+    "21d4b43c1d4c401c5b9f8114de85b3e837605242363c322c2dcb37e4a42fba61",
   ])("the Alacritty artifact %s cites its OSC 52 read and leaves CSI 14 t measured", (alacritty) => {
     const silent = (id: string) =>
       probe(id).lib!(
@@ -485,48 +491,21 @@ describe("reply-path audit", () => {
   const sourceIdentity = (treeOid: string, cleanTree = true): NonNullable<LibProbeSource["runtimeIdentity"]> => ({
     kind: "js",
     runtimeFormat: "js",
-    engineVersion: "0.10.0",
+    engineVersion: "0.10.1",
     adapterVersion: "0.10.2",
     termlessRevision: "2d97417328b7b1d086f9396b9a1731216ed134cc",
-    resolvedPath: `vendor/vterm/packages/${treeOid === "d5ee344ab5b971184ba2c43ed60460656340417c" ? "vt100" : "vt220"}/src/index.ts`,
+    resolvedPath: `vendor/vterm/packages/${treeOid === "1eaac257cf9ff8d8ece752c8e6edc04b9ddaa6cf" ? "vt100" : "vt220"}/src/index.ts`,
     integrity: {
       kind: "source",
       repository: "git@github.com:beorn/vterm.git",
-      revision: "6cc7eef05cde6a8578479c6cdb480f606758eb2c",
+      revision: "bd3d32aea2f1994376a71adfc55b92705eedbd8c",
       treeOid,
       cleanTree,
     },
   })
-  // #32026: source-key matching, dirty-source fallback, and the unchanged native return contract.
-  // Prior binary-only fixtures could not expose a source audit silently retaining the measured result.
-  test.each(["d5ee344ab5b971184ba2c43ed60460656340417c", "9a320c4d5cd0e0b60bb2e6ea4f020ce5eb54ae53"])(
-    "a clean source tree returns its sourceTreeOid audit: %s",
-    (treeOid) => {
-      const result = replyPathAuditFor(
-        context({ runtimeIdentity: sourceIdentity(treeOid) }),
-        "modes.application-cursor",
-      )
-      expect(result).toEqual({
-        sourceTreeOid: treeOid,
-        audit: {
-          query: "\x1b[?1$p",
-          kind: "parser-rejected",
-          citation: expect.stringContaining(treeOid),
-        },
-      })
-    },
-  )
-  test("a dirty listed source tree retains the measured result", () => {
-    expect(
-      replyPathAuditFor(
-        context({ runtimeIdentity: sourceIdentity("d5ee344ab5b971184ba2c43ed60460656340417c", false) }),
-        "modes.application-cursor",
-      ),
-    ).toBeUndefined()
-  })
   // #32026: a listed key of the other kind must not fire through the wrong identity branch.
   test("source-tree and artifact key shapes never cross identity kinds", () => {
-    const treeOid = "d5ee344ab5b971184ba2c43ed60460656340417c"
+    const treeOid = "1eaac257cf9ff8d8ece752c8e6edc04b9ddaa6cf"
     const sha256 = "5c38594a17329b24e826f785d3156d6e498490517835f12b0730eeab2fc63da7"
     expect(
       replyPathAuditFor(
@@ -552,8 +531,8 @@ describe("reply-path audit", () => {
       audit,
     })
   })
-  test.each(["d5ee344ab5b971184ba2c43ed60460656340417c", "9a320c4d5cd0e0b60bb2e6ea4f020ce5eb54ae53"])(
-    "all seven source DECRPM callbacks retain truthful tree provenance: %s",
+  test.each(["1eaac257cf9ff8d8ece752c8e6edc04b9ddaa6cf", "d504616ae458b8b0fa9fa365034c30bd35f55ee8"])(
+    "all seven source DECRPM rows are absent from the query audit: %s",
     (treeOid) => {
       for (const [id, mode] of [
         ["modes.application-cursor", 1],
@@ -564,19 +543,7 @@ describe("reply-path audit", () => {
         ["modes.mouse-tracking", 1000],
         ["modes.utf8-mouse-1005", 1005],
       ] as const) {
-        const silent = run(id, treeOid, () => "")
-        expect(silent.sent, id).toContain(`\x1b[?${mode}$p`)
-        expect(silent.result.observation, id).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
-        const state = JSON.parse(silent.result.response!)
-        expect(state, id).toMatchObject({
-          replyPathAudit: {
-            sourceTreeOid: treeOid,
-            citation: expect.stringContaining(treeOid),
-            captures: 1,
-            replyBytes: 0,
-          },
-        })
-        expect(state, id).not.toHaveProperty("replyPathAudit.artifactSha256")
+        expect(replyPathAuditFor(context({ runtimeIdentity: sourceIdentity(treeOid) }), id), id).toBeUndefined()
         const reply = () => `\x1b[?${mode};1$y`
         expect(run(id, treeOid, reply).result, id).toEqual(run(id, "f".repeat(64), reply).result)
         const dirty = probe(id).lib!(context({ runtimeIdentity: sourceIdentity(treeOid, false) }))
@@ -601,7 +568,7 @@ describe("reply-path audit", () => {
 
   // #31692: data-derived cases cannot detect an omitted current-artifact OSC99 audit.
   test.each([
-    ["1f23e13db5bda55ab54943461b83a5d642bf8d2050a452fbe7871927383dfe9f", "parser-rejected"],
+    ["3c2398d5c537d9c10e86b0af69311977927fcdbe4738618df194cedbdd22574d", "parser-rejected"],
     ["ce01cd0d1ae000dd88948f3817924cc85303874070cab39430967ebdf14877f3", "parser-rejected"],
     ["5c38594a17329b24e826f785d3156d6e498490517835f12b0730eeab2fc63da7", "parser-rejected"],
     ["d80a8110258a124fb6ff52a6fe149b8e39b5180d986907cc9fb7dc9143c3f3d9", "parser-rejected"],
@@ -625,6 +592,21 @@ describe("reply-path audit", () => {
   // #31385: rebuilding cell readback must retain all applicable audits, including #31377's graphics prefixes.
   // The data-derived callback cases below cannot detect an omitted artifact or omitted row.
   test.each([
+    {
+      name: "native conceal",
+      digest: "53f9a867cce594b4d50fb9508db9ce5d2d79fb4244a418548b7cb31fa50780d1",
+      priors: ["e58288d0b62448bf746ad77e58a4e9523c1baabb080d6fc6723f76caf29d2bb0"],
+      core: "332b2aef",
+    },
+    {
+      name: "native absolute retained rows",
+      digest: "e58288d0b62448bf746ad77e58a4e9523c1baabb080d6fc6723f76caf29d2bb0",
+      priors: [
+        "d6e23fe62d56de795c6fa783a6c5025fc5b1238e739839de8b4b3737eca0c43e",
+        "61fb182e3381ab1c52d94b63a9e33163bbfb89ede419af022f71f4438bfe0b03",
+      ],
+      core: "332b2aef",
+    },
     {
       name: "native nullable modes",
       digest: "d6e23fe62d56de795c6fa783a6c5025fc5b1238e739839de8b4b3737eca0c43e",
@@ -679,6 +661,17 @@ describe("reply-path audit", () => {
       expect(rebuilt![id]!.matches).toBe(audit.matches)
       expect(rebuilt![id]!.citation).toContain(core)
     }
+  })
+
+  // @failure The PageList-only rebuild loses or alters an existing source audit (#32121, @cto 656e2206).
+  // @level l0 @consumer replyPathAuditFor for the rebuilt loaded artifact; prior checks only cover older digests.
+  test("the zeroed-page Ghostty WASM carries every 1f23e13d reply audit unchanged", () => {
+    const oldSha = "1f23e13db5bda55ab54943461b83a5d642bf8d2050a452fbe7871927383dfe9f"
+    const newSha = "3c2398d5c537d9c10e86b0af69311977927fcdbe4738618df194cedbdd22574d"
+    const prior = REPLY_PATH_AUDITS.get(oldSha)
+    expect(prior).toBeDefined()
+    const renamed = JSON.parse(JSON.stringify(prior).replaceAll(oldSha, newSha).replaceAll("1f23e13d", "3c2398d5"))
+    expect(REPLY_PATH_AUDITS.get(newSha)).toEqual(renamed)
   })
 
   // #32057, @cto 25157a35: Ghostty WASM 1f23e13d answers DA1, DA2, XTVERSION, DECRQSS and XTGETTCAP, so their six cells
@@ -1275,14 +1268,15 @@ describe("reply-path audit", () => {
       [
         "0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3",
         "d6e23fe62d56de795c6fa783a6c5025fc5b1238e739839de8b4b3737eca0c43e",
+        "e58288d0b62448bf746ad77e58a4e9523c1baabb080d6fc6723f76caf29d2bb0",
+        "53f9a867cce594b4d50fb9508db9ce5d2d79fb4244a418548b7cb31fa50780d1",
         "dc3b24de6e91416f66b1953ce101991ef7e78602ce1b5d357f65832c9b96b326",
         "17d155feee5df8fa30266b9a354bbe66e39484d08218de5e03dc3bb2f199a0a3",
         "1f23e13db5bda55ab54943461b83a5d642bf8d2050a452fbe7871927383dfe9f",
+        "3c2398d5c537d9c10e86b0af69311977927fcdbe4738618df194cedbdd22574d",
         "5a8030c0f3f9fa52e9c1f82d28ae711ef21e3072a4b82fbe98076fedf314c945",
         "5c38594a17329b24e826f785d3156d6e498490517835f12b0730eeab2fc63da7",
-        "d5ee344ab5b971184ba2c43ed60460656340417c",
         "61fb182e3381ab1c52d94b63a9e33163bbfb89ede419af022f71f4438bfe0b03",
-        "9a320c4d5cd0e0b60bb2e6ea4f020ce5eb54ae53",
         "77b69f9f22c4126359be864fcce97afad8f84615053e21d335ba6348a8d3e1d7",
         "7c43302dde147c6f7959b7bda7045ff375c71288da1af5667ffca2bf95beb2bf",
         "8872ab0fc56429489b52cd5d3b5a293032c3ec7dbbb71545d237945c3ef525f3",
@@ -1540,7 +1534,11 @@ describe("reply-path audit", () => {
       // instead of the unaudited artifact's no-observable fallback.
       measuredResponse:
         id === "extensions.osc52-write" &&
-        auditKey === "d6e23fe62d56de795c6fa783a6c5025fc5b1238e739839de8b4b3737eca0c43e"
+        [
+          "d6e23fe62d56de795c6fa783a6c5025fc5b1238e739839de8b4b3737eca0c43e",
+          "e58288d0b62448bf746ad77e58a4e9523c1baabb080d6fc6723f76caf29d2bb0",
+          "53f9a867cce594b4d50fb9508db9ce5d2d79fb4244a418548b7cb31fa50780d1",
+        ].includes(auditKey)
           ? ""
           : (unlisted.result.response ?? null),
       ...(audit.kind === "no-reply-path" && audit.matches === "prefix" && { matchedQueries: matched }),
@@ -2044,16 +2042,16 @@ describe("OSC 8 link metadata observation", () => {
           {
             kind: "js",
             runtimeFormat: "js",
-            engineVersion: "0.10.0",
+            engineVersion: "0.10.1",
             adapterSources:
               engine === "vt100"
                 ? [
                     { path: "packages/vt100/src/index.ts", blobOid: "99833d737402f9d1d8e3e257e3a255d8aa1facc3" },
-                    { path: "packages/vt100/src/backend.ts", blobOid: "855dd71fba878d968d16c82846578190b7350eea" },
+                    { path: "packages/vt100/src/backend.ts", blobOid: "cdb8be8c5ebbba68a5920cfa4df27c9deb31745a" },
                   ]
                 : [
                     { path: "packages/vt220/src/index.ts", blobOid: "601dd26eb7e753a5396ebdf72f1ef8ee2cc4355f" },
-                    { path: "packages/vt220/src/backend.ts", blobOid: "1a16d66067bcaf71a2d96900ae046a1601482add" },
+                    { path: "packages/vt220/src/backend.ts", blobOid: "7369e3710e36aa649372fd09011ecfdd6ba47c73" },
                   ],
             adapterVersion: "0.10.2",
             termlessRevision: "8b8664540f365fa0ba1d9b6400d3c4d1a160582c",
@@ -2061,11 +2059,11 @@ describe("OSC 8 link metadata observation", () => {
             integrity: {
               kind: "source",
               repository: "git@github.com:beorn/vterm.git",
-              revision: "6cc7eef05cde6a8578479c6cdb480f606758eb2c",
+              revision: "bd3d32aea2f1994376a71adfc55b92705eedbd8c",
               treeOid:
                 engine === "vt100"
-                  ? "d5ee344ab5b971184ba2c43ed60460656340417c"
-                  : "9a320c4d5cd0e0b60bb2e6ea4f020ce5eb54ae53",
+                  ? "1eaac257cf9ff8d8ece752c8e6edc04b9ddaa6cf"
+                  : "d504616ae458b8b0fa9fa365034c30bd35f55ee8",
               cleanTree: true,
             },
           },
@@ -2079,23 +2077,23 @@ describe("OSC 8 link metadata observation", () => {
         engineVersion: "0.3.3",
         adapterSources: [
           { path: "packages/libvterm/src/index.ts", blobOid: "2b4708b1081e701b99893ca055ded781dc46cf25" },
-          { path: "packages/libvterm/src/backend.ts", blobOid: "caa5dc6c4ac4e3dac45977466919d2c1dcd3e851" },
+          { path: "packages/libvterm/src/backend.ts", blobOid: "eb513ccd443e30c7a869a8ba41f8126e1c0ddf00" },
           { path: "packages/libvterm/src/wasm-bindings.ts", blobOid: "2bbd4d5cf59b8d53db8f5c0329d2ed7853c43e45" },
           { path: "packages/libvterm/wasm/libvterm.js", blobOid: "1e784be87614ab924b96844009919b7c21ce150e" },
         ],
         adapterVersion: "0.10.2",
-        termlessRevision: "2d97417328b7b1d086f9396b9a1731216ed134cc",
+        termlessRevision: "f8d2aeb7a7a30f0215fd628bbbb1f1e5cd0a91be",
         resolvedPath: "vendor/termless/packages/libvterm/src/index.ts",
         integrity: {
           kind: "source",
           repository: "git@github.com:beorn/termless.git",
-          revision: "2d97417328b7b1d086f9396b9a1731216ed134cc",
-          treeOid: "d17653a18a964f38a6cf19130d2b8f63cccadefb",
+          revision: "f8d2aeb7a7a30f0215fd628bbbb1f1e5cd0a91be",
+          treeOid: "ae0b11bb808b8c402c168869d7caa5a5f62566c2",
           cleanTree: true,
         },
         loadedBinary: {
           path: "vendor/termless/packages/libvterm/wasm/libvterm.wasm",
-          sha256: "7ebe1b994b58ca867dcd19e9cdeb10b8839b6c1f0dbdea024f875a9f57560a23",
+          sha256: "3d67045bb43c5e4081c70dc58088af8f735416c20df2d7843d765e5aad8ef62a",
         },
       },
     ],
@@ -2312,18 +2310,18 @@ describe("GhosttyNative audited OSC source review", () => {
     engineVersion: "1.3.1",
     adapterSources: [
       { path: "packages/ghostty-native/src/index.ts", blobOid: "35c9e35a5d60625ce1135b65ff38ae9278495a18" },
-      { path: "packages/ghostty-native/src/backend.ts", blobOid: "f5832c21a5837f636effa3ee2dfc1f8a4e7b8b25" },
+      { path: "packages/ghostty-native/src/backend.ts", blobOid: "427b9d4782a9924135ff0c32e2406b117df9cf22" },
     ],
     adapterVersion: "0.10.2",
-    termlessRevision: "723acd11346edfcf3bfd0614c1a44a3828512a9f",
+    termlessRevision: "8bd0516ad101cc088133beb20fa9e92f86250da8",
     loadedBinary: {
       path: "vendor/termless/packages/ghostty-native/termless-ghostty-native.node",
-      sha256: "d6e23fe62d56de795c6fa783a6c5025fc5b1238e739839de8b4b3737eca0c43e",
+      sha256: "53f9a867cce594b4d50fb9508db9ce5d2d79fb4244a418548b7cb31fa50780d1",
     },
     provenance: {
-      sha256: "d6e23fe62d56de795c6fa783a6c5025fc5b1238e739839de8b4b3737eca0c43e",
+      sha256: "53f9a867cce594b4d50fb9508db9ce5d2d79fb4244a418548b7cb31fa50780d1",
       sourceCommit: "332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28",
-      buildHash: "bcb9aac9409e23717f3c5952d0ab062da27395e9df69b980a4c5d026246f5a14",
+      buildHash: "2d5e53cf4f0846e47cda8a45c513f44da5c699657edffe93886e6eba99f36bfd",
       toolchain: "zig 0.15.2",
       lockSha256: "3ec775507556db01d08055836b26183f629a9cbb0b5802a1566661e95988d74a",
     },
@@ -2350,7 +2348,7 @@ describe("GhosttyNative audited OSC source review", () => {
       }),
     )
     expect(result.tests?.[0]?.reason).toBe(
-      "Ghostty 332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28 src/terminal/osc.zig:535-641 rejects OSC176/440/555/666/710; :747 parses OSC3008 context_signal, dropped at src/terminal/stream.zig:2050-2059 (SHA256 3ddc5e27d6a6f48ea99399bb886b52e7bebb68c94397a3ba008a7c3eb6c01a9b); Termless 723acd11346edfcf3bfd0614c1a44a3828512a9f packages/ghostty-native/native/src/main.zig:38-39 wraps ReadonlyHandler, :76 forwards unhandled actions to readonly.vt, :85 creates ResponseStream and :141 initializes Terminal.vtHandler; parsed by osc.zig:747 context_signal, dropped unimplemented at stream.zig:2056-2059; independent source review required",
+      "Ghostty 332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28 src/terminal/osc.zig:535-641 rejects OSC176/440/555/666/710; :747 parses OSC3008 context_signal, dropped at src/terminal/stream.zig:2050-2059 (SHA256 3ddc5e27d6a6f48ea99399bb886b52e7bebb68c94397a3ba008a7c3eb6c01a9b); Termless 8bd0516ad101cc088133beb20fa9e92f86250da8 packages/ghostty-native/native/src/main.zig:38-39 wraps ReadonlyHandler, :76 forwards unhandled actions to readonly.vt, :85 creates ResponseStream and :141 initializes Terminal.vtHandler; parsed by osc.zig:747 context_signal, dropped unimplemented at stream.zig:2056-2059; independent source review required",
     )
   })
 
@@ -2434,26 +2432,26 @@ describe("GhosttyNative audited OSC source review", () => {
  * @testonly none
  */
 describe("Alacritty audited OSC source review", () => {
-  // Retained Linux capture run fdf3e7dc; fixture identity is not a loaded-engine attestation.
+  // Current alternate-scroll build receipt; fixture identity is not a loaded-engine attestation.
   const identity = {
     kind: "native",
     engineVersion: "0.26.0",
     adapterSources: [
       { path: "packages/alacritty/src/index.ts", blobOid: "b4154cbd6ef4a83ce2cbf3dcf26ff13d645efd05" },
       { path: "packages/alacritty/src/backend.ts", blobOid: "4210383129879c4e8756e6975674632cf69ecce9" },
-      { path: "packages/alacritty/native/src/lib.rs", blobOid: "f8d4ef7a2c4f389dd80ecbd3f9dae38600446a1e" },
+      { path: "packages/alacritty/native/src/lib.rs", blobOid: "e4720590d652773f1e89caf2b5cb399ee9112e39" },
       { path: "src/load-native.ts", blobOid: "34e142550085450ab02138184626716ad0d6b546" },
     ],
     adapterVersion: "0.10.2",
-    termlessRevision: "2d97417328b7b1d086f9396b9a1731216ed134cc",
+    termlessRevision: "824119c28b46bd701b222a91df0da860f0307950",
     loadedBinary: {
       path: "vendor/termless/packages/alacritty/termless-alacritty-native.node",
-      sha256: "32d76284e5a3c7673fafbbc83a16717fa0a1c1811c7d659d982176a53ceb1aa9",
+      sha256: "21d4b43c1d4c401c5b9f8114de85b3e837605242363c322c2dcb37e4a42fba61",
     },
     provenance: {
-      sha256: "32d76284e5a3c7673fafbbc83a16717fa0a1c1811c7d659d982176a53ceb1aa9",
-      sourceCommit: "cd5cd5172680fd240ee3445dea96289793bc2d59",
-      buildHash: "94ef4fbf1e21d454c70a39efaf9cfde1ebabe57a0f9cdb186fef782cfb1ff8ce",
+      sha256: "21d4b43c1d4c401c5b9f8114de85b3e837605242363c322c2dcb37e4a42fba61",
+      sourceCommit: "824119c28b46bd701b222a91df0da860f0307950",
+      buildHash: "634c14c5258327eff925d20d24918098c9aee92c1e6291e0ca770d2677015171",
       toolchain:
         "rustc 1.94.0 (4a4ef493e 2026-03-02) (built from a source tarball); cargo 1.94.0 (85eff7c80 2026-01-15)",
       lockSha256: "1f89f2579b7d786a116d8fefb8267c4af076bd3a3893adcf14b00c4466740497",
@@ -2496,7 +2494,7 @@ describe("Alacritty audited OSC source review", () => {
     if (codes === "22") {
       expect(writes).toContain("\x1b[1;1H\x1b[2K\x1b]22;pointer\x07X")
       expect(reason).toBe(
-        "alacritty_terminal 0.26.0 with vte 0.15.0 src/ansi.rs:1329-1523 OSC dispatch (22 parsed, other audited codes unhandled); src/term/mod.rs:1059-2272 Term Handler; Termless 2d97417328b7b1d086f9396b9a1731216ed134cc packages/alacritty/native/src/lib.rs:285-338 owns Term<EventProxy> and advances the vte processor into it; parsed by vte 0.15.0 src/ansi.rs:1455-1461 into set_mouse_cursor_icon; Handler default src/ansi.rs:703-704 is empty and alacritty_terminal 0.26.0 src/term/mod.rs:1059-2272 supplies no override; independent source review required",
+        "alacritty_terminal 0.26.0 with vte 0.15.0 src/ansi.rs:1329-1523 OSC dispatch (22 parsed, other audited codes unhandled); src/term/mod.rs:1059-2272 Term Handler; Termless 824119c28b46bd701b222a91df0da860f0307950 packages/alacritty/native/src/lib.rs:285-338 owns Term<EventProxy> and advances the same vte processor into it; alternate-scroll readback changes leave Config, OSC dispatch and reply handling unchanged; parsed by vte 0.15.0 src/ansi.rs:1455-1461 into set_mouse_cursor_icon; Handler default src/ansi.rs:703-704 is empty and alacritty_terminal 0.26.0 src/term/mod.rs:1059-2272 supplies no override; independent source review required",
       )
       expect(reason).not.toContain("no case 22")
     } else {
@@ -2580,10 +2578,10 @@ describe("Alacritty audited OSC source review", () => {
         runtimeIdentity: {
           kind: "js",
           runtimeFormat: "js",
-          engineVersion: "0.10.0",
+          engineVersion: "0.10.1",
           adapterSources: [
             { path: "packages/vterm/src/index.ts", blobOid: "cb5719799dcdd5ae24e6fcf0dcad9965035ce54c" },
-            { path: "packages/vterm/src/backend.ts", blobOid: "e7eb83f44a4ae1368cbf7b78ef6783219757002a" },
+            { path: "packages/vterm/src/backend.ts", blobOid: "308a934578c044ae95feaa29299531d9aa9eb4f7" },
           ],
           adapterVersion: "0.10.2",
           termlessRevision: "2d97417328b7b1d086f9396b9a1731216ed134cc",
@@ -2591,8 +2589,8 @@ describe("Alacritty audited OSC source review", () => {
           integrity: {
             kind: "source",
             repository: "git@github.com:beorn/vterm.git",
-            revision: "6cc7eef05cde6a8578479c6cdb480f606758eb2c",
-            treeOid: "d7bc627e039005ee913b0b244ff9a2ee2235746a",
+            revision: "bd3d32aea2f1994376a71adfc55b92705eedbd8c",
+            treeOid: "f10a184811894462b9ca7b65d6aab8ffd2fdd0bd",
             cleanTree: true,
           },
         },
@@ -2600,7 +2598,7 @@ describe("Alacritty audited OSC source review", () => {
       }),
     )
     expect(result.tests?.[0]?.reason).toBe(
-      "vterm 6cc7eef05cde6a8578479c6cdb480f606758eb2c packages/vterm/src/screen.ts:3596-4055 handleOSC switch; screen.ts:3921-3923 notification sink stores every OSC 9 value, with no progress subcode or state interpretation; independent source review required",
+      "vterm bd3d32aea2f1994376a71adfc55b92705eedbd8c packages/vterm/src/screen.ts:3596-4055 handleOSC switch; screen.ts:3921-3923 notification sink stores every OSC 9 value, with no progress subcode or state interpretation; independent source review required",
     )
   })
 })
@@ -2612,26 +2610,26 @@ describe("Alacritty audited OSC source review", () => {
  * @testonly none
  */
 describe("Wezterm audited OSC source review", () => {
-  // Retained run0214f61e identity; this fixture does not attest a loaded native engine.
+  // Current rebuilt WezTerm tuple fixture; this does not attest a loaded native engine.
   const identity = {
     kind: "native",
     engineVersion: "0.1.0-fork.5",
     adapterSources: [
       { path: "packages/wezterm/src/index.ts", blobOid: "512606c5270ffd0cff55c1b70f5b3eda18a92df0" },
-      { path: "packages/wezterm/src/backend.ts", blobOid: "43464f5118e4442b3910fad63e3b3e3998af6214" },
-      { path: "packages/wezterm/native/src/lib.rs", blobOid: "b83bbf08bb20c6b7965cd0b6492a827707644a8f" },
+      { path: "packages/wezterm/src/backend.ts", blobOid: "42a196995a5f8845ab2e3bb6227192556c470071" },
+      { path: "packages/wezterm/native/src/lib.rs", blobOid: "445f5484027aebbea01a641a96dd92dfea273693" },
       { path: "src/load-native.ts", blobOid: "34e142550085450ab02138184626716ad0d6b546" },
     ],
     adapterVersion: "0.10.2",
-    termlessRevision: "2d97417328b7b1d086f9396b9a1731216ed134cc",
+    termlessRevision: "83b22ab3f99ff3c2f3e43bcfce346c1374f540e1",
     loadedBinary: {
       path: "vendor/termless/packages/wezterm/termless-wezterm.node",
-      sha256: "0f56a805793d7d829daa617f1323aacff0d73fe868747b0d077c6af315e2aab8",
+      sha256: "6722b331de7489c14cb599d939e5d2314f054220728f83c5c29f454e70273e47",
     },
     provenance: {
-      sha256: "0f56a805793d7d829daa617f1323aacff0d73fe868747b0d077c6af315e2aab8",
-      sourceCommit: "5afcc676d49c02902ef35112893e2ae35efb0d5e",
-      buildHash: "1bc38c0ad4e95754ef42b5de57d4829864984099b2e4422008de7c5b96c875df",
+      sha256: "6722b331de7489c14cb599d939e5d2314f054220728f83c5c29f454e70273e47",
+      sourceCommit: "83b22ab3f99ff3c2f3e43bcfce346c1374f540e1",
+      buildHash: "94a2d6025d3dc9e62debb7cbe388b3ad5113394d0ab6746d6baa58475fbe9c56",
       toolchain:
         "rustc 1.94.0 (4a4ef493e 2026-03-02) (built from a source tarball); cargo 1.94.0 (85eff7c80 2026-01-15)",
       lockSha256: "8eaeab733cced8d47feb223d773d5ae158b2e6af8c994f993d4071d9ba3231d4",
@@ -2682,11 +2680,11 @@ describe("Wezterm audited OSC source review", () => {
     const reason = result.tests?.[0]?.reason ?? ""
     if (id === "extensions.osc133-d") {
       expect(reason).toBe(
-        "tattoy-wezterm-escape-parser 0.1.0-1 src/osc.rs:457-505 osc_entries (SHA256 fd26b6d6254c46ef880fbcc03ba418d67e9049c875e71cca6f18f4df76a0924f), parse errors become Unspecified at :155-167; tattoy-wezterm-term 0.1.0-fork.5 src/terminalstate/performer.rs:772-781 logs Unspecified; Termless 2d97417328b7b1d086f9396b9a1731216ed134cc packages/wezterm/native/src/lib.rs:236-243 advances the pinned Terminal; parsed by osc.rs:793-806 into CommandStatus, dropped by the empty performer.rs:900-902 arm; independent source review required",
+        "tattoy-wezterm-escape-parser 0.1.0-1 src/osc.rs:457-505 osc_entries (SHA256 fd26b6d6254c46ef880fbcc03ba418d67e9049c875e71cca6f18f4df76a0924f), parse errors become Unspecified at :155-167; tattoy-wezterm-term 0.1.0-fork.5 src/terminalstate/performer.rs:772-781 logs Unspecified; Termless 83b22ab3f99ff3c2f3e43bcfce346c1374f540e1 packages/wezterm/native/src/lib.rs:237-245 advances the same pinned Terminal; absolute-row reader changes leave parsing, config and reply delivery unchanged; parsed by osc.rs:793-806 into CommandStatus, dropped by the empty performer.rs:900-902 arm; independent source review required",
       )
     } else if (id === "extensions.osc720-scroll-up") {
       expect(reason).toBe(
-        "tattoy-wezterm-escape-parser 0.1.0-1 src/osc.rs:457-505 osc_entries (SHA256 fd26b6d6254c46ef880fbcc03ba418d67e9049c875e71cca6f18f4df76a0924f), parse errors become Unspecified at :155-167; tattoy-wezterm-term 0.1.0-fork.5 src/terminalstate/performer.rs:772-781 logs Unspecified; Termless 2d97417328b7b1d086f9396b9a1731216ed134cc packages/wezterm/native/src/lib.rs:236-243 advances the pinned Terminal; no case 720; wezterm-term src/screen.rs:15-45,335,493,522-527 stores screen/history, not a product viewport; Termless packages/wezterm/native/src/lib.rs:448-461 returns viewport_offset 0 and scroll_viewport is a no-op; independent source review required",
+        "tattoy-wezterm-escape-parser 0.1.0-1 src/osc.rs:457-505 osc_entries (SHA256 fd26b6d6254c46ef880fbcc03ba418d67e9049c875e71cca6f18f4df76a0924f), parse errors become Unspecified at :155-167; tattoy-wezterm-term 0.1.0-fork.5 src/terminalstate/performer.rs:772-781 logs Unspecified; Termless 83b22ab3f99ff3c2f3e43bcfce346c1374f540e1 packages/wezterm/native/src/lib.rs:237-245 advances the same pinned Terminal; absolute-row reader changes leave parsing, config and reply delivery unchanged; no case 720; wezterm-term src/screen.rs:15-45,335,493,522-527 stores screen/history, not a product viewport; Termless packages/wezterm/native/src/lib.rs:442-455 returns viewport_offset 0 and scroll_viewport is a no-op; independent source review required",
       )
     } else {
       expect(reason).toContain(`no case ${sequence.slice(2).split(/[;\x07]/)[0]}`)
@@ -4358,27 +4356,34 @@ describe("headless charset cell evidence", () => {
 })
 
 describe("partial probe automation candidates", () => {
-  // Q17: a mode-state reply cannot substitute for the absent presentation-timing observer.
-  test("modes.decsclm names missing presentation timing instead of attempting a mode-state criterion", () => {
+  // S8: state recognition is measurable while the independent presentation facet remains unmeasured.
+  test("modes.decsclm measures mode state and names unmeasured smooth-scroll presentation", () => {
     const p = probe("modes.decsclm")
     if (!p.lib) throw new Error("Missing headless DECSCLM callback")
     const seen: string[] = []
+    let enabled = false
     const result = p.lib(
       context({
-        feed: (text) => seen.push(text),
+        feed: (text) => {
+          seen.push(text)
+          if (text === "\x1b[?4h") enabled = true
+          if (text === "\x1b[?4l") enabled = false
+        },
+        getMode: (mode) => (mode === "insertMode" ? false : enabled),
         feedCapture: (text) => {
           seen.push(text)
-          return "\x1b[?4;1$y"
+          return enabled ? "\x1b[?4;1$y" : "\x1b[?4;2$y"
         },
       }),
     )
-    expect(result.notTested).toMatchObject({
-      reason: "no-semantic-observable",
-      noObservable: expect.stringMatching(/presentation.*tim|scroll.*tim/i),
+    expect(result.observation).toMatchObject({
+      outcome: "supported",
+      assertionType: "query_reply",
+      note: expect.stringContaining("smooth-scroll presentation unmeasured in lib arm"),
     })
-    expect(result.observation).toBeUndefined()
-    expect(result.assertions).toBeUndefined()
-    expect(seen).toEqual([])
+    expect(result.notTested).toBeUndefined()
+    expect(result.assertions).toMatchObject([{ kind: "positive", assertionType: "query_reply" }])
+    expect(seen).toEqual(["\x1b[?4h", "\x1b[?4$p", "\x1b[?4l", "\x1b[?4$p"])
   })
 
   // Mode metadata cannot substitute for the library arm's required DECRPM reply.
@@ -4405,7 +4410,7 @@ describe("partial probe automation candidates", () => {
       })
       expect(result.observation).toBeUndefined()
       expect(result.assertions).toBeUndefined()
-      expect(seen).toEqual(["\x1b[?2031h", "\x1b[?2031$p", "\x1b[?2031l"])
+      expect(seen).toEqual(["\x1b[?2031h", "\x1b[?2031$p", "\x1b[?2031l", "\x1b[?2031$p"])
     },
   )
 
@@ -4942,15 +4947,15 @@ describe("partial probe automation candidates", () => {
   test.each([
     [
       "vt100",
-      "d5ee344ab5b971184ba2c43ed60460656340417c",
+      "1eaac257cf9ff8d8ece752c8e6edc04b9ddaa6cf",
       "99833d737402f9d1d8e3e257e3a255d8aa1facc3",
-      "855dd71fba878d968d16c82846578190b7350eea",
+      "cdb8be8c5ebbba68a5920cfa4df27c9deb31745a",
     ],
     [
       "vt220",
-      "9a320c4d5cd0e0b60bb2e6ea4f020ce5eb54ae53",
+      "d504616ae458b8b0fa9fa365034c30bd35f55ee8",
       "601dd26eb7e753a5396ebdf72f1ef8ee2cc4355f",
-      "1a16d66067bcaf71a2d96900ae046a1601482add",
+      "7369e3710e36aa649372fd09011ecfdd6ba47c73",
     ],
   ])(
     "%s semantic source audits require matching identity and rendered X",
@@ -4958,14 +4963,14 @@ describe("partial probe automation candidates", () => {
       const runtimeIdentity = {
         kind: "js",
         runtimeFormat: "js",
-        engineVersion: "0.10.0",
+        engineVersion: "0.10.1",
         adapterVersion: "0.10.2",
         termlessRevision: "2d97417328b7b1d086f9396b9a1731216ed134cc",
         resolvedPath: `vendor/vterm/packages/${engine}/src/index.ts`,
         integrity: {
           kind: "source",
           repository: "git@github.com:beorn/vterm.git",
-          revision: "6cc7eef05cde6a8578479c6cdb480f606758eb2c",
+          revision: "bd3d32aea2f1994376a71adfc55b92705eedbd8c",
           treeOid: treeOid!,
           cleanTree: true,
         },

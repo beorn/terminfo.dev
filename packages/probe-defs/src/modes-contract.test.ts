@@ -282,6 +282,7 @@ test("the harness replays every Modes feature deterministically through DECRPM r
   const headless = libProbeSource({
     cols: 80,
     feed: () => {},
+    feedCapture: () => "",
     getCell: () => {
       throw new Error("Missing timing and event facilities cannot be established from cells")
     },
@@ -294,7 +295,7 @@ test("the harness replays every Modes feature deterministically through DECRPM r
     if (!probe) continue
     if (row.id === "modes.decsclm") {
       const result = probe.lib!(headless)
-      expect(result.criterionBranch, row.id).toBe("headless-observable-review")
+      expect(result.criterionBranch, row.id).toBe("os-input-review")
       expect(result.tests, row.id).toMatchObject([{ id: "review", status: "test-todo" }])
       expect((await regradeRow(probe, row, { headless })).after, row.id).toBeUndefined()
     }

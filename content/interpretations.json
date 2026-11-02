@@ -34230,5 +34230,741 @@
       },
       "sha256": "f600670097d8416daf505030abf190b67486cf7a899d16e8f799eeef8f541a47"
     }
+  },
+  {
+    "id": "by-design-32108-ghostty-native-input-button-event-mouse",
+    "runId": "d9d33fff157f7829cf449cdc5eaaa413",
+    "featureId": "input.button-event-mouse",
+    "captureSha256": "d203565dd83231b04d28579cd5c524119265174e8639d9c48cfe2dbef05a43a8",
+    "evidence": {
+      "algorithm": "evidence-output-v1",
+      "projection": {
+        "cell": {
+          "assertions": [],
+          "criterionBranch": "os-input-review",
+          "frames": [],
+          "rawReplies": [
+            {
+              "key": "input.button-event-mouse",
+              "sha256": "0408d11c45de32a40f90daf4f847d9893ccef72754cf89b0a328905e8ad65e93"
+            }
+          ],
+          "replyPath": {
+            "decision": {
+              "member": false,
+              "reason": "ghostty-native declares no reply delivery"
+            }
+          },
+          "tests": [
+            {
+              "id": "review",
+              "reason": "Lib arm: the engine consumes bytes and has no input surface; host input encoding is measured in the terminal arm.",
+              "status": "test-todo"
+            }
+          ]
+        },
+        "feature": {
+          "catalogEntrySha256": "ed4bd1200c4b0734c5c210b053b835cad46829e60cfd92c7ea6bcff54816e46f",
+          "featureId": "input.button-event-mouse"
+        },
+        "runtimeIdentity": {
+          "adapterSources": [
+            {
+              "blobOid": "35c9e35a5d60625ce1135b65ff38ae9278495a18",
+              "path": "packages/ghostty-native/src/index.ts"
+            },
+            {
+              "blobOid": "f5832c21a5837f636effa3ee2dfc1f8a4e7b8b25",
+              "path": "packages/ghostty-native/src/backend.ts"
+            }
+          ],
+          "adapterVersion": "0.10.2",
+          "engineVersion": "1.3.1",
+          "kind": "native",
+          "loadedBinary": {
+            "sha256": "d6e23fe62d56de795c6fa783a6c5025fc5b1238e739839de8b4b3737eca0c43e"
+          },
+          "provenance": {
+            "buildHash": "bcb9aac9409e23717f3c5952d0ab062da27395e9df69b980a4c5d026246f5a14",
+            "lockSha256": "3ec775507556db01d08055836b26183f629a9cbb0b5802a1566661e95988d74a",
+            "sha256": "d6e23fe62d56de795c6fa783a6c5025fc5b1238e739839de8b4b3737eca0c43e",
+            "sourceCommit": "332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28",
+            "toolchain": "zig 0.15.2"
+          }
+        },
+        "subject": {
+          "id": "ghostty-native",
+          "kind": "lib",
+          "os": "linux",
+          "version": "1.3.1"
+        }
+      },
+      "sha256": "d5e3b36feb06aff68803cc190e069cfb299284275944d4037bd1281296b86442"
+    },
+    "decision": "untestable",
+    "reason": "Lib arm: the engine consumes bytes and has no input surface; host input encoding is measured in the terminal arm.",
+    "scope": {
+      "subject": {
+        "kind": "lib",
+        "id": "ghostty-native",
+        "os": "linux"
+      },
+      "versions": ["1.3.1", "1.3.1"],
+      "suites": ["06892a7fab08", "06892a7fab08"]
+    },
+    "sources": [
+      "d9d33fff157f7829cf449cdc5eaaa413:collector.capture.input.button-event-mouse",
+      "terminfo.dev@97d73ccaa2c41312a42b9c305d30107e098a0550:content/interpretations.json#by-design-32022-ghostty-native-input-button-event-mouse",
+      "edbbb0e0de57c1fcb78bcacc61b733e8:collector.capture.input.button-event-mouse",
+      "terminfo.dev@e275d02cd4d96d7f09e2c2afeba0d27c58344f23:packages/probes/headless-batch.ts#createLibProbeSource",
+      "terminfo.dev@e275d02cd4d96d7f09e2c2afeba0d27c58344f23:packages/probe-defs/src/input.ts"
+    ],
+    "supersedes": [],
+    "reviewed": true,
+    "reviewer": "@cto"
+  },
+  {
+    "id": "by-design-32108-ghostty-native-input-pixel-mouse",
+    "runId": "d9d33fff157f7829cf449cdc5eaaa413",
+    "featureId": "input.pixel-mouse",
+    "captureSha256": "1ff051e0bc48fcdc304495b34a4492dd1a46bb49cd9dddc8e8b711d143d7eccb",
+    "evidence": {
+      "algorithm": "evidence-output-v1",
+      "projection": {
+        "cell": {
+          "assertions": [],
+          "criterionBranch": "os-input-review",
+          "frames": [],
+          "rawReplies": [
+            {
+              "key": "input.pixel-mouse",
+              "sha256": "0408d11c45de32a40f90daf4f847d9893ccef72754cf89b0a328905e8ad65e93"
+            }
+          ],
+          "replyPath": {
+            "decision": {
+              "member": false,
+              "reason": "ghostty-native declares no reply delivery"
+            }
+          },
+          "tests": [
+            {
+              "id": "review",
+              "reason": "Lib arm: the engine consumes bytes and has no input surface; host input encoding is measured in the terminal arm.",
+              "status": "test-todo"
+            }
+          ]
+        },
+        "feature": {
+          "catalogEntrySha256": "41be8ce8a8fc6e437912a277c8985cfc50e5dc788b78ddbac7d6c3bbc27edc4b",
+          "featureId": "input.pixel-mouse"
+        },
+        "runtimeIdentity": {
+          "adapterSources": [
+            {
+              "blobOid": "35c9e35a5d60625ce1135b65ff38ae9278495a18",
+              "path": "packages/ghostty-native/src/index.ts"
+            },
+            {
+              "blobOid": "f5832c21a5837f636effa3ee2dfc1f8a4e7b8b25",
+              "path": "packages/ghostty-native/src/backend.ts"
+            }
+          ],
+          "adapterVersion": "0.10.2",
+          "engineVersion": "1.3.1",
+          "kind": "native",
+          "loadedBinary": {
+            "sha256": "d6e23fe62d56de795c6fa783a6c5025fc5b1238e739839de8b4b3737eca0c43e"
+          },
+          "provenance": {
+            "buildHash": "bcb9aac9409e23717f3c5952d0ab062da27395e9df69b980a4c5d026246f5a14",
+            "lockSha256": "3ec775507556db01d08055836b26183f629a9cbb0b5802a1566661e95988d74a",
+            "sha256": "d6e23fe62d56de795c6fa783a6c5025fc5b1238e739839de8b4b3737eca0c43e",
+            "sourceCommit": "332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28",
+            "toolchain": "zig 0.15.2"
+          }
+        },
+        "subject": {
+          "id": "ghostty-native",
+          "kind": "lib",
+          "os": "linux",
+          "version": "1.3.1"
+        }
+      },
+      "sha256": "badea338b92636c86893959384db298964c873d77fc9f52994d5ba30ae2764d7"
+    },
+    "decision": "untestable",
+    "reason": "Lib arm: the engine consumes bytes and has no input surface; host input encoding is measured in the terminal arm.",
+    "scope": {
+      "subject": {
+        "kind": "lib",
+        "id": "ghostty-native",
+        "os": "linux"
+      },
+      "versions": ["1.3.1", "1.3.1"],
+      "suites": ["06892a7fab08", "06892a7fab08"]
+    },
+    "sources": [
+      "d9d33fff157f7829cf449cdc5eaaa413:collector.capture.input.pixel-mouse",
+      "terminfo.dev@97d73ccaa2c41312a42b9c305d30107e098a0550:content/interpretations.json#by-design-32022-ghostty-native-input-pixel-mouse",
+      "edbbb0e0de57c1fcb78bcacc61b733e8:collector.capture.input.pixel-mouse",
+      "terminfo.dev@e275d02cd4d96d7f09e2c2afeba0d27c58344f23:packages/probes/headless-batch.ts#createLibProbeSource",
+      "terminfo.dev@e275d02cd4d96d7f09e2c2afeba0d27c58344f23:packages/probe-defs/src/input.ts"
+    ],
+    "supersedes": [],
+    "reviewed": true,
+    "reviewer": "@cto"
+  },
+  {
+    "id": "by-design-32108-ghostty-native-input-urxvt-mouse",
+    "runId": "d9d33fff157f7829cf449cdc5eaaa413",
+    "featureId": "input.urxvt-mouse",
+    "captureSha256": "8e2cabdf1b74c4f266146ff5586f04c1456b30c40ae5f746bccb4fa1c811419b",
+    "evidence": {
+      "algorithm": "evidence-output-v1",
+      "projection": {
+        "cell": {
+          "assertions": [],
+          "criterionBranch": "os-input-review",
+          "frames": [],
+          "rawReplies": [
+            {
+              "key": "input.urxvt-mouse",
+              "sha256": "0408d11c45de32a40f90daf4f847d9893ccef72754cf89b0a328905e8ad65e93"
+            }
+          ],
+          "replyPath": {
+            "decision": {
+              "member": false,
+              "reason": "ghostty-native declares no reply delivery"
+            }
+          },
+          "tests": [
+            {
+              "id": "review",
+              "reason": "Lib arm: the engine consumes bytes and has no input surface; host input encoding is measured in the terminal arm.",
+              "status": "test-todo"
+            }
+          ]
+        },
+        "feature": {
+          "catalogEntrySha256": "84a34602eea90c380c0051156b562e6ebdbbcca5641e23fbe0f2b764c8289356",
+          "featureId": "input.urxvt-mouse"
+        },
+        "runtimeIdentity": {
+          "adapterSources": [
+            {
+              "blobOid": "35c9e35a5d60625ce1135b65ff38ae9278495a18",
+              "path": "packages/ghostty-native/src/index.ts"
+            },
+            {
+              "blobOid": "f5832c21a5837f636effa3ee2dfc1f8a4e7b8b25",
+              "path": "packages/ghostty-native/src/backend.ts"
+            }
+          ],
+          "adapterVersion": "0.10.2",
+          "engineVersion": "1.3.1",
+          "kind": "native",
+          "loadedBinary": {
+            "sha256": "d6e23fe62d56de795c6fa783a6c5025fc5b1238e739839de8b4b3737eca0c43e"
+          },
+          "provenance": {
+            "buildHash": "bcb9aac9409e23717f3c5952d0ab062da27395e9df69b980a4c5d026246f5a14",
+            "lockSha256": "3ec775507556db01d08055836b26183f629a9cbb0b5802a1566661e95988d74a",
+            "sha256": "d6e23fe62d56de795c6fa783a6c5025fc5b1238e739839de8b4b3737eca0c43e",
+            "sourceCommit": "332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28",
+            "toolchain": "zig 0.15.2"
+          }
+        },
+        "subject": {
+          "id": "ghostty-native",
+          "kind": "lib",
+          "os": "linux",
+          "version": "1.3.1"
+        }
+      },
+      "sha256": "ae91337fd6bff653e95a71b07c9574b37d01f808c694fd85020ac6fc026f1aec"
+    },
+    "decision": "untestable",
+    "reason": "Lib arm: the engine consumes bytes and has no input surface; host input encoding is measured in the terminal arm.",
+    "scope": {
+      "subject": {
+        "kind": "lib",
+        "id": "ghostty-native",
+        "os": "linux"
+      },
+      "versions": ["1.3.1", "1.3.1"],
+      "suites": ["06892a7fab08", "06892a7fab08"]
+    },
+    "sources": [
+      "d9d33fff157f7829cf449cdc5eaaa413:collector.capture.input.urxvt-mouse",
+      "terminfo.dev@97d73ccaa2c41312a42b9c305d30107e098a0550:content/interpretations.json#by-design-32022-ghostty-native-input-urxvt-mouse",
+      "edbbb0e0de57c1fcb78bcacc61b733e8:collector.capture.input.urxvt-mouse",
+      "terminfo.dev@e275d02cd4d96d7f09e2c2afeba0d27c58344f23:packages/probes/headless-batch.ts#createLibProbeSource",
+      "terminfo.dev@e275d02cd4d96d7f09e2c2afeba0d27c58344f23:packages/probe-defs/src/input.ts"
+    ],
+    "supersedes": [],
+    "reviewed": true,
+    "reviewer": "@cto"
+  },
+  {
+    "id": "by-design-32108-ghostty-native-input-x10-mouse",
+    "runId": "d9d33fff157f7829cf449cdc5eaaa413",
+    "featureId": "input.x10-mouse",
+    "captureSha256": "e77066bff844f6dac6c65631575586bf90d02b8fb47dd17561d3fbdaae5951c3",
+    "evidence": {
+      "algorithm": "evidence-output-v1",
+      "projection": {
+        "cell": {
+          "assertions": [],
+          "criterionBranch": "os-input-review",
+          "frames": [],
+          "rawReplies": [
+            {
+              "key": "input.x10-mouse",
+              "sha256": "0408d11c45de32a40f90daf4f847d9893ccef72754cf89b0a328905e8ad65e93"
+            }
+          ],
+          "replyPath": {
+            "decision": {
+              "member": false,
+              "reason": "ghostty-native declares no reply delivery"
+            }
+          },
+          "tests": [
+            {
+              "id": "review",
+              "reason": "Lib arm: the engine consumes bytes and has no input surface; host input encoding is measured in the terminal arm.",
+              "status": "test-todo"
+            }
+          ]
+        },
+        "feature": {
+          "catalogEntrySha256": "ea136cedbbd0c8de7004b2605687a3e0bdaad33ff1cd8ec9c643ab7595d06a22",
+          "featureId": "input.x10-mouse"
+        },
+        "runtimeIdentity": {
+          "adapterSources": [
+            {
+              "blobOid": "35c9e35a5d60625ce1135b65ff38ae9278495a18",
+              "path": "packages/ghostty-native/src/index.ts"
+            },
+            {
+              "blobOid": "f5832c21a5837f636effa3ee2dfc1f8a4e7b8b25",
+              "path": "packages/ghostty-native/src/backend.ts"
+            }
+          ],
+          "adapterVersion": "0.10.2",
+          "engineVersion": "1.3.1",
+          "kind": "native",
+          "loadedBinary": {
+            "sha256": "d6e23fe62d56de795c6fa783a6c5025fc5b1238e739839de8b4b3737eca0c43e"
+          },
+          "provenance": {
+            "buildHash": "bcb9aac9409e23717f3c5952d0ab062da27395e9df69b980a4c5d026246f5a14",
+            "lockSha256": "3ec775507556db01d08055836b26183f629a9cbb0b5802a1566661e95988d74a",
+            "sha256": "d6e23fe62d56de795c6fa783a6c5025fc5b1238e739839de8b4b3737eca0c43e",
+            "sourceCommit": "332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28",
+            "toolchain": "zig 0.15.2"
+          }
+        },
+        "subject": {
+          "id": "ghostty-native",
+          "kind": "lib",
+          "os": "linux",
+          "version": "1.3.1"
+        }
+      },
+      "sha256": "710cd1b3c397ecdf27f977fb3c4d7f2f06814ee8bee2b26b7455ff56c19783bc"
+    },
+    "decision": "untestable",
+    "reason": "Lib arm: the engine consumes bytes and has no input surface; host input encoding is measured in the terminal arm.",
+    "scope": {
+      "subject": {
+        "kind": "lib",
+        "id": "ghostty-native",
+        "os": "linux"
+      },
+      "versions": ["1.3.1", "1.3.1"],
+      "suites": ["06892a7fab08", "06892a7fab08"]
+    },
+    "sources": [
+      "d9d33fff157f7829cf449cdc5eaaa413:collector.capture.input.x10-mouse",
+      "terminfo.dev@97d73ccaa2c41312a42b9c305d30107e098a0550:content/interpretations.json#by-design-32022-ghostty-native-input-x10-mouse",
+      "edbbb0e0de57c1fcb78bcacc61b733e8:collector.capture.input.x10-mouse",
+      "terminfo.dev@e275d02cd4d96d7f09e2c2afeba0d27c58344f23:packages/probes/headless-batch.ts#createLibProbeSource",
+      "terminfo.dev@e275d02cd4d96d7f09e2c2afeba0d27c58344f23:packages/probe-defs/src/input.ts"
+    ],
+    "supersedes": [],
+    "reviewed": true,
+    "reviewer": "@cto"
+  },
+  {
+    "id": "by-design-32108-ghostty-native-input-xtest-click",
+    "runId": "d9d33fff157f7829cf449cdc5eaaa413",
+    "featureId": "input.xtest-click",
+    "captureSha256": "4625751dbb7253b461d36a767a606a45b59c82f818133785d3e45ac0caf4c453",
+    "evidence": {
+      "algorithm": "evidence-output-v1",
+      "projection": {
+        "cell": {
+          "assertions": [],
+          "criterionBranch": "os-input-review",
+          "frames": [],
+          "rawReplies": [
+            {
+              "key": "input.xtest-click",
+              "sha256": "0408d11c45de32a40f90daf4f847d9893ccef72754cf89b0a328905e8ad65e93"
+            }
+          ],
+          "replyPath": {
+            "decision": {
+              "member": false,
+              "reason": "ghostty-native declares no reply delivery"
+            }
+          },
+          "tests": [
+            {
+              "id": "review",
+              "reason": "Lib arm: the engine consumes bytes and has no input surface; host input encoding is measured in the terminal arm.",
+              "status": "test-todo"
+            }
+          ]
+        },
+        "feature": {
+          "catalogEntrySha256": "1a7632360e570922e378fc9edca047e8e6071eefb99055cead1986ff73545342",
+          "featureId": "input.xtest-click"
+        },
+        "runtimeIdentity": {
+          "adapterSources": [
+            {
+              "blobOid": "35c9e35a5d60625ce1135b65ff38ae9278495a18",
+              "path": "packages/ghostty-native/src/index.ts"
+            },
+            {
+              "blobOid": "f5832c21a5837f636effa3ee2dfc1f8a4e7b8b25",
+              "path": "packages/ghostty-native/src/backend.ts"
+            }
+          ],
+          "adapterVersion": "0.10.2",
+          "engineVersion": "1.3.1",
+          "kind": "native",
+          "loadedBinary": {
+            "sha256": "d6e23fe62d56de795c6fa783a6c5025fc5b1238e739839de8b4b3737eca0c43e"
+          },
+          "provenance": {
+            "buildHash": "bcb9aac9409e23717f3c5952d0ab062da27395e9df69b980a4c5d026246f5a14",
+            "lockSha256": "3ec775507556db01d08055836b26183f629a9cbb0b5802a1566661e95988d74a",
+            "sha256": "d6e23fe62d56de795c6fa783a6c5025fc5b1238e739839de8b4b3737eca0c43e",
+            "sourceCommit": "332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28",
+            "toolchain": "zig 0.15.2"
+          }
+        },
+        "subject": {
+          "id": "ghostty-native",
+          "kind": "lib",
+          "os": "linux",
+          "version": "1.3.1"
+        }
+      },
+      "sha256": "0724f86b97bfe39972b13e2ea1cdaef4b8ae8f13971f9d7150c887b8e5c2ae2e"
+    },
+    "decision": "untestable",
+    "reason": "Lib arm: the engine consumes bytes and has no input surface; host input encoding is measured in the terminal arm.",
+    "scope": {
+      "subject": {
+        "kind": "lib",
+        "id": "ghostty-native",
+        "os": "linux"
+      },
+      "versions": ["1.3.1", "1.3.1"],
+      "suites": ["06892a7fab08", "06892a7fab08"]
+    },
+    "sources": [
+      "d9d33fff157f7829cf449cdc5eaaa413:collector.capture.input.xtest-click",
+      "terminfo.dev@97d73ccaa2c41312a42b9c305d30107e098a0550:content/interpretations.json#by-design-32022-ghostty-native-input-xtest-click",
+      "edbbb0e0de57c1fcb78bcacc61b733e8:collector.capture.input.xtest-click",
+      "terminfo.dev@e275d02cd4d96d7f09e2c2afeba0d27c58344f23:packages/probes/headless-batch.ts#createLibProbeSource",
+      "terminfo.dev@e275d02cd4d96d7f09e2c2afeba0d27c58344f23:packages/probe-defs/src/input.ts"
+    ],
+    "supersedes": [],
+    "reviewed": true,
+    "reviewer": "@cto"
+  },
+  {
+    "id": "by-design-32108-ghostty-native-input-xtest-key",
+    "runId": "d9d33fff157f7829cf449cdc5eaaa413",
+    "featureId": "input.xtest-key",
+    "captureSha256": "3691b1ec27d013233bdb251e3fe09687b1f57092d6c82cf932422b92614a0a34",
+    "evidence": {
+      "algorithm": "evidence-output-v1",
+      "projection": {
+        "cell": {
+          "assertions": [],
+          "criterionBranch": "os-input-review",
+          "frames": [],
+          "rawReplies": [
+            {
+              "key": "input.xtest-key",
+              "sha256": "0408d11c45de32a40f90daf4f847d9893ccef72754cf89b0a328905e8ad65e93"
+            }
+          ],
+          "replyPath": {
+            "decision": {
+              "member": false,
+              "reason": "ghostty-native declares no reply delivery"
+            }
+          },
+          "tests": [
+            {
+              "id": "review",
+              "reason": "Lib arm: the engine consumes bytes and has no input surface; host input encoding is measured in the terminal arm.",
+              "status": "test-todo"
+            }
+          ]
+        },
+        "feature": {
+          "catalogEntrySha256": "d54c17e5ce6f694f63e672e9b30907cfb34631e785133b23e01b8a76a7ffe3f0",
+          "featureId": "input.xtest-key"
+        },
+        "runtimeIdentity": {
+          "adapterSources": [
+            {
+              "blobOid": "35c9e35a5d60625ce1135b65ff38ae9278495a18",
+              "path": "packages/ghostty-native/src/index.ts"
+            },
+            {
+              "blobOid": "f5832c21a5837f636effa3ee2dfc1f8a4e7b8b25",
+              "path": "packages/ghostty-native/src/backend.ts"
+            }
+          ],
+          "adapterVersion": "0.10.2",
+          "engineVersion": "1.3.1",
+          "kind": "native",
+          "loadedBinary": {
+            "sha256": "d6e23fe62d56de795c6fa783a6c5025fc5b1238e739839de8b4b3737eca0c43e"
+          },
+          "provenance": {
+            "buildHash": "bcb9aac9409e23717f3c5952d0ab062da27395e9df69b980a4c5d026246f5a14",
+            "lockSha256": "3ec775507556db01d08055836b26183f629a9cbb0b5802a1566661e95988d74a",
+            "sha256": "d6e23fe62d56de795c6fa783a6c5025fc5b1238e739839de8b4b3737eca0c43e",
+            "sourceCommit": "332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28",
+            "toolchain": "zig 0.15.2"
+          }
+        },
+        "subject": {
+          "id": "ghostty-native",
+          "kind": "lib",
+          "os": "linux",
+          "version": "1.3.1"
+        }
+      },
+      "sha256": "cd6908cdff427013ce38bf46dca558310dd5e716ae1748b10a44426a04a03cfa"
+    },
+    "decision": "untestable",
+    "reason": "Lib arm: the engine consumes bytes and has no input surface; host input encoding is measured in the terminal arm.",
+    "scope": {
+      "subject": {
+        "kind": "lib",
+        "id": "ghostty-native",
+        "os": "linux"
+      },
+      "versions": ["1.3.1", "1.3.1"],
+      "suites": ["06892a7fab08", "06892a7fab08"]
+    },
+    "sources": [
+      "d9d33fff157f7829cf449cdc5eaaa413:collector.capture.input.xtest-key",
+      "terminfo.dev@97d73ccaa2c41312a42b9c305d30107e098a0550:content/interpretations.json#by-design-32022-ghostty-native-input-xtest-key",
+      "edbbb0e0de57c1fcb78bcacc61b733e8:collector.capture.input.xtest-key",
+      "terminfo.dev@e275d02cd4d96d7f09e2c2afeba0d27c58344f23:packages/probes/headless-batch.ts#createLibProbeSource",
+      "terminfo.dev@e275d02cd4d96d7f09e2c2afeba0d27c58344f23:packages/probe-defs/src/input.ts"
+    ],
+    "supersedes": [],
+    "reviewed": true,
+    "reviewer": "@cto"
+  },
+  {
+    "id": "by-design-32108-ghostty-native-input-xtest-wheel",
+    "runId": "d9d33fff157f7829cf449cdc5eaaa413",
+    "featureId": "input.xtest-wheel",
+    "captureSha256": "de1d0b3a21dfb98dae06e69648760d70532bc200a02ca24f2c1629b5e1b9f213",
+    "evidence": {
+      "algorithm": "evidence-output-v1",
+      "projection": {
+        "cell": {
+          "assertions": [],
+          "criterionBranch": "os-input-review",
+          "frames": [],
+          "rawReplies": [
+            {
+              "key": "input.xtest-wheel",
+              "sha256": "0408d11c45de32a40f90daf4f847d9893ccef72754cf89b0a328905e8ad65e93"
+            }
+          ],
+          "replyPath": {
+            "decision": {
+              "member": false,
+              "reason": "ghostty-native declares no reply delivery"
+            }
+          },
+          "tests": [
+            {
+              "id": "review",
+              "reason": "Lib arm: the engine consumes bytes and has no input surface; host input encoding is measured in the terminal arm.",
+              "status": "test-todo"
+            }
+          ]
+        },
+        "feature": {
+          "catalogEntrySha256": "aeb4c2f70a40c717a9cba2ad50219cc36943b5f97e494d42f3a8bc010155a348",
+          "featureId": "input.xtest-wheel"
+        },
+        "runtimeIdentity": {
+          "adapterSources": [
+            {
+              "blobOid": "35c9e35a5d60625ce1135b65ff38ae9278495a18",
+              "path": "packages/ghostty-native/src/index.ts"
+            },
+            {
+              "blobOid": "f5832c21a5837f636effa3ee2dfc1f8a4e7b8b25",
+              "path": "packages/ghostty-native/src/backend.ts"
+            }
+          ],
+          "adapterVersion": "0.10.2",
+          "engineVersion": "1.3.1",
+          "kind": "native",
+          "loadedBinary": {
+            "sha256": "d6e23fe62d56de795c6fa783a6c5025fc5b1238e739839de8b4b3737eca0c43e"
+          },
+          "provenance": {
+            "buildHash": "bcb9aac9409e23717f3c5952d0ab062da27395e9df69b980a4c5d026246f5a14",
+            "lockSha256": "3ec775507556db01d08055836b26183f629a9cbb0b5802a1566661e95988d74a",
+            "sha256": "d6e23fe62d56de795c6fa783a6c5025fc5b1238e739839de8b4b3737eca0c43e",
+            "sourceCommit": "332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28",
+            "toolchain": "zig 0.15.2"
+          }
+        },
+        "subject": {
+          "id": "ghostty-native",
+          "kind": "lib",
+          "os": "linux",
+          "version": "1.3.1"
+        }
+      },
+      "sha256": "6c704fb678db6a4773825f6c714a89bc3d9d1bd8b0e2819d517694bb5d26a1ae"
+    },
+    "decision": "untestable",
+    "reason": "Lib arm: the engine consumes bytes and has no input surface; host input encoding is measured in the terminal arm.",
+    "scope": {
+      "subject": {
+        "kind": "lib",
+        "id": "ghostty-native",
+        "os": "linux"
+      },
+      "versions": ["1.3.1", "1.3.1"],
+      "suites": ["06892a7fab08", "06892a7fab08"]
+    },
+    "sources": [
+      "d9d33fff157f7829cf449cdc5eaaa413:collector.capture.input.xtest-wheel",
+      "terminfo.dev@97d73ccaa2c41312a42b9c305d30107e098a0550:content/interpretations.json#by-design-32022-ghostty-native-input-xtest-wheel",
+      "edbbb0e0de57c1fcb78bcacc61b733e8:collector.capture.input.xtest-wheel",
+      "terminfo.dev@e275d02cd4d96d7f09e2c2afeba0d27c58344f23:packages/probes/headless-batch.ts#createLibProbeSource",
+      "terminfo.dev@e275d02cd4d96d7f09e2c2afeba0d27c58344f23:packages/probe-defs/src/input.ts"
+    ],
+    "supersedes": [],
+    "reviewed": true,
+    "reviewer": "@cto"
+  },
+  {
+    "id": "by-design-32108-ghostty-native-modes-decsscls",
+    "runId": "d9d33fff157f7829cf449cdc5eaaa413",
+    "featureId": "modes.decsscls",
+    "captureSha256": "b64d941095390b6c342695edd299e8a0b4a0bcced2fe25d0d237c555a7d8f81f",
+    "evidence": {
+      "algorithm": "evidence-output-v1",
+      "projection": {
+        "cell": {
+          "assertions": [],
+          "criterionBranch": "headless-observable-review",
+          "frames": [],
+          "rawReplies": [
+            {
+              "key": "modes.decsscls",
+              "sha256": "2caa8a1cd0a3edc7a716e14df501f6ca495838ba1907f56829e445800bb882c3"
+            }
+          ],
+          "replyPath": {
+            "decision": {
+              "member": false,
+              "reason": "ghostty-native declares no reply delivery"
+            }
+          },
+          "tests": [
+            {
+              "id": "review",
+              "reason": "presentation speed: headless engines paint no frames and expose no scroll-speed state",
+              "status": "test-todo"
+            }
+          ]
+        },
+        "feature": {
+          "catalogEntrySha256": "f0b8accc868090a9d457eb728cf8b0d4649b12a3de59614955e799731d9914b6",
+          "featureId": "modes.decsscls"
+        },
+        "runtimeIdentity": {
+          "adapterSources": [
+            {
+              "blobOid": "35c9e35a5d60625ce1135b65ff38ae9278495a18",
+              "path": "packages/ghostty-native/src/index.ts"
+            },
+            {
+              "blobOid": "f5832c21a5837f636effa3ee2dfc1f8a4e7b8b25",
+              "path": "packages/ghostty-native/src/backend.ts"
+            }
+          ],
+          "adapterVersion": "0.10.2",
+          "engineVersion": "1.3.1",
+          "kind": "native",
+          "loadedBinary": {
+            "sha256": "d6e23fe62d56de795c6fa783a6c5025fc5b1238e739839de8b4b3737eca0c43e"
+          },
+          "provenance": {
+            "buildHash": "bcb9aac9409e23717f3c5952d0ab062da27395e9df69b980a4c5d026246f5a14",
+            "lockSha256": "3ec775507556db01d08055836b26183f629a9cbb0b5802a1566661e95988d74a",
+            "sha256": "d6e23fe62d56de795c6fa783a6c5025fc5b1238e739839de8b4b3737eca0c43e",
+            "sourceCommit": "332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28",
+            "toolchain": "zig 0.15.2"
+          }
+        },
+        "subject": {
+          "id": "ghostty-native",
+          "kind": "lib",
+          "os": "linux",
+          "version": "1.3.1"
+        }
+      },
+      "sha256": "1f46cedc018565bf0403e4e0e58275594064d7fd90cd1a9fb15501a18efeb963"
+    },
+    "decision": "untestable",
+    "reason": "presentation speed: headless engines paint no frames and expose no scroll-speed state",
+    "scope": {
+      "subject": {
+        "kind": "lib",
+        "id": "ghostty-native",
+        "os": "linux"
+      },
+      "versions": ["1.3.1", "1.3.1"],
+      "suites": ["06892a7fab08", "06892a7fab08"]
+    },
+    "sources": [
+      "d9d33fff157f7829cf449cdc5eaaa413:collector.capture.modes.decsscls",
+      "terminfo.dev@97d73ccaa2c41312a42b9c305d30107e098a0550:content/interpretations.json#by-design-32022-ghostty-native-modes-decsscls",
+      "edbbb0e0de57c1fcb78bcacc61b733e8:collector.capture.modes.decsscls",
+      "terminfo.dev@e275d02cd4d96d7f09e2c2afeba0d27c58344f23:packages/probes/headless-batch.ts#createLibProbeSource",
+      "terminfo.dev@e275d02cd4d96d7f09e2c2afeba0d27c58344f23:packages/probe-defs/src/modes.ts"
+    ],
+    "supersedes": [],
+    "reviewed": true,
+    "reviewer": "@cto"
   }
 ]

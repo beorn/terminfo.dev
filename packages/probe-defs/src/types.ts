@@ -707,6 +707,8 @@ export interface RunProvenance {
 
 export interface HistoricalInterpretation {
   id: string
+  /** An exact sealed-run overlay names buildable instrumentation work without rewriting the capture. */
+  decision?: "tool-gap"
   /** A review of identity or community origin must name the exact immutable run. */
   runId?: string
   /** SHA256 of the exact raw run bytes; a review cannot move to another capture. */
@@ -759,7 +761,7 @@ export interface CaptureDecision {
   featureId: string
   captureSha256: string
   evidence?: CaptureEvidence
-  decision: "supported" | "unsupported" | "untestable"
+  decision: "supported" | "unsupported" | "untestable" | "tool-gap"
   reviewed: true
   reviewer: string
   reason: string
@@ -777,6 +779,8 @@ export type Interpretation = HistoricalInterpretation | CaptureDecision
 
 /** Source for library probing (synchronous cell-state access) */
 export interface LibProbeSource {
+  /** Existing adapter name, retained only for human-readable binding diagnostics. */
+  readonly backendName: string
   readonly kind: ProbeSourceKind
   /** The collector's measured loaded module/engine, never inferred from capabilities or versions. */
   readonly runtimeIdentity?: HeadlessRuntimeIdentity
@@ -794,6 +798,24 @@ export interface LibProbeSource {
   getCwd?(): string | null
   /** Copied parser notification payloads; this does not observe OS notification delivery. */
   getNotifications?(): readonly string[]
+  /** Copied entries selected by semantic-marks (starts) or semantic-command-end (raw completion); absent means no reader. */
+  getSemanticMarks?(): readonly (
+    | {
+        readonly type: "prompt" | "command" | "output"
+        readonly startRow: number
+        readonly startCol: number
+      }
+    | {
+        readonly type: "command-end"
+        readonly rawStatus: string
+      }
+  )[]
+  /** Copied raw payloads and DCS start positions, without raster rendering or cell geometry. */
+  getSixelImages?(): readonly {
+    readonly data: string
+    readonly row: number
+    readonly col: number
+  }[]
   /** Present only when the backend exposes the engine's clipboard callback state. */
   getClipboardState?(): {
     writes: { selector: string; payload: string; text?: string; decodeError?: string }[]

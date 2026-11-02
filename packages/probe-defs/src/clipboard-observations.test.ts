@@ -262,6 +262,7 @@ test("extensions.clipboard-paste is not tested without an OS XTEST adapter", asy
   const definition = pasteProbe()
   const writes: string[] = []
   const headless = definition.lib!({
+    backendName: "scripted-model",
     kind: "live",
     cols: 80,
     feed() {},

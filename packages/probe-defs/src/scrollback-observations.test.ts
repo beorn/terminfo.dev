@@ -14,6 +14,7 @@ import { createSemanticSurface } from "./testing/semantic-surface.ts"
 
 function headless(overrides: Partial<LibProbeSource> = {}): LibProbeSource {
   return {
+    backendName: "scripted-model",
     kind: "live",
     cols: 61,
     feed() {},
@@ -62,10 +63,10 @@ const historyRuntime: WasmRuntime = {
   runtimeFormat: "wasm",
   engineVersion: "0.3.3",
   adapterVersion: "0.10.2",
-  termlessRevision: "8a1740b2d9f9b07105ffb1f62785c0ca9e513cf7",
+  termlessRevision: "f8d2aeb7a7a30f0215fd628bbbb1f1e5cd0a91be",
   adapterSources: [
     { path: "packages/libvterm/src/index.ts", blobOid: "2b4708b1081e701b99893ca055ded781dc46cf25" },
-    { path: "packages/libvterm/src/backend.ts", blobOid: "caa5dc6c4ac4e3dac45977466919d2c1dcd3e851" },
+    { path: "packages/libvterm/src/backend.ts", blobOid: "eb513ccd443e30c7a869a8ba41f8126e1c0ddf00" },
     { path: "packages/libvterm/src/wasm-bindings.ts", blobOid: "2bbd4d5cf59b8d53db8f5c0329d2ed7853c43e45" },
     { path: "packages/libvterm/wasm/libvterm.js", blobOid: "1e784be87614ab924b96844009919b7c21ce150e" },
   ],
@@ -73,13 +74,13 @@ const historyRuntime: WasmRuntime = {
   integrity: {
     kind: "source",
     repository: "git@github.com:beorn/termless.git",
-    revision: "38e45ab87acee6bd7d7766df571e754991fd45d8",
-    treeOid: "d17653a18a964f38a6cf19130d2b8f63cccadefb",
+    revision: "f8d2aeb7a7a30f0215fd628bbbb1f1e5cd0a91be",
+    treeOid: "ae0b11bb808b8c402c168869d7caa5a5f62566c2",
     cleanTree: true,
   },
   loadedBinary: {
     path: "vendor/termless/packages/libvterm/wasm/libvterm.wasm",
-    sha256: "7ebe1b994b58ca867dcd19e9cdeb10b8839b6c1f0dbdea024f875a9f57560a23",
+    sha256: "3d67045bb43c5e4081c70dc58088af8f735416c20df2d7843d765e5aad8ef62a",
   },
 }
 const sourceIntegrity = historyRuntime.integrity
@@ -846,7 +847,7 @@ test.each([
   expect(writes.at(-1), id).toBe("\x1b[0m\x1b[2J\x1b[H")
 })
 
-test("invalid headless rows and narrow DECSTBM geometry refuse before writes", async () => {
+test("invalid headless geometry retains named coverage and cleanup", async () => {
   // The two model probes read `getScrollback().screenLines`; a count that is not a safe integer is
   // not a measured grid, so they refuse without feeding a byte.
   for (const id of ["scrollback.accumulate", "scrollback.total-lines"]) {
@@ -867,8 +868,7 @@ test("invalid headless rows and narrow DECSTBM geometry refuse before writes", a
       expect(feeds).toEqual([])
     }
   }
-  // A region row is refused on the width of the region it compares: the parser arm addresses rows
-  // directly, so a grid narrower than the row's own cells cannot carry the fixture at all.
+  // A grid narrower than the compared region cannot carry the fixture; refuse before writes.
   for (const id of ["scrollback.scroll-up", "scrollback.scroll-down", "scrollback.decstbm-reset"]) {
     const probe = scrollbackProbes.find((item) => item.id === id)
     if (!probe?.lib) throw new Error(`Missing ${id} headless callback`)
@@ -883,6 +883,38 @@ test("invalid headless rows and narrow DECSTBM geometry refuse before writes", a
       assertionType: "buffer_state",
     })
     expect(feeds, `${id} cols=${columns - 1}`).toEqual([])
+  }
+  const reset = scrollbackProbes.find((item) => item.id === "scrollback.decstbm-reset")
+  if (!reset?.lib) throw new Error("Missing DECSTBM reset library callback")
+  // Bad extents cannot select an absolute row, including when the edit changes the reported geometry.
+  for (const invalid of [
+    { screenLines: Number.NaN, totalLines: 24 },
+    { screenLines: 1, totalLines: 24 },
+    { screenLines: 24, totalLines: 23 },
+    { screenLines: 24, totalLines: Number.POSITIVE_INFINITY },
+    { screenLines: 24, totalLines: 24.5 },
+  ]) {
+    for (const phase of ["seed", "after"] as const) {
+      const feeds: string[] = []
+      let reads = 0
+      const result = reset.lib(
+        headless({
+          feed: (sequence) => feeds.push(sequence),
+          getCell: (row) => ({ char: row === 0 ? "A" : "" }) as ReturnType<LibProbeSource["getCell"]>,
+          getScrollback: () => ({
+            viewportOffset: 0,
+            ...(phase === "seed" || reads++ > 0 ? invalid : { screenLines: 24, totalLines: 24 }),
+          }),
+        }),
+      )
+      expect(result.observation, `${phase}: ${JSON.stringify(invalid)}`).toMatchObject({
+        outcome: "inconclusive",
+        reason: "insufficient-evidence",
+        note: expect.stringContaining("coherent retained-buffer extents"),
+      })
+      expect(result.assertions).toBeUndefined()
+      expect(feeds.at(-1)).toBe("\x1b[r")
+    }
   }
   const decstbm = scrollbackProbes.find((item) => item.id === "scrollback.decstbm")
   if (!decstbm?.term) throw new Error("Missing scrollback.decstbm app callback")
@@ -949,10 +981,12 @@ test("interior-region SU reads the compared cells, never the scrollback model", 
   if (!probe?.lib) throw new Error("missing scroll-up callback")
   const row = readbackRow("scrollback.scroll-up")
   const after = [["A"], ["C"], ["D"], [""], ["E"]]
+  const surface = declaredScreen({ [row.seed]: [["A"], ["B"], ["C"], ["D"], ["E"]], "\x1b[S": after }, 4)
   const result = probe.lib({
-    ...declaredScreen({ [row.seed]: [["A"], ["B"], ["C"], ["D"], ["E"]], "\x1b[S": after }, 4),
+    ...surface,
     // A surface with history already behind the viewport still scrolls the screen the row compares.
     getScrollback: () => ({ viewportOffset: 3, totalLines: 999, screenLines: 5 }),
+    getCell: (absoluteRow, col) => surface.getCell(absoluteRow - 994, col),
   })
   expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
 })
@@ -993,12 +1027,20 @@ test("DECSTBM reset is graded from the region readback, never from scrollback gr
   // that leaves the compared rows where they were is a measured negative, however much history it
   // claims to have grown.
   const surface = declaredScreen({ [row.seed]: [["A"], [""]] })
+  let history = 987
+  let scrolls = 0
   const result = probe.lib({
     ...surface,
-    getScrollback: () => ({ viewportOffset: 0, screenLines: 12, totalLines: 999 }),
+    feed: (sequence) => {
+      surface.feed(sequence)
+      if (sequence === "\x1b[S" && ++scrolls === 2) history++
+    },
+    getScrollback: () => ({ viewportOffset: 0, screenLines: 12, totalLines: history + 12 }),
+    getCell: (absoluteRow, col) => surface.getCell(absoluteRow - history, col),
   })
   expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "buffer_state" })
   expect(result.assertions).toMatchObject([{ kind: "negative" }])
+  expect(JSON.parse(result.response ?? "null")).toMatchObject({ before: [["A"], [""]], after: [["A"], [""]] })
 })
 
 function captureApp(rows: number, cols: number) {

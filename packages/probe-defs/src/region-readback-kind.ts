@@ -381,9 +381,23 @@ export function gridMatch(
 }
 
 /** The compared region's cells, read from the parser at their own screen positions. */
-function readGrid(ctx: LibProbeSource, geometry: RegionReadbackGeometry): MeasuredCell[][] {
+function readGrid(ctx: LibProbeSource, geometry: RegionReadbackGeometry): MeasuredCell[][] | string {
+  // CUP addresses the active screen; getCell addresses the complete retained buffer. Read both
+  // extents together for each frame: the preceding operation may have added or evicted history.
+  const { totalLines, screenLines } = ctx.getScrollback()
+  if (
+    !Number.isSafeInteger(screenLines) ||
+    screenLines < geometry.bottom ||
+    !Number.isSafeInteger(totalLines) ||
+    totalLines < screenLines
+  ) {
+    return `Need at least ${geometry.bottom} measured screen rows and coherent retained-buffer extents; read screenLines=${screenLines}, totalLines=${totalLines}`
+  }
+  const screenTop = totalLines - screenLines
   return Array.from({ length: geometry.rows }, (_, row) =>
-    Array.from({ length: geometry.columns }, (_, col) => ctx.getCell(geometry.top - 1 + row, geometry.left - 1 + col)),
+    Array.from({ length: geometry.columns }, (_, col) =>
+      ctx.getCell(screenTop + geometry.top - 1 + row, geometry.left - 1 + col),
+    ),
   )
 }
 
@@ -614,8 +628,7 @@ export function regionReadbackProbe(
     termAssertionType: "screenshot",
     libAssertionType: "buffer_state",
     lib(ctx) {
-      // The library source reports its width and nothing else: the parser arms address cells by
-      // row directly, so the only geometry they can be refused on is the compared region's width.
+      // Refuse a narrow fixture before writes. Each measured frame also validates its buffer extents.
       if (!Number.isSafeInteger(ctx.cols) || ctx.cols < geometry.right) {
         return parserStateResult(
           null,
@@ -629,7 +642,9 @@ export function regionReadbackProbe(
         let baseline: MeasuredCell[][] | undefined
         if (baselineRow !== undefined) {
           ctx.feed(baselineRow.seed)
-          baseline = readGrid(ctx, geometry)
+          const measuredBaseline = readGrid(ctx, geometry)
+          if (typeof measuredBaseline === "string") return parserStateResult(null, row.expected, {}, measuredBaseline)
+          baseline = measuredBaseline
           if (!grid("precondition", baseline, baselineRow.cells)) {
             return parserStateResult(
               null,
@@ -641,6 +656,7 @@ export function regionReadbackProbe(
         }
         ctx.feed(row.seed)
         const before = readGrid(ctx, geometry)
+        if (typeof before === "string") return parserStateResult(null, row.expected, {}, before)
         // BEFORE the grid comparison: an unread exact claim inside sameColorClaim throws, and an
         // unread bold or inverse would otherwise be reported as "seed not established" instead of
         // named.
@@ -704,6 +720,9 @@ export function regionReadbackProbe(
           }
         }
         const after = readGrid(ctx, geometry)
+        if (typeof after === "string") {
+          return parserStateResult(null, row.expected, { before: responseGrid(before, row.before) }, after)
+        }
         const unreadAfter = unreadAttributes(after, row.after)
         if (unreadAfter !== null) {
           return parserStateResult(

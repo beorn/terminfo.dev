@@ -186,6 +186,7 @@ test.each(xtestIds)("%s is not tested without an OS XTEST adapter", async (id) =
   const definition = probe(id)
   const writes: string[] = []
   const headless = definition.lib!({
+    backendName: "scripted-model",
     kind: "live",
     cols: 80,
     feed() {},
@@ -307,6 +308,7 @@ test("input.modify-other-keys is not tested without an OS XTEST adapter", async 
   const definition = probe("input.modify-other-keys")
   const writes: string[] = []
   const headless = definition.lib!({
+    backendName: "scripted-model",
     kind: "live",
     cols: 80,
     feed() {},
@@ -402,6 +404,7 @@ test("input.modify-other-keys-3 is not tested without an OS XTEST adapter", asyn
   const definition = probe("input.modify-other-keys-3")
   const writes: string[] = []
   const headless = definition.lib!({
+    backendName: "scripted-model",
     kind: "live",
     cols: 80,
     feed() {},
@@ -654,6 +657,7 @@ test("input.pixel-mouse is not tested without an OS XTEST adapter", async () => 
   const definition = probe("input.pixel-mouse")
   const writes: string[] = []
   const headless = definition.lib!({
+    backendName: "scripted-model",
     kind: "live",
     cols: 80,
     feed() {},
@@ -781,6 +785,7 @@ test("input.urxvt-mouse is not tested without an OS XTEST adapter", async () => 
   const definition = probe("input.urxvt-mouse")
   const writes: string[] = []
   const headless = definition.lib!({
+    backendName: "scripted-model",
     kind: "live",
     cols: 80,
     feed() {},
@@ -878,6 +883,7 @@ test("input.x10-mouse is not tested without an OS XTEST adapter", async () => {
   const definition = probe("input.x10-mouse")
   const writes: string[] = []
   const headless = definition.lib!({
+    backendName: "scripted-model",
     kind: "live",
     cols: 80,
     feed() {},
@@ -975,6 +981,7 @@ test("input.button-event-mouse is not tested without an OS XTEST adapter", async
   const definition = probe("input.button-event-mouse")
   const writes: string[] = []
   const headless = definition.lib!({
+    backendName: "scripted-model",
     kind: "live",
     cols: 80,
     feed() {},
@@ -1143,6 +1150,7 @@ function libMouseSource(
   events: LibMouseEvent[] = [],
 ): LibProbeSource {
   return {
+    backendName: "scripted-model",
     kind: "live",
     cols: 80,
     feed(text) {

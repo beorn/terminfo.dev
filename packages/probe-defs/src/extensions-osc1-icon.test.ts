@@ -15,6 +15,7 @@ function source(
 ): LibProbeSource {
   let title = "unchanged-title"
   return {
+    backendName: "scripted-model",
     kind: "live",
     cols: 80,
     capabilities: {

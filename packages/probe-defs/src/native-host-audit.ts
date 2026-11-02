@@ -19,6 +19,28 @@ type NativeHostSourceCitations = Readonly<Partial<Record<Exclude<HostRecipeName,
  * from runtime. A host gains causes only through its own audit here; no host inherits another's citations.
  */
 export const NATIVE_HOST_AUDITS: ReadonlyMap<string, NativeHostSourceCitations> = new Map([
+  // Termless 824119c2 alternate-scroll rebuild: Config, EventProxy and replies are unchanged.
+  [
+    "21d4b43c1d4c401c5b9f8114de85b3e837605242363c322c2dcb37e4a42fba61",
+    {
+      "clipboard-load": {
+        kind: "source-audited",
+        citation:
+          "alacritty_terminal 0.26.0 term/mod.rs:356-380 defaults OSC52 to OnlyCopy; Termless 824119c2 packages/alacritty/native/src/lib.rs:311-319 changes only scrolling_history from Config::default, and EventProxy::send_event:48-89 has no ClipboardLoad handler; this harness supplies no clipboard read permission",
+      },
+    },
+  ],
+  // Termless be67d1c7 absolute-row rebuild: Config, EventProxy and the reply path were independently re-audited.
+  [
+    "8232209bd7273d68eb0bc9a71c5acf94fd8ebd96612604ff901c09c4d6cb8344",
+    {
+      "clipboard-load": {
+        kind: "source-audited",
+        citation:
+          "alacritty_terminal 0.26.0 term/mod.rs:356-380 defaults OSC52 to OnlyCopy; Termless be67d1c7 packages/alacritty/native/src/lib.rs:311-319 changes only scrolling_history from Config::default, and EventProxy::send_event:48-89 has no ClipboardLoad handler; this harness supplies no clipboard read permission",
+      },
+    },
+  ],
   // S6 native mode-readback rebuilds: their independent two-checkout receipts bind these source audits.
   [
     "dc3b24de6e91416f66b1953ce101991ef7e78602ce1b5d357f65832c9b96b326",
@@ -32,6 +54,38 @@ export const NATIVE_HOST_AUDITS: ReadonlyMap<string, NativeHostSourceCitations> 
         kind: "unimplemented",
         citation:
           "vt100 0.16.2 src/perform.rs:132-156 handles only CSI 8 t, forwarding CSI 14 t to the empty src/callbacks.rs:55-63 unhandled_csi; termless 27297cf2 packages/vt100-rust/native/src/lib.rs:21-54 installs no override or reply writer",
+      },
+    },
+  ],
+  // Retained-row rebuild: ResponseHandler/ReadonlyHandler and host inputs remain as audited at this source.
+  // Conceal-only rebuild: independently verified byte-identical ResponseHandler and pinned core.
+  [
+    "53f9a867cce594b4d50fb9508db9ce5d2d79fb4244a418548b7cb31fa50780d1",
+    {
+      "clipboard-load": {
+        kind: "unimplemented",
+        citation:
+          "termless 8bd0516a packages/ghostty-native/native/src/main.zig:38-83 ResponseHandler writes only mode, DSR 5/6 and kitty keyboard replies, forwarding clipboard_contents to ghostty 332b2aef src/terminal/stream_readonly.zig:176-196 where it is ignored without a writer",
+      },
+      "text-area-size": {
+        kind: "unimplemented",
+        citation:
+          "termless 8bd0516a packages/ghostty-native/native/src/main.zig:38-83 ResponseHandler forwards size_report to ghostty 332b2aef src/terminal/stream_readonly.zig:176-196 where it is ignored; the wrapper supplies no reply path for CSI 14 t",
+      },
+    },
+  ],
+  [
+    "e58288d0b62448bf746ad77e58a4e9523c1baabb080d6fc6723f76caf29d2bb0",
+    {
+      "clipboard-load": {
+        kind: "unimplemented",
+        citation:
+          "termless c75b0674 packages/ghostty-native/native/src/main.zig:38-83 ResponseHandler writes only mode, DSR 5/6 and kitty keyboard replies, forwarding clipboard_contents to ghostty 332b2aef src/terminal/stream_readonly.zig:176-196 where it is ignored without a writer",
+      },
+      "text-area-size": {
+        kind: "unimplemented",
+        citation:
+          "termless c75b0674 packages/ghostty-native/native/src/main.zig:38-83 ResponseHandler forwards size_report to ghostty 332b2aef src/terminal/stream_readonly.zig:176-196 where it is ignored; the wrapper supplies no reply path for CSI 14 t",
       },
     },
   ],
@@ -72,6 +126,17 @@ export const NATIVE_HOST_AUDITS: ReadonlyMap<string, NativeHostSourceCitations> 
       },
     },
   ],
+  [
+    "6722b331de7489c14cb599d939e5d2314f054220728f83c5c29f454e70273e47",
+    {
+      "clipboard-load": {
+        kind: "unimplemented",
+        citation:
+          "tattoy-wezterm-term 0.1.0-fork.5 terminalstate/performer.rs:788 drops OperatingSystemCommand::QuerySelection; terminal.rs:13-19 Clipboard has only set_contents, so no build of this engine answers an OSC 52 read",
+      },
+    },
+  ],
+
   [
     "0f56a805793d7d829daa617f1323aacff0d73fe868747b0d077c6af315e2aab8",
     {

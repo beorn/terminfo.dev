@@ -839,18 +839,100 @@ const setup = (
   return { draft, artifact, decision }
 }
 
+// #32014: the three grading decisions cannot represent a buildable, unbuilt readback.
+// Exercise the owner boundary through sealing and canonical reread, including both binding rules.
+describe("named tool-gap capture decisions", () => {
+  it.each([
+    { sourceNegative: false, evidence: false },
+    { sourceNegative: true, evidence: false },
+    { sourceNegative: false, evidence: true },
+    { sourceNegative: true, evidence: true },
+  ])("seals and rereads a named TODO without deriving assertions: %j", ({ sourceNegative, evidence }) => {
+    const { draft, decision } = setup(
+      sourceNegative ? JSON.stringify({ faint: false }) : "NO",
+      sourceNegative ? { runId: "tool-gap-source", startedAt: "2026-10-21T05:00:00.000Z" } : undefined,
+    )
+    const featureId = decision.featureId
+    const entryHash = "a".repeat(64)
+    const bound = evidence ? retainCaptureBinding(draft, featureId, entryHash).evidence : undefined
+    const review = {
+      ...decision,
+      ...(bound && { evidence: bound }),
+      decision: "tool-gap",
+      reason: "Presentation readback is unbuilt; owner @si/terminfo/30211-terminfo-273/32014-tool-gap-decision-value",
+    }
+    const source = JSON.stringify(review)
+    const original = structuredClone(draft)
+    expect(() => sealRunDraft(draft)).toThrow(/review pending/)
+    applyCaptureDecision(draft, source, "2026-10-21T05:01:00.000Z", undefined, evidence ? entryHash : undefined)
+    expect(draft.assertions).toEqual(original.assertions)
+    for (const [key, bytes] of Object.entries(original.rawReplies)) expect(draft.rawReplies[key]).toBe(bytes)
+    expect(draft.results[0]!.tests.filter((test) => test.id === "review")).toEqual([])
+    expect(draft.results[0]!.tests.find((test) => test.id === "criterion")).toMatchObject({
+      status: "test-todo",
+      reason: review.reason,
+      reviewRef: "collector.review.review-bold",
+      assertionRefs: [],
+    })
+    const sealed = sealRunDraft(draft)
+    const manifest = {
+      schemaVersion: 4 as const,
+      probeHash: draft.probeHash,
+      adapterVersion: "3",
+      catalogIds: [featureId],
+      probes: { term: sourceNegative ? [] : [featureId], lib: sourceNegative ? [featureId] : [], mux: [] },
+      ...(evidence && { catalogEntrySha256: { [featureId]: entryHash } }),
+    }
+    const read = (value: unknown) =>
+      parseRun("tool-gap.json", JSON.stringify(value), [featureId], new Map([[draft.probeHash, manifest]]))
+    const parsed = read(sealed)
+    expect(parsed.results?.[0]).toMatchObject({ status: "test-todo", reason: review.reason })
+    expect(parsed.rawReplies["collector.review.review-bold"]).toBe(source)
+    expect(parsed.assertions).toEqual(original.assertions)
+    const changed = structuredClone(sealed)
+    changed.rawReplies[featureId] = sourceNegative ? JSON.stringify({ faint: true }) : "changed capture bytes"
+    if (sourceNegative) changed.assertions[0]!.observed = changed.rawReplies[featureId]!
+    expect(() => read(changed)).toThrow(/binding changed|retained evidence differs/)
+  })
+
+  it("requires a reason and preserves an unrelated required failure", () => {
+    const { draft, decision } = setup(undefined, undefined, (draft) => {
+      draft.results[0]!.tests.push({
+        id: "transport",
+        status: "test-failure",
+        reason: "Transport capture failed independently of the missing readback",
+        attempt: { scope: "none" },
+      })
+    })
+    const review = { ...decision, decision: "tool-gap", reason: "" }
+    expect(() => applyCaptureDecision(draft, JSON.stringify(review), "2026-10-21T05:01:00.000Z")).toThrow(
+      /requires reason/,
+    )
+    review.reason = "Readback unbuilt; owner @si/terminfo/30211-terminfo-273/32014-tool-gap-decision-value"
+    applyCaptureDecision(draft, JSON.stringify(review), "2026-10-21T05:01:00.000Z")
+    expect(draft.results[0]!.status).toBe("test-failure")
+    expect(draft.results[0]!.tests.find((test) => test.id === "transport")).toEqual({
+      id: "transport",
+      status: "test-failure",
+      reason: "Transport capture failed independently of the missing readback",
+      attempt: { scope: "none" },
+    })
+    expect(sealRunDraft(draft).results[0]!.status).toBe("test-failure")
+  })
+})
+
 // Generic source-review fixtures cannot catch an unqualified real producer or its lost source citation.
 it.each([
   {
     engine: "vt100",
     createBackend: createVt100Backend,
-    treeOid: "d5ee344ab5b971184ba2c43ed60460656340417c",
+    treeOid: "1eaac257cf9ff8d8ece752c8e6edc04b9ddaa6cf",
     sourceCitation: "screen.ts:504-520 handleOSC switch, cases 0/1/2 only",
   },
   {
     engine: "vt220",
     createBackend: createVt220Backend,
-    treeOid: "9a320c4d5cd0e0b60bb2e6ea4f020ce5eb54ae53",
+    treeOid: "d504616ae458b8b0fa9fa365034c30bd35f55ee8",
     sourceCitation: "screen.ts:703-718 handleOSC: no-semicolon return; cases 0/1/2 only",
   },
 ])(
@@ -866,32 +948,32 @@ it.each([
         { runId: `${engine}-osc9-review`, startedAt: "2026-10-30T16:00:00.000Z" },
         (draft) => {
           if (!definition?.lib) throw new Error("Missing OSC9 library callback")
-          draft.intendedSubject = { kind: "lib", id: engine, version: "0.10.0" }
+          draft.intendedSubject = { kind: "lib", id: engine, version: "0.10.1" }
           draft.subject!.id = engine
-          draft.subject!.version = "0.10.0"
+          draft.subject!.version = "0.10.1"
           // Exact collector-input identity; this fixture does not attest a loaded production engine.
           draft.runtimeIdentity = {
             kind: "js",
             runtimeFormat: "js",
-            engineVersion: "0.10.0",
+            engineVersion: "0.10.1",
             adapterVersion: "0.10.2",
             termlessRevision: "8b8664540f365fa0ba1d9b6400d3c4d1a160582c",
-            // Audited collector input at Termless 493881fd, including standalone 0.10.2 adapters.
+            // Collector identity fixture rekeyed to the 0.10.1 parser audit; not a historical load attestation.
             adapterSources:
               engine === "vt100"
                 ? [
                     { path: "packages/vt100/src/index.ts", blobOid: "99833d737402f9d1d8e3e257e3a255d8aa1facc3" },
-                    { path: "packages/vt100/src/backend.ts", blobOid: "855dd71fba878d968d16c82846578190b7350eea" },
+                    { path: "packages/vt100/src/backend.ts", blobOid: "cdb8be8c5ebbba68a5920cfa4df27c9deb31745a" },
                   ]
                 : [
                     { path: "packages/vt220/src/index.ts", blobOid: "601dd26eb7e753a5396ebdf72f1ef8ee2cc4355f" },
-                    { path: "packages/vt220/src/backend.ts", blobOid: "1a16d66067bcaf71a2d96900ae046a1601482add" },
+                    { path: "packages/vt220/src/backend.ts", blobOid: "7369e3710e36aa649372fd09011ecfdd6ba47c73" },
                   ],
             resolvedPath: `vendor/vterm/packages/${engine}/src/index.ts`,
             integrity: {
               kind: "source",
               repository: "git@github.com:beorn/vterm.git",
-              revision: "6cc7eef05cde6a8578479c6cdb480f606758eb2c",
+              revision: "bd3d32aea2f1994376a71adfc55b92705eedbd8c",
               treeOid,
               cleanTree: true,
             },
@@ -969,7 +1051,7 @@ it.each(["device.term-features", "erase.screen.scrollback"])(
         if (!definition?.lib) throw new Error(`${featureId} has no library review arm`)
         // Collector-input fixture at the audited engine/API pin; this does not attest a loaded engine.
         const engine = history ? "libvterm" : "vterm"
-        const version = history ? "0.3.3" : "0.10.0"
+        const version = history ? "0.3.3" : "0.10.1"
         draft.intendedSubject = { kind: "lib", id: engine, version }
         draft.subject!.id = engine
         draft.subject!.version = version
@@ -979,10 +1061,10 @@ it.each(["device.term-features", "erase.screen.scrollback"])(
               runtimeFormat: "wasm",
               engineVersion: version,
               adapterVersion: "0.10.2",
-              termlessRevision: "8a1740b2d9f9b07105ffb1f62785c0ca9e513cf7",
+              termlessRevision: "f8d2aeb7a7a30f0215fd628bbbb1f1e5cd0a91be",
               adapterSources: [
                 { path: "packages/libvterm/src/index.ts", blobOid: "2b4708b1081e701b99893ca055ded781dc46cf25" },
-                { path: "packages/libvterm/src/backend.ts", blobOid: "caa5dc6c4ac4e3dac45977466919d2c1dcd3e851" },
+                { path: "packages/libvterm/src/backend.ts", blobOid: "eb513ccd443e30c7a869a8ba41f8126e1c0ddf00" },
                 { path: "packages/libvterm/src/wasm-bindings.ts", blobOid: "2bbd4d5cf59b8d53db8f5c0329d2ed7853c43e45" },
                 { path: "packages/libvterm/wasm/libvterm.js", blobOid: "1e784be87614ab924b96844009919b7c21ce150e" },
               ],
@@ -990,31 +1072,31 @@ it.each(["device.term-features", "erase.screen.scrollback"])(
               integrity: {
                 kind: "source",
                 repository: "git@github.com:beorn/termless.git",
-                revision: "38e45ab87acee6bd7d7766df571e754991fd45d8",
-                treeOid: "d17653a18a964f38a6cf19130d2b8f63cccadefb",
+                revision: "f8d2aeb7a7a30f0215fd628bbbb1f1e5cd0a91be",
+                treeOid: "ae0b11bb808b8c402c168869d7caa5a5f62566c2",
                 cleanTree: true,
               },
               loadedBinary: {
                 path: "vendor/termless/packages/libvterm/wasm/libvterm.wasm",
-                sha256: "7ebe1b994b58ca867dcd19e9cdeb10b8839b6c1f0dbdea024f875a9f57560a23",
+                sha256: "3d67045bb43c5e4081c70dc58088af8f735416c20df2d7843d765e5aad8ef62a",
               },
             }
           : {
               kind: "js",
               runtimeFormat: "js",
-              engineVersion: "0.10.0",
+              engineVersion: "0.10.1",
               adapterVersion: "0.10.2",
               termlessRevision: "8b8664540f365fa0ba1d9b6400d3c4d1a160582c",
               adapterSources: [
                 { path: "packages/vterm/src/index.ts", blobOid: "cb5719799dcdd5ae24e6fcf0dcad9965035ce54c" },
-                { path: "packages/vterm/src/backend.ts", blobOid: "e7eb83f44a4ae1368cbf7b78ef6783219757002a" },
+                { path: "packages/vterm/src/backend.ts", blobOid: "308a934578c044ae95feaa29299531d9aa9eb4f7" },
               ],
               resolvedPath: "vendor/vterm/packages/vterm/src/index.ts",
               integrity: {
                 kind: "source",
                 repository: "git@github.com:beorn/vterm.git",
-                revision: "1cfc325f3aedd4617e437ee76e6a03fc2cc16438",
-                treeOid: "2ee13d2cb894e86ee9575dd6945f42028df44966",
+                revision: "bd3d32aea2f1994376a71adfc55b92705eedbd8c",
+                treeOid: "f10a184811894462b9ca7b65d6aab8ffd2fdd0bd",
                 cleanTree: true,
               },
             }
@@ -1042,7 +1124,7 @@ it.each(["device.term-features", "erase.screen.scrollback"])(
           expect(retained).toMatchObject({
             audit: {
               engine: "vterm",
-              blobOid: "e7eb83f44a4ae1368cbf7b78ef6783219757002a",
+              blobOid: "308a934578c044ae95feaa29299531d9aa9eb4f7",
               sourceCitation: expect.stringContaining("createVtermBackend"),
             },
           })

@@ -20,17 +20,17 @@ import { evidenceRuntimeIdentity } from "./runtime-identity.ts"
 
 export const TERM_FEATURES_API_CITATIONS = {
   vterm: [
-    "0.10.0",
+    "0.10.1",
     "packages/vterm/src/backend.ts",
     "createVtermBackend integrates the vterm Screen as a TerminalBackend with no application-child environment API",
   ],
   vt220: [
-    "0.10.0",
+    "0.10.1",
     "packages/vt220/src/backend.ts",
     "createVt220Backend integrates the vt220 Screen as a TerminalBackend with no application-child environment API",
   ],
   vt100: [
-    "0.10.0",
+    "0.10.1",
     "packages/vt100/src/backend.ts",
     "createVt100Backend integrates the vt100 Screen as a TerminalBackend with no application-child environment API",
   ],
@@ -332,6 +332,10 @@ const DECRQSS_DECSCL: DeviceReply = {
  */
 const TITLE_STACK_UNIMPLEMENTED_AUDITS: ReadonlyMap<string, string> = new Map([
   [
+    "3c2398d5c537d9c10e86b0af69311977927fcdbe4738618df194cedbdd22574d",
+    "ghostty 5714ed07a1012573261b7b7e3ed2add9c1504496 src/terminal/stream.zig:1825-1843 dispatches .title_push and .title_pop; src/termio/stream_handler.zig:343-346 has .title_push, .title_pop => {} // Unimplemented, and termless vendor/ghostty-web/ghostty-wasm-api.patch:713-714 (inner patch sha256 a4b6fc33, WASM 1f23e13d, #32057) keeps .title_push and .title_pop as no-ops",
+  ],
+  [
     "1f23e13db5bda55ab54943461b83a5d642bf8d2050a452fbe7871927383dfe9f",
     "ghostty 5714ed07a1012573261b7b7e3ed2add9c1504496 src/terminal/stream.zig:1825-1843 dispatches .title_push and .title_pop; src/termio/stream_handler.zig:343-346 has .title_push, .title_pop => {} // Unimplemented, and termless vendor/ghostty-web/ghostty-wasm-api.patch:713-714 (inner patch sha256 a4b6fc33, WASM 1f23e13d, #32057) keeps .title_push and .title_pop as no-ops",
   ],
@@ -356,6 +360,10 @@ const TITLE_STACK_UNIMPLEMENTED_AUDITS: ReadonlyMap<string, string> = new Map([
     "libvterm 9d6d2112335080312ef8c36667fa717ded4f7daf/v0.3.3 src/state.c:978-1543 on_csi has no final t and src/vterm_internal.h:55-174 VTermState holds no title stack; Termless37c3e9af packages/libvterm/build/flat-api.c:125-198 holds only the current title and staging fragments, and src/backend.ts:263-278 forwards native input, so neither CSI 22;0t nor CSI 23;0t is implemented",
   ],
   [
+    "3d67045bb43c5e4081c70dc58088af8f735416c20df2d7843d765e5aad8ef62a",
+    "libvterm 9d6d2112335080312ef8c36667fa717ded4f7daf/v0.3.3 src/state.c:978-1543 on_csi has no final t and src/vterm_internal.h:55-174 VTermState holds no title stack; Termlessf8d2aeb7a7a30f0215fd628bbbb1f1e5cd0a91be packages/libvterm/build/flat-api.c:125-203 holds only the current title and staging fragments, and src/backend.ts:263-278 forwards native input, so neither CSI 22;0t nor CSI 23;0t is implemented",
+  ],
+  [
     "0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3",
     "vt100 0.16.2 src/perform.rs:132-156 csi_dispatch 't' handles only op 8 (resize) and forwards all other ops to Callbacks::unhandled_csi (empty by default at src/callbacks.rs:55-63); termless 6ffc0df79756fcc259d87131681641606540e512 packages/vt100-rust/native/src/lib.rs:8-54 TerminalCallbacks stores only title: String with no title stack and does not override unhandled_csi, so neither CSI 22;0t nor CSI 23;0t is implemented",
   ],
@@ -364,6 +372,11 @@ const TITLE_STACK_UNIMPLEMENTED_AUDITS: ReadonlyMap<string, string> = new Map([
     "vt100 0.16.2 src/perform.rs:132-156 csi_dispatch 't' handles only op 8 (resize) and forwards all other ops to Callbacks::unhandled_csi (empty by default at src/callbacks.rs:55-63); termless 27297cf2a4a4e21b41ca3aafc7bc87ac36086fdf packages/vt100-rust/native/src/lib.rs:8-54 TerminalCallbacks stores title, icon_label, clipboard and paste_selector with no title stack and no unhandled_csi override, so neither CSI 22;0t nor CSI 23;0t is implemented",
   ],
   [
+    "6722b331de7489c14cb599d939e5d2314f054220728f83c5c29f454e70273e47",
+    "tattoy-wezterm-escape-parser 0.1.0-1 src/csi.rs:2633-2644 parses CSI 22;0t as Window::PushIconAndWindowTitle and CSI 23;0t as Window::PopIconAndWindowTitle; tattoy-wezterm-term 0.1.0-fork.5 src/terminalstate/performer.rs:509 dispatches CSI::Window to perform_csi_window, where src/terminalstate/mod.rs:2090-2095 matches PopIconAndWindowTitle..PushWindowTitle => {} and TerminalState at src/terminalstate/mod.rs:334-337 holds only title: String and icon_title: Option<String> with no title stack",
+  ],
+
+  [
     "0f56a805793d7d829daa617f1323aacff0d73fe868747b0d077c6af315e2aab8",
     "tattoy-wezterm-escape-parser 0.1.0-1 src/csi.rs:2633-2644 parses CSI 22;0t as Window::PushIconAndWindowTitle and CSI 23;0t as Window::PopIconAndWindowTitle; tattoy-wezterm-term 0.1.0-fork.5 src/terminalstate/performer.rs:509 dispatches CSI::Window to perform_csi_window, where src/terminalstate/mod.rs:2090-2095 matches PopIconAndWindowTitle..PushWindowTitle => {} and TerminalState at src/terminalstate/mod.rs:334-337 holds only title: String and icon_title: Option<String> with no title stack",
   ],
@@ -371,17 +384,17 @@ const TITLE_STACK_UNIMPLEMENTED_AUDITS: ReadonlyMap<string, string> = new Map([
 
 const TITLE_STACK_UNIMPLEMENTED_SOURCE_TREES: ReadonlyMap<string, { readonly sourceCitation: string }> = new Map([
   [
-    "d5ee344ab5b971184ba2c43ed60460656340417c",
+    "1eaac257cf9ff8d8ece752c8e6edc04b9ddaa6cf",
     {
       sourceCitation:
-        'vterm 6cc7eef05cde6a8578479c6cdb480f606758eb2c packages/vt100/src/screen.ts:251-358 handleCSI has no case "t" and createScreen at packages/vt100/src/screen.ts:130 holds only title = "" with no title stack, so neither CSI 22;0t nor CSI 23;0t is implemented',
+        'vterm bd3d32aea2f1994376a71adfc55b92705eedbd8c packages/vt100/src/screen.ts:251-358 handleCSI has no case "t" and createScreen at packages/vt100/src/screen.ts:130 holds only title = "" with no title stack, so neither CSI 22;0t nor CSI 23;0t is implemented',
     },
   ],
   [
-    "9a320c4d5cd0e0b60bb2e6ea4f020ce5eb54ae53",
+    "d504616ae458b8b0fa9fa365034c30bd35f55ee8",
     {
       sourceCitation:
-        'vterm 6cc7eef05cde6a8578479c6cdb480f606758eb2c packages/vt220/src/screen.ts:305-428 handleCSI has no case "t" and createScreen at packages/vt220/src/screen.ts:104,176 holds only title = "" with no title stack, so neither CSI 22;0t nor CSI 23;0t is implemented',
+        'vterm bd3d32aea2f1994376a71adfc55b92705eedbd8c packages/vt220/src/screen.ts:305-428 handleCSI has no case "t" and createScreen at packages/vt220/src/screen.ts:104,176 holds only title = "" with no title stack, so neither CSI 22;0t nor CSI 23;0t is implemented',
     },
   ],
 ])
@@ -417,7 +430,7 @@ function titleStackHeadless(ctx: LibProbeSource, expected: string): ProbeCallbac
     restored === "new-title" &&
     identity?.kind === "js" &&
     identity.runtimeFormat === "js" &&
-    identity.engineVersion === "0.10.0" &&
+    identity.engineVersion === "0.10.1" &&
     identity.integrity.kind === "source" &&
     identity.integrity.cleanTree &&
     identity.integrity.repository === "git@github.com:beorn/vterm.git"

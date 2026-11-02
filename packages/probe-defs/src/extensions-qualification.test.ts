@@ -58,7 +58,7 @@ const xtermOscIdentity = {
   termlessRevision: "84003d2c91610fe2743142675234a0fb3ec9cf1d",
   adapterSources: [
     { path: "packages/xtermjs/src/index.ts", blobOid: "550e10110ec2baaf326d2958319b03ee8208feba" },
-    { path: "packages/xtermjs/src/backend.ts", blobOid: "481fe005c5801cbb5e6ba4c8677f577e02122e4e" },
+    { path: "packages/xtermjs/src/backend.ts", blobOid: "79bc4dc6a1060d073f12d59ecd6b941cadfe91dd" },
   ],
   resolvedPath: "node_modules/.bun/@xterm+headless@6.0.0/node_modules/@xterm/headless/lib-headless/xterm-headless.js",
   integrity: {
@@ -72,22 +72,22 @@ const auditedArtifacts: readonly HeadlessRuntimeIdentity[] = [
     kind: "native",
     engineVersion: "0.26.0",
     adapterVersion: "0.10.2",
-    termlessRevision: "f736cce4",
+    termlessRevision: "824119c28b46bd701b222a91df0da860f0307950",
     loadedBinary: {
       path: "/relocated/alacritty.node",
-      sha256: "32d76284e5a3c7673fafbbc83a16717fa0a1c1811c7d659d982176a53ceb1aa9",
+      sha256: "21d4b43c1d4c401c5b9f8114de85b3e837605242363c322c2dcb37e4a42fba61",
     },
     provenance: {
-      sha256: "32d76284e5a3c7673fafbbc83a16717fa0a1c1811c7d659d982176a53ceb1aa9",
-      sourceCommit: "cd5cd5172680fd240ee3445dea96289793bc2d59",
-      buildHash: "94ef4fbf1e21d454c70a39efaf9cfde1ebabe57a0f9cdb186fef782cfb1ff8ce",
+      sha256: "21d4b43c1d4c401c5b9f8114de85b3e837605242363c322c2dcb37e4a42fba61",
+      sourceCommit: "824119c28b46bd701b222a91df0da860f0307950",
+      buildHash: "634c14c5258327eff925d20d24918098c9aee92c1e6291e0ca770d2677015171",
       lockSha256: "1f89f2579b7d786a116d8fefb8267c4af076bd3a3893adcf14b00c4466740497",
       toolchain: "retained build receipt",
     },
     adapterSources: [
       { path: "packages/alacritty/src/index.ts", blobOid: "b4154cbd6ef4a83ce2cbf3dcf26ff13d645efd05" },
       { path: "packages/alacritty/src/backend.ts", blobOid: "4210383129879c4e8756e6975674632cf69ecce9" },
-      { path: "packages/alacritty/native/src/lib.rs", blobOid: "f8d4ef7a2c4f389dd80ecbd3f9dae38600446a1e" },
+      { path: "packages/alacritty/native/src/lib.rs", blobOid: "e4720590d652773f1e89caf2b5cb399ee9112e39" },
       { path: "src/load-native.ts", blobOid: "34e142550085450ab02138184626716ad0d6b546" },
     ],
   },
@@ -96,30 +96,30 @@ const auditedArtifacts: readonly HeadlessRuntimeIdentity[] = [
     runtimeFormat: "wasm",
     engineVersion: "0.3.3",
     adapterVersion: "0.10.2",
-    termlessRevision: "f736cce4",
+    termlessRevision: "f8d2aeb7a7a30f0215fd628bbbb1f1e5cd0a91be",
     resolvedPath: "/relocated/libvterm/index.ts",
     integrity: {
       kind: "source",
       repository: "git@github.com:beorn/termless.git",
-      revision: "f736cce4",
+      revision: "f8d2aeb7a7a30f0215fd628bbbb1f1e5cd0a91be",
       treeOid: "changed-wrapper-tree",
       cleanTree: true,
     },
     loadedBinary: {
       path: "/relocated/libvterm.wasm",
-      sha256: "7ebe1b994b58ca867dcd19e9cdeb10b8839b6c1f0dbdea024f875a9f57560a23",
+      sha256: "3d67045bb43c5e4081c70dc58088af8f735416c20df2d7843d765e5aad8ef62a",
     },
     adapterSources: [
       { path: "packages/libvterm/src/index.ts", blobOid: "2b4708b1081e701b99893ca055ded781dc46cf25" },
-      { path: "packages/libvterm/src/backend.ts", blobOid: "caa5dc6c4ac4e3dac45977466919d2c1dcd3e851" },
+      { path: "packages/libvterm/src/backend.ts", blobOid: "eb513ccd443e30c7a869a8ba41f8126e1c0ddf00" },
       { path: "packages/libvterm/src/wasm-bindings.ts", blobOid: "2bbd4d5cf59b8d53db8f5c0329d2ed7853c43e45" },
       { path: "packages/libvterm/wasm/libvterm.js", blobOid: "1e784be87614ab924b96844009919b7c21ce150e" },
     ],
   },
 ]
 
-// #32026: frozen engine and adapter tuples from retained captures. The existing two-artifact
-// checks cover OSC8/alacritty440, so they miss absent rows/codes in this 30-cell source batch.
+// Source-audit callback fixtures; libvterm follows the current rebuilt artifact, not a retained capture.
+// The existing two-artifact checks cover OSC8/alacritty440, so they miss this absent-row/code batch.
 const absentOscBatch = [
   { engine: "libvterm", identity: auditedArtifacts[1]!, codes: [9, 22, 176, 3008, 440, 555, 666, 710, 777] },
   {
@@ -140,11 +140,11 @@ const absentOscBatch = [
       },
       loadedBinary: {
         path: "/fixture/ghostty.wasm",
-        sha256: "1f23e13db5bda55ab54943461b83a5d642bf8d2050a452fbe7871927383dfe9f",
+        sha256: "3c2398d5c537d9c10e86b0af69311977927fcdbe4738618df194cedbdd22574d",
       },
       adapterSources: [
         { path: "packages/ghostty/src/index.ts", blobOid: "f4b9d9f3e13cc515b23abc739cab21bf971e8585" },
-        { path: "packages/ghostty/src/backend.ts", blobOid: "603d090e4542f2ea08229539059df6e525e736de" },
+        { path: "packages/ghostty/src/backend.ts", blobOid: "7a917fe46b72d9870b898e71d440e7cb876b3fc1" },
       ],
     },
     codes: [176, 3008, 440, 555, 666, 710],
@@ -172,8 +172,14 @@ const absentOscBatch = [
       lockSha256: "282d1098337a5705a7c1d13188a74d2fe34565766619e8d6b21a48d5b67451be",
       adapterSources: [
         { path: "packages/kitty/src/index.ts", blobOid: "3f207f911646613cdc3d8b04f155f0686a96a077" },
-        { path: "packages/kitty/src/backend.ts", blobOid: "5e98a200eab31eeef6505e81470d350637b5959c" },
-        { path: "packages/kitty/build/bridge.py", blobOid: "7736a826f38162406a46a530727464b066431392" },
+        { path: "packages/kitty/src/backend.ts", blobOid: "1b7367a9737d1292618ea34a1c451bf3273c3b35" },
+        { path: "packages/kitty/build/bridge.py", blobOid: "f9585e3ac10209eedd1bc8550bcb1a4a1b286f27" },
+        { path: "packages/kitty/build/layout.c", blobOid: "49c0beef4424190e89d2884eac5efe4da50e3630" },
+        { path: "packages/kitty/build/native-mode-layout.json", blobOid: "6bd0f2d5b6936f8f6298e4cb9ae4b228172a9502" },
+        {
+          path: "packages/kitty/build/native-mode-layout.receipt.json",
+          blobOid: "02899a0c97f70eeba38f5030de1ba7ef4665b6f6",
+        },
       ],
       codes: [176, 3008, 440, 555, 666, 710],
     },
@@ -412,42 +418,42 @@ test.each([
   ["extensions.osc777-notify", "\x1b]777;notify;test;body\x07", "vt220"],
   ["extensions.osc3008-context", "\x1b]3008;type=test\x07", "vt220"],
 ])("%s retains an audited source-negative review only after its sentinel renders", (id, sequence, engine) => {
-  // Collector-input identities from the retained runs, not a loaded-engine attestation.
+  // Collector-input fixtures rekeyed to 0.10.1 after the parser audit, not a loaded-engine attestation.
   const identity =
     engine === "xtermjs"
       ? xtermOscIdentity
       : ({
           kind: "js",
           runtimeFormat: "js",
-          engineVersion: "0.10.0",
+          engineVersion: "0.10.1",
           adapterVersion: "0.10.2",
           termlessRevision: "2".repeat(40),
           adapterSources:
             engine === "vt100"
               ? [
                   { path: "packages/vt100/src/index.ts", blobOid: "99833d737402f9d1d8e3e257e3a255d8aa1facc3" },
-                  { path: "packages/vt100/src/backend.ts", blobOid: "855dd71fba878d968d16c82846578190b7350eea" },
+                  { path: "packages/vt100/src/backend.ts", blobOid: "cdb8be8c5ebbba68a5920cfa4df27c9deb31745a" },
                 ]
               : engine === "vt220"
                 ? [
                     { path: "packages/vt220/src/index.ts", blobOid: "601dd26eb7e753a5396ebdf72f1ef8ee2cc4355f" },
-                    { path: "packages/vt220/src/backend.ts", blobOid: "1a16d66067bcaf71a2d96900ae046a1601482add" },
+                    { path: "packages/vt220/src/backend.ts", blobOid: "7369e3710e36aa649372fd09011ecfdd6ba47c73" },
                   ]
                 : [
                     { path: "packages/vterm/src/index.ts", blobOid: "cb5719799dcdd5ae24e6fcf0dcad9965035ce54c" },
-                    { path: "packages/vterm/src/backend.ts", blobOid: "e7eb83f44a4ae1368cbf7b78ef6783219757002a" },
+                    { path: "packages/vterm/src/backend.ts", blobOid: "308a934578c044ae95feaa29299531d9aa9eb4f7" },
                   ],
           resolvedPath: `vendor/vterm/packages/${engine}/src/index.ts`,
           integrity: {
             kind: "source",
             repository: "git@github.com:beorn/vterm.git",
-            revision: "6cc7eef05cde6a8578479c6cdb480f606758eb2c",
+            revision: "bd3d32aea2f1994376a71adfc55b92705eedbd8c",
             treeOid:
               engine === "vt100"
-                ? "d5ee344ab5b971184ba2c43ed60460656340417c"
+                ? "1eaac257cf9ff8d8ece752c8e6edc04b9ddaa6cf"
                 : engine === "vt220"
-                  ? "9a320c4d5cd0e0b60bb2e6ea4f020ce5eb54ae53"
-                  : "d7bc627e039005ee913b0b244ff9a2ee2235746a",
+                  ? "d504616ae458b8b0fa9fa365034c30bd35f55ee8"
+                  : "f10a184811894462b9ca7b65d6aab8ffd2fdd0bd",
             cleanTree: true,
           },
         } as const)
@@ -477,7 +483,7 @@ test.each([
                   mode === "changed-tree"
                     ? "4".repeat(40)
                     : mode === "wrong-package"
-                      ? "d5ee344ab5b971184ba2c43ed60460656340417c"
+                      ? "1eaac257cf9ff8d8ece752c8e6edc04b9ddaa6cf"
                       : identity.integrity.treeOid,
                 cleanTree: mode !== "dirty",
               }
@@ -498,7 +504,7 @@ test.each([
         {
           id: "review",
           status: "test-failure",
-          reason: expect.stringContaining(engine === "xtermjs" ? "17a90b65" : "6cc7eef0"),
+          reason: expect.stringContaining(engine === "xtermjs" ? "17a90b65" : "bd3d32ae"),
         },
       ])
       expect(result.observation).toMatchObject({ outcome: "inconclusive", assertionType: "buffer_state" })
@@ -1910,7 +1916,7 @@ test.each([
   },
 )
 
-// Geometry audit re-pinned to 6cc7eef0; original runb9697318 used source53a9eb92/tree617ae600.
+// Geometry audit re-pinned to bd3d32ae; original runb9697318 used source53a9eb92/tree617ae600.
 // Q8 requires independent review of this context limit, never automatic Untestable.
 const geometryRuntime = {
   kind: "js",
@@ -1920,12 +1926,12 @@ const geometryRuntime = {
   integrity: {
     kind: "source",
     repository: "git@github.com:beorn/vterm.git",
-    revision: "6cc7eef05cde6a8578479c6cdb480f606758eb2c",
-    treeOid: "d7bc627e039005ee913b0b244ff9a2ee2235746a",
+    revision: "bd3d32aea2f1994376a71adfc55b92705eedbd8c",
+    treeOid: "f10a184811894462b9ca7b65d6aab8ffd2fdd0bd",
     cleanTree: true,
   },
   runtimeFormat: "js",
-  engineVersion: "0.10.0",
+  engineVersion: "0.10.1",
 } as const
 const geometryReplies = [
   {
@@ -2024,8 +2030,8 @@ test.each(geometryReplies)("$id reports source tree drift before geometry gradin
 test.each(geometryReplies)("$id distinguishes sibling source entries", ({ id, raw }) => {
   const baseline = callback(id).lib!({ feedCapture: () => raw } as unknown as LibProbeSource)
   for (const [engine, treeOid] of [
-    ["vt100", "d5ee344ab5b971184ba2c43ed60460656340417c"],
-    ["vt220", "9a320c4d5cd0e0b60bb2e6ea4f020ce5eb54ae53"],
+    ["vt100", "1eaac257cf9ff8d8ece752c8e6edc04b9ddaa6cf"],
+    ["vt220", "d504616ae458b8b0fa9fa365034c30bd35f55ee8"],
   ]) {
     const runtimeIdentity = {
       ...geometryRuntime,

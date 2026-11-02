@@ -800,6 +800,7 @@ it("keeps native missing-observation note overrides and prompt consumption branc
     feed() {},
     getCursor: () => ({ x: 0, y: 0 }),
     getCell: () => ({ char: "X" }),
+    capabilities: { extensions: new Set<string>() },
     captureGeometryRefusal: "calibration G",
   } as unknown as LibProbeSource)
   expect(record(libCallback)).toMatchObject({

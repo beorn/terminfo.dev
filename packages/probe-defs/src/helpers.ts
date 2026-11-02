@@ -29,44 +29,45 @@ import { evidenceRuntimeIdentity } from "./runtime-identity.ts"
 export const ADAPTER_SOURCE_AUDITS = {
   vt100: {
     "packages/vt100/src/index.ts": "99833d737402f9d1d8e3e257e3a255d8aa1facc3",
-    "packages/vt100/src/backend.ts": "855dd71fba878d968d16c82846578190b7350eea",
+    "packages/vt100/src/backend.ts": "cdb8be8c5ebbba68a5920cfa4df27c9deb31745a",
   },
   vt220: {
     "packages/vt220/src/index.ts": "601dd26eb7e753a5396ebdf72f1ef8ee2cc4355f",
-    "packages/vt220/src/backend.ts": "1a16d66067bcaf71a2d96900ae046a1601482add",
+    "packages/vt220/src/backend.ts": "7369e3710e36aa649372fd09011ecfdd6ba47c73",
   },
   vterm: {
     "packages/vterm/src/index.ts": "cb5719799dcdd5ae24e6fcf0dcad9965035ce54c",
-    "packages/vterm/src/backend.ts": "e7eb83f44a4ae1368cbf7b78ef6783219757002a",
+    "packages/vterm/src/backend.ts": "308a934578c044ae95feaa29299531d9aa9eb4f7",
   },
   xtermjs: {
     "packages/xtermjs/src/index.ts": "550e10110ec2baaf326d2958319b03ee8208feba",
-    "packages/xtermjs/src/backend.ts": "481fe005c5801cbb5e6ba4c8677f577e02122e4e",
+    "packages/xtermjs/src/backend.ts": "79bc4dc6a1060d073f12d59ecd6b941cadfe91dd",
   },
   ghostty: {
     "packages/ghostty/src/index.ts": "f4b9d9f3e13cc515b23abc739cab21bf971e8585",
-    "packages/ghostty/src/backend.ts": "603d090e4542f2ea08229539059df6e525e736de",
+    "packages/ghostty/src/backend.ts": "7a917fe46b72d9870b898e71d440e7cb876b3fc1",
   },
   libvterm: {
     "packages/libvterm/src/index.ts": "2b4708b1081e701b99893ca055ded781dc46cf25",
-    "packages/libvterm/src/backend.ts": "caa5dc6c4ac4e3dac45977466919d2c1dcd3e851",
+    "packages/libvterm/src/backend.ts": "eb513ccd443e30c7a869a8ba41f8126e1c0ddf00",
     "packages/libvterm/src/wasm-bindings.ts": "2bbd4d5cf59b8d53db8f5c0329d2ed7853c43e45",
     "packages/libvterm/wasm/libvterm.js": "1e784be87614ab924b96844009919b7c21ce150e",
   },
+  // Conceal forwarding changes the backend blob; exact native receipt and artifact audits bind the rebuilt Zig.
   ghosttyNative: {
     "packages/ghostty-native/src/index.ts": "35c9e35a5d60625ce1135b65ff38ae9278495a18",
-    "packages/ghostty-native/src/backend.ts": "f5832c21a5837f636effa3ee2dfc1f8a4e7b8b25",
+    "packages/ghostty-native/src/backend.ts": "427b9d4782a9924135ff0c32e2406b117df9cf22",
   },
   alacritty: {
     "packages/alacritty/src/index.ts": "b4154cbd6ef4a83ce2cbf3dcf26ff13d645efd05",
     "packages/alacritty/src/backend.ts": "4210383129879c4e8756e6975674632cf69ecce9",
-    "packages/alacritty/native/src/lib.rs": "f8d4ef7a2c4f389dd80ecbd3f9dae38600446a1e",
+    "packages/alacritty/native/src/lib.rs": "e4720590d652773f1e89caf2b5cb399ee9112e39",
     "src/load-native.ts": "34e142550085450ab02138184626716ad0d6b546",
   },
   wezterm: {
     "packages/wezterm/src/index.ts": "512606c5270ffd0cff55c1b70f5b3eda18a92df0",
-    "packages/wezterm/src/backend.ts": "43464f5118e4442b3910fad63e3b3e3998af6214",
-    "packages/wezterm/native/src/lib.rs": "b83bbf08bb20c6b7965cd0b6492a827707644a8f",
+    "packages/wezterm/src/backend.ts": "42a196995a5f8845ab2e3bb6227192556c470071",
+    "packages/wezterm/native/src/lib.rs": "445f5484027aebbea01a641a96dd92dfea273693",
     "src/load-native.ts": "34e142550085450ab02138184626716ad0d6b546",
   },
   vt100Rust: {
@@ -75,8 +76,11 @@ export const ADAPTER_SOURCE_AUDITS = {
   },
   kitty: {
     "packages/kitty/src/index.ts": "3f207f911646613cdc3d8b04f155f0686a96a077",
-    "packages/kitty/src/backend.ts": "5e98a200eab31eeef6505e81470d350637b5959c",
-    "packages/kitty/build/bridge.py": "7736a826f38162406a46a530727464b066431392",
+    "packages/kitty/src/backend.ts": "1b7367a9737d1292618ea34a1c451bf3273c3b35",
+    "packages/kitty/build/bridge.py": "f9585e3ac10209eedd1bc8550bcb1a4a1b286f27",
+    "packages/kitty/build/layout.c": "49c0beef4424190e89d2884eac5efe4da50e3630",
+    "packages/kitty/build/native-mode-layout.json": "6bd0f2d5b6936f8f6298e4cb9ae4b228172a9502",
+    "packages/kitty/build/native-mode-layout.receipt.json": "02899a0c97f70eeba38f5030de1ba7ef4665b6f6",
   },
 } as const
 
@@ -1220,11 +1224,129 @@ export function decrpmModeProbe(
 /**
  * The headless arm of a DECRQM mode criterion (#30543): the engine's own DECRPM reply, read by the same parser and
  * graded by the same decrpmResult as the app arm, whenever the adapter delivers one; otherwise the review branch.
- * The adapter's getMode value rides along as context only, never as evidence (libvterm hard-codes it; wezterm
- * derives part of it from a byte scan). The branch keys on the observed reply, never on an engine name.
+ * Default callers retain getMode as context only. The six-mode requireReadback opt-in requires the
+ * engine's set/reset reply pair and independently agreeing adapter reads; a binding gap stays TODO.
+ * The branch keys on the observed reply, never on an engine name.
  */
-export function headlessDecrpmArm(modeNum: number, modeName?: string): (ctx: LibProbeSource) => ProbeCallbackResult {
+export function headlessDecrpmArm(
+  modeNum: number,
+  modeName: string,
+  options: { requireReadback: true },
+): (ctx: LibProbeSource) => ProbeCallbackResult
+export function headlessDecrpmArm(modeNum: number, modeName?: string): (ctx: LibProbeSource) => ProbeCallbackResult
+export function headlessDecrpmArm(
+  ...args:
+    | [modeNum: number, modeName?: string]
+    | [modeNum: number, modeName: string, options: { requireReadback: true }]
+): (ctx: LibProbeSource) => ProbeCallbackResult {
+  const [modeNum, modeName] = args
   return (ctx) => {
+    if (args.length === 3) {
+      // The strict overload requires a mode key; the name is display-only, never an engine selector.
+      const key = args[1]
+      const insertBefore = modeNum === 4 ? ctx.getMode("insertMode") : undefined
+      let resetSent = false
+      try {
+        ctx.feed(`\x1b[?${modeNum}h`)
+        const insertAfter = modeNum === 4 ? ctx.getMode("insertMode") : undefined
+        const setMode = ctx.getMode(key)
+        const setReply = ctx.feedCapture(`\x1b[?${modeNum}$p`)
+        ctx.feed(`\x1b[?${modeNum}l`)
+        resetSent = true
+        const resetMode = ctx.getMode(key)
+        const resetReply = ctx.feedCapture(`\x1b[?${modeNum}$p`)
+        const state = { setReply, resetReply, setMode, resetMode, insertBefore, insertAfter }
+        const response = JSON.stringify(state)
+        const setPs = decrpmPs(decrpmReplyPattern(modeNum).exec(setReply)?.[1])
+        const resetPs = decrpmPs(decrpmReplyPattern(modeNum).exec(resetReply)?.[1])
+        const facet =
+          modeNum === 4
+            ? "smooth-scroll presentation unmeasured in lib arm"
+            : modeNum === 1007
+              ? "wheel-to-cursor-key translation unmeasured; protocol measured"
+              : modeUnmeasuredFacet(modeNum)
+        const presentation = facet === undefined ? "" : `; ${facet}`
+        if (modeNum === 4 && insertBefore !== null && insertAfter !== null && insertBefore !== insertAfter) {
+          const note = `DEC private4 changed ANSI insertMode; engine conflation (#32002)${presentation}`
+          return {
+            pass: false,
+            response,
+            note,
+            observation: { outcome: "unsupported", assertionType: "buffer_state", note },
+            assertions: [
+              {
+                assertionType: "buffer_state",
+                kind: "negative",
+                expected: "DEC private4 leaves ANSI insertMode unchanged",
+                observed: response,
+              },
+            ],
+          }
+        }
+        if (setPs === 0 || setPs === 2 || setPs === 4) {
+          const note = `DECRPM mode ${modeNum} after DECSET: ${decrpmReading(setPs)}${presentation}`
+          return {
+            pass: false,
+            response,
+            note,
+            observation: { outcome: "unsupported", assertionType: "query_reply", note },
+            assertions: [
+              {
+                assertionType: "query_reply",
+                kind: "negative",
+                expected: `DECRPM mode ${modeNum} set after DECSET`,
+                observed: setReply,
+              },
+            ],
+          }
+        }
+        if (setPs === null) {
+          return osInputReviewResult(
+            `DECRPM reply to CSI ? ${modeNum} $ p`,
+            state,
+            "The adapter delivered no DECRPM reply from the engine; required independent review of the retained raw state pending",
+          )
+        }
+        const insertBindingGap = modeNum === 4 && (insertBefore === null || insertAfter === null)
+        const bindingGap = setMode !== true || resetMode !== false
+        if (bindingGap || insertBindingGap || setPs !== 1 || resetPs !== 2) {
+          const reason = insertBindingGap
+            ? `adapter binding ${ctx.backendName} insertMode`
+            : bindingGap
+              ? `adapter binding ${ctx.backendName} ${key}`
+              : `DECRPM mode ${modeNum}: set Ps ${setPs}, reset Ps ${resetPs}`
+          return {
+            pass: false,
+            response,
+            note: reason + presentation,
+            observation: {
+              outcome: "inconclusive",
+              assertionType: "query_reply",
+              reason: "insufficient-evidence",
+              note: reason + presentation,
+            },
+            tests: [{ id: "criterion", status: "test-todo", reason }],
+          }
+        }
+        const note = `DECRPM mode ${modeNum}: set/reset replies and getMode agree${presentation}`
+        return {
+          pass: true,
+          response,
+          note,
+          observation: { outcome: "supported", assertionType: "query_reply", note },
+          assertions: [
+            {
+              assertionType: "query_reply",
+              kind: "positive",
+              expected: `DECRPM mode ${modeNum} Ps1/Ps2 with agreeing getMode`,
+              observed: response,
+            },
+          ],
+        }
+      } finally {
+        if (!resetSent) ctx.feed(`\x1b[?${modeNum}l`)
+      }
+    }
     ctx.feed(`\x1b[?${modeNum}h`)
     // Read the adapter's mode view before the query. vt100 and vt220 used to run `CSI ? 1 $ p` as a DECCKM
     // reset, so a getMode read after the query reported the mode already reset; since #30558 they ignore a
@@ -1244,6 +1366,16 @@ export function headlessDecrpmArm(modeNum: number, modeName?: string): (ctx: Lib
     }
     return { ...decrpmResult(ps, modeNum), response: JSON.stringify(state) }
   }
+}
+
+function modeUnmeasuredFacet(modeNum: number): string | undefined {
+  return modeNum === 2031
+    ? "scheme-change report (CSI ? 997 ; Ps n, unsolicited) unmeasured; recognition measured"
+    : modeNum === 5
+      ? "presentation (inverted frame) unmeasured; protocol measured"
+      : modeNum === 2026
+        ? "presentation (tearing, scroll cadence) unmeasured; protocol measured"
+        : undefined
 }
 
 const DECRPM_WORDS: Record<DecrpmPs, string> = {
@@ -1272,14 +1404,7 @@ export function decrpmResult(ps: DecrpmPs | null, modeNum: number): ProbeCallbac
   }
   const reading = decrpmReading(ps)
   // CTO 62ab5adc: modes 5, 2026 and 2031 grade protocol recognition; their named effects remain unmeasured.
-  const unmeasuredFacet =
-    modeNum === 2031
-      ? "scheme-change report (CSI ? 997 ; Ps n, unsolicited) unmeasured; recognition measured"
-      : modeNum === 5
-        ? "presentation (inverted frame) unmeasured; protocol measured"
-        : modeNum === 2026
-          ? "presentation (tearing, scroll cadence) unmeasured; protocol measured"
-          : undefined
+  const unmeasuredFacet = modeUnmeasuredFacet(modeNum)
   if (ps === 0) {
     if (unmeasuredFacet) {
       const note = `DECRPM mode ${modeNum}: ${reading}; ${unmeasuredFacet}`
@@ -1582,14 +1707,14 @@ export const SOURCE_TREE_AUDITS = {
     runtimeFormat: "wasm",
     engineVersion: "0.3.3",
     repository: "git@github.com:beorn/termless.git",
-    treeOid: "d17653a18a964f38a6cf19130d2b8f63cccadefb",
+    treeOid: "ae0b11bb808b8c402c168869d7caa5a5f62566c2",
   },
   vterm: {
     resolvedPath: "vendor/vterm/packages/vterm/src/index.ts",
     runtimeFormat: "js",
-    engineVersion: "0.10.0",
+    engineVersion: "0.10.1",
     repository: "git@github.com:beorn/vterm.git",
-    treeOid: "d7bc627e039005ee913b0b244ff9a2ee2235746a",
+    treeOid: "f10a184811894462b9ca7b65d6aab8ffd2fdd0bd",
   },
 } as const
 
@@ -1626,7 +1751,7 @@ function sourceTreeDrift(
   }
 }
 
-const VTERM_GEOMETRY_REVISION = "6cc7eef05cde6a8578479c6cdb480f606758eb2c"
+const VTERM_GEOMETRY_REVISION = "bd3d32aea2f1994376a71adfc55b92705eedbd8c"
 
 /**
  * The geometry gate's identity miss: the audited subject loaded at another source identity. The disposition stays
@@ -1697,7 +1822,7 @@ export function libvtermHistoryReview(ctx: LibProbeSource): ProbeCallbackResult 
   ) {
     return undefined
   }
-  const expectedBinarySha256 = "7ebe1b994b58ca867dcd19e9cdeb10b8839b6c1f0dbdea024f875a9f57560a23"
+  const expectedBinarySha256 = "3d67045bb43c5e4081c70dc58088af8f735416c20df2d7843d765e5aad8ef62a"
   if (identity.loadedBinary.sha256 !== expectedBinarySha256) {
     return {
       pass: false,
@@ -1718,7 +1843,7 @@ export function libvtermHistoryReview(ctx: LibProbeSource): ProbeCallbackResult 
     "retained scrollback history count",
     {
       sourceCitation:
-        "Termless37c3e9af packages/libvterm/src/backend.ts:427-440 getScrollback reports the screen extent, not retained history; raw libvterm 9d6d2112335080312ef8c36667fa717ded4f7daf include/vterm.h:541-543 and src/screen.c:208-226,676-681,830-837 hand history rows to the embedding application",
+        "Termless 6939d82b84a6bf2989dd0650329779e324790dda packages/libvterm/src/backend.ts:429-445 getScrollback reports the screen extent, not retained history; raw libvterm 9d6d2112335080312ef8c36667fa717ded4f7daf include/vterm.h:541-543 and src/screen.c:208-226,676-681,830-837 hand history rows to the embedding application",
     },
   )
 }

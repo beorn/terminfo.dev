@@ -61,13 +61,41 @@ retaining each raw window. Any control reply leaves target silence as TEST FAILU
 on-time target Ps0 remains Unsupported. Unqualified, malformed and late target replies keep
 their existing criteria. Historical captures and selected results are unchanged.
 
-The library reverse-video, synchronized-output and colour-scheme-reporting cells
-measure mode recognition using the engine's DECRPM reply after enabling the mode.
-Set, reset or permanently set is Supported; unrecognized or permanently reset is
-Unsupported. Silence retains a named TEST TODO. Reverse-video and synchronized
-output name presentation as unmeasured; colour-scheme reporting names the
-scheme-change report as unmeasured. DECSCLM and DECSSCLS retain their independent
-presentation-review paths. The existing application-arm criteria are unchanged.
+Region-readback fixtures address the active screen with CUP. Their library reads translate each
+screen row into the retained buffer using one coherent `totalLines - screenLines` origin per frame,
+independent of the scrolled viewport. Invalid or insufficient extents retain named inconclusive
+evidence; they never establish an engine negative.
+
+Library `getSemanticMarks` and `getSixelImages` are optional copied-state readers.
+The collector forwards each only when its extension is declared and the method is callable;
+absence is not an empty array. The same `getSemanticMarks` reader serves `semantic-marks`
+(prompt/command/output starts at their screen positions when inserted) and
+`semantic-command-end` (command-end entries with the exact raw status string and no coordinates).
+Engines exposing both kinds declare both keys. Start and end probes use their respective
+declarations; a command-end-only reader never decides positional start support.
+OSC133D requires two newly appended entries carrying distinct injected raw statuses,
+stable earlier history and the existing cell/cursor consumption controls.
+The reader does not expose bounded zones. Sixel records contain raw payloads and
+DCS start positions; storage does not establish raster rendering or cell geometry.
+
+The library alternate-scroll, reverse-video, synchronized-output,
+colour-scheme-reporting and DECSCLM cells use the existing DECRPM helper's opt-in
+`requireReadback` criterion. Supported requires Ps1 after set, Ps2 after reset and
+agreeing `getMode` readings. Ps0/2/4 after set is an engine negative. A null or
+mismatched adapter reading retains a criterion TEST TODO named
+`adapter binding <backend.name> <mode>`; the name is display-only and never selects
+a status or route. Existing other DECRPM criteria retain their prior readings.
+Application-keypad instead measures `ESC =` / `ESC >` (DECKPAM/DECKPNM) with
+`applicationKeypad` true then false, without DECRQM. Null readings stay named
+adapter-binding TODO; other non-null pairs stay criterion TODO naming both states.
+Keypad encoding and wheel-to-cursor-key translation remain unmeasured.
+Private4 additionally requires non-null ANSI `insertMode` readings before and after
+set and checks that they do not change; an observed
+flip is engine conflation, independently of its reply (the existing private4 issue32002).
+Presentation remains unmeasured for reverse-video/synchronized-output, the actual
+scheme-change report remains unmeasured for2031, and smooth-scroll presentation
+remains unmeasured in the library arm. DECSSCLS is a speed parameter outside
+`getMode`, retaining its presentation-review path. Application criteria are unchanged.
 
 Both source interfaces carry `readonly kind: ProbeSourceKind` directly. Current runs retain exactly `source: { kind: "live" }` or `{ kind: "trace", trace: { path, sha256 }, captureRunId, captureSuiteId, captureSourceRevision }`. The trace path is relative to the artifact store and contains no parent segment; its SHA256 and capture identities are required. Initialization, sealing and the canonical reader validate and preserve this union without a schema bump. Call-log format/version remain inside the referenced artifact. Historical schema 2/3 bytes and readers are unchanged. This source declaration grants no capture, admission or publication.
 
@@ -93,24 +121,24 @@ Termless revisions or host filesystem locators. Raw replies and observed payload
 runtime identities; the record's allowlisted identity is their sole carrier. WASM engine identity
 uses the loaded binary digest, while wrapper repository/tree metadata remains provenance.
 
-The current libvterm v0.3.3 source audits bind WASM `7ebe1b99`, adapter blob
-`caa5dc6c` and loader blob `1e784be8`. Its OSC52 selection callbacks do not add
-retained history, a title stack or other OSC handlers. History and absent-OSC
-qualification use those exact artifact and adapter pins; title-stack absence
-also retains the previously audited binary entry. Historical capture records
-keep the identities they measured.
+The current libvterm v0.3.3 source audits bind WASM `3d67045b`, adapter blob
+`eb513ccd` and loader blob `1e784be8`. Its OSC52 selection callbacks and native
+reverse-property observation do not add retained history, a title stack or other
+OSC handlers. History and absent-OSC qualification use those exact artifact and
+adapter pins; title-stack absence also retains the previously audited `7ebe1b99`
+binary entry. Historical capture records keep the identities they measured.
 
-The pinned vterm 0.10.0 library arms for OSC 9, 22, 176, 440, 555, 666, 710, 777 and 3008 feed their exact commands and a cell-X
+The pinned vterm 0.10.1 library arms for OSC 9, 22, 176, 440, 555, 666, 710, 777 and 3008 feed their exact commands and a cell-X
 consumption control. A rendered X retains `source-negative-review`, its actual fed/cell state and a
-negative buffer-state assertion for independent review of the target implementation at source6cc7eef0.
+negative buffer-state assertion for independent review of the target implementation at sourcebd3d32ae.
 The control proves parser consumption, not a target effect; target state remains explicitly unexposed.
-The vt100 0.10.0 arms use the same nine commands and control only at their independently audited
-source identity (revision6cc7eef0, package treed5ee344a, vt100 entry path). Its handleOSC switch
+The vt100 0.10.1 arms use the same nine commands and control only at their independently audited
+source identity (revisionbd3d32ae, package tree1eaac257, vt100 entry path). Its handleOSC switch
 at screen.ts:504-520 has cases0/1/2 only. The OSC9 notification-sink citation is specific to the
 vterm entry; vt100 records its own absent-handler citation. These paths retain a pending source
 review, never an automatic grade or a measured target effect.
-The vt220 0.10.0 arms qualify the same nine commands at revision6cc7eef0, package
-tree9a320c4d and the vt220 entry path. Its screen.ts:703-718 handleOSC returns
+The vt220 0.10.1 arms qualify the same nine commands at revisionbd3d32ae, package
+treed504616a and the vt220 entry path. Its screen.ts:703-718 handleOSC returns
 without a semicolon and otherwise handles only cases0/1/2. Its OSC9 records the
 generic absent-handler citation, never vterm's notification-sink citation.
 Other identities keep named coverage, and a missing X grants no source-review negative.
@@ -271,17 +299,66 @@ rows clipped to 12 columns on shrink supply negative assertions. Failed controls
 boundaries, and conflicting positive/negative phases retain required FAILURE tests. Finally restores
 the initial dimensions and resets the source, attempting both operations and preserving all causes.
 
-Qualified main-phase results, including the two negatives from a truncating engine, keep the whole
-feature pending for the remaining facets. Invalid or conflicting phases make the feature fail; its
-reason names each negative or invalid phase and that phase's reason. Remaining facets are:
+The same callback measures retained-history growth and shrink in independently reset buffers.
+The soft line and explicit CRLF rows are followed by twice the screen height in uniquely numbered
+hard witnesses, without a final newline. Coherent counts bound every absolute-buffer read by the
+fed rows plus screen height; invalid extents retain their counts without allocating from them.
+Before resize, all target rows must remain in history and the complete seeded layout must match.
+No retained history and an evicted or incompletely retained target have distinct named TODO reasons
+without assertions, after the surviving rows match the expected fed tail. A corrupt short buffer
+is invalid evidence, not unavailable coverage. After resize, complete reflow supplies a positive assertion; exact physical-row
+preservation/clipping supplies a negative only with every hard witness and blank tail conserved.
+Neither complete model is a named invalid phase, including ambiguous loss or eviction. The destructive
+width control follows target readback on the same resized state, reading the active screen at H+s;
+history matching has no viewport-position predicate.
 
-- Alternate-screen and scrollback behavior retain separate named TODO tests until measured.
-- A default-config observation is not engine capability absence. Libvterm0.3 exposes
-  `vterm_screen_enable_reflow`, disabled unless the embedder enables it. Before a future final fold,
-  either the adapter enables that option with the fact recorded in the response, or a default-off
-  no-reflow observation routes to independent source review. This slice changes no engine option.
-- Unicode, cursor-on-wrapped-line cases and terminal-app resize remain unmeasured; this ASCII
-  main-screen slice grants no broader support, exact-run decision, seal or admission.
+Alternate-screen growth and shrink reuse the seeded 1049 roundtrip used by the mode probes.
+The sparse target and its post-resize width control stay in the same alternate buffer; target cells
+are read before the destructive control. A reflow assertion requires complete target cells, hard
+boundaries and blank tails, actual buffer identity, and primary restoration in that same roundtrip.
+Unknown identity and a measured entry that leaves the primary active have distinct named TODOs:
+`alternate buffer identity unavailable` and `alternate buffer not entered`. Neither is a reflow
+negative. Corrupt setup, inconsistent identity, failed controls/restoration and unmatched layouts
+retain invalid phase evidence. A failed marker or readback before the measurement slot stays invalid,
+even when buffer identity is false or unavailable. Before the slot, only a clean failed-entry observation
+can yield an identity or no-entry TODO.
+Slot errors retain their cause while measured/final leaves run;
+outer cleanup independently attempts alternate exit, initial-width restoration and reset.
+
+The library criterion requires main-screen growth/shrink and retained-history growth/shrink.
+Each required row cites only its own phase's assertions; the existing mixed-main criterion cites
+only main assertions. The shared finalizer gives required failures precedence over TODOs, then
+measured negatives, then support. Main reflow with retained physical history is Unsupported;
+missing qualified history remains TODO, and corrupt tails or unmatched layouts remain failures.
+The reason names the graded phases and their results.
+
+Alternate-screen phases retain their statuses, positive/negative assertions and raw response but
+do not decide the grade: full-screen apps redraw on resize, and intentional physical-row preservation
+there does not negate main-screen or history reflow. The reason reports alternate results as not graded.
+Invalid alternate evidence stays visible without vetoing the graded phases; cleanup failures still error.
+
+Supported reasons state: "ASCII reflow measured on main screen and retained history; wide characters,
+cursor on a wrapped line and terminal-app resize unmeasured". No broader coverage is inferred, and
+the separate terminal-app arm remains TODO. Private apparatus results grant no exact-run decision,
+seal or admission; the native absolute-row consumer hold remains with independent batch review.
+
+A default-config observation is not engine capability absence. Libvterm0.3 exposes
+`vterm_screen_enable_reflow`, disabled unless the embedder enables it, and the current adapter
+retains no history, keeping this criterion TODO. Its one future qualification route installs
+scrollback callbacks, enables reflow and records the setting with the next adapter re-pin.
+A source review of default-off behavior cannot replace that recorded enablement. This slice changes no adapter.
+
+The Linux Kitty/Ghostty launcher pins one exact font file for the entire run, with no fallback face,
+through a private fontconfig directory. Its receipt retains that file's SHA256, launch arguments and HarfBuzz glyph
+sequences for `!= -> => <= ==` with liga/calt on and off. A glyph-ID difference proves source-face
+capability independently of the renderer; position differences alone do not. The collector retains
+the validated `fixture.font` bytes as `collector.fontSource` for every non-mux Linux run selecting the
+font review, including plain receipts from other launchers. The existing review test references the
+key so the current capture binding includes its hash. With this proof, spaced-control and contiguous
+target frames decide Supported or Unsupported by review. Missing or inconclusive proof leaves
+Test TODO naming `#32062 font control` and its proof state; it writes no typed review and never means
+Untestable on a pixel arm. Signing checks the bound receipt; there is no code gate for that review.
+This does not change earlier captures or xterm's rendering pin.
 
 Callbacks currently perform I/O and judge it in the same implementation. There is no general persisted callback transcript or independently replayable assertion API supplied by this package.
 
@@ -370,7 +447,7 @@ Cell `dim`, `italic`, `strikethrough` and `blink` readbacks are required `boolea
 The OSC 8 library criterion requires exact per-cell URI metadata, including unlinked controls.
 An absent `hyperlinks` observer with valid fixture text retains named coverage (TEST TODO) and raw cell/link state,
 identifying the loaded adapter path and Termless revision when measured runtime identity is available.
-For the audited vt100/vt220 0.10.0 source tuples, libvterm 0.3.3 WASM tuple and vt100-rust 0.16.2
+For the audited vt100/vt220 0.10.1 source tuples, libvterm 0.3.3 WASM tuple and vt100-rust 0.16.2
 native tuple in `ABSENT_OSC_ENGINES`, the same ALINKZ fixture instead retains `source-negative-review`
 and a negative buffer-state assertion. Qualification binds the source path, revision and clean package
 tree, or the native build provenance; WASM/native tuples also bind the loaded artifact digest.
@@ -516,7 +593,7 @@ The deciding assertion retains the exact raw response; its width summary and any
 reading remain in the observation note. Supported carries a separate positive gate assertion; Unsupported
 retains the gate condition in its compound negative and both readings in raw state, without a positive assertion.
 The original mode width is restored in finally on readback/capture errors. No resize or new observable is manufactured.
-Headless DECSCLM names its missing presentation-timing capture; headless 2031 names its missing host palette actuator
+Headless DECSCLM names smooth-scroll presentation as unmeasured in its mode-state criterion; headless2031 names its missing host palette actuator
 and persistent event listener. Mode recognition or enabled metadata cannot decide those effects.
 
 These run statuses are separate from the catalog's [probe-coverage labels](../../docs/data/probe-status.ts), such as `automated`, `partial` and `manual`, which describe the available test definitions.
@@ -554,6 +631,46 @@ The writer checks intended id/version against known measured values without repl
 `sealRunDraft` requires complete measured identity and no pending required review; other `test-todo` results can remain in a sealed run.
 
 Required reviews are applied before sealing. While a review remains pending, the writer keeps an unsealed `.draft.json`; once sealed, enrichment cannot change those result bytes.
+
+The internal admin `review intake` and `review apply` commands reuse that writer for private review.
+Intake reads only an explicitly named retained run, or the named context's `pass.contexts[].rawRun`,
+with its trusted frozen suite and explicitly pinned Terminfo/Termless repositories.
+An existing suite declaration is read through `readExplicitSuiteTarget`. For an unregistered private
+run, intake executes the existing `getTrustedSuiteReceipt` producer from the named checkout at the
+run's own source commit. That producer verifies the loaded suite, checkout revision and clean
+collector inputs; no manifest is reconstructed from the run or written to the registry.
+Intake and apply receipts name the chosen registry/source-receipt path, producer, pin and manifest SHA256.
+Only measured pass rows (`pending-review`, `classified`, `admitted`) may supply `rawRun`.
+The issuer edits the intake's `decisions` array: each entry holds exact canonical decision `source`
+bytes, actual `startedAt`, their SHA256, and a `citations` index into that decision's `sources[]`.
+Each Git citation renders exactly as `terminfo.dev@<40-hex-commit>:<repo-relative-path>:L<first>-L<last>`
+(or `termless@...`); external citations render as `<portable-source-path> sha256:<file-sha256>`.
+The external tree's absolute lookup `root` lives only in the private index, never in the decision.
+The full citation must be the corresponding decision source string, so the retained decision is
+independently re-verifiable without the index. Non-code references are explicitly classified and
+are never reported as Git-verified. An absent external path reports `unverified: <path> (tree absent)`;
+a present file requires its matching recorded SHA256. Required Git objects must resolve.
+Apply verifies bindings, assertion prefixes, original raw values, result membership/order and
+non-target rows, exact appended review records/assertions, and canonical readback. It always passes
+the writer's `keepDraft: true` review option: even the last completed review stays unsealed.
+Collector callers omit that option and retain their sealing behavior. The commands never invoke
+selection, seal, admission or publication operations. Files are explicit absolute private outputs,
+created exclusively with mode 0600; empty decisions produce only a no-op receipt. See `bun admin review --help`
+and each subcommand's help for required inputs. The two real shadow comparisons remain required
+before retiring manual review steps.
+
+A reviewed capture decision may name `tool-gap` when the observable is buildable but its instrument is unbuilt.
+Its required reason names the missing instrument and its owning issue. The existing applier replaces that
+pending `review` test with a `criterion` TEST TODO, preserving the decision bytes and original capture evidence.
+It creates no assertions. Other failed tests retain precedence; a tool gap is not an impossibility or a support grade.
+The run can then seal, and its canonical reader and result counts retain `test-todo`.
+
+A curated `tool-gap` overlay may also supersede an embedded `collector.review.*` decision on an exact
+sealed `runId` and `runSha256`, for the same feature and scope. Supersession readers require that parsed
+sealed run to resolve the target; missing runs or mismatched identities remain errors. The existing
+per-run TODO projection shares its application with the console-host rule, so version tables, counts,
+selected contexts and public results agree while the sealed source stays byte-identical. This cell-level
+review grants no identity or community-submission approval, and implies no global withdrawal on future captures.
 
 New capture decisions explicitly carry `evidence: { algorithm: "evidence-output-v1", sha256, projection }` beside
 the original `captureSha256`. The projection binds subject kind/id/version/os, the loaded engine's stable
@@ -649,6 +766,19 @@ All width callbacks distinguish these before applying their numeric feature crit
 readback is named TEST TODO; wrong controls and wrapping are named TEST FAILURE. A wrong numeric
 ASCII control is also a fixture failure. Unknown transport kinds throw with the probe and kind
 named. `/query` retains the same result in its `width` field. JSON preserves the cause fields.
+
+The vt100/vt220 mode-family source review never infers mode absence from rejected DECRQM.
+At revisionbd3d32ae, exact clean source/entry/package trees and audited adapter blobs qualify
+the six absent private modes2004/1004/1003/1006/1000/1005, plus1007/2026/2031 and the SGR/color
+stack commands. Each engine cites its own complete dispatcher and absent command case.
+Its own set/reset or stack pair runs between rendered X marks: consumed commands and leaked
+text retain different reasons, line and cursor state. This uses existing buffer-state
+`source-negative-review` with a negative assertion, inconclusive observation and review TEST FAILURE;
+it does not create a decision or automatically grade Unsupported. Missing X, moved line or
+unqualified source remains named TODO. Actual DECRPM replies retain their original result.
+Stored mode1 on both engines, and5/66 on vt100, remain held instrumentation TODO. The private
+mixed-observable arms use the existing undeclared assertion type so query replies and reviewed
+buffer state both survive actual collection. Other engines and terminal callbacks retain their behavior.
 
 The exact-runtime source audit also covers highlight set/reset absence for vt100, vt220, libvterm and
 vt100-rust. A silent query plus rendered X retains independent source review for OSC117/119; it

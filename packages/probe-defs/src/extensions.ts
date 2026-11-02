@@ -40,6 +40,7 @@ import {
 import { evidenceRuntimeIdentity } from "./runtime-identity.ts"
 import { replyPathAuditFor } from "./reply-path-audit.ts"
 import { nativeHostRecipeResult } from "./native-host-audit.ts"
+import { measureAlternateReflow } from "./modes.ts"
 import { sgrTermReadback } from "./sgr.ts"
 import {
   beginCaptureLifecycle,
@@ -596,7 +597,7 @@ function oscSimpleQueryProbe(id: string, query: string, pattern: RegExp, expecte
                 raw,
                 noObservable: "Audited vterm headless subject has no physical font cell dimensions",
                 sourceCitation:
-                  "vterm screen.ts at 6cc7eef0: ScreenOptions has no physical font metrics; OSC1337 ReportCellSize and OSC776 deliberately report unknown zero dimensions (#30575)",
+                  "vterm screen.ts at bd3d32ae: ScreenOptions has no physical font metrics; OSC1337 ReportCellSize and OSC776 deliberately report unknown zero dimensions (#30575)",
               },
               result,
             )
@@ -1182,31 +1183,31 @@ const ABSENT_OSC_ENGINES = {
   vt100: {
     kind: "source",
     runtimeFormat: "js",
-    engineVersion: "0.10.0",
+    engineVersion: "0.10.1",
     repository: "git@github.com:beorn/vterm.git",
-    treeOid: "d5ee344ab5b971184ba2c43ed60460656340417c",
+    treeOid: "1eaac257cf9ff8d8ece752c8e6edc04b9ddaa6cf",
     codes: [1, 8, 9, 17, 19, 22, 117, 119, 133, 176, 440, 555, 633, 666, 710, 777, 3008],
     subcodes: ["133;D"],
     reviewReasons: [{ code: 1, reason: "screen.ts:504-520 case 1 is ignored; no icon-name state is stored" }],
     sourceCitation:
-      "vt100 6cc7eef05cde6a8578479c6cdb480f606758eb2c packages/vt100/src/screen.ts:504-520 handleOSC switch, cases 0/1/2 only",
+      "vt100 bd3d32aea2f1994376a71adfc55b92705eedbd8c packages/vt100/src/screen.ts:504-520 handleOSC switch, cases 0/1/2 only",
   },
   vt220: {
     kind: "source",
     runtimeFormat: "js",
-    engineVersion: "0.10.0",
+    engineVersion: "0.10.1",
     repository: "git@github.com:beorn/vterm.git",
-    treeOid: "9a320c4d5cd0e0b60bb2e6ea4f020ce5eb54ae53",
+    treeOid: "d504616ae458b8b0fa9fa365034c30bd35f55ee8",
     codes: [1, 8, 9, 17, 19, 22, 117, 119, 133, 176, 440, 555, 633, 666, 710, 777, 3008],
     subcodes: ["133;D"],
     reviewReasons: [{ code: 1, reason: "screen.ts:703-718 case 1 is ignored; no icon-name state is stored" }],
     sourceCitation:
-      "vt220 6cc7eef05cde6a8578479c6cdb480f606758eb2c packages/vt220/src/screen.ts:703-718 handleOSC: no-semicolon return; cases 0/1/2 only",
+      "vt220 bd3d32aea2f1994376a71adfc55b92705eedbd8c packages/vt220/src/screen.ts:703-718 handleOSC: no-semicolon return; cases 0/1/2 only",
   },
   vterm: {
     kind: "source",
     runtimeFormat: "js",
-    engineVersion: "0.10.0",
+    engineVersion: "0.10.1",
     repository: "git@github.com:beorn/vterm.git",
     treeOid: SOURCE_TREE_AUDITS.vterm.treeOid,
     codes: [9, 22, 176, 440, 555, 666, 710, 777, 3008],
@@ -1218,7 +1219,7 @@ const ABSENT_OSC_ENGINES = {
       },
     ],
     sourceCitation:
-      "vterm 6cc7eef05cde6a8578479c6cdb480f606758eb2c packages/vterm/src/screen.ts:3596-4055 handleOSC switch",
+      "vterm bd3d32aea2f1994376a71adfc55b92705eedbd8c packages/vterm/src/screen.ts:3596-4055 handleOSC switch",
   },
   xtermjs: {
     kind: "registry",
@@ -1234,17 +1235,17 @@ const ABSENT_OSC_ENGINES = {
     runtimeFormat: "wasm",
     engineVersion: "0.3.3",
     adapterVersion: "0.10.2",
-    binarySha256: "7ebe1b994b58ca867dcd19e9cdeb10b8839b6c1f0dbdea024f875a9f57560a23",
+    binarySha256: "3d67045bb43c5e4081c70dc58088af8f735416c20df2d7843d765e5aad8ef62a",
     codes: [8, 9, 17, 19, 22, 117, 119, 176, 440, 555, 666, 710, 777, 3008],
     sourceCitation:
-      "libvterm 9d6d2112335080312ef8c36667fa717ded4f7daf/v0.3.3 src/state.c:1777-1808 handles OSC 0/1/2/52 only; Termless 37c3e9af11f59259ee200633df3c57bc28c34f90 packages/libvterm/build/flat-api.c installs output and OSC52 selection callbacks only; src/backend.ts forwards native input and installs no OSC fallback",
+      "libvterm 9d6d2112335080312ef8c36667fa717ded4f7daf/v0.3.3 src/state.c:1777-1808 handles OSC 0/1/2/52 only; Termless f8d2aeb7a7a30f0215fd628bbbb1f1e5cd0a91be packages/libvterm/build/flat-api.c installs output and OSC52 selection callbacks only; src/backend.ts forwards native input and installs no OSC fallback",
   },
   ghostty: {
     kind: "source",
     runtimeFormat: "wasm",
     engineVersion: "0.4.0",
     adapterVersion: "0.10.2",
-    binarySha256: "1f23e13db5bda55ab54943461b83a5d642bf8d2050a452fbe7871927383dfe9f",
+    binarySha256: "3c2398d5c537d9c10e86b0af69311977927fcdbe4738618df194cedbdd22574d",
     codes: [1, 176, 440, 555, 666, 710, 3008],
     reviewReasons: [
       {
@@ -1253,7 +1254,7 @@ const ABSENT_OSC_ENGINES = {
       },
     ],
     sourceCitation:
-      "Ghostty WASM core5714ed07a1012573261b7b7e3ed2add9c1504496 src/terminal/osc.zig:551-566,779-800,891-1002,1047-1075 parser states reject OSC176/3008/440/555/666/710; :1708-1715 returns null before ResponseHandler. Artifact1f23e13db5bda55ab54943461b83a5d642bf8d2050a452fbe7871927383dfe9f adds DECRPM, DA1/DA2, XTVERSION, DECRQSS and XTGETTCAP reply actions and no OSC handler; OSC9/777 binding losses and OSC22 mouse_shape are excluded",
+      "Ghostty WASM core5714ed07a1012573261b7b7e3ed2add9c1504496 src/terminal/osc.zig:551-566,779-800,891-1002,1047-1075 parser states reject OSC176/3008/440/555/666/710; :1708-1715 returns null before ResponseHandler. Artifact3c2398d5c537d9c10e86b0af69311977927fcdbe4738618df194cedbdd22574d adds DECRPM, DA1/DA2, XTVERSION, DECRQSS and XTGETTCAP reply actions and no OSC handler; OSC9/777 binding losses and OSC22 mouse_shape are excluded",
   },
   kitty: {
     kind: "native",
@@ -1270,7 +1271,7 @@ const ABSENT_OSC_ENGINES = {
       {
         code: 3008,
         reason:
-          "kitty/vt-parser.c:658-661 dispatches osc_context; kitty/window.py:1582-1583 is empty and Termless packages/kitty/build/bridge.py:242 maps it to no_reply",
+          "kitty/vt-parser.c:658-661 dispatches osc_context; kitty/window.py:1582-1583 is empty and Termless packages/kitty/build/bridge.py:243 maps it to no_reply",
       },
     ],
     sourceCitation:
@@ -1280,9 +1281,9 @@ const ABSENT_OSC_ENGINES = {
     kind: "native",
     engineVersion: "1.3.1",
     adapterVersion: "0.10.2",
-    binarySha256: "d6e23fe62d56de795c6fa783a6c5025fc5b1238e739839de8b4b3737eca0c43e",
+    binarySha256: "53f9a867cce594b4d50fb9508db9ce5d2d79fb4244a418548b7cb31fa50780d1",
     sourceCommit: "332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28",
-    buildHash: "bcb9aac9409e23717f3c5952d0ab062da27395e9df69b980a4c5d026246f5a14",
+    buildHash: "2d5e53cf4f0846e47cda8a45c513f44da5c699657edffe93886e6eba99f36bfd",
     lockSha256: "3ec775507556db01d08055836b26183f629a9cbb0b5802a1566661e95988d74a",
     codes: [1, 176, 440, 555, 666, 710, 3008],
     reviewReasons: [
@@ -1296,15 +1297,15 @@ const ABSENT_OSC_ENGINES = {
       },
     ],
     sourceCitation:
-      "Ghostty 332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28 src/terminal/osc.zig:535-641 rejects OSC176/440/555/666/710; :747 parses OSC3008 context_signal, dropped at src/terminal/stream.zig:2050-2059 (SHA256 3ddc5e27d6a6f48ea99399bb886b52e7bebb68c94397a3ba008a7c3eb6c01a9b); Termless 723acd11346edfcf3bfd0614c1a44a3828512a9f packages/ghostty-native/native/src/main.zig:38-39 wraps ReadonlyHandler, :76 forwards unhandled actions to readonly.vt, :85 creates ResponseStream and :141 initializes Terminal.vtHandler",
+      "Ghostty 332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28 src/terminal/osc.zig:535-641 rejects OSC176/440/555/666/710; :747 parses OSC3008 context_signal, dropped at src/terminal/stream.zig:2050-2059 (SHA256 3ddc5e27d6a6f48ea99399bb886b52e7bebb68c94397a3ba008a7c3eb6c01a9b); Termless 8bd0516ad101cc088133beb20fa9e92f86250da8 packages/ghostty-native/native/src/main.zig:38-39 wraps ReadonlyHandler, :76 forwards unhandled actions to readonly.vt, :85 creates ResponseStream and :141 initializes Terminal.vtHandler",
   },
   alacritty: {
     kind: "native",
     engineVersion: "0.26.0",
     adapterVersion: "0.10.2",
-    binarySha256: "32d76284e5a3c7673fafbbc83a16717fa0a1c1811c7d659d982176a53ceb1aa9",
-    sourceCommit: "cd5cd5172680fd240ee3445dea96289793bc2d59",
-    buildHash: "94ef4fbf1e21d454c70a39efaf9cfde1ebabe57a0f9cdb186fef782cfb1ff8ce",
+    binarySha256: "21d4b43c1d4c401c5b9f8114de85b3e837605242363c322c2dcb37e4a42fba61",
+    sourceCommit: "824119c28b46bd701b222a91df0da860f0307950",
+    buildHash: "634c14c5258327eff925d20d24918098c9aee92c1e6291e0ca770d2677015171",
     lockSha256: "1f89f2579b7d786a116d8fefb8267c4af076bd3a3893adcf14b00c4466740497",
     codes: [1, 9, 17, 19, 22, 117, 119, 176, 440, 555, 666, 710, 777, 3008],
     reviewReasons: [
@@ -1320,15 +1321,15 @@ const ABSENT_OSC_ENGINES = {
       },
     ],
     sourceCitation:
-      "alacritty_terminal 0.26.0 with vte 0.15.0 src/ansi.rs:1329-1523 OSC dispatch (22 parsed, other audited codes unhandled); src/term/mod.rs:1059-2272 Term Handler; Termless 2d97417328b7b1d086f9396b9a1731216ed134cc packages/alacritty/native/src/lib.rs:285-338 owns Term<EventProxy> and advances the vte processor into it",
+      "alacritty_terminal 0.26.0 with vte 0.15.0 src/ansi.rs:1329-1523 OSC dispatch (22 parsed, other audited codes unhandled); src/term/mod.rs:1059-2272 Term Handler; Termless 824119c28b46bd701b222a91df0da860f0307950 packages/alacritty/native/src/lib.rs:285-338 owns Term<EventProxy> and advances the same vte processor into it; alternate-scroll readback changes leave Config, OSC dispatch and reply handling unchanged",
   },
   wezterm: {
     kind: "native",
     engineVersion: "0.1.0-fork.5",
     adapterVersion: "0.10.2",
-    binarySha256: "0f56a805793d7d829daa617f1323aacff0d73fe868747b0d077c6af315e2aab8",
-    sourceCommit: "5afcc676d49c02902ef35112893e2ae35efb0d5e",
-    buildHash: "1bc38c0ad4e95754ef42b5de57d4829864984099b2e4422008de7c5b96c875df",
+    binarySha256: "6722b331de7489c14cb599d939e5d2314f054220728f83c5c29f454e70273e47",
+    sourceCommit: "83b22ab3f99ff3c2f3e43bcfce346c1374f540e1",
+    buildHash: "94a2d6025d3dc9e62debb7cbe388b3ad5113394d0ab6746d6baa58475fbe9c56",
     lockSha256: "8eaeab733cced8d47feb223d773d5ae158b2e6af8c994f993d4071d9ba3231d4",
     codes: [22, 176, 440, 555, 633, 666, 710, 720, 3008],
     subcodes: ["133;D"],
@@ -1340,11 +1341,11 @@ const ABSENT_OSC_ENGINES = {
       {
         code: 720,
         reason:
-          "no case 720; wezterm-term src/screen.rs:15-45,335,493,522-527 stores screen/history, not a product viewport; Termless packages/wezterm/native/src/lib.rs:448-461 returns viewport_offset 0 and scroll_viewport is a no-op",
+          "no case 720; wezterm-term src/screen.rs:15-45,335,493,522-527 stores screen/history, not a product viewport; Termless packages/wezterm/native/src/lib.rs:442-455 returns viewport_offset 0 and scroll_viewport is a no-op",
       },
     ],
     sourceCitation:
-      "tattoy-wezterm-escape-parser 0.1.0-1 src/osc.rs:457-505 osc_entries (SHA256 fd26b6d6254c46ef880fbcc03ba418d67e9049c875e71cca6f18f4df76a0924f), parse errors become Unspecified at :155-167; tattoy-wezterm-term 0.1.0-fork.5 src/terminalstate/performer.rs:772-781 logs Unspecified; Termless 2d97417328b7b1d086f9396b9a1731216ed134cc packages/wezterm/native/src/lib.rs:236-243 advances the pinned Terminal",
+      "tattoy-wezterm-escape-parser 0.1.0-1 src/osc.rs:457-505 osc_entries (SHA256 fd26b6d6254c46ef880fbcc03ba418d67e9049c875e71cca6f18f4df76a0924f), parse errors become Unspecified at :155-167; tattoy-wezterm-term 0.1.0-fork.5 src/terminalstate/performer.rs:772-781 logs Unspecified; Termless 83b22ab3f99ff3c2f3e43bcfce346c1374f540e1 packages/wezterm/native/src/lib.rs:237-245 advances the same pinned Terminal; absolute-row reader changes leave parsing, config and reply delivery unchanged",
   },
   vt100Rust: {
     kind: "native",
@@ -1461,21 +1462,29 @@ function promptConsumptionResult(consumed: boolean | null): ProbeCallbackResult 
  * C154 — a consumed semantic prompt mark proves consumption, not that the mark registered.
  * Read the measured home / target / control sequence from the real cursor and cell state so a
  * provider that answers a constant cursor position cannot satisfy all three positions; only a
- * qualified sequence records the named no-semantic-observable coverage. A consumed-but-unqualified
- * read, and a missing cell, stay a real consumption observation — never not-tested.
+ * qualified sequence can witness new start markers through an exposed reader. Without one it
+ * retains the applicable named review. A consumed-but-unqualified read, and a missing cell, stay
+ * a real consumption observation — never not-tested.
  */
 function promptMarkResult(
   ctx: LibProbeSource,
   sequence: string,
   noObservable: string,
-  sourceReview?: { probeId: string; selector: number | "133;D" },
+  sourceReview?: { probeId: string; selector: number | "133;D"; markType?: "prompt" | "command" | "output" },
 ): ProbeCallbackResult {
   if (sourceReview && absentOscAudit(ctx.runtimeIdentity, sourceReview.selector)) {
     return sourceAbsentOsc(sourceReview.probeId, sourceReview.selector, sequence, noObservable)(ctx)
   }
   ctx.feed("\x1b[1;1H")
   const home = ctx.getCursor()
+  const markType = sourceReview?.markType
+  const commandEnd = sourceReview?.selector === "133;D"
+  const readerKey = markType ? "semantic-marks" : commandEnd ? "semantic-command-end" : undefined
+  const declared = readerKey !== undefined && ctx.capabilities.extensions.has(readerKey)
+  const readMarks = declared ? ctx.getSemanticMarks?.bind(ctx) : undefined
+  const before = readMarks ? readMarks() : undefined
   ctx.feed(sequence + "X")
+  const first = readMarks ? readMarks() : undefined
   const cell = ctx.getCell(0, 0)
   const target = ctx.getCursor()
   ctx.feed("\x1b[1;1H")
@@ -1484,6 +1493,96 @@ function promptMarkResult(
   const qualified =
     consumed && home.x === 0 && home.y === 0 && target.x === 1 && target.y === 0 && control.x === 0 && control.y === 0
   if (!qualified) return promptConsumptionResult(consumed)
+  if (commandEnd && readMarks && before && first) {
+    ctx.feed("\x1b[2;3H")
+    const secondBefore = readMarks()
+    const secondSequence = "\x1b]133;D;17\x07"
+    ctx.feed(secondSequence + "X")
+    const second = readMarks()
+    const secondCell = ctx.getCell(1, 2)
+    const secondCursor = ctx.getCursor()
+    ctx.feed("\x1b[1;1H")
+    const firstMark = first[before.length]
+    const secondMark = second[secondBefore.length]
+    return parserStateResult(
+      first.length === before.length + 1 &&
+        firstMark?.type === "command-end" &&
+        firstMark.rawStatus === "0" &&
+        second.length === secondBefore.length + 1 &&
+        secondMark?.type === "command-end" &&
+        secondMark.rawStatus === "17" &&
+        before.every((mark, index) => JSON.stringify(mark) === JSON.stringify(first[index])) &&
+        first.length === secondBefore.length &&
+        first.every((mark, index) => JSON.stringify(mark) === JSON.stringify(secondBefore[index])) &&
+        secondBefore.every((mark, index) => JSON.stringify(mark) === JSON.stringify(second[index])) &&
+        secondCell.char === "X" &&
+        secondCursor.x === 3 &&
+        secondCursor.y === 1,
+      "Each target feed appends exactly one command-end with its exact raw status and preserves earlier history",
+      {
+        sequence,
+        secondSequence,
+        home,
+        target,
+        control,
+        cell: cell.char,
+        before,
+        first,
+        secondBefore,
+        second,
+        secondCell: secondCell.char,
+        secondCursor,
+      },
+    )
+  }
+  if (markType && readMarks && before && first) {
+    ctx.feed("\x1b[2;3H")
+    const secondBefore = readMarks()
+    ctx.feed(sequence + "X")
+    const second = readMarks()
+    const secondCell = ctx.getCell(1, 2)
+    const secondCursor = ctx.getCursor()
+    ctx.feed("\x1b[1;1H")
+    const firstMark = first[before.length]
+    const secondMark = second[secondBefore.length]
+    return parserStateResult(
+      first.length === before.length + 1 &&
+        firstMark?.type === markType &&
+        firstMark.startRow === 0 &&
+        firstMark.startCol === 0 &&
+        second.length === secondBefore.length + 1 &&
+        secondMark?.type === markType &&
+        secondMark.startRow === 1 &&
+        secondMark.startCol === 2 &&
+        secondCell.char === "X" &&
+        secondCursor.x === 3 &&
+        secondCursor.y === 1,
+      `Each target feed appends exactly one ${markType} start at its observed screen position`,
+      {
+        sequence,
+        home,
+        target,
+        control,
+        cell: cell.char,
+        before,
+        first,
+        secondBefore,
+        second,
+        secondCell: secondCell.char,
+        secondCursor,
+      },
+    )
+  }
+  if (declared) {
+    const note = `${noObservable}: ${readerKey} getSemanticMarks readback is unavailable`
+    return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
+      home,
+      target,
+      control,
+      cell: cell.char,
+      declared: true,
+    })
+  }
   return reviewResult(
     SEMANTIC_PROMPT_SOURCE_REVIEW,
     "Independent review must determine whether the pinned engine source parses this OSC 133 / 633 mark and exposes mark or zone state; citation per cell required for supported, unsupported or Untestable",
@@ -2976,6 +3075,7 @@ function mainScreenReflow(ctx: LibProbeSource): ProbeCallbackResult {
     cells: string[][]
     cursor: ReturnType<LibProbeSource["getCursor"]>
     scrollback: ReturnType<LibProbeSource["getScrollback"]>
+    invalid?: string
   }
   type Phase = {
     id: string
@@ -2984,6 +3084,11 @@ function mainScreenReflow(ctx: LibProbeSource): ProbeCallbackResult {
     outcome: "reflow" | "preserved-wraps" | "truncated" | "invalid"
     reason: string
   }
+  type HistoryPhase = Omit<Phase, "outcome"> & {
+    outcome: Phase["outcome"] | "not-retained"
+    status: "supported" | "unsupported" | "test-todo" | "test-failure"
+  }
+  type AlternatePhase = NonNullable<ReturnType<typeof measureAlternateReflow>["measurement"]>
   const state = {
     declaredReflow: ctx.capabilities.reflow === true,
     initial,
@@ -2996,6 +3101,17 @@ function mainScreenReflow(ctx: LibProbeSource): ProbeCallbackResult {
     >,
     reads: {} as Record<string, Frame>,
     phases: [] as Phase[],
+    historyPhases: [] as HistoryPhase[],
+    alternatePhases: [] as AlternatePhase[],
+    alternateRoundtrips: {} as Record<
+      string,
+      {
+        roundtrip: ProbeCallbackResult
+        measurement?: AlternatePhase
+        measurementError?: string
+        identity: Record<string, boolean | null>
+      }
+    >,
   }
   const feed = (text: string) => {
     state.actions.push({ kind: "feed", text })
@@ -3005,39 +3121,56 @@ function mainScreenReflow(ctx: LibProbeSource): ProbeCallbackResult {
     state.actions.push({ kind: "resize", cols, rows: height })
     resizeSource.call(ctx, cols, height)
   }
+  let readBound = height
   const read = (name: string, sampleColumns: number): Frame => {
     const scrollback = ctx.getScrollback()
-    const top = scrollback.totalLines - scrollback.screenLines
+    const invalid =
+      !Number.isSafeInteger(scrollback.totalLines) ||
+      scrollback.screenLines !== height ||
+      scrollback.totalLines < height ||
+      scrollback.totalLines > readBound
+        ? `Invalid buffer counts: totalLines=${scrollback.totalLines}, screenLines=${scrollback.screenLines}, expected screenLines=${height}, maximum totalLines=${readBound}`
+        : undefined
     const frame = {
       sampleColumns,
       scrollback,
       cursor: ctx.getCursor(),
-      cells: Array.from({ length: height }, (_, row) =>
-        Array.from({ length: sampleColumns }, (_, col) => ctx.getCell(top + row, col).char),
-      ),
+      ...(invalid && { invalid }),
+      cells: invalid
+        ? []
+        : Array.from({ length: scrollback.totalLines }, (_, row) =>
+            Array.from({ length: sampleColumns }, (_, col) => ctx.getCell(row, col).char),
+          ),
     }
     state.reads[name] = frame
     state.actions.push({ kind: "read", name })
     return frame
   }
-  const matches = (frame: Frame, lines: string[]) =>
-    frame.scrollback.screenLines === height &&
-    frame.scrollback.totalLines === height &&
-    frame.scrollback.viewportOffset === 0 &&
+  const matchesCells = (frame: Frame, lines: string[], start = 0, count = frame.cells.length) =>
+    !frame.invalid &&
+    frame.cells.length >= start + count &&
+    lines.length <= count &&
     lines.every((line) => line.length <= frame.sampleColumns) &&
-    frame.cells.every((row, index) => {
+    frame.cells.slice(start, start + count).every((row, index) => {
       const expected = lines[index] ?? ""
       return row.every((char, col) => (col < expected.length ? char === expected[col] : char === "" || char === " "))
     })
-  const clear = () => feed("\x1b[?1049l\x1b[?7h\x1b[2J\x1b[H")
-  const widthControl = (name: string, columns: number) => {
-    clear()
+  const matches = (frame: Frame, lines: string[]) =>
+    frame.scrollback.totalLines === height && frame.scrollback.viewportOffset === 0 && matchesCells(frame, lines)
+  const clear = (alternate = false) => feed(`${alternate ? "" : "\x1b[?1049l"}\x1b[?7h\x1b[2J\x1b[H`)
+  const widthControl = (name: string, columns: number, history = false, alternate = false) => {
+    clear(alternate)
     feed("W".repeat(columns) + "Z")
-    return matches(read(name, columns), ["W".repeat(columns), "Z"])
+    const frame = read(name, columns)
+    const lines = ["W".repeat(columns), "Z"]
+    return history
+      ? matchesCells(frame, lines, frame.scrollback.totalLines - frame.scrollback.screenLines, height)
+      : matches(frame, lines)
   }
   const layout = (columns: number) =>
     columns === 12 ? ["ABCDEFGHIJKL", "MNOPQR", ...state.fixture.hard] : [state.fixture.soft, ...state.fixture.hard]
   let primary: { error: unknown } | undefined
+  const measurementFailures: unknown[] = []
   try {
     for (const [id, from, to] of [
       ["main-grow", 12, 20],
@@ -3101,12 +3234,249 @@ function mainScreenReflow(ctx: LibProbeSource): ProbeCallbackResult {
               : "Pre-existing physical wrap boundaries remained with all target characters preserved"
       state.phases.push({ id, from, to, outcome, reason })
     }
+    for (const [id, from, to] of [
+      ["history-grow", 12, 20],
+      ["history-shrink", 20, 12],
+    ] as const) {
+      // Reset is essential here: ED2 clears the active screen, not the retained buffer.
+      state.actions.push({ kind: "reset" })
+      ctx.reset()
+      readBound = height
+      resize(from)
+      const fresh = read(`${id}.fresh`, from)
+      const record = (outcome: HistoryPhase["outcome"], reason: string) => {
+        state.historyPhases.push({
+          id,
+          from,
+          to,
+          outcome,
+          reason,
+          status:
+            outcome === "not-retained"
+              ? "test-todo"
+              : outcome === "invalid"
+                ? "test-failure"
+                : outcome === "reflow"
+                  ? "supported"
+                  : "unsupported",
+        })
+      }
+      if (!matches(fresh, []) || !widthControl(`${id}.control-before`, from)) {
+        record("invalid", fresh.invalid ?? "Fresh history fixture or initial width control did not qualify")
+        continue
+      }
+      const witnesses = Array.from({ length: 2 * height }, (_, index) => `R${String(index).padStart(3, "0")}`)
+      const beforeLines = [...layout(from), ...witnesses]
+      // Include the screen extent in the feed-derived bound, but never allocate from unchecked counts.
+      readBound = beforeLines.length + height
+      clear()
+      feed([state.fixture.soft, ...state.fixture.hard, ...witnesses].join("\r\n"))
+      const before = read(`${id}.before`, from)
+      const retained = before.scrollback.totalLines - before.scrollback.screenLines
+      if (before.invalid) {
+        record("invalid", before.invalid)
+        continue
+      }
+      // Starting at a fresh buffer, every scroll must still be retained to keep the first target row.
+      // H >= target height alone is insufficient: bounded engines can already have evicted the target.
+      const requiredHistory = beforeLines.length - height
+      if (retained < requiredHistory) {
+        if (!matchesCells(before, beforeLines.slice(-before.scrollback.totalLines))) {
+          record("invalid", "Retained buffer does not match the fed tail; target retention is unresolved")
+        } else {
+          record(
+            "not-retained",
+            retained === 0
+              ? "engine retained no history"
+              : `target not fully retained (H=${retained}, need ${requiredHistory})`,
+          )
+        }
+        continue
+      }
+      if (before.scrollback.totalLines !== beforeLines.length || !matchesCells(before, beforeLines)) {
+        record("invalid", "Complete retained seed, hard witnesses or blank tails did not qualify")
+        continue
+      }
+      resize(to)
+      // Preserve the target before the destructive control; control uses this same resized state.
+      const after = read(`${id}.after`, to)
+      const control = widthControl(`${id}.control-after`, to, true)
+      const invalidControl = state.reads[`${id}.control-after`]?.invalid
+      const reflowed = [...layout(to), ...witnesses]
+      const preserved = beforeLines.map((line) => line.slice(0, to))
+      const outcome =
+        !control || after.invalid
+          ? "invalid"
+          : after.scrollback.totalLines === reflowed.length && matchesCells(after, reflowed)
+            ? "reflow"
+            : after.scrollback.totalLines === preserved.length && matchesCells(after, preserved)
+              ? to < from
+                ? "truncated"
+                : "preserved-wraps"
+              : "invalid"
+      record(
+        outcome,
+        after.invalid ??
+          invalidControl ??
+          (!control
+            ? "Post-resize width control did not wrap at the requested column"
+            : outcome === "invalid"
+              ? "Resize matched neither complete retained layout; loss or eviction is unresolved"
+              : outcome === "reflow"
+                ? "Retained soft line reflowed; all explicit boundaries, hard witnesses and blank tails were conserved"
+                : "Retained physical rows were preserved or clipped; all hard witnesses and blank tails were conserved"),
+      )
+    }
+    for (const [id, from, to] of [
+      ["alternate-grow", 12, 20],
+      ["alternate-shrink", 20, 12],
+    ] as const) {
+      state.actions.push({ kind: "reset" })
+      ctx.reset()
+      readBound = height
+      resize(from)
+      const fresh = read(`${id}.fresh`, from)
+      const phase = (outcome: AlternatePhase["outcome"], reason: string): AlternatePhase => ({
+        id,
+        from,
+        to,
+        outcome,
+        reason,
+        status:
+          outcome === "identity-unavailable" || outcome === "not-entered"
+            ? "test-todo"
+            : outcome === "invalid"
+              ? "test-failure"
+              : outcome === "reflow"
+                ? "supported"
+                : "unsupported",
+      })
+      if (!matches(fresh, [])) {
+        state.alternatePhases.push(phase("invalid", fresh.invalid ?? "Fresh alternate fixture did not qualify"))
+        continue
+      }
+      const identity: Record<string, boolean | null> = { before: ctx.getMode("altScreen") }
+      // Log the shared roundtrip's feeds as well as the fixture's. Read actual mode state immediately
+      // after its measured enter/leave; the declaration bit is never a buffer-identity witness.
+      const roundtripSource = Object.create(ctx) as LibProbeSource
+      roundtripSource.feed = (text) => {
+        feed(text)
+        if (text === "\x1b[?1049h") identity.entered = ctx.getMode("altScreen")
+        if (text === "\x1b[?1049l") identity.restored = ctx.getMode("altScreen")
+      }
+      let slotFailure: { error: unknown } | undefined
+      const evidence = measureAlternateReflow(roundtripSource, () => {
+        try {
+          if (identity.before === true || identity.entered === false) {
+            return phase("invalid", "Alternate identity contradicts the measured primary isolation")
+          }
+          if (identity.before !== false || identity.entered !== true) {
+            return phase("identity-unavailable", "alternate buffer identity unavailable")
+          }
+          if (!widthControl(`${id}.control-before`, from, false, true)) {
+            return phase("invalid", "Initial alternate width control did not wrap at the requested column")
+          }
+          clear(true)
+          feed(`${state.fixture.soft}\r\n${state.fixture.hard.join("\r\n")}\r\n`)
+          feed(`\x1b[${height - 2};1H`)
+          const before = read(`${id}.before`, from)
+          const parked =
+            before.cursor.x === 0 &&
+            Number.isSafeInteger(before.cursor.y) &&
+            before.cursor.y >= layout(from).length &&
+            before.cursor.y < height
+          identity.seed = ctx.getMode("altScreen")
+          if (!matches(before, layout(from)) || !parked || identity.seed === false) {
+            return phase("invalid", "Alternate seed cells, blank tails, geometry, cursor or identity did not qualify")
+          }
+          if (identity.seed !== true) return phase("identity-unavailable", "alternate buffer identity unavailable")
+          resize(to)
+          const after = read(`${id}.after`, to)
+          identity.target = ctx.getMode("altScreen")
+          // Destructive control stays on this same resized alternate state, after target readback.
+          const control = widthControl(`${id}.control-after`, to, false, true)
+          identity.control = ctx.getMode("altScreen")
+          const layoutOutcome = matches(after, layout(to))
+            ? "reflow"
+            : matches(
+                  after,
+                  layout(from).map((line) => line.slice(0, to)),
+                )
+              ? to < from
+                ? "truncated"
+                : "preserved-wraps"
+              : "invalid"
+          const outcome =
+            !control || layoutOutcome === "invalid" || identity.target === false || identity.control === false
+              ? "invalid"
+              : identity.target !== true || identity.control !== true
+                ? "identity-unavailable"
+                : layoutOutcome
+          return phase(
+            outcome,
+            !control
+              ? "Post-resize alternate width control did not wrap at the requested column"
+              : identity.target === false || identity.control === false
+                ? "Alternate buffer identity changed during target or width-control readback"
+                : outcome === "identity-unavailable"
+                  ? "alternate buffer identity unavailable"
+                  : outcome === "invalid"
+                    ? "Alternate resize matched neither complete layout, including hard rows and blank tails"
+                    : outcome === "reflow"
+                      ? "Alternate soft line reflowed; explicit boundaries and complete blank tails were conserved"
+                      : "Alternate physical rows were preserved or clipped; all hard rows and blank tails were conserved",
+          )
+        } catch (error) {
+          slotFailure = { error }
+          throw error
+        }
+      })
+      // Keep original causes outside the JSON evidence. A later cleanup failure must not hide a
+      // slot error merely because the shared leaves succeeded and returned its invalid phase.
+      if (slotFailure) measurementFailures.push(slotFailure.error)
+      identity.after = ctx.getMode("altScreen")
+      state.alternateRoundtrips[id] = { ...evidence, identity }
+      let result: AlternatePhase
+      if (evidence.measurementError !== undefined) {
+        result = phase("invalid", `Alternate measurement failed: ${evidence.measurementError}`)
+      } else if (evidence.measurement) {
+        result = evidence.measurement
+        if (!evidence.roundtrip.pass || identity.restored === true || identity.after === true) {
+          result = phase(
+            "invalid",
+            `Primary restoration after alternate measurement did not qualify: ${evidence.roundtrip.note ?? evidence.roundtrip.response}`,
+          )
+        } else if (result.outcome !== "invalid" && (identity.restored !== false || identity.after !== false)) {
+          result = phase("identity-unavailable", "alternate buffer identity unavailable")
+        }
+      } else if (
+        evidence.roundtrip.observation?.outcome === "unsupported" &&
+        identity.before === false &&
+        identity.entered === false
+      ) {
+        result = phase("not-entered", "alternate buffer not entered")
+      } else if (
+        evidence.roundtrip.observation?.outcome === "unsupported" &&
+        identity.entered !== undefined &&
+        (identity.before === null || identity.entered === null)
+      ) {
+        result = phase("identity-unavailable", "alternate buffer identity unavailable")
+      } else {
+        result = phase(
+          "invalid",
+          `Alternate isolation did not qualify: ${evidence.roundtrip.note ?? evidence.roundtrip.response}`,
+        )
+      }
+      state.alternatePhases.push(result)
+    }
   } catch (error) {
     primary = { error }
     throw error
   } finally {
-    const failures: unknown[] = primary ? [primary.error] : []
+    const failures: unknown[] = [...measurementFailures, ...(primary ? [primary.error] : [])]
+    const beforeCleanup = failures.length
     for (const cleanup of [
+      () => feed("\x1b[?1049l"),
       () => resize(initial.cols),
       () => {
         state.actions.push({ kind: "reset" })
@@ -3119,33 +3489,38 @@ function mainScreenReflow(ctx: LibProbeSource): ProbeCallbackResult {
         failures.push(error)
       }
     }
-    if (failures.length > (primary ? 1 : 0)) {
+    if (failures.length > beforeCleanup || (primary && measurementFailures.length > 0)) {
       const messages = failures.map((error) => (error instanceof Error ? error.message : String(error))).join("; ")
       throw new AggregateError(failures, `Reflow cleanup failed: ${messages}`, { cause: failures[0] })
     }
   }
-  const pending = [
-    ...state.phases.filter((phase) => phase.outcome !== "reflow").map((phase) => `${phase.id}: ${phase.reason}`),
-    "Main-screen phases only; alternate-screen and scrollback reflow are not measured",
+  const gradedPhases = [...state.phases, ...state.historyPhases]
+  const resultNote = [
+    gradedPhases.every((phase) => phase.outcome === "reflow")
+      ? "ASCII reflow measured on main screen and retained history; wide characters, cursor on a wrapped line and terminal-app resize unmeasured"
+      : "Main-screen and retained-history ASCII reflow attempted; wide characters, cursor on a wrapped line and terminal-app resize unmeasured",
+    ...gradedPhases.map((phase) => `${phase.id}: ${phase.reason}`),
+    `Alternate screen (reported, not graded): ${state.alternatePhases.map((phase) => `${phase.id}: ${phase.reason}`).join("; ")}`,
   ].join("; ")
   const response = JSON.stringify(state)
-  const assertions = state.phases
-    .filter((phase) => phase.outcome !== "invalid")
-    .map((phase) => ({
-      assertionType: "buffer_state" as const,
-      kind: phase.outcome === "reflow" ? ("positive" as const) : ("negative" as const),
-      expected: `${phase.id}: reflow at the new width with conserved content and explicit newline boundaries`,
-      observed: response,
-    }))
+  const assertedPhases = [...state.phases, ...state.historyPhases, ...state.alternatePhases].filter(
+    (phase) => phase.outcome === "reflow" || phase.outcome === "preserved-wraps" || phase.outcome === "truncated",
+  )
+  const assertions = assertedPhases.map((phase) => ({
+    assertionType: "buffer_state" as const,
+    kind: phase.outcome === "reflow" ? ("positive" as const) : ("negative" as const),
+    expected: `${phase.id}: reflow at the new width with conserved content and explicit newline boundaries`,
+    observed: response,
+  }))
   return {
     pass: false,
     response,
-    note: pending,
+    note: resultNote,
     observation: {
       outcome: "inconclusive",
       reason: "insufficient-evidence",
       assertionType: "buffer_state",
-      note: pending,
+      note: resultNote,
     },
     ...(assertions.length > 0 && { assertions }),
     tests: [
@@ -3158,6 +3533,7 @@ function mainScreenReflow(ctx: LibProbeSource): ProbeCallbackResult {
               ? ("supported" as const)
               : ("unsupported" as const),
         reason: phase.reason,
+        assertionRefs: assertedPhases.flatMap((asserted, index) => (asserted.id === phase.id ? [index] : [])),
       })),
       ...(state.phases.every((phase) => phase.outcome !== "invalid") &&
       new Set(state.phases.map((phase) => phase.outcome === "reflow")).size > 1
@@ -3167,11 +3543,18 @@ function mainScreenReflow(ctx: LibProbeSource): ProbeCallbackResult {
               status: "test-failure" as const,
               reason:
                 "Growth and shrink have different reflow outcomes; the combined main-screen criterion is unresolved",
+              assertionRefs: assertedPhases.flatMap((phase, index) =>
+                phase.id === "main-grow" || phase.id === "main-shrink" ? [index] : [],
+              ),
             },
           ]
         : []),
-      { id: "alternate-screen", status: "test-todo", reason: "Alternate-screen reflow has not been measured" },
-      { id: "scrollback", status: "test-todo", reason: "Scrollback reflow has not been measured" },
+      ...state.historyPhases.map((phase) => ({
+        id: phase.id,
+        status: phase.status,
+        reason: phase.reason,
+        assertionRefs: assertedPhases.flatMap((asserted, index) => (asserted.id === phase.id ? [index] : [])),
+      })),
     ],
   }
 }
@@ -3716,6 +4099,36 @@ export const extensionsProbes: ProbeDefinition[] = [
     ...probe(
       "extensions.sixel",
       (ctx) => {
+        if (ctx.getSixelImages) {
+          ctx.feed("\x1b[1;1H")
+          const before = ctx.getSixelImages()
+          const firstData = "#1;2;100;0;0~"
+          ctx.feed(`\x1bPq${firstData}\x1b\\`)
+          const first = ctx.getSixelImages()
+          ctx.feed("\x1b[2;3H")
+          const secondBefore = ctx.getSixelImages()
+          const secondData = "#2;2;0;100;0!2~"
+          ctx.feed(`\x1bPq${secondData}\x1b\\`)
+          const second = ctx.getSixelImages()
+          const firstImage = first[before.length]
+          const secondImage = second[secondBefore.length]
+          const retained =
+            first.length === before.length + 1 &&
+            firstImage?.data === firstData &&
+            firstImage.row === 0 &&
+            firstImage.col === 0 &&
+            second.length === secondBefore.length + 1 &&
+            secondImage?.data === secondData &&
+            secondImage.row === 1 &&
+            secondImage.col === 2
+          const note = retained
+            ? "payload retained at row/col; no raster; cell geometry unmeasured"
+            : "Sixel payload/position readback did not show new stored records; no raster; cell geometry unmeasured"
+          return reviewResult(HEADLESS_OBSERVABLE_REVIEW, note, note, {
+            declared: ctx.capabilities.sixel === true,
+            storage: { retained, before, first, secondBefore, second },
+          })
+        }
         const note = "Declared Sixel capability does not establish rendered pixels"
         return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
           declared: ctx.capabilities.sixel === true,
@@ -3929,26 +4342,36 @@ export const extensionsProbes: ProbeDefinition[] = [
   },
 
   // Semantic prompts (OSC 133)
-  probe(
-    "extensions.semantic-prompts",
-    (ctx) => {
-      if (absentOscAudit(ctx.runtimeIdentity, 133)) {
-        return sourceAbsentOsc("extensions.semantic-prompts", 133, "\x1b]133;A\x07", "shell prompt integration")(ctx)
-      }
-      const note = "Declared semantic-prompt capability does not establish shell prompt integration"
-      return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
-        declared: ctx.capabilities.semanticPrompts === true,
-      })
-    },
-    () => {
-      const note = "No shell prompt integration metadata or behavior readback for OSC 133"
-      return Promise.resolve<ProbeCallbackResult>({
-        pass: false,
-        note,
-        tests: [{ id: "criterion", status: "test-todo", reason: note }],
-      })
-    },
-  ),
+  {
+    ...probe(
+      "extensions.semantic-prompts",
+      (ctx) => {
+        if (absentOscAudit(ctx.runtimeIdentity, 133)) {
+          return sourceAbsentOsc("extensions.semantic-prompts", 133, "\x1b]133;A\x07", "shell prompt integration")(ctx)
+        }
+        if (ctx.capabilities.extensions.has("semantic-marks")) {
+          return promptMarkResult(ctx, "\x1b]133;A\x07", "OSC 133 prompt-start mark registration", {
+            probeId: "extensions.semantic-prompts",
+            selector: 133,
+            markType: "prompt",
+          })
+        }
+        const note = "Declared semantic-prompt capability does not establish shell prompt integration"
+        return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
+          declared: ctx.capabilities.semanticPrompts === true,
+        })
+      },
+      () => {
+        const note = "No shell prompt integration metadata or behavior readback for OSC 133"
+        return Promise.resolve<ProbeCallbackResult>({
+          pass: false,
+          note,
+          tests: [{ id: "criterion", status: "test-todo", reason: note }],
+        })
+      },
+    ),
+    libAssertionType: "buffer_state",
+  },
 
   // OSC 2 — window title
   {
@@ -4093,26 +4516,36 @@ export const extensionsProbes: ProbeDefinition[] = [
   },
 
   // OSC 633 — VS Code shell integration
-  probe(
-    "extensions.osc-633-vscode",
-    (ctx) => {
-      if (absentOscAudit(ctx.runtimeIdentity, 633)) {
-        return sourceAbsentOsc("extensions.osc-633-vscode", 633, "\x1b]633;A\x07", "VS Code shell integration")(ctx)
-      }
-      const note = "Declared semantic-prompt capability does not establish VS Code OSC 633 shell integration"
-      return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
-        declared: ctx.capabilities.semanticPrompts === true,
-      })
-    },
-    () => {
-      const note = "No VS Code shell integration metadata or behavior readback for OSC 633"
-      return Promise.resolve<ProbeCallbackResult>({
-        pass: false,
-        note,
-        tests: [{ id: "criterion", status: "test-todo", reason: note }],
-      })
-    },
-  ),
+  {
+    ...probe(
+      "extensions.osc-633-vscode",
+      (ctx) => {
+        if (absentOscAudit(ctx.runtimeIdentity, 633)) {
+          return sourceAbsentOsc("extensions.osc-633-vscode", 633, "\x1b]633;A\x07", "VS Code shell integration")(ctx)
+        }
+        if (ctx.capabilities.extensions.has("semantic-marks")) {
+          return promptMarkResult(ctx, "\x1b]633;A\x07", "OSC 633 prompt-start mark registration", {
+            probeId: "extensions.osc-633-vscode",
+            selector: 633,
+            markType: "prompt",
+          })
+        }
+        const note = "Declared semantic-prompt capability does not establish VS Code OSC 633 shell integration"
+        return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
+          declared: ctx.capabilities.semanticPrompts === true,
+        })
+      },
+      () => {
+        const note = "No VS Code shell integration metadata or behavior readback for OSC 633"
+        return Promise.resolve<ProbeCallbackResult>({
+          pass: false,
+          note,
+          tests: [{ id: "criterion", status: "test-todo", reason: note }],
+        })
+      },
+    ),
+    libAssertionType: "buffer_state",
+  },
 
   // OSC 133 sub-commands — semantic prompt markers (FinalTerm)
   // Each probe sends the marker followed by "X" and verifies "X" landed at cell (0,0),
@@ -4126,6 +4559,7 @@ export const extensionsProbes: ProbeDefinition[] = [
         promptMarkResult(ctx, "\x1b]133;A\x07", "OSC 133;A prompt-start mark registration", {
           probeId: "extensions.osc133-a",
           selector: 133,
+          markType: "prompt",
         }),
       (ctx) => promptMarkAppResult(ctx, "\x1b]133;A\x07", "OSC 133;A prompt-start mark registration"),
     ),
@@ -4140,6 +4574,7 @@ export const extensionsProbes: ProbeDefinition[] = [
         promptMarkResult(ctx, "\x1b]133;B\x07", "OSC 133;B command-start mark registration", {
           probeId: "extensions.osc133-b",
           selector: 133,
+          markType: "command",
         }),
       (ctx) => promptMarkAppResult(ctx, "\x1b]133;B\x07", "OSC 133;B command-start mark registration"),
     ),
@@ -4154,6 +4589,7 @@ export const extensionsProbes: ProbeDefinition[] = [
         promptMarkResult(ctx, "\x1b]133;C\x07", "OSC 133;C command-executed mark registration", {
           probeId: "extensions.osc133-c",
           selector: 133,
+          markType: "output",
         }),
       (ctx) => promptMarkAppResult(ctx, "\x1b]133;C\x07", "OSC 133;C command-executed mark registration"),
     ),
@@ -4199,6 +4635,7 @@ export const extensionsProbes: ProbeDefinition[] = [
         promptMarkResult(ctx, "\x1b]633;A\x07", "OSC 633;A prompt-start mark registration", {
           probeId: "extensions.osc633-a",
           selector: 633,
+          markType: "prompt",
         }),
       (ctx) => promptMarkAppResult(ctx, "\x1b]633;A\x07", "OSC 633;A prompt-start mark registration"),
     ),
@@ -4213,6 +4650,7 @@ export const extensionsProbes: ProbeDefinition[] = [
         promptMarkResult(ctx, "\x1b]633;B\x07", "OSC 633;B prompt-end mark registration", {
           probeId: "extensions.osc633-b",
           selector: 633,
+          markType: "command",
         }),
       (ctx) => promptMarkAppResult(ctx, "\x1b]633;B\x07", "OSC 633;B prompt-end mark registration"),
     ),
@@ -4227,6 +4665,7 @@ export const extensionsProbes: ProbeDefinition[] = [
         promptMarkResult(ctx, "\x1b]633;C\x07", "OSC 633;C pre-execution mark registration", {
           probeId: "extensions.osc633-c",
           selector: 633,
+          markType: "output",
         }),
       (ctx) => promptMarkAppResult(ctx, "\x1b]633;C\x07", "OSC 633;C pre-execution mark registration"),
     ),

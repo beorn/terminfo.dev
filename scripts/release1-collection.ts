@@ -51,6 +51,7 @@ import { assertPrivateCollectionOutput } from "../packages/admin/src/admit-colle
 import { loadCurrentResults, loadDefaultContextPolicy, reviewedContextFor } from "../docs/data/current-results.ts"
 import { classifyDevelopmentRun, consoleHostHeldResults, readVerifiedArtifact } from "../docs/data/selected-results.ts"
 import { parseInterpretations, activeInterpretations } from "./interpretations.ts"
+import { loadStoredRuns } from "../packages/admin/run-admission.ts"
 import { derivedSuiteManifest, probeSuiteSnapshot } from "../packages/admin/versions.ts"
 import { collectHeadlessRuns } from "../packages/probes/collect-headless.ts"
 import { admitRun, planAdmission, type AdmissionPlan } from "./admit-run.ts"
@@ -504,8 +505,16 @@ export async function collectPass(
   const catalogIds = Object.keys(loadFeatures(CONTENT))
   const interpretationsPath = join(CONTENT, "interpretations.json")
   const decisionSources = new Map<string, string>()
+  const resolvedRuns = loadStoredRuns(CONTENT, catalogIds)
   const acceptedDecisions = activeInterpretations(
-    parseInterpretations(interpretationsPath, readFileSync(interpretationsPath, "utf8"), catalogIds, decisionSources),
+    parseInterpretations(
+      interpretationsPath,
+      readFileSync(interpretationsPath, "utf8"),
+      catalogIds,
+      decisionSources,
+      resolvedRuns,
+    ),
+    resolvedRuns,
   ).filter((entry) => "captureSha256" in entry)
   const inputSha256: Record<string, string> = {}
   for (const path of new Set([
@@ -856,7 +865,7 @@ export async function collectPass(
         textSnapshots.set(ref, readVerifiedArtifact(dirname(path), ref, path, "text-snapshot"))
       }
       if (!run.results || !run.catalogIds) throw new Error("Current run lacks frozen results")
-      row.summary = aggregateCurrentResults(consoleHostHeldResults(run), run.catalogIds)
+      row.summary = aggregateCurrentResults(consoleHostHeldResults(run, []), run.catalogIds)
       row.classification = classifyDevelopmentRun(run)
       row.status = "classified"
     } catch (error) {

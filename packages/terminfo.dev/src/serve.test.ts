@@ -228,13 +228,15 @@ it.each(["empty", "prerequisite", "completed", "cancelled", "failed", "unknown"]
   },
 )
 
-it("prepares Linux capture once and preserves the measured origin across graded checkpoints", () => {
-  home = mkdtempSync(join(tmpdir(), "terminfo-serve-linux-origin-"))
-  const result = spawnSync(
-    process.execPath,
-    [
-      "-e",
-      String.raw`
+it.each(["absent", "failed to load", "inconclusive", "source-capable"])(
+  "retains %s font proof and its named TODO reason in final Linux visual evidence",
+  (proofState) => {
+    home = mkdtempSync(join(tmpdir(), "terminfo-serve-linux-origin-"))
+    const result = spawnSync(
+      process.execPath,
+      [
+        "-e",
+        String.raw`
     import { mock } from "bun:test"
     import assert from "node:assert/strict"
     import { readFileSync, writeFileSync } from "node:fs"
@@ -251,11 +253,20 @@ it("prepares Linux capture once and preserves the measured origin across graded 
     const raw = { frame: { role: "control", ref: "sha256:" + "c".repeat(64), sourceRef: "sha256:" + "d".repeat(64),
       capturedAt: 1, label: "origin witness" }, trace: { captureCommand: "fixture raw capture" } }
     const digest = seed => createHash("sha256").update(seed).digest("hex")
+    // Synthetic receipt bytes exercise custody, not a claim about installed fonts or HarfBuzz.
+    const proofState = process.env.FONT_CONTROL_PROOF_STATE
+    const fontReceipt = proofState === "absent" ? "DejaVu Sans Mono | /fixture/dejavu.ttf" : JSON.stringify({
+      fixture: "synthetic font-source receipt", proofState, reason: "synthetic source-control state",
+      requestedFamily: "JetBrains Mono", face: "/fixture/JetBrainsMono-Regular.ttf",
+      source: { path: "/fixture/JetBrainsMono-Regular.ttf", sha256: digest("fixture font bytes") },
+      harfbuzz: { version: "fixture", text: "!= -> => <= ==", featuresOn: "liga=1,calt=1",
+        featuresOff: "liga=0,calt=0", on: "fixture substituted clusters", off: "fixture separate clusters" } })
+    const fontKey = "collector.fontSource", visualId = "extensions.font-ligatures"
     const provenance = { executable: { path: "/fixture/kitty", sha256: digest("fixture executable"), version: "kitty 0.49.2" },
       sourceArtifact: { url: "https://example.invalid/kitty.tar", sha256: digest("fixture source artifact") },
       runtime: { imageId: "sha256:" + digest("fixture image"), imageTarSha256: digest("fixture image tar"), arch: "amd64",
         nixLockRevision: "2".repeat(40), sourceRevision: revision, cleanTree: true, suiteHash: hash },
-      fixture: { definition: "fixture", config: "--config NONE", font: "fixture", geometry: "80x24", display: "fixture", gl: "fixture" } }
+      fixture: { definition: "fixture", config: "--config NONE", font: fontReceipt, geometry: "80x24", display: "fixture", gl: "fixture" } }
     writeFileSync(process.env.TERMINFO_RUNTIME_PROVENANCE, JSON.stringify(provenance))
     globalThis.__TERMINFO_BUNDLED_SUITE__ = { manifest: { schemaVersion: 4,
       catalogIds: Object.keys((await import("@terminfo/catalog")).loadFeatures(process.cwd() + "/content")).sort(),
@@ -263,8 +274,8 @@ it("prepares Linux capture once and preserves the measured origin across graded 
     }, collectorRevision: revision }
     let calibrations = 0, rawCaptures = 0, source
     const checkpoints = [
-      { featureId: "device.xtversion", role: "control", label: "sparse frame", cells: { top: 1, left: 1, bottom: 1, right: 1 }, pixelGeometry },
-      { featureId: "device.xtversion", role: "target", label: "filled frame", cells: { top: 24, left: 80, bottom: 24, right: 80 }, pixelGeometry }
+      { featureId: visualId, role: "control", label: "spaced operator control", cells: { top: 1, left: 1, bottom: 1, right: 1 }, pixelGeometry },
+      { featureId: visualId, role: "target", label: "contiguous operator target", cells: { top: 24, left: 80, bottom: 24, right: 80 }, pixelGeometry }
     ]
     const capturedCheckpoints = []
     mock.module("./packages/terminfo.dev/src/detect.ts", () => ({ detectTerminal: () => ({
@@ -316,10 +327,18 @@ it("prepares Linux capture once and preserves the measured origin across graded 
       assert.equal(calibrations, 1)
       assert.strictEqual(source.captureGeometry.geometry, pixelGeometry)
       assert.deepEqual(retained, [raw], "raw calibration evidence reaches batch retention")
-      for (const checkpoint of checkpoints) await options.capture(checkpoint)
+      const visualFrames = []
+      for (const checkpoint of checkpoints) visualFrames.push((await options.capture(checkpoint)).frame)
       assert.deepEqual(capturedCheckpoints, checkpoints)
       assert.equal(calibrations, 1, "later checkpoints must reuse the batch measurement")
-      const batch = { results: options.draft.results, rawReplies: { "collector.captureCalibration.trace": JSON.stringify({ captures: retained }) },
+      const results = options.draft.results.map(row => row.featureId !== visualId ? row : {
+        ...row, status: "test-todo", assertionType: "screenshot", criterionBranch: "visual-review",
+        rawReplyRef: visualId, frames: visualFrames,
+        tests: [{ id: "capture", status: "supported", attempt: { scope: "probe", startedAt: new Date().toISOString() } },
+          { id: "review", status: "test-todo", attempt: { scope: "none" }, reason: "Valid fixture control and target capture; required visual review pending" }]
+      })
+      // The mock supplies visual capture output only. Production must retain provenance.font itself.
+      const batch = { results, rawReplies: { [visualId]: JSON.stringify({ captures: visualFrames }), "collector.captureCalibration.trace": JSON.stringify({ captures: retained }) },
         observations: [], assertions: [], screenshotRefs: retained.map(result => result.frame.ref), ungradedDiagnostics: {}, suiteComplete: false }
       options.onCheckpoint(batch)
       const persisted = JSON.parse(readFileSync(join(process.env.TERMINFO_CAPTURE_DIRECTORY, options.captureRunId + ".draft.json"), "utf8"))
@@ -328,7 +347,7 @@ it("prepares Linux capture once and preserves the measured origin across graded 
       return batch
     } }))
     const { collectProbeRun } = await import("./packages/terminfo.dev/src/serve.ts")
-    const run = await collectProbeRun({ ids: ["device.xtversion"] })
+    const run = await collectProbeRun({ ids: [visualId] })
     assert.equal(calibrations, 1)
     assert.equal(rawCaptures, 1)
     assert.deepEqual(run.screenshotRefs, [raw.frame.ref])
@@ -336,27 +355,49 @@ it("prepares Linux capture once and preserves the measured origin across graded 
     const persisted = JSON.parse(readFileSync(join(process.env.TERMINFO_CAPTURE_DIRECTORY, run.runId + ".draft.json"), "utf8"))
     assert.deepEqual(persisted.screenshotRefs, [raw.frame.ref])
     assert.deepEqual(JSON.parse(persisted.rawReplies["collector.captureCalibration.trace"]).captures, [raw])
+    // Raw retention and CURRENT evidence projection are distinct contracts: the legacy
+    // binding sweeps collector keys, while evidence-output-v1 requires an explicit cell reference.
+    assert.equal(run.rawReplies[fontKey], fontReceipt, "validated font-source receipt retained in final raw evidence")
+    assert.equal(persisted.rawReplies[fontKey], fontReceipt, "final checkpoint retains identical receipt bytes")
+    for (const captured of [run, persisted]) {
+      const row = captured.results.find(row => row.featureId === visualId)
+      assert.equal(row.status, "test-todo", "fixture source receipt does not grade the visual result")
+      assert.ok(row.reason.includes("#32062 font control") && row.reason.includes(proofState),
+        "cell TODO names its control gap and actual proof state")
+      assert.equal(row.tests.find(test => test.id === "review").reason, row.reason,
+        "review TODO and cell expose the same source-control state")
+      assert.equal(row.rawReplyRef, visualId, "retain the probe's own capture trace")
+      assert.equal(row.tests.find(test => test.id === "review").rawReplyRef, fontKey,
+        "existing review-test reference explicitly binds font-source receipt")
+      const { retainCaptureBinding } = await import("@terminfo/run-parser")
+      const binding = retainCaptureBinding(captured, visualId, digest("fixture catalogue entry"))
+      assert.equal(binding.evidence.algorithm, "evidence-output-v1")
+      assert.ok(binding.evidence.projection.cell.rawReplies.some(entry => entry.key === fontKey && entry.sha256 === digest(fontReceipt)),
+        "current evidence cell includes exact receipt bytes; legacy rawReplyRefs alone are insufficient")
+    }
   `,
-    ],
-    {
-      cwd: packageRoot,
-      encoding: "utf8",
-      timeout: 10_000,
-      env: {
-        ...process.env,
-        HOME: home,
-        TERMINFO_CAPTURE_DIRECTORY: join(home, "captures"),
-        TERMINFO_RUNTIME_PROVENANCE: join(home, "runtime.json"),
-        TERMINFO_CLIPBOARD_FIXTURE_RECEIPT: "",
-        TERMINFO_DISPOSABLE_RECEIPT: "",
-        TERMINFO_TARGET_ID: "",
-        TERMINFO_TARGET_VERSION: "",
+      ],
+      {
+        cwd: packageRoot,
+        encoding: "utf8",
+        timeout: 10_000,
+        env: {
+          ...process.env,
+          FONT_CONTROL_PROOF_STATE: proofState,
+          HOME: home,
+          TERMINFO_CAPTURE_DIRECTORY: join(home, "captures"),
+          TERMINFO_RUNTIME_PROVENANCE: join(home, "runtime.json"),
+          TERMINFO_CLIPBOARD_FIXTURE_RECEIPT: "",
+          TERMINFO_DISPOSABLE_RECEIPT: "",
+          TERMINFO_TARGET_ID: "",
+          TERMINFO_TARGET_VERSION: "",
+        },
       },
-    },
-  )
-  expect(result.error, result.stderr).toBeUndefined()
-  expect(result.status, result.stderr).toBe(0)
-})
+    )
+    expect(result.error, result.stderr).toBeUndefined()
+    expect(result.status, result.stderr).toBe(0)
+  },
+)
 
 async function startTestDaemon(
   source = `import { startDaemon } from "./packages/terminfo.dev/src/serve.ts"; await startDaemon()`,

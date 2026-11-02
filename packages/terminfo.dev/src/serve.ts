@@ -968,6 +968,43 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
       ...(textQualification === undefined ? {} : { textQualification }),
       results: batch.results,
     }
+    const fontResult = captured.results.find((result) => result.featureId === "extensions.font-ligatures")
+    const fontReview = fontResult?.tests.find((test) => test.id === "review")
+    if (fontResult && fontReview) {
+      const fontSource = provenance?.fixture.font
+      if (fontSource !== undefined) {
+        captured.rawReplies["collector.fontSource"] = fontSource
+        // Current evidence projections bind explicit cell references, not unrelated collector fields.
+        fontReview.rawReplyRef = "collector.fontSource"
+      }
+      if (fontReview.status === "test-todo") {
+        let proofState = "absent"
+        let detail = "no structured native font source proof retained"
+        if (fontSource !== undefined) {
+          try {
+            const receipt: unknown = JSON.parse(fontSource)
+            if (
+              receipt !== null &&
+              typeof receipt === "object" &&
+              "proofState" in receipt &&
+              typeof receipt.proofState === "string"
+            ) {
+              proofState = ["absent", "failed to load", "inconclusive", "source-capable"].includes(receipt.proofState)
+                ? receipt.proofState
+                : "inconclusive"
+              detail = `retained proof state ${receipt.proofState}; independent visual review pending`
+              if ("reason" in receipt && typeof receipt.reason === "string" && receipt.reason !== "") {
+                detail += `: ${receipt.reason}`
+              }
+            }
+          } catch (error) {
+            detail = `cannot read structured fixture.font: ${error instanceof Error ? error.message : String(error)}`
+          }
+        }
+        fontReview.reason = `#32062 font control: ${proofState}; ${detail}`
+        fontResult.reason = fontReview.reason
+      }
+    }
     recordTextQualificationTests(
       captured,
       manifest,

@@ -10,6 +10,169 @@ import { decrpmPs, decrpmReplyPattern, decrpmStatus } from "./helpers.ts"
 import { modesProbes } from "./modes.ts"
 import type { LibProbeSource } from "./types.ts"
 
+const readbackModes = [
+  { id: "modes.alt-scroll-1007", number: 1007, mode: "altScroll" },
+  { id: "modes.synchronized-output", number: 2026, mode: "syncOutput" },
+  { id: "modes.color-scheme-reporting", number: 2031, mode: "colorSchemeReporting" },
+  { id: "modes.decsclm", number: 4, mode: "smoothScroll" },
+  { id: "modes.reverse-video", number: 5, mode: "reverseVideo" },
+] as const
+
+function readbackContext(
+  number: number,
+  options: {
+    setPs?: number
+    resetPs?: number
+    setMode?: boolean | null
+    resetMode?: boolean | null
+    conflatesInsert?: boolean
+    insertBefore?: boolean | null
+    insertAfter?: boolean | null
+  } = {},
+) {
+  let enabled = false
+  const queries: string[] = []
+  const reads: string[] = []
+  const writes: string[] = []
+  const source = {
+    ...context("", false, [], []),
+    backendName: "scripted-engine",
+    feed(text: string) {
+      writes.push(text)
+      if (text === `\x1b[?${number}h` || text === "\x1b=") enabled = true
+      if (text === `\x1b[?${number}l` || text === "\x1b>") enabled = false
+    },
+    feedCapture(text: string) {
+      queries.push(text)
+      const ps = enabled ? (options.setPs ?? 1) : (options.resetPs ?? 2)
+      return `\x1b[?${number};${ps}$y`
+    },
+    getMode(mode: string) {
+      reads.push(mode)
+      if (mode === "insertMode") {
+        const value = enabled ? options.insertAfter : options.insertBefore
+        return value === undefined ? options.conflatesInsert === true && enabled : value
+      }
+      return enabled
+        ? options.setMode === undefined
+          ? true
+          : options.setMode
+        : options.resetMode === undefined
+          ? false
+          : options.resetMode
+    },
+  } as LibProbeSource
+  return { source, queries, reads, writes }
+}
+
+// @failure DECNKM mode66 produces false negatives for the catalogue's ESC=/ESC> DECKPAM feature.
+test("application keypad measures DECKPAM state without a DECRQM query", () => {
+  const { source, queries, writes } = readbackContext(66, { setPs: 0 })
+  const result = headless("modes.application-keypad")(source) as ReturnType<
+    NonNullable<(typeof modesProbes)[number]["lib"]>
+  >
+  expect(writes).toEqual(["\x1b=", "\x1b>"])
+  expect(queries).toEqual([])
+  expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
+  expect(result.assertions).toEqual([expect.objectContaining({ kind: "positive", observed: result.response })])
+  expect(result.note).toContain("keypad key encoding unmeasured; mode state measured")
+})
+
+// @failure A missing DECKPAM readback is misclassified as engine absence.
+test.each([
+  { setMode: null, resetMode: false },
+  { setMode: true, resetMode: null },
+])("application keypad null reader stays named TODO: %j", (options) => {
+  const { source } = readbackContext(66, options)
+  const result = headless("modes.application-keypad")(source) as ReturnType<
+    NonNullable<(typeof modesProbes)[number]["lib"]>
+  >
+  expect(result.tests).toEqual([
+    { id: "criterion", status: "test-todo", reason: "adapter binding scripted-engine applicationKeypad" },
+  ])
+  expect(result.assertions ?? []).toEqual([])
+})
+
+// @failure A DECKPAM reader's unchanged non-null state is incorrectly graded Unsupported.
+test("application keypad inconsistent non-null pair stays criterion TODO", () => {
+  const { source } = readbackContext(66, { setMode: false, resetMode: true })
+  const result = headless("modes.application-keypad")(source) as ReturnType<
+    NonNullable<(typeof modesProbes)[number]["lib"]>
+  >
+  expect(result.tests).toEqual([
+    { id: "criterion", status: "test-todo", reason: "DECKPAM state pair: set false, reset true" },
+  ])
+  expect(result.assertions ?? []).toEqual([])
+})
+
+// @failure Private4 is called Supported when the independent IRM conflation check could not run.
+test.each([{ insertBefore: null }, { insertAfter: null }])("private4 requires both IRM readings: %j", (options) => {
+  const { source } = readbackContext(4, options)
+  const result = headless("modes.decsclm")(source) as ReturnType<NonNullable<(typeof modesProbes)[number]["lib"]>>
+  expect(result.tests).toEqual([
+    { id: "criterion", status: "test-todo", reason: "adapter binding scripted-engine insertMode" },
+  ])
+  expect(result.assertions ?? []).toEqual([])
+})
+
+// @failure An S8 library cell is supported without both reply polarities and agreeing adapter reads.
+// @consumer The six registered mode library callbacks; the legacy seven-definition table below stays unchanged.
+test.each(readbackModes)("$id requires the set/reset reply and reader pair", ({ id, number, mode }) => {
+  const { source, queries, reads } = readbackContext(number)
+  const result = headless(id)(source) as ReturnType<NonNullable<(typeof modesProbes)[number]["lib"]>>
+  expect(result.observation?.outcome).toBe("supported")
+  if (number === 1007) expect(result.note).toContain("wheel-to-cursor-key translation unmeasured; protocol measured")
+  expect(queries).toEqual([`\x1b[?${number}$p`, `\x1b[?${number}$p`])
+  expect(reads.filter((key) => key === mode)).toHaveLength(2)
+})
+
+// @failure A positive engine roundtrip hides a null or disagreeing adapter binding as support or engine absence.
+test.each([
+  { setMode: null, resetMode: false },
+  { setMode: true, resetMode: null },
+  { setMode: false, resetMode: false },
+  { setMode: true, resetMode: true },
+])("a missing or disagreeing reader remains the named adapter TODO: %j", (options) => {
+  const { source } = readbackContext(2026, options)
+  const result = headless("modes.synchronized-output")(source) as ReturnType<
+    NonNullable<(typeof modesProbes)[number]["lib"]>
+  >
+  expect(result.tests).toMatchObject([
+    { id: "criterion", status: "test-todo", reason: "adapter binding scripted-engine syncOutput" },
+  ])
+  expect(result.observation?.outcome).toBe("inconclusive")
+  expect(result.assertions ?? []).toEqual([])
+})
+
+// @failure An engine's explicit negative after DECSET is confused with an unavailable adapter reader.
+test.each([0, 2, 4])("strict mode Ps%s after set is an engine negative even without a reader", (setPs) => {
+  const { source } = readbackContext(2026, { setPs, setMode: null, resetMode: null })
+  const result = headless("modes.synchronized-output")(source) as ReturnType<
+    NonNullable<(typeof modesProbes)[number]["lib"]>
+  >
+  expect(result.observation?.outcome).toBe("unsupported")
+  expect(result.assertions).toEqual(expect.arrayContaining([expect.objectContaining({ kind: "negative" })]))
+})
+
+// @failure A reset that never takes effect is called supported from its earlier enabled reply.
+test("strict support needs Ps2 after reset, not a permanently-set reply", () => {
+  const { source } = readbackContext(2026, { resetPs: 3 })
+  const result = headless("modes.synchronized-output")(source) as ReturnType<
+    NonNullable<(typeof modesProbes)[number]["lib"]>
+  >
+  expect(result.observation?.outcome).toBe("inconclusive")
+  expect(result.tests).toEqual(expect.arrayContaining([expect.objectContaining({ status: "test-todo" })]))
+})
+
+// @failure DEC-private4 mutates ANSI insertMode yet a positive DECRPM reply still establishes smooth-scroll support.
+test("private4/IRM conflation is an engine negative independently of DECRPM", () => {
+  const { source } = readbackContext(4, { conflatesInsert: true })
+  const result = headless("modes.decsclm")(source) as ReturnType<NonNullable<(typeof modesProbes)[number]["lib"]>>
+  expect(result.observation?.outcome).toBe("unsupported")
+  expect(JSON.stringify(result)).toContain("insertMode")
+  expect(JSON.stringify(result)).toContain("32002")
+})
+
 const features = [
   { id: "modes.bracketed-paste", number: 2004, mode: "bracketedPaste" },
   { id: "modes.application-cursor", number: 1, mode: "applicationCursor" },
@@ -159,4 +322,259 @@ test("one DECRPM reading serves the app query, the ANSI query and the headless a
   expect(decrpmReplyPattern(1).test("\x1b[?1000;1$y")).toBe(false)
   expect(decrpmReplyPattern(4, "ansi").exec("\x1b[4;2$y")?.[1]).toBe("2")
   expect(decrpmReplyPattern(4, "ansi").test("\x1b[?4;2$y")).toBe(false)
+})
+
+// #32099: existing reply cases omit runtimeIdentity and miss source-audit overrides.
+// Independent source fixtures from pass-3XQsvM, rekeyed to 0.10.1 after proving both parsers unchanged.
+// These are qualifier inputs, not an attestation that the historical run loaded the newer package.
+const capturedModeEngines = [
+  {
+    engine: "vt100",
+    identity: {
+      kind: "js",
+      adapterVersion: "0.10.2",
+      termlessRevision: "8be31bfc35c0359e39a836b1d397f49e7176c97f",
+      resolvedPath: "vendor/vterm/packages/vt100/src/index.ts",
+      integrity: {
+        kind: "source",
+        repository: "git@github.com:beorn/vterm.git",
+        revision: "bd3d32aea2f1994376a71adfc55b92705eedbd8c",
+        treeOid: "1eaac257cf9ff8d8ece752c8e6edc04b9ddaa6cf",
+        cleanTree: true,
+      },
+      runtimeFormat: "js",
+      engineVersion: "0.10.1",
+      adapterSources: [
+        {
+          path: "packages/vt100/src/index.ts",
+          blobOid: "99833d737402f9d1d8e3e257e3a255d8aa1facc3",
+        },
+        {
+          path: "packages/vt100/src/backend.ts",
+          blobOid: "cdb8be8c5ebbba68a5920cfa4df27c9deb31745a",
+        },
+      ],
+    },
+  },
+  {
+    engine: "vt220",
+    identity: {
+      kind: "js",
+      adapterVersion: "0.10.2",
+      termlessRevision: "8be31bfc35c0359e39a836b1d397f49e7176c97f",
+      resolvedPath: "vendor/vterm/packages/vt220/src/index.ts",
+      integrity: {
+        kind: "source",
+        repository: "git@github.com:beorn/vterm.git",
+        revision: "bd3d32aea2f1994376a71adfc55b92705eedbd8c",
+        treeOid: "d504616ae458b8b0fa9fa365034c30bd35f55ee8",
+        cleanTree: true,
+      },
+      runtimeFormat: "js",
+      engineVersion: "0.10.1",
+      adapterSources: [
+        {
+          path: "packages/vt220/src/index.ts",
+          blobOid: "601dd26eb7e753a5396ebdf72f1ef8ee2cc4355f",
+        },
+        {
+          path: "packages/vt220/src/backend.ts",
+          blobOid: "7369e3710e36aa649372fd09011ecfdd6ba47c73",
+        },
+      ],
+    },
+  },
+] satisfies { engine: string; identity: NonNullable<LibProbeSource["runtimeIdentity"]> }[]
+
+function capturedModeContext(identity: LibProbeSource["runtimeIdentity"], behavior = "consume", reply = "") {
+  let x = 0
+  let y = 0
+  let markers = 0
+  const lines: string[][] = Array.from({ length: 24 }, () => [])
+  const fed: string[] = []
+  const modes = new Map<string, boolean>()
+  function render(char: string) {
+    if (char === "X") {
+      markers++
+      if (behavior === "missing-first-X" && markers === 1) return
+      if (behavior === "missing-last-X" && markers === 2) return
+      if (behavior === "moved-line" && markers === 2) {
+        y++
+        x = 0
+      }
+    }
+    lines[y]![x++] = char
+  }
+  function feed(text: string) {
+    fed.push(text)
+    for (const token of text.match(/\x1b\[[0-?]*[ -/]*[@-~]|\x1b[=>]|[^\x1b]/g) ?? []) {
+      if (token === "\x1b[2J") {
+        for (const line of lines) line.length = 0
+        markers = 0
+      } else if (/^\x1b\[(?:1;1)?H$/.test(token)) {
+        x = 0
+        y = 0
+      } else if (token === "\x1b[2K") lines[y]!.length = 0
+      else if (token.startsWith("\x1b")) {
+        const mode = /^\x1b\[\?(\d+)([hl])$/.exec(token)
+        if (mode) modes.set(mode[1]!, mode[2] === "h")
+        if (token === "\x1b=") modes.set("66", true)
+        if (token === "\x1b>") modes.set("66", false)
+        if (behavior === "leak" && markers === 1) for (const char of token.slice(1)) render(char)
+      } else render(token)
+    }
+  }
+  const source = {
+    ...context(reply, false, [], []),
+    runtimeIdentity: identity,
+    feed,
+    getMode: (name: string) =>
+      modes.get(
+        ({ applicationCursor: "1", reverseVideo: "5", applicationKeypad: "66" } as Record<string, string>)[name] ??
+          name,
+      ) ?? false,
+    getCell: (row: number, col: number) => ({ char: lines[row]?.[col] ?? " " }),
+    getText: () =>
+      lines
+        .map((line) => line.join(""))
+        .join("\n")
+        .trimEnd(),
+    getCursor: () => ({ x, y, visible: true, style: null }),
+  } as unknown as LibProbeSource
+  return { source, fed, line: () => lines[0]!.join(""), position: () => ({ x, y }) }
+}
+
+test.each(capturedModeEngines)("$engine held modes retain named TODOs", ({ engine, identity }) => {
+  for (const [id, held] of [
+    ["modes.application-cursor", "1"],
+    ...(engine === "vt100" ? [["modes.reverse-video", "5"]] : []),
+  ]) {
+    const result = headless(id!)(capturedModeContext(identity).source) as ModeResult
+    expect.soft(result.tests, id).toEqual(expect.arrayContaining([expect.objectContaining({ status: "test-todo" })]))
+    expect.soft(result.observation, id).toBeUndefined()
+    expect.soft(result.assertions, id).toBeUndefined()
+    expect.soft(JSON.stringify(result), id).toMatch(new RegExp(`held.*${held}|${held}.*held`, "i"))
+    if (held === "1") {
+      expect.soft(JSON.parse(result.response!), id).toMatchObject({ mode: true })
+    }
+  }
+})
+
+type ModeResult = ReturnType<NonNullable<(typeof modesProbes)[number]["lib"]>>
+const absentCommands = [
+  ...features
+    .filter(({ number }) => number !== 1)
+    .map(({ id, number }) => ({ id, commands: [`\x1b[?${number}h`, `\x1b[?${number}l`], own: String(number) })),
+  { id: "modes.alt-scroll-1007", commands: ["\x1b[?1007h", "\x1b[?1007l"], own: "1007" },
+  { id: "modes.synchronized-output", commands: ["\x1b[?2026h", "\x1b[?2026l"], own: "2026" },
+  { id: "modes.color-scheme-reporting", commands: ["\x1b[?2031h", "\x1b[?2031l"], own: "2031" },
+  ...["modes.xtpushsgr", "modes.xtpopsgr"].map((id) => ({ id, commands: ["\x1b[#{", "\x1b[#}"], own: "SGR" })),
+  ...["modes.xtpushcolors", "modes.xtpopcolors"].map((id) => ({ id, commands: ["\x1b[#P", "\x1b[#Q"], own: "color" })),
+]
+
+test.each(capturedModeEngines)(
+  "$engine absent commands use source review with consumed and leaked controls",
+  ({ engine, identity }) => {
+    for (const { id, commands, own } of absentCommands) {
+      for (const behavior of ["consume", "leak"]) {
+        const fixture = capturedModeContext(identity, behavior)
+        const result = headless(id)(fixture.source) as ModeResult
+        for (const command of commands) expect.soft(fixture.fed.join(""), id).toContain(command)
+        expect.soft(fixture.fed.join(""), id).toContain("\x1b[2J\x1b[1;1H")
+        if (behavior === "consume") expect.soft(fixture.line(), id).toBe("XX")
+        else expect.soft(fixture.line(), id).toMatch(/^X.+X$/)
+        expect.soft(result.criterionBranch, id).toBe("source-negative-review")
+        expect.soft(result.observation, id).toMatchObject({ outcome: "inconclusive", assertionType: "buffer_state" })
+        expect.soft(result.assertions, id).toMatchObject([{ kind: "negative", assertionType: "buffer_state" }])
+        expect
+          .soft(result.tests, id)
+          .toEqual(expect.arrayContaining([expect.objectContaining({ status: "test-failure" })]))
+        // Own DECSET/DECRST absence, not rejection of the separate query opcode.
+        const state = JSON.parse(result.response!)
+        expect.soft(state, id).toMatchObject({
+          line: fixture.line(),
+          position: fixture.position(),
+          control: behavior === "consume" ? "consumed-without-effect" : "leaked-as-text",
+        })
+        const reason = JSON.stringify([result.observation, result.assertions, result.tests, state])
+        expect.soft(reason, id).toContain(`packages/${engine}/src/screen.ts`)
+        expect.soft(reason.toLowerCase(), id).toContain(own.toLowerCase())
+        const definition = modesProbes.find((probe) => probe.id === id)!
+        expect.soft([undefined, "buffer_state"], id).toContain(definition.libAssertionType)
+      }
+    }
+  },
+)
+
+test.each(capturedModeEngines)(
+  "$engine source-negative mode review requires X and matching source/adapter",
+  ({ identity }) => {
+    const altered = [
+      undefined,
+      { ...identity, resolvedPath: "vendor/vterm/packages/vterm/src/index.ts" },
+      { ...identity, integrity: { ...identity.integrity, cleanTree: false } },
+      { ...identity, integrity: { ...identity.integrity, treeOid: "0".repeat(40) } },
+      { ...identity, adapterSources: [] },
+      { ...identity, engineVersion: "foreign" },
+    ]
+    for (const { id } of absentCommands) {
+      for (const behavior of ["missing-first-X", "missing-last-X", "moved-line"]) {
+        const result = headless(id)(capturedModeContext(identity, behavior).source) as ModeResult
+        expect.soft(result.criterionBranch, id).not.toBe("source-negative-review")
+        expect.soft(result.assertions, id).toBeUndefined()
+        expect
+          .soft(result.tests, id)
+          .toEqual(expect.arrayContaining([expect.objectContaining({ status: "test-todo" })]))
+        expect
+          .soft(JSON.stringify(result), id)
+          .toMatch(behavior.startsWith("missing") ? /X|control|marker/i : /line|row|cursor|position/i)
+      }
+      for (const fixture of altered.map((changed) => capturedModeContext(changed))) {
+        const result = headless(id)(fixture.source) as ReturnType<NonNullable<(typeof modesProbes)[number]["lib"]>>
+        expect.soft(result.criterionBranch, id).not.toBe("source-negative-review")
+        expect.soft(result.observation?.outcome, id).not.toBe("unsupported")
+      }
+    }
+  },
+)
+
+// #32099 review: stack priors had no tests, so appending only to prior.tests lost the named cause.
+test.each(capturedModeEngines)(
+  "$engine names each source identity failure for mode and stack priors",
+  ({ identity }) => {
+    const changes = [
+      { value: { ...identity, resolvedPath: "moved/index.ts" }, reason: /entry moved/i },
+      { value: { ...identity, integrity: { ...identity.integrity, cleanTree: false } }, reason: /dirty/i },
+      {
+        value: { ...identity, integrity: { ...identity.integrity, treeOid: "0".repeat(40) } },
+        reason: /foreign source/i,
+      },
+      { value: { ...identity, adapterSources: [] }, reason: /adapter source/i },
+      { value: { ...identity, engineVersion: "foreign" }, reason: /engine version/i },
+    ]
+    for (const { id } of absentCommands) {
+      for (const { value, reason } of changes) {
+        const result = headless(id)(capturedModeContext(value).source) as ModeResult
+        expect.soft(result.tests, id).toMatchObject([{ status: "test-todo", reason: expect.stringMatching(reason) }])
+        expect.soft(result.assertions, id).toBeUndefined()
+        expect.soft(result.criterionBranch, id).not.toBe("source-negative-review")
+      }
+    }
+  },
+)
+
+test.each(capturedModeEngines)("$engine actual DECRPM deciding reply wins over source review", ({ identity }) => {
+  for (const { id, number } of features) {
+    for (const [ps, outcome, kind] of [
+      ["1", "supported", "positive"],
+      ["4", "unsupported", "negative"],
+    ] as const) {
+      const result = headless(id)(
+        capturedModeContext(identity, "consume", `\x1b[?${number};${ps}$y`).source,
+      ) as ModeResult
+      expect.soft(result.observation, id).toMatchObject({ outcome, assertionType: "query_reply" })
+      expect.soft(result.assertions, id).toMatchObject([{ kind, assertionType: "query_reply" }])
+      expect.soft(result.criterionBranch, id).toBeUndefined()
+    }
+  }
 })
