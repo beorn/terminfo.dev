@@ -1218,7 +1218,7 @@ function validateCaptureBinding(
   if (
     result &&
     (result.criterionBranch === SEMANTIC_PROMPT_SOURCE_REVIEW ||
-      isSourceOnlyNegativeReview(result, draft.assertions)) &&
+      (historicalSource === undefined && isSourceOnlyNegativeReview(result, draft.assertions))) &&
     (draft.subject?.kind !== "lib" || !draft.runtimeIdentity)
   ) {
     fail(
@@ -1715,7 +1715,8 @@ export function parseProbeResults(
     }
     const semanticSource =
       result.criterionBranch === SEMANTIC_PROMPT_SOURCE_REVIEW && (status === "supported" || status === "unsupported")
-    const sourceOnlyNegative = status === "unsupported" && isSourceOnlyNegativeReview(result, assertions)
+    const sourceOnlyNegative =
+      schemaVersion === 4 && status === "unsupported" && isSourceOnlyNegativeReview(result, assertions)
     if (semanticSource || sourceOnlyNegative) {
       const key = result.reviewRef
       const reviewTest = tests.find((test) => test.id === "review" && test.reviewRef === key)
