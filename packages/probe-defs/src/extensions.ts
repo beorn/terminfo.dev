@@ -1197,12 +1197,12 @@ const ABSENT_OSC_ENGINES = {
     runtimeFormat: "js",
     engineVersion: "0.10.1",
     repository: "git@github.com:beorn/vterm.git",
-    treeOid: "d504616ae458b8b0fa9fa365034c30bd35f55ee8",
+    treeOid: "fc6ff58f2f3e602b8ede99641f73cde997411f14",
     codes: [1, 8, 9, 17, 19, 22, 117, 119, 133, 176, 440, 555, 633, 666, 710, 777, 3008],
     subcodes: ["133;D"],
-    reviewReasons: [{ code: 1, reason: "screen.ts:703-718 case 1 is ignored; no icon-name state is stored" }],
+    reviewReasons: [{ code: 1, reason: "screen.ts:700-715 case 1 is ignored; no icon-name state is stored" }],
     sourceCitation:
-      "vt220 bd3d32aea2f1994376a71adfc55b92705eedbd8c packages/vt220/src/screen.ts:703-718 handleOSC: no-semicolon return; cases 0/1/2 only",
+      "vt220 67dd3960746766ed47e2bb4b2ced6503a78549cc packages/vt220/src/screen.ts:700-715 handleOSC: no-semicolon return; cases 0/1/2 only",
   },
   vterm: {
     kind: "source",

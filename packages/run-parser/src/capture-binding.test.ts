@@ -932,8 +932,8 @@ it.each([
   {
     engine: "vt220",
     createBackend: createVt220Backend,
-    treeOid: "d504616ae458b8b0fa9fa365034c30bd35f55ee8",
-    sourceCitation: "screen.ts:703-718 handleOSC: no-semicolon return; cases 0/1/2 only",
+    treeOid: "fc6ff58f2f3e602b8ede99641f73cde997411f14",
+    sourceCitation: "screen.ts:700-715 handleOSC: no-semicolon return; cases 0/1/2 only",
   },
 ])(
   "$engine OSC9 source review reaches the canonical decision consumer without vterm's notification citation",
@@ -957,7 +957,10 @@ it.each([
             runtimeFormat: "js",
             engineVersion: "0.10.1",
             adapterVersion: "0.10.2",
-            termlessRevision: "8b8664540f365fa0ba1d9b6400d3c4d1a160582c",
+            termlessRevision:
+              engine === "vt220"
+                ? "a871f0e580e1b02fb5dbb7ed854f6de623e7858e"
+                : "8b8664540f365fa0ba1d9b6400d3c4d1a160582c",
             // Collector identity fixture rekeyed to the 0.10.1 parser audit; not a historical load attestation.
             adapterSources:
               engine === "vt100"
@@ -973,7 +976,10 @@ it.each([
             integrity: {
               kind: "source",
               repository: "git@github.com:beorn/vterm.git",
-              revision: "bd3d32aea2f1994376a71adfc55b92705eedbd8c",
+              revision:
+                engine === "vt220"
+                  ? "67dd3960746766ed47e2bb4b2ced6503a78549cc"
+                  : "bd3d32aea2f1994376a71adfc55b92705eedbd8c",
               treeOid,
               cleanTree: true,
             },

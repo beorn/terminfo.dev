@@ -2054,16 +2054,22 @@ describe("OSC 8 link metadata observation", () => {
                     { path: "packages/vt220/src/backend.ts", blobOid: "7369e3710e36aa649372fd09011ecfdd6ba47c73" },
                   ],
             adapterVersion: "0.10.2",
-            termlessRevision: "8b8664540f365fa0ba1d9b6400d3c4d1a160582c",
+            termlessRevision:
+              engine === "vt220"
+                ? "a871f0e580e1b02fb5dbb7ed854f6de623e7858e"
+                : "8b8664540f365fa0ba1d9b6400d3c4d1a160582c",
             resolvedPath: `vendor/vterm/packages/${engine}/src/index.ts`,
             integrity: {
               kind: "source",
               repository: "git@github.com:beorn/vterm.git",
-              revision: "bd3d32aea2f1994376a71adfc55b92705eedbd8c",
+              revision:
+                engine === "vt220"
+                  ? "67dd3960746766ed47e2bb4b2ced6503a78549cc"
+                  : "bd3d32aea2f1994376a71adfc55b92705eedbd8c",
               treeOid:
                 engine === "vt100"
                   ? "1eaac257cf9ff8d8ece752c8e6edc04b9ddaa6cf"
-                  : "d504616ae458b8b0fa9fa365034c30bd35f55ee8",
+                  : "fc6ff58f2f3e602b8ede99641f73cde997411f14",
               cleanTree: true,
             },
           },
@@ -4963,7 +4969,7 @@ describe("partial probe automation candidates", () => {
     ],
     [
       "vt220",
-      "d504616ae458b8b0fa9fa365034c30bd35f55ee8",
+      "fc6ff58f2f3e602b8ede99641f73cde997411f14",
       "601dd26eb7e753a5396ebdf72f1ef8ee2cc4355f",
       "7369e3710e36aa649372fd09011ecfdd6ba47c73",
     ],
@@ -4975,12 +4981,18 @@ describe("partial probe automation candidates", () => {
         runtimeFormat: "js",
         engineVersion: "0.10.1",
         adapterVersion: "0.10.2",
-        termlessRevision: "2d97417328b7b1d086f9396b9a1731216ed134cc",
+        termlessRevision:
+          engine === "vt220"
+            ? "a871f0e580e1b02fb5dbb7ed854f6de623e7858e"
+            : "2d97417328b7b1d086f9396b9a1731216ed134cc",
         resolvedPath: `vendor/vterm/packages/${engine}/src/index.ts`,
         integrity: {
           kind: "source",
           repository: "git@github.com:beorn/vterm.git",
-          revision: "bd3d32aea2f1994376a71adfc55b92705eedbd8c",
+          revision:
+            engine === "vt220"
+              ? "67dd3960746766ed47e2bb4b2ced6503a78549cc"
+              : "bd3d32aea2f1994376a71adfc55b92705eedbd8c",
           treeOid: treeOid!,
           cleanTree: true,
         },

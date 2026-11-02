@@ -391,10 +391,10 @@ const TITLE_STACK_UNIMPLEMENTED_SOURCE_TREES: ReadonlyMap<string, { readonly sou
     },
   ],
   [
-    "d504616ae458b8b0fa9fa365034c30bd35f55ee8",
+    "fc6ff58f2f3e602b8ede99641f73cde997411f14",
     {
       sourceCitation:
-        'vterm bd3d32aea2f1994376a71adfc55b92705eedbd8c packages/vt220/src/screen.ts:305-428 handleCSI has no case "t" and createScreen at packages/vt220/src/screen.ts:104,176 holds only title = "" with no title stack, so neither CSI 22;0t nor CSI 23;0t is implemented',
+        'vterm 67dd3960746766ed47e2bb4b2ced6503a78549cc packages/vt220/src/screen.ts:305-428 handleCSI has no case "t" and createScreen at packages/vt220/src/screen.ts:104,176 holds only title = "" with no title stack, so neither CSI 22;0t nor CSI 23;0t is implemented',
     },
   ],
 ])
