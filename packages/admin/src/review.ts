@@ -461,7 +461,7 @@ export function applyReview(options: { intake: string; output: string; receipt: 
     const after = read(written)
     const actual = parseJsonStrict(after.path, after.source) as CapturedRunDraft
     const { sealedAt, ...body } = actual
-    const expected = finalizeCollectedDraft(structuredClone(before), undefined, reviews)
+    const expected = finalizeCollectedDraft(globalThis.structuredClone(before), undefined, reviews)
     if ((expected.sealedAt !== undefined) !== (sealedAt !== undefined)) {
       throw new Error("Writer pending/final form differs from canonical finalization")
     }
