@@ -3474,8 +3474,12 @@ test("real qualified OSC callbacks survive pending and unit-reviewed sealed read
   }
   const sealed = sealRunDraft(reviewed, new Date(Date.now() + 2000).toISOString())
   const parsed = read(sealed)
-  expect(parsed.results.map((result) => result.status)).toEqual(["supported", "unsupported", "unsupported"])
-  expect(parsed.results.map((result) => result.assertionType)).toEqual(["buffer_state", "buffer_state", "buffer_state"])
+  expect(parsed.results?.map((result) => result.status)).toEqual(["supported", "unsupported", "unsupported"])
+  expect(parsed.results?.map((result) => result.assertionType)).toEqual([
+    "buffer_state",
+    "buffer_state",
+    "buffer_state",
+  ])
   expect(parsed.assertions.slice(0, captured.assertions.length)).toEqual(captured.assertions)
   expect(parsed.assertions).toHaveLength(captured.assertions.length + 2)
 })

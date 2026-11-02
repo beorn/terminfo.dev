@@ -424,170 +424,173 @@ test.each([
   ["extensions.osc710-font-normal", "\x1b]710;monospace\x07", "vt220"],
   ["extensions.osc777-notify", "\x1b]777;notify;test;body\x07", "vt220"],
   ["extensions.osc3008-context", "\x1b]3008;type=test\x07", "vt220"],
-])("%s retains an audited source-negative review only after its sentinel renders", (id, sequence, engine, effect) => {
-  // Collector-input fixtures rekeyed to 0.10.1 after the parser audit, not a loaded-engine attestation.
-  const identity =
-    engine === "xtermjs"
-      ? xtermOscIdentity
-      : ({
-          kind: "js",
-          runtimeFormat: "js",
-          engineVersion: "0.10.1",
-          adapterVersion: "0.10.2",
-          termlessRevision: engine === "vt220" ? "a871f0e580e1b02fb5dbb7ed854f6de623e7858e" : "2".repeat(40),
-          adapterSources:
-            engine === "vt100"
-              ? [
-                  { path: "packages/vt100/src/index.ts", blobOid: "99833d737402f9d1d8e3e257e3a255d8aa1facc3" },
-                  { path: "packages/vt100/src/backend.ts", blobOid: "cdb8be8c5ebbba68a5920cfa4df27c9deb31745a" },
-                ]
-              : engine === "vt220"
-                ? [
-                    { path: "packages/vt220/src/index.ts", blobOid: "601dd26eb7e753a5396ebdf72f1ef8ee2cc4355f" },
-                    { path: "packages/vt220/src/backend.ts", blobOid: "7369e3710e36aa649372fd09011ecfdd6ba47c73" },
-                  ]
-                : [
-                    { path: "packages/vterm/src/index.ts", blobOid: "cb5719799dcdd5ae24e6fcf0dcad9965035ce54c" },
-                    { path: "packages/vterm/src/backend.ts", blobOid: "5d27c551161fe41af00ac587bd9484d6becbbc7a" },
-                  ],
-          resolvedPath: `vendor/vterm/packages/${engine}/src/index.ts`,
-          integrity: {
-            kind: "source",
-            repository: "git@github.com:beorn/vterm.git",
-            revision:
-              engine === "vterm" || engine === "vt220"
-                ? "67dd3960746766ed47e2bb4b2ced6503a78549cc"
-                : "bd3d32aea2f1994376a71adfc55b92705eedbd8c",
-            treeOid:
+])(
+  "%s retains an audited source-negative review only after its sentinel renders",
+  (id, sequence, engine, effect?: string) => {
+    // Collector-input fixtures rekeyed to 0.10.1 after the parser audit, not a loaded-engine attestation.
+    const identity =
+      engine === "xtermjs"
+        ? xtermOscIdentity
+        : ({
+            kind: "js",
+            runtimeFormat: "js",
+            engineVersion: "0.10.1",
+            adapterVersion: "0.10.2",
+            termlessRevision: engine === "vt220" ? "a871f0e580e1b02fb5dbb7ed854f6de623e7858e" : "2".repeat(40),
+            adapterSources:
               engine === "vt100"
-                ? "1eaac257cf9ff8d8ece752c8e6edc04b9ddaa6cf"
+                ? [
+                    { path: "packages/vt100/src/index.ts", blobOid: "99833d737402f9d1d8e3e257e3a255d8aa1facc3" },
+                    { path: "packages/vt100/src/backend.ts", blobOid: "cdb8be8c5ebbba68a5920cfa4df27c9deb31745a" },
+                  ]
                 : engine === "vt220"
-                  ? "fc6ff58f2f3e602b8ede99641f73cde997411f14"
-                  : "e9d67d4b4ba7cb4caf0d0824b3b272c10e4b229e",
-            cleanTree: true,
-          },
-        } as const)
-  const modes = [
-    "pinned",
-    "no-sentinel",
-    "foreign",
-    ...(engine === "vt220" ? ["wrong-package"] : []),
-    ...(engine === "xtermjs"
-      ? ["changed-lock", "wrong-version", "wrong-adapter", "old-adapter"]
-      : ["changed-source", "changed-tree", "wrong-version", "dirty"]),
-  ]
-  for (const mode of modes) {
-    const writes: string[] = []
-    const source = {
-      runtimeIdentity: {
-        ...identity,
-        engineVersion: mode === "wrong-version" ? "6.0.1" : identity.engineVersion,
-        adapterVersion: mode === "wrong-adapter" ? "foreign" : identity.adapterVersion,
-        adapterSources:
-          mode === "old-adapter"
-            ? identity.adapterSources.map((source) => ({
-                ...source,
-                blobOid:
-                  source.path === "packages/xtermjs/src/backend.ts"
-                    ? "fbbb344f113d5b57bbb5dd429ed97c46b6cfa6e9"
-                    : source.blobOid,
-              }))
-            : identity.adapterSources,
-        resolvedPath: mode === "foreign" ? "another-engine.ts" : identity.resolvedPath,
-        integrity:
-          identity.integrity.kind === "source"
-            ? {
-                ...identity.integrity,
-                revision: mode === "changed-source" ? "3".repeat(40) : identity.integrity.revision,
-                treeOid:
-                  mode === "changed-tree"
-                    ? "4".repeat(40)
-                    : mode === "wrong-package"
-                      ? "1eaac257cf9ff8d8ece752c8e6edc04b9ddaa6cf"
-                      : identity.integrity.treeOid,
-                cleanTree: mode !== "dirty",
-              }
-            : {
-                ...identity.integrity,
-                lockIntegrity: mode === "changed-lock" ? "foreign" : identity.integrity.lockIntegrity,
-              },
-      },
-      capabilities: { extensions: new Set() },
-      feed: (bytes: string) => writes.push(bytes),
-      getCell: () => ({ char: mode === "no-sentinel" ? " " : "X" }),
-    } as unknown as LibProbeSource
-    const result = callback(id).lib!(source)
-    expect(result.observation?.outcome).not.toBe("supported")
-    if (mode === "pinned" || mode === "foreign" || mode === "changed-source") {
-      expect(writes.join("")).toContain(sequence + "X")
-      expect(result.criterionBranch).toBe("source-negative-review")
-      expect(result.tests).toMatchObject([
-        {
-          id: "review",
-          status: "test-failure",
-          reason: expect.stringContaining(
-            engine === "xtermjs" ? "17a90b65" : engine === "vterm" || engine === "vt220" ? "67dd3960" : "bd3d32ae",
-          ),
+                  ? [
+                      { path: "packages/vt220/src/index.ts", blobOid: "601dd26eb7e753a5396ebdf72f1ef8ee2cc4355f" },
+                      { path: "packages/vt220/src/backend.ts", blobOid: "7369e3710e36aa649372fd09011ecfdd6ba47c73" },
+                    ]
+                  : [
+                      { path: "packages/vterm/src/index.ts", blobOid: "cb5719799dcdd5ae24e6fcf0dcad9965035ce54c" },
+                      { path: "packages/vterm/src/backend.ts", blobOid: "5d27c551161fe41af00ac587bd9484d6becbbc7a" },
+                    ],
+            resolvedPath: `vendor/vterm/packages/${engine}/src/index.ts`,
+            integrity: {
+              kind: "source",
+              repository: "git@github.com:beorn/vterm.git",
+              revision:
+                engine === "vterm" || engine === "vt220"
+                  ? "67dd3960746766ed47e2bb4b2ced6503a78549cc"
+                  : "bd3d32aea2f1994376a71adfc55b92705eedbd8c",
+              treeOid:
+                engine === "vt100"
+                  ? "1eaac257cf9ff8d8ece752c8e6edc04b9ddaa6cf"
+                  : engine === "vt220"
+                    ? "fc6ff58f2f3e602b8ede99641f73cde997411f14"
+                    : "e9d67d4b4ba7cb4caf0d0824b3b272c10e4b229e",
+              cleanTree: true,
+            },
+          } as const)
+    const modes = [
+      "pinned",
+      "no-sentinel",
+      "foreign",
+      ...(engine === "vt220" ? ["wrong-package"] : []),
+      ...(engine === "xtermjs"
+        ? ["changed-lock", "wrong-version", "wrong-adapter", "old-adapter"]
+        : ["changed-source", "changed-tree", "wrong-version", "dirty"]),
+    ]
+    for (const mode of modes) {
+      const writes: string[] = []
+      const source = {
+        runtimeIdentity: {
+          ...identity,
+          engineVersion: mode === "wrong-version" ? "6.0.1" : identity.engineVersion,
+          adapterVersion: mode === "wrong-adapter" ? "foreign" : identity.adapterVersion,
+          adapterSources:
+            mode === "old-adapter"
+              ? identity.adapterSources.map((source) => ({
+                  ...source,
+                  blobOid:
+                    source.path === "packages/xtermjs/src/backend.ts"
+                      ? "fbbb344f113d5b57bbb5dd429ed97c46b6cfa6e9"
+                      : source.blobOid,
+                }))
+              : identity.adapterSources,
+          resolvedPath: mode === "foreign" ? "another-engine.ts" : identity.resolvedPath,
+          integrity:
+            identity.integrity.kind === "source"
+              ? {
+                  ...identity.integrity,
+                  revision: mode === "changed-source" ? "3".repeat(40) : identity.integrity.revision,
+                  treeOid:
+                    mode === "changed-tree"
+                      ? "4".repeat(40)
+                      : mode === "wrong-package"
+                        ? "1eaac257cf9ff8d8ece752c8e6edc04b9ddaa6cf"
+                        : identity.integrity.treeOid,
+                  cleanTree: mode !== "dirty",
+                }
+              : {
+                  ...identity.integrity,
+                  lockIntegrity: mode === "changed-lock" ? "foreign" : identity.integrity.lockIntegrity,
+                },
         },
-      ])
-      expect(result.observation).toMatchObject({ outcome: "inconclusive", assertionType: "buffer_state" })
-      expect(JSON.parse(result.response!)).toMatchObject({
-        fed: writes.join(""),
-        sentinel: { char: "X" },
-        engineState: null,
-      })
-      expect(result.assertions).toMatchObject([
-        { kind: "negative", assertionType: "buffer_state", observed: result.response },
-      ])
-      if (engine === "xtermjs") {
-        const code = /^extensions\.osc(\d+)/.exec(id)![1]
-        expect(result.response).toBe(
-          JSON.stringify({
-            fed: `\x1b[1;1H\x1b[2K${sequence}X`,
-            sentinel: { char: "X" },
-            engineState: null,
-            engineStateReason: `No ${effect} target state is exposed at this pin`,
-          }),
-        )
-        expect(result.tests?.[0]?.reason).toBe(
-          `${xtermOscSourceCitation}: no case ${code} or ${effect} target writer; independent source review required`,
-        )
-        expect(JSON.parse(result.response!)).not.toHaveProperty("runtimeIdentity")
-        expect(result.tests).toMatchObject([{ reason: expect.stringContaining("packages/xtermjs/src/backend.ts") }])
-      }
-      if (engine === "vterm" && id === "extensions.osc9-progress") {
+        capabilities: { extensions: new Set() },
+        feed: (bytes: string) => writes.push(bytes),
+        getCell: () => ({ char: mode === "no-sentinel" ? " " : "X" }),
+      } as unknown as LibProbeSource
+      const result = callback(id).lib!(source)
+      expect(result.observation?.outcome).not.toBe("supported")
+      if (mode === "pinned" || mode === "foreign" || mode === "changed-source") {
+        expect(writes.join("")).toContain(sequence + "X")
+        expect(result.criterionBranch).toBe("source-negative-review")
         expect(result.tests).toMatchObject([
-          { reason: expect.stringMatching(/notification sink.*no progress subcode or state interpretation/) },
+          {
+            id: "review",
+            status: "test-failure",
+            reason: expect.stringContaining(
+              engine === "xtermjs" ? "17a90b65" : engine === "vterm" || engine === "vt220" ? "67dd3960" : "bd3d32ae",
+            ),
+          },
         ])
-        expect(result.tests?.[0]?.reason).not.toContain("no case 9")
+        expect(result.observation).toMatchObject({ outcome: "inconclusive", assertionType: "buffer_state" })
+        expect(JSON.parse(result.response!)).toMatchObject({
+          fed: writes.join(""),
+          sentinel: { char: "X" },
+          engineState: null,
+        })
+        expect(result.assertions).toMatchObject([
+          { kind: "negative", assertionType: "buffer_state", observed: result.response },
+        ])
+        if (engine === "xtermjs") {
+          const code = /^extensions\.osc(\d+)/.exec(id)![1]
+          expect(result.response).toBe(
+            JSON.stringify({
+              fed: `\x1b[1;1H\x1b[2K${sequence}X`,
+              sentinel: { char: "X" },
+              engineState: null,
+              engineStateReason: `No ${effect} target state is exposed at this pin`,
+            }),
+          )
+          expect(result.tests?.[0]?.reason).toBe(
+            `${xtermOscSourceCitation}: no case ${code} or ${effect} target writer; independent source review required`,
+          )
+          expect(JSON.parse(result.response!)).not.toHaveProperty("runtimeIdentity")
+          expect(result.tests).toMatchObject([{ reason: expect.stringContaining("packages/xtermjs/src/backend.ts") }])
+        }
+        if (engine === "vterm" && id === "extensions.osc9-progress") {
+          expect(result.tests).toMatchObject([
+            { reason: expect.stringMatching(/notification sink.*no progress subcode or state interpretation/) },
+          ])
+          expect(result.tests?.[0]?.reason).not.toContain("no case 9")
+        }
+        if (engine === "vt100") {
+          expect(result.tests?.[0]?.reason).toContain("screen.ts:504-520 handleOSC switch, cases 0/1/2 only")
+          expect(result.tests?.[0]?.reason).not.toContain("notification sink")
+          expect(result.tests?.[0]?.reason).not.toContain("3921-3923")
+          if (id === "extensions.osc9-progress") expect(result.tests?.[0]?.reason).toContain("no case 9")
+        }
+        if (engine === "vt220") {
+          expect(result.tests?.[0]?.reason).toContain(
+            "screen.ts:700-715 handleOSC: no-semicolon return; cases 0/1/2 only",
+          )
+          expect(result.tests?.[0]?.reason).not.toContain("notification sink")
+          expect(result.tests?.[0]?.reason).not.toContain("3921-3923")
+          if (id === "extensions.osc9-progress") expect(result.tests?.[0]?.reason).toContain("no case 9")
+        }
+      } else if (id === "extensions.osc7-cwd" && mode !== "no-sentinel") {
+        expect(result.criterionBranch).toBe("headless-observable-review")
+        expect(result.tests).toMatchObject([{ id: "review", status: "test-todo" }])
+        expect(result.assertions).toBeUndefined()
+        expect(writes).toEqual([])
+      } else {
+        expect(result.criterionBranch, `${engine}: ${mode}`).toBeUndefined()
+        expect(result.assertions).toBeUndefined()
+        expect(result.tests).toBeUndefined()
+        if (mode !== "no-sentinel") expect(writes).toEqual([])
       }
-      if (engine === "vt100") {
-        expect(result.tests?.[0]?.reason).toContain("screen.ts:504-520 handleOSC switch, cases 0/1/2 only")
-        expect(result.tests?.[0]?.reason).not.toContain("notification sink")
-        expect(result.tests?.[0]?.reason).not.toContain("3921-3923")
-        if (id === "extensions.osc9-progress") expect(result.tests?.[0]?.reason).toContain("no case 9")
-      }
-      if (engine === "vt220") {
-        expect(result.tests?.[0]?.reason).toContain(
-          "screen.ts:700-715 handleOSC: no-semicolon return; cases 0/1/2 only",
-        )
-        expect(result.tests?.[0]?.reason).not.toContain("notification sink")
-        expect(result.tests?.[0]?.reason).not.toContain("3921-3923")
-        if (id === "extensions.osc9-progress") expect(result.tests?.[0]?.reason).toContain("no case 9")
-      }
-    } else if (id === "extensions.osc7-cwd" && mode !== "no-sentinel") {
-      expect(result.criterionBranch).toBe("headless-observable-review")
-      expect(result.tests).toMatchObject([{ id: "review", status: "test-todo" }])
-      expect(result.assertions).toBeUndefined()
-      expect(writes).toEqual([])
-    } else {
-      expect(result.criterionBranch, `${engine}: ${mode}`).toBeUndefined()
-      expect(result.assertions).toBeUndefined()
-      expect(result.tests).toBeUndefined()
-      if (mode !== "no-sentinel") expect(writes).toEqual([])
     }
-  }
-})
+  },
+)
 
 // The initial/default query is silent; indexed painted cells are an independent palette witness.
 function indexedPalette(
