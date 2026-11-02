@@ -510,7 +510,19 @@ export async function runProbeBatch(
       captureGeometryRefusal,
     })
     if (captureGeometry) probeSource.captureGeometry = captureGeometry
-    if (clipboard && clipboard.profile !== "default" && verify) {
+    if (
+      clipboard &&
+      verify &&
+      (clipboard.profile !== "default" ||
+        (probe.id === "extensions.clipboard-paste" &&
+          options.subject?.kind === "term" &&
+          options.subject.id === "kitty" &&
+          options.subject.os === "linux" &&
+          disposable?.declaredTarget?.kind === "app" &&
+          disposable.declaredTarget.id === "kitty" &&
+          disposable.declaredTarget.os === "linux" &&
+          !clipboard.muxAttachmentProof))
+    ) {
       probeSource.withClipboardFixture = (work) =>
         clipboard.withClipboardFixture(work, (event) => clipboardEvents.push(event), verify)
     }
