@@ -2402,10 +2402,10 @@ test("pixel library arm never grades a cell-coordinate encoder report", async ()
   expect(batch.assertions).toMatchObject([{ kind: "negative", assertionType: "input_bytes" }])
 })
 
-// @failure A shared library arm turns a native delegated encoder's unavailable input into FAILURE.
+// @failure Supplied pixel coordinates never reach xtermjs's native delegated encoder.
 // @level l1
 // @consumer The production xtermjs mouse criteria through its own delegated engine encoder.
-test("xtermjs library mouse arms retain measured reports and pixel unavailability", async () => {
+test("xtermjs library mouse arms retain measured cell and supplied-pixel reports", async () => {
   const ids = [
     "input.button-event-mouse",
     "input.pixel-mouse",
@@ -2417,12 +2417,13 @@ test("xtermjs library mouse arms retain measured reports and pixel unavailabilit
   const batch = await collectBatch(backend, "xtermjs", registryDefinitions(ids))
   expect(batch.results.map(({ featureId, status }) => ({ featureId, status }))).toEqual([
     { featureId: ids[0], status: "supported" },
-    { featureId: ids[1], status: "test-todo" },
+    { featureId: ids[1], status: "supported" },
     { featureId: ids[2], status: "unsupported" },
     { featureId: ids[3], status: "supported" },
     { featureId: ids[4], status: "supported" },
     { featureId: ids[5], status: "supported" },
   ])
+  expect(JSON.parse(batch.rawReplies[ids[1]!]!)).toMatchObject({ report: "\x1b[<0;41;25M" })
   expect(JSON.parse(batch.rawReplies[ids[2]!]!)).toMatchObject({ report: "\x1b[M %#" })
 })
 
