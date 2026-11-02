@@ -599,18 +599,18 @@ describe("reply-path audit", () => {
     engineVersion: "0.10.1",
     adapterVersion: "0.10.2",
     termlessRevision: "2d97417328b7b1d086f9396b9a1731216ed134cc",
-    resolvedPath: `vendor/vterm/packages/${treeOid === "1eaac257cf9ff8d8ece752c8e6edc04b9ddaa6cf" ? "vt100" : "vt220"}/src/index.ts`,
+    resolvedPath: `vendor/vterm/packages/${treeOid === "b941dae48b25ae8825c394750bda5245c9d93dfa" ? "vt100" : "vt220"}/src/index.ts`,
     integrity: {
       kind: "source",
       repository: "git@github.com:beorn/vterm.git",
-      revision: "bd3d32aea2f1994376a71adfc55b92705eedbd8c",
+      revision: "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
       treeOid,
       cleanTree,
     },
   })
   // #32026: a listed key of the other kind must not fire through the wrong identity branch.
   test("source-tree and artifact key shapes never cross identity kinds", () => {
-    const treeOid = "1eaac257cf9ff8d8ece752c8e6edc04b9ddaa6cf"
+    const treeOid = "b941dae48b25ae8825c394750bda5245c9d93dfa"
     const sha256 = "5c38594a17329b24e826f785d3156d6e498490517835f12b0730eeab2fc63da7"
     expect(
       replyPathAuditFor(
@@ -636,7 +636,7 @@ describe("reply-path audit", () => {
       audit,
     })
   })
-  test.each(["1eaac257cf9ff8d8ece752c8e6edc04b9ddaa6cf", "d504616ae458b8b0fa9fa365034c30bd35f55ee8"])(
+  test.each(["b941dae48b25ae8825c394750bda5245c9d93dfa", "4205f8936ad1848d1029729f3ada888cd61759a8"])(
     "all seven source DECRPM rows are absent from the query audit: %s",
     (treeOid) => {
       for (const [id, mode] of [
@@ -2166,14 +2166,11 @@ describe("OSC 8 link metadata observation", () => {
             integrity: {
               kind: "source",
               repository: "git@github.com:beorn/vterm.git",
-              revision:
-                engine === "vt220"
-                  ? "67dd3960746766ed47e2bb4b2ced6503a78549cc"
-                  : "bd3d32aea2f1994376a71adfc55b92705eedbd8c",
+              revision: "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
               treeOid:
                 engine === "vt100"
-                  ? "1eaac257cf9ff8d8ece752c8e6edc04b9ddaa6cf"
-                  : "fc6ff58f2f3e602b8ede99641f73cde997411f14",
+                  ? "b941dae48b25ae8825c394750bda5245c9d93dfa"
+                  : "4205f8936ad1848d1029729f3ada888cd61759a8",
               cleanTree: true,
             },
           },
@@ -5110,13 +5107,13 @@ describe("partial probe automation candidates", () => {
   test.each([
     [
       "vt100",
-      "1eaac257cf9ff8d8ece752c8e6edc04b9ddaa6cf",
+      "b941dae48b25ae8825c394750bda5245c9d93dfa",
       "99833d737402f9d1d8e3e257e3a255d8aa1facc3",
       "cdb8be8c5ebbba68a5920cfa4df27c9deb31745a",
     ],
     [
       "vt220",
-      "fc6ff58f2f3e602b8ede99641f73cde997411f14",
+      "4205f8936ad1848d1029729f3ada888cd61759a8",
       "601dd26eb7e753a5396ebdf72f1ef8ee2cc4355f",
       "7369e3710e36aa649372fd09011ecfdd6ba47c73",
     ],
@@ -5134,10 +5131,7 @@ describe("partial probe automation candidates", () => {
         integrity: {
           kind: "source",
           repository: "git@github.com:beorn/vterm.git",
-          revision:
-            engine === "vt220"
-              ? "67dd3960746766ed47e2bb4b2ced6503a78549cc"
-              : "bd3d32aea2f1994376a71adfc55b92705eedbd8c",
+          revision: "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
           treeOid: treeOid!,
           cleanTree: true,
         },

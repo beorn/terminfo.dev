@@ -634,11 +634,11 @@ const ALT_SCREEN_47: AltScreenMode = { mode: 47, clearsOnEnter: false, clearsOnE
  */
 const ALT_SCREEN_UNIMPLEMENTED_AUDITS: ReadonlyMap<string, string> = new Map([
   [
-    "git@github.com:beorn/vterm.git@67dd3960746766ed47e2bb4b2ced6503a78549cc:1eaac257cf9ff8d8ece752c8e6edc04b9ddaa6cf:vendor/vterm/packages/vt100/src/index.ts",
+    "git@github.com:beorn/vterm.git@9e99e4d23cdc606fca258b1863aa2be7ae79eed3:b941dae48b25ae8825c394750bda5245c9d93dfa:vendor/vterm/packages/vt100/src/index.ts",
     "vterm packages/vt100/src/screen.ts:99 'Main screen buffer (no alternate screen in VT100)'; no CSI ? 1049 changes state in that source tree, so there is no alternate buffer for exit to leave",
   ],
   [
-    "git@github.com:beorn/vterm.git@67dd3960746766ed47e2bb4b2ced6503a78549cc:fc6ff58f2f3e602b8ede99641f73cde997411f14:vendor/vterm/packages/vt220/src/index.ts",
+    "git@github.com:beorn/vterm.git@9e99e4d23cdc606fca258b1863aa2be7ae79eed3:4205f8936ad1848d1029729f3ada888cd61759a8:vendor/vterm/packages/vt220/src/index.ts",
     "vterm packages/vt220/src/screen.ts:145 'Main screen buffer (no alternate screen in VT220)', with :90 listing the alternate screen among what it does not cover; no CSI ? 1049 changes state in that source tree",
   ],
 ])
