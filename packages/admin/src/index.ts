@@ -191,12 +191,14 @@ review
   })
 review
   .command("apply")
-  .description("Apply exact issuer decisions to a new immutable draft; no downstream operation")
+  .description(
+    "Apply exact issuer decisions and save a checked private final result or pending draft; no downstream operation",
+  )
   .requiredOption(
     "--intake <path>",
     "Absolute issuer-edited index with exact decision bytes, actual timestamp, SHA256 and citations",
   )
-  .requiredOption("--output <directory>", "Absolute private draft directory outside source repositories")
+  .requiredOption("--output <directory>", "Absolute private output directory outside source repositories")
   .requiredOption("--receipt <path>", "Absolute new private JSON receipt; missing required resources fail loudly")
   .actionMerged(async (opts: { intake: string; output: string; receipt: string }) => {
     try {

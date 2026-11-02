@@ -185,7 +185,7 @@ export function finalizeCollectedDraft(
     origin: (runId: string) => { path: string; source: string } | undefined
     /** Natural collection supplies accepted, already supersession-filtered decisions. */
     carry?: boolean
-    /** Private review application never seals, even when every required review completes. */
+    /** Explicitly retain a draft even when every required review completes. */
     keepDraft?: boolean
     report?: (entry: CaptureReviewReport) => void
   },

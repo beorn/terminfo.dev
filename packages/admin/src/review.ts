@@ -16,7 +16,7 @@ import {
   retainCaptureBinding,
 } from "@terminfo/run-parser"
 import { readExplicitSuiteTarget } from "../suite-manifest.ts"
-import { saveDaemonProbeRun } from "../../terminfo.dev/src/capture-writer.ts"
+import { finalizeCollectedDraft, saveDaemonProbeRun } from "../../terminfo.dev/src/capture-writer.ts"
 
 type Context = { kind: string; id: string; os?: string }
 type Pin = { repo: string; commit: string }
@@ -452,19 +452,28 @@ export function applyReview(options: { intake: string; output: string; receipt: 
       { mode: "capture" },
     )
     mkdirSync(output, { recursive: true, mode: 0o700 })
-    written = saveDaemonProbeRun(before, output, undefined, {
+    const reviews = {
       manifest: current.manifest,
       decisions,
       origin: () => undefined,
-      keepDraft: true,
-    })
+    }
+    written = saveDaemonProbeRun(before, output, undefined, reviews)
     const after = read(written)
-    parseRun(after.path, after.source, current.catalogIds, new Map([[current.manifest.probeHash, current.manifest]]), {
-      mode: "capture",
-    })
     const actual = parseJsonStrict(after.path, after.source) as CapturedRunDraft
-    checkPreservation(before, actual, decisions)
-    if (!isDeepStrictEqual(actual, shadow)) throw new Error("Writer output differs from canonical application")
+    const { sealedAt, ...body } = actual
+    const expected = finalizeCollectedDraft(structuredClone(before), undefined, reviews)
+    if ((expected.sealedAt !== undefined) !== (sealedAt !== undefined)) {
+      throw new Error("Writer pending/final form differs from canonical finalization")
+    }
+    parseRun(
+      after.path,
+      after.source,
+      current.catalogIds,
+      new Map([[current.manifest.probeHash, current.manifest]]),
+      sealedAt === undefined ? { mode: "capture" } : undefined,
+    )
+    checkPreservation(before, body, decisions)
+    if (!isDeepStrictEqual(body, shadow)) throw new Error("Writer output differs from canonical application")
   }
   for (const binding of [
     index.input,

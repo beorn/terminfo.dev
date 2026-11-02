@@ -651,10 +651,9 @@ independently re-verifiable without the index. Non-code references are explicitl
 are never reported as Git-verified. An absent external path reports `unverified: <path> (tree absent)`;
 a present file requires its matching recorded SHA256. Required Git objects must resolve.
 Apply verifies bindings, assertion prefixes, original raw values, result membership/order and
-non-target rows, exact appended review records/assertions, and canonical readback. It always passes
-the writer's `keepDraft: true` review option: even the last completed review stays unsealed.
-Collector callers omit that option and retain their sealing behavior. The commands never invoke
-selection, seal, admission or publication operations. Files are explicit absolute private outputs,
+non-target rows, exact appended review records/assertions, and canonical readback. The writer finalizes
+the private output when no required review remains; otherwise it retains a pending draft.
+Selection, admission and publication operations are never invoked. Files are explicit absolute private outputs,
 created exclusively with mode 0600; empty decisions produce only a no-op receipt. See `bun admin review --help`
 and each subcommand's help for required inputs. The two real shadow comparisons remain required
 before retiring manual review steps.

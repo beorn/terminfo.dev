@@ -1,5 +1,5 @@
 /**
- * @failure Review application silently seals a capture or changes retained evidence.
+ * @failure Review application leaves completed reviews pending, completes partial reviews, or changes retained evidence.
  * @level l2
  * @consumer Internal admin review intake/apply
  * @testonly none
@@ -18,7 +18,7 @@ import {
   type CurrentProbeRun,
   type ProbeSuiteManifest,
 } from "@terminfo/probe-defs"
-import { retainCaptureBinding, parseRun } from "@terminfo/run-parser"
+import { applyCaptureDecision, retainCaptureBinding, parseRun } from "@terminfo/run-parser"
 import { saveDaemonProbeRun } from "../../terminfo.dev/src/capture-writer.ts"
 
 type FixtureCitation = { sourceIndex: number } & (
@@ -212,9 +212,18 @@ function intakeFixture(mode = "valid", registered = true) {
     applyOptions: { intake: output, output: join(directory, "reviewed"), receipt: join(directory, "receipt.json") },
   }
 }
-async function prepared(verdict = "supported") {
+async function prepared(verdict = "supported", pendingReview = false) {
   const api = await import("./review.ts"),
     f = intakeFixture()
+  if (pendingReview) {
+    f.run.results[1] = {
+      ...f.run.results[1]!,
+      tests: [{ id: "review", status: "test-todo", reason: "Second review pending", attempt: { scope: "none" } }],
+    }
+    retainCaptureBinding(f.run, "device.secondary-da", f.manifest.catalogEntrySha256!["device.secondary-da"])
+    f.original = `${JSON.stringify(f.run)}\r\n`
+    writeFileSync(f.input, f.original)
+  }
   api.intakeReview(f.options)
   const index = JSON.parse(readFileSync(f.options.output, "utf8")) as FixtureIndex
   const entry = `terminfo.dev@${f.options.terminfoCommit}:AGENTS.md:L1-L3`
@@ -255,19 +264,42 @@ test.each(["supported", "unsupported", "untestable", "tool-gap"])(
     expect(readFileSync(f.input, "utf8")).toBe(f.original)
     expect(readFileSync(f.manifestPath)).toEqual(frozen)
     for (const path of sentinels) expect(readFileSync(path, "utf8")).toBe("unchanged downstream bytes\n")
-    const after = JSON.parse(readFileSync(receipt.output!, "utf8")) as CapturedRunDraft
-    expect(after).not.toHaveProperty("sealedAt")
+    const after = JSON.parse(readFileSync(receipt.output!, "utf8")) as CurrentProbeRun
+    expect(after.sealedAt).toEqual(expect.any(String))
+    expect(new Date(after.sealedAt).toISOString()).toBe(after.sealedAt)
+    expect(receipt.output).not.toMatch(/\.draft\.json$/)
+    const expected = structuredClone(f.run)
+    applyCaptureDecision(expected, f.source, startedAt, undefined, f.manifest.catalogEntrySha256!["device.primary-da"])
+    const { sealedAt: _sealedAt, ...body } = after
+    expect(body).toEqual(expected)
     expect(after.results.map((r: { featureId: string }) => r.featureId)).toEqual(f.run.results.map((r) => r.featureId))
     expect(after.results[1]).toEqual(f.run.results[1])
+    expect(after.results[1]?.status).toBe("test-todo")
     expect(after.assertions.slice(0, 2)).toEqual(f.run.assertions)
     expect(after.assertions).toHaveLength(verdict === "supported" || verdict === "unsupported" ? 4 : 2)
     for (const [key, value] of Object.entries(f.run.rawReplies)) expect(after.rawReplies[key]).toBe(value)
     expect(after.rawReplies["collector.review.review-decision"]).toBe(f.source)
-    expect(statSync(receipt.output!).mode & 0o077).toBe(0)
+    expect(statSync(receipt.output!).mode & 0o777).toBe(0o600)
     expect(statSync(f.applyOptions.receipt).mode & 0o077).toBe(0)
     expect(() => f.api.applyReview(f.applyOptions)).toThrow(/exist/i)
   },
 )
+
+// Generic writer coverage cannot catch the admin caller completing a still-partial review batch.
+test("partial review application retains an immutable pending snapshot", async () => {
+  const f = await prepared("supported", true)
+  f.save()
+  const receipt = f.api.applyReview(f.applyOptions)
+  expect(receipt.output).toMatch(/\.[a-f0-9]{64}\.draft\.json$/)
+  const after = JSON.parse(readFileSync(receipt.output!, "utf8")) as CapturedRunDraft
+  expect(after).not.toHaveProperty("sealedAt")
+  expect(after.results[1]).toEqual(f.run.results[1])
+  expect(after.results[0]?.status).toBe("supported")
+  expect(receipt.canonicalReadback).toBe("PASS")
+  expect(receipt.downstreamOperationInvoked).toBe(false)
+  expect(readFileSync(f.input, "utf8")).toBe(f.original)
+  expect(statSync(receipt.output!).mode & 0o777).toBe(0o600)
+})
 
 // R2/R4/R5: canonical parser accepts free-text source strings, so cannot enforce index/blob correspondence.
 test.each(["decision-hash", "source-entry", "missing-object", "external-sha", "stale-binding"])(
