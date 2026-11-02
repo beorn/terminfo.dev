@@ -544,22 +544,24 @@ function decrqssFacilityProbe(): ProbeDefinition {
     "device.decrqss",
     (ctx) => {
       // Sample the facility in order, advancing only after a complete selector refusal.
-      if (ctx.queryWithSentinelOutcome) {
-        const sgr = ctx.queryWithSentinelOutcome(DECRQSS_SGR.query, sgrPattern)
-        if (!refusedFrame(DECRQSS_SGR, replyFrame(sgr))) return deviceOutcomeResult(DECRQSS_SGR, sgr)
-        const second = ctx.queryWithSentinelOutcome(DECRQSS_DECSTBM.query, decstbmPattern)
-        if (!refusedFrame(DECRQSS_DECSTBM, replyFrame(second))) {
-          return decrqssAfterRefusal(DECRQSS_DECSTBM, second, "SGR refused")
-        }
-        return decrqssAfterRefusal(
-          DECRQSS_DECSCL,
-          ctx.queryWithSentinelOutcome(DECRQSS_DECSCL.query, decsclPattern),
-          "SGR refused; DECSTBM refused",
-          sgr.raw + second.raw,
-        )
+      const query = (sequence: string, pattern: RegExp): TerminalQueryOutcome => {
+        if (ctx.queryWithSentinelOutcome) return ctx.queryWithSentinelOutcome(sequence, pattern)
+        const raw = ctx.feedCapture(sequence)
+        const match = pattern.exec(raw)
+        return { raw, rawBase64: Buffer.from(raw).toString("base64"), match, reason: match ? "reply" : "sentinel" }
       }
-      const raw = ctx.feedCapture(DECRQSS_SGR.query)
-      return deviceReplyResult(DECRQSS_SGR, raw, sgrPattern.exec(raw)?.[0] ?? null, "sentinel")
+      const sgr = query(DECRQSS_SGR.query, sgrPattern)
+      if (!refusedFrame(DECRQSS_SGR, replyFrame(sgr))) return deviceOutcomeResult(DECRQSS_SGR, sgr)
+      const second = query(DECRQSS_DECSTBM.query, decstbmPattern)
+      if (!refusedFrame(DECRQSS_DECSTBM, replyFrame(second))) {
+        return decrqssAfterRefusal(DECRQSS_DECSTBM, second, "SGR refused")
+      }
+      return decrqssAfterRefusal(
+        DECRQSS_DECSCL,
+        query(DECRQSS_DECSCL.query, decsclPattern),
+        "SGR refused; DECSTBM refused",
+        sgr.raw + second.raw,
+      )
     },
     async (ctx) => {
       const sgr = await ctx.queryWithSentinelOutcome(DECRQSS_SGR.query, sgrPattern)
