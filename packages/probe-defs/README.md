@@ -55,6 +55,9 @@ not a reset state or a terminal-support verdict. Callbacks retain it explicitly.
 
 OSC52 write/roundtrip callbacks retain qualified read-sentinel silence as a named TEST TODO
 when no clipboard-state witness is wired; a read negative cannot measure the write.
+The audited xterm composition instead uses the fixed OSC52/rendered-X control after a clean
+qualified read negative without a witness, retaining buffer-state `source-negative-review`
+as TEST FAILURE pending independent review, never automatic Unsupported.
 OSC5522 detection checks the current library DECRQM sibling-query family after qualified target
 silence. Qualified silence from every control names an unmet detection prerequisite as TEST TODO,
 retaining each raw window. Any control reply leaves target silence as TEST FAILURE; complete,
