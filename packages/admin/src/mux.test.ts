@@ -12,7 +12,12 @@ import { tmpdir } from "node:os"
 import { createHash } from "node:crypto"
 import { execSync, spawnSync } from "node:child_process"
 import { expect, it, vi } from "vitest"
-import { ENVIRONMENT_GROUP_IDS, type CapturedRunDraft, type HistoricalProbeRun } from "@terminfo/probe-defs"
+import {
+  ENVIRONMENT_GROUP_IDS,
+  type CapturedRunDraft,
+  type HistoricalProbeRun,
+  type ProbeSuiteManifest,
+} from "@terminfo/probe-defs"
 import { handleMux } from "./mux.ts"
 import {
   createProbeRun,
@@ -24,6 +29,12 @@ import {
 } from "../../terminfo.dev/src/daemon-client.ts"
 import { planAdmission, admitRun } from "../../../scripts/admit-run.ts"
 
+const fixtures = vi.hoisted(() => ({
+  receipt: undefined as { manifest: ProbeSuiteManifest; collectorRevision: string } | undefined,
+}))
+vi.mock("../../terminfo.dev/src/serve.ts", () => ({
+  getTrustedSuiteReceipt: () => fixtures.receipt,
+}))
 vi.mock("../../../scripts/admit-run.ts", () => ({ planAdmission: vi.fn(), admitRun: vi.fn() }))
 vi.mock("../versions.ts", () => ({
   sourceSuiteEnvironment: () => ({ TERMINFO_PROBE_HASH: "fixture", TERMINFO_SOURCE_REVISION: "fixture" }),
@@ -91,6 +102,18 @@ it.each([
     id: "tmux",
     version: "3.6a",
   }
+  // Private retention uses the source receipt as well as the child launcher's environment.
+  fixtures.receipt = {
+    manifest: {
+      schemaVersion: 4,
+      probeHash: run.probeHash,
+      sourceRevision: run.sourceRevision,
+      adapterVersion: "test",
+      catalogIds: run.results.map(({ featureId }) => featureId),
+      probes: { term: [], lib: [], mux: [] },
+    },
+    collectorRevision: run.sourceRevision,
+  }
   const bytes = JSON.stringify(run)
   // COPYFILE_EXCL cannot overwrite the real package.json on the unfixed path; the correct guard must refuse first.
   const original = join(directory, mode === "symlink" ? "package.json" : "http-response.json")
@@ -148,15 +171,20 @@ it.each([
     if (mode === "private") {
       const clause = environment ? " · 9 environment groups manual by design (catalogue), ungraded" : ""
       expect(log).toHaveBeenCalledWith(
-        expect.stringContaining(`1 TEST TODO · 0 TEST FAILURE${clause} (private, unadmitted)`),
+        expect.stringContaining(`1 TEST TODO · 0 TEST FAILURE${clause} (pending-review)`),
       )
       expect(readFileSync(join(output, "http-response.json"), "utf8")).toBe(bytes)
       const raw = readdirSync(output).find((name) => name.startsWith("tmux-3.6a-"))
       expect(raw).toBeTruthy()
-      expect(JSON.parse(readFileSync(join(output, raw!), "utf8"))).toMatchObject({
+      expect(raw).toMatch(/\.draft\.json$/)
+      const saved = JSON.parse(readFileSync(join(output, raw!), "utf8"))
+      expect(saved).toMatchObject({
         runId: run.runId,
         subject: { kind: "mux", id: "tmux" },
+        probeHash: run.probeHash,
+        sourceRevision: run.sourceRevision,
       })
+      expect(saved).not.toHaveProperty("sealedAt")
     }
     expect(stopOwnedDaemon).toHaveBeenCalledWith(owned)
     expect(removeProbeRun).toHaveBeenCalledOnce()
@@ -166,6 +194,7 @@ it.each([
     expect(log).not.toHaveBeenCalledWith(expect.stringContaining("(admitted)"))
     expect(readFileSync(original, "utf8")).toBe(bytes)
   } finally {
+    fixtures.receipt = undefined
     vi.resetAllMocks()
     vi.restoreAllMocks()
     rmSync(directory, { recursive: true, force: true })
