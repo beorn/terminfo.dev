@@ -1330,6 +1330,11 @@ test.each([
     "not-tested",
     "shared core encoder carries no prompt state; alacritty_terminal 0.26.0 keeps no OSC 133 prompt or click_events state (vte Handler src/term/mod.rs:1059; its only OSC-side state is the osc52 clipboard at :1705,:1726); #30936",
   ],
+  [
+    "vt100-rust",
+    "not-tested",
+    "shared core encoder carries no prompt state; vt100 0.16.2 keeps no OSC 133 prompt or click_events state (osc_dispatch src/perform.rs:198-237 handles OSC 0/1/2/52 only; the rest reaches Callbacks::unhandled_osc, which termless TerminalCallbacks lib.rs:21 leaves default); #30936",
+  ],
   ["xtermjs", "unsupported", null],
 ] as const)(
   "input.kitty-click-events library arm on %s: shared-encoder null reads %s",

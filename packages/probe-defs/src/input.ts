@@ -691,12 +691,20 @@ function mouseEncodingLib(
 }
 
 /** @cto ce2d3969 K2: engines keeping no OSC 133 prompt/click_events state, each with its own citation. */
-const SHARED_ENCODER_CLICK_EVENTS_LIMITS: Partial<Record<string, string>> = {
-  ghostty:
+const SHARED_ENCODER_CLICK_EVENTS_LIMITS = new Map<string, string>([
+  [
+    "ghostty",
     "shared core encoder carries no prompt state; ghostty WASM core 5714ed07 prompt_start keeps no click_events (termless 2719cfd ghostty-wasm-api.patch:624-627); #30936",
-  alacritty:
+  ],
+  [
+    "alacritty",
     "shared core encoder carries no prompt state; alacritty_terminal 0.26.0 keeps no OSC 133 prompt or click_events state (vte Handler src/term/mod.rs:1059; its only OSC-side state is the osc52 clipboard at :1705,:1726); #30936",
-}
+  ],
+  [
+    "vt100-rust",
+    "shared core encoder carries no prompt state; vt100 0.16.2 keeps no OSC 133 prompt or click_events state (osc_dispatch src/perform.rs:198-237 handles OSC 0/1/2/52 only; the rest reaches Callbacks::unhandled_osc, which termless TerminalCallbacks lib.rs:21 leaves default); #30936",
+  ],
+])
 
 function kittyClickEventsLib(ctx: LibProbeSource): ProbeCallbackResult {
   const expected =
@@ -715,7 +723,7 @@ function kittyClickEventsLib(ctx: LibProbeSource): ProbeCallbackResult {
   // @cto cac2b8dc: an adapter that encodes through termless's shared encodeMouseReport (no prompt or
   // click_events model) yields a null that is the instrument's limit, never engine evidence. Each such
   // engine is listed with its own citation rather than inheriting ghostty's.
-  const sharedEncoderClickEventsLimit = SHARED_ENCODER_CLICK_EVENTS_LIMITS[ctx.backendName]
+  const sharedEncoderClickEventsLimit = SHARED_ENCODER_CLICK_EVENTS_LIMITS.get(ctx.backendName)
   if (sharedEncoderClickEventsLimit) {
     return notTestedResult(sharedEncoderClickEventsLimit, { storedClickEvents: false })
   }
