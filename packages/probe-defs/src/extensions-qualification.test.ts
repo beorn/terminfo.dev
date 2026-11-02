@@ -58,7 +58,7 @@ const xtermOscIdentity = {
   termlessRevision: "84003d2c91610fe2743142675234a0fb3ec9cf1d",
   adapterSources: [
     { path: "packages/xtermjs/src/index.ts", blobOid: "550e10110ec2baaf326d2958319b03ee8208feba" },
-    { path: "packages/xtermjs/src/backend.ts", blobOid: "751d9fa074aa9c3519f2af1bb9d71222b3834e4e" },
+    { path: "packages/xtermjs/src/backend.ts", blobOid: "fbbb344f113d5b57bbb5dd429ed97c46b6cfa6e9" },
   ],
   resolvedPath: "node_modules/.bun/@xterm+headless@6.0.0/node_modules/@xterm/headless/lib-headless/xterm-headless.js",
   integrity: {

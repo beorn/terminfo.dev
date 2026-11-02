@@ -618,29 +618,26 @@ function mouseEncodingLib(
   }
   const reset = "\x1b[?9;1000;1002;1003;1005;1006;1015;1016l"
   const tracking = kind === "x10" ? 9 : kind === "button" ? 1002 : 1000
-  const encoding = kind === "x10" ? "" : `\x1b[?${kind === "urxvt" ? 1015 : 1006}h`
+  const encoding = kind === "x10" ? "" : `\x1b[?${kind === "pixel" ? 1016 : kind === "urxvt" ? 1015 : 1006}h`
   const event = {
     x: 4,
     y: 2,
+    ...(kind === "pixel" ? { pixel: { x: 40, y: 24 } } : {}),
     button: kind === "wheel" ? "wheelUp" : "left",
     action: kind === "button" ? "move" : "press",
   } as const
   const expected =
     kind === "x10"
       ? "\x1b[M %#"
-      : kind === "urxvt"
-        ? "\x1b[32;5;3M"
-        : `\x1b[<${kind === "button" ? 32 : kind === "wheel" ? 64 : 0};5;3M`
+      : kind === "pixel"
+        ? "\x1b[<0;41;25M"
+        : kind === "urxvt"
+          ? "\x1b[32;5;3M"
+          : `\x1b[<${kind === "button" ? 32 : kind === "wheel" ? 64 : 0};5;3M`
   ctx.feed(reset)
   try {
     const negativeControl = decodeMouseReport(ctx.encodeMouse(event))
     if (negativeControl !== null) throw new Error("Mouse encoding emitted a report with tracking reset")
-    if (kind === "pixel") {
-      return notTestedResult("#31297: MouseEvent carries no pixel geometry", {
-        mouseEncoding: true,
-        pixelGeometry: false,
-      })
-    }
     ctx.feed(`\x1b[?${tracking}h${encoding}`)
     const enabled = ctx.getMode("mouseTracking")
     if (enabled === null) {

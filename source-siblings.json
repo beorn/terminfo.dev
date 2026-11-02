@@ -30,13 +30,13 @@
     {
       "name": "@termless/core",
       "repository": "beorn/termless",
-      "commit": "a871f0e580e1b02fb5dbb7ed854f6de623e7858e",
+      "commit": "539e4803eee45fcfe60369188c2189b57a06ae18",
       "pack": true
     },
     {
       "name": "@termless/xtermjs",
       "repository": "beorn/termless",
-      "commit": "a871f0e580e1b02fb5dbb7ed854f6de623e7858e",
+      "commit": "539e4803eee45fcfe60369188c2189b57a06ae18",
       "pack": true,
       "directory": "packages/xtermjs"
     },
@@ -57,7 +57,7 @@
     {
       "name": "@termless/vterm",
       "repository": "beorn/termless",
-      "commit": "a871f0e580e1b02fb5dbb7ed854f6de623e7858e",
+      "commit": "539e4803eee45fcfe60369188c2189b57a06ae18",
       "pack": true,
       "directory": "packages/vterm"
     },
