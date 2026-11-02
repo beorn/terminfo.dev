@@ -22,6 +22,7 @@ import {
   recordCollectorSelection,
   recordCollectorAttempt,
   type RunDraft,
+  type CurrentProbeRun,
   ALL_PROBES,
   readCollectorAttempt,
   type HostRecipeExpectation,
@@ -881,8 +882,6 @@ it.each(["generic-todo", "source-negative-todo", "legacy-source-negative-failure
   },
 )
 
-// #32014: the three grading decisions cannot represent a buildable, unbuilt readback.
-// Exercise the owner boundary through sealing and canonical reread, including both binding rules.
 // @failure Normalizing pending status changes a binding already retained in the sealed set.
 // @level l1
 // @consumer retainCaptureBinding; synthetic legacy fixtures cannot prove compatibility with retained bytes.
@@ -895,12 +894,14 @@ it("preserves the sealed Vterm source-negative capture binding byte for byte", (
       ),
       "utf8",
     ),
-  ) as RunDraft & { sealedAt: string }
+  ) as CurrentProbeRun
   const featureId = "extensions.osc176-app-id"
   const before = draft.rawReplies[`collector.capture.${featureId}`]
   expect(retainCaptureBinding(draft, featureId).source).toBe(before)
 })
 
+// #32014: the three grading decisions cannot represent a buildable, unbuilt readback.
+// Exercise the owner boundary through sealing and canonical reread, including both binding rules.
 describe("named tool-gap capture decisions", () => {
   it.each([
     { sourceNegative: false, evidence: false },

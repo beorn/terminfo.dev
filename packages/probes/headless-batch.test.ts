@@ -1567,7 +1567,7 @@ test("Wezterm prompt source reviews survive actual collection and capture bindin
   )
   expect(parsed.results).toHaveLength(7)
   expect(
-    parsed.results?.every((row) => row.criterionBranch === "source-negative-review" && row.status === "test-failure"),
+    parsed.results?.every((row) => row.criterionBranch === "source-negative-review" && row.status === "test-todo"),
   ).toBe(true)
 })
 
