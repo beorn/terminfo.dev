@@ -1488,7 +1488,7 @@ test("source-qualified 2026/2031 mixed criteria survive collection and capture p
             integrity: {
               kind: "source",
               repository: "git@github.com:beorn/vterm.git",
-              revision: "bd3d32aea2f1994376a71adfc55b92705eedbd8c",
+              revision: "67dd3960746766ed47e2bb4b2ced6503a78549cc",
               treeOid: "1eaac257cf9ff8d8ece752c8e6edc04b9ddaa6cf",
               cleanTree: true,
             },
