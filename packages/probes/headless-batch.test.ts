@@ -3315,6 +3315,75 @@ test.each([
 
 // 30581: a refused callback result keeps its response under its feature id and its refused observation and
 // assertions as text in the refusal, on every recorder branch, so the run file shows what the grader saw.
+test.each([
+  { selected: true, actual: "buffer_state", allowed: ["buffer_state"], outcome: "inconclusive" },
+  { selected: false, actual: "query_reply", allowed: ["buffer_state"], outcome: "inconclusive" },
+  { selected: true, actual: "query_reply", allowed: ["query_reply", "buffer_state"], outcome: "inconclusive" },
+  { selected: false, actual: "buffer_state", allowed: ["buffer_state"], outcome: "error" },
+  { selected: true, actual: "query_reply", allowed: ["buffer_state"], outcome: "error" },
+] as const)("qualified declaration selects $selected/$actual/$allowed", async (scenario) => {
+  const order: string[] = []
+  const batch = await collectBatch(backend, "xtermjs", [
+    definition(
+      "qualified",
+      () => {
+        order.push("callback")
+        return fakeProbeResult(scenario.actual)
+      },
+      {
+        libAssertionType: {
+          when: (source) => {
+            expect(typeof source.getTitle).toBe("function")
+            order.push("when")
+            return scenario.selected
+          },
+          then: scenario.allowed,
+          otherwise: ["query_reply"],
+        },
+      },
+    ),
+  ])
+  expect(order).toEqual(["when", "callback"])
+  expect(batch.ungradedDiagnostics).toEqual({})
+  expect(batch.observations).toHaveLength(1)
+  expect(batch.observations[0]).toMatchObject({
+    featureId: "qualified",
+    assertionType: scenario.actual,
+    outcome: scenario.outcome,
+    reason: scenario.outcome === "error" ? "collector-error" : "insufficient-evidence",
+  })
+  if (scenario.outcome === "error") {
+    const selected = scenario.selected ? scenario.allowed : ["query_reply"]
+    expect(batch.observations[0]?.note).toContain(
+      `Lib callback qualified declares ${selected.join(", ")} but returned ${scenario.actual}`,
+    )
+  }
+})
+
+test.each(["throw", "non-boolean"] as const)(
+  "qualified declaration refuses a %s predicate before the callback",
+  async (fault) => {
+    const callback = vi.fn(() => fakeProbeResult())
+    const predicate = vi.fn(() => {
+      if (fault === "throw") throw new Error("predicate failed")
+      return undefined as unknown as boolean
+    })
+    const batch = await collectBatch(backend, "xtermjs", [
+      definition("invalid-predicate", callback, {
+        libAssertionType: { when: predicate, then: ["buffer_state"], otherwise: ["query_reply"] },
+      }),
+    ])
+    expect(predicate).toHaveBeenCalledTimes(1)
+    expect(callback).not.toHaveBeenCalled()
+    expect(batch.observations).toEqual([])
+    expect(batch.assertions).toEqual([])
+    expect(batch.ungradedDiagnostics["invalid-predicate"]).toMatchObject({
+      kind: "collector-error",
+      message: expect.stringContaining(fault === "throw" ? "predicate failed" : "boolean"),
+    })
+  },
+)
+
 test("an assertion type that disagrees with the marker keeps the response and the refused claim", async () => {
   const response = "\x1b[?1;2c"
   const batch = await collectBatch(backend, "xtermjs", [

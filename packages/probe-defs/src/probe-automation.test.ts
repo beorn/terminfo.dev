@@ -1,8 +1,16 @@
 import { createHash } from "node:crypto"
 import { describe, expect, test } from "vitest"
-import { ALL_PROBES, type LibProbeSource, type TermProbeSource, type TerminalQueryOutcome } from "./index.ts"
+import {
+  ALL_PROBES,
+  ASSERTION_TYPES,
+  type LibProbeSource,
+  type TermProbeSource,
+  type TerminalQueryOutcome,
+} from "./index.ts"
 import {
   HEADLESS_OBSERVABLE_REVIEW,
+  ADAPTER_SOURCE_AUDITS,
+  SOURCE_NEGATIVE_REVIEW,
   REPLY_AFTER_SENTINEL_NOTE,
   REPLY_PATH_AUDIT_REVIEW,
   probe as defineProbe,
@@ -30,6 +38,23 @@ function probe(id: string) {
   if (!found) throw new Error(`missing probe ${id}`)
   return found
 }
+
+test("library declarations retain nonempty unique sets of existing assertion classes", () => {
+  for (const definition of ALL_PROBES) {
+    const declaration = definition.libAssertionType
+    if (declaration === null || declaration === undefined) continue
+    if (typeof declaration === "string") {
+      expect(ASSERTION_TYPES, definition.id).toContain(declaration)
+      continue
+    }
+    expect(typeof declaration.when, definition.id).toBe("function")
+    for (const branch of [declaration.then, declaration.otherwise]) {
+      expect(branch.length, definition.id).toBeGreaterThan(0)
+      expect(new Set(branch).size, definition.id).toBe(branch.length)
+      for (const assertionType of branch) expect(ASSERTION_TYPES, definition.id).toContain(assertionType)
+    }
+  }
+})
 
 function context(overrides: Partial<LibProbeSource>): LibProbeSource {
   return {
@@ -368,6 +393,86 @@ describe("audited native host recipe callers", () => {
 describe("qualified clipboard roundtrip", () => {
   const da1 = "\x1b[?1;2c"
   const frame = (data: string) => `\x1b]52;c;${btoa(data)}\x07`
+  const xtermIdentity = {
+    kind: "js",
+    runtimeFormat: "js",
+    engineVersion: "6.0.0",
+    adapterVersion: "0.10.2",
+    termlessRevision: "84003d2c91610fe2743142675234a0fb3ec9cf1d",
+    adapterSources: Object.entries(ADAPTER_SOURCE_AUDITS.xtermjs).map(([path, blobOid]) => ({ path, blobOid })),
+    resolvedPath: "/fixture/@xterm/headless/lib-headless/xterm-headless.js",
+    integrity: {
+      kind: "registry",
+      lockIntegrity: "sha512-5Yj1QINYCyzrZtf8OFIHi47iQtI+0qYFPHmouEfG8dHNxbZ9Tb9YGSuLcsEwj9Z+OL75GJqPyJbyoFer80a2Hw==",
+    },
+  } as const
+  test("the three qualified declarations inspect presence and identity without I/O", () => {
+    const unavailable = () => {
+      throw new Error("declaration performed I/O")
+    }
+    const source = context({
+      runtimeIdentity: xtermIdentity,
+      getIconLabel: unavailable,
+      getTitle: unavailable,
+      feed: unavailable,
+      feedCapture: unavailable,
+      queryWithSentinelOutcome: unavailable,
+    })
+    for (const id of ["extensions.osc0-icon-title", "extensions.osc52-clipboard", "extensions.osc52-write"]) {
+      const declaration = probe(id).libAssertionType
+      expect(typeof declaration, id).toBe("object")
+      if (declaration === null || typeof declaration !== "object") throw new Error(`Missing qualified ${id}`)
+      expect(declaration.when(source), id).toBe(true)
+    }
+  })
+  test.each(["extensions.osc52-clipboard", "extensions.osc52-write"])(
+    "%s retains deterministic source absence only after an audited clean read negative",
+    (id) => {
+      const callback = probe(id).lib!
+      const snapshots: string[] = []
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const result = callback(
+          context({
+            runtimeIdentity: xtermIdentity,
+            getIconLabel: () => "",
+            getCell: () => ({ char: "X" }) as ReturnType<LibProbeSource["getCell"]>,
+            queryWithSentinelOutcome: () => ({
+              raw: da1,
+              rawBase64: Buffer.from(da1).toString("base64"),
+              reason: "sentinel",
+              match: null,
+              sentinel: { atMs: 0, graceMs: 250 },
+            }),
+          }),
+        )
+        expect(result.criterionBranch).toBe(SOURCE_NEGATIVE_REVIEW)
+        expect(result.observation).toMatchObject({ outcome: "inconclusive", assertionType: "buffer_state" })
+        expect(result.tests).toEqual([
+          { id: "review", status: "test-failure", reason: expect.stringContaining("InputHandler.ts:292-338") },
+        ])
+        expect(result.assertions).toMatchObject([{ assertionType: "buffer_state", kind: "negative" }])
+        snapshots.push(result.response!)
+      }
+      expect(snapshots[0]).toBe(snapshots[1])
+      for (const raw of ["\x1b]52;c;???\x07" + da1, "ZZZ" + da1, ""]) {
+        const result = callback(
+          context({
+            runtimeIdentity: xtermIdentity,
+            getIconLabel: () => "",
+            queryWithSentinelOutcome: () => ({
+              raw,
+              rawBase64: Buffer.from(raw).toString("base64"),
+              reason: raw === "" ? "timeout" : "sentinel",
+              match: null,
+              ...(raw !== "" && { sentinel: { atMs: 0, graceMs: 250 } }),
+            }),
+          }),
+        )
+        expect(result.criterionBranch).not.toBe(SOURCE_NEGATIVE_REVIEW)
+        expect(result.observation?.outcome).not.toBe("unsupported")
+      }
+    },
+  )
   const cases = [
     { when: "clean sentinel silence", raw: da1, reason: "sentinel", sentinel: true, cause: true, todo: true },
     { when: "whole empty buffer", raw: "", reason: "timeout", sentinel: false, cause: true, failure: true },
@@ -1557,7 +1662,6 @@ describe("reply-path audit", () => {
       })
       expect(silent.result).not.toHaveProperty("criterionBranch")
       expect(silent.result).not.toHaveProperty("tests")
-      expect(probe(id).libAssertionType ?? "query_reply").toBe("query_reply")
     }
 
     const answer = (sequence: string) =>
