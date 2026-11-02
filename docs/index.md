@@ -534,10 +534,6 @@ function backendTooltip(name, version) {
     <h3>Glossary</h3>
     <p>CSI, SGR, OSC, DEC... terminal terminology explained.</p>
   </a>
-  <a href="/compare/headless-ghostty-vs-headless-kitty" class="explore-card">
-    <h3>Compare libghostty-vt (WASM) and headless Kitty</h3>
-    <p>Compare headless parser measurements for libghostty-vt (WASM) and Kitty.</p>
-  </a>
 </div>
 
 ## How This Works
