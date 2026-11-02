@@ -53,10 +53,44 @@ const STANDARD_FG: readonly Rgb[] = [
   { r: 170, g: 170, b: 170 },
 ]
 
+/** The bright SGR 90-97 / 100-107 (and 256-colour 8-15) table. */
+const BRIGHT_PALETTE: readonly Rgb[] = [
+  { r: 85, g: 85, b: 85 },
+  { r: 255, g: 85, b: 85 },
+  { r: 85, g: 255, b: 85 },
+  { r: 255, g: 255, b: 85 },
+  { r: 85, g: 85, b: 255 },
+  { r: 255, g: 85, b: 255 },
+  { r: 85, g: 255, b: 255 },
+  { r: 255, g: 255, b: 255 },
+]
+
+const CUBE_LEVELS = [0, 95, 135, 175, 215, 255] as const
+
+/** Resolve a 0-255 xterm palette index to its canonical RGB value. */
+function palette256(index: number): Rgb | null {
+  if (!Number.isInteger(index) || index < 0 || index > 255) return null
+  if (index < 8) return STANDARD_FG[index] ?? null
+  if (index < 16) return BRIGHT_PALETTE[index - 8] ?? null
+  if (index < 232) {
+    const offset = index - 16
+    const r = CUBE_LEVELS[Math.floor(offset / 36)] ?? 0
+    const g = CUBE_LEVELS[Math.floor((offset % 36) / 6)] ?? 0
+    const b = CUBE_LEVELS[offset % 6] ?? 0
+    return { r, g, b }
+  }
+  const level = 8 + (index - 232) * 10
+  return { r: level, g: level, b: level }
+}
+
+type UnderlineStyle = SurfaceCellState["underline"]
+
 interface Attributes {
   bold: boolean
   dim: boolean
   italic: boolean
+  underline: UnderlineStyle
+  underlineColor: Rgb | null
   blink: boolean
   inverse: boolean
   hidden: boolean
@@ -70,6 +104,8 @@ const NO_ATTRIBUTES: Attributes = {
   bold: false,
   dim: false,
   italic: false,
+  underline: null,
+  underlineColor: null,
   blink: false,
   inverse: false,
   hidden: false,
@@ -233,33 +269,116 @@ function clusterWidth(cluster: string): number {
   return isWide(base) ? 2 : 1
 }
 
+const COLON_UNDERLINE_STYLES: Readonly<Record<number, { readonly mutation: string; readonly style: UnderlineStyle }>> =
+  {
+    0: { mutation: "sgr24-noop", style: null },
+    1: { mutation: "underline-single-noop", style: "single" },
+    2: { mutation: "underline-double-noop", style: "double" },
+    3: { mutation: "underline-curly-noop", style: "curly" },
+    4: { mutation: "underline-dotted-noop", style: "dotted" },
+    5: { mutation: "underline-dashed-noop", style: "dashed" },
+  }
+
+/** Apply colon-delimited SGR subparameters (such as 4:0..4:5 underline styles). */
+function applyColonSgr(attributes: Attributes, raw: string, mutations?: ReadonlySet<string>): Attributes {
+  const parts = raw.split(":").map((part) => (part === "" ? 0 : Number(part)))
+  if (parts[0] === 4) {
+    const entry = COLON_UNDERLINE_STYLES[parts[1] ?? 1]
+    if (entry && !mutations?.has(entry.mutation)) return { ...attributes, underline: entry.style }
+  }
+  return attributes
+}
+
+const SIMPLE_SGR_EFFECTS: Readonly<
+  Record<number, { readonly mutation?: string; readonly patch: Partial<Attributes> }>
+> = {
+  0: { mutation: "sgr0-noop", patch: NO_ATTRIBUTES },
+  1: { mutation: "bold-noop", patch: { bold: true } },
+  2: { mutation: "faint-noop", patch: { dim: true } },
+  3: { mutation: "italic-noop", patch: { italic: true } },
+  4: { mutation: "underline-single-noop", patch: { underline: "single" } },
+  5: { mutation: "blink-noop", patch: { blink: true } },
+  7: { mutation: "inverse-noop", patch: { inverse: true } },
+  8: { mutation: "hidden-noop", patch: { hidden: true } },
+  9: { mutation: "strikethrough-noop", patch: { strikethrough: true } },
+  21: { mutation: "underline-double-noop", patch: { underline: "double" } },
+  22: { mutation: "sgr22-noop", patch: { bold: false, dim: false } },
+  23: { mutation: "sgr23-noop", patch: { italic: false } },
+  24: { mutation: "sgr24-noop", patch: { underline: null } },
+  25: { patch: { blink: false } },
+  27: { mutation: "sgr27-noop", patch: { inverse: false } },
+  28: { patch: { hidden: false } },
+  29: { patch: { strikethrough: false } },
+  39: { mutation: "fg-default-noop", patch: { fg: null } },
+  49: { mutation: "bg-default-noop", patch: { bg: null } },
+  53: { mutation: "overline-noop", patch: { overline: true } },
+  55: { patch: { overline: false } },
+  59: { mutation: "sgr59-noop", patch: { underlineColor: null } },
+}
+
+function applyIndexedColor(
+  attributes: Attributes,
+  code: 38 | 48 | 58,
+  index: number,
+  mutations?: ReadonlySet<string>,
+): Attributes {
+  const color = palette256(index)
+  if (!color) return attributes
+  if (code === 38) return mutations?.has("fg-256-noop") ? attributes : { ...attributes, fg: color }
+  if (code === 48) return mutations?.has("bg-256-noop") ? attributes : { ...attributes, bg: color }
+  if (mutations?.has("underline-color-noop") || mutations?.has("underline-color-indexed-noop")) return attributes
+  return { ...attributes, underlineColor: color }
+}
+
+function applyRgbColor(
+  attributes: Attributes,
+  code: 38 | 48 | 58,
+  color: Rgb,
+  mutations?: ReadonlySet<string>,
+): Attributes {
+  if (code === 38) return mutations?.has("fg-truecolor-noop") ? attributes : { ...attributes, fg: color }
+  if (code === 48) return mutations?.has("bg-truecolor-noop") ? attributes : { ...attributes, bg: color }
+  if (mutations?.has("underline-color-noop") || mutations?.has("underline-color-rgb-noop")) return attributes
+  return { ...attributes, underlineColor: color }
+}
+
+function applyPaletteRange(attributes: Attributes, code: number, mutations?: ReadonlySet<string>): Attributes {
+  if (code >= 30 && code <= 37 && !mutations?.has("fg-standard-noop")) {
+    return { ...attributes, fg: STANDARD_FG[code - 30] ?? null }
+  }
+  if (code >= 40 && code <= 47 && !mutations?.has("bg-standard-noop")) {
+    return { ...attributes, bg: STANDARD_BG[code - 40] ?? null }
+  }
+  if (code >= 90 && code <= 97 && !mutations?.has("fg-bright-noop")) {
+    return { ...attributes, fg: BRIGHT_PALETTE[code - 90] ?? null }
+  }
+  if (code >= 100 && code <= 107 && !mutations?.has("bg-bright-noop")) {
+    return { ...attributes, bg: BRIGHT_PALETTE[code - 100] ?? null }
+  }
+  return attributes
+}
+
 /** Apply SGR codes to an attribute set, the table `applySgr` and the rect attribute ops share. */
 function applyCodes(attributes: Attributes, codes: readonly number[], mutations?: ReadonlySet<string>): Attributes {
   let next = attributes
-  for (const code of codes) {
-    if (code === 0 && !mutations?.has("sgr0-noop")) next = NO_ATTRIBUTES
-    else if (code === 1 && !mutations?.has("bold-noop")) next = { ...next, bold: true }
-    else if (code === 2 && !mutations?.has("faint-noop")) next = { ...next, dim: true }
-    else if (code === 3 && !mutations?.has("italic-noop")) next = { ...next, italic: true }
-    else if (code === 5 && !mutations?.has("blink-noop")) next = { ...next, blink: true }
-    else if (code === 7 && !mutations?.has("inverse-noop")) next = { ...next, inverse: true }
-    else if (code === 8 && !mutations?.has("hidden-noop")) next = { ...next, hidden: true }
-    else if (code === 9 && !mutations?.has("strikethrough-noop")) next = { ...next, strikethrough: true }
-    else if (code === 22 && !mutations?.has("sgr22-noop")) next = { ...next, bold: false, dim: false }
-    else if (code === 23 && !mutations?.has("sgr23-noop")) next = { ...next, italic: false }
-    else if (code === 25) next = { ...next, blink: false }
-    else if (code === 27 && !mutations?.has("sgr27-noop")) next = { ...next, inverse: false }
-    else if (code === 28) next = { ...next, hidden: false }
-    else if (code === 29) next = { ...next, strikethrough: false }
-    else if (code === 39 && !mutations?.has("fg-default-noop")) next = { ...next, fg: null }
-    else if (code === 49 && !mutations?.has("bg-default-noop")) next = { ...next, bg: null }
-    else if (code === 53 && !mutations?.has("overline-noop")) next = { ...next, overline: true }
-    else if (code === 55) next = { ...next, overline: false }
-    else if (code >= 40 && code <= 47 && !mutations?.has("bg-standard-noop")) {
-      next = { ...next, bg: STANDARD_BG[code - 40] ?? null }
-    } else if (code >= 30 && code <= 37 && !mutations?.has("fg-standard-noop")) {
-      next = { ...next, fg: STANDARD_FG[code - 30] ?? null }
+  for (let i = 0; i < codes.length; i++) {
+    const code = codes[i] ?? 0
+    if ((code === 38 || code === 48 || code === 58) && codes[i + 1] === 5) {
+      next = applyIndexedColor(next, code, codes[i + 2] ?? -1, mutations)
+      i += 2
+      continue
     }
+    if ((code === 38 || code === 48 || code === 58) && codes[i + 1] === 2) {
+      next = applyRgbColor(next, code, { r: codes[i + 2] ?? 0, g: codes[i + 3] ?? 0, b: codes[i + 4] ?? 0 }, mutations)
+      i += 4
+      continue
+    }
+    const simple = SIMPLE_SGR_EFFECTS[code]
+    if (simple) {
+      if (!simple.mutation || !mutations?.has(simple.mutation)) next = { ...next, ...simple.patch }
+      continue
+    }
+    next = applyPaletteRange(next, code, mutations)
   }
   return next
 }
@@ -271,7 +390,9 @@ function reverseCodes(attributes: Attributes, codes: readonly number[], mutation
     if (code === 1 && !mutations?.has("bold-noop")) next = { ...next, bold: !next.bold }
     else if (code === 2 && !mutations?.has("faint-noop")) next = { ...next, dim: !next.dim }
     else if (code === 3 && !mutations?.has("italic-noop")) next = { ...next, italic: !next.italic }
-    else if (code === 5 && !mutations?.has("blink-noop")) next = { ...next, blink: !next.blink }
+    else if (code === 4 && !mutations?.has("underline-single-noop")) {
+      next = { ...next, underline: next.underline ? null : "single" }
+    } else if (code === 5 && !mutations?.has("blink-noop")) next = { ...next, blink: !next.blink }
     else if (code === 7 && !mutations?.has("inverse-noop")) next = { ...next, inverse: !next.inverse }
     else if (code === 8 && !mutations?.has("hidden-noop")) next = { ...next, hidden: !next.hidden }
     else if (code === 9 && !mutations?.has("strikethrough-noop")) next = { ...next, strikethrough: !next.strikethrough }
@@ -685,8 +806,35 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
     }
   }
 
-  const applySgr = (params: readonly number[]): void => {
-    attributes = applyCodes(attributes, params.length === 0 ? [0] : params, mutations)
+  const applySgr = (paramsRaw: string): void => {
+    if (paramsRaw === "") {
+      attributes = applyCodes(attributes, [0], mutations)
+      return
+    }
+    const tokens = paramsRaw.split(";")
+    for (let i = 0; i < tokens.length; i++) {
+      const raw = tokens[i] ?? ""
+      if (raw.includes(":")) {
+        attributes = applyColonSgr(attributes, raw, mutations)
+        continue
+      }
+      const code = raw === "" ? 0 : Number(raw)
+      if ((code === 38 || code === 48 || code === 58) && tokens[i + 1] === "5") {
+        attributes = applyCodes(attributes, [code, 5, Number(tokens[i + 2] ?? -1)], mutations)
+        i += 2
+        continue
+      }
+      if ((code === 38 || code === 48 || code === 58) && tokens[i + 1] === "2") {
+        attributes = applyCodes(
+          attributes,
+          [code, 2, Number(tokens[i + 2] ?? 0), Number(tokens[i + 3] ?? 0), Number(tokens[i + 4] ?? 0)],
+          mutations,
+        )
+        i += 4
+        continue
+      }
+      attributes = applyCodes(attributes, [code], mutations)
+    }
   }
 
   const softReset = (): void => {
@@ -832,7 +980,7 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
         }
         return
       case "m":
-        applySgr(params)
+        applySgr(paramsRaw)
         return
       default:
         return
@@ -855,7 +1003,7 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
           index += 2
           continue
         }
-        const match = /^\x1b\[([?<>]?)([0-9;]*)([\x20-\x2f]?)([\x40-\x7e])/u.exec(rest)
+        const match = /^\x1b\[([?<>]?)([0-9;:]*)([\x20-\x2f]?)([\x40-\x7e])/u.exec(rest)
         if (match) {
           csi(match[1] ?? "", match[2] ?? "", match[3] ?? "", match[4] ?? "")
           index += match[0].length
@@ -959,8 +1107,8 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
         bold: cell.bold,
         dim: cell.dim,
         italic: cell.italic,
-        underline: null,
-        underlineColor: null,
+        underline: cell.underline,
+        underlineColor: cell.underlineColor,
         strikethrough: cell.strikethrough,
         inverse: cell.inverse,
         hidden: cell.hidden,

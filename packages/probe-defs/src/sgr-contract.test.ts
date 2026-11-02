@@ -308,20 +308,42 @@ const SGR_SEMANTIC_SURFACE_CONTROLS: readonly (readonly [
   ["sgr.bold", "bold-noop", "inconclusive"],
   ["sgr.faint", "faint-noop", "inconclusive"],
   ["sgr.italic", "italic-noop", "inconclusive"],
+  ["sgr.underline.single", "underline-single-noop", "inconclusive"],
+  ["sgr.underline.double", "underline-double-noop", "inconclusive"],
+  ["sgr.underline.curly", "underline-curly-noop", "inconclusive"],
+  ["sgr.underline.dotted", "underline-dotted-noop", "inconclusive"],
+  ["sgr.underline.dashed", "underline-dashed-noop", "inconclusive"],
   ["sgr.blink", "blink-noop", "inconclusive"],
   ["sgr.inverse", "inverse-noop", "inconclusive"],
   ["sgr.hidden", "hidden-noop", "inconclusive"],
   ["sgr.strikethrough", "strikethrough-noop", "inconclusive"],
   ["sgr.overline", "overline-noop", "inconclusive"],
+  ["sgr.underline.color", "underline-color-noop", "inconclusive"],
+  ["sgr.underline-color-indexed", "underline-color-indexed-noop", "inconclusive"],
+  ["sgr.underline-color-rgb", "underline-color-rgb-noop", "inconclusive"],
+  ["sgr.underline-color-reset", "sgr59-noop", "unsupported"],
   ["sgr.fg.standard", "fg-standard-noop", "inconclusive"],
   ["sgr.bg.standard", "bg-standard-noop", "inconclusive"],
+  ["sgr.fg.bright", "fg-bright-noop", "inconclusive"],
+  ["sgr.bg.bright", "bg-bright-noop", "inconclusive"],
   ["sgr.fg.default", "fg-default-noop", "unsupported"],
   ["sgr.bg.default", "bg-default-noop", "unsupported"],
+  ["sgr.fg.256", "fg-256-noop", "inconclusive"],
+  ["sgr.bg.256", "bg-256-noop", "inconclusive"],
+  ["sgr.fg.truecolor", "fg-truecolor-noop", "unsupported"],
+  ["sgr.bg.truecolor", "bg-truecolor-noop", "unsupported"],
   ["sgr.selective-reset.bold", "sgr22-noop", "unsupported"],
+  ["sgr.selective-reset.underline", "sgr24-noop", "unsupported"],
   ["sgr.selective-reset.italic", "sgr23-noop", "unsupported"],
   ["sgr.selective-reset.inverse", "sgr27-noop", "unsupported"],
   ["sgr.reset", "sgr0-noop", "unsupported"],
 ]
+
+test("SGR_SEMANTIC_SURFACE_CONTROLS covers all 32 SGR contract rows with distinct mutations", () => {
+  expect(SGR_SEMANTIC_SURFACE_CONTROLS).toHaveLength(32)
+  expect(SGR_SEMANTIC_SURFACE_CONTROLS.map(([id]) => id).sort()).toEqual(SGR_CONTRACT.map((row) => row.id).sort())
+  expect(new Set(SGR_SEMANTIC_SURFACE_CONTROLS.map(([, mutation]) => mutation)).size).toBe(32)
+})
 
 test.each(SGR_SEMANTIC_SURFACE_CONTROLS)(
   "%s reads supported on createSemanticSurface and %s when %s is active",
