@@ -990,7 +990,8 @@ test("1049 exit keeps an unattributed entry failure inconclusive", () => {
 // (device.ts TITLE_STACK_UNIMPLEMENTED_AUDITS, @cto 863bef67). The audit must key on the loaded source
 // identity (integrity.repository + revision + treeOid + cleanTree), never on an adapter or engine name, so a
 // moved or locally modified source falls back to the existing inconclusive answer instead of inheriting a
-// negative. Recorded identity is the vt100 row of run 2026-10-30T01-34-04Z.
+// negative. Recorded identity is the vt100 row of the 23:34 PST cut: engine 67dd3960, package tree 1eaac257,
+// which is the tree that row cites and the only one it has ever measured.
 const VT100_SOURCE_IDENTITY = {
   kind: "js",
   adapterVersion: "0.10.2",
@@ -999,7 +1000,7 @@ const VT100_SOURCE_IDENTITY = {
   integrity: {
     kind: "source",
     repository: "git@github.com:beorn/vterm.git",
-    revision: "bd3d32aea2f1994376a71adfc55b92705eedbd8c",
+    revision: "67dd3960746766ed47e2bb4b2ced6503a78549cc",
     treeOid: "1eaac257cf9ff8d8ece752c8e6edc04b9ddaa6cf",
     cleanTree: true,
   },
