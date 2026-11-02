@@ -1367,6 +1367,136 @@ test.each([
   },
 )
 
+// @cto bbf6f77f: the same shared-encoder null is a source-negative review once auditedOscEngine qualifies the
+// engine, and stays a plain not-tested for an unqualified identity, so a stale build cannot borrow the audit.
+const qualifiedSharedEncoderIdentities = [
+  [
+    "ghostty",
+    "ghostty WASM core",
+    {
+      kind: "js",
+      runtimeFormat: "wasm",
+      engineVersion: "0.4.0",
+      adapterVersion: "0.10.2",
+      termlessRevision: "f736cce493439cf9d651297c2a920cb61fa05fb5",
+      resolvedPath: "/fixture/ghostty/index.js",
+      integrity: {
+        kind: "source",
+        repository: "git@github.com:beorn/termless.git",
+        revision: "f736cce493439cf9d651297c2a920cb61fa05fb5",
+        treeOid: "d5302357ba7d86ae224d0b72acefb045e2fe5d81",
+        cleanTree: true,
+      },
+      loadedBinary: {
+        path: "/fixture/ghostty.wasm",
+        sha256: "3c2398d5c537d9c10e86b0af69311977927fcdbe4738618df194cedbdd22574d",
+      },
+      adapterSources: [
+        { path: "packages/ghostty/src/index.ts", blobOid: "f4b9d9f3e13cc515b23abc739cab21bf971e8585" },
+        { path: "packages/ghostty/src/backend.ts", blobOid: "560146d5f929f31a8f973f809d97f91cf0e23fd6" },
+      ],
+    },
+    {
+      loadedBinary: { sha256: "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f" },
+    },
+  ],
+  [
+    "alacritty",
+    "alacritty_terminal 0.26.0",
+    {
+      kind: "native",
+      engineVersion: "0.26.0",
+      adapterVersion: "0.10.2",
+      termlessRevision: "824119c28b46bd701b222a91df0da860f0307950",
+      loadedBinary: {
+        path: "/relocated/alacritty.node",
+        sha256: "21d4b43c1d4c401c5b9f8114de85b3e837605242363c322c2dcb37e4a42fba61",
+      },
+      provenance: {
+        sha256: "21d4b43c1d4c401c5b9f8114de85b3e837605242363c322c2dcb37e4a42fba61",
+        sourceCommit: "824119c28b46bd701b222a91df0da860f0307950",
+        buildHash: "634c14c5258327eff925d20d24918098c9aee92c1e6291e0ca770d2677015171",
+        lockSha256: "1f89f2579b7d786a116d8fefb8267c4af076bd3a3893adcf14b00c4466740497",
+        toolchain: "retained build receipt",
+      },
+      adapterSources: [
+        { path: "packages/alacritty/src/index.ts", blobOid: "b4154cbd6ef4a83ce2cbf3dcf26ff13d645efd05" },
+        { path: "packages/alacritty/src/backend.ts", blobOid: "3f187a4b17ef7b86902008d05fb8d0d684328a06" },
+        { path: "packages/alacritty/native/src/lib.rs", blobOid: "e4720590d652773f1e89caf2b5cb399ee9112e39" },
+        { path: "src/load-native.ts", blobOid: "34e142550085450ab02138184626716ad0d6b546" },
+      ],
+    },
+    {
+      loadedBinary: { sha256: "0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e" },
+      provenance: { sha256: "0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e" },
+    },
+  ],
+  [
+    "vt100-rust",
+    "vt100 0.16.2",
+    {
+      kind: "native",
+      engineVersion: "0.16.2",
+      adapterVersion: "0.10.2",
+      termlessRevision: "f736cce493439cf9d651297c2a920cb61fa05fb5",
+      loadedBinary: {
+        path: "/fixture/native",
+        sha256: "84a5b6a3a40a7c16c6bae8b64534b730403df911498bb34bded68c3a17e2d408",
+      },
+      provenance: {
+        sha256: "84a5b6a3a40a7c16c6bae8b64534b730403df911498bb34bded68c3a17e2d408",
+        sourceCommit: "286fddf6632e43ccd62f9050be41ec7b2908e43e",
+        buildHash: "30b232d295488042b0d6164e881e319dea8d7fae06ac766b3b568fd4832bf074",
+        lockSha256: "4cf037e4efa648ca41d08b30ef5c4ce7ada29ad61fcad45a7d1aa97bf55391c6",
+        toolchain: "retained build provenance",
+      },
+      adapterSources: [
+        { path: "packages/vt100-rust/src/index.ts", blobOid: "3ddb74f3ae1f79bb356952103853232f69211268" },
+        { path: "packages/vt100-rust/src/backend.ts", blobOid: "9b3477c0fedf8586430781e8f4d17019569af98b" },
+      ],
+    },
+    {
+      loadedBinary: { sha256: "0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d" },
+      provenance: { sha256: "0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d" },
+    },
+  ],
+] as const
+
+test.each(qualifiedSharedEncoderIdentities)(
+  "input.kitty-click-events library arm on %s: a qualified identity pends the source-negative review and a stale one stays not-tested",
+  (backendName, citationMarker, identity, stale) => {
+    let modesOn = false
+    const source = (runtimeIdentity: unknown): LibProbeSource => {
+      const base = libMouseSource({
+        encodeMouse: (event) =>
+          modesOn ? sgrBytes(0, event.x + 1, event.y + 1, event.action === "release" ? "m" : "M") : null,
+      })
+      return {
+        ...base,
+        backendName,
+        runtimeIdentity,
+        feed(text: string) {
+          if (text.includes("?1000h")) modesOn = true
+          if (text.includes("?1000l")) modesOn = false
+        },
+      } as LibProbeSource
+    }
+
+    const qualified = probe("input.kitty-click-events").lib!(source({ ...identity }))
+    expect(qualified.criterionBranch, `${backendName} qualified`).toBe("source-negative-review")
+    expect(qualified.note).toBe("Native engine stores no OSC 133 prompt or click_events state")
+    expect(qualified.tests).toEqual([expect.objectContaining({ id: "review", status: "test-todo" }) as unknown])
+    expect(qualified.tests?.[0]?.reason).toContain(citationMarker)
+    expect(qualified.tests?.[0]?.reason).toContain("independent source review required")
+    expect(qualified.response).toBe(JSON.stringify({ storedClickEvents: false }))
+
+    const unqualified = probe("input.kitty-click-events").lib!(source({ ...identity, ...stale }))
+    expect(unqualified.criterionBranch, `${backendName} stale`).toBeUndefined()
+    expect(unqualified.note).toContain(citationMarker)
+    expect(unqualified.tests).toBeUndefined()
+  },
+)
+
 test("input.kitty-click-events library arm returns inconclusive when the prompt click report does not correlate with the control cell or button", () => {
   let modesOn = false
   let promptRow = -1
