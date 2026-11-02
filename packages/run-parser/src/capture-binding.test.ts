@@ -1598,6 +1598,98 @@ describe("immutable pre-seal capture binding", () => {
     ).toBe(outcome)
   })
 
+  // The source-only route has no event to assert. Exercise the real review/seal/reader
+  // boundary and its exclusions; measured source-negative fixtures cannot witness these.
+  it.each([
+    "legacy", "supported", "sealed-supported", "typed-empty", "untyped-assertion",
+    "nonempty-refs", "no-source", "non-lib", "no-runtime", "drift",
+  ] as const)("source-only negative review preserves %s boundary", (mode) => {
+    const featureId = "input.xtest-key", hash = "a".repeat(64)
+    const make = (changed = false) => setup(
+      '{"input":false}',
+      { runId: "source-only", startedAt: "2026-10-27T11:00:00.000Z" },
+      (draft) => {
+        if (mode !== "untyped-assertion") draft.assertions = []
+        draft.results[0] = recordExecutedProbe({
+          featureId,
+          attempt: { scope: "probe", startedAt: "2026-10-27T11:00:00.000Z" },
+          assertions: draft.assertions,
+          criterionBranch: "source-negative-review",
+          tests: [{ id: "review", status: "test-failure", reason: "Independent source review pending" }],
+        })
+        if (mode === "typed-empty") draft.results[0]!.assertionType = "input_bytes"
+        if (mode === "nonempty-refs") draft.results[0]!.tests[0]!.assertionRefs = [0]
+        if (mode === "non-lib") {
+          draft.subject!.kind = "term"
+          draft.intendedSubject.kind = "term"
+        }
+        if (mode === "no-runtime") delete draft.runtimeIdentity
+        if (changed) draft.runtimeIdentity!.adapterVersion = "different-adapter"
+      },
+      featureId,
+    )
+    const origin = make(), current = mode === "drift" ? make(true) : origin
+    const bound = retainCaptureBinding(origin.draft, featureId, mode === "legacy" ? undefined : hash)
+    if (mode === "drift") retainCaptureBinding(current.draft, featureId, hash)
+    const review = {
+      ...origin.decision,
+      ...(bound.evidence && { evidence: bound.evidence }),
+      decision: mode === "supported" ? "supported" : "unsupported",
+      sources: mode === "no-source"
+        ? ["terminfo.dev@1111111111111111111111111111111111111111", "termless@2222222222222222222222222222222222222222"]
+        : ["vterm@3333333333333333333333333333333333333333:screen.ts:1"],
+    }
+    const apply = () => applyCaptureDecision(
+      current.draft, JSON.stringify(review), "2026-10-27T11:02:00.000Z",
+      mode === "legacy" ? bound.source : undefined, mode === "legacy" ? undefined : hash,
+    )
+    if (mode === "supported") {
+      expect(apply).toThrow("source-only negative review cannot establish support")
+      return
+    }
+    if (mode === "typed-empty" || mode === "nonempty-refs") {
+      expect(apply).toThrow("requires retained TESTED/EXPECTED assertions")
+      return
+    }
+    if (mode === "no-source") {
+      expect(apply).toThrow("requires its source review row")
+      return
+    }
+    if (mode === "non-lib" || mode === "no-runtime") {
+      expect(apply).toThrow("source review requires a lib subject and runtimeIdentity")
+      return
+    }
+    apply()
+    const manifest = {
+      schemaVersion: 4 as const, probeHash: current.draft.probeHash, adapterVersion: "3",
+      catalogIds: [featureId], probes: { term: [], lib: [featureId], mux: [] },
+      ...(mode !== "legacy" && { catalogEntrySha256: { [featureId]: hash } }),
+    }
+    const read = (value: unknown, capture = false) => parseRun(
+      "source-only.json", JSON.stringify(value), [featureId], new Map([[manifest.probeHash, manifest]]),
+      capture ? { mode: "capture" } : undefined,
+    )
+    if (mode === "drift") {
+      expect(current.draft.results[0]!.status).toBe("test-failure")
+      expect(current.draft.results[0]!.reason).toMatch(/lapsed:.*runtimeIdentity/)
+      expect(read(current.draft, true).results?.[0]?.status).toBe("test-failure")
+      expect(() => sealRunDraft(current.draft)).toThrow(/review pending/)
+      return
+    }
+    const sealed = sealRunDraft(current.draft)
+    if (mode === "sealed-supported") {
+      sealed.results[0]!.status = "supported"
+      sealed.results[0]!.tests[0]!.status = "supported"
+    }
+    if (mode === "untyped-assertion" || mode === "sealed-supported") {
+      expect(() => read(sealed)).toThrow("support result requires measured evidence")
+      return
+    }
+    expect(read(sealed).results?.[0]?.status).toBe("unsupported")
+    expect(sealed.assertions).toEqual([])
+    expect(sealed.results[0]!.tests[0]!.assertionRefs).toEqual([])
+  })
+
   // Component changes must lapse only the affected review. The old whole-suite tests do
   // not bind original reason text or a single catalogue entry, and cannot prove that rule.
   it.each(["catalogue", "raw bytes", "expected", "reason", "runtime"] as const)(

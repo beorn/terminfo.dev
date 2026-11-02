@@ -1216,10 +1216,11 @@ function validateCaptureBinding(
   const source = draft.rawReplies[`collector.capture.${decision.featureId}`]
   const result = draft.results.find((entry) => entry.featureId === decision.featureId)
   if (
-    result?.criterionBranch === SEMANTIC_PROMPT_SOURCE_REVIEW &&
+    result &&
+    (result.criterionBranch === SEMANTIC_PROMPT_SOURCE_REVIEW || isSourceOnlyNegativeReview(result, draft.assertions)) &&
     (draft.subject?.kind !== "lib" || !draft.runtimeIdentity)
   ) {
-    fail(path, `${decision.featureId} semantic source review requires a lib subject and runtimeIdentity`)
+    fail(path, `${decision.featureId} ${result.criterionBranch === SEMANTIC_PROMPT_SOURCE_REVIEW ? "semantic " : ""}source review requires a lib subject and runtimeIdentity`)
   }
   if (decision.evidence !== undefined) {
     if (!source || source !== captureBindingSource(draft, decision.featureId)) {
@@ -1416,6 +1417,7 @@ export function applyCaptureDecision(
   const index = draft.results.findIndex((result) => result.featureId === decision.featureId)
   const result = draft.results[index]
   const sourceNegative = result?.criterionBranch === SOURCE_NEGATIVE_REVIEW
+  const sourceOnlyNegative = result !== undefined && isSourceOnlyNegativeReview(result, draft.assertions)
   const semanticSource =
     result?.criterionBranch === SEMANTIC_PROMPT_SOURCE_REVIEW &&
     (decision.decision === "supported" || decision.decision === "unsupported")
@@ -1429,8 +1431,11 @@ export function applyCaptureDecision(
     throw new Error(`Capture ${decision.featureId} has no pending required review`)
   }
   const reviewRef = `collector.review.${decision.id}`
-  if (semanticSource && !hasSourceReviewRow(decision)) {
-    throw new Error(`Capture ${decision.featureId} semantic source review requires its source review row`)
+  if (sourceOnlyNegative && decision.decision === "supported") {
+    throw new Error(`Capture ${decision.featureId} source-only negative review cannot establish support`)
+  }
+  if ((semanticSource || (sourceOnlyNegative && decision.decision === "unsupported")) && !hasSourceReviewRow(decision)) {
+    throw new Error(`Capture ${decision.featureId} ${semanticSource ? "semantic " : ""}source review requires its source review row`)
   }
   if (Object.hasOwn(draft.rawReplies, reviewRef)) throw new Error(`Capture review ${decision.id} already retained`)
   if (sourceNegative && decision.evidence === undefined && originBinding !== undefined) {
@@ -1474,7 +1479,7 @@ export function applyCaptureDecision(
     return
   }
   let assertionRefs: number[] | undefined
-  if (semanticSource) {
+  if (semanticSource || (sourceOnlyNegative && decision.decision === "unsupported")) {
     assertionRefs = []
   } else if (decision.decision !== "untestable" && decision.decision !== "tool-gap") {
     const captured = draft.assertions.filter((assertion) => assertion.featureId === decision.featureId)
@@ -1543,6 +1548,15 @@ function probeAttempt(value: unknown, path: string, rawReplies: Record<string, s
 
 function hasSourceReviewRow(decision: CaptureDecision): boolean {
   return decision.sources.some((source) => !source.startsWith("terminfo.dev@") && !source.startsWith("termless@"))
+}
+
+function isSourceOnlyNegativeReview(result: ProbeResult, assertions: readonly ReadAssertion[]): boolean {
+  return (
+    result.criterionBranch === SOURCE_NEGATIVE_REVIEW &&
+    result.assertionType === undefined &&
+    !assertions.some((assertion) => assertion.featureId === result.featureId) &&
+    !result.tests.some((test) => (test.assertionRefs?.length ?? 0) > 0)
+  )
 }
 
 export function parseProbeResults(
@@ -1692,7 +1706,8 @@ export function parseProbeResults(
     }
     const semanticSource =
       result.criterionBranch === SEMANTIC_PROMPT_SOURCE_REVIEW && (status === "supported" || status === "unsupported")
-    if (semanticSource) {
+    const sourceOnlyNegative = status === "unsupported" && isSourceOnlyNegativeReview(result, assertions)
+    if (semanticSource || sourceOnlyNegative) {
       const key = result.reviewRef
       const reviewTest = tests.find((test) => test.id === "review" && test.reviewRef === key)
       if (!key || !rawReplies[key]) fail(path, `${featureId} requires its immutable source review decision`)
@@ -1727,7 +1742,7 @@ export function parseProbeResults(
         fail(path, `${featureId} requires its lib runtimeIdentity capture binding`)
       }
     }
-    if ((status === "supported" || status === "unsupported") && !semanticSource) {
+    if ((status === "supported" || status === "unsupported") && !semanticSource && !sourceOnlyNegative) {
       if (attempt.scope === "none" || !(schemaVersion === 4 ? item.assertionType : item.evidence)) {
         fail(path, `${featureId} support result requires measured evidence`)
       }
