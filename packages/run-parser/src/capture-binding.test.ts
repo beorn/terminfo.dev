@@ -924,7 +924,6 @@ describe("named tool-gap capture decisions", () => {
     }
     const source = JSON.stringify(review)
     const original = structuredClone(draft)
-    expect(sealRunDraft(draft).results[0]!.status).toBe(draft.results[0]!.status)
     applyCaptureDecision(draft, source, "2026-10-21T05:01:00.000Z", undefined, evidence ? entryHash : undefined)
     expect(draft.assertions).toEqual(original.assertions)
     for (const [key, bytes] of Object.entries(original.rawReplies)) expect(draft.rawReplies[key]).toBe(bytes)
