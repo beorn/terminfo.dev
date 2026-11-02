@@ -31,6 +31,7 @@ import { measureUtf8Decoding } from "../tty.ts"
 import { captureAdapterEligible, runProbeBatch } from "./unified.ts"
 import { calibrateCaptureOrigin } from "../capture-calibration.ts"
 import { collectTextQualification } from "../text-qualification.ts"
+import { createClipboardTransaction, type LinuxClipboardAdapter } from "../linux-clipboard.ts"
 
 // Most cases stub only decode-context measurement; its evidence owner below exercises the real
 // round trip. Every other tty export stays real, so the batch path under test is unchanged.
@@ -1779,6 +1780,140 @@ it.each(["start", "read", "write"])(
     }
   },
 )
+
+const defaultClipboardCases: Array<{
+  name: string
+  featureId?: string
+  profile?: LinuxClipboardAdapter["profile"]
+  subject?: { kind: "term" | "lib" | "mux"; id: string; os: string }
+  targetless?: boolean
+  mismatched?: boolean
+  unowned?: boolean
+  attached?: boolean
+  eligible: boolean
+}> = [
+  { name: "direct Kitty default paste", eligible: true },
+  { name: "default OSC52 write", featureId: "extensions.osc52-write", eligible: false },
+  { name: "default OSC52 read", featureId: "extensions.osc52-read", eligible: false },
+  { name: "default OSC52 roundtrip", featureId: "extensions.osc52-clipboard", eligible: false },
+  { name: "other app", subject: { kind: "term", id: "ghostty", os: "linux" }, eligible: false },
+  { name: "mux subject", subject: { kind: "mux", id: "tmux", os: "linux" }, eligible: false },
+  { name: "library subject", subject: { kind: "lib", id: "kitty", os: "linux" }, eligible: false },
+  { name: "other OS", subject: { kind: "term", id: "kitty", os: "darwin" }, eligible: false },
+  { name: "targetless receipt", targetless: true, eligible: false },
+  { name: "mismatched declaration", mismatched: true, eligible: false },
+  { name: "unowned output", unowned: true, eligible: false },
+  { name: "attached outer Kitty", attached: true, eligible: false },
+  { name: "existing allow profile without target", profile: "allow", targetless: true, eligible: true },
+  { name: "existing deny-read profile without target", profile: "deny-read", targetless: true, eligible: true },
+]
+
+it.each(defaultClipboardCases)("keeps clipboard fixture routing scoped to $name", async (scenario) => {
+  verifiedBatchFixture()
+  if (scenario.unowned) vi.mocked(terminalOwnership.ownedTerminalVerifiedFor).mockReturnValue(false)
+  const subject = scenario.subject ?? { kind: "term" as const, id: "kitty", os: "linux" }
+  const receipt = validContainerReceipt()
+  receipt.declaredTarget = {
+    kind: subject.kind === "term" ? "app" : subject.kind === "lib" ? "headless" : "mux",
+    id: scenario.mismatched ? "ghostty" : subject.id,
+    version: "0.49.2",
+    os: subject.os,
+  }
+  const directory = mkdtempSync(join(tmpdir(), "terminfo-disposable-receipts-"))
+  receiptDirectories.push(directory)
+  const receiptPath = join(directory, "host-measured.json")
+  writeFileSync(receiptPath, JSON.stringify(scenario.targetless ? hostedLaunchReceipt() : receipt))
+  process.env.TERMINFO_DISPOSABLE_RECEIPT = receiptPath
+  const writes: string[] = []
+  process.stdout.write = ((text: string) => {
+    writes.push(text)
+    return true
+  }) as typeof process.stdout.write
+  const baseline = "owned clipboard baseline"
+  let clipboardText = baseline
+  const withClipboardFixture = vi.fn(
+    createClipboardTransaction(baseline, {
+      async readText(trace, kind, verify) {
+        await verify()
+        trace({ kind, at: new Date().toISOString(), length: clipboardText.length })
+        return clipboardText
+      },
+      async writeText(text, trace, kind, verify) {
+        await verify()
+        clipboardText = text
+        trace({ kind, at: new Date().toISOString(), length: text.length })
+      },
+    }),
+  )
+  const processIdentity = { pid: 42, startTicks: "1", ttyRdev: 34816 }
+  const clipboard: LinuxClipboardAdapter = {
+    profile: scenario.profile ?? "default",
+    config: "fixture",
+    permissions: "clipboard: read=ask,write=allow; OSC52=not-run",
+    summary: "{}",
+    assertOwned: async () => {},
+    dispose: async () => {},
+    withClipboardFixture,
+    ...(scenario.attached && {
+      muxAttachmentProof: {
+        platform: "linux" as const,
+        mux: "tmux" as const,
+        bootId: "00000000-0000-0000-0000-000000000001",
+        receiptSha256: "a".repeat(64),
+        launchRunId: "b".repeat(32),
+        captureRunId: "a".repeat(32),
+        preflightCollector: processIdentity,
+        outerShell: processIdentity,
+        outerTerminal: processIdentity,
+        collector: processIdentity,
+        attachedClient: processIdentity,
+        chain: [{ ...processIdentity, executablePath: "/fixture/tmux" }],
+        executable: { path: "/fixture/tmux", sha256: "c".repeat(64), version: "3.8" },
+        config: { path: "/fixture/empty.conf", sha256: "d".repeat(64) },
+        socketPath: "/fixture/tmux.sock",
+        session: "fixture",
+      },
+    }),
+  }
+  const injectKey = vi.fn(async (keys: string) => {
+    const text = keys === "a" ? "a" : `\x1b[200~${clipboardText}\x1b[201~`
+    process.stdin.emit("data", Buffer.from(text))
+  })
+  const featureId = scenario.featureId ?? "extensions.clipboard-paste"
+  const collected = runProbeBatch({
+    ids: [featureId],
+    subject,
+    captureRunId: "a".repeat(32),
+    ownedTerminal: { ...geometryOwner(measured(24, 80)), clipboard },
+    input: { injectKey, injectClick: async () => {} },
+  })
+  if (scenario.mismatched) {
+    await expect(collected).rejects.toThrow(/disagree/)
+  } else {
+    const batch = await collected
+    expect(batch.results.find((result) => result.featureId === featureId)?.status).toBe(
+      scenario.eligible ? "supported" : "test-todo",
+    )
+    if (scenario.eligible) {
+      expect(batch.observations).toContainEqual(
+        expect.objectContaining({ featureId, outcome: "supported", assertionType: "input_bytes" }),
+      )
+      const trace = JSON.parse(batch.rawReplies[featureId]!) as { clipboard: Array<{ kind: string }> }
+      expect(trace.clipboard.map((event) => event.kind)).toEqual([
+        "clipboard-read",
+        "clipboard-write",
+        "clipboard-restore",
+        "clipboard-verify",
+      ])
+    } else {
+      expect(batch.assertions).toEqual([])
+    }
+  }
+  expect(withClipboardFixture).toHaveBeenCalledTimes(scenario.eligible ? 1 : 0)
+  expect(injectKey.mock.calls.map(([keys]) => keys)).toEqual(scenario.eligible ? ["a", "ctrl+shift+v"] : [])
+  expect(clipboardText).toBe(baseline)
+  expect(writes.join("")).not.toContain("\x1b]52;")
+})
 
 it("runs owned OSC 52 after pixels and retains timestamped independent clipboard operations", async () => {
   verifiedBatchFixture()
