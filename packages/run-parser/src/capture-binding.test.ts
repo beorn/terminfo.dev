@@ -1086,17 +1086,17 @@ it.each(["device.term-features", "erase.screen.scrollback"])(
               runtimeFormat: "js",
               engineVersion: "0.10.1",
               adapterVersion: "0.10.2",
-              termlessRevision: "8b8664540f365fa0ba1d9b6400d3c4d1a160582c",
+              termlessRevision: "a871f0e580e1b02fb5dbb7ed854f6de623e7858e",
               adapterSources: [
                 { path: "packages/vterm/src/index.ts", blobOid: "cb5719799dcdd5ae24e6fcf0dcad9965035ce54c" },
-                { path: "packages/vterm/src/backend.ts", blobOid: "308a934578c044ae95feaa29299531d9aa9eb4f7" },
+                { path: "packages/vterm/src/backend.ts", blobOid: "5d27c551161fe41af00ac587bd9484d6becbbc7a" },
               ],
               resolvedPath: "vendor/vterm/packages/vterm/src/index.ts",
               integrity: {
                 kind: "source",
                 repository: "git@github.com:beorn/vterm.git",
-                revision: "bd3d32aea2f1994376a71adfc55b92705eedbd8c",
-                treeOid: "f10a184811894462b9ca7b65d6aab8ffd2fdd0bd",
+                revision: "67dd3960746766ed47e2bb4b2ced6503a78549cc",
+                treeOid: "e9d67d4b4ba7cb4caf0d0824b3b272c10e4b229e",
                 cleanTree: true,
               },
             }
@@ -1124,7 +1124,7 @@ it.each(["device.term-features", "erase.screen.scrollback"])(
           expect(retained).toMatchObject({
             audit: {
               engine: "vterm",
-              blobOid: "308a934578c044ae95feaa29299531d9aa9eb4f7",
+              blobOid: "5d27c551161fe41af00ac587bd9484d6becbbc7a",
               sourceCitation: expect.stringContaining("createVtermBackend"),
             },
           })
