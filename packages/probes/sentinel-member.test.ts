@@ -487,7 +487,17 @@ test.each(ARM_CASES)(
       expect(plain.tests, id).toContainEqual(
         expect.objectContaining({ status: "test-failure", reason: expect.any(String) }),
       )
-    } else expect(plain.observation?.outcome, id).toBe("inconclusive")
+    } else {
+      // A complete SGR refusal advances to DECSTBM; its empty capture retains a failure, not an observation.
+      expect(plain.observation, id).toBeUndefined()
+      expect(plain.tests, id).toContainEqual(
+        expect.objectContaining({
+          id: "criterion",
+          status: "test-failure",
+          reason: expect.stringContaining("SGR refused; DECSTBM unanswered; DECRQSS facility still speaks"),
+        }),
+      )
+    }
   },
 )
 
