@@ -449,14 +449,14 @@ test.each([
             repository: "git@github.com:beorn/vterm.git",
             revision:
               engine === "vterm"
-                ? "7e6c993c22b997e0193137bf8e4beca3952947aa"
+                ? "67dd3960746766ed47e2bb4b2ced6503a78549cc"
                 : "bd3d32aea2f1994376a71adfc55b92705eedbd8c",
             treeOid:
               engine === "vt100"
                 ? "1eaac257cf9ff8d8ece752c8e6edc04b9ddaa6cf"
                 : engine === "vt220"
                   ? "d504616ae458b8b0fa9fa365034c30bd35f55ee8"
-                  : "30e32d569a520758827007bb195d54dbc8bf3413",
+                  : "e9d67d4b4ba7cb4caf0d0824b3b272c10e4b229e",
             cleanTree: true,
           },
         } as const)
@@ -508,7 +508,7 @@ test.each([
           id: "review",
           status: "test-failure",
           reason: expect.stringContaining(
-            engine === "xtermjs" ? "17a90b65" : engine === "vterm" ? "7e6c993c" : "bd3d32ae",
+            engine === "xtermjs" ? "17a90b65" : engine === "vterm" ? "67dd3960" : "bd3d32ae",
           ),
         },
       ])
@@ -1921,18 +1921,18 @@ test.each([
   },
 )
 
-// Geometry fixture follows audited source7e6c993c; original runb9697318 used source53a9eb92/tree617ae600.
+// Geometry fixture follows audited source67dd3960; original runb9697318 used source53a9eb92/tree617ae600.
 // Q8 requires independent review of this context limit, never automatic Untestable.
 const geometryRuntime = {
   kind: "js",
   adapterVersion: "0.10.2",
-  termlessRevision: "8b8664540f365fa0ba1d9b6400d3c4d1a160582c",
+  termlessRevision: "a871f0e580e1b02fb5dbb7ed854f6de623e7858e",
   resolvedPath: "vendor/vterm/packages/vterm/src/index.ts",
   integrity: {
     kind: "source",
     repository: "git@github.com:beorn/vterm.git",
-    revision: "7e6c993c22b997e0193137bf8e4beca3952947aa",
-    treeOid: "30e32d569a520758827007bb195d54dbc8bf3413",
+    revision: "67dd3960746766ed47e2bb4b2ced6503a78549cc",
+    treeOid: "e9d67d4b4ba7cb4caf0d0824b3b272c10e4b229e",
     cleanTree: true,
   },
   runtimeFormat: "js",

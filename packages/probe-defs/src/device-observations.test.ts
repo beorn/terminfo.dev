@@ -1117,13 +1117,13 @@ describe("device contracts without prior coverage", () => {
 const geometryRuntime = {
   kind: "js",
   adapterVersion: "0.10.2",
-  termlessRevision: "8b8664540f365fa0ba1d9b6400d3c4d1a160582c",
+  termlessRevision: "a871f0e580e1b02fb5dbb7ed854f6de623e7858e",
   resolvedPath: "vendor/vterm/packages/vterm/src/index.ts",
   integrity: {
     kind: "source",
     repository: "git@github.com:beorn/vterm.git",
-    revision: "7e6c993c22b997e0193137bf8e4beca3952947aa",
-    treeOid: "30e32d569a520758827007bb195d54dbc8bf3413",
+    revision: "67dd3960746766ed47e2bb4b2ced6503a78549cc",
+    treeOid: "e9d67d4b4ba7cb4caf0d0824b3b272c10e4b229e",
     cleanTree: true,
   },
   runtimeFormat: "js",
@@ -1264,12 +1264,12 @@ test.each(geometryReplies)(
         treeOid: "617ae6002c7befea7b3e43d11bf23e6b433e3d65",
       },
     }
-    const pinned = "review pinned to vterm 0.10.1 7e6c993c22b9 tree 30e32d569a52"
+    const pinned = "review pinned to vterm 0.10.1 67dd39607467 tree e9d67d4b4ba7"
     for (const [runtimeIdentity, side] of [
       [loaded, "loaded vterm 0.9.0 53a9eb92aa11 tree 617ae6002c7b"],
       [
         { ...geometryRuntime, integrity: { ...geometryRuntime.integrity, cleanTree: false } },
-        "loaded vterm 0.10.1 7e6c993c22b9 tree 30e32d569a52 dirty",
+        "loaded vterm 0.10.1 67dd39607467 tree e9d67d4b4ba7 dirty",
       ],
     ] as const) {
       const result = callback(id).headless({ feedCapture: () => raw, runtimeIdentity } as unknown as LibProbeSource)

@@ -2584,13 +2584,13 @@ describe("Alacritty audited OSC source review", () => {
             { path: "packages/vterm/src/backend.ts", blobOid: "5d27c551161fe41af00ac587bd9484d6becbbc7a" },
           ],
           adapterVersion: "0.10.2",
-          termlessRevision: "2d97417328b7b1d086f9396b9a1731216ed134cc",
+          termlessRevision: "a871f0e580e1b02fb5dbb7ed854f6de623e7858e",
           resolvedPath: "vendor/vterm/packages/vterm/src/index.ts",
           integrity: {
             kind: "source",
             repository: "git@github.com:beorn/vterm.git",
-            revision: "7e6c993c22b997e0193137bf8e4beca3952947aa",
-            treeOid: "30e32d569a520758827007bb195d54dbc8bf3413",
+            revision: "67dd3960746766ed47e2bb4b2ced6503a78549cc",
+            treeOid: "e9d67d4b4ba7cb4caf0d0824b3b272c10e4b229e",
             cleanTree: true,
           },
         },
@@ -2598,7 +2598,7 @@ describe("Alacritty audited OSC source review", () => {
       }),
     )
     expect(result.tests?.[0]?.reason).toBe(
-      "vterm 7e6c993c22b997e0193137bf8e4beca3952947aa packages/vterm/src/screen.ts:3587-4046 handleOSC switch; screen.ts:3912-3914 notification sink stores every OSC 9 value, with no progress subcode or state interpretation; independent source review required",
+      "vterm 67dd3960746766ed47e2bb4b2ced6503a78549cc packages/vterm/src/screen.ts:3608-4067 handleOSC switch; screen.ts:3933-3935 notification sink stores every OSC 9 value, with no progress subcode or state interpretation; independent source review required",
     )
   })
 })
