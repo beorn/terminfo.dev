@@ -4025,10 +4025,10 @@ describe("extensions without a complete behavior oracle", () => {
       runtimeFormat: "js",
       engineVersion: "6.0.0",
       adapterVersion: "0.10.2",
-      termlessRevision: "84003d2c91610fe2743142675234a0fb3ec9cf1d",
+      termlessRevision: "9f0d4a5cbbeb2b7d9263ef7e07699df16a1cafc7",
       adapterSources: [
         { path: "packages/xtermjs/src/index.ts", blobOid: "550e10110ec2baaf326d2958319b03ee8208feba" },
-        { path: "packages/xtermjs/src/backend.ts", blobOid: "fbbb344f113d5b57bbb5dd429ed97c46b6cfa6e9" },
+        { path: "packages/xtermjs/src/backend.ts", blobOid: "72dc827b2026af7736de722f7ff986a04f3fe883" },
       ],
       resolvedPath: "/fixture/@xterm/headless/lib-headless/xterm-headless.js",
       integrity: {

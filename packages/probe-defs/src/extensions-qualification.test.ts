@@ -55,10 +55,10 @@ const xtermOscIdentity = {
   runtimeFormat: "js",
   engineVersion: "6.0.0",
   adapterVersion: "0.10.2",
-  termlessRevision: "84003d2c91610fe2743142675234a0fb3ec9cf1d",
+  termlessRevision: "9f0d4a5cbbeb2b7d9263ef7e07699df16a1cafc7",
   adapterSources: [
     { path: "packages/xtermjs/src/index.ts", blobOid: "550e10110ec2baaf326d2958319b03ee8208feba" },
-    { path: "packages/xtermjs/src/backend.ts", blobOid: "fbbb344f113d5b57bbb5dd429ed97c46b6cfa6e9" },
+    { path: "packages/xtermjs/src/backend.ts", blobOid: "72dc827b2026af7736de722f7ff986a04f3fe883" },
   ],
   resolvedPath: "node_modules/.bun/@xterm+headless@6.0.0/node_modules/@xterm/headless/lib-headless/xterm-headless.js",
   integrity: {
@@ -470,7 +470,7 @@ test.each([
     "foreign",
     ...(engine === "vt220" ? ["wrong-package"] : []),
     ...(engine === "xtermjs"
-      ? ["changed-lock", "wrong-version", "wrong-adapter"]
+      ? ["changed-lock", "wrong-version", "wrong-adapter", "old-adapter"]
       : ["changed-source", "changed-tree", "wrong-version", "dirty"]),
   ]
   for (const mode of modes) {
@@ -480,6 +480,16 @@ test.each([
         ...identity,
         engineVersion: mode === "wrong-version" ? "6.0.1" : identity.engineVersion,
         adapterVersion: mode === "wrong-adapter" ? "foreign" : identity.adapterVersion,
+        adapterSources:
+          mode === "old-adapter"
+            ? identity.adapterSources.map((source) => ({
+                ...source,
+                blobOid:
+                  source.path === "packages/xtermjs/src/backend.ts"
+                    ? "fbbb344f113d5b57bbb5dd429ed97c46b6cfa6e9"
+                    : source.blobOid,
+              }))
+            : identity.adapterSources,
         resolvedPath: mode === "foreign" ? "another-engine.ts" : identity.resolvedPath,
         integrity:
           identity.integrity.kind === "source"
