@@ -508,11 +508,7 @@ test.each([
           id: "review",
           status: "test-failure",
           reason: expect.stringContaining(
-            engine === "xtermjs"
-              ? "17a90b65"
-              : engine === "vterm" || engine === "vt220"
-                ? "67dd3960"
-                : "bd3d32ae",
+            engine === "xtermjs" ? "17a90b65" : engine === "vterm" || engine === "vt220" ? "67dd3960" : "bd3d32ae",
           ),
         },
       ])

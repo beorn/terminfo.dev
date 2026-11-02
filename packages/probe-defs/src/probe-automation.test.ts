@@ -4982,9 +4982,7 @@ describe("partial probe automation candidates", () => {
         engineVersion: "0.10.1",
         adapterVersion: "0.10.2",
         termlessRevision:
-          engine === "vt220"
-            ? "a871f0e580e1b02fb5dbb7ed854f6de623e7858e"
-            : "2d97417328b7b1d086f9396b9a1731216ed134cc",
+          engine === "vt220" ? "a871f0e580e1b02fb5dbb7ed854f6de623e7858e" : "2d97417328b7b1d086f9396b9a1731216ed134cc",
         resolvedPath: `vendor/vterm/packages/${engine}/src/index.ts`,
         integrity: {
           kind: "source",

@@ -141,8 +141,8 @@ source identity (revisionbd3d32ae, package tree1eaac257, vt100 entry path). Its 
 at screen.ts:504-520 has cases0/1/2 only. The OSC9 notification-sink citation is specific to the
 vterm entry; vt100 records its own absent-handler citation. These paths retain a pending source
 review, never an automatic grade or a measured target effect.
-The vt220 0.10.1 arms qualify the same nine commands at revisionbd3d32ae, package
-treed504616a and the vt220 entry path. Its screen.ts:703-718 handleOSC returns
+The vt220 0.10.1 arms qualify the same nine commands at revision67dd3960746766ed47e2bb4b2ced6503a78549cc, package
+treefc6ff58f and the vt220 entry path. Its screen.ts:700-715 handleOSC returns
 without a semicolon and otherwise handles only cases0/1/2. Its OSC9 records the
 generic absent-handler citation, never vterm's notification-sink citation.
 Other identities keep named coverage, and a missing X grants no source-review negative.
