@@ -1226,7 +1226,7 @@ const ABSENT_OSC_ENGINES = {
     engineVersion: "6.0.0",
     adapterVersion: "0.10.2",
     lockIntegrity: "sha512-5Yj1QINYCyzrZtf8OFIHi47iQtI+0qYFPHmouEfG8dHNxbZ9Tb9YGSuLcsEwj9Z+OL75GJqPyJbyoFer80a2Hw==",
-    codes: [9, 17, 19, 22, 117, 119, 176, 440, 555, 666, 710, 777, 3008],
+    codes: [7, 9, 17, 19, 22, 117, 119, 176, 440, 555, 666, 710, 777, 3008],
     sourceCitation:
       "@xterm/headless 6.0.0 bundle SHA256 17a90b650cf6b77cce2b98c4063884d43545e4ce177a54b76ccfc906f1aacaed, map SHA256 780e782badc8189491a469c9277b783e01911882ea84417b31e71294ea927d98: InputHandler.ts:292-338 OSC registrations (17/19/117/119 are comments only) and :201-203 logging-only fallback, OscParser.ts:145-146 fallback dispatch, CoreTerminal.ts:236-237 embedder hook; termless 2d97417328b7b1d086f9396b9a1731216ed134cc packages/xtermjs/src/backend.ts registers no OSC handler",
   },
@@ -4477,6 +4477,14 @@ export const extensionsProbes: ProbeDefinition[] = [
       "extensions.osc7-cwd",
       (ctx) => {
         if (!ctx.getCwd) {
+          if (absentOscAudit(ctx.runtimeIdentity, 7)) {
+            return sourceAbsentOsc(
+              "extensions.osc7-cwd",
+              7,
+              "\x1b]7;file://localhost/terminfo-cwd-A\x07",
+              "working-directory",
+            )(ctx)
+          }
           const note = "Declared OSC 7 capability does not establish working-directory metadata delivery"
           return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
             declared: ctx.capabilities.extensions.has("osc7"),

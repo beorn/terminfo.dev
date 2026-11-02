@@ -4018,6 +4018,49 @@ describe("Kitty protocol detection", () => {
  * @testonly none
  */
 describe("extensions without a complete behavior oracle", () => {
+  // O3: an audited source-negative identity must never override an actual CWD reader.
+  test("OSC7 metadata readback wins over the xtermjs source audit and restores the baseline", () => {
+    const runtimeIdentity = {
+      kind: "js",
+      runtimeFormat: "js",
+      engineVersion: "6.0.0",
+      adapterVersion: "0.10.2",
+      termlessRevision: "84003d2c91610fe2743142675234a0fb3ec9cf1d",
+      adapterSources: [
+        { path: "packages/xtermjs/src/index.ts", blobOid: "550e10110ec2baaf326d2958319b03ee8208feba" },
+        { path: "packages/xtermjs/src/backend.ts", blobOid: "fbbb344f113d5b57bbb5dd429ed97c46b6cfa6e9" },
+      ],
+      resolvedPath: "/fixture/@xterm/headless/lib-headless/xterm-headless.js",
+      integrity: {
+        kind: "registry",
+        lockIntegrity:
+          "sha512-5Yj1QINYCyzrZtf8OFIHi47iQtI+0qYFPHmouEfG8dHNxbZ9Tb9YGSuLcsEwj9Z+OL75GJqPyJbyoFer80a2Hw==",
+      },
+    } as const
+    let cwd = "file://localhost/original"
+    const result = probe("extensions.osc7-cwd").lib!(
+      context({
+        runtimeIdentity,
+        getCwd: () => cwd,
+        feed: (bytes) => {
+          const match = /^\x1b\]7;(.*)\x07$/.exec(bytes)
+          if (!match) throw new Error(`Unexpected OSC7 fixture write: ${JSON.stringify(bytes)}`)
+          cwd = match[1]!
+        },
+      }),
+    )
+    expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
+    expect(result.assertions).toMatchObject([{ kind: "positive", observed: result.response }])
+    expect(JSON.parse(result.response!)).toMatchObject({
+      before: "file://localhost/original",
+      first: "file://localhost/terminfo-cwd-A",
+      second: "file://localhost/terminfo-cwd-B",
+      restored: "file://localhost/original",
+    })
+    expect(cwd).toBe("file://localhost/original")
+    expect(result.criterionBranch).toBeUndefined()
+  })
+
   const declaredIds = [
     "extensions.kitty-graphics.animation",
     "extensions.kitty-graphics.unicode-placeholders",

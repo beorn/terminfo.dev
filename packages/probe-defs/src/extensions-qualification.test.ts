@@ -121,6 +121,7 @@ const auditedArtifacts: readonly HeadlessRuntimeIdentity[] = [
 // Source-audit callback fixtures; libvterm follows the current rebuilt artifact, not a retained capture.
 // The existing two-artifact checks cover OSC8/alacritty440, so they miss this absent-row/code batch.
 const absentOscBatch = [
+  { engine: "xtermjs", identity: xtermOscIdentity, codes: [7] },
   { engine: "libvterm", identity: auditedArtifacts[1]!, codes: [9, 22, 176, 3008, 440, 555, 666, 710, 777] },
   {
     engine: "ghostty",
@@ -202,6 +203,7 @@ test.each(absentOscBatch)(
   "$engine source-negative OSC batch requires the exact engine, adapter and X control",
   ({ identity, codes }) => {
     const features: Record<number, string> = {
+      7: "osc7-cwd",
       9: "osc9-progress",
       22: "osc22-pointer",
       176: "osc176-app-id",
@@ -217,6 +219,7 @@ test.each(absentOscBatch)(
       const run = (runtimeIdentity: HeadlessRuntimeIdentity, char = "X") =>
         definition.lib!({
           runtimeIdentity,
+          capabilities: { extensions: new Set() },
           feed: () => undefined,
           getCell: () => ({ char }),
         } as unknown as LibProbeSource)
@@ -391,6 +394,7 @@ test.each([
   ["extensions.osc777-notify", "\x1b]777;notify;test;body\x07", "vterm"],
   ["extensions.osc3008-context", "\x1b]3008;type=test\x07", "vterm"],
   ["extensions.osc9-progress", "\x1b]9;4;1;50\x07", "xtermjs"],
+  ["extensions.osc7-cwd", "\x1b]7;file://localhost/terminfo-cwd-A\x07", "xtermjs"],
   ["extensions.osc22-pointer", "\x1b]22;pointer\x07", "xtermjs"],
   ["extensions.osc176-app-id", "\x1b]176;terminfo-test\x07", "xtermjs"],
   ["extensions.osc440-audio", "\x1b]440;bell.wav\x07", "xtermjs"],
@@ -495,6 +499,7 @@ test.each([
                 lockIntegrity: mode === "changed-lock" ? "foreign" : identity.integrity.lockIntegrity,
               },
       },
+      capabilities: { extensions: new Set() },
       feed: (bytes: string) => writes.push(bytes),
       getCell: () => ({ char: mode === "no-sentinel" ? " " : "X" }),
     } as unknown as LibProbeSource
@@ -545,6 +550,11 @@ test.each([
         expect(result.tests?.[0]?.reason).not.toContain("3921-3923")
         if (id === "extensions.osc9-progress") expect(result.tests?.[0]?.reason).toContain("no case 9")
       }
+    } else if (id === "extensions.osc7-cwd" && mode !== "no-sentinel") {
+      expect(result.criterionBranch).toBe("headless-observable-review")
+      expect(result.tests).toMatchObject([{ id: "review", status: "test-todo" }])
+      expect(result.assertions).toBeUndefined()
+      expect(writes).toEqual([])
     } else {
       expect(result.criterionBranch, `${engine}: ${mode}`).toBeUndefined()
       expect(result.assertions).toBeUndefined()
