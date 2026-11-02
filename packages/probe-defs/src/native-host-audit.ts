@@ -41,6 +41,23 @@ export const NATIVE_HOST_AUDITS: ReadonlyMap<string, NativeHostSourceCitations> 
       },
     },
   ],
+  // #31295 mouse-state rebuild (two clean builds, identical receipts): callbacks and reply path byte-identical to
+  // 27297cf2, re-read at 286fddf6. The S6 rows below stay for the pre-binding artifact.
+  [
+    "84a5b6a3a40a7c16c6bae8b64534b730403df911498bb34bded68c3a17e2d408",
+    {
+      "clipboard-load": {
+        kind: "unimplemented",
+        citation:
+          "vt100 0.16.2 src/perform.rs:212-221 dispatches OSC 52 '?' to paste_from_clipboard; termless 286fddf6 packages/vt100-rust/native/src/lib.rs:50-53 records only paste_selector and writes no reply bytes",
+      },
+      "text-area-size": {
+        kind: "unimplemented",
+        citation:
+          "vt100 0.16.2 src/perform.rs:132-156 handles only CSI 8 t, forwarding CSI 14 t to the empty src/callbacks.rs:55-63 unhandled_csi; termless 286fddf6 packages/vt100-rust/native/src/lib.rs:21-54 installs no override or reply writer",
+      },
+    },
+  ],
   // S6 native mode-readback rebuilds: their independent two-checkout receipts bind these source audits.
   [
     "dc3b24de6e91416f66b1953ce101991ef7e78602ce1b5d357f65832c9b96b326",

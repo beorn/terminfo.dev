@@ -158,13 +158,13 @@ const absentOscBatch = [
     {
       engine: "vt100Rust",
       engineVersion: "0.16.2",
-      sha256: "dc3b24de6e91416f66b1953ce101991ef7e78602ce1b5d357f65832c9b96b326",
-      sourceCommit: "27297cf2a4a4e21b41ca3aafc7bc87ac36086fdf",
-      buildHash: "d5079c0f2a27be41c9a3f6b152d62da2bbf82fd189fdfb487b5a0c8b3ed8a654",
+      sha256: "84a5b6a3a40a7c16c6bae8b64534b730403df911498bb34bded68c3a17e2d408",
+      sourceCommit: "286fddf6632e43ccd62f9050be41ec7b2908e43e",
+      buildHash: "30b232d295488042b0d6164e881e319dea8d7fae06ac766b3b568fd4832bf074",
       lockSha256: "4cf037e4efa648ca41d08b30ef5c4ce7ada29ad61fcad45a7d1aa97bf55391c6",
       adapterSources: [
         { path: "packages/vt100-rust/src/index.ts", blobOid: "3ddb74f3ae1f79bb356952103853232f69211268" },
-        { path: "packages/vt100-rust/src/backend.ts", blobOid: "abbbfd01d9e6ac880e02b00d9acccdc9ec70bc63" },
+        { path: "packages/vt100-rust/src/backend.ts", blobOid: "9b3477c0fedf8586430781e8f4d17019569af98b" },
       ],
       codes: [9, 22, 176, 3008, 440, 555, 666, 710, 777],
     },
@@ -274,6 +274,54 @@ test("ghostty OSC source review lapses on the pre-mouse-binding backend blob", (
       } as unknown as LibProbeSource)
     expect(run(ghostty.identity).criterionBranch, String(code)).toBe("source-negative-review")
     expect(run(old).criterionBranch, String(code)).not.toBe("source-negative-review")
+  }
+})
+
+// G3 (#31295): the vt100 audit moved to the mouse-state rebuild (artifact 84a5b6a3, backend blob 9b3477c0); the
+// pre-binding artifact and blob must no longer reach any vt100 source-negative OSC review. The batch above proves the
+// current identity does.
+test("vt100Rust OSC source review lapses on the pre-mouse-binding artifact and backend blob", () => {
+  const vt100 = absentOscBatch.find((entry) => entry.engine === "vt100Rust")!
+  const identity = vt100.identity
+  if (identity.kind !== "native" || !identity.adapterSources) {
+    throw new Error("vt100Rust fixture identity must be native and declare its adapter sources")
+  }
+  const oldSha = "dc3b24de6e91416f66b1953ce101991ef7e78602ce1b5d357f65832c9b96b326"
+  const oldBlob = {
+    ...identity,
+    adapterSources: identity.adapterSources.map((source) =>
+      source.path === "packages/vt100-rust/src/backend.ts"
+        ? { ...source, blobOid: "abbbfd01d9e6ac880e02b00d9acccdc9ec70bc63" }
+        : source,
+    ),
+  }
+  const oldBinary = {
+    ...identity,
+    loadedBinary: { ...identity.loadedBinary, sha256: oldSha },
+    provenance: { ...identity.provenance, sha256: oldSha },
+  }
+  const features: Record<number, string> = {
+    9: "osc9-progress",
+    22: "osc22-pointer",
+    176: "osc176-app-id",
+    3008: "osc3008-context",
+    440: "osc440-audio",
+    555: "osc555-flash",
+    666: "osc666-termprop",
+    710: "osc710-font-normal",
+    777: "osc777-notify",
+  }
+  for (const code of vt100.codes) {
+    const run = (runtimeIdentity: HeadlessRuntimeIdentity) =>
+      callback(`extensions.${features[code]}`).lib!({
+        runtimeIdentity,
+        capabilities: { extensions: new Set() },
+        feed: () => undefined,
+        getCell: () => ({ char: "X" }),
+      } as unknown as LibProbeSource)
+    expect(run(vt100.identity).criterionBranch, String(code)).toBe("source-negative-review")
+    expect(run(oldBlob).criterionBranch, String(code)).not.toBe("source-negative-review")
+    expect(run(oldBinary).criterionBranch, String(code)).not.toBe("source-negative-review")
   }
 })
 
