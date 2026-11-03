@@ -417,7 +417,7 @@ const UNDERLINE_STYLE_IDS = [
   "sgr.underline.dashed",
 ]
 it.each(CURRENT_UNDERLINE_INPUTS)(
-  "qualifies the current $engine underline negatives while leaving SGR59 pending",
+  "qualifies the exact $engine underline own-source negatives",
   async ({ engine, input }) => {
     const { resolveMeasuredSourceAnswer } = await import("./source-answers.ts")
     const styles = engine === "libvterm" ? UNDERLINE_STYLE_IDS.slice(2) : UNDERLINE_STYLE_IDS
@@ -427,7 +427,10 @@ it.each(CURRENT_UNDERLINE_INPUTS)(
         status: "unsupported",
       })
     }
-    expect(resolveMeasuredSourceAnswer({ ...input, featureId: "sgr.underline-color-reset" })).toEqual({ kind: "none" })
+    expect(resolveMeasuredSourceAnswer({ ...input, featureId: "sgr.underline-color-reset" })).toMatchObject({
+      kind: "answer",
+      status: "unsupported",
+    })
   },
 )
 
@@ -570,5 +573,60 @@ it.each(["measured", "positive", "other-feature", "missing"])(
       expect(result.tests[0]?.assertionRefs).toEqual([])
       expect(result.reason).toContain("current deciding negative assertion")
     }
+  },
+)
+
+// #32203: a new source-review opportunity must not regrade a historical branch.
+// The source answer proves own no59 dispatch; an absent colour seed is not a buffer negative.
+it.each(["new-qualified", "stored-headless", "unqualified"])(
+  "keeps SGR59 source review separate from stored observability (%s)",
+  async (mode) => {
+    const { finalizeCollectedDraft } = await import("../../terminfo.dev/src/capture-writer.ts")
+    const { parseProbeResults } = await import("./index.ts")
+    const capture = structuredClone(UNDERLINE_RETAINED_CAPTURE)
+    const featureId = "sgr.underline-color-reset"
+    const previous = capture.results[0]!
+    capture.results = [{
+      featureId,
+      attempt: previous.attempt,
+      criterionBranch: mode === "stored-headless" ? HEADLESS_OBSERVABLE_REVIEW : "source-negative-review",
+      rawReplyRef: featureId,
+      status: "test-todo",
+      reason: "No distinct colored seed for SGR 59: the setup cell exposes no explicit underline color",
+      tests: [{
+        id: "review",
+        status: "test-todo",
+        attempt: { scope: "none" },
+        assertionRefs: [],
+        rawReplyRef: featureId,
+        reason: "No distinct colored seed for SGR 59: the setup cell exposes no explicit underline color",
+      }],
+    }]
+    capture.rawReplies = { [featureId]: JSON.stringify({
+      baseline: { char: "C", underline: "single", underlineColor: null },
+      before: { char: "X", underline: "single", underlineColor: null },
+      after: { char: "Y", underline: "single", underlineColor: null },
+    }) }
+    capture.assertions = []
+    if (mode === "unqualified") {
+      // A named but unavailable different core cannot use own-version fallback.
+      control.mode = "absent"
+      if (capture.runtimeIdentity?.integrity.kind !== "source") throw new Error("Expected retained source identity")
+      capture.runtimeIdentity.integrity.revision = "0".repeat(40)
+    }
+    const before = structuredClone(capture)
+    const finalized = finalizeCollectedDraft(capture)
+    expect(capture).toEqual(before)
+    expect(finalized.assertions).toEqual([])
+    const result = finalized.results[0]!
+    expect(result.status).toBe(mode === "new-qualified" ? "unsupported" : "test-todo")
+    expect(result.assertionType).toBeUndefined()
+    expect(result.tests[0]?.assertionRefs).toEqual([])
+    expect(result.criterionBranch).toBe(before.results[0]!.criterionBranch)
+    expect(parseProbeResults(
+      finalized.results, "sgr59-source-branch", new Set([featureId]),
+      finalized.rawReplies, finalized.assertions, [], [],
+      { subject: finalized.subject, runtimeIdentity: finalized.runtimeIdentity, sourceRevision: finalized.sourceRevision },
+    )[0]?.status).toBe(mode === "new-qualified" ? "unsupported" : "test-todo")
   },
 )

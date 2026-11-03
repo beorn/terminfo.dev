@@ -432,7 +432,9 @@ test.each(["sgr.fg.default", "sgr.bg.default", "sgr.underline-color-reset"])(
       { char: id === "sgr.underline-color-reset" ? "Y" : "R" },
     ]
     const result = probe.lib!(libProbeSource(cellsModel(cells)))
-    expect(result.criterionBranch).toBe("headless-observable-review")
+    expect(result.criterionBranch).toBe(
+      id === "sgr.underline-color-reset" ? "source-negative-review" : "headless-observable-review",
+    )
     expect(result.tests).toContainEqual(
       expect.objectContaining({
         id: "review",
