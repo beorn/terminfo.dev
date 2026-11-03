@@ -246,7 +246,7 @@ test.each(historyCases)(
     expect(JSON.parse(result.response!), id).toMatchObject({
       sourceCitation: expect.stringContaining("getScrollback"),
     })
-    const citation = JSON.parse(result.response!).sourceCitation
+    const citation = result.response!
     if (runtimeIdentity === currentHistoryRuntime) {
       expect(citation, id).toContain("Termless 2f73fc28")
       expect(citation, id).toContain("flat-api.c")
