@@ -434,16 +434,21 @@ it.each(["missing-cause", "foreign-run", "undeclared-query", "replied-cause"] as
   "rejects altered native host custody: %s",
   (mode) => {
     const { run, read } = nativeCapture("kitty-osc52-harness")
-    const id = run.results[0].featureId
-    const key = `collector.hostRecipes.${id}`
-    const record = JSON.parse(run.rawReplies[key]) as {
+    const result = run.results[0]
+    if (!result) throw new Error("Kitty harness fixture requires a result")
+    const key = `collector.hostRecipes.${result.featureId}`
+    const rawRecord = run.rawReplies[key]
+    if (!rawRecord) throw new Error(`Kitty harness fixture requires ${key}`)
+    const record = JSON.parse(rawRecord) as {
       runId: string
       captures: Array<{ cause?: unknown; response: string; query: string }>
     }
-    if (mode === "missing-cause") delete record.captures[0].cause
+    const capture = record.captures[0]
+    if (!capture) throw new Error("Kitty harness fixture requires a host capture")
+    if (mode === "missing-cause") delete capture.cause
     if (mode === "foreign-run") record.runId = "another-run"
-    if (mode === "replied-cause") record.captures[0].response = "response"
-    if (mode === "undeclared-query") record.captures[0].query = "\\u001b[14t"
+    if (mode === "replied-cause") capture.response = "response"
+    if (mode === "undeclared-query") capture.query = "\\u001b[14t"
     run.rawReplies[key] = JSON.stringify(record)
     expect(() => read(run)).toThrow(/host recipe/i)
   },
@@ -452,12 +457,14 @@ it.each(["missing-cause", "foreign-run", "undeclared-query", "replied-cause"] as
 it.each(["record-only", "row-only", "todo-row"] as const)("rejects unmatched harness evidence: %s", (mode) => {
   const { run, read } = nativeCapture("kitty-osc52-harness")
   const result = run.results[0]
-  if (mode === "record-only") result.tests[0].id = "criterion"
+  const test = result?.tests[0]
+  if (!result || !test) throw new Error("Kitty harness fixture requires a result and harness test")
+  if (mode === "record-only") test.id = "criterion"
   if (mode === "row-only") {
     if (!result.rawReplyRef) throw new Error("Fixture requires a raw reply reference")
     run.rawReplies[result.rawReplyRef] = ""
   }
-  if (mode === "todo-row") result.tests[0].status = "test-todo"
+  if (mode === "todo-row") test.status = "test-todo"
   expect(() => read(run)).toThrow(/unreproduced-callback record/)
 })
 
@@ -465,13 +472,17 @@ it.each(["record-only", "row-only", "todo-row"] as const)("rejects unmatched har
 // retained-capture positives do not mutate those fields independently.
 it("rejects a decided test with no attempt", () => {
   const { run, read } = nativeCapture("kitty-osc52-supplied")
-  run.results[0].tests[0].attempt = { scope: "none" }
+  const test = run.results[0]?.tests[0]
+  if (!test) throw new Error("Kitty supplied fixture requires a decided test")
+  test.attempt = { scope: "none" }
   expect(() => read(run)).toThrow(/decided test.*no attempt/)
 })
 
 it("rejects support without measured evidence", () => {
   const { run, read } = nativeCapture("kitty-osc52-supplied")
-  run.results[0].attempt = { scope: "none" }
+  const result = run.results[0]
+  if (!result) throw new Error("Kitty supplied fixture requires a result")
+  result.attempt = { scope: "none" }
   expect(() => read(run)).toThrow(/support result requires measured evidence/)
 })
 
@@ -482,12 +493,15 @@ it.each(["artifact", "input-digest", "input-name", "source-location"] as const)(
   (mode) => {
     const { run, read } = nativeCapture("alacritty-pixel-geometry")
     const key = "collector.hostRecipes.extensions.osc52-read"
-    const record = JSON.parse(run.rawReplies[key]) as {
+    const rawRecord = run.rawReplies[key]
+    if (!rawRecord) throw new Error(`Alacritty fixture requires ${key}`)
+    const record = JSON.parse(rawRecord) as {
       causes: Array<{
         cause: { artifactSha256: string; citation: { sha256: string; input: string; sourceLocation: string } }
       }>
     }
-    const cause = record.causes[0].cause
+    const cause = record.causes[0]?.cause
+    if (!cause) throw new Error("Alacritty fixture requires a source-audited cause")
     if (mode === "artifact") cause.artifactSha256 = "0".repeat(64)
     if (mode === "input-digest") cause.citation.sha256 = "0".repeat(64)
     if (mode === "input-name") cause.citation.input = "foreground-rgb"
