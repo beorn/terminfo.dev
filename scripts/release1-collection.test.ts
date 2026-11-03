@@ -817,9 +817,7 @@ it.each([
       expect(engine?.status).toBe("not-started")
       expect(engine?.classification).toBeUndefined()
       expect(engine?.error).toMatch(
-        suite === "different"
-          ? /current run requires frozen catalogue membership/
-          : /Collector changed logical runId/,
+        suite === "different" ? /current run requires frozen catalogue membership/ : /Collector changed logical runId/,
       )
 
       expect(engine?.rawRun && readFileSync(engine.rawRun, "utf8")).toBe(bytes)
@@ -1804,15 +1802,29 @@ it.each([
       const host = parseJsonStrict(hostPath, readFileSync(hostPath, "utf8"))
       const container = parseJsonStrict(containerPath, readFileSync(containerPath, "utf8"))
       if (
-        host === null || typeof host !== "object" || Array.isArray(host) ||
-        !("runId" in host) || !("runtime" in host) || !("runnerArtifact" in host)
-      ) throw new Error(`${hostPath}: expected host identity and runtime receipt fields`)
+        host === null ||
+        typeof host !== "object" ||
+        Array.isArray(host) ||
+        !("runId" in host) ||
+        !("runtime" in host) ||
+        !("runnerArtifact" in host)
+      ) {
+        throw new Error(`${hostPath}: expected host identity and runtime receipt fields`)
+      }
       if (
-        container === null || typeof container !== "object" || Array.isArray(container) ||
-        !("collector" in container) || !("runId" in container) || !("executable" in container) ||
-        !("invocation" in container) || !("sourceArtifact" in container) ||
-        !("probeRun" in container) || !("clipboardFixture" in container)
-      ) throw new Error(`${containerPath}: expected container identity and custody receipt fields`)
+        container === null ||
+        typeof container !== "object" ||
+        Array.isArray(container) ||
+        !("collector" in container) ||
+        !("runId" in container) ||
+        !("executable" in container) ||
+        !("invocation" in container) ||
+        !("sourceArtifact" in container) ||
+        !("probeRun" in container) ||
+        !("clipboardFixture" in container)
+      ) {
+        throw new Error(`${containerPath}: expected container identity and custody receipt fields`)
+      }
       expect(host.runId).toBe(retained.runId)
       expect(host.runtime).toEqual({ imageId: "fixture-image", imageTarSha256: "c".repeat(64) })
       expect(host.runnerArtifact).toEqual(container.collector)
@@ -1825,7 +1837,9 @@ it.each([
         sha256: createHash("sha256").update(readFileSync(linux.rawRun!)).digest("hex"),
       })
       expect(container.clipboardFixture).toEqual({
-        runId: retained.runId, profile: "fixture", sha256: "a".repeat(64),
+        runId: retained.runId,
+        profile: "fixture",
+        sha256: "a".repeat(64),
       })
       expect(retained.sealedAt).toBeUndefined()
       expect(existsSync(join(raw, "run-receipt.json"))).toBe(false)

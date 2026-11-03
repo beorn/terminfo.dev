@@ -1358,9 +1358,7 @@ if (import.meta.main) {
                   }),
             },
       )
-      console.log(
-        `Private development pass: ${pass.directory}; cohort ${pass.complete ? "complete" : "incomplete"}`,
-      )
+      console.log(`Private development pass: ${pass.directory}; cohort ${pass.complete ? "complete" : "incomplete"}`)
       for (const row of pass.contexts) {
         console.log(
           `${labelOf(row.context)}: ${row.status}${row.reason || row.error ? ` — ${row.reason ?? row.error}` : ""}`,

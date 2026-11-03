@@ -39,7 +39,6 @@ describe("website build identity", () => {
   it("keeps corpus defaults rooted at the original component content directory", () => {
     const originalContentDir = join(dirname(fileURLToPath(import.meta.url)), "..", "content")
     expect(CONTENT_DIR).toBe(originalContentDir)
-
   })
 
   it("loads the actual VitePress configuration through its production config bundler", async () => {
