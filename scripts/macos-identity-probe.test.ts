@@ -35,9 +35,18 @@ test.each(["matched", "missing-pids", "foreign-argv", "sample-exit", "sample-tim
     const out = join(dir, "measurement-artifacts")
     const workspace = fileURLToPath(new URL("../", import.meta.url))
     const executable = "/Applications/iTerm.app/Contents/MacOS/iTerm2"
+    type NativeObservation = {
+      argv: string[]
+      childPid: number
+      wallMs: number
+      exitCode: number
+      outerTimedOut: boolean
+      stderr: { text: string }
+    }
     const calls: string[][] = []
     const killed: Array<{ pid: number; signal: string }> = []
     let clockAdvance: Promise<unknown> | undefined
+    const diagnostics = vi.spyOn(console, "error").mockImplementation(() => {})
     const stream = (value: string) =>
       new ReadableStream<Uint8Array>({
         start(controller) {
@@ -135,10 +144,20 @@ test.each(["matched", "missing-pids", "foreign-argv", "sample-exit", "sample-tim
       if (clockAdvance) await clockAdvance
       // These older observations must survive even missing logs and failed/timed-out samples.
       for (const label of ["screen", "windows", "log"]) {
-        const row = JSON.parse(await readFile(join(out, `iterm-${label}.json`), "utf8"))
+        const row = JSON.parse(await readFile(join(out, `iterm-${label}.json`), "utf8")) as NativeObservation
         expect(row.exitCode).toBe(0)
       }
-      const evidence = JSON.parse(await readFile(join(out, "iterm-failure-evidence.json"), "utf8"))
+      const evidence = JSON.parse(await readFile(join(out, "iterm-failure-evidence.json"), "utf8")) as {
+        failures: Array<{ label: string }>
+      }
+      if (scenario === "matched") expect(diagnostics).not.toHaveBeenCalled()
+      else {
+        expect(
+          diagnostics.mock.calls.some(
+            (args) => String(args[0]).includes("unmeasured") || String(args[0]).includes("unavailable"),
+          ),
+        ).toBe(true)
+      }
       const samples = calls.filter((argv) => argv[0] === "/usr/bin/sample").map((argv) => argv[1])
       if (scenario === "missing-log" || scenario === "missing-pids") {
         expect(samples).toEqual([])
@@ -153,7 +172,7 @@ test.each(["matched", "missing-pids", "foreign-argv", "sample-exit", "sample-tim
         if (scenario === "foreign-argv") {
           expect(evidence.failures.some((row: { label: string }) => row.label === "collector-sample")).toBe(true)
         } else {
-          const row = JSON.parse(await readFile(join(out, "iterm-collector-sample.json"), "utf8"))
+          const row = JSON.parse(await readFile(join(out, "iterm-collector-sample.json"), "utf8")) as NativeObservation
           expect(row.argv[1]).toBe("2306")
           expect(row.childPid).toBeGreaterThan(9000)
           expect(row.wallMs).toBe(10000)
@@ -175,6 +194,7 @@ test.each(["matched", "missing-pids", "foreign-argv", "sample-exit", "sample-tim
         }
       }
     } finally {
+      diagnostics.mockRestore()
       vi.useRealTimers()
       await rm(dir, { recursive: true, force: true })
     }
