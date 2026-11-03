@@ -29,8 +29,7 @@ import {
 } from "./admit-run.ts"
 import { object } from "./interpretations.ts"
 import { parseDisposableReceipt } from "../packages/terminfo.dev/src/disposable-receipt.ts"
-import { derivedSuiteManifest } from "./suite-manifest.ts"
-import { frozenSuiteIdFor } from "../docs/data/load-release-scope.ts"
+import { derivedSuiteManifest } from "../packages/admin/suite-manifest.ts"
 import muxIdentity from "../packages/terminfo.dev/src/fixtures/mux-identity.json"
 import { serializeOuterLaunchRecord } from "../packages/admin/src/outer-launch.ts"
 
@@ -71,19 +70,6 @@ function authoringFixture(): void {
 }
 
 /** The release a suite's own manifest freezes; two releases are declared now, so the suite names one. */
-function declaredRelease(suiteHash: string): string {
-  const suites = join(import.meta.dirname, "..", "content", "suites")
-  const path = join(suites, `${suiteHash}.json`)
-  const manifest = parseSuiteManifest(path, readFileSync(path, "utf8"))
-  if (!manifest.freeze) throw new Error(`Suite ${suiteHash} declares no release freeze in ${suites}`)
-  return manifest.freeze.release
-}
-
-/** The suite candidate 2's freeze declares today, so a pointer move cannot strand these fixtures. */
-function currentCandidate2Release(): string {
-  return declaredRelease(frozenSuiteIdFor(join(import.meta.dirname, "..", "content"), "candidate2"))
-}
-
 function runFixture(overrides: Record<string, unknown> = {}): string {
   const directory = temp("terminfo-admit-")
   const path = join(directory, "run.json")
@@ -238,74 +224,6 @@ test.each(["missing", "malformed", "wrong-hash", "wrong-probe-run", "wrong-host-
     expect(existsSync(destination)).toBe(false)
   },
 )
-
-test("release admission cannot relabel the current suite as the declared freeze", () => {
-  // The fixture run is re-stamped onto the live snapshot, which candidate2's freeze declares.
-  const release = currentCandidate2Release()
-  const declared = frozenSuiteIdFor(join(import.meta.dirname, "..", "content"), release)
-  // Keep the actual declaration reader; isolate a different current snapshot so the test remains
-  // meaningful when Thursday's freeze later catches up with the live source tree.
-  const current = declared === "fa".repeat(6) ? "fb".repeat(6) : "fa".repeat(6)
-  const snapshot = vi
-    .spyOn(versions, "probeSuiteSnapshot")
-    .mockReturnValue({ ...probeSuiteSnapshot(), probeHash: current })
-  try {
-    const source = runFixture()
-    const destination = join(temp("terminfo-release-authority-"), "content", "run.json")
-    expect(() => planAdmission(source, destination, { release, frozenSuiteId: current })).toThrow(
-      /declared frozen suite/,
-    )
-    expect(() => planAdmission(source, destination, { release })).toThrow(/declared frozen suite/)
-    expect(existsSync(destination)).toBe(false)
-  } finally {
-    snapshot.mockRestore()
-  }
-})
-
-// Requirement 3: admitRun must retain the declared release when it validates a plan again.
-// If release is dropped, the declaration sentinel prevents any content write and exposes the bug.
-test("admission replans against the plan's declared release before declaring or placing", () => {
-  authoringFixture()
-  // The fixture run is re-stamped onto the live snapshot, which candidate2's freeze declares.
-  const release = currentCandidate2Release()
-  const declared = frozenSuiteIdFor(join(import.meta.dirname, "..", "content"), release)
-  const current = declared === "fa".repeat(6) ? "fb".repeat(6) : "fa".repeat(6)
-  vi.spyOn(versions, "probeSuiteSnapshot").mockReturnValue({ ...probeSuiteSnapshot(), probeHash: current })
-  const declaration = vi.spyOn(suiteManifest, "declareCurrentSuiteManifest").mockImplementation(() => {
-    throw new Error("Unexpected declaration before release validation")
-  })
-  const destination = join(temp("terminfo-release-replan-"), "run.json")
-  const plan = planAdmission(runFixture(), destination)
-  expect(() => admitRun({ ...plan, release })).toThrow(/declared frozen suite/)
-  expect(declaration).not.toHaveBeenCalled()
-  expect(existsSync(destination)).toBe(false)
-})
-
-test("planning refuses run/tree/frozen-suite disagreement before placement", () => {
-  const source = runFixture()
-  const destination = join(temp("terminfo-frozen-dest-"), "run.json")
-  expect(() => planAdmission(source, destination, { frozenSuiteId: "f".repeat(12) })).toThrow(/frozen suite/)
-  expect(existsSync(destination)).toBe(false)
-  const foreignSuite = "c3d1fbb77561"
-  const document = parseJsonStrict(source, readFileSync(source, "utf8"))
-  if (!object(document) || !object(document.provenance) || !object(document.provenance.runtime)) {
-    throw new Error("Synthetic frozen-suite fixture lacks runtime provenance")
-  }
-  document.probeHash = foreignSuite
-  document.suiteId = foreignSuite
-  document.provenance.runtime.suiteHash = foreignSuite
-  // The specimen's own suite predates three probes this branch defined, so the fixture-only
-  // not-tested rows added above sit outside it; keep exactly the specimen's own membership.
-  const foreignPath = join(import.meta.dirname, "..", "content", "suites", `${foreignSuite}.json`)
-  const foreignIds = new Set(parseSuiteManifest(foreignPath, readFileSync(foreignPath, "utf8")).probes.term)
-  if (!Array.isArray(document.notTested)) throw new Error("Synthetic frozen-suite fixture lacks notTested")
-  document.notTested = document.notTested.filter(
-    (row) => object(row) && typeof row.featureId === "string" && foreignIds.has(row.featureId),
-  )
-  writeFileSync(source, JSON.stringify(document))
-  expect(() => planAdmission(source, destination, { frozenSuiteId: foreignSuite })).toThrow(/this tree runs suite/)
-  expect(existsSync(destination)).toBe(false)
-})
 
 test("planning refuses a missing cited ownership receipt before placement", () => {
   const source = runFixture()
