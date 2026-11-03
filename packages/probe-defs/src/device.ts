@@ -332,6 +332,14 @@ const DECRQSS_DECSCL: DeviceReply = {
  */
 const TITLE_STACK_UNIMPLEMENTED_AUDITS: ReadonlyMap<string, string> = new Map([
   [
+    "42e84af1b38be94571974a23fa4667c4735ee7a272dcff39afd5cba40dcf48de",
+    "ghostty 5714ed07a1012573261b7b7e3ed2add9c1504496 src/terminal/stream.zig:1826-1839 dispatches .title_push/.title_pop; Termless 2f73fc28027b7d483e504e08edc64d1837935816 vendor/ghostty-web/ghostty-wasm-api.patch:717-719 explicitly ignores both (inner patch SHA256 2a42e7e91ef05b9a24f1809ab243964b9dd9f0f9a01d7a1bd6654b3fc1a0396e); RECEIPT.json binds core archive and actual WASM42e84af1; packages/ghostty/src/backend.ts:376-395 forwards bytes and creates no title stack",
+  ],
+  [
+    "712298aff45c7c53a22dc028b13cb58dae1e984199b520bbbc0475ae64d83159",
+    "libvterm 9d6d2112335080312ef8c36667fa717ded4f7daf/v0.3.3 src/state.c:978-1544 on_csi has no final t, src/vterm_internal.h:55-174 has no title stack; Termless 2f73fc28027b7d483e504e08edc64d1837935816 packages/libvterm/build/flat-api.c:139-152 holds only current title/staging and installs no unrecognised fallback; src/backend.ts:263-295 forwards native input; libvterm.wasm.receipt.json binds WASM712298af and flat API SHA2561e65f7e53d482b47fc08c5e324e26529079b5f9aa2ba0894d77608e12290c48e",
+  ],
+  [
     "3c2398d5c537d9c10e86b0af69311977927fcdbe4738618df194cedbdd22574d",
     "ghostty 5714ed07a1012573261b7b7e3ed2add9c1504496 src/terminal/stream.zig:1825-1843 dispatches .title_push and .title_pop; src/termio/stream_handler.zig:343-346 has .title_push, .title_pop => {} // Unimplemented, and termless vendor/ghostty-web/ghostty-wasm-api.patch:713-714 (inner patch sha256 a4b6fc33, WASM 1f23e13d, #32057) keeps .title_push and .title_pop as no-ops",
   ],

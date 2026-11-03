@@ -126,7 +126,35 @@ const auditedArtifacts: readonly HeadlessRuntimeIdentity[] = [
 // The existing two-artifact checks cover OSC8/alacritty440, so they miss this absent-row/code batch.
 const absentOscBatch = [
   { engine: "xtermjs", identity: xtermOscIdentity, codes: [7] },
-  { engine: "libvterm", identity: auditedArtifacts[1]!, codes: [9, 22, 176, 3008, 440, 555, 666, 710, 777] },
+  {
+    engine: "libvterm",
+    identity: {
+      kind: "js",
+      runtimeFormat: "wasm",
+      engineVersion: "0.3.3",
+      adapterVersion: "0.10.2",
+      termlessRevision: "2f73fc28027b7d483e504e08edc64d1837935816",
+      resolvedPath: "/fixture/libvterm/index.ts",
+      integrity: {
+        kind: "source",
+        repository: "git@github.com:beorn/termless.git",
+        revision: "2f73fc28027b7d483e504e08edc64d1837935816",
+        treeOid: "000404fd8b8f8f0b1b968bf7398f8afc90958618",
+        cleanTree: true,
+      },
+      loadedBinary: {
+        path: "/fixture/libvterm.wasm",
+        sha256: "712298aff45c7c53a22dc028b13cb58dae1e984199b520bbbc0475ae64d83159",
+      },
+      adapterSources: [
+        { path: "packages/libvterm/src/index.ts", blobOid: "2b4708b1081e701b99893ca055ded781dc46cf25" },
+        { path: "packages/libvterm/src/backend.ts", blobOid: "f0431b2b3b1824d3028e7a039d55278d2cddc0e8" },
+        { path: "packages/libvterm/src/wasm-bindings.ts", blobOid: "55ddc684464e525e63cd523d2d6a638c4c6dbcd9" },
+        { path: "packages/libvterm/wasm/libvterm.js", blobOid: "d28bc97333d33129c7c9764a331a3d47f088f7b3" },
+      ],
+    },
+    codes: [9, 22, 176, 3008, 440, 555, 666, 710, 777],
+  },
   {
     engine: "ghostty",
     identity: {
@@ -134,22 +162,22 @@ const absentOscBatch = [
       runtimeFormat: "wasm",
       engineVersion: "0.4.0",
       adapterVersion: "0.10.2",
-      termlessRevision: "f736cce493439cf9d651297c2a920cb61fa05fb5",
+      termlessRevision: "2f73fc28027b7d483e504e08edc64d1837935816",
       resolvedPath: "/fixture/ghostty/index.js",
       integrity: {
         kind: "source",
         repository: "git@github.com:beorn/termless.git",
-        revision: "f736cce493439cf9d651297c2a920cb61fa05fb5",
-        treeOid: "d5302357ba7d86ae224d0b72acefb045e2fe5d81",
+        revision: "2f73fc28027b7d483e504e08edc64d1837935816",
+        treeOid: "ad3571a518e9e672e102eb83becc2caa03b9ffc3",
         cleanTree: true,
       },
       loadedBinary: {
         path: "/fixture/ghostty.wasm",
-        sha256: "3c2398d5c537d9c10e86b0af69311977927fcdbe4738618df194cedbdd22574d",
+        sha256: "42e84af1b38be94571974a23fa4667c4735ee7a272dcff39afd5cba40dcf48de",
       },
       adapterSources: [
         { path: "packages/ghostty/src/index.ts", blobOid: "f4b9d9f3e13cc515b23abc739cab21bf971e8585" },
-        { path: "packages/ghostty/src/backend.ts", blobOid: "560146d5f929f31a8f973f809d97f91cf0e23fd6" },
+        { path: "packages/ghostty/src/backend.ts", blobOid: "19d45e37b36c0d6fc8d69ae6215ece9db173351c" },
       ],
     },
     codes: [176, 3008, 440, 555, 666, 710],
