@@ -1780,7 +1780,10 @@ export function sourceTreeDrift(
   }
 }
 
-const VTERM_GEOMETRY_REVISION = "67dd3960746766ed47e2bb4b2ced6503a78549cc"
+const VTERM_GEOMETRY_REVISIONS: readonly string[] = [
+  "67dd3960746766ed47e2bb4b2ced6503a78549cc",
+  "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+]
 
 /**
  * The geometry gate's identity miss: the audited subject loaded at another source identity. The disposition stays
@@ -1792,12 +1795,14 @@ function vtermGeometryIdentityMiss(
 ): ProbeCallbackResult {
   const side = (identity: { engineVersion: string; revision: string; treeOid: string }) =>
     `vterm ${identity.engineVersion} ${identity.revision.slice(0, 12)} tree ${identity.treeOid.slice(0, 12)}`
-  const pinned = {
-    engineVersion: SOURCE_TREE_AUDITS.vterm.engineVersion,
-    revision: VTERM_GEOMETRY_REVISION,
-    treeOid: SOURCE_TREE_AUDITS.vterm.treeOid,
-  }
-  const note = `review pinned to ${side(pinned)}; loaded ${side(loaded)}${loaded.cleanTree ? "" : " dirty"}; no review applies at this identity`
+  const pinned = VTERM_GEOMETRY_REVISIONS.map((revision) =>
+    side({
+      engineVersion: SOURCE_TREE_AUDITS.vterm.engineVersion,
+      revision,
+      treeOid: SOURCE_TREE_AUDITS.vterm.treeOid,
+    }),
+  ).join(" or ")
+  const note = `review pinned to ${pinned}; loaded ${side(loaded)}${loaded.cleanTree ? "" : " dirty"}; no review applies at this identity`
   if (!("observation" in measured) || measured.observation === undefined) {
     throw new Error("vterm geometry identity miss requires the measured inconclusive observation")
   }
@@ -1826,7 +1831,7 @@ export function vtermGeometryReview(
   }
   if (
     !identity.integrity.cleanTree ||
-    identity.integrity.revision !== VTERM_GEOMETRY_REVISION ||
+    !VTERM_GEOMETRY_REVISIONS.includes(identity.integrity.revision) ||
     identity.integrity.treeOid !== SOURCE_TREE_AUDITS.vterm.treeOid
   ) {
     return vtermGeometryIdentityMiss(measured, { engineVersion: identity.engineVersion, ...identity.integrity })
