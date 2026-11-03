@@ -99,13 +99,38 @@ export interface CurrentAggregate {
   complete: boolean
 }
 
-export function aggregateCurrentResults(
-  results: readonly Pick<ProbeResult, "featureId" | "status">[],
-  catalogIds: readonly string[],
-): CurrentAggregate {
-  if (!catalogIds.length || new Set(catalogIds).size !== catalogIds.length) {
-    throw new Error("Current aggregate requires a nonempty unique frozen catalogue")
-  }
+export interface FamilyRollup {
+  readonly family: string
+  readonly positions: number
+  readonly environmentPositions: number
+  readonly counts: Record<ProbeStatus, number>
+  readonly decided: number
+  readonly open: number
+  readonly donePct: number
+}
+
+export interface TerminalStatusRollup {
+  readonly positions: number
+  readonly environmentPositions: number
+  readonly counts: Record<ProbeStatus, number>
+  readonly decisive: number
+  readonly decided: number
+  readonly open: number
+  readonly donePct: number
+  readonly supportedPct: number | null
+  readonly completenessTier: 0 | 1 | 2 | 3
+  readonly families: Record<string, FamilyRollup>
+}
+
+/**
+ * The single status-and-rollup computation over one terminal's recorded statuses (Phase 2.4):
+ * folds the graded positions (`gradedFeatureIds`) into the five status counts, family rollups,
+ * decisive/decided/open sums, percentages, and four-way completeness tier.
+ */
+export function rollupTerminalStatuses(
+  statuses: Readonly<Record<string, string>>,
+  catalogIds: readonly string[] = Object.keys(statuses),
+): TerminalStatusRollup {
   const counts: Record<ProbeStatus, number> = {
     supported: 0,
     unsupported: 0,
@@ -113,6 +138,90 @@ export function aggregateCurrentResults(
     "test-todo": 0,
     "test-failure": 0,
   }
+  const familyAcc = new Map<
+    string,
+    { positions: number; environmentPositions: number; counts: Record<ProbeStatus, number> }
+  >()
+  const ensureFamily = (family: string) => {
+    let entry = familyAcc.get(family)
+    if (!entry) {
+      entry = {
+        positions: 0,
+        environmentPositions: 0,
+        counts: { supported: 0, unsupported: 0, untestable: 0, "test-todo": 0, "test-failure": 0 },
+      }
+      familyAcc.set(family, entry)
+    }
+    return entry
+  }
+
+  // D132 B (#30917): grading covers the graded ids only. The nine environment groups stay in the
+  // catalogue, but they are not features and a run cannot grade them, so they are tracked as
+  // ungraded environmentPositions, never as TEST TODO.
+  const envIds = environmentGroupIds(catalogIds)
+  for (const id of envIds) {
+    ensureFamily(id.split(".")[0] ?? id).environmentPositions++
+  }
+  const gradedIds = gradedFeatureIds(catalogIds)
+  for (const id of gradedIds) {
+    const status = statuses[id]
+    if (!status || !PROBE_STATUSES.includes(status as ProbeStatus)) {
+      throw new Error(`Invalid stored current status for ${id}`)
+    }
+    const probeStatus = status as ProbeStatus
+    counts[probeStatus]++
+    const familyEntry = ensureFamily(id.split(".")[0] ?? id)
+    familyEntry.positions++
+    familyEntry.counts[probeStatus]++
+  }
+
+  const positions = gradedIds.length
+  const environmentPositions = envIds.length
+  const decisive = decisiveCells(counts)
+  const decided = decisive + counts.untestable
+  const open = counts["test-todo"] + counts["test-failure"]
+  const donePct = positions === 0 ? 0 : Math.round((100 * decided) / positions)
+  const supportedPct = decisive === 0 || positions === 0 ? null : Math.round((100 * counts.supported) / positions)
+  const completenessTier: 0 | 1 | 2 | 3 =
+    positions === 0 ? 0 : counts["test-todo"] > 0 ? 1 : counts["test-failure"] > 0 ? 2 : 3
+
+  const families: Record<string, FamilyRollup> = {}
+  for (const [family, entry] of familyAcc) {
+    const famDecided = entry.counts.supported + entry.counts.unsupported + entry.counts.untestable
+    const famOpen = entry.counts["test-todo"] + entry.counts["test-failure"]
+    families[family] = {
+      family,
+      positions: entry.positions,
+      environmentPositions: entry.environmentPositions,
+      counts: entry.counts,
+      decided: famDecided,
+      open: famOpen,
+      donePct: entry.positions === 0 ? 0 : Math.round((100 * famDecided) / entry.positions),
+    }
+  }
+
+  return {
+    positions,
+    environmentPositions,
+    counts,
+    decisive,
+    decided,
+    open,
+    donePct,
+    supportedPct,
+    completenessTier,
+    families,
+  }
+}
+
+export function aggregateCurrentResults(
+  results: readonly Pick<ProbeResult, "featureId" | "status">[],
+  catalogIds: readonly string[],
+): CurrentAggregate {
+  if (!catalogIds.length || new Set(catalogIds).size !== catalogIds.length) {
+    throw new Error("Current aggregate requires a nonempty unique frozen catalogue")
+  }
+  const statuses: Record<string, string> = {}
   const idsByState: Record<ProbeStatus, string[]> = {
     supported: [],
     unsupported: [],
@@ -120,28 +229,26 @@ export function aggregateCurrentResults(
     "test-todo": [],
     "test-failure": [],
   }
-  const byId = new Map(results.map((result) => [result.featureId, result]))
-  if (byId.size !== results.length || results.length !== catalogIds.length || catalogIds.some((id) => !byId.has(id))) {
+  for (const result of results) {
+    statuses[result.featureId] = result.status
+  }
+  if (
+    Object.keys(statuses).length !== results.length ||
+    results.length !== catalogIds.length ||
+    catalogIds.some((id) => !(id in statuses))
+  ) {
     throw new Error("Current results differ from frozen catalogue membership")
   }
-  // D132 B (#30917): grading covers the graded ids only. The nine environment groups stay in the
-  // catalogue — the membership check above still requires all 273 — but they are not features and
-  // a run cannot grade them, so they are counted below as visible ungraded, never as TEST TODO.
-  const gradedIds = gradedFeatureIds(catalogIds)
-  for (const id of gradedIds) {
-    const result = byId.get(id)
-    if (!result || !PROBE_STATUSES.includes(result.status)) {
-      throw new Error(`Invalid stored current status for ${id}`)
-    }
-    counts[result.status]++
-    idsByState[result.status].push(id)
+  const rollup = rollupTerminalStatuses(statuses, catalogIds)
+  for (const id of gradedFeatureIds(catalogIds)) {
+    idsByState[statuses[id] as ProbeStatus].push(id)
   }
   return {
-    denominator: gradedIds.length,
-    counts,
+    denominator: rollup.positions,
+    counts: rollup.counts,
     idsByState,
-    supported: counts.supported,
-    complete: counts["test-todo"] === 0 && counts["test-failure"] === 0,
+    supported: rollup.counts.supported,
+    complete: rollup.open === 0,
   }
 }
 
@@ -160,14 +267,12 @@ export type CompletenessTier = Readonly<{
 
 /** The completeness tier of one library's recorded statuses, keyed by feature id. */
 export function completenessTierOf(statuses: Readonly<Record<string, string>>): CompletenessTier {
-  const graded = gradedFeatureIds(Object.keys(statuses)).map((id) => statuses[id])
-  const todo = graded.filter((status) => status === "test-todo").length
-  const failure = graded.filter((status) => status === "test-failure").length
+  const rollup = rollupTerminalStatuses(statuses)
   return {
-    completenessTier: graded.length === 0 ? 0 : todo > 0 ? 1 : failure > 0 ? 2 : 3,
-    todo,
-    failure,
-    positions: graded.length,
+    completenessTier: rollup.completenessTier,
+    todo: rollup.counts["test-todo"],
+    failure: rollup.counts["test-failure"],
+    positions: rollup.positions,
   }
 }
 
