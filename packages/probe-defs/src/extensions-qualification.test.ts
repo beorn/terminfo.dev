@@ -375,12 +375,83 @@ test("iterm2-images keeps the observable review for a declared-supporting engine
 // #32225: vt100-rust has no DCS handler, so its Sixel cell takes the source-negative review behind the X sentinel.
 // A fake engine that exposes Sixel storage keeps the storage review even on the audited identity, and storage alone
 // never reads as a negative or a pass (CTO a44f1c74); a lapsed identity keeps the observable review.
+const vtermSourceIdentity = (
+  engine: "vt100" | "vt220",
+  treeOid: string,
+  [index, backend]: readonly [string, string],
+): HeadlessRuntimeIdentity => ({
+  kind: "js",
+  runtimeFormat: "js",
+  engineVersion: "0.10.1",
+  adapterVersion: "0.10.2",
+  termlessRevision: "a871f0e580e1b02fb5dbb7ed854f6de623e7858e",
+  resolvedPath: `vendor/vterm/packages/${engine}/src/index.ts`,
+  adapterSources: [
+    { path: `packages/${engine}/src/index.ts`, blobOid: index },
+    { path: `packages/${engine}/src/backend.ts`, blobOid: backend },
+  ],
+  integrity: {
+    kind: "source",
+    repository: "git@github.com:beorn/vterm.git",
+    revision: "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+    treeOid,
+    cleanTree: true,
+  },
+})
+// #32225 increment 4: engines whose audited source drops both DCS q Sixel and OSC 1337.
+const imageAbsentEngines = {
+  vt100: vtermSourceIdentity("vt100", "b941dae48b25ae8825c394750bda5245c9d93dfa", [
+    "99833d737402f9d1d8e3e257e3a255d8aa1facc3",
+    "cdb8be8c5ebbba68a5920cfa4df27c9deb31745a",
+  ]),
+  vt220: vtermSourceIdentity("vt220", "4205f8936ad1848d1029729f3ada888cd61759a8", [
+    "601dd26eb7e753a5396ebdf72f1ef8ee2cc4355f",
+    "7369e3710e36aa649372fd09011ecfdd6ba47c73",
+  ]),
+  alacritty: auditedArtifacts[0]!,
+  xtermjs: xtermOscIdentity as unknown as HeadlessRuntimeIdentity,
+} as const
+
+test.each(Object.entries(imageAbsentEngines))(
+  "iterm2-images takes the %s source-negative review behind the X sentinel",
+  (_engine, identity) => {
+    const run = (runtimeIdentity: HeadlessRuntimeIdentity, char = "X") => {
+      const fed: string[] = []
+      const result = callback("extensions.iterm2-images").lib!({
+        runtimeIdentity,
+        capabilities: { extensions: new Set() },
+        feed: (data: string) => void fed.push(data),
+        getCell: () => ({ char }),
+      } as unknown as LibProbeSource)
+      return { result, fed }
+    }
+    const inert = run(identity)
+    expect(inert.result.criterionBranch).toBe("source-negative-review")
+    expect(inert.result.assertions).toMatchObject([{ assertionType: "buffer_state", kind: "negative" }])
+    expect(inert.fed).toHaveLength(1)
+    expect(inert.fed[0]).toMatch(/^\x1b\[1;1H\x1b\[2K\x1b\]1337;File=inline=1;.*\x07X$/)
+    expect(run(identity, "?").result.assertions).toBeUndefined()
+    expect(run({ ...identity, engineVersion: "wrong" } as HeadlessRuntimeIdentity).result.criterionBranch).not.toBe(
+      "source-negative-review",
+    )
+  },
+)
+
 test.each([
   ["vt100Rust", "vte 0.15.0 src/lib.rs:779-789"],
   ["libvterm", "src/state.c:1897-1911"],
   ["ghostty", "src/terminal/dcs.zig:50-77"],
+  ["vt100", "packages/vt100/src/screen.ts:570-571"],
+  ["vt220", "packages/vt220/src/screen.ts:766-767"],
+  ["alacritty", "src/ansi.rs:1311-1326"],
+  ["xtermjs", "InputHandler.ts:381"],
 ])("sixel takes the %s source-negative review only without Sixel storage", (engine, citation) => {
-  const vt100 = absentOscBatch.find((entry) => entry.engine === engine)!
+  const vt100 = {
+    identity:
+      engine in imageAbsentEngines
+        ? imageAbsentEngines[engine as keyof typeof imageAbsentEngines]
+        : absentOscBatch.find((entry) => entry.engine === engine)!.identity,
+  }
   const sixel = callback("extensions.sixel").lib!
   const run = (runtimeIdentity: HeadlessRuntimeIdentity, char = "X", extra: Partial<LibProbeSource> = {}) => {
     const fed: string[] = []
