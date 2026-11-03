@@ -232,7 +232,9 @@ test.each(historyCases)(
       return
     }
     if (!eligible) {
-      expect(result.notTested?.noObservable ?? "", id).not.toContain("adapter exposes no retained scrollback history count")
+      expect(result.notTested?.noObservable ?? "", id).not.toContain(
+        "adapter exposes no retained scrollback history count",
+      )
       expect(calls, id).toBeGreaterThan(0)
       return
     }

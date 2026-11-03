@@ -1063,50 +1063,53 @@ const geometryReplies = [
 
 // #32246 (operator 2026-11-03): the vterm source-tree geometry audit is gone. A complete zero geometry reply has no
 // same-path control in this run, so it is TEST TODO on every identity; it is never graded from source.
-test.each(geometryReplies)("$id keeps a complete zero geometry reply TEST TODO on any identity", ({ id, raw, positive }) => {
-  const identities = [
-    undefined,
-    geometryRuntime,
-    { ...geometryRuntime, resolvedPath: "foreign/index.ts" },
-    { ...geometryRuntime, runtimeFormat: "wasm" },
-    ...[{ cleanTree: false }, { revision: "foreign" }, { treeOid: "f".repeat(40) }, { repository: "foreign" }].map(
-      (change) => ({ ...geometryRuntime, integrity: { ...geometryRuntime.integrity, ...change } }),
-    ),
-  ]
-  for (const runtimeIdentity of identities) {
-    for (const sentinel of [false, true]) {
-      const ctx = {
-        feedCapture: () => raw,
-        runtimeIdentity,
-        ...(sentinel && {
-          queryWithSentinelOutcome: () => ({
-            raw,
-            rawBase64: Buffer.from(raw).toString("base64"),
-            reason: "sentinel",
-            match: null,
+test.each(geometryReplies)(
+  "$id keeps a complete zero geometry reply TEST TODO on any identity",
+  ({ id, raw, positive }) => {
+    const identities = [
+      undefined,
+      geometryRuntime,
+      { ...geometryRuntime, resolvedPath: "foreign/index.ts" },
+      { ...geometryRuntime, runtimeFormat: "wasm" },
+      ...[{ cleanTree: false }, { revision: "foreign" }, { treeOid: "f".repeat(40) }, { repository: "foreign" }].map(
+        (change) => ({ ...geometryRuntime, integrity: { ...geometryRuntime.integrity, ...change } }),
+      ),
+    ]
+    for (const runtimeIdentity of identities) {
+      for (const sentinel of [false, true]) {
+        const ctx = {
+          feedCapture: () => raw,
+          runtimeIdentity,
+          ...(sentinel && {
+            queryWithSentinelOutcome: () => ({
+              raw,
+              rawBase64: Buffer.from(raw).toString("base64"),
+              reason: "sentinel",
+              match: null,
+            }),
           }),
-        }),
-      } as unknown as LibProbeSource
-      const result = callback(id).headless(ctx)
-      expect(result.notTested).toEqual({
-        reason: "no-semantic-observable",
-        noObservable: "observation not decided: no same-path control in this run",
-      })
-      expect(result.observation).toBeUndefined()
-      expect(result.assertions).toBeUndefined()
-      expect(result.tests).toBeUndefined()
-      expect(result.criterionBranch).toBeUndefined()
-      const state = JSON.parse(result.response!)
-      expect(state).toMatchObject({ raw })
-      expect(state).not.toHaveProperty("sourceCitation")
-      expect(state).not.toHaveProperty("runtimeIdentity")
+        } as unknown as LibProbeSource
+        const result = callback(id).headless(ctx)
+        expect(result.notTested).toEqual({
+          reason: "no-semantic-observable",
+          noObservable: "observation not decided: no same-path control in this run",
+        })
+        expect(result.observation).toBeUndefined()
+        expect(result.assertions).toBeUndefined()
+        expect(result.tests).toBeUndefined()
+        expect(result.criterionBranch).toBeUndefined()
+        const state = JSON.parse(result.response!)
+        expect(state).toMatchObject({ raw })
+        expect(state).not.toHaveProperty("sourceCitation")
+        expect(state).not.toHaveProperty("runtimeIdentity")
+      }
     }
-  }
-  // Only the complete zero frame takes this record; a partial or foreign reply keeps its measured reading.
-  for (const reply of ["", raw.slice(0, 4), "foreign", raw + "foreign", "foreign" + raw]) {
-    const ctx = { feedCapture: () => reply, runtimeIdentity: geometryRuntime } as unknown as LibProbeSource
-    expect(callback(id).headless(ctx).notTested).toBeUndefined()
-  }
-  const ctx = { feedCapture: () => positive, runtimeIdentity: geometryRuntime } as unknown as LibProbeSource
-  expect(callback(id).headless(ctx).observation?.outcome).toBe("supported")
-})
+    // Only the complete zero frame takes this record; a partial or foreign reply keeps its measured reading.
+    for (const reply of ["", raw.slice(0, 4), "foreign", raw + "foreign", "foreign" + raw]) {
+      const ctx = { feedCapture: () => reply, runtimeIdentity: geometryRuntime } as unknown as LibProbeSource
+      expect(callback(id).headless(ctx).notTested).toBeUndefined()
+    }
+    const ctx = { feedCapture: () => positive, runtimeIdentity: geometryRuntime } as unknown as LibProbeSource
+    expect(callback(id).headless(ctx).observation?.outcome).toBe("supported")
+  },
+)

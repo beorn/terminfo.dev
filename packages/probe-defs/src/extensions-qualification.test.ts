@@ -1540,77 +1540,74 @@ test.each([
 test.each([
   ["extensions.osc117-reset-highlight-bg", 17, 117],
   ["extensions.osc119-reset-highlight-fg", 19, 119],
-] as const)(
-  "%s keeps a silent highlight query TEST TODO without overriding real replies",
-  (id, setCode, resetCode) => {
-    const definition = callback(id)
-    const query = `\x1b]${setCode};?\x07`
-    for (const runtimeIdentity of [undefined, xtermOscIdentity, geometryRuntime, ...auditedArtifacts]) {
-      for (const mode of ["silent", "sentinel", "malformed"] as const) {
-        const calls: string[] = []
-        const result = definition.lib!({
-          runtimeIdentity,
-          feedCapture: (bytes: string) => {
+] as const)("%s keeps a silent highlight query TEST TODO without overriding real replies", (id, setCode, resetCode) => {
+  const definition = callback(id)
+  const query = `\x1b]${setCode};?\x07`
+  for (const runtimeIdentity of [undefined, xtermOscIdentity, geometryRuntime, ...auditedArtifacts]) {
+    for (const mode of ["silent", "sentinel", "malformed"] as const) {
+      const calls: string[] = []
+      const result = definition.lib!({
+        runtimeIdentity,
+        feedCapture: (bytes: string) => {
+          calls.push(bytes)
+          return mode === "malformed" ? "unparsed colour reply" : ""
+        },
+        ...(mode === "sentinel" && {
+          queryWithSentinelOutcome: (bytes: string) => {
             calls.push(bytes)
-            return mode === "malformed" ? "unparsed colour reply" : ""
+            return {
+              match: null,
+              reason: "sentinel",
+              raw: "\x1b[?1;2c",
+              rawBase64: btoa("\x1b[?1;2c"),
+              sentinel: { atMs: 0, graceMs: 250 },
+            }
           },
-          ...(mode === "sentinel" && {
-            queryWithSentinelOutcome: (bytes: string) => {
-              calls.push(bytes)
-              return {
-                match: null,
-                reason: "sentinel",
-                raw: "\x1b[?1;2c",
-                rawBase64: btoa("\x1b[?1;2c"),
-                sentinel: { atMs: 0, graceMs: 250 },
-              }
-            },
-          }),
-          feed: (bytes: string) => calls.push(bytes),
-          getCell: () => ({ char: "X" }),
-        } as unknown as LibProbeSource)
-        expect(calls).toEqual([query])
-        expect(result.observation).toBeUndefined()
-        expect(result.assertions).toBeUndefined()
-        expect(result.criterionBranch).toBeUndefined()
-        if (mode === "silent") {
-          expect(result).toEqual({
-            pass: false,
-            response: JSON.stringify({ query, originalRaw: "" }),
-            note: NO_SAME_PATH_CONTROL,
-            notTested: { reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL },
-          })
-          continue
-        }
-        expect(result.notTested).toBeUndefined()
-        expect(result.tests).toEqual([
-          {
-            id: "criterion",
-            status: mode === "malformed" ? "test-failure" : "test-todo",
-            reason: `OSC ${setCode} initial highlight colour was not read back, so OSC ${resetCode} cannot be compared with it`,
-          },
-        ])
-        if (mode === "sentinel") {
-          expect(JSON.parse(result.response!)).toMatchObject({
-            initialSentinel: { reason: "sentinel", raw: "\x1b[?1;2c" },
-          })
-        }
-      }
-      // A measured colour decides, including a genuine reset negative.
-      for (const ignoresReset of [false, true]) {
-        const fixture = highlightTerminal(setCode, resetCode, "1111/2222/3333", ignoresReset)
-        const result = definition.lib!({ ...fixture.lib, runtimeIdentity } as unknown as LibProbeSource)
-        expect(result.criterionBranch).toBeUndefined()
-        expect(result.observation).toMatchObject({
-          outcome: ignoresReset ? "unsupported" : "supported",
-          assertionType: "query_reply",
+        }),
+        feed: (bytes: string) => calls.push(bytes),
+        getCell: () => ({ char: "X" }),
+      } as unknown as LibProbeSource)
+      expect(calls).toEqual([query])
+      expect(result.observation).toBeUndefined()
+      expect(result.assertions).toBeUndefined()
+      expect(result.criterionBranch).toBeUndefined()
+      if (mode === "silent") {
+        expect(result).toEqual({
+          pass: false,
+          response: JSON.stringify({ query, originalRaw: "" }),
+          note: NO_SAME_PATH_CONTROL,
+          notTested: { reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL },
         })
-        expect(fixture.queries[0]).toBe(query)
-        expect(fixture.writes.some((bytes) => bytes.includes("\x1b[2K"))).toBe(false)
+        continue
+      }
+      expect(result.notTested).toBeUndefined()
+      expect(result.tests).toEqual([
+        {
+          id: "criterion",
+          status: mode === "malformed" ? "test-failure" : "test-todo",
+          reason: `OSC ${setCode} initial highlight colour was not read back, so OSC ${resetCode} cannot be compared with it`,
+        },
+      ])
+      if (mode === "sentinel") {
+        expect(JSON.parse(result.response!)).toMatchObject({
+          initialSentinel: { reason: "sentinel", raw: "\x1b[?1;2c" },
+        })
       }
     }
-  },
-)
+    // A measured colour decides, including a genuine reset negative.
+    for (const ignoresReset of [false, true]) {
+      const fixture = highlightTerminal(setCode, resetCode, "1111/2222/3333", ignoresReset)
+      const result = definition.lib!({ ...fixture.lib, runtimeIdentity } as unknown as LibProbeSource)
+      expect(result.criterionBranch).toBeUndefined()
+      expect(result.observation).toMatchObject({
+        outcome: ignoresReset ? "unsupported" : "supported",
+        assertionType: "query_reply",
+      })
+      expect(fixture.queries[0]).toBe(query)
+      expect(fixture.writes.some((bytes) => bytes.includes("\x1b[2K"))).toBe(false)
+    }
+  }
+})
 
 // A vterm-shaped identity: #32246 makes the zero-geometry outcome independent of it.
 const geometryRuntime = {

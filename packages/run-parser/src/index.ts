@@ -853,7 +853,9 @@ export function parseProbeResults(
       ),
     ]
     for (const ref of sourceRefs) {
-      if (!nonempty(ref) || !parseSourceAnswerKey(ref)) fail(path, `${featureId} unresolved review reference ${String(ref)}`)
+      if (!nonempty(ref) || !parseSourceAnswerKey(ref)) {
+        fail(path, `${featureId} unresolved review reference ${String(ref)}`)
+      }
     }
     // No result is answered from source (operator 2026-11-03, @cto 153143ff): a cell recognised by its stored
     // source-answer marker reads TEST TODO, and the stored run stays byte-unchanged (#32246).

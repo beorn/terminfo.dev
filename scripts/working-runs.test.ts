@@ -107,7 +107,9 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
     )
     // The committed payload predates #32246: its stored source-answer cells read TEST TODO (operator 2026-11-03),
     // so the hourly rollup this envelope carries is over the statuses the reader reads, not the stored ones.
-    const payload = loadRawCapture(rawPath, { root, catalogIds }) as { results: Array<{ featureId: string; status: string }> }
+    const payload = loadRawCapture(rawPath, { root, catalogIds }) as {
+      results: Array<{ featureId: string; status: string }>
+    }
     const summary = {
       complete: true,
       expectedEngines: ["vterm"],

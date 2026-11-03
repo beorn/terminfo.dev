@@ -39,4 +39,3 @@ export function parseSourceAnswerKey(ref: string): { subject: SourceAnswerSubjec
   }
   return { subject, featureId }
 }
-

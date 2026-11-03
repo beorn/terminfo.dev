@@ -1484,7 +1484,9 @@ test("DECSSCLS real-vterm parser-state TEST TODO survives collection and canonic
   })
   const batch = await collectBatch(async () => createVtermBackend(), "vterm", registryDefinitions([id]), draft)
   // #32246: no source review decides DECSSCLS; the parser-state cell is TEST TODO coverage with no negative assertion.
-  expect(batch.results).toMatchObject([{ featureId: id, status: "test-todo", tests: [{ id: "criterion", status: "test-todo" }] }])
+  expect(batch.results).toMatchObject([
+    { featureId: id, status: "test-todo", tests: [{ id: "criterion", status: "test-todo" }] },
+  ])
   expect(batch.results[0]).not.toHaveProperty("criterionBranch")
   expect(batch.results[0]).not.toHaveProperty("assertionType")
   expect(JSON.parse(batch.rawReplies[id]!)).toMatchObject({ cursor: { x: 1, y: 0 } })
@@ -1521,7 +1523,9 @@ test("DECSSCLS real-vterm parser-state TEST TODO survives collection and canonic
     assertions: batch.assertions,
   }
   const finalized = finalizeCollectedDraft(captured)
-  expect(finalized.results).toMatchObject([{ featureId: id, status: "test-todo", tests: [{ id: "criterion", status: "test-todo" }] }])
+  expect(finalized.results).toMatchObject([
+    { featureId: id, status: "test-todo", tests: [{ id: "criterion", status: "test-todo" }] },
+  ])
   expect(finalized.assertions).toEqual(batch.assertions)
   expect(finalized.rawReplies).toEqual(batch.rawReplies)
   const parsed = parseRun(

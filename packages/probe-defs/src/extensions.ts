@@ -2498,10 +2498,7 @@ function headlessClipboardRoundtrip(ctx: LibProbeSource): ProbeCallbackResult {
   const result: ProbeCallbackResult = writeUnobservable
     ? { pass: false, note: reason, tests: [{ id: "criterion", status: "test-todo", reason }] }
     : headlessClipboardResult(empty ? "" : raw, nonce)
-  return withClipboardControlNote(
-    ctx,
-    emptyNativeHostReply(ctx, { ...result, response: raw }, query, empty),
-  )
+  return withClipboardControlNote(ctx, emptyNativeHostReply(ctx, { ...result, response: raw }, query, empty))
 }
 
 /** Read silence is conclusive only on a collector-qualified, ordered reply path. */
@@ -5075,10 +5072,8 @@ export const extensionsProbes: ProbeDefinition[] = [
   ),
 
   // OSC 710 — rxvt-unicode set normal font
-  probe(
-    "extensions.osc710-font-normal",
-    noSamePathControl("\x1b]710;monospace\x07"),
-    () => Promise.resolve(unmeasuredStateEffect("OSC 710 font selection")),
+  probe("extensions.osc710-font-normal", noSamePathControl("\x1b]710;monospace\x07"), () =>
+    Promise.resolve(unmeasuredStateEffect("OSC 710 font selection")),
   ),
 
   // OSC 720 — rxvt-unicode scroll view up

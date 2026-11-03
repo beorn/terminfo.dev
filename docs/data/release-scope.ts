@@ -650,7 +650,6 @@ export function rollupSubjectMethodFindings(
       } else if (classification.kind === "unmapped") {
         unmapped.push({ featureId, status: result.status, reason: classification.reason })
       }
-
     }
 
     const runStatuses = cells.map((cell) => cell.result.status)

@@ -39,35 +39,38 @@ it.each([
     context: "lib:ghostty",
     featureId: "extensions.kitty-graphics",
   },
-])("reads $name as TEST TODO and publishes no source caption or private detail", ({ file, suite, context, featureId }) => {
-  const path = new URL(file, import.meta.url)
-  const bytes = readFileSync(path, "utf8")
-  const manifestPath = new URL(suite, import.meta.url)
-  const manifest = parseSuiteManifest(manifestPath.pathname, readFileSync(manifestPath, "utf8"))
-  const catalog = manifest.catalogIds!
-  const run = parseRun(path.pathname, bytes, catalog, new Map([[manifest.probeHash, manifest]]))
-  const original = structuredClone(run)
-  const retained = run.results?.find((result) => result.featureId === featureId)
-  expect(retained?.status).toBe("test-todo")
-  expect(retained?.reason).toBe(SOURCE_ANSWER_RETIRED_REASON)
-  expect(retained?.reviewRef).toBeUndefined()
-  const projection = projectResults([run], catalog, { currentProbeHash: manifest.probeHash, workingRuns: [run] }, [])
-  const selected = projection.history[context]?.[0]
-  expect(selected?.measuredAt).toBe(run.measuredAt)
-  const published = publicResults(projection, new Map()).projection.contexts[context]?.cells[featureId]
-  expect(published?.status).toBe("test-todo")
-  expect(published?.reason).toBeUndefined()
-  const publicBytes = JSON.stringify(published)
-  expect(publicBytes).not.toContain("not re-verified")
-  expect(publicBytes).not.toContain("kept answers disagree")
-  expect(publicBytes).not.toContain("kept originals")
-  expect(publicBytes).not.toContain("@dev/")
-  expect(publicBytes).not.toContain("reply-path-audit")
-  expect(published?.presentation.state).toBe("not-reviewed")
-  expect(published?.record).toBeUndefined()
-  expect(run).toEqual(original)
-  expect(readFileSync(path, "utf8")).toBe(bytes)
-})
+])(
+  "reads $name as TEST TODO and publishes no source caption or private detail",
+  ({ file, suite, context, featureId }) => {
+    const path = new URL(file, import.meta.url)
+    const bytes = readFileSync(path, "utf8")
+    const manifestPath = new URL(suite, import.meta.url)
+    const manifest = parseSuiteManifest(manifestPath.pathname, readFileSync(manifestPath, "utf8"))
+    const catalog = manifest.catalogIds!
+    const run = parseRun(path.pathname, bytes, catalog, new Map([[manifest.probeHash, manifest]]))
+    const original = structuredClone(run)
+    const retained = run.results?.find((result) => result.featureId === featureId)
+    expect(retained?.status).toBe("test-todo")
+    expect(retained?.reason).toBe(SOURCE_ANSWER_RETIRED_REASON)
+    expect(retained?.reviewRef).toBeUndefined()
+    const projection = projectResults([run], catalog, { currentProbeHash: manifest.probeHash, workingRuns: [run] }, [])
+    const selected = projection.history[context]?.[0]
+    expect(selected?.measuredAt).toBe(run.measuredAt)
+    const published = publicResults(projection, new Map()).projection.contexts[context]?.cells[featureId]
+    expect(published?.status).toBe("test-todo")
+    expect(published?.reason).toBeUndefined()
+    const publicBytes = JSON.stringify(published)
+    expect(publicBytes).not.toContain("not re-verified")
+    expect(publicBytes).not.toContain("kept answers disagree")
+    expect(publicBytes).not.toContain("kept originals")
+    expect(publicBytes).not.toContain("@dev/")
+    expect(publicBytes).not.toContain("reply-path-audit")
+    expect(published?.presentation.state).toBe("not-reviewed")
+    expect(published?.record).toBeUndefined()
+    expect(run).toEqual(original)
+    expect(readFileSync(path, "utf8")).toBe(bytes)
+  },
+)
 
 describe("the site says why a text row does not count (30033 ruling f1f3c64b)", () => {
   it("names the console host on a Windows text row, and says it is not counted", () => {

@@ -180,20 +180,23 @@ test.each([
 
 // #32246: the route follows the readers the source exposes, never an engine audit table, so a missing icon getter keeps
 // the query route whatever the identity.
-test.each(["audited-identity", "foreign-identity"])("OSC 0 keeps query evidence without an icon getter for %s", (route) => {
-  const ctx = Object.assign(lib(exactReplies), {
-    runtimeIdentity: {
-      ...auditedXtermFixtureIdentity,
-      ...(route === "foreign-identity" ? { engineVersion: "not-xterm" } : {}),
-    },
-    getTitle: () => {
-      throw new Error("query route read title state")
-    },
-  })
-  const result = termlessCallback()(ctx)
-  expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
-  expect(result.assertions?.map(({ kind }) => kind)).toEqual(["positive", "positive"])
-})
+test.each(["audited-identity", "foreign-identity"])(
+  "OSC 0 keeps query evidence without an icon getter for %s",
+  (route) => {
+    const ctx = Object.assign(lib(exactReplies), {
+      runtimeIdentity: {
+        ...auditedXtermFixtureIdentity,
+        ...(route === "foreign-identity" ? { engineVersion: "not-xterm" } : {}),
+      },
+      getTitle: () => {
+        throw new Error("query route read title state")
+      },
+    })
+    const result = termlessCallback()(ctx)
+    expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
+    expect(result.assertions?.map(({ kind }) => kind)).toEqual(["positive", "positive"])
+  },
+)
 
 test("the termless arm supports OSC 0 only when both replies return the exact payload", () => {
   const result = termlessCallback()(lib(exactReplies))

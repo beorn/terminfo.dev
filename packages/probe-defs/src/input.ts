@@ -2,7 +2,6 @@ import type { LibProbeSource, ProbeDefinition, ProbeCallbackResult, TermProbeSou
 import {
   HEADLESS_OBSERVABLE_REVIEW,
   notTestedResult,
-  reviewResult,
   osInputReviewResult,
   NO_SAME_PATH_CONTROL,
   probe,
@@ -14,8 +13,7 @@ import { queryPixelGeometry, type PixelGeometry } from "./region-readback.ts"
 const inputDefinitions: ProbeDefinition[] = [
   probe(
     "input.modify-other-keys",
-    (ctx) =>
-      vtermNoSamePathControl(ctx, { input: false }) ?? headlessXtestReview("key injection"),
+    (ctx) => vtermNoSamePathControl(ctx, { input: false }) ?? headlessXtestReview("key injection"),
     modifyOtherKeys2,
     "input_bytes",
   ),
@@ -29,8 +27,7 @@ const inputDefinitions: ProbeDefinition[] = [
 
   probe(
     "input.modify-other-keys-3",
-    (ctx) =>
-      vtermNoSamePathControl(ctx, { input: false }) ?? headlessXtestReview("key injection"),
+    (ctx) => vtermNoSamePathControl(ctx, { input: false }) ?? headlessXtestReview("key injection"),
     modifyOtherKeys3,
     "input_bytes",
   ),
@@ -39,8 +36,7 @@ const inputDefinitions: ProbeDefinition[] = [
 
   probe(
     "input.xtest-key",
-    (ctx) =>
-      vtermNoSamePathControl(ctx, { input: false }) ?? headlessXtestReview("key injection", true),
+    (ctx) => vtermNoSamePathControl(ctx, { input: false }) ?? headlessXtestReview("key injection", true),
     xtestKey,
     "input_bytes",
   ),

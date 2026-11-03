@@ -1,9 +1,6 @@
 /** The sole site/API mapping. Presentation decisions are not repository privacy controls. */
 import { createHash } from "node:crypto"
-import {
-  isEnvironmentGroup,
-  readCollectorSelection,
-} from "@terminfo/probe-defs"
+import { isEnvironmentGroup, readCollectorSelection } from "@terminfo/probe-defs"
 import type {
   ProbeResult,
   ProbeStatus,

@@ -167,56 +167,53 @@ describe("native host recipe callers", () => {
     ["extensions.osc52-clipboard", "clipboard-load", "clipboard-read-permission", "\x1b]52;c;?\x07"],
     ["extensions.osc52-write", "clipboard-load", "clipboard-read-permission", "\x1b]52;c;?\x07"],
     ["extensions.osc52-read", "clipboard-load", "clipboard-read-permission", "\x1b]52;c;?\x07"],
-  ] as const)(
-    "%s retains its actual empty host query cause",
-    (id, recipe, missing, query) => {
-      for (const qualified of [false, true]) {
-        const definition = probe(id)
-        const captured: string[] = []
-        const silence = {
-          match: null,
-          reason: "sentinel" as const,
-          raw: "\x1b[?1;2c",
-          rawBase64: "G1s/MTsyYw==",
-          sentinel: { atMs: 0, graceMs: 250 },
-        }
-        const result = definition.lib!(
-          context({
-            ...(qualified && {
-              queryWithSentinelOutcome(sequence: string) {
-                captured.push(sequence)
-                return silence
-              },
-            }),
-            runtimeIdentity: nativeIdentity,
-            feedCapture(sequence) {
+  ] as const)("%s retains its actual empty host query cause", (id, recipe, missing, query) => {
+    for (const qualified of [false, true]) {
+      const definition = probe(id)
+      const captured: string[] = []
+      const silence = {
+        match: null,
+        reason: "sentinel" as const,
+        raw: "\x1b[?1;2c",
+        rawBase64: "G1s/MTsyYw==",
+        sentinel: { atMs: 0, graceMs: 250 },
+      }
+      const result = definition.lib!(
+        context({
+          ...(qualified && {
+            queryWithSentinelOutcome(sequence: string) {
               captured.push(sequence)
-              return ""
+              return silence
             },
           }),
-        )
-        expect(captured).toContain(query)
-        expect(definition.libHostRecipes).toContainEqual({ recipe, query, missing: [missing] })
-        // The cause is what this run observed, never a source citation (#32246).
-        expect(result.hostRecipeCauses).toMatchObject([{ recipe, cause: { kind: "observed", missing, query } }])
-        const { hostRecipeCauses: _custody, ...criterion } = result
-        // A colour reply the probe itself decides matches the identity-less run; an all-zero native capture has no
-        // same-path control in this run and is the undecided record (@cto 9fad23d7, refined rule 4). The cause is kept.
-        const bare = definition.lib!(
-          context({ feedCapture: () => "", ...(qualified && { queryWithSentinelOutcome: () => silence }) }),
-        )
-        if (recipe === "color-request" && criterion.notTested === undefined) {
-          expect(criterion).toEqual(bare)
-        } else if (recipe === "color-request") {
-          expect(criterion.notTested?.reason).toBe("no-semantic-observable")
-          expect(criterion.observation).toBeUndefined()
-        } else {
-          expect(criterion.notTested).toEqual({ reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL })
-          expect(criterion.observation).toBeUndefined()
-        }
+          runtimeIdentity: nativeIdentity,
+          feedCapture(sequence) {
+            captured.push(sequence)
+            return ""
+          },
+        }),
+      )
+      expect(captured).toContain(query)
+      expect(definition.libHostRecipes).toContainEqual({ recipe, query, missing: [missing] })
+      // The cause is what this run observed, never a source citation (#32246).
+      expect(result.hostRecipeCauses).toMatchObject([{ recipe, cause: { kind: "observed", missing, query } }])
+      const { hostRecipeCauses: _custody, ...criterion } = result
+      // A colour reply the probe itself decides matches the identity-less run; an all-zero native capture has no
+      // same-path control in this run and is the undecided record (@cto 9fad23d7, refined rule 4). The cause is kept.
+      const bare = definition.lib!(
+        context({ feedCapture: () => "", ...(qualified && { queryWithSentinelOutcome: () => silence }) }),
+      )
+      if (recipe === "color-request" && criterion.notTested === undefined) {
+        expect(criterion).toEqual(bare)
+      } else if (recipe === "color-request") {
+        expect(criterion.notTested?.reason).toBe("no-semantic-observable")
+        expect(criterion.observation).toBeUndefined()
+      } else {
+        expect(criterion.notTested).toEqual({ reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL })
+        expect(criterion.observation).toBeUndefined()
       }
-    },
-  )
+    }
+  })
 
   /**
    * @failure #32091: kitty's default read-clipboard-ask prompt held every OSC 52 read for a human, so osc52-read would
@@ -719,21 +716,24 @@ describe("zero-byte replies on a loaded artifact", () => {
   test.each([
     ["extensions.osc30001-color-stack-push", "\x1b]30001\x1b\\"],
     ["extensions.osc30101-color-stack-pop", "\x1b]30101\x1b\\"],
-  ] as const)("native stack attempt keeps its colour-readback review when colour controls are missing: %s", (id, query) => {
-    for (const sha of [
-      "ac12d6408c2049f1d720e9735d7eb69251d3eed868fc9ced58de98b3543f3e2e",
-      "9a9505600721226b952ae9ac92552b42389aa6713872a9f4904528f425b7ecdf",
-    ]) {
-      const { result, sent } = run(id, sha, () => "")
-      expect(sent).toContain(query)
-      // No source rejection decides the stack (#32246): the measured early colour-readback review stands.
-      expect(result).toMatchObject({
-        criterionBranch: "color-readback-review",
-        tests: [{ id: "review", status: "test-todo" }],
-      })
-      expect(result.observation).toBeUndefined()
-    }
-  })
+  ] as const)(
+    "native stack attempt keeps its colour-readback review when colour controls are missing: %s",
+    (id, query) => {
+      for (const sha of [
+        "ac12d6408c2049f1d720e9735d7eb69251d3eed868fc9ced58de98b3543f3e2e",
+        "9a9505600721226b952ae9ac92552b42389aa6713872a9f4904528f425b7ecdf",
+      ]) {
+        const { result, sent } = run(id, sha, () => "")
+        expect(sent).toContain(query)
+        // No source rejection decides the stack (#32246): the measured early colour-readback review stands.
+        expect(result).toMatchObject({
+          criterionBranch: "color-readback-review",
+          tests: [{ id: "review", status: "test-todo" }],
+        })
+        expect(result.observation).toBeUndefined()
+      }
+    },
+  )
 
   // @failure OSC0 dropped per-query outcomes and left DA-only captures to the generic writer failure.
   // @level l0 @consumer Both registered OSC0 callbacks; producer evidence is covered by execution-results.

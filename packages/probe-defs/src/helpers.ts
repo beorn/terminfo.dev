@@ -371,9 +371,7 @@ export function parserStateResult(
   if (sourceReviewReason !== undefined) return notTestedResult(NO_SAME_PATH_CONTROL, state)
   const response = JSON.stringify(state)
   const assertions: NonNullable<ProbeCallbackResult["assertions"]> | undefined =
-    pass === null
-      ? undefined
-      : [{ assertionType, kind: pass ? "positive" : "negative", expected, observed: response }]
+    pass === null ? undefined : [{ assertionType, kind: pass ? "positive" : "negative", expected, observed: response }]
   return {
     pass: pass === true,
     response,
@@ -1854,10 +1852,10 @@ export function libvtermHistoryReview(ctx: LibProbeSource): ProbeCallbackResult 
     }
   }
   // No source review decides this cell any more (#32246): the adapter offers no history reader, so it stays TEST TODO.
-  return notTestedResult(
-    `libvterm v${artifact.engineVersion} adapter exposes no retained scrollback history count`,
-    { engineVersion: identity.engineVersion, adapterVersion: identity.adapterVersion },
-  )
+  return notTestedResult(`libvterm v${artifact.engineVersion} adapter exposes no retained scrollback history count`, {
+    engineVersion: identity.engineVersion,
+    adapterVersion: identity.adapterVersion,
+  })
 }
 
 /** The collector's test row for a capture that reached an engine callback its adapter does not reproduce. */

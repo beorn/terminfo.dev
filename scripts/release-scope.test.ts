@@ -14,12 +14,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { describe, expect, it } from "vitest"
 import { loadFeatures, slice, type FeatureCatalog, type Slice } from "@terminfo/catalog"
-import {
-  ENVIRONMENT_GROUP_IDS,
-  gradedFeatureIds,
-  type ProbeResult,
-  type ProbeStatus,
-} from "@terminfo/probe-defs"
+import { ENVIRONMENT_GROUP_IDS, gradedFeatureIds, type ProbeResult, type ProbeStatus } from "@terminfo/probe-defs"
 import { loadStoredRuns } from "../packages/admin/corpus-placement.ts"
 import { loadCategories, orderedCategoryIds } from "../docs/data/categories.ts"
 import { loadReleaseScope } from "../docs/data/load-release-scope.ts"

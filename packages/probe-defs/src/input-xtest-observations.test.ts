@@ -1680,6 +1680,9 @@ test.each(
     pass: false,
     response: JSON.stringify(id === "input.kitty-click-events" ? { storedClickEvents: false } : { input: false }),
     note: "observation not decided: no same-path control in this run",
-    notTested: { reason: "no-semantic-observable", noObservable: "observation not decided: no same-path control in this run" },
+    notTested: {
+      reason: "no-semantic-observable",
+      noObservable: "observation not decided: no same-path control in this run",
+    },
   })
 })
