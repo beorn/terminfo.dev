@@ -325,9 +325,7 @@ export function workingCell(raw: RawSide, reviewed: ReviewedSide | undefined): W
       label: RAW_LABEL,
       display: display(raw),
       differsFromReviewed:
-        relation === "same-suite" &&
-        reviewed?.version === raw.version &&
-        reviewed.status !== raw.status,
+        relation === "same-suite" && reviewed?.version === raw.version && reviewed.status !== raw.status,
     },
   }
 }

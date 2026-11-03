@@ -12,7 +12,6 @@ import {
   replyFailure,
   reviewResult,
   HEADLESS_OBSERVABLE_REVIEW,
-  NO_SAME_PATH_CONTROL,
   notTestedResult,
   sameRgb,
   sgrProbe,

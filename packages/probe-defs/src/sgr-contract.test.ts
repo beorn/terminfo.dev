@@ -443,9 +443,12 @@ test.each(["sgr.fg.default", "sgr.bg.default", "sgr.underline-color-reset"])(
     ]
     const result = probe.lib!(libProbeSource(cellsModel(cells)))
     // The missing coloured seed is a missing prerequisite with its own cause (@cto batch7 A-F5).
-    if (id === "sgr.underline-color-reset")
-      expect(result.notTested).toEqual({ reason: "no-semantic-observable", noObservable: "SGR 59 setup cell exposes no explicit underline color" })
-    else {
+    if (id === "sgr.underline-color-reset") {
+      expect(result.notTested).toEqual({
+        reason: "no-semantic-observable",
+        noObservable: "SGR 59 setup cell exposes no explicit underline color",
+      })
+    } else {
       expect(result.criterionBranch).toBe("headless-observable-review")
       expect(result.tests).toContainEqual(
         expect.objectContaining({
