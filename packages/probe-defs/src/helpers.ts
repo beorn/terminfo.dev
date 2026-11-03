@@ -1,5 +1,5 @@
 import { PROBE_STATUSES } from "./types.ts"
-import { sourceAnswerForRef, type SourceAnswerResolution } from "./source-answers.ts"
+import { SOURCE_ANSWER_PENDING_LABELS, sourceAnswerForRef, type SourceAnswerResolution } from "./source-answers.ts"
 import { createHash } from "node:crypto"
 import type { ProbeTestInput } from "./types.ts"
 import type {
@@ -2174,7 +2174,7 @@ export function finalizeProbeResult(
     const originalReason = sourceAnswer.kind === "answer" ? sourceAnswer.answers[0]?.originals[0]?.reason : undefined
     // A disputed cell names every kept original, never a pick by order or kind (@cto 85a9cfd9).
     const disputed =
-      sourceAnswer.kind === "pending" && sourceAnswer.reason === "kept answers disagree"
+      sourceAnswer.kind === "pending" && sourceAnswer.reason === SOURCE_ANSWER_PENDING_LABELS.disagree
         ? (sourceAnswer.answers ?? [])
             .flatMap((answer) => answer.originals.map((original) => `${original.reviewer}: ${original.reason}`))
             .join(" | ")
@@ -2197,7 +2197,7 @@ export function finalizeProbeResult(
               status:
                 sourceAnswer.kind === "answer"
                   ? sourceAnswer.status
-                  : sourceAnswer.reason === "cited source not resolvable"
+                  : sourceAnswer.reason === SOURCE_ANSWER_PENDING_LABELS.unresolvable
                     ? test.status
                     : "test-todo",
               attempt: sourceAnswer.kind === "answer" ? input.attempt : test.attempt,
