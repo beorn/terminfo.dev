@@ -4,7 +4,7 @@
  * Bare/--plan prints a read-only census and historical Linux launcher recipes.
  * --collect --development invokes existing raw collectors, validates the current suite in memory,
  * and retains private classifications. WIP: headless, Linux and hosted dispatch are wired; other contexts
- * stays visible as unfinished work. No development admission, suite declaration or inclusion.
+ * stays visible as unfinished work. No corpus placement or suite declaration.
  * Remaining platform routes and native qualification are unfinished. No deploy.
  */
 import { execFileSync, spawnSync } from "node:child_process"
@@ -43,7 +43,7 @@ import { finalizeCollectedDraft, type CaptureReviewReport } from "../packages/te
 import { loadFeatures } from "@terminfo/catalog"
 import { fullContextCensus, type CensusContext } from "../docs/data/full-census.ts"
 import { parseJsonStrict, parseRun } from "@terminfo/run-parser"
-import { assertPrivateCollectionOutput } from "../packages/admin/src/admit-collected-run.ts"
+import { assertPrivateCollectionOutput } from "../packages/admin/src/collected-run.ts"
 import { reviewedContextFor } from "../docs/data/current-results.ts"
 import { classifyDevelopmentRun, consoleHostHeldResults, readVerifiedArtifact } from "../docs/data/selected-results.ts"
 import { parseInterpretations, activeInterpretations } from "./interpretations.ts"
@@ -860,7 +860,7 @@ export async function collectPass(
                 : undefined
           if (actualPath) {
             row.rawRun = actualPath
-            // Bind failure custody only; canonical report/admission still validates the original bytes.
+            // Bind failure custody only; canonical parsing still validates the original bytes.
             const actual = parseJsonStrict(actualPath, readFileSync(actualPath, "utf8")) as Partial<RunDraft> | null
             const ids = [...(probeIds ?? snapshot.probes[context.kind])]
             if (

@@ -178,5 +178,4 @@ historical plans or copy private host details into this public source tree.
 
 Operational owners, evidence custody, dated parks and runtime grants remain in their owning
 work records. Documentation, source delivery and a unit-test result grant no native capture,
-configuration change, grade application, admission or publication. Existing live instructions
-remain in force until the code that enforces them is actually removed.
+configuration change, grade application or publication. External release, publication and pending answers remain held until the actual full Phase 1.4 merge and their existing authorization.

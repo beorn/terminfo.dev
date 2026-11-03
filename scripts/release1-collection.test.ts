@@ -29,7 +29,6 @@ import {
 import { tmpdir } from "node:os"
 import { afterAll, describe, expect, it, vi } from "vitest"
 import { parse, stringify } from "yaml"
-import * as admission from "./admit-run.ts"
 import * as interpretations from "./interpretations.ts"
 import { loadSelectedResults } from "../docs/data/selected-results.ts"
 import { loadStoredRuns } from "../packages/admin/corpus-placement.ts"
@@ -141,9 +140,9 @@ if (currentManifest.schemaVersion !== 4 || !currentManifest.catalogIds) {
   throw new Error("Collection fixture requires the committed schema-4 catalogue")
 }
 
-// #32014: all three entry points resolve the same private non-C1 embedded targets until Phase 1.4.
+// #32014: both entry points resolve the same private non-C1 embedded targets until Phase 1.4.
 // Frozen run bytes at 9e319ac6 stay outside active content; canonical parsing remains real.
-it.each(["projection", "admission", "collection"] as const)(
+it.each(["projection", "collection"] as const)(
   "%s resolves six exact-run tool-gap overlays",
   async (entry) => {
     const paths = [
@@ -189,22 +188,10 @@ it.each(["projection", "admission", "collection"] as const)(
           }
         }),
       )
-      const source = join(CONTENT, paths[0]!)
       const invoke = () =>
         entry === "projection"
           ? loadSelectedResults(CONTENT, versions.probeSuiteSnapshot().probeHash)
-          : entry === "admission"
-            ? (() => {
-                try {
-                  admission.planAdmission(source)
-                  return "accepted"
-                } catch (error) {
-                  if (!(error instanceof Error)) throw error
-                  return error.message
-                }
-              })()
-            : collectPass(fingerprintFixture.directory, { runner: "local" }, { contexts: [] })
-      const baseline = await invoke()
+          : collectPass(fingerprintFixture.directory, { runner: "local" }, { contexts: [] })
       const storePath = join(CONTENT, "interpretations.json")
       const original = readFileSync(storePath, "utf8")
       const stored: unknown = JSON.parse(original)
@@ -218,10 +205,6 @@ it.each(["projection", "admission", "collection"] as const)(
         if (entry === "projection") {
           const projection = result as ReturnType<typeof loadSelectedResults>
           for (const overlay of overlays) expect(projection.table[overlay.runId]![overlay.featureId]).toBe("test-todo")
-        } else if (entry === "admission") {
-          // The committed run's placement receipt is absent beside it; resolving overlays grants no receipt.
-          expect(baseline).toMatch(/cites ownership receipt.*does not exist beside the run/)
-          expect(result).toBe(baseline)
         } else {
           const pass = result as Awaited<ReturnType<typeof collectPass>>
           expect(pass.contexts).toEqual([])
@@ -348,12 +331,6 @@ it.each([
             sourcePaths: [relative(dirname(CONTENT), input)],
           })
         : undefined
-    const planner = vi.spyOn(admission, "planAdmission").mockImplementation(() => {
-      throw new Error("Development must not plan admission")
-    })
-    const writer = vi.spyOn(admission, "admitRun").mockImplementation(() => {
-      throw new Error("Development must not write admission")
-    })
     let completedDraftBytes: string | undefined
     const collector = vi
       .spyOn(headless, "collectHeadlessRuns")
@@ -636,7 +613,19 @@ it.each([
                     : inputChange === "empty-probes"
                       ? { contexts: ["alacritty/linux"], ids: [] }
                       : undefined
+      // Requirement: private release collection leaves corpus bytes untouched. The old admission
+      // mocks could miss a direct corpus write, so compare the actual placement directories.
+      const corpusSnapshot = () => ["probes-apps", "probes-libs", "probes-mux", "artifacts", "suites"].flatMap((dir) =>
+        readdirSync(join(CONTENT, dir), { recursive: true, withFileTypes: true })
+          .filter((entry) => entry.isFile())
+          .map((entry) => {
+            const path = join(entry.parentPath, entry.name)
+            return [relative(CONTENT, path), createHash("sha256").update(readFileSync(path)).digest("hex")]
+          }),
+      ).sort((a, b) => a[0]!.localeCompare(b[0]!))
+      const beforeCorpus = suite === "matching" && inputChange === "none" ? corpusSnapshot() : undefined
       const pass = await collectPass(directory, { runner: "local" }, selection)
+      if (beforeCorpus) expect(corpusSnapshot()).toEqual(beforeCorpus)
       if (inputChange.startsWith("macos-")) {
         expect(pass.contexts).toHaveLength(6)
         expect(pass.contexts.map((row) => row.status)).toEqual(
@@ -657,8 +646,6 @@ it.each([
           if (inputChange === "macos-untrusted") expect(row.reason).toContain("differs from delegated identity")
         }
         expect(pass.complete).toBe(false)
-        expect(planner).not.toHaveBeenCalled()
-        expect(writer).not.toHaveBeenCalled()
         return
       }
       if (selection && inputChange.startsWith("hosted-")) {
@@ -714,8 +701,6 @@ it.each([
           )
         }
         expect(pass.complete).toBe(false)
-        expect(planner).not.toHaveBeenCalled()
-        expect(writer).not.toHaveBeenCalled()
         expect(readFileSync(original, "utf8")).toBe(originalBytes)
         return
       }
@@ -896,8 +881,6 @@ it.each([
         if (id === "kitty") expect(row?.error).toMatch(/exited 17/)
         else expect(readFileSync(join(output, "fixture-run", "raw", "v2-run.json"), "utf8")).toBe("{}")
       }
-      expect(planner).not.toHaveBeenCalled()
-      expect(writer).not.toHaveBeenCalled()
       expect(readFileSync(original, "utf8")).toBe(originalBytes)
       if (inputChange === "blocked-hosted" || inputChange === "blocked-macos") {
         const affected = pass.contexts.filter(
@@ -978,8 +961,6 @@ it.each([
     } finally {
       collector.mockRestore()
       launcher.mockRestore()
-      planner.mockRestore()
-      writer.mockRestore()
       snapshot?.mockRestore()
       rmSync(directory, { recursive: true, force: true })
     }
@@ -1103,11 +1084,10 @@ describe("release 1 Linux launcher flags", () => {
   })
 })
 
-// A census-only missing-route row cannot catch the CLI returning success or entering admission.
-it("fails collection by name and exit 1 for a required null route without admission", () => {
+// A census-only missing-route row cannot catch the CLI returning success.
+it("fails collection by name and exit 1 for a required null route", () => {
   const directory = mkdtempSync(join(tmpdir(), "collection-required-route-"))
   const preload = join(directory, "external-owners.ts")
-  const admitted = join(directory, "admission-entered")
   const root = dirname(CONTENT)
   const macosWorkflowPath = join(root, ".github/workflows/macos-measurement.yml")
   const missingRoutePath = join(directory, "missing-cmux-workflow.yml")
@@ -1122,7 +1102,6 @@ it("fails collection by name and exit 1 for a required null route without admiss
     preload,
     `
 import { mock } from "bun:test";
-import { writeFileSync } from "node:fs";
 const fs = await import("node:fs");
 const readFingerprintFile = fs.readFileSync;
 const fingerprintFiles = ${JSON.stringify({ ...fingerprintFixture.files, [macosWorkflowPath]: missingRoutePath })};
@@ -1131,8 +1110,6 @@ const processes = await import("node:child_process");
 const readSourceGit = processes.spawnSync;
 mock.module("node:child_process", () => ({...processes, spawnSync: (command, ...args) => command === "git" ? readSourceGit(command, ...args) : ({ status: 1, stdout: "", stderr: "fixture external dispatch refused", signal: null })}));
 mock.module(${JSON.stringify(join(dirname(CONTENT), "packages/probes/collect-headless.ts"))}, () => ({collectHeadlessRuns: async (_selectors, directory) => ({directory, runs: [], failures: []})}));
-const refuseAdmission = () => { writeFileSync(${JSON.stringify(admitted)}, "unexpected admission"); throw new Error("development entered admission"); };
-mock.module(${JSON.stringify(join(dirname(CONTENT), "scripts/admit-run.ts"))}, () => ({planAdmission: refuseAdmission, admitRun: refuseAdmission}));
 `,
   )
   try {
@@ -1168,7 +1145,6 @@ mock.module(${JSON.stringify(join(dirname(CONTENT), "scripts/admit-run.ts"))}, (
         (row: { context: { id: string; os: string } }) => row.context.id === "cmux" && row.context.os === "macos",
       ),
     ).toMatchObject({ status: "not-started", error: expect.stringContaining("required route work") })
-    expect(existsSync(admitted)).toBe(false)
   } finally {
     rmSync(directory, { recursive: true, force: true })
   }

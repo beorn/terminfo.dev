@@ -1,5 +1,5 @@
 /**
- * @failure Consumers disagree about admitted runs, unscoped annotations leak into commentary, or malformed metadata silently omits analysis sections.
+ * @failure Consumers disagree about collected runs, unscoped annotations leak into commentary, or malformed metadata silently omits analysis sections.
  * @level l2
  * @consumer Site matrix, terminal paths, v3 API, frozen v1 bytes and generated analysis.
  * @reach fs-walk vendor/terminfo.dev/content/probes-apps/*.json vendor/terminfo.dev/content/probes-libs/*.json vendor/terminfo.dev/content/probes-mux/*.json
@@ -176,14 +176,6 @@ const fixture = vi.hoisted(() => {
       versions: {
         "term:kitty": [selected],
         "term:kitty:clipboard": [alternateKitty],
-        "lib:kitty": [
-          {
-            ...alternateKitty,
-            runId: "kitty-lib-reviewed",
-            sha256: "f".repeat(64),
-            subject: { ...subject, kind: "lib" },
-          },
-        ],
         "mux:tmux": [mux],
         "mux:screen": [screen, olderScreen],
       },
@@ -197,16 +189,6 @@ const fixture = vi.hoisted(() => {
     },
   }
 })
-
-// Synthetic rows test consumer parity, not admission. The retained-corpus subprocess below
-// still runs the real assessor, parser, selector and composer without this module's mock registry.
-vi.mock("../packages/admin/corpus-placement.ts", async () => ({
-  ...(await vi.importActual<typeof import("../packages/admin/corpus-placement.ts")>("../packages/admin/corpus-placement.ts")),
-  assessRunAdmission: (run: LoadedRun) =>
-    run.runId.startsWith("kitty-clipboard") || run.runId.startsWith("kitty-lib")
-      ? { accepted: false, reason: "identity-unverified", identityAdmission: null }
-      : { accepted: true, identityAdmission: null },
-}))
 
 vi.mock("../docs/data/current-results.ts", async () => {
   const { loadFeatures } = await import("@terminfo/catalog")
@@ -410,7 +392,7 @@ import { loadFullProjectData } from "../docs/data/full-project.data.ts"
 import { probeHash } from "../packages/admin/versions.ts"
 
 it("keeps the retained corpus consistent across unmocked site, API and analysis consumers", () => {
-  // Fixtures above replace selection. Only real retained inputs expose admission/default-context drift.
+  // Fixtures above replace selection. Only real retained inputs expose default-context drift.
   // A separate process uses the existing consumers without inheriting this module's vi.mock registry.
   const root = join(import.meta.dirname, "..")
   const out = mkdtempSync(join(tmpdir(), "terminfo-retained-parity-"))
@@ -1039,18 +1021,21 @@ describe("selected-run consumer parity", () => {
     const current = fixture.projection.seeds["term:kitty"]
     const versions = fixture.projection.versions["term:kitty"]
     const history = fixture.projection.history["term:kitty"]
+    const alternate = fixture.projection.versions["term:kitty:clipboard"]
     try {
       generateApi(out)
       expect(existsSync(runPath)).toBe(true)
       Reflect.deleteProperty(fixture.projection.seeds, "term:kitty")
       fixture.projection.versions["term:kitty"] = []
       fixture.projection.history["term:kitty"] = []
+      fixture.projection.versions["term:kitty:clipboard"] = []
       generateApi(out)
       expect(existsSync(runPath)).toBe(false)
     } finally {
       if (current) fixture.projection.seeds["term:kitty"] = current
       fixture.projection.versions["term:kitty"] = versions ?? []
       fixture.projection.history["term:kitty"] = history ?? []
+      fixture.projection.versions["term:kitty:clipboard"] = alternate ?? []
       rmSync(out, { recursive: true, force: true })
     }
   })

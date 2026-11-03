@@ -43,7 +43,7 @@ describe("website build identity", () => {
 
   it("loads the actual VitePress configuration through its production config bundler", async () => {
     // Direct Bun imports do not exercise Vite's config bundle: importing an executable script
-    // through the admission reader broke the live site while those direct-import tests passed.
+    // through the corpus reader broke the live site while those direct-import tests passed.
     const siteRoot = join(dirname(fileURLToPath(import.meta.url)), "..")
     const { stdout } = await promisify(execFile)(
       "bun",

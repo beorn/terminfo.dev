@@ -20,8 +20,8 @@ import {
 } from "@terminfo/probe-defs"
 import { saveDaemonProbeRun } from "../../terminfo.dev/src/daemon-client.ts"
 import * as collector from "../../terminfo.dev/src/serve.ts"
-import * as runAdmission from "../../../scripts/admit-run.ts"
-import * as admission from "./admit-collected-run.ts"
+import * as placement from "../corpus-placement.ts"
+import * as collection from "./collected-run.ts"
 import * as sourceEnvironment from "../versions.ts"
 import { handleServer } from "./server.ts"
 import { handleHere } from "./here.ts"
@@ -158,10 +158,10 @@ it("retains current-format HTTP bytes privately and refuses a collector revision
   const digest = createHash("sha256").update(fixtures.raw).digest("hex")
   expect(readFileSync(join(fixtures.home!, ".terminfo-dev", "http-responses", digest), "utf8")).toBe(fixtures.raw)
   expect(existsSync(join(fixtures.home!, "collected"))).toBe(false)
-  expect(console.log).not.toHaveBeenCalledWith(expect.stringContaining("admitted to content"))
+  expect(console.log).not.toHaveBeenCalledWith(expect.stringContaining("written to content"))
 })
 
-it("preserves server --start without running admission", async () => {
+it("preserves server --start without writing a run", async () => {
   const { startDaemon } = await import("../../terminfo.dev/src/serve.ts")
   await handleServer(undefined, { start: true, port: 4567 })
   expect(startDaemon).toHaveBeenCalledWith(4567)
@@ -176,6 +176,7 @@ it.each([
   ["here", true],
   ["retain", false],
   ["default", false],
+  ["default", false, true],
   ["harness", false],
   ["harness", false, true],
   ["retain", false, true],
@@ -257,31 +258,31 @@ it.each([
     }
     fixtures.receipt = { manifest, collectorRevision: manifest.sourceRevision }
     fixtures.raw = JSON.stringify(run)
-    vi.spyOn(admission, "admitCollectedRun").mockReturnValue(join(fixtures.home!, "private.draft.json"))
+    vi.spyOn(collection, "writeCollectedRun").mockReturnValue(join(fixtures.home!, "private.draft.json"))
     vi.spyOn(sourceEnvironment, "ensureSourceSuiteEnvironment").mockReturnValue({
       TERMINFO_PROBE_HASH: manifest.probeHash,
       TERMINFO_SOURCE_REVISION: manifest.sourceRevision,
     })
     vi.mocked(collector.collectProbeRun).mockResolvedValue(run)
 
-    // Existing coverage tests missed persistence: these routes must retain raw zero-review
-    // diagnostics, while default admin admission remains an explicit sealing boundary.
+    // Default collection must reach placement even for a draft; the old gate skipped it.
     if (command === "retain" || command === "default") {
       const response = join(fixtures.home!, "response")
       writeFileSync(response, fixtures.raw)
       if (command === "retain") {
-        const saved = admission.retainCollectedRun(run, response, undefined, join(fixtures.home!, "private"))
+        const saved = collection.retainCollectedRun(run, response, undefined, join(fixtures.home!, "private"))
         assertDraft(JSON.parse(readFileSync(saved, "utf8")) as CapturedRunDraft)
         expect(readFileSync(join(fixtures.home!, "private", "response"), "utf8")).toBe(fixtures.raw)
       } else {
-        vi.mocked(admission.admitCollectedRun).mockRestore()
-        const plan = vi.spyOn(runAdmission, "planAdmission").mockImplementation(() => {
-          throw new Error("explicit admission reached")
+        vi.mocked(collection.writeCollectedRun).mockRestore()
+        const place = vi.spyOn(placement, "placeCollectedRun").mockImplementation(() => {
+          throw new Error("placement reached")
         })
-        expect(() => admission.admitCollectedRun(run, response)).toThrow("explicit admission reached")
-        const saved = plan.mock.calls[0]![0]
-        expect(JSON.parse(readFileSync(saved, "utf8"))).toHaveProperty("sealedAt")
-        expect(plan).toHaveBeenCalledTimes(1)
+        expect(() => collection.writeCollectedRun(run, response)).toThrow("placement reached")
+        const saved = place.mock.calls[0]![0]
+        if (pending) expect(JSON.parse(readFileSync(saved, "utf8"))).not.toHaveProperty("sealedAt")
+        else expect(JSON.parse(readFileSync(saved, "utf8"))).toHaveProperty("sealedAt")
+        expect(place).toHaveBeenCalledWith(saved, manifest)
       }
       return
     }

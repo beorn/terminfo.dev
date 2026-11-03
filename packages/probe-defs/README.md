@@ -2,7 +2,7 @@
 
 `@terminfo/probe-defs` defines term feature probes, their observations and the shared run model. Start at the [exports and probe registry](src/index.ts); [types.ts](src/types.ts) owns the record types.
 
-This describes the implemented system. Callbacks still perform live I/O and evaluate it together. The private viprobe package supplies the ordered record/read/replay core. Both TTY recording owners derive their legacy display events from validated call logs. The selected eleven-probe erase runner captures actual xterm.js effects once and reasserts them twice offline with task-owned checks, bound artifact provenance and domain reporting. Its artifacts remain under the fixed private `~/.terminfo-dev/replays` root, with a separate directory per attempt. The wider collector migration and reassert CLI remain unfinished under recorder #30932; no stored grades or current admission change.
+This describes the implemented system. Callbacks still perform live I/O and evaluate it together. The private viprobe package supplies the ordered record/read/replay core. Both TTY recording owners derive their legacy display events from validated call logs. The selected eleven-probe erase runner captures actual xterm.js effects once and reasserts them twice offline with task-owned checks, bound artifact provenance and domain reporting. Its artifacts remain under the fixed private `~/.terminfo-dev/replays` root, with a separate directory per attempt. The wider collector migration and reassert CLI remain unfinished under recorder #30932; no stored grades change.
 
 ## Vocabulary and current code
 
@@ -49,14 +49,14 @@ undeclared or unprobed. A catalog manual/partial override takes precedence; othe
 definition, callback-arm and assertion-declaration checks determine coverage. These labels neither grade
 a result nor establish that both positive and negative controls exist. Overrides and result statuses stay unchanged.
 
-Review, intake/apply, admission, seal and capture binding remain implemented during the transition to their approved Phase 1 removal. The procedures below describe that current machinery; this terminology change grants no new workflow permission and does not lift an existing END hold.
+Existing capture and review mechanisms continue until their respective Phase 1 changes land. Pending answers, external release and publication remain held until the actual full Phase 1.4 merge and their existing authorization.
 
 `release1-collection --collect --development --output <private-directory>` retains private collection and its actual attempts.
 The pass carries no freeze, deferral or admission metadata.
 Failed hosted collection retains its original delegated draft as failure custody when canonical `run.json` is absent.
 Only a source-, suite-, run- and selection-bound collector attempt with a recorded start establishes execution;
 a job-start marker alone does not. A nonzero collector exit reports `failed`, with its exit code and log path.
-This custody never supplies grades or bypasses canonical validation, review or admission.
+This custody never supplies grades or bypasses canonical validation.
 The read-only admin `report --scoreboard <inputs...>` accepts explicit raw captures or pass files/directories, preserves pass identities,
 and uses the canonical selected-results reader and local `origin/live` revision to distinguish selection from proven publication.
 
@@ -142,7 +142,7 @@ negative, and a changed grid or misplaced marker stays inconclusive. Consumption
 not prove handling or scroll-speed presentation. A source that stores speed without
 readback remains a Test to-do tool gap when reviewed. Application criteria are unchanged.
 
-Both source interfaces carry `readonly kind: ProbeSourceKind` directly. Current runs retain exactly `source: { kind: "live" }` or `{ kind: "trace", trace: { path, sha256 }, captureRunId, captureSuiteId, captureSourceRevision }`. The trace path is relative to the artifact store and contains no parent segment; its SHA256 and capture identities are required. Initialization, sealing and the canonical reader validate and preserve this union without a schema bump. Call-log format/version remain inside the referenced artifact. Schema 1/3 capture inputs and historical collector transport are retired. The canonical schema 2 reader remains for the retained Kitty admission specimen until the admission cleanup. This source declaration grants no capture, admission or publication.
+Both source interfaces carry `readonly kind: ProbeSourceKind` directly. Current runs retain exactly `source: { kind: "live" }` or `{ kind: "trace", trace: { path, sha256 }, captureRunId, captureSuiteId, captureSourceRevision }`. The trace path is relative to the artifact store and contains no parent segment; its SHA256 and capture identities are required. Initialization, sealing and the canonical reader validate and preserve this union without a schema bump. Call-log format/version remain inside the referenced artifact. Schema 1/3 capture inputs and historical collector transport are retired. The canonical schema 2 reader remains for the retained Kitty specimen. This source declaration grants no capture or publication.
 
 `termAssertionType` and `libAssertionType` declare a retained deciding-observation class. An explicit null means the callback runs without a typed deciding observable; undefined is temporarily undeclared (#28801). Neither means the callback arm itself is absent, and neither becomes a null observation or assertion type.
 
@@ -173,7 +173,7 @@ membership. An unaudited binary still collects observed buffers and replies. A s
 its binary's source audit retains TEST TODO with `no source audit for binary <sha12>` and its raw response;
 it never borrows another binary's citation. Hourly measurement calls the existing `collectHeadlessRuns`
 entry point and reads its `collection.json` through the canonical run parser, without importing review selection.
-App/hosted collection keeps its existing driver, and admission remains separate.
+App/hosted collection keeps its existing driver.
 
 The current libvterm v0.3.3 source audits bind WASM `3d67045b`, adapter blob
 `eb513ccd` and loader blob `1e784be8`. Its OSC52 selection callbacks and native
@@ -394,7 +394,7 @@ Invalid alternate evidence stays visible without vetoing the graded phases; clea
 Supported reasons state: "ASCII reflow measured on main screen and retained history; wide characters,
 cursor on a wrapped line and terminal-app resize unmeasured". No broader coverage is inferred, and
 the separate terminal-app arm remains Test to-do. Private apparatus results grant no exact-run decision,
-seal or admission; the native absolute-row consumer hold remains with independent batch review.
+corpus placement; the native absolute-row consumer hold remains with independent batch review.
 
 A default-config observation is not engine capability absence. Libvterm0.3 exposes
 `vterm_screen_enable_reflow`, disabled unless the embedder enables it, and the current adapter
@@ -669,7 +669,7 @@ The five admin routes share definitions, but do not all execute or persist throu
 - **Headless:** [admin/src/termless.ts](../admin/src/termless.ts) calls [collect-headless.ts](../probes/collect-headless.ts), which runs isolated engine workers using `headless-batch.ts` and retains private runs.
 - **App:** [admin/src/app.ts](../admin/src/app.ts) launches an owned terminal/daemon, requests collection and enriches its retained response with launch and identity evidence.
 - **Server:** [admin/src/server.ts](../admin/src/server.ts) starts or contacts daemons. [serve.ts](../terminfo.dev/src/serve.ts) owns `collectProbeRun`, using the native unified batch.
-- **Inline:** [admin/src/here.ts](../admin/src/here.ts) calls that same `collectProbeRun`, finalizes the draft and prints it or its summary. Printing a result is not admission.
+- **Inline:** [admin/src/here.ts](../admin/src/here.ts) calls that same `collectProbeRun`, finalizes the draft and prints it or its summary. Printing a result does not place it in the corpus.
 - **Mux:** [admin/src/mux.ts](../admin/src/mux.ts) runs a daemon through the multiplexer, collects its response and supplies the intended mux configuration to the shared writer.
 
 Multiplexer expectation declarations describe routing, not terminal support:
@@ -682,23 +682,19 @@ The [daemon client](../terminfo.dev/src/daemon-client.ts) retains HTTP responses
 
 The writer checks intended id/version against known measured values without replacing them, but sets `subject.kind` from the intended term/mux subject and retains `intendedSubject` separately. Both current source and suite version are explicit inputs; a historical declaration cannot silently become a live writer's manifest.
 
-`sealRunDraft` requires complete measured identity and preserves pending review and other `test-todo` results in the sealed snapshot. The canonical reader accepts pending sealed captures without changing their recorded statuses. A lapsed answer keeps the incoming pending status: a new Test to-do remains Test to-do, and a retained legacy failure remains failure.
-
-Raw diagnostic collection retains an unsealed `.draft.json`, including captures with no required review or with carried reviews already resolved. `pending-review` means a measured, unsealed draft; it does not imply a required cell review remains. Drafts receive the same identity, suite, source, artifact, summary and classification checks as sealed runs. Development completion does not require sealing or admission.
-
-Review answers use the existing pre-seal intake at an authorized act. A sealed pending snapshot stays immutable: a later author answer applies to the next capture, never to that snapshot. `admit-run --review` seals when reviews resolve; default admin admission is also explicit. Standalone diagnostic outputs have no zero-review admission route. Sealing a pending capture does not grant review application, admission or publication; the END hold on those acts remains.
+The capture writer retains measured identity and recorded result statuses. Private diagnostic collection preserves its response and normalized snapshot outside the source repository. Pending answers remain held until the actual full Phase 1.4 merge and their existing authorization.
 
 A reviewed capture decision may name `tool-gap` when the observable is buildable but its instrument is unbuilt.
 Its required reason names the missing instrument and its owning issue. The existing applier replaces that
 pending `review` test with a `criterion` Test to-do, preserving the decision bytes and original capture evidence.
 It creates no assertions. Other failed tests retain precedence; a tool gap is not an impossibility or a support grade.
-The run can then seal, and its canonical reader and result counts retain `test-todo`.
+The canonical reader and result counts retain `test-todo`.
 
 A curated `tool-gap` overlay may also supersede an embedded `collector.review.*` decision on an exact
-sealed `runId` and `runSha256`, for the same feature and scope. Supersession readers require that parsed
-sealed run to resolve the target; missing runs or mismatched identities remain errors. The existing
+recorded `runId` and `runSha256`, for the same feature and scope. Supersession readers require that parsed
+run to resolve the target; missing runs or mismatched identities remain errors. The existing
 per-run Test to-do projection shares its application with the console-host rule, so version tables, counts,
-selected contexts and public results agree while the sealed source stays byte-identical. This cell-level
+selected contexts and public results agree while the source stays byte-identical. This cell-level
 review grants no identity or community-submission approval, and implies no global withdrawal on future captures.
 
 New capture decisions explicitly carry `evidence: { algorithm: "evidence-output-v1", sha256, projection }` beside
@@ -730,19 +726,15 @@ review pending, with named components in each context's `reviewBindings` report 
 A candidate that fails an application prerequisite is reported as refused; other cells can still carry.
 The report records old-rule and new-rule results for every pending review cell. Original decision source strings,
 capture raw values and assertion prefixes remain retained; each enriched pending draft is another immutable
-snapshot in the existing output directory. Seal and admission remain separate checks.
+snapshot in the existing output directory.
 
-[admit-collected-run.ts](../admin/src/admit-collected-run.ts) keeps the private response/run first. App and mux output-directory mode stops there; their default mode and the server route also attempt admission.
-
-Admission is a separate operation owned by [run-admission.ts](../admin/run-admission.ts), exposed through [scripts/admit-run.ts](../../scripts/admit-run.ts). Pending review stays private, not admitted.
-
-That owner checks the run, suite and cited artifacts before placing admitted content. A private collection, successful test or sealed result alone does not mean site data has been published.
+[collected-run.ts](../admin/src/collected-run.ts) retains the private response and normalized run first. Explicit app and mux `--output` stops there. Default app, mux and server collection also calls [corpus-placement.ts](../admin/corpus-placement.ts), which checks the run, trusted suite and cited artifacts before placing them under `content/`. Release collection remains private. Collection does not authorize external release or publication; those and pending answers remain held until the actual full Phase 1.4 merge and their existing authorization.
 
 ## How a draft becomes a measured cell
 
 `cells.json` is the remeasure instrument's own record of what it measured: one `engine -> featureId -> status` map, written
-per run. It is **not** what the site publishes from — published coverage is projected from the accepted and admitted content
-under `content/` — so a status here is a measurement, never an admission. A `draft.json` is not that map either, and neither a
+per run. It is **not** what the site publishes from — published coverage is projected from the collected content
+under `content/` — so a status here is a measurement, not a publication. A `draft.json` is not that map either, and neither a
 draft nor a count of its results substitutes for it.
 
 The projection is one row, one draft, statuses copied verbatim. The instrument reads `pass.json`; for each entry it takes the
@@ -773,7 +765,7 @@ Three rules follow, and each has cost a reader time:
   decision recorded after its draft was captured has no path back into that immutable draft. During natural collection,
   the pass finalizer now supplies accepted interpretations and the trusted current manifest to that same writer before
   assigning `rawRun`. Cells project from the resulting snapshot; a newly emitted unmatched source review stays `test-todo`. Retained snapshots keep their recorded statuses.
-  These remain private measurements, separate from admission and site status.
+  These remain private measurements, separate from corpus placement and site status.
 
 Worked example, from the run written 2026-10-31 06:34 UTC. `pass.json` holds 11 rows, all `pending-review`, each naming one
 draft; `cells.json` holds those same 11 engines at 273 feature ids each. The directory also holds 11 `lib-*-unknown.draft.json`

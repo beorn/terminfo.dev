@@ -453,7 +453,9 @@ export function placeCollectedRun(
   const manifestBytes = Buffer.from(`${JSON.stringify(trustedSuite, null, 2)}\n`, "utf8")
   const manifest = parseSuiteManifest(`${source}: trusted collection suite`, manifestBytes.toString("utf8"))
   if (parsed.probeHash !== manifest.probeHash) {
-    throw new Error(`${source}: collected suite ${String(parsed.probeHash)} differs from trusted suite ${manifest.probeHash}`)
+    throw new Error(
+      `${source}: collected suite ${String(parsed.probeHash)} differs from trusted suite ${manifest.probeHash}`,
+    )
   }
   const loaded = parseRun(
     source,
@@ -619,34 +621,10 @@ export function placeRetainedArtifacts(
   return { created, existing }
 }
 
-/**
- * The launcher's own name for the receipt it mounts read-only and hands the collector (27874):
- * `host-measured.json`. Admission reads it from beside the run and re-hashes it against the digest
- * the run cites, so the bytes the ownership claim rests on are in the repository, not only a digest.
- */
+/** The launcher retains this receipt beside the collected run for verification. */
 const RECEIPT_BESIDE_RUN = "host-measured.json"
 
-/**
- * Place the disposable-ownership receipt a run cites (27874). The run document records the receipt
- * only as a digest, so a reader on main cannot see the identity the claim rests on — which is exactly
- * how the four hand-typed 27874 receipts stayed invisible. This places the exact bytes beside the run
- * at content/receipts/<runId>.json, exclusive-create and immutable once admitted, the same rule as
- * suite manifests, and re-parses them through the strict receipt parser so a placeholder identity is
- * refused by name HERE, at admission, and not only where the collector first read it.
- *
- * <runId> is the run document's own runId, so the receipt pairs with the admitted file name. The
- * receipt's own `runId` is the launcher's run id and is not required to equal it: the one genuine
- * container run on main differs (kitty 2912118b… cites a receipt whose own runId is 68eb134d…).
- *
- * What this proves is CONSISTENCY, not ORIGIN. The bytes hash to the digest the run cites, the run's
- * own target is the one the receipt names, and the identity fields are not degenerate — but a
- * determined hand-written receipt with plausible digests passes all of it. Origin is the apparatus
- * handoff (launcher-target-family): the receipt is written outside the measured environment, handed
- * in read-only, and refused if that environment rewrites it.
- *
- * A run collected against a shared terminal cites no receipt ({kind:"shared"}) and places nothing;
- * that is the untouched default path, and the F2 write gate is a separate question.
- */
+/** Verify a cited ownership receipt and bind its measured target and launch to the run. */
 function preflightOwnershipReceipt(
   source: string,
   ownership: string | undefined,
@@ -904,10 +882,3 @@ function preflightLinuxCompletionReceipt(source: string, run: LoadedRun): void {
     }
   }
 }
-
-/**
- * Admit a run. Condition 1 of the ruling: a manifest may be computed ONLY from the run's own suite,
- * so this refuses by name unless the live suite equals the run's `probeHash`. That keeps "the
- * revision is current here" a check rather than an assumption, and it never computes `probes` from
- * a different suite.
- */
