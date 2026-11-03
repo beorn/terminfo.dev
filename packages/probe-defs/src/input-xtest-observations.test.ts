@@ -641,6 +641,7 @@ test.each([
     expect(writes.join("")).toContain("\x1b[?1007l")
     expect(writes.join("")).toContain("\x1b[?1049l")
     expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "input_bytes" })
+    expect(result.observation?.note).toContain(form)
     expect(result.assertions?.[0]).toMatchObject({ kind: "positive", action: "alt-scroll-1007:4" })
     expect(result.assertions?.[0]?.expected).toContain(`as ${form}`)
     const observed = JSON.parse(result.assertions?.[0]?.observed ?? "null") as Record<string, unknown>

@@ -298,7 +298,14 @@ export async function altScroll1007(ctx: TermProbeSource): Promise<ProbeCallback
       ? `OS XTEST wheel-4 report under 1007 as ${cursorUpForm} after 1000+1006 delivery control on alt-screen`
       : "OS XTEST wheel-4 report under 1007 as CSI A or SS3 A after 1000+1006 delivery control on alt-screen"
     if (cursorUpForm) {
-      return interactionResult("alt-scroll-1007:4", expected, observed)
+      return {
+        ...interactionResult("alt-scroll-1007:4", expected, observed),
+        observation: {
+          outcome: "supported",
+          assertionType: "input_bytes",
+          note: `XTEST wheel-4 under alternate-scroll 1007 produced ${cursorUpForm} cursor-up input after successful 1000+1006 delivery control on alt-screen`,
+        },
+      }
     }
     return unsupportedInteraction("alt-scroll-1007:4", expected, observed)
   } finally {
