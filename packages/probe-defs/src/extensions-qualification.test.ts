@@ -7,7 +7,7 @@
 import { expect, test } from "vitest"
 import { inputProbes } from "./input.ts"
 import { extensionsProbes } from "./extensions.ts"
-import { deviceProbes, TERM_FEATURES_API_CITATIONS } from "./device.ts"
+import { deviceProbes } from "./device.ts"
 import { replayTermProbeSource } from "./testing/group-harness.ts"
 import { ADAPTER_SOURCE_AUDITS, NO_SAME_PATH_CONTROL } from "./helpers.ts"
 import type { HeadlessRuntimeIdentity, TermProbeSource, LibProbeSource } from "./types.ts"
@@ -214,24 +214,16 @@ test("sixel keeps the observable review with or without Sixel storage and never 
   }
 })
 
-test("TERM_FEATURES audit enumerates only files bound by the declared adapter sources", () => {
-  for (const [engine, [, path]] of Object.entries(TERM_FEATURES_API_CITATIONS)) {
-    const declared = ADAPTER_SOURCE_AUDITS[engine as keyof typeof ADAPTER_SOURCE_AUDITS]
-    expect(Object.keys(declared), engine).toContain(path)
-    expect((declared as Readonly<Record<string, string>>)[path], engine).toMatch(/^[a-f0-9]{40}$/)
-  }
-  for (const identity of auditedArtifacts) {
-    const definition = deviceProbes.find((entry) => entry.id === "device.term-features")!
-    for (const source of identity.adapterSources!) {
-      const result = definition.lib!({
-        runtimeIdentity: {
-          ...identity,
-          adapterSources: identity.adapterSources!.filter((entry) => entry.path !== source.path),
-        },
-      } as unknown as LibProbeSource)
-      expect(result.criterionBranch, source.path).not.toBe("headless-observable-review")
-    }
-  }
+test("library TERM_FEATURES is one per-kind result, the same with or without a source audit entry", () => {
+  const definition = deviceProbes.find((entry) => entry.id === "device.term-features")!
+  const audited = definition.lib!({ runtimeIdentity: auditedArtifacts[0] } as unknown as LibProbeSource)
+  const unaudited = definition.lib!({
+    runtimeIdentity: { ...auditedArtifacts[0]!, adapterSources: [] },
+  } as unknown as LibProbeSource)
+  expect(unaudited).toEqual(audited)
+  expect(definition.lib!({} as unknown as LibProbeSource)).toEqual(audited)
+  expect(audited.criterionBranch).toBeUndefined()
+  expect(audited.notTested?.noObservable).toMatch(/no application child/)
 })
 
 test("OSC 8 missing-observer review excludes adapter locators and global revisions", () => {
@@ -254,37 +246,6 @@ test("OSC 8 missing-observer review excludes adapter locators and global revisio
   }
   expect(callback("extensions.osc8").lib!(source(relocated))).toEqual(result)
 })
-
-test.each(auditedArtifacts)(
-  "$kind term-features API review survives provenance moves but not adapter changes",
-  (identity) => {
-    const source = (runtimeIdentity: HeadlessRuntimeIdentity): LibProbeSource =>
-      ({
-        runtimeIdentity,
-        feed: () => undefined,
-        getCell: () => ({ char: "X" }),
-        capabilities: { extensions: new Set() },
-      }) as unknown as LibProbeSource
-    const moved = structuredClone(identity)
-    moved.termlessRevision = "another-provenance-only-revision"
-    if (moved.kind === "native" || moved.runtimeFormat === "wasm") moved.loadedBinary.path = "/another/location"
-    if (moved.kind === "js") {
-      moved.resolvedPath = "/another/wrapper.ts"
-      if (moved.integrity.kind === "source") {
-        moved.integrity.revision = "another-wrapper-revision"
-        moved.integrity.treeOid = "another-wrapper-tree"
-      }
-    }
-    const termFeatures = deviceProbes.find((entry) => entry.id === "device.term-features")!
-    const apiReview = termFeatures.lib!(source(identity))
-    expect(apiReview.criterionBranch).toBe("headless-observable-review")
-    expect(apiReview.response).not.toContain("runtimeIdentity")
-    expect(termFeatures.lib!(source(moved))).toEqual(apiReview)
-    expect(termFeatures.lib!(source({ ...identity, adapterSources: [] })).criterionBranch).not.toBe(
-      "headless-observable-review",
-    )
-  },
-)
 
 // The initial/default query is silent; indexed painted cells are an independent palette witness.
 function indexedPalette(

@@ -12,92 +12,14 @@ import {
   sentinelAnswer,
   sentinelNegativeResult,
   sentinelSilenceResult,
-  ADAPTER_SOURCE_AUDITS,
-  auditedAdapterSources,
 } from "./helpers.ts"
-import { evidenceRuntimeIdentity } from "./runtime-identity.ts"
 
-export const TERM_FEATURES_API_CITATIONS = {
-  vterm: [
-    "0.10.1",
-    "packages/vterm/src/backend.ts",
-    "createVtermBackend integrates the vterm Screen as a TerminalBackend with no application-child environment API",
-  ],
-  vt220: [
-    "0.10.1",
-    "packages/vt220/src/backend.ts",
-    "createVt220Backend integrates the vt220 Screen as a TerminalBackend with no application-child environment API",
-  ],
-  vt100: [
-    "0.10.1",
-    "packages/vt100/src/backend.ts",
-    "createVt100Backend integrates the vt100 Screen as a TerminalBackend with no application-child environment API",
-  ],
-  vt100Rust: [
-    "0.16.2",
-    "packages/vt100-rust/src/backend.ts",
-    "createVt100RustBackend returns an in-process TerminalBackend with no application child",
-  ],
-  wezterm: [
-    "0.1.0-fork.5",
-    "packages/wezterm/src/backend.ts",
-    "createWeztermBackend returns an in-process TerminalBackend with no application child",
-  ],
-  alacritty: [
-    "0.26.0",
-    "packages/alacritty/src/backend.ts",
-    "createAlacrittyBackend returns an in-process TerminalBackend with no application child",
-  ],
-  ghosttyNative: [
-    "1.3.1",
-    "packages/ghostty-native/src/backend.ts",
-    "createGhosttyNativeBackend returns an in-process TerminalBackend with no application child",
-  ],
-  libvterm: [
-    "0.3.3",
-    "packages/libvterm/src/backend.ts",
-    "createLibvtermBackend returns the parser/readback LegacyBackend with no application child",
-  ],
-  xtermjs: [
-    "6.0.0",
-    "packages/xtermjs/src/backend.ts",
-    "createXtermBackend integrates @xterm/headless as an in-process TerminalBackend",
-  ],
-  ghostty: [
-    "0.4.0",
-    "packages/ghostty/src/backend.ts",
-    "createGhosttyBackend returns LegacyBackend over the ghostty-web core with no application child",
-  ],
-  kitty: [
-    "0.49.2",
-    "packages/kitty/src/backend.ts",
-    "createKittyBackend exposes parser/readback via +runpy bridge; that helper subprocess is not a terminal-owned application child",
-  ],
-} as const
-
-function termFeaturesLibraryReview(ctx: LibProbeSource): ProbeCallbackResult {
-  const identity = evidenceRuntimeIdentity(ctx.runtimeIdentity)
-  if (!identity) {
-    return notTestedResult("TERM_FEATURES: no pinned engine API source audit at this runtime", {})
-  }
-  const entry = (Object.keys(TERM_FEATURES_API_CITATIONS) as (keyof typeof TERM_FEATURES_API_CITATIONS)[]).find(
-    (engine) =>
-      identity.engineVersion === TERM_FEATURES_API_CITATIONS[engine][0] &&
-      auditedAdapterSources(ctx.runtimeIdentity, engine),
+/** A library context has no application child by construction, so TERM_FEATURES is never observable there (@cto 1265b1f4). */
+function termFeaturesLibraryReview(): ProbeCallbackResult {
+  return notTestedResult(
+    "TERM_FEATURES: a library context spawns no application child to receive the environment export",
+    {},
   )
-  if (!entry) return notTestedResult("TERM_FEATURES: no engine-specific API source citation at this runtime", {})
-  const [, sourcePath, sourceCitation] = TERM_FEATURES_API_CITATIONS[entry]
-  const blobOid = (ADAPTER_SOURCE_AUDITS[entry] as Readonly<Record<string, string>>)[sourcePath]
-  const note =
-    "TERM_FEATURES is a terminal program's child-environment export; this library API spawns no application child process"
-  return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
-    audit: {
-      engine: entry,
-      engineVersion: identity.engineVersion,
-      sourceCitation,
-      blobOid,
-    },
-  })
 }
 
 /** These patterns match complete answers to the specific query, not arbitrary consumed output. */
