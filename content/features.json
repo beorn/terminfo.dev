@@ -1433,7 +1433,7 @@
     "tags": ["osc", "vscode-extensions"],
     "baseline": "rich",
     "body": "<p><strong>OSC 633;D</strong> marks command completion and includes the exit code as a parameter, mirroring <a href=\"/extensions/osc133-d-command-finished\" class=\"hover-link\">OSC 133;D</a>. The format is <code>OSC 633 ; D ; exitcode BEL</code>.</p>\n<p>This is the marker that drives VS Code's command decoration gutter: green check for success (exit 0), red X for failure (non-zero exit). It's also what enables the run-recent-command picker to filter by success/failure status, and what gives the terminal command duration data for performance analysis.</p>",
-    "probe": "Send <code>OSC 633 ; D ; 0 BEL</code>, then check that the cursor does not advance and the terminal stays responsive. No reply is defined, and shell-integration markers live outside the cell grid, so an ignored sequence and an honoured one leave the same screen. The attempted cursor query cannot distinguish an ignored sequence from an honored one; it is TEST FAILURE for this claim.",
+    "probe": "Same-run OSC 133 D statuses 0 and 17 qualify the existing end reader. That is the same-reader control from rule 2.\n\n633 D 0 then 17, appended exactly: Supported.\n\nBoth unchanged after a passing control: Unsupported.\n\nInert or missing reader: TEST TODO.\n\nA reader that changed to the wrong status: TEST FAILURE, because that is data we cannot trust.\n\nEarlier entries stay as they are. No API, schema or bar change.",
     "sequence": "ESC ] 633 ; D ; exitcode BEL"
   },
   "extensions.osc633-e": {

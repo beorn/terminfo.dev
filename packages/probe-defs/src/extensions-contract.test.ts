@@ -887,6 +887,64 @@ test.each([
   if (expected === "inconclusive") expect(targetCount).toBe(0)
 })
 
+test.each([
+  { model: "exact", expected: "supported" },
+  { model: "ignored", expected: "unsupported" },
+  { model: "inert", expected: "inconclusive" },
+  { model: "missing", expected: "inconclusive" },
+  { model: "wrong", expected: "error" },
+  { model: "partial", expected: "error" },
+])("OSC633 end reader: $model => $expected", ({ model, expected }) => {
+  const base = inertModel()
+  const initial = { type: "command-end" as const, rawStatus: "42" }
+  const marks = [initial]
+  const cells = new Map<string, string>()
+  const writes: string[] = []
+  let x = 0
+  let y = 0
+  let targets = 0
+  const source = libProbeSource({
+    ...base,
+    capabilities: { ...libProbeSource(base).capabilities, extensions: new Set(["semantic-command-end"]) },
+    getSemanticMarks: model === "missing" ? undefined : () => (model === "inert" ? [initial] : structuredClone(marks)),
+    getCursor: () => ({ x, y }),
+    getCell: (row, col) => ({ ...base.getCell(row, col), char: cells.get(`${row},${col}`) ?? " " }),
+    feed: (text) => {
+      writes.push(text)
+      if (text === "\x1b[1;1H") {
+        x = 0
+        y = 0
+      }
+      if (text === "\x1b[2;3H") {
+        x = 2
+        y = 1
+      }
+      const end = /^\x1b\](133|633);D;([^\x07]*)\x07X?$/.exec(text)
+      if (end?.[1] === "133") marks.push({ type: "command-end", rawStatus: end[2]! })
+      if (end?.[1] === "633") {
+        targets++
+        if (model === "exact" || (model === "partial" && targets === 1))
+          marks.push({ type: "command-end", rawStatus: end[2]! })
+        if (model === "wrong") marks.push({ type: "command-end", rawStatus: "wrong-status" })
+      }
+      if (text.endsWith("X")) {
+        cells.set(`${y},${x}`, "X")
+        x++
+      }
+    },
+  })
+  const result = extensionsProbes.find((entry) => entry.id === "extensions.osc633-d")!.lib!(source)
+  expect(result.observation?.outcome).toBe(expected)
+  expect(marks[0]).toEqual(initial)
+  if (["supported", "unsupported", "error"].includes(expected)) {
+    expect(writes).toContain("\x1b]133;D;0\x07")
+    expect(writes).toContain("\x1b]133;D;17\x07")
+    expect(writes).toContain("\x1b]633;D;0\x07X")
+    expect(writes).toContain("\x1b]633;D;17\x07X")
+    expect(targets).toBe(2)
+  }
+})
+
 // #31904 R3a (@cto 6e4f7300): each colour-stack row grades its own operation. A pop that resets to
 // the starting (default) foreground passed both rows when the fixture restored that same colour; a
 // stack that keeps a stale snapshot passed the push row. Each fake below is a whole engine model.

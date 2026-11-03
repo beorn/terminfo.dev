@@ -1747,16 +1747,60 @@ function promptMarkResult(
   noObservable: string,
   sourceReview?: { probeId: string; selector: number | "133;D"; markType?: "prompt" | "command" | "output" },
 ): ProbeCallbackResult {
-  if (sourceReview && absentOscAudit(ctx.runtimeIdentity, sourceReview.selector)) {
+  const osc633End = sourceReview?.probeId === "extensions.osc633-d"
+  if (sourceReview && !osc633End && absentOscAudit(ctx.runtimeIdentity, sourceReview.selector)) {
     return sourceAbsentOsc(sourceReview.probeId, sourceReview.selector, sequence, noObservable)(ctx)
   }
   ctx.feed("\x1b[1;1H")
   const home = ctx.getCursor()
   const markType = sourceReview?.markType
-  const commandEnd = sourceReview?.selector === "133;D"
+  const commandEnd = sourceReview?.selector === "133;D" || osc633End
   const readerKey = markType ? "semantic-marks" : commandEnd ? "semantic-command-end" : undefined
   const declared = readerKey !== undefined && ctx.capabilities.extensions.has(readerKey)
   const readMarks = declared ? ctx.getSemanticMarks?.bind(ctx) : undefined
+  if (osc633End && !readMarks) {
+    return parserStateResult(null, "OSC633 D command-end status readback", {}, "no command-end reader in this adapter")
+  }
+  const endControl =
+    osc633End && readMarks
+      ? (() => {
+          const before = readMarks()
+          ctx.feed("\x1b]133;D;0\x07")
+          const first = readMarks()
+          ctx.feed("\x1b]133;D;17\x07")
+          const second = readMarks()
+          return { before, first, second }
+        })()
+      : undefined
+  if (endControl) {
+    const { before, first, second } = endControl
+    const qualified =
+      first.length === before.length + 1 &&
+      second.length === first.length + 1 &&
+      first[before.length]?.type === "command-end" &&
+      first[before.length]?.rawStatus === "0" &&
+      second[first.length]?.type === "command-end" &&
+      second[first.length]?.rawStatus === "17" &&
+      before.every((mark, index) => JSON.stringify(mark) === JSON.stringify(first[index])) &&
+      first.every((mark, index) => JSON.stringify(mark) === JSON.stringify(second[index]))
+    if (!qualified) {
+      const inert = JSON.stringify(before) === JSON.stringify(first) && JSON.stringify(first) === JSON.stringify(second)
+      const result = parserStateResult(
+        null,
+        "OSC133 D 0 and 17 qualify the same command-end reader",
+        endControl,
+        "Command-end reader did not report the two OSC133 controls",
+      )
+      if (!inert)
+        result.observation = {
+          outcome: "error",
+          reason: "invalid-reply",
+          assertionType: "buffer_state",
+          note: "Command-end reader changed to an unexpected control status or altered earlier history",
+        }
+      return result
+    }
+  }
   const before = readMarks ? readMarks() : undefined
   ctx.feed(sequence + "X")
   const first = readMarks ? readMarks() : undefined
@@ -1771,7 +1815,7 @@ function promptMarkResult(
   if (commandEnd && readMarks && before && first) {
     ctx.feed("\x1b[2;3H")
     const secondBefore = readMarks()
-    const secondSequence = "\x1b]133;D;17\x07"
+    const secondSequence = `\x1b]${osc633End ? 633 : 133};D;17\x07`
     ctx.feed(secondSequence + "X")
     const second = readMarks()
     const secondCell = ctx.getCell(1, 2)
@@ -1779,20 +1823,22 @@ function promptMarkResult(
     ctx.feed("\x1b[1;1H")
     const firstMark = first[before.length]
     const secondMark = second[secondBefore.length]
-    return parserStateResult(
+    const supported =
       first.length === before.length + 1 &&
-        firstMark?.type === "command-end" &&
-        firstMark.rawStatus === "0" &&
-        second.length === secondBefore.length + 1 &&
-        secondMark?.type === "command-end" &&
-        secondMark.rawStatus === "17" &&
-        before.every((mark, index) => JSON.stringify(mark) === JSON.stringify(first[index])) &&
-        first.length === secondBefore.length &&
-        first.every((mark, index) => JSON.stringify(mark) === JSON.stringify(secondBefore[index])) &&
-        secondBefore.every((mark, index) => JSON.stringify(mark) === JSON.stringify(second[index])) &&
-        secondCell.char === "X" &&
-        secondCursor.x === 3 &&
-        secondCursor.y === 1,
+      firstMark?.type === "command-end" &&
+      firstMark.rawStatus === "0" &&
+      second.length === secondBefore.length + 1 &&
+      secondMark?.type === "command-end" &&
+      secondMark.rawStatus === "17" &&
+      before.every((mark, index) => JSON.stringify(mark) === JSON.stringify(first[index])) &&
+      first.length === secondBefore.length &&
+      first.every((mark, index) => JSON.stringify(mark) === JSON.stringify(secondBefore[index])) &&
+      secondBefore.every((mark, index) => JSON.stringify(mark) === JSON.stringify(second[index])) &&
+      secondCell.char === "X" &&
+      secondCursor.x === 3 &&
+      secondCursor.y === 1
+    const result = parserStateResult(
+      supported,
       "Each target feed appends exactly one command-end with its exact raw status and preserves earlier history",
       {
         sequence,
@@ -1807,8 +1853,31 @@ function promptMarkResult(
         second,
         secondCell: secondCell.char,
         secondCursor,
+        ...(endControl && { endControl }),
       },
     )
+    if (osc633End) {
+      const unchanged =
+        JSON.stringify(before) === JSON.stringify(first) &&
+        JSON.stringify(first) === JSON.stringify(secondBefore) &&
+        JSON.stringify(secondBefore) === JSON.stringify(second)
+      const consumed = secondCell.char === "X" && secondCursor.x === 3 && secondCursor.y === 1
+      if (!consumed)
+        return parserStateResult(
+          null,
+          "Both OSC633 D target feeds have qualified screen consumption",
+          JSON.parse(result.response!),
+          "Second command-end target consumption was not qualified",
+        )
+      if (!supported && !unchanged)
+        result.observation = {
+          outcome: "error",
+          reason: "invalid-reply",
+          assertionType: "buffer_state",
+          note: "OSC633 D reader changed to the wrong status or altered earlier history",
+        }
+    }
+    return result
   }
   if (markType && readMarks && before && first) {
     ctx.feed("\x1b[2;3H")
