@@ -281,7 +281,11 @@ that prefix. The collector gives each probe its own disposable backend, so
 notification messages cannot leak into another probe. These are `buffer_state`
 observations of parser metadata, not a filesystem operation, OS notification
 or OSC 9;4 progress measurement. Missing readers keep the existing
-`headless-observable-review` tool gap; getter errors propagate.
+`headless-observable-review` tool gap; getter errors propagate. For OSC 9
+notifications without a reader, an existing exact-runtime absence audit and a
+rendered sentinel instead retain `source-negative-review` as Test to-do,
+pending source review. Vterm's progress-only OSC 9 audit cannot qualify a
+notification negative; its missing notification reader remains a tool gap.
 
 ## Evidence, capture and assertion
 

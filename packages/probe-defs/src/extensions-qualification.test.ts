@@ -505,12 +505,14 @@ test.each([
   ["extensions.osc555-flash", "\x1b]555\x07", "vterm"],
   ["extensions.osc710-font-normal", "\x1b]710;monospace\x07", "vterm"],
   ["extensions.osc9-progress", "\x1b]9;4;1;50\x07", "vterm"],
+  ["extensions.notifications", "\x1b]9;terminfo-notification-A\x07", "vterm"],
   ["extensions.osc22-pointer", "\x1b]22;pointer\x07", "vterm"],
   ["extensions.osc176-app-id", "\x1b]176;terminfo-test\x07", "vterm"],
   ["extensions.osc666-termprop", "\x1b]666;test-prop=value\x07", "vterm"],
   ["extensions.osc777-notify", "\x1b]777;notify;test;body\x07", "vterm"],
   ["extensions.osc3008-context", "\x1b]3008;type=test\x07", "vterm"],
   ["extensions.osc9-progress", "\x1b]9;4;1;50\x07", "xtermjs", "progress"],
+  ["extensions.notifications", "\x1b]9;terminfo-notification-A\x07", "xtermjs", "notification"],
   ["extensions.osc7-cwd", "\x1b]7;file://localhost/terminfo-cwd-A\x07", "xtermjs", "working-directory"],
   ["extensions.osc22-pointer", "\x1b]22;pointer\x07", "xtermjs", "pointer"],
   ["extensions.osc176-app-id", "\x1b]176;terminfo-test\x07", "xtermjs", "app-id"],
@@ -521,6 +523,7 @@ test.each([
   ["extensions.osc777-notify", "\x1b]777;notify;test;body\x07", "xtermjs", "notification"],
   ["extensions.osc3008-context", "\x1b]3008;type=test\x07", "xtermjs", "systemd context"],
   ["extensions.osc9-progress", "\x1b]9;4;1;50\x07", "vt100"],
+  ["extensions.notifications", "\x1b]9;terminfo-notification-A\x07", "vt100"],
   ["extensions.osc22-pointer", "\x1b]22;pointer\x07", "vt100"],
   ["extensions.osc176-app-id", "\x1b]176;terminfo-test\x07", "vt100"],
   ["extensions.osc440-audio", "\x1b]440;bell.wav\x07", "vt100"],
@@ -530,6 +533,7 @@ test.each([
   ["extensions.osc777-notify", "\x1b]777;notify;test;body\x07", "vt100"],
   ["extensions.osc3008-context", "\x1b]3008;type=test\x07", "vt100"],
   ["extensions.osc9-progress", "\x1b]9;4;1;50\x07", "vt220"],
+  ["extensions.notifications", "\x1b]9;terminfo-notification-A\x07", "vt220"],
   ["extensions.osc22-pointer", "\x1b]22;pointer\x07", "vt220"],
   ["extensions.osc176-app-id", "\x1b]176;terminfo-test\x07", "vt220"],
   ["extensions.osc440-audio", "\x1b]440;bell.wav\x07", "vt220"],
@@ -634,6 +638,13 @@ test.each([
       } as unknown as LibProbeSource
       const result = callback(id).lib!(source)
       expect(result.observation?.outcome).not.toBe("supported")
+      if (id === "extensions.notifications" && engine === "vterm") {
+        expect(result.criterionBranch).toBe("headless-observable-review")
+        expect(result.tests).toMatchObject([{ id: "review", status: "test-todo" }])
+        expect(result.assertions).toBeUndefined()
+        expect(writes).toEqual([])
+        continue
+      }
       if (mode === "pinned" || mode === "foreign" || mode === "changed-source") {
         expect(writes.join("")).toContain(sequence + "X")
         expect(result.criterionBranch).toBe("source-negative-review")
@@ -656,7 +667,7 @@ test.each([
           { kind: "negative", assertionType: "buffer_state", observed: result.response },
         ])
         if (engine === "xtermjs") {
-          const code = /^extensions\.osc(\d+)/.exec(id)![1]
+          const code = id === "extensions.notifications" ? "9" : /^extensions\.osc(\d+)/.exec(id)![1]
           expect(result.response).toBe(
             JSON.stringify({
               fed: `\x1b[1;1H\x1b[2K${sequence}X`,
@@ -691,7 +702,7 @@ test.each([
           expect(result.tests?.[0]?.reason).not.toContain("3921-3923")
           if (id === "extensions.osc9-progress") expect(result.tests?.[0]?.reason).toContain("no case 9")
         }
-      } else if (id === "extensions.osc7-cwd" && mode !== "no-sentinel") {
+      } else if ((id === "extensions.osc7-cwd" || id === "extensions.notifications") && mode !== "no-sentinel") {
         expect(result.criterionBranch).toBe("headless-observable-review")
         expect(result.tests).toMatchObject([{ id: "review", status: "test-todo" }])
         expect(result.assertions).toBeUndefined()

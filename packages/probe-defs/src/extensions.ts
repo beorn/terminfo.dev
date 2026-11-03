@@ -4832,6 +4832,16 @@ export const extensionsProbes: ProbeDefinition[] = [
       "extensions.notifications",
       (ctx) => {
         if (!ctx.getNotifications) {
+          const audited = auditedOscEngine(ctx.runtimeIdentity, 9)
+          // Vterm's OSC 9 audit concerns progress only: it already stores notifications.
+          if (audited && audited[0] !== "vterm") {
+            return sourceAbsentOsc(
+              "extensions.notifications",
+              9,
+              "\x1b]9;terminfo-notification-A\x07",
+              "notification",
+            )(ctx)
+          }
           const note = "Declared OSC 9 capability does not establish desktop notification delivery"
           return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
             declared: ctx.capabilities.extensions.has("osc9"),
