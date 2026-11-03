@@ -422,51 +422,111 @@ function italicOnly(cell: StackCell): boolean {
   return cell.italic === true && cell.bold !== true
 }
 
+/** What one stack fixture's final cell shows (#31904). */
+type StackReading = "restored" | "earlier" | "persisted" | "other"
+
 /**
- * Headless SGR-stack read-back (#30700): the pixel capture's frame, read from the parser's cells. B
- * is written bold, then the push, SGR 0, italic X, the pop, Y. A working roundtrip leaves Y
- * bold-only (bold restored, italic cleared); an ignored push/pop leaves Y italic-only. The control
- * writes the same cells with no stack ops, so a backend that does not report bold or italic, or
- * whose SGR 0 does not clear bold, has no observable for the claim (a coverage record, TEST TODO)
- * rather than a negative.
+ * Per-operation verdict over two stack fixtures (#31904, @cto 6e4f7300). The POP fixture (set A,
+ * push, set B, pop) and the PUSH fixture (set A, set B, push, set C, pop) run in every arm, and each
+ * row grades only its own operation:
+ * - POP passes when its fixture restores the pushed non-default A and the PUSH fixture restored a
+ *   saved state; PUSH passes when its fixture restores B, the state current at push time, and the
+ *   POP fixture shows pop restores.
+ * - PUSH alone is negative when an earlier state returns while the POP fixture shows pop restores:
+ *   push saved no snapshot of the current state.
+ * - Nothing restored in either fixture is the joint negative both rows carry: push then pop
+ *   restored no earlier state. Any other combination, including fixtures that disagree, is null.
  */
-function xtSgrStackHeadless(ctx: LibProbeSource, id: string, label: string): ProbeCallbackResult {
-  const expected = `${id}: ${label} leaves Y bold-only (bold restored by the pop, italic cleared)`
+function stackVerdict(
+  operation: "push" | "pop",
+  pop: StackReading,
+  push: StackReading,
+): { pass: boolean | null; note?: string } {
+  if (pop === "persisted" && push === "persisted") {
+    return { pass: false, note: "push then pop restored no earlier state" }
+  }
+  if (operation === "pop") {
+    return pop === "restored" && (push === "restored" || push === "earlier")
+      ? { pass: true }
+      : { pass: null, note: `POP fixture ${pop}, PUSH fixture ${push}: no pop-only observation` }
+  }
+  if (pop === "restored" && push === "restored") return { pass: true }
+  if (pop === "restored" && push === "earlier") {
+    return { pass: false, note: "an earlier state returned while pop restores: push saved no current snapshot" }
+  }
+  return { pass: null, note: `POP fixture ${pop}, PUSH fixture ${push}: no push-only observation` }
+}
+
+/**
+ * Headless SGR-stack read-back (#30700, split by operation in #31904). B, X and Y occupy columns
+ * 1-3 and only Y is graded. POP fixture: bold B (A), push, SGR 0, italic X, pop, Y; bold-only Y is
+ * restored, italic-only Y persisted. PUSH fixture: bold (the earlier state, also the POP fixture's
+ * pushed state), add italic (the push-time state) and write B, push, SGR 0, X, pop, Y; bold+italic Y
+ * is restored, bold-only Y is the earlier state, plain Y persisted. Every pass value is non-default,
+ * so a pop that resets to the default never passes, and the PUSH fixture's pass value differs from
+ * the POP fixture's, so a stack that keeps a stale snapshot never passes the push row. The control
+ * writes bold, italic and bold+italic cells with no stack ops, so a backend that does not report bold
+ * or italic has no observable for the claim (a coverage record, TEST TODO).
+ */
+function xtSgrStackHeadless(ctx: LibProbeSource, operation: "push" | "pop"): ProbeCallbackResult {
+  const id = operation === "push" ? "modes.xtpushsgr" : "modes.xtpopsgr"
+  const expected =
+    operation === "push"
+      ? `${id}: XTPUSHSGR saves the state current at push time: after set bold and italic, push, set plain, pop, bold and italic is restored`
+      : `${id}: XTPOPSGR restores the pushed state: after set bold, push, set italic, pop, bold is restored`
   if (!Number.isSafeInteger(ctx.cols) || ctx.cols < 3) {
     return parserStateResult(null, expected, { cols: ctx.cols }, "Measured grid needs three columns")
   }
   const readBXY = () => ({ b: ctx.getCell(0, 0), x: ctx.getCell(0, 1), y: ctx.getCell(0, 2) })
   const charsIntact = (cells: ReturnType<typeof readBXY>) =>
     cells.b.char === "B" && cells.x.char === "X" && cells.y.char === "Y"
+  const plain = (cell: StackCell) => cell.bold !== true && cell.italic !== true
+  const boldItalic = (cell: StackCell) => cell.bold === true && cell.italic === true
   let pushed = false
   try {
-    ctx.feed("\x1b[0m\x1b[2J\x1b[1;1H\x1b[1mB\x1b[0m\x1b[3mXY\x1b[0m")
+    ctx.feed("\x1b[0m\x1b[2J\x1b[1;1H\x1b[1mB\x1b[0m\x1b[3mX\x1b[1mY\x1b[0m")
     const control = readBXY()
-    if (!charsIntact(control) || !boldOnly(control.b) || !italicOnly(control.x) || !italicOnly(control.y)) {
+    if (
+      !charsIntact(control) ||
+      !boldOnly(control.b) ||
+      !italicOnly(control.x) ||
+      !boldItalic(control.y)
+    ) {
       return notTestedResult(
         "bold and italic cell attributes in the headless readback (control frame not calibrated)",
-        {
-          control,
-        },
+        { control },
       )
     }
-    ctx.feed("\x1b[0m\x1b[2J\x1b[1;1H\x1b[1mB")
-    const pushOutput = ctx.feedCapture("\x1b[#{")
-    pushed = true
-    if (pushOutput.length > 0) return stackOutputResult(pushOutput)
-    ctx.feed("\x1b[0m\x1b[3mX")
-    const popOutput = ctx.feedCapture("\x1b[#}")
-    pushed = false
-    if (popOutput.length > 0) return stackOutputResult(popOutput)
-    ctx.feed("Y\x1b[0m")
-    const target = readBXY()
-    const state = { control, target }
-    if (!charsIntact(target)) {
+    const fixture = (prefix: string, pushState: string, changed: string) => {
+      ctx.feed(`\x1b[0m\x1b[2J\x1b[1;1H${prefix}${pushState}B`)
+      const pushOutput = ctx.feedCapture("\x1b[#{")
+      pushed = true
+      if (pushOutput.length > 0) return pushOutput
+      ctx.feed(`\x1b[0m${changed}X`)
+      const popOutput = ctx.feedCapture("\x1b[#}")
+      pushed = false
+      if (popOutput.length > 0) return popOutput
+      ctx.feed("Y\x1b[0m")
+      return readBXY()
+    }
+    const popCells = fixture("", "\x1b[1m", "\x1b[3m")
+    if (typeof popCells === "string") return stackOutputResult(popCells)
+    const pushCells = fixture("\x1b[1m", "\x1b[3m", "")
+    if (typeof pushCells === "string") return stackOutputResult(pushCells)
+    const state = { control, popFixture: popCells, pushFixture: pushCells }
+    if (!charsIntact(popCells) || !charsIntact(pushCells)) {
       return parserStateResult(null, expected, state, "Stack sequence disturbed the B, X, Y cells")
     }
-    if (boldOnly(target.y)) return parserStateResult(true, expected, state)
-    if (italicOnly(target.y)) return parserStateResult(false, expected, state)
-    return parserStateResult(null, expected, state, "Y after the pop is neither bold-only nor italic-only")
+    const pop: StackReading = boldOnly(popCells.y) ? "restored" : italicOnly(popCells.y) ? "persisted" : "other"
+    const push: StackReading = boldItalic(pushCells.y)
+      ? "restored"
+      : boldOnly(pushCells.y)
+        ? "earlier"
+        : plain(pushCells.y)
+          ? "persisted"
+          : "other"
+    const verdict = stackVerdict(operation, pop, push)
+    return parserStateResult(verdict.pass, expected, { ...state, pop, push }, verdict.note)
   } finally {
     if (pushed) ctx.feed("\x1b[#}")
     ctx.feed("\x1b[0m\x1b[2J\x1b[H")
@@ -2097,7 +2157,7 @@ const modeDefinitions: ProbeDefinition[] = [
   {
     ...probe(
       "modes.xtpushsgr",
-      (ctx) => xtSgrStackHeadless(ctx, "modes.xtpushsgr", "XTPUSHSGR (CSI # {) then XTPOPSGR"),
+      (ctx) => xtSgrStackHeadless(ctx, "push"),
       async (ctx) => {
         if (ctx.capture) return xtSgrStackCapture(ctx, "modes.xtpushsgr", "XTPUSHSGR (CSI # {) then XTPOPSGR")
         ctx.write("\x1b[#{")
@@ -2132,7 +2192,7 @@ const modeDefinitions: ProbeDefinition[] = [
   {
     ...probe(
       "modes.xtpopsgr",
-      (ctx) => xtSgrStackHeadless(ctx, "modes.xtpopsgr", "XTPOPSGR (CSI # }) after a push"),
+      (ctx) => xtSgrStackHeadless(ctx, "pop"),
       async (ctx) => {
         if (ctx.capture) return xtSgrStackCapture(ctx, "modes.xtpopsgr", "XTPOPSGR (CSI # }) after a push")
         ctx.write("\x1b[#{")

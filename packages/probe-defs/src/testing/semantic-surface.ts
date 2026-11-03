@@ -1166,10 +1166,15 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
       else if (final === "~") deleteColumns(count)
     } else if (intermediate === "#") {
       if (final === "R" && !mutations.has("xtreportcolors-noop")) replies += "\x1b[0;1#Q"
-      else if (final === "{" && !mutations.has("xtpushsgr-noop")) sgrStack.push({ ...attributes })
-      else if (final === "}" && !mutations.has("xtpopsgr-noop")) {
-        const popped = sgrStack.pop()
-        if (popped) attributes = { ...popped }
+      else if (final === "{" && !mutations.has("xtpushsgr-noop")) {
+        // xtpushsgr-stale (#31904): a push onto a non-empty stack keeps the stale snapshot, and pop
+        // only reads it, so the second push of a run never saves its current state.
+        if (!mutations.has("xtpushsgr-stale") || sgrStack.length === 0) sgrStack.push({ ...attributes })
+      } else if (final === "}" && !mutations.has("xtpopsgr-noop")) {
+        // xtpopsgr-reset-default (#31904): pop discards the entry and resets to the default state.
+        const popped = mutations.has("xtpushsgr-stale") ? sgrStack.at(-1) : sgrStack.pop()
+        if (mutations.has("xtpopsgr-reset-default")) attributes = NO_ATTRIBUTES
+        else if (popped) attributes = { ...popped }
       } else if (final === "P" && !mutations.has("xtpushcolors-noop")) {
         paletteStack.push(new Map(palette))
       } else if (final === "Q" && !mutations.has("xtpopcolors-noop")) {
