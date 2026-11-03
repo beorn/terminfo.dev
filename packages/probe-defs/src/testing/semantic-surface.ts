@@ -1293,15 +1293,19 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
       return
     }
     if (final === "s") {
+      // xtsave-stale (#31904): a save keeps an earlier save made since the last restore.
       if (!mutations.has("xtsave-noop") && (params.length === 0 ? first === 7 : params.includes(7))) {
-        savedPrivateModes.set(7, autoWrap)
+        if (!mutations.has("xtsave-stale") || !savedPrivateModes.has(7)) savedPrivateModes.set(7, autoWrap)
       }
       return
     }
     if (final === "r") {
       if (!mutations.has("xtrestore-noop") && (params.length === 0 ? first === 7 : params.includes(7))) {
         const saved = savedPrivateModes.get(7)
-        if (saved !== undefined) autoWrap = saved
+        if (mutations.has("xtsave-stale")) savedPrivateModes.delete(7)
+        // xtrestore-reset-default (#31904): restore resets DECAWM to its default (on).
+        if (mutations.has("xtrestore-reset-default")) autoWrap = true
+        else if (saved !== undefined) autoWrap = saved
       }
       return
     }

@@ -496,15 +496,25 @@ function xtSgrStackHeadless(ctx: LibProbeSource, operation: "push" | "pop"): Pro
 }
 
 /**
- * Headless XTSAVE/XTRESTORE read-back (#30700): the pixel capture's overflow fixture, read from
- * cells. Every frame writes exactly `cols` Xs then one `!`: with auto-wrap off the `!` overwrites
- * the last column and row 2 stays empty; with wrap on it lands at row 2, column 1. Two controls
- * calibrate both wrap states before the target saves wrap on, disables it and restores it, so a
- * backend that cannot show either state has no observable for the claim (a coverage record, TEST
- * TODO) rather than a negative.
+ * Headless XTSAVE/XTRESTORE read-back (#30700, split by operation in #31904): the pixel capture's
+ * overflow fixture, read from cells. Every frame writes exactly `cols` Xs then one `!`: with
+ * auto-wrap off the `!` overwrites the last column and row 2 stays empty; with wrap on it lands at
+ * row 2, column 1. Two controls calibrate both wrap states, so a backend that cannot show either
+ * state has no observable for the claim (a coverage record, TEST TODO) rather than a negative. Two
+ * fixtures follow, each graded by one overflow frame after the restore (@cto 6e4f7300, 009e40cd):
+ * - Restore control (POP fixture): off, save, on, restore. Off is restored, on persisted.
+ * - Overwrite test (PUSH fixture): on, save, off, save, on, restore. Off is restored; on is the
+ *   earlier save when the control restored, and persisted when it did not.
+ * Wrap on is the default, so every pass value is off: a restore that only resets to the default
+ * looks the same as one that restored nothing, and both rows read the joint negative (@cto
+ * 0613b68d). On returning while the control passed blames only the save that kept the earlier state.
  */
-function xtModeSaveHeadless(ctx: LibProbeSource, id: string): ProbeCallbackResult {
-  const expected = `${id}: the ${ctx.cols}-column overflow ! wraps to row 2 after DECAWM is saved on, disabled and restored`
+function xtModeSaveHeadless(ctx: LibProbeSource, operation: "push" | "pop"): ProbeCallbackResult {
+  const id = operation === "push" ? "modes.xtsave" : "modes.xtrestore"
+  const expected =
+    operation === "push"
+      ? `${id}: XTSAVE saves the state current at save time: after set DECAWM on, save, set DECAWM off, save, set DECAWM on, restore, DECAWM off is restored`
+      : `${id}: XTRESTORE restores the saved state: after set DECAWM off, save, set DECAWM on, restore, DECAWM off is restored`
   const rows = ctx.getScrollback().screenLines
   if (!Number.isSafeInteger(ctx.cols) || ctx.cols < 2 || !Number.isSafeInteger(rows) || rows < 2) {
     return parserStateResult(null, expected, { rows, cols: ctx.cols }, "Measured grid needs two rows and two columns")
@@ -513,10 +523,14 @@ function xtModeSaveHeadless(ctx: LibProbeSource, id: string): ProbeCallbackResul
   const overflow = () => ({ last: ctx.getCell(0, ctx.cols - 1), next: ctx.getCell(1, 0) })
   const wrapped = (frame: ReturnType<typeof overflow>) => frame.last.char === "X" && frame.next.char === "!"
   const stayed = (frame: ReturnType<typeof overflow>) => frame.last.char === "!" && frame.next.char !== "!"
+  const OFF = "\x1b[?7l"
+  const ON = "\x1b[?7h"
+  const SAVE = "\x1b[?7s"
+  const RESTORE = "\x1b[?7r"
   try {
-    ctx.feed(`\x1b[?7l\x1b[0m\x1b[2J\x1b[1;1H${xs}!`)
+    ctx.feed(`${OFF}\x1b[0m\x1b[2J\x1b[1;1H${xs}!`)
     const off = overflow()
-    ctx.feed(`\x1b[?7h\x1b[0m\x1b[2J\x1b[1;1H${xs}!`)
+    ctx.feed(`${ON}\x1b[0m\x1b[2J\x1b[1;1H${xs}!`)
     const on = overflow()
     if (!stayed(off) || !wrapped(on)) {
       return notTestedResult("both auto-wrap states (DECAWM off and on) in the headless readback", {
@@ -526,19 +540,38 @@ function xtModeSaveHeadless(ctx: LibProbeSource, id: string): ProbeCallbackResul
         on,
       })
     }
-    const saveOutput = ctx.feedCapture("\x1b[?7s")
-    if (saveOutput.length > 0) return stackOutputResult(saveOutput)
-    ctx.feed("\x1b[?7l")
-    const restoreOutput = ctx.feedCapture("\x1b[?7r")
-    if (restoreOutput.length > 0) return stackOutputResult(restoreOutput)
-    ctx.feed(`\x1b[0m\x1b[2J\x1b[1;1H${xs}!`)
-    const target = overflow()
-    const state = { rows, cols: ctx.cols, off, on, target, autoWrap: ctx.getMode("autoWrap") }
-    if (wrapped(target)) return parserStateResult(true, expected, state)
-    if (stayed(target)) return parserStateResult(false, expected, state)
-    return parserStateResult(null, expected, state, "Overflow ! after the restore landed in neither wrap state")
+    // Save and restore must emit nothing; a reply is returned as the fixture's output instead.
+    const fixture = (steps: readonly string[]): ReturnType<typeof overflow> | string => {
+      for (const step of steps) {
+        if (step === SAVE || step === RESTORE) {
+          const output = ctx.feedCapture(step)
+          if (output.length > 0) return output
+        } else ctx.feed(step)
+      }
+      ctx.feed(`\x1b[0m\x1b[2J\x1b[1;1H${xs}!`)
+      return overflow()
+    }
+    const control = fixture([OFF, SAVE, ON, RESTORE])
+    if (typeof control === "string") return stackOutputResult(control)
+    const overwrite = fixture([ON, SAVE, OFF, SAVE, ON, RESTORE])
+    if (typeof overwrite === "string") return stackOutputResult(overwrite)
+    const pop: StackReading = stayed(control) ? "restored" : wrapped(control) ? "persisted" : "other"
+    const push: StackReading = stayed(overwrite)
+      ? "restored"
+      : wrapped(overwrite)
+        ? pop === "restored"
+          ? "earlier"
+          : "persisted"
+        : "other"
+    const state = { rows, cols: ctx.cols, off, on, control, overwrite, autoWrap: ctx.getMode("autoWrap"), pop, push }
+    const verdict = stackVerdict(operation, pop, push)
+    const note =
+      pop === "persisted" && push === "persisted"
+        ? "save then restore restored no earlier state"
+        : verdict.note?.replace("push saved no current snapshot", "save kept the earlier saved state")
+    return parserStateResult(verdict.pass, expected, state, note)
   } finally {
-    ctx.feed("\x1b[?7h\x1b[0m\x1b[2J\x1b[H")
+    ctx.feed(`${ON}\x1b[0m\x1b[2J\x1b[H`)
   }
 }
 
@@ -2211,7 +2244,7 @@ const modeDefinitions: ProbeDefinition[] = [
   {
     ...probe(
       "modes.xtsave",
-      (ctx) => xtModeSaveHeadless(ctx, "modes.xtsave"),
+      (ctx) => xtModeSaveHeadless(ctx, "push"),
       async (ctx) => {
         if (ctx.capture) return xtModeSaveCapture(ctx, "modes.xtsave")
         ctx.write("\x1b[?7s")
@@ -2245,7 +2278,7 @@ const modeDefinitions: ProbeDefinition[] = [
   {
     ...probe(
       "modes.xtrestore",
-      (ctx) => xtModeSaveHeadless(ctx, "modes.xtrestore"),
+      (ctx) => xtModeSaveHeadless(ctx, "pop"),
       async (ctx) => {
         if (ctx.capture) return xtModeSaveCapture(ctx, "modes.xtrestore")
         ctx.write("\x1b[?7s")
