@@ -210,7 +210,7 @@ vi.mock("../packages/admin/run-admission.ts", async () => ({
 
 vi.mock("../docs/data/current-results.ts", async () => {
   const { loadFeatures } = await import("@terminfo/catalog")
-  const { projectResults, projectedContextKey } = await import("../docs/data/selected-results.ts")
+  const { projectResults } = await import("../docs/data/selected-results.ts")
   const actual = await vi.importActual<typeof import("../docs/data/current-results.ts")>(
     "../docs/data/current-results.ts",
   )
@@ -218,19 +218,6 @@ vi.mock("../docs/data/current-results.ts", async () => {
   const catalogIds = Object.keys(loadFeatures(content))
   const fixtureContent = mkdtempSync(join(tmpdir(), "terminfo-parity-policy-"))
   symlinkSync(join(content, "terminals.json"), join(fixtureContent, "terminals.json"))
-  writeFileSync(
-    join(fixtureContent, "default-contexts.json"),
-    JSON.stringify({
-      defaultContext: {
-        "term:kitty": {
-          contextKey: projectedContextKey(fixture.selected.subject, 2),
-          reviewer: "fixture",
-          reason: "default physical context",
-          sources: ["fixture://kitty"],
-        },
-      },
-    }),
-  )
   afterAll(() => rmSync(fixtureContent, { recursive: true, force: true }))
   const sealedFixture = (run: SelectedVersion): LoadedRun => {
     const ids = [...new Set([...catalogIds, ...Object.keys(run.cells)])]
@@ -893,7 +880,6 @@ describe("selected-run consumer parity", () => {
   it("keeps raw evidence and unchecked collector notes out of generated site and API summaries", () => {
     const out = mkdtempSync(join(tmpdir(), "terminfo-presentation-"))
     let selection: ReturnType<typeof vi.spyOn> | undefined
-    let policy: ReturnType<typeof vi.spyOn> | undefined
     let imageReader: ReturnType<typeof vi.spyOn> | undefined
     try {
       const site = probesLoader.load()
@@ -928,7 +914,6 @@ describe("selected-run consumer parity", () => {
       current.suiteId = probeHash()
       for (const cell of Object.values(context.cells)) cell.run.suiteId = current.suiteId
       selection = vi.spyOn(currentResults, "loadCurrentResults").mockReturnValue({ projection })
-      policy = vi.spyOn(currentResults, "loadDefaultContextPolicy").mockReturnValue({})
       current.rawReplies = { "bold-reply": "RETAINED_CURRENT_REPLY" }
       current.assertions = [
         { featureId: "sgr.bold", kind: "positive", expected: "expected criterion", observed: "actual response" },
@@ -1019,7 +1004,6 @@ describe("selected-run consumer parity", () => {
       expect(readFileSync(join(out, docUrl), "utf8")).toBe(document!.bytes)
     } finally {
       imageReader?.mockRestore()
-      policy?.mockRestore()
       selection?.mockRestore()
       rmSync(out, { recursive: true, force: true })
     }

@@ -97,9 +97,8 @@ function supportedBaseline() {
 // Current selection reads the stored five statuses and frozen denominator
 // without applying later interpretations.
 describe("current execution projection", () => {
-  // #32014: presentation withdrawal only hides evidence, so existing presentation cases
-  // cannot catch a wrong embedded Untestable remaining in status/count/selection readers.
-  it("withdraws an embedded review through one exact-run TODO projection without rewriting the sealed capture", () => {
+  // Stored grades are authoritative; a former tool-gap overlay cannot regrade a reader.
+  it("preserves stored results across selection and public readers despite a legacy tool-gap overlay", () => {
     const root = join(import.meta.dirname, "..", "content")
     // Frozen at 9e319ac6: private non-C1 review behavior remains until Phase 1.4.
     const path = join(
@@ -149,26 +148,21 @@ describe("current execution projection", () => {
     const projection = projectResults([run, windowsFixture], entries, catalog, policy, [])
     const key = projectedContextKey(run.subject, 2)
     const history = projection.history[key]![0]!
-    expect(projection.table[run.runId]![featureId]).toBe("test-todo")
-    expect(history.results.find((result) => result.featureId === featureId)).toMatchObject({
-      status: "test-todo",
-      reason: overlay.reason,
-      tests: expect.arrayContaining([expect.objectContaining({ id: "criterion", status: "test-todo" })]),
-    })
-    expect(history.counts.untestable).toBe(before.history[key]![0]!.counts.untestable - 1)
-    expect(history.counts["test-todo"]).toBe(before.history[key]![0]!.counts["test-todo"] + 1)
+    expect(projection.table[run.runId]![featureId]).toBe("untestable")
+    expect(history.results).toEqual(run.results)
+    expect(history.counts).toEqual(before.history[key]![0]!.counts)
     const selected = projection.contexts[key]!
-    expect(selected.cells[featureId]!.result.status).toBe("test-todo")
+    expect(selected.cells[featureId]!.result.status).toBe("untestable")
     expect(
       candidateFromSelected(key, selected, projection.table[run.runId]!, projection)!.results.find(
         (result) => result.featureId === featureId,
       )!.status,
-    ).toBe("test-todo")
+    ).toBe("untestable")
     const published = publicResults(projection, new Map()).projection
     expect(published.history[key]![0]!.results.find((result) => result.featureId === featureId)!.status).toBe(
-      "test-todo",
+      "untestable",
     )
-    expect(published.contexts[key]!.cells[featureId]!.status).toBe("test-todo")
+    expect(published.contexts[key]!.cells[featureId]!.status).toBe("untestable")
     expect(projection.exclusions).toEqual(before.exclusions)
     for (const result of run.results!) {
       if (result.featureId !== featureId) {
@@ -275,8 +269,8 @@ describe("current execution projection", () => {
     expect(unselectedPublic.cells[ids[1]!]!.reason).toBeUndefined()
   })
 
-  // CTO contract: only contributing original dates may supersede a reviewed host generation.
-  // Existing cell-composition cases do not exercise the picker or a newer no-output attempt.
+  // The reviewed-context replacement orders original evidence, never newer no-output attempts.
+  // Existing composition tests miss cross-context ties and a newer non-default profile.
   it("does not let a newer attempt supersede original evidence from another host generation", () => {
     const baseline = supportedBaseline()
     const olderHost = {
@@ -310,9 +304,68 @@ describe("current execution projection", () => {
     const chosen = candidates.find((candidate) =>
       candidate.sources.some((source) => source.runId === chosenHost.runId),
     )!
-    expect(pickContextRun(candidates, { contextKey: chosen.key })).toEqual({
-      run: chosen,
-      selection: "reviewed default-context row",
+    expect(pickContextRun(candidates)).toMatchObject({
+      run: { key: chosen.key },
+      selection: "latest original evidence",
+    })
+    const older = candidates.find((candidate) => candidate !== chosen)!
+    const rewritten = projectResults(
+      [
+        { ...olderHost, runId: "rewritten-old-host", sha256: "f".repeat(64), sealedAt: "2030-01-01T00:00:00Z" },
+        chosenHost,
+      ],
+      [],
+      ids,
+      { currentProbeHash: suite.probeHash },
+      [],
+    )
+    const rewrittenCandidates = Object.values(rewritten.contexts).flatMap((context) => {
+      const candidate = candidateFromSelected(context.contextKey, context, {}, rewritten)
+      return candidate ? [candidate] : []
+    })
+    expect(pickContextRun(rewrittenCandidates)).toMatchObject({ run: { key: chosen.key } })
+    const composed = {
+      ...older,
+      sources: [
+        ...older.sources,
+        {
+          ...chosen.sources[0]!,
+          measuredAt: "2026-10-22T00:00:00Z",
+        },
+      ],
+    }
+    expect(pickContextRun([chosen, composed])).toMatchObject({ run: { key: older.key } })
+    const tied = {
+      ...older,
+      sources: older.sources.map((source) => ({ ...source, measuredAt: chosenHost.measuredAt })),
+    }
+    for (const order of [
+      [tied, chosen],
+      [chosen, tied],
+    ]) {
+      expect(pickContextRun(order)).toMatchObject({ run: { key: chosen.key }, selection: "latest original evidence" })
+    }
+    const upperKey = { ...tied, key: projectedContextKey({ ...baseline.subject, config: "Z" }, 2) }
+    const lowerKey = { ...tied, key: projectedContextKey({ ...baseline.subject, config: "a" }, 2) }
+    for (const order of [
+      [upperKey, lowerKey],
+      [lowerKey, upperKey],
+    ]) {
+      expect(pickContextRun(order)).toMatchObject({ run: { key: upperKey.key } })
+    }
+    const nondefault = {
+      ...chosen,
+      permissions: "clipboard",
+      sources: chosen.sources.map((source) => ({
+        ...source,
+        measuredAt: "2028-01-01T00:00:00Z",
+      })),
+    }
+    expect(pickContextRun([older, nondefault])).toMatchObject({ run: { key: older.key }, selection: "default profile" })
+    expect(pickContextRun([older, tied, nondefault])).toMatchObject({ run: { key: nondefault.key } })
+    expect(pickContextRun([{ ...older, permissions: "clipboard" }, nondefault])).toMatchObject({
+      run: { key: nondefault.key },
+      selection: "latest original evidence",
     })
   })
 

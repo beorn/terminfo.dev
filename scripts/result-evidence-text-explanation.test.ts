@@ -54,12 +54,17 @@ it("labels a retained source answer by engine version without regrading or datin
   expect(publicResults(projection, new Map()).projection.contexts["term:alacritty"]?.cells[featureId]?.reason).toBe(
     "reviewed at 0.17.0, not re-verified",
   )
+  // Mutate only the public mapper input when exercising shared-caption drift.
+  const captionProjection = structuredClone(projection)
+  const captionResult = captionProjection.history["term:alacritty"]?.[0]?.results.find(
+    (entry) => entry.featureId === featureId,
+  )
+  if (!captionResult?.reason) throw new Error("Expected retained source answer")
   // A changed shared caption must reach the public reader; a second literal
   // silently drops it even though today's exact caption above still passes.
   caption.suffix = " (shared caption)"
-  if (!result?.reason) throw new Error("Expected retained source answer")
-  result.reason += caption.suffix
-  const published = publicResults(projection, new Map()).projection
+  captionResult.reason += caption.suffix
+  const published = publicResults(captionProjection, new Map()).projection
   caption.suffix = ""
   expect(published.contexts["term:alacritty"]?.cells[featureId]?.reason).toBe(
     "reviewed at 0.17.0, not re-verified (shared caption)",

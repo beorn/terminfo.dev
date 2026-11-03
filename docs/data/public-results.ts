@@ -541,7 +541,6 @@ export function publicResults(projection: SelectedProjection, subjects: Readonly
           contextKey: value.contextKey,
           selected: context,
           states: Object.fromEntries(context.catalogIds.map((id) => [id, context.cells[id]?.status ?? "test-todo"])),
-          ...(value.policy && { policy: { ...value.policy, sources: publicSources(value.policy.sources) } }),
         },
       ]
     }),

@@ -12,7 +12,7 @@ import { isEnvironmentGroup } from "../../packages/probe-defs/src/environment-gr
 import { loadFeatures } from "@terminfo/catalog"
 import { probeHash } from "../../packages/admin/versions.ts"
 import { loadCategories, orderedCategoryIds } from "./categories.ts"
-import { compatibilitySubjects, loadCurrentResults, loadDefaultContextPolicy } from "./current-results.ts"
+import { compatibilitySubjects, loadCurrentResults } from "./current-results.ts"
 import { publicResults, type PublicContextSummary } from "./public-results.ts"
 import { candidateFromSelected, type ContextCandidate } from "./run-selection.ts"
 import { statesFor } from "./selected-results.ts"
@@ -113,14 +113,12 @@ export function loadFullProjectData(): FullProjectData {
     const candidate = candidateFromSelected(key, selected, statesFor(projection, key), projection)
     return candidate ? [candidate] : []
   })
-  const reviewed = loadDefaultContextPolicy(contentDir)
   const published = publicResults(projection, compatibilitySubjects(projection, contentDir)).projection
   const rows = buildFullProjectRows({
     census: fullContextCensus(contentDir).contexts,
     catalogIds: catalogIdsInDisplayOrder(),
     candidates,
     requiredSuiteId,
-    reviewed,
   })
   const evidenceContexts: Record<string, PublicContextSummary> = {}
   const toolGaps: FullProjectData["toolGaps"] = {

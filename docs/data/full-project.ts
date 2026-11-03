@@ -11,7 +11,6 @@
 import type { ContextCandidate } from "./run-selection.ts"
 import { pickContextRun } from "./run-selection.ts"
 import type { ProbeStatus } from "@terminfo/probe-defs"
-import { reviewedContextFor } from "./current-results.ts"
 import { scopeAggregate, type ScopeResult } from "./full-scope.ts"
 import { environmentGroupIds, gradedFeatureIds } from "../../packages/probe-defs/src/environment-groups.ts"
 import type { CensusContext, ContextKind } from "./full-census.ts"
@@ -85,7 +84,6 @@ export function buildFullProjectRows(args: {
   catalogIds: readonly string[]
   candidates: readonly ContextCandidate[]
   requiredSuiteId: string
-  reviewed?: Readonly<Record<string, { contextKey: string }>>
 }): FullProjectRows {
   if (!args.requiredSuiteId) throw new Error("the full-scope reader needs the suite it scores against")
   const rows = args.census.map((context): FullContextRow => buildRow(context, args))
@@ -108,7 +106,6 @@ function buildRow(
     catalogIds: readonly string[]
     candidates: readonly ContextCandidate[]
     requiredSuiteId: string
-    reviewed?: Readonly<Record<string, { contextKey: string }>>
   },
 ): FullContextRow {
   const base = { context: context.context, terminalId: context.terminalId, os: context.os, kind: context.kind }
@@ -136,19 +133,8 @@ function buildRow(
       }
     }
   }
-  const picked = pickContextRun(
-    matches,
-    reviewedContextFor(args.reviewed ?? {}, context.kind, context.terminalId, context.os),
-  )
+  const picked = pickContextRun(matches)
   if (!picked) return { ...base, collected: false, cause: "no selected run for this context" }
-  if ("ambiguous" in picked) {
-    return {
-      ...base,
-      collected: false,
-      cause: `ambiguous current selection: ${picked.ambiguous.join(", ")}; a reviewed default-context row must choose one`,
-    }
-  }
-  if ("stale" in picked) return { ...base, collected: false, cause: picked.stale }
   const onSuiteSources = picked.run.sources.filter((source) => source.suiteId === args.requiredSuiteId)
   const [firstOnSuite] = onSuiteSources
   if (!firstOnSuite) {
