@@ -884,7 +884,10 @@ test.each([
     expect(state.controls.map((entry: { value: string }) => entry.value)).toHaveLength(2)
     expect(new Set(state.targets.map((entry: { sent: string }) => entry.sent)).size).toBe(2)
   }
-  if (expected === "inconclusive") expect(targetCount).toBe(0)
+  if (expected === "inconclusive") {
+    expect(targetCount).toBe(0)
+    expect(result.tests).toContainEqual(expect.objectContaining({ status: "test-todo" }))
+  }
 })
 
 test.each([
@@ -923,8 +926,9 @@ test.each([
       if (end?.[1] === "133") marks.push({ type: "command-end", rawStatus: end[2]! })
       if (end?.[1] === "633") {
         targets++
-        if (model === "exact" || (model === "partial" && targets === 1))
+        if (model === "exact" || (model === "partial" && targets === 1)) {
           marks.push({ type: "command-end", rawStatus: end[2]! })
+        }
         if (model === "wrong") marks.push({ type: "command-end", rawStatus: "wrong-status" })
       }
       if (text.endsWith("X")) {
@@ -936,6 +940,7 @@ test.each([
   const result = extensionsProbes.find((entry) => entry.id === "extensions.osc633-d")!.lib!(source)
   expect(result.observation?.outcome).toBe(expected)
   expect(marks[0]).toEqual(initial)
+  if (expected === "inconclusive") expect(result.tests).toContainEqual(expect.objectContaining({ status: "test-todo" }))
   if (["supported", "unsupported", "error"].includes(expected)) {
     expect(writes).toContain("\x1b]133;D;0\x07")
     expect(writes).toContain("\x1b]133;D;17\x07")

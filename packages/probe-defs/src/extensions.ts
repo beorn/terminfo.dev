@@ -1675,7 +1675,11 @@ function promptConsumptionResult(consumed: boolean | null): ProbeCallbackResult 
 /** CTO54bf1c9c — Cwd-only metadata, qualified by two same-run OSC7 readbacks. */
 function promptCwdPropertyResult(ctx: LibProbeSource): ProbeCallbackResult {
   if (!ctx.getCwd) {
-    return parserStateResult(null, "OSC633 P Cwd property readback", {}, "no property reader in this adapter")
+    const reason = "no property reader in this adapter"
+    return {
+      ...parserStateResult(null, "OSC633 P Cwd property readback", {}, reason),
+      tests: [{ id: "criterion", status: "test-todo", reason }],
+    }
   }
   const read = ctx.getCwd.bind(ctx)
   const path = (value: string | null) =>
@@ -1722,6 +1726,10 @@ function promptCwdPropertyResult(ctx: LibProbeSource): ProbeCallbackResult {
     state,
     inert ? "Cwd reader is inert to two distinct OSC7 controls" : undefined,
   )
+  if (inert)
+    result.tests = [
+      { id: "criterion", status: "test-todo", reason: "Cwd reader is inert to two distinct OSC7 controls" },
+    ]
   if (failed) {
     result.observation = {
       outcome: "error",
@@ -1759,7 +1767,11 @@ function promptMarkResult(
   const declared = readerKey !== undefined && ctx.capabilities.extensions.has(readerKey)
   const readMarks = declared ? ctx.getSemanticMarks?.bind(ctx) : undefined
   if (osc633End && !readMarks) {
-    return parserStateResult(null, "OSC633 D command-end status readback", {}, "no command-end reader in this adapter")
+    const reason = "no command-end reader in this adapter"
+    return {
+      ...parserStateResult(null, "OSC633 D command-end status readback", {}, reason),
+      tests: [{ id: "criterion", status: "test-todo", reason }],
+    }
   }
   const endControl =
     osc633End && readMarks
@@ -1791,6 +1803,10 @@ function promptMarkResult(
         endControl,
         "Command-end reader did not report the two OSC133 controls",
       )
+      if (inert)
+        result.tests = [
+          { id: "criterion", status: "test-todo", reason: "Command-end reader did not report the two OSC133 controls" },
+        ]
       if (!inert) {
         result.observation = {
           outcome: "error",
@@ -1865,12 +1881,11 @@ function promptMarkResult(
         JSON.stringify(secondBefore) === JSON.stringify(second)
       const consumed = secondCell.char === "X" && secondCursor.x === 3 && secondCursor.y === 1
       if (!consumed) {
-        return parserStateResult(
-          null,
-          "Both OSC633 D target feeds have qualified screen consumption",
-          state,
-          "Second command-end target consumption was not qualified",
-        )
+        const reason = "Second command-end target consumption was not qualified"
+        return {
+          ...parserStateResult(null, "Both OSC633 D target feeds have qualified screen consumption", state, reason),
+          tests: [{ id: "criterion", status: "test-todo", reason }],
+        }
       }
       if (!supported && !unchanged) {
         result.observation = {
