@@ -1,7 +1,12 @@
 /** The sole site/API mapping. Presentation decisions are not repository privacy controls. */
 import { createHash } from "node:crypto"
 import { resultTextQualification } from "../../packages/run-parser/src/observations.ts"
-import { isEnvironmentGroup, readCollectorSelection } from "@terminfo/probe-defs"
+import {
+  isEnvironmentGroup,
+  readCollectorSelection,
+  sourceAnswerForRef,
+  resolveSourceAnswer,
+} from "@terminfo/probe-defs"
 import type {
   ProbeResult,
   ProbeStatus,
@@ -331,6 +336,13 @@ export function publicResults(projection: SelectedProjection, subjects: Readonly
   ): PublicProbeResult => {
     const decision = version.presentations[result.featureId]
     const approved = decision?.presentsEvidence === true
+    const sourceRow = result.reviewRef === undefined ? undefined : sourceAnswerForRef(result.reviewRef)
+    const staticAnswer =
+      sourceRow?.citedBlobs.length === 0
+        ? resolveSourceAnswer([sourceRow], { subject: version.subject, featureId: result.featureId })
+        : undefined
+    // A version-bound source label presents no capture evidence and grants no presentation review.
+    const sourceLabel = staticAnswer?.kind === "answer" ? staticAnswer.label : undefined
     const hold = result.tests.find((check) => check.id === "console-host")?.reason
     const selection =
       result.status === "test-todo" && result.attempt.scope === "none" && !isEnvironmentGroup(result.featureId)
@@ -342,7 +354,7 @@ export function publicResults(projection: SelectedProjection, subjects: Readonly
         ? "Not selected for this collection; no test was attempted."
         : approved
           ? result.reason
-          : undefined
+          : sourceLabel
     const mapped: PublicProbeResult = {
       featureId: result.featureId,
       status: result.status,

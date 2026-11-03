@@ -148,8 +148,8 @@ if (currentManifest.schemaVersion !== 4 || !currentManifest.catalogIds) {
   throw new Error("Collection fixture requires the committed schema-4 catalogue")
 }
 
-// #32014: all three entry points must resolve the SAME six real embedded targets.
-// Override only curated fixture input; run bytes, canonical parsing and source files remain real.
+// #32014: all three entry points resolve the same private non-C1 embedded targets until Phase 1.4.
+// Frozen run bytes at 9e319ac6 stay outside active content; canonical parsing remains real.
 it.each(["projection", "admission", "collection"] as const)(
   "%s resolves six exact-run tool-gap overlays",
   async (entry) => {
@@ -158,82 +158,89 @@ it.each(["projection", "admission", "collection"] as const)(
       "probes-mux/screen-5.0.2-linux-ff1d93308fe7f5044d692f7da0fcfe2b.json",
       "probes-mux/tmux-3.8-linux-ea920f3547c0e7f0ced0f80b277f2939.json",
     ]
-    const runs = loadStoredRuns(CONTENT, Object.keys(catalog.loadFeatures(CONTENT))).filter((run) =>
-      paths.includes(relative(CONTENT, run.path)),
-    )
-    expect(runs).toHaveLength(3)
-    const overlays = runs.flatMap((run) =>
-      ["extensions.font-ligatures", "sgr.blink"].map((featureId) => {
-        const cell = run.results!.find((result) => result.featureId === featureId)!
-        const embedded = parseCaptureDecision(
-          JSON.parse(run.rawReplies[cell.reviewRef!]!),
-          "fixture embedded review",
-          new Set(run.catalogIds ?? []),
-        )
-        return {
-          id: `fixture-gap-${run.subject.id}-${featureId}`,
-          decision: "tool-gap",
-          reviewed: true,
-          reviewer: "fixture-reviewer",
-          reason:
-            featureId === "sgr.blink"
-              ? "single-frame blink sample; instrument #32083 blink sample window"
-              : "no ligature-capable face pinned; instrument #32062 font control",
-          runId: run.runId,
-          runSha256: run.sha256,
-          featureId,
-          scope: {
-            subject: { kind: run.subject.kind, id: run.subject.id },
-            versions: [run.subject.version, run.subject.version],
-            suites: [run.suiteId, run.suiteId],
-          },
-          sources: ["controlled fixture review only; no identity or admission authority"],
-          supersedes: [embedded.id],
-        }
-      }),
-    )
-    const source = join(CONTENT, paths[0]!)
-    const invoke = () =>
-      entry === "projection"
-        ? loadSelectedResults(CONTENT, versions.probeSuiteSnapshot().probeHash)
-        : entry === "admission"
-          ? (() => {
-              try {
-                admission.planAdmission(source)
-                return "accepted"
-              } catch (error) {
-                if (!(error instanceof Error)) throw error
-                return error.message
-              }
-            })()
-          : collectPass(fingerprintFixture.directory, undefined, { runner: "local" }, [], { contexts: [] })
-    const baseline = await invoke()
-    const storePath = join(CONTENT, "interpretations.json")
-    const original = readFileSync(storePath, "utf8")
-    const stored: unknown = JSON.parse(original)
-    if (!Array.isArray(stored)) throw new Error("Expected curated interpretation array")
-    const fixtureBytes = JSON.stringify([...stored, ...overlays])
-    const fixturePath = join(fingerprintFixture.directory, `${entry}-overlays.json`)
-    writeFileSync(fixturePath, fixtureBytes)
-    fingerprintFixture.files[storePath] = fixturePath
-    try {
-      const result = await invoke()
-      if (entry === "projection") {
-        const projection = result as ReturnType<typeof loadSelectedResults>
-        for (const overlay of overlays) expect(projection.table[overlay.runId]![overlay.featureId]).toBe("test-todo")
-      } else if (entry === "admission") {
-        // The committed run's placement receipt is absent beside it; resolving overlays grants no receipt.
-        expect(baseline).toMatch(/cites ownership receipt.*does not exist beside the run/)
-        expect(result).toBe(baseline)
-      } else {
-        const pass = result as Awaited<ReturnType<typeof collectPass>>
-        expect(pass.contexts).toEqual([])
-        expect(pass.inputSha256[storePath]).toBe(createHash("sha256").update(fixtureBytes).digest("hex"))
-      }
-    } finally {
-      delete fingerprintFixture.files[storePath]
+    for (const path of paths) {
+      fingerprintFixture.files[join(CONTENT, path)] = join(CONTENT, "..", "test-fixtures", path)
     }
-    expect(readFileSync(storePath, "utf8")).toBe(original)
+    try {
+      const runs = loadStoredRuns(CONTENT, Object.keys(catalog.loadFeatures(CONTENT))).filter((run) =>
+        paths.includes(relative(CONTENT, run.path)),
+      )
+      expect(runs).toHaveLength(3)
+      const overlays = runs.flatMap((run) =>
+        ["extensions.font-ligatures", "sgr.blink"].map((featureId) => {
+          const cell = run.results!.find((result) => result.featureId === featureId)!
+          const embedded = parseCaptureDecision(
+            JSON.parse(run.rawReplies[cell.reviewRef!]!),
+            "fixture embedded review",
+            new Set(run.catalogIds ?? []),
+          )
+          return {
+            id: `fixture-gap-${run.subject.id}-${featureId}`,
+            decision: "tool-gap",
+            reviewed: true,
+            reviewer: "fixture-reviewer",
+            reason:
+              featureId === "sgr.blink"
+                ? "single-frame blink sample; instrument #32083 blink sample window"
+                : "no ligature-capable face pinned; instrument #32062 font control",
+            runId: run.runId,
+            runSha256: run.sha256,
+            featureId,
+            scope: {
+              subject: { kind: run.subject.kind, id: run.subject.id },
+              versions: [run.subject.version, run.subject.version],
+              suites: [run.suiteId, run.suiteId],
+            },
+            sources: ["controlled fixture review only; no identity or admission authority"],
+            supersedes: [embedded.id],
+          }
+        }),
+      )
+      const source = join(CONTENT, paths[0]!)
+      const invoke = () =>
+        entry === "projection"
+          ? loadSelectedResults(CONTENT, versions.probeSuiteSnapshot().probeHash)
+          : entry === "admission"
+            ? (() => {
+                try {
+                  admission.planAdmission(source)
+                  return "accepted"
+                } catch (error) {
+                  if (!(error instanceof Error)) throw error
+                  return error.message
+                }
+              })()
+            : collectPass(fingerprintFixture.directory, undefined, { runner: "local" }, [], { contexts: [] })
+      const baseline = await invoke()
+      const storePath = join(CONTENT, "interpretations.json")
+      const original = readFileSync(storePath, "utf8")
+      const stored: unknown = JSON.parse(original)
+      if (!Array.isArray(stored)) throw new Error("Expected curated interpretation array")
+      const fixtureBytes = JSON.stringify([...stored, ...overlays])
+      const fixturePath = join(fingerprintFixture.directory, `${entry}-overlays.json`)
+      writeFileSync(fixturePath, fixtureBytes)
+      fingerprintFixture.files[storePath] = fixturePath
+      try {
+        const result = await invoke()
+        if (entry === "projection") {
+          const projection = result as ReturnType<typeof loadSelectedResults>
+          for (const overlay of overlays) expect(projection.table[overlay.runId]![overlay.featureId]).toBe("test-todo")
+        } else if (entry === "admission") {
+          // The committed run's placement receipt is absent beside it; resolving overlays grants no receipt.
+          expect(baseline).toMatch(/cites ownership receipt.*does not exist beside the run/)
+          expect(result).toBe(baseline)
+        } else {
+          const pass = result as Awaited<ReturnType<typeof collectPass>>
+          expect(pass.contexts).toEqual([])
+          expect(pass.inputSha256[storePath]).toBe(createHash("sha256").update(fixtureBytes).digest("hex"))
+        }
+      } finally {
+        delete fingerprintFixture.files[storePath]
+      }
+      expect(readFileSync(storePath, "utf8")).toBe(original)
+    } finally {
+      for (const path of paths) delete fingerprintFixture.files[join(CONTENT, path)]
+    }
   },
 )
 

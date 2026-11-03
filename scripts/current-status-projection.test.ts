@@ -101,12 +101,25 @@ describe("current execution projection", () => {
   // cannot catch a wrong embedded Untestable remaining in status/count/selection readers.
   it("withdraws an embedded review through one exact-run TODO projection without rewriting the sealed capture", () => {
     const root = join(import.meta.dirname, "..", "content")
-    const path = join(root, "probes-apps/alacritty-0.17.0-linux-f504922f67f074794c588cf3a14e2114.json")
+    // Frozen at 9e319ac6: private non-C1 review behavior remains until Phase 1.4.
+    const path = join(
+      root,
+      "..",
+      "test-fixtures/probes-apps/alacritty-0.17.0-linux-f504922f67f074794c588cf3a14e2114.json",
+    )
     const bytes = readFileSync(path, "utf8")
     const manifestPath = join(root, "suites/4b01b0117e18.json")
     const manifest = parseSuiteManifest(manifestPath, readFileSync(manifestPath, "utf8"))
     const catalog = manifest.catalogIds!
     const run = parseRun(path, bytes, catalog, new Map([[manifest.probeHash, manifest]]))
+    // An existing second context exercises the canonical qualified key without admitting either fixture.
+    const windowsPath = join(root, "..", "test-fixtures/probes-apps/alacritty-windows-reverse-wrap.json")
+    const windowsFixture = parseRun(
+      windowsPath,
+      readFileSync(windowsPath, "utf8"),
+      catalog,
+      new Map([[manifest.probeHash, manifest]]),
+    )
     expect(run.sha256).toBe("658c9ccca5e72be694c7714cb8d5788c828a0ed2f06d537d1c17948ba8440082")
     const featureId = "extensions.font-ligatures"
     const original = structuredClone(run)
@@ -131,10 +144,10 @@ describe("current execution projection", () => {
       parseInterpretations("tool-gap.json", JSON.stringify([value]), catalog, undefined, runs)
     // Explicit working input exercises context composition while the original unverified identity remains unadmitted.
     const policy = { currentProbeHash: run.probeHash!, workingRuns: [run] }
-    const before = projectResults([run], [], catalog, policy, [])
+    const before = projectResults([run, windowsFixture], [], catalog, policy, [])
     const entries = decode(overlay)
-    const projection = projectResults([run], entries, catalog, policy, [])
-    const key = "term:alacritty"
+    const projection = projectResults([run, windowsFixture], entries, catalog, policy, [])
+    const key = projectedContextKey(run.subject, 2)
     const history = projection.history[key]![0]!
     expect(projection.table[run.runId]![featureId]).toBe("test-todo")
     expect(history.results.find((result) => result.featureId === featureId)).toMatchObject({
@@ -177,8 +190,8 @@ describe("current execution projection", () => {
     // A known curated ID must be withdrawn through the store, not an exact-run overlay.
     // The unknown-ID controls above miss this graph branch entirely.
     const curated = parseInterpretations(
-      "real curated store",
-      readFileSync(join(root, "interpretations.json"), "utf8"),
+      "frozen private review store",
+      readFileSync(join(root, "..", "test-fixtures/legacy-review-interpretations.json"), "utf8"),
       catalog,
       undefined,
       [run],

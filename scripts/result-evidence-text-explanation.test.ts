@@ -10,10 +10,50 @@
  * @testonly none
  */
 import { describe, expect, it } from "vitest"
+import { readFileSync } from "node:fs"
+import { parseRun, parseSuiteManifest } from "@terminfo/run-parser"
+import { projectResults } from "../docs/data/selected-results.ts"
+import { publicResults } from "../docs/data/public-results.ts"
 import { describeTracePanes, readCellTrace } from "../docs/data/evidence-reader.ts"
 import { textEvidenceExplanation } from "../docs/.vitepress/theme/ungraded-explanation.ts"
 
 const SAMPLE_SHA256 = "a".repeat(64)
+
+// C1's no-date label must reach the same site/API result readers without changing
+// sealed status or measuredAt. Pure resolver tests cannot prove this handoff.
+it("labels a retained source answer by engine version without regrading or dating the capture", () => {
+  const path = new URL(
+    "../content/probes-apps/alacritty-0.17.0-linux-f504922f67f074794c588cf3a14e2114.json",
+    import.meta.url,
+  )
+  const bytes = readFileSync(path, "utf8")
+  const manifestPath = new URL("../content/suites/4b01b0117e18.json", import.meta.url)
+  const manifest = parseSuiteManifest(manifestPath.pathname, readFileSync(manifestPath, "utf8"))
+  const catalog = manifest.catalogIds!
+  const run = parseRun(path.pathname, bytes, catalog, new Map([[manifest.probeHash, manifest]]))
+  const original = structuredClone(run)
+  const featureId = "extensions.iterm2-images"
+  const projection = projectResults(
+    [run],
+    [],
+    catalog,
+    { currentProbeHash: manifest.probeHash, workingRuns: [run] },
+    [],
+  )
+  const selected = projection.history["term:alacritty"]?.[0]
+  const result = selected?.results.find((entry) => entry.featureId === featureId)
+  expect(result?.reason).toContain("reviewed at 0.17.0, not re-verified")
+  expect(result?.status).toBe("unsupported")
+  expect(selected?.measuredAt).toBe(run.measuredAt)
+  const published = publicResults(projection, new Map()).projection
+  expect(published.contexts["term:alacritty"]?.cells[featureId]?.reason).toContain(
+    "reviewed at 0.17.0, not re-verified",
+  )
+  expect(published.contexts["term:alacritty"]?.cells[featureId]?.presentation.state).toBe("not-reviewed")
+  expect(published.contexts["term:alacritty"]?.cells[featureId]?.record).toBeUndefined()
+  expect(run).toEqual(original)
+  expect(readFileSync(path, "utf8")).toBe(bytes)
+})
 
 describe("the site says why a text row does not count (30033 ruling f1f3c64b)", () => {
   it("names the console host on a Windows text row, and says it is not counted", () => {

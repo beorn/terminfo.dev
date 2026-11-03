@@ -17,6 +17,9 @@ import {
   type UngradedDiagnostic,
   type TextQualification,
   finalizeProbeResult,
+  SOURCE_ANSWERS,
+  sourceAnswerForRef,
+  resolveSourceAnswer,
   type TextQualificationAssessment,
   type CollectorSelection,
   type CollectorAttempt,
@@ -301,7 +304,26 @@ export function consoleHostHeldResults(run: LoadedRun, interpretations: readonly
     if (gaps.length > 1) throw new Error(`Run ${run.runId}/${result.featureId}: conflicting active tool-gap overlays`)
     const gap = gaps[0]
     const reason = gap?.reason ?? consoleHostHold(run, result, result.status)
-    if (reason === undefined) return result
+    if (reason === undefined) {
+      const ref = result.reviewRef ?? result.tests.find((test) => test.id === "review")?.reviewRef
+      if (!ref || !sourceAnswerForRef(ref)) return result
+      const answer = resolveSourceAnswer(SOURCE_ANSWERS, {
+        subject: run.subject,
+        featureId: result.featureId,
+        ...(run.runtimeIdentity && { runtimeIdentity: run.runtimeIdentity }),
+        sourceRevision: run.sourceRevision,
+      })
+      if (answer.kind !== "answer" || !answer.label) return result
+      const label = answer.label
+      const annotate = (text: string | undefined): string =>
+        text?.includes(label) ? text : [text, label].filter(Boolean).join("; ")
+      // Presentation only: sealed grades, dates, measurement and provenance stay intact.
+      return {
+        ...result,
+        reason: annotate(result.reason),
+        tests: result.tests.map((test) => (test.id === "review" ? { ...test, reason: annotate(test.reason) } : test)),
+      }
+    }
     const { status: _sealed, reviewRef, ...unsealed } = result
     const test = {
       id: gap ? "criterion" : "console-host",
