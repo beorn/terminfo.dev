@@ -36,6 +36,8 @@ import {
   sgrCaptureTooSmall,
   unmeasuredCellResult,
   auditedAdapterSources,
+  stackVerdict,
+  type StackReading,
 } from "./helpers.ts"
 import { evidenceRuntimeIdentity } from "./runtime-identity.ts"
 import { replyPathAuditFor } from "./reply-path-audit.ts"
@@ -1152,37 +1154,57 @@ function resetProbe(id: string, setCode: number, resetCode: number, index?: numb
   }
 }
 
+/** Three distinct foregrounds, none equal to the current one, so every pass value is non-default (#31904). */
+function colorStackColors(before: string): { a: string; b: string; c: string } {
+  const [a, b, c] = ["rgb:12/34/56", "rgb:aa/bb/cc", "rgb:65/43/21", "rgb:de/ad/be"].filter(
+    (color) => !sameRgbText(color, before),
+  )
+  return { a: a!, b: b!, c: c! }
+}
+
+/**
+ * Per-operation colour-stack grade (#31904, @cto 6e4f7300). The POP fixture (set A, push, set B,
+ * pop) and the PUSH fixture (set A, set B, push, set C, pop) both run; none of A, B or C is the
+ * foreground the run started with. A mutation the reply does not show leaves the stack unobservable
+ * and is the joint negative both rows carry, as before the split.
+ */
 function colorStackResult(
-  before: string,
-  requested: string,
-  changed: string,
-  restored: string,
   operation: "push" | "pop",
+  before: string,
+  colors: { a: string; b: string; c: string },
+  popFixture: { changed: string; restored: string },
+  pushFixture: { changed: string; restored: string },
 ): ProbeCallbackResult {
-  const changedAsRequested = sameRgbText(changed, requested)
-  const restoredOriginal = sameRgbText(restored, before)
-  const pass = changedAsRequested && restoredOriginal
-  const response = JSON.stringify({ before, changed, restored })
-  const note = pass
-    ? `Foreground changed and the color-stack ${operation} round trip restored its original value`
-    : "Foreground change or stack restoration was not observed"
-  return {
-    pass,
-    response,
-    note,
-    observation: { outcome: pass ? "supported" : "unsupported", assertionType: "query_reply", note },
-    assertions: [
-      {
-        assertionType: "query_reply" as const,
-        kind: pass ? "positive" : "negative",
-        expected:
-          operation === "push"
-            ? "Changed foreground and restored original after color-stack push, observed through a push/pop round trip"
-            : "Changed foreground and restored original after color-stack pop",
-        observed: response,
-      },
-    ],
+  const id = operation === "push" ? "extensions.osc30001-color-stack-push" : "extensions.osc30101-color-stack-pop"
+  const expected =
+    operation === "push"
+      ? `OSC 30001 color-stack push saves the foreground current at push time: after set ${colors.a}, set ${colors.b}, push, set ${colors.c}, pop, ${colors.b} is restored`
+      : `OSC 30101 color-stack pop restores the pushed foreground: after set ${colors.a}, push, set ${colors.b}, pop, ${colors.a} is restored`
+  const state = { id, before, colors, popFixture, pushFixture }
+  if (!sameRgbText(popFixture.changed, colors.b) || !sameRgbText(pushFixture.changed, colors.c)) {
+    return parserStateResult(
+      false,
+      expected,
+      state,
+      "OSC 10 set did not change the queried color, so neither stack operation was observed",
+      undefined,
+      "query_reply",
+    )
   }
+  const pop: StackReading = sameRgbText(popFixture.restored, colors.a)
+    ? "restored"
+    : sameRgbText(popFixture.restored, colors.b)
+      ? "persisted"
+      : "other"
+  const push: StackReading = sameRgbText(pushFixture.restored, colors.b)
+    ? "restored"
+    : sameRgbText(pushFixture.restored, colors.a)
+      ? "earlier"
+      : sameRgbText(pushFixture.restored, colors.c)
+        ? "persisted"
+        : "other"
+  const verdict = stackVerdict(operation, pop, push)
+  return parserStateResult(verdict.pass, expected, { ...state, pop, push }, verdict.note, undefined, "query_reply")
 }
 
 /** Source identities qualify a required review, never the target effect itself. */
@@ -1814,7 +1836,7 @@ function colorStackProbe(ownSequence: typeof colorPush | typeof colorPop): Probe
     let seedAttempted = false
     let fixtureVerified = false
     let readbackUnavailable = false
-    let comparison: { before: string; changed: string; restored: string } | undefined
+    let comparison: object | undefined
     const trace: Array<{ write: string; response?: string; error?: string }> = []
     const capture = (write: string, entry: (typeof trace)[number] = { write }) => {
       trace.push(entry)
@@ -1903,38 +1925,51 @@ function colorStackProbe(ownSequence: typeof colorPush | typeof colorPop): Probe
         before = control.color
         fixtureVerified = true
       }
-      const requested = probeForeground(before)
-      result = feed(colorPush, "Color-stack push")
-      if (result !== undefined) return result
-      pushed = true
-      result = feed(`\x1b]10;${requested}\x07`, "Foreground mutation")
-      if (result !== undefined) return result
-      const changed = queryForeground("Foreground query after mutation")
-      const changedRaw = foregroundRaw
-      if (changed !== null && typeof changed !== "string") {
-        result = changed
-        return result
-      }
-      result = feed(colorPop, "Color-stack pop")
-      if (result !== undefined) return result
-      pushed = false
-      const restored = queryForeground("Foreground query after pop")
-      const restoredRaw = foregroundRaw
-      if (restored !== null && typeof restored !== "string") {
-        result = restored
-        return result
-      }
-      if (!changed || !restored) {
+      const colors = colorStackColors(before)
+      // One fixture: optional earlier sets, push, a mutation, pop; each read after the mutation and
+      // after the pop (#31904). The POP fixture sets A; the PUSH fixture sets A then B.
+      const fixture = (
+        label: string,
+        sets: readonly string[],
+        mutation: string,
+      ): { changed: string; restored: string } | ProbeCallbackResult => {
+        for (const color of sets) {
+          const failed = feed(`\x1b]10;${color}\x07`, `${label} foreground set`)
+          if (failed !== undefined) return failed
+        }
+        const pushFailed = feed(colorPush, `${label} color-stack push`)
+        if (pushFailed !== undefined) return pushFailed
+        pushed = true
+        const mutationFailed = feed(`\x1b]10;${mutation}\x07`, `${label} foreground mutation`)
+        if (mutationFailed !== undefined) return mutationFailed
+        const changed = queryForeground(`${label} foreground query after mutation`)
+        const changedRaw = foregroundRaw
+        if (changed !== null && typeof changed !== "string") return changed
+        const popFailed = feed(colorPop, `${label} color-stack pop`)
+        if (popFailed !== undefined) return popFailed
+        pushed = false
+        const restored = queryForeground(`${label} foreground query after pop`)
+        const restoredRaw = foregroundRaw
+        if (restored !== null && typeof restored !== "string") return restored
+        if (changed && restored) return { changed, restored }
         const malformed =
           !changed && changedRaw !== "" ? changedRaw : !restored && restoredRaw !== "" ? restoredRaw : null
-        if (malformed !== null) {
-          const note = `Malformed OSC 10 reply: ${JSON.stringify(malformed)}`
-          result = { pass: false, note, tests: [{ id: "criterion", status: "test-failure", reason: note }] }
-        } else result = replyFailure("No OSC 10 reply after changing or popping color")
-      } else {
-        comparison = { before, changed, restored }
-        result = colorStackResult(before, requested, changed, restored, operation)
+        if (malformed === null) return replyFailure("No OSC 10 reply after changing or popping color")
+        const note = `Malformed OSC 10 reply: ${JSON.stringify(malformed)}`
+        return { pass: false, note, tests: [{ id: "criterion", status: "test-failure", reason: note }] }
       }
+      const popFixture = fixture("POP fixture", [colors.a], colors.b)
+      if ("pass" in popFixture) {
+        result = popFixture
+        return result
+      }
+      const pushFixture = fixture("PUSH fixture", [colors.a, colors.b], colors.c)
+      if ("pass" in pushFixture) {
+        result = pushFixture
+        return result
+      }
+      comparison = { before, colors, popFixture, pushFixture }
+      result = colorStackResult(operation, before, colors, popFixture, pushFixture)
       return result
     } catch (error) {
       unexpectedlyFailed = true
@@ -2049,20 +2084,32 @@ async function colorStackTermProbe(
   const before = foregroundValue(originalReply.match?.[0] ?? "")
   if (!before) return unansweredQuery(originalReply, "No original OSC 10 foreground reply; color stack was not changed")
   let pushed = false
-  const requested = probeForeground(before)
-  try {
+  const colors = colorStackColors(before)
+  const read = async (missing: string) => {
+    const reply = await ctx.queryWithSentinelOutcome(foregroundQuery, foregroundReply)
+    const value = foregroundValue(reply.match?.[0] ?? "")
+    return value ? value : unansweredQuery(reply, missing)
+  }
+  // The same two fixtures as the headless arm (#31904): POP sets A, PUSH sets A then B.
+  const fixture = async (sets: readonly string[], mutation: string) => {
+    for (const color of sets) ctx.write(`\x1b]10;${color}\x07`)
     ctx.write(colorPush)
     pushed = true
-    ctx.write(`\x1b]10;${requested}\x07`)
-    const changedReply = await ctx.queryWithSentinelOutcome(foregroundQuery, foregroundReply)
-    const changed = foregroundValue(changedReply.match?.[0] ?? "")
-    if (!changed) return unansweredQuery(changedReply, "No OSC 10 reply after changing foreground")
+    ctx.write(`\x1b]10;${mutation}\x07`)
+    const changed = await read("No OSC 10 reply after changing foreground")
+    if (typeof changed !== "string") return changed
     ctx.write(colorPop)
     pushed = false
-    const restoredReply = await ctx.queryWithSentinelOutcome(foregroundQuery, foregroundReply)
-    const restored = foregroundValue(restoredReply.match?.[0] ?? "")
-    if (!restored) return unansweredQuery(restoredReply, "No OSC 10 reply after color-stack pop")
-    return colorStackResult(before, requested, changed, restored, operation)
+    const restored = await read("No OSC 10 reply after color-stack pop")
+    if (typeof restored !== "string") return restored
+    return { changed, restored }
+  }
+  try {
+    const popFixture = await fixture([colors.a], colors.b)
+    if ("pass" in popFixture) return popFixture
+    const pushFixture = await fixture([colors.a, colors.b], colors.c)
+    if ("pass" in pushFixture) return pushFixture
+    return colorStackResult(operation, before, colors, popFixture, pushFixture)
   } finally {
     try {
       if (pushed) ctx.write(colorPop)

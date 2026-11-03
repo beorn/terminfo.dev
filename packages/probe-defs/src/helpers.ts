@@ -116,6 +116,41 @@ export function auditedAdapterSources(
   )
 }
 
+/** What one push/pop stack fixture's final read shows (#31904). */
+export type StackReading = "restored" | "earlier" | "persisted" | "other"
+
+/**
+ * Per-operation verdict over two stack fixtures (#31904, @cto 6e4f7300). The POP fixture (set A,
+ * push, set B, pop) and the PUSH fixture (set A, set B, push, set C, pop) run in every arm, and each
+ * row grades only its own operation:
+ * - POP passes when its fixture restores the pushed non-default A and the PUSH fixture restored a
+ *   saved state; PUSH passes when its fixture restores B, the state current at push time, and the
+ *   POP fixture shows pop restores.
+ * - PUSH alone is negative when an earlier state returns while the POP fixture shows pop restores:
+ *   push saved no snapshot of the current state.
+ * - Nothing restored in either fixture is the joint negative both rows carry: push then pop
+ *   restored no earlier state. Any other combination, including fixtures that disagree, is null.
+ */
+export function stackVerdict(
+  operation: "push" | "pop",
+  pop: StackReading,
+  push: StackReading,
+): { pass: boolean | null; note?: string } {
+  if (pop === "persisted" && push === "persisted") {
+    return { pass: false, note: "push then pop restored no earlier state" }
+  }
+  if (operation === "pop") {
+    return pop === "restored" && (push === "restored" || push === "earlier")
+      ? { pass: true }
+      : { pass: null, note: `POP fixture ${pop}, PUSH fixture ${push}: no pop-only observation` }
+  }
+  if (pop === "restored" && push === "restored") return { pass: true }
+  if (pop === "restored" && push === "earlier") {
+    return { pass: false, note: "an earlier state returned while pop restores: push saved no current snapshot" }
+  }
+  return { pass: null, note: `POP fixture ${pop}, PUSH fixture ${push}: no push-only observation` }
+}
+
 /** Mark an absent-reply failure without deciding producer absence from silence. */
 export function replyFailure(reason: string): ExecutionOnlyProbeCallbackResult {
   return {
