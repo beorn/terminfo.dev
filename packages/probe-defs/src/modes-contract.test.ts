@@ -570,7 +570,11 @@ test.each([
   expect(result.pass).toBe(outcome === "supported")
   if (note) expect(result.note).toContain(note)
   if (outcome === "inconclusive") expect(result.assertions).toBeUndefined()
-  else expect(result.assertions?.[0]?.expected).toContain(id === "modes.xtsave" ? "current at save time" : "restores the saved")
+  else {
+    expect(result.assertions?.[0]?.expected).toContain(
+      id === "modes.xtsave" ? "current at save time" : "restores the saved",
+    )
+  }
 })
 
 // #31904 R3e: the palette-stack rows split the same way as R3d (@cto 6e4f7300).
