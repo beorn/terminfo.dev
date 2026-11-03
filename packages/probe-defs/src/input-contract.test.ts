@@ -200,6 +200,11 @@ function inputSatisfactionSources(id: string): { readonly headless?: LibProbeSou
           // the rejected alternate-screen fixture must therefore stay silent.
           if (pattern.test("\x1b[<0;10;5m") && !pattern.test("\x1b[<0;10;5M")) return null
           if (writes.some((write) => write.includes("?1049h"))) return null
+          const mouseSet = writes.findLastIndex((write) => write.includes("\x1b[?1000h"))
+          const mouseReset = writes.findLastIndex((write) => write.includes("\x1b[?1000l"))
+          const promptStart = writes.findLastIndex((write) => write.includes("\x1b]133;A;click_events=1"))
+          const promptEnd = writes.findLastIndex((write) => write.includes("\x1b]133;B"))
+          if (mouseReset > mouseSet && promptEnd > promptStart) return null
           return ["\x1b[<0;10;5M"]
         },
       }),

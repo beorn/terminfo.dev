@@ -475,6 +475,19 @@ async function pixelMouse(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
       SGR_MOUSE,
       "XTEST delivery control failed: click under 1000+1006 did not reach the app",
     )
+    const cell = sgrMouseCoords(control)
+    if (
+      sgrMouseButton(control) !== 0 ||
+      !cell ||
+      !Number.isSafeInteger(cell.x) ||
+      !Number.isSafeInteger(cell.y) ||
+      cell.x < 1 ||
+      cell.y < 1 ||
+      cell.x > ctx.cols ||
+      cell.y > ctx.rows
+    ) {
+      return notTestedResult("pixel-mouse delivery control is not a button-1 event in a valid screen cell", { control })
+    }
     const measured = await queryPixelGeometry(ctx)
     if ("missing" in measured) {
       return notTestedResult(`no cell geometry: ${measured.missing}`, { control, geometry: measured })
@@ -488,6 +501,9 @@ async function pixelMouse(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
         )
       }
       const observed = { mode: "1016", control, report, geometry: measured.geometry, geometrySource: measured.source }
+      if (sgrMouseButton(report) !== 0) {
+        return notTestedResult("pixel-mouse target is not a button-1 event", observed)
+      }
       const expected = "OS XTEST click report under 1016 with pixel coordinates after 1000+1006 delivery control"
       if (pixelCoordsWithin(control, report, measured.geometry)) {
         return interactionResult("pixel-mouse:1", expected, observed)
@@ -583,11 +599,26 @@ async function kittyClickEvents(ctx: TermProbeSource): Promise<ProbeCallbackResu
     "Click inside a main-screen OSC 133 prompt marked click_events=1 reports SGR mouse while mouse modes are off"
   const observedBase = { marker: "OSC 133;A;click_events=1", control, pointer: point }
   try {
+    // End any earlier prompt before checking that ordinary mouse reporting is off.
+    ctx.write(`${KITTY_CLICK_END}\x1b[${point.y};1H\x1b[2K`)
+    const negativeControl = (await readInput(SGR_MOUSE_PRESS, 1000, () => input.injectClick(1)))?.[0] ?? null
+    if (negativeControl !== null) {
+      return {
+        pass: false,
+        response: JSON.stringify({ ...observedBase, negativeControl, report: null }),
+        observation: {
+          outcome: "inconclusive",
+          reason: "insufficient-evidence",
+          assertionType: "input_bytes",
+          note: "An unmarked click still emitted a mouse report with mouse modes off; prompt click support is not isolated",
+        },
+      }
+    }
     // The marker spans the click cell on the click row and leaves the cursor at the prompt end.
     const pad = " ".repeat(Math.max(0, point.x - 2))
     ctx.write(`\x1b[${point.y};1H${KITTY_CLICK_START}$ ${pad}`)
     const report = (await readInput(SGR_MOUSE_PRESS, 1000, () => input.injectClick(1)))?.[0]
-    const observed = { ...observedBase, report: report ?? null }
+    const observed = { ...observedBase, negativeControl, report: report ?? null }
     if (!report) return unsupportedInteraction("kitty-click-events:1", expected, observed)
     const reported = sgrMouseCoords(report)
     if (sgrMouseButton(report) !== 0 || !reported || reported.x !== point.x || reported.y !== point.y) {

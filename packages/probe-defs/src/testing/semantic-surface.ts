@@ -680,6 +680,7 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
 
   /** REP — repeat the immediately preceding graphic cluster at the cursor. */
   const repeatChar = (count: number): void => {
+    if (mutations.has("rep-noop")) return
     for (let i = 0; i < Math.max(1, count); i++) writeCluster(lastCluster, lastWidth)
   }
 
@@ -747,6 +748,7 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
 
   /** DCH — delete cells at the cursor, shifting the rest of the row left and blanking the tail. */
   const deleteChars = (count: number): void => {
+    if (mutations.has("dch-noop")) return
     const row = grid[cursorY]
     if (!row) return
     row.splice(cursorX, Math.max(1, count))
@@ -755,6 +757,7 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
 
   /** IL — insert blank rows at the cursor inside the scrolling region, shifting rows down. */
   const insertLines = (count: number): void => {
+    if (mutations.has("il-noop")) return
     const bottom = Math.min(regionBottom, rows - 1)
     for (let i = 0; i < Math.max(1, count); i++) {
       grid.splice(cursorY, 0, blankRow())
@@ -764,6 +767,7 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
 
   /** DL — delete rows at the cursor inside the scrolling region, shifting rows up. */
   const deleteLines = (count: number): void => {
+    if (mutations.has("dl-noop")) return
     const bottom = Math.min(regionBottom, rows - 1)
     for (let i = 0; i < Math.max(1, count); i++) {
       grid.splice(cursorY, 1)
@@ -773,6 +777,7 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
 
   /** SL — shift every screen column left by `count`, blanking the right edge. */
   const shiftLeft = (count: number): void => {
+    if (mutations.has("sl-noop")) return
     for (const row of grid) {
       row.splice(0, Math.max(1, count))
       while (row.length < cols) row.push(blankCell(NO_ATTRIBUTES))
@@ -781,6 +786,7 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
 
   /** SR — shift every screen column right by `count`, blanking the left edge. */
   const shiftRight = (count: number): void => {
+    if (mutations.has("sr-noop")) return
     const n = Math.max(1, count)
     for (const row of grid) {
       for (let i = 0; i < n; i++) row.unshift(blankCell(NO_ATTRIBUTES))
@@ -790,6 +796,7 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
 
   /** DECIC — insert blank columns at the cursor, shifting every row right. */
   const insertColumns = (count: number): void => {
+    if (mutations.has("decic-noop")) return
     const n = Math.max(1, count)
     for (const row of grid) {
       for (let i = 0; i < n; i++) row.splice(cursorX, 0, blankCell(NO_ATTRIBUTES))
@@ -799,6 +806,7 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
 
   /** DECDC — delete columns at the cursor, shifting every row left and blanking the tail. */
   const deleteColumns = (count: number): void => {
+    if (mutations.has("decdc-noop")) return
     for (const row of grid) {
       row.splice(cursorX, Math.max(1, count))
       while (row.length < cols) row.push(blankCell(NO_ATTRIBUTES))
@@ -807,12 +815,14 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
 
   /** DECFRA — fill the rectangle with the named code point. */
   const fillRect = (params: readonly number[]): void => {
+    if (mutations.has("decfra-noop")) return
     const char = String.fromCodePoint(params[0] ?? 0)
     eachCellIn(params.slice(1), () => ({ char, decscaProtected: false, ...NO_ATTRIBUTES }))
   }
 
   /** DECERA — blank the rectangle; DECSERA restricts that to unprotected cells. */
   const blankRect = (params: readonly number[], selective: boolean): void => {
+    if (mutations.has(selective ? "decsera-noop" : "decera-noop")) return
     eachCellIn(params, (cell) =>
       selective && cell.decscaProtected ? undefined : { char: " ", decscaProtected: false, ...NO_ATTRIBUTES },
     )
@@ -820,6 +830,7 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
 
   /** DECCRA — copy the source rectangle to the destination top/left, source left intact. */
   const copyRect = (params: readonly number[]): void => {
+    if (mutations.has("deccra-noop")) return
     const source = rect(params)
     const destinationTop = clampRow((params[5] ?? 1) - 1)
     const destinationLeft = clampCol((params[6] ?? 1) - 1)
@@ -840,6 +851,7 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
 
   /** DECCARA / DECRARA — set or reverse the listed attributes across the rectangle. */
   const changeRectAttributes = (params: readonly number[], reverse: boolean): void => {
+    if (mutations.has(reverse ? "decrara-noop" : "deccara-noop")) return
     const codes = params.slice(4)
     eachCellInExtent(params, (cell) => ({
       ...cell,
@@ -847,8 +859,15 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
     }))
   }
 
+  /** DECSACE — select stream (Ps 0/1) or rectangle (Ps 2) extent for DECCARA/DECRARA. */
+  const setAttributeExtent = (first: number): void => {
+    if (mutations.has("decsace-noop")) return
+    attributeExtent = first === 2 ? 1 : 0
+  }
+
   /** DECRQCRA — frame the rectangle's checksum reply the way checksumResult reads it. */
   const requestChecksum = (params: readonly number[]): void => {
+    if (mutations.has("decrqcra-noop")) return
     const id = params[0] ?? 0
     const { top, left, bottom, right } = rect(params.slice(2))
     let total = 0
@@ -1140,7 +1159,7 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
         if (ps !== null) replies += `\x1b[?${first};${ps}$y`
       }
     } else if (intermediate === "*") {
-      if (final === "x") attributeExtent = first === 2 ? 1 : 0
+      if (final === "x") setAttributeExtent(first)
       else if (final === "y") requestChecksum(params)
     } else if (intermediate === "'") {
       if (final === "}") insertColumns(count)
