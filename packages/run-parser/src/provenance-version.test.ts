@@ -110,13 +110,10 @@ describe("parseRunProvenance version token", () => {
       suites.get(expected.probeHash)!,
       expected.sourceRevision,
     )
-    // A private collection retains the actual identity; the old draft-only decoder rejected
-    // verified and disputed measurements even though they are valid current records.
+    // Collector transport cannot claim verified or disputed identity.
     for (const identity of ["verified", "disputed"] as const) {
       const bytes = JSON.stringify({ ...draft, identity })
-      const retained = decodeCollectorDraft("mux.json", bytes, manifest, expected.sourceRevision)
-      expect(retained.raw).toBe(bytes)
-      expect(retained.run.identity).toBe(identity)
+      expect(() => decodeCollectorDraft("mux.json", bytes, manifest, expected.sourceRevision)).toThrow(/unverified/)
     }
     expect(decoded.run.outerApp).toEqual({
       subject: { ...target, kind: "term" },

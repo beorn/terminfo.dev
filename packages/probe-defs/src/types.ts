@@ -501,12 +501,6 @@ export interface ProbeSuiteManifest {
   probes: Record<ProbeSubject["kind"], string[]>
   textClaims?: string[]
   textQualification?: TextQualificationSpec
-  /**
-   * Written only by a freeze act, never by a human: the release whose current suite this manifest
-   * is. `frozenSuiteIdFor` reads this pointer, so a manifest that declares no freeze simply is not
-   * a release's suite.
-   */
-  freeze?: { release: string; at: string }
 }
 
 export interface ProbeAssertion {

@@ -163,3 +163,13 @@ it("refuses legacy booleans, malformed bytes, and unbound screenshot artifacts",
   writeFileSync(rawPath, JSON.stringify({ ...partialRun, textSnapshotRefs: [`sha256:${"c".repeat(64)}`] }))
   expect(() => createDraft(rawPath, draftPath, receipt)).toThrow(/text-snapshot artifact/i)
 })
+
+// Requirement: community drafts cannot claim verified or disputed collector identity; existing
+// submission tests use only unverified input and cannot detect that promotion.
+it.each(["verified", "disputed"] as const)("refuses community drafts claiming %s identity", (identity) => {
+  const dir = mkdtempSync(join(tmpdir(), "terminfo-draft-identity-"))
+  dirs.push(dir)
+  const rawPath = join(dir, "run.json")
+  writeFileSync(rawPath, JSON.stringify({ ...partialRun, identity }))
+  expect(() => createDraft(rawPath, join(dir, "draft.md"), receipt)).toThrow(/unverified/i)
+})

@@ -145,10 +145,7 @@ it.each(["projection", "collection"] as const)(
       "probes-mux/screen-5.0.2-linux-ff1d93308fe7f5044d692f7da0fcfe2b.json",
       "probes-mux/tmux-3.8-linux-ea920f3547c0e7f0ced0f80b277f2939.json",
     ]
-    for (const path of paths) {
-      fingerprintFixture.files[join(CONTENT, path)] = join(CONTENT, "..", "test-fixtures", path)
-    }
-    try {
+    {
       const runs = loadStoredRuns(CONTENT, Object.keys(catalog.loadFeatures(CONTENT))).filter((run) =>
         paths.includes(relative(CONTENT, run.path)),
       )
@@ -196,18 +193,22 @@ it.each(["projection", "collection"] as const)(
         if (entry === "projection") {
           const projection = result as ReturnType<typeof loadSelectedResults>
           expect(projection).toEqual(baseline)
-          for (const overlay of overlays) expect(projection.table[overlay.runId]![overlay.featureId]).toBe("untestable")
+          for (const run of runs) {
+            for (const featureId of ["extensions.font-ligatures", "sgr.blink"]) {
+              expect(projection.table[run.runId]![featureId]).toBe(
+                run.results!.find((row) => row.featureId === featureId)!.status,
+              )
+            }
+          }
         } else {
           const pass = result as Awaited<ReturnType<typeof collectPass>>
           expect(pass.contexts).toEqual([])
-          expect(pass.inputSha256[storePath]).toBe(createHash("sha256").update(fixtureBytes).digest("hex"))
+          expect(pass.inputSha256).not.toHaveProperty(storePath)
         }
       } finally {
         delete fingerprintFixture.files[storePath]
       }
       expect(readFileSync(storePath, "utf8")).toBe(original)
-    } finally {
-      for (const path of paths) delete fingerprintFixture.files[join(CONTENT, path)]
     }
   },
   // CI's full-history partial clone fetches the cited source blobs on its first canonical read.

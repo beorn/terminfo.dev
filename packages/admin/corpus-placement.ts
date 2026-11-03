@@ -30,10 +30,13 @@ import { loadFeatures } from "@terminfo/catalog"
 import { outerLaunchMismatch } from "./src/outer-launch.ts"
 import {
   bindReceiptToRun,
+  HOSTED_IDENTITY_SOURCES,
   parseDisposableReceipt,
   parseMuxAttachmentProof,
   type ReceiptTarget,
 } from "../terminfo.dev/src/disposable-receipt.ts"
+import { verifySuiteManifest } from "./suite-manifest.ts"
+import { probeSuiteSnapshot } from "./versions.ts"
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..")
 export const CONTENT_DIR = join(ROOT, "content")
@@ -451,7 +454,11 @@ export function placeCollectedRun(
     throw new Error(`${source}: collection placement requires a current schema-4 record`)
   }
   const manifestBytes = Buffer.from(`${JSON.stringify(trustedSuite, null, 2)}\n`, "utf8")
-  const manifest = parseSuiteManifest(`${source}: trusted collection suite`, manifestBytes.toString("utf8"))
+  const manifest = verifySuiteManifest(
+    `${source}: trusted collection suite`,
+    probeSuiteSnapshot(ROOT),
+    manifestBytes.toString("utf8"),
+  )
   if (parsed.probeHash !== manifest.probeHash) {
     throw new Error(
       `${source}: collected suite ${String(parsed.probeHash)} differs from trusted suite ${manifest.probeHash}`,
@@ -697,6 +704,18 @@ function preflightOwnershipReceipt(
       `Receipt ${receiptPath} is kind ${JSON.stringify(receipt.kind)} but the run records ${JSON.stringify(kind)}`,
     )
   }
+  if (receipt.kind === "github-hosted-runner") {
+    const measured = parseJsonStrict(receiptPath, bytes.toString("utf8"))
+    if (!isRecord(measured) || !isRecord(measured.runner) || typeof measured.runner.os !== "string") {
+      throw new Error(`${receiptPath}: hosted receipt lacks runner.os`)
+    }
+    if (!Object.hasOwn(HOSTED_IDENTITY_SOURCES, measured.runner.os)) {
+      throw new ReceiptRefusal(
+        "ownership-receipt-invalid",
+        `Receipt ${receiptPath}: runner.os ${JSON.stringify(measured.runner.os)} has no ratified identity source`,
+      )
+    }
+  }
   try {
     bindReceiptToRun(receipt, target, `run ${runId}`)
   } catch (cause) {
@@ -776,22 +795,12 @@ function preflightOwnershipReceipt(
 function preflightLinuxCompletionReceipt(source: string, run: LoadedRun): void {
   if ((run.subject.kind !== "term" && run.subject.kind !== "mux") || !isLinux(run.subject.os)) return
   const hostPath = join(dirname(source), RECEIPT_BESIDE_RUN)
-  let host: unknown
   try {
-    host = existsSync(hostPath) ? JSON.parse(readFileSync(hostPath, "utf8")) : undefined
+    if (existsSync(hostPath)) JSON.parse(readFileSync(hostPath, "utf8"))
   } catch (cause) {
     throw new Error(`Cannot read/parse Linux host-measured.json receipt ${hostPath}`, { cause })
   }
-  const launcher =
-    run.subject.kind === "term" &&
-    isRecord(host) &&
-    typeof host.preset === "string" &&
-    SAFE_COMPONENT.test(host.preset) &&
-    typeof host.clipboardProfile === "string" &&
-    SAFE_COMPONENT.test(host.clipboardProfile)
-      ? `bash scripts/linux-container-run.sh --target ${run.subject.id} --preset ${host.preset} --clipboard-profile ${host.clipboardProfile} <outdir>`
-      : "bun scripts/release1-collection.ts --plan (read this target's exact launcher command)"
-  const cure = `; collect through the launcher to produce matching receipts. From ${ROOT}, run: ${launcher}`
+  const cure = "; Linux and hosted launcher outputs remain private until Phase 3 provides their corpus route"
   const path = join(dirname(source), "run-receipt.json")
   if (!existsSync(path)) throw new Error(`${run.subject.id}/linux: missing run-receipt.json next to ${source}${cure}`)
   let receipt: unknown

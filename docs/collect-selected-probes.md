@@ -1,7 +1,7 @@
 # Collect selected probes
 
 Run these commands from the source repository root with its declared dependencies available.
-Choose a private output directory outside `content/`; collection retains evidence without admitting or publishing it.
+Choose a private output directory outside `content/`; collection retains evidence privately.
 
 The existing dispatcher accepts canonical context IDs and exact probe IDs as JSON arrays:
 
@@ -34,7 +34,7 @@ Decode that JSON string to read `ids`; decode `rawReplies["collector.collectionA
 Draft initialization retains every catalogue position as an unattempted TODO.
 Only emitted results have a top-level `ProbeResult.attempt` with scope `probe` or `collection`; a selected but unreached TODO remains scope `none`.
 An unsuccessful attempt does not refresh an older result's date or review.
-Each capture retains its own run ID, evidence and review bindings.
+Each capture retains its own run ID and evidence.
 
 The `complete` field still describes the whole required cohort; selecting a subset does not make the cohort complete.
 Use the existing private report with explicit pass inputs to inspect composed results. The same selectors constrain hosted macOS and Windows work: only the selected workflow jobs start, and each collector receives the resolved probe IDs.

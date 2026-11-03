@@ -107,22 +107,17 @@ function supersessionTarget(
   entry: Interpretation,
   priorId: string,
   path: string,
-  _runs: readonly LoadedRun[],
 ): Interpretation {
   const prior = byId.get(priorId)
   if (!prior) fail(path, `interpretation ${entry.id} supersedes unknown ${priorId}`)
   return prior
 }
 
-export function validatePresentationSupersession(
-  entries: readonly Interpretation[],
-  path: string,
-  runs: readonly LoadedRun[] = [],
-): void {
+export function validatePresentationSupersession(entries: readonly Interpretation[], path: string): void {
   const byId = new Map(entries.map((entry) => [entry.id, entry]))
   for (const entry of entries) {
     for (const priorId of entry.supersedes) {
-      const prior = supersessionTarget(byId, entry, priorId, path, runs)
+      const prior = supersessionTarget(byId, entry, priorId, path)
       const currentPresentation = hasPresentationDecision(entry)
       const priorPresentation = hasPresentationDecision(prior)
       if (
@@ -144,7 +139,6 @@ export function parseInterpretations(
   source: string,
   catalogIds: readonly string[],
   sources?: Map<string, string>,
-  runs: readonly LoadedRun[] = [],
 ): Interpretation[] {
   const entrySources: string[] = []
   const raw = parseJsonStrict(
@@ -244,7 +238,7 @@ export function parseInterpretations(
       }),
     } as unknown as Interpretation)
   }
-  validatePresentationSupersession(normalized, path, runs)
+  validatePresentationSupersession(normalized, path)
   if (sources) {
     for (const [index, entry] of normalized.entries()) {
       const bytes = entrySources[index]
@@ -273,10 +267,7 @@ export function applies(entry: Interpretation, run: LoadedRun): boolean {
   )
 }
 
-export function activeInterpretations(
-  entries: readonly Interpretation[],
-  runs: readonly LoadedRun[] = [],
-): Interpretation[] {
+export function activeInterpretations(entries: readonly Interpretation[]): Interpretation[] {
   const byId = new Map(entries.map((entry) => [entry.id, entry]))
   if (byId.size !== entries.length) throw new Error("duplicate interpretation ID")
   const visited = new Set<string>()
@@ -289,7 +280,7 @@ export function activeInterpretations(
     visiting.add(id)
     for (const prior of entry.supersedes) {
       superseded.add(prior)
-      visit(supersessionTarget(byId, entry, prior, "interpretations", runs))
+      visit(supersessionTarget(byId, entry, prior, "interpretations"))
     }
     visiting.delete(id)
     visited.add(id)

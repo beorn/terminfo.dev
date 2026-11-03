@@ -6,8 +6,9 @@
  * @testonly none
  */
 import { describe, expect, it } from "vitest"
-import { initializeRunDraft, type ProbeSuiteManifest } from "@terminfo/probe-defs"
-import { parseRun, parseSuiteManifest } from "./index.ts"
+import { readFileSync } from "node:fs"
+import { initializeRunDraft, type CapturedRunDraft, type ProbeSuiteManifest } from "@terminfo/probe-defs"
+import { parseProbeResults, parseRun, parseSuiteManifest } from "./index.ts"
 
 const catalog = ["alpha", "beta", "gamma"]
 const suite: ProbeSuiteManifest & { schemaVersion: 4 } = {
@@ -357,3 +358,155 @@ describe("collected current runs", () => {
     ).toThrow(/raw|bound/)
   })
 })
+
+// Requirement: a source-only conclusion or Untestable result must cite an existing source answer;
+// normal catalogue and raw-evidence tests do not cover conclusions with no deciding observation.
+it.each([
+  ["semantic-prompt-source-review", "supported"],
+  ["semantic-prompt-source-review", "unsupported"],
+  ["source-negative-review", "unsupported"],
+  ["os-input-review", "untestable"],
+] as const)("requires a kept source answer for %s %s", (criterionBranch, status) => {
+  const attempt = { scope: "probe", startedAt: "2026-10-21T05:00:00.000Z" }
+  const row = { featureId: "alpha", status, criterionBranch, reason: "fixture", attempt, tests: [] }
+  expect(() => parseProbeResults([row], "fixture.json", new Set(["alpha"]), {}, [])).toThrow(/source answer/i)
+})
+
+// Requirement: a reference must resolve to its own retained answer; current fixtures only use valid tuples.
+it.each([
+  ["result", "unknown-review"],
+  ["test", "unknown-review"],
+  ["result", null],
+  ["test", 42],
+] as const)("rejects unresolved %s review reference %s", (where, ref) => {
+  const attempt = { scope: "probe", startedAt: "2026-10-21T05:00:00.000Z" }
+  const row = {
+    featureId: "alpha",
+    status: "test-todo",
+    reason: "fixture",
+    attempt,
+    ...(where === "result" ? { reviewRef: ref } : {}),
+    tests: [{ id: "review", status: "test-todo", attempt, ...(where === "test" ? { reviewRef: ref } : {}) }],
+  }
+  expect(() => parseProbeResults([row], "fixture.json", new Set(["alpha"]), {}, [])).toThrow(/review.*reference/i)
+})
+
+// Requirement: the reader preserves native host custody and pairs an unreproduced callback
+// with its failed harness test. Existing source-answer and generic result tests never decode
+// these retained native captures or remove one side of those facts.
+const nativeCapture = (name: string) => {
+  const run = JSON.parse(
+    readFileSync(new URL(`./fixtures/${name}.capture.json`, import.meta.url), "utf8"),
+  ) as CapturedRunDraft
+  const ids: string[] = run.results.map((result: { featureId: string }) => result.featureId)
+  const manifest: ProbeSuiteManifest = {
+    schemaVersion: 4,
+    probeHash: run.probeHash,
+    adapterVersion: "4",
+    catalogIds: ids,
+    probes: { term: [], lib: ids, mux: [] },
+  }
+  const read = (value: unknown = run) =>
+    parseRun(name, JSON.stringify(value), ids, new Map([[manifest.probeHash, manifest]]))
+  return { run, read }
+}
+
+it.each([
+  "kitty-osc52-harness",
+  "kitty-osc52-supplied",
+  "kitty-pixel-geometry",
+  "wezterm-pixel-geometry",
+  "alacritty-pixel-geometry",
+])("reads retained native custody in %s", (name) => {
+  const { run, read } = nativeCapture(name)
+  expect(read().results?.map((result) => result.status)).toEqual(
+    run.results.map((result: { status: string }) => result.status),
+  )
+})
+
+it("rejects the retained WezTerm capture whose silent host query has no cause", () => {
+  expect(() => nativeCapture("wezterm-osc52-refused").read()).toThrow(
+    /missing cause for captured empty target response/,
+  )
+})
+
+it.each(["missing-cause", "foreign-run", "undeclared-query", "replied-cause"] as const)(
+  "rejects altered native host custody: %s",
+  (mode) => {
+    const { run, read } = nativeCapture("kitty-osc52-harness")
+    const result = run.results[0]
+    if (!result) throw new Error("Kitty harness fixture requires a result")
+    const key = `collector.hostRecipes.${result.featureId}`
+    const rawRecord = run.rawReplies[key]
+    if (!rawRecord) throw new Error(`Kitty harness fixture requires ${key}`)
+    const record = JSON.parse(rawRecord) as {
+      runId: string
+      captures: Array<{ cause?: unknown; response: string; query: string }>
+    }
+    const capture = record.captures[0]
+    if (!capture) throw new Error("Kitty harness fixture requires a host capture")
+    if (mode === "missing-cause") delete capture.cause
+    if (mode === "foreign-run") record.runId = "another-run"
+    if (mode === "replied-cause") capture.response = "response"
+    if (mode === "undeclared-query") capture.query = "\\u001b[14t"
+    run.rawReplies[key] = JSON.stringify(record)
+    expect(() => read(run)).toThrow(/host recipe/i)
+  },
+)
+
+it.each(["record-only", "row-only", "todo-row"] as const)("rejects unmatched harness evidence: %s", (mode) => {
+  const { run, read } = nativeCapture("kitty-osc52-harness")
+  const result = run.results[0]
+  const test = result?.tests[0]
+  if (!result || !test) throw new Error("Kitty harness fixture requires a result and harness test")
+  if (mode === "record-only") test.id = "criterion"
+  if (mode === "row-only") {
+    if (!result.rawReplyRef) throw new Error("Fixture requires a raw reply reference")
+    run.rawReplies[result.rawReplyRef] = ""
+  }
+  if (mode === "todo-row") test.status = "test-todo"
+  expect(() => read(run)).toThrow(/unreproduced-callback record/)
+})
+
+// Requirement: a decided test has an attempt, and support has an observed attempt. Existing
+// retained-capture positives do not mutate those fields independently.
+it("rejects a decided test with no attempt", () => {
+  const { run, read } = nativeCapture("kitty-osc52-supplied")
+  const test = run.results[0]?.tests[0]
+  if (!test) throw new Error("Kitty supplied fixture requires a decided test")
+  test.attempt = { scope: "none" }
+  expect(() => read(run)).toThrow(/decided test.*no attempt/)
+})
+
+it("rejects support without measured evidence", () => {
+  const { run, read } = nativeCapture("kitty-osc52-supplied")
+  const result = run.results[0]
+  if (!result) throw new Error("Kitty supplied fixture requires a result")
+  result.attempt = { scope: "none" }
+  expect(() => read(run)).toThrow(/support result requires measured evidence/)
+})
+
+// Requirement: source-audited host causes cite the measured artifact and original input bytes.
+// The retained positives and missing-cause cases alone cannot detect a substituted citation.
+it.each(["artifact", "input-digest", "input-name", "source-location"] as const)(
+  "rejects a source-audited host cause with altered %s",
+  (mode) => {
+    const { run, read } = nativeCapture("alacritty-pixel-geometry")
+    const key = "collector.hostRecipes.extensions.osc52-read"
+    const rawRecord = run.rawReplies[key]
+    if (!rawRecord) throw new Error(`Alacritty fixture requires ${key}`)
+    const record = JSON.parse(rawRecord) as {
+      causes: Array<{
+        cause: { artifactSha256: string; citation: { sha256: string; input: string; sourceLocation: string } }
+      }>
+    }
+    const cause = record.causes[0]?.cause
+    if (!cause) throw new Error("Alacritty fixture requires a source-audited cause")
+    if (mode === "artifact") cause.artifactSha256 = "0".repeat(64)
+    if (mode === "input-digest") cause.citation.sha256 = "0".repeat(64)
+    if (mode === "input-name") cause.citation.input = "foreground-rgb"
+    if (mode === "source-location") cause.citation.sourceLocation = ""
+    run.rawReplies[key] = JSON.stringify(record)
+    expect(() => read(run)).toThrow(/host recipe/i)
+  },
+)

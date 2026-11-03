@@ -7,15 +7,18 @@
  * @reach fs-walk <fixture-only: isolated collection and content directories>
  */
 import { createHash } from "node:crypto"
+import { execFileSync } from "node:child_process"
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
-import { afterEach, expect, test } from "vitest"
-import { initializeRunDraft, type CapturedRunDraft, type ProbeSuiteManifest } from "@terminfo/probe-defs"
+import { afterEach, expect, test, vi } from "vitest"
+import { initializeRunDraft, type CapturedRunDraft } from "@terminfo/probe-defs"
 import { finalizeCollectedDraft } from "../packages/terminfo.dev/src/capture-writer.ts"
 import { parseSuiteManifest, parseRun, parseJsonStrict } from "@terminfo/run-parser"
 import { serializeOuterLaunchRecord } from "../packages/admin/src/outer-launch.ts"
 import { loadStoredRuns, placeCollectedRun } from "../packages/admin/corpus-placement.ts"
+import { writeCollectedRun } from "../packages/admin/src/collected-run.ts"
+import { derivedSuiteManifest, probeSuiteSnapshot } from "../packages/admin/versions.ts"
 
 const dirs: string[] = []
 afterEach(() => {
@@ -23,16 +26,15 @@ afterEach(() => {
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true })
 })
 const hash = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex")
-function muxSpecimen(manifest: ProbeSuiteManifest) {
-  const path = join(
-    import.meta.dirname,
-    "../test-fixtures/probes-mux/tmux-3.8-linux-ea920f3547c0e7f0ced0f80b277f2939.json",
-  )
+function muxSpecimen() {
+  const path = join(import.meta.dirname, "../content/probes-mux/tmux-3.8-linux-ea920f3547c0e7f0ced0f80b277f2939.json")
+  const historicalPath = join(import.meta.dirname, "../content/suites/4b01b0117e18.json")
+  const historical = parseSuiteManifest(historicalPath, readFileSync(historicalPath, "utf8"))
   const run = parseRun(
     path,
     readFileSync(path, "utf8"),
-    manifest.catalogIds!,
-    new Map([[manifest.probeHash, manifest]]),
+    historical.catalogIds!,
+    new Map([[historical.probeHash, historical]]),
   )
   if (!run.outerApp?.provenance || !run.sourceRevision) throw new Error("Mux specimen lacks native outer proof")
   return {
@@ -51,10 +53,7 @@ function fixture() {
   mkdirSync(content)
   copyFileSync(join(import.meta.dirname, "../content/features.json"), join(content, "features.json"))
   for (const name of ["probes-apps", "probes-libs", "probes-mux"]) mkdirSync(join(content, name))
-  const manifestPath = join(import.meta.dirname, "../content/suites/4b01b0117e18.json")
-  const manifest = parseSuiteManifest(manifestPath, readFileSync(manifestPath, "utf8"))
-  if (manifest.schemaVersion !== 4 || !manifest.catalogIds) throw new Error("Expected current suite")
-  const currentManifest = { ...manifest, schemaVersion: 4 as const }
+  const currentManifest = { ...derivedSuiteManifest(probeSuiteSnapshot()), schemaVersion: 4 as const }
   const subject = {
     kind: "lib" as const,
     id: "xtermjs",
@@ -105,6 +104,7 @@ test("persists and reloads exact bytes, idempotently, refusing conflicts", () =>
   const f = fixture()
   const bytes = readFileSync(f.source)
   const destination = placeCollectedRun(f.source, f.manifest, f.content)
+  expect(destination).toBe(join(f.content, "probes-libs", "xtermjs-6.0.0-linux-fixture-run.json"))
   expect(readFileSync(destination)).toEqual(bytes)
   expect(readFileSync(join(f.content, "suites", `${f.manifest.probeHash}.json`), "utf8")).toBe(
     `${JSON.stringify(f.manifest, null, 2)}\n`,
@@ -116,6 +116,102 @@ test("persists and reloads exact bytes, idempotently, refusing conflicts", () =>
   writeFileSync(destination, "different")
   expect(() => placeCollectedRun(f.source, f.manifest, f.content)).toThrow(/different collected run/)
   expect(readFileSync(destination, "utf8")).toBe("different")
+})
+
+// Stored suite filenames must identify their actual manifest; valid content under a wrong name is not trustworthy.
+test("stored corpus refuses a suite filed under another hash", () => {
+  const f = fixture()
+  mkdirSync(join(f.content, "suites"))
+  writeFileSync(join(f.content, "suites", "wrong.json"), JSON.stringify(f.manifest))
+  expect(() => loadStoredRuns(f.content, f.manifest.catalogIds!)).toThrow(/suite filename does not match/)
+})
+
+// The writer must bind all suite facts to the executable suite; same-hash parser acceptance
+// alone cannot detect an altered adapter version supplied by a corrupted receipt.
+test.each(["adapter", "catalog", "entry-hash", "term", "lib", "mux", "text-claims", "text-qualification"] as const)(
+  "refuses a trusted suite with altered %s before writing",
+  (field) => {
+    const f = fixture()
+    const altered = structuredClone(f.manifest)
+    if (field === "adapter") altered.adapterVersion = "999.0.0"
+    if (field === "catalog") altered.catalogIds = [...altered.catalogIds!].reverse()
+    if (field === "entry-hash") altered.catalogEntrySha256![altered.catalogIds![0]!] = "f".repeat(64)
+    if (field === "term" || field === "lib" || field === "mux") {
+      altered.probes[field] = [...altered.probes[field]].reverse()
+    }
+    if (field === "text-claims") altered.textClaims = []
+    if (field === "text-qualification") altered.textQualification = { version: 1, recipe: "other" }
+    expect(() => placeCollectedRun(f.source, altered, f.content)).toThrow(/Suite .* mismatch|textQualification/)
+    expect(existsSync(join(f.content, "suites"))).toBe(false)
+    expect(existsSync(join(f.content, "probes-libs", "xtermjs-6.0.0-linux-fixture-run.json"))).toBe(false)
+  },
+)
+
+// Existing library identity validation must reject dirty source provenance at the actual writer;
+// term-side dirty-provenance cases do not reach this library-specific refusal.
+test.each([true, false])("library source cleanTree=%s", (cleanTree) => {
+  const f = fixture()
+  const identity = f.run.runtimeIdentity
+  if (!identity || identity.kind !== "js") throw new Error("Expected JavaScript runtime fixture")
+  identity.integrity = {
+    kind: "source",
+    repository: "https://github.com/example/engine",
+    revision: "a".repeat(40),
+    treeOid: "b".repeat(40),
+    cleanTree,
+  }
+  f.save()
+  if (cleanTree) {
+    expect(readFileSync(placeCollectedRun(f.source, f.manifest, f.content))).toEqual(readFileSync(f.source))
+  } else {
+    expect(() => placeCollectedRun(f.source, f.manifest, f.content)).toThrow(/runtime-identity-unverified/)
+    expect(existsSync(join(f.content, "suites"))).toBe(false)
+  }
+})
+
+// The default corpus writer must refuse a detached or default branch before it writes.
+// Isolated content-dir tests do not exercise the checkout that owns the default corpus.
+test.each(["main", "detached", "task"] as const)("default corpus checks %s checkout", (branch) => {
+  const f = fixture()
+  const repo = join(f.dir, "checkout")
+  mkdirSync(repo)
+  const git = (...args: string[]) => execFileSync("git", args, { cwd: repo, stdio: "pipe" })
+  git("init", "-q", "-b", "main")
+  git("config", "user.email", "fixture@example.invalid")
+  git("config", "user.name", "fixture")
+  writeFileSync(join(repo, "fixture"), "fixture")
+  git("add", "fixture")
+  git("commit", "-q", "-m", "fixture")
+  if (branch === "detached") git("checkout", "--detach", "-q")
+  if (branch === "task") git("checkout", "-q", "-b", "task/fixture")
+  const previousGitDir = process.env.GIT_DIR
+  const previousGitWorkTree = process.env.GIT_WORK_TREE
+  const previousProbeHash = process.env.TERMINFO_PROBE_HASH
+  const previousRevision = process.env.TERMINFO_SOURCE_REVISION
+  process.env.GIT_DIR = join(repo, ".git")
+  process.env.GIT_WORK_TREE = repo
+  delete process.env.TERMINFO_PROBE_HASH
+  delete process.env.TERMINFO_SOURCE_REVISION
+  const output = vi.spyOn(console, "log").mockImplementation(() => {})
+  try {
+    const expected =
+      branch === "main"
+        ? /default branch/
+        : branch === "detached"
+          ? /HEAD is detached/
+          : /Current collection requires TERMINFO_/
+    expect(() => writeCollectedRun(f.run, f.source)).toThrow(expected)
+  } finally {
+    output.mockRestore()
+    if (previousGitDir === undefined) delete process.env.GIT_DIR
+    else process.env.GIT_DIR = previousGitDir
+    if (previousGitWorkTree === undefined) delete process.env.GIT_WORK_TREE
+    else process.env.GIT_WORK_TREE = previousGitWorkTree
+    if (previousProbeHash === undefined) delete process.env.TERMINFO_PROBE_HASH
+    else process.env.TERMINFO_PROBE_HASH = previousProbeHash
+    if (previousRevision === undefined) delete process.env.TERMINFO_SOURCE_REVISION
+    else process.env.TERMINFO_SOURCE_REVISION = previousRevision
+  }
 })
 
 // Invalid collection or a conflicting suite must not leave a run or artifacts behind.
@@ -146,12 +242,14 @@ test.each(["malformed", "invalid-utf8", "foreign-suite", "conflicting-suite", "i
 
 // Accepted: cited screenshot and text bytes are verified and copied before a run becomes visible.
 // Prior tests exercised the standalone artifact helper, so they could miss writer ordering.
-test.each(["valid", "missing", "wrong-hash", "not-png", "invalid-utf8", "conflict"] as const)(
+test.each(["valid", "missing", "wrong-hash", "not-png", "invalid-utf8", "bom-text", "conflict"] as const)(
   "retained artifacts: %s",
   (fault) => {
     const f = fixture()
     const png = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 1])
-    const text = Buffer.from(fault === "invalid-utf8" ? [0xff] : [0x68, 0x69])
+    const text = Buffer.from(
+      fault === "invalid-utf8" ? [0xff] : fault === "bom-text" ? [0xef, 0xbb, 0xbf, 0x68] : [0x68, 0x69],
+    )
     const pngHash = hash(png)
     const textHash = hash(text)
     f.run.screenshotRefs = [`sha256:${pngHash}`]
@@ -184,6 +282,7 @@ test.each(["valid", "missing", "wrong-hash", "not-png", "invalid-utf8", "conflic
         "wrong-hash": /hashes to/,
         "not-png": /not a PNG/,
         "invalid-utf8": /not exact UTF-8/,
+        "bom-text": /not exact UTF-8/,
         conflict: /different text-snapshot/,
       }
       expect(() => placeCollectedRun(f.source, f.manifest, f.content)).toThrow(errors[fault])
@@ -196,79 +295,92 @@ test.each(["valid", "missing", "wrong-hash", "not-png", "invalid-utf8", "conflic
 
 // Accepted: measured identity and clean provenance are factual placement constraints.
 // Parser-only cases do not reach the writer's identity/provenance decisions.
-test.each(["valid", "wrong-version", "disputed", "dirty", "missing-receipt", "receipt-hash"] as const)(
-  "terminal identity and receipt: %s",
-  (fault) => {
-    const f = fixture()
-    const subject = {
-      kind: "term" as const,
-      id: "kitty",
-      version: "0.46.2",
-      os: "macos",
-      osVersion: null,
-      outerTerminal: null,
-      mux: null,
-      config: null,
-      permissions: null,
-    }
-    const draft = initializeRunDraft({
-      runId: "term-run",
-      sourceRevision: "a".repeat(40),
-      manifest: f.manifest,
-      source: { kind: "live" },
-      intendedSubject: subject,
+test.each([
+  "valid",
+  "wrong-version",
+  "disputed",
+  "dirty",
+  "missing-receipt",
+  "receipt-hash",
+  "uncited-receipt",
+] as const)("terminal identity and receipt: %s", (fault) => {
+  const f = fixture()
+  const subject = {
+    kind: "term" as const,
+    id: "kitty",
+    version: "0.46.2",
+    os: "macos",
+    osVersion: null,
+    outerTerminal: null,
+    mux: null,
+    config: null,
+    permissions: null,
+  }
+  const draft = initializeRunDraft({
+    runId: "term-run",
+    sourceRevision: "a".repeat(40),
+    manifest: f.manifest,
+    source: { kind: "live" },
+    intendedSubject: subject,
+  })
+  Object.assign(draft, {
+    subject,
+    identity: fault === "disputed" ? "disputed" : "verified",
+    measuredAt: "2026-10-21T05:00:00.000Z",
+    origin: { kind: "collector" },
+    rawReplies: {
+      "device.primary-da": "\u001b[?62;52;c",
+      "collector.xtversion": `\u001bP>|kitty(${fault === "wrong-version" ? "9.0" : "0.46.2"})\u001b\\\u001b[?62;52;c`,
+    },
+  })
+  const run = finalizeCollectedDraft(draft as CapturedRunDraft)
+  if (fault === "dirty") {
+    // The current mux specimen retains the measured native outer terminal provenance.
+    const specimen = muxSpecimen()
+    run.provenance = specimen.outerApp.provenance
+    run.provenance!.runtime.sourceRevision = "a".repeat(40)
+    run.provenance!.runtime.suiteHash = f.manifest.probeHash
+    run.provenance!.runtime.cleanTree = false
+    run.provenance!.executable.version = "kitty 0.46.2"
+  }
+  if (fault === "missing-receipt" || fault === "receipt-hash") {
+    run.rawReplies["collector.disposableOwnership"] = JSON.stringify({
+      kind: "linux-xvfb-container",
+      receiptSha256: "a".repeat(64),
     })
-    Object.assign(draft, {
-      subject,
-      identity: fault === "disputed" ? "disputed" : "verified",
-      measuredAt: "2026-10-21T05:00:00.000Z",
-      origin: { kind: "collector" },
-      rawReplies: {
-        "device.primary-da": "\u001b[?62;52;c",
-        "collector.xtversion": `\u001bP>|kitty(${fault === "wrong-version" ? "9.0" : "0.46.2"})\u001b\\\u001b[?62;52;c`,
-      },
-    })
-    const run = finalizeCollectedDraft(draft as CapturedRunDraft)
-    if (fault === "dirty") {
-      // The current mux specimen retains the measured native outer terminal provenance.
-      const specimen = muxSpecimen(f.manifest)
-      run.provenance = specimen.outerApp.provenance
-      run.provenance!.runtime.sourceRevision = "a".repeat(40)
-      run.provenance!.runtime.suiteHash = f.manifest.probeHash
-      run.provenance!.runtime.cleanTree = false
-      run.provenance!.executable.version = "kitty 0.46.2"
+    if (fault === "receipt-hash") writeFileSync(join(f.dir, "host-measured.json"), "{}")
+  }
+  if (fault === "uncited-receipt") {
+    run.rawReplies["collector.disposableOwnership"] = JSON.stringify({ kind: "linux-xvfb-container" })
+  }
+  writeFileSync(f.source, JSON.stringify(run))
+  if (fault === "valid") {
+    expect(readFileSync(placeCollectedRun(f.source, f.manifest, f.content))).toEqual(readFileSync(f.source))
+  } else {
+    const errors = {
+      "wrong-version": /identity-replies-mismatch/,
+      disputed: /identity-disputed/,
+      dirty: /native-provenance-dirty/,
+      "missing-receipt": /does not exist beside the run/,
+      "receipt-hash": /hashes to/,
+      "uncited-receipt": /no sha256 receiptSha256/,
     }
-    if (fault === "missing-receipt" || fault === "receipt-hash") {
-      run.rawReplies["collector.disposableOwnership"] = JSON.stringify({
-        kind: "linux-xvfb-container",
-        receiptSha256: "a".repeat(64),
-      })
-      if (fault === "receipt-hash") writeFileSync(join(f.dir, "host-measured.json"), "{}")
-    }
-    writeFileSync(f.source, JSON.stringify(run))
-    if (fault === "valid") {
-      expect(readFileSync(placeCollectedRun(f.source, f.manifest, f.content))).toEqual(readFileSync(f.source))
-    } else {
-      const errors = {
-        "wrong-version": /identity-replies-mismatch/,
-        disputed: /identity-disputed/,
-        dirty: /native-provenance-dirty/,
-        "missing-receipt": /does not exist beside the run/,
-        "receipt-hash": /hashes to/,
-      }
-      expect(() => placeCollectedRun(f.source, f.manifest, f.content)).toThrow(errors[fault])
-      expect(existsSync(join(f.content, "suites"))).toBe(false)
-    }
-  },
-)
+    expect(() => placeCollectedRun(f.source, f.manifest, f.content)).toThrow(errors[fault])
+    expect(existsSync(join(f.content, "suites"))).toBe(false)
+  }
+})
 
 // Accepted: Linux completion must bind the final run, host, container, capture and HTTP bytes.
 // Parser coverage alone cannot detect missing or changed files beside the source run.
 test.each([
   "valid",
+  "alacritty-clean",
+  "alacritty-dirty",
   "placeholder-receipt",
   "wrong-target",
   "missing-completion",
+  "malformed-completion",
+  "wrong-run",
   "changed-final",
   "changed-host",
   "missing-container",
@@ -280,8 +392,11 @@ test.each([
 ] as const)("Linux completion custody: %s", (fault) => {
   const f = fixture()
   const base = join(import.meta.dirname, "../test-fixtures")
-  const specimen = muxSpecimen(f.manifest)
-  const subject = specimen.outerApp.subject
+  const specimen = muxSpecimen()
+  const alacritty = fault === "alacritty-clean" || fault === "alacritty-dirty"
+  const subject = alacritty
+    ? { ...specimen.outerApp.subject, id: "alacritty", version: "0.17.0" }
+    : specimen.outerApp.subject
   const draft = initializeRunDraft({
     runId: "linux-run",
     sourceRevision: specimen.sourceRevision,
@@ -290,6 +405,10 @@ test.each([
     intendedSubject: subject,
   })
   specimen.outerApp.provenance.runtime.suiteHash = f.manifest.probeHash
+  if (alacritty) {
+    specimen.outerApp.provenance.runtime.cleanTree = fault === "alacritty-clean"
+    specimen.outerApp.provenance.executable.version = "alacritty 0.17.0"
+  }
   const originalHost = readFileSync(join(base, "receipts/dfd4cd08416fb5f3be3eaeed5acce782.json"))
   const hostDocument = parseJsonStrict("host fixture", originalHost.toString("utf8"))
   if (!record(hostDocument) || !record(hostDocument.runtime) || !record(hostDocument.declaredTarget)) {
@@ -297,8 +416,12 @@ test.each([
   }
   if (fault === "placeholder-receipt") hostDocument.runtime.imageId = `sha256:${"0".repeat(64)}`
   if (fault === "wrong-target") hostDocument.declaredTarget.id = "wezterm"
+  if (alacritty) {
+    hostDocument.declaredTarget.id = "alacritty"
+    hostDocument.declaredTarget.version = "0.17.0"
+  }
   const host =
-    fault === "placeholder-receipt" || fault === "wrong-target"
+    fault === "placeholder-receipt" || fault === "wrong-target" || alacritty
       ? Buffer.from(JSON.stringify(hostDocument))
       : originalHost
   const citation = { kind: "linux-xvfb-container", receiptSha256: hash(host) }
@@ -312,8 +435,8 @@ test.each([
     origin: { kind: "collector" },
     provenance: specimen.outerApp.provenance,
     rawReplies: {
-      "device.primary-da": specimen.outerApp.rawReplies["device.primary-da"],
-      "collector.xtversion": specimen.outerApp.rawReplies["collector.xtversion"],
+      "device.primary-da": alacritty ? "\u001b[?6c" : specimen.outerApp.rawReplies["device.primary-da"],
+      "collector.xtversion": alacritty ? "\u001b[?6c" : specimen.outerApp.rawReplies["collector.xtversion"],
       "collector.disposableOwnership": JSON.stringify(citation),
       "collector.httpResponseSha256": captureHash,
     },
@@ -333,6 +456,11 @@ test.each([
   const receipt = join(f.dir, "run-receipt.json")
   writeFileSync(receipt, JSON.stringify(completion))
   if (fault === "missing-completion") rmSync(receipt)
+  if (fault === "malformed-completion") writeFileSync(receipt, "{broken")
+  if (fault === "wrong-run") {
+    completion.probeRun.runId = "different-run"
+    writeFileSync(receipt, JSON.stringify(completion))
+  }
   if (fault === "changed-final") {
     completion.probeRun.sha256 = "0".repeat(64)
     writeFileSync(receipt, JSON.stringify(completion))
@@ -347,12 +475,19 @@ test.each([
   if (fault === "changed-capture") writeFileSync(join(f.dir, "v3-capture.json"), "changed")
   if (fault === "missing-http") rmSync(join(f.dir, "http-responses", captureHash))
   if (fault === "changed-http") writeFileSync(join(f.dir, "http-responses", captureHash), "changed")
-  if (fault === "valid") expect(readFileSync(placeCollectedRun(f.source, f.manifest, f.content))).toEqual(bytes)
-  else {
+  if (fault === "valid" || fault === "alacritty-clean") {
+    expect(readFileSync(placeCollectedRun(f.source, f.manifest, f.content))).toEqual(bytes)
+  } else {
+    if (fault === "missing-completion") {
+      expect(() => placeCollectedRun(f.source, f.manifest, f.content)).toThrow(/remain private until Phase 3/)
+    }
     const errors = {
       "placeholder-receipt": /imageId is a placeholder/,
+      "alacritty-dirty": /identity-replies-mismatch/,
       "wrong-target": /receipt declares target/,
       "missing-completion": /missing run-receipt/,
+      "malformed-completion": /Cannot read Linux completion receipt/,
+      "wrong-run": /does not bind probeRun/,
       "changed-final": /does not bind probeRun/,
       "changed-host": /does not bind receiptInputs.hostSha256/,
       "missing-container": /original custody inputs/,
@@ -720,7 +855,7 @@ test.each(hostedMacApps)("hosted Mac $id binds launch, target, runner and exact 
 test.each(["valid", "clipboard-hash", "preflight", "config"] as const)("Linux mux custody join: %s", (fault) => {
   const f = fixture()
   const base = join(import.meta.dirname, "../test-fixtures")
-  const specimen = muxSpecimen(f.manifest)
+  const specimen = muxSpecimen()
   const draft = initializeRunDraft({
     runId: specimen.runId,
     sourceRevision: specimen.sourceRevision,
@@ -729,6 +864,7 @@ test.each(["valid", "clipboard-hash", "preflight", "config"] as const)("Linux mu
     intendedSubject: specimen.subject,
   })
   const outer = structuredClone(specimen.outerApp)
+  outer.provenance.runtime.suiteHash = f.manifest.probeHash
   const replies: Record<string, string> = {}
   for (const key of [
     "device.primary-da",

@@ -429,9 +429,8 @@ export function projectResults(
     treeSuiteId: policy.currentProbeHash,
   }
   const table: Record<string, Record<string, ProbeStatus>> = {}
-  const resolvedRuns = [...runs, ...(policy.workingRuns ?? [])]
-  validatePresentationSupersession(interpretations, "interpretations", resolvedRuns)
-  const active = activeInterpretations(interpretations, resolvedRuns)
+  validatePresentationSupersession(interpretations, "interpretations")
+  const active = activeInterpretations(interpretations)
   const acceptedRuns: LoadedRun[] = []
   const baselineRunIds: string[] = []
   for (const run of currentRuns) {
@@ -788,7 +787,7 @@ export function loadSelectedResults(
   }
   const interpretationsPath = join(contentDir, "interpretations.json")
   const interpretations = existsSync(interpretationsPath)
-    ? parseInterpretations(interpretationsPath, readFileSync(interpretationsPath, "utf8"), catalog, undefined, runs)
+    ? parseInterpretations(interpretationsPath, readFileSync(interpretationsPath, "utf8"), catalog)
     : []
   return projectResults(
     runs,

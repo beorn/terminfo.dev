@@ -6,7 +6,7 @@
  */
 import { afterEach, expect, it, vi } from "vitest"
 import { readFileSync } from "node:fs"
-import { SOURCE_ANSWERS } from "@terminfo/probe-defs"
+import { SOURCE_ANSWERS, type CapturedRunDraft } from "@terminfo/probe-defs"
 
 const control = vi.hoisted(() => ({ mode: "normal" }))
 vi.mock("node:child_process", async (original) => {
@@ -164,3 +164,38 @@ it.each(["measured", "missing", "positive", "other-feature", "empty-expected", "
     }
   },
 )
+
+// Requirement: kept answer references identify their own feature and measured subject. The
+// existing positive read does not detect a borrowed row or a missing subject context.
+it("rejects a kept answer borrowed by another feature or measured subject", async () => {
+  const { parseProbeResults, parseRun, parseSuiteManifest } = await import("./index.ts")
+  const path = new URL(
+    "../../../content/probes-apps/alacritty-0.17.0-linux-f504922f67f074794c588cf3a14e2114.json",
+    import.meta.url,
+  )
+  const raw = JSON.parse(readFileSync(path, "utf8")) as CapturedRunDraft
+  const manifestPath = new URL(`../../../content/suites/${raw.probeHash}.json`, import.meta.url)
+  const manifest = parseSuiteManifest(manifestPath.pathname, readFileSync(manifestPath, "utf8"))
+  const read = (value: unknown) =>
+    parseRun(path.pathname, JSON.stringify(value), manifest.catalogIds ?? [], new Map([[raw.probeHash, manifest]]))
+  const original = read(raw)
+  const sourceResult = raw.results.find(
+    (result: { featureId: string }) => result.featureId === "extensions.iterm2-images",
+  )!
+  expect(original.results?.find((result) => result.featureId === sourceResult.featureId)?.status).toBe(
+    sourceResult.status,
+  )
+  const otherSubject = structuredClone(raw)
+  otherSubject.subject.id = "other-measured-terminal"
+  expect(() => read(otherSubject)).toThrow("source answer does not apply to measured identity")
+  const otherFeature = structuredClone(raw)
+  const target = otherFeature.results.find((result: { featureId: string }) => result.featureId === "sgr.bold")!
+  target.reviewRef = sourceResult.reviewRef
+  target.tests = target.tests.map((test) =>
+    test.id === "review" ? { ...test, reviewRef: sourceResult.reviewRef } : test,
+  )
+  expect(() => read(otherFeature)).toThrow("source answer feature mismatch")
+  expect(() =>
+    parseProbeResults([sourceResult], "source.json", new Set([sourceResult.featureId]), raw.rawReplies, raw.assertions),
+  ).toThrow("source answer requires measured subject context")
+})
