@@ -881,8 +881,10 @@ test.each([
   if (expected === "supported" || expected === "unsupported" || ["wrong", "partial"].includes(model)) {
     expect(targetCount).toBe(2)
     const state = JSON.parse(result.response!)
-    expect(state.controls.map((entry: { value: string }) => entry.value)).toHaveLength(2)
-    expect(new Set(state.targets.map((entry: { sent: string }) => entry.sent)).size).toBe(2)
+    expect(state).toMatchObject({
+      controls: [{ value: expect.any(String) }, { value: expect.any(String) }],
+      targets: [{ sent: "/terminfo-633-cwd-A" }, { sent: "/terminfo-633-cwd-B" }],
+    })
   }
   if (expected === "inconclusive") {
     expect(targetCount).toBe(0)
@@ -910,7 +912,7 @@ test.each([
     ...base,
     capabilities: { ...libProbeSource(base).capabilities, extensions: new Set(["semantic-command-end"]) },
     getSemanticMarks: model === "missing" ? undefined : () => (model === "inert" ? [initial] : structuredClone(marks)),
-    getCursor: () => ({ x, y }),
+    getCursor: () => ({ ...base.getCursor(), x, y }),
     getCell: (row, col) => ({ ...base.getCell(row, col), char: cells.get(`${row},${col}`) ?? " " }),
     feed: (text) => {
       writes.push(text)

@@ -1787,13 +1787,15 @@ function promptMarkResult(
       : undefined
   if (endControl) {
     const { before, first, second } = endControl
+    const firstControl = first[before.length]
+    const secondControl = second[first.length]
     const qualified =
       first.length === before.length + 1 &&
       second.length === first.length + 1 &&
-      first[before.length]?.type === "command-end" &&
-      first[before.length]?.rawStatus === "0" &&
-      second[first.length]?.type === "command-end" &&
-      second[first.length]?.rawStatus === "17" &&
+      firstControl?.type === "command-end" &&
+      firstControl.rawStatus === "0" &&
+      secondControl?.type === "command-end" &&
+      secondControl.rawStatus === "17" &&
       before.every((mark, index) => JSON.stringify(mark) === JSON.stringify(first[index])) &&
       first.every((mark, index) => JSON.stringify(mark) === JSON.stringify(second[index]))
     if (!qualified) {
