@@ -1156,10 +1156,11 @@ function resetProbe(id: string, setCode: number, resetCode: number, index?: numb
 
 /** Three distinct foregrounds, none equal to the current one, so every pass value is non-default (#31904). */
 function colorStackColors(before: string): { a: string; b: string; c: string } {
-  const [a, b, c] = ["rgb:12/34/56", "rgb:aa/bb/cc", "rgb:65/43/21", "rgb:de/ad/be"].filter(
+  const [a = "", b = "", c = ""] = ["rgb:12/34/56", "rgb:aa/bb/cc", "rgb:65/43/21", "rgb:de/ad/be"].filter(
     (color) => !sameRgbText(color, before),
   )
-  return { a: a!, b: b!, c: c! }
+  // Four candidates and one excluded current colour always leave three.
+  return { a, b, c }
 }
 
 /**
