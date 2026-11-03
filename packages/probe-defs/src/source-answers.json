@@ -11315,6 +11315,69 @@
             ]
           }
         ]
+      },
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "https://github.com/ghostty-org/ghostty.git",
+            "commit": "5714ed07a1012573261b7b7e3ed2add9c1504496",
+            "path": "src/terminal/stream.zig",
+            "oid": "ba6b57d5c62152bd675be8275b0b47aae4ec3936"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "80dd254111ab82279125555f9ca1e68b112cd7e3",
+            "path": "vendor/ghostty-web/RECEIPT.json",
+            "oid": "1363bc2773b724950ca2d0311686ac957388ede0"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "80dd254111ab82279125555f9ca1e68b112cd7e3",
+            "path": "vendor/ghostty-web/ghostty-vt.wasm",
+            "oid": "80ab3b318d782f975aabc4a4258dfe9d0038d80f"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "80dd254111ab82279125555f9ca1e68b112cd7e3",
+            "path": "vendor/ghostty-web/ghostty-wasm-api.patch",
+            "oid": "ae2c29b4ffbe4dacb2415b41b7dcb40fb5a924ab"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "80dd254111ab82279125555f9ca1e68b112cd7e3",
+            "path": "vendor/ghostty-web/producer.patch",
+            "oid": "281070bd39de6739201bf10061084191d977fe23"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "80dd254111ab82279125555f9ca1e68b112cd7e3",
+            "path": "vendor/ghostty-web/ghostty-page-zero.patch",
+            "oid": "e783e0658de095b5d5eba582342797f180bc842f"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "80dd254111ab82279125555f9ca1e68b112cd7e3",
+            "path": "packages/ghostty/src/backend.ts",
+            "oid": "560146d5f929f31a8f973f809d97f91cf0e23fd6"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "source-32204-ghostty-modes.decsscls",
+            "reviewer": "@dev/1",
+            "reason": "Exact captured WASM 3c2398d5c537d9c10e86b0af69311977927fcdbe4738618df194cedbdd22574d matches pinned receipt and binary. Core5714 archive SHA25655cee28558945de6e984bc183cd51f28eefdbf805544da2e70d4635476178790 supplies the cited dispatcher; bound patches do not modify that dispatcher. It rejects SPACE-p and dollar-r and has no final-x arm. The retained Q marker establishes consumption only; independent source establishes missing command implementation. Timed scroll-speed presentation remains unmeasured.",
+            "sources": [
+              "https://github.com/ghostty-org/ghostty.git@5714ed07a1012573261b7b7e3ed2add9c1504496:src/terminal/stream.zig",
+              "git@github.com:beorn/termless.git@80dd254111ab82279125555f9ca1e68b112cd7e3:vendor/ghostty-web/RECEIPT.json",
+              "git@github.com:beorn/termless.git@80dd254111ab82279125555f9ca1e68b112cd7e3:vendor/ghostty-web/ghostty-vt.wasm",
+              "git@github.com:beorn/termless.git@80dd254111ab82279125555f9ca1e68b112cd7e3:vendor/ghostty-web/ghostty-wasm-api.patch",
+              "git@github.com:beorn/termless.git@80dd254111ab82279125555f9ca1e68b112cd7e3:vendor/ghostty-web/producer.patch",
+              "git@github.com:beorn/termless.git@80dd254111ab82279125555f9ca1e68b112cd7e3:vendor/ghostty-web/ghostty-page-zero.patch",
+              "git@github.com:beorn/termless.git@80dd254111ab82279125555f9ca1e68b112cd7e3:packages/ghostty/src/backend.ts"
+            ]
+          }
+        ]
       }
     ]
   },
@@ -11632,6 +11695,69 @@
               "40b616d04a7550ad96f84c3da701b8e0:collector.capture.modes.decsscls",
               "terminfo.dev@e275d02cd4d96d7f09e2c2afeba0d27c58344f23:packages/probes/headless-batch.ts#createLibProbeSource",
               "terminfo.dev@e275d02cd4d96d7f09e2c2afeba0d27c58344f23:packages/probe-defs/src/modes.ts"
+            ]
+          }
+        ]
+      },
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "https://github.com/neovim/libvterm.git",
+            "commit": "9d6d2112335080312ef8c36667fa717ded4f7daf",
+            "path": "src/state.c",
+            "oid": "ce8e0342370c51bb6ace82fc749472ec3e393b89"
+          },
+          {
+            "repository": "https://github.com/neovim/libvterm.git",
+            "commit": "9d6d2112335080312ef8c36667fa717ded4f7daf",
+            "path": "src/parser.c",
+            "oid": "b43a549cefc51589f89060a54abb27426032e2b4"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "80dd254111ab82279125555f9ca1e68b112cd7e3",
+            "path": "packages/libvterm/wasm/libvterm.wasm.receipt.json",
+            "oid": "19798378217cd10c00b4d86d9ecd925fb8b1dee1"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "80dd254111ab82279125555f9ca1e68b112cd7e3",
+            "path": "packages/libvterm/wasm/libvterm.wasm",
+            "oid": "6a9b9358ba1e60f337090ab58e1bf22756a9e6c3"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "80dd254111ab82279125555f9ca1e68b112cd7e3",
+            "path": "packages/libvterm/src/backend.ts",
+            "oid": "eb513ccd443e30c7a869a8ba41f8126e1c0ddf00"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "80dd254111ab82279125555f9ca1e68b112cd7e3",
+            "path": "packages/libvterm/build/flat-api.c",
+            "oid": "49702d335a27976125514acea38c1cdd2e2d84d1"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "80dd254111ab82279125555f9ca1e68b112cd7e3",
+            "path": "packages/libvterm/build/selection-bytes.patch",
+            "oid": "d45fa7f2dc00e4d8015f14600db25063a9424baa"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "source-32204-libvterm-modes.decsscls",
+            "reviewer": "@dev/1",
+            "reason": "Captured WASM3d67045bb43c5e4081c70dc58088af8f735416c20df2d7843d765e5aad8ef62a matches pinned WASM and receipt naming upstream9d6d2112335080312ef8c36667fa717ded4f7daf. Parser preserves intermediates; state rejects star and has no SPACE-p or dollar-r case. Unknown cases consult an optional fallback then return0; inspected exact wrapper installs no state-unrecognised callback. The retained Q marker establishes consumption only; independent source establishes missing command implementation. Timed scroll-speed presentation remains unmeasured.",
+            "sources": [
+              "https://github.com/neovim/libvterm.git@9d6d2112335080312ef8c36667fa717ded4f7daf:src/state.c",
+              "https://github.com/neovim/libvterm.git@9d6d2112335080312ef8c36667fa717ded4f7daf:src/parser.c",
+              "git@github.com:beorn/termless.git@80dd254111ab82279125555f9ca1e68b112cd7e3:packages/libvterm/wasm/libvterm.wasm.receipt.json",
+              "git@github.com:beorn/termless.git@80dd254111ab82279125555f9ca1e68b112cd7e3:packages/libvterm/wasm/libvterm.wasm",
+              "git@github.com:beorn/termless.git@80dd254111ab82279125555f9ca1e68b112cd7e3:packages/libvterm/src/backend.ts",
+              "git@github.com:beorn/termless.git@80dd254111ab82279125555f9ca1e68b112cd7e3:packages/libvterm/build/flat-api.c",
+              "git@github.com:beorn/termless.git@80dd254111ab82279125555f9ca1e68b112cd7e3:packages/libvterm/build/selection-bytes.patch"
             ]
           }
         ]
@@ -13851,6 +13977,41 @@
             ]
           }
         ]
+      },
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "https://github.com/ghostty-org/ghostty.git",
+            "commit": "332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28",
+            "path": "src/terminal/stream.zig",
+            "oid": "e89c73e66647dd5d42de3781d49db8df6da8977d"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "80dd254111ab82279125555f9ca1e68b112cd7e3",
+            "path": "packages/ghostty-native/native/src/main.zig",
+            "oid": "1cda313d3f016704c769f1f54bb4ec4ac67f6611"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "80dd254111ab82279125555f9ca1e68b112cd7e3",
+            "path": "packages/ghostty-native/src/backend.ts",
+            "oid": "427b9d4782a9924135ff0c32e2406b117df9cf22"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "source-32204-ghostty-native-modes.decsscls",
+            "reviewer": "@dev/1",
+            "reason": "Captured native binary53f9a867cce594b4d50fb9508db9ce5d2d79fb4244a418548b7cb31fa50780d1 records upstream core332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28. That exact dispatcher rejects SPACE-p and dollar-r and has no final-x arm. Termless native wrapper is cited separately from engine core. The retained Q marker establishes consumption only; independent source establishes missing command implementation. Timed scroll-speed presentation remains unmeasured.",
+            "sources": [
+              "https://github.com/ghostty-org/ghostty.git@332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28:src/terminal/stream.zig",
+              "git@github.com:beorn/termless.git@80dd254111ab82279125555f9ca1e68b112cd7e3:packages/ghostty-native/native/src/main.zig",
+              "git@github.com:beorn/termless.git@80dd254111ab82279125555f9ca1e68b112cd7e3:packages/ghostty-native/src/backend.ts"
+            ]
+          }
+        ]
       }
     ]
   },
@@ -14168,6 +14329,55 @@
               "5d9f2a44110d5f66f7f9b92507ad75a0:collector.capture.modes.decsscls",
               "terminfo.dev@e275d02cd4d96d7f09e2c2afeba0d27c58344f23:packages/probes/headless-batch.ts#createLibProbeSource",
               "terminfo.dev@e275d02cd4d96d7f09e2c2afeba0d27c58344f23:packages/probe-defs/src/modes.ts"
+            ]
+          }
+        ]
+      },
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "https://github.com/kovidgoyal/kitty.git",
+            "commit": "b2cb871254fbdac19a085188813c8dfb258b95cd",
+            "path": "kitty/vt-parser.c",
+            "oid": "50dc1e6d698be9ee9fb6bc687f4da65823c5cde1"
+          },
+          {
+            "repository": "https://github.com/kovidgoyal/kitty.git",
+            "commit": "b2cb871254fbdac19a085188813c8dfb258b95cd",
+            "path": "kitty/control-codes.h",
+            "oid": "28bf1235fd351dcb5208156eabddca2ae69768fc"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "80dd254111ab82279125555f9ca1e68b112cd7e3",
+            "path": "packages/kitty/src/backend.ts",
+            "oid": "1b7367a9737d1292618ea34a1c451bf3273c3b35"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "80dd254111ab82279125555f9ca1e68b112cd7e3",
+            "path": "packages/kitty/build/bridge.py",
+            "oid": "ca46f3c261ccbdcfd9c3ada9949e2a0238cbcaac"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "80dd254111ab82279125555f9ca1e68b112cd7e3",
+            "path": "packages/kitty/build/layout.c",
+            "oid": "49c0beef4424190e89d2884eac5efe4da50e3630"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "source-32204-kitty-modes.decsscls",
+            "reviewer": "@dev/1",
+            "reason": "Captured official binarybb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886 records coreb2cb871254fbdac19a085188813c8dfb258b95cd; current recorded binary path still hashes identically. Its final-p dispatcher handles only dollar and exclamation; SPACE-p reports unknown without a screen action. The retained Q marker establishes consumption only; independent source establishes missing command implementation. Timed scroll-speed presentation remains unmeasured.",
+            "sources": [
+              "https://github.com/kovidgoyal/kitty.git@b2cb871254fbdac19a085188813c8dfb258b95cd:kitty/vt-parser.c",
+              "https://github.com/kovidgoyal/kitty.git@b2cb871254fbdac19a085188813c8dfb258b95cd:kitty/control-codes.h",
+              "git@github.com:beorn/termless.git@80dd254111ab82279125555f9ca1e68b112cd7e3:packages/kitty/src/backend.ts",
+              "git@github.com:beorn/termless.git@80dd254111ab82279125555f9ca1e68b112cd7e3:packages/kitty/build/bridge.py",
+              "git@github.com:beorn/termless.git@80dd254111ab82279125555f9ca1e68b112cd7e3:packages/kitty/build/layout.c"
             ]
           }
         ]
@@ -14531,6 +14741,49 @@
             ]
           }
         ]
+      },
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "286fddf6632e43ccd62f9050be41ec7b2908e43e",
+            "path": "packages/vt100-rust/native/src/lib.rs",
+            "oid": "ecdc2cf069088b4ba7180dbf28d8603d13d58fb8"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "286fddf6632e43ccd62f9050be41ec7b2908e43e",
+            "path": "packages/vt100-rust/native/Cargo.lock",
+            "oid": "3755893017da8338bfd02474d98ecfb7ccadaacb"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "286fddf6632e43ccd62f9050be41ec7b2908e43e",
+            "path": "packages/vt100-rust/native/Cargo.toml",
+            "oid": "cd1dd11f0824fde2ce6720c11b3ac71fa8ae4d5d"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "80dd254111ab82279125555f9ca1e68b112cd7e3",
+            "path": "packages/vt100-rust/src/backend.ts",
+            "oid": "9b3477c0fedf8586430781e8f4d17019569af98b"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "source-32204-vt100-rust-modes.decsscls",
+            "reviewer": "@dev/1",
+            "reason": "Captured addon binary84a5b6a3a40a7c16c6bae8b64534b730403df911498bb34bded68c3a17e2d408 records addon source286fddf6632e43ccd62f9050be41ec7b2908e43e and Cargo.lock SHA2564cf037e4efa648ca41d08b30ef5c4ce7ada29ad61fcad45a7d1aa97bf55391c6. Its locked vt100-0.16.2 crate archive SHA256054ff75fb8fa83e609e685106df4faeffdf3a735d3c74ebce97ec557d5d36fd9 exactly matches inspected src/perform.rs; every non-question-mark intermediate routes to unhandled_csi. The addon source commit is not an engine-core identity. The retained Q marker establishes consumption only; independent source establishes missing command implementation. Timed scroll-speed presentation remains unmeasured.",
+            "sources": [
+              "git@github.com:beorn/termless.git@286fddf6632e43ccd62f9050be41ec7b2908e43e:packages/vt100-rust/native/src/lib.rs",
+              "git@github.com:beorn/termless.git@286fddf6632e43ccd62f9050be41ec7b2908e43e:packages/vt100-rust/native/Cargo.lock",
+              "git@github.com:beorn/termless.git@286fddf6632e43ccd62f9050be41ec7b2908e43e:packages/vt100-rust/native/Cargo.toml",
+              "git@github.com:beorn/termless.git@80dd254111ab82279125555f9ca1e68b112cd7e3:packages/vt100-rust/src/backend.ts",
+              "locked crate vt100-0.16.2 archive sha256:054ff75fb8fa83e609e685106df4faeffdf3a735d3c74ebce97ec557d5d36fd9; source /home/hh/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/vt100-0.16.2/src/perform.rs sha256:8cbc229fa5d763da22fb68bd6228d66b26975a1eb55e79a3556589e9ab71d6f9; archive bytes verified equal"
+            ]
+          }
+        ]
       }
     ]
   },
@@ -14848,6 +15101,50 @@
               "13850a8ffcefab60ac299982a5be3bae:collector.capture.modes.decsscls",
               "terminfo.dev@e275d02cd4d96d7f09e2c2afeba0d27c58344f23:packages/probes/headless-batch.ts#createLibProbeSource",
               "terminfo.dev@e275d02cd4d96d7f09e2c2afeba0d27c58344f23:packages/probe-defs/src/modes.ts"
+            ]
+          }
+        ]
+      },
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "80dd254111ab82279125555f9ca1e68b112cd7e3",
+            "path": "packages/wezterm/native/src/lib.rs",
+            "oid": "47dc0392036f34416fb6a38e9a834a7fccc8cfe3"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "80dd254111ab82279125555f9ca1e68b112cd7e3",
+            "path": "packages/wezterm/native/Cargo.lock",
+            "oid": "4a5e4832104dcacc63e882c2b8adbd7e8276fe09"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "80dd254111ab82279125555f9ca1e68b112cd7e3",
+            "path": "packages/wezterm/native/Cargo.toml",
+            "oid": "defdc52aa543b7ba683348fb6051f6e3ddf92a1d"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "80dd254111ab82279125555f9ca1e68b112cd7e3",
+            "path": "packages/wezterm/src/backend.ts",
+            "oid": "29b9bdea778abe558497217e811495c3c279451f"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "source-32204-wezterm-modes.decsscls",
+            "reviewer": "@dev/1",
+            "reason": "Captured addon binaryb4155bfdef040ae8b3b723a4366fa8ec7f278463dbef577ec4730ad152b8bf07 records Termless build source80dd254111ab82279125555f9ca1e68b112cd7e3 and Cargo.lock SHA2568eaeab733cced8d47feb223d773d5ae158b2e6af8c994f993d4071d9ba3231d4. Locked escape-parser archive SHA2567ca89ed38092d6718a03e97b0c1101fcf2203c2e6f2757a91c465f393d11d98b and term archive SHA2567f3678674adc87f210ec01e2134e1972d6b0bd194bf82242f7e7beee3ae9dbd8 match inspected sources. Parser rejects SPACE-p, star-x and rectangle-dollar-r; Unspecified handling only logs. Dirty crate vcs metadata is not cited as Git identity. The retained Q marker establishes consumption only; independent source establishes missing command implementation. Timed scroll-speed presentation remains unmeasured.",
+            "sources": [
+              "git@github.com:beorn/termless.git@80dd254111ab82279125555f9ca1e68b112cd7e3:packages/wezterm/native/src/lib.rs",
+              "git@github.com:beorn/termless.git@80dd254111ab82279125555f9ca1e68b112cd7e3:packages/wezterm/native/Cargo.lock",
+              "git@github.com:beorn/termless.git@80dd254111ab82279125555f9ca1e68b112cd7e3:packages/wezterm/native/Cargo.toml",
+              "git@github.com:beorn/termless.git@80dd254111ab82279125555f9ca1e68b112cd7e3:packages/wezterm/src/backend.ts",
+              "locked crate tattoy-wezterm-escape-parser-0.1.0-1 archive sha256:7ca89ed38092d6718a03e97b0c1101fcf2203c2e6f2757a91c465f393d11d98b; source /home/hh/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tattoy-wezterm-escape-parser-0.1.0-1/src/csi.rs sha256:ccd68f8aab7d5b7c1d84aba07d219675ac9898fc84c9a32cd4548ad2774541db; archive bytes verified equal",
+              "locked crate tattoy-wezterm-term-0.1.0-fork.5 archive sha256:7f3678674adc87f210ec01e2134e1972d6b0bd194bf82242f7e7beee3ae9dbd8; source /home/hh/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tattoy-wezterm-term-0.1.0-fork.5/src/terminalstate/performer.rs sha256:6f53e3345e0911b7756815f8afdf015d7c6bf5d7ebe8ff450db2f3225ff1749d; archive bytes verified equal"
             ]
           }
         ]
@@ -28971,6 +29268,493 @@
               "Same libvterm0.3.3 upstream9d6d211 pen.c/vterm.h; current WASM712298aff45c7c53a22dc028b13cb58dae1e984199b520bbbc0475ae64d83159 independently hashes to its Termlessbdaa receipt and exact upstream source. Separate original for the application-cursor/selection build, not a retained3d67 qualification.",
               "Retained run08449bd3-837c-4dea-b8da-4c950fd10673, suite987ca95c0608, source172842d5c3b06da9aba3f1d30c03399d7d522b87; negative buffer witness: sgr.underline.dotted: attribute applied to the rendered X cell",
               "Scope approval CTO b1ed8962/36be0743; four sgr.underline-color-reset cells stay pending under the existing criterion. Source audit by @dev/3, not an attributed CTO per-cell review."
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt100",
+      "version": "0.10.1",
+      "os": "linux"
+    },
+    "featureId": "modes.decsscls",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/vterm.git",
+            "commit": "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+            "path": "packages/vt100/src/screen.ts",
+            "oid": "cd71776df5f72918cd06934d724a5c2e3585a89d"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "bdaa263fdec6480cceb4b383aff027d3a46fd483",
+            "path": "packages/vt100/src/index.ts",
+            "oid": "99833d737402f9d1d8e3e257e3a255d8aa1facc3"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "bdaa263fdec6480cceb4b383aff027d3a46fd483",
+            "path": "packages/vt100/src/backend.ts",
+            "oid": "cdb8be8c5ebbba68a5920cfa4df27c9deb31745a"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "source-32204-vt100-modes.decsscls",
+            "reviewer": "@dev/1",
+            "reason": "The exact engine's CSI switch has no final-p handler; CSI 9 SP p reaches unknown-CSI ignore. The recorded Q marker establishes consumption, not timed presentation. This source negative establishes missing command implementation; scroll-speed presentation remains unmeasured.",
+            "sources": [
+              "git@github.com:beorn/vterm.git@9e99e4d23cdc606fca258b1863aa2be7ae79eed3:packages/vt100/src/screen.ts",
+              "git@github.com:beorn/termless.git@bdaa263fdec6480cceb4b383aff027d3a46fd483:packages/vt100/src/index.ts",
+              "git@github.com:beorn/termless.git@bdaa263fdec6480cceb4b383aff027d3a46fd483:packages/vt100/src/backend.ts"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt100",
+      "version": "0.10.1",
+      "os": "linux"
+    },
+    "featureId": "editing.decsace",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/vterm.git",
+            "commit": "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+            "path": "packages/vt100/src/screen.ts",
+            "oid": "cd71776df5f72918cd06934d724a5c2e3585a89d"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "bdaa263fdec6480cceb4b383aff027d3a46fd483",
+            "path": "packages/vt100/src/index.ts",
+            "oid": "99833d737402f9d1d8e3e257e3a255d8aa1facc3"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "bdaa263fdec6480cceb4b383aff027d3a46fd483",
+            "path": "packages/vt100/src/backend.ts",
+            "oid": "cdb8be8c5ebbba68a5920cfa4df27c9deb31745a"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "source-32204-vt100-editing.decsace",
+            "reviewer": "@dev/1",
+            "reason": "The exact engine has no final-x handler, so DECSACE is unimplemented. DECCARA $r aliases bare DECSTBM r because intermediates remain in the parameter string; it changes margins/cursor rather than inverse attributes. Ordinary SGR7 readback passes in the same run and the adapter copies inverse. The recorded no-inverse pair alone is only a missing prerequisite; this independent dispatcher review establishes missing extent implementation.",
+            "sources": [
+              "git@github.com:beorn/vterm.git@9e99e4d23cdc606fca258b1863aa2be7ae79eed3:packages/vt100/src/screen.ts",
+              "git@github.com:beorn/termless.git@bdaa263fdec6480cceb4b383aff027d3a46fd483:packages/vt100/src/index.ts",
+              "git@github.com:beorn/termless.git@bdaa263fdec6480cceb4b383aff027d3a46fd483:packages/vt100/src/backend.ts"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt220",
+      "version": "0.10.1",
+      "os": "linux"
+    },
+    "featureId": "modes.decsscls",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/vterm.git",
+            "commit": "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+            "path": "packages/vt220/src/screen.ts",
+            "oid": "cc5c5c79b0c882cb1c335f2ccaf2c555884a05ee"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "bdaa263fdec6480cceb4b383aff027d3a46fd483",
+            "path": "packages/vt220/src/index.ts",
+            "oid": "601dd26eb7e753a5396ebdf72f1ef8ee2cc4355f"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "bdaa263fdec6480cceb4b383aff027d3a46fd483",
+            "path": "packages/vt220/src/backend.ts",
+            "oid": "7369e3710e36aa649372fd09011ecfdd6ba47c73"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "source-32204-vt220-modes.decsscls",
+            "reviewer": "@dev/1",
+            "reason": "The exact engine's intermediate dispatcher handles only !p and >c; CSI 9 SP p is ignored. The recorded Q marker establishes consumption, not timed presentation. This source negative establishes missing command implementation; scroll-speed presentation remains unmeasured.",
+            "sources": [
+              "git@github.com:beorn/vterm.git@9e99e4d23cdc606fca258b1863aa2be7ae79eed3:packages/vt220/src/screen.ts",
+              "git@github.com:beorn/termless.git@bdaa263fdec6480cceb4b383aff027d3a46fd483:packages/vt220/src/index.ts",
+              "git@github.com:beorn/termless.git@bdaa263fdec6480cceb4b383aff027d3a46fd483:packages/vt220/src/backend.ts"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt220",
+      "version": "0.10.1",
+      "os": "linux"
+    },
+    "featureId": "editing.decsace",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/vterm.git",
+            "commit": "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+            "path": "packages/vt220/src/screen.ts",
+            "oid": "cc5c5c79b0c882cb1c335f2ccaf2c555884a05ee"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "bdaa263fdec6480cceb4b383aff027d3a46fd483",
+            "path": "packages/vt220/src/index.ts",
+            "oid": "601dd26eb7e753a5396ebdf72f1ef8ee2cc4355f"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "bdaa263fdec6480cceb4b383aff027d3a46fd483",
+            "path": "packages/vt220/src/backend.ts",
+            "oid": "7369e3710e36aa649372fd09011ecfdd6ba47c73"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "source-32204-vt220-editing.decsace",
+            "reviewer": "@dev/1",
+            "reason": "The exact engine's intermediate dispatcher handles only !p and >c; both DECSACE *x and DECCARA $r are ignored. Ordinary SGR7 readback passes in the same run and the adapter copies inverse. The recorded no-inverse pair alone is only a missing prerequisite; this independent dispatcher review establishes missing extent implementation.",
+            "sources": [
+              "git@github.com:beorn/vterm.git@9e99e4d23cdc606fca258b1863aa2be7ae79eed3:packages/vt220/src/screen.ts",
+              "git@github.com:beorn/termless.git@bdaa263fdec6480cceb4b383aff027d3a46fd483:packages/vt220/src/index.ts",
+              "git@github.com:beorn/termless.git@bdaa263fdec6480cceb4b383aff027d3a46fd483:packages/vt220/src/backend.ts"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "ghostty",
+      "version": "0.4.0",
+      "os": "linux"
+    },
+    "featureId": "editing.decsace",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "https://github.com/ghostty-org/ghostty.git",
+            "commit": "5714ed07a1012573261b7b7e3ed2add9c1504496",
+            "path": "src/terminal/stream.zig",
+            "oid": "ba6b57d5c62152bd675be8275b0b47aae4ec3936"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "80dd254111ab82279125555f9ca1e68b112cd7e3",
+            "path": "vendor/ghostty-web/RECEIPT.json",
+            "oid": "1363bc2773b724950ca2d0311686ac957388ede0"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "80dd254111ab82279125555f9ca1e68b112cd7e3",
+            "path": "vendor/ghostty-web/ghostty-vt.wasm",
+            "oid": "80ab3b318d782f975aabc4a4258dfe9d0038d80f"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "80dd254111ab82279125555f9ca1e68b112cd7e3",
+            "path": "vendor/ghostty-web/ghostty-wasm-api.patch",
+            "oid": "ae2c29b4ffbe4dacb2415b41b7dcb40fb5a924ab"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "80dd254111ab82279125555f9ca1e68b112cd7e3",
+            "path": "vendor/ghostty-web/producer.patch",
+            "oid": "281070bd39de6739201bf10061084191d977fe23"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "80dd254111ab82279125555f9ca1e68b112cd7e3",
+            "path": "vendor/ghostty-web/ghostty-page-zero.patch",
+            "oid": "e783e0658de095b5d5eba582342797f180bc842f"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "80dd254111ab82279125555f9ca1e68b112cd7e3",
+            "path": "packages/ghostty/src/backend.ts",
+            "oid": "560146d5f929f31a8f973f809d97f91cf0e23fd6"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "source-32204-ghostty-editing.decsace",
+            "reviewer": "@dev/1",
+            "reason": "Exact captured WASM 3c2398d5c537d9c10e86b0af69311977927fcdbe4738618df194cedbdd22574d matches pinned receipt and binary. Core5714 archive SHA25655cee28558945de6e984bc183cd51f28eefdbf805544da2e70d4635476178790 supplies the cited dispatcher; bound patches do not modify that dispatcher. It rejects SPACE-p and dollar-r and has no final-x arm. Same-run ordinary SGR7 inverse readback is supported and the adapter projects inverse. The retained no-inverse extent pair alone is only a missing prerequisite; this separate dispatcher audit establishes missing DECSACE implementation, without inferring extent behavior from that pair.",
+            "sources": [
+              "https://github.com/ghostty-org/ghostty.git@5714ed07a1012573261b7b7e3ed2add9c1504496:src/terminal/stream.zig",
+              "git@github.com:beorn/termless.git@80dd254111ab82279125555f9ca1e68b112cd7e3:vendor/ghostty-web/RECEIPT.json",
+              "git@github.com:beorn/termless.git@80dd254111ab82279125555f9ca1e68b112cd7e3:vendor/ghostty-web/ghostty-vt.wasm",
+              "git@github.com:beorn/termless.git@80dd254111ab82279125555f9ca1e68b112cd7e3:vendor/ghostty-web/ghostty-wasm-api.patch",
+              "git@github.com:beorn/termless.git@80dd254111ab82279125555f9ca1e68b112cd7e3:vendor/ghostty-web/producer.patch",
+              "git@github.com:beorn/termless.git@80dd254111ab82279125555f9ca1e68b112cd7e3:vendor/ghostty-web/ghostty-page-zero.patch",
+              "git@github.com:beorn/termless.git@80dd254111ab82279125555f9ca1e68b112cd7e3:packages/ghostty/src/backend.ts"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "ghostty-native",
+      "version": "1.3.1",
+      "os": "linux"
+    },
+    "featureId": "editing.decsace",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "https://github.com/ghostty-org/ghostty.git",
+            "commit": "332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28",
+            "path": "src/terminal/stream.zig",
+            "oid": "e89c73e66647dd5d42de3781d49db8df6da8977d"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "80dd254111ab82279125555f9ca1e68b112cd7e3",
+            "path": "packages/ghostty-native/native/src/main.zig",
+            "oid": "1cda313d3f016704c769f1f54bb4ec4ac67f6611"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "80dd254111ab82279125555f9ca1e68b112cd7e3",
+            "path": "packages/ghostty-native/src/backend.ts",
+            "oid": "427b9d4782a9924135ff0c32e2406b117df9cf22"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "source-32204-ghostty-native-editing.decsace",
+            "reviewer": "@dev/1",
+            "reason": "Captured native binary53f9a867cce594b4d50fb9508db9ce5d2d79fb4244a418548b7cb31fa50780d1 records upstream core332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28. That exact dispatcher rejects SPACE-p and dollar-r and has no final-x arm. Termless native wrapper is cited separately from engine core. Same-run ordinary SGR7 inverse readback is supported and the adapter projects inverse. The retained no-inverse extent pair alone is only a missing prerequisite; this separate dispatcher audit establishes missing DECSACE implementation, without inferring extent behavior from that pair.",
+            "sources": [
+              "https://github.com/ghostty-org/ghostty.git@332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28:src/terminal/stream.zig",
+              "git@github.com:beorn/termless.git@80dd254111ab82279125555f9ca1e68b112cd7e3:packages/ghostty-native/native/src/main.zig",
+              "git@github.com:beorn/termless.git@80dd254111ab82279125555f9ca1e68b112cd7e3:packages/ghostty-native/src/backend.ts"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "libvterm",
+      "version": "0.3.3",
+      "os": "linux"
+    },
+    "featureId": "editing.decsace",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "https://github.com/neovim/libvterm.git",
+            "commit": "9d6d2112335080312ef8c36667fa717ded4f7daf",
+            "path": "src/state.c",
+            "oid": "ce8e0342370c51bb6ace82fc749472ec3e393b89"
+          },
+          {
+            "repository": "https://github.com/neovim/libvterm.git",
+            "commit": "9d6d2112335080312ef8c36667fa717ded4f7daf",
+            "path": "src/parser.c",
+            "oid": "b43a549cefc51589f89060a54abb27426032e2b4"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "80dd254111ab82279125555f9ca1e68b112cd7e3",
+            "path": "packages/libvterm/wasm/libvterm.wasm.receipt.json",
+            "oid": "19798378217cd10c00b4d86d9ecd925fb8b1dee1"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "80dd254111ab82279125555f9ca1e68b112cd7e3",
+            "path": "packages/libvterm/wasm/libvterm.wasm",
+            "oid": "6a9b9358ba1e60f337090ab58e1bf22756a9e6c3"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "80dd254111ab82279125555f9ca1e68b112cd7e3",
+            "path": "packages/libvterm/src/backend.ts",
+            "oid": "eb513ccd443e30c7a869a8ba41f8126e1c0ddf00"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "80dd254111ab82279125555f9ca1e68b112cd7e3",
+            "path": "packages/libvterm/build/flat-api.c",
+            "oid": "49702d335a27976125514acea38c1cdd2e2d84d1"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "80dd254111ab82279125555f9ca1e68b112cd7e3",
+            "path": "packages/libvterm/build/selection-bytes.patch",
+            "oid": "d45fa7f2dc00e4d8015f14600db25063a9424baa"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "source-32204-libvterm-editing.decsace",
+            "reviewer": "@dev/1",
+            "reason": "Captured WASM3d67045bb43c5e4081c70dc58088af8f735416c20df2d7843d765e5aad8ef62a matches pinned WASM and receipt naming upstream9d6d2112335080312ef8c36667fa717ded4f7daf. Parser preserves intermediates; state rejects star and has no SPACE-p or dollar-r case. Unknown cases consult an optional fallback then return0; inspected exact wrapper installs no state-unrecognised callback. Same-run ordinary SGR7 inverse readback is supported and the adapter projects inverse. The retained no-inverse extent pair alone is only a missing prerequisite; this separate dispatcher audit establishes missing DECSACE implementation, without inferring extent behavior from that pair.",
+            "sources": [
+              "https://github.com/neovim/libvterm.git@9d6d2112335080312ef8c36667fa717ded4f7daf:src/state.c",
+              "https://github.com/neovim/libvterm.git@9d6d2112335080312ef8c36667fa717ded4f7daf:src/parser.c",
+              "git@github.com:beorn/termless.git@80dd254111ab82279125555f9ca1e68b112cd7e3:packages/libvterm/wasm/libvterm.wasm.receipt.json",
+              "git@github.com:beorn/termless.git@80dd254111ab82279125555f9ca1e68b112cd7e3:packages/libvterm/wasm/libvterm.wasm",
+              "git@github.com:beorn/termless.git@80dd254111ab82279125555f9ca1e68b112cd7e3:packages/libvterm/src/backend.ts",
+              "git@github.com:beorn/termless.git@80dd254111ab82279125555f9ca1e68b112cd7e3:packages/libvterm/build/flat-api.c",
+              "git@github.com:beorn/termless.git@80dd254111ab82279125555f9ca1e68b112cd7e3:packages/libvterm/build/selection-bytes.patch"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt100-rust",
+      "version": "0.16.2",
+      "os": "linux"
+    },
+    "featureId": "editing.decsace",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "286fddf6632e43ccd62f9050be41ec7b2908e43e",
+            "path": "packages/vt100-rust/native/src/lib.rs",
+            "oid": "ecdc2cf069088b4ba7180dbf28d8603d13d58fb8"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "286fddf6632e43ccd62f9050be41ec7b2908e43e",
+            "path": "packages/vt100-rust/native/Cargo.lock",
+            "oid": "3755893017da8338bfd02474d98ecfb7ccadaacb"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "286fddf6632e43ccd62f9050be41ec7b2908e43e",
+            "path": "packages/vt100-rust/native/Cargo.toml",
+            "oid": "cd1dd11f0824fde2ce6720c11b3ac71fa8ae4d5d"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "80dd254111ab82279125555f9ca1e68b112cd7e3",
+            "path": "packages/vt100-rust/src/backend.ts",
+            "oid": "9b3477c0fedf8586430781e8f4d17019569af98b"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "source-32204-vt100-rust-editing.decsace",
+            "reviewer": "@dev/1",
+            "reason": "Captured addon binary84a5b6a3a40a7c16c6bae8b64534b730403df911498bb34bded68c3a17e2d408 records addon source286fddf6632e43ccd62f9050be41ec7b2908e43e and Cargo.lock SHA2564cf037e4efa648ca41d08b30ef5c4ce7ada29ad61fcad45a7d1aa97bf55391c6. Its locked vt100-0.16.2 crate archive SHA256054ff75fb8fa83e609e685106df4faeffdf3a735d3c74ebce97ec557d5d36fd9 exactly matches inspected src/perform.rs; every non-question-mark intermediate routes to unhandled_csi. The addon source commit is not an engine-core identity. Same-run ordinary SGR7 inverse readback is supported and the adapter projects inverse. The retained no-inverse extent pair alone is only a missing prerequisite; this separate dispatcher audit establishes missing DECSACE implementation, without inferring extent behavior from that pair.",
+            "sources": [
+              "git@github.com:beorn/termless.git@286fddf6632e43ccd62f9050be41ec7b2908e43e:packages/vt100-rust/native/src/lib.rs",
+              "git@github.com:beorn/termless.git@286fddf6632e43ccd62f9050be41ec7b2908e43e:packages/vt100-rust/native/Cargo.lock",
+              "git@github.com:beorn/termless.git@286fddf6632e43ccd62f9050be41ec7b2908e43e:packages/vt100-rust/native/Cargo.toml",
+              "git@github.com:beorn/termless.git@80dd254111ab82279125555f9ca1e68b112cd7e3:packages/vt100-rust/src/backend.ts",
+              "locked crate vt100-0.16.2 archive sha256:054ff75fb8fa83e609e685106df4faeffdf3a735d3c74ebce97ec557d5d36fd9; source /home/hh/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/vt100-0.16.2/src/perform.rs sha256:8cbc229fa5d763da22fb68bd6228d66b26975a1eb55e79a3556589e9ab71d6f9; archive bytes verified equal"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "wezterm",
+      "version": "0.1.0-fork.5",
+      "os": "linux"
+    },
+    "featureId": "editing.decsace",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "80dd254111ab82279125555f9ca1e68b112cd7e3",
+            "path": "packages/wezterm/native/src/lib.rs",
+            "oid": "47dc0392036f34416fb6a38e9a834a7fccc8cfe3"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "80dd254111ab82279125555f9ca1e68b112cd7e3",
+            "path": "packages/wezterm/native/Cargo.lock",
+            "oid": "4a5e4832104dcacc63e882c2b8adbd7e8276fe09"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "80dd254111ab82279125555f9ca1e68b112cd7e3",
+            "path": "packages/wezterm/native/Cargo.toml",
+            "oid": "defdc52aa543b7ba683348fb6051f6e3ddf92a1d"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "80dd254111ab82279125555f9ca1e68b112cd7e3",
+            "path": "packages/wezterm/src/backend.ts",
+            "oid": "29b9bdea778abe558497217e811495c3c279451f"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "source-32204-wezterm-editing.decsace",
+            "reviewer": "@dev/1",
+            "reason": "Captured addon binaryb4155bfdef040ae8b3b723a4366fa8ec7f278463dbef577ec4730ad152b8bf07 records Termless build source80dd254111ab82279125555f9ca1e68b112cd7e3 and Cargo.lock SHA2568eaeab733cced8d47feb223d773d5ae158b2e6af8c994f993d4071d9ba3231d4. Locked escape-parser archive SHA2567ca89ed38092d6718a03e97b0c1101fcf2203c2e6f2757a91c465f393d11d98b and term archive SHA2567f3678674adc87f210ec01e2134e1972d6b0bd194bf82242f7e7beee3ae9dbd8 match inspected sources. Parser rejects SPACE-p, star-x and rectangle-dollar-r; Unspecified handling only logs. Dirty crate vcs metadata is not cited as Git identity. Same-run ordinary SGR7 inverse readback is supported and the adapter projects inverse. The retained no-inverse extent pair alone is only a missing prerequisite; this separate dispatcher audit establishes missing DECSACE implementation, without inferring extent behavior from that pair.",
+            "sources": [
+              "git@github.com:beorn/termless.git@80dd254111ab82279125555f9ca1e68b112cd7e3:packages/wezterm/native/src/lib.rs",
+              "git@github.com:beorn/termless.git@80dd254111ab82279125555f9ca1e68b112cd7e3:packages/wezterm/native/Cargo.lock",
+              "git@github.com:beorn/termless.git@80dd254111ab82279125555f9ca1e68b112cd7e3:packages/wezterm/native/Cargo.toml",
+              "git@github.com:beorn/termless.git@80dd254111ab82279125555f9ca1e68b112cd7e3:packages/wezterm/src/backend.ts",
+              "locked crate tattoy-wezterm-escape-parser-0.1.0-1 archive sha256:7ca89ed38092d6718a03e97b0c1101fcf2203c2e6f2757a91c465f393d11d98b; source /home/hh/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tattoy-wezterm-escape-parser-0.1.0-1/src/csi.rs sha256:ccd68f8aab7d5b7c1d84aba07d219675ac9898fc84c9a32cd4548ad2774541db; archive bytes verified equal",
+              "locked crate tattoy-wezterm-term-0.1.0-fork.5 archive sha256:7f3678674adc87f210ec01e2134e1972d6b0bd194bf82242f7e7beee3ae9dbd8; source /home/hh/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tattoy-wezterm-term-0.1.0-fork.5/src/terminalstate/performer.rs sha256:6f53e3345e0911b7756815f8afdf015d7c6bf5d7ebe8ff450db2f3225ff1749d; archive bytes verified equal"
             ]
           }
         ]
