@@ -217,7 +217,11 @@ const DEC_SPECIAL_GRAPHICS: Readonly<Record<string, string>> = {
  * ZWJ-continued scalar and second regional indicator that rides it. Decoding by code point, never by
  * UTF-16 unit, is what keeps a supplementary-plane scalar whole (#28021 text.wide.*).
  */
-function nextGrapheme(text: string, start: number): { cluster: string; length: number } {
+function nextGrapheme(
+  text: string,
+  start: number,
+  mutations?: ReadonlySet<string>,
+): { cluster: string; length: number } {
   let index = start
   let cluster = ""
   let first = true
@@ -234,7 +238,7 @@ function nextGrapheme(text: string, start: number): { cluster: string; length: n
       index += size
       continue
     }
-    if (isCombining(code) || code === VS15 || code === VS16 || code === ZWJ) {
+    if ((!mutations?.has("combining-noop") && isCombining(code)) || code === VS15 || code === VS16 || code === ZWJ) {
       cluster += String.fromCodePoint(code)
       previousWasZwj = code === ZWJ
       index += size
@@ -258,14 +262,18 @@ function nextGrapheme(text: string, start: number): { cluster: string; length: n
 }
 
 /** The measured column width of one cluster: emoji presentation, ZWJ and flag pairs are two. */
-function clusterWidth(cluster: string): number {
+function clusterWidth(cluster: string, mutations?: ReadonlySet<string>): number {
   const codes = Array.from(cluster, (char) => char.codePointAt(0) ?? 0)
   if (codes.length === 0) return 0
-  if (codes.includes(VS16)) return 2
-  if (codes.includes(ZWJ)) return 2
-  if (codes.length >= 2 && isRegionalIndicator(codes[0] ?? 0) && isRegionalIndicator(codes[1] ?? 0)) return 2
+  if (codes.includes(VS16) && !mutations?.has("emoji-vs16-noop")) return 2
+  if (codes.includes(ZWJ)) return mutations?.has("emoji-zwj-noop") ? 1 : 2
+  if (codes.length >= 2 && isRegionalIndicator(codes[0] ?? 0) && isRegionalIndicator(codes[1] ?? 0)) {
+    return mutations?.has("emoji-flags-noop") ? 1 : 2
+  }
   const base = codes[0] ?? 0
-  if (isCombining(base)) return 0
+  if (isCombining(base)) return mutations?.has("combining-noop") ? 1 : 0
+  if (mutations?.has("wide-emoji-noop") && base >= 0x1f300 && base <= 0x1faff) return 1
+  if (mutations?.has("wide-cjk-noop") && base >= 0x2e80 && base <= 0xffe6) return 1
   return isWide(base) ? 2 : 1
 }
 
@@ -641,9 +649,10 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
    * first, exactly as a plain write does.
    */
   const writeCluster = (cluster: string, width: number): void => {
-    if (width === 0) return
+    if (width === 0 || mutations.has("basic-text-noop")) return
+    const shouldWrap = autoWrap && !mutations.has("wrap-noop")
     if (cursorX + width > cols) {
-      if (autoWrap) {
+      if (shouldWrap) {
         cursorX = 0
         lineFeed()
       } else {
@@ -656,12 +665,15 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
         target.splice(cursorX, 0, ...Array.from({ length: width }, () => blankCell(NO_ATTRIBUTES)))
         target.length = cols
       }
-      target[cursorX] = { char: cluster, decscaProtected: protecting, wide: width > 1, ...attributes }
-      if (width > 1 && cursorX + 1 < cols) {
-        target[cursorX + 1] = { char: "", decscaProtected: protecting, wide: false, ...attributes }
+      const existing = target[cursorX]
+      if (!mutations.has("overwrite-noop") || !existing || existing.char === " " || existing.char === "") {
+        target[cursorX] = { char: cluster, decscaProtected: protecting, wide: width > 1, ...attributes }
+        if (width > 1 && cursorX + 1 < cols) {
+          target[cursorX + 1] = { char: "", decscaProtected: protecting, wide: false, ...attributes }
+        }
       }
     }
-    cursorX = autoWrap ? cursorX + width : Math.min(cols - 1, cursorX + width)
+    cursorX = shouldWrap ? cursorX + width : Math.min(cols - 1, cursorX + width)
     lastCluster = cluster
     lastWidth = width
   }
@@ -1336,6 +1348,41 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
     }
   }
 
+  const saveCursorOrMargins = (params: readonly number[]): void => {
+    if (declrmm) {
+      marginLeft = clampCol((params[0] ?? 0) === 0 ? 0 : (params[0] ?? 1) - 1)
+      const rightRaw = (params[1] ?? 0) === 0 ? cols : (params[1] ?? cols)
+      marginRight = clampCol(rightRaw - 1)
+      cursorX = originMode ? marginLeft : 0
+      cursorY = originMode ? regionTop : 0
+    } else if (!mutations.has("ansi-save-noop")) {
+      ansiSavedCursor = [cursorX, cursorY]
+    }
+  }
+
+  const csiTabControl = (final: string, first: number): boolean => {
+    if (final === "I") {
+      if (!mutations.has("cht-noop")) {
+        for (let count = 0; count < Math.max(1, first); count++) horizontalTab()
+      }
+      return true
+    }
+    if (final === "Z") {
+      if (!mutations.has("cbt-noop")) {
+        for (let count = 0; count < Math.max(1, first); count++) cursorX = prevTabStop(cursorX)
+      }
+      return true
+    }
+    if (final === "g") {
+      if (!mutations.has("tbc-noop")) {
+        if (first === 0) tabStops.delete(cursorX)
+        else if (first === 3) tabStops.clear()
+      }
+      return true
+    }
+    return false
+  }
+
   const csi = (prefix: string, paramsRaw: string, intermediate: string, final: string): void => {
     const params = paramsRaw === "" ? [] : paramsRaw.split(";").map((raw) => (raw === "" ? 0 : Number(raw)))
     const first = params[0] ?? 0
@@ -1349,22 +1396,14 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
       moveCursorAbsolute(paramsRaw, params)
       return
     }
-    if (moveCursor(final, first, params)) return
+    if (moveCursor(final, first, params) || csiTabControl(final, first)) return
     if (final === "h" || final === "l") {
       if (first === 4 && !mutations.has("irm-noop")) insertMode = final === "h"
       return
     }
     switch (final) {
       case "s":
-        if (declrmm) {
-          marginLeft = clampCol((params[0] ?? 0) === 0 ? 0 : (params[0] ?? 1) - 1)
-          const rightRaw = (params[1] ?? 0) === 0 ? cols : (params[1] ?? cols)
-          marginRight = clampCol(rightRaw - 1)
-          cursorX = originMode ? marginLeft : 0
-          cursorY = originMode ? regionTop : 0
-        } else if (!mutations.has("ansi-save-noop")) {
-          ansiSavedCursor = [cursorX, cursorY]
-        }
+        saveCursorOrMargins(params)
         return
       case "u":
         if (!mutations.has("ansi-restore-noop")) [cursorX, cursorY] = ansiSavedCursor
@@ -1410,16 +1449,6 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
         return
       case "b":
         repeatChar(first)
-        return
-      case "I":
-        for (let count = 0; count < Math.max(1, first); count++) horizontalTab()
-        return
-      case "Z":
-        for (let count = 0; count < Math.max(1, first); count++) cursorX = prevTabStop(cursorX)
-        return
-      case "g":
-        if (first === 0) tabStops.delete(cursorX)
-        else if (first === 3) tabStops.clear()
         return
       case "r":
         if (!mutations.has("scrollregion-noop")) {
@@ -1518,20 +1547,22 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
       return 2
     }
     if (escape === "H") {
-      tabStops.add(cursorX)
+      if (!mutations.has("hts-noop")) tabStops.add(cursorX)
       return 2
     }
     if (escape === "D") {
-      lineFeed()
+      if (!mutations.has("ind-noop")) lineFeed()
       return 2
     }
     if (escape === "E") {
-      lineFeed()
-      cursorX = 0
+      if (!mutations.has("nel-noop")) {
+        lineFeed()
+        cursorX = 0
+      }
       return 2
     }
     if (escape === "M") {
-      reverseIndex()
+      if (!mutations.has("ri-noop")) reverseIndex()
       return 2
     }
     if (escape === "7") {
@@ -1565,7 +1596,7 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
       const code = text.codePointAt(index) ?? 0
       const char = String.fromCodePoint(code)
       if (char === "\r") {
-        cursorX = 0
+        if (!mutations.has("cr-noop")) cursorX = 0
         index += 1
         continue
       }
@@ -1602,8 +1633,8 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
         index += 1
         continue
       }
-      const grapheme = nextGrapheme(text, index)
-      writeCluster(grapheme.cluster, clusterWidth(grapheme.cluster))
+      const grapheme = nextGrapheme(text, index, mutations)
+      writeCluster(grapheme.cluster, clusterWidth(grapheme.cluster, mutations))
       index += grapheme.length
     }
   }
