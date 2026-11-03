@@ -8,7 +8,8 @@ import { createHash } from "node:crypto"
 import { afterEach, beforeEach, expect, it, vi } from "vitest"
 import { createServer, type Server } from "node:http"
 import { once } from "node:events"
-import { mkdtempSync, readFileSync, rmSync, existsSync, writeFileSync } from "node:fs"
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, existsSync, writeFileSync } from "node:fs"
+import { execFileSync } from "node:child_process"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
 import {
@@ -94,6 +95,7 @@ beforeEach(async () => {
 })
 afterEach(async () => {
   await new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())))
+  vi.unstubAllEnvs()
   if (fixtures.home) rmSync(fixtures.home, { recursive: true, force: true })
   fixtures.home = undefined
   vi.mocked(saveDaemonProbeRun).mockClear()
@@ -268,6 +270,26 @@ it.each([
         assertDraft(JSON.parse(readFileSync(saved, "utf8")) as CapturedRunDraft)
         expect(readFileSync(join(fixtures.home!, "private", "response"), "utf8")).toBe(fixtures.raw)
       } else {
+        // Exercise the default writer from an actual authoring branch, independent of the CI checkout.
+        const checkout = join(fixtures.home!, "checkout")
+        mkdirSync(checkout)
+        execFileSync("git", ["init", "-q", "-b", "task/fixture"], { cwd: checkout, stdio: "pipe" })
+        execFileSync(
+          "git",
+          [
+            "-c",
+            "user.email=fixture@example.invalid",
+            "-c",
+            "user.name=fixture",
+            "commit",
+            "--allow-empty",
+            "-qm",
+            "fixture",
+          ],
+          { cwd: checkout, stdio: "pipe" },
+        )
+        vi.stubEnv("GIT_DIR", join(checkout, ".git"))
+        vi.stubEnv("GIT_WORK_TREE", checkout)
         vi.mocked(collection.writeCollectedRun).mockRestore()
         const place = vi.spyOn(placement, "placeCollectedRun").mockImplementation(() => {
           throw new Error("placement reached")
