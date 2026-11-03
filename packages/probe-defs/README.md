@@ -74,6 +74,13 @@ Linux and Darwin pixel collectors share the complete-raster calibration in
 one calibration witnesses the grid origin and every cell pitch, then confirms identical surface and cursor restoration.
 The batch carries that measured origin and geometry into every cell crop; changing screen content cannot move them.
 An unmeasurable witness or changed geometry is recorded as a named refusal, never replaced by frame-colour centring.
+Every confirmation compares consecutive complete frames under one fixed deadline.
+For a Darwin app the collector launched, an unreported cursor-visibility mode restores
+the launch default set; the retained raster basis names that choice without treating DA1 as a mode reply.
+The identical-restoration witness concerns surface pixels; unreported cursor state uses the launch default without a mode readback claim.
+Native capture-command failures during installation retain their primary command evidence and
+secondary restoration failure in the named per-row no-adapter outcome, including native command deadline kills.
+Terminal-query timeouts and apparatus errors without a native capture-command cause retain their existing failure behavior.
 
 **A definition is executable, not a saved result.** `ProbeDefinition` identifies a feature and supplies either or both callback arms:
 

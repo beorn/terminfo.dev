@@ -1019,8 +1019,9 @@ describe("private finite daemon startup", () => {
             trace: { captureCommand: "fixture" } }, decoded: { width: 1, height: 1, rgba: Buffer.alloc(4) } }
         }
       }) }))
-      mock.module("./packages/terminfo.dev/src/capture-calibration.ts", () => ({ calibrateCaptureOrigin: async ({ pixelGeometry, captureRaw }) => {
+      mock.module("./packages/terminfo.dev/src/capture-calibration.ts", () => ({ calibrateCaptureOrigin: async ({ pixelGeometry, captureRaw, collectorLaunched }) => {
         calibrations++
+        assert.equal(collectorLaunched, true)
         // A restore timeout has already taken its screenshots; the failure draft must keep them (30666).
         if (calibrationFailure?.name === "CaptureRestoreFailed") {
           await captureRaw("restore grid paint", Date.now() + 1000)
@@ -1049,6 +1050,23 @@ describe("private finite daemon startup", () => {
       ])
       calibrationFailure = new Error("Original capture adapter I/O failure", { cause: originalTimeout })
       await assert.rejects(collectProbeRun({}), error => error === calibrationFailure)
+      // Actual iTerm2 41555062118: census command killed at the capture deadline,
+      // then no baseline available for restoration. Complete with the named gap,
+      // preserving both errors and the native command evidence, never a grade.
+      const censusFailure = Object.assign(new Error("osascript window census killed"), {
+        captureCommand: { file: "/usr/bin/osascript", args: ["-l", "JavaScript"],
+          killed: true, signal: "SIGKILL", code: null, stdoutBase64: "", stderrBase64: "" },
+      })
+      calibrationFailure = Object.assign(new AggregateError([censusFailure, new Error("Secondary restoration unverified: no confirmed baseline image")],
+        "osascript window census killed; secondary capture restoration failure: no confirmed baseline image", { cause: censusFailure }), { name: "CaptureRestoreFailed" })
+      const unavailable = await collectProbeRun({})
+      const unavailableFact = JSON.parse(unavailable.rawReplies["collector.captureCalibration"])
+      assert.equal(unavailable.results.length, globalThis.__TERMINFO_BUNDLED_SUITE__.manifest.catalogIds.length)
+      assert.equal(unavailableFact.outcome, "refused")
+      assert.match(unavailableFact.refusal, /^osascript window census killed; secondary capture restoration failure/)
+      assert.deepEqual(unavailableFact.causes[1].captureCommand, censusFailure.captureCommand)
+      assert.ok(!unavailable.results.some(o => o.assertionType === "screenshot"))
+      assert.ok(unavailable.results.some(o => /cell-to-pixel geometry was refused.*osascript window census killed/.test(o.reason ?? "")))
       calibrationFailure = Object.assign(new Error("Capture calibration paint not observed: solid grid paint witness timeout", { cause: originalTimeout }), { name: "CaptureCalibrationRefused" })
       const unseen = await collectProbeRun({})
       assert.equal(unseen.results.length, globalThis.__TERMINFO_BUNDLED_SUITE__.manifest.catalogIds.length)
@@ -1068,13 +1086,14 @@ describe("private finite daemon startup", () => {
       const derivedFact = JSON.parse(derived.rawReplies["collector.captureCalibration"])
       assert.equal(derivedFact.outcome, "installed")
       assert.equal(derivedFact.basis, "measured by complete raster calibration")
+      assert.equal(derivedFact.rasterBasis, "fixture complete raster")
       assert.deepEqual(derivedFact.geometry, cell)
       const reportedFact = JSON.parse(reported.rawReplies["collector.captureCalibration"])
       assert.equal(reportedFact.basis, "measured by complete raster calibration")
       assert.deepEqual(reportedFact.geometry, cell)
       assert.equal(bare.rawReplies["collector.captureCalibration"], undefined)
       // The derived basis still calibrates, once per run, and its probes reach pixels.
-      assert.equal(calibrations, 5)
+      assert.equal(calibrations, 6)
       assert.ok(frames > 0)
       const pixels = (run) => JSON.parse(JSON.stringify(run.results.filter((o) => o.assertionType === "screenshot"), (key, value) => ["startedAt", "completedAt"].includes(key) ? undefined : value))
       assert.ok(pixels(derived).length > 0)
@@ -1087,7 +1106,7 @@ describe("private finite daemon startup", () => {
     `)
     expect(result.stderr).toBe("")
     expect(result.status).toBe(0)
-    // Six collector attempts share the child. Let its 10 s process limit fail before the outer test.
+    // Seven collector attempts share the child. Let its 10 s process limit fail before the outer test.
   }, 15_000)
 
   // @cto, 28785 REVISE round 2 must 2: pin EVERY classification site of queryPixelGeometry with
