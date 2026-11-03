@@ -432,6 +432,7 @@ it("qualifies current text and recomputes eligibility for its historical reviewe
   const manifest = { ...suites.get(SUITE)!, textClaims: [FEATURE] }
   const run = parseRun("qualified-text.json", JSON.stringify(raw), [FEATURE], new Map([[SUITE, manifest]]))
   const { featureId, assertionType, rawReplyRef, frames } = run.results![0]!
+  if (assertionType !== "buffer_state") throw new Error("Current text correction fixture lacks its buffer-state proof")
   const observation = { featureId, assertionType, rawReplyRef, frames, outcome: "supported" as const }
   expect(canConcludeObservation(run, observation, { qualified: true })).toBe(true)
   expect(canConcludeObservation(run, observation, { qualified: false, reason: "mapping failed" })).toBe(false)

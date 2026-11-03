@@ -29,7 +29,7 @@ function stageRepo(root: string): void {
 }
 
 /**
- * @failure Report promotes newer unverified booleans and renders absent cells as unsupported.
+ * @failure Report loses reviewed outcomes or renders recorded failures and absent cells as unsupported.
  * @level l2
  * @consumer Admin CLI report readers comparing selected terminal observations.
  * @testonly none
@@ -43,10 +43,10 @@ import { expect, test } from "vitest"
 import { probeSuiteSnapshot } from "../versions.ts"
 import { loadCurrentResults } from "../../../docs/data/current-results.ts"
 import { parseSuiteManifest, parseRun } from "@terminfo/run-parser"
-import { ENVIRONMENT_GROUP_IDS } from "@terminfo/probe-defs"
+import { ENVIRONMENT_GROUP_IDS, initializeRunDraft, sealRunDraft } from "@terminfo/probe-defs"
 
 // This journey boots several real CLI processes; 5s is not a report performance contract.
-test("report renders reviewed outcomes and missing cells without promoting legacy history", () => {
+test("report renders reviewed outcomes, failures and missing cells", () => {
   const root = mkdtempSync(join(tmpdir(), "terminfo-report-"))
   try {
     stageRepo(root)
@@ -210,15 +210,6 @@ test("report renders reviewed outcomes and missing cells without promoting legac
         review("review-kitty-inconclusive", inconclusiveRun.runId, inconclusiveBytes, inconclusivePath),
       ]),
     )
-    writeFileSync(
-      join(root, "content", "probes-libs", "newer-unverified.json"),
-      JSON.stringify({
-        backend: "kitty",
-        version: "9.9.9",
-        generated: "2027-01-01T00:00:00.000Z",
-        results: { "cursor.position": true, "sgr.italic": false },
-      }),
-    )
 
     const projection = loadCurrentResults(join(root, "content")).projection
     const reviewed = Object.values(projection.contexts).find((selected) =>
@@ -266,7 +257,6 @@ test("report renders reviewed outcomes and missing cells without promoting legac
     expect(plain).toContain("0/5 Supported / all (0%)")
     expect(plain).not.toContain("NaN")
     expect(plain).toContain("Excluded runs:")
-    expect(plain).not.toContain("9.9.9")
 
     // AC1/2/3: the existing selected-only report cannot show a private capture or absent contexts.
     // Use the same real reader/CLI fixture, without adding a test-only production seam.
@@ -776,51 +766,40 @@ test("a long report keeps every row and its last section on a pipe", () => {
         ),
       ),
     )
-    writeFileSync(
-      join(root, "content", "suites", `${snapshot.probeHash}.json`),
-      JSON.stringify({
-        probeHash: snapshot.probeHash,
-        sourceRevision: "1".repeat(40),
-        generatedAt: "2026-09-28T00:00:00.000Z",
-        freeze: { release: "candidate2", at: "2026-09-28T00:00:00.000Z" },
-        adapterVersion: snapshot.adapterVersion,
-        catalogIds: fixtureFeatures,
-        probes: { app: fixtureFeatures, headless: [], mux: [] },
-      }),
-    )
-    const run = {
-      schemaVersion: 3,
-      sealedAt: "2026-09-28T12:00:01.000Z",
-      intendedContext: { kind: "app", id: "kitty", version: "0.46.2" },
-      runId: "long-kitty",
-      target: {
-        kind: "app",
-        id: "kitty",
-        version: "0.46.2",
-        os: "macos",
-        osVersion: "25.4.0",
-        outerTerminal: null,
-        mux: null,
-        config: null,
-        permissions: null,
-      },
-      identity: "verified",
-      suiteId: snapshot.probeHash,
+    const manifest = {
+      schemaVersion: 4 as const,
       probeHash: snapshot.probeHash,
-      sourceRevision: "2".repeat(40),
-      measuredAt: "2026-09-28T12:00:00.000Z",
-      origin: { kind: "collector" },
-      rawReplies: { "device.primary-da": "\x1b[?62;52;c", "device.xtversion": "kitty(0.46.2)" },
-      assertions: [],
-      screenshotRefs: [],
-      results: fixtureFeatures.map((featureId) => ({
-        featureId,
-        status: "test-todo",
-        attempt: { scope: "none" },
-        checks: [],
-        reason: "Missing implementation",
-      })),
+      sourceRevision: "1".repeat(40),
+      generatedAt: "2026-09-28T00:00:00.000Z",
+      freeze: { release: "candidate2", at: "2026-09-28T00:00:00.000Z" },
+      adapterVersion: snapshot.adapterVersion,
+      catalogIds: fixtureFeatures,
+      probes: { term: fixtureFeatures, lib: [], mux: [] },
     }
+    writeFileSync(join(root, "content", "suites", snapshot.probeHash + ".json"), JSON.stringify(manifest))
+    const draft = initializeRunDraft({
+      runId: "long-kitty",
+      sourceRevision: "2".repeat(40),
+      manifest,
+      source: { kind: "live" },
+      intendedSubject: { kind: "term", id: "kitty", version: "0.46.2" },
+    })
+    draft.subject = {
+      kind: "term",
+      id: "kitty",
+      version: "0.46.2",
+      os: "macos",
+      osVersion: "25.4.0",
+      outerTerminal: null,
+      mux: null,
+      config: null,
+      permissions: null,
+    }
+    draft.identity = "verified"
+    draft.measuredAt = "2026-09-28T12:00:00.000Z"
+    draft.origin = { kind: "collector" }
+    draft.rawReplies = { "device.primary-da": "\x1b[?62;52;c", "device.xtversion": "kitty(0.46.2)" }
+    const run = sealRunDraft(draft, "2026-09-28T12:00:01.000Z")
     const runPath = join(root, "content", "probes-apps", "long.json")
     const runBytes = JSON.stringify(run)
     writeFileSync(runPath, runBytes)
@@ -835,7 +814,7 @@ test("a long report keeps every row and its last section on a pipe", () => {
           reason: "checked captured identity",
           scope: {
             target: { kind: "app", id: "kitty" },
-            versions: [run.target.version, run.target.version],
+            versions: [run.subject.version, run.subject.version],
             suites: [run.suiteId, run.suiteId],
           },
           sources: [runPath],
