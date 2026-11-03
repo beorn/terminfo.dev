@@ -3,6 +3,7 @@
  * @level l1
  * @consumer Canonical parser, collection finalizer and build-time site loader
  * @testonly none
+ * @reach fs-walk <fixture-only: immutable Git commit/path lookups, not a working-tree census>
  */
 import { afterEach, expect, it, vi } from "vitest"
 import { readFileSync } from "node:fs"
@@ -23,18 +24,19 @@ vi.mock("node:child_process", async (original) => {
         const values = args as string[]
         if (command === "git" && values.includes("-C")) {
           const response = (stdout: string, status = 0) => ({ stdout, stderr: "", status, error: undefined })
+          if (
+            control.mode === "body-unavailable" &&
+            (values.includes("cat-file") || values.includes("-l") || values.includes("--long"))
+          ) {
+            return { ...response("", 128), stderr: "blob bodies unavailable; commit trees remain readable" }
+          }
           if (control.mode === "remote" && values.includes("get-url")) {
             return response("https://example.test/another.git\n")
           }
           if (control.mode === "shallow" && values.includes("--is-shallow-repository")) return response("true\n")
-          if (values.includes("--get-regexp") && control.mode === "absent") return response("", 1)
-          if (values.includes("--get-regexp") && control.mode === "promisor") {
-            return response("remote.origin.promisor true\n")
-          }
-          if (values.some((arg) => arg.startsWith("--batch-check"))) {
-            if (control.mode === "absent" || control.mode === "promisor") {
-              return response(`${String(options.input).trim()} missing\n`)
-            }
+          if (values.includes("ls-tree")) {
+            if (control.mode === "absent") return response("")
+            if (control.mode === "promisor") return { ...response("", 128), stderr: "cannot read source tree" }
             if (control.mode === "broken") return { ...response("", 128), stderr: "cannot read object store" }
           }
         }
@@ -122,9 +124,12 @@ it("qualifies at the writer and preserves stored answers when decoding", async (
 
 // The retained C1 fixtures already had references from the old review applier. Fresh OSC176
 // captures leave the review pending with [], even though their real negative assertion exists.
-it.each(["measured", "missing", "positive", "other-feature", "empty-expected", "empty-observed"])(
+// Identity is the pinned tree entry, even when a partial clone cannot hydrate blob bodies (#32221).
+// Other source fixtures have materialized objects and cannot detect that extra network dependency.
+it.each(["measured", "metadata", "missing", "positive", "other-feature", "empty-expected", "empty-observed"])(
   "source finalization binds only the current deciding assertion (%s)",
   async (mode) => {
+    if (mode === "metadata") control.mode = "body-unavailable"
     const { finalizeCollectedDraft } = await import("../../terminfo.dev/src/capture-writer.ts")
     const featureId = "extensions.osc176-app-id"
     const path = new URL(
@@ -159,7 +164,7 @@ it.each(["measured", "missing", "positive", "other-feature", "empty-expected", "
     const result = finalized.results.find((entry) => entry.featureId === featureId)!
     expect(finalized.assertions).toEqual(assertions)
     expect(capture.results.find((entry) => entry.featureId === featureId)?.status).toBe("test-todo")
-    if (mode === "measured") {
+    if (mode === "measured" || mode === "metadata") {
       expect(result.status).toBe("unsupported")
       expect(result.tests.find((test) => test.id === "review")?.assertionRefs).toEqual(measured)
     } else {
