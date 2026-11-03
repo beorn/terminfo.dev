@@ -46,6 +46,342 @@
       "version": "0.26.0",
       "os": "linux"
     },
+    "featureId": "extensions.osc10-fg-color",
+    "answers": [
+      {
+        "status": "untestable",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/alacritty/native/src/lib.rs",
+            "oid": "1779ff4f042f7f285ab3d396da039408b492be10"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/alacritty/native/Cargo.lock",
+            "oid": "61a0da4773734220406e2077f33f154f31895a29"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/alacritty/native/Cargo.toml",
+            "oid": "12521c8ea6dcedf6b94f757a8d6672c737c72db7"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "source-32225-alacritty-extensions.osc10-fg-color",
+            "reviewer": "@dev/2",
+            "reason": "Criterion branch is color-readback-review, never a negative: the initial query answered nothing and the disposable set/query/reset control in extensions.ts oscColorQueryProbe proves the readback path works for a value the embedder sets. Source audit: alacritty_terminal 0.26.0 src/term/color.rs:24-28 defines Colors::default() as [None; COUNT]; src/term/mod.rs:438 seeds Term::new with that empty array; src/term/mod.rs:1657-1671 stores an OSC-set colour as Some; src/term/mod.rs:1675-1688 answers a colour query through dynamic_color_sequence -> Event::ColorRequest(index, formatter), which carries an index and no value; vte 0.15.0 src/ansi.rs:1363-1387 (OSC 4) and :1421-1450 (OSC 10/11/12) split set from query and expose no default-colour reader. Termless packages/alacritty/native/src/lib.rs:312 builds Config::default() and no colour field exists anywhere in that Config (src/term/mod.rs:334-365), and :339-348 replies only when term.colors()[index] is Some. The default is therefore owned by the embedding application (alacritty's own event loop answers ColorRequest from its user config); a headless embed has no engine default to report and our adapter drops no value the engine holds. OSC 10;? is answered by nothing before an embedder sets it, while OSC 10;rgb:... -> set_color(index, color) makes the same query answer. Missing observable: an embedder-supplied default foreground colour.",
+            "sources": [
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/alacritty/native/src/lib.rs:305-350",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/alacritty/native/Cargo.lock",
+              "alacritty_terminal 0.26.0 (Cargo.lock checksum bda177466b9524d59f1b12f0dd30b68696788e9992a7e959021c4a0ed96fcf59; registry archive sha256 verified equal) src/term/mod.rs:334-365,436-440,1657-1701,1675-1688; src/term/color.rs:24-28",
+              "vte 0.15.0 (archive sha256 a5924018406ce0063cd67f8e008104968b74b563ee1b85dde3ed1f7cb87dbd) src/ansi.rs:1363-1387,1421-1450,1514-1521",
+              "terminfo.dev packages/probe-defs/src/extensions.ts oscColorQueryProbe (color readback review branch) and resetProbe/colorResetProbe"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "alacritty",
+      "version": "0.26.0",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc11-bg-color",
+    "answers": [
+      {
+        "status": "untestable",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/alacritty/native/src/lib.rs",
+            "oid": "1779ff4f042f7f285ab3d396da039408b492be10"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/alacritty/native/Cargo.lock",
+            "oid": "61a0da4773734220406e2077f33f154f31895a29"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/alacritty/native/Cargo.toml",
+            "oid": "12521c8ea6dcedf6b94f757a8d6672c737c72db7"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "source-32225-alacritty-extensions.osc11-bg-color",
+            "reviewer": "@dev/2",
+            "reason": "Criterion branch is color-readback-review, never a negative: the initial query answered nothing and the disposable set/query/reset control in extensions.ts oscColorQueryProbe proves the readback path works for a value the embedder sets. Source audit: alacritty_terminal 0.26.0 src/term/color.rs:24-28 defines Colors::default() as [None; COUNT]; src/term/mod.rs:438 seeds Term::new with that empty array; src/term/mod.rs:1657-1671 stores an OSC-set colour as Some; src/term/mod.rs:1675-1688 answers a colour query through dynamic_color_sequence -> Event::ColorRequest(index, formatter), which carries an index and no value; vte 0.15.0 src/ansi.rs:1363-1387 (OSC 4) and :1421-1450 (OSC 10/11/12) split set from query and expose no default-colour reader. Termless packages/alacritty/native/src/lib.rs:312 builds Config::default() and no colour field exists anywhere in that Config (src/term/mod.rs:334-365), and :339-348 replies only when term.colors()[index] is Some. The default is therefore owned by the embedding application (alacritty's own event loop answers ColorRequest from its user config); a headless embed has no engine default to report and our adapter drops no value the engine holds. OSC 11;? is answered by nothing before an embedder sets it, while OSC 11;rgb:... -> set_color(index, color) makes the same query answer. Missing observable: an embedder-supplied default background colour.",
+            "sources": [
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/alacritty/native/src/lib.rs:305-350",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/alacritty/native/Cargo.lock",
+              "alacritty_terminal 0.26.0 (Cargo.lock checksum bda177466b9524d59f1b12f0dd30b68696788e9992a7e959021c4a0ed96fcf59; registry archive sha256 verified equal) src/term/mod.rs:334-365,436-440,1657-1701,1675-1688; src/term/color.rs:24-28",
+              "vte 0.15.0 (archive sha256 a5924018406ce0063cd67f8e008104968b74b563ee1b85dde3ed1f7cb87dbd) src/ansi.rs:1363-1387,1421-1450,1514-1521",
+              "terminfo.dev packages/probe-defs/src/extensions.ts oscColorQueryProbe (color readback review branch) and resetProbe/colorResetProbe"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "alacritty",
+      "version": "0.26.0",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc110-reset-fg",
+    "answers": [
+      {
+        "status": "untestable",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/alacritty/native/src/lib.rs",
+            "oid": "1779ff4f042f7f285ab3d396da039408b492be10"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/alacritty/native/Cargo.lock",
+            "oid": "61a0da4773734220406e2077f33f154f31895a29"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/alacritty/native/Cargo.toml",
+            "oid": "12521c8ea6dcedf6b94f757a8d6672c737c72db7"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "source-32225-alacritty-extensions.osc110-reset-fg",
+            "reviewer": "@dev/2",
+            "reason": "Criterion branch is color-readback-review for the reset criteria: the initial colour query answered nothing, so the reset effect has no readback to compare. Source audit: OSC 110/111/112 call reset_color(NamedColor::Foreground/Background/Cursor) at vte 0.15.0 src/ansi.rs:1514-1521, and alacritty_terminal 0.26.0 src/term/mod.rs:1690-1701 implements reset as self.colors[index] = None; src/term/color.rs:24-28 makes that None the initial state of every slot at Term::new (src/term/mod.rs:438). The reset target is therefore the embedder's default colour, which the engine never holds: Termless packages/alacritty/native/src/lib.rs:339-348 replies only for Some(term.colors()[index]). OSC 110 restores None, so the post-reset query is silent by design and only an embedder-supplied default could answer it. Missing observable: an embedder-supplied default foreground colour.",
+            "sources": [
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/alacritty/native/src/lib.rs:305-350",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/alacritty/native/Cargo.lock",
+              "alacritty_terminal 0.26.0 (Cargo.lock checksum bda177466b9524d59f1b12f0dd30b68696788e9992a7e959021c4a0ed96fcf59; registry archive sha256 verified equal) src/term/mod.rs:334-365,436-440,1657-1701,1675-1688; src/term/color.rs:24-28",
+              "vte 0.15.0 (archive sha256 a5924018406ce0063cd67f8e008104968b74b563ee1b85dde3ed1f7cb87dbd) src/ansi.rs:1363-1387,1421-1450,1514-1521",
+              "terminfo.dev packages/probe-defs/src/extensions.ts oscColorQueryProbe (color readback review branch) and resetProbe/colorResetProbe"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "alacritty",
+      "version": "0.26.0",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc111-reset-bg",
+    "answers": [
+      {
+        "status": "untestable",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/alacritty/native/src/lib.rs",
+            "oid": "1779ff4f042f7f285ab3d396da039408b492be10"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/alacritty/native/Cargo.lock",
+            "oid": "61a0da4773734220406e2077f33f154f31895a29"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/alacritty/native/Cargo.toml",
+            "oid": "12521c8ea6dcedf6b94f757a8d6672c737c72db7"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "source-32225-alacritty-extensions.osc111-reset-bg",
+            "reviewer": "@dev/2",
+            "reason": "Criterion branch is color-readback-review for the reset criteria: the initial colour query answered nothing, so the reset effect has no readback to compare. Source audit: OSC 110/111/112 call reset_color(NamedColor::Foreground/Background/Cursor) at vte 0.15.0 src/ansi.rs:1514-1521, and alacritty_terminal 0.26.0 src/term/mod.rs:1690-1701 implements reset as self.colors[index] = None; src/term/color.rs:24-28 makes that None the initial state of every slot at Term::new (src/term/mod.rs:438). The reset target is therefore the embedder's default colour, which the engine never holds: Termless packages/alacritty/native/src/lib.rs:339-348 replies only for Some(term.colors()[index]). OSC 111 restores None, so the post-reset query is silent by design and only an embedder-supplied default could answer it. Missing observable: an embedder-supplied default background colour.",
+            "sources": [
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/alacritty/native/src/lib.rs:305-350",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/alacritty/native/Cargo.lock",
+              "alacritty_terminal 0.26.0 (Cargo.lock checksum bda177466b9524d59f1b12f0dd30b68696788e9992a7e959021c4a0ed96fcf59; registry archive sha256 verified equal) src/term/mod.rs:334-365,436-440,1657-1701,1675-1688; src/term/color.rs:24-28",
+              "vte 0.15.0 (archive sha256 a5924018406ce0063cd67f8e008104968b74b563ee1b85dde3ed1f7cb87dbd) src/ansi.rs:1363-1387,1421-1450,1514-1521",
+              "terminfo.dev packages/probe-defs/src/extensions.ts oscColorQueryProbe (color readback review branch) and resetProbe/colorResetProbe"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "alacritty",
+      "version": "0.26.0",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc112-reset-cursor",
+    "answers": [
+      {
+        "status": "untestable",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/alacritty/native/src/lib.rs",
+            "oid": "1779ff4f042f7f285ab3d396da039408b492be10"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/alacritty/native/Cargo.lock",
+            "oid": "61a0da4773734220406e2077f33f154f31895a29"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/alacritty/native/Cargo.toml",
+            "oid": "12521c8ea6dcedf6b94f757a8d6672c737c72db7"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "source-32225-alacritty-extensions.osc112-reset-cursor",
+            "reviewer": "@dev/2",
+            "reason": "Criterion branch is color-readback-review for the reset criteria: the initial colour query answered nothing, so the reset effect has no readback to compare. Source audit: OSC 110/111/112 call reset_color(NamedColor::Foreground/Background/Cursor) at vte 0.15.0 src/ansi.rs:1514-1521, and alacritty_terminal 0.26.0 src/term/mod.rs:1690-1701 implements reset as self.colors[index] = None; src/term/color.rs:24-28 makes that None the initial state of every slot at Term::new (src/term/mod.rs:438). The reset target is therefore the embedder's default colour, which the engine never holds: Termless packages/alacritty/native/src/lib.rs:339-348 replies only for Some(term.colors()[index]). OSC 112 restores None, so the post-reset query is silent by design and only an embedder-supplied default could answer it. Missing observable: an embedder-supplied default cursor colour.",
+            "sources": [
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/alacritty/native/src/lib.rs:305-350",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/alacritty/native/Cargo.lock",
+              "alacritty_terminal 0.26.0 (Cargo.lock checksum bda177466b9524d59f1b12f0dd30b68696788e9992a7e959021c4a0ed96fcf59; registry archive sha256 verified equal) src/term/mod.rs:334-365,436-440,1657-1701,1675-1688; src/term/color.rs:24-28",
+              "vte 0.15.0 (archive sha256 a5924018406ce0063cd67f8e008104968b74b563ee1b85dde3ed1f7cb87dbd) src/ansi.rs:1363-1387,1421-1450,1514-1521",
+              "terminfo.dev packages/probe-defs/src/extensions.ts oscColorQueryProbe (color readback review branch) and resetProbe/colorResetProbe"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "alacritty",
+      "version": "0.26.0",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc12-cursor-color",
+    "answers": [
+      {
+        "status": "untestable",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/alacritty/native/src/lib.rs",
+            "oid": "1779ff4f042f7f285ab3d396da039408b492be10"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/alacritty/native/Cargo.lock",
+            "oid": "61a0da4773734220406e2077f33f154f31895a29"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/alacritty/native/Cargo.toml",
+            "oid": "12521c8ea6dcedf6b94f757a8d6672c737c72db7"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "source-32225-alacritty-extensions.osc12-cursor-color",
+            "reviewer": "@dev/2",
+            "reason": "Criterion branch is color-readback-review, never a negative: the initial query answered nothing and the disposable set/query/reset control in extensions.ts oscColorQueryProbe proves the readback path works for a value the embedder sets. Source audit: alacritty_terminal 0.26.0 src/term/color.rs:24-28 defines Colors::default() as [None; COUNT]; src/term/mod.rs:438 seeds Term::new with that empty array; src/term/mod.rs:1657-1671 stores an OSC-set colour as Some; src/term/mod.rs:1675-1688 answers a colour query through dynamic_color_sequence -> Event::ColorRequest(index, formatter), which carries an index and no value; vte 0.15.0 src/ansi.rs:1363-1387 (OSC 4) and :1421-1450 (OSC 10/11/12) split set from query and expose no default-colour reader. Termless packages/alacritty/native/src/lib.rs:312 builds Config::default() and no colour field exists anywhere in that Config (src/term/mod.rs:334-365), and :339-348 replies only when term.colors()[index] is Some. The default is therefore owned by the embedding application (alacritty's own event loop answers ColorRequest from its user config); a headless embed has no engine default to report and our adapter drops no value the engine holds. OSC 12;? is answered by nothing before an embedder sets it, while OSC 12;rgb:... -> set_color(index, color) makes the same query answer. Missing observable: an embedder-supplied default cursor colour.",
+            "sources": [
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/alacritty/native/src/lib.rs:305-350",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/alacritty/native/Cargo.lock",
+              "alacritty_terminal 0.26.0 (Cargo.lock checksum bda177466b9524d59f1b12f0dd30b68696788e9992a7e959021c4a0ed96fcf59; registry archive sha256 verified equal) src/term/mod.rs:334-365,436-440,1657-1701,1675-1688; src/term/color.rs:24-28",
+              "vte 0.15.0 (archive sha256 a5924018406ce0063cd67f8e008104968b74b563ee1b85dde3ed1f7cb87dbd) src/ansi.rs:1363-1387,1421-1450,1514-1521",
+              "terminfo.dev packages/probe-defs/src/extensions.ts oscColorQueryProbe (color readback review branch) and resetProbe/colorResetProbe"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "alacritty",
+      "version": "0.26.0",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc4-palette",
+    "answers": [
+      {
+        "status": "untestable",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/alacritty/native/src/lib.rs",
+            "oid": "1779ff4f042f7f285ab3d396da039408b492be10"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/alacritty/native/Cargo.lock",
+            "oid": "61a0da4773734220406e2077f33f154f31895a29"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/alacritty/native/Cargo.toml",
+            "oid": "12521c8ea6dcedf6b94f757a8d6672c737c72db7"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "source-32225-alacritty-extensions.osc4-palette",
+            "reviewer": "@dev/2",
+            "reason": "Criterion branch is color-readback-review, never a negative: the initial query answered nothing and the disposable set/query/reset control in extensions.ts oscColorQueryProbe proves the readback path works for a value the embedder sets. Source audit: alacritty_terminal 0.26.0 src/term/color.rs:24-28 defines Colors::default() as [None; COUNT]; src/term/mod.rs:438 seeds Term::new with that empty array; src/term/mod.rs:1657-1671 stores an OSC-set colour as Some; src/term/mod.rs:1675-1688 answers a colour query through dynamic_color_sequence -> Event::ColorRequest(index, formatter), which carries an index and no value; vte 0.15.0 src/ansi.rs:1363-1387 (OSC 4) and :1421-1450 (OSC 10/11/12) split set from query and expose no default-colour reader. Termless packages/alacritty/native/src/lib.rs:312 builds Config::default() and no colour field exists anywhere in that Config (src/term/mod.rs:334-365), and :339-348 replies only when term.colors()[index] is Some. The default is therefore owned by the embedding application (alacritty's own event loop answers ColorRequest from its user config); a headless embed has no engine default to report and our adapter drops no value the engine holds. OSC 4;0;? is answered by nothing for an unset palette entry, while OSC 4;0;rgb:... -> set_color(0, color) makes the same query answer. Missing observable: an embedder-supplied default palette-entry-0 colour.",
+            "sources": [
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/alacritty/native/src/lib.rs:305-350",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/alacritty/native/Cargo.lock",
+              "alacritty_terminal 0.26.0 (Cargo.lock checksum bda177466b9524d59f1b12f0dd30b68696788e9992a7e959021c4a0ed96fcf59; registry archive sha256 verified equal) src/term/mod.rs:334-365,436-440,1657-1701,1675-1688; src/term/color.rs:24-28",
+              "vte 0.15.0 (archive sha256 a5924018406ce0063cd67f8e008104968b74b563ee1b85dde3ed1f7cb87dbd) src/ansi.rs:1363-1387,1421-1450,1514-1521",
+              "terminfo.dev packages/probe-defs/src/extensions.ts oscColorQueryProbe (color readback review branch) and resetProbe/colorResetProbe"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "alacritty",
+      "version": "0.26.0",
+      "os": "linux"
+    },
     "featureId": "input.button-event-mouse",
     "answers": [
       {
@@ -1428,15 +1764,15 @@
         "citedBlobs": [
           {
             "repository": "git@github.com:beorn/terminfo.dev.git",
-              "commit": "53d40ebaff289acce9fc17bd2a5f7fce5027dbd6",
+            "commit": "53d40ebaff289acce9fc17bd2a5f7fce5027dbd6",
             "path": "packages/probe-defs/src/extensions.ts",
-              "oid": "678f2ff4a28ce8f480d4b8041c87334aeda3aec5"
+            "oid": "678f2ff4a28ce8f480d4b8041c87334aeda3aec5"
           },
           {
             "repository": "git@github.com:beorn/terminfo.dev.git",
-              "commit": "53d40ebaff289acce9fc17bd2a5f7fce5027dbd6",
+            "commit": "53d40ebaff289acce9fc17bd2a5f7fce5027dbd6",
             "path": "packages/probe-defs/src/helpers.ts",
-              "oid": "6c72e4a401beed3259d14867a95d3e07d8da4260"
+            "oid": "6c72e4a401beed3259d14867a95d3e07d8da4260"
           },
           {
             "repository": "git@github.com:beorn/termless.git",
@@ -1487,15 +1823,15 @@
         "citedBlobs": [
           {
             "repository": "git@github.com:beorn/terminfo.dev.git",
-              "commit": "53d40ebaff289acce9fc17bd2a5f7fce5027dbd6",
+            "commit": "53d40ebaff289acce9fc17bd2a5f7fce5027dbd6",
             "path": "packages/probe-defs/src/extensions.ts",
-              "oid": "678f2ff4a28ce8f480d4b8041c87334aeda3aec5"
+            "oid": "678f2ff4a28ce8f480d4b8041c87334aeda3aec5"
           },
           {
             "repository": "git@github.com:beorn/terminfo.dev.git",
-              "commit": "53d40ebaff289acce9fc17bd2a5f7fce5027dbd6",
+            "commit": "53d40ebaff289acce9fc17bd2a5f7fce5027dbd6",
             "path": "packages/probe-defs/src/helpers.ts",
-              "oid": "6c72e4a401beed3259d14867a95d3e07d8da4260"
+            "oid": "6c72e4a401beed3259d14867a95d3e07d8da4260"
           },
           {
             "repository": "git@github.com:beorn/termless.git",
@@ -2416,6 +2752,39 @@
             "reason": "Ghostty WASM77b69f9f, core5714ed07a1012573261b7b7e3ed2add9c1504496: src/terminal/osc.zig:556-565 puts first9 in state9; :1076-1081 accepts only semicolon there, so second9 invalidates OSC99; :554 clears complete and :1708-1714 returns null. Parser.zig:270-273 emits osc_dispatch only for nonnull commands. The actual WASM write path is Termless14912a2729d795b45579698abcdb92d4749f4ff1 vendor/ghostty-web/ghostty-wasm-api.patch:834-837 ResponseStream(ResponseHandler), :877 nextSlice; no notification action is reached. Audited family is Terminfo27541ce4 extensions.ts:3267-3312 capability query ESC]99;i=<nonce>:p=?;ST, not desktop delivery.",
             "sources": [
               "Ghostty WASM77b69f9f, core5714ed07a1012573261b7b7e3ed2add9c1504496: src/terminal/osc.zig:556-565 puts first9 in state9; :1076-1081 accepts only semicolon there, so second9 invalidates OSC99; :554 clears complete and :1708-1714 returns null. Parser.zig:270-273 emits osc_dispatch only for nonnull commands. The actual WASM write path is Termless14912a2729d795b45579698abcdb92d4749f4ff1 vendor/ghostty-web/ghostty-wasm-api.patch:834-837 ResponseStream(ResponseHandler), :877 nextSlice; no notification action is reached. Audited family is Terminfo27541ce4 extensions.ts:3267-3312 capability query ESC]99;i=<nonce>:p=?;ST, not desktop delivery."
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "ghostty",
+      "version": "0.4.0",
+      "os": "linux"
+    },
+    "featureId": "extensions.sixel",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "vendor/ghostty-web/RECEIPT.json",
+            "oid": "3ffc517c4f4b5b97bf31e5a8b513ab7f3b21251e"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "source-32225-ghostty-extensions.sixel",
+            "reviewer": "@dev/2",
+            "reason": "Criterion branch is source-negative: the DCS q payload leaves the parser printing (the X sentinel renders) and the audited source has no Sixel handler or image store. Ghostty core 5714ed07 src/terminal/dcs.zig:25-47 hook() ignores any hook that tryHook rejects, and :50-77 tryHook accepts at zero intermediates only final 'p' (tmux control mode, which additionally requires params [1000]); DCS q therefore returns null and no handler or image store is installed. Termless vendor/ghostty-web/RECEIPT.json binds core 5714ed07a1012573261b7b7e3ed2add9c1504496 to WASM 42e84af1b38be94571974a23fa4667c4735ee7a272dcff39afd5cba40dcf48de. Missing observable: a Sixel handler or image store at the pinned source.",
+            "sources": [
+              "https://github.com/ghostty-org/ghostty@5714ed07a1012573261b7b7e3ed2add9c1504496:src/terminal/dcs.zig:25-77",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:vendor/ghostty-web/RECEIPT.json"
             ]
           }
         ]
@@ -5979,15 +6348,15 @@
         "citedBlobs": [
           {
             "repository": "git@github.com:beorn/terminfo.dev.git",
-              "commit": "53d40ebaff289acce9fc17bd2a5f7fce5027dbd6",
+            "commit": "53d40ebaff289acce9fc17bd2a5f7fce5027dbd6",
             "path": "packages/probe-defs/src/extensions.ts",
-              "oid": "678f2ff4a28ce8f480d4b8041c87334aeda3aec5"
+            "oid": "678f2ff4a28ce8f480d4b8041c87334aeda3aec5"
           },
           {
             "repository": "git@github.com:beorn/terminfo.dev.git",
-              "commit": "53d40ebaff289acce9fc17bd2a5f7fce5027dbd6",
+            "commit": "53d40ebaff289acce9fc17bd2a5f7fce5027dbd6",
             "path": "packages/probe-defs/src/helpers.ts",
-              "oid": "6c72e4a401beed3259d14867a95d3e07d8da4260"
+            "oid": "6c72e4a401beed3259d14867a95d3e07d8da4260"
           },
           {
             "repository": "git@github.com:beorn/termless.git",
@@ -6038,15 +6407,15 @@
         "citedBlobs": [
           {
             "repository": "git@github.com:beorn/terminfo.dev.git",
-              "commit": "53d40ebaff289acce9fc17bd2a5f7fce5027dbd6",
+            "commit": "53d40ebaff289acce9fc17bd2a5f7fce5027dbd6",
             "path": "packages/probe-defs/src/extensions.ts",
-              "oid": "678f2ff4a28ce8f480d4b8041c87334aeda3aec5"
+            "oid": "678f2ff4a28ce8f480d4b8041c87334aeda3aec5"
           },
           {
             "repository": "git@github.com:beorn/terminfo.dev.git",
-              "commit": "53d40ebaff289acce9fc17bd2a5f7fce5027dbd6",
+            "commit": "53d40ebaff289acce9fc17bd2a5f7fce5027dbd6",
             "path": "packages/probe-defs/src/helpers.ts",
-              "oid": "6c72e4a401beed3259d14867a95d3e07d8da4260"
+            "oid": "6c72e4a401beed3259d14867a95d3e07d8da4260"
           },
           {
             "repository": "git@github.com:beorn/termless.git",
@@ -8849,6 +9218,53 @@
       "version": "0.3.3",
       "os": "linux"
     },
+    "featureId": "extensions.iterm2-images",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/libvterm/build/flat-api.c",
+            "oid": "17896892f427a04d7a9a963e7a3614c517a73ecc"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/libvterm/src/backend.ts",
+            "oid": "f0431b2b3b1824d3028e7a039d55278d2cddc0e8"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/libvterm/wasm/libvterm.wasm.receipt.json",
+            "oid": "178e8db507779f4903f6b99436006cf8d418a952"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "source-32225-libvterm-extensions.iterm2-images",
+            "reviewer": "@dev/2",
+            "reason": "Criterion branch is source-negative: the OSC 1337 inline-image sequence leaves the parser printing (the X sentinel renders) and the audited source has no OSC 1337 handler or image store. libvterm v0.3.3 src/state.c:1777-1808 (on_osc) handles commands 0/1/2/52, consults state->fallbacks->osc only when a fallback is installed, and returns 0 (unhandled) otherwise. Termless packages/libvterm/build/flat-api.c:96-119 installs only vterm_state_set_selection_callbacks and src/backend.ts installs no OSC fallback, so OSC 1337 is dropped with no inline-image store. The wasm receipt binds WASM 712298aff45c7c53a22dc028b13cb58dae1e984199b520bbbc0475ae64d83159 to upstream 9d6d2112335080312ef8c36667fa717ded4f7daf / v0.3.3. Missing observable: an inline-image handler or image store at the pinned source.",
+            "sources": [
+              "https://github.com/neovim/libvterm.git@9d6d2112335080312ef8c36667fa717ded4f7daf:src/state.c:1777-1808",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/libvterm/build/flat-api.c:96-119",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/libvterm/wasm/libvterm.wasm.receipt.json",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/libvterm/src/backend.ts"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "libvterm",
+      "version": "0.3.3",
+      "os": "linux"
+    },
     "featureId": "extensions.osc176-app-id",
     "answers": [
       {
@@ -9115,6 +9531,53 @@
               "a3a7b307-e119-45c2-9df4-413300b3dfc1:extensions.osc9-progress negative buffer_state assertion: extensions.osc9-progress: the engine handles OSC 9 (a progress handler exists at the pinned source)",
               "intake postmerge-2f139587-review-candidates.json sha256 887eeed4fff56d28339e27e6295f573b2310e70ca767737c1687b9892906d6f1 (@dev/4, first post-merge collection after root 2f139587c5f33a7801b1b1ac9e71a7eb7ee00e2a; terminfo source 011f01964bbd67cfe1bc251715d957d1fc9e8fba; suite 18bd9019deaf)",
               "intake postmerge-2f139587-proof.json sha256 aa8d58d8be185aa7673cba2f9947683193679895b4b444ac05fc34d393a4930c (104 cells: 76 source-negative review, 17 Unsupported, 11 TODO)"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "libvterm",
+      "version": "0.3.3",
+      "os": "linux"
+    },
+    "featureId": "extensions.sixel",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/libvterm/build/flat-api.c",
+            "oid": "17896892f427a04d7a9a963e7a3614c517a73ecc"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/libvterm/src/backend.ts",
+            "oid": "f0431b2b3b1824d3028e7a039d55278d2cddc0e8"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/libvterm/wasm/libvterm.wasm.receipt.json",
+            "oid": "178e8db507779f4903f6b99436006cf8d418a952"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "source-32225-libvterm-extensions.sixel",
+            "reviewer": "@dev/2",
+            "reason": "Criterion branch is source-negative: the DCS q payload leaves the parser printing (the X sentinel renders) and the audited source has no Sixel handler or image store. libvterm v0.3.3 src/state.c:1897-1911 (on_dcs) handles only $q DECRQSS, consults state->fallbacks->dcs only when a fallback is installed, and otherwise logs 'Unhandled DCS' and returns 0. Termless packages/libvterm/build/flat-api.c:96-119 installs no OSC or DCS fallback, so a DCS q Sixel payload is dropped with no image store. The wasm receipt binds WASM 712298aff45c7c53a22dc028b13cb58dae1e984199b520bbbc0475ae64d83159 to upstream 9d6d2112335080312ef8c36667fa717ded4f7daf / v0.3.3. Missing observable: a Sixel handler or image store at the pinned source.",
+            "sources": [
+              "https://github.com/neovim/libvterm.git@9d6d2112335080312ef8c36667fa717ded4f7daf:src/state.c:1897-1911",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/libvterm/build/flat-api.c:96-119",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/libvterm/wasm/libvterm.wasm.receipt.json",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/libvterm/src/backend.ts"
             ]
           }
         ]
@@ -13860,6 +14323,59 @@
       "version": "0.16.2",
       "os": "linux"
     },
+    "featureId": "extensions.iterm2-images",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "286fddf6632e43ccd62f9050be41ec7b2908e43e",
+            "path": "packages/vt100-rust/native/src/lib.rs",
+            "oid": "ecdc2cf069088b4ba7180dbf28d8603d13d58fb8"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "286fddf6632e43ccd62f9050be41ec7b2908e43e",
+            "path": "packages/vt100-rust/native/Cargo.lock",
+            "oid": "3755893017da8338bfd02474d98ecfb7ccadaacb"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "286fddf6632e43ccd62f9050be41ec7b2908e43e",
+            "path": "packages/vt100-rust/native/Cargo.toml",
+            "oid": "cd1dd11f0824fde2ce6720c11b3ac71fa8ae4d5d"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/vt100-rust/src/backend.ts",
+            "oid": "9b3477c0fedf8586430781e8f4d17019569af98b"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "source-32225-vt100-rust-extensions.iterm2-images",
+            "reviewer": "@dev/2",
+            "reason": "Criterion branch is source-negative: the OSC 1337 inline-image sequence leaves the parser printing (the X sentinel renders) and the audited source has no OSC 1337 handler or image store. vt100 0.16.2 src/perform.rs:198-238 matches only OSC 0/1/2/52 and routes every other OSC to Callbacks::unhandled_osc, whose default at src/callbacks.rs:66 is empty and is not overridden by the addon (Termless packages/vt100-rust/native/src/lib.rs:21-54 installs window title, icon, clipboard copy and clipboard paste callbacks only). Missing observable: an inline-image handler or image store at the pinned source.",
+            "sources": [
+              "git@github.com:beorn/termless.git@286fddf6632e43ccd62f9050be41ec7b2908e43e:packages/vt100-rust/native/src/lib.rs:21-54,305-350",
+              "git@github.com:beorn/termless.git@286fddf6632e43ccd62f9050be41ec7b2908e43e:packages/vt100-rust/native/Cargo.lock",
+              "vt100 0.16.2 (Cargo.lock vt100 checksum 054ff75fb8fa83e609e685106df4faeffdf3a735d3c74ebce97ec557d5d36fd9; registry archive sha256 verified equal) src/perform.rs:198-238; src/callbacks.rs:66",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/vt100-rust/src/backend.ts"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt100-rust",
+      "version": "0.16.2",
+      "os": "linux"
+    },
     "featureId": "extensions.kitty-graphics",
     "answers": [
       {
@@ -18431,6 +18947,59 @@
             "reason": "vte0.15.0 src/lib.rs:419-422 ends OSC on ESC and :554-587 forwards its semicolon-separated params to performer.osc_dispatch. vt1000.16.2 src/perform.rs:198-236 handles OSC0/1/2/52 only; OSC99 reaches callbacks.unhandled_osc at :234-236, whose default src/callbacks.rs:64-66 is empty. Exact cached crate SHA256 vt100054ff75fb8fa83e609e685106df4faeffdf3a735d3c74ebce97ec557d5d36fd9 and vtea5924018406ce0063cd67f8e008104968b74b563ee1b85dde3ed1f7cb87d3dbd. Audited family is Terminfo27541ce4 extensions.ts:3267-3312 capability query ESC]99;i=<nonce>:p=?;ST. termless 6ffc0df7 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact 0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3, sourceCommit 6ffc0df79756fcc259d87131681641606540e512.",
             "sources": [
               "vte0.15.0 src/lib.rs:419-422 ends OSC on ESC and :554-587 forwards its semicolon-separated params to performer.osc_dispatch. vt1000.16.2 src/perform.rs:198-236 handles OSC0/1/2/52 only; OSC99 reaches callbacks.unhandled_osc at :234-236, whose default src/callbacks.rs:64-66 is empty. Exact cached crate SHA256 vt100054ff75fb8fa83e609e685106df4faeffdf3a735d3c74ebce97ec557d5d36fd9 and vtea5924018406ce0063cd67f8e008104968b74b563ee1b85dde3ed1f7cb87d3dbd. Audited family is Terminfo27541ce4 extensions.ts:3267-3312 capability query ESC]99;i=<nonce>:p=?;ST. termless 6ffc0df7 packages/vt100-rust/native/src/lib.rs:21-53 implements only set_window_title, set_window_icon_name, copy_to_clipboard, and paste_from_clipboard; no unhandled_csi, unhandled_osc, or reply writer. Artifact 0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3, sourceCommit 6ffc0df79756fcc259d87131681641606540e512."
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt100-rust",
+      "version": "0.16.2",
+      "os": "linux"
+    },
+    "featureId": "extensions.sixel",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "286fddf6632e43ccd62f9050be41ec7b2908e43e",
+            "path": "packages/vt100-rust/native/src/lib.rs",
+            "oid": "ecdc2cf069088b4ba7180dbf28d8603d13d58fb8"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "286fddf6632e43ccd62f9050be41ec7b2908e43e",
+            "path": "packages/vt100-rust/native/Cargo.lock",
+            "oid": "3755893017da8338bfd02474d98ecfb7ccadaacb"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "286fddf6632e43ccd62f9050be41ec7b2908e43e",
+            "path": "packages/vt100-rust/native/Cargo.toml",
+            "oid": "cd1dd11f0824fde2ce6720c11b3ac71fa8ae4d5d"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/vt100-rust/src/backend.ts",
+            "oid": "9b3477c0fedf8586430781e8f4d17019569af98b"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "source-32225-vt100-rust-extensions.sixel",
+            "reviewer": "@dev/2",
+            "reason": "Criterion branch is source-negative: the DCS q payload leaves the parser printing (the X sentinel renders) and the audited source has no Sixel handler or image store. vt100 0.16.2 has no DCS path at all: src/callbacks.rs:1-70 declares no hook/put/unhook callback, src/perform.rs implements the vte handler without a DCS branch, and src/parser.rs:53-56 feeds bytes straight to vte::Parser::advance, so a DCS q payload is consumed and discarded; the addon exposes no image reader (Termless packages/vt100-rust/native/src/lib.rs:21-54,305-350). Missing observable: a Sixel handler or image store at the pinned source.",
+            "sources": [
+              "git@github.com:beorn/termless.git@286fddf6632e43ccd62f9050be41ec7b2908e43e:packages/vt100-rust/native/src/lib.rs:21-54,305-350",
+              "git@github.com:beorn/termless.git@286fddf6632e43ccd62f9050be41ec7b2908e43e:packages/vt100-rust/native/Cargo.lock",
+              "vt100 0.16.2 (Cargo.lock vt100 checksum 054ff75fb8fa83e609e685106df4faeffdf3a735d3c74ebce97ec557d5d36fd9; registry archive sha256 verified equal) src/callbacks.rs:1-70; src/perform.rs; src/parser.rs:53-56",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/vt100-rust/src/backend.ts"
             ]
           }
         ]
