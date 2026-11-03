@@ -145,7 +145,7 @@ export function resolveSourceAnswer(rows: readonly SourceAnswer[], input: Source
             const source =
               runtime?.kind === "js" &&
               runtime.integrity.kind === "source" &&
-              runtime.integrity.repository === blob.repository
+              repositoryIdentity(runtime.integrity.repository) === repositoryIdentity(blob.repository)
                 ? runtime.integrity
                 : undefined
             const termless = repositoryIdentity(blob.repository) === repositoryIdentity(TERMLESS_REPOSITORY)

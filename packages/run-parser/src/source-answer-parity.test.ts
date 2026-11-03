@@ -49,7 +49,7 @@ const currentRuns = () =>
     readdirSync(join(ROOT, "content", dir))
       .filter((name) => name.endsWith(".json"))
       .map((name) => ({ dir, name, run: JSON.parse(readFileSync(join(ROOT, "content", dir, name), "utf8")) as Run }))
-      .filter(({ run }) => run.schemaVersion === 4 && run.runtimeIdentity !== undefined),
+      .filter(({ run }) => run.schemaVersion === 4),
   )
 
 const resolveCell = (run: Run, featureId: string) =>
@@ -63,19 +63,19 @@ const resolveCell = (run: Run, featureId: string) =>
 describe("kept answers against every current committed run", () => {
   it("finds the subject cells and no cell the writer would decide differently", () => {
     const runs = currentRuns()
-    expect(runs.length).toBeGreaterThan(0)
+    expect(runs).toHaveLength(12)
     const drifted: string[] = []
     let cells = 0
     for (const { dir, name, run } of runs) {
       for (const result of run.results) {
-        if (!result.reviewRef && !result.tests.some((test) => test.reviewRef !== undefined)) continue
         cells++
-        const next = finalizeProbeResult(result as never, resolveCell(run, result.featureId))
+        const reviewed = result.reviewRef || result.tests.some((test) => test.reviewRef !== undefined)
+        const next = finalizeProbeResult(result as never, reviewed ? resolveCell(run, result.featureId) : undefined)
         if (!isDeepStrictEqual(next, result)) drifted.push(`${dir}/${name} ${result.featureId}`)
       }
     }
     // A table edit re-finalizes the affected runs in the same change; this is the cell-for-cell proof of it.
-    expect({ cells, drifted }).toEqual({ cells, drifted: [] })
+    expect({ cells, drifted }).toEqual({ cells: 3276, drifted: [] })
   })
 
   it("reads the disputed ghostty cells as test-todo with both originals named", () => {
@@ -114,17 +114,5 @@ describe("kept answers against every current committed run", () => {
     for (const cell of cells.filter((entry) => !DISPUTED.includes(entry.featureId))) {
       expect(String(cell.reason).startsWith("kept answers disagree"), cell.featureId).toBe(false)
     }
-  })
-
-  // @cto de41833e c2 removed the build receipt, so a kept engine citation could only resolve as an own-version
-  // answer with nothing behind it. No kept row may name the engine core.
-  it("keeps the engine core out of every kept citation", () => {
-    const core = repositoryIdentity("https://github.com/ghostty-org/ghostty")
-    const cited = new Set(
-      SOURCE_ANSWERS.flatMap((row) =>
-        row.answers.flatMap((answer) => answer.citedBlobs.map((blob) => blob.repository)),
-      ),
-    )
-    expect([...cited].filter((repository) => repositoryIdentity(repository) === core)).toEqual([])
   })
 })

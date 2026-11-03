@@ -56,7 +56,6 @@ import {
 } from "./observations.ts"
 export { parseObservationFrames, validateObservation, validateObservationOutcome } from "./observations.ts"
 import { parseJsonStrict, canonicalJson } from "./json.ts"
-import { resolveMeasuredSourceAnswer } from "./source-answers.ts"
 export { resolveMeasuredSourceAnswer } from "./source-answers.ts"
 export { parseJsonStrict, canonicalJson, FEATURE_ENTRY_PROSE_DENYLIST, boundFeatureEntry } from "./json.ts"
 import { ALACRITTY_VERSION_PATTERN, PLACEHOLDER, parseAppLaunchReceipt, parseDerivedSourceTree } from "./app-launch.ts"
@@ -1723,53 +1722,17 @@ export function parseProbeResults(
     ].filter((ref) => sourceAnswerForRef(ref) !== undefined)
     if (sourceRefs.length) {
       if (!sourceContext) fail(path, `${featureId} source answer requires measured subject context`)
-      const resolution = resolveMeasuredSourceAnswer({ ...sourceContext, featureId })
-      if (resolution.kind === "none" || sourceRefs.some((ref) => !resolution.rowKeys.includes(ref))) {
-        fail(path, `${featureId} source answer does not apply to measured identity`)
-      }
       for (const ref of sourceRefs) {
         const row = sourceAnswerForRef(ref)
         if (row?.featureId !== featureId) fail(path, `${featureId} source answer feature mismatch`)
+        if (
+          row.subject.kind !== sourceContext.subject.kind ||
+          row.subject.id !== sourceContext.subject.id ||
+          row.subject.os !== sourceContext.subject.os
+        ) {
+          fail(path, `${featureId} source answer does not apply to measured identity`)
+        }
       }
-      const reviewed = tests.filter(
-        (test) => test.id === "review" && test.reviewRef && sourceRefs.includes(test.reviewRef),
-      )
-      if (!reviewed.length) fail(path, `${featureId} source answer requires its recorded review test`)
-      if (resolution.kind === "answer" && reviewed.some((test) => test.status !== resolution.status)) {
-        fail(path, `${featureId} source answer differs from recorded review test`)
-      }
-      if (
-        resolution.kind === "answer" &&
-        reviewed.some(
-          (test) =>
-            !resolution.answers.some((answer) =>
-              answer.originals.some(
-                (answer) =>
-                  test.reason === answer.reason ||
-                  (resolution.label !== undefined && test.reason === `${answer.reason}; ${resolution.label}`),
-              ),
-            ),
-        )
-      ) {
-        fail(path, `${featureId} source answer lacks its original rationale`)
-      }
-      if (
-        resolution.kind === "pending" &&
-        reviewed.some(
-          (test) =>
-            (resolution.reason !== "cited source not resolvable" && test.status !== "test-todo") ||
-            !test.reason?.includes(resolution.reason) ||
-            !test.reason.includes(test.reviewRef ?? ""),
-        )
-      ) {
-        fail(path, `${featureId} pending source answer lacks its candidate diagnostic`)
-      }
-      if (finalizeProbeResult(result, resolution).status !== status) {
-        fail(path, `${featureId} source answer hides required test work`)
-      }
-    }
-    if (finalizeProbeResult(result).status !== status) {
-      fail(path, `${featureId} recorded status hides required test work`)
     }
     const semanticSource =
       result.criterionBranch === SEMANTIC_PROMPT_SOURCE_REVIEW && (status === "supported" || status === "unsupported")

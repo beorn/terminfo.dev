@@ -224,6 +224,7 @@ it.each(["projection", "admission", "collection"] as const)(
         const result = await invoke()
         if (entry === "projection") {
           const projection = result as ReturnType<typeof loadSelectedResults>
+          expect(projection).toEqual(baseline)
           for (const overlay of overlays) expect(projection.table[overlay.runId]![overlay.featureId]).toBe("untestable")
         } else if (entry === "admission") {
           // The committed run's placement receipt is absent beside it; resolving overlays grants no receipt.

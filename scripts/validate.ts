@@ -7,8 +7,8 @@
  */
 
 import { readFileSync, readdirSync, existsSync } from "node:fs"
-import { join } from "node:path"
-import { verifyTerminalIdentity } from "../packages/terminfo.dev/src/identity-guard.ts"
+import { join, relative, basename, dirname } from "node:path"
+import { loadStoredRuns } from "../packages/admin/run-admission.ts"
 import { ALL_PROBES } from "../packages/probe-defs/src/index.ts"
 import { loadCategories } from "../docs/data/categories.ts"
 import { probeStatusSummary } from "../docs/data/probe-status.ts"
@@ -121,102 +121,16 @@ let warnings = 0
 
 heading("Errors (block deploy)")
 
-type ProbeFile = {
-  file: string
-  dir: "probes-apps" | "probes-libs" | "probes-mux"
-  backendName?: string
-  data: {
-    schemaVersion?: number
-    terminal?: string
-    backend?: string
-    target?: unknown
-    subject?: unknown
-    responses?: Record<string, string>
-    results?: Record<string, boolean>
+// The canonical run reader owns schemas, evidence and stored grades.
+const probeFiles = loadStoredRuns(contentDir, [...featureIds]).map((data) => {
+  const dir = basename(dirname(data.path))
+  const expectedKind = dir === "probes-libs" ? "lib" : dir === "probes-apps" ? "term" : "mux"
+  if (data.subject.kind !== expectedKind) {
+    throw new Error(`${relative(contentDir, data.path)}: subject.kind must be ${expectedKind} in ${dir}`)
   }
-}
-
-// Parse every measured input once before producing any derived validation summary.
-const probeFiles: ProbeFile[] = []
-for (const [dir, files] of [
-  ["probes-apps", probeAppsFiles],
-  ["probes-libs", probeLibsFiles],
-  ["probes-mux", probeMuxFiles],
-] as const) {
-  for (const file of files) {
-    try {
-      const data = loadJson(join(contentDir, dir, file))
-      if (data === null || typeof data !== "object" || Array.isArray(data)) {
-        throw new Error("expected a JSON object")
-      }
-      const probe = data as ProbeFile["data"]
-      if (
-        probe.schemaVersion !== undefined &&
-        probe.schemaVersion !== 2 &&
-        probe.schemaVersion !== 3 &&
-        probe.schemaVersion !== 4
-      ) {
-        throw new Error(`unsupported schemaVersion ${String(probe.schemaVersion)}`)
-      }
-      if (
-        probe.schemaVersion === undefined &&
-        (probe.results === null || typeof probe.results !== "object" || Array.isArray(probe.results))
-      ) {
-        throw new Error("legacy probe results must be a JSON object")
-      }
-      if (probe.schemaVersion === undefined && probe.responses !== undefined) {
-        const responses: unknown = probe.responses
-        if (
-          responses === null ||
-          typeof responses !== "object" ||
-          Array.isArray(responses) ||
-          !Object.values(responses as Record<string, unknown>).every((value) => typeof value === "string")
-        ) {
-          throw new Error("legacy identity responses must be string values in a JSON object")
-        }
-      }
-      let backendName: string | undefined
-      if (probe.schemaVersion === 2 || probe.schemaVersion === 3 || probe.schemaVersion === 4) {
-        const target = probe.schemaVersion === 4 ? probe.subject : probe.target
-        if (target === null || typeof target !== "object" || Array.isArray(target)) {
-          throw new Error("v2 target must be a JSON object")
-        }
-        const expectedKind =
-          dir === "probes-libs"
-            ? probe.schemaVersion === 4
-              ? "lib"
-              : "headless"
-            : dir === "probes-apps"
-              ? probe.schemaVersion === 4
-                ? "term"
-                : "app"
-              : "mux"
-        if ((target as Record<string, unknown>).kind !== expectedKind) {
-          throw new Error(`v2 target.kind must be "${expectedKind}" in ${dir}`)
-        }
-        const id = (target as Record<string, unknown>).id
-        if (typeof id !== "string" || id.trim().length === 0) {
-          throw new Error("v2 target.id must be a nonempty string")
-        }
-        backendName = id
-      } else {
-        backendName = dir === "probes-libs" ? (probe.backend ?? probe.terminal) : (probe.terminal ?? probe.backend)
-      }
-      probeFiles.push({ file, dir, backendName, data: probe })
-    } catch (cause) {
-      error(
-        `Probe file "${dir}/${file}" could not be parsed: ${cause instanceof Error ? cause.message : String(cause)}`,
-      )
-      errors++
-    }
-  }
-}
-if (errors > 0) process.exit(1)
-
-const probeBackends = new Set<string>()
-for (const { backendName } of probeFiles) {
-  if (backendName) probeBackends.add(backendName)
-}
+  return { file: basename(data.path), dir, backendName: data.subject.id, data }
+})
+const probeBackends = new Set(probeFiles.map(({ backendName }) => backendName))
 
 // 1. Features with unknown tags
 {
@@ -437,41 +351,6 @@ for (const { backendName } of probeFiles) {
   if (!found) info("All platform page metadata is valid")
 }
 
-// 4f. Probe files terminal identity verification
-{
-  let found = false
-  let verifiedCount = 0
-  let uncheckedCount = 0
-
-  for (const { file, dir, data } of probeFiles) {
-    if (dir === "probes-libs") continue
-    const term = data.terminal || data.backend
-    if (!term) continue
-    if (data.schemaVersion === undefined && data.responses === undefined) {
-      warn(`Probe file "${dir}/${file}" has no captured identity responses (legacy history; unverified)`)
-      warnings++
-      uncheckedCount++
-      continue
-    }
-    const check = verifyTerminalIdentity(term, data.responses, data.results)
-    if (!check.checked) {
-      info(`Probe file "${dir}/${file}" has no identity profile for "${term}"`)
-      uncheckedCount++
-    } else if (!check.ok) {
-      error(`Probe file "${dir}/${file}" failed terminal identity check: ${check.reason}`)
-      errors++
-      found = true
-    } else {
-      verifiedCount++
-    }
-  }
-  if (!found) {
-    info(
-      `Probe terminal identity guards: ${verifiedCount} verified, ${uncheckedCount} unchecked (missing replies or no rule)`,
-    )
-  }
-}
-
 // 4g. Every probe definition has a features.json catalog row
 {
   let found = false
@@ -543,38 +422,7 @@ heading("Warnings (fix soon)")
   if (count === 0) info("All terminals have probe data")
 }
 
-// 8. Probe data files with no matching terminal
-{
-  // Build a set of all known backend identifiers from terminals.json
-  const knownBackends = new Set<string>()
-  for (const [id, term] of Object.entries(terminals)) {
-    knownBackends.add(id)
-    for (const b of term.headlessBackends ?? []) {
-      knownBackends.add(b)
-    }
-  }
-
-  // Also add slug and manifestBackend if present
-  for (const [, term] of Object.entries(terminals)) {
-    if (term.slug) knownBackends.add(term.slug)
-    if (term.manifestBackend) knownBackends.add(term.manifestBackend)
-  }
-
-  let count = 0
-  for (const { file, dir, backendName, data } of probeFiles) {
-    // A v2 run states its target (kind + id) and is checked against the catalog by section 8b below;
-    // this looser name check covers legacy runs, whose backend naming predates the catalog.
-    if (data.schemaVersion === 2 || data.schemaVersion === 3 || data.schemaVersion === 4) continue
-    if (backendName && !knownBackends.has(backendName)) {
-      warn(`Probe file "${dir}/${file}" references "${backendName}" — no matching terminal in terminals.json`)
-      warnings++
-      count++
-    }
-  }
-  if (count === 0) info("All legacy probe files match a terminal in terminals.json")
-}
-
-// 8b. Every schema-2/3 run names a target declared in terminals.json
+// 8. Every retained run names a subject declared in terminals.json
 {
   // compatibilitySubjects (docs/data/current-results.ts) derives every published v1 and site key from
   // (subject.kind, subject.id) against terminals.json alone, and throws "Undeclared compatibility subject"
@@ -595,20 +443,14 @@ heading("Warnings (fix soon)")
 
   let count = 0
   for (const { file, dir, data } of probeFiles) {
-    if (data.schemaVersion !== 2 && data.schemaVersion !== 3 && data.schemaVersion !== 4) continue
-    const target = (data.schemaVersion === 4 ? data.subject : data.target) as
-      | { kind?: unknown; id?: unknown }
-      | undefined
-    const kind = target?.kind
-    const id = target?.id
-    if (typeof kind !== "string" || typeof id !== "string") continue
-    if (!declaredKinds.get(id)?.has(kind === "app" ? "term" : kind === "headless" ? "lib" : kind)) {
+    const { kind, id } = data.subject
+    if (!declaredKinds.get(id)?.has(kind)) {
       error(`Probe file "${dir}/${file}" targets undeclared ${kind}:${id} - terminals.json declares no such target`)
       errors++
       count++
     }
   }
-  if (count === 0) info("Every schema-2/3 run names a target declared in terminals.json")
+  if (count === 0) info("Every retained run names a subject declared in terminals.json")
 }
 
 // 9. Features missing body text
@@ -780,33 +622,6 @@ heading("Info (summary)")
   info(`  With probe data: ${withProbe}`)
   info(`  Without probe data: ${withoutProbe}`)
   info(`Probe files: ${probeAppsFiles.length} apps, ${probeLibsFiles.length} libs, ${probeMuxFiles.length} mux`)
-}
-
-// 16. Annotation coverage
-{
-  // Count total failure results across all probe files
-  let totalFailures = 0
-  let annotatedFailures = 0
-
-  // v2 runs store observations, not legacy boolean results; this coverage only counts legacy failures.
-  for (const { file, dir, data } of probeFiles) {
-    if (data.schemaVersion !== undefined) continue
-    if (!data.results) throw new Error(`Probe file "${dir}/${file}" lost required legacy results after inventory`)
-    const backendName = data.terminal ?? data.backend ?? ""
-    for (const [featureId, result] of Object.entries(data.results)) {
-      if (result === false) {
-        totalFailures++
-        const annotationKey = `${backendName}:${featureId}`
-        if (annotations[annotationKey]) {
-          annotatedFailures++
-        }
-      }
-    }
-  }
-
-  const pct = totalFailures > 0 ? ((annotatedFailures / totalFailures) * 100).toFixed(1) : "N/A"
-  info(`Legacy annotation coverage: ${annotatedFailures}/${totalFailures} failures annotated (${pct}%)`)
-  info(`Total annotations: ${Object.keys(annotations).length}`)
 }
 
 // ---------------------------------------------------------------------------
