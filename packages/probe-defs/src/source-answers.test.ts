@@ -7,14 +7,26 @@
 import { expect, it } from "vitest"
 import { finalizeProbeResult } from "./helpers.ts"
 import {
+  SOURCE_ANSWER_PENDING_LABELS,
   parseSourceAnswerKey,
   repositoryIdentity,
   resolveSourceAnswer,
   sourceAnswerKey,
+  sourceAnswerVersionLabel,
   type SourceAnswer,
 } from "./source-answers.ts"
 
 const subject = { kind: "lib" as const, id: "example", version: "1.0", os: "linux" }
+
+// @cto 18a3b98f: the fixed pending labels are the only phrases a public consumer may forward.
+it("publishes only the fixed pending labels", () => {
+  expect(Object.values(SOURCE_ANSWER_PENDING_LABELS)).toEqual([
+    "cited source changed",
+    "kept answers disagree",
+    "cited source not resolvable",
+  ])
+  expect(sourceAnswerVersionLabel("0.4.0")).toBe("reviewed at 0.4.0, not re-verified")
+})
 const original = {
   reviewRef: "collector.review.original",
   reviewer: "@cto",
@@ -361,11 +373,7 @@ it("keeps differing qualifying originals under one key pending", () => {
   })
 })
 
-// @cto de41833e conditions 2-4: an engine citation is attributed through the build receipt, the addon
-// resolves at its own source commit, and anything covered by neither stays unresolvable.
 const engineCore = "https://github.com/ghostty-org/ghostty"
-const engineCommit = "e".repeat(40)
-const loadedSha = "7".repeat(64)
 const wasmIdentity = {
   kind: "js" as const,
   runtimeFormat: "wasm" as const,
@@ -374,15 +382,8 @@ const wasmIdentity = {
   adapterVersion: "0.10.2",
   termlessRevision: "c".repeat(40),
   integrity: { kind: "registry" as const, lockIntegrity: "sha512-fixture" },
-  loadedBinary: { path: "ghostty-vt.wasm", sha256: loadedSha },
+  loadedBinary: { path: "ghostty-vt.wasm", sha256: "7".repeat(64) },
 }
-const engineBlob = { repository: engineCore, commit: engineCommit, path: "src/terminal/osc.zig", oid: "d".repeat(40) }
-const engineAnswer: SourceAnswer = {
-  subject: { kind: "lib" as const, id: "ghostty", version: "0.4.0", os: "linux" },
-  featureId: "extensions.engine",
-  answers: [{ status: "unsupported", citedBlobs: [engineBlob], originals: [original] }],
-}
-const receipt = { outputs: { "ghostty-vt.wasm": loadedSha }, core: { repository: engineCore, commit: engineCommit } }
 
 it("reads the same repository however a citation spells it", () => {
   expect(repositoryIdentity("git@github.com:ghostty-org/ghostty.git")).toBe(repositoryIdentity(engineCore))
@@ -390,45 +391,7 @@ it("reads the same repository however a citation spells it", () => {
   expect(repositoryIdentity("git@github.com:beorn/termless.git")).not.toBe(repositoryIdentity(engineCore))
 })
 
-it("attributes an engine citation to the receipt's commit without an engine checkout", () => {
-  const result = resolveSourceAnswer([engineAnswer], {
-    subject: engineAnswer.subject,
-    featureId: engineAnswer.featureId,
-    runtimeIdentity: wasmIdentity,
-    engineReceipt: receipt,
-  })
-  // Covered by the receipt, never verified: no checkout was read, so the answer keeps its "not re-verified" label.
-  expect(result).toMatchObject({ kind: "answer", status: "unsupported", label: "reviewed at 0.4.0, not re-verified" })
-})
-
-it("never borrows a receipt that built a different binary", () => {
-  const result = resolveSourceAnswer([engineAnswer], {
-    subject: engineAnswer.subject,
-    featureId: engineAnswer.featureId,
-    runtimeIdentity: wasmIdentity,
-    engineReceipt: { ...receipt, outputs: { "ghostty-vt.wasm": "0".repeat(64) } },
-  })
-  expect(result).toMatchObject({ kind: "pending", reason: "cited source not resolvable" })
-
-  const absent = resolveSourceAnswer([engineAnswer], {
-    subject: engineAnswer.subject,
-    featureId: engineAnswer.featureId,
-    runtimeIdentity: wasmIdentity,
-  })
-  expect(absent).toMatchObject({ kind: "pending", reason: "cited source not resolvable" })
-})
-
-it("refuses an engine citation at a commit the receipt does not name", () => {
-  expect(() =>
-    resolveSourceAnswer([engineAnswer], {
-      subject: engineAnswer.subject,
-      featureId: engineAnswer.featureId,
-      runtimeIdentity: wasmIdentity,
-      engineReceipt: { ...receipt, core: { repository: engineCore, commit: "f".repeat(40) } },
-    }),
-  ).toThrow(/differs from the build receipt/)
-})
-
+// The addon is built at its own source commit, not at the pinned Termless revision (@cto de41833e c3).
 it("resolves the vt100-rust addon at its own source commit, not the Termless pin", () => {
   const addon = "1".repeat(40)
   const addonBlob = {

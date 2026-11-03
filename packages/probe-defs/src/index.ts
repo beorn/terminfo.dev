@@ -1,16 +1,18 @@
 export { evidenceRuntimeIdentity } from "./runtime-identity.ts"
 export {
   SOURCE_ANSWERS,
+  SOURCE_ANSWER_PENDING_LABELS,
   resolveSourceAnswer,
   sourceAnswerForRef,
   sourceAnswerVersionLabel,
   sourceAnswerKey,
+  sourceAnswerVersionLabel,
   parseSourceAnswerKey,
   repositoryIdentity,
 } from "./source-answers.ts"
 export type {
-  EngineReceipt,
   SourceAnswer,
+  SourceAnswerPendingReason,
   SourceAnswerSubject,
   SourceAnswerInput,
   SourceAnswerResolution,
