@@ -495,7 +495,7 @@ if [[ "${1:-}" == "--inside" ]]; then
       # configuration error and opens a SECOND owned window, which the one-window check below
       # refuses. Measured 2026-10-07 in ghostty-visual-default-image: `--window-title=` -> 2 visible
       # owned windows, `--title=` -> exactly 1. (27892)
-      target_launch_args=(--font-family='JetBrains Mono' --font-size=16
+      target_launch_args=(--font-family='JetBrains Mono' --font-size=16 --window-decoration=none
         --title="terminfo-$target_id-container-daemon")
       target_command_lead=(-e)
       # Measured 2026-10-07 in ghostty-visual-default-image: XTVERSION "ghostty 1.3.1", DA1 "?62;...".
