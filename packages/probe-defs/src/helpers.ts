@@ -169,6 +169,21 @@ export function stackVerdict(
   return { pass: null, note: `POP fixture ${pop}, PUSH fixture ${push}: no push-only observation` }
 }
 
+/**
+ * A stack row's headless result. A null verdict observed neither operation, so it is a coverage
+ * record (TEST TODO, the review the ruling names), never a TEST FAILURE: nothing in the harness
+ * failed (@cto 19664c4c). A broken measurement keeps its own parserStateResult(null, ...) failure.
+ */
+export function stackStateResult(
+  verdict: { pass: boolean | null; note?: string | undefined },
+  expected: string,
+  state: object,
+  assertionType: AssertionType = "buffer_state",
+): ProbeCallbackResult {
+  if (verdict.pass === null) return notTestedResult(verdict.note ?? "no stack operation was observed", state)
+  return parserStateResult(verdict.pass, expected, state, verdict.note, undefined, assertionType)
+}
+
 /** Mark an absent-reply failure without deciding producer absence from silence. */
 export function replyFailure(reason: string): ExecutionOnlyProbeCallbackResult {
   return {

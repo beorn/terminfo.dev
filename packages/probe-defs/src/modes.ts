@@ -30,6 +30,7 @@ import {
   sweepCellWidth,
   cellWidthTransition,
   type DecrpmPs,
+  stackStateResult,
   stackVerdict,
   type StackReading,
 } from "./helpers.ts"
@@ -258,10 +259,15 @@ function captureStackResult(
   const observed = JSON.stringify({ ...readings, fixtures: reads.map((read) => read.result.response) })
   const evidence = { assertionType: "screenshot" as const, frames, ...(screenshotRef && { screenshotRef }) }
   if (decided.pass === null) {
+    // No operation was observed, so the row is a required review (TEST TODO), never a TEST FAILURE
+    // (@cto 19664c4c); every fixture's frames stay its evidence.
+    const reason = decided.note ?? "no stack operation was observed"
     return {
       pass: false,
+      criterionBranch: "visual-review",
+      tests: [{ id: "review", status: "test-todo", reason }],
       response: observed,
-      observation: { outcome: "inconclusive", reason: "insufficient-evidence", ...evidence, note: decided.note },
+      observation: { outcome: "inconclusive", reason: "insufficient-evidence", ...evidence, note: reason },
     }
   }
   const signal = `${operation}-observed`
@@ -580,7 +586,7 @@ function xtSgrStackHeadless(ctx: LibProbeSource, operation: "push" | "pop"): Pro
           ? "persisted"
           : "other"
     const verdict = stackVerdict(operation, pop, push)
-    return parserStateResult(verdict.pass, expected, { ...state, pop, push }, verdict.note)
+    return stackStateResult(verdict, expected, { ...state, pop, push })
   } finally {
     if (pushed) ctx.feed("\x1b[#}")
     ctx.feed("\x1b[0m\x1b[2J\x1b[H")
@@ -679,11 +685,10 @@ function xtModeSaveHeadless(ctx: LibProbeSource, operation: "push" | "pop"): Pro
     if (stayed(control) && stayed(onControl)) {
       return operation === "pop"
         ? parserStateResult(false, expected, state, "restore returned DECAWM off after on was saved")
-        : parserStateResult(
-            null,
+        : stackStateResult(
+            { pass: null, note: "restore returned DECAWM off whatever was saved, so no save was observed" },
             expected,
             state,
-            "restore returned DECAWM off whatever was saved, so no save was observed",
           )
     }
     const verdict = stackVerdict(operation, pop, push)
@@ -691,7 +696,7 @@ function xtModeSaveHeadless(ctx: LibProbeSource, operation: "push" | "pop"): Pro
       pop === "persisted" && push === "persisted"
         ? "save then restore restored no earlier state"
         : verdict.note?.replace("push saved no current snapshot", "save kept the earlier saved state")
-    return parserStateResult(verdict.pass, expected, state, note)
+    return stackStateResult({ pass: verdict.pass, note }, expected, state)
   } finally {
     ctx.feed(`${ON}\x1b[0m\x1b[2J\x1b[H`)
   }
@@ -779,7 +784,7 @@ function xtColorStackHeadless(ctx: LibProbeSource, operation: "push" | "pop"): P
           ? "persisted"
           : "other"
     const verdict = stackVerdict(operation, pop, push)
-    return parserStateResult(verdict.pass, expected, { ...state, pop, push }, verdict.note)
+    return stackStateResult(verdict, expected, { ...state, pop, push })
   } finally {
     if (pushed) ctx.feed("\x1b[#Q")
     ctx.feed("\x1b]104\x07\x1b[0m\x1b[2J\x1b[H")

@@ -526,15 +526,16 @@ test.each(MODES_SEMANTIC_SURFACE_CONTROLS)(
 test.each([
   ["xtpushsgr-stale", "modes.xtpushsgr", "unsupported", "push saved no current snapshot"],
   ["xtpushsgr-stale", "modes.xtpopsgr", "supported", undefined],
-  ["xtpopsgr-reset-default", "modes.xtpushsgr", "inconclusive", "no push-only observation"],
-  ["xtpopsgr-reset-default", "modes.xtpopsgr", "inconclusive", "no pop-only observation"],
+  ["xtpopsgr-reset-default", "modes.xtpushsgr", "test-todo", "no push-only observation"],
+  ["xtpopsgr-reset-default", "modes.xtpopsgr", "test-todo", "no pop-only observation"],
 ] as const)("%s grades %s %s on its own operation", (mutation, id, outcome, note) => {
   const probe = modesProbes.find((entry) => entry.id === id)!
   const result = probe.lib!(libProbeSource(createSemanticSurface({ mutations: [mutation] })))
-  expect(result.observation?.outcome).toBe(outcome)
+  if (outcome === "test-todo") expect(result.notTested).toMatchObject({ reason: "no-semantic-observable" })
+  else expect(result.observation?.outcome).toBe(outcome)
   expect(result.pass).toBe(outcome === "supported")
   if (note) expect(result.note).toContain(note)
-  if (outcome === "inconclusive") expect(result.assertions).toBeUndefined()
+  if (outcome === "test-todo") expect(result.assertions).toBeUndefined()
   else {
     expect(result.assertions?.[0]?.expected).toContain(id === "modes.xtpushsgr" ? "push time" : "restores the pushed")
   }
@@ -561,15 +562,16 @@ test.each([
   ["xtrestore-reset-default", "modes.xtrestore", "unsupported", "save then restore restored no earlier state"],
   ["xtrestore-noop", "modes.xtsave", "unsupported", "save then restore restored no earlier state"],
   ["xtrestore-noop", "modes.xtrestore", "unsupported", "save then restore restored no earlier state"],
-  ["xtrestore-always-off", "modes.xtsave", "inconclusive", "restore returned DECAWM off whatever was saved"],
+  ["xtrestore-always-off", "modes.xtsave", "test-todo", "restore returned DECAWM off whatever was saved"],
   ["xtrestore-always-off", "modes.xtrestore", "unsupported", "restore returned DECAWM off after on was saved"],
 ] as const)("%s grades %s %s on its own operation", (mutation, id, outcome, note) => {
   const probe = modesProbes.find((entry) => entry.id === id)!
   const result = probe.lib!(libProbeSource(createSemanticSurface({ mutations: [mutation] })))
-  expect(result.observation?.outcome).toBe(outcome)
+  if (outcome === "test-todo") expect(result.notTested).toMatchObject({ reason: "no-semantic-observable" })
+  else expect(result.observation?.outcome).toBe(outcome)
   expect(result.pass).toBe(outcome === "supported")
   if (note) expect(result.note).toContain(note)
-  if (outcome === "inconclusive") expect(result.assertions).toBeUndefined()
+  if (outcome === "test-todo") expect(result.assertions).toBeUndefined()
   else {
     expect(result.assertions?.[0]?.expected).toContain(
       id === "modes.xtsave" ? "current at save time" : "restores the saved",
@@ -581,17 +583,18 @@ test.each([
 test.each([
   ["xtpushcolors-stale", "modes.xtpushcolors", "unsupported", "push saved no current snapshot"],
   ["xtpushcolors-stale", "modes.xtpopcolors", "supported", undefined],
-  ["xtpopcolors-reset-default", "modes.xtpushcolors", "inconclusive", "no push-only observation"],
-  ["xtpopcolors-reset-default", "modes.xtpopcolors", "inconclusive", "no pop-only observation"],
+  ["xtpopcolors-reset-default", "modes.xtpushcolors", "test-todo", "no push-only observation"],
+  ["xtpopcolors-reset-default", "modes.xtpopcolors", "test-todo", "no pop-only observation"],
   ["xtpopcolors-noop", "modes.xtpushcolors", "unsupported", "push then pop restored no earlier state"],
   ["xtpopcolors-noop", "modes.xtpopcolors", "unsupported", "push then pop restored no earlier state"],
 ] as const)("%s grades %s %s on its own operation", (mutation, id, outcome, note) => {
   const probe = modesProbes.find((entry) => entry.id === id)!
   const result = probe.lib!(libProbeSource(createSemanticSurface({ mutations: [mutation] })))
-  expect(result.observation?.outcome).toBe(outcome)
+  if (outcome === "test-todo") expect(result.notTested).toMatchObject({ reason: "no-semantic-observable" })
+  else expect(result.observation?.outcome).toBe(outcome)
   expect(result.pass).toBe(outcome === "supported")
   if (note) expect(result.note).toContain(note)
-  if (outcome === "inconclusive") expect(result.assertions).toBeUndefined()
+  if (outcome === "test-todo") expect(result.assertions).toBeUndefined()
   else {
     expect(result.assertions?.[0]?.expected).toContain(
       id === "modes.xtpushcolors" ? "push time" : "restores the pushed",

@@ -863,8 +863,8 @@ function colourStackEngine(kind: "reset-default" | "stale" | "pop-noop" | "set-i
 }
 
 test.each([
-  ["reset-default", "extensions.osc30001-color-stack-push", "inconclusive", "no push-only observation"],
-  ["reset-default", "extensions.osc30101-color-stack-pop", "inconclusive", "no pop-only observation"],
+  ["reset-default", "extensions.osc30001-color-stack-push", "test-todo", "no push-only observation"],
+  ["reset-default", "extensions.osc30101-color-stack-pop", "test-todo", "no pop-only observation"],
   ["stale", "extensions.osc30001-color-stack-push", "unsupported", "push saved no current snapshot"],
   ["stale", "extensions.osc30101-color-stack-pop", "supported", undefined],
   ["pop-noop", "extensions.osc30001-color-stack-push", "unsupported", "push then pop restored no earlier state"],
@@ -872,10 +872,11 @@ test.each([
 ] as const)("a %s colour stack grades %s %s on its own operation", (kind, id, outcome, note) => {
   const probe = extensionsProbes.find((entry) => entry.id === id)!
   const result = probe.lib!(colourStackEngine(kind))
-  expect(result.observation?.outcome).toBe(outcome)
+  if (outcome === "test-todo") expect(result.notTested).toMatchObject({ reason: "no-semantic-observable" })
+  else expect(result.observation?.outcome).toBe(outcome)
   expect(result.pass).toBe(outcome === "supported")
   if (note) expect(result.note).toContain(note)
-  if (outcome === "inconclusive") expect(result.assertions).toBeUndefined()
+  if (outcome === "test-todo") expect(result.assertions).toBeUndefined()
 })
 
 // #32242 (@cto 4115d1bf): an engine that ignores the OSC 10 set never shows either stack operation,

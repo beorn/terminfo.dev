@@ -36,6 +36,7 @@ import {
   sgrCaptureTooSmall,
   unmeasuredCellResult,
   auditedAdapterSources,
+  stackStateResult,
   stackVerdict,
   type StackReading,
 } from "./helpers.ts"
@@ -1199,7 +1200,7 @@ function colorStackResult(
         ? "persisted"
         : "other"
   const verdict = stackVerdict(operation, pop, push)
-  return parserStateResult(verdict.pass, expected, { ...state, pop, push }, verdict.note, undefined, "query_reply")
+  return stackStateResult(verdict, expected, { ...state, pop, push }, "query_reply")
 }
 
 /** Source identities qualify a required review, never the target effect itself. */

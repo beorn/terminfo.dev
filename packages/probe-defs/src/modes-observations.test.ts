@@ -1424,6 +1424,8 @@ test.each(
       if (outcome === "inconclusive") {
         expect(result.assertions, id).toBeUndefined()
         expect(result.observation?.note, id).toMatch(/no (push|pop)-only observation/)
+      // A null grade is a required review (TEST TODO), never a TEST FAILURE (@cto 19664c4c).
+      expect(result.tests, id).toEqual([{ id: "review", status: "test-todo", reason: result.observation?.note }])
       } else {
         expect(result.assertions, id).toMatchObject([
           { kind: outcome === "supported" ? "positive" : "negative", assertionType: "screenshot" },

@@ -5288,8 +5288,8 @@ describe("partial probe automation candidates", () => {
   // passed both rows when the single fixture restored that colour; now neither row passes, and a
   // stale push snapshot is a push-only negative.
   test.each([
-    ["reset-default", "extensions.osc30001-color-stack-push", "inconclusive"],
-    ["reset-default", "extensions.osc30101-color-stack-pop", "inconclusive"],
+    ["reset-default", "extensions.osc30001-color-stack-push", "test-todo"],
+    ["reset-default", "extensions.osc30101-color-stack-pop", "test-todo"],
     ["stale", "extensions.osc30001-color-stack-push", "unsupported"],
     ["stale", "extensions.osc30101-color-stack-pop", "supported"],
   ] as const)("a %s app colour stack grades %s %s", async (kind, id, outcome) => {
@@ -5317,7 +5317,8 @@ describe("partial probe automation candidates", () => {
         },
       }),
     )
-    expect(result.observation?.outcome).toBe(outcome)
+    if (outcome === "test-todo") expect(result.notTested).toMatchObject({ reason: "no-semantic-observable" })
+    else expect(result.observation?.outcome).toBe(outcome)
     expect(current).toBe(original)
   })
 
