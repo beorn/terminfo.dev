@@ -58,6 +58,10 @@ export function sourceAnswerVersionLabel(version: string): string {
 /** Static kept answers; the one-time converter checks the source/provenance and emitted shape. */
 export const SOURCE_ANSWERS = retainedAnswers as readonly SourceAnswer[]
 
+export function sourceAnswerVersionLabel(version: string): string {
+  return `reviewed at ${version}, not re-verified`
+}
+
 export function sourceAnswerForRef(ref: string): SourceAnswer | undefined {
   const key = parseSourceAnswerKey(ref)
   if (!key) return undefined

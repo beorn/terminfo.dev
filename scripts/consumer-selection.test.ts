@@ -1,3 +1,4 @@
+import { finalizeCollectedDraft } from "../packages/terminfo.dev/src/capture-writer.ts"
 /**
  * @failure Unreviewed runs become current scores, or refresh skips its release assessment and errors.
  * @level l2
@@ -9,7 +10,7 @@
  */
 import { describe, expect, it, vi } from "vitest"
 import { createHash } from "node:crypto"
-import { initializeRunDraft, sealRunDraft } from "@terminfo/probe-defs"
+import { initializeRunDraft } from "@terminfo/probe-defs"
 import { parseSuiteManifest } from "@terminfo/run-parser"
 import {
   chmodSync,
@@ -95,11 +96,8 @@ function featureCatalog(...ids: string[]): string {
   )
 }
 
-/**
- * A suite manifest that freezes a release: `frozenSuiteIdFor` resolves a release's current suite from
- * the one manifest whose `freeze.release` names it, so every fixture content dir needs one.
- */
-function writeFrozenSuite(content: string, probeHash: string): void {
+/** Canonical consumers read a run's cited suite without requiring a release freeze pointer. */
+function writeSuite(content: string, probeHash: string): void {
   mkdirSync(join(content, "suites"), { recursive: true })
   writeFileSync(
     join(content, "suites", `${probeHash}.json`),
@@ -108,7 +106,6 @@ function writeFrozenSuite(content: string, probeHash: string): void {
       probeHash,
       adapterVersion: "4.0.0",
       catalogIds: ["sgr.bold"],
-      freeze: { release: "candidate2", at: "2026-10-12T03:33:42.000Z" },
       probes: { term: [], lib: [], mux: [] },
     }),
   )
@@ -173,7 +170,7 @@ describe("consumer selection", () => {
     }
   })
 
-  it("tests freshness without changing inventory or treating unreviewed files as current", () => {
+  it("tests freshness without changing inventory and retains current captures", () => {
     const root = mkdtempSync(join(tmpdir(), "terminfo-freshness-"))
     const source = join(import.meta.dirname, "..")
     try {
@@ -185,10 +182,10 @@ describe("consumer selection", () => {
       for (const dir of ["probes-apps", "probes-mux", "probes-libs"]) mkdirSync(join(root, "content", dir))
       writeCatalog(join(root, "content"))
       writeFileSync(join(root, "content", "features.json"), featureCatalog("sgr.bold"))
-      writeFrozenSuite(join(root, "content"), "deadbeefcafe")
+      writeSuite(join(root, "content"), "deadbeefcafe")
       // The archived refusals are required content since #30759 AC3; an empty list is a real state.
       writeFileSync(join(root, "content", "archived-exclusions.json"), JSON.stringify({ archivedExclusions: [] }))
-      // A current unverified TODO run cannot become a reviewed measurement.
+      // A current unverified TODO capture remains a recorded run, not a support claim.
       const kittyManifestPath = join(root, "content", "suites", "deadbeefcafe.json")
       const kittyManifest = parseSuiteManifest(kittyManifestPath, readFileSync(kittyManifestPath, "utf8"))
       const kittyDraft = initializeRunDraft({
@@ -214,7 +211,7 @@ describe("consumer selection", () => {
       kittyDraft.origin = { kind: "collector" }
       writeFileSync(
         join(root, "content", "probes-apps", "kitty-current-todo.json"),
-        JSON.stringify(sealRunDraft(kittyDraft, kittyDraft.measuredAt)),
+        JSON.stringify(finalizeCollectedDraft(kittyDraft as Parameters<typeof finalizeCollectedDraft>[0])),
       )
       // A nonempty selected lib run exposes an inventory join that still compares old headless kinds.
       const libSubject = {
@@ -259,7 +256,6 @@ describe("consumer selection", () => {
         identity: "verified",
         runtimeIdentity: libFixture.runtimeIdentity,
         measuredAt: libMeasuredAt,
-        sealedAt: libMeasuredAt,
         origin: { kind: "collector" },
         rawReplies: { "sgr.bold": "retained fixture failure" },
         assertions: [],
@@ -290,7 +286,7 @@ describe("consumer selection", () => {
       const check = spawnSync(process.execPath, [join(root, "scripts", "sitefile.ts"), "--check"], { encoding: "utf8" })
       expect(check.stderr).toBe("")
       expect(check.status).toBe(1)
-      expect(check.stdout).toContain("kitty — no reviewed current measurement")
+      expect(check.stdout).not.toContain("kitty — no reviewed current measurement")
       expect(readFileSync(lock, "utf8")).toBe(before)
       const generate = spawnSync(process.execPath, [join(root, "scripts", "sitefile.ts")], { encoding: "utf8" })
       expect(generate.stderr).toBe("")
@@ -308,8 +304,8 @@ describe("consumer selection", () => {
       }
       expect(inventory.sources.every((entry) => entry.lastChecked === null)).toBe(true)
       expect(inventory.terminals.find((entry) => entry.terminalId === "kitty")).toMatchObject({
-        lastProbedVersions: [],
-        sources: [],
+        lastProbedVersions: ["0.46.2"],
+        sources: [expect.objectContaining({ runId: "unreviewed-kitty", version: "0.46.2" })],
       })
       expect(inventory.terminals.find((entry) => entry.terminalId === "alacritty")).toMatchObject({ kind: "lib" })
       expect(inventory.terminals.find((entry) => entry.terminalId === "xtermjs")).toMatchObject({
@@ -482,23 +478,10 @@ describe("consumer selection", () => {
     const content = mkdtempSync(join(tmpdir(), "terminfo-malformed-selection-"))
     try {
       writeFileSync(join(content, "features.json"), featureCatalog("sgr.bold"))
-      writeFrozenSuite(content, "deadbeefcafe")
+      writeSuite(content, "deadbeefcafe")
       for (const dir of ["probes-apps", "probes-mux", "probes-libs"]) mkdirSync(join(content, dir))
       writeFileSync(join(content, "probes-apps", "bad.json"), "{")
       expect(() => loadCurrentResults(content)).toThrow(/bad\.json: invalid JSON/)
-    } finally {
-      rmSync(content, { recursive: true, force: true })
-    }
-  })
-
-  it("fails loudly when the suite registry freezes no suite for the release", () => {
-    const content = mkdtempSync(join(tmpdir(), "terminfo-missing-declaration-"))
-    try {
-      writeFileSync(join(content, "features.json"), featureCatalog("sgr.bold"))
-      for (const dir of ["probes-apps", "probes-mux", "probes-libs"]) mkdirSync(join(content, dir))
-      expect(() => loadCurrentResults(content)).toThrow(/the suite registry is required to name the current suite/)
-      mkdirSync(join(content, "suites"))
-      expect(() => loadCurrentResults(content)).toThrow(/no suite manifest declares freeze.release "candidate2"/)
     } finally {
       rmSync(content, { recursive: true, force: true })
     }

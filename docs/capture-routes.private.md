@@ -235,5 +235,5 @@ public source tree.
 
 Operational owners, evidence custody, dated parks and runtime grants remain in their owning
 work records. Documentation, source delivery and a unit-test result grant no native capture,
-configuration change, grade application or publication. The still-live admission machinery
-is being removed by Phase 1 batch 1.4; its existing hold remains until that deletion boundary.
+configuration change, grade application or publication. External release, publication and
+pending answers remain held until the actual full Phase 1.4 merge and their existing authorization.

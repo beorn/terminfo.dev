@@ -108,7 +108,7 @@ function catalogIdsInDisplayOrder(): string[] {
 
 export function loadFullProjectData(): FullProjectData {
   const requiredSuiteId = probeHash()
-  const projection = loadCurrentResults(contentDir, { releaseSuiteId: requiredSuiteId }).projection
+  const projection = loadCurrentResults(contentDir).projection
   const candidates: ContextCandidate[] = Object.entries(projection.contexts).flatMap(([key, selected]) => {
     const candidate = candidateFromSelected(key, selected, statesFor(projection, key), projection)
     return candidate ? [candidate] : []

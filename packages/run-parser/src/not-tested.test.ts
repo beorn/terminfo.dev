@@ -6,7 +6,7 @@
  * @testonly none
  */
 import { describe, expect, it } from "vitest"
-import { initializeRunDraft, sealRunDraft, type ProbeSuiteManifest } from "@terminfo/probe-defs"
+import { initializeRunDraft, type ProbeSuiteManifest } from "@terminfo/probe-defs"
 import { parseRun, parseSuiteManifest } from "./index.ts"
 
 const catalog = ["alpha", "beta", "gamma"]
@@ -67,7 +67,7 @@ describe("execution-owned five statuses", () => {
 })
 
 // Current totality is over immutable catalogue membership, not only callable arms.
-describe("sealed current runs", () => {
+describe("collected current runs", () => {
   const currentSuite = suite
   const current = () => {
     const draft = initializeRunDraft({
@@ -77,8 +77,8 @@ describe("sealed current runs", () => {
       manifest: currentSuite,
       intendedSubject: { kind: "term", id: "kitty" },
     })
-    draft.subject = {
-      kind: "term",
+    const subject = {
+      kind: "term" as const,
       id: "kitty",
       version: "0.49.2",
       os: null,
@@ -88,10 +88,11 @@ describe("sealed current runs", () => {
       config: null,
       permissions: null,
     }
+    draft.subject = subject
     draft.identity = "unverified"
     draft.measuredAt = "2026-10-05T00:00:00.000Z"
     draft.origin = { kind: "collector" }
-    return sealRunDraft(draft, "2026-10-21T05:00:01.000Z")
+    return { ...draft, subject }
   }
   // v1-v3 fixtures cannot detect a current reader/writer retaining the displaced wire names.
   // This pending-only run claims no successful measurement or native qualification.
@@ -105,7 +106,7 @@ describe("sealed current runs", () => {
       captureSuiteId: suite.probeHash,
       captureSourceRevision: "2".repeat(40),
     },
-  ])("preserves schema 4 $kind source through initialization, sealing and reading", (source) => {
+  ])("preserves schema 4 $kind source through initialization and reading", (source) => {
     const raw = { ...current(), source }
     const draft = initializeRunDraft({
       runId: raw.runId,
@@ -115,16 +116,13 @@ describe("sealed current runs", () => {
       manifest: { ...currentSuite, schemaVersion: 4 },
     })
     expect(draft.source).toEqual(source)
-    const sealed = sealRunDraft(
-      {
-        ...draft,
-        subject: raw.subject,
-        identity: "unverified",
-        measuredAt: raw.measuredAt,
-        origin: { kind: "collector" },
-      },
-      raw.sealedAt,
-    )
+    const sealed = {
+      ...draft,
+      subject: raw.subject,
+      identity: "unverified",
+      measuredAt: raw.measuredAt,
+      origin: { kind: "collector" },
+    }
     expect(sealed.source).toEqual(source)
     const loaded = parseRun(
       "current-v4.json",
@@ -219,7 +217,6 @@ describe("sealed current runs", () => {
           }),
         JSON.stringify(source),
       ).toThrow(/source/)
-      expect(() => sealRunDraft({ ...raw, source } as never), JSON.stringify(source)).toThrow(/source/)
     }
     expect(() => parseV4({ ...raw, target: raw.subject })).toThrow(/target/)
     expect(() => parseV4({ ...raw, mystery: true })).toThrow(/mystery/)
@@ -305,7 +302,7 @@ describe("sealed current runs", () => {
     expect(loaded.results).toEqual(raw.results)
     expect(loaded.catalogIds).toEqual(catalog)
   })
-  it("rejects missing/duplicate frozen results and an unsealed draft", () => {
+  it("requires complete catalogue results and accepts a collected run without a seal", () => {
     const parseCurrent = (value: object) =>
       parseRun("current.json", JSON.stringify(value), catalog, new Map([[suite.probeHash, currentSuite]]))
     const raw = current()
@@ -313,7 +310,10 @@ describe("sealed current runs", () => {
     expect(() =>
       parseCurrent({ ...raw, results: [raw.results[0], ...raw.results.slice(1, 2), raw.results[0]] }),
     ).toThrow(/duplicate/)
-    expect(() => parseCurrent({ ...raw, sealedAt: undefined })).toThrow(/sealedAt/)
+    expect(parseCurrent({ ...raw, sealedAt: undefined }).results).toEqual(raw.results)
+    // The retired schema-2 specimen was the last decoder consumer; current-run tests alone
+    // would not detect a retained legacy arm.
+    expect(() => parseCurrent({ ...raw, schemaVersion: 2 })).toThrow(/unsupported schemaVersion 2/)
   })
   // Current support must retain the same raw-state binding as historical measurements;
   // enum/totality validation alone would permit an assertion with no captured bytes.

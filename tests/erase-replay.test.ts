@@ -1,3 +1,4 @@
+import { finalizeCollectedDraft } from "../packages/terminfo.dev/src/capture-writer.ts"
 /**
  * @failure The real erase family omits observer calls or opens a backend while asserting a retained call log offline.
  * @level l2
@@ -11,7 +12,7 @@ import { mkdtempSync, writeFileSync, rmSync } from "node:fs"
 import { tmpdir, release } from "node:os"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
-import { initializeRunDraft, sealRunDraft, type CapturedRunDraft } from "@terminfo/probe-defs"
+import { initializeRunDraft, type CapturedRunDraft } from "@terminfo/probe-defs"
 import { derivedSuiteManifest } from "../packages/admin/versions.ts"
 import { headlessRuntimeIdentity } from "../packages/probes/headless-identity.ts"
 import { HEADLESS_TERMINAL } from "../packages/probes/headless-terminal.ts"
@@ -136,7 +137,7 @@ test("real erase calls replay twice without opening a terminal backend", async (
     geometry: HEADLESS_TERMINAL,
     blobs: [],
   })
-  const captureBytes = JSON.stringify(sealRunDraft(draft))
+  const captureBytes = JSON.stringify(finalizeCollectedDraft(draft as Parameters<typeof finalizeCollectedDraft>[0]))
   const directory = mkdtempSync(join(tmpdir(), "erase-capture-binding-"))
   const path = draft.runId + ".json"
   writeFileSync(join(directory, path), captureBytes)
@@ -167,7 +168,7 @@ test("real erase calls replay twice without opening a terminal backend", async (
     }),
   ).toThrow(/runtime binding/)
   const substituteRaw = (key: string, value: string) => {
-    const replacement = structuredClone(sealRunDraft(draft))
+    const replacement = structuredClone(finalizeCollectedDraft(draft as Parameters<typeof finalizeCollectedDraft>[0]))
     replacement.rawReplies[key] = value
     const replacementBytes = JSON.stringify(replacement)
     const replacementPath = randomUUID() + ".json"

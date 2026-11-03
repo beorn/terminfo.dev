@@ -59,7 +59,6 @@ export function readEraseCapture(
     bytes,
     expected.manifest.catalogIds ?? [],
     new Map([[expected.manifest.probeHash, expected.manifest]]),
-    { mode: "capture" },
   )
   if (
     capture.schemaVersion !== 4 ||

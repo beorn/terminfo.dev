@@ -86,8 +86,8 @@ compose_receipt() {
   if [[ -n "$final_run" ]]; then
     [[ -r "$final_run" ]] || { echo "Missing final run bytes: $final_run" >&2; return 2; }
     final_run_json=$(jq -e --arg sha "$(sha256sum "$final_run" | cut -d ' ' -f 1)" --arg path "$(basename "$final_run")" '
-      if .schemaVersion == 4 and (.sealedAt | type == "string") then {path:$path,runId:.runId,sha256:$sha}
-      else error("final completion receipt requires a sealed schema-4 run") end' "$final_run") || return 2
+      if .schemaVersion == 4 and (.runId | type == "string") then {path:$path,runId:.runId,sha256:$sha}
+      else error("completion receipt requires a schema-4 run with runId") end' "$final_run") || return 2
   fi
   host_sha=$(sha256sum "$host" | cut -d ' ' -f 1)
   container_sha=$(sha256sum "$container" | cut -d ' ' -f 1)
@@ -857,7 +857,7 @@ if [[ "${1:-}" == "--inside" ]]; then
   fi
   jq -e --slurpfile build "$build_receipt" --arg executablePath "$live_executable" \
     --arg executableSha "$live_executable_sha" --arg target "$target_id" --arg mux "${TERMINFO_MUX_KIND:-}" '
-    .schemaVersion == 4 and (has("sealedAt") | not) and (.runId | type == "string" and test("^[0-9a-f]{32}$")) and
+    .schemaVersion == 4 and (.runId | type == "string" and test("^[0-9a-f]{32}$")) and
     (if $mux == "" then .subject.kind == "term" and .subject.id == $target and
        .provenance.executable.path == $executablePath and .provenance.executable.sha256 == $executableSha
      else .subject.kind == "mux" and .subject.id == $mux and .outerApp.subject.id == $target and
@@ -873,7 +873,7 @@ if [[ "${1:-}" == "--inside" ]]; then
   probe_run_id=$(jq -er .runId /out/v3-capture.json)
   probe_run_sha=$(sha256sum /out/v3-capture.json | cut -d ' ' -f 1)
 
-  # The shared callbacks captured this daemon's own window before sealing the
+  # The shared callbacks captured this daemon's own window during collection of the
   # run. Keep the original owned geometry in its receipt; a later window search
   # or geometry sample cannot replace the measurement recorded in provenance.
   #
@@ -948,7 +948,7 @@ usage() {
   echo "A source-tree collector also needs TERMINFO_PROBE_HASH and TERMINFO_SOURCE_REVISION" >&2
   echo "  from sourceSuiteEnvironment() in packages/admin/versions.ts, or serve.ts refuses the run." >&2
   echo "Retains raw/v3-capture.json, then finalizes a private sibling." >&2
-  echo "That sibling stays an unsealed draft; release collection --freeze seals it and composes the final receipt." >&2
+  echo "That sibling and its completion receipt retain private collection custody." >&2
   echo "This launcher has no capture-only mode; do not use it for a raw-only authorization." >&2
   exit 2
 }
@@ -1295,15 +1295,12 @@ TERMINFO_CAPTURE_RAW="$raw/v3-capture.json" TERMINFO_CAPTURE_OUTPUT="$raw" bun -
   import {readRetainedDaemonProbeResponse,finalizeCollectedDraft} from "./packages/terminfo.dev/src/daemon-client.ts";
   import {getTrustedSuiteReceipt} from "./packages/terminfo.dev/src/serve.ts";
   const directory=process.env.TERMINFO_CAPTURE_OUTPUT;
-  let receipt;
-  const retained=await readRetainedDaemonProbeResponse(new Response(readFileSync(process.env.TERMINFO_CAPTURE_RAW)),{directory:join(directory,"http-responses"),get receipt(){return receipt=getTrustedSuiteReceipt();}});
+  const retained=await readRetainedDaemonProbeResponse(new Response(readFileSync(process.env.TERMINFO_CAPTURE_RAW)),{directory:join(directory,"http-responses"),get receipt(){return getTrustedSuiteReceipt();}});
   if(retained.kind==="empty-selection") throw new Error("Empty selection where a capture was required");
-  const run=finalizeCollectedDraft(retained.run,undefined,{manifest:receipt.manifest,decisions:[],origin:()=>undefined,keepDraft:true});
-  const path=join(directory,run.sealedAt===undefined?"v3-run.draft.json":"v3-run.json");
+  const run=finalizeCollectedDraft(retained.run);
+  const path=join(directory,"v3-run.draft.json");
   writeFileSync(path,JSON.stringify(run,null,2)+"\n",{flag:"wx",mode:0o600});
-  console.error(run.sealedAt===undefined?"Valid unsealed capture; no final completion receipt":"Sealed current schema-4 run");
+  console.error("Collected current schema-4 run");
 '
-if [[ -f "$raw/v3-run.json" ]]; then
-  compose_receipt "$raw/host-measured.json" "$raw/container-receipt.json" "$raw/run-receipt.json" "$raw/v3-run.json"
-fi
+compose_receipt "$raw/host-measured.json" "$raw/container-receipt.json" "$raw/run-receipt.json" "$raw/v3-run.draft.json"
 echo "$run_dir"

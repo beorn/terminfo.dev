@@ -1,5 +1,5 @@
 /**
- * @failure Mux raw-output collection admits development data or loses its original HTTP response.
+ * @failure Mux raw-output collection writes private development data to the corpus or loses its original HTTP response.
  * @level l1
  * @consumer handleMux private-output lifecycle and the shared immutable raw writer.
  * @reach fs-read <fixture-only: private HTTP response and raw capture files written inside the test directory>
@@ -27,7 +27,7 @@ import {
   requestDaemonProbe,
   stopOwnedDaemon,
 } from "../../terminfo.dev/src/daemon-client.ts"
-import { planAdmission, admitRun } from "../../../scripts/admit-run.ts"
+import { placeCollectedRun } from "../corpus-placement.ts"
 
 const fixtures = vi.hoisted(() => ({
   receipt: undefined as { manifest: ProbeSuiteManifest; collectorRevision: string } | undefined,
@@ -35,7 +35,7 @@ const fixtures = vi.hoisted(() => ({
 vi.mock("../../terminfo.dev/src/serve.ts", () => ({
   getTrustedSuiteReceipt: () => fixtures.receipt,
 }))
-vi.mock("../../../scripts/admit-run.ts", () => ({ planAdmission: vi.fn(), admitRun: vi.fn() }))
+vi.mock("../corpus-placement.ts", () => ({ placeCollectedRun: vi.fn() }))
 vi.mock("../versions.ts", () => ({
   sourceSuiteEnvironment: () => ({ TERMINFO_PROBE_HASH: "fixture", TERMINFO_SOURCE_REVISION: "fixture" }),
 }))
@@ -50,14 +50,14 @@ vi.mock("../../terminfo.dev/src/daemon-client.ts", async (importOriginal) => ({
   stopOwnedDaemon: vi.fn(),
 }))
 
-// App/server suites cover admission. This mux boundary must independently prove that an output
+// App/server suites cover placement. This mux boundary must independently prove that an output
 // directory chooses raw retention and still cleans up its own daemon/session, without grading it.
 it.each([
   ["private", false],
   ["private", true],
   ["empty", false],
   ["symlink", false],
-] as const)("handles %s raw output without admission, environment catalogue: %s", async (mode, environment) => {
+] as const)("handles %s raw output without corpus placement, environment catalogue: %s", async (mode, environment) => {
   const directory = mkdtempSync(join(tmpdir(), "terminfo-mux-output-"))
   const output = mode === "empty" ? "" : join(directory, "output")
   if (mode === "symlink") symlinkSync(new URL("../../../", import.meta.url), output)
@@ -143,8 +143,8 @@ it.each([
     path: original,
     sha256: createHash("sha256").update(bytes).digest("hex"),
   })
-  vi.mocked(planAdmission).mockImplementation(() => {
-    throw new Error("development entered admission")
+  vi.mocked(placeCollectedRun).mockImplementation(() => {
+    throw new Error("development entered placement")
   })
   try {
     if (mode === "empty") {
@@ -156,12 +156,11 @@ it.each([
     } else {
       await handleMux("tmux", { output })
     }
-    expect(planAdmission).not.toHaveBeenCalled()
-    expect(admitRun).not.toHaveBeenCalled()
+    expect(placeCollectedRun).not.toHaveBeenCalled()
     if (mode === "private") {
       const clause = environment ? " · 9 environment groups manual by design (catalogue), ungraded" : ""
       expect(log).toHaveBeenCalledWith(
-        expect.stringContaining(`1 TEST TODO · 0 TEST FAILURE${clause} (pending-review)`),
+        expect.stringContaining(`1 TEST TODO · 0 TEST FAILURE${clause} (retained privately)`),
       )
       expect(readFileSync(join(output, "http-response.json"), "utf8")).toBe(bytes)
       const raw = readdirSync(output).find((name) => name.startsWith("tmux-3.6a-"))
@@ -181,7 +180,7 @@ it.each([
     expect(spawnSync).toHaveBeenCalledWith("/usr/bin/tmux", ["-V"], expect.anything())
     expect(execSync).toHaveBeenCalledWith(expect.stringMatching(/^'\/usr\/bin\/tmux' new-session /), expect.anything())
     expect(execSync).toHaveBeenCalledWith(expect.stringMatching(/^'\/usr\/bin\/tmux' kill-session /), expect.anything())
-    expect(log).not.toHaveBeenCalledWith(expect.stringContaining("(admitted)"))
+    expect(log).not.toHaveBeenCalledWith(expect.stringContaining("(written)"))
     expect(readFileSync(original, "utf8")).toBe(bytes)
   } finally {
     fixtures.receipt = undefined

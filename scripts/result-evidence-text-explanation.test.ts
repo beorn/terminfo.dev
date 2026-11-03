@@ -9,13 +9,19 @@
  *   so the sentence itself is the contract and this pins it for both arms.
  * @testonly none
  */
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 import { readFileSync } from "node:fs"
 import { parseRun, parseSuiteManifest } from "@terminfo/run-parser"
 import { projectResults } from "../docs/data/selected-results.ts"
 import { publicResults } from "../docs/data/public-results.ts"
 import { describeTracePanes, readCellTrace } from "../docs/data/evidence-reader.ts"
 import { textEvidenceExplanation } from "../docs/.vitepress/theme/ungraded-explanation.ts"
+
+const caption = vi.hoisted(() => ({ suffix: "" }))
+vi.mock("@terminfo/probe-defs", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@terminfo/probe-defs")>()),
+  sourceAnswerVersionLabel: (version: string) => `reviewed at ${version}, not re-verified${caption.suffix}`,
+}))
 
 const SAMPLE_SHA256 = "a".repeat(64)
 
@@ -45,8 +51,24 @@ it("labels a retained source answer by engine version without regrading or datin
   expect(result?.reason).toContain("reviewed at 0.17.0, not re-verified")
   expect(result?.status).toBe("unsupported")
   expect(selected?.measuredAt).toBe(run.measuredAt)
-  const published = publicResults(projection, new Map()).projection
-  expect(published.contexts["term:alacritty"]?.cells[featureId]?.reason).toBe("reviewed at 0.17.0, not re-verified")
+  expect(publicResults(projection, new Map()).projection.contexts["term:alacritty"]?.cells[featureId]?.reason).toBe(
+    "reviewed at 0.17.0, not re-verified",
+  )
+  // Mutate only the public mapper input when exercising shared-caption drift.
+  const captionProjection = structuredClone(projection)
+  const captionResult = captionProjection.history["term:alacritty"]?.[0]?.results.find(
+    (entry) => entry.featureId === featureId,
+  )
+  if (!captionResult?.reason) throw new Error("Expected retained source answer")
+  // A changed shared caption must reach the public reader; a second literal
+  // silently drops it even though today's exact caption above still passes.
+  caption.suffix = " (shared caption)"
+  captionResult.reason += caption.suffix
+  const published = publicResults(captionProjection, new Map()).projection
+  caption.suffix = ""
+  expect(published.contexts["term:alacritty"]?.cells[featureId]?.reason).toBe(
+    "reviewed at 0.17.0, not re-verified (shared caption)",
+  )
   expect(published.contexts["term:alacritty"]?.cells[featureId]?.presentation.state).toBe("not-reviewed")
   expect(published.contexts["term:alacritty"]?.cells[featureId]?.record).toBeUndefined()
   expect(run).toEqual(original)
@@ -184,9 +206,7 @@ describe("popover trace panes for not-reviewed cells (#30565 AC3, AC4, @cto ruli
     expect(panes.tested.sourceLine).toBe(
       "Historical run 29e1f818 · 2026-10-16 · buffer_state · presentation not reviewed",
     )
-    expect(panes.tested.identityLine).toBe(
-      "Identity verified in run file; admitted by runtime-identity rule (XTVERSION kitty(0.49.2)).",
-    )
+    expect(panes.tested.identityLine).toBe("Identity verified in run file.")
     expect(panes.tested.notKeptLine).toContain("Not kept: screenshot (headless parser has none), input bytes")
 
     expect(panes.expected.sequence).toBe("ESC [ 49 m")
@@ -196,7 +216,7 @@ describe("popover trace panes for not-reviewed cells (#30565 AC3, AC4, @cto ruli
     expect(panes.expected.referenceStatus).toBe("No reference image recorded")
   })
 
-  it("renders a live query-reply cell with all published writes, query + sentinel, reply, run metadata, and unverified-but-admitted identity", () => {
+  it("renders a live query-reply cell with all published writes, query + sentinel, reply, run metadata, and unverified identity", () => {
     const document = {
       version: 1 as const,
       runId: "c70e8c3c37c8a735cb5f395052698c35",
@@ -256,9 +276,7 @@ describe("popover trace panes for not-reviewed cells (#30565 AC3, AC4, @cto ruli
     expect(panes.tested.sourceLine).toBe(
       "Historical run c70e8c3c · 2026-10-19 · query_reply · presentation not reviewed",
     )
-    expect(panes.tested.identityLine).toBe(
-      "Identity unverified in run file; admitted by ghostty rule (DA1 ESC [ ?62;22;52 c, XTVERSION ghostty 1.3.1).",
-    )
+    expect(panes.tested.identityLine).toBe("Identity unverified in run file.")
     expect(panes.tested.notKeptLine).toBe(
       "Not kept: screenshot, raw read window (including sentinel reply), reviewed evidence file",
     )
@@ -311,9 +329,7 @@ describe("popover trace panes for not-reviewed cells (#30565 AC3, AC4, @cto ruli
       { label: "Query · reply", code: "ESC [ 21 t ESC [ c" },
       { label: "Observed", text: "Observed bytes not reviewed for publication." },
     ])
-    expect(panes.tested.identityLine).toBe(
-      "Identity verified in run file; admitted by kitty rule (DA1 ESC [ ?62;52; c, XTVERSION kitty(0.49.2)).",
-    )
+    expect(panes.tested.identityLine).toBe("Identity verified in run file.")
     expect(panes.expected.sequence).toBe("ESC [ 21 t")
     expect(panes.expected.behavior).toBe("no window title report")
   })
@@ -426,9 +442,7 @@ describe("popover trace panes for not-reviewed cells (#30565 AC3, AC4, @cto ruli
     expect(panes.tested.sourceLine).toBe(
       "Historical run 3105bbe9 · 2026-10-18 · no typed observation retained · presentation not reviewed",
     )
-    expect(panes.tested.identityLine).toBe(
-      "Identity unverified in run file; admitted by kitty rule (DA1 ESC [ ?62;52; c, XTVERSION kitty(0.48.2)).",
-    )
+    expect(panes.tested.identityLine).toBe("Identity unverified in run file.")
     expect(panes.tested.text).not.toContain("terminal-ownership receipt")
     expect(panes.tested.text).not.toContain("Attempt refused before sending probe bytes")
     expect(panes.expected.sequence).toBe("ESC [ 48;5;N m")

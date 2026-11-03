@@ -1,6 +1,6 @@
 /** Shared interpretation parsing, scope matching and supersession; no filesystem effects. */
 import type { Interpretation, ProbeSubject } from "@terminfo/probe-defs"
-import { parseJsonStrict, parseCaptureDecision, validateObservationOutcome, type LoadedRun } from "@terminfo/run-parser"
+import { parseJsonStrict, validateObservationOutcome, type LoadedRun } from "@terminfo/run-parser"
 
 import { decodeHistoricalCorrection } from "../packages/run-parser/src/observations.ts"
 
@@ -107,35 +107,11 @@ function supersessionTarget(
   entry: Interpretation,
   priorId: string,
   path: string,
-  runs: readonly LoadedRun[],
+  _runs: readonly LoadedRun[],
 ): Interpretation {
   const prior = byId.get(priorId)
-  if (entry.decision !== "tool-gap" || !entry.runSha256) {
-    if (prior) return prior
-    fail(path, `interpretation ${entry.id} supersedes unknown ${priorId}`)
-  }
-  if (prior) {
-    fail(
-      path,
-      `tool-gap ${entry.id}: target ${priorId} is a curated record; withdraw it through the store, not an exact-run overlay`,
-    )
-  }
-  const run = runs.find((run) => run.runId === entry.runId)
-  if (!run?.sealedAt) fail(path, `tool-gap ${entry.id} requires sealed run ${entry.runId} to resolve ${priorId}`)
-  if (run.sha256 !== entry.runSha256) fail(path, `tool-gap ${entry.id}: run SHA256 mismatch`)
-  if (!applies(entry, run)) fail(path, `tool-gap ${entry.id}: scope does not match exact run ${run.runId}`)
-  const source = run.rawReplies[`collector.review.${priorId}`]
-  if (source === undefined) fail(path, `tool-gap ${entry.id}: missing embedded review ${priorId} in run ${run.runId}`)
-  const embedded = parseCaptureDecision(
-    parseJsonStrict(path, source),
-    path,
-    new Set(run.catalogIds ?? []),
-    run.schemaVersion === 3 ? 3 : 4,
-  )
-  if (embedded.id !== priorId || embedded.featureId !== entry.featureId) {
-    fail(path, `tool-gap ${entry.id}: embedded review ${priorId} feature/id mismatch`)
-  }
-  return embedded
+  if (!prior) fail(path, `interpretation ${entry.id} supersedes unknown ${priorId}`)
+  return prior
 }
 
 export function validatePresentationSupersession(
@@ -210,37 +186,6 @@ export function parseInterpretations(
     }
     if (new Set(entry.supersedes).size !== entry.supersedes.length || entry.supersedes.includes(id)) {
       fail(path, `duplicate/self supersedes for ${id}`)
-    }
-    const toolGap = entry.decision === "tool-gap" && Object.hasOwn(entry, "runSha256")
-    if (toolGap) {
-      if (entry.reviewed !== true || !nonempty(entry.featureId) || !catalog.has(entry.featureId)) {
-        fail(path, `tool-gap ${id} requires a reviewed catalogue feature`)
-      }
-      if (
-        !entry.supersedes.length ||
-        entry.scope.versions[0] !== entry.scope.versions[1] ||
-        entry.scope.suites[0] !== entry.scope.suites[1]
-      ) {
-        fail(path, `tool-gap ${id} requires supersedes and exact version/suite scope`)
-      }
-      for (const key of [
-        "captureSha256",
-        "evidence",
-        "observation",
-        "verifiesIdentity",
-        "presentsEvidence",
-        "accepted",
-        "origin",
-      ]) {
-        if (Object.hasOwn(entry, key)) fail(path, `tool-gap ${id} cannot set ${key}`)
-      }
-    } else if (
-      Object.hasOwn(entry, "captureSha256") ||
-      Object.hasOwn(entry, "decision") ||
-      Object.hasOwn(entry, "evidence")
-    ) {
-      normalized.push(parseCaptureDecision(entry, `${path}: capture ${id}`, catalog, decodedScope.historical ? 3 : 4))
-      continue
     }
     if (entry.runId !== undefined && !nonempty(entry.runId)) fail(path, `invalid runId for ${id}`)
     if (
