@@ -12,7 +12,14 @@ import { fileURLToPath } from "node:url"
 import { isDeepStrictEqual } from "node:util"
 import { describe, expect, it } from "vitest"
 import { spawnSync } from "node:child_process"
-import { SOURCE_ANSWERS, finalizeProbeResult, repositoryIdentity, type SourceAnswer } from "@terminfo/probe-defs"
+import {
+  SOURCE_ANSWERS,
+  finalizeProbeResult,
+  repositoryIdentity,
+  type HeadlessRuntimeIdentity,
+  type SourceAnswer,
+  type SourceAnswerSubject,
+} from "@terminfo/probe-defs"
 import { readEngineReceipt, resolveMeasuredSourceAnswer } from "./source-answers.ts"
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "../../..")
@@ -29,10 +36,10 @@ const DISPUTED = [
   "extensions.osc30101-color-stack-pop",
 ].sort()
 
-type Run = {
+interface Run {
   schemaVersion?: number
-  subject: never
-  runtimeIdentity?: never
+  subject: SourceAnswerSubject
+  runtimeIdentity?: HeadlessRuntimeIdentity
   sourceRevision: string
   results: Array<Record<string, unknown> & { featureId: string; status: string; tests: Array<Record<string, unknown>> }>
 }
@@ -119,14 +126,18 @@ describe("kept answers against every current committed run", () => {
     const receipt = readEngineReceipt(ghostty.runtimeIdentity)
     expect(receipt?.core.repository ? repositoryIdentity(receipt.core.repository) : undefined).toBe(core)
     expect(receipt?.core.commit).toMatch(/^[a-f0-9]{40}$/)
-    expect(receipt?.outputs["ghostty-vt.wasm"]).toBe(ghostty.runtimeIdentity!.loadedBinary.sha256)
+    const ghosttyLoaded = "loadedBinary" in ghostty.runtimeIdentity! ? ghostty.runtimeIdentity.loadedBinary.sha256 : ""
+    expect(receipt?.outputs["ghostty-vt.wasm"]).toBe(ghosttyLoaded)
 
     // No committed run reads the engine core today, and no ghostty checkout exists here, so every cell above
     // resolved without one. The gate that keeps that true is the wasm output: a js-source run names no binary.
     for (const { name, run } of runs.filter((entry) => entry.name !== GHOSTTY_RUN)) {
-      const loaded = run.runtimeIdentity!.loadedBinary
-      if (loaded === undefined) expect(readEngineReceipt(run.runtimeIdentity), name).toBeUndefined()
-      else expect(readEngineReceipt(run.runtimeIdentity)?.outputs["ghostty-vt.wasm"], name).not.toBe(loaded.sha256)
+      if (!("loadedBinary" in run.runtimeIdentity!))
+        expect(readEngineReceipt(run.runtimeIdentity), name).toBeUndefined()
+      else
+        expect(readEngineReceipt(run.runtimeIdentity)?.outputs["ghostty-vt.wasm"], name).not.toBe(
+          run.runtimeIdentity.loadedBinary.sha256,
+        )
     }
     const cited = new Set(
       SOURCE_ANSWERS.flatMap((row) =>

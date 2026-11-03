@@ -108,11 +108,6 @@ function readBlob(repository: string, commit: string, path: string): string | un
   return readSource(repository, commit, path, "oid")
 }
 
-interface EngineReceipt {
-  outputs: Record<string, string>
-  core: { repository: string; commit: string }
-}
-
 const receipts = new Map<string, EngineReceipt | undefined>()
 
 /**

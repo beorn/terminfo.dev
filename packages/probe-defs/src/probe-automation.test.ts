@@ -978,7 +978,7 @@ describe("reply-path audit", () => {
         tests: [{ id: "review", status: "test-todo" }],
       })
       expect(silent.result.observation).toBeUndefined()
-      const state = JSON.parse(silent.result.response!)
+      const state = JSON.parse(silent.result.response!) as { replyPathAudit?: Record<string, unknown> }
       expect(state).toMatchObject({
         replyPathAudit: { artifactSha256: sha256, replyBytes: 0 },
       })
