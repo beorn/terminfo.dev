@@ -156,7 +156,9 @@ export const unicodeProbes: ProbeDefinition[] = [
         const expected = "Wide CJK character wraps from final column to row 2 while ASCII control is preserved"
         ctx.feed("\x1b[1;1H\x1b[2J")
         ctx.feed("A".repeat(ctx.cols))
-        const before = Array.from({ length: ctx.cols }, (_, col) => ctx.getCell(0, col).char)
+        const { totalLines, screenLines } = ctx.getScrollback()
+        const screenTop = Math.max(0, totalLines - screenLines)
+        const before = Array.from({ length: ctx.cols }, (_, col) => ctx.getCell(screenTop, col).char)
         if (before.some((char) => char !== "A")) {
           return parserStateResult(null, expected, { before }, "ASCII row seed was not measured")
         }
@@ -167,8 +169,10 @@ export const unicodeProbes: ProbeDefinition[] = [
           return parserStateResult(null, expected, { before, setup }, "Target CUP did not reach final column")
         }
         ctx.feed("\u4e2d")
-        const after = [ctx.getCell(0, ctx.cols - 1).char, ctx.getCell(1, 0).char]
-        const control = ctx.getCell(0, 0).char
+        const afterScrollback = ctx.getScrollback()
+        const afterTop = Math.max(0, afterScrollback.totalLines - afterScrollback.screenLines)
+        const after = [ctx.getCell(afterTop, ctx.cols - 1).char, ctx.getCell(afterTop + 1, 0).char]
+        const control = ctx.getCell(afterTop, 0).char
         const pass = control === "A" && after[1] === "\u4e2d"
         return parserStateResult(pass, expected, { before, setup, control, after })
       },

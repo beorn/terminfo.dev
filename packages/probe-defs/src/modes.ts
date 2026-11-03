@@ -590,16 +590,23 @@ const ALT_1049_SEED_A = "PRIMARY-A"
 const ALT_1049_SEED_B = "PRIMARY-B"
 const ALT_1049_MARK = "ALT-MARK"
 
+function activeScreenRow(ctx: LibProbeSource, row: number): number {
+  const { totalLines, screenLines } = ctx.getScrollback()
+  return Math.max(0, totalLines - screenLines) + row
+}
+
 /** Read the exact characters of a horizontal span; never an inequality shortcut. */
 function readAlt1049Span(ctx: LibProbeSource, row: number, length: number): string {
+  const activeRow = activeScreenRow(ctx, row)
   let text = ""
-  for (let index = 0; index < length; index += 1) text += ctx.getCell(row, index).char
+  for (let index = 0; index < length; index += 1) text += ctx.getCell(activeRow, index).char
   return text
 }
 
 function alt1049SpanBlank(ctx: LibProbeSource, row: number, length: number): boolean {
+  const activeRow = activeScreenRow(ctx, row)
   for (let index = 0; index < length; index += 1) {
-    if (!isBlank(ctx.getCell(row, index).char)) return false
+    if (!isBlank(ctx.getCell(activeRow, index).char)) return false
   }
   return true
 }
@@ -964,9 +971,10 @@ function leftRightMarginHeadless(ctx: LibProbeSource): ProbeCallbackResult {
     return parserStateResult(null, LR_MARGIN_EXPECTED, { cols: ctx.cols }, "Measured grid needs eight columns")
   }
   const readRow = (): string => {
+    const activeRow = activeScreenRow(ctx, 0)
     let text = ""
     for (let col = 0; col < width; col += 1) {
-      const char = ctx.getCell(0, col).char
+      const char = ctx.getCell(activeRow, col).char
       text += isBlank(char) ? " " : char
     }
     return text
@@ -2303,7 +2311,9 @@ const modeDefinitions: ProbeDefinition[] = [
         }
         ctx.feed("\x1b[9 pQ")
         const state = { text: ctx.getText(), cursor: ctx.getCursor() }
-        const line = state.text.trimEnd()
+        const { totalLines, screenLines } = ctx.getScrollback()
+        const screenTop = Math.max(0, totalLines - screenLines)
+        const line = state.text.split("\n").slice(screenTop).join("\n").trimEnd()
         if (line === "Q" && state.cursor.x === 1 && state.cursor.y === 0) {
           return parserStateResult(
             null,

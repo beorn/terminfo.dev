@@ -3182,9 +3182,10 @@ function mainScreenReflow(ctx: LibProbeSource): ProbeCallbackResult {
     })
   const matches = (frame: Frame, lines: string[]) =>
     frame.scrollback.totalLines === height && frame.scrollback.viewportOffset === 0 && matchesCells(frame, lines)
-  const clear = (alternate = false) => feed(`${alternate ? "" : "\x1b[?1049l"}\x1b[?7h\x1b[2J\x1b[H`)
+  const clear = (alternate = false, history = false) =>
+    feed(`${alternate ? "" : "\x1b[?1049l"}\x1b[?7h\x1b[2J${alternate || history ? "" : "\x1b[3J"}\x1b[H`)
   const widthControl = (name: string, columns: number, history = false, alternate = false) => {
-    clear(alternate)
+    clear(alternate, history)
     feed("W".repeat(columns) + "Z")
     const frame = read(name, columns)
     const lines = ["W".repeat(columns), "Z"]
@@ -3231,12 +3232,22 @@ function mainScreenReflow(ctx: LibProbeSource): ProbeCallbackResult {
         })
         continue
       }
+      const reflowGrowth = Math.max(0, layout(to).length - layout(from).length)
+      readBound = height + reflowGrowth
       resize(to)
       const after = read(`${id}.after`, to)
+      readBound = height
       const control = widthControl(`${id}.control-after`, to)
+      const matchesReflowed =
+        matches(after, layout(to)) ||
+        (reflowGrowth > 0 &&
+          after.scrollback.totalLines === height + reflowGrowth &&
+          (after.scrollback.viewportOffset === 0 ||
+            after.scrollback.viewportOffset === after.scrollback.totalLines - after.scrollback.screenLines) &&
+          matchesCells(after, layout(to)))
       const outcome = !control
         ? "invalid"
-        : matches(after, layout(to))
+        : matchesReflowed
           ? "reflow"
           : matches(
                 after,
@@ -3292,8 +3303,9 @@ function mainScreenReflow(ctx: LibProbeSource): ProbeCallbackResult {
       }
       const witnesses = Array.from({ length: 2 * height }, (_, index) => `R${String(index).padStart(3, "0")}`)
       const beforeLines = [...layout(from), ...witnesses]
-      // Include the screen extent in the feed-derived bound, but never allocate from unchecked counts.
-      readBound = beforeLines.length + height
+      // Include the screen extent (and any post-resize reflow growth before the ED2 width control) in the
+      // feed-derived bound, but never allocate from unchecked counts.
+      readBound = Math.max(beforeLines.length, layout(to).length + witnesses.length) + height
       clear()
       feed([state.fixture.soft, ...state.fixture.hard, ...witnesses].join("\r\n"))
       const before = read(`${id}.before`, from)
