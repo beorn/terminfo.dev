@@ -68,6 +68,10 @@ const ghosttyInput: SourceAnswerInput = {
     termlessRevision: "25089207e11420cf7a588987c1dc2683a45e8372",
     resolvedPath: "vendor/ghostty-web/dist/ghostty-web.js",
     runtimeFormat: "wasm",
+    loadedBinary: {
+      path: "vendor/ghostty-web/ghostty-vt.wasm",
+      sha256: "42e84af1b38be94571974a23fa4667c4735ee7a272dcff39afd5cba40dcf48de",
+    },
     integrity: {
       kind: "source",
       repository: "git@github.com:beorn/termless.git",
