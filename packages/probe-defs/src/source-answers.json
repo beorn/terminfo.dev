@@ -29874,5 +29874,241 @@
         ]
       }
     ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "ghostty",
+      "version": "0.4.0",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc117-reset-highlight-bg",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/terminfo.dev.git",
+            "commit": "84c495d2c008d6c6feb6f7ab3fc56eed8af4264a",
+            "path": "packages/probe-defs/src/extensions.ts",
+            "oid": "e61f53907f83b713ab2d5066910f22d1ae1153bf"
+          },
+          {
+            "repository": "git@github.com:beorn/terminfo.dev.git",
+            "commit": "84c495d2c008d6c6feb6f7ab3fc56eed8af4264a",
+            "path": "packages/probe-defs/src/helpers.ts",
+            "oid": "8ebcedeb60984cdedf3e34afe7a41c522d4f7929"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/ghostty/src/backend.ts",
+            "oid": "19d45e37b36c0d6fc8d69ae6215ece9db173351c"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "vendor/ghostty-web/RECEIPT.json",
+            "oid": "3ffc517c4f4b5b97bf31e5a8b513ab7f3b21251e"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "vendor/ghostty-web/ghostty-wasm-api.patch",
+            "oid": "17769d971169a3f50ea15335ef473984b2026b32"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev10-31398-shipped-source-ghostty-osc117-20261103",
+            "reviewer": "@dev/10",
+            "reason": "Source-negative for shipped ghostty-web0.4.0 WASM42e84af1b38be94571974a23fa4667c4735ee7a272dcff39afd5cba40dcf48de, not the Ghostty app. Termless receipt pins core5714ed07a1012573261b7b7e3ed2add9c1504496/archive55cee28558945de6e984bc183cd51f28eefdbf805544da2e70d4635476178790 and inner patch2a42e7e91ef05b9a24f1809ab243964b9dd9f0f9a01d7a1bd6654b3fc1a0396e. The shipped patch calls ResponseStream.init at1025; core Parser.zig:230 supplies null and stream.zig:497-509 supplies an allocator only in initAlloc. osc.zig:657-676,779-825 rejects OSC 17/117 without that allocator before dispatch. Direct engine and adapter controls agreed; the negative is this compiled parser limit, not the failed initial-query prerequisite.",
+            "sources": [
+              "CTO e0c0bc48-e7fb-45fe-b6d5-7eea542ef92b and native clarification deccb789-0f60-4618-8c72-9485a6ca9900; source conditions checked before code; grading data requires exact-head CTO review before delivery",
+              "Source qualification and full moved-cell/bound-record census on @si/terminfo/30211-terminfo-273/30695-headless-result-gaps/31398-highlight-state; state65c910a8d05517333bfc2fcac3b2bcbdb5b3dd6c",
+              "Terminfo producer 84c495d2c008d6c6feb6f7ab3fc56eed8af4264a packages/probe-defs/src/extensions.ts and helpers.ts; existing source-negative-review path, no new criterion or control flow",
+              "Termless25089207 vendor/ghostty-web/RECEIPT.json and ghostty-wasm-api.patch; Ghostty core archive SHA25655cee28558945de6e984bc183cd51f28eefdbf805544da2e70d4635476178790 independently rehashed; source parser guards and null allocator inspected"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "ghostty",
+      "version": "0.4.0",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc119-reset-highlight-fg",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/terminfo.dev.git",
+            "commit": "84c495d2c008d6c6feb6f7ab3fc56eed8af4264a",
+            "path": "packages/probe-defs/src/extensions.ts",
+            "oid": "e61f53907f83b713ab2d5066910f22d1ae1153bf"
+          },
+          {
+            "repository": "git@github.com:beorn/terminfo.dev.git",
+            "commit": "84c495d2c008d6c6feb6f7ab3fc56eed8af4264a",
+            "path": "packages/probe-defs/src/helpers.ts",
+            "oid": "8ebcedeb60984cdedf3e34afe7a41c522d4f7929"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/ghostty/src/backend.ts",
+            "oid": "19d45e37b36c0d6fc8d69ae6215ece9db173351c"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "vendor/ghostty-web/RECEIPT.json",
+            "oid": "3ffc517c4f4b5b97bf31e5a8b513ab7f3b21251e"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "vendor/ghostty-web/ghostty-wasm-api.patch",
+            "oid": "17769d971169a3f50ea15335ef473984b2026b32"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev10-31398-shipped-source-ghostty-osc119-20261103",
+            "reviewer": "@dev/10",
+            "reason": "Source-negative for shipped ghostty-web0.4.0 WASM42e84af1b38be94571974a23fa4667c4735ee7a272dcff39afd5cba40dcf48de, not the Ghostty app. Termless receipt pins core5714ed07a1012573261b7b7e3ed2add9c1504496/archive55cee28558945de6e984bc183cd51f28eefdbf805544da2e70d4635476178790 and inner patch2a42e7e91ef05b9a24f1809ab243964b9dd9f0f9a01d7a1bd6654b3fc1a0396e. The shipped patch calls ResponseStream.init at1025; core Parser.zig:230 supplies null and stream.zig:497-509 supplies an allocator only in initAlloc. osc.zig:657-676,779-825 rejects OSC 19/119 without that allocator before dispatch. Direct engine and adapter controls agreed; the negative is this compiled parser limit, not the failed initial-query prerequisite.",
+            "sources": [
+              "CTO e0c0bc48-e7fb-45fe-b6d5-7eea542ef92b and native clarification deccb789-0f60-4618-8c72-9485a6ca9900; source conditions checked before code; grading data requires exact-head CTO review before delivery",
+              "Source qualification and full moved-cell/bound-record census on @si/terminfo/30211-terminfo-273/30695-headless-result-gaps/31398-highlight-state; state65c910a8d05517333bfc2fcac3b2bcbdb5b3dd6c",
+              "Terminfo producer 84c495d2c008d6c6feb6f7ab3fc56eed8af4264a packages/probe-defs/src/extensions.ts and helpers.ts; existing source-negative-review path, no new criterion or control flow",
+              "Termless25089207 vendor/ghostty-web/RECEIPT.json and ghostty-wasm-api.patch; Ghostty core archive SHA25655cee28558945de6e984bc183cd51f28eefdbf805544da2e70d4635476178790 independently rehashed; source parser guards and null allocator inspected"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "ghostty-native",
+      "version": "1.3.1",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc117-reset-highlight-bg",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/terminfo.dev.git",
+            "commit": "84c495d2c008d6c6feb6f7ab3fc56eed8af4264a",
+            "path": "packages/probe-defs/src/extensions.ts",
+            "oid": "e61f53907f83b713ab2d5066910f22d1ae1153bf"
+          },
+          {
+            "repository": "git@github.com:beorn/terminfo.dev.git",
+            "commit": "84c495d2c008d6c6feb6f7ab3fc56eed8af4264a",
+            "path": "packages/probe-defs/src/helpers.ts",
+            "oid": "8ebcedeb60984cdedf3e34afe7a41c522d4f7929"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/ghostty-native/src/backend.ts",
+            "oid": "f403717f7c063d799c5de994b3ccc095edbcacd1"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/ghostty-native/native/src/main.zig",
+            "oid": "1cda313d3f016704c769f1f54bb4ec4ac67f6611"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/ghostty-native/build/build.sh",
+            "oid": "740ed6d0627872f8e868a9733f06ff466c70bc85"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev10-31398-shipped-source-ghostty-native-osc117-20261103",
+            "reviewer": "@dev/10",
+            "reason": "Source-negative for the shipped headless libghostty-vt332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28: Terminal.zig:69,132-145 stores foreground, background, cursor and palette, no highlight colour state. stream_readonly.zig:290-361 ignores highlight set/reset/query; Terminal.zig:260-270 returns that stock ReadonlyStream and lib_vt.zig:60-63 exports no fuller stock handler. The C header vt.h:29-36,75-82 exposes no terminal handler/state API. Termless native main.zig:31-78 delegates colour operations to readonly.vt and :141 supplies an allocator. Thus OSC 17 has no engine highlight writer and OSC 117 has no engine highlight state to restore. An adapter-owned substitute would measure Termless. This qualifies under CTOdeccb789 condition(a), not silence or a claim about the Ghostty app. The exact native53f9a867/build0effe403/backendf403717f profile is separately bound; the historical native profile is unchanged.",
+            "sources": [
+              "CTO e0c0bc48-e7fb-45fe-b6d5-7eea542ef92b and native clarification deccb789-0f60-4618-8c72-9485a6ca9900; source conditions checked before code; grading data requires exact-head CTO review before delivery",
+              "Source qualification and full moved-cell/bound-record census on @si/terminfo/30211-terminfo-273/30695-headless-result-gaps/31398-highlight-state; state65c910a8d05517333bfc2fcac3b2bcbdb5b3dd6c",
+              "Terminfo producer 84c495d2c008d6c6feb6f7ab3fc56eed8af4264a packages/probe-defs/src/extensions.ts and helpers.ts; existing source-negative-review path, no new criterion or control flow",
+              "Ghostty332b2aef src/terminal/Terminal.zig:69,132-145,260-270; src/lib_vt.zig:60-63; src/terminal/stream_readonly.zig:290-361 (blob5b97bebfa2debd8328f7c09a6be7e406a3005855); include/ghostty/vt.h:29-36,75-82; Termless25089207 native/src/main.zig blob1cda313d3f016704c769f1f54bb4ec4ac67f6611"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "ghostty-native",
+      "version": "1.3.1",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc119-reset-highlight-fg",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/terminfo.dev.git",
+            "commit": "84c495d2c008d6c6feb6f7ab3fc56eed8af4264a",
+            "path": "packages/probe-defs/src/extensions.ts",
+            "oid": "e61f53907f83b713ab2d5066910f22d1ae1153bf"
+          },
+          {
+            "repository": "git@github.com:beorn/terminfo.dev.git",
+            "commit": "84c495d2c008d6c6feb6f7ab3fc56eed8af4264a",
+            "path": "packages/probe-defs/src/helpers.ts",
+            "oid": "8ebcedeb60984cdedf3e34afe7a41c522d4f7929"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/ghostty-native/src/backend.ts",
+            "oid": "f403717f7c063d799c5de994b3ccc095edbcacd1"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/ghostty-native/native/src/main.zig",
+            "oid": "1cda313d3f016704c769f1f54bb4ec4ac67f6611"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/ghostty-native/build/build.sh",
+            "oid": "740ed6d0627872f8e868a9733f06ff466c70bc85"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev10-31398-shipped-source-ghostty-native-osc119-20261103",
+            "reviewer": "@dev/10",
+            "reason": "Source-negative for the shipped headless libghostty-vt332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28: Terminal.zig:69,132-145 stores foreground, background, cursor and palette, no highlight colour state. stream_readonly.zig:290-361 ignores highlight set/reset/query; Terminal.zig:260-270 returns that stock ReadonlyStream and lib_vt.zig:60-63 exports no fuller stock handler. The C header vt.h:29-36,75-82 exposes no terminal handler/state API. Termless native main.zig:31-78 delegates colour operations to readonly.vt and :141 supplies an allocator. Thus OSC 19 has no engine highlight writer and OSC 119 has no engine highlight state to restore. An adapter-owned substitute would measure Termless. This qualifies under CTOdeccb789 condition(a), not silence or a claim about the Ghostty app. The exact native53f9a867/build0effe403/backendf403717f profile is separately bound; the historical native profile is unchanged.",
+            "sources": [
+              "CTO e0c0bc48-e7fb-45fe-b6d5-7eea542ef92b and native clarification deccb789-0f60-4618-8c72-9485a6ca9900; source conditions checked before code; grading data requires exact-head CTO review before delivery",
+              "Source qualification and full moved-cell/bound-record census on @si/terminfo/30211-terminfo-273/30695-headless-result-gaps/31398-highlight-state; state65c910a8d05517333bfc2fcac3b2bcbdb5b3dd6c",
+              "Terminfo producer 84c495d2c008d6c6feb6f7ab3fc56eed8af4264a packages/probe-defs/src/extensions.ts and helpers.ts; existing source-negative-review path, no new criterion or control flow",
+              "Ghostty332b2aef src/terminal/Terminal.zig:69,132-145,260-270; src/lib_vt.zig:60-63; src/terminal/stream_readonly.zig:290-361 (blob5b97bebfa2debd8328f7c09a6be7e406a3005855); include/ghostty/vt.h:29-36,75-82; Termless25089207 native/src/main.zig blob1cda313d3f016704c769f1f54bb4ec4ac67f6611"
+            ]
+          }
+        ]
+      }
+    ]
   }
 ]
