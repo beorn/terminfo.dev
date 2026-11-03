@@ -1094,15 +1094,28 @@ test("input.button-event-mouse throws when the 1002 drag is silent after deliver
 
 test("input.kitty-click-events supports a prompt click report while mouse modes are off", async () => {
   const writes: string[] = []
-  const { ctx, clicks } = inputAndRead({ clickReports: ["\x1b[<0;10;5M", "\x1b[<0;10;5M"] }, writes)
+  const { ctx, clicks } = inputAndRead({ clickReports: ["\x1b[<0;10;5M", "", "\x1b[<0;10;5M"] }, writes)
   const result = await probe("input.kitty-click-events").term!(ctx)
   expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "input_bytes" })
   expect(result.assertions).toEqual([expect.objectContaining({ kind: "positive", action: "kitty-click-events:1" })])
-  expect(clicks).toEqual([1, 1])
+  expect(clicks).toEqual([1, 1, 1])
   const marker = writes.find((write) => write.includes("\x1b]133;A;click_events=1"))
   expect(marker).toBe("\x1b[5;1H\x1b]133;A;click_events=1\x07$ " + " ".repeat(8))
-  expect(writes.some((write) => write.includes("\x1b]133;B\x07\x1b[5;1H\x1b[2K"))).toBe(true)
+  expect(writes.at(-1)).toContain("\x1b]133;B\x07\x1b[5;1H\x1b[2K")
   expect(writes.some((write) => write.includes("\x1b[?1049h"))).toBe(false)
+})
+
+// A matching generic mouse report is not evidence that the marked prompt owns the event.
+// The existing coordinate-mismatch control cannot catch a mouse mode that keeps reporting.
+test("input.kitty-click-events rejects ordinary mouse reports before the prompt is marked", async () => {
+  const { ctx } = inputAndRead({ clicks: { 1: "\x1b[<0;10;5M" } }, [])
+  const result = await probe("input.kitty-click-events").term!(ctx)
+  expect(result.observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+    assertionType: "input_bytes",
+  })
+  expect(result.assertions).toBeUndefined()
 })
 
 test("input.kitty-click-events reports unsupported when a delivered click leaves the marked prompt silent", async () => {
@@ -1120,7 +1133,7 @@ test("input.kitty-click-events names the missing click injection instead of meas
 })
 
 test("input.kitty-click-events stays inconclusive when the report does not match the control click", async () => {
-  const { ctx } = inputAndRead({ clickReports: ["\x1b[<0;10;5M", "\x1b[<2;30;9M"] }, [])
+  const { ctx } = inputAndRead({ clickReports: ["\x1b[<0;10;5M", "", "\x1b[<2;30;9M"] }, [])
   const result = await probe("input.kitty-click-events").term!(ctx)
   expect(result.observation).toMatchObject({
     outcome: "inconclusive",
