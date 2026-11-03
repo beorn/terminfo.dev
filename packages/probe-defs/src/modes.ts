@@ -510,7 +510,8 @@ function xtSgrStackHeadless(ctx: LibProbeSource, operation: "push" | "pop"): Pro
  * 0613b68d). On returning while the control passed blames only the save that kept the earlier state.
  * An on-control (on, save, off, restore, expect on) runs after the restore control: a restore that
  * sets off whatever was saved passes both off fixtures, so the control counts as restored only when
- * the on-control also returns on; otherwise both rows have no observation (vterm 0.10.1, #31904).
+ * the on-control also returns on; otherwise restore failed to return a saved on, a negative for the
+ * restore row only, since no save is visible through it (vterm 0.10.1, #31904).
  */
 function xtModeSaveHeadless(ctx: LibProbeSource, operation: "push" | "pop"): ProbeCallbackResult {
   const id = operation === "push" ? "modes.xtsave" : "modes.xtrestore"
@@ -584,13 +585,18 @@ function xtModeSaveHeadless(ctx: LibProbeSource, operation: "push" | "pop"): Pro
       pop,
       push,
     }
+    // A restore that returns off after on was saved fails the pop claim itself, but hides any save
+    // behind it, so only the restore row is negative (@cto 972a8462).
+    if (stayed(control) && stayed(onControl)) {
+      return operation === "pop"
+        ? parserStateResult(false, expected, state, "restore returned DECAWM off after on was saved")
+        : parserStateResult(null, expected, state, "restore returned DECAWM off whatever was saved, so no save was observed")
+    }
     const verdict = stackVerdict(operation, pop, push)
     const note =
       pop === "persisted" && push === "persisted"
         ? "save then restore restored no earlier state"
-        : stayed(control) && stayed(onControl)
-          ? "restore set DECAWM off whatever was saved, so neither operation was observed"
-          : verdict.note?.replace("push saved no current snapshot", "save kept the earlier saved state")
+        : verdict.note?.replace("push saved no current snapshot", "save kept the earlier saved state")
     return parserStateResult(verdict.pass, expected, state, note)
   } finally {
     ctx.feed(`${ON}\x1b[0m\x1b[2J\x1b[H`)

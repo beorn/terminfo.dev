@@ -561,8 +561,8 @@ test.each([
   ["xtrestore-reset-default", "modes.xtrestore", "unsupported", "save then restore restored no earlier state"],
   ["xtrestore-noop", "modes.xtsave", "unsupported", "save then restore restored no earlier state"],
   ["xtrestore-noop", "modes.xtrestore", "unsupported", "save then restore restored no earlier state"],
-  ["xtrestore-always-off", "modes.xtsave", "inconclusive", "restore set DECAWM off whatever was saved"],
-  ["xtrestore-always-off", "modes.xtrestore", "inconclusive", "restore set DECAWM off whatever was saved"],
+  ["xtrestore-always-off", "modes.xtsave", "inconclusive", "restore returned DECAWM off whatever was saved"],
+  ["xtrestore-always-off", "modes.xtrestore", "unsupported", "restore returned DECAWM off after on was saved"],
 ] as const)("%s grades %s %s on its own operation", (mutation, id, outcome, note) => {
   const probe = modesProbes.find((entry) => entry.id === id)!
   const result = probe.lib!(libProbeSource(createSemanticSurface({ mutations: [mutation] })))
