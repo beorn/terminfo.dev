@@ -27024,5 +27024,1681 @@
         ]
       }
     ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt100",
+      "version": "0.10.1",
+      "os": "linux"
+    },
+    "featureId": "sgr.underline-color-indexed",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/vterm.git",
+            "commit": "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+            "path": "packages/vt100/src/screen.ts",
+            "oid": "cd71776df5f72918cd06934d724a5c2e3585a89d"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev3-32203-vt100-sgr.underline-color-indexed-source9e99",
+            "reviewer": "@dev/3",
+            "reason": "sgr.underline-color-indexed: Vterm9e99e4d2 packages/vt100/src/screen.ts445–501 stores boolean underline; plain4/24 work, colon groups are ignored whole and58 consumes parameters without storing a colour; no21/59 dispatch. Closed31248 preserves this classic contract. The requested explicit underline colour has no implementing engine state at this source. This is a cited source negative corroborated by the retained negative buffer witness; null readback alone was not used as a support verdict.",
+            "sources": [
+              "Vterm9e99e4d2 packages/vt100/src/screen.ts445–501 stores boolean underline; plain4/24 work, colon groups are ignored whole and58 consumes parameters without storing a colour; no21/59 dispatch. Closed31248 preserves this classic contract.",
+              "Retained runfe2b05cf-0cd4-45cc-9677-5b494dacd5b3, suite987ca95c0608, source172842d5c3b06da9aba3f1d30c03399d7d522b87; negative buffer witness: SGR 58 index 5/4 underline colors match the opposite SGR 38 palette controls, not their same-foreground defaults",
+              "Scope approval CTO b1ed8962/36be0743; four sgr.underline-color-reset cells stay pending under the existing criterion. Source audit by @dev/3, not an attributed CTO per-cell review."
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt100",
+      "version": "0.10.1",
+      "os": "linux"
+    },
+    "featureId": "sgr.underline-color-rgb",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/vterm.git",
+            "commit": "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+            "path": "packages/vt100/src/screen.ts",
+            "oid": "cd71776df5f72918cd06934d724a5c2e3585a89d"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev3-32203-vt100-sgr.underline-color-rgb-source9e99",
+            "reviewer": "@dev/3",
+            "reason": "sgr.underline-color-rgb: Vterm9e99e4d2 packages/vt100/src/screen.ts445–501 stores boolean underline; plain4/24 work, colon groups are ignored whole and58 consumes parameters without storing a colour; no21/59 dispatch. Closed31248 preserves this classic contract. The requested explicit underline colour has no implementing engine state at this source. This is a cited source negative corroborated by the retained negative buffer witness; null readback alone was not used as a support verdict.",
+            "sources": [
+              "Vterm9e99e4d2 packages/vt100/src/screen.ts445–501 stores boolean underline; plain4/24 work, colon groups are ignored whole and58 consumes parameters without storing a colour; no21/59 dispatch. Closed31248 preserves this classic contract.",
+              "Retained runfe2b05cf-0cd4-45cc-9677-5b494dacd5b3, suite987ca95c0608, source172842d5c3b06da9aba3f1d30c03399d7d522b87; negative buffer witness: sgr.underline-color-rgb: X has explicit rgb(255,0,128) underline distinct from the reset/default B cell",
+              "Scope approval CTO b1ed8962/36be0743; four sgr.underline-color-reset cells stay pending under the existing criterion. Source audit by @dev/3, not an attributed CTO per-cell review."
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt100",
+      "version": "0.10.1",
+      "os": "linux"
+    },
+    "featureId": "sgr.underline.color",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/vterm.git",
+            "commit": "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+            "path": "packages/vt100/src/screen.ts",
+            "oid": "cd71776df5f72918cd06934d724a5c2e3585a89d"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev3-32203-vt100-sgr.underline.color-source9e99",
+            "reviewer": "@dev/3",
+            "reason": "sgr.underline.color: Vterm9e99e4d2 packages/vt100/src/screen.ts445–501 stores boolean underline; plain4/24 work, colon groups are ignored whole and58 consumes parameters without storing a colour; no21/59 dispatch. Closed31248 preserves this classic contract. The requested explicit underline colour has no implementing engine state at this source. This is a cited source negative corroborated by the retained negative buffer witness; null readback alone was not used as a support verdict.",
+            "sources": [
+              "Vterm9e99e4d2 packages/vt100/src/screen.ts445–501 stores boolean underline; plain4/24 work, colon groups are ignored whole and58 consumes parameters without storing a colour; no21/59 dispatch. Closed31248 preserves this classic contract.",
+              "Retained runfe2b05cf-0cd4-45cc-9677-5b494dacd5b3, suite987ca95c0608, source172842d5c3b06da9aba3f1d30c03399d7d522b87; negative buffer witness: sgr.underline.color: X has explicit rgb(255,0,128) underline distinct from the reset/default B cell",
+              "Scope approval CTO b1ed8962/36be0743; four sgr.underline-color-reset cells stay pending under the existing criterion. Source audit by @dev/3, not an attributed CTO per-cell review."
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt100",
+      "version": "0.10.1",
+      "os": "linux"
+    },
+    "featureId": "sgr.underline.curly",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/vterm.git",
+            "commit": "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+            "path": "packages/vt100/src/screen.ts",
+            "oid": "cd71776df5f72918cd06934d724a5c2e3585a89d"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev3-32203-vt100-sgr.underline.curly-source9e99",
+            "reviewer": "@dev/3",
+            "reason": "sgr.underline.curly: Vterm9e99e4d2 packages/vt100/src/screen.ts445–501 stores boolean underline; plain4/24 work, colon groups are ignored whole and58 consumes parameters without storing a colour; no21/59 dispatch. Closed31248 preserves this classic contract. The requested underline style has no implementing engine state at this source. This is a cited source negative corroborated by the retained negative buffer witness; null readback alone was not used as a support verdict.",
+            "sources": [
+              "Vterm9e99e4d2 packages/vt100/src/screen.ts445–501 stores boolean underline; plain4/24 work, colon groups are ignored whole and58 consumes parameters without storing a colour; no21/59 dispatch. Closed31248 preserves this classic contract.",
+              "Retained runfe2b05cf-0cd4-45cc-9677-5b494dacd5b3, suite987ca95c0608, source172842d5c3b06da9aba3f1d30c03399d7d522b87; negative buffer witness: sgr.underline.curly: attribute applied to the rendered X cell",
+              "Scope approval CTO b1ed8962/36be0743; four sgr.underline-color-reset cells stay pending under the existing criterion. Source audit by @dev/3, not an attributed CTO per-cell review."
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt100",
+      "version": "0.10.1",
+      "os": "linux"
+    },
+    "featureId": "sgr.underline.dashed",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/vterm.git",
+            "commit": "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+            "path": "packages/vt100/src/screen.ts",
+            "oid": "cd71776df5f72918cd06934d724a5c2e3585a89d"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev3-32203-vt100-sgr.underline.dashed-source9e99",
+            "reviewer": "@dev/3",
+            "reason": "sgr.underline.dashed: Vterm9e99e4d2 packages/vt100/src/screen.ts445–501 stores boolean underline; plain4/24 work, colon groups are ignored whole and58 consumes parameters without storing a colour; no21/59 dispatch. Closed31248 preserves this classic contract. The requested underline style has no implementing engine state at this source. This is a cited source negative corroborated by the retained negative buffer witness; null readback alone was not used as a support verdict.",
+            "sources": [
+              "Vterm9e99e4d2 packages/vt100/src/screen.ts445–501 stores boolean underline; plain4/24 work, colon groups are ignored whole and58 consumes parameters without storing a colour; no21/59 dispatch. Closed31248 preserves this classic contract.",
+              "Retained runfe2b05cf-0cd4-45cc-9677-5b494dacd5b3, suite987ca95c0608, source172842d5c3b06da9aba3f1d30c03399d7d522b87; negative buffer witness: sgr.underline.dashed: attribute applied to the rendered X cell",
+              "Scope approval CTO b1ed8962/36be0743; four sgr.underline-color-reset cells stay pending under the existing criterion. Source audit by @dev/3, not an attributed CTO per-cell review."
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt100",
+      "version": "0.10.1",
+      "os": "linux"
+    },
+    "featureId": "sgr.underline.dotted",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/vterm.git",
+            "commit": "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+            "path": "packages/vt100/src/screen.ts",
+            "oid": "cd71776df5f72918cd06934d724a5c2e3585a89d"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev3-32203-vt100-sgr.underline.dotted-source9e99",
+            "reviewer": "@dev/3",
+            "reason": "sgr.underline.dotted: Vterm9e99e4d2 packages/vt100/src/screen.ts445–501 stores boolean underline; plain4/24 work, colon groups are ignored whole and58 consumes parameters without storing a colour; no21/59 dispatch. Closed31248 preserves this classic contract. The requested underline style has no implementing engine state at this source. This is a cited source negative corroborated by the retained negative buffer witness; null readback alone was not used as a support verdict.",
+            "sources": [
+              "Vterm9e99e4d2 packages/vt100/src/screen.ts445–501 stores boolean underline; plain4/24 work, colon groups are ignored whole and58 consumes parameters without storing a colour; no21/59 dispatch. Closed31248 preserves this classic contract.",
+              "Retained runfe2b05cf-0cd4-45cc-9677-5b494dacd5b3, suite987ca95c0608, source172842d5c3b06da9aba3f1d30c03399d7d522b87; negative buffer witness: sgr.underline.dotted: attribute applied to the rendered X cell",
+              "Scope approval CTO b1ed8962/36be0743; four sgr.underline-color-reset cells stay pending under the existing criterion. Source audit by @dev/3, not an attributed CTO per-cell review."
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt100",
+      "version": "0.10.1",
+      "os": "linux"
+    },
+    "featureId": "sgr.underline.double",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/vterm.git",
+            "commit": "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+            "path": "packages/vt100/src/screen.ts",
+            "oid": "cd71776df5f72918cd06934d724a5c2e3585a89d"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev3-32203-vt100-sgr.underline.double-source9e99",
+            "reviewer": "@dev/3",
+            "reason": "sgr.underline.double: Vterm9e99e4d2 packages/vt100/src/screen.ts445–501 stores boolean underline; plain4/24 work, colon groups are ignored whole and58 consumes parameters without storing a colour; no21/59 dispatch. Closed31248 preserves this classic contract. The requested underline style has no implementing engine state at this source. This is a cited source negative corroborated by the retained negative buffer witness; null readback alone was not used as a support verdict.",
+            "sources": [
+              "Vterm9e99e4d2 packages/vt100/src/screen.ts445–501 stores boolean underline; plain4/24 work, colon groups are ignored whole and58 consumes parameters without storing a colour; no21/59 dispatch. Closed31248 preserves this classic contract.",
+              "Retained runfe2b05cf-0cd4-45cc-9677-5b494dacd5b3, suite987ca95c0608, source172842d5c3b06da9aba3f1d30c03399d7d522b87; negative buffer witness: sgr.underline.double: attribute applied to the rendered X cell",
+              "Scope approval CTO b1ed8962/36be0743; four sgr.underline-color-reset cells stay pending under the existing criterion. Source audit by @dev/3, not an attributed CTO per-cell review."
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt220",
+      "version": "0.10.1",
+      "os": "linux"
+    },
+    "featureId": "sgr.underline-color-indexed",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/vterm.git",
+            "commit": "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+            "path": "packages/vt220/src/screen.ts",
+            "oid": "cc5c5c79b0c882cb1c335f2ccaf2c555884a05ee"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev3-32203-vt220-sgr.underline-color-indexed-source9e99",
+            "reviewer": "@dev/3",
+            "reason": "sgr.underline-color-indexed: Vterm9e99e4d2 packages/vt220/src/screen.ts610–697 stores boolean underline; plain4/24 work, colon groups are ignored whole and58 consumes parameters without storing a colour; no21/59 dispatch. Closed31248 preserves this classic contract. The requested explicit underline colour has no implementing engine state at this source. This is a cited source negative corroborated by the retained negative buffer witness; null readback alone was not used as a support verdict.",
+            "sources": [
+              "Vterm9e99e4d2 packages/vt220/src/screen.ts610–697 stores boolean underline; plain4/24 work, colon groups are ignored whole and58 consumes parameters without storing a colour; no21/59 dispatch. Closed31248 preserves this classic contract.",
+              "Retained rune150af30-e60f-4589-8e27-9eaa898a6d05, suite987ca95c0608, source172842d5c3b06da9aba3f1d30c03399d7d522b87; negative buffer witness: SGR 58 index 5/4 underline colors match the opposite SGR 38 palette controls, not their same-foreground defaults",
+              "Scope approval CTO b1ed8962/36be0743; four sgr.underline-color-reset cells stay pending under the existing criterion. Source audit by @dev/3, not an attributed CTO per-cell review."
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt220",
+      "version": "0.10.1",
+      "os": "linux"
+    },
+    "featureId": "sgr.underline-color-rgb",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/vterm.git",
+            "commit": "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+            "path": "packages/vt220/src/screen.ts",
+            "oid": "cc5c5c79b0c882cb1c335f2ccaf2c555884a05ee"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev3-32203-vt220-sgr.underline-color-rgb-source9e99",
+            "reviewer": "@dev/3",
+            "reason": "sgr.underline-color-rgb: Vterm9e99e4d2 packages/vt220/src/screen.ts610–697 stores boolean underline; plain4/24 work, colon groups are ignored whole and58 consumes parameters without storing a colour; no21/59 dispatch. Closed31248 preserves this classic contract. The requested explicit underline colour has no implementing engine state at this source. This is a cited source negative corroborated by the retained negative buffer witness; null readback alone was not used as a support verdict.",
+            "sources": [
+              "Vterm9e99e4d2 packages/vt220/src/screen.ts610–697 stores boolean underline; plain4/24 work, colon groups are ignored whole and58 consumes parameters without storing a colour; no21/59 dispatch. Closed31248 preserves this classic contract.",
+              "Retained rune150af30-e60f-4589-8e27-9eaa898a6d05, suite987ca95c0608, source172842d5c3b06da9aba3f1d30c03399d7d522b87; negative buffer witness: sgr.underline-color-rgb: X has explicit rgb(255,0,128) underline distinct from the reset/default B cell",
+              "Scope approval CTO b1ed8962/36be0743; four sgr.underline-color-reset cells stay pending under the existing criterion. Source audit by @dev/3, not an attributed CTO per-cell review."
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt220",
+      "version": "0.10.1",
+      "os": "linux"
+    },
+    "featureId": "sgr.underline.color",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/vterm.git",
+            "commit": "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+            "path": "packages/vt220/src/screen.ts",
+            "oid": "cc5c5c79b0c882cb1c335f2ccaf2c555884a05ee"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev3-32203-vt220-sgr.underline.color-source9e99",
+            "reviewer": "@dev/3",
+            "reason": "sgr.underline.color: Vterm9e99e4d2 packages/vt220/src/screen.ts610–697 stores boolean underline; plain4/24 work, colon groups are ignored whole and58 consumes parameters without storing a colour; no21/59 dispatch. Closed31248 preserves this classic contract. The requested explicit underline colour has no implementing engine state at this source. This is a cited source negative corroborated by the retained negative buffer witness; null readback alone was not used as a support verdict.",
+            "sources": [
+              "Vterm9e99e4d2 packages/vt220/src/screen.ts610–697 stores boolean underline; plain4/24 work, colon groups are ignored whole and58 consumes parameters without storing a colour; no21/59 dispatch. Closed31248 preserves this classic contract.",
+              "Retained rune150af30-e60f-4589-8e27-9eaa898a6d05, suite987ca95c0608, source172842d5c3b06da9aba3f1d30c03399d7d522b87; negative buffer witness: sgr.underline.color: X has explicit rgb(255,0,128) underline distinct from the reset/default B cell",
+              "Scope approval CTO b1ed8962/36be0743; four sgr.underline-color-reset cells stay pending under the existing criterion. Source audit by @dev/3, not an attributed CTO per-cell review."
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt220",
+      "version": "0.10.1",
+      "os": "linux"
+    },
+    "featureId": "sgr.underline.curly",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/vterm.git",
+            "commit": "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+            "path": "packages/vt220/src/screen.ts",
+            "oid": "cc5c5c79b0c882cb1c335f2ccaf2c555884a05ee"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev3-32203-vt220-sgr.underline.curly-source9e99",
+            "reviewer": "@dev/3",
+            "reason": "sgr.underline.curly: Vterm9e99e4d2 packages/vt220/src/screen.ts610–697 stores boolean underline; plain4/24 work, colon groups are ignored whole and58 consumes parameters without storing a colour; no21/59 dispatch. Closed31248 preserves this classic contract. The requested underline style has no implementing engine state at this source. This is a cited source negative corroborated by the retained negative buffer witness; null readback alone was not used as a support verdict.",
+            "sources": [
+              "Vterm9e99e4d2 packages/vt220/src/screen.ts610–697 stores boolean underline; plain4/24 work, colon groups are ignored whole and58 consumes parameters without storing a colour; no21/59 dispatch. Closed31248 preserves this classic contract.",
+              "Retained rune150af30-e60f-4589-8e27-9eaa898a6d05, suite987ca95c0608, source172842d5c3b06da9aba3f1d30c03399d7d522b87; negative buffer witness: sgr.underline.curly: attribute applied to the rendered X cell",
+              "Scope approval CTO b1ed8962/36be0743; four sgr.underline-color-reset cells stay pending under the existing criterion. Source audit by @dev/3, not an attributed CTO per-cell review."
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt220",
+      "version": "0.10.1",
+      "os": "linux"
+    },
+    "featureId": "sgr.underline.dashed",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/vterm.git",
+            "commit": "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+            "path": "packages/vt220/src/screen.ts",
+            "oid": "cc5c5c79b0c882cb1c335f2ccaf2c555884a05ee"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev3-32203-vt220-sgr.underline.dashed-source9e99",
+            "reviewer": "@dev/3",
+            "reason": "sgr.underline.dashed: Vterm9e99e4d2 packages/vt220/src/screen.ts610–697 stores boolean underline; plain4/24 work, colon groups are ignored whole and58 consumes parameters without storing a colour; no21/59 dispatch. Closed31248 preserves this classic contract. The requested underline style has no implementing engine state at this source. This is a cited source negative corroborated by the retained negative buffer witness; null readback alone was not used as a support verdict.",
+            "sources": [
+              "Vterm9e99e4d2 packages/vt220/src/screen.ts610–697 stores boolean underline; plain4/24 work, colon groups are ignored whole and58 consumes parameters without storing a colour; no21/59 dispatch. Closed31248 preserves this classic contract.",
+              "Retained rune150af30-e60f-4589-8e27-9eaa898a6d05, suite987ca95c0608, source172842d5c3b06da9aba3f1d30c03399d7d522b87; negative buffer witness: sgr.underline.dashed: attribute applied to the rendered X cell",
+              "Scope approval CTO b1ed8962/36be0743; four sgr.underline-color-reset cells stay pending under the existing criterion. Source audit by @dev/3, not an attributed CTO per-cell review."
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt220",
+      "version": "0.10.1",
+      "os": "linux"
+    },
+    "featureId": "sgr.underline.dotted",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/vterm.git",
+            "commit": "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+            "path": "packages/vt220/src/screen.ts",
+            "oid": "cc5c5c79b0c882cb1c335f2ccaf2c555884a05ee"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev3-32203-vt220-sgr.underline.dotted-source9e99",
+            "reviewer": "@dev/3",
+            "reason": "sgr.underline.dotted: Vterm9e99e4d2 packages/vt220/src/screen.ts610–697 stores boolean underline; plain4/24 work, colon groups are ignored whole and58 consumes parameters without storing a colour; no21/59 dispatch. Closed31248 preserves this classic contract. The requested underline style has no implementing engine state at this source. This is a cited source negative corroborated by the retained negative buffer witness; null readback alone was not used as a support verdict.",
+            "sources": [
+              "Vterm9e99e4d2 packages/vt220/src/screen.ts610–697 stores boolean underline; plain4/24 work, colon groups are ignored whole and58 consumes parameters without storing a colour; no21/59 dispatch. Closed31248 preserves this classic contract.",
+              "Retained rune150af30-e60f-4589-8e27-9eaa898a6d05, suite987ca95c0608, source172842d5c3b06da9aba3f1d30c03399d7d522b87; negative buffer witness: sgr.underline.dotted: attribute applied to the rendered X cell",
+              "Scope approval CTO b1ed8962/36be0743; four sgr.underline-color-reset cells stay pending under the existing criterion. Source audit by @dev/3, not an attributed CTO per-cell review."
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt220",
+      "version": "0.10.1",
+      "os": "linux"
+    },
+    "featureId": "sgr.underline.double",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/vterm.git",
+            "commit": "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+            "path": "packages/vt220/src/screen.ts",
+            "oid": "cc5c5c79b0c882cb1c335f2ccaf2c555884a05ee"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev3-32203-vt220-sgr.underline.double-source9e99",
+            "reviewer": "@dev/3",
+            "reason": "sgr.underline.double: Vterm9e99e4d2 packages/vt220/src/screen.ts610–697 stores boolean underline; plain4/24 work, colon groups are ignored whole and58 consumes parameters without storing a colour; no21/59 dispatch. Closed31248 preserves this classic contract. The requested underline style has no implementing engine state at this source. This is a cited source negative corroborated by the retained negative buffer witness; null readback alone was not used as a support verdict.",
+            "sources": [
+              "Vterm9e99e4d2 packages/vt220/src/screen.ts610–697 stores boolean underline; plain4/24 work, colon groups are ignored whole and58 consumes parameters without storing a colour; no21/59 dispatch. Closed31248 preserves this classic contract.",
+              "Retained rune150af30-e60f-4589-8e27-9eaa898a6d05, suite987ca95c0608, source172842d5c3b06da9aba3f1d30c03399d7d522b87; negative buffer witness: sgr.underline.double: attribute applied to the rendered X cell",
+              "Scope approval CTO b1ed8962/36be0743; four sgr.underline-color-reset cells stay pending under the existing criterion. Source audit by @dev/3, not an attributed CTO per-cell review."
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt100-rust",
+      "version": "0.16.2",
+      "os": "linux"
+    },
+    "featureId": "sgr.underline-color-indexed",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "https://github.com/doy/vt100-rust.git",
+            "commit": "eb66ffaf7d771c13303ef73b29f6f2a56fdacecf",
+            "path": "src/screen.rs",
+            "oid": "7dfec97da6370b7905f242b975258a1a38b663a7"
+          },
+          {
+            "repository": "https://github.com/doy/vt100-rust.git",
+            "commit": "eb66ffaf7d771c13303ef73b29f6f2a56fdacecf",
+            "path": "src/cell.rs",
+            "oid": "c000cf30cf2b1770eddb0aae7619c5978c14db2f"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "286fddf6632e43ccd62f9050be41ec7b2908e43e",
+            "path": "packages/vt100-rust/native/src/lib.rs",
+            "oid": "ecdc2cf069088b4ba7180dbf28d8603d13d58fb8"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "286fddf6632e43ccd62f9050be41ec7b2908e43e",
+            "path": "packages/vt100-rust/native/Cargo.toml",
+            "oid": "cd1dd11f0824fde2ce6720c11b3ac71fa8ae4d5d"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "286fddf6632e43ccd62f9050be41ec7b2908e43e",
+            "path": "packages/vt100-rust/native/Cargo.lock",
+            "oid": "3755893017da8338bfd02474d98ecfb7ccadaacb"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev3-32203-vt100-rust-sgr.underline-color-indexed-native286",
+            "reviewer": "@dev/3",
+            "reason": "sgr.underline-color-indexed: Rust vt1000.16.2 upstream eb66ffaf src/screen.rs1260–1359 handles plain4/24 but no21/58/59 or colon styles; src/cell.rs169 exposes only boolean underline. Native source286fdd, Cargo.lock pins crate checksum054ff75f, retained binary84a5b6a3a40a7c16c6bae8b64534b730403df911498bb34bded68c3a17e2d408 receipt provenance is retained in the measured run. The requested explicit underline colour has no implementing engine state at this source. This is a cited source negative corroborated by the retained negative buffer witness; null readback alone was not used as a support verdict.",
+            "sources": [
+              "Rust vt1000.16.2 upstream eb66ffaf src/screen.rs1260–1359 handles plain4/24 but no21/58/59 or colon styles; src/cell.rs169 exposes only boolean underline. Native source286fdd, Cargo.lock pins crate checksum054ff75f, retained binary84a5b6a3a40a7c16c6bae8b64534b730403df911498bb34bded68c3a17e2d408 receipt provenance is retained in the measured run.",
+              "Retained run70c1f504-d40d-43d2-8929-4e91f3335ae5, suite987ca95c0608, source172842d5c3b06da9aba3f1d30c03399d7d522b87; negative buffer witness: SGR 58 index 5/4 underline colors match the opposite SGR 38 palette controls, not their same-foreground defaults",
+              "Scope approval CTO b1ed8962/36be0743; four sgr.underline-color-reset cells stay pending under the existing criterion. Source audit by @dev/3, not an attributed CTO per-cell review."
+            ]
+          }
+        ]
+      },
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "https://github.com/doy/vt100-rust.git",
+            "commit": "eb66ffaf7d771c13303ef73b29f6f2a56fdacecf",
+            "path": "src/screen.rs",
+            "oid": "7dfec97da6370b7905f242b975258a1a38b663a7"
+          },
+          {
+            "repository": "https://github.com/doy/vt100-rust.git",
+            "commit": "eb66ffaf7d771c13303ef73b29f6f2a56fdacecf",
+            "path": "src/cell.rs",
+            "oid": "c000cf30cf2b1770eddb0aae7619c5978c14db2f"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "83f653f649f185740afc57965f9544d3b742cea7",
+            "path": "packages/vt100-rust/native/src/lib.rs",
+            "oid": "310a38096b2641182e53e4cfb6a768da68e184c6"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "83f653f649f185740afc57965f9544d3b742cea7",
+            "path": "packages/vt100-rust/native/Cargo.toml",
+            "oid": "0f1ddb9ffc3b7cfc76abc98952666136c0bcd6c7"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "83f653f649f185740afc57965f9544d3b742cea7",
+            "path": "packages/vt100-rust/native/Cargo.lock",
+            "oid": "90bd0c36ab538390bdcb36cd8abda8e20675be02"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev3-32203-vt100-rust-sgr.underline-color-indexed-native83f",
+            "reviewer": "@dev/3",
+            "reason": "sgr.underline-color-indexed: Same pinned Rust vt1000.16.2 core eb66ffaf/checksum054ff75f; current binaryf309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96 receipt pins native source83f653. This is a separate source original, never substituted for retained84a/286. The requested explicit underline colour has no implementing engine state at this source. This is a cited source negative corroborated by the retained negative buffer witness; null readback alone was not used as a support verdict.",
+            "sources": [
+              "Same pinned Rust vt1000.16.2 core eb66ffaf/checksum054ff75f; current binaryf309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96 receipt pins native source83f653. This is a separate source original, never substituted for retained84a/286.",
+              "Retained run70c1f504-d40d-43d2-8929-4e91f3335ae5, suite987ca95c0608, source172842d5c3b06da9aba3f1d30c03399d7d522b87; negative buffer witness: SGR 58 index 5/4 underline colors match the opposite SGR 38 palette controls, not their same-foreground defaults",
+              "Scope approval CTO b1ed8962/36be0743; four sgr.underline-color-reset cells stay pending under the existing criterion. Source audit by @dev/3, not an attributed CTO per-cell review."
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt100-rust",
+      "version": "0.16.2",
+      "os": "linux"
+    },
+    "featureId": "sgr.underline-color-rgb",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "https://github.com/doy/vt100-rust.git",
+            "commit": "eb66ffaf7d771c13303ef73b29f6f2a56fdacecf",
+            "path": "src/screen.rs",
+            "oid": "7dfec97da6370b7905f242b975258a1a38b663a7"
+          },
+          {
+            "repository": "https://github.com/doy/vt100-rust.git",
+            "commit": "eb66ffaf7d771c13303ef73b29f6f2a56fdacecf",
+            "path": "src/cell.rs",
+            "oid": "c000cf30cf2b1770eddb0aae7619c5978c14db2f"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "286fddf6632e43ccd62f9050be41ec7b2908e43e",
+            "path": "packages/vt100-rust/native/src/lib.rs",
+            "oid": "ecdc2cf069088b4ba7180dbf28d8603d13d58fb8"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "286fddf6632e43ccd62f9050be41ec7b2908e43e",
+            "path": "packages/vt100-rust/native/Cargo.toml",
+            "oid": "cd1dd11f0824fde2ce6720c11b3ac71fa8ae4d5d"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "286fddf6632e43ccd62f9050be41ec7b2908e43e",
+            "path": "packages/vt100-rust/native/Cargo.lock",
+            "oid": "3755893017da8338bfd02474d98ecfb7ccadaacb"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev3-32203-vt100-rust-sgr.underline-color-rgb-native286",
+            "reviewer": "@dev/3",
+            "reason": "sgr.underline-color-rgb: Rust vt1000.16.2 upstream eb66ffaf src/screen.rs1260–1359 handles plain4/24 but no21/58/59 or colon styles; src/cell.rs169 exposes only boolean underline. Native source286fdd, Cargo.lock pins crate checksum054ff75f, retained binary84a5b6a3a40a7c16c6bae8b64534b730403df911498bb34bded68c3a17e2d408 receipt provenance is retained in the measured run. The requested explicit underline colour has no implementing engine state at this source. This is a cited source negative corroborated by the retained negative buffer witness; null readback alone was not used as a support verdict.",
+            "sources": [
+              "Rust vt1000.16.2 upstream eb66ffaf src/screen.rs1260–1359 handles plain4/24 but no21/58/59 or colon styles; src/cell.rs169 exposes only boolean underline. Native source286fdd, Cargo.lock pins crate checksum054ff75f, retained binary84a5b6a3a40a7c16c6bae8b64534b730403df911498bb34bded68c3a17e2d408 receipt provenance is retained in the measured run.",
+              "Retained run70c1f504-d40d-43d2-8929-4e91f3335ae5, suite987ca95c0608, source172842d5c3b06da9aba3f1d30c03399d7d522b87; negative buffer witness: sgr.underline-color-rgb: X has explicit rgb(255,0,128) underline distinct from the reset/default B cell",
+              "Scope approval CTO b1ed8962/36be0743; four sgr.underline-color-reset cells stay pending under the existing criterion. Source audit by @dev/3, not an attributed CTO per-cell review."
+            ]
+          }
+        ]
+      },
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "https://github.com/doy/vt100-rust.git",
+            "commit": "eb66ffaf7d771c13303ef73b29f6f2a56fdacecf",
+            "path": "src/screen.rs",
+            "oid": "7dfec97da6370b7905f242b975258a1a38b663a7"
+          },
+          {
+            "repository": "https://github.com/doy/vt100-rust.git",
+            "commit": "eb66ffaf7d771c13303ef73b29f6f2a56fdacecf",
+            "path": "src/cell.rs",
+            "oid": "c000cf30cf2b1770eddb0aae7619c5978c14db2f"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "83f653f649f185740afc57965f9544d3b742cea7",
+            "path": "packages/vt100-rust/native/src/lib.rs",
+            "oid": "310a38096b2641182e53e4cfb6a768da68e184c6"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "83f653f649f185740afc57965f9544d3b742cea7",
+            "path": "packages/vt100-rust/native/Cargo.toml",
+            "oid": "0f1ddb9ffc3b7cfc76abc98952666136c0bcd6c7"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "83f653f649f185740afc57965f9544d3b742cea7",
+            "path": "packages/vt100-rust/native/Cargo.lock",
+            "oid": "90bd0c36ab538390bdcb36cd8abda8e20675be02"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev3-32203-vt100-rust-sgr.underline-color-rgb-native83f",
+            "reviewer": "@dev/3",
+            "reason": "sgr.underline-color-rgb: Same pinned Rust vt1000.16.2 core eb66ffaf/checksum054ff75f; current binaryf309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96 receipt pins native source83f653. This is a separate source original, never substituted for retained84a/286. The requested explicit underline colour has no implementing engine state at this source. This is a cited source negative corroborated by the retained negative buffer witness; null readback alone was not used as a support verdict.",
+            "sources": [
+              "Same pinned Rust vt1000.16.2 core eb66ffaf/checksum054ff75f; current binaryf309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96 receipt pins native source83f653. This is a separate source original, never substituted for retained84a/286.",
+              "Retained run70c1f504-d40d-43d2-8929-4e91f3335ae5, suite987ca95c0608, source172842d5c3b06da9aba3f1d30c03399d7d522b87; negative buffer witness: sgr.underline-color-rgb: X has explicit rgb(255,0,128) underline distinct from the reset/default B cell",
+              "Scope approval CTO b1ed8962/36be0743; four sgr.underline-color-reset cells stay pending under the existing criterion. Source audit by @dev/3, not an attributed CTO per-cell review."
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt100-rust",
+      "version": "0.16.2",
+      "os": "linux"
+    },
+    "featureId": "sgr.underline.color",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "https://github.com/doy/vt100-rust.git",
+            "commit": "eb66ffaf7d771c13303ef73b29f6f2a56fdacecf",
+            "path": "src/screen.rs",
+            "oid": "7dfec97da6370b7905f242b975258a1a38b663a7"
+          },
+          {
+            "repository": "https://github.com/doy/vt100-rust.git",
+            "commit": "eb66ffaf7d771c13303ef73b29f6f2a56fdacecf",
+            "path": "src/cell.rs",
+            "oid": "c000cf30cf2b1770eddb0aae7619c5978c14db2f"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "286fddf6632e43ccd62f9050be41ec7b2908e43e",
+            "path": "packages/vt100-rust/native/src/lib.rs",
+            "oid": "ecdc2cf069088b4ba7180dbf28d8603d13d58fb8"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "286fddf6632e43ccd62f9050be41ec7b2908e43e",
+            "path": "packages/vt100-rust/native/Cargo.toml",
+            "oid": "cd1dd11f0824fde2ce6720c11b3ac71fa8ae4d5d"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "286fddf6632e43ccd62f9050be41ec7b2908e43e",
+            "path": "packages/vt100-rust/native/Cargo.lock",
+            "oid": "3755893017da8338bfd02474d98ecfb7ccadaacb"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev3-32203-vt100-rust-sgr.underline.color-native286",
+            "reviewer": "@dev/3",
+            "reason": "sgr.underline.color: Rust vt1000.16.2 upstream eb66ffaf src/screen.rs1260–1359 handles plain4/24 but no21/58/59 or colon styles; src/cell.rs169 exposes only boolean underline. Native source286fdd, Cargo.lock pins crate checksum054ff75f, retained binary84a5b6a3a40a7c16c6bae8b64534b730403df911498bb34bded68c3a17e2d408 receipt provenance is retained in the measured run. The requested explicit underline colour has no implementing engine state at this source. This is a cited source negative corroborated by the retained negative buffer witness; null readback alone was not used as a support verdict.",
+            "sources": [
+              "Rust vt1000.16.2 upstream eb66ffaf src/screen.rs1260–1359 handles plain4/24 but no21/58/59 or colon styles; src/cell.rs169 exposes only boolean underline. Native source286fdd, Cargo.lock pins crate checksum054ff75f, retained binary84a5b6a3a40a7c16c6bae8b64534b730403df911498bb34bded68c3a17e2d408 receipt provenance is retained in the measured run.",
+              "Retained run70c1f504-d40d-43d2-8929-4e91f3335ae5, suite987ca95c0608, source172842d5c3b06da9aba3f1d30c03399d7d522b87; negative buffer witness: sgr.underline.color: X has explicit rgb(255,0,128) underline distinct from the reset/default B cell",
+              "Scope approval CTO b1ed8962/36be0743; four sgr.underline-color-reset cells stay pending under the existing criterion. Source audit by @dev/3, not an attributed CTO per-cell review."
+            ]
+          }
+        ]
+      },
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "https://github.com/doy/vt100-rust.git",
+            "commit": "eb66ffaf7d771c13303ef73b29f6f2a56fdacecf",
+            "path": "src/screen.rs",
+            "oid": "7dfec97da6370b7905f242b975258a1a38b663a7"
+          },
+          {
+            "repository": "https://github.com/doy/vt100-rust.git",
+            "commit": "eb66ffaf7d771c13303ef73b29f6f2a56fdacecf",
+            "path": "src/cell.rs",
+            "oid": "c000cf30cf2b1770eddb0aae7619c5978c14db2f"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "83f653f649f185740afc57965f9544d3b742cea7",
+            "path": "packages/vt100-rust/native/src/lib.rs",
+            "oid": "310a38096b2641182e53e4cfb6a768da68e184c6"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "83f653f649f185740afc57965f9544d3b742cea7",
+            "path": "packages/vt100-rust/native/Cargo.toml",
+            "oid": "0f1ddb9ffc3b7cfc76abc98952666136c0bcd6c7"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "83f653f649f185740afc57965f9544d3b742cea7",
+            "path": "packages/vt100-rust/native/Cargo.lock",
+            "oid": "90bd0c36ab538390bdcb36cd8abda8e20675be02"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev3-32203-vt100-rust-sgr.underline.color-native83f",
+            "reviewer": "@dev/3",
+            "reason": "sgr.underline.color: Same pinned Rust vt1000.16.2 core eb66ffaf/checksum054ff75f; current binaryf309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96 receipt pins native source83f653. This is a separate source original, never substituted for retained84a/286. The requested explicit underline colour has no implementing engine state at this source. This is a cited source negative corroborated by the retained negative buffer witness; null readback alone was not used as a support verdict.",
+            "sources": [
+              "Same pinned Rust vt1000.16.2 core eb66ffaf/checksum054ff75f; current binaryf309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96 receipt pins native source83f653. This is a separate source original, never substituted for retained84a/286.",
+              "Retained run70c1f504-d40d-43d2-8929-4e91f3335ae5, suite987ca95c0608, source172842d5c3b06da9aba3f1d30c03399d7d522b87; negative buffer witness: sgr.underline.color: X has explicit rgb(255,0,128) underline distinct from the reset/default B cell",
+              "Scope approval CTO b1ed8962/36be0743; four sgr.underline-color-reset cells stay pending under the existing criterion. Source audit by @dev/3, not an attributed CTO per-cell review."
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt100-rust",
+      "version": "0.16.2",
+      "os": "linux"
+    },
+    "featureId": "sgr.underline.curly",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "https://github.com/doy/vt100-rust.git",
+            "commit": "eb66ffaf7d771c13303ef73b29f6f2a56fdacecf",
+            "path": "src/screen.rs",
+            "oid": "7dfec97da6370b7905f242b975258a1a38b663a7"
+          },
+          {
+            "repository": "https://github.com/doy/vt100-rust.git",
+            "commit": "eb66ffaf7d771c13303ef73b29f6f2a56fdacecf",
+            "path": "src/cell.rs",
+            "oid": "c000cf30cf2b1770eddb0aae7619c5978c14db2f"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "286fddf6632e43ccd62f9050be41ec7b2908e43e",
+            "path": "packages/vt100-rust/native/src/lib.rs",
+            "oid": "ecdc2cf069088b4ba7180dbf28d8603d13d58fb8"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "286fddf6632e43ccd62f9050be41ec7b2908e43e",
+            "path": "packages/vt100-rust/native/Cargo.toml",
+            "oid": "cd1dd11f0824fde2ce6720c11b3ac71fa8ae4d5d"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "286fddf6632e43ccd62f9050be41ec7b2908e43e",
+            "path": "packages/vt100-rust/native/Cargo.lock",
+            "oid": "3755893017da8338bfd02474d98ecfb7ccadaacb"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev3-32203-vt100-rust-sgr.underline.curly-native286",
+            "reviewer": "@dev/3",
+            "reason": "sgr.underline.curly: Rust vt1000.16.2 upstream eb66ffaf src/screen.rs1260–1359 handles plain4/24 but no21/58/59 or colon styles; src/cell.rs169 exposes only boolean underline. Native source286fdd, Cargo.lock pins crate checksum054ff75f, retained binary84a5b6a3a40a7c16c6bae8b64534b730403df911498bb34bded68c3a17e2d408 receipt provenance is retained in the measured run. The requested underline style has no implementing engine state at this source. This is a cited source negative corroborated by the retained negative buffer witness; null readback alone was not used as a support verdict.",
+            "sources": [
+              "Rust vt1000.16.2 upstream eb66ffaf src/screen.rs1260–1359 handles plain4/24 but no21/58/59 or colon styles; src/cell.rs169 exposes only boolean underline. Native source286fdd, Cargo.lock pins crate checksum054ff75f, retained binary84a5b6a3a40a7c16c6bae8b64534b730403df911498bb34bded68c3a17e2d408 receipt provenance is retained in the measured run.",
+              "Retained run70c1f504-d40d-43d2-8929-4e91f3335ae5, suite987ca95c0608, source172842d5c3b06da9aba3f1d30c03399d7d522b87; negative buffer witness: sgr.underline.curly: attribute applied to the rendered X cell",
+              "Scope approval CTO b1ed8962/36be0743; four sgr.underline-color-reset cells stay pending under the existing criterion. Source audit by @dev/3, not an attributed CTO per-cell review."
+            ]
+          }
+        ]
+      },
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "https://github.com/doy/vt100-rust.git",
+            "commit": "eb66ffaf7d771c13303ef73b29f6f2a56fdacecf",
+            "path": "src/screen.rs",
+            "oid": "7dfec97da6370b7905f242b975258a1a38b663a7"
+          },
+          {
+            "repository": "https://github.com/doy/vt100-rust.git",
+            "commit": "eb66ffaf7d771c13303ef73b29f6f2a56fdacecf",
+            "path": "src/cell.rs",
+            "oid": "c000cf30cf2b1770eddb0aae7619c5978c14db2f"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "83f653f649f185740afc57965f9544d3b742cea7",
+            "path": "packages/vt100-rust/native/src/lib.rs",
+            "oid": "310a38096b2641182e53e4cfb6a768da68e184c6"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "83f653f649f185740afc57965f9544d3b742cea7",
+            "path": "packages/vt100-rust/native/Cargo.toml",
+            "oid": "0f1ddb9ffc3b7cfc76abc98952666136c0bcd6c7"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "83f653f649f185740afc57965f9544d3b742cea7",
+            "path": "packages/vt100-rust/native/Cargo.lock",
+            "oid": "90bd0c36ab538390bdcb36cd8abda8e20675be02"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev3-32203-vt100-rust-sgr.underline.curly-native83f",
+            "reviewer": "@dev/3",
+            "reason": "sgr.underline.curly: Same pinned Rust vt1000.16.2 core eb66ffaf/checksum054ff75f; current binaryf309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96 receipt pins native source83f653. This is a separate source original, never substituted for retained84a/286. The requested underline style has no implementing engine state at this source. This is a cited source negative corroborated by the retained negative buffer witness; null readback alone was not used as a support verdict.",
+            "sources": [
+              "Same pinned Rust vt1000.16.2 core eb66ffaf/checksum054ff75f; current binaryf309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96 receipt pins native source83f653. This is a separate source original, never substituted for retained84a/286.",
+              "Retained run70c1f504-d40d-43d2-8929-4e91f3335ae5, suite987ca95c0608, source172842d5c3b06da9aba3f1d30c03399d7d522b87; negative buffer witness: sgr.underline.curly: attribute applied to the rendered X cell",
+              "Scope approval CTO b1ed8962/36be0743; four sgr.underline-color-reset cells stay pending under the existing criterion. Source audit by @dev/3, not an attributed CTO per-cell review."
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt100-rust",
+      "version": "0.16.2",
+      "os": "linux"
+    },
+    "featureId": "sgr.underline.dashed",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "https://github.com/doy/vt100-rust.git",
+            "commit": "eb66ffaf7d771c13303ef73b29f6f2a56fdacecf",
+            "path": "src/screen.rs",
+            "oid": "7dfec97da6370b7905f242b975258a1a38b663a7"
+          },
+          {
+            "repository": "https://github.com/doy/vt100-rust.git",
+            "commit": "eb66ffaf7d771c13303ef73b29f6f2a56fdacecf",
+            "path": "src/cell.rs",
+            "oid": "c000cf30cf2b1770eddb0aae7619c5978c14db2f"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "286fddf6632e43ccd62f9050be41ec7b2908e43e",
+            "path": "packages/vt100-rust/native/src/lib.rs",
+            "oid": "ecdc2cf069088b4ba7180dbf28d8603d13d58fb8"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "286fddf6632e43ccd62f9050be41ec7b2908e43e",
+            "path": "packages/vt100-rust/native/Cargo.toml",
+            "oid": "cd1dd11f0824fde2ce6720c11b3ac71fa8ae4d5d"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "286fddf6632e43ccd62f9050be41ec7b2908e43e",
+            "path": "packages/vt100-rust/native/Cargo.lock",
+            "oid": "3755893017da8338bfd02474d98ecfb7ccadaacb"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev3-32203-vt100-rust-sgr.underline.dashed-native286",
+            "reviewer": "@dev/3",
+            "reason": "sgr.underline.dashed: Rust vt1000.16.2 upstream eb66ffaf src/screen.rs1260–1359 handles plain4/24 but no21/58/59 or colon styles; src/cell.rs169 exposes only boolean underline. Native source286fdd, Cargo.lock pins crate checksum054ff75f, retained binary84a5b6a3a40a7c16c6bae8b64534b730403df911498bb34bded68c3a17e2d408 receipt provenance is retained in the measured run. The requested underline style has no implementing engine state at this source. This is a cited source negative corroborated by the retained negative buffer witness; null readback alone was not used as a support verdict.",
+            "sources": [
+              "Rust vt1000.16.2 upstream eb66ffaf src/screen.rs1260–1359 handles plain4/24 but no21/58/59 or colon styles; src/cell.rs169 exposes only boolean underline. Native source286fdd, Cargo.lock pins crate checksum054ff75f, retained binary84a5b6a3a40a7c16c6bae8b64534b730403df911498bb34bded68c3a17e2d408 receipt provenance is retained in the measured run.",
+              "Retained run70c1f504-d40d-43d2-8929-4e91f3335ae5, suite987ca95c0608, source172842d5c3b06da9aba3f1d30c03399d7d522b87; negative buffer witness: sgr.underline.dashed: attribute applied to the rendered X cell",
+              "Scope approval CTO b1ed8962/36be0743; four sgr.underline-color-reset cells stay pending under the existing criterion. Source audit by @dev/3, not an attributed CTO per-cell review."
+            ]
+          }
+        ]
+      },
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "https://github.com/doy/vt100-rust.git",
+            "commit": "eb66ffaf7d771c13303ef73b29f6f2a56fdacecf",
+            "path": "src/screen.rs",
+            "oid": "7dfec97da6370b7905f242b975258a1a38b663a7"
+          },
+          {
+            "repository": "https://github.com/doy/vt100-rust.git",
+            "commit": "eb66ffaf7d771c13303ef73b29f6f2a56fdacecf",
+            "path": "src/cell.rs",
+            "oid": "c000cf30cf2b1770eddb0aae7619c5978c14db2f"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "83f653f649f185740afc57965f9544d3b742cea7",
+            "path": "packages/vt100-rust/native/src/lib.rs",
+            "oid": "310a38096b2641182e53e4cfb6a768da68e184c6"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "83f653f649f185740afc57965f9544d3b742cea7",
+            "path": "packages/vt100-rust/native/Cargo.toml",
+            "oid": "0f1ddb9ffc3b7cfc76abc98952666136c0bcd6c7"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "83f653f649f185740afc57965f9544d3b742cea7",
+            "path": "packages/vt100-rust/native/Cargo.lock",
+            "oid": "90bd0c36ab538390bdcb36cd8abda8e20675be02"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev3-32203-vt100-rust-sgr.underline.dashed-native83f",
+            "reviewer": "@dev/3",
+            "reason": "sgr.underline.dashed: Same pinned Rust vt1000.16.2 core eb66ffaf/checksum054ff75f; current binaryf309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96 receipt pins native source83f653. This is a separate source original, never substituted for retained84a/286. The requested underline style has no implementing engine state at this source. This is a cited source negative corroborated by the retained negative buffer witness; null readback alone was not used as a support verdict.",
+            "sources": [
+              "Same pinned Rust vt1000.16.2 core eb66ffaf/checksum054ff75f; current binaryf309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96 receipt pins native source83f653. This is a separate source original, never substituted for retained84a/286.",
+              "Retained run70c1f504-d40d-43d2-8929-4e91f3335ae5, suite987ca95c0608, source172842d5c3b06da9aba3f1d30c03399d7d522b87; negative buffer witness: sgr.underline.dashed: attribute applied to the rendered X cell",
+              "Scope approval CTO b1ed8962/36be0743; four sgr.underline-color-reset cells stay pending under the existing criterion. Source audit by @dev/3, not an attributed CTO per-cell review."
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt100-rust",
+      "version": "0.16.2",
+      "os": "linux"
+    },
+    "featureId": "sgr.underline.dotted",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "https://github.com/doy/vt100-rust.git",
+            "commit": "eb66ffaf7d771c13303ef73b29f6f2a56fdacecf",
+            "path": "src/screen.rs",
+            "oid": "7dfec97da6370b7905f242b975258a1a38b663a7"
+          },
+          {
+            "repository": "https://github.com/doy/vt100-rust.git",
+            "commit": "eb66ffaf7d771c13303ef73b29f6f2a56fdacecf",
+            "path": "src/cell.rs",
+            "oid": "c000cf30cf2b1770eddb0aae7619c5978c14db2f"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "286fddf6632e43ccd62f9050be41ec7b2908e43e",
+            "path": "packages/vt100-rust/native/src/lib.rs",
+            "oid": "ecdc2cf069088b4ba7180dbf28d8603d13d58fb8"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "286fddf6632e43ccd62f9050be41ec7b2908e43e",
+            "path": "packages/vt100-rust/native/Cargo.toml",
+            "oid": "cd1dd11f0824fde2ce6720c11b3ac71fa8ae4d5d"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "286fddf6632e43ccd62f9050be41ec7b2908e43e",
+            "path": "packages/vt100-rust/native/Cargo.lock",
+            "oid": "3755893017da8338bfd02474d98ecfb7ccadaacb"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev3-32203-vt100-rust-sgr.underline.dotted-native286",
+            "reviewer": "@dev/3",
+            "reason": "sgr.underline.dotted: Rust vt1000.16.2 upstream eb66ffaf src/screen.rs1260–1359 handles plain4/24 but no21/58/59 or colon styles; src/cell.rs169 exposes only boolean underline. Native source286fdd, Cargo.lock pins crate checksum054ff75f, retained binary84a5b6a3a40a7c16c6bae8b64534b730403df911498bb34bded68c3a17e2d408 receipt provenance is retained in the measured run. The requested underline style has no implementing engine state at this source. This is a cited source negative corroborated by the retained negative buffer witness; null readback alone was not used as a support verdict.",
+            "sources": [
+              "Rust vt1000.16.2 upstream eb66ffaf src/screen.rs1260–1359 handles plain4/24 but no21/58/59 or colon styles; src/cell.rs169 exposes only boolean underline. Native source286fdd, Cargo.lock pins crate checksum054ff75f, retained binary84a5b6a3a40a7c16c6bae8b64534b730403df911498bb34bded68c3a17e2d408 receipt provenance is retained in the measured run.",
+              "Retained run70c1f504-d40d-43d2-8929-4e91f3335ae5, suite987ca95c0608, source172842d5c3b06da9aba3f1d30c03399d7d522b87; negative buffer witness: sgr.underline.dotted: attribute applied to the rendered X cell",
+              "Scope approval CTO b1ed8962/36be0743; four sgr.underline-color-reset cells stay pending under the existing criterion. Source audit by @dev/3, not an attributed CTO per-cell review."
+            ]
+          }
+        ]
+      },
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "https://github.com/doy/vt100-rust.git",
+            "commit": "eb66ffaf7d771c13303ef73b29f6f2a56fdacecf",
+            "path": "src/screen.rs",
+            "oid": "7dfec97da6370b7905f242b975258a1a38b663a7"
+          },
+          {
+            "repository": "https://github.com/doy/vt100-rust.git",
+            "commit": "eb66ffaf7d771c13303ef73b29f6f2a56fdacecf",
+            "path": "src/cell.rs",
+            "oid": "c000cf30cf2b1770eddb0aae7619c5978c14db2f"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "83f653f649f185740afc57965f9544d3b742cea7",
+            "path": "packages/vt100-rust/native/src/lib.rs",
+            "oid": "310a38096b2641182e53e4cfb6a768da68e184c6"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "83f653f649f185740afc57965f9544d3b742cea7",
+            "path": "packages/vt100-rust/native/Cargo.toml",
+            "oid": "0f1ddb9ffc3b7cfc76abc98952666136c0bcd6c7"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "83f653f649f185740afc57965f9544d3b742cea7",
+            "path": "packages/vt100-rust/native/Cargo.lock",
+            "oid": "90bd0c36ab538390bdcb36cd8abda8e20675be02"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev3-32203-vt100-rust-sgr.underline.dotted-native83f",
+            "reviewer": "@dev/3",
+            "reason": "sgr.underline.dotted: Same pinned Rust vt1000.16.2 core eb66ffaf/checksum054ff75f; current binaryf309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96 receipt pins native source83f653. This is a separate source original, never substituted for retained84a/286. The requested underline style has no implementing engine state at this source. This is a cited source negative corroborated by the retained negative buffer witness; null readback alone was not used as a support verdict.",
+            "sources": [
+              "Same pinned Rust vt1000.16.2 core eb66ffaf/checksum054ff75f; current binaryf309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96 receipt pins native source83f653. This is a separate source original, never substituted for retained84a/286.",
+              "Retained run70c1f504-d40d-43d2-8929-4e91f3335ae5, suite987ca95c0608, source172842d5c3b06da9aba3f1d30c03399d7d522b87; negative buffer witness: sgr.underline.dotted: attribute applied to the rendered X cell",
+              "Scope approval CTO b1ed8962/36be0743; four sgr.underline-color-reset cells stay pending under the existing criterion. Source audit by @dev/3, not an attributed CTO per-cell review."
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt100-rust",
+      "version": "0.16.2",
+      "os": "linux"
+    },
+    "featureId": "sgr.underline.double",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "https://github.com/doy/vt100-rust.git",
+            "commit": "eb66ffaf7d771c13303ef73b29f6f2a56fdacecf",
+            "path": "src/screen.rs",
+            "oid": "7dfec97da6370b7905f242b975258a1a38b663a7"
+          },
+          {
+            "repository": "https://github.com/doy/vt100-rust.git",
+            "commit": "eb66ffaf7d771c13303ef73b29f6f2a56fdacecf",
+            "path": "src/cell.rs",
+            "oid": "c000cf30cf2b1770eddb0aae7619c5978c14db2f"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "286fddf6632e43ccd62f9050be41ec7b2908e43e",
+            "path": "packages/vt100-rust/native/src/lib.rs",
+            "oid": "ecdc2cf069088b4ba7180dbf28d8603d13d58fb8"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "286fddf6632e43ccd62f9050be41ec7b2908e43e",
+            "path": "packages/vt100-rust/native/Cargo.toml",
+            "oid": "cd1dd11f0824fde2ce6720c11b3ac71fa8ae4d5d"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "286fddf6632e43ccd62f9050be41ec7b2908e43e",
+            "path": "packages/vt100-rust/native/Cargo.lock",
+            "oid": "3755893017da8338bfd02474d98ecfb7ccadaacb"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev3-32203-vt100-rust-sgr.underline.double-native286",
+            "reviewer": "@dev/3",
+            "reason": "sgr.underline.double: Rust vt1000.16.2 upstream eb66ffaf src/screen.rs1260–1359 handles plain4/24 but no21/58/59 or colon styles; src/cell.rs169 exposes only boolean underline. Native source286fdd, Cargo.lock pins crate checksum054ff75f, retained binary84a5b6a3a40a7c16c6bae8b64534b730403df911498bb34bded68c3a17e2d408 receipt provenance is retained in the measured run. The requested underline style has no implementing engine state at this source. This is a cited source negative corroborated by the retained negative buffer witness; null readback alone was not used as a support verdict.",
+            "sources": [
+              "Rust vt1000.16.2 upstream eb66ffaf src/screen.rs1260–1359 handles plain4/24 but no21/58/59 or colon styles; src/cell.rs169 exposes only boolean underline. Native source286fdd, Cargo.lock pins crate checksum054ff75f, retained binary84a5b6a3a40a7c16c6bae8b64534b730403df911498bb34bded68c3a17e2d408 receipt provenance is retained in the measured run.",
+              "Retained run70c1f504-d40d-43d2-8929-4e91f3335ae5, suite987ca95c0608, source172842d5c3b06da9aba3f1d30c03399d7d522b87; negative buffer witness: sgr.underline.double: attribute applied to the rendered X cell",
+              "Scope approval CTO b1ed8962/36be0743; four sgr.underline-color-reset cells stay pending under the existing criterion. Source audit by @dev/3, not an attributed CTO per-cell review."
+            ]
+          }
+        ]
+      },
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "https://github.com/doy/vt100-rust.git",
+            "commit": "eb66ffaf7d771c13303ef73b29f6f2a56fdacecf",
+            "path": "src/screen.rs",
+            "oid": "7dfec97da6370b7905f242b975258a1a38b663a7"
+          },
+          {
+            "repository": "https://github.com/doy/vt100-rust.git",
+            "commit": "eb66ffaf7d771c13303ef73b29f6f2a56fdacecf",
+            "path": "src/cell.rs",
+            "oid": "c000cf30cf2b1770eddb0aae7619c5978c14db2f"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "83f653f649f185740afc57965f9544d3b742cea7",
+            "path": "packages/vt100-rust/native/src/lib.rs",
+            "oid": "310a38096b2641182e53e4cfb6a768da68e184c6"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "83f653f649f185740afc57965f9544d3b742cea7",
+            "path": "packages/vt100-rust/native/Cargo.toml",
+            "oid": "0f1ddb9ffc3b7cfc76abc98952666136c0bcd6c7"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "83f653f649f185740afc57965f9544d3b742cea7",
+            "path": "packages/vt100-rust/native/Cargo.lock",
+            "oid": "90bd0c36ab538390bdcb36cd8abda8e20675be02"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev3-32203-vt100-rust-sgr.underline.double-native83f",
+            "reviewer": "@dev/3",
+            "reason": "sgr.underline.double: Same pinned Rust vt1000.16.2 core eb66ffaf/checksum054ff75f; current binaryf309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96 receipt pins native source83f653. This is a separate source original, never substituted for retained84a/286. The requested underline style has no implementing engine state at this source. This is a cited source negative corroborated by the retained negative buffer witness; null readback alone was not used as a support verdict.",
+            "sources": [
+              "Same pinned Rust vt1000.16.2 core eb66ffaf/checksum054ff75f; current binaryf309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96 receipt pins native source83f653. This is a separate source original, never substituted for retained84a/286.",
+              "Retained run70c1f504-d40d-43d2-8929-4e91f3335ae5, suite987ca95c0608, source172842d5c3b06da9aba3f1d30c03399d7d522b87; negative buffer witness: sgr.underline.double: attribute applied to the rendered X cell",
+              "Scope approval CTO b1ed8962/36be0743; four sgr.underline-color-reset cells stay pending under the existing criterion. Source audit by @dev/3, not an attributed CTO per-cell review."
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "libvterm",
+      "version": "0.3.3",
+      "os": "linux"
+    },
+    "featureId": "sgr.underline-color-indexed",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "https://github.com/neovim/libvterm.git",
+            "commit": "9d6d2112335080312ef8c36667fa717ded4f7daf",
+            "path": "src/pen.c",
+            "oid": "2227a6fcd33d509a20dfb3340273155986e3e69e"
+          },
+          {
+            "repository": "https://github.com/neovim/libvterm.git",
+            "commit": "9d6d2112335080312ef8c36667fa717ded4f7daf",
+            "path": "include/vterm.h",
+            "oid": "44e15023c0bd524b063385b25edbc33a52bfb410"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "80dd254111ab82279125555f9ca1e68b112cd7e3",
+            "path": "packages/libvterm/wasm/libvterm.wasm.receipt.json",
+            "oid": "19798378217cd10c00b4d86d9ecd925fb8b1dee1"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "80dd254111ab82279125555f9ca1e68b112cd7e3",
+            "path": "packages/libvterm/build/flat-api.c",
+            "oid": "49702d335a27976125514acea38c1cdd2e2d84d1"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev3-32203-libvterm-sgr.underline-color-indexed-wasm3d67",
+            "reviewer": "@dev/3",
+            "reason": "sgr.underline-color-indexed: libvterm0.3.3 upstream9d6d211 src/pen.c285–304 admits single/double/curly and no dotted/dashed; full SGR dispatcher has no58/59 arm. include/vterm.h485–490 carries fg/bg and no underline colour. Retained WASM3d67045b is independently rehashed from Termless80dd and its receipt pins this exact upstream. The requested explicit underline colour has no implementing engine state at this source. This is a cited source negative corroborated by the retained negative buffer witness; null readback alone was not used as a support verdict.",
+            "sources": [
+              "libvterm0.3.3 upstream9d6d211 src/pen.c285–304 admits single/double/curly and no dotted/dashed; full SGR dispatcher has no58/59 arm. include/vterm.h485–490 carries fg/bg and no underline colour. Retained WASM3d67045b is independently rehashed from Termless80dd and its receipt pins this exact upstream.",
+              "Retained run08449bd3-837c-4dea-b8da-4c950fd10673, suite987ca95c0608, source172842d5c3b06da9aba3f1d30c03399d7d522b87; negative buffer witness: SGR 58 index 5/4 underline colors match the opposite SGR 38 palette controls, not their same-foreground defaults",
+              "Scope approval CTO b1ed8962/36be0743; four sgr.underline-color-reset cells stay pending under the existing criterion. Source audit by @dev/3, not an attributed CTO per-cell review."
+            ]
+          }
+        ]
+      },
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "https://github.com/neovim/libvterm.git",
+            "commit": "9d6d2112335080312ef8c36667fa717ded4f7daf",
+            "path": "src/pen.c",
+            "oid": "2227a6fcd33d509a20dfb3340273155986e3e69e"
+          },
+          {
+            "repository": "https://github.com/neovim/libvterm.git",
+            "commit": "9d6d2112335080312ef8c36667fa717ded4f7daf",
+            "path": "include/vterm.h",
+            "oid": "44e15023c0bd524b063385b25edbc33a52bfb410"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "bdaa263fdec6480cceb4b383aff027d3a46fd483",
+            "path": "packages/libvterm/wasm/libvterm.wasm.receipt.json",
+            "oid": "178e8db507779f4903f6b99436006cf8d418a952"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "bdaa263fdec6480cceb4b383aff027d3a46fd483",
+            "path": "packages/libvterm/build/flat-api.c",
+            "oid": "17896892f427a04d7a9a963e7a3614c517a73ecc"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev3-32203-libvterm-sgr.underline-color-indexed-wasm7122",
+            "reviewer": "@dev/3",
+            "reason": "sgr.underline-color-indexed: Same libvterm0.3.3 upstream9d6d211 pen.c/vterm.h; current WASM712298aff45c7c53a22dc028b13cb58dae1e984199b520bbbc0475ae64d83159 independently hashes to its Termlessbdaa receipt and exact upstream source. Separate original for the application-cursor/selection build, not a retained3d67 qualification. The requested explicit underline colour has no implementing engine state at this source. This is a cited source negative corroborated by the retained negative buffer witness; null readback alone was not used as a support verdict.",
+            "sources": [
+              "Same libvterm0.3.3 upstream9d6d211 pen.c/vterm.h; current WASM712298aff45c7c53a22dc028b13cb58dae1e984199b520bbbc0475ae64d83159 independently hashes to its Termlessbdaa receipt and exact upstream source. Separate original for the application-cursor/selection build, not a retained3d67 qualification.",
+              "Retained run08449bd3-837c-4dea-b8da-4c950fd10673, suite987ca95c0608, source172842d5c3b06da9aba3f1d30c03399d7d522b87; negative buffer witness: SGR 58 index 5/4 underline colors match the opposite SGR 38 palette controls, not their same-foreground defaults",
+              "Scope approval CTO b1ed8962/36be0743; four sgr.underline-color-reset cells stay pending under the existing criterion. Source audit by @dev/3, not an attributed CTO per-cell review."
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "libvterm",
+      "version": "0.3.3",
+      "os": "linux"
+    },
+    "featureId": "sgr.underline-color-rgb",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "https://github.com/neovim/libvterm.git",
+            "commit": "9d6d2112335080312ef8c36667fa717ded4f7daf",
+            "path": "src/pen.c",
+            "oid": "2227a6fcd33d509a20dfb3340273155986e3e69e"
+          },
+          {
+            "repository": "https://github.com/neovim/libvterm.git",
+            "commit": "9d6d2112335080312ef8c36667fa717ded4f7daf",
+            "path": "include/vterm.h",
+            "oid": "44e15023c0bd524b063385b25edbc33a52bfb410"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "80dd254111ab82279125555f9ca1e68b112cd7e3",
+            "path": "packages/libvterm/wasm/libvterm.wasm.receipt.json",
+            "oid": "19798378217cd10c00b4d86d9ecd925fb8b1dee1"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "80dd254111ab82279125555f9ca1e68b112cd7e3",
+            "path": "packages/libvterm/build/flat-api.c",
+            "oid": "49702d335a27976125514acea38c1cdd2e2d84d1"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev3-32203-libvterm-sgr.underline-color-rgb-wasm3d67",
+            "reviewer": "@dev/3",
+            "reason": "sgr.underline-color-rgb: libvterm0.3.3 upstream9d6d211 src/pen.c285–304 admits single/double/curly and no dotted/dashed; full SGR dispatcher has no58/59 arm. include/vterm.h485–490 carries fg/bg and no underline colour. Retained WASM3d67045b is independently rehashed from Termless80dd and its receipt pins this exact upstream. The requested explicit underline colour has no implementing engine state at this source. This is a cited source negative corroborated by the retained negative buffer witness; null readback alone was not used as a support verdict.",
+            "sources": [
+              "libvterm0.3.3 upstream9d6d211 src/pen.c285–304 admits single/double/curly and no dotted/dashed; full SGR dispatcher has no58/59 arm. include/vterm.h485–490 carries fg/bg and no underline colour. Retained WASM3d67045b is independently rehashed from Termless80dd and its receipt pins this exact upstream.",
+              "Retained run08449bd3-837c-4dea-b8da-4c950fd10673, suite987ca95c0608, source172842d5c3b06da9aba3f1d30c03399d7d522b87; negative buffer witness: sgr.underline-color-rgb: X has explicit rgb(255,0,128) underline distinct from the reset/default B cell",
+              "Scope approval CTO b1ed8962/36be0743; four sgr.underline-color-reset cells stay pending under the existing criterion. Source audit by @dev/3, not an attributed CTO per-cell review."
+            ]
+          }
+        ]
+      },
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "https://github.com/neovim/libvterm.git",
+            "commit": "9d6d2112335080312ef8c36667fa717ded4f7daf",
+            "path": "src/pen.c",
+            "oid": "2227a6fcd33d509a20dfb3340273155986e3e69e"
+          },
+          {
+            "repository": "https://github.com/neovim/libvterm.git",
+            "commit": "9d6d2112335080312ef8c36667fa717ded4f7daf",
+            "path": "include/vterm.h",
+            "oid": "44e15023c0bd524b063385b25edbc33a52bfb410"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "bdaa263fdec6480cceb4b383aff027d3a46fd483",
+            "path": "packages/libvterm/wasm/libvterm.wasm.receipt.json",
+            "oid": "178e8db507779f4903f6b99436006cf8d418a952"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "bdaa263fdec6480cceb4b383aff027d3a46fd483",
+            "path": "packages/libvterm/build/flat-api.c",
+            "oid": "17896892f427a04d7a9a963e7a3614c517a73ecc"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev3-32203-libvterm-sgr.underline-color-rgb-wasm7122",
+            "reviewer": "@dev/3",
+            "reason": "sgr.underline-color-rgb: Same libvterm0.3.3 upstream9d6d211 pen.c/vterm.h; current WASM712298aff45c7c53a22dc028b13cb58dae1e984199b520bbbc0475ae64d83159 independently hashes to its Termlessbdaa receipt and exact upstream source. Separate original for the application-cursor/selection build, not a retained3d67 qualification. The requested explicit underline colour has no implementing engine state at this source. This is a cited source negative corroborated by the retained negative buffer witness; null readback alone was not used as a support verdict.",
+            "sources": [
+              "Same libvterm0.3.3 upstream9d6d211 pen.c/vterm.h; current WASM712298aff45c7c53a22dc028b13cb58dae1e984199b520bbbc0475ae64d83159 independently hashes to its Termlessbdaa receipt and exact upstream source. Separate original for the application-cursor/selection build, not a retained3d67 qualification.",
+              "Retained run08449bd3-837c-4dea-b8da-4c950fd10673, suite987ca95c0608, source172842d5c3b06da9aba3f1d30c03399d7d522b87; negative buffer witness: sgr.underline-color-rgb: X has explicit rgb(255,0,128) underline distinct from the reset/default B cell",
+              "Scope approval CTO b1ed8962/36be0743; four sgr.underline-color-reset cells stay pending under the existing criterion. Source audit by @dev/3, not an attributed CTO per-cell review."
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "libvterm",
+      "version": "0.3.3",
+      "os": "linux"
+    },
+    "featureId": "sgr.underline.color",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "https://github.com/neovim/libvterm.git",
+            "commit": "9d6d2112335080312ef8c36667fa717ded4f7daf",
+            "path": "src/pen.c",
+            "oid": "2227a6fcd33d509a20dfb3340273155986e3e69e"
+          },
+          {
+            "repository": "https://github.com/neovim/libvterm.git",
+            "commit": "9d6d2112335080312ef8c36667fa717ded4f7daf",
+            "path": "include/vterm.h",
+            "oid": "44e15023c0bd524b063385b25edbc33a52bfb410"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "80dd254111ab82279125555f9ca1e68b112cd7e3",
+            "path": "packages/libvterm/wasm/libvterm.wasm.receipt.json",
+            "oid": "19798378217cd10c00b4d86d9ecd925fb8b1dee1"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "80dd254111ab82279125555f9ca1e68b112cd7e3",
+            "path": "packages/libvterm/build/flat-api.c",
+            "oid": "49702d335a27976125514acea38c1cdd2e2d84d1"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev3-32203-libvterm-sgr.underline.color-wasm3d67",
+            "reviewer": "@dev/3",
+            "reason": "sgr.underline.color: libvterm0.3.3 upstream9d6d211 src/pen.c285–304 admits single/double/curly and no dotted/dashed; full SGR dispatcher has no58/59 arm. include/vterm.h485–490 carries fg/bg and no underline colour. Retained WASM3d67045b is independently rehashed from Termless80dd and its receipt pins this exact upstream. The requested explicit underline colour has no implementing engine state at this source. This is a cited source negative corroborated by the retained negative buffer witness; null readback alone was not used as a support verdict.",
+            "sources": [
+              "libvterm0.3.3 upstream9d6d211 src/pen.c285–304 admits single/double/curly and no dotted/dashed; full SGR dispatcher has no58/59 arm. include/vterm.h485–490 carries fg/bg and no underline colour. Retained WASM3d67045b is independently rehashed from Termless80dd and its receipt pins this exact upstream.",
+              "Retained run08449bd3-837c-4dea-b8da-4c950fd10673, suite987ca95c0608, source172842d5c3b06da9aba3f1d30c03399d7d522b87; negative buffer witness: sgr.underline.color: X has explicit rgb(255,0,128) underline distinct from the reset/default B cell",
+              "Scope approval CTO b1ed8962/36be0743; four sgr.underline-color-reset cells stay pending under the existing criterion. Source audit by @dev/3, not an attributed CTO per-cell review."
+            ]
+          }
+        ]
+      },
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "https://github.com/neovim/libvterm.git",
+            "commit": "9d6d2112335080312ef8c36667fa717ded4f7daf",
+            "path": "src/pen.c",
+            "oid": "2227a6fcd33d509a20dfb3340273155986e3e69e"
+          },
+          {
+            "repository": "https://github.com/neovim/libvterm.git",
+            "commit": "9d6d2112335080312ef8c36667fa717ded4f7daf",
+            "path": "include/vterm.h",
+            "oid": "44e15023c0bd524b063385b25edbc33a52bfb410"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "bdaa263fdec6480cceb4b383aff027d3a46fd483",
+            "path": "packages/libvterm/wasm/libvterm.wasm.receipt.json",
+            "oid": "178e8db507779f4903f6b99436006cf8d418a952"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "bdaa263fdec6480cceb4b383aff027d3a46fd483",
+            "path": "packages/libvterm/build/flat-api.c",
+            "oid": "17896892f427a04d7a9a963e7a3614c517a73ecc"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev3-32203-libvterm-sgr.underline.color-wasm7122",
+            "reviewer": "@dev/3",
+            "reason": "sgr.underline.color: Same libvterm0.3.3 upstream9d6d211 pen.c/vterm.h; current WASM712298aff45c7c53a22dc028b13cb58dae1e984199b520bbbc0475ae64d83159 independently hashes to its Termlessbdaa receipt and exact upstream source. Separate original for the application-cursor/selection build, not a retained3d67 qualification. The requested explicit underline colour has no implementing engine state at this source. This is a cited source negative corroborated by the retained negative buffer witness; null readback alone was not used as a support verdict.",
+            "sources": [
+              "Same libvterm0.3.3 upstream9d6d211 pen.c/vterm.h; current WASM712298aff45c7c53a22dc028b13cb58dae1e984199b520bbbc0475ae64d83159 independently hashes to its Termlessbdaa receipt and exact upstream source. Separate original for the application-cursor/selection build, not a retained3d67 qualification.",
+              "Retained run08449bd3-837c-4dea-b8da-4c950fd10673, suite987ca95c0608, source172842d5c3b06da9aba3f1d30c03399d7d522b87; negative buffer witness: sgr.underline.color: X has explicit rgb(255,0,128) underline distinct from the reset/default B cell",
+              "Scope approval CTO b1ed8962/36be0743; four sgr.underline-color-reset cells stay pending under the existing criterion. Source audit by @dev/3, not an attributed CTO per-cell review."
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "libvterm",
+      "version": "0.3.3",
+      "os": "linux"
+    },
+    "featureId": "sgr.underline.dashed",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "https://github.com/neovim/libvterm.git",
+            "commit": "9d6d2112335080312ef8c36667fa717ded4f7daf",
+            "path": "src/pen.c",
+            "oid": "2227a6fcd33d509a20dfb3340273155986e3e69e"
+          },
+          {
+            "repository": "https://github.com/neovim/libvterm.git",
+            "commit": "9d6d2112335080312ef8c36667fa717ded4f7daf",
+            "path": "include/vterm.h",
+            "oid": "44e15023c0bd524b063385b25edbc33a52bfb410"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "80dd254111ab82279125555f9ca1e68b112cd7e3",
+            "path": "packages/libvterm/wasm/libvterm.wasm.receipt.json",
+            "oid": "19798378217cd10c00b4d86d9ecd925fb8b1dee1"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "80dd254111ab82279125555f9ca1e68b112cd7e3",
+            "path": "packages/libvterm/build/flat-api.c",
+            "oid": "49702d335a27976125514acea38c1cdd2e2d84d1"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev3-32203-libvterm-sgr.underline.dashed-wasm3d67",
+            "reviewer": "@dev/3",
+            "reason": "sgr.underline.dashed: libvterm0.3.3 upstream9d6d211 src/pen.c285–304 admits single/double/curly and no dotted/dashed; full SGR dispatcher has no58/59 arm. include/vterm.h485–490 carries fg/bg and no underline colour. Retained WASM3d67045b is independently rehashed from Termless80dd and its receipt pins this exact upstream. The requested underline style has no implementing engine state at this source. This is a cited source negative corroborated by the retained negative buffer witness; null readback alone was not used as a support verdict.",
+            "sources": [
+              "libvterm0.3.3 upstream9d6d211 src/pen.c285–304 admits single/double/curly and no dotted/dashed; full SGR dispatcher has no58/59 arm. include/vterm.h485–490 carries fg/bg and no underline colour. Retained WASM3d67045b is independently rehashed from Termless80dd and its receipt pins this exact upstream.",
+              "Retained run08449bd3-837c-4dea-b8da-4c950fd10673, suite987ca95c0608, source172842d5c3b06da9aba3f1d30c03399d7d522b87; negative buffer witness: sgr.underline.dashed: attribute applied to the rendered X cell",
+              "Scope approval CTO b1ed8962/36be0743; four sgr.underline-color-reset cells stay pending under the existing criterion. Source audit by @dev/3, not an attributed CTO per-cell review."
+            ]
+          }
+        ]
+      },
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "https://github.com/neovim/libvterm.git",
+            "commit": "9d6d2112335080312ef8c36667fa717ded4f7daf",
+            "path": "src/pen.c",
+            "oid": "2227a6fcd33d509a20dfb3340273155986e3e69e"
+          },
+          {
+            "repository": "https://github.com/neovim/libvterm.git",
+            "commit": "9d6d2112335080312ef8c36667fa717ded4f7daf",
+            "path": "include/vterm.h",
+            "oid": "44e15023c0bd524b063385b25edbc33a52bfb410"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "bdaa263fdec6480cceb4b383aff027d3a46fd483",
+            "path": "packages/libvterm/wasm/libvterm.wasm.receipt.json",
+            "oid": "178e8db507779f4903f6b99436006cf8d418a952"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "bdaa263fdec6480cceb4b383aff027d3a46fd483",
+            "path": "packages/libvterm/build/flat-api.c",
+            "oid": "17896892f427a04d7a9a963e7a3614c517a73ecc"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev3-32203-libvterm-sgr.underline.dashed-wasm7122",
+            "reviewer": "@dev/3",
+            "reason": "sgr.underline.dashed: Same libvterm0.3.3 upstream9d6d211 pen.c/vterm.h; current WASM712298aff45c7c53a22dc028b13cb58dae1e984199b520bbbc0475ae64d83159 independently hashes to its Termlessbdaa receipt and exact upstream source. Separate original for the application-cursor/selection build, not a retained3d67 qualification. The requested underline style has no implementing engine state at this source. This is a cited source negative corroborated by the retained negative buffer witness; null readback alone was not used as a support verdict.",
+            "sources": [
+              "Same libvterm0.3.3 upstream9d6d211 pen.c/vterm.h; current WASM712298aff45c7c53a22dc028b13cb58dae1e984199b520bbbc0475ae64d83159 independently hashes to its Termlessbdaa receipt and exact upstream source. Separate original for the application-cursor/selection build, not a retained3d67 qualification.",
+              "Retained run08449bd3-837c-4dea-b8da-4c950fd10673, suite987ca95c0608, source172842d5c3b06da9aba3f1d30c03399d7d522b87; negative buffer witness: sgr.underline.dashed: attribute applied to the rendered X cell",
+              "Scope approval CTO b1ed8962/36be0743; four sgr.underline-color-reset cells stay pending under the existing criterion. Source audit by @dev/3, not an attributed CTO per-cell review."
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "libvterm",
+      "version": "0.3.3",
+      "os": "linux"
+    },
+    "featureId": "sgr.underline.dotted",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "https://github.com/neovim/libvterm.git",
+            "commit": "9d6d2112335080312ef8c36667fa717ded4f7daf",
+            "path": "src/pen.c",
+            "oid": "2227a6fcd33d509a20dfb3340273155986e3e69e"
+          },
+          {
+            "repository": "https://github.com/neovim/libvterm.git",
+            "commit": "9d6d2112335080312ef8c36667fa717ded4f7daf",
+            "path": "include/vterm.h",
+            "oid": "44e15023c0bd524b063385b25edbc33a52bfb410"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "80dd254111ab82279125555f9ca1e68b112cd7e3",
+            "path": "packages/libvterm/wasm/libvterm.wasm.receipt.json",
+            "oid": "19798378217cd10c00b4d86d9ecd925fb8b1dee1"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "80dd254111ab82279125555f9ca1e68b112cd7e3",
+            "path": "packages/libvterm/build/flat-api.c",
+            "oid": "49702d335a27976125514acea38c1cdd2e2d84d1"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev3-32203-libvterm-sgr.underline.dotted-wasm3d67",
+            "reviewer": "@dev/3",
+            "reason": "sgr.underline.dotted: libvterm0.3.3 upstream9d6d211 src/pen.c285–304 admits single/double/curly and no dotted/dashed; full SGR dispatcher has no58/59 arm. include/vterm.h485–490 carries fg/bg and no underline colour. Retained WASM3d67045b is independently rehashed from Termless80dd and its receipt pins this exact upstream. The requested underline style has no implementing engine state at this source. This is a cited source negative corroborated by the retained negative buffer witness; null readback alone was not used as a support verdict.",
+            "sources": [
+              "libvterm0.3.3 upstream9d6d211 src/pen.c285–304 admits single/double/curly and no dotted/dashed; full SGR dispatcher has no58/59 arm. include/vterm.h485–490 carries fg/bg and no underline colour. Retained WASM3d67045b is independently rehashed from Termless80dd and its receipt pins this exact upstream.",
+              "Retained run08449bd3-837c-4dea-b8da-4c950fd10673, suite987ca95c0608, source172842d5c3b06da9aba3f1d30c03399d7d522b87; negative buffer witness: sgr.underline.dotted: attribute applied to the rendered X cell",
+              "Scope approval CTO b1ed8962/36be0743; four sgr.underline-color-reset cells stay pending under the existing criterion. Source audit by @dev/3, not an attributed CTO per-cell review."
+            ]
+          }
+        ]
+      },
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "https://github.com/neovim/libvterm.git",
+            "commit": "9d6d2112335080312ef8c36667fa717ded4f7daf",
+            "path": "src/pen.c",
+            "oid": "2227a6fcd33d509a20dfb3340273155986e3e69e"
+          },
+          {
+            "repository": "https://github.com/neovim/libvterm.git",
+            "commit": "9d6d2112335080312ef8c36667fa717ded4f7daf",
+            "path": "include/vterm.h",
+            "oid": "44e15023c0bd524b063385b25edbc33a52bfb410"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "bdaa263fdec6480cceb4b383aff027d3a46fd483",
+            "path": "packages/libvterm/wasm/libvterm.wasm.receipt.json",
+            "oid": "178e8db507779f4903f6b99436006cf8d418a952"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "bdaa263fdec6480cceb4b383aff027d3a46fd483",
+            "path": "packages/libvterm/build/flat-api.c",
+            "oid": "17896892f427a04d7a9a963e7a3614c517a73ecc"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev3-32203-libvterm-sgr.underline.dotted-wasm7122",
+            "reviewer": "@dev/3",
+            "reason": "sgr.underline.dotted: Same libvterm0.3.3 upstream9d6d211 pen.c/vterm.h; current WASM712298aff45c7c53a22dc028b13cb58dae1e984199b520bbbc0475ae64d83159 independently hashes to its Termlessbdaa receipt and exact upstream source. Separate original for the application-cursor/selection build, not a retained3d67 qualification. The requested underline style has no implementing engine state at this source. This is a cited source negative corroborated by the retained negative buffer witness; null readback alone was not used as a support verdict.",
+            "sources": [
+              "Same libvterm0.3.3 upstream9d6d211 pen.c/vterm.h; current WASM712298aff45c7c53a22dc028b13cb58dae1e984199b520bbbc0475ae64d83159 independently hashes to its Termlessbdaa receipt and exact upstream source. Separate original for the application-cursor/selection build, not a retained3d67 qualification.",
+              "Retained run08449bd3-837c-4dea-b8da-4c950fd10673, suite987ca95c0608, source172842d5c3b06da9aba3f1d30c03399d7d522b87; negative buffer witness: sgr.underline.dotted: attribute applied to the rendered X cell",
+              "Scope approval CTO b1ed8962/36be0743; four sgr.underline-color-reset cells stay pending under the existing criterion. Source audit by @dev/3, not an attributed CTO per-cell review."
+            ]
+          }
+        ]
+      }
+    ]
   }
 ]
