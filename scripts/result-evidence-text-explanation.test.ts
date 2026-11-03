@@ -46,9 +46,7 @@ it("labels a retained source answer by engine version without regrading or datin
   expect(result?.status).toBe("unsupported")
   expect(selected?.measuredAt).toBe(run.measuredAt)
   const published = publicResults(projection, new Map()).projection
-  expect(published.contexts["term:alacritty"]?.cells[featureId]?.reason).toContain(
-    "reviewed at 0.17.0, not re-verified",
-  )
+  expect(published.contexts["term:alacritty"]?.cells[featureId]?.reason).toBe("reviewed at 0.17.0, not re-verified")
   expect(published.contexts["term:alacritty"]?.cells[featureId]?.presentation.state).toBe("not-reviewed")
   expect(published.contexts["term:alacritty"]?.cells[featureId]?.record).toBeUndefined()
   expect(run).toEqual(original)

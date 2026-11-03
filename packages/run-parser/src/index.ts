@@ -1735,8 +1735,8 @@ export function parseProbeResults(
         resolution.kind === "answer" &&
         reviewed.some(
           (test) =>
-            !resolution.rows.some((row) =>
-              row.answers.some(
+            !resolution.answers.some((answer) =>
+              answer.originals.some(
                 (answer) =>
                   test.reason === answer.reason ||
                   (resolution.label !== undefined && test.reason === `${answer.reason}; ${resolution.label}`),

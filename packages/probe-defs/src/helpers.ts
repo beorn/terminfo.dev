@@ -2166,7 +2166,7 @@ export function finalizeProbeResult(
     if (sourceAnswer.kind === "answer" && (!resolved || resolved.featureId !== input.featureId)) {
       throw new Error(`Source answer differs from feature ${input.featureId}`)
     }
-    const originalReason = resolved?.answers[0]?.reason
+    const originalReason = sourceAnswer.kind === "answer" ? sourceAnswer.answers[0]?.originals[0]?.reason : undefined
     const reason =
       sourceAnswer.kind === "answer"
         ? originalReason && `${originalReason}${sourceAnswer.label ? `; ${sourceAnswer.label}` : ""}`

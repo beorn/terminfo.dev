@@ -9,14 +9,16 @@ import { finalizeProbeResult } from "./helpers.ts"
 import { parseSourceAnswerKey, resolveSourceAnswer, sourceAnswerKey, type SourceAnswer } from "./source-answers.ts"
 
 const subject = { kind: "lib" as const, id: "example", version: "1.0", os: "linux" }
+const original = {
+  reviewRef: "collector.review.original",
+  reviewer: "@cto",
+  reason: "No handler",
+  sources: ["original citation"],
+}
 const answer: SourceAnswer = {
   subject,
   featureId: "extensions.example",
-  status: "unsupported",
-  answers: [
-    { reviewRef: "collector.review.original", reviewer: "@cto", reason: "No handler", sources: ["original citation"] },
-  ],
-  citedBlobs: [],
+  answers: [{ status: "unsupported", citedBlobs: [], originals: [original] }],
 }
 const blob = {
   repository: "https://example.test/engine.git",
@@ -24,7 +26,10 @@ const blob = {
   path: "src/parser.ts",
   oid: "b".repeat(40),
 }
-const bound = { ...answer, citedBlobs: [blob] }
+const bound: SourceAnswer = {
+  ...answer,
+  answers: [{ status: "unsupported", citedBlobs: [blob], originals: [original] }],
+}
 
 it("keeps the exact subject and original references without inventing a review date", () => {
   const result = resolveSourceAnswer([answer], { subject, featureId: answer.featureId })
@@ -48,14 +53,26 @@ it.each([
   ["different engine", { ...subject, id: "other" }],
   ["different OS", { ...subject, os: "darwin" }],
   ["different subject kind", { ...subject, kind: "term" as const }],
-  ["different version without blobs", { ...subject, version: "2.0" }],
 ])("does not borrow a static answer for %s", (_name, current) => {
   expect(resolveSourceAnswer([answer], { subject: current, featureId: answer.featureId })).toEqual({ kind: "none" })
 })
 
+it("keeps another version's static answer pending with its candidate key", () => {
+  expect(
+    resolveSourceAnswer([answer], { subject: { ...subject, version: "2.0" }, featureId: answer.featureId }),
+  ).toEqual({
+    kind: "pending",
+    reason: "cited source not resolvable",
+    rowKeys: [sourceAnswerKey(subject, answer.featureId)],
+  })
+})
+
 it("carries across versions only when every cited blob matches current identity facts", () => {
   const second = { ...blob, path: "src/feature.ts", oid: "c".repeat(40) }
-  const row = { ...answer, citedBlobs: [blob, second] }
+  const row: SourceAnswer = {
+    ...answer,
+    answers: [{ status: "unsupported", citedBlobs: [blob, second], originals: [original] }],
+  }
   const input = { subject: { ...subject, version: "2.0" }, featureId: answer.featureId }
   const unresolved = resolveSourceAnswer([row], { ...input, blobs: [blob] })
   expect(unresolved).toEqual({
@@ -92,7 +109,11 @@ it.each(["1.0", "2.0"])(
 )
 
 it("keeps conflicting qualifying rows pending without choosing the newest version", () => {
-  const supported = { ...bound, subject: { ...subject, version: "2.0" }, status: "supported" as const }
+  const supported: SourceAnswer = {
+    ...bound,
+    subject: { ...subject, version: "2.0" },
+    answers: [{ status: "supported", citedBlobs: [blob], originals: [original] }],
+  }
   const input = { subject: { ...subject, version: "3.0" }, featureId: answer.featureId, blobs: [blob] }
   for (const rows of [
     [bound, supported],
@@ -212,7 +233,16 @@ it("resolves cited engine blobs only from the measured clean source revision", (
 })
 
 it("uses measured adapter path OIDs to detect drift even at the original version", () => {
-  const adapter = { ...bound, citedBlobs: [{ ...blob, repository: "git@github.com:beorn/termless.git" }] }
+  const adapter: SourceAnswer = {
+    ...bound,
+    answers: [
+      {
+        status: "unsupported",
+        citedBlobs: [{ ...blob, repository: "git@github.com:beorn/termless.git" }],
+        originals: [original],
+      },
+    ],
+  }
   const runtimeIdentity = {
     kind: "js" as const,
     runtimeFormat: "js" as const,
@@ -226,5 +256,60 @@ it("uses measured adapter path OIDs to detect drift even at the original version
   expect(resolveSourceAnswer([adapter], { subject, featureId: answer.featureId, runtimeIdentity })).toMatchObject({
     kind: "pending",
     reason: "cited source changed",
+  })
+})
+
+// CTO19:35: merged row-level citations can make both original answers impossible.
+// Each original must qualify independently, including at its own subject version.
+it("evaluates two OIDs for one path independently and retains the matching original", () => {
+  const secondBlob = { ...blob, commit: "c".repeat(40), oid: "d".repeat(40) }
+  const row: SourceAnswer = {
+    subject,
+    featureId: answer.featureId,
+    answers: [
+      { status: "unsupported", citedBlobs: [blob], originals: [original] },
+      {
+        status: "unsupported",
+        citedBlobs: [secondBlob],
+        originals: [{ ...original, reviewRef: "collector.review.second" }],
+      },
+    ],
+  }
+  for (const version of ["1.0", "2.0"]) {
+    const result = resolveSourceAnswer([row], {
+      subject: { ...subject, version },
+      featureId: answer.featureId,
+      blobs: [blob],
+    })
+    expect(result).toMatchObject({
+      kind: "answer",
+      status: "unsupported",
+      answers: [{ originals: [{ reviewRef: "collector.review.original" }] }],
+    })
+    if (result.kind !== "answer") throw new Error("One matching original must remain applicable")
+    expect(result.answers).toHaveLength(1)
+  }
+  expect(
+    resolveSourceAnswer([row], { subject, featureId: answer.featureId, blobs: [{ ...blob, oid: "e".repeat(40) }] }),
+  ).toMatchObject({ kind: "pending", reason: "cited source changed" })
+})
+
+it("keeps differing qualifying originals under one key pending", () => {
+  const row: SourceAnswer = {
+    subject,
+    featureId: answer.featureId,
+    answers: [
+      { status: "unsupported", citedBlobs: [blob], originals: [original] },
+      {
+        status: "supported",
+        citedBlobs: [blob],
+        originals: [{ ...original, reviewRef: "collector.review.different-status" }],
+      },
+    ],
+  }
+  expect(resolveSourceAnswer([row], { subject, featureId: answer.featureId, blobs: [blob] })).toEqual({
+    kind: "pending",
+    reason: "kept answers disagree",
+    rowKeys: [sourceAnswerKey(subject, answer.featureId)],
   })
 })

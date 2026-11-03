@@ -5,9 +5,11 @@ export type SourceAnswerSubject = Pick<ProbeSubject, "kind" | "id" | "version" |
 export interface SourceAnswer {
   subject: SourceAnswerSubject
   featureId: string
-  status: "supported" | "unsupported" | "untestable"
-  answers: Array<{ reviewRef: string; reviewer: string; reason: string; sources: string[] }>
-  citedBlobs: Array<{ repository: string; commit: string; path: string; oid: string }>
+  answers: Array<{
+    status: "supported" | "unsupported" | "untestable"
+    citedBlobs: Array<{ repository: string; commit: string; path: string; oid: string }>
+    originals: Array<{ reviewRef: string; reviewer: string; reason: string; sources: string[] }>
+  }>
 }
 export interface SourceAnswerInput {
   subject: SourceAnswerSubject
@@ -35,7 +37,14 @@ export type SourceAnswerResolution =
       reason: "cited source changed" | "kept answers disagree" | "cited source not resolvable"
       rowKeys: string[]
     }
-  | { kind: "answer"; status: SourceAnswer["status"]; rowKeys: string[]; rows: readonly SourceAnswer[]; label?: string }
+  | {
+      kind: "answer"
+      status: SourceAnswer["answers"][number]["status"]
+      rowKeys: string[]
+      rows: readonly SourceAnswer[]
+      answers: readonly SourceAnswer["answers"][number][]
+      label?: string
+    }
 
 export function sourceAnswerKey(subject: SourceAnswerSubject, featureId: string): string {
   return JSON.stringify([subject.kind, subject.id, subject.version, subject.os, featureId])
@@ -80,52 +89,52 @@ export function resolveSourceAnswer(rows: readonly SourceAnswer[], input: Source
         row.subject.id === input.subject.id &&
         row.subject.os === input.subject.os,
     )
-    .map((row) => {
-      const states = row.citedBlobs.map((blob) => {
-        const runtime = input.runtimeIdentity
-        const facts = [
-          ...(input.blobs ?? []),
-          ...(blob.repository === "git@github.com:beorn/termless.git"
-            ? (runtime?.adapterSources ?? []).map((source) => ({
-                repository: blob.repository,
-                path: source.path,
-                oid: source.blobOid,
-              }))
-            : []),
-        ].filter(
-          (fact) => fact.repository === blob.repository && fact.path === blob.path && /^[a-f0-9]{40}$/.test(fact.oid),
-        )
-        const oids = new Set(facts.map((fact) => fact.oid))
-        // An exact immutable commit addresses the converted blob. A different commit
-        // alone does not establish whether this path changed. Explicit path OIDs win.
-        if (
-          oids.size === 0 &&
-          ((runtime?.kind === "js" &&
-            runtime.integrity.kind === "source" &&
-            runtime.integrity.cleanTree &&
-            runtime.integrity.repository === blob.repository &&
-            runtime.integrity.revision === blob.commit) ||
-            (blob.repository === "git@github.com:beorn/termless.git" && runtime?.termlessRevision === blob.commit) ||
-            (blob.repository === "git@github.com:beorn/terminfo.dev.git" && input.sourceRevision === blob.commit))
-        ) {
-          return "same"
-        }
-        if (oids.size !== 1) return "unavailable"
-        return oids.has(blob.oid) ? "same" : "changed"
-      })
-      const own = row.subject.version === input.subject.version
-      const changed = states.includes("changed")
-      const verified = states.length > 0 && states.every((state) => state === "same")
-      return { row, key: sourceAnswerKey(row.subject, row.featureId), own, changed, verified }
-    })
+    .flatMap((row) =>
+      row.answers.map((answer) => {
+        const states = answer.citedBlobs.map((blob) => {
+          const runtime = input.runtimeIdentity
+          const facts = [
+            ...(input.blobs ?? []),
+            ...(blob.repository === "git@github.com:beorn/termless.git"
+              ? (runtime?.adapterSources ?? []).map((source) => ({
+                  repository: blob.repository,
+                  path: source.path,
+                  oid: source.blobOid,
+                }))
+              : []),
+          ].filter(
+            (fact) => fact.repository === blob.repository && fact.path === blob.path && /^[a-f0-9]{40}$/.test(fact.oid),
+          )
+          const oids = new Set(facts.map((fact) => fact.oid))
+          // An exact immutable commit addresses the converted blob. A different commit
+          // alone does not establish whether this path changed. Explicit path OIDs win.
+          if (
+            oids.size === 0 &&
+            ((runtime?.kind === "js" &&
+              runtime.integrity.kind === "source" &&
+              runtime.integrity.cleanTree &&
+              runtime.integrity.repository === blob.repository &&
+              runtime.integrity.revision === blob.commit) ||
+              (blob.repository === "git@github.com:beorn/termless.git" && runtime?.termlessRevision === blob.commit) ||
+              (blob.repository === "git@github.com:beorn/terminfo.dev.git" && input.sourceRevision === blob.commit))
+          ) {
+            return "same"
+          }
+          if (oids.size !== 1) return "unavailable"
+          return oids.has(blob.oid) ? "same" : "changed"
+        })
+        const own = row.subject.version === input.subject.version
+        const changed = states.includes("changed")
+        const verified = states.length > 0 && states.every((state) => state === "same")
+        return { row, answer, key: sourceAnswerKey(row.subject, row.featureId), own, changed, verified }
+      }),
+    )
   const pending = (
     reason: "cited source changed" | "kept answers disagree" | "cited source not resolvable",
     matches: typeof candidates,
-  ): SourceAnswerResolution => ({ kind: "pending", reason, rowKeys: matches.map((match) => match.key) })
-  const ownChanged = candidates.filter((match) => match.own && match.changed)
-  if (ownChanged.length) return pending("cited source changed", ownChanged)
+  ): SourceAnswerResolution => ({ kind: "pending", reason, rowKeys: [...new Set(matches.map((match) => match.key))] })
   const applicable = candidates.filter((match) => !match.changed && (match.own || match.verified))
-  if (new Set(applicable.map((match) => match.row.status)).size > 1) {
+  if (new Set(applicable.map((match) => match.answer.status)).size > 1) {
     return pending("kept answers disagree", applicable)
   }
   const first = applicable[0]
@@ -134,14 +143,14 @@ export function resolveSourceAnswer(rows: readonly SourceAnswer[], input: Source
     const unverified = applicable.find((match) => !match.verified)
     return {
       kind: "answer",
-      status: first.row.status,
-      rows: applicable.map((match) => match.row),
-      rowKeys: applicable.map((match) => match.key),
+      status: first.answer.status,
+      rows: [...new Set(applicable.map((match) => match.row))],
+      answers: applicable.map((match) => match.answer),
+      rowKeys: [...new Set(applicable.map((match) => match.key))],
       ...(unverified && { label: `reviewed at ${unverified.row.subject.version}, not re-verified` }),
     }
   }
   const changed = candidates.filter((match) => match.changed)
   if (changed.length) return pending("cited source changed", changed)
-  const unavailable = candidates.filter((match) => match.row.citedBlobs.length > 0 && !match.verified)
-  return unavailable.length ? pending("cited source not resolvable", unavailable) : { kind: "none" }
+  return candidates.length ? pending("cited source not resolvable", candidates) : { kind: "none" }
 }
