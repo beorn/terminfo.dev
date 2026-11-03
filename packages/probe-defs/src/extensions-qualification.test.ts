@@ -404,7 +404,7 @@ test("sixel takes the vt100Rust source-negative review only without Sixel storag
       if (match) images.push({ data: match[1]!, row: 0, col: 0 })
     },
     getSixelImages: () => [...images],
-  } as Partial<LibProbeSource>)
+  } as unknown as Partial<LibProbeSource>)
   expect(supporting.result.criterionBranch).toBe("headless-observable-review")
   expect(supporting.result.assertions).toBeUndefined()
 })
