@@ -31816,6 +31816,114 @@
       "version": "6.0.0",
       "os": "linux"
     },
+    "featureId": "extensions.osc52-clipboard",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/xtermjs/src/index.ts",
+            "oid": "550e10110ec2baaf326d2958319b03ee8208feba"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/xtermjs/src/backend.ts",
+            "oid": "72dc827b2026af7736de722f7ff986a04f3fe883"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/xtermjs/package.json",
+            "oid": "7febf39cdcf09a1edcb35732487a8d59821f7415"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "bun.lock",
+            "oid": "e98a82dedba868673d1c96c230d611cac67ca72b"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "32164-xtermjs-osc52-clipboard-source-20261103",
+            "reviewer": "@dev/10",
+            "reason": "Configured @xterm/headless6.0.0 bundle SHA25617a90b650cf6b77cce2b98c4063884d43545e4ce177a54b76ccfc906f1aacaed, map SHA256780e782badc8189491a469c9277b783e01911882ea84417b31e71294ea927d98: embedded InputHandler.ts:292-338 registers OSC0/1/2/4/8/10/11/12/104/110/111/112, not52; :201-203 and OscParser.ts:67,145-146 send unhandled OSC52 to a logging-only fallback. Termless25089207 backend imports that engine and loads Unicode11Addon only, with no custom OSC52 handler. Its manifest/lock bind the captured registry SRI sha512-5Yj1QINYCyzrZtf8OFIHi47iQtI+0qYFPHmouEfG8dHNxbZ9Tb9YGSuLcsEwj9Z+OL75GJqPyJbyoFer80a2Hw==. Same-run rendered-X source controls qualify the existing review after the callback's qualified read negative; the initial read bytes are not separately retained here. Unsupported follows inspected engine dispatch absence, not silence, a clipboard-state witness or an OS clipboard measurement. Other embedders can install their own OSC52 handlers and are not covered.",
+            "sources": [
+              "@xterm/headless@6.0.0:lib-headless/xterm-headless.js.map:src/common/InputHandler.ts:201-203,292-338",
+              "@xterm/headless@6.0.0:lib-headless/xterm-headless.js.map:src/common/parser/OscParser.ts:67,145-146",
+              "@xterm/headless@6.0.0:lib-headless/xterm-headless.js.map:src/common/CoreTerminal.ts:236",
+              "termless@25089207e11420cf7a588987c1dc2683a45e8372:packages/xtermjs/src/backend.ts:10,228,249,293;packages/xtermjs/package.json;bun.lock",
+              "capture:af30f138-af1b-4314-ad7f-1e4f57185a2c:extensions.osc52-clipboard:negative-source-control"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "xtermjs",
+      "version": "6.0.0",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc52-write",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/xtermjs/src/index.ts",
+            "oid": "550e10110ec2baaf326d2958319b03ee8208feba"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/xtermjs/src/backend.ts",
+            "oid": "72dc827b2026af7736de722f7ff986a04f3fe883"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/xtermjs/package.json",
+            "oid": "7febf39cdcf09a1edcb35732487a8d59821f7415"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "bun.lock",
+            "oid": "e98a82dedba868673d1c96c230d611cac67ca72b"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "32164-xtermjs-osc52-write-source-20261103",
+            "reviewer": "@dev/10",
+            "reason": "Configured @xterm/headless6.0.0 bundle SHA25617a90b650cf6b77cce2b98c4063884d43545e4ce177a54b76ccfc906f1aacaed, map SHA256780e782badc8189491a469c9277b783e01911882ea84417b31e71294ea927d98: embedded InputHandler.ts:292-338 registers OSC0/1/2/4/8/10/11/12/104/110/111/112, not52; :201-203 and OscParser.ts:67,145-146 send unhandled OSC52 to a logging-only fallback. Termless25089207 backend imports that engine and loads Unicode11Addon only, with no custom OSC52 handler. Its manifest/lock bind the captured registry SRI sha512-5Yj1QINYCyzrZtf8OFIHi47iQtI+0qYFPHmouEfG8dHNxbZ9Tb9YGSuLcsEwj9Z+OL75GJqPyJbyoFer80a2Hw==. Same-run rendered-X source controls qualify the existing review after the callback's qualified read negative; the initial read bytes are not separately retained here. Unsupported follows inspected engine dispatch absence, not silence, a clipboard-state witness or an OS clipboard measurement. Other embedders can install their own OSC52 handlers and are not covered.",
+            "sources": [
+              "@xterm/headless@6.0.0:lib-headless/xterm-headless.js.map:src/common/InputHandler.ts:201-203,292-338",
+              "@xterm/headless@6.0.0:lib-headless/xterm-headless.js.map:src/common/parser/OscParser.ts:67,145-146",
+              "@xterm/headless@6.0.0:lib-headless/xterm-headless.js.map:src/common/CoreTerminal.ts:236",
+              "termless@25089207e11420cf7a588987c1dc2683a45e8372:packages/xtermjs/src/backend.ts:10,228,249,293;packages/xtermjs/package.json;bun.lock",
+              "capture:af30f138-af1b-4314-ad7f-1e4f57185a2c:extensions.osc52-write:negative-source-control"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "xtermjs",
+      "version": "6.0.0",
+      "os": "linux"
+    },
     "featureId": "extensions.sixel",
     "answers": [
       {
