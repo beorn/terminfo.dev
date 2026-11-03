@@ -52,9 +52,10 @@ An unmeasurable witness or changed geometry is recorded as a named refusal, neve
 Every confirmation compares consecutive complete frames under one fixed deadline.
 For a Darwin app the collector launched, an unreported cursor-visibility mode restores
 the launch default set; the retained raster basis names that choice without treating DA1 as a mode reply.
+The identical-restoration witness concerns surface pixels; unreported cursor state uses the launch default without a mode readback claim.
 Native capture-command failures during installation retain their primary command evidence and
-secondary restoration failure in the named per-row no-adapter outcome. Query timeouts and
-other apparatus errors retain their existing failure behavior.
+secondary restoration failure in the named per-row no-adapter outcome, including native command deadline kills.
+Terminal-query timeouts and apparatus errors without a native capture-command cause retain their existing failure behavior.
 
 **A definition is executable, not a saved result.** `ProbeDefinition` identifies a feature and supplies either or both callback arms:
 
