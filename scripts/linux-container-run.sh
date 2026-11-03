@@ -370,6 +370,7 @@ if [[ "${1:-}" == "--mux-shell" ]]; then
   chmod 600 "$mux_config"
   case "$TERMINFO_MUX_KIND" in
     tmux)
+      unset TERM_PROGRAM TERM_PROGRAM_VERSION
       mux_socket="$HOME/$mux_session.sock"
       printf '%s\n' "$mux_socket" > "$mux_output/mux-socket.txt"
       tmux -D -S "$mux_socket" -f "$mux_config" </dev/null >"$mux_output/mux-server.log" 2>&1 &
@@ -380,7 +381,8 @@ if [[ "${1:-}" == "--mux-shell" ]]; then
         sleep 0.05
       done
       [[ -S "$mux_socket" ]] || { echo "Owned tmux socket was not created" >&2; exit 2; }
-      tmux -S "$mux_socket" new-session -s "$mux_session" bash "$0" --mux-inner
+      # Start the final collector command before tmux names the window for raster calibration.
+      tmux -S "$mux_socket" new-session -s "$mux_session" bun "$TERMINFO_RUNNER" test --serve
       tmux -S "$mux_socket" kill-server
       wait "$mux_server"
       ;;
