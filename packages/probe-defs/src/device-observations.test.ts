@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest"
 import { deviceProbes } from "./device.ts"
-import { recordExecutedProbe, SOURCE_TREE_AUDITS } from "./helpers.ts"
+import { recordExecutedProbe, SOURCE_TREE_AUDITS, vtermGeometryReview } from "./helpers.ts"
 import type { TermProbeSource, LibProbeSource, TerminalQueryOutcome } from "./types.ts"
 
 const replies = [
@@ -1155,26 +1155,39 @@ test.each(geometryReplies)("$id retains audited geometry limits for required rev
     repository: geometryRuntime.integrity.repository,
     treeOid: geometryRuntime.integrity.treeOid,
   }).toEqual(SOURCE_TREE_AUDITS.vterm)
-  for (const sentinel of [false, true]) {
-    const ctx = {
-      feedCapture: () => raw,
-      runtimeIdentity: geometryRuntime,
-      ...(sentinel && {
-        queryWithSentinelOutcome: () => ({
-          raw,
-          rawBase64: Buffer.from(raw).toString("base64"),
-          reason: "sentinel",
-          match: null,
+  for (const { revision, sourceCitation } of [
+    {
+      revision: "67dd3960746766ed47e2bb4b2ced6503a78549cc",
+      sourceCitation:
+        "vterm 67dd3960746766ed47e2bb4b2ced6503a78549cc packages/vterm/src/screen.ts:89-109 ScreenOptions has no physical font/window metrics; XTWINOPS14/16 at :2610-2615 deliberately report unknown zero dimensions (#30575)",
+    },
+    {
+      revision: "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+      sourceCitation:
+        "vterm 9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vterm/src/screen.ts:89-109 ScreenOptions has no physical font/window metrics; XTWINOPS14/16 at :2610-2615 deliberately report unknown zero dimensions (#30575)",
+    },
+  ]) {
+    for (const sentinel of [false, true]) {
+      const ctx = {
+        feedCapture: () => raw,
+        runtimeIdentity: { ...geometryRuntime, integrity: { ...geometryRuntime.integrity, revision } },
+        ...(sentinel && {
+          queryWithSentinelOutcome: () => ({
+            raw,
+            rawBase64: Buffer.from(raw).toString("base64"),
+            reason: "sentinel",
+            match: null,
+          }),
         }),
-      }),
-    } as unknown as LibProbeSource
-    const result = callback(id).headless(ctx)
-    expect(result.notTested?.reason).toBe("no-semantic-observable")
-    expect(result.tests).toMatchObject([{ id: "review", status: "test-todo" }])
-    expect(result.observation).toBeUndefined()
-    const state = JSON.parse(result.response!)
-    expect(state).toMatchObject({ raw })
-    expect(state).not.toHaveProperty("runtimeIdentity")
+      } as unknown as LibProbeSource
+      const result = callback(id).headless(ctx)
+      expect(result.notTested?.reason).toBe("no-semantic-observable")
+      expect(result.tests).toMatchObject([{ id: "review", status: "test-todo" }])
+      expect(result.observation).toBeUndefined()
+      const state = JSON.parse(result.response!)
+      expect(state).toMatchObject({ raw, sourceCitation })
+      expect(state).not.toHaveProperty("runtimeIdentity")
+    }
   }
 })
 
@@ -1197,6 +1210,18 @@ test.each(geometryReplies)("$id requires audited source and complete zero geomet
   }
   const ctx = { feedCapture: () => positive, runtimeIdentity: geometryRuntime } as unknown as LibProbeSource
   expect(callback(id).headless(ctx).observation?.outcome).toBe("supported")
+  for (const revision of [geometryRuntime.integrity.revision, "9e99e4d23cdc606fca258b1863aa2be7ae79eed3"]) {
+    expect(
+      vtermGeometryReview(
+        {
+          runtimeIdentity: { ...geometryRuntime, integrity: { ...geometryRuntime.integrity, revision } },
+        } as LibProbeSource,
+        false,
+        { query: "unused", raw, noObservable: "unused", sourceCitation: "unused" },
+        callback(id).headless(ctx),
+      ),
+    ).toBeUndefined()
+  }
 })
 
 // A changed known engine must not disappear behind reply shape, location or another failed qualifier.
@@ -1269,16 +1294,34 @@ test.each(geometryReplies)(
         treeOid: "617ae6002c7befea7b3e43d11bf23e6b433e3d65",
       },
     }
-    const pinned = "review pinned to vterm 0.10.1 67dd39607467 tree e9d67d4b4ba7"
+    const pinned =
+      "review pinned to vterm 0.10.1 67dd39607467 tree e9d67d4b4ba7 or vterm 0.10.1 9e99e4d23cdc tree e9d67d4b4ba7"
+    const measured = callback(id).headless({ feedCapture: () => raw } as unknown as LibProbeSource)
     for (const [runtimeIdentity, side] of [
       [loaded, "loaded vterm 0.9.0 53a9eb92aa11 tree 617ae6002c7b"],
+      [
+        { ...geometryRuntime, integrity: { ...geometryRuntime.integrity, revision: "f".repeat(40) } },
+        "loaded vterm 0.10.1 ffffffffffff tree e9d67d4b4ba7",
+      ],
       [
         { ...geometryRuntime, integrity: { ...geometryRuntime.integrity, cleanTree: false } },
         "loaded vterm 0.10.1 67dd39607467 tree e9d67d4b4ba7 dirty",
       ],
+      [
+        {
+          ...geometryRuntime,
+          integrity: {
+            ...geometryRuntime.integrity,
+            revision: "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+            cleanTree: false,
+          },
+        },
+        "loaded vterm 0.10.1 9e99e4d23cdc tree e9d67d4b4ba7 dirty",
+      ],
     ] as const) {
       const result = callback(id).headless({ feedCapture: () => raw, runtimeIdentity } as unknown as LibProbeSource)
       const note = `${pinned}; ${side}; no review applies at this identity`
+      expect(result).toEqual({ ...measured, observation: { ...measured.observation, note } })
       expect(result.tests).toBeUndefined()
       expect(result.notTested).toBeUndefined()
       expect(result.observation).toMatchObject({ outcome: "inconclusive", note })

@@ -1735,13 +1735,6 @@ export const SOURCE_ONLY_NEGATIVE_REVIEW_BRANCHES: ReadonlySet<string> = new Set
 
 /** Audited source entries have one home; their paths are repository-relative identities, not checkout locations. */
 export const SOURCE_TREE_AUDITS = {
-  libvterm: {
-    resolvedPath: "vendor/termless/packages/libvterm/src/index.ts",
-    runtimeFormat: "wasm",
-    engineVersion: "0.3.3",
-    repository: "git@github.com:beorn/termless.git",
-    treeOid: "ae0b11bb808b8c402c168869d7caa5a5f62566c2",
-  },
   vterm: {
     resolvedPath: "vendor/vterm/packages/vterm/src/index.ts",
     runtimeFormat: "js",
@@ -1784,7 +1777,10 @@ export function sourceTreeDrift(
   }
 }
 
-const VTERM_GEOMETRY_REVISION = "67dd3960746766ed47e2bb4b2ced6503a78549cc"
+const VTERM_GEOMETRY_REVISIONS: readonly string[] = [
+  "67dd3960746766ed47e2bb4b2ced6503a78549cc",
+  "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+]
 
 /**
  * The geometry gate's identity miss: the audited subject loaded at another source identity. The disposition stays
@@ -1796,12 +1792,14 @@ function vtermGeometryIdentityMiss(
 ): ProbeCallbackResult {
   const side = (identity: { engineVersion: string; revision: string; treeOid: string }) =>
     `vterm ${identity.engineVersion} ${identity.revision.slice(0, 12)} tree ${identity.treeOid.slice(0, 12)}`
-  const pinned = {
-    engineVersion: SOURCE_TREE_AUDITS.vterm.engineVersion,
-    revision: VTERM_GEOMETRY_REVISION,
-    treeOid: SOURCE_TREE_AUDITS.vterm.treeOid,
-  }
-  const note = `review pinned to ${side(pinned)}; loaded ${side(loaded)}${loaded.cleanTree ? "" : " dirty"}; no review applies at this identity`
+  const pinned = VTERM_GEOMETRY_REVISIONS.map((revision) =>
+    side({
+      engineVersion: SOURCE_TREE_AUDITS.vterm.engineVersion,
+      revision,
+      treeOid: SOURCE_TREE_AUDITS.vterm.treeOid,
+    }),
+  ).join(" or ")
+  const note = `review pinned to ${pinned}; loaded ${side(loaded)}${loaded.cleanTree ? "" : " dirty"}; no review applies at this identity`
   if (!("observation" in measured) || measured.observation === undefined) {
     throw new Error("vterm geometry identity miss requires the measured inconclusive observation")
   }
@@ -1830,7 +1828,7 @@ export function vtermGeometryReview(
   }
   if (
     !identity.integrity.cleanTree ||
-    identity.integrity.revision !== VTERM_GEOMETRY_REVISION ||
+    !VTERM_GEOMETRY_REVISIONS.includes(identity.integrity.revision) ||
     identity.integrity.treeOid !== SOURCE_TREE_AUDITS.vterm.treeOid
   ) {
     return vtermGeometryIdentityMiss(measured, { engineVersion: identity.engineVersion, ...identity.integrity })
@@ -1843,44 +1841,63 @@ export function vtermGeometryReview(
   )
 }
 
+/**
+ * The qualified WASM artifact per libvterm history cohort, keyed as in ADAPTER_SOURCE_AUDITS. A rebuilt adapter
+ * adds a cohort here rather than editing a grading literal in the review, and each key names the review's own
+ * source citation (31386/32220).
+ */
+const LIBVTERM_HISTORY_ARTIFACTS = {
+  libvterm: {
+    engineVersion: "0.3.3",
+    adapterVersion: "0.10.2",
+    wasmSha256: "3d67045bb43c5e4081c70dc58088af8f735416c20df2d7843d765e5aad8ef62a",
+  },
+  libvterm712298af: {
+    engineVersion: "0.3.3",
+    adapterVersion: "0.10.2",
+    wasmSha256: "712298aff45c7c53a22dc028b13cb58dae1e984199b520bbbc0475ae64d83159",
+  },
+} as const satisfies Partial<
+  Record<keyof typeof ADAPTER_SOURCE_AUDITS, { engineVersion: string; adapterVersion: string; wasmSha256: string }>
+>
+
 /** Exact source/API audit; an embedding application's history is a different subject. */
 export function libvtermHistoryReview(ctx: LibProbeSource): ProbeCallbackResult | undefined {
   const identity = evidenceRuntimeIdentity(ctx.runtimeIdentity)
-  if (
-    !identity ||
-    identity.kind !== "js" ||
-    identity.runtimeFormat !== "wasm" ||
-    identity.engineVersion !== SOURCE_TREE_AUDITS.libvterm.engineVersion ||
-    identity.adapterVersion !== "0.10.2"
-  ) {
+  if (!identity || identity.kind !== "js" || identity.runtimeFormat !== "wasm") return undefined
+  const cohort = (["libvterm712298af", "libvterm"] as const).find((key) =>
+    auditedAdapterSources(ctx.runtimeIdentity, key),
+  )
+  if (cohort === undefined) return undefined
+  const artifact = LIBVTERM_HISTORY_ARTIFACTS[cohort]
+  if (identity.engineVersion !== artifact.engineVersion || identity.adapterVersion !== artifact.adapterVersion) {
     return undefined
   }
-  const currentAdapter = auditedAdapterSources(ctx.runtimeIdentity, "libvterm712298af")
-  if (!currentAdapter && !auditedAdapterSources(ctx.runtimeIdentity, "libvterm")) return undefined
-  const expectedBinarySha256 = currentAdapter
-    ? "712298aff45c7c53a22dc028b13cb58dae1e984199b520bbbc0475ae64d83159"
-    : "3d67045bb43c5e4081c70dc58088af8f735416c20df2d7843d765e5aad8ef62a"
-  if (identity.loadedBinary.sha256 !== expectedBinarySha256) {
+  if (identity.loadedBinary.sha256 !== artifact.wasmSha256) {
     return {
       pass: false,
-      response: JSON.stringify({ expectedBinarySha256, readBinarySha256: identity.loadedBinary.sha256 }),
+      response: JSON.stringify({
+        expectedBinarySha256: artifact.wasmSha256,
+        readBinarySha256: identity.loadedBinary.sha256,
+      }),
       tests: [
         {
           id: "criterion",
           status: "test-failure",
-          reason: `binary identity drift: expected ${expectedBinarySha256}, read ${identity.loadedBinary.sha256}`,
+          reason: `binary identity drift: expected ${artifact.wasmSha256}, read ${identity.loadedBinary.sha256}`,
         },
       ],
     }
   }
   return reviewResult(
     HEADLESS_OBSERVABLE_REVIEW,
-    "libvterm v0.3.3 exposes no retained scrollback history count; history belongs to an embedding application",
+    `libvterm v${artifact.engineVersion} exposes no retained scrollback history count; history belongs to an embedding application`,
     "retained scrollback history count",
     {
-      sourceCitation: currentAdapter
-        ? "Termless 2f73fc28027b7d483e504e08edc64d1837935816 packages/libvterm/src/backend.ts:432-444 getScrollback reports the screen extent, not retained history; packages/libvterm/build/flat-api.c:199-210 installs only property observer callbacks, with no history store callbacks; raw libvterm 9d6d2112335080312ef8c36667fa717ded4f7daf include/vterm.h:541-543 and src/screen.c:208-226,676-681,830-837 hand history rows to the embedding application"
-        : "Termless 6939d82b84a6bf2989dd0650329779e324790dda packages/libvterm/src/backend.ts:429-445 getScrollback reports the screen extent, not retained history; raw libvterm 9d6d2112335080312ef8c36667fa717ded4f7daf include/vterm.h:541-543 and src/screen.c:208-226,676-681,830-837 hand history rows to the embedding application",
+      sourceCitation:
+        cohort === "libvterm712298af"
+          ? "Termless 2f73fc28027b7d483e504e08edc64d1837935816 packages/libvterm/src/backend.ts:432-444 getScrollback reports the screen extent, not retained history; packages/libvterm/build/flat-api.c:199-210 installs only property observer callbacks, with no history store callbacks; raw libvterm 9d6d2112335080312ef8c36667fa717ded4f7daf include/vterm.h:541-543 and src/screen.c:208-226,676-681,830-837 hand history rows to the embedding application"
+          : "Termless 6939d82b84a6bf2989dd0650329779e324790dda packages/libvterm/src/backend.ts:429-445 getScrollback reports the screen extent, not retained history; raw libvterm 9d6d2112335080312ef8c36667fa717ded4f7daf include/vterm.h:541-543 and src/screen.c:208-226,676-681,830-837 hand history rows to the embedding application",
     },
   )
 }
