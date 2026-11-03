@@ -1726,10 +1726,11 @@ function promptCwdPropertyResult(ctx: LibProbeSource): ProbeCallbackResult {
     state,
     inert ? "Cwd reader is inert to two distinct OSC7 controls" : undefined,
   )
-  if (inert)
+  if (inert) {
     result.tests = [
       { id: "criterion", status: "test-todo", reason: "Cwd reader is inert to two distinct OSC7 controls" },
     ]
+  }
   if (failed) {
     result.observation = {
       outcome: "error",
@@ -1803,10 +1804,11 @@ function promptMarkResult(
         endControl,
         "Command-end reader did not report the two OSC133 controls",
       )
-      if (inert)
+      if (inert) {
         result.tests = [
           { id: "criterion", status: "test-todo", reason: "Command-end reader did not report the two OSC133 controls" },
         ]
+      }
       if (!inert) {
         result.observation = {
           outcome: "error",
