@@ -194,19 +194,17 @@ export interface RunDraft {
   textSnapshotRefs?: string[]
   textQualification?: TextQualification
   results: ProbeResult[]
-  sealedAt?: never
 }
 
 /** Captured identity is present, but HTTP/intent/app-launch enrichment and review can still run. */
 export type CapturedRunDraft = RunDraft & Required<Pick<RunDraft, "subject" | "identity" | "measuredAt" | "origin">>
 
 /** Final status bytes are immutable after all legitimate enrichment and required review. */
-export interface CurrentProbeRun extends Omit<RunDraft, "subject" | "identity" | "measuredAt" | "origin" | "sealedAt"> {
+export interface CurrentProbeRun extends Omit<RunDraft, "subject" | "identity" | "measuredAt" | "origin"> {
   subject: ProbeSubject
   identity: "verified" | "unverified" | "disputed"
   measuredAt: string
   origin: RunOrigin
-  sealedAt: string
 }
 
 /** A proposition's measured outcome. Missing catalog IDs mean not tested. */
@@ -733,49 +731,7 @@ export interface HistoricalInterpretation {
   origin?: "documentation"
 }
 
-/** A pre-seal review binds capture bytes rather than circularly hashing the resulting run. */
-export interface CaptureEvidence {
-  algorithm: "evidence-output-v1"
-  sha256: string
-  /** Immutable pre-review outputs, retained to explain which component changed. */
-  projection: {
-    subject: Pick<ProbeSubject, "kind" | "id" | "version" | "os">
-    runtimeIdentity: Record<string, unknown> | null
-    feature: { featureId: string; catalogEntrySha256: string }
-    cell: {
-      rawReplies: Array<{ key: string; sha256: string }>
-      tests: Array<Pick<ProbeTestResult, "id" | "status" | "reason">>
-      assertions: Array<Omit<ProbeAssertion, "assertionType"> & { assertionType?: AssertionType }>
-      frames: Array<Record<string, unknown>>
-      criterionBranch?: string
-      assertionType?: AssertionType
-      host?: Pick<ConsoleBufferOwner, "image" | "executableSha256">
-      replyPath?: { declaration: unknown; decision: unknown }
-    }
-  }
-}
-
-export interface CaptureDecision {
-  id: string
-  runId: string
-  featureId: string
-  captureSha256: string
-  evidence?: CaptureEvidence
-  decision: "supported" | "unsupported" | "untestable" | "tool-gap"
-  reviewed: true
-  reviewer: string
-  reason: string
-  scope: HistoricalInterpretation["scope"]
-  sources: string[]
-  supersedes: string[]
-  runSha256?: never
-  observation?: never
-  verifiesIdentity?: never
-  presentsEvidence?: never
-  accepted?: never
-  origin?: never
-}
-export type Interpretation = HistoricalInterpretation | CaptureDecision
+export type Interpretation = HistoricalInterpretation
 
 /** Source for library probing (synchronous cell-state access) */
 export interface LibProbeSource {

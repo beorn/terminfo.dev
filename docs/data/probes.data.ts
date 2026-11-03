@@ -110,8 +110,6 @@ export interface ProbeData {
    * than walking the run's raw cells or holding a second classifier.
    */
   releaseTable: Record<string, Readonly<Record<string, ProbeStatus>>>
-  /** The two suite facts, and whether the live tree has moved past the release suite (one banner when it has). */
-  suiteMove: { treeSuiteId: string; releaseSuiteId: string | null; treeMovedPastRelease: boolean }
 }
 
 interface CurrentStats {
@@ -200,8 +198,7 @@ export function loadFullProbes(): ProbeData {
   for (const [id, terminal] of Object.entries(catalog)) {
     meta[id] = { ...meta[id], ...terminal }
   }
-  // #30759 Slice A: the site renders the frozen suite only, so a historical-only target is
-  // not a matrix row any more; it gets no metadata and no page.
+  // Matrix metadata follows the selected contexts and their recorded physical subjects.
   for (const [key, { selected }] of bySubject) {
     if (!selected.subject) throw new Error(`Selected context ${key} has no physical subject`)
     const id = selected.subject.id
@@ -300,11 +297,6 @@ export function loadFullProbes(): ProbeData {
     releaseShares,
     releaseStale,
     releaseTable,
-    suiteMove: {
-      treeSuiteId: projection.treeSuiteId,
-      releaseSuiteId: projection.releaseSuiteId,
-      treeMovedPastRelease: projection.treeMovedPastRelease,
-    },
   }
   computeBaselines(result, projection)
   return result

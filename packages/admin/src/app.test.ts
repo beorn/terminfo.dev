@@ -31,9 +31,10 @@ import { runScopedMarker } from "../../terminfo.dev/src/owned-process.ts"
 import { CURSOR_APPLICATION_USER_STORAGE_KEY, CURSOR_BUNDLE_PINS } from "./cursor-onboarding.ts"
 import { DatabaseSync } from "node:sqlite"
 import { verifyTerminalIdentity } from "../../terminfo.dev/src/identity-guard.ts"
-import { planAdmission, admitRun } from "../../../scripts/admit-run.ts"
+import { placeCollectedRun } from "../corpus-placement.ts"
 
-vi.mock("../../../scripts/admit-run.ts", () => ({ planAdmission: vi.fn(), admitRun: vi.fn() }))
+vi.mock("../corpus-placement.ts", () => ({ placeCollectedRun: vi.fn() }))
+vi.mock("../../terminfo.dev/src/serve.ts", () => ({ getTrustedSuiteReceipt: () => ({ manifest: {} }) }))
 
 vi.mock("node:fs", () => ({
   closeSync: vi.fn(),
@@ -175,13 +176,7 @@ beforeEach(() => {
   })
   vi.mocked(captureTerminalAppReceipt).mockReturnValue({ receipt, trace: { daemonTty: "/dev/ttys003" } })
   vi.mocked(saveDaemonProbeRun).mockReturnValue("/raw/terminal-app.json")
-  vi.mocked(planAdmission).mockImplementation((source) => ({
-    source,
-    destination: "/admitted/terminal-app.json",
-    probeHash: "hash",
-    subject: { kind: "term", id: "terminal-app", version: "2.15", os: "macos" },
-    runId: "private-run",
-  }))
+  vi.mocked(placeCollectedRun).mockReturnValue("/corpus/terminal-app.json")
   vi.mocked(stopOwnedDaemon).mockResolvedValue()
   vi.mocked(spawn).mockReturnValue({ unref: vi.fn() } as unknown as ReturnType<typeof spawn>)
   // Cursor's launch reads its installed bundle to prove its pinned launch quirks are still honoured.
@@ -768,8 +763,7 @@ describe("Terminal.app app collection", () => {
     )
     expect(saveDaemonProbeRun).toHaveBeenCalledOnce()
     expect(vi.mocked(saveDaemonProbeRun).mock.calls[0]?.[1]).toBe("/private/http-responses")
-    expect(planAdmission).toHaveBeenCalledWith("/raw/terminal-app.json")
-    expect(admitRun).toHaveBeenCalledWith(vi.mocked(planAdmission).mock.results[0]!.value)
+    expect(placeCollectedRun).toHaveBeenCalledWith("/raw/terminal-app.json", {})
     expect(vi.mocked(saveDaemonProbeRun).mock.calls[0]?.[0]).toMatchObject({
       origin: { kind: "collector", appLaunch: receipt },
       rawReplies: {
@@ -834,13 +828,13 @@ describe("Terminal.app app collection", () => {
     expect(stopOwnedDaemon).toHaveBeenCalledOnce()
   })
 
-  test("an admission refusal retains the negative identity trace privately and still cleans up", async () => {
+  test("a placement refusal retains the negative identity trace privately and still cleans up", async () => {
     vi.mocked(verifyTerminalIdentity).mockReturnValueOnce({
       checked: true,
       ok: false,
       reason: "measured reply differs",
     })
-    vi.mocked(planAdmission).mockImplementationOnce(() => {
+    vi.mocked(placeCollectedRun).mockImplementationOnce(() => {
       throw new Error("/raw/terminal-app.json: identity-replies-mismatch")
     })
     await expect(handleApp("terminal-app", {})).rejects.toThrow(/identity-replies-mismatch/)
@@ -849,7 +843,6 @@ describe("Terminal.app app collection", () => {
     )
     expect(saveDaemonProbeRun).toHaveBeenCalledOnce()
     expect(vi.mocked(saveDaemonProbeRun).mock.calls[0]?.[1]).toBe("/private/http-responses")
-    expect(admitRun).not.toHaveBeenCalled()
     expect(stopOwnedDaemon).toHaveBeenCalledOnce()
     expect(closeOwnedTerminalWindow).toHaveBeenCalledWith(window)
   })

@@ -20,7 +20,7 @@ Work on one probe. Use the five result labels and terminal progress tiers define
 For authorized headless work, run the changed probe IDs across the eleven configured library backends and the owning two-sided checks.
 A do-nothing fake never reads Supported; a working fake reads Supported and loses it when only that feature is disabled.
 Read the changed results and retained reasons, obtain one peer review, then deliver through the configured Yrd queue.
-Collection, admission and publication are separate; a Git push or site build is not deployment authority.
+Collection writes and publication are separate; a Git push or site build is not deployment authority.
 Existing run, custody and END holds remain in force. The live machinery below is transitional until its approved Phase 1 removal, not permission to run it.
 
 ## Directory Structure
@@ -106,64 +106,13 @@ DERIVED     docs/data/*.ts        ← computed at build time from above two
 
 ### Measured: Probe Results
 
-`content/probes-apps/` — admitted real terminal app results
-`content/probes-libs/` — admitted headless backend results
-`content/probes-mux/` — admitted multiplexer pass-through results
+`content/probes-apps/` — collected real terminal app results
+`content/probes-libs/` — collected headless backend results
+`content/probes-mux/` — collected multiplexer pass-through results
 
-See the [record and persistence contracts](packages/probe-defs/README.md#collector-routes-and-persistence); private collector drafts are not automatically admitted content.
+See the [record and persistence contracts](packages/probe-defs/README.md#collector-routes-and-persistence). Default app, mux and server collection writes normalized runs and cited data through the corpus placement owner; explicit `--output` retains private diagnostics. Release collection remains private.
 
-### Phase 1 transitional release collection: one suite per collection
-
-This is the existing coordinated release-collection procedure, not a requirement to collect unrelated contexts for each probe edit.
-Its suite-consistency and admission constraints remain implemented until their approved removal; existing holds still apply.
-
-A merge that touches the collector sources changes the probe suite id, so a run collected before that
-merge cannot be admitted (30286). A collection therefore starts at ONE commit, never at whatever `main`
-reads on the day:
-
-1. **Cut.** Choose one terminfo commit and put a branch on it.
-2. **Collect every subject configuration at that commit.** Local Linux runs in a worktree at it; macOS and Windows
-   dispatch their workflows at the same branch —
-   `gh workflow run macos-measurement.yml --ref <branch>` and
-   `gh workflow run windows-measurement.yml --ref <branch>`. Both check out the dispatched ref
-   (`actions/checkout@v4`, no `ref` override), so every subject configuration measures one suite.
-3. **Admit on that branch and merge it through Yrd** (next section), then move the release pointer onto
-   that suite: `bun scripts/suite-manifest.ts --freeze <release>` while the tree is still at the cut, or
-   later from `main` naming the admitted suite,
-   `bun scripts/suite-manifest.ts --move <release> --suite <id>`.
-4. **Probe changes merged after the cut wait for the next cut.** They are not back-ported into a
-   collection already in flight. When to cut is the release owner's call with `@chief`.
-
-A suite named by `--suite` is read from its own registry record and never compared with the live
-collector, which is what lets a pointer move onto an older admitted suite from a newer `main`; the id
-must be twelve lowercase hex and an existing manifest must carry it. A pointer never claims a suite that
-has no admitted run.
-
-### Phase 1 transitional admission (existing suite-manifest writer)
-
-A schema-v2 run cites the executable suite (`probeHash`) that produced it, and the parser refuses a run
-whose suite has no trusted declaration in `content/suites/<probeHash>.json`. The declaration is a
-DERIVED record — `{ probeHash, adapterVersion, probes }`, a pure function of the suite sources — and it
-is written at admission, never by hand and never by a standalone verb:
-
-```bash
-bun scripts/admit-run.ts --for <collected-run.json> [--into <path>]
-```
-
-- Required resources: a Git checkout on a named branch that is not the default — a fresh branch cut at
-  `origin/main` authors, and so does one already ahead of it — the run file, and a tree whose live suite
-  equals the run's `probeHash`. The discriminator is the branch, never commit ancestry: the commit the
-  declaration lands on is the one the act itself creates.
-- Refusals are loud and named: a foreign suite refuses with "Admit from a tree at the run's suite"; a
-  checkout on the default branch (`main`, or whatever `refs/remotes/origin/HEAD` names) or on a detached
-  HEAD refuses and names `git switch -c task/<name> origin/main`; a partial or malformed run refuses.
-- Concurrent admission of the same run is success when the bytes match; different bytes at the same
-  name refuse. Commit the run and its manifest together.
-
-`bun scripts/suite-manifest.ts --check` (in `bun run validate`) is the composed-tree gate: it requires a
-declaration for every run that CITES a suite, and does not require the tree's own suite to be declared,
-so a non-fast-forward compose of two adapter branches is green. The declared manifest is verified
-against the live snapshot when this tree's suite is declared.
+External release, publication and pending answers remain held until the actual full Phase 1.4 merge and their existing authorization.
 
 ### Curated: Editorial Content
 
@@ -215,7 +164,7 @@ bun run candidates list     # Review promoted candidates
 
 ### Author entry (`bun admin`)
 
-From the component root, use `bun admin` for author collection and retained-capture review.
+From the component root, use `bun admin` for author collection and reporting.
 `bun terminfo` invokes the separate user CLI; admin help displays the program name `terminfo`.
 
 Start with explicit help, then select existing probe IDs for a separately authorized run:
@@ -284,14 +233,13 @@ bun probe:mux                 # = bun admin probe mux --all
 ### Route selection
 
 Use the [collector routes and persistence](packages/probe-defs/README.md#collector-routes-and-persistence) contract and the route guide above.
-Keep native identity, ownership, observer prerequisites, private evidence and admission separate; a route name alone proves none of them.
+Keep native identity, ownership, observer prerequisites, and private evidence distinct; a route name alone proves none of them.
 
 ### Collection and release maintenance
 
 A changed probe uses explicit contexts and probe IDs; it does not require unrelated terminal runs.
 Follow the author loop and selected-collection guidance, not the all-context convenience scripts, as the default entry.
-The update scripts and suite-cut/admission procedures are existing Phase 1 transitional machinery, not additional author loops.
-Their implemented constraints remain until separately removed. A build, private draft or Git push does not authorize admission or publication.
+A build, private output or Git push does not authorize publication.
 
 `bun run build` regenerates `content/analysis.json` from probe data and fails if generation fails.
 Do not commit that file.
@@ -301,11 +249,11 @@ Do not commit that file.
 resident's command) can build from a read-only hab landing. Unset, every path is exactly as before.
 
 Private headless collection reports its retained results and collector failures, not an editorial annotation check.
-Keep the existing metadata validation and admission requirements separate; private collection does not waive them.
+Private collection does not waive metadata validation.
 
 ## Data Flow
 
-Collectors retain private evidence first; admission is separate. See [collector routes and persistence](packages/probe-defs/README.md#collector-routes-and-persistence) for each route's behavior.
+Collectors retain private evidence; default app, mux and server routes also place collected runs. See [collector routes and persistence](packages/probe-defs/README.md#collector-routes-and-persistence) for each route's behavior.
 
 ```
 5 probe methods:
@@ -315,9 +263,9 @@ Collectors retain private evidence first; admission is separate. See [collector 
   packages/admin/src/mux.ts          ← mux:      bun admin probe mux (multiplexer pass-through)
   packages/terminfo.dev/src/serve.ts                 ← here:     bun admin probe here (shared native collector)
 
-  ↓ private collection, then separate admission where requested
+  ↓ default app/mux/server collection places normalized runs; explicit output stays private
 
-content/probes-apps/*.json         ← admitted real terminal results
+content/probes-apps/*.json         ← collected real terminal results
 content/probes-mux/*.json          ← multiplexer pass-through results (mux)
 content/probes-libs/*.json         ← headless backend results (termless)
   +
@@ -352,7 +300,7 @@ docs/.vitepress/dist/              ← 250+ static HTML pages + sitemap.xml
 Use explicit context and probe IDs for the intended measurement; a probe change does not require unrelated terminal runs.
 Keep the full catalogue and suite unchanged, and retain each attempt's selection before execution.
 See [selected collection](docs/collect-selected-probes.md) for command inputs, empty outcomes and retained draft paths.
-Collection, admission and publication remain separate operations.
+Collection and publication remain separate operations.
 
 ## Adding a New Terminal
 

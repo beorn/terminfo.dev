@@ -2,7 +2,7 @@
 
 `@terminfo/probe-defs` defines term feature probes, their observations and the shared run model. Start at the [exports and probe registry](src/index.ts); [types.ts](src/types.ts) owns the record types.
 
-This describes the implemented system. Callbacks still perform live I/O and evaluate it together. The private viprobe package supplies the ordered record/read/replay core. Both TTY recording owners derive their legacy display events from validated call logs. The selected eleven-probe erase runner captures actual xterm.js effects once and reasserts them twice offline with task-owned checks, bound artifact provenance and domain reporting. Its artifacts remain under the fixed private `~/.terminfo-dev/replays` root, with a separate directory per attempt. The wider collector migration and reassert CLI remain unfinished under recorder #30932; no stored grades or current admission change.
+This describes the implemented system. Callbacks still perform live I/O and evaluate it together. The private viprobe package supplies the ordered record/read/replay core. Both TTY recording owners derive their legacy display events from validated call logs. The selected eleven-probe erase runner captures actual xterm.js effects once and reasserts them twice offline with task-owned checks, bound artifact provenance and domain reporting. Its artifacts remain under the fixed private `~/.terminfo-dev/replays` root, with a separate directory per attempt. The wider collector migration and reassert CLI remain unfinished under recorder #30932; no stored grades change.
 
 ## Vocabulary and current code
 
@@ -30,7 +30,7 @@ Test to-do; `supported` and `unsupported` retain their corresponding labels. Do 
 
 New pending source reviews use the existing Test to-do status. Legacy captures retain their recorded source-negative review Test failure; readers accept both pending forms. Kept source answers live in [source-answers.json](src/source-answers.json), keyed by the exact subject kind, engine, version, OS and feature. Each original retains its own status, cited blobs and provenance. Originals with equal status and normalized citation sets share one entry without losing any original reference. The row's canonical tuple travels in the existing result/test `reviewRef`; the canonical reader requires that row, rather than embedded capture-decision bytes.
 
-The [shared source-answer resolver](src/source-answers.ts) evaluates each original independently. Own-version fallback applies only when the run has no revision fact for a cited repository. A named equal commit is unchanged; a named different commit requires equal path blobs at both revisions. Cross-version carry requires every cited blob of that original to match the measured runtime. Agreeing qualifiers apply; disagreeing qualifiers stay Test to-do. With no qualifier, a positively different blob gives Test to-do, including at the original version; otherwise pending work names its candidate and missing repository revision. The [Node I/O owner](../run-parser/src/source-answers.ts), shared by parser, writer and site, throws for missing checkouts, wrong remotes or incomplete history. Genuine object absence in a complete repository stays pending. Registry integrity and a native wrapper commit do not establish engine blob identity. Static answers remain at their recorded version, labelled `reviewed at <engine version>, not re-verified`; no review date is inferred. The writer discharges only the review test; actual failed criterion tests retain precedence. Non-C1 private reviews retain their existing capture path until its separately approved removal.
+The [shared source-answer resolver](src/source-answers.ts) evaluates each original independently. Own-version fallback applies only when the run has no revision fact for a cited repository. A named equal commit is unchanged; a named different commit requires equal path blobs at both revisions. Cross-version carry requires every cited blob of that original to match the measured runtime. Agreeing qualifiers apply; disagreeing qualifiers stay Test to-do. With no qualifier, a positively different blob gives Test to-do, including at the original version; otherwise pending work names its candidate and missing repository revision. The [Node I/O owner](../run-parser/src/source-answers.ts), shared by writer and site, throws for missing checkouts, wrong remotes or incomplete history. Genuine object absence in a complete repository stays pending. Registry integrity and a native wrapper commit do not establish engine blob identity. Static answers remain at their recorded version, labelled `reviewed at <engine version>, not re-verified`; no review date is inferred. The writer discharges only the review test; actual failed criterion tests retain precedence. The canonical parser validates referenced answer identity without re-resolving or regrading the recorded result.
 
 Terminal tiers describe progress: 0 missing, 1 incomplete, 2 broken and 3 done. These are distinct from the former Release 1 query/reply group and from color depth. This terminology defines no thresholds and changes no status computation.
 
@@ -49,16 +49,14 @@ undeclared or unprobed. A catalog manual/partial override takes precedence; othe
 definition, callback-arm and assertion-declaration checks determine coverage. These labels neither grade
 a result nor establish that both positive and negative controls exist. Overrides and result statuses stay unchanged.
 
-Review, intake/apply, admission, seal and capture binding remain implemented during the transition to their approved Phase 1 removal. The procedures below describe that current machinery; this terminology change grants no new workflow permission and does not lift an existing END hold.
+Collection retains measured records and applies eligible kept source answers during finalization. Pending answers, external release and publication remain held until the actual full Phase 1.4 merge and their existing authorization.
 
-The collection owner's frozen `CollectionPass.freeze.deferrals` records each carried context with its `routeIssue` and `reason`.
-`release1-collection --collect --admit --frozen-suite <id> --deferrals <json-file>` reads that explicit array before collection.
-Deferred contexts remain named in the pass census with their reason and no new measurement; existing context status values are unchanged.
+`release1-collection --collect --development --output <private-directory>` retains private collection and its actual attempts.
+The pass records private attempts, custody and coverage.
 Failed hosted collection retains its original delegated draft as failure custody when canonical `run.json` is absent.
 Only a source-, suite-, run- and selection-bound collector attempt with a recorded start establishes execution;
 a job-start marker alone does not. A nonzero collector exit reports `failed`, with its exit code and log path.
-This custody never supplies grades or bypasses canonical validation, review or admission.
-An admitting pass is complete only when every non-deferred declared context is complete and admitted, with no pass errors.
+This custody never supplies grades or bypasses canonical validation.
 The read-only admin `report --scoreboard <inputs...>` accepts explicit raw captures or pass files/directories, preserves pass identities,
 and uses the canonical selected-results reader and local `origin/live` revision to distinguish selection from proven publication.
 
@@ -144,7 +142,7 @@ negative, and a changed grid or misplaced marker stays inconclusive. Consumption
 not prove handling or scroll-speed presentation. A source that stores speed without
 readback remains a Test to-do tool gap when reviewed. Application criteria are unchanged.
 
-Both source interfaces carry `readonly kind: ProbeSourceKind` directly. Current runs retain exactly `source: { kind: "live" }` or `{ kind: "trace", trace: { path, sha256 }, captureRunId, captureSuiteId, captureSourceRevision }`. The trace path is relative to the artifact store and contains no parent segment; its SHA256 and capture identities are required. Initialization, sealing and the canonical reader validate and preserve this union without a schema bump. Call-log format/version remain inside the referenced artifact. Schema 1/3 capture inputs and historical collector transport are retired. The canonical schema 2 reader remains for the retained Kitty admission specimen until the admission cleanup. This source declaration grants no capture, admission or publication.
+Both source interfaces carry `readonly kind: ProbeSourceKind` directly. Current runs retain exactly `source: { kind: "live" }` or `{ kind: "trace", trace: { path, sha256 }, captureRunId, captureSuiteId, captureSourceRevision }`. The trace path is relative to the artifact store and contains no parent segment; its SHA256 and capture identities are required. Initialization and the canonical reader validate this union; the collection writer currently implements live sources. Call-log format/version remain inside the referenced artifact. The current run reader accepts schema 4. This source declaration grants no capture or publication.
 
 `termAssertionType` and `libAssertionType` declare a retained deciding-observation class. An explicit null means the callback runs without a typed deciding observable; undefined is temporarily undeclared (#28801). Neither means the callback arm itself is absent, and neither becomes a null observation or assertion type.
 
@@ -162,8 +160,7 @@ does not decide the whole claim. Other source-negative style reviews keep their 
 
 TERM_FEATURES means a terminal program's export into its child environment. Its library arm performs
 no I/O and retains a `headless-observable-review` row with the API boundary and audited adapter blob for
-per-engine source review. Only a bound Untestable decision can discharge it; it creates no
-observation or assertion. The application arm remains Test to-do until terminal-owned child readback exists.
+per-engine source review. It creates no observation or assertion. The application arm remains Test to-do until terminal-owned child readback exists.
 
 Source audits match the shared evidence identity and declared adapter source blobs, not global
 Termless revisions or host filesystem locators. Raw replies and observed payloads do not embed
@@ -175,7 +172,7 @@ membership. An unaudited binary still collects observed buffers and replies. A s
 its binary's source audit retains TEST TODO with `no source audit for binary <sha12>` and its raw response;
 it never borrows another binary's citation. Hourly measurement calls the existing `collectHeadlessRuns`
 entry point and reads its `collection.json` through the canonical run parser, without importing review selection.
-App/hosted collection keeps its existing driver, and admission remains separate.
+App/hosted collection keeps its existing driver.
 
 The current libvterm v0.3.3 source audits bind WASM `3d67045b`, adapter blob
 `eb513ccd` and loader blob `1e784be8`. Its OSC52 selection callbacks and native
@@ -306,7 +303,7 @@ History fails before stub I/O; geometry retains its actual query and reply befor
 - `Observation` records an outcome and required `assertionType`. `ProbeAssertion` records the independently positive/negative predicate, required `assertionType`, expected state and retained observed evidence.
 - `ProbeResult` stores the feature's execution status, attempt, required tests, selected criterion branch and evidence references. Its optional primary `assertionType` names only a retained observation; absence is not a sixth type. Legacy `pass` never grades it.
 - `RunDraft` is a private schema-4 envelope: explicit source, run/suite identity, `intendedSubject`, measured `subject` when available, raw replies, assertions, artifact references and probe results. Subject kinds are `term`, `lib` and `mux`.
-- `CapturedRunDraft` requires measured subject, identity, time and origin. `CurrentProbeRun` additionally has `sealedAt`; `ProbeRun` aliases this current shape. Historical reader outputs retain their schema marker, canonical names and an absent source. Their assertion type may remain absent when retained historical evidence cannot establish it.
+- `CapturedRunDraft` and `CurrentProbeRun` require measured subject, identity, time and origin; `ProbeRun` aliases the current shape. Historical stored bytes are immutable. A historical `sealedAt` field is ignored for current parsing and selection.
 
 The legacy callback `pass` still exists for the [diagnostic Vitest runner](../probes/run-unified.probe.ts), including the execution-only arm. Current collectors record observations/tests through `recordExecutedProbe`; even `pass: true` with an explicit Test failure test stays failure. Cleanup #30929 removes `pass` from every arm.
 
@@ -396,7 +393,7 @@ Invalid alternate evidence stays visible without vetoing the graded phases; clea
 Supported reasons state: "ASCII reflow measured on main screen and retained history; wide characters,
 cursor on a wrapped line and terminal-app resize unmeasured". No broader coverage is inferred, and
 the separate terminal-app arm remains Test to-do. Private apparatus results grant no exact-run decision,
-seal or admission; the native absolute-row consumer hold remains with independent batch review.
+corpus placement; the native absolute-row consumer hold remains with independent batch review.
 
 A default-config observation is not engine capability absence. Libvterm0.3 exposes
 `vterm_screen_enable_reflow`, disabled unless the embedder enables it, and the current adapter
@@ -409,11 +406,9 @@ through a private fontconfig directory. Its receipt retains that file's SHA256, 
 sequences for `!= -> => <= ==` with liga/calt on and off. A glyph-ID difference proves source-face
 capability independently of the renderer; position differences alone do not. The collector retains
 the validated `fixture.font` bytes as `collector.fontSource` for every non-mux Linux run selecting the
-font review, including plain receipts from other launchers. The existing review test references the
-key so the current capture binding includes its hash. With this proof, spaced-control and contiguous
-target frames decide Supported or Unsupported by review. Missing or inconclusive proof leaves
-Test to-do naming `#32062 font control` and its proof state; it writes no typed review and never means
-Untestable on a pixel arm. Signing checks the bound receipt; there is no code gate for that review.
+font review, including plain receipts from other launchers. The retained receipt and spaced-control and
+target frames supply the evidence for assessment. Missing or inconclusive proof leaves Test to-do naming
+`#32062 font control` and its proof state; it does not establish Untestable on a pixel arm.
 This does not change earlier captures or xterm's rendering pin.
 
 Callbacks currently perform I/O and judge it in the same implementation. There is no general persisted callback transcript or independently replayable assertion API supplied by this package.
@@ -434,8 +429,7 @@ The seven host-input library rows (`input.xtest-key`, `input.xtest-click`, `inpu
 `input.button-event-mouse`, `input.pixel-mouse`, `input.urxvt-mouse`, `input.x10-mouse`) and
 `extensions.clipboard-paste` retain `os-input-review`, with reason
 "Lib arm: the engine consumes bytes and has no input surface; host input encoding is measured in the terminal arm."
-This remains a review Test to-do until an independent `applyCaptureDecision` binds Untestable to that
-exact engine capture. There is no standing class rule, callback grade or change to earlier captures.
+This remains a review Test to-do; there is no standing class rule, callback grade or change to earlier captures.
 
 Four term mode criteria opt into `decrpmModeProbe`'s set check: reverse video 5, synchronized output 2026,
 DECSCLM 4 and color-scheme reporting 2031. Snapshot Ps 1/3 is Supported without mutation; Ps 0/4 is
@@ -449,7 +443,7 @@ Every other mode keeps the default recognition-only path.
 DECSSCLS is CSI Ps SP p, not a DEC mode: its term criterion still requires timed screenshots.
 Its library arm stays `headless-observable-review` with null assertion type and reason
 "presentation speed: headless engines paint no frames and expose no scroll-speed state".
-Only the same independently bound per-capture decision route can grade that library cell Untestable.
+The missing presentation-speed observable remains Test to-do.
 
 Reset-family capture recipes can supply an optional `RegionReadback.setupReference`: an independently
 authored full setup, painted behind the existing witness. The seed must match it before any verdict.
@@ -467,8 +461,7 @@ Without a qualified sentinel path, an empty initial reply runs a disposable set/
 retaining every write and reply, including setter/reset acknowledgements. Only an exact seeded-colour
 reply, empty acknowledgements and an empty reset query select `color-readback-review`: the initial value
 is embedder-owned and still missing. A seeded reply never proves initial/default-colour support.
-Other control outcomes retain criterion Test failure. Independent review must bind to the capture run's own
-suite manifest and raw evidence; this callback grants neither automatic Untestable nor support.
+Other control outcomes retain criterion Test failure. The retained run identifies its suite and raw evidence; this callback grants neither automatic Untestable nor support.
 
 For the OSC 104 library reset with an unanswered initial OSC 4 index-0 query, indexed cells provide
 an independent reset witness. The callback retains a default D before setting, seeded S before and
@@ -498,7 +491,7 @@ is exposed and the initial OSC 13 or 14 pointer-color query answers nothing, OSC
 default-color state on `source-negative-review` without inventing pointer slots
 or executing reset writes. Other color features are unchanged.
 
-Cell `dim`, `italic`, `strikethrough` and `blink` readbacks are required `boolean | null`: null means the producer does not report that attribute, never a terminal-support claim. On a rendered X cell, their SGR probes retain the null or false state through `source-negative-review`, with a required review and a buffer-state assertion. A source-bound decision distinguishes an engine gap (Unsupported at that pin) from a binding gap: Test to-do, named, until repaired and recaptured. Positive booleans retain their supported observation path. A missing X retains an inconclusive result without a deciding assertion. A rowless, unnamed inconclusive result keeps the writer default Test failure (callback defect); only an explicit named test or review row classifies its cause. It is not reclassified as missing-observable coverage. Stored captures remain unchanged.
+Cell `dim`, `italic`, `strikethrough` and `blink` readbacks are required `boolean | null`: null means the producer does not report that attribute, never a terminal-support claim. On a rendered X cell, their SGR probes retain the null or false state through `source-negative-review`, with a required review and a buffer-state assertion. Source evidence can distinguish an engine gap from an adapter gap; absent eligible evidence remains Test to-do until repaired and recaptured. Positive booleans retain their supported observation path. A missing X retains an inconclusive result without a deciding assertion. A rowless, unnamed inconclusive result keeps the writer default Test failure (callback defect); only an explicit named test or review row classifies its cause. It is not reclassified as missing-observable coverage. Stored captures remain unchanged.
 
 The OSC 8 library criterion requires exact per-cell URI metadata, including unlinked controls.
 An absent `hyperlinks` observer with valid fixture text retains named coverage (Test to-do) and raw cell/link state,
@@ -517,8 +510,7 @@ semantic prompts, OSC 633 and iTerm2 images), OSC 7 and notifications without th
 the DECSCLM/2031 missing timing or host-event facilities, and the four rendering-limit checks
 (font ligatures, DECSSCLS, reverse video and synchronized output) retain their existing coverage and raw
 state on `headless-observable-review`. Each carries a required review naming its missing observable.
-That branch and `reply-path-audit-review` admit only an independently bound Untestable decision;
-source review establishes no rendered effect or measured negative. App callbacks and real-observable
+Those branches retain the missing-observable reason; source review establishes no rendered effect or measured negative. App callbacks and real-observable
 paths keep their criteria. Existing captures acquire no new branch or review.
 
 The collector forwards the run's measured `HeadlessRuntimeIdentity` through `LibProbeSource.runtimeIdentity`.
@@ -549,16 +541,11 @@ install without the imported source binding refuses collection loudly; silence s
 Libvterm currently withholds the declaration because engine output can truncate before the adapter
 drains, even though its adapter now drains all queued output. Ghostty also declares no complete path.
 The existing two captures, shared classifier, DA1 control and G1 late-byte grace still decide the read;
-a delivery declaration never declares feature support. Sealed historical runs receive no new proof.
+a delivery declaration never declares feature support. Historical runs receive no new proof.
 
 Conclusive library observations need nonempty raw evidence and matching positive/negative assertions. A direct buffer-state assertion must match the retained response; invalid claims become collector errors.
 
-The `semantic-prompt-source-review` library branch is the approved source-only exception for OSC 133/633 marks.
-An independently reviewed typed `CaptureDecision` names the parser arm and written or rejected mark state;
-its immutable capture binding includes the loaded runtime and its own run identity. The canonical writer and
-reader retain that decision as proof without inventing an observation, assertion type or assertion.
-Missing runtime identity or a source-review row remains an error; ordinary observation reviews keep their
-expected-versus-observed requirement. This exception does not admit terminal-app source reviews.
+The `semantic-prompt-source-review` library branch records a source-only question for OSC 133/633 marks without inventing an observation or assertion. Eligible kept source answers identify the measured subject and feature. Ordinary measured observations retain their expected-versus-observed requirement.
 
 **Native evidence** comes through [probes/unified.ts](../terminfo.dev/src/probes/unified.ts). It retains writes, queries, ordered events and available capture/clipboard records separately from callback responses.
 
@@ -620,7 +607,7 @@ Observation outcomes are `supported`, `unsupported`, `inconclusive` and `error`.
 - Coverage becomes `test-todo`. Refusal and consumption without a deciding observation explicitly supply Test to-do tests; unanswered queries and errors explicitly supply Test failure tests. No reply, clipboard value or frame is invented to satisfy a type.
 - A measured inconclusive observation stays typed and defaults to `test-failure` unless an existing explicit criterion test selects a different status.
 
-`finalizeProbeResult` folds the required tests in order: failure, pending or empty tests, reviewed impossibility, unsupported, then supported. `untestable` needs a review reference.
+`finalizeProbeResult` folds the required tests in order: failure, pending or empty tests, reviewed impossibility, unsupported, then supported. `untestable` needs a review reference. Collection finalization records source-answer resolutions and Windows console-host prerequisites before that fold. The canonical run reader decodes the stored result without re-resolving source answers or folding its tests again; content validation uses that same reader.
 
 That order matters: a failed test wins over a pending one. Timeout or lack of an observable is not automatically evidence that a terminal lacks the feature; the probe's criterion must establish that. An execution-only Test to-do can follow real I/O and does not promise an empty trace; pre-I/O refusal fixtures separately prove their zero-byte behavior.
 
@@ -671,7 +658,7 @@ The five admin routes share definitions, but do not all execute or persist throu
 - **Headless:** [admin/src/termless.ts](../admin/src/termless.ts) calls [collect-headless.ts](../probes/collect-headless.ts), which runs isolated engine workers using `headless-batch.ts` and retains private runs.
 - **App:** [admin/src/app.ts](../admin/src/app.ts) launches an owned terminal/daemon, requests collection and enriches its retained response with launch and identity evidence.
 - **Server:** [admin/src/server.ts](../admin/src/server.ts) starts or contacts daemons. [serve.ts](../terminfo.dev/src/serve.ts) owns `collectProbeRun`, using the native unified batch.
-- **Inline:** [admin/src/here.ts](../admin/src/here.ts) calls that same `collectProbeRun`, finalizes the draft and prints it or its summary. Printing a result is not admission.
+- **Inline:** [admin/src/here.ts](../admin/src/here.ts) calls that same `collectProbeRun`, finalizes the draft and prints it or its summary. Printing a result does not place it in the corpus.
 - **Mux:** [admin/src/mux.ts](../admin/src/mux.ts) runs a daemon through the multiplexer, collects its response and supplies the intended mux configuration to the shared writer.
 
 Multiplexer expectation declarations describe routing, not terminal support:
@@ -684,32 +671,9 @@ The [daemon client](../terminfo.dev/src/daemon-client.ts) retains HTTP responses
 
 The writer checks intended id/version against known measured values without replacing them, but sets `subject.kind` from the intended term/mux subject and retains `intendedSubject` separately. Both current source and suite version are explicit inputs; a historical declaration cannot silently become a live writer's manifest.
 
-`sealRunDraft` requires complete measured identity and preserves pending review and other `test-todo` results in the sealed snapshot. The canonical reader accepts pending sealed captures without changing their recorded statuses. A lapsed answer keeps the incoming pending status: a new Test to-do remains Test to-do, and a retained legacy failure remains failure.
+The capture writer retains measured identity and recorded result statuses. Private diagnostic collection preserves its response and normalized snapshot outside the source repository. Pending answers remain held until the actual full Phase 1.4 merge and their existing authorization.
 
-Raw diagnostic collection retains an unsealed `.draft.json`, including captures with no required review or with carried reviews already resolved. `pending-review` means a measured, unsealed draft; it does not imply a required cell review remains. Drafts receive the same identity, suite, source, artifact, summary and classification checks as sealed runs. Development completion does not require sealing or admission.
-
-Review answers use the existing pre-seal intake at an authorized act. A sealed pending snapshot stays immutable: a later author answer applies to the next capture, never to that snapshot. Release collection `--freeze` seals resolved drafts, composes the strict Linux completion receipt where applicable, then admits. `admit-run --review` seals when reviews resolve; default admin admission is also explicit. Standalone diagnostic outputs have no zero-review admission route. Sealing a pending capture does not grant review application, admission or publication; the END hold on those acts remains.
-
-A reviewed capture decision may name `tool-gap` when the observable is buildable but its instrument is unbuilt.
-Its required reason names the missing instrument and its owning issue. The existing applier replaces that
-pending `review` test with a `criterion` Test to-do, preserving the decision bytes and original capture evidence.
-It creates no assertions. Other failed tests retain precedence; a tool gap is not an impossibility or a support grade.
-The run can then seal, and its canonical reader and result counts retain `test-todo`.
-
-A curated `tool-gap` overlay may also supersede an embedded `collector.review.*` decision on an exact
-sealed `runId` and `runSha256`, for the same feature and scope. Supersession readers require that parsed
-sealed run to resolve the target; missing runs or mismatched identities remain errors. The existing
-per-run Test to-do projection shares its application with the console-host rule, so version tables, counts,
-selected contexts and public results agree while the sealed source stays byte-identical. This cell-level
-review grants no identity or community-submission approval, and implies no global withdrawal on future captures.
-
-New capture decisions explicitly carry `evidence: { algorithm: "evidence-output-v1", sha256, projection }` beside
-the original `captureSha256`. The projection binds subject kind/id/version/os, the loaded engine's stable
-identity and native build provenance, that engine's `runtimeIdentity.adapterSources` path/blobOid pairs,
-the whole raw feature entry's canonical SHA256, and the cell's original tests, assertions, raw bytes,
-criterion, frames and host evidence. Object keys are sorted; array order, nulls and string bytes remain exact.
-The catalog computes entry hashes during its existing parse; the suite manifest freezes them in
-`catalogEntrySha256`. The reader uses that manifest, never the live catalog.
+A missing instrument remains Test to-do with its reason; it does not establish a support grade. The cited suite manifest retains catalogue entry hashes in `catalogEntrySha256`.
 
 Every library backend declares the `adapter-sources` extension from its one adapter registry.
 Reply-delivery declarations, when present, share that registry's same source array; identity alone grants no reply capability.
@@ -717,79 +681,13 @@ The collector verifies declared blobs against tracked imported source bytes once
 Missing identity or stale declarations are named collector errors. Historical captures may omit this field.
 Source engines bind repository and tree OID with `cleanTree: true`; dirty source leaves a review pending with a named reason.
 
-Run ids, suite/source revisions, source-integrity commit revisions, global `termlessRevision`, filesystem locators, timestamps, attempt
-envelopes and reviewer-derived assertions are provenance rather than equality inputs. For non-source-negative
-cells, the projection also retains the structured reply-delivery declaration and only that feature's
-qualification decision; its nested runtime identity is already bound by the stable identity above.
-Source-negative cells retain the engine's adapter identity without including the global qualification map.
-An absent adapter identity or historical manifest without entry hashes grants no new-key carry. Old decisions
-remain under their original rule and are never promoted or rewritten.
+The collection writer resolves eligible kept source answers against the measured subject and source identity. It retains the recorded evidence and leaves unmatched work pending. Parsing validates source-answer references without resolving them again; presentation may add the recorded-version label without changing the stored result.
 
-Natural collection loads accepted decisions through the existing interpretations parser and supersession
-chain, then supplies them to the same capture writer. One evidence match applies; matching decisions with
-the same exact verdict and reason are recorded as duplicates. Conflicting matches or changed evidence leave
-review pending, with named components in each context's `reviewBindings` report in `pass.json`.
-A candidate that fails an application prerequisite is reported as refused; other cells can still carry.
-The report records old-rule and new-rule results for every pending review cell. Original decision source strings,
-capture raw values and assertion prefixes remain retained; each enriched pending draft is another immutable
-snapshot in the existing output directory. Seal and admission remain separate checks.
+[collected-run.ts](../admin/src/collected-run.ts) retains the private response and normalized run first. Explicit app and mux `--output` stops there. Default app, mux and server collection also calls [corpus-placement.ts](../admin/corpus-placement.ts), which checks the run, trusted suite and cited artifacts before placing them under `content/`. Release collection remains private. Collection does not authorize external release or publication; those and pending answers remain held until the actual full Phase 1.4 merge and their existing authorization.
 
-[admit-collected-run.ts](../admin/src/admit-collected-run.ts) keeps the private response/run first. App and mux output-directory mode stops there; their default mode and the server route also attempt admission.
+## How a collected run becomes a measured cell
 
-Admission is a separate operation owned by [run-admission.ts](../admin/run-admission.ts), exposed through [scripts/admit-run.ts](../../scripts/admit-run.ts). Pending review stays private, not admitted.
-
-That owner checks the run, suite and cited artifacts before placing admitted content. A private collection, successful test or sealed result alone does not mean site data has been published.
-
-## How a draft becomes a measured cell
-
-`cells.json` is the remeasure instrument's own record of what it measured: one `engine -> featureId -> status` map, written
-per run. It is **not** what the site publishes from — published coverage is projected from the accepted and admitted content
-under `content/` — so a status here is a measurement, never an admission. A `draft.json` is not that map either, and neither a
-draft nor a count of its results substitutes for it.
-
-The projection is one row, one draft, statuses copied verbatim. The instrument reads `pass.json`; for each entry it takes the
-engine from `context.id` and the draft from that row's own `rawRun`, then writes each result status into the cell for its
-feature id, so a cell always states what the named draft said:
-
-```ts
-for (const result of draft.results) {
-  engineCells[result.featureId] = result.status
-  counts.set(result.status, (counts.get(result.status) ?? 0) + 1)
-}
-```
-
-That loop is `readCells()` in `tools/terminfo-remeasure.ts` in the `hh` dev repo, not in this package: this package owns the
-draft, the dev repo owns its projection.
-
-Three rules follow, and each has cost a reader time:
-
-- **A row that was not measured contributes no cells, whatever its draft says.** `unmeasured()` refuses a row whose status is not
-  `pending-review`, `classified` or `admitted`, or whose `rawRun` is missing on disk. A draft left behind by a failed context is
-  not evidence about a cell, and the instrument's line names that draft rather than a cell for exactly this reason.
-- **`pass.json` (`contexts[].rawRun`) is the sole authority for which draft was graded; every reader resolves through
-  `contexts[].rawRun` and refuses by name when it is missing.** Pre-resolution headless intermediates are written under
-  `<pass>/first-pass/<engine>.draft.json` for forensics, and the pass directory's output set holds one identity-resolved
-  draft per measured engine, the exact file `pass.json` names.
-- **A recorded decision does not move a measured cell.** Decisions are applied by `applyCaptureDecision` in the
-  [capture writer](../terminfo.dev/src/capture-writer.ts) while a run is finalized, so they shape the draft at capture time. A
-  decision recorded after its draft was captured has no path back into that immutable draft. During natural collection,
-  the pass finalizer now supplies accepted interpretations and the trusted current manifest to that same writer before
-  assigning `rawRun`. Cells project from the resulting snapshot; a newly emitted unmatched source review stays `test-todo`. Retained snapshots keep their recorded statuses.
-  These remain private measurements, separate from admission and site status.
-
-Worked example, from the run written 2026-10-31 06:34 UTC. `pass.json` holds 11 rows, all `pending-review`, each naming one
-draft; `cells.json` holds those same 11 engines at 273 feature ids each. The directory also holds 11 `lib-*-unknown.draft.json`
-files, so 22 drafts project to 11 engines rather than 22. Those 11 unprojected drafts happen to be status-identical to the
-pinned ones the rows name, so choosing wrongly is harmless here; that is a property of this run, not a rule to rely on. Within a
-draft there is nothing to disambiguate either: all 22 drafts carry 273 results over 273 distinct feature ids, so the loop above
-never overwrites, and "several results per `featureId`" is not a live hazard.
-
-Read status from `cells.json`. Counting results across draft files, or reading a draft whose row was refused, yields statuses no
-cell carries — which is indistinguishable, at the time, from a regression. The 2026-10-30 ghostty case that motivated this
-section is consistent with exactly that, and with reading another run's draft; neither run is on hand to separate the two, so it
-stays open rather than being claimed as explained here.
-
-The [execution and seal-boundary tests](src/execution-results.test.ts) exercise these distinctions without collecting new terminal data.
+The remeasure instrument reads `collection.json` from the headless collector, parses each named run against its suite, and copies each recorded `featureId` and status into `cells.json` or `cells.partial.json`. Failed engines are reported as refusals; an empty capture contributes no cells. The instrument records the suite for each engine and keeps incomplete output separate. These private measurements do not publish the site.
 
 `measureRenderedWidth` returns a number or a named readback cause: `no-reply` with its step,
 `control-mismatch` with its step and observed cursor, or `wrapped` with its observed cursor.

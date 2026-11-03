@@ -4,6 +4,7 @@ export {
   SOURCE_ANSWER_PENDING_LABELS,
   resolveSourceAnswer,
   sourceAnswerForRef,
+  sourceAnswerVersionLabel,
   sourceAnswerKey,
   sourceAnswerVersionLabel,
   parseSourceAnswerKey,
@@ -234,11 +235,9 @@ export type {
   ProbeTestInput,
   RunDraft,
   CurrentProbeRun,
-  CaptureDecision,
-  CaptureEvidence,
   HistoricalInterpretation,
 } from "./types.ts"
-export { initializeRunDraft, finalizeProbeResult, sealRunDraft } from "./helpers.ts"
+export { initializeRunDraft, finalizeProbeResult } from "./helpers.ts"
 
 export {
   recordExecutedProbe,

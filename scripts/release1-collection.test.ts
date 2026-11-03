@@ -2,13 +2,11 @@
  * @failure The Release 1 re-collection would silently drop a context that has no route (Windows, or
  *   an engine the Termless manifest stops exporting), hand a row a launcher flag the launcher does
  *   not accept (kitty takes `--preset baseline|current`, never the launcher's default, and a
- *   clipboard override names a profile the launcher declares), or admit a run collected from a dirty tree, on a suite that is not
- *   the frozen one, or never admitted at all — so a row would land on the bar from a collection that
- *   does not count, and the census would read complete while it is not. Admission rejection must
- *   propagate from the single owner before the caller credits coverage.
+ *   clipboard override names a profile the launcher declares), or lose a private run's actual
+ *   suite, source, delegated identity or collection attempt. Missing routes remain named.
  *   Collector output failures must retain the pass ledger and raw files already collected.
  * @level l2
- * @consumer Full catalog/backend collection census and existing admission owner (scripts/release1-collection.ts)
+ * @consumer Private collection census, custody and attempt reporting (scripts/release1-collection.ts)
  * @reach fs-walk vendor/terminfo.dev/content/** vendor/terminfo.dev/.github/workflows/**
  * @testonly none
  */
@@ -31,41 +29,31 @@ import {
 import { tmpdir } from "node:os"
 import { afterAll, describe, expect, it, vi } from "vitest"
 import { parse, stringify } from "yaml"
-import * as admission from "./admit-run.ts"
-import * as interpretations from "./interpretations.ts"
 import { loadSelectedResults } from "../docs/data/selected-results.ts"
-import { loadStoredRuns } from "../packages/admin/run-admission.ts"
+import { loadStoredRuns } from "../packages/admin/corpus-placement.ts"
 import * as catalog from "@terminfo/catalog"
-import { parseCaptureDecision, parseRun, parseSuiteManifest } from "@terminfo/run-parser"
+import { parseJsonStrict, parseRun, parseSuiteManifest } from "@terminfo/run-parser"
 import * as versions from "../packages/admin/versions.ts"
-import { frozenSuiteIdFor } from "../packages/admin/suite-manifest.ts"
 import * as headless from "../packages/probes/collect-headless.ts"
-import { retainCaptureBinding } from "@terminfo/run-parser"
 import { saveDaemonProbeRun } from "../packages/terminfo.dev/src/daemon-client.ts"
+import { finalizeCollectedDraft } from "../packages/terminfo.dev/src/capture-writer.ts"
 import {
   ENVIRONMENT_GROUP_IDS,
   initializeRunDraft,
-  sealRunDraft,
   SOURCE_NEGATIVE_REVIEW,
   textQualificationFixtures,
   readCollectorSelection,
   readCollectorAttempt,
   type RunDraft,
   type CapturedRunDraft,
-  type CurrentProbeRun,
-  type CaptureEvidence,
 } from "@terminfo/probe-defs"
-import { aggregateCurrentResults } from "../docs/data/release-scope.ts"
 import {
-  admitProducedRuns,
   collectPass,
   ownedAppCommand,
   ownedAppRunsDirectory,
   readOwnedAppTransportProof,
   release1Census,
-  uncoveredContexts,
   type CollectionContext,
-  type ProducedRun,
 } from "./release1-collection.ts"
 
 // Standalone checkouts have no superproject inputs; retain real hashing over private fixture bytes.
@@ -148,10 +136,9 @@ if (currentManifest.schemaVersion !== 4 || !currentManifest.catalogIds) {
   throw new Error("Collection fixture requires the committed schema-4 catalogue")
 }
 
-// #32014: all three entry points resolve the same private non-C1 embedded targets until Phase 1.4.
-// Frozen run bytes at 9e319ac6 stay outside active content; canonical parsing remains real.
-it.each(["projection", "admission", "collection"] as const)(
-  "%s resolves six exact-run tool-gap overlays",
+// Retained fixture results stay authoritative when later tool-gap reviews are present.
+it.each(["projection", "collection"] as const)(
+  "%s preserves stored results when six tool-gap reviews are added",
   async (entry) => {
     const paths = [
       "probes-apps/alacritty-0.17.0-linux-f504922f67f074794c588cf3a14e2114.json",
@@ -168,12 +155,6 @@ it.each(["projection", "admission", "collection"] as const)(
       expect(runs).toHaveLength(3)
       const overlays = runs.flatMap((run) =>
         ["extensions.font-ligatures", "sgr.blink"].map((featureId) => {
-          const cell = run.results!.find((result) => result.featureId === featureId)!
-          const embedded = parseCaptureDecision(
-            JSON.parse(run.rawReplies[cell.reviewRef!]!),
-            "fixture embedded review",
-            new Set(run.catalogIds ?? []),
-          )
           return {
             id: `fixture-gap-${run.subject.id}-${featureId}`,
             decision: "tool-gap",
@@ -192,26 +173,16 @@ it.each(["projection", "admission", "collection"] as const)(
               suites: [run.suiteId, run.suiteId],
             },
             sources: ["controlled fixture review only; no identity or admission authority"],
-            supersedes: [embedded.id],
+            supersedes: [],
           }
         }),
       )
-      const source = join(CONTENT, paths[0]!)
       const invoke = () =>
         entry === "projection"
           ? loadSelectedResults(CONTENT, versions.probeSuiteSnapshot().probeHash)
-          : entry === "admission"
-            ? (() => {
-                try {
-                  admission.planAdmission(source)
-                  return "accepted"
-                } catch (error) {
-                  if (!(error instanceof Error)) throw error
-                  return error.message
-                }
-              })()
-            : collectPass(fingerprintFixture.directory, undefined, { runner: "local" }, [], { contexts: [] })
-      const baseline = await invoke()
+          : collectPass(fingerprintFixture.directory, { runner: "local" }, { contexts: [] })
+      const baseline =
+        entry === "projection" ? loadSelectedResults(CONTENT, versions.probeSuiteSnapshot().probeHash) : undefined
       const storePath = join(CONTENT, "interpretations.json")
       const original = readFileSync(storePath, "utf8")
       const stored: unknown = JSON.parse(original)
@@ -224,11 +195,8 @@ it.each(["projection", "admission", "collection"] as const)(
         const result = await invoke()
         if (entry === "projection") {
           const projection = result as ReturnType<typeof loadSelectedResults>
-          for (const overlay of overlays) expect(projection.table[overlay.runId]![overlay.featureId]).toBe("test-todo")
-        } else if (entry === "admission") {
-          // The committed run's placement receipt is absent beside it; resolving overlays grants no receipt.
-          expect(baseline).toMatch(/cites ownership receipt.*does not exist beside the run/)
-          expect(result).toBe(baseline)
+          expect(projection).toEqual(baseline)
+          for (const overlay of overlays) expect(projection.table[overlay.runId]![overlay.featureId]).toBe("untestable")
         } else {
           const pass = result as Awaited<ReturnType<typeof collectPass>>
           expect(pass.contexts).toEqual([])
@@ -260,82 +228,6 @@ const ENGINE_BACKENDS = [
   "wezterm",
   "xtermjs",
 ]
-
-const cleanRun = (overrides: Partial<ProducedRun> = {}): ProducedRun => ({
-  subject: { kind: "term", id: "xterm", os: "linux" },
-  ...overrides,
-})
-
-it.each([
-  ["current", ["sgr.bold", ...ENVIRONMENT_GROUP_IDS], " · 9 environment groups manual by design (catalogue), ungraded"],
-  ["historical", ["sgr.bold"], ""],
-] as const)(
-  "admitted CLI summary preserves the %s run's catalogue",
-  (label, catalogIds, clause) => {
-    const directory = mkdtempSync(join(tmpdir(), "collection-summary-"))
-    const preload = join(directory, "summary-owners.ts")
-    const results = catalogIds.map((featureId) => ({
-      featureId,
-      status: "test-todo" as const,
-      attempt: { scope: "none" as const },
-      tests: [],
-      reason: "Required capability test has not started",
-    }))
-    const run = {
-      runId: `summary-${label}`,
-      subject: { kind: "term", id: "xterm", version: "411", os: "linux" },
-      catalogIds,
-      results,
-      suiteId: "abcdef123456",
-      sourceRevision: "a".repeat(40),
-      measuredAt: "2026-10-25T00:00:00.000Z",
-      suiteFreshness: "current",
-      suiteRelation: "same",
-      ...aggregateCurrentResults(results, catalogIds),
-      score: { supported: 0, all: 1 },
-    }
-    writeFileSync(
-      preload,
-      `
-import { mock } from "bun:test";
-const fs = await import("node:fs");
-const readFingerprintFile = fs.readFileSync;
-const fingerprintFiles = ${JSON.stringify(fingerprintFixture.files)};
-mock.module("node:fs", () => ({...fs, readFileSync: (path, ...args) => readFingerprintFile(typeof path === "string" ? fingerprintFiles[path] ?? path : path, ...args)}));
-const run = ${JSON.stringify(run)};
-mock.module(${JSON.stringify(join(dirname(CONTENT), "scripts/admit-run.ts"))}, () => ({
-  planAdmission: () => ({target: run.subject, runId: run.runId}),
-  admitRun: () => ({})
-}));
-mock.module(${JSON.stringify(join(dirname(CONTENT), "docs/data/current-results.ts"))}, () => ({
-  loadCurrentResults: () => ({projection: {versions: {"app:xterm:linux": [run]}, table: {[run.runId]: Object.fromEntries(run.results.map(result => [result.featureId, result.status]))}}}),
-  loadDefaultContextPolicy: () => ({}),
-  reviewedContextFor: () => undefined
-}));
-mock.module(${JSON.stringify(join(dirname(CONTENT), "docs/data/full-project.ts"))}, () => ({
-  buildFullProjectRows: () => ({contexts: [], catalogRows: 273, recordedPositions: 0, collected: 0, complete: false})
-}));
-`,
-    )
-    try {
-      const result = spawnSync(
-        process.execPath,
-        ["--preload", preload, "scripts/release1-collection.ts", "--admit", join(directory, "fixture-run.json")],
-        { cwd: dirname(CONTENT), encoding: "utf8", timeout: 20_000 },
-      )
-      expect(result.error).toBeUndefined()
-      expect(result.stderr).toBe("")
-      expect(result.status).toBe(1)
-      const summary = result.stdout.split("\n").find((line) => line.startsWith("  app:xterm:linux "))
-      expect(summary).toBe(
-        `  app:xterm:linux ${run.runId}: 0 Supported · 0 Unsupported · 0 Untestable · 1 TEST TODO · 0 TEST FAILURE${clause}; 0/1 Supported / all`,
-      )
-    } finally {
-      rmSync(directory, { recursive: true, force: true })
-    }
-  },
-  30_000,
-)
 
 // Refusal must precede filesystem effects; census and private-success cases never used repository output.
 it("refuses repository output before creating any directory", async () => {
@@ -387,8 +279,6 @@ it.each([
   ["matching", "text-qualified"],
   ["matching", "text-missing"],
   ["matching", "text-modified"],
-  ["frozen", "none"],
-  ["frozen", "deferred"],
   ["matching", "selected"],
   ["matching", "hosted-selected"],
   ["matching", "hosted-one-os"],
@@ -417,12 +307,11 @@ it.each([
       source: { kind: "live" },
       intendedSubject: { kind: "lib", id: "xtermjs" },
     })
-    Object.assign(draft, specimen, { identity: "verified", origin: { kind: "collector" } })
-    const raw = sealRunDraft(draft, specimen.measuredAt)
+    Object.assign(draft, specimen, { identity: "unverified", origin: { kind: "collector" } })
+    const raw = finalizeCollectedDraft(draft as CapturedRunDraft)
     const bytes = JSON.stringify(raw)
     writeFileSync(original, bytes)
     const originalBytes = readFileSync(original, "utf8")
-    const frozenSuite = suite === "frozen" ? frozenSuiteIdFor(CONTENT, "candidate2") : undefined
     const textCase = inputChange.startsWith("text-")
     // A current writer snapshot supplies this synthetic tree; no historical declaration is enriched.
     const currentSnapshot = versions.probeSuiteSnapshot()
@@ -430,16 +319,10 @@ it.each([
       suite !== "different"
         ? vi.spyOn(versions, "probeSuiteSnapshot").mockReturnValue({
             ...currentSnapshot,
-            probeHash: frozenSuite ?? raw.probeHash,
+            probeHash: raw.probeHash,
             sourcePaths: [relative(dirname(CONTENT), input)],
           })
         : undefined
-    const planner = vi.spyOn(admission, "planAdmission").mockImplementation(() => {
-      throw new Error("Development must not plan admission")
-    })
-    const writer = vi.spyOn(admission, "admitRun").mockImplementation(() => {
-      throw new Error("Development must not write admission")
-    })
     let completedDraftBytes: string | undefined
     const collector = vi
       .spyOn(headless, "collectHeadlessRuns")
@@ -704,16 +587,6 @@ it.each([
       return { pid: 1, output: [], stdout: "", stderr: "", status: isKitty ? 17 : 0, signal: null }
     })
     try {
-      const deferrals =
-        inputChange === "deferred"
-          ? [
-              {
-                context: "kitty/macos",
-                routeIssue: "@si/terminfo/hosted-kitty",
-                reason: "hosted OpenGL route carried forward",
-              },
-            ]
-          : []
       // AC1: the existing full-census fixture otherwise hides ignored context/probe selections.
       const selection = inputChange.startsWith("macos-")
         ? { contexts: macosContexts.map((id) => `${id}/macos`), ids: ["sgr.bold"] }
@@ -732,9 +605,22 @@ it.each([
                     : inputChange === "empty-probes"
                       ? { contexts: ["alacritty/linux"], ids: [] }
                       : undefined
-      const pass = await collectPass(directory, frozenSuite, { runner: "local" }, deferrals, selection)
-      expect(pass.mode).toBe(frozenSuite ? "admit" : "development")
-      if (frozenSuite) expect(pass.freeze?.id).toBe(frozenSuite)
+      // Requirement: private release collection leaves corpus bytes untouched. The old admission
+      // mocks could miss a direct corpus write, so compare the actual placement directories.
+      const corpusSnapshot = () =>
+        ["probes-apps", "probes-libs", "probes-mux", "artifacts", "suites"]
+          .flatMap((dir) =>
+            readdirSync(join(CONTENT, dir), { recursive: true, withFileTypes: true })
+              .filter((entry) => entry.isFile())
+              .map((entry) => {
+                const path = join(entry.parentPath, entry.name)
+                return [relative(CONTENT, path), createHash("sha256").update(readFileSync(path)).digest("hex")]
+              }),
+          )
+          .sort((a, b) => a[0]!.localeCompare(b[0]!))
+      const beforeCorpus = suite === "matching" && inputChange === "none" ? corpusSnapshot() : undefined
+      const pass = await collectPass(directory, { runner: "local" }, selection)
+      if (beforeCorpus) expect(corpusSnapshot()).toEqual(beforeCorpus)
       if (inputChange.startsWith("macos-")) {
         expect(pass.contexts).toHaveLength(6)
         expect(pass.contexts.map((row) => row.status)).toEqual(
@@ -755,8 +641,6 @@ it.each([
           if (inputChange === "macos-untrusted") expect(row.reason).toContain("differs from delegated identity")
         }
         expect(pass.complete).toBe(false)
-        expect(planner).not.toHaveBeenCalled()
-        expect(writer).not.toHaveBeenCalled()
         return
       }
       if (selection && inputChange.startsWith("hosted-")) {
@@ -812,8 +696,6 @@ it.each([
           )
         }
         expect(pass.complete).toBe(false)
-        expect(planner).not.toHaveBeenCalled()
-        expect(writer).not.toHaveBeenCalled()
         expect(readFileSync(original, "utf8")).toBe(originalBytes)
         return
       }
@@ -905,15 +787,7 @@ it.each([
         return
       }
       expect(pass.contexts).toHaveLength(33)
-      if (inputChange === "deferred") {
-        // The frozen batch owns a carried route; its initialized TODO draft must not become a measurement.
-        expect(pass.freeze?.deferrals).toEqual(deferrals)
-        const deferred = pass.contexts.find((row) => row.context.id === "kitty" && row.context.os === "macos")
-        expect(deferred?.status).toBe("not-started")
-        expect(deferred?.reason).toBe(deferrals[0]!.reason)
-        expect(deferred?.rawRun).toBeUndefined()
-        expect(pass.complete).toBe(false)
-      }
+
       if (textCase) {
         const terminal = pass.contexts.find(
           (row) => row.context.kind === "term" && row.context.id === "terminal-app" && row.context.os === "macos",
@@ -925,9 +799,7 @@ it.each([
       expect(engine?.status).toBe("not-started")
       expect(engine?.classification).toBeUndefined()
       expect(engine?.error).toMatch(
-        suite === "different" || (frozenSuite && frozenSuite !== raw.probeHash)
-          ? /current run requires frozen catalogue membership/
-          : /Collector changed logical runId/,
+        suite === "different" ? /current run requires frozen catalogue membership/ : /Collector changed logical runId/,
       )
 
       expect(engine?.rawRun && readFileSync(engine.rawRun, "utf8")).toBe(bytes)
@@ -1004,8 +876,6 @@ it.each([
         if (id === "kitty") expect(row?.error).toMatch(/exited 17/)
         else expect(readFileSync(join(output, "fixture-run", "raw", "v2-run.json"), "utf8")).toBe("{}")
       }
-      expect(planner).not.toHaveBeenCalled()
-      expect(writer).not.toHaveBeenCalled()
       expect(readFileSync(original, "utf8")).toBe(originalBytes)
       if (inputChange === "blocked-hosted" || inputChange === "blocked-macos") {
         const affected = pass.contexts.filter(
@@ -1086,8 +956,6 @@ it.each([
     } finally {
       collector.mockRestore()
       launcher.mockRestore()
-      planner.mockRestore()
-      writer.mockRestore()
       snapshot?.mockRestore()
       rmSync(directory, { recursive: true, force: true })
     }
@@ -1192,35 +1060,6 @@ describe("release 1 collection census", () => {
       expect(census().find((entry) => entry.id === id && entry.os === "windows")?.route).toBe("hosted-workflow")
     }
   })
-
-  it("names each context that produced no run, with its own reason", () => {
-    const all = census()
-    const uncovered = uncoveredContexts(all, [cleanRun()])
-    expect(uncovered).toHaveLength(32)
-    expect(uncovered.find((entry) => entry.context.id === "windows-terminal")?.reason).toMatch(
-      /no run produced by the hosted-workflow route/,
-    )
-    expect(uncovered.find((entry) => entry.context.id === "kitty" && entry.context.os === "linux")?.reason).toMatch(
-      /linux-container/,
-    )
-    // A produced run carries the os it was MEASURED on: an app its own, a headless engine the host's.
-    const measured = all.map((entry) =>
-      cleanRun({ subject: { kind: entry.kind, id: entry.id, os: entry.kind === "lib" ? "linux" : entry.os } }),
-    )
-    expect(uncoveredContexts(all, measured)).toHaveLength(0)
-  })
-
-  it("credits an admitted headless engine run to its engine row, whatever host os it records (#27929 D7)", () => {
-    // The census keys an engine row at os "unknown", while the run itself records the host it ran on
-    // ("linux"), so a key of id/os matched no headless run and every engine row read "no run produced"
-    // right after its run was admitted (rehearsed on 950882d4f34d, xtermjs 7866d892).
-    const all = census()
-    const headless = cleanRun({ subject: { kind: "lib", id: "xtermjs", os: "linux" } })
-    const uncovered = uncoveredContexts(all, [headless]).map((entry) => `${entry.context.kind}:${entry.context.id}`)
-    expect(uncovered).not.toContain("lib:xtermjs")
-    expect(uncovered).toContain("term:xterm")
-    expect(uncovered).toHaveLength(32)
-  })
 })
 
 describe("release 1 Linux launcher flags", () => {
@@ -1240,124 +1079,10 @@ describe("release 1 Linux launcher flags", () => {
   })
 })
 
-// Requirement: admission is the only authority for coverage credit. The former pure refusal
-// cases never invoked the owner, so they missed a caller ignoring an admission rejection.
-describe("release collection hands every produced run to the admission owner", () => {
-  const source = "/private/produced-xterm.json"
-  const frozenSuiteId = "frozen01"
-  const plan: admission.AdmissionPlan = {
-    source,
-    destination: "/private/admitted-xterm.json",
-    probeHash: frozenSuiteId,
-    subject: { kind: "term", id: "xterm", version: "411", os: "linux" },
-    runId: "c3".repeat(16),
-  }
-  it.each([frozenSuiteId, undefined])(
-    "credits the owner's target after candidate2 admission with assertion %s",
-    (assertedSuiteId) => {
-      const planner = vi.spyOn(admission, "planAdmission").mockReturnValue(plan)
-      const writer = vi.spyOn(admission, "admitRun").mockReturnValue({
-        manifest: "existing",
-        run: "created",
-        screenshots: { created: 0, existing: 0 },
-        textSnapshots: { created: 0, existing: 0 },
-        receipt: { placed: "none", detail: "fixture" },
-      })
-      try {
-        const produced = admitProducedRuns([source], assertedSuiteId)
-        expect(planner).toHaveBeenCalledWith(source, undefined, {
-          release: "candidate2",
-          ...(assertedSuiteId === undefined ? {} : { frozenSuiteId: assertedSuiteId }),
-        })
-        expect(writer).toHaveBeenCalledWith(plan)
-        expect(produced).toEqual([{ subject: plan.subject, runId: plan.runId }])
-        expect(
-          uncoveredContexts(census(), produced).some(({ context }) => context.id === "xterm" && context.os === "linux"),
-        ).toBe(false)
-      } finally {
-        planner.mockRestore()
-        writer.mockRestore()
-      }
-    },
-  )
-  it.each([
-    ["planning", 1],
-    ["planning", 2],
-    ["placement", 1],
-    ["placement", 2],
-  ] as const)(
-    "plans every input before placement, retaining partial progress for %s failure at %s",
-    (phase, failureAt) => {
-      const rejection = new Error("Owner refused xterm/linux: required receipt is absent")
-      let planned = 0
-      let placed = 0
-      const planner = vi.spyOn(admission, "planAdmission").mockImplementation(() => {
-        planned += 1
-        if (phase === "planning" && planned === failureAt) throw rejection
-        return plan
-      })
-      const writer = vi.spyOn(admission, "admitRun").mockImplementation(() => {
-        placed += 1
-        if (phase === "placement" && placed === failureAt) throw rejection
-        return {
-          manifest: "existing",
-          run: "created",
-          screenshots: { created: 0, existing: 0 },
-          textSnapshots: { created: 0, existing: 0 },
-          receipt: { placed: "none", detail: "fixture" },
-        }
-      })
-      const progress = vi.fn()
-      try {
-        let produced: ProducedRun[] | undefined
-        let failure: unknown
-        try {
-          produced = admitProducedRuns([source, "/private/later.json"], frozenSuiteId, "candidate2", progress)
-        } catch (error) {
-          failure = error
-        }
-        expect(failure).toBe(rejection)
-        expect(produced).toBeUndefined()
-        expect(planner).toHaveBeenCalledTimes(phase === "planning" ? failureAt : 2)
-        expect(writer).toHaveBeenCalledTimes(phase === "planning" ? 0 : failureAt)
-        expect(progress).toHaveBeenCalledTimes(phase === "placement" ? failureAt - 1 : 0)
-      } finally {
-        planner.mockRestore()
-        writer.mockRestore()
-      }
-    },
-  )
-})
-
-it("requires an existing declared freeze before final collection dispatch", () => {
-  const directory = mkdtempSync(join(tmpdir(), "terminfo-final-missing-freeze-"))
-  try {
-    const result = spawnSync(
-      process.execPath,
-      [
-        "scripts/release1-collection.ts",
-        "--collect",
-        "--admit",
-        "--frozen-suite",
-        "000000000000",
-        "--output",
-        directory,
-      ],
-      { cwd: dirname(CONTENT), encoding: "utf8" },
-    )
-    expect(result.status).not.toBe(0)
-    expect(result.stderr).toContain("declared frozen suite 000000000000")
-    expect(readdirSync(directory)).toEqual([])
-  } finally {
-    rmSync(directory, { recursive: true, force: true })
-  }
-}, 30_000)
-
-// A census-only missing-route row cannot catch the CLI returning success or entering admission.
-it("fails collection by name and exit 1 for a required null route without admission", () => {
+// A census-only missing-route row cannot catch the CLI returning success.
+it("fails collection by name and exit 1 for a required null route", () => {
   const directory = mkdtempSync(join(tmpdir(), "collection-required-route-"))
   const preload = join(directory, "external-owners.ts")
-  const admitted = join(directory, "admission-entered")
   const root = dirname(CONTENT)
   const macosWorkflowPath = join(root, ".github/workflows/macos-measurement.yml")
   const missingRoutePath = join(directory, "missing-cmux-workflow.yml")
@@ -1372,7 +1097,6 @@ it("fails collection by name and exit 1 for a required null route without admiss
     preload,
     `
 import { mock } from "bun:test";
-import { writeFileSync } from "node:fs";
 const fs = await import("node:fs");
 const readFingerprintFile = fs.readFileSync;
 const fingerprintFiles = ${JSON.stringify({ ...fingerprintFixture.files, [macosWorkflowPath]: missingRoutePath })};
@@ -1381,8 +1105,6 @@ const processes = await import("node:child_process");
 const readSourceGit = processes.spawnSync;
 mock.module("node:child_process", () => ({...processes, spawnSync: (command, ...args) => command === "git" ? readSourceGit(command, ...args) : ({ status: 1, stdout: "", stderr: "fixture external dispatch refused", signal: null })}));
 mock.module(${JSON.stringify(join(dirname(CONTENT), "packages/probes/collect-headless.ts"))}, () => ({collectHeadlessRuns: async (_selectors, directory) => ({directory, runs: [], failures: []})}));
-const refuseAdmission = () => { writeFileSync(${JSON.stringify(admitted)}, "unexpected admission"); throw new Error("development entered admission"); };
-mock.module(${JSON.stringify(join(dirname(CONTENT), "scripts/admit-run.ts"))}, () => ({planAdmission: refuseAdmission, admitRun: refuseAdmission}));
 `,
   )
   try {
@@ -1418,7 +1140,6 @@ mock.module(${JSON.stringify(join(dirname(CONTENT), "scripts/admit-run.ts"))}, (
         (row: { context: { id: string; os: string } }) => row.context.id === "cmux" && row.context.os === "macos",
       ),
     ).toMatchObject({ status: "not-started", error: expect.stringContaining("required route work") })
-    expect(existsSync(admitted)).toBe(false)
   } finally {
     rmSync(directory, { recursive: true, force: true })
   }
@@ -1626,7 +1347,7 @@ it("runs the collector's ssh route through the driver and reads the run JSON it 
   producerDraft.identity = "unverified"
   producerDraft.origin = { kind: "collector" }
   producerDraft.measuredAt = "2026-10-06T23:41:34.869Z"
-  writeFileSync(producerRun, JSON.stringify(sealRunDraft(producerDraft, producerDraft.measuredAt)))
+  writeFileSync(producerRun, JSON.stringify(finalizeCollectedDraft(producerDraft as CapturedRunDraft)))
   const producerBytes = readFileSync(producerRun)
   try {
     const command = ownedAppCommand(
@@ -1721,84 +1442,21 @@ it("records the host-written transport receipt as evidence and refuses anything 
   }
 })
 
-// A valid pending capture must still exercise delegated identity checks and admission outcome.
+// Requirement: private captures retain delegated identity and custody without a freeze pointer.
+// The former final fixtures required candidate2 and could not exercise this private-only contract.
 it.each([
   "matching",
   "producer-zero-review",
   "producer-pending",
-  "producer-pending-freeze",
-  "producer-zero-review-freeze",
-  "carried-resolved",
-  "carried-resolved-freeze",
   "linux-receipt",
   "source-negative-pending",
   "missing-collection-receipt",
   "foreign-run",
   "foreign-context",
-  "admitted",
-  "admission-refused",
-] as const)("retains delegated identity and admission outcome: %s", async (fault) => {
+] as const)("retains private delegated identity and custody: %s", async (fault) => {
   const directory = mkdtempSync(join(tmpdir(), "terminfo-pending-handoff-"))
   const measuredTarget = specimen.subject
   const measuredAt = specimen.measuredAt
-  const finalCollection =
-    fault === "admitted" || fault === "admission-refused" || fault.endsWith("-freeze") || fault === "linux-receipt"
-  const carried = fault.startsWith("carried-resolved")
-  const carriedDecision = { id: "fixture-carried-review", captureSha256: "pending" }
-  let carriedSources: Map<string, string> | undefined
-  const parsedReviews = carried
-    ? vi.spyOn(interpretations, "parseInterpretations").mockImplementation((_path, _source, _ids, sources) => {
-        carriedSources = sources
-        return [carriedDecision] as never
-      })
-    : undefined
-  const acceptedReviews = carried
-    ? vi.spyOn(interpretations, "activeInterpretations").mockImplementation((entries) => [...entries])
-    : undefined
-  const frozenSuite = finalCollection ? frozenSuiteIdFor(CONTENT, "candidate2") : undefined
-  const currentSnapshot = versions.probeSuiteSnapshot()
-  const frozenManifest = frozenSuite
-    ? parseSuiteManifest(
-        join(CONTENT, "suites", `${frozenSuite}.json`),
-        readFileSync(join(CONTENT, "suites", `${frozenSuite}.json`), "utf8"),
-      )
-    : undefined
-  const snapshot = frozenManifest
-    ? vi
-        .spyOn(versions, "probeSuiteSnapshot")
-        .mockReturnValue({ ...currentSnapshot, ...frozenManifest, sourcePaths: [] })
-    : undefined
-  const planner = finalCollection
-    ? vi.spyOn(admission, "planAdmission").mockImplementation((source) => {
-        const run = parseRun(
-          source,
-          readFileSync(source, "utf8"),
-          Object.keys(catalog.loadFeatures(CONTENT)),
-          new Map([[frozenSuite!, versions.derivedSuiteManifest(versions.probeSuiteSnapshot())]]),
-        )
-        if (run.subject.os === null) throw new Error("Fixture admission requires recorded OS")
-        return {
-          source,
-          destination: join(directory, "admitted.json"),
-          probeHash: frozenSuite!,
-          subject: { ...run.subject, os: run.subject.os },
-          runId: run.runId,
-        }
-      })
-    : undefined
-  const writer = finalCollection
-    ? vi.spyOn(admission, "admitRun").mockImplementation((plan) => {
-        if (fault === "admission-refused") throw new Error("fixture admission refused")
-        writeFileSync(plan.destination, readFileSync(plan.source))
-        return {
-          manifest: "existing",
-          run: "created",
-          screenshots: { created: 0, existing: 0 },
-          textSnapshots: { created: 0, existing: 0 },
-          receipt: { placed: "none", detail: "fixture" },
-        }
-      })
-    : undefined
   const launcher = vi.spyOn(childProcesses, "spawnSync").mockImplementation((command, args) => {
     if (
       fault === "linux-receipt" &&
@@ -1820,12 +1478,7 @@ it.each([
       }
       const raw = join(output, "fixture-run", "raw")
       mkdirSync(raw, { recursive: true })
-      const producer = saveDaemonProbeRun(run as never, raw, undefined, {
-        manifest: versions.derivedSuiteManifest(versions.probeSuiteSnapshot()),
-        decisions: [],
-        origin: () => undefined,
-        keepDraft: true,
-      })
+      const producer = saveDaemonProbeRun(run as never, raw)
       writeFileSync(join(raw, "v3-run.draft.json"), readFileSync(producer))
       const collector = { frozenRunnerSha256: "a".repeat(64), buildReceiptSha256: "b".repeat(64) }
       writeFileSync(
@@ -1884,7 +1537,6 @@ it.each([
           reason: "Required source-negative review pending",
         },
       ]
-      retainCaptureBinding(appRun as never, appRun.results[0]!.featureId)
       const rawDir = join(output, "fixture-run", "raw")
       mkdirSync(rawDir, { recursive: true })
       writeFileSync(join(rawDir, "v3-run.draft.json"), JSON.stringify(appRun))
@@ -1934,11 +1586,10 @@ it.each([
           { id: "review", status: "test-todo", attempt: { scope: "none" }, reason: "Required review pending" },
         ]
       }
-      if ((finalCollection && fault !== "producer-pending-freeze") || fault === "producer-zero-review" || carried) {
+      if (fault === "producer-zero-review") {
         const attempt = { scope: "probe" as const, startedAt: specimen.measuredAt }
         const measured = run.results.filter((result) => !ENVIRONMENT_GROUP_IDS.includes(result.featureId as never))
         Object.assign(run, {
-          ...(!fault.startsWith("producer-") && !carried && { sealedAt: specimen.measuredAt }),
           rawReplies: Object.fromEntries(measured.map((result) => [result.featureId, '{"value":true}'])),
           assertions: measured.map(({ featureId }) => ({
             featureId,
@@ -1970,57 +1621,13 @@ it.each([
                 }
           }),
         })
-      } else retainCaptureBinding(run as never, run.results[0]!.featureId)
-      if (carried) {
-        const featureId = run.results[0]!.featureId
-        run.results[0]!.status = "test-todo"
-        run.results[0]!.reason = "Required review pending"
-        run.results[0]!.tests = [
-          { id: "review", status: "test-todo", attempt: { scope: "none" }, reason: "Required review pending" },
-        ]
-        if (!run.runtimeIdentity) throw new Error("Carried library fixture requires runtime identity")
-        run.runtimeIdentity = {
-          ...run.runtimeIdentity,
-          adapterSources: [{ path: "fixture-adapter.ts", blobOid: "a".repeat(40) }],
-        }
-        const binding = retainCaptureBinding(
-          run as never,
-          featureId,
-          versions.probeSuiteSnapshot().catalogEntrySha256[featureId],
-        )
-        Object.assign(carriedDecision, {
-          runId: run.runId,
-          featureId,
-          captureSha256: binding.sha256,
-          evidence: binding.evidence,
-          decision: "untestable",
-          reviewed: true,
-          reviewer: "fixture-reviewer",
-          reason: "Stream-only fixture cannot observe this effect",
-          scope: {
-            subject: { kind: "lib", id: "xtermjs" },
-            versions: [run.subject.version, run.subject.version],
-            suites: [run.probeHash, run.probeHash],
-          },
-          sources: ["retained synthetic capture"],
-          supersedes: [],
-        })
-        carriedSources!.set(carriedDecision.id, JSON.stringify(carriedDecision))
       }
       const path =
-        fault.startsWith("producer-") || carried
-          ? saveDaemonProbeRun(run as never, output, undefined, {
-              manifest: versions.derivedSuiteManifest(versions.probeSuiteSnapshot()),
-              decisions: [],
-              origin: () => undefined,
-              keepDraft: true,
-            })
-          : fault === "source-negative-pending" || fault === "missing-collection-receipt"
-            ? saveDaemonProbeRun(run as never, output)
-            : join(output, finalCollection ? "pending.json" : "pending.draft.json")
+        fault.startsWith("producer-") || fault === "source-negative-pending" || fault === "missing-collection-receipt"
+          ? saveDaemonProbeRun(run as never, output)
+          : join(output, "pending.draft.json")
       if (
         !fault.startsWith("producer-") &&
-        !carried &&
         fault !== "source-negative-pending" &&
         fault !== "missing-collection-receipt"
       ) {
@@ -2028,31 +1635,8 @@ it.each([
       }
       if (fault.startsWith("producer-")) {
         producerPath = path
-        const bytes = readFileSync(path, "utf8")
-        producerBytes = bytes
-        if (fault === "producer-zero-review") {
-          // A root keepDraft re-save adds the response digest under the same plain producer name.
-          expect(() =>
-            saveDaemonProbeRun(
-              {
-                ...run,
-                rawReplies: {
-                  ...run.rawReplies,
-                  "collector.httpResponseSha256": createHash("sha256").update(bytes).digest("hex"),
-                },
-              } as never,
-              output,
-              undefined,
-              {
-                manifest: versions.derivedSuiteManifest(versions.probeSuiteSnapshot()),
-                decisions: [],
-                origin: () => undefined,
-                carry: true,
-                keepDraft: true,
-              },
-            ),
-          ).toThrow(/EEXIST/)
-        }
+        producerBytes = readFileSync(path, "utf8")
+        expect(() => saveDaemonProbeRun(run as never, output)).toThrow(/EEXIST/)
       }
       const collection = { directory: output, requested: ["xtermjs"], runs: [path], failures: [] }
       if (fault !== "missing-collection-receipt") {
@@ -2061,68 +1645,74 @@ it.each([
       return collection
     })
   try {
-    const deferrals = finalCollection
-      ? census()
-          .filter((row) =>
-            fault === "linux-receipt"
-              ? !(row.kind === "term" && row.id === "alacritty" && row.os === "linux")
-              : row.kind !== "lib" || row.id !== "xtermjs",
-          )
-          .map((row) => ({
-            context: row.kind === "lib" ? `${row.id}/headless` : `${row.id}/${row.os}`,
-            routeIssue: "@si/terminfo/carried-test-route",
-            reason: "Synthetic deferred test context",
-          }))
-      : []
-    const pass = await collectPass(directory, frozenSuite, { runner: "local" }, deferrals)
+    const pass = await collectPass(directory, { runner: "local" })
     if (fault === "linux-receipt") {
       const linux = pass.contexts.find(
         (entry) => entry.context.kind === "term" && entry.context.id === "alacritty" && entry.context.os === "linux",
       )!
+      // Requirement: private collection preserves Linux source/custody evidence without sealing.
+      // The old final fixture observed only a synthesized receipt after freeze-gated sealing.
       expect(linux.status, linux.error).toBe("classified")
-      const receipt = JSON.parse(readFileSync(join(dirname(linux.rawRun!), "run-receipt.json"), "utf8")) as Record<
-        string,
-        unknown
-      >
-      const final = JSON.parse(readFileSync(linux.rawRun!, "utf8")) as CurrentProbeRun
-      expect(receipt.probeRun).toEqual({
-        path: basename(linux.rawRun!),
-        runId: final.runId,
+      const raw = dirname(linux.rawRun!)
+      const retained = JSON.parse(readFileSync(linux.rawRun!, "utf8")) as CapturedRunDraft
+      const hostPath = join(raw, "host-measured.json")
+      const containerPath = join(raw, "container-receipt.json")
+      const host = parseJsonStrict(hostPath, readFileSync(hostPath, "utf8"))
+      const container = parseJsonStrict(containerPath, readFileSync(containerPath, "utf8"))
+      if (
+        host === null ||
+        typeof host !== "object" ||
+        Array.isArray(host) ||
+        !("runId" in host) ||
+        !("runtime" in host) ||
+        !("runnerArtifact" in host)
+      ) {
+        throw new Error(`${hostPath}: expected host identity and runtime receipt fields`)
+      }
+      if (
+        container === null ||
+        typeof container !== "object" ||
+        Array.isArray(container) ||
+        !("collector" in container) ||
+        !("runId" in container) ||
+        !("executable" in container) ||
+        !("invocation" in container) ||
+        !("sourceArtifact" in container) ||
+        !("probeRun" in container) ||
+        !("clipboardFixture" in container)
+      ) {
+        throw new Error(`${containerPath}: expected container identity and custody receipt fields`)
+      }
+      expect(host.runId).toBe(retained.runId)
+      expect(host.runtime).toEqual({ imageId: "fixture-image", imageTarSha256: "c".repeat(64) })
+      expect(host.runnerArtifact).toEqual(container.collector)
+      expect(container.runId).toBe(retained.runId)
+      expect(container.executable).toEqual({ path: "/fixture", sha256: "d".repeat(64) })
+      expect(container.invocation).toEqual({ path: "/fixture", sha256: "e".repeat(64) })
+      expect(container.sourceArtifact).toEqual({ sha256: "f".repeat(64) })
+      expect(container.probeRun).toEqual({
+        runId: retained.runId,
         sha256: createHash("sha256").update(readFileSync(linux.rawRun!)).digest("hex"),
       })
-      expect(final.sealedAt).toBeTypeOf("string")
+      expect(container.clipboardFixture).toEqual({
+        runId: retained.runId,
+        profile: "fixture",
+        sha256: "a".repeat(64),
+      })
+      expect(retained).not.toHaveProperty("sealedAt")
+      expect(existsSync(join(raw, "run-receipt.json"))).toBe(false)
       return
     }
     const row = pass.contexts.find((entry) => entry.context.kind === "lib" && entry.context.id === "xtermjs")!
-    if (carried) {
-      expect(row.error).toBeUndefined()
-      expect(row.reviewBindings).toEqual([
-        expect.objectContaining({ selected: carriedDecision.id, newRule: "carried" }),
-      ])
-      expect(row.summary?.complete).toBe(true)
-      expect(row.classification).toBeDefined()
-      const retained = JSON.parse(readFileSync(row.rawRun!, "utf8")) as CapturedRunDraft
-      expect(retained.results[0]?.status).toBe("untestable")
-      if (!finalCollection) {
-        expect(row.status, row.error).toBe("pending-review")
-        expect(row.rawRun).toMatch(/\.draft\.json$/)
-        return
-      }
-    }
-    if (fault === "producer-zero-review" || fault === "producer-pending" || fault === "producer-pending-freeze") {
-      // C1/R1: producer keepDraft outputs used to collide in root save (plain and hashed names).
-      // Existing handoff fixtures omit the trusted-manifest producer batch and cannot expose EEXIST.
-      expect(row.status, row.error).toBe("pending-review")
+    if (fault === "producer-zero-review" || fault === "producer-pending") {
+      // The coordinator preserves the producer bytes under their original path.
+      // Earlier snapshot tests did not verify exclusive writes and stable custody.
+      expect(row.status, row.error).toBe("classified")
       expect(row.rawRun).toBe(producerPath)
       expect(readFileSync(row.rawRun!, "utf8")).toBe(producerBytes)
       if (fault === "producer-pending") {
-        if (producerBytes === undefined) throw new Error("Missing retained producer fixture bytes")
-        const retained = JSON.parse(producerBytes) as CapturedRunDraft
-        const featureId = retained.results[0]!.featureId
-        expect(
-          (JSON.parse(retained.rawReplies[`collector.evidence.${featureId}`]!) as CaptureEvidence).projection.feature
-            .catalogEntrySha256,
-        ).toBe(versions.probeSuiteSnapshot().catalogEntrySha256[featureId])
+        const retained = JSON.parse(producerBytes!) as CapturedRunDraft
+        expect(retained.results[0]!.tests[0]!.status).toBe("test-todo")
       }
       const receipt = JSON.parse(readFileSync(join(dirname(row.rawRun!), "collection.json"), "utf8")) as Pick<
         Awaited<ReturnType<typeof headless.collectHeadlessRuns>>,
@@ -2131,35 +1721,10 @@ it.each([
       expect(receipt.runs).toEqual([producerPath])
       expect(row.summary).toBeDefined()
       expect(row.classification).toBeDefined()
-      expect(row.reason).toBe("Valid measured capture; unsealed draft")
-      if (fault === "producer-pending-freeze") {
-        expect(pass.complete).toBe(false)
-        expect(planner).not.toHaveBeenCalled()
-        expect(writer).not.toHaveBeenCalled()
-      }
-      return
-    }
-    if (finalCollection) {
-      expect(pass.errors).toEqual(fault === "admission-refused" ? ["Admission stopped: fixture admission refused"] : [])
-      expect(row.status, row.error).toBe(fault !== "admission-refused" ? "admitted" : "failed")
-      expect(pass.complete).toBe(fault !== "admission-refused")
-      expect(pass.contexts).toHaveLength(33)
-      expect(pass.contexts.filter((entry) => entry.status === "not-started")).toHaveLength(32)
-      expect(pass.freeze?.deferrals).toEqual(deferrals)
-      const retained = JSON.parse(readFileSync(join(pass.directory, "pass.json"), "utf8"))
-      expect(retained).toMatchObject({
-        complete: fault !== "admission-refused",
-        contexts: expect.arrayContaining([
-          expect.objectContaining({
-            status: fault !== "admission-refused" ? "admitted" : "failed",
-            ...(fault !== "admission-refused" && { admittedPath: join(directory, "admitted.json") }),
-          }),
-        ]),
-      })
       return
     }
     if (fault === "matching" || fault === "source-negative-pending") {
-      expect(row.status, row.error).toBe("pending-review")
+      expect(row.status, row.error).toBe("classified")
       if (fault === "source-negative-pending") {
         // #32038 (@cto a6dbdad3): pre-resolution headless drafts live under first-pass/<engine>.draft.json,
         // and the pass output set holds exactly one draft per measured engine — the file pass.json names.
@@ -2180,12 +1745,11 @@ it.each([
         const appRow = pass.contexts.find(
           (entry) => entry.context.kind === "term" && entry.context.id === "alacritty" && entry.context.os === "linux",
         )!
-        expect(appRow.status, appRow.error).toBe("pending-review")
+        expect(appRow.status, appRow.error).toBe("classified")
         const snapshots = readdirSync(dirname(appRow.rawRun!))
         expect(snapshots).toContain("v3-run.draft.json")
         expect(snapshots).toHaveLength(1)
         expect(appRow.rawRun).toBe(join(dirname(appRow.rawRun!), "v3-run.draft.json"))
-        expect(appRow.reviewBindings?.[0]).toMatchObject({ newRule: "pending", duplicates: [] })
       }
     } else if (fault === "missing-collection-receipt") {
       expect(row.status).toBe("not-started")
@@ -2199,13 +1763,8 @@ it.each([
     }
     expect(pass.complete).toBe(false)
   } finally {
-    parsedReviews?.mockRestore()
-    acceptedReviews?.mockRestore()
     collector.mockRestore()
     launcher.mockRestore()
-    planner?.mockRestore()
-    writer?.mockRestore()
-    snapshot?.mockRestore()
     rmSync(directory, { recursive: true, force: true })
   }
 })

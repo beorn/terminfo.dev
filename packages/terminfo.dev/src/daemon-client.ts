@@ -317,4 +317,4 @@ export async function readRetainedDaemonProbeResponse(
   return { kind: decoded.kind, run: decoded.run, ...retained }
 }
 
-export { finalizeCollectedDraft, saveDaemonProbeRun, type CaptureReviewInput } from "./capture-writer.ts"
+export { finalizeCollectedDraft, saveDaemonProbeRun } from "./capture-writer.ts"
