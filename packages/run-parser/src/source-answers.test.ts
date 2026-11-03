@@ -22,8 +22,12 @@ vi.mock("node:child_process", async (original) => {
             return response("https://example.test/another.git\n")
           }
           if (control.mode === "shallow" && values.includes("--is-shallow-repository")) return response("true\n")
+          if (values.includes("--get-regexp") && control.mode === "absent") return response("", 1)
+          if (values.includes("--get-regexp") && control.mode === "promisor")
+            return response("remote.origin.promisor true\n")
           if (values.some((arg) => arg.startsWith("--batch-check"))) {
-            if (control.mode === "absent") return response(`${String(options.input).trim()} missing\n`)
+            if (control.mode === "absent" || control.mode === "promisor")
+              return response(`${String(options.input).trim()} missing\n`)
             if (control.mode === "broken") return { ...response("", 128), stderr: "cannot read object store" }
           }
         }
@@ -37,7 +41,10 @@ vi.mock("node:fs", async (original) => {
   return {
     ...actual,
     existsSync: vi.fn((path: import("node:fs").PathLike) =>
-      control.mode === "checkout" && String(path).endsWith("/termless") ? false : actual.existsSync(path),
+      control.mode === "checkout" &&
+      (String(path).endsWith("/termless") || /[\\/]\.ci-siblings[\\/]\d+$/.test(String(path)))
+        ? false
+        : actual.existsSync(path),
     ),
   }
 })
@@ -48,7 +55,7 @@ afterEach(() => {
 })
 
 // Pure qualification tests cannot distinguish an absent object from a broken environment.
-it.each(["checkout", "remote", "shallow", "broken", "absent"])(
+it.each(["checkout", "remote", "shallow", "broken", "promisor", "absent"])(
   "reports source environment %s without inventing an answer",
   async (mode) => {
     const { resolveMeasuredSourceAnswer } = await import("./source-answers.ts")
