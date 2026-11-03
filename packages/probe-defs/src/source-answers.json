@@ -26704,5 +26704,325 @@
         ]
       }
     ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt100",
+      "version": "0.10.1",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc133-p",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/vterm.git",
+            "commit": "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+            "path": "packages/vt100/src/screen.ts",
+            "oid": "cd71776df5f72918cd06934d724a5c2e3585a89d"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev8-2026-11-03-vt100-0.10.1-extensions.osc133-p-source-review",
+            "reviewer": "@dev/8",
+            "reason": "Independent source review (@dev/8, 2026-11-03) of vt100 0.10.1 at beorn/vterm 9e99e4d23cdc606fca258b1863aa2be7ae79eed3, packages/vt100/src/screen.ts:505-520: handleOSC splits the OSC string on its first semicolon, parses the numeric code and switches on it with cases 0, 1 and 2 only and no default arm, so OSC 133;P properties mark reaches no writer and no mark, zone, property or context state is stored. The file contains no 133, 633 or 3008 handler. Measured in the retained 23:34 run: the vt100 probe recorded no state for this selector. The engine does not implement OSC 133;P properties mark: unsupported.",
+            "sources": [
+              "vt100 0.10.1 beorn/vterm 9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vt100/src/screen.ts:505-520 (handleOSC switch, cases 0/1/2, no default arm; no 133/633/3008 handler in the file)"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt100",
+      "version": "0.10.1",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc633-d",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/vterm.git",
+            "commit": "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+            "path": "packages/vt100/src/screen.ts",
+            "oid": "cd71776df5f72918cd06934d724a5c2e3585a89d"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev8-2026-11-03-vt100-0.10.1-extensions.osc633-d-source-review",
+            "reviewer": "@dev/8",
+            "reason": "Independent source review (@dev/8, 2026-11-03) of vt100 0.10.1 at beorn/vterm 9e99e4d23cdc606fca258b1863aa2be7ae79eed3, packages/vt100/src/screen.ts:505-520: handleOSC splits the OSC string on its first semicolon, parses the numeric code and switches on it with cases 0, 1 and 2 only and no default arm, so OSC 633;D command finished reaches no writer and no mark, zone, property or context state is stored. The file contains no 133, 633 or 3008 handler. Measured in the retained 23:34 run: the vt100 probe recorded no state for this selector. The engine does not implement OSC 633;D command finished: unsupported.",
+            "sources": [
+              "vt100 0.10.1 beorn/vterm 9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vt100/src/screen.ts:505-520 (handleOSC switch, cases 0/1/2, no default arm; no 133/633/3008 handler in the file)"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt100",
+      "version": "0.10.1",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc633-e",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/vterm.git",
+            "commit": "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+            "path": "packages/vt100/src/screen.ts",
+            "oid": "cd71776df5f72918cd06934d724a5c2e3585a89d"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev8-2026-11-03-vt100-0.10.1-extensions.osc633-e-source-review",
+            "reviewer": "@dev/8",
+            "reason": "Independent source review (@dev/8, 2026-11-03) of vt100 0.10.1 at beorn/vterm 9e99e4d23cdc606fca258b1863aa2be7ae79eed3, packages/vt100/src/screen.ts:505-520: handleOSC splits the OSC string on its first semicolon, parses the numeric code and switches on it with cases 0, 1 and 2 only and no default arm, so OSC 633;E command line reaches no writer and no mark, zone, property or context state is stored. The file contains no 133, 633 or 3008 handler. Measured in the retained 23:34 run: the vt100 probe recorded no state for this selector. The engine does not implement OSC 633;E command line: unsupported.",
+            "sources": [
+              "vt100 0.10.1 beorn/vterm 9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vt100/src/screen.ts:505-520 (handleOSC switch, cases 0/1/2, no default arm; no 133/633/3008 handler in the file)"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt100",
+      "version": "0.10.1",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc633-p",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/vterm.git",
+            "commit": "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+            "path": "packages/vt100/src/screen.ts",
+            "oid": "cd71776df5f72918cd06934d724a5c2e3585a89d"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev8-2026-11-03-vt100-0.10.1-extensions.osc633-p-source-review",
+            "reviewer": "@dev/8",
+            "reason": "Independent source review (@dev/8, 2026-11-03) of vt100 0.10.1 at beorn/vterm 9e99e4d23cdc606fca258b1863aa2be7ae79eed3, packages/vt100/src/screen.ts:505-520: handleOSC splits the OSC string on its first semicolon, parses the numeric code and switches on it with cases 0, 1 and 2 only and no default arm, so OSC 633;P properties mark reaches no writer and no mark, zone, property or context state is stored. The file contains no 133, 633 or 3008 handler. Measured in the retained 23:34 run: the vt100 probe recorded no state for this selector. The engine does not implement OSC 633;P properties mark: unsupported.",
+            "sources": [
+              "vt100 0.10.1 beorn/vterm 9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vt100/src/screen.ts:505-520 (handleOSC switch, cases 0/1/2, no default arm; no 133/633/3008 handler in the file)"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt100",
+      "version": "0.10.1",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc3008-context",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/vterm.git",
+            "commit": "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+            "path": "packages/vt100/src/screen.ts",
+            "oid": "cd71776df5f72918cd06934d724a5c2e3585a89d"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev8-2026-11-03-vt100-0.10.1-extensions.osc3008-context-source-review",
+            "reviewer": "@dev/8",
+            "reason": "Independent source review (@dev/8, 2026-11-03) of vt100 0.10.1 at beorn/vterm 9e99e4d23cdc606fca258b1863aa2be7ae79eed3, packages/vt100/src/screen.ts:505-520: handleOSC splits the OSC string on its first semicolon, parses the numeric code and switches on it with cases 0, 1 and 2 only and no default arm, so OSC 3008 systemd context reaches no writer and no mark, zone, property or context state is stored. The file contains no 133, 633 or 3008 handler. Measured in the retained 23:34 run: the vt100 probe recorded no state for this selector. The engine does not implement OSC 3008 systemd context: unsupported.",
+            "sources": [
+              "vt100 0.10.1 beorn/vterm 9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vt100/src/screen.ts:505-520 (handleOSC switch, cases 0/1/2, no default arm; no 133/633/3008 handler in the file)"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt220",
+      "version": "0.10.1",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc133-p",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/vterm.git",
+            "commit": "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+            "path": "packages/vt220/src/screen.ts",
+            "oid": "cc5c5c79b0c882cb1c335f2ccaf2c555884a05ee"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev8-2026-11-03-vt220-0.10.1-extensions.osc133-p-source-review",
+            "reviewer": "@dev/8",
+            "reason": "Independent source review (@dev/8, 2026-11-03) of vt220 0.10.1 at beorn/vterm 9e99e4d23cdc606fca258b1863aa2be7ae79eed3, packages/vt220/src/screen.ts:701-716: handleOSC splits the OSC string on its first semicolon, parses the numeric code and switches on it with cases 0, 1 and 2 only and no default arm, so OSC 133;P properties mark reaches no writer and no mark, zone, property or context state is stored. The file contains no 133, 633 or 3008 handler. Measured in the retained 23:34 run: the vt220 probe recorded no state for this selector. The engine does not implement OSC 133;P properties mark: unsupported.",
+            "sources": [
+              "vt220 0.10.1 beorn/vterm 9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vt220/src/screen.ts:701-716 (handleOSC switch, cases 0/1/2, no default arm; no 133/633/3008 handler in the file)"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt220",
+      "version": "0.10.1",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc633-d",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/vterm.git",
+            "commit": "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+            "path": "packages/vt220/src/screen.ts",
+            "oid": "cc5c5c79b0c882cb1c335f2ccaf2c555884a05ee"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev8-2026-11-03-vt220-0.10.1-extensions.osc633-d-source-review",
+            "reviewer": "@dev/8",
+            "reason": "Independent source review (@dev/8, 2026-11-03) of vt220 0.10.1 at beorn/vterm 9e99e4d23cdc606fca258b1863aa2be7ae79eed3, packages/vt220/src/screen.ts:701-716: handleOSC splits the OSC string on its first semicolon, parses the numeric code and switches on it with cases 0, 1 and 2 only and no default arm, so OSC 633;D command finished reaches no writer and no mark, zone, property or context state is stored. The file contains no 133, 633 or 3008 handler. Measured in the retained 23:34 run: the vt220 probe recorded no state for this selector. The engine does not implement OSC 633;D command finished: unsupported.",
+            "sources": [
+              "vt220 0.10.1 beorn/vterm 9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vt220/src/screen.ts:701-716 (handleOSC switch, cases 0/1/2, no default arm; no 133/633/3008 handler in the file)"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt220",
+      "version": "0.10.1",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc633-e",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/vterm.git",
+            "commit": "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+            "path": "packages/vt220/src/screen.ts",
+            "oid": "cc5c5c79b0c882cb1c335f2ccaf2c555884a05ee"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev8-2026-11-03-vt220-0.10.1-extensions.osc633-e-source-review",
+            "reviewer": "@dev/8",
+            "reason": "Independent source review (@dev/8, 2026-11-03) of vt220 0.10.1 at beorn/vterm 9e99e4d23cdc606fca258b1863aa2be7ae79eed3, packages/vt220/src/screen.ts:701-716: handleOSC splits the OSC string on its first semicolon, parses the numeric code and switches on it with cases 0, 1 and 2 only and no default arm, so OSC 633;E command line reaches no writer and no mark, zone, property or context state is stored. The file contains no 133, 633 or 3008 handler. Measured in the retained 23:34 run: the vt220 probe recorded no state for this selector. The engine does not implement OSC 633;E command line: unsupported.",
+            "sources": [
+              "vt220 0.10.1 beorn/vterm 9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vt220/src/screen.ts:701-716 (handleOSC switch, cases 0/1/2, no default arm; no 133/633/3008 handler in the file)"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt220",
+      "version": "0.10.1",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc633-p",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/vterm.git",
+            "commit": "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+            "path": "packages/vt220/src/screen.ts",
+            "oid": "cc5c5c79b0c882cb1c335f2ccaf2c555884a05ee"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev8-2026-11-03-vt220-0.10.1-extensions.osc633-p-source-review",
+            "reviewer": "@dev/8",
+            "reason": "Independent source review (@dev/8, 2026-11-03) of vt220 0.10.1 at beorn/vterm 9e99e4d23cdc606fca258b1863aa2be7ae79eed3, packages/vt220/src/screen.ts:701-716: handleOSC splits the OSC string on its first semicolon, parses the numeric code and switches on it with cases 0, 1 and 2 only and no default arm, so OSC 633;P properties mark reaches no writer and no mark, zone, property or context state is stored. The file contains no 133, 633 or 3008 handler. Measured in the retained 23:34 run: the vt220 probe recorded no state for this selector. The engine does not implement OSC 633;P properties mark: unsupported.",
+            "sources": [
+              "vt220 0.10.1 beorn/vterm 9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vt220/src/screen.ts:701-716 (handleOSC switch, cases 0/1/2, no default arm; no 133/633/3008 handler in the file)"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt220",
+      "version": "0.10.1",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc3008-context",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/vterm.git",
+            "commit": "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+            "path": "packages/vt220/src/screen.ts",
+            "oid": "cc5c5c79b0c882cb1c335f2ccaf2c555884a05ee"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev8-2026-11-03-vt220-0.10.1-extensions.osc3008-context-source-review",
+            "reviewer": "@dev/8",
+            "reason": "Independent source review (@dev/8, 2026-11-03) of vt220 0.10.1 at beorn/vterm 9e99e4d23cdc606fca258b1863aa2be7ae79eed3, packages/vt220/src/screen.ts:701-716: handleOSC splits the OSC string on its first semicolon, parses the numeric code and switches on it with cases 0, 1 and 2 only and no default arm, so OSC 3008 systemd context reaches no writer and no mark, zone, property or context state is stored. The file contains no 133, 633 or 3008 handler. Measured in the retained 23:34 run: the vt220 probe recorded no state for this selector. The engine does not implement OSC 3008 systemd context: unsupported.",
+            "sources": [
+              "vt220 0.10.1 beorn/vterm 9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vt220/src/screen.ts:701-716 (handleOSC switch, cases 0/1/2, no default arm; no 133/633/3008 handler in the file)"
+            ]
+          }
+        ]
+      }
+    ]
   }
 ]
