@@ -15,7 +15,6 @@ import { describe, expect, it } from "vitest"
 import {
   recordExecutedProbe,
   initializeRunDraft,
-  sealRunDraft,
   frameDigests,
   cursorProbes,
   editingProbes,
@@ -128,7 +127,8 @@ const kittyRun = (overrides: Record<string, unknown> = {}) => {
   draft.origin = { kind: "collector" }
   const attempt = { scope: "probe" as const, startedAt: draft.measuredAt }
   return {
-    ...sealRunDraft(draft, "2026-10-10T22:11:00.000Z"),
+    ...draft,
+    subject: TARGET,
     rawReplies: { [FEATURE]: JSON.stringify({ writes: ["\u001b[1;3H"], queries: [], events: [] }) },
     assertions: [
       {
@@ -276,7 +276,7 @@ function callbackFixture(id: string) {
 function parseCallback(id: string, result: ProbeCallbackResult, fixture: ReturnType<typeof callbackFixture>) {
   const frames = result.observation?.frames ?? []
   const assertions = (result.assertions ?? []).map((entry) => ({ ...entry, featureId: id, rawReplyRef: id }))
-  const { subject, results: _old, sealedAt: _seal, ...metadata } = kittyRun()
+  const { subject, results: _old, ...metadata } = kittyRun()
   const recorded = recordExecutedProbe({
     featureId: id,
     attempt: { scope: "probe", startedAt: "2026-10-10T22:10:00.000Z" },
@@ -286,14 +286,12 @@ function parseCallback(id: string, result: ProbeCallbackResult, fixture: ReturnT
     tests: result.tests,
     criterionBranch: result.criterionBranch,
   })
-  const pendingReview = result.tests?.some((test) => test.id === "review" && test.status === "test-todo")
   const run = {
     ...metadata,
     schemaVersion: 4,
     source: { kind: "live" },
     subject,
     intendedSubject: { kind: "term", id: subject.id },
-    ...(!pendingReview && { sealedAt: "2026-10-10T22:11:00.000Z" }),
     rawReplies: { [id]: JSON.stringify({ writes: fixture.writes, queries: fixture.queries, events: [] }) },
     assertions,
     results: [recorded],
@@ -309,9 +307,7 @@ function parseCallback(id: string, result: ProbeCallbackResult, fixture: ReturnT
     catalogIds: [id],
     probes: { term: [id], lib: [], mux: [] },
   }
-  return parseRun(`${id}.json`, JSON.stringify(run), [id], new Map([[SUITE, callbackManifest]]), {
-    mode: pendingReview ? "capture" : "sealed",
-  })
+  return parseRun(`${id}.json`, JSON.stringify(run), [id], new Map([[SUITE, callbackManifest]]))
 }
 
 describe("in-run pixels verdicts", () => {

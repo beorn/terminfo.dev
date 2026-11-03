@@ -7,7 +7,7 @@ import {
  * Mux probe mechanism — test feature pass-through of terminal multiplexers.
  *
  * Launches tmux/screen in detached mode with a serve daemon inside,
- * probes via HTTP, retains raw output or admits results, then kills the session.
+ * probes via HTTP, retains raw output or writes results, then kills the session.
  *
  * This reveals how features degrade through an intermediary — the same probes
  * that run directly on a terminal now run through the multiplexer's PTY layer.
@@ -29,7 +29,7 @@ import {
   type ProbeRun,
 } from "../../terminfo.dev/src/daemon-client.ts"
 import { homedir } from "node:os"
-import { admitCollectedRun, retainCollectedRun } from "./admit-collected-run.ts"
+import { writeCollectedRun, retainCollectedRun } from "./collected-run.ts"
 import { serveCommand } from "./serve-command.ts"
 
 const DAEMON_DIR = join(homedir(), ".terminfo-dev", "daemons")
@@ -157,15 +157,9 @@ async function probeDaemon(
     if (retained.kind === "empty-selection") throw new Error("Empty selection where a capture was required")
     const data = retained.run
     const intended = { kind: "mux" as const, id: muxId, version }
-    const source =
-      outputDirectory !== undefined
-        ? retainCollectedRun(data, retained.path, intended, outputDirectory)
-        : admitCollectedRun(data, retained.path, intended)
-    const mode = source.endsWith(".draft.json")
-      ? "pending-review"
-      : outputDirectory === undefined
-        ? "admitted"
-        : "private, unadmitted"
+    if (outputDirectory !== undefined) retainCollectedRun(data, retained.path, intended, outputDirectory)
+    else writeCollectedRun(data, retained.path, intended)
+    const mode = outputDirectory === undefined ? "written" : "retained privately"
     const catalogIds = data.results.map((result) => result.featureId)
     const aggregate = aggregateCurrentResults(data.results, catalogIds)
     return { summary: `${currentSupportedShare(aggregate)} · ${currentCoverageSentence(aggregate, catalogIds)}`, mode }
@@ -306,7 +300,7 @@ export async function handleMux(
   }
   console.log(
     opts.output !== undefined
-      ? `\nRaw results retained privately in ${opts.output}; nothing admitted`
-      : `\nResults admitted to content/probes-mux/`,
+      ? `\nRaw results retained privately in ${opts.output}`
+      : `\nResults written to content/probes-mux/`,
   )
 }

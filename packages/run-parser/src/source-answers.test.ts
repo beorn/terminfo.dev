@@ -90,12 +90,11 @@ it.each(["checkout", "remote", "shallow", "broken", "promisor", "absent"])(
   },
 )
 
-// All three production entry points must reach the same I/O owner; pure tests permit omission.
-it("passes the I/O owner through parser, collection writer and site loader", async () => {
+// The writer qualifies source answers; decoding retained results must not require source checkouts.
+it("qualifies at the writer and preserves stored answers when decoding", async () => {
   const io = await import("./source-answers.ts")
   const { parseRun, parseSuiteManifest } = await import("./index.ts")
   const { finalizeCollectedDraft } = await import("../../terminfo.dev/src/capture-writer.ts")
-  const { consoleHostHeldResults } = await import("../../../docs/data/selected-results.ts")
   const path = new URL(
     "../../../content/probes-apps/alacritty-0.17.0-linux-f504922f67f074794c588cf3a14e2114.json",
     import.meta.url,
@@ -112,7 +111,56 @@ it("passes the I/O owner through parser, collection writer and site loader", asy
   vi.spyOn(io, "resolveMeasuredSourceAnswer").mockImplementation(() => {
     throw new Error("source I/O reached")
   })
-  expect(parse).toThrow("source I/O reached")
+  expect(parse()).toEqual(loaded)
   expect(() => finalizeCollectedDraft(raw)).toThrow("source I/O reached")
-  expect(() => consoleHostHeldResults(loaded, [])).toThrow("source I/O reached")
 })
+
+// The retained C1 fixtures already had references from the old review applier. Fresh OSC176
+// captures leave the review pending with [], even though their real negative assertion exists.
+it.each(["measured", "missing", "positive", "other-feature", "empty-expected", "empty-observed"])(
+  "source finalization binds only the current deciding assertion (%s)",
+  async (mode) => {
+    const { finalizeCollectedDraft } = await import("../../terminfo.dev/src/capture-writer.ts")
+    const featureId = "extensions.osc176-app-id"
+    const path = new URL(
+      "../../../content/probes-libs/vterm-0.10.1-linux-a22f06ca-2505-4c0d-a518-b0b01f8bbe76.json",
+      import.meta.url,
+    )
+    const capture = JSON.parse(readFileSync(path, "utf8")) as Parameters<typeof finalizeCollectedDraft>[0] & {
+      sealedAt?: string
+    }
+    delete capture.sealedAt
+    const row = capture.results.find((result) => result.featureId === featureId)!
+    row.status = "test-todo"
+    row.tests = row.tests.map((test) =>
+      test.id === "review" ? { ...test, status: "test-todo", assertionRefs: [] } : test,
+    )
+    const measured = capture.assertions.flatMap((assertion, index) =>
+      assertion.featureId === featureId && assertion.kind === "negative" ? [index] : [],
+    )
+    expect(measured.length).toBeGreaterThan(0)
+    for (const index of measured) {
+      const assertion = capture.assertions[index]!
+      if (mode === "other-feature") assertion.featureId = "other-feature"
+      if (mode === "positive") assertion.kind = "positive"
+      if (mode === "empty-expected") assertion.expected = ""
+      if (mode === "empty-observed") assertion.observed = ""
+    }
+    if (mode === "missing") {
+      capture.assertions = capture.assertions.filter((assertion) => assertion.featureId !== featureId)
+    }
+    const assertions = structuredClone(capture.assertions)
+    const finalized = finalizeCollectedDraft(capture)
+    const result = finalized.results.find((entry) => entry.featureId === featureId)!
+    expect(finalized.assertions).toEqual(assertions)
+    expect(capture.results.find((entry) => entry.featureId === featureId)?.status).toBe("test-todo")
+    if (mode === "measured") {
+      expect(result.status).toBe("unsupported")
+      expect(result.tests.find((test) => test.id === "review")?.assertionRefs).toEqual(measured)
+    } else {
+      expect(result.status).toBe("test-todo")
+      expect(result.reason).toContain("current deciding negative assertion")
+      expect(result.tests.find((test) => test.id === "review")?.assertionRefs).toEqual([])
+    }
+  },
+)

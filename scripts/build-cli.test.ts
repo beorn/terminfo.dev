@@ -84,7 +84,6 @@ const WORKTREE_SYNC_FILES = [
   "packages/terminfo.dev/src/index.tsx",
   "packages/terminfo.dev/bin/terminfo.mjs",
   "scripts/build-cli.ts",
-  "scripts/suite-manifest.ts",
   "scripts/linux-container-run.sh",
 ]
 

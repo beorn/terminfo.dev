@@ -1,3 +1,4 @@
+import { finalizeCollectedDraft } from "../packages/terminfo.dev/src/capture-writer.ts"
 /**
  * @failure Erase replay loses domain results, precondition identity or fixed artifact placement.
  * @level l2
@@ -12,7 +13,7 @@ import { basename, dirname, join } from "node:path"
 import { expect, test, vi } from "vitest"
 import { createVitest } from "vitest/node"
 import CensusReporter from "../packages/admin/reporter.ts"
-import { sealRunDraft, type CapturedRunDraft } from "@terminfo/probe-defs"
+import { type CapturedRunDraft } from "@terminfo/probe-defs"
 import { derivedSuiteManifest, probeSuiteSnapshot } from "../packages/admin/versions.ts"
 import { readEraseCapture } from "../packages/probes/erase-capture.ts"
 import { HEADLESS_TERMINAL } from "../packages/probes/headless-terminal.ts"
@@ -67,7 +68,7 @@ test.for(["success", "deciding", "precondition", "replay-failure", "painted-seed
       await runtime.start()
       expect(reporter.records).toHaveLength(1)
       const record = reporter.records[0]!
-      expect(nativeStates).toEqual([mode === "success" ? "passed" : "failed"])
+      expect(nativeStates, String(record.error)).toEqual([mode === "success" ? "passed" : "failed"])
       const reportFiles = (await readdir(directory)).filter((path) => path.endsWith(".report.json"))
       expect(reportFiles).toHaveLength(1)
       const report = JSON.parse(await readFile(join(directory, reportFiles[0]!), "utf8"))
@@ -90,9 +91,7 @@ test.for(["success", "deciding", "precondition", "replay-failure", "painted-seed
         expect(record.files).toContain(path)
         const bytes = await readFile(path, "utf8")
         expect(JSON.parse(bytes)).not.toHaveProperty("sealedAt")
-        expect(
-          parseRun(path, bytes, suite.catalogIds!, new Map([[suite.probeHash, suite]]), { mode: "capture" }).runId,
-        ).toBe(run.runId)
+        expect(parseRun(path, bytes, suite.catalogIds!, new Map([[suite.probeHash, suite]])).runId).toBe(run.runId)
         expect(run.source).toMatchObject({
           kind: "trace",
           captureRunId: record.captureRunId,
@@ -137,7 +136,7 @@ test.for(["success", "deciding", "precondition", "replay-failure", "painted-seed
           geometry: HEADLESS_TERMINAL,
         }
         expect(readEraseCapture(dirname(capturePath), source, expected).capture.runId).toBe(capture.runId)
-        const historicalBytes = JSON.stringify(sealRunDraft(structuredClone(capture)))
+        const historicalBytes = JSON.stringify(finalizeCollectedDraft(structuredClone(capture)))
         const historicalPath = join(dirname(capturePath), "historical-capture.json")
         await writeFile(historicalPath, historicalBytes)
         const historicalSource = {

@@ -33,7 +33,7 @@ import {
   currentSupportedShare,
 } from "../../../docs/data/release-scope.ts"
 import { DetectView } from "./views/DetectView.tsx"
-import { decodeCollectorRun, decodeCollectorDraft } from "@terminfo/run-parser"
+import { decodeCollectorDraft } from "@terminfo/run-parser"
 import { createDraft } from "./submit.ts"
 import { probeOutputStream } from "./probe-output.ts"
 import { getCliSuiteProbeHash } from "./serve.ts"
@@ -149,30 +149,20 @@ program
         }
         const { getTrustedSuiteReceipt } = await import("./serve.ts")
         const receipt = getTrustedSuiteReceipt()
-        const captured = finalizeCollectedDraft(retained.run, undefined, {
-          manifest: receipt.manifest,
-          decisions: [],
-          origin: () => undefined,
-          keepDraft: true,
-        })
+        const captured = finalizeCollectedDraft(retained.run)
         const raw = `${JSON.stringify(captured)}\n`
-        const decoded = (captured.sealedAt === undefined ? decodeCollectorDraft : decodeCollectorRun)(
-          "daemon final writer",
-          raw,
-          receipt.manifest,
-          receipt.collectorRevision,
-        )
+        const decoded = decodeCollectorDraft("daemon final writer", raw, receipt.manifest, receipt.collectorRevision)
         if ("kind" in decoded && decoded.kind === "empty-selection") {
           throw new Error("Empty selection where a capture was required")
         }
         if (opts.output) {
           writeFileSync(opts.output, decoded.raw, { flag: "wx", mode: 0o600 })
           console.error(
-            `Raw run ${decoded.run.runId} saved to ${opts.output}; SHA256 ${decoded.sha256}; identity unverified`,
+            `Raw run ${decoded.run.runId} saved to ${opts.output}; SHA256 ${decoded.sha256}; identity ${decoded.run.identity}`,
           )
         } else {
           process.stdout.write(decoded.raw)
-          console.error(`Raw run ${decoded.run.runId}; SHA256 ${decoded.sha256}; identity unverified`)
+          console.error(`Raw run ${decoded.run.runId}; SHA256 ${decoded.sha256}; identity ${decoded.run.identity}`)
         }
         return
       }
@@ -199,14 +189,9 @@ program
         else console.log(message)
         return
       }
-      const captured = finalizeCollectedDraft(collected.run, undefined, {
-        manifest: collected.receipt.manifest,
-        decisions: [],
-        origin: () => undefined,
-        keepDraft: true,
-      })
+      const captured = finalizeCollectedDraft(collected.run)
       const raw = `${JSON.stringify(captured)}\n`
-      const decoded = (captured.sealedAt === undefined ? decodeCollectorDraft : decodeCollectorRun)(
+      const decoded = decodeCollectorDraft(
         "inline collector",
         raw,
         collected.receipt.manifest,
@@ -218,22 +203,20 @@ program
       if (opts.output) {
         writeFileSync(opts.output, raw, { flag: "wx", mode: 0o600 })
         console.error(
-          `Raw run ${decoded.run.runId} saved to ${opts.output}; SHA256 ${decoded.sha256}; identity unverified`,
+          `Raw run ${decoded.run.runId} saved to ${opts.output}; SHA256 ${decoded.sha256}; identity ${decoded.run.identity}`,
         )
         return
       }
       if (opts.json) {
         process.stdout.write(raw)
-        console.error(`Raw run ${decoded.run.runId}; SHA256 ${decoded.sha256}; identity unverified`)
+        console.error(`Raw run ${decoded.run.runId}; SHA256 ${decoded.sha256}; identity ${decoded.run.identity}`)
         return
       }
       const data = decoded.run
       const aggregate = aggregateCurrentResults(data.results, collected.receipt.manifest.catalogIds ?? [])
       console.log(`${data.subject.id} ${data.subject.version}: ${currentSupportedShare(aggregate)}`)
       console.log(currentCoverageSentence(aggregate, collected.receipt.manifest.catalogIds))
-      console.log(
-        `Run ${data.runId}: ${"sealedAt" in data ? "sealed" : "unsealed draft; not admitted"}; ${aggregate.complete ? "complete" : "incomplete"}; identity unverified.`,
-      )
+      console.log(`Run ${data.runId}: ${aggregate.complete ? "complete" : "incomplete"}; identity ${data.identity}.`)
     },
   )
 

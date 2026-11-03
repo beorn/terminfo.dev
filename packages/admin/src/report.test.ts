@@ -1,3 +1,4 @@
+import { finalizeCollectedDraft } from "../../terminfo.dev/src/capture-writer.ts"
 /**
  * Lay out a throwaway repository root that runs the real `terminfo report` command,
  * so the test reads the same copy → select → render → stdout path a piped run does.
@@ -43,7 +44,7 @@ import { expect, test } from "vitest"
 import { probeSuiteSnapshot } from "../versions.ts"
 import { loadCurrentResults } from "../../../docs/data/current-results.ts"
 import { parseSuiteManifest, parseRun } from "@terminfo/run-parser"
-import { ENVIRONMENT_GROUP_IDS, initializeRunDraft, sealRunDraft } from "@terminfo/probe-defs"
+import { ENVIRONMENT_GROUP_IDS, initializeRunDraft } from "@terminfo/probe-defs"
 
 // This journey boots several real CLI processes; 5s is not a report performance contract.
 test("report renders reviewed outcomes, failures and missing cells", () => {
@@ -74,7 +75,6 @@ test("report renders reviewed outcomes, failures and missing cells", () => {
         probeHash: snapshot.probeHash,
         sourceRevision: "1".repeat(40),
         generatedAt: "2026-09-28T00:00:00.000Z",
-        freeze: { release: "candidate2", at: "2026-09-28T00:00:00.000Z" },
         adapterVersion: snapshot.adapterVersion,
         catalogIds: fixtureFeatures,
         probes: {
@@ -349,7 +349,6 @@ test("report renders reviewed outcomes, failures and missing cells", () => {
         readFileSync(path, "utf8"),
         fixtureFeatures,
         new Map([[workingManifest.probeHash, workingManifest]]),
-        { mode: "capture" },
       )
     const withPartial = loadCurrentResults(join(root, "content"), {
       workingRuns: [working(draftPath), working(partialPath)],
@@ -424,8 +423,7 @@ test("report renders reviewed outcomes, failures and missing cells", () => {
     expect(refused.stdout).toContain("Contributing runs: baseline-kitty")
     expect(refused.stdout).toContain(refusedPath)
 
-    // AC1/3: immutable pass records, rather than raw captures, own freeze ordering and deferrals.
-    // The earlier raw journey cannot detect loss of the batch's carried route or pass identity.
+    // Collection records retain their path identity and actual not-started contexts without release metadata.
     const newerSuite = "aaaaaaaaaaaa"
     const suitePath = join(root, "content", "suites", `${snapshot.probeHash}.json`)
     const manifest = parseSuiteManifest(suitePath, readFileSync(suitePath, "utf8"))
@@ -434,7 +432,6 @@ test("report renders reviewed outcomes, failures and missing cells", () => {
       JSON.stringify({
         ...manifest,
         probeHash: newerSuite,
-        freeze: { release: "next-candidate", at: "2026-09-29T00:00:00.000Z" },
       }),
     )
     const nextDraft = join(root, "next.draft.json")
@@ -452,7 +449,6 @@ test("report renders reviewed outcomes, failures and missing cells", () => {
       name: string,
       suite: string,
       rawRun: string,
-      deferrals: unknown[],
       context = { kind: "term", id: "kitty", os: "macos" },
       admittedPath?: string,
     ) => {
@@ -462,8 +458,6 @@ test("report renders reviewed outcomes, failures and missing cells", () => {
       writeFileSync(
         path,
         JSON.stringify({
-          mode: "admit",
-          freeze: { id: suite, release: suite === newerSuite ? "next-candidate" : "candidate2", deferrals },
           directory,
           probeHash: suite,
           sourceRevision: run.sourceRevision,
@@ -478,20 +472,18 @@ test("report renders reviewed outcomes, failures and missing cells", () => {
               rawRun,
               ...(admittedPath && { admittedPath }),
             },
-            { context: { kind: "term", id: "ghostty", os: "linux" }, status: "not-started" },
+            {
+              context: { kind: "term", id: "ghostty", os: "linux" },
+              status: "not-started",
+              reason: "not started by the collector",
+            },
           ],
         }),
       )
       return path
     }
-    const olderPass = passPath("older-pass", snapshot.probeHash, draftPath, [])
-    const newerPass = passPath("newer-pass", newerSuite, nextDraft, [
-      {
-        context: "ghostty/linux",
-        routeIssue: "@si/terminfo/hosted-route",
-        reason: "hosted runner follow-up",
-      },
-    ])
+    const olderPass = passPath("older-pass", snapshot.probeHash, draftPath)
+    const newerPass = passPath("newer-pass", newerSuite, nextDraft)
     const passes = spawnSync(process.execPath, [join(root, "run.ts"), newerPass, olderPass], {
       cwd: root,
       encoding: "utf8",
@@ -499,18 +491,38 @@ test("report renders reviewed outcomes, failures and missing cells", () => {
     })
     expect(passes.status, passes.stderr).toBe(0)
     const kittyRow = passes.stdout.split("\n").find((line) => line.startsWith("| kitty/macos |"))
-    expect(kittyRow).toContain(`| measured-unpublished | ${newerSuite}`)
+    expect(kittyRow).toContain("| measured-unpublished | newer-pass |")
+    expect(kittyRow).toContain(newerSuite)
     expect(kittyRow).toContain("next-kitty")
-    expect(kittyRow).toContain(`earlier pass ${snapshot.probeHash}`)
-    expect(passes.stdout).toContain("ghostty/linux | deferred")
-    expect(passes.stdout).toContain("hosted runner follow-up")
-    expect(passes.stdout).toContain("@si/terminfo/hosted-route")
+    expect(kittyRow).toContain("earlier pass older-pass")
+    expect(passes.stdout).toContain("ghostty/linux | to-measure")
+    expect(passes.stdout).toContain("not started by the collector")
     expect(passes.stdout).toContain("selected at")
     expect(passes.stdout).toContain("live unproven")
     expect(passes.stdout).not.toContain("| published |")
 
     // AC1/4: a pass's path reference cannot transfer one terminal's measurement to another context.
-    const misroutedPass = passPath("misrouted-pass", newerSuite, nextDraft, [], {
+    // CTO D amendment: equal admission, selection, source path and run id must not use input order.
+    // Only the actual collection directory name distinguishes these two references to identical bytes.
+    const tieA = passPath("a-tie-pass", snapshot.probeHash, draftPath)
+    const tieZ = passPath("z-tie-pass", snapshot.probeHash, draftPath)
+    const tiedRows = [
+      [tieZ, tieA],
+      [tieA, tieZ],
+    ].map((inputs) => {
+      const result = spawnSync(process.execPath, [join(root, "run.ts"), ...inputs], {
+        cwd: root,
+        encoding: "utf8",
+        timeout: 15_000,
+      })
+      expect(result.status, result.stderr).toBe(0)
+      return result.stdout.split("\n").find((line) => line.startsWith("| kitty/macos |"))
+    })
+    expect(tiedRows[0]).toBe(tiedRows[1])
+    expect(tiedRows[0]).toContain("| a-tie-pass |")
+    expect(tiedRows[0]).toContain("earlier pass z-tie-pass")
+
+    const misroutedPass = passPath("misrouted-pass", newerSuite, nextDraft, {
       kind: "term",
       id: "ghostty",
       os: "macos",
@@ -595,7 +607,7 @@ test("report renders reviewed outcomes, failures and missing cells", () => {
     const admittedDraftPath = join(root, "admitted-capture.draft.json")
     const { sealedAt: _admittedSeal, ...admittedDraft } = completeRun
     writeFileSync(admittedDraftPath, JSON.stringify(admittedDraft))
-    const admittedPass = passPath("admitted-pass", snapshot.probeHash, admittedDraftPath, [], undefined, runPath)
+    const admittedPass = passPath("admitted-pass", snapshot.probeHash, admittedDraftPath, undefined, runPath)
     const admittedReport = spawnSync(process.execPath, [join(root, "run.ts"), admittedPass], {
       cwd: root,
       encoding: "utf8",
@@ -603,22 +615,24 @@ test("report renders reviewed outcomes, failures and missing cells", () => {
     })
     expect(admittedReport.status, admittedReport.stderr).toBe(0)
     const admittedRow = admittedReport.stdout.split("\n").find((line) => line.startsWith("| kitty/macos |"))
-    expect(admittedRow).toContain(`| published | ${snapshot.probeHash}`)
+    expect(admittedRow).toContain("| published | admitted-pass |")
+    expect(admittedRow).toContain(snapshot.probeHash)
     expect(admittedRow).toContain(runPath)
     expect(admittedRow).toContain(admittedDraftPath)
     expect(admittedRow).toContain(createHash("sha256").update(completeBytes).digest("hex"))
     expect(admittedRow).toContain("reviewed-pass; publication proven")
     expect(admittedRow).toContain("raw catalog 14: supported=5")
     expect(admittedRow).toContain("test-todo=9")
-    const sealedPass = passPath("sealed-pass", snapshot.probeHash, runPath, [], undefined, runPath)
+    const sealedPass = passPath("sealed-pass", snapshot.probeHash, runPath, undefined, runPath)
     const sealedReport = spawnSync(process.execPath, [join(root, "run.ts"), sealedPass], {
       cwd: root,
       encoding: "utf8",
       timeout: 15_000,
     })
     expect(sealedReport.status, sealedReport.stderr).toBe(0)
-    expect(sealedReport.stdout).toContain(`kitty/macos | published | ${snapshot.probeHash}`)
-    const foreignAdmission = passPath("foreign-admission", snapshot.probeHash, draftPath, [], undefined, runPath)
+    expect(sealedReport.stdout).toContain("kitty/macos | published | sealed-pass |")
+    expect(sealedReport.stdout).toContain(snapshot.probeHash)
+    const foreignAdmission = passPath("foreign-admission", snapshot.probeHash, draftPath, undefined, runPath)
     const foreignReport = spawnSync(process.execPath, [join(root, "run.ts"), foreignAdmission], {
       cwd: root,
       encoding: "utf8",
@@ -667,7 +681,7 @@ test("report renders reviewed outcomes, failures and missing cells", () => {
     expect(mixedRow).toContain("supported=1")
     expect(mixedRow).toContain("test-failure=2")
     // The explicit pass must not hide a second selected configuration when it matches admitted bytes.
-    const mixedPass = passPath("mixed-admitted", snapshot.probeHash, inconclusivePath, [], undefined, inconclusivePath)
+    const mixedPass = passPath("mixed-admitted", snapshot.probeHash, inconclusivePath, undefined, inconclusivePath)
     const mixedReport = spawnSync(process.execPath, [join(root, "run.ts"), mixedPass], {
       cwd: root,
       encoding: "utf8",
@@ -681,10 +695,9 @@ test("report renders reviewed outcomes, failures and missing cells", () => {
 
     // The canonical reader owns suiteRelation; the view must retain an older selected configuration as stale.
     const oldSuite = "bbbbbbbbbbbb"
-    const { freeze: _freeze, ...oldDeclaration } = manifest
     writeFileSync(
       join(root, "content", "suites", `${oldSuite}.json`),
-      JSON.stringify({ ...oldDeclaration, probeHash: oldSuite }),
+      JSON.stringify({ ...manifest, probeHash: oldSuite }),
     )
     const oldRun = {
       ...run,
@@ -771,7 +784,6 @@ test("a long report keeps every row and its last section on a pipe", () => {
       probeHash: snapshot.probeHash,
       sourceRevision: "1".repeat(40),
       generatedAt: "2026-09-28T00:00:00.000Z",
-      freeze: { release: "candidate2", at: "2026-09-28T00:00:00.000Z" },
       adapterVersion: snapshot.adapterVersion,
       catalogIds: fixtureFeatures,
       probes: { term: fixtureFeatures, lib: [], mux: [] },
@@ -799,7 +811,7 @@ test("a long report keeps every row and its last section on a pipe", () => {
     draft.measuredAt = "2026-09-28T12:00:00.000Z"
     draft.origin = { kind: "collector" }
     draft.rawReplies = { "device.primary-da": "\x1b[?62;52;c", "device.xtversion": "kitty(0.46.2)" }
-    const run = sealRunDraft(draft, "2026-09-28T12:00:01.000Z")
+    const run = finalizeCollectedDraft(draft as Parameters<typeof finalizeCollectedDraft>[0])
     const runPath = join(root, "content", "probes-apps", "long.json")
     const runBytes = JSON.stringify(run)
     writeFileSync(runPath, runBytes)

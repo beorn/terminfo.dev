@@ -786,16 +786,5 @@
       "unicode.tab-stops",
       "unicode.wrap-boundary"
     ]
-  },
-  "freeze": {
-    "release": "candidate4",
-    "at": "2026-10-18T16:00:31.937Z",
-    "previous": [
-      {
-        "suite": "c24025ea22fc",
-        "from": "2026-10-17T21:12:41.181Z",
-        "until": "2026-10-18T16:00:31.937Z"
-      }
-    ]
   }
 }

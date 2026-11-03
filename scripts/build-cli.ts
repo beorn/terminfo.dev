@@ -7,7 +7,7 @@ import { existsSync, mkdirSync, renameSync, writeFileSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { derivedSuiteManifest, probeSuiteSnapshot, uncommittedCollectorDirt } from "../packages/admin/versions.ts"
-import { verifySuiteManifest } from "./suite-manifest.ts"
+import { verifySuiteManifest } from "../packages/admin/suite-manifest.ts"
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..")
 
