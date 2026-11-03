@@ -174,6 +174,64 @@ describe("TTY transaction replies", () => {
     },
   )
 
+  // Recorder identity and distinct injection causes miss their same-error TTY join.
+  it("keeps a sticky recorder failure fatal without making it its own cause", async () => {
+    const queries: TTYQueryTrace[] = []
+    const events: TTYTraceEvent[] = []
+    const listeners = process.stdin.listenerCount("data")
+    let bodyError: Error | undefined
+    let finalError: Error | undefined
+    let published = false
+    try {
+      await withTTYOperation(
+        () =>
+          withTTYQueryTrace(
+            queries,
+            events,
+            async () => {
+              const result = await queryOutcome(
+                "\x1b]17;?\x07",
+                /\x1b\]17;rgb:([0-9a-f]+)\/([0-9a-f]+)\/([0-9a-f]+)\x07/,
+                50,
+              )
+              try {
+                if (!result.match) throw new Error("Fixture did not return a matched colour")
+                const [, red] = result.match
+                return red
+              } catch (error) {
+                if (!(error instanceof Error)) throw error
+                bodyError = error
+                throw error
+              }
+            },
+            {
+              onLog() {
+                published = true
+              },
+            },
+          ),
+        {
+          write() {
+            reply("\x1b]17;rgb:1111/2222/3333\x07")
+            return true
+          },
+        } as unknown as NodeJS.WriteStream,
+      )
+    } catch (error) {
+      if (!(error instanceof Error)) throw error
+      finalError = error
+    }
+    // Scalar assertions keep a broken cause graph away from the failure reporter.
+    expect(finalError instanceof IncompleteReplay).toBe(true)
+    expect(finalError === bodyError).toBe(true)
+    expect(finalError?.cause === undefined).toBe(true)
+    expect(finalError?.message).toBe("Incomplete: call log cannot encode prototype [object Array Iterator]")
+    expect(published).toBe(false)
+    expect(queries).toEqual([])
+    expect(events).toEqual([])
+    expect(process.stdin.listenerCount("data")).toBe(listeners)
+  })
+
   it("retains sentinel ordering facts through offline TTY replay", async () => {
     const queries: TTYQueryTrace[] = []
     const events: TTYTraceEvent[] = []

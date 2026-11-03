@@ -191,7 +191,7 @@ export async function withTTYQueryTrace<T>(
     try {
       session.finish()
     } catch (error) {
-      if (scopeFailed && error instanceof IncompleteReplay) {
+      if (scopeFailed && error instanceof IncompleteReplay && error !== scopeFailure) {
         error.cause = scopeFailure
         const reason = scopeFailure instanceof Error ? scopeFailure.message : String(scopeFailure)
         error.message = "TTY trace could not finish: " + error.message + "; scope failed: " + reason
