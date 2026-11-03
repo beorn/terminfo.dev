@@ -13,7 +13,12 @@
  */
 import { describe, expect, it } from "vitest"
 import { readFileSync } from "node:fs"
-import { parseRun, parseSuiteManifest, SOURCE_ANSWER_RETIRED_REASON } from "@terminfo/run-parser"
+import {
+  parseRun,
+  parseSuiteManifest,
+  SOURCE_ANSWER_RETIRED_REASON,
+  STORED_VISUAL_REVIEW_RETIRED_REASON,
+} from "@terminfo/run-parser"
 import { projectResults } from "../docs/data/selected-results.ts"
 import { publicResults } from "../docs/data/public-results.ts"
 import { describeTracePanes, readCellTrace } from "../docs/data/evidence-reader.ts"
@@ -26,11 +31,12 @@ const SAMPLE_SHA256 = "a".repeat(64)
 // status in the file and its measuredAt stay byte-unchanged. Pure reader tests cannot prove this handoff.
 it.each([
   {
-    name: "a retained Alacritty source answer",
+    name: "a retained Alacritty screenshot review",
     file: "../content/probes-apps/alacritty-0.17.0-linux-f504922f67f074794c588cf3a14e2114.json",
     suite: "../content/suites/4b01b0117e18.json",
     context: "term:alacritty",
     featureId: "extensions.iterm2-images",
+    reason: STORED_VISUAL_REVIEW_RETIRED_REASON,
   },
   {
     name: "a real disputed Ghostty cell",
@@ -38,10 +44,11 @@ it.each([
     suite: "../content/suites/5ccb68c2db36.json",
     context: "lib:ghostty",
     featureId: "extensions.kitty-graphics",
+    reason: SOURCE_ANSWER_RETIRED_REASON,
   },
 ])(
   "reads $name as TEST TODO and publishes no source caption or private detail",
-  ({ file, suite, context, featureId }) => {
+  ({ file, suite, context, featureId, reason }) => {
     const path = new URL(file, import.meta.url)
     const bytes = readFileSync(path, "utf8")
     const manifestPath = new URL(suite, import.meta.url)
@@ -51,7 +58,7 @@ it.each([
     const original = structuredClone(run)
     const retained = run.results?.find((result) => result.featureId === featureId)
     expect(retained?.status).toBe("test-todo")
-    expect(retained?.reason).toBe(SOURCE_ANSWER_RETIRED_REASON)
+    expect(retained?.reason).toBe(reason)
     expect(retained?.reviewRef).toBeUndefined()
     const projection = projectResults([run], catalog, { currentProbeHash: manifest.probeHash, workingRuns: [run] }, [])
     const selected = projection.history[context]?.[0]

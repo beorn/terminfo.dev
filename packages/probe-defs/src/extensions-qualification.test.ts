@@ -676,15 +676,9 @@ test.each(directReplies)("%s requires a complete, bound reply", async (id, frame
       runtimeIdentity: xtermOscIdentity,
       feedCapture: () => "",
     } as unknown as LibProbeSource)
-    expect(JSON.stringify(silent)).toBe(
-      JSON.stringify({
-        pass: false,
-        note: "no-response",
-        tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }],
-        replyFailureTestIds: ["criterion"],
-        response: "",
-      }),
-    )
+    // Total silence with no same-path control is TEST TODO on every library engine (@cto batch7 A-F4).
+    expect(silent.notTested).toEqual({ reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL })
+    expect(silent.tests).toBeUndefined()
   }
 })
 
@@ -1641,7 +1635,13 @@ test.each(geometryReplies)("$id keeps a complete zero geometry reply TEST TODO f
       notTested: { reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL },
     })
   }
-  for (const reply of ["", raw.slice(0, 4), "foreign", raw + "foreign", "foreign" + raw]) {
+  // Silence is TEST TODO for lack of a control (@cto batch7 A-F4); a partial or foreign reply keeps its reading.
+  const silent = callback(id).lib!({
+    feedCapture: () => "",
+    runtimeIdentity: geometryRuntime,
+  } as unknown as LibProbeSource)
+  expect(silent.notTested?.noObservable).toBe(NO_SAME_PATH_CONTROL)
+  for (const reply of [raw.slice(0, 4), "foreign", raw + "foreign", "foreign" + raw]) {
     const ctx = { feedCapture: () => reply, runtimeIdentity: geometryRuntime } as unknown as LibProbeSource
     const result = callback(id).lib!(ctx)
     expect(result.notTested, JSON.stringify(reply)).toBeUndefined()

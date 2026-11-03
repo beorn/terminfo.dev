@@ -1547,7 +1547,7 @@ function promptMarkResult(
   }
   return reviewResult(
     SEMANTIC_PROMPT_SOURCE_REVIEW,
-    "Independent review must determine whether the pinned engine source parses this OSC 133 / 633 mark and exposes mark or zone state; citation per cell required for supported, unsupported or Untestable",
+    "OSC 133 / 633 mark was consumed but this reader exposes no mark or zone state, so this run cannot decide it",
     noObservable,
     { home, target, control, cell: cell.char },
   )

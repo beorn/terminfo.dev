@@ -679,7 +679,11 @@ test("underline color reset needs both an observed colored before cell and defau
   const missingBefore = probe.lib(
     withCells({ ...baseCell, underline: true, underlineColor: undefined }, { ...baseCell, char: "Y", underline: true }),
   )
-  expectNoSamePathTodo(missingBefore)
+  // The missing coloured seed is a missing prerequisite with its own cause (@cto batch7 A-F5).
+  expect(missingBefore.notTested).toEqual({
+    reason: "no-semantic-observable",
+    noObservable: "SGR 59 setup cell exposes no explicit underline color",
+  })
 
   const missingAfter = probe.lib(
     withCells(

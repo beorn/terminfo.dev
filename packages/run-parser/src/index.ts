@@ -692,31 +692,31 @@ function probeAttempt(value: unknown, path: string, rawReplies: Record<string, s
 /** The reason a stored source-answer cell reads with, now that source answers no longer count (#32246). */
 export const SOURCE_ANSWER_RETIRED_REASON = "source answer no longer counts (operator 2026-11-03)"
 
+/**
+ * A stored app/mux screenshot review is retired too: it is a judgment record, not a same-run pixel check with an
+ * unstyled control and a changed positive control (#30590), so it is not re-admitted (@cto batch7 A-F2).
+ */
+export const STORED_VISUAL_REVIEW_RETIRED_REASON = "stored visual review not re-admitted: needs a same-run pixel check"
+/** The stored screenshot-review branches: 54 retained cells use the first, Screen 5.0.2 cursor.hide the second. */
+const STORED_VISUAL_REVIEW_BRANCHES: ReadonlySet<string> = new Set(["visual-review", "cursor-visibility-visual-review"])
+
 /** Map one stored source-answer cell to TEST TODO; its references and branch stay in the stored file only. */
 function retiredSourceAnswer(result: ProbeResult): ProbeResult {
   const { reviewRef: _reviewRef, ...rest } = result
+  const reason =
+    STORED_VISUAL_REVIEW_BRANCHES.has(result.criterionBranch ?? "") && result.assertionType === "screenshot"
+      ? STORED_VISUAL_REVIEW_RETIRED_REASON
+      : SOURCE_ANSWER_RETIRED_REASON
   return {
     ...rest,
     status: "test-todo",
-    reason: SOURCE_ANSWER_RETIRED_REASON,
+    reason,
     tests: result.tests.map((test) => {
       if (test.id !== "review" && test.reviewRef === undefined) return test
       const { reviewRef: _testRef, ...kept } = test
-      return { ...kept, status: "test-todo", reason: SOURCE_ANSWER_RETIRED_REASON }
+      return { ...kept, status: "test-todo", reason }
     }),
   }
-}
-
-function isSourceOnlyNegativeReview(result: ProbeResult, assertions: readonly ReadAssertion[]): boolean {
-  return (
-    // Which branches admit which shape has one home, in probe-defs: the source-negative review and the reply-path
-    // gate, whose measurement is a zero-byte reply (@cto 93c86660). The shape stays identical, so a reply-path cell
-    // still cannot carry an assertion or assertionRefs, and the route-specific guards against "supported" remain.
-    SOURCE_ONLY_NEGATIVE_REVIEW_BRANCHES.has(result.criterionBranch ?? "") &&
-    result.assertionType === undefined &&
-    !assertions.some((assertion) => assertion.featureId === result.featureId) &&
-    !result.tests.some((test) => (test.assertionRefs?.length ?? 0) > 0)
-  )
 }
 
 export function parseProbeResults(
@@ -864,11 +864,10 @@ export function parseProbeResults(
     }
     const semanticSource =
       result.criterionBranch === SEMANTIC_PROMPT_SOURCE_REVIEW && (status === "supported" || status === "unsupported")
-    const sourceOnlyNegative = status === "unsupported" && isSourceOnlyNegativeReview(result, assertions)
-    if (semanticSource || sourceOnlyNegative || status === "untestable") {
+    if (semanticSource || status === "untestable") {
       fail(path, `${featureId} ${status} requires a probe observation; a source answer no longer counts`)
     }
-    if ((status === "supported" || status === "unsupported") && !semanticSource && !sourceOnlyNegative) {
+    if ((status === "supported" || status === "unsupported") && !semanticSource) {
       if (attempt.scope === "none" || !item.assertionType) {
         fail(path, `${featureId} support result requires measured evidence`)
       }

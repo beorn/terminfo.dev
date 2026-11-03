@@ -8,7 +8,13 @@
 import { describe, expect, it } from "vitest"
 import { readFileSync } from "node:fs"
 import { initializeRunDraft, type CapturedRunDraft, type ProbeSuiteManifest } from "@terminfo/probe-defs"
-import { parseProbeResults, parseRun, parseSuiteManifest, SOURCE_ANSWER_RETIRED_REASON } from "./index.ts"
+import {
+  parseProbeResults,
+  parseRun,
+  parseSuiteManifest,
+  SOURCE_ANSWER_RETIRED_REASON,
+  STORED_VISUAL_REVIEW_RETIRED_REASON,
+} from "./index.ts"
 
 const catalog = ["alpha", "beta", "gamma"]
 const suite: ProbeSuiteManifest & { schemaVersion: 4 } = {
@@ -385,6 +391,32 @@ it.each(["source-negative-review", "reply-path-audit-review"] as const)(
       status: "test-todo",
       reason: SOURCE_ANSWER_RETIRED_REASON,
     })
+  },
+)
+
+// Requirement (@cto batch7 A-F2): a stored app/mux screenshot review is retired too, but its reason names what it
+// was: a judgment record, not a same-run pixel check (#30590). Source-answer cells keep their own reason.
+// Both stored screenshot-review branches are covered: 54 retained cells use visual-review and Screen 5.0.2
+// cursor.hide uses cursor-visibility-visual-review (peer af27-peer-1519).
+it.each(["visual-review", "cursor-visibility-visual-review"])(
+  "reads a stored %s screenshot review as TEST TODO with the visual-review reason",
+  (criterionBranch) => {
+    const attempt = { scope: "probe", startedAt: "2026-10-21T05:00:00.000Z" }
+    const reviewRef = JSON.stringify(["term", "alacritty", "0.16.1", "linux", "alpha"])
+    const row = {
+      featureId: "alpha",
+      status: "supported",
+      criterionBranch,
+      assertionType: "screenshot",
+      reviewRef,
+      attempt,
+      tests: [{ id: "review", status: "supported", attempt, reviewRef }],
+    }
+    const [read] = parseProbeResults([row], "fixture.json", new Set(["alpha"]), {}, [])
+    const reason = "stored visual review not re-admitted: needs a same-run pixel check"
+    expect(read).toMatchObject({ status: "test-todo", reason })
+    expect(read?.tests[0]).toMatchObject({ status: "test-todo", reason })
+    expect(STORED_VISUAL_REVIEW_RETIRED_REASON).toBe(reason)
   },
 )
 

@@ -23,7 +23,7 @@ The [writer and finalizer](src/helpers.ts) fold explicit tests and diagnostics i
 a supported observation can still have a failed or pending required test; an inconclusive observation alone
 does not establish Untestable. Without explicit tests, a diagnostic or a conclusive outcome, named
 missing-observable coverage defaults to Test to-do; rowless inconclusive without that coverage defaults
-to Test failure. Untestable still requires the implemented review reference.
+to Test failure. There is no route to Untestable.
 Highlight reset cannot be decided without an initial colour reading. When the DA1 control completes but
 OSC 17 or 19 supplies no initial colour, the callback records a named Test to-do; broken or untrustworthy
 measurement remains Test failure. Silence alone does not establish Unsupported.
@@ -31,9 +31,9 @@ The [legacy presentation keys](../../docs/data/release-scope.ts) are a different
 The `CellState` value `inconclusive` denotes reviewed Untestable, `error` denotes Test failure and `untested` denotes
 Test to-do; `supported` and `unsupported` retain their corresponding labels. Do not substitute callback outcomes for these keys.
 
-No result is answered from source code (operator 2026-11-03). Source is read only to troubleshoot a probe; it never sets a cell. A grade comes only from what the probe saw in that run. Unsupported needs an observed negative plus a passing same-path control in the same run; no reply counts as Unsupported only when a control reply came back on the same path in that run. With no passing control the cell is Test to-do with reason `observation not decided: no same-path control in this run` (below, "the no-control reason"); this includes a zero-byte reply on a loaded artifact. Test failure means the probe or harness broke or got data it cannot trust. Untestable is declared once per probe in code when the setup has no observable for every subject of that kind, never per engine from source. A probe never implements the feature itself.
+No result is answered from source code (operator 2026-11-03). Source is read only to troubleshoot a probe; it never sets a cell. A grade comes only from what the probe saw in that run. Unsupported needs an observed negative plus a passing same-path control in the same run; no reply counts as Unsupported only when a control reply came back on the same path in that run. With no passing control the cell is Test to-do with reason `observation not decided: no same-path control in this run` (below, "the no-control reason"); this includes a zero-byte reply on a loaded artifact. Test failure means the probe or harness broke or got data it cannot trust. There is no route to Untestable: a probe whose setup has no observable for every subject of a kind reads Test to-do, and source never sets it per engine. A probe never implements the feature itself.
 
-Every former source-review or source-negative site now returns Test to-do with the no-control reason. The run reader reads a stored cell carrying a source-answer `reviewRef` or the `source-negative-review` / `reply-path-audit-review` branch as Test to-do with reason `source answer no longer counts (operator 2026-11-03)`; stored files stay unchanged.
+Every former source-review or source-negative site now returns Test to-do with the no-control reason. The run reader reads a stored cell carrying a source-answer `reviewRef` or the `source-negative-review` / `reply-path-audit-review` branch as Test to-do with reason `source answer no longer counts (operator 2026-11-03)`, except a stored app/mux screenshot review, which reads `stored visual review not re-admitted: needs a same-run pixel check`; stored files stay unchanged.
 
 External release and publication remain held until the actual full Phase 1.4 merge and their existing authorization.
 
@@ -165,7 +165,7 @@ reset negative. Compound attribute resets with unshown setup attributes are Test
 does not decide the whole claim.
 
 TERM_FEATURES means a terminal program's export into its child environment. Its library arm performs
-no I/O and retains a `headless-observable-review` row naming the API boundary.
+no I/O and records Test to-do: a library context spawns no application child to receive the environment export.
 It creates no observation or assertion. The application arm remains Test to-do until terminal-owned child readback exists.
 
 Raw replies and observed payloads do not embed
@@ -527,7 +527,7 @@ Observation outcomes are `supported`, `unsupported`, `inconclusive` and `error`.
 - Coverage becomes `test-todo`. Refusal and consumption without a deciding observation explicitly supply Test to-do tests; unanswered queries and errors explicitly supply Test failure tests. No reply, clipboard value or frame is invented to satisfy a type.
 - A measured inconclusive observation stays typed and defaults to `test-failure` unless an existing explicit criterion test selects a different status.
 
-`finalizeProbeResult` folds the required tests in order: failure, pending or empty tests, reviewed impossibility, unsupported, then supported. `untestable` needs a review reference. Collection finalization records Windows console-host prerequisites before that fold. The canonical run reader decodes the stored result without folding its tests again, except that a stored source-answer cell reads as Test to-do (see above); content validation uses that same reader.
+`finalizeProbeResult` folds the required tests in order: failure, pending or empty tests, unsupported, then supported. There is no route to `untestable`: a test marked untestable folds to Test to-do. Collection finalization records Windows console-host prerequisites before that fold. The canonical run reader decodes the stored result without folding its tests again, except that a stored source-answer cell reads as Test to-do (see above); content validation uses that same reader.
 
 That order matters: a failed test wins over a pending one. Timeout or lack of an observable is not automatically evidence that a terminal lacks the feature; the probe's criterion must establish that. An execution-only Test to-do can follow real I/O and does not promise an empty trace; pre-I/O refusal fixtures separately prove their zero-byte behavior.
 
