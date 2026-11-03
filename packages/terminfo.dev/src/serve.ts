@@ -699,7 +699,11 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
       }
     }
     const installDarwinCapture = async (terminal: OwnedTerminal) => {
-      if (installTextCapture(terminal) || !captureDirectory) return
+      // Hosted iTerm2 and Terminal.app use pixels; Kitty keeps its qualified text route.
+      // Without retention, still name the missing directory through the existing text adapter.
+      const textFirst =
+        !captureDirectory || (terminal.hostedAppId !== "iterm2" && terminal.hostedAppId !== "terminal-app")
+      if ((textFirst && installTextCapture(terminal)) || !captureDirectory) return
       const appPid = terminal.appPid
       if (!appPid) throw new Error(`Verified ${kind} terminal has no measured app PID for capture`)
       const darwinCapture = await createDarwinCapture(captureDirectory, { appPid })
