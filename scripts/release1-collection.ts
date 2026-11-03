@@ -454,6 +454,7 @@ export async function collectPass(
   outputDirectory: string,
   ownedApp: OwnedAppTransportOptions = { runner: "local" },
   selection?: { contexts?: readonly string[]; ids?: readonly string[] },
+  sourceRef?: string,
 ): Promise<CollectionPass> {
   const resolvedIds = selection?.ids === undefined ? undefined : resolveProbeIds(selection.ids)
   if (resolvedIds?.result === "invalid") {
@@ -619,6 +620,7 @@ export async function collectPass(
     pass.errors,
     drafts,
     selection ? (probeIds ?? snapshot.probes.term) : undefined,
+    sourceRef,
   )
   for (const context of census) {
     const row: CollectionPass["contexts"][number] = { context, status: "not-started" }
@@ -871,6 +873,7 @@ function collectHostedArtifacts(
   errors: string[],
   drafts: ReadonlyMap<string, { draft: RunDraft; path: string }>,
   probeIds?: readonly string[],
+  sourceRef?: string,
 ): Map<string, { directory: string; path?: string; error?: string }> {
   const results = new Map<string, { directory: string; path?: string; error?: string }>()
   if (!census.some((context) => context.route === "hosted-workflow")) return results
@@ -882,16 +885,51 @@ function collectHostedArtifacts(
   let branch: string
   try {
     mkdirSync(root, { recursive: true })
-    branch = runChild(["git", "symbolic-ref", "--short", "HEAD"], "hosted source branch", logs(root, "branch")).trim()
-    const remote = runChild(
-      ["git", "ls-remote", "--exit-code", "origin", `refs/heads/${branch}`],
-      "hosted source revision",
-      logs(root, "remote"),
-    ).trim()
-    if (!branch || remote !== `${sourceRevision}\trefs/heads/${branch}`) {
-      throw new Error(
-        `hosted source revision ${sourceRevision} is not the published branch ${branch}; publish that exact component branch before dispatch`,
+    if (sourceRef === undefined) {
+      branch = runChild(["git", "symbolic-ref", "--short", "HEAD"], "hosted source branch", logs(root, "branch")).trim()
+      const remote = runChild(
+        ["git", "ls-remote", "--exit-code", "origin", `refs/heads/${branch}`],
+        "hosted source revision",
+        logs(root, "remote"),
+      ).trim()
+      if (!branch || remote !== `${sourceRevision}\trefs/heads/${branch}`) {
+        throw new Error(
+          `hosted source revision ${sourceRevision} is not the published branch ${branch}; publish that exact component branch before dispatch`,
+        )
+      }
+    } else {
+      branch = sourceRef
+      const remote = runChild(
+        [
+          "git",
+          "ls-remote",
+          "origin",
+          `refs/heads/${sourceRef}`,
+          `refs/tags/${sourceRef}`,
+          `refs/tags/${sourceRef}^{}`,
+        ],
+        "hosted source revision",
+        logs(root, "remote"),
       )
+      const refs = new Map(
+        remote
+          .trim()
+          .split("\n")
+          .filter(Boolean)
+          .map((line) => {
+            const [oid, name] = line.split("\t")
+            return [name, oid] as const
+          }),
+      )
+      const actual =
+        refs.get(`refs/heads/${sourceRef}`) ??
+        refs.get(`refs/tags/${sourceRef}^{}`) ??
+        refs.get(`refs/tags/${sourceRef}`)
+      if (actual !== sourceRevision) {
+        throw new Error(
+          `hosted source ref ${sourceRef} resolves to ${actual ?? "no published revision"}, not measured source ${sourceRevision}; skipped before dispatch`,
+        )
+      }
     }
   } catch (error) {
     for (const context of census.filter((row) => row.route === "hosted-workflow")) {
@@ -932,16 +970,11 @@ function collectHostedArtifacts(
                 }),
               ),
             )}`,
-            ...(probeIds === undefined
-              ? []
-              : [
-                  "--field",
-                  `context_matrix=${JSON.stringify({
-                    include: hostedAppRows(os).filter((row) => contexts.some((context) => context.id === row.id)),
-                  })}`,
-                  "--field",
-                  `probe_ids=${JSON.stringify(probeIds)}`,
-                ]),
+            "--field",
+            `context_matrix=${JSON.stringify({
+              include: hostedAppRows(os).filter((row) => contexts.some((context) => context.id === row.id)),
+            })}`,
+            ...(probeIds === undefined ? [] : ["--field", `probe_ids=${JSON.stringify(probeIds)}`]),
           ],
           workflow,
           dispatchLogs,
@@ -1164,6 +1197,7 @@ function usage(): never {
       "           WIP: other routes remain named failures; this is not the completed full pass.\n" +
       "  --contexts <JSON-array>  canonical context IDs; omitted runs all, [] starts none.\n" +
       "  --probe-ids <JSON-array>  exact probe IDs; omitted runs each context's full schedule, [] executes none.\n" +
+      "  --source-ref <name>  published hosted branch or tag resolving to this source; omitted uses the current branch.\n" +
       "  --owned-app-transport  where an owned-app row starts: local (default) or an existing ssh host.\n" +
       "           The host, stage and known-hosts file are environment configuration named here, never\n" +
       "           product content; the host's own authority is unchanged by the transport.\n" +
@@ -1184,6 +1218,7 @@ if (import.meta.main) {
   let outputDirectory: string | undefined
   let contextsInput: string | undefined
   let probeIdsInput: string | undefined
+  let sourceRef: string | undefined
   let ownedAppRunner = "local"
   let ownedAppStage: string | undefined
   let ownedAppKnownHosts: string | undefined
@@ -1199,6 +1234,9 @@ if (import.meta.main) {
     } else if (argv[index] === "--probe-ids") {
       probeIdsInput = argv[++index]
       if (probeIdsInput === undefined || probeIdsInput.startsWith("--")) usage()
+    } else if (argv[index] === "--source-ref") {
+      sourceRef = argv[++index]
+      if (!sourceRef || sourceRef.startsWith("--")) usage()
     } else if (argv[index] === "--output") {
       outputDirectory = argv[++index]
       if (!outputDirectory || outputDirectory.startsWith("--")) usage()
@@ -1251,6 +1289,7 @@ if (import.meta.main) {
                     ids: collectorIds(parseJsonStrict("--probe-ids", probeIdsInput), "--probe-ids"),
                   }),
             },
+        sourceRef,
       )
       console.log(`Private development pass: ${pass.directory}; cohort ${pass.complete ? "complete" : "incomplete"}`)
       for (const row of pass.contexts) {
@@ -1271,7 +1310,14 @@ if (import.meta.main) {
       process.exitCode = 1
     }
   } else {
-    if (development || outputDirectory || contextsInput !== undefined || probeIdsInput !== undefined || runs.length) {
+    if (
+      development ||
+      outputDirectory ||
+      contextsInput !== undefined ||
+      probeIdsInput !== undefined ||
+      sourceRef !== undefined ||
+      runs.length
+    ) {
       usage()
     }
     try {

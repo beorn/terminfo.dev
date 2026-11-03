@@ -203,6 +203,10 @@ it.each([
   ["matching", "hosted-selected"],
   ["matching", "hosted-one-os"],
   ["matching", "hosted-contexts"],
+  ["matching", "hosted-census-one"],
+  ["matching", "hosted-ref-main"],
+  ["matching", "hosted-ref-tag"],
+  ["matching", "hosted-ref-mismatch"],
   ["matching", "completed-collector-error"],
   ["matching", "empty-selection"],
   ["matching", "linux-prestart"],
@@ -233,6 +237,21 @@ it.each([
     const bytes = JSON.stringify(raw)
     writeFileSync(original, bytes)
     const originalBytes = readFileSync(original, "utf8")
+    const sourceRef =
+      inputChange === "hosted-ref-tag" ? "fixture-tag" : inputChange.startsWith("hosted-ref-") ? "main" : undefined
+    const catalogSelection =
+      inputChange === "hosted-census-one"
+        ? vi
+            .spyOn(catalog, "loadTerminals")
+            .mockReturnValue(
+              Object.fromEntries(
+                Object.entries(catalog.loadTerminals(CONTENT)).map(([id, terminal]) => [
+                  id,
+                  id === "terminal-app" ? terminal : { ...terminal, historical: true },
+                ]),
+              ),
+            )
+        : undefined
     const textCase = inputChange.startsWith("text-")
     // A current writer snapshot supplies this synthetic tree; no historical declaration is enriched.
     const currentSnapshot = versions.probeSuiteSnapshot()
@@ -332,8 +351,16 @@ it.each([
         return respond("fixture collector started then failed", 17)
       }
       if (command === "git") {
-        if (args[0] === "symbolic-ref") return respond("fixture-collection\n")
-        if (args[0] === "ls-remote") return respond(`${raw.sourceRevision}\trefs/heads/fixture-collection\n`)
+        if (args[0] === "symbolic-ref") return respond(sourceRef ? "" : "fixture-collection\n", sourceRef ? 1 : 0)
+        if (args[0] === "ls-remote") {
+          const refs =
+            inputChange === "hosted-ref-tag"
+              ? [`${"f".repeat(40)}\trefs/tags/fixture-tag`, `${raw.sourceRevision}\trefs/tags/fixture-tag^{}`]
+              : [
+                  `${inputChange === "hosted-ref-mismatch" ? "0".repeat(40) : raw.sourceRevision}\trefs/heads/${sourceRef ?? "fixture-collection"}`,
+                ]
+          return respond(refs.filter((line) => args.includes(line.split("\t")[1])).join("\n") + "\n")
+        }
         throw new Error(`unexpected Git command ${args.join(" ")}`)
       }
       if (command === "gh") {
@@ -347,7 +374,7 @@ it.each([
           return respond(
             JSON.stringify({
               headSha: suite === "different" ? "0".repeat(40) : raw.sourceRevision,
-              headBranch: "fixture-collection",
+              headBranch: sourceRef ?? "fixture-collection",
               event: "workflow_dispatch",
               workflowName: mac ? "macos-measurement" : "windows-measurement",
             }),
@@ -525,7 +552,7 @@ it.each([
           ? { contexts: ["terminal-app/macos", "windows-terminal/windows"], ids: ["sgr.bold"] }
           : inputChange === "hosted-one-os"
             ? { contexts: ["com.microsoft.VSCode/macos"], ids: ["sgr.bold"] }
-            : inputChange === "hosted-contexts"
+            : inputChange === "hosted-contexts" || inputChange.startsWith("hosted-ref-")
               ? { contexts: ["terminal-app/macos"] }
               : inputChange === "selected" || inputChange === "completed-collector-error"
                 ? { contexts: ["xtermjs/headless"], ids: ["sgr.bold"] }
@@ -550,8 +577,25 @@ it.each([
           )
           .sort((a, b) => a[0]!.localeCompare(b[0]!))
       const beforeCorpus = suite === "matching" && inputChange === "none" ? corpusSnapshot() : undefined
-      const pass = await collectPass(directory, { runner: "local" }, selection)
+      const pass = await collectPass(directory, { runner: "local" }, selection, sourceRef)
       if (beforeCorpus) expect(corpusSnapshot()).toEqual(beforeCorpus)
+      if (inputChange === "hosted-census-one") {
+        const dispatches = launcher.mock.calls.filter(([command, args]) => command === "gh" && args?.[0] === "workflow")
+        expect(dispatches).toHaveLength(1)
+        expect(dispatches[0]?.[1]).toContain(
+          `context_matrix=${JSON.stringify({ include: [{ id: "terminal-app", bundle: "/System/Applications/Utilities/Terminal.app" }] })}`,
+        )
+        expect(dispatches[0]?.[1]?.some((argument) => String(argument).startsWith("probe_ids="))).toBe(false)
+        return
+      }
+      if (inputChange === "hosted-ref-mismatch") {
+        expect(
+          launcher.mock.calls.filter(([command, args]) => command === "gh" && args?.[0] === "workflow"),
+        ).toHaveLength(0)
+        expect(pass.contexts[0]?.error ?? pass.contexts[0]?.reason).toContain("main")
+        expect(pass.contexts[0]?.error ?? pass.contexts[0]?.reason).toContain(raw.sourceRevision)
+        return
+      }
       if (inputChange.startsWith("macos-")) {
         expect(pass.contexts).toHaveLength(6)
         expect(pass.contexts.map((row) => row.status)).toEqual(
@@ -615,7 +659,7 @@ it.each([
               "--repo",
               "beorn/terminfo.dev",
               "--ref",
-              "fixture-collection",
+              sourceRef ?? "fixture-collection",
               "--field",
               `capture_run_ids=${JSON.stringify(ids)}`,
               "--field",
@@ -848,6 +892,8 @@ it.each([
             "fixture-collection",
             "--field",
             `capture_run_ids=${JSON.stringify(delegated)}`,
+            "--field",
+            `context_matrix=${JSON.stringify(JSON.parse(parse(readFileSync(join(dirname(CONTENT), ".github", "workflows", `${os}-measurement.yml`), "utf8")).on.workflow_dispatch.inputs.context_matrix.default))}`,
           ],
           expect.anything(),
         )
@@ -888,6 +934,7 @@ it.each([
         expect(windows?.error).toMatch(/schemaVersion/)
       }
     } finally {
+      catalogSelection?.mockRestore()
       collector.mockRestore()
       launcher.mockRestore()
       snapshot?.mockRestore()
