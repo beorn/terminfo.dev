@@ -35,8 +35,9 @@ function assertAuthoringCheckout(cwd: string): void {
     if (!remoteDefault) throw new Error(`Cannot write corpus: git ${originArgs.join(" ")} in ${cwd} named no branch`)
     defaults.add(remoteDefault)
   } else if (originHead.status !== 1) return failure(originArgs, originHead)
-  if (defaults.has(name))
+  if (defaults.has(name)) {
     throw new Error(`Cannot write corpus: HEAD is the default branch (${name}); use an authoring branch`)
+  }
 }
 
 /** Check before creation, resolving existing symlinks without hiding missing or unreadable resources. */

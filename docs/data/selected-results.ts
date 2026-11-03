@@ -429,7 +429,6 @@ export function projectResults(
     treeSuiteId: policy.currentProbeHash,
   }
   const table: Record<string, Record<string, ProbeStatus>> = {}
-  const resolvedRuns = [...runs, ...(policy.workingRuns ?? [])]
   validatePresentationSupersession(interpretations, "interpretations")
   const active = activeInterpretations(interpretations)
   const acceptedRuns: LoadedRun[] = []

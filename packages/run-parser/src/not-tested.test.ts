@@ -7,7 +7,7 @@
  */
 import { describe, expect, it } from "vitest"
 import { readFileSync } from "node:fs"
-import { initializeRunDraft, type ProbeSuiteManifest } from "@terminfo/probe-defs"
+import { initializeRunDraft, type CapturedRunDraft, type ProbeSuiteManifest } from "@terminfo/probe-defs"
 import { parseProbeResults, parseRun, parseSuiteManifest } from "./index.ts"
 
 const catalog = ["alpha", "beta", "gamma"]
@@ -395,7 +395,9 @@ it.each([
 // with its failed harness test. Existing source-answer and generic result tests never decode
 // these retained native captures or remove one side of those facts.
 const nativeCapture = (name: string) => {
-  const run = JSON.parse(readFileSync(new URL(`./fixtures/${name}.capture.json`, import.meta.url), "utf8"))
+  const run = JSON.parse(
+    readFileSync(new URL(`./fixtures/${name}.capture.json`, import.meta.url), "utf8"),
+  ) as CapturedRunDraft
   const ids: string[] = run.results.map((result: { featureId: string }) => result.featureId)
   const manifest: ProbeSuiteManifest = {
     schemaVersion: 4,
@@ -434,7 +436,10 @@ it.each(["missing-cause", "foreign-run", "undeclared-query", "replied-cause"] as
     const { run, read } = nativeCapture("kitty-osc52-harness")
     const id = run.results[0].featureId
     const key = `collector.hostRecipes.${id}`
-    const record = JSON.parse(run.rawReplies[key])
+    const record = JSON.parse(run.rawReplies[key]) as {
+      runId: string
+      captures: Array<{ cause?: unknown; response: string; query: string }>
+    }
     if (mode === "missing-cause") delete record.captures[0].cause
     if (mode === "foreign-run") record.runId = "another-run"
     if (mode === "replied-cause") record.captures[0].response = "response"
@@ -448,7 +453,10 @@ it.each(["record-only", "row-only", "todo-row"] as const)("rejects unmatched har
   const { run, read } = nativeCapture("kitty-osc52-harness")
   const result = run.results[0]
   if (mode === "record-only") result.tests[0].id = "criterion"
-  if (mode === "row-only") run.rawReplies[result.rawReplyRef] = ""
+  if (mode === "row-only") {
+    if (!result.rawReplyRef) throw new Error("Fixture requires a raw reply reference")
+    run.rawReplies[result.rawReplyRef] = ""
+  }
   if (mode === "todo-row") result.tests[0].status = "test-todo"
   expect(() => read(run)).toThrow(/unreproduced-callback record/)
 })
@@ -474,7 +482,11 @@ it.each(["artifact", "input-digest", "input-name", "source-location"] as const)(
   (mode) => {
     const { run, read } = nativeCapture("alacritty-pixel-geometry")
     const key = "collector.hostRecipes.extensions.osc52-read"
-    const record = JSON.parse(run.rawReplies[key])
+    const record = JSON.parse(run.rawReplies[key]) as {
+      causes: Array<{
+        cause: { artifactSha256: string; citation: { sha256: string; input: string; sourceLocation: string } }
+      }>
+    }
     const cause = record.causes[0].cause
     if (mode === "artifact") cause.artifactSha256 = "0".repeat(64)
     if (mode === "input-digest") cause.citation.sha256 = "0".repeat(64)

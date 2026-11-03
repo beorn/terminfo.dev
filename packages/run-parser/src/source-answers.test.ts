@@ -6,7 +6,7 @@
  */
 import { afterEach, expect, it, vi } from "vitest"
 import { readFileSync } from "node:fs"
-import { SOURCE_ANSWERS } from "@terminfo/probe-defs"
+import { SOURCE_ANSWERS, type CapturedRunDraft } from "@terminfo/probe-defs"
 
 const control = vi.hoisted(() => ({ mode: "normal" }))
 vi.mock("node:child_process", async (original) => {
@@ -173,7 +173,7 @@ it("rejects a kept answer borrowed by another feature or measured subject", asyn
     "../../../content/probes-apps/alacritty-0.17.0-linux-f504922f67f074794c588cf3a14e2114.json",
     import.meta.url,
   )
-  const raw = JSON.parse(readFileSync(path, "utf8"))
+  const raw = JSON.parse(readFileSync(path, "utf8")) as CapturedRunDraft
   const manifestPath = new URL(`../../../content/suites/${raw.probeHash}.json`, import.meta.url)
   const manifest = parseSuiteManifest(manifestPath.pathname, readFileSync(manifestPath, "utf8"))
   const read = (value: unknown) =>
@@ -181,7 +181,7 @@ it("rejects a kept answer borrowed by another feature or measured subject", asyn
   const original = read(raw)
   const sourceResult = raw.results.find(
     (result: { featureId: string }) => result.featureId === "extensions.iterm2-images",
-  )
+  )!
   expect(original.results?.find((result) => result.featureId === sourceResult.featureId)?.status).toBe(
     sourceResult.status,
   )
@@ -189,9 +189,9 @@ it("rejects a kept answer borrowed by another feature or measured subject", asyn
   otherSubject.subject.id = "other-measured-terminal"
   expect(() => read(otherSubject)).toThrow("source answer does not apply to measured identity")
   const otherFeature = structuredClone(raw)
-  const target = otherFeature.results.find((result: { featureId: string }) => result.featureId === "sgr.bold")
+  const target = otherFeature.results.find((result: { featureId: string }) => result.featureId === "sgr.bold")!
   target.reviewRef = sourceResult.reviewRef
-  target.tests = target.tests.map((test: { id: string }) =>
+  target.tests = target.tests.map((test) =>
     test.id === "review" ? { ...test, reviewRef: sourceResult.reviewRef } : test,
   )
   expect(() => read(otherFeature)).toThrow("source answer feature mismatch")

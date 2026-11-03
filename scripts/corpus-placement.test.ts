@@ -136,8 +136,9 @@ test.each(["adapter", "catalog", "entry-hash", "term", "lib", "mux", "text-claim
     if (field === "adapter") altered.adapterVersion = "999.0.0"
     if (field === "catalog") altered.catalogIds = [...altered.catalogIds!].reverse()
     if (field === "entry-hash") altered.catalogEntrySha256![altered.catalogIds![0]!] = "f".repeat(64)
-    if (field === "term" || field === "lib" || field === "mux")
+    if (field === "term" || field === "lib" || field === "mux") {
       altered.probes[field] = [...altered.probes[field]].reverse()
+    }
     if (field === "text-claims") altered.textClaims = []
     if (field === "text-qualification") altered.textQualification = { version: 1, recipe: "other" }
     expect(() => placeCollectedRun(f.source, altered, f.content)).toThrow(/Suite .* mismatch|textQualification/)
@@ -160,9 +161,9 @@ test.each([true, false])("library source cleanTree=%s", (cleanTree) => {
     cleanTree,
   }
   f.save()
-  if (cleanTree)
+  if (cleanTree) {
     expect(readFileSync(placeCollectedRun(f.source, f.manifest, f.content))).toEqual(readFileSync(f.source))
-  else {
+  } else {
     expect(() => placeCollectedRun(f.source, f.manifest, f.content)).toThrow(/runtime-identity-unverified/)
     expect(existsSync(join(f.content, "suites"))).toBe(false)
   }
@@ -349,8 +350,9 @@ test.each([
     })
     if (fault === "receipt-hash") writeFileSync(join(f.dir, "host-measured.json"), "{}")
   }
-  if (fault === "uncited-receipt")
+  if (fault === "uncited-receipt") {
     run.rawReplies["collector.disposableOwnership"] = JSON.stringify({ kind: "linux-xvfb-container" })
+  }
   writeFileSync(f.source, JSON.stringify(run))
   if (fault === "valid") {
     expect(readFileSync(placeCollectedRun(f.source, f.manifest, f.content))).toEqual(readFileSync(f.source))
@@ -473,9 +475,9 @@ test.each([
   if (fault === "changed-capture") writeFileSync(join(f.dir, "v3-capture.json"), "changed")
   if (fault === "missing-http") rmSync(join(f.dir, "http-responses", captureHash))
   if (fault === "changed-http") writeFileSync(join(f.dir, "http-responses", captureHash), "changed")
-  if (fault === "valid" || fault === "alacritty-clean")
+  if (fault === "valid" || fault === "alacritty-clean") {
     expect(readFileSync(placeCollectedRun(f.source, f.manifest, f.content))).toEqual(bytes)
-  else {
+  } else {
     if (fault === "missing-completion") {
       expect(() => placeCollectedRun(f.source, f.manifest, f.content)).toThrow(/remain private until Phase 3/)
     }
