@@ -237,3 +237,338 @@ it("rejects a kept answer borrowed by another feature or measured subject", asyn
     parseProbeResults([sourceResult], "source.json", new Set([sourceResult.featureId]), raw.rawReplies, raw.assertions),
   ).toThrow("source answer requires measured subject context")
 })
+
+// #32203: exact00:34 source identity projections from the retained273-cell drafts. The generic
+// resolver tests do not detect missing or wrongly cited live underline answers. No historical run is rewritten.
+const CURRENT_UNDERLINE_INPUTS: Array<{ engine: string; input: import("@terminfo/probe-defs").SourceAnswerInput }> = [
+  {
+    engine: "vt100",
+    input: {
+      subject: {
+        kind: "lib",
+        id: "vt100",
+        version: "0.10.1",
+        os: "linux",
+      },
+      featureId: "sgr.underline.double",
+      runtimeIdentity: {
+        kind: "js",
+        adapterVersion: "0.10.2",
+        termlessRevision: "80dd254111ab82279125555f9ca1e68b112cd7e3",
+        resolvedPath: "vendor/vterm/packages/vt100/src/index.ts",
+        integrity: {
+          kind: "source",
+          repository: "git@github.com:beorn/vterm.git",
+          revision: "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+          treeOid: "b941dae48b25ae8825c394750bda5245c9d93dfa",
+          cleanTree: true,
+        },
+        runtimeFormat: "js",
+        engineVersion: "0.10.1",
+        adapterSources: [
+          {
+            path: "packages/vt100/src/index.ts",
+            blobOid: "99833d737402f9d1d8e3e257e3a255d8aa1facc3",
+          },
+          {
+            path: "packages/vt100/src/backend.ts",
+            blobOid: "cdb8be8c5ebbba68a5920cfa4df27c9deb31745a",
+          },
+        ],
+      },
+      sourceRevision: "172842d5c3b06da9aba3f1d30c03399d7d522b87",
+    },
+  },
+  {
+    engine: "vt220",
+    input: {
+      subject: {
+        kind: "lib",
+        id: "vt220",
+        version: "0.10.1",
+        os: "linux",
+      },
+      featureId: "sgr.underline.double",
+      runtimeIdentity: {
+        kind: "js",
+        adapterVersion: "0.10.2",
+        termlessRevision: "80dd254111ab82279125555f9ca1e68b112cd7e3",
+        resolvedPath: "vendor/vterm/packages/vt220/src/index.ts",
+        integrity: {
+          kind: "source",
+          repository: "git@github.com:beorn/vterm.git",
+          revision: "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+          treeOid: "4205f8936ad1848d1029729f3ada888cd61759a8",
+          cleanTree: true,
+        },
+        runtimeFormat: "js",
+        engineVersion: "0.10.1",
+        adapterSources: [
+          {
+            path: "packages/vt220/src/index.ts",
+            blobOid: "601dd26eb7e753a5396ebdf72f1ef8ee2cc4355f",
+          },
+          {
+            path: "packages/vt220/src/backend.ts",
+            blobOid: "7369e3710e36aa649372fd09011ecfdd6ba47c73",
+          },
+        ],
+      },
+      sourceRevision: "172842d5c3b06da9aba3f1d30c03399d7d522b87",
+    },
+  },
+  {
+    engine: "vt100-rust",
+    input: {
+      subject: {
+        kind: "lib",
+        id: "vt100-rust",
+        version: "0.16.2",
+        os: "linux",
+      },
+      featureId: "sgr.underline.double",
+      runtimeIdentity: {
+        kind: "native",
+        engineVersion: "0.16.2",
+        adapterVersion: "0.10.2",
+        termlessRevision: "80dd254111ab82279125555f9ca1e68b112cd7e3",
+        loadedBinary: {
+          path: "vendor/termless/packages/vt100-rust/termless-vt100-rust.node",
+          sha256: "84a5b6a3a40a7c16c6bae8b64534b730403df911498bb34bded68c3a17e2d408",
+        },
+        provenance: {
+          sha256: "84a5b6a3a40a7c16c6bae8b64534b730403df911498bb34bded68c3a17e2d408",
+          sourceCommit: "286fddf6632e43ccd62f9050be41ec7b2908e43e",
+          buildHash: "30b232d295488042b0d6164e881e319dea8d7fae06ac766b3b568fd4832bf074",
+          toolchain:
+            "rustc 1.94.0 (4a4ef493e 2026-03-02) (built from a source tarball); cargo 1.94.0 (85eff7c80 2026-01-15)",
+          lockSha256: "4cf037e4efa648ca41d08b30ef5c4ce7ada29ad61fcad45a7d1aa97bf55391c6",
+        },
+        adapterSources: [
+          {
+            path: "packages/vt100-rust/src/index.ts",
+            blobOid: "3ddb74f3ae1f79bb356952103853232f69211268",
+          },
+          {
+            path: "packages/vt100-rust/src/backend.ts",
+            blobOid: "9b3477c0fedf8586430781e8f4d17019569af98b",
+          },
+        ],
+      },
+      sourceRevision: "172842d5c3b06da9aba3f1d30c03399d7d522b87",
+    },
+  },
+  {
+    engine: "libvterm",
+    input: {
+      subject: {
+        kind: "lib",
+        id: "libvterm",
+        version: "0.3.3",
+        os: "linux",
+      },
+      featureId: "sgr.underline.double",
+      runtimeIdentity: {
+        kind: "js",
+        adapterVersion: "0.10.2",
+        termlessRevision: "80dd254111ab82279125555f9ca1e68b112cd7e3",
+        resolvedPath: "vendor/termless/packages/libvterm/src/index.ts",
+        integrity: {
+          kind: "source",
+          repository: "git@github.com:beorn/termless.git",
+          revision: "80dd254111ab82279125555f9ca1e68b112cd7e3",
+          treeOid: "ae0b11bb808b8c402c168869d7caa5a5f62566c2",
+          cleanTree: true,
+        },
+        runtimeFormat: "wasm",
+        engineVersion: "0.3.3",
+        loadedBinary: {
+          path: "vendor/termless/packages/libvterm/wasm/libvterm.wasm",
+          sha256: "3d67045bb43c5e4081c70dc58088af8f735416c20df2d7843d765e5aad8ef62a",
+        },
+        adapterSources: [
+          {
+            path: "packages/libvterm/src/index.ts",
+            blobOid: "2b4708b1081e701b99893ca055ded781dc46cf25",
+          },
+          {
+            path: "packages/libvterm/src/backend.ts",
+            blobOid: "eb513ccd443e30c7a869a8ba41f8126e1c0ddf00",
+          },
+          {
+            path: "packages/libvterm/src/wasm-bindings.ts",
+            blobOid: "2bbd4d5cf59b8d53db8f5c0329d2ed7853c43e45",
+          },
+          {
+            path: "packages/libvterm/wasm/libvterm.js",
+            blobOid: "1e784be87614ab924b96844009919b7c21ce150e",
+          },
+        ],
+      },
+      sourceRevision: "172842d5c3b06da9aba3f1d30c03399d7d522b87",
+    },
+  },
+]
+const UNDERLINE_COLOUR_IDS = ["sgr.underline.color", "sgr.underline-color-rgb", "sgr.underline-color-indexed"]
+const UNDERLINE_STYLE_IDS = [
+  "sgr.underline.double",
+  "sgr.underline.curly",
+  "sgr.underline.dotted",
+  "sgr.underline.dashed",
+]
+it.each(CURRENT_UNDERLINE_INPUTS)(
+  "qualifies the current $engine underline negatives while leaving SGR59 pending",
+  async ({ engine, input }) => {
+    const { resolveMeasuredSourceAnswer } = await import("./source-answers.ts")
+    const styles = engine === "libvterm" ? UNDERLINE_STYLE_IDS.slice(2) : UNDERLINE_STYLE_IDS
+    for (const featureId of [...UNDERLINE_COLOUR_IDS, ...styles]) {
+      expect(resolveMeasuredSourceAnswer({ ...input, featureId }), featureId).toMatchObject({
+        kind: "answer",
+        status: "unsupported",
+      })
+    }
+    expect(resolveMeasuredSourceAnswer({ ...input, featureId: "sgr.underline-color-reset" })).toEqual({ kind: "none" })
+  },
+)
+
+// Reproducible projection of retained vt100 runfe2b05cf/suite987ca95c0608: one real
+// negative and its exact measured context. Existing OSC176 controls own the same linker; no second linker.
+const UNDERLINE_RETAINED_CAPTURE = {
+  schemaVersion: 4,
+  source: {
+    kind: "live",
+  },
+  runId: "fe2b05cf-0cd4-45cc-9677-5b494dacd5b3",
+  suiteId: "987ca95c0608",
+  probeHash: "987ca95c0608",
+  sourceRevision: "172842d5c3b06da9aba3f1d30c03399d7d522b87",
+  intendedSubject: {
+    kind: "lib",
+    id: "vt100",
+    os: "linux",
+  },
+  results: [
+    {
+      featureId: "sgr.underline.double",
+      attempt: {
+        scope: "probe",
+        startedAt: "2026-11-03T08:36:40.215Z",
+      },
+      tests: [
+        {
+          id: "review",
+          status: "test-todo",
+          attempt: {
+            scope: "none",
+          },
+          assertionRefs: [],
+          rawReplyRef: "sgr.underline.double",
+          reason: "Cell readback cannot distinguish unsupported double underline from a collapsed underline style",
+        },
+      ],
+      criterionBranch: "source-negative-review",
+      assertionType: "buffer_state",
+      rawReplyRef: "sgr.underline.double",
+      status: "test-todo",
+      reason: "Cell readback cannot distinguish unsupported double underline from a collapsed underline style",
+    },
+  ],
+  rawReplies: {
+    "sgr.underline.double":
+      '{"char":"X","fg":null,"bg":null,"bold":false,"dim":null,"italic":null,"underline":false,"underlineColor":null,"strikethrough":null,"inverse":false,"blink":false,"overline":null,"hidden":false,"wide":false,"continuation":false}',
+  },
+  assertions: [
+    {
+      featureId: "sgr.underline.double",
+      assertionType: "buffer_state",
+      kind: "negative",
+      expected: "sgr.underline.double: attribute applied to the rendered X cell",
+      observed:
+        '{"char":"X","fg":null,"bg":null,"bold":false,"dim":null,"italic":null,"underline":false,"underlineColor":null,"strikethrough":null,"inverse":false,"blink":false,"overline":null,"hidden":false,"wide":false,"continuation":false}',
+      rawReplyRef: "sgr.underline.double",
+    },
+  ],
+  screenshotRefs: [],
+  runtimeIdentity: {
+    kind: "js",
+    adapterVersion: "0.10.2",
+    termlessRevision: "80dd254111ab82279125555f9ca1e68b112cd7e3",
+    resolvedPath: "vendor/vterm/packages/vt100/src/index.ts",
+    integrity: {
+      kind: "source",
+      repository: "git@github.com:beorn/vterm.git",
+      revision: "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+      treeOid: "b941dae48b25ae8825c394750bda5245c9d93dfa",
+      cleanTree: true,
+    },
+    runtimeFormat: "js",
+    engineVersion: "0.10.1",
+    adapterSources: [
+      {
+        path: "packages/vt100/src/index.ts",
+        blobOid: "99833d737402f9d1d8e3e257e3a255d8aa1facc3",
+      },
+      {
+        path: "packages/vt100/src/backend.ts",
+        blobOid: "cdb8be8c5ebbba68a5920cfa4df27c9deb31745a",
+      },
+    ],
+  },
+  subject: {
+    kind: "lib",
+    id: "vt100",
+    version: "0.10.1",
+    os: "linux",
+    osVersion: "7.0.0-34-generic",
+    outerTerminal: null,
+    mux: null,
+    config: "80x24 default Termless backend",
+    permissions: null,
+  },
+  identity: "unverified",
+  measuredAt: "2026-11-03T08:36:47.070Z",
+  origin: {
+    kind: "collector",
+  },
+} as CapturedRunDraft
+it.each(["measured", "positive", "other-feature", "missing"])(
+  "keeps the retained underline witness at the collection/reader boundary (%s)",
+  async (mode) => {
+    const { finalizeCollectedDraft } = await import("../../terminfo.dev/src/capture-writer.ts")
+    const { parseProbeResults } = await import("./index.ts")
+    const capture = structuredClone(UNDERLINE_RETAINED_CAPTURE)
+    const featureId = "sgr.underline.double"
+    if (mode === "positive") capture.assertions[0]!.kind = "positive"
+    if (mode === "other-feature") capture.assertions[0]!.featureId = "sgr.underline.single"
+    if (mode === "missing") capture.assertions = []
+    const before = structuredClone(capture)
+    const finalized = finalizeCollectedDraft(capture)
+    expect(capture).toEqual(before)
+    expect(finalized.assertions).toEqual(before.assertions)
+    const result = finalized.results[0]!
+    if (mode === "measured") {
+      expect(result.status).toBe("unsupported")
+      expect(result.tests[0]?.assertionRefs).toEqual([0])
+      expect(
+        parseProbeResults(
+          finalized.results,
+          "retained-underline-control",
+          new Set([featureId]),
+          finalized.rawReplies,
+          finalized.assertions,
+          [],
+          [],
+          {
+            subject: finalized.subject,
+            runtimeIdentity: finalized.runtimeIdentity,
+            sourceRevision: finalized.sourceRevision,
+          },
+        )[0]?.status,
+      ).toBe("unsupported")
+    } else {
+      expect(result.status).toBe("test-todo")
+      expect(result.tests[0]?.assertionRefs).toEqual([])
+      expect(result.reason).toContain("current deciding negative assertion")
+    }
+  },
+)
