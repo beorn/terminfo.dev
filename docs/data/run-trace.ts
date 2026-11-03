@@ -1,6 +1,6 @@
 /**
  * Stored-run traces (#30565). For each run a reader can open a result from, one lazy document holds the
- * stored record of every cell that no presentation review has decided. @cto's rulings 3f4b1d98 and
+ * stored record of every cell through the public evidence allowlist. @cto's rulings 3f4b1d98 and
  * 2239262c (one document per displayed run) set what it publishes without that review; docs/api.md
  * "Evidence and publication" states the same contract for API readers.
  *
@@ -268,9 +268,9 @@ const REPLY_LIST: ReadonlySet<string> = new Set([
   "unicode.wrap-boundary",
 ])
 
-/** A read window: bytes a terminal returned, which stay behind presentation review. */
+/** A read window: terminal reply bytes retained privately unless allowlisted. */
 const READ_WINDOW = /(?:^raw|Raw)(?:Base64)?$/
-/** A reason code; a free-text reason stays behind presentation review. */
+/** A reason code; free-text reasons remain private. */
 const REASON_CODE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 
 interface TraceQuery {
@@ -514,12 +514,11 @@ function traceDocument<Cell>(
   }
 }
 
-/** The trace of a current run's results that carry no presentation decision; none when every result has one. */
+/** The allowlisted trace of a current run's stored results. */
 export function currentTrace(version: CurrentSelectedVersion) {
   const headless = version.subject.kind === "lib"
   const cells: Record<string, CurrentTraceCell> = {}
   for (const result of version.results) {
-    if (version.presentations[result.featureId]) continue
     const rawReply = result.rawReplyRef === undefined ? undefined : version.rawReplies[result.rawReplyRef]
     if (result.rawReplyRef !== undefined && rawReply === undefined) {
       throw new Error(`Run ${version.runId}/${result.featureId}: missing retained raw reply ${result.rawReplyRef}`)

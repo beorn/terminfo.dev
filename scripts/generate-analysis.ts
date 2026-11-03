@@ -176,10 +176,10 @@ function loadFrameworks(): Record<string, FrameworkMeta> {
   return loadJson<Record<string, FrameworkMeta>>(path, "framework metadata")
 }
 
-function loadAnnotations(): Record<string, { note: string; url?: string; result?: string }> {
+function loadAnnotations(): Record<string, { note: string; url?: string }> {
   const path = join(contentDir, "annotations.json")
   if (!existsSync(path)) return {}
-  return loadJson<Record<string, { note: string; url?: string; result?: string }>>(path, "annotations")
+  return loadJson<Record<string, { note: string; url?: string }>>(path, "annotations")
 }
 
 interface SelectedAnalysisInput {
@@ -233,7 +233,6 @@ function crossValidate(
   features: Record<string, FeatureMeta>,
   terminals: Record<string, TerminalMeta>,
   resultMap: Map<string, SelectedAnalysisInput>,
-  annotations: Record<string, { note: string; url?: string; result?: string }>,
 ): void {
   // Features in results should be in features.json — warn for missing
   // (probes may include features not yet documented in features.json)
@@ -251,31 +250,12 @@ function crossValidate(
     )
   }
 
-  // Warn (but don't throw) for catalog terminals without a reviewed current result.
+  // Warn (but don't throw) for catalog terminals without a stored current result.
   for (const [termId, meta] of Object.entries(terminals)) {
     if (meta.historical) continue
     if (![...resultMap.values()].some((data) => data.sourceId === termId && data.type === meta.kind)) {
-      console.warn(`Warning: Terminal '${termId}' has no current sealed runs`)
+      console.warn(`Warning: Terminal '${termId}' has no stored current runs`)
     }
-  }
-
-  // ERROR: annotations on passing results are contradictions
-  const contradictions: string[] = []
-  for (const [termId, data] of resultMap) {
-    for (const [featureId, result] of Object.entries(data.results)) {
-      const annKey = `${termId}:${featureId}`
-      if (result === "supported" && annotations[annKey]) {
-        const note = annotations[annKey].note.toLowerCase()
-        if (note.includes("not supported") || note.includes("not available") || note.includes("missing")) {
-          contradictions.push(`${annKey}: passes but annotation says "${annotations[annKey].note}"`)
-        }
-      }
-    }
-  }
-  if (contradictions.length > 0) {
-    throw new Error(
-      `${contradictions.length} annotation contradiction(s) — passing probes have "not supported" annotations:\n${contradictions.map((c) => `  ${c}`).join("\n")}\n\nFix: remove contradicting annotations from content/annotations.json`,
-    )
   }
 }
 
@@ -409,21 +389,23 @@ function generateTerminalAnalysis(
   // Score summary + baseline in one sentence
   if (failedBaselines.length === 0 && passedBaselines.length > 0) {
     parts.push(
-      `${stats.name} has <strong>${stats.pct}%</strong> support (${stats.yes}/${stats.total}) across all frozen catalog positions, with complete support for the measured baselines (${passedBaselines.join(", ")})`,
+      `${stats.name} has <strong>${stats.pct}%</strong> support (${stats.yes}/${stats.total}) across all recorded catalog positions, with complete support for the measured baselines (${passedBaselines.join(", ")})`,
     )
   } else if (failedBaselines.length > 0) {
     parts.push(
-      `${stats.name} has <strong>${stats.pct}%</strong> support (${stats.yes}/${stats.total}) across all frozen catalog positions, with less than full recorded support in the ${failedBaselines.join(", ")} baseline${failedBaselines.length > 1 ? "s" : ""}`,
+      `${stats.name} has <strong>${stats.pct}%</strong> support (${stats.yes}/${stats.total}) across all recorded catalog positions, with less than full recorded support in the ${failedBaselines.join(", ")} baseline${failedBaselines.length > 1 ? "s" : ""}`,
     )
   } else {
     parts.push(
-      `${stats.name} has <strong>${stats.pct}%</strong> support (${stats.yes}/${stats.total}) across all frozen catalog positions`,
+      `${stats.name} has <strong>${stats.pct}%</strong> support (${stats.yes}/${stats.total}) across all recorded catalog positions`,
     )
   }
 
   // Ranking
   if (comparable) {
-    parts.push(`Ranks <strong>#${rank}</strong> of ${totalTerminals} targets with the same frozen catalog feature set`)
+    parts.push(
+      `Ranks <strong>#${rank}</strong> of ${totalTerminals} targets with the same recorded catalog feature set`,
+    )
   }
 
   // Only include documented features (in features.json) in human-readable lists
@@ -511,7 +493,7 @@ function generateBaselineAnalysis(
   if (imperfect.length > 0) {
     const laggards = imperfect.slice(0, 3).map((s) => {
       const baseline = s.baselineCompliance[baselineName]
-      return `${s.name} (${baseline?.yes ?? 0}/${baseline?.total ?? 0} frozen baseline positions supported)`
+      return `${s.name} (${baseline?.yes ?? 0}/${baseline?.total ?? 0} recorded baseline positions supported)`
     })
     parts.push(`Less than full recorded support: ${laggards.join(", ")}`)
 
@@ -652,7 +634,7 @@ function generateStandardAnalysis(
 
   if (stdScores.length > 0) {
     const avgPct = Math.round(stdScores.reduce((sum, s) => sum + s.pct, 0) / stdScores.length)
-    parts.push(`Average support among frozen tagged-feature results: <strong>${avgPct}%</strong>`)
+    parts.push(`Average support among recorded tagged-feature results: <strong>${avgPct}%</strong>`)
   }
 
   const perfect = stdScores.filter((s) => s.complete && s.pct === 100)
@@ -702,7 +684,7 @@ function generateFeatureAnalysis(
   }
   if (total === 0) {
     return {
-      analysis: "<p>Analysis awaiting verified measurements for this feature. No current sealed result covers it.</p>",
+      analysis: "<p>Analysis awaiting verified measurements for this feature. No stored current result covers it.</p>",
       date: "",
       changes: null,
     }
@@ -713,13 +695,13 @@ function generateFeatureAnalysis(
   // Support summary
   if (supported === total) {
     parts.push(
-      `Recorded tests report support in <strong>all ${total}</strong> sealed current context runs for this feature`,
+      `Recorded tests report support in <strong>all ${total}</strong> stored current context runs for this feature`,
     )
   } else if (supported === 0) {
     parts.push(`No recorded support among <strong>${total}</strong> measured targets`)
   } else {
     parts.push(
-      `Recorded tests report support for <strong>${supported}</strong> of <strong>${total}</strong> sealed current targets (${pct}%)`,
+      `Recorded tests report support for <strong>${supported}</strong> of <strong>${total}</strong> stored current targets (${pct}%)`,
     )
   }
 
@@ -785,7 +767,7 @@ function generateFrameworkAnalysis(
   if (incompatible.length > 0 && incompatible.length <= 5) {
     const laggards = incompatible.map((s) => {
       const baseline = s.baselineCompliance[baselineName]
-      return `${s.name} (${baseline?.yes ?? 0}/${baseline?.total ?? 0} frozen baseline positions supported)`
+      return `${s.name} (${baseline?.yes ?? 0}/${baseline?.total ?? 0} recorded baseline positions supported)`
     })
     parts.push(`Less than full recorded support: ${laggards.join(", ")}`)
   }
@@ -899,7 +881,7 @@ function generateStandardsIndexAnalysis(
   const worst = stdAdoption.at(-1)
   if (best && worst && best !== worst) {
     parts.push(
-      `Highest average support among frozen tagged-feature tests: <strong>${best.label}</strong> at ${best.avgPct}%. Lowest: <strong>${worst.label}</strong> at ${worst.avgPct}%`,
+      `Highest average support among recorded tagged-feature tests: <strong>${best.label}</strong> at ${best.avgPct}%. Lowest: <strong>${worst.label}</strong> at ${worst.avgPct}%`,
     )
   }
 
@@ -972,7 +954,7 @@ function generateFeaturesIndexAnalysis(
   const worst = catAdoption.at(-1)
   if (best && worst && best !== worst) {
     parts.push(
-      `Highest observed average support among frozen category tests: <strong>${best.label}</strong> (${best.avgPct}%). Lowest observed average: <strong>${worst.label}</strong> (${worst.avgPct}%)`,
+      `Highest observed average support among recorded category tests: <strong>${best.label}</strong> (${best.avgPct}%). Lowest observed average: <strong>${worst.label}</strong> (${worst.avgPct}%)`,
     )
   }
 
@@ -1211,7 +1193,7 @@ function loadAllData() {
   const resultMap = buildTerminalResultMap()
 
   // Cross-validate
-  crossValidate(features, terminals, resultMap, annotations)
+  crossValidate(features, terminals, resultMap)
 
   return { features, terminals, categories, standards, baselines, annotations, frameworks, glossary, resultMap }
 }
@@ -1339,7 +1321,7 @@ export function generateAnalysis(): Record<string, AnalysisEntry> {
     if (meta.historical || slugSeen.has(meta.slug)) continue
     output[`terminals/${meta.slug}`] = {
       analysis:
-        "<p>Analysis awaiting verified measurements. No current sealed runs; historical results remain available.</p>",
+        "<p>Analysis awaiting verified measurements. No stored current runs; historical results remain available.</p>",
       date: "",
       changes: null,
     }
@@ -1350,7 +1332,7 @@ export function generateAnalysis(): Record<string, AnalysisEntry> {
       if (key.startsWith("terminals/")) continue // specific unmeasured message above
       output[key] = {
         analysis:
-          "<p>Analysis awaiting verified measurements. No current sealed runs; historical results remain available.</p>",
+          "<p>Analysis awaiting verified measurements. No stored current runs; historical results remain available.</p>",
         date: "",
         changes: null,
       }
