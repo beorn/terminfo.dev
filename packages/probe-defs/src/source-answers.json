@@ -27032,7 +27032,11 @@
       "version": "0.10.1",
       "os": "linux"
     },
+<<<<<<< HEAD
     "featureId": "sgr.underline-color-indexed",
+=======
+    "featureId": "extensions.osc1-icon",
+>>>>>>> 280524d096c2d7ec16bd5fbd0512ab42dde06254
     "answers": [
       {
         "status": "unsupported",
@@ -27042,10 +27046,26 @@
             "commit": "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
             "path": "packages/vt100/src/screen.ts",
             "oid": "cd71776df5f72918cd06934d724a5c2e3585a89d"
+<<<<<<< HEAD
+=======
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "bdaa263fdec6480cceb4b383aff027d3a46fd483",
+            "path": "packages/vt100/src/index.ts",
+            "oid": "99833d737402f9d1d8e3e257e3a255d8aa1facc3"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "bdaa263fdec6480cceb4b383aff027d3a46fd483",
+            "path": "packages/vt100/src/backend.ts",
+            "oid": "cdb8be8c5ebbba68a5920cfa4df27c9deb31745a"
+>>>>>>> 280524d096c2d7ec16bd5fbd0512ab42dde06254
           }
         ],
         "originals": [
           {
+<<<<<<< HEAD
             "reviewRef": "dev3-32203-vt100-sgr.underline-color-indexed-source9e99",
             "reviewer": "@dev/3",
             "reason": "sgr.underline-color-indexed: Vterm9e99e4d2 packages/vt100/src/screen.ts445–501 stores boolean underline; plain4/24 work, colon groups are ignored whole and58 consumes parameters without storing a colour; no21/59 dispatch. Closed31248 preserves this classic contract. The requested explicit underline colour has no implementing engine state at this source. This is a cited source negative corroborated by the retained negative buffer witness; null readback alone was not used as a support verdict.",
@@ -27053,6 +27073,15 @@
               "Vterm9e99e4d2 packages/vt100/src/screen.ts445–501 stores boolean underline; plain4/24 work, colon groups are ignored whole and58 consumes parameters without storing a colour; no21/59 dispatch. Closed31248 preserves this classic contract.",
               "Retained runfe2b05cf-0cd4-45cc-9677-5b494dacd5b3, suite987ca95c0608, source172842d5c3b06da9aba3f1d30c03399d7d522b87; negative buffer witness: SGR 58 index 5/4 underline colors match the opposite SGR 38 palette controls, not their same-foreground defaults",
               "Scope approval CTO b1ed8962/36be0743; four sgr.underline-color-reset cells stay pending under the existing criterion. Source audit by @dev/3, not an attributed CTO per-cell review."
+=======
+            "reviewRef": "31997-current-vt100-0.10.1-1-source-review",
+            "reviewer": "@dev/1",
+            "reason": "Independent source review by @dev/1 (GO36303782, 2026-11-03) confirms current pinned source: vt100 9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vt100/src/screen.ts handleOSC has only cases 0/2 (title) and 1 (explicitly ignored); no icon-name state is stored. Current Termless bdaa263fdec6480cceb4b383aff027d3a46fd483 adapter feed forwards OSC bytes to that parser and adds only CSI18t geometry interception. This is engine-library source rejection, not UI appearance, host delivery, reply silence or CPR evidence.",
+            "sources": [
+              "9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vt100/src/screen.ts:505-520; full OSC dispatch census 31997-vterm-osc-census.txt",
+              "bdaa263fdec6480cceb4b383aff027d3a46fd483 packages/vt100/src/backend.ts feed/getTitle and full returned interface; no icon/pointer/notification target writer",
+              "/hh/main.hab/state/instruments/terminfo-remeasure/runs/2026-11-03T08-34-04-461Z-6533f83738c6/headless/vt100-0.10.1-linux-fe2b05cf-0cd4-45cc-9677-5b494dacd5b3.draft.json: retained current source-negative review; no capture or original changed"
+>>>>>>> 280524d096c2d7ec16bd5fbd0512ab42dde06254
             ]
           }
         ]
@@ -27066,7 +27095,11 @@
       "version": "0.10.1",
       "os": "linux"
     },
+<<<<<<< HEAD
     "featureId": "sgr.underline-color-rgb",
+=======
+    "featureId": "extensions.osc22-pointer",
+>>>>>>> 280524d096c2d7ec16bd5fbd0512ab42dde06254
     "answers": [
       {
         "status": "unsupported",
@@ -27076,10 +27109,26 @@
             "commit": "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
             "path": "packages/vt100/src/screen.ts",
             "oid": "cd71776df5f72918cd06934d724a5c2e3585a89d"
+<<<<<<< HEAD
+=======
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "bdaa263fdec6480cceb4b383aff027d3a46fd483",
+            "path": "packages/vt100/src/index.ts",
+            "oid": "99833d737402f9d1d8e3e257e3a255d8aa1facc3"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "bdaa263fdec6480cceb4b383aff027d3a46fd483",
+            "path": "packages/vt100/src/backend.ts",
+            "oid": "cdb8be8c5ebbba68a5920cfa4df27c9deb31745a"
+>>>>>>> 280524d096c2d7ec16bd5fbd0512ab42dde06254
           }
         ],
         "originals": [
           {
+<<<<<<< HEAD
             "reviewRef": "dev3-32203-vt100-sgr.underline-color-rgb-source9e99",
             "reviewer": "@dev/3",
             "reason": "sgr.underline-color-rgb: Vterm9e99e4d2 packages/vt100/src/screen.ts445–501 stores boolean underline; plain4/24 work, colon groups are ignored whole and58 consumes parameters without storing a colour; no21/59 dispatch. Closed31248 preserves this classic contract. The requested explicit underline colour has no implementing engine state at this source. This is a cited source negative corroborated by the retained negative buffer witness; null readback alone was not used as a support verdict.",
@@ -27087,6 +27136,15 @@
               "Vterm9e99e4d2 packages/vt100/src/screen.ts445–501 stores boolean underline; plain4/24 work, colon groups are ignored whole and58 consumes parameters without storing a colour; no21/59 dispatch. Closed31248 preserves this classic contract.",
               "Retained runfe2b05cf-0cd4-45cc-9677-5b494dacd5b3, suite987ca95c0608, source172842d5c3b06da9aba3f1d30c03399d7d522b87; negative buffer witness: sgr.underline-color-rgb: X has explicit rgb(255,0,128) underline distinct from the reset/default B cell",
               "Scope approval CTO b1ed8962/36be0743; four sgr.underline-color-reset cells stay pending under the existing criterion. Source audit by @dev/3, not an attributed CTO per-cell review."
+=======
+            "reviewRef": "31997-current-vt100-0.10.1-22-source-review",
+            "reviewer": "@dev/1",
+            "reason": "Independent source review by @dev/1 (GO36303782, 2026-11-03) confirms current pinned source: vt100 9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vt100/src/screen.ts handleOSC has only cases 0/2 (title) and 1 (explicitly ignored); no case 22 or target-state writer exists. Current Termless bdaa263fdec6480cceb4b383aff027d3a46fd483 adapter feed forwards OSC bytes to that parser and adds only CSI18t geometry interception. This is engine-library source rejection, not UI appearance, host delivery, reply silence or CPR evidence.",
+            "sources": [
+              "9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vt100/src/screen.ts:505-520; full OSC dispatch census 31997-vterm-osc-census.txt",
+              "bdaa263fdec6480cceb4b383aff027d3a46fd483 packages/vt100/src/backend.ts feed/getTitle and full returned interface; no icon/pointer/notification target writer",
+              "/hh/main.hab/state/instruments/terminfo-remeasure/runs/2026-11-03T08-34-04-461Z-6533f83738c6/headless/vt100-0.10.1-linux-fe2b05cf-0cd4-45cc-9677-5b494dacd5b3.draft.json: retained current source-negative review; no capture or original changed"
+>>>>>>> 280524d096c2d7ec16bd5fbd0512ab42dde06254
             ]
           }
         ]
@@ -27100,7 +27158,11 @@
       "version": "0.10.1",
       "os": "linux"
     },
+<<<<<<< HEAD
     "featureId": "sgr.underline.color",
+=======
+    "featureId": "extensions.osc777-notify",
+>>>>>>> 280524d096c2d7ec16bd5fbd0512ab42dde06254
     "answers": [
       {
         "status": "unsupported",
@@ -27110,10 +27172,26 @@
             "commit": "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
             "path": "packages/vt100/src/screen.ts",
             "oid": "cd71776df5f72918cd06934d724a5c2e3585a89d"
+<<<<<<< HEAD
+=======
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "bdaa263fdec6480cceb4b383aff027d3a46fd483",
+            "path": "packages/vt100/src/index.ts",
+            "oid": "99833d737402f9d1d8e3e257e3a255d8aa1facc3"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "bdaa263fdec6480cceb4b383aff027d3a46fd483",
+            "path": "packages/vt100/src/backend.ts",
+            "oid": "cdb8be8c5ebbba68a5920cfa4df27c9deb31745a"
+>>>>>>> 280524d096c2d7ec16bd5fbd0512ab42dde06254
           }
         ],
         "originals": [
           {
+<<<<<<< HEAD
             "reviewRef": "dev3-32203-vt100-sgr.underline.color-source9e99",
             "reviewer": "@dev/3",
             "reason": "sgr.underline.color: Vterm9e99e4d2 packages/vt100/src/screen.ts445–501 stores boolean underline; plain4/24 work, colon groups are ignored whole and58 consumes parameters without storing a colour; no21/59 dispatch. Closed31248 preserves this classic contract. The requested explicit underline colour has no implementing engine state at this source. This is a cited source negative corroborated by the retained negative buffer witness; null readback alone was not used as a support verdict.",
@@ -27257,6 +27335,15 @@
               "Vterm9e99e4d2 packages/vt100/src/screen.ts445–501 stores boolean underline; plain4/24 work, colon groups are ignored whole and58 consumes parameters without storing a colour; no21/59 dispatch. Closed31248 preserves this classic contract.",
               "Retained runfe2b05cf-0cd4-45cc-9677-5b494dacd5b3, suite987ca95c0608, source172842d5c3b06da9aba3f1d30c03399d7d522b87; negative buffer witness: sgr.underline.double: attribute applied to the rendered X cell",
               "Scope approval CTO b1ed8962/36be0743; four sgr.underline-color-reset cells stay pending under the existing criterion. Source audit by @dev/3, not an attributed CTO per-cell review."
+=======
+            "reviewRef": "31997-current-vt100-0.10.1-777-source-review",
+            "reviewer": "@dev/1",
+            "reason": "Independent source review by @dev/1 (GO36303782, 2026-11-03) confirms current pinned source: vt100 9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vt100/src/screen.ts handleOSC has only cases 0/2 (title) and 1 (explicitly ignored); no case 777 or target-state writer exists. Current Termless bdaa263fdec6480cceb4b383aff027d3a46fd483 adapter feed forwards OSC bytes to that parser and adds only CSI18t geometry interception. This is engine-library source rejection, not UI appearance, host delivery, reply silence or CPR evidence.",
+            "sources": [
+              "9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vt100/src/screen.ts:505-520; full OSC dispatch census 31997-vterm-osc-census.txt",
+              "bdaa263fdec6480cceb4b383aff027d3a46fd483 packages/vt100/src/backend.ts feed/getTitle and full returned interface; no icon/pointer/notification target writer",
+              "/hh/main.hab/state/instruments/terminfo-remeasure/runs/2026-11-03T08-34-04-461Z-6533f83738c6/headless/vt100-0.10.1-linux-fe2b05cf-0cd4-45cc-9677-5b494dacd5b3.draft.json: retained current source-negative review; no capture or original changed"
+>>>>>>> 280524d096c2d7ec16bd5fbd0512ab42dde06254
             ]
           }
         ]
@@ -27270,7 +27357,11 @@
       "version": "0.10.1",
       "os": "linux"
     },
+<<<<<<< HEAD
     "featureId": "sgr.underline-color-indexed",
+=======
+    "featureId": "extensions.osc1-icon",
+>>>>>>> 280524d096c2d7ec16bd5fbd0512ab42dde06254
     "answers": [
       {
         "status": "unsupported",
@@ -27280,10 +27371,26 @@
             "commit": "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
             "path": "packages/vt220/src/screen.ts",
             "oid": "cc5c5c79b0c882cb1c335f2ccaf2c555884a05ee"
+<<<<<<< HEAD
+=======
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "bdaa263fdec6480cceb4b383aff027d3a46fd483",
+            "path": "packages/vt220/src/index.ts",
+            "oid": "601dd26eb7e753a5396ebdf72f1ef8ee2cc4355f"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "bdaa263fdec6480cceb4b383aff027d3a46fd483",
+            "path": "packages/vt220/src/backend.ts",
+            "oid": "7369e3710e36aa649372fd09011ecfdd6ba47c73"
+>>>>>>> 280524d096c2d7ec16bd5fbd0512ab42dde06254
           }
         ],
         "originals": [
           {
+<<<<<<< HEAD
             "reviewRef": "dev3-32203-vt220-sgr.underline-color-indexed-source9e99",
             "reviewer": "@dev/3",
             "reason": "sgr.underline-color-indexed: Vterm9e99e4d2 packages/vt220/src/screen.ts610–697 stores boolean underline; plain4/24 work, colon groups are ignored whole and58 consumes parameters without storing a colour; no21/59 dispatch. Closed31248 preserves this classic contract. The requested explicit underline colour has no implementing engine state at this source. This is a cited source negative corroborated by the retained negative buffer witness; null readback alone was not used as a support verdict.",
@@ -27291,6 +27398,15 @@
               "Vterm9e99e4d2 packages/vt220/src/screen.ts610–697 stores boolean underline; plain4/24 work, colon groups are ignored whole and58 consumes parameters without storing a colour; no21/59 dispatch. Closed31248 preserves this classic contract.",
               "Retained rune150af30-e60f-4589-8e27-9eaa898a6d05, suite987ca95c0608, source172842d5c3b06da9aba3f1d30c03399d7d522b87; negative buffer witness: SGR 58 index 5/4 underline colors match the opposite SGR 38 palette controls, not their same-foreground defaults",
               "Scope approval CTO b1ed8962/36be0743; four sgr.underline-color-reset cells stay pending under the existing criterion. Source audit by @dev/3, not an attributed CTO per-cell review."
+=======
+            "reviewRef": "31997-current-vt220-0.10.1-1-source-review",
+            "reviewer": "@dev/1",
+            "reason": "Independent source review by @dev/1 (GO36303782, 2026-11-03) confirms current pinned source: vt220 9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vt220/src/screen.ts handleOSC has only cases 0/2 (title) and 1 (explicitly ignored); no icon-name state is stored. Current Termless bdaa263fdec6480cceb4b383aff027d3a46fd483 adapter feed forwards OSC bytes to that parser and adds only CSI18t geometry interception. This is engine-library source rejection, not UI appearance, host delivery, reply silence or CPR evidence.",
+            "sources": [
+              "9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vt220/src/screen.ts:701-716; full OSC dispatch census 31997-vterm-osc-census.txt",
+              "bdaa263fdec6480cceb4b383aff027d3a46fd483 packages/vt220/src/backend.ts feed/getTitle and full returned interface; no icon/pointer/notification target writer",
+              "/hh/main.hab/state/instruments/terminfo-remeasure/runs/2026-11-03T08-34-04-461Z-6533f83738c6/headless/vt220-0.10.1-linux-e150af30-e60f-4589-8e27-9eaa898a6d05.draft.json: retained current source-negative review; no capture or original changed"
+>>>>>>> 280524d096c2d7ec16bd5fbd0512ab42dde06254
             ]
           }
         ]
@@ -27304,7 +27420,11 @@
       "version": "0.10.1",
       "os": "linux"
     },
+<<<<<<< HEAD
     "featureId": "sgr.underline-color-rgb",
+=======
+    "featureId": "extensions.osc22-pointer",
+>>>>>>> 280524d096c2d7ec16bd5fbd0512ab42dde06254
     "answers": [
       {
         "status": "unsupported",
@@ -27314,10 +27434,26 @@
             "commit": "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
             "path": "packages/vt220/src/screen.ts",
             "oid": "cc5c5c79b0c882cb1c335f2ccaf2c555884a05ee"
+<<<<<<< HEAD
+=======
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "bdaa263fdec6480cceb4b383aff027d3a46fd483",
+            "path": "packages/vt220/src/index.ts",
+            "oid": "601dd26eb7e753a5396ebdf72f1ef8ee2cc4355f"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "bdaa263fdec6480cceb4b383aff027d3a46fd483",
+            "path": "packages/vt220/src/backend.ts",
+            "oid": "7369e3710e36aa649372fd09011ecfdd6ba47c73"
+>>>>>>> 280524d096c2d7ec16bd5fbd0512ab42dde06254
           }
         ],
         "originals": [
           {
+<<<<<<< HEAD
             "reviewRef": "dev3-32203-vt220-sgr.underline-color-rgb-source9e99",
             "reviewer": "@dev/3",
             "reason": "sgr.underline-color-rgb: Vterm9e99e4d2 packages/vt220/src/screen.ts610–697 stores boolean underline; plain4/24 work, colon groups are ignored whole and58 consumes parameters without storing a colour; no21/59 dispatch. Closed31248 preserves this classic contract. The requested explicit underline colour has no implementing engine state at this source. This is a cited source negative corroborated by the retained negative buffer witness; null readback alone was not used as a support verdict.",
@@ -27325,6 +27461,15 @@
               "Vterm9e99e4d2 packages/vt220/src/screen.ts610–697 stores boolean underline; plain4/24 work, colon groups are ignored whole and58 consumes parameters without storing a colour; no21/59 dispatch. Closed31248 preserves this classic contract.",
               "Retained rune150af30-e60f-4589-8e27-9eaa898a6d05, suite987ca95c0608, source172842d5c3b06da9aba3f1d30c03399d7d522b87; negative buffer witness: sgr.underline-color-rgb: X has explicit rgb(255,0,128) underline distinct from the reset/default B cell",
               "Scope approval CTO b1ed8962/36be0743; four sgr.underline-color-reset cells stay pending under the existing criterion. Source audit by @dev/3, not an attributed CTO per-cell review."
+=======
+            "reviewRef": "31997-current-vt220-0.10.1-22-source-review",
+            "reviewer": "@dev/1",
+            "reason": "Independent source review by @dev/1 (GO36303782, 2026-11-03) confirms current pinned source: vt220 9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vt220/src/screen.ts handleOSC has only cases 0/2 (title) and 1 (explicitly ignored); no case 22 or target-state writer exists. Current Termless bdaa263fdec6480cceb4b383aff027d3a46fd483 adapter feed forwards OSC bytes to that parser and adds only CSI18t geometry interception. This is engine-library source rejection, not UI appearance, host delivery, reply silence or CPR evidence.",
+            "sources": [
+              "9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vt220/src/screen.ts:701-716; full OSC dispatch census 31997-vterm-osc-census.txt",
+              "bdaa263fdec6480cceb4b383aff027d3a46fd483 packages/vt220/src/backend.ts feed/getTitle and full returned interface; no icon/pointer/notification target writer",
+              "/hh/main.hab/state/instruments/terminfo-remeasure/runs/2026-11-03T08-34-04-461Z-6533f83738c6/headless/vt220-0.10.1-linux-e150af30-e60f-4589-8e27-9eaa898a6d05.draft.json: retained current source-negative review; no capture or original changed"
+>>>>>>> 280524d096c2d7ec16bd5fbd0512ab42dde06254
             ]
           }
         ]
@@ -27338,7 +27483,11 @@
       "version": "0.10.1",
       "os": "linux"
     },
+<<<<<<< HEAD
     "featureId": "sgr.underline.color",
+=======
+    "featureId": "extensions.osc777-notify",
+>>>>>>> 280524d096c2d7ec16bd5fbd0512ab42dde06254
     "answers": [
       {
         "status": "unsupported",
@@ -27348,6 +27497,7 @@
             "commit": "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
             "path": "packages/vt220/src/screen.ts",
             "oid": "cc5c5c79b0c882cb1c335f2ccaf2c555884a05ee"
+<<<<<<< HEAD
           }
         ],
         "originals": [
@@ -28300,22 +28450,35 @@
             "commit": "9d6d2112335080312ef8c36667fa717ded4f7daf",
             "path": "include/vterm.h",
             "oid": "44e15023c0bd524b063385b25edbc33a52bfb410"
+=======
+>>>>>>> 280524d096c2d7ec16bd5fbd0512ab42dde06254
           },
           {
             "repository": "git@github.com:beorn/termless.git",
             "commit": "bdaa263fdec6480cceb4b383aff027d3a46fd483",
+<<<<<<< HEAD
             "path": "packages/libvterm/wasm/libvterm.wasm.receipt.json",
             "oid": "178e8db507779f4903f6b99436006cf8d418a952"
+=======
+            "path": "packages/vt220/src/index.ts",
+            "oid": "601dd26eb7e753a5396ebdf72f1ef8ee2cc4355f"
+>>>>>>> 280524d096c2d7ec16bd5fbd0512ab42dde06254
           },
           {
             "repository": "git@github.com:beorn/termless.git",
             "commit": "bdaa263fdec6480cceb4b383aff027d3a46fd483",
+<<<<<<< HEAD
             "path": "packages/libvterm/build/flat-api.c",
             "oid": "17896892f427a04d7a9a963e7a3614c517a73ecc"
+=======
+            "path": "packages/vt220/src/backend.ts",
+            "oid": "7369e3710e36aa649372fd09011ecfdd6ba47c73"
+>>>>>>> 280524d096c2d7ec16bd5fbd0512ab42dde06254
           }
         ],
         "originals": [
           {
+<<<<<<< HEAD
             "reviewRef": "dev3-32203-libvterm-sgr.underline-color-indexed-wasm7122",
             "reviewer": "@dev/3",
             "reason": "sgr.underline-color-indexed: Same libvterm0.3.3 upstream9d6d211 pen.c/vterm.h; current WASM712298aff45c7c53a22dc028b13cb58dae1e984199b520bbbc0475ae64d83159 independently hashes to its Termlessbdaa receipt and exact upstream source. Separate original for the application-cursor/selection build, not a retained3d67 qualification. The requested explicit underline colour has no implementing engine state at this source. This is a cited source negative corroborated by the retained negative buffer witness; null readback alone was not used as a support verdict.",
@@ -28695,6 +28858,15 @@
               "Same libvterm0.3.3 upstream9d6d211 pen.c/vterm.h; current WASM712298aff45c7c53a22dc028b13cb58dae1e984199b520bbbc0475ae64d83159 independently hashes to its Termlessbdaa receipt and exact upstream source. Separate original for the application-cursor/selection build, not a retained3d67 qualification.",
               "Retained run08449bd3-837c-4dea-b8da-4c950fd10673, suite987ca95c0608, source172842d5c3b06da9aba3f1d30c03399d7d522b87; negative buffer witness: sgr.underline.dotted: attribute applied to the rendered X cell",
               "Scope approval CTO b1ed8962/36be0743; four sgr.underline-color-reset cells stay pending under the existing criterion. Source audit by @dev/3, not an attributed CTO per-cell review."
+=======
+            "reviewRef": "31997-current-vt220-0.10.1-777-source-review",
+            "reviewer": "@dev/1",
+            "reason": "Independent source review by @dev/1 (GO36303782, 2026-11-03) confirms current pinned source: vt220 9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vt220/src/screen.ts handleOSC has only cases 0/2 (title) and 1 (explicitly ignored); no case 777 or target-state writer exists. Current Termless bdaa263fdec6480cceb4b383aff027d3a46fd483 adapter feed forwards OSC bytes to that parser and adds only CSI18t geometry interception. This is engine-library source rejection, not UI appearance, host delivery, reply silence or CPR evidence.",
+            "sources": [
+              "9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vt220/src/screen.ts:701-716; full OSC dispatch census 31997-vterm-osc-census.txt",
+              "bdaa263fdec6480cceb4b383aff027d3a46fd483 packages/vt220/src/backend.ts feed/getTitle and full returned interface; no icon/pointer/notification target writer",
+              "/hh/main.hab/state/instruments/terminfo-remeasure/runs/2026-11-03T08-34-04-461Z-6533f83738c6/headless/vt220-0.10.1-linux-e150af30-e60f-4589-8e27-9eaa898a6d05.draft.json: retained current source-negative review; no capture or original changed"
+>>>>>>> 280524d096c2d7ec16bd5fbd0512ab42dde06254
             ]
           }
         ]

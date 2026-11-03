@@ -63,9 +63,9 @@ export const ADAPTER_SOURCE_AUDITS = {
   },
   alacritty: {
     "packages/alacritty/src/index.ts": "b4154cbd6ef4a83ce2cbf3dcf26ff13d645efd05",
-    // Mouse-encoding binding (termless 51ae97d) changes the backend blob; index, native and loader are unchanged.
-    "packages/alacritty/src/backend.ts": "3f187a4b17ef7b86902008d05fb8d0d684328a06",
-    "packages/alacritty/native/src/lib.rs": "e4720590d652773f1e89caf2b5cb399ee9112e39",
+    // Cell.hidden readback (termless 2f73fc28, #31901) changes backend and native blobs; index and loader are unchanged.
+    "packages/alacritty/src/backend.ts": "27b78b1264cd5d2ed72705ba36c9735b29e874c5",
+    "packages/alacritty/native/src/lib.rs": "1779ff4f042f7f285ab3d396da039408b492be10",
     "src/load-native.ts": "34e142550085450ab02138184626716ad0d6b546",
   },
   wezterm: {

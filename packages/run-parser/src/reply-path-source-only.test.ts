@@ -20,7 +20,11 @@ const manifest: ProbeSuiteManifest & { schemaVersion: 4 } = {
   probes: { term: [], lib: [FEATURE], mux: [] },
 }
 
-const draft = (status: "unsupported" | "supported", assertionType?: string) => ({
+const draft = (
+  status: "unsupported" | "supported",
+  assertionType?: string,
+  branch: string = REPLY_PATH_AUDIT_REVIEW,
+) => ({
   schemaVersion: 4,
   source: { kind: "live" },
   runId: "reply-path-run",
@@ -63,7 +67,7 @@ const draft = (status: "unsupported" | "supported", assertionType?: string) => (
     {
       featureId: FEATURE,
       attempt: { scope: "probe", startedAt: "2026-11-03T06:36:52.893Z" },
-      criterionBranch: REPLY_PATH_AUDIT_REVIEW,
+      criterionBranch: branch,
       ...(assertionType !== undefined && { assertionType }),
       reviewRef: REF,
       tests: [
@@ -82,8 +86,13 @@ const draft = (status: "unsupported" | "supported", assertionType?: string) => (
   textSnapshotRefs: [],
 })
 
-const read = (status: "unsupported" | "supported", assertionType?: string) =>
-  parseRun("reply-path.json", JSON.stringify(draft(status, assertionType)), [FEATURE], new Map([[SUITE, manifest]]))
+const read = (status: "unsupported" | "supported", assertionType?: string, branch?: string) =>
+  parseRun(
+    "reply-path.json",
+    JSON.stringify(draft(status, assertionType, branch)),
+    [FEATURE],
+    new Map([[SUITE, manifest]]),
+  )
 
 it("seals a reply-path cell its kept answer decides, with no fabricated assertion", () => {
   const parsed = read("unsupported")
@@ -96,4 +105,19 @@ it("still refuses a reply-path cell that claims evidence it does not have", () =
   expect(() => read("supported")).toThrow("support result requires measured evidence")
   // A declared assertion type with nothing bound is refused by the assertion reader, never accepted as proof.
   expect(() => read("unsupported", "buffer_state")).toThrow("lacks bound negative assertion")
+})
+
+// @cto 32f3d0c1 condition 2. Option (a) — the reader admitting a source-only negative on a no-observable
+// branch — was refused, so this pins it: the same status and the same absent assertion are admitted or
+// refused purely by which branch recorded the measurement. The cure for a mis-selected branch is the probe
+// choosing the branch that carries the answer, never the reader admitting the one that does not.
+it("refuses an Unsupported standing on a no-observable branch, so (b) cannot decay into (a)", () => {
+  expect(() => read("unsupported", undefined, "color-readback-review")).toThrow(
+    "support result requires measured evidence",
+  )
+  // Untestable-only is refused earlier still; this is the shape that cost the 01:34 Ghostty backend.
+  expect(() => read("unsupported", undefined, "headless-observable-review")).toThrow(
+    "headless-observable-review review admits only an untestable decision",
+  )
+  expect(read("unsupported", undefined, REPLY_PATH_AUDIT_REVIEW).results?.[0]?.status).toBe("unsupported")
 })

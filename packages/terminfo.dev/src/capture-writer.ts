@@ -4,6 +4,7 @@ import { join } from "node:path"
 import {
   REPLY_PATH_AUDIT_REVIEW,
   SOURCE_NEGATIVE_REVIEW,
+  UNTESTABLE_ONLY_REVIEW_BRANCHES,
   finalizeProbeResult,
   type CapturedRunDraft as CollectedProbeRun,
   type AssertionType,
@@ -133,6 +134,14 @@ export function finalizeCollectedDraft(
       ...(captured.runtimeIdentity && { runtimeIdentity: captured.runtimeIdentity }),
       sourceRevision: captured.sourceRevision,
     })
+    if (
+      result.criterionBranch !== undefined &&
+      UNTESTABLE_ONLY_REVIEW_BRANCHES.has(result.criterionBranch) &&
+      resolution.kind === "answer" &&
+      resolution.status !== "untestable"
+    ) {
+      return finalizeProbeResult(result)
+    }
     // A reply-path gate measured zero reply bytes; a kept answer that claims support contradicts the measurement.
     if (
       result.criterionBranch === REPLY_PATH_AUDIT_REVIEW &&

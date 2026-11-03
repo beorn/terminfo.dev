@@ -6,7 +6,12 @@
  */
 import { afterEach, expect, it, vi } from "vitest"
 import { readFileSync } from "node:fs"
-import { SOURCE_ANSWERS, type CapturedRunDraft } from "@terminfo/probe-defs"
+import {
+  HEADLESS_OBSERVABLE_REVIEW,
+  REPLY_PATH_AUDIT_REVIEW,
+  SOURCE_ANSWERS,
+  type CapturedRunDraft,
+} from "@terminfo/probe-defs"
 
 const control = vi.hoisted(() => ({ mode: "normal" }))
 vi.mock("node:child_process", async (original) => {
@@ -164,6 +169,31 @@ it.each(["measured", "missing", "positive", "other-feature", "empty-expected", "
     }
   },
 )
+
+// A same-version kept negative cannot decide a missing-observable review. Existing source
+// qualification cases cover deciding assertions, but not this route; reply audits remain eligible.
+it.each([
+  [HEADLESS_OBSERVABLE_REVIEW, "test-todo"],
+  [REPLY_PATH_AUDIT_REVIEW, "unsupported"],
+])("keeps source answers within the selected review route (%s)", async (criterionBranch, status) => {
+  const { finalizeCollectedDraft } = await import("../../terminfo.dev/src/capture-writer.ts")
+  const path = new URL(
+    "../../../content/probes-libs/ghostty-0.4.0-linux-3f3e920e-ebf8-4d81-ace1-52445a05a992.json",
+    import.meta.url,
+  )
+  const capture = JSON.parse(readFileSync(path, "utf8")) as CapturedRunDraft
+  const row = capture.results.find((result) => result.featureId === "extensions.iterm2-images")!
+  capture.results = [{ ...row, criterionBranch, tests: row.tests.map((test) => ({ ...test, id: "review" })) }]
+  const finalized = finalizeCollectedDraft(capture)
+  expect(finalized.results[0]).toMatchObject({
+    criterionBranch,
+    status,
+    tests: [{ id: "review", status, assertionRefs: [] }],
+  })
+  expect(capture.results[0]?.status).toBe("test-todo")
+  expect(finalized.rawReplies).toEqual(capture.rawReplies)
+  expect(finalized.assertions).toEqual(capture.assertions)
+})
 
 // Requirement: kept answer references identify their own feature and measured subject. The
 // existing positive read does not detect a borrowed row or a missing subject context.
