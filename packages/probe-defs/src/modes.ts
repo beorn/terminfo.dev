@@ -205,196 +205,292 @@ async function primaryRestoreCapture(
 }
 
 /**
- * SGR-stack capture: the target pushes bold, RESETS the live attributes, applies italic to X, and
- * pops before Y. A working roundtrip leaves Y bold-only (bold restored, no italic); an ignored
- * push/pop leaves Y italic-only (bold never restored, italic never cleared). Comparing both
- * attributes in one frame — bold present AND italic absent — is the discriminator. A pending push
- * is popped on capture failure so the fixture never leaves the stack unbalanced.
+ * What each push/pop row claims, one home for its headless and capture arms (#31904, @cto 6e4f7300
+ * and 0613b68d). Each fixture named here is the one both arms run.
  */
-async function xtSgrStackCapture(ctx: TermProbeSource, id: string, label: string): Promise<ProbeCallbackResult> {
-  const refusal = captureRefusal(ctx, 5, 6, id)
-  if (refusal) return refusal
+const STACK_EXPECTED = {
+  sgr: {
+    push: "XTPUSHSGR saves the state current at push time: after set bold and italic, push, set plain, pop, bold and italic is restored",
+    pop: "XTPOPSGR restores the pushed state: after set bold, push, set italic, pop, bold is restored",
+  },
+  mode: {
+    push: "XTSAVE saves the state current at save time: after set DECAWM on, save, set DECAWM off, save, set DECAWM on, restore, DECAWM off is restored",
+    pop: "XTRESTORE restores the saved state: after set DECAWM off, save, set DECAWM on, restore, DECAWM off is restored",
+  },
+  color: {
+    push: "XTPUSHCOLORS saves the state current at push time: after set index 1 magenta, push, set index 1 green, pop, magenta is restored",
+    pop: "XTPOPCOLORS restores the pushed state: after set index 1 blue, push, set index 1 green, pop, blue is restored",
+  },
+} as const
+
+type CaptureSpec = Parameters<typeof captureRegionVerdict>[2]
+/** A fixture's target frame read as the same-run expected frame, its ignored contrast, or neither. */
+type CaptureRead = { match: "expected" | "ignored" | "other"; result: ProbeCallbackResult }
+
+/**
+ * One stack fixture through the shared capture oracle, its frames labelled with the fixture name.
+ * A refusal or an unreviewed capture carries no observation; the row returns it unchanged rather
+ * than reading a state from it.
+ */
+async function captureStackFixture(
+  ctx: TermProbeSource,
+  id: string,
+  fixture: string,
+  spec: CaptureSpec,
+): Promise<CaptureRead | ProbeCallbackResult> {
+  const result = await captureRegionVerdict(ctx, `${id} ${fixture}`, spec)
+  if (!result) throw new Error(`${id}: owned ${fixture} capture disappeared`)
+  const outcome = result.observation?.outcome
+  if (outcome === undefined) return result
+  return { match: outcome === "supported" ? "expected" : outcome === "unsupported" ? "ignored" : "other", result }
+}
+
+/** One row's grade from its fixture readings, with every fixture's frames kept as its evidence. */
+function captureStackResult(
+  operation: "push" | "pop",
+  expected: string,
+  readings: { pop: StackReading; push: StackReading },
+  reads: readonly CaptureRead[],
+  decided: { pass: boolean | null; note?: string } = stackVerdict(operation, readings.pop, readings.push),
+): ProbeCallbackResult {
+  const frames = reads.flatMap((read) => read.result.observation?.frames ?? [])
+  const screenshotRef = reads.find((read) => read.result.observation?.screenshotRef)?.result.observation?.screenshotRef
+  const observed = JSON.stringify({ ...readings, fixtures: reads.map((read) => read.result.response) })
+  const evidence = { assertionType: "screenshot" as const, frames, ...(screenshotRef && { screenshotRef }) }
+  if (decided.pass === null) {
+    return {
+      pass: false,
+      response: observed,
+      observation: { outcome: "inconclusive", reason: "insufficient-evidence", ...evidence, note: decided.note },
+    }
+  }
+  const signal = `${operation}-observed`
+  const status = decided.pass ? ("supported" as const) : ("unsupported" as const)
+  return {
+    pass: decided.pass,
+    criterionBranch: signal,
+    tests: [{ id: signal, status, assertionRefs: [0] }],
+    response: observed,
+    assertions: [
+      { assertionType: "screenshot", kind: decided.pass ? "positive" : "negative", expected, observed },
+    ],
+    observation: { outcome: status, ...evidence, ...(decided.note && { note: decided.note }) },
+  }
+}
+
+/**
+ * The push and pop fixtures of a stack row, captured in that order so a stale stack keeps the POP
+ * fixture's snapshot into the PUSH fixture. The PUSH fixture is compared with the earlier state
+ * first; only when it matches neither that nor the push-time state is it captured again against the
+ * persisted state, so every PUSH reading the verdict table needs is a measured frame.
+ */
+async function captureStackRow(
+  ctx: TermProbeSource,
+  operation: "push" | "pop",
+  id: string,
+  expected: string,
+  popSpec: CaptureSpec,
+  pushSpec: (contrast: "earlier" | "persisted") => CaptureSpec,
+): Promise<ProbeCallbackResult> {
+  const popRead = await captureStackFixture(ctx, id, "POP fixture", popSpec)
+  if (!("match" in popRead)) return popRead
+  const pop: StackReading = popRead.match === "expected" ? "restored" : popRead.match === "ignored" ? "persisted" : "other"
+  const reads = [popRead]
+  let push: StackReading = "other"
+  for (const contrast of ["earlier", "persisted"] as const) {
+    const pushRead = await captureStackFixture(ctx, id, `PUSH fixture (${contrast} contrast)`, pushSpec(contrast))
+    if (!("match" in pushRead)) return pushRead
+    reads.push(pushRead)
+    push = pushRead.match === "expected" ? "restored" : pushRead.match === "ignored" ? contrast : "other"
+    if (push !== "other") break
+  }
+  return captureStackResult(operation, expected, { pop, push }, reads)
+}
+
+/** Route stack writes through a tracker so a capture failure pops only a push that is still open. */
+function trackedStack(ctx: TermProbeSource, push: string, pop: string): { ctx: TermProbeSource; open: () => boolean } {
   let pushed = false
-  const stackCtx: TermProbeSource = {
-    ...ctx,
-    write(sequence) {
-      // Keep the original successful-write boundary around push/pop even though the oracle
-      // supplies one fixture string: a failure before the push must not pop somebody else's stack.
-      for (const part of sequence.split(/(\x1b\[#[{}])/)) {
-        if (!part) continue
-        ctx.write(part)
-        if (part === "\x1b[#{") pushed = true
-        if (part === "\x1b[#}") pushed = false
-      }
+  const split = new RegExp(`(${push.replace(/[[\]{}#]/g, "\\$&")}|${pop.replace(/[[\]{}#]/g, "\\$&")})`)
+  return {
+    open: () => pushed,
+    ctx: {
+      ...ctx,
+      write(sequence) {
+        for (const part of sequence.split(split)) {
+          if (!part) continue
+          ctx.write(part)
+          if (part === push) pushed = true
+          if (part === pop) pushed = false
+        }
+      },
     },
   }
+}
+
+/**
+ * SGR-stack capture (#31904): the headless arm's two fixtures, read from the pixels of Y alone.
+ * - POP fixture: bold, push, reset, italic X, pop, Y. Bold Y is restored, italic Y persisted.
+ * - PUSH fixture: bold, italic, push, reset, X, pop, Y. Bold-and-italic Y is restored, bold Y the
+ *   earlier state, plain Y persisted.
+ * The seed is a blank region, distinct from every Y the fixtures can leave.
+ */
+async function xtSgrStackCapture(ctx: TermProbeSource, operation: "push" | "pop"): Promise<ProbeCallbackResult> {
+  const id = operation === "push" ? "modes.xtpushsgr" : "modes.xtpopsgr"
+  const refusal = captureRefusal(ctx, 5, 6, id)
+  if (refusal) return refusal
+  const stack = trackedStack(ctx, "\x1b[#{", "\x1b[#}")
   try {
     const reset = "\x1b[0m\x1b[2J\x1b[H"
     const paintY = (attributes: string) => `${reset}\x1b[3;4H${attributes}Y\x1b[0m`
-    const stackEdit = `${reset}\x1b[3;3H\x1b[1m\x1b[#{\x1b[0m\x1b[3mX\x1b[#}Y\x1b[0m`
-    const results: ProbeCallbackResult[] = []
-    for (const axis of [
-      { signal: "bold-restored", seed: paintY("") },
-      { signal: "italic-cleared", seed: paintY("\x1b[1;3m") },
-    ]) {
-      const result = await captureRegionVerdict(stackCtx, id, {
-        region: { top: 3, left: 4, bottom: 3, right: 4 },
-        sentinel: { row: 4, col: 1 },
-        cursorRow: 5,
-        minRows: 5,
-        minCols: 6,
-        seed: axis.seed,
-        edit: stackEdit,
-        expected: paintY("\x1b[1m"),
-        ignored: paintY("\x1b[3m"),
-        discriminator: { signal: axis.signal, expected: "change" },
-        timeoutMs: DEFAULT_TIMEOUT_MS,
-      })
-      if (!result) throw new Error(`${id}: owned SGR capture disappeared`)
-      results.push(result)
-    }
-    const assertions = results.flatMap((result) => result.assertions ?? [])
-    let offset = 0
-    const tests = results.flatMap((result, index) => {
-      const axis = index === 0 ? "bold-restored" : "italic-cleared"
-      const axisTests =
-        result.tests ??
-        (result.observation?.outcome === "inconclusive"
-          ? [
-              {
-                id: "review",
-                status: "test-todo" as const,
-                reason: result.observation.note ?? `${axis}: insufficient visual evidence`,
-              },
-            ]
-          : undefined)
-      if (!axisTests?.length) throw new Error(`${id}: ${axis} returned no required criterion rows`)
-      const rows = axisTests.map((test) => ({
-        ...test,
-        id: test.id === axis ? axis : `${axis}.${test.id}`,
-        ...(test.assertionRefs && { assertionRefs: test.assertionRefs.map((ref) => ref + offset) }),
-      }))
-      offset += result.assertions?.length ?? 0
-      return rows
+    const spec = (edit: string, restored: string, ignored: string): CaptureSpec => ({
+      region: { top: 3, left: 4, bottom: 3, right: 4 },
+      sentinel: { row: 4, col: 1 },
+      cursorRow: 5,
+      minRows: 5,
+      minCols: 6,
+      seed: reset,
+      edit: `${reset}\x1b[3;3H${edit}Y\x1b[0m`,
+      expected: paintY(restored),
+      ignored: paintY(ignored),
+      discriminator: { signal: "y-restored", expected: "change" },
+      timeoutMs: DEFAULT_TIMEOUT_MS,
     })
-    const frames = results.flatMap((result) => result.observation?.frames ?? [])
-    const screenshotRef = results.find((result) => result.observation?.screenshotRef)?.observation?.screenshotRef
-    const allSupported = tests.length === 2 && tests.every((test) => test.status === "supported")
-    const negative = tests.some((test) => test.status === "unsupported")
-    if (!results.some((result) => result.observation)) {
-      return {
-        pass: false,
-        criterionBranch: "visual-review",
-        response: JSON.stringify({ label, axes: results.map((result) => result.response) }),
-        tests: [
-          {
-            id: "review",
-            status: tests.some((test) => test.status === "test-failure") ? "test-failure" : "test-todo",
-            reason: tests.map((test) => `${test.id}: ${test.reason}`).join("; "),
-          },
-        ],
-      }
-    }
-    return {
-      pass: allSupported,
-      criterionBranch: "sgr-stack-axes",
-      tests,
-      assertions,
-      response: JSON.stringify({ label, axes: results.map((result) => result.response) }),
-      observation: {
-        outcome: negative ? "unsupported" : allSupported ? "supported" : "inconclusive",
-        ...(!negative && !allSupported && { reason: "insufficient-evidence" as const }),
-        assertionType: "screenshot",
-        frames,
-        ...(screenshotRef && { screenshotRef }),
-        note: "Bold restoration and italic clearing are separately qualified against their own seed and the same bold-only/italic-only references; both run the same stack edit",
-      },
-    }
+    return await captureStackRow(
+      stack.ctx,
+      operation,
+      id,
+      `${id}: ${STACK_EXPECTED.sgr[operation]}`,
+      spec("\x1b[1m\x1b[#{\x1b[0m\x1b[3mX\x1b[#}", "\x1b[1m", "\x1b[3m"),
+      (contrast) => spec("\x1b[1m\x1b[3m\x1b[#{\x1b[0mX\x1b[#}", "\x1b[1;3m", contrast === "earlier" ? "\x1b[1m" : ""),
+    )
   } finally {
-    if (pushed) ctx.write("\x1b[#}")
+    if (stack.open()) ctx.write("\x1b[#}")
     ctx.write("\x1b[0m\x1b[2J\x1b[H")
   }
 }
 
 /**
- * Mode save/restore capture: the fixture reaches the true measured wrap boundary. Both frames
- * write exactly `ctx.cols` Xs so the cursor is on the last column, then one `!`. With wrap off the
- * `!` overwrites the last column and stays on row 1; with wrap saved-then-restored it wraps to
- * row 2. Both frames therefore differ only by the restored wrap state.
+ * Mode save/restore capture (#31904): the headless arm's three fixtures, read from the pixels of
+ * row 2, column 1. Every frame writes exactly `ctx.cols` Xs then one `!`: with wrap off the `!`
+ * stays on row 1 and the cell is empty; with wrap on it holds the `!`.
+ * - Restore control: off, save, on, restore. Off is restored, on persisted.
+ * - On-control: on, save, off, restore. On is restored; off means restore returned an unsaved state.
+ * - Overwrite test: on, save, off, save, on, restore. Off is restored; on is the earlier save when the
+ *   controls restored, and persisted when they did not.
+ * An off-valued fixture's seed already shows off, so it is a declared no-change whose measured
+ * negative is the on contrast (@cto 009e40cd, 4e804806).
  */
-async function xtModeSaveCapture(ctx: TermProbeSource, id: string): Promise<ProbeCallbackResult> {
+async function xtModeSaveCapture(ctx: TermProbeSource, operation: "push" | "pop"): Promise<ProbeCallbackResult> {
+  const id = operation === "push" ? "modes.xtsave" : "modes.xtrestore"
   const refusal = captureRefusal(ctx, 4, 2, id)
   if (refusal) return refusal
+  const expected = `${id}: ${STACK_EXPECTED.mode[operation]}`
   const xs = "X".repeat(Number.isSafeInteger(ctx.cols) && ctx.cols > 0 ? ctx.cols : 0)
-  const reset = "\x1b[?7l\x1b[0m\x1b[2J\x1b[H"
-  const result = await captureRegionVerdict(ctx, id, {
-    region: { top: 2, left: 1, bottom: 2, right: 1 },
-    sentinel: { row: 3, col: 1 },
-    cursorRow: 4,
-    minRows: 4,
-    minCols: 2,
-    seed: `${reset}${xs}!`,
-    edit: `\x1b[?7h\x1b[?7s\x1b[?7l\x1b[?7r\x1b[0m\x1b[2J\x1b[H${xs}!`,
-    expected: `${reset}\x1b[2;1H!`,
-    ignored: reset,
-    discriminator: { signal: "wrap-restored", expected: "change" },
-    cleanup: "\x1b[?7h",
-    timeoutMs: DEFAULT_TIMEOUT_MS,
+  const [OFF, ON, SAVE, RESTORE] = ["\x1b[?7l", "\x1b[?7h", "\x1b[?7s", "\x1b[?7r"]
+  const reset = `${OFF}\x1b[0m\x1b[2J\x1b[H`
+  const offFrame = reset
+  const onFrame = `${reset}\x1b[2;1H!`
+  const fixture = (name: string, steps: readonly string[], restoresOn: boolean) =>
+    captureStackFixture(ctx, id, name, {
+      region: { top: 2, left: 1, bottom: 2, right: 1 },
+      sentinel: { row: 3, col: 1 },
+      cursorRow: 4,
+      minRows: 4,
+      minCols: 2,
+      seed: `${reset}${xs}!`,
+      edit: `${steps.join("")}\x1b[0m\x1b[2J\x1b[H${xs}!`,
+      expected: restoresOn ? onFrame : offFrame,
+      ignored: restoresOn ? offFrame : onFrame,
+      discriminator: { signal: "wrap-restored", expected: restoresOn ? "change" : "no-change" },
+      cleanup: ON,
+      timeoutMs: DEFAULT_TIMEOUT_MS,
+    })
+  const control = await fixture("restore control", [OFF, SAVE, ON, RESTORE], false)
+  if (!("match" in control)) return control
+  const onControl = await fixture("on-control", [ON, SAVE, OFF, RESTORE], true)
+  if (!("match" in onControl)) return onControl
+  const overwrite = await fixture("overwrite test", [ON, SAVE, OFF, SAVE, ON, RESTORE], false)
+  if (!("match" in overwrite)) return overwrite
+  const reads = [control, onControl, overwrite]
+  const pop: StackReading =
+    control.match === "ignored"
+      ? "persisted"
+      : control.match === "expected" && onControl.match === "expected"
+        ? "restored"
+        : "other"
+  const push: StackReading =
+    overwrite.match === "expected"
+      ? "restored"
+      : overwrite.match === "ignored"
+        ? pop === "restored"
+          ? "earlier"
+          : "persisted"
+        : "other"
+  if (control.match === "expected" && onControl.match === "ignored") {
+    return captureStackResult(operation, expected, { pop, push }, reads, {
+      pass: operation === "pop" ? false : null,
+      note:
+        operation === "pop"
+          ? "restore returned DECAWM off after on was saved"
+          : "restore returned DECAWM off whatever was saved, so no save was observed",
+    })
+  }
+  const verdict = stackVerdict(operation, pop, push)
+  return captureStackResult(operation, expected, { pop, push }, reads, {
+    pass: verdict.pass,
+    note:
+      pop === "persisted" && push === "persisted"
+        ? "save then restore restored no earlier state"
+        : verdict.note?.replace("push saved no current snapshot", "save kept the earlier saved state"),
   })
-  if (!result) throw new Error(`${id}: owned mode-save capture disappeared`)
-  return result
 }
 
 /**
- * Color-stack capture: index 1 is first set to a KNOWN baseline (blue) so a pop is measurably
- * distinct. The target pushes the palette, redefines index 1 green, prints X, pops, then prints Y.
- * Judge the roundtrip by Y ALONE: Y must match the blue baseline control, so a green Y means the pop
- * did not restore the saved palette. Do NOT grade on X: X is printed through SGR 38;5;1, a palette
- * reference into index 1, so a correct pop may recolor the already-drawn X blue -- its green-or-blue
- * color is not evidence either way, and a blue X is not an ignored push/pop. If a pre-pop green X is
- * wanted as extra evidence, capture it before the pop instead of reading it from this frame. A
- * palette-setup failure (the control not measured blue) stays inconclusive. A pending push is popped
- * only when one is open, so a successful roundtrip is never double-popped.
+ * Color-stack capture (#31904): the headless arm's two fixtures, read from the pixels of Y alone.
+ * Y is printed through palette index 1 after the pop and read before any later palette change; X
+ * is outside the compared cell, because a correct pop may recolor it (turn362).
+ * - POP fixture: blue, push, green, X, pop, Y. Blue Y is restored, green Y persisted.
+ * - PUSH fixture: blue, magenta, push, green, X, pop, Y. Magenta Y is restored, blue Y the earlier
+ *   state, green Y persisted.
+ * The references paint Y through the same index, so a run whose OSC 4 does not move the index
+ * leaves expected and contrast equal and the oracle declines it by name.
  */
-async function xtColorStackCapture(ctx: TermProbeSource, id: string): Promise<ProbeCallbackResult> {
+async function xtColorStackCapture(ctx: TermProbeSource, operation: "push" | "pop"): Promise<ProbeCallbackResult> {
+  const id = operation === "push" ? "modes.xtpushcolors" : "modes.xtpopcolors"
   const refusal = captureRefusal(ctx, 4, 8, id)
   if (refusal) return refusal
-  let pushed = false
-  const stackCtx: TermProbeSource = {
-    ...ctx,
-    write(sequence) {
-      for (const part of sequence.split(/(\x1b\[#[PQ])/)) {
-        if (!part) continue
-        ctx.write(part)
-        if (part === "\x1b[#P") pushed = true
-        if (part === "\x1b[#Q") pushed = false
-      }
-    },
-  }
+  const stack = trackedStack(ctx, "\x1b[#P", "\x1b[#Q")
   try {
     const reset = "\x1b[0m\x1b[2J\x1b[H"
-    const blue = "\x1b]4;1;rgb:00/00/ff\x07"
-    const green = "\x1b]4;1;rgb:00/ff/00\x07"
-    const baseline = `${reset}${blue}\x1b[1;1H\x1b[38;5;1mXY\x1b[0m`
-    const result = await captureRegionVerdict(stackCtx, id, {
+    const osc4 = (hex: string) => `\x1b]4;1;rgb:${hex}\x07`
+    const BLUE = osc4("00/00/ff")
+    const GREEN = osc4("00/ff/00")
+    const MAGENTA = osc4("ff/00/ff")
+    const paintY = (color: string) => `${reset}${color}\x1b[1;2H\x1b[38;5;1mY\x1b[0m`
+    const spec = (before: string, restored: string, ignored: string): CaptureSpec => ({
       region: { top: 1, left: 2, bottom: 1, right: 2 },
       sentinel: { row: 3, col: 1 },
       cursorRow: 4,
       minRows: 4,
       minCols: 8,
-      seed: baseline,
-      edit: `${reset}${blue}\x1b[#P${green}\x1b[1;1H\x1b[38;5;1mX\x1b[#Q\x1b[38;5;1mY\x1b[0m`,
-      expected: baseline,
-      ignored: `${reset}${green}\x1b[1;2H\x1b[38;5;1mY\x1b[0m`,
-      setupReference: `${reset}\x1b[1;2H\x1b[38;2;0;0;255mY\x1b[0m`,
-      discriminator: { signal: "palette-y-restored", expected: "no-change" },
+      seed: reset,
+      edit: `${reset}${before}\x1b[#P${GREEN}\x1b[1;1H\x1b[38;5;1mX\x1b[#Q\x1b[38;5;1mY\x1b[0m`,
+      expected: paintY(restored),
+      ignored: paintY(ignored),
+      discriminator: { signal: "palette-y-restored", expected: "change" },
       cleanup: "\x1b]104\x07",
       timeoutMs: DEFAULT_TIMEOUT_MS,
     })
-    if (!result) throw new Error(`${id}: owned palette capture disappeared`)
-    return result
+    return await captureStackRow(
+      stack.ctx,
+      operation,
+      id,
+      `${id}: ${STACK_EXPECTED.color[operation]}`,
+      spec(BLUE, BLUE, GREEN),
+      (contrast) => spec(`${BLUE}${MAGENTA}`, MAGENTA, contrast === "earlier" ? BLUE : GREEN),
+    )
   } finally {
-    if (pushed) ctx.write("\x1b[#Q")
+    if (stack.open()) ctx.write("\x1b[#Q")
     ctx.write("\x1b]104\x07\x1b[0m\x1b[2J\x1b[H")
   }
 }
@@ -437,10 +533,7 @@ function italicOnly(cell: StackCell): boolean {
  */
 function xtSgrStackHeadless(ctx: LibProbeSource, operation: "push" | "pop"): ProbeCallbackResult {
   const id = operation === "push" ? "modes.xtpushsgr" : "modes.xtpopsgr"
-  const expected =
-    operation === "push"
-      ? `${id}: XTPUSHSGR saves the state current at push time: after set bold and italic, push, set plain, pop, bold and italic is restored`
-      : `${id}: XTPOPSGR restores the pushed state: after set bold, push, set italic, pop, bold is restored`
+  const expected = `${id}: ${STACK_EXPECTED.sgr[operation]}`
   if (!Number.isSafeInteger(ctx.cols) || ctx.cols < 3) {
     return parserStateResult(null, expected, { cols: ctx.cols }, "Measured grid needs three columns")
   }
@@ -515,10 +608,7 @@ function xtSgrStackHeadless(ctx: LibProbeSource, operation: "push" | "pop"): Pro
  */
 function xtModeSaveHeadless(ctx: LibProbeSource, operation: "push" | "pop"): ProbeCallbackResult {
   const id = operation === "push" ? "modes.xtsave" : "modes.xtrestore"
-  const expected =
-    operation === "push"
-      ? `${id}: XTSAVE saves the state current at save time: after set DECAWM on, save, set DECAWM off, save, set DECAWM on, restore, DECAWM off is restored`
-      : `${id}: XTRESTORE restores the saved state: after set DECAWM off, save, set DECAWM on, restore, DECAWM off is restored`
+  const expected = `${id}: ${STACK_EXPECTED.mode[operation]}`
   const rows = ctx.getScrollback().screenLines
   if (!Number.isSafeInteger(ctx.cols) || ctx.cols < 2 || !Number.isSafeInteger(rows) || rows < 2) {
     return parserStateResult(null, expected, { rows, cols: ctx.cols }, "Measured grid needs two rows and two columns")
@@ -630,10 +720,7 @@ const COLOR_STACK_MAGENTA = { r: 255, g: 0, b: 255 }
  */
 function xtColorStackHeadless(ctx: LibProbeSource, operation: "push" | "pop"): ProbeCallbackResult {
   const id = operation === "push" ? "modes.xtpushcolors" : "modes.xtpopcolors"
-  const expected =
-    operation === "push"
-      ? `${id}: XTPUSHCOLORS saves the state current at push time: after set index 1 magenta, push, set index 1 green, pop, magenta is restored`
-      : `${id}: XTPOPCOLORS restores the pushed state: after set index 1 blue, push, set index 1 green, pop, blue is restored`
+  const expected = `${id}: ${STACK_EXPECTED.color[operation]}`
   if (!Number.isSafeInteger(ctx.cols) || ctx.cols < 2) {
     return parserStateResult(null, expected, { cols: ctx.cols }, "Measured grid needs two columns")
   }
@@ -2213,7 +2300,7 @@ const modeDefinitions: ProbeDefinition[] = [
       "modes.xtpushsgr",
       (ctx) => xtSgrStackHeadless(ctx, "push"),
       async (ctx) => {
-        if (ctx.capture) return xtSgrStackCapture(ctx, "modes.xtpushsgr", "XTPUSHSGR (CSI # {) then XTPOPSGR")
+        if (ctx.capture) return xtSgrStackCapture(ctx, "push")
         ctx.write("\x1b[#{")
         try {
           const pos = await ctx.queryCursorPosition()
@@ -2248,7 +2335,7 @@ const modeDefinitions: ProbeDefinition[] = [
       "modes.xtpopsgr",
       (ctx) => xtSgrStackHeadless(ctx, "pop"),
       async (ctx) => {
-        if (ctx.capture) return xtSgrStackCapture(ctx, "modes.xtpopsgr", "XTPOPSGR (CSI # }) after a push")
+        if (ctx.capture) return xtSgrStackCapture(ctx, "pop")
         ctx.write("\x1b[#{")
         ctx.write("\x1b[#}")
         const pos = await ctx.queryCursorPosition()
@@ -2279,7 +2366,7 @@ const modeDefinitions: ProbeDefinition[] = [
       "modes.xtsave",
       (ctx) => xtModeSaveHeadless(ctx, "push"),
       async (ctx) => {
-        if (ctx.capture) return xtModeSaveCapture(ctx, "modes.xtsave")
+        if (ctx.capture) return xtModeSaveCapture(ctx, "push")
         ctx.write("\x1b[?7s")
         try {
           const pos = await ctx.queryCursorPosition()
@@ -2313,7 +2400,7 @@ const modeDefinitions: ProbeDefinition[] = [
       "modes.xtrestore",
       (ctx) => xtModeSaveHeadless(ctx, "pop"),
       async (ctx) => {
-        if (ctx.capture) return xtModeSaveCapture(ctx, "modes.xtrestore")
+        if (ctx.capture) return xtModeSaveCapture(ctx, "pop")
         ctx.write("\x1b[?7s")
         ctx.write("\x1b[?7r")
         const pos = await ctx.queryCursorPosition()
@@ -2344,7 +2431,7 @@ const modeDefinitions: ProbeDefinition[] = [
       "modes.xtpushcolors",
       (ctx) => xtColorStackHeadless(ctx, "push"),
       async (ctx) => {
-        if (ctx.capture) return xtColorStackCapture(ctx, "modes.xtpushcolors")
+        if (ctx.capture) return xtColorStackCapture(ctx, "push")
         ctx.write("\x1b[#P")
         try {
           const pos = await ctx.queryCursorPosition()
@@ -2378,7 +2465,7 @@ const modeDefinitions: ProbeDefinition[] = [
       "modes.xtpopcolors",
       (ctx) => xtColorStackHeadless(ctx, "pop"),
       async (ctx) => {
-        if (ctx.capture) return xtColorStackCapture(ctx, "modes.xtpopcolors")
+        if (ctx.capture) return xtColorStackCapture(ctx, "pop")
         ctx.write("\x1b[#P")
         ctx.write("\x1b[#Q")
         const pos = await ctx.queryCursorPosition()

@@ -1313,97 +1313,146 @@ test("modes capture refuses undersized geometry before any bytes or frames", asy
   }
 })
 
-test.each([
-  ["modes.xtpushsgr", "\x1b[#{"],
-  ["modes.xtpopsgr", "\x1b[#}"],
-  ["modes.xtsave", "\x1b[?7s"],
-  ["modes.xtrestore", "\x1b[?7r"],
-  ["modes.xtpushcolors", "\x1b[#P"],
-  ["modes.xtpopcolors", "\x1b[#Q"],
-] as const)("%s capture records control and target pixels for its stack sequence", async (id, marker) => {
-  const definition = modesProbes.find((item) => item.id === id)
-  if (!definition?.term) throw new Error(`Missing app callback for ${id}`)
-  const writes: string[] = []
-  const frames: ObservationFrame[] = []
-  const result = await definition.term(captureSource(24, 80, writes, frames))
-  expect(
-    writes.some((entry) => entry.includes(marker)),
-    id,
-  ).toBe(true)
-  expect(result.observation, id).toMatchObject({ outcome: "supported", assertionType: "screenshot" })
-  expect(result.assertions, id).toHaveLength(id.includes("sgr") ? 2 : 1)
-  expect(
-    result.tests?.every((row) => row.status === "supported"),
-    id,
-  ).toBe(true)
-  expect(
-    result.assertions?.every((assertion) => assertion.kind === "positive"),
-    id,
-  ).toBe(true)
-  if (id.includes("sgr")) {
-    expect(result.tests).toEqual([
-      { id: "bold-restored", status: "supported", assertionRefs: [0] },
-      { id: "italic-cleared", status: "supported", assertionRefs: [1] },
-    ])
-  }
-  if (id === "modes.xtsave" || id === "modes.xtrestore") {
-    expect(writes.some((entry) => entry.includes("X".repeat(80) + "!"))).toBe(true)
-    expect(writes).toContain("\x1b[?7h")
-  }
-  if (id.includes("sgr")) {
-    // Early review has no target frame; both axes' unqualified capture citations must survive composition.
-    vi.useFakeTimers()
-    try {
-      const pending = definition.term(captureSource(24, 80, [], [], false))
-      const [stale] = await Promise.all([pending, vi.runAllTimersAsync()])
-      expect(stale.observation).toBeUndefined()
-      expect(stale.assertions).toBeUndefined()
-      expect(stale.tests).toMatchObject([
-        { id: "review", status: "test-todo", reason: expect.stringContaining("no freshness witness") },
-      ])
-      const retained = JSON.parse(stale.response ?? "{}") as { axes: string[] }
-      expect(retained.axes).toHaveLength(2)
-      for (const axis of retained.axes) {
-        const response = JSON.parse(axis) as { review: { screenshotRef: string } }
-        expect(response.review.screenshotRef).toMatch(/^sha256:/)
-      }
-    } finally {
-      vi.useRealTimers()
+/**
+ * A capture adapter that paints each stack fixture as the visual STATE its target leaves (#31904):
+ * the reference frames carry the state they were authored to show, and the target carries the
+ * state the scripted terminal leaves, so equal digests mean equal states. A frame whose label names
+ * no fixture is the joint arm's single fixture, the POP fixture's shape (the on-control for
+ * save/restore). Witness frames come from the ordinary adapter.
+ */
+function stackStateSource(writes: string[], frames: ObservationFrame[], target: Record<string, string>) {
+  const source = captureSource(24, 80, writes, frames)
+  const witness = source.capture!
+  source.capture = async (request) => {
+    const { label } = request
+    if (/paint witness|— baseline/.test(label)) return witness(request)
+    const mode = /xtsave|xtrestore/.test(label)
+    const fixture =
+      ["restore control", "on-control", "overwrite test", "PUSH fixture", "POP fixture"].find((name) =>
+        label.includes(name),
+      ) ?? (mode ? "on-control" : "POP fixture")
+    const joint = !/fixture|control|overwrite/.test(label)
+    const contrast = /\((earlier|persisted) contrast\)/.exec(label)?.[1] ?? "persisted"
+    const restores = mode ? (fixture === "on-control" ? "on" : "off") : "restored"
+    const ignored = mode ? (restores === "on" ? "off" : "on") : contrast
+    let plane = "blank"
+    if (label.endsWith("post-sequence target")) plane = target[fixture] ?? "unscripted"
+    else if (label.endsWith("expected frame") || label.endsWith("setup reference frame")) plane = restores
+    else if (label.endsWith("ignored-attribute frame")) plane = ignored
+    else if (label.endsWith("pre-edit seed")) plane = mode ? "off" : joint && /colors/.test(label) ? restores : "blank"
+    const { role, cells, pixelGeometry } = request
+    const frame = {
+      role,
+      label,
+      capturedAt: frames.length + 1,
+      ref: `sha256:${(frames.length + 1).toString(16).padStart(64, "0")}`,
+      ...(cells &&
+        pixelGeometry && {
+          kind: "pixels" as const,
+          regionDigest: plane,
+          pixelsDigest: `whole:${plane}`,
+          regionRectangle: {
+            x: (cells.left - 1) * pixelGeometry.cellWidth,
+            y: (cells.top - 1) * pixelGeometry.cellHeight,
+            width: (cells.right - cells.left + 1) * pixelGeometry.cellWidth,
+            height: (cells.bottom - cells.top + 1) * pixelGeometry.cellHeight,
+          },
+        }),
     }
+    frames.push(frame)
+    return frame
   }
-})
+  return source
+}
 
-test.each(["modes.xtpushcolors", "modes.xtpopcolors"] as const)(
-  "%s grades the color-stack roundtrip on Y and permits X to recolor (turn362)",
-  async (id) => {
+const STACK_CAPTURE_IDS = {
+  sgr: ["modes.xtpushsgr", "modes.xtpopsgr", "\x1b[#{"],
+  colors: ["modes.xtpushcolors", "modes.xtpopcolors", "\x1b[#P"],
+} as const
+
+// #31904 (@chief e23ee4d7): each app capture row grades its own operation from the same fixtures
+// as its headless arm. Synthetic frames prove the grading only; real app outcomes stay NOT MEASURED
+// without an eligible native capture. The joint arm graded a stale stack's push row supported.
+test.each(
+  (["sgr", "colors"] as const).flatMap((family) =>
+    (
+      [
+        ["working", { "POP fixture": "restored", "PUSH fixture": "restored" }, "supported", "supported", undefined],
+        [
+          "stale",
+          { "POP fixture": "restored", "PUSH fixture": "earlier" },
+          "unsupported",
+          "supported",
+          "push saved no current snapshot",
+        ],
+        [
+          "no-op",
+          { "POP fixture": "persisted", "PUSH fixture": "persisted" },
+          "unsupported",
+          "unsupported",
+          "push then pop restored no earlier state",
+        ],
+        [
+          "reset-to-default",
+          { "POP fixture": "default", "PUSH fixture": "default" },
+          "inconclusive",
+          "inconclusive",
+          "no-only observation",
+        ],
+      ] as const
+    ).map(([name, target, push, pop, note]) => [family, name, target, push, pop, note] as const),
+  ),
+)("a %s capture of a %s stack grades push and pop on their own fixtures", async (family, _name, target, push, pop, note) => {
+  const [pushId, popId, marker] = STACK_CAPTURE_IDS[family]
+  for (const [id, outcome] of [
+    [pushId, push],
+    [popId, pop],
+  ] as const) {
     const definition = modesProbes.find((item) => item.id === id)
     if (!definition?.term) throw new Error(`Missing app callback for ${id}`)
     const writes: string[] = []
     const frames: ObservationFrame[] = []
-    const result = await definition.term(captureSource(24, 80, writes, frames))
-    expect(result.tests, id).toEqual([{ id: "palette-y-restored", status: "supported", assertionRefs: [0] }])
-    const compared = frames.filter((frame) =>
-      /(?:pre-edit seed|post-sequence target|expected frame|ignored-attribute frame|setup reference frame)$/.test(
-        frame.label,
-      ),
-    )
-    expect(compared, id).toHaveLength(5)
-    expect(
-      compared.every(
-        (frame) => JSON.stringify(frame.regionRectangle) === JSON.stringify({ x: 10, y: 0, width: 10, height: 20 }),
-      ),
-      id,
-    ).toBe(true)
-    expect(
-      writes.some((entry) => entry.includes("\x1b[38;2;0;0;255mY")),
-      id,
-    ).toBe(true)
-    expect(
-      writes.some((entry) => entry.includes("rgb:00/ff/00")),
-      id,
-    ).toBe(true)
-  },
-)
+    const result = await definition.term(stackStateSource(writes, frames, target))
+    expect(writes.some((entry) => entry.includes(marker)), id).toBe(true)
+    expect(result.observation?.outcome, id).toBe(outcome)
+    expect(result.pass, id).toBe(outcome === "supported")
+    if (outcome === "inconclusive") {
+      expect(result.assertions, id).toBeUndefined()
+      expect(result.observation?.note, id).toMatch(/no (push|pop)-only observation/)
+    } else {
+      expect(result.assertions, id).toMatchObject([
+        { kind: outcome === "supported" ? "positive" : "negative", assertionType: "screenshot" },
+      ])
+      expect(result.tests, id).toEqual([
+        { id: `${id === pushId ? "push" : "pop"}-observed`, status: outcome, assertionRefs: [0] },
+      ])
+      if (note && outcome === "unsupported") expect(result.observation?.note, id).toContain(note)
+    }
+  }
+})
+
+// #31904 R3f capture arm: the headless arm's three fixtures (@cto 009e40cd, 4e804806).
+test.each([
+  ["working", { "restore control": "off", "on-control": "on", "overwrite test": "off" }, "supported", "supported"],
+  ["stale save", { "restore control": "off", "on-control": "on", "overwrite test": "on" }, "unsupported", "supported"],
+  ["reset to default", { "restore control": "on", "on-control": "on", "overwrite test": "on" }, "unsupported", "unsupported"],
+  ["always-off restore", { "restore control": "off", "on-control": "off", "overwrite test": "off" }, "inconclusive", "unsupported"],
+] as const)("a %s DECAWM save/restore capture grades each row on its own operation", async (_name, target, save, restore) => {
+  for (const [id, outcome] of [
+    ["modes.xtsave", save],
+    ["modes.xtrestore", restore],
+  ] as const) {
+    const definition = modesProbes.find((item) => item.id === id)
+    if (!definition?.term) throw new Error(`Missing app callback for ${id}`)
+    const writes: string[] = []
+    const frames: ObservationFrame[] = []
+    const result = await definition.term(stackStateSource(writes, frames, target))
+    expect(writes.some((entry) => entry.includes("X".repeat(80) + "!")), id).toBe(true)
+    expect(writes, id).toContain("\x1b[?7h")
+    expect(result.observation?.outcome, id).toBe(outcome)
+    expect(result.pass, id).toBe(outcome === "supported")
+  }
+})
 
 test("xt stack capture refuses undersized geometry before any bytes or frames", async () => {
   for (const [id, rows, cols, need] of [
