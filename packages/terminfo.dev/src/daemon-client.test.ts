@@ -24,7 +24,6 @@ import {
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, expect, it, vi } from "vitest"
-import { parseRun, retainCaptureBinding } from "@terminfo/run-parser"
 import { initializeRunDraft, recordCollectorSelection, recordCollectorAttempt } from "@terminfo/probe-defs"
 import type { CapturedRunDraft as CollectedProbeRun, ProbeSuiteManifest } from "@terminfo/probe-defs"
 import {
@@ -99,206 +98,6 @@ afterEach(async () => {
   root = undefined
 })
 
-// AC loader/finalizer selection: parser-only carry cannot prove conflict handling or immutable writer custody.
-it.each([
-  "single",
-  "duplicates",
-  "conflict",
-  "changed",
-  "missing-catalog",
-  "non-capture",
-  "historical-target",
-] as const)("selects evidence-bound reviews through the immutable final writer: %s", (selection) => {
-  root = mkdtempSync(join(tmpdir(), "terminfo-evidence-writer-"))
-  const old = collectorRun()
-  old.results[0]!.tests = [
-    { id: "review", status: "test-todo", attempt: { scope: "none" }, reason: "Required context review pending" },
-  ]
-  const featureId = old.results[0]!.featureId
-  const entryHash = "a".repeat(64)
-  const binding = retainCaptureBinding(old, featureId, entryHash)
-  const decision = {
-    id: "context-evidence",
-    runId: old.runId,
-    featureId,
-    captureSha256: binding.sha256,
-    evidence: binding.evidence,
-    decision: "untestable",
-    reviewed: true,
-    reviewer: "reviewer",
-    reason: "This stream-only context cannot receive device-status replies",
-    scope: {
-      subject: { kind: "term", id: "kitty" },
-      versions: ["0.49.1", "0.49.1"],
-      suites: [old.probeHash, old.probeHash],
-    },
-    sources: ["retained fixture capture"],
-    supersedes: [],
-  }
-  const current = collectorRun()
-  current.runId = "fresh-evidence-run"
-  current.probeHash = current.suiteId = "123456abcdef"
-  current.results = structuredClone(old.results)
-  const original = structuredClone(current)
-  const source = JSON.stringify(decision)
-  const decisions = [{ source, startedAt: "2026-10-31T18:00:00.000Z" }]
-  if (selection === "duplicates" || selection === "conflict") {
-    decisions.push({
-      source: JSON.stringify({
-        ...decision,
-        id: "second-evidence",
-        ...(selection === "conflict" && { reason: "A different review conclusion" }),
-      }),
-      startedAt: "2026-10-31T18:00:00.000Z",
-    })
-  }
-  if (selection === "non-capture" || selection === "historical-target") {
-    const skipped =
-      selection === "historical-target"
-        ? {
-            ...decision,
-            id: "skipped-history",
-            evidence: undefined,
-            scope: { ...decision.scope, subject: undefined, target: { kind: "app", id: "kitty" } },
-          }
-        : {
-            id: "skipped-history",
-            runId: old.runId,
-            runSha256: "c".repeat(64),
-            reviewer: "reviewer",
-            reason: "Old identity review",
-            verifiesIdentity: true,
-            featureId,
-            scope: decision.scope,
-            sources: ["historical run"],
-            supersedes: [],
-          }
-    decisions.push({ source: JSON.stringify(skipped), startedAt: "2026-10-31T18:00:00.000Z" })
-  }
-  const report: unknown[] = []
-  const manifest = {
-    ...trustedReceipt.manifest,
-    probeHash: current.probeHash,
-    ...(selection === "missing-catalog" && { catalogIds: undefined }),
-    catalogEntrySha256: { [featureId]: selection === "changed" ? "b".repeat(64) : entryHash },
-  }
-  const path = saveDaemonProbeRun(current, root, undefined, {
-    manifest,
-    decisions,
-    origin: () => undefined,
-    carry: true,
-    report: (entry) => report.push(entry),
-  })
-  const bytes = readFileSync(path, "utf8")
-  const final = JSON.parse(bytes) as CollectedProbeRun
-  expect(current).toEqual(original)
-  expect(final.assertions.slice(0, original.assertions.length)).toEqual(original.assertions)
-  expect(report).toHaveLength(1)
-  if (["single", "duplicates", "non-capture", "historical-target"].includes(selection)) {
-    expect(path).not.toMatch(/\.draft\.json$/)
-    expect(final.results[0]!.status).toBe("untestable")
-    expect(final.rawReplies["collector.review.context-evidence"]).toBe(source)
-    expect(report[0]).toMatchObject({
-      featureId,
-      newRule: "carried",
-      duplicates: selection === "duplicates" ? ["second-evidence"] : [],
-    })
-    if (selection === "non-capture" || selection === "historical-target") {
-      expect(JSON.stringify(report)).toContain("skipped-history")
-      expect(JSON.stringify(report).toLowerCase()).toContain("skipped")
-    }
-    expect(parseRun(path, bytes, [featureId], new Map([[manifest.probeHash, manifest]])).results?.[0]?.status).toBe(
-      "untestable",
-    )
-  } else {
-    expect(path).toMatch(/\.draft\.json$/)
-    expect(final.results[0]!.status).toBe("test-todo")
-    expect(Object.keys(final.rawReplies).filter((key) => key.startsWith("collector.review."))).toEqual([])
-    expect(report[0]).toMatchObject({ featureId, newRule: selection === "conflict" ? "conflict" : "lapsed" })
-    expect(JSON.stringify(report)).toContain(
-      selection === "conflict" ? "second-evidence" : selection === "missing-catalog" ? "catalogIds" : "feature",
-    )
-  }
-})
-
-// Peer finding1 / per-cell selection AC: a refused record must not discard another cell's valid carry.
-// Single-cell cases above cannot expose a whole-context exception that loses both outputs.
-it("saves a refused review cell beside an independently carried cell", () => {
-  root = mkdtempSync(join(tmpdir(), "terminfo-refused-candidate-"))
-  const origin = collectorRun()
-  origin.results[0]!.tests = [
-    { id: "review", status: "test-todo", attempt: { scope: "none" }, reason: "Review pending" },
-  ]
-  origin.results.push({ ...structuredClone(origin.results[0]!), featureId: "device.secondary-da" })
-  const hash = "a".repeat(64)
-  const manifest = {
-    ...trustedReceipt.manifest,
-    catalogIds: origin.results.map((result) => result.featureId),
-    catalogEntrySha256: { "device.primary-da": hash, "device.secondary-da": hash },
-    probes: { term: ["device.primary-da", "device.secondary-da"], lib: [], mux: [] },
-  }
-  const decisions = origin.results.map(({ featureId }, index) => {
-    const binding = retainCaptureBinding(origin, featureId, hash)
-    return {
-      source: JSON.stringify({
-        id: index === 0 ? "refused-cell" : "carried-cell",
-        runId: origin.runId,
-        featureId,
-        captureSha256: binding.sha256,
-        evidence: binding.evidence,
-        decision: index === 0 ? "supported" : "untestable",
-        reviewed: true,
-        reviewer: "reviewer",
-        reason: "Independent source review",
-        sources: ["fixture source"],
-        supersedes: [],
-        scope: {
-          subject: { kind: "term", id: "kitty" },
-          versions: ["0.49.1", "0.49.1"],
-          suites: [manifest.probeHash, manifest.probeHash],
-        },
-      }),
-      startedAt: "2026-10-31T19:00:00.000Z",
-    }
-  })
-  const current = collectorRun()
-  current.runId = "two-cell-current"
-  current.results = structuredClone(origin.results)
-  const report: unknown[] = []
-  const path = saveDaemonProbeRun(current, root, undefined, {
-    manifest,
-    decisions,
-    carry: true,
-    origin: () => undefined,
-    report: (entry) => report.push(entry),
-  })
-  const bytes = readFileSync(path, "utf8"),
-    final = JSON.parse(bytes) as CollectedProbeRun
-  expect(path).toMatch(/\.draft\.json$/)
-  expect(final.results.map((result) => result.status)).toEqual(["test-todo", "untestable"])
-  expect(report).toMatchObject([
-    {
-      featureId: "device.primary-da",
-      newRule: "pending",
-      candidates: [
-        {
-          id: "refused-cell",
-          status: "refused",
-          reason: expect.stringContaining("review requires retained TESTED/EXPECTED assertions"),
-        },
-      ],
-    },
-    { featureId: "device.secondary-da", newRule: "carried", selected: "carried-cell" },
-  ])
-  expect(final.rawReplies["collector.review.carried-cell"]).toBe(decisions[1]!.source)
-  expect(final.rawReplies["collector.review.refused-cell"]).toBeUndefined()
-  expect(
-    parseRun(path, bytes, manifest.catalogIds, new Map([[manifest.probeHash, manifest]]), {
-      mode: "capture",
-    }).results?.map((result) => result.status),
-  ).toEqual(["test-todo", "untestable"])
-})
-
 it("keeps the Darwin editor IPC path short despite a long per-user temporary directory", () => {
   root = mkdtempSync(join(tmpdir(), "terminfo-owned-"))
   const longTemporaryDirectory = join(root, "darwin-per-user-cache-".repeat(3))
@@ -326,6 +125,8 @@ it("keeps the Darwin editor IPC path short despite a long per-user temporary dir
   }
 })
 
+// Accepted: a collection keeps its measured identity and a private exclusive file; malformed source fails.
+// Previous review-application tests did not verify source shape or private file permissions.
 it("writes one immutable current capture and refuses a mismatched intended version", () => {
   root = mkdtempSync(join(tmpdir(), "terminfo-owned-"))
   const run: CollectedProbeRun = {
@@ -359,9 +160,13 @@ it("writes one immutable current capture and refuses a mismatched intended versi
   expect(() => saveDaemonProbeRun(run, dir, { kind: "term", id: "kitty", version: "0.48.0" })).toThrow(
     /Measured version/,
   )
+  expect(() => saveDaemonProbeRun({ ...run, source: { kind: "live", extra: true } as never }, dir)).toThrow(
+    /exactly.*kind: live/,
+  )
   const path = saveDaemonProbeRun(run, dir, { kind: "term", id: "kitty", version: "0.49.1" })
   const saved = JSON.parse(readFileSync(path, "utf8")) as CollectedProbeRun
   expect(saved.rawReplies["device.primary-da"]).toBe("\x1b[?62;4c")
+  expect(lstatSync(path).mode & 0o777).toBe(0o600)
   expect(() => saveDaemonProbeRun(run, dir, { kind: "term", id: "kitty", version: "0.49.1" })).toThrow()
 })
 
@@ -865,312 +670,21 @@ it("sends the process owner as processOwner, refused when it names another daemo
   }
 })
 
-// Existing immutable-write tests never resumed a genuinely pending capture with typed review bytes.
-it("resumes a retained pending capture through the final writer without changing the original draft", () => {
+// Accepted: pending results are retained unchanged and private writes remain exclusive.
+// The removed review-application tests did not prove this ordinary collection path.
+it("retains pending results without review snapshots", () => {
   root = mkdtempSync(join(tmpdir(), "terminfo-owned-"))
   const run = collectorRun()
   run.results[0]!.tests = [
     { id: "review", status: "test-todo", attempt: { scope: "none" }, reason: "Required context review pending" },
   ]
   const path = saveDaemonProbeRun(run, root)
-  expect(path).toMatch(/draft.json$/)
-  const original = readFileSync(path, "utf8")
-  const pending = JSON.parse(original) as CollectedProbeRun
-  const capture = pending.rawReplies["collector.capture.device.primary-da"]!
-  const review = JSON.stringify({
-    id: "context-review",
-    runId: run.runId,
-    featureId: "device.primary-da",
-    captureSha256: createHash("sha256").update(capture).digest("hex"),
-    decision: "untestable",
-    reviewed: true,
-    reviewer: "reviewer",
-    reason: "This stream-only context cannot receive device-status replies",
-    scope: {
-      subject: { kind: "term", id: "kitty" },
-      versions: ["0.49.1", "0.49.1"],
-      suites: [run.probeHash, run.probeHash],
-    },
-    sources: ["collector.capture.device.primary-da"],
-    supersedes: [],
-  })
-  const final = saveDaemonProbeRun(pending, root, undefined, {
-    manifest: trustedReceipt.manifest,
-    decisions: [{ source: review, startedAt: "2026-10-21T05:00:00.000Z" }],
-    origin: () => undefined,
-  })
-  expect(final).not.toMatch(/draft.json$/)
-  expect(readFileSync(path, "utf8")).toBe(original)
-  const parsed = parseRun(
-    final,
-    readFileSync(final, "utf8"),
-    ["device.primary-da"],
-    new Map([[run.probeHash, trustedReceipt.manifest]]),
-  )
-  expect(parsed.runId).toBe(run.runId)
-  expect(parsed.results?.[0]?.status).toBe("untestable")
-  expect(parsed.rawReplies["collector.review.context-review"]).toBe(review)
-})
-
-// A single-review fixture always reached a sealed filename and missed the pending filename collision.
-it("retains partial reviews as immutable snapshots, then seals the same logical run", () => {
-  root = mkdtempSync(join(tmpdir(), "terminfo-owned-"))
-  const run = collectorRun()
-  run.results = ["device.primary-da", "device.secondary-da"].map((featureId) => ({
-    featureId,
-    status: "test-todo",
-    attempt: { scope: "none" },
-    tests: [
-      { id: "review", status: "test-todo", attempt: { scope: "none" }, reason: "Required context review pending" },
-    ],
-    reason: "Required context review pending",
-  }))
-  const originalPath = saveDaemonProbeRun(run, root)
-  const original = readFileSync(originalPath, "utf8")
-  const pending = JSON.parse(original) as CollectedProbeRun
-  const decision = (featureId: string, id: string) =>
-    JSON.stringify({
-      id,
-      runId: run.runId,
-      featureId,
-      captureSha256: createHash("sha256")
-        .update(pending.rawReplies["collector.capture." + featureId]!)
-        .digest("hex"),
-      decision: "untestable",
-      reviewed: true,
-      reviewer: "reviewer",
-      reason: "This stream-only context cannot receive the criterion's device replies",
-      scope: {
-        subject: { kind: "term", id: "kitty" },
-        versions: ["0.49.1", "0.49.1"],
-        suites: [run.probeHash, run.probeHash],
-      },
-      sources: ["collector.capture." + featureId],
-      supersedes: [],
-    })
-  const manifest = {
-    ...trustedReceipt.manifest,
-    catalogIds: ["device.primary-da", "device.secondary-da"],
-    probes: { ...trustedReceipt.manifest.probes, term: ["device.primary-da", "device.secondary-da"] },
-  }
-  const partialPath = saveDaemonProbeRun(pending, root, undefined, {
-    manifest,
-    decisions: [{ source: decision("device.primary-da", "first-review"), startedAt: "2026-10-21T05:00:00.000Z" }],
-    origin: () => undefined,
-  })
-  expect(partialPath).not.toBe(originalPath)
-  expect(partialPath).toMatch(/\.[a-f0-9]{64}\.draft.json$/)
-  const partial = readFileSync(partialPath, "utf8")
-  const finalPath = saveDaemonProbeRun(JSON.parse(partial) as CollectedProbeRun, root, undefined, {
-    manifest,
-    decisions: [{ source: decision("device.secondary-da", "second-review"), startedAt: "2026-10-21T05:01:00.000Z" }],
-    origin: () => undefined,
-  })
-  const parsed = parseRun(
-    finalPath,
-    readFileSync(finalPath, "utf8"),
-    manifest.catalogIds,
-    new Map([[manifest.probeHash, manifest]]),
-  )
-  expect(parsed.runId).toBe(run.runId)
-  expect(parsed.results?.map((result) => result.status)).toEqual(["untestable", "untestable"])
-  expect(readFileSync(originalPath, "utf8")).toBe(original)
-  expect(readFileSync(partialPath, "utf8")).toBe(partial)
-})
-
-// B4/B5 and Amendment3: the old writer sealed an undecided FAILURE and never retained its binding.
-// Existing TODO-review journeys do not expose that error or cross-cohort origin-file validation.
-it("retains a failed source review, then reuses its sealed origin through a caller-trusted review batch", () => {
-  root = mkdtempSync(join(tmpdir(), "terminfo-owned-"))
-  const directory = root
-  const manifest: ProbeSuiteManifest = {
-    ...trustedReceipt.manifest,
-    catalogIds: ["sgr.faint"],
-    probes: { term: ["sgr.faint"], lib: ["sgr.faint"], mux: [] },
-  }
-  const raw = JSON.stringify({ original: { faint: false }, changed: { faint: false }, restored: { faint: false } })
-  const make = (runId: string): CollectedProbeRun => ({
-    ...collectorRun(),
-    runId,
-    rawReplies: { "sgr.faint": raw, "collector.collectionAttempt": JSON.stringify({ runId }) },
-    assertions: [
-      {
-        featureId: "sgr.faint",
-        kind: "positive",
-        assertionType: "buffer_state",
-        expected: "changed faint=true; restored faint=false",
-        observed: raw,
-        rawReplyRef: "sgr.faint",
-      },
-    ],
-    results: [
-      {
-        featureId: "sgr.faint",
-        status: "test-failure",
-        criterionBranch: "source-negative-review",
-        assertionType: "buffer_state",
-        rawReplyRef: "sgr.faint",
-        attempt: { scope: "probe", startedAt: "2026-10-21T05:00:00.000Z" },
-        tests: [
-          {
-            id: "capture",
-            status: "supported",
-            attempt: { scope: "probe", startedAt: "2026-10-21T05:00:00.000Z" },
-            assertionRefs: [0],
-          },
-          {
-            id: "review",
-            status: "test-failure",
-            attempt: { scope: "probe", startedAt: "2026-10-21T05:00:00.000Z" },
-            reason: "Source review required",
-          },
-        ],
-      },
-    ],
-  })
-  const originRun = make("source-origin")
-  const pendingPath = saveDaemonProbeRun(originRun, directory)
-  expect(pendingPath).toMatch(/\.draft\.json$/)
-  const pendingBytes = readFileSync(pendingPath, "utf8")
-  const pending = JSON.parse(pendingBytes) as CollectedProbeRun
-  const decision = {
-    id: "faint-source",
-    runId: originRun.runId,
-    featureId: "sgr.faint",
-    captureSha256: createHash("sha256").update(pending.rawReplies["collector.capture.sgr.faint"]!).digest("hex"),
-    decision: "unsupported",
-    reviewed: true,
-    reviewer: "fixture reviewer",
-    reason: "Fixture source and captured state establish the negative",
-    scope: {
-      subject: { kind: "term", id: "kitty" },
-      versions: ["0.49.1", "0.49.1"],
-      suites: [manifest.probeHash, manifest.probeHash],
-    },
-    sources: ["fixture@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:state.ts:1-4"],
-    supersedes: [],
-  }
-  const source = JSON.stringify(decision)
-  const decisions = [{ source, startedAt: "2026-10-21T05:01:00.000Z" }]
-  const originPath = saveDaemonProbeRun(pending, directory, undefined, { manifest, decisions, origin: () => undefined })
-  const originBytes = readFileSync(originPath, "utf8")
-  const origin = vi.fn((runId: string) => ({
-    path: join(directory, `kitty-0.49.1-linux-${runId}.json`),
-    source: originBytes,
-  }))
-  const reusedPath = saveDaemonProbeRun(make("source-current"), directory, undefined, { manifest, decisions, origin })
-  const parsed = parseRun(
-    reusedPath,
-    readFileSync(reusedPath, "utf8"),
-    manifest.catalogIds!,
-    new Map([[manifest.probeHash, manifest]]),
-  )
-  expect(origin).toHaveBeenCalledWith("source-origin")
-  expect(parsed.runId).toBe("source-current")
-  expect(parsed.results?.[0]?.status).toBe("unsupported")
-  expect(parsed.rawReplies["collector.review.faint-source"]).toBe(source)
-  expect(parsed.rawReplies["collector.review.faint-source.capture"]).toBe(
-    pending.rawReplies["collector.capture.sgr.faint"],
-  )
-  expect(readFileSync(pendingPath, "utf8")).toBe(pendingBytes)
-  expect(readFileSync(originPath, "utf8")).toBe(originBytes)
-})
-
-// Amendment2/3: unavailable origins lapse without fabricating evidence; foreign suites never trigger origin I/O.
-// The successful origin journey above cannot prove these writer-side short-circuit boundaries.
-it("records an unavailable origin lapse and skips origin lookup for a foreign-suite decision", () => {
-  root = mkdtempSync(join(tmpdir(), "terminfo-origin-boundary-"))
-  const manifest: ProbeSuiteManifest = {
-    ...trustedReceipt.manifest,
-    catalogIds: ["sgr.faint"],
-    probes: { term: ["sgr.faint"], lib: ["sgr.faint"], mux: [] },
-  }
-  const raw = JSON.stringify({ original: { faint: false }, changed: { faint: false }, restored: { faint: false } })
-  const make = (runId: string, observation = raw): CollectedProbeRun => ({
-    ...collectorRun(),
-    runId,
-    rawReplies: { "sgr.faint": observation, "collector.collectionAttempt": JSON.stringify({ runId }) },
-    assertions: [
-      {
-        featureId: "sgr.faint",
-        kind: "positive",
-        assertionType: "buffer_state",
-        expected: "changed faint=true; restored faint=false",
-        observed: observation,
-        rawReplyRef: "sgr.faint",
-      },
-    ],
-    results: [
-      {
-        featureId: "sgr.faint",
-        status: "test-failure",
-        criterionBranch: "source-negative-review",
-        assertionType: "buffer_state",
-        rawReplyRef: "sgr.faint",
-        attempt: { scope: "probe", startedAt: "2026-10-21T05:00:00.000Z" },
-        tests: [
-          {
-            id: "capture",
-            status: "supported",
-            attempt: { scope: "probe", startedAt: "2026-10-21T05:00:00.000Z" },
-            assertionRefs: [0],
-          },
-          {
-            id: "review",
-            status: "test-failure",
-            attempt: { scope: "probe", startedAt: "2026-10-21T05:00:00.000Z" },
-            reason: "Source review required",
-          },
-        ],
-      },
-    ],
-  })
-  const sourceRun = make("source-origin")
-  const sourceDraft = saveDaemonProbeRun(sourceRun, root)
-  const draft = JSON.parse(readFileSync(sourceDraft, "utf8")) as CollectedProbeRun
-  const decision = {
-    id: "faint-boundary",
-    runId: sourceRun.runId,
-    featureId: "sgr.faint",
-    captureSha256: createHash("sha256").update(draft.rawReplies["collector.capture.sgr.faint"]!).digest("hex"),
-    decision: "unsupported",
-    reviewed: true,
-    reviewer: "fixture reviewer",
-    reason: "Fixture source and retained state establish the negative",
-    scope: {
-      subject: { kind: "term" as const, id: "kitty" },
-      versions: ["0.49.1", "0.49.1"],
-      suites: [manifest.probeHash, manifest.probeHash],
-    },
-    sources: ["fixture@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:state.ts:1-4"],
-    supersedes: [],
-  }
-  const origin = vi.fn(() => undefined)
-  const unavailable = make(
-    "cohort-origin-gone",
-    JSON.stringify({ original: { faint: true }, changed: { faint: true }, restored: { faint: true } }),
-  )
-  const unavailablePath = saveDaemonProbeRun(unavailable, root, undefined, {
-    manifest,
-    decisions: [{ source: JSON.stringify(decision), startedAt: "2026-10-21T05:01:00.000Z" }],
-    origin,
-  })
-  const unavailableRun = JSON.parse(readFileSync(unavailablePath, "utf8")) as CollectedProbeRun
-  expect(origin).toHaveBeenCalledWith("source-origin")
-  expect(unavailableRun.results[0]?.status).toBe("test-failure")
-  expect(unavailableRun.results[0]?.reason).toContain("origin binding text unavailable: run source-origin")
-
-  const foreignOrigin = vi.fn(() => {
-    throw new Error("foreign suite must not read an origin")
-  })
-  const foreign = { ...decision, scope: { ...decision.scope, suites: ["foreign-suite", "foreign-suite"] } }
-  const foreignPath = saveDaemonProbeRun(make("cohort-foreign-suite"), root, undefined, {
-    manifest,
-    decisions: [{ source: JSON.stringify(foreign), startedAt: "2026-10-21T05:02:00.000Z" }],
-    origin: foreignOrigin,
-  })
-  const foreignRun = JSON.parse(readFileSync(foreignPath, "utf8")) as CollectedProbeRun
-  expect(foreignOrigin).not.toHaveBeenCalled()
-  expect(foreignRun.results[0]?.status).toBe("test-failure")
-  expect(foreignRun.results[0]?.reason).toContain("suite differ")
+  const saved = JSON.parse(readFileSync(path, "utf8")) as CollectedProbeRun
+  expect(saved.results[0]!.tests[0]!.status).toBe("test-todo")
+  expect(
+    Object.keys(saved.rawReplies).some(
+      (key) => key.startsWith("collector.review.") || key.startsWith("collector.capture."),
+    ),
+  ).toBe(false)
+  expect(() => saveDaemonProbeRun(run, root!)).toThrow()
 })

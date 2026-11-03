@@ -2,7 +2,7 @@
 import { createHash } from "node:crypto"
 import { existsSync, readFileSync } from "node:fs"
 import { isAbsolute, join } from "node:path"
-import { aggregateCurrentResults, treeMovedPastRelease, type SuiteRelation } from "./release-scope.ts"
+import { aggregateCurrentResults, type SuiteRelation } from "./release-scope.ts"
 import { loadFeatures } from "@terminfo/catalog"
 import type { CensusContext } from "./full-census.ts"
 import {
@@ -32,13 +32,11 @@ import {
   validateCorrectedObservation,
 } from "../../packages/run-parser/src/observations.ts"
 import {
-  assessRunAdmission,
   loadStoredRuns,
   RETAINED_ARTIFACT_KINDS,
   verifyRetainedArtifact,
-  type IdentityAdmission,
   type RetainedArtifactKind,
-} from "../../packages/admin/run-admission.ts"
+} from "../../packages/admin/corpus-placement.ts"
 import {
   activeInterpretations,
   applies,
@@ -93,8 +91,6 @@ export interface SelectedCell extends ReadObservation {
   }
 }
 
-export type { IdentityAdmission } from "../../packages/admin/run-admission.ts"
-
 export interface SelectedVersion {
   schemaVersion: 1 | 2
   runId: string
@@ -103,14 +99,13 @@ export interface SelectedVersion {
   suiteId: string
   probeHash: string | null
   suiteFreshness: string
-  /** The machine fact behind `suiteFreshness`: which suite this run matched (release | tree | older | partial). */
+  /** The machine fact behind `suiteFreshness`: whether this run matches the tree or is older/partial. */
   suiteRelation: SuiteRelation
   suite: { observed: number; expected: number | null; complete: boolean; namedNotTested: number }
   sourceRevision: string | null
   sha256: string
   /** The identity the run recorded for itself. Only its trace document publishes it. */
   identity: LoadedRun["identity"]
-  identityAdmission?: IdentityAdmission
   /** Immutable run-owned witnesses; no derived assessment is stored here. */
   textQualification?: TextQualification
   cells: Record<string, SelectedCell>
@@ -160,7 +155,6 @@ export interface CurrentSelectedVersion {
   suiteId: string
   probeHash: string
   sourceRevision: string
-  sealedAt: string
   sha256: string
   /** The identity the run recorded for itself. Only its trace document publishes it. */
   identity: LoadedRun["identity"]
@@ -182,7 +176,6 @@ export interface CurrentSelectedVersion {
       acceptedSha256: string
     }
   >
-  identityAdmission?: IdentityAdmission
   suiteRelation: SuiteRelation
   suiteFreshness: string
   counts: Record<ProbeStatus, number>
@@ -237,9 +230,7 @@ export interface SelectedProjection {
   table: Readonly<Record<string, Readonly<Record<string, ProbeStatus>>>>
   /** Archived assessment refusals followed by the current-run refusals this reading assessed. */
   exclusions: SelectedExclusion[]
-  releaseSuiteId: string | null
   treeSuiteId: string
-  treeMovedPastRelease: boolean
 }
 
 function observationRecord(run: LoadedRun, observation: ReadObservation): SelectedCell["record"] {
@@ -567,7 +558,6 @@ export function projectResults(
   catalogIds: readonly string[],
   policy: {
     currentProbeHash: string
-    releaseSuiteId?: string | null
     textSnapshots?: ReadonlyMap<string, Uint8Array>
     workingRuns?: readonly LoadedRun[]
     workingAttempts?: readonly SelectedAttemptInput[]
@@ -598,7 +588,6 @@ export function projectResults(
   // qualified exactly as the runs measured it rather than as whichever runs are current today.
   const contexts = countContexts(runs)
   const currentRuns = runs.filter((run) => run.schemaVersion === 3 || run.schemaVersion === 4)
-  const releaseSuiteId = policy.releaseSuiteId ?? null
   const ids = new Set<string>()
   for (const run of runs) {
     if (ids.has(run.runId)) throw new Error(`duplicate runId ${run.runId}`)
@@ -610,9 +599,7 @@ export function projectResults(
     history: {},
     table: {},
     exclusions: archivedExclusions.map((row) => ({ ...row })),
-    releaseSuiteId,
     treeSuiteId: policy.currentProbeHash,
-    treeMovedPastRelease: treeMovedPastRelease(policy.currentProbeHash, releaseSuiteId),
   }
   const table: Record<string, Record<string, ProbeStatus>> = {}
   const resolvedRuns = [...runs, ...(policy.workingRuns ?? [])]
@@ -621,7 +608,7 @@ export function projectResults(
   const acceptedRuns: LoadedRun[] = []
   const baselineRunIds: string[] = []
   for (const run of currentRuns) {
-    if (!run.results || !run.catalogIds || !run.sealedAt || !run.probeHash || !run.sourceRevision) {
+    if (!run.results || !run.catalogIds || !run.probeHash || !run.sourceRevision) {
       throw new Error(`Current run ${run.runId} lacks its sealed execution contract`)
     }
     const results = consoleHostHeldResults(run, active)
@@ -629,9 +616,7 @@ export function projectResults(
     const counts = aggregate.counts
     const states = Object.fromEntries(results.map((result) => [result.featureId, result.status]))
     table[run.runId] = states
-    const suiteRelation: SuiteRelation =
-      run.probeHash === releaseSuiteId ? "release" : run.probeHash === policy.currentProbeHash ? "tree" : "older"
-    const assessment = assessRunAdmission(run, active, { mode: "historical" })
+    const suiteRelation: SuiteRelation = run.probeHash === policy.currentProbeHash ? "tree" : "older"
     const presentations: CurrentSelectedVersion["presentations"] = {}
     for (const entry of active) {
       if (!hasPresentationDecision(entry) || entry.runId !== run.runId) continue
@@ -665,7 +650,6 @@ export function projectResults(
       suiteId: run.suiteId,
       probeHash: run.probeHash,
       sourceRevision: run.sourceRevision,
-      sealedAt: run.sealedAt,
       sha256: run.sha256,
       identity: run.identity,
       catalogIds: [...run.catalogIds],
@@ -678,7 +662,6 @@ export function projectResults(
       presentations,
       ...(run.textQualification && { textQualification: globalThis.structuredClone(run.textQualification) }),
       suiteFreshness: `${suiteRelation} suite ${run.probeHash}`,
-      ...(assessment.identityAdmission && { identityAdmission: assessment.identityAdmission }),
       counts,
       // D132 B (#30917): numerator and denominator come from the ONE fold, so both cover the same
       // graded ids (264 for a current 273-row run). Never recompute either from the raw catalogue.
@@ -688,19 +671,10 @@ export function projectResults(
     const stem = `${run.subject.kind}:${run.subject.id}`
     const key = projectedContextKey(run.subject, contexts.get(stem)?.size ?? 0)
     ;(projection.history[key] ??= []).push(version)
-    if (!assessment.accepted) {
-      projection.exclusions.push({ runId: run.runId, path: run.path, reason: assessment.reason })
-      continue
-    }
     acceptedRuns.push(run)
     ;(projection.versions[key] ??= []).push(version)
   }
-  const rank = (version: CurrentSelectedVersion): number =>
-    projection.treeMovedPastRelease && version.suiteRelation === "release"
-      ? 2
-      : version.suiteRelation === "tree"
-        ? 1
-        : 0
+  const rank = (version: CurrentSelectedVersion): number => (version.suiteRelation === "tree" ? 1 : 0)
   for (const [key, versions] of Object.entries(projection.versions)) {
     versions.sort(
       (a, b) =>
@@ -963,7 +937,6 @@ export function loadSelectedResults(
   currentProbeHash: string,
   options: {
     artifactDir?: string
-    releaseSuiteId?: string | null
     workingRuns?: readonly LoadedRun[]
     workingAttempts?: readonly SelectedAttemptInput[]
   } = {},
@@ -997,7 +970,6 @@ export function loadSelectedResults(
     {
       currentProbeHash,
       textSnapshots,
-      releaseSuiteId: options.releaseSuiteId ?? null,
       workingRuns: options.workingRuns,
       workingAttempts: options.workingAttempts,
     },

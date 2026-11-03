@@ -33,7 +33,7 @@ const ADAPTER_SOURCE_PATHS = [
   "packages/admin/src/terminal-app-receipt.ts",
   "packages/terminfo.dev/src/terminal-app-window.ts",
   "packages/terminfo.dev/src/probe-output.ts",
-  "scripts/admit-run.ts",
+  "packages/admin/corpus-placement.ts",
   "packages/terminfo.dev/src/probes/unified.ts",
   "packages/terminfo.dev/src/tty.ts",
   "packages/terminfo.dev/src/linux-clipboard.ts",
@@ -70,7 +70,7 @@ const ADAPTER_SOURCE_PATHS = [
   "packages/terminfo.dev/src/capture-writer.ts",
   "packages/terminfo.dev/src/index.tsx",
   "packages/terminfo.dev/src/submit.ts",
-  "packages/admin/src/admit-collected-run.ts",
+  "packages/admin/src/collected-run.ts",
   "packages/admin/src/app.ts",
   "packages/admin/src/here.ts",
   "packages/admin/src/mux.ts",
@@ -173,13 +173,10 @@ export function probeSuiteSnapshot(repoRoot: string = REPO_ROOT): ProbeSuiteSnap
 
 /** Derive the suite declaration record from a live suite snapshot. */
 /**
- * The manifest a declaration writes. A freeze act passes the release it is freezing, so the pointer
- * is part of what the writer emits and no human appends it to the JSON afterwards; admission passes
- * nothing, because admitting a run names a suite without claiming it as a release's current one.
+ * The factual suite manifest derived from the executable source and catalogue.
  */
 export function derivedSuiteManifest(
   snapshot: ProbeSuiteSnapshot = probeSuiteSnapshot(),
-  freeze?: { release: string; at: string },
 ): ProbeSuiteManifest & { schemaVersion: 4 } {
   return {
     schemaVersion: 4,
@@ -190,7 +187,6 @@ export function derivedSuiteManifest(
     catalogEntrySha256: { ...snapshot.catalogEntrySha256 },
     ...(snapshot.textClaims === undefined ? {} : { textClaims: snapshot.textClaims }),
     ...(snapshot.textQualification === undefined ? {} : { textQualification: snapshot.textQualification }),
-    ...(freeze === undefined ? {} : { freeze: { release: freeze.release, at: freeze.at } }),
   }
 }
 
@@ -201,11 +197,10 @@ function collectorCommittedInputs(snapshot: ProbeSuiteSnapshot): string[] {
     "packages/terminfo.dev/bin/terminfo.mjs",
     "packages/admin/versions.ts",
     "packages/admin/app-harness.ts",
-    "scripts/admit-run.ts",
+    "packages/admin/corpus-placement.ts",
     "packages/run-parser/src",
     "packages/run-parser/package.json",
     "scripts/build-cli.ts",
-    "scripts/suite-manifest.ts",
     "packages/admin/suite-manifest.ts",
     "bun.lock",
   ]

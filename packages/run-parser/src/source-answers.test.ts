@@ -90,8 +90,8 @@ it.each(["checkout", "remote", "shallow", "broken", "promisor", "absent"])(
   },
 )
 
-// All three production entry points must reach the same I/O owner; pure tests permit omission.
-it("passes the I/O owner through parser, collection writer and site loader", async () => {
+// Parsing preserves recorded facts without source I/O; collection and presentation still resolve answers.
+it("keeps source I/O out of parsing while collection and site use its owner", async () => {
   const io = await import("./source-answers.ts")
   const { parseRun, parseSuiteManifest } = await import("./index.ts")
   const { finalizeCollectedDraft } = await import("../../terminfo.dev/src/capture-writer.ts")
@@ -112,7 +112,7 @@ it("passes the I/O owner through parser, collection writer and site loader", asy
   vi.spyOn(io, "resolveMeasuredSourceAnswer").mockImplementation(() => {
     throw new Error("source I/O reached")
   })
-  expect(parse).toThrow("source I/O reached")
+  expect(parse).not.toThrow()
   expect(() => finalizeCollectedDraft(raw)).toThrow("source I/O reached")
   expect(() => consoleHostHeldResults(loaded, [])).toThrow("source I/O reached")
 })

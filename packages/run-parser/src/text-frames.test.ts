@@ -8,7 +8,7 @@
  */
 import { createHash } from "node:crypto"
 import { describe, expect, it } from "vitest"
-import { initializeRunDraft, sealRunDraft, type ProbeSuiteManifest } from "@terminfo/probe-defs"
+import { initializeRunDraft, type ProbeSuiteManifest } from "@terminfo/probe-defs"
 import { canConcludeObservation, validateCorrectedObservation } from "./observations.ts"
 import { parseInterpretations } from "../../../scripts/interpretations.ts"
 import { decodeCollectorDraft, parseRun, parseSuiteManifest } from "./index.ts"
@@ -72,7 +72,7 @@ const textRun = (overrides: Record<string, unknown> = {}) => {
   draft.origin = { kind: "collector" }
   const attempt = { scope: "probe" as const, startedAt: draft.measuredAt }
   return {
-    ...sealRunDraft(draft, "2026-10-17T18:01:00.000Z"),
+    ...draft,
     rawReplies: { [FEATURE]: JSON.stringify({ writes: [], queries: [], events: [] }) },
     assertions: [
       {

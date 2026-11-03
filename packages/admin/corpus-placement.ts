@@ -1,18 +1,10 @@
-/**
- * Admit one collected probe run: declare its suite's derived manifest and place the run, so a
- * committed run can never be cited without a trusted declaration (27832 manifest direction (2)).
- *
- * This is the ONE public declare-and-admit entry point. `suite-manifest.ts` still owns the parsing,
- * verification and exclusive-create primitives, but it exposes only `--check`; there is no standalone
- * declare verb that could diverge from admission.
- */
-
+/** Place collected runs and read the stored corpus through the canonical parser. */
 import { createHash } from "node:crypto"
 import { closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, writeFileSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { isDeepStrictEqual } from "node:util"
-import type { Interpretation, ProbeSuiteManifest, ProbeSubject } from "@terminfo/probe-defs"
+import type { ProbeSuiteManifest, ProbeSubject } from "@terminfo/probe-defs"
 import {
   decodeExactUtf8,
   measuredVersionTokens,
@@ -32,25 +24,16 @@ import {
 import { windowsCommBase } from "../terminfo.dev/src/windows-process-ancestry.ts"
 import { hostedDarwinAppFromExecutablePath } from "../terminfo.dev/src/owned-terminal.ts"
 import { parseLinuxClipboardReceipt } from "../terminfo.dev/src/linux-clipboard.ts"
-import { activeInterpretations, applies, nonempty, parseInterpretations } from "../../scripts/interpretations.ts"
+import { nonempty } from "../../scripts/interpretations.ts"
 import { loadFeatures } from "@terminfo/catalog"
 
-import { probeSuiteSnapshot } from "./versions.ts"
 import { outerLaunchMismatch } from "./src/outer-launch.ts"
 import {
   bindReceiptToRun,
-  HOSTED_IDENTITY_SOURCES,
   parseDisposableReceipt,
   parseMuxAttachmentProof,
   type ReceiptTarget,
 } from "../terminfo.dev/src/disposable-receipt.ts"
-import {
-  assertDeclareIsAuthoring,
-  declareCurrentSuiteManifest,
-  derivedSuiteManifest,
-  frozenSuiteIdFor,
-  verifySuiteManifest,
-} from "./suite-manifest.ts"
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..")
 export const CONTENT_DIR = join(ROOT, "content")
@@ -90,7 +73,7 @@ export function loadStoredRuns(contentDir: string, catalog: readonly string[]): 
   return runs
 }
 
-export interface IdentityAdmission {
+interface MeasuredIdentity {
   rule: string
   da1?: string
   xtversion?: string
@@ -108,14 +91,10 @@ type ReceiptRefusalCode =
   | "ownership-receipt-target-mismatch"
   | "ownership-receipt-app-launch-mismatch"
   | "ownership-receipt-run-required"
-  | "ownership-receipt-non-reuse"
-  | "ownership-receipt-collision"
 
-export type AdmissionExclusionCode =
+type PlacementRefusalCode =
   | ReceiptRefusalCode
   | "identity-disputed"
-  | "identity-unverified"
-  | "identity-unreviewed"
   | "runtime-identity-unverified"
   | "identity-no-profile"
   | "identity-replies-mismatch"
@@ -125,14 +104,11 @@ export type AdmissionExclusionCode =
   | "outer-app-identity-mismatch"
   | "mux-attachment-missing"
   | "mux-attachment-invalid"
-  | "source-uncommitted"
-  | "community-unreviewed"
-  | "suite-incomplete"
 
 /** Only expected admission refusals become public exclusions; detail stays in authoring diagnostics. */
 class ReceiptRefusal extends Error {
   constructor(
-    readonly code: AdmissionExclusionCode,
+    readonly code: PlacementRefusalCode,
     readonly detail: string,
     cause?: unknown,
   ) {
@@ -155,9 +131,9 @@ function xtversionVersionEquals(payload: string, declared: string): boolean {
   return payload === declared || payload.endsWith(` ${declared}`) || payload.endsWith(`/${declared}`)
 }
 
-type AdmissionIdentityRule = TerminalIdentityRule & { identitySource?: "hosted-darwin" }
+type PlacementIdentityRule = TerminalIdentityRule & { identitySource?: "hosted-darwin" }
 
-const ADMISSION_IDENTITY_RULES: Record<string, AdmissionIdentityRule> = {
+const PLACEMENT_IDENTITY_RULES: Record<string, PlacementIdentityRule> = {
   ...TERMINAL_IDENTITY_RULES,
   alacritty: {
     terminal: "alacritty",
@@ -174,7 +150,7 @@ const ADMISSION_IDENTITY_RULES: Record<string, AdmissionIdentityRule> = {
   "com.microsoft.VSCode": { terminal: "com.microsoft.VSCode", identitySource: "hosted-darwin" },
 }
 
-function identityMatch(run: LoadedRun): IdentityAdmission | null {
+function identityMatch(run: LoadedRun): MeasuredIdentity | null {
   if (run.subject.kind === "lib") {
     const receipt = run.runtimeIdentity
     if (!receipt || receipt.engineVersion !== run.subject.version) return null
@@ -203,8 +179,8 @@ type ProtocolIdentitySubject = Pick<LoadedRun, "subject" | "rawReplies" | "prove
   results?: Record<string, boolean>
 }
 
-function protocolIdentityMatch(run: ProtocolIdentitySubject): IdentityAdmission | null {
-  const rule = ADMISSION_IDENTITY_RULES[run.subject.id]
+function protocolIdentityMatch(run: ProtocolIdentitySubject): MeasuredIdentity | null {
+  const rule = PLACEMENT_IDENTITY_RULES[run.subject.id]
   if (!rule) return null
   if (run.subject.kind !== (rule.subjectKind ?? "term")) return null
   const verification = TERMINAL_IDENTITY_RULES[run.subject.id]
@@ -314,33 +290,12 @@ function protocolIdentityMatch(run: ProtocolIdentitySubject): IdentityAdmission 
   return { rule: run.subject.id, da1: identity.da1, xtversion: versionReply }
 }
 
-function pinnedIdentity(run: LoadedRun, active: readonly Interpretation[]): boolean {
-  return active.some(
-    (entry) =>
-      entry.runId === run.runId && entry.runSha256 === run.sha256 && applies(entry, run) && entry.verifiesIdentity,
-  )
-}
-
-/** Identity, then provenance, then source/community/suite. Pin is one identity input. */
-function identityDecision(
-  run: LoadedRun,
-  active: readonly Interpretation[],
-  identityAdmission: IdentityAdmission | null,
-): AdmissionExclusionCode | null {
+/** Collection requires measured identity; editorial decisions supply no identity evidence. */
+function identityDecision(run: LoadedRun, identity: MeasuredIdentity | null): PlacementRefusalCode | null {
   if (run.identity === "disputed") return "identity-disputed"
-  const pin = pinnedIdentity(run, active)
-  if (run.subject.kind === "lib") {
-    if (run.schemaVersion === 1 && !pin) {
-      return run.identity === "unverified" ? "identity-unverified" : "identity-unreviewed"
-    }
-    return identityAdmission ? null : "runtime-identity-unverified"
-  }
-  if (!ADMISSION_IDENTITY_RULES[run.subject.id]) return "identity-no-profile"
-  if (run.schemaVersion === 1) {
-    if (!pin) return run.identity === "unverified" ? "identity-unverified" : "identity-unreviewed"
-    return identityAdmission ? null : "identity-replies-mismatch"
-  }
-  return identityAdmission ? null : "identity-replies-mismatch"
+  if (run.subject.kind === "lib") return identity ? null : "runtime-identity-unverified"
+  if (!PLACEMENT_IDENTITY_RULES[run.subject.id]) return "identity-no-profile"
+  return identity ? null : "identity-replies-mismatch"
 }
 
 /** Historical custody joins retained bytes only; it never inspects today's processes or files. */
@@ -425,7 +380,7 @@ function muxFixtureMatches(run: LoadedRun, attachment: ReturnType<typeof parseMu
 }
 
 /** All subject kinds pass through this one provenance decision. */
-function provenanceDecision(run: LoadedRun): AdmissionExclusionCode | null {
+function provenanceDecision(run: LoadedRun): PlacementRefusalCode | null {
   if (run.provenance && !run.provenance.runtime.cleanTree) return "native-provenance-dirty"
   switch (run.subject.kind) {
     case "lib":
@@ -477,183 +432,65 @@ function provenanceDecision(run: LoadedRun): AdmissionExclusionCode | null {
   }
 }
 
-function admissionRefusal(
-  run: LoadedRun,
-  active: readonly Interpretation[],
-  reviewed: boolean,
-  identityAdmission: IdentityAdmission | null,
-): AdmissionExclusionCode | null {
-  return (
-    identityDecision(run, active, identityAdmission) ??
-    provenanceDecision(run) ??
-    (!/^[0-9a-f]{40}$/.test(run.sourceRevision ?? "") ? "source-uncommitted" : null) ??
-    (run.origin.kind === "community-issue" && !reviewed ? "community-unreviewed" : null) ??
-    (!run.suiteComplete ? "suite-incomplete" : null)
-  )
-}
-
-/**
- * docs/ imports this read-only assessor only. Keep module scope effect-free and this path read-only;
- * placement and the CLI must never run as part of site projection.
- */
-export function assessRunAdmission(
-  run: LoadedRun,
-  active: readonly Interpretation[],
-  evidence: { receiptPath?: string; contentDir?: string; mode: "historical" | "placement" },
-):
-  | { accepted: true; identityAdmission: IdentityAdmission | null }
-  | { accepted: false; reason: AdmissionExclusionCode; detail?: string; identityAdmission: null } {
-  const identityAdmission = identityMatch(run)
-  const reviewed = active.some(
-    (entry) =>
-      entry.decision !== "tool-gap" &&
-      entry.runId === run.runId &&
-      entry.runSha256 === run.sha256 &&
-      applies(entry, run) &&
-      entry.reviewed,
-  )
-  try {
-    const reason = admissionRefusal(run, active, reviewed, identityAdmission)
-    if (reason === null) {
-      preflightOwnershipReceipt(
-        run.path,
-        run.rawReplies["collector.disposableOwnership"],
-        run.runId,
-        {
-          kind: run.subject.kind,
-          id: run.subject.id,
-          os: run.subject.os ?? "",
-        },
-        run,
-        evidence.contentDir ?? dirname(dirname(run.path)),
-        evidence.receiptPath ?? join(dirname(dirname(run.path)), "receipts", `${run.runId}.json`),
-        evidence.mode === "placement",
-      )
-    }
-    return reason === null
-      ? { accepted: true, identityAdmission }
-      : { accepted: false, reason, identityAdmission: null }
-  } catch (cause) {
-    if (!(cause instanceof ReceiptRefusal)) {
-      throw new Error(`Cannot assess ownership receipt for run ${run.runId}`, { cause })
-    }
-    return { accepted: false, reason: cause.code, detail: cause.detail, identityAdmission: null }
-  }
-}
-
 const SAFE_COMPONENT = /^[a-zA-Z0-9._-]+$/
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
 }
 
-export interface AdmissionPlan {
-  source: string
-  destination: string
-  probeHash: string
-  subject: { kind: ProbeSubject["kind"]; id: string; version: string; os: string }
-  runId: string
-  frozenSuiteId?: string
-  release?: string
-}
-
-function catalogIds(): string[] {
-  return Object.keys(loadFeatures(CONTENT_DIR))
-}
-
-/** Compute where a run lands, from its own target and run id — never from a caller-supplied name. */
-export function planAdmission(
+/** Place one collected record after all factual checks, using its own subject and run identity. */
+export function placeCollectedRun(
   source: string,
-  into?: string,
-  options: { frozenSuiteId?: string; release?: string } = {},
-): AdmissionPlan {
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(readFileSync(source, "utf8"))
-  } catch (cause) {
-    throw new Error(`Cannot read the run to admit: ${source}`, { cause })
+  trustedSuite: ProbeSuiteManifest,
+  contentDir: string = CONTENT_DIR,
+): string {
+  const bytes = readFileSync(source)
+  const text = decodeExactUtf8(bytes, source)
+  const parsed: unknown = parseJsonStrict(source, text)
+  if (!isRecord(parsed) || parsed.schemaVersion !== 4) {
+    throw new Error(`${source}: collection placement requires a current schema-4 record`)
   }
-  if (!isRecord(parsed)) throw new Error(`Run to admit is not an object: ${source}`)
-  if (parsed.schemaVersion !== 2 && parsed.schemaVersion !== 3 && parsed.schemaVersion !== 4) {
-    throw new Error(`Run to admit requires current schema 4 or historical schema 2/3: ${source}`)
-  }
-  // Historical run wire names are decoded strictly by parseRun below, without changing source bytes.
-  const subject = parsed.schemaVersion === 4 ? parsed.subject : parsed.target
-  if (
-    !isRecord(subject) ||
-    !(parsed.schemaVersion === 4 ? ["term", "lib", "mux"] : ["app", "headless", "mux"]).includes(String(subject.kind))
-  ) {
+  const manifestBytes = Buffer.from(`${JSON.stringify(trustedSuite, null, 2)}\n`, "utf8")
+  const manifest = parseSuiteManifest(`${source}: trusted collection suite`, manifestBytes.toString("utf8"))
+  if (parsed.probeHash !== manifest.probeHash) {
     throw new Error(
-      `Run to admit has no ${parsed.schemaVersion === 4 ? "term|lib|mux subject" : "app|headless|mux target"} kind: ${source}`,
+      `${source}: collected suite ${String(parsed.probeHash)} differs from trusted suite ${manifest.probeHash}`,
     )
   }
-  const kind = (
-    subject.kind === "app" ? "term" : subject.kind === "headless" ? "lib" : subject.kind
-  ) as ProbeSubject["kind"]
-  const id = String(subject.id)
-  const version = String(subject.version)
-  const os = typeof subject.os === "string" && subject.os.length > 0 ? subject.os : "unknown"
-  const runId = String(parsed.runId)
-  for (const [label, value] of [
-    [parsed.schemaVersion === 4 ? "subject.id" : "target.id", id],
-    [parsed.schemaVersion === 4 ? "subject.version" : "target.version", version],
-    [parsed.schemaVersion === 4 ? "subject.os" : "target.os", os],
-    ["runId", runId],
-  ] as const) {
-    if (!SAFE_COMPONENT.test(value)) throw new Error(`Run to admit has an unsafe ${label}: ${value}`)
-  }
-  if (typeof parsed.probeHash !== "string" || !/^[0-9a-f]{12}$/.test(parsed.probeHash)) {
-    throw new Error(`Run to admit declares no valid probeHash: ${source}`)
-  }
-  const manifestPath = join(CONTENT_DIR, "suites", `${parsed.probeHash}.json`)
-  const snapshot = probeSuiteSnapshot()
-  const manifest = existsSync(manifestPath)
-    ? parseSuiteManifest(manifestPath, readFileSync(manifestPath, "utf8"))
-    : parsed.probeHash === snapshot.probeHash
-      ? derivedSuiteManifest(snapshot)
-      : (() => {
-          throw new Error(`Missing suite manifest ${manifestPath}`)
-        })()
-  const ids = catalogIds()
-  const loaded = parseRun(source, readFileSync(source, "utf8"), ids, new Map([[manifest.probeHash, manifest]]))
-  const interpretationsPath = join(CONTENT_DIR, "interpretations.json")
-  const resolvedRuns = [loaded, ...loadStoredRuns(CONTENT_DIR, ids).filter((run) => run.runId !== loaded.runId)]
-  const interpretations = activeInterpretations(
-    parseInterpretations(interpretationsPath, readFileSync(interpretationsPath, "utf8"), ids, undefined, resolvedRuns),
-    resolvedRuns,
+  const loaded = parseRun(
+    source,
+    text,
+    Object.keys(loadFeatures(contentDir)),
+    new Map([[manifest.probeHash, manifest]]),
   )
-  const assessment = assessRunAdmission(loaded, interpretations, {
-    receiptPath: join(dirname(source), RECEIPT_BESIDE_RUN),
-    contentDir: CONTENT_DIR,
-    mode: "placement",
-  })
-  if (!assessment.accepted) throw new Error(`${source}: ${assessment.detail ?? assessment.reason}`)
-  if (parsed.probeHash !== snapshot.probeHash) {
-    throw new Error(
-      `Refusing to admit a run from suite ${parsed.probeHash}: this tree runs suite ${snapshot.probeHash}. ` +
-        "Admit from a tree at the run's suite (its sourceRevision).",
-    )
+  const { kind, id, version } = loaded.subject
+  const os = loaded.subject.os ?? "unknown"
+  for (const [label, value] of Object.entries({ id, version, os, runId: loaded.runId })) {
+    if (!SAFE_COMPONENT.test(value)) throw new Error(`${source}: unsafe collected ${label}: ${value}`)
   }
-  const frozenSuiteId =
-    options.release === undefined ? options.frozenSuiteId : frozenSuiteIdFor(CONTENT_DIR, options.release)
-  if (options.release !== undefined && options.frozenSuiteId !== undefined && options.frozenSuiteId !== frozenSuiteId) {
-    throw new Error(
-      `Asserted suite ${options.frozenSuiteId} is not the declared frozen suite ${frozenSuiteId} for ${options.release}`,
-    )
-  }
-  if (frozenSuiteId !== undefined && (loaded.suiteId !== frozenSuiteId || snapshot.probeHash !== frozenSuiteId)) {
-    throw new Error(
-      `Run suite ${loaded.suiteId} and tree suite ${snapshot.probeHash} must equal ${options.release ? "declared " : ""}frozen suite ${frozenSuiteId}`,
-    )
-  }
-  if (existsSync(manifestPath)) verifySuiteManifest(manifestPath, snapshot)
+  const refusal = identityDecision(loaded, identityMatch(loaded)) ?? provenanceDecision(loaded)
+  if (refusal !== null) throw new Error(`${source}: ${refusal}`)
+  preflightOwnershipReceipt(
+    source,
+    loaded.rawReplies["collector.disposableOwnership"],
+    loaded.runId,
+    { kind, id, os },
+    loaded,
+    join(dirname(source), RECEIPT_BESIDE_RUN),
+  )
   preflightLinuxCompletionReceipt(source, loaded)
-  preflightArtifacts(source, loaded.screenshotRefs, CONTENT_DIR, "screenshot")
-  preflightArtifacts(source, loaded.textSnapshotRefs, CONTENT_DIR, "text-snapshot")
-  const destination = into ?? join(CONTENT_DIR, RUN_DIRS[kind], `${id}-${version}-${os}-${runId}.json`)
-  preflightDestination(destination, readFileSync(source), "admitted run")
-  assertDeclareIsAuthoring(ROOT, parsed.probeHash)
-  return { source, destination, probeHash: parsed.probeHash, subject: { kind, id, version, os }, runId, ...options }
+  const artifacts = [
+    ...preflightArtifacts(source, loaded.screenshotRefs, contentDir, "screenshot"),
+    ...preflightArtifacts(source, loaded.textSnapshotRefs, contentDir, "text-snapshot"),
+  ]
+  const manifestPath = join(contentDir, "suites", `${manifest.probeHash}.json`)
+  const destination = join(contentDir, RUN_DIRS[kind], `${id}-${version}-${os}-${loaded.runId}.json`)
+  preflightDestination(manifestPath, manifestBytes, "collection suite manifest")
+  preflightDestination(destination, bytes, "collected run")
+  placeExclusive(manifestPath, manifestBytes, "collection suite manifest")
+  for (const artifact of artifacts) placeExclusive(artifact.destination, artifact.bytes, "collected artifact")
+  placeRun(destination, text)
+  return destination
 }
 
 /**
@@ -688,7 +525,7 @@ function placeExclusive(destination: string, bytes: Uint8Array, what: string): "
 }
 
 /** Place the admitted run document exclusively. */
-export function placeRun(destination: string, bytes: string): "created" | "existing" {
+function placeRun(destination: string, bytes: string): "created" | "existing" {
   return placeExclusive(destination, Buffer.from(bytes, "utf8"), "admitted run")
 }
 
@@ -760,73 +597,23 @@ function preflightArtifacts(
   return artifacts
 }
 
-/**
- * Place every retained artifact the run cites, beside it, so an admitted run can never reference an
- * artifact that is not committed: admission copies the run document and every digest it cites.
- * Bytes come from `artifacts/` next to the run file — the collector's `/out/artifacts/`. Each must
- * hash to its cited digest and pass its kind's check; a missing or mismatched source refuses BY NAME
- * before the run is placed.
- */
-export function placeRetainedArtifacts(
-  source: string,
-  refs: readonly string[],
-  contentDir: string = CONTENT_DIR,
-  kind: RetainedArtifactKind = "screenshot",
-): { created: number; existing: number } {
-  const artifacts = preflightArtifacts(source, refs, contentDir, kind)
-  let created = 0
-  let existing = 0
-  for (const artifact of artifacts) {
-    if (placeExclusive(artifact.destination, artifact.bytes, RETAINED_ARTIFACT_KINDS[kind].noun) === "created") {
-      created += 1
-    } else existing += 1
-  }
-  return { created, existing }
-}
-
-/**
- * The launcher's own name for the receipt it mounts read-only and hands the collector (27874):
- * `host-measured.json`. Admission reads it from beside the run and re-hashes it against the digest
- * the run cites, so the bytes the ownership claim rests on are in the repository, not only a digest.
- */
+/** The launcher retains this receipt beside the collected run for verification. */
 const RECEIPT_BESIDE_RUN = "host-measured.json"
 
-/**
- * Place the disposable-ownership receipt a run cites (27874). The run document records the receipt
- * only as a digest, so a reader on main cannot see the identity the claim rests on — which is exactly
- * how the four hand-typed 27874 receipts stayed invisible. This places the exact bytes beside the run
- * at content/receipts/<runId>.json, exclusive-create and immutable once admitted, the same rule as
- * suite manifests, and re-parses them through the strict receipt parser so a placeholder identity is
- * refused by name HERE, at admission, and not only where the collector first read it.
- *
- * <runId> is the run document's own runId, so the receipt pairs with the admitted file name. The
- * receipt's own `runId` is the launcher's run id and is not required to equal it: the one genuine
- * container run on main differs (kitty 2912118b… cites a receipt whose own runId is 68eb134d…).
- *
- * What this proves is CONSISTENCY, not ORIGIN. The bytes hash to the digest the run cites, the run's
- * own target is the one the receipt names, and the identity fields are not degenerate — but a
- * determined hand-written receipt with plausible digests passes all of it. Origin is the apparatus
- * handoff (launcher-target-family): the receipt is written outside the measured environment, handed
- * in read-only, and refused if that environment rewrites it.
- *
- * A run collected against a shared terminal cites no receipt ({kind:"shared"}) and places nothing;
- * that is the untouched default path, and the F2 write gate is a separate question.
- */
+/** Verify a cited ownership receipt and bind its measured target and launch to the run. */
 function preflightOwnershipReceipt(
   source: string,
   ownership: string | undefined,
   runId: string,
   target: ReceiptTarget,
   run: LoadedRun | undefined,
-  contentDir: string = CONTENT_DIR,
   receiptPath: string = join(dirname(source), RECEIPT_BESIDE_RUN),
-  compareHostedHistory = true,
 ): { bytes?: Buffer; detail: string } {
   const windowsIdentity = run?.origin.appLaunch?.platform === "win32"
   const hostedDarwinIdentity =
     run?.subject.kind === "term" &&
     isDarwin(run.subject.os) &&
-    ADMISSION_IDENTITY_RULES[run.subject.id]?.identitySource === "hosted-darwin"
+    PLACEMENT_IDENTITY_RULES[run.subject.id]?.identitySource === "hosted-darwin"
   const requireDarwinHostedReceipt = () => {
     throw new ReceiptRefusal(
       "ownership-receipt-missing",
@@ -982,84 +769,7 @@ function preflightOwnershipReceipt(
       )
     }
   }
-  if (receipt.kind === "github-hosted-runner" && compareHostedHistory) {
-    // Strict parsing above owns validation. Decode only the already-validated hosted fields here;
-    // history is visible to admission, never to the collector's single-receipt parser.
-    type HostedFields = {
-      runner: { os: string }
-      job: { githubRunId: string; jobId: string }
-      vm: { identityAtJobStart: Record<string, string> }
-    }
-    const current = JSON.parse(bytes.toString("utf8")) as HostedFields
-    const os = current.runner.os
-    if (!Object.hasOwn(HOSTED_IDENTITY_SOURCES, os)) {
-      throw new ReceiptRefusal(
-        "ownership-receipt-invalid",
-        `Hosted receipt ${receiptPath}: runner.os ${JSON.stringify(os)} has no ratified identity source/scope table`,
-      )
-    }
-    const directory = join(contentDir, "receipts")
-    // ENOENT means the first admission in this content tree. Other directory/read failures stay loud.
-    let names: string[]
-    try {
-      names = readdirSync(directory)
-    } catch (cause) {
-      if (isRecord(cause) && cause.code === "ENOENT") names = []
-      else throw new Error(`Cannot read admitted ownership receipt history at ${directory}`, { cause })
-    }
-    for (const name of names.filter((name) => name.endsWith(".json")).sort()) {
-      const path = join(directory, name)
-      let priorBytes: string
-      let prior: ReturnType<typeof parseDisposableReceipt>
-      try {
-        priorBytes = readFileSync(path, "utf8")
-        prior = parseDisposableReceipt(priorBytes)
-      } catch (cause) {
-        throw new Error(
-          `Cannot read/parse admitted ownership receipt ${path}; restore valid receipt bytes before retrying admission`,
-          { cause },
-        )
-      }
-      if (prior.kind !== "github-hosted-runner") continue
-      const previous = JSON.parse(priorBytes) as HostedFields
-      if (previous.runner.os !== os) continue // Different OS source values are not comparable.
-      if (previous.job.githubRunId === current.job.githubRunId && previous.job.jobId === current.job.jobId) continue
-      for (const field of HOSTED_IDENTITY_SOURCES[os as keyof typeof HOSTED_IDENTITY_SOURCES].nonReuse) {
-        if (previous.vm.identityAtJobStart[field] === current.vm.identityAtJobStart[field]) {
-          throw new ReceiptRefusal(
-            "ownership-receipt-non-reuse",
-            `Hosted receipt non-reuse: ${field} repeats between jobs ` +
-              `${previous.job.githubRunId}/${previous.job.jobId} (${path}) and ` +
-              `${current.job.githubRunId}/${current.job.jobId} (${receiptPath}); refusing before placement. Recollect in a fresh hosted job`,
-          )
-        }
-      }
-    }
-  }
-  const destination = join(contentDir, "receipts", `${runId}.json`)
-  if (existsSync(destination) && !readFileSync(destination).equals(bytes)) {
-    throw new ReceiptRefusal(
-      "ownership-receipt-collision",
-      `Refusing to overwrite a different disposable-ownership receipt at ${destination}`,
-    )
-  }
-  return { bytes, detail: `content/receipts/${runId}.json (${receiptPath}, ${actual})` }
-}
-
-export function placeOwnershipReceipt(
-  source: string,
-  ownership: string | undefined,
-  runId: string,
-  target: ReceiptTarget,
-  contentDir: string = CONTENT_DIR,
-  run?: LoadedRun,
-): { placed: "created" | "existing" | "none"; detail: string } {
-  const receipt = preflightOwnershipReceipt(source, ownership, runId, target, run, contentDir)
-  const placed =
-    receipt.bytes === undefined
-      ? "none"
-      : placeExclusive(join(contentDir, "receipts", `${runId}.json`), receipt.bytes, "disposable-ownership receipt")
-  return { placed, detail: receipt.detail }
+  return { bytes, detail: `${receiptPath} (${actual})` }
 }
 
 /** Host composition happens only after a completed Linux attach; bind those bytes to this run. */
@@ -1147,67 +857,4 @@ function preflightLinuxCompletionReceipt(source: string, run: LoadedRun): void {
       )
     }
   }
-}
-
-/**
- * Admit a run. Condition 1 of the ruling: a manifest may be computed ONLY from the run's own suite,
- * so this refuses by name unless the live suite equals the run's `probeHash`. That keeps "the
- * revision is current here" a check rather than an assumption, and it never computes `probes` from
- * a different suite.
- */
-export function admitRun(plan: AdmissionPlan): {
-  manifest: "created" | "existing"
-  run: "created" | "existing"
-  screenshots: { created: number; existing: number }
-  /** Retained text snapshots placed for this run's text frames; zero for a pixel-only run. */
-  textSnapshots: { created: number; existing: number }
-  receipt: { placed: "created" | "existing" | "none"; detail: string }
-} {
-  const snapshot = probeSuiteSnapshot()
-  if (snapshot.probeHash !== plan.probeHash) {
-    throw new Error(
-      `Refusing to admit a run from suite ${plan.probeHash}: this tree runs suite ${snapshot.probeHash}. ` +
-        "Admit from a tree at the run's suite (its sourceRevision).",
-    )
-  }
-  const validated = planAdmission(plan.source, plan.destination, {
-    frozenSuiteId: plan.frozenSuiteId,
-    release: plan.release,
-  })
-  if (
-    validated.probeHash !== plan.probeHash ||
-    validated.runId !== plan.runId ||
-    JSON.stringify(validated.subject) !== JSON.stringify(plan.subject)
-  ) {
-    throw new Error("Admission plan no longer matches the collected run; plan admission again")
-  }
-  const declaration = declareCurrentSuiteManifest()
-  const manifestPath = join(CONTENT_DIR, "suites", `${snapshot.probeHash}.json`)
-  const manifest = verifySuiteManifest(manifestPath, snapshot)
-  if (manifest.sourceRevision !== undefined && !/^[0-9a-f]{40}$/.test(manifest.sourceRevision)) {
-    throw new Error(`Suite manifest ${manifestPath} declares an invalid sourceRevision`)
-  }
-  const suites = new Map<string, ProbeSuiteManifest>([[snapshot.probeHash, manifest]])
-  const bytes = readFileSync(plan.source, "utf8")
-  const loaded = parseRun(plan.source, bytes, catalogIds(), suites)
-
-  // Refuse a cited receipt that is missing, mismatched, degenerate or bound to another target,
-  // BEFORE placing the run: the ownership claim the run makes is part of what admission admits.
-  const receipt = placeOwnershipReceipt(
-    plan.source,
-    loaded.rawReplies["collector.disposableOwnership"],
-    loaded.runId,
-    {
-      kind: loaded.subject.kind,
-      id: loaded.subject.id,
-      os: loaded.subject.os ?? "",
-    },
-    CONTENT_DIR,
-    loaded,
-  )
-
-  const screenshots = placeRetainedArtifacts(plan.source, loaded.screenshotRefs)
-  const textSnapshots = placeRetainedArtifacts(plan.source, loaded.textSnapshotRefs, CONTENT_DIR, "text-snapshot")
-  const run = placeRun(plan.destination, bytes)
-  return { manifest: declaration.status, run, screenshots, textSnapshots, receipt }
 }

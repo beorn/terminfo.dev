@@ -60,7 +60,6 @@ test("status reports reviewed current runs and refuses malformed archives", () =
         probeHash: snapshot.probeHash,
         sourceRevision: "1".repeat(40),
         generatedAt: "2026-09-28T00:00:00.000Z",
-        freeze: { release: "candidate2", at: "2026-09-28T00:00:00.000Z" },
         adapterVersion: snapshot.adapterVersion,
         catalogIds: fixtureFeatures,
         probes: { term: ["extensions.query"], lib: ["extensions.query"], mux: ["extensions.query"] },

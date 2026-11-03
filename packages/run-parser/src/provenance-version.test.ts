@@ -8,7 +8,7 @@
  */
 import { describe, expect, it } from "vitest"
 import { decodeCollectorDraft, parseRun, parseRunProvenance } from "./index.ts"
-import { initializeRunDraft, sealRunDraft, type ProbeSuiteManifest } from "@terminfo/probe-defs"
+import { initializeRunDraft, type ProbeSuiteManifest } from "@terminfo/probe-defs"
 
 const target = {
   kind: "term" as const,
@@ -93,7 +93,7 @@ describe("parseRunProvenance version token", () => {
     draft.measuredAt = "2026-10-19T00:00:00Z"
     draft.origin = { kind: "collector" }
     draft.outerApp = outerApp
-    const raw = sealRunDraft(draft, "2026-10-19T00:01:00.000Z")
+    const raw = draft
     const suites = new Map<string, ProbeSuiteManifest>([[expected.probeHash, manifest]])
     const parse = (value: unknown) => parseRun("mux.json", JSON.stringify(value), manifest.catalogIds, suites)
     expect(parse(raw)).toMatchObject({
@@ -110,6 +110,14 @@ describe("parseRunProvenance version token", () => {
       suites.get(expected.probeHash)!,
       expected.sourceRevision,
     )
+    // A private collection retains the actual identity; the old draft-only decoder rejected
+    // verified and disputed measurements even though they are valid current records.
+    for (const identity of ["verified", "disputed"] as const) {
+      const bytes = JSON.stringify({ ...draft, identity })
+      const retained = decodeCollectorDraft("mux.json", bytes, manifest, expected.sourceRevision)
+      expect(retained.raw).toBe(bytes)
+      expect(retained.run.identity).toBe(identity)
+    }
     expect(decoded.run.outerApp).toEqual({
       subject: { ...target, kind: "term" },
       rawReplies: outerApp.rawReplies,
