@@ -190,6 +190,14 @@ it.each([
     status,
     tests: [{ id: "review", status, assertionRefs: [] }],
   })
+  if (criterionBranch === HEADLESS_OBSERVABLE_REVIEW) {
+    const reason = [
+      "Kept unsupported answer",
+      '["lib","ghostty","0.4.0","linux","extensions.iterm2-images"]',
+      "not admitted: headless-observable-review admits only untestable",
+    ].join(" ")
+    expect(finalized.results[0]).toMatchObject({ reason, tests: [{ reason }] })
+  }
   expect(capture.results[0]?.status).toBe("test-todo")
   expect(finalized.rawReplies).toEqual(capture.rawReplies)
   expect(finalized.assertions).toEqual(capture.assertions)

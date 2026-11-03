@@ -140,7 +140,13 @@ export function finalizeCollectedDraft(
       resolution.kind === "answer" &&
       resolution.status !== "untestable"
     ) {
-      return finalizeProbeResult(result)
+      const ref = resolution.rowKeys[0]
+      const reason = `Kept ${resolution.status} answer${ref ? ` ${ref}` : ""} not admitted: ${result.criterionBranch} admits only untestable`
+      return finalizeProbeResult({
+        ...result,
+        reason,
+        tests: result.tests.map((test) => (test.id === "review" ? { ...test, reason } : test)),
+      })
     }
     // A reply-path gate measured zero reply bytes; a kept answer that claims support contradicts the measurement.
     if (
