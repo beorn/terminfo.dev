@@ -1,5 +1,6 @@
 import type { LibProbeSource, ProbeDefinition, ProbeCallbackResult, TermProbeSource } from "./types.ts"
 import {
+  HEADLESS_OBSERVABLE_REVIEW,
   notTestedResult,
   reviewResult,
   osInputReviewResult,
@@ -687,19 +688,54 @@ function mouseEncodingLib(
   }
 }
 
-/** @cto ce2d3969 K2: engines keeping no OSC 133 prompt/click_events state, each with its own citation. */
-const SHARED_ENCODER_CLICK_EVENTS_LIMITS = new Map<string, string>([
+/**
+ * @cto ce2d3969 K2 / @chief 4d98c1c0: adapters whose termless mouse-encoding path uses the shared
+ * encodeMouseReport (no prompt or click_events state). Each engine carries its own verified citation
+ * and review branch rather than inheriting another engine's classification:
+ * - ghostty core parses OSC 133;A;click_events=1, while its WASM binding does not forward click_events
+ *   and a headless library run has no pointer surface -> HEADLESS_OBSERVABLE_REVIEW (Untestable-only).
+ * - alacritty and vt100-rust store no OSC 133 prompt or click_events state in native source ->
+ *   SOURCE_NEGATIVE_REVIEW.
+ */
+const SHARED_ENCODER_CLICK_EVENTS_LIMITS = new Map<
+  string,
+  {
+    readonly branch: typeof HEADLESS_OBSERVABLE_REVIEW | typeof SOURCE_NEGATIVE_REVIEW
+    readonly limit: string
+    readonly noObservable: string
+    readonly reviewNotice: string
+  }
+>([
   [
     "ghostty",
-    "shared core encoder carries no prompt state; ghostty WASM core 5714ed07 prompt_start keeps no click_events (termless 2719cfd ghostty-wasm-api.patch:624-627); #30936",
+    {
+      branch: HEADLESS_OBSERVABLE_REVIEW,
+      limit:
+        "shared core encoder carries no prompt state; ghostty WASM core 5714ed07 parses OSC 133 A click_events at src/terminal/osc.zig:1535-1554 into prompt_start.click_events (:74), while the WASM binding does not forward click_events (termless 2719cfd ghostty-wasm-api.patch:624-627) and a headless library run has no pointer surface; #30936",
+      noObservable:
+        "WASM binding does not forward OSC 133 click_events and headless library context has no pointer surface",
+      reviewNotice: "returned before encodeMouse; independent Untestable review required",
+    },
   ],
   [
     "alacritty",
-    "shared core encoder carries no prompt state; alacritty_terminal 0.26.0 keeps no OSC 133 prompt or click_events state (vte Handler src/term/mod.rs:1059; its only OSC-side state is the osc52 clipboard at :1705,:1726); #30936",
+    {
+      branch: SOURCE_NEGATIVE_REVIEW,
+      limit:
+        "shared core encoder carries no prompt state; alacritty_terminal 0.26.0 keeps no OSC 133 prompt or click_events state (vte 0.15.0 src/ansi.rs:1348-1525 has no OSC 133 arm and routes unmatched codes to unhandled at :1332-1341,:1523); #30936",
+      noObservable: "Native engine stores no OSC 133 prompt or click_events state",
+      reviewNotice: "returned before encodeMouse; independent source review required",
+    },
   ],
   [
     "vt100-rust",
-    "shared core encoder carries no prompt state; vt100 0.16.2 keeps no OSC 133 prompt or click_events state (osc_dispatch src/perform.rs:198-237 handles OSC 0/1/2/52 only; the rest reaches Callbacks::unhandled_osc, which termless TerminalCallbacks lib.rs:21 leaves default); #30936",
+    {
+      branch: SOURCE_NEGATIVE_REVIEW,
+      limit:
+        "shared core encoder carries no prompt state; vt100 0.16.2 keeps no OSC 133 prompt or click_events state (osc_dispatch src/perform.rs:198-237 handles OSC 0/1/2/52 only; the rest reaches Callbacks::unhandled_osc, which termless TerminalCallbacks lib.rs:21 leaves default); #30936",
+      noObservable: "Native engine stores no OSC 133 prompt or click_events state",
+      reviewNotice: "returned before encodeMouse; independent source review required",
+    },
   ],
 ])
 
@@ -717,23 +753,22 @@ function kittyClickEventsLib(ctx: LibProbeSource): ProbeCallbackResult {
       storedClickEvents: false,
     })
   }
-  // @cto cac2b8dc: an adapter that encodes through termless's shared encodeMouseReport (no prompt or
-  // click_events model) yields a null that is the instrument's limit, never engine evidence. Each such
-  // engine is listed with its own citation rather than inheriting ghostty's.
-  // @cto bbf6f77f: once that engine's identity is qualified by auditedOscEngine, the same null becomes a
-  // source-negative review the author answers, not a plain not-tested; an unqualified identity keeps the
-  // plain coverage record, so a stale adapter or binary cannot borrow the audit.
+  // @cto cac2b8dc / bbf6f77f / @chief 4d98c1c0: adapters whose termless mouse-encoding path uses the
+  // shared encodeMouseReport return here before calling encodeMouse. Once the engine's identity is
+  // qualified by auditedOscEngine, return the engine's review branch (headless-observable-review for
+  // ghostty's WASM binding / headless library boundary; source-negative-review for native engines with
+  // no OSC 133 prompt/click_events state); an unqualified identity keeps the plain not-tested record.
   const sharedEncoderClickEventsLimit = SHARED_ENCODER_CLICK_EVENTS_LIMITS.get(ctx.backendName)
   if (sharedEncoderClickEventsLimit) {
     if (auditedOscEngine(ctx.runtimeIdentity)) {
       return reviewResult(
-        SOURCE_NEGATIVE_REVIEW,
-        `${sharedEncoderClickEventsLimit}; the shared encoder's null is instrument output, not engine evidence; independent source review required`,
-        "Native engine stores no OSC 133 prompt or click_events state",
+        sharedEncoderClickEventsLimit.branch,
+        `${sharedEncoderClickEventsLimit.limit}; ${sharedEncoderClickEventsLimit.reviewNotice}`,
+        sharedEncoderClickEventsLimit.noObservable,
         { storedClickEvents: false },
       )
     }
-    return notTestedResult(sharedEncoderClickEventsLimit, { storedClickEvents: false })
+    return notTestedResult(sharedEncoderClickEventsLimit.limit, { storedClickEvents: false })
   }
   if (!ctx.capabilities.extensions.has("mouse-encoding") || typeof ctx.encodeMouse !== "function") {
     return notTestedResult("library mouse-event encoding (undeclared mouse-encoding extension)", {

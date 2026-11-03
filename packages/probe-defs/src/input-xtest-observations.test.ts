@@ -1318,17 +1318,17 @@ test("input.kitty-click-events library arm records unsupported when control pass
   ])
 })
 
-// @cto cac2b8dc K3: a shared-encoder adapter's null is the instrument's limit, never engine evidence.
+// @cto cac2b8dc K3: a shared-encoder adapter returns its coverage placeholder before encodeMouse.
 test.each([
   [
     "ghostty",
     "not-tested",
-    "shared core encoder carries no prompt state; ghostty WASM core 5714ed07 prompt_start keeps no click_events (termless 2719cfd ghostty-wasm-api.patch:624-627); #30936",
+    "shared core encoder carries no prompt state; ghostty WASM core 5714ed07 parses OSC 133 A click_events at src/terminal/osc.zig:1535-1554 into prompt_start.click_events (:74), while the WASM binding does not forward click_events (termless 2719cfd ghostty-wasm-api.patch:624-627) and a headless library run has no pointer surface; #30936",
   ],
   [
     "alacritty",
     "not-tested",
-    "shared core encoder carries no prompt state; alacritty_terminal 0.26.0 keeps no OSC 133 prompt or click_events state (vte Handler src/term/mod.rs:1059; its only OSC-side state is the osc52 clipboard at :1705,:1726); #30936",
+    "shared core encoder carries no prompt state; alacritty_terminal 0.26.0 keeps no OSC 133 prompt or click_events state (vte 0.15.0 src/ansi.rs:1348-1525 has no OSC 133 arm and routes unmatched codes to unhandled at :1332-1341,:1523); #30936",
   ],
   [
     "vt100-rust",
@@ -1337,7 +1337,7 @@ test.each([
   ],
   ["xtermjs", "unsupported", null],
 ] as const)(
-  "input.kitty-click-events library arm on %s: shared-encoder null reads %s",
+  "input.kitty-click-events library arm on %s: shared-encoder limit reads %s",
   (backendName, expected, noObservable) => {
     let modesOn = false
     const base = libMouseSource({
@@ -1367,12 +1367,16 @@ test.each([
   },
 )
 
-// @cto bbf6f77f: the same shared-encoder null is a source-negative review once auditedOscEngine qualifies the
-// engine, and stays a plain not-tested for an unqualified identity, so a stale build cannot borrow the audit.
+// @cto bbf6f77f: once auditedOscEngine qualifies the engine, ghostty pends headless-observable-review
+// (core parses click_events while WASM drops it and a lib run has no pointer surface), alacritty and
+// vt100-rust pend source-negative-review, and an unqualified identity stays plain not-tested.
 const qualifiedSharedEncoderIdentities = [
   [
     "ghostty",
-    "ghostty WASM core",
+    "ghostty WASM core 5714ed07 parses OSC 133 A click_events at src/terminal/osc.zig:1535-1554",
+    "headless-observable-review",
+    "WASM binding does not forward OSC 133 click_events and headless library context has no pointer surface",
+    "returned before encodeMouse; independent Untestable review required",
     {
       kind: "js",
       runtimeFormat: "wasm",
@@ -1403,6 +1407,9 @@ const qualifiedSharedEncoderIdentities = [
   [
     "alacritty",
     "alacritty_terminal 0.26.0",
+    "source-negative-review",
+    "Native engine stores no OSC 133 prompt or click_events state",
+    "returned before encodeMouse; independent source review required",
     {
       kind: "native",
       engineVersion: "0.26.0",
@@ -1434,6 +1441,9 @@ const qualifiedSharedEncoderIdentities = [
   [
     "vt100-rust",
     "vt100 0.16.2",
+    "source-negative-review",
+    "Native engine stores no OSC 133 prompt or click_events state",
+    "returned before encodeMouse; independent source review required",
     {
       kind: "native",
       engineVersion: "0.16.2",
@@ -1463,8 +1473,8 @@ const qualifiedSharedEncoderIdentities = [
 ] as const
 
 test.each(qualifiedSharedEncoderIdentities)(
-  "input.kitty-click-events library arm on %s: a qualified identity pends the source-negative review and a stale one stays not-tested",
-  (backendName, citationMarker, identity, stale) => {
+  "input.kitty-click-events library arm on %s: a qualified identity pends %s and a stale one stays not-tested",
+  (backendName, citationMarker, expectedBranch, expectedNote, expectedReviewEnding, identity, stale) => {
     let modesOn = false
     const source = (runtimeIdentity: unknown): LibProbeSource => {
       const base = libMouseSource({
@@ -1483,11 +1493,12 @@ test.each(qualifiedSharedEncoderIdentities)(
     }
 
     const qualified = probe("input.kitty-click-events").lib!(source({ ...identity }))
-    expect(qualified.criterionBranch, `${backendName} qualified`).toBe("source-negative-review")
-    expect(qualified.note).toBe("Native engine stores no OSC 133 prompt or click_events state")
+    expect(qualified.criterionBranch, `${backendName} qualified`).toBe(expectedBranch)
+    expect(qualified.note).toBe(expectedNote)
     expect(qualified.tests).toEqual([expect.objectContaining({ id: "review", status: "test-todo" }) as unknown])
     expect(qualified.tests?.[0]?.reason).toContain(citationMarker)
-    expect(qualified.tests?.[0]?.reason).toContain("independent source review required")
+    expect(qualified.tests?.[0]?.reason).toContain(expectedReviewEnding)
+    expect(qualified.tests?.[0]?.reason).not.toContain("shared encoder's null")
     expect(qualified.response).toBe(JSON.stringify({ storedClickEvents: false }))
 
     const unqualified = probe("input.kitty-click-events").lib!(source({ ...identity, ...stale }))
