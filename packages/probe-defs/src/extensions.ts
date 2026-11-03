@@ -5248,6 +5248,28 @@ export const extensionsProbes: ProbeDefinition[] = [
               }
               response = JSON.stringify({ detection: reply.raw, decrpmSiblings: controls })
               if (allSilent) {
+                const engine = auditedOscEngine(ctx.runtimeIdentity)?.[0]
+                const identity = ctx.runtimeIdentity
+                const da1 = engine === "vt100" ? "\x1b[?1;2c" : "\x1b[?62;1;2;6;7;8;9c"
+                if (
+                  (engine === "vt100" || engine === "vt220") &&
+                  identity?.kind === "js" &&
+                  identity.integrity.kind === "source" &&
+                  identity.integrity.revision === "9e99e4d23cdc606fca258b1863aa2be7ae79eed3" &&
+                  identity.termlessRevision === "25089207e11420cf7a588987c1dc2683a45e8372" &&
+                  reply.raw === da1 &&
+                  controls.every((control) => control.raw === da1)
+                ) {
+                  const rejection = engine === "vt100" ? "360-364" : "444-447"
+                  return parserStateResult(
+                    null,
+                    "OSC5522 protocol detection is recognized",
+                    { detection: reply.raw, decrpmSiblings: controls },
+                    undefined,
+                    `vterm9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/${engine}/src/screen.ts:${rejection} rejects DECRQM; Termless25089207 packages/${engine}/src/backend.ts forwards engine responses without a mode-report substitute; independent source review required`,
+                    "query_reply",
+                  )
+                }
                 const reason =
                   "OSC5522 detection prerequisite unmet: no complete DECRPM reply from same-run sibling queries; protocol recognition cannot be observed."
                 return {

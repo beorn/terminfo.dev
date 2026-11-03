@@ -102,7 +102,10 @@ qualified read negative without a witness, retaining buffer-state `source-negati
 as Test to-do pending source review, never automatic Unsupported.
 OSC5522 detection checks the current library DECRQM sibling-query family after qualified target
 silence. Qualified silence from every control names an unmet detection prerequisite as Test to-do,
-retaining each raw window. Any control reply leaves target silence as Test failure; complete,
+retaining each raw window. The exact reviewed VT100/VT220 source trees at vterm9e99e4d2 with
+Termless25089207 can instead retain source-negative review when all fifteen windows contain only
+their DA1 sentinel; the kept engine/adapter-source answer establishes Unsupported. No other
+identity or observed reply enters that branch. Any control reply leaves target silence as Test failure; complete,
 on-time target Ps0 remains Unsupported. Unqualified, malformed and late target replies keep
 their existing criteria. Historical captures and selected results are unchanged.
 
