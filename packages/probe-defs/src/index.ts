@@ -5,8 +5,15 @@ export {
   sourceAnswerForRef,
   sourceAnswerKey,
   parseSourceAnswerKey,
+  repositoryIdentity,
 } from "./source-answers.ts"
-export type { SourceAnswer, SourceAnswerSubject, SourceAnswerInput, SourceAnswerResolution } from "./source-answers.ts"
+export type {
+  EngineReceipt,
+  SourceAnswer,
+  SourceAnswerSubject,
+  SourceAnswerInput,
+  SourceAnswerResolution,
+} from "./source-answers.ts"
 export type {
   HostInputName,
   HostRecipeName,

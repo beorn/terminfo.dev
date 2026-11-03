@@ -20,7 +20,31 @@ export interface SourceAnswerInput {
   sourceRevision?: string | null
   /** The I/O boundary resolves only this repository's immutable commit/path, or reports object absence. */
   readBlob?: (repository: string, commit: string, path: string) => string | undefined
+  /**
+   * The engine build receipt the I/O owner read at the pinned Termless revision. It names the engine source the
+   * loaded binary was built from and the wasm that build produced (@cto de41833e condition 2).
+   */
+  engineReceipt?: EngineReceipt
 }
+
+export interface EngineReceipt {
+  readonly outputs: Readonly<Record<string, string>>
+  readonly core: { readonly repository: string; readonly commit: string }
+}
+
+/** Owner/repo identity, so a citation may spell the same repository as a remote or a URL. */
+export function repositoryIdentity(repository: string): string {
+  return repository
+    .trim()
+    .replace(/^git@([^:]+):/, "https://$1/")
+    .replace(/\.git$/, "")
+    .replace(/\/+$/, "")
+    .toLowerCase()
+}
+
+const ENGINE_CORE_REPOSITORY = "https://github.com/ghostty-org/ghostty"
+const ENGINE_OUTPUT = "ghostty-vt.wasm"
+const VT100_RUST_PREFIX = "packages/vt100-rust/"
 
 /** Static kept answers; the one-time converter checks the source/provenance and emitted shape. */
 export const SOURCE_ANSWERS = retainedAnswers as readonly SourceAnswer[]
@@ -112,13 +136,36 @@ export function resolveSourceAnswer(rows: readonly SourceAnswer[], input: Source
               runtime.integrity.repository === blob.repository
                 ? runtime.integrity
                 : undefined
+            const core = repositoryIdentity(blob.repository) === repositoryIdentity(ENGINE_CORE_REPOSITORY)
+            const loaded = runtime !== undefined && "loadedBinary" in runtime ? runtime.loadedBinary.sha256 : undefined
+            const receipt = input.engineReceipt
+            // The receipt speaks only for the binary it built; another artifact never borrows it.
+            const receiptApplies =
+              receipt !== undefined && loaded !== undefined && receipt.outputs[ENGINE_OUTPUT] === loaded
+            if (core && receiptApplies && blob.commit !== receipt.core.commit) {
+              throw new Error(
+                `Engine citation ${blob.repository}@${blob.commit}:${blob.path} differs from the build receipt's ${receipt.core.commit}`,
+              )
+            }
+            // The addon is built at its own source commit, not at the pinned Termless revision; a path the
+            // measured identity cannot place is covered by neither and stays unresolvable (@cto de41833e c3).
+            const addon =
+              blob.repository === "git@github.com:beorn/termless.git" && blob.path.startsWith(VT100_RUST_PREFIX)
             const revision =
               source?.revision ??
-              (blob.repository === "git@github.com:beorn/termless.git"
-                ? runtime?.termlessRevision
-                : blob.repository === "git@github.com:beorn/terminfo.dev.git"
-                  ? input.sourceRevision
-                  : undefined)
+              (core
+                ? receiptApplies
+                  ? receipt.core.commit
+                  : undefined
+                : blob.repository === "git@github.com:beorn/termless.git"
+                  ? addon
+                    ? runtime?.kind === "native"
+                      ? runtime.provenance.sourceCommit
+                      : undefined
+                    : runtime?.termlessRevision
+                  : blob.repository === "git@github.com:beorn/terminfo.dev.git"
+                    ? input.sourceRevision
+                    : undefined)
             const unavailable = (at = revision) => ({
               kind: "unavailable" as const,
               ...(at && { reason: `cited source not resolvable at ${blob.repository}@${at.slice(0, 12)}` as const }),
@@ -141,7 +188,13 @@ export function resolveSourceAnswer(rows: readonly SourceAnswer[], input: Source
             // alone does not establish whether this path changed. Explicit path OIDs win.
             if (oids.size === 1) return { kind: oids.has(blob.oid) ? "same" : "changed" }
             if (oids.size > 1 || source?.cleanTree === false) return unavailable()
+            // An engine citation this binary's receipt does not describe is unresolvable, never borrowed.
+            if (core && !receiptApplies) return unavailable()
+            if (addon && !revision) return unavailable()
             if (!revision) return { kind: "unknown" }
+            // The receipt names the commit but no engine checkout is declared, so the blob stays unread: covered,
+            // not verified. A declared checkout (readBlob) is the only cure, never a fallback (@cto de41833e c4).
+            if (core && revision === blob.commit) return { kind: "unknown" }
             if (revision === blob.commit) return { kind: "same" }
             const current = input.readBlob?.(blob.repository, revision, blob.path)
             if (!current) return unavailable()
