@@ -529,6 +529,13 @@ Observation outcomes are `supported`, `unsupported`, `inconclusive` and `error`.
 
 That order matters: a failed test wins over a pending one. Timeout or lack of an observable is not automatically evidence that a terminal lacks the feature; the probe's criterion must establish that. An execution-only Test to-do can follow real I/O and does not promise an empty trace; pre-I/O refusal fixtures separately prove their zero-byte behavior.
 
+For new app and mux results, every member of the existing `sgrProbes` registry (including colors and resets)
+requires a screenshot for that feature in the same run. The native batch retains a pending `visual` test with
+reason `visual effect not observed in this run` when a Supported or Unsupported result lacks that evidence.
+Existing pending and failure results retain their causes; a screenshot never supplies a verdict by presence alone.
+This is the partial app/mux implementation of the visual-style requirement. Library collection and historical
+run bytes are unchanged; the render-capable library requirement remains open pending a reviewed declared capture/capability seam.
+
 The headless OSC 52 read callback seeds an isolated nonce and accepts measured silence only through
 an available, collector-qualified sentinel query member. Its retained raw response and measured sentinel
 facts distinguish that negative from an unanswered capture. Malformed or unmatched replies remain
