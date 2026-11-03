@@ -597,7 +597,9 @@ function oscSimpleQueryProbe(id: string, query: string, pattern: RegExp, expecte
                 raw,
                 noObservable: "Audited vterm headless subject has no physical font cell dimensions",
                 sourceCitation:
-                  ctx.runtimeIdentity?.integrity.kind === "source" &&
+                  ctx.runtimeIdentity?.kind === "js" &&
+                  ctx.runtimeIdentity.runtimeFormat === "js" &&
+                  ctx.runtimeIdentity.integrity.kind === "source" &&
                   ctx.runtimeIdentity.integrity.revision === "9e99e4d23cdc606fca258b1863aa2be7ae79eed3"
                     ? "vterm 9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vterm/src/screen.ts:89-109 ScreenOptions has no physical font metrics; OSC1337 ReportCellSize at :4056-4058 and OSC776 at :4000-4003 deliberately report unknown zero dimensions (#30575)"
                     : "vterm 67dd3960746766ed47e2bb4b2ced6503a78549cc packages/vterm/src/screen.ts:89-109 ScreenOptions has no physical font metrics; OSC1337 ReportCellSize at :4056-4058 and OSC776 at :4000-4003 deliberately report unknown zero dimensions (#30575)",
