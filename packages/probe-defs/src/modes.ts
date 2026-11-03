@@ -271,9 +271,7 @@ function captureStackResult(
     criterionBranch: signal,
     tests: [{ id: signal, status, assertionRefs: [0] }],
     response: observed,
-    assertions: [
-      { assertionType: "screenshot", kind: decided.pass ? "positive" : "negative", expected, observed },
-    ],
+    assertions: [{ assertionType: "screenshot", kind: decided.pass ? "positive" : "negative", expected, observed }],
     observation: { outcome: status, ...evidence, ...(decided.note && { note: decided.note }) },
   }
 }
@@ -294,7 +292,8 @@ async function captureStackRow(
 ): Promise<ProbeCallbackResult> {
   const popRead = await captureStackFixture(ctx, id, "POP fixture", popSpec)
   if (!("match" in popRead)) return popRead
-  const pop: StackReading = popRead.match === "expected" ? "restored" : popRead.match === "ignored" ? "persisted" : "other"
+  const pop: StackReading =
+    popRead.match === "expected" ? "restored" : popRead.match === "ignored" ? "persisted" : "other"
   const reads = [popRead]
   let push: StackReading = "other"
   for (const contrast of ["earlier", "persisted"] as const) {

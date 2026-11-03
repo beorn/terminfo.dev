@@ -1402,57 +1402,79 @@ test.each(
       ] as const
     ).map(([name, target, push, pop, note]) => [family, name, target, push, pop, note] as const),
   ),
-)("a %s capture of a %s stack grades push and pop on their own fixtures", async (family, _name, target, push, pop, note) => {
-  const [pushId, popId, marker] = STACK_CAPTURE_IDS[family]
-  for (const [id, outcome] of [
-    [pushId, push],
-    [popId, pop],
-  ] as const) {
-    const definition = modesProbes.find((item) => item.id === id)
-    if (!definition?.term) throw new Error(`Missing app callback for ${id}`)
-    const writes: string[] = []
-    const frames: ObservationFrame[] = []
-    const result = await definition.term(stackStateSource(writes, frames, target))
-    expect(writes.some((entry) => entry.includes(marker)), id).toBe(true)
-    expect(result.observation?.outcome, id).toBe(outcome)
-    expect(result.pass, id).toBe(outcome === "supported")
-    if (outcome === "inconclusive") {
-      expect(result.assertions, id).toBeUndefined()
-      expect(result.observation?.note, id).toMatch(/no (push|pop)-only observation/)
-    } else {
-      expect(result.assertions, id).toMatchObject([
-        { kind: outcome === "supported" ? "positive" : "negative", assertionType: "screenshot" },
-      ])
-      expect(result.tests, id).toEqual([
-        { id: `${id === pushId ? "push" : "pop"}-observed`, status: outcome, assertionRefs: [0] },
-      ])
-      if (note && outcome === "unsupported") expect(result.observation?.note, id).toContain(note)
+)(
+  "a %s capture of a %s stack grades push and pop on their own fixtures",
+  async (family, _name, target, push, pop, note) => {
+    const [pushId, popId, marker] = STACK_CAPTURE_IDS[family]
+    for (const [id, outcome] of [
+      [pushId, push],
+      [popId, pop],
+    ] as const) {
+      const definition = modesProbes.find((item) => item.id === id)
+      if (!definition?.term) throw new Error(`Missing app callback for ${id}`)
+      const writes: string[] = []
+      const frames: ObservationFrame[] = []
+      const result = await definition.term(stackStateSource(writes, frames, target))
+      expect(
+        writes.some((entry) => entry.includes(marker)),
+        id,
+      ).toBe(true)
+      expect(result.observation?.outcome, id).toBe(outcome)
+      expect(result.pass, id).toBe(outcome === "supported")
+      if (outcome === "inconclusive") {
+        expect(result.assertions, id).toBeUndefined()
+        expect(result.observation?.note, id).toMatch(/no (push|pop)-only observation/)
+      } else {
+        expect(result.assertions, id).toMatchObject([
+          { kind: outcome === "supported" ? "positive" : "negative", assertionType: "screenshot" },
+        ])
+        expect(result.tests, id).toEqual([
+          { id: `${id === pushId ? "push" : "pop"}-observed`, status: outcome, assertionRefs: [0] },
+        ])
+        if (note && outcome === "unsupported") expect(result.observation?.note, id).toContain(note)
+      }
     }
-  }
-})
+  },
+)
 
 // #31904 R3f capture arm: the headless arm's three fixtures (@cto 009e40cd, 4e804806).
 test.each([
   ["working", { "restore control": "off", "on-control": "on", "overwrite test": "off" }, "supported", "supported"],
   ["stale save", { "restore control": "off", "on-control": "on", "overwrite test": "on" }, "unsupported", "supported"],
-  ["reset to default", { "restore control": "on", "on-control": "on", "overwrite test": "on" }, "unsupported", "unsupported"],
-  ["always-off restore", { "restore control": "off", "on-control": "off", "overwrite test": "off" }, "inconclusive", "unsupported"],
-] as const)("a %s DECAWM save/restore capture grades each row on its own operation", async (_name, target, save, restore) => {
-  for (const [id, outcome] of [
-    ["modes.xtsave", save],
-    ["modes.xtrestore", restore],
-  ] as const) {
-    const definition = modesProbes.find((item) => item.id === id)
-    if (!definition?.term) throw new Error(`Missing app callback for ${id}`)
-    const writes: string[] = []
-    const frames: ObservationFrame[] = []
-    const result = await definition.term(stackStateSource(writes, frames, target))
-    expect(writes.some((entry) => entry.includes("X".repeat(80) + "!")), id).toBe(true)
-    expect(writes, id).toContain("\x1b[?7h")
-    expect(result.observation?.outcome, id).toBe(outcome)
-    expect(result.pass, id).toBe(outcome === "supported")
-  }
-})
+  [
+    "reset to default",
+    { "restore control": "on", "on-control": "on", "overwrite test": "on" },
+    "unsupported",
+    "unsupported",
+  ],
+  [
+    "always-off restore",
+    { "restore control": "off", "on-control": "off", "overwrite test": "off" },
+    "inconclusive",
+    "unsupported",
+  ],
+] as const)(
+  "a %s DECAWM save/restore capture grades each row on its own operation",
+  async (_name, target, save, restore) => {
+    for (const [id, outcome] of [
+      ["modes.xtsave", save],
+      ["modes.xtrestore", restore],
+    ] as const) {
+      const definition = modesProbes.find((item) => item.id === id)
+      if (!definition?.term) throw new Error(`Missing app callback for ${id}`)
+      const writes: string[] = []
+      const frames: ObservationFrame[] = []
+      const result = await definition.term(stackStateSource(writes, frames, target))
+      expect(
+        writes.some((entry) => entry.includes("X".repeat(80) + "!")),
+        id,
+      ).toBe(true)
+      expect(writes, id).toContain("\x1b[?7h")
+      expect(result.observation?.outcome, id).toBe(outcome)
+      expect(result.pass, id).toBe(outcome === "supported")
+    }
+  },
+)
 
 test("xt stack capture refuses undersized geometry before any bytes or frames", async () => {
   for (const [id, rows, cols, need] of [
