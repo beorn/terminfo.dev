@@ -1474,8 +1474,14 @@ test.each([
       })
       expect(result.observation).toBeUndefined()
       expect(result.note).toBeUndefined()
+      // A completed DA1 control with no initial colour is missing observation,
+      // while timeout or malformed data still cannot establish a working apparatus.
+      const missingBaseline = stage === 0 && raw === "\x1b[?1;2c"
+      expect(result.tests?.[0]?.status).toBe(missingBaseline ? "test-todo" : "test-failure")
       expect(result.tests?.[0]?.reason).toContain(
-        ["initial highlight colour is unknown", "known colour was not read back", "did not answer after"][stage]!,
+        missingBaseline
+          ? `initial highlight colour not observable: OSC ${setCode} no reply (DA1 control passed)`
+          : ["initial highlight colour is unknown", "known colour was not read back", "did not answer after"][stage]!,
       )
       if (raw === "") expect(result).toHaveProperty("replyFailureTestIds", ["criterion"])
       else expect(result).not.toHaveProperty("replyFailureTestIds")
@@ -1529,10 +1535,17 @@ test.each([
       reason: "sentinel",
       raw: "\x1b[?1;2c",
       rawBase64: btoa("\x1b[?1;2c"),
+      sentinel: { atMs: 0, graceMs: 250 },
     }),
   })
   expect(result.observation).toBeUndefined()
-  expect(result.tests).toMatchObject([{ id: "criterion", status: "test-failure", reason: expect.any(String) }])
+  expect(result.tests).toMatchObject([
+    {
+      id: "criterion",
+      status: "test-todo",
+      reason: `initial highlight colour not observable: OSC ${setCode} no reply (DA1 control passed)`,
+    },
+  ])
 })
 
 // #32246: a silent or sentinel-bounded initial highlight query is an unanswered prerequisite reading, so it is TEST

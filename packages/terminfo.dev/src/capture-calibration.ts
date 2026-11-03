@@ -466,7 +466,7 @@ export async function calibrateCaptureOrigin({
   pixelGeometry?: CapturePixelGeometry
   timeoutMs: number
   captureRaw: (label: string, deadline: number) => Promise<CapturedFrame>
-  /** Only the verified collector launch can supply the initial cursor default. */
+  /** Verified collector-owned disposable session: set visibility before painting and restore set. */
   collectorLaunched?: boolean
 }): Promise<NamedTextOrigin & { pixelGeometry: CapturePixelGeometry }> {
   if (![ctx.rows, ctx.cols].every((value) => Number.isSafeInteger(value) && value >= 2)) {
@@ -478,25 +478,24 @@ export async function calibrateCaptureOrigin({
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
     throw new Error("Capture calibration requires the oracle's positive timeoutMs")
   }
-  const visibilityReport = await ctx.queryWithSentinelOutcome("\x1b[?25$p", /\x1b\[\?25;([0-4])\$y/)
-  if (visibilityReport.reason === "timeout") {
-    throw new Error(`Capture calibration cursor visibility query timed out: ${JSON.stringify(visibilityReport)}`)
+  let visibility: "set" | "reset" = "set"
+  if (!collectorLaunched) {
+    const visibilityReport = await ctx.queryWithSentinelOutcome("\x1b[?25$p", /\x1b\[\?25;([0-4])\$y/)
+    if (visibilityReport.reason === "timeout") {
+      throw new Error(`Capture calibration cursor visibility query timed out: ${JSON.stringify(visibilityReport)}`)
+    }
+    const status = visibilityReport.match?.[1]
+    if (visibilityReport.reason === "sentinel" && visibilityReport.match === null) {
+      // Retain the alternate exchange; it cannot establish the unowned session's prior state.
+      await ctx.queryOutcome("\x1b[?25$p", /\x1b\[\?25;([0-4])\$y/, 5000)
+    }
+    if (visibilityReport.reason !== "reply" || (status !== "1" && status !== "2")) {
+      throw refusal(
+        `Capture calibration cannot restore cursor visibility: ${status === "3" || status === "4" ? "permanent mode" : "unreported mode"}; ${JSON.stringify(visibilityReport)}`,
+      )
+    }
+    visibility = status === "1" ? "set" : "reset"
   }
-  const status = visibilityReport.match?.[1]
-  if (visibilityReport.reason === "sentinel" && visibilityReport.match === null) {
-    // Retain the alternate exchange in the owned preparation trace; it cannot establish prior state.
-    await ctx.queryOutcome("\x1b[?25$p", /\x1b\[\?25;([0-4])\$y/, 5000)
-  }
-  const launchDefault =
-    collectorLaunched &&
-    ((visibilityReport.reason === "sentinel" && visibilityReport.match === null) ||
-      (visibilityReport.reason === "reply" && status === "0"))
-  if (!launchDefault && (visibilityReport.reason !== "reply" || (status !== "1" && status !== "2"))) {
-    throw refusal(
-      `Capture calibration cannot restore cursor visibility: ${status === "3" || status === "4" ? "permanent mode" : "unreported mode"}; ${JSON.stringify(visibilityReport)}`,
-    )
-  }
-  const visibility = launchDefault || status === "1" ? "set" : "reset"
   const capture = async (label: string, deadline: number) => {
     if (Date.now() >= deadline) throw paintTimeout(`Capture calibration ${label}: paint witness timeout before capture`)
     const frame = await captureRaw(`collector raster calibration: ${label}`, deadline)
@@ -540,6 +539,7 @@ export async function calibrateCaptureOrigin({
   let failure: unknown
   try {
     // Normalization and every later mutation are inside the same restoration transaction.
+    if (collectorLaunched) ctx.write("\x1b[?25h")
     ctx.write("\x1b[?25l\x1b[0m\x1b[2J\x1b[H")
     baseline = await confirmedFrame("before grid paint", () => true)
     const before = baseline
@@ -686,7 +686,7 @@ export async function calibrateCaptureOrigin({
       origin: { x: authored.x, y: authored.y },
       pixelGeometry: measured,
       ...(columnClip > 0 || rowClip > 0 ? { visible: { width: authored.width, height: authored.height } } : {}),
-      basis: `collector complete witnessed raster: ${ctx.cols} columns x ${ctx.rows} rows, every unmasked scanline measures ${cellWidth}x${cellHeight}, visible ${authored.width}x${authored.height} grid at ${authored.x},${authored.y}${filletTrace}${blendTrace}${leadTrace}${clipTrace}; current paints and identical restore confirmed${launchDefault ? "; prior cursor visibility unreported; restored launch default set" : ""}`,
+      basis: `collector complete witnessed raster: ${ctx.cols} columns x ${ctx.rows} rows, every unmasked scanline measures ${cellWidth}x${cellHeight}, visible ${authored.width}x${authored.height} grid at ${authored.x},${authored.y}${filletTrace}${blendTrace}${leadTrace}${clipTrace}; current paints and identical restore confirmed${collectorLaunched ? "; owned disposable session cursor explicitly set before calibration and restored set" : ""}`,
     }
   } catch (cause) {
     failure = cause
@@ -710,7 +710,7 @@ export async function calibrateCaptureOrigin({
       }
       try {
         ctx.write(`\x1b[?25${visibility === "set" ? "h" : "l"}`)
-        if (!launchDefault && (await ctx.queryMode(25)) !== visibility) {
+        if (!collectorLaunched && (await ctx.queryMode(25)) !== visibility) {
           throw new Error("Restored cursor visibility differs from its prior mode")
         }
       } catch (cause) {

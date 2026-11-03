@@ -24,6 +24,9 @@ a supported observation can still have a failed or pending required test; an inc
 does not establish Untestable. Without explicit tests, a diagnostic or a conclusive outcome, named
 missing-observable coverage defaults to Test to-do; rowless inconclusive without that coverage defaults
 to Test failure. Untestable still requires the implemented review reference.
+Highlight reset cannot be decided without an initial colour reading. When the DA1 control completes but
+OSC 17 or 19 supplies no initial colour, the callback records a named Test to-do; broken or untrustworthy
+measurement remains Test failure. Silence alone does not establish Unsupported.
 The [legacy presentation keys](../../docs/data/release-scope.ts) are a different shape:
 The `CellState` value `inconclusive` denotes reviewed Untestable, `error` denotes Test failure and `untested` denotes
 Test to-do; `supported` and `unsupported` retain their corresponding labels. Do not substitute callback outcomes for these keys.
@@ -77,9 +80,11 @@ one calibration witnesses the grid origin and every cell pitch, then confirms id
 The batch carries that measured origin and geometry into every cell crop; changing screen content cannot move them.
 An unmeasurable witness or changed geometry is recorded as a named refusal, never replaced by frame-colour centring.
 Every confirmation compares consecutive complete frames under one fixed deadline.
-For a Darwin app the collector launched, an unreported cursor-visibility mode restores
-the launch default set; the retained raster basis names that choice without treating DA1 as a mode reply.
-The identical-restoration witness concerns surface pixels; unreported cursor state uses the launch default without a mode readback claim.
+For a verified collector-launched disposable session on Darwin or Linux, including a Linux mux,
+calibration explicitly sets cursor visibility before painting and restores that set state.
+It does not infer the prior state from a launch default or DA1. The retained raster basis names the
+explicit setup; identical restoration concerns surface pixels without a cursor-mode readback claim.
+Sessions the collector did not launch require a reported original visibility and restore it unchanged.
 Native capture-command failures during installation retain their primary command evidence and
 secondary restoration failure in the named per-row no-adapter outcome, including native command deadline kills.
 Terminal-query timeouts and apparatus errors without a native capture-command cause retain their existing failure behavior.

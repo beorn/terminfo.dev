@@ -103,20 +103,6 @@ export const ADAPTER_SOURCE_AUDITS = {
     "packages/kitty/build/native-mode-layout.json": "6bd0f2d5b6936f8f6298e4cb9ae4b228172a9502",
     "packages/kitty/build/native-mode-layout.receipt.json": "02899a0c97f70eeba38f5030de1ba7ef4665b6f6",
   },
-  kittyCa46f3c2: {
-    "packages/kitty/src/index.ts": "3f207f911646613cdc3d8b04f155f0686a96a077",
-    "packages/kitty/src/backend.ts": "1b7367a9737d1292618ea34a1c451bf3273c3b35",
-    "packages/kitty/build/bridge.py": "ca46f3c261ccbdcfd9c3ada9949e2a0238cbcaac",
-    "packages/kitty/build/layout.c": "49c0beef4424190e89d2884eac5efe4da50e3630",
-    "packages/kitty/build/native-mode-layout.json": "6bd0f2d5b6936f8f6298e4cb9ae4b228172a9502",
-    "packages/kitty/build/native-mode-layout.receipt.json": "02899a0c97f70eeba38f5030de1ba7ef4665b6f6",
-  },
-  weztermB4155bfd: {
-    "packages/wezterm/src/index.ts": "512606c5270ffd0cff55c1b70f5b3eda18a92df0",
-    "packages/wezterm/src/backend.ts": "29b9bdea778abe558497217e811495c3c279451f",
-    "packages/wezterm/native/src/lib.rs": "47dc0392036f34416fb6a38e9a834a7fccc8cfe3",
-    "src/load-native.ts": "34e142550085450ab02138184626716ad0d6b546",
-  },
 } as const
 
 export function auditedAdapterSources(
