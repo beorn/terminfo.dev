@@ -18,8 +18,9 @@ vi.mock("node:child_process", async (original) => {
         const values = args as string[]
         if (command === "git" && values.includes("-C")) {
           const response = (stdout: string, status = 0) => ({ stdout, stderr: "", status, error: undefined })
-          if (control.mode === "remote" && values.includes("get-url"))
+          if (control.mode === "remote" && values.includes("get-url")) {
             return response("https://example.test/another.git\n")
+          }
           if (control.mode === "shallow" && values.includes("--is-shallow-repository")) return response("true\n")
           if (values.some((arg) => arg.startsWith("--batch-check"))) {
             if (control.mode === "absent") return response(`${String(options.input).trim()} missing\n`)
@@ -71,12 +72,12 @@ it.each(["checkout", "remote", "shallow", "broken", "absent"])(
           integrity: { kind: "registry", lockIntegrity: "sha512-package" },
         },
       })
-    if (mode === "absent")
+    if (mode === "absent") {
       expect(resolve()).toMatchObject({
         kind: "pending",
         reason: "cited source not resolvable at git@github.com:beorn/termless.git@000000000000",
       })
-    else expect(resolve).toThrow(/(?:repository|history|source).*termless.*0000000000000000000000000000000000000000/i)
+    } else expect(resolve).toThrow(/(?:repository|history|source).*termless.*0000000000000000000000000000000000000000/i)
   },
 )
 

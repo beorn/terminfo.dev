@@ -145,8 +145,9 @@ export function resolveSourceAnswer(rows: readonly SourceAnswer[], input: Source
             if (!current) return unavailable()
             const cited = input.readBlob?.(blob.repository, blob.commit, blob.path)
             if (!cited) return unavailable(blob.commit)
-            if (cited !== blob.oid)
+            if (cited !== blob.oid) {
               throw new Error(`Source-answer citation OID differs at ${blob.repository}@${blob.commit}:${blob.path}`)
+            }
             return { kind: current === cited ? "same" : "changed" }
           },
         )

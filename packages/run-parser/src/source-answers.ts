@@ -37,10 +37,11 @@ function readBlob(repository: string, commit: string, path: string): string | un
         typeof entry.repository === "string" &&
         identity(`https://github.com/${entry.repository}.git`) === identity(repository),
     )
-    if (index < 0)
+    if (index < 0) {
       throw new Error(
         `Missing source repository ${repository}@${commit}: no declaration in ${manifestPath}; checked ${repo}`,
       )
+    }
     repo = resolve(root, ".ci-siblings", String(index))
   }
   const context = `${repository}@${commit} (checkout ${repo})`
@@ -52,8 +53,9 @@ function readBlob(repository: string, commit: string, path: string): string | un
       timeout: 30000,
       env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
     })
-    if (result.error)
+    if (result.error) {
       throw new Error(`Cannot read source ${context}:${path}: ${result.error.message}`, { cause: result.error })
+    }
     return result
   }
   {
@@ -80,8 +82,8 @@ function readBlob(repository: string, commit: string, path: string): string | un
     return undefined
   }
   const match = /^([a-f0-9]{40}) blob$/.exec(object.stdout.trim())
-  if (!match) throw new Error(`Cited source is not a blob at ${context}:${path}: ${object.stdout.trim()}`)
-  const oid = match[1]!
+  const oid = match?.[1]
+  if (!oid) throw new Error(`Cited source is not a blob at ${context}:${path}: ${object.stdout.trim()}`)
   blobs.set(key, oid)
   return oid
 }
