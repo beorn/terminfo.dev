@@ -486,12 +486,7 @@ function xtSgrStackHeadless(ctx: LibProbeSource, operation: "push" | "pop"): Pro
   try {
     ctx.feed("\x1b[0m\x1b[2J\x1b[1;1H\x1b[1mB\x1b[0m\x1b[3mX\x1b[1mY\x1b[0m")
     const control = readBXY()
-    if (
-      !charsIntact(control) ||
-      !boldOnly(control.b) ||
-      !italicOnly(control.x) ||
-      !boldItalic(control.y)
-    ) {
+    if (!charsIntact(control) || !boldOnly(control.b) || !italicOnly(control.x) || !boldItalic(control.y)) {
       return notTestedResult(
         "bold and italic cell attributes in the headless readback (control frame not calibrated)",
         { control },
