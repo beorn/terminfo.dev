@@ -325,7 +325,7 @@ test("the 9 headless C154 semantic-mark features emit named coverage only after 
       {
         id: "review",
         status: "test-todo",
-        reason: expect.stringMatching(/pinned engine source.*OSC 133.*633.*mark or zone state.*citation per cell/),
+        reason: expect.stringMatching(/OSC 133 \/ 633 mark was consumed but this reader exposes no mark or zone state/),
       },
     ])
     expect(JSON.parse(result.response ?? "{}"), id).toEqual({

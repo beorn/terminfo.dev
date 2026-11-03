@@ -165,7 +165,7 @@ reset negative. Compound attribute resets with unshown setup attributes are Test
 does not decide the whole claim.
 
 TERM_FEATURES means a terminal program's export into its child environment. Its library arm performs
-no I/O and retains a `headless-observable-review` row naming the API boundary.
+no I/O and records Test to-do: a library context spawns no application child to receive the environment export.
 It creates no observation or assertion. The application arm remains Test to-do until terminal-owned child readback exists.
 
 Raw replies and observed payloads do not embed
@@ -525,7 +525,7 @@ Observation outcomes are `supported`, `unsupported`, `inconclusive` and `error`.
 - Coverage becomes `test-todo`. Refusal and consumption without a deciding observation explicitly supply Test to-do tests; unanswered queries and errors explicitly supply Test failure tests. No reply, clipboard value or frame is invented to satisfy a type.
 - A measured inconclusive observation stays typed and defaults to `test-failure` unless an existing explicit criterion test selects a different status.
 
-`finalizeProbeResult` folds the required tests in order: failure, pending or empty tests, reviewed impossibility, unsupported, then supported. `untestable` needs a review reference. Collection finalization records Windows console-host prerequisites before that fold. The canonical run reader decodes the stored result without folding its tests again, except that a stored source-answer cell reads as Test to-do (see above); content validation uses that same reader.
+`finalizeProbeResult` folds the required tests in order: failure, pending or empty tests, unsupported, then supported. There is no route to `untestable`: a test marked untestable folds to Test to-do. Collection finalization records Windows console-host prerequisites before that fold. The canonical run reader decodes the stored result without folding its tests again, except that a stored source-answer cell reads as Test to-do (see above); content validation uses that same reader.
 
 That order matters: a failed test wins over a pending one. Timeout or lack of an observable is not automatically evidence that a terminal lacks the feature; the probe's criterion must establish that. An execution-only Test to-do can follow real I/O and does not promise an empty trace; pre-I/O refusal fixtures separately prove their zero-byte behavior.
 

@@ -23,7 +23,7 @@
 import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from "node:fs"
 import { join, resolve, sep } from "node:path"
 import { loadFeatures } from "@terminfo/catalog"
-import { PROBE_STATUSES, SOURCE_NEGATIVE_REVIEW, type ProbeStatus } from "@terminfo/probe-defs"
+import { PROBE_STATUSES, type ProbeStatus } from "@terminfo/probe-defs"
 import { parseJsonStrict, type LoadedRun } from "@terminfo/run-parser"
 import { loadRawCapture, UntrustedSuiteError } from "../../packages/admin/raw-capture.ts"
 import { compatibilitySubjects, loadCurrentResults, type CurrentResult } from "./current-results.ts"
@@ -305,21 +305,11 @@ export interface WorkingCell {
   headline: "reviewed" | "raw"
   relation: "same-suite" | "different-suite" | "raw-only"
   reviewed: (ReviewedSide & { display: string }) | null
-  raw: RawSide & { label: typeof RAW_LABEL; display: string; pendingReview: boolean; differsFromReviewed: boolean }
+  raw: RawSide & { label: typeof RAW_LABEL; display: string; differsFromReviewed: boolean }
 }
 
-/**
- * The one "pending review" rule: a source-negative-review row still open (TEST TODO or TEST FAILURE). A REVIEWED
- * answer keeps that branch with its decided status (run-parser seals e.g. unsupported through it), so the branch
- * alone never means pending.
- */
-export function pendingReview(side: { status: ProbeStatus; criterionBranch?: string }): boolean {
-  return (
-    side.criterionBranch === SOURCE_NEGATIVE_REVIEW && (side.status === "test-todo" || side.status === "test-failure")
-  )
-}
-const display = (side: { status: ProbeStatus; criterionBranch?: string }): string =>
-  pendingReview(side) ? "pending review" : side.status
+// No cell waits on a source review any more (#32246): a retired source-negative cell reads its own status.
+const display = (side: { status: ProbeStatus }): string => side.status
 
 /** The per-cell provenance rule; pure, so the headline rule is tested without a corpus. */
 export function workingCell(raw: RawSide, reviewed: ReviewedSide | undefined): WorkingCell {
@@ -334,11 +324,9 @@ export function workingCell(raw: RawSide, reviewed: ReviewedSide | undefined): W
       ...raw,
       label: RAW_LABEL,
       display: display(raw),
-      pendingReview: pendingReview(raw),
       differsFromReviewed:
         relation === "same-suite" &&
         reviewed?.version === raw.version &&
-        !pendingReview(raw) &&
         reviewed.status !== raw.status,
     },
   }

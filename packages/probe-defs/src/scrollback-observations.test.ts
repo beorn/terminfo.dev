@@ -216,21 +216,8 @@ test.each(historyCases)(
         },
       }),
     )
-    if (eligible === "drift") {
-      expect(result.tests, id).toEqual([
-        {
-          id: "criterion",
-          status: "test-failure",
-          reason: `binary identity drift: expected ${expectedBinary}, read ${"f".repeat(64)}`,
-        },
-      ])
-      expect(result.observation, id).toBeUndefined()
-      expect(result.assertions, id).toBeUndefined()
-      expect(result.notTested, id).toBeUndefined()
-      expect(result.response, id).not.toContain("runtimeIdentity")
-      expect(calls, id).toBe(0)
-      return
-    }
+    // A drifted binary no longer takes a TEST FAILURE gate: the cell is TEST TODO either way (@cto batch7 A-F6).
+    if (eligible === "drift") void expectedBinary
     if (!eligible) {
       expect(result.notTested?.noObservable ?? "", id).not.toContain(
         "adapter exposes no retained scrollback history count",

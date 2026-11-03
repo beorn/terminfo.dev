@@ -717,18 +717,6 @@ function retiredSourceAnswer(result: ProbeResult): ProbeResult {
   }
 }
 
-function isSourceOnlyNegativeReview(result: ProbeResult, assertions: readonly ReadAssertion[]): boolean {
-  return (
-    // Which branches admit which shape has one home, in probe-defs: the source-negative review and the reply-path
-    // gate, whose measurement is a zero-byte reply (@cto 93c86660). The shape stays identical, so a reply-path cell
-    // still cannot carry an assertion or assertionRefs, and the route-specific guards against "supported" remain.
-    SOURCE_ONLY_NEGATIVE_REVIEW_BRANCHES.has(result.criterionBranch ?? "") &&
-    result.assertionType === undefined &&
-    !assertions.some((assertion) => assertion.featureId === result.featureId) &&
-    !result.tests.some((test) => (test.assertionRefs?.length ?? 0) > 0)
-  )
-}
-
 export function parseProbeResults(
   value: unknown,
   path: string,
@@ -874,11 +862,10 @@ export function parseProbeResults(
     }
     const semanticSource =
       result.criterionBranch === SEMANTIC_PROMPT_SOURCE_REVIEW && (status === "supported" || status === "unsupported")
-    const sourceOnlyNegative = status === "unsupported" && isSourceOnlyNegativeReview(result, assertions)
-    if (semanticSource || sourceOnlyNegative || status === "untestable") {
+    if (semanticSource || status === "untestable") {
       fail(path, `${featureId} ${status} requires a probe observation; a source answer no longer counts`)
     }
-    if ((status === "supported" || status === "unsupported") && !semanticSource && !sourceOnlyNegative) {
+    if ((status === "supported" || status === "unsupported") && !semanticSource) {
       if (attempt.scope === "none" || !item.assertionType) {
         fail(path, `${featureId} support result requires measured evidence`)
       }

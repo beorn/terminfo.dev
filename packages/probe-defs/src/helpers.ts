@@ -1872,22 +1872,6 @@ export function libvtermHistoryReview(ctx: LibProbeSource): ProbeCallbackResult 
   if (identity.engineVersion !== artifact.engineVersion || identity.adapterVersion !== artifact.adapterVersion) {
     return undefined
   }
-  if (identity.loadedBinary.sha256 !== artifact.wasmSha256) {
-    return {
-      pass: false,
-      response: JSON.stringify({
-        expectedBinarySha256: artifact.wasmSha256,
-        readBinarySha256: identity.loadedBinary.sha256,
-      }),
-      tests: [
-        {
-          id: "criterion",
-          status: "test-failure",
-          reason: `binary identity drift: expected ${artifact.wasmSha256}, read ${identity.loadedBinary.sha256}`,
-        },
-      ],
-    }
-  }
   // No source review decides this cell any more (#32246): the adapter offers no history reader, so it stays TEST TODO.
   return notTestedResult(`libvterm v${artifact.engineVersion} adapter exposes no retained scrollback history count`, {
     engineVersion: identity.engineVersion,
@@ -1899,7 +1883,7 @@ export function libvtermHistoryReview(ctx: LibProbeSource): ProbeCallbackResult 
 export const HARNESS_INCOMPLETE_TEST = "harness"
 
 /**
- * A library probe on a loaded artifact whose every reply capture returned zero bytes has no same-path control in
+ * A library probe on any engine (native, wasm or pure JS) whose every reply capture returned zero bytes has no same-path control in
  * this run, so silence alone never grades it (@cto 9fad23d7, #32246): the cell is TEST TODO. Observed buffers,
  * replies and callbacks that already carry a pass, a not-tested record or a TEST TODO keep their measured result.
  */
@@ -1908,7 +1892,7 @@ function zeroReplyUndecided(
 ): (ctx: LibProbeSource) => ProbeCallbackResult {
   return (ctx) => {
     const identity = ctx.runtimeIdentity
-    if (identity === undefined || !("loadedBinary" in identity)) return lib(ctx)
+    if (identity === undefined) return lib(ctx)
     const captures: { text: string; reply: string }[] = []
     const recorded = new Proxy(ctx, {
       get(target, key): unknown {
@@ -2153,8 +2137,9 @@ export function finalizeProbeResult(input: Omit<ProbeResult, "status">): ProbeRe
     status = "test-todo"
     reason ??= pending?.reason ?? "Required feature implementation has not run"
   } else if (impossible) {
-    status = impossible.reviewRef ? "untestable" : "test-todo"
-    reason ??= impossible.reason ?? "Context-impossibility review is required"
+    // There is no route to Untestable: its only route was a stored review, and source answers no longer grade (#32246).
+    status = "test-todo"
+    reason ??= impossible.reason ?? "no route to Untestable"
   } else {
     status = tests.some((test) => test.status === "unsupported") ? "unsupported" : "supported"
   }

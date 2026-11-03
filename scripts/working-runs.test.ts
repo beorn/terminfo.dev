@@ -234,29 +234,12 @@ describe("workingCell: reviewed stays the headline, raw sits beside it (requirem
     expect(cell.raw.label).toBe("raw, unreviewed")
   })
 
-  it("labels a pending source review as pending review, not failure", () => {
-    const cell = workingCell(raw("test-failure", "source-negative-review"), undefined)
-    expect(cell.raw.pendingReview).toBe(true)
-    expect(cell.raw.display).toBe("pending review")
-    expect(cell.raw.status).toBe("test-failure")
-  })
-
-  // @cto REVISE R1 (11b52b66d): a REVIEWED answer keeps its source-negative-review branch (run-parser seals e.g. vterm
-  // kitty-click as unsupported through it); only a still-open TODO/FAILURE on that branch is pending.
-  it("shows a reviewed unsupported-by-source-review answer as unsupported", () => {
-    const cell = workingCell(raw("unsupported"), reviewed("unsupported", "suite-new", "source-negative-review"))
-    expect(cell.reviewed?.display).toBe("unsupported")
-  })
-
-  it("shows a pending raw cell beside it as pending review, never as differing", () => {
-    const cell = workingCell(
-      raw("test-failure", "source-negative-review"),
-      reviewed("unsupported", "suite-new", "source-negative-review"),
-    )
-    expect(cell.reviewed?.display).toBe("unsupported")
-    expect(cell.raw.display).toBe("pending review")
-    expect(cell.raw.pendingReview).toBe(true)
-    expect(cell.raw.differsFromReviewed).toBe(false)
+  // No cell waits on a source review any more (#32246, @cto batch7 A-F6): a retired source-negative cell shows its
+  // own status, never "pending review".
+  it("shows a retired source-negative raw cell by its status, never as pending review", () => {
+    const cell = workingCell(raw("test-todo", "source-negative-review"), undefined)
+    expect(cell.raw.display).toBe("test-todo")
+    expect(cell.raw).not.toHaveProperty("pendingReview")
   })
 
   // @cto REVISE R2: "differs" needs the same suite AND the same engine version.

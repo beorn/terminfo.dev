@@ -1105,7 +1105,12 @@ test.each(geometryReplies)(
       }
     }
     // Only the complete zero frame takes this record; a partial or foreign reply keeps its measured reading.
-    for (const reply of ["", raw.slice(0, 4), "foreign", raw + "foreign", "foreign" + raw]) {
+    // Silence is TEST TODO for lack of a control (@cto batch7 A-F4); a partial or foreign reply keeps its reading.
+    const silent = { feedCapture: () => "", runtimeIdentity: geometryRuntime } as unknown as LibProbeSource
+    expect(callback(id).headless(silent).notTested?.noObservable).toBe(
+      "observation not decided: no same-path control in this run",
+    )
+    for (const reply of [raw.slice(0, 4), "foreign", raw + "foreign", "foreign" + raw]) {
       const ctx = { feedCapture: () => reply, runtimeIdentity: geometryRuntime } as unknown as LibProbeSource
       expect(callback(id).headless(ctx).notTested).toBeUndefined()
     }

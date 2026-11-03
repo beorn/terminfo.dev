@@ -37,7 +37,7 @@ Automated image tests can decide criteria with machine-readable comparisons. Whe
 
 ## Untestable, TEST TODO and TEST FAILURE
 
-**Untestable** means a reviewer established that this context cannot expose the feature. **TEST TODO** means required work remains, including an unattempted probe or a pending review. **TEST FAILURE** means an attempted test broke or could not produce a valid result; it describes the test, not the terminal.
+**Untestable** has no current route: no result reaches it until a per-kind declaration exists. **TEST TODO** means required work remains, including an unattempted probe or a missing observable. **TEST FAILURE** means an attempted test broke or could not produce a valid result; it describes the test, not the terminal.
 
 - **TEST FAILURE: no usable reply** or **TEST FAILURE: no reply in time** — the query was attempted, but no result arrived before the deadline and no documented negative response established Unsupported.
 - **TEST FAILURE: the reply was not in the expected form** — we do not grade a reply we cannot parse.
