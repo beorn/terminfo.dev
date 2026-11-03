@@ -2,7 +2,7 @@
 /**
  * Watch for new releases of tracked terminals.
  *
- * Reads the reviewed default-context app result, then scans complete, bounded GitHub/Codeberg feeds for the newest stable
+ * Reads the selected app result, then scans complete, bounded GitHub/Codeberg feeds for the newest stable
  * version eligible at the one-calendar-month UTC cutoff.
  *
  * Usage:

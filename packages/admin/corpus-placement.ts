@@ -24,7 +24,6 @@ import {
 import { windowsCommBase } from "../terminfo.dev/src/windows-process-ancestry.ts"
 import { hostedDarwinAppFromExecutablePath } from "../terminfo.dev/src/owned-terminal.ts"
 import { parseLinuxClipboardReceipt } from "../terminfo.dev/src/linux-clipboard.ts"
-import { nonempty } from "../../scripts/interpretations.ts"
 import { loadFeatures } from "@terminfo/catalog"
 
 import { outerLaunchMismatch } from "./src/outer-launch.ts"
@@ -191,7 +190,7 @@ function protocolIdentityMatch(run: ProtocolIdentitySubject): MeasuredIdentity |
     : { ok: true, checked: true }
   if (!verification.checked || !verification.ok) return null
   const identity = deriveIdentity(run.rawReplies)
-  if (!nonempty(identity.da1)) return null
+  if (typeof identity.da1 !== "string" || identity.da1.length === 0) return null
   const os = (run.subject.os ?? "").toLowerCase()
   // On Windows, ?61; is conhost's own reply (Alacritty runs its child inside a ConPTY session),
   // so DA1 identifies nothing there and identity rests on the measured launch receipt.

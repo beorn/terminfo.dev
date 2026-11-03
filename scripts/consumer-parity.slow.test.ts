@@ -192,7 +192,7 @@ const fixture = vi.hoisted(() => {
 
 vi.mock("../docs/data/current-results.ts", async () => {
   const { loadFeatures } = await import("@terminfo/catalog")
-  const { projectResults, projectedContextKey } = await import("../docs/data/selected-results.ts")
+  const { projectResults } = await import("../docs/data/selected-results.ts")
   const actual = await vi.importActual<typeof import("../docs/data/current-results.ts")>(
     "../docs/data/current-results.ts",
   )
@@ -200,19 +200,6 @@ vi.mock("../docs/data/current-results.ts", async () => {
   const catalogIds = Object.keys(loadFeatures(content))
   const fixtureContent = mkdtempSync(join(tmpdir(), "terminfo-parity-policy-"))
   symlinkSync(join(content, "terminals.json"), join(fixtureContent, "terminals.json"))
-  writeFileSync(
-    join(fixtureContent, "default-contexts.json"),
-    JSON.stringify({
-      defaultContext: {
-        "term:kitty": {
-          contextKey: projectedContextKey(fixture.selected.subject, 2),
-          reviewer: "fixture",
-          reason: "default physical context",
-          sources: ["fixture://kitty"],
-        },
-      },
-    }),
-  )
   afterAll(() => rmSync(fixtureContent, { recursive: true, force: true }))
   const sealedFixture = (run: SelectedVersion): LoadedRun => {
     const ids = [...new Set([...catalogIds, ...Object.keys(run.cells)])]
@@ -285,7 +272,7 @@ vi.mock("../docs/data/current-results.ts", async () => {
       const sealed = sealedFixture(run)
       originals.set(sealed.runId, sealed)
     }
-    return projectResults([...originals.values()], [], catalogIds, { currentProbeHash: "current" }, [])
+    return projectResults([...originals.values()], catalogIds, { currentProbeHash: "current" }, [])
   }
   return {
     ...actual,
@@ -341,7 +328,6 @@ function recompose(projection: SelectedProjection, extra: readonly LoadedRun[] =
   for (const run of extra) runs.set(run.runId, run)
   return selectedResults.projectResults(
     [...runs.values()],
-    [],
     Object.values(projection.contexts)[0]?.catalogIds ?? [],
     { currentProbeHash: "current" },
     [],
@@ -559,7 +545,7 @@ it("keeps the retained corpus consistent across unmocked site, API and analysis 
       result.stderr
         .split("\n")
         .filter(Boolean)
-        .every((line) => /^Warning: Terminal '.+' has no current sealed runs$/.test(line)),
+        .every((line) => /^Warning: Terminal '.+' has no stored current runs$/.test(line)),
     ).toBe(true)
     const receipt = JSON.parse(result.stdout) as {
       exactContexts: number
@@ -868,8 +854,6 @@ describe("selected-run consumer parity", () => {
   it("keeps raw evidence and unchecked collector notes out of generated site and API summaries", () => {
     const out = mkdtempSync(join(tmpdir(), "terminfo-presentation-"))
     let selection: ReturnType<typeof vi.spyOn> | undefined
-    let policy: ReturnType<typeof vi.spyOn> | undefined
-    let imageReader: ReturnType<typeof vi.spyOn> | undefined
     try {
       const site = probesLoader.load()
       generateApi(out)
@@ -903,7 +887,6 @@ describe("selected-run consumer parity", () => {
       current.suiteId = probeHash()
       for (const cell of Object.values(context.cells)) cell.run.suiteId = current.suiteId
       selection = vi.spyOn(currentResults, "loadCurrentResults").mockReturnValue({ projection })
-      policy = vi.spyOn(currentResults, "loadDefaultContextPolicy").mockReturnValue({})
       current.rawReplies = { "bold-reply": "RETAINED_CURRENT_REPLY" }
       current.assertions = [
         { featureId: "sgr.bold", kind: "positive", expected: "expected criterion", observed: "actual response" },
@@ -936,65 +919,8 @@ describe("selected-run consumer parity", () => {
       const privateFullProject = loadFullProjectData()
       expect(privateFullProject.collected).toBe(1)
       expect(JSON.stringify(privateFullProject).includes("UNAPPROVED_CURRENT_REASON")).toBe(false)
-      current.presentations = {
-        "sgr.bold": {
-          id: "present-current-bold",
-          reviewer: "reviewer",
-          reason: "reviewed retained evidence",
-          sources: ["https://example.org/review"],
-          presentsEvidence: true,
-          accepted: {
-            by: "fixture-acceptor",
-            wire: "00000000-0000-4000-8000-000000000000",
-            at: "2026-10-30T12:00:00-07:00",
-          },
-          acceptedSha256: "a".repeat(64),
-        },
-      }
-      const presented = publicResults(projection, targets)
-      const approval = presented.selectedByBackend.kitty?.selected.cells["sgr.bold"]?.presentation
-      if (approval?.state !== "presented") throw new Error("Current evidence was not presented")
-      expect(approval.url).toBe(`/api/v3/evidence/${current.sha256}.json#sgr.bold`)
-      // A presentation decision takes the result out of the trace.
-      const traceAfter = presented.projection.contexts[context.contextKey]?.sources[current.runId]?.trace
-      const tracedAfter = traceAfter && presented.documents.get(traceAfter.url)
-      if (traceAfter && !tracedAfter) throw new Error(`Missing trace document ${traceAfter.url}`)
-      const cellsAfter = tracedAfter ? (JSON.parse(tracedAfter.bytes) as { cells: Record<string, unknown> }).cells : {}
-      expect(Object.keys(cellsAfter)).not.toContain("sgr.bold")
-      const docUrl = approval.url.split("#")[0]!
-      const document = presented.documents.get(docUrl)
-      expect(document?.document).toMatchObject({
-        version: 4,
-        runId: current.runId,
-        runSha256: current.sha256,
-        cells: {
-          "sgr.bold": {
-            featureId: "sgr.bold",
-            result: { status: "supported" },
-            record: {
-              rawReply: "RETAINED_CURRENT_REPLY",
-              assertions: current.assertions,
-              screenshot: { url: `/artifacts/${screenshotSha256}.png`, sha256: screenshotSha256 },
-            },
-          },
-        },
-      })
-      expect(createHash("sha256").update(document!.bytes).digest("hex")).toBe(approval.sha256)
-      expect(JSON.stringify(presented.projection.contexts)).not.toContain("RETAINED_CURRENT_REPLY")
-      expect(JSON.stringify(loadFullProjectData()).includes("UNAPPROVED_CURRENT_REASON")).toBe(true)
-      imageReader = vi.spyOn(selectedResults, "readVerifiedArtifact").mockReturnValue(screenshot)
-      generateApi(out)
-      expect(imageReader).toHaveBeenCalledWith(
-        expect.any(String),
-        `sha256:${screenshotSha256}`,
-        current.runId,
-        "screenshot",
-      )
-      expect(readFileSync(join(out, "artifacts", `${screenshotSha256}.png`))).toEqual(screenshot)
-      expect(readFileSync(join(out, docUrl), "utf8")).toBe(document!.bytes)
+      expect([...unpublished.documents.keys()].some((url) => url.includes("/evidence/"))).toBe(false)
     } finally {
-      imageReader?.mockRestore()
-      policy?.mockRestore()
       selection?.mockRestore()
       rmSync(out, { recursive: true, force: true })
     }
@@ -1150,7 +1076,7 @@ describe("selected-run consumer parity", () => {
       expect(warnings.some((message) => message.includes("historical analysis snapshot is not current evidence"))).toBe(
         false,
       )
-      expect(warnings.every((message) => message.includes("no current sealed runs"))).toBe(true)
+      expect(warnings.every((message) => message.includes("no stored current runs"))).toBe(true)
     } finally {
       warning.mockRestore()
       rmSync(out, { recursive: true, force: true })
@@ -1182,7 +1108,7 @@ describe("selected-run consumer parity", () => {
       const analysis = generateAnalysis()["modes/decsclm-smooth-scroll"]?.analysis
       expect(analysis).toContain("Legacy")
       expect(analysis).not.toContain("Unicode")
-      expect(warnings.every((message) => message.includes("no current sealed runs"))).toBe(true)
+      expect(warnings.every((message) => message.includes("no stored current runs"))).toBe(true)
     } finally {
       warning.mockRestore()
       Reflect.deleteProperty(cells, featureId)
@@ -1420,6 +1346,8 @@ describe("selected-run consumer parity", () => {
     if (!unscoped) throw new Error("Missing Kitty sixel annotation fixture")
     const cell = fixture.selected.cells["extensions.sixel"] as SelectedCell
     const original = structuredClone(cell)
+    const annotationId = "extensions.osc1337-cellsize"
+    const previousAnnotated = fixture.selected.cells[annotationId]
     try {
       const unreviewed = generateAnalysis()["extensions/sixel-graphics"]?.analysis
       expect(unreviewed).not.toContain(unscoped)
@@ -1430,12 +1358,23 @@ describe("selected-run consumer parity", () => {
       const reviewed = generateAnalysis()["extensions/sixel-graphics"]?.analysis
       expect(reviewed).not.toContain(unscoped)
       expect(reviewed).not.toContain("Reviewed Kitty sixel observation note")
-      expect(warnings.every((message) => message.includes("no current sealed runs"))).toBe(true)
+      // Plain notes cannot veto stored grades or become evidence. Existing negative-result
+      // cases miss the old build refusal triggered by a note saying "not supported".
+      fixture.selected.cells[annotationId] = {
+        ...structuredClone(original),
+        featureId: annotationId,
+        outcome: "supported",
+      }
+      const generated = JSON.stringify(generateAnalysis())
+      expect(generated).not.toContain(annotations[`kitty:${annotationId}`]!.note)
+      expect(warnings.every((message) => message.includes("no stored current runs"))).toBe(true)
     } finally {
       warning.mockRestore()
       Object.assign(cell, original)
       if (original.note === undefined) delete cell.note
       if (original.chain.correctionId === undefined) Reflect.deleteProperty(cell.chain, "correctionId")
+      if (previousAnnotated) fixture.selected.cells[annotationId] = previousAnnotated
+      else Reflect.deleteProperty(fixture.selected.cells, annotationId)
     }
   })
 

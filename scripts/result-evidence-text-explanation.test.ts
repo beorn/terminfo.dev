@@ -39,13 +39,7 @@ it("labels a retained source answer by engine version without regrading or datin
   const run = parseRun(path.pathname, bytes, catalog, new Map([[manifest.probeHash, manifest]]))
   const original = structuredClone(run)
   const featureId = "extensions.iterm2-images"
-  const projection = projectResults(
-    [run],
-    [],
-    catalog,
-    { currentProbeHash: manifest.probeHash, workingRuns: [run] },
-    [],
-  )
+  const projection = projectResults([run], catalog, { currentProbeHash: manifest.probeHash, workingRuns: [run] }, [])
   const selected = projection.history["term:alacritty"]?.[0]
   const result = selected?.results.find((entry) => entry.featureId === featureId)
   expect(result?.reason).toContain("reviewed at 0.17.0, not re-verified")
@@ -71,6 +65,39 @@ it("labels a retained source answer by engine version without regrading or datin
   )
   expect(published.contexts["term:alacritty"]?.cells[featureId]?.presentation.state).toBe("not-reviewed")
   expect(published.contexts["term:alacritty"]?.cells[featureId]?.record).toBeUndefined()
+  expect(run).toEqual(original)
+  expect(readFileSync(path, "utf8")).toBe(bytes)
+})
+
+// CTO18a3b98f permits only the fixed pending phrase; the real retained dispute
+// includes private source/reviewer details that caption-only coverage never exercised.
+it("publishes only the safe pending phrase from a real disputed Ghostty cell", () => {
+  const path = new URL(
+    "../content/probes-libs/ghostty-0.4.0-linux-3f3e920e-ebf8-4d81-ace1-52445a05a992.json",
+    import.meta.url,
+  )
+  const bytes = readFileSync(path, "utf8")
+  const manifestPath = new URL("../content/suites/4b01b0117e18.json", import.meta.url)
+  const manifest = parseSuiteManifest(manifestPath.pathname, readFileSync(manifestPath, "utf8"))
+  const catalog = manifest.catalogIds!
+  const run = parseRun(path.pathname, bytes, catalog, new Map([[manifest.probeHash, manifest]]))
+  const original = structuredClone(run)
+  const featureId = "extensions.osc104-reset-palette"
+  const retained = run.results?.find((result) => result.featureId === featureId)
+  expect(retained?.status).toBe("test-todo")
+  expect(retained?.reason).toMatch(/^kept answers disagree:/)
+  expect(retained?.reason).toContain("kept originals:")
+  expect(retained?.reason).toContain("@dev/")
+  const projection = projectResults([run], catalog, { currentProbeHash: manifest.probeHash, workingRuns: [run] }, [])
+  const published = publicResults(projection, new Map()).projection.contexts["lib:ghostty"]?.cells[featureId]
+  expect(published?.reason).toBe("kept answers disagree")
+  expect(published?.status).toBe("test-todo")
+  const publicBytes = JSON.stringify(published)
+  expect(publicBytes).not.toContain("kept originals")
+  expect(publicBytes).not.toContain("@dev/")
+  expect(publicBytes).not.toContain("reply-path-audit")
+  expect(published?.presentation.state).toBe("not-reviewed")
+  expect(published?.record).toBeUndefined()
   expect(run).toEqual(original)
   expect(readFileSync(path, "utf8")).toBe(bytes)
 })

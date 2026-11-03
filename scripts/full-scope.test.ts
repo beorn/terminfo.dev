@@ -83,7 +83,7 @@ describe("current full-catalogue scope arithmetic", () => {
       [...results({ "a.one": "supported" }), ...results({ "a.one": "unsupported" })],
       results({ "a.one": "supported", "c.foreign": "test-todo" }),
     ]) {
-      expect(() => scopeAggregate({ ...input, results: rows })).toThrow(/frozen catalogue membership/)
+      expect(() => scopeAggregate({ ...input, results: rows })).toThrow(/recorded catalogue membership/)
     }
   })
 })

@@ -32,7 +32,7 @@ import { parseJsonStrict } from "@terminfo/run-parser"
 import { loadFeatures } from "@terminfo/catalog"
 import { originalRunFor, readVerifiedArtifact } from "../docs/data/selected-results.ts"
 import { composeWorkingView, siteWorkingRun, type LoadedWorkingRun } from "../docs/data/working-runs.ts"
-import { publicResults, type CellEvidence, type HistoricalCellEvidence } from "../docs/data/public-results.ts"
+import { publicResults, type HistoricalCellEvidence } from "../docs/data/public-results.ts"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const root = join(__dirname, "..")
@@ -152,7 +152,7 @@ function writeEvidence(
         if (shape.frames) frames.push(...shape.frames)
       }
     } else {
-      const cells: Record<string, CellEvidence | HistoricalCellEvidence> = document.cells
+      const cells: Record<string, HistoricalCellEvidence> = document.cells
       for (const cell of Object.values(cells)) {
         if (cell.record.screenshot) frames.push({ ...cell.record.screenshot, kind: undefined })
         if (cell.record.frames) frames.push(...cell.record.frames)
@@ -356,7 +356,12 @@ export function generateApi(
     versions: currentGroups(published.projection.versions),
     history: currentGroups(published.projection.history),
     exclusions: published.projection.exclusions,
-    ...(workingView && { working: workingView }),
+    ...(workingView && {
+      working: {
+        ...workingView,
+        contexts: workingView.contexts.map(({ counts: _counts, positions: _positions, ...context }) => context),
+      },
+    }),
   }
   const v3Dir = outDir ? join(outDir, "api", "v3") : join(publicDir, "api", "v3")
   mkdirSync(v3Dir, { recursive: true })

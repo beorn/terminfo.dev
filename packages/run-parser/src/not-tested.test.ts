@@ -365,6 +365,7 @@ it.each([
   ["semantic-prompt-source-review", "supported"],
   ["semantic-prompt-source-review", "unsupported"],
   ["source-negative-review", "unsupported"],
+  ["reply-path-audit-review", "unsupported"],
   ["os-input-review", "untestable"],
 ] as const)("requires a kept source answer for %s %s", (criterionBranch, status) => {
   const attempt = { scope: "probe", startedAt: "2026-10-21T05:00:00.000Z" }
@@ -430,29 +431,33 @@ it("rejects the retained WezTerm capture whose silent host query has no cause", 
   )
 })
 
-it.each(["missing-cause", "foreign-run", "undeclared-query", "replied-cause"] as const)(
-  "rejects altered native host custody: %s",
-  (mode) => {
-    const { run, read } = nativeCapture("kitty-osc52-harness")
-    const result = run.results[0]
-    if (!result) throw new Error("Kitty harness fixture requires a result")
-    const key = `collector.hostRecipes.${result.featureId}`
-    const rawRecord = run.rawReplies[key]
-    if (!rawRecord) throw new Error(`Kitty harness fixture requires ${key}`)
-    const record = JSON.parse(rawRecord) as {
-      runId: string
-      captures: Array<{ cause?: unknown; response: string; query: string }>
-    }
-    const capture = record.captures[0]
-    if (!capture) throw new Error("Kitty harness fixture requires a host capture")
-    if (mode === "missing-cause") delete capture.cause
-    if (mode === "foreign-run") record.runId = "another-run"
-    if (mode === "replied-cause") capture.response = "response"
-    if (mode === "undeclared-query") capture.query = "\\u001b[14t"
-    run.rawReplies[key] = JSON.stringify(record)
-    expect(() => read(run)).toThrow(/host recipe/i)
-  },
-)
+it.each([
+  ["missing-cause", /host recipe/i],
+  ["foreign-run", /host recipe/i],
+  ["undeclared-query", /captured undeclared/],
+  ["replied-cause", /invalid harness-unreproduced capture cause/],
+] as const)("rejects altered native host custody: %s", (mode, refusal) => {
+  const { run, read } = nativeCapture("kitty-osc52-harness")
+  const result = run.results[0]
+  if (!result) throw new Error("Kitty harness fixture requires a result")
+  const key = `collector.hostRecipes.${result.featureId}`
+  const rawRecord = run.rawReplies[key]
+  if (!rawRecord) throw new Error(`Kitty harness fixture requires ${key}`)
+  const record = JSON.parse(rawRecord) as {
+    runId: string
+    captures: Array<{ cause?: unknown; response: string; query: string; error: string | null }>
+  }
+  const capture = record.captures[0]
+  if (!capture) throw new Error("Kitty harness fixture requires a host capture")
+  if (mode === "missing-cause") delete capture.cause
+  if (mode === "foreign-run") record.runId = "another-run"
+  if (mode === "replied-cause") capture.response = "response"
+  if (mode === "undeclared-query") {
+    record.captures.push({ query: "\u001b[14t", response: "", error: null })
+  }
+  run.rawReplies[key] = JSON.stringify(record)
+  expect(() => read(run)).toThrow(refusal)
+})
 
 it.each(["record-only", "row-only", "todo-row"] as const)("rejects unmatched harness evidence: %s", (mode) => {
   const { run, read } = nativeCapture("kitty-osc52-harness")

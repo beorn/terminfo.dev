@@ -8,6 +8,7 @@ import { expect, it } from "vitest"
 import { finalizeProbeResult } from "./helpers.ts"
 import {
   SOURCE_ANSWER_PENDING_LABELS,
+  publicSourceAnswerPendingLabel,
   parseSourceAnswerKey,
   repositoryIdentity,
   resolveSourceAnswer,
@@ -27,6 +28,28 @@ it("publishes only the fixed pending labels", () => {
   ])
   expect(sourceAnswerVersionLabel("0.4.0")).toBe("reviewed at 0.4.0, not re-verified")
 })
+// Fixed-label matching is a privacy boundary: qualified producer reasons may carry
+// private provenance, while similar prose is not an authorized public cause.
+it("forwards only fixed pending causes across producer formats and rejects near prefixes", () => {
+  for (const label of ["cited source changed", "kept answers disagree", "cited source not resolvable"]) {
+    expect(publicSourceAnswerPendingLabel(label)).toBe(label)
+    expect(publicSourceAnswerPendingLabel(`${label}: ["lib","example"]; kept originals: @dev/private`)).toBe(label)
+    expect(publicSourceAnswerPendingLabel(`${label} at https://example.test/private@abcdef123456`)).toBe(label)
+    for (const privateReason of [
+      `${label}ish`,
+      `${label}:private`,
+      `${label} atprivate`,
+      `${label} private`,
+      `private ${label}`,
+    ]) {
+      expect(publicSourceAnswerPendingLabel(privateReason)).toBeUndefined()
+    }
+  }
+  expect(publicSourceAnswerPendingLabel("unrelated private reason @dev/private")).toBeUndefined()
+  expect(publicSourceAnswerPendingLabel("")).toBeUndefined()
+  expect(publicSourceAnswerPendingLabel(undefined)).toBeUndefined()
+})
+
 const original = {
   reviewRef: "collector.review.original",
   reviewer: "@cto",
