@@ -1167,12 +1167,15 @@ test("wezterm and ghostty-native without a declared mark reader retain source re
   }
 })
 
-// @failure A moving reader with the wrong marker type, position or append count passes a freshness-only check.
+// @failure A moving reader with the wrong marker type, position, append count or rewritten history passes a freshness-only check.
 // @level l1
 // @consumer The registered semantic start-marker predicate.
-test.for(["type", "position", "count"] as const)("rejects fresh mark readback with wrong %s", (fault) => {
+test.for(["type", "position", "count", "history"] as const)("rejects fresh mark readback with wrong %s", (fault) => {
   const value = createVtermBackend({ cols: 80, rows: 24 })
   try {
+    // A correct new tail cannot witness append-only registration when the earlier mark was rewritten.
+    // The existing type/position/count and cached-reader controls did not change a retained prefix.
+    if (fault === "history") value.feed(new TextEncoder().encode("\x1b[7;8H\x1b]133;C\x07"))
     const source = createLibProbeSource(value, undefined, undefined, undefined)
     const actual = source.getSemanticMarks!
     vi.spyOn(source, "getSemanticMarks").mockImplementation(() => {
@@ -1182,6 +1185,13 @@ test.for(["type", "position", "count"] as const)("rejects fresh mark readback wi
       }
       if (fault === "position") {
         return marks.map((mark) => (mark.type === "command-end" ? mark : { ...mark, startCol: mark.startCol + 1 }))
+      }
+      if (fault === "history") {
+        return marks.map((mark, index) =>
+          index < marks.length - 1 && mark.type !== "command-end"
+            ? { ...mark, startCol: mark.startCol + marks.length }
+            : mark,
+        )
       }
       return marks.flatMap((mark) => [mark, { ...mark }])
     })

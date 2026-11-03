@@ -1679,10 +1679,14 @@ function promptMarkResult(
         firstMark?.type === markType &&
         firstMark.startRow === 0 &&
         firstMark.startCol === 0 &&
+        before.every((mark, index) => JSON.stringify(mark) === JSON.stringify(first[index])) &&
+        first.length === secondBefore.length &&
+        first.every((mark, index) => JSON.stringify(mark) === JSON.stringify(secondBefore[index])) &&
         second.length === secondBefore.length + 1 &&
         secondMark?.type === markType &&
         secondMark.startRow === 1 &&
         secondMark.startCol === 2 &&
+        secondBefore.every((mark, index) => JSON.stringify(mark) === JSON.stringify(second[index])) &&
         secondCell.char === "X" &&
         secondCursor.x === 3 &&
         secondCursor.y === 1,
