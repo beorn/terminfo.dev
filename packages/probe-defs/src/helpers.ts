@@ -712,6 +712,16 @@ export function sgrReadbackResult(
   state: readonly string[],
   readback: SgrReadback,
 ): ProbeCallbackResult {
+  return evaluateSgrReadback(id, sequence, state, readback, false)
+}
+
+function evaluateSgrReadback(
+  id: string,
+  sequence: string,
+  state: readonly string[],
+  readback: SgrReadback,
+  setupVerified: boolean,
+): ProbeCallbackResult {
   // Extended-color operands are one parameter, never independent attributes. Keep the raw state
   // below, but compare equivalent legacy semicolon and colon reports as complete color tokens.
   const parameters: string[] = []
@@ -757,19 +767,6 @@ export function sgrReadbackResult(
     }
   }
   const observed = state.length === 0 ? "0" : state.join(";")
-  // SGR 21 is double underline's legacy code; 4:2 is the same style in the colon form. A reply
-  // that names none of the requested styles leaves the claim unobserved (@cto 37277973, option i).
-  const underlineStyles = (readback.requireTokens ?? []).filter((token) => /^4:[1-5]$/.test(token))
-  const doubleStyle = readback.require.includes(21)
-  const styleReported =
-    underlineStyles.some((token) => parameters.includes(token)) ||
-    (doubleStyle && (parameters.includes("21") || parameters.includes("4:2")))
-  if ((underlineStyles.length > 0 || doubleStyle) && !styleReported) {
-    const wanted = [...underlineStyles, ...(doubleStyle ? ["21"] : [])].join(" or ")
-    return notTestedResult(`DECRQSS reported ${observed} without the requested underline style ${wanted}`, {
-      sgr: observed,
-    })
-  }
   if (unmeasured) {
     return {
       pass: false,
@@ -783,6 +780,19 @@ export function sgrReadbackResult(
       },
     }
   }
+  // SGR 21 is double underline's legacy code; 4:2 is the same style in the colon form. A reply
+  // that names none of the requested styles leaves the claim unobserved (@cto 37277973, option i).
+  const underlineStyles = (readback.requireTokens ?? []).filter((token) => /^4:[1-5]$/.test(token))
+  const doubleStyle = readback.require.includes(21)
+  const styleReported =
+    underlineStyles.some((token) => parameters.includes(token)) ||
+    (doubleStyle && (parameters.includes("21") || parameters.includes("4:2")))
+  if ((underlineStyles.length > 0 || doubleStyle) && !styleReported) {
+    const wanted = [...underlineStyles, ...(doubleStyle ? ["21"] : [])].join(" or ")
+    return notTestedResult(`DECRQSS reported ${observed} without the requested underline style ${wanted}`, {
+      sgr: observed,
+    })
+  }
   const codes = parameters.flatMap((token) => {
     // Style zero explicitly disables underline; its leading 4 is not an active attribute.
     if (token === "4:0") return [24]
@@ -792,6 +802,16 @@ export function sgrReadbackResult(
   const required = readback.require.every((code) => codes.includes(code))
   const forbidden = readback.forbid?.some((code) => codes.includes(code)) ?? false
   const tokensRequired = readback.requireTokens?.every((token) => parameters.includes(token)) ?? true
+  // A missing selector cannot distinguish an unsupported attribute from an unreported one.
+  // A different value of that selector, a forbidden code, or this attempt's verified reset setup can.
+  const absent =
+    readback.require.some(
+      (code) => !codes.includes(code) && !parameters.some((token) => leadingSgrCode(token) === code),
+    ) ||
+    (readback.requireTokens ?? []).some(
+      (token) => !parameters.some((actual) => leadingSgrCode(actual) === leadingSgrCode(token)),
+    )
+  if (absent && !forbidden && !setupVerified) return notTestedResult(NO_SAME_PATH_CONTROL, { sgr: observed })
   const ok = required && !forbidden && tokensRequired
   const requiredCodes = [...readback.require.map(String), ...(readback.requireTokens ?? [])]
   // A forbid-only claim (reset.sgr, sgr.reset, sgr.fg.default, sgr.bg.default) requires nothing, so its
@@ -848,7 +868,11 @@ export async function sgrReadbackDecision(
         observed[phase] = state.join(";")
         const qualified = sgrReadbackResult(id, bytes, state, criterion)
         if (!qualified.pass) {
-          if (phase === "setup" && qualified.observation?.outcome === "unsupported" && independentSetup) {
+          if (
+            phase === "setup" &&
+            (qualified.observation?.outcome === "unsupported" || qualified.notTested !== undefined) &&
+            independentSetup
+          ) {
             const captured = await independentSetup()
             if (captured) {
               const instrument = `${id}: the independent capture oracle supplies this result because the terminal's SGR report did not establish setup`
@@ -888,7 +912,7 @@ export async function sgrReadbackDecision(
     ctx.write(sequence)
     const state = await querySgrState(ctx)
     if (state === null) return null
-    const result = sgrReadbackResult(id, sequence, state, readback)
+    const result = evaluateSgrReadback(id, sequence, state, readback, setup !== undefined)
     return setup
       ? { ...result, response: JSON.stringify({ sgr: state.length === 0 ? "0" : state.join(";"), ...observed }) }
       : result
