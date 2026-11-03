@@ -551,6 +551,32 @@ test.each(["modes.xtpushsgr", "modes.xtpopsgr"])(
   },
 )
 
+// #31904 R3f: XTSAVE/XTRESTORE split with a restore control and an overwrite test (@cto 009e40cd).
+// Wrap on is the DECAWM default, so a restore that resets to it restored nothing observable and
+// both rows read the joint negative (@cto 0613b68d); on main it graded both rows supported.
+test.each([
+  ["xtsave-stale", "modes.xtsave", "unsupported", "save kept the earlier saved state"],
+  ["xtsave-stale", "modes.xtrestore", "supported", undefined],
+  ["xtrestore-reset-default", "modes.xtsave", "unsupported", "save then restore restored no earlier state"],
+  ["xtrestore-reset-default", "modes.xtrestore", "unsupported", "save then restore restored no earlier state"],
+  ["xtrestore-noop", "modes.xtsave", "unsupported", "save then restore restored no earlier state"],
+  ["xtrestore-noop", "modes.xtrestore", "unsupported", "save then restore restored no earlier state"],
+  ["xtrestore-always-off", "modes.xtsave", "inconclusive", "restore returned DECAWM off whatever was saved"],
+  ["xtrestore-always-off", "modes.xtrestore", "unsupported", "restore returned DECAWM off after on was saved"],
+] as const)("%s grades %s %s on its own operation", (mutation, id, outcome, note) => {
+  const probe = modesProbes.find((entry) => entry.id === id)!
+  const result = probe.lib!(libProbeSource(createSemanticSurface({ mutations: [mutation] })))
+  expect(result.observation?.outcome).toBe(outcome)
+  expect(result.pass).toBe(outcome === "supported")
+  if (note) expect(result.note).toContain(note)
+  if (outcome === "inconclusive") expect(result.assertions).toBeUndefined()
+  else {
+    expect(result.assertions?.[0]?.expected).toContain(
+      id === "modes.xtsave" ? "current at save time" : "restores the saved",
+    )
+  }
+})
+
 // #31904 R3e: the palette-stack rows split the same way as R3d (@cto 6e4f7300).
 test.each([
   ["xtpushcolors-stale", "modes.xtpushcolors", "unsupported", "push saved no current snapshot"],
