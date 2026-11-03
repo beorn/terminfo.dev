@@ -1,4 +1,10 @@
-import type { LibProbeSource, ProbeDefinition, ProbeCallbackResult, TermProbeSource } from "./types.ts"
+import type {
+  LibProbeSource,
+  MeasuredProbeCallbackResult,
+  ProbeDefinition,
+  ProbeCallbackResult,
+  TermProbeSource,
+} from "./types.ts"
 import {
   HEADLESS_OBSERVABLE_REVIEW,
   notTestedResult,
@@ -164,7 +170,11 @@ async function deliveryControl(
   return report
 }
 
-function interactionResult(action: string, expected: string, observed: Record<string, unknown>): ProbeCallbackResult {
+function interactionResult(
+  action: string,
+  expected: string,
+  observed: Record<string, unknown>,
+): MeasuredProbeCallbackResult {
   return {
     pass: true,
     response: JSON.stringify(observed),
