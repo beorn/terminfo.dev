@@ -241,10 +241,21 @@ export function nativeHostRecipeResult(
   if (!empty || ctx.runtimeIdentity?.kind !== "native") return result
   const artifactSha256 = ctx.runtimeIdentity.loadedBinary.sha256
   const citations = NATIVE_HOST_AUDITS.get(artifactSha256)
-  if (citations === undefined) return result
+  if (citations === undefined && recipe === "color-request") return result
   let claim: CallbackHostRecipeCause
   if (recipe === "color-request") claim = { recipe, cause: { kind: "observed", missing, query } }
   else {
+    if (citations === undefined) {
+      const reason = `no source audit for binary ${artifactSha256.slice(0, 12)}`
+      return {
+        pass: false,
+        response: result.response,
+        note: reason,
+        ...(result.criterionBranch && { criterionBranch: result.criterionBranch }),
+        ...(result.hostRecipeCauses && { hostRecipeCauses: result.hostRecipeCauses }),
+        tests: [{ id: "criterion", status: "test-todo", reason }],
+      }
+    }
     const audit = citations[recipe]
     if (audit === undefined) return result
     claim = { recipe, cause: { kind: audit.kind, missing, artifactSha256, sourceCitation: audit.citation } }

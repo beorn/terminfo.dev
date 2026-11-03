@@ -23,7 +23,7 @@ import {
 import { parseRun } from "@terminfo/run-parser"
 import { derivedSuiteManifest, probeSuiteSnapshot } from "../admin/versions.ts"
 import { saveDaemonProbeRun } from "../terminfo.dev/src/capture-writer.ts"
-import { assertAuditedNativeArtifact, collectBatch, errorMessage, finalizeHeadlessAttempt } from "./headless-batch.ts"
+import { assertDeclaredNativeSha, collectBatch, errorMessage, finalizeHeadlessAttempt } from "./headless-batch.ts"
 import { HEADLESS_TERMINAL, declaredHostInputs } from "./headless-terminal.ts"
 import { owningCheckout } from "./termless-root.ts"
 
@@ -207,7 +207,7 @@ async function collectOne(name: string, directory: string): Promise<string> {
       const declaration = hasExtension<ReplyDeliveryExtension>(loaded, "reply-delivery")
         ? loaded.replyDelivery
         : undefined
-      assertAuditedNativeArtifact(
+      assertDeclaredNativeSha(
         name,
         runtimeIdentity,
         declaration,

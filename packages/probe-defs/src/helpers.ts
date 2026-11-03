@@ -24,7 +24,8 @@ import type {
   LibProbeSource,
   TermProbeSource,
 } from "./types.ts"
-import { replyPathAuditFor } from "./reply-path-audit.ts"
+import { REPLY_PATH_AUDITS, replyPathAuditFor } from "./reply-path-audit.ts"
+import { NATIVE_HOST_AUDITS } from "./native-host-audit.ts"
 import { evidenceRuntimeIdentity } from "./runtime-identity.ts"
 
 export const ADAPTER_SOURCE_AUDITS = {
@@ -1862,7 +1863,8 @@ export const HARNESS_INCOMPLETE_TEST = "harness"
 /**
  * Apply the reply-path audit table (reply-path-audit.ts) to one library probe; it decides nothing about identity.
  * The review replaces the measured result only when the probe sent its audited query and every matching capture
- * of it returned zero bytes. Any reply byte, an unsent query, or an unlisted artifact/feature keeps the measured result.
+ * of it returned zero bytes. Observed buffers and replies keep their measured result. Silence on an unaudited
+ * binary retains the exact missing-source reason; a known artifact without a feature row uses the ordinary criterion.
  */
 function replyPathAudited(
   id: string,
@@ -1870,10 +1872,20 @@ function replyPathAudited(
   lib: (ctx: LibProbeSource) => ProbeCallbackResult,
 ): ProbeCallbackResult {
   const entry = replyPathAuditFor(ctx, id)
-  if (entry === undefined) return lib(ctx)
+  const identity = ctx.runtimeIdentity
+  const missingBinary =
+    entry === undefined &&
+    identity !== undefined &&
+    "loadedBinary" in identity &&
+    !REPLY_PATH_AUDITS.has(identity.loadedBinary.sha256) &&
+    !NATIVE_HOST_AUDITS.has(identity.loadedBinary.sha256)
+      ? identity.loadedBinary.sha256
+      : undefined
+  if (entry === undefined && missingBinary === undefined) return lib(ctx)
   const captures: { text: string; reply: string }[] = []
   const matches = (text: string) =>
-    entry.audit.matches === "prefix" ? text.startsWith(entry.audit.query) : text === entry.audit.query
+    entry === undefined ||
+    (entry.audit.matches === "prefix" ? text.startsWith(entry.audit.query) : text === entry.audit.query)
   const record = (text: string, reply: string) => {
     if (matches(text)) captures.push({ text, reply })
   }
@@ -1901,6 +1913,25 @@ function replyPathAudited(
   })
   const measured = lib(recorded)
   if (captures.length === 0 || captures.some(({ reply }) => reply.length > 0)) return measured
+  if (entry === undefined) {
+    if (
+      measured.observation?.assertionType === "buffer_state" ||
+      measured.notTested ||
+      measured.tests?.some((test) => test.status === "test-todo")
+    ) {
+      return measured
+    }
+    // The no-entry/no-missing-binary branch returned before running the callback above.
+    const reason = `no source audit for binary ${(missingBinary as string).slice(0, 12)}`
+    return {
+      pass: false,
+      response: measured.response,
+      note: reason,
+      ...(measured.criterionBranch && { criterionBranch: measured.criterionBranch }),
+      ...(measured.hostRecipeCauses && { hostRecipeCauses: measured.hostRecipeCauses }),
+      tests: [{ id: "criterion", status: "test-todo", reason }],
+    }
+  }
   const review = replyPathReviewResult(id, entry, captures, measured)
   return measured.hostRecipeCauses ? { ...review, hostRecipeCauses: measured.hostRecipeCauses } : review
 }
