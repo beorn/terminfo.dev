@@ -1535,8 +1535,8 @@ test.each([
   expect(result.tests).toMatchObject([{ id: "criterion", status: "test-failure", reason: expect.any(String) }])
 })
 
-// #32246: a silent initial highlight query has no same-path control in this run, so it is TEST TODO for every engine
-// identity; a sentinel-bounded silence or a malformed reply stays the reply failure, and a measured colour still decides.
+// #32246: a silent or sentinel-bounded initial highlight query is an unanswered prerequisite reading, so it is TEST
+// TODO for every engine identity (@cto 0db5ad54); a malformed reply stays TEST FAILURE, and a measured colour decides.
 test.each([
   ["extensions.osc117-reset-highlight-bg", 17, 117],
   ["extensions.osc119-reset-highlight-fg", 19, 119],
@@ -1586,7 +1586,7 @@ test.each([
         expect(result.tests).toEqual([
           {
             id: "criterion",
-            status: "test-failure",
+            status: mode === "malformed" ? "test-failure" : "test-todo",
             reason: `OSC ${setCode} initial highlight colour was not read back, so OSC ${resetCode} cannot be compared with it`,
           },
         ])

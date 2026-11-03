@@ -712,7 +712,8 @@ function colorResetProbe(id: string, setCode: number, resetCode: number, index?:
         if (originalRaw === "" && !silence) {
           return notTestedResult(NO_SAME_PATH_CONTROL, { query, originalRaw, initialSentinel })
         }
-        // A missing prerequisite reading is TEST TODO, never TEST FAILURE (@cto 0db5ad54 refined rule 4, #32246).
+        // An unanswered initial colour query is a missing prerequisite reading: TEST TODO. Bytes that arrived but do
+        // not parse are data the probe cannot trust: TEST FAILURE (@cto 0db5ad54 refined rule 4, #32246).
         const note = `OSC ${setCode} initial highlight colour was not read back, so OSC ${resetCode} cannot be compared with it`
         return {
           pass: false,
@@ -721,7 +722,7 @@ function colorResetProbe(id: string, setCode: number, resetCode: number, index?:
           tests: [
             {
               id: "criterion",
-              status: "test-todo",
+              status: originalRaw === "" ? "test-todo" : "test-failure",
               reason: note,
             },
           ],
