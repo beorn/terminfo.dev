@@ -10649,6 +10649,46 @@
       "version": "0.10.1",
       "os": "linux"
     },
+    "featureId": "extensions.osc-633-vscode",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/vterm.git",
+            "commit": "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+            "path": "packages/vt100/src/screen.ts",
+            "oid": "cd71776df5f72918cd06934d724a5c2e3585a89d"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/vt100/src/backend.ts",
+            "oid": "cdb8be8c5ebbba68a5920cfa4df27c9deb31745a"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev3-2026-11-03-vt100-0.10.1-extensions.osc-633-vscode-source-review",
+            "reviewer": "@dev/3",
+            "reason": "Source review (@dev/3, 2026-11-03) of vt100 0.10.1 at beorn/vterm 9e99e4d23cdc606fca258b1863aa2be7ae79eed3, packages/vt100/src/screen.ts:505-520: handleOSC dispatches only 0, 1 and 2. The BEL/ST parser routes completed OSC strings to this handler at 656-678; neither 133 nor 633 selects a writer or stores mark state. Termless 25089207e11420cf7a588987c1dc2683a45e8372 packages/vt100/src/backend.ts:98-120 intercepts only CSI 18t and forwards other input unchanged to screen.process, without implementing OSC 133/633. Thus this measured library does not implement OSC 633 shell integration: unsupported. The conclusion comes from the pinned engine and wrapper sources, not silence or cursor movement.",
+            "sources": [
+              "vt100 0.10.1 beorn/vterm 9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vt100/src/screen.ts:505-520,656-678",
+              "Termless 25089207e11420cf7a588987c1dc2683a45e8372 packages/vt100/src/backend.ts:98-120",
+              "Retained before run 42bdfe00-58f6-4da8-830e-2fa53d65c53e, suite f6f8aed46f0e: current cell pending before source qualification"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt100",
+      "version": "0.10.1",
+      "os": "linux"
+    },
     "featureId": "extensions.osc1-icon",
     "answers": [
       {
@@ -10723,6 +10763,46 @@
     "subject": {
       "kind": "lib",
       "id": "vt100",
+      "version": "0.10.1",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc133-a",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/vterm.git",
+            "commit": "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+            "path": "packages/vt100/src/screen.ts",
+            "oid": "cd71776df5f72918cd06934d724a5c2e3585a89d"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/vt100/src/backend.ts",
+            "oid": "cdb8be8c5ebbba68a5920cfa4df27c9deb31745a"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev3-2026-11-03-vt100-0.10.1-extensions.osc133-a-source-review",
+            "reviewer": "@dev/3",
+            "reason": "Source review (@dev/3, 2026-11-03) of vt100 0.10.1 at beorn/vterm 9e99e4d23cdc606fca258b1863aa2be7ae79eed3, packages/vt100/src/screen.ts:505-520: handleOSC dispatches only 0, 1 and 2. The BEL/ST parser routes completed OSC strings to this handler at 656-678; neither 133 nor 633 selects a writer or stores mark state. Termless 25089207e11420cf7a588987c1dc2683a45e8372 packages/vt100/src/backend.ts:98-120 intercepts only CSI 18t and forwards other input unchanged to screen.process, without implementing OSC 133/633. Thus this measured library does not implement OSC 133;A prompt start: unsupported. The conclusion comes from the pinned engine and wrapper sources, not silence or cursor movement.",
+            "sources": [
+              "vt100 0.10.1 beorn/vterm 9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vt100/src/screen.ts:505-520,656-678",
+              "Termless 25089207e11420cf7a588987c1dc2683a45e8372 packages/vt100/src/backend.ts:98-120",
+              "Retained before run 42bdfe00-58f6-4da8-830e-2fa53d65c53e, suite f6f8aed46f0e: current cell pending before source qualification"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt100",
       "version": "0.10.0",
       "os": "linux"
     },
@@ -10744,6 +10824,46 @@
               "0c32d334-9143-491c-88ad-4165e2684a02:extensions.osc133-b negative buffer_state assertion: extensions.osc133-b: the engine handles OSC 133 (a OSC 133;B command-start mark registration handler exists at the pinned source)",
               "intake postmerge-2f139587-review-candidates.json sha256 887eeed4fff56d28339e27e6295f573b2310e70ca767737c1687b9892906d6f1 (@dev/4, first post-merge collection after root 2f139587c5f33a7801b1b1ac9e71a7eb7ee00e2a; terminfo source 011f01964bbd67cfe1bc251715d957d1fc9e8fba; suite 18bd9019deaf)",
               "intake postmerge-2f139587-proof.json sha256 aa8d58d8be185aa7673cba2f9947683193679895b4b444ac05fc34d393a4930c (104 cells: 76 source-negative review, 17 Unsupported, 11 TODO)"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt100",
+      "version": "0.10.1",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc133-b",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/vterm.git",
+            "commit": "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+            "path": "packages/vt100/src/screen.ts",
+            "oid": "cd71776df5f72918cd06934d724a5c2e3585a89d"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/vt100/src/backend.ts",
+            "oid": "cdb8be8c5ebbba68a5920cfa4df27c9deb31745a"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev3-2026-11-03-vt100-0.10.1-extensions.osc133-b-source-review",
+            "reviewer": "@dev/3",
+            "reason": "Source review (@dev/3, 2026-11-03) of vt100 0.10.1 at beorn/vterm 9e99e4d23cdc606fca258b1863aa2be7ae79eed3, packages/vt100/src/screen.ts:505-520: handleOSC dispatches only 0, 1 and 2. The BEL/ST parser routes completed OSC strings to this handler at 656-678; neither 133 nor 633 selects a writer or stores mark state. Termless 25089207e11420cf7a588987c1dc2683a45e8372 packages/vt100/src/backend.ts:98-120 intercepts only CSI 18t and forwards other input unchanged to screen.process, without implementing OSC 133/633. Thus this measured library does not implement OSC 133;B command start: unsupported. The conclusion comes from the pinned engine and wrapper sources, not silence or cursor movement.",
+            "sources": [
+              "vt100 0.10.1 beorn/vterm 9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vt100/src/screen.ts:505-520,656-678",
+              "Termless 25089207e11420cf7a588987c1dc2683a45e8372 packages/vt100/src/backend.ts:98-120",
+              "Retained before run 42bdfe00-58f6-4da8-830e-2fa53d65c53e, suite f6f8aed46f0e: current cell pending before source qualification"
             ]
           }
         ]
@@ -10785,6 +10905,46 @@
     "subject": {
       "kind": "lib",
       "id": "vt100",
+      "version": "0.10.1",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc133-c",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/vterm.git",
+            "commit": "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+            "path": "packages/vt100/src/screen.ts",
+            "oid": "cd71776df5f72918cd06934d724a5c2e3585a89d"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/vt100/src/backend.ts",
+            "oid": "cdb8be8c5ebbba68a5920cfa4df27c9deb31745a"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev3-2026-11-03-vt100-0.10.1-extensions.osc133-c-source-review",
+            "reviewer": "@dev/3",
+            "reason": "Source review (@dev/3, 2026-11-03) of vt100 0.10.1 at beorn/vterm 9e99e4d23cdc606fca258b1863aa2be7ae79eed3, packages/vt100/src/screen.ts:505-520: handleOSC dispatches only 0, 1 and 2. The BEL/ST parser routes completed OSC strings to this handler at 656-678; neither 133 nor 633 selects a writer or stores mark state. Termless 25089207e11420cf7a588987c1dc2683a45e8372 packages/vt100/src/backend.ts:98-120 intercepts only CSI 18t and forwards other input unchanged to screen.process, without implementing OSC 133/633. Thus this measured library does not implement OSC 133;C command execution: unsupported. The conclusion comes from the pinned engine and wrapper sources, not silence or cursor movement.",
+            "sources": [
+              "vt100 0.10.1 beorn/vterm 9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vt100/src/screen.ts:505-520,656-678",
+              "Termless 25089207e11420cf7a588987c1dc2683a45e8372 packages/vt100/src/backend.ts:98-120",
+              "Retained before run 42bdfe00-58f6-4da8-830e-2fa53d65c53e, suite f6f8aed46f0e: current cell pending before source qualification"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt100",
       "version": "0.10.0",
       "os": "linux"
     },
@@ -10806,6 +10966,46 @@
               "0c32d334-9143-491c-88ad-4165e2684a02:extensions.osc133-d negative buffer_state assertion: extensions.osc133-d: the engine handles OSC 133;D (a OSC 133;D command-finished mark registration handler exists at the pinned source)",
               "intake postmerge-2f139587-review-candidates.json sha256 887eeed4fff56d28339e27e6295f573b2310e70ca767737c1687b9892906d6f1 (@dev/4, first post-merge collection after root 2f139587c5f33a7801b1b1ac9e71a7eb7ee00e2a; terminfo source 011f01964bbd67cfe1bc251715d957d1fc9e8fba; suite 18bd9019deaf)",
               "intake postmerge-2f139587-proof.json sha256 aa8d58d8be185aa7673cba2f9947683193679895b4b444ac05fc34d393a4930c (104 cells: 76 source-negative review, 17 Unsupported, 11 TODO)"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt100",
+      "version": "0.10.1",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc133-d",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/vterm.git",
+            "commit": "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+            "path": "packages/vt100/src/screen.ts",
+            "oid": "cd71776df5f72918cd06934d724a5c2e3585a89d"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/vt100/src/backend.ts",
+            "oid": "cdb8be8c5ebbba68a5920cfa4df27c9deb31745a"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev3-2026-11-03-vt100-0.10.1-extensions.osc133-d-source-review",
+            "reviewer": "@dev/3",
+            "reason": "Source review (@dev/3, 2026-11-03) of vt100 0.10.1 at beorn/vterm 9e99e4d23cdc606fca258b1863aa2be7ae79eed3, packages/vt100/src/screen.ts:505-520: handleOSC dispatches only 0, 1 and 2. The BEL/ST parser routes completed OSC strings to this handler at 656-678; neither 133 nor 633 selects a writer or stores mark state. Termless 25089207e11420cf7a588987c1dc2683a45e8372 packages/vt100/src/backend.ts:98-120 intercepts only CSI 18t and forwards other input unchanged to screen.process, without implementing OSC 133/633. Thus this measured library does not implement OSC 133;D command finish: unsupported. The conclusion comes from the pinned engine and wrapper sources, not silence or cursor movement.",
+            "sources": [
+              "vt100 0.10.1 beorn/vterm 9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vt100/src/screen.ts:505-520,656-678",
+              "Termless 25089207e11420cf7a588987c1dc2683a45e8372 packages/vt100/src/backend.ts:98-120",
+              "Retained before run 42bdfe00-58f6-4da8-830e-2fa53d65c53e, suite f6f8aed46f0e: current cell pending before source qualification"
             ]
           }
         ]
@@ -11143,6 +11343,46 @@
     "subject": {
       "kind": "lib",
       "id": "vt100",
+      "version": "0.10.1",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc633-a",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/vterm.git",
+            "commit": "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+            "path": "packages/vt100/src/screen.ts",
+            "oid": "cd71776df5f72918cd06934d724a5c2e3585a89d"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/vt100/src/backend.ts",
+            "oid": "cdb8be8c5ebbba68a5920cfa4df27c9deb31745a"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev3-2026-11-03-vt100-0.10.1-extensions.osc633-a-source-review",
+            "reviewer": "@dev/3",
+            "reason": "Source review (@dev/3, 2026-11-03) of vt100 0.10.1 at beorn/vterm 9e99e4d23cdc606fca258b1863aa2be7ae79eed3, packages/vt100/src/screen.ts:505-520: handleOSC dispatches only 0, 1 and 2. The BEL/ST parser routes completed OSC strings to this handler at 656-678; neither 133 nor 633 selects a writer or stores mark state. Termless 25089207e11420cf7a588987c1dc2683a45e8372 packages/vt100/src/backend.ts:98-120 intercepts only CSI 18t and forwards other input unchanged to screen.process, without implementing OSC 133/633. Thus this measured library does not implement OSC 633;A prompt start: unsupported. The conclusion comes from the pinned engine and wrapper sources, not silence or cursor movement.",
+            "sources": [
+              "vt100 0.10.1 beorn/vterm 9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vt100/src/screen.ts:505-520,656-678",
+              "Termless 25089207e11420cf7a588987c1dc2683a45e8372 packages/vt100/src/backend.ts:98-120",
+              "Retained before run 42bdfe00-58f6-4da8-830e-2fa53d65c53e, suite f6f8aed46f0e: current cell pending before source qualification"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt100",
       "version": "0.10.0",
       "os": "linux"
     },
@@ -11174,6 +11414,46 @@
     "subject": {
       "kind": "lib",
       "id": "vt100",
+      "version": "0.10.1",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc633-b",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/vterm.git",
+            "commit": "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+            "path": "packages/vt100/src/screen.ts",
+            "oid": "cd71776df5f72918cd06934d724a5c2e3585a89d"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/vt100/src/backend.ts",
+            "oid": "cdb8be8c5ebbba68a5920cfa4df27c9deb31745a"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev3-2026-11-03-vt100-0.10.1-extensions.osc633-b-source-review",
+            "reviewer": "@dev/3",
+            "reason": "Source review (@dev/3, 2026-11-03) of vt100 0.10.1 at beorn/vterm 9e99e4d23cdc606fca258b1863aa2be7ae79eed3, packages/vt100/src/screen.ts:505-520: handleOSC dispatches only 0, 1 and 2. The BEL/ST parser routes completed OSC strings to this handler at 656-678; neither 133 nor 633 selects a writer or stores mark state. Termless 25089207e11420cf7a588987c1dc2683a45e8372 packages/vt100/src/backend.ts:98-120 intercepts only CSI 18t and forwards other input unchanged to screen.process, without implementing OSC 133/633. Thus this measured library does not implement OSC 633;B prompt end: unsupported. The conclusion comes from the pinned engine and wrapper sources, not silence or cursor movement.",
+            "sources": [
+              "vt100 0.10.1 beorn/vterm 9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vt100/src/screen.ts:505-520,656-678",
+              "Termless 25089207e11420cf7a588987c1dc2683a45e8372 packages/vt100/src/backend.ts:98-120",
+              "Retained before run 42bdfe00-58f6-4da8-830e-2fa53d65c53e, suite f6f8aed46f0e: current cell pending before source qualification"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt100",
       "version": "0.10.0",
       "os": "linux"
     },
@@ -11195,6 +11475,46 @@
               "0c32d334-9143-491c-88ad-4165e2684a02:extensions.osc633-c negative buffer_state assertion: extensions.osc633-c: the engine handles OSC 633 (a OSC 633;C pre-execution mark registration handler exists at the pinned source)",
               "intake postmerge-2f139587-review-candidates.json sha256 887eeed4fff56d28339e27e6295f573b2310e70ca767737c1687b9892906d6f1 (@dev/4, first post-merge collection after root 2f139587c5f33a7801b1b1ac9e71a7eb7ee00e2a; terminfo source 011f01964bbd67cfe1bc251715d957d1fc9e8fba; suite 18bd9019deaf)",
               "intake postmerge-2f139587-proof.json sha256 aa8d58d8be185aa7673cba2f9947683193679895b4b444ac05fc34d393a4930c (104 cells: 76 source-negative review, 17 Unsupported, 11 TODO)"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt100",
+      "version": "0.10.1",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc633-c",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/vterm.git",
+            "commit": "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+            "path": "packages/vt100/src/screen.ts",
+            "oid": "cd71776df5f72918cd06934d724a5c2e3585a89d"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/vt100/src/backend.ts",
+            "oid": "cdb8be8c5ebbba68a5920cfa4df27c9deb31745a"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev3-2026-11-03-vt100-0.10.1-extensions.osc633-c-source-review",
+            "reviewer": "@dev/3",
+            "reason": "Source review (@dev/3, 2026-11-03) of vt100 0.10.1 at beorn/vterm 9e99e4d23cdc606fca258b1863aa2be7ae79eed3, packages/vt100/src/screen.ts:505-520: handleOSC dispatches only 0, 1 and 2. The BEL/ST parser routes completed OSC strings to this handler at 656-678; neither 133 nor 633 selects a writer or stores mark state. Termless 25089207e11420cf7a588987c1dc2683a45e8372 packages/vt100/src/backend.ts:98-120 intercepts only CSI 18t and forwards other input unchanged to screen.process, without implementing OSC 133/633. Thus this measured library does not implement OSC 633;C pre-execution: unsupported. The conclusion comes from the pinned engine and wrapper sources, not silence or cursor movement.",
+            "sources": [
+              "vt100 0.10.1 beorn/vterm 9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vt100/src/screen.ts:505-520,656-678",
+              "Termless 25089207e11420cf7a588987c1dc2683a45e8372 packages/vt100/src/backend.ts:98-120",
+              "Retained before run 42bdfe00-58f6-4da8-830e-2fa53d65c53e, suite f6f8aed46f0e: current cell pending before source qualification"
             ]
           }
         ]
@@ -11616,6 +11936,46 @@
               "0c32d334-9143-491c-88ad-4165e2684a02:extensions.semantic-prompts negative buffer_state assertion: extensions.semantic-prompts: the engine handles OSC 133 (a shell prompt integration handler exists at the pinned source)",
               "intake postmerge-2f139587-review-candidates.json sha256 887eeed4fff56d28339e27e6295f573b2310e70ca767737c1687b9892906d6f1 (@dev/4, first post-merge collection after root 2f139587c5f33a7801b1b1ac9e71a7eb7ee00e2a; terminfo source 011f01964bbd67cfe1bc251715d957d1fc9e8fba; suite 18bd9019deaf)",
               "intake postmerge-2f139587-proof.json sha256 aa8d58d8be185aa7673cba2f9947683193679895b4b444ac05fc34d393a4930c (104 cells: 76 source-negative review, 17 Unsupported, 11 TODO)"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt100",
+      "version": "0.10.1",
+      "os": "linux"
+    },
+    "featureId": "extensions.semantic-prompts",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/vterm.git",
+            "commit": "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+            "path": "packages/vt100/src/screen.ts",
+            "oid": "cd71776df5f72918cd06934d724a5c2e3585a89d"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/vt100/src/backend.ts",
+            "oid": "cdb8be8c5ebbba68a5920cfa4df27c9deb31745a"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev3-2026-11-03-vt100-0.10.1-extensions.semantic-prompts-source-review",
+            "reviewer": "@dev/3",
+            "reason": "Source review (@dev/3, 2026-11-03) of vt100 0.10.1 at beorn/vterm 9e99e4d23cdc606fca258b1863aa2be7ae79eed3, packages/vt100/src/screen.ts:505-520: handleOSC dispatches only 0, 1 and 2. The BEL/ST parser routes completed OSC strings to this handler at 656-678; neither 133 nor 633 selects a writer or stores mark state. Termless 25089207e11420cf7a588987c1dc2683a45e8372 packages/vt100/src/backend.ts:98-120 intercepts only CSI 18t and forwards other input unchanged to screen.process, without implementing OSC 133/633. Thus this measured library does not implement OSC 133 semantic prompt integration: unsupported. The conclusion comes from the pinned engine and wrapper sources, not silence or cursor movement.",
+            "sources": [
+              "vt100 0.10.1 beorn/vterm 9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vt100/src/screen.ts:505-520,656-678",
+              "Termless 25089207e11420cf7a588987c1dc2683a45e8372 packages/vt100/src/backend.ts:98-120",
+              "Retained before run 42bdfe00-58f6-4da8-830e-2fa53d65c53e, suite f6f8aed46f0e: current cell pending before source qualification"
             ]
           }
         ]
@@ -20876,6 +21236,46 @@
       "version": "0.10.1",
       "os": "linux"
     },
+    "featureId": "extensions.osc-633-vscode",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/vterm.git",
+            "commit": "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+            "path": "packages/vt220/src/screen.ts",
+            "oid": "cc5c5c79b0c882cb1c335f2ccaf2c555884a05ee"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/vt220/src/backend.ts",
+            "oid": "7369e3710e36aa649372fd09011ecfdd6ba47c73"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev3-2026-11-03-vt220-0.10.1-extensions.osc-633-vscode-source-review",
+            "reviewer": "@dev/3",
+            "reason": "Source review (@dev/3, 2026-11-03) of vt220 0.10.1 at beorn/vterm 9e99e4d23cdc606fca258b1863aa2be7ae79eed3, packages/vt220/src/screen.ts:701-716: handleOSC dispatches only 0, 1 and 2. The BEL/ST parser routes completed OSC strings to this handler at 872-894; neither 133 nor 633 selects a writer or stores mark state. Termless 25089207e11420cf7a588987c1dc2683a45e8372 packages/vt220/src/backend.ts:95-117 intercepts only CSI 18t and forwards other input unchanged to screen.process, without implementing OSC 133/633. Thus this measured library does not implement OSC 633 shell integration: unsupported. The conclusion comes from the pinned engine and wrapper sources, not silence or cursor movement.",
+            "sources": [
+              "vt220 0.10.1 beorn/vterm 9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vt220/src/screen.ts:701-716,872-894",
+              "Termless 25089207e11420cf7a588987c1dc2683a45e8372 packages/vt220/src/backend.ts:95-117",
+              "Retained before run 57eda43c-39ee-46be-8e45-1d52362b6a25, suite f6f8aed46f0e: current cell pending before source qualification"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt220",
+      "version": "0.10.1",
+      "os": "linux"
+    },
     "featureId": "extensions.osc1-icon",
     "answers": [
       {
@@ -20949,6 +21349,46 @@
     "subject": {
       "kind": "lib",
       "id": "vt220",
+      "version": "0.10.1",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc133-a",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/vterm.git",
+            "commit": "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+            "path": "packages/vt220/src/screen.ts",
+            "oid": "cc5c5c79b0c882cb1c335f2ccaf2c555884a05ee"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/vt220/src/backend.ts",
+            "oid": "7369e3710e36aa649372fd09011ecfdd6ba47c73"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev3-2026-11-03-vt220-0.10.1-extensions.osc133-a-source-review",
+            "reviewer": "@dev/3",
+            "reason": "Source review (@dev/3, 2026-11-03) of vt220 0.10.1 at beorn/vterm 9e99e4d23cdc606fca258b1863aa2be7ae79eed3, packages/vt220/src/screen.ts:701-716: handleOSC dispatches only 0, 1 and 2. The BEL/ST parser routes completed OSC strings to this handler at 872-894; neither 133 nor 633 selects a writer or stores mark state. Termless 25089207e11420cf7a588987c1dc2683a45e8372 packages/vt220/src/backend.ts:95-117 intercepts only CSI 18t and forwards other input unchanged to screen.process, without implementing OSC 133/633. Thus this measured library does not implement OSC 133;A prompt start: unsupported. The conclusion comes from the pinned engine and wrapper sources, not silence or cursor movement.",
+            "sources": [
+              "vt220 0.10.1 beorn/vterm 9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vt220/src/screen.ts:701-716,872-894",
+              "Termless 25089207e11420cf7a588987c1dc2683a45e8372 packages/vt220/src/backend.ts:95-117",
+              "Retained before run 57eda43c-39ee-46be-8e45-1d52362b6a25, suite f6f8aed46f0e: current cell pending before source qualification"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt220",
       "version": "0.10.0",
       "os": "linux"
     },
@@ -20969,6 +21409,46 @@
               "3e88bfde-b6bd-4d8b-9f81-6fbb9f54065c:extensions.osc133-b negative buffer_state assertion: extensions.osc133-b: the engine handles OSC 133 (a OSC 133;B command-start mark registration handler exists at the pinned source)",
               "intake postmerge-2f139587-review-candidates.json sha256 887eeed4fff56d28339e27e6295f573b2310e70ca767737c1687b9892906d6f1 (@dev/4, first post-merge collection after root 2f139587c5f33a7801b1b1ac9e71a7eb7ee00e2a; terminfo source 011f01964bbd67cfe1bc251715d957d1fc9e8fba; suite 18bd9019deaf)",
               "intake postmerge-2f139587-proof.json sha256 aa8d58d8be185aa7673cba2f9947683193679895b4b444ac05fc34d393a4930c (104 cells: 76 source-negative review, 17 Unsupported, 11 TODO)"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt220",
+      "version": "0.10.1",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc133-b",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/vterm.git",
+            "commit": "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+            "path": "packages/vt220/src/screen.ts",
+            "oid": "cc5c5c79b0c882cb1c335f2ccaf2c555884a05ee"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/vt220/src/backend.ts",
+            "oid": "7369e3710e36aa649372fd09011ecfdd6ba47c73"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev3-2026-11-03-vt220-0.10.1-extensions.osc133-b-source-review",
+            "reviewer": "@dev/3",
+            "reason": "Source review (@dev/3, 2026-11-03) of vt220 0.10.1 at beorn/vterm 9e99e4d23cdc606fca258b1863aa2be7ae79eed3, packages/vt220/src/screen.ts:701-716: handleOSC dispatches only 0, 1 and 2. The BEL/ST parser routes completed OSC strings to this handler at 872-894; neither 133 nor 633 selects a writer or stores mark state. Termless 25089207e11420cf7a588987c1dc2683a45e8372 packages/vt220/src/backend.ts:95-117 intercepts only CSI 18t and forwards other input unchanged to screen.process, without implementing OSC 133/633. Thus this measured library does not implement OSC 133;B command start: unsupported. The conclusion comes from the pinned engine and wrapper sources, not silence or cursor movement.",
+            "sources": [
+              "vt220 0.10.1 beorn/vterm 9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vt220/src/screen.ts:701-716,872-894",
+              "Termless 25089207e11420cf7a588987c1dc2683a45e8372 packages/vt220/src/backend.ts:95-117",
+              "Retained before run 57eda43c-39ee-46be-8e45-1d52362b6a25, suite f6f8aed46f0e: current cell pending before source qualification"
             ]
           }
         ]
@@ -21009,6 +21489,46 @@
     "subject": {
       "kind": "lib",
       "id": "vt220",
+      "version": "0.10.1",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc133-c",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/vterm.git",
+            "commit": "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+            "path": "packages/vt220/src/screen.ts",
+            "oid": "cc5c5c79b0c882cb1c335f2ccaf2c555884a05ee"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/vt220/src/backend.ts",
+            "oid": "7369e3710e36aa649372fd09011ecfdd6ba47c73"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev3-2026-11-03-vt220-0.10.1-extensions.osc133-c-source-review",
+            "reviewer": "@dev/3",
+            "reason": "Source review (@dev/3, 2026-11-03) of vt220 0.10.1 at beorn/vterm 9e99e4d23cdc606fca258b1863aa2be7ae79eed3, packages/vt220/src/screen.ts:701-716: handleOSC dispatches only 0, 1 and 2. The BEL/ST parser routes completed OSC strings to this handler at 872-894; neither 133 nor 633 selects a writer or stores mark state. Termless 25089207e11420cf7a588987c1dc2683a45e8372 packages/vt220/src/backend.ts:95-117 intercepts only CSI 18t and forwards other input unchanged to screen.process, without implementing OSC 133/633. Thus this measured library does not implement OSC 133;C command execution: unsupported. The conclusion comes from the pinned engine and wrapper sources, not silence or cursor movement.",
+            "sources": [
+              "vt220 0.10.1 beorn/vterm 9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vt220/src/screen.ts:701-716,872-894",
+              "Termless 25089207e11420cf7a588987c1dc2683a45e8372 packages/vt220/src/backend.ts:95-117",
+              "Retained before run 57eda43c-39ee-46be-8e45-1d52362b6a25, suite f6f8aed46f0e: current cell pending before source qualification"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt220",
       "version": "0.10.0",
       "os": "linux"
     },
@@ -21029,6 +21549,46 @@
               "3e88bfde-b6bd-4d8b-9f81-6fbb9f54065c:extensions.osc133-d negative buffer_state assertion: extensions.osc133-d: the engine handles OSC 133;D (a OSC 133;D command-finished mark registration handler exists at the pinned source)",
               "intake postmerge-2f139587-review-candidates.json sha256 887eeed4fff56d28339e27e6295f573b2310e70ca767737c1687b9892906d6f1 (@dev/4, first post-merge collection after root 2f139587c5f33a7801b1b1ac9e71a7eb7ee00e2a; terminfo source 011f01964bbd67cfe1bc251715d957d1fc9e8fba; suite 18bd9019deaf)",
               "intake postmerge-2f139587-proof.json sha256 aa8d58d8be185aa7673cba2f9947683193679895b4b444ac05fc34d393a4930c (104 cells: 76 source-negative review, 17 Unsupported, 11 TODO)"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt220",
+      "version": "0.10.1",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc133-d",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/vterm.git",
+            "commit": "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+            "path": "packages/vt220/src/screen.ts",
+            "oid": "cc5c5c79b0c882cb1c335f2ccaf2c555884a05ee"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/vt220/src/backend.ts",
+            "oid": "7369e3710e36aa649372fd09011ecfdd6ba47c73"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev3-2026-11-03-vt220-0.10.1-extensions.osc133-d-source-review",
+            "reviewer": "@dev/3",
+            "reason": "Source review (@dev/3, 2026-11-03) of vt220 0.10.1 at beorn/vterm 9e99e4d23cdc606fca258b1863aa2be7ae79eed3, packages/vt220/src/screen.ts:701-716: handleOSC dispatches only 0, 1 and 2. The BEL/ST parser routes completed OSC strings to this handler at 872-894; neither 133 nor 633 selects a writer or stores mark state. Termless 25089207e11420cf7a588987c1dc2683a45e8372 packages/vt220/src/backend.ts:95-117 intercepts only CSI 18t and forwards other input unchanged to screen.process, without implementing OSC 133/633. Thus this measured library does not implement OSC 133;D command finish: unsupported. The conclusion comes from the pinned engine and wrapper sources, not silence or cursor movement.",
+            "sources": [
+              "vt220 0.10.1 beorn/vterm 9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vt220/src/screen.ts:701-716,872-894",
+              "Termless 25089207e11420cf7a588987c1dc2683a45e8372 packages/vt220/src/backend.ts:95-117",
+              "Retained before run 57eda43c-39ee-46be-8e45-1d52362b6a25, suite f6f8aed46f0e: current cell pending before source qualification"
             ]
           }
         ]
@@ -21359,6 +21919,46 @@
     "subject": {
       "kind": "lib",
       "id": "vt220",
+      "version": "0.10.1",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc633-a",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/vterm.git",
+            "commit": "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+            "path": "packages/vt220/src/screen.ts",
+            "oid": "cc5c5c79b0c882cb1c335f2ccaf2c555884a05ee"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/vt220/src/backend.ts",
+            "oid": "7369e3710e36aa649372fd09011ecfdd6ba47c73"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev3-2026-11-03-vt220-0.10.1-extensions.osc633-a-source-review",
+            "reviewer": "@dev/3",
+            "reason": "Source review (@dev/3, 2026-11-03) of vt220 0.10.1 at beorn/vterm 9e99e4d23cdc606fca258b1863aa2be7ae79eed3, packages/vt220/src/screen.ts:701-716: handleOSC dispatches only 0, 1 and 2. The BEL/ST parser routes completed OSC strings to this handler at 872-894; neither 133 nor 633 selects a writer or stores mark state. Termless 25089207e11420cf7a588987c1dc2683a45e8372 packages/vt220/src/backend.ts:95-117 intercepts only CSI 18t and forwards other input unchanged to screen.process, without implementing OSC 133/633. Thus this measured library does not implement OSC 633;A prompt start: unsupported. The conclusion comes from the pinned engine and wrapper sources, not silence or cursor movement.",
+            "sources": [
+              "vt220 0.10.1 beorn/vterm 9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vt220/src/screen.ts:701-716,872-894",
+              "Termless 25089207e11420cf7a588987c1dc2683a45e8372 packages/vt220/src/backend.ts:95-117",
+              "Retained before run 57eda43c-39ee-46be-8e45-1d52362b6a25, suite f6f8aed46f0e: current cell pending before source qualification"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt220",
       "version": "0.10.0",
       "os": "linux"
     },
@@ -21389,6 +21989,46 @@
     "subject": {
       "kind": "lib",
       "id": "vt220",
+      "version": "0.10.1",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc633-b",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/vterm.git",
+            "commit": "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+            "path": "packages/vt220/src/screen.ts",
+            "oid": "cc5c5c79b0c882cb1c335f2ccaf2c555884a05ee"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/vt220/src/backend.ts",
+            "oid": "7369e3710e36aa649372fd09011ecfdd6ba47c73"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev3-2026-11-03-vt220-0.10.1-extensions.osc633-b-source-review",
+            "reviewer": "@dev/3",
+            "reason": "Source review (@dev/3, 2026-11-03) of vt220 0.10.1 at beorn/vterm 9e99e4d23cdc606fca258b1863aa2be7ae79eed3, packages/vt220/src/screen.ts:701-716: handleOSC dispatches only 0, 1 and 2. The BEL/ST parser routes completed OSC strings to this handler at 872-894; neither 133 nor 633 selects a writer or stores mark state. Termless 25089207e11420cf7a588987c1dc2683a45e8372 packages/vt220/src/backend.ts:95-117 intercepts only CSI 18t and forwards other input unchanged to screen.process, without implementing OSC 133/633. Thus this measured library does not implement OSC 633;B prompt end: unsupported. The conclusion comes from the pinned engine and wrapper sources, not silence or cursor movement.",
+            "sources": [
+              "vt220 0.10.1 beorn/vterm 9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vt220/src/screen.ts:701-716,872-894",
+              "Termless 25089207e11420cf7a588987c1dc2683a45e8372 packages/vt220/src/backend.ts:95-117",
+              "Retained before run 57eda43c-39ee-46be-8e45-1d52362b6a25, suite f6f8aed46f0e: current cell pending before source qualification"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt220",
       "version": "0.10.0",
       "os": "linux"
     },
@@ -21409,6 +22049,46 @@
               "3e88bfde-b6bd-4d8b-9f81-6fbb9f54065c:extensions.osc633-c negative buffer_state assertion: extensions.osc633-c: the engine handles OSC 633 (a OSC 633;C pre-execution mark registration handler exists at the pinned source)",
               "intake postmerge-2f139587-review-candidates.json sha256 887eeed4fff56d28339e27e6295f573b2310e70ca767737c1687b9892906d6f1 (@dev/4, first post-merge collection after root 2f139587c5f33a7801b1b1ac9e71a7eb7ee00e2a; terminfo source 011f01964bbd67cfe1bc251715d957d1fc9e8fba; suite 18bd9019deaf)",
               "intake postmerge-2f139587-proof.json sha256 aa8d58d8be185aa7673cba2f9947683193679895b4b444ac05fc34d393a4930c (104 cells: 76 source-negative review, 17 Unsupported, 11 TODO)"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt220",
+      "version": "0.10.1",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc633-c",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/vterm.git",
+            "commit": "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+            "path": "packages/vt220/src/screen.ts",
+            "oid": "cc5c5c79b0c882cb1c335f2ccaf2c555884a05ee"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/vt220/src/backend.ts",
+            "oid": "7369e3710e36aa649372fd09011ecfdd6ba47c73"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev3-2026-11-03-vt220-0.10.1-extensions.osc633-c-source-review",
+            "reviewer": "@dev/3",
+            "reason": "Source review (@dev/3, 2026-11-03) of vt220 0.10.1 at beorn/vterm 9e99e4d23cdc606fca258b1863aa2be7ae79eed3, packages/vt220/src/screen.ts:701-716: handleOSC dispatches only 0, 1 and 2. The BEL/ST parser routes completed OSC strings to this handler at 872-894; neither 133 nor 633 selects a writer or stores mark state. Termless 25089207e11420cf7a588987c1dc2683a45e8372 packages/vt220/src/backend.ts:95-117 intercepts only CSI 18t and forwards other input unchanged to screen.process, without implementing OSC 133/633. Thus this measured library does not implement OSC 633;C pre-execution: unsupported. The conclusion comes from the pinned engine and wrapper sources, not silence or cursor movement.",
+            "sources": [
+              "vt220 0.10.1 beorn/vterm 9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vt220/src/screen.ts:701-716,872-894",
+              "Termless 25089207e11420cf7a588987c1dc2683a45e8372 packages/vt220/src/backend.ts:95-117",
+              "Retained before run 57eda43c-39ee-46be-8e45-1d52362b6a25, suite f6f8aed46f0e: current cell pending before source qualification"
             ]
           }
         ]
@@ -21821,6 +22501,46 @@
               "3e88bfde-b6bd-4d8b-9f81-6fbb9f54065c:extensions.semantic-prompts negative buffer_state assertion: extensions.semantic-prompts: the engine handles OSC 133 (a shell prompt integration handler exists at the pinned source)",
               "intake postmerge-2f139587-review-candidates.json sha256 887eeed4fff56d28339e27e6295f573b2310e70ca767737c1687b9892906d6f1 (@dev/4, first post-merge collection after root 2f139587c5f33a7801b1b1ac9e71a7eb7ee00e2a; terminfo source 011f01964bbd67cfe1bc251715d957d1fc9e8fba; suite 18bd9019deaf)",
               "intake postmerge-2f139587-proof.json sha256 aa8d58d8be185aa7673cba2f9947683193679895b4b444ac05fc34d393a4930c (104 cells: 76 source-negative review, 17 Unsupported, 11 TODO)"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt220",
+      "version": "0.10.1",
+      "os": "linux"
+    },
+    "featureId": "extensions.semantic-prompts",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/vterm.git",
+            "commit": "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+            "path": "packages/vt220/src/screen.ts",
+            "oid": "cc5c5c79b0c882cb1c335f2ccaf2c555884a05ee"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/vt220/src/backend.ts",
+            "oid": "7369e3710e36aa649372fd09011ecfdd6ba47c73"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev3-2026-11-03-vt220-0.10.1-extensions.semantic-prompts-source-review",
+            "reviewer": "@dev/3",
+            "reason": "Source review (@dev/3, 2026-11-03) of vt220 0.10.1 at beorn/vterm 9e99e4d23cdc606fca258b1863aa2be7ae79eed3, packages/vt220/src/screen.ts:701-716: handleOSC dispatches only 0, 1 and 2. The BEL/ST parser routes completed OSC strings to this handler at 872-894; neither 133 nor 633 selects a writer or stores mark state. Termless 25089207e11420cf7a588987c1dc2683a45e8372 packages/vt220/src/backend.ts:95-117 intercepts only CSI 18t and forwards other input unchanged to screen.process, without implementing OSC 133/633. Thus this measured library does not implement OSC 133 semantic prompt integration: unsupported. The conclusion comes from the pinned engine and wrapper sources, not silence or cursor movement.",
+            "sources": [
+              "vt220 0.10.1 beorn/vterm 9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vt220/src/screen.ts:701-716,872-894",
+              "Termless 25089207e11420cf7a588987c1dc2683a45e8372 packages/vt220/src/backend.ts:95-117",
+              "Retained before run 57eda43c-39ee-46be-8e45-1d52362b6a25, suite f6f8aed46f0e: current cell pending before source qualification"
             ]
           }
         ]
