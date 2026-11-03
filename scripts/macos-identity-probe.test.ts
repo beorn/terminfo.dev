@@ -7,7 +7,8 @@
  */
 import { execFile } from "node:child_process"
 import { createHash } from "node:crypto"
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
+import { writeFileSync } from "node:fs"
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { createServer } from "node:http"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -15,6 +16,170 @@ import { fileURLToPath } from "node:url"
 import { promisify } from "node:util"
 import { expect, test, vi } from "vitest"
 import { parse } from "yaml"
+import { CENSUS } from "../packages/terminfo.dev/src/darwin-capture.ts"
+
+// The retained iTerm draft stops at blink entry. Existing bootstrap/startup tests do not
+// exercise native-state evidence or prove that observer errors preserve the older diagnostics.
+test.each(["matched", "missing-pids", "foreign-argv", "sample-exit", "sample-timeout", "missing-log"] as const)(
+  "iTerm failure evidence preserves bounded measured-process observations (%s)",
+  async (scenario) => {
+    const workflow = parse(
+      await readFile(new URL("../.github/workflows/macos-measurement.yml", import.meta.url), "utf8"),
+    )
+    const step = workflow.jobs["measure-macos"].steps.find(
+      (row: { name?: string }) => row.name === "Preserve terminal launch failure evidence",
+    )
+    const source = (step.run as string).match(/bun --eval '([\s\S]*)'\s*$/)?.[1]
+    if (!source) throw new Error("Mac native failure observer script missing")
+    const dir = await mkdtemp(join(tmpdir(), "mac-native-state-"))
+    const out = join(dir, "measurement-artifacts")
+    const workspace = fileURLToPath(new URL("../", import.meta.url))
+    const executable = "/Applications/iTerm.app/Contents/MacOS/iTerm2"
+    const calls: string[][] = []
+    const killed: Array<{ pid: number; signal: string }> = []
+    let clockAdvance: Promise<unknown> | undefined
+    const stream = (value: string) =>
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          if (value) controller.enqueue(new TextEncoder().encode(value))
+          controller.close()
+        },
+      })
+    try {
+      await mkdir(out)
+      // Projection of the actual retained ancestry: collector2306, app2125. No invented receipt ordering.
+      if (scenario !== "missing-log") {
+        await writeFile(
+          join(out, "collector.log"),
+          scenario === "missing-pids"
+            ? "phase=collector-invoked\n"
+            : `Hosted Darwin measured process ancestry: 2306:bun </Users/runner/.bun/bin/bun> <- 2125:${executable} <${executable}>\n`,
+        )
+      }
+      await writeFile(join(out, "host-measured.json"), JSON.stringify({ appLaunch: { executablePath: executable } }))
+      if (scenario === "sample-timeout") vi.useFakeTimers()
+      const native = {
+        spawn(argv: string[]) {
+          calls.push(argv)
+          const pid = 9000 + calls.length
+          let stdout = "",
+            stderr = "",
+            code = 0
+          let finish: ((value: number) => void) | undefined
+          let exited: Promise<number> | undefined
+          if (argv[0] === "/bin/ps") {
+            const target = argv[argv.indexOf("-p") + 1]
+            const collectorArgv = scenario === "foreign-argv" ? "/another-run/run.json" : join(out, "run.json")
+            const collector = `2306 2149 2149 ttys000 S ttywait 00:01 bun collector test --output ${collectorArgv}\n`
+            const app = `2125 1 2125 ?? S machmsg 00:02 ${executable}\n`
+            stdout = argv.includes("-axo") ? collector + app : target === "2306" ? collector : app
+          } else if (argv[0] === "/usr/bin/sample") {
+            if (argv[1] === "2306" && scenario === "sample-timeout") {
+              stderr = "sample fixture still running"
+              exited = new Promise<number>((resolve) => {
+                finish = resolve
+              })
+              clockAdvance = Promise.resolve().then(() => vi.advanceTimersByTimeAsync(10000))
+            } else if (argv[1] === "2306" && scenario === "sample-exit") {
+              code = 1
+              stderr = "sample fixture: target access denied"
+            } else {
+              const path = argv[argv.indexOf("-file") + 1]
+              if (!path) throw new Error("Native sample fixture lacks output path")
+              writeFileSync(path, "native stack fixture\n")
+              stdout = "sample fixture complete"
+            }
+          } else if (argv[0] === "/usr/sbin/screencapture") {
+            const path = argv.at(-1)
+            if (!path) throw new Error("Screen fixture lacks output path")
+            writeFileSync(path, "screen fixture")
+          } else if (argv[0] === "/usr/bin/osascript" || argv[0] === "/usr/bin/log") stdout = "[]"
+          else throw new Error(`Unexpected native observer fixture command ${String(argv[0])}`)
+          return {
+            pid,
+            stdout: stream(stdout),
+            stderr: stream(stderr),
+            exited: exited ?? Promise.resolve(code),
+            kill(signal: string) {
+              killed.push({ pid, signal })
+              if (!finish) throw new Error("Fixture killed an already-finished observer")
+              finish(137)
+            },
+          }
+        },
+      }
+      const processState = {
+        env: {
+          RUNNER_TEMP: dir,
+          GITHUB_WORKSPACE: workspace,
+          APP_ID: "iterm2",
+          ITERM_LAUNCH_START: "2026-11-03T01:56:26Z",
+          ITERM_LAUNCH_END: "2026-11-03T01:56:28Z",
+        },
+        exitCode: 0,
+      }
+      // Vitest's VM cannot dynamically import from Function; link the actual modules
+      // at the boundary, just as the startup fixture supplies its real require boundary.
+      const loadModule = async (name: string) => {
+        if (name === "node:fs/promises") return { readFile, writeFile, stat }
+        if (name === "node:path") return { join }
+        if (name === join(workspace, "packages/terminfo.dev/src/darwin-capture.ts")) return { CENSUS }
+        throw new Error(`Unexpected native observer module ${name}`)
+      }
+      await new Function(
+        "Bun",
+        "process",
+        "loadModule",
+        `return (async () => {${source.replaceAll("await import(", "await loadModule(")}\n})()`,
+      )(native, processState, loadModule)
+      if (clockAdvance) await clockAdvance
+      // These older observations must survive even missing logs and failed/timed-out samples.
+      for (const label of ["screen", "windows", "log"]) {
+        const row = JSON.parse(await readFile(join(out, `iterm-${label}.json`), "utf8"))
+        expect(row.exitCode).toBe(0)
+      }
+      const evidence = JSON.parse(await readFile(join(out, "iterm-failure-evidence.json"), "utf8"))
+      const samples = calls.filter((argv) => argv[0] === "/usr/bin/sample").map((argv) => argv[1])
+      if (scenario === "missing-log" || scenario === "missing-pids") {
+        expect(samples).toEqual([])
+        expect(
+          evidence.failures.some(
+            (row: { label: string }) =>
+              row.label === (scenario === "missing-log" ? "native-state" : "collector-sample"),
+          ),
+        ).toBe(true)
+      } else {
+        expect(samples).toEqual(scenario === "foreign-argv" ? ["2125"] : ["2306", "2125"])
+        if (scenario === "foreign-argv") {
+          expect(evidence.failures.some((row: { label: string }) => row.label === "collector-sample")).toBe(true)
+        } else {
+          const row = JSON.parse(await readFile(join(out, "iterm-collector-sample.json"), "utf8"))
+          expect(row.argv[1]).toBe("2306")
+          expect(row.childPid).toBeGreaterThan(9000)
+          expect(row.wallMs).toBe(10000)
+          expect(row.exitCode).toBe(scenario === "sample-timeout" ? 137 : scenario === "sample-exit" ? 1 : 0)
+          expect(row.outerTimedOut).toBe(scenario === "sample-timeout")
+          expect(row.stderr.text).toBe(
+            scenario === "sample-exit"
+              ? "sample fixture: target access denied"
+              : scenario === "sample-timeout"
+                ? "sample fixture still running"
+                : "",
+          )
+          if (scenario === "sample-timeout") {
+            expect(killed).toHaveLength(1)
+            expect(killed[0]?.pid).toBe(row.childPid)
+            expect(killed[0]?.signal).toBe("SIGKILL")
+          }
+          if (scenario === "matched") expect(evidence.failures).toEqual([])
+        }
+      }
+    } finally {
+      vi.useRealTimers()
+      await rm(dir, { recursive: true, force: true })
+    }
+  },
+)
 
 test("nine fresh Mac jobs bootstrap the shared producer before checkout and collect after self-parse", async () => {
   const workflow = parse(await readFile(new URL("../.github/workflows/macos-measurement.yml", import.meta.url), "utf8"))
