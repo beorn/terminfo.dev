@@ -437,54 +437,118 @@ describe("qualified clipboard roundtrip", () => {
       expect(declaration.when(source), id).toBe(true)
     }
   })
-  test.each(["extensions.osc52-clipboard", "extensions.osc52-write"])(
-    "%s retains deterministic source absence only after an audited clean read negative",
-    (id) => {
-      const callback = probe(id).lib!
-      const snapshots: string[] = []
-      for (let attempt = 0; attempt < 2; attempt++) {
-        const result = callback(
-          context({
-            runtimeIdentity: xtermIdentity,
-            getIconLabel: () => "",
-            getCell: () => ({ char: "X" }) as ReturnType<LibProbeSource["getCell"]>,
-            queryWithSentinelOutcome: () => ({
-              raw: da1,
-              rawBase64: Buffer.from(da1).toString("base64"),
-              reason: "sentinel",
-              match: null,
-              sentinel: { atMs: 0, graceMs: 250 },
-            }),
+  test.each(
+    ["extensions.osc52-clipboard", "extensions.osc52-write"].flatMap((id) =>
+      (["xtermjs", "vt100", "vt220"] as const).map((engine) => [id, engine] as const),
+    ),
+  )("%s retains deterministic source absence only after an audited clean read negative on %s", (id, engine) => {
+    const callback = probe(id).lib!
+    const runtimeIdentity =
+      engine === "xtermjs"
+        ? xtermIdentity
+        : {
+            kind: "js" as const,
+            runtimeFormat: "js" as const,
+            engineVersion: "0.10.1",
+            adapterVersion: "0.10.2",
+            termlessRevision: "25089207e11420cf7a588987c1dc2683a45e8372",
+            resolvedPath: `vendor/vterm/packages/${engine}/src/index.ts`,
+            integrity: {
+              kind: "source" as const,
+              repository: "git@github.com:beorn/vterm.git",
+              revision: "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+              treeOid:
+                engine === "vt100"
+                  ? "b941dae48b25ae8825c394750bda5245c9d93dfa"
+                  : "4205f8936ad1848d1029729f3ada888cd61759a8",
+              cleanTree: true,
+            },
+            adapterSources: Object.entries(ADAPTER_SOURCE_AUDITS[engine]).map(([path, blobOid]) => ({ path, blobOid })),
+          }
+    const snapshots: string[] = []
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const result = callback(
+        context({
+          runtimeIdentity,
+          getIconLabel: () => "",
+          getCell: () => ({ char: "X" }) as ReturnType<LibProbeSource["getCell"]>,
+          queryWithSentinelOutcome: () => ({
+            raw: da1,
+            rawBase64: Buffer.from(da1).toString("base64"),
+            reason: "sentinel",
+            match: null,
+            sentinel: { atMs: 0, graceMs: 250 },
           }),
-        )
-        expect(result.criterionBranch).toBe(SOURCE_NEGATIVE_REVIEW)
-        expect(result.observation).toMatchObject({ outcome: "inconclusive", assertionType: "buffer_state" })
-        expect(result.tests).toEqual([
-          { id: "review", status: "test-todo", reason: expect.stringContaining("InputHandler.ts:292-338") },
-        ])
-        expect(result.assertions).toMatchObject([{ assertionType: "buffer_state", kind: "negative" }])
-        snapshots.push(result.response!)
-      }
-      expect(snapshots[0]).toBe(snapshots[1])
-      for (const raw of ["\x1b]52;c;???\x07" + da1, "ZZZ" + da1, ""]) {
-        const result = callback(
-          context({
-            runtimeIdentity: xtermIdentity,
-            getIconLabel: () => "",
-            queryWithSentinelOutcome: () => ({
-              raw,
-              rawBase64: Buffer.from(raw).toString("base64"),
-              reason: raw === "" ? "timeout" : "sentinel",
-              match: null,
-              ...(raw !== "" && { sentinel: { atMs: 0, graceMs: 250 } }),
-            }),
+        }),
+      )
+      expect(result.criterionBranch).toBe(SOURCE_NEGATIVE_REVIEW)
+      expect(result.observation).toMatchObject({ outcome: "inconclusive", assertionType: "buffer_state" })
+      expect(result.tests).toEqual([
+        {
+          id: "review",
+          status: "test-todo",
+          reason: expect.stringContaining(engine === "xtermjs" ? "InputHandler.ts:292-338" : "handleOSC"),
+        },
+      ])
+      expect(result.assertions).toMatchObject([{ assertionType: "buffer_state", kind: "negative" }])
+      snapshots.push(result.response!)
+    }
+    expect(snapshots[0]).toBe(snapshots[1])
+    const declaration = probe(id).libAssertionType
+    if (declaration === null || typeof declaration !== "object") throw new Error(`Missing qualified ${id}`)
+    expect(declaration.when(context({ runtimeIdentity, getIconLabel: () => "" }))).toBe(true)
+    const written: string[] = []
+    const positive = callback(
+      context({
+        runtimeIdentity,
+        feed: (sequence) => written.push(sequence),
+        getCell() {
+          throw new Error("Measured clipboard replies must not use the source-only control")
+        },
+        queryWithSentinelOutcome(sequence, pattern) {
+          expect(sequence).toBe("\x1b]52;c;?\x07")
+          const payload = /\x1b\]52;c;([A-Za-z0-9+/=]+)\x07/.exec(written.join(""))?.[1]
+          if (!payload) throw new Error("Clipboard positive control received no write")
+          const raw = `\x1b]52;c;${payload}\x07`
+          return { raw, rawBase64: btoa(raw), reason: "reply", match: pattern.exec(raw) }
+        },
+      }),
+    )
+    expect(positive.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
+    const inert = callback(
+      context({
+        runtimeIdentity,
+        getIconLabel: () => "",
+        getCell: () => ({ char: " " }) as ReturnType<LibProbeSource["getCell"]>,
+        queryWithSentinelOutcome: () => ({
+          raw: da1,
+          rawBase64: btoa(da1),
+          reason: "sentinel",
+          match: null,
+          sentinel: { atMs: 0, graceMs: 250 },
+        }),
+      }),
+    )
+    expect(inert.observation?.outcome).not.toBe("supported")
+    expect(inert.criterionBranch).not.toBe(SOURCE_NEGATIVE_REVIEW)
+    for (const raw of ["\x1b]52;c;???\x07" + da1, "ZZZ" + da1, ""]) {
+      const result = callback(
+        context({
+          runtimeIdentity,
+          getIconLabel: () => "",
+          queryWithSentinelOutcome: () => ({
+            raw,
+            rawBase64: Buffer.from(raw).toString("base64"),
+            reason: raw === "" ? "timeout" : "sentinel",
+            match: null,
+            ...(raw !== "" && { sentinel: { atMs: 0, graceMs: 250 } }),
           }),
-        )
-        expect(result.criterionBranch).not.toBe(SOURCE_NEGATIVE_REVIEW)
-        expect(result.observation?.outcome).not.toBe("unsupported")
-      }
-    },
-  )
+        }),
+      )
+      expect(result.criterionBranch).not.toBe(SOURCE_NEGATIVE_REVIEW)
+      expect(result.observation?.outcome).not.toBe("unsupported")
+    }
+  })
   const cases = [
     { when: "clean sentinel silence", raw: da1, reason: "sentinel", sentinel: true, cause: true, todo: true },
     { when: "whole empty buffer", raw: "", reason: "timeout", sentinel: false, cause: true, failure: true },
