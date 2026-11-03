@@ -1764,9 +1764,9 @@
         "citedBlobs": [
           {
             "repository": "git@github.com:beorn/terminfo.dev.git",
-            "commit": "53d40ebaff289acce9fc17bd2a5f7fce5027dbd6",
+            "commit": "ab60b3dc10bcc6d5d65a022e6c2ef39ac3ac84f4",
             "path": "packages/probe-defs/src/extensions.ts",
-            "oid": "678f2ff4a28ce8f480d4b8041c87334aeda3aec5"
+            "oid": "3ea413cb984b3863b4e2b303533c8e2bf7302ce3"
           },
           {
             "repository": "git@github.com:beorn/terminfo.dev.git",
@@ -1823,9 +1823,9 @@
         "citedBlobs": [
           {
             "repository": "git@github.com:beorn/terminfo.dev.git",
-            "commit": "53d40ebaff289acce9fc17bd2a5f7fce5027dbd6",
+            "commit": "ab60b3dc10bcc6d5d65a022e6c2ef39ac3ac84f4",
             "path": "packages/probe-defs/src/extensions.ts",
-            "oid": "678f2ff4a28ce8f480d4b8041c87334aeda3aec5"
+            "oid": "3ea413cb984b3863b4e2b303533c8e2bf7302ce3"
           },
           {
             "repository": "git@github.com:beorn/terminfo.dev.git",
@@ -6348,9 +6348,9 @@
         "citedBlobs": [
           {
             "repository": "git@github.com:beorn/terminfo.dev.git",
-            "commit": "53d40ebaff289acce9fc17bd2a5f7fce5027dbd6",
+            "commit": "ab60b3dc10bcc6d5d65a022e6c2ef39ac3ac84f4",
             "path": "packages/probe-defs/src/extensions.ts",
-            "oid": "678f2ff4a28ce8f480d4b8041c87334aeda3aec5"
+            "oid": "3ea413cb984b3863b4e2b303533c8e2bf7302ce3"
           },
           {
             "repository": "git@github.com:beorn/terminfo.dev.git",
@@ -6407,9 +6407,9 @@
         "citedBlobs": [
           {
             "repository": "git@github.com:beorn/terminfo.dev.git",
-            "commit": "53d40ebaff289acce9fc17bd2a5f7fce5027dbd6",
+            "commit": "ab60b3dc10bcc6d5d65a022e6c2ef39ac3ac84f4",
             "path": "packages/probe-defs/src/extensions.ts",
-            "oid": "678f2ff4a28ce8f480d4b8041c87334aeda3aec5"
+            "oid": "3ea413cb984b3863b4e2b303533c8e2bf7302ce3"
           },
           {
             "repository": "git@github.com:beorn/terminfo.dev.git",
@@ -10615,6 +10615,112 @@
     "subject": {
       "kind": "lib",
       "id": "vt100",
+      "version": "0.10.1",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc52-clipboard",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/vterm.git",
+            "commit": "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+            "path": "packages/vt100/src/screen.ts",
+            "oid": "cd71776df5f72918cd06934d724a5c2e3585a89d"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/vt100/src/index.ts",
+            "oid": "99833d737402f9d1d8e3e257e3a255d8aa1facc3"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/vt100/src/backend.ts",
+            "oid": "cdb8be8c5ebbba68a5920cfa4df27c9deb31745a"
+          },
+          {
+            "repository": "git@github.com:beorn/terminfo.dev.git",
+            "commit": "ab60b3dc10bcc6d5d65a022e6c2ef39ac3ac84f4",
+            "path": "packages/probe-defs/src/extensions.ts",
+            "oid": "3ea413cb984b3863b4e2b303533c8e2bf7302ce3"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev10-32164-vt100-osc52-clipboard-20261103",
+            "reviewer": "@dev/10",
+            "reason": "vt100 0.10.1 at vterm9e99e4d23cdc606fca258b1863aa2be7ae79eed3 src/screen.ts:505-520 handleOSC dispatches only OSC0/2 title writes and ignores OSC1; no OSC52 dispatch, clipboard state or clipboard callback exists in the shipped engine. The exact Termless25089207 adapter forwards input to that source parser and installs no OSC52 handler or substitute clipboard. Clean same-run read silence and a rendered-X consumption control qualify existing source-negative-review; neither alone proves Unsupported. This kept answer is inspected engine dispatch absence, not an adapter omission or a claim about a terminal application's OS clipboard. Measured nonce replies still override the source audit.",
+            "sources": [
+              "Existing32164 family continuation Chiefd21249b4-891a-41ef-9b4f-19be4476369d; ordinary unchanged-criterion Terminfo review is post-merge under CTO91b17630-d53c-4f63-83fd-5526efa1e0c3; no features.json criterion text changed",
+              "Exact engine9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vt100/src/screen.ts:505-520 inspected; actual 07:30 source identity and both Termless adapter blobs retained in private captures",
+              "Producerab60b3dc10bcc6d5d65a022e6c2ef39ac3ac84f4 uses existing sourceAbsentOsc and source-qualified buffer-state declaration for OSC52 write/roundtrip; actual 07:39 capture plus canonical parser reaches review TODO before this kept answer",
+              "Existing table proves honest nonce replies stay Supported, inert blank-cell controls never become Supported or source-qualified, and malformed/unqualified replies cannot acquire review; actual old-callback RED4 precedes producer"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt100",
+      "version": "0.10.1",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc52-write",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/vterm.git",
+            "commit": "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+            "path": "packages/vt100/src/screen.ts",
+            "oid": "cd71776df5f72918cd06934d724a5c2e3585a89d"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/vt100/src/index.ts",
+            "oid": "99833d737402f9d1d8e3e257e3a255d8aa1facc3"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/vt100/src/backend.ts",
+            "oid": "cdb8be8c5ebbba68a5920cfa4df27c9deb31745a"
+          },
+          {
+            "repository": "git@github.com:beorn/terminfo.dev.git",
+            "commit": "ab60b3dc10bcc6d5d65a022e6c2ef39ac3ac84f4",
+            "path": "packages/probe-defs/src/extensions.ts",
+            "oid": "3ea413cb984b3863b4e2b303533c8e2bf7302ce3"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev10-32164-vt100-osc52-write-20261103",
+            "reviewer": "@dev/10",
+            "reason": "vt100 0.10.1 at vterm9e99e4d23cdc606fca258b1863aa2be7ae79eed3 src/screen.ts:505-520 handleOSC dispatches only OSC0/2 title writes and ignores OSC1; no OSC52 dispatch, clipboard state or clipboard callback exists in the shipped engine. The exact Termless25089207 adapter forwards input to that source parser and installs no OSC52 handler or substitute clipboard. Clean same-run read silence and a rendered-X consumption control qualify existing source-negative-review; neither alone proves Unsupported. This kept answer is inspected engine dispatch absence, not an adapter omission or a claim about a terminal application's OS clipboard. Measured nonce replies still override the source audit.",
+            "sources": [
+              "Existing32164 family continuation Chiefd21249b4-891a-41ef-9b4f-19be4476369d; ordinary unchanged-criterion Terminfo review is post-merge under CTO91b17630-d53c-4f63-83fd-5526efa1e0c3; no features.json criterion text changed",
+              "Exact engine9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vt100/src/screen.ts:505-520 inspected; actual 07:30 source identity and both Termless adapter blobs retained in private captures",
+              "Producerab60b3dc10bcc6d5d65a022e6c2ef39ac3ac84f4 uses existing sourceAbsentOsc and source-qualified buffer-state declaration for OSC52 write/roundtrip; actual 07:39 capture plus canonical parser reaches review TODO before this kept answer",
+              "Existing table proves honest nonce replies stay Supported, inert blank-cell controls never become Supported or source-qualified, and malformed/unqualified replies cannot acquire review; actual old-callback RED4 precedes producer"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt100",
       "version": "0.10.0",
       "os": "linux"
     },
@@ -10636,6 +10742,112 @@
               "0c32d334-9143-491c-88ad-4165e2684a02:extensions.osc-633-vscode negative buffer_state assertion: extensions.osc-633-vscode: the engine handles OSC 633 (a VS Code shell integration handler exists at the pinned source)",
               "intake postmerge-2f139587-review-candidates.json sha256 887eeed4fff56d28339e27e6295f573b2310e70ca767737c1687b9892906d6f1 (@dev/4, first post-merge collection after root 2f139587c5f33a7801b1b1ac9e71a7eb7ee00e2a; terminfo source 011f01964bbd67cfe1bc251715d957d1fc9e8fba; suite 18bd9019deaf)",
               "intake postmerge-2f139587-proof.json sha256 aa8d58d8be185aa7673cba2f9947683193679895b4b444ac05fc34d393a4930c (104 cells: 76 source-negative review, 17 Unsupported, 11 TODO)"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt220",
+      "version": "0.10.1",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc52-clipboard",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/vterm.git",
+            "commit": "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+            "path": "packages/vt220/src/screen.ts",
+            "oid": "cc5c5c79b0c882cb1c335f2ccaf2c555884a05ee"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/vt220/src/index.ts",
+            "oid": "601dd26eb7e753a5396ebdf72f1ef8ee2cc4355f"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/vt220/src/backend.ts",
+            "oid": "7369e3710e36aa649372fd09011ecfdd6ba47c73"
+          },
+          {
+            "repository": "git@github.com:beorn/terminfo.dev.git",
+            "commit": "ab60b3dc10bcc6d5d65a022e6c2ef39ac3ac84f4",
+            "path": "packages/probe-defs/src/extensions.ts",
+            "oid": "3ea413cb984b3863b4e2b303533c8e2bf7302ce3"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev10-32164-vt220-osc52-clipboard-20261103",
+            "reviewer": "@dev/10",
+            "reason": "vt220 0.10.1 at vterm9e99e4d23cdc606fca258b1863aa2be7ae79eed3 src/screen.ts:701-716 handleOSC dispatches only OSC0/2 title writes and ignores OSC1; no OSC52 dispatch, clipboard state or clipboard callback exists in the shipped engine. The exact Termless25089207 adapter forwards input to that source parser and installs no OSC52 handler or substitute clipboard. Clean same-run read silence and a rendered-X consumption control qualify existing source-negative-review; neither alone proves Unsupported. This kept answer is inspected engine dispatch absence, not an adapter omission or a claim about a terminal application's OS clipboard. Measured nonce replies still override the source audit.",
+            "sources": [
+              "Existing32164 family continuation Chiefd21249b4-891a-41ef-9b4f-19be4476369d; ordinary unchanged-criterion Terminfo review is post-merge under CTO91b17630-d53c-4f63-83fd-5526efa1e0c3; no features.json criterion text changed",
+              "Exact engine9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vt220/src/screen.ts:701-716 inspected; actual 07:30 source identity and both Termless adapter blobs retained in private captures",
+              "Producerab60b3dc10bcc6d5d65a022e6c2ef39ac3ac84f4 uses existing sourceAbsentOsc and source-qualified buffer-state declaration for OSC52 write/roundtrip; actual 07:39 capture plus canonical parser reaches review TODO before this kept answer",
+              "Existing table proves honest nonce replies stay Supported, inert blank-cell controls never become Supported or source-qualified, and malformed/unqualified replies cannot acquire review; actual old-callback RED4 precedes producer"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt220",
+      "version": "0.10.1",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc52-write",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/vterm.git",
+            "commit": "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+            "path": "packages/vt220/src/screen.ts",
+            "oid": "cc5c5c79b0c882cb1c335f2ccaf2c555884a05ee"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/vt220/src/index.ts",
+            "oid": "601dd26eb7e753a5396ebdf72f1ef8ee2cc4355f"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/vt220/src/backend.ts",
+            "oid": "7369e3710e36aa649372fd09011ecfdd6ba47c73"
+          },
+          {
+            "repository": "git@github.com:beorn/terminfo.dev.git",
+            "commit": "ab60b3dc10bcc6d5d65a022e6c2ef39ac3ac84f4",
+            "path": "packages/probe-defs/src/extensions.ts",
+            "oid": "3ea413cb984b3863b4e2b303533c8e2bf7302ce3"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev10-32164-vt220-osc52-write-20261103",
+            "reviewer": "@dev/10",
+            "reason": "vt220 0.10.1 at vterm9e99e4d23cdc606fca258b1863aa2be7ae79eed3 src/screen.ts:701-716 handleOSC dispatches only OSC0/2 title writes and ignores OSC1; no OSC52 dispatch, clipboard state or clipboard callback exists in the shipped engine. The exact Termless25089207 adapter forwards input to that source parser and installs no OSC52 handler or substitute clipboard. Clean same-run read silence and a rendered-X consumption control qualify existing source-negative-review; neither alone proves Unsupported. This kept answer is inspected engine dispatch absence, not an adapter omission or a claim about a terminal application's OS clipboard. Measured nonce replies still override the source audit.",
+            "sources": [
+              "Existing32164 family continuation Chiefd21249b4-891a-41ef-9b4f-19be4476369d; ordinary unchanged-criterion Terminfo review is post-merge under CTO91b17630-d53c-4f63-83fd-5526efa1e0c3; no features.json criterion text changed",
+              "Exact engine9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vt220/src/screen.ts:701-716 inspected; actual 07:30 source identity and both Termless adapter blobs retained in private captures",
+              "Producerab60b3dc10bcc6d5d65a022e6c2ef39ac3ac84f4 uses existing sourceAbsentOsc and source-qualified buffer-state declaration for OSC52 write/roundtrip; actual 07:39 capture plus canonical parser reaches review TODO before this kept answer",
+              "Existing table proves honest nonce replies stay Supported, inert blank-cell controls never become Supported or source-qualified, and malformed/unqualified replies cannot acquire review; actual old-callback RED4 precedes producer"
             ]
           }
         ]
