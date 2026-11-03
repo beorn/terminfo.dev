@@ -2163,7 +2163,7 @@
     "tags": ["xterm-extensions"],
     "baseline": "rich",
     "body": "XTPUSHSGR pushes the current SGR (Select Graphic Rendition) state onto an internal stack. The sequence is <code>CSI # {</code> (or <code>CSI Pt # {</code> with a parameter mask to push only specific attributes). XTPOPSGR (<code>CSI # }</code>) pops the most recent state.\n\nThis solves a recurring TUI problem: a function that wants to set its own SGR state, render some output, and restore the caller's state. Without push/pop, the function would need to query SGR via DECRQSS, save the result, and write it back — far more error-prone and slower. SGR push/pop also enables nested attribute scopes (e.g., bold inside an italic block) without losing state.\n\nIntroduced by xterm in patch #357 (2018), now adopted by Ghostty, foot, Contour, and other modern terminals. Often paired with XTPUSHCOLORS (<code>CSI # P</code>) for a complete \"push graphics state\" idiom.",
-    "probe": "XTPUSHSGR saves the state current at push time: after set bold and italic, push, set plain, pop, bold and italic is restored. On the app path the pixel capture still grades the joint push/pop roundtrip for both rows.",
+    "probe": "XTPUSHSGR saves the state current at push time: after set bold and italic, push, set plain, pop, bold and italic is restored.",
     "sequence": "ESC [ # {"
   },
   "modes.xtpopsgr": {
@@ -2173,7 +2173,7 @@
     "tags": ["xterm-extensions"],
     "baseline": "rich",
     "body": "XTPOPSGR restores the SGR (Select Graphic Rendition) state most recently pushed by XTPUSHSGR (<code>CSI # {</code>). The sequence is <code>CSI # }</code>. Always paired with a matching push earlier in the same session — pops without a corresponding push are no-ops on most terminals.\n\nThis sequence is the second half of the SGR push/pop pattern that lets TUI code temporarily change attributes without permanently affecting the caller's state. Library authors can wrap subroutines in <code>CSI # {</code> ... <code>CSI # }</code> and trust that the caller's bold/color/underline state survives unchanged. Adopted by xterm, Ghostty, foot, Contour, and others.",
-    "probe": "XTPOPSGR restores the pushed state: after set bold, push, set italic, pop, bold is restored. On the app path the pixel capture still grades the joint push/pop roundtrip for both rows.",
+    "probe": "XTPOPSGR restores the pushed state: after set bold, push, set italic, pop, bold is restored.",
     "sequence": "ESC [ # }"
   },
   "modes.xtsave": {
@@ -2183,7 +2183,7 @@
     "tags": ["xterm-extensions", "dec-private-modes"],
     "baseline": "rich",
     "body": "XTSAVE saves one or more DEC private modes by recording their current values. The sequence is <code>CSI ? Pm s</code> where <code>Pm</code> is a semicolon-separated list of mode numbers. XTRESTORE (<code>CSI ? Pm r</code>) restores the most recent saved values.\n\nThis is the canonical xterm pattern for temporarily changing modes. For example, a TUI that wants to enter mouse-tracking and bracketed-paste during its run can <code>CSI ? 1000 ; 2004 s</code> at startup, then <code>CSI ? 1000 ; 2004 r</code> on exit — the previous values are restored regardless of what the calling shell had configured. Without XTSAVE, applications must query DECRPM for each mode, store the result, and write it back manually.\n\n<a href=\"https://invisible-island.net/xterm/ctlseqs/ctlseqs.html\">xterm specifies this sequence</a>, and <a href=\"https://sw.kovidgoyal.net/kitty/misc-protocol/#simple-save-restore-of-all-terminal-modes\">Kitty documents an extension</a> for saving all side-effect-free modes when no list is given. Other implementations and individual mode behavior require separate evidence.",
-    "probe": "XTSAVE saves the state current at save time: after set DECAWM on, save, set DECAWM off, save, set DECAWM on, restore, DECAWM off is restored. On the app path the pixel capture still grades the joint save/restore roundtrip for both rows.",
+    "probe": "XTSAVE saves the state current at save time: after set DECAWM on, save, set DECAWM off, save, set DECAWM on, restore, DECAWM off is restored.",
     "sequence": "ESC [ ? Pm s"
   },
   "modes.xtrestore": {
@@ -2193,7 +2193,7 @@
     "tags": ["xterm-extensions", "dec-private-modes"],
     "baseline": "rich",
     "body": "XTRESTORE restores the most recently saved values for one or more DEC private modes. The sequence is <code>CSI ? Pm r</code> where <code>Pm</code> is a semicolon-separated list of mode numbers. Always paired with a matching XTSAVE (<code>CSI ? Pm s</code>) earlier in the session.\n\nApplications use this to clean up mode changes on exit without needing to remember (or query) the original values. Note that <code>CSI Pt ; Pb r</code> without the <code>?</code> intermediate is DECSTBM (set top/bottom margin) — the question mark distinguishes the private-mode restore. <a href=\"https://invisible-island.net/xterm/ctlseqs/ctlseqs.html\">xterm specifies this sequence</a>, and <a href=\"https://sw.kovidgoyal.net/kitty/misc-protocol/#simple-save-restore-of-all-terminal-modes\">Kitty documents an extension</a> for saving all side-effect-free modes when no list is given. Other implementations and individual mode behavior require separate evidence.",
-    "probe": "XTRESTORE restores the saved state: after set DECAWM off, save, set DECAWM on, restore, DECAWM off is restored. On the app path the pixel capture still grades the joint save/restore roundtrip for both rows.",
+    "probe": "XTRESTORE restores the saved state: after set DECAWM off, save, set DECAWM on, restore, DECAWM off is restored.",
     "sequence": "ESC [ ? Pm r"
   },
   "modes.xtpushcolors": {
@@ -2203,7 +2203,7 @@
     "tags": ["xterm-extensions"],
     "baseline": "rich",
     "body": "XTPUSHCOLORS pushes the current color palette (the 256-color ANSI palette plus the default fg/bg) onto an internal stack. The sequence is <code>CSI # P</code> (or <code>CSI Pi # P</code> to push at a specific stack index). XTPOPCOLORS (<code>CSI # Q</code>) pops the most recent palette; XTREPORTCOLORS (<code>CSI # R</code>) reports the current stack depth.\n\nApplications use this when they want to install a custom palette (e.g., a specific set of OSC 4 colors for syntax highlighting) without permanently overriding the user's theme. Push the current palette, install the new one, do the work, pop on exit. Without XTPUSHCOLORS, applications need to query every palette slot via OSC 4 ; n ; ? (slow and not universally supported) or simply leave the user's terminal in a modified state.\n\nIntroduced by xterm in patch #357, paired with XTPUSHSGR. Adopted by Ghostty, foot, Contour, and other modern terminals.",
-    "probe": "XTPUSHCOLORS saves the state current at push time: after set palette index 1 magenta, push, set index 1 green, pop, magenta is restored. On the app path the pixel capture still grades the joint push/pop roundtrip for both rows.",
+    "probe": "XTPUSHCOLORS saves the state current at push time: after set palette index 1 magenta, push, set index 1 green, pop, magenta is restored.",
     "sequence": "ESC [ # P"
   },
   "modes.xtpopcolors": {
@@ -2213,7 +2213,7 @@
     "tags": ["xterm-extensions"],
     "baseline": "rich",
     "body": "XTPOPCOLORS restores the color palette most recently pushed by XTPUSHCOLORS (<code>CSI # P</code>). The sequence is <code>CSI # Q</code>. Always paired with a matching push earlier in the session — pops without a corresponding push are no-ops on most terminals.\n\nUsed by TUI applications that install a custom palette during their run and want to restore the user's theme on exit. The push/pop pattern avoids needing to query every palette slot via OSC 4 ; n ; ? and write each one back manually. Adopted by xterm (patch #357), Ghostty, foot, Contour, and other modern terminals.",
-    "probe": "XTPOPCOLORS restores the pushed state: after set palette index 1 blue, push, set index 1 green, pop, blue is restored. On the app path the pixel capture still grades the joint push/pop roundtrip for both rows.",
+    "probe": "XTPOPCOLORS restores the pushed state: after set palette index 1 blue, push, set index 1 green, pop, blue is restored.",
     "sequence": "ESC [ # Q"
   },
   "input.modify-other-keys-3": {
