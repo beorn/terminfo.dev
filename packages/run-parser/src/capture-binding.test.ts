@@ -49,15 +49,20 @@ import { createSemanticSurface } from "../../probe-defs/src/testing/semantic-sur
 // C1 replaces embedded decision bytes; the old capture-binding fixtures cannot
 // prove that the retained corpus still parses or rejects a borrowed source row.
 it("reads retained C1 references without embedded decisions and rejects another measured subject", () => {
-  const path = new URL("../../../content/probes-apps/alacritty-0.17.0-linux-f504922f67f074794c588cf3a14e2114.json", import.meta.url)
+  const path = new URL(
+    "../../../content/probes-apps/alacritty-0.17.0-linux-f504922f67f074794c588cf3a14e2114.json",
+    import.meta.url,
+  )
   const source = readFileSync(path, "utf8")
-  const run = JSON.parse(source)
+  const run = JSON.parse(source) as CurrentProbeRun
   const result = run.results.find((result: { featureId: string }) => result.featureId === "extensions.iterm2-images")
+  if (!result?.reviewRef) throw new Error("Retained Alacritty fixture has no image review reference")
   expect(result.reviewRef).toBe('["term","alacritty","0.17.0","linux","extensions.iterm2-images"]')
   expect(run.rawReplies[result.reviewRef]).toBeUndefined()
   const manifestPath = new URL(`../../../content/suites/${run.probeHash}.json`, import.meta.url)
   const manifest = parseSuiteManifest(manifestPath.pathname, readFileSync(manifestPath, "utf8"))
-  const read = (bytes: string) => parseRun(path.pathname, bytes, manifest.catalogIds ?? [], new Map([[run.probeHash, manifest]]))
+  const read = (bytes: string) =>
+    parseRun(path.pathname, bytes, manifest.catalogIds ?? [], new Map([[run.probeHash, manifest]]))
   expect(read(source).results?.find((entry) => entry.featureId === result.featureId)?.status).toBe(result.status)
   run.subject.id = "other-measured-terminal"
   expect(() => read(JSON.stringify(run))).toThrow("source answer does not apply to measured identity")
