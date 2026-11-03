@@ -3,15 +3,17 @@
  *   observation moves it - so a group step reinvents its own fixture and silently drifts.
  * @level l2
  * @consumer 28450 slice B Modes group (29 definitions); 28453 harness. Outside Candidate-2 denominator 125.
- * @reach fs-walk vendor/terminfo.dev/packages/probe-defs/src/modes-contract.test.ts vendor/terminfo.dev/packages/probe-defs/src/modes-observations.test.ts vendor/terminfo.dev/packages/probe-defs/src/modes-geometry.test.ts
+ * @reach fs-walk vendor/terminfo.dev/packages/probe-defs/src/modes-contract.test.ts vendor/terminfo.dev/packages/probe-defs/src/modes-observations.test.ts vendor/terminfo.dev/packages/probe-defs/src/modes-geometry.test.ts vendor/terminfo.dev/packages/probe-defs/src/testing/semantic-surface.ts
  * @testonly none
  */
 import { expect, test } from "vitest"
 import { join } from "node:path"
 import { decrpmStatus } from "./helpers.ts"
 import { modesProbes } from "./modes.ts"
+import { createSemanticSurface } from "./testing/semantic-surface.ts"
 import {
   contractGaps,
+  inertLibProbeSource,
   libProbeSource,
   missingContractTests,
   regradeCommand,
@@ -417,3 +419,102 @@ test("a decided Modes row is unsatisfied when DECRPM is silent", async () => {
     }),
   ])
 })
+
+const MODES_SEMANTIC_SURFACE_CONTROLS: readonly (readonly [
+  id: string,
+  mutation: string,
+  positiveOutcome: "supported" | "inconclusive",
+  negativeOutcome: "unsupported" | "inconclusive",
+])[] = [
+  ["modes.alt-screen.enter", "altscreen-noop", "supported", "unsupported"],
+  ["modes.alt-screen.exit", "altscreen-exit-noop", "supported", "inconclusive"],
+  ["modes.bracketed-paste", "bracketed-paste-noop", "supported", "unsupported"],
+  ["modes.application-cursor", "decckm-noop", "supported", "unsupported"],
+  ["modes.auto-wrap", "decawm-noop", "supported", "unsupported"],
+  ["modes.origin", "decom-noop", "supported", "unsupported"],
+  ["modes.insert-replace", "irm-noop", "supported", "unsupported"],
+  ["modes.reverse-video", "decscnm-noop", "supported", "unsupported"],
+  ["modes.mouse-tracking", "mouse-1000-noop", "supported", "unsupported"],
+  ["modes.focus-tracking", "focus-1004-noop", "supported", "unsupported"],
+  ["modes.mouse-sgr", "mouse-1006-noop", "supported", "unsupported"],
+  ["modes.synchronized-output", "sync-2026-noop", "supported", "unsupported"],
+  ["modes.application-keypad", "deckpam-noop", "supported", "inconclusive"],
+  ["modes.left-right-margin", "declrmm-noop", "supported", "unsupported"],
+  ["modes.mouse-all", "mouse-1003-noop", "supported", "unsupported"],
+  ["modes.utf8-mouse-1005", "mouse-1005-noop", "supported", "unsupported"],
+  ["modes.alt-scroll-1007", "alt-scroll-1007-noop", "supported", "unsupported"],
+  ["modes.altscreen-47", "altscreen-47-noop", "supported", "unsupported"],
+  ["modes.altscreen-1047", "altscreen-1047-noop", "supported", "unsupported"],
+  ["modes.altscreen-1048", "altscreen-1048-noop", "supported", "unsupported"],
+  ["modes.deccolm", "deccolm-noop", "supported", "unsupported"],
+  ["modes.decsclm", "decsclm-noop", "supported", "unsupported"],
+  ["modes.xtpushsgr", "xtpushsgr-noop", "supported", "unsupported"],
+  ["modes.xtpopsgr", "xtpopsgr-noop", "supported", "unsupported"],
+  ["modes.xtsave", "xtsave-noop", "supported", "unsupported"],
+  ["modes.xtrestore", "xtrestore-noop", "supported", "unsupported"],
+  ["modes.xtpushcolors", "xtpushcolors-noop", "supported", "unsupported"],
+  ["modes.xtpopcolors", "xtpopcolors-noop", "supported", "unsupported"],
+  ["modes.color-scheme-reporting", "color-scheme-2031-noop", "supported", "unsupported"],
+  ["modes.decsscls", "decsscls-noop", "inconclusive", "unsupported"],
+]
+
+test("MODES_SEMANTIC_SURFACE_CONTROLS covers all 30 Modes contract rows with distinct mutations", () => {
+  expect(MODES_SEMANTIC_SURFACE_CONTROLS).toHaveLength(30)
+  expect(MODES_SEMANTIC_SURFACE_CONTROLS.map(([id]) => id).sort()).toEqual(MODES_CONTRACT.map((row) => row.id).sort())
+  expect(new Set(MODES_SEMANTIC_SURFACE_CONTROLS.map(([, mutation]) => mutation)).size).toBe(30)
+})
+
+test("the harness replays every Modes headless callback deterministically on createSemanticSurface", async () => {
+  for (const row of MODES_CONTRACT) {
+    const probe = modesProbes.find((entry) => entry.id === row.id)
+    expect(probe, `missing Modes probe ${row.id}`).toBeDefined()
+    if (!probe) continue
+    const first = await regradeRow(probe, row, { headless: libProbeSource(createSemanticSurface()) })
+    const second = await regradeRow(probe, row, { headless: libProbeSource(createSemanticSurface()) })
+    expect(second.after, `${row.id} is not deterministic`).toBe(first.after)
+    expect(second.satisfies, `${row.id} satisfaction is not deterministic`).toBe(first.satisfies)
+  }
+})
+
+test.each(MODES_SEMANTIC_SURFACE_CONTROLS)(
+  "%s never reads supported on inertLibProbeSource, when %s is inactive reads %s on createSemanticSurface, and when active reads %s",
+  async (id, mutation, positiveOutcome, negativeOutcome) => {
+    const row = MODES_CONTRACT.find((entry) => entry.id === id)
+    const probe = modesProbes.find((entry) => entry.id === id)
+    expect(row, `the Modes contract names ${id}`).toBeDefined()
+    expect(probe, `the Modes contract names a real ${id} probe`).toBeDefined()
+    if (!row || !probe || !probe.lib) return
+
+    const inertResult = probe.lib(inertLibProbeSource())
+    expect(inertResult.pass).toBe(false)
+    expect(inertResult.observation?.outcome).not.toBe("supported")
+    if (id === "modes.decsscls") {
+      expect(inertResult.criterionBranch).toBeUndefined()
+    } else {
+      const inertGraded = await regradeRow(probe, row, { headless: inertLibProbeSource() })
+      expect(inertGraded.after).not.toBe("supported")
+    }
+
+    const positiveResult = probe.lib(libProbeSource(createSemanticSurface()))
+    expect(positiveResult.pass).toBe(positiveOutcome === "supported")
+    expect(positiveResult.observation?.outcome).toBe(positiveOutcome)
+    if (positiveOutcome === "supported") {
+      expect(positiveResult.assertions ?? []).toContainEqual(expect.objectContaining({ kind: "positive" }))
+    } else {
+      expect(positiveResult.criterionBranch).toBe("source-negative-review")
+    }
+    const positiveGraded = await regradeRow(probe, row, { headless: libProbeSource(createSemanticSurface()) })
+    expect(positiveGraded.after).toBe(positiveOutcome)
+
+    const negativeResult = probe.lib(libProbeSource(createSemanticSurface({ mutations: [mutation] })))
+    expect(negativeResult.pass).toBe(false)
+    expect(negativeResult.observation?.outcome).toBe(negativeOutcome)
+    if (negativeOutcome === "unsupported") {
+      expect(negativeResult.assertions ?? []).toContainEqual(expect.objectContaining({ kind: "negative" }))
+    }
+    const negativeGraded = await regradeRow(probe, row, {
+      headless: libProbeSource(createSemanticSurface({ mutations: [mutation] })),
+    })
+    expect(negativeGraded.after).toBe(negativeOutcome)
+  },
+)
