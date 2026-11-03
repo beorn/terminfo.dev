@@ -835,6 +835,123 @@ test("each colour-stack row names its own operation in the expected sentence", (
   }
 })
 
+// CTO54bf1c9c: only a same-run moving Cwd observer can decide OSC633P, and a wrong
+// property value is an error rather than an observed negative. Existing consumption
+// controls never exposed getCwd, so they could not catch these metadata regressions.
+test.each([
+  { model: "plain", expected: "supported" },
+  { model: "file-uri", expected: "supported" },
+  { model: "ignored", expected: "unsupported" },
+  { model: "inert", expected: "inconclusive" },
+  { model: "missing", expected: "inconclusive" },
+  { model: "wrong", expected: "error" },
+  { model: "partial", expected: "error" },
+  { model: "bad-control", expected: "error" },
+  { model: "bad-restore", expected: "error" },
+])("OSC633 Cwd readback: $model => $expected", ({ model, expected }) => {
+  const initial = "file://original/old%20cwd"
+  let current = initial
+  let targetCount = 0
+  const writes: string[] = []
+  const source = libProbeSource({
+    ...inertModel(),
+    getCwd: model === "missing" ? undefined : () => current,
+    feed: (text) => {
+      writes.push(text)
+      const osc7 = /^\x1b\]7;(.*)\x07$/.exec(text)
+      if (osc7 && model !== "inert") {
+        if (model === "bad-restore" && osc7[1] === initial) return
+        current = model === "bad-control" ? "/wrong-control" : osc7[1]!
+      }
+      const property = /^\x1b\]633;P;Cwd=(.*)\x07$/.exec(text)
+      if (property) {
+        targetCount++
+        if (["plain", "bad-restore"].includes(model) || (model === "partial" && targetCount === 1)) {
+          current = property[1]!
+        } else if (model === "file-uri") {
+          current = `file://different-host${property[1]!.replaceAll("-", "%2D")}`
+        } else if (model === "wrong") current = "/unexpected-value"
+      }
+    },
+  })
+  const result = extensionsProbes.find((entry) => entry.id === "extensions.osc633-p")!.lib!(source)
+  expect(result.observation?.outcome).toBe(expected)
+  if (model !== "missing") expect(writes.at(-1)).toBe(`\x1b]7;${initial}\x07`)
+  if (!["missing", "inert", "bad-restore", "bad-control"].includes(model)) expect(current).toBe(initial)
+  if (expected === "supported" || expected === "unsupported" || ["wrong", "partial"].includes(model)) {
+    expect(targetCount).toBe(2)
+    const state = JSON.parse(result.response!)
+    expect(state).toMatchObject({
+      controls: [{ value: expect.any(String) }, { value: expect.any(String) }],
+      targets: [{ sent: "/terminfo-633-cwd-A" }, { sent: "/terminfo-633-cwd-B" }],
+    })
+  }
+  if (expected === "inconclusive") {
+    expect(targetCount).toBe(0)
+    expect(result.tests).toContainEqual(expect.objectContaining({ status: "test-todo" }))
+  }
+})
+
+test.each([
+  { model: "exact", expected: "supported" },
+  { model: "ignored", expected: "unsupported" },
+  { model: "inert", expected: "inconclusive" },
+  { model: "missing", expected: "inconclusive" },
+  { model: "wrong", expected: "error" },
+  { model: "partial", expected: "error" },
+])("OSC633 end reader: $model => $expected", ({ model, expected }) => {
+  const base = inertModel()
+  const initial = { type: "command-end" as const, rawStatus: "42" }
+  const marks = [initial]
+  const cells = new Map<string, string>()
+  const writes: string[] = []
+  let x = 0
+  let y = 0
+  let targets = 0
+  const source = libProbeSource({
+    ...base,
+    capabilities: { ...libProbeSource(base).capabilities, extensions: new Set(["semantic-command-end"]) },
+    getSemanticMarks: model === "missing" ? undefined : () => (model === "inert" ? [initial] : structuredClone(marks)),
+    getCursor: () => ({ ...base.getCursor(), x, y }),
+    getCell: (row, col) => ({ ...base.getCell(row, col), char: cells.get(`${row},${col}`) ?? " " }),
+    feed: (text) => {
+      writes.push(text)
+      if (text === "\x1b[1;1H") {
+        x = 0
+        y = 0
+      }
+      if (text === "\x1b[2;3H") {
+        x = 2
+        y = 1
+      }
+      const end = /^\x1b\](133|633);D;([^\x07]*)\x07X?$/.exec(text)
+      if (end?.[1] === "133") marks.push({ type: "command-end", rawStatus: end[2]! })
+      if (end?.[1] === "633") {
+        targets++
+        if (model === "exact" || (model === "partial" && targets === 1)) {
+          marks.push({ type: "command-end", rawStatus: end[2]! })
+        }
+        if (model === "wrong") marks.push({ type: "command-end", rawStatus: "wrong-status" })
+      }
+      if (text.endsWith("X")) {
+        cells.set(`${y},${x}`, "X")
+        x++
+      }
+    },
+  })
+  const result = extensionsProbes.find((entry) => entry.id === "extensions.osc633-d")!.lib!(source)
+  expect(result.observation?.outcome).toBe(expected)
+  expect(marks[0]).toEqual(initial)
+  if (expected === "inconclusive") expect(result.tests).toContainEqual(expect.objectContaining({ status: "test-todo" }))
+  if (["supported", "unsupported", "error"].includes(expected)) {
+    expect(writes).toContain("\x1b]133;D;0\x07")
+    expect(writes).toContain("\x1b]133;D;17\x07")
+    expect(writes).toContain("\x1b]633;D;0\x07X")
+    expect(writes).toContain("\x1b]633;D;17\x07X")
+    expect(targets).toBe(2)
+  }
+})
+
 // #31904 R3a (@cto 6e4f7300): each colour-stack row grades its own operation. A pop that resets to
 // the starting (default) foreground passed both rows when the fixture restored that same colour; a
 // stack that keeps a stale snapshot passed the push row. Each fake below is a whole engine model.
