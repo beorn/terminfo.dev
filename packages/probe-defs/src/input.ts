@@ -1,4 +1,10 @@
-import type { LibProbeSource, ProbeDefinition, ProbeCallbackResult, TermProbeSource } from "./types.ts"
+import type {
+  LibProbeSource,
+  MeasuredProbeCallbackResult,
+  ProbeDefinition,
+  ProbeCallbackResult,
+  TermProbeSource,
+} from "./types.ts"
 import {
   HEADLESS_OBSERVABLE_REVIEW,
   notTestedResult,
@@ -103,7 +109,6 @@ const ALT_SCREEN_RESET = "\x1b[?1049l"
 const ALT_SCROLL_SET = "\x1b[?1007h"
 const ALT_SCROLL_RESET = "\x1b[?1007l"
 const ALT_SCROLL_OR_SGR = /\x1b(?:\[(?:<\d+;\d+;\d+[Mm]|[AB])|O[AB])/
-const ALT_SCROLL_ENCODING = /^\x1b\[A$/
 const KITTY_CLICK_START = "\x1b]133;A;click_events=1\x07"
 const KITTY_CLICK_END = "\x1b]133;B\x07"
 const SGR_MOUSE_PRESS = /\x1b\[<\d+;\d+;\d+M/
@@ -165,7 +170,11 @@ async function deliveryControl(
   return report
 }
 
-function interactionResult(action: string, expected: string, observed: Record<string, unknown>): ProbeCallbackResult {
+function interactionResult(
+  action: string,
+  expected: string,
+  observed: Record<string, unknown>,
+): MeasuredProbeCallbackResult {
   return {
     pass: true,
     response: JSON.stringify(observed),
@@ -294,9 +303,19 @@ export async function altScroll1007(ctx: TermProbeSource): Promise<ProbeCallback
       throw new Error("XTEST 1007 alt-scroll wheel did not reach the app after a successful 1000+1006 delivery control")
     }
     const observed = { mode: "1007", control, report }
-    const expected = "OS XTEST wheel-4 report under 1007 as CSI A after 1000+1006 delivery control on alt-screen"
-    if (ALT_SCROLL_ENCODING.test(report)) {
-      return interactionResult("alt-scroll-1007:4", expected, observed)
+    const cursorUpForm = report === "\x1b[A" ? "CSI A" : report === "\x1bOA" ? "SS3 A" : undefined
+    const expected = cursorUpForm
+      ? `OS XTEST wheel-4 report under 1007 as ${cursorUpForm} after 1000+1006 delivery control on alt-screen`
+      : "OS XTEST wheel-4 report under 1007 as CSI A or SS3 A after 1000+1006 delivery control on alt-screen"
+    if (cursorUpForm) {
+      return {
+        ...interactionResult("alt-scroll-1007:4", expected, observed),
+        observation: {
+          outcome: "supported",
+          assertionType: "input_bytes",
+          note: `XTEST wheel-4 under alternate-scroll 1007 produced ${cursorUpForm} cursor-up input after successful 1000+1006 delivery control on alt-screen`,
+        },
+      }
     }
     return unsupportedInteraction("alt-scroll-1007:4", expected, observed)
   } finally {
