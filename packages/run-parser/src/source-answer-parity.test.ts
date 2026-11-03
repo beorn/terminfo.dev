@@ -3,6 +3,7 @@
  *          attributed without the build receipt that produced the measured binary (@cto de41833e, 85a9cfd9).
  * @level l0
  * @consumer Source-answer application at the writer and the canonical run reader
+ * @reach fs-walk vendor/terminfo.dev/content/probes-libs/*.json vendor/terminfo.dev/content/probes-apps/*.json vendor/terminfo.dev/content/probes-mux/*.json
  * @testonly none
  */
 import { readdirSync, readFileSync } from "node:fs"
