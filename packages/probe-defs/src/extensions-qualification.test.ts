@@ -2141,26 +2141,39 @@ test.each(geometryReplies)("$id retains audited geometry limits for required rev
     repository: geometryRuntime.integrity.repository,
     treeOid: geometryRuntime.integrity.treeOid,
   }).toEqual(SOURCE_TREE_AUDITS.vterm)
-  for (const sentinel of [false, true]) {
-    const ctx = {
-      feedCapture: () => raw,
-      runtimeIdentity: geometryRuntime,
-      ...(sentinel && {
-        queryWithSentinelOutcome: () => ({
-          raw,
-          rawBase64: Buffer.from(raw).toString("base64"),
-          reason: "sentinel",
-          match: null,
+  for (const { revision, sourceCitation } of [
+    {
+      revision: "67dd3960746766ed47e2bb4b2ced6503a78549cc",
+      sourceCitation:
+        "vterm 67dd3960746766ed47e2bb4b2ced6503a78549cc packages/vterm/src/screen.ts:89-109 ScreenOptions has no physical font metrics; OSC1337 ReportCellSize at :4056-4058 and OSC776 at :4000-4003 deliberately report unknown zero dimensions (#30575)",
+    },
+    {
+      revision: "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+      sourceCitation:
+        "vterm 9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vterm/src/screen.ts:89-109 ScreenOptions has no physical font metrics; OSC1337 ReportCellSize at :4056-4058 and OSC776 at :4000-4003 deliberately report unknown zero dimensions (#30575)",
+    },
+  ]) {
+    for (const sentinel of [false, true]) {
+      const ctx = {
+        feedCapture: () => raw,
+        runtimeIdentity: { ...geometryRuntime, integrity: { ...geometryRuntime.integrity, revision } },
+        ...(sentinel && {
+          queryWithSentinelOutcome: () => ({
+            raw,
+            rawBase64: Buffer.from(raw).toString("base64"),
+            reason: "sentinel",
+            match: null,
+          }),
         }),
-      }),
-    } as unknown as LibProbeSource
-    const result = callback(id).lib!(ctx)
-    expect(result.notTested?.reason).toBe("no-semantic-observable")
-    expect(result.tests).toMatchObject([{ id: "review", status: "test-todo" }])
-    expect(result.observation).toBeUndefined()
-    const state = JSON.parse(result.response!)
-    expect(state).toMatchObject({ raw })
-    expect(state).not.toHaveProperty("runtimeIdentity")
+      } as unknown as LibProbeSource
+      const result = callback(id).lib!(ctx)
+      expect(result.notTested?.reason).toBe("no-semantic-observable")
+      expect(result.tests).toMatchObject([{ id: "review", status: "test-todo" }])
+      expect(result.observation).toBeUndefined()
+      const state = JSON.parse(result.response!)
+      expect(state).toMatchObject({ raw, sourceCitation })
+      expect(state).not.toHaveProperty("runtimeIdentity")
+    }
   }
 })
 
