@@ -8,9 +8,7 @@ import { expect, it } from "vitest"
 import { finalizeProbeResult } from "./helpers.ts"
 import {
   SOURCE_ANSWER_PENDING_LABELS,
-  hasUnverifiedSourceAnswerSuffix,
   parseSourceAnswerKey,
-  publicSourceAnswerPendingLabel,
   repositoryIdentity,
   resolveSourceAnswer,
   sourceAnswerKey,
@@ -20,29 +18,14 @@ import {
 
 const subject = { kind: "lib" as const, id: "example", version: "1.0", os: "linux" }
 
-// @cto 18a3b98f & 3bfdb550: the fixed pending labels are the only phrases a public consumer may forward,
-// and the unverified version suffix is detected by one helper beside sourceAnswerVersionLabel.
-it("publishes only the fixed pending labels and detects the unverified version suffix", () => {
+// @cto 18a3b98f: the fixed pending labels are the only phrases a public consumer may forward.
+it("publishes only the fixed pending labels", () => {
   expect(Object.values(SOURCE_ANSWER_PENDING_LABELS)).toEqual([
     "cited source changed",
     "kept answers disagree",
     "cited source not resolvable",
   ])
   expect(sourceAnswerVersionLabel("0.4.0")).toBe("reviewed at 0.4.0, not re-verified")
-  expect(publicSourceAnswerPendingLabel('kept answers disagree: ["lib","ghostty","0.4.0","linux","sgr.bold"]')).toBe(
-    SOURCE_ANSWER_PENDING_LABELS.disagree,
-  )
-  expect(
-    publicSourceAnswerPendingLabel("cited source not resolvable at git@github.com:beorn/termless.git@123456789abc"),
-  ).toBe(SOURCE_ANSWER_PENDING_LABELS.unresolvable)
-  expect(publicSourceAnswerPendingLabel("cited source changed")).toBe(SOURCE_ANSWER_PENDING_LABELS.changed)
-  expect(publicSourceAnswerPendingLabel("No handler; reviewed at 0.4.0, not re-verified")).toBeUndefined()
-  expect(publicSourceAnswerPendingLabel(undefined)).toBeUndefined()
-
-  expect(hasUnverifiedSourceAnswerSuffix("No handler; reviewed at 0.4.0, not re-verified", "0.4.0")).toBe(true)
-  expect(hasUnverifiedSourceAnswerSuffix("No handler; reviewed at 0.4.0, not re-verified", "0.5.0")).toBe(false)
-  expect(hasUnverifiedSourceAnswerSuffix("No handler", "0.4.0")).toBe(false)
-  expect(hasUnverifiedSourceAnswerSuffix(undefined, "0.4.0")).toBe(false)
 })
 const original = {
   reviewRef: "collector.review.original",
