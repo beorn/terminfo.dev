@@ -3348,6 +3348,98 @@ describe("Kitty protocol detection", () => {
 
   // AC4: missing DECRQM readback is a prerequisite gap; target silence on a working path remains failure.
   // Existing Ps fixtures cover target replies, but never query the prerequisite after qualified silence.
+  test.each(["vt100", "vt220"] as const)(
+    "OSC 5522 retains exact %s DECRQM source rejection without overriding replies",
+    (engine) => {
+      const runtimeIdentity = {
+        kind: "js" as const,
+        runtimeFormat: "js" as const,
+        engineVersion: "0.10.1",
+        adapterVersion: "0.10.2",
+        termlessRevision: "25089207e11420cf7a588987c1dc2683a45e8372",
+        resolvedPath: `vendor/vterm/packages/${engine}/src/index.ts`,
+        integrity: {
+          kind: "source" as const,
+          repository: "git@github.com:beorn/vterm.git",
+          revision: "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+          treeOid:
+            engine === "vt100"
+              ? "b941dae48b25ae8825c394750bda5245c9d93dfa"
+              : "4205f8936ad1848d1029729f3ada888cd61759a8",
+          cleanTree: true,
+        },
+        adapterSources: Object.entries(ADAPTER_SOURCE_AUDITS[engine]).map(([path, blobOid]) => ({ path, blobOid })),
+      }
+      const da1 = engine === "vt100" ? "\x1b[?1;2c" : "\x1b[?62;1;2;6;7;8;9c"
+      const run = (identity: LibProbeSource["runtimeIdentity"], detector = da1, sibling = da1) => {
+        const queries: string[] = []
+        const result = probe("extensions.osc5522-clipboard").lib!(
+          context({
+            runtimeIdentity: identity,
+            queryWithSentinelOutcome(sequence, pattern) {
+              queries.push(sequence)
+              const raw = sequence === "\x1b[?5522$p" ? detector : sibling
+              const match = raw.match(pattern)
+              return {
+                raw,
+                rawBase64: btoa(raw),
+                match,
+                reason: match ? "reply" : "sentinel",
+                sentinel: { atMs: 1, graceMs: 250 },
+              }
+            },
+          }),
+        )
+        return { result, queries }
+      }
+      const { result, queries } = run(runtimeIdentity)
+      expect(queries).toHaveLength(15)
+      expect(result.criterionBranch).toBe(SOURCE_NEGATIVE_REVIEW)
+      expect(result.tests).toEqual([{ id: "review", status: "test-todo", reason: expect.stringContaining("DECRQM") }])
+      expect(result.observation).toMatchObject({ outcome: "inconclusive", assertionType: "query_reply" })
+      expect(result.assertions).toEqual([
+        { assertionType: "query_reply", kind: "negative", expected: expect.any(String), observed: result.response },
+      ])
+      expect(JSON.parse(result.response!)).toMatchObject({
+        detection: da1,
+        rejection: "parser",
+        sourceCitation: expect.stringContaining(`packages/${engine}/src/screen.ts`),
+        decrpmSiblings: expect.arrayContaining([
+          { mode: 7, raw: da1 },
+          { mode: 2031, raw: da1 },
+        ]),
+      })
+      for (const identity of [
+        undefined,
+        { ...runtimeIdentity, termlessRevision: "0".repeat(40) },
+        { ...runtimeIdentity, integrity: { ...runtimeIdentity.integrity, revision: "0".repeat(40) } },
+        { ...runtimeIdentity, integrity: { ...runtimeIdentity.integrity, treeOid: "0".repeat(40) } },
+        { ...runtimeIdentity, integrity: { ...runtimeIdentity.integrity, cleanTree: false } },
+        {
+          ...runtimeIdentity,
+          adapterSources: runtimeIdentity.adapterSources.map((source) => ({ ...source, blobOid: "0".repeat(40) })),
+        },
+      ]) {
+        const unchanged = run(identity).result
+        expect(unchanged.criterionBranch).not.toBe(SOURCE_NEGATIVE_REVIEW)
+        expect(unchanged.tests?.[0]).toMatchObject({ id: "criterion", status: "test-todo" })
+        expect(unchanged.assertions).toBeUndefined()
+      }
+      for (const raw of [
+        "\x1b[?7;1$y" + da1,
+        "\x1b[?7;9$y" + da1,
+        "\x1b[?7;4$" + da1,
+        da1 + "\x1b[?7;0$y",
+        "\x1b[?999;1$y" + da1,
+      ]) {
+        expect(run(runtimeIdentity, da1, raw).result.criterionBranch).not.toBe(SOURCE_NEGATIVE_REVIEW)
+      }
+      expect(run(runtimeIdentity, "\x1b[?5522;1$y" + da1).result.observation?.outcome).toBe("supported")
+      expect(run(runtimeIdentity, "\x1b[?5522;4$y" + da1).result.observation?.outcome).toBe("unsupported")
+      expect(run(runtimeIdentity, da1 + "\x1b[?5522;0$y").result.observation?.outcome).toBe("inconclusive")
+    },
+  )
+
   test("OSC 5522 names only a measured missing DECRPM prerequisite", () => {
     const p = probe("extensions.osc5522-clipboard")
     const da1 = "\x1b[?1;2c"

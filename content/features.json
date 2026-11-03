@@ -2144,7 +2144,7 @@
     "url": "https://sw.kovidgoyal.net/kitty/clipboard/",
     "tags": ["osc", "kitty-extensions"],
     "body": "OSC 5522 is the Kitty advanced clipboard protocol, extending OSC 52 with MIME type support, rich content handling, and authorization tokens. It can carry multiple MIME types, such as text/plain, text/html and image/png, in a clipboard operation.\n\nA DECRPM response for mode 5522 establishes protocol recognition. It does not establish clipboard read or write permission, MIME transfer, or paste-event behavior.",
-    "probe": "Query mode 5522 with <code>CSI ? 5522 $ p</code> and parse its DECRPM reply. Expected: set, reset or permanently set (Ps 1-3) is supported as protocol recognition only; permanently reset (Ps 4) is unsupported. Not recognized (Ps 0) answered before the DA1 sentinel is unsupported, while Ps 0 arriving after the sentinel is inconclusive. No complete reply in the deciding window is TEST FAILURE. This does not read or write the clipboard.",
+    "probe": "Query mode 5522 with <code>CSI ? 5522 $ p</code> and parse its DECRPM reply. Expected: set, reset or permanently set (Ps 1-3) is supported as protocol recognition only; permanently reset (Ps 4) is unsupported. Not recognized (Ps 0) answered before the DA1 sentinel is unsupported, while Ps 0 arriving after the sentinel is inconclusive. No complete reply in the deciding window is TEST FAILURE. When no mode query in the run gets any DECRPM reply, recognition is untested (TEST TODO), unless the engine's reviewed source rejects DECRQM, which is unsupported. This does not read or write the clipboard.",
     "baseline": "rich"
   },
   "modes.color-scheme-reporting": {
