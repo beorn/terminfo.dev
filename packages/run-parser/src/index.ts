@@ -843,8 +843,9 @@ export function parseProbeResults(
       ),
     ]
     for (const ref of sourceRefs) {
-      if (!nonempty(ref) || !sourceAnswerForRef(ref))
+      if (!nonempty(ref) || !sourceAnswerForRef(ref)) {
         fail(path, `${featureId} unresolved review reference ${String(ref)}`)
+      }
     }
     if (sourceRefs.length) {
       if (!sourceContext) fail(path, `${featureId} source answer requires measured subject context`)
