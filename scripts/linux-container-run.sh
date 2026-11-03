@@ -948,7 +948,7 @@ usage() {
   echo "A source-tree collector also needs TERMINFO_PROBE_HASH and TERMINFO_SOURCE_REVISION" >&2
   echo "  from sourceSuiteEnvironment() in packages/admin/versions.ts, or serve.ts refuses the run." >&2
   echo "Retains raw/v3-capture.json, then finalizes a private sibling." >&2
-  echo "That sibling stays an unsealed draft; release collection --freeze seals it and composes the final receipt." >&2
+  echo "That sibling stays a private unsealed draft with its retained collection custody." >&2
   echo "This launcher has no capture-only mode; do not use it for a raw-only authorization." >&2
   exit 2
 }

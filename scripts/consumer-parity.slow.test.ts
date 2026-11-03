@@ -91,7 +91,7 @@ const fixture = vi.hoisted(() => {
     measuredAt,
     suiteId: "suite-v2",
     probeHash: "current",
-    suiteFreshness: "release suite current",
+    suiteFreshness: "tree suite current",
     sourceRevision: "rev",
     sha256: runSha256,
     identity: "verified",
@@ -304,13 +304,7 @@ vi.mock("../docs/data/current-results.ts", async () => {
       const sealed = sealedFixture(run)
       originals.set(sealed.runId, sealed)
     }
-    return projectResults(
-      [...originals.values()],
-      [],
-      catalogIds,
-      { currentProbeHash: "current", releaseSuiteId: "current" },
-      [],
-    )
+    return projectResults([...originals.values()], [], catalogIds, { currentProbeHash: "current" }, [])
   }
   return {
     ...actual,
@@ -368,7 +362,7 @@ function recompose(projection: SelectedProjection, extra: readonly LoadedRun[] =
     [...runs.values()],
     [],
     Object.values(projection.contexts)[0]?.catalogIds ?? [],
-    { currentProbeHash: "current", releaseSuiteId: "current" },
+    { currentProbeHash: "current" },
     [],
   )
 }
@@ -1253,7 +1247,7 @@ describe("selected-run consumer parity", () => {
       expect.objectContaining({
         version: fixture.screen.subject.version,
         pct: 0,
-        suiteFreshness: "release suite current",
+        suiteFreshness: "tree suite current",
       }),
       expect.objectContaining({ version: "4.9", pct: 0, suiteFreshness: "older suite older-suite" }),
     ])
@@ -1273,7 +1267,7 @@ describe("selected-run consumer parity", () => {
     expect(screen.cells["sgr.bold"]).toMatchObject({
       status: "test-todo",
       origin: { runId: currentRunId, resultId: "sgr.bold" },
-      suiteRelation: "release",
+      suiteRelation: "tree",
       measuredAt: fixture.screen.measuredAt,
     })
     expect(screen.sources[olderRunId]).toMatchObject({
@@ -1283,8 +1277,8 @@ describe("selected-run consumer parity", () => {
       measuredAt: fixture.measuredAt,
     })
     expect(screen.sources[currentRunId]).toMatchObject({
-      suiteFreshness: "release suite current",
-      suiteRelation: "release",
+      suiteFreshness: "tree suite current",
+      suiteRelation: "tree",
       sha256: "d".repeat(64),
       measuredAt: fixture.screen.measuredAt,
     })
@@ -1578,10 +1572,8 @@ it("labels the headless Ghostty cores libghostty-vt and keeps Ghostty for the ap
 })
 
 it("does not name a subject with no current run on the site", () => {
-  // #30759 Slice A (@cto f1504b5c): the site renders the frozen suite only, so a subject with no
-  // current run gets no row and no run data. #30759 AC3 removed the historical reader, so a legacy
-  // run can no longer reach the resolver at all — the absence control below is the non-vacuity
-  // proof that a sealed current run for the same named subject IS named.
+  // A subject absent from the selected projection gets no row or run data. The paired positive
+  // control proves that a retained current run for the same named subject is named.
   const projection = structuredClone(currentResults.loadCurrentResults("").projection)
   const selection = vi.spyOn(currentResults, "loadCurrentResults").mockReturnValue({ projection })
   const warning = vi.spyOn(console, "warn").mockImplementation(() => {})

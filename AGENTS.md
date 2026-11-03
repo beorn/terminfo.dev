@@ -127,17 +127,9 @@ reads on the day:
    `gh workflow run macos-measurement.yml --ref <branch>` and
    `gh workflow run windows-measurement.yml --ref <branch>`. Both check out the dispatched ref
    (`actions/checkout@v4`, no `ref` override), so every subject configuration measures one suite.
-3. **Admit on that branch and merge it through Yrd** (next section), then move the release pointer onto
-   that suite: `bun scripts/suite-manifest.ts --freeze <release>` while the tree is still at the cut, or
-   later from `main` naming the admitted suite,
-   `bun scripts/suite-manifest.ts --move <release> --suite <id>`.
+3. **Admit on that branch and merge it through Yrd** (next section).
 4. **Probe changes merged after the cut wait for the next cut.** They are not back-ported into a
    collection already in flight. When to cut is the release owner's call with `@chief`.
-
-A suite named by `--suite` is read from its own registry record and never compared with the live
-collector, which is what lets a pointer move onto an older admitted suite from a newer `main`; the id
-must be twelve lowercase hex and an existing manifest must carry it. A pointer never claims a suite that
-has no admitted run.
 
 ### Phase 1 transitional admission (existing suite-manifest writer)
 
@@ -159,11 +151,6 @@ bun scripts/admit-run.ts --for <collected-run.json> [--into <path>]
   HEAD refuses and names `git switch -c task/<name> origin/main`; a partial or malformed run refuses.
 - Concurrent admission of the same run is success when the bytes match; different bytes at the same
   name refuse. Commit the run and its manifest together.
-
-`bun scripts/suite-manifest.ts --check` (in `bun run validate`) is the composed-tree gate: it requires a
-declaration for every run that CITES a suite, and does not require the tree's own suite to be declared,
-so a non-fast-forward compose of two adapter branches is green. The declared manifest is verified
-against the live snapshot when this tree's suite is declared.
 
 ### Curated: Editorial Content
 

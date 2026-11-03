@@ -51,14 +51,12 @@ a result nor establish that both positive and negative controls exist. Overrides
 
 Review, intake/apply, admission, seal and capture binding remain implemented during the transition to their approved Phase 1 removal. The procedures below describe that current machinery; this terminology change grants no new workflow permission and does not lift an existing END hold.
 
-The collection owner's frozen `CollectionPass.freeze.deferrals` records each carried context with its `routeIssue` and `reason`.
-`release1-collection --collect --admit --frozen-suite <id> --deferrals <json-file>` reads that explicit array before collection.
-Deferred contexts remain named in the pass census with their reason and no new measurement; existing context status values are unchanged.
+`release1-collection --collect --development --output <private-directory>` retains private collection and its actual attempts.
+The pass carries no freeze, deferral or admission metadata.
 Failed hosted collection retains its original delegated draft as failure custody when canonical `run.json` is absent.
 Only a source-, suite-, run- and selection-bound collector attempt with a recorded start establishes execution;
 a job-start marker alone does not. A nonzero collector exit reports `failed`, with its exit code and log path.
 This custody never supplies grades or bypasses canonical validation, review or admission.
-An admitting pass is complete only when every non-deferred declared context is complete and admitted, with no pass errors.
 The read-only admin `report --scoreboard <inputs...>` accepts explicit raw captures or pass files/directories, preserves pass identities,
 and uses the canonical selected-results reader and local `origin/live` revision to distinguish selection from proven publication.
 
@@ -688,7 +686,7 @@ The writer checks intended id/version against known measured values without repl
 
 Raw diagnostic collection retains an unsealed `.draft.json`, including captures with no required review or with carried reviews already resolved. `pending-review` means a measured, unsealed draft; it does not imply a required cell review remains. Drafts receive the same identity, suite, source, artifact, summary and classification checks as sealed runs. Development completion does not require sealing or admission.
 
-Review answers use the existing pre-seal intake at an authorized act. A sealed pending snapshot stays immutable: a later author answer applies to the next capture, never to that snapshot. Release collection `--freeze` seals resolved drafts, composes the strict Linux completion receipt where applicable, then admits. `admit-run --review` seals when reviews resolve; default admin admission is also explicit. Standalone diagnostic outputs have no zero-review admission route. Sealing a pending capture does not grant review application, admission or publication; the END hold on those acts remains.
+Review answers use the existing pre-seal intake at an authorized act. A sealed pending snapshot stays immutable: a later author answer applies to the next capture, never to that snapshot. `admit-run --review` seals when reviews resolve; default admin admission is also explicit. Standalone diagnostic outputs have no zero-review admission route. Sealing a pending capture does not grant review application, admission or publication; the END hold on those acts remains.
 
 A reviewed capture decision may name `tool-gap` when the observable is buildable but its instrument is unbuilt.
 Its required reason names the missing instrument and its owning issue. The existing applier replaces that
