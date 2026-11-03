@@ -172,9 +172,12 @@ it("stays green on a composed tree and records the live suite identity that the 
       })
       expect(build.stderr, os).toBe("")
       expect(build.status, os).toBe(0)
-      expect(readFileSync(join(runner, "measurement-artifacts/collector-bundle.mjs"))).toEqual(
-        readFileSync(join(fixture, "packages/terminfo.dev/dist/terminfo.bundle.mjs")),
-      )
+      // Native byte equality avoids per-index matcher allocation for the generated bundle.
+      expect(
+        readFileSync(join(runner, "measurement-artifacts/collector-bundle.mjs")).equals(
+          readFileSync(join(fixture, "packages/terminfo.dev/dist/terminfo.bundle.mjs")),
+        ),
+      ).toBe(true)
     }
     expect(
       readFileSync(installs, "utf8")
