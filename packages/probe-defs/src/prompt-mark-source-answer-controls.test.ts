@@ -100,3 +100,77 @@ it("decides nothing from an uncited answer at a drifted version", () => {
   expect(result.status).toBe("test-todo")
   expect(result.tests[0]).toMatchObject({ status: "test-todo" })
 })
+
+// The existing P control covered only vt100; eighteen other current mark cells still selected
+// unqualified 0.10.0 originals. These are the runtime/source facts in the retained 07:25 author run.
+// Each decision must cite both the engine's dispatch and the wrapper that forwards the OSC unchanged.
+const currentPromptFeatures = [
+  "extensions.semantic-prompts",
+  "extensions.osc-633-vscode",
+  "extensions.osc133-a",
+  "extensions.osc133-b",
+  "extensions.osc133-c",
+  "extensions.osc133-d",
+  "extensions.osc633-a",
+  "extensions.osc633-b",
+  "extensions.osc633-c",
+] as const
+const currentPromptContexts = [
+  {
+    id: "vt100",
+    screenOid: "cd71776df5f72918cd06934d724a5c2e3585a89d",
+    treeOid: "b941dae48b25ae8825c394750bda5245c9d93dfa",
+    indexOid: "99833d737402f9d1d8e3e257e3a255d8aa1facc3",
+    backendOid: "cdb8be8c5ebbba68a5920cfa4df27c9deb31745a",
+  },
+  {
+    id: "vt220",
+    screenOid: "cc5c5c79b0c882cb1c335f2ccaf2c555884a05ee",
+    treeOid: "4205f8936ad1848d1029729f3ada888cd61759a8",
+    indexOid: "601dd26eb7e753a5396ebdf72f1ef8ee2cc4355f",
+    backendOid: "7369e3710e36aa649372fd09011ecfdd6ba47c73",
+  },
+] as const
+
+it.each(currentPromptContexts.flatMap((context) => currentPromptFeatures.map((id) => ({ ...context, featureId: id }))))(
+  "$id $featureId decides from the measured engine and adapter source",
+  (context) => {
+    const subject = { ...measured, id: context.id }
+    const adapterPath = `packages/${context.id}/src/backend.ts`
+    const screen = `packages/${context.id}/src/screen.ts`
+    const termlessRevision = "25089207e11420cf7a588987c1dc2683a45e8372"
+    const resolution = resolveSourceAnswer(SOURCE_ANSWERS, {
+      subject,
+      featureId: context.featureId,
+      sourceRevision: "dc96de335161c02f879a062e85a9be54393e17aa",
+      runtimeIdentity: {
+        ...runtimeIdentity,
+        termlessRevision,
+        resolvedPath: `vendor/vterm/packages/${context.id}/src/index.ts`,
+        integrity: { ...runtimeIdentity.integrity, treeOid: context.treeOid },
+        adapterSources: [
+          { path: `packages/${context.id}/src/index.ts`, blobOid: context.indexOid },
+          { path: adapterPath, blobOid: context.backendOid },
+        ],
+      },
+    })
+    expect(resolution).toMatchObject({ kind: "answer", status: "unsupported" })
+    const row = SOURCE_ANSWERS.find(
+      (entry) =>
+        entry.subject.id === context.id &&
+        entry.subject.version === measured.version &&
+        entry.featureId === context.featureId,
+    )
+    expect(row?.answers.flatMap((answer) => answer.citedBlobs)).toEqual(
+      expect.arrayContaining([
+        { repository: engine.repository, commit: engine.commit, path: screen, oid: context.screenOid },
+        {
+          repository: "git@github.com:beorn/termless.git",
+          commit: termlessRevision,
+          path: adapterPath,
+          oid: context.backendOid,
+        },
+      ]),
+    )
+  },
+)
