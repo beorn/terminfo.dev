@@ -81,34 +81,118 @@ const ghosttyInput: SourceAnswerInput = {
     },
   },
 }
-it.each(["a", "b", "c", "d", "e", "p"])("decides Ghostty OSC 633;%s from the shipped build", (suffix) => {
-  const featureId = `extensions.osc633-${suffix}`
-  const resolution = resolveSourceAnswer(SOURCE_ANSWERS, { ...ghosttyInput, featureId })
-  expect(resolution).toMatchObject({ kind: "answer", status: "unsupported" })
-  expect(finalizeProbeResult({ featureId, attempt: { scope: "none" }, tests: [reviewTest] }, resolution).status).toBe(
-    "unsupported",
-  )
-})
+it.each([...["a", "b", "c", "d", "e", "p"].map((suffix) => `extensions.osc633-${suffix}`), "extensions.osc133-p"])(
+  "decides Ghostty %s from the shipped build",
+  (featureId) => {
+    const resolution = resolveSourceAnswer(SOURCE_ANSWERS, { ...ghosttyInput, featureId })
+    expect(resolution).toMatchObject({ kind: "answer", status: "unsupported" })
+    expect(finalizeProbeResult({ featureId, attempt: { scope: "none" }, tests: [reviewTest] }, resolution).status).toBe(
+      "unsupported",
+    )
+  },
+)
 
-it("leaves a Ghostty prompt answer pending when its shipped WASM changes", () => {
-  const resolution = resolveSourceAnswer(SOURCE_ANSWERS, {
-    ...ghosttyInput,
-    blobs: [
-      {
-        repository: "git@github.com:beorn/termless.git",
-        path: "vendor/ghostty-web/ghostty-vt.wasm",
-        oid: "0".repeat(40),
-      },
+it.each(["extensions.osc633-a", "extensions.osc133-p"])(
+  "leaves Ghostty %s pending when its shipped WASM changes",
+  (featureId) => {
+    const resolution = resolveSourceAnswer(SOURCE_ANSWERS, {
+      ...ghosttyInput,
+      featureId,
+      blobs: [
+        {
+          repository: "git@github.com:beorn/termless.git",
+          path: "vendor/ghostty-web/ghostty-vt.wasm",
+          oid: "0".repeat(40),
+        },
+      ],
+    })
+    expect(resolution).toMatchObject({ kind: "pending" })
+    expect(finalizeProbeResult({ featureId, attempt: { scope: "none" }, tests: [reviewTest] }, resolution).status).toBe(
+      "test-todo",
+    )
+  },
+)
+
+// The retained source review binds these specific configured engines. Existing controls cover
+// other engines/features, so they cannot catch a missing row or an uncited build dependency here.
+const currentSourceContexts: {
+  id: string
+  version: string
+  features: string[]
+  identity: NonNullable<SourceAnswerInput["runtimeIdentity"]>
+  changedPath: string
+}[] = [
+  {
+    id: "xtermjs",
+    version: "6.0.0",
+    features: [
+      ...["a", "b", "c", "d", "p"].map((suffix) => `extensions.osc133-${suffix}`),
+      ...["a", "b", "c", "d", "e", "p"].map((suffix) => `extensions.osc633-${suffix}`),
     ],
-  })
-  expect(resolution).toMatchObject({ kind: "pending" })
-  expect(
-    finalizeProbeResult(
-      { featureId: ghosttyInput.featureId, attempt: { scope: "none" }, tests: [reviewTest] },
-      resolution,
-    ).status,
-  ).toBe("test-todo")
-})
+    identity: {
+      kind: "js",
+      adapterVersion: "0.10.2",
+      engineVersion: "6.0.0",
+      termlessRevision: "25089207e11420cf7a588987c1dc2683a45e8372",
+      runtimeFormat: "js",
+      resolvedPath: "node_modules/@xterm/headless/lib-headless/xterm-headless.js",
+      integrity: {
+        kind: "registry",
+        lockIntegrity:
+          "sha512-5Yj1QINYCyzrZtf8OFIHi47iQtI+0qYFPHmouEfG8dHNxbZ9Tb9YGSuLcsEwj9Z+OL75GJqPyJbyoFer80a2Hw==",
+      },
+    },
+    changedPath: "bun.lock",
+  },
+  {
+    id: "kitty",
+    version: "0.49.2",
+    features: ["a", "b", "c", "d", "e", "p"].map((suffix) => `extensions.osc633-${suffix}`),
+    identity: {
+      kind: "native",
+      adapterVersion: "0.10.2",
+      engineVersion: "0.49.2",
+      termlessRevision: "25089207e11420cf7a588987c1dc2683a45e8372",
+      loadedBinary: {
+        path: "/nix/store/fbpk67n6fd9kb95vl7ksrc7pkh3gx3qx-kitty-official-binary-0.49.2/bin/kitty",
+        sha256: "bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886",
+      },
+      provenance: {
+        sha256: "bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886",
+        sourceCommit: "b2cb871254fbdac19a085188813c8dfb258b95cd",
+        buildHash: "88e840e1b8e7f09edf3464ee33df8753fd5107838de15bccb6ea59e0dd6cc9c3",
+        lockSha256: "282d1098337a5705a7c1d13188a74d2fe34565766619e8d6b21a48d5b67451be",
+        toolchain: "Nix Kitty official 0.49.2",
+      },
+    },
+    changedPath: "packages/kitty/build/native-mode-layout.receipt.json",
+  },
+]
+
+it.each(currentSourceContexts.flatMap((context) => context.features.map((featureId) => ({ ...context, featureId }))))(
+  "$id $featureId decides from its qualified build and loses that decision on a changed citation",
+  ({ id, version, identity, changedPath, featureId }) => {
+    const input: SourceAnswerInput = {
+      subject: { kind: "lib", id, version, os: "linux" },
+      featureId,
+      sourceRevision: "98eb73f26b546cc0f701c9a0695159c066ab1f5b",
+      runtimeIdentity: identity,
+    }
+    const resolution = resolveSourceAnswer(SOURCE_ANSWERS, input)
+    expect(resolution).toMatchObject({ kind: "answer", status: "unsupported" })
+    expect(finalizeProbeResult({ featureId, attempt: { scope: "none" }, tests: [reviewTest] }, resolution).status).toBe(
+      "unsupported",
+    )
+    const changed = resolveSourceAnswer(SOURCE_ANSWERS, {
+      ...input,
+      blobs: [{ repository: "git@github.com:beorn/termless.git", path: changedPath, oid: "0".repeat(40) }],
+    })
+    expect(changed).toMatchObject({ kind: "pending" })
+    expect(finalizeProbeResult({ featureId, attempt: { scope: "none" }, tests: [reviewTest] }, changed).status).toBe(
+      "test-todo",
+    )
+  },
+)
 
 // The live store must carry the citation at the measured version; the 0.10.0 row stays as history
 // and is superseded rather than rewritten.

@@ -2183,6 +2183,76 @@
       "version": "0.4.0",
       "os": "linux"
     },
+    "featureId": "extensions.osc133-p",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "vendor/ghostty-web/ghostty-vt.wasm",
+            "oid": "99810cd84adb3a1439d07370e7cad8fec7f3cd21"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "vendor/ghostty-web/dist/ghostty-web.js",
+            "oid": "f8861be44a538fff74ebf2718a7304dd218c970a"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "vendor/ghostty-web/RECEIPT.json",
+            "oid": "3ffc517c4f4b5b97bf31e5a8b513ab7f3b21251e"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "vendor/ghostty-web/ghostty-wasm-api.patch",
+            "oid": "17769d971169a3f50ea15335ef473984b2026b32"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "vendor/ghostty-web/ghostty-page-zero.patch",
+            "oid": "e783e0658de095b5d5eba582342797f180bc842f"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/ghostty/src/backend.ts",
+            "oid": "19d45e37b36c0d6fc8d69ae6215ece9db173351c"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "source-32244-ghostty-extensions.osc133-p",
+            "reviewer": "@dev/3",
+            "reason": "Source review @dev/3 (2026-11-03): shipped ghostty-web 0.4.0 at Termless 25089207e11420cf7a588987c1dc2683a45e8372 binds Ghostty core5714ed07a1012573261b7b7e3ed2add9c1504496 through its build receipt. src/terminal/osc.zig:1298-1324 accepts only A/B/C/D in semantic_prompt; standalone P selects invalid, and end1708-1715 returns null. It therefore does not implement this standalone OSC133P properties command. Options attached to A are a different command and do not supply P support. Neither local patch alters osc.zig; adapter, JS wrapper and WASM stream forward the original bytes. Actual loaded WASM SHA256 42e84af1b38be94571974a23fa4667c4735ee7a272dcff39afd5cba40dcf48de matches the tracked build. This is parser rejection, not absence of readback; other OSC133 commands are not judged here.",
+            "sources": [
+              "https://github.com/ghostty-org/ghostty/blob/5714ed07a1012573261b7b7e3ed2add9c1504496/src/terminal/osc.zig#L1298-L1324",
+              "https://github.com/ghostty-org/ghostty/blob/5714ed07a1012573261b7b7e3ed2add9c1504496/src/terminal/osc.zig#L1708-L1715",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:vendor/ghostty-web/ghostty-vt.wasm blob 99810cd84adb3a1439d07370e7cad8fec7f3cd21",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:vendor/ghostty-web/dist/ghostty-web.js blob f8861be44a538fff74ebf2718a7304dd218c970a",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:vendor/ghostty-web/RECEIPT.json blob 3ffc517c4f4b5b97bf31e5a8b513ab7f3b21251e",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:vendor/ghostty-web/ghostty-wasm-api.patch blob 17769d971169a3f50ea15335ef473984b2026b32",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:vendor/ghostty-web/ghostty-page-zero.patch blob e783e0658de095b5d5eba582342797f180bc842f",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/ghostty/src/backend.ts blob 19d45e37b36c0d6fc8d69ae6215ece9db173351c",
+              "Actual author baseline run c716799d-c664-40f7-997a-452711ef20d0, suite e62fd3f521a9; current target pending before this qualification"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "ghostty",
+      "version": "0.4.0",
+      "os": "linux"
+    },
     "featureId": "extensions.osc1337-capabilities",
     "answers": [
       {
@@ -9576,6 +9646,444 @@
               "kitty0.49.2 source b2cb871254fbdac19a085188813c8dfb258b95cd kitty/vt-parser.c:546-670 (Git blob 50dc1e6d698be9ee9fb6bc687f4da65823c5cde1, SHA256 08dd5f733e466b72ec2ee6c5d5e2ea59e1e0fa898bd9f6a6f56a2c4c17629390) has no OSC176 arm and defaults to reporting an unknown code; current Termless25089207 packages/kitty/build/bridge.py blob ca46f3c2 forwards input to that parser without an app-id handler. Independent source review @dev/8 2026-11-03, 6196c3b3-f320-495b-861a-4312753ff1bf; the existing identity owner verifies loaded native bb65c2d5 and its receipt/build/lock against these adapter blobs",
               "Current source verdict 6196c3b3-f320-495b-861a-4312753ff1bf, @dev/8, 2026-11-03;  /hh/var/@dev1/osc176-native-current-bindings-proof.json",
               "Run e32a604d-d952-4a59-b5ea-78c8de89a418 raw SHA256a8c4c0b6d1b6874c05c5e6da1c4ab0d17abfd31615f017f5c217521125eb2670, suiteca6d8b6736cf, terminfocc4263e522d345216629c9345282f12c2c027969; baseline TODO has no deciding assertion; source absence plus exact native/adapter qualification is required for extensions.osc176-app-id"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "kitty",
+      "version": "0.49.2",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc633-a",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/kitty/src/index.ts",
+            "oid": "3f207f911646613cdc3d8b04f155f0686a96a077"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/kitty/src/backend.ts",
+            "oid": "1b7367a9737d1292618ea34a1c451bf3273c3b35"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/kitty/build/bridge.py",
+            "oid": "ca46f3c261ccbdcfd9c3ada9949e2a0238cbcaac"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/kitty/build/layout.c",
+            "oid": "49c0beef4424190e89d2884eac5efe4da50e3630"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/kitty/build/native-mode-layout.json",
+            "oid": "6bd0f2d5b6936f8f6298e4cb9ae4b228172a9502"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/kitty/build/native-mode-layout.receipt.json",
+            "oid": "02899a0c97f70eeba38f5030de1ba7ef4665b6f6"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "source-32244-kitty-extensions.osc633-a",
+            "reviewer": "@dev/2",
+            "reason": "Independent source qualification @dev/2 (2026-11-03), packet865ec222-prompt-tuples-20261103.md: Kitty0.49.2 source b2cb871254fbdac19a085188813c8dfb258b95cd kitty/vt-parser.c:654 explicitly ignores OSC633 with REPORT_ERROR, which only logs at171. No633 command reaches screen.c or shell_prompt_marking; OSC133 is implemented separately and is not judged here. vt-parser.c Git blob50dc1e6d698be9ee9fb6bc687f4da65823c5cde1, SHA25608dd5f733e466b72ec2ee6c5d5e2ea59e1e0fa898bd9f6a6f56a2c4c17629390; screen.c blob6010c35a19d00b60b422412ff0196c24b4f3b1cb. Actual loaded native SHA256 bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886, sourceCommit, buildHash and lockSha256 match the reviewed identity and current six adapter/ABI receipt blobs. Termless 25089207e11420cf7a588987c1dc2683a45e8372 bridge forwards input without a633 implementation. The existing native command-callback journey was re-executed by @dev/3 with the official binary:1PASS, exact633 ignore diagnostic/no633 mark and preserved133 positive marks across stream/batch/reset/replay. Unsupported is explicit parser rejection, not missing observer or a stale/cached empty result.",
+            "sources": [
+              "https://github.com/kovidgoyal/kitty/blob/b2cb871254fbdac19a085188813c8dfb258b95cd/kitty/vt-parser.c#L630-L654",
+              "https://github.com/kovidgoyal/kitty/blob/b2cb871254fbdac19a085188813c8dfb258b95cd/kitty/vt-parser.c#L171",
+              "Kitty binary bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886; sourceCommit b2cb871254fbdac19a085188813c8dfb258b95cd; buildHash 88e840e1b8e7f09edf3464ee33df8753fd5107838de15bccb6ea59e0dd6cc9c3; lockSha256 282d1098337a5705a7c1d13188a74d2fe34565766619e8d6b21a48d5b67451be",
+              "Independent qualifier /hh/var/@dev2/865ec222-prompt-tuples-20261103.md; preserved pinned sources and runtime hashes /hh/var/@dev3/resume-20261028/0585-artifact-binding-proof.json",
+              "Fresh native negative/positive command-callback protocol test /hh/var/@dev3/resume-20261028/0585-kitty-native-control.log; Termless packages/kitty/tests/bridge-callbacks.test.ts:140-185",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/kitty/src/index.ts blob 3f207f911646613cdc3d8b04f155f0686a96a077",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/kitty/src/backend.ts blob 1b7367a9737d1292618ea34a1c451bf3273c3b35",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/kitty/build/bridge.py blob ca46f3c261ccbdcfd9c3ada9949e2a0238cbcaac",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/kitty/build/layout.c blob 49c0beef4424190e89d2884eac5efe4da50e3630",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/kitty/build/native-mode-layout.json blob 6bd0f2d5b6936f8f6298e4cb9ae4b228172a9502",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/kitty/build/native-mode-layout.receipt.json blob 02899a0c97f70eeba38f5030de1ba7ef4665b6f6",
+              "Actual author baseline run 6c2485e8-62b3-415f-baf4-4e8a2955e3e9, suite e62fd3f521a9; current target pending before this qualification"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "kitty",
+      "version": "0.49.2",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc633-b",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/kitty/src/index.ts",
+            "oid": "3f207f911646613cdc3d8b04f155f0686a96a077"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/kitty/src/backend.ts",
+            "oid": "1b7367a9737d1292618ea34a1c451bf3273c3b35"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/kitty/build/bridge.py",
+            "oid": "ca46f3c261ccbdcfd9c3ada9949e2a0238cbcaac"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/kitty/build/layout.c",
+            "oid": "49c0beef4424190e89d2884eac5efe4da50e3630"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/kitty/build/native-mode-layout.json",
+            "oid": "6bd0f2d5b6936f8f6298e4cb9ae4b228172a9502"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/kitty/build/native-mode-layout.receipt.json",
+            "oid": "02899a0c97f70eeba38f5030de1ba7ef4665b6f6"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "source-32244-kitty-extensions.osc633-b",
+            "reviewer": "@dev/2",
+            "reason": "Independent source qualification @dev/2 (2026-11-03), packet865ec222-prompt-tuples-20261103.md: Kitty0.49.2 source b2cb871254fbdac19a085188813c8dfb258b95cd kitty/vt-parser.c:654 explicitly ignores OSC633 with REPORT_ERROR, which only logs at171. No633 command reaches screen.c or shell_prompt_marking; OSC133 is implemented separately and is not judged here. vt-parser.c Git blob50dc1e6d698be9ee9fb6bc687f4da65823c5cde1, SHA25608dd5f733e466b72ec2ee6c5d5e2ea59e1e0fa898bd9f6a6f56a2c4c17629390; screen.c blob6010c35a19d00b60b422412ff0196c24b4f3b1cb. Actual loaded native SHA256 bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886, sourceCommit, buildHash and lockSha256 match the reviewed identity and current six adapter/ABI receipt blobs. Termless 25089207e11420cf7a588987c1dc2683a45e8372 bridge forwards input without a633 implementation. The existing native command-callback journey was re-executed by @dev/3 with the official binary:1PASS, exact633 ignore diagnostic/no633 mark and preserved133 positive marks across stream/batch/reset/replay. Unsupported is explicit parser rejection, not missing observer or a stale/cached empty result.",
+            "sources": [
+              "https://github.com/kovidgoyal/kitty/blob/b2cb871254fbdac19a085188813c8dfb258b95cd/kitty/vt-parser.c#L630-L654",
+              "https://github.com/kovidgoyal/kitty/blob/b2cb871254fbdac19a085188813c8dfb258b95cd/kitty/vt-parser.c#L171",
+              "Kitty binary bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886; sourceCommit b2cb871254fbdac19a085188813c8dfb258b95cd; buildHash 88e840e1b8e7f09edf3464ee33df8753fd5107838de15bccb6ea59e0dd6cc9c3; lockSha256 282d1098337a5705a7c1d13188a74d2fe34565766619e8d6b21a48d5b67451be",
+              "Independent qualifier /hh/var/@dev2/865ec222-prompt-tuples-20261103.md; preserved pinned sources and runtime hashes /hh/var/@dev3/resume-20261028/0585-artifact-binding-proof.json",
+              "Fresh native negative/positive command-callback protocol test /hh/var/@dev3/resume-20261028/0585-kitty-native-control.log; Termless packages/kitty/tests/bridge-callbacks.test.ts:140-185",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/kitty/src/index.ts blob 3f207f911646613cdc3d8b04f155f0686a96a077",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/kitty/src/backend.ts blob 1b7367a9737d1292618ea34a1c451bf3273c3b35",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/kitty/build/bridge.py blob ca46f3c261ccbdcfd9c3ada9949e2a0238cbcaac",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/kitty/build/layout.c blob 49c0beef4424190e89d2884eac5efe4da50e3630",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/kitty/build/native-mode-layout.json blob 6bd0f2d5b6936f8f6298e4cb9ae4b228172a9502",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/kitty/build/native-mode-layout.receipt.json blob 02899a0c97f70eeba38f5030de1ba7ef4665b6f6",
+              "Actual author baseline run 6c2485e8-62b3-415f-baf4-4e8a2955e3e9, suite e62fd3f521a9; current target pending before this qualification"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "kitty",
+      "version": "0.49.2",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc633-c",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/kitty/src/index.ts",
+            "oid": "3f207f911646613cdc3d8b04f155f0686a96a077"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/kitty/src/backend.ts",
+            "oid": "1b7367a9737d1292618ea34a1c451bf3273c3b35"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/kitty/build/bridge.py",
+            "oid": "ca46f3c261ccbdcfd9c3ada9949e2a0238cbcaac"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/kitty/build/layout.c",
+            "oid": "49c0beef4424190e89d2884eac5efe4da50e3630"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/kitty/build/native-mode-layout.json",
+            "oid": "6bd0f2d5b6936f8f6298e4cb9ae4b228172a9502"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/kitty/build/native-mode-layout.receipt.json",
+            "oid": "02899a0c97f70eeba38f5030de1ba7ef4665b6f6"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "source-32244-kitty-extensions.osc633-c",
+            "reviewer": "@dev/2",
+            "reason": "Independent source qualification @dev/2 (2026-11-03), packet865ec222-prompt-tuples-20261103.md: Kitty0.49.2 source b2cb871254fbdac19a085188813c8dfb258b95cd kitty/vt-parser.c:654 explicitly ignores OSC633 with REPORT_ERROR, which only logs at171. No633 command reaches screen.c or shell_prompt_marking; OSC133 is implemented separately and is not judged here. vt-parser.c Git blob50dc1e6d698be9ee9fb6bc687f4da65823c5cde1, SHA25608dd5f733e466b72ec2ee6c5d5e2ea59e1e0fa898bd9f6a6f56a2c4c17629390; screen.c blob6010c35a19d00b60b422412ff0196c24b4f3b1cb. Actual loaded native SHA256 bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886, sourceCommit, buildHash and lockSha256 match the reviewed identity and current six adapter/ABI receipt blobs. Termless 25089207e11420cf7a588987c1dc2683a45e8372 bridge forwards input without a633 implementation. The existing native command-callback journey was re-executed by @dev/3 with the official binary:1PASS, exact633 ignore diagnostic/no633 mark and preserved133 positive marks across stream/batch/reset/replay. Unsupported is explicit parser rejection, not missing observer or a stale/cached empty result.",
+            "sources": [
+              "https://github.com/kovidgoyal/kitty/blob/b2cb871254fbdac19a085188813c8dfb258b95cd/kitty/vt-parser.c#L630-L654",
+              "https://github.com/kovidgoyal/kitty/blob/b2cb871254fbdac19a085188813c8dfb258b95cd/kitty/vt-parser.c#L171",
+              "Kitty binary bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886; sourceCommit b2cb871254fbdac19a085188813c8dfb258b95cd; buildHash 88e840e1b8e7f09edf3464ee33df8753fd5107838de15bccb6ea59e0dd6cc9c3; lockSha256 282d1098337a5705a7c1d13188a74d2fe34565766619e8d6b21a48d5b67451be",
+              "Independent qualifier /hh/var/@dev2/865ec222-prompt-tuples-20261103.md; preserved pinned sources and runtime hashes /hh/var/@dev3/resume-20261028/0585-artifact-binding-proof.json",
+              "Fresh native negative/positive command-callback protocol test /hh/var/@dev3/resume-20261028/0585-kitty-native-control.log; Termless packages/kitty/tests/bridge-callbacks.test.ts:140-185",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/kitty/src/index.ts blob 3f207f911646613cdc3d8b04f155f0686a96a077",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/kitty/src/backend.ts blob 1b7367a9737d1292618ea34a1c451bf3273c3b35",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/kitty/build/bridge.py blob ca46f3c261ccbdcfd9c3ada9949e2a0238cbcaac",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/kitty/build/layout.c blob 49c0beef4424190e89d2884eac5efe4da50e3630",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/kitty/build/native-mode-layout.json blob 6bd0f2d5b6936f8f6298e4cb9ae4b228172a9502",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/kitty/build/native-mode-layout.receipt.json blob 02899a0c97f70eeba38f5030de1ba7ef4665b6f6",
+              "Actual author baseline run 6c2485e8-62b3-415f-baf4-4e8a2955e3e9, suite e62fd3f521a9; current target pending before this qualification"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "kitty",
+      "version": "0.49.2",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc633-d",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/kitty/src/index.ts",
+            "oid": "3f207f911646613cdc3d8b04f155f0686a96a077"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/kitty/src/backend.ts",
+            "oid": "1b7367a9737d1292618ea34a1c451bf3273c3b35"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/kitty/build/bridge.py",
+            "oid": "ca46f3c261ccbdcfd9c3ada9949e2a0238cbcaac"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/kitty/build/layout.c",
+            "oid": "49c0beef4424190e89d2884eac5efe4da50e3630"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/kitty/build/native-mode-layout.json",
+            "oid": "6bd0f2d5b6936f8f6298e4cb9ae4b228172a9502"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/kitty/build/native-mode-layout.receipt.json",
+            "oid": "02899a0c97f70eeba38f5030de1ba7ef4665b6f6"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "source-32244-kitty-extensions.osc633-d",
+            "reviewer": "@dev/2",
+            "reason": "Independent source qualification @dev/2 (2026-11-03), packet865ec222-prompt-tuples-20261103.md: Kitty0.49.2 source b2cb871254fbdac19a085188813c8dfb258b95cd kitty/vt-parser.c:654 explicitly ignores OSC633 with REPORT_ERROR, which only logs at171. No633 command reaches screen.c or shell_prompt_marking; OSC133 is implemented separately and is not judged here. vt-parser.c Git blob50dc1e6d698be9ee9fb6bc687f4da65823c5cde1, SHA25608dd5f733e466b72ec2ee6c5d5e2ea59e1e0fa898bd9f6a6f56a2c4c17629390; screen.c blob6010c35a19d00b60b422412ff0196c24b4f3b1cb. Actual loaded native SHA256 bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886, sourceCommit, buildHash and lockSha256 match the reviewed identity and current six adapter/ABI receipt blobs. Termless 25089207e11420cf7a588987c1dc2683a45e8372 bridge forwards input without a633 implementation. The existing native command-callback journey was re-executed by @dev/3 with the official binary:1PASS, exact633 ignore diagnostic/no633 mark and preserved133 positive marks across stream/batch/reset/replay. Unsupported is explicit parser rejection, not missing observer or a stale/cached empty result.",
+            "sources": [
+              "https://github.com/kovidgoyal/kitty/blob/b2cb871254fbdac19a085188813c8dfb258b95cd/kitty/vt-parser.c#L630-L654",
+              "https://github.com/kovidgoyal/kitty/blob/b2cb871254fbdac19a085188813c8dfb258b95cd/kitty/vt-parser.c#L171",
+              "Kitty binary bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886; sourceCommit b2cb871254fbdac19a085188813c8dfb258b95cd; buildHash 88e840e1b8e7f09edf3464ee33df8753fd5107838de15bccb6ea59e0dd6cc9c3; lockSha256 282d1098337a5705a7c1d13188a74d2fe34565766619e8d6b21a48d5b67451be",
+              "Independent qualifier /hh/var/@dev2/865ec222-prompt-tuples-20261103.md; preserved pinned sources and runtime hashes /hh/var/@dev3/resume-20261028/0585-artifact-binding-proof.json",
+              "Fresh native negative/positive command-callback protocol test /hh/var/@dev3/resume-20261028/0585-kitty-native-control.log; Termless packages/kitty/tests/bridge-callbacks.test.ts:140-185",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/kitty/src/index.ts blob 3f207f911646613cdc3d8b04f155f0686a96a077",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/kitty/src/backend.ts blob 1b7367a9737d1292618ea34a1c451bf3273c3b35",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/kitty/build/bridge.py blob ca46f3c261ccbdcfd9c3ada9949e2a0238cbcaac",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/kitty/build/layout.c blob 49c0beef4424190e89d2884eac5efe4da50e3630",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/kitty/build/native-mode-layout.json blob 6bd0f2d5b6936f8f6298e4cb9ae4b228172a9502",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/kitty/build/native-mode-layout.receipt.json blob 02899a0c97f70eeba38f5030de1ba7ef4665b6f6",
+              "Actual author baseline run 6c2485e8-62b3-415f-baf4-4e8a2955e3e9, suite e62fd3f521a9; current target pending before this qualification"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "kitty",
+      "version": "0.49.2",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc633-e",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/kitty/src/index.ts",
+            "oid": "3f207f911646613cdc3d8b04f155f0686a96a077"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/kitty/src/backend.ts",
+            "oid": "1b7367a9737d1292618ea34a1c451bf3273c3b35"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/kitty/build/bridge.py",
+            "oid": "ca46f3c261ccbdcfd9c3ada9949e2a0238cbcaac"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/kitty/build/layout.c",
+            "oid": "49c0beef4424190e89d2884eac5efe4da50e3630"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/kitty/build/native-mode-layout.json",
+            "oid": "6bd0f2d5b6936f8f6298e4cb9ae4b228172a9502"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/kitty/build/native-mode-layout.receipt.json",
+            "oid": "02899a0c97f70eeba38f5030de1ba7ef4665b6f6"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "source-32244-kitty-extensions.osc633-e",
+            "reviewer": "@dev/2",
+            "reason": "Independent source qualification @dev/2 (2026-11-03), packet865ec222-prompt-tuples-20261103.md: Kitty0.49.2 source b2cb871254fbdac19a085188813c8dfb258b95cd kitty/vt-parser.c:654 explicitly ignores OSC633 with REPORT_ERROR, which only logs at171. No633 command reaches screen.c or shell_prompt_marking; OSC133 is implemented separately and is not judged here. vt-parser.c Git blob50dc1e6d698be9ee9fb6bc687f4da65823c5cde1, SHA25608dd5f733e466b72ec2ee6c5d5e2ea59e1e0fa898bd9f6a6f56a2c4c17629390; screen.c blob6010c35a19d00b60b422412ff0196c24b4f3b1cb. Actual loaded native SHA256 bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886, sourceCommit, buildHash and lockSha256 match the reviewed identity and current six adapter/ABI receipt blobs. Termless 25089207e11420cf7a588987c1dc2683a45e8372 bridge forwards input without a633 implementation. The existing native command-callback journey was re-executed by @dev/3 with the official binary:1PASS, exact633 ignore diagnostic/no633 mark and preserved133 positive marks across stream/batch/reset/replay. Unsupported is explicit parser rejection, not missing observer or a stale/cached empty result.",
+            "sources": [
+              "https://github.com/kovidgoyal/kitty/blob/b2cb871254fbdac19a085188813c8dfb258b95cd/kitty/vt-parser.c#L630-L654",
+              "https://github.com/kovidgoyal/kitty/blob/b2cb871254fbdac19a085188813c8dfb258b95cd/kitty/vt-parser.c#L171",
+              "Kitty binary bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886; sourceCommit b2cb871254fbdac19a085188813c8dfb258b95cd; buildHash 88e840e1b8e7f09edf3464ee33df8753fd5107838de15bccb6ea59e0dd6cc9c3; lockSha256 282d1098337a5705a7c1d13188a74d2fe34565766619e8d6b21a48d5b67451be",
+              "Independent qualifier /hh/var/@dev2/865ec222-prompt-tuples-20261103.md; preserved pinned sources and runtime hashes /hh/var/@dev3/resume-20261028/0585-artifact-binding-proof.json",
+              "Fresh native negative/positive command-callback protocol test /hh/var/@dev3/resume-20261028/0585-kitty-native-control.log; Termless packages/kitty/tests/bridge-callbacks.test.ts:140-185",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/kitty/src/index.ts blob 3f207f911646613cdc3d8b04f155f0686a96a077",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/kitty/src/backend.ts blob 1b7367a9737d1292618ea34a1c451bf3273c3b35",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/kitty/build/bridge.py blob ca46f3c261ccbdcfd9c3ada9949e2a0238cbcaac",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/kitty/build/layout.c blob 49c0beef4424190e89d2884eac5efe4da50e3630",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/kitty/build/native-mode-layout.json blob 6bd0f2d5b6936f8f6298e4cb9ae4b228172a9502",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/kitty/build/native-mode-layout.receipt.json blob 02899a0c97f70eeba38f5030de1ba7ef4665b6f6",
+              "Actual author baseline run 6c2485e8-62b3-415f-baf4-4e8a2955e3e9, suite e62fd3f521a9; current target pending before this qualification"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "kitty",
+      "version": "0.49.2",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc633-p",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/kitty/src/index.ts",
+            "oid": "3f207f911646613cdc3d8b04f155f0686a96a077"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/kitty/src/backend.ts",
+            "oid": "1b7367a9737d1292618ea34a1c451bf3273c3b35"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/kitty/build/bridge.py",
+            "oid": "ca46f3c261ccbdcfd9c3ada9949e2a0238cbcaac"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/kitty/build/layout.c",
+            "oid": "49c0beef4424190e89d2884eac5efe4da50e3630"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/kitty/build/native-mode-layout.json",
+            "oid": "6bd0f2d5b6936f8f6298e4cb9ae4b228172a9502"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/kitty/build/native-mode-layout.receipt.json",
+            "oid": "02899a0c97f70eeba38f5030de1ba7ef4665b6f6"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "source-32244-kitty-extensions.osc633-p",
+            "reviewer": "@dev/2",
+            "reason": "Independent source qualification @dev/2 (2026-11-03), packet865ec222-prompt-tuples-20261103.md: Kitty0.49.2 source b2cb871254fbdac19a085188813c8dfb258b95cd kitty/vt-parser.c:654 explicitly ignores OSC633 with REPORT_ERROR, which only logs at171. No633 command reaches screen.c or shell_prompt_marking; OSC133 is implemented separately and is not judged here. vt-parser.c Git blob50dc1e6d698be9ee9fb6bc687f4da65823c5cde1, SHA25608dd5f733e466b72ec2ee6c5d5e2ea59e1e0fa898bd9f6a6f56a2c4c17629390; screen.c blob6010c35a19d00b60b422412ff0196c24b4f3b1cb. Actual loaded native SHA256 bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886, sourceCommit, buildHash and lockSha256 match the reviewed identity and current six adapter/ABI receipt blobs. Termless 25089207e11420cf7a588987c1dc2683a45e8372 bridge forwards input without a633 implementation. The existing native command-callback journey was re-executed by @dev/3 with the official binary:1PASS, exact633 ignore diagnostic/no633 mark and preserved133 positive marks across stream/batch/reset/replay. Unsupported is explicit parser rejection, not missing observer or a stale/cached empty result.",
+            "sources": [
+              "https://github.com/kovidgoyal/kitty/blob/b2cb871254fbdac19a085188813c8dfb258b95cd/kitty/vt-parser.c#L630-L654",
+              "https://github.com/kovidgoyal/kitty/blob/b2cb871254fbdac19a085188813c8dfb258b95cd/kitty/vt-parser.c#L171",
+              "Kitty binary bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886; sourceCommit b2cb871254fbdac19a085188813c8dfb258b95cd; buildHash 88e840e1b8e7f09edf3464ee33df8753fd5107838de15bccb6ea59e0dd6cc9c3; lockSha256 282d1098337a5705a7c1d13188a74d2fe34565766619e8d6b21a48d5b67451be",
+              "Independent qualifier /hh/var/@dev2/865ec222-prompt-tuples-20261103.md; preserved pinned sources and runtime hashes /hh/var/@dev3/resume-20261028/0585-artifact-binding-proof.json",
+              "Fresh native negative/positive command-callback protocol test /hh/var/@dev3/resume-20261028/0585-kitty-native-control.log; Termless packages/kitty/tests/bridge-callbacks.test.ts:140-185",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/kitty/src/index.ts blob 3f207f911646613cdc3d8b04f155f0686a96a077",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/kitty/src/backend.ts blob 1b7367a9737d1292618ea34a1c451bf3273c3b35",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/kitty/build/bridge.py blob ca46f3c261ccbdcfd9c3ada9949e2a0238cbcaac",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/kitty/build/layout.c blob 49c0beef4424190e89d2884eac5efe4da50e3630",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/kitty/build/native-mode-layout.json blob 6bd0f2d5b6936f8f6298e4cb9ae4b228172a9502",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/kitty/build/native-mode-layout.receipt.json blob 02899a0c97f70eeba38f5030de1ba7ef4665b6f6",
+              "Actual author baseline run 6c2485e8-62b3-415f-baf4-4e8a2955e3e9, suite e62fd3f521a9; current target pending before this qualification"
             ]
           }
         ]
@@ -31595,6 +32103,291 @@
       "version": "6.0.0",
       "os": "linux"
     },
+    "featureId": "extensions.osc133-a",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/xtermjs/src/index.ts",
+            "oid": "550e10110ec2baaf326d2958319b03ee8208feba"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/xtermjs/src/backend.ts",
+            "oid": "72dc827b2026af7736de722f7ff986a04f3fe883"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/xtermjs/package.json",
+            "oid": "7febf39cdcf09a1edcb35732487a8d59821f7415"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "bun.lock",
+            "oid": "e98a82dedba868673d1c96c230d611cac67ca72b"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "source-32244-xtermjs-extensions.osc133-a",
+            "reviewer": "@dev/2",
+            "reason": "Independent source qualification @dev/2 (2026-11-03), packet865ec222-prompt-tuples-20261103.md, with configured-fallback correction @dev/3: actual @xterm/headless6.0.0 bundle SHA256 17a90b650cf6b77cce2b98c4063884d43545e4ce177a54b76ccfc906f1aacaed and source map SHA256 780e782badc8189491a469c9277b783e01911882ea84417b31e71294ea927d98 match the installed engine. All57 embedded sources were reviewed. InputHandler.ts registers OSC0,1,2,4,8,10,11,12,104,110,111,112 only. Its lines201-203 install an unknown-OSC fallback that only logs to debug, through EscapeSequenceParser424-425 and OscParser43-44/69-79/146; neither 133 nor633 has a state/reply handler. Termless 25089207e11420cf7a588987c1dc2683a45e8372 xtermjs adapter loads Unicode11Addon and binds no OSC handler. The public registerOscHandler extension point could let another host implement these commands; that does not implement them in this configured library path. Unsupported follows the actual dispatch and forwarding graph, not token absence, flags or missing readback.",
+            "sources": [
+              "@xterm/headless6.0.0 actual bundle SHA256 17a90b650cf6b77cce2b98c4063884d43545e4ce177a54b76ccfc906f1aacaed; map SHA256 780e782badc8189491a469c9277b783e01911882ea84417b31e71294ea927d98; all57 embedded sources",
+              "Shipped source map src/common/InputHandler.ts:201-203,292-331,685-688; src/common/parser/EscapeSequenceParser.ts:418-425; src/common/parser/OscParser.ts:43-44,69-79,146",
+              "Independent qualifier packet /hh/var/@dev2/865ec222-prompt-tuples-20261103.md; primary7d79abc1; configured logging-only fallback correction by @dev/3 in0585-qualifier-correction-send.json",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/xtermjs/src/index.ts blob 550e10110ec2baaf326d2958319b03ee8208feba",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/xtermjs/src/backend.ts blob 72dc827b2026af7736de722f7ff986a04f3fe883",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/xtermjs/package.json blob 7febf39cdcf09a1edcb35732487a8d59821f7415",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:bun.lock blob e98a82dedba868673d1c96c230d611cac67ca72b",
+              "Actual author baseline run 431fb776-24fc-4a14-963c-016114ce432f, suite e62fd3f521a9; current target pending before this qualification"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "xtermjs",
+      "version": "6.0.0",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc133-b",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/xtermjs/src/index.ts",
+            "oid": "550e10110ec2baaf326d2958319b03ee8208feba"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/xtermjs/src/backend.ts",
+            "oid": "72dc827b2026af7736de722f7ff986a04f3fe883"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/xtermjs/package.json",
+            "oid": "7febf39cdcf09a1edcb35732487a8d59821f7415"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "bun.lock",
+            "oid": "e98a82dedba868673d1c96c230d611cac67ca72b"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "source-32244-xtermjs-extensions.osc133-b",
+            "reviewer": "@dev/2",
+            "reason": "Independent source qualification @dev/2 (2026-11-03), packet865ec222-prompt-tuples-20261103.md, with configured-fallback correction @dev/3: actual @xterm/headless6.0.0 bundle SHA256 17a90b650cf6b77cce2b98c4063884d43545e4ce177a54b76ccfc906f1aacaed and source map SHA256 780e782badc8189491a469c9277b783e01911882ea84417b31e71294ea927d98 match the installed engine. All57 embedded sources were reviewed. InputHandler.ts registers OSC0,1,2,4,8,10,11,12,104,110,111,112 only. Its lines201-203 install an unknown-OSC fallback that only logs to debug, through EscapeSequenceParser424-425 and OscParser43-44/69-79/146; neither 133 nor633 has a state/reply handler. Termless 25089207e11420cf7a588987c1dc2683a45e8372 xtermjs adapter loads Unicode11Addon and binds no OSC handler. The public registerOscHandler extension point could let another host implement these commands; that does not implement them in this configured library path. Unsupported follows the actual dispatch and forwarding graph, not token absence, flags or missing readback.",
+            "sources": [
+              "@xterm/headless6.0.0 actual bundle SHA256 17a90b650cf6b77cce2b98c4063884d43545e4ce177a54b76ccfc906f1aacaed; map SHA256 780e782badc8189491a469c9277b783e01911882ea84417b31e71294ea927d98; all57 embedded sources",
+              "Shipped source map src/common/InputHandler.ts:201-203,292-331,685-688; src/common/parser/EscapeSequenceParser.ts:418-425; src/common/parser/OscParser.ts:43-44,69-79,146",
+              "Independent qualifier packet /hh/var/@dev2/865ec222-prompt-tuples-20261103.md; primary7d79abc1; configured logging-only fallback correction by @dev/3 in0585-qualifier-correction-send.json",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/xtermjs/src/index.ts blob 550e10110ec2baaf326d2958319b03ee8208feba",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/xtermjs/src/backend.ts blob 72dc827b2026af7736de722f7ff986a04f3fe883",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/xtermjs/package.json blob 7febf39cdcf09a1edcb35732487a8d59821f7415",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:bun.lock blob e98a82dedba868673d1c96c230d611cac67ca72b",
+              "Actual author baseline run 431fb776-24fc-4a14-963c-016114ce432f, suite e62fd3f521a9; current target pending before this qualification"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "xtermjs",
+      "version": "6.0.0",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc133-c",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/xtermjs/src/index.ts",
+            "oid": "550e10110ec2baaf326d2958319b03ee8208feba"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/xtermjs/src/backend.ts",
+            "oid": "72dc827b2026af7736de722f7ff986a04f3fe883"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/xtermjs/package.json",
+            "oid": "7febf39cdcf09a1edcb35732487a8d59821f7415"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "bun.lock",
+            "oid": "e98a82dedba868673d1c96c230d611cac67ca72b"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "source-32244-xtermjs-extensions.osc133-c",
+            "reviewer": "@dev/2",
+            "reason": "Independent source qualification @dev/2 (2026-11-03), packet865ec222-prompt-tuples-20261103.md, with configured-fallback correction @dev/3: actual @xterm/headless6.0.0 bundle SHA256 17a90b650cf6b77cce2b98c4063884d43545e4ce177a54b76ccfc906f1aacaed and source map SHA256 780e782badc8189491a469c9277b783e01911882ea84417b31e71294ea927d98 match the installed engine. All57 embedded sources were reviewed. InputHandler.ts registers OSC0,1,2,4,8,10,11,12,104,110,111,112 only. Its lines201-203 install an unknown-OSC fallback that only logs to debug, through EscapeSequenceParser424-425 and OscParser43-44/69-79/146; neither 133 nor633 has a state/reply handler. Termless 25089207e11420cf7a588987c1dc2683a45e8372 xtermjs adapter loads Unicode11Addon and binds no OSC handler. The public registerOscHandler extension point could let another host implement these commands; that does not implement them in this configured library path. Unsupported follows the actual dispatch and forwarding graph, not token absence, flags or missing readback.",
+            "sources": [
+              "@xterm/headless6.0.0 actual bundle SHA256 17a90b650cf6b77cce2b98c4063884d43545e4ce177a54b76ccfc906f1aacaed; map SHA256 780e782badc8189491a469c9277b783e01911882ea84417b31e71294ea927d98; all57 embedded sources",
+              "Shipped source map src/common/InputHandler.ts:201-203,292-331,685-688; src/common/parser/EscapeSequenceParser.ts:418-425; src/common/parser/OscParser.ts:43-44,69-79,146",
+              "Independent qualifier packet /hh/var/@dev2/865ec222-prompt-tuples-20261103.md; primary7d79abc1; configured logging-only fallback correction by @dev/3 in0585-qualifier-correction-send.json",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/xtermjs/src/index.ts blob 550e10110ec2baaf326d2958319b03ee8208feba",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/xtermjs/src/backend.ts blob 72dc827b2026af7736de722f7ff986a04f3fe883",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/xtermjs/package.json blob 7febf39cdcf09a1edcb35732487a8d59821f7415",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:bun.lock blob e98a82dedba868673d1c96c230d611cac67ca72b",
+              "Actual author baseline run 431fb776-24fc-4a14-963c-016114ce432f, suite e62fd3f521a9; current target pending before this qualification"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "xtermjs",
+      "version": "6.0.0",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc133-d",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/xtermjs/src/index.ts",
+            "oid": "550e10110ec2baaf326d2958319b03ee8208feba"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/xtermjs/src/backend.ts",
+            "oid": "72dc827b2026af7736de722f7ff986a04f3fe883"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/xtermjs/package.json",
+            "oid": "7febf39cdcf09a1edcb35732487a8d59821f7415"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "bun.lock",
+            "oid": "e98a82dedba868673d1c96c230d611cac67ca72b"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "source-32244-xtermjs-extensions.osc133-d",
+            "reviewer": "@dev/2",
+            "reason": "Independent source qualification @dev/2 (2026-11-03), packet865ec222-prompt-tuples-20261103.md, with configured-fallback correction @dev/3: actual @xterm/headless6.0.0 bundle SHA256 17a90b650cf6b77cce2b98c4063884d43545e4ce177a54b76ccfc906f1aacaed and source map SHA256 780e782badc8189491a469c9277b783e01911882ea84417b31e71294ea927d98 match the installed engine. All57 embedded sources were reviewed. InputHandler.ts registers OSC0,1,2,4,8,10,11,12,104,110,111,112 only. Its lines201-203 install an unknown-OSC fallback that only logs to debug, through EscapeSequenceParser424-425 and OscParser43-44/69-79/146; neither 133 nor633 has a state/reply handler. Termless 25089207e11420cf7a588987c1dc2683a45e8372 xtermjs adapter loads Unicode11Addon and binds no OSC handler. The public registerOscHandler extension point could let another host implement these commands; that does not implement them in this configured library path. Unsupported follows the actual dispatch and forwarding graph, not token absence, flags or missing readback.",
+            "sources": [
+              "@xterm/headless6.0.0 actual bundle SHA256 17a90b650cf6b77cce2b98c4063884d43545e4ce177a54b76ccfc906f1aacaed; map SHA256 780e782badc8189491a469c9277b783e01911882ea84417b31e71294ea927d98; all57 embedded sources",
+              "Shipped source map src/common/InputHandler.ts:201-203,292-331,685-688; src/common/parser/EscapeSequenceParser.ts:418-425; src/common/parser/OscParser.ts:43-44,69-79,146",
+              "Independent qualifier packet /hh/var/@dev2/865ec222-prompt-tuples-20261103.md; primary7d79abc1; configured logging-only fallback correction by @dev/3 in0585-qualifier-correction-send.json",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/xtermjs/src/index.ts blob 550e10110ec2baaf326d2958319b03ee8208feba",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/xtermjs/src/backend.ts blob 72dc827b2026af7736de722f7ff986a04f3fe883",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/xtermjs/package.json blob 7febf39cdcf09a1edcb35732487a8d59821f7415",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:bun.lock blob e98a82dedba868673d1c96c230d611cac67ca72b",
+              "Actual author baseline run 431fb776-24fc-4a14-963c-016114ce432f, suite e62fd3f521a9; current target pending before this qualification"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "xtermjs",
+      "version": "6.0.0",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc133-p",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/xtermjs/src/index.ts",
+            "oid": "550e10110ec2baaf326d2958319b03ee8208feba"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/xtermjs/src/backend.ts",
+            "oid": "72dc827b2026af7736de722f7ff986a04f3fe883"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/xtermjs/package.json",
+            "oid": "7febf39cdcf09a1edcb35732487a8d59821f7415"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "bun.lock",
+            "oid": "e98a82dedba868673d1c96c230d611cac67ca72b"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "source-32244-xtermjs-extensions.osc133-p",
+            "reviewer": "@dev/2",
+            "reason": "Independent source qualification @dev/2 (2026-11-03), packet865ec222-prompt-tuples-20261103.md, with configured-fallback correction @dev/3: actual @xterm/headless6.0.0 bundle SHA256 17a90b650cf6b77cce2b98c4063884d43545e4ce177a54b76ccfc906f1aacaed and source map SHA256 780e782badc8189491a469c9277b783e01911882ea84417b31e71294ea927d98 match the installed engine. All57 embedded sources were reviewed. InputHandler.ts registers OSC0,1,2,4,8,10,11,12,104,110,111,112 only. Its lines201-203 install an unknown-OSC fallback that only logs to debug, through EscapeSequenceParser424-425 and OscParser43-44/69-79/146; neither 133 nor633 has a state/reply handler. Termless 25089207e11420cf7a588987c1dc2683a45e8372 xtermjs adapter loads Unicode11Addon and binds no OSC handler. The public registerOscHandler extension point could let another host implement these commands; that does not implement them in this configured library path. Unsupported follows the actual dispatch and forwarding graph, not token absence, flags or missing readback.",
+            "sources": [
+              "@xterm/headless6.0.0 actual bundle SHA256 17a90b650cf6b77cce2b98c4063884d43545e4ce177a54b76ccfc906f1aacaed; map SHA256 780e782badc8189491a469c9277b783e01911882ea84417b31e71294ea927d98; all57 embedded sources",
+              "Shipped source map src/common/InputHandler.ts:201-203,292-331,685-688; src/common/parser/EscapeSequenceParser.ts:418-425; src/common/parser/OscParser.ts:43-44,69-79,146",
+              "Independent qualifier packet /hh/var/@dev2/865ec222-prompt-tuples-20261103.md; primary7d79abc1; configured logging-only fallback correction by @dev/3 in0585-qualifier-correction-send.json",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/xtermjs/src/index.ts blob 550e10110ec2baaf326d2958319b03ee8208feba",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/xtermjs/src/backend.ts blob 72dc827b2026af7736de722f7ff986a04f3fe883",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/xtermjs/package.json blob 7febf39cdcf09a1edcb35732487a8d59821f7415",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:bun.lock blob e98a82dedba868673d1c96c230d611cac67ca72b",
+              "Actual author baseline run 431fb776-24fc-4a14-963c-016114ce432f, suite e62fd3f521a9; current target pending before this qualification"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "xtermjs",
+      "version": "6.0.0",
+      "os": "linux"
+    },
     "featureId": "extensions.osc176-app-id",
     "answers": [
       {
@@ -31638,6 +32431,348 @@
               "The actual @xterm/headless6.0.0 bundle SHA25617a90b650cf6b77cce2b98c4063884d43545e4ce177a54b76ccfc906f1aacaed and source map SHA256780e782badc8189491a469c9277b783e01911882ea84417b31e71294ea927d98 bind the inspected InputHandler/OscParser sources. Complete OSC registrations have no176 handler and the fallback only logs. A public custom-handler API exists, but the exact Termless adapter installs none; its loaded Unicode11Addon registers only a width provider. This judgment concerns the configured package+adapter, not every embedder.",
               "Current source verdict 73d5b6b6-149e-4414-8ab5-78df101c67ed, @dev/4, 2026-11-03; /hh/var/@dev4/0920-osc176-alacritty-xterm-verdict.md",
               "Run 403089e7-f0ed-4c3f-827b-3f11eeb9f1ba raw SHA256b2b6133a7bb6ec068c53a4e4f3bc77bea7917d4b85229f7bc182067f293b0ec7, suitea891217f6896, terminfo50c9d86da33306fd20a6dda5f891003252d931ab; own negative buffer_state assertion for extensions.osc176-app-id"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "xtermjs",
+      "version": "6.0.0",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc633-a",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/xtermjs/src/index.ts",
+            "oid": "550e10110ec2baaf326d2958319b03ee8208feba"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/xtermjs/src/backend.ts",
+            "oid": "72dc827b2026af7736de722f7ff986a04f3fe883"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/xtermjs/package.json",
+            "oid": "7febf39cdcf09a1edcb35732487a8d59821f7415"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "bun.lock",
+            "oid": "e98a82dedba868673d1c96c230d611cac67ca72b"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "source-32244-xtermjs-extensions.osc633-a",
+            "reviewer": "@dev/2",
+            "reason": "Independent source qualification @dev/2 (2026-11-03), packet865ec222-prompt-tuples-20261103.md, with configured-fallback correction @dev/3: actual @xterm/headless6.0.0 bundle SHA256 17a90b650cf6b77cce2b98c4063884d43545e4ce177a54b76ccfc906f1aacaed and source map SHA256 780e782badc8189491a469c9277b783e01911882ea84417b31e71294ea927d98 match the installed engine. All57 embedded sources were reviewed. InputHandler.ts registers OSC0,1,2,4,8,10,11,12,104,110,111,112 only. Its lines201-203 install an unknown-OSC fallback that only logs to debug, through EscapeSequenceParser424-425 and OscParser43-44/69-79/146; neither 133 nor633 has a state/reply handler. Termless 25089207e11420cf7a588987c1dc2683a45e8372 xtermjs adapter loads Unicode11Addon and binds no OSC handler. The public registerOscHandler extension point could let another host implement these commands; that does not implement them in this configured library path. Unsupported follows the actual dispatch and forwarding graph, not token absence, flags or missing readback.",
+            "sources": [
+              "@xterm/headless6.0.0 actual bundle SHA256 17a90b650cf6b77cce2b98c4063884d43545e4ce177a54b76ccfc906f1aacaed; map SHA256 780e782badc8189491a469c9277b783e01911882ea84417b31e71294ea927d98; all57 embedded sources",
+              "Shipped source map src/common/InputHandler.ts:201-203,292-331,685-688; src/common/parser/EscapeSequenceParser.ts:418-425; src/common/parser/OscParser.ts:43-44,69-79,146",
+              "Independent qualifier packet /hh/var/@dev2/865ec222-prompt-tuples-20261103.md; primary7d79abc1; configured logging-only fallback correction by @dev/3 in0585-qualifier-correction-send.json",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/xtermjs/src/index.ts blob 550e10110ec2baaf326d2958319b03ee8208feba",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/xtermjs/src/backend.ts blob 72dc827b2026af7736de722f7ff986a04f3fe883",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/xtermjs/package.json blob 7febf39cdcf09a1edcb35732487a8d59821f7415",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:bun.lock blob e98a82dedba868673d1c96c230d611cac67ca72b",
+              "Actual author baseline run 431fb776-24fc-4a14-963c-016114ce432f, suite e62fd3f521a9; current target pending before this qualification"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "xtermjs",
+      "version": "6.0.0",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc633-b",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/xtermjs/src/index.ts",
+            "oid": "550e10110ec2baaf326d2958319b03ee8208feba"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/xtermjs/src/backend.ts",
+            "oid": "72dc827b2026af7736de722f7ff986a04f3fe883"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/xtermjs/package.json",
+            "oid": "7febf39cdcf09a1edcb35732487a8d59821f7415"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "bun.lock",
+            "oid": "e98a82dedba868673d1c96c230d611cac67ca72b"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "source-32244-xtermjs-extensions.osc633-b",
+            "reviewer": "@dev/2",
+            "reason": "Independent source qualification @dev/2 (2026-11-03), packet865ec222-prompt-tuples-20261103.md, with configured-fallback correction @dev/3: actual @xterm/headless6.0.0 bundle SHA256 17a90b650cf6b77cce2b98c4063884d43545e4ce177a54b76ccfc906f1aacaed and source map SHA256 780e782badc8189491a469c9277b783e01911882ea84417b31e71294ea927d98 match the installed engine. All57 embedded sources were reviewed. InputHandler.ts registers OSC0,1,2,4,8,10,11,12,104,110,111,112 only. Its lines201-203 install an unknown-OSC fallback that only logs to debug, through EscapeSequenceParser424-425 and OscParser43-44/69-79/146; neither 133 nor633 has a state/reply handler. Termless 25089207e11420cf7a588987c1dc2683a45e8372 xtermjs adapter loads Unicode11Addon and binds no OSC handler. The public registerOscHandler extension point could let another host implement these commands; that does not implement them in this configured library path. Unsupported follows the actual dispatch and forwarding graph, not token absence, flags or missing readback.",
+            "sources": [
+              "@xterm/headless6.0.0 actual bundle SHA256 17a90b650cf6b77cce2b98c4063884d43545e4ce177a54b76ccfc906f1aacaed; map SHA256 780e782badc8189491a469c9277b783e01911882ea84417b31e71294ea927d98; all57 embedded sources",
+              "Shipped source map src/common/InputHandler.ts:201-203,292-331,685-688; src/common/parser/EscapeSequenceParser.ts:418-425; src/common/parser/OscParser.ts:43-44,69-79,146",
+              "Independent qualifier packet /hh/var/@dev2/865ec222-prompt-tuples-20261103.md; primary7d79abc1; configured logging-only fallback correction by @dev/3 in0585-qualifier-correction-send.json",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/xtermjs/src/index.ts blob 550e10110ec2baaf326d2958319b03ee8208feba",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/xtermjs/src/backend.ts blob 72dc827b2026af7736de722f7ff986a04f3fe883",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/xtermjs/package.json blob 7febf39cdcf09a1edcb35732487a8d59821f7415",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:bun.lock blob e98a82dedba868673d1c96c230d611cac67ca72b",
+              "Actual author baseline run 431fb776-24fc-4a14-963c-016114ce432f, suite e62fd3f521a9; current target pending before this qualification"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "xtermjs",
+      "version": "6.0.0",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc633-c",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/xtermjs/src/index.ts",
+            "oid": "550e10110ec2baaf326d2958319b03ee8208feba"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/xtermjs/src/backend.ts",
+            "oid": "72dc827b2026af7736de722f7ff986a04f3fe883"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/xtermjs/package.json",
+            "oid": "7febf39cdcf09a1edcb35732487a8d59821f7415"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "bun.lock",
+            "oid": "e98a82dedba868673d1c96c230d611cac67ca72b"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "source-32244-xtermjs-extensions.osc633-c",
+            "reviewer": "@dev/2",
+            "reason": "Independent source qualification @dev/2 (2026-11-03), packet865ec222-prompt-tuples-20261103.md, with configured-fallback correction @dev/3: actual @xterm/headless6.0.0 bundle SHA256 17a90b650cf6b77cce2b98c4063884d43545e4ce177a54b76ccfc906f1aacaed and source map SHA256 780e782badc8189491a469c9277b783e01911882ea84417b31e71294ea927d98 match the installed engine. All57 embedded sources were reviewed. InputHandler.ts registers OSC0,1,2,4,8,10,11,12,104,110,111,112 only. Its lines201-203 install an unknown-OSC fallback that only logs to debug, through EscapeSequenceParser424-425 and OscParser43-44/69-79/146; neither 133 nor633 has a state/reply handler. Termless 25089207e11420cf7a588987c1dc2683a45e8372 xtermjs adapter loads Unicode11Addon and binds no OSC handler. The public registerOscHandler extension point could let another host implement these commands; that does not implement them in this configured library path. Unsupported follows the actual dispatch and forwarding graph, not token absence, flags or missing readback.",
+            "sources": [
+              "@xterm/headless6.0.0 actual bundle SHA256 17a90b650cf6b77cce2b98c4063884d43545e4ce177a54b76ccfc906f1aacaed; map SHA256 780e782badc8189491a469c9277b783e01911882ea84417b31e71294ea927d98; all57 embedded sources",
+              "Shipped source map src/common/InputHandler.ts:201-203,292-331,685-688; src/common/parser/EscapeSequenceParser.ts:418-425; src/common/parser/OscParser.ts:43-44,69-79,146",
+              "Independent qualifier packet /hh/var/@dev2/865ec222-prompt-tuples-20261103.md; primary7d79abc1; configured logging-only fallback correction by @dev/3 in0585-qualifier-correction-send.json",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/xtermjs/src/index.ts blob 550e10110ec2baaf326d2958319b03ee8208feba",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/xtermjs/src/backend.ts blob 72dc827b2026af7736de722f7ff986a04f3fe883",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/xtermjs/package.json blob 7febf39cdcf09a1edcb35732487a8d59821f7415",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:bun.lock blob e98a82dedba868673d1c96c230d611cac67ca72b",
+              "Actual author baseline run 431fb776-24fc-4a14-963c-016114ce432f, suite e62fd3f521a9; current target pending before this qualification"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "xtermjs",
+      "version": "6.0.0",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc633-d",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/xtermjs/src/index.ts",
+            "oid": "550e10110ec2baaf326d2958319b03ee8208feba"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/xtermjs/src/backend.ts",
+            "oid": "72dc827b2026af7736de722f7ff986a04f3fe883"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/xtermjs/package.json",
+            "oid": "7febf39cdcf09a1edcb35732487a8d59821f7415"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "bun.lock",
+            "oid": "e98a82dedba868673d1c96c230d611cac67ca72b"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "source-32244-xtermjs-extensions.osc633-d",
+            "reviewer": "@dev/2",
+            "reason": "Independent source qualification @dev/2 (2026-11-03), packet865ec222-prompt-tuples-20261103.md, with configured-fallback correction @dev/3: actual @xterm/headless6.0.0 bundle SHA256 17a90b650cf6b77cce2b98c4063884d43545e4ce177a54b76ccfc906f1aacaed and source map SHA256 780e782badc8189491a469c9277b783e01911882ea84417b31e71294ea927d98 match the installed engine. All57 embedded sources were reviewed. InputHandler.ts registers OSC0,1,2,4,8,10,11,12,104,110,111,112 only. Its lines201-203 install an unknown-OSC fallback that only logs to debug, through EscapeSequenceParser424-425 and OscParser43-44/69-79/146; neither 133 nor633 has a state/reply handler. Termless 25089207e11420cf7a588987c1dc2683a45e8372 xtermjs adapter loads Unicode11Addon and binds no OSC handler. The public registerOscHandler extension point could let another host implement these commands; that does not implement them in this configured library path. Unsupported follows the actual dispatch and forwarding graph, not token absence, flags or missing readback.",
+            "sources": [
+              "@xterm/headless6.0.0 actual bundle SHA256 17a90b650cf6b77cce2b98c4063884d43545e4ce177a54b76ccfc906f1aacaed; map SHA256 780e782badc8189491a469c9277b783e01911882ea84417b31e71294ea927d98; all57 embedded sources",
+              "Shipped source map src/common/InputHandler.ts:201-203,292-331,685-688; src/common/parser/EscapeSequenceParser.ts:418-425; src/common/parser/OscParser.ts:43-44,69-79,146",
+              "Independent qualifier packet /hh/var/@dev2/865ec222-prompt-tuples-20261103.md; primary7d79abc1; configured logging-only fallback correction by @dev/3 in0585-qualifier-correction-send.json",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/xtermjs/src/index.ts blob 550e10110ec2baaf326d2958319b03ee8208feba",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/xtermjs/src/backend.ts blob 72dc827b2026af7736de722f7ff986a04f3fe883",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/xtermjs/package.json blob 7febf39cdcf09a1edcb35732487a8d59821f7415",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:bun.lock blob e98a82dedba868673d1c96c230d611cac67ca72b",
+              "Actual author baseline run 431fb776-24fc-4a14-963c-016114ce432f, suite e62fd3f521a9; current target pending before this qualification"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "xtermjs",
+      "version": "6.0.0",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc633-e",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/xtermjs/src/index.ts",
+            "oid": "550e10110ec2baaf326d2958319b03ee8208feba"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/xtermjs/src/backend.ts",
+            "oid": "72dc827b2026af7736de722f7ff986a04f3fe883"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/xtermjs/package.json",
+            "oid": "7febf39cdcf09a1edcb35732487a8d59821f7415"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "bun.lock",
+            "oid": "e98a82dedba868673d1c96c230d611cac67ca72b"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "source-32244-xtermjs-extensions.osc633-e",
+            "reviewer": "@dev/2",
+            "reason": "Independent source qualification @dev/2 (2026-11-03), packet865ec222-prompt-tuples-20261103.md, with configured-fallback correction @dev/3: actual @xterm/headless6.0.0 bundle SHA256 17a90b650cf6b77cce2b98c4063884d43545e4ce177a54b76ccfc906f1aacaed and source map SHA256 780e782badc8189491a469c9277b783e01911882ea84417b31e71294ea927d98 match the installed engine. All57 embedded sources were reviewed. InputHandler.ts registers OSC0,1,2,4,8,10,11,12,104,110,111,112 only. Its lines201-203 install an unknown-OSC fallback that only logs to debug, through EscapeSequenceParser424-425 and OscParser43-44/69-79/146; neither 133 nor633 has a state/reply handler. Termless 25089207e11420cf7a588987c1dc2683a45e8372 xtermjs adapter loads Unicode11Addon and binds no OSC handler. The public registerOscHandler extension point could let another host implement these commands; that does not implement them in this configured library path. Unsupported follows the actual dispatch and forwarding graph, not token absence, flags or missing readback.",
+            "sources": [
+              "@xterm/headless6.0.0 actual bundle SHA256 17a90b650cf6b77cce2b98c4063884d43545e4ce177a54b76ccfc906f1aacaed; map SHA256 780e782badc8189491a469c9277b783e01911882ea84417b31e71294ea927d98; all57 embedded sources",
+              "Shipped source map src/common/InputHandler.ts:201-203,292-331,685-688; src/common/parser/EscapeSequenceParser.ts:418-425; src/common/parser/OscParser.ts:43-44,69-79,146",
+              "Independent qualifier packet /hh/var/@dev2/865ec222-prompt-tuples-20261103.md; primary7d79abc1; configured logging-only fallback correction by @dev/3 in0585-qualifier-correction-send.json",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/xtermjs/src/index.ts blob 550e10110ec2baaf326d2958319b03ee8208feba",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/xtermjs/src/backend.ts blob 72dc827b2026af7736de722f7ff986a04f3fe883",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/xtermjs/package.json blob 7febf39cdcf09a1edcb35732487a8d59821f7415",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:bun.lock blob e98a82dedba868673d1c96c230d611cac67ca72b",
+              "Actual author baseline run 431fb776-24fc-4a14-963c-016114ce432f, suite e62fd3f521a9; current target pending before this qualification"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "xtermjs",
+      "version": "6.0.0",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc633-p",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/xtermjs/src/index.ts",
+            "oid": "550e10110ec2baaf326d2958319b03ee8208feba"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/xtermjs/src/backend.ts",
+            "oid": "72dc827b2026af7736de722f7ff986a04f3fe883"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/xtermjs/package.json",
+            "oid": "7febf39cdcf09a1edcb35732487a8d59821f7415"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "bun.lock",
+            "oid": "e98a82dedba868673d1c96c230d611cac67ca72b"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "source-32244-xtermjs-extensions.osc633-p",
+            "reviewer": "@dev/2",
+            "reason": "Independent source qualification @dev/2 (2026-11-03), packet865ec222-prompt-tuples-20261103.md, with configured-fallback correction @dev/3: actual @xterm/headless6.0.0 bundle SHA256 17a90b650cf6b77cce2b98c4063884d43545e4ce177a54b76ccfc906f1aacaed and source map SHA256 780e782badc8189491a469c9277b783e01911882ea84417b31e71294ea927d98 match the installed engine. All57 embedded sources were reviewed. InputHandler.ts registers OSC0,1,2,4,8,10,11,12,104,110,111,112 only. Its lines201-203 install an unknown-OSC fallback that only logs to debug, through EscapeSequenceParser424-425 and OscParser43-44/69-79/146; neither 133 nor633 has a state/reply handler. Termless 25089207e11420cf7a588987c1dc2683a45e8372 xtermjs adapter loads Unicode11Addon and binds no OSC handler. The public registerOscHandler extension point could let another host implement these commands; that does not implement them in this configured library path. Unsupported follows the actual dispatch and forwarding graph, not token absence, flags or missing readback.",
+            "sources": [
+              "@xterm/headless6.0.0 actual bundle SHA256 17a90b650cf6b77cce2b98c4063884d43545e4ce177a54b76ccfc906f1aacaed; map SHA256 780e782badc8189491a469c9277b783e01911882ea84417b31e71294ea927d98; all57 embedded sources",
+              "Shipped source map src/common/InputHandler.ts:201-203,292-331,685-688; src/common/parser/EscapeSequenceParser.ts:418-425; src/common/parser/OscParser.ts:43-44,69-79,146",
+              "Independent qualifier packet /hh/var/@dev2/865ec222-prompt-tuples-20261103.md; primary7d79abc1; configured logging-only fallback correction by @dev/3 in0585-qualifier-correction-send.json",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/xtermjs/src/index.ts blob 550e10110ec2baaf326d2958319b03ee8208feba",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/xtermjs/src/backend.ts blob 72dc827b2026af7736de722f7ff986a04f3fe883",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/xtermjs/package.json blob 7febf39cdcf09a1edcb35732487a8d59821f7415",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:bun.lock blob e98a82dedba868673d1c96c230d611cac67ca72b",
+              "Actual author baseline run 431fb776-24fc-4a14-963c-016114ce432f, suite e62fd3f521a9; current target pending before this qualification"
             ]
           }
         ]
