@@ -379,6 +379,8 @@ A qualified baseline followed by a complete but unqualified SGR setup report may
 independent capture path for the six eligible reset rows. The response retains both query phases and
 the capture response, and the note names the deciding instrument. Malformed setup, failed baseline,
 final-phase results and the three multi-attribute reference refusals keep their existing behavior.
+Without a deciding independent capture, an omitted setup attribute retains named Test to-do coverage
+and both raw query phases, just as an omitted final attribute does; it is not a broken measurement.
 
 **Headless evidence** comes through [headless-batch.ts](../probes/headless-batch.ts). It retains callback `response` values as raw replies, not every probe-source call or every engine-state read.
 

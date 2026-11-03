@@ -895,6 +895,9 @@ export async function sgrReadbackDecision(
             }
           }
           const note = `${id}: ${phase} prerequisite was not established${qualified.note ? `: ${qualified.note}` : ""}`
+          if (qualified.notTested) {
+            return { ...qualified, response: JSON.stringify({ phase, ...observed }), note }
+          }
           return {
             pass: false,
             response: JSON.stringify({ phase, ...observed }),
