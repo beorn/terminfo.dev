@@ -2,7 +2,6 @@
 import { createHash } from "node:crypto"
 import { isDeepStrictEqual } from "node:util"
 import {
-  SOURCE_NEGATIVE_REVIEW,
   SEMANTIC_PROMPT_SOURCE_REVIEW,
   HARNESS_INCOMPLETE_TEST,
   UNTESTABLE_ONLY_REVIEW_BRANCHES,
@@ -11,8 +10,7 @@ import {
   type HostRecipeExpectation,
   type HostRecipeName,
   PROBE_STATUSES,
-  sourceAnswerForRef,
-  type SourceAnswerInput,
+  parseSourceAnswerKey,
   initializeRunDraft,
   recordCollectorSelection,
   readCollectorSelection,
@@ -47,7 +45,6 @@ import {
 import { parseObservation, parseObservationFrames, validateCurrentAssertions } from "./observations.ts"
 export { parseObservationFrames, validateObservation, validateObservationOutcome } from "./observations.ts"
 import { parseJsonStrict } from "./json.ts"
-export { resolveMeasuredSourceAnswer } from "./source-answers.ts"
 export { parseJsonStrict, canonicalJson, FEATURE_ENTRY_PROSE_DENYLIST, boundFeatureEntry } from "./json.ts"
 import { ALACRITTY_VERSION_PATTERN, PLACEHOLDER, parseAppLaunchReceipt, parseDerivedSourceTree } from "./app-launch.ts"
 
@@ -692,6 +689,24 @@ function probeAttempt(value: unknown, path: string, rawReplies: Record<string, s
   }
 }
 
+/** The reason a stored source-answer cell reads with, now that source answers no longer count (#32246). */
+export const SOURCE_ANSWER_RETIRED_REASON = "source answer no longer counts (operator 2026-11-03)"
+
+/** Map one stored source-answer cell to TEST TODO; its references and branch stay in the stored file only. */
+function retiredSourceAnswer(result: ProbeResult): ProbeResult {
+  const { reviewRef: _reviewRef, ...rest } = result
+  return {
+    ...rest,
+    status: "test-todo",
+    reason: SOURCE_ANSWER_RETIRED_REASON,
+    tests: result.tests.map((test) => {
+      if (test.id !== "review" && test.reviewRef === undefined) return test
+      const { reviewRef: _testRef, ...kept } = test
+      return { ...kept, status: "test-todo", reason: SOURCE_ANSWER_RETIRED_REASON }
+    }),
+  }
+}
+
 function isSourceOnlyNegativeReview(result: ProbeResult, assertions: readonly ReadAssertion[]): boolean {
   return (
     // Which branches admit which shape has one home, in probe-defs: the source-negative review and the reply-path
@@ -712,7 +727,6 @@ export function parseProbeResults(
   assertions: readonly ReadAssertion[],
   screenshotRefs: readonly string[] = [],
   textSnapshotRefs: readonly string[] = [],
-  sourceContext?: Omit<SourceAnswerInput, "featureId" | "blobs">,
 ): ProbeResult[] {
   if (!Array.isArray(value)) fail(path, "missing explicit probe results")
   const seen = new Set<string>()
@@ -798,14 +812,6 @@ export function parseProbeResults(
       return { ...entry, attempt: checkAttempt } as unknown as ProbeTestResult
     })
     const result = { ...item, featureId, status, attempt, tests: tests } as unknown as ProbeResult
-    // A query reply is source-negative only on a cited parser-level rejection, never a missing reply writer.
-    if (result.criterionBranch === SOURCE_NEGATIVE_REVIEW && item.assertionType === "query_reply") {
-      const state = nonempty(item.rawReplyRef) ? rawReplies[item.rawReplyRef] : undefined
-      const parsed: unknown = state === undefined ? undefined : parseJsonStrict(`${path}: ${featureId}`, state)
-      if (!object(parsed) || parsed.rejection !== "parser") {
-        fail(path, `${featureId} query_reply source-negative review requires a recorded parser-level rejection`)
-      }
-    }
     // Missing-observable reviews cannot establish support or a measured negative.
     if (
       result.criterionBranch !== undefined &&
@@ -847,29 +853,18 @@ export function parseProbeResults(
       ),
     ]
     for (const ref of sourceRefs) {
-      if (!nonempty(ref) || !sourceAnswerForRef(ref)) {
-        fail(path, `${featureId} unresolved review reference ${String(ref)}`)
-      }
+      if (!nonempty(ref) || !parseSourceAnswerKey(ref)) fail(path, `${featureId} unresolved review reference ${String(ref)}`)
     }
-    if (sourceRefs.length) {
-      if (!sourceContext) fail(path, `${featureId} source answer requires measured subject context`)
-      for (const ref of sourceRefs) {
-        const row = sourceAnswerForRef(ref)
-        if (row?.featureId !== featureId) fail(path, `${featureId} source answer feature mismatch`)
-        if (
-          row.subject.kind !== sourceContext.subject.kind ||
-          row.subject.id !== sourceContext.subject.id ||
-          row.subject.os !== sourceContext.subject.os
-        ) {
-          fail(path, `${featureId} source answer does not apply to measured identity`)
-        }
-      }
+    // No result is answered from source (operator 2026-11-03, @cto 153143ff): a cell recognised by its stored
+    // source-answer marker reads TEST TODO, and the stored run stays byte-unchanged (#32246).
+    if (sourceRefs.length > 0 || SOURCE_ONLY_NEGATIVE_REVIEW_BRANCHES.has(result.criterionBranch ?? "")) {
+      return retiredSourceAnswer(result)
     }
     const semanticSource =
       result.criterionBranch === SEMANTIC_PROMPT_SOURCE_REVIEW && (status === "supported" || status === "unsupported")
     const sourceOnlyNegative = status === "unsupported" && isSourceOnlyNegativeReview(result, assertions)
-    if ((semanticSource || sourceOnlyNegative || status === "untestable") && sourceRefs.length === 0) {
-      fail(path, `${featureId} requires a kept source answer`)
+    if (semanticSource || sourceOnlyNegative || status === "untestable") {
+      fail(path, `${featureId} ${status} requires a probe observation; a source answer no longer counts`)
     }
     if ((status === "supported" || status === "unsupported") && !semanticSource && !sourceOnlyNegative) {
       if (attempt.scope === "none" || !item.assertionType) {
@@ -1286,7 +1281,6 @@ export function parseRun(
     assertions,
     raw.screenshotRefs as string[],
     textSnapshotRefs,
-    { subject, ...(runtimeIdentity && { runtimeIdentity }), sourceRevision },
   )
   if (schemaVersion === 4) {
     validateCurrentAssertions(

@@ -17,6 +17,7 @@ import {
   decrpmReading,
   decrpmResult,
   notTestedResult,
+  NO_SAME_PATH_CONTROL,
   osInputReviewResult,
   colorReadbackReviewResult,
   parserStateResult,
@@ -27,22 +28,16 @@ import {
   replyFailure,
   cancelReplyFailure,
   reviewResult,
-  vtermGeometryReview,
-  SOURCE_TREE_AUDITS,
   sameRgb as sameRgbCells,
   sentinelNegativeResult,
   sentinelSilenceResult,
   sgrCaptureFrames,
   sgrCaptureTooSmall,
   unmeasuredCellResult,
-  auditedAdapterSources,
   stackStateResult,
   stackVerdict,
   type StackReading,
 } from "./helpers.ts"
-import { evidenceRuntimeIdentity } from "./runtime-identity.ts"
-import { replyPathAuditFor } from "./reply-path-audit.ts"
-import { nativeHostRecipeResult } from "./native-host-audit.ts"
 import { measureAlternateReflow } from "./modes.ts"
 import { sgrTermReadback } from "./sgr.ts"
 import {
@@ -89,8 +84,6 @@ import { SIXEL_BOUNDS, SIXEL_REGION, sixelReadback } from "./sixel-capture.ts"
 /** A minimal solid-red 8x8 PNG; the OSC 1337 inline image target renders it as reviewable pixels. */
 const ITERM2_RED_PNG =
   "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAEUlEQVR42mP4z8CAFTEMLQkAKP8/wc53yE8AAAAASUVORK5CYII="
-/** The OSC 1337 inline-image request both arms feed: an 8x8 red PNG, BEL-terminated. */
-const ITERM2_INLINE_IMAGE = "\x1b]1337;File=inline=1;width=8px;height=8px:" + ITERM2_RED_PNG + "\x07"
 
 /**
  * Font-ligature sample: ONE line so the pair fits the minimum admitted capture geometry, and the
@@ -426,10 +419,7 @@ function oscColorQueryProbe(id: string, oscCode: number, index?: number): ProbeD
             if (!reviewInitialValue || !silence) return oscOutcomeResult(outcome, expected)
           }
           const raw = silence ? "" : ctx.feedCapture(querySeq)
-          const answer = (result: ProbeCallbackResult) =>
-            hostInput === undefined
-              ? result
-              : nativeHostRecipeResult(ctx, result, "color-request", hostInput, querySeq, raw === "")
+          const answer = (result: ProbeCallbackResult) => result
           if (raw !== "" || !reviewInitialValue) {
             return answer(oscReplyResult(raw, pattern.exec(raw)?.[0] ?? null, expected))
           }
@@ -594,24 +584,10 @@ function oscSimpleQueryProbe(id: string, query: string, pattern: RegExp, expecte
             (id === "extensions.osc776-cell-size" &&
               /^\x1b\]776;0;0;0\x1b\\(?:\x1b\[\?[0-9]+(?:;[0-9]+)*c)?$/.test(raw))
           if (id === "extensions.osc1337-cellsize" || id === "extensions.osc776-cell-size") {
-            const review = vtermGeometryReview(
-              ctx,
-              zeroGeometry && result.observation?.outcome === "inconclusive",
-              {
-                query,
-                raw,
-                noObservable: "Audited vterm headless subject has no physical font cell dimensions",
-                sourceCitation:
-                  ctx.runtimeIdentity?.kind === "js" &&
-                  ctx.runtimeIdentity.runtimeFormat === "js" &&
-                  ctx.runtimeIdentity.integrity.kind === "source" &&
-                  ctx.runtimeIdentity.integrity.revision === "9e99e4d23cdc606fca258b1863aa2be7ae79eed3"
-                    ? "vterm 9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vterm/src/screen.ts:89-109 ScreenOptions has no physical font metrics; OSC1337 ReportCellSize at :4056-4058 and OSC776 at :4000-4003 deliberately report unknown zero dimensions (#30575)"
-                    : "vterm 67dd3960746766ed47e2bb4b2ced6503a78549cc packages/vterm/src/screen.ts:89-109 ScreenOptions has no physical font metrics; OSC1337 ReportCellSize at :4056-4058 and OSC776 at :4000-4003 deliberately report unknown zero dimensions (#30575)",
-              },
-              result,
-            )
-            if (review) return review
+            // #32246: a zero geometry reply has no same-path control in this run, so it stays TEST TODO.
+            if (zeroGeometry && result.observation?.outcome === "inconclusive") {
+              return notTestedResult(NO_SAME_PATH_CONTROL, { query: query, raw })
+            }
           }
           return result
         },
@@ -628,14 +604,6 @@ function colorResetProbe(id: string, setCode: number, resetCode: number, index?:
   const highlightColorSlot = setCode === 17 || setCode === 19
   const indexPart = index === undefined ? "" : `${index};`
   const query = `\x1b]${setCode};${indexPart}?\x07`
-  const hostInput: HostInputName =
-    setCode === 10
-      ? "foreground-rgb"
-      : setCode === 11
-        ? "background-rgb"
-        : setCode === 12
-          ? "cursor-rgb"
-          : "palette-entry-rgb"
   const replyPattern = new RegExp(
     `\\x1b\\]${setCode};${indexPart}(rgb:[0-9a-f]{1,4}/[0-9a-f]{1,4}/[0-9a-f]{1,4})(?:\\x07|\\x1b\\\\)`,
     "i",
@@ -728,32 +696,11 @@ function colorResetProbe(id: string, setCode: number, resetCode: number, index?:
     const original = replyPattern.exec(originalRaw)?.[1]
     if (!original) {
       if (highlightColorSlot) {
-        const audit = absentOscAudit(ctx.runtimeIdentity, setCode)
-        if (originalRaw === "" && audit && audit === absentOscAudit(ctx.runtimeIdentity, resetCode)) {
-          const fed = `\x1b[1;1H\x1b[2K\x1b]${setCode};rgb:${HIGHLIGHT_TEST_COLOURS[0]}\x07` + `\x1b]${resetCode}\x07X`
-          ctx.feed(fed)
-          const sentinel = ctx.getCell(0, 0)
-          return parserStateResult(
-            null,
-            `${id}: the engine handles OSC ${setCode}/${resetCode} (highlight set and reset handlers exist at the pinned source)`,
-            {
-              query,
-              originalRaw,
-              initialSentinel,
-              fed,
-              sentinel,
-              engineState: null,
-              engineStateReason: "No highlight colour set or reset target state is exposed at this pin",
-            },
-            sentinel.char === "X" ? undefined : "No rendered X cell to evaluate",
-            sentinel.char === "X"
-              ? `${audit.sourceCitation}: no case ${setCode}/${resetCode} handler or highlight colour writer; independent source review required`
-              : undefined,
-          )
+        if (originalRaw === "" && !silence) {
+          return notTestedResult(NO_SAME_PATH_CONTROL, { query, originalRaw, initialSentinel })
         }
         const note = `OSC ${setCode} initial highlight colour was not read back, so OSC ${resetCode} cannot be compared with it`
         return {
-          ...(originalRaw === "" && !silence ? replyFailure(note) : {}),
           pass: false,
           note: undefined,
           response: JSON.stringify({ query, originalRaw, initialSentinel }),
@@ -787,8 +734,7 @@ function colorResetProbe(id: string, setCode: number, resetCode: number, index?:
             { query, originalRaw },
           )
         }
-        const answer = (result: ProbeCallbackResult) =>
-          nativeHostRecipeResult(ctx, result, "color-request", hostInput, query, true)
+        const answer = (result: ProbeCallbackResult) => result
         const controls: { write: string; response: string }[] = []
         // Capture-only sources cannot provide the additional cell witness; keep their existing query criterion.
         const indexed = setCode === 4 && resetCode === 104 && index === 0 && typeof ctx.getCell === "function"
@@ -1203,459 +1149,37 @@ function colorStackResult(
   return stackStateResult(verdict, expected, { ...state, pop, push }, "query_reply")
 }
 
-/** Source identities qualify a required review, never the target effect itself. */
-const ABSENT_OSC_ENGINES = {
-  vt100: {
-    kind: "source",
-    runtimeFormat: "js",
-    engineVersion: "0.10.1",
-    repository: "git@github.com:beorn/vterm.git",
-    treeOid: "b941dae48b25ae8825c394750bda5245c9d93dfa",
-    codes: [1, 8, 9, 17, 19, 22, 52, 117, 119, 133, 176, 440, 555, 633, 666, 710, 777, 1337, 3008],
-    subcodes: ["133;D"],
-    reviewReasons: [{ code: 1, reason: "screen.ts:505-520 case 1 is ignored; no icon-name state is stored" }],
-    sourceCitation:
-      "vt100 9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vt100/src/screen.ts:505-520 handleOSC switch, cases 0/1/2 only",
-    absentSixel: true,
-    sixelSourceCitation:
-      "vt100 9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vt100/src/screen.ts:570-571 ESC P enters the dcs state and :681-686 discards every byte until ESC, so a DCS q Sixel payload is dropped with no image store",
-  },
-  vt220: {
-    kind: "source",
-    runtimeFormat: "js",
-    engineVersion: "0.10.1",
-    repository: "git@github.com:beorn/vterm.git",
-    treeOid: "4205f8936ad1848d1029729f3ada888cd61759a8",
-    codes: [1, 8, 9, 17, 19, 22, 52, 117, 119, 133, 176, 440, 555, 633, 666, 710, 777, 1337, 3008],
-    subcodes: ["133;D"],
-    reviewReasons: [{ code: 1, reason: "screen.ts:701-716 case 1 is ignored; no icon-name state is stored" }],
-    sourceCitation:
-      "vt220 9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vt220/src/screen.ts:701-716 handleOSC: no-semicolon return; cases 0/1/2 only",
-    absentSixel: true,
-    sixelSourceCitation:
-      "vt220 9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vt220/src/screen.ts:766-767 ESC P enters the dcs state and :897-902 discards every byte until ESC, so a DCS q Sixel payload is dropped with no image store",
-  },
-  vterm: {
-    kind: "source",
-    runtimeFormat: "js",
-    engineVersion: "0.10.1",
-    repository: "git@github.com:beorn/vterm.git",
-    treeOid: SOURCE_TREE_AUDITS.vterm.treeOid,
-    osc9ProgressOnly: true,
-    codes: [9, 22, 176, 440, 555, 666, 710, 777, 3008],
-    reviewReasons: [
-      {
-        code: 9,
-        reason:
-          "screen.ts:3933-3935 notification sink stores every OSC 9 value, with no progress subcode or state interpretation",
-      },
-    ],
-    sourceCitation:
-      "vterm 67dd3960746766ed47e2bb4b2ced6503a78549cc packages/vterm/src/screen.ts:3608-4067 handleOSC switch",
-  },
-  xtermjs: {
-    kind: "registry",
-    engineVersion: "6.0.0",
-    adapterVersion: "0.10.2",
-    lockIntegrity: "sha512-5Yj1QINYCyzrZtf8OFIHi47iQtI+0qYFPHmouEfG8dHNxbZ9Tb9YGSuLcsEwj9Z+OL75GJqPyJbyoFer80a2Hw==",
-    codes: [7, 9, 17, 19, 22, 52, 117, 119, 176, 440, 555, 666, 710, 777, 1337, 3008],
-    absentSixel: true,
-    sixelSourceCitation:
-      "@xterm/headless 6.0.0 bundle SHA256 17a90b650cf6b77cce2b98c4063884d43545e4ce177a54b76ccfc906f1aacaed, map SHA256 780e782badc8189491a469c9277b783e01911882ea84417b31e71294ea927d98: InputHandler.ts:381 registers only DCS $q DECRQSS and :204-209 logs every other DCS through the fallback (DcsParser.ts:67-93); termless packages/xtermjs/src/backend.ts (blob 72dc827b2026af7736de722f7ff986a04f3fe883) loads only the Unicode11 addon (:249), no image addon, and reports sixel: false (:808), so a DCS q Sixel payload is dropped with no image store",
-    sourceCitation:
-      "@xterm/headless 6.0.0 bundle SHA256 17a90b650cf6b77cce2b98c4063884d43545e4ce177a54b76ccfc906f1aacaed, map SHA256 780e782badc8189491a469c9277b783e01911882ea84417b31e71294ea927d98: InputHandler.ts:292-338 OSC registrations (17/19/117/119 are comments only) and :201-203 logging-only fallback, OscParser.ts:145-146 fallback dispatch, CoreTerminal.ts:236-237 embedder hook; termless 9f0d4a5cbbeb2b7d9263ef7e07699df16a1cafc7 packages/xtermjs/src/backend.ts (blob 72dc827b2026af7736de722f7ff986a04f3fe883) registers no OSC handler",
-  },
-  libvterm: {
-    kind: "source",
-    runtimeFormat: "wasm",
-    engineVersion: "0.3.3",
-    adapterVersion: "0.10.2",
-    binarySha256: "3d67045bb43c5e4081c70dc58088af8f735416c20df2d7843d765e5aad8ef62a",
-    codes: [8, 9, 17, 19, 22, 117, 119, 176, 440, 555, 666, 710, 777, 3008],
-    sourceCitation:
-      "libvterm 9d6d2112335080312ef8c36667fa717ded4f7daf/v0.3.3 src/state.c:1777-1808 handles OSC 0/1/2/52 only; Termless f8d2aeb7a7a30f0215fd628bbbb1f1e5cd0a91be packages/libvterm/build/flat-api.c installs output and OSC52 selection callbacks only; src/backend.ts forwards native input and installs no OSC fallback",
-  },
-  ghostty: {
-    kind: "source",
-    runtimeFormat: "wasm",
-    engineVersion: "0.4.0",
-    adapterVersion: "0.10.2",
-    binarySha256: "3c2398d5c537d9c10e86b0af69311977927fcdbe4738618df194cedbdd22574d",
-    codes: [1, 176, 440, 555, 666, 710, 3008],
-    reviewReasons: [
-      {
-        code: 1,
-        reason: "core5714ed07 src/terminal/stream.zig:2017-2021 logs and ignores OSC 1; no icon-name state is stored",
-      },
-    ],
-    sourceCitation:
-      "Ghostty WASM core5714ed07a1012573261b7b7e3ed2add9c1504496 src/terminal/osc.zig:551-566,779-800,891-1002,1047-1075 parser states reject OSC176/3008/440/555/666/710; :1708-1715 returns null before ResponseHandler. Artifact3c2398d5c537d9c10e86b0af69311977927fcdbe4738618df194cedbdd22574d adds DECRPM, DA1/DA2, XTVERSION, DECRQSS and XTGETTCAP reply actions and no OSC handler; OSC9/777 binding losses and OSC22 mouse_shape are excluded",
-  },
-  libvterm712298af: {
-    kind: "source",
-    runtimeFormat: "wasm",
-    engineVersion: "0.3.3",
-    adapterVersion: "0.10.2",
-    binarySha256: "712298aff45c7c53a22dc028b13cb58dae1e984199b520bbbc0475ae64d83159",
-    codes: [8, 9, 17, 19, 22, 117, 119, 176, 440, 555, 666, 710, 777, 1337, 3008],
-    absentSixel: true,
-    sixelSourceCitation:
-      "libvterm 9d6d2112335080312ef8c36667fa717ded4f7daf/v0.3.3 src/state.c:1897-1911 on_dcs handles only $q DECRQSS and passes every other DCS to state fallbacks; Termless 2f73fc28027b7d483e504e08edc64d1837935816 packages/libvterm/build/flat-api.c installs no fallbacks, so a DCS q Sixel payload is dropped with no image store",
-    sourceCitation:
-      "libvterm 9d6d2112335080312ef8c36667fa717ded4f7daf/v0.3.3 src/state.c:1777-1808 handles OSC0/1/2/52 only; vterm.c:13-18 zeroes the default allocator and screen.c:855-889 installs no unrecognised fallback. Termless 2f73fc28027b7d483e504e08edc64d1837935816 packages/libvterm/build/flat-api.c:96-104 installs output/OSC52 callbacks only, src/backend.ts:263-295 forwards native bytes and replies; receipt binds WASM712298af and flat API SHA2561e65f7e53d482b47fc08c5e324e26529079b5f9aa2ba0894d77608e12290c48e",
-  },
-  ghostty42e84af1: {
-    kind: "source",
-    runtimeFormat: "wasm",
-    engineVersion: "0.4.0",
-    adapterVersion: "0.10.2",
-    binarySha256: "42e84af1b38be94571974a23fa4667c4735ee7a272dcff39afd5cba40dcf48de",
-    codes: [1, 17, 19, 117, 119, 176, 440, 555, 666, 710, 3008],
-    absentSixel: true,
-    sixelSourceCitation:
-      "Ghostty core5714ed07a1012573261b7b7e3ed2add9c1504496 src/terminal/dcs.zig:50-77 tryHook accepts only p (tmux control mode) without intermediates, so DCS q returns null and :36-39 ignores the hook with no image store; Termless 2f73fc28027b7d483e504e08edc64d1837935816 vendor/ghostty-web/RECEIPT.json binds WASM42e84af1 to that core",
-    reviewReasons: [
-      {
-        code: 1,
-        reason: "core5714ed07 src/terminal/stream.zig:2017-2021 logs and ignores OSC 1; no icon-name state is stored",
-      },
-      {
-        code: 17,
-        reason:
-          "core5714ed07 osc.zig:779-790 rejects OSC17 without an allocator; shipped WASM42e84af1 uses ResponseStream.init, not initAlloc",
-      },
-      {
-        code: 19,
-        reason:
-          "core5714ed07 osc.zig:813-825 rejects OSC19 without an allocator; shipped WASM42e84af1 uses ResponseStream.init, not initAlloc",
-      },
-      {
-        code: 117,
-        reason:
-          "core5714ed07 osc.zig:657-676 rejects OSC117 without an allocator; shipped WASM42e84af1 uses ResponseStream.init, not initAlloc",
-      },
-      {
-        code: 119,
-        reason:
-          "core5714ed07 osc.zig:657-676 rejects OSC119 without an allocator; shipped WASM42e84af1 uses ResponseStream.init, not initAlloc",
-      },
-    ],
-    sourceCitation:
-      "Ghostty core5714ed07a1012573261b7b7e3ed2add9c1504496 src/terminal/osc.zig:556-566,779-794,903-939,979-989 rejects OSC176/3008/440/555/666/710; :1708-1715 returns null, Parser.zig:270-273 emits no dispatch; stream.zig:2017-2021 ignores OSC1. OSC17/19/117/119 require an allocator at osc.zig:657-676,779-825; Parser.zig:230 starts null and stream.zig:497-509 assigns it only through initAlloc. Termless 25089207e11420cf7a588987c1dc2683a45e8372 vendor/ghostty-web/RECEIPT.json binds shipped ghostty-web0.4.0 WASM42e84af1, core archive55cee285 and inner patch2a42e7e9, whose ghostty-wasm-api.patch:1025 calls ResponseStream.init without an allocator; packages/ghostty/src/backend.ts:376-395 forwards input without another parser. This is the shipped library artifact, not the Ghostty app; OSC9/777 binding losses and OSC22 mouse_shape remain excluded",
-  },
-  kitty: {
-    kind: "native",
-    engineVersion: "0.49.2",
-    adapterVersion: "0.10.2",
-    binarySha256: "bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886",
-    sourceCommit: "b2cb871254fbdac19a085188813c8dfb258b95cd",
-    buildHash: "88e840e1b8e7f09edf3464ee33df8753fd5107838de15bccb6ea59e0dd6cc9c3",
-    lockSha256: "282d1098337a5705a7c1d13188a74d2fe34565766619e8d6b21a48d5b67451be",
-    codes: [176, 440, 555, 666, 710, 3008],
-    reviewReasons: [
-      { code: 440, reason: "kitty/vt-parser.c:653 explicitly ignores OSC440 audio" },
-      { code: 666, reason: "kitty/vt-parser.c:655 explicitly ignores OSC666 term properties" },
-      {
-        code: 3008,
-        reason:
-          "kitty/vt-parser.c:658-661 dispatches osc_context; kitty/window.py:1582-1583 is empty and Termless packages/kitty/build/bridge.py:243 maps it to no_reply",
-      },
-    ],
-    sourceCitation:
-      "kitty0.49.2 sourceb2cb871254fbdac19a085188813c8dfb258b95cd kitty/vt-parser.c:546-670 has no cases176/555/710, explicitly ignores440/666, and dispatches3008 to the empty Window.osc_context; official-binary archive SHA256d573618b911e9c461bd421b96c13c74c7f1cb2f1ac9c327818d4ff84366cf5c6; Termless 785d8a9e026ed173a45a6e62642dc70ed7c162f6 packages/kitty/build/bridge.py:239-257. OSC9/777 binding losses and OSC22 pointer handler are excluded",
-  },
-  ghosttyNative: {
-    kind: "native",
-    engineVersion: "1.3.1",
-    adapterVersion: "0.10.2",
-    binarySha256: "53f9a867cce594b4d50fb9508db9ce5d2d79fb4244a418548b7cb31fa50780d1",
-    sourceCommit: "332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28",
-    buildHash: "2d5e53cf4f0846e47cda8a45c513f44da5c699657edffe93886e6eba99f36bfd",
-    lockSha256: "3ec775507556db01d08055836b26183f629a9cbb0b5802a1566661e95988d74a",
-    codes: [1, 176, 440, 555, 666, 710, 3008],
-    reviewReasons: [
-      {
-        code: 1,
-        reason: "core332b2aef src/terminal/stream.zig:1982-1986 logs and ignores OSC 1; no icon-name state is stored",
-      },
-      {
-        code: 3008,
-        reason: "parsed by osc.zig:747 context_signal, dropped unimplemented at stream.zig:2056-2059",
-      },
-    ],
-    sourceCitation:
-      "Ghostty 332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28 src/terminal/osc.zig:535-641 rejects OSC176/440/555/666/710; :747 parses OSC3008 context_signal, dropped at src/terminal/stream.zig:2050-2059 (SHA256 3ddc5e27d6a6f48ea99399bb886b52e7bebb68c94397a3ba008a7c3eb6c01a9b); Termless 8bd0516ad101cc088133beb20fa9e92f86250da8 packages/ghostty-native/native/src/main.zig:38-39 wraps ReadonlyHandler, :76 forwards unhandled actions to readonly.vt, :85 creates ResponseStream and :141 initializes Terminal.vtHandler",
-  },
-  ghosttyNative0effe403: {
-    kind: "native",
-    engineVersion: "1.3.1",
-    adapterVersion: "0.10.2",
-    binarySha256: "53f9a867cce594b4d50fb9508db9ce5d2d79fb4244a418548b7cb31fa50780d1",
-    sourceCommit: "332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28",
-    buildHash: "0effe4038bf65ba00048b016bc70477d80b6c16302e56e769ef773d46b790768",
-    lockSha256: "3ec775507556db01d08055836b26183f629a9cbb0b5802a1566661e95988d74a",
-    codes: [17, 19, 117, 119],
-    reviewReasons: [
-      {
-        code: 17,
-        reason:
-          "core332b2aef Terminal.zig:132-145 has no highlight background state; stream_readonly.zig:290-361 ignores its set and query",
-      },
-      {
-        code: 19,
-        reason:
-          "core332b2aef Terminal.zig:132-145 has no highlight foreground state; stream_readonly.zig:290-361 ignores its set and query",
-      },
-      {
-        code: 117,
-        reason:
-          "core332b2aef Terminal.zig:132-145 has no highlight background state; stream_readonly.zig:290-361 ignores its reset",
-      },
-      {
-        code: 119,
-        reason:
-          "core332b2aef Terminal.zig:132-145 has no highlight foreground state; stream_readonly.zig:290-361 ignores its reset",
-      },
-    ],
-    sourceCitation:
-      "libghostty-vt332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28 Terminal.zig:69,132-145 owns background, foreground, cursor and palette only, no highlight colour state. lib_vt.zig:60-63 exports generic Stream plus only the stock Readonly handler; Terminal.zig:260-270 returns ReadonlyStream; stream_readonly.zig:290-361 ignores highlight set/reset/query. include/ghostty/vt.h:29-36,75-82 exposes no terminal handler/state C API. Termless25089207e11420cf7a588987c1dc2683a45e8372 packages/ghostty-native/native/src/main.zig:31-78 delegates colour operations to that handler and :141 uses initAlloc; backend.ts:257-270 forwards actual replies. The loaded native53f9a867 receipt binds buildHash0effe403 and lock3ec77550; this describes the shipped headless library, not the Ghostty app",
-  },
-  ghosttyNative2d5e53cf: {
-    kind: "native",
-    engineVersion: "1.3.1",
-    adapterVersion: "0.10.2",
-    binarySha256: "53f9a867cce594b4d50fb9508db9ce5d2d79fb4244a418548b7cb31fa50780d1",
-    sourceCommit: "332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28",
-    buildHash: "2d5e53cf4f0846e47cda8a45c513f44da5c699657edffe93886e6eba99f36bfd",
-    lockSha256: "3ec775507556db01d08055836b26183f629a9cbb0b5802a1566661e95988d74a",
-    codes: [1, 17, 19, 117, 119, 176],
-    reviewReasons: [
-      {
-        code: 1,
-        reason:
-          "core332b2aef src/terminal/stream.zig:1982-1984 logs and ignores OSC 1 before handler dispatch; Terminal.zig has no icon-name state",
-      },
-      {
-        code: 176,
-        reason:
-          "core332b2aef osc.zig:580-596 rejects the 6 in OSC176 at state17; :484-492 drops the invalid payload with no command",
-      },
-    ],
-    sourceCitation:
-      "libghostty-vt332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28 Terminal.zig:132-145 stores foreground/background/cursor/palette only; stream_readonly.zig:290-361 ignores highlight set/reset/query. Termless25089207e11420cf7a588987c1dc2683a45e8372 packages/ghostty-native/native/src/main.zig:31-78 delegates color operations to ReadonlyHandler and :141 uses initAlloc; backend.ts:257-270 forwards actual replies. The loaded native53f9a867 receipt binds buildHash2d5e53cf, lock3ec77550 and nativeTree77721d68; captured current adapter blobs are index35c9e35a/backendf403717f. This is the shipped headless library, not the Ghostty app. Ghostty332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28 src/terminal/osc.zig:507,544,580-596 (Git blob 0086e48bca4c329906b49c2fa95e08161fe63530, SHA256 5ebb4e72390408382c64d76f72bac68726a23a6043cd9afcea04876574283fb4) routes 1 then7 to state17, whose only accepted next byte is semicolon; the6 in176 enters invalid and :484-492 drops the payload. No OSC176 command reaches the bound readonly handler. Independent source review @dev/8 2026-11-03, 6196c3b3-f320-495b-861a-4312753ff1bf; the existing identity owner verifies loaded53f9a867/build2d5e53cf with current index35c9e35a/backendf403717f",
-  },
-  alacritty: {
-    kind: "native",
-    engineVersion: "0.26.0",
-    adapterVersion: "0.10.2",
-    binarySha256: "9839e138d9e6f13e84adc3022f67964f0451e2e6416294952e22286412994f61",
-    absentMouseEncodings: [1015, 1016],
-    mouseEncodingSourceCitation:
-      "alacritty_terminal 0.26.0 src/term/mod.rs:55-87 TermMode stores SGR/UTF8 only; :1935-1941 ignores unknown private modes and :1958-1980 sets only SGR/UTF8 mouse encoding; vte 0.15.0 src/ansi.rs:896-933 PrivateMode mapping has no 1015/1016, so the previous encoding is retained",
-    sourceCommit: "2f73fc28027b7d483e504e08edc64d1837935816",
-    buildHash: "343c00e0db2bed851505ada4645b7b667ab78a0485a4ca71f9eaa4e5d8dead39",
-    lockSha256: "1f89f2579b7d786a116d8fefb8267c4af076bd3a3893adcf14b00c4466740497",
-    codes: [1, 9, 17, 19, 22, 117, 119, 176, 440, 555, 666, 710, 777, 1337, 3008],
-    absentSixel: true,
-    sixelSourceCitation:
-      "vte 0.15.0 src/ansi.rs:1311-1326 Performer hook/put/unhook only log the unhandled DCS and never reach the alacritty_terminal 0.26.0 Handler (src/term/mod.rs:1059-2272), so a DCS q Sixel payload is dropped with no image store",
-    reviewReasons: [
-      {
-        code: 1,
-        reason:
-          "vte 0.15.0 src/ansi.rs:1349-1361 dispatches OSC 0/2 title only, with no case 1; unmatched OSC logs at :1523 and no icon-name state is stored",
-      },
-      {
-        code: 22,
-        reason:
-          "parsed by vte 0.15.0 src/ansi.rs:1455-1461 into set_mouse_cursor_icon; Handler default src/ansi.rs:703-704 is empty and alacritty_terminal 0.26.0 src/term/mod.rs:1059-2272 supplies no override",
-      },
-    ],
-    sourceCitation:
-      "alacritty_terminal 0.26.0 with vte 0.15.0 src/ansi.rs:1329-1523 OSC dispatch (22 parsed, other audited codes unhandled); src/term/mod.rs:1059-2272 Term Handler; Termless 2f73fc28027b7d483e504e08edc64d1837935816 packages/alacritty/native/src/lib.rs:286-339 owns Term<EventProxy> and advances the same vte processor into it; Cell.hidden readback changes leave Config, OSC dispatch and reply handling unchanged",
-  },
-  wezterm: {
-    kind: "native",
-    engineVersion: "0.1.0-fork.5",
-    adapterVersion: "0.10.2",
-    binarySha256: "6722b331de7489c14cb599d939e5d2314f054220728f83c5c29f454e70273e47",
-    sourceCommit: "83b22ab3f99ff3c2f3e43bcfce346c1374f540e1",
-    buildHash: "94a2d6025d3dc9e62debb7cbe388b3ad5113394d0ab6746d6baa58475fbe9c56",
-    lockSha256: "8eaeab733cced8d47feb223d773d5ae158b2e6af8c994f993d4071d9ba3231d4",
-    codes: [22, 176, 440, 555, 633, 666, 710, 720, 3008],
-    subcodes: ["133;D"],
-    reviewReasons: [
-      {
-        code: "133;D",
-        reason: "parsed by osc.rs:793-806 into CommandStatus, dropped by the empty performer.rs:900-902 arm",
-      },
-      {
-        code: 720,
-        reason:
-          "no case 720; wezterm-term src/screen.rs:15-45,335,493,522-527 stores screen/history, not a product viewport; Termless packages/wezterm/native/src/lib.rs:442-455 returns viewport_offset 0 and scroll_viewport is a no-op",
-      },
-    ],
-    sourceCitation:
-      "tattoy-wezterm-escape-parser 0.1.0-1 src/osc.rs:457-505 osc_entries (SHA256 fd26b6d6254c46ef880fbcc03ba418d67e9049c875e71cca6f18f4df76a0924f), parse errors become Unspecified at :155-167; tattoy-wezterm-term 0.1.0-fork.5 src/terminalstate/performer.rs:772-781 logs Unspecified; Termless 83b22ab3f99ff3c2f3e43bcfce346c1374f540e1 packages/wezterm/native/src/lib.rs:237-245 advances the same pinned Terminal; absolute-row reader changes leave parsing, config and reply delivery unchanged",
-  },
-  vt100Rust: {
-    kind: "native",
-    engineVersion: "0.16.2",
-    adapterVersion: "0.10.2",
-    binarySha256: "84a5b6a3a40a7c16c6bae8b64534b730403df911498bb34bded68c3a17e2d408",
-    absentMouseEncodings: [1015, 1016],
-    mouseEncodingSourceCitation:
-      "vt100 0.16.2 src/screen.rs:39-52 MouseProtocolEncoding stores Default/Utf8/Sgr only; :1139-1213 DECSET/DECRST handles only 1005/1006 encoding and sends unhandled 1015/1016 to the callback without changing the previous encoding",
-    sourceCommit: "286fddf6632e43ccd62f9050be41ec7b2908e43e",
-    buildHash: "30b232d295488042b0d6164e881e319dea8d7fae06ac766b3b568fd4832bf074",
-    lockSha256: "4cf037e4efa648ca41d08b30ef5c4ce7ada29ad61fcad45a7d1aa97bf55391c6",
-    codes: [8, 9, 17, 19, 22, 117, 119, 176, 440, 555, 666, 710, 777, 1337, 3008],
-    absentSixel: true,
-    sixelSourceCitation:
-      "vt100 0.16.2 src/perform.rs:33-263 vte::Perform impl defines print/execute/esc/csi/osc dispatch only; vte 0.15.0 src/lib.rs:779-789 default hook/put/unhook are no-ops, so a DCS q Sixel payload is consumed with no image store",
-    sourceCitation:
-      "vt100 0.16.2 src/perform.rs:198-238 dispatches unmatched OSCs to unhandled_osc; src/callbacks.rs:66 is a no-op; Termless packages/vt100-rust/native/src/lib.rs:21-54 at 286fddf6632e43ccd62f9050be41ec7b2908e43e installs title, icon and clipboard callbacks with no unhandled_osc override",
-  },
-  kittyCa46f3c2: {
-    kind: "native",
-    engineVersion: "0.49.2",
-    adapterVersion: "0.10.2",
-    binarySha256: "bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886",
-    sourceCommit: "b2cb871254fbdac19a085188813c8dfb258b95cd",
-    buildHash: "88e840e1b8e7f09edf3464ee33df8753fd5107838de15bccb6ea59e0dd6cc9c3",
-    lockSha256: "282d1098337a5705a7c1d13188a74d2fe34565766619e8d6b21a48d5b67451be",
-    codes: [176],
-    sourceCitation:
-      "kitty0.49.2 source b2cb871254fbdac19a085188813c8dfb258b95cd kitty/vt-parser.c:546-670 (Git blob 50dc1e6d698be9ee9fb6bc687f4da65823c5cde1, SHA256 08dd5f733e466b72ec2ee6c5d5e2ea59e1e0fa898bd9f6a6f56a2c4c17629390) has no OSC176 arm and defaults to reporting an unknown code; current Termless25089207 packages/kitty/build/bridge.py blob ca46f3c2 forwards input to that parser without an app-id handler. Independent source review @dev/8 2026-11-03, 6196c3b3-f320-495b-861a-4312753ff1bf; the existing identity owner verifies loaded native bb65c2d5 and its receipt/build/lock against these adapter blobs",
-  },
-  weztermB4155bfd: {
-    kind: "native",
-    engineVersion: "0.1.0-fork.5",
-    adapterVersion: "0.10.2",
-    binarySha256: "b4155bfdef040ae8b3b723a4366fa8ec7f278463dbef577ec4730ad152b8bf07",
-    sourceCommit: "80dd254111ab82279125555f9ca1e68b112cd7e3",
-    buildHash: "dc7cc8afd1cdedfef0f972a00aca10fad92fafc4c0e9f019a2f67473e40a054b",
-    lockSha256: "8eaeab733cced8d47feb223d773d5ae158b2e6af8c994f993d4071d9ba3231d4",
-    codes: [176],
-    sourceCitation:
-      "tattoy-wezterm-escape-parser0.1.0-1 archive SHA256 7ca89ed38092d6718a03e97b0c1101fcf2203c2e6f2757a91c465f393d11d98b, src/osc.rs:457-505 SHA256 fd26b6d6254c46ef880fbcc03ba418d67e9049c875e71cca6f18f4df76a0924f has no176 mapping; :155-167 produces Unspecified. tattoy-wezterm-term0.1.0-fork.5 archive SHA256 7f3678674adc87f210ec01e2134e1972d6b0bd194bf82242f7e7beee3ae9dbd8, src/terminalstate/performer.rs:772-782 SHA256 6f53e3345e0911b7756815f8afdf015d7c6bf5d7ebe8ff450db2f3225ff1749d only optionally logs Unspecified, with no state or reply. Current Termless25089207 native/src/lib.rs advances that pinned Terminal without an alternate OSC handler. Independent source review @dev/8 2026-11-03, 6196c3b3-f320-495b-861a-4312753ff1bf and dispatcher f4cb516b-7485-4055-ace1-02ac435a1f73; the existing identity owner verifies loaded b4155bfd with source80dd2541/builddc7cc8af/lock8eaeab73",
-  },
-} as const
-
-export function auditedOscEngine(identity: LibProbeSource["runtimeIdentity"], code?: number | "133;D") {
-  const measured = evidenceRuntimeIdentity(identity)
-  if (!measured) return undefined
-  return Object.entries(ABSENT_OSC_ENGINES).find(([engine, expected]) => {
-    const member =
-      code === undefined ||
-      (typeof code === "number"
-        ? expected.codes.some((value) => value === code)
-        : "subcodes" in expected && expected.subcodes.some((value) => value === code))
-    if (
-      measured.engineVersion !== expected.engineVersion ||
-      !member ||
-      !auditedAdapterSources(identity, engine as keyof typeof ABSENT_OSC_ENGINES)
-    ) {
-      return false
-    }
-    if (expected.kind === "native") {
-      return (
-        measured.kind === "native" &&
-        measured.adapterVersion === expected.adapterVersion &&
-        measured.loadedBinary.sha256 === expected.binarySha256 &&
-        measured.provenance.sha256 === expected.binarySha256 &&
-        measured.provenance.sourceCommit === expected.sourceCommit &&
-        measured.provenance.buildHash === expected.buildHash &&
-        measured.provenance.lockSha256 === expected.lockSha256
-      )
-    }
-    if (measured.kind !== "js") return false
-    if (expected.kind === "registry") {
-      return (
-        measured.runtimeFormat === "js" &&
-        measured.integrity.kind === "registry" &&
-        measured.adapterVersion === expected.adapterVersion &&
-        measured.integrity.lockIntegrity === expected.lockIntegrity
-      )
-    }
-    if (expected.runtimeFormat === "wasm") {
-      return (
-        measured.runtimeFormat === "wasm" &&
-        measured.adapterVersion === expected.adapterVersion &&
-        measured.loadedBinary.sha256 === expected.binarySha256
-      )
-    }
-    return (
-      measured.runtimeFormat === "js" &&
-      measured.integrity.kind === "source" &&
-      measured.integrity.cleanTree &&
-      measured.integrity.repository === expected.repository &&
-      measured.integrity.treeOid === expected.treeOid
-    )
-  })
-}
-
-function absentOscAudit(identity: LibProbeSource["runtimeIdentity"], code: number | "133;D") {
-  return auditedOscEngine(identity, code)?.[1]
-}
-
-function auditedXtermState(
-  source: Pick<LibProbeSource, "runtimeIdentity" | "getTitle" | "getIconLabel">,
-): source is Pick<LibProbeSource, "runtimeIdentity" | "getTitle" | "getIconLabel"> & { getIconLabel(): string } {
-  return (
-    typeof source.getTitle === "function" &&
-    typeof source.getIconLabel === "function" &&
-    auditedOscEngine(source.runtimeIdentity)?.[0] === "xtermjs"
-  )
-}
-
-function sourceAbsentOsc(id: string, code: number | "133;D", sequence: string, effect: string) {
+/**
+ * A former source-negative site (#32246, @cto 9fad23d7): feed the sequence and an X sentinel at home and keep both, but
+ * no control in this run shows the same path can report the effect, so the cell stays TEST TODO.
+ */
+function noSamePathControl(sequence: string) {
   return (ctx: LibProbeSource): ProbeCallbackResult => {
-    const identity = ctx.runtimeIdentity
-    const audit = absentOscAudit(identity, code)
-    if (!audit) {
-      return notTestedResult(`OSC ${code} ${effect}: no audited library target readback at this runtime`, {})
-    }
-    const reviewReason =
-      "reviewReasons" in audit ? audit.reviewReasons.find((entry) => entry.code === code)?.reason : undefined
-    return sourceAbsentSentinel(
-      ctx,
-      `${id}: the engine handles OSC ${code} (a ${effect} handler exists at the pinned source)`,
-      sequence,
-      effect,
-      reviewReason
-        ? `${audit.sourceCitation}; ${reviewReason}`
-        : `${audit.sourceCitation}: no case ${code} or ${effect} target writer`,
-    )
+    const fed = "\x1b[1;1H\x1b[2K" + sequence + "X"
+    ctx.feed(fed)
+    return notTestedResult(NO_SAME_PATH_CONTROL, { fed, sentinel: ctx.getCell(0, 0) })
   }
 }
 
+/** A source exposing both icon-label and title readers takes the controlled buffer-state read. */
+function readsIconTitleState(
+  source: Pick<LibProbeSource, "runtimeIdentity" | "getTitle" | "getIconLabel">,
+): source is Pick<LibProbeSource, "runtimeIdentity" | "getTitle" | "getIconLabel"> & { getIconLabel(): string } {
+  return typeof source.getTitle === "function" && typeof source.getIconLabel === "function"
+}
+
 /**
- * The shared source-negative read: feed the sequence followed by an X sentinel at home. Only a rendered X, which
- * shows the parser left the sequence and resumed printing, lets the audited source citation carry the review.
+ * A former native host-audit site (#32246): an empty reply to a host-owned query on a native artifact has no same-path
+ * control in this run, so it stays TEST TODO with its capture instead of a source-cited cause or a graded silence.
  */
-function sourceAbsentSentinel(
+function emptyNativeHostReply(
   ctx: LibProbeSource,
-  expected: string,
-  sequence: string,
-  effect: string,
-  citation: string,
+  result: ProbeCallbackResult,
+  query: string,
+  empty: boolean,
 ): ProbeCallbackResult {
-  const fed = "\x1b[1;1H\x1b[2K" + sequence + "X"
-  ctx.feed(fed)
-  const sentinel = ctx.getCell(0, 0)
-  return parserStateResult(
-    null,
-    expected,
-    {
-      fed,
-      sentinel,
-      engineState: null,
-      engineStateReason: `No ${effect} target state is exposed at this pin`,
-    },
-    sentinel.char === "X" ? undefined : "No rendered X cell to evaluate",
-    sentinel.char === "X" ? `${citation}; independent source review required` : undefined,
-  )
+  if (!empty || ctx.runtimeIdentity?.kind !== "native") return result
+  return notTestedResult(NO_SAME_PATH_CONTROL, { query, response: result.response ?? "" })
 }
 
 function promptConsumptionResult(consumed: boolean | null): ProbeCallbackResult {
@@ -1686,9 +1210,6 @@ function promptMarkResult(
   noObservable: string,
   sourceReview?: { probeId: string; selector: number | "133;D"; markType?: "prompt" | "command" | "output" },
 ): ProbeCallbackResult {
-  if (sourceReview && absentOscAudit(ctx.runtimeIdentity, sourceReview.selector)) {
-    return sourceAbsentOsc(sourceReview.probeId, sourceReview.selector, sequence, noObservable)(ctx)
-  }
   ctx.feed("\x1b[1;1H")
   const home = ctx.getCursor()
   const markType = sourceReview?.markType
@@ -2112,10 +1633,6 @@ function colorStackProbe(ownSequence: typeof colorPush | typeof colorPop): Probe
         }
         for (const assertion of result.assertions ?? []) assertion.observed = response
       }
-      if (result && originalRaw === "") {
-        const explained = nativeHostRecipeResult(ctx, result, "color-request", "foreground-rgb", foregroundQuery, true)
-        if (explained.hostRecipeCauses) result.hostRecipeCauses = explained.hostRecipeCauses
-      }
     }
   }
 }
@@ -2196,9 +1713,6 @@ function osc720ScrollProbe(): ProbeDefinition["lib"] {
           state,
           "Product viewport declared absent but scroll control is present",
         )
-      }
-      if (absentOscAudit(ctx.runtimeIdentity, 720)) {
-        return sourceAbsentOsc("extensions.osc720-scroll-up", 720, "\x1b]720\x07", "scrollback viewport")(ctx)
       }
       return reviewResult(HEADLESS_OBSERVABLE_REVIEW, declared.reason, "scrollback viewport scroll control", state)
     }
@@ -2843,14 +2357,6 @@ function textSizingResult(
  * binary keeps the measured roundtrip. A listed reply-path audit still replaces an empty capture.
  */
 const ENGINE_CLIPBOARD_NOTE = "engine copy_to_clipboard callback read via getClipboardState, no reply bytes"
-const OSC52_SOURCE_CONTROL = `\x1b]52;c;${btoa("terminfo-osc52-source-control")}\x07`
-
-function auditedClipboardWriteSource(
-  source: Pick<LibProbeSource, "runtimeIdentity" | "getTitle" | "getIconLabel">,
-): boolean {
-  const engine = auditedOscEngine(source.runtimeIdentity, 52)?.[0]
-  return auditedXtermState(source) || engine === "vt100" || engine === "vt220"
-}
 
 function headlessOsc52Write(ctx: LibProbeSource): ProbeCallbackResult {
   if (typeof ctx.getClipboardState !== "function") return headlessOsc52WriteWithoutWitness(ctx)
@@ -2867,8 +2373,7 @@ function headlessOsc52Write(ctx: LibProbeSource): ProbeCallbackResult {
   const readEmpty = outcome
     ? sentinelSilenceResult(outcome, "OSC 52 c query returns the exact written nonce") !== null || raw === ""
     : raw === ""
-  const explain = (result: ProbeCallbackResult) =>
-    nativeHostRecipeResult(ctx, result, "clipboard-load", "clipboard-read-permission", query, readEmpty)
+  const explain = (result: ProbeCallbackResult) => emptyNativeHostReply(ctx, result, query, readEmpty)
   const writes = retained.writes.map((write) => ({ selector: write.selector, payload: write.payload }))
   const match = retained.writes.find((write) => write.selector === "c" && write.payload === encoded)
   const note = [
@@ -2944,22 +2449,12 @@ function headlessClipboardRoundtrip(ctx: LibProbeSource): ProbeCallbackResult {
   const writeUnobservable = readNegative && typeof ctx.getClipboardState !== "function"
   const reason =
     "clipboard write unobservable: OSC 52 read is a sentinel negative on this engine and no clipboard-state witness is wired."
-  if (writeUnobservable && auditedClipboardWriteSource(ctx)) {
-    return sourceAbsentOsc("OSC 52 clipboard write", 52, OSC52_SOURCE_CONTROL, "clipboard write")(ctx)
-  }
   const result: ProbeCallbackResult = writeUnobservable
     ? { pass: false, note: reason, tests: [{ id: "criterion", status: "test-todo", reason }] }
     : headlessClipboardResult(empty ? "" : raw, nonce)
   return withClipboardControlNote(
     ctx,
-    nativeHostRecipeResult(
-      ctx,
-      { ...result, response: raw },
-      "clipboard-load",
-      "clipboard-read-permission",
-      query,
-      empty,
-    ),
+    emptyNativeHostReply(ctx, { ...result, response: raw }, query, empty),
   )
 }
 
@@ -2972,11 +2467,9 @@ function headlessClipboardRead(ctx: LibProbeSource): ProbeCallbackResult {
     const silence = sentinelSilenceResult(outcome, "OSC 52 c query returns the exact written nonce")
     return withClipboardControlNote(
       ctx,
-      nativeHostRecipeResult(
+      emptyNativeHostReply(
         ctx,
-        silence ?? headlessClipboardResult(outcome.raw, nonce),
-        "clipboard-load",
-        "clipboard-read-permission",
+        silence ?? { ...headlessClipboardResult(outcome.raw, nonce), response: outcome.raw },
         "\x1b]52;c;?\x07",
         silence !== null,
       ),
@@ -2985,14 +2478,7 @@ function headlessClipboardRead(ctx: LibProbeSource): ProbeCallbackResult {
   const raw = ctx.feedCapture("\x1b]52;c;?\x07")
   return withClipboardControlNote(
     ctx,
-    nativeHostRecipeResult(
-      ctx,
-      headlessClipboardResult(raw, nonce),
-      "clipboard-load",
-      "clipboard-read-permission",
-      "\x1b]52;c;?\x07",
-      raw === "",
-    ),
+    emptyNativeHostReply(ctx, headlessClipboardResult(raw, nonce), "\x1b]52;c;?\x07", raw === ""),
   )
 }
 
@@ -3992,7 +3478,6 @@ export const extensionsProbes: ProbeDefinition[] = [
   probe(
     "extensions.kitty-graphics.animation",
     (ctx) => {
-      if (replyPathAuditFor(ctx, "extensions.kitty-graphics.animation")) ctx.feedCapture(GRAPHICS_QUERY)
       const note = "Declared Kitty graphics capability does not establish timed animation playback"
       return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
         declared: ctx.capabilities.kittyGraphics === true,
@@ -4178,7 +3663,6 @@ export const extensionsProbes: ProbeDefinition[] = [
   probe(
     "extensions.kitty-graphics.unicode-placeholders",
     (ctx) => {
-      if (replyPathAuditFor(ctx, "extensions.kitty-graphics.unicode-placeholders")) ctx.feedCapture(GRAPHICS_QUERY)
       const note = "Declared Kitty graphics capability does not establish Unicode placeholder rendering"
       return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
         declared: ctx.capabilities.kittyGraphics === true,
@@ -4365,17 +3849,6 @@ export const extensionsProbes: ProbeDefinition[] = [
     ...probe(
       "extensions.sixel",
       (ctx) => {
-        // An engine whose audited source has no DCS handler takes the source-negative review (#32225).
-        const audit = auditedOscEngine(ctx.runtimeIdentity)?.[1]
-        if (!ctx.getSixelImages && audit && "absentSixel" in audit && audit.absentSixel) {
-          return sourceAbsentSentinel(
-            ctx,
-            "extensions.sixel: the engine stores DCS q Sixel images (a Sixel handler exists at the pinned source)",
-            "\x1bPq#1;2;100;0;0~\x1b\\",
-            "Sixel image",
-            audit.sixelSourceCitation,
-          )
-        }
         if (ctx.getSixelImages) {
           ctx.feed("\x1b[1;1H")
           const before = ctx.getSixelImages()
@@ -4510,16 +3983,6 @@ export const extensionsProbes: ProbeDefinition[] = [
         const charsMatch = cells.every((cell, index) => cell.char === expectedChars[index])
         if (charsMatch && !reported) {
           const identity = ctx.runtimeIdentity
-          const audit = absentOscAudit(identity, 8)
-          if (audit) {
-            return parserStateResult(
-              null,
-              "extensions.osc8: the pinned engine handles OSC 8 and associates the exact URI with LINK cells only",
-              { chars: cells.map((cell) => cell.char), links },
-              undefined,
-              `${audit.sourceCitation}; no OSC 8 target writer; independent source review required`,
-            )
-          }
           const adapter = identity
             ? `Engine ${identity.engineVersion}, adapter ${identity.adapterVersion}`
             : "Adapter (runtime identity unavailable)"
@@ -4623,9 +4086,6 @@ export const extensionsProbes: ProbeDefinition[] = [
     ...probe(
       "extensions.semantic-prompts",
       (ctx) => {
-        if (absentOscAudit(ctx.runtimeIdentity, 133)) {
-          return sourceAbsentOsc("extensions.semantic-prompts", 133, "\x1b]133;A\x07", "shell prompt integration")(ctx)
-        }
         if (ctx.capabilities.extensions.has("semantic-marks")) {
           return promptMarkResult(ctx, "\x1b]133;A\x07", "OSC 133 prompt-start mark registration", {
             probeId: "extensions.semantic-prompts",
@@ -4679,7 +4139,7 @@ export const extensionsProbes: ProbeDefinition[] = [
     ...probe(
       "extensions.osc0-icon-title",
       (ctx) => {
-        if (auditedXtermState(ctx)) {
+        if (readsIconTitleState(ctx)) {
           const before = { icon: ctx.getIconLabel(), title: ctx.getTitle() }
           const controls = {
             icon: before.icon === "osc0-icon-control" ? "osc0-icon-control-2" : "osc0-icon-control",
@@ -4742,7 +4202,7 @@ export const extensionsProbes: ProbeDefinition[] = [
       },
       "query_reply",
     ),
-    libAssertionType: { when: auditedXtermState, then: ["buffer_state"], otherwise: ["query_reply"] },
+    libAssertionType: { when: readsIconTitleState, then: ["buffer_state"], otherwise: ["query_reply"] },
   },
 
   // OSC 52 — clipboard
@@ -4753,22 +4213,14 @@ export const extensionsProbes: ProbeDefinition[] = [
       (ctx) => liveClipboardProbe(ctx, "roundtrip"),
       "query_reply",
     ),
-    libAssertionType: {
-      when: auditedClipboardWriteSource,
-      then: ["query_reply", "buffer_state"],
-      otherwise: ["query_reply"],
-    },
+    libAssertionType: "query_reply",
     libHostRecipes: [{ recipe: "clipboard-load", query: "\x1b]52;c;?\x07", missing: ["clipboard-read-permission"] }],
   },
 
   // OSC 52 write — set clipboard (most terminals support this)
   {
     ...probe("extensions.osc52-write", headlessOsc52Write, (ctx) => liveClipboardProbe(ctx, "write"), "query_reply"),
-    libAssertionType: {
-      when: auditedClipboardWriteSource,
-      then: ["query_reply", "buffer_state"],
-      otherwise: ["query_reply"],
-    },
+    libAssertionType: "query_reply",
     libHostRecipes: [{ recipe: "clipboard-load", query: "\x1b]52;c;?\x07", missing: ["clipboard-read-permission"] }],
   },
 
@@ -4803,14 +4255,6 @@ export const extensionsProbes: ProbeDefinition[] = [
       "extensions.osc7-cwd",
       (ctx) => {
         if (!ctx.getCwd) {
-          if (absentOscAudit(ctx.runtimeIdentity, 7)) {
-            return sourceAbsentOsc(
-              "extensions.osc7-cwd",
-              7,
-              "\x1b]7;file://localhost/terminfo-cwd-A\x07",
-              "working-directory",
-            )(ctx)
-          }
           const note = "Declared OSC 7 capability does not establish working-directory metadata delivery"
           return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
             declared: ctx.capabilities.extensions.has("osc7"),
@@ -4854,9 +4298,6 @@ export const extensionsProbes: ProbeDefinition[] = [
     ...probe(
       "extensions.osc-633-vscode",
       (ctx) => {
-        if (absentOscAudit(ctx.runtimeIdentity, 633)) {
-          return sourceAbsentOsc("extensions.osc-633-vscode", 633, "\x1b]633;A\x07", "VS Code shell integration")(ctx)
-        }
         if (ctx.capabilities.extensions.has("semantic-marks")) {
           return promptMarkResult(ctx, "\x1b]633;A\x07", "OSC 633 prompt-start mark registration", {
             probeId: "extensions.osc-633-vscode",
@@ -5059,16 +4500,6 @@ export const extensionsProbes: ProbeDefinition[] = [
       "extensions.notifications",
       (ctx) => {
         if (!ctx.getNotifications) {
-          const audit = absentOscAudit(ctx.runtimeIdentity, 9)
-          // Progress-only OSC 9 evidence cannot decide notification absence, in any cohort.
-          if (audit && !("osc9ProgressOnly" in audit && audit.osc9ProgressOnly)) {
-            return sourceAbsentOsc(
-              "extensions.notifications",
-              9,
-              "\x1b]9;terminfo-notification-A\x07",
-              "notification",
-            )(ctx)
-          }
           const note = "Declared OSC 9 capability does not establish desktop notification delivery"
           return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
             declared: ctx.capabilities.extensions.has("osc9"),
@@ -5107,14 +4538,6 @@ export const extensionsProbes: ProbeDefinition[] = [
     ...probe(
       "extensions.iterm2-images",
       (ctx) => {
-        // An engine whose audited source drops OSC 1337 takes the source-negative review, so its cell can be
-        // decided Unsupported from source; every other engine keeps the observable review (#32225).
-        if (absentOscAudit(ctx.runtimeIdentity, 1337)) {
-          return sourceAbsentOsc("extensions.iterm2-images", 1337, ITERM2_INLINE_IMAGE, "inline image")(ctx)
-        }
-        if (replyPathAuditFor(ctx, "extensions.iterm2-images")) {
-          ctx.feedCapture(ITERM2_INLINE_IMAGE)
-        }
         const note = "Declared iTerm2 image capability does not establish rendered image pixels"
         return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
           declared: ctx.capabilities.extensions.has("iterm2Images"),
@@ -5171,7 +4594,7 @@ export const extensionsProbes: ProbeDefinition[] = [
   probe(
     "extensions.osc9-progress",
     // Feed the ConEmu progress form; consumption alone does not measure progress display.
-    sourceAbsentOsc("extensions.osc9-progress", 9, "\x1b]9;4;1;50\x07", "progress"),
+    noSamePathControl("\x1b]9;4;1;50\x07"),
     () => Promise.resolve(unmeasuredStateEffect("OSC 9;4 progress display")),
     null,
   ),
@@ -5285,29 +4708,6 @@ export const extensionsProbes: ProbeDefinition[] = [
               }
               response = JSON.stringify({ detection: reply.raw, decrpmSiblings: controls })
               if (allSilent) {
-                const engine = auditedOscEngine(ctx.runtimeIdentity)?.[0]
-                const identity = ctx.runtimeIdentity
-                const da1 = engine === "vt100" ? "\x1b[?1;2c" : "\x1b[?62;1;2;6;7;8;9c"
-                if (
-                  (engine === "vt100" || engine === "vt220") &&
-                  identity?.kind === "js" &&
-                  identity.integrity.kind === "source" &&
-                  identity.integrity.revision === "9e99e4d23cdc606fca258b1863aa2be7ae79eed3" &&
-                  identity.termlessRevision === "25089207e11420cf7a588987c1dc2683a45e8372" &&
-                  reply.raw === da1 &&
-                  controls.every((control) => control.raw === da1)
-                ) {
-                  const rejection = engine === "vt100" ? "360-364" : "444-447"
-                  const sourceCitation = `vterm9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/${engine}/src/screen.ts:${rejection} rejects DECRQM; Termless25089207 packages/${engine}/src/backend.ts forwards engine responses without a mode-report substitute`
-                  return parserStateResult(
-                    null,
-                    "OSC5522 protocol detection is recognized",
-                    { detection: reply.raw, decrpmSiblings: controls, rejection: "parser", sourceCitation },
-                    undefined,
-                    `${sourceCitation}; independent source review required`,
-                    "query_reply",
-                  )
-                }
                 const reason =
                   "OSC5522 detection prerequisite unmet: no complete DECRPM reply from same-run sibling queries; protocol recognition cannot be observed."
                 return {
@@ -5345,19 +4745,7 @@ export const extensionsProbes: ProbeDefinition[] = [
           const before = ctx.getTitle()
           ctx.feed("\x1b]1;test-icon\x07")
           const after = ctx.getTitle()
-          const audit = absentOscAudit(ctx.runtimeIdentity, 1)
-          if (audit) {
-            const reason =
-              "reviewReasons" in audit ? audit.reviewReasons.find((entry) => entry.code === 1)?.reason : undefined
-            return parserStateResult(
-              null,
-              "OSC 1 sets the icon name independently of the window title",
-              { before, after },
-              undefined,
-              `${audit.sourceCitation}${reason ? `; ${reason}` : ""}; independent source review required`,
-            )
-          }
-          return notTestedResult("icon-name state", { before, after })
+          return notTestedResult(NO_SAME_PATH_CONTROL, { before, after })
         }
         const before = { icon: ctx.getIconLabel(), title: ctx.getTitle() }
         const requested = before.icon === "test-icon" ? "test-icon-2" : "test-icon"
@@ -5446,7 +4834,7 @@ export const extensionsProbes: ProbeDefinition[] = [
   // Visible pointer appearance also needs observation outside the cell grid.
   probe(
     "extensions.osc22-pointer",
-    sourceAbsentOsc("extensions.osc22-pointer", 22, "\x1b]22;pointer\x07", "pointer"),
+    noSamePathControl("\x1b]22;pointer\x07"),
     async (ctx) => {
       ctx.write("\x1b[1;1H\x1b[2K")
       ctx.write("\x1b]22;pointer\x07")
@@ -5488,7 +4876,7 @@ export const extensionsProbes: ProbeDefinition[] = [
   // OSC 777 — rxvt-unicode notifications
   probe(
     "extensions.osc777-notify",
-    sourceAbsentOsc("extensions.osc777-notify", 777, "\x1b]777;notify;test;body\x07", "notification"),
+    noSamePathControl("\x1b]777;notify;test;body\x07"),
     async (ctx) => {
       ctx.write("\x1b[1;1H\x1b[2K")
       ctx.write("\x1b]777;notify;test;body\x07")
@@ -5501,7 +4889,7 @@ export const extensionsProbes: ProbeDefinition[] = [
   // OSC 666 — VTE termprop
   probe(
     "extensions.osc666-termprop",
-    sourceAbsentOsc("extensions.osc666-termprop", 666, "\x1b]666;test-prop=value\x07", "terminal property"),
+    noSamePathControl("\x1b]666;test-prop=value\x07"),
     async (ctx) => {
       ctx.write("\x1b[1;1H\x1b[2K")
       ctx.write("\x1b]666;test-prop=value\x07")
@@ -5514,7 +4902,7 @@ export const extensionsProbes: ProbeDefinition[] = [
   // OSC 3008 — systemd context
   probe(
     "extensions.osc3008-context",
-    sourceAbsentOsc("extensions.osc3008-context", 3008, "\x1b]3008;type=test\x07", "systemd context"),
+    noSamePathControl("\x1b]3008;type=test\x07"),
     async (ctx) => {
       ctx.write("\x1b[1;1H\x1b[2K")
       ctx.write("\x1b]3008;type=test\x07")
@@ -5572,7 +4960,7 @@ export const extensionsProbes: ProbeDefinition[] = [
   // OSC 176 — foot Wayland app-id
   probe(
     "extensions.osc176-app-id",
-    sourceAbsentOsc("extensions.osc176-app-id", 176, "\x1b]176;terminfo-test\x07", "app-id"),
+    noSamePathControl("\x1b]176;terminfo-test\x07"),
     async (ctx) => {
       ctx.write("\x1b[1;1H\x1b[2K")
       ctx.write("\x1b]176;terminfo-test\x07")
@@ -5585,7 +4973,7 @@ export const extensionsProbes: ProbeDefinition[] = [
   // OSC 555 — foot screen flash (visual bell)
   probe(
     "extensions.osc555-flash",
-    sourceAbsentOsc("extensions.osc555-flash", 555, "\x1b]555\x07", "flash"),
+    noSamePathControl("\x1b]555\x07"),
     async (ctx) => {
       ctx.write("\x1b[1;1H\x1b[2K")
       ctx.write("\x1b]555\x07")
@@ -5598,7 +4986,7 @@ export const extensionsProbes: ProbeDefinition[] = [
   // OSC 440 — mintty audio sound
   probe(
     "extensions.osc440-audio",
-    sourceAbsentOsc("extensions.osc440-audio", 440, "\x1b]440;bell.wav\x07", "audio"),
+    noSamePathControl("\x1b]440;bell.wav\x07"),
     async (ctx) => {
       ctx.write("\x1b[1;1H\x1b[2K")
       ctx.write("\x1b]440;bell.wav\x07")
@@ -5643,7 +5031,7 @@ export const extensionsProbes: ProbeDefinition[] = [
   // OSC 710 — rxvt-unicode set normal font
   probe(
     "extensions.osc710-font-normal",
-    sourceAbsentOsc("extensions.osc710-font-normal", 710, "\x1b]710;monospace\x07", "font"),
+    noSamePathControl("\x1b]710;monospace\x07"),
     () => Promise.resolve(unmeasuredStateEffect("OSC 710 font selection")),
   ),
 

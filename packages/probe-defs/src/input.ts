@@ -4,24 +4,18 @@ import {
   notTestedResult,
   reviewResult,
   osInputReviewResult,
-  SOURCE_NEGATIVE_REVIEW,
+  NO_SAME_PATH_CONTROL,
   probe,
-  SOURCE_TREE_AUDITS,
-  sourceTreeDrift,
   withModeSourceReview,
 } from "./helpers.ts"
-import { auditedOscEngine, kittyKeyboardFlagProbe } from "./extensions.ts"
+import { kittyKeyboardFlagProbe } from "./extensions.ts"
 import { queryPixelGeometry, type PixelGeometry } from "./region-readback.ts"
 
 const inputDefinitions: ProbeDefinition[] = [
   probe(
     "input.modify-other-keys",
     (ctx) =>
-      vtermInputSourceReview(
-        ctx,
-        { input: false },
-        "Vterm 67dd3960746766ed47e2bb4b2ced6503a78549cc packages/vterm/src/screen.ts:4688 dispatches greater-than CSI to handleCSIGt at2771-2824, which handles only c/q/u, with no XTMODKEYS m handler or state; required source review pending",
-      ) ?? headlessXtestReview("key injection"),
+      vtermNoSamePathControl(ctx, { input: false }) ?? headlessXtestReview("key injection"),
     modifyOtherKeys2,
     "input_bytes",
   ),
@@ -36,11 +30,7 @@ const inputDefinitions: ProbeDefinition[] = [
   probe(
     "input.modify-other-keys-3",
     (ctx) =>
-      vtermInputSourceReview(
-        ctx,
-        { input: false },
-        "Vterm 67dd3960746766ed47e2bb4b2ced6503a78549cc packages/vterm/src/screen.ts:4688 dispatches greater-than CSI to handleCSIGt at2771-2824, which handles only c/q/u, with no XTMODKEYS m handler or state; required source review pending",
-      ) ?? headlessXtestReview("key injection"),
+      vtermNoSamePathControl(ctx, { input: false }) ?? headlessXtestReview("key injection"),
     modifyOtherKeys3,
     "input_bytes",
   ),
@@ -50,11 +40,7 @@ const inputDefinitions: ProbeDefinition[] = [
   probe(
     "input.xtest-key",
     (ctx) =>
-      vtermInputSourceReview(
-        ctx,
-        { input: false },
-        "Vterm 67dd3960746766ed47e2bb4b2ced6503a78549cc packages/vterm/src/screen.ts:1273-1279 leaves key encoding to the host and defaults kitty flags to0; Termless a871f0e580e1b02fb5dbb7ed854f6de623e7858e packages/vterm/src/backend.ts:372 binds encodeKeyToAnsi, src/terminal/key-mapping.ts:107-122 maps Ctrl+A to0x01 rather than the criterion extended report; required source review pending",
-      ) ?? headlessXtestReview("key injection", true),
+      vtermNoSamePathControl(ctx, { input: false }) ?? headlessXtestReview("key injection", true),
     xtestKey,
     "input_bytes",
   ),
@@ -126,32 +112,12 @@ function headlessXtestReview(kind: string, byDesign = false): ProbeCallbackResul
   )
 }
 
-/** One exact source qualifier for the four audited input negatives; drift keeps the shared failure. */
-function vtermInputSourceReview(
-  ctx: LibProbeSource,
-  state: object,
-  sourceReviewReason: string,
-): ProbeCallbackResult | undefined {
-  const identity = ctx.runtimeIdentity
-  const audit = SOURCE_TREE_AUDITS.vterm
-  if (
-    identity?.kind === "js" &&
-    identity.runtimeFormat === audit.runtimeFormat &&
-    identity.resolvedPath === audit.resolvedPath &&
-    identity.engineVersion === audit.engineVersion &&
-    identity.integrity.kind === "source" &&
-    identity.integrity.repository === audit.repository &&
-    identity.integrity.treeOid === audit.treeOid &&
-    identity.integrity.cleanTree
-  ) {
-    return {
-      pass: false,
-      response: JSON.stringify(state),
-      criterionBranch: SOURCE_NEGATIVE_REVIEW,
-      tests: [{ id: "review", status: "test-todo", reason: sourceReviewReason }],
-    }
-  }
-  return sourceTreeDrift(identity, audit, state)
+/**
+ * The former vterm source-negative input sites (@cto 9fad23d7, #32246): no control in this run shows the same input
+ * path can report the state, so the cell stays TEST TODO; source code never decides it.
+ */
+function vtermNoSamePathControl(ctx: LibProbeSource, state: object): ProbeCallbackResult | undefined {
+  return ctx.backendName === "vterm" ? notTestedResult(NO_SAME_PATH_CONTROL, state) : undefined
 }
 
 async function deliveryControl(
@@ -687,22 +653,8 @@ function mouseEncodingLib(
       (kind === "pixel" || kind === "urxvt") &&
       (ctx.backendName === "alacritty" || ctx.backendName === "vt100-rust")
     ) {
-      const mode = kind === "pixel" ? 1016 : 1015
-      const audited = auditedOscEngine(ctx.runtimeIdentity)
-      const audit = audited?.[1]
-      if (
-        audited?.[0] !== (ctx.backendName === "alacritty" ? "alacritty" : "vt100Rust") ||
-        !audit ||
-        !("absentMouseEncodings" in audit) ||
-        !audit.absentMouseEncodings.some((value) => value === mode)
-      ) {
-        return notTestedResult(
-          `${ctx.backendName}: no qualified native mouse encoding source audit for ${mode}`,
-          observed,
-        )
-      }
-      const reason = `${audit.mouseEncodingSourceCitation}; 1015/1016 shared encoder bytes are instrument output, not engine evidence; independent source review required`
-      return reviewResult(SOURCE_NEGATIVE_REVIEW, reason, `Native engine stores no mouse encoding ${mode}`, observed)
+      // A former source-negative site: shared encoder bytes are instrument output, not engine evidence (#32246).
+      return notTestedResult(NO_SAME_PATH_CONTROL, observed)
     }
     return enabled && report === expected
       ? interactionResult(`mouse-encoding:${kind}`, expected, observed)
@@ -726,13 +678,12 @@ function mouseEncodingLib(
  * and review branch rather than inheriting another engine's classification:
  * - ghostty core parses OSC 133;A;click_events=1, while its WASM binding does not forward click_events
  *   and a headless library run has no pointer surface -> HEADLESS_OBSERVABLE_REVIEW (Untestable-only).
- * - alacritty and vt100-rust store no OSC 133 prompt or click_events state in native source ->
- *   SOURCE_NEGATIVE_REVIEW.
+ * alacritty and vt100-rust, the former source-negative sites, return TEST TODO with no same-path control (#32246).
  */
 const SHARED_ENCODER_CLICK_EVENTS_LIMITS = new Map<
   string,
   {
-    readonly branch: typeof HEADLESS_OBSERVABLE_REVIEW | typeof SOURCE_NEGATIVE_REVIEW
+    readonly branch: typeof HEADLESS_OBSERVABLE_REVIEW
     readonly limit: string
     readonly noObservable: string
     readonly reviewNotice: string
@@ -749,57 +700,21 @@ const SHARED_ENCODER_CLICK_EVENTS_LIMITS = new Map<
       reviewNotice: "returned before encodeMouse; independent Untestable review required",
     },
   ],
-  [
-    "alacritty",
-    {
-      branch: SOURCE_NEGATIVE_REVIEW,
-      limit:
-        "shared core encoder carries no prompt state; alacritty_terminal 0.26.0 keeps no OSC 133 prompt or click_events state (vte 0.15.0 src/ansi.rs:1348-1525 has no OSC 133 arm and routes unmatched codes to unhandled at :1332-1341,:1523); #30936",
-      noObservable: "Native engine stores no OSC 133 prompt or click_events state",
-      reviewNotice: "returned before encodeMouse; independent source review required",
-    },
-  ],
-  [
-    "vt100-rust",
-    {
-      branch: SOURCE_NEGATIVE_REVIEW,
-      limit:
-        "shared core encoder carries no prompt state; vt100 0.16.2 keeps no OSC 133 prompt or click_events state (osc_dispatch src/perform.rs:198-237 handles OSC 0/1/2/52 only; the rest reaches Callbacks::unhandled_osc, which termless TerminalCallbacks lib.rs:21 leaves default); #30936",
-      noObservable: "Native engine stores no OSC 133 prompt or click_events state",
-      reviewNotice: "returned before encodeMouse; independent source review required",
-    },
-  ],
 ])
 
 function kittyClickEventsLib(ctx: LibProbeSource): ProbeCallbackResult {
   const expected =
     "Click inside a main-screen OSC 133 prompt marked click_events=1 reports SGR mouse while mouse modes are off"
   if (ctx.backendName === "vterm") {
-    const reviewed = vtermInputSourceReview(
-      ctx,
-      { storedClickEvents: false },
-      "Vterm 67dd3960746766ed47e2bb4b2ced6503a78549cc packages/vterm/src/screen.ts:3625-3642 stores OSC133 A/B/C zone positions from the first character and drops parameters, so click_events is never stored; required source review pending",
-    )
-    if (reviewed) return reviewed
-    return notTestedResult("shared core encoder carries no prompt state; vterm stores no click_events; #30936", {
-      storedClickEvents: false,
-    })
+    return notTestedResult(NO_SAME_PATH_CONTROL, { storedClickEvents: false })
   }
-  // @cto cac2b8dc / bbf6f77f / @chief 4d98c1c0: adapters whose termless mouse-encoding path uses the
-  // shared encodeMouseReport return here before calling encodeMouse. Once the engine's identity is
-  // qualified by auditedOscEngine, return the engine's review branch (headless-observable-review for
-  // ghostty's WASM binding / headless library boundary; source-negative-review for native engines with
-  // no OSC 133 prompt/click_events state); an unqualified identity keeps the plain not-tested record.
+  if (ctx.backendName === "alacritty" || ctx.backendName === "vt100-rust") {
+    return notTestedResult(NO_SAME_PATH_CONTROL, { storedClickEvents: false })
+  }
+  // Adapters whose termless mouse path uses the shared encodeMouseReport return before encodeMouse: TEST TODO,
+  // never a source-qualified review (#32246).
   const sharedEncoderClickEventsLimit = SHARED_ENCODER_CLICK_EVENTS_LIMITS.get(ctx.backendName)
   if (sharedEncoderClickEventsLimit) {
-    if (auditedOscEngine(ctx.runtimeIdentity)) {
-      return reviewResult(
-        sharedEncoderClickEventsLimit.branch,
-        `${sharedEncoderClickEventsLimit.limit}; ${sharedEncoderClickEventsLimit.reviewNotice}`,
-        sharedEncoderClickEventsLimit.noObservable,
-        { storedClickEvents: false },
-      )
-    }
     return notTestedResult(sharedEncoderClickEventsLimit.limit, { storedClickEvents: false })
   }
   if (!ctx.capabilities.extensions.has("mouse-encoding") || typeof ctx.encodeMouse !== "function") {

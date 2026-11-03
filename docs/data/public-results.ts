@@ -3,9 +3,6 @@ import { createHash } from "node:crypto"
 import {
   isEnvironmentGroup,
   readCollectorSelection,
-  sourceAnswerForRef,
-  sourceAnswerVersionLabel,
-  publicSourceAnswerPendingLabel,
 } from "@terminfo/probe-defs"
 import type {
   ProbeResult,
@@ -213,10 +210,6 @@ export function publicResults(projection: SelectedProjection, subjects: Readonly
   const traced = new Set(Object.values(projection.contexts).flatMap((context) => context.contributingRunIds))
   const documents: PublicDocuments = new Map()
   const mapResult = (result: ProbeResult, version: CurrentSelectedVersion): PublicProbeResult => {
-    const sourceRow = result.reviewRef === undefined ? undefined : sourceAnswerForRef(result.reviewRef)
-    // Forward only the shared resolver's version caption, without capture rationale or a presentation grant.
-    const label = sourceRow && sourceAnswerVersionLabel(version.subject.version)
-    const sourceLabel = label !== undefined && result.reason?.endsWith(label) ? label : undefined
     const hold = result.tests.find((check) => check.id === "console-host")?.reason
     const selection =
       result.status === "test-todo" && result.attempt.scope === "none" && !isEnvironmentGroup(result.featureId)
@@ -224,10 +217,9 @@ export function publicResults(projection: SelectedProjection, subjects: Readonly
         : undefined
     // Scheduling facts explain an untouched row without presenting unreviewed callback evidence.
     const reason =
-      publicSourceAnswerPendingLabel(result.reason) ??
-      (selection && !selection.ids.includes(result.featureId)
+      selection && !selection.ids.includes(result.featureId)
         ? "Not selected for this collection; no test was attempted."
-        : sourceLabel)
+        : undefined
     const mapped: PublicProbeResult = {
       featureId: result.featureId,
       status: result.status,

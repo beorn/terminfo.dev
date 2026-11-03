@@ -1,5 +1,4 @@
 import { PROBE_STATUSES } from "./types.ts"
-import { SOURCE_ANSWER_PENDING_LABELS, sourceAnswerForRef, type SourceAnswerResolution } from "./source-answers.ts"
 import { createHash } from "node:crypto"
 import type { ProbeTestInput } from "./types.ts"
 import type {
@@ -24,8 +23,6 @@ import type {
   LibProbeSource,
   TermProbeSource,
 } from "./types.ts"
-import { REPLY_PATH_AUDITS, replyPathAuditFor } from "./reply-path-audit.ts"
-import { NATIVE_HOST_AUDITS } from "./native-host-audit.ts"
 import { evidenceRuntimeIdentity } from "./runtime-identity.ts"
 
 export const ADAPTER_SOURCE_AUDITS = {
@@ -370,23 +367,20 @@ export function parserStateResult(
   if (sourceReviewReason !== undefined && pass === true) {
     throw new Error("A positive parser state cannot require source review")
   }
-  const sourceReview = sourceReviewReason !== undefined
+  // A former source-negative verdict: source code never grades a probe (@cto 9fad23d7, #32246).
+  if (sourceReviewReason !== undefined) return notTestedResult(NO_SAME_PATH_CONTROL, state)
   const response = JSON.stringify(state)
   const assertions: NonNullable<ProbeCallbackResult["assertions"]> | undefined =
-    pass === null && !sourceReview
+    pass === null
       ? undefined
       : [{ assertionType, kind: pass ? "positive" : "negative", expected, observed: response }]
   return {
     pass: pass === true,
     response,
     ...(note && { note }),
-    ...(sourceReview && {
-      criterionBranch: SOURCE_NEGATIVE_REVIEW,
-      tests: [{ id: "review", status: "test-todo" as const, reason: sourceReviewReason }],
-    }),
     observation: {
-      outcome: sourceReview || pass === null ? "inconclusive" : pass ? "supported" : "unsupported",
-      ...((sourceReview || pass === null) && { reason: "insufficient-evidence" as const }),
+      outcome: pass === null ? "inconclusive" : pass ? "supported" : "unsupported",
+      ...(pass === null && { reason: "insufficient-evidence" as const }),
       assertionType,
       ...(note && { note }),
     },
@@ -414,6 +408,12 @@ export function notTestedResult(noObservable: string, state: object): ProbeCallb
 
 export const SOURCE_NEGATIVE_REVIEW = "source-negative-review"
 export const SEMANTIC_PROMPT_SOURCE_REVIEW = "semantic-prompt-source-review"
+/**
+ * The reason a former source-audit site records (@cto 9fad23d7, #32246): the probe ran and saw something, but no
+ * control in this run showed the same observation path can report the state, so the cell stays TEST TODO (rule 4).
+ * Source code never decides it; a probe owner adds the same-path control per feature.
+ */
+export const NO_SAME_PATH_CONTROL = "observation not decided: no same-path control in this run"
 
 /**
  * A criterion this context has no observable for: the same coverage record and raw state as
@@ -1266,7 +1266,7 @@ export function decrpmModeProbe(
     id,
     ...(verifySet ? { termNeedsDisposable: true as const } : { termWrites: "query" as const }),
     termAssertionType: "query_reply",
-    lib: termlessFn && ((ctx) => replyPathAudited(id, ctx, termlessFn)),
+    lib: termlessFn && zeroReplyUndecided(termlessFn),
     async term(ctx) {
       if (!verifySet) return decrpmResult(await queryDecrpm(ctx, modeNum), modeNum)
       const snapshot = await queryDecrpm(ctx, modeNum)
@@ -1781,8 +1781,12 @@ export function probe(
   term: ((ctx: TermProbeSource) => Promise<ProbeCallbackResult>) | null,
   termAssertionType?: AssertionType | null,
 ): ProbeDefinition {
-  const audited = lib && ((ctx: LibProbeSource) => replyPathAudited(id, ctx, lib))
-  return { id, lib: audited, term, ...(termAssertionType !== undefined ? { termAssertionType } : {}) }
+  return {
+    id,
+    lib: lib && zeroReplyUndecided(lib),
+    term,
+    ...(termAssertionType !== undefined ? { termAssertionType } : {}),
+  }
 }
 
 export const REPLY_PATH_AUDIT_REVIEW = "reply-path-audit-review"
@@ -1800,114 +1804,6 @@ export const SOURCE_ONLY_NEGATIVE_REVIEW_BRANCHES: ReadonlySet<string> = new Set
   SOURCE_NEGATIVE_REVIEW,
   REPLY_PATH_AUDIT_REVIEW,
 ])
-
-/** Audited source entries have one home; their paths are repository-relative identities, not checkout locations. */
-export const SOURCE_TREE_AUDITS = {
-  vterm: {
-    resolvedPath: "vendor/vterm/packages/vterm/src/index.ts",
-    runtimeFormat: "js",
-    engineVersion: "0.10.1",
-    repository: "git@github.com:beorn/vterm.git",
-    treeOid: "e9d67d4b4ba7cb4caf0d0824b3b272c10e4b229e",
-  },
-} as const
-
-export function sourceTreeDrift(
-  identity: LibProbeSource["runtimeIdentity"],
-  expected: (typeof SOURCE_TREE_AUDITS)[keyof typeof SOURCE_TREE_AUDITS],
-  state: object = {},
-): ProbeCallbackResult | undefined {
-  if (
-    identity?.kind !== "js" ||
-    identity.runtimeFormat !== expected.runtimeFormat ||
-    identity.resolvedPath !== expected.resolvedPath ||
-    identity.integrity.kind !== "source" ||
-    identity.integrity.repository !== expected.repository ||
-    identity.engineVersion !== expected.engineVersion ||
-    identity.integrity.treeOid === expected.treeOid
-  ) {
-    return undefined
-  }
-  return {
-    pass: false,
-    response: JSON.stringify({
-      expectedTreeOid: expected.treeOid,
-      readTreeOid: identity.integrity.treeOid,
-      ...state,
-    }),
-    tests: [
-      {
-        id: "criterion",
-        status: "test-failure",
-        reason: `source identity drift: expected ${expected.treeOid}, read ${identity.integrity.treeOid}`,
-      },
-    ],
-  }
-}
-
-const VTERM_GEOMETRY_REVISIONS: readonly string[] = [
-  "67dd3960746766ed47e2bb4b2ced6503a78549cc",
-  "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
-]
-
-/**
- * The geometry gate's identity miss: the audited subject loaded at another source identity. The disposition stays
- * the measured result; only its sentence names both identities, never the writer default (#32060, @cto 32ad122f).
- */
-function vtermGeometryIdentityMiss(
-  measured: ProbeCallbackResult,
-  loaded: { engineVersion: string; revision: string; treeOid: string; cleanTree: boolean },
-): ProbeCallbackResult {
-  const side = (identity: { engineVersion: string; revision: string; treeOid: string }) =>
-    `vterm ${identity.engineVersion} ${identity.revision.slice(0, 12)} tree ${identity.treeOid.slice(0, 12)}`
-  const pinned = VTERM_GEOMETRY_REVISIONS.map((revision) =>
-    side({
-      engineVersion: SOURCE_TREE_AUDITS.vterm.engineVersion,
-      revision,
-      treeOid: SOURCE_TREE_AUDITS.vterm.treeOid,
-    }),
-  ).join(" or ")
-  const note = `review pinned to ${pinned}; loaded ${side(loaded)}${loaded.cleanTree ? "" : " dirty"}; no review applies at this identity`
-  if (!("observation" in measured) || measured.observation === undefined) {
-    throw new Error("vterm geometry identity miss requires the measured inconclusive observation")
-  }
-  return { ...measured, observation: { ...measured.observation, note } }
-}
-
-/** The two geometry surfaces share their identity qualifier, retaining their own query and zero-reply checks. */
-export function vtermGeometryReview(
-  ctx: LibProbeSource,
-  zeroGeometry: boolean,
-  evidence: { query: string; raw: string; noObservable: string; sourceCitation: string },
-  measured: ProbeCallbackResult,
-): ProbeCallbackResult | undefined {
-  const identity = ctx.runtimeIdentity
-  const drift = sourceTreeDrift(identity, SOURCE_TREE_AUDITS.vterm, { query: evidence.query, raw: evidence.raw })
-  if (drift) return drift
-  if (
-    !zeroGeometry ||
-    identity?.kind !== "js" ||
-    identity.runtimeFormat !== "js" ||
-    identity.resolvedPath !== SOURCE_TREE_AUDITS.vterm.resolvedPath ||
-    identity.integrity.kind !== "source" ||
-    identity.integrity.repository !== SOURCE_TREE_AUDITS.vterm.repository
-  ) {
-    return undefined
-  }
-  if (
-    !identity.integrity.cleanTree ||
-    !VTERM_GEOMETRY_REVISIONS.includes(identity.integrity.revision) ||
-    identity.integrity.treeOid !== SOURCE_TREE_AUDITS.vterm.treeOid
-  ) {
-    return vtermGeometryIdentityMiss(measured, { engineVersion: identity.engineVersion, ...identity.integrity })
-  }
-  return reviewResult(
-    "headless-geometry-review",
-    "Required independent review of the audited headless context and retained zero geometry reply pending",
-    evidence.noObservable,
-    { query: evidence.query, raw: evidence.raw, sourceCitation: evidence.sourceCitation },
-  )
-}
 
 /**
  * The qualified WASM artifact per libvterm history cohort, keyed as in ADAPTER_SOURCE_AUDITS. A rebuilt adapter
@@ -1957,16 +1853,10 @@ export function libvtermHistoryReview(ctx: LibProbeSource): ProbeCallbackResult 
       ],
     }
   }
-  return reviewResult(
-    HEADLESS_OBSERVABLE_REVIEW,
-    `libvterm v${artifact.engineVersion} exposes no retained scrollback history count; history belongs to an embedding application`,
-    "retained scrollback history count",
-    {
-      sourceCitation:
-        cohort === "libvterm712298af"
-          ? "Termless 2f73fc28027b7d483e504e08edc64d1837935816 packages/libvterm/src/backend.ts:432-444 getScrollback reports the screen extent, not retained history; packages/libvterm/build/flat-api.c:199-210 installs only property observer callbacks, with no history store callbacks; raw libvterm 9d6d2112335080312ef8c36667fa717ded4f7daf include/vterm.h:541-543 and src/screen.c:208-226,676-681,830-837 hand history rows to the embedding application"
-          : "Termless 6939d82b84a6bf2989dd0650329779e324790dda packages/libvterm/src/backend.ts:429-445 getScrollback reports the screen extent, not retained history; raw libvterm 9d6d2112335080312ef8c36667fa717ded4f7daf include/vterm.h:541-543 and src/screen.c:208-226,676-681,830-837 hand history rows to the embedding application",
-    },
+  // No source review decides this cell any more (#32246): the adapter offers no history reader, so it stays TEST TODO.
+  return notTestedResult(
+    `libvterm v${artifact.engineVersion} adapter exposes no retained scrollback history count`,
+    { engineVersion: identity.engineVersion, adapterVersion: identity.adapterVersion },
   )
 }
 
@@ -1974,121 +1864,55 @@ export function libvtermHistoryReview(ctx: LibProbeSource): ProbeCallbackResult 
 export const HARNESS_INCOMPLETE_TEST = "harness"
 
 /**
- * Apply the reply-path audit table (reply-path-audit.ts) to one library probe; it decides nothing about identity,
- * support or testability. The probe keeps only the measured gate: the audited query was sent and every matching
- * capture of it returned zero bytes. Observed buffers and replies keep their measured result. Silence on an
- * unaudited binary retains the exact missing-source reason; a known artifact without a feature row uses the
- * ordinary criterion. The kept answer is applied at the writer's existing finalizeCollectedDraft seam, from the
- * retained source-answer table (@cto de41833e condition 1).
+ * A library probe on a loaded artifact whose every reply capture returned zero bytes has no same-path control in
+ * this run, so silence alone never grades it (@cto 9fad23d7, #32246): the cell is TEST TODO. Observed buffers,
+ * replies and callbacks that already carry a pass, a not-tested record or a TEST TODO keep their measured result.
  */
-function replyPathAudited(
-  id: string,
-  ctx: LibProbeSource,
+function zeroReplyUndecided(
   lib: (ctx: LibProbeSource) => ProbeCallbackResult,
-): ProbeCallbackResult {
-  const entry = replyPathAuditFor(ctx, id)
-  const identity = ctx.runtimeIdentity
-  const missingBinary =
-    entry === undefined &&
-    identity !== undefined &&
-    "loadedBinary" in identity &&
-    !REPLY_PATH_AUDITS.has(identity.loadedBinary.sha256) &&
-    !NATIVE_HOST_AUDITS.has(identity.loadedBinary.sha256)
-      ? identity.loadedBinary.sha256
-      : undefined
-  if (entry === undefined && missingBinary === undefined) return lib(ctx)
-  const captures: { text: string; reply: string }[] = []
-  const matches = (text: string) =>
-    entry === undefined ||
-    (entry.audit.matches === "prefix" ? text.startsWith(entry.audit.query) : text === entry.audit.query)
-  const record = (text: string, reply: string) => {
-    if (matches(text)) captures.push({ text, reply })
-  }
-  const recorded = new Proxy(ctx, {
-    get(target, key): unknown {
-      if (key === "queryWithSentinelOutcome") {
-        const query = target.queryWithSentinelOutcome
-        if (query === undefined) return undefined
-        return (text: string, pattern: RegExp) => {
-          const outcome = query.call(target, text, pattern)
-          record(text, outcome.raw)
-          return outcome
+): (ctx: LibProbeSource) => ProbeCallbackResult {
+  return (ctx) => {
+    const identity = ctx.runtimeIdentity
+    if (identity === undefined || !("loadedBinary" in identity)) return lib(ctx)
+    const captures: { text: string; reply: string }[] = []
+    const recorded = new Proxy(ctx, {
+      get(target, key): unknown {
+        if (key === "queryWithSentinelOutcome") {
+          const query = target.queryWithSentinelOutcome
+          if (query === undefined) return undefined
+          return (text: string, pattern: RegExp) => {
+            const outcome = query.call(target, text, pattern)
+            captures.push({ text, reply: outcome.raw })
+            return outcome
+          }
         }
-      }
-      if (key !== "feedCapture") {
-        const value: unknown = Reflect.get(target, key, target)
-        return value
-      }
-      return (text: string) => {
-        const reply = target.feedCapture(text)
-        record(text, reply)
-        return reply
-      }
-    },
-  })
-  const measured = lib(recorded)
-  if (captures.length === 0 || captures.some(({ reply }) => reply.length > 0)) return measured
-  if (entry === undefined) {
+        if (key !== "feedCapture") {
+          const value: unknown = Reflect.get(target, key, target)
+          return value
+        }
+        return (text: string) => {
+          const reply = target.feedCapture(text)
+          captures.push({ text, reply })
+          return reply
+        }
+      },
+    })
+    const measured = lib(recorded)
     if (
+      captures.length === 0 ||
+      captures.some(({ reply }) => reply.length > 0) ||
+      measured.pass ||
       measured.observation?.assertionType === "buffer_state" ||
       measured.notTested ||
       measured.tests?.some((test) => test.status === "test-todo")
     ) {
       return measured
     }
-    // The no-entry/no-missing-binary branch returned before running the callback above.
-    const reason = `no source audit for binary ${(missingBinary as string).slice(0, 12)}`
-    return {
-      pass: false,
-      response: measured.response,
-      note: reason,
-      ...(measured.criterionBranch && { criterionBranch: measured.criterionBranch }),
-      ...(measured.hostRecipeCauses && { hostRecipeCauses: measured.hostRecipeCauses }),
-      tests: [{ id: "criterion", status: "test-todo", reason }],
-    }
-  }
-  const gate = replyPathMeasuredGate(id, entry, captures, measured)
-  return measured.hostRecipeCauses ? { ...gate, hostRecipeCauses: measured.hostRecipeCauses } : gate
-}
-
-/**
- * The cell records which audit key fired, the query it matched and the zero-byte measurement. It carries no status
- * and no citation: the kept answers decide whether that measurement reads Untestable (the artifact has no reply
- * writer) or Unsupported (its parser rejects the query), and the writer applies that answer (@cto de41833e
- * condition 1). Reading the table's per-row verdict here would decide the cell twice.
- */
-function replyPathMeasuredGate(
-  id: string,
-  entry: NonNullable<ReturnType<typeof replyPathAuditFor>>,
-  captures: readonly { text: string; reply: string }[],
-  measured: ProbeCallbackResult,
-): ProbeCallbackResult {
-  const { audit, ...identityKey } = entry
-  const replyPathAudit = {
-    ...identityKey,
-    featureId: id,
-    query: audit.query,
-    ...(audit.matches !== undefined && { matches: audit.matches }),
-    captures: captures.length,
-    replyBytes: 0,
-  }
-  const state = {
-    replyPathAudit,
-    measuredResponse: measured.response ?? null,
-    ...(audit.matches === "prefix" && { matchedQueries: captures.map(({ text }) => text) }),
-  }
-  return {
-    pass: false,
-    response: JSON.stringify(state),
-    note: `${id}: measured a zero-byte reply to the audited query`,
-    criterionBranch: REPLY_PATH_AUDIT_REVIEW,
-    tests: [
-      {
-        id: "review",
-        status: "test-todo",
-        reason: `${id}: the audited query ${JSON.stringify(audit.query)} was sent and every matching capture returned zero bytes (${captures.length}); the kept source answer decides this cell`,
-      },
-    ],
+    return notTestedResult(NO_SAME_PATH_CONTROL, {
+      queries: captures.map(({ text }) => text),
+      replyBytes: 0,
+      measuredResponse: measured.response ?? null,
+    })
   }
 }
 
@@ -2274,57 +2098,10 @@ export function initializeRunDraft(input: {
 }
 
 /** Fold only the tests still required by the frozen probe's explicitly selected criterion branch. */
-export function finalizeProbeResult(
-  input: Omit<ProbeResult, "status">,
-  sourceAnswer?: SourceAnswerResolution,
-): ProbeResult {
-  if (sourceAnswer && sourceAnswer.kind !== "none" && input.tests.some((test) => test.id === "review")) {
-    const ref = sourceAnswer.rowKeys[0]
-    if (!ref) throw new Error(`Source answer for ${input.featureId} has no row key`)
-    const resolved = sourceAnswer.kind === "answer" ? sourceAnswer.rows[0] : undefined
-    if (sourceAnswer.kind === "answer" && (!resolved || resolved.featureId !== input.featureId)) {
-      throw new Error(`Source answer differs from feature ${input.featureId}`)
-    }
-    const originalReason = sourceAnswer.kind === "answer" ? sourceAnswer.answers[0]?.originals[0]?.reason : undefined
-    // A disputed cell names every kept original, never a pick by order or kind (@cto 85a9cfd9).
-    const disputed =
-      sourceAnswer.kind === "pending" && sourceAnswer.reason === SOURCE_ANSWER_PENDING_LABELS.disagree
-        ? (sourceAnswer.answers ?? [])
-            .flatMap((answer) => answer.originals.map((original) => `${original.reviewer}: ${original.reason}`))
-            .join(" | ")
-        : undefined
-    const reason =
-      sourceAnswer.kind === "answer"
-        ? originalReason && `${originalReason}${sourceAnswer.label ? `; ${sourceAnswer.label}` : ""}`
-        : `${sourceAnswer.reason}: ${sourceAnswer.rowKeys.join(", ")}${disputed ? `; kept originals: ${disputed}` : ""}`
-    if (!reason) throw new Error(`Source answer for ${input.featureId} has no reason`)
-    const otherFailure = input.tests.some((test) => test.id !== "review" && test.status === "test-failure")
-    input = {
-      ...input,
-      reviewRef: ref,
-      ...(!otherFailure && { reason }),
-      tests: input.tests.map((test) =>
-        test.id !== "review"
-          ? test
-          : {
-              ...test,
-              status:
-                sourceAnswer.kind === "answer"
-                  ? sourceAnswer.status
-                  : sourceAnswer.reason === SOURCE_ANSWER_PENDING_LABELS.unresolvable
-                    ? test.status
-                    : "test-todo",
-              attempt: sourceAnswer.kind === "answer" ? input.attempt : test.attempt,
-              reviewRef: ref,
-              reason,
-            },
-      ),
-    }
-  }
-  if (!sourceAnswer || sourceAnswer.kind === "none") {
-    for (const ref of [input.reviewRef, ...input.tests.map((test) => test.reviewRef)]) {
-      if (ref !== undefined) sourceAnswerForRef(ref)
-    }
+export function finalizeProbeResult(input: Omit<ProbeResult, "status">): ProbeResult {
+  // A probe result is graded from this run's observation alone; a stored source answer never decides it (#32246).
+  if (input.reviewRef !== undefined || input.tests.some((test) => test.reviewRef !== undefined)) {
+    throw new Error(`${input.featureId} carries a source-answer reference; source answers no longer grade (#32246)`)
   }
   const tests = input.tests
   const failed = tests.find((test) => test.status === "test-failure")
