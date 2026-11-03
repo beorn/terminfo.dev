@@ -82,6 +82,9 @@ one calibration witnesses the grid origin and every cell pitch, then confirms id
 The batch carries that measured origin and geometry into every cell crop; changing screen content cannot move them.
 An unmeasurable witness or changed geometry is recorded as a named refusal, never replaced by frame-colour centring.
 Every confirmation compares consecutive complete frames under one fixed deadline.
+Calibration tries basic background colors, then reverse-video spaces if basic paint is not observed;
+the chosen form and attempt outcomes are retained, and stripe colors come from the captured pixels.
+Both forms missing leaves a named no-capture outcome; complete geometry and restoration checks still apply.
 For a verified collector-launched disposable session on Darwin or Linux, including a Linux mux,
 calibration explicitly sets cursor visibility before painting and restores that set state.
 It does not infer the prior state from a launch default or DA1. The retained raster basis names the

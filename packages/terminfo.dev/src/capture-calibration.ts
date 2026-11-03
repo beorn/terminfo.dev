@@ -1,11 +1,6 @@
 import type { CapturePixelGeometry, CaptureRectangle, TermProbeSource } from "@terminfo/probe-defs"
 import type { CapturedFrame, NamedTextOrigin } from "./capture-core.ts"
 
-const BLANK = [0, 0, 0] as const
-const WITNESS = [255, 0, 255] as const
-const CALIBRATION = [255, 0, 0] as const
-const background = (rgb: readonly number[]) => `\x1b[48;2;${rgb.join(";")}m`
-
 function refusal(message: string, cause?: unknown): Error {
   const error = new Error(message, { cause })
   error.name = "CaptureCalibrationRefused"
@@ -312,6 +307,7 @@ function scanlineSizes(
   axis: "columns" | "rows",
   line: number,
   count: number,
+  colors: readonly [readonly number[], readonly number[]],
 ): number[] {
   const edges = [0]
   let previous: boolean | undefined
@@ -319,8 +315,8 @@ function scanlineSizes(
     const x = grid.x + (scan.horizontal ? position : line)
     const y = grid.y + (scan.horizontal ? line : position)
     const offset = (y * frame.width + x) * 4
-    const red = rgbAt(frame, offset, CALIBRATION)
-    if (!red && !rgbAt(frame, offset, BLANK)) {
+    const red = rgbAt(frame, offset, colors[0])
+    if (!red && !rgbAt(frame, offset, colors[1])) {
       throw refusal(`Capture calibration ${axis}: ambiguous or non-solid cell paint at ${x},${y}`)
     }
     if (position === 0 && !red) {
@@ -382,6 +378,7 @@ function validatePaint(
   pitch: number,
   mask: ReadonlySet<number>,
   lead: 0 | 1,
+  colors: readonly [readonly number[], readonly number[]],
 ): void {
   for (let line = 0; line < scan.across; line++) {
     for (let position = 0; position < scan.length; position++) {
@@ -394,8 +391,8 @@ function validatePaint(
       // boundary is offset by its one pixel.
       const cell = Math.min(count - 1, Math.floor((position + lead) / pitch))
       const expectsCalibration = cell % 2 === 0
-      const calibration = rgbAt(frame, offset, CALIBRATION)
-      const blank = rgbAt(frame, offset, BLANK)
+      const calibration = rgbAt(frame, offset, colors[0])
+      const blank = rgbAt(frame, offset, colors[1])
       if (calibration === expectsCalibration && (calibration || blank)) continue
       const painted = calibration ? "calibration paint" : blank ? "blank paint" : "neither calibration nor blank"
       throw refusal(
@@ -418,6 +415,7 @@ function stripeSize(
   count: number,
   filletMask: ReadonlySet<number>,
   lead: 0 | 1,
+  colors: readonly [readonly number[], readonly number[]],
 ): { pitch: number; clip: number } {
   validateFrame(frame)
   validateFrame(baseline)
@@ -428,7 +426,7 @@ function stripeSize(
   let reference: number[] | undefined
   for (let line = 0; line < scan.across; line++) {
     if (scanlineHasMask(grid, scan, line, filletMask, frame.width)) continue
-    const sizes = scanlineSizes(frame, grid, scan, axis, line, count)
+    const sizes = scanlineSizes(frame, grid, scan, axis, line, count, colors)
     if (!reference) {
       reference = sizes
       continue
@@ -450,7 +448,7 @@ function stripeSize(
   // a line beside an already-full first stripe still refuses as a fractional pitch.
   const sizes = reference.map((size, index) => (index === 0 ? size + lead : size))
   const { pitch, clip } = acceptPitch(sizes, axis)
-  validatePaint(frame, grid, scan, axis, count, pitch, filletMask, lead)
+  validatePaint(frame, grid, scan, axis, count, pitch, filletMask, lead, colors)
   return { pitch, clip }
 }
 
@@ -511,6 +509,9 @@ export async function calibrateCaptureOrigin({
     const deadline = Date.now() + timeoutMs
     let previous: CapturedFrame | undefined
     for (;;) {
+      if (Date.now() >= deadline) {
+        throw paintTimeout(`Capture calibration ${label}: paint witness timeout; no confirmed current frame`)
+      }
       const current = await capture(previous ? `${label} confirmation` : label, deadline)
       if ((!changedFrom || !equal(current, changedFrom)) && accepts(current) && previous && equal(previous, current)) {
         return current
@@ -523,13 +524,13 @@ export async function calibrateCaptureOrigin({
       }
     }
   }
-  const paintGrid = (stage: "solid" | "columns" | "rows") => {
+  const paintGrid = (stage: "solid" | "columns" | "rows", form: "basic" | "reverse") => {
     let text = ""
     for (let row = 0; row < ctx.rows; row++) {
       text += `\x1b[${row + 1};1H`
       for (let col = 0; col < ctx.cols; col++) {
-        const rgb = stage === "solid" ? WITNESS : (stage === "columns" ? col : row) % 2 === 0 ? CALIBRATION : BLANK
-        text += `${background(rgb)} `
+        const on = stage === "solid" || (stage === "columns" ? col : row) % 2 === 0
+        text += `${form === "basic" ? (stage === "solid" ? "\x1b[45m" : on ? "\x1b[41m" : "\x1b[40m") : on ? "\x1b[7m" : "\x1b[27m"} `
       }
     }
     ctx.write(text)
@@ -543,32 +544,50 @@ export async function calibrateCaptureOrigin({
     ctx.write("\x1b[?25l\x1b[0m\x1b[2J\x1b[H")
     baseline = await confirmedFrame("before grid paint", () => true)
     const before = baseline
-    for (let offset = 0; offset < baseline.rgba.length; offset += 4) {
-      if (rgbAt(baseline, offset, WITNESS)) {
+    let solid: CapturedFrame | undefined
+    let form: "basic" | "reverse" = "basic"
+    const attempts: string[] = []
+    let lastTimeout: Error | undefined
+    for (const candidate of ["basic", "reverse"] as const) {
+      ctx.write("\x1b[0m")
+      paintGrid("solid", candidate)
+      try {
+        solid = await confirmedFrame(`solid grid paint ${candidate}`, () => true, baseline)
+        observedPaint = solid
+        form = candidate
+        attempts.push(`${candidate}: observed`)
+        break
+      } catch (cause) {
+        if (!(cause instanceof Error) || cause.name !== "CapturePaintTimeout") throw cause
+        lastTimeout = cause
+        attempts.push(`${candidate}: not observed`)
+      }
+    }
+    if (!solid) throw refusal(`Capture calibration paint not observed: ${attempts.join("; ")}`, lastTimeout)
+    // The most frequent changed RGB is a candidate only; the existing complete rectangle,
+    // outside-grid and stripe checks still prove its geometry or refuse it.
+    const colorsByCount = new Map<string, number>()
+    for (let offset = 0; offset < solid.rgba.length; offset += 4) {
+      if (
+        solid.rgba[offset] === before.rgba[offset] &&
+        solid.rgba[offset + 1] === before.rgba[offset + 1] &&
+        solid.rgba[offset + 2] === before.rgba[offset + 2]
+      ) {
+        continue
+      }
+      const key = `${solid.rgba[offset]},${solid.rgba[offset + 1]},${solid.rgba[offset + 2]}`
+      colorsByCount.set(key, (colorsByCount.get(key) ?? 0) + 1)
+    }
+    const witnessKey = [...colorsByCount].sort((a, b) => b[1] - a[1])[0]?.[0]
+    if (!witnessKey) throw refusal("Capture calibration solid grid: no changed pixels")
+    const witness = witnessKey.split(",").map(Number)
+    for (let offset = 0; offset < before.rgba.length; offset += 4) {
+      if (rgbAt(before, offset, witness)) {
         throw new Error("Capture calibration grid witness colour was already visible before the requested paint")
       }
     }
-    paintGrid("solid")
-    let solid: CapturedFrame
-    try {
-      solid = await confirmedFrame(
-        "solid grid paint",
-        (frame) => {
-          for (let offset = 0; offset < frame.rgba.length; offset += 4) {
-            if (rgbAt(frame, offset, WITNESS)) {
-              observedPaint = frame
-              return true
-            }
-          }
-          return false
-        },
-        baseline,
-      )
-    } catch (cause) {
-      if (!(cause instanceof Error) || cause.name !== "CapturePaintTimeout" || observedPaint) throw cause
-      throw refusal(`Capture calibration paint not observed: ${cause.message}`, cause)
-    }
-    const { grid, fillets } = rectangle(solid, (offset) => rgbAt(solid, offset, WITNESS))
+    const solidFrame = solid
+    const { grid, fillets } = rectangle(solidFrame, (offset) => rgbAt(solidFrame, offset, witness))
     const filletMask = new Set<number>()
     for (const fillet of fillets) for (const key of fillet.holes) filletMask.add(key)
     const outsideUnchanged = (frame: CapturedFrame): EdgeBlend[] => {
@@ -602,19 +621,26 @@ export async function calibrateCaptureOrigin({
       const admitted = solidBlends.some((blend) => blend.edge === edge) && own.some((blend) => blend.edge === edge)
       return admitted ? (own.find((blend) => blend.edge === edge) ?? null) : null
     }
-    paintGrid("columns")
+    paintGrid("columns", form)
     // The column paint must be present somewhere in the grid, not at its top-left pixel: a rounded
     // window's corner fillets sit exactly there, so that pixel stays black in every stage.
-    const showsCalibrationPaint = (frame: CapturedFrame) => {
-      for (let y = grid.y; y < grid.y + grid.height; y++) {
-        for (let x = grid.x; x < grid.x + grid.width; x++) {
-          const key = y * frame.width + x
-          if (!filletMask.has(key) && rgbAt(frame, key * 4, CALIBRATION)) return true
+    const columns = await confirmedFrame("column edge paint", () => true, solid)
+    // Determine both stripe colors from an unmasked complete scanline; the existing
+    // full-frame validation below rejects any extra or misplaced colors.
+    let colors: [number[], number[]] | undefined
+    for (let y = grid.y; y < grid.y + grid.height && !colors; y++) {
+      if (scanlineHasMask(grid, axisScan(grid, "columns"), y - grid.y, filletMask, columns.width)) continue
+      const first = (y * columns.width + grid.x) * 4
+      const paint = Array.from(columns.rgba.slice(first, first + 3))
+      for (let x = grid.x + 1; x < grid.x + grid.width; x++) {
+        const offset = (y * columns.width + x) * 4
+        if (!rgbAt(columns, offset, paint)) {
+          colors = [paint, Array.from(columns.rgba.slice(offset, offset + 3))]
+          break
         }
       }
-      return false
     }
-    const columns = await confirmedFrame("column edge paint", showsCalibrationPaint, solid)
+    if (!colors) throw refusal("Capture calibration columns: distinct stripe colors not witnessed")
     const columnBlends = outsideUnchanged(columns)
     const columnLine = leadingLine("columns", columnBlends)
     const columnLead: 0 | 1 = columnLine === null ? 0 : 1
@@ -626,13 +652,23 @@ export async function calibrateCaptureOrigin({
       ctx.cols,
       filletMask,
       columnLead,
+      colors,
     )
-    paintGrid("rows")
-    const rows = await confirmedFrame("row edge paint", showsCalibrationPaint, columns)
+    paintGrid("rows", form)
+    const rows = await confirmedFrame("row edge paint", () => true, columns)
     const rowBlends = outsideUnchanged(rows)
     const rowLine = leadingLine("rows", rowBlends)
     const rowLead: 0 | 1 = rowLine === null ? 0 : 1
-    const { pitch: cellHeight, clip: rowClip } = stripeSize(rows, baseline, grid, "rows", ctx.rows, filletMask, rowLead)
+    const { pitch: cellHeight, clip: rowClip } = stripeSize(
+      rows,
+      baseline,
+      grid,
+      "rows",
+      ctx.rows,
+      filletMask,
+      rowLead,
+      colors,
+    )
     // The reported text area is the pitch times the count, not the visible length: a clipped last
     // stripe is shorter than a cell on screen but still occupies a whole cell of the text area.
     const measured = { cellWidth, cellHeight, textWidth: cellWidth * ctx.cols, textHeight: cellHeight * ctx.rows }
@@ -686,7 +722,7 @@ export async function calibrateCaptureOrigin({
       origin: { x: authored.x, y: authored.y },
       pixelGeometry: measured,
       ...(columnClip > 0 || rowClip > 0 ? { visible: { width: authored.width, height: authored.height } } : {}),
-      basis: `collector complete witnessed raster: ${ctx.cols} columns x ${ctx.rows} rows, every unmasked scanline measures ${cellWidth}x${cellHeight}, visible ${authored.width}x${authored.height} grid at ${authored.x},${authored.y}${filletTrace}${blendTrace}${leadTrace}${clipTrace}; current paints and identical restore confirmed${collectorLaunched ? "; owned disposable session cursor explicitly set before calibration and restored set" : ""}`,
+      basis: `collector complete witnessed raster: ${ctx.cols} columns x ${ctx.rows} rows, every unmasked scanline measures ${cellWidth}x${cellHeight}, visible ${authored.width}x${authored.height} grid at ${authored.x},${authored.y}${filletTrace}${blendTrace}${leadTrace}${clipTrace}; paint ${form} (${attempts.join(", ")}); current paints and identical restore confirmed${collectorLaunched ? "; owned disposable session cursor explicitly set before calibration and restored set" : ""}`,
     }
   } catch (cause) {
     failure = cause
