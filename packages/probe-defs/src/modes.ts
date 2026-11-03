@@ -590,7 +590,12 @@ function xtModeSaveHeadless(ctx: LibProbeSource, operation: "push" | "pop"): Pro
     if (stayed(control) && stayed(onControl)) {
       return operation === "pop"
         ? parserStateResult(false, expected, state, "restore returned DECAWM off after on was saved")
-        : parserStateResult(null, expected, state, "restore returned DECAWM off whatever was saved, so no save was observed")
+        : parserStateResult(
+            null,
+            expected,
+            state,
+            "restore returned DECAWM off whatever was saved, so no save was observed",
+          )
     }
     const verdict = stackVerdict(operation, pop, push)
     const note =
