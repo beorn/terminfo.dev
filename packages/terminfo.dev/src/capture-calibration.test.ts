@@ -700,11 +700,15 @@ test("two alphas on one line refuse", async () => {
   await expect(run.promise).rejects.toThrow(/paint changed pixels outside the witnessed grid/)
 })
 
-test("a second line outside the same edge refuses", async () => {
+test("a second line outside the same edge names unavailable calibration after confirmed restoration", async () => {
   const solid = blendTop(rasterFrame("solid"))
   solid.rgba.set([217, 0, 217, 255], (0 * 12 + 5) * 4)
   const run = calibration({ frames: { "solid grid paint": [solid, solid] } })
-  await expect(run.promise).rejects.toThrow(/paint changed pixels outside the witnessed grid/)
+  await expect(run.promise).rejects.toMatchObject({
+    name: "CaptureCalibrationRefused",
+    message: expect.stringMatching(/paint changed pixels outside the witnessed grid/),
+  })
+  expect(run.reads.get("restore grid paint")).toBe(2)
 })
 
 test("corner fillets and the blend line together still calibrate", async () => {

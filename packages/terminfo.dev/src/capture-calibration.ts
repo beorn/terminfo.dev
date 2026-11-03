@@ -587,7 +587,7 @@ export async function calibrateCaptureOrigin({
           // exactly as the baseline frame had it even on an explained pixel.
           for (let channel = explained.has(y * frame.width + x) ? 3 : 0; channel < 4; channel++) {
             if (frame.rgba[offset + channel] !== before.rgba[offset + channel]) {
-              throw new Error("Capture calibration paint changed pixels outside the witnessed grid")
+              throw refusal("Capture calibration paint changed pixels outside the witnessed grid")
             }
           }
         }
