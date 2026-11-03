@@ -10145,6 +10145,66 @@
   {
     "subject": {
       "kind": "lib",
+      "id": "kitty",
+      "version": "0.49.2",
+      "os": "linux"
+    },
+    "featureId": "sgr.overline",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "https://github.com/kovidgoyal/kitty.git",
+            "commit": "b2cb871254fbdac19a085188813c8dfb258b95cd",
+            "path": "kitty/cursor.c",
+            "oid": "53ebceb98e7cb25e7db1c08b86d506b349f4036f"
+          },
+          {
+            "repository": "https://github.com/kovidgoyal/kitty.git",
+            "commit": "b2cb871254fbdac19a085188813c8dfb258b95cd",
+            "path": "kitty/line.h",
+            "oid": "0f24e8139b5becb7aed7ebda0af72c9dbd6f33aa"
+          },
+          {
+            "repository": "https://github.com/kovidgoyal/kitty.git",
+            "commit": "b2cb871254fbdac19a085188813c8dfb258b95cd",
+            "path": "kitty/data-types.h",
+            "oid": "84a333d2d8eb14eacdf729be68d5268b865df908"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/kitty/src/backend.ts",
+            "oid": "1b7367a9737d1292618ea34a1c451bf3273c3b35"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/kitty/build/bridge.py",
+            "oid": "ca46f3c261ccbdcfd9c3ada9949e2a0238cbcaac"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "source.31399-kitty-0.49.2-sgr.overline",
+            "reviewer": "@dev/2",
+            "reason": "sgr.overline: kitty 0.49.2 at b2cb8712 has no overline state. cursor_from_sgr kitty/cursor.c:89-142 and apply_sgr_to_cells :145-226 admit 0,1,2,3,4(+group),5,7,9,21,221,222,22,23,24,25,27,29,colour and decoration arms but no 53 and no 55, and an unknown parameter falls out of the switch silently. CellAttrs kitty/line.h:12-25 is decoration:3, bold, italic, reverse, strike, dim, blink, mark:2 plus 21 unallocated bits with no overline bit, and the cursor mirror kitty/data-types.h:264-269 carries no overline member. The pinned tree contains zero overline tokens. The Termless adapter is not the cause: the cell model carries overline and ghostty-native fills it end to end, while packages/kitty/src/backend.ts:207 emits overline: null unconditionally and the bridge cell record packages/kitty/build/bridge.py:20,:457 has no overline key. Cited source negative; no capture or probe run was used.",
+            "sources": [
+              "kitty b2cb871254fbdac19a085188813c8dfb258b95cd kitty/cursor.c git blob 53ebceb9 sha256 06a94a1ee208ba91f8083dac26c92c0d9d3c4e2ff81749974f47b18d94e17d46; kitty/line.h blob 0f24e813 sha256 06610034f2c3b2f72880f4dd2ad30b3a1f6da0f66bf1c9d17196ecf7c429e606",
+              "Extracted archive tree hashes to the native-mode-layout receipt sourceNarHash sha256-FstfBzwdh1z7Qy9zWDY7L7mpd5bxnypgqEzqeLe16fY=; kitty/data-types.h sha256 4009985e60726cf564be85938b4867aa0cbd8244bbdcf39237f6ffc300152f13 equals that receipt's headers entry",
+              "Termless 25089207e11420cf7a588987c1dc2683a45e8372 packages/kitty/src/backend.ts blob 1b7367a9 and build/bridge.py blob ca46f3c2; overline slot proven to work by packages/ghostty-native/src/backend.ts:195 with tests/backend.test.ts:82",
+              "Scope: @chief 18:20Z GO within existing overline home 31399; source audit by @dev/2, packet /hh/var/@dev2/31399-overline-store-vs-adapter-20261103.md"
+            ]
+          }
+        ]
+      }
+    ]
+  }
+,
+  {
+    "subject": {
+      "kind": "lib",
       "id": "libvterm",
       "version": "0.3.3",
       "os": "linux"
@@ -11124,6 +11184,66 @@
       }
     ]
   },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "libvterm",
+      "version": "0.3.3",
+      "os": "linux"
+    },
+    "featureId": "sgr.overline",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "https://github.com/neovim/libvterm.git",
+            "commit": "9d6d2112335080312ef8c36667fa717ded4f7daf",
+            "path": "src/pen.c",
+            "oid": "2227a6fcd33d509a20dfb3340273155986e3e69e"
+          },
+          {
+            "repository": "https://github.com/neovim/libvterm.git",
+            "commit": "9d6d2112335080312ef8c36667fa717ded4f7daf",
+            "path": "src/vterm_internal.h",
+            "oid": "e79d74be6f7552c2c208d3f48c715eef84591629"
+          },
+          {
+            "repository": "https://github.com/neovim/libvterm.git",
+            "commit": "9d6d2112335080312ef8c36667fa717ded4f7daf",
+            "path": "include/vterm.h",
+            "oid": "44e15023c0bd524b063385b25edbc33a52bfb410"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/libvterm/build/flat-api.c",
+            "oid": "17896892f427a04d7a9a963e7a3614c517a73ecc"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/libvterm/src/backend.ts",
+            "oid": "f0431b2b3b1824d3028e7a039d55278d2cddc0e8"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "source.31399-libvterm-0.3.3-sgr.overline",
+            "reviewer": "@dev/2",
+            "reason": "sgr.overline: libvterm 0.3.3 at 9d6d2112 has no overline state. The SGR dispatch loop in src/pen.c vterm_state_setpen :283-466 admits 0,1,3,4(+sub-parameter),5,7,8,9,10-19,21,22,23,24,25,27,28,29,colour and 73/74/75 arms but no 53 and no 55; an unknown code sets done=0 at :459-461 and is only logged at :465. struct VTermPen src/vterm_internal.h:39-55 and VTermScreenCellAttrs include/vterm.h:500-511 carry bold, underline:2, italic, blink, reverse, conceal, strike, font:4, small and baseline and no overline field, and VTermAttr include/vterm.h:234-250 enumerates twelve attributes with none overline. The tag contains zero overline tokens. The Termless adapter is not the cause and could not compensate: packages/libvterm/build/flat-api.c:241-247 forwards exactly the seven attributes the engine holds, while the cell model carries overline and ghostty-native fills it end to end; packages/libvterm/src/backend.ts:123 emits overline: null unconditionally. Cited source negative; no capture or probe run was used.",
+            "sources": [
+              "libvterm 9d6d2112335080312ef8c36667fa717ded4f7daf (tag v0.3.3) src/pen.c git blob 2227a6fc sha256 f97dde69a6e7e7f9c3a6fdb7575e965ef9a17077bf196609759f9f181982ca2b; src/vterm_internal.h blob e79d74be sha256 d283425a4bc343d351f858dfd32840320f25701fbbca06eb44d0d2040bf6e7e9; include/vterm.h blob 44e15023 sha256 07f78f27bc043e3791ede1fb61891400f06fd64c5c7cf38a92a02712fb18fe6b",
+              "Pin is the one packages/libvterm/build/build.sh declares (LIBVTERM_TAG v0.3.3, LIBVTERM_COMMIT 9d6d2112); a fresh clone of that tag reproduces the commit",
+              "Termless 25089207e11420cf7a588987c1dc2683a45e8372 packages/libvterm/build/flat-api.c blob 17896892 and src/backend.ts blob f0431b2b",
+              "Scope: @chief 18:20Z GO within existing overline home 31399; source audit by @dev/2, packet /hh/var/@dev2/31399-overline-store-vs-adapter-20261103.md"
+            ]
+          }
+        ]
+      }
+    ]
+  }
+,
   {
     "subject": {
       "kind": "lib",
