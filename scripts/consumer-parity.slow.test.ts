@@ -1572,10 +1572,8 @@ it("labels the headless Ghostty cores libghostty-vt and keeps Ghostty for the ap
 })
 
 it("does not name a subject with no current run on the site", () => {
-  // #30759 Slice A (@cto f1504b5c): the site renders the frozen suite only, so a subject with no
-  // current run gets no row and no run data. #30759 AC3 removed the historical reader, so a legacy
-  // run can no longer reach the resolver at all — the absence control below is the non-vacuity
-  // proof that a sealed current run for the same named subject IS named.
+  // A subject absent from the selected projection gets no row or run data. The paired positive
+  // control proves that a retained current run for the same named subject is named.
   const projection = structuredClone(currentResults.loadCurrentResults("").projection)
   const selection = vi.spyOn(currentResults, "loadCurrentResults").mockReturnValue({ projection })
   const warning = vi.spyOn(console, "warn").mockImplementation(() => {})
