@@ -2491,7 +2491,9 @@ describe("immutable pre-seal capture binding", () => {
       ).map((entry) => ({ ...entry, branch })),
     ),
   )("decides $branch only as untestable ($decision)", ({ decision: verdict, accepted, branch }) => {
-    expect([...UNTESTABLE_ONLY_REVIEW_BRANCHES]).toEqual([REPLY_PATH_AUDIT_REVIEW, HEADLESS_OBSERVABLE_REVIEW])
+    // A reply-path gate is not a missing-observable review: its kept answer decides, so only the headless
+    // observable branch stays untestable-only here (@cto de41833e); a gate refuses support where it is applied.
+    expect([...UNTESTABLE_ONLY_REVIEW_BRANCHES]).toEqual([HEADLESS_OBSERVABLE_REVIEW])
     const { draft, decision } = setup("NO", undefined, (draft) => {
       draft.results[0]!.criterionBranch = branch
     })

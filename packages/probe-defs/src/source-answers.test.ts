@@ -6,7 +6,13 @@
  */
 import { expect, it } from "vitest"
 import { finalizeProbeResult } from "./helpers.ts"
-import { parseSourceAnswerKey, resolveSourceAnswer, sourceAnswerKey, type SourceAnswer } from "./source-answers.ts"
+import {
+  parseSourceAnswerKey,
+  repositoryIdentity,
+  resolveSourceAnswer,
+  sourceAnswerKey,
+  type SourceAnswer,
+} from "./source-answers.ts"
 
 const subject = { kind: "lib" as const, id: "example", version: "1.0", os: "linux" }
 const original = {
@@ -345,9 +351,150 @@ it("keeps differing qualifying originals under one key pending", () => {
       },
     ],
   }
-  expect(resolveSourceAnswer([row], { subject, featureId: answer.featureId, blobs: [blob] })).toEqual({
+  const resolution = resolveSourceAnswer([row], { subject, featureId: answer.featureId, blobs: [blob] })
+  // Both kept originals travel with the dispute so the cell can name each one (@cto 85a9cfd9).
+  expect(resolution).toEqual({
     kind: "pending",
     reason: "kept answers disagree",
     rowKeys: [sourceAnswerKey(subject, answer.featureId)],
+    answers: [row.answers[0], row.answers[1]],
   })
+})
+
+// @cto de41833e conditions 2-4: an engine citation is attributed through the build receipt, the addon
+// resolves at its own source commit, and anything covered by neither stays unresolvable.
+const engineCore = "https://github.com/ghostty-org/ghostty"
+const engineCommit = "e".repeat(40)
+const loadedSha = "7".repeat(64)
+const wasmIdentity = {
+  kind: "js" as const,
+  runtimeFormat: "wasm" as const,
+  resolvedPath: "/fixture/ghostty-web.js",
+  engineVersion: "0.4.0",
+  adapterVersion: "0.10.2",
+  termlessRevision: "c".repeat(40),
+  integrity: { kind: "registry" as const, lockIntegrity: "sha512-fixture" },
+  loadedBinary: { path: "ghostty-vt.wasm", sha256: loadedSha },
+}
+const engineBlob = { repository: engineCore, commit: engineCommit, path: "src/terminal/osc.zig", oid: "d".repeat(40) }
+const engineAnswer: SourceAnswer = {
+  subject: { kind: "lib" as const, id: "ghostty", version: "0.4.0", os: "linux" },
+  featureId: "extensions.engine",
+  answers: [{ status: "unsupported", citedBlobs: [engineBlob], originals: [original] }],
+}
+const receipt = { outputs: { "ghostty-vt.wasm": loadedSha }, core: { repository: engineCore, commit: engineCommit } }
+
+it("reads the same repository however a citation spells it", () => {
+  expect(repositoryIdentity("git@github.com:ghostty-org/ghostty.git")).toBe(repositoryIdentity(engineCore))
+  expect(repositoryIdentity("https://github.com/ghostty-org/ghostty")).toBe(repositoryIdentity(engineCore))
+  expect(repositoryIdentity("git@github.com:beorn/termless.git")).not.toBe(repositoryIdentity(engineCore))
+})
+
+it("attributes an engine citation to the receipt's commit without an engine checkout", () => {
+  const result = resolveSourceAnswer([engineAnswer], {
+    subject: engineAnswer.subject,
+    featureId: engineAnswer.featureId,
+    runtimeIdentity: wasmIdentity,
+    engineReceipt: receipt,
+  })
+  // Covered by the receipt, never verified: no checkout was read, so the answer keeps its "not re-verified" label.
+  expect(result).toMatchObject({ kind: "answer", status: "unsupported", label: "reviewed at 0.4.0, not re-verified" })
+})
+
+it("never borrows a receipt that built a different binary", () => {
+  const result = resolveSourceAnswer([engineAnswer], {
+    subject: engineAnswer.subject,
+    featureId: engineAnswer.featureId,
+    runtimeIdentity: wasmIdentity,
+    engineReceipt: { ...receipt, outputs: { "ghostty-vt.wasm": "0".repeat(64) } },
+  })
+  expect(result).toMatchObject({ kind: "pending", reason: "cited source not resolvable" })
+
+  const absent = resolveSourceAnswer([engineAnswer], {
+    subject: engineAnswer.subject,
+    featureId: engineAnswer.featureId,
+    runtimeIdentity: wasmIdentity,
+  })
+  expect(absent).toMatchObject({ kind: "pending", reason: "cited source not resolvable" })
+})
+
+it("refuses an engine citation at a commit the receipt does not name", () => {
+  expect(() =>
+    resolveSourceAnswer([engineAnswer], {
+      subject: engineAnswer.subject,
+      featureId: engineAnswer.featureId,
+      runtimeIdentity: wasmIdentity,
+      engineReceipt: { ...receipt, core: { repository: engineCore, commit: "f".repeat(40) } },
+    }),
+  ).toThrow(/differs from the build receipt/)
+})
+
+it("resolves the vt100-rust addon at its own source commit, not the Termless pin", () => {
+  const addon = "1".repeat(40)
+  const addonBlob = {
+    repository: "git@github.com:beorn/termless.git",
+    commit: addon,
+    path: "packages/vt100-rust/native/src/lib.rs",
+    oid: "2".repeat(40),
+  }
+  const row: SourceAnswer = {
+    subject: { kind: "lib" as const, id: "vt100-rust", version: "0.16.2", os: "linux" },
+    featureId: "extensions.addon",
+    answers: [{ status: "unsupported", citedBlobs: [addonBlob], originals: [original] }],
+  }
+  const native = {
+    kind: "native" as const,
+    engineVersion: "0.16.2",
+    adapterVersion: "0.10.2",
+    termlessRevision: "9".repeat(40),
+    loadedBinary: { path: "lib.dylib", sha256: "3".repeat(64) },
+    provenance: {
+      sha256: "3".repeat(64),
+      sourceCommit: addon,
+      buildHash: "4".repeat(64),
+      toolchain: "fixture",
+      lockSha256: "5".repeat(64),
+    },
+  }
+  expect(
+    resolveSourceAnswer([row], { subject: row.subject, featureId: row.featureId, runtimeIdentity: native }),
+  ).toMatchObject({ kind: "answer", status: "unsupported" })
+
+  // The same addon path on a js identity has no addon commit at all: covered by neither revision.
+  expect(
+    resolveSourceAnswer([row], {
+      subject: row.subject,
+      featureId: row.featureId,
+      runtimeIdentity: { ...wasmIdentity, engineVersion: "0.16.2" },
+    }),
+  ).toMatchObject({ kind: "pending", reason: "cited source not resolvable" })
+})
+
+it("resolves other Termless paths at the pinned Termless revision", () => {
+  const pinned = "6".repeat(40)
+  const row: SourceAnswer = {
+    subject: { kind: "lib" as const, id: "ghostty", version: "0.4.0", os: "linux" },
+    featureId: "extensions.adapter",
+    answers: [
+      {
+        status: "unsupported",
+        citedBlobs: [
+          {
+            repository: "git@github.com:beorn/termless.git",
+            commit: pinned,
+            path: "packages/probe-defs/src/extensions.ts",
+            oid: "8".repeat(40),
+          },
+        ],
+        originals: [original],
+      },
+    ],
+  }
+  expect(
+    resolveSourceAnswer([row], {
+      subject: row.subject,
+      featureId: row.featureId,
+      runtimeIdentity: { ...wasmIdentity, termlessRevision: pinned },
+    }),
+  ).toMatchObject({ kind: "answer", status: "unsupported" })
 })

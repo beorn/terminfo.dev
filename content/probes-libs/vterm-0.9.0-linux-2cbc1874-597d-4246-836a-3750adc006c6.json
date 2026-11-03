@@ -1017,13 +1017,13 @@
           },
           "assertionRefs": [],
           "rawReplyRef": "device.xtwinops-14",
-          "reason": "This vterm0.9.0 headless subject has no text-area pixel geometry. Its clean source runtime1cfc325f/tree2ee13d2c deliberately emits the retained complete zero geometry reply as unknown. Standing CTO Q8 and the existing independent source audit establish context impossibility; zero is not a measured size, negative capability or missing transport. This proposal is newly bound to actual run2cbc1874-597d-4246-836a-3750adc006c6, suite4b01b0117e18, source8b74c56ec8c0c5a30cb1f48e952983bbe18f009e; earlier private-run decision hashes do not transfer.",
+          "reason": "This vterm0.9.0 headless subject has no text-area pixel geometry. Its clean source runtime1cfc325f/tree2ee13d2c deliberately emits the retained complete zero geometry reply as unknown. Standing CTO Q8 and the existing independent source audit establish context impossibility; zero is not a measured size, negative capability or missing transport. This proposal is newly bound to actual run2cbc1874-597d-4246-836a-3750adc006c6, suite4b01b0117e18, source8b74c56ec8c0c5a30cb1f48e952983bbe18f009e; earlier private-run decision hashes do not transfer.; reviewed at 0.9.0, not re-verified",
           "reviewRef": "[\"lib\",\"vterm\",\"0.9.0\",\"linux\",\"device.xtwinops-14\"]"
         }
       ],
       "criterionBranch": "headless-geometry-review",
       "rawReplyRef": "device.xtwinops-14",
-      "reason": "This vterm0.9.0 headless subject has no text-area pixel geometry. Its clean source runtime1cfc325f/tree2ee13d2c deliberately emits the retained complete zero geometry reply as unknown. Standing CTO Q8 and the existing independent source audit establish context impossibility; zero is not a measured size, negative capability or missing transport. This proposal is newly bound to actual run2cbc1874-597d-4246-836a-3750adc006c6, suite4b01b0117e18, source8b74c56ec8c0c5a30cb1f48e952983bbe18f009e; earlier private-run decision hashes do not transfer.",
+      "reason": "This vterm0.9.0 headless subject has no text-area pixel geometry. Its clean source runtime1cfc325f/tree2ee13d2c deliberately emits the retained complete zero geometry reply as unknown. Standing CTO Q8 and the existing independent source audit establish context impossibility; zero is not a measured size, negative capability or missing transport. This proposal is newly bound to actual run2cbc1874-597d-4246-836a-3750adc006c6, suite4b01b0117e18, source8b74c56ec8c0c5a30cb1f48e952983bbe18f009e; earlier private-run decision hashes do not transfer.; reviewed at 0.9.0, not re-verified",
       "status": "untestable",
       "reviewRef": "[\"lib\",\"vterm\",\"0.9.0\",\"linux\",\"device.xtwinops-14\"]"
     },
@@ -1043,13 +1043,13 @@
           },
           "assertionRefs": [],
           "rawReplyRef": "device.xtwinops-16",
-          "reason": "This vterm0.9.0 headless subject has no physical cell pixels. Its clean source runtime1cfc325f/tree2ee13d2c deliberately emits the retained complete zero geometry reply as unknown. Standing CTO Q8 and the existing independent source audit establish context impossibility; zero is not a measured size, negative capability or missing transport. This proposal is newly bound to actual run2cbc1874-597d-4246-836a-3750adc006c6, suite4b01b0117e18, source8b74c56ec8c0c5a30cb1f48e952983bbe18f009e; earlier private-run decision hashes do not transfer.",
+          "reason": "This vterm0.9.0 headless subject has no physical cell pixels. Its clean source runtime1cfc325f/tree2ee13d2c deliberately emits the retained complete zero geometry reply as unknown. Standing CTO Q8 and the existing independent source audit establish context impossibility; zero is not a measured size, negative capability or missing transport. This proposal is newly bound to actual run2cbc1874-597d-4246-836a-3750adc006c6, suite4b01b0117e18, source8b74c56ec8c0c5a30cb1f48e952983bbe18f009e; earlier private-run decision hashes do not transfer.; reviewed at 0.9.0, not re-verified",
           "reviewRef": "[\"lib\",\"vterm\",\"0.9.0\",\"linux\",\"device.xtwinops-16\"]"
         }
       ],
       "criterionBranch": "headless-geometry-review",
       "rawReplyRef": "device.xtwinops-16",
-      "reason": "This vterm0.9.0 headless subject has no physical cell pixels. Its clean source runtime1cfc325f/tree2ee13d2c deliberately emits the retained complete zero geometry reply as unknown. Standing CTO Q8 and the existing independent source audit establish context impossibility; zero is not a measured size, negative capability or missing transport. This proposal is newly bound to actual run2cbc1874-597d-4246-836a-3750adc006c6, suite4b01b0117e18, source8b74c56ec8c0c5a30cb1f48e952983bbe18f009e; earlier private-run decision hashes do not transfer.",
+      "reason": "This vterm0.9.0 headless subject has no physical cell pixels. Its clean source runtime1cfc325f/tree2ee13d2c deliberately emits the retained complete zero geometry reply as unknown. Standing CTO Q8 and the existing independent source audit establish context impossibility; zero is not a measured size, negative capability or missing transport. This proposal is newly bound to actual run2cbc1874-597d-4246-836a-3750adc006c6, suite4b01b0117e18, source8b74c56ec8c0c5a30cb1f48e952983bbe18f009e; earlier private-run decision hashes do not transfer.; reviewed at 0.9.0, not re-verified",
       "status": "untestable",
       "reviewRef": "[\"lib\",\"vterm\",\"0.9.0\",\"linux\",\"device.xtwinops-16\"]"
     },
@@ -1863,13 +1863,13 @@
           },
           "assertionRefs": [],
           "rawReplyRef": "extensions.clipboard-paste",
-          "reason": "For this captured vterm 0.9.0 library context, extensions.clipboard-paste requires OS-level XTEST paste injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.",
+          "reason": "For this captured vterm 0.9.0 library context, extensions.clipboard-paste requires OS-level XTEST paste injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.; reviewed at 0.9.0, not re-verified",
           "reviewRef": "[\"lib\",\"vterm\",\"0.9.0\",\"linux\",\"extensions.clipboard-paste\"]"
         }
       ],
       "criterionBranch": "os-input-review",
       "rawReplyRef": "extensions.clipboard-paste",
-      "reason": "For this captured vterm 0.9.0 library context, extensions.clipboard-paste requires OS-level XTEST paste injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.",
+      "reason": "For this captured vterm 0.9.0 library context, extensions.clipboard-paste requires OS-level XTEST paste injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.; reviewed at 0.9.0, not re-verified",
       "status": "untestable",
       "reviewRef": "[\"lib\",\"vterm\",\"0.9.0\",\"linux\",\"extensions.clipboard-paste\"]"
     },
@@ -2696,13 +2696,13 @@
           },
           "assertionRefs": [],
           "rawReplyRef": "extensions.osc1337-cellsize",
-          "reason": "This vterm0.9.0 headless subject has no physical cell dimensions in points and optional scale. Its clean source runtime1cfc325f/tree2ee13d2c deliberately emits the retained complete zero geometry reply as unknown. Standing CTO Q8 and the existing independent source audit establish context impossibility; zero is not a measured size, negative capability or missing transport. This proposal is newly bound to actual run2cbc1874-597d-4246-836a-3750adc006c6, suite4b01b0117e18, source8b74c56ec8c0c5a30cb1f48e952983bbe18f009e; earlier private-run decision hashes do not transfer.",
+          "reason": "This vterm0.9.0 headless subject has no physical cell dimensions in points and optional scale. Its clean source runtime1cfc325f/tree2ee13d2c deliberately emits the retained complete zero geometry reply as unknown. Standing CTO Q8 and the existing independent source audit establish context impossibility; zero is not a measured size, negative capability or missing transport. This proposal is newly bound to actual run2cbc1874-597d-4246-836a-3750adc006c6, suite4b01b0117e18, source8b74c56ec8c0c5a30cb1f48e952983bbe18f009e; earlier private-run decision hashes do not transfer.; reviewed at 0.9.0, not re-verified",
           "reviewRef": "[\"lib\",\"vterm\",\"0.9.0\",\"linux\",\"extensions.osc1337-cellsize\"]"
         }
       ],
       "criterionBranch": "headless-geometry-review",
       "rawReplyRef": "extensions.osc1337-cellsize",
-      "reason": "This vterm0.9.0 headless subject has no physical cell dimensions in points and optional scale. Its clean source runtime1cfc325f/tree2ee13d2c deliberately emits the retained complete zero geometry reply as unknown. Standing CTO Q8 and the existing independent source audit establish context impossibility; zero is not a measured size, negative capability or missing transport. This proposal is newly bound to actual run2cbc1874-597d-4246-836a-3750adc006c6, suite4b01b0117e18, source8b74c56ec8c0c5a30cb1f48e952983bbe18f009e; earlier private-run decision hashes do not transfer.",
+      "reason": "This vterm0.9.0 headless subject has no physical cell dimensions in points and optional scale. Its clean source runtime1cfc325f/tree2ee13d2c deliberately emits the retained complete zero geometry reply as unknown. Standing CTO Q8 and the existing independent source audit establish context impossibility; zero is not a measured size, negative capability or missing transport. This proposal is newly bound to actual run2cbc1874-597d-4246-836a-3750adc006c6, suite4b01b0117e18, source8b74c56ec8c0c5a30cb1f48e952983bbe18f009e; earlier private-run decision hashes do not transfer.; reviewed at 0.9.0, not re-verified",
       "status": "untestable",
       "reviewRef": "[\"lib\",\"vterm\",\"0.9.0\",\"linux\",\"extensions.osc1337-cellsize\"]"
     },
@@ -3337,13 +3337,13 @@
           },
           "assertionRefs": [],
           "rawReplyRef": "extensions.osc776-cell-size",
-          "reason": "This vterm0.9.0 headless subject has no physical cell width, height and ascent. Its clean source runtime1cfc325f/tree2ee13d2c deliberately emits the retained complete zero geometry reply as unknown. Standing CTO Q8 and the existing independent source audit establish context impossibility; zero is not a measured size, negative capability or missing transport. This proposal is newly bound to actual run2cbc1874-597d-4246-836a-3750adc006c6, suite4b01b0117e18, source8b74c56ec8c0c5a30cb1f48e952983bbe18f009e; earlier private-run decision hashes do not transfer.",
+          "reason": "This vterm0.9.0 headless subject has no physical cell width, height and ascent. Its clean source runtime1cfc325f/tree2ee13d2c deliberately emits the retained complete zero geometry reply as unknown. Standing CTO Q8 and the existing independent source audit establish context impossibility; zero is not a measured size, negative capability or missing transport. This proposal is newly bound to actual run2cbc1874-597d-4246-836a-3750adc006c6, suite4b01b0117e18, source8b74c56ec8c0c5a30cb1f48e952983bbe18f009e; earlier private-run decision hashes do not transfer.; reviewed at 0.9.0, not re-verified",
           "reviewRef": "[\"lib\",\"vterm\",\"0.9.0\",\"linux\",\"extensions.osc776-cell-size\"]"
         }
       ],
       "criterionBranch": "headless-geometry-review",
       "rawReplyRef": "extensions.osc776-cell-size",
-      "reason": "This vterm0.9.0 headless subject has no physical cell width, height and ascent. Its clean source runtime1cfc325f/tree2ee13d2c deliberately emits the retained complete zero geometry reply as unknown. Standing CTO Q8 and the existing independent source audit establish context impossibility; zero is not a measured size, negative capability or missing transport. This proposal is newly bound to actual run2cbc1874-597d-4246-836a-3750adc006c6, suite4b01b0117e18, source8b74c56ec8c0c5a30cb1f48e952983bbe18f009e; earlier private-run decision hashes do not transfer.",
+      "reason": "This vterm0.9.0 headless subject has no physical cell width, height and ascent. Its clean source runtime1cfc325f/tree2ee13d2c deliberately emits the retained complete zero geometry reply as unknown. Standing CTO Q8 and the existing independent source audit establish context impossibility; zero is not a measured size, negative capability or missing transport. This proposal is newly bound to actual run2cbc1874-597d-4246-836a-3750adc006c6, suite4b01b0117e18, source8b74c56ec8c0c5a30cb1f48e952983bbe18f009e; earlier private-run decision hashes do not transfer.; reviewed at 0.9.0, not re-verified",
       "status": "untestable",
       "reviewRef": "[\"lib\",\"vterm\",\"0.9.0\",\"linux\",\"extensions.osc776-cell-size\"]"
     },
@@ -3602,13 +3602,13 @@
           },
           "assertionRefs": [],
           "rawReplyRef": "input.button-event-mouse",
-          "reason": "For this captured vterm 0.9.0 library context, input.button-event-mouse requires OS-level XTEST click injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.",
+          "reason": "For this captured vterm 0.9.0 library context, input.button-event-mouse requires OS-level XTEST click injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.; reviewed at 0.9.0, not re-verified",
           "reviewRef": "[\"lib\",\"vterm\",\"0.9.0\",\"linux\",\"input.button-event-mouse\"]"
         }
       ],
       "criterionBranch": "os-input-review",
       "rawReplyRef": "input.button-event-mouse",
-      "reason": "For this captured vterm 0.9.0 library context, input.button-event-mouse requires OS-level XTEST click injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.",
+      "reason": "For this captured vterm 0.9.0 library context, input.button-event-mouse requires OS-level XTEST click injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.; reviewed at 0.9.0, not re-verified",
       "status": "untestable",
       "reviewRef": "[\"lib\",\"vterm\",\"0.9.0\",\"linux\",\"input.button-event-mouse\"]"
     },
@@ -3654,13 +3654,13 @@
           },
           "assertionRefs": [],
           "rawReplyRef": "input.kitty-click-events",
-          "reason": "For this captured vterm 0.9.0 library context, input.kitty-click-events requires OS-level XTEST click injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.",
+          "reason": "For this captured vterm 0.9.0 library context, input.kitty-click-events requires OS-level XTEST click injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.; reviewed at 0.9.0, not re-verified",
           "reviewRef": "[\"lib\",\"vterm\",\"0.9.0\",\"linux\",\"input.kitty-click-events\"]"
         }
       ],
       "criterionBranch": "os-input-review",
       "rawReplyRef": "input.kitty-click-events",
-      "reason": "For this captured vterm 0.9.0 library context, input.kitty-click-events requires OS-level XTEST click injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.",
+      "reason": "For this captured vterm 0.9.0 library context, input.kitty-click-events requires OS-level XTEST click injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.; reviewed at 0.9.0, not re-verified",
       "status": "untestable",
       "reviewRef": "[\"lib\",\"vterm\",\"0.9.0\",\"linux\",\"input.kitty-click-events\"]"
     },
@@ -3680,13 +3680,13 @@
           },
           "assertionRefs": [],
           "rawReplyRef": "input.modify-other-keys",
-          "reason": "For this captured vterm 0.9.0 library context, input.modify-other-keys requires OS-level XTEST key injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.",
+          "reason": "For this captured vterm 0.9.0 library context, input.modify-other-keys requires OS-level XTEST key injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.; reviewed at 0.9.0, not re-verified",
           "reviewRef": "[\"lib\",\"vterm\",\"0.9.0\",\"linux\",\"input.modify-other-keys\"]"
         }
       ],
       "criterionBranch": "os-input-review",
       "rawReplyRef": "input.modify-other-keys",
-      "reason": "For this captured vterm 0.9.0 library context, input.modify-other-keys requires OS-level XTEST key injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.",
+      "reason": "For this captured vterm 0.9.0 library context, input.modify-other-keys requires OS-level XTEST key injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.; reviewed at 0.9.0, not re-verified",
       "status": "untestable",
       "reviewRef": "[\"lib\",\"vterm\",\"0.9.0\",\"linux\",\"input.modify-other-keys\"]"
     },
@@ -3706,13 +3706,13 @@
           },
           "assertionRefs": [],
           "rawReplyRef": "input.modify-other-keys-3",
-          "reason": "For this captured vterm 0.9.0 library context, input.modify-other-keys-3 requires OS-level XTEST key injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.",
+          "reason": "For this captured vterm 0.9.0 library context, input.modify-other-keys-3 requires OS-level XTEST key injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.; reviewed at 0.9.0, not re-verified",
           "reviewRef": "[\"lib\",\"vterm\",\"0.9.0\",\"linux\",\"input.modify-other-keys-3\"]"
         }
       ],
       "criterionBranch": "os-input-review",
       "rawReplyRef": "input.modify-other-keys-3",
-      "reason": "For this captured vterm 0.9.0 library context, input.modify-other-keys-3 requires OS-level XTEST key injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.",
+      "reason": "For this captured vterm 0.9.0 library context, input.modify-other-keys-3 requires OS-level XTEST key injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.; reviewed at 0.9.0, not re-verified",
       "status": "untestable",
       "reviewRef": "[\"lib\",\"vterm\",\"0.9.0\",\"linux\",\"input.modify-other-keys-3\"]"
     },
@@ -3732,13 +3732,13 @@
           },
           "assertionRefs": [],
           "rawReplyRef": "input.pixel-mouse",
-          "reason": "For this captured vterm 0.9.0 library context, input.pixel-mouse requires OS-level XTEST click injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.",
+          "reason": "For this captured vterm 0.9.0 library context, input.pixel-mouse requires OS-level XTEST click injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.; reviewed at 0.9.0, not re-verified",
           "reviewRef": "[\"lib\",\"vterm\",\"0.9.0\",\"linux\",\"input.pixel-mouse\"]"
         }
       ],
       "criterionBranch": "os-input-review",
       "rawReplyRef": "input.pixel-mouse",
-      "reason": "For this captured vterm 0.9.0 library context, input.pixel-mouse requires OS-level XTEST click injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.",
+      "reason": "For this captured vterm 0.9.0 library context, input.pixel-mouse requires OS-level XTEST click injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.; reviewed at 0.9.0, not re-verified",
       "status": "untestable",
       "reviewRef": "[\"lib\",\"vterm\",\"0.9.0\",\"linux\",\"input.pixel-mouse\"]"
     },
@@ -3758,13 +3758,13 @@
           },
           "assertionRefs": [],
           "rawReplyRef": "input.urxvt-mouse",
-          "reason": "For this captured vterm 0.9.0 library context, input.urxvt-mouse requires OS-level XTEST click injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.",
+          "reason": "For this captured vterm 0.9.0 library context, input.urxvt-mouse requires OS-level XTEST click injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.; reviewed at 0.9.0, not re-verified",
           "reviewRef": "[\"lib\",\"vterm\",\"0.9.0\",\"linux\",\"input.urxvt-mouse\"]"
         }
       ],
       "criterionBranch": "os-input-review",
       "rawReplyRef": "input.urxvt-mouse",
-      "reason": "For this captured vterm 0.9.0 library context, input.urxvt-mouse requires OS-level XTEST click injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.",
+      "reason": "For this captured vterm 0.9.0 library context, input.urxvt-mouse requires OS-level XTEST click injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.; reviewed at 0.9.0, not re-verified",
       "status": "untestable",
       "reviewRef": "[\"lib\",\"vterm\",\"0.9.0\",\"linux\",\"input.urxvt-mouse\"]"
     },
@@ -3784,13 +3784,13 @@
           },
           "assertionRefs": [],
           "rawReplyRef": "input.x10-mouse",
-          "reason": "For this captured vterm 0.9.0 library context, input.x10-mouse requires OS-level XTEST click injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.",
+          "reason": "For this captured vterm 0.9.0 library context, input.x10-mouse requires OS-level XTEST click injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.; reviewed at 0.9.0, not re-verified",
           "reviewRef": "[\"lib\",\"vterm\",\"0.9.0\",\"linux\",\"input.x10-mouse\"]"
         }
       ],
       "criterionBranch": "os-input-review",
       "rawReplyRef": "input.x10-mouse",
-      "reason": "For this captured vterm 0.9.0 library context, input.x10-mouse requires OS-level XTEST click injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.",
+      "reason": "For this captured vterm 0.9.0 library context, input.x10-mouse requires OS-level XTEST click injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.; reviewed at 0.9.0, not re-verified",
       "status": "untestable",
       "reviewRef": "[\"lib\",\"vterm\",\"0.9.0\",\"linux\",\"input.x10-mouse\"]"
     },
@@ -3810,13 +3810,13 @@
           },
           "assertionRefs": [],
           "rawReplyRef": "input.xtest-click",
-          "reason": "For this captured vterm 0.9.0 library context, input.xtest-click requires OS-level XTEST click injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.",
+          "reason": "For this captured vterm 0.9.0 library context, input.xtest-click requires OS-level XTEST click injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.; reviewed at 0.9.0, not re-verified",
           "reviewRef": "[\"lib\",\"vterm\",\"0.9.0\",\"linux\",\"input.xtest-click\"]"
         }
       ],
       "criterionBranch": "os-input-review",
       "rawReplyRef": "input.xtest-click",
-      "reason": "For this captured vterm 0.9.0 library context, input.xtest-click requires OS-level XTEST click injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.",
+      "reason": "For this captured vterm 0.9.0 library context, input.xtest-click requires OS-level XTEST click injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.; reviewed at 0.9.0, not re-verified",
       "status": "untestable",
       "reviewRef": "[\"lib\",\"vterm\",\"0.9.0\",\"linux\",\"input.xtest-click\"]"
     },
@@ -3836,13 +3836,13 @@
           },
           "assertionRefs": [],
           "rawReplyRef": "input.xtest-key",
-          "reason": "For this captured vterm 0.9.0 library context, input.xtest-key requires OS-level XTEST key injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.",
+          "reason": "For this captured vterm 0.9.0 library context, input.xtest-key requires OS-level XTEST key injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.; reviewed at 0.9.0, not re-verified",
           "reviewRef": "[\"lib\",\"vterm\",\"0.9.0\",\"linux\",\"input.xtest-key\"]"
         }
       ],
       "criterionBranch": "os-input-review",
       "rawReplyRef": "input.xtest-key",
-      "reason": "For this captured vterm 0.9.0 library context, input.xtest-key requires OS-level XTEST key injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.",
+      "reason": "For this captured vterm 0.9.0 library context, input.xtest-key requires OS-level XTEST key injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.; reviewed at 0.9.0, not re-verified",
       "status": "untestable",
       "reviewRef": "[\"lib\",\"vterm\",\"0.9.0\",\"linux\",\"input.xtest-key\"]"
     },
@@ -3862,13 +3862,13 @@
           },
           "assertionRefs": [],
           "rawReplyRef": "input.xtest-wheel",
-          "reason": "For this captured vterm 0.9.0 library context, input.xtest-wheel requires OS-level XTEST wheel injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.",
+          "reason": "For this captured vterm 0.9.0 library context, input.xtest-wheel requires OS-level XTEST wheel injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.; reviewed at 0.9.0, not re-verified",
           "reviewRef": "[\"lib\",\"vterm\",\"0.9.0\",\"linux\",\"input.xtest-wheel\"]"
         }
       ],
       "criterionBranch": "os-input-review",
       "rawReplyRef": "input.xtest-wheel",
-      "reason": "For this captured vterm 0.9.0 library context, input.xtest-wheel requires OS-level XTEST wheel injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.",
+      "reason": "For this captured vterm 0.9.0 library context, input.xtest-wheel requires OS-level XTEST wheel injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.; reviewed at 0.9.0, not re-verified",
       "status": "untestable",
       "reviewRef": "[\"lib\",\"vterm\",\"0.9.0\",\"linux\",\"input.xtest-wheel\"]"
     },
@@ -3936,13 +3936,13 @@
           },
           "assertionRefs": [],
           "rawReplyRef": "modes.alt-scroll-1007",
-          "reason": "For this captured vterm 0.9.0 library context, modes.alt-scroll-1007 requires OS-level XTEST wheel injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.",
+          "reason": "For this captured vterm 0.9.0 library context, modes.alt-scroll-1007 requires OS-level XTEST wheel injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.; reviewed at 0.9.0, not re-verified",
           "reviewRef": "[\"lib\",\"vterm\",\"0.9.0\",\"linux\",\"modes.alt-scroll-1007\"]"
         }
       ],
       "criterionBranch": "os-input-review",
       "rawReplyRef": "modes.alt-scroll-1007",
-      "reason": "For this captured vterm 0.9.0 library context, modes.alt-scroll-1007 requires OS-level XTEST wheel injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.",
+      "reason": "For this captured vterm 0.9.0 library context, modes.alt-scroll-1007 requires OS-level XTEST wheel injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.; reviewed at 0.9.0, not re-verified",
       "status": "untestable",
       "reviewRef": "[\"lib\",\"vterm\",\"0.9.0\",\"linux\",\"modes.alt-scroll-1007\"]"
     },
@@ -4060,13 +4060,13 @@
           },
           "assertionRefs": [],
           "rawReplyRef": "modes.application-keypad",
-          "reason": "For this captured vterm 0.9.0 library context, modes.application-keypad requires keypad input. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"on\":true,\"off\":true} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.",
+          "reason": "For this captured vterm 0.9.0 library context, modes.application-keypad requires keypad input. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"on\":true,\"off\":true} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.; reviewed at 0.9.0, not re-verified",
           "reviewRef": "[\"lib\",\"vterm\",\"0.9.0\",\"linux\",\"modes.application-keypad\"]"
         }
       ],
       "criterionBranch": "os-input-review",
       "rawReplyRef": "modes.application-keypad",
-      "reason": "For this captured vterm 0.9.0 library context, modes.application-keypad requires keypad input. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"on\":true,\"off\":true} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.",
+      "reason": "For this captured vterm 0.9.0 library context, modes.application-keypad requires keypad input. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"on\":true,\"off\":true} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.; reviewed at 0.9.0, not re-verified",
       "status": "untestable",
       "reviewRef": "[\"lib\",\"vterm\",\"0.9.0\",\"linux\",\"modes.application-keypad\"]"
     },

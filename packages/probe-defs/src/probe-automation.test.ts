@@ -968,16 +968,22 @@ describe("reply-path audit", () => {
     ({ id, prefix, sha256 }) => {
       const silent = run(id!, sha256, () => "")
       expect(silent.sent.some((query) => query.startsWith(prefix!))).toBe(true)
-      expect(silent.result.observation).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
-      const state = JSON.parse(silent.result.response!)
-      expect(state).toMatchObject({
-        replyPathAudit: {
-          artifactSha256: sha256,
-          kind: "parser-rejected",
-          replyBytes: 0,
-          citation: expect.stringContaining("5714ed07"),
-        },
+      // The ruled parser rejection is table provenance now; the probe reports only what it measured.
+      expect(REPLY_PATH_AUDITS.get(sha256!)?.[id!]).toMatchObject({
+        kind: "parser-rejected",
+        citation: expect.stringContaining("5714ed07"),
       })
+      expect(silent.result).toMatchObject({
+        criterionBranch: REPLY_PATH_AUDIT_REVIEW,
+        tests: [{ id: "review", status: "test-todo" }],
+      })
+      expect(silent.result.observation).toBeUndefined()
+      const state = JSON.parse(silent.result.response!) as { replyPathAudit?: Record<string, unknown> }
+      expect(state).toMatchObject({
+        replyPathAudit: { artifactSha256: sha256, replyBytes: 0 },
+      })
+      expect(state.replyPathAudit).not.toHaveProperty("kind")
+      expect(state.replyPathAudit).not.toHaveProperty("citation")
       const ordinary = run(id!, "f".repeat(64), () => "")
       expect(ordinary.sent).toEqual([])
       expect(ordinary.result.criterionBranch).toBe(HEADLESS_OBSERVABLE_REVIEW)
@@ -1028,16 +1034,14 @@ describe("reply-path audit", () => {
   ] as const)("named query on %s selects its source-bound result: %s", (sha256, id, parserRejected) => {
     const { result, sent } = run(id, sha256, () => "")
     expect(sent.length).toBeGreaterThan(0)
-    if (parserRejected) {
-      expect(result).toMatchObject({ observation: { outcome: "unsupported", assertionType: "query_reply" } })
-      expect(result.assertions).toEqual([expect.objectContaining({ kind: "negative", assertionType: "query_reply" })])
-    } else {
-      expect(result).toMatchObject({
-        criterionBranch: REPLY_PATH_AUDIT_REVIEW,
-        tests: [{ id: "review", status: "test-todo" }],
-      })
-      expect(result.observation).toBeUndefined()
-    }
+    // The ruled distinction stays pinned in the table; the probe itself returns one measured gate.
+    expect(REPLY_PATH_AUDITS.get(sha256)?.[id]?.kind === "parser-rejected").toBe(parserRejected)
+    // @cto de41833e condition 1: one measured gate for every audited cell; the kept answer decides support.
+    expect(result).toMatchObject({
+      criterionBranch: REPLY_PATH_AUDIT_REVIEW,
+      tests: [{ id: "review", status: "test-todo" }],
+    })
+    expect(result.observation).toBeUndefined()
   })
 
   // Data-derived cases cannot catch a missing row; these five actual callback queries were omitted.
@@ -1046,13 +1050,12 @@ describe("reply-path audit", () => {
     expect(REPLY_PATH_AUDITS.get(digest)?.[id]).toMatchObject({ query, kind })
     const { result, sent } = run(id, digest, () => "")
     expect(sent).toContain(query)
-    if (kind === "parser-rejected") {
-      expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
-    } else {
-      expect(result.criterionBranch).toBe(REPLY_PATH_AUDIT_REVIEW)
-      expect(result.tests).toMatchObject([{ id: "review", status: "test-todo" }])
-      expect(result.observation).toBeUndefined()
-    }
+    // @cto de41833e condition 1: one measured gate for every audited cell; the kept answer decides support.
+    expect(result).toMatchObject({
+      criterionBranch: REPLY_PATH_AUDIT_REVIEW,
+      tests: [{ id: "review", status: "test-todo" }],
+    })
+    expect(result.observation).toBeUndefined()
   })
 
   test.each([
@@ -1081,16 +1084,17 @@ describe("reply-path audit", () => {
   ] as const)("native fixed query preserves its source distinction: %s", (id, query, parserRejected) => {
     const { result, sent } = run(id, "17d155feee5df8fa30266b9a354bbe66e39484d08218de5e03dc3bb2f199a0a3", () => "")
     expect(sent).toEqual([query])
-    if (parserRejected) {
-      expect(result).toMatchObject({ observation: { outcome: "unsupported", assertionType: "query_reply" } })
-      expect(result.assertions).toEqual([expect.objectContaining({ kind: "negative", assertionType: "query_reply" })])
-    } else {
-      expect(result).toMatchObject({
-        criterionBranch: REPLY_PATH_AUDIT_REVIEW,
-        tests: [{ id: "review", status: "test-todo" }],
-      })
-      expect(result.observation).toBeUndefined()
-    }
+    expect(
+      REPLY_PATH_AUDITS.get("17d155feee5df8fa30266b9a354bbe66e39484d08218de5e03dc3bb2f199a0a3")?.[id]?.kind ===
+        "parser-rejected",
+      id,
+    ).toBe(parserRejected)
+    // @cto de41833e condition 1: one measured gate for every audited cell; the kept answer decides support.
+    expect(result).toMatchObject({
+      criterionBranch: REPLY_PATH_AUDIT_REVIEW,
+      tests: [{ id: "review", status: "test-todo" }],
+    })
+    expect(result.observation).toBeUndefined()
   })
 
   // #31377, CTO 29be6ad0: actual graphics request bytes (including allocation nonces) must survive the review.
@@ -1220,16 +1224,17 @@ describe("reply-path audit", () => {
     ["extensions.osc0-icon-title", true],
   ] as const)("current native source contract: %s", (id, parserRejected) => {
     const { result } = run(id, "ac12d6408c2049f1d720e9735d7eb69251d3eed868fc9ced58de98b3543f3e2e", () => "")
-    if (parserRejected) {
-      expect(result).toMatchObject({ observation: { outcome: "unsupported", assertionType: "query_reply" } })
-      expect(result.assertions).toEqual([expect.objectContaining({ kind: "negative", assertionType: "query_reply" })])
-    } else {
-      expect(result).toMatchObject({
-        criterionBranch: REPLY_PATH_AUDIT_REVIEW,
-        tests: [{ id: "review", status: "test-todo" }],
-      })
-      expect(result.observation).toBeUndefined()
-    }
+    expect(
+      REPLY_PATH_AUDITS.get("ac12d6408c2049f1d720e9735d7eb69251d3eed868fc9ced58de98b3543f3e2e")?.[id]?.kind ===
+        "parser-rejected",
+      id,
+    ).toBe(parserRejected)
+    // @cto de41833e condition 1: one measured gate for every audited cell; the kept answer decides support.
+    expect(result).toMatchObject({
+      criterionBranch: REPLY_PATH_AUDIT_REVIEW,
+      tests: [{ id: "review", status: "test-todo" }],
+    })
+    expect(result.observation).toBeUndefined()
   })
 
   // @cto fb6cfc2f: these source-negative decisions must still be reached when the current native
@@ -1244,7 +1249,11 @@ describe("reply-path audit", () => {
     ]) {
       const { result, sent } = run(id, sha, () => "")
       expect(sent).toContain(query)
-      expect(result).toMatchObject({ observation: { outcome: "unsupported", assertionType: "query_reply" } })
+      expect(result).toMatchObject({
+        criterionBranch: REPLY_PATH_AUDIT_REVIEW,
+        tests: [{ id: "review", status: "test-todo" }],
+      })
+      expect(result.observation).toBeUndefined()
     }
   })
 
@@ -1318,7 +1327,11 @@ describe("reply-path audit", () => {
     const { result } = run("extensions.osc0-icon-title", sha, (q) =>
       q === "\x1b[21t" ? "\x1b]losc0-icon-title\x07" : "",
     )
-    expect(result).toMatchObject({ observation: { outcome: "unsupported", assertionType: "query_reply" } })
+    expect(result).toMatchObject({
+      criterionBranch: REPLY_PATH_AUDIT_REVIEW,
+      tests: [{ id: "review", status: "test-todo" }],
+    })
+    expect(result.observation).toBeUndefined()
     expect(JSON.parse(result.response!)).toMatchObject({ measuredResponse: expect.stringContaining("osc0-icon-title") })
     const answerIcon = (q: string) => (q === "\x1b[20t" ? "\x1b]Losc0-icon-title\x07" : "")
     expect(run("extensions.osc0-icon-title", sha, answerIcon).result).toEqual(
@@ -1652,11 +1665,11 @@ describe("reply-path audit", () => {
     expect(matched.length).toBeGreaterThan(0)
     const state = JSON.parse(silent.result.response!)
     expect(state).toEqual({
-      ...(audit.kind === "parser-rejected" && { rejection: "parser" }),
       replyPathAudit: {
         ...(/^[0-9a-f]{40}$/.test(auditKey) ? { sourceTreeOid: auditKey } : { artifactSha256: auditKey }),
         featureId: id,
-        ...audit,
+        query: audit.query,
+        ...(audit.matches !== undefined && { matches: audit.matches }),
         captures: matched.length,
         replyBytes: 0,
       },
@@ -1671,23 +1684,19 @@ describe("reply-path audit", () => {
         ].includes(auditKey)
           ? ""
           : (unlisted.result.response ?? null),
-      ...(audit.kind === "no-reply-path" && audit.matches === "prefix" && { matchedQueries: matched }),
+      ...(audit.matches === "prefix" && { matchedQueries: matched }),
     })
-    if (audit.kind === "no-reply-path") {
-      expect(silent.result).toMatchObject({
-        criterionBranch: REPLY_PATH_AUDIT_REVIEW,
-        tests: [{ id: "review", status: "test-todo" }],
-      })
-    } else {
-      // @cto d9998884: a cited parser rejection on the live path is Unsupported, whatever the reply delivery.
-      expect(silent.result).toMatchObject({
-        pass: false,
-        observation: { outcome: "unsupported", assertionType: "query_reply", note: "negative by source citation" },
-        assertions: [{ assertionType: "query_reply", kind: "negative" }],
-      })
-      expect(silent.result).not.toHaveProperty("criterionBranch")
-      expect(silent.result).not.toHaveProperty("tests")
-    }
+    // @cto de41833e condition 1: the probe keeps the measured gate and decides nothing. Whether this zero-byte
+    // reply reads Untestable (no reply writer) or Unsupported (cited parser rejection) is the kept answer's call,
+    // applied by the writer; the probe no longer reads the row's verdict.
+    expect(silent.result).toMatchObject({
+      pass: false,
+      criterionBranch: REPLY_PATH_AUDIT_REVIEW,
+      tests: [{ id: "review", status: "test-todo" }],
+    })
+    expect(silent.result).not.toHaveProperty("observation")
+    expect(silent.result).not.toHaveProperty("assertions")
+    expect(silent.result.tests?.[0]?.reason).toContain("the kept source answer decides this cell")
 
     const answer = (sequence: string) =>
       (audit.matches === "prefix" ? sequence.startsWith(audit.query) : sequence === audit.query) ? "\x1b" : ""

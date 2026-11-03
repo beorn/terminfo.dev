@@ -2,6 +2,7 @@
 import { createHash } from "node:crypto"
 import { isDeepStrictEqual } from "node:util"
 import {
+  REPLY_PATH_AUDIT_REVIEW,
   SOURCE_NEGATIVE_REVIEW,
   SEMANTIC_PROMPT_SOURCE_REVIEW,
   HARNESS_INCOMPLETE_TEST,
@@ -1439,6 +1440,12 @@ export function applyCaptureDecision(
     throw new Error(`Capture ${decision.featureId} has no pending required review`)
   }
   const reviewRef = `collector.review.${decision.id}`
+  // A reply-path gate measured zero reply bytes; no review may turn that measurement into support (@cto de41833e).
+  if (result.criterionBranch === REPLY_PATH_AUDIT_REVIEW && decision.decision === "supported") {
+    throw new Error(
+      `Capture ${decision.featureId} reply-path gate measured a zero-byte reply and cannot establish support`,
+    )
+  }
   if (sourceOnlyNegative && decision.decision === "supported") {
     throw new Error(`Capture ${decision.featureId} source-only negative review cannot establish support`)
   }
