@@ -4,7 +4,6 @@ export {
   SOURCE_ANSWER_PENDING_LABELS,
   resolveSourceAnswer,
   sourceAnswerForRef,
-  sourceAnswerVersionLabel,
   sourceAnswerKey,
   sourceAnswerVersionLabel,
   parseSourceAnswerKey,
