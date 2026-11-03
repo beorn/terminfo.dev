@@ -2587,7 +2587,7 @@
     "url": "https://sw.kovidgoyal.net/kitty/color-stack/",
     "tags": ["osc", "kitty-extensions"],
     "body": "OSC 30001 saves the terminal's current color state to a stack maintained by the terminal emulator. The sequence is <code>ESC ] 30001 BEL</code> and snapshots the foreground, background, cursor, selection, and full palette colors. This pairs with OSC 30101 (pop) to give applications a clean way to temporarily change colors and reliably restore them later — useful for theme previews, colorized diffs, or full-screen applications that want to leave the terminal in its original state on exit. Originally introduced by Kitty as part of its color management work; foot and Ghostty have adopted the same protocol.",
-    "probe": "Send <code>OSC 30001 BEL</code> and verify the terminal remains responsive (push sequence consumed without error).",
+    "probe": "OSC 30001 color-stack push saves the state current at push time: after set foreground B, push, set foreground C, pop, B is restored.",
     "baseline": "rich",
     "sequence": "ESC ] 30001 BEL"
   },
@@ -2598,7 +2598,7 @@
     "url": "https://sw.kovidgoyal.net/kitty/color-stack/",
     "tags": ["osc", "kitty-extensions"],
     "body": "OSC 30101 restores the most recently saved color state from the terminal's color stack. The sequence is <code>ESC ] 30101 BEL</code> and reverts the foreground, background, cursor, selection, and palette colors to the snapshot captured by the matching OSC 30001 push. This is the reliable cleanup primitive for applications that have changed any of the terminal's colors at runtime — instead of re-emitting individual reset sequences (OSC 110, 111, 112, 104), one pop restores everything atomically. Defined alongside OSC 30001 by Kitty, also supported by foot and Ghostty.",
-    "probe": "Send <code>OSC 30001 BEL</code> followed by <code>OSC 30101 BEL</code> and verify the pop sequence is consumed without error.",
+    "probe": "OSC 30101 color-stack pop restores the pushed state: after set foreground A, push, set foreground B, pop, A is restored.",
     "baseline": "rich",
     "sequence": "ESC ] 30101 BEL"
   },

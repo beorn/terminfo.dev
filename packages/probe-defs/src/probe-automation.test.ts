@@ -5154,7 +5154,10 @@ describe("partial probe automation candidates", () => {
         expect(result.note).toContain("cleanup")
         expect(result.note).toContain("behavior")
       }
-      expect(fixture.foreground()).toBe(fixture.original)
+      // #31904: the fixtures set non-default foregrounds, so only a successful cleanup restore returns
+      // the original; a failed one leaves a fixture colour behind and is the reported test-failure.
+      if (row.action.includes("cleanup restore")) expect(fixture.foreground()).not.toBe(fixture.original)
+      else expect(fixture.foreground()).toBe(fixture.original)
       if (row.action === "initial query") expect(fixture.writes).toEqual([])
       else expect(fixture.writes.at(-1)).toBe(`\x1b]10;${fixture.original}\x07`)
       if (row.action === "query and cleanup pop") {
@@ -5187,6 +5190,43 @@ describe("partial probe automation candidates", () => {
       expect(fixture.writes.some((sequence) => sequence.includes("]30101"))).toBe(true)
       expect(fixture.writes.at(-1)).toBe(`\x1b]10;${fixture.original}\x07`)
     }
+  })
+
+  // #31904 R3a: the app arm runs the same two fixtures. A pop that resets to the starting foreground
+  // passed both rows when the single fixture restored that colour; now neither row passes, and a
+  // stale push snapshot is a push-only negative.
+  test.each([
+    ["reset-default", "extensions.osc30001-color-stack-push", "inconclusive"],
+    ["reset-default", "extensions.osc30101-color-stack-pop", "inconclusive"],
+    ["stale", "extensions.osc30001-color-stack-push", "unsupported"],
+    ["stale", "extensions.osc30101-color-stack-pop", "supported"],
+  ] as const)("a %s app colour stack grades %s %s", async (kind, id, outcome) => {
+    const original = "rgb:1010/2020/3030"
+    let current: string = original
+    const stack: string[] = []
+    const result = await probe(id).term!(
+      terminalSource({
+        write(sequence) {
+          if (sequence.includes("]30001")) {
+            if (kind !== "stale" || stack.length === 0) stack.push(current)
+          } else if (sequence.includes("]30101")) {
+            if (kind === "reset-default") {
+              stack.pop()
+              current = original
+            } else current = stack.at(-1) ?? current
+          } else {
+            const set = /\x1b\]10;(rgb:[a-f\d/]+)(?:\x07|\x1b\\)/i.exec(sequence)
+            if (set) current = set[1] ?? current
+          }
+        },
+        queryWithSentinelOutcome: async (_sequence, pattern) => {
+          const raw = `\x1b]10;${current}\x1b\\`
+          return { match: raw.match(pattern), reason: "reply", raw, rawBase64: btoa(raw) }
+        },
+      }),
+    )
+    expect(result.observation?.outcome).toBe(outcome)
+    expect(current).toBe(original)
   })
 
   // A CPR after an ignored OSC is not a color-stack reply; the original foreground must survive errors too.
