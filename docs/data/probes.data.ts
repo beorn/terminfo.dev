@@ -1,7 +1,7 @@
 /**
  * VitePress build-time data loader for probe results.
  *
- * Projects reviewed current runs through the canonical selector and joins
+ * Projects stored current runs through the canonical selector and joins
  * their display metadata with the feature catalog for the matrix page.
  *
  * Consumed via: import { data } from './data/probes.data'
@@ -72,7 +72,7 @@ export interface ProbeData {
   features: FeatureResult[]
   /** category -> FeatureResult[] */
   categories: Record<string, FeatureResult[]>
-  /** Current terminal id -> feature id -> exact sealed five-status value. */
+  /** Current terminal id -> feature id -> exact stored five-status value. */
   results: Record<string, Record<string, ProbeStatus>>
   /** backend name -> feature id -> published reason */
   notes: Record<string, Record<string, string>>
@@ -81,12 +81,12 @@ export interface ProbeData {
   /** backend name -> metadata from backends.json */
   meta: Record<string, BackendMeta>
   /** "backend:feature" -> { note, url? } from annotations.json */
-  annotations: Record<string, { note: string; url?: string; result?: string }>
+  annotations: Record<string, { note: string; url?: string }>
   /** feature id -> { name, url? } from features.json */
   featureDescriptions: FeatureCatalog
   /** baseline -> feature ids */
   baselines: Record<string, string[]>
-  /** Backend name -> baseline Supported/all score and frozen catalog coverage. */
+  /** Backend name -> baseline Supported/all score and recorded catalog coverage. */
   baselineStats: Record<string, Record<string, CurrentStats>>
   /** category slug -> display label */
   categoryLabels: Record<string, string>
@@ -126,7 +126,7 @@ function loadFeatureDescriptions(): FeatureCatalog {
   return loadFeatures(contentDir)
 }
 
-function loadAnnotations(): Record<string, { note: string; url?: string; result?: string }> {
+function loadAnnotations(): Record<string, { note: string; url?: string }> {
   const annotationsPath = join(__dirname, "..", "..", "content", "annotations.json")
   if (!existsSync(annotationsPath)) {
     throw new Error(`annotations.json not found at ${annotationsPath}`)
@@ -135,7 +135,7 @@ function loadAnnotations(): Record<string, { note: string; url?: string; result?
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
     throw new Error(`${annotationsPath}: expected annotation catalog object`)
   }
-  return raw as Record<string, { note: string; url?: string; result?: string }>
+  return raw as Record<string, { note: string; url?: string }>
 }
 
 /** platform id -> display label; the site prints it beside a score so the OS is never implied. */
@@ -270,7 +270,7 @@ export function loadFullProbes(): ProbeData {
   const releaseTable: Record<string, Readonly<Record<string, ProbeStatus>>> = {}
   for (const run of Object.values(published.projection.history).flat()) {
     const rows = projection.table[run.runId]
-    if (!rows) throw new Error(`The projection has no sealed status row for run ${run.runId}`)
+    if (!rows) throw new Error(`The projection has no stored status row for run ${run.runId}`)
     releaseTable[run.runId] = rows
   }
   const result: ProbeData = {

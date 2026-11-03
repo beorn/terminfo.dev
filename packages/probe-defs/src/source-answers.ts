@@ -46,6 +46,13 @@ export const SOURCE_ANSWER_PENDING_LABELS = {
   unresolvable: "cited source not resolvable",
 } as const
 
+/** Return only the fixed public cause, never a stored pending reason's private detail. */
+export function publicSourceAnswerPendingLabel(reason: string | undefined): string | undefined {
+  return Object.values(SOURCE_ANSWER_PENDING_LABELS).find(
+    (label) => reason === label || reason?.startsWith(`${label}: `) || reason?.startsWith(`${label} at `),
+  )
+}
+
 export type SourceAnswerPendingReason =
   | (typeof SOURCE_ANSWER_PENDING_LABELS)[keyof typeof SOURCE_ANSWER_PENDING_LABELS]
   | `cited source not resolvable at ${string}`
@@ -214,20 +221,23 @@ export function resolveSourceAnswer(rows: readonly SourceAnswer[], input: Source
     }),
   })
   const applicable = candidates.filter((match) => !match.changed && !match.unavailable && (match.own || match.verified))
-  if (new Set(applicable.map((match) => match.answer.status)).size > 1) {
-    return pending(SOURCE_ANSWER_PENDING_LABELS.disagree, applicable)
+  // Blob-verified answers lead the one ordered list every answer, row and rowKey is derived from, so the first
+  // reason and reviewRef agree with the strongest applicable answer; equally verified matches keep table order.
+  const ordered = [...applicable.filter((match) => match.verified), ...applicable.filter((match) => !match.verified)]
+  if (new Set(ordered.map((match) => match.answer.status)).size > 1) {
+    return pending(SOURCE_ANSWER_PENDING_LABELS.disagree, ordered)
   }
-  const first = applicable[0]
+  const first = ordered[0]
   if (first) {
     // A changed older answer is not qualifying evidence against a separately valid row.
-    const unverified = applicable.find((match) => !match.verified)
     return {
       kind: "answer",
       status: first.answer.status,
-      rows: [...new Set(applicable.map((match) => match.row))],
-      answers: applicable.map((match) => match.answer),
-      rowKeys: [...new Set(applicable.map((match) => match.key))],
-      ...(unverified && { label: sourceAnswerVersionLabel(unverified.row.subject.version) }),
+      rows: [...new Set(ordered.map((match) => match.row))],
+      answers: ordered.map((match) => match.answer),
+      rowKeys: [...new Set(ordered.map((match) => match.key))],
+      // The version label marks a cell with no verified answer at all, never a verified one that shares the row.
+      ...(!first.verified && { label: sourceAnswerVersionLabel(first.row.subject.version) }),
     }
   }
   const changed = candidates.filter((match) => match.changed)

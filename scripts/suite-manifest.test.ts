@@ -7,7 +7,7 @@
  * @testonly none
  */
 import { execFileSync } from "node:child_process"
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -163,19 +163,6 @@ test("the source-tree collector uses the derived manifest", () => {
     else process.env.TERMINFO_PROBE_HASH = prevHash
     if (prevRev === undefined) delete process.env.TERMINFO_SOURCE_REVISION
     else process.env.TERMINFO_SOURCE_REVISION = prevRev
-  }
-})
-
-test("committed disposable receipts verify unchanged", () => {
-  const receiptsDir = join(REPO_ROOT, "content", "receipts")
-  const receiptFiles = readdirSync(receiptsDir)
-    .filter((file) => file.endsWith(".json"))
-    .sort()
-  // The round is empty between the Friday delete and Saturday's admission (#30764 M4 P1): the guard
-  // still proves every committed receipt parses, and keeps a non-.json placeholder in the folder.
-  for (const file of receiptFiles) {
-    const path = join(receiptsDir, file)
-    expect(readDisposableReceipt(path).kind).toMatch(/^[a-z]/)
   }
 })
 

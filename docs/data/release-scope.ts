@@ -59,7 +59,7 @@ export interface ReleaseScope {
 }
 
 /**
- * The five states one measured cell can be in. Current readings publish sealed `ProbeStatus`
+ * The five states one measured cell can be in. Current readings publish stored `ProbeStatus`
  * values directly; these names survive for the archived legacy evidence the v1 API still renders.
  *
  * Presentation states retain their existing keys: inconclusive is reserved for reviewed Untestable
@@ -94,7 +94,7 @@ export function hasCurrentSource(sources: readonly { suiteRelation: SuiteRelatio
   return sources.some((source) => !isStaleRelation(source.suiteRelation))
 }
 
-/** Current score and completion fold recorded statuses over exactly the frozen catalogue. */
+/** Current score and completion fold recorded statuses over exactly the recorded catalogue. */
 export interface CurrentAggregate {
   denominator: number
   counts: Record<ProbeStatus, number>
@@ -275,7 +275,7 @@ export function aggregateCurrentResults(
   catalogIds: readonly string[],
 ): CurrentAggregate {
   if (!catalogIds.length || new Set(catalogIds).size !== catalogIds.length) {
-    throw new Error("Current aggregate requires a nonempty unique frozen catalogue")
+    throw new Error("Current aggregate requires a nonempty unique recorded catalogue")
   }
   const statuses: Record<string, string> = {}
   const idsByState: Record<ProbeStatus, string[]> = {
@@ -293,7 +293,7 @@ export function aggregateCurrentResults(
     results.length !== catalogIds.length ||
     catalogIds.some((id) => !Object.hasOwn(statuses, id))
   ) {
-    throw new Error("Current results differ from frozen catalogue membership")
+    throw new Error("Current results differ from recorded catalogue membership")
   }
   const rollup = rollupTerminalStatuses(statuses, catalogIds)
   for (const id of gradedFeatureIds(catalogIds)) {

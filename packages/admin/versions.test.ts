@@ -109,7 +109,6 @@ test("suite identity changes with executable collection, ownership, capture and 
     "packages/run-parser/src/app-launch.ts",
     "scripts/release1-collection.ts",
     "packages/terminfo.dev/src/daemon-client.ts",
-    "scripts/interpretations.ts",
     "packages/probe-defs/src/helpers.ts",
   ]) {
     changed.file = file

@@ -62,7 +62,6 @@ const ADAPTER_SOURCE_PATHS = [
   "packages/run-parser/src/observations.ts",
   "packages/run-parser/src/source-answers.ts",
   "scripts/release1-collection.ts",
-  "scripts/interpretations.ts",
   "scripts/linux-container-run.sh",
   "scripts/owned-app-remote-run.ts",
   "scripts/hosted-runner-receipt.ts",

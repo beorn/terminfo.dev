@@ -29,8 +29,6 @@ import {
 import { tmpdir } from "node:os"
 import { afterAll, describe, expect, it, vi } from "vitest"
 import { parse, stringify } from "yaml"
-import { loadSelectedResults } from "../docs/data/selected-results.ts"
-import { loadStoredRuns } from "../packages/admin/corpus-placement.ts"
 import * as catalog from "@terminfo/catalog"
 import { parseJsonStrict, parseRun, parseSuiteManifest } from "@terminfo/run-parser"
 import * as versions from "../packages/admin/versions.ts"
@@ -135,85 +133,6 @@ const currentManifest = parseSuiteManifest(currentManifestPath, readFileSync(cur
 if (currentManifest.schemaVersion !== 4 || !currentManifest.catalogIds) {
   throw new Error("Collection fixture requires the committed schema-4 catalogue")
 }
-
-// Retained fixture results stay authoritative when later tool-gap reviews are present.
-it.each(["projection", "collection"] as const)(
-  "%s preserves stored results when six tool-gap reviews are added",
-  async (entry) => {
-    const paths = [
-      "probes-apps/alacritty-0.17.0-linux-f504922f67f074794c588cf3a14e2114.json",
-      "probes-mux/screen-5.0.2-linux-ff1d93308fe7f5044d692f7da0fcfe2b.json",
-      "probes-mux/tmux-3.8-linux-ea920f3547c0e7f0ced0f80b277f2939.json",
-    ]
-    {
-      const runs = loadStoredRuns(CONTENT, Object.keys(catalog.loadFeatures(CONTENT))).filter((run) =>
-        paths.includes(relative(CONTENT, run.path)),
-      )
-      expect(runs).toHaveLength(3)
-      const overlays = runs.flatMap((run) =>
-        ["extensions.font-ligatures", "sgr.blink"].map((featureId) => {
-          return {
-            id: `fixture-gap-${run.subject.id}-${featureId}`,
-            decision: "tool-gap",
-            reviewed: true,
-            reviewer: "fixture-reviewer",
-            reason:
-              featureId === "sgr.blink"
-                ? "single-frame blink sample; instrument #32083 blink sample window"
-                : "no ligature-capable face pinned; instrument #32062 font control",
-            runId: run.runId,
-            runSha256: run.sha256,
-            featureId,
-            scope: {
-              subject: { kind: run.subject.kind, id: run.subject.id },
-              versions: [run.subject.version, run.subject.version],
-              suites: [run.suiteId, run.suiteId],
-            },
-            sources: ["controlled fixture review only; no identity or admission authority"],
-            supersedes: [],
-          }
-        }),
-      )
-      const invoke = () =>
-        entry === "projection"
-          ? loadSelectedResults(CONTENT, versions.probeSuiteSnapshot().probeHash)
-          : collectPass(fingerprintFixture.directory, { runner: "local" }, { contexts: [] })
-      const baseline =
-        entry === "projection" ? loadSelectedResults(CONTENT, versions.probeSuiteSnapshot().probeHash) : undefined
-      const storePath = join(CONTENT, "interpretations.json")
-      const original = readFileSync(storePath, "utf8")
-      const stored: unknown = JSON.parse(original)
-      if (!Array.isArray(stored)) throw new Error("Expected curated interpretation array")
-      const fixtureBytes = JSON.stringify([...stored, ...overlays])
-      const fixturePath = join(fingerprintFixture.directory, `${entry}-overlays.json`)
-      writeFileSync(fixturePath, fixtureBytes)
-      fingerprintFixture.files[storePath] = fixturePath
-      try {
-        const result = await invoke()
-        if (entry === "projection") {
-          const projection = result as ReturnType<typeof loadSelectedResults>
-          expect(projection).toEqual(baseline)
-          for (const run of runs) {
-            for (const featureId of ["extensions.font-ligatures", "sgr.blink"]) {
-              expect(projection.table[run.runId]![featureId]).toBe(
-                run.results!.find((row) => row.featureId === featureId)!.status,
-              )
-            }
-          }
-        } else {
-          const pass = result as Awaited<ReturnType<typeof collectPass>>
-          expect(pass.contexts).toEqual([])
-          expect(pass.inputSha256).not.toHaveProperty(storePath)
-        }
-      } finally {
-        delete fingerprintFixture.files[storePath]
-      }
-      expect(readFileSync(storePath, "utf8")).toBe(original)
-    }
-  },
-  // CI's full-history partial clone fetches the cited source blobs on its first canonical read.
-  30_000,
-)
 
 /** The Termless manifest's engine names, as a fixture: the census takes them in, it never guesses. */
 const ENGINE_BACKENDS = [
