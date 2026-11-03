@@ -72,14 +72,15 @@ const MOUSE_SET = "\x1b[?1000h\x1b[?1006h"
 const MOUSE_RESET = "\x1b[?1000l\x1b[?1006l"
 const PLAIN_A = /^a/
 const MODIFIED_KEY = /\x01|\x1b\[(?:27;\d+;\d+~|\d+;\d+u)/
-const CTRL_A_ENCODING = /^\x1b\[(?:27;5;97~|97;5u)$/
+const CTRL_A_ENCODING = /^(?:\x01|\x1b\[(?:27;5;97~|97;5u))$/
 const SGR_MOUSE = /\x1b\[<\d+;\d+;\d+[Mm]/
 const MODIFY_OTHER_KEYS_2 = "\x1b[>4;2m"
 const MODIFY_OTHER_KEYS_3 = "\x1b[>4;3m"
 const MODIFY_OTHER_KEYS_RESET = "\x1b[>4;0m"
 const MODIFY_OTHER_KEYS_REPORT = /\t|\x1b\[(?:27;\d+;\d+~|\d+;\d+u)/
 const MODIFY_OTHER_KEYS_3_REPORT = /\x1b\[(?:27;\d+;\d+~|\d+;\d+u)|i/
-const MODIFY_OTHER_KEYS_ENCODING = /\x1b\[(?:27;\d+;105~|105;\d+u)/
+const MODIFY_OTHER_KEYS_2_ENCODING = /^\x1b\[(?:27;5;105~|105;5u)$/
+const MODIFY_OTHER_KEYS_3_ENCODING = /^\x1b\[(?:27;1;105~|105;1u)$/
 const DECKPAM = "\x1b="
 const DECKPNM = "\x1b>"
 // SS3 may be mixed with other replies; only a standalone 5 establishes numeric-keypad fallback.
@@ -216,7 +217,7 @@ async function modifyOtherKeys2(ctx: TermProbeSource): Promise<ProbeCallbackResu
     }
     const observed = { mode: "modifyOtherKeys-2", control, report }
     const expected = "OS XTEST ctrl+i report under modifyOtherKeys 2 after plain-a delivery control"
-    if (MODIFY_OTHER_KEYS_ENCODING.test(report)) {
+    if (MODIFY_OTHER_KEYS_2_ENCODING.test(report)) {
       return interactionResult("modify-other-keys:ctrl+i", expected, observed)
     }
     return unsupportedInteraction("modify-other-keys:ctrl+i", expected, observed)
@@ -240,7 +241,7 @@ async function modifyOtherKeys3(ctx: TermProbeSource): Promise<ProbeCallbackResu
     }
     const observed = { mode: "modifyOtherKeys-3", control, report }
     const expected = "OS XTEST unmodified i report under modifyOtherKeys 3 after plain-a delivery control"
-    if (MODIFY_OTHER_KEYS_ENCODING.test(report)) {
+    if (MODIFY_OTHER_KEYS_3_ENCODING.test(report)) {
       return interactionResult("modify-other-keys-3:i", expected, observed)
     }
     return unsupportedInteraction("modify-other-keys-3:i", expected, observed)

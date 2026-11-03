@@ -231,19 +231,24 @@ test("input.xtest-key aborts when plain a does not reach the app, and does not i
   expect(keys).toEqual(["a"])
 })
 
-test("input.xtest-key records interaction after plain-a control then ctrl+a", async () => {
-  const writes: string[] = []
-  const { ctx, keys } = inputAndRead({ keys: { a: "a", "ctrl+a": "\x1b[97;5u" } }, writes)
-  const result = (await probe("input.xtest-key").term!(ctx)) as ProbeCallbackResult
-  expect(keys).toEqual(["a", "ctrl+a"])
-  expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "input_bytes" })
-  expect(result.assertions?.[0]).toMatchObject({ kind: "positive", action: "xtest-key:ctrl+a" })
-  const observed = JSON.parse(result.assertions?.[0]?.observed ?? "null") as Record<string, unknown>
-  expect(observed).toMatchObject({ control: "a", report: "\x1b[97;5u" })
-})
+// The published delivery criterion accepts legacy Ctrl+A as well as its extended encodings.
+// The old positive covered only CSI u, while a negative incorrectly rejected the C0 byte.
+test.each(["\x01", "\x1b[27;5;97~", "\x1b[97;5u"])(
+  "input.xtest-key records ctrl+a report %j after plain-a control",
+  async (report) => {
+    const writes: string[] = []
+    const { ctx, keys } = inputAndRead({ keys: { a: "a", "ctrl+a": report } }, writes)
+    const result = (await probe("input.xtest-key").term!(ctx)) as ProbeCallbackResult
+    expect(keys).toEqual(["a", "ctrl+a"])
+    expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "input_bytes" })
+    expect(result.assertions?.[0]).toMatchObject({ kind: "positive", action: "xtest-key:ctrl+a" })
+    const observed = JSON.parse(result.assertions?.[0]?.observed ?? "null") as Record<string, unknown>
+    expect(observed).toMatchObject({ control: "a", report })
+  },
+)
 
 // Existing delivery tests accepted any modified key; these reports deny the exact ctrl+a claim.
-test.each(["\x01", "\x1b[98;5u", "\x1b[27;5;98~", "\x1b[97;2u"])(
+test.each(["\x1b[27;1;97~", "\x1b[98;5u", "\x1b[27;5;98~", "\x1b[97;2u"])(
   "input.xtest-key rejects the wrong encoding %j after a successful delivery control",
   async (report) => {
     const { ctx, keys } = inputAndRead({ keys: { a: "a", "ctrl+a": report } })
@@ -370,6 +375,23 @@ test.each([
   expect(result.assertions?.[0]).toMatchObject({ kind: "positive", action: "modify-other-keys:ctrl+i" })
   const observed = JSON.parse(result.assertions?.[0]?.observed ?? "null") as Record<string, unknown>
   expect(observed, label).toMatchObject({ mode: "modifyOtherKeys-2", control: "a", report })
+})
+
+// Both criteria name an exact injected modifier; existing cases covered only the right modifier or bare fallback.
+test.each([
+  ["input.modify-other-keys", "ctrl+i", "\x1b[27;1;105~"],
+  ["input.modify-other-keys", "ctrl+i", "\x1b[105;2u"],
+  ["input.modify-other-keys-3", "i", "\x1b[27;5;105~"],
+  ["input.modify-other-keys-3", "i", "\x1b[105;5u"],
+] as const)("%s rejects wrong modifier for %j in report %j", async (id, key, report) => {
+  const writes: string[] = []
+  const { ctx, keys } = inputAndRead({ keys: { a: "a", [key]: report } }, writes)
+  const result = await probe(id).term!(ctx)
+  expect(keys).toEqual(["a", key])
+  expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "input_bytes" })
+  expect(result.assertions?.[0]).toMatchObject({ kind: "negative" })
+  expect(JSON.parse(result.response!)).toMatchObject({ control: "a", report })
+  expect(writes.at(-1)).toBe("\x1b[>4;0m")
 })
 
 test("input.modify-other-keys records unsupported interaction when ctrl+i still reports Tab", async () => {
