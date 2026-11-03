@@ -46,6 +46,53 @@
       "version": "0.26.0",
       "os": "linux"
     },
+    "featureId": "extensions.iterm2-images",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/alacritty/native/src/lib.rs",
+            "oid": "1779ff4f042f7f285ab3d396da039408b492be10"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/alacritty/native/Cargo.lock",
+            "oid": "61a0da4773734220406e2077f33f154f31895a29"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/alacritty/native/Cargo.toml",
+            "oid": "12521c8ea6dcedf6b94f757a8d6672c737c72db7"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "source-32225-alacritty-extensions.iterm2-images",
+            "reviewer": "@dev/2",
+            "reason": "Criterion branch is source-negative in the configured library path: OSC 1337 is not registered in vte 0.15.0's osc_dispatch, which parses the number and falls through to its logging-only unhandled branch, and alacritty_terminal 0.26.0's Handler has no image branch. src/ansi.rs contains no 1337 case at all across its OSC dispatch (:1329-1523), and the Handler at src/term/mod.rs:1059-2272 handles title, colour and cursor state only. Termless packages/alacritty/native/src/lib.rs:286-339 owns Term<EventProxy> and advances the same pinned vte processor into it, with no image path of its own. Missing observable: an OSC 1337 image handler or image store at the pinned source.",
+            "sources": [
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/alacritty/native/src/lib.rs:286-339",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/alacritty/native/Cargo.lock",
+              "vte 0.15.0 (Cargo.lock checksum a5924018406ce0063cd67f8e008104968b74b563ee1b85dde3ed1f7cb87d3dbd; registry archive sha256 re-verified equal 2026-11-03) src/ansi.rs:1329-1523, with no 1337 registration",
+              "alacritty_terminal 0.26.0 (Cargo.lock checksum bda177466b9524d59f1b12f0dd30b68696788e9992a7e959021c4a0ed96fcf59; registry archive sha256 re-verified equal 2026-11-03) src/term/mod.rs:1059-2272"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "alacritty",
+      "version": "0.26.0",
+      "os": "linux"
+    },
     "featureId": "extensions.osc10-fg-color",
     "answers": [
       {
@@ -439,6 +486,53 @@
               "alacritty_terminal 0.26.0 (Cargo.lock checksum bda177466b9524d59f1b12f0dd30b68696788e9992a7e959021c4a0ed96fcf59; registry archive sha256 verified equal) src/term/mod.rs:334-365,436-440,1657-1701,1675-1688; src/term/color.rs:24-28",
               "vte 0.15.0 (archive sha256 a5924018406ce0063cd67f8e008104968b74b563ee1b85dde3ed1f7cb87dbd) src/ansi.rs:1363-1387,1421-1450,1514-1521",
               "terminfo.dev packages/probe-defs/src/extensions.ts oscColorQueryProbe (color readback review branch) and resetProbe/colorResetProbe"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "alacritty",
+      "version": "0.26.0",
+      "os": "linux"
+    },
+    "featureId": "extensions.sixel",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/alacritty/native/src/lib.rs",
+            "oid": "1779ff4f042f7f285ab3d396da039408b492be10"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/alacritty/native/Cargo.lock",
+            "oid": "61a0da4773734220406e2077f33f154f31895a29"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/alacritty/native/Cargo.toml",
+            "oid": "12521c8ea6dcedf6b94f757a8d6672c737c72db7"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "source-32225-alacritty-extensions.sixel",
+            "reviewer": "@dev/2",
+            "reason": "Criterion branch is source-negative in the configured library path: vte 0.15.0 delivers DCS only to the Performer hook/put/unhook callbacks, which are debug-log only, so a DCS q Sixel payload never reaches alacritty_terminal's Handler and no image store exists. vte 0.15.0 src/ansi.rs:1311-1326 (hook, put and unhook log the unhandled string and return), alacritty_terminal 0.26.0 src/term/mod.rs:1059-2272 Handler has no image path. Termless packages/alacritty/native/src/lib.rs:286-339 advances the same pinned vte processor into that Handler. Missing observable: a Sixel decoder or image store at the pinned source.",
+            "sources": [
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/alacritty/native/src/lib.rs:286-339",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/alacritty/native/Cargo.lock",
+              "vte 0.15.0 (Cargo.lock checksum a5924018406ce0063cd67f8e008104968b74b563ee1b85dde3ed1f7cb87d3dbd; registry archive sha256 re-verified equal 2026-11-03) src/ansi.rs:1311-1326",
+              "alacritty_terminal 0.26.0 (Cargo.lock checksum bda177466b9524d59f1b12f0dd30b68696788e9992a7e959021c4a0ed96fcf59; registry archive sha256 re-verified equal 2026-11-03) src/term/mod.rs:1059-2272"
             ]
           }
         ]
@@ -11057,6 +11151,54 @@
     "subject": {
       "kind": "lib",
       "id": "vt100",
+      "version": "0.10.1",
+      "os": "linux"
+    },
+    "featureId": "extensions.iterm2-images",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/vterm.git",
+            "commit": "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+            "path": "packages/vt100/src/screen.ts",
+            "oid": "cd71776df5f72918cd06934d724a5c2e3585a89d"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/vt100/src/index.ts",
+            "oid": "99833d737402f9d1d8e3e257e3a255d8aa1facc3"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/vt100/src/backend.ts",
+            "oid": "cdb8be8c5ebbba68a5920cfa4df27c9deb31745a"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "source-32225-vt100-extensions.iterm2-images",
+            "reviewer": "@dev/2",
+            "reason": "Criterion branch is source-negative: OSC 1337 (iTerm2 inline images) is parsed as an opaque control string and discarded, and no image store exists anywhere in the pinned source. vterm 9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vt100/src/screen.ts:505-520 handleOSC switches on codes 0/2 (window title) and 1 (ignored) only, so an OSC 1337 payload reaches no image branch. The Termless 25089207e11420cf7a588987c1dc2683a45e8372 adapter installs no OSC handler beyond title tracking and reports sixel: false (packages/vt100/src/backend.ts). Missing observable: an OSC 1337 image handler or image store at the pinned source.",
+            "sources": [
+              "git@github.com:beorn/vterm.git@9e99e4d23cdc606fca258b1863aa2be7ae79eed3:packages/vt100/src/screen.ts:505-520",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/vt100/src/index.ts",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/vt100/src/backend.ts",
+              "Termless packages/vt100/src/index.ts and backend.ts at 25089207e11420cf7a588987c1dc2683a45e8372 install no OSC 1337 handler and report sixel: false",
+              "Read 2026-11-03 by @dev/2 at the pinned commits above"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt100",
       "version": "0.10.0",
       "os": "linux"
     },
@@ -12567,6 +12709,54 @@
               "vt100 0.10.1 beorn/vterm 9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vt100/src/screen.ts:505-520,656-678",
               "Termless 25089207e11420cf7a588987c1dc2683a45e8372 packages/vt100/src/backend.ts:98-120",
               "Retained before run 42bdfe00-58f6-4da8-830e-2fa53d65c53e, suite f6f8aed46f0e: current cell pending before source qualification"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt100",
+      "version": "0.10.1",
+      "os": "linux"
+    },
+    "featureId": "extensions.sixel",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/vterm.git",
+            "commit": "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+            "path": "packages/vt100/src/screen.ts",
+            "oid": "cd71776df5f72918cd06934d724a5c2e3585a89d"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/vt100/src/index.ts",
+            "oid": "99833d737402f9d1d8e3e257e3a255d8aa1facc3"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/vt100/src/backend.ts",
+            "oid": "cdb8be8c5ebbba68a5920cfa4df27c9deb31745a"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "source-32225-vt100-extensions.sixel",
+            "reviewer": "@dev/2",
+            "reason": "Criterion branch is source-negative: a DCS q Sixel payload is consumed by the parser and thrown away, with no decoder or image store. vterm 9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vt100/src/screen.ts:570-571,681-686 enters the dcs state on ESC P (and _ ^ X) and, inside that state, handles only ESC and ignores every other byte, so the payload never reaches a handler. The Termless 25089207e11420cf7a588987c1dc2683a45e8372 adapter installs no image path and reports sixel: false (packages/vt100/src/backend.ts). Missing observable: a Sixel decoder or image store at the pinned source.",
+            "sources": [
+              "git@github.com:beorn/vterm.git@9e99e4d23cdc606fca258b1863aa2be7ae79eed3:packages/vt100/src/screen.ts:505-520",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/vt100/src/index.ts",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/vt100/src/backend.ts",
+              "Termless packages/vt100/src/backend.ts at 25089207e11420cf7a588987c1dc2683a45e8372 reports sixel: false and installs no image path",
+              "Read 2026-11-03 by @dev/2 at the pinned commits above"
             ]
           }
         ]
@@ -21794,6 +21984,54 @@
     "subject": {
       "kind": "lib",
       "id": "vt220",
+      "version": "0.10.1",
+      "os": "linux"
+    },
+    "featureId": "extensions.iterm2-images",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/vterm.git",
+            "commit": "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+            "path": "packages/vt220/src/screen.ts",
+            "oid": "cc5c5c79b0c882cb1c335f2ccaf2c555884a05ee"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/vt220/src/index.ts",
+            "oid": "601dd26eb7e753a5396ebdf72f1ef8ee2cc4355f"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/vt220/src/backend.ts",
+            "oid": "7369e3710e36aa649372fd09011ecfdd6ba47c73"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "source-32225-vt220-extensions.iterm2-images",
+            "reviewer": "@dev/2",
+            "reason": "Criterion branch is source-negative: OSC 1337 (iTerm2 inline images) is parsed as an opaque control string and discarded, and no image store exists anywhere in the pinned source. vterm 9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vt220/src/screen.ts:701-716 handleOSC switches on codes 0/2 (window title) and 1 (ignored) only, so an OSC 1337 payload reaches no image branch. The Termless 25089207e11420cf7a588987c1dc2683a45e8372 adapter installs no OSC handler beyond title tracking and reports sixel: false (packages/vt220/src/backend.ts). Missing observable: an OSC 1337 image handler or image store at the pinned source.",
+            "sources": [
+              "git@github.com:beorn/vterm.git@9e99e4d23cdc606fca258b1863aa2be7ae79eed3:packages/vt220/src/screen.ts:701-716",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/vt220/src/index.ts",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/vt220/src/backend.ts",
+              "Termless packages/vt220/src/index.ts and backend.ts at 25089207e11420cf7a588987c1dc2683a45e8372 install no OSC 1337 handler and report sixel: false",
+              "Read 2026-11-03 by @dev/2 at the pinned commits above"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt220",
       "version": "0.10.0",
       "os": "linux"
     },
@@ -23281,6 +23519,54 @@
               "vt220 0.10.1 beorn/vterm 9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vt220/src/screen.ts:701-716,872-894",
               "Termless 25089207e11420cf7a588987c1dc2683a45e8372 packages/vt220/src/backend.ts:95-117",
               "Retained before run 57eda43c-39ee-46be-8e45-1d52362b6a25, suite f6f8aed46f0e: current cell pending before source qualification"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt220",
+      "version": "0.10.1",
+      "os": "linux"
+    },
+    "featureId": "extensions.sixel",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/vterm.git",
+            "commit": "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+            "path": "packages/vt220/src/screen.ts",
+            "oid": "cc5c5c79b0c882cb1c335f2ccaf2c555884a05ee"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/vt220/src/index.ts",
+            "oid": "601dd26eb7e753a5396ebdf72f1ef8ee2cc4355f"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/vt220/src/backend.ts",
+            "oid": "7369e3710e36aa649372fd09011ecfdd6ba47c73"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "source-32225-vt220-extensions.sixel",
+            "reviewer": "@dev/2",
+            "reason": "Criterion branch is source-negative: a DCS q Sixel payload is consumed by the parser and thrown away, with no decoder or image store. vterm 9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vt220/src/screen.ts:766-767,897-902 enters the dcs state on ESC P (and _ ^ X) and, inside that state, handles only ESC and ignores every other byte, so the payload never reaches a handler. The Termless 25089207e11420cf7a588987c1dc2683a45e8372 adapter installs no image path and reports sixel: false (packages/vt220/src/backend.ts). Missing observable: a Sixel decoder or image store at the pinned source.",
+            "sources": [
+              "git@github.com:beorn/vterm.git@9e99e4d23cdc606fca258b1863aa2be7ae79eed3:packages/vt220/src/screen.ts:701-716",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/vt220/src/index.ts",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/vt220/src/backend.ts",
+              "Termless packages/vt220/src/backend.ts at 25089207e11420cf7a588987c1dc2683a45e8372 reports sixel: false and installs no image path",
+              "Read 2026-11-03 by @dev/2 at the pinned commits above"
             ]
           }
         ]
@@ -30252,6 +30538,61 @@
       "version": "6.0.0",
       "os": "linux"
     },
+    "featureId": "extensions.iterm2-images",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/xtermjs/src/index.ts",
+            "oid": "550e10110ec2baaf326d2958319b03ee8208feba"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/xtermjs/src/backend.ts",
+            "oid": "72dc827b2026af7736de722f7ff986a04f3fe883"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/xtermjs/package.json",
+            "oid": "7febf39cdcf09a1edcb35732487a8d59821f7415"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "bun.lock",
+            "oid": "e98a82dedba868673d1c96c230d611cac67ca72b"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "source-32225-xtermjs-extensions.iterm2-images",
+            "reviewer": "@dev/2",
+            "reason": "Criterion branch is source-negative in the configured library path: the @xterm/headless 6.0.0 bundle contains no OSC 1337 registration or image handling, and the Termless adapter installs no OSC handler. Bundle SHA256 17a90b650cf6b77cce2b98c4063884d43545e4ce177a54b76ccfc906f1aacaed and source map SHA256 780e782badc8189491a469c9277b783e01911882ea84417b31e71294ea927d98 were re-hashed locally on 2026-11-03; the bundle text has no occurrence of 1337, sixel or iterm, and unregistered OSC sequences reach the logging fallback. Termless packages/xtermjs/src/backend.ts registers no OSC handler and loads only Unicode11Addon (packages/xtermjs/src/index.ts, backend.ts). This judgment concerns the configured package plus adapter, not every embedder. Missing observable: an OSC 1337 image handler or image store in that path.",
+            "sources": [
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/xtermjs/src/index.ts",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/xtermjs/src/backend.ts",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/xtermjs/package.json",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:bun.lock",
+              "@xterm/headless 6.0.0 bundle SHA256 17a90b650cf6b77cce2b98c4063884d43545e4ce177a54b76ccfc906f1aacaed, map SHA256 780e782badc8189491a469c9277b783e01911882ea84417b31e71294ea927d98; re-hashed locally 2026-11-03 and equal to the audited identity; no 1337/sixel/iterm token in the bundle",
+              "Termless adapter loads only Unicode11Addon and registers no OSC handler"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "xtermjs",
+      "version": "6.0.0",
+      "os": "linux"
+    },
     "featureId": "extensions.osc176-app-id",
     "answers": [
       {
@@ -30295,6 +30636,61 @@
               "The actual @xterm/headless6.0.0 bundle SHA25617a90b650cf6b77cce2b98c4063884d43545e4ce177a54b76ccfc906f1aacaed and source map SHA256780e782badc8189491a469c9277b783e01911882ea84417b31e71294ea927d98 bind the inspected InputHandler/OscParser sources. Complete OSC registrations have no176 handler and the fallback only logs. A public custom-handler API exists, but the exact Termless adapter installs none; its loaded Unicode11Addon registers only a width provider. This judgment concerns the configured package+adapter, not every embedder.",
               "Current source verdict 73d5b6b6-149e-4414-8ab5-78df101c67ed, @dev/4, 2026-11-03; /hh/var/@dev4/0920-osc176-alacritty-xterm-verdict.md",
               "Run 403089e7-f0ed-4c3f-827b-3f11eeb9f1ba raw SHA256b2b6133a7bb6ec068c53a4e4f3bc77bea7917d4b85229f7bc182067f293b0ec7, suitea891217f6896, terminfo50c9d86da33306fd20a6dda5f891003252d931ab; own negative buffer_state assertion for extensions.osc176-app-id"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "xtermjs",
+      "version": "6.0.0",
+      "os": "linux"
+    },
+    "featureId": "extensions.sixel",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/xtermjs/src/index.ts",
+            "oid": "550e10110ec2baaf326d2958319b03ee8208feba"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/xtermjs/src/backend.ts",
+            "oid": "72dc827b2026af7736de722f7ff986a04f3fe883"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/xtermjs/package.json",
+            "oid": "7febf39cdcf09a1edcb35732487a8d59821f7415"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "bun.lock",
+            "oid": "e98a82dedba868673d1c96c230d611cac67ca72b"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "source-32225-xtermjs-extensions.sixel",
+            "reviewer": "@dev/2",
+            "reason": "Criterion branch is source-negative in the configured library path: the @xterm/headless 6.0.0 bundle has no Sixel decoder, no image addon is loaded, and the adapter reports sixel: false. Bundle SHA256 17a90b650cf6b77cce2b98c4063884d43545e4ce177a54b76ccfc906f1aacaed and source map SHA256 780e782badc8189491a469c9277b783e01911882ea84417b31e71294ea927d98 were re-hashed locally on 2026-11-03; the bundle text has no sixel token. Termless packages/xtermjs/src/backend.ts loads only Unicode11Addon, installs no image addon, and its capability record sets sixel: false. A DCS q Sixel payload is therefore dropped with no image store. This judgment concerns the configured package plus adapter, not every embedder. Missing observable: a Sixel decoder or image store in that path.",
+            "sources": [
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/xtermjs/src/index.ts",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/xtermjs/src/backend.ts",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/xtermjs/package.json",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:bun.lock",
+              "@xterm/headless 6.0.0 bundle SHA256 17a90b650cf6b77cce2b98c4063884d43545e4ce177a54b76ccfc906f1aacaed, map SHA256 780e782badc8189491a469c9277b783e01911882ea84417b31e71294ea927d98; re-hashed locally 2026-11-03 and equal to the audited identity; no sixel token in the bundle",
+              "Termless adapter loads only Unicode11Addon, no image addon; capability record sixel: false"
             ]
           }
         ]
