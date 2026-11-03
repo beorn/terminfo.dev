@@ -1426,6 +1426,8 @@ describe("selected-run consumer parity", () => {
     if (!unscoped) throw new Error("Missing Kitty sixel annotation fixture")
     const cell = fixture.selected.cells["extensions.sixel"] as SelectedCell
     const original = structuredClone(cell)
+    const annotationId = "extensions.osc1337-cellsize"
+    const previousAnnotated = fixture.selected.cells[annotationId]
     try {
       const unreviewed = generateAnalysis()["extensions/sixel-graphics"]?.analysis
       expect(unreviewed).not.toContain(unscoped)
@@ -1436,12 +1438,23 @@ describe("selected-run consumer parity", () => {
       const reviewed = generateAnalysis()["extensions/sixel-graphics"]?.analysis
       expect(reviewed).not.toContain(unscoped)
       expect(reviewed).not.toContain("Reviewed Kitty sixel observation note")
+      // Plain notes cannot veto stored grades or become evidence. Existing negative-result
+      // cases miss the old build refusal triggered by a note saying "not supported".
+      fixture.selected.cells[annotationId] = {
+        ...structuredClone(original),
+        featureId: annotationId,
+        outcome: "supported",
+      }
+      const generated = JSON.stringify(generateAnalysis())
+      expect(generated).not.toContain(annotations[`kitty:${annotationId}`]!.note)
       expect(warnings.every((message) => message.includes("no current sealed runs"))).toBe(true)
     } finally {
       warning.mockRestore()
       Object.assign(cell, original)
       if (original.note === undefined) delete cell.note
       if (original.chain.correctionId === undefined) Reflect.deleteProperty(cell.chain, "correctionId")
+      if (previousAnnotated) fixture.selected.cells[annotationId] = previousAnnotated
+      else Reflect.deleteProperty(fixture.selected.cells, annotationId)
     }
   })
 

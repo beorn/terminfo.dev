@@ -242,7 +242,11 @@ describe("raw cells never enter an accepted rollup (requirement 3)", () => {
         config: null,
         permissions: null,
       },
-      results: [{ featureId: first.result.featureId, status: "supported", attempt: { scope: "none" }, tests: [] }],
+      results: [
+        { featureId: "sgr.bold", status: "supported", attempt: { scope: "none" }, tests: [] },
+        { featureId: "sgr.faint", status: "test-todo", attempt: { scope: "none" }, tests: [] },
+        { featureId: "device.env-term", status: "supported", attempt: { scope: "none" }, tests: [] },
+      ],
     } as unknown as LoadedRun
     const working: LoadedWorkingRun = {
       id: OLD,
@@ -274,6 +278,31 @@ describe("raw cells never enter an accepted rollup (requirement 3)", () => {
     const only = view.contexts.find((row) => row.runId === "hourly-raw-only")
     expect(only?.contextKey).toMatch(/^lib:vt100-hourly-only@\[/)
     expect(only?.cells[0]).toMatchObject({ headline: "raw", relation: "raw-only" })
+    // Raw owns its counts; an environment row remains visible but is not a graded position.
+    // Existing byte parity alone would pass if the hourly card never counted any results.
+    expect(only).toMatchObject({
+      positions: 2,
+      counts: {
+        supported: 1,
+        unsupported: 0,
+        untestable: 0,
+        "test-todo": 1,
+        "test-failure": 0,
+      },
+    })
+    rawOnly.results![0]!.status = "unsupported"
+    const changed = composeWorkingView(projection, compat, working).contexts.find((row) => row.runId === rawOnly.runId)
+    expect(changed).toMatchObject({
+      positions: 2,
+      counts: {
+        supported: 0,
+        unsupported: 1,
+        untestable: 0,
+        "test-todo": 1,
+        "test-failure": 0,
+      },
+    })
+    expect(rollups()).toBe(before)
     expect(view.run).toMatchObject({ id: OLD, startedAt: "2026-11-02T19:34:05.072Z" })
 
     // Byte comparison of the two data.json documents: every accepted field identical, `working` only added.
@@ -289,6 +318,12 @@ describe("raw cells never enter an accepted rollup (requirement 3)", () => {
     ) as Record<string, unknown>
     expect(plain).not.toContain('"working"')
     expect(withRaw.working).toMatchObject({ label: RAW_LABEL, run: { id: OLD } })
+    const apiWorking = withRaw.working as { contexts: Array<Record<string, unknown>> }
+    expect(apiWorking.contexts).toHaveLength(2)
+    expect(apiWorking.contexts.find((context) => context.runId === rawOnly.runId)?.cells).toEqual(changed?.cells)
+    expect(
+      apiWorking.contexts.every((context) => !Object.hasOwn(context, "counts") && !Object.hasOwn(context, "positions")),
+    ).toBe(true)
     delete withRaw.working
     expect(
       createHash("sha256")
