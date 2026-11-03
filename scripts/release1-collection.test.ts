@@ -242,6 +242,8 @@ it.each(["projection", "admission", "collection"] as const)(
       for (const path of paths) delete fingerprintFixture.files[join(CONTENT, path)]
     }
   },
+  // CI's full-history partial clone fetches the cited source blobs on its first canonical read.
+  30_000,
 )
 
 /** The Termless manifest's engine names, as a fixture: the census takes them in, it never guesses. */

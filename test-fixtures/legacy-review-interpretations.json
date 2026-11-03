@@ -226,5 +226,116 @@
       },
       "sha256": "fc418a174b120c7c64e52ad0b60f38066ac8fcd9b13a42dc3687a359c020a172"
     }
+  },
+  {
+    "id": "by-design-32022-vt100-input-button-event-mouse",
+    "runId": "23ffd358081f4fe2ade92090e1c0f09a",
+    "featureId": "input.button-event-mouse",
+    "captureSha256": "69aeadfbac65ed3f1d4bc259b0454a79f8c42531521f2454bb6f4b05cdf78584",
+    "evidence": {
+      "algorithm": "evidence-output-v1",
+      "projection": {
+        "cell": {
+          "assertions": [],
+          "criterionBranch": "os-input-review",
+          "frames": [],
+          "rawReplies": [
+            {
+              "key": "input.button-event-mouse",
+              "sha256": "0408d11c45de32a40f90daf4f847d9893ccef72754cf89b0a328905e8ad65e93"
+            }
+          ],
+          "replyPath": {
+            "decision": {
+              "member": true,
+              "reason": "vt100 declares complete reply delivery bound to its loaded source and engine"
+            },
+            "declaration": {
+              "adapterSources": [
+                {
+                  "blobOid": "99833d737402f9d1d8e3e257e3a255d8aa1facc3",
+                  "path": "packages/vt100/src/index.ts"
+                },
+                {
+                  "blobOid": "1205e36ffd0fe662d35dad8a41ea2cd55c46f30b",
+                  "path": "packages/vt100/src/backend.ts"
+                }
+              ],
+              "boundary": "feed-and-getCursor",
+              "engine": {
+                "kind": "source",
+                "repository": "git@github.com:beorn/vterm.git",
+                "treeOid": "97f1da77dea90f664aeb678b919a35673f893ef1"
+              }
+            }
+          },
+          "tests": [
+            {
+              "id": "review",
+              "reason": "Lib arm: the engine consumes bytes and has no input surface; host input encoding is measured in the terminal arm.",
+              "status": "test-todo"
+            }
+          ]
+        },
+        "feature": {
+          "catalogEntrySha256": "ed4bd1200c4b0734c5c210b053b835cad46829e60cfd92c7ea6bcff54816e46f",
+          "featureId": "input.button-event-mouse"
+        },
+        "runtimeIdentity": {
+          "adapterSources": [
+            {
+              "blobOid": "99833d737402f9d1d8e3e257e3a255d8aa1facc3",
+              "path": "packages/vt100/src/index.ts"
+            },
+            {
+              "blobOid": "1205e36ffd0fe662d35dad8a41ea2cd55c46f30b",
+              "path": "packages/vt100/src/backend.ts"
+            }
+          ],
+          "adapterVersion": "0.10.2",
+          "engineVersion": "0.9.0",
+          "integrity": {
+            "cleanTree": true,
+            "kind": "source",
+            "repository": "git@github.com:beorn/vterm.git",
+            "treeOid": "97f1da77dea90f664aeb678b919a35673f893ef1"
+          },
+          "kind": "js",
+          "runtimeFormat": "js"
+        },
+        "subject": {
+          "id": "vt100",
+          "kind": "lib",
+          "os": "linux",
+          "version": "0.9.0"
+        }
+      },
+      "sha256": "3a500cbfb1f5dddd52c95342d76d45766452a032101f1842e2f16b7429fd9ddc"
+    },
+    "decision": "untestable",
+    "reason": "Lib arm: the engine consumes bytes and has no input surface; host input encoding is measured in the terminal arm.",
+    "scope": {
+      "subject": {
+        "kind": "lib",
+        "id": "vt100",
+        "os": "linux"
+      },
+      "versions": [
+        "0.9.0",
+        "0.9.0"
+      ],
+      "suites": [
+        "8c474cb4b0ff",
+        "8c474cb4b0ff"
+      ]
+    },
+    "sources": [
+      "23ffd358081f4fe2ade92090e1c0f09a:collector.capture.input.button-event-mouse",
+      "terminfo.dev@e275d02cd4d96d7f09e2c2afeba0d27c58344f23:packages/probes/headless-batch.ts#createLibProbeSource",
+      "terminfo.dev@e275d02cd4d96d7f09e2c2afeba0d27c58344f23:packages/probe-defs/src/input.ts"
+    ],
+    "supersedes": [],
+    "reviewed": true,
+    "reviewer": "@cto"
   }
 ]

@@ -1391,7 +1391,8 @@ test("DECSSCLS real-vterm pending source review survives collection and canonica
   const draft = initializeRunDraft({
     source: { kind: "live" },
     runId: "decsscls-parser-fixture",
-    sourceRevision: "a".repeat(40),
+    // Existing frozen source object; the fixture engine version remains unreviewed and unverified.
+    sourceRevision: "9e319ac6e815688fc4b56eade0d06a49eaffafba",
     intendedSubject: { kind: "lib", id: "vterm" },
     manifest,
   })
@@ -1423,13 +1424,13 @@ test("DECSSCLS real-vterm pending source review survives collection and canonica
     },
     identity: "unverified",
     measuredAt: "2026-11-02T06:20:00.000Z",
-    // Private fixture metadata; this does not attest or admit the loaded engine.
+    // Private unit identity with an existing source object, not an attestation of the loaded engine.
     runtimeIdentity: {
       kind: "js",
       runtimeFormat: "js",
       engineVersion: "fixture",
       adapterVersion: "fixture",
-      termlessRevision: "fixture",
+      termlessRevision: "539e4803eee45fcfe60369188c2189b57a06ae18",
       resolvedPath: "fixture/vterm",
       integrity: { kind: "registry", lockIntegrity: "fixture" },
     },
@@ -1440,6 +1441,16 @@ test("DECSSCLS real-vterm pending source review survives collection and canonica
   }
   const finalized = finalizeCollectedDraft(captured)
   expect(finalized.sealedAt).toBeUndefined()
+  expect(finalized.results).toMatchObject([
+    {
+      featureId: id,
+      status: "test-todo",
+      assertionType: "buffer_state",
+      tests: [{ id: "review", status: "test-todo" }],
+    },
+  ])
+  expect(finalized.assertions).toEqual(batch.assertions)
+  expect(finalized.rawReplies).toEqual(batch.rawReplies)
   const parsed = parseRun(
     "decsscls.capture.json",
     JSON.stringify(finalized),
@@ -1447,7 +1458,7 @@ test("DECSSCLS real-vterm pending source review survives collection and canonica
     new Map([[manifest.probeHash, manifest]]),
     { mode: "capture" },
   )
-  expect(parsed.results).toEqual(batch.results)
+  expect(parsed.results).toEqual(finalized.results)
 })
 
 // @failure A typed D/633 source review under libAssertionType:null becomes a collector error.
@@ -2594,11 +2605,15 @@ test("legacy collection without source identity keeps mouse tool gaps TODO and i
   expect(batch.assertions).toEqual([])
   expect(batch.observations).toEqual([])
   expect(batch.ungradedDiagnostics).toEqual({})
-  const records = JSON.parse(readFileSync(new URL("../../content/interpretations.json", import.meta.url), "utf8")) as {
+  // Frozen at 9e319ac6: private legacy carry remains covered outside active C1 inputs.
+  const records = JSON.parse(
+    readFileSync(new URL("../../test-fixtures/legacy-review-interpretations.json", import.meta.url), "utf8"),
+  ) as {
     id: string
   }[]
   const historical = records.find((record) => record.id === "by-design-32022-vt100-input-button-event-mouse")
-  if (!historical) throw new Error("Missing accepted vt100 mouse record in content/interpretations.json")
+  if (!historical)
+    throw new Error("Missing accepted vt100 mouse record in test-fixtures/legacy-review-interpretations.json")
   const sources = new Map<string, string>()
   const accepted = activeInterpretations(
     parseInterpretations("mouse-history-fixture", JSON.stringify([historical]), ids, sources),
