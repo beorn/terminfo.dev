@@ -442,7 +442,7 @@ describe("Phase 2.4 single status-and-rollup computation (rollupTerminalStatuses
     })
   })
 
-  it("ranks open graded probes by (-totalOpen, -libOpen, -(libFailure + appFailure), featureId) and excludes environment groups (A5)", () => {
+  it("ranks open graded probes by (-libOpen, -libFailure, featureId), excludes environment groups, and refuses missing or invalid cells (A5)", () => {
     const libCells = {
       vterm: {
         "device.env-term": "test-todo",
@@ -459,79 +459,52 @@ describe("Phase 2.4 single status-and-rollup computation (rollupTerminalStatuses
         "erase.line": "supported",
       },
     }
-    const appCells = {
-      "kitty:linux": {
-        "device.env-term": "test-todo",
-        "sgr.bold": "supported",
-        "sgr.faint": "supported",
-        "cursor.up": "test-failure",
-        "erase.line": "test-todo",
-      },
-    }
-    const rows = rankOpenProbes(libCells, { appCells })
+    const rows = rankOpenProbes(libCells)
     // Environment group device.env-term is excluded even with open statuses.
     expect(rows.map((r) => r.featureId)).toEqual(["sgr.bold", "sgr.faint", "cursor.up", "erase.line"])
-    // sgr.bold and sgr.faint tie on totalOpen=2 and libOpen=2; sgr.bold wins on -(libFailure + appFailure) (1 vs 0).
-    // cursor.up and erase.line tie on totalOpen=2, libOpen=1, appOpen=1; cursor.up wins on failures (2 vs 0).
-    expect(rows[0]).toEqual({
-      featureId: "sgr.bold",
-      family: "sgr",
-      libOpen: 2,
-      libFailure: 1,
-      libTodo: 1,
-      appOpen: 0,
-      appFailure: 0,
-      appTodo: 0,
-      totalOpen: 2,
-    })
-    expect(rows[1]).toEqual({
-      featureId: "sgr.faint",
-      family: "sgr",
-      libOpen: 2,
-      libFailure: 0,
-      libTodo: 2,
-      appOpen: 0,
-      appFailure: 0,
-      appTodo: 0,
-      totalOpen: 2,
-    })
-    expect(rows[2]).toEqual({
-      featureId: "cursor.up",
-      family: "cursor",
-      libOpen: 1,
-      libFailure: 1,
-      libTodo: 0,
-      appOpen: 1,
-      appFailure: 1,
-      appTodo: 0,
-      totalOpen: 2,
-    })
-    expect(rows[3]).toEqual({
-      featureId: "erase.line",
-      family: "erase",
-      libOpen: 1,
-      libFailure: 0,
-      libTodo: 1,
-      appOpen: 1,
-      appFailure: 0,
-      appTodo: 1,
-      totalOpen: 2,
-    })
-    // A5: no libStatuses or appStatuses maps on ProbeOpenRankRow.
-    expect(Object.keys(rows[0]!).sort()).toEqual([
-      "appFailure",
-      "appOpen",
-      "appTodo",
-      "family",
-      "featureId",
-      "libFailure",
-      "libOpen",
-      "libTodo",
-      "totalOpen",
+    // sgr.bold and sgr.faint tie on libOpen=2; sgr.bold wins on -libFailure (1 vs 0).
+    // cursor.up and erase.line tie on libOpen=1; cursor.up wins on -libFailure (1 vs 0).
+    expect(rows).toEqual([
+      {
+        featureId: "sgr.bold",
+        family: "sgr",
+        libOpen: 2,
+        libFailure: 1,
+        libTodo: 1,
+      },
+      {
+        featureId: "sgr.faint",
+        family: "sgr",
+        libOpen: 2,
+        libFailure: 0,
+        libTodo: 2,
+      },
+      {
+        featureId: "cursor.up",
+        family: "cursor",
+        libOpen: 1,
+        libFailure: 1,
+        libTodo: 0,
+      },
+      {
+        featureId: "erase.line",
+        family: "erase",
+        libOpen: 1,
+        libFailure: 0,
+        libTodo: 1,
+      },
     ])
-    // Fail loud on invalid stored status.
+    // A5: only fields with a caller in Step 2 (no app* or status maps on ProbeOpenRankRow).
+    expect(Object.keys(rows[0]!).sort()).toEqual(["family", "featureId", "libFailure", "libOpen", "libTodo"])
+    // Fail loud on invalid stored status or a missing graded cell in any library map.
     expect(() => rankOpenProbes({ vterm: { "sgr.bold": "bogus" } })).toThrow(
       /Invalid stored current status for sgr\.bold/,
     )
+    expect(() =>
+      rankOpenProbes({
+        vterm: { "sgr.bold": "supported", "sgr.faint": "test-todo" },
+        xtermjs: { "sgr.bold": "supported" },
+      }),
+    ).toThrow(/Invalid stored current status for sgr\.faint/)
   })
 })
