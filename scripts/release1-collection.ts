@@ -1178,12 +1178,6 @@ function collectHostedArtifacts(
   return results
 }
 
-/** A measured context used by the census coverage report. */
-export interface ProducedRun {
-  readonly runId?: string
-  readonly subject: { readonly kind: "term" | "lib" | "mux"; readonly id: string; readonly os: string | null }
-}
-
 /**
  * The one key a census row and a produced run share. An app row is its (id, os). A headless engine
  * row is its id alone: the census cannot know the host os, and the run records the host it ran on,
@@ -1191,22 +1185,6 @@ export interface ProducedRun {
  */
 const coverageKey = (kind: unknown, id: unknown, os: unknown): string =>
   kind === "lib" ? `headless:${String(id)}` : `${String(id)}/${String(os)}`
-
-/** Contexts in the census that produced no run at all, each with its own named reason. */
-export function uncoveredContexts(
-  census: readonly CollectionContext[],
-  producedRuns: readonly ProducedRun[],
-): readonly { readonly context: CollectionContext; readonly reason: string }[] {
-  const produced = new Set(producedRuns.map((run) => coverageKey(run.subject?.kind, run.subject?.id, run.subject?.os)))
-  return census
-    .filter((entry) => !produced.has(coverageKey(entry.kind, entry.id, entry.os)))
-    .map((entry) => ({
-      context: entry,
-      reason:
-        entry.uncollectable ??
-        (entry.route === null ? "no collection route" : `no run produced by the ${entry.route} route`),
-    }))
-}
 
 function planLines(census: readonly CollectionContext[]): string[] {
   const lines = census.map((entry) => {

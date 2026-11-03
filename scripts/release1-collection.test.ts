@@ -58,9 +58,7 @@ import {
   ownedAppRunsDirectory,
   readOwnedAppTransportProof,
   release1Census,
-  uncoveredContexts,
   type CollectionContext,
-  type ProducedRun,
 } from "./release1-collection.ts"
 
 // Standalone checkouts have no superproject inputs; retain real hashing over private fixture bytes.
@@ -246,11 +244,6 @@ const ENGINE_BACKENDS = [
   "wezterm",
   "xtermjs",
 ]
-
-const cleanRun = (overrides: Partial<ProducedRun> = {}): ProducedRun => ({
-  subject: { kind: "term", id: "xterm", os: "linux" },
-  ...overrides,
-})
 
 // Refusal must precede filesystem effects; census and private-success cases never used repository output.
 it("refuses repository output before creating any directory", async () => {
@@ -1083,34 +1076,6 @@ describe("release 1 collection census", () => {
     }
   })
 
-  it("names each context that produced no run, with its own reason", () => {
-    const all = census()
-    const uncovered = uncoveredContexts(all, [cleanRun()])
-    expect(uncovered).toHaveLength(32)
-    expect(uncovered.find((entry) => entry.context.id === "windows-terminal")?.reason).toMatch(
-      /no run produced by the hosted-workflow route/,
-    )
-    expect(uncovered.find((entry) => entry.context.id === "kitty" && entry.context.os === "linux")?.reason).toMatch(
-      /linux-container/,
-    )
-    // A produced run carries the os it was MEASURED on: an app its own, a headless engine the host's.
-    const measured = all.map((entry) =>
-      cleanRun({ subject: { kind: entry.kind, id: entry.id, os: entry.kind === "lib" ? "linux" : entry.os } }),
-    )
-    expect(uncoveredContexts(all, measured)).toHaveLength(0)
-  })
-
-  it("credits an admitted headless engine run to its engine row, whatever host os it records (#27929 D7)", () => {
-    // The census keys an engine row at os "unknown", while the run itself records the host it ran on
-    // ("linux"), so a key of id/os matched no headless run and every engine row read "no run produced"
-    // right after its run was admitted (rehearsed on 950882d4f34d, xtermjs 7866d892).
-    const all = census()
-    const headless = cleanRun({ subject: { kind: "lib", id: "xtermjs", os: "linux" } })
-    const uncovered = uncoveredContexts(all, [headless]).map((entry) => `${entry.context.kind}:${entry.context.id}`)
-    expect(uncovered).not.toContain("lib:xtermjs")
-    expect(uncovered).toContain("term:xterm")
-    expect(uncovered).toHaveLength(32)
-  })
 })
 
 describe("release 1 Linux launcher flags", () => {
