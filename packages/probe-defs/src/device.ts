@@ -401,6 +401,10 @@ const TITLE_STACK_UNIMPLEMENTED_AUDITS: ReadonlyMap<string, string> = new Map([
     "b4155bfdef040ae8b3b723a4366fa8ec7f278463dbef577ec4730ad152b8bf07",
     "tattoy-wezterm-escape-parser 0.1.0-1 src/csi.rs:2633-2644 parses CSI 22;0t as Window::PushIconAndWindowTitle and CSI 23;0t as Window::PopIconAndWindowTitle; tattoy-wezterm-term 0.1.0-fork.5 src/terminalstate/performer.rs:509 dispatches CSI::Window to perform_csi_window, where src/terminalstate/mod.rs:2090-2095 matches PopIconAndWindowTitle..PushWindowTitle => {} and TerminalState at src/terminalstate/mod.rs:334-337 holds only title: String and icon_title: Option<String> with no title stack. Rebuilt artifact: termless 80dd254111ab (overline cell projection) with the same crate pins and lock sha256 8eaeab73 unchanged from the 6722b331 artifact",
   ],
+  [
+    "2e724652f148d5af965999d2eb86457621862dfc73784a1811ee1a010fb6d676",
+    "tattoy-wezterm-term 0.1.0-fork.5 (base archive 7f367867, prepared patch 57be24a5) src/terminalstate/mod.rs:2090-2095 matches PopIconAndWindowTitle, PopWindowTitle, PopIconTitle, PushIconAndWindowTitle, PushIconTitle and PushWindowTitle to an empty body; the crate holds no title stack (no title_stack/push_title/pop_title symbol); escape-parser 0.1.0-1 src/csi.rs:2633-2640 routes 22;0t and 23;0t to those variants; termless cbfa60e2 packages/wezterm/native/src/lib.rs caches the current title at :242-243 and exposes getTitle only at :439-440, with its sole change the applicationCursor line at :418",
+  ],
 ])
 
 const TITLE_STACK_UNIMPLEMENTED_SOURCE_TREES: ReadonlyMap<string, { readonly sourceCitation: string }> = new Map([

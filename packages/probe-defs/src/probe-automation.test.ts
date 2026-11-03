@@ -296,6 +296,7 @@ describe("audited native host recipe callers", () => {
     "6722b331de7489c14cb599d939e5d2314f054220728f83c5c29f454e70273e47",
     // Overline-only rebuild; retained 22:34 run hit missing host causes on all three OSC 52 callers.
     "b4155bfdef040ae8b3b723a4366fa8ec7f278463dbef577ec4730ad152b8bf07",
+    "2e724652f148d5af965999d2eb86457621862dfc73784a1811ee1a010fb6d676",
   ])("the WezTerm artifact %s cites its OSC 52 read and leaves CSI 14 t measured", (wezterm) => {
     const silent = (id: string) =>
       probe(id).lib!(

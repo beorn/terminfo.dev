@@ -120,6 +120,12 @@ export const ADAPTER_SOURCE_AUDITS = {
     "packages/wezterm/native/src/lib.rs": "47dc0392036f34416fb6a38e9a834a7fccc8cfe3",
     "src/load-native.ts": "34e142550085450ab02138184626716ad0d6b546",
   },
+  wezterm2e724652: {
+    "packages/wezterm/src/index.ts": "512606c5270ffd0cff55c1b70f5b3eda18a92df0",
+    "packages/wezterm/src/backend.ts": "29b9bdea778abe558497217e811495c3c279451f",
+    "packages/wezterm/native/src/lib.rs": "f020988ef5ecc4f124d6468f7ba66e1c3a4cc6d3",
+    "src/load-native.ts": "34e142550085450ab02138184626716ad0d6b546",
+  },
 } as const
 
 export function auditedAdapterSources(
