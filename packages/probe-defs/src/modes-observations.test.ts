@@ -1020,19 +1020,13 @@ const VT100_SOURCE_IDENTITY = {
 const withRuntimeIdentity = (context: LibProbeSource, runtimeIdentity: unknown): LibProbeSource =>
   Object.assign(context, { runtimeIdentity }) as LibProbeSource
 
-test("1049 exit grades Unsupported by source citation when the loaded source has no alternate screen", () => {
+test("1049 exit stays inconclusive on a source with no alternate screen: source never decides it (#32246)", () => {
   const definition = alt1049Probe("exit")
   const audited = alt1049Source("ignored-entry")
   const result = definition.lib!(withRuntimeIdentity(audited.context, VT100_SOURCE_IDENTITY))
-  expect(result.observation).toMatchObject({
-    outcome: "unsupported",
-    assertionType: "buffer_state",
-    note: "negative by source citation",
-  })
-  expect(result.assertions).toMatchObject([{ kind: "negative", assertionType: "buffer_state" }])
-  expect(JSON.parse(result.response!)).toMatchObject({
-    sourceCitation: expect.stringContaining("packages/vt100/src/screen.ts:99"),
-  })
+  expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+  expect(result.assertions).toBeUndefined()
+  expect(JSON.parse(result.response!)).not.toHaveProperty("sourceCitation")
 })
 
 test("the same entry failure stays inconclusive on a moved, dirty or different source", () => {
