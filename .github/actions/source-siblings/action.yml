@@ -1,4 +1,4 @@
-# vendor-kit: source-siblings@9aa937217f2b — generated; edit km/packages/km-infra/vendor-kit/templates/source-siblings-action.yml in km, then re-sync
+# vendor-kit: source-siblings@66bdcc1efdc1 — generated; edit km/packages/km-infra/vendor-kit/templates/source-siblings-action.yml in km, then re-sync
 name: Install named source siblings
 description: Test against public sibling commits without requiring a new npm release
 
@@ -162,6 +162,7 @@ runs:
         writeFileSync(join(checkoutRoot, "package.original.json"), originalPackage)
         writeFileSync(join(checkoutRoot, "bun.lock.original"), originalLock)
         const names = new Set()
+        const completedCheckouts = new Map()
 
         function git(args) {
           const result = spawnSync("git", args, { cwd: root, stdio: "inherit" })
@@ -228,13 +229,16 @@ runs:
           sourceSiblingDeclarations(sourcePackages, name)
           names.add(name)
           const checkout = join(checkoutRoot, String(index))
+          const origin = `https://github.com/${repository}.git`
+          const reference = completedCheckouts.get(origin.toLowerCase())
           network(`${name} clone`, () => {
             // git removes a clone it could not finish; a leftover would turn the next attempt into a different failure.
             if (existsSync(checkout)) throw new Error(`source-siblings: a failed clone left ${checkout}; not cloning into it`)
-            git(["clone", "--filter=blob:none", "--single-branch", "--branch", "main", "--no-checkout", `https://github.com/${repository}.git`, checkout])
+            git(["clone", "--filter=blob:none", "--single-branch", "--branch", "main", "--no-checkout", ...(reference ? ["--reference", reference, "--dissociate"] : []), origin, checkout])
           })
           git(["-C", checkout, "merge-base", "--is-ancestor", commit, "refs/remotes/origin/main"])
           network(`${name} checkout`, () => git(["-C", checkout, "-c", "advice.detachedHead=false", "checkout", "--detach", commit]))
+          if (!reference) completedCheckouts.set(origin.toLowerCase(), checkout)
           const subdirectory = posix.normalize(directory).replace(/\/$/, "")
           const where = subdirectory === "." ? `${repository}@${commit}` : `${repository}@${commit}:${subdirectory}`
           const sourcePkg = JSON.parse(readFileSync(join(checkout, subdirectory, "package.json"), "utf8"))
