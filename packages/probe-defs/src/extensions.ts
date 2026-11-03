@@ -1303,12 +1303,12 @@ const ABSENT_OSC_ENGINES = {
     kind: "native",
     engineVersion: "0.26.0",
     adapterVersion: "0.10.2",
-    binarySha256: "21d4b43c1d4c401c5b9f8114de85b3e837605242363c322c2dcb37e4a42fba61",
+    binarySha256: "9839e138d9e6f13e84adc3022f67964f0451e2e6416294952e22286412994f61",
     absentMouseEncodings: [1015, 1016],
     mouseEncodingSourceCitation:
       "alacritty_terminal 0.26.0 src/term/mod.rs:55-87 TermMode stores SGR/UTF8 only; :1935-1941 ignores unknown private modes and :1958-1980 sets only SGR/UTF8 mouse encoding; vte 0.15.0 src/ansi.rs:896-933 PrivateMode mapping has no 1015/1016, so the previous encoding is retained",
-    sourceCommit: "824119c28b46bd701b222a91df0da860f0307950",
-    buildHash: "634c14c5258327eff925d20d24918098c9aee92c1e6291e0ca770d2677015171",
+    sourceCommit: "2f73fc28027b7d483e504e08edc64d1837935816",
+    buildHash: "343c00e0db2bed851505ada4645b7b667ab78a0485a4ca71f9eaa4e5d8dead39",
     lockSha256: "1f89f2579b7d786a116d8fefb8267c4af076bd3a3893adcf14b00c4466740497",
     codes: [1, 9, 17, 19, 22, 117, 119, 176, 440, 555, 666, 710, 777, 3008],
     reviewReasons: [
@@ -1324,7 +1324,7 @@ const ABSENT_OSC_ENGINES = {
       },
     ],
     sourceCitation:
-      "alacritty_terminal 0.26.0 with vte 0.15.0 src/ansi.rs:1329-1523 OSC dispatch (22 parsed, other audited codes unhandled); src/term/mod.rs:1059-2272 Term Handler; Termless 824119c28b46bd701b222a91df0da860f0307950 packages/alacritty/native/src/lib.rs:285-338 owns Term<EventProxy> and advances the same vte processor into it; alternate-scroll readback changes leave Config, OSC dispatch and reply handling unchanged",
+      "alacritty_terminal 0.26.0 with vte 0.15.0 src/ansi.rs:1329-1523 OSC dispatch (22 parsed, other audited codes unhandled); src/term/mod.rs:1059-2272 Term Handler; Termless 2f73fc28027b7d483e504e08edc64d1837935816 packages/alacritty/native/src/lib.rs:286-339 owns Term<EventProxy> and advances the same vte processor into it; Cell.hidden readback changes leave Config, OSC dispatch and reply handling unchanged",
   },
   wezterm: {
     kind: "native",

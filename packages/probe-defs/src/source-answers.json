@@ -27024,5 +27024,281 @@
         ]
       }
     ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt100",
+      "version": "0.10.1",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc1-icon",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/vterm.git",
+            "commit": "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+            "path": "packages/vt100/src/screen.ts",
+            "oid": "cd71776df5f72918cd06934d724a5c2e3585a89d"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "bdaa263fdec6480cceb4b383aff027d3a46fd483",
+            "path": "packages/vt100/src/index.ts",
+            "oid": "99833d737402f9d1d8e3e257e3a255d8aa1facc3"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "bdaa263fdec6480cceb4b383aff027d3a46fd483",
+            "path": "packages/vt100/src/backend.ts",
+            "oid": "cdb8be8c5ebbba68a5920cfa4df27c9deb31745a"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "31997-current-vt100-0.10.1-1-source-review",
+            "reviewer": "@dev/1",
+            "reason": "Independent source review by @dev/1 (GO36303782, 2026-11-03) confirms current pinned source: vt100 9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vt100/src/screen.ts handleOSC has only cases 0/2 (title) and 1 (explicitly ignored); no icon-name state is stored. Current Termless bdaa263fdec6480cceb4b383aff027d3a46fd483 adapter feed forwards OSC bytes to that parser and adds only CSI18t geometry interception. This is engine-library source rejection, not UI appearance, host delivery, reply silence or CPR evidence.",
+            "sources": [
+              "9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vt100/src/screen.ts:505-520; full OSC dispatch census 31997-vterm-osc-census.txt",
+              "bdaa263fdec6480cceb4b383aff027d3a46fd483 packages/vt100/src/backend.ts feed/getTitle and full returned interface; no icon/pointer/notification target writer",
+              "/hh/main.hab/state/instruments/terminfo-remeasure/runs/2026-11-03T08-34-04-461Z-6533f83738c6/headless/vt100-0.10.1-linux-fe2b05cf-0cd4-45cc-9677-5b494dacd5b3.draft.json: retained current source-negative review; no capture or original changed"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt100",
+      "version": "0.10.1",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc22-pointer",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/vterm.git",
+            "commit": "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+            "path": "packages/vt100/src/screen.ts",
+            "oid": "cd71776df5f72918cd06934d724a5c2e3585a89d"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "bdaa263fdec6480cceb4b383aff027d3a46fd483",
+            "path": "packages/vt100/src/index.ts",
+            "oid": "99833d737402f9d1d8e3e257e3a255d8aa1facc3"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "bdaa263fdec6480cceb4b383aff027d3a46fd483",
+            "path": "packages/vt100/src/backend.ts",
+            "oid": "cdb8be8c5ebbba68a5920cfa4df27c9deb31745a"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "31997-current-vt100-0.10.1-22-source-review",
+            "reviewer": "@dev/1",
+            "reason": "Independent source review by @dev/1 (GO36303782, 2026-11-03) confirms current pinned source: vt100 9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vt100/src/screen.ts handleOSC has only cases 0/2 (title) and 1 (explicitly ignored); no case 22 or target-state writer exists. Current Termless bdaa263fdec6480cceb4b383aff027d3a46fd483 adapter feed forwards OSC bytes to that parser and adds only CSI18t geometry interception. This is engine-library source rejection, not UI appearance, host delivery, reply silence or CPR evidence.",
+            "sources": [
+              "9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vt100/src/screen.ts:505-520; full OSC dispatch census 31997-vterm-osc-census.txt",
+              "bdaa263fdec6480cceb4b383aff027d3a46fd483 packages/vt100/src/backend.ts feed/getTitle and full returned interface; no icon/pointer/notification target writer",
+              "/hh/main.hab/state/instruments/terminfo-remeasure/runs/2026-11-03T08-34-04-461Z-6533f83738c6/headless/vt100-0.10.1-linux-fe2b05cf-0cd4-45cc-9677-5b494dacd5b3.draft.json: retained current source-negative review; no capture or original changed"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt100",
+      "version": "0.10.1",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc777-notify",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/vterm.git",
+            "commit": "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+            "path": "packages/vt100/src/screen.ts",
+            "oid": "cd71776df5f72918cd06934d724a5c2e3585a89d"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "bdaa263fdec6480cceb4b383aff027d3a46fd483",
+            "path": "packages/vt100/src/index.ts",
+            "oid": "99833d737402f9d1d8e3e257e3a255d8aa1facc3"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "bdaa263fdec6480cceb4b383aff027d3a46fd483",
+            "path": "packages/vt100/src/backend.ts",
+            "oid": "cdb8be8c5ebbba68a5920cfa4df27c9deb31745a"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "31997-current-vt100-0.10.1-777-source-review",
+            "reviewer": "@dev/1",
+            "reason": "Independent source review by @dev/1 (GO36303782, 2026-11-03) confirms current pinned source: vt100 9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vt100/src/screen.ts handleOSC has only cases 0/2 (title) and 1 (explicitly ignored); no case 777 or target-state writer exists. Current Termless bdaa263fdec6480cceb4b383aff027d3a46fd483 adapter feed forwards OSC bytes to that parser and adds only CSI18t geometry interception. This is engine-library source rejection, not UI appearance, host delivery, reply silence or CPR evidence.",
+            "sources": [
+              "9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vt100/src/screen.ts:505-520; full OSC dispatch census 31997-vterm-osc-census.txt",
+              "bdaa263fdec6480cceb4b383aff027d3a46fd483 packages/vt100/src/backend.ts feed/getTitle and full returned interface; no icon/pointer/notification target writer",
+              "/hh/main.hab/state/instruments/terminfo-remeasure/runs/2026-11-03T08-34-04-461Z-6533f83738c6/headless/vt100-0.10.1-linux-fe2b05cf-0cd4-45cc-9677-5b494dacd5b3.draft.json: retained current source-negative review; no capture or original changed"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt220",
+      "version": "0.10.1",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc1-icon",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/vterm.git",
+            "commit": "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+            "path": "packages/vt220/src/screen.ts",
+            "oid": "cc5c5c79b0c882cb1c335f2ccaf2c555884a05ee"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "bdaa263fdec6480cceb4b383aff027d3a46fd483",
+            "path": "packages/vt220/src/index.ts",
+            "oid": "601dd26eb7e753a5396ebdf72f1ef8ee2cc4355f"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "bdaa263fdec6480cceb4b383aff027d3a46fd483",
+            "path": "packages/vt220/src/backend.ts",
+            "oid": "7369e3710e36aa649372fd09011ecfdd6ba47c73"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "31997-current-vt220-0.10.1-1-source-review",
+            "reviewer": "@dev/1",
+            "reason": "Independent source review by @dev/1 (GO36303782, 2026-11-03) confirms current pinned source: vt220 9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vt220/src/screen.ts handleOSC has only cases 0/2 (title) and 1 (explicitly ignored); no icon-name state is stored. Current Termless bdaa263fdec6480cceb4b383aff027d3a46fd483 adapter feed forwards OSC bytes to that parser and adds only CSI18t geometry interception. This is engine-library source rejection, not UI appearance, host delivery, reply silence or CPR evidence.",
+            "sources": [
+              "9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vt220/src/screen.ts:701-716; full OSC dispatch census 31997-vterm-osc-census.txt",
+              "bdaa263fdec6480cceb4b383aff027d3a46fd483 packages/vt220/src/backend.ts feed/getTitle and full returned interface; no icon/pointer/notification target writer",
+              "/hh/main.hab/state/instruments/terminfo-remeasure/runs/2026-11-03T08-34-04-461Z-6533f83738c6/headless/vt220-0.10.1-linux-e150af30-e60f-4589-8e27-9eaa898a6d05.draft.json: retained current source-negative review; no capture or original changed"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt220",
+      "version": "0.10.1",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc22-pointer",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/vterm.git",
+            "commit": "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+            "path": "packages/vt220/src/screen.ts",
+            "oid": "cc5c5c79b0c882cb1c335f2ccaf2c555884a05ee"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "bdaa263fdec6480cceb4b383aff027d3a46fd483",
+            "path": "packages/vt220/src/index.ts",
+            "oid": "601dd26eb7e753a5396ebdf72f1ef8ee2cc4355f"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "bdaa263fdec6480cceb4b383aff027d3a46fd483",
+            "path": "packages/vt220/src/backend.ts",
+            "oid": "7369e3710e36aa649372fd09011ecfdd6ba47c73"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "31997-current-vt220-0.10.1-22-source-review",
+            "reviewer": "@dev/1",
+            "reason": "Independent source review by @dev/1 (GO36303782, 2026-11-03) confirms current pinned source: vt220 9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vt220/src/screen.ts handleOSC has only cases 0/2 (title) and 1 (explicitly ignored); no case 22 or target-state writer exists. Current Termless bdaa263fdec6480cceb4b383aff027d3a46fd483 adapter feed forwards OSC bytes to that parser and adds only CSI18t geometry interception. This is engine-library source rejection, not UI appearance, host delivery, reply silence or CPR evidence.",
+            "sources": [
+              "9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vt220/src/screen.ts:701-716; full OSC dispatch census 31997-vterm-osc-census.txt",
+              "bdaa263fdec6480cceb4b383aff027d3a46fd483 packages/vt220/src/backend.ts feed/getTitle and full returned interface; no icon/pointer/notification target writer",
+              "/hh/main.hab/state/instruments/terminfo-remeasure/runs/2026-11-03T08-34-04-461Z-6533f83738c6/headless/vt220-0.10.1-linux-e150af30-e60f-4589-8e27-9eaa898a6d05.draft.json: retained current source-negative review; no capture or original changed"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt220",
+      "version": "0.10.1",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc777-notify",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/vterm.git",
+            "commit": "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+            "path": "packages/vt220/src/screen.ts",
+            "oid": "cc5c5c79b0c882cb1c335f2ccaf2c555884a05ee"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "bdaa263fdec6480cceb4b383aff027d3a46fd483",
+            "path": "packages/vt220/src/index.ts",
+            "oid": "601dd26eb7e753a5396ebdf72f1ef8ee2cc4355f"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "bdaa263fdec6480cceb4b383aff027d3a46fd483",
+            "path": "packages/vt220/src/backend.ts",
+            "oid": "7369e3710e36aa649372fd09011ecfdd6ba47c73"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "31997-current-vt220-0.10.1-777-source-review",
+            "reviewer": "@dev/1",
+            "reason": "Independent source review by @dev/1 (GO36303782, 2026-11-03) confirms current pinned source: vt220 9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vt220/src/screen.ts handleOSC has only cases 0/2 (title) and 1 (explicitly ignored); no case 777 or target-state writer exists. Current Termless bdaa263fdec6480cceb4b383aff027d3a46fd483 adapter feed forwards OSC bytes to that parser and adds only CSI18t geometry interception. This is engine-library source rejection, not UI appearance, host delivery, reply silence or CPR evidence.",
+            "sources": [
+              "9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vt220/src/screen.ts:701-716; full OSC dispatch census 31997-vterm-osc-census.txt",
+              "bdaa263fdec6480cceb4b383aff027d3a46fd483 packages/vt220/src/backend.ts feed/getTitle and full returned interface; no icon/pointer/notification target writer",
+              "/hh/main.hab/state/instruments/terminfo-remeasure/runs/2026-11-03T08-34-04-461Z-6533f83738c6/headless/vt220-0.10.1-linux-e150af30-e60f-4589-8e27-9eaa898a6d05.draft.json: retained current source-negative review; no capture or original changed"
+            ]
+          }
+        ]
+      }
+    ]
   }
 ]
