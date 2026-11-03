@@ -11174,6 +11174,100 @@
     "subject": {
       "kind": "lib",
       "id": "vt100",
+      "version": "0.10.1",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc117-reset-highlight-bg",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/vterm.git",
+            "commit": "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+            "path": "packages/vt100/src/screen.ts",
+            "oid": "cd71776df5f72918cd06934d724a5c2e3585a89d"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/vt100/src/index.ts",
+            "oid": "99833d737402f9d1d8e3e257e3a255d8aa1facc3"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/vt100/src/backend.ts",
+            "oid": "cdb8be8c5ebbba68a5920cfa4df27c9deb31745a"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev2-2026-11-03-vt100-0.10.1-extensions.osc117-reset-highlight-bg-source-review",
+            "reviewer": "@dev/2",
+            "reason": "Independent source review by @dev/2 (2026-11-03, verdict d4d65522-e747-4c7a-9d3d-f4a87af7becf) confirms vt100 0.10.1 at beorn/vterm 9e99e4d23cdc606fca258b1863aa2be7ae79eed3: packages/vt100/src/screen.ts:505-518 handles only OSC 0/2 (window title) and 1 (ignored). It has no OSC 17 highlight writer or OSC 117 reset handler; bare reset bytes also return before dispatch when no semicolon exists. The reviewed Termless 25089207e11420cf7a588987c1dc2683a45e8372 packages/vt100/src/index.ts and backend.ts forward input to this engine and add no highlight handler. Unsupported follows the pinned engine dispatcher and adapter sources, not a silent query or failed setup; a measured run still needs its own negative assertion.",
+            "sources": [
+              "Tribe source verdict d4d65522-e747-4c7a-9d3d-f4a87af7becf, 2026-11-03",
+              "git@github.com:beorn/vterm.git@9e99e4d23cdc606fca258b1863aa2be7ae79eed3:packages/vt100/src/screen.ts:505-518",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/vt100/src/index.ts",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/vt100/src/backend.ts"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt100",
+      "version": "0.10.1",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc119-reset-highlight-fg",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/vterm.git",
+            "commit": "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+            "path": "packages/vt100/src/screen.ts",
+            "oid": "cd71776df5f72918cd06934d724a5c2e3585a89d"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/vt100/src/index.ts",
+            "oid": "99833d737402f9d1d8e3e257e3a255d8aa1facc3"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/vt100/src/backend.ts",
+            "oid": "cdb8be8c5ebbba68a5920cfa4df27c9deb31745a"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev2-2026-11-03-vt100-0.10.1-extensions.osc119-reset-highlight-fg-source-review",
+            "reviewer": "@dev/2",
+            "reason": "Independent source review by @dev/2 (2026-11-03, verdict d4d65522-e747-4c7a-9d3d-f4a87af7becf) confirms vt100 0.10.1 at beorn/vterm 9e99e4d23cdc606fca258b1863aa2be7ae79eed3: packages/vt100/src/screen.ts:505-518 handles only OSC 0/2 (window title) and 1 (ignored). It has no OSC 19 highlight writer or OSC 119 reset handler; bare reset bytes also return before dispatch when no semicolon exists. The reviewed Termless 25089207e11420cf7a588987c1dc2683a45e8372 packages/vt100/src/index.ts and backend.ts forward input to this engine and add no highlight handler. Unsupported follows the pinned engine dispatcher and adapter sources, not a silent query or failed setup; a measured run still needs its own negative assertion.",
+            "sources": [
+              "Tribe source verdict d4d65522-e747-4c7a-9d3d-f4a87af7becf, 2026-11-03",
+              "git@github.com:beorn/vterm.git@9e99e4d23cdc606fca258b1863aa2be7ae79eed3:packages/vt100/src/screen.ts:505-518",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/vt100/src/index.ts",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/vt100/src/backend.ts"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt100",
       "version": "0.10.0",
       "os": "linux"
     },
@@ -21900,6 +21994,100 @@
               "9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vt220/src/screen.ts:701-716; full OSC dispatch census 31997-vterm-osc-census.txt",
               "bdaa263fdec6480cceb4b383aff027d3a46fd483 packages/vt220/src/backend.ts feed/getTitle and full returned interface; no icon/pointer/notification target writer",
               "/hh/main.hab/state/instruments/terminfo-remeasure/runs/2026-11-03T08-34-04-461Z-6533f83738c6/headless/vt220-0.10.1-linux-e150af30-e60f-4589-8e27-9eaa898a6d05.draft.json: retained current source-negative review; no capture or original changed"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt220",
+      "version": "0.10.1",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc117-reset-highlight-bg",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/vterm.git",
+            "commit": "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+            "path": "packages/vt220/src/screen.ts",
+            "oid": "cc5c5c79b0c882cb1c335f2ccaf2c555884a05ee"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "bdaa263fdec6480cceb4b383aff027d3a46fd483",
+            "path": "packages/vt220/src/index.ts",
+            "oid": "601dd26eb7e753a5396ebdf72f1ef8ee2cc4355f"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "bdaa263fdec6480cceb4b383aff027d3a46fd483",
+            "path": "packages/vt220/src/backend.ts",
+            "oid": "7369e3710e36aa649372fd09011ecfdd6ba47c73"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev2-2026-11-03-vt220-0.10.1-extensions.osc117-reset-highlight-bg-source-review",
+            "reviewer": "@dev/2",
+            "reason": "Independent source review by @dev/2 (2026-11-03, verdict d4d65522-e747-4c7a-9d3d-f4a87af7becf) confirms vt220 0.10.1 at beorn/vterm 9e99e4d23cdc606fca258b1863aa2be7ae79eed3: packages/vt220/src/screen.ts:701-714 handles only OSC 0/2 (window title) and 1 (ignored). It has no OSC 17 highlight writer or OSC 117 reset handler; bare reset bytes also return before dispatch when no semicolon exists. The reviewed Termless bdaa263fdec6480cceb4b383aff027d3a46fd483 packages/vt220/src/index.ts and backend.ts forward input to this engine and add no highlight handler. Those two reviewed adapter blobs are byte-identical at captured Termless 25089207e11420cf7a588987c1dc2683a45e8372; the review remains attributed to its actual revision. Unsupported follows the pinned engine dispatcher and adapter sources, not a silent query or failed setup; a measured run still needs its own negative assertion.",
+            "sources": [
+              "Tribe source verdict d4d65522-e747-4c7a-9d3d-f4a87af7becf, 2026-11-03",
+              "git@github.com:beorn/vterm.git@9e99e4d23cdc606fca258b1863aa2be7ae79eed3:packages/vt220/src/screen.ts:701-714",
+              "git@github.com:beorn/termless.git@bdaa263fdec6480cceb4b383aff027d3a46fd483:packages/vt220/src/index.ts",
+              "git@github.com:beorn/termless.git@bdaa263fdec6480cceb4b383aff027d3a46fd483:packages/vt220/src/backend.ts"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt220",
+      "version": "0.10.1",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc119-reset-highlight-fg",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/vterm.git",
+            "commit": "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+            "path": "packages/vt220/src/screen.ts",
+            "oid": "cc5c5c79b0c882cb1c335f2ccaf2c555884a05ee"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "bdaa263fdec6480cceb4b383aff027d3a46fd483",
+            "path": "packages/vt220/src/index.ts",
+            "oid": "601dd26eb7e753a5396ebdf72f1ef8ee2cc4355f"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "bdaa263fdec6480cceb4b383aff027d3a46fd483",
+            "path": "packages/vt220/src/backend.ts",
+            "oid": "7369e3710e36aa649372fd09011ecfdd6ba47c73"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev2-2026-11-03-vt220-0.10.1-extensions.osc119-reset-highlight-fg-source-review",
+            "reviewer": "@dev/2",
+            "reason": "Independent source review by @dev/2 (2026-11-03, verdict d4d65522-e747-4c7a-9d3d-f4a87af7becf) confirms vt220 0.10.1 at beorn/vterm 9e99e4d23cdc606fca258b1863aa2be7ae79eed3: packages/vt220/src/screen.ts:701-714 handles only OSC 0/2 (window title) and 1 (ignored). It has no OSC 19 highlight writer or OSC 119 reset handler; bare reset bytes also return before dispatch when no semicolon exists. The reviewed Termless bdaa263fdec6480cceb4b383aff027d3a46fd483 packages/vt220/src/index.ts and backend.ts forward input to this engine and add no highlight handler. Those two reviewed adapter blobs are byte-identical at captured Termless 25089207e11420cf7a588987c1dc2683a45e8372; the review remains attributed to its actual revision. Unsupported follows the pinned engine dispatcher and adapter sources, not a silent query or failed setup; a measured run still needs its own negative assertion.",
+            "sources": [
+              "Tribe source verdict d4d65522-e747-4c7a-9d3d-f4a87af7becf, 2026-11-03",
+              "git@github.com:beorn/vterm.git@9e99e4d23cdc606fca258b1863aa2be7ae79eed3:packages/vt220/src/screen.ts:701-714",
+              "git@github.com:beorn/termless.git@bdaa263fdec6480cceb4b383aff027d3a46fd483:packages/vt220/src/index.ts",
+              "git@github.com:beorn/termless.git@bdaa263fdec6480cceb4b383aff027d3a46fd483:packages/vt220/src/backend.ts"
             ]
           }
         ]
