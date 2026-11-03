@@ -451,7 +451,7 @@ export type FindingStatus = ProbeStatus | "test-conflict" | "no-minimum-declared
  */
 export interface FeatureFinding {
   readonly featureId: string
-  readonly storedStatus: ProbeStatus
+  readonly runStatuses: readonly ProbeStatus[]
   readonly observedMethods: readonly ProbeMethod[]
   readonly highestObservedMethod: ProbeMethod | null
   readonly minimumMethod: ProbeMethod | null
@@ -496,16 +496,14 @@ export interface MethodFindingsRunInput {
   readonly subject: Pick<ProbeSubject, "kind" | "id" | "version" | "os">
   readonly results?: readonly ProbeResult[]
   readonly assertions: readonly { readonly assertionType?: AssertionType }[]
-  readonly catalogIds?: readonly string[]
-  readonly suite?: { readonly catalogIds: readonly string[] }
 }
 
 /**
- * Total and loud field-to-method mapping for one graded ProbeResult (@cto 3bfdb550 Adjustments 1, 2, 4, 7).
+ * Total and loud field-to-method mapping for one graded ProbeResult (@cto 3bfdb550 Adjustments 1, 2, 4, 7; 197f0f84 C1).
  */
 export function classifyResultMethod(
   result: ProbeResult,
-  subjectKind: ProbeSubject["kind"],
+  subject: Pick<ProbeSubject, "kind" | "version">,
   runAssertions: readonly { readonly assertionType?: AssertionType }[],
 ): ResultMethodClassification {
   const distinctTypes = new Set<AssertionType>()
@@ -543,7 +541,7 @@ export function classifyResultMethod(
         reason: `reviewRef ${result.reviewRef} has no answer matching status ${result.status}`,
       }
     }
-    if (!hasUnverifiedSourceAnswerSuffix(result.reason, row.subject.version)) {
+    if (!hasUnverifiedSourceAnswerSuffix(result.reason, subject.version)) {
       return {
         kind: "method",
         method: "source-reading",
@@ -561,7 +559,7 @@ export function classifyResultMethod(
 
   const onlyType = distinctTypes.size === 1 ? [...distinctTypes][0] : undefined
   if (onlyType !== undefined) {
-    if (subjectKind === "lib") {
+    if (subject.kind === "lib") {
       if (
         onlyType === "buffer_state" ||
         onlyType === "query_reply" ||
@@ -627,30 +625,34 @@ export function classifyResultMethod(
 
 /**
  * Fold one subject's run(s) and declared minimum methods into a report-only SubjectMethodFindingsReport
- * over the graded catalogue positions (@cto 3bfdb550).
+ * over the graded catalogue positions (@cto 3bfdb550, 197f0f84).
  */
 export function rollupSubjectMethodFindings(
   runs: readonly MethodFindingsRunInput[],
-  minimumMethods: MinimumMethodMap = {},
-  catalogIds?: readonly string[],
+  minimumMethods: MinimumMethodMap,
+  catalogIds: readonly string[],
 ): SubjectMethodFindingsReport {
   const firstRun = runs[0]
   if (!firstRun) {
     throw new Error("Method findings require at least one run")
   }
   const subject = firstRun.subject
-  const resolvedCatalogIds = catalogIds ?? firstRun.catalogIds ?? firstRun.suite?.catalogIds
-  if (!resolvedCatalogIds || resolvedCatalogIds.length === 0) {
+  if (catalogIds.length === 0) {
     throw new Error("Method findings require a nonempty catalogue")
   }
 
-  const envIds = environmentGroupIds(resolvedCatalogIds)
-  const gradedIds = gradedFeatureIds(resolvedCatalogIds)
+  const envIds = environmentGroupIds(catalogIds)
+  const gradedIds = gradedFeatureIds(catalogIds)
 
   const runResultMaps = runs.map((run) => {
-    if (run.subject.kind !== subject.kind || run.subject.id !== subject.id) {
+    if (
+      run.subject.kind !== subject.kind ||
+      run.subject.id !== subject.id ||
+      run.subject.version !== subject.version ||
+      run.subject.os !== subject.os
+    ) {
       throw new Error(
-        `Method findings require runs for one subject; got ${subject.kind}:${subject.id} and ${run.subject.kind}:${run.subject.id}`,
+        `Method findings require runs for one subject; got ${subject.kind}:${subject.id}@${subject.version}:${subject.os} and ${run.subject.kind}:${run.subject.id}@${run.subject.version}:${run.subject.os}`,
       )
     }
     if (!run.results) {
@@ -700,10 +702,13 @@ export function rollupSubjectMethodFindings(
     let hasC1Disagreement = false
     for (const { run, map } of runResultMaps) {
       const result = map.get(featureId)
-      if (!result || !PROBE_STATUSES.includes(result.status)) {
+      if (!result) {
+        throw new Error(`Missing result for ${featureId}`)
+      }
+      if (!PROBE_STATUSES.includes(result.status)) {
         throw new Error(`Invalid stored current status for ${featureId}`)
       }
-      const classification = classifyResultMethod(result, subject.kind, run.assertions)
+      const classification = classifyResultMethod(result, subject, run.assertions)
       cells.push({ result, classification })
 
       if (classification.kind === "kept-answer-not-reverified") {
@@ -733,11 +738,7 @@ export function rollupSubjectMethodFindings(
       wouldBeConflicts.push(featureId)
     }
 
-    const firstCell = cells[0]
-    if (!firstCell) {
-      throw new Error(`Missing cell for ${featureId}`)
-    }
-    const storedStatus = firstCell.result.status
+    const runStatuses = cells.map((cell) => cell.result.status)
     const observedMethodSet = new Set<ProbeMethod>()
     for (const { classification } of cells) {
       if (classification.kind === "method") {
@@ -794,7 +795,7 @@ export function rollupSubjectMethodFindings(
     findingCounts[findingStatus]++
     findings[featureId] = {
       featureId,
-      storedStatus,
+      runStatuses,
       observedMethods,
       highestObservedMethod,
       minimumMethod,

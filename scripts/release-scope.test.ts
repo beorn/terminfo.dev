@@ -569,21 +569,22 @@ describe("Phase 2.4 report-only method, confidence & feature findings (rollupSub
     }
 
     // 1. No unverified version suffix -> rank 1 source-reading
-    expect(classifyResultMethod(baseResult, sampleRow.subject.kind, [])).toEqual({
+    expect(classifyResultMethod(baseResult, sampleRow.subject, [])).toEqual({
       kind: "method",
       method: "source-reading",
       confidenceRank: 1,
       source: "review-ref",
     })
 
-    // 2. Unverified version suffix present -> kept-answer-not-reverified (not source-reading)
+    // 2. Unverified version suffix present (including when the run's own version differs from a cross-version reviewRef row's version) -> kept-answer-not-reverified (not source-reading)
+    const crossVersionSubject = { ...sampleRow.subject, version: `${sampleRow.subject.version}-own-run` }
     expect(
       classifyResultMethod(
         {
           ...baseResult,
-          reason: `Verified against source blob; ${sourceAnswerVersionLabel(sampleRow.subject.version)}`,
+          reason: `Verified against source blob; ${sourceAnswerVersionLabel(crossVersionSubject.version)}`,
         },
-        sampleRow.subject.kind,
+        crossVersionSubject,
         [],
       ),
     ).toEqual({
@@ -594,7 +595,7 @@ describe("Phase 2.4 report-only method, confidence & feature findings (rollupSub
     })
 
     // 3. Stored status not among row.answers (matching.length === 0) -> unmapped (never uncited)
-    const unmappedClass = classifyResultMethod({ ...baseResult, status: missingStatus }, sampleRow.subject.kind, [])
+    const unmappedClass = classifyResultMethod({ ...baseResult, status: missingStatus }, sampleRow.subject, [])
     expect(unmappedClass.kind).toBe("unmapped")
     if (unmappedClass.kind === "unmapped") {
       expect(unmappedClass.reason).toContain(missingStatus)
@@ -610,7 +611,7 @@ describe("Phase 2.4 report-only method, confidence & feature findings (rollupSub
           assertionType: "buffer_state",
           tests: [{ id: "main", status: "supported", attempt: { scope: "none" }, assertionRefs: [0] }],
         },
-        "term",
+        { kind: "term", version: "1.0.0" },
         [{ assertionType: "screenshot" }],
       ),
     ).toEqual({
@@ -620,12 +621,12 @@ describe("Phase 2.4 report-only method, confidence & feature findings (rollupSub
 
     // 5. Unknown reviewRef throws via sourceAnswerForRef
     const missingRef = sourceAnswerKey({ kind: "lib", id: "nonexistent", version: "0.0.0", os: "linux" }, "sgr.bold")
-    expect(() => classifyResultMethod({ ...baseResult, reviewRef: missingRef }, "lib", [])).toThrow(
-      /Missing source-answer row/,
-    )
+    expect(() =>
+      classifyResultMethod({ ...baseResult, reviewRef: missingRef }, { kind: "lib", version: "0.0.0" }, []),
+    ).toThrow(/Missing source-answer row/)
   })
 
-  it("emits test-conflict when two qualifying results disagree (including untestable vs supported or across different ranks), settles winningMethod by highest rank only when all qualifying results agree, and detects C1 disagreements via publicSourceAnswerPendingLabel", () => {
+  it("emits test-conflict when two qualifying results disagree (including untestable vs supported or across different ranks), settles winningMethod by highest rank only when all qualifying results agree, detects C1 disagreements via publicSourceAnswerPendingLabel, and rejects subject version/os mismatches or missing results", () => {
     const fAgree = "sgr.bold"
     const fConflictDiffRank = "sgr.faint"
     const fConflictUntestable = "sgr.italic"
@@ -634,7 +635,6 @@ describe("Phase 2.4 report-only method, confidence & feature findings (rollupSub
 
     const makeRun = (results: ProbeResult[], assertions: Array<{ assertionType: "buffer_state" | "screenshot" }>) => ({
       subject: { kind: "term" as const, id: "wezterm", version: "20240203", os: "linux" as const },
-      catalogIds: miniCatalog,
       assertions,
       results,
     })
@@ -720,7 +720,7 @@ describe("Phase 2.4 report-only method, confidence & feature findings (rollupSub
 
     // Both qualify (rank 3 and rank 4 >= rank 3) and agree on "supported" -> highest rank ("app-screenshot") wins
     expect(report.findings[fAgree]).toMatchObject({
-      storedStatus: "supported",
+      runStatuses: ["supported", "supported"],
       findingStatus: "supported",
       winningMethod: "app-screenshot",
       neededMethod: null,
@@ -728,6 +728,7 @@ describe("Phase 2.4 report-only method, confidence & feature findings (rollupSub
 
     // Both qualify (rank 3 and rank 4 >= rank 3) and disagree ("supported" vs "unsupported") -> test-conflict (higher rank does NOT settle disagreement)
     expect(report.findings[fConflictDiffRank]).toMatchObject({
+      runStatuses: ["supported", "unsupported"],
       findingStatus: "test-conflict",
       winningMethod: null,
       neededMethod: null,
@@ -735,19 +736,37 @@ describe("Phase 2.4 report-only method, confidence & feature findings (rollupSub
 
     // Both qualify and disagree ("untestable" vs "supported") -> test-conflict
     expect(report.findings[fConflictUntestable]).toMatchObject({
+      runStatuses: ["untestable", "supported"],
       findingStatus: "test-conflict",
       winningMethod: null,
       neededMethod: null,
     })
 
-    // C1 disagreement at minimumMethod "source-reading" -> findingStatus "test-conflict", storedStatus remains "test-todo", listed in wouldBeConflicts
+    // C1 disagreement at minimumMethod "source-reading" -> findingStatus "test-conflict", runStatuses remains ["test-todo", "test-todo"], listed in wouldBeConflicts
     expect(report.findings[fC1Disagree]).toMatchObject({
-      storedStatus: "test-todo",
+      runStatuses: ["test-todo", "test-todo"],
       findingStatus: "test-conflict",
       winningMethod: null,
       neededMethod: null,
     })
     expect(report.buckets.wouldBeConflicts).toEqual([fC1Disagree])
+
+    // Subject version or OS mismatch throws
+    expect(() =>
+      rollupSubjectMethodFindings(
+        [run1, { ...run2, subject: { ...run2.subject, version: "20240101" } }],
+        minMap,
+        miniCatalog,
+      ),
+    ).toThrow(/Method findings require runs for one subject/)
+    expect(() =>
+      rollupSubjectMethodFindings([run1, { ...run2, subject: { ...run2.subject, os: "macos" } }], minMap, miniCatalog),
+    ).toThrow(/Method findings require runs for one subject/)
+
+    // Missing graded result throws "Missing result for <featureId>"
+    expect(() =>
+      rollupSubjectMethodFindings([{ ...run1, results: run1.results.slice(1) }], minMap, miniCatalog),
+    ).toThrow(/Missing result for sgr\.bold/)
   })
 
   it("emits no-minimum-declared when minimumMethod is null/absent, and places both test-todo and test-failure findings that lack a qualifying result into neededMethod and needsByMethod", () => {
@@ -759,7 +778,6 @@ describe("Phase 2.4 report-only method, confidence & feature findings (rollupSub
 
     const run = {
       subject: { kind: "term" as const, id: "kitty", version: "0.40.0", os: "linux" as const },
-      catalogIds: miniCatalog,
       assertions: [],
       results: [
         {
@@ -798,7 +816,7 @@ describe("Phase 2.4 report-only method, confidence & feature findings (rollupSub
 
     // 1. minimumMethod: null -> findingStatus: "no-minimum-declared" and buckets.noMinimum
     expect(report.findings[fNoMin]).toMatchObject({
-      storedStatus: "supported",
+      runStatuses: ["supported"],
       minimumMethod: null,
       findingStatus: "no-minimum-declared",
       winningMethod: null,
@@ -808,7 +826,7 @@ describe("Phase 2.4 report-only method, confidence & feature findings (rollupSub
 
     // 2. test-todo with minimumMethod "app-text" -> findingStatus "test-todo", neededMethod "app-text", in needsByMethod["app-text"]
     expect(report.findings[fTodo]).toMatchObject({
-      storedStatus: "test-todo",
+      runStatuses: ["test-todo"],
       minimumMethod: "app-text",
       findingStatus: "test-todo",
       winningMethod: null,
@@ -818,7 +836,7 @@ describe("Phase 2.4 report-only method, confidence & feature findings (rollupSub
 
     // 3. Adjustment 6: test-failure (even with a screenshot assertion) never counts as valid; findingStatus is "test-failure", neededMethod is "app-screenshot", and it enters needsByMethod["app-screenshot"]
     expect(report.findings[fFailure]).toMatchObject({
-      storedStatus: "test-failure",
+      runStatuses: ["test-failure"],
       minimumMethod: "app-screenshot",
       findingStatus: "test-failure",
       winningMethod: null,
@@ -827,7 +845,7 @@ describe("Phase 2.4 report-only method, confidence & feature findings (rollupSub
 
     // 4. Decided "app-text" (rank 3) below minimumMethod "app-screenshot" (rank 4) -> findingStatus "test-todo", neededMethod "app-screenshot", enters needsByMethod["app-screenshot"]
     expect(report.findings[fBelowMin]).toMatchObject({
-      storedStatus: "supported",
+      runStatuses: ["supported"],
       minimumMethod: "app-screenshot",
       findingStatus: "test-todo",
       winningMethod: null,
