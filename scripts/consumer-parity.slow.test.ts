@@ -91,7 +91,7 @@ const fixture = vi.hoisted(() => {
     measuredAt,
     suiteId: "suite-v2",
     probeHash: "current",
-    suiteFreshness: "release suite current",
+    suiteFreshness: "tree suite current",
     sourceRevision: "rev",
     sha256: runSha256,
     identity: "verified",
@@ -1247,7 +1247,7 @@ describe("selected-run consumer parity", () => {
       expect.objectContaining({
         version: fixture.screen.subject.version,
         pct: 0,
-        suiteFreshness: "release suite current",
+        suiteFreshness: "tree suite current",
       }),
       expect.objectContaining({ version: "4.9", pct: 0, suiteFreshness: "older suite older-suite" }),
     ])
@@ -1267,7 +1267,7 @@ describe("selected-run consumer parity", () => {
     expect(screen.cells["sgr.bold"]).toMatchObject({
       status: "test-todo",
       origin: { runId: currentRunId, resultId: "sgr.bold" },
-      suiteRelation: "release",
+      suiteRelation: "tree",
       measuredAt: fixture.screen.measuredAt,
     })
     expect(screen.sources[olderRunId]).toMatchObject({
@@ -1277,8 +1277,8 @@ describe("selected-run consumer parity", () => {
       measuredAt: fixture.measuredAt,
     })
     expect(screen.sources[currentRunId]).toMatchObject({
-      suiteFreshness: "release suite current",
-      suiteRelation: "release",
+      suiteFreshness: "tree suite current",
+      suiteRelation: "tree",
       sha256: "d".repeat(64),
       measuredAt: fixture.screen.measuredAt,
     })

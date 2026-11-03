@@ -172,13 +172,10 @@ export function probeSuiteSnapshot(repoRoot: string = REPO_ROOT): ProbeSuiteSnap
 
 /** Derive the suite declaration record from a live suite snapshot. */
 /**
- * The manifest a declaration writes. A freeze act passes the release it is freezing, so the pointer
- * is part of what the writer emits and no human appends it to the JSON afterwards; admission passes
- * nothing, because admitting a run names a suite without claiming it as a release's current one.
+ * The factual suite manifest derived from the executable source and catalogue.
  */
 export function derivedSuiteManifest(
   snapshot: ProbeSuiteSnapshot = probeSuiteSnapshot(),
-  freeze?: { release: string; at: string },
 ): ProbeSuiteManifest & { schemaVersion: 4 } {
   return {
     schemaVersion: 4,
@@ -189,7 +186,6 @@ export function derivedSuiteManifest(
     catalogEntrySha256: { ...snapshot.catalogEntrySha256 },
     ...(snapshot.textClaims === undefined ? {} : { textClaims: snapshot.textClaims }),
     ...(snapshot.textQualification === undefined ? {} : { textQualification: snapshot.textQualification }),
-    ...(freeze === undefined ? {} : { freeze: { release: freeze.release, at: freeze.at } }),
   }
 }
 
@@ -204,7 +200,6 @@ function collectorCommittedInputs(snapshot: ProbeSuiteSnapshot): string[] {
     "packages/run-parser/src",
     "packages/run-parser/package.json",
     "scripts/build-cli.ts",
-    "scripts/suite-manifest.ts",
     "packages/admin/suite-manifest.ts",
     "bun.lock",
   ]

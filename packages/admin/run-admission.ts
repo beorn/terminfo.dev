@@ -48,7 +48,6 @@ import {
   assertDeclareIsAuthoring,
   declareCurrentSuiteManifest,
   derivedSuiteManifest,
-  frozenSuiteIdFor,
   verifySuiteManifest,
 } from "./suite-manifest.ts"
 
@@ -553,8 +552,6 @@ export interface AdmissionPlan {
   probeHash: string
   subject: { kind: ProbeSubject["kind"]; id: string; version: string; os: string }
   runId: string
-  frozenSuiteId?: string
-  release?: string
 }
 
 function catalogIds(): string[] {
@@ -562,11 +559,7 @@ function catalogIds(): string[] {
 }
 
 /** Compute where a run lands, from its own target and run id — never from a caller-supplied name. */
-export function planAdmission(
-  source: string,
-  into?: string,
-  options: { frozenSuiteId?: string; release?: string } = {},
-): AdmissionPlan {
+export function planAdmission(source: string, into?: string): AdmissionPlan {
   let parsed: unknown
   try {
     parsed = JSON.parse(readFileSync(source, "utf8"))
@@ -634,18 +627,6 @@ export function planAdmission(
         "Admit from a tree at the run's suite (its sourceRevision).",
     )
   }
-  const frozenSuiteId =
-    options.release === undefined ? options.frozenSuiteId : frozenSuiteIdFor(CONTENT_DIR, options.release)
-  if (options.release !== undefined && options.frozenSuiteId !== undefined && options.frozenSuiteId !== frozenSuiteId) {
-    throw new Error(
-      `Asserted suite ${options.frozenSuiteId} is not the declared frozen suite ${frozenSuiteId} for ${options.release}`,
-    )
-  }
-  if (frozenSuiteId !== undefined && (loaded.suiteId !== frozenSuiteId || snapshot.probeHash !== frozenSuiteId)) {
-    throw new Error(
-      `Run suite ${loaded.suiteId} and tree suite ${snapshot.probeHash} must equal ${options.release ? "declared " : ""}frozen suite ${frozenSuiteId}`,
-    )
-  }
   if (existsSync(manifestPath)) verifySuiteManifest(manifestPath, snapshot)
   preflightLinuxCompletionReceipt(source, loaded)
   preflightArtifacts(source, loaded.screenshotRefs, CONTENT_DIR, "screenshot")
@@ -653,7 +634,7 @@ export function planAdmission(
   const destination = into ?? join(CONTENT_DIR, RUN_DIRS[kind], `${id}-${version}-${os}-${runId}.json`)
   preflightDestination(destination, readFileSync(source), "admitted run")
   assertDeclareIsAuthoring(ROOT, parsed.probeHash)
-  return { source, destination, probeHash: parsed.probeHash, subject: { kind, id, version, os }, runId, ...options }
+  return { source, destination, probeHash: parsed.probeHash, subject: { kind, id, version, os }, runId }
 }
 
 /**
@@ -1170,10 +1151,7 @@ export function admitRun(plan: AdmissionPlan): {
         "Admit from a tree at the run's suite (its sourceRevision).",
     )
   }
-  const validated = planAdmission(plan.source, plan.destination, {
-    frozenSuiteId: plan.frozenSuiteId,
-    release: plan.release,
-  })
+  const validated = planAdmission(plan.source, plan.destination)
   if (
     validated.probeHash !== plan.probeHash ||
     validated.runId !== plan.runId ||

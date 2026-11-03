@@ -49,14 +49,12 @@ a result nor establish that both positive and negative controls exist. Overrides
 
 Review, intake/apply, admission, seal and capture binding remain implemented during the transition to their approved Phase 1 removal. The procedures below describe that current machinery; this terminology change grants no new workflow permission and does not lift an existing END hold.
 
-The collection owner's frozen `CollectionPass.freeze.deferrals` records each carried context with its `routeIssue` and `reason`.
-`release1-collection --collect --admit --frozen-suite <id> --deferrals <json-file>` reads that explicit array before collection.
-Deferred contexts remain named in the pass census with their reason and no new measurement; existing context status values are unchanged.
+`release1-collection --collect --development --output <private-directory>` retains private collection and its actual attempts.
+The pass carries no freeze, deferral or admission metadata.
 Failed hosted collection retains its original delegated draft as failure custody when canonical `run.json` is absent.
 Only a source-, suite-, run- and selection-bound collector attempt with a recorded start establishes execution;
 a job-start marker alone does not. A nonzero collector exit reports `failed`, with its exit code and log path.
 This custody never supplies grades or bypasses canonical validation, review or admission.
-An admitting pass is complete only when every non-deferred declared context is complete and admitted, with no pass errors.
 The read-only admin `report --scoreboard <inputs...>` accepts explicit raw captures or pass files/directories, preserves pass identities,
 and uses the canonical selected-results reader and local `origin/live` revision to distinguish selection from proven publication.
 

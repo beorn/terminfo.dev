@@ -5,8 +5,6 @@
  * --collect --development invokes existing raw collectors, validates the current suite in memory,
  * and retains private classifications. WIP: headless, Linux and hosted dispatch are wired; other contexts
  * stays visible as unfinished work. No development admission, suite declaration or inclusion.
- * Supplied-run --admit retains its existing admission-owner path and decisive-share report.
- * Explicit final collection validates the declared freeze and every raw context before admission.
  * Remaining platform routes and native qualification are unfinished. No deploy.
  */
 import { execFileSync, spawnSync } from "node:child_process"
@@ -38,24 +36,20 @@ import {
   type CollectorAttempt,
   type RunDraft,
 } from "@terminfo/probe-defs"
-import { buildFullProjectRows } from "../docs/data/full-project.ts"
-import { aggregateCurrentResults, currentCoverageSentence, type CurrentAggregate } from "../docs/data/release-scope.ts"
+import { aggregateCurrentResults, type CurrentAggregate } from "../docs/data/release-scope.ts"
 import { decodeCollectorDraft } from "@terminfo/run-parser"
 import { saveDaemonProbeRun } from "../packages/terminfo.dev/src/daemon-client.ts"
 import { finalizeCollectedDraft, type CaptureReviewReport } from "../packages/terminfo.dev/src/capture-writer.ts"
 import { loadFeatures } from "@terminfo/catalog"
 import { fullContextCensus, type CensusContext } from "../docs/data/full-census.ts"
-import { parseJsonStrict, parseRun, parseSuiteManifest } from "@terminfo/run-parser"
-import { frozenSuiteIdFor } from "../packages/admin/suite-manifest.ts"
+import { parseJsonStrict, parseRun } from "@terminfo/run-parser"
 import { assertPrivateCollectionOutput } from "../packages/admin/src/admit-collected-run.ts"
-import { loadCurrentResults, loadDefaultContextPolicy, reviewedContextFor } from "../docs/data/current-results.ts"
+import { reviewedContextFor } from "../docs/data/current-results.ts"
 import { classifyDevelopmentRun, consoleHostHeldResults, readVerifiedArtifact } from "../docs/data/selected-results.ts"
 import { parseInterpretations, activeInterpretations } from "./interpretations.ts"
 import { loadStoredRuns } from "../packages/admin/run-admission.ts"
 import { derivedSuiteManifest, probeSuiteSnapshot } from "../packages/admin/versions.ts"
 import { collectHeadlessRuns } from "../packages/probes/collect-headless.ts"
-import { admitRun, planAdmission, type AdmissionPlan } from "./admit-run.ts"
-import { candidateFromSelected } from "../docs/data/run-selection.ts"
 import { TRANSPORT_RECEIPT_KIND } from "../packages/terminfo.dev/src/disposable-receipt.ts"
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..")
@@ -314,8 +308,6 @@ export async function engineBackendsFromManifest(): Promise<string[]> {
 }
 
 export interface CollectionPass {
-  mode: "development" | "admit"
-  freeze?: { id: string; release: string; deferrals?: Array<{ context: string; routeIssue: string; reason: string }> }
   directory: string
   probeHash: string
   sourceRevision: string
@@ -333,10 +325,9 @@ export interface CollectionPass {
   }
   contexts: Array<{
     context: CollectionContext
-    status: "not-started" | "pending-review" | "classified" | "admitted" | "failed"
+    status: "not-started" | "pending-review" | "classified" | "failed"
     rawRun?: string
     directory?: string
-    admittedPath?: string
     classification?: ReturnType<typeof classifyDevelopmentRun>
     summary?: CurrentAggregate
     reviewBindings?: CaptureReviewReport[]
@@ -464,12 +455,10 @@ export function readOwnedAppTransportProof(
   }
 }
 
-/** Collect privately against live suite bytes; only an explicit, declared freeze enables admission. */
+/** Collect privately against live suite bytes, retaining source and attempt facts. */
 export async function collectPass(
   outputDirectory: string,
-  frozenSuiteId?: string,
   ownedApp: OwnedAppTransportOptions = { runner: "local" },
-  deferrals: NonNullable<NonNullable<CollectionPass["freeze"]>["deferrals"]> = [],
   selection?: { contexts?: readonly string[]; ids?: readonly string[] },
 ): Promise<CollectionPass> {
   const resolvedIds = selection?.ids === undefined ? undefined : resolveProbeIds(selection.ids)
@@ -480,23 +469,7 @@ export async function collectPass(
   }
   const probeIds = resolvedIds?.probes.map((probe) => probe.id)
   const snapshot = probeSuiteSnapshot()
-  const declaredFreeze =
-    frozenSuiteId === undefined ? undefined : declaredCollectionFreeze(frozenSuiteId, snapshot.probeHash)
-  const freeze = declaredFreeze && { ...declaredFreeze, ...(deferrals.length > 0 && { deferrals }) }
   const canonical = fullContextCensus(CONTENT).contexts
-  const deferred = new Map<string, string>()
-  for (const entry of deferrals) {
-    if (
-      !freeze ||
-      !canonical.some((row) => row.context === entry.context) ||
-      !entry.routeIssue?.trim() ||
-      !entry.reason?.trim() ||
-      deferred.has(entry.context)
-    ) {
-      throw new Error(`Invalid frozen deferral ${entry.context}: requires one declared context, routeIssue and reason`)
-    }
-    deferred.set(entry.context, entry.reason)
-  }
   assertPrivateCollectionOutput(outputDirectory)
   mkdirSync(outputDirectory, { recursive: true })
   const output = realpathSync(outputDirectory)
@@ -552,10 +525,8 @@ export async function collectPass(
     if (!canonical.some((row) => row.context === context)) throw new Error(`Unknown collection context ${context}`)
   }
   const selectedContexts = declared.filter((context) => requestedContexts.includes(contextName(context)))
-  const census = selectedContexts.filter((context) => !deferred.has(contextName(context)))
+  const census = selectedContexts
   const pass: CollectionPass = {
-    mode: freeze ? "admit" : "development",
-    ...(freeze && { freeze }),
     directory,
     probeHash: snapshot.probeHash,
     sourceRevision,
@@ -567,13 +538,7 @@ export async function collectPass(
         ...(probeIds === undefined ? {} : { ids: probeIds }),
       },
     }),
-    contexts: selectedContexts
-      .filter((context) => deferred.has(contextName(context)))
-      .map((context) => ({
-        context,
-        status: "not-started",
-        reason: deferred.get(contextName(context)),
-      })),
+    contexts: [],
     errors: [],
     complete: false,
   }
@@ -813,7 +778,7 @@ export async function collectPass(
           })),
           origin: () => undefined,
           carry: true,
-          keepDraft: !freeze,
+          keepDraft: true,
           report: (entry: CaptureReviewReport) => reviewBindings.push(entry),
         }
         const finalized = finalizeCollectedDraft(globalThis.structuredClone(collected), undefined, reviews)
@@ -958,7 +923,7 @@ export async function collectPass(
       writeFileSync(handed.path, `${JSON.stringify(retained, null, 2)}\n`)
     }
   }
-  const eligible = pass.contexts.filter((row) => !deferred.has(contextName(row.context)))
+  const eligible = pass.contexts
   for (const [path, hash] of Object.entries(inputSha256)) {
     try {
       if (createHash("sha256").update(readFileSync(path)).digest("hex") !== hash) {
@@ -970,64 +935,14 @@ export async function collectPass(
       )
     }
   }
-  if (
-    freeze &&
-    pass.errors.length === 0 &&
-    eligible.length > 0 &&
-    eligible.every((row) => row.status === "classified" && row.summary?.complete === true)
-  ) {
-    try {
-      const paths = eligible.map((row) => {
-        if (!row.rawRun) throw new Error(`${labelOf(row.context)}: validated context lost its raw run path`)
-        return row.rawRun
-      })
-      admitProducedRuns(paths, freeze.id, freeze.release, (produced, destination) => {
-        const key = coverageKey(produced.subject.kind, produced.subject.id, produced.subject.os)
-        const row = pass.contexts.find((row) => coverageKey(row.context.kind, row.context.id, row.context.os) === key)
-        if (!row) throw new Error(`Admission returned an unexpected context ${key}`)
-        row.status = "admitted"
-        row.admittedPath = destination
-      })
-    } catch (error) {
-      const message = `Admission stopped: ${error instanceof Error ? error.message : String(error)}`
-      pass.errors.push(message)
-      for (const row of eligible) {
-        if (row.status !== "admitted") {
-          row.status = "failed"
-          row.error = `${labelOf(row.context)}: ${message}; raw run retained privately`
-        }
-      }
-    }
-  }
   pass.complete =
     pass.contexts.length === 33 &&
     catalogIds.length === 273 &&
     pass.errors.length === 0 &&
     eligible.length > 0 &&
-    eligible.every((row) => row.summary?.complete === true && (!freeze || row.status === "admitted"))
+    eligible.every((row) => row.summary?.complete === true)
   writeFileSync(join(directory, "pass.json"), `${JSON.stringify(pass, null, 2)}\n`, { flag: "wx" })
   return pass
-}
-
-/** Resolve the assertion through the existing frozen-suite owner; never declare a suite here. */
-function declaredCollectionFreeze(id: string, current: string): { id: string; release: string } {
-  if (!/^[a-f0-9]{12}$/.test(id)) throw new Error(`Invalid declared frozen suite id ${id}`)
-  const path = join(CONTENT, "suites", `${id}.json`)
-  let manifest: ReturnType<typeof parseSuiteManifest>
-  try {
-    manifest = parseSuiteManifest(path, readFileSync(path, "utf8"))
-  } catch (cause) {
-    throw new Error(`Cannot read declared frozen suite ${id} at ${path}`, { cause })
-  }
-  if (!manifest.freeze) throw new Error(`Suite ${id} has no declared freeze in ${path}`)
-  const release = manifest.freeze.release
-  const selected = frozenSuiteIdFor(CONTENT, release)
-  if (selected !== id || current !== id) {
-    throw new Error(
-      `Declared frozen suite ${id}, registry suite ${selected} and current suite ${current} must match for ${release}`,
-    )
-  }
-  return { id, release }
 }
 
 /** Dispatch each existing hosted matrix once and retain every job's companion artifacts. */
@@ -1263,33 +1178,10 @@ function collectHostedArtifacts(
   return results
 }
 
-/** Admission supplies the validated target; coverage needs no second raw-run parser. */
+/** A measured context used by the census coverage report. */
 export interface ProducedRun {
   readonly runId?: string
-  readonly subject: Pick<AdmissionPlan["subject"], "kind" | "id" | "os">
-}
-
-/** The owner completes admission before a produced input earns collection coverage. */
-export function admitProducedRuns(
-  paths: readonly string[],
-  assertedSuiteId?: string,
-  release = "candidate2",
-  onAdmitted?: (produced: ProducedRun, destination: string) => void,
-): ProducedRun[] {
-  const plans = paths.map((path) =>
-    planAdmission(path, undefined, {
-      release,
-      ...(assertedSuiteId === undefined ? {} : { frozenSuiteId: assertedSuiteId }),
-    }),
-  )
-  const produced: ProducedRun[] = []
-  for (const plan of plans) {
-    admitRun(plan)
-    const run = { subject: plan.subject, runId: plan.runId }
-    produced.push(run)
-    onAdmitted?.(run, plan.destination)
-  }
-  return produced
+  readonly subject: { readonly kind: "term" | "lib" | "mux"; readonly id: string; readonly os: string | null }
 }
 
 /**
@@ -1369,18 +1261,13 @@ function usage(): never {
   console.error(
     "Usage: bun run release1-collection [--plan]\n" +
       "       bun run release1-collection --collect --development --output <private-directory>\n" +
-      "       bun run release1-collection --collect --admit --frozen-suite <id> [--deferrals <json-file>] --output <private-directory>\n" +
       "       [--owned-app-transport ssh:<user>@<host> [--owned-app-stage <remote-dir>]\n" +
       "        --owned-app-known-hosts <path> [--owned-app-remove-stage]]\n" +
-      "       bun run release1-collection --admit [--frozen-suite <id>] <run.json>...\n" +
       "  (bare)   print the census — the default: every Release 1 context and the entry point that\n" +
       "           measures it. Read-only.\n" +
       "  --plan   the same census, named explicitly.\n" +
       "  --collect --development  collect private headless/Linux/hosted runs against the live suite.\n" +
       "           WIP: other routes remain named failures; this is not the completed full pass.\n" +
-      "  --collect --admit  require the declared frozen suite; validate all contexts, plan all\n" +
-      "           admissions, then place runs through the existing owner. No inclusion or publication.\n" +
-      "  --deferrals  explicit frozen context/routeIssue/reason array; carried routes remain in the pass census.\n" +
       "  --contexts <JSON-array>  canonical context IDs; omitted runs all, [] starts none.\n" +
       "  --probe-ids <JSON-array>  exact probe IDs; omitted runs each context's full schedule, [] executes none.\n" +
       "  --owned-app-transport  where an owned-app row starts: local (default) or an existing ssh host.\n" +
@@ -1390,10 +1277,7 @@ function usage(): never {
       "                     Omitted, the driver uses <remote-home>/.cache/terminfo.dev/owned-app-stage.\n" +
       "  --owned-app-known-hosts  the environment-owned known-hosts file host trust is pinned against.\n" +
       "  --owned-app-remove-stage  remove the remote stage after the run; the default keeps it.\n" +
-      "  --admit  admit produced runs through scripts/admit-run.ts, then report admitted coverage\n" +
-      "           and print the decisive-share table. The owner reads candidate2's manifest freeze;\n" +
-      "           --frozen-suite optionally asserts that id. Collection requires --collect;\n" +
-      "           a bare run stays read-only.",
+      "           A bare run stays read-only.",
   )
   process.exit(2)
 }
@@ -1401,12 +1285,9 @@ function usage(): never {
 if (import.meta.main) {
   const argv = process.argv.slice(2)
   let plan = false
-  let admit = false
   let collect = false
   let development = false
   let outputDirectory: string | undefined
-  let frozenSuite: string | undefined
-  let deferralsPath: string | undefined
   let contextsInput: string | undefined
   let probeIdsInput: string | undefined
   let ownedAppRunner = "local"
@@ -1416,7 +1297,6 @@ if (import.meta.main) {
   const runs: string[] = []
   for (let index = 0; index < argv.length; index += 1) {
     if (argv[index] === "--plan") plan = true
-    else if (argv[index] === "--admit") admit = true
     else if (argv[index] === "--collect") collect = true
     else if (argv[index] === "--development") development = true
     else if (argv[index] === "--contexts") {
@@ -1428,12 +1308,6 @@ if (import.meta.main) {
     } else if (argv[index] === "--output") {
       outputDirectory = argv[++index]
       if (!outputDirectory || outputDirectory.startsWith("--")) usage()
-    } else if (argv[index] === "--frozen-suite") {
-      frozenSuite = argv[++index]
-      if (frozenSuite === undefined || frozenSuite.startsWith("--")) usage()
-    } else if (argv[index] === "--deferrals") {
-      deferralsPath = argv[++index]
-      if (!deferralsPath || deferralsPath.startsWith("--")) usage()
     } else if (argv[index] === "--owned-app-transport") {
       ownedAppRunner = argv[++index] ?? usage()
       if (ownedAppRunner.startsWith("--")) usage()
@@ -1452,37 +1326,10 @@ if (import.meta.main) {
     }
   }
   if (collect) {
-    if (
-      plan ||
-      admit === development ||
-      !outputDirectory ||
-      (development && (frozenSuite || deferralsPath)) ||
-      runs.length
-    ) {
+    if (plan || !development || !outputDirectory || runs.length) {
       usage()
     }
     try {
-      const deferrals: NonNullable<NonNullable<CollectionPass["freeze"]>["deferrals"]> = []
-      if (deferralsPath) {
-        const values: unknown = parseJsonStrict(deferralsPath, readFileSync(deferralsPath, "utf8"))
-        if (!Array.isArray(values)) throw new Error(`${deferralsPath}: expected context/routeIssue/reason array`)
-        for (const value of values) {
-          if (
-            value === null ||
-            typeof value !== "object" ||
-            !("context" in value) ||
-            !("routeIssue" in value) ||
-            !("reason" in value) ||
-            typeof value.context !== "string" ||
-            typeof value.routeIssue !== "string" ||
-            typeof value.reason !== "string"
-          ) {
-            throw new Error(`${deferralsPath}: each deferral requires context, routeIssue and reason`)
-          }
-          deferrals.push({ context: value.context, routeIssue: value.routeIssue, reason: value.reason })
-        }
-      }
-      if (admit && !frozenSuite) throw new Error("--collect --admit requires --frozen-suite <declared-id>")
       if (ownedAppRunner === "local" && (ownedAppStage || ownedAppRemoveStage || ownedAppKnownHosts)) {
         throw new Error(
           "--owned-app-stage/--owned-app-known-hosts/--owned-app-remove-stage require --owned-app-transport ssh:<user>@<host>",
@@ -1490,14 +1337,12 @@ if (import.meta.main) {
       }
       const pass = await collectPass(
         resolve(outputDirectory),
-        admit ? frozenSuite : undefined,
         {
           runner: ownedAppRunner,
           ...(ownedAppStage === undefined ? {} : { stage: ownedAppStage }),
           ...(ownedAppKnownHosts === undefined ? {} : { knownHosts: ownedAppKnownHosts }),
           ...(ownedAppRemoveStage ? { removeStage: true } : {}),
         },
-        deferrals,
         contextsInput === undefined && probeIdsInput === undefined
           ? undefined
           : {
@@ -1514,7 +1359,7 @@ if (import.meta.main) {
             },
       )
       console.log(
-        `${pass.mode === "admit" ? "Final collection" : "Private development"} pass: ${pass.directory}; cohort ${pass.complete ? "complete" : "incomplete"}`,
+        `Private development pass: ${pass.directory}; cohort ${pass.complete ? "complete" : "incomplete"}`,
       )
       for (const row of pass.contexts) {
         console.log(
@@ -1523,7 +1368,7 @@ if (import.meta.main) {
       }
       for (const error of pass.errors) console.error(error)
       if (
-        ((!pass.selection || pass.mode === "admit") && !pass.complete && pass.attempt?.result !== "empty") ||
+        (!pass.selection && !pass.complete && pass.attempt?.result !== "empty") ||
         pass.errors.length ||
         pass.contexts.some((row) => row.status === "failed" || row.error)
       ) {
@@ -1534,72 +1379,12 @@ if (import.meta.main) {
       process.exitCode = 1
     }
   } else {
-    if (development || outputDirectory || deferralsPath || contextsInput !== undefined || probeIdsInput !== undefined) {
+    if (development || outputDirectory || contextsInput !== undefined || probeIdsInput !== undefined || runs.length) {
       usage()
     }
-    if (!admit) {
-      if (runs.length > 0) usage()
-      plan = true
-    }
-
     try {
       const census = release1Census(await engineBackendsFromManifest())
-      if (plan) {
-        for (const line of planLines(census)) console.log(line)
-        if (!admit) process.exit(0)
-      }
-      if (!admit) process.exit(0)
-      if (runs.length === 0) {
-        throw new Error("--admit needs at least one produced run; nothing was admitted")
-      }
-      const produced = admitProducedRuns(runs, frozenSuite)
-      const gaps = uncoveredContexts(census, produced)
-      console.log(
-        gaps.length === 0
-          ? `Every one of the ${census.length} Release 1 contexts produced a run.`
-          : `Contexts with no run in this pass — ${gaps.length} of ${census.length}, each named, none read as 0%:`,
-      )
-      for (const gap of gaps) console.log(`  ${labelOf(gap.context)}: ${gap.reason}`)
-      const projection = loadCurrentResults(CONTENT).projection
-      const admittedIds = new Set(produced.map((run) => run.runId))
-      const admitted = Object.entries(projection.versions).flatMap(([key, versions]) =>
-        versions.filter((run) => admittedIds.has(run.runId)).map((run) => ({ key, run })),
-      )
-      const requiredSuiteId = frozenSuite ?? admitted[0]?.run.suiteId
-      if (!requiredSuiteId) {
-        throw new Error(
-          "No current schema-4 admitted executions; historical results cannot complete the current collection",
-        )
-      }
-      const coverage = buildFullProjectRows({
-        census: fullContextCensus(CONTENT).contexts,
-        catalogIds: Object.keys(loadFeatures(CONTENT)),
-        requiredSuiteId,
-        candidates: admitted.map(({ key, run }) => {
-          const states = projection.table[run.runId]
-          if (!states) throw new Error(`Admitted original run ${run.runId} has no classified result row`)
-          return candidateFromSelected(key, run, states)
-        }),
-        reviewed: loadDefaultContextPolicy(CONTENT),
-      })
-      for (const { key, run } of admitted) {
-        console.log(
-          `  ${key} ${run.runId}: ${currentCoverageSentence(run, run.catalogIds)}; ${run.score.supported}/${run.score.all} Supported / all`,
-        )
-      }
-      const sources = new Set(admitted.map(({ run }) => run.sourceRevision))
-      const complete =
-        gaps.length === 0 &&
-        coverage.contexts.length === 33 &&
-        coverage.catalogRows === 273 &&
-        coverage.recordedPositions === 9009 &&
-        coverage.complete &&
-        sources.size === 1
-      console.log(`Current source: ${[...sources].join(", ") || "none"}; suite ${requiredSuiteId}`)
-      console.log(
-        `Current execution: ${coverage.collected}/33 contexts, ${coverage.recordedPositions}/9009 recorded positions; ${complete ? "complete: zero TEST TODO and TEST FAILURE" : "incomplete: fresh current execution or required tests remain"}`,
-      )
-      if (!complete) process.exitCode = 1
+      for (const line of planLines(census)) console.log(line)
     } catch (error) {
       console.error(error instanceof Error ? error.message : String(error))
       process.exitCode = 1
