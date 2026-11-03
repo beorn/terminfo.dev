@@ -625,10 +625,12 @@ test("modes.alt-scroll-1007 aborts when the 1000+1006 control click does not rea
   expect(writes.join("")).not.toContain("\x1b[?1049h")
 })
 
-test("modes.alt-scroll-1007 records supported interaction when wheel under 1007 reports CSI A", async () => {
+test.each([
+  ["CSI A", "\x1b[A"],
+  ["SS3 A", "\x1bOA"],
+] as const)("modes.alt-scroll-1007 records supported interaction when wheel under 1007 reports %s", async (form, report) => {
   const writes: string[] = []
   const control = "\x1b[<0;10;5M"
-  const report = "\x1b[A"
   const { ctx, clicks } = inputAndRead({ clickReports: [control, report] }, writes)
   const result = (await modeProbe("modes.alt-scroll-1007").term!(ctx)) as ProbeCallbackResult
   expect(clicks).toEqual([1, 4])
@@ -638,12 +640,13 @@ test("modes.alt-scroll-1007 records supported interaction when wheel under 1007 
   expect(writes.join("")).toContain("\x1b[?1049l")
   expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "input_bytes" })
   expect(result.assertions?.[0]).toMatchObject({ kind: "positive", action: "alt-scroll-1007:4" })
+  expect(result.assertions?.[0]?.expected).toContain(`as ${form}`)
   const observed = JSON.parse(result.assertions?.[0]?.observed ?? "null") as Record<string, unknown>
   expect(observed).toMatchObject({ mode: "1007", control, report })
 })
 
-test.each(["\x1b[<64;10;5M", "\x1b[B", "\x1bOA", "\x1bOB"])(
-  "modes.alt-scroll-1007 rejects non-CSI-A report %s",
+test.each(["\x1b[<64;10;5M", "\x1b[B", "\x1bOB"])(
+  "modes.alt-scroll-1007 rejects unrelated report %s",
   async (report) => {
     const writes: string[] = []
     const control = "\x1b[<0;10;5M"

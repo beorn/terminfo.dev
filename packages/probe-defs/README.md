@@ -136,7 +136,9 @@ a status or route. Existing other DECRPM criteria retain their prior readings.
 Application-keypad instead measures `ESC =` / `ESC >` (DECKPAM/DECKPNM) with
 `applicationKeypad` true then false, without DECRQM. Null readings stay named
 adapter-binding Test to-do; other non-null pairs stay criterion Test to-do naming both states.
-Keypad encoding and wheel-to-cursor-key translation remain unmeasured.
+Keypad encoding remains unmeasured. The application `modes.alt-scroll-1007` arm measures
+wheel-to-cursor-key translation from either CSI A or SS3 A and records the observed form;
+the library arm leaves that translation unmeasured.
 Private4 additionally requires non-null ANSI `insertMode` readings before and after
 set and checks that they do not change; an observed
 flip is engine conflation, independently of its reply (the existing private4 issue32002).
