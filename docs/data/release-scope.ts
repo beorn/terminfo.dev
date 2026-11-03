@@ -122,6 +122,18 @@ export interface TerminalStatusRollup {
   readonly families: Record<string, FamilyRollup>
 }
 
+export interface ProbeOpenRankRow {
+  readonly featureId: string
+  readonly family: string
+  readonly libOpen: number
+  readonly libFailure: number
+  readonly libTodo: number
+  readonly appOpen: number
+  readonly appFailure: number
+  readonly appTodo: number
+  readonly totalOpen: number
+}
+
 /**
  * The single status-and-rollup computation over one terminal's recorded statuses (Phase 2.4):
  * folds the graded positions (`gradedFeatureIds`) into the five status counts, family rollups,
@@ -164,7 +176,7 @@ export function rollupTerminalStatuses(
   }
   const gradedIds = gradedFeatureIds(catalogIds)
   for (const id of gradedIds) {
-    const status = statuses[id]
+    const status = Object.hasOwn(statuses, id) ? statuses[id] : undefined
     if (!status || !PROBE_STATUSES.includes(status as ProbeStatus)) {
       throw new Error(`Invalid stored current status for ${id}`)
     }
@@ -214,6 +226,80 @@ export function rollupTerminalStatuses(
   }
 }
 
+/**
+ * Work-list ranking over the graded positions (`gradedFeatureIds`) across library and optional
+ * app/multiplexer status maps (Phase 2.4 A5): deterministic tie-breaking by
+ * `(-totalOpen, -libOpen, -(libFailure + appFailure), featureId)`.
+ */
+export function rankOpenProbes(
+  libCells: Readonly<Record<string, Readonly<Record<string, string>>>>,
+  options?: {
+    readonly appCells?: Readonly<Record<string, Readonly<Record<string, string>>>>
+    readonly catalogIds?: readonly string[]
+  },
+): ProbeOpenRankRow[] {
+  const appCells = options?.appCells ?? {}
+  const allCatalogIds =
+    options?.catalogIds ??
+    [
+      ...new Set([
+        ...Object.values(libCells).flatMap((statuses) => Object.keys(statuses)),
+        ...Object.values(appCells).flatMap((statuses) => Object.keys(statuses)),
+      ]),
+    ].sort()
+  const gradedIds = gradedFeatureIds(allCatalogIds)
+  const libMaps = Object.values(libCells)
+  const appMaps = Object.values(appCells)
+  const rows: ProbeOpenRankRow[] = []
+
+  for (const featureId of gradedIds) {
+    let libFailure = 0
+    let libTodo = 0
+    for (const statuses of libMaps) {
+      if (!Object.hasOwn(statuses, featureId)) continue
+      const status = statuses[featureId]
+      if (!status || !PROBE_STATUSES.includes(status as ProbeStatus)) {
+        throw new Error(`Invalid stored current status for ${featureId}`)
+      }
+      if (status === "test-failure") libFailure++
+      else if (status === "test-todo") libTodo++
+    }
+    let appFailure = 0
+    let appTodo = 0
+    for (const statuses of appMaps) {
+      if (!Object.hasOwn(statuses, featureId)) continue
+      const status = statuses[featureId]
+      if (!status || !PROBE_STATUSES.includes(status as ProbeStatus)) {
+        throw new Error(`Invalid stored current status for ${featureId}`)
+      }
+      if (status === "test-failure") appFailure++
+      else if (status === "test-todo") appTodo++
+    }
+    const libOpen = libFailure + libTodo
+    const appOpen = appFailure + appTodo
+    rows.push({
+      featureId,
+      family: featureId.split(".")[0] ?? featureId,
+      libOpen,
+      libFailure,
+      libTodo,
+      appOpen,
+      appFailure,
+      appTodo,
+      totalOpen: libOpen + appOpen,
+    })
+  }
+
+  rows.sort(
+    (a, b) =>
+      b.totalOpen - a.totalOpen ||
+      b.libOpen - a.libOpen ||
+      b.libFailure + b.appFailure - (a.libFailure + a.appFailure) ||
+      (a.featureId < b.featureId ? -1 : a.featureId > b.featureId ? 1 : 0),
+  )
+  return rows
+}
+
 export function aggregateCurrentResults(
   results: readonly Pick<ProbeResult, "featureId" | "status">[],
   catalogIds: readonly string[],
@@ -235,7 +321,7 @@ export function aggregateCurrentResults(
   if (
     Object.keys(statuses).length !== results.length ||
     results.length !== catalogIds.length ||
-    catalogIds.some((id) => !(id in statuses))
+    catalogIds.some((id) => !Object.hasOwn(statuses, id))
   ) {
     throw new Error("Current results differ from frozen catalogue membership")
   }

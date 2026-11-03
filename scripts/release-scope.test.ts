@@ -22,6 +22,7 @@ import {
   aggregateCurrentResults,
   completenessTierOf,
   isStaleRelation,
+  rankOpenProbes,
   rollupTerminalStatuses,
   staleCaption,
   treeMovedPastRelease,
@@ -439,5 +440,98 @@ describe("Phase 2.4 single status-and-rollup computation (rollupTerminalStatuses
       failure: rollup.counts["test-failure"],
       positions: rollup.positions,
     })
+  })
+
+  it("ranks open graded probes by (-totalOpen, -libOpen, -(libFailure + appFailure), featureId) and excludes environment groups (A5)", () => {
+    const libCells = {
+      vterm: {
+        "device.env-term": "test-todo",
+        "sgr.bold": "test-failure",
+        "sgr.faint": "test-todo",
+        "cursor.up": "supported",
+        "erase.line": "test-todo",
+      },
+      xtermjs: {
+        "device.env-term": "test-failure",
+        "sgr.bold": "test-todo",
+        "sgr.faint": "test-todo",
+        "cursor.up": "test-failure",
+        "erase.line": "supported",
+      },
+    }
+    const appCells = {
+      "kitty:linux": {
+        "device.env-term": "test-todo",
+        "sgr.bold": "supported",
+        "sgr.faint": "supported",
+        "cursor.up": "test-failure",
+        "erase.line": "test-todo",
+      },
+    }
+    const rows = rankOpenProbes(libCells, { appCells })
+    // Environment group device.env-term is excluded even with open statuses.
+    expect(rows.map((r) => r.featureId)).toEqual(["sgr.bold", "sgr.faint", "cursor.up", "erase.line"])
+    // sgr.bold and sgr.faint tie on totalOpen=2 and libOpen=2; sgr.bold wins on -(libFailure + appFailure) (1 vs 0).
+    // cursor.up and erase.line tie on totalOpen=2, libOpen=1, appOpen=1; cursor.up wins on failures (2 vs 0).
+    expect(rows[0]).toEqual({
+      featureId: "sgr.bold",
+      family: "sgr",
+      libOpen: 2,
+      libFailure: 1,
+      libTodo: 1,
+      appOpen: 0,
+      appFailure: 0,
+      appTodo: 0,
+      totalOpen: 2,
+    })
+    expect(rows[1]).toEqual({
+      featureId: "sgr.faint",
+      family: "sgr",
+      libOpen: 2,
+      libFailure: 0,
+      libTodo: 2,
+      appOpen: 0,
+      appFailure: 0,
+      appTodo: 0,
+      totalOpen: 2,
+    })
+    expect(rows[2]).toEqual({
+      featureId: "cursor.up",
+      family: "cursor",
+      libOpen: 1,
+      libFailure: 1,
+      libTodo: 0,
+      appOpen: 1,
+      appFailure: 1,
+      appTodo: 0,
+      totalOpen: 2,
+    })
+    expect(rows[3]).toEqual({
+      featureId: "erase.line",
+      family: "erase",
+      libOpen: 1,
+      libFailure: 0,
+      libTodo: 1,
+      appOpen: 1,
+      appFailure: 0,
+      appTodo: 1,
+      totalOpen: 2,
+    })
+    // A5: no libStatuses or appStatuses maps on ProbeOpenRankRow.
+    expect(Object.keys(rows[0]!).sort()).toEqual([
+      "appFailure",
+      "appOpen",
+      "appTodo",
+      "family",
+      "featureId",
+      "libFailure",
+      "libOpen",
+      "libTodo",
+      "totalOpen",
+    ])
+    // Fail loud on invalid stored status.
+    expect(() => rankOpenProbes({ vterm: { "sgr.bold": "bogus" } })).toThrow(
+      /Invalid stored current status for sgr\.bold/,
+    )
   })
 })
