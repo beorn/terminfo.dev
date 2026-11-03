@@ -11,6 +11,7 @@ import { join } from "node:path"
 import { charsetsProbes } from "./charsets.ts"
 import {
   contractGaps,
+  inertLibProbeSource,
   libProbeSource,
   missingContractTests,
   regradeCommand,
@@ -20,6 +21,16 @@ import {
   type GroupContractSpec,
 } from "./testing/group-harness.ts"
 import { createSemanticSurface } from "./testing/semantic-surface.ts"
+
+const CHARSET_SEMANTIC_SURFACE_CONTROLS: readonly {
+  readonly id: string
+  readonly mutation: string
+}[] = [
+  { id: "charsets.dec-special", mutation: "charset-noop" },
+  { id: "charsets.utf8", mutation: "utf8-noop" },
+  { id: "charsets.g0-g1-switching", mutation: "g0-g1-noop" },
+  { id: "charsets.dec-line-drawing", mutation: "dec-line-drawing-noop" },
+]
 
 /** The 4 Character Sets features of 28018's Character Sets row; ids from charsets.ts, claims are the contract. */
 const CHARSET_CONTRACT: GroupContract = [
@@ -119,3 +130,31 @@ test("a surface whose designation is inert reads charsets.dec-special unsupporte
   })
   expect(graded.after, "charsets.dec-special detects an inert designation").toBe("unsupported")
 })
+
+test("the Character Sets two-sided control table covers every charsets contract row", () => {
+  expect(CHARSET_SEMANTIC_SURFACE_CONTROLS.map((entry) => entry.id)).toEqual(CHARSET_CONTRACT.map((entry) => entry.id))
+})
+
+test.each(CHARSET_SEMANTIC_SURFACE_CONTROLS)(
+  "charsets two-sided control for $id: inert does not read supported, semantic surface reads supported, and $mutation reads unsupported",
+  async ({ id, mutation }) => {
+    const row = CHARSET_CONTRACT.find((entry) => entry.id === id)
+    const probe = charsetsProbes.find((entry) => entry.id === id)
+    expect(row, `missing Character Sets contract row ${id}`).toBeDefined()
+    expect(probe, `missing Character Sets probe ${id}`).toBeDefined()
+    if (!row || !probe) return
+
+    const inert = await regradeRow(probe, row, { headless: inertLibProbeSource() })
+    expect(inert.after, `${id} must not read supported against inertLibProbeSource()`).toBe("inconclusive")
+
+    const positive = await regradeRow(probe, row, { headless: libProbeSource(createSemanticSurface()) })
+    expect(positive.after, `${id} must read supported against createSemanticSurface()`).toBe("supported")
+    expect(positive.satisfies, `${id} must satisfy its contract row on createSemanticSurface()`).toBe(true)
+
+    const mutated = await regradeRow(probe, row, {
+      headless: libProbeSource(createSemanticSurface({ mutations: [mutation] })),
+    })
+    expect(mutated.after, `${id} must read unsupported when ${mutation} is active`).toBe("unsupported")
+    expect(mutated.satisfies, `${id} remains decided under ${mutation}`).toBe(true)
+  },
+)
