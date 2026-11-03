@@ -18164,25 +18164,6 @@
     "featureId": "extensions.osc104-reset-palette",
     "answers": [
       {
-        "status": "untestable",
-        "citedBlobs": [],
-        "originals": [
-          {
-            "reviewRef": "collector.review.dev1-ghostty-current-extensions-osc104-reset-palette-3f3e920e",
-            "reviewer": "@dev/1",
-            "reason": "For this ghostty0.4.0 library capture at suite4b01b0117e18, extensions.osc104-reset-palette lacks the colour readback and verified fixture required by its current criterion. The current criterion also retained before/seeded/same/fresh indexed cells: all are RGB29/31/33, so the required RGB170/187/204 seed was never established. Neither reset success nor failure follows from unchanged cells. The loaded WASM7c43302d and wrapper match the current producer receipt; the exact receipt-linked colour operation handlers discard their arguments, change no terminal colour state and emit no reply. This selected embedding therefore loses the colour operation rather than exposing an effect through a missing getter. Cut-specific Untestable under the existing headless-review ruling; no terminal-wide support conclusion, no historical d6f0 approval transfer and no claim that silence is Unsupported.",
-            "sources": [
-              "evidence:sha256:c10e67b7d3e3247a20cd827b9c55dfeef8d2aecb7adee43324f22205a65fab86/ghostty-3f3e920e-ebf8-4d81-ace1-52445a05a992.capture.json",
-              "evidence:sha256:fd199b4d1ec230b17212fa9b0cf77a11e4cca1cfd3ab6e6d2f925e71cffd1119/ghostty-wasm-api.patch@74672f85dc9fa58f8fd93b5e32e3e6c7487a5549",
-              "evidence:sha256:323feebee5e6575eaf85f2df48c76e4c39cc8248d611cbfcd56269582776d66d/RECEIPT.json",
-              "evidence:sha256:d0eb17ead75e236edb2066b545ee3aab3772a91c69eb78e005c97fadee85e61c/extensions.ts@8b74c56ec8c0c5a30cb1f48e952983bbe18f009e",
-              "evidence:sha256:bbea0f68d6ddbda4cb9dcfb551a9709a3b98666ee0d843125b951bfbe7e6baea/30711-headless-review-evidence-ruling.md",
-              "evidence:sha256:b82e334b9e9211b9855ffcacdafac3c7d349df5198ccf1ff715331d69845551c/31365-ghostty-colours-evidence-v2.md"
-            ]
-          }
-        ]
-      },
-      {
         "status": "unsupported",
         "citedBlobs": [],
         "originals": [
@@ -18212,25 +18193,6 @@
     },
     "featureId": "extensions.osc110-reset-fg",
     "answers": [
-      {
-        "status": "untestable",
-        "citedBlobs": [],
-        "originals": [
-          {
-            "reviewRef": "collector.review.dev1-ghostty-current-extensions-osc110-reset-fg-3f3e920e",
-            "reviewer": "@dev/1",
-            "reason": "For this ghostty0.4.0 library capture at suite4b01b0117e18, extensions.osc110-reset-fg lacks the colour readback and verified fixture required by its current criterion. The retained initial query, seed query and post-reset query are empty; all four recorded control responses are empty. No verified seeded colour or restored colour exists for comparison. The loaded WASM7c43302d and wrapper match the current producer receipt; the exact receipt-linked colour operation handlers discard their arguments, change no terminal colour state and emit no reply. This selected embedding therefore loses the colour operation rather than exposing an effect through a missing getter. Cut-specific Untestable under the existing headless-review ruling; no terminal-wide support conclusion, no historical d6f0 approval transfer and no claim that silence is Unsupported.",
-            "sources": [
-              "evidence:sha256:c10e67b7d3e3247a20cd827b9c55dfeef8d2aecb7adee43324f22205a65fab86/ghostty-3f3e920e-ebf8-4d81-ace1-52445a05a992.capture.json",
-              "evidence:sha256:fd199b4d1ec230b17212fa9b0cf77a11e4cca1cfd3ab6e6d2f925e71cffd1119/ghostty-wasm-api.patch@74672f85dc9fa58f8fd93b5e32e3e6c7487a5549",
-              "evidence:sha256:323feebee5e6575eaf85f2df48c76e4c39cc8248d611cbfcd56269582776d66d/RECEIPT.json",
-              "evidence:sha256:d0eb17ead75e236edb2066b545ee3aab3772a91c69eb78e005c97fadee85e61c/extensions.ts@8b74c56ec8c0c5a30cb1f48e952983bbe18f009e",
-              "evidence:sha256:bbea0f68d6ddbda4cb9dcfb551a9709a3b98666ee0d843125b951bfbe7e6baea/30711-headless-review-evidence-ruling.md",
-              "evidence:sha256:b82e334b9e9211b9855ffcacdafac3c7d349df5198ccf1ff715331d69845551c/31365-ghostty-colours-evidence-v2.md"
-            ]
-          }
-        ]
-      },
       {
         "status": "unsupported",
         "citedBlobs": [],
@@ -18262,25 +18224,6 @@
     "featureId": "extensions.osc111-reset-bg",
     "answers": [
       {
-        "status": "untestable",
-        "citedBlobs": [],
-        "originals": [
-          {
-            "reviewRef": "collector.review.dev1-ghostty-current-extensions-osc111-reset-bg-3f3e920e",
-            "reviewer": "@dev/1",
-            "reason": "For this ghostty0.4.0 library capture at suite4b01b0117e18, extensions.osc111-reset-bg lacks the colour readback and verified fixture required by its current criterion. The retained initial query, seed query and post-reset query are empty; all four recorded control responses are empty. No verified seeded colour or restored colour exists for comparison. The loaded WASM7c43302d and wrapper match the current producer receipt; the exact receipt-linked colour operation handlers discard their arguments, change no terminal colour state and emit no reply. This selected embedding therefore loses the colour operation rather than exposing an effect through a missing getter. Cut-specific Untestable under the existing headless-review ruling; no terminal-wide support conclusion, no historical d6f0 approval transfer and no claim that silence is Unsupported.",
-            "sources": [
-              "evidence:sha256:c10e67b7d3e3247a20cd827b9c55dfeef8d2aecb7adee43324f22205a65fab86/ghostty-3f3e920e-ebf8-4d81-ace1-52445a05a992.capture.json",
-              "evidence:sha256:fd199b4d1ec230b17212fa9b0cf77a11e4cca1cfd3ab6e6d2f925e71cffd1119/ghostty-wasm-api.patch@74672f85dc9fa58f8fd93b5e32e3e6c7487a5549",
-              "evidence:sha256:323feebee5e6575eaf85f2df48c76e4c39cc8248d611cbfcd56269582776d66d/RECEIPT.json",
-              "evidence:sha256:d0eb17ead75e236edb2066b545ee3aab3772a91c69eb78e005c97fadee85e61c/extensions.ts@8b74c56ec8c0c5a30cb1f48e952983bbe18f009e",
-              "evidence:sha256:bbea0f68d6ddbda4cb9dcfb551a9709a3b98666ee0d843125b951bfbe7e6baea/30711-headless-review-evidence-ruling.md",
-              "evidence:sha256:b82e334b9e9211b9855ffcacdafac3c7d349df5198ccf1ff715331d69845551c/31365-ghostty-colours-evidence-v2.md"
-            ]
-          }
-        ]
-      },
-      {
         "status": "unsupported",
         "citedBlobs": [],
         "originals": [
@@ -18310,25 +18253,6 @@
     },
     "featureId": "extensions.osc112-reset-cursor",
     "answers": [
-      {
-        "status": "untestable",
-        "citedBlobs": [],
-        "originals": [
-          {
-            "reviewRef": "collector.review.dev1-ghostty-current-extensions-osc112-reset-cursor-3f3e920e",
-            "reviewer": "@dev/1",
-            "reason": "For this ghostty0.4.0 library capture at suite4b01b0117e18, extensions.osc112-reset-cursor lacks the colour readback and verified fixture required by its current criterion. The retained initial query, seed query and post-reset query are empty; all four recorded control responses are empty. No verified seeded colour or restored colour exists for comparison. The loaded WASM7c43302d and wrapper match the current producer receipt; the exact receipt-linked colour operation handlers discard their arguments, change no terminal colour state and emit no reply. This selected embedding therefore loses the colour operation rather than exposing an effect through a missing getter. Cut-specific Untestable under the existing headless-review ruling; no terminal-wide support conclusion, no historical d6f0 approval transfer and no claim that silence is Unsupported.",
-            "sources": [
-              "evidence:sha256:c10e67b7d3e3247a20cd827b9c55dfeef8d2aecb7adee43324f22205a65fab86/ghostty-3f3e920e-ebf8-4d81-ace1-52445a05a992.capture.json",
-              "evidence:sha256:fd199b4d1ec230b17212fa9b0cf77a11e4cca1cfd3ab6e6d2f925e71cffd1119/ghostty-wasm-api.patch@74672f85dc9fa58f8fd93b5e32e3e6c7487a5549",
-              "evidence:sha256:323feebee5e6575eaf85f2df48c76e4c39cc8248d611cbfcd56269582776d66d/RECEIPT.json",
-              "evidence:sha256:d0eb17ead75e236edb2066b545ee3aab3772a91c69eb78e005c97fadee85e61c/extensions.ts@8b74c56ec8c0c5a30cb1f48e952983bbe18f009e",
-              "evidence:sha256:bbea0f68d6ddbda4cb9dcfb551a9709a3b98666ee0d843125b951bfbe7e6baea/30711-headless-review-evidence-ruling.md",
-              "evidence:sha256:b82e334b9e9211b9855ffcacdafac3c7d349df5198ccf1ff715331d69845551c/31365-ghostty-colours-evidence-v2.md"
-            ]
-          }
-        ]
-      },
       {
         "status": "unsupported",
         "citedBlobs": [],
@@ -18360,25 +18284,6 @@
     "featureId": "extensions.osc113-reset-pointer-fg",
     "answers": [
       {
-        "status": "untestable",
-        "citedBlobs": [],
-        "originals": [
-          {
-            "reviewRef": "collector.review.dev1-ghostty-current-extensions-osc113-reset-pointer-fg-3f3e920e",
-            "reviewer": "@dev/1",
-            "reason": "For this ghostty0.4.0 library capture at suite4b01b0117e18, extensions.osc113-reset-pointer-fg lacks the colour readback and verified fixture required by its current criterion. The first pointer-colour query is empty; this callback returns a required review before attempting the reset. It retains no measured reset effect. The loaded WASM7c43302d and wrapper match the current producer receipt; the exact receipt-linked colour operation handlers discard their arguments, change no terminal colour state and emit no reply. This selected embedding therefore loses the colour operation rather than exposing an effect through a missing getter. Cut-specific Untestable under the existing headless-review ruling; no terminal-wide support conclusion, no historical d6f0 approval transfer and no claim that silence is Unsupported.",
-            "sources": [
-              "evidence:sha256:c10e67b7d3e3247a20cd827b9c55dfeef8d2aecb7adee43324f22205a65fab86/ghostty-3f3e920e-ebf8-4d81-ace1-52445a05a992.capture.json",
-              "evidence:sha256:fd199b4d1ec230b17212fa9b0cf77a11e4cca1cfd3ab6e6d2f925e71cffd1119/ghostty-wasm-api.patch@74672f85dc9fa58f8fd93b5e32e3e6c7487a5549",
-              "evidence:sha256:323feebee5e6575eaf85f2df48c76e4c39cc8248d611cbfcd56269582776d66d/RECEIPT.json",
-              "evidence:sha256:d0eb17ead75e236edb2066b545ee3aab3772a91c69eb78e005c97fadee85e61c/extensions.ts@8b74c56ec8c0c5a30cb1f48e952983bbe18f009e",
-              "evidence:sha256:bbea0f68d6ddbda4cb9dcfb551a9709a3b98666ee0d843125b951bfbe7e6baea/30711-headless-review-evidence-ruling.md",
-              "evidence:sha256:b82e334b9e9211b9855ffcacdafac3c7d349df5198ccf1ff715331d69845551c/31365-ghostty-colours-evidence-v2.md"
-            ]
-          }
-        ]
-      },
-      {
         "status": "unsupported",
         "citedBlobs": [],
         "originals": [
@@ -18408,25 +18313,6 @@
     },
     "featureId": "extensions.osc114-reset-pointer-bg",
     "answers": [
-      {
-        "status": "untestable",
-        "citedBlobs": [],
-        "originals": [
-          {
-            "reviewRef": "collector.review.dev1-ghostty-current-extensions-osc114-reset-pointer-bg-3f3e920e",
-            "reviewer": "@dev/1",
-            "reason": "For this ghostty0.4.0 library capture at suite4b01b0117e18, extensions.osc114-reset-pointer-bg lacks the colour readback and verified fixture required by its current criterion. The first pointer-colour query is empty; this callback returns a required review before attempting the reset. It retains no measured reset effect. The loaded WASM7c43302d and wrapper match the current producer receipt; the exact receipt-linked colour operation handlers discard their arguments, change no terminal colour state and emit no reply. This selected embedding therefore loses the colour operation rather than exposing an effect through a missing getter. Cut-specific Untestable under the existing headless-review ruling; no terminal-wide support conclusion, no historical d6f0 approval transfer and no claim that silence is Unsupported.",
-            "sources": [
-              "evidence:sha256:c10e67b7d3e3247a20cd827b9c55dfeef8d2aecb7adee43324f22205a65fab86/ghostty-3f3e920e-ebf8-4d81-ace1-52445a05a992.capture.json",
-              "evidence:sha256:fd199b4d1ec230b17212fa9b0cf77a11e4cca1cfd3ab6e6d2f925e71cffd1119/ghostty-wasm-api.patch@74672f85dc9fa58f8fd93b5e32e3e6c7487a5549",
-              "evidence:sha256:323feebee5e6575eaf85f2df48c76e4c39cc8248d611cbfcd56269582776d66d/RECEIPT.json",
-              "evidence:sha256:d0eb17ead75e236edb2066b545ee3aab3772a91c69eb78e005c97fadee85e61c/extensions.ts@8b74c56ec8c0c5a30cb1f48e952983bbe18f009e",
-              "evidence:sha256:bbea0f68d6ddbda4cb9dcfb551a9709a3b98666ee0d843125b951bfbe7e6baea/30711-headless-review-evidence-ruling.md",
-              "evidence:sha256:b82e334b9e9211b9855ffcacdafac3c7d349df5198ccf1ff715331d69845551c/31365-ghostty-colours-evidence-v2.md"
-            ]
-          }
-        ]
-      },
       {
         "status": "unsupported",
         "citedBlobs": [],
@@ -18458,25 +18344,6 @@
     "featureId": "extensions.osc30001-color-stack-push",
     "answers": [
       {
-        "status": "untestable",
-        "citedBlobs": [],
-        "originals": [
-          {
-            "reviewRef": "collector.review.dev1-ghostty-current-extensions-osc30001-color-stack-push-3f3e920e",
-            "reviewer": "@dev/1",
-            "reason": "For this ghostty0.4.0 library capture at suite4b01b0117e18, extensions.osc30001-color-stack-push lacks the colour readback and verified fixture required by its current criterion. The retained trace contains the initial/seeded foreground queries, seed setter and cleanup reset only, all silent. The foreground fixture is unverified, so the callback never reaches push/pop; no stack effect was measured. The loaded WASM7c43302d and wrapper match the current producer receipt; the exact receipt-linked colour operation handlers discard their arguments, change no terminal colour state and emit no reply. This selected embedding therefore loses the colour operation rather than exposing an effect through a missing getter. Cut-specific Untestable under the existing headless-review ruling; no terminal-wide support conclusion, no historical d6f0 approval transfer and no claim that silence is Unsupported.",
-            "sources": [
-              "evidence:sha256:c10e67b7d3e3247a20cd827b9c55dfeef8d2aecb7adee43324f22205a65fab86/ghostty-3f3e920e-ebf8-4d81-ace1-52445a05a992.capture.json",
-              "evidence:sha256:fd199b4d1ec230b17212fa9b0cf77a11e4cca1cfd3ab6e6d2f925e71cffd1119/ghostty-wasm-api.patch@74672f85dc9fa58f8fd93b5e32e3e6c7487a5549",
-              "evidence:sha256:323feebee5e6575eaf85f2df48c76e4c39cc8248d611cbfcd56269582776d66d/RECEIPT.json",
-              "evidence:sha256:d0eb17ead75e236edb2066b545ee3aab3772a91c69eb78e005c97fadee85e61c/extensions.ts@8b74c56ec8c0c5a30cb1f48e952983bbe18f009e",
-              "evidence:sha256:bbea0f68d6ddbda4cb9dcfb551a9709a3b98666ee0d843125b951bfbe7e6baea/30711-headless-review-evidence-ruling.md",
-              "evidence:sha256:b82e334b9e9211b9855ffcacdafac3c7d349df5198ccf1ff715331d69845551c/31365-ghostty-colours-evidence-v2.md"
-            ]
-          }
-        ]
-      },
-      {
         "status": "unsupported",
         "citedBlobs": [],
         "originals": [
@@ -18506,25 +18373,6 @@
     },
     "featureId": "extensions.osc30101-color-stack-pop",
     "answers": [
-      {
-        "status": "untestable",
-        "citedBlobs": [],
-        "originals": [
-          {
-            "reviewRef": "collector.review.dev1-ghostty-current-extensions-osc30101-color-stack-pop-3f3e920e",
-            "reviewer": "@dev/1",
-            "reason": "For this ghostty0.4.0 library capture at suite4b01b0117e18, extensions.osc30101-color-stack-pop lacks the colour readback and verified fixture required by its current criterion. The retained trace contains the initial/seeded foreground queries, seed setter and cleanup reset only, all silent. The foreground fixture is unverified, so the callback never reaches push/pop; no stack effect was measured. The loaded WASM7c43302d and wrapper match the current producer receipt; the exact receipt-linked colour operation handlers discard their arguments, change no terminal colour state and emit no reply. This selected embedding therefore loses the colour operation rather than exposing an effect through a missing getter. Cut-specific Untestable under the existing headless-review ruling; no terminal-wide support conclusion, no historical d6f0 approval transfer and no claim that silence is Unsupported.",
-            "sources": [
-              "evidence:sha256:c10e67b7d3e3247a20cd827b9c55dfeef8d2aecb7adee43324f22205a65fab86/ghostty-3f3e920e-ebf8-4d81-ace1-52445a05a992.capture.json",
-              "evidence:sha256:fd199b4d1ec230b17212fa9b0cf77a11e4cca1cfd3ab6e6d2f925e71cffd1119/ghostty-wasm-api.patch@74672f85dc9fa58f8fd93b5e32e3e6c7487a5549",
-              "evidence:sha256:323feebee5e6575eaf85f2df48c76e4c39cc8248d611cbfcd56269582776d66d/RECEIPT.json",
-              "evidence:sha256:d0eb17ead75e236edb2066b545ee3aab3772a91c69eb78e005c97fadee85e61c/extensions.ts@8b74c56ec8c0c5a30cb1f48e952983bbe18f009e",
-              "evidence:sha256:bbea0f68d6ddbda4cb9dcfb551a9709a3b98666ee0d843125b951bfbe7e6baea/30711-headless-review-evidence-ruling.md",
-              "evidence:sha256:b82e334b9e9211b9855ffcacdafac3c7d349df5198ccf1ff715331d69845551c/31365-ghostty-colours-evidence-v2.md"
-            ]
-          }
-        ]
-      },
       {
         "status": "unsupported",
         "citedBlobs": [],
