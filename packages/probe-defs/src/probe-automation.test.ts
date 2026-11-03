@@ -6,18 +6,14 @@ import {
   type LibProbeSource,
   type TermProbeSource,
   type TerminalQueryOutcome,
-  SOURCE_ANSWERS,
 } from "./index.ts"
 import {
   HEADLESS_OBSERVABLE_REVIEW,
   ADAPTER_SOURCE_AUDITS,
   SOURCE_NEGATIVE_REVIEW,
   REPLY_AFTER_SENTINEL_NOTE,
-  REPLY_PATH_AUDIT_REVIEW,
-  probe as defineProbe,
+  NO_SAME_PATH_CONTROL,
 } from "./helpers.ts"
-import { NATIVE_HOST_AUDITS } from "./native-host-audit.ts"
-import { REPLY_PATH_AUDITS, replyPathAuditFor } from "./reply-path-audit.ts"
 
 const OSC_SEMANTIC_MARK_CASES = [
   ["extensions.osc133-a", "\x1b]133;A\x07"],
@@ -155,7 +151,7 @@ const nativeIdentity: NonNullable<LibProbeSource["runtimeIdentity"]> = {
     lockSha256: "c".repeat(64),
   },
 }
-describe("audited native host recipe callers", () => {
+describe("native host recipe callers", () => {
   test.each([
     ["extensions.osc10-fg-color", "color-request", "foreground-rgb", "\x1b]10;?\x07"],
     ["extensions.osc11-bg-color", "color-request", "background-rgb", "\x1b]11;?\x07"],
@@ -172,7 +168,7 @@ describe("audited native host recipe callers", () => {
     ["extensions.osc52-write", "clipboard-load", "clipboard-read-permission", "\x1b]52;c;?\x07"],
     ["extensions.osc52-read", "clipboard-load", "clipboard-read-permission", "\x1b]52;c;?\x07"],
   ] as const)(
-    "%s retains its actual empty host query cause without changing its criterion",
+    "%s retains its actual empty host query cause",
     (id, recipe, missing, query) => {
       for (const qualified of [false, true]) {
         const definition = probe(id)
@@ -201,24 +197,23 @@ describe("audited native host recipe callers", () => {
         )
         expect(captured).toContain(query)
         expect(definition.libHostRecipes).toContainEqual({ recipe, query, missing: [missing] })
-        expect(result.hostRecipeCauses).toMatchObject([
-          {
-            recipe,
-            cause:
-              recipe === "color-request"
-                ? { kind: "observed", missing, query }
-                : recipe === "text-area-size"
-                  ? // The harness declares pixel geometry (31551), so the empty CSI 14 t is the wrapper's: it drops the request.
-                    { kind: "unimplemented", missing, artifactSha256: artifact, sourceCitation: expect.any(String) }
-                  : { kind: "source-audited", missing, artifactSha256: artifact, sourceCitation: expect.any(String) },
-          },
-        ])
+        // The cause is what this run observed, never a source citation (#32246).
+        expect(result.hostRecipeCauses).toMatchObject([{ recipe, cause: { kind: "observed", missing, query } }])
         const { hostRecipeCauses: _custody, ...criterion } = result
-        expect(criterion).toEqual(
-          definition.lib!(
-            context({ feedCapture: () => "", ...(qualified && { queryWithSentinelOutcome: () => silence }) }),
-          ),
+        // A colour reply the probe itself decides matches the identity-less run; an all-zero native capture has no
+        // same-path control in this run and is the undecided record (@cto 9fad23d7, refined rule 4). The cause is kept.
+        const bare = definition.lib!(
+          context({ feedCapture: () => "", ...(qualified && { queryWithSentinelOutcome: () => silence }) }),
         )
+        if (recipe === "color-request" && criterion.notTested === undefined) {
+          expect(criterion).toEqual(bare)
+        } else if (recipe === "color-request") {
+          expect(criterion.notTested?.reason).toBe("no-semantic-observable")
+          expect(criterion.observation).toBeUndefined()
+        } else {
+          expect(criterion.notTested).toEqual({ reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL })
+          expect(criterion.observation).toBeUndefined()
+        }
       }
     },
   )
@@ -230,7 +225,6 @@ describe("audited native host recipe callers", () => {
    */
   test("kitty's supplied read permission measures its OSC 52 cells and names the option, with no audited cause", () => {
     const kitty = "bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886"
-    expect(NATIVE_HOST_AUDITS.has(kitty)).toBe(false)
     const runtimeIdentity = {
       ...nativeIdentity,
       engineVersion: "0.49.2",
@@ -263,143 +257,38 @@ describe("audited native host recipe callers", () => {
     }
   })
 
-  // A second native host (WezTerm) must never inherit another artifact's audited causes.
-  test.each(["device.xtwinops-14", "extensions.osc52-read", "extensions.osc10-fg-color"])(
-    "%s claims no host recipe cause for an unaudited native artifact",
-    (id) => {
-      const other = "f".repeat(64)
-      const result = probe(id).lib!(
+  // No per-artifact audit table decides a native host cause any more (#32246): any native artifact records the cause
+  // it observed for an empty reply, keeps the criterion TEST TODO, and records nothing once the host query answers.
+  test.each([
+    ["device.xtwinops-14", "text-area-size", "pixel-geometry", "\x1b[14t"],
+    ["extensions.osc52-read", "clipboard-load", "clipboard-read-permission", "\x1b]52;c;?\x07"],
+  ] as const)("%s records only an observed host cause on any native artifact", (id, recipe, missing, query) => {
+    const other = "f".repeat(64)
+    const run = (response: string) =>
+      probe(id).lib!(
         context({
           runtimeIdentity: {
             ...nativeIdentity,
             loadedBinary: { path: "other.node", sha256: other },
             provenance: { ...nativeIdentity.provenance, sha256: other },
           },
-          feedCapture: () => "",
+          feedCapture: () => response,
         }),
       )
-      expect(result.hostRecipeCauses).toBeUndefined()
-      if (id !== "extensions.osc10-fg-color") {
-        expect(result.tests).toEqual([
-          { id: "criterion", status: "test-todo", reason: `no source audit for binary ${other.slice(0, 12)}` },
-        ])
-        expect(result.observation).toBeUndefined()
-      }
-    },
-  )
-
-  // WezTerm answers CSI 14 t from the pixels it was given (31551), so the audit lists only the recipe it leaves unanswered.
-  test.each([
-    "84da518e3f298a0ed75f186db6e39d87e99b8f0c8508dd7252ec0cafee77fe12",
-    "78c05a7155ffb48b351de181cce13a5d996c3472f545f674dc34177fe27bae01",
-    "0f56a805793d7d829daa617f1323aacff0d73fe868747b0d077c6af315e2aab8",
-    "6722b331de7489c14cb599d939e5d2314f054220728f83c5c29f454e70273e47",
-    // Overline-only rebuild; retained 22:34 run hit missing host causes on all three OSC 52 callers.
-    "b4155bfdef040ae8b3b723a4366fa8ec7f278463dbef577ec4730ad152b8bf07",
-  ])("the WezTerm artifact %s cites its OSC 52 read and leaves CSI 14 t measured", (wezterm) => {
-    const silent = (id: string) =>
-      probe(id).lib!(
-        context({
-          runtimeIdentity: {
-            ...nativeIdentity,
-            loadedBinary: { path: "wezterm.node", sha256: wezterm },
-            provenance: { ...nativeIdentity.provenance, sha256: wezterm },
-          },
-          feedCapture: () => "",
-        }),
-      )
-    expect(silent("device.xtwinops-14").hostRecipeCauses).toBeUndefined()
-    for (const id of ["extensions.osc52-clipboard", "extensions.osc52-read", "extensions.osc52-write"]) {
-      expect(silent(id).hostRecipeCauses, id).toMatchObject([
-        { recipe: "clipboard-load", cause: { kind: "unimplemented", artifactSha256: wezterm } },
-      ])
-    }
-  })
-
-  // The S6 rebuilds need their own host causes; historical artifact fixtures cannot catch a missing new row.
-  test.each([
-    "dc3b24de6e91416f66b1953ce101991ef7e78602ce1b5d357f65832c9b96b326",
-    "d6e23fe62d56de795c6fa783a6c5025fc5b1238e739839de8b4b3737eca0c43e",
-    "e58288d0b62448bf746ad77e58a4e9523c1baabb080d6fc6723f76caf29d2bb0",
-    "53f9a867cce594b4d50fb9508db9ce5d2d79fb4244a418548b7cb31fa50780d1",
-  ])("native artifact %s explains only empty clipboard and geometry replies", (sha256) => {
-    for (const [id, recipe] of [
-      ["device.xtwinops-14", "text-area-size"],
-      ["extensions.osc52-read", "clipboard-load"],
-    ] as const) {
-      const run = (response: string) =>
-        probe(id).lib!(
-          context({
-            runtimeIdentity: {
-              ...nativeIdentity,
-              loadedBinary: { path: "native.node", sha256 },
-              provenance: { ...nativeIdentity.provenance, sha256 },
-            },
-            feedCapture: () => response,
-          }),
-        )
-      expect(run("").hostRecipeCauses).toMatchObject([
-        { recipe, cause: { kind: "unimplemented", artifactSha256: sha256 } },
-      ])
-      expect(run("reply").hostRecipeCauses).toBeUndefined()
-    }
-  })
-
-  // The Alacritty addon rebuilt at the declared pixel geometry answers CSI 14 t (31628), so only its OSC 52 read is cited.
-  test("the Alacritty artifact 5d818656 cites its OSC 52 read and leaves CSI 14 t measured", () => {
-    const alacritty = "5d818656c9d58c8c68bec9f7bca1a55cc65ccf9fc078f9a3da0b872a28bf547a"
-    const silent = (id: string) =>
-      probe(id).lib!(
-        context({
-          runtimeIdentity: {
-            ...nativeIdentity,
-            loadedBinary: { path: "alacritty.node", sha256: alacritty },
-            provenance: { ...nativeIdentity.provenance, sha256: alacritty },
-          },
-          feedCapture: () => "",
-        }),
-      )
-    expect(silent("device.xtwinops-14").hostRecipeCauses).toBeUndefined()
-    expect(silent("extensions.osc52-read").hostRecipeCauses).toMatchObject([
-      { recipe: "clipboard-load", cause: { kind: "source-audited", artifactSha256: alacritty } },
-    ])
-  })
-
-  // The Alacritty addon rebuilt at termless 0400d94a for underline_color forwarding (31379) leaves EventProxy unchanged.
-  test.each([
-    "11c87e7e7f23e6f224e9dc8c3296b0a91f5453a42038e5ad049aafa864f9bd50",
-    "d280c3fd2129f42db0d7154d6e66f5582a67fa1faf1e82ab463b6b8286f126d0",
-    "32d76284e5a3c7673fafbbc83a16717fa0a1c1811c7d659d982176a53ceb1aa9",
-    "8232209bd7273d68eb0bc9a71c5acf94fd8ebd96612604ff901c09c4d6cb8344",
-    "21d4b43c1d4c401c5b9f8114de85b3e837605242363c322c2dcb37e4a42fba61",
-    "9839e138d9e6f13e84adc3022f67964f0451e2e6416294952e22286412994f61",
-  ])("the Alacritty artifact %s cites its OSC 52 read and leaves CSI 14 t measured", (alacritty) => {
-    const silent = (id: string) =>
-      probe(id).lib!(
-        context({
-          runtimeIdentity: {
-            ...nativeIdentity,
-            loadedBinary: { path: "alacritty.node", sha256: alacritty },
-            provenance: { ...nativeIdentity.provenance, sha256: alacritty },
-          },
-          feedCapture: () => "",
-        }),
-      )
-    expect(silent("device.xtwinops-14").hostRecipeCauses).toBeUndefined()
-    expect(silent("extensions.osc52-read").hostRecipeCauses).toMatchObject([
-      { recipe: "clipboard-load", cause: { kind: "source-audited", artifactSha256: alacritty } },
-    ])
+    const silent = run("")
+    expect(silent.hostRecipeCauses).toEqual([{ recipe, cause: { kind: "observed", missing, query } }])
+    expect(silent.notTested).toEqual({ reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL })
+    expect(silent.observation).toBeUndefined()
+    expect(run("reply").hostRecipeCauses).toBeUndefined()
   })
 })
 
 /**
- * @failure A cited missing reply path replaced a measured reply, or an unaudited artifact inherited the review.
+ * @failure A zero-byte reply on a loaded artifact is graded from a source citation instead of staying TEST TODO, or a
+ *   measured reply loses its observation (operator 2026-11-03, @cto 9fad23d7, #32246).
  * @level l0
- * @consumer probe() reply-path audit hook (CTO 10c2da7b; parser-rejected grades Unsupported per CTO d9998884).
- * @testonly REPLY_PATH_AUDITS: exported so every audited cell runs through its own production probe.
+ * @consumer probe() zero-reply hook (zeroReplyUndecided) over the real callbacks.
  */
-// CTO 10c2da7b condition 2: listed + zero reply → review; listed + one reply byte → measured; unlisted → measured.
-// The audited cells run their real callbacks; no existing test reaches the hook with a listed artifact.
 // CTO d5f41664 explicitly replaces query-capture emptiness with qualified clean-silence attribution.
 // These real callbacks own the native host cause; generic sentinel classifier tests cannot pin it.
 describe("qualified clipboard roundtrip", () => {
@@ -418,7 +307,7 @@ describe("qualified clipboard roundtrip", () => {
       lockIntegrity: "sha512-5Yj1QINYCyzrZtf8OFIHi47iQtI+0qYFPHmouEfG8dHNxbZ9Tb9YGSuLcsEwj9Z+OL75GJqPyJbyoFer80a2Hw==",
     },
   } as const
-  test("the three qualified declarations inspect presence and identity without I/O", () => {
+  test("the qualified OSC 0 declaration inspects presence without I/O; clipboard declares query_reply", () => {
     const unavailable = () => {
       throw new Error("declaration performed I/O")
     }
@@ -430,18 +319,19 @@ describe("qualified clipboard roundtrip", () => {
       feedCapture: unavailable,
       queryWithSentinelOutcome: unavailable,
     })
-    for (const id of ["extensions.osc0-icon-title", "extensions.osc52-clipboard", "extensions.osc52-write"]) {
-      const declaration = probe(id).libAssertionType
-      expect(typeof declaration, id).toBe("object")
-      if (declaration === null || typeof declaration !== "object") throw new Error(`Missing qualified ${id}`)
-      expect(declaration.when(source), id).toBe(true)
+    const declaration = probe("extensions.osc0-icon-title").libAssertionType
+    if (declaration === null || typeof declaration !== "object") throw new Error("Missing qualified OSC 0")
+    expect(declaration.when(source)).toBe(true)
+    // No source audit qualifies the clipboard declarations any more (#32246): they declare the query reply alone.
+    for (const id of ["extensions.osc52-clipboard", "extensions.osc52-write"]) {
+      expect(probe(id).libAssertionType, id).toBe("query_reply")
     }
   })
   test.each(
     ["extensions.osc52-clipboard", "extensions.osc52-write"].flatMap((id) =>
       (["xtermjs", "vt100", "vt220"] as const).map((engine) => [id, engine] as const),
     ),
-  )("%s retains deterministic source absence only after an audited clean read negative on %s", (id, engine) => {
+  )("%s grades no clean read negative from source on %s, while measured replies stay measured", (id, engine) => {
     const callback = probe(id).lib!
     const runtimeIdentity =
       engine === "xtermjs"
@@ -481,22 +371,21 @@ describe("qualified clipboard roundtrip", () => {
           }),
         }),
       )
-      expect(result.criterionBranch).toBe(SOURCE_NEGATIVE_REVIEW)
-      expect(result.observation).toMatchObject({ outcome: "inconclusive", assertionType: "buffer_state" })
+      // No source audit turns a clean read negative into a source review any more (#32246): nothing here is graded.
+      expect(result.criterionBranch).toBeUndefined()
+      expect(result.observation?.outcome).not.toBe("unsupported")
+      expect(result.observation?.outcome).not.toBe("supported")
       expect(result.tests).toEqual([
         {
-          id: "review",
+          id: "criterion",
           status: "test-todo",
-          reason: expect.stringContaining(engine === "xtermjs" ? "InputHandler.ts:292-338" : "handleOSC"),
+          reason:
+            "clipboard write unobservable: OSC 52 read is a sentinel negative on this engine and no clipboard-state witness is wired.",
         },
       ])
-      expect(result.assertions).toMatchObject([{ assertionType: "buffer_state", kind: "negative" }])
       snapshots.push(result.response!)
     }
     expect(snapshots[0]).toBe(snapshots[1])
-    const declaration = probe(id).libAssertionType
-    if (declaration === null || typeof declaration !== "object") throw new Error(`Missing qualified ${id}`)
-    expect(declaration.when(context({ runtimeIdentity, getIconLabel: () => "" }))).toBe(true)
     const written: string[] = []
     const positive = callback(
       context({
@@ -550,8 +439,8 @@ describe("qualified clipboard roundtrip", () => {
     }
   })
   const cases = [
-    { when: "clean sentinel silence", raw: da1, reason: "sentinel", sentinel: true, cause: true, todo: true },
-    { when: "whole empty buffer", raw: "", reason: "timeout", sentinel: false, cause: true, failure: true },
+    { when: "clean sentinel silence", raw: da1, reason: "sentinel", sentinel: true, cause: true },
+    { when: "whole empty buffer", raw: "", reason: "timeout", sentinel: false, cause: true },
     // Each pair has the same callback-visible bytes in both worlds. Neither world's cause is inferable.
     { when: "unmatched: empty query / junk plus DA1", raw: "ZZZ" + da1, reason: "sentinel", sentinel: true },
     { when: "unmatched: junk query / DA1", raw: "ZZZ" + da1, reason: "sentinel", sentinel: true },
@@ -566,7 +455,6 @@ describe("qualified clipboard roundtrip", () => {
       reason: "sentinel",
       sentinel: true,
       cause: true,
-      todo: true,
     },
     { when: "DA1-shaped query then real DA1", raw: da1 + da1, reason: "sentinel", sentinel: true },
     { when: "DA1 followed by non-matching junk", raw: da1 + "ZZZ", reason: "sentinel", sentinel: true },
@@ -596,31 +484,25 @@ describe("qualified clipboard roundtrip", () => {
           }),
         )
         expect(queries, row.when).toEqual(["\x1b]52;c;?\x07"])
-        expect(result.response, row.when).toBe(row.raw)
         if ("cause" in row && row.cause) {
-          expect(result.hostRecipeCauses, row.when).toMatchObject([
-            { recipe: "clipboard-load", cause: { kind: "source-audited", artifactSha256: artifact } },
-          ])
-        } else expect(result.hostRecipeCauses, row.when).toBeUndefined()
-        if ("todo" in row && row.todo) {
-          expect(result.tests, row.when).toEqual([
+          // An empty host reply on a native artifact has no same-path control in this run: it keeps the capture and
+          // the cause this run observed, and the criterion stays TEST TODO (#32246, @cto 9fad23d7).
+          expect(JSON.parse(result.response!), row.when).toEqual({ query: "\x1b]52;c;?\x07", response: row.raw })
+          expect(result.hostRecipeCauses, row.when).toEqual([
             {
-              id: "criterion",
-              status: "test-todo",
-              reason:
-                "clipboard write unobservable: OSC 52 read is a sentinel negative on this engine and no clipboard-state witness is wired.",
+              recipe: "clipboard-load",
+              cause: { kind: "observed", missing: "clipboard-read-permission", query: "\x1b]52;c;?\x07" },
             },
           ])
-          expect(result.observation, row.when).toBeUndefined()
-          expect(result.assertions, row.when).toBeUndefined()
-        } else if ("failure" in row && row.failure) {
-          expect(result.tests, row.when).toContainEqual({
-            id: "criterion",
-            status: "test-failure",
-            reason: "No OSC 52 c query response from the isolated backend",
+          expect(result.notTested, row.when).toEqual({
+            reason: "no-semantic-observable",
+            noObservable: NO_SAME_PATH_CONTROL,
           })
           expect(result.observation, row.when).toBeUndefined()
+          expect(result.assertions, row.when).toBeUndefined()
         } else {
+          expect(result.response, row.when).toBe(row.raw)
+          expect(result.hostRecipeCauses, row.when).toBeUndefined()
           expect(result.observation, row.when).toMatchObject({
             outcome: "inconclusive",
             reason: row.reason === "reply" ? "insufficient-evidence" : "invalid-reply",
@@ -668,77 +550,9 @@ describe("qualified clipboard roundtrip", () => {
   })
 })
 
-describe("reply-path audit", () => {
-  /**
-   * The library version each audited artifact is a build of. Derived, not guessed: under exactly one of the three
-   * reply-path subjects does every one of an artifact's cells reproduce the verdict it recorded before the table
-   * lost `kind` (@cto review of the strip, e94cbcac). The one artifact that fits two families is a wasm build.
-   */
-  const AUDIT_SUBJECTS: Record<string, { id: string; version: string }> = Object.fromEntries(
-    [
-      [
-        "ghostty",
-        "0.4.0",
-        ["3c2398d5", "1f23e13d", "ce01cd0d", "5c38594a", "d80a8110", "77b69f9f", "7c43302d", "9a950560"],
-      ],
-      [
-        "ghostty-native",
-        "1.3.1",
-        ["5a8030c0", "8872ab0f", "53f9a867", "e58288d0", "d6e23fe6", "61fb182e", "17d155fe", "ac12d640"],
-      ],
-      ["vt100-rust", "0.16.2", ["84a5b6a3", "dc3b24de", "09194212", "b9109b59", "f309015f"]],
-    ].flatMap(([id, version, digests]) =>
-      (digests as string[]).map((digest) => [digest, { id: id as string, version: version as string }]),
-    ),
-  )
-
-  /**
-   * The verdict a zero-byte audit cell inherits: the kept answer for THIS artifact's library version, refined by the
-   * original that names the artifact where one does. Never a union across libraries or versions, and never a
-   * `toContain` that both statuses would satisfy (@cto review of the strip, e94cbcac).
-   */
-  const replyPathAnswers = (artifactSha: string, featureId: string) => {
-    const subject = AUDIT_SUBJECTS[artifactSha.slice(0, 8)]
-    if (subject === undefined) throw new Error(`unaudited artifact ${artifactSha.slice(0, 8)}`)
-    const rows = SOURCE_ANSWERS.filter(
-      (row) => row.subject.id === subject.id && row.subject.version === subject.version && row.featureId === featureId,
-    )
-    const kept = rows.flatMap((row) =>
-      row.answers.filter((answer) => answer.originals.some((original) => original.reviewer === "reply-path-audit")),
-    )
-    const named = kept.filter((answer) =>
-      answer.originals.some(
-        (original) => original.reviewer === "reply-path-audit" && original.reason.includes(artifactSha.slice(0, 8)),
-      ),
-    )
-    return named.length > 0 ? named : kept
-  }
-
-  const replyPathStatus = (artifactSha: string, featureId: string): string => {
-    const statuses = [...new Set(replyPathAnswers(artifactSha, featureId).map((answer) => answer.status))]
-    if (statuses.length !== 1) {
-      throw new Error(
-        `${featureId} at ${artifactSha.slice(0, 8)}: ${statuses.length} kept reply-path statuses ${JSON.stringify(statuses)}`,
-      )
-    }
-    return statuses[0]!
-  }
-
-  /**
-   * The route prose for ONE audit cell: the reply-path original that names this artifact, never a sibling artifact's
-   * provenance that happens to share the answer. The table no longer carries the prose (@cto review of the strip,
-   * e94cbcac).
-   */
-  const replyPathRoute = (artifactSha: string, featureId: string): string => {
-    const originals = replyPathAnswers(artifactSha, featureId).flatMap((answer) =>
-      answer.originals.filter((original) => original.reviewer === "reply-path-audit"),
-    )
-    const named = originals.filter((original) => original.reason.includes(artifactSha.slice(0, 8)))
-    const reasons = (named.length > 0 ? named : originals).map((original) => original.reason)
-    if (reasons.length === 0) throw new Error(`no reply-path route for ${featureId} at ${artifactSha.slice(0, 8)}`)
-    return reasons.join("\n")
-  }
-
+describe("zero-byte replies on a loaded artifact", () => {
+  // A zero-byte reply on a loaded artifact has no same-path control in this run, so it stays TEST TODO (#32246).
+  const ZERO_REPLY_TODO = { reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL }
   const sourceIdentity = (treeOid: string, cleanTree = true): NonNullable<LibProbeSource["runtimeIdentity"]> => ({
     kind: "js",
     runtimeFormat: "js",
@@ -754,306 +568,6 @@ describe("reply-path audit", () => {
       cleanTree,
     },
   })
-  // #32026: a listed key of the other kind must not fire through the wrong identity branch.
-  test("source-tree and artifact key shapes never cross identity kinds", () => {
-    const treeOid = "b941dae48b25ae8825c394750bda5245c9d93dfa"
-    const sha256 = "5c38594a17329b24e826f785d3156d6e498490517835f12b0730eeab2fc63da7"
-    expect(
-      replyPathAuditFor(
-        context({
-          runtimeIdentity: {
-            ...nativeIdentity,
-            loadedBinary: { path: "fixture.node", sha256: treeOid },
-            provenance: { ...nativeIdentity.provenance, sha256: treeOid },
-          },
-        }),
-        "modes.application-cursor",
-      ),
-    ).toBeUndefined()
-    expect(
-      replyPathAuditFor(context({ runtimeIdentity: sourceIdentity(sha256) }), "extensions.osc99-kitty-notify"),
-    ).toBeUndefined()
-  })
-  test("native reply audit returns the unchanged artifactSha256 member", () => {
-    const sha256 = "5c38594a17329b24e826f785d3156d6e498490517835f12b0730eeab2fc63da7"
-    const audit = REPLY_PATH_AUDITS.get(sha256)!["extensions.osc99-kitty-notify"]!
-    expect(replyPathAuditFor(context({ runtimeIdentity: identity(sha256) }), "extensions.osc99-kitty-notify")).toEqual({
-      artifactSha256: sha256,
-      audit,
-    })
-  })
-  test.each(["b941dae48b25ae8825c394750bda5245c9d93dfa", "4205f8936ad1848d1029729f3ada888cd61759a8"])(
-    "all seven source DECRPM rows are absent from the query audit: %s",
-    (treeOid) => {
-      for (const [id, mode] of [
-        ["modes.application-cursor", 1],
-        ["modes.bracketed-paste", 2004],
-        ["modes.focus-tracking", 1004],
-        ["modes.mouse-all", 1003],
-        ["modes.mouse-sgr", 1006],
-        ["modes.mouse-tracking", 1000],
-        ["modes.utf8-mouse-1005", 1005],
-      ] as const) {
-        expect(replyPathAuditFor(context({ runtimeIdentity: sourceIdentity(treeOid) }), id), id).toBeUndefined()
-        const reply = () => `\x1b[?${mode};1$y`
-        expect(run(id, treeOid, reply).result, id).toEqual(run(id, "f".repeat(64), reply).result)
-        const dirty = probe(id).lib!(context({ runtimeIdentity: sourceIdentity(treeOid, false) }))
-        expect(dirty.observation?.outcome, id).not.toBe("unsupported")
-        expect(dirty.response ?? "", id).not.toContain("replyPathAudit")
-      }
-    },
-  )
-  // #31987: retain all 53 historical audit values after retiring the duplicate predecessor key.
-  // Frozen from the independently verified 53/53 equality at 81aabd55, before removing d70.
-  test("the historical native 5a8030c0 artifact retains its 53 frozen reply audits", () => {
-    const rebuilt = REPLY_PATH_AUDITS.get("5a8030c0f3f9fa52e9c1f82d28ae711ef21e3072a4b82fbe98076fedf314c945")
-    expect(rebuilt).toBeDefined()
-    expect(Object.keys(rebuilt!)).toHaveLength(53)
-    const entries = Object.keys(rebuilt!)
-      .sort()
-      .map((id) => [id, rebuilt![id]])
-    expect(createHash("sha256").update(JSON.stringify(entries)).digest("hex")).toBe(
-      "1aba9f137e9835449dec5f16cf0296c18039cb888d3b69dc536959ac00261ca0",
-    )
-  })
-
-  // #31692: data-derived cases cannot detect an omitted current-artifact OSC99 audit.
-  test.each([
-    ["3c2398d5c537d9c10e86b0af69311977927fcdbe4738618df194cedbdd22574d", "parser-rejected"],
-    ["ce01cd0d1ae000dd88948f3817924cc85303874070cab39430967ebdf14877f3", "parser-rejected"],
-    ["5c38594a17329b24e826f785d3156d6e498490517835f12b0730eeab2fc63da7", "parser-rejected"],
-    ["d80a8110258a124fb6ff52a6fe149b8e39b5180d986907cc9fb7dc9143c3f3d9", "parser-rejected"],
-    ["77b69f9f22c4126359be864fcce97afad8f84615053e21d335ba6348a8d3e1d7", "parser-rejected"],
-    ["8872ab0fc56429489b52cd5d3b5a293032c3ec7dbbb71545d237945c3ef525f3", "parser-rejected"],
-    ["f309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96", "no-reply-path"],
-  ])("OSC99 capability query has its own source audit for %s", (sha, kind) => {
-    expect(REPLY_PATH_AUDITS.get(sha!)?.["extensions.osc99-kitty-notify"]).toMatchObject({
-      query: "\x1b]99;",
-      matches: "prefix",
-    })
-    // The ruled kind is the kept answer's status now, not the table's (@cto e192401e item 1).
-    expect(replyPathStatus(sha!, "extensions.osc99-kitty-notify")).toBe(
-      kind === "parser-rejected" ? "unsupported" : "untestable",
-    )
-  })
-  const wasmReadbackQueries = [
-    ["extensions.osc0-icon-title", "\x1b[20t", "parser-rejected"],
-    ["extensions.osc52-clipboard", "\x1b]52;c;?\x07", "no-reply-path"],
-    ["extensions.osc52-read", "\x1b]52;c;?\x07", "no-reply-path"],
-    ["extensions.osc52-write", "\x1b]52;c;?\x07", "no-reply-path"],
-    ["extensions.osc5522-clipboard", "\x1b[?5522$p", "no-reply-path"],
-  ] as const
-  // #31385: rebuilding cell readback must retain all applicable audits, including #31377's graphics prefixes.
-  // The data-derived callback cases below cannot detect an omitted artifact or omitted row.
-  test.each([
-    {
-      name: "native conceal",
-      digest: "53f9a867cce594b4d50fb9508db9ce5d2d79fb4244a418548b7cb31fa50780d1",
-      core: "332b2aef",
-      priors: ["e58288d0b62448bf746ad77e58a4e9523c1baabb080d6fc6723f76caf29d2bb0"],
-    },
-    {
-      name: "native absolute retained rows",
-      digest: "e58288d0b62448bf746ad77e58a4e9523c1baabb080d6fc6723f76caf29d2bb0",
-      core: "332b2aef",
-      priors: [
-        "d6e23fe62d56de795c6fa783a6c5025fc5b1238e739839de8b4b3737eca0c43e",
-        "61fb182e3381ab1c52d94b63a9e33163bbfb89ede419af022f71f4438bfe0b03",
-      ],
-    },
-    {
-      name: "native nullable modes",
-      digest: "d6e23fe62d56de795c6fa783a6c5025fc5b1238e739839de8b4b3737eca0c43e",
-      core: "332b2aef",
-      priors: ["61fb182e3381ab1c52d94b63a9e33163bbfb89ede419af022f71f4438bfe0b03"],
-    },
-    {
-      name: "historical native overline",
-      digest: "5a8030c0f3f9fa52e9c1f82d28ae711ef21e3072a4b82fbe98076fedf314c945",
-      core: "332b2aef",
-      priors: [
-        "ac12d6408c2049f1d720e9735d7eb69251d3eed868fc9ced58de98b3543f3e2e",
-        "17d155feee5df8fa30266b9a354bbe66e39484d08218de5e03dc3bb2f199a0a3",
-      ],
-    },
-    {
-      name: "native",
-      digest: "8872ab0fc56429489b52cd5d3b5a293032c3ec7dbbb71545d237945c3ef525f3",
-      core: "332b2aef",
-      priors: [
-        "ac12d6408c2049f1d720e9735d7eb69251d3eed868fc9ced58de98b3543f3e2e",
-        "17d155feee5df8fa30266b9a354bbe66e39484d08218de5e03dc3bb2f199a0a3",
-      ],
-    },
-    {
-      name: "WASM",
-      digest: "77b69f9f22c4126359be864fcce97afad8f84615053e21d335ba6348a8d3e1d7",
-      core: "5714ed07",
-      priors: ["7c43302dde147c6f7959b7bda7045ff375c71288da1af5667ffca2bf95beb2bf"],
-    },
-  ])("the rebuilt $name artifact retains its prior Ghostty audit sets", ({ digest, priors, core }) => {
-    const prior = Object.fromEntries(
-      priors.flatMap((sha) => {
-        const audits = REPLY_PATH_AUDITS.get(sha)
-        if (!audits) throw new Error(`Missing required prior audit ${sha}`)
-        return Object.entries(audits)
-      }),
-    )
-    const rebuilt = REPLY_PATH_AUDITS.get(digest)
-    expect(rebuilt).toBeDefined()
-    expect(Object.keys(rebuilt!).sort()).toEqual(
-      [
-        ...new Set([
-          ...Object.keys(prior),
-          "extensions.osc99-kitty-notify",
-          ...(digest.startsWith("77b69f9f") ? wasmReadbackQueries.map(([id]) => id) : []),
-        ]),
-      ].sort(),
-    )
-    for (const [id, audit] of Object.entries(prior)) {
-      expect(rebuilt![id]).toMatchObject({ query: audit.query })
-      expect(rebuilt![id]!.matches).toBe(audit.matches)
-      // The table carries no citation; the route prose naming this artifact's library commit lives with its answer.
-      expect(replyPathRoute(digest, id), id).toContain(core)
-    }
-  })
-
-  // @failure The PageList-only rebuild loses or alters an existing source audit (#32121, @cto 656e2206).
-  // @level l0 @consumer replyPathAuditFor for the rebuilt loaded artifact; prior checks only cover older digests.
-  test("the zeroed-page Ghostty WASM carries every 1f23e13d reply audit unchanged", () => {
-    const oldSha = "1f23e13db5bda55ab54943461b83a5d642bf8d2050a452fbe7871927383dfe9f"
-    const newSha = "3c2398d5c537d9c10e86b0af69311977927fcdbe4738618df194cedbdd22574d"
-    const prior = REPLY_PATH_AUDITS.get(oldSha)
-    expect(prior).toBeDefined()
-    const renamed = JSON.parse(JSON.stringify(prior).replaceAll(oldSha, newSha).replaceAll("1f23e13d", "3c2398d5"))
-    expect(REPLY_PATH_AUDITS.get(newSha)).toEqual(renamed)
-  })
-
-  // #32057, @cto 25157a35: Ghostty WASM 1f23e13d answers DA1, DA2, XTVERSION, DECRQSS and XTGETTCAP, so their six cells
-  // leave the table; the 12 ruled stays keep their query and matches for this artifact, and the other 32
-  // ce01cd0d rows are rebound with only the artifact renamed.
-  test("the rebuilt Ghostty WASM 1f23e13d drops the six routed cells and re-cites the 12 ruled stays", () => {
-    const priorSha = "ce01cd0d1ae000dd88948f3817924cc85303874070cab39430967ebdf14877f3"
-    const sha = "1f23e13db5bda55ab54943461b83a5d642bf8d2050a452fbe7871927383dfe9f"
-    const prior = REPLY_PATH_AUDITS.get(priorSha)!
-    const rebuilt = REPLY_PATH_AUDITS.get(sha)!
-    expect(rebuilt).toBeDefined()
-    const routed = [
-      "device.decrqss",
-      "device.primary-da",
-      "device.secondary-da",
-      "device.xtgettcap",
-      "device.xtversion",
-      "extensions.sixel-da1",
-    ]
-    // Each stay names the line its ruling rests on.
-    const stays: Record<string, string> = {
-      "device.dsr-996-color-scheme": "stream_handler.zig:793",
-      "device.tertiary-da": "stream_handler.zig:743-755",
-      "device.xtgetxres": "dcs.zig:80-93",
-      "device.xtwinops-14": "Termio.zig:524-531",
-      "device.xtwinops-16": "Termio.zig:532-539",
-      "device.xtwinops-21": "title-report=false",
-      "extensions.kitty-graphics": "build_options.zig:45",
-      "extensions.kitty-graphics.display": "build_options.zig:45",
-      "extensions.kitty-graphics.transmit": "build_options.zig:45",
-      "extensions.osc52-clipboard": "ESC[?62;22c",
-      "extensions.osc52-read": "ESC[?62;22c",
-      "extensions.osc52-write": "ESC[?62;22c",
-    }
-    const carried = Object.keys(prior).filter((id) => !routed.includes(id))
-    expect(carried).toHaveLength(44)
-    expect(Object.keys(rebuilt).sort()).toEqual(carried.sort())
-    expect(Object.keys(stays).filter((id) => !carried.includes(id))).toEqual([])
-    for (const id of carried) {
-      const audit = rebuilt[id]!
-      expect(audit).toMatchObject({ query: prior[id]!.query })
-      expect(audit.matches).toBe(prior[id]!.matches)
-      expect(audit, id).toBeDefined()
-      // @cto review of the strip (e94cbcac): the route prose moved to the kept answers. The old `not.toContain(prior
-      // artifact)` half no longer holds there — those reasons name the rebuild's predecessor as provenance — and is
-      // reported to the reviewer rather than dropped.
-      expect(replyPathRoute(sha, id), id).toContain("5714ed07")
-      if (id in stays) expect(replyPathRoute(sha, id), id).toContain(stays[id]!)
-    }
-  })
-
-  // #32024: Ghostty WASM ce01cd0d answers request_mode / request_mode_unknown, so device.decrpm and
-  // extensions.osc5522-clipboard leave the no-reply-path table while every other 5c38594a row is rebound unchanged.
-  test("the rebuilt Ghostty WASM ce01cd0d retains all 5c38594a audits except the two DECRQM rows", () => {
-    const prior = REPLY_PATH_AUDITS.get("5c38594a17329b24e826f785d3156d6e498490517835f12b0730eeab2fc63da7")!
-    const rebuilt = REPLY_PATH_AUDITS.get("ce01cd0d1ae000dd88948f3817924cc85303874070cab39430967ebdf14877f3")!
-    expect(rebuilt).toBeDefined()
-    const dropped = ["device.decrpm", "extensions.osc5522-clipboard"]
-    for (const id of dropped) expect(rebuilt[id]).toBeUndefined()
-    const carried = Object.keys(prior).filter((id) => !dropped.includes(id))
-    // #32026 adds three independently audited image rows to both retained artifacts.
-    expect(carried).toHaveLength(50)
-    expect(Object.keys(rebuilt).sort()).toEqual(carried.sort())
-    for (const id of carried) {
-      const audit = rebuilt[id]!
-      expect(audit).toMatchObject({ query: prior[id]!.query })
-      expect(audit.matches).toBe(prior[id]!.matches)
-      expect(replyPathRoute("ce01cd0d1ae000dd88948f3817924cc85303874070cab39430967ebdf14877f3", id), id).toContain(
-        "5714ed07",
-      )
-    }
-  })
-
-  // #31392, @cto 34bea86e: Ghostty WASM 5c38594a only adds viewport getters/exports to the d80a8110 facade, so every
-  // d80a8110 row is rebound as its own data row with the same query and matching, and the old rows stay.
-  test("the rebuilt Ghostty WASM 5c38594a retains every d80a8110 audit", () => {
-    const prior = REPLY_PATH_AUDITS.get("d80a8110258a124fb6ff52a6fe149b8e39b5180d986907cc9fb7dc9143c3f3d9")!
-    const rebuilt = REPLY_PATH_AUDITS.get("5c38594a17329b24e826f785d3156d6e498490517835f12b0730eeab2fc63da7")!
-    expect(rebuilt).toBeDefined()
-    expect(rebuilt).not.toBe(prior)
-    expect(Object.keys(rebuilt).sort()).toEqual(
-      [
-        ...Object.keys(prior),
-        "extensions.kitty-graphics.animation",
-        "extensions.kitty-graphics.unicode-placeholders",
-        "extensions.iterm2-images",
-      ].sort(),
-    )
-    expect(Object.keys(rebuilt)).toHaveLength(52)
-    for (const [id, audit] of Object.entries(rebuilt)) {
-      if (prior[id]) {
-        expect(audit).toMatchObject({ query: prior[id]!.query })
-        expect(audit.matches).toBe(prior[id]!.matches)
-      }
-      expect(replyPathRoute("5c38594a17329b24e826f785d3156d6e498490517835f12b0730eeab2fc63da7", id), id).toContain(
-        "5714ed07",
-      )
-    }
-  })
-
-  // #31735, @cto 863bef67: Ghostty WASM d80a8110 adds .size_report (.csi_18_t) copied from Termio.zig:540-546,
-  // so device.xtwinops-18 leaves the no-reply-path audit table while all other 77b69f9f rows remain.
-  test("the rebuilt Ghostty WASM d80a8110 retains all 77b69f9f audits except device.xtwinops-18", () => {
-    const prior = REPLY_PATH_AUDITS.get("77b69f9f22c4126359be864fcce97afad8f84615053e21d335ba6348a8d3e1d7")!
-    const rebuilt = REPLY_PATH_AUDITS.get("d80a8110258a124fb6ff52a6fe149b8e39b5180d986907cc9fb7dc9143c3f3d9")!
-    expect(rebuilt).toBeDefined()
-    expect(rebuilt["device.xtwinops-18"]).toBeUndefined()
-    expect(Object.keys(rebuilt).sort()).toEqual(
-      Object.keys(prior)
-        .filter((id) => id !== "device.xtwinops-18")
-        .sort(),
-    )
-    for (const [id, audit] of Object.entries(rebuilt)) {
-      expect(audit).toMatchObject({ query: prior[id]!.query })
-      expect(audit.matches).toBe(prior[id]!.matches)
-      expect(replyPathRoute("d80a8110258a124fb6ff52a6fe149b8e39b5180d986907cc9fb7dc9143c3f3d9", id), id).toContain(
-        "5714ed07",
-      )
-    }
-  })
-  const indexedCells = [...REPLY_PATH_AUDITS].flatMap(([auditKey, audits]) =>
-    Object.entries(audits).map(([id, audit]) => ({ auditKey, id, audit })),
-  )
-  const cells = [
-    ...indexedCells.filter(({ auditKey }) => /^[0-9a-f]{64}$/.test(auditKey)),
-    ...indexedCells.filter(({ auditKey }) => /^[0-9a-f]{40}$/.test(auditKey)),
-  ]
   const identity = (auditKey: string): NonNullable<LibProbeSource["runtimeIdentity"]> =>
     /^[0-9a-f]{40}$/.test(auditKey)
       ? sourceIdentity(auditKey)
@@ -1076,126 +590,17 @@ describe("reply-path audit", () => {
     return { result, sent }
   }
 
-  // AC1: existing unlisted-artifact coverage checked only absence of borrowed citations,
-  // allowing a default negative or unnamed coverage instead of the required missing-audit TODO.
-  test("unaudited binary silence names its own missing source audit while replies stay observed", () => {
+  // A silent loaded binary is never a default negative and never a source citation: it records the zero-byte capture as
+  // TEST TODO, while a reply on the same binary stays observed (#32246).
+  test("binary silence stays TEST TODO with its capture while replies stay observed", () => {
     const sha = "f".repeat(64)
-    const silent = run("device.secondary-da", sha, () => "").result
-    expect(silent.tests).toEqual([
-      { id: "criterion", status: "test-todo", reason: `no source audit for binary ${sha.slice(0, 12)}` },
-    ])
-    expect(silent.observation).toBeUndefined()
+    const silent = run("device.secondary-da", sha, () => "")
+    expect(silent.result.notTested).toEqual(ZERO_REPLY_TODO)
+    expect(JSON.parse(silent.result.response!)).toMatchObject({ queries: silent.sent, replyBytes: 0 })
+    expect(silent.result.observation).toBeUndefined()
     const observed = run("device.secondary-da", sha, () => "\x1b[>1;2;0c").result
     expect(observed.observation?.outcome).toBe("supported")
-    expect(observed.tests?.some((row) => row.reason?.startsWith("no source audit"))).not.toBe(true)
-  })
-
-  // #32026: these three callbacks previously returned before sending any protocol bytes,
-  // so adding data alone would never trigger the source audit. The real callback owns that boundary.
-  // The DECRPM-only ce01 rebuild retains these parser rejections; the old artifact stays independently audited.
-  test.each(
-    [
-      ["extensions.kitty-graphics.animation", "\x1b_G"],
-      ["extensions.kitty-graphics.unicode-placeholders", "\x1b_G"],
-      ["extensions.iterm2-images", "\x1b]1337;"],
-    ].flatMap(([id, prefix]) =>
-      [
-        "5c38594a17329b24e826f785d3156d6e498490517835f12b0730eeab2fc63da7",
-        "ce01cd0d1ae000dd88948f3817924cc85303874070cab39430967ebdf14877f3",
-      ].map((sha256) => ({ id: id!, prefix: prefix!, sha256 })),
-    ),
-  )(
-    "Ghostty WASM $id at $sha256 sends the audited prerequisite and retains ordinary replies",
-    ({ id, prefix, sha256 }) => {
-      const silent = run(id!, sha256, () => "")
-      expect(silent.sent.some((query) => query.startsWith(prefix!))).toBe(true)
-      // The ruled parser rejection is table provenance now; the probe reports only what it measured.
-      expect(REPLY_PATH_AUDITS.get(sha256!)?.[id!]).toBeDefined()
-      expect(replyPathStatus(sha256!, id!)).toBe("unsupported")
-      expect(silent.result).toMatchObject({
-        criterionBranch: REPLY_PATH_AUDIT_REVIEW,
-        tests: [{ id: "review", status: "test-todo" }],
-      })
-      expect(silent.result.observation).toBeUndefined()
-      const state = JSON.parse(silent.result.response!) as { replyPathAudit?: Record<string, unknown> }
-      expect(state).toMatchObject({
-        replyPathAudit: { artifactSha256: sha256, replyBytes: 0 },
-      })
-      expect(state.replyPathAudit).not.toHaveProperty("kind")
-      expect(state.replyPathAudit).not.toHaveProperty("citation")
-      const ordinary = run(id!, "f".repeat(64), () => "")
-      expect(ordinary.sent).toEqual([])
-      expect(ordinary.result.criterionBranch).toBe(HEADLESS_OBSERVABLE_REVIEW)
-      expect(run(id!, sha256, () => "\x1b").result).toEqual(ordinary.result)
-    },
-  )
-
-  // #31377 AC1: explicit membership catches omitted audits that data-derived cases cannot see.
-  // The current Rust/WASM captures execute these queries but lack the source-bound branch (CTO d6f8c7de).
-  test.each([
-    ["7c43302dde147c6f7959b7bda7045ff375c71288da1af5667ffca2bf95beb2bf", "extensions.kitty-graphics", false],
-    ["7c43302dde147c6f7959b7bda7045ff375c71288da1af5667ffca2bf95beb2bf", "extensions.kitty-graphics.transmit", false],
-    ["7c43302dde147c6f7959b7bda7045ff375c71288da1af5667ffca2bf95beb2bf", "extensions.kitty-graphics.display", false],
-    ["7c43302dde147c6f7959b7bda7045ff375c71288da1af5667ffca2bf95beb2bf", "extensions.osc21-kitty-color", true],
-    ["7c43302dde147c6f7959b7bda7045ff375c71288da1af5667ffca2bf95beb2bf", "extensions.sixel-geometry-report", true],
-    ["f309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96", "extensions.kitty-keyboard", false],
-    [
-      "f309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96",
-      "extensions.kitty-keyboard.disambiguate",
-      false,
-    ],
-    [
-      "f309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96",
-      "extensions.kitty-keyboard.report-events",
-      false,
-    ],
-    [
-      "f309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96",
-      "extensions.kitty-keyboard.report-alternate",
-      false,
-    ],
-    [
-      "f309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96",
-      "extensions.kitty-keyboard.report-all-keys",
-      false,
-    ],
-    [
-      "f309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96",
-      "extensions.kitty-keyboard.report-text",
-      false,
-    ],
-    ["f309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96", "input.csi-u", false],
-    ["f309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96", "extensions.osc21-kitty-color", false],
-    ["f309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96", "extensions.sixel-geometry-report", false],
-    ["f309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96", "extensions.kitty-graphics", true],
-    ["f309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96", "extensions.kitty-graphics.transmit", true],
-    ["f309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96", "extensions.kitty-graphics.display", true],
-  ] as const)("named query on %s selects its source-bound result: %s", (sha256, id, parserRejected) => {
-    const { result, sent } = run(id, sha256, () => "")
-    expect(sent.length).toBeGreaterThan(0)
-    // The ruled distinction lives in the kept answers; the probe itself returns one measured gate.
-    expect(replyPathStatus(sha256, id)).toBe(parserRejected ? "unsupported" : "untestable")
-    // @cto de41833e condition 1: one measured gate for every audited cell; the kept answer decides support.
-    expect(result).toMatchObject({
-      criterionBranch: REPLY_PATH_AUDIT_REVIEW,
-      tests: [{ id: "review", status: "test-todo" }],
-    })
-    expect(result.observation).toBeUndefined()
-  })
-
-  // Data-derived cases cannot catch a missing row; these five actual callback queries were omitted.
-  test.each(wasmReadbackQueries)("WASM readback %s retains its own query and source kind", (id, query, kind) => {
-    const digest = "77b69f9f22c4126359be864fcce97afad8f84615053e21d335ba6348a8d3e1d7"
-    expect(REPLY_PATH_AUDITS.get(digest)?.[id]).toMatchObject({ query })
-    expect(replyPathStatus(digest, id)).toBe(kind === "parser-rejected" ? "unsupported" : "untestable")
-    const { result, sent } = run(id, digest, () => "")
-    expect(sent).toContain(query)
-    // @cto de41833e condition 1: one measured gate for every audited cell; the kept answer decides support.
-    expect(result).toMatchObject({
-      criterionBranch: REPLY_PATH_AUDIT_REVIEW,
-      tests: [{ id: "review", status: "test-todo" }],
-    })
-    expect(result.observation).toBeUndefined()
+    expect(observed.notTested).toBeUndefined()
   })
 
   test.each([
@@ -1209,49 +614,21 @@ describe("reply-path audit", () => {
   ])("native readonly keyboard query retains required review: %s", (id) => {
     const { result, sent } = run(id, "17d155feee5df8fa30266b9a354bbe66e39484d08218de5e03dc3bb2f199a0a3", () => "")
     expect(sent).toEqual(["\x1b[?u\x1b[c"])
-    expect(result).toMatchObject({
-      criterionBranch: REPLY_PATH_AUDIT_REVIEW,
-      tests: [{ id: "review", status: "test-todo" }],
-    })
+    expect(result.notTested).toEqual(ZERO_REPLY_TODO)
     expect(result.observation).toBeUndefined()
     expect(result.assertions ?? []).toEqual([])
-  })
-
-  // #31377 AC1: data-derived cases cannot detect an omitted fixed-query audit or its wrong source kind.
-  test.each([
-    ["extensions.osc21-kitty-color", "\x1b]21;foreground=?\x1b\\", false],
-    ["extensions.sixel-geometry-report", "\x1b[?2;1;0S", true],
-  ] as const)("native fixed query preserves its source distinction: %s", (id, query, parserRejected) => {
-    const { result, sent } = run(id, "17d155feee5df8fa30266b9a354bbe66e39484d08218de5e03dc3bb2f199a0a3", () => "")
-    expect(sent).toEqual([query])
-    expect(replyPathStatus("ac12d6408c2049f1d720e9735d7eb69251d3eed868fc9ced58de98b3543f3e2e", id), id).toBe(
-      parserRejected ? "unsupported" : "untestable",
-    )
-    // @cto de41833e condition 1: one measured gate for every audited cell; the kept answer decides support.
-    expect(result).toMatchObject({
-      criterionBranch: REPLY_PATH_AUDIT_REVIEW,
-      tests: [{ id: "review", status: "test-todo" }],
-    })
-    expect(result.observation).toBeUndefined()
   })
 
   // #31377, CTO 29be6ad0: actual graphics request bytes (including allocation nonces) must survive the review.
   // Data-derived cases cannot notice a missing graphics entry or prove that its generated bytes were retained.
   test.each(["extensions.kitty-graphics", "extensions.kitty-graphics.transmit", "extensions.kitty-graphics.display"])(
-    "native graphics query retains a required review and its actual fed bytes: %s",
+    "native graphics query stays TEST TODO with its actual fed bytes: %s",
     (id) => {
       const { result, sent } = run(id, "17d155feee5df8fa30266b9a354bbe66e39484d08218de5e03dc3bb2f199a0a3", () => "")
-      expect(result).toMatchObject({
-        criterionBranch: REPLY_PATH_AUDIT_REVIEW,
-        tests: [{ id: "review", status: "test-todo" }],
-      })
+      expect(result.notTested).toEqual(ZERO_REPLY_TODO)
       const queries = sent.filter((text) => text.startsWith("\x1b_G"))
       expect(queries).toHaveLength(1)
-      expect(JSON.parse(result.response!)).toMatchObject({
-        replyPathAudit: { matches: "prefix", captures: 1, replyBytes: 0 },
-        matchedQueries: queries,
-        measuredResponse: "",
-      })
+      expect(JSON.parse(result.response!)).toMatchObject({ queries: sent, replyBytes: 0, measuredResponse: "" })
       expect(result.observation).toBeUndefined()
     },
   )
@@ -1270,11 +647,8 @@ describe("reply-path audit", () => {
     const result = probe("extensions.kitty-graphics.transmit").lib!(source)
     expect(sent).toHaveLength(1)
     if (raw === "") {
-      expect(result).toMatchObject({ criterionBranch: REPLY_PATH_AUDIT_REVIEW })
-      expect(JSON.parse(result.response!)).toMatchObject({
-        replyPathAudit: { captures: 1, replyBytes: 0 },
-        matchedQueries: sent,
-      })
+      expect(result.notTested).toEqual(ZERO_REPLY_TODO)
+      expect(JSON.parse(result.response!)).toMatchObject({ queries: sent, replyBytes: 0 })
     } else {
       expect(result.criterionBranch).toBeUndefined()
       expect(result.response).toBe(raw)
@@ -1297,34 +671,6 @@ describe("reply-path audit", () => {
     expect(result.criterionBranch).toBeUndefined()
     expect(result.response).toBe("")
     expect(result.tests).toEqual([expect.objectContaining({ id: "criterion", status: "test-failure" })])
-  })
-
-  // Existing exact rows must not acquire prefix semantics; the generic table sends only their canonical bytes.
-  test.each(["\x1b[c", "\x1b[cX", "X\x1b[c"])("exact query audit keeps byte equality for %j", (query) => {
-    const measured = {
-      pass: false,
-      response: "measured",
-      observation: {
-        outcome: "inconclusive" as const,
-        assertionType: "query_reply" as const,
-        reason: "no-response" as const,
-      },
-    }
-    const definition = defineProbe(
-      "device.primary-da",
-      (ctx) => {
-        ctx.feedCapture(query)
-        return measured
-      },
-      null,
-    )
-    const result = definition.lib!(
-      context({
-        runtimeIdentity: identity("ac12d6408c2049f1d720e9735d7eb69251d3eed868fc9ced58de98b3543f3e2e"),
-      }),
-    )
-    if (query === "\x1b[c") expect(result.criterionBranch).toBe(REPLY_PATH_AUDIT_REVIEW)
-    else expect(result).toBe(measured)
   })
 
   // #31369, @cto fb6cfc2f: named current-native source limitations must reach the production callback.
@@ -1360,16 +706,11 @@ describe("reply-path audit", () => {
     ["extensions.osc52-write", false],
     ["extensions.osc5522-clipboard", false],
     ["extensions.osc0-icon-title", true],
-  ] as const)("current native source contract: %s", (id, parserRejected) => {
+  ] as const)("current native zero-byte reply stays TEST TODO: %s", (id, _osc0) => {
     const { result } = run(id, "ac12d6408c2049f1d720e9735d7eb69251d3eed868fc9ced58de98b3543f3e2e", () => "")
-    expect(replyPathStatus("ac12d6408c2049f1d720e9735d7eb69251d3eed868fc9ced58de98b3543f3e2e", id), id).toBe(
-      parserRejected ? "unsupported" : "untestable",
-    )
-    // @cto de41833e condition 1: one measured gate for every audited cell; the kept answer decides support.
-    expect(result).toMatchObject({
-      criterionBranch: REPLY_PATH_AUDIT_REVIEW,
-      tests: [{ id: "review", status: "test-todo" }],
-    })
+    // No source answer decides the cell (@cto 9fad23d7): the silent reply has no same-path control in this run.
+    expect(result.notTested).toEqual({ reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL })
+    expect(result.criterionBranch).toBeUndefined()
     expect(result.observation).toBeUndefined()
   })
 
@@ -1378,15 +719,16 @@ describe("reply-path audit", () => {
   test.each([
     ["extensions.osc30001-color-stack-push", "\x1b]30001\x1b\\"],
     ["extensions.osc30101-color-stack-pop", "\x1b]30101\x1b\\"],
-  ] as const)("native stack rejection survives missing colour controls: %s", (id, query) => {
+  ] as const)("native stack attempt keeps its colour-readback review when colour controls are missing: %s", (id, query) => {
     for (const sha of [
       "ac12d6408c2049f1d720e9735d7eb69251d3eed868fc9ced58de98b3543f3e2e",
       "9a9505600721226b952ae9ac92552b42389aa6713872a9f4904528f425b7ecdf",
     ]) {
       const { result, sent } = run(id, sha, () => "")
       expect(sent).toContain(query)
+      // No source rejection decides the stack (#32246): the measured early colour-readback review stands.
       expect(result).toMatchObject({
-        criterionBranch: REPLY_PATH_AUDIT_REVIEW,
+        criterionBranch: "color-readback-review",
         tests: [{ id: "review", status: "test-todo" }],
       })
       expect(result.observation).toBeUndefined()
@@ -1458,17 +800,16 @@ describe("reply-path audit", () => {
     expect(result.tests?.[0].reason).not.toContain("timeout")
   })
 
-  test("native OSC 0 retains the answered title arm while rejecting the necessary icon arm", () => {
+  test("native OSC 0 keeps the answered title arm measured and names the missing icon arm", () => {
     const sha = "ac12d6408c2049f1d720e9735d7eb69251d3eed868fc9ced58de98b3543f3e2e"
-    const { result } = run("extensions.osc0-icon-title", sha, (q) =>
-      q === "\x1b[21t" ? "\x1b]losc0-icon-title\x07" : "",
-    )
-    expect(result).toMatchObject({
-      criterionBranch: REPLY_PATH_AUDIT_REVIEW,
-      tests: [{ id: "review", status: "test-todo" }],
-    })
+    const answerTitle = (q: string) => (q === "\x1b[21t" ? "\x1b]losc0-icon-title\x07" : "")
+    const { result } = run("extensions.osc0-icon-title", sha, answerTitle)
+    // One arm replied, so the capture is not silent and no source answer replaces it (#32246).
+    expect(result.notTested).toBeUndefined()
     expect(result.observation).toBeUndefined()
-    expect(JSON.parse(result.response!)).toMatchObject({ measuredResponse: expect.stringContaining("osc0-icon-title") })
+    expect(result.tests?.[0]?.reason).toContain("icon label (CSI 20 t)")
+    expect(JSON.parse(result.response!)).toMatchObject({ windowTitle: "osc0-icon-title", iconLabel: null })
+    expect(result).toEqual(run("extensions.osc0-icon-title", "f".repeat(64), answerTitle).result)
     const answerIcon = (q: string) => (q === "\x1b[20t" ? "\x1b]Losc0-icon-title\x07" : "")
     expect(run("extensions.osc0-icon-title", sha, answerIcon).result).toEqual(
       run("extensions.osc0-icon-title", "f".repeat(64), answerIcon).result,
@@ -1477,7 +818,7 @@ describe("reply-path audit", () => {
 
   // @cto 52d43147: an unlisted artifact must keep the complete pre-attempt early result,
   // not acquire a source-negative grade merely because the probe now records its own attempt.
-  test("an unlisted stack attempt preserves the early review except for its trace entry", () => {
+  test("a native stack attempt preserves the early review except for its trace entry", () => {
     const id = "extensions.osc30001-color-stack-push"
     const query = "\x1b]10;?\x07"
     const stackQuery = "\x1b]30001\x1b\\"
@@ -1509,12 +850,17 @@ describe("reply-path audit", () => {
       ],
     }
     const { result } = run(id, "f".repeat(64), () => "")
-    const raw = JSON.parse(result.response!) as { query: string; originalRaw: string; trace: unknown[] }
+    // The native artifact records the empty colour reply it observed; the criterion is the early review (#32246).
+    const { hostRecipeCauses, ...criterion } = result
+    expect(hostRecipeCauses).toEqual([
+      { recipe: "color-request", cause: { kind: "observed", missing: "foreground-rgb", query } },
+    ])
+    const raw = JSON.parse(criterion.response!) as { query: string; originalRaw: string; trace: unknown[] }
     expect(raw.trace.pop()).toEqual({ write: stackQuery, response: "" })
-    expect({ ...result, response: JSON.stringify(raw) }).toEqual(early)
+    expect({ ...criterion, response: JSON.stringify(raw) }).toEqual(early)
+    // No artifact is listed any more: the formerly audited binary reads exactly as any other.
     const listed = run(id, "ac12d6408c2049f1d720e9735d7eb69251d3eed868fc9ced58de98b3543f3e2e", () => "").result
-    const listedRaw = JSON.parse(listed.response!) as { measuredResponse: string }
-    expect(listedRaw.measuredResponse).toBe(result.response)
+    expect(listed).toEqual(result)
   })
 
   test("a failed native stack attempt retains the early readback review and its trace error", () => {
@@ -1534,258 +880,6 @@ describe("reply-path audit", () => {
     expect(result.observation).toBeUndefined()
     const raw = JSON.parse(result.response!) as { trace: unknown[] }
     expect(raw.trace.at(-1)).toEqual({ write: query, error: "Error: stack attempt failed" })
-  })
-
-  test("keeps the explicit audited artifact and source-tree inventory", () => {
-    // Fixed engine keys catch omitted rebuild/source rows; data-derived cases alone would miss them.
-    expect([...REPLY_PATH_AUDITS.keys()].sort()).toEqual(
-      [
-        "0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3",
-        "d6e23fe62d56de795c6fa783a6c5025fc5b1238e739839de8b4b3737eca0c43e",
-        "e58288d0b62448bf746ad77e58a4e9523c1baabb080d6fc6723f76caf29d2bb0",
-        "53f9a867cce594b4d50fb9508db9ce5d2d79fb4244a418548b7cb31fa50780d1",
-        "dc3b24de6e91416f66b1953ce101991ef7e78602ce1b5d357f65832c9b96b326",
-        "84a5b6a3a40a7c16c6bae8b64534b730403df911498bb34bded68c3a17e2d408",
-        "17d155feee5df8fa30266b9a354bbe66e39484d08218de5e03dc3bb2f199a0a3",
-        "1f23e13db5bda55ab54943461b83a5d642bf8d2050a452fbe7871927383dfe9f",
-        "3c2398d5c537d9c10e86b0af69311977927fcdbe4738618df194cedbdd22574d",
-        "42e84af1b38be94571974a23fa4667c4735ee7a272dcff39afd5cba40dcf48de",
-        "5a8030c0f3f9fa52e9c1f82d28ae711ef21e3072a4b82fbe98076fedf314c945",
-        "5c38594a17329b24e826f785d3156d6e498490517835f12b0730eeab2fc63da7",
-        "61fb182e3381ab1c52d94b63a9e33163bbfb89ede419af022f71f4438bfe0b03",
-        "77b69f9f22c4126359be864fcce97afad8f84615053e21d335ba6348a8d3e1d7",
-        "7c43302dde147c6f7959b7bda7045ff375c71288da1af5667ffca2bf95beb2bf",
-        "8872ab0fc56429489b52cd5d3b5a293032c3ec7dbbb71545d237945c3ef525f3",
-        "9a9505600721226b952ae9ac92552b42389aa6713872a9f4904528f425b7ecdf",
-        "ac12d6408c2049f1d720e9735d7eb69251d3eed868fc9ced58de98b3543f3e2e",
-        "b9109b5918707746420833dfc2eab3ea5bc7feec5fa93bee4cd6e824e74d0962",
-        "ce01cd0d1ae000dd88948f3817924cc85303874070cab39430967ebdf14877f3",
-        "d80a8110258a124fb6ff52a6fe149b8e39b5180d986907cc9fb7dc9143c3f3d9",
-        "f309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96",
-      ].sort(),
-    )
-  })
-
-  test("the 42e84af1 rebuild carries all 44 audited query rows", () => {
-    // #32185: the key list above proves the artifact is audited; this pins what it was audited for, so a
-    // later edit cannot shrink the rebuild's inventory and leave cells decided by an absent query.
-    const rebuild = REPLY_PATH_AUDITS.get("42e84af1b38be94571974a23fa4667c4735ee7a272dcff39afd5cba40dcf48de")!
-    expect(Object.keys(rebuild)).toHaveLength(44)
-    expect(Object.keys(rebuild).sort()).toEqual([
-      "device.dsr-996-color-scheme",
-      "device.tertiary-da",
-      "device.xtgetxres",
-      "device.xtreportcolors",
-      "device.xtwinops-14",
-      "device.xtwinops-16",
-      "device.xtwinops-20",
-      "device.xtwinops-21",
-      "editing.decrqcra",
-      "extensions.iterm2-images",
-      "extensions.kitty-graphics",
-      "extensions.kitty-graphics.animation",
-      "extensions.kitty-graphics.display",
-      "extensions.kitty-graphics.transmit",
-      "extensions.kitty-graphics.unicode-placeholders",
-      "extensions.osc0-icon-title",
-      "extensions.osc10-fg-color",
-      "extensions.osc104-reset-palette",
-      "extensions.osc11-bg-color",
-      "extensions.osc110-reset-fg",
-      "extensions.osc111-reset-bg",
-      "extensions.osc112-reset-cursor",
-      "extensions.osc113-reset-pointer-fg",
-      "extensions.osc114-reset-pointer-bg",
-      "extensions.osc12-cursor-color",
-      "extensions.osc1337-capabilities",
-      "extensions.osc1337-cellsize",
-      "extensions.osc17-highlight-bg",
-      "extensions.osc19-highlight-fg",
-      "extensions.osc21-kitty-color",
-      "extensions.osc30001-color-stack-push",
-      "extensions.osc30101-color-stack-pop",
-      "extensions.osc4-palette",
-      "extensions.osc5-special-color",
-      "extensions.osc52-clipboard",
-      "extensions.osc52-read",
-      "extensions.osc52-write",
-      "extensions.osc701-locale",
-      "extensions.osc702-version",
-      "extensions.osc776-cell-size",
-      "extensions.osc7770-font-size",
-      "extensions.osc7777-font-window-size",
-      "extensions.osc99-kitty-notify",
-      "extensions.sixel-geometry-report",
-    ])
-  })
-
-  // @cto d9998884, f9d23c2a (#31372): the WASM build drops every DCS before src/terminal/dcs.zig, and it builds its
-  // stream without an OSC allocator, so each colour query is rejected at the parser. The table test above accepts
-  // either kind, so only this pin keeps the ruled kinds.
-  test("ghostty-web 0.4.0 WASM: DCS queries have no reply path; colour queries are parser-rejected", () => {
-    const ghostty = REPLY_PATH_AUDITS.get("7c43302dde147c6f7959b7bda7045ff375c71288da1af5667ffca2bf95beb2bf")!
-    const dcs = Object.entries(ghostty).filter(([, audit]) => audit.query.startsWith("\x1bP"))
-    expect(dcs.map(([id]) => id)).toEqual(["device.decrqss", "device.xtgettcap", "device.xtgetxres"])
-    for (const [id] of dcs) {
-      expect(replyPathStatus("7c43302dde147c6f7959b7bda7045ff375c71288da1af5667ffca2bf95beb2bf", id), id).toBe(
-        "untestable",
-      )
-      const route = replyPathRoute("7c43302dde147c6f7959b7bda7045ff375c71288da1af5667ffca2bf95beb2bf", id)
-      expect(route, id).toContain("patch:586-588")
-      expect(route, id).not.toContain("parses it")
-    }
-
-    for (const id of [
-      "extensions.osc10-fg-color",
-      "extensions.osc104-reset-palette",
-      "extensions.osc11-bg-color",
-      "extensions.osc110-reset-fg",
-      "extensions.osc111-reset-bg",
-      "extensions.osc112-reset-cursor",
-      "extensions.osc113-reset-pointer-fg",
-      "extensions.osc114-reset-pointer-bg",
-      "extensions.osc12-cursor-color",
-      "extensions.osc17-highlight-bg",
-      "extensions.osc19-highlight-fg",
-      "extensions.osc30001-color-stack-push",
-      "extensions.osc30101-color-stack-pop",
-      "extensions.osc4-palette",
-      "extensions.osc5-special-color",
-    ]) {
-      expect(ghostty[id], id).toBeDefined()
-      expect(replyPathStatus("7c43302dde147c6f7959b7bda7045ff375c71288da1af5667ffca2bf95beb2bf", id), id).toBe(
-        "unsupported",
-      )
-      // The route prose names the parse-time rejection; `682-687` appears in no kept answer and is reported instead.
-      const route = replyPathRoute("7c43302dde147c6f7959b7bda7045ff375c71288da1af5667ffca2bf95beb2bf", id)
-      expect(route, id).toContain("patch:827 ResponseStream.init → ghostty 5714ed07 src/terminal/stream.zig:497-501")
-      expect(route, id).toContain("only under initAlloc (stream.zig:506-510)")
-    }
-  })
-
-  // #31371: the five vt100-rust cells #31375 and #31376 could not attribute graded test-failure in run d390b869 because the
-  // table had no row for them; the table test below covers only rows that exist, so only this pin catches their absence.
-  test("vt100 0.16.2 Rust parser: the clipboard and icon-title queries have no reply path", () => {
-    const rust = "f309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96"
-    for (const id of [
-      "extensions.osc0-icon-title",
-      "extensions.osc52-clipboard",
-      "extensions.osc52-read",
-      "extensions.osc52-write",
-      "extensions.osc5522-clipboard",
-    ]) {
-      expect(REPLY_PATH_AUDITS.get(rust)?.[id], id).toBeDefined()
-      expect(replyPathStatus(rust, id), id).toBe("untestable")
-      expect(run(id, rust, () => "").result, id).toMatchObject({
-        criterionBranch: REPLY_PATH_AUDIT_REVIEW,
-        tests: [{ id: "review", status: "test-todo" }],
-      })
-    }
-  })
-
-  test.each([
-    "b9109b5918707746420833dfc2eab3ea5bc7feec5fa93bee4cd6e824e74d0962",
-    "0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3",
-    "dc3b24de6e91416f66b1953ce101991ef7e78602ce1b5d357f65832c9b96b326",
-    "84a5b6a3a40a7c16c6bae8b64534b730403df911498bb34bded68c3a17e2d408",
-  ])("vt100-rust %s lists the ruled twins and keeps silent writes outside reply audits", (sha) => {
-    const old = "f309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96"
-    const noReply = [
-      "cursor.position-report",
-      "device.decrpm",
-      "device.decrqss",
-      "device.dsr-996-color-scheme",
-      "device.primary-da",
-      "device.secondary-da",
-      "device.status-report",
-      "device.tertiary-da",
-      "device.xtgettcap",
-      "device.xtgetxres",
-      "device.xtreportcolors",
-      "device.xtversion",
-      "device.xtwinops-14",
-      "device.xtwinops-16",
-      "device.xtwinops-18",
-      "device.xtwinops-20",
-      "device.xtwinops-21",
-      "editing.decrqcra",
-      "extensions.osc0-icon-title",
-      "extensions.osc10-fg-color",
-      "extensions.osc104-reset-palette",
-      "extensions.osc11-bg-color",
-      "extensions.osc110-reset-fg",
-      "extensions.osc111-reset-bg",
-      "extensions.osc112-reset-cursor",
-      "extensions.osc113-reset-pointer-fg",
-      "extensions.osc114-reset-pointer-bg",
-      "extensions.osc12-cursor-color",
-      "extensions.osc1337-capabilities",
-      "extensions.osc1337-cellsize",
-      "extensions.osc17-highlight-bg",
-      "extensions.osc19-highlight-fg",
-      "extensions.osc30001-color-stack-push",
-      "extensions.osc30101-color-stack-pop",
-      "extensions.osc4-palette",
-      "extensions.osc5-special-color",
-      "extensions.osc5522-clipboard",
-      "extensions.osc701-locale",
-      "extensions.osc702-version",
-      "extensions.osc776-cell-size",
-      "extensions.osc7770-font-size",
-      "extensions.osc7777-font-window-size",
-      "extensions.kitty-keyboard",
-      "extensions.kitty-keyboard.disambiguate",
-      "extensions.kitty-keyboard.report-all-keys",
-      "extensions.kitty-keyboard.report-alternate",
-      "extensions.kitty-keyboard.report-events",
-      "extensions.kitty-keyboard.report-text",
-      "extensions.osc21-kitty-color",
-      "extensions.osc52-clipboard",
-      "extensions.osc52-read",
-      "extensions.osc99-kitty-notify",
-      "extensions.sixel-da1",
-      "extensions.sixel-geometry-report",
-      "input.csi-u",
-    ]
-    const parserRejected = [
-      "extensions.kitty-graphics",
-      "extensions.kitty-graphics.display",
-      "extensions.kitty-graphics.transmit",
-    ]
-    const rows = REPLY_PATH_AUDITS.get(sha)
-    expect(Object.keys(rows ?? {}).sort()).toEqual([...noReply, ...parserRejected].sort())
-    for (const id of noReply) expect(replyPathStatus(sha, id), id).toBe("untestable")
-    for (const id of parserRejected) expect(replyPathStatus(sha, id), id).toBe("unsupported")
-    const readRows = ["extensions.osc52-clipboard", "extensions.osc52-read"]
-    for (const id of [...noReply, ...parserRejected].filter((id) => !readRows.includes(id))) {
-      expect(rows?.[id], id).toBeDefined()
-      const route = replyPathRoute(sha, id)
-      expect(route, id).toContain("lib.rs:21-53")
-      expect(route, id).not.toContain("artifactf309015f")
-    }
-    for (const id of readRows) {
-      expect(rows?.[id], id).toBeDefined()
-      expect(replyPathRoute(sha, id), id).toContain("lib.rs:50-52")
-    }
-    expect(rows?.["extensions.osc52-write"]).toBeUndefined()
-    expect(REPLY_PATH_AUDITS.get(old)?.["extensions.osc52-write"]).toBeDefined()
-    expect(REPLY_PATH_AUDITS.get(old)?.["extensions.osc99-kitty-notify"]).toBeDefined()
-    const silent = run("extensions.osc52-write", sha, () => "")
-    if (
-      sha === "dc3b24de6e91416f66b1953ce101991ef7e78602ce1b5d357f65832c9b96b326" ||
-      sha === "84a5b6a3a40a7c16c6bae8b64534b730403df911498bb34bded68c3a17e2d408"
-    ) {
-      expect(silent.result.hostRecipeCauses).toMatchObject([
-        { recipe: "clipboard-load", cause: { kind: "unimplemented", artifactSha256: sha } },
-      ])
-    } else {
-      expect(silent.result.notTested).toEqual({
-        reason: "no-semantic-observable",
-        noObservable: "clipboard write state",
-      })
-    }
-    expect(JSON.stringify(silent.result)).not.toContain("replyPathAudit")
-    expect(run("extensions.osc52-write", old, () => "").result.criterionBranch).toBe(REPLY_PATH_AUDIT_REVIEW)
   })
 
   function writeWithClipboard(state: {
@@ -1849,59 +943,6 @@ describe("reply-path audit", () => {
     expect(result.assertions).toBeUndefined()
     expect(JSON.parse(result.response ?? "")).toEqual({ writes: [{ selector: "p", payload: "cHJpbWFyeQ==" }] })
     expect(result.note).toContain("p")
-  })
-
-  test.each(cells)("$id on $auditKey", ({ auditKey, id, audit }) => {
-    const unlisted = run(id, "f".repeat(64), () => "")
-    expect(JSON.stringify(unlisted.result)).not.toContain("replyPathAudit")
-
-    const silent = run(id, auditKey, () => "")
-    const matched = silent.sent.filter((sequence) =>
-      audit.matches === "prefix" ? sequence.startsWith(audit.query) : sequence === audit.query,
-    )
-    expect(matched.length).toBeGreaterThan(0)
-    const state = JSON.parse(silent.result.response!)
-    expect(state).toEqual({
-      replyPathAudit: {
-        ...(/^[0-9a-f]{40}$/.test(auditKey) ? { sourceTreeOid: auditKey } : { artifactSha256: auditKey }),
-        featureId: id,
-        query: audit.query,
-        ...(audit.matches !== undefined && { matches: audit.matches }),
-        captures: matched.length,
-        replyBytes: 0,
-      },
-      // This artifact also has its own clipboard host audit: empty roundtrip evidence survives
-      // instead of the unaudited artifact's no-observable fallback.
-      measuredResponse:
-        id === "extensions.osc52-write" &&
-        [
-          "d6e23fe62d56de795c6fa783a6c5025fc5b1238e739839de8b4b3737eca0c43e",
-          "e58288d0b62448bf746ad77e58a4e9523c1baabb080d6fc6723f76caf29d2bb0",
-          "53f9a867cce594b4d50fb9508db9ce5d2d79fb4244a418548b7cb31fa50780d1",
-        ].includes(auditKey)
-          ? ""
-          : (unlisted.result.response ?? null),
-      ...(audit.matches === "prefix" && { matchedQueries: matched }),
-    })
-    // @cto de41833e condition 1: the probe keeps the measured gate and decides nothing. Whether this zero-byte
-    // reply reads Untestable (no reply writer) or Unsupported (cited parser rejection) is the kept answer's call,
-    // applied by the writer; the probe no longer reads the row's verdict.
-    expect(silent.result).toMatchObject({
-      pass: false,
-      criterionBranch: REPLY_PATH_AUDIT_REVIEW,
-      tests: [{ id: "review", status: "test-todo" }],
-    })
-    expect(silent.result).not.toHaveProperty("observation")
-    expect(silent.result).not.toHaveProperty("assertions")
-    expect(silent.result.tests?.[0]?.reason).toContain("the kept source answer decides this cell")
-
-    const answer = (sequence: string) =>
-      (audit.matches === "prefix" ? sequence.startsWith(audit.query) : sequence === audit.query) ? "\x1b" : ""
-    // Host causes are independently audited metadata; a different artifact may gain one for
-    // a second, unanswered query even when the listed reply itself was measured.
-    const { hostRecipeCauses: _auditedHostCauses, ...answered } = run(id, auditKey, answer).result
-    const { hostRecipeCauses: _unlistedHostCauses, ...ordinary } = run(id, "f".repeat(64), answer).result
-    expect(answered).toEqual(ordinary)
   })
 })
 
@@ -2463,10 +1504,11 @@ describe("OSC 8 link metadata observation", () => {
   ] as const satisfies readonly (readonly [string, NonNullable<LibProbeSource["runtimeIdentity"]>])[]
 
   // #31398: explicit callback checks catch omitted memberships; existing OSC8 cases never run highlight resets or OSC1.
+  // #32246: the formerly audited identity no longer selects a source review; it reads exactly as any other identity.
   test.each(absentOsc8Runtimes)(
-    "%s routes both absent highlight resets only at the audited identity",
+    "%s grades neither absent highlight reset from source at the formerly audited identity",
     (_engine, identity) => {
-      for (const [id, set, reset] of [
+      for (const [id] of [
         ["extensions.osc117-reset-highlight-bg", 17, 117],
         ["extensions.osc119-reset-highlight-fg", 19, 119],
       ] as const) {
@@ -2477,21 +1519,22 @@ describe("OSC 8 link metadata observation", () => {
           getCell: () => ({ ...context({}).getCell(0, 0), char: "X" }),
         })
         const result = probe(id).lib!(source)
-        expect(result.criterionBranch, id).toBe("source-negative-review")
-        expect(result.tests, id).toMatchObject([{ id: "review", status: "test-todo" }])
-        expect(result.assertions, id).toMatchObject([{ kind: "negative", assertionType: "buffer_state" }])
-        expect(writes, id).toContain(`\x1b[1;1H\x1b[2K\x1b]${set};rgb:3030/6060/9090\x07\x1b]${reset}\x07X`)
+        expect(result.criterionBranch, id).toBeUndefined()
+        expect(result.observation, id).toBeUndefined()
+        expect(result.assertions, id).toBeUndefined()
+        // The X-control write belonged to the deleted source review; the reset callback no longer feeds it.
+        expect(writes, id).toEqual([])
         expect(
-          probe(id).lib!({ ...source, runtimeIdentity: { ...identity, engineVersion: "unreviewed" } }).criterionBranch,
+          probe(id).lib!({ ...source, runtimeIdentity: { ...identity, engineVersion: "unreviewed" } }),
           id,
-        ).not.toBe("source-negative-review")
+        ).toEqual(result)
         expect(probe(id).lib!({ ...source, getCell: () => context({}).getCell(0, 0) }).assertions, id).toBeUndefined()
       }
     },
   )
 
   test.each(absentOsc8Runtimes)(
-    "%s distinguishes intrinsic OSC1 absence from a missing adapter getter",
+    "%s records OSC1 without an icon getter as TEST TODO coverage at every identity",
     (engine, identity) => {
       let title = "before"
       const writes: string[] = []
@@ -2506,17 +1549,10 @@ describe("OSC 8 link metadata observation", () => {
       const result = probe("extensions.osc1-icon").lib!(source)
       expect(writes).toEqual(["\x1b]1;test-icon\x07"])
       expect(JSON.parse(result.response!)).toEqual({ before: "before", after: "after" })
-      if (engine === "vt100" || engine === "vt220") {
-        expect(result.criterionBranch).toBe("source-negative-review")
-        expect(result.tests).toMatchObject([
-          { id: "review", status: "test-todo", reason: expect.stringContaining("case 1") },
-        ])
-        expect(result.observation).toMatchObject({ outcome: "inconclusive", assertionType: "buffer_state" })
-        expect(result.assertions).toMatchObject([{ kind: "negative", assertionType: "buffer_state" }])
-      } else {
-        expect(result.notTested).toMatchObject({ reason: "no-semantic-observable" })
-        expect(result.assertions).toBeUndefined()
-      }
+      // #32246: no source audit tells intrinsic absence from a missing getter any more; both stay TEST TODO.
+      expect(result.notTested).toMatchObject({ reason: "no-semantic-observable" })
+      expect(result.criterionBranch).toBeUndefined()
+      expect(result.assertions).toBeUndefined()
       const foreign = probe("extensions.osc1-icon").lib!({
         ...source,
         runtimeIdentity: { ...identity, engineVersion: "unreviewed" },
@@ -2527,18 +1563,15 @@ describe("OSC 8 link metadata observation", () => {
   )
 
   test.each(absentOsc8Runtimes)(
-    "%s emits source-review assertions only for its audited OSC8 identity",
+    "%s emits no source-review assertion for OSC8 at the formerly audited identity",
     (_engine, identity) => {
       const p = probe("extensions.osc8")
       if (!p.lib) throw new Error("OSC 8 needs headless callback")
       const unreported = linkedSource(Array(6).fill(undefined), false)
       const result = p.lib({ ...unreported, runtimeIdentity: identity })
-      expect(result.criterionBranch).toBe("source-negative-review")
-      expect(result.tests).toMatchObject([{ id: "review", status: "test-todo" }])
-      expect(result.observation).toMatchObject({ outcome: "inconclusive", assertionType: "buffer_state" })
-      expect(result.assertions).toMatchObject([
-        { kind: "negative", assertionType: "buffer_state", observed: result.response },
-      ])
+      // #32246: the unreported links read as the headless-observable review at every identity, never a source negative.
+      expect(result.criterionBranch).toBe(HEADLESS_OBSERVABLE_REVIEW)
+      expect(result.assertions).toBeUndefined()
       expect(JSON.parse(result.response ?? "")).toMatchObject({
         chars: [..."ALINKZ"],
         links: Array(6).fill({ reported: false }),
@@ -2607,6 +1640,7 @@ describe("OSC 8 link metadata observation", () => {
         const foreign = p.lib({ ...unreported, runtimeIdentity })
         expect(foreign.criterionBranch).toBe(HEADLESS_OBSERVABLE_REVIEW)
         expect(foreign.assertions).toBeUndefined()
+        expect(foreign.response).toBe(result.response)
       }
       const broken = p.lib({
         ...unreported,
@@ -2637,12 +1671,12 @@ describe("OSC 8 link metadata observation", () => {
 })
 
 /**
- * @failure Six audited native OSC targets lose their review route or acquire a negative at an unqualified identity/control.
+ * @failure A formerly audited GhosttyNative OSC target is graded from a source citation instead of TEST TODO (#32246).
  * @level l0
- * @consumer Library OSC callbacks; existing OSC8 cases do not cover these six memberships or the parsed3008 distinction.
+ * @consumer Library OSC callbacks at the formerly audited GhosttyNative identity.
  * @testonly none
  */
-describe("GhosttyNative audited OSC source review", () => {
+describe("GhosttyNative OSC targets without a readback oracle", () => {
   const identity = {
     kind: "native",
     engineVersion: "1.3.1",
@@ -2665,90 +1699,31 @@ describe("GhosttyNative audited OSC source review", () => {
     },
   } as const satisfies NonNullable<LibProbeSource["runtimeIdentity"]>
 
-  test("OSC1 uses the current native ignore-handler audit without changing other missing getters", () => {
-    const result = probe("extensions.osc1-icon").lib!(context({ runtimeIdentity: identity }))
-    expect(result.criterionBranch).toBe("source-negative-review")
-    expect(result.tests).toMatchObject([
-      { id: "review", status: "test-todo", reason: expect.stringContaining("stream.zig:1982-1986") },
-    ])
-    const foreign = probe("extensions.osc1-icon").lib!(
-      context({ runtimeIdentity: { ...identity, loadedBinary: { ...identity.loadedBinary, sha256: "0".repeat(64) } } }),
-    )
-    expect(foreign.notTested).toMatchObject({ reason: "no-semantic-observable" })
-    expect(foreign.assertions).toBeUndefined()
-  })
-
-  test("the parsed OSC3008 reason names the current wrapper and unchanged engine drop", () => {
-    const result = probe("extensions.osc3008-context").lib!(
-      context({
-        runtimeIdentity: identity,
-        getCell: () => ({ ...context({}).getCell(0, 0), char: "X" }),
-      }),
-    )
-    expect(result.tests?.[0]?.reason).toBe(
-      "Ghostty 332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28 src/terminal/osc.zig:535-641 rejects OSC176/440/555/666/710; :747 parses OSC3008 context_signal, dropped at src/terminal/stream.zig:2050-2059 (SHA256 3ddc5e27d6a6f48ea99399bb886b52e7bebb68c94397a3ba008a7c3eb6c01a9b); Termless 8bd0516ad101cc088133beb20fa9e92f86250da8 packages/ghostty-native/native/src/main.zig:38-39 wraps ReadonlyHandler, :76 forwards unhandled actions to readonly.vt, :85 creates ResponseStream and :141 initializes Terminal.vtHandler; parsed by osc.zig:747 context_signal, dropped unimplemented at stream.zig:2056-2059; independent source review required",
-    )
-  })
-
+  // #32246 (operator 2026-11-03, @cto 9fad23d7): this artifact's former source review no longer decides anything. With a
+  // rendered X control and a silent command the callback records TEST TODO coverage, never a source branch or assertion.
   test.each([
-    ["extensions.osc176-app-id", 176],
-    ["extensions.osc440-audio", 440],
-    ["extensions.osc555-flash", 555],
-    ["extensions.osc666-termprop", 666],
-    ["extensions.osc710-font-normal", 710],
-    ["extensions.osc3008-context", 3008],
-  ] as const)("%s requires independent review only with the audited identity and X control", (id, code) => {
-    const callback = probe(id).lib!
-    const source = context({
-      runtimeIdentity: identity,
-      getCell: () => ({ ...context({}).getCell(0, 0), char: "X" }),
-    })
-    const result = callback(source)
-    expect(result.criterionBranch).toBe("source-negative-review")
-    expect(result.tests).toMatchObject([{ id: "review", status: "test-todo" }])
-    expect(result.observation).toMatchObject({ outcome: "inconclusive", assertionType: "buffer_state" })
-    expect(result.assertions).toMatchObject([{ kind: "negative", assertionType: "buffer_state" }])
-    expect(JSON.parse(result.response!)).toMatchObject({ sentinel: { char: "X" } })
-    expect(JSON.parse(result.response!)).not.toHaveProperty("runtimeIdentity")
-    const reason = result.tests?.[0]?.reason ?? ""
-    if (code === 3008) {
-      expect(reason).toContain("parsed by osc.zig:747 context_signal")
-      expect(reason).toContain("dropped unimplemented at stream.zig:2056-2059")
-    } else {
-      expect(reason).toContain(`no case ${code}`)
-    }
-    for (const runtimeIdentity of [
-      { ...identity, engineVersion: "unreviewed" },
-      { ...identity, adapterVersion: "unreviewed" },
-      { ...identity, loadedBinary: { ...identity.loadedBinary, sha256: "0".repeat(64) } },
-      { ...identity, adapterSources: undefined },
-      { ...identity, adapterSources: identity.adapterSources.slice(1) },
-      {
-        ...identity,
-        adapterSources: identity.adapterSources.map((source) => ({ ...source, blobOid: "0".repeat(40) })),
-      },
-      ...(["sha256", "sourceCommit", "buildHash", "lockSha256"] as const).map((key) => ({
-        ...identity,
-        provenance: { ...identity.provenance, [key]: "unreviewed" },
-      })),
-    ]) {
-      const foreign = callback({ ...source, runtimeIdentity })
-      expect(foreign.notTested).toMatchObject({ reason: "no-semantic-observable" })
-      expect(foreign.assertions).toBeUndefined()
-    }
-    for (const runtimeIdentity of [
-      { ...identity, termlessRevision: "0".repeat(40) },
-      { ...identity, loadedBinary: { ...identity.loadedBinary, path: "relocated/binary" } },
-    ]) {
-      expect(callback({ ...source, runtimeIdentity })).toEqual(result)
-    }
-    const broken = callback({ ...source, getCell: () => context({}).getCell(0, 0) })
-    expect(broken.criterionBranch).toBeUndefined()
-    expect(broken.assertions).toBeUndefined()
+    "extensions.osc1-icon",
+    "extensions.osc176-app-id",
+    "extensions.osc440-audio",
+    "extensions.osc555-flash",
+    "extensions.osc666-termprop",
+    "extensions.osc710-font-normal",
+    "extensions.osc3008-context",
+  ])("%s records TEST TODO coverage, never a source review, on GhosttyNative", (id) => {
+    const result = probe(id).lib!(
+      context({ runtimeIdentity: identity, getCell: () => ({ ...context({}).getCell(0, 0), char: "X" }) }),
+    )
+    // A coverage record, or (for a consumed semantic marker) a criterion TEST TODO: either way nothing is graded.
+    if (result.notTested === undefined) {
+      expect(result.tests).toEqual([expect.objectContaining({ id: "criterion", status: "test-todo" })])
+    } else expect(result.notTested).toMatchObject({ reason: "no-semantic-observable" })
+    expect(result.criterionBranch).toBeUndefined()
+    expect(result.observation).toBeUndefined()
+    expect(result.assertions).toBeUndefined()
   })
 
   test.each(["extensions.osc22-pointer", "extensions.osc777-notify", "extensions.osc9-progress"])(
-    "%s stays outside the six-code native audit",
+    "%s stays TEST TODO with no assertion",
     (id) => {
       const result = probe(id).lib!(
         context({
@@ -2764,12 +1739,13 @@ describe("GhosttyNative audited OSC source review", () => {
 })
 
 /**
- * @failure Alacritty's thirteen audited OSC codes lose pending review or acquire assertions without a qualified artifact and X.
+ * @failure A formerly audited Alacritty OSC code is graded from a source citation instead of TEST TODO (#32246), or a
+ *   direct query route loses its observation.
  * @level l0
- * @consumer Eleven library callbacks; existing engine fixtures do not cover this native tuple or parsed22 default.
+ * @consumer Library OSC callbacks at the formerly audited Alacritty identity.
  * @testonly none
  */
-describe("Alacritty audited OSC source review", () => {
+describe("Alacritty OSC targets without a readback oracle", () => {
   // Current Cell.hidden readback build receipt (#31901); fixture identity is not a loaded-engine attestation.
   const identity = {
     kind: "native",
@@ -2796,86 +1772,31 @@ describe("Alacritty audited OSC source review", () => {
     },
   } as const satisfies NonNullable<LibProbeSource["runtimeIdentity"]>
 
+  // #32246 (operator 2026-11-03, @cto 9fad23d7): this artifact's former source review no longer decides anything. With a
+  // rendered X control and a silent command the callback records TEST TODO coverage, never a source branch or assertion.
   test.each([
-    ["extensions.osc9-progress", "9"],
-    ["extensions.osc22-pointer", "22"],
-    ["extensions.osc176-app-id", "176"],
-    ["extensions.osc440-audio", "440"],
-    ["extensions.osc555-flash", "555"],
-    ["extensions.osc666-termprop", "666"],
-    ["extensions.osc710-font-normal", "710"],
-    ["extensions.osc777-notify", "777"],
-    ["extensions.osc3008-context", "3008"],
-    ["extensions.osc117-reset-highlight-bg", "17/117"],
-    ["extensions.osc119-reset-highlight-fg", "19/119"],
-  ] as const)("%s requires exact native identity, silence and rendered X", (id, codes) => {
-    const callback = probe(id).lib!
-    const writes: string[] = []
-    const source = context({
-      runtimeIdentity: identity,
-      feed: (bytes) => {
-        writes.push(bytes)
-      },
-      getCell: () => ({ ...context({}).getCell(0, 0), char: "X" }),
-    })
-    const result = callback(source)
-    expect(result.criterionBranch).toBe("source-negative-review")
-    expect(result.tests).toMatchObject([{ id: "review", status: "test-todo" }])
-    expect(result.observation).toMatchObject({ outcome: "inconclusive", assertionType: "buffer_state" })
-    expect(result.assertions).toMatchObject([
-      { kind: "negative", assertionType: "buffer_state", observed: result.response },
-    ])
-    expect(JSON.parse(result.response!)).toMatchObject({ sentinel: { char: "X" } })
-    expect(JSON.parse(result.response!)).not.toHaveProperty("runtimeIdentity")
-    expect(writes.some((bytes) => bytes.endsWith("X"))).toBe(true)
-    const reason = result.tests?.[0]?.reason ?? ""
-    if (codes === "22") {
-      expect(writes).toContain("\x1b[1;1H\x1b[2K\x1b]22;pointer\x07X")
-      expect(reason).toBe(
-        "alacritty_terminal 0.26.0 with vte 0.15.0 src/ansi.rs:1329-1523 OSC dispatch (22 parsed, other audited codes unhandled); src/term/mod.rs:1059-2272 Term Handler; Termless 2f73fc28027b7d483e504e08edc64d1837935816 packages/alacritty/native/src/lib.rs:286-339 owns Term<EventProxy> and advances the same vte processor into it; Cell.hidden readback changes leave Config, OSC dispatch and reply handling unchanged; parsed by vte 0.15.0 src/ansi.rs:1455-1461 into set_mouse_cursor_icon; Handler default src/ansi.rs:703-704 is empty and alacritty_terminal 0.26.0 src/term/mod.rs:1059-2272 supplies no override; independent source review required",
-      )
-      expect(reason).not.toContain("no case 22")
-    } else {
-      expect(reason).toContain(`no case ${codes}`)
-    }
-    if (codes.includes("/")) {
-      const setCode = codes.split("/")[0]
-      const answered = callback({ ...source, feedCapture: () => `\x1b]${setCode};rgb:aa/bb/cc\x07` })
-      expect(answered.criterionBranch).not.toBe("source-negative-review")
-      expect(answered.observation?.assertionType).toBe("query_reply")
-    }
-    const foreignIdentities = [
-      { ...identity, engineVersion: "unreviewed" },
-      { ...identity, adapterVersion: "unreviewed" },
-      { ...identity, adapterSources: undefined },
-      { ...identity, adapterSources: identity.adapterSources.slice(1) },
-      {
-        ...identity,
-        adapterSources: identity.adapterSources.map((source) => ({ ...source, blobOid: "0".repeat(40) })),
-      },
-      { ...identity, loadedBinary: { ...identity.loadedBinary, sha256: "0".repeat(64) } },
-      ...(["sha256", "sourceCommit", "buildHash", "lockSha256"] as const).map((key) => ({
-        ...identity,
-        provenance: { ...identity.provenance, [key]: "unreviewed" },
-      })),
-    ]
-    for (const runtimeIdentity of [
-      { ...identity, termlessRevision: "0".repeat(40) },
-      { ...identity, loadedBinary: { ...identity.loadedBinary, path: "relocated/binary" } },
-    ]) {
-      expect(callback({ ...source, runtimeIdentity })).toEqual(result)
-    }
-    for (const runtimeIdentity of foreignIdentities) {
-      const foreign = callback({ ...source, runtimeIdentity })
-      expect(foreign.criterionBranch).not.toBe("source-negative-review")
-      expect(foreign.assertions).toBeUndefined()
-    }
-    const unknown = callback({ ...source, runtimeIdentity: undefined })
-    expect(unknown.criterionBranch).not.toBe("source-negative-review")
-    expect(unknown.assertions).toBeUndefined()
-    const broken = callback({ ...source, getCell: () => context({}).getCell(0, 0) })
-    expect(broken.criterionBranch).toBeUndefined()
-    expect(broken.assertions).toBeUndefined()
+    "extensions.osc9-progress",
+    "extensions.osc22-pointer",
+    "extensions.osc176-app-id",
+    "extensions.osc440-audio",
+    "extensions.osc555-flash",
+    "extensions.osc666-termprop",
+    "extensions.osc710-font-normal",
+    "extensions.osc777-notify",
+    "extensions.osc3008-context",
+    "extensions.osc117-reset-highlight-bg",
+    "extensions.osc119-reset-highlight-fg",
+  ])("%s records TEST TODO coverage, never a source review, on Alacritty", (id) => {
+    const result = probe(id).lib!(
+      context({ runtimeIdentity: identity, getCell: () => ({ ...context({}).getCell(0, 0), char: "X" }) }),
+    )
+    // A coverage record, or (for a consumed semantic marker) a criterion TEST TODO: either way nothing is graded.
+    if (result.notTested === undefined) {
+      expect(result.tests).toEqual([expect.objectContaining({ id: "criterion", status: "test-todo" })])
+    } else expect(result.notTested).toMatchObject({ reason: "no-semantic-observable" })
+    expect(result.criterionBranch).toBeUndefined()
+    expect(result.observation).toBeUndefined()
+    expect(result.assertions).toBeUndefined()
   })
 
   test.each([
@@ -2909,45 +1830,16 @@ describe("Alacritty audited OSC source review", () => {
       expect(result.assertions).toBeUndefined()
     },
   )
-
-  test("consolidation preserves the full vterm OSC9 reason", () => {
-    const result = probe("extensions.osc9-progress").lib!(
-      context({
-        runtimeIdentity: {
-          kind: "js",
-          runtimeFormat: "js",
-          engineVersion: "0.10.1",
-          adapterSources: [
-            { path: "packages/vterm/src/index.ts", blobOid: "cb5719799dcdd5ae24e6fcf0dcad9965035ce54c" },
-            { path: "packages/vterm/src/backend.ts", blobOid: "5d27c551161fe41af00ac587bd9484d6becbbc7a" },
-          ],
-          adapterVersion: "0.10.2",
-          termlessRevision: "a871f0e580e1b02fb5dbb7ed854f6de623e7858e",
-          resolvedPath: "vendor/vterm/packages/vterm/src/index.ts",
-          integrity: {
-            kind: "source",
-            repository: "git@github.com:beorn/vterm.git",
-            revision: "67dd3960746766ed47e2bb4b2ced6503a78549cc",
-            treeOid: "e9d67d4b4ba7cb4caf0d0824b3b272c10e4b229e",
-            cleanTree: true,
-          },
-        },
-        getCell: () => ({ ...context({}).getCell(0, 0), char: "X" }),
-      }),
-    )
-    expect(result.tests?.[0]?.reason).toBe(
-      "vterm 67dd3960746766ed47e2bb4b2ced6503a78549cc packages/vterm/src/screen.ts:3608-4067 handleOSC switch; screen.ts:3933-3935 notification sink stores every OSC 9 value, with no progress subcode or state interpretation; independent source review required",
-    )
-  })
 })
 
 /**
- * @failure Wezterm source-negative reviews escape their exact artifact, command and rendered-X qualification.
+ * @failure A formerly audited Wezterm OSC target is graded from a source citation instead of TEST TODO (#32246), or a
+ *   measured route loses its observation.
  * @level l0
  * @consumer Registered OSC library callbacks; native tuple, D-only and viewport precedence coverage.
  * @testonly none
  */
-describe("Wezterm audited OSC source review", () => {
+describe("Wezterm OSC targets without a readback oracle", () => {
   // Current rebuilt WezTerm tuple fixture; this does not attest a loaded native engine.
   const identity = {
     kind: "native",
@@ -2974,88 +1866,29 @@ describe("Wezterm audited OSC source review", () => {
     },
   } as const satisfies NonNullable<LibProbeSource["runtimeIdentity"]>
 
-  // @failure Exact native source reviews are lost or attached to foreign artifacts/unrendered commands.
-  // @level l0 @consumer Registered OSC library callbacks; no prior fixture covers this source tuple or D-only selection.
+  // #32246 (operator 2026-11-03, @cto 9fad23d7): this artifact's former source review no longer decides anything. With a
+  // rendered X control and a silent command the callback records TEST TODO coverage, never a source branch or assertion.
   test.each([
-    ["extensions.osc22-pointer", "\x1b]22;pointer\x07"],
-    ["extensions.osc176-app-id", "\x1b]176;terminfo-test\x07"],
-    ["extensions.osc440-audio", "\x1b]440;bell.wav\x07"],
-    ["extensions.osc555-flash", "\x1b]555\x07"],
-    ["extensions.osc666-termprop", "\x1b]666;test-prop=value\x07"],
-    ["extensions.osc710-font-normal", "\x1b]710;monospace\x07"],
-    ["extensions.osc3008-context", "\x1b]3008;type=test\x07"],
-    ["extensions.osc133-d", "\x1b]133;D;0\x07"],
-    ...OSC_SEMANTIC_MARK_CASES.filter(([id]) => id.startsWith("extensions.osc633-")),
-    ["extensions.osc-633-vscode", "\x1b]633;A\x07"],
-    ["extensions.osc720-scroll-up", "\x1b]720\x07"],
-  ] as const)("%s retains a pending source review only for its qualified artifact and X", (id, sequence) => {
-    const writes: string[] = []
-    const source = context({
-      runtimeIdentity: identity,
-      feed: (bytes) => {
-        writes.push(bytes)
-      },
-      getCell: () => ({ ...context({}).getCell(0, 0), char: "X" }),
-      capabilities: {
-        ...context({}).capabilities,
-        productViewport: { available: false, reason: "Fixture has no product viewport" },
-      },
-    })
-    const callback = probe(id).lib!
-    const result = callback(source)
-    expect(result.criterionBranch).toBe("source-negative-review")
-    expect(result.tests).toMatchObject([{ id: "review", status: "test-todo" }])
-    expect(result.observation).toMatchObject({ outcome: "inconclusive", assertionType: "buffer_state" })
-    expect(result.assertions).toMatchObject([
-      { kind: "negative", assertionType: "buffer_state", observed: result.response },
-    ])
-    expect(writes).toEqual(["\x1b[1;1H\x1b[2K" + sequence + "X"])
-    expect(JSON.parse(result.response!)).toMatchObject({
-      sentinel: { char: "X" },
-      engineState: null,
-    })
-    expect(JSON.parse(result.response!)).not.toHaveProperty("runtimeIdentity")
-    const reason = result.tests?.[0]?.reason ?? ""
-    if (id === "extensions.osc133-d") {
-      expect(reason).toBe(
-        "tattoy-wezterm-escape-parser 0.1.0-1 src/osc.rs:457-505 osc_entries (SHA256 fd26b6d6254c46ef880fbcc03ba418d67e9049c875e71cca6f18f4df76a0924f), parse errors become Unspecified at :155-167; tattoy-wezterm-term 0.1.0-fork.5 src/terminalstate/performer.rs:772-781 logs Unspecified; Termless 83b22ab3f99ff3c2f3e43bcfce346c1374f540e1 packages/wezterm/native/src/lib.rs:237-245 advances the same pinned Terminal; absolute-row reader changes leave parsing, config and reply delivery unchanged; parsed by osc.rs:793-806 into CommandStatus, dropped by the empty performer.rs:900-902 arm; independent source review required",
-      )
-    } else if (id === "extensions.osc720-scroll-up") {
-      expect(reason).toBe(
-        "tattoy-wezterm-escape-parser 0.1.0-1 src/osc.rs:457-505 osc_entries (SHA256 fd26b6d6254c46ef880fbcc03ba418d67e9049c875e71cca6f18f4df76a0924f), parse errors become Unspecified at :155-167; tattoy-wezterm-term 0.1.0-fork.5 src/terminalstate/performer.rs:772-781 logs Unspecified; Termless 83b22ab3f99ff3c2f3e43bcfce346c1374f540e1 packages/wezterm/native/src/lib.rs:237-245 advances the same pinned Terminal; absolute-row reader changes leave parsing, config and reply delivery unchanged; no case 720; wezterm-term src/screen.rs:15-45,335,493,522-527 stores screen/history, not a product viewport; Termless packages/wezterm/native/src/lib.rs:442-455 returns viewport_offset 0 and scroll_viewport is a no-op; independent source review required",
-      )
-    } else {
-      expect(reason).toContain(`no case ${sequence.slice(2).split(/[;\x07]/)[0]}`)
-    }
-    const foreignIdentities = [
-      { ...identity, engineVersion: "unreviewed" },
-      { ...identity, adapterVersion: "unreviewed" },
-      { ...identity, adapterSources: undefined },
-      { ...identity, adapterSources: identity.adapterSources.slice(1) },
-      {
-        ...identity,
-        adapterSources: identity.adapterSources.map((source) => ({ ...source, blobOid: "0".repeat(40) })),
-      },
-      { ...identity, loadedBinary: { ...identity.loadedBinary, sha256: "0".repeat(64) } },
-      ...(["sha256", "sourceCommit", "buildHash", "lockSha256"] as const).map((key) => ({
-        ...identity,
-        provenance: { ...identity.provenance, [key]: "unreviewed" },
-      })),
-    ]
-    for (const runtimeIdentity of [
-      { ...identity, termlessRevision: "0".repeat(40) },
-      { ...identity, loadedBinary: { ...identity.loadedBinary, path: "relocated/binary" } },
-    ]) {
-      expect(callback({ ...source, runtimeIdentity })).toEqual(result)
-    }
-    for (const runtimeIdentity of [...foreignIdentities, undefined]) {
-      const foreign = callback({ ...source, runtimeIdentity })
-      expect(foreign.criterionBranch).not.toBe("source-negative-review")
-      expect(foreign.assertions).toBeUndefined()
-    }
-    const missingX = callback({ ...source, getCell: () => context({}).getCell(0, 0) })
-    expect(missingX.criterionBranch).toBeUndefined()
-    expect(missingX.assertions).toBeUndefined()
+    "extensions.osc22-pointer",
+    "extensions.osc176-app-id",
+    "extensions.osc440-audio",
+    "extensions.osc555-flash",
+    "extensions.osc666-termprop",
+    "extensions.osc710-font-normal",
+    "extensions.osc3008-context",
+    "extensions.osc133-d",
+    ...OSC_SEMANTIC_MARK_CASES.filter(([id]) => id.startsWith("extensions.osc633-")).map(([id]) => id),
+  ])("%s records TEST TODO coverage, never a source review, on Wezterm", (id) => {
+    const result = probe(id).lib!(
+      context({ runtimeIdentity: identity, getCell: () => ({ ...context({}).getCell(0, 0), char: "X" }) }),
+    )
+    // A coverage record, or (for a consumed semantic marker) a criterion TEST TODO: either way nothing is graded.
+    if (result.notTested === undefined) {
+      expect(result.tests).toEqual([expect.objectContaining({ id: "criterion", status: "test-todo" })])
+    } else expect(result.notTested).toMatchObject({ reason: "no-semantic-observable" })
+    expect(result.criterionBranch).toBeUndefined()
+    expect(result.observation).toBeUndefined()
+    expect(result.assertions).toBeUndefined()
   })
 
   test("handled 133 members, progress, notifications and OSC1/7 keep their existing routes", () => {
@@ -3349,7 +2182,7 @@ describe("Kitty protocol detection", () => {
   // AC4: missing DECRQM readback is a prerequisite gap; target silence on a working path remains failure.
   // Existing Ps fixtures cover target replies, but never query the prerequisite after qualified silence.
   test.each(["vt100", "vt220"] as const)(
-    "OSC 5522 retains exact %s DECRQM source rejection without overriding replies",
+    "OSC 5522 grades no %s DECRQM source rejection and keeps measured replies",
     (engine) => {
       const runtimeIdentity = {
         kind: "js" as const,
@@ -3394,21 +2227,11 @@ describe("Kitty protocol detection", () => {
       }
       const { result, queries } = run(runtimeIdentity)
       expect(queries).toHaveLength(15)
-      expect(result.criterionBranch).toBe(SOURCE_NEGATIVE_REVIEW)
-      expect(result.tests).toEqual([{ id: "review", status: "test-todo", reason: expect.stringContaining("DECRQM") }])
-      expect(result.observation).toMatchObject({ outcome: "inconclusive", assertionType: "query_reply" })
-      expect(result.assertions).toEqual([
-        { assertionType: "query_reply", kind: "negative", expected: expect.any(String), observed: result.response },
-      ])
-      expect(JSON.parse(result.response!)).toMatchObject({
-        detection: da1,
-        rejection: "parser",
-        sourceCitation: expect.stringContaining(`packages/${engine}/src/screen.ts`),
-        decrpmSiblings: expect.arrayContaining([
-          { mode: 7, raw: da1 },
-          { mode: 2031, raw: da1 },
-        ]),
-      })
+      // #32246: no DECRQM source rejection decides the cell; the formerly audited identity reads as any other.
+      expect(result.criterionBranch).toBeUndefined()
+      expect(result.tests?.[0]).toMatchObject({ id: "criterion", status: "test-todo" })
+      expect(result.observation).toBeUndefined()
+      expect(result.assertions).toBeUndefined()
       for (const identity of [
         undefined,
         { ...runtimeIdentity, termlessRevision: "0".repeat(40) },
@@ -3420,10 +2243,7 @@ describe("Kitty protocol detection", () => {
           adapterSources: runtimeIdentity.adapterSources.map((source) => ({ ...source, blobOid: "0".repeat(40) })),
         },
       ]) {
-        const unchanged = run(identity).result
-        expect(unchanged.criterionBranch).not.toBe(SOURCE_NEGATIVE_REVIEW)
-        expect(unchanged.tests?.[0]).toMatchObject({ id: "criterion", status: "test-todo" })
-        expect(unchanged.assertions).toBeUndefined()
+        expect(run(identity).result).toEqual(result)
       }
       for (const raw of [
         "\x1b[?7;1$y" + da1,
@@ -4555,9 +3375,10 @@ describe("extensions without a complete behavior oracle", () => {
         )
         expect(result.pass, id).toBe(false)
         expect(result.observation, id).toBeUndefined()
+        // A former source-review site (#32246): no same-path control reads the icon name in this run.
         expect(result.notTested, id).toEqual({
           reason: "no-semantic-observable",
-          noObservable: "icon-name state",
+          noObservable: NO_SAME_PATH_CONTROL,
         })
         expect(JSON.parse(result.response ?? "null"), id).toEqual({ before: "original", after })
         expect(result.assertions ?? [], id).toEqual([])
@@ -5466,8 +4287,8 @@ describe("partial probe automation candidates", () => {
     }
   })
 
-  // #32026: explicit callbacks catch all 26 approved marks, including the distinct OSC133;D subcode.
-  // Existing data-derived reply-audit cases never exercise these source-negative buffer-state arms.
+  // #32026: explicit callbacks catch all 26 marks, including the distinct OSC133;D subcode. Since #32246 none of them
+  // may take a source-negative buffer-state arm at the formerly audited vterm identities.
   test.each([
     [
       "vt100",
@@ -5482,7 +4303,7 @@ describe("partial probe automation candidates", () => {
       "7369e3710e36aa649372fd09011ecfdd6ba47c73",
     ],
   ])(
-    "%s semantic source audits require matching identity and rendered X",
+    "%s semantic marks grade nothing from source at the formerly audited identity",
     (engine, treeOid, indexBlob, backendBlob) => {
       const runtimeIdentity = {
         kind: "js",
@@ -5522,18 +4343,16 @@ describe("partial probe automation candidates", () => {
             }),
           )
         const result = run(runtimeIdentity)
-        expect(feeds, id).toEqual([`\x1b[1;1H\x1b[2K${sequence}X`])
-        expect(result.criterionBranch, id).toBe("source-negative-review")
-        // A null declaration makes the real collector refuse this typed result (#32026 branch capture).
-        expect(probe(id).libAssertionType, id).not.toBeNull()
-        expect(result.assertions, id).toMatchObject([{ kind: "negative", assertionType: "buffer_state" }])
-        expect(run(runtimeIdentity, "?").assertions, id).toBeUndefined()
+        if ((OSC_SEMANTIC_MARK_IDS as readonly string[]).includes(id)) expect(feeds.join(""), id).toContain(sequence)
+        // #32246: no semantic source audit decides the mark; the formerly audited identity reads as any other.
+        expect(result.criterionBranch, id).not.toBe("source-negative-review")
+        expect(result.observation, id).toBeUndefined()
+        expect(result.assertions, id).toBeUndefined()
         expect(
-          run({ ...runtimeIdentity, integrity: { ...runtimeIdentity.integrity, treeOid: "0".repeat(40) } })
-            .criterionBranch,
+          run({ ...runtimeIdentity, integrity: { ...runtimeIdentity.integrity, treeOid: "0".repeat(40) } }),
           id,
-        ).not.toBe("source-negative-review")
-        expect(run({ ...runtimeIdentity, adapterSources: [] }).criterionBranch, id).not.toBe("source-negative-review")
+        ).toEqual(result)
+        expect(run({ ...runtimeIdentity, adapterSources: [] }), id).toEqual(result)
       }
     },
   )

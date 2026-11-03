@@ -112,7 +112,7 @@ function deviceSources(model: HeadlessModel = createSemanticSurface()) {
 const DEVICE_SEMANTIC_SURFACE_CONTROLS: readonly (readonly [
   id: string,
   mutation: string,
-  negativeOutcome: "unsupported" | "inconclusive",
+  negativeOutcome: "unsupported" | "inconclusive" | "not-tested",
 ])[] = [
   ["device.primary-da", "primary-da-noop", "inconclusive"],
   ["device.status-report", "status-report-noop", "unsupported"],
@@ -128,8 +128,9 @@ const DEVICE_SEMANTIC_SURFACE_CONTROLS: readonly (readonly [
   ["device.xtwinops-18", "xtwinops-18-noop", "unsupported"],
   ["device.xtwinops-20", "xtwinops-20-noop", "unsupported"],
   ["device.xtwinops-21", "xtwinops-21-noop", "unsupported"],
-  ["device.xtwinops-22", "xtwinops-22-noop", "inconclusive"],
-  ["device.xtwinops-23", "xtwinops-23-noop", "inconclusive"],
+  // A title that never restores leaves push and pop undecided in one observation: TEST TODO, never source-graded (#32246).
+  ["device.xtwinops-22", "xtwinops-22-noop", "not-tested"],
+  ["device.xtwinops-23", "xtwinops-23-noop", "not-tested"],
   ["device.xtreportcolors", "xtreportcolors-noop", "unsupported"],
   ["device.xtgetxres", "xtgetxres-noop", "unsupported"],
 ]
@@ -214,14 +215,21 @@ test.each(DEVICE_SEMANTIC_SURFACE_CONTROLS)(
 
     const negativeResult = probe.lib(libProbeSource(createSemanticSurface({ mutations: [mutation] })))
     expect(negativeResult.pass).toBe(false)
-    expect(negativeResult.observation?.outcome).toBe(negativeOutcome)
+    if (negativeOutcome === "not-tested") {
+      expect(negativeResult.observation).toBeUndefined()
+      expect(negativeResult.notTested).toEqual({
+        reason: "no-semantic-observable",
+        noObservable: "observation not decided: no same-path control in this run",
+      })
+      expect(negativeResult.criterionBranch).toBeUndefined()
+    } else expect(negativeResult.observation?.outcome).toBe(negativeOutcome)
     if (negativeOutcome === "unsupported") {
       expect(negativeResult.assertions ?? []).toContainEqual(expect.objectContaining({ kind: "negative" }))
     }
     const negativeGraded = await regradeRow(probe, row, {
       headless: libProbeSource(createSemanticSurface({ mutations: [mutation] })),
     })
-    expect(negativeGraded.after).toBe(negativeOutcome)
+    expect(negativeGraded.after).toBe(negativeOutcome === "not-tested" ? undefined : negativeOutcome)
     expect(negativeGraded.satisfies).toBe(negativeOutcome === "unsupported")
   },
 )

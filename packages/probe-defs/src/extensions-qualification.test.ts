@@ -6,10 +6,10 @@
  */
 import { expect, test } from "vitest"
 import { inputProbes } from "./input.ts"
-import { auditedOscEngine, extensionsProbes } from "./extensions.ts"
+import { extensionsProbes } from "./extensions.ts"
 import { deviceProbes, TERM_FEATURES_API_CITATIONS } from "./device.ts"
-import { inertLibProbeSource, replayTermProbeSource } from "./testing/group-harness.ts"
-import { ADAPTER_SOURCE_AUDITS, SOURCE_TREE_AUDITS } from "./helpers.ts"
+import { replayTermProbeSource } from "./testing/group-harness.ts"
+import { ADAPTER_SOURCE_AUDITS, NO_SAME_PATH_CONTROL } from "./helpers.ts"
 import type { HeadlessRuntimeIdentity, TermProbeSource, LibProbeSource } from "./types.ts"
 
 // Callback intent is distinct from producer formatting: malformed bytes must never opt into
@@ -68,9 +68,6 @@ const xtermOscIdentity = {
   },
 } as const
 
-const xtermOscSourceCitation =
-  "@xterm/headless 6.0.0 bundle SHA256 17a90b650cf6b77cce2b98c4063884d43545e4ce177a54b76ccfc906f1aacaed, map SHA256 780e782badc8189491a469c9277b783e01911882ea84417b31e71294ea927d98: InputHandler.ts:292-338 OSC registrations (17/19/117/119 are comments only) and :201-203 logging-only fallback, OscParser.ts:145-146 fallback dispatch, CoreTerminal.ts:236-237 embedder hook; termless 9f0d4a5cbbeb2b7d9263ef7e07699df16a1cafc7 packages/xtermjs/src/backend.ts (blob 72dc827b2026af7736de722f7ff986a04f3fe883) registers no OSC handler"
-
 const auditedArtifacts: readonly HeadlessRuntimeIdentity[] = [
   {
     kind: "native",
@@ -122,553 +119,98 @@ const auditedArtifacts: readonly HeadlessRuntimeIdentity[] = [
   },
 ]
 
-// Source-audit callback fixtures; libvterm follows the current rebuilt artifact, not a retained capture.
-// The existing two-artifact checks cover OSC8/alacritty440, so they miss this absent-row/code batch.
-const absentOscBatch = [
-  { engine: "xtermjs", identity: xtermOscIdentity, codes: [7] },
-  {
-    engine: "libvterm",
-    identity: {
-      kind: "js",
-      runtimeFormat: "wasm",
-      engineVersion: "0.3.3",
-      adapterVersion: "0.10.2",
-      termlessRevision: "2f73fc28027b7d483e504e08edc64d1837935816",
-      resolvedPath: "/fixture/libvterm/index.ts",
-      integrity: {
-        kind: "source",
-        repository: "git@github.com:beorn/termless.git",
-        revision: "2f73fc28027b7d483e504e08edc64d1837935816",
-        treeOid: "000404fd8b8f8f0b1b968bf7398f8afc90958618",
-        cleanTree: true,
-      },
-      loadedBinary: {
-        path: "/fixture/libvterm.wasm",
-        sha256: "712298aff45c7c53a22dc028b13cb58dae1e984199b520bbbc0475ae64d83159",
-      },
-      adapterSources: [
-        { path: "packages/libvterm/src/index.ts", blobOid: "2b4708b1081e701b99893ca055ded781dc46cf25" },
-        { path: "packages/libvterm/src/backend.ts", blobOid: "f0431b2b3b1824d3028e7a039d55278d2cddc0e8" },
-        { path: "packages/libvterm/src/wasm-bindings.ts", blobOid: "55ddc684464e525e63cd523d2d6a638c4c6dbcd9" },
-        { path: "packages/libvterm/wasm/libvterm.js", blobOid: "d28bc97333d33129c7c9764a331a3d47f088f7b3" },
-      ],
-    },
-    codes: [9, 22, 176, 3008, 440, 555, 666, 710, 777, 1337],
-  },
-  {
-    engine: "ghostty",
-    identity: {
-      kind: "js",
-      runtimeFormat: "wasm",
-      engineVersion: "0.4.0",
-      adapterVersion: "0.10.2",
-      termlessRevision: "2f73fc28027b7d483e504e08edc64d1837935816",
-      resolvedPath: "/fixture/ghostty/index.js",
-      integrity: {
-        kind: "source",
-        repository: "git@github.com:beorn/termless.git",
-        revision: "2f73fc28027b7d483e504e08edc64d1837935816",
-        treeOid: "ad3571a518e9e672e102eb83becc2caa03b9ffc3",
-        cleanTree: true,
-      },
-      loadedBinary: {
-        path: "/fixture/ghostty.wasm",
-        sha256: "42e84af1b38be94571974a23fa4667c4735ee7a272dcff39afd5cba40dcf48de",
-      },
-      adapterSources: [
-        { path: "packages/ghostty/src/index.ts", blobOid: "f4b9d9f3e13cc515b23abc739cab21bf971e8585" },
-        { path: "packages/ghostty/src/backend.ts", blobOid: "19d45e37b36c0d6fc8d69ae6215ece9db173351c" },
-      ],
-    },
-    codes: [176, 3008, 440, 555, 666, 710],
-  },
-  {
-    engine: "ghostty-native",
-    identity: {
-      kind: "native",
-      engineVersion: "1.3.1",
-      adapterVersion: "0.10.2",
-      termlessRevision: "25089207e11420cf7a588987c1dc2683a45e8372",
-      loadedBinary: {
-        path: "/fixture/native",
-        sha256: "53f9a867cce594b4d50fb9508db9ce5d2d79fb4244a418548b7cb31fa50780d1",
-      },
-      provenance: {
-        sha256: "53f9a867cce594b4d50fb9508db9ce5d2d79fb4244a418548b7cb31fa50780d1",
-        sourceCommit: "332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28",
-        buildHash: "2d5e53cf4f0846e47cda8a45c513f44da5c699657edffe93886e6eba99f36bfd",
-        toolchain: "zig 0.15.2",
-        lockSha256: "3ec775507556db01d08055836b26183f629a9cbb0b5802a1566661e95988d74a",
-      },
-      adapterSources: [
-        {
-          path: "packages/ghostty-native/src/index.ts",
-          blobOid: "35c9e35a5d60625ce1135b65ff38ae9278495a18",
-        },
-        {
-          path: "packages/ghostty-native/src/backend.ts",
-          blobOid: "f403717f7c063d799c5de994b3ccc095edbcacd1",
-        },
-      ],
-    },
-    codes: [176],
-  },
-  {
-    engine: "kittyCa46f3c2",
-    identity: {
-      kind: "native",
-      engineVersion: "0.49.2",
-      adapterVersion: "0.10.2",
-      termlessRevision: "25089207e11420cf7a588987c1dc2683a45e8372",
-      loadedBinary: {
-        path: "/fixture/native",
-        sha256: "bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886",
-      },
-      provenance: {
-        sha256: "bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886",
-        sourceCommit: "b2cb871254fbdac19a085188813c8dfb258b95cd",
-        buildHash: "88e840e1b8e7f09edf3464ee33df8753fd5107838de15bccb6ea59e0dd6cc9c3",
-        toolchain:
-          "Nix /nix/store/fbpk67n6fd9kb95vl7ksrc7pkh3gx3qx-kitty-official-binary-0.49.2; narHash sha256-THskGDdyHQGsNNMEPUs7CxW2YWTSxv4REQ6k4gvf+b0=; source archive /nix/store/kw9sbgr6haym99r3ppavnyzl43vb954x-kitty-0.49.2-x86_64.txz sha256 d573618b911e9c461bd421b96c13c74c7f1cb2f1ac9c327818d4ff84366cf5c6; kitty +runpy",
-        lockSha256: "282d1098337a5705a7c1d13188a74d2fe34565766619e8d6b21a48d5b67451be",
-      },
-      adapterSources: [
-        {
-          path: "packages/kitty/src/index.ts",
-          blobOid: "3f207f911646613cdc3d8b04f155f0686a96a077",
-        },
-        {
-          path: "packages/kitty/src/backend.ts",
-          blobOid: "1b7367a9737d1292618ea34a1c451bf3273c3b35",
-        },
-        {
-          path: "packages/kitty/build/bridge.py",
-          blobOid: "ca46f3c261ccbdcfd9c3ada9949e2a0238cbcaac",
-        },
-        {
-          path: "packages/kitty/build/layout.c",
-          blobOid: "49c0beef4424190e89d2884eac5efe4da50e3630",
-        },
-        {
-          path: "packages/kitty/build/native-mode-layout.json",
-          blobOid: "6bd0f2d5b6936f8f6298e4cb9ae4b228172a9502",
-        },
-        {
-          path: "packages/kitty/build/native-mode-layout.receipt.json",
-          blobOid: "02899a0c97f70eeba38f5030de1ba7ef4665b6f6",
-        },
-      ],
-    },
-    codes: [176],
-  },
-  {
-    engine: "wezterm",
-    identity: {
-      kind: "native",
-      engineVersion: "0.1.0-fork.5",
-      adapterVersion: "0.10.2",
-      termlessRevision: "25089207e11420cf7a588987c1dc2683a45e8372",
-      loadedBinary: {
-        path: "/fixture/native",
-        sha256: "b4155bfdef040ae8b3b723a4366fa8ec7f278463dbef577ec4730ad152b8bf07",
-      },
-      provenance: {
-        sha256: "b4155bfdef040ae8b3b723a4366fa8ec7f278463dbef577ec4730ad152b8bf07",
-        sourceCommit: "80dd254111ab82279125555f9ca1e68b112cd7e3",
-        buildHash: "dc7cc8afd1cdedfef0f972a00aca10fad92fafc4c0e9f019a2f67473e40a054b",
-        toolchain:
-          "rustc 1.94.0 (4a4ef493e 2026-03-02) (built from a source tarball); cargo 1.94.0 (85eff7c80 2026-01-15)",
-        lockSha256: "8eaeab733cced8d47feb223d773d5ae158b2e6af8c994f993d4071d9ba3231d4",
-      },
-      adapterSources: [
-        {
-          path: "packages/wezterm/src/index.ts",
-          blobOid: "512606c5270ffd0cff55c1b70f5b3eda18a92df0",
-        },
-        {
-          path: "packages/wezterm/src/backend.ts",
-          blobOid: "29b9bdea778abe558497217e811495c3c279451f",
-        },
-        {
-          path: "packages/wezterm/native/src/lib.rs",
-          blobOid: "47dc0392036f34416fb6a38e9a834a7fccc8cfe3",
-        },
-        {
-          path: "src/load-native.ts",
-          blobOid: "34e142550085450ab02138184626716ad0d6b546",
-        },
-      ],
-    },
-    codes: [176],
-  },
-  ...[
-    {
-      engine: "vt100Rust",
-      engineVersion: "0.16.2",
-      sha256: "84a5b6a3a40a7c16c6bae8b64534b730403df911498bb34bded68c3a17e2d408",
-      sourceCommit: "286fddf6632e43ccd62f9050be41ec7b2908e43e",
-      buildHash: "30b232d295488042b0d6164e881e319dea8d7fae06ac766b3b568fd4832bf074",
-      lockSha256: "4cf037e4efa648ca41d08b30ef5c4ce7ada29ad61fcad45a7d1aa97bf55391c6",
-      adapterSources: [
-        { path: "packages/vt100-rust/src/index.ts", blobOid: "3ddb74f3ae1f79bb356952103853232f69211268" },
-        { path: "packages/vt100-rust/src/backend.ts", blobOid: "9b3477c0fedf8586430781e8f4d17019569af98b" },
-      ],
-      codes: [9, 22, 176, 3008, 440, 555, 666, 710, 777, 1337],
-    },
-    {
-      engine: "kitty",
-      engineVersion: "0.49.2",
-      sha256: "bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886",
-      sourceCommit: "b2cb871254fbdac19a085188813c8dfb258b95cd",
-      buildHash: "88e840e1b8e7f09edf3464ee33df8753fd5107838de15bccb6ea59e0dd6cc9c3",
-      lockSha256: "282d1098337a5705a7c1d13188a74d2fe34565766619e8d6b21a48d5b67451be",
-      adapterSources: [
-        { path: "packages/kitty/src/index.ts", blobOid: "3f207f911646613cdc3d8b04f155f0686a96a077" },
-        { path: "packages/kitty/src/backend.ts", blobOid: "1b7367a9737d1292618ea34a1c451bf3273c3b35" },
-        { path: "packages/kitty/build/bridge.py", blobOid: "f9585e3ac10209eedd1bc8550bcb1a4a1b286f27" },
-        { path: "packages/kitty/build/layout.c", blobOid: "49c0beef4424190e89d2884eac5efe4da50e3630" },
-        { path: "packages/kitty/build/native-mode-layout.json", blobOid: "6bd0f2d5b6936f8f6298e4cb9ae4b228172a9502" },
-        {
-          path: "packages/kitty/build/native-mode-layout.receipt.json",
-          blobOid: "02899a0c97f70eeba38f5030de1ba7ef4665b6f6",
-        },
-      ],
-      codes: [176, 3008, 440, 555, 666, 710],
-    },
-  ].map(({ engine, engineVersion, sha256, sourceCommit, buildHash, lockSha256, adapterSources, codes }) => ({
-    engine,
-    codes,
-    identity: {
-      kind: "native" as const,
-      engineVersion,
-      adapterVersion: "0.10.2",
-      termlessRevision: "f736cce493439cf9d651297c2a920cb61fa05fb5",
-      loadedBinary: { path: "/fixture/native", sha256 },
-      provenance: { sha256, sourceCommit, buildHash, lockSha256, toolchain: "retained build provenance" },
-      adapterSources,
-    },
-  })),
-] satisfies readonly { engine: string; identity: HeadlessRuntimeIdentity; codes: readonly number[] }[]
+// #32246 (@cto 9fad23d7): a former source-negative OSC site feeds its stimulus and an X sentinel and keeps both, but
+// no control in this run shows the same path can report the effect, so the cell is TEST TODO for every identity. No
+// audit table, source citation or negative assertion may turn the rendered sentinel into a verdict.
+const formerSourceNegativeOsc = [
+  ["extensions.osc9-progress", "\x1b]9;4;1;50\x07"],
+  ["extensions.osc22-pointer", "\x1b]22;pointer\x07"],
+  ["extensions.osc176-app-id", "\x1b]176;terminfo-test\x07"],
+  ["extensions.osc440-audio", "\x1b]440;bell.wav\x07"],
+  ["extensions.osc555-flash", "\x1b]555\x07"],
+  ["extensions.osc666-termprop", "\x1b]666;test-prop=value\x07"],
+  ["extensions.osc710-font-normal", "\x1b]710;monospace\x07"],
+  ["extensions.osc777-notify", "\x1b]777;notify;test;body\x07"],
+  ["extensions.osc3008-context", "\x1b]3008;type=test\x07"],
+] as const
 
-// A future version cohort must not turn progress-only evidence into a notification negative.
-// Existing vterm coverage uses the unsuffixed key, so it missed this data-versus-name boundary.
-test("progress-only notification exclusion follows the audit fact for a suffixed cohort", () => {
-  const fixture = absentOscBatch.find((entry) => entry.engine === "libvterm")!
-  const matched = auditedOscEngine(fixture.identity, 9)!
-  expect(matched[0]).not.toBe("vterm")
-  const audit = matched[1]
-  const original = Object.getOwnPropertyDescriptor(audit, "osc9ProgressOnly")
-  const inert = inertLibProbeSource()
-  const writes: string[] = []
-  const source: LibProbeSource = {
-    ...inert,
-    runtimeIdentity: fixture.identity,
-    feed: (bytes) => {
-      writes.push(bytes)
-    },
-    getCell: () => ({ ...inert.getCell(0, 0), char: "X" }),
-  }
-  Object.defineProperty(audit, "osc9ProgressOnly", { value: true, configurable: true })
-  try {
-    const result = callback("extensions.notifications").lib!(source)
-    expect(result.criterionBranch).toBe("headless-observable-review")
-    expect(result.observation).toBeUndefined()
-    expect(result.assertions).toBeUndefined()
-    expect(writes).toEqual([])
-  } finally {
-    if (original) Object.defineProperty(audit, "osc9ProgressOnly", original)
-    else expect(Reflect.deleteProperty(audit, "osc9ProgressOnly")).toBe(true)
-  }
-  const ordinary = callback("extensions.notifications").lib!(source)
-  expect(ordinary.criterionBranch).toBe("source-negative-review")
-  expect(ordinary.observation?.outcome).not.toBe("supported")
-  expect(writes.join("")).toContain("\x1b]9;terminfo-notification-A\x07X")
-})
-
-test.each(absentOscBatch)(
-  "$engine source-negative OSC batch requires the exact engine, adapter and X control",
-  ({ identity, codes }) => {
-    const features: Record<number, string> = {
-      7: "osc7-cwd",
-      9: "osc9-progress",
-      22: "osc22-pointer",
-      176: "osc176-app-id",
-      3008: "osc3008-context",
-      440: "osc440-audio",
-      555: "osc555-flash",
-      666: "osc666-termprop",
-      710: "osc710-font-normal",
-      777: "osc777-notify",
-      1337: "iterm2-images",
-    }
-    for (const code of codes) {
-      const definition = callback(`extensions.${features[code]}`)
-      const run = (runtimeIdentity: HeadlessRuntimeIdentity, char = "X") =>
-        definition.lib!({
+test.each(formerSourceNegativeOsc)(
+  "%s records TEST TODO with its stimulus and sentinel for every identity",
+  (id, sequence) => {
+    const fed = `\x1b[1;1H\x1b[2K${sequence}X`
+    for (const runtimeIdentity of [undefined, xtermOscIdentity, ...auditedArtifacts]) {
+      for (const char of ["X", "?"]) {
+        const writes: string[] = []
+        const result = callback(id).lib!({
           runtimeIdentity,
           capabilities: { extensions: new Set() },
-          feed: () => undefined,
+          feed: (bytes: string) => void writes.push(bytes),
           getCell: () => ({ char }),
         } as unknown as LibProbeSource)
-      const result = run(identity)
-      // Keep every missing protocol row visible while retaining one identity-contract case per engine.
-      expect.soft(result.criterionBranch, String(code)).toBe("source-negative-review")
-      expect.soft(result.assertions, String(code)).toMatchObject([{ assertionType: "buffer_state", kind: "negative" }])
-      expect(run(identity, "?").assertions, String(code)).toBeUndefined()
-      expect(run({ ...identity, adapterSources: [] }).criterionBranch, String(code)).not.toBe("source-negative-review")
-      expect(run({ ...identity, engineVersion: "wrong" }).criterionBranch, String(code)).not.toBe(
-        "source-negative-review",
-      )
+        expect(writes).toEqual([fed])
+        expect(result).toEqual({
+          pass: false,
+          response: JSON.stringify({ fed, sentinel: { char } }),
+          note: NO_SAME_PATH_CONTROL,
+          notTested: { reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL },
+        })
+      }
     }
   },
 )
 
-// G3 (@cto 10:37 ghostty scope): the audit moved to the mouse-binding backend blob, so the pre-binding blob
-// must no longer reach any ghostty source-negative OSC review; the batch above proves the current blob does.
-test("ghostty OSC source review lapses on the pre-mouse-binding backend blob", () => {
-  const ghostty = absentOscBatch.find((entry) => entry.engine === "ghostty")!
-  const sources = ghostty.identity.adapterSources
-  if (!sources?.some((source) => source.path === "packages/ghostty/src/backend.ts")) {
-    throw new Error("ghostty fixture identity must declare packages/ghostty/src/backend.ts")
-  }
-  const old = {
-    ...ghostty.identity,
-    adapterSources: sources.map((source) =>
-      source.path === "packages/ghostty/src/backend.ts"
-        ? { ...source, blobOid: "7a917fe46b72d9870b898e71d440e7cb876b3fc1" }
-        : source,
-    ),
-  }
-  const features: Record<number, string> = {
-    176: "osc176-app-id",
-    3008: "osc3008-context",
-    440: "osc440-audio",
-    555: "osc555-flash",
-    666: "osc666-termprop",
-    710: "osc710-font-normal",
-  }
-  for (const code of ghostty.codes) {
-    const run = (runtimeIdentity: HeadlessRuntimeIdentity) =>
-      callback(`extensions.${features[code]}`).lib!({
-        runtimeIdentity,
-        capabilities: { extensions: new Set() },
-        feed: () => undefined,
-        getCell: () => ({ char: "X" }),
-      } as unknown as LibProbeSource)
-    expect(run(ghostty.identity).criterionBranch, String(code)).toBe("source-negative-review")
-    expect(run(old).criterionBranch, String(code)).not.toBe("source-negative-review")
-  }
-})
-
-// G3 (#31295): the vt100 audit moved to the mouse-state rebuild (artifact 84a5b6a3, backend blob 9b3477c0); the
-// pre-binding artifact and blob must no longer reach any vt100 source-negative OSC review. The batch above proves the
-// current identity does.
-test("vt100Rust OSC source review lapses on the pre-mouse-binding artifact and backend blob", () => {
-  const vt100 = absentOscBatch.find((entry) => entry.engine === "vt100Rust")!
-  const identity = vt100.identity
-  if (identity.kind !== "native" || !identity.adapterSources) {
-    throw new Error("vt100Rust fixture identity must be native and declare its adapter sources")
-  }
-  const oldSha = "dc3b24de6e91416f66b1953ce101991ef7e78602ce1b5d357f65832c9b96b326"
-  const oldBlob = {
-    ...identity,
-    adapterSources: identity.adapterSources.map((source) =>
-      source.path === "packages/vt100-rust/src/backend.ts"
-        ? { ...source, blobOid: "abbbfd01d9e6ac880e02b00d9acccdc9ec70bc63" }
-        : source,
-    ),
-  }
-  const oldBinary = {
-    ...identity,
-    loadedBinary: { ...identity.loadedBinary, sha256: oldSha },
-    provenance: { ...identity.provenance, sha256: oldSha },
-  }
-  const features: Record<number, string> = {
-    9: "osc9-progress",
-    22: "osc22-pointer",
-    176: "osc176-app-id",
-    3008: "osc3008-context",
-    440: "osc440-audio",
-    555: "osc555-flash",
-    666: "osc666-termprop",
-    710: "osc710-font-normal",
-    777: "osc777-notify",
-    1337: "iterm2-images",
-  }
-  for (const code of vt100.codes) {
-    const run = (runtimeIdentity: HeadlessRuntimeIdentity) =>
-      callback(`extensions.${features[code]}`).lib!({
-        runtimeIdentity,
-        capabilities: { extensions: new Set() },
-        feed: () => undefined,
-        getCell: () => ({ char: "X" }),
-      } as unknown as LibProbeSource)
-    expect(run(vt100.identity).criterionBranch, String(code)).toBe("source-negative-review")
-    expect(run(oldBlob).criterionBranch, String(code)).not.toBe("source-negative-review")
-    expect(run(oldBinary).criterionBranch, String(code)).not.toBe("source-negative-review")
-  }
-})
-
-// #32225: OSC 1337 inline images reach the source-negative review only on an engine whose audited source drops
-// OSC 1337. A declared-supporting engine without that audit keeps the observable review and never carries a
-// negative assertion, so a supporting engine can never be read as Unsupported from this route.
-test("iterm2-images keeps the observable review for a declared-supporting engine without an OSC 1337 audit", () => {
-  const vt100 = absentOscBatch.find((entry) => entry.engine === "vt100Rust")!
-  const fed: string[] = []
-  const supporting = callback("extensions.iterm2-images").lib!({
-    runtimeIdentity: { ...vt100.identity, engineVersion: "supporting-fake" },
-    capabilities: { extensions: new Set(["iterm2Images"]) },
-    feed: (data: string) => void fed.push(data),
-    getCell: () => ({ char: "X" }),
-  } as unknown as LibProbeSource)
-  expect(supporting.criterionBranch).toBe("headless-observable-review")
-  expect(supporting.assertions).toBeUndefined()
-  expect(fed).toEqual([])
-})
-
-// #32225: vt100-rust has no DCS handler, so its Sixel cell takes the source-negative review behind the X sentinel.
-// A fake engine that exposes Sixel storage keeps the storage review even on the audited identity, and storage alone
-// never reads as a negative or a pass (CTO a44f1c74); a lapsed identity keeps the observable review.
-const vtermSourceIdentity = (
-  engine: "vt100" | "vt220",
-  treeOid: string,
-  [index, backend]: readonly [string, string],
-): HeadlessRuntimeIdentity => ({
-  kind: "js",
-  runtimeFormat: "js",
-  engineVersion: "0.10.1",
-  adapterVersion: "0.10.2",
-  termlessRevision: "a871f0e580e1b02fb5dbb7ed854f6de623e7858e",
-  resolvedPath: `vendor/vterm/packages/${engine}/src/index.ts`,
-  adapterSources: [
-    { path: `packages/${engine}/src/index.ts`, blobOid: index },
-    { path: `packages/${engine}/src/backend.ts`, blobOid: backend },
-  ],
-  integrity: {
-    kind: "source",
-    repository: "git@github.com:beorn/vterm.git",
-    revision: "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
-    treeOid,
-    cleanTree: true,
-  },
-})
-// #32225 increment 4: engines whose audited source drops both DCS q Sixel and OSC 1337.
-const imageAbsentEngines = {
-  vt100: vtermSourceIdentity("vt100", "b941dae48b25ae8825c394750bda5245c9d93dfa", [
-    "99833d737402f9d1d8e3e257e3a255d8aa1facc3",
-    "cdb8be8c5ebbba68a5920cfa4df27c9deb31745a",
-  ]),
-  vt220: vtermSourceIdentity("vt220", "4205f8936ad1848d1029729f3ada888cd61759a8", [
-    "601dd26eb7e753a5396ebdf72f1ef8ee2cc4355f",
-    "7369e3710e36aa649372fd09011ecfdd6ba47c73",
-  ]),
-  alacritty: auditedArtifacts[0]!,
-  xtermjs: xtermOscIdentity as unknown as HeadlessRuntimeIdentity,
-} as const
-
-test.each(Object.entries(imageAbsentEngines))(
-  "iterm2-images takes the %s source-negative review behind the X sentinel",
-  (_engine, identity) => {
-    const run = (runtimeIdentity: HeadlessRuntimeIdentity, char = "X") => {
-      const fed: string[] = []
-      const result = callback("extensions.iterm2-images").lib!({
-        runtimeIdentity,
-        capabilities: { extensions: new Set() },
-        feed: (data: string) => void fed.push(data),
-        getCell: () => ({ char }),
-      } as unknown as LibProbeSource)
-      return { result, fed }
+// #32225/#32246: a feature with no state reader keeps the observable review whatever the engine identity, writes
+// nothing and never carries a negative assertion, so no engine can be read as Unsupported from this route.
+test.each(["extensions.notifications", "extensions.osc7-cwd", "extensions.iterm2-images"])(
+  "%s without a state reader keeps the observable review for every identity",
+  (id) => {
+    for (const runtimeIdentity of [undefined, xtermOscIdentity, ...auditedArtifacts]) {
+      for (const declared of [false, true]) {
+        const fed: string[] = []
+        const result = callback(id).lib!({
+          runtimeIdentity,
+          capabilities: { extensions: new Set(declared ? ["osc7", "osc9", "iterm2Images"] : []) },
+          feed: (data: string) => void fed.push(data),
+          getCell: () => ({ char: "X" }),
+        } as unknown as LibProbeSource)
+        expect(result.criterionBranch).toBe("headless-observable-review")
+        expect(result.tests).toMatchObject([{ id: "review", status: "test-todo" }])
+        expect(result.assertions).toBeUndefined()
+        expect(result.observation).toBeUndefined()
+        expect(fed).toEqual([])
+      }
     }
-    const inert = run(identity)
-    expect(inert.result.criterionBranch).toBe("source-negative-review")
-    expect(inert.result.assertions).toMatchObject([{ assertionType: "buffer_state", kind: "negative" }])
-    expect(inert.fed).toHaveLength(1)
-    expect(inert.fed[0]).toMatch(/^\x1b\[1;1H\x1b\[2K\x1b\]1337;File=inline=1;.*\x07X$/)
-    expect(run(identity, "?").result.assertions).toBeUndefined()
-    expect(run({ ...identity, engineVersion: "wrong" } as HeadlessRuntimeIdentity).result.criterionBranch).not.toBe(
-      "source-negative-review",
-    )
   },
 )
 
-test.each([
-  ["vt100Rust", "vte 0.15.0 src/lib.rs:779-789"],
-  ["libvterm", "src/state.c:1897-1911"],
-  ["ghostty", "src/terminal/dcs.zig:50-77"],
-  ["vt100", "packages/vt100/src/screen.ts:570-571"],
-  ["vt220", "packages/vt220/src/screen.ts:766-767"],
-  ["alacritty", "src/ansi.rs:1311-1326"],
-  ["xtermjs", "InputHandler.ts:381"],
-])("sixel takes the %s source-negative review only without Sixel storage", (engine, citation) => {
-  const vt100 = {
-    identity:
-      engine in imageAbsentEngines
-        ? imageAbsentEngines[engine as keyof typeof imageAbsentEngines]
-        : absentOscBatch.find((entry) => entry.engine === engine)!.identity,
-  }
+// #32225/#32246: without Sixel storage the cell keeps the observable review for every identity; storage alone never
+// reads as a negative or a pass (CTO a44f1c74).
+test("sixel keeps the observable review with or without Sixel storage and never a negative", () => {
   const sixel = callback("extensions.sixel").lib!
-  const run = (runtimeIdentity: HeadlessRuntimeIdentity, char = "X", extra: Partial<LibProbeSource> = {}) => {
+  for (const runtimeIdentity of [undefined, xtermOscIdentity, ...auditedArtifacts]) {
     const fed: string[] = []
-    const result = sixel({
+    const inert = sixel({
       runtimeIdentity,
       capabilities: { extensions: new Set(), sixel: false },
       feed: (data: string) => void fed.push(data),
-      getCell: () => ({ char }),
-      ...extra,
-    } as unknown as LibProbeSource)
-    return { result, fed }
-  }
-  const inert = run(vt100.identity)
-  expect(inert.result.criterionBranch).toBe("source-negative-review")
-  expect(inert.result.assertions).toMatchObject([{ assertionType: "buffer_state", kind: "negative" }])
-  expect(inert.result.tests?.[0]?.reason).toContain(citation)
-  expect(inert.fed).toEqual(["\x1b[1;1H\x1b[2K\x1bPq#1;2;100;0;0~\x1b\\X"])
-  expect(run(vt100.identity, "?").result.assertions).toBeUndefined()
-  expect(run({ ...vt100.identity, engineVersion: "wrong" }).result.criterionBranch).toBe("headless-observable-review")
-  const images: { data: string; row: number; col: number }[] = []
-  const supporting = run(vt100.identity, "X", {
-    capabilities: { extensions: new Set(), sixel: true },
-    feed: (data: string) => {
-      const match = /\x1bPq(.*)\x1b\\/.exec(data)
-      if (match) images.push({ data: match[1]!, row: 0, col: 0 })
-    },
-    getSixelImages: () => [...images],
-  } as unknown as Partial<LibProbeSource>)
-  expect(supporting.result.criterionBranch).toBe("headless-observable-review")
-  expect(supporting.result.assertions).toBeUndefined()
-})
-
-// #32087: kitty's provenance.sourceCommit is kitty's own upstream commit, so a Termless pin move
-// (termlessRevision) keeps the six kitty OSC reviews, while a different kitty binary does not.
-test("kitty OSC source review survives a Termless revision move and lapses on a different binary", () => {
-  const kitty = absentOscBatch.find((entry) => entry.engine === "kitty")!
-  const identity = kitty.identity
-  if (identity.kind !== "native") throw new Error("kitty fixture is not a native identity")
-  const features: Record<number, string> = {
-    176: "osc176-app-id",
-    3008: "osc3008-context",
-    440: "osc440-audio",
-    555: "osc555-flash",
-    666: "osc666-termprop",
-    710: "osc710-font-normal",
-  }
-  const run = (runtimeIdentity: HeadlessRuntimeIdentity, code: number) =>
-    callback(`extensions.${features[code]}`).lib!({
-      runtimeIdentity,
-      feed: () => undefined,
       getCell: () => ({ char: "X" }),
     } as unknown as LibProbeSource)
-  const moved = { ...identity, termlessRevision: "d9d4505514a2f5a3fd0a0e1a3a0c2c5b7d8e9f01" }
-  const otherBinary = "0".repeat(64)
-  const rebuilt = {
-    ...identity,
-    loadedBinary: { ...identity.loadedBinary, sha256: otherBinary },
-    provenance: { ...identity.provenance, sha256: otherBinary },
-  }
-  for (const code of kitty.codes) {
-    expect(identity.provenance.sourceCommit).toBe("b2cb871254fbdac19a085188813c8dfb258b95cd")
-    expect(run(moved, code).criterionBranch, String(code)).toBe("source-negative-review")
-    expect(run(rebuilt, code).criterionBranch, String(code)).not.toBe("source-negative-review")
+    expect(inert.criterionBranch).toBe("headless-observable-review")
+    expect(inert.assertions).toBeUndefined()
+    expect(fed).toEqual([])
+    const images: { data: string; row: number; col: number }[] = []
+    const supporting = sixel({
+      runtimeIdentity,
+      capabilities: { extensions: new Set(), sixel: true },
+      feed: (data: string) => {
+        const match = /\x1bPq(.*)\x1b\\/.exec(data)
+        if (match) images.push({ data: match[1]!, row: 0, col: 0 })
+      },
+      getCell: () => ({ char: "X" }),
+      getSixelImages: () => [...images],
+    } as unknown as LibProbeSource)
+    expect(supporting.criterionBranch).toBe("headless-observable-review")
+    expect(supporting.assertions).toBeUndefined()
   }
 })
 
@@ -714,19 +256,15 @@ test("OSC 8 missing-observer review excludes adapter locators and global revisio
 })
 
 test.each(auditedArtifacts)(
-  "$kind source audits survive provenance moves but not engine/adapter changes",
+  "$kind term-features API review survives provenance moves but not adapter changes",
   (identity) => {
-    const definition = callback(identity.kind === "native" ? "extensions.osc440-audio" : "extensions.osc8")
     const source = (runtimeIdentity: HeadlessRuntimeIdentity): LibProbeSource =>
       ({
         runtimeIdentity,
         feed: () => undefined,
-        getCell: (_row: number, col: number) => ({ char: identity.kind === "native" ? "X" : "ALINKZ"[col] }),
+        getCell: () => ({ char: "X" }),
         capabilities: { extensions: new Set() },
       }) as unknown as LibProbeSource
-    const result = definition.lib!(source(identity))
-    expect(result.criterionBranch).toBe("source-negative-review")
-    expect(result.response).not.toContain("runtimeIdentity")
     const moved = structuredClone(identity)
     moved.termlessRevision = "another-provenance-only-revision"
     if (moved.kind === "native" || moved.runtimeFormat === "wasm") moved.loadedBinary.path = "/another/location"
@@ -737,42 +275,6 @@ test.each(auditedArtifacts)(
         moved.integrity.treeOid = "another-wrapper-tree"
       }
     }
-    expect(definition.lib!(source(moved))).toEqual(result)
-    const changes: ((changed: HeadlessRuntimeIdentity) => void)[] = [
-      (changed) => {
-        changed.engineVersion = "foreign"
-      },
-      (changed) => {
-        changed.adapterVersion = "foreign"
-      },
-      (changed) => {
-        changed.adapterSources = undefined
-      },
-      (changed) => {
-        changed.adapterSources = []
-      },
-      (changed) => {
-        changed.adapterSources = changed.adapterSources!.slice(1)
-      },
-      (changed) => {
-        changed.adapterSources = changed.adapterSources!.map((entry) => ({ ...entry, blobOid: "0".repeat(40) }))
-      },
-      (changed) => {
-        if (changed.kind === "native" || changed.runtimeFormat === "wasm") changed.loadedBinary.sha256 = "0".repeat(64)
-      },
-    ]
-    if (identity.kind === "native") {
-      for (const field of ["sha256", "sourceCommit", "buildHash", "lockSha256"] as const) {
-        changes.push((changed) => {
-          if (changed.kind === "native") changed.provenance[field] = "foreign"
-        })
-      }
-    }
-    for (const change of changes) {
-      const changed = structuredClone(identity)
-      change(changed)
-      expect(definition.lib!(source(changed)).criterionBranch).not.toBe("source-negative-review")
-    }
     const termFeatures = deviceProbes.find((entry) => entry.id === "device.term-features")!
     const apiReview = termFeatures.lib!(source(identity))
     expect(apiReview.criterionBranch).toBe("headless-observable-review")
@@ -781,224 +283,6 @@ test.each(auditedArtifacts)(
     expect(termFeatures.lib!(source({ ...identity, adapterSources: [] })).criterionBranch).not.toBe(
       "headless-observable-review",
     )
-  },
-)
-
-// A consumed sentinel qualifies only the source-review evidence, never the audio, flash or font effect.
-test.each([
-  ["extensions.osc440-audio", "\x1b]440;bell.wav\x07", "vterm"],
-  ["extensions.osc555-flash", "\x1b]555\x07", "vterm"],
-  ["extensions.osc710-font-normal", "\x1b]710;monospace\x07", "vterm"],
-  ["extensions.osc9-progress", "\x1b]9;4;1;50\x07", "vterm"],
-  ["extensions.notifications", "\x1b]9;terminfo-notification-A\x07", "vterm"],
-  ["extensions.osc22-pointer", "\x1b]22;pointer\x07", "vterm"],
-  ["extensions.osc176-app-id", "\x1b]176;terminfo-test\x07", "vterm"],
-  ["extensions.osc666-termprop", "\x1b]666;test-prop=value\x07", "vterm"],
-  ["extensions.osc777-notify", "\x1b]777;notify;test;body\x07", "vterm"],
-  ["extensions.osc3008-context", "\x1b]3008;type=test\x07", "vterm"],
-  ["extensions.osc9-progress", "\x1b]9;4;1;50\x07", "xtermjs", "progress"],
-  ["extensions.notifications", "\x1b]9;terminfo-notification-A\x07", "xtermjs", "notification"],
-  ["extensions.osc7-cwd", "\x1b]7;file://localhost/terminfo-cwd-A\x07", "xtermjs", "working-directory"],
-  ["extensions.osc22-pointer", "\x1b]22;pointer\x07", "xtermjs", "pointer"],
-  ["extensions.osc176-app-id", "\x1b]176;terminfo-test\x07", "xtermjs", "app-id"],
-  ["extensions.osc440-audio", "\x1b]440;bell.wav\x07", "xtermjs", "audio"],
-  ["extensions.osc555-flash", "\x1b]555\x07", "xtermjs", "flash"],
-  ["extensions.osc666-termprop", "\x1b]666;test-prop=value\x07", "xtermjs", "terminal property"],
-  ["extensions.osc710-font-normal", "\x1b]710;monospace\x07", "xtermjs", "font"],
-  ["extensions.osc777-notify", "\x1b]777;notify;test;body\x07", "xtermjs", "notification"],
-  ["extensions.osc3008-context", "\x1b]3008;type=test\x07", "xtermjs", "systemd context"],
-  ["extensions.osc9-progress", "\x1b]9;4;1;50\x07", "vt100"],
-  ["extensions.notifications", "\x1b]9;terminfo-notification-A\x07", "vt100"],
-  ["extensions.osc22-pointer", "\x1b]22;pointer\x07", "vt100"],
-  ["extensions.osc176-app-id", "\x1b]176;terminfo-test\x07", "vt100"],
-  ["extensions.osc440-audio", "\x1b]440;bell.wav\x07", "vt100"],
-  ["extensions.osc555-flash", "\x1b]555\x07", "vt100"],
-  ["extensions.osc666-termprop", "\x1b]666;test-prop=value\x07", "vt100"],
-  ["extensions.osc710-font-normal", "\x1b]710;monospace\x07", "vt100"],
-  ["extensions.osc777-notify", "\x1b]777;notify;test;body\x07", "vt100"],
-  ["extensions.osc3008-context", "\x1b]3008;type=test\x07", "vt100"],
-  ["extensions.osc9-progress", "\x1b]9;4;1;50\x07", "vt220"],
-  ["extensions.notifications", "\x1b]9;terminfo-notification-A\x07", "vt220"],
-  ["extensions.osc22-pointer", "\x1b]22;pointer\x07", "vt220"],
-  ["extensions.osc176-app-id", "\x1b]176;terminfo-test\x07", "vt220"],
-  ["extensions.osc440-audio", "\x1b]440;bell.wav\x07", "vt220"],
-  ["extensions.osc555-flash", "\x1b]555\x07", "vt220"],
-  ["extensions.osc666-termprop", "\x1b]666;test-prop=value\x07", "vt220"],
-  ["extensions.osc710-font-normal", "\x1b]710;monospace\x07", "vt220"],
-  ["extensions.osc777-notify", "\x1b]777;notify;test;body\x07", "vt220"],
-  ["extensions.osc3008-context", "\x1b]3008;type=test\x07", "vt220"],
-])(
-  "%s retains an audited source-negative review only after its sentinel renders",
-  (id, sequence, engine, effect?: string) => {
-    // Collector-input fixtures rekeyed to 0.10.1 after the parser audit, not a loaded-engine attestation.
-    const identity =
-      engine === "xtermjs"
-        ? xtermOscIdentity
-        : ({
-            kind: "js",
-            runtimeFormat: "js",
-            engineVersion: "0.10.1",
-            adapterVersion: "0.10.2",
-            termlessRevision: engine === "vt220" ? "a871f0e580e1b02fb5dbb7ed854f6de623e7858e" : "2".repeat(40),
-            adapterSources:
-              engine === "vt100"
-                ? [
-                    { path: "packages/vt100/src/index.ts", blobOid: "99833d737402f9d1d8e3e257e3a255d8aa1facc3" },
-                    { path: "packages/vt100/src/backend.ts", blobOid: "cdb8be8c5ebbba68a5920cfa4df27c9deb31745a" },
-                  ]
-                : engine === "vt220"
-                  ? [
-                      { path: "packages/vt220/src/index.ts", blobOid: "601dd26eb7e753a5396ebdf72f1ef8ee2cc4355f" },
-                      { path: "packages/vt220/src/backend.ts", blobOid: "7369e3710e36aa649372fd09011ecfdd6ba47c73" },
-                    ]
-                  : [
-                      { path: "packages/vterm/src/index.ts", blobOid: "cb5719799dcdd5ae24e6fcf0dcad9965035ce54c" },
-                      { path: "packages/vterm/src/backend.ts", blobOid: "5d27c551161fe41af00ac587bd9484d6becbbc7a" },
-                    ],
-            resolvedPath: `vendor/vterm/packages/${engine}/src/index.ts`,
-            integrity: {
-              kind: "source",
-              repository: "git@github.com:beorn/vterm.git",
-              revision:
-                engine === "vterm"
-                  ? "67dd3960746766ed47e2bb4b2ced6503a78549cc"
-                  : "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
-              treeOid:
-                engine === "vt100"
-                  ? "b941dae48b25ae8825c394750bda5245c9d93dfa"
-                  : engine === "vt220"
-                    ? "4205f8936ad1848d1029729f3ada888cd61759a8"
-                    : "e9d67d4b4ba7cb4caf0d0824b3b272c10e4b229e",
-              cleanTree: true,
-            },
-          } as const)
-    const modes = [
-      "pinned",
-      "no-sentinel",
-      "foreign",
-      ...(engine === "vt220" ? ["wrong-package"] : []),
-      ...(engine === "xtermjs"
-        ? ["changed-lock", "wrong-version", "wrong-adapter", "old-adapter"]
-        : ["changed-source", "changed-tree", "wrong-version", "dirty"]),
-    ]
-    for (const mode of modes) {
-      const writes: string[] = []
-      const source = {
-        runtimeIdentity: {
-          ...identity,
-          engineVersion: mode === "wrong-version" ? "6.0.1" : identity.engineVersion,
-          adapterVersion: mode === "wrong-adapter" ? "foreign" : identity.adapterVersion,
-          adapterSources:
-            mode === "old-adapter"
-              ? identity.adapterSources.map((source) => ({
-                  ...source,
-                  blobOid:
-                    source.path === "packages/xtermjs/src/backend.ts"
-                      ? "fbbb344f113d5b57bbb5dd429ed97c46b6cfa6e9"
-                      : source.blobOid,
-                }))
-              : identity.adapterSources,
-          resolvedPath: mode === "foreign" ? "another-engine.ts" : identity.resolvedPath,
-          integrity:
-            identity.integrity.kind === "source"
-              ? {
-                  ...identity.integrity,
-                  revision: mode === "changed-source" ? "3".repeat(40) : identity.integrity.revision,
-                  treeOid:
-                    mode === "changed-tree"
-                      ? "4".repeat(40)
-                      : mode === "wrong-package"
-                        ? "b941dae48b25ae8825c394750bda5245c9d93dfa"
-                        : identity.integrity.treeOid,
-                  cleanTree: mode !== "dirty",
-                }
-              : {
-                  ...identity.integrity,
-                  lockIntegrity: mode === "changed-lock" ? "foreign" : identity.integrity.lockIntegrity,
-                },
-        },
-        capabilities: { extensions: new Set() },
-        feed: (bytes: string) => writes.push(bytes),
-        getCell: () => ({ char: mode === "no-sentinel" ? " " : "X" }),
-      } as unknown as LibProbeSource
-      const result = callback(id).lib!(source)
-      expect(result.observation?.outcome).not.toBe("supported")
-      if (id === "extensions.notifications" && engine === "vterm") {
-        expect(result.criterionBranch).toBe("headless-observable-review")
-        expect(result.tests).toMatchObject([{ id: "review", status: "test-todo" }])
-        expect(result.assertions).toBeUndefined()
-        expect(writes).toEqual([])
-        continue
-      }
-      if (mode === "pinned" || mode === "foreign" || mode === "changed-source") {
-        expect(writes.join("")).toContain(sequence + "X")
-        expect(result.criterionBranch).toBe("source-negative-review")
-        expect(result.tests).toMatchObject([
-          {
-            id: "review",
-            status: "test-todo",
-            reason: expect.stringContaining(
-              engine === "xtermjs" ? "17a90b65" : engine === "vterm" ? "67dd3960" : "9e99e4d2",
-            ),
-          },
-        ])
-        expect(result.observation).toMatchObject({ outcome: "inconclusive", assertionType: "buffer_state" })
-        expect(JSON.parse(result.response!)).toMatchObject({
-          fed: writes.join(""),
-          sentinel: { char: "X" },
-          engineState: null,
-        })
-        expect(result.assertions).toMatchObject([
-          { kind: "negative", assertionType: "buffer_state", observed: result.response },
-        ])
-        if (engine === "xtermjs") {
-          const code = id === "extensions.notifications" ? "9" : /^extensions\.osc(\d+)/.exec(id)![1]
-          expect(result.response).toBe(
-            JSON.stringify({
-              fed: `\x1b[1;1H\x1b[2K${sequence}X`,
-              sentinel: { char: "X" },
-              engineState: null,
-              engineStateReason: `No ${effect} target state is exposed at this pin`,
-            }),
-          )
-          expect(result.tests?.[0]?.reason).toBe(
-            `${xtermOscSourceCitation}: no case ${code} or ${effect} target writer; independent source review required`,
-          )
-          expect(JSON.parse(result.response!)).not.toHaveProperty("runtimeIdentity")
-          expect(result.tests).toMatchObject([{ reason: expect.stringContaining("packages/xtermjs/src/backend.ts") }])
-        }
-        if (engine === "vterm" && id === "extensions.osc9-progress") {
-          expect(result.tests).toMatchObject([
-            { reason: expect.stringMatching(/notification sink.*no progress subcode or state interpretation/) },
-          ])
-          expect(result.tests?.[0]?.reason).not.toContain("no case 9")
-        }
-        if (engine === "vt100") {
-          expect(result.tests?.[0]?.reason).toContain("screen.ts:505-520 handleOSC switch, cases 0/1/2 only")
-          expect(result.tests?.[0]?.reason).not.toContain("notification sink")
-          expect(result.tests?.[0]?.reason).not.toContain("3921-3923")
-          if (id === "extensions.osc9-progress") expect(result.tests?.[0]?.reason).toContain("no case 9")
-        }
-        if (engine === "vt220") {
-          expect(result.tests?.[0]?.reason).toContain(
-            "screen.ts:701-716 handleOSC: no-semicolon return; cases 0/1/2 only",
-          )
-          expect(result.tests?.[0]?.reason).not.toContain("notification sink")
-          expect(result.tests?.[0]?.reason).not.toContain("3921-3923")
-          if (id === "extensions.osc9-progress") expect(result.tests?.[0]?.reason).toContain("no case 9")
-        }
-      } else if ((id === "extensions.osc7-cwd" || id === "extensions.notifications") && mode !== "no-sentinel") {
-        expect(result.criterionBranch).toBe("headless-observable-review")
-        expect(result.tests).toMatchObject([{ id: "review", status: "test-todo" }])
-        expect(result.assertions).toBeUndefined()
-        expect(writes).toEqual([])
-      } else {
-        expect(result.criterionBranch, `${engine}: ${mode}`).toBeUndefined()
-        expect(result.assertions).toBeUndefined()
-        expect(result.tests).toBeUndefined()
-        if (mode !== "no-sentinel") expect(writes).toEqual([])
-      }
-    }
   },
 )
 
@@ -1252,7 +536,8 @@ test("a truecolor declaration without two calibrated RGB cell samples is inconcl
 })
 
 // #30701 (@cto ruling C): a framed fixture whose RGB targets read no color is a measured ignore while
-// the SGR 31/34 controls are distinct, and has no observable when the controls show no color either.
+// the SGR 31/34 controls are distinct. When the controls show no color either there is no same-path control, so the
+// cell is TEST TODO (#32246), never a source-negative review.
 test("extensions.truecolor grades unexposed RGB targets against the independent controls", () => {
   const definition = callback("extensions.truecolor")
   const run = (controls: readonly ({ r: number; g: number; b: number } | null)[]) =>
@@ -1270,17 +555,11 @@ test("extensions.truecolor grades unexposed RGB targets against the independent 
   ])
   expect(ignored.observation).toMatchObject({ outcome: "unsupported", assertionType: "buffer_state" })
   const monochrome = run([null, null])
-  expect(monochrome.notTested).toBeUndefined()
-  expect(monochrome.criterionBranch).toBe("source-negative-review")
-  expect(monochrome.tests).toEqual([
-    {
-      id: "review",
-      status: "test-todo",
-      reason: expect.stringContaining("color controls"),
-    },
-  ])
-  expect(monochrome.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
-  expect(monochrome.assertions).toMatchObject([{ kind: "negative", assertionType: "buffer_state" }])
+  expect(monochrome.notTested).toEqual({ reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL })
+  expect(monochrome.criterionBranch).toBeUndefined()
+  expect(monochrome.tests).toBeUndefined()
+  expect(monochrome.observation).toBeUndefined()
+  expect(monochrome.assertions).toBeUndefined()
 })
 
 test("extensions.truecolor decides from the DECRQSS SGR report, the same oracle as sgr.fg.truecolor", async () => {
@@ -1374,8 +653,18 @@ test.each(directReplies)("%s requires a complete, bound reply", async (id, frame
     expect(result.assertions, id).toBeUndefined()
   }
   if (id === "extensions.osc776-cell-size") {
-    for (const raw of ["\x1b]776;0;0;0\x1b\\", "\x1b]776;0;16;2\x07", "\x1b]776;8;0;2\x07"] as const) {
-      for (const result of await run(raw)) {
+    // #32246: the library arm keeps a complete all-zero reply TEST TODO (no same-path control); the app arm and
+    // partially zero replies stay invalid-reply.
+    const zero = "\x1b]776;0;0;0\x1b\\"
+    const [zeroHeadless] = await run(zero)
+    expect(zeroHeadless).toEqual({
+      pass: false,
+      response: JSON.stringify({ query: "\x1b]776\x07", raw: zero }),
+      note: NO_SAME_PATH_CONTROL,
+      notTested: { reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL },
+    })
+    for (const raw of [zero, "\x1b]776;0;16;2\x07", "\x1b]776;8;0;2\x07"] as const) {
+      for (const result of (await run(raw)).slice(raw === zero ? 1 : 0)) {
         expect(result.pass, `${id}: ${raw}`).toBe(false)
         expect(result.response, `${id}: ${raw}`).toBe(raw)
         expect(result.observation, `${id}: ${raw}`).toMatchObject({
@@ -1671,7 +960,7 @@ test.each([
   ["extensions.osc113-reset-pointer-fg", 13, 113],
   ["extensions.osc114-reset-pointer-bg", 14, 114],
 ] as const)(
-  "%s routes empty initial pointer-color readback with getDefaultColors to source-negative-review without inventing slots or writes",
+  "%s keeps empty initial pointer-color readback with getDefaultColors TEST TODO without inventing slots or writes",
   (id, setCode, resetCode) => {
     const query = `\x1b]${setCode};?\x07`
     const defaultColors = { fg: null, bg: { r: 1, g: 2, b: 3 }, cursor: { r: 4, g: 5, b: 6 } }
@@ -1689,29 +978,12 @@ test.each([
     } as unknown as LibProbeSource)
     expect(queries).toEqual([query])
     expect(writes).toEqual([])
-    expect(result.criterionBranch).toBe("source-negative-review")
-    expect(result.notTested).toBeUndefined()
-    expect(result.tests).toEqual([
-      {
-        id: "review",
-        status: "test-todo",
-        reason: `OSC ${setCode} initial colour readback is missing and OSC ${resetCode} reset was not observed; default-color readback reports only fg, bg, and cursor, so pointer-colour support requires source review`,
-      },
-    ])
-    expect(result.observation).toEqual({
-      outcome: "inconclusive",
-      reason: "insufficient-evidence",
-      assertionType: "buffer_state",
-    })
-    const expected = `OSC ${resetCode} restores the prior OSC ${setCode} color after a verified change`
-    expect(result.assertions).toEqual([
-      {
-        assertionType: "buffer_state",
-        kind: "negative",
-        expected,
-        observed: result.response,
-      },
-    ])
+    // #32246: default-color readback has no pointer slot, so no same-path control decides the reset: TEST TODO.
+    expect(result.criterionBranch).toBeUndefined()
+    expect(result.notTested).toEqual({ reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL })
+    expect(result.tests).toBeUndefined()
+    expect(result.observation).toBeUndefined()
+    expect(result.assertions).toBeUndefined()
     expect(JSON.parse(result.response!)).toEqual({
       query,
       originalRaw: "",
@@ -2263,213 +1535,71 @@ test.each([
   expect(result.tests).toMatchObject([{ id: "criterion", status: "test-failure", reason: expect.any(String) }])
 })
 
-// The retained xtermjs cells at suite2e6321bffd4d lack the initial highlight reply.
-// Their existing prerequisite tests carry no audited identity; ordinary OSC review cases never enter this reset callback.
+// #32246: a silent initial highlight query has no same-path control in this run, so it is TEST TODO for every engine
+// identity; a sentinel-bounded silence or a malformed reply stays the reply failure, and a measured colour still decides.
 test.each([
   ["extensions.osc117-reset-highlight-bg", 17, 117],
   ["extensions.osc119-reset-highlight-fg", 19, 119],
 ] as const)(
-  "%s reviews an audited silent highlight query without overriding real replies",
+  "%s keeps a silent highlight query TEST TODO without overriding real replies",
   (id, setCode, resetCode) => {
     const definition = callback(id)
     const query = `\x1b]${setCode};?\x07`
-    for (const mode of [
-      "pinned",
-      "sentinel",
-      "no-sentinel",
-      "malformed",
-      "vterm",
-      "changed-lock",
-      "wrong-version",
-      "wrong-adapter",
-    ] as const) {
-      const calls: string[] = []
-      const identity =
-        mode === "vterm"
-          ? geometryRuntime
-          : {
-              ...xtermOscIdentity,
-              engineVersion: mode === "wrong-version" ? "6.0.1" : xtermOscIdentity.engineVersion,
-              adapterVersion: mode === "wrong-adapter" ? "foreign" : xtermOscIdentity.adapterVersion,
-              integrity: {
-                ...xtermOscIdentity.integrity,
-                lockIntegrity: mode === "changed-lock" ? "foreign" : xtermOscIdentity.integrity.lockIntegrity,
-              },
-            }
-      const result = definition.lib!({
-        runtimeIdentity: identity,
-        feedCapture: (bytes: string) => {
-          calls.push(bytes)
-          return mode === "malformed" ? "unparsed colour reply" : ""
-        },
-        ...(mode === "sentinel" && {
-          queryWithSentinelOutcome: (bytes: string) => {
+    for (const runtimeIdentity of [undefined, xtermOscIdentity, geometryRuntime, ...auditedArtifacts]) {
+      for (const mode of ["silent", "sentinel", "malformed"] as const) {
+        const calls: string[] = []
+        const result = definition.lib!({
+          runtimeIdentity,
+          feedCapture: (bytes: string) => {
             calls.push(bytes)
-            return {
-              match: null,
-              reason: "sentinel",
-              raw: "\x1b[?1;2c",
-              rawBase64: btoa("\x1b[?1;2c"),
-              sentinel: { atMs: 0, graceMs: 250 },
-            }
+            return mode === "malformed" ? "unparsed colour reply" : ""
           },
-        }),
-        feed: (bytes: string) => calls.push(bytes),
-        getCell: () => ({ char: mode === "no-sentinel" ? " " : "X" }),
-      } as unknown as LibProbeSource)
-      expect(calls[0]).toBe(query)
-      expect(result.observation?.outcome).not.toBe("supported")
-      expect(result.observation?.outcome).not.toBe("unsupported")
-      if (mode === "pinned" || mode === "sentinel") {
-        expect(result.criterionBranch).toBe("source-negative-review")
-        expect(result.observation).toMatchObject({
-          outcome: "inconclusive",
-          assertionType: "buffer_state",
-        })
-        expect(result.tests).toMatchObject([
-          { id: "review", status: "test-todo", reason: expect.stringContaining("17a90b65") },
-        ])
-        expect(result.tests?.[0]?.reason).toContain(`no case ${setCode}/${resetCode}`)
-        expect(result.tests?.[0]?.reason).toBe(
-          `${xtermOscSourceCitation}: no case ${setCode}/${resetCode} handler or highlight colour writer; independent source review required`,
-        )
-        expect(result.assertions).toMatchObject([
-          { kind: "negative", assertionType: "buffer_state", observed: result.response },
-        ])
-        const retained = JSON.parse(result.response!)
-        if (mode === "pinned") {
-          expect(result.response).toBe(
-            JSON.stringify({
-              query,
-              originalRaw: "",
-              fed: `\x1b[1;1H\x1b[2K\x1b]${setCode};rgb:3030/6060/9090\x07\x1b]${resetCode}\x07X`,
-              sentinel: { char: "X" },
-              engineState: null,
-              engineStateReason: "No highlight colour set or reset target state is exposed at this pin",
-            }),
-          )
-        }
-        expect(retained).toMatchObject({
-          query,
-          originalRaw: "",
-          sentinel: { char: "X" },
-          engineState: null,
-          fed: calls[1],
-        })
-        expect(retained).toMatchObject({ fed: expect.stringContaining(`\x1b]${setCode};rgb:`) })
-        expect(retained).not.toHaveProperty("runtimeIdentity")
-        expect(retained).toMatchObject({ fed: expect.stringContaining(`\x1b]${resetCode}\x07X`) })
-        if (mode === "sentinel") {
-          expect(retained).toMatchObject({ initialSentinel: { reason: "sentinel", raw: "\x1b[?1;2c" } })
-        }
-      } else if (mode === "no-sentinel") {
-        expect(result.observation).toMatchObject({
-          outcome: "inconclusive",
-          assertionType: "buffer_state",
-          note: "No rendered X cell to evaluate",
-        })
-        expect(result.criterionBranch).toBeUndefined()
-        expect(result.assertions).toBeUndefined()
-        expect(result.tests).toBeUndefined()
-      } else {
+          ...(mode === "sentinel" && {
+            queryWithSentinelOutcome: (bytes: string) => {
+              calls.push(bytes)
+              return {
+                match: null,
+                reason: "sentinel",
+                raw: "\x1b[?1;2c",
+                rawBase64: btoa("\x1b[?1;2c"),
+                sentinel: { atMs: 0, graceMs: 250 },
+              }
+            },
+          }),
+          feed: (bytes: string) => calls.push(bytes),
+          getCell: () => ({ char: "X" }),
+        } as unknown as LibProbeSource)
         expect(calls).toEqual([query])
         expect(result.observation).toBeUndefined()
-        expect(result.tests).toMatchObject([
+        expect(result.assertions).toBeUndefined()
+        expect(result.criterionBranch).toBeUndefined()
+        if (mode === "silent") {
+          expect(result).toEqual({
+            pass: false,
+            response: JSON.stringify({ query, originalRaw: "" }),
+            note: NO_SAME_PATH_CONTROL,
+            notTested: { reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL },
+          })
+          continue
+        }
+        expect(result.notTested).toBeUndefined()
+        expect(result.tests).toEqual([
           {
             id: "criterion",
             status: "test-failure",
             reason: `OSC ${setCode} initial highlight colour was not read back, so OSC ${resetCode} cannot be compared with it`,
           },
         ])
-        expect(result.assertions).toBeUndefined()
+        if (mode === "sentinel") {
+          expect(JSON.parse(result.response!)).toMatchObject({
+            initialSentinel: { reason: "sentinel", raw: "\x1b[?1;2c" },
+          })
+        }
       }
-    }
-    const nativeIdentity: HeadlessRuntimeIdentity = {
-      kind: "native",
-      engineVersion: "1.3.1",
-      adapterVersion: "0.10.2",
-      termlessRevision: "25089207e11420cf7a588987c1dc2683a45e8372",
-      loadedBinary: {
-        path: "/fixture/termless-ghostty-native.node",
-        sha256: "53f9a867cce594b4d50fb9508db9ce5d2d79fb4244a418548b7cb31fa50780d1",
-      },
-      provenance: {
-        sha256: "53f9a867cce594b4d50fb9508db9ce5d2d79fb4244a418548b7cb31fa50780d1",
-        sourceCommit: "332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28",
-        buildHash: "0effe4038bf65ba00048b016bc70477d80b6c16302e56e769ef773d46b790768",
-        toolchain: "zig 0.15.2",
-        lockSha256: "3ec775507556db01d08055836b26183f629a9cbb0b5802a1566661e95988d74a",
-      },
-      adapterSources: [
-        { path: "packages/ghostty-native/src/index.ts", blobOid: "35c9e35a5d60625ce1135b65ff38ae9278495a18" },
-        { path: "packages/ghostty-native/src/backend.ts", blobOid: "f403717f7c063d799c5de994b3ccc095edbcacd1" },
-      ],
-    }
-    const wasmIdentity = absentOscBatch.find((row) => row.engine === "ghostty")!.identity
-    if (!("loadedBinary" in wasmIdentity)) throw new Error("Ghostty fixture must declare its loaded WASM binary")
-    // The declared artifact store retains this native build with the current JS adapter.
-    // Neither the historical build/adapter profile nor the newer build's profile covers it.
-    const capturedNativeIdentity: HeadlessRuntimeIdentity = {
-      ...nativeIdentity,
-      provenance: {
-        ...nativeIdentity.provenance,
-        buildHash: "2d5e53cf4f0846e47cda8a45c513f44da5c699657edffe93886e6eba99f36bfd",
-      },
-    }
-    for (const [identity, sourcePin] of [
-      [wasmIdentity, "5714ed07"],
-      [nativeIdentity, "332b2aef"],
-      [capturedNativeIdentity, "332b2aef"],
-    ] as const) {
-      const result = definition.lib!({
-        runtimeIdentity: identity,
-        feedCapture: () => "",
-        feed: () => {},
-        getCell: () => ({ char: "X" }),
-      } as unknown as LibProbeSource)
-      expect(result.criterionBranch).toBe("source-negative-review")
-      expect(result.observation).toMatchObject({ outcome: "inconclusive", assertionType: "buffer_state" })
-      expect(result.tests).toMatchObject([
-        { id: "review", status: "test-todo", reason: expect.stringContaining(sourcePin) },
-      ])
-      for (const wrongIdentity of [
-        { ...identity, loadedBinary: { ...identity.loadedBinary, sha256: "0".repeat(64) } },
-        { ...identity, adapterSources: identity.adapterSources!.map((row) => ({ ...row, blobOid: "0".repeat(40) })) },
-        ...(identity.kind === "native"
-          ? [
-              { ...identity, provenance: { ...identity.provenance, buildHash: "0".repeat(64) } },
-              {
-                ...identity,
-                adapterSources: identity.adapterSources!.map((row) =>
-                  row.path.endsWith("backend.ts")
-                    ? { ...row, blobOid: "427b9d4782a9924135ff0c32e2406b117df9cf22" }
-                    : row,
-                ),
-              },
-            ]
-          : []),
-      ]) {
-        const rejected = definition.lib!({
-          runtimeIdentity: wrongIdentity,
-          feedCapture: () => "",
-          feed: () => {},
-          getCell: () => ({ char: "X" }),
-        } as unknown as LibProbeSource)
-        expect(rejected.criterionBranch).toBeUndefined()
-        const unknownArtifact = wrongIdentity.loadedBinary?.sha256 === "0".repeat(64)
-        expect(rejected.tests).toMatchObject([
-          { id: "criterion", status: unknownArtifact ? "test-todo" : "test-failure" },
-        ])
-        expect(rejected.tests?.[0]?.reason).toContain(
-          unknownArtifact ? "no source audit for binary" : `OSC ${setCode} initial highlight colour was not read back`,
-        )
-      }
-    }
-    // A measured colour wins over the static absence audit, including a genuine reset negative.
-    for (const identity of [xtermOscIdentity, wasmIdentity, nativeIdentity, capturedNativeIdentity]) {
+      // A measured colour decides, including a genuine reset negative.
       for (const ignoresReset of [false, true]) {
         const fixture = highlightTerminal(setCode, resetCode, "1111/2222/3333", ignoresReset)
-        const result = definition.lib!({ ...fixture.lib, runtimeIdentity: identity })
+        const result = definition.lib!({ ...fixture.lib, runtimeIdentity } as unknown as LibProbeSource)
         expect(result.criterionBranch).toBeUndefined()
         expect(result.observation).toMatchObject({
           outcome: ignoresReset ? "unsupported" : "supported",
@@ -2482,8 +1612,7 @@ test.each([
   },
 )
 
-// Geometry fixture follows audited source67dd3960; original runb9697318 used source53a9eb92/tree617ae600.
-// Q8 requires independent review of this context limit, never automatic Untestable.
+// A vterm-shaped identity: #32246 makes the zero-geometry outcome independent of it.
 const geometryRuntime = {
   kind: "js",
   adapterVersion: "0.10.2",
@@ -2502,208 +1631,78 @@ const geometryRuntime = {
 const geometryReplies = [
   {
     id: "extensions.osc1337-cellsize",
+    query: "\x1b]1337;ReportCellSize\x07",
     raw: "\u001b]1337;ReportCellSize=0;0\u001b\\\u001b[?62;4c",
     positive: "\u001b]1337;ReportCellSize=12;6\u001b\\",
   },
   {
     id: "extensions.osc776-cell-size",
+    query: "\x1b]776\x07",
     raw: "\u001b]776;0;0;0\u001b\\\u001b[?62;4c",
     positive: "\u001b]776;8;16;0\u001b\\",
   },
 ] as const
 
-test.each(geometryReplies)("$id retains audited geometry limits for required review", ({ id, raw }) => {
-  expect({
-    resolvedPath: geometryRuntime.resolvedPath,
-    runtimeFormat: geometryRuntime.runtimeFormat,
-    engineVersion: geometryRuntime.engineVersion,
-    repository: geometryRuntime.integrity.repository,
-    treeOid: geometryRuntime.integrity.treeOid,
-  }).toEqual(SOURCE_TREE_AUDITS.vterm)
-  for (const { revision, sourceCitation } of [
-    {
-      revision: "67dd3960746766ed47e2bb4b2ced6503a78549cc",
-      sourceCitation:
-        "vterm 67dd3960746766ed47e2bb4b2ced6503a78549cc packages/vterm/src/screen.ts:89-109 ScreenOptions has no physical font metrics; OSC1337 ReportCellSize at :4056-4058 and OSC776 at :4000-4003 deliberately report unknown zero dimensions (#30575)",
-    },
-    {
-      revision: "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
-      sourceCitation:
-        "vterm 9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vterm/src/screen.ts:89-109 ScreenOptions has no physical font metrics; OSC1337 ReportCellSize at :4056-4058 and OSC776 at :4000-4003 deliberately report unknown zero dimensions (#30575)",
-    },
-  ]) {
-    for (const sentinel of [false, true]) {
-      const ctx = {
-        feedCapture: () => raw,
-        runtimeIdentity: { ...geometryRuntime, integrity: { ...geometryRuntime.integrity, revision } },
-        ...(sentinel && {
-          queryWithSentinelOutcome: () => ({
-            raw,
-            rawBase64: Buffer.from(raw).toString("base64"),
-            reason: "sentinel",
-            match: null,
-          }),
-        }),
-      } as unknown as LibProbeSource
-      const result = callback(id).lib!(ctx)
-      expect(result.notTested?.reason).toBe("no-semantic-observable")
-      expect(result.tests).toMatchObject([{ id: "review", status: "test-todo" }])
-      expect(result.observation).toBeUndefined()
-      const state = JSON.parse(result.response!)
-      expect(state).toMatchObject({ raw, sourceCitation })
-      expect(state).not.toHaveProperty("runtimeIdentity")
-    }
-  }
-})
-
-test.each(geometryReplies)("$id requires audited source and complete zero geometry", ({ id, raw, positive }) => {
+// #32246: a complete zero geometry reply has no same-path control in this run, so it is TEST TODO with its query and
+// raw bytes for every identity (no source tree audit or citation decides it); any other reply keeps its reply grading.
+test.each(geometryReplies)("$id keeps a complete zero geometry reply TEST TODO for every identity", (row) => {
+  const { id, query, raw, positive } = row
   const identities = [
     undefined,
+    geometryRuntime,
     { ...geometryRuntime, resolvedPath: "foreign/index.ts" },
-    { ...geometryRuntime, runtimeFormat: "wasm" },
-    ...[{ cleanTree: false }, { revision: "foreign" }, { treeOid: "foreign" }, { repository: "foreign" }].map(
-      (change) => ({ ...geometryRuntime, integrity: { ...geometryRuntime.integrity, ...change } }),
-    ),
+    { ...geometryRuntime, integrity: { ...geometryRuntime.integrity, treeOid: "f".repeat(40), cleanTree: false } },
+    ...auditedArtifacts,
   ]
   for (const runtimeIdentity of identities) {
     const ctx = { feedCapture: () => raw, runtimeIdentity } as unknown as LibProbeSource
-    expect(callback(id).lib!(ctx).notTested).toBeUndefined()
+    expect(callback(id).lib!(ctx)).toEqual({
+      pass: false,
+      response: JSON.stringify({ query, raw }),
+      note: NO_SAME_PATH_CONTROL,
+      notTested: { reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL },
+    })
   }
   for (const reply of ["", raw.slice(0, 4), "foreign", raw + "foreign", "foreign" + raw]) {
     const ctx = { feedCapture: () => reply, runtimeIdentity: geometryRuntime } as unknown as LibProbeSource
-    expect(callback(id).lib!(ctx).notTested).toBeUndefined()
+    const result = callback(id).lib!(ctx)
+    expect(result.notTested, JSON.stringify(reply)).toBeUndefined()
+    expect(result.observation?.outcome, JSON.stringify(reply)).not.toBe("supported")
   }
   const ctx = { feedCapture: () => positive, runtimeIdentity: geometryRuntime } as unknown as LibProbeSource
   expect(callback(id).lib!(ctx).observation?.outcome).toBe("supported")
 })
 
-// The source failure precedes zero/positive/malformed geometry and cannot depend on the install path.
-test.each(geometryReplies)("$id reports source tree drift before geometry grading", ({ id, raw, positive }) => {
-  for (const overrides of [{}, { adapterVersion: "other" }]) {
-    for (const cleanTree of [true, false]) {
-      const runtimeIdentity = {
-        ...geometryRuntime,
-        ...overrides,
-        integrity: { ...geometryRuntime.integrity, cleanTree, treeOid: "f".repeat(40) },
-      }
-      for (const reply of [raw, positive, "malformed"]) {
-        const result = callback(id).lib!({ feedCapture: () => reply, runtimeIdentity } as unknown as LibProbeSource)
-        expect(result.tests).toEqual([
-          {
-            id: "criterion",
-            status: "test-failure",
-            reason: `source identity drift: expected ${geometryRuntime.integrity.treeOid}, read ${"f".repeat(40)}`,
-          },
-        ])
-        expect(result.observation).toBeUndefined()
-        expect(result.assertions).toBeUndefined()
-        expect(result.notTested).toBeUndefined()
-        expect(JSON.parse(result.response!)).toMatchObject({ raw: reply })
-        expect(JSON.parse(result.response!)).not.toHaveProperty("runtimeIdentity")
-      }
-    }
-  }
-})
-
-// Same repository/version has three distinct audited entry paths; siblings must not acquire vterm drift.
-test.each(geometryReplies)("$id distinguishes sibling source entries", ({ id, raw }) => {
-  const baseline = callback(id).lib!({ feedCapture: () => raw } as unknown as LibProbeSource)
-  for (const [engine, treeOid] of [
-    ["vt100", "b941dae48b25ae8825c394750bda5245c9d93dfa"],
-    ["vt220", "4205f8936ad1848d1029729f3ada888cd61759a8"],
-  ]) {
-    const runtimeIdentity = {
-      ...geometryRuntime,
-      resolvedPath: `vendor/vterm/packages/${engine}/src/index.ts`,
-      integrity: { ...geometryRuntime.integrity, treeOid },
-    }
-    expect(callback(id).lib!({ feedCapture: () => raw, runtimeIdentity } as unknown as LibProbeSource)).toEqual(
-      baseline,
-    )
-    const changedVterm = { ...runtimeIdentity, resolvedPath: geometryRuntime.resolvedPath }
-    expect(
-      callback(id).lib!({ feedCapture: () => raw, runtimeIdentity: changedVterm } as unknown as LibProbeSource).tests,
-    ).toMatchObject([
-      {
-        status: "test-failure",
-        reason: `source identity drift: expected ${geometryRuntime.integrity.treeOid}, read ${treeOid}`,
-      },
-    ])
-  }
-})
-
-// #31398: source-negative batch tests never drive the missing-icon-getter early return.
-test.each([
-  ["alacritty", auditedArtifacts[0]!, "ansi.rs:1349-1361"],
-  ["ghostty", absentOscBatch.find((entry) => entry.engine === "ghostty")!.identity, "stream.zig:2017-2021"],
-  [
-    "ghostty-native",
-    absentOscBatch.find((entry) => entry.engine === "ghostty-native")!.identity,
-    "stream.zig:1982-1984",
-  ],
-] as const)(
-  "%s intrinsic OSC1 discard keeps the original stimulus and state for review",
-  (_engine, identity, citation) => {
+// #31398/#32246: without an icon-label reader, OSC 1 keeps the original stimulus and title state as TEST TODO for every
+// identity; no source citation reads the title change as a negative.
+test("OSC 1 without an icon-label reader keeps the stimulus and title state as TEST TODO for every identity", () => {
+  for (const runtimeIdentity of [undefined, xtermOscIdentity, ...auditedArtifacts]) {
     const writes: string[] = []
     let title = "original"
-    const source = {
-      runtimeIdentity: identity,
+    const result = callback("extensions.osc1-icon").lib!({
+      runtimeIdentity,
       getTitle: () => title,
       feed: (bytes: string) => {
         writes.push(bytes)
         title = "after"
       },
-    } as unknown as LibProbeSource
-    const result = callback("extensions.osc1-icon").lib!(source)
+    } as unknown as LibProbeSource)
     expect(writes).toEqual(["\x1b]1;test-icon\x07"])
-    expect(JSON.parse(result.response!)).toEqual({ before: "original", after: "after" })
-    expect(result.criterionBranch).toBe("source-negative-review")
-    expect(result.tests).toMatchObject([
-      { id: "review", status: "test-todo", reason: expect.stringContaining(citation) },
-    ])
-    expect(result.observation).toMatchObject({ outcome: "inconclusive", assertionType: "buffer_state" })
-    expect(result.assertions).toMatchObject([{ kind: "negative", assertionType: "buffer_state" }])
-    const foreign = callback("extensions.osc1-icon").lib!({
-      ...source,
-      runtimeIdentity: { ...identity, adapterSources: [] },
+    expect(result).toEqual({
+      pass: false,
+      response: JSON.stringify({ before: "original", after: "after" }),
+      note: NO_SAME_PATH_CONTROL,
+      notTested: { reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL },
     })
-    expect(foreign.notTested).toMatchObject({ reason: "no-semantic-observable" })
-    expect(foreign.criterionBranch).toBeUndefined()
-  },
-)
-
-// The native engines retain legacy encoding for unhandled 1015/1016. Shared encoder bytes cannot
-// grade either feature. Existing OSC fixtures qualify the same binary/build/adapter identity.
-// Existing mouse fixtures lacked native provenance and could not catch this false Unsupported.
-test.each(["alacritty", "vt100-rust"])("%s absent mouse encodings require exact native source review", (engine) => {
-  const identity =
-    engine === "alacritty"
-      ? auditedArtifacts[0]!
-      : absentOscBatch.find((entry) => entry.engine === "vt100Rust")!.identity
-  if (identity.kind !== "native") throw new Error("native mouse fixture requires a native identity")
-  const cases = {
-    exact: identity,
-    "opposite valid engine":
-      engine === "alacritty"
-        ? absentOscBatch.find((entry) => entry.engine === "vt100Rust")!.identity
-        : auditedArtifacts[0]!,
-    "wrong engine": { ...identity, engineVersion: "foreign" },
-    "wrong binary": { ...identity, loadedBinary: { ...identity.loadedBinary, sha256: "0".repeat(64) } },
-    "wrong receipt binary": { ...identity, provenance: { ...identity.provenance, sha256: "0".repeat(64) } },
-    "wrong native source": { ...identity, provenance: { ...identity.provenance, sourceCommit: "0".repeat(40) } },
-    "wrong build": { ...identity, provenance: { ...identity.provenance, buildHash: "0".repeat(64) } },
-    "wrong lock": { ...identity, provenance: { ...identity.provenance, lockSha256: "0".repeat(64) } },
-    "wrong adapter version": { ...identity, adapterVersion: "foreign" },
-    "missing adapter proof": { ...identity, adapterSources: [] },
-    "wrong adapter blob": {
-      ...identity,
-      adapterSources: identity.adapterSources?.map((source) => ({ ...source, blobOid: "0".repeat(40) })),
-    },
-    "missing identity": undefined,
   }
+})
+
+// The native engines retain legacy encoding for unhandled 1015/1016. Shared encoder bytes cannot grade either
+// feature, so the cell is TEST TODO with the observed report for every identity (#32246); it never reads Unsupported.
+test.each(["alacritty", "vt100-rust"])("%s absent mouse encodings stay TEST TODO for every identity", (engine) => {
   for (const id of ["input.pixel-mouse", "input.urxvt-mouse"]) {
     const definition = inputProbes.find((entry) => entry.id === id)!
-    for (const [qualification, runtimeIdentity] of Object.entries(cases)) {
+    for (const runtimeIdentity of [undefined, ...auditedArtifacts]) {
       let tracking = false
       const feeds: string[] = []
       const ctx = {
@@ -2720,32 +1719,18 @@ test.each(["alacritty", "vt100-rust"])("%s absent mouse encodings require exact 
         encodeMouse: () => (tracking ? new TextEncoder().encode("\x1b[M %#") : null),
       } as unknown as LibProbeSource
       const result = definition.lib!(ctx)
-      expect(result.pass, qualification).toBe(false)
-      expect(result.observation, qualification).toBeUndefined()
-      expect(result.assertions, qualification).toBeUndefined()
-      expect(tracking, qualification).toBe(false)
-      expect(feeds.at(-1), qualification).toBe("\x1b[?9;1000;1002;1003;1005;1006;1015;1016l")
-      expect(JSON.parse(result.response!), qualification).toMatchObject({
+      expect(result.pass, id).toBe(false)
+      expect(result.observation, id).toBeUndefined()
+      expect(result.assertions, id).toBeUndefined()
+      expect(result.criterionBranch, id).toBeUndefined()
+      expect(result.notTested, id).toEqual({ reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL })
+      expect(tracking, id).toBe(false)
+      expect(feeds.at(-1), id).toBe("\x1b[?9;1000;1002;1003;1005;1006;1015;1016l")
+      expect(JSON.parse(result.response!), id).toMatchObject({
         report: "\x1b[M %#",
         negativeControl: null,
         tracking: true,
       })
-      if (qualification === "exact") {
-        expect(result.criterionBranch).toBe("source-negative-review")
-        expect(result.tests).toEqual([
-          {
-            id: "review",
-            status: "test-todo",
-            reason: expect.stringMatching(/1015.*1016.*independent source review required/),
-          },
-        ])
-        expect(result.tests?.[0]?.reason).toContain(
-          engine === "alacritty" ? "alacritty_terminal 0.26.0" : "vt100 0.16.2",
-        )
-      } else {
-        expect(result.criterionBranch, qualification).toBeUndefined()
-        expect(result.notTested?.noObservable, qualification).toMatch(/no qualified native mouse encoding source audit/)
-      }
     }
   }
 })

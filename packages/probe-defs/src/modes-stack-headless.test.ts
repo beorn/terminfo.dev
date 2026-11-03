@@ -2,13 +2,15 @@
  * @failure The six XT stack probes grade a headless engine on DA1 responsiveness instead of the
  *   saved/restored state, or grade a backend that reports no attributes, palette or wrap state as a
  *   negative; or the left/right margin probe grades mode metadata instead of an ICH its margins
- *   confine, or grades a backend whose ICH shows no shift as a negative.
+ *   confine, or grades a backend whose ICH shows no shift as a negative (it stays TEST TODO without a
+ *   same-path control, #32246).
  * @level l1
  * @consumer Headless Modes observations for the six XT stack cells and the left/right margin cell on
  *   every termless engine (#30700, #30702).
  * @testonly none
  */
 import { expect, test } from "vitest"
+import { NO_SAME_PATH_CONTROL } from "./helpers.ts"
 import { modesProbes } from "./modes.ts"
 import type { LibProbeSource } from "./types.ts"
 
@@ -332,33 +334,14 @@ test.each([
   expect(screen.margins()).toEqual({ leftRightMode: false, leftMargin: 0, rightMargin: 7 })
 })
 
-test("modes.left-right-margin routes a readback whose ICH shows no shift to source-negative-review", () => {
+test("modes.left-right-margin keeps a readback whose ICH shows no shift TEST TODO with no same-path control", () => {
   const screen = fakeScreen({ insertChars: false })
   const result = headless(MARGIN)(screen.context)
   expect(result.pass).toBe(false)
-  expect(result.notTested).toBeUndefined()
-  expect(result.criterionBranch).toBe("source-negative-review")
-  expect(result.tests).toEqual([
-    {
-      id: "review",
-      status: "test-todo",
-      reason: "ICH shifting row 1 right from column 3 in the headless readback (control frame not calibrated)",
-    },
-  ])
-  expect(result.observation).toEqual({
-    outcome: "inconclusive",
-    reason: "insufficient-evidence",
-    assertionType: "buffer_state",
-  })
-  expect(result.assertions).toEqual([
-    {
-      assertionType: "buffer_state",
-      kind: "negative",
-      expected:
-        "Left-right margin mode constrains horizontal operations: ICH at column 3 under DECSLRM 3;6 drops F at column 6 and leaves G and H in columns 7-8",
-      observed: result.response!,
-    },
-  ])
+  expect(result.notTested).toEqual({ reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL })
+  expect(result.criterionBranch).toBeUndefined()
+  expect(result.tests).toBeUndefined()
+  expect(result.observation).toBeUndefined()
   expect(screen.feeds.join("")).not.toContain("\x1b[?69h")
   expect(screen.feeds.at(-1)).toBe("\x1b[?69l\x1b[0m\x1b[2J\x1b[H")
 })

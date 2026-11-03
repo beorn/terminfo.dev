@@ -6,6 +6,7 @@
  * @testonly none
  */
 import { expect, test } from "vitest"
+import { NO_SAME_PATH_CONTROL } from "./helpers.ts"
 import { ALL_PROBES, SEMANTIC_PROMPT_SOURCE_REVIEW } from "./index.ts"
 import type { LibProbeSource } from "./types.ts"
 
@@ -259,8 +260,8 @@ test.each(headlessStateFeatures)(
       }),
     } as unknown as LibProbeSource)
     expect(result.pass).toBe(false)
-    expect(result.notTested).toBeUndefined()
     if (expected === null) {
+      expect(result.notTested).toBeUndefined()
       expect(result.criterionBranch).toBeUndefined()
       expect(result.tests).toEqual([
         { id: "criterion", status: "test-failure", reason: expect.stringContaining(reason) },
@@ -269,21 +270,14 @@ test.each(headlessStateFeatures)(
       expect(result.assertions).toBeUndefined()
       return
     }
-    expect(result.criterionBranch).toBe("source-negative-review")
-    expect(result.tests).toEqual([{ id: "review", status: "test-todo", reason }])
-    expect(result.observation).toEqual({
-      outcome: "inconclusive",
-      reason: "insufficient-evidence",
-      assertionType: "buffer_state",
-    })
-    expect(result.assertions).toEqual([
-      {
-        assertionType: "buffer_state",
-        kind: "negative",
-        expected,
-        observed: result.response!,
-      },
-    ])
+    // #32246: a painted setup whose target state is unexposed has no same-path control in this run, so the cell
+    // is the TEST TODO coverage record; no source review decides it and no negative assertion is emitted.
+    expect(result.notTested).toEqual({ reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL })
+    expect(result.criterionBranch).toBeUndefined()
+    expect(result.tests).toBeUndefined()
+    expect(result.observation).toBeUndefined()
+    expect(result.assertions).toBeUndefined()
+    expect((result.response ?? "").length).toBeGreaterThan(0)
   },
 )
 

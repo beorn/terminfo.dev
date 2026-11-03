@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest"
 import { deviceProbes } from "./device.ts"
-import { recordExecutedProbe, SOURCE_TREE_AUDITS, vtermGeometryReview } from "./helpers.ts"
+import { recordExecutedProbe } from "./helpers.ts"
 import type { TermProbeSource, LibProbeSource, TerminalQueryOutcome } from "./types.ts"
 
 const replies = [
@@ -700,12 +700,19 @@ describe("window-operation qualification", () => {
     ],
   }
 
+  const UNDECIDED_TITLE_STACK = {
+    notTested: {
+      reason: "no-semantic-observable",
+      noObservable: "observation not decided: no same-path control in this run",
+    },
+  }
+
   // AC3: a failed push/pop pair cannot identify which individual operation failed.
   // The prior case only covered failed setup; final WezTerm raw has valid setup and failed restoration.
   test.each(["device.xtwinops-22", "device.xtwinops-23"])("%s qualifies the complete title round trip", (id) => {
     for (const [titles, outcome] of [
       [["pushed-title", "new-title", "pushed-title"], "supported"],
-      [["pushed-title", "new-title", "new-title"], "inconclusive"],
+      [["pushed-title", "new-title", "new-title"], "todo"],
       [["test-icon", "test-icon", "test-icon"], "review"],
     ] as const) {
       let index = 0
@@ -726,180 +733,87 @@ describe("window-operation qualification", () => {
         expect(result.assertions).toBeUndefined()
         continue
       }
-      expect(result.observation).toMatchObject({ outcome, assertionType: "buffer_state" })
-      if (outcome === "inconclusive") {
-        expect(result.observation?.reason).toBe("insufficient-evidence")
+      if (outcome === "todo") {
+        // Push and pop share one observation, so an un-restored title is TEST TODO, never graded (#32246).
+        expect(result).toMatchObject(UNDECIDED_TITLE_STACK)
+        expect(result.observation).toBeUndefined()
         expect(result.assertions).toBeUndefined()
-      } else {
-        expect(result.assertions).toMatchObject([{ kind: "positive", observed: result.response }])
+        expect(result.criterionBranch).toBeUndefined()
+        continue
       }
+      expect(result.observation).toMatchObject({ outcome, assertionType: "buffer_state" })
+      expect(result.assertions).toMatchObject([{ kind: "positive", observed: result.response }])
     }
   })
 
-  // #31735, #31387, @cto 863bef67: when both CSI 22;0t and CSI 23;0t are source-audited as unimplemented in the loaded
-  // binary artifact (ghostty 0.4.0 stream_handler.zig:343-346; libvterm 0.3.3 state.c:978; vt100-rust 0.16.2
-  // perform.rs:132-156; wezterm 0.1.0-fork.5 terminalstate/mod.rs:2090-2095), an observed setup + un-restored title
-  // grades Unsupported by source citation; failed setup takes the headless observable review and unaudited artifacts
-  // stay inconclusive.
-  test.each([
-    ["42e84af1b38be94571974a23fa4667c4735ee7a272dcff39afd5cba40dcf48de", "ghostty-wasm-api.patch:717-719"],
-    ["712298aff45c7c53a22dc028b13cb58dae1e984199b520bbbc0475ae64d83159", "src/state.c:978"],
-    ["3c2398d5c537d9c10e86b0af69311977927fcdbe4738618df194cedbdd22574d", "stream_handler.zig:343-346"],
-    ["ce01cd0d1ae000dd88948f3817924cc85303874070cab39430967ebdf14877f3", "stream_handler.zig:343-346"],
-    ["5c38594a17329b24e826f785d3156d6e498490517835f12b0730eeab2fc63da7", "stream_handler.zig:343-346"],
-    ["d80a8110258a124fb6ff52a6fe149b8e39b5180d986907cc9fb7dc9143c3f3d9", "stream_handler.zig:343-346"],
-    ["7ebe1b994b58ca867dcd19e9cdeb10b8839b6c1f0dbdea024f875a9f57560a23", "src/state.c:978"],
-    ["3d67045bb43c5e4081c70dc58088af8f735416c20df2d7843d765e5aad8ef62a", "src/state.c:978"],
-    ["0919421290792a0c8be173dd50ec7a39c0ef68b1e0633fd979da13f22478c1d3", "src/perform.rs:132-156"],
-    ["dc3b24de6e91416f66b1953ce101991ef7e78602ce1b5d357f65832c9b96b326", "src/perform.rs:132-156"],
-    ["6722b331de7489c14cb599d939e5d2314f054220728f83c5c29f454e70273e47", "src/terminalstate/mod.rs:2090-2095"],
-    ["0f56a805793d7d829daa617f1323aacff0d73fe868747b0d077c6af315e2aab8", "src/terminalstate/mod.rs:2090-2095"],
-    ["b4155bfdef040ae8b3b723a4366fa8ec7f278463dbef577ec4730ad152b8bf07", "src/terminalstate/mod.rs:2090-2095"],
-  ] as const)(
-    "audited title-stack artifact %s grades Unsupported by source only after observed setup",
-    (sha256, cite) => {
-      for (const id of ["device.xtwinops-22", "device.xtwinops-23"] as const) {
-        const makeCtx = (titles: readonly [string, string, string], binarySha: string = sha256) => {
-          let index = 0
-          return {
-            feed: () => undefined,
-            runtimeIdentity: {
-              kind: "js",
-              runtimeFormat: "wasm",
-              engineVersion: "0.4.0",
-              adapterVersion: "0.4.0",
-              termlessRevision: "0".repeat(40),
-              resolvedPath: "fixture.js",
-              integrity: { kind: "registry", lockIntegrity: "sha512-fixture" },
-              loadedBinary: { path: "fixture.wasm", sha256: binarySha },
-            },
-            getTitle: () => titles[index++]!,
-          } as unknown as LibProbeSource
-        }
-        const negative = callback(id).headless(makeCtx(["pushed-title", "new-title", "new-title"]))
-        expect(negative.observation).toMatchObject({
-          outcome: "unsupported",
-          assertionType: "buffer_state",
-          note: "negative by source citation",
-        })
-        expect(negative.assertions).toMatchObject([
-          { kind: "negative", assertionType: "buffer_state", observed: negative.response },
-        ])
-        expect(JSON.parse(negative.response!)).toMatchObject({
-          original: "pushed-title",
-          changed: "new-title",
-          restored: "new-title",
-          artifactSha256: sha256,
-          sourceCitation: expect.stringContaining(cite),
-        })
-
-        // Real restoration still wins over the audit table.
-        const positive = callback(id).headless(makeCtx(["pushed-title", "new-title", "pushed-title"]))
-        expect(positive.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
-
-        // Unobservable setup takes the headless observable review even on an audited artifact (#31387).
-        const unobservable = callback(id).headless(makeCtx(["", "", ""]))
-        expect(unobservable).toMatchObject(UNOBSERVABLE_TITLE_SETUP)
-        expect(unobservable.observation).toBeUndefined()
-
-        // Unaudited digest stays inconclusive.
-        const unaudited = callback(id).headless(makeCtx(["pushed-title", "new-title", "new-title"], "f".repeat(64)))
-        expect(unaudited.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
-      }
-    },
-  )
-
+  // #32246 (operator 2026-11-03): the former source-audited title-stack artifacts and JS source trees no longer grade
+  // Unsupported; an observed setup with an un-restored title stays TEST TODO whatever the runtime identity, while real
+  // restoration still reads Supported and an unobservable setup still takes the headless observable review.
   test.each([
     [
-      "vendor/vterm/packages/vt100/src/index.ts",
-      "b941dae48b25ae8825c394750bda5245c9d93dfa",
-      "packages/vt100/src/screen.ts:251-358",
+      "formerly audited WASM artifact",
+      {
+        kind: "js",
+        runtimeFormat: "wasm",
+        engineVersion: "0.4.0",
+        adapterVersion: "0.4.0",
+        termlessRevision: "0".repeat(40),
+        resolvedPath: "fixture.js",
+        integrity: { kind: "registry", lockIntegrity: "sha512-fixture" },
+        loadedBinary: {
+          path: "fixture.wasm",
+          sha256: "712298aff45c7c53a22dc028b13cb58dae1e984199b520bbbc0475ae64d83159",
+        },
+      },
     ],
     [
-      "vendor/vterm/packages/vt220/src/index.ts",
-      "4205f8936ad1848d1029729f3ada888cd61759a8",
-      "packages/vt220/src/screen.ts:305-428",
+      "formerly audited JS source tree",
+      {
+        kind: "js",
+        runtimeFormat: "js",
+        engineVersion: "0.10.1",
+        adapterVersion: "0.10.2",
+        termlessRevision: "d5e6248bfb080c3065f81b78c45bdfe1b37c06d6",
+        resolvedPath: "vendor/vterm/packages/vt100/src/index.ts",
+        integrity: {
+          kind: "source",
+          repository: "git@github.com:beorn/vterm.git",
+          revision: "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+          treeOid: "b941dae48b25ae8825c394750bda5245c9d93dfa",
+          cleanTree: true,
+        },
+      },
     ],
-  ] as const)(
-    "audited title-stack JS source tree %s (%s) grades Unsupported by source only after observed setup",
-    (resolvedPath, treeOid, cite) => {
-      for (const id of ["device.xtwinops-22", "device.xtwinops-23"] as const) {
-        const baseIdentity = {
-          kind: "js" as const,
-          runtimeFormat: "js" as const,
-          engineVersion: "0.10.1",
-          adapterVersion: "0.10.2",
-          termlessRevision: resolvedPath.includes("/vt220/")
-            ? "a871f0e580e1b02fb5dbb7ed854f6de623e7858e"
-            : "d5e6248bfb080c3065f81b78c45bdfe1b37c06d6",
-          resolvedPath,
-          integrity: {
-            kind: "source" as const,
-            repository: "git@github.com:beorn/vterm.git",
-            revision: "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
-            treeOid,
-            cleanTree: true,
-          },
-        }
-        const makeCtx = (
-          titles: readonly [string, string, string],
-          runtimeIdentity: unknown = baseIdentity,
-        ): LibProbeSource => {
-          let index = 0
-          return {
-            feed: () => undefined,
-            runtimeIdentity,
-            getTitle: () => titles[index++]!,
-          } as unknown as LibProbeSource
-        }
-
-        const negative = callback(id).headless(makeCtx(["pushed-title", "new-title", "new-title"]))
-        expect(negative.observation).toMatchObject({
-          outcome: "unsupported",
-          assertionType: "buffer_state",
-          note: "negative by source citation",
-        })
-        expect(negative.assertions).toMatchObject([
-          { kind: "negative", assertionType: "buffer_state", observed: negative.response },
-        ])
-        expect(JSON.parse(negative.response!)).toMatchObject({
-          original: "pushed-title",
-          changed: "new-title",
-          restored: "new-title",
-          treeOid,
-          sourceCitation: expect.stringContaining(cite),
-        })
-        expect(JSON.parse(negative.response!)).not.toHaveProperty("revision")
-        for (const provenance of [
-          { ...baseIdentity, integrity: { ...baseIdentity.integrity, revision: "f".repeat(40) } },
-          { ...baseIdentity, resolvedPath: "/relocated/adapter.ts" },
-        ]) {
-          expect(callback(id).headless(makeCtx(["pushed-title", "new-title", "new-title"], provenance))).toEqual(
-            negative,
-          )
-        }
-
-        // Real restoration still wins over the audit table.
-        const positive = callback(id).headless(makeCtx(["pushed-title", "new-title", "pushed-title"]))
-        expect(positive.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
-
-        // Unobservable setup takes the headless observable review even on an audited source tree (#31387).
-        const unobservable = callback(id).headless(makeCtx(["", "", ""]))
-        expect(unobservable).toMatchObject(UNOBSERVABLE_TITLE_SETUP)
-        expect(unobservable.observation).toBeUndefined()
-
-        // Any dirty or mutated source identity stays inconclusive.
-        for (const mutated of [
-          { ...baseIdentity, integrity: { ...baseIdentity.integrity, cleanTree: false } },
-          { ...baseIdentity, integrity: { ...baseIdentity.integrity, treeOid: "f".repeat(40) } },
-          { ...baseIdentity, integrity: { ...baseIdentity.integrity, repository: "git@github.com:other/vterm.git" } },
-        ]) {
-          const res = callback(id).headless(makeCtx(["pushed-title", "new-title", "new-title"], mutated))
-          expect(res.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
-        }
+    ["no runtime identity", undefined],
+  ] as const)("title-stack on a %s is never graded from source", (_name, runtimeIdentity) => {
+    for (const id of ["device.xtwinops-22", "device.xtwinops-23"] as const) {
+      const makeCtx = (titles: readonly [string, string, string]): LibProbeSource => {
+        let index = 0
+        return {
+          feed: () => undefined,
+          runtimeIdentity,
+          getTitle: () => titles[index++]!,
+        } as unknown as LibProbeSource
       }
-    },
-  )
+      const undecided = callback(id).headless(makeCtx(["pushed-title", "new-title", "new-title"]))
+      expect(undecided).toMatchObject(UNDECIDED_TITLE_STACK)
+      expect(undecided.observation).toBeUndefined()
+      expect(undecided.assertions).toBeUndefined()
+      expect(undecided.criterionBranch).toBeUndefined()
+      expect(JSON.parse(undecided.response!)).toEqual({
+        original: "pushed-title",
+        changed: "new-title",
+        restored: "new-title",
+      })
+
+      const positive = callback(id).headless(makeCtx(["pushed-title", "new-title", "pushed-title"]))
+      expect(positive.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
+
+      const unobservable = callback(id).headless(makeCtx(["", "", ""]))
+      expect(unobservable).toMatchObject(UNOBSERVABLE_TITLE_SETUP)
+      expect(unobservable.observation).toBeUndefined()
+    }
+  })
 })
 
 /**
@@ -1118,7 +1032,7 @@ describe("device contracts without prior coverage", () => {
 })
 
 // Actual run388fa7b54f74bfe5d9bfbecef7e4d924, vterm source53a9eb9/tree617ae60: no font/window geometry.
-// Q8 requires independent review of this context limit, never automatic Untestable.
+// It stays TEST TODO, never automatic Untestable and never graded from source (#32246).
 const geometryRuntime = {
   kind: "js",
   adapterVersion: "0.10.2",
@@ -1147,30 +1061,23 @@ const geometryReplies = [
   },
 ] as const
 
-test.each(geometryReplies)("$id retains audited geometry limits for required review", ({ id, raw }) => {
-  expect({
-    resolvedPath: geometryRuntime.resolvedPath,
-    runtimeFormat: geometryRuntime.runtimeFormat,
-    engineVersion: geometryRuntime.engineVersion,
-    repository: geometryRuntime.integrity.repository,
-    treeOid: geometryRuntime.integrity.treeOid,
-  }).toEqual(SOURCE_TREE_AUDITS.vterm)
-  for (const { revision, sourceCitation } of [
-    {
-      revision: "67dd3960746766ed47e2bb4b2ced6503a78549cc",
-      sourceCitation:
-        "vterm 67dd3960746766ed47e2bb4b2ced6503a78549cc packages/vterm/src/screen.ts:89-109 ScreenOptions has no physical font/window metrics; XTWINOPS14/16 at :2610-2615 deliberately report unknown zero dimensions (#30575)",
-    },
-    {
-      revision: "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
-      sourceCitation:
-        "vterm 9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vterm/src/screen.ts:89-109 ScreenOptions has no physical font/window metrics; XTWINOPS14/16 at :2610-2615 deliberately report unknown zero dimensions (#30575)",
-    },
-  ]) {
+// #32246 (operator 2026-11-03): the vterm source-tree geometry audit is gone. A complete zero geometry reply has no
+// same-path control in this run, so it is TEST TODO on every identity; it is never graded from source.
+test.each(geometryReplies)("$id keeps a complete zero geometry reply TEST TODO on any identity", ({ id, raw, positive }) => {
+  const identities = [
+    undefined,
+    geometryRuntime,
+    { ...geometryRuntime, resolvedPath: "foreign/index.ts" },
+    { ...geometryRuntime, runtimeFormat: "wasm" },
+    ...[{ cleanTree: false }, { revision: "foreign" }, { treeOid: "f".repeat(40) }, { repository: "foreign" }].map(
+      (change) => ({ ...geometryRuntime, integrity: { ...geometryRuntime.integrity, ...change } }),
+    ),
+  ]
+  for (const runtimeIdentity of identities) {
     for (const sentinel of [false, true]) {
       const ctx = {
         feedCapture: () => raw,
-        runtimeIdentity: { ...geometryRuntime, integrity: { ...geometryRuntime.integrity, revision } },
+        runtimeIdentity,
         ...(sentinel && {
           queryWithSentinelOutcome: () => ({
             raw,
@@ -1181,158 +1088,25 @@ test.each(geometryReplies)("$id retains audited geometry limits for required rev
         }),
       } as unknown as LibProbeSource
       const result = callback(id).headless(ctx)
-      expect(result.notTested?.reason).toBe("no-semantic-observable")
-      expect(result.tests).toMatchObject([{ id: "review", status: "test-todo" }])
+      expect(result.notTested).toEqual({
+        reason: "no-semantic-observable",
+        noObservable: "observation not decided: no same-path control in this run",
+      })
       expect(result.observation).toBeUndefined()
+      expect(result.assertions).toBeUndefined()
+      expect(result.tests).toBeUndefined()
+      expect(result.criterionBranch).toBeUndefined()
       const state = JSON.parse(result.response!)
-      expect(state).toMatchObject({ raw, sourceCitation })
+      expect(state).toMatchObject({ raw })
+      expect(state).not.toHaveProperty("sourceCitation")
       expect(state).not.toHaveProperty("runtimeIdentity")
     }
   }
-})
-
-test.each(geometryReplies)("$id requires audited source and complete zero geometry", ({ id, raw, positive }) => {
-  const identities = [
-    undefined,
-    { ...geometryRuntime, resolvedPath: "foreign/index.ts" },
-    { ...geometryRuntime, runtimeFormat: "wasm" },
-    ...[{ cleanTree: false }, { revision: "foreign" }, { treeOid: "foreign" }, { repository: "foreign" }].map(
-      (change) => ({ ...geometryRuntime, integrity: { ...geometryRuntime.integrity, ...change } }),
-    ),
-  ]
-  for (const runtimeIdentity of identities) {
-    const ctx = { feedCapture: () => raw, runtimeIdentity } as unknown as LibProbeSource
-    expect(callback(id).headless(ctx).notTested).toBeUndefined()
-  }
+  // Only the complete zero frame takes this record; a partial or foreign reply keeps its measured reading.
   for (const reply of ["", raw.slice(0, 4), "foreign", raw + "foreign", "foreign" + raw]) {
     const ctx = { feedCapture: () => reply, runtimeIdentity: geometryRuntime } as unknown as LibProbeSource
     expect(callback(id).headless(ctx).notTested).toBeUndefined()
   }
   const ctx = { feedCapture: () => positive, runtimeIdentity: geometryRuntime } as unknown as LibProbeSource
   expect(callback(id).headless(ctx).observation?.outcome).toBe("supported")
-  for (const revision of [geometryRuntime.integrity.revision, "9e99e4d23cdc606fca258b1863aa2be7ae79eed3"]) {
-    expect(
-      vtermGeometryReview(
-        {
-          runtimeIdentity: { ...geometryRuntime, integrity: { ...geometryRuntime.integrity, revision } },
-        } as LibProbeSource,
-        false,
-        { query: "unused", raw, noObservable: "unused", sourceCitation: "unused" },
-        callback(id).headless(ctx),
-      ),
-    ).toBeUndefined()
-  }
 })
-
-// A changed known engine must not disappear behind reply shape, location or another failed qualifier.
-test.each(geometryReplies)("$id reports source tree drift before geometry grading", ({ id, raw, positive }) => {
-  for (const overrides of [{}, { adapterVersion: "other" }]) {
-    for (const cleanTree of [true, false]) {
-      const runtimeIdentity = {
-        ...geometryRuntime,
-        ...overrides,
-        integrity: { ...geometryRuntime.integrity, cleanTree, treeOid: "f".repeat(40) },
-      }
-      for (const reply of [raw, positive, "malformed"]) {
-        const result = callback(id).headless({ feedCapture: () => reply, runtimeIdentity } as unknown as LibProbeSource)
-        expect(result.tests).toEqual([
-          {
-            id: "criterion",
-            status: "test-failure",
-            reason: `source identity drift: expected ${geometryRuntime.integrity.treeOid}, read ${"f".repeat(40)}`,
-          },
-        ])
-        expect(result.observation).toBeUndefined()
-        expect(result.assertions).toBeUndefined()
-        expect(result.notTested).toBeUndefined()
-        expect(JSON.parse(result.response!)).toMatchObject({ raw: reply })
-        expect(JSON.parse(result.response!)).not.toHaveProperty("runtimeIdentity")
-      }
-    }
-  }
-})
-
-// Same repository/version has three distinct audited entry paths; siblings must not acquire vterm drift.
-test.each(geometryReplies)("$id distinguishes sibling source entries", ({ id, raw }) => {
-  const baseline = callback(id).headless({ feedCapture: () => raw } as unknown as LibProbeSource)
-  for (const [engine, treeOid] of [
-    ["vt100", "b941dae48b25ae8825c394750bda5245c9d93dfa"],
-    ["vt220", "4205f8936ad1848d1029729f3ada888cd61759a8"],
-  ]) {
-    const runtimeIdentity = {
-      ...geometryRuntime,
-      resolvedPath: `vendor/vterm/packages/${engine}/src/index.ts`,
-      integrity: { ...geometryRuntime.integrity, treeOid },
-    }
-    expect(callback(id).headless({ feedCapture: () => raw, runtimeIdentity } as unknown as LibProbeSource)).toEqual(
-      baseline,
-    )
-    const changedVterm = { ...runtimeIdentity, resolvedPath: geometryRuntime.resolvedPath }
-    expect(
-      callback(id).headless({ feedCapture: () => raw, runtimeIdentity: changedVterm } as unknown as LibProbeSource)
-        .tests,
-    ).toMatchObject([
-      {
-        status: "test-failure",
-        reason: `source identity drift: expected ${geometryRuntime.integrity.treeOid}, read ${treeOid}`,
-      },
-    ])
-  }
-})
-
-// #32060: the 17:34 PDT run measured vterm 0.10.0 against a gate pinned to 0.9.0, and the row read
-// "writer default: ... callback defect". No test drove the gate with the audited subject at another identity.
-test.each(geometryReplies)(
-  "$id names both identities when the audited subject misses the review pin",
-  ({ id, raw }) => {
-    const loaded = {
-      ...geometryRuntime,
-      engineVersion: "0.9.0",
-      integrity: {
-        ...geometryRuntime.integrity,
-        revision: "53a9eb92aa11bb22cc33dd44ee55ff6677889900",
-        treeOid: "617ae6002c7befea7b3e43d11bf23e6b433e3d65",
-      },
-    }
-    const pinned =
-      "review pinned to vterm 0.10.1 67dd39607467 tree e9d67d4b4ba7 or vterm 0.10.1 9e99e4d23cdc tree e9d67d4b4ba7"
-    const measured = callback(id).headless({ feedCapture: () => raw } as unknown as LibProbeSource)
-    for (const [runtimeIdentity, side] of [
-      [loaded, "loaded vterm 0.9.0 53a9eb92aa11 tree 617ae6002c7b"],
-      [
-        { ...geometryRuntime, integrity: { ...geometryRuntime.integrity, revision: "f".repeat(40) } },
-        "loaded vterm 0.10.1 ffffffffffff tree e9d67d4b4ba7",
-      ],
-      [
-        { ...geometryRuntime, integrity: { ...geometryRuntime.integrity, cleanTree: false } },
-        "loaded vterm 0.10.1 67dd39607467 tree e9d67d4b4ba7 dirty",
-      ],
-      [
-        {
-          ...geometryRuntime,
-          integrity: {
-            ...geometryRuntime.integrity,
-            revision: "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
-            cleanTree: false,
-          },
-        },
-        "loaded vterm 0.10.1 9e99e4d23cdc tree e9d67d4b4ba7 dirty",
-      ],
-    ] as const) {
-      const result = callback(id).headless({ feedCapture: () => raw, runtimeIdentity } as unknown as LibProbeSource)
-      const note = `${pinned}; ${side}; no review applies at this identity`
-      expect(result).toEqual({ ...measured, observation: { ...measured.observation, note } })
-      expect(result.tests).toBeUndefined()
-      expect(result.notTested).toBeUndefined()
-      expect(result.observation).toMatchObject({ outcome: "inconclusive", note })
-      const row = recordExecutedProbe({
-        featureId: id,
-        attempt: { scope: "probe", startedAt: "2026-10-31T23:34:04.000Z" },
-        assertions: [],
-        ...(result.observation && { observation: { ...result.observation, featureId: id, rawReplyRef: id } }),
-      })
-      expect(row).toMatchObject({ status: "test-failure", reason: note })
-      expect(row.reason).not.toMatch(/writer default/)
-    }
-  },
-)

@@ -39,7 +39,7 @@ import { collectBatch, createLibProbeSource, feedCapture } from "./headless-batc
 import * as headlessIdentity from "./headless-identity.ts"
 import { finalizeCollectedDraft } from "../terminfo.dev/src/capture-writer.ts"
 import { cellWidthTransition } from "../probe-defs/src/helpers.ts"
-import { ADAPTER_SOURCE_AUDITS, replyFailure } from "../probe-defs/src/helpers.ts"
+import { ADAPTER_SOURCE_AUDITS, NO_SAME_PATH_CONTROL, replyFailure } from "../probe-defs/src/helpers.ts"
 import retainedDeccolm from "./fixtures/deccolm-retained.json"
 
 /** Feature captures only; collector qualification metadata is asserted in sentinel-member.test.ts. */
@@ -1267,7 +1267,7 @@ test("cwd readback errors propagate after restoring the original metadata", asyn
 // 31299: callback-only assertions miss a typed source review that the capture parser rejects.
 // Keep the real registered callback, pinned identity fixture, adapter, collector and parser on one path.
 test.each(["extensions.osc117-reset-highlight-bg", "extensions.osc119-reset-highlight-fg"])(
-  "%s retains a readable pending source review through the actual collector",
+  "%s reads TEST TODO, never a source review, through the actual collector",
   async (id) => {
     const definition = ALL_PROBES.find((entry) => entry.id === id)!
     // Source-audit input, not an attestation of this runner's checkout. Standalone CI has no owned siblings.
@@ -1349,11 +1349,10 @@ test.each(["extensions.osc117-reset-highlight-bg", "extensions.osc119-reset-high
       {
         featureId: id,
         status: "test-todo",
-        assertionType: "buffer_state",
-        criterionBranch: "source-negative-review",
-        tests: [{ id: "review", status: "test-todo" }],
+        tests: [{ id: "criterion", status: "test-todo" }],
       },
     ])
+    expect(parsed.results[0]?.criterionBranch).toBeUndefined()
   },
 )
 
@@ -1463,9 +1462,10 @@ test.each([
   }
 })
 
-// Q2/bar93: callback tests miss a typed buffer-state review rejected at the collector/parser boundary.
+// Q2/bar93: callback tests miss a typed parser-state result rejected at the collector/parser boundary. Since #32246 the
+// former source review is TEST TODO coverage, which must still survive collection and parsing.
 // Canonical source validation lazily fetches historical Git blobs in CI's partial clones; this is not a speed test.
-test("DECSSCLS real-vterm pending source review survives collection and canonical parsing", async () => {
+test("DECSSCLS real-vterm parser-state TEST TODO survives collection and canonical parsing", async () => {
   const id = "modes.decsscls"
   const manifest = {
     schemaVersion: 4 as const,
@@ -1483,18 +1483,13 @@ test("DECSSCLS real-vterm pending source review survives collection and canonica
     manifest,
   })
   const batch = await collectBatch(async () => createVtermBackend(), "vterm", registryDefinitions([id]), draft)
-  expect(batch.results).toMatchObject([
-    {
-      featureId: id,
-      status: "test-todo",
-      assertionType: "buffer_state",
-      criterionBranch: "source-negative-review",
-      tests: [{ id: "review", status: "test-todo" }],
-    },
-  ])
+  // #32246: no source review decides DECSSCLS; the parser-state cell is TEST TODO coverage with no negative assertion.
+  expect(batch.results).toMatchObject([{ featureId: id, status: "test-todo", tests: [{ id: "criterion", status: "test-todo" }] }])
+  expect(batch.results[0]).not.toHaveProperty("criterionBranch")
+  expect(batch.results[0]).not.toHaveProperty("assertionType")
   expect(JSON.parse(batch.rawReplies[id]!)).toMatchObject({ cursor: { x: 1, y: 0 } })
   expect(JSON.parse(batch.rawReplies[id]!)).toMatchObject({ text: expect.stringMatching(/^Q\s*$/u) })
-  expect(batch.assertions).toMatchObject([{ kind: "negative", observed: batch.rawReplies[id] }])
+  expect(batch.assertions).toEqual([])
   const captured: CapturedRunDraft = {
     ...draft,
     subject: {
@@ -1526,14 +1521,7 @@ test("DECSSCLS real-vterm pending source review survives collection and canonica
     assertions: batch.assertions,
   }
   const finalized = finalizeCollectedDraft(captured)
-  expect(finalized.results).toMatchObject([
-    {
-      featureId: id,
-      status: "test-todo",
-      assertionType: "buffer_state",
-      tests: [{ id: "review", status: "test-todo" }],
-    },
-  ])
+  expect(finalized.results).toMatchObject([{ featureId: id, status: "test-todo", tests: [{ id: "criterion", status: "test-todo" }] }])
   expect(finalized.assertions).toEqual(batch.assertions)
   expect(finalized.rawReplies).toEqual(batch.rawReplies)
   const parsed = parseRun(
@@ -1545,9 +1533,10 @@ test("DECSSCLS real-vterm pending source review survives collection and canonica
   expect(parsed.results).toEqual(finalized.results)
 }, 30_000)
 
-// @failure A typed D/633 source review under libAssertionType:null becomes a collector error.
+// @failure A D/633 prompt result at the formerly audited WezTerm identity becomes a collector error, or is graded
+//   from source instead of staying TEST TODO (#32246).
 // @level l1 @consumer collectBatch plus capture parser; callback tests cannot catch declaration rejection.
-test("Wezterm prompt source reviews survive actual collection and capture binding", async () => {
+test("Wezterm prompt TEST TODO rows survive actual collection and capture binding", async () => {
   const ids = [
     "extensions.osc133-d",
     "extensions.osc633-a",
@@ -1632,17 +1621,15 @@ test("Wezterm prompt source reviews survive actual collection and capture bindin
     results: batch.results,
     assertions: batch.assertions,
   }
+  // #32246: the formerly audited WezTerm identity grades no prompt mark from source; each stays TEST TODO, untyped.
   for (const id of ids) {
     const row = captured.results.find((entry) => entry.featureId === id)!
-    expect(row).toMatchObject({
-      featureId: id,
-      status: "test-todo",
-      assertionType: "buffer_state",
-      criterionBranch: "source-negative-review",
-      tests: [{ id: "review", status: "test-todo" }],
-    })
+    expect(row).toMatchObject({ featureId: id, status: "test-todo" })
+    expect(row.criterionBranch).not.toBe("source-negative-review")
+    expect(row).not.toHaveProperty("assertionType")
     expect(captured.runtimeIdentity).toEqual(identity)
   }
+  expect(captured.assertions).toEqual([])
   const parsed = parseRun(
     "wezterm-prompt.capture.json",
     JSON.stringify(captured),
@@ -1651,13 +1638,13 @@ test("Wezterm prompt source reviews survive actual collection and capture bindin
   )
   expect(parsed.results).toHaveLength(7)
   expect(
-    parsed.results?.every((row) => row.criterionBranch === "source-negative-review" && row.status === "test-todo"),
+    parsed.results?.every((row) => row.criterionBranch !== "source-negative-review" && row.status === "test-todo"),
   ).toBe(true)
 })
 
-// #32099: callback-only tests miss a source buffer_state result rejected by an
-// inherited query_reply declaration. Real engines must take different branches
-// through the same definitions, including xterm's actual mode2031 Ps0 negative.
+// #32099: callback-only tests miss a result rejected by an inherited query_reply declaration. Real engines must take
+// different branches through the same definitions, including xterm's actual mode2031 Ps0 negative; since #32246 the
+// vterm engines' former source reviews are untyped TEST TODO rows that must still survive collection and parsing.
 test("source-qualified mode and mouse criteria survive collection and capture parsing", async () => {
   const ids = ["modes.synchronized-output", "modes.color-scheme-reporting", "input.pixel-mouse"]
   for (const [name, producer] of [
@@ -1774,16 +1761,18 @@ test("source-qualified mode and mouse criteria survive collection and capture pa
         id,
       ).toMatchObject(
         name !== "xtermjs"
-          ? {
-              status: "test-todo",
-              assertionType: "buffer_state",
-              criterionBranch: "source-negative-review",
-            }
+          ? { status: "test-todo" }
           : {
               status: id === "modes.color-scheme-reporting" ? "unsupported" : "supported",
               assertionType: id === "input.pixel-mouse" ? "input_bytes" : "query_reply",
             },
       )
+      // #32246: the formerly audited vterm identities take no source branch and carry no typed negative.
+      if (name !== "xtermjs") {
+        const row = captured.results.find((entry) => entry.featureId === id)!
+        expect(row, id).not.toHaveProperty("criterionBranch")
+        expect(row, id).not.toHaveProperty("assertionType")
+      }
       expect(JSON.stringify(batch.ungradedDiagnostics[id] ?? {}), id).not.toContain("collector-error")
       if (name === "xtermjs") {
         expect(
@@ -1823,11 +1812,7 @@ test("source-qualified mode and mouse criteria survive collection and capture pa
     for (const row of parsed.results ?? []) {
       expect(row).toMatchObject(
         name !== "xtermjs"
-          ? {
-              status: "test-todo",
-              assertionType: "buffer_state",
-              criterionBranch: "source-negative-review",
-            }
+          ? { status: "test-todo" }
           : {
               status: row.featureId === "modes.color-scheme-reporting" ? "unsupported" : "supported",
               assertionType: row.featureId === "input.pixel-mouse" ? "input_bytes" : "query_reply",
@@ -2425,9 +2410,10 @@ test.each([
   ).toThrow("requires the performed action")
 })
 
-// @failure Callback source-review custody is lost when recorded as a real headless batch.
+// @failure A Vterm input cell at the formerly audited identity is graded from source, or its TEST TODO coverage record
+//   is lost when recorded as a real headless batch (#32246).
 // @consumer The four registered Vterm input callbacks through collectBatch; no capture or attestation.
-test("audited Vterm input negatives retain required source review through the collector", async () => {
+test("formerly audited Vterm input cells record TEST TODO coverage through the collector", async () => {
   const ids = ["input.modify-other-keys", "input.modify-other-keys-3", "input.xtest-key", "input.kitty-click-events"]
   // Identity is a unit fixture; it does not attest this runner or grant collection/admission.
   const identity = {
@@ -2509,14 +2495,19 @@ test("audited Vterm input negatives retain required source review through the co
   expect(parsed.assertions).toEqual([])
   expect(batch.ungradedDiagnostics).toEqual({})
   expect(batch.results).toHaveLength(ids.length)
-  expect(batch.notTested).toEqual([])
+  expect(batch.notTested).toEqual(
+    ids.map((id) => ({
+      featureId: id,
+      reason: "no-semantic-observable",
+      noObservable: NO_SAME_PATH_CONTROL,
+      rawReplyRef: id,
+    })),
+  )
   for (const id of ids) {
-    expect(batch.results.find((row) => row.featureId === id)).toMatchObject({
-      status: "test-todo",
-      criterionBranch: "source-negative-review",
-      tests: [{ id: "review", status: "test-todo", reason: expect.stringContaining("67dd3960") }],
-    })
-    expect(batch.results.find((row) => row.featureId === id)?.assertionType).toBeUndefined()
+    const row = batch.results.find((entry) => entry.featureId === id)
+    expect(row).toMatchObject({ status: "test-todo" })
+    expect(row?.criterionBranch).toBeUndefined()
+    expect(row?.assertionType).toBeUndefined()
   }
   expect(batch.assertions).toEqual([])
   expect(batch.observations).toEqual([])
@@ -2531,7 +2522,8 @@ test("mouse collector distinguishes unavailable state/pixels, measured no-report
     "vterm",
     registryDefinitions(["input.kitty-click-events"]),
   )
-  expect(kitty.results).toMatchObject([{ status: "test-todo", reason: expect.stringContaining("#30936") }])
+  // #32246: the former source review of the kitty click encoder is TEST TODO coverage with no same-path control.
+  expect(kitty.results).toMatchObject([{ status: "test-todo", reason: NO_SAME_PATH_CONTROL }])
   const id = "input.pixel-mouse"
   const reset = "\x1b[?9;1000;1002;1003;1005;1006;1015;1016l"
   const cases: { state: boolean | null; error?: string; expected: string }[] = [
@@ -3516,12 +3508,14 @@ test.each([
     returned: "query_reply",
     declared: "buffer_state",
   },
+  // #32246: OSC 0 qualifies on the source's icon and title readers, not an audited identity. The vterm source exposes
+  // both, so it declares buffer_state exactly as xterm does and refuses a query_reply result.
   {
     name: "vterm",
     package: "@termless/vterm",
     factory: async () => createVtermBackend(),
-    returned: "buffer_state",
-    declared: "query_reply",
+    returned: "query_reply",
+    declared: "buffer_state",
   },
 ] as const)("registered OSC0 declaration refuses $returned for the actual $name source", async (scenario) => {
   const value = await scenario.factory()
@@ -3587,21 +3581,16 @@ test("real qualified OSC callbacks survive pending and unit-reviewed sealed read
     adapterType: "js",
   })
   expect(batch.ungradedDiagnostics).toEqual({})
+  // #32246: the pending OSC 52 rows stay TEST TODO and carry no source branch or typed negative.
   expect(batch.results).toMatchObject([
     { featureId: ids[0], status: "supported", assertionType: "buffer_state" },
-    {
-      featureId: ids[1],
-      status: "test-todo",
-      assertionType: "buffer_state",
-      criterionBranch: "source-negative-review",
-    },
-    {
-      featureId: ids[2],
-      status: "test-todo",
-      assertionType: "buffer_state",
-      criterionBranch: "source-negative-review",
-    },
+    { featureId: ids[1], status: "test-todo" },
+    { featureId: ids[2], status: "test-todo" },
   ])
+  for (const row of batch.results.slice(1)) {
+    expect(row, row.featureId).not.toHaveProperty("criterionBranch")
+    expect(row, row.featureId).not.toHaveProperty("assertionType")
+  }
   const captured: CapturedRunDraft = {
     ...draft,
     subject: {
@@ -3627,16 +3616,20 @@ test("real qualified OSC callbacks survive pending and unit-reviewed sealed read
     parseRun("qualified-unit.capture.json", JSON.stringify(value), ids, new Map([[manifest.probeHash, manifest]]))
   expect(read(captured).results).toEqual(batch.results)
   expect(read(finalizeCollectedDraft(captured)).results).toEqual(batch.results)
+  // The parser-level-rejection rule is gone with the source answers (#32246): a TEST TODO row that claims a type
+  // stays TEST TODO, never a graded negative.
   const mislabeled = structuredClone(captured)
   for (const result of mislabeled.results.slice(1)) result.assertionType = "query_reply"
   for (const assertion of mislabeled.assertions.filter((entry) => entry.featureId !== ids[0])) {
     assertion.assertionType = "query_reply"
   }
-  expect(() => read(mislabeled)).toThrow("requires a recorded parser-level rejection")
+  const relabeled = read(mislabeled).results
+  expect(relabeled?.slice(1).map((row) => row.status)).toEqual(["test-todo", "test-todo"])
+  // The OSC 52 rows carry no state assertion any more (#32246); the measured OSC 0 snapshot keeps the check.
   const invalidState = structuredClone(captured)
-  const stateAssertion = invalidState.assertions.find((entry) => entry.featureId === ids[1])!
+  const stateAssertion = invalidState.assertions.find((entry) => entry.featureId === ids[0])!
   stateAssertion.observed = "not-json"
-  invalidState.rawReplies[ids[1]!] = "not-json"
+  invalidState.rawReplies[ids[0]!] = "not-json"
   expect(() => read(invalidState)).toThrow("state snapshot")
 })
 
@@ -4268,7 +4261,7 @@ test("retains execution-only failure bytes despite pass true and rejects a typed
 
 // AC1: the old preflight refused an exact declared/loaded identity because it lacked
 // audit-table membership; existing tests deliberately asserted that obsolete refusal.
-test("unaudited binary collects a named audit TODO and an observed buffer result", async () => {
+test("a silent loaded binary collects a no-same-path-control TODO and an observed buffer result", async () => {
   const sha256 = "f".repeat(64)
   const identity = {
     kind: "native" as const,
@@ -4302,7 +4295,8 @@ test("unaudited binary collects a named audit TODO and an observed buffer result
   const batch = await collectBatch(backend, "xtermjs", definitions)
   expect(batch.results.find((row) => row.featureId === "device.xtgettcap")).toMatchObject({
     status: "test-todo",
-    tests: [{ id: "criterion", status: "test-todo", reason: `no source audit for binary ${sha256.slice(0, 12)}` }],
+    // #32246: a zero-byte reply on a loaded binary is TEST TODO with no same-path control, never a source audit.
+    tests: [{ id: "criterion", status: "test-todo", reason: NO_SAME_PATH_CONTROL }],
   })
   expect(batch.results.find((row) => row.featureId === "sgr.bold")?.status).toBe("supported")
 })

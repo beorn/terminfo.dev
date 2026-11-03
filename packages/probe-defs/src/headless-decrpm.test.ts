@@ -6,7 +6,7 @@
  * @testonly none
  */
 import { expect, test } from "vitest"
-import { decrpmPs, decrpmReplyPattern, decrpmStatus } from "./helpers.ts"
+import { decrpmPs, decrpmReplyPattern, decrpmStatus, NO_SAME_PATH_CONTROL } from "./helpers.ts"
 import { modesProbes } from "./modes.ts"
 import { inputProbes } from "./input.ts"
 import type { LibProbeSource } from "./types.ts"
@@ -449,6 +449,7 @@ function capturedModeContext(identity: LibProbeSource["runtimeIdentity"], behavi
 
 // CTO45a/M5: input observer absence cannot hide these pinned engines own absent mouse modes.
 // Existing mode rows never execute the six input callbacks; existing source/adapter fallback tests stay unchanged.
+// #32246: a consumed mode with no visible effect has no same-path control, so it is TEST TODO, never source-graded.
 const mouseSourceCases = [
   ["input.pixel-mouse", 1016],
   ["input.urxvt-mouse", 1015],
@@ -462,7 +463,7 @@ test.each(
   capturedModeEngines.flatMap(({ engine, identity }) =>
     mouseSourceCases.map(([id, mode]) => ({ engine, identity, id, mode })),
   ),
-)("$engine $id requires source review of its absent own mouse mode", ({ identity, id, mode }) => {
+)("$engine $id keeps its consumed own mouse mode TEST TODO without a same-path control", ({ identity, id, mode }) => {
   const fixture = capturedModeContext(identity)
   const source = { ...fixture.source, capabilities: { ...fixture.source.capabilities, extensions: new Set<string>() } }
   const result = inputProbes.find((entry) => entry.id === id)!.lib!(source)
@@ -470,10 +471,10 @@ test.each(
   expect(fixture.fed).toContain(`\x1b[?${mode}l`)
   expect(fixture.line()).toBe("XX")
   expect(result.pass).toBe(false)
-  expect(result.criterionBranch).toBe("source-negative-review")
-  expect(result.observation).toMatchObject({ outcome: "inconclusive", assertionType: "buffer_state" })
-  expect(result.assertions).toMatchObject([{ kind: "negative", assertionType: "buffer_state" }])
-  expect(result.tests).toMatchObject([{ status: "test-todo" }])
+  expect(result.criterionBranch).toBeUndefined()
+  expect(result.notTested).toEqual({ reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL })
+  expect(result.observation).toBeUndefined()
+  expect(result.assertions).toBeUndefined()
   expect(JSON.parse(result.response!)).toMatchObject({ line: "XX", control: "consumed-without-effect" })
 })
 
@@ -506,9 +507,9 @@ const absentCommands = [
 ]
 
 test.each(capturedModeEngines)(
-  "$engine absent commands use source review with consumed and leaked controls",
-  ({ engine, identity }) => {
-    for (const { id, commands, own } of absentCommands) {
+  "$engine absent commands keep consumed and leaked controls TEST TODO without a same-path control",
+  ({ identity }) => {
+    for (const { id, commands } of absentCommands) {
       for (const behavior of ["consume", "leak"]) {
         const fixture = capturedModeContext(identity, behavior)
         const result = headless(id)(fixture.source) as ModeResult
@@ -516,12 +517,12 @@ test.each(capturedModeEngines)(
         expect.soft(fixture.fed.join(""), id).toContain("\x1b[2J\x1b[1;1H")
         if (behavior === "consume") expect.soft(fixture.line(), id).toBe("XX")
         else expect.soft(fixture.line(), id).toMatch(/^X.+X$/)
-        expect.soft(result.criterionBranch, id).toBe("source-negative-review")
-        expect.soft(result.observation, id).toMatchObject({ outcome: "inconclusive", assertionType: "buffer_state" })
-        expect.soft(result.assertions, id).toMatchObject([{ kind: "negative", assertionType: "buffer_state" }])
+        expect.soft(result.criterionBranch, id).toBeUndefined()
         expect
-          .soft(result.tests, id)
-          .toEqual(expect.arrayContaining([expect.objectContaining({ status: "test-todo" })]))
+          .soft(result.notTested, id)
+          .toEqual({ reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL })
+        expect.soft(result.observation, id).toBeUndefined()
+        expect.soft(result.assertions, id).toBeUndefined()
         // Own DECSET/DECRST absence, not rejection of the separate query opcode.
         const state = JSON.parse(result.response!)
         expect.soft(state, id).toMatchObject({
@@ -529,9 +530,6 @@ test.each(capturedModeEngines)(
           position: fixture.position(),
           control: behavior === "consume" ? "consumed-without-effect" : "leaked-as-text",
         })
-        const reason = JSON.stringify([result.observation, result.assertions, result.tests, state])
-        expect.soft(reason, id).toContain(`packages/${engine}/src/screen.ts`)
-        expect.soft(reason.toLowerCase(), id).toContain(own.toLowerCase())
         const definition = modesProbes.find((probe) => probe.id === id)!
         expect.soft([undefined, "buffer_state"], id).toContain(definition.libAssertionType)
       }

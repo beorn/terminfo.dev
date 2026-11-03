@@ -1908,11 +1908,13 @@ function zeroReplyUndecided(
     ) {
       return measured
     }
-    return notTestedResult(NO_SAME_PATH_CONTROL, {
+    const undecided = notTestedResult(NO_SAME_PATH_CONTROL, {
       queries: captures.map(({ text }) => text),
       replyBytes: 0,
       measuredResponse: measured.response ?? null,
     })
+    // The observed host-recipe causes are measurements of this run; they stay with the undecided cell.
+    return measured.hostRecipeCauses ? { ...undecided, hostRecipeCauses: measured.hostRecipeCauses } : undecided
   }
 }
 

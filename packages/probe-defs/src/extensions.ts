@@ -5,7 +5,9 @@ import type {
   LibProbeSource,
   TermProbeSource,
   TerminalQueryOutcome,
+  CallbackHostRecipeCause,
   HostInputName,
+  HostRecipeName,
   ObservationFrame,
 } from "./types.ts"
 import {
@@ -419,7 +421,10 @@ function oscColorQueryProbe(id: string, oscCode: number, index?: number): ProbeD
             if (!reviewInitialValue || !silence) return oscOutcomeResult(outcome, expected)
           }
           const raw = silence ? "" : ctx.feedCapture(querySeq)
-          const answer = (result: ProbeCallbackResult) => result
+          const answer = (result: ProbeCallbackResult) =>
+            hostInput === undefined
+              ? result
+              : observedHostCause(ctx, result, "color-request", hostInput, querySeq, raw === "")
           if (raw !== "" || !reviewInitialValue) {
             return answer(oscReplyResult(raw, pattern.exec(raw)?.[0] ?? null, expected))
           }
@@ -604,6 +609,14 @@ function colorResetProbe(id: string, setCode: number, resetCode: number, index?:
   const highlightColorSlot = setCode === 17 || setCode === 19
   const indexPart = index === undefined ? "" : `${index};`
   const query = `\x1b]${setCode};${indexPart}?\x07`
+  const hostInput: HostInputName =
+    setCode === 10
+      ? "foreground-rgb"
+      : setCode === 11
+        ? "background-rgb"
+        : setCode === 12
+          ? "cursor-rgb"
+          : "palette-entry-rgb"
   const replyPattern = new RegExp(
     `\\x1b\\]${setCode};${indexPart}(rgb:[0-9a-f]{1,4}/[0-9a-f]{1,4}/[0-9a-f]{1,4})(?:\\x07|\\x1b\\\\)`,
     "i",
@@ -699,6 +712,7 @@ function colorResetProbe(id: string, setCode: number, resetCode: number, index?:
         if (originalRaw === "" && !silence) {
           return notTestedResult(NO_SAME_PATH_CONTROL, { query, originalRaw, initialSentinel })
         }
+        // A missing prerequisite reading is TEST TODO, never TEST FAILURE (@cto 0db5ad54 refined rule 4, #32246).
         const note = `OSC ${setCode} initial highlight colour was not read back, so OSC ${resetCode} cannot be compared with it`
         return {
           pass: false,
@@ -707,7 +721,7 @@ function colorResetProbe(id: string, setCode: number, resetCode: number, index?:
           tests: [
             {
               id: "criterion",
-              status: "test-failure",
+              status: "test-todo",
               reason: note,
             },
           ],
@@ -734,7 +748,8 @@ function colorResetProbe(id: string, setCode: number, resetCode: number, index?:
             { query, originalRaw },
           )
         }
-        const answer = (result: ProbeCallbackResult) => result
+        const answer = (result: ProbeCallbackResult) =>
+          observedHostCause(ctx, result, "color-request", hostInput, query, true)
         const controls: { write: string; response: string }[] = []
         // Capture-only sources cannot provide the additional cell witness; keep their existing query criterion.
         const indexed = setCode === 4 && resetCode === 104 && index === 0 && typeof ctx.getCell === "function"
@@ -1169,8 +1184,26 @@ function readsIconTitleState(
 }
 
 /**
- * A former native host-audit site (#32246): an empty reply to a host-owned query on a native artifact has no same-path
- * control in this run, so it stays TEST TODO with its capture instead of a source-cited cause or a graded silence.
+ * Record the measured cause of an empty reply to a host-owned query on a native artifact: this run captured the
+ * empty target response while the collector supplied no such host input. It is an observation, never a source
+ * citation, and it does not change the verdict (#32246).
+ */
+function observedHostCause(
+  ctx: LibProbeSource,
+  result: ProbeCallbackResult,
+  recipe: HostRecipeName,
+  missing: HostInputName,
+  query: string,
+  empty: boolean,
+): ProbeCallbackResult {
+  if (!empty || ctx.runtimeIdentity?.kind !== "native") return result
+  const claim: CallbackHostRecipeCause = { recipe, cause: { kind: "observed", missing, query } }
+  return { ...result, hostRecipeCauses: [...(result.hostRecipeCauses ?? []), claim] }
+}
+
+/**
+ * A former native host-audit site (#32246): an empty clipboard reply on a native artifact has no same-path control in
+ * this run, so it stays TEST TODO with its capture and its observed cause, never a source-cited cause.
  */
 function emptyNativeHostReply(
   ctx: LibProbeSource,
@@ -1179,7 +1212,15 @@ function emptyNativeHostReply(
   empty: boolean,
 ): ProbeCallbackResult {
   if (!empty || ctx.runtimeIdentity?.kind !== "native") return result
-  return notTestedResult(NO_SAME_PATH_CONTROL, { query, response: result.response ?? "" })
+  // A pass observed independently of the silent read (the engine's retained OSC 52 write) keeps its grade.
+  return observedHostCause(
+    ctx,
+    result.pass ? result : notTestedResult(NO_SAME_PATH_CONTROL, { query, response: result.response ?? "" }),
+    "clipboard-load",
+    "clipboard-read-permission",
+    query,
+    true,
+  )
 }
 
 function promptConsumptionResult(consumed: boolean | null): ProbeCallbackResult {
@@ -1632,6 +1673,10 @@ function colorStackProbe(ownSequence: typeof colorPush | typeof colorPop): Probe
           if (result.observation) result.observation.note = result.note
         }
         for (const assertion of result.assertions ?? []) assertion.observed = response
+      }
+      if (result && originalRaw === "") {
+        const observed = observedHostCause(ctx, result, "color-request", "foreground-rgb", foregroundQuery, true)
+        if (observed.hostRecipeCauses) result.hostRecipeCauses = observed.hostRecipeCauses
       }
     }
   }

@@ -471,7 +471,13 @@ test.each(ARM_CASES)(
   async ({ id, replies, outcome }) => {
     const { lib, term } = armsOf(id)
     const { ctx, outcomes } = recordingSource((text) => (text === DA1_QUERY ? DA1 : (replies[text] ?? "")))
-    const headless = lib(ctx)
+    // The scripted xterm backend reads its icon and title state, which OSC 0 now uses directly once no audit gates it
+    // (#32246); hide that state so this case keeps exercising the query arm the sentinel member serves.
+    const queryOnly = <T extends { getIconLabel?: unknown }>(source: T): T => {
+      delete source.getIconLabel
+      return source
+    }
+    const headless = lib(queryOnly(ctx))
     expect(outcomes.length, id).toBeGreaterThan(0)
     if (outcome === "test-failure") {
       expect(headless.tests, id).toMatchObject([{ status: outcome }])
@@ -481,7 +487,7 @@ test.each(ARM_CASES)(
     if (outcome === "unsupported") expect(headless.observation?.note, id).toBe("negative by sentinel")
     expect(headless).toStrictEqual(await term(replayingLive(outcomes)))
     // Without the member the arm keeps today's capture-only reading, where silence never grades.
-    const plain = lib(sourceOf(scripted((text) => replies[text] ?? "")))
+    const plain = lib(queryOnly(sourceOf(scripted((text) => replies[text] ?? ""))))
     if (Object.keys(replies).length === 0) {
       expect(plain.observation, id).toBeUndefined()
       expect(plain.tests, id).toContainEqual(

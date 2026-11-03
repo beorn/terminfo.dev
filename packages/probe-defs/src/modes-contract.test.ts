@@ -8,7 +8,7 @@
  */
 import { expect, test } from "vitest"
 import { join } from "node:path"
-import { decrpmStatus } from "./helpers.ts"
+import { decrpmStatus, NO_SAME_PATH_CONTROL } from "./helpers.ts"
 import { modesProbes } from "./modes.ts"
 import { createSemanticSurface } from "./testing/semantic-surface.ts"
 import {
@@ -423,7 +423,7 @@ test("a decided Modes row is unsatisfied when DECRPM is silent", async () => {
 const MODES_SEMANTIC_SURFACE_CONTROLS: readonly (readonly [
   id: string,
   mutation: string,
-  positiveOutcome: "supported" | "inconclusive",
+  positiveOutcome: "supported" | "test-todo",
   negativeOutcome: "unsupported" | "inconclusive",
 ])[] = [
   ["modes.alt-screen.enter", "altscreen-noop", "supported", "unsupported"],
@@ -455,7 +455,8 @@ const MODES_SEMANTIC_SURFACE_CONTROLS: readonly (readonly [
   ["modes.xtpushcolors", "xtpushcolors-noop", "supported", "unsupported"],
   ["modes.xtpopcolors", "xtpopcolors-noop", "supported", "unsupported"],
   ["modes.color-scheme-reporting", "color-scheme-2031-noop", "supported", "unsupported"],
-  ["modes.decsscls", "decsscls-noop", "inconclusive", "unsupported"],
+  // #32246: a consumed CSI 9 SP p with no visible effect has no same-path control, so it is TEST TODO.
+  ["modes.decsscls", "decsscls-noop", "test-todo", "unsupported"],
 ]
 
 test("MODES_SEMANTIC_SURFACE_CONTROLS covers all 30 Modes contract rows with distinct mutations", () => {
@@ -497,14 +498,16 @@ test.each(MODES_SEMANTIC_SURFACE_CONTROLS)(
 
     const positiveResult = probe.lib(libProbeSource(createSemanticSurface()))
     expect(positiveResult.pass).toBe(positiveOutcome === "supported")
-    expect(positiveResult.observation?.outcome).toBe(positiveOutcome)
     if (positiveOutcome === "supported") {
+      expect(positiveResult.observation?.outcome).toBe(positiveOutcome)
       expect(positiveResult.assertions ?? []).toContainEqual(expect.objectContaining({ kind: "positive" }))
     } else {
-      expect(positiveResult.criterionBranch).toBe("source-negative-review")
+      expect(positiveResult.observation).toBeUndefined()
+      expect(positiveResult.criterionBranch).toBeUndefined()
+      expect(positiveResult.notTested).toEqual({ reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL })
     }
     const positiveGraded = await regradeRow(probe, row, { headless: libProbeSource(createSemanticSurface()) })
-    expect(positiveGraded.after).toBe(positiveOutcome)
+    expect(positiveGraded.after).toBe(positiveOutcome === "test-todo" ? undefined : positiveOutcome)
 
     const negativeResult = probe.lib(libProbeSource(createSemanticSurface({ mutations: [mutation] })))
     expect(negativeResult.pass).toBe(false)

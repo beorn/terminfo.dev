@@ -257,9 +257,14 @@ function deviceQuery(spec: DeviceReply): ProbeDefinition {
       }
       // #32246: an empty host-owned pixel reply on a native artifact has no same-path control in this run.
       const empty = outcome ? sentinelSilenceResult(outcome, spec.expected) !== null : raw === ""
-      return hostPixels && empty && ctx.runtimeIdentity?.kind === "native"
-        ? notTestedResult(NO_SAME_PATH_CONTROL, { query: spec.query, raw })
-        : result
+      if (!hostPixels || !empty || ctx.runtimeIdentity?.kind !== "native") return result
+      // The measured cause: this run captured the empty reply while no pixel geometry was supplied.
+      return {
+        ...notTestedResult(NO_SAME_PATH_CONTROL, { query: spec.query, raw }),
+        hostRecipeCauses: [
+          { recipe: "text-area-size", cause: { kind: "observed", missing: "pixel-geometry", query: spec.query } },
+        ],
+      }
     },
     async (ctx) => {
       // Primary DA1 answers its own direct query; all other device queries use DA1 as a sentinel.
