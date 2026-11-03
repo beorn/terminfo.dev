@@ -129,34 +129,40 @@ test("every sgr probe decides from the terminal's own DECRQSS report", async () 
 // constant responder that ignored setup entirely; exercise every reset binding through its callback
 // and the production recorder, where those false positives became stored Supported results.
 test.each([
-  ["sgr.reset", "0"],
-  ["sgr.selective-reset.bold", "0;3"],
-  ["sgr.selective-reset.underline", "0;1"],
-  ["sgr.selective-reset.italic", "0;1"],
-  ["sgr.selective-reset.inverse", "0;1"],
-  ["sgr.fg.default", "0"],
-  ["sgr.bg.default", "0"],
-  ["sgr.underline-color-reset", "0;4"],
-  ["reset.sgr", "0"],
-] as const)("%s cannot qualify a reset from constant final-state reply %s", async (id, reply) => {
+  ["sgr.reset", "0", "test-todo"],
+  ["sgr.selective-reset.bold", "0;3", "test-failure"],
+  ["sgr.selective-reset.underline", "0;1", "test-failure"],
+  ["sgr.selective-reset.italic", "0;1", "test-failure"],
+  ["sgr.selective-reset.inverse", "0;1", "test-failure"],
+  ["sgr.fg.default", "0", "test-todo"],
+  ["sgr.bg.default", "0", "test-todo"],
+  ["sgr.underline-color-reset", "0;4", "test-failure"],
+  ["reset.sgr", "0", "test-todo"],
+] as const)("%s cannot qualify a reset from constant final-state reply %s (%s)", async (id, reply, status) => {
   const { ctx } = sgrReadbackSource(reply)
   // This contract is query-only. Qualified capture has its own independently witnessed controls.
   ctx.capture = undefined
   const result = await sgrTerm(id)(ctx)
-  expect(result.observation).toMatchObject({ outcome: "inconclusive", assertionType: "query_reply" })
+  if (status === "test-todo") {
+    expect(result.notTested?.reason).toBe("no-semantic-observable")
+    expect(result.observation).toBeUndefined()
+  } else {
+    expect(result.observation).toMatchObject({ outcome: "inconclusive", assertionType: "query_reply" })
+  }
   expect(result.pass).toBe(false)
   expect(result.assertions ?? []).toHaveLength(0)
   expect(result.response).toContain(reply)
   const recorded = recordExecutedProbe({
     featureId: id,
     attempt: { scope: "probe", startedAt: "2026-10-21T11:15:00.000Z" },
-    observation: { ...result.observation!, featureId: id, rawReplyRef: id },
+    observation: result.observation && { ...result.observation, featureId: id, rawReplyRef: id },
+    coverage: result.notTested && { ...result.notTested, featureId: id, rawReplyRef: id },
     assertions: [],
     tests: result.tests,
     criterionBranch: result.criterionBranch,
   })
-  expect(recorded.status).toBe("test-failure")
-  expect(recorded.tests).toContainEqual(expect.objectContaining({ status: "test-failure", rawReplyRef: id }))
+  expect(recorded.status).toBe(status)
+  expect(recorded.tests).toContainEqual(expect.objectContaining({ status, rawReplyRef: id }))
 })
 
 test.each([
@@ -324,7 +330,6 @@ test("an explicit no-underline report qualifies a neutral baseline and a cleared
 })
 
 test.each([
-  ["sgr.selective-reset.bold", ["0", "1;3"], "setup"],
   ["sgr.selective-reset.underline", ["0;4:6"], "baseline"],
   ["sgr.selective-reset.underline", ["0", "1;4:6"], "setup"],
   ["sgr.reset", ["0", "1;3;4:0", "0"], "setup"],
@@ -347,10 +352,7 @@ test.each([
   expect(writes.at(-1)).toBe("\x1b[0m")
 })
 
-test.each([
-  ["sgr.selective-reset.underline", ["0", "0"]],
-  ["sgr.underline-color-reset", ["0", "4;58;2;255;0;129"]],
-] as const)(
+test.each([["sgr.underline-color-reset", ["0", "4;58;2;255;0;129"]]] as const)(
   "%s keeps its original setup failure when the independent oracle has no owned capture",
   async (id, replies) => {
     const { ctx, queries, writes } = sgrReadbackSource(replies)
@@ -363,6 +365,31 @@ test.each([
     expect(writes.at(-1)).toBe("\x1b[0m")
   },
 )
+
+// Missing setup attributes carry the same named coverage as missing final attributes. The old
+// prerequisite wrapper discarded that coverage and the recorder classified the result as failure.
+test.each([
+  ["sgr.selective-reset.bold", "1;3"],
+  ["sgr.selective-reset.underline", "0"],
+] as const)("%s retains setup omission %s as a to-do without a capture oracle", async (id, setup) => {
+  const { ctx, queries, writes } = sgrReadbackSource(["0", setup])
+  ctx.capture = undefined
+  const result = await sgrTerm(id)(ctx)
+  expect(result.notTested?.reason).toBe("no-semantic-observable")
+  expect(result.observation).toBeUndefined()
+  expect(result.assertions ?? []).toHaveLength(0)
+  expect(JSON.parse(result.response!)).toEqual({ phase: "setup", baseline: "0", setup })
+  expect(queries).toHaveLength(2)
+  expect(writes.at(-1)).toBe("\x1b[0m")
+  const recorded = recordExecutedProbe({
+    featureId: id,
+    attempt: { scope: "probe", startedAt: "2026-11-03T23:30:00.000Z" },
+    coverage: { ...result.notTested!, featureId: id, rawReplyRef: id },
+    assertions: [],
+    tests: result.tests,
+  })
+  expect(recorded.status).toBe("test-todo")
+})
 
 test.each([
   [["1"], "inconclusive", 1],
