@@ -2612,8 +2612,9 @@ test("legacy collection without source identity keeps mouse tool gaps TODO and i
     id: string
   }[]
   const historical = records.find((record) => record.id === "by-design-32022-vt100-input-button-event-mouse")
-  if (!historical)
+  if (!historical) {
     throw new Error("Missing accepted vt100 mouse record in test-fixtures/legacy-review-interpretations.json")
+  }
   const sources = new Map<string, string>()
   const accepted = activeInterpretations(
     parseInterpretations("mouse-history-fixture", JSON.stringify([historical]), ids, sources),

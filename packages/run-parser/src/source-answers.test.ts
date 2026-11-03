@@ -23,11 +23,13 @@ vi.mock("node:child_process", async (original) => {
           }
           if (control.mode === "shallow" && values.includes("--is-shallow-repository")) return response("true\n")
           if (values.includes("--get-regexp") && control.mode === "absent") return response("", 1)
-          if (values.includes("--get-regexp") && control.mode === "promisor")
+          if (values.includes("--get-regexp") && control.mode === "promisor") {
             return response("remote.origin.promisor true\n")
+          }
           if (values.some((arg) => arg.startsWith("--batch-check"))) {
-            if (control.mode === "absent" || control.mode === "promisor")
+            if (control.mode === "absent" || control.mode === "promisor") {
               return response(`${String(options.input).trim()} missing\n`)
+            }
             if (control.mode === "broken") return { ...response("", 128), stderr: "cannot read object store" }
           }
         }
