@@ -221,12 +221,13 @@ export function resolveSourceAnswer(rows: readonly SourceAnswer[], input: Source
     }),
   })
   const applicable = candidates.filter((match) => !match.changed && !match.unavailable && (match.own || match.verified))
+  // A disagreement keeps the candidate order the reader already published, whichever side is verified.
+  if (new Set(applicable.map((match) => match.answer.status)).size > 1) {
+    return pending(SOURCE_ANSWER_PENDING_LABELS.disagree, applicable)
+  }
   // Blob-verified answers lead the one ordered list every answer, row and rowKey is derived from, so the first
   // reason and reviewRef agree with the strongest applicable answer; equally verified matches keep table order.
   const ordered = [...applicable.filter((match) => match.verified), ...applicable.filter((match) => !match.verified)]
-  if (new Set(ordered.map((match) => match.answer.status)).size > 1) {
-    return pending(SOURCE_ANSWER_PENDING_LABELS.disagree, ordered)
-  }
   const first = ordered[0]
   if (first) {
     // A changed older answer is not qualifying evidence against a separately valid row.
