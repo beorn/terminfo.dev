@@ -1672,6 +1672,67 @@ function promptConsumptionResult(consumed: boolean | null): ProbeCallbackResult 
   }
 }
 
+/** CTO54bf1c9c — Cwd-only metadata, qualified by two same-run OSC7 readbacks. */
+function promptCwdPropertyResult(ctx: LibProbeSource): ProbeCallbackResult {
+  if (!ctx.getCwd) {
+    return parserStateResult(null, "OSC633 P Cwd property readback", {}, "no property reader in this adapter")
+  }
+  const read = ctx.getCwd.bind(ctx)
+  const path = (value: string | null) =>
+    value?.startsWith("file:") ? decodeURIComponent(new URL(value).pathname) : value
+  const before = read()
+  let current = path(before)
+  const state = {
+    before,
+    controls: [] as { sent: string; raw: string | null; value: string | null }[],
+    targets: [] as { sent: string; before: string | null; raw: string | null; value: string | null }[],
+    restored: before,
+  }
+  let qualified = false
+  try {
+    for (const sent of ["/terminfo-osc7-control-A", "/terminfo-osc7-control-B"]) {
+      ctx.feed(`\x1b]7;file://localhost${sent}\x07`)
+      const raw = read()
+      current = path(raw)
+      state.controls.push({ sent, raw, value: current })
+    }
+    qualified = state.controls.every(({ sent, value }) => sent === value)
+    if (qualified) {
+      for (const sent of ["/terminfo-633-cwd-A", "/terminfo-633-cwd-B"]) {
+        const prior = current
+        ctx.feed(`\x1b]633;P;Cwd=${sent}\x07`)
+        const raw = read()
+        current = path(raw)
+        state.targets.push({ sent, before: prior, raw, value: current })
+      }
+    }
+  } finally {
+    ctx.feed(`\x1b]7;${before ?? ""}\x07`)
+  }
+  state.restored = read()
+  const restored = path(state.restored) === path(before)
+  const supported = qualified && state.targets.every(({ sent, value }) => sent === value)
+  const unsupported = qualified && state.targets.every(({ before: prior, value }) => prior === value)
+  const inert = !qualified && state.controls.every(({ value }) => value === path(before))
+  const failed = !restored || (!inert && !supported && !unsupported)
+  const expected = "Two distinct OSC633 P Cwd paths match the qualified reader, or both leave it unchanged"
+  const result = parserStateResult(
+    failed || inert ? null : supported,
+    expected,
+    state,
+    inert ? "Cwd reader is inert to two distinct OSC7 controls" : undefined,
+  )
+  if (failed) {
+    result.observation = {
+      outcome: "error",
+      reason: "invalid-reply",
+      assertionType: "buffer_state",
+      note: "Cwd control, target or restored readback did not match its expected path",
+    }
+  }
+  return result
+}
+
 /**
  * C154 — a consumed semantic prompt mark proves consumption, not that the mark registered.
  * Read the measured home / target / control sequence from the real cursor and cell state so a
@@ -5041,14 +5102,8 @@ export const extensionsProbes: ProbeDefinition[] = [
 
   // OSC 633;P — VS Code-specific properties (Cwd, IsWindows, git status)
   {
-    ...probe(
-      "extensions.osc633-p",
-      (ctx) =>
-        promptMarkResult(ctx, "\x1b]633;P;Cwd=/tmp\x07", "OSC 633;P properties mark registration", {
-          probeId: "extensions.osc633-p",
-          selector: 633,
-        }),
-      (ctx) => promptMarkAppResult(ctx, "\x1b]633;P;Cwd=/tmp\x07", "OSC 633;P properties mark registration"),
+    ...probe("extensions.osc633-p", promptCwdPropertyResult, (ctx) =>
+      promptMarkAppResult(ctx, "\x1b]633;P;Cwd=/tmp\x07", "OSC 633;P properties mark registration"),
     ),
     libAssertionType: "buffer_state",
   },

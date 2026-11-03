@@ -835,6 +835,58 @@ test("each colour-stack row names its own operation in the expected sentence", (
   }
 })
 
+// CTO54bf1c9c: only a same-run moving Cwd observer can decide OSC633P, and a wrong
+// property value is an error rather than an observed negative. Existing consumption
+// controls never exposed getCwd, so they could not catch these metadata regressions.
+test.each([
+  { model: "plain", expected: "supported" },
+  { model: "file-uri", expected: "supported" },
+  { model: "ignored", expected: "unsupported" },
+  { model: "inert", expected: "inconclusive" },
+  { model: "missing", expected: "inconclusive" },
+  { model: "wrong", expected: "error" },
+  { model: "partial", expected: "error" },
+  { model: "bad-control", expected: "error" },
+  { model: "bad-restore", expected: "error" },
+])("OSC633 Cwd readback: $model => $expected", ({ model, expected }) => {
+  const initial = "file://original/old%20cwd"
+  let current = initial
+  let targetCount = 0
+  const writes: string[] = []
+  const source = libProbeSource({
+    ...inertModel(),
+    getCwd: model === "missing" ? undefined : () => current,
+    feed: (text) => {
+      writes.push(text)
+      const osc7 = /^\x1b\]7;(.*)\x07$/.exec(text)
+      if (osc7 && model !== "inert") {
+        if (model === "bad-restore" && osc7[1] === initial) return
+        current = model === "bad-control" ? "/wrong-control" : osc7[1]!
+      }
+      const property = /^\x1b\]633;P;Cwd=(.*)\x07$/.exec(text)
+      if (property) {
+        targetCount++
+        if (["plain", "bad-restore"].includes(model) || (model === "partial" && targetCount === 1)) {
+          current = property[1]!
+        } else if (model === "file-uri") {
+          current = `file://different-host${property[1]!.replaceAll("-", "%2D")}`
+        } else if (model === "wrong") current = "/unexpected-value"
+      }
+    },
+  })
+  const result = extensionsProbes.find((entry) => entry.id === "extensions.osc633-p")!.lib!(source)
+  expect(result.observation?.outcome).toBe(expected)
+  if (model !== "missing") expect(writes.at(-1)).toBe(`\x1b]7;${initial}\x07`)
+  if (!["missing", "inert", "bad-restore", "bad-control"].includes(model)) expect(current).toBe(initial)
+  if (expected === "supported" || expected === "unsupported" || ["wrong", "partial"].includes(model)) {
+    expect(targetCount).toBe(2)
+    const state = JSON.parse(result.response!)
+    expect(state.controls.map((entry: { value: string }) => entry.value)).toHaveLength(2)
+    expect(new Set(state.targets.map((entry: { sent: string }) => entry.sent)).size).toBe(2)
+  }
+  if (expected === "inconclusive") expect(targetCount).toBe(0)
+})
+
 // #31904 R3a (@cto 6e4f7300): each colour-stack row grades its own operation. A pop that resets to
 // the starting (default) foreground passed both rows when the fixture restored that same colour; a
 // stack that keeps a stale snapshot passed the push row. Each fake below is a whole engine model.
