@@ -1272,15 +1272,35 @@ const ABSENT_OSC_ENGINES = {
     engineVersion: "0.4.0",
     adapterVersion: "0.10.2",
     binarySha256: "42e84af1b38be94571974a23fa4667c4735ee7a272dcff39afd5cba40dcf48de",
-    codes: [1, 176, 440, 555, 666, 710, 3008],
+    codes: [1, 17, 19, 117, 119, 176, 440, 555, 666, 710, 3008],
     reviewReasons: [
       {
         code: 1,
         reason: "core5714ed07 src/terminal/stream.zig:2017-2021 logs and ignores OSC 1; no icon-name state is stored",
       },
+      {
+        code: 17,
+        reason:
+          "core5714ed07 osc.zig:779-790 rejects OSC17 without an allocator; shipped WASM42e84af1 uses ResponseStream.init, not initAlloc",
+      },
+      {
+        code: 19,
+        reason:
+          "core5714ed07 osc.zig:813-825 rejects OSC19 without an allocator; shipped WASM42e84af1 uses ResponseStream.init, not initAlloc",
+      },
+      {
+        code: 117,
+        reason:
+          "core5714ed07 osc.zig:657-676 rejects OSC117 without an allocator; shipped WASM42e84af1 uses ResponseStream.init, not initAlloc",
+      },
+      {
+        code: 119,
+        reason:
+          "core5714ed07 osc.zig:657-676 rejects OSC119 without an allocator; shipped WASM42e84af1 uses ResponseStream.init, not initAlloc",
+      },
     ],
     sourceCitation:
-      "Ghostty core5714ed07a1012573261b7b7e3ed2add9c1504496 src/terminal/osc.zig:556-566,779-794,903-939,979-989 rejects OSC176/3008/440/555/666/710; :1708-1715 returns null, Parser.zig:270-273 emits no dispatch; stream.zig:2017-2021 ignores OSC1. Termless 2f73fc28027b7d483e504e08edc64d1837935816 vendor/ghostty-web/RECEIPT.json binds WASM42e84af1, core archive55cee285 and inner patch2a42e7e9 (no OSC parser edits); packages/ghostty/src/backend.ts:376-395 forwards input without another parser; OSC9/777 binding losses and OSC22 mouse_shape remain excluded",
+      "Ghostty core5714ed07a1012573261b7b7e3ed2add9c1504496 src/terminal/osc.zig:556-566,779-794,903-939,979-989 rejects OSC176/3008/440/555/666/710; :1708-1715 returns null, Parser.zig:270-273 emits no dispatch; stream.zig:2017-2021 ignores OSC1. OSC17/19/117/119 require an allocator at osc.zig:657-676,779-825; Parser.zig:230 starts null and stream.zig:497-509 assigns it only through initAlloc. Termless 25089207e11420cf7a588987c1dc2683a45e8372 vendor/ghostty-web/RECEIPT.json binds shipped ghostty-web0.4.0 WASM42e84af1, core archive55cee285 and inner patch2a42e7e9, whose ghostty-wasm-api.patch:1025 calls ResponseStream.init without an allocator; packages/ghostty/src/backend.ts:376-395 forwards input without another parser. This is the shipped library artifact, not the Ghostty app; OSC9/777 binding losses and OSC22 mouse_shape remain excluded",
   },
   kitty: {
     kind: "native",
@@ -1324,6 +1344,40 @@ const ABSENT_OSC_ENGINES = {
     ],
     sourceCitation:
       "Ghostty 332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28 src/terminal/osc.zig:535-641 rejects OSC176/440/555/666/710; :747 parses OSC3008 context_signal, dropped at src/terminal/stream.zig:2050-2059 (SHA256 3ddc5e27d6a6f48ea99399bb886b52e7bebb68c94397a3ba008a7c3eb6c01a9b); Termless 8bd0516ad101cc088133beb20fa9e92f86250da8 packages/ghostty-native/native/src/main.zig:38-39 wraps ReadonlyHandler, :76 forwards unhandled actions to readonly.vt, :85 creates ResponseStream and :141 initializes Terminal.vtHandler",
+  },
+  ghosttyNative0effe403: {
+    kind: "native",
+    engineVersion: "1.3.1",
+    adapterVersion: "0.10.2",
+    binarySha256: "53f9a867cce594b4d50fb9508db9ce5d2d79fb4244a418548b7cb31fa50780d1",
+    sourceCommit: "332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28",
+    buildHash: "0effe4038bf65ba00048b016bc70477d80b6c16302e56e769ef773d46b790768",
+    lockSha256: "3ec775507556db01d08055836b26183f629a9cbb0b5802a1566661e95988d74a",
+    codes: [17, 19, 117, 119],
+    reviewReasons: [
+      {
+        code: 17,
+        reason:
+          "core332b2aef Terminal.zig:132-145 has no highlight background state; stream_readonly.zig:290-361 ignores its set and query",
+      },
+      {
+        code: 19,
+        reason:
+          "core332b2aef Terminal.zig:132-145 has no highlight foreground state; stream_readonly.zig:290-361 ignores its set and query",
+      },
+      {
+        code: 117,
+        reason:
+          "core332b2aef Terminal.zig:132-145 has no highlight background state; stream_readonly.zig:290-361 ignores its reset",
+      },
+      {
+        code: 119,
+        reason:
+          "core332b2aef Terminal.zig:132-145 has no highlight foreground state; stream_readonly.zig:290-361 ignores its reset",
+      },
+    ],
+    sourceCitation:
+      "libghostty-vt332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28 Terminal.zig:69,132-145 owns background, foreground, cursor and palette only, no highlight colour state. lib_vt.zig:60-63 exports generic Stream plus only the stock Readonly handler; Terminal.zig:260-270 returns ReadonlyStream; stream_readonly.zig:290-361 ignores highlight set/reset/query. include/ghostty/vt.h:29-36,75-82 exposes no terminal handler/state C API. Termless25089207e11420cf7a588987c1dc2683a45e8372 packages/ghostty-native/native/src/main.zig:31-78 delegates colour operations to that handler and :141 uses initAlloc; backend.ts:257-270 forwards actual replies. The loaded native53f9a867 receipt binds buildHash0effe403 and lock3ec77550; this describes the shipped headless library, not the Ghostty app",
   },
   alacritty: {
     kind: "native",

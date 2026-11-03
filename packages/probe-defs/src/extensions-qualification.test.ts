@@ -2088,17 +2088,80 @@ test.each([
         expect(result.assertions).toBeUndefined()
       }
     }
+    const nativeIdentity: HeadlessRuntimeIdentity = {
+      kind: "native",
+      engineVersion: "1.3.1",
+      adapterVersion: "0.10.2",
+      termlessRevision: "25089207e11420cf7a588987c1dc2683a45e8372",
+      loadedBinary: {
+        path: "/fixture/termless-ghostty-native.node",
+        sha256: "53f9a867cce594b4d50fb9508db9ce5d2d79fb4244a418548b7cb31fa50780d1",
+      },
+      provenance: {
+        sha256: "53f9a867cce594b4d50fb9508db9ce5d2d79fb4244a418548b7cb31fa50780d1",
+        sourceCommit: "332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28",
+        buildHash: "0effe4038bf65ba00048b016bc70477d80b6c16302e56e769ef773d46b790768",
+        toolchain: "zig 0.15.2",
+        lockSha256: "3ec775507556db01d08055836b26183f629a9cbb0b5802a1566661e95988d74a",
+      },
+      adapterSources: [
+        { path: "packages/ghostty-native/src/index.ts", blobOid: "35c9e35a5d60625ce1135b65ff38ae9278495a18" },
+        { path: "packages/ghostty-native/src/backend.ts", blobOid: "f403717f7c063d799c5de994b3ccc095edbcacd1" },
+      ],
+    }
+    const wasmIdentity = absentOscBatch.find((row) => row.engine === "ghostty")!.identity
+    if (!("loadedBinary" in wasmIdentity)) throw new Error("Ghostty fixture must declare its loaded WASM binary")
+    for (const [identity, sourcePin] of [
+      [wasmIdentity, "5714ed07"],
+      [nativeIdentity, "332b2aef"],
+    ] as const) {
+      const result = definition.lib!({
+        runtimeIdentity: identity,
+        feedCapture: () => "",
+        feed: () => {},
+        getCell: () => ({ char: "X" }),
+      } as unknown as LibProbeSource)
+      expect(result.criterionBranch).toBe("source-negative-review")
+      expect(result.observation).toMatchObject({ outcome: "inconclusive", assertionType: "buffer_state" })
+      expect(result.tests).toMatchObject([
+        { id: "review", status: "test-todo", reason: expect.stringContaining(sourcePin) },
+      ])
+      for (const wrongIdentity of [
+        { ...identity, loadedBinary: { ...identity.loadedBinary, sha256: "0".repeat(64) } },
+        { ...identity, adapterSources: identity.adapterSources!.map((row) => ({ ...row, blobOid: "0".repeat(40) })) },
+        ...(identity.kind === "native"
+          ? [{ ...identity, provenance: { ...identity.provenance, buildHash: "0".repeat(64) } }]
+          : []),
+      ]) {
+        const rejected = definition.lib!({
+          runtimeIdentity: wrongIdentity,
+          feedCapture: () => "",
+          feed: () => {},
+          getCell: () => ({ char: "X" }),
+        } as unknown as LibProbeSource)
+        expect(rejected.criterionBranch).toBeUndefined()
+        const unknownArtifact = wrongIdentity.loadedBinary?.sha256 === "0".repeat(64)
+        expect(rejected.tests).toMatchObject([
+          { id: "criterion", status: unknownArtifact ? "test-todo" : "test-failure" },
+        ])
+        expect(rejected.tests?.[0]?.reason).toContain(
+          unknownArtifact ? "no source audit for binary" : `OSC ${setCode} initial highlight colour was not read back`,
+        )
+      }
+    }
     // A measured colour wins over the static absence audit, including a genuine reset negative.
-    for (const ignoresReset of [false, true]) {
-      const fixture = highlightTerminal(setCode, resetCode, "1111/2222/3333", ignoresReset)
-      const result = definition.lib!({ ...fixture.lib, runtimeIdentity: xtermOscIdentity })
-      expect(result.criterionBranch).toBeUndefined()
-      expect(result.observation).toMatchObject({
-        outcome: ignoresReset ? "unsupported" : "supported",
-        assertionType: "query_reply",
-      })
-      expect(fixture.queries[0]).toBe(query)
-      expect(fixture.writes.some((bytes) => bytes.includes("\x1b[2K"))).toBe(false)
+    for (const identity of [xtermOscIdentity, wasmIdentity, nativeIdentity]) {
+      for (const ignoresReset of [false, true]) {
+        const fixture = highlightTerminal(setCode, resetCode, "1111/2222/3333", ignoresReset)
+        const result = definition.lib!({ ...fixture.lib, runtimeIdentity: identity })
+        expect(result.criterionBranch).toBeUndefined()
+        expect(result.observation).toMatchObject({
+          outcome: ignoresReset ? "unsupported" : "supported",
+          assertionType: "query_reply",
+        })
+        expect(fixture.queries[0]).toBe(query)
+        expect(fixture.writes.some((bytes) => bytes.includes("\x1b[2K"))).toBe(false)
+      }
     }
   },
 )
