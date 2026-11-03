@@ -39,12 +39,7 @@ it("labels a retained source answer by engine version without regrading or datin
   const run = parseRun(path.pathname, bytes, catalog, new Map([[manifest.probeHash, manifest]]))
   const original = structuredClone(run)
   const featureId = "extensions.iterm2-images"
-  const projection = projectResults(
-    [run],
-    catalog,
-    { currentProbeHash: manifest.probeHash, workingRuns: [run] },
-    [],
-  )
+  const projection = projectResults([run], catalog, { currentProbeHash: manifest.probeHash, workingRuns: [run] }, [])
   const selected = projection.history["term:alacritty"]?.[0]
   const result = selected?.results.find((entry) => entry.featureId === featureId)
   expect(result?.reason).toContain("reviewed at 0.17.0, not re-verified")
@@ -93,12 +88,7 @@ it("publishes only the safe pending phrase from a real disputed Ghostty cell", (
   expect(retained?.reason).toMatch(/^kept answers disagree:/)
   expect(retained?.reason).toContain("kept originals:")
   expect(retained?.reason).toContain("@dev/")
-  const projection = projectResults(
-    [run],
-    catalog,
-    { currentProbeHash: manifest.probeHash, workingRuns: [run] },
-    [],
-  )
+  const projection = projectResults([run], catalog, { currentProbeHash: manifest.probeHash, workingRuns: [run] }, [])
   const published = publicResults(projection, new Map()).projection.contexts["lib:ghostty"]?.cells[featureId]
   expect(published?.reason).toBe("kept answers disagree")
   expect(published?.status).toBe("test-todo")

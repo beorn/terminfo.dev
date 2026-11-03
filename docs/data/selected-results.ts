@@ -1,5 +1,4 @@
 /** Stored selection and projection for terminal observations. */
-import { createHash } from "node:crypto"
 import { existsSync, readFileSync } from "node:fs"
 import { isAbsolute, join } from "node:path"
 import { aggregateCurrentResults, type SuiteRelation } from "./release-scope.ts"
@@ -66,7 +65,6 @@ export interface SelectedCell extends ReadObservation {
     correctionId?: string
     sources?: string[]
   }
-
 }
 
 export interface SelectedVersion {

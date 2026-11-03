@@ -94,13 +94,21 @@ function supportedBaseline() {
   })
 }
 // CTO70df: invalid original evidence time must not silently fall through to key ordering.
-it.each([{ sources: [] }, { sources: [{ runId: "bad-run", measuredAt: "not-a-date", suiteId: "suite", suiteRelation: "tree" as const }] }])(
-  "rejects a context without a finite original evidence time: %j",
-  ({ sources }) => {
-    const candidate = { key: "invalid-evidence-context", kind: "term", terminalId: "kitty", os: "linux", permissions: null, sources, states: {} }
-    expect(() => pickContextRun([candidate])).toThrow(/invalid-evidence-context/)
-  },
-)
+it.each([
+  { sources: [] },
+  { sources: [{ runId: "bad-run", measuredAt: "not-a-date", suiteId: "suite", suiteRelation: "tree" as const }] },
+])("rejects a context without a finite original evidence time: %j", ({ sources }) => {
+  const candidate = {
+    key: "invalid-evidence-context",
+    kind: "term",
+    terminalId: "kitty",
+    os: "linux",
+    permissions: null,
+    sources,
+    states: {},
+  }
+  expect(() => pickContextRun([candidate])).toThrow(/invalid-evidence-context/)
+})
 
 // Current selection reads the stored five statuses and frozen denominator
 // without applying later interpretations.
@@ -265,12 +273,7 @@ describe("current execution projection", () => {
     const current = supportedBaseline()
     const value = raw(todos())
     const working = parse({ ...value, runId: "working-linux", subject: { ...value.subject, os: "linux" } })
-    const projection = projectResults(
-      [current],
-      ids,
-      { currentProbeHash: suite.probeHash, workingRuns: [working] },
-      [],
-    )
+    const projection = projectResults([current], ids, { currentProbeHash: suite.probeHash, workingRuns: [working] }, [])
     expect(Object.keys(projection.versions)).toEqual(["term:kitty"])
     expect(Object.keys(projection.contexts)).toContain("term:kitty")
     const shared = projection.contexts["term:kitty"]!
@@ -534,12 +537,7 @@ describe("current execution projection", () => {
 
   it("keeps every TODO visible over all 273 and admits current identity using the existing measured rule", () => {
     const run = parse(raw(todos()))
-    const projection = projectResults(
-      [run],
-      ["different-live-catalogue"],
-      { currentProbeHash: suite.probeHash },
-      [],
-    )
+    const projection = projectResults([run], ["different-live-catalogue"], { currentProbeHash: suite.probeHash }, [])
     const selected = projection.contexts["term:kitty"]
     expect(Object.values(selected!.cells).map((cell) => cell.result)).toEqual(run.results)
     expect(selected?.score).toEqual({ supported: 0, all: 273 })
@@ -591,12 +589,7 @@ describe("current execution projection", () => {
       expected: "ACK",
       observed: "NO",
     }))
-    const projection = projectResults(
-      [parse({ ...value, assertions })],
-      ids,
-      { currentProbeHash: suite.probeHash },
-      [],
-    )
+    const projection = projectResults([parse({ ...value, assertions })], ids, { currentProbeHash: suite.probeHash }, [])
     expect(projection.contexts["term:kitty"]?.score).toEqual({ supported: 0, all: 273 })
     expect(projection.contexts["term:kitty"]?.counts.unsupported).toBe(273)
     expect(projection.contexts["term:kitty"]?.complete).toBe(true)
@@ -664,9 +657,7 @@ it("normalizes historical reviewed context keys without rewriting arbitrary conf
 
 it("retains the recorded live source on selected current metadata", () => {
   const loaded = parse(raw(todos()))
-  const selected = projectResults([loaded], ids, { currentProbeHash: suite.probeHash }, []).history[
-    "term:kitty"
-  ]?.[0]
+  const selected = projectResults([loaded], ids, { currentProbeHash: suite.probeHash }, []).history["term:kitty"]?.[0]
   expect(selected?.schemaVersion).toBe(4)
   expect(selected?.source).toEqual({ kind: "live" })
 })

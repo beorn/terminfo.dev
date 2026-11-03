@@ -28,7 +28,6 @@ import {
   type SelectedVersion,
   originalRunFor,
 } from "./selected-results.ts"
-import type { CellState } from "./release-scope.ts"
 import { currentTrace, type CurrentTraceDocument } from "./run-trace.ts"
 
 type PublicReview = SelectedVersion["reviews"][number]
@@ -51,13 +50,7 @@ import {
   type TracePaneCopy,
 } from "./evidence-reader.ts"
 
-export {
-  describeTracePanes,
-  readCellTrace,
-  type CellTraceExpectation,
-  type LoadedCellTrace,
-  type TracePaneCopy,
-}
+export { describeTracePanes, readCellTrace, type CellTraceExpectation, type LoadedCellTrace, type TracePaneCopy }
 
 export interface HistoricalCellEvidence {
   featureId: string
@@ -88,8 +81,7 @@ export interface TextQualificationDocument {
 }
 
 /** How a published cell's review reads on the page. */
-export type PublicPresentation =
-  | { state: "not-reviewed" }
+export type PublicPresentation = { state: "not-reviewed" }
 
 /** Where a displayed run's trace document lives, and the SHA-256 of its exact bytes. */
 export interface TraceReceipt {
@@ -220,10 +212,7 @@ function publicAttempt(attempt: ProbeResult["attempt"]): ProbeResult["attempt"] 
 export function publicResults(projection: SelectedProjection, subjects: ReadonlyMap<string, CurrentResult>) {
   const traced = new Set(Object.values(projection.contexts).flatMap((context) => context.contributingRunIds))
   const documents: PublicDocuments = new Map()
-  const mapResult = (
-    result: ProbeResult,
-    version: CurrentSelectedVersion,
-  ): PublicProbeResult => {
+  const mapResult = (result: ProbeResult, version: CurrentSelectedVersion): PublicProbeResult => {
     const sourceRow = result.reviewRef === undefined ? undefined : sourceAnswerForRef(result.reviewRef)
     // Forward only the shared resolver's version caption, without capture rationale or a presentation grant.
     const label = sourceRow && sourceAnswerVersionLabel(version.subject.version)
