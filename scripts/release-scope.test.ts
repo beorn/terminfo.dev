@@ -8,22 +8,39 @@
  * @reach fs-walk vendor/terminfo.dev/docs/** vendor/terminfo.dev/scripts/**
  * @testonly none
  */
-import { readFileSync } from "node:fs"
+import { readFileSync, mkdtempSync, rmSync } from "node:fs"
 import { createHash } from "node:crypto"
+import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { describe, expect, it } from "vitest"
 import { loadFeatures, slice, type FeatureCatalog, type Slice } from "@terminfo/catalog"
-import { ENVIRONMENT_GROUP_IDS, type ProbeStatus } from "@terminfo/probe-defs"
+import {
+  ENVIRONMENT_GROUP_IDS,
+  SOURCE_ANSWERS,
+  gradedFeatureIds,
+  sourceAnswerKey,
+  sourceAnswerVersionLabel,
+  type ProbeResult,
+  type ProbeStatus,
+} from "@terminfo/probe-defs"
+import { loadStoredRuns } from "../packages/admin/corpus-placement.ts"
 import { loadCategories, orderedCategoryIds } from "../docs/data/categories.ts"
 import { loadReleaseScope } from "../docs/data/load-release-scope.ts"
 import {
+  PROBE_METHODS,
+  PROBE_METHOD_RANK,
   aggregateCurrentResults,
+  classifyResultMethod,
   completenessTierOf,
   isStaleRelation,
   rankOpenProbes,
+  rollupSubjectMethodFindings,
   rollupTerminalStatuses,
   staleCaption,
+  type MinimumMethodMap,
+  type ProbeMethod,
 } from "../docs/data/release-scope.ts"
+import { generateApi } from "./generate-api.ts"
 
 const root = join(import.meta.dirname, "..")
 
@@ -450,5 +467,418 @@ describe("Phase 2.4 single status-and-rollup computation (rollupTerminalStatuses
         xtermjs: { "sgr.bold": "supported" },
       }),
     ).toThrow(/Invalid stored current status for sgr\.faint/)
+  })
+})
+
+describe("Phase 2.4 report-only method, confidence & feature findings (rollupSubjectMethodFindings)", () => {
+  const allCatalogIds = Object.keys(catalog).sort()
+  const gradedIds = gradedFeatureIds(allCatalogIds)
+  const storedRuns = loadStoredRuns(contentDir, allCatalogIds)
+
+  it("maps every graded cell across all 12 corpus runs (loadStoredRuns) with 0 unmapped, 0 mixed, 30 source-reading, 93 kept-answer-not-reverified (31 rowAlsoHoldsCitedAnswerCount), and 8 wouldBeConflicts", () => {
+    expect(PROBE_METHODS).toEqual(["source-reading", "library", "app-text", "app-screenshot", "real-os-device"])
+    expect(PROBE_METHOD_RANK).toEqual({
+      "source-reading": 1,
+      library: 2,
+      "app-text": 3,
+      "app-screenshot": 4,
+      "real-os-device": 5,
+    })
+
+    const minSourceReading: MinimumMethodMap = Object.fromEntries(
+      gradedIds.map((id) => [id, { lib: "source-reading", term: "source-reading", mux: "source-reading" }]),
+    )
+
+    let totalPositions = 0
+    let totalSourceReading = 0
+    let totalLibrary = 0
+    let totalAppText = 0
+    let totalAppScreenshot = 0
+    let totalRealOsDevice = 0
+    let totalKeptNotReverified = 0
+    let totalRowAlsoHoldsCited = 0
+    let totalUnmapped = 0
+    let totalMixed = 0
+    let totalWouldBeConflicts = 0
+
+    for (const run of storedRuns) {
+      const report = rollupSubjectMethodFindings([run], minSourceReading, run.catalogIds ?? allCatalogIds)
+      expect(report.positions).toBe(264)
+      expect(report.environmentPositions).toBe(9)
+      expect(report.buckets.unmapped).toEqual([])
+      expect(report.buckets.mixed).toEqual([])
+      expect(report.buckets.noMinimum).toEqual([])
+      expect(report.buckets.keptAnswerNotReverified.label).toBe("kept answer, not re-verified")
+      expect(report.buckets.keptAnswerNotReverified.rowAlsoHoldsCitedAnswerLabel).toBe(
+        "row also holds a cited answer; not proof it applied",
+      )
+
+      totalPositions += report.positions
+      totalKeptNotReverified += report.buckets.keptAnswerNotReverified.count
+      totalRowAlsoHoldsCited += report.buckets.keptAnswerNotReverified.rowAlsoHoldsCitedAnswerCount
+      totalUnmapped += report.buckets.unmapped.length
+      totalMixed += report.buckets.mixed.length
+      totalWouldBeConflicts += report.buckets.wouldBeConflicts.length
+
+      for (const finding of Object.values(report.findings)) {
+        for (const obs of finding.observedMethods) {
+          if (obs === "source-reading") totalSourceReading++
+          else if (obs === "library") totalLibrary++
+          else if (obs === "app-text") totalAppText++
+          else if (obs === "app-screenshot") totalAppScreenshot++
+          else if (obs === "real-os-device") totalRealOsDevice++
+        }
+      }
+    }
+
+    expect(storedRuns).toHaveLength(12)
+    expect(totalPositions).toBe(3168)
+    expect(totalUnmapped).toBe(0)
+    expect(totalMixed).toBe(0)
+    expect(totalSourceReading).toBe(30)
+    expect(totalKeptNotReverified).toBe(93)
+    expect(totalRowAlsoHoldsCited).toBe(31)
+    expect(totalLibrary).toBe(786)
+    expect(totalAppText).toBe(1194)
+    expect(totalAppScreenshot).toBe(282)
+    expect(totalRealOsDevice).toBe(57)
+    expect(totalWouldBeConflicts).toBe(8)
+  })
+
+  it("enforces the suffix rule for source-reading vs kept-answer-not-reverified, routes empty matching to unmapped, routes multiple assertion types to mixed, and relies on sourceAnswerForRef throw", () => {
+    const sampleRow = SOURCE_ANSWERS.find((r) => r.answers.some((a) => a.citedBlobs.length > 0))
+    if (!sampleRow || !sampleRow.answers[0]) {
+      throw new Error("Expected a sample cited source-answer row")
+    }
+    const ref = sourceAnswerKey(sampleRow.subject, sampleRow.featureId)
+    const answerStatus = sampleRow.answers[0].status
+    const missingStatus = (["supported", "unsupported", "untestable"] as const).find(
+      (s) => !sampleRow.answers.some((a) => a.status === s),
+    )
+    if (!missingStatus) {
+      throw new Error("Expected a status absent from sampleRow.answers")
+    }
+
+    const baseResult: ProbeResult = {
+      featureId: sampleRow.featureId,
+      status: answerStatus,
+      attempt: { scope: "none" },
+      tests: [],
+      reviewRef: ref,
+      reason: "Verified against source blob",
+    }
+
+    // 1. No unverified version suffix -> rank 1 source-reading
+    expect(classifyResultMethod(baseResult, sampleRow.subject, [])).toEqual({
+      kind: "method",
+      method: "source-reading",
+      confidenceRank: 1,
+      source: "review-ref",
+    })
+
+    // 2. Unverified version suffix present (including when the run's own version differs from a cross-version reviewRef row's version) -> kept-answer-not-reverified (not source-reading)
+    const crossVersionSubject = { ...sampleRow.subject, version: `${sampleRow.subject.version}-own-run` }
+    expect(
+      classifyResultMethod(
+        {
+          ...baseResult,
+          reason: `Verified against source blob; ${sourceAnswerVersionLabel(crossVersionSubject.version)}`,
+        },
+        crossVersionSubject,
+        [],
+      ),
+    ).toEqual({
+      kind: "kept-answer-not-reverified",
+      label: "kept answer, not re-verified",
+      reviewRef: ref,
+      rowAlsoHoldsCitedAnswer: true,
+    })
+
+    // 3. Stored status not among row.answers (matching.length === 0) -> unmapped (never uncited)
+    const unmappedClass = classifyResultMethod({ ...baseResult, status: missingStatus }, sampleRow.subject, [])
+    expect(unmappedClass.kind).toBe("unmapped")
+    if (unmappedClass.kind === "unmapped") {
+      expect(unmappedClass.reason).toContain(missingStatus)
+    }
+
+    // 4. Multiple distinct assertion types on one result -> mixed
+    expect(
+      classifyResultMethod(
+        {
+          featureId: "sgr.bold",
+          status: "supported",
+          attempt: { scope: "none" },
+          assertionType: "buffer_state",
+          tests: [{ id: "main", status: "supported", attempt: { scope: "none" }, assertionRefs: [0] }],
+        },
+        { kind: "term", version: "1.0.0" },
+        [{ assertionType: "screenshot" }],
+      ),
+    ).toEqual({
+      kind: "mixed",
+      assertionTypes: ["buffer_state", "screenshot"],
+    })
+
+    // 5. Unknown reviewRef throws via sourceAnswerForRef
+    const missingRef = sourceAnswerKey({ kind: "lib", id: "nonexistent", version: "0.0.0", os: "linux" }, "sgr.bold")
+    expect(() =>
+      classifyResultMethod({ ...baseResult, reviewRef: missingRef }, { kind: "lib", version: "0.0.0" }, []),
+    ).toThrow(/Missing source-answer row/)
+  })
+
+  it("emits test-conflict when two qualifying results disagree (including untestable vs supported or across different ranks), settles winningMethod by highest rank only when all qualifying results agree, detects C1 disagreements via publicSourceAnswerPendingLabel, and rejects subject version/os mismatches or missing results", () => {
+    const fAgree = "sgr.bold"
+    const fConflictDiffRank = "sgr.faint"
+    const fConflictUntestable = "sgr.italic"
+    const fC1Disagree = "sgr.underline"
+    const miniCatalog = [fAgree, fConflictDiffRank, fConflictUntestable, fC1Disagree]
+
+    const makeRun = (results: ProbeResult[], assertions: Array<{ assertionType: "buffer_state" | "screenshot" }>) => ({
+      subject: { kind: "term" as const, id: "wezterm", version: "20240203", os: "linux" as const },
+      assertions,
+      results,
+    })
+
+    // Run 1: app-text (rank 3)
+    const run1 = makeRun(
+      [
+        {
+          featureId: fAgree,
+          status: "supported",
+          attempt: { scope: "none" },
+          assertionType: "buffer_state",
+          tests: [],
+        },
+        {
+          featureId: fConflictDiffRank,
+          status: "supported",
+          attempt: { scope: "none" },
+          assertionType: "buffer_state",
+          tests: [],
+        },
+        {
+          featureId: fConflictUntestable,
+          status: "untestable",
+          attempt: { scope: "none" },
+          assertionType: "buffer_state",
+          tests: [],
+        },
+        {
+          featureId: fC1Disagree,
+          status: "test-todo",
+          attempt: { scope: "none" },
+          tests: [],
+          reason: 'kept answers disagree: ["term","wezterm","20240203","linux","sgr.underline"]',
+        },
+      ],
+      [],
+    )
+
+    // Run 2: app-screenshot (rank 4)
+    const run2 = makeRun(
+      [
+        {
+          featureId: fAgree,
+          status: "supported",
+          attempt: { scope: "none" },
+          assertionType: "screenshot",
+          tests: [],
+        },
+        {
+          featureId: fConflictDiffRank,
+          status: "unsupported",
+          attempt: { scope: "none" },
+          assertionType: "screenshot",
+          tests: [],
+        },
+        {
+          featureId: fConflictUntestable,
+          status: "supported",
+          attempt: { scope: "none" },
+          assertionType: "screenshot",
+          tests: [],
+        },
+        {
+          featureId: fC1Disagree,
+          status: "test-todo",
+          attempt: { scope: "none" },
+          tests: [],
+          reason: 'kept answers disagree: ["term","wezterm","20240203","linux","sgr.underline"]',
+        },
+      ],
+      [],
+    )
+
+    const minMap: MinimumMethodMap = {
+      [fAgree]: { term: "app-text" },
+      [fConflictDiffRank]: { term: "app-text" },
+      [fConflictUntestable]: { term: "app-text" },
+      [fC1Disagree]: { term: "source-reading" },
+    }
+
+    const report = rollupSubjectMethodFindings([run1, run2], minMap, miniCatalog)
+
+    // Both qualify (rank 3 and rank 4 >= rank 3) and agree on "supported" -> highest rank ("app-screenshot") wins
+    expect(report.findings[fAgree]).toMatchObject({
+      runStatuses: ["supported", "supported"],
+      findingStatus: "supported",
+      winningMethod: "app-screenshot",
+      neededMethod: null,
+    })
+
+    // Both qualify (rank 3 and rank 4 >= rank 3) and disagree ("supported" vs "unsupported") -> test-conflict (higher rank does NOT settle disagreement)
+    expect(report.findings[fConflictDiffRank]).toMatchObject({
+      runStatuses: ["supported", "unsupported"],
+      findingStatus: "test-conflict",
+      winningMethod: null,
+      neededMethod: null,
+    })
+
+    // Both qualify and disagree ("untestable" vs "supported") -> test-conflict
+    expect(report.findings[fConflictUntestable]).toMatchObject({
+      runStatuses: ["untestable", "supported"],
+      findingStatus: "test-conflict",
+      winningMethod: null,
+      neededMethod: null,
+    })
+
+    // C1 disagreement at minimumMethod "source-reading" -> findingStatus "test-conflict", runStatuses remains ["test-todo", "test-todo"], listed in wouldBeConflicts
+    expect(report.findings[fC1Disagree]).toMatchObject({
+      runStatuses: ["test-todo", "test-todo"],
+      findingStatus: "test-conflict",
+      winningMethod: null,
+      neededMethod: null,
+    })
+    expect(report.buckets.wouldBeConflicts).toEqual([fC1Disagree])
+
+    // Subject version or OS mismatch throws
+    expect(() =>
+      rollupSubjectMethodFindings(
+        [run1, { ...run2, subject: { ...run2.subject, version: "20240101" } }],
+        minMap,
+        miniCatalog,
+      ),
+    ).toThrow(/Method findings require runs for one subject/)
+    expect(() =>
+      rollupSubjectMethodFindings([run1, { ...run2, subject: { ...run2.subject, os: "macos" } }], minMap, miniCatalog),
+    ).toThrow(/Method findings require runs for one subject/)
+
+    // Missing graded result throws "Missing result for <featureId>"
+    expect(() =>
+      rollupSubjectMethodFindings([{ ...run1, results: run1.results.slice(1) }], minMap, miniCatalog),
+    ).toThrow(/Missing result for sgr\.bold/)
+  })
+
+  it("emits no-minimum-declared when minimumMethod is null/absent, and places both test-todo and test-failure findings that lack a qualifying result into neededMethod and needsByMethod", () => {
+    const fNoMin = "sgr.bold"
+    const fTodo = "sgr.faint"
+    const fFailure = "sgr.italic"
+    const fBelowMin = "sgr.underline"
+    const miniCatalog = [fNoMin, fTodo, fFailure, fBelowMin]
+
+    const run = {
+      subject: { kind: "term" as const, id: "kitty", version: "0.40.0", os: "linux" as const },
+      assertions: [],
+      results: [
+        {
+          featureId: fNoMin,
+          status: "supported" as const,
+          attempt: { scope: "none" as const },
+          assertionType: "buffer_state" as const,
+          tests: [],
+        },
+        { featureId: fTodo, status: "test-todo" as const, attempt: { scope: "none" as const }, tests: [] },
+        {
+          featureId: fFailure,
+          status: "test-failure" as const,
+          attempt: { scope: "none" as const },
+          assertionType: "screenshot" as const,
+          tests: [],
+        },
+        {
+          featureId: fBelowMin,
+          status: "supported" as const,
+          attempt: { scope: "none" as const },
+          assertionType: "buffer_state" as const,
+          tests: [],
+        },
+      ],
+    }
+
+    const minMap: MinimumMethodMap = {
+      [fNoMin]: { term: null },
+      [fTodo]: { term: "app-text" },
+      [fFailure]: { term: "app-screenshot" },
+      [fBelowMin]: { term: "app-screenshot" },
+    }
+
+    const report = rollupSubjectMethodFindings([run], minMap, miniCatalog)
+
+    // 1. minimumMethod: null -> findingStatus: "no-minimum-declared" and buckets.noMinimum
+    expect(report.findings[fNoMin]).toMatchObject({
+      runStatuses: ["supported"],
+      minimumMethod: null,
+      findingStatus: "no-minimum-declared",
+      winningMethod: null,
+      neededMethod: null,
+    })
+    expect(report.buckets.noMinimum).toEqual([fNoMin])
+
+    // 2. test-todo with minimumMethod "app-text" -> findingStatus "test-todo", neededMethod "app-text", in needsByMethod["app-text"]
+    expect(report.findings[fTodo]).toMatchObject({
+      runStatuses: ["test-todo"],
+      minimumMethod: "app-text",
+      findingStatus: "test-todo",
+      winningMethod: null,
+      neededMethod: "app-text",
+    })
+    expect(report.needsByMethod["app-text"]).toEqual([fTodo])
+
+    // 3. Adjustment 6: test-failure (even with a screenshot assertion) never counts as valid; findingStatus is "test-failure", neededMethod is "app-screenshot", and it enters needsByMethod["app-screenshot"]
+    expect(report.findings[fFailure]).toMatchObject({
+      runStatuses: ["test-failure"],
+      minimumMethod: "app-screenshot",
+      findingStatus: "test-failure",
+      winningMethod: null,
+      neededMethod: "app-screenshot",
+    })
+
+    // 4. Decided "app-text" (rank 3) below minimumMethod "app-screenshot" (rank 4) -> findingStatus "test-todo", neededMethod "app-screenshot", enters needsByMethod["app-screenshot"]
+    expect(report.findings[fBelowMin]).toMatchObject({
+      runStatuses: ["supported"],
+      minimumMethod: "app-screenshot",
+      findingStatus: "test-todo",
+      winningMethod: null,
+      neededMethod: "app-screenshot",
+    })
+    expect(report.needsByMethod["app-screenshot"]).toEqual([fFailure, fBelowMin])
+  })
+
+  it("keeps rollupTerminalStatuses and generateApi outputs byte-identical on the 12 corpus runs (Adjustment 5)", () => {
+    const rollups = storedRuns.map((loaded) => ({
+      path: loaded.path.slice(contentDir.length + 1),
+      sha256: loaded.sha256,
+      rollup: rollupTerminalStatuses(
+        Object.fromEntries((loaded.results ?? []).map((r) => [r.featureId, r.status])),
+        loaded.catalogIds ?? allCatalogIds,
+      ),
+    }))
+    const rollupsSha256 = createHash("sha256").update(JSON.stringify(rollups)).digest("hex")
+    expect(rollupsSha256).toBe("450ef6fe7e3dadc4ab439e15b7acd1692321dad423964b52aa2241c1c1209a32")
+
+    const outDir = mkdtempSync(join(tmpdir(), "terminfo-api-verify-"))
+    try {
+      const { dataPath } = generateApi(outDir, { contentDir, working: null })
+      const apiDataSha256 = createHash("sha256").update(readFileSync(dataPath)).digest("hex")
+      const apiEvidenceInventorySha256 = createHash("sha256")
+        .update(readFileSync(join(outDir, "api", "v3", "evidence-files.json")))
+        .digest("hex")
+      expect(apiDataSha256).toBe("0a83e0855ed57d0c1f2f6fb1372bd39cfa3228206312b5391c5f962bf2491c83")
+      expect(apiEvidenceInventorySha256).toBe("ded2089fa343155ab12234d7e31c2549e2fe88167e8b27ced1e42d7f924e54b6")
+    } finally {
+      // raw-delete-allow: standalone component repository whose CI installs without hh's workspace, so removely is
+      // unavailable; `outDir` is this test's own mkdtempSync scratch root.
+      rmSync(outDir, { recursive: true, force: true })
+    }
   })
 })

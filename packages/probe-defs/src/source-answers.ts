@@ -62,6 +62,13 @@ export function sourceAnswerVersionLabel(version: string): string {
   return `reviewed at ${version}, not re-verified`
 }
 
+/** Whether a stored ProbeResult.reason carries the unverified version label for its subject version (@cto 3bfdb550). */
+export function hasUnverifiedSourceAnswerSuffix(reason: string | undefined, version: string): boolean {
+  if (!reason) return false
+  const label = sourceAnswerVersionLabel(version)
+  return reason === label || reason.endsWith(`; ${label}`)
+}
+
 /** Static kept answers; the one-time converter checks the source/provenance and emitted shape. */
 export const SOURCE_ANSWERS = retainedAnswers as readonly SourceAnswer[]
 

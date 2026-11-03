@@ -1,5 +1,17 @@
-import { PROBE_STATUSES, type ProbeResult, type ProbeStatus } from "../../packages/probe-defs/src/types.ts"
+import {
+  PROBE_STATUSES,
+  type AssertionType,
+  type ProbeResult,
+  type ProbeStatus,
+  type ProbeSubject,
+} from "../../packages/probe-defs/src/types.ts"
 import { environmentGroupIds, gradedFeatureIds } from "../../packages/probe-defs/src/environment-groups.ts"
+import {
+  SOURCE_ANSWER_PENDING_LABELS,
+  hasUnverifiedSourceAnswerSuffix,
+  publicSourceAnswerPendingLabel,
+  sourceAnswerForRef,
+} from "../../packages/probe-defs/src/source-answers.ts"
 import type { PublicVersion, PublicProbeResult, PublicContextSummary } from "./public-results.ts"
 
 /** Read a current (schema 3 or 4) published result without manufacturing any legacy observation. */
@@ -380,4 +392,443 @@ export function notMeasuredReadout(
 ): { text: string; title: string } | undefined {
   if (decisiveCells(counts) > 0) return undefined
   return { text: NOT_MEASURED_TEXT, title: currentCoverageSentence({ counts }) }
+}
+
+/**
+ * Operator-approved Probe Method rank table (GLOSSARY.md ec065acbdb22, @cto 3bfdb550):
+ * one fixed confidence order, weakest (1) to strongest (5).
+ */
+export const PROBE_METHODS = ["source-reading", "library", "app-text", "app-screenshot", "real-os-device"] as const
+
+export type ProbeMethod = (typeof PROBE_METHODS)[number]
+
+export const PROBE_METHOD_RANK: Readonly<Record<ProbeMethod, 1 | 2 | 3 | 4 | 5>> = {
+  "source-reading": 1,
+  library: 2,
+  "app-text": 3,
+  "app-screenshot": 4,
+  "real-os-device": 5,
+}
+
+export type MinimumMethodMap = Readonly<Record<string, Partial<Record<ProbeSubject["kind"], ProbeMethod | null>>>>
+
+export type ResultMethodClassification =
+  | {
+      readonly kind: "method"
+      readonly method: ProbeMethod
+      readonly confidenceRank: 1 | 2 | 3 | 4 | 5
+      readonly source: "assertion" | "review-ref"
+      readonly assertionType?: AssertionType
+    }
+  | {
+      readonly kind: "kept-answer-not-reverified"
+      readonly label: "kept answer, not re-verified"
+      readonly reviewRef: string
+      readonly rowAlsoHoldsCitedAnswer: boolean
+    }
+  | {
+      readonly kind: "unobserved-open"
+      readonly isDisagreedSourceAnswer: boolean
+    }
+  | {
+      readonly kind: "mixed"
+      readonly assertionTypes: readonly AssertionType[]
+    }
+  | {
+      readonly kind: "unmapped"
+      readonly reason: string
+    }
+
+/**
+ * Report-only finding status for one subject and feature (Phase 2.4 extension, @cto 3bfdb550).
+ * Nothing in `generate-api`, the site, or `rollupTerminalStatuses` reads `findingStatus` in this batch.
+ */
+export type FindingStatus = ProbeStatus | "test-conflict" | "no-minimum-declared"
+
+/**
+ * Report-only feature finding over one subject's run(s) and declared minimum method (@cto 3bfdb550).
+ * Nothing in `generate-api`, the site, or `rollupTerminalStatuses` reads `findingStatus` in this batch.
+ */
+export interface FeatureFinding {
+  readonly featureId: string
+  readonly runStatuses: readonly ProbeStatus[]
+  readonly observedMethods: readonly ProbeMethod[]
+  readonly highestObservedMethod: ProbeMethod | null
+  readonly minimumMethod: ProbeMethod | null
+  readonly findingStatus: FindingStatus
+  readonly winningMethod: ProbeMethod | null
+  readonly neededMethod: ProbeMethod | null
+}
+
+export interface KeptAnswerNotReverifiedBucket {
+  readonly label: "kept answer, not re-verified"
+  readonly count: number
+  readonly rowAlsoHoldsCitedAnswerCount: number
+  readonly rowAlsoHoldsCitedAnswerLabel: "row also holds a cited answer; not proof it applied"
+  readonly items: readonly {
+    readonly featureId: string
+    readonly reviewRef: string
+    readonly rowAlsoHoldsCitedAnswer: boolean
+  }[]
+}
+
+/**
+ * Report-only method-and-findings rollup for one subject (@cto 3bfdb550).
+ * Nothing in `generate-api`, the site, or `rollupTerminalStatuses` reads `findingStatus` in this batch.
+ */
+export interface SubjectMethodFindingsReport {
+  readonly subject: Pick<ProbeSubject, "kind" | "id" | "version" | "os">
+  readonly positions: number
+  readonly environmentPositions: number
+  readonly findingCounts: Readonly<Record<FindingStatus, number>>
+  readonly findings: Readonly<Record<string, FeatureFinding>>
+  readonly needsByMethod: Readonly<Record<ProbeMethod, readonly string[]>>
+  readonly buckets: {
+    readonly keptAnswerNotReverified: KeptAnswerNotReverifiedBucket
+    readonly noMinimum: readonly string[]
+    readonly mixed: readonly { readonly featureId: string; readonly assertionTypes: readonly AssertionType[] }[]
+    readonly unmapped: readonly { readonly featureId: string; readonly status: ProbeStatus; readonly reason: string }[]
+    readonly wouldBeConflicts: readonly string[]
+  }
+}
+
+export interface MethodFindingsRunInput {
+  readonly subject: Pick<ProbeSubject, "kind" | "id" | "version" | "os">
+  readonly results?: readonly ProbeResult[]
+  readonly assertions: readonly { readonly assertionType?: AssertionType }[]
+}
+
+/**
+ * Total and loud field-to-method mapping for one graded ProbeResult (@cto 3bfdb550 Adjustments 1, 2, 4, 7; 197f0f84 C1).
+ */
+export function classifyResultMethod(
+  result: ProbeResult,
+  subject: Pick<ProbeSubject, "kind" | "version">,
+  runAssertions: readonly { readonly assertionType?: AssertionType }[],
+): ResultMethodClassification {
+  const distinctTypes = new Set<AssertionType>()
+  if (result.assertionType !== undefined) {
+    distinctTypes.add(result.assertionType)
+  }
+  for (const test of result.tests) {
+    for (const refIdx of test.assertionRefs ?? []) {
+      const assertion = runAssertions[refIdx]
+      if (!assertion || !assertion.assertionType) {
+        throw new Error(`Missing assertion ref ${refIdx} for ${result.featureId}`)
+      }
+      distinctTypes.add(assertion.assertionType)
+    }
+  }
+
+  if (distinctTypes.size > 1) {
+    return {
+      kind: "mixed",
+      assertionTypes: [...distinctTypes].sort(),
+    }
+  }
+
+  const isDecided = result.status === "supported" || result.status === "unsupported" || result.status === "untestable"
+
+  if (isDecided && result.reviewRef) {
+    const row = sourceAnswerForRef(result.reviewRef)
+    if (!row) {
+      throw new Error(`Missing source-answer row ${result.reviewRef}`)
+    }
+    const matching = row.answers.filter((answer) => answer.status === result.status)
+    if (matching.length === 0) {
+      return {
+        kind: "unmapped",
+        reason: `reviewRef ${result.reviewRef} has no answer matching status ${result.status}`,
+      }
+    }
+    if (!hasUnverifiedSourceAnswerSuffix(result.reason, subject.version)) {
+      return {
+        kind: "method",
+        method: "source-reading",
+        confidenceRank: 1,
+        source: "review-ref",
+      }
+    }
+    return {
+      kind: "kept-answer-not-reverified",
+      label: "kept answer, not re-verified",
+      reviewRef: result.reviewRef,
+      rowAlsoHoldsCitedAnswer: matching.some((answer) => answer.citedBlobs.length > 0),
+    }
+  }
+
+  const onlyType = distinctTypes.size === 1 ? [...distinctTypes][0] : undefined
+  if (onlyType !== undefined) {
+    if (subject.kind === "lib") {
+      if (
+        onlyType === "buffer_state" ||
+        onlyType === "query_reply" ||
+        onlyType === "input_bytes" ||
+        onlyType === "clipboard"
+      ) {
+        return {
+          kind: "method",
+          method: "library",
+          confidenceRank: 2,
+          source: "assertion",
+          assertionType: onlyType,
+        }
+      }
+      return {
+        kind: "unmapped",
+        reason: `assertionType ${onlyType} is not mapped for subject kind lib`,
+      }
+    }
+    if (onlyType === "buffer_state" || onlyType === "query_reply") {
+      return {
+        kind: "method",
+        method: "app-text",
+        confidenceRank: 3,
+        source: "assertion",
+        assertionType: onlyType,
+      }
+    }
+    if (onlyType === "screenshot") {
+      return {
+        kind: "method",
+        method: "app-screenshot",
+        confidenceRank: 4,
+        source: "assertion",
+        assertionType: onlyType,
+      }
+    }
+    if (onlyType === "input_bytes" || onlyType === "clipboard") {
+      return {
+        kind: "method",
+        method: "real-os-device",
+        confidenceRank: 5,
+        source: "assertion",
+        assertionType: onlyType,
+      }
+    }
+  }
+
+  if (isDecided) {
+    return {
+      kind: "unmapped",
+      reason: `decided status ${result.status} without assertionType or reviewRef`,
+    }
+  }
+
+  return {
+    kind: "unobserved-open",
+    isDisagreedSourceAnswer:
+      result.status === "test-todo" &&
+      publicSourceAnswerPendingLabel(result.reason) === SOURCE_ANSWER_PENDING_LABELS.disagree,
+  }
+}
+
+/**
+ * Fold one subject's run(s) and declared minimum methods into a report-only SubjectMethodFindingsReport
+ * over the graded catalogue positions (@cto 3bfdb550, 197f0f84).
+ */
+export function rollupSubjectMethodFindings(
+  runs: readonly MethodFindingsRunInput[],
+  minimumMethods: MinimumMethodMap,
+  catalogIds: readonly string[],
+): SubjectMethodFindingsReport {
+  const firstRun = runs[0]
+  if (!firstRun) {
+    throw new Error("Method findings require at least one run")
+  }
+  const subject = firstRun.subject
+  if (catalogIds.length === 0) {
+    throw new Error("Method findings require a nonempty catalogue")
+  }
+
+  const envIds = environmentGroupIds(catalogIds)
+  const gradedIds = gradedFeatureIds(catalogIds)
+
+  const runResultMaps = runs.map((run) => {
+    if (
+      run.subject.kind !== subject.kind ||
+      run.subject.id !== subject.id ||
+      run.subject.version !== subject.version ||
+      run.subject.os !== subject.os
+    ) {
+      throw new Error(
+        `Method findings require runs for one subject; got ${subject.kind}:${subject.id}@${subject.version}:${subject.os} and ${run.subject.kind}:${run.subject.id}@${run.subject.version}:${run.subject.os}`,
+      )
+    }
+    if (!run.results) {
+      throw new Error(`Method findings require current-schema run results for ${subject.kind}:${subject.id}`)
+    }
+    const map = new Map<string, ProbeResult>()
+    for (const res of run.results) {
+      map.set(res.featureId, res)
+    }
+    return { run, map }
+  })
+
+  const findingCounts: Record<FindingStatus, number> = {
+    supported: 0,
+    unsupported: 0,
+    untestable: 0,
+    "test-todo": 0,
+    "test-failure": 0,
+    "test-conflict": 0,
+    "no-minimum-declared": 0,
+  }
+  const findings: Record<string, FeatureFinding> = {}
+  const needsByMethod: Record<ProbeMethod, string[]> = {
+    "source-reading": [],
+    library: [],
+    "app-text": [],
+    "app-screenshot": [],
+    "real-os-device": [],
+  }
+  const keptNotReverifiedItems: Array<{
+    readonly featureId: string
+    readonly reviewRef: string
+    readonly rowAlsoHoldsCitedAnswer: boolean
+  }> = []
+  let rowAlsoHoldsCitedAnswerCount = 0
+  const noMinimum: string[] = []
+  const mixed: Array<{ readonly featureId: string; readonly assertionTypes: readonly AssertionType[] }> = []
+  const unmapped: Array<{ readonly featureId: string; readonly status: ProbeStatus; readonly reason: string }> = []
+  const wouldBeConflicts: string[] = []
+
+  for (const featureId of gradedIds) {
+    const cells: Array<{
+      readonly result: ProbeResult
+      readonly classification: ResultMethodClassification
+    }> = []
+
+    let hasC1Disagreement = false
+    for (const { run, map } of runResultMaps) {
+      const result = map.get(featureId)
+      if (!result) {
+        throw new Error(`Missing result for ${featureId}`)
+      }
+      if (!PROBE_STATUSES.includes(result.status)) {
+        throw new Error(`Invalid stored current status for ${featureId}`)
+      }
+      const classification = classifyResultMethod(result, subject, run.assertions)
+      cells.push({ result, classification })
+
+      if (classification.kind === "kept-answer-not-reverified") {
+        keptNotReverifiedItems.push({
+          featureId,
+          reviewRef: classification.reviewRef,
+          rowAlsoHoldsCitedAnswer: classification.rowAlsoHoldsCitedAnswer,
+        })
+        if (classification.rowAlsoHoldsCitedAnswer) {
+          rowAlsoHoldsCitedAnswerCount++
+        }
+      } else if (classification.kind === "mixed") {
+        mixed.push({ featureId, assertionTypes: classification.assertionTypes })
+      } else if (classification.kind === "unmapped") {
+        unmapped.push({ featureId, status: result.status, reason: classification.reason })
+      }
+
+      if (
+        result.status === "test-todo" &&
+        publicSourceAnswerPendingLabel(result.reason) === SOURCE_ANSWER_PENDING_LABELS.disagree
+      ) {
+        hasC1Disagreement = true
+      }
+    }
+
+    if (hasC1Disagreement) {
+      wouldBeConflicts.push(featureId)
+    }
+
+    const runStatuses = cells.map((cell) => cell.result.status)
+    const observedMethodSet = new Set<ProbeMethod>()
+    for (const { classification } of cells) {
+      if (classification.kind === "method") {
+        observedMethodSet.add(classification.method)
+      }
+    }
+    const observedMethods = [...observedMethodSet].sort((a, b) => PROBE_METHOD_RANK[a] - PROBE_METHOD_RANK[b])
+    const highestObservedMethod = observedMethods.at(-1) ?? null
+
+    const minimumMethod = minimumMethods[featureId]?.[subject.kind] ?? null
+
+    let findingStatus: FindingStatus
+    let winningMethod: ProbeMethod | null = null
+    let neededMethod: ProbeMethod | null = null
+
+    if (minimumMethod === null) {
+      findingStatus = "no-minimum-declared"
+      noMinimum.push(featureId)
+    } else {
+      const minRank = PROBE_METHOD_RANK[minimumMethod]
+      const qualifyingDecided = cells.filter(
+        (
+          cell,
+        ): cell is {
+          readonly result: ProbeResult & { readonly status: "supported" | "unsupported" | "untestable" }
+          readonly classification: Extract<ResultMethodClassification, { readonly kind: "method" }>
+        } =>
+          (cell.result.status === "supported" ||
+            cell.result.status === "unsupported" ||
+            cell.result.status === "untestable") &&
+          cell.classification.kind === "method" &&
+          cell.classification.confidenceRank >= minRank,
+      )
+
+      const distinctDecidedStatuses = new Set(qualifyingDecided.map((cell) => cell.result.status))
+      const firstQualifying = qualifyingDecided[0]
+
+      if (distinctDecidedStatuses.size > 1 || (qualifyingDecided.length === 0 && minRank === 1 && hasC1Disagreement)) {
+        findingStatus = "test-conflict"
+      } else if (distinctDecidedStatuses.size === 1 && firstQualifying) {
+        findingStatus = firstQualifying.result.status
+        const best = qualifyingDecided.reduce((acc, cur) =>
+          cur.classification.confidenceRank > acc.classification.confidenceRank ? cur : acc,
+        )
+        winningMethod = best.classification.method
+      } else {
+        const hasInvalid = cells.some((cell) => cell.result.status === "test-failure")
+        findingStatus = hasInvalid ? "test-failure" : "test-todo"
+        neededMethod = minimumMethod
+        needsByMethod[minimumMethod].push(featureId)
+      }
+    }
+
+    findingCounts[findingStatus]++
+    findings[featureId] = {
+      featureId,
+      runStatuses,
+      observedMethods,
+      highestObservedMethod,
+      minimumMethod,
+      findingStatus,
+      winningMethod,
+      neededMethod,
+    }
+  }
+
+  return {
+    subject: {
+      kind: subject.kind,
+      id: subject.id,
+      version: subject.version,
+      os: subject.os,
+    },
+    positions: gradedIds.length,
+    environmentPositions: envIds.length,
+    findingCounts,
+    findings,
+    needsByMethod,
+    buckets: {
+      keptAnswerNotReverified: {
+        label: "kept answer, not re-verified",
+        count: keptNotReverifiedItems.length,
+        rowAlsoHoldsCitedAnswerCount,
+        rowAlsoHoldsCitedAnswerLabel: "row also holds a cited answer; not proof it applied",
+        items: keptNotReverifiedItems,
+      },
+      noMinimum,
+      mixed,
+      unmapped,
+      wouldBeConflicts,
+    },
+  }
 }

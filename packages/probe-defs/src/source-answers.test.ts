@@ -13,6 +13,7 @@ import {
   repositoryIdentity,
   resolveSourceAnswer,
   sourceAnswerKey,
+  hasUnverifiedSourceAnswerSuffix,
   sourceAnswerVersionLabel,
   type SourceAnswer,
 } from "./source-answers.ts"
@@ -611,4 +612,17 @@ it.each([
   expect(result.answers?.map((answer) => answer.originals[0]?.reviewRef)).toEqual(
     rows.map((row) => row.answers[0]?.originals[0]?.reviewRef),
   )
+})
+
+it("detects the unverified version label suffix on stored ProbeResult.reason values (hasUnverifiedSourceAnswerSuffix)", () => {
+  expect(hasUnverifiedSourceAnswerSuffix(undefined, "1.0.0")).toBe(false)
+  expect(hasUnverifiedSourceAnswerSuffix("", "1.0.0")).toBe(false)
+  expect(hasUnverifiedSourceAnswerSuffix("Verified against source blob", "1.0.0")).toBe(false)
+  expect(hasUnverifiedSourceAnswerSuffix("reviewed at 1.0.0, not re-verified", "1.0.0")).toBe(true)
+  expect(
+    hasUnverifiedSourceAnswerSuffix("Verified at 1.0.0 in src/vt.zig; reviewed at 1.0.0, not re-verified", "1.0.0"),
+  ).toBe(true)
+  expect(
+    hasUnverifiedSourceAnswerSuffix("Verified at 1.0.0 in src/vt.zig; reviewed at 0.9.0, not re-verified", "1.0.0"),
+  ).toBe(false)
 })
