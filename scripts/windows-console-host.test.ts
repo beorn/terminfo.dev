@@ -1,3 +1,4 @@
+import { finalizeCollectedDraft } from "../packages/terminfo.dev/src/capture-writer.ts"
 /**
  * @failure A Windows console host's own answer, or its silence, is published as the terminal's verdict.
  * @level l2
@@ -6,7 +7,7 @@
  */
 import { describe, expect, it } from "vitest"
 import { parseRun } from "@terminfo/run-parser"
-import { initializeRunDraft, sealRunDraft, type ProbeResult, type ProbeSuiteManifest } from "@terminfo/probe-defs"
+import { initializeRunDraft, type ProbeResult, type ProbeSuiteManifest } from "@terminfo/probe-defs"
 import { classifyDevelopmentRun, projectResults } from "../docs/data/selected-results.ts"
 
 // #30720 (@cto rulings fc63f412, 1ee8cf0b, f126327b): no other test reads a Windows run, so none sees the
@@ -112,7 +113,7 @@ const current = (os: string) => {
   draft.rawReplies = rawReplies()
   draft.assertions = assertions()
   draft.results = results
-  const value = sealRunDraft(draft, "2026-10-22T05:00:01.000Z")
+  const value = finalizeCollectedDraft(draft as Parameters<typeof finalizeCollectedDraft>[0])
   return parseRun("fixture.json", JSON.stringify(value), ids, new Map([[suite.probeHash, suite]]))
 }
 const statusOf = (run: ReturnType<typeof current>) =>

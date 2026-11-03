@@ -11,7 +11,8 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync,
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { afterEach, expect, test } from "vitest"
-import { initializeRunDraft, sealRunDraft } from "@terminfo/probe-defs"
+import { initializeRunDraft, type CapturedRunDraft } from "@terminfo/probe-defs"
+import { finalizeCollectedDraft } from "../packages/terminfo.dev/src/capture-writer.ts"
 import { parseSuiteManifest } from "@terminfo/run-parser"
 import { serializeOuterLaunchRecord } from "../packages/admin/src/outer-launch.ts"
 import { loadStoredRuns, placeCollectedRun } from "../packages/admin/corpus-placement.ts"
@@ -68,7 +69,7 @@ function fixture() {
       engineVersion: "6.0.0",
     },
   })
-  const run = sealRunDraft(draft, "2026-10-21T05:00:01.000Z")
+  const run = finalizeCollectedDraft(draft as CapturedRunDraft)
   const source = join(dir, "run.json")
   const save = () => writeFileSync(source, JSON.stringify(run))
   save()
@@ -204,19 +205,16 @@ test.each(["valid", "wrong-version", "disputed", "dirty", "missing-receipt", "re
         "collector.xtversion": `\u001bP>|kitty(${fault === "wrong-version" ? "9.0" : "0.46.2"})\u001b\\\u001b[?62;52;c`,
       },
     })
-    const run = sealRunDraft(draft, "2026-10-21T05:00:01.000Z")
+    const run = finalizeCollectedDraft(draft as CapturedRunDraft)
     if (fault === "dirty") {
-      // A syntactically valid provenance record comes from the checked-in Linux specimen.
+      // The current mux specimen retains the measured native outer terminal provenance.
       const specimen = JSON.parse(
         readFileSync(
-          join(
-            import.meta.dirname,
-            "../test-fixtures/probes-apps/kitty-0.49.2-linux-dfd4cd08416fb5f3be3eaeed5acce782.json",
-          ),
+          join(import.meta.dirname, "../test-fixtures/probes-mux/tmux-3.8-linux-ea920f3547c0e7f0ced0f80b277f2939.json"),
           "utf8",
         ),
       )
-      run.provenance = specimen.provenance
+      run.provenance = specimen.outerApp.provenance
       run.provenance!.runtime.sourceRevision = "a".repeat(40)
       run.provenance!.runtime.suiteHash = f.manifest.probeHash
       run.provenance!.runtime.cleanTree = false
@@ -265,9 +263,9 @@ test.each([
   const f = fixture()
   const base = join(import.meta.dirname, "../test-fixtures")
   const specimen = JSON.parse(
-    readFileSync(join(base, "probes-apps/kitty-0.49.2-linux-dfd4cd08416fb5f3be3eaeed5acce782.json"), "utf8"),
+    readFileSync(join(base, "probes-mux/tmux-3.8-linux-ea920f3547c0e7f0ced0f80b277f2939.json"), "utf8"),
   )
-  const subject = { ...specimen.target, kind: "term" as const }
+  const subject = specimen.outerApp.subject
   const draft = initializeRunDraft({
     runId: "linux-run",
     sourceRevision: specimen.sourceRevision,
@@ -275,7 +273,7 @@ test.each([
     source: { kind: "live" },
     intendedSubject: subject,
   })
-  specimen.provenance.runtime.suiteHash = f.manifest.probeHash
+  specimen.outerApp.provenance.runtime.suiteHash = f.manifest.probeHash
   const originalHost = readFileSync(join(base, "receipts/dfd4cd08416fb5f3be3eaeed5acce782.json"))
   const hostDocument = JSON.parse(originalHost.toString("utf8"))
   if (fault === "placeholder-receipt") hostDocument.runtime.imageId = `sha256:${"0".repeat(64)}`
@@ -284,7 +282,7 @@ test.each([
     fault === "placeholder-receipt" || fault === "wrong-target"
       ? Buffer.from(JSON.stringify(hostDocument))
       : originalHost
-  const citation = JSON.parse(specimen.rawReplies["collector.disposableOwnership"])
+  const citation = { kind: "linux-xvfb-container", receiptSha256: hash(host) }
   citation.receiptSha256 = hash(host)
   writeFileSync(join(f.dir, "host-measured.json"), host)
   const capture = Buffer.from("retained original capture")
@@ -294,15 +292,15 @@ test.each([
     identity: "verified",
     measuredAt: specimen.measuredAt,
     origin: { kind: "collector" },
-    provenance: specimen.provenance,
+    provenance: specimen.outerApp.provenance,
     rawReplies: {
-      "device.primary-da": specimen.rawReplies["device.primary-da"],
-      "collector.xtversion": specimen.rawReplies["collector.xtversion"],
+      "device.primary-da": specimen.outerApp.rawReplies["device.primary-da"],
+      "collector.xtversion": specimen.outerApp.rawReplies["collector.xtversion"],
       "collector.disposableOwnership": JSON.stringify(citation),
       "collector.httpResponseSha256": captureHash,
     },
   })
-  const run = sealRunDraft(draft, "2026-10-21T05:00:01.000Z")
+  const run = finalizeCollectedDraft(draft as CapturedRunDraft)
   const bytes = Buffer.from(JSON.stringify(run))
   writeFileSync(f.source, bytes)
   const container = Buffer.from(JSON.stringify({ probeRun: { runId: run.runId, sha256: captureHash } }))
@@ -408,7 +406,7 @@ test.each(["missing-outer", "wrong-outer", "missing-attachment", "invalid-attach
         },
       }
     }
-    writeFileSync(f.source, JSON.stringify(sealRunDraft(draft, "2026-10-21T05:00:01.000Z")))
+    writeFileSync(f.source, JSON.stringify(finalizeCollectedDraft(draft as CapturedRunDraft)))
     const errors = {
       "missing-outer": /outer-app-proof-missing/,
       "wrong-outer": /outer-app-identity-mismatch/,
@@ -524,7 +522,7 @@ test.each(["valid", "wrong-capture", "wrong-owner"] as const)("Darwin mux attach
       },
     },
   })
-  writeFileSync(f.source, JSON.stringify(sealRunDraft(draft, "2026-10-21T05:00:01.000Z")))
+  writeFileSync(f.source, JSON.stringify(finalizeCollectedDraft(draft as CapturedRunDraft)))
   if (fault === "valid") {
     expect(readFileSync(placeCollectedRun(f.source, f.manifest, f.content))).toEqual(readFileSync(f.source))
   } else {
@@ -678,7 +676,7 @@ test.each(hostedMacApps)("hosted Mac $id binds launch, target, runner and exact 
           : { "collector.disposableOwnership": fault === "shared" ? JSON.stringify({ kind: "shared" }) : citation }),
       },
     })
-    writeFileSync(f.source, JSON.stringify(sealRunDraft(draft, "2026-10-21T05:00:01.000Z")))
+    writeFileSync(f.source, JSON.stringify(finalizeCollectedDraft(draft as CapturedRunDraft)))
     if (fault === "valid" || fault === "darwin") {
       expect(readFileSync(placeCollectedRun(f.source, f.manifest, f.content))).toEqual(readFileSync(f.source))
     } else {
@@ -743,7 +741,7 @@ test.each(["valid", "clipboard-hash", "preflight", "config"] as const)("Linux mu
     origin: specimen.origin,
     rawReplies: replies,
   })
-  const run = sealRunDraft(draft, "2026-11-01T00:00:00.000Z")
+  const run = finalizeCollectedDraft(draft as CapturedRunDraft)
   const bytes = Buffer.from(JSON.stringify(run))
   writeFileSync(f.source, bytes)
   const container = Buffer.from(JSON.stringify({ probeRun: { runId: run.runId, sha256: captureHash } }))
@@ -807,7 +805,7 @@ test.each([
         ...(fault === "shared" ? { "collector.disposableOwnership": JSON.stringify({ kind: "shared" }) } : {}),
       },
     })
-    writeFileSync(f.source, JSON.stringify(sealRunDraft(draft, "2026-10-21T05:00:01.000Z")))
+    writeFileSync(f.source, JSON.stringify(finalizeCollectedDraft(draft as CapturedRunDraft)))
     if (fault === "absent" || fault === "shared") {
       expect(readFileSync(placeCollectedRun(f.source, f.manifest, f.content))).toEqual(readFileSync(f.source))
     } else {

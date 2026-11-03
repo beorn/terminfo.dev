@@ -15,7 +15,6 @@ import {
   ENVIRONMENT_GROUP_IDS,
   initializeRunDraft,
   type CapturedRunDraft,
-  type CaptureEvidence,
   type ProbeSuiteManifest,
 } from "@terminfo/probe-defs"
 import { saveDaemonProbeRun } from "../../terminfo.dev/src/daemon-client.ts"
@@ -249,12 +248,7 @@ it.each([
     }
     const assertDraft = (saved: CapturedRunDraft) => {
       expect(saved).not.toHaveProperty("sealedAt")
-      if (pending) {
-        expect(
-          (JSON.parse(saved.rawReplies["collector.evidence.sgr.bold"]!) as CaptureEvidence).projection.feature
-            .catalogEntrySha256,
-        ).toBe("b".repeat(64))
-      }
+      if (pending) expect(saved.results[0]!.tests.find((test) => test.id === "review")?.status).toBe("test-todo")
     }
     fixtures.receipt = { manifest, collectorRevision: manifest.sourceRevision }
     fixtures.raw = JSON.stringify(run)
@@ -280,8 +274,7 @@ it.each([
         })
         expect(() => collection.writeCollectedRun(run, response)).toThrow("placement reached")
         const saved = place.mock.calls[0]![0]
-        if (pending) expect(JSON.parse(readFileSync(saved, "utf8"))).not.toHaveProperty("sealedAt")
-        else expect(JSON.parse(readFileSync(saved, "utf8"))).toHaveProperty("sealedAt")
+        expect(JSON.parse(readFileSync(saved, "utf8"))).not.toHaveProperty("sealedAt")
         expect(place).toHaveBeenCalledWith(saved, manifest)
       }
       return

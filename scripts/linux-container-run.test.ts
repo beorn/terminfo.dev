@@ -28,7 +28,7 @@ import { fileURLToPath } from "node:url"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import { initializeRunDraft } from "@terminfo/probe-defs"
 import { derivedSuiteManifest, probeSuiteSnapshot } from "../packages/admin/versions.ts"
-import type { LinuxMuxAttachmentProof, CapturedRunDraft, CaptureEvidence } from "@terminfo/probe-defs"
+import type { LinuxMuxAttachmentProof, CapturedRunDraft } from "@terminfo/probe-defs"
 import { bindReceiptToRun, parseDisposableReceipt } from "../packages/terminfo.dev/src/disposable-receipt.ts"
 
 const launcher = fileURLToPath(new URL("./linux-container-run.sh", import.meta.url))
@@ -1082,9 +1082,11 @@ it.each([false, true])("retains a Linux raw draft without completion receipt, re
   expect(saved).not.toHaveProperty("sealedAt")
   expect(result.stderr).toContain("unsealed")
   if (pending) {
-    expect(
-      (JSON.parse(saved.rawReplies["collector.evidence.device.primary-da"]!) as CaptureEvidence).projection.feature
-        .catalogEntrySha256,
-    ).toBe(manifest.catalogEntrySha256!["device.primary-da"])
+    expect(saved.results.find((row) => row.featureId === "device.primary-da")?.tests).toContainEqual({
+      id: "review",
+      status: "test-todo",
+      attempt: { scope: "none" },
+      reason: "Required context review pending",
+    })
   }
 })

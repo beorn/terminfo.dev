@@ -1,3 +1,4 @@
+import { finalizeCollectedDraft } from "../../terminfo.dev/src/capture-writer.ts"
 /**
  * Lay out a throwaway repository root that runs the real `terminfo report` command,
  * so the test reads the same copy → select → render → stdout path a piped run does.
@@ -43,7 +44,7 @@ import { expect, test } from "vitest"
 import { probeSuiteSnapshot } from "../versions.ts"
 import { loadCurrentResults } from "../../../docs/data/current-results.ts"
 import { parseSuiteManifest, parseRun } from "@terminfo/run-parser"
-import { ENVIRONMENT_GROUP_IDS, initializeRunDraft, sealRunDraft } from "@terminfo/probe-defs"
+import { ENVIRONMENT_GROUP_IDS, initializeRunDraft } from "@terminfo/probe-defs"
 
 // This journey boots several real CLI processes; 5s is not a report performance contract.
 test("report renders reviewed outcomes, failures and missing cells", () => {
@@ -811,7 +812,7 @@ test("a long report keeps every row and its last section on a pipe", () => {
     draft.measuredAt = "2026-09-28T12:00:00.000Z"
     draft.origin = { kind: "collector" }
     draft.rawReplies = { "device.primary-da": "\x1b[?62;52;c", "device.xtversion": "kitty(0.46.2)" }
-    const run = sealRunDraft(draft, "2026-09-28T12:00:01.000Z")
+    const run = finalizeCollectedDraft(draft as Parameters<typeof finalizeCollectedDraft>[0])
     const runPath = join(root, "content", "probes-apps", "long.json")
     const runBytes = JSON.stringify(run)
     writeFileSync(runPath, runBytes)

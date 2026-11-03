@@ -21,7 +21,7 @@ import {
   recordCollectorAttempt,
   readCollectorAttempt,
 } from "@terminfo/probe-defs"
-import type { ProbeResult, CapturedRunDraft, CaptureEvidence, ProbeSuiteManifest, RunDraft } from "@terminfo/probe-defs"
+import type { ProbeResult, CapturedRunDraft, ProbeSuiteManifest, RunDraft } from "@terminfo/probe-defs"
 import * as publicCollector from "../packages/terminfo.dev/src/serve.ts"
 import * as probeOutput from "../packages/terminfo.dev/src/probe-output.ts"
 import * as daemonClient from "../packages/terminfo.dev/src/daemon-client.ts"
@@ -338,10 +338,14 @@ describe("public test CLI coverage uses the collected manifest", () => {
         expect(saved.runId).toBe(run.runId)
         expect(saved).not.toHaveProperty("sealedAt")
         if (pending) {
-          expect(
-            (JSON.parse(saved.rawReplies["collector.evidence.sgr.bold"]!) as CaptureEvidence).projection.feature
-              .catalogEntrySha256,
-          ).toBe("b".repeat(64))
+          expect(saved.rawReplies["sgr.bold"]).toBe("reply")
+          expect(saved.results.find((row) => row.featureId === "sgr.bold")).toMatchObject({
+            status: "test-todo",
+            rawReplyRef: "sgr.bold",
+            tests: expect.arrayContaining([
+              { id: "review", status: "test-todo", reason: "Independent review pending", attempt: { scope: "none" } },
+            ]),
+          })
         }
       } finally {
         stdout.mockRestore()

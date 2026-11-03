@@ -1,3 +1,4 @@
+import { finalizeCollectedDraft } from "../packages/terminfo.dev/src/capture-writer.ts"
 /**
  * @failure Erase replay loses domain results, precondition identity or fixed artifact placement.
  * @level l2
@@ -12,7 +13,7 @@ import { basename, dirname, join } from "node:path"
 import { expect, test, vi } from "vitest"
 import { createVitest } from "vitest/node"
 import CensusReporter from "../packages/admin/reporter.ts"
-import { sealRunDraft, type CapturedRunDraft } from "@terminfo/probe-defs"
+import { type CapturedRunDraft } from "@terminfo/probe-defs"
 import { derivedSuiteManifest, probeSuiteSnapshot } from "../packages/admin/versions.ts"
 import { readEraseCapture } from "../packages/probes/erase-capture.ts"
 import { HEADLESS_TERMINAL } from "../packages/probes/headless-terminal.ts"
@@ -137,7 +138,7 @@ test.for(["success", "deciding", "precondition", "replay-failure", "painted-seed
           geometry: HEADLESS_TERMINAL,
         }
         expect(readEraseCapture(dirname(capturePath), source, expected).capture.runId).toBe(capture.runId)
-        const historicalBytes = JSON.stringify(sealRunDraft(structuredClone(capture)))
+        const historicalBytes = JSON.stringify(finalizeCollectedDraft(structuredClone(capture)))
         const historicalPath = join(dirname(capturePath), "historical-capture.json")
         await writeFile(historicalPath, historicalBytes)
         const historicalSource = {

@@ -194,19 +194,17 @@ export interface RunDraft {
   textSnapshotRefs?: string[]
   textQualification?: TextQualification
   results: ProbeResult[]
-  sealedAt?: never
 }
 
 /** Captured identity is present, but HTTP/intent/app-launch enrichment and review can still run. */
 export type CapturedRunDraft = RunDraft & Required<Pick<RunDraft, "subject" | "identity" | "measuredAt" | "origin">>
 
 /** Final status bytes are immutable after all legitimate enrichment and required review. */
-export interface CurrentProbeRun extends Omit<RunDraft, "subject" | "identity" | "measuredAt" | "origin" | "sealedAt"> {
+export interface CurrentProbeRun extends Omit<RunDraft, "subject" | "identity" | "measuredAt" | "origin"> {
   subject: ProbeSubject
   identity: "verified" | "unverified" | "disputed"
   measuredAt: string
   origin: RunOrigin
-  sealedAt: string
 }
 
 /** A proposition's measured outcome. Missing catalog IDs mean not tested. */

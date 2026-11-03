@@ -14,12 +14,11 @@ import { readCallLog } from "viprobe"
 import {
   ALL_PROBES,
   initializeRunDraft,
-  sealRunDraft,
   type ProbeSuiteManifest,
   type TextQualification,
 } from "@terminfo/probe-defs"
 import { replyFailure } from "../../../probe-defs/src/helpers.ts"
-import { applyCaptureDecision, retainCaptureBinding, parseRun, decodeCollectorDraft } from "@terminfo/run-parser"
+import { parseRun, decodeCollectorDraft } from "@terminfo/run-parser"
 import * as terminalOwnership from "../owned-terminal.ts"
 import { verifyTerminalIdentity } from "../identity-guard.ts"
 import { measureUtf8Decoding } from "../tty.ts"
@@ -2870,7 +2869,7 @@ it.each([
         draft.screenshotRefs = batch.screenshotRefs
         const read = parseRun(
           "native-visual-stability-fixture.json",
-          JSON.stringify(sealRunDraft(draft)),
+          JSON.stringify(draft),
           [id],
           new Map([[probeHash, ownManifest]]),
         )
@@ -2905,35 +2904,13 @@ it.each([
           expect(decoded.results.find((result) => result.featureId === id)?.frames).toEqual(result.frames)
           return
         }
-        const binding = retainCaptureBinding(draft, id)
-        applyCaptureDecision(
-          draft,
-          JSON.stringify({
-            id: `fixture-review-${id}`,
-            runId: draft.runId,
-            featureId: id,
-            captureSha256: binding.sha256,
-            decision: "untestable",
-            reviewed: true,
-            reviewer: "fixture-reviewer",
-            reason: "Deterministic fixture planes do not establish terminal support",
-            scope: {
-              subject: { kind: "term", id: "kitty" },
-              versions: ["0.49.1", "0.49.1"],
-              suites: [probeHash, probeHash],
-            },
-            sources: [binding.rawReplyRef],
-            supersedes: [],
-          }),
-          "2026-10-29T15:01:00.000Z",
-        )
         const read = parseRun(
           "native-visual-fixture.json",
-          JSON.stringify(sealRunDraft(draft)),
+          JSON.stringify(draft),
           [id],
           new Map([[probeHash, ownManifest]]),
         )
-        expect(read.results?.[0]).toMatchObject({ status: "untestable", frames: result.frames })
+        expect(read.results?.[0]).toMatchObject({ status: "test-todo", frames: result.frames })
         expect(read.assertions).toEqual([])
         if (id === "modes.insert-replace") {
           const noFreshDraft = initializeRunDraft({
@@ -3013,36 +2990,14 @@ it.each([
       draft.assertions = batch.assertions
       draft.screenshotRefs = batch.screenshotRefs
       const before = structuredClone(result.frames)
-      const binding = retainCaptureBinding(draft, id)
-      // This exercises reader eligibility only; the fixture has no actual rendered pixel plane.
-      applyCaptureDecision(
-        draft,
-        JSON.stringify({
-          id: `fixture-review-${id}`,
-          runId: draft.runId,
-          featureId: id,
-          captureSha256: binding.sha256,
-          decision: "untestable",
-          reviewed: true,
-          reviewer: "fixture-reviewer",
-          reason: "Deterministic collector fixture has no actual pixel plane; no terminal support verdict",
-          scope: {
-            subject: { kind: "term", id: "kitty" },
-            versions: ["0.49.1", "0.49.1"],
-            suites: [probeHash, probeHash],
-          },
-          sources: [binding.rawReplyRef],
-          supersedes: [],
-        }),
-        "2026-10-29T15:01:00.000Z",
-      )
+      draft.results = batch.results
       const read = parseRun(
         "native-visual-fixture.json",
-        JSON.stringify(sealRunDraft(draft)),
+        JSON.stringify(draft),
         [id],
         new Map([[probeHash, ownManifest]]),
       )
-      expect(read.results?.[0]).toMatchObject({ status: "untestable", frames: before })
+      expect(read.results?.[0]).toMatchObject({ status: "test-todo", frames: before })
       expect(read.assertions[0]?.expected).toMatch(expected)
     } finally {
       vi.useRealTimers()

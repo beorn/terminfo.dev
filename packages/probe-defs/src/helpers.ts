@@ -9,7 +9,6 @@ import type {
   ProbeAssertion,
   UngradedDiagnostic,
   ProbeResult,
-  CurrentProbeRun,
   ProbeSuiteManifest,
   RunDraft,
   CollectorSelection,
@@ -2221,26 +2220,6 @@ export function finalizeProbeResult(
   const stored = { ...input } as typeof input & { replyFailureTestIds?: unknown }
   delete stored.replyFailureTestIds
   return { ...stored, status, ...(reason === undefined ? {} : { reason }) }
-}
-
-/** Seal measured/enriched identity while preserving pending review statuses. */
-export function sealRunDraft(draft: RunDraft, sealedAt = new Date().toISOString()): CurrentProbeRun {
-  assertCurrentSource(draft.source)
-  if (draft.source.kind === "trace" && draft.source.captureRunId === draft.runId) {
-    throw new Error("Trace source capture runId must differ from the assertion runId")
-  }
-  if (draft.schemaVersion !== 4) throw new Error("Current run writer requires schemaVersion 4")
-  if (!draft.subject || !draft.identity || !draft.measuredAt || !draft.origin) {
-    throw new Error(`Run ${draft.runId} has no complete measured identity to seal; retain its private draft`)
-  }
-  return {
-    ...draft,
-    subject: draft.subject,
-    identity: draft.identity,
-    measuredAt: draft.measuredAt,
-    origin: draft.origin,
-    sealedAt,
-  }
 }
 
 function assertCurrentSource(source: unknown): asserts source is RunDraft["source"] {

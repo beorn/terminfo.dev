@@ -10,7 +10,6 @@ import {
   type HostRecipeExpectation,
   type HostRecipeName,
   PROBE_STATUSES,
-  finalizeProbeResult,
   sourceAnswerForRef,
   type SourceAnswerInput,
   initializeRunDraft,
@@ -19,8 +18,6 @@ import {
   readCollectorAttempt,
   collectorAttemptDigest,
   type RetainedHostRecipeCause,
-  type CaptureDecision,
-  type CaptureEvidence,
   type RunDraft,
   type CapturedRunDraft,
   type HistoricalProbeRun,
@@ -45,17 +42,14 @@ import {
   type TextQualificationSpec,
   type TextQualificationShape,
   type TextCellsObservationFrame,
-  evidenceRuntimeIdentity,
 } from "@terminfo/probe-defs"
 import {
   parseObservation,
   parseObservationFrames,
-  projectHistoricalAssertions,
   validateCurrentAssertions,
 } from "./observations.ts"
 export { parseObservationFrames, validateObservation, validateObservationOutcome } from "./observations.ts"
-import { parseJsonStrict, canonicalJson } from "./json.ts"
-import { resolveMeasuredSourceAnswer } from "./source-answers.ts"
+import { parseJsonStrict } from "./json.ts"
 export { resolveMeasuredSourceAnswer } from "./source-answers.ts"
 export { parseJsonStrict, canonicalJson, FEATURE_ENTRY_PROSE_DENYLIST, boundFeatureEntry } from "./json.ts"
 import { ALACRITTY_VERSION_PATTERN, PLACEHOLDER, parseAppLaunchReceipt, parseDerivedSourceTree } from "./app-launch.ts"
@@ -91,7 +85,6 @@ interface LoadedRunFields {
   legacy: boolean
   results?: ProbeResult[]
   catalogIds?: string[]
-  sealedAt?: string
   intendedSubject?: Partial<ProbeSubject>
 }
 
@@ -387,64 +380,7 @@ function parseTextQualification(
   return { ...spec, grid: { rows: grid.rows as number, cols: grid.cols as number }, shapes }
 }
 
-/** The console host a text read returned: its image, the executable this run opened, and that
- * executable's digest. The digest keeps the `sha256:` prefix the 30042 source emits, and the path
- * must be absolute as either platform writes it — the collector runs on Windows, the parser may not
- * (30055 AC4; @cto ruling 6255e75d conditions 1 and 5). */
-function parseDiagnostics(
-  value: unknown,
-  path: string,
-  catalog: Set<string>,
-  observations: readonly ReadObservation[],
-): Record<string, UngradedDiagnostic> {
-  if (value === undefined) return {}
-  if (!object(value)) fail(path, "invalid ungradedDiagnostics")
-  const diagnostics: Record<string, UngradedDiagnostic> = {}
-  for (const [id, entry] of Object.entries(value)) {
-    if (!catalog.has(id)) fail(path, `unknown diagnostic feature ${id}`)
-    if (observations.some((observation) => observation.featureId === id)) {
-      fail(path, `${id} occurs in both observations and ungradedDiagnostics`)
-    }
-    if (!object(entry)) fail(path, `invalid diagnostic for ${id}`)
-    const allowed =
-      entry.kind === "legacy-callback" ? ["kind", "pass", "note", "response"] : ["kind", "name", "message"]
-    if (Object.keys(entry).some((key) => !allowed.includes(key))) fail(path, `invalid diagnostic fields for ${id}`)
-    if (entry.kind === "legacy-callback" && typeof entry.pass === "boolean") {
-      for (const key of ["note", "response"]) {
-        if (entry[key] !== undefined && typeof entry[key] !== "string") {
-          fail(path, `invalid diagnostic ${key} for ${id}`)
-        }
-      }
-    } else if (entry.kind === "collector-error" && nonempty(entry.name)) {
-      if (entry.message !== undefined && typeof entry.message !== "string") {
-        fail(path, `invalid diagnostic message for ${id}`)
-      }
-    } else fail(path, `invalid diagnostic for ${id}`)
-    diagnostics[id] = entry as UngradedDiagnostic
-  }
-  return diagnostics
-}
-
-/**
- * A suite manifest plus the optional `freeze` pointer a freeze act writes on it. The pointer lives on
- * the manifest itself (the 83 manifests ARE the suite registry), so it can never name a manifest that
- * does not exist. `ProbeSuiteManifest` in @terminfo/probe-defs is a suite-hashed input, so the field
- * is added here rather than there; the extra field is erased for every consumer that only reads the
- * derived record.
- */
-export interface ParsedSuiteManifest extends ProbeSuiteManifest {
-  /** Written only by a freeze act: the release whose current suite this manifest is. */
-  freeze?: {
-    release: string
-    at: string
-    /**
-     * The suites this release published on before the pointer reached this one, oldest first. The
-     * move carries the list forward and appends the suite it leaves, so the history survives every
-     * later move; nothing walks another manifest to recover it.
-     */
-    previous?: { suite: string; from: string; until: string }[]
-  }
-}
+export type ParsedSuiteManifest = ProbeSuiteManifest
 
 export function parseSuiteManifest(path: string, source: string): ParsedSuiteManifest {
   const value = parseJsonStrict(path, source)
@@ -455,7 +391,7 @@ export function parseSuiteManifest(path: string, source: string): ParsedSuiteMan
   // corruption, so it refuses by name. Unknown fields are refused rather than silently accepted.
   const derivedKeys = ["adapterVersion", "probeHash", "probes"]
   const legacyKeys = ["generatedAt", "sourceRevision"]
-  const pointerKeys = ["schemaVersion", "freeze", "textClaims", "textQualification", "catalogIds", "catalogEntrySha256"]
+  const pointerKeys = ["schemaVersion", "textClaims", "textQualification", "catalogIds", "catalogEntrySha256"]
   const known = new Set([...derivedKeys, ...legacyKeys, ...pointerKeys])
   const unknown = Object.keys(value)
     .filter((key) => !known.has(key))
@@ -546,53 +482,6 @@ export function parseSuiteManifest(path: string, source: string): ParsedSuiteMan
   }
   const textQualification =
     "textQualification" in value ? parseTextQualificationSpec(value.textQualification, path) : undefined
-  let freeze: ParsedSuiteManifest["freeze"]
-  if ("freeze" in value) {
-    const raw = value.freeze
-    if (!object(raw)) fail(path, "invalid suite freeze pointer")
-    const rawKeys = Object.keys(raw).sort().join(",")
-    if (rawKeys !== "at,release" && rawKeys !== "at,previous,release") fail(path, "invalid suite freeze pointer")
-    if (typeof raw.release !== "string" || !raw.release.trim()) fail(path, "invalid suite freeze release")
-    if (typeof raw.at !== "string" || !date(raw.at) || new Date(raw.at).toISOString() !== raw.at) {
-      fail(path, "invalid suite freeze at")
-    }
-    let previous: { suite: string; from: string; until: string }[] | undefined
-    if ("previous" in raw) {
-      const rawPrevious = raw.previous
-      if (!Array.isArray(rawPrevious)) fail(path, "invalid suite freeze previous lineage")
-      const lineage: { suite: string; from: string; until: string }[] = []
-      for (const entry of rawPrevious) {
-        if (!object(entry) || Object.keys(entry).sort().join(",") !== "from,suite,until") {
-          fail(path, "invalid suite freeze previous entry")
-        }
-        if (typeof entry.suite !== "string" || !entry.suite.trim()) fail(path, "invalid suite freeze previous suite")
-        for (const key of ["from", "until"] as const) {
-          const value = entry[key]
-          if (typeof value !== "string" || !date(value) || new Date(value).toISOString() !== value) {
-            fail(path, `invalid suite freeze previous ${key}`)
-          }
-        }
-        if (lineage.some((seen) => seen.suite === entry.suite) || entry.suite === probeHash) {
-          fail(path, `suite freeze previous lineage repeats suite ${entry.suite}`)
-        }
-        // Oldest first, each window starting where the one before it ended: the move writes exactly
-        // this, so another order or a gap is a hand edit the lineage reader would misread.
-        const from = entry.from as string
-        const until = entry.until as string
-        const before = lineage[lineage.length - 1]
-        if (until < from || (before !== undefined && before.until !== from)) {
-          fail(path, `invalid suite freeze previous window for suite ${entry.suite}`)
-        }
-        lineage.push({ suite: entry.suite, from, until })
-      }
-      const last = lineage[lineage.length - 1]
-      if (last !== undefined && last.until !== raw.at) {
-        fail(path, `suite freeze previous lineage ends at ${last.until}, not at this freeze (${raw.at})`)
-      }
-      previous = lineage
-    }
-    freeze = { release: raw.release, at: raw.at, ...(previous === undefined ? {} : { previous }) }
-  }
   return {
     ...(value.schemaVersion === 4 ? { schemaVersion: 4 as const } : {}),
     probeHash,
@@ -604,7 +493,6 @@ export function parseSuiteManifest(path: string, source: string): ParsedSuiteMan
     ...(textQualification === undefined ? {} : { textQualification }),
     ...(sourceRevision === undefined ? {} : { sourceRevision }),
     ...(generatedAt === undefined ? {} : { generatedAt }),
-    ...(freeze === undefined ? {} : { freeze }),
   }
 }
 
@@ -729,52 +617,6 @@ function parseRunProvenanceForSchema(
   }
 }
 
-function parseNotTested(
-  value: unknown,
-  path: string,
-  catalog: Set<string>,
-  expected: ReadonlySet<string>,
-  rawReplies: Record<string, string>,
-  observations: readonly ReadObservation[],
-  assertions: readonly ReadAssertion[],
-): NotTestedCoverage[] {
-  if (value === undefined) return []
-  if (!Array.isArray(value)) fail(path, "invalid notTested")
-  const records: NotTestedCoverage[] = []
-  const seen = new Set<string>()
-  for (const entry of value) {
-    if (!object(entry)) fail(path, "invalid notTested record")
-    const featureId = asString(entry.featureId, path, "notTested.featureId")
-    if (!catalog.has(featureId)) fail(path, `unknown notTested feature ${featureId}`)
-    if (!expected.has(featureId)) fail(path, `notTested ${featureId} is outside the trusted suite`)
-    if (seen.has(featureId)) fail(path, `duplicate notTested feature ${featureId}`)
-    seen.add(featureId)
-    if (entry.reason !== "no-semantic-observable") fail(path, `invalid notTested reason for ${featureId}`)
-    const noObservable = asString(entry.noObservable, path, `notTested.noObservable for ${featureId}`)
-    if (noObservable.trim().length === 0) fail(path, `notTested ${featureId} requires a specific noObservable`)
-    const rawReplyRef = asString(entry.rawReplyRef, path, `notTested.rawReplyRef for ${featureId}`)
-    if (rawReplyRef !== featureId) {
-      fail(path, `notTested ${featureId} requires its own rawReplyRef`)
-    }
-    const rawTrace = rawReplies[rawReplyRef]
-    if (typeof rawTrace !== "string" || rawTrace.length === 0) {
-      fail(path, `notTested ${featureId} requires a retained nonempty raw trace`)
-    }
-    if (entry.probeId !== undefined) {
-      const probeId = asString(entry.probeId, path, `notTested.probeId for ${featureId}`)
-      if (probeId !== featureId) fail(path, `notTested probeId ${probeId} does not identify ${featureId}`)
-    }
-    if (observations.some((item) => item.featureId === featureId)) {
-      fail(path, `notTested ${featureId} also occurs in observations`)
-    }
-    if (assertions.some((item) => item.featureId === featureId)) {
-      fail(path, `notTested ${featureId} also occurs in assertions`)
-    }
-    records.push({ featureId, reason: "no-semantic-observable", noObservable, rawReplyRef })
-  }
-  return records
-}
-
 export function parseOuterApp(
   value: unknown,
   subject: ProbeSubject,
@@ -829,711 +671,6 @@ export function parseOuterApp(
 }
 
 /** One decoder for accepted and retained evidence projections. */
-function parseCaptureEvidence(value: unknown, path: string, featureId: string): CaptureEvidence {
-  if (
-    !object(value) ||
-    value.algorithm !== "evidence-output-v1" ||
-    typeof value.sha256 !== "string" ||
-    !/^[0-9a-f]{64}$/.test(value.sha256) ||
-    !object(value.projection) ||
-    !object(value.projection.subject) ||
-    !object(value.projection.feature) ||
-    !object(value.projection.cell)
-  ) {
-    fail(path, "invalid evidence-output decision projection or digest")
-  }
-  const { subject, feature, cell } = value.projection
-  if (
-    !["term", "lib", "mux"].includes(String(subject.kind)) ||
-    !nonempty(subject.id) ||
-    !nonempty(subject.version) ||
-    !nonempty(subject.os) ||
-    feature.featureId !== featureId ||
-    typeof feature.catalogEntrySha256 !== "string" ||
-    !/^[0-9a-f]{64}$/.test(feature.catalogEntrySha256) ||
-    !Array.isArray(cell.tests) ||
-    !cell.tests.every(
-      (test) =>
-        object(test) &&
-        nonempty(test.id) &&
-        ["supported", "unsupported", "untestable", "test-todo", "test-failure"].includes(String(test.status)) &&
-        (test.reason === undefined || typeof test.reason === "string"),
-    ) ||
-    !Array.isArray(cell.rawReplies) ||
-    !cell.rawReplies.every(
-      (reply) =>
-        object(reply) && nonempty(reply.key) && typeof reply.sha256 === "string" && /^[0-9a-f]{64}$/.test(reply.sha256),
-    ) ||
-    !Array.isArray(cell.assertions) ||
-    !cell.assertions.every(
-      (assertion) =>
-        object(assertion) &&
-        assertion.featureId === featureId &&
-        typeof assertion.expected === "string" &&
-        typeof assertion.observed === "string",
-    ) ||
-    !Array.isArray(cell.frames) ||
-    !cell.frames.every(object) ||
-    (value.projection.runtimeIdentity !== null && !object(value.projection.runtimeIdentity)) ||
-    value.sha256 !== createHash("sha256").update(canonicalJson(value.projection), "utf8").digest("hex")
-  ) {
-    fail(path, "invalid evidence-output decision projection or digest")
-  }
-  return value as unknown as CaptureEvidence
-}
-
-/** Typed feature review of immutable capture bytes, separate from final-run admission review. */
-export function parseCaptureDecision(
-  value: unknown,
-  path: string,
-  catalog: ReadonlySet<string>,
-  schemaVersion: 2 | 3 | 4 = 4,
-): CaptureDecision {
-  if (!object(value)) fail(path, "invalid pre-seal capture decision")
-  for (const key of ["runSha256", "observation", "verifiesIdentity", "presentsEvidence", "accepted", "origin"]) {
-    if (Object.hasOwn(value, key)) fail(path, `pre-seal capture decision cannot set ${key}`)
-  }
-  for (const key of ["id", "runId", "featureId", "reviewer", "reason"]) {
-    if (!nonempty(value[key])) fail(path, `pre-seal capture decision requires ${key}`)
-  }
-  if (!catalog.has(String(value.featureId))) fail(path, "pre-seal capture decision feature is outside catalogue")
-  if (
-    !["supported", "unsupported", "untestable", "tool-gap"].includes(String(value.decision)) ||
-    value.reviewed !== true
-  ) {
-    fail(path, "pre-seal capture decision requires a typed reviewed decision")
-  }
-  if (typeof value.captureSha256 !== "string" || !/^[a-f0-9]{64}$/.test(value.captureSha256)) {
-    fail(path, "invalid pre-seal capture SHA256")
-  }
-  if (value.evidence !== undefined) {
-    if (schemaVersion !== 4) fail(path, "evidence-output decisions require current schema 4")
-    parseCaptureEvidence(value.evidence, path, String(value.featureId))
-  }
-  const scope = value.scope
-  const subjectKey = schemaVersion === 4 ? "subject" : "target"
-  const kinds = schemaVersion === 4 ? ["term", "lib", "mux"] : ["app", "headless", "mux"]
-  if (
-    !object(scope) ||
-    !object(scope[subjectKey]) ||
-    !kinds.includes(String((scope[subjectKey] as Record<string, unknown>).kind)) ||
-    !nonempty((scope[subjectKey] as Record<string, unknown>).id)
-  ) {
-    fail(path, "invalid pre-seal capture target scope")
-  }
-  for (const key of ["versions", "suites"]) {
-    const range = scope[key]
-    if (!Array.isArray(range) || range.length !== 2 || !range.every(nonempty) || range[0] !== range[1]) {
-      fail(path, `pre-seal capture decision requires exact ${key}`)
-    }
-  }
-  if (
-    !Array.isArray(value.sources) ||
-    value.sources.length === 0 ||
-    !value.sources.every(nonempty) ||
-    !Array.isArray(value.supersedes) ||
-    !value.supersedes.every(nonempty)
-  ) {
-    fail(path, "pre-seal capture decision requires sources and supersedes")
-  }
-  if (Object.hasOwn(scope, schemaVersion === 4 ? "target" : "subject")) fail(path, "mixed capture scope vocabulary")
-  const { target: _historicalTarget, subject: _currentSubject, ...ranges } = scope
-  const subject = normalizeIntendedSubject(scope[subjectKey], schemaVersion, path)
-  return { ...value, scope: { ...ranges, subject } } as unknown as CaptureDecision
-}
-
-/** The existing raw-reply custody retains only binding metadata, never duplicate frame/trace blobs. */
-function captureBindingSource(
-  draft: Omit<
-    Pick<
-      RunDraft,
-      | "runId"
-      | "suiteId"
-      | "probeHash"
-      | "sourceRevision"
-      | "intendedSubject"
-      | "subject"
-      | "runtimeIdentity"
-      | "results"
-      | "rawReplies"
-      | "assertions"
-    >,
-    "assertions"
-  > & { assertions: readonly ReadAssertion[] },
-  featureId: string,
-  historicalSource?: Record<string, unknown>,
-): string {
-  const result = draft.results.find((entry) => entry.featureId === featureId)
-  if (!result) throw new Error(`Capture feature ${featureId} is outside frozen catalogue`)
-  const sourceNegative = historicalSource === undefined && result.criterionBranch === SOURCE_NEGATIVE_REVIEW
-  const semanticSource = historicalSource === undefined && result.criterionBranch === SEMANTIC_PROMPT_SOURCE_REVIEW
-  const rawKeys = new Set<string>()
-  if (result.rawReplyRef) rawKeys.add(result.rawReplyRef)
-  for (const test of result.tests) if (test.rawReplyRef) rawKeys.add(test.rawReplyRef)
-  for (const frame of result.frames ?? []) {
-    if (frame.sourceRef && Object.hasOwn(draft.rawReplies, frame.sourceRef)) rawKeys.add(frame.sourceRef)
-  }
-  for (const key of Object.keys(draft.rawReplies)) {
-    if (
-      !sourceNegative &&
-      key.startsWith("collector.") &&
-      !key.startsWith("collector.capture.") &&
-      !key.startsWith("collector.evidence.") &&
-      !key.startsWith("collector.review.")
-    ) {
-      rawKeys.add(key)
-    }
-  }
-  const hash = (source: string): string => createHash("sha256").update(source, "utf8").digest("hex")
-  const rawReplyRefs = [...rawKeys].sort().map((key) => {
-    const bytes = draft.rawReplies[key]
-    if (bytes === undefined) throw new Error(`Capture ${featureId} missing raw bytes ${key}`)
-    return { key, sha256: hash(bytes) }
-  })
-  // Review assertions are derived from this immutable capture after review, and are bound
-  // separately by the retained typed decision. Capture assertions remain byte-for-byte bound.
-  const reviewAssertions = new Set(
-    result.tests
-      .filter(
-        (test) =>
-          test.id === "review" &&
-          (!sourceNegative ||
-            (test.reviewRef !== undefined && test.status !== "test-failure" && test.status !== "test-todo")),
-      )
-      .flatMap((test) => test.assertionRefs ?? []),
-  )
-  const assertionRefs = draft.assertions.flatMap((assertion, index) =>
-    assertion.featureId === featureId && !reviewAssertions.has(index)
-      ? [
-          sourceNegative
-            ? { sha256: hash(JSON.stringify(assertion)) }
-            : { index, sha256: hash(JSON.stringify(assertion)) },
-        ]
-      : [],
-  )
-  if (sourceNegative) assertionRefs.sort((left, right) => left.sha256.localeCompare(right.sha256))
-  const historicalResult =
-    historicalSource === undefined
-      ? undefined
-      : (historicalSource.results as Array<Record<string, unknown>>).find((entry) => entry.featureId === featureId)
-  return JSON.stringify({
-    ...(!sourceNegative && { runId: draft.runId }),
-    probeHash: draft.probeHash,
-    sourceRevision: draft.sourceRevision,
-    ...(historicalSource === undefined
-      ? {
-          intendedSubject: sourceNegative
-            ? normalizeIntendedSubject(draft.intendedSubject, 4, "capture binding")
-            : draft.intendedSubject,
-          ...(draft.subject && {
-            subject: sourceNegative ? parseSubject(draft.subject, "capture binding") : draft.subject,
-          }),
-        }
-      : {
-          intendedContext: historicalSource.intendedContext,
-          ...(historicalSource.target !== undefined ? { target: historicalSource.target } : {}),
-        }),
-    ...((sourceNegative || semanticSource) &&
-      draft.runtimeIdentity && {
-        runtimeIdentity: {
-          kind: draft.runtimeIdentity.kind,
-          engineVersion: draft.runtimeIdentity.engineVersion,
-          adapterVersion: draft.runtimeIdentity.adapterVersion,
-          termlessRevision: draft.runtimeIdentity.termlessRevision,
-          ...("integrity" in draft.runtimeIdentity && { integrity: draft.runtimeIdentity.integrity }),
-          ...("loadedBinary" in draft.runtimeIdentity && {
-            loadedBinary: { sha256: draft.runtimeIdentity.loadedBinary.sha256 },
-          }),
-        },
-      }),
-    featureId,
-    rawReplyRefs,
-    assertionRefs,
-    frames: sourceNegative
-      ? (result.frames ?? []).map((frame) => ({
-          role: frame.role,
-          label: frame.label,
-          ...(frame.kind && { kind: frame.kind }),
-          ...(/^sha256:[0-9a-f]{64}$/.test(frame.ref) && { ref: frame.ref }),
-          ...(frame.sourceRef && { sourceRef: frame.sourceRef }),
-          ...(frame.regionDigest && { regionDigest: frame.regionDigest }),
-          ...(frame.pixelsDigest && { pixelsDigest: frame.pixelsDigest }),
-          ...(frame.regionRectangle && { regionRectangle: frame.regionRectangle }),
-          ...(frame.cellDigest && { cellDigest: frame.cellDigest }),
-          ...(frame.frameDigest && { frameDigest: frame.frameDigest }),
-          ...(frame.cellRectangle && { cellRectangle: frame.cellRectangle }),
-        }))
-      : (result.frames ?? []),
-    ...(result.screenshotRef && { screenshotRef: result.screenshotRef }),
-    ...(result.host && { host: result.host }),
-    ...(historicalSource === undefined
-      ? result.assertionType && { assertionType: result.assertionType }
-      : historicalResult?.evidence !== undefined
-        ? { evidence: historicalResult.evidence }
-        : {}),
-    ...(result.criterionBranch && { criterionBranch: result.criterionBranch }),
-  })
-}
-
-/** The same preimage is used by retention, application and the canonical reader. */
-function captureEvidence(
-  draft: Parameters<typeof captureBindingSource>[0],
-  featureId: string,
-  catalogEntrySha256: string,
-  preimage?: CaptureEvidence["projection"],
-): CaptureEvidence {
-  const result = draft.results.find((entry) => entry.featureId === featureId)
-  if (!result) throw new Error(`Capture feature ${featureId} is outside frozen catalogue`)
-  const derived = new Set(
-    result.tests
-      .filter(
-        (test) =>
-          test.id === "review" &&
-          test.reviewRef !== undefined &&
-          test.status !== "test-failure" &&
-          test.status !== "test-todo",
-      )
-      .flatMap((test) => test.assertionRefs ?? []),
-  )
-  const assertions = draft.assertions.filter(
-    (assertion, index) => assertion.featureId === featureId && !derived.has(index),
-  )
-  const rawKeys = new Set<string>()
-  if (result.rawReplyRef) rawKeys.add(result.rawReplyRef)
-  for (const test of result.tests) if (test.rawReplyRef) rawKeys.add(test.rawReplyRef)
-  for (const assertion of assertions) if (assertion.rawReplyRef) rawKeys.add(assertion.rawReplyRef)
-  const rawReplies = [...rawKeys].sort().map((key) => {
-    const bytes = draft.rawReplies[key]
-    if (bytes === undefined) throw new Error(`Capture ${featureId} missing raw bytes ${key}`)
-    return { key, sha256: createHash("sha256").update(bytes, "utf8").digest("hex") }
-  })
-  const frames = (result.frames ?? []).map((frame, index) => {
-    const rawFrame = frame.sourceRef === undefined ? undefined : draft.rawReplies[frame.sourceRef]
-    if (rawFrame !== undefined) {
-      rawReplies.push({ key: `frame:${index}`, sha256: createHash("sha256").update(rawFrame, "utf8").digest("hex") })
-    }
-    const { capturedAt: _capturedAt, ref, sourceRef: _sourceRef, ...content } = frame
-    return { ...content, ...(/^sha256:[0-9a-f]{64}$/.test(ref) && { ref }) }
-  })
-  let replyPath: CaptureEvidence["projection"]["cell"]["replyPath"]
-  if (draft.rawReplies["collector.replyPath"] !== undefined) {
-    const qualification = parseJsonStrict("collector.replyPath", draft.rawReplies["collector.replyPath"])
-    if (result.criterionBranch !== SOURCE_NEGATIVE_REVIEW) {
-      const decision =
-        object(qualification) && object(qualification.decisions) ? qualification.decisions[featureId] : undefined
-      replyPath = { declaration: object(qualification) ? qualification.declaration : undefined, decision }
-      if (object(decision)) {
-        const { runtimeIdentity: _identity, ...cellDecision } = decision
-        replyPath.decision = cellDecision
-      }
-    }
-  }
-  const subject = draft.subject ?? draft.intendedSubject
-  const projection: CaptureEvidence["projection"] = {
-    subject: {
-      kind: subject.kind,
-      id: subject.id,
-      version: subject.version,
-      os: subject.os,
-    } as CaptureEvidence["projection"]["subject"],
-    runtimeIdentity: evidenceRuntimeIdentity(draft.runtimeIdentity),
-    feature: { featureId, catalogEntrySha256 },
-    cell: {
-      rawReplies,
-      tests: result.tests.map((test) => {
-        const original =
-          test.reviewRef !== undefined && (test.id === "review" || test.id === "criterion")
-            ? preimage?.cell.tests.find((entry) => entry.id === "review")
-            : test
-        if (original === undefined) throw new Error(`Capture ${featureId} cell.tests.review preimage unavailable`)
-        const retained = original
-        return {
-          id: retained.id,
-          status: retained.status,
-          ...(retained.reason !== undefined && { reason: retained.reason }),
-        }
-      }),
-      assertions,
-      frames,
-      ...(result.assertionType !== undefined && { assertionType: result.assertionType }),
-      ...(result.criterionBranch !== undefined && { criterionBranch: result.criterionBranch }),
-      ...(result.host && { host: { image: result.host.image, executableSha256: result.host.executableSha256 } }),
-      ...(replyPath !== undefined && { replyPath }),
-    },
-  }
-  return {
-    algorithm: "evidence-output-v1",
-    projection,
-    sha256: createHash("sha256").update(canonicalJson(projection), "utf8").digest("hex"),
-  }
-}
-
-/** Called only when this criterion requires review, after collector/intent/target enrichment. */
-export function retainCaptureBinding(
-  draft: RunDraft,
-  featureId: string,
-  catalogEntrySha256?: string,
-): { source: string; sha256: string; rawReplyRef: string; evidence?: CaptureEvidence } {
-  if ("sealedAt" in draft) throw new Error(`Run ${draft.runId} is already sealed`)
-  const result = draft.results.find((entry) => entry.featureId === featureId)
-  if (!result?.tests.some((test) => test.id === "review")) {
-    throw new Error(`Capture ${featureId} has no required review`)
-  }
-  const source = captureBindingSource(draft, featureId)
-  const rawReplyRef = `collector.capture.${featureId}`
-  if (draft.rawReplies[rawReplyRef] !== undefined && draft.rawReplies[rawReplyRef] !== source) {
-    throw new Error(`Capture ${featureId} binding is immutable`)
-  }
-  draft.rawReplies[rawReplyRef] = source
-  const retainedBytes = draft.rawReplies[`collector.evidence.${featureId}`]
-  const preimage =
-    retainedBytes === undefined
-      ? undefined
-      : parseCaptureEvidence(parseJsonStrict("capture evidence", retainedBytes), "capture evidence", featureId)
-          .projection
-  const evidence =
-    catalogEntrySha256 === undefined ? undefined : captureEvidence(draft, featureId, catalogEntrySha256, preimage)
-  if (evidence) {
-    const key = `collector.evidence.${featureId}`,
-      bytes = canonicalJson(evidence)
-    if (draft.rawReplies[key] !== undefined && draft.rawReplies[key] !== bytes) {
-      throw new Error(`Capture ${featureId} evidence binding is immutable`)
-    }
-    draft.rawReplies[key] = bytes
-  }
-  return {
-    source,
-    sha256: createHash("sha256").update(source, "utf8").digest("hex"),
-    rawReplyRef,
-    ...(evidence && { evidence }),
-  }
-}
-
-function validateCaptureBinding(
-  draft: Parameters<typeof captureBindingSource>[0],
-  decision: CaptureDecision,
-  path: string,
-  historicalSource?: Record<string, unknown>,
-  allowLapse = false,
-  catalogEntrySha256?: string,
-): string | undefined {
-  const source = draft.rawReplies[`collector.capture.${decision.featureId}`]
-  const result = draft.results.find((entry) => entry.featureId === decision.featureId)
-  if (
-    result &&
-    (result.criterionBranch === SEMANTIC_PROMPT_SOURCE_REVIEW ||
-      (historicalSource === undefined && isSourceOnlyNegativeReview(result, draft.assertions))) &&
-    (draft.subject?.kind !== "lib" || !draft.runtimeIdentity)
-  ) {
-    fail(
-      path,
-      `${decision.featureId} ${result.criterionBranch === SEMANTIC_PROMPT_SOURCE_REVIEW ? "semantic " : ""}source review requires a lib subject and runtimeIdentity`,
-    )
-  }
-  if (decision.evidence !== undefined) {
-    if (!source || source !== captureBindingSource(draft, decision.featureId)) {
-      fail(path, "capture context/source/suite/evidence binding changed")
-    }
-    const lapse = (parts: string[]): string => `capture decision ${decision.id} lapsed: ${parts.join(", ")} differ`
-    if (catalogEntrySha256 === undefined) return lapse(["catalogue entry identity unavailable"])
-    const retainedBytes = draft.rawReplies[`collector.evidence.${decision.featureId}`]
-    if (retainedBytes === undefined) return lapse(["retained evidence projection unavailable"])
-    const retained = parseCaptureEvidence(parseJsonStrict(path, retainedBytes), path, decision.featureId)
-    if (
-      result?.tests.some((test) => test.id === "review" && test.reviewRef !== undefined) &&
-      !retained.projection.cell.tests.some((test) => test.id === "review")
-    ) {
-      fail(path, "cell.tests.review preimage unavailable")
-    }
-    const current = captureEvidence(draft, decision.featureId, catalogEntrySha256, retained.projection)
-    const replyPath = current.projection.cell.replyPath
-    if (
-      replyPath !== undefined &&
-      (!object(replyPath.decision) ||
-        typeof replyPath.decision.member !== "boolean" ||
-        typeof replyPath.decision.reason !== "string" ||
-        (replyPath.declaration !== undefined && !object(replyPath.declaration)) ||
-        (replyPath.decision.member === true && !object(replyPath.declaration)))
-    ) {
-      return lapse(["cell.replyPath qualification unavailable"])
-    }
-    if (current.sha256 !== retained.sha256) fail(path, "retained evidence differs from current capture")
-    const original = decision.evidence.projection
-    if (
-      draft.runtimeIdentity?.kind === "js" &&
-      draft.runtimeIdentity.runtimeFormat === "js" &&
-      draft.runtimeIdentity.integrity.kind === "source" &&
-      draft.runtimeIdentity.integrity.cleanTree !== true
-    ) {
-      return lapse(["dirty source tree"])
-    }
-    if (current.projection.runtimeIdentity?.adapterSources === null) {
-      return lapse(["adapter source identity unavailable"])
-    }
-    const originalFields: Record<string, unknown> = { ...original }
-    const currentFields: Record<string, unknown> = { ...current.projection }
-    const changed = [
-      ...[...new Set([...Object.keys(originalFields), ...Object.keys(currentFields)])].filter(
-        (key) => key !== "cell" && canonicalJson(originalFields[key]) !== canonicalJson(currentFields[key]),
-      ),
-      ...[...new Set([...Object.keys(original.cell), ...Object.keys(current.projection.cell)])]
-        .filter(
-          (key) =>
-            canonicalJson(original.cell[key as keyof typeof original.cell]) !==
-            canonicalJson(current.projection.cell[key as keyof typeof original.cell]),
-        )
-        .map((key) => `cell.${key}`),
-    ]
-    const subject = draft.subject
-    if (
-      !subject ||
-      decision.scope.subject.id !== subject.id ||
-      decision.scope.subject.kind !== subject.kind ||
-      decision.scope.versions[0] !== subject.version ||
-      (draft.intendedSubject.id !== undefined && draft.intendedSubject.id !== subject.id) ||
-      (draft.intendedSubject.version !== undefined && draft.intendedSubject.version !== subject.version)
-    ) {
-      changed.push("subject")
-    }
-    return changed.length ? lapse([...new Set(changed)]) : undefined
-  }
-  if (historicalSource === undefined && result?.criterionBranch === SOURCE_NEGATIVE_REVIEW) {
-    const currentSource = captureBindingSource(draft, decision.featureId)
-    if (!source || source !== currentSource) fail(path, "capture context/source/suite/evidence binding changed")
-    const current = parseJsonStrict(path, currentSource) as Record<string, unknown>
-    const originSource = draft.rawReplies[`collector.review.${decision.id}.capture`]
-    const digest = createHash("sha256").update(currentSource, "utf8").digest("hex")
-    if (
-      originSource !== undefined &&
-      createHash("sha256").update(originSource, "utf8").digest("hex") !== decision.captureSha256
-    ) {
-      fail(path, "origin capture binding digest mismatch")
-    }
-    const origin = originSource === undefined ? undefined : parseJsonStrict(path, originSource)
-    if (
-      origin !== undefined &&
-      (!object(origin) ||
-        !nonempty(origin.featureId) ||
-        !nonempty(origin.sourceRevision) ||
-        !Array.isArray(origin.rawReplyRefs) ||
-        !Array.isArray(origin.assertionRefs))
-    ) {
-      fail(path, "malformed origin capture binding")
-    }
-    const differences = new Set<string>()
-    const subject = draft.subject
-    if (decision.featureId !== current.featureId) differences.add("feature")
-    if (
-      !subject ||
-      decision.scope.subject.kind !== subject.kind ||
-      decision.scope.subject.id !== subject.id ||
-      draft.intendedSubject.kind !== subject.kind ||
-      draft.intendedSubject.id !== subject.id ||
-      (subject.kind === "lib" && !draft.runtimeIdentity)
-    ) {
-      differences.add("subject")
-    }
-    if (
-      decision.scope.versions[0] !== subject?.version ||
-      (draft.intendedSubject.version !== undefined && draft.intendedSubject.version !== subject?.version)
-    ) {
-      differences.add("versions")
-    }
-    if (decision.scope.suites[0] !== draft.probeHash || draft.probeHash !== draft.suiteId) differences.add("suite")
-    if (object(origin)) {
-      if (origin.featureId !== current.featureId) differences.add("feature")
-      const withoutVersion = (value: unknown) => {
-        if (!object(value)) return value
-        const { version: _version, ...context } = value
-        return context
-      }
-      if (
-        JSON.stringify(withoutVersion(origin.subject)) !== JSON.stringify(withoutVersion(current.subject)) ||
-        JSON.stringify(withoutVersion(origin.intendedSubject)) !==
-          JSON.stringify(withoutVersion(current.intendedSubject))
-      ) {
-        differences.add("subject")
-      }
-      if ((object(origin.subject) ? origin.subject.version : undefined) !== subject?.version) {
-        differences.add("versions")
-      }
-      if (origin.probeHash !== draft.probeHash) differences.add("suite")
-      if (origin.sourceRevision !== draft.sourceRevision) differences.add("source revision")
-      if (
-        [
-          "rawReplyRefs",
-          "assertionRefs",
-          "frames",
-          "screenshotRef",
-          "host",
-          "assertionType",
-          "criterionBranch",
-          "runtimeIdentity",
-        ].some((key) => JSON.stringify(origin[key]) !== JSON.stringify(current[key]))
-      ) {
-        differences.add("bytes")
-      }
-    }
-    const missingOrigin = origin === undefined && digest !== decision.captureSha256
-    if (missingOrigin || differences.size) {
-      const components = ["feature", "subject", "versions", "suite", "source revision", "bytes"].filter((part) =>
-        differences.has(part),
-      )
-      const detail = missingOrigin
-        ? `binding differs (origin binding text unavailable: run ${decision.runId})${components.length ? `; ${components.join(", ")} differ` : ""}`
-        : `${components.join(", ")} differ`
-      const reason = `capture decision ${decision.id} lapsed: ${detail}`
-      if (allowLapse) return reason
-      fail(path, reason)
-    }
-    return
-  }
-  if (!source || createHash("sha256").update(source, "utf8").digest("hex") !== decision.captureSha256) {
-    fail(path, "capture digest mismatch or absent capture")
-  }
-  if (source !== captureBindingSource(draft, decision.featureId, historicalSource)) {
-    fail(path, "capture context/source/suite/evidence binding changed")
-  }
-  if (decision.runId !== draft.runId) fail(path, "capture runId mismatch")
-  const subject = draft.subject ?? draft.intendedSubject
-  if (
-    decision.scope.subject.kind !== subject.kind ||
-    decision.scope.subject.id !== subject.id ||
-    decision.scope.versions[0] !== subject.version ||
-    decision.scope.suites[0] !== draft.probeHash ||
-    draft.probeHash !== draft.suiteId
-  ) {
-    fail(path, "capture scope mismatch")
-  }
-}
-
-/** Apply one typed decision to its still-open required review; final-run reviews cannot use this path. */
-export function applyCaptureDecision(
-  draft: RunDraft,
-  source: string,
-  startedAt: string,
-  originBinding?: string,
-  catalogEntrySha256?: string,
-): void {
-  if ("sealedAt" in draft) throw new Error(`Run ${draft.runId} is already sealed`)
-  if (!date(startedAt)) throw new Error("Capture review requires its actual attempt timestamp")
-  const decision = parseCaptureDecision(
-    parseJsonStrict("capture review", source),
-    "capture review",
-    new Set(draft.results.map((result) => result.featureId)),
-  )
-  const index = draft.results.findIndex((result) => result.featureId === decision.featureId)
-  const result = draft.results[index]
-  const sourceNegative = result?.criterionBranch === SOURCE_NEGATIVE_REVIEW
-  const sourceOnlyNegative = result !== undefined && isSourceOnlyNegativeReview(result, draft.assertions)
-  const semanticSource =
-    result?.criterionBranch === SEMANTIC_PROMPT_SOURCE_REVIEW &&
-    (decision.decision === "supported" || decision.decision === "unsupported")
-  if (
-    !result ||
-    !result.tests.some(
-      (test) =>
-        test.id === "review" && (test.status === "test-todo" || (sourceNegative && test.status === "test-failure")),
-    )
-  ) {
-    throw new Error(`Capture ${decision.featureId} has no pending required review`)
-  }
-  const reviewRef = `collector.review.${decision.id}`
-  if (sourceOnlyNegative && decision.decision === "supported") {
-    throw new Error(`Capture ${decision.featureId} source-only negative review cannot establish support`)
-  }
-  if (
-    (semanticSource || (sourceOnlyNegative && decision.decision === "unsupported")) &&
-    !hasSourceReviewRow(decision)
-  ) {
-    throw new Error(
-      `Capture ${decision.featureId} ${semanticSource ? "semantic " : ""}source review requires its source review row`,
-    )
-  }
-  if (Object.hasOwn(draft.rawReplies, reviewRef)) throw new Error(`Capture review ${decision.id} already retained`)
-  if (sourceNegative && decision.evidence === undefined && originBinding !== undefined) {
-    if (createHash("sha256").update(originBinding, "utf8").digest("hex") !== decision.captureSha256) {
-      throw new Error(`Capture review ${decision.id} origin capture binding digest mismatch`)
-    }
-    const originKey = `${reviewRef}.capture`
-    if (draft.rawReplies[originKey] !== undefined && draft.rawReplies[originKey] !== originBinding) {
-      throw new Error(`Capture review ${decision.id} origin binding is immutable`)
-    }
-    draft.rawReplies[originKey] = originBinding
-  }
-  const lapse = validateCaptureBinding(
-    draft,
-    decision,
-    "capture review",
-    undefined,
-    sourceNegative || decision.evidence !== undefined,
-    catalogEntrySha256,
-  )
-  if (lapse) {
-    draft.rawReplies[reviewRef] = source
-    draft.rawReplies[`${reviewRef}.lapse`] = lapse
-    draft.results[index] = finalizeProbeResult({
-      ...result,
-      reviewRef,
-      reason: lapse,
-      attempt: { scope: "probe", startedAt },
-      tests: result.tests.map((test) =>
-        test.id === "review"
-          ? {
-              ...test,
-              status: test.status,
-              reason: lapse,
-              reviewRef,
-              attempt: { scope: "probe", startedAt },
-            }
-          : test,
-      ),
-    })
-    return
-  }
-  let assertionRefs: number[] | undefined
-  if (semanticSource || (sourceOnlyNegative && decision.decision === "unsupported")) {
-    assertionRefs = []
-  } else if (decision.decision !== "untestable" && decision.decision !== "tool-gap") {
-    const captured = draft.assertions.filter((assertion) => assertion.featureId === decision.featureId)
-    if (!captured.length || captured.some((assertion) => !assertion.expected || !assertion.observed)) {
-      throw new Error(`Capture ${decision.featureId} review requires retained TESTED/EXPECTED assertions`)
-    }
-    assertionRefs = captured.map((assertion) => {
-      const index = draft.assertions.length
-      draft.assertions.push({
-        ...assertion,
-        kind: decision.decision === "supported" ? "positive" : "negative",
-        note: `Capture review ${decision.id}: ${decision.reason}`,
-      })
-      return index
-    })
-  }
-  const tests = result.tests.map((test): ProbeTestResult => {
-    if (test.id !== "review") return test
-    return {
-      ...test,
-      ...(decision.decision === "tool-gap" && { id: "criterion" }),
-      status: decision.decision === "tool-gap" ? "test-todo" : decision.decision,
-      attempt: { scope: "probe", startedAt },
-      reviewRef,
-      reason: decision.reason,
-      // Coverage creates no derived assertions; retain the original capture's assertion prefix.
-      ...(sourceNegative || assertionRefs || decision.decision === "tool-gap"
-        ? { assertionRefs: assertionRefs ?? [] }
-        : {}),
-    }
-  })
-  draft.rawReplies[reviewRef] = source
-  draft.results[index] = finalizeProbeResult({
-    ...result,
-    tests: tests,
-    reviewRef,
-    reason: decision.reason,
-    attempt: { scope: "probe", startedAt },
-  })
-}
-
 /** Validate recorded execution facts; this never infers a current result from a missing row. */
 function probeAttempt(value: unknown, path: string, rawReplies: Record<string, string>): ProbeAttempt {
   if (!object(value) || !["none", "collection", "probe"].includes(String(value.scope))) {
@@ -1557,10 +694,6 @@ function probeAttempt(value: unknown, path: string, rawReplies: Record<string, s
     startedAt: value.startedAt,
     ...(typeof value.diagnosticRef === "string" ? { diagnosticRef: value.diagnosticRef } : {}),
   }
-}
-
-function hasSourceReviewRow(decision: CaptureDecision): boolean {
-  return decision.sources.some((source) => !source.startsWith("terminfo.dev@") && !source.startsWith("termless@"))
 }
 
 function isSourceOnlyNegativeReview(result: ProbeResult, assertions: readonly ReadAssertion[]): boolean {
@@ -1716,87 +849,21 @@ export function parseProbeResults(
     ].filter((ref) => sourceAnswerForRef(ref) !== undefined)
     if (sourceRefs.length) {
       if (!sourceContext) fail(path, `${featureId} source answer requires measured subject context`)
-      const resolution = resolveMeasuredSourceAnswer({ ...sourceContext, featureId })
-      if (resolution.kind === "none" || sourceRefs.some((ref) => !resolution.rowKeys.includes(ref))) {
-        fail(path, `${featureId} source answer does not apply to measured identity`)
-      }
       for (const ref of sourceRefs) {
         const row = sourceAnswerForRef(ref)
         if (row?.featureId !== featureId) fail(path, `${featureId} source answer feature mismatch`)
+        if (
+          row.subject.kind !== sourceContext.subject.kind ||
+          row.subject.id !== sourceContext.subject.id ||
+          row.subject.os !== sourceContext.subject.os
+        ) {
+          fail(path, `${featureId} source answer does not apply to measured identity`)
+        }
       }
-      const reviewed = tests.filter(
-        (test) => test.id === "review" && test.reviewRef && sourceRefs.includes(test.reviewRef),
-      )
-      if (!reviewed.length) fail(path, `${featureId} source answer requires its recorded review test`)
-      if (resolution.kind === "answer" && reviewed.some((test) => test.status !== resolution.status)) {
-        fail(path, `${featureId} source answer differs from recorded review test`)
-      }
-      if (
-        resolution.kind === "answer" &&
-        reviewed.some(
-          (test) =>
-            !resolution.answers.some((answer) =>
-              answer.originals.some(
-                (answer) =>
-                  test.reason === answer.reason ||
-                  (resolution.label !== undefined && test.reason === `${answer.reason}; ${resolution.label}`),
-              ),
-            ),
-        )
-      ) {
-        fail(path, `${featureId} source answer lacks its original rationale`)
-      }
-      if (
-        resolution.kind === "pending" &&
-        reviewed.some(
-          (test) =>
-            (resolution.reason !== "cited source not resolvable" && test.status !== "test-todo") ||
-            !test.reason?.includes(resolution.reason) ||
-            !test.reason.includes(test.reviewRef ?? ""),
-        )
-      ) {
-        fail(path, `${featureId} pending source answer lacks its candidate diagnostic`)
-      }
-      if (finalizeProbeResult(result, resolution).status !== status) {
-        fail(path, `${featureId} source answer hides required test work`)
-      }
-    }
-    if (finalizeProbeResult(result).status !== status) {
-      fail(path, `${featureId} recorded status hides required test work`)
     }
     const semanticSource =
       result.criterionBranch === SEMANTIC_PROMPT_SOURCE_REVIEW && (status === "supported" || status === "unsupported")
     const sourceOnlyNegative = status === "unsupported" && isSourceOnlyNegativeReview(result, assertions)
-    if ((semanticSource || sourceOnlyNegative) && !sourceRefs.length) {
-      const key = result.reviewRef
-      const reviewTest = tests.find((test) => test.id === "review" && test.reviewRef === key)
-      if (!key || !rawReplies[key]) fail(path, `${featureId} requires its immutable source review decision`)
-      const review = parseCaptureDecision(parseJsonStrict(`${path}: ${key}`, rawReplies[key]), path, expected, 4)
-      if (
-        review.decision !== status ||
-        review.featureId !== featureId ||
-        reviewTest?.status !== status ||
-        review.reason !== reviewTest.reason ||
-        review.reason !== result.reason ||
-        !hasSourceReviewRow(review)
-      ) {
-        fail(path, `${featureId} invalid source review decision or source review row`)
-      }
-      const binding = rawReplies[`collector.capture.${featureId}`]
-      if (!binding) fail(path, `${featureId} requires its runtime-bearing capture binding`)
-      const captured = parseJsonStrict(`${path}: ${featureId} capture binding`, binding)
-      if (
-        attempt.scope !== "probe" ||
-        !object(captured) ||
-        !object(captured.runtimeIdentity) ||
-        !object(captured.subject) ||
-        captured.subject.kind !== "lib" ||
-        (review.evidence === undefined &&
-          createHash("sha256").update(binding, "utf8").digest("hex") !== review.captureSha256)
-      ) {
-        fail(path, `${featureId} requires its lib runtimeIdentity capture binding`)
-      }
-    }
     if ((status === "supported" || status === "unsupported") && !semanticSource && !sourceOnlyNegative) {
       if (attempt.scope === "none" || !item.assertionType) {
         fail(path, `${featureId} support result requires measured evidence`)
@@ -1835,14 +902,6 @@ export function parseProbeResults(
         )
       ) {
         fail(path, `${featureId} requires its deciding expected/observed assertion`)
-      }
-    }
-    if (status === "untestable" && !sourceRefs.length) {
-      const key = result.reviewRef ?? tests.find((test) => test.status === "untestable")?.reviewRef
-      if (!key || !rawReplies[key]) fail(path, `${featureId} requires its immutable reviewed impossibility reason`)
-      const review = parseCaptureDecision(parseJsonStrict(`${path}: ${key}`, rawReplies[key]), path, expected, 4)
-      if (review.decision !== "untestable" || review.featureId !== featureId || review.reason !== result.reason) {
-        fail(path, `${featureId} invalid context-impossibility review`)
       }
     }
     return result
@@ -2034,27 +1093,19 @@ export function validateHostRecipeCauses(
 export function parseRun(
   path: string,
   source: string,
-  catalogIds: readonly string[],
+  _catalogIds: readonly string[],
   suites: ReadonlyMap<string, ProbeSuiteManifest> = new Map(),
-  options: { mode?: "sealed" | "capture" } = {},
 ): LoadedRun {
   const sha256 = createHash("sha256").update(source).digest("hex")
   const raw = parseJsonStrict(path, source)
   if (!object(raw)) fail(path, "run must be an object")
-  if (raw.schemaVersion !== 2 && raw.schemaVersion !== 4) {
-    fail(path, `unsupported schemaVersion ${String(raw.schemaVersion)}`)
-  }
-  const execution = raw.schemaVersion === 4
-  const citedCatalog = execution ? suites.get(String(raw.probeHash))?.catalogIds : undefined
-  if (execution && !citedCatalog) fail(path, "current run requires frozen catalogue membership")
-  const catalog = new Set(citedCatalog ?? catalogIds)
-  const schemaVersion = raw.schemaVersion
-  const current = execution
-  const subjectKey = schemaVersion === 4 ? "subject" : "target"
-  const intendedKey = schemaVersion === 4 ? "intendedSubject" : "intendedContext"
-  const displaced = schemaVersion === 4 ? ["target", "intendedContext"] : ["subject", "intendedSubject", "source"]
-  for (const key of displaced) {
-    if (Object.hasOwn(raw, key)) fail(path, `schema ${schemaVersion} run cannot carry ${key}`)
+  if (raw.schemaVersion !== 4) fail(path, `unsupported schemaVersion ${String(raw.schemaVersion)}`)
+  const citedCatalog = suites.get(String(raw.probeHash))?.catalogIds
+  if (!citedCatalog) fail(path, "current run requires frozen catalogue membership")
+  const catalog = new Set(citedCatalog)
+  const schemaVersion = 4 as const
+  for (const key of ["target", "intendedContext"]) {
+    if (Object.hasOwn(raw, key)) fail(path, `schema 4 run cannot carry ${key}`)
   }
   if (schemaVersion === 4) {
     rejectUnknownFields(
@@ -2087,8 +1138,7 @@ export function parseRun(
     )
     parseCurrentSource(raw.source, path)
   }
-  if (!current && Object.hasOwn(raw, "results")) fail(path, "v2 run cannot contain legacy boolean results")
-  const subject = parseSubject(raw[subjectKey], path, schemaVersion)
+  const subject = parseSubject(raw.subject, path, schemaVersion)
   const runtimeIdentity = parseRuntimeIdentity(raw.runtimeIdentity, subject, path, schemaVersion)
   const runId = asString(raw.runId, path, "runId")
   if (schemaVersion === 4) {
@@ -2190,33 +1240,9 @@ export function parseRun(
       fail(path, `missing assertion raw reply ${assertion.rawReplyRef}`)
     }
   }
-  if (
-    current &&
-    options.mode !== "capture" &&
-    (!date(raw.sealedAt) || new Date(raw.sealedAt).toISOString() !== raw.sealedAt)
-  ) {
-    fail(path, "missing or invalid sealedAt; retain an unsealed run as a draft")
-  }
-  if (current && ["observations", "notTested", "ungradedDiagnostics"].some((key) => Object.hasOwn(raw, key))) {
+  if (["observations", "notTested", "ungradedDiagnostics"].some((key) => Object.hasOwn(raw, key))) {
     fail(path, "current run cannot carry displaced live dispositions")
   }
-  if (!current && !Array.isArray(raw.observations)) fail(path, "missing observations")
-  const observations = (current ? [] : (raw.observations as unknown[])).map((v) =>
-    parseObservation(
-      v,
-      path,
-      catalog,
-      raw.rawReplies as Record<string, string>,
-      assertions,
-      raw.screenshotRefs as string[],
-      textSnapshotRefs,
-      schemaVersion,
-    ),
-  )
-  if (new Set(observations.map((v) => v.featureId)).size !== observations.length) {
-    fail(path, "duplicate observation feature ID")
-  }
-  if (!current && raw.suiteComplete !== true && raw.suiteComplete !== false) fail(path, "missing suiteComplete")
   const probeHash = asString(raw.probeHash, path, "probeHash")
   const sourceRevision = asString(raw.sourceRevision, path, "sourceRevision")
   const provenance = parseRunProvenanceForSchema(
@@ -2238,43 +1264,14 @@ export function parseRun(
   if (!manifest || manifest.probeHash !== probeHash) {
     fail(path, `unknown suite ${probeHash}; missing trusted manifest`)
   }
-  const expected = new Set(current ? manifest.catalogIds : manifest.probes[subject.kind])
+  const expected = new Set(manifest.catalogIds)
   for (const assertion of assertions) {
     if (!expected.has(assertion.featureId)) {
       fail(path, `assertion ${assertion.featureId} is outside suite ${probeHash} for ${subject.kind}`)
     }
   }
-  for (const observation of observations) {
-    if (!expected.has(observation.featureId)) {
-      fail(path, `${observation.featureId} is outside suite ${probeHash} for ${subject.kind}`)
-    }
-  }
-  const notTested = parseNotTested(
-    raw.notTested,
-    path,
-    catalog,
-    expected,
-    raw.rawReplies as Record<string, string>,
-    observations,
-    assertions,
-  )
-  const suiteComplete = observations.length + notTested.length === expected.size
-  if (!current && raw.suiteComplete !== suiteComplete) {
-    fail(
-      path,
-      `suiteComplete disagrees with observed and not-tested membership (${observations.length} measured + ${notTested.length} not tested of ${expected.size} probes)`,
-    )
-  }
-  const ungradedDiagnostics = parseDiagnostics(raw.ungradedDiagnostics, path, catalog, observations)
-  for (const id of Object.keys(ungradedDiagnostics)) {
-    if (!expected.has(id)) fail(path, `diagnostic ${id} is outside suite ${probeHash} for ${subject.kind}`)
-    if (notTested.some((item) => item.featureId === id)) {
-      fail(path, `diagnostic ${id} also occurs in notTested`)
-    }
-  }
   if (!date(raw.measuredAt)) fail(path, "invalid measuredAt")
-  const results = current
-    ? parseProbeResults(
+  const results = parseProbeResults(
         raw.results,
         path,
         expected,
@@ -2284,7 +1281,6 @@ export function parseRun(
         textSnapshotRefs,
         { subject, ...(runtimeIdentity && { runtimeIdentity }), sourceRevision },
       )
-    : undefined
   if (schemaVersion === 4) {
     validateCurrentAssertions(
       assertions as ProbeAssertion[],
@@ -2294,77 +1290,15 @@ export function parseRun(
       path,
     )
   }
-  if (current && results) {
-    if (!object(raw[intendedKey])) fail(path, "current run requires intendedSubject")
-    const captureRun = {
-      runId,
-      suiteId: asString(raw.suiteId, path, "suiteId"),
-      probeHash,
-      sourceRevision,
-      intendedSubject: normalizeIntendedSubject(raw[intendedKey], schemaVersion, path),
-      subject: subject,
-      ...(runtimeIdentity && { runtimeIdentity }),
-      results,
-      rawReplies: raw.rawReplies as Record<string, string>,
-      assertions,
-    }
-    for (const result of results) {
-      const refs = new Set(
-        [result.reviewRef, ...result.tests.map((test) => test.reviewRef)].filter(
-          (ref): ref is string => ref !== undefined,
-        ),
-      )
-      for (const ref of refs) {
-        if (sourceAnswerForRef(ref)) continue
-        const bytes = captureRun.rawReplies[ref]
-        if (!bytes) fail(path, `missing immutable capture decision ${ref}`)
-        const decision = parseCaptureDecision(parseJsonStrict(path, bytes), path, expected, schemaVersion)
-        if (decision.featureId !== result.featureId) fail(path, "capture decision feature mismatch")
-        const pendingLapse =
-          (result.criterionBranch === SOURCE_NEGATIVE_REVIEW || decision.evidence !== undefined) &&
-          result.tests.some(
-            (test) =>
-              test.id === "review" && ["test-failure", "test-todo"].includes(test.status) && test.reviewRef === ref,
-          )
-        const lapse = validateCaptureBinding(
-          captureRun,
-          decision,
-          path,
-          undefined,
-          pendingLapse,
-          manifest.catalogEntrySha256?.[result.featureId],
-        )
-        if (lapse && (result.reason !== lapse || captureRun.rawReplies[`${ref}.lapse`] !== lapse)) {
-          fail(path, "capture lapse diagnostic differs from its binding")
-        }
-        for (const test of result.tests.filter((test) => test.reviewRef === ref)) {
-          if (
-            lapse
-              ? !(result.criterionBranch === SOURCE_NEGATIVE_REVIEW
-                  ? ["test-failure", "test-todo"].includes(test.status)
-                  : test.status === "test-todo") || test.reason !== lapse
-              : test.status !== (decision.decision === "tool-gap" ? "test-todo" : decision.decision) ||
-                (decision.decision === "tool-gap" && (test.id !== "criterion" || test.reason !== decision.reason))
-          ) {
-            fail(path, "capture decision differs from recorded test")
-          }
-        }
-      }
-    }
-  }
+  if (!object(raw.intendedSubject)) fail(path, "current run requires intendedSubject")
   return {
     path,
     sha256,
     schemaVersion: raw.schemaVersion,
-    ...(schemaVersion === 4 ? { source: parseCurrentSource(raw.source, path) } : {}),
-    ...(current
-      ? {
-          results,
-          catalogIds: [...expected],
-          sealedAt: raw.sealedAt as string,
-          intendedSubject: normalizeIntendedSubject(raw[intendedKey], schemaVersion, path),
-        }
-      : {}),
+    source: parseCurrentSource(raw.source, path),
+    results,
+    catalogIds: [...expected],
+    intendedSubject: normalizeIntendedSubject(raw.intendedSubject, schemaVersion, path),
     runId,
     subject: subject,
     identity: raw.identity as LoadedRun["identity"],
@@ -2373,7 +1307,7 @@ export function parseRun(
     ...(outerApp && { outerApp }),
     suiteId: asString(raw.suiteId, path, "suiteId"),
     probeHash,
-    suiteComplete: current || suiteComplete,
+    suiteComplete: true,
     suiteProbeCount: expected.size,
     sourceRevision,
     measuredAt: raw.measuredAt,
@@ -2383,22 +1317,15 @@ export function parseRun(
       ...(appLaunch && { appLaunch }),
     },
     rawReplies: raw.rawReplies as Record<string, string>,
-    assertions:
-      schemaVersion === 4
-        ? assertions
-        : projectHistoricalAssertions(
-            assertions,
-            [...observations, ...(results ?? [])],
-            raw.rawReplies as Record<string, string>,
-          ),
+    assertions,
     screenshotRefs: raw.screenshotRefs as string[],
     textSnapshotRefs,
     ...(textQualification === undefined ? {} : { textQualification }),
     ...(manifest.textQualification === undefined ? {} : { textQualificationSpec: manifest.textQualification }),
     ...(manifest.textClaims === undefined ? {} : { textClaims: manifest.textClaims }),
-    observations,
-    notTested,
-    ungradedDiagnostics,
+    observations: [],
+    notTested: [],
+    ungradedDiagnostics: {},
     legacy: false,
   } as LoadedRun
 }
@@ -2447,8 +1374,8 @@ export function decodeCollectorDraft(
   collectorRevision: string,
 ): DecodedCollectorDraft {
   const value = parseJsonStrict(path, raw)
-  if (!object(value) || value.schemaVersion !== 4 || Object.hasOwn(value, "sealedAt")) {
-    fail(path, "expected unsealed schemaVersion 4 collector draft")
+  if (!object(value) || value.schemaVersion !== 4) {
+    fail(path, "expected schemaVersion 4 collector draft")
   }
   if (object(value.rawReplies)) {
     const rawReplies = value.rawReplies
@@ -2506,9 +1433,7 @@ export function decodeCollectorDraft(
       }
     }
   }
-  const measured = parseRun(path, raw, manifest.catalogIds ?? [], new Map([[manifest.probeHash, manifest]]), {
-    mode: "capture",
-  })
+  const measured = parseRun(path, raw, manifest.catalogIds ?? [], new Map([[manifest.probeHash, manifest]]))
   if (
     measured.probeHash !== manifest.probeHash ||
     measured.suiteId !== manifest.probeHash ||
@@ -2516,8 +1441,8 @@ export function decodeCollectorDraft(
   ) {
     fail(path, "collector draft differs from trusted suite/source")
   }
-  if (measured.identity !== "unverified" || measured.origin.kind !== "collector") {
-    fail(path, "collector draft requires unverified measured identity and collector origin")
+  if (measured.origin.kind !== "collector") {
+    fail(path, "collector draft requires collector origin")
   }
   return { kind: "captured", run: value as unknown as CapturedRunDraft, raw, sha256: measured.sha256 }
 }

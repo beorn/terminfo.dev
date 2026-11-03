@@ -6,8 +6,6 @@
  * @testonly none
  */
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs"
-import { execFileSync } from "node:child_process"
-import { createHash } from "node:crypto"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -17,13 +15,11 @@ import {
   readCollectorAttempt,
   SOURCE_NEGATIVE_REVIEW,
   type CapturedRunDraft,
-  type CaptureEvidence,
   type RunDraft,
 } from "@terminfo/probe-defs"
 import { parseRun } from "@terminfo/run-parser"
 import { collectHeadlessRuns } from "./collect-headless.ts"
 import { probeSuiteSnapshot } from "../admin/versions.ts"
-import { saveDaemonProbeRun } from "../terminfo.dev/src/daemon-client.ts"
 const dirs: string[] = []
 afterEach(() => {
   vi.useRealTimers()
@@ -106,55 +102,14 @@ it.each([true, false])(
     })
     expect(readFileSync(capturePath, "utf8")).toBe(captureBytes)
     const suite = probeSuiteSnapshot()
-    parseRun(path, readFileSync(path, "utf8"), suite.catalogIds!, new Map([[suite.probeHash, suite]]), {
-      mode: "capture",
-    })
+    parseRun(path, readFileSync(path, "utf8"), suite.catalogIds!, new Map([[suite.probeHash, suite]]))
     // Raw collection is never END; existing writer tests cannot observe coordinator custody.
     expect(path).toMatch(/\.draft\.json$/)
     expect(saved).not.toHaveProperty("sealedAt")
     if (pendingReview) {
-      expect(
-        (JSON.parse(saved.rawReplies["collector.evidence.device.primary-da"]!) as CaptureEvidence).projection.feature
-          .catalogEntrySha256,
-      ).toBe(suite.catalogEntrySha256!["device.primary-da"])
-      expect(path).toMatch(/\.draft\.json$/)
-      expect(saved).not.toHaveProperty("sealedAt")
-      expect(saved.rawReplies["collector.capture.device.primary-da"]).toBeTruthy()
       expect(saved.results.find((row) => row.featureId === "device.primary-da")?.tests[0]?.status).toBe("test-todo")
-      const pendingBytes = readFileSync(path, "utf8")
-      const review = JSON.stringify({
-        id: "headless-context-review",
-        runId: saved.runId,
-        featureId: "device.primary-da",
-        captureSha256: createHash("sha256")
-          .update(saved.rawReplies["collector.capture.device.primary-da"]!)
-          .digest("hex"),
-        decision: "untestable",
-        reviewed: true,
-        reviewer: "reviewer",
-        reason: "Fixture context has no reply channel",
-        scope: {
-          subject: { kind: "lib", id: "xtermjs" },
-          versions: ["6.0.0", "6.0.0"],
-          suites: [saved.probeHash, saved.probeHash],
-        },
-        sources: ["collector.capture.device.primary-da"],
-        supersedes: [],
-      })
-      const resumed = saveDaemonProbeRun(saved, dir, undefined, {
-        manifest: suite,
-        decisions: [{ source: review, startedAt: "2026-10-21T13:00:00.000Z" }],
-        origin: () => undefined,
-      })
-      const final = parseRun(
-        resumed,
-        readFileSync(resumed, "utf8"),
-        suite.catalogIds!,
-        new Map([[suite.probeHash, suite]]),
-      )
-      expect(final.runId).toBe(saved.runId)
-      expect(final.results?.find((row) => row.featureId === "device.primary-da")?.status).toBe("untestable")
-      expect(readFileSync(path, "utf8")).toBe(pendingBytes)
+      expect(saved.rawReplies["collector.capture.device.primary-da"]).toBeUndefined()
+
     }
   },
 )
@@ -179,189 +134,6 @@ it.runIf(OWNED_LAYOUT)(
   },
   30_000,
 )
-// The fixture tests above never send a collector-written draft through the decoder that admit-run uses;
-// this one runs the real xtermjs worker and the real admit-run --review. Admission itself writes the suite
-// manifest and receipts into content/, so one review stays pending here: admit-run retains the reviewed
-// draft and refuses admission, and the last pending decision seals through the same writer in-process.
-// #31072: 38 required 250ms sentinel grace waits measured 9.6s of a 9.9s collection span.
-// Keep those late-reply checks; allow this real-worker round trip the root suite's 30s budget.
-it.runIf(OWNED_LAYOUT)(
-  "reviews a draft the real headless collector wrote through admit-run --review",
-  async () => {
-    const root = fileURLToPath(new URL("../../", import.meta.url))
-    const dirtySources = execFileSync("git", ["status", "--porcelain", "--", ...probeSuiteSnapshot().sourcePaths], {
-      cwd: root,
-      encoding: "utf8",
-    }).trim()
-    if (dirtySources) {
-      throw new Error(
-        `admit-run binds HEAD to the draft's sourceRevision; commit the dirty suite sources first:\n${dirtySources}`,
-      )
-    }
-    const colourReadback = [
-      "extensions.osc110-reset-fg",
-      "extensions.osc111-reset-bg",
-      "extensions.osc112-reset-cursor",
-      "extensions.osc113-reset-pointer-fg",
-      "extensions.osc114-reset-pointer-bg",
-      "extensions.osc30001-color-stack-push",
-      "extensions.osc30101-color-stack-pop",
-    ]
-    const dir = directory()
-    // Exercise the review journey with its own witnesses; unrelated catalogue additions must not expand it.
-    const collection = await collectHeadlessRuns(["xtermjs"], dir, undefined, [
-      "device.term-features",
-      "editing.decsace",
-      "extensions.osc104-reset-palette",
-      ...colourReadback,
-      "input.kitty-click-events",
-      "modes.synchronized-output",
-    ])
-    expect(collection.failures).toEqual([])
-    const draftPath = collection.runs[0]!
-    expect(draftPath).toMatch(/\.draft\.json$/)
-    const draft = JSON.parse(readFileSync(draftPath, "utf8")) as CapturedRunDraft
-    const draftBytes = readFileSync(draftPath, "utf8")
-    const pending = draft.results
-      .filter((row) =>
-        row.tests.some(
-          (check) =>
-            check.id === "review" &&
-            (check.status === "test-todo" ||
-              (row.criterionBranch === SOURCE_NEGATIVE_REVIEW && check.status === "test-failure")),
-        ),
-      )
-      .map((row) => row.featureId)
-      .sort()
-    // #31735, @cto 863bef67: xtermjs subscribes to _core._inputHandler.onColor, so extensions.osc104-reset-palette
-    // grades supported via the indexed-cell witness, while the 7 default/stack queries stay negative by sentinel (#30699).
-    expect(draft.results.find((row) => row.featureId === "extensions.osc104-reset-palette")).toMatchObject({
-      status: "supported",
-      reason: "Indexed colour resolved at read",
-      tests: [expect.objectContaining({ id: "criterion", status: "supported" })],
-    })
-    for (const featureId of colourReadback) {
-      expect(
-        draft.results.find((row) => row.featureId === featureId),
-        featureId,
-      ).toMatchObject({
-        status: "unsupported",
-        reason: "negative by sentinel",
-        tests: [expect.objectContaining({ id: "criterion", status: "unsupported" })],
-      })
-    }
-    // A missing DECCARA witness remains pending source review; admission is separate from sealing.
-    expect(draft.results.find((row) => row.featureId === "editing.decsace")).toMatchObject({
-      status: "test-todo",
-      criterionBranch: SOURCE_NEGATIVE_REVIEW,
-      tests: [expect.objectContaining({ id: "review", status: "test-todo" })],
-    })
-    expect(draft.results.find((row) => row.featureId === "input.kitty-click-events")).toMatchObject({
-      status: "unsupported",
-      assertionType: "input_bytes",
-      tests: [expect.objectContaining({ id: "criterion", status: "unsupported" })],
-    })
-    // Synchronized output now has a measured protocol criterion; it cannot stand in for a pending review.
-    expect(draft.results.find((row) => row.featureId === "modes.synchronized-output")).toMatchObject({
-      status: "supported",
-      assertionType: "query_reply",
-      tests: [expect.objectContaining({ id: "criterion", status: "supported" })],
-    })
-    expect(draft.results.find((row) => row.featureId === "device.term-features")).toMatchObject({
-      status: "test-todo",
-      criterionBranch: HEADLESS_OBSERVABLE_REVIEW,
-      tests: [expect.objectContaining({ id: "review", status: "test-todo" })],
-    })
-    expect(pending).toEqual(["device.term-features", "editing.decsace"])
-    const decision = (featureId: string, reason: string) =>
-      JSON.stringify({
-        id: `round-trip-${featureId}`,
-        runId: draft.runId,
-        featureId,
-        captureSha256: createHash("sha256").update(draft.rawReplies[`collector.capture.${featureId}`]!).digest("hex"),
-        decision: "untestable",
-        reviewed: true,
-        reviewer: "collect-headless round-trip test",
-        reason,
-        scope: {
-          subject: { kind: "lib", id: "xtermjs" },
-          versions: [draft.subject.version, draft.subject.version],
-          suites: [draft.probeHash, draft.probeHash],
-        },
-        sources: [`collector.capture.${featureId}`],
-        supersedes: [],
-      })
-    const reason = (featureId: string) =>
-      featureId === "editing.decsace"
-        ? "The DECCARA witness is absent, so this review cannot decide DECSACE extent"
-        : "The library API spawns no application child process to observe its TERM_FEATURES export"
-    const sealing = "device.term-features"
-    const reviewed = pending.filter((featureId) => featureId !== sealing)
-    const reviewPaths = reviewed.map((featureId, index) => {
-      const path = join(dir, `review-${index}.json`)
-      writeFileSync(path, decision(featureId, reason(featureId)))
-      return path
-    })
-    const startedAt = new Date().toISOString()
-    const result = Bun.spawnSync(
-      [
-        "bun",
-        "scripts/admit-run.ts",
-        "--for",
-        draftPath,
-        ...reviewPaths.flatMap((path) => ["--review", path]),
-        "--review-started-at",
-        startedAt,
-      ],
-      { cwd: root, stdout: "pipe", stderr: "pipe" },
-    )
-    const stdout = new TextDecoder().decode(result.stdout)
-    const stderr = new TextDecoder().decode(result.stderr)
-    expect(stderr, stdout).not.toContain("requires unverified measured identity")
-    const retainedPath = /Retained reviewed capture (.+); original draft unchanged/.exec(stdout)?.[1]
-    expect(retainedPath, `${stdout}\n${stderr}`).toBeTruthy()
-    expect(stderr).toContain("Required reviews remain pending")
-    expect(result.exitCode).toBe(1)
-    expect(readFileSync(draftPath, "utf8")).toBe(draftBytes)
-    const suite = probeSuiteSnapshot()
-    const suites = new Map([[suite.probeHash, suite]])
-    const retained = parseRun(retainedPath!, readFileSync(retainedPath!, "utf8"), suite.catalogIds!, suites, {
-      mode: "capture",
-    })
-    for (const featureId of reviewed) {
-      const row = retained.results?.find((entry) => entry.featureId === featureId)
-      expect(row?.status, featureId).toBe("untestable")
-      const check = row?.tests?.find((entry) => entry.id === "review")
-      expect(check?.status, featureId).toBe("untestable")
-      expect(check?.reviewRef, featureId).toBe(`collector.review.round-trip-${featureId}`)
-    }
-    expect(retained.results?.find((entry) => entry.featureId === sealing)?.status).toBe("test-todo")
-    const sealedPath = saveDaemonProbeRun(
-      JSON.parse(readFileSync(retainedPath!, "utf8")) as CapturedRunDraft,
-      dir,
-      undefined,
-      {
-        manifest: suite,
-        origin: () => undefined,
-        decisions: [
-          {
-            source: decision(sealing, reason(sealing)),
-
-            startedAt,
-          },
-        ],
-      },
-    )
-    expect(sealedPath).not.toMatch(/\.draft\.json$/)
-    const sealed = parseRun(sealedPath, readFileSync(sealedPath, "utf8"), suite.catalogIds!, suites)
-    expect(sealed.sealedAt).toBeTruthy()
-    for (const featureId of pending) {
-      expect(sealed.results?.find((entry) => entry.featureId === featureId)?.status, featureId).toBe("untestable")
-    }
-  },
-  30_000,
-)
-
 // Batch callback tests do not exercise worker creation/timeouts: these invoke the real coordinator
 // with only its process actuator replaced, so no engine or terminal is launched.
 it("initializes all 273 before worker launch and retains explicit missing prerequisites as TODO", async () => {

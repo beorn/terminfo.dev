@@ -18,7 +18,6 @@ import {
   readFileSync,
   readdirSync,
   realpathSync,
-  unlinkSync,
   writeFileSync,
 } from "node:fs"
 import { dirname, join, resolve, sep } from "node:path"
@@ -38,16 +37,12 @@ import {
 } from "@terminfo/probe-defs"
 import { aggregateCurrentResults, type CurrentAggregate } from "../docs/data/release-scope.ts"
 import { decodeCollectorDraft } from "@terminfo/run-parser"
-import { saveDaemonProbeRun } from "../packages/terminfo.dev/src/daemon-client.ts"
-import { finalizeCollectedDraft, type CaptureReviewReport } from "../packages/terminfo.dev/src/capture-writer.ts"
 import { loadFeatures } from "@terminfo/catalog"
 import { fullContextCensus, type CensusContext } from "../docs/data/full-census.ts"
 import { parseJsonStrict, parseRun } from "@terminfo/run-parser"
 import { assertPrivateCollectionOutput } from "../packages/admin/src/collected-run.ts"
 import { reviewedContextFor } from "../docs/data/current-results.ts"
 import { classifyDevelopmentRun, consoleHostHeldResults, readVerifiedArtifact } from "../docs/data/selected-results.ts"
-import { parseInterpretations, activeInterpretations } from "./interpretations.ts"
-import { loadStoredRuns } from "../packages/admin/corpus-placement.ts"
 import { derivedSuiteManifest, probeSuiteSnapshot } from "../packages/admin/versions.ts"
 import { collectHeadlessRuns } from "../packages/probes/collect-headless.ts"
 import { TRANSPORT_RECEIPT_KIND } from "../packages/terminfo.dev/src/disposable-receipt.ts"
@@ -325,12 +320,11 @@ export interface CollectionPass {
   }
   contexts: Array<{
     context: CollectionContext
-    status: "not-started" | "pending-review" | "classified" | "failed"
+    status: "not-started" | "classified" | "failed"
     rawRun?: string
     directory?: string
     classification?: ReturnType<typeof classifyDevelopmentRun>
     summary?: CurrentAggregate
-    reviewBindings?: CaptureReviewReport[]
     transport?: CollectionPass["transport"]
     error?: string
     reason?: string
@@ -477,18 +471,6 @@ export async function collectPass(
   const sourceRevision = execFileSync("git", ["rev-parse", "HEAD"], { cwd: ROOT, encoding: "utf8" }).trim()
   const catalogIds = Object.keys(loadFeatures(CONTENT))
   const interpretationsPath = join(CONTENT, "interpretations.json")
-  const decisionSources = new Map<string, string>()
-  const resolvedRuns = loadStoredRuns(CONTENT, catalogIds)
-  const acceptedDecisions = activeInterpretations(
-    parseInterpretations(
-      interpretationsPath,
-      readFileSync(interpretationsPath, "utf8"),
-      catalogIds,
-      decisionSources,
-      resolvedRuns,
-    ),
-    resolvedRuns,
-  ).filter((entry) => "captureSha256" in entry)
   const inputSha256: Record<string, string> = {}
   for (const path of new Set([
     ...snapshot.sourcePaths.map((path) => join(ROOT, path)),
@@ -734,8 +716,8 @@ export async function collectPass(
       }
       row.rawRun = path
       const raw = readFileSync(path, "utf8")
-      const header = JSON.parse(raw) as { schemaVersion?: unknown; sealedAt?: unknown }
-      if (header.schemaVersion === 4 && header.sealedAt === undefined) {
+      const header = JSON.parse(raw) as { schemaVersion?: unknown }
+      if (header.schemaVersion === 4) {
         const decoded = decodeCollectorDraft(path, raw, derivedSuiteManifest(snapshot), sourceRevision)
         if (decoded.kind === "empty-selection") {
           row.status = "not-started"
@@ -754,78 +736,16 @@ export async function collectPass(
             `raw draft does not identify the expected current schema-4 ${context.kind}:${context.id} context`,
           )
         }
-        const reviewBindings: CaptureReviewReport[] = []
-        row.reviewBindings = reviewBindings
-        const previousPath = path
-        const collected = {
-          ...decoded.run,
-          rawReplies: {
-            ...decoded.run.rawReplies,
-            ...(!Object.keys(decoded.run.rawReplies).some((key) => key.startsWith("collector.capture.")) && {
-              "collector.httpResponseSha256": decoded.run.rawReplies["collector.httpResponseSha256"] ?? decoded.sha256,
-            }),
-          },
-        }
-        const reviews = {
-          manifest: derivedSuiteManifest(snapshot),
-          decisions: acceptedDecisions.map((decision) => ({
-            source:
-              decisionSources.get(decision.id) ??
-              (() => {
-                throw new Error(`Missing accepted decision source ${decision.id}`)
-              })(),
-            startedAt: new Date().toISOString(),
-          })),
-          origin: () => undefined,
-          carry: true,
-          keepDraft: true,
-          report: (entry: CaptureReviewReport) => reviewBindings.push(entry),
-        }
-        const finalized = finalizeCollectedDraft(globalThis.structuredClone(collected), undefined, reviews)
-        if ("sealedAt" in finalized || reviewBindings.some((report) => report.selected)) {
-          path = saveDaemonProbeRun(collected, dirname(path), undefined, { ...reviews, report: undefined })
-          if ("sealedAt" in finalized && context.route === "linux-container") {
-            const directory = dirname(path)
-            execFileSync(
-              "bash",
-              [
-                "-c",
-                'source "$1"; compose_receipt "$2" "$3" "$4" "$5"',
-                "_",
-                join(ROOT, "scripts/linux-container-run.sh"),
-                join(directory, "host-measured.json"),
-                join(directory, "container-receipt.json"),
-                join(directory, "run-receipt.json"),
-                path,
-              ],
-              { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
-            )
+        if (context.kind === "lib") {
+          const collectionPath = join(dirname(path), "collection.json")
+          if (!existsSync(collectionPath)) throw new Error(`Missing headless collection receipt ${collectionPath}`)
+          const receipt = JSON.parse(readFileSync(collectionPath, "utf8")) as { runs?: unknown }
+          if (!Array.isArray(receipt.runs) || !receipt.runs.includes(path)) {
+            throw new Error(`Headless collection receipt ${collectionPath} does not list ${path} in runs`)
           }
         }
-        // #32038 (@cto a6dbdad3): keep only the identity-resolved, carried draft that pass.json names in <pass>/lib/,
-        // and update <pass>/lib/collection.json runs[] before unlinking the intermediate so the receipt never dangles.
-        if (context.kind === "lib" && previousPath.endsWith(".draft.json")) {
-          const collectionPath = join(dirname(previousPath), "collection.json")
-          if (!existsSync(collectionPath)) {
-            throw new Error(`Missing headless collection receipt ${collectionPath}`)
-          }
-          const receipt = JSON.parse(readFileSync(collectionPath, "utf8")) as {
-            runs?: unknown
-            [key: string]: unknown
-          }
-          if (!Array.isArray(receipt.runs) || !receipt.runs.includes(previousPath)) {
-            throw new Error(`Headless collection receipt ${collectionPath} does not list ${previousPath} in runs`)
-          }
-          if (path !== previousPath) {
-            receipt.runs = receipt.runs.map((entry: unknown) => (entry === previousPath ? path : entry))
-            writeFileSync(collectionPath, `${JSON.stringify(receipt, null, 2)}\n`)
-            unlinkSync(previousPath)
-          }
-        }
-        row.rawRun = path
       }
-      const draft = path.endsWith(".draft.json")
-      const run = parseRun(path, readFileSync(path, "utf8"), catalogIds, suites, { mode: draft ? "capture" : "sealed" })
+      const run = parseRun(path, readFileSync(path, "utf8"), catalogIds, suites)
       if (
         run.schemaVersion !== 4 ||
         run.subject.kind !== context.kind ||
@@ -846,8 +766,7 @@ export async function collectPass(
       if (!run.results || !run.catalogIds) throw new Error("Current run lacks frozen results")
       row.summary = aggregateCurrentResults(consoleHostHeldResults(run, []), run.catalogIds)
       row.classification = classifyDevelopmentRun(run)
-      row.status = draft ? "pending-review" : "classified"
-      if (draft) row.reason = "Valid measured capture; unsealed draft"
+      row.status = "classified"
     } catch (error) {
       row.error = `${labelOf(context)}: ${error instanceof Error ? error.message : String(error)}`
       if ((context.route === "linux-container" || context.route === "hosted-workflow") && row.directory) {

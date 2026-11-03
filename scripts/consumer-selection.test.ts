@@ -1,3 +1,4 @@
+import { finalizeCollectedDraft } from "../packages/terminfo.dev/src/capture-writer.ts"
 /**
  * @failure Unreviewed runs become current scores, or refresh skips its release assessment and errors.
  * @level l2
@@ -9,7 +10,7 @@
  */
 import { describe, expect, it, vi } from "vitest"
 import { createHash } from "node:crypto"
-import { initializeRunDraft, sealRunDraft } from "@terminfo/probe-defs"
+import { initializeRunDraft } from "@terminfo/probe-defs"
 import { parseSuiteManifest } from "@terminfo/run-parser"
 import {
   chmodSync,
@@ -169,7 +170,7 @@ describe("consumer selection", () => {
     }
   })
 
-  it("tests freshness without changing inventory or treating unreviewed files as current", () => {
+  it("tests freshness without changing inventory and retains current captures", () => {
     const root = mkdtempSync(join(tmpdir(), "terminfo-freshness-"))
     const source = join(import.meta.dirname, "..")
     try {
@@ -184,7 +185,7 @@ describe("consumer selection", () => {
       writeSuite(join(root, "content"), "deadbeefcafe")
       // The archived refusals are required content since #30759 AC3; an empty list is a real state.
       writeFileSync(join(root, "content", "archived-exclusions.json"), JSON.stringify({ archivedExclusions: [] }))
-      // A current unverified TODO run cannot become a reviewed measurement.
+      // A current unverified TODO capture remains a recorded run, not a support claim.
       const kittyManifestPath = join(root, "content", "suites", "deadbeefcafe.json")
       const kittyManifest = parseSuiteManifest(kittyManifestPath, readFileSync(kittyManifestPath, "utf8"))
       const kittyDraft = initializeRunDraft({
@@ -210,7 +211,7 @@ describe("consumer selection", () => {
       kittyDraft.origin = { kind: "collector" }
       writeFileSync(
         join(root, "content", "probes-apps", "kitty-current-todo.json"),
-        JSON.stringify(sealRunDraft(kittyDraft, kittyDraft.measuredAt)),
+        JSON.stringify(finalizeCollectedDraft(kittyDraft as Parameters<typeof finalizeCollectedDraft>[0])),
       )
       // A nonempty selected lib run exposes an inventory join that still compares old headless kinds.
       const libSubject = {
@@ -255,7 +256,6 @@ describe("consumer selection", () => {
         identity: "verified",
         runtimeIdentity: libFixture.runtimeIdentity,
         measuredAt: libMeasuredAt,
-        sealedAt: libMeasuredAt,
         origin: { kind: "collector" },
         rawReplies: { "sgr.bold": "retained fixture failure" },
         assertions: [],
@@ -286,7 +286,7 @@ describe("consumer selection", () => {
       const check = spawnSync(process.execPath, [join(root, "scripts", "sitefile.ts"), "--check"], { encoding: "utf8" })
       expect(check.stderr).toBe("")
       expect(check.status).toBe(1)
-      expect(check.stdout).toContain("kitty — no reviewed current measurement")
+      expect(check.stdout).not.toContain("kitty — no reviewed current measurement")
       expect(readFileSync(lock, "utf8")).toBe(before)
       const generate = spawnSync(process.execPath, [join(root, "scripts", "sitefile.ts")], { encoding: "utf8" })
       expect(generate.stderr).toBe("")
@@ -304,8 +304,8 @@ describe("consumer selection", () => {
       }
       expect(inventory.sources.every((entry) => entry.lastChecked === null)).toBe(true)
       expect(inventory.terminals.find((entry) => entry.terminalId === "kitty")).toMatchObject({
-        lastProbedVersions: [],
-        sources: [],
+        lastProbedVersions: ["0.46.2"],
+        sources: [expect.objectContaining({ runId: "unreviewed-kitty", version: "0.46.2" })],
       })
       expect(inventory.terminals.find((entry) => entry.terminalId === "alacritty")).toMatchObject({ kind: "lib" })
       expect(inventory.terminals.find((entry) => entry.terminalId === "xtermjs")).toMatchObject({

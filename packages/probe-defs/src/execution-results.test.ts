@@ -1,3 +1,4 @@
+import { finalizeCollectedDraft } from "../../terminfo.dev/src/capture-writer.ts"
 /**
  * @failure A broken framed comparison is hidden as pending review, or an explicitly required unstarted review becomes FAILURE/support.
  * @level l1
@@ -16,7 +17,6 @@ import {
   withReplyFailureEvidence,
   recordCollectionFailure,
   initializeRunDraft,
-  sealRunDraft,
   utf8DecodingRefusal,
   sgrProbe,
   readCollectorSelection,
@@ -967,7 +967,9 @@ it("keeps an explicit unattempted visual review TODO when the capture seals", as
   draft.measuredAt = attempt.startedAt
   draft.origin = { kind: "collector" }
   draft.results = [result]
-  expect(sealRunDraft(draft).results[0]!.status).toBe("test-todo")
+  expect(finalizeCollectedDraft(draft as Parameters<typeof finalizeCollectedDraft>[0]).results[0]!.status).toBe(
+    "test-todo",
+  )
 })
 
 // #31740: row-emission tests cannot pin whose reason the writer synthesizes when a callback forgets its rows.

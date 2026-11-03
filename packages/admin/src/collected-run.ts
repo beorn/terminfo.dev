@@ -50,14 +50,7 @@ export function retainCollectedRun(
     mkdirSync(directory, { recursive: true })
     copyFileSync(retainedResponsePath, original, constants.COPYFILE_EXCL)
   }
-  const source = saveDaemonProbeRun(
-    run,
-    directory,
-    intended,
-    outputDirectory === undefined
-      ? undefined
-      : { manifest: getTrustedSuiteReceipt().manifest, decisions: [], origin: () => undefined, keepDraft: true },
-  )
+  const source = saveDaemonProbeRun(run, directory, intended)
   console.log(`  Retained private collected run ${source}`)
   return source
 }

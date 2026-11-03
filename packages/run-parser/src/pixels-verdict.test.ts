@@ -15,7 +15,6 @@ import { describe, expect, it } from "vitest"
 import {
   recordExecutedProbe,
   initializeRunDraft,
-  sealRunDraft,
   frameDigests,
   cursorProbes,
   editingProbes,
@@ -128,7 +127,7 @@ const kittyRun = (overrides: Record<string, unknown> = {}) => {
   draft.origin = { kind: "collector" }
   const attempt = { scope: "probe" as const, startedAt: draft.measuredAt }
   return {
-    ...sealRunDraft(draft, "2026-10-10T22:11:00.000Z"),
+    ...draft,
     rawReplies: { [FEATURE]: JSON.stringify({ writes: ["\u001b[1;3H"], queries: [], events: [] }) },
     assertions: [
       {

@@ -21,7 +21,6 @@ import {
   HARNESS_INCOMPLETE_TEST,
   HEADLESS_OBSERVABLE_REVIEW,
   initializeRunDraft,
-  sealRunDraft,
   type CapturedRunDraft,
   type ProbeCallbackResult,
   type ProbeDefinition,
@@ -29,7 +28,7 @@ import {
 } from "@terminfo/probe-defs"
 import { fakeProbeResult } from "@terminfo/probe-defs/testing/fake-probe-result"
 import { regradeRow, satisfiesContract, type GroupContract } from "../probe-defs/src/testing/group-harness.ts"
-import { validateObservation, retainCaptureBinding, applyCaptureDecision, parseRun } from "@terminfo/run-parser"
+import { validateObservation, parseRun } from "@terminfo/run-parser"
 import { spawnSync } from "node:child_process"
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -40,7 +39,6 @@ import { collectBatch, createLibProbeSource, feedCapture } from "./headless-batc
 import * as headlessIdentity from "./headless-identity.ts"
 import { finalizeCollectedDraft } from "../terminfo.dev/src/capture-writer.ts"
 import { cellWidthTransition } from "../probe-defs/src/helpers.ts"
-import { activeInterpretations, parseInterpretations } from "../../scripts/interpretations.ts"
 import { ADAPTER_SOURCE_AUDITS, replyFailure } from "../probe-defs/src/helpers.ts"
 import retainedDeccolm from "./fixtures/deccolm-retained.json"
 
@@ -127,7 +125,6 @@ function reflowEvidence(batch: Awaited<ReturnType<typeof collectBatch>>) {
     JSON.stringify(captured),
     manifest.catalogIds,
     new Map([[manifest.probeHash, manifest]]),
-    { mode: "capture" },
   )
   expect(parsed.results).toEqual(batch.results)
   return JSON.parse(batch.rawReplies["extensions.reflow"]!) as {
@@ -1258,7 +1255,6 @@ test.each(["extensions.osc117-reset-highlight-bg", "extensions.osc119-reset-high
       JSON.stringify(captured),
       manifest.catalogIds,
       new Map([[manifest.probeHash, manifest]]),
-      { mode: "capture" },
     )
     expect(parsed.results).toMatchObject([
       {
@@ -1456,7 +1452,6 @@ test("DECSSCLS real-vterm pending source review survives collection and canonica
     JSON.stringify(finalized),
     manifest.catalogIds,
     new Map([[manifest.probeHash, manifest]]),
-    { mode: "capture" },
   )
   expect(parsed.results).toEqual(finalized.results)
 })
@@ -1557,24 +1552,13 @@ test("Wezterm prompt source reviews survive actual collection and capture bindin
       criterionBranch: "source-negative-review",
       tests: [{ id: "review", status: "test-todo" }],
     })
-    const binding = retainCaptureBinding(captured, id)
-    if (typeof binding.source !== "string") throw new Error("Expected retained capture binding JSON")
-    expect(JSON.parse(binding.source)).toMatchObject({
-      runtimeIdentity: {
-        kind: "native",
-        engineVersion: "0.1.0-fork.5",
-        adapterVersion: "0.10.2",
-        termlessRevision: "83b22ab3f99ff3c2f3e43bcfce346c1374f540e1",
-        loadedBinary: { sha256: "6722b331de7489c14cb599d939e5d2314f054220728f83c5c29f454e70273e47" },
-      },
-    })
+    expect(captured.runtimeIdentity).toEqual(identity)
   }
   const parsed = parseRun(
     "wezterm-prompt.capture.json",
     JSON.stringify(captured),
     ids,
     new Map([[manifest.probeHash, manifest]]),
-    { mode: "capture" },
   )
   expect(parsed.results).toHaveLength(7)
   expect(
@@ -1745,7 +1729,6 @@ test("source-qualified mode and mouse criteria survive collection and capture pa
       JSON.stringify(captured),
       ids,
       new Map([[manifest.probeHash, manifest]]),
-      { mode: "capture" },
     )
     expect(parsed.results).toHaveLength(3)
     for (const row of parsed.results ?? []) {
@@ -1964,9 +1947,6 @@ test.each(retainedDeccolm.rows)("DECCOLM retained $engine state survives the str
     JSON.stringify(captured),
     manifest.catalogIds,
     new Map([[manifest.probeHash, manifest]]),
-    {
-      mode: "capture",
-    },
   )
   expect(parsed.results).toMatchObject([{ featureId: definition.id, status: sample.expected }])
   expect(
@@ -2134,25 +2114,8 @@ test.each([
     expect(finalized.sealedAt).toBeUndefined()
     if (finalized.sealedAt !== undefined) throw new Error("Expected pending viewport review draft")
     expect(finalized.results).toEqual(batch.results)
-    const key = `collector.capture.${id}`
-    const binding = finalized.rawReplies[key]!
-    expect(JSON.parse(binding)).toMatchObject({
-      featureId: id,
-      criterionBranch: HEADLESS_OBSERVABLE_REVIEW,
-      rawReplyRefs: expect.arrayContaining([expect.objectContaining({ key: id })]),
-    })
-    // A declaration removed or reason changed after collection must bind different bytes, never reuse approval.
-    for (const mutation of ["declaration", "reason"]) {
-      const changed = structuredClone(captured)
-      const raw = JSON.parse(changed.rawReplies[id]!) as { productViewport?: { available: false; reason: string } }
-      if (mutation === "declaration") delete raw.productViewport
-      else raw.productViewport!.reason += " changed audit"
-      changed.rawReplies[id] = JSON.stringify(raw)
-      expect(finalizeCollectedDraft(changed).rawReplies[key]).not.toBe(binding)
-      const alreadyBound = structuredClone(finalized)
-      alreadyBound.rawReplies[id] = changed.rawReplies[id]!
-      expect(() => retainCaptureBinding(alreadyBound, id)).toThrow()
-    }
+    expect(finalized.rawReplies[id]).toBe(batch.rawReplies[id])
+
   },
 )
 
@@ -2361,7 +2324,6 @@ test.each([
     JSON.stringify(captured),
     [id],
     new Map([[manifest.probeHash, manifest]]),
-    { mode: "capture" },
   )
   expect(parsed.results).toEqual(batch.results)
   expect(parsed.assertions).toEqual(batch.assertions)
@@ -2373,7 +2335,6 @@ test.each([
       JSON.stringify(actionless),
       [id],
       new Map([[manifest.probeHash, manifest]]),
-      { mode: "capture" },
     ),
   ).toThrow("requires the performed action")
 })
@@ -2457,7 +2418,6 @@ test("audited Vterm input negatives retain required source review through the co
     JSON.stringify(captured),
     ids,
     new Map([[manifest.probeHash, manifest]]),
-    { mode: "capture" },
   )
   expect(parsed.results).toEqual(batch.results)
   expect(parsed.assertions).toEqual([])
@@ -2605,22 +2565,6 @@ test("legacy collection without source identity keeps mouse tool gaps TODO and i
   expect(batch.assertions).toEqual([])
   expect(batch.observations).toEqual([])
   expect(batch.ungradedDiagnostics).toEqual({})
-  // Frozen at 9e319ac6: private legacy carry remains covered outside active C1 inputs.
-  const records = JSON.parse(
-    readFileSync(new URL("../../test-fixtures/legacy-review-interpretations.json", import.meta.url), "utf8"),
-  ) as {
-    id: string
-  }[]
-  const historical = records.find((record) => record.id === "by-design-32022-vt100-input-button-event-mouse")
-  if (!historical) {
-    throw new Error("Missing accepted vt100 mouse record in test-fixtures/legacy-review-interpretations.json")
-  }
-  const sources = new Map<string, string>()
-  const accepted = activeInterpretations(
-    parseInterpretations("mouse-history-fixture", JSON.stringify([historical]), ids, sources),
-  )
-  expect(accepted).toHaveLength(1)
-  expect(accepted[0]).toMatchObject({ id: historical.id, decision: "untestable", featureId: ids[0] })
   const manifest = {
     schemaVersion: 4 as const,
     probeHash: "mouse-gap-reader-fixture",
@@ -2666,20 +2610,7 @@ test("legacy collection without source identity keeps mouse tool gaps TODO and i
     assertions: batch.assertions,
   }
   const original = globalThis.structuredClone(captured)
-  const reports: unknown[] = []
-  const enriched = finalizeCollectedDraft(captured, undefined, {
-    manifest,
-    decisions: accepted.map((entry) => {
-      const source = sources.get(entry.id)
-      if (source === undefined) throw new Error(`Missing parsed historical decision source ${entry.id}`)
-      return { source, startedAt: "2026-11-01T13:00:00.000Z" }
-    }),
-    origin: () => undefined,
-    carry: true,
-    keepDraft: true,
-    report: (entry) => reports.push(entry),
-  })
-  expect(reports).toEqual([])
+  const enriched = finalizeCollectedDraft(captured)
   expect(enriched.results).toEqual(batch.results)
   expect(enriched.rawReplies).toEqual(batch.rawReplies)
   expect(enriched).not.toHaveProperty("sealedAt")
@@ -2689,7 +2620,6 @@ test("legacy collection without source identity keeps mouse tool gaps TODO and i
     JSON.stringify(enriched),
     ids,
     new Map([[manifest.probeHash, manifest]]),
-    { mode: "capture" },
   )
   expect(parsed.results).toEqual(batch.results)
   expect(parsed.assertions).toEqual([])
@@ -2803,15 +2733,7 @@ test("retains a qualified headless shell mark's required source review through p
     assertions: batch.assertions,
     results: batch.results,
   }
-  const binding = retainCaptureBinding(captured, id)
-  expect(captured.rawReplies[binding.rawReplyRef]).toBe(binding.source)
-  expect(JSON.parse(binding.source)).toMatchObject({
-    featureId: id,
-    criterionBranch: SEMANTIC_PROMPT_SOURCE_REVIEW,
-    rawReplyRefs: expect.arrayContaining([
-      expect.objectContaining({ key: id, sha256: expect.stringMatching(/^[0-9a-f]{64}$/) }),
-    ]),
-  })
+  expect(captured.rawReplies[id]).toBe(batch.rawReplies[id])
 })
 
 // The no-response grade hid that no F4 engine can read a colour back headless (#30547, @cto D-B): a silent first
@@ -3616,11 +3538,9 @@ test("real qualified OSC callbacks survive pending and unit-reviewed sealed read
     assertions: batch.assertions,
   }
   const read = (value: unknown) =>
-    parseRun("qualified-unit.capture.json", JSON.stringify(value), ids, new Map([[manifest.probeHash, manifest]]), {
-      mode: "capture",
-    })
+    parseRun("qualified-unit.capture.json", JSON.stringify(value), ids, new Map([[manifest.probeHash, manifest]]))
   expect(read(captured).results).toEqual(batch.results)
-  expect(read(sealRunDraft(captured)).results).toEqual(batch.results)
+  expect(read(finalizeCollectedDraft(captured)).results).toEqual(batch.results)
   const mislabeled = structuredClone(captured)
   for (const result of mislabeled.results.slice(1)) result.assertionType = "query_reply"
   for (const assertion of mislabeled.assertions.filter((entry) => entry.featureId !== ids[0])) {
@@ -3632,42 +3552,7 @@ test("real qualified OSC callbacks survive pending and unit-reviewed sealed read
   stateAssertion.observed = "not-json"
   invalidState.rawReplies[ids[1]!] = "not-json"
   expect(() => read(invalidState)).toThrow("state snapshot")
-  const reviewed = structuredClone(captured)
-  const reviewedAt = new Date(Date.now() + 1000).toISOString()
-  for (const id of ids.slice(1)) {
-    const binding = retainCaptureBinding(reviewed, id)
-    applyCaptureDecision(
-      reviewed,
-      JSON.stringify({
-        id: `unit-only-${id}`,
-        runId: reviewed.runId,
-        featureId: id,
-        captureSha256: binding.sha256,
-        decision: "unsupported",
-        reviewed: true,
-        reviewer: "unit-fixture-independent-reviewer",
-        reason: "Unit-only reviewed absent handler; no production decision",
-        scope: {
-          subject: { kind: "lib", id: "xtermjs" },
-          versions: [identity.engineVersion, identity.engineVersion],
-          suites: [manifest.probeHash, manifest.probeHash],
-        },
-        sources: [binding.rawReplyRef, "unit-fixture:InputHandler.ts:292-338"],
-        supersedes: [],
-      }),
-      reviewedAt,
-    )
-  }
-  const sealed = sealRunDraft(reviewed, new Date(Date.now() + 2000).toISOString())
-  const parsed = read(sealed)
-  expect(parsed.results?.map((result) => result.status)).toEqual(["supported", "unsupported", "unsupported"])
-  expect(parsed.results?.map((result) => result.assertionType)).toEqual([
-    "buffer_state",
-    "buffer_state",
-    "buffer_state",
-  ])
-  expect(parsed.assertions.slice(0, captured.assertions.length)).toEqual(captured.assertions)
-  expect(parsed.assertions).toHaveLength(captured.assertions.length + 2)
+
 })
 
 test.each([

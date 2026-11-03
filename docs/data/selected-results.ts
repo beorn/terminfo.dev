@@ -155,7 +155,6 @@ export interface CurrentSelectedVersion {
   suiteId: string
   probeHash: string
   sourceRevision: string
-  sealedAt: string
   sha256: string
   /** The identity the run recorded for itself. Only its trace document publishes it. */
   identity: LoadedRun["identity"]
@@ -609,7 +608,7 @@ export function projectResults(
   const acceptedRuns: LoadedRun[] = []
   const baselineRunIds: string[] = []
   for (const run of currentRuns) {
-    if (!run.results || !run.catalogIds || !run.sealedAt || !run.probeHash || !run.sourceRevision) {
+    if (!run.results || !run.catalogIds || !run.probeHash || !run.sourceRevision) {
       throw new Error(`Current run ${run.runId} lacks its sealed execution contract`)
     }
     const results = consoleHostHeldResults(run, active)
@@ -651,7 +650,6 @@ export function projectResults(
       suiteId: run.suiteId,
       probeHash: run.probeHash,
       sourceRevision: run.sourceRevision,
-      sealedAt: run.sealedAt,
       sha256: run.sha256,
       identity: run.identity,
       catalogIds: [...run.catalogIds],

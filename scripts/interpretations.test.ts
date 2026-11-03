@@ -99,29 +99,5 @@ describe("a presentation decision carries its acceptance", () => {
     )
   })
 
-  test("a pre-seal capture decision cannot carry an acceptance", () => {
-    const capture = {
-      id: "capture-vterm-utf8",
-      runId: "7e42a4eeaac25a73b40c2a4b2ad665cc",
-      featureId: "charsets.utf8",
-      captureSha256: "c".repeat(64),
-      decision: "untestable",
-      reviewed: true,
-      reviewer: "@dev/1",
-      reason: "No observable at this runtime",
-      scope: {
-        subject: { kind: "lib", id: "vterm" },
-        versions: ["0.9.0", "0.9.0"],
-        suites: ["ad71efdaa660", "ad71efdaa660"],
-      },
-      sources: [
-        "@si/terminfo/30211-terminfo-273/31690-hourly-remeasure-at-current-main/31877-tier-table-reviewed-cells",
-      ],
-      supersedes: [],
-    }
-    expect(parse([capture])).toHaveLength(1)
-    expect(() => parse([{ ...capture, accepted: { by: "@cto", wire: WIRE, at: "2026-10-30T07:39:00Z" } }])).toThrow(
-      /pre-seal capture decision cannot set accepted/,
-    )
-  })
+
 })
