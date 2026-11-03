@@ -969,6 +969,13 @@ test.for(["extensions.osc7-cwd", "extensions.notifications"])(
       const stale = definition.lib!(source)
       expect(stale.observation).toMatchObject({ outcome: "unsupported", assertionType: "buffer_state" })
       expect(stale.assertions).toMatchObject([{ kind: "negative", observed: stale.response }])
+      if (id === "extensions.notifications") {
+        vi.mocked(source.getNotifications!).mockRestore()
+        const delivery = vi.spyOn(source, "feed").mockImplementation(() => {})
+        expect(definition.lib!(source).observation?.outcome).toBe("unsupported")
+        delivery.mockRestore()
+        expect(definition.lib!(source).observation?.outcome).toBe("supported")
+      }
 
       value.capabilities.extensions.delete("osc-metadata")
       const absent = createLibProbeSource(value, undefined, undefined, undefined)
