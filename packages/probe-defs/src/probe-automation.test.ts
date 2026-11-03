@@ -601,19 +601,70 @@ describe("qualified clipboard roundtrip", () => {
 
 describe("reply-path audit", () => {
   /**
-   * The verdict an audited feature carries now lives in its kept answers, per library version, not in the table
-   * (@cto e192401e item 1). Every assertion that used to read a row's `kind` reads this instead.
+   * The library version each audited artifact is a build of. Derived, not guessed: under exactly one of the three
+   * reply-path subjects does every one of an artifact's cells reproduce the verdict it recorded before the table
+   * lost `kind` (@cto review of the strip, e94cbcac). The one artifact that fits two families is a wasm build.
    */
-  const replyPathVerdicts = (featureId: string): string[] =>
+  const AUDIT_SUBJECTS: Record<string, { id: string; version: string }> = Object.fromEntries(
     [
-      ...new Set(
-        SOURCE_ANSWERS.filter((row) => row.featureId === featureId).flatMap((row) =>
-          row.answers
-            .filter((answer) => answer.originals.some((original) => original.reviewer === "reply-path-audit"))
-            .map((answer) => answer.status),
-        ),
+      [
+        "ghostty",
+        "0.4.0",
+        ["3c2398d5", "1f23e13d", "ce01cd0d", "5c38594a", "d80a8110", "77b69f9f", "7c43302d", "9a950560"],
+      ],
+      [
+        "ghostty-native",
+        "1.3.1",
+        ["5a8030c0", "8872ab0f", "53f9a867", "e58288d0", "d6e23fe6", "61fb182e", "17d155fe", "ac12d640"],
+      ],
+      ["vt100-rust", "0.16.2", ["84a5b6a3", "dc3b24de", "09194212", "b9109b59", "f309015f"]],
+    ].flatMap(([id, version, digests]) =>
+      (digests as string[]).map((digest) => [digest, { id: id as string, version: version as string }]),
+    ),
+  )
+
+  /**
+   * The verdict a zero-byte audit cell inherits: the kept answer for THIS artifact's library version, refined by the
+   * original that names the artifact where one does. Never a union across libraries or versions, and never a
+   * `toContain` that both statuses would satisfy (@cto review of the strip, e94cbcac).
+   */
+  const replyPathAnswers = (artifactSha: string, featureId: string) => {
+    const subject = AUDIT_SUBJECTS[artifactSha.slice(0, 8)]
+    if (subject === undefined) throw new Error(`unaudited artifact ${artifactSha.slice(0, 8)}`)
+    const rows = SOURCE_ANSWERS.filter(
+      (row) => row.subject.id === subject.id && row.subject.version === subject.version && row.featureId === featureId,
+    )
+    const kept = rows.flatMap((row) =>
+      row.answers.filter((answer) => answer.originals.some((original) => original.reviewer === "reply-path-audit")),
+    )
+    const named = kept.filter((answer) =>
+      answer.originals.some(
+        (original) => original.reviewer === "reply-path-audit" && original.reason.includes(artifactSha.slice(0, 8)),
       ),
-    ].sort()
+    )
+    return named.length > 0 ? named : kept
+  }
+
+  const replyPathStatus = (artifactSha: string, featureId: string): string => {
+    const statuses = [...new Set(replyPathAnswers(artifactSha, featureId).map((answer) => answer.status))]
+    if (statuses.length !== 1) {
+      throw new Error(
+        `${featureId} at ${artifactSha.slice(0, 8)}: ${statuses.length} kept reply-path statuses ${JSON.stringify(statuses)}`,
+      )
+    }
+    return statuses[0]!
+  }
+
+  /** The route prose that names this artifact; the table no longer carries it. */
+  const replyPathRoute = (artifactSha: string, featureId: string): string => {
+    const reasons = replyPathAnswers(artifactSha, featureId).flatMap((answer) =>
+      answer.originals
+        .filter((original) => original.reviewer === "reply-path-audit")
+        .map((original) => original.reason),
+    )
+    if (reasons.length === 0) throw new Error(`no reply-path route for ${featureId} at ${artifactSha.slice(0, 8)}`)
+    return reasons.join("\n")
+  }
 
   const sourceIdentity = (treeOid: string, cleanTree = true): NonNullable<LibProbeSource["runtimeIdentity"]> => ({
     kind: "js",
@@ -708,7 +759,7 @@ describe("reply-path audit", () => {
       matches: "prefix",
     })
     // The ruled kind is the kept answer's status now, not the table's (@cto e192401e item 1).
-    expect(replyPathVerdicts("extensions.osc99-kitty-notify")).toContain(
+    expect(replyPathStatus(sha!, "extensions.osc99-kitty-notify")).toBe(
       kind === "parser-rejected" ? "unsupported" : "untestable",
     )
   })
@@ -965,7 +1016,7 @@ describe("reply-path audit", () => {
       expect(silent.sent.some((query) => query.startsWith(prefix!))).toBe(true)
       // The ruled parser rejection is table provenance now; the probe reports only what it measured.
       expect(REPLY_PATH_AUDITS.get(sha256!)?.[id!]).toBeDefined()
-      expect(replyPathVerdicts(id!)).toEqual(["unsupported"])
+      expect(replyPathStatus(sha256!, id!)).toBe("unsupported")
       expect(silent.result).toMatchObject({
         criterionBranch: REPLY_PATH_AUDIT_REVIEW,
         tests: [{ id: "review", status: "test-todo" }],
@@ -1028,7 +1079,7 @@ describe("reply-path audit", () => {
     const { result, sent } = run(id, sha256, () => "")
     expect(sent.length).toBeGreaterThan(0)
     // The ruled distinction lives in the kept answers; the probe itself returns one measured gate.
-    expect(replyPathVerdicts(id)).toContain(parserRejected ? "unsupported" : "untestable")
+    expect(replyPathStatus(sha256, id)).toBe(parserRejected ? "unsupported" : "untestable")
     // @cto de41833e condition 1: one measured gate for every audited cell; the kept answer decides support.
     expect(result).toMatchObject({
       criterionBranch: REPLY_PATH_AUDIT_REVIEW,
@@ -1041,7 +1092,7 @@ describe("reply-path audit", () => {
   test.each(wasmReadbackQueries)("WASM readback %s retains its own query and source kind", (id, query, kind) => {
     const digest = "77b69f9f22c4126359be864fcce97afad8f84615053e21d335ba6348a8d3e1d7"
     expect(REPLY_PATH_AUDITS.get(digest)?.[id]).toMatchObject({ query })
-    expect(replyPathVerdicts(id)).toContain(kind === "parser-rejected" ? "unsupported" : "untestable")
+    expect(replyPathStatus(digest, id)).toBe(kind === "parser-rejected" ? "unsupported" : "untestable")
     const { result, sent } = run(id, digest, () => "")
     expect(sent).toContain(query)
     // @cto de41833e condition 1: one measured gate for every audited cell; the kept answer decides support.
@@ -1078,7 +1129,9 @@ describe("reply-path audit", () => {
   ] as const)("native fixed query preserves its source distinction: %s", (id, query, parserRejected) => {
     const { result, sent } = run(id, "17d155feee5df8fa30266b9a354bbe66e39484d08218de5e03dc3bb2f199a0a3", () => "")
     expect(sent).toEqual([query])
-    expect(replyPathVerdicts(id), id).toContain(parserRejected ? "unsupported" : "untestable")
+    expect(replyPathStatus("ac12d6408c2049f1d720e9735d7eb69251d3eed868fc9ced58de98b3543f3e2e", id), id).toBe(
+      parserRejected ? "unsupported" : "untestable",
+    )
     // @cto de41833e condition 1: one measured gate for every audited cell; the kept answer decides support.
     expect(result).toMatchObject({
       criterionBranch: REPLY_PATH_AUDIT_REVIEW,
@@ -1214,7 +1267,9 @@ describe("reply-path audit", () => {
     ["extensions.osc0-icon-title", true],
   ] as const)("current native source contract: %s", (id, parserRejected) => {
     const { result } = run(id, "ac12d6408c2049f1d720e9735d7eb69251d3eed868fc9ced58de98b3543f3e2e", () => "")
-    expect(replyPathVerdicts(id), id).toContain(parserRejected ? "unsupported" : "untestable")
+    expect(replyPathStatus("ac12d6408c2049f1d720e9735d7eb69251d3eed868fc9ced58de98b3543f3e2e", id), id).toBe(
+      parserRejected ? "unsupported" : "untestable",
+    )
     // @cto de41833e condition 1: one measured gate for every audited cell; the kept answer decides support.
     expect(result).toMatchObject({
       criterionBranch: REPLY_PATH_AUDIT_REVIEW,
@@ -1422,7 +1477,11 @@ describe("reply-path audit", () => {
     const ghostty = REPLY_PATH_AUDITS.get("7c43302dde147c6f7959b7bda7045ff375c71288da1af5667ffca2bf95beb2bf")!
     const dcs = Object.entries(ghostty).filter(([, audit]) => audit.query.startsWith("\x1bP"))
     expect(dcs.map(([id]) => id)).toEqual(["device.decrqss", "device.xtgettcap", "device.xtgetxres"])
-    for (const [id] of dcs) expect(replyPathVerdicts(id), id).toContain("untestable")
+    for (const [id] of dcs) {
+      expect(replyPathStatus("7c43302dde147c6f7959b7bda7045ff375c71288da1af5667ffca2bf95beb2bf", id), id).toBe(
+        "untestable",
+      )
+    }
 
     for (const id of [
       "extensions.osc10-fg-color",
@@ -1442,7 +1501,9 @@ describe("reply-path audit", () => {
       "extensions.osc5-special-color",
     ]) {
       expect(ghostty[id], id).toBeDefined()
-      expect(replyPathVerdicts(id), id).toContain("unsupported")
+      expect(replyPathStatus("7c43302dde147c6f7959b7bda7045ff375c71288da1af5667ffca2bf95beb2bf", id), id).toBe(
+        "unsupported",
+      )
     }
   })
 
@@ -1458,7 +1519,7 @@ describe("reply-path audit", () => {
       "extensions.osc5522-clipboard",
     ]) {
       expect(REPLY_PATH_AUDITS.get(rust)?.[id], id).toBeDefined()
-      expect(replyPathVerdicts(id), id).toContain("untestable")
+      expect(replyPathStatus(rust, id), id).toBe("untestable")
       expect(run(id, rust, () => "").result, id).toMatchObject({
         criterionBranch: REPLY_PATH_AUDIT_REVIEW,
         tests: [{ id: "review", status: "test-todo" }],
@@ -1537,8 +1598,8 @@ describe("reply-path audit", () => {
     ]
     const rows = REPLY_PATH_AUDITS.get(sha)
     expect(Object.keys(rows ?? {}).sort()).toEqual([...noReply, ...parserRejected].sort())
-    for (const id of noReply) expect(replyPathVerdicts(id), id).toContain("untestable")
-    for (const id of parserRejected) expect(replyPathVerdicts(id), id).toContain("unsupported")
+    for (const id of noReply) expect(replyPathStatus(sha, id), id).toBe("untestable")
+    for (const id of parserRejected) expect(replyPathStatus(sha, id), id).toBe("unsupported")
     const readRows = ["extensions.osc52-clipboard", "extensions.osc52-read"]
     for (const id of [...noReply, ...parserRejected].filter((id) => !readRows.includes(id))) {
       expect(rows?.[id], id).toBeDefined()
