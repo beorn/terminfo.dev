@@ -21,7 +21,7 @@ For authorized headless work, run the changed probe IDs across the eleven config
 A do-nothing fake never reads Supported; a working fake reads Supported and loses it when only that feature is disabled.
 Read the changed results and retained reasons, obtain one peer review, then deliver through the configured Yrd queue.
 Collection, admission and publication are separate; a Git push or site build is not deployment authority.
-Existing run, custody and END holds remain in force. The live machinery below is transitional until its approved Phase 1 removal, not permission to run it.
+Existing run, custody and END holds remain in force. The live admission machinery below remains until Phase 1 batch 1.4 removes it, not permission to run it.
 
 ## Directory Structure
 
@@ -115,7 +115,7 @@ See the [record and persistence contracts](packages/probe-defs/README.md#collect
 ### Phase 1 transitional release collection: one suite per collection
 
 This is the existing coordinated release-collection procedure, not a requirement to collect unrelated contexts for each probe edit.
-Its suite-consistency and admission constraints remain implemented until their approved removal; existing holds still apply.
+Its suite-consistency and admission constraints remain implemented until Phase 1 batch 1.4 removes them; existing holds still apply.
 
 A merge that touches the collector sources changes the probe suite id, so a run collected before that
 merge cannot be admitted (30286). A collection therefore starts at ONE commit, never at whatever `main`
@@ -290,8 +290,9 @@ Keep native identity, ownership, observer prerequisites, private evidence and ad
 
 A changed probe uses explicit contexts and probe IDs; it does not require unrelated terminal runs.
 Follow the author loop and selected-collection guidance, not the all-context convenience scripts, as the default entry.
-The update scripts and suite-cut/admission procedures are existing Phase 1 transitional machinery, not additional author loops.
-Their implemented constraints remain until separately removed. A build, private draft or Git push does not authorize admission or publication.
+The update scripts remain release-maintenance entry points, not additional author loops.
+The suite-cut/admission machinery remains implemented until Phase 1 batch 1.4 removes it; existing constraints and holds still apply.
+A build, private draft or Git push does not authorize admission or publication.
 
 `bun run build` regenerates `content/analysis.json` from probe data and fails if generation fails.
 Do not commit that file.

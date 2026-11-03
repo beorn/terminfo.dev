@@ -32,6 +32,9 @@ New pending source reviews use the existing Test to-do status. Legacy captures r
 
 The [shared source-answer resolver](src/source-answers.ts) evaluates each original independently. Own-version fallback applies only when the run has no revision fact for a cited repository. A named equal commit is unchanged; a named different commit requires equal path blobs at both revisions. Cross-version carry requires every cited blob of that original to match the measured runtime. Agreeing qualifiers apply; disagreeing qualifiers stay Test to-do. With no qualifier, a positively different blob gives Test to-do, including at the original version; otherwise pending work names its candidate and missing repository revision. The [Node I/O owner](../run-parser/src/source-answers.ts), shared by parser, writer and site, throws for missing checkouts, wrong remotes or incomplete history. Genuine object absence in a complete repository stays pending. Registry integrity and a native wrapper commit do not establish engine blob identity. Static answers remain at their recorded version, labelled `reviewed at <engine version>, not re-verified`; no review date is inferred. The writer discharges only the review test; actual failed criterion tests retain precedence. Non-C1 private reviews retain their existing capture path until its separately approved removal.
 
+The remaining transitional review, admission and END instructions belong to the still-live machinery
+being removed by Phase 1 batch 1.4; existing holds remain until that deletion boundary.
+
 Terminal tiers describe progress: 0 missing, 1 incomplete, 2 broken and 3 done. These are distinct from the former Release 1 query/reply group and from color depth. This terminology defines no thresholds and changes no status computation.
 
 The existing [completeness helper](../../docs/data/release-scope.ts) uses the supplied graded positions:
@@ -177,71 +180,13 @@ it never borrows another binary's citation. Hourly measurement calls the existin
 entry point and reads its `collection.json` through the canonical run parser, without importing review selection.
 App/hosted collection keeps its existing driver, and admission remains separate.
 
-The current libvterm v0.3.3 source audits bind WASM `3d67045b`, adapter blob
-`eb513ccd` and loader blob `1e784be8`. Its OSC52 selection callbacks and native
-reverse-property observation do not add retained history, a title stack or other
-OSC handlers. History and absent-OSC qualification use those exact artifact and
-adapter pins; title-stack absence also retains the previously audited `7ebe1b99`
-binary entry. Historical capture records keep the identities they measured.
-
-The pinned vterm 0.10.1 library arms for OSC 9, 22, 176, 440, 555, 666, 710, 777 and 3008 feed their exact commands and a cell-X
-consumption control. A rendered X retains `source-negative-review`, its actual fed/cell state and a
-negative buffer-state assertion for independent review of the target implementation at sourcebd3d32ae.
+The source-qualified OSC callbacks in [extensions.ts](src/extensions.ts) feed their exact commands
+and a rendered-X consumption control, retaining fed/cell state and applicable buffer-state assertions.
 The control proves parser consumption, not a target effect; target state remains explicitly unexposed.
-The vt100 0.10.1 arms use the same nine commands and control only at their independently audited
-source identity (revision9e99e4d2, package treeb941dae4, vt100 entry path). Its handleOSC switch
-at screen.ts:505-520 has cases0/1/2 only. The OSC9 notification-sink citation is specific to the
-vterm entry; vt100 records its own absent-handler citation. These paths retain a pending source
-review, never an automatic grade or a measured target effect.
-The vt220 0.10.1 arms qualify the same nine commands at revision9e99e4d23cdc606fca258b1863aa2be7ae79eed3, package
-tree4205f893 and the vt220 entry path. Its screen.ts:701-716 handleOSC returns
-without a semicolon and otherwise handles only cases0/1/2. Its OSC9 records the
-generic absent-handler citation, never vterm's notification-sink citation.
-Other identities keep named coverage, and a missing X grants no source-review negative.
-Vterm's OSC 9 specifically names its notification sink and lack of progress subcode/state
-interpretation; it never claims that the OSC 9 handler is absent. The other audited codes
-retain their absent-case source reasons. A decision still requires independent review bound
-to a fresh exact-run capture; these qualifiers do not approve old captures or application arms.
-
-The same helper covers @xterm/headless6.0.0 OSC9/22/176/440/555/666/710/777/3008 at its audited registry integrity and adapter0.10.2.
-It retains the bundle/map and adapter citations plus the executing runtime identity for independent source review.
-The bundle hashes are audit evidence, not fields in the runtime identity; the embedder hook must also be checked at the captured Termless source.
-
-GhosttyNative1.3.1 uses that existing native qualifier for OSC176/440/555/666/710/3008
-at the audited5a8030c0 artifact, Termless2d974173 and exact source/build/lock provenance.
-The first five commands are parser-rejected at core332b2aef; OSC3008 is parsed as
-context_signal, then dropped by the generic stream selected through Terminal.vtStream.
-Its reason preserves that distinction. The exact runtime and rendered-X control retain
-negative buffer-state assertions with pending source review, never an automatic grade.
-A different tuple, missing X, or OSC22/777/9 receives no such assertion from this entry.
-Historical captures stay unchanged; fresh emitted rows need new independent decisions.
-
-Alacritty0.26.0 uses the same native qualifier at the audited32d76284 artifact,
-Termless2d974173 and exact source/build/lock provenance for
-OSC9/17/19/22/117/119/176/440/555/666/710/777/3008.
-The pinned vte0.15.0 dispatcher has no cases for twelve of these codes.
-OSC22 is parsed into set_mouse_cursor_icon, whose empty Handler default is not
-overridden by alacritty_terminal0.26.0 Term; its review reason states that distinction.
-Private per-entry reasons also preserve the existing vterm9 and Ghostty3008 text.
-Nine command callbacks and two paired highlight resets retain pending independent
-buffer-state source review only with the qualified identity and rendered X.
-Direct OSC17/19 queries keep their reply route; OSC8/1/7/1337 remain outside this entry.
-This qualifier does not approve historical captures or grade a target effect.
-
-Wezterm0.1.0-fork.5 uses the same native qualifier at artifact0f56a805,
-Termless2d974173 and exact source/build/lock provenance. Its numeric membership is
-OSC22/176/440/555/633/666/710/720/3008, absent from the pinned parser's osc_entries.
-The private literal133;D selector records the parsed CommandStatus arm that does nothing;
-it never selects133A/B/C/P. OSC9 progress and777 notifications remain outside this entry.
-Seven ordinary callbacks,133D, six633 members and the633 aggregate retain pending
-buffer-state source reviews with rendered X. The aggregate cites whole-opcode absence,
-not member decisions. Only the seven D/633 member declarations change from null to
-buffer_state; other identities retain their existing untyped semantic-review route.
-OSC720 enters this source route only when productViewport is declared absent and no
-scrollViewport control exists. Contradictory declarations and measured viewport paths
-retain their existing checks. The reason names parser absence, screen/history ownership
-and the wrapper's no-op viewport. All sixteen routes require fresh independent decisions;
-none automatically grades a target or changes historical captures or application arms.
+A missing X supplies no source-derived negative, and unqualified identities keep their named coverage.
+The callback-specific source reasons distinguish absent handlers, notification sinks and parsed-but-dropped
+or ignored commands. Their source qualification is not a capability declaration or a measured target effect.
+Retained source answers follow the shared resolver described above, not a new per-capture pin checklist.
 
 The two highlight resets (OSC 17/117 and 19/119) query the initial colour first.
 A real colour reply follows the measured reset criterion. Only an empty initial
@@ -251,9 +196,9 @@ set/reset commands and an X control, retaining the query, reply, runtime and
 control state as buffer-state source evidence. The measured reply route remains
 query-reply evidence; these two lib arms stay temporarily undeclared under #28801
 because a single assertion-type declaration cannot state both routes.
-A rendered X retains a negative assertion
-and pending source review, never automatic Unsupported. A missing X retains no
-negative assertion or review; other identities keep the named prerequisite failure.
+A rendered X retains the source-derived negative assertion, not a measured reset negative.
+A missing X retains no negative assertion or review; other identities keep the named prerequisite failure.
+Retained source answers use the shared resolver described above.
 
 OSC99 capability detection has both library and term query arms. They share the nonce/title
 criterion and never display a notification. Unqualified library capture silence stays inconclusive;
@@ -278,9 +223,10 @@ The optional library capability `productViewport: { available: false, reason }` 
 that the library subject has no product viewport; an absent declaration means undeclared. The
 collector omits the probe source's scroll control for that declaration. Before any phase action or
 OSC720 history I/O, the viewport-hold and OSC720 callbacks retain the declaration and exact reason plus
-`runtimeIdentity` (null when missing), and select `headless-observable-review` with named scroll-control
-coverage. They create no measurements or assertions and stay Test to-do until independent per-engine source review
-decides Untestable with the same reason. Missing runtime identity bars that source-based decision.
+`runtimeIdentity` (null when missing). The missing-observable branch selects `headless-observable-review`
+with named scroll-control coverage, not a measured scroll result. OSC720 first checks its callback-specific
+source-absence qualification when the viewport is declared absent and no scroll control exists;
+that route retains its own source evidence. Retained source answers use the shared resolver described above.
 A declaration of absence paired with a present scroll control is an inconclusive apparatus
 contradiction, with no review row. An undeclared missing scroll control keeps ordinary named coverage.
 Scripted callback tests cover these branches and the exact two-phase arithmetic independently of
@@ -498,26 +444,24 @@ is exposed and the initial OSC 13 or 14 pointer-color query answers nothing, OSC
 default-color state on `source-negative-review` without inventing pointer slots
 or executing reset writes. Other color features are unchanged.
 
-Cell `dim`, `italic`, `strikethrough` and `blink` readbacks are required `boolean | null`: null means the producer does not report that attribute, never a terminal-support claim. On a rendered X cell, their SGR probes retain the null or false state through `source-negative-review`, with a required review and a buffer-state assertion. A source-bound decision distinguishes an engine gap (Unsupported at that pin) from a binding gap: Test to-do, named, until repaired and recaptured. Positive booleans retain their supported observation path. A missing X retains an inconclusive result without a deciding assertion. A rowless, unnamed inconclusive result keeps the writer default Test failure (callback defect); only an explicit named test or review row classifies its cause. It is not reclassified as missing-observable coverage. Stored captures remain unchanged.
+Cell `dim`, `italic`, `strikethrough` and `blink` readbacks are required `boolean | null`: null means the producer does not report that attribute, never a terminal-support claim. On a rendered X cell, their SGR probes retain the null or false state through `source-negative-review`, with a required review and a buffer-state assertion. An engine implementation gap and a binding gap are distinct; retained source answers use the shared resolver described above, without turning an unreported value into a measured negative. Positive booleans retain their supported observation path. A missing X retains an inconclusive result without a deciding assertion. A rowless, unnamed inconclusive result keeps the writer default Test failure (callback defect); only an explicit named test or review row classifies its cause. It is not reclassified as missing-observable coverage. Stored captures remain unchanged.
 
 The OSC 8 library criterion requires exact per-cell URI metadata, including unlinked controls.
 An absent `hyperlinks` observer with valid fixture text retains named coverage (Test to-do) and raw cell/link state,
 identifying the loaded adapter path and Termless revision when measured runtime identity is available.
-For the audited vt100/vt220 0.10.1 source tuples, libvterm 0.3.3 WASM tuple and vt100-rust 0.16.2
-native tuple in `ABSENT_OSC_ENGINES`, the same ALINKZ fixture instead retains `source-negative-review`
-and a negative buffer-state assertion. Qualification binds the source path, revision and clean package
-tree, or the native build provenance; WASM/native tuples also bind the loaded artifact digest.
-This is a pending independent source review, not an automatic Unsupported result. A different runtime
-or broken text fixture cannot acquire that source assertion. Existing captures need a fresh run and
-new exact-run decisions; this source change does not annotate retained captures.
+The callback-specific audited identities in [extensions.ts](src/extensions.ts) instead retain
+`source-negative-review` and a negative buffer-state assertion for the same valid ALINKZ fixture.
+Qualification binds source identity and applicable loaded-artifact evidence, not a capability version.
+An unqualified runtime or broken text fixture cannot acquire that source assertion. Retained source answers
+use the shared resolver described above; they do not create new measurements in stored captures.
 Declared getters returning null report unlinked cells, so URI mismatches remain measured negatives; invalid declared getters still throw.
 
 The declaration-only library checks (Kitty animation and Unicode placeholders, Sixel,
 semantic prompts, OSC 633 and iTerm2 images), OSC 7 and notifications without their metadata readers, an unaudited absent OSC 8 URI observer,
-the DECSCLM/2031 missing timing or host-event facilities, and the four rendering-limit checks
-(font ligatures, DECSSCLS, reverse video and synchronized output) retain their existing coverage and raw
+and checks lacking timing, host-event or rendering facilities retain their existing coverage and raw
 state on `headless-observable-review`. Each carries a required review naming its missing observable.
-That branch and `reply-path-audit-review` admit only an independently bound Untestable decision;
+Measured mode state is separate from unmeasured presentation, including scroll cadence, inverted frames
+and tearing. Retained source answers use the shared resolver described above;
 source review establishes no rendered effect or measured negative. App callbacks and real-observable
 paths keep their criteria. Existing captures acquire no new branch or review.
 
@@ -553,12 +497,10 @@ a delivery declaration never declares feature support. Sealed historical runs re
 
 Conclusive library observations need nonempty raw evidence and matching positive/negative assertions. A direct buffer-state assertion must match the retained response; invalid claims become collector errors.
 
-The `semantic-prompt-source-review` library branch is the approved source-only exception for OSC 133/633 marks.
-An independently reviewed typed `CaptureDecision` names the parser arm and written or rejected mark state;
-its immutable capture binding includes the loaded runtime and its own run identity. The canonical writer and
-reader retain that decision as proof without inventing an observation, assertion type or assertion.
-Missing runtime identity or a source-review row remains an error; ordinary observation reviews keep their
-expected-versus-observed requirement. This exception does not admit terminal-app source reviews.
+The `semantic-prompt-source-review` library branch for OSC 133/633 marks does not invent mark observations
+or assertions. [Its callback](src/extensions.ts) distinguishes declared metadata with no reader from the
+source-review fallback. Retained source answers follow the shared resolver described above; this library
+source-only route does not establish terminal-app support or replace ordinary expected-versus-observed checks.
 
 **Native evidence** comes through [probes/unified.ts](../terminfo.dev/src/probes/unified.ts). It retains writes, queries, ordered events and available capture/clipboard records separately from callback responses.
 
@@ -798,38 +740,19 @@ readback is named Test to-do; wrong controls and wrapping are named Test failure
 ASCII control is also a fixture failure. Unknown transport kinds throw with the probe and kind
 named. `/query` retains the same result in its `width` field. JSON preserves the cause fields.
 
-The vt100/vt220 mode-family source review never infers mode absence from rejected DECRQM.
-At revisionbd3d32ae, exact clean source/entry/package trees and audited adapter blobs qualify
-the six absent private modes2004/1004/1003/1006/1000/1005, plus1007/2026/2031 and the SGR/color
-stack commands. Each engine cites its own complete dispatcher and absent command case.
-Its own set/reset or stack pair runs between rendered X marks: consumed commands and leaked
-text retain different reasons, line and cursor state. This uses existing buffer-state
-`source-negative-review` with a negative assertion, inconclusive observation and review Test to-do;
-it does not create a decision or automatically grade Unsupported. Missing X, moved line or
-unqualified source remains named Test to-do. Actual DECRPM replies retain their original result.
-Stored mode1 on both engines, and5/66 on vt100, remain held instrumentation Test to-do. The private
-mixed-observable arms use the existing undeclared assertion type so query replies and reviewed
-buffer state both survive actual collection. Other engines and terminal callbacks retain their behavior.
+The mode-family source wrapper in [helpers.ts](src/helpers.ts) never infers mode absence from rejected
+DECRQM. Qualified set/reset or stack commands run between rendered-X controls; consumed commands and
+leaked text retain different reasons, line and cursor state. Missing X, moved lines and unqualified source
+remain named Test to-do; actual DECRPM replies retain their result. Held instrumentation and mixed query-reply /
+buffer-state declaration limits remain callback-specific, not claims about every engine.
 
-The same audit wraps the six library mouse-input rows for vt100/vt220: pixel, urxvt, X10,
-button-event, click and wheel. Their own absent mode commands run between the same rendered X
-controls. This is source-reviewed buffer state, not measured mouse-event bytes: it retains
-Test to-do pending source review, never automatic Unsupported. Other engines retain
-their existing input callback and terminal input criteria stay unchanged.
+The library mouse source wrappers in [input.ts](src/input.ts) likewise retain command/control state,
+not measured mouse-event bytes. In [extensions.ts](src/extensions.ts), a silent highlight query plus
+rendered X is not a measured reset negative. A qualified source route for a missing OSC1 icon observer
+retains the actual stimulus and before/after title state; title behavior alone is not icon support.
+Other missing observers keep their existing coverage result.
 
-The exact-runtime source audit also covers highlight set/reset absence for vt100, vt220, libvterm and
-vt100-rust. A silent query plus rendered X retains independent source review for OSC117/119; it
-does not establish a measured reset negative. A missing OSC1 icon getter retains source review only
-for pinned vt100, vt220, Alacritty and Ghostty WASM/native engines whose own dispatch discards the
-icon name. Other missing icon observers retain their existing coverage result. The review keeps
-the actual OSC1 stimulus and before/after title state; title behavior alone is not icon support.
-
-The four Vterm library input criteria (modify-other-keys, modify-other-keys-3,
-xtest-key and kitty-click-events) qualify source negatives only at the exact clean
-SOURCE_TREE_AUDITS.vterm identity. They retain raw state and a required
-source-negative-review Test to-do, without a deciding observation or assertion:
-a source audit performs no input event. No source decision or Unsupported grade is written. A changed tree at the same
-source identity retains the shared source-identity drift failure. Foreign or
-dirty identities retain their existing Test to-do. Kitty keeps its Vterm candidate
-boundary so unqualified Vterm builds cannot fall into the mouse-report path;
-other engines keep their existing callbacks. Terminal criteria are unchanged.
+The Vterm input source wrapper retains raw state and its required source-review row, without a deciding
+input observation or assertion: the callback performs no input event and supplies no measured input negative.
+Source-identity drift failures, unqualified-identity results and the Kitty candidate boundary remain in the
+existing callback. Retained answers use the shared resolver described above; terminal criteria are unchanged.
