@@ -11,6 +11,7 @@ import { join } from "node:path"
 import { textProbes } from "./text.ts"
 import {
   contractGaps,
+  inertLibProbeSource,
   libProbeSource,
   missingContractTests,
   regradeCommand,
@@ -129,3 +130,74 @@ test("a backspace that does not move reads unsupported", async () => {
   })
   expect(graded.after, "text.backspace detects an inert BS").toBe("unsupported")
 })
+
+/**
+ * Per-probe two-sided controls across all 20 Text rows (#32227):
+ * each row has a distinct named mutation on `createSemanticSurface()` that suppresses its target
+ * text behavior while preserving its setup/control witness, proving the probe grades `supported` on
+ * `createSemanticSurface()`, `unsupported` when its mutation is active, and never `supported` on
+ * `inertLibProbeSource()`.
+ */
+const TEXT_SEMANTIC_SURFACE_CONTROLS: ReadonlyArray<readonly [id: string, mutation: string]> = [
+  ["text.basic", "basic-text-noop"],
+  ["text.newline", "lf-noop"],
+  ["text.wrap", "wrap-noop"],
+  ["text.tab", "ht-noop"],
+  ["text.wide.emoji", "wide-emoji-noop"],
+  ["text.wide.cjk", "wide-cjk-noop"],
+  ["text.overwrite", "overwrite-noop"],
+  ["text.cr", "cr-noop"],
+  ["text.backspace", "bs-noop"],
+  ["text.index", "ind-noop"],
+  ["text.next-line", "nel-noop"],
+  ["text.reverse-index-scroll", "ri-noop"],
+  ["text.combining", "combining-noop"],
+  ["text.hts", "hts-noop"],
+  ["text.tbc", "tbc-noop"],
+  ["text.cht", "cht-noop"],
+  ["text.cbt", "cbt-noop"],
+  ["text.wide.emoji-flags", "emoji-flags-noop"],
+  ["text.wide.emoji-vs16", "emoji-vs16-noop"],
+  ["text.wide.emoji-zwj", "emoji-zwj-noop"],
+]
+
+test("TEXT_SEMANTIC_SURFACE_CONTROLS covers all 20 Text contract rows with distinct mutations", () => {
+  expect(TEXT_SEMANTIC_SURFACE_CONTROLS).toHaveLength(20)
+  expect(TEXT_SEMANTIC_SURFACE_CONTROLS.map(([id]) => id).sort()).toEqual(TEXT_CONTRACT.map((row) => row.id).sort())
+  expect(new Set(TEXT_SEMANTIC_SURFACE_CONTROLS.map(([, mutation]) => mutation)).size).toBe(20)
+})
+
+test.each(TEXT_SEMANTIC_SURFACE_CONTROLS)(
+  "%s never reads supported on inertLibProbeSource, reads supported on createSemanticSurface, and reads unsupported when %s is active",
+  async (id, mutation) => {
+    const row = TEXT_CONTRACT.find((entry) => entry.id === id)
+    const probe = textProbes.find((entry) => entry.id === id)
+    expect(row, `the Text contract names ${id}`).toBeDefined()
+    expect(probe, `the Text contract names a real ${id} probe`).toBeDefined()
+    if (!row || !probe || !probe.lib) return
+
+    const inertResult = probe.lib(inertLibProbeSource())
+    expect(inertResult.pass).toBe(false)
+    expect(inertResult.observation?.outcome).not.toBe("supported")
+    const inertGraded = await regradeRow(probe, row, { headless: inertLibProbeSource() })
+    expect(inertGraded.after).not.toBe("supported")
+
+    const positiveResult = probe.lib(libProbeSource(createSemanticSurface()))
+    expect(positiveResult.pass).toBe(true)
+    expect(positiveResult.observation?.outcome).toBe("supported")
+    expect(positiveResult.assertions ?? []).toContainEqual(expect.objectContaining({ kind: "positive" }))
+    const positiveGraded = await regradeRow(probe, row, { headless: libProbeSource(createSemanticSurface()) })
+    expect(positiveGraded.after).toBe("supported")
+    expect(positiveGraded.satisfies).toBe(true)
+
+    const negativeResult = probe.lib(libProbeSource(createSemanticSurface({ mutations: [mutation] })))
+    expect(negativeResult.pass).toBe(false)
+    expect(negativeResult.observation?.outcome).toBe("unsupported")
+    expect(negativeResult.assertions ?? []).toContainEqual(expect.objectContaining({ kind: "negative" }))
+    const negativeGraded = await regradeRow(probe, row, {
+      headless: libProbeSource(createSemanticSurface({ mutations: [mutation] })),
+    })
+    expect(negativeGraded.after).toBe("unsupported")
+    expect(negativeGraded.satisfies).toBe(true)
+  },
+)
