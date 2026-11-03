@@ -615,7 +615,8 @@ function xtColorStackHeadless(ctx: LibProbeSource, operation: "push" | "pop"): P
       return ctx.getCell(0, 0)
     }
     const calibration = { blue: calibrate(BLUE), green: calibrate(GREEN), magenta: calibrate(MAGENTA) }
-    const reads = (cell: StackCell, rgb: typeof COLOR_STACK_BLUE) => cell.char === "A" && !!cell.fg && sameRgb(cell.fg, rgb)
+    const reads = (cell: StackCell, rgb: typeof COLOR_STACK_BLUE) =>
+      cell.char === "A" && !!cell.fg && sameRgb(cell.fg, rgb)
     if (
       !reads(calibration.blue, COLOR_STACK_BLUE) ||
       !reads(calibration.green, COLOR_STACK_GREEN) ||
