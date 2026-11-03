@@ -2288,9 +2288,19 @@ test.each([
     }
     const wasmIdentity = absentOscBatch.find((row) => row.engine === "ghostty")!.identity
     if (!("loadedBinary" in wasmIdentity)) throw new Error("Ghostty fixture must declare its loaded WASM binary")
+    // The declared artifact store retains this native build with the current JS adapter.
+    // Neither the historical build/adapter profile nor the newer build's profile covers it.
+    const capturedNativeIdentity: HeadlessRuntimeIdentity = {
+      ...nativeIdentity,
+      provenance: {
+        ...nativeIdentity.provenance,
+        buildHash: "2d5e53cf4f0846e47cda8a45c513f44da5c699657edffe93886e6eba99f36bfd",
+      },
+    }
     for (const [identity, sourcePin] of [
       [wasmIdentity, "5714ed07"],
       [nativeIdentity, "332b2aef"],
+      [capturedNativeIdentity, "332b2aef"],
     ] as const) {
       const result = definition.lib!({
         runtimeIdentity: identity,
@@ -2307,7 +2317,17 @@ test.each([
         { ...identity, loadedBinary: { ...identity.loadedBinary, sha256: "0".repeat(64) } },
         { ...identity, adapterSources: identity.adapterSources!.map((row) => ({ ...row, blobOid: "0".repeat(40) })) },
         ...(identity.kind === "native"
-          ? [{ ...identity, provenance: { ...identity.provenance, buildHash: "0".repeat(64) } }]
+          ? [
+              { ...identity, provenance: { ...identity.provenance, buildHash: "0".repeat(64) } },
+              {
+                ...identity,
+                adapterSources: identity.adapterSources!.map((row) =>
+                  row.path.endsWith("backend.ts")
+                    ? { ...row, blobOid: "427b9d4782a9924135ff0c32e2406b117df9cf22" }
+                    : row,
+                ),
+              },
+            ]
           : []),
       ]) {
         const rejected = definition.lib!({
@@ -2327,7 +2347,7 @@ test.each([
       }
     }
     // A measured colour wins over the static absence audit, including a genuine reset negative.
-    for (const identity of [xtermOscIdentity, wasmIdentity, nativeIdentity]) {
+    for (const identity of [xtermOscIdentity, wasmIdentity, nativeIdentity, capturedNativeIdentity]) {
       for (const ignoresReset of [false, true]) {
         const fixture = highlightTerminal(setCode, resetCode, "1111/2222/3333", ignoresReset)
         const result = definition.lib!({ ...fixture.lib, runtimeIdentity: identity })

@@ -76,6 +76,10 @@ export const ADAPTER_SOURCE_AUDITS = {
     "packages/ghostty-native/src/index.ts": "35c9e35a5d60625ce1135b65ff38ae9278495a18",
     "packages/ghostty-native/src/backend.ts": "f403717f7c063d799c5de994b3ccc095edbcacd1",
   },
+  ghosttyNative2d5e53cf: {
+    "packages/ghostty-native/src/index.ts": "35c9e35a5d60625ce1135b65ff38ae9278495a18",
+    "packages/ghostty-native/src/backend.ts": "f403717f7c063d799c5de994b3ccc095edbcacd1",
+  },
   alacritty: {
     "packages/alacritty/src/index.ts": "b4154cbd6ef4a83ce2cbf3dcf26ff13d645efd05",
     // Cell.hidden readback (termless 2f73fc28, #31901) changes backend and native blobs; index and loader are unchanged.

@@ -1425,6 +1425,18 @@ const ABSENT_OSC_ENGINES = {
     sourceCitation:
       "libghostty-vt332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28 Terminal.zig:69,132-145 owns background, foreground, cursor and palette only, no highlight colour state. lib_vt.zig:60-63 exports generic Stream plus only the stock Readonly handler; Terminal.zig:260-270 returns ReadonlyStream; stream_readonly.zig:290-361 ignores highlight set/reset/query. include/ghostty/vt.h:29-36,75-82 exposes no terminal handler/state C API. Termless25089207e11420cf7a588987c1dc2683a45e8372 packages/ghostty-native/native/src/main.zig:31-78 delegates colour operations to that handler and :141 uses initAlloc; backend.ts:257-270 forwards actual replies. The loaded native53f9a867 receipt binds buildHash0effe403 and lock3ec77550; this describes the shipped headless library, not the Ghostty app",
   },
+  ghosttyNative2d5e53cf: {
+    kind: "native",
+    engineVersion: "1.3.1",
+    adapterVersion: "0.10.2",
+    binarySha256: "53f9a867cce594b4d50fb9508db9ce5d2d79fb4244a418548b7cb31fa50780d1",
+    sourceCommit: "332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28",
+    buildHash: "2d5e53cf4f0846e47cda8a45c513f44da5c699657edffe93886e6eba99f36bfd",
+    lockSha256: "3ec775507556db01d08055836b26183f629a9cbb0b5802a1566661e95988d74a",
+    codes: [17, 19, 117, 119],
+    sourceCitation:
+      "libghostty-vt332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28 Terminal.zig:132-145 stores foreground/background/cursor/palette only; stream_readonly.zig:290-361 ignores highlight set/reset/query. Termless25089207e11420cf7a588987c1dc2683a45e8372 packages/ghostty-native/native/src/main.zig:31-78 delegates color operations to ReadonlyHandler and :141 uses initAlloc; backend.ts:257-270 forwards actual replies. The loaded native53f9a867 receipt binds buildHash2d5e53cf, lock3ec77550 and nativeTree77721d68; captured current adapter blobs are index35c9e35a/backendf403717f. This is the shipped headless library, not the Ghostty app",
+  },
   alacritty: {
     kind: "native",
     engineVersion: "0.26.0",
