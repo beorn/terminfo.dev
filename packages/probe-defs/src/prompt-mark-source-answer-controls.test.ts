@@ -55,6 +55,61 @@ const cited: SourceAnswer = {
 }
 const input: SourceAnswerInput = { subject: measured, featureId, sourceRevision, runtimeIdentity }
 
+// The shipped 0.4.0 WASM rejects OSC 633 in its pinned parser. The previous controls
+// cover vt100/vt220 only; they cannot detect missing Ghostty build-bound decisions.
+const ghosttyInput: SourceAnswerInput = {
+  subject: { kind: "lib", id: "ghostty", version: "0.4.0", os: "linux" },
+  featureId: "extensions.osc633-a",
+  sourceRevision: "c65d5abdb6ee7e13ea14eddca0523f75266d63df",
+  runtimeIdentity: {
+    kind: "js",
+    adapterVersion: "0.10.2",
+    engineVersion: "0.4.0",
+    termlessRevision: "25089207e11420cf7a588987c1dc2683a45e8372",
+    resolvedPath: "vendor/ghostty-web/dist/ghostty-web.js",
+    runtimeFormat: "wasm",
+    loadedBinary: {
+      path: "vendor/ghostty-web/ghostty-vt.wasm",
+      sha256: "42e84af1b38be94571974a23fa4667c4735ee7a272dcff39afd5cba40dcf48de",
+    },
+    integrity: {
+      kind: "source",
+      repository: "git@github.com:beorn/termless.git",
+      revision: "25089207e11420cf7a588987c1dc2683a45e8372",
+      treeOid: "ad3571a518e9e672e102eb83becc2caa03b9ffc3",
+      cleanTree: true,
+    },
+  },
+}
+it.each(["a", "b", "c", "d", "e", "p"])("decides Ghostty OSC 633;%s from the shipped build", (suffix) => {
+  const featureId = `extensions.osc633-${suffix}`
+  const resolution = resolveSourceAnswer(SOURCE_ANSWERS, { ...ghosttyInput, featureId })
+  expect(resolution).toMatchObject({ kind: "answer", status: "unsupported" })
+  expect(finalizeProbeResult({ featureId, attempt: { scope: "none" }, tests: [reviewTest] }, resolution).status).toBe(
+    "unsupported",
+  )
+})
+
+it("leaves a Ghostty prompt answer pending when its shipped WASM changes", () => {
+  const resolution = resolveSourceAnswer(SOURCE_ANSWERS, {
+    ...ghosttyInput,
+    blobs: [
+      {
+        repository: "git@github.com:beorn/termless.git",
+        path: "vendor/ghostty-web/ghostty-vt.wasm",
+        oid: "0".repeat(40),
+      },
+    ],
+  })
+  expect(resolution).toMatchObject({ kind: "pending" })
+  expect(
+    finalizeProbeResult(
+      { featureId: ghosttyInput.featureId, attempt: { scope: "none" }, tests: [reviewTest] },
+      resolution,
+    ).status,
+  ).toBe("test-todo")
+})
+
 // The live store must carry the citation at the measured version; the 0.10.0 row stays as history
 // and is superseded rather than rewritten.
 it("cites the engine file in the live vt100 mark answer at the measured version", () => {
