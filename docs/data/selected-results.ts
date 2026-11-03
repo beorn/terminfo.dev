@@ -32,11 +32,9 @@ import {
   validateCorrectedObservation,
 } from "../../packages/run-parser/src/observations.ts"
 import {
-  assessRunAdmission,
   loadStoredRuns,
   RETAINED_ARTIFACT_KINDS,
   verifyRetainedArtifact,
-  type IdentityAdmission,
   type RetainedArtifactKind,
 } from "../../packages/admin/run-admission.ts"
 import {
@@ -93,8 +91,6 @@ export interface SelectedCell extends ReadObservation {
   }
 }
 
-export type { IdentityAdmission } from "../../packages/admin/run-admission.ts"
-
 export interface SelectedVersion {
   schemaVersion: 1 | 2
   runId: string
@@ -110,7 +106,6 @@ export interface SelectedVersion {
   sha256: string
   /** The identity the run recorded for itself. Only its trace document publishes it. */
   identity: LoadedRun["identity"]
-  identityAdmission?: IdentityAdmission
   /** Immutable run-owned witnesses; no derived assessment is stored here. */
   textQualification?: TextQualification
   cells: Record<string, SelectedCell>
@@ -182,7 +177,6 @@ export interface CurrentSelectedVersion {
       acceptedSha256: string
     }
   >
-  identityAdmission?: IdentityAdmission
   suiteRelation: SuiteRelation
   suiteFreshness: string
   counts: Record<ProbeStatus, number>
@@ -624,7 +618,6 @@ export function projectResults(
     const states = Object.fromEntries(results.map((result) => [result.featureId, result.status]))
     table[run.runId] = states
     const suiteRelation: SuiteRelation = run.probeHash === policy.currentProbeHash ? "tree" : "older"
-    const assessment = assessRunAdmission(run, active, { mode: "historical" })
     const presentations: CurrentSelectedVersion["presentations"] = {}
     for (const entry of active) {
       if (!hasPresentationDecision(entry) || entry.runId !== run.runId) continue
@@ -671,7 +664,6 @@ export function projectResults(
       presentations,
       ...(run.textQualification && { textQualification: globalThis.structuredClone(run.textQualification) }),
       suiteFreshness: `${suiteRelation} suite ${run.probeHash}`,
-      ...(assessment.identityAdmission && { identityAdmission: assessment.identityAdmission }),
       counts,
       // D132 B (#30917): numerator and denominator come from the ONE fold, so both cover the same
       // graded ids (264 for a current 273-row run). Never recompute either from the raw catalogue.
@@ -681,10 +673,6 @@ export function projectResults(
     const stem = `${run.subject.kind}:${run.subject.id}`
     const key = projectedContextKey(run.subject, contexts.get(stem)?.size ?? 0)
     ;(projection.history[key] ??= []).push(version)
-    if (!assessment.accepted) {
-      projection.exclusions.push({ runId: run.runId, path: run.path, reason: assessment.reason })
-      continue
-    }
     acceptedRuns.push(run)
     ;(projection.versions[key] ??= []).push(version)
   }
