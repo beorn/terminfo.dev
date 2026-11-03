@@ -498,8 +498,8 @@ it.each([
   "records $id/$outcome with $evidence visual evidence as $expected",
   async ({ id, outcome, evidence, expected }) => {
     verifiedBatchFixture()
-    const definitions = ["device.primary-da", id].map(
-      (featureId) => ALL_PROBES.find((probe) => probe.id === featureId)!,
+    const definitions = ["device.primary-da", id].map((featureId) =>
+      ALL_PROBES.find((probe) => probe.id === featureId)!,
     )
     const originals = definitions.map(({ term, termWrites, termNeedsGeometry }) => ({
       term,
