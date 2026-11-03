@@ -85,8 +85,44 @@ const historyRuntime: WasmRuntime = {
 }
 const sourceIntegrity = historyRuntime.integrity
 if (sourceIntegrity.kind !== "source") throw new Error("History fixture needs source integrity")
-const historyIdentities: [string, LibProbeSource["runtimeIdentity"], boolean | "drift"][] = [
+// Actual 03:34 retained runtime: the current adapter still reports screen extent, not history.
+const currentHistoryRuntime: WasmRuntime = {
+  ...historyRuntime,
+  termlessRevision: "2f73fc28027b7d483e504e08edc64d1837935816",
+  integrity: {
+    ...sourceIntegrity,
+    revision: "2f73fc28027b7d483e504e08edc64d1837935816",
+    treeOid: "000404fd8b8f8f0b1b968bf7398f8afc90958618",
+  },
+  adapterSources: [
+    { path: "packages/libvterm/src/index.ts", blobOid: "2b4708b1081e701b99893ca055ded781dc46cf25" },
+    { path: "packages/libvterm/src/backend.ts", blobOid: "f0431b2b3b1824d3028e7a039d55278d2cddc0e8" },
+    { path: "packages/libvterm/src/wasm-bindings.ts", blobOid: "55ddc684464e525e63cd523d2d6a638c4c6dbcd9" },
+    { path: "packages/libvterm/wasm/libvterm.js", blobOid: "d28bc97333d33129c7c9764a331a3d47f088f7b3" },
+  ],
+  loadedBinary: {
+    ...historyRuntime.loadedBinary,
+    sha256: "712298aff45c7c53a22dc028b13cb58dae1e984199b520bbbc0475ae64d83159",
+  },
+}
+const historyIdentities: [string, LibProbeSource["runtimeIdentity"], boolean | "drift", string?][] = [
   ["qualified", historyRuntime, true],
+  ["current qualified", currentHistoryRuntime, true],
+  [
+    "current wrong WASM",
+    { ...currentHistoryRuntime, loadedBinary: { ...currentHistoryRuntime.loadedBinary, sha256: "f".repeat(64) } },
+    "drift",
+    currentHistoryRuntime.loadedBinary.sha256,
+  ],
+  [
+    "current unknown adapter and wrong WASM",
+    {
+      ...currentHistoryRuntime,
+      adapterSources: currentHistoryRuntime.adapterSources!.map((source) => ({ ...source, blobOid: "f".repeat(40) })),
+      loadedBinary: { ...currentHistoryRuntime.loadedBinary, sha256: "f".repeat(64) },
+    },
+    false,
+  ],
   [
     "same package at another commit",
     {
@@ -154,57 +190,66 @@ const historyIdentities: [string, LibProbeSource["runtimeIdentity"], boolean | "
   ["missing identity", undefined, false],
 ]
 const historyCases = ["erase.screen.scrollback", "scrollback.accumulate", "scrollback.total-lines"].flatMap((id) =>
-  historyIdentities.map(([name, runtimeIdentity, eligible]) => ({ id, name, runtimeIdentity, eligible })),
+  historyIdentities.map(([name, runtimeIdentity, eligible, expectedBinary = historyRuntime.loadedBinary.sha256]) => ({
+    id,
+    name,
+    runtimeIdentity,
+    eligible,
+    expectedBinary,
+  })),
 )
-test.each(historyCases)("history count review qualifies $id: $name", ({ id, runtimeIdentity, eligible }) => {
-  const definition = [...eraseProbes, ...scrollbackProbes].find((entry) => entry.id === id)
-  if (!definition?.lib) throw new Error(`Missing ${id} library callback`)
-  let calls = 0
-  const result = definition.lib(
-    headless({
-      runtimeIdentity,
-      feed: () => {
-        calls++
-      },
-      getScrollback: () => {
-        calls++
-        return { totalLines: 24, screenLines: 24, viewportOffset: 0 }
-      },
-    }),
-  )
-  if (eligible === "drift") {
-    expect(result.tests, id).toEqual([
-      {
-        id: "criterion",
-        status: "test-failure",
-        reason: `binary identity drift: expected ${historyRuntime.loadedBinary.sha256}, read ${"f".repeat(64)}`,
-      },
-    ])
+test.each(historyCases)(
+  "history count review qualifies $id: $name",
+  ({ id, runtimeIdentity, eligible, expectedBinary }) => {
+    const definition = [...eraseProbes, ...scrollbackProbes].find((entry) => entry.id === id)
+    if (!definition?.lib) throw new Error(`Missing ${id} library callback`)
+    let calls = 0
+    const result = definition.lib(
+      headless({
+        runtimeIdentity,
+        feed: () => {
+          calls++
+        },
+        getScrollback: () => {
+          calls++
+          return { totalLines: 24, screenLines: 24, viewportOffset: 0 }
+        },
+      }),
+    )
+    if (eligible === "drift") {
+      expect(result.tests, id).toEqual([
+        {
+          id: "criterion",
+          status: "test-failure",
+          reason: `binary identity drift: expected ${expectedBinary}, read ${"f".repeat(64)}`,
+        },
+      ])
+      expect(result.observation, id).toBeUndefined()
+      expect(result.assertions, id).toBeUndefined()
+      expect(result.notTested, id).toBeUndefined()
+      expect(result.response, id).not.toContain("runtimeIdentity")
+      expect(calls, id).toBe(0)
+      return
+    }
+    if (!eligible) {
+      expect(result.criterionBranch, id).not.toBe("headless-observable-review")
+      expect(calls, id).toBeGreaterThan(0)
+      return
+    }
+    expect(result, id).toMatchObject({
+      criterionBranch: "headless-observable-review",
+      notTested: { noObservable: "retained scrollback history count" },
+      tests: [{ id: "review", status: "test-todo", reason: expect.stringContaining("libvterm") }],
+    })
     expect(result.observation, id).toBeUndefined()
     expect(result.assertions, id).toBeUndefined()
-    expect(result.notTested, id).toBeUndefined()
+    expect(JSON.parse(result.response!), id).toMatchObject({
+      sourceCitation: expect.stringContaining("getScrollback"),
+    })
     expect(result.response, id).not.toContain("runtimeIdentity")
     expect(calls, id).toBe(0)
-    return
-  }
-  if (!eligible) {
-    expect(result.criterionBranch, id).not.toBe("headless-observable-review")
-    expect(calls, id).toBeGreaterThan(0)
-    return
-  }
-  expect(result, id).toMatchObject({
-    criterionBranch: "headless-observable-review",
-    notTested: { noObservable: "retained scrollback history count" },
-    tests: [{ id: "review", status: "test-todo", reason: expect.stringContaining("libvterm") }],
-  })
-  expect(result.observation, id).toBeUndefined()
-  expect(result.assertions, id).toBeUndefined()
-  expect(JSON.parse(result.response!), id).toMatchObject({
-    sourceCitation: expect.stringContaining("getScrollback"),
-  })
-  expect(result.response, id).not.toContain("runtimeIdentity")
-  expect(calls, id).toBe(0)
-})
+  },
+)
 
 // These controls decide whether a viewport reading can grade support. Older scrollback
 // tests cover parser regions/history, but never exercise viewport motion or output anchoring.
