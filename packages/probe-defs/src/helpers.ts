@@ -1,4 +1,5 @@
 import { PROBE_STATUSES } from "./types.ts"
+import { sourceAnswerForRef, type SourceAnswerResolution } from "./source-answers.ts"
 import { createHash } from "node:crypto"
 import type { ProbeTestInput } from "./types.ts"
 import type {
@@ -2154,7 +2155,51 @@ export function initializeRunDraft(input: {
 }
 
 /** Fold only the tests still required by the frozen probe's explicitly selected criterion branch. */
-export function finalizeProbeResult(input: Omit<ProbeResult, "status">): ProbeResult {
+export function finalizeProbeResult(
+  input: Omit<ProbeResult, "status">,
+  sourceAnswer?: SourceAnswerResolution,
+): ProbeResult {
+  if (sourceAnswer && sourceAnswer.kind !== "none" && input.tests.some((test) => test.id === "review")) {
+    const ref = sourceAnswer.rowKeys[0]
+    if (!ref) throw new Error(`Source answer for ${input.featureId} has no row key`)
+    const resolved = sourceAnswer.kind === "answer" ? sourceAnswer.rows[0] : undefined
+    if (sourceAnswer.kind === "answer" && (!resolved || resolved.featureId !== input.featureId)) {
+      throw new Error(`Source answer differs from feature ${input.featureId}`)
+    }
+    const originalReason = sourceAnswer.kind === "answer" ? sourceAnswer.answers[0]?.originals[0]?.reason : undefined
+    const reason =
+      sourceAnswer.kind === "answer"
+        ? originalReason && `${originalReason}${sourceAnswer.label ? `; ${sourceAnswer.label}` : ""}`
+        : `${sourceAnswer.reason}: ${sourceAnswer.rowKeys.join(", ")}`
+    if (!reason) throw new Error(`Source answer for ${input.featureId} has no reason`)
+    const otherFailure = input.tests.some((test) => test.id !== "review" && test.status === "test-failure")
+    input = {
+      ...input,
+      reviewRef: ref,
+      ...(!otherFailure && { reason }),
+      tests: input.tests.map((test) =>
+        test.id !== "review"
+          ? test
+          : {
+              ...test,
+              status:
+                sourceAnswer.kind === "answer"
+                  ? sourceAnswer.status
+                  : sourceAnswer.reason === "cited source not resolvable"
+                    ? test.status
+                    : "test-todo",
+              attempt: sourceAnswer.kind === "answer" ? input.attempt : test.attempt,
+              reviewRef: ref,
+              reason,
+            },
+      ),
+    }
+  }
+  if (!sourceAnswer || sourceAnswer.kind === "none") {
+    for (const ref of [input.reviewRef, ...input.tests.map((test) => test.reviewRef)]) {
+      if (ref !== undefined) sourceAnswerForRef(ref)
+    }
+  }
   const tests = input.tests
   const failed = tests.find((test) => test.status === "test-failure")
   const pending = tests.find((test) => test.status === "test-todo")
