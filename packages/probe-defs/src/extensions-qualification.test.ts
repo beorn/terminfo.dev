@@ -565,12 +565,14 @@ test.each([
   ["extensions.osc555-flash", "\x1b]555\x07", "vterm"],
   ["extensions.osc710-font-normal", "\x1b]710;monospace\x07", "vterm"],
   ["extensions.osc9-progress", "\x1b]9;4;1;50\x07", "vterm"],
+  ["extensions.notifications", "\x1b]9;terminfo-notification-A\x07", "vterm"],
   ["extensions.osc22-pointer", "\x1b]22;pointer\x07", "vterm"],
   ["extensions.osc176-app-id", "\x1b]176;terminfo-test\x07", "vterm"],
   ["extensions.osc666-termprop", "\x1b]666;test-prop=value\x07", "vterm"],
   ["extensions.osc777-notify", "\x1b]777;notify;test;body\x07", "vterm"],
   ["extensions.osc3008-context", "\x1b]3008;type=test\x07", "vterm"],
   ["extensions.osc9-progress", "\x1b]9;4;1;50\x07", "xtermjs", "progress"],
+  ["extensions.notifications", "\x1b]9;terminfo-notification-A\x07", "xtermjs", "notification"],
   ["extensions.osc7-cwd", "\x1b]7;file://localhost/terminfo-cwd-A\x07", "xtermjs", "working-directory"],
   ["extensions.osc22-pointer", "\x1b]22;pointer\x07", "xtermjs", "pointer"],
   ["extensions.osc176-app-id", "\x1b]176;terminfo-test\x07", "xtermjs", "app-id"],
@@ -581,6 +583,7 @@ test.each([
   ["extensions.osc777-notify", "\x1b]777;notify;test;body\x07", "xtermjs", "notification"],
   ["extensions.osc3008-context", "\x1b]3008;type=test\x07", "xtermjs", "systemd context"],
   ["extensions.osc9-progress", "\x1b]9;4;1;50\x07", "vt100"],
+  ["extensions.notifications", "\x1b]9;terminfo-notification-A\x07", "vt100"],
   ["extensions.osc22-pointer", "\x1b]22;pointer\x07", "vt100"],
   ["extensions.osc176-app-id", "\x1b]176;terminfo-test\x07", "vt100"],
   ["extensions.osc440-audio", "\x1b]440;bell.wav\x07", "vt100"],
@@ -590,6 +593,7 @@ test.each([
   ["extensions.osc777-notify", "\x1b]777;notify;test;body\x07", "vt100"],
   ["extensions.osc3008-context", "\x1b]3008;type=test\x07", "vt100"],
   ["extensions.osc9-progress", "\x1b]9;4;1;50\x07", "vt220"],
+  ["extensions.notifications", "\x1b]9;terminfo-notification-A\x07", "vt220"],
   ["extensions.osc22-pointer", "\x1b]22;pointer\x07", "vt220"],
   ["extensions.osc176-app-id", "\x1b]176;terminfo-test\x07", "vt220"],
   ["extensions.osc440-audio", "\x1b]440;bell.wav\x07", "vt220"],
@@ -694,6 +698,13 @@ test.each([
       } as unknown as LibProbeSource
       const result = callback(id).lib!(source)
       expect(result.observation?.outcome).not.toBe("supported")
+      if (id === "extensions.notifications" && engine === "vterm") {
+        expect(result.criterionBranch).toBe("headless-observable-review")
+        expect(result.tests).toMatchObject([{ id: "review", status: "test-todo" }])
+        expect(result.assertions).toBeUndefined()
+        expect(writes).toEqual([])
+        continue
+      }
       if (mode === "pinned" || mode === "foreign" || mode === "changed-source") {
         expect(writes.join("")).toContain(sequence + "X")
         expect(result.criterionBranch).toBe("source-negative-review")
@@ -716,7 +727,7 @@ test.each([
           { kind: "negative", assertionType: "buffer_state", observed: result.response },
         ])
         if (engine === "xtermjs") {
-          const code = /^extensions\.osc(\d+)/.exec(id)![1]
+          const code = id === "extensions.notifications" ? "9" : /^extensions\.osc(\d+)/.exec(id)![1]
           expect(result.response).toBe(
             JSON.stringify({
               fed: `\x1b[1;1H\x1b[2K${sequence}X`,
@@ -751,7 +762,7 @@ test.each([
           expect(result.tests?.[0]?.reason).not.toContain("3921-3923")
           if (id === "extensions.osc9-progress") expect(result.tests?.[0]?.reason).toContain("no case 9")
         }
-      } else if (id === "extensions.osc7-cwd" && mode !== "no-sentinel") {
+      } else if ((id === "extensions.osc7-cwd" || id === "extensions.notifications") && mode !== "no-sentinel") {
         expect(result.criterionBranch).toBe("headless-observable-review")
         expect(result.tests).toMatchObject([{ id: "review", status: "test-todo" }])
         expect(result.assertions).toBeUndefined()
@@ -2148,17 +2159,80 @@ test.each([
         expect(result.assertions).toBeUndefined()
       }
     }
+    const nativeIdentity: HeadlessRuntimeIdentity = {
+      kind: "native",
+      engineVersion: "1.3.1",
+      adapterVersion: "0.10.2",
+      termlessRevision: "25089207e11420cf7a588987c1dc2683a45e8372",
+      loadedBinary: {
+        path: "/fixture/termless-ghostty-native.node",
+        sha256: "53f9a867cce594b4d50fb9508db9ce5d2d79fb4244a418548b7cb31fa50780d1",
+      },
+      provenance: {
+        sha256: "53f9a867cce594b4d50fb9508db9ce5d2d79fb4244a418548b7cb31fa50780d1",
+        sourceCommit: "332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28",
+        buildHash: "0effe4038bf65ba00048b016bc70477d80b6c16302e56e769ef773d46b790768",
+        toolchain: "zig 0.15.2",
+        lockSha256: "3ec775507556db01d08055836b26183f629a9cbb0b5802a1566661e95988d74a",
+      },
+      adapterSources: [
+        { path: "packages/ghostty-native/src/index.ts", blobOid: "35c9e35a5d60625ce1135b65ff38ae9278495a18" },
+        { path: "packages/ghostty-native/src/backend.ts", blobOid: "f403717f7c063d799c5de994b3ccc095edbcacd1" },
+      ],
+    }
+    const wasmIdentity = absentOscBatch.find((row) => row.engine === "ghostty")!.identity
+    if (!("loadedBinary" in wasmIdentity)) throw new Error("Ghostty fixture must declare its loaded WASM binary")
+    for (const [identity, sourcePin] of [
+      [wasmIdentity, "5714ed07"],
+      [nativeIdentity, "332b2aef"],
+    ] as const) {
+      const result = definition.lib!({
+        runtimeIdentity: identity,
+        feedCapture: () => "",
+        feed: () => {},
+        getCell: () => ({ char: "X" }),
+      } as unknown as LibProbeSource)
+      expect(result.criterionBranch).toBe("source-negative-review")
+      expect(result.observation).toMatchObject({ outcome: "inconclusive", assertionType: "buffer_state" })
+      expect(result.tests).toMatchObject([
+        { id: "review", status: "test-todo", reason: expect.stringContaining(sourcePin) },
+      ])
+      for (const wrongIdentity of [
+        { ...identity, loadedBinary: { ...identity.loadedBinary, sha256: "0".repeat(64) } },
+        { ...identity, adapterSources: identity.adapterSources!.map((row) => ({ ...row, blobOid: "0".repeat(40) })) },
+        ...(identity.kind === "native"
+          ? [{ ...identity, provenance: { ...identity.provenance, buildHash: "0".repeat(64) } }]
+          : []),
+      ]) {
+        const rejected = definition.lib!({
+          runtimeIdentity: wrongIdentity,
+          feedCapture: () => "",
+          feed: () => {},
+          getCell: () => ({ char: "X" }),
+        } as unknown as LibProbeSource)
+        expect(rejected.criterionBranch).toBeUndefined()
+        const unknownArtifact = wrongIdentity.loadedBinary?.sha256 === "0".repeat(64)
+        expect(rejected.tests).toMatchObject([
+          { id: "criterion", status: unknownArtifact ? "test-todo" : "test-failure" },
+        ])
+        expect(rejected.tests?.[0]?.reason).toContain(
+          unknownArtifact ? "no source audit for binary" : `OSC ${setCode} initial highlight colour was not read back`,
+        )
+      }
+    }
     // A measured colour wins over the static absence audit, including a genuine reset negative.
-    for (const ignoresReset of [false, true]) {
-      const fixture = highlightTerminal(setCode, resetCode, "1111/2222/3333", ignoresReset)
-      const result = definition.lib!({ ...fixture.lib, runtimeIdentity: xtermOscIdentity })
-      expect(result.criterionBranch).toBeUndefined()
-      expect(result.observation).toMatchObject({
-        outcome: ignoresReset ? "unsupported" : "supported",
-        assertionType: "query_reply",
-      })
-      expect(fixture.queries[0]).toBe(query)
-      expect(fixture.writes.some((bytes) => bytes.includes("\x1b[2K"))).toBe(false)
+    for (const identity of [xtermOscIdentity, wasmIdentity, nativeIdentity]) {
+      for (const ignoresReset of [false, true]) {
+        const fixture = highlightTerminal(setCode, resetCode, "1111/2222/3333", ignoresReset)
+        const result = definition.lib!({ ...fixture.lib, runtimeIdentity: identity })
+        expect(result.criterionBranch).toBeUndefined()
+        expect(result.observation).toMatchObject({
+          outcome: ignoresReset ? "unsupported" : "supported",
+          assertionType: "query_reply",
+        })
+        expect(fixture.queries[0]).toBe(query)
+        expect(fixture.writes.some((bytes) => bytes.includes("\x1b[2K"))).toBe(false)
+      }
     }
   },
 )
