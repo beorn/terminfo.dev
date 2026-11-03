@@ -1598,7 +1598,11 @@ test.each([
         {
           id: "criterion",
           status: mode === "malformed" ? "test-failure" : "test-todo",
-          reason: `OSC ${setCode} initial highlight colour was not read back, so OSC ${resetCode} cannot be compared with it`,
+          // #31398 names the sentinel-bounded silence by its passed DA1 control; the grade is TEST TODO either way.
+          reason:
+            mode === "sentinel"
+              ? `initial highlight colour not observable: OSC ${setCode} no reply (DA1 control passed)`
+              : `OSC ${setCode} initial highlight colour was not read back, so OSC ${resetCode} cannot be compared with it`,
         },
       ])
       if (mode === "sentinel") {
