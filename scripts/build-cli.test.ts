@@ -134,7 +134,8 @@ it("refuses dirty collector sources before building a CLI bundle", () => {
  * the build derives the suite in memory without writing content/suites/<probeHash>.json, emits a
  * live-identity receipt without manifestSha256 or suiteState, and both launchers accept it and
  * verify the bundle's reported suite hash against the receipt.
- * Allow a cold clone/build of the full content tree and launcher subprocesses on a busy CI worker.
+ * Both hosted workflow builds and launcher subprocesses run in this one case.
+ * Allow 60s for the cold composed clone: the actual hosted case exceeded 35s.
  */
 it("stays green on a composed tree and records the live suite identity that the launchers accept", () => {
   const root = mkdtempSync(join(tmpdir(), "terminfo-composed-tree-"))
@@ -246,4 +247,4 @@ it("stays green on a composed tree and records the live suite identity that the 
   } finally {
     rmSync(root, { recursive: true, force: true })
   }
-}, 30_000)
+}, 60_000)
