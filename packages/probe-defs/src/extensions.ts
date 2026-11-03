@@ -1193,7 +1193,7 @@ const ABSENT_OSC_ENGINES = {
     engineVersion: "0.10.1",
     repository: "git@github.com:beorn/vterm.git",
     treeOid: "b941dae48b25ae8825c394750bda5245c9d93dfa",
-    codes: [1, 8, 9, 17, 19, 22, 117, 119, 133, 176, 440, 555, 633, 666, 710, 777, 3008],
+    codes: [1, 8, 9, 17, 19, 22, 52, 117, 119, 133, 176, 440, 555, 633, 666, 710, 777, 3008],
     subcodes: ["133;D"],
     reviewReasons: [{ code: 1, reason: "screen.ts:505-520 case 1 is ignored; no icon-name state is stored" }],
     sourceCitation:
@@ -1205,7 +1205,7 @@ const ABSENT_OSC_ENGINES = {
     engineVersion: "0.10.1",
     repository: "git@github.com:beorn/vterm.git",
     treeOid: "4205f8936ad1848d1029729f3ada888cd61759a8",
-    codes: [1, 8, 9, 17, 19, 22, 117, 119, 133, 176, 440, 555, 633, 666, 710, 777, 3008],
+    codes: [1, 8, 9, 17, 19, 22, 52, 117, 119, 133, 176, 440, 555, 633, 666, 710, 777, 3008],
     subcodes: ["133;D"],
     reviewReasons: [{ code: 1, reason: "screen.ts:701-716 case 1 is ignored; no icon-name state is stored" }],
     sourceCitation:
@@ -2741,6 +2741,11 @@ function textSizingResult(
 const ENGINE_CLIPBOARD_NOTE = "engine copy_to_clipboard callback read via getClipboardState, no reply bytes"
 const OSC52_SOURCE_CONTROL = `\x1b]52;c;${btoa("terminfo-osc52-source-control")}\x07`
 
+function auditedClipboardWriteSource(source: LibProbeSource): boolean {
+  const engine = auditedOscEngine(source.runtimeIdentity, 52)?.[0]
+  return auditedXtermState(source) || engine === "vt100" || engine === "vt220"
+}
+
 function headlessOsc52Write(ctx: LibProbeSource): ProbeCallbackResult {
   if (typeof ctx.getClipboardState !== "function") return headlessOsc52WriteWithoutWitness(ctx)
   const nonce = `terminfo-osc52-${randomUUID()}`
@@ -2833,7 +2838,7 @@ function headlessClipboardRoundtrip(ctx: LibProbeSource): ProbeCallbackResult {
   const writeUnobservable = readNegative && typeof ctx.getClipboardState !== "function"
   const reason =
     "clipboard write unobservable: OSC 52 read is a sentinel negative on this engine and no clipboard-state witness is wired."
-  if (writeUnobservable && auditedXtermState(ctx)) {
+  if (writeUnobservable && auditedClipboardWriteSource(ctx)) {
     return sourceAbsentOsc("OSC 52 clipboard write", 52, OSC52_SOURCE_CONTROL, "clipboard write")(ctx)
   }
   const result: ProbeCallbackResult = writeUnobservable
@@ -4632,14 +4637,22 @@ export const extensionsProbes: ProbeDefinition[] = [
       (ctx) => liveClipboardProbe(ctx, "roundtrip"),
       "query_reply",
     ),
-    libAssertionType: { when: auditedXtermState, then: ["query_reply", "buffer_state"], otherwise: ["query_reply"] },
+    libAssertionType: {
+      when: auditedClipboardWriteSource,
+      then: ["query_reply", "buffer_state"],
+      otherwise: ["query_reply"],
+    },
     libHostRecipes: [{ recipe: "clipboard-load", query: "\x1b]52;c;?\x07", missing: ["clipboard-read-permission"] }],
   },
 
   // OSC 52 write — set clipboard (most terminals support this)
   {
     ...probe("extensions.osc52-write", headlessOsc52Write, (ctx) => liveClipboardProbe(ctx, "write"), "query_reply"),
-    libAssertionType: { when: auditedXtermState, then: ["query_reply", "buffer_state"], otherwise: ["query_reply"] },
+    libAssertionType: {
+      when: auditedClipboardWriteSource,
+      then: ["query_reply", "buffer_state"],
+      otherwise: ["query_reply"],
+    },
     libHostRecipes: [{ recipe: "clipboard-load", query: "\x1b]52;c;?\x07", missing: ["clipboard-read-permission"] }],
   },
 
