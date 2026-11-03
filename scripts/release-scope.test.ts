@@ -14,10 +14,19 @@ import { join } from "node:path"
 import { tmpdir } from "node:os"
 import { describe, expect, it } from "vitest"
 import { loadFeatures, slice, type FeatureCatalog, type Slice } from "@terminfo/catalog"
+import { ENVIRONMENT_GROUP_IDS, type ProbeStatus } from "@terminfo/probe-defs"
 import { parseSuiteManifest } from "@terminfo/run-parser"
 import { loadCategories, orderedCategoryIds } from "../docs/data/categories.ts"
 import { frozenSuiteIdFor, loadReleaseScope } from "../docs/data/load-release-scope.ts"
-import { isStaleRelation, treeMovedPastRelease, staleCaption } from "../docs/data/release-scope.ts"
+import {
+  aggregateCurrentResults,
+  completenessTierOf,
+  isStaleRelation,
+  rankOpenProbes,
+  rollupTerminalStatuses,
+  staleCaption,
+  treeMovedPastRelease,
+} from "../docs/data/release-scope.ts"
 
 const root = join(import.meta.dirname, "..")
 
@@ -329,5 +338,161 @@ describe("release 1 measurement scope", () => {
     }
     const helper = readFileSync(join(root, "docs", "data", "release-scope.ts"), "utf8")
     expect(helper).not.toMatch(/from ["']node:fs["']/)
+  })
+})
+
+describe("Phase 2.4 single status-and-rollup computation (rollupTerminalStatuses + rankOpenProbes)", () => {
+  const allCatalogIds = Object.keys(catalog).sort()
+
+  it("partitions the 273 catalogue into 264 graded positions + 9 environment positions across 13 families", () => {
+    const statuses: Record<string, ProbeStatus> = {}
+    for (const id of allCatalogIds) {
+      statuses[id] = ENVIRONMENT_GROUP_IDS.includes(id as (typeof ENVIRONMENT_GROUP_IDS)[number])
+        ? "test-todo"
+        : id.startsWith("sgr.")
+          ? "supported"
+          : id.startsWith("cursor.")
+            ? "unsupported"
+            : id.startsWith("modes.")
+              ? "untestable"
+              : id === "input.kitty-click-events"
+                ? "test-failure"
+                : "test-todo"
+    }
+    const rollup = rollupTerminalStatuses(statuses, allCatalogIds)
+    expect(rollup.positions).toBe(264)
+    expect(rollup.environmentPositions).toBe(9)
+    expect(Object.keys(rollup.families)).toHaveLength(13)
+    expect(
+      Object.values(rollup.families).reduce((sum, fam) => sum + fam.positions, 0),
+    ).toBe(264)
+    expect(
+      Object.values(rollup.families).reduce((sum, fam) => sum + fam.positions + fam.environmentPositions, 0),
+    ).toBe(273)
+    expect(rollup.families.device?.positions).toBe(19)
+    expect(rollup.families.device?.environmentPositions).toBe(9)
+    expect(
+      Object.values(rollup.families).reduce((sum, fam) => sum + fam.open, 0),
+    ).toBe(rollup.open)
+    expect(
+      Object.values(rollup.families).reduce((sum, fam) => sum + fam.decided, 0),
+    ).toBe(rollup.decided)
+    expect(rollup.decisive).toBe(rollup.counts.supported + rollup.counts.unsupported)
+    expect(rollup.decided).toBe(rollup.decisive + rollup.counts.untestable)
+    expect(rollup.open).toBe(rollup.counts["test-todo"] + rollup.counts["test-failure"])
+    expect(rollup.decided + rollup.open).toBe(264)
+    expect(rollup.completenessTier).toBe(1)
+
+    // A2: no compat aliases on TerminalStatusRollup.
+    expect(Object.keys(rollup).sort()).toEqual([
+      "completenessTier",
+      "counts",
+      "decided",
+      "decisive",
+      "donePct",
+      "environmentPositions",
+      "families",
+      "open",
+      "positions",
+      "supportedPct",
+    ])
+
+    // Strict exclusion of ENVIRONMENT_GROUP_IDS even if synthetic non-todo statuses are supplied on env rows.
+    const syntheticEnv: Record<string, ProbeStatus> = { ...statuses }
+    for (const envId of ENVIRONMENT_GROUP_IDS) {
+      syntheticEnv[envId] = "supported"
+    }
+    const syntheticRollup = rollupTerminalStatuses(syntheticEnv, allCatalogIds)
+    expect(syntheticRollup.counts).toEqual(rollup.counts)
+    expect(syntheticRollup.families.device).toEqual(rollup.families.device)
+
+    // All 4 probeStatus: "partial" features are included in the 264 graded positions.
+    const partialIds = [
+      "scrollback.viewport-hold-output",
+      "extensions.osc52-clipboard",
+      "extensions.osc52-write",
+      "extensions.osc52-read",
+    ]
+    for (const id of partialIds) {
+      expect(ENVIRONMENT_GROUP_IDS).not.toContain(id)
+    }
+
+    // Lossless JSON serialization round-trip (including supportedPct: null when decisive === 0).
+    expect(JSON.parse(JSON.stringify(rollup))).toEqual(rollup)
+    const allTodoStatuses = Object.fromEntries(allCatalogIds.map((id) => [id, "test-todo" as const]))
+    const undecidedRollup = rollupTerminalStatuses(allTodoStatuses, allCatalogIds)
+    expect(undecidedRollup.decisive).toBe(0)
+    expect(undecidedRollup.supportedPct).toBeNull()
+    expect(JSON.parse(JSON.stringify(undecidedRollup))).toEqual(undecidedRollup)
+  })
+
+  it("projects aggregateCurrentResults and completenessTierOf from rollupTerminalStatuses with identical outputs", () => {
+    const results = allCatalogIds.map((featureId, index) => ({
+      featureId,
+      status: (["supported", "unsupported", "untestable", "test-todo", "test-failure"] as const)[index % 5]!,
+    }))
+    const statuses = Object.fromEntries(results.map((r) => [r.featureId, r.status]))
+    const rollup = rollupTerminalStatuses(statuses, allCatalogIds)
+    const aggregate = aggregateCurrentResults(results, allCatalogIds)
+    const tier = completenessTierOf(statuses)
+
+    expect(aggregate.denominator).toBe(rollup.positions)
+    expect(aggregate.counts).toEqual(rollup.counts)
+    expect(aggregate.supported).toBe(rollup.counts.supported)
+    expect(aggregate.complete).toBe(rollup.completenessTier === 3)
+    expect(tier).toEqual({
+      completenessTier: rollup.completenessTier,
+      todo: rollup.counts["test-todo"],
+      failure: rollup.counts["test-failure"],
+      positions: rollup.positions,
+    })
+  })
+
+  it("ranks open probes deterministically by (-totalOpen, -libOpen, -(libFailure + appFailure), featureId) over graded ids only", () => {
+    const subsetIds = ["device.env-term", "sgr.bold", "sgr.faint", "cursor.up", "modes.decckm"]
+    const libCells = {
+      vterm: {
+        "device.env-term": "test-todo",
+        "sgr.bold": "supported",
+        "sgr.faint": "test-todo",
+        "cursor.up": "test-failure",
+        "modes.decckm": "test-todo",
+      },
+      kitty: {
+        "device.env-term": "test-todo",
+        "sgr.bold": "supported",
+        "sgr.faint": "test-todo",
+        "cursor.up": "test-todo",
+        "modes.decckm": "supported",
+      },
+    }
+    const appCells = {
+      "app:kitty": {
+        "device.env-term": "test-todo",
+        "sgr.bold": "supported",
+        "sgr.faint": "supported",
+        "cursor.up": "supported",
+        "modes.decckm": "test-failure",
+      },
+    }
+    const ranked = rankOpenProbes(libCells, subsetIds, appCells)
+    // device.env-term is excluded; 4 graded rows remain.
+    expect(ranked.map((row) => row.featureId)).toEqual([
+      "cursor.up",    // totalOpen=2, libOpen=2, failures=1
+      "sgr.faint",    // totalOpen=2, libOpen=2, failures=0
+      "modes.decckm", // totalOpen=2, libOpen=1, failures=1
+      "sgr.bold",     // totalOpen=0
+    ])
+    expect(ranked[0]).toEqual({
+      featureId: "cursor.up",
+      family: "cursor",
+      libOpen: 2,
+      libFailure: 1,
+      libTodo: 1,
+      appOpen: 0,
+      appFailure: 0,
+      appTodo: 0,
+      totalOpen: 2,
+    })
   })
 })
