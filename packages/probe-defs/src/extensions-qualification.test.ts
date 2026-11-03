@@ -530,10 +530,13 @@ test("extensions.truecolor decides from the DECRQSS SGR report, the same oracle 
     replayTermProbeSource(new Map([[sgrQuery, { sequence: sgrQuery, match: null, reason: "reply", raw }]]))
   const supported = await definition.term!(answering("\x1bP1$r0;38;2;255;128;0m\x1b\\"))
   expect(supported.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
-  // The cell-storage claim is exactly what sgr.fg.truecolor decides, so a report without the
-  // requested direct colour is a measured negative, not a cursor-consumption verdict.
-  const unsupported = await definition.term!(answering("\x1bP1$r0m\x1b\\"))
+  // A reported RGB selector with a different value is an observed negative; an absent selector
+  // without this run proving setup cannot establish a negative.
+  const unsupported = await definition.term!(answering("\x1bP1$r0;38;2;0;0;255m\x1b\\"))
   expect(unsupported.observation).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
+  const unqualified = await definition.term!(answering("\x1bP1$r0m\x1b\\"))
+  expect(unqualified.notTested).toEqual({ reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL })
+  expect(unqualified.observation).toBeUndefined()
   // This callback's legacy consumed response maps to TODO when its owned CPR is unavailable.
   const silent = await definition.term!(replayTermProbeSource(new Map()))
   expect(silent.observation).toBeUndefined()
