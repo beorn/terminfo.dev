@@ -2636,6 +2636,11 @@ test.each(geometryReplies)("$id distinguishes sibling source entries", ({ id, ra
 test.each([
   ["alacritty", auditedArtifacts[0]!, "ansi.rs:1349-1361"],
   ["ghostty", absentOscBatch.find((entry) => entry.engine === "ghostty")!.identity, "stream.zig:2017-2021"],
+  [
+    "ghostty-native",
+    absentOscBatch.find((entry) => entry.engine === "ghostty-native")!.identity,
+    "stream.zig:1982-1984",
+  ],
 ] as const)(
   "%s intrinsic OSC1 discard keeps the original stimulus and state for review",
   (_engine, identity, citation) => {

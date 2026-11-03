@@ -93,6 +93,75 @@
       "version": "0.26.0",
       "os": "linux"
     },
+    "featureId": "extensions.osc1-icon",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "2f73fc28027b7d483e504e08edc64d1837935816",
+            "path": "packages/alacritty/native/Cargo.lock",
+            "oid": "61a0da4773734220406e2077f33f154f31895a29"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "2f73fc28027b7d483e504e08edc64d1837935816",
+            "path": "packages/alacritty/native/Cargo.toml",
+            "oid": "12521c8ea6dcedf6b94f757a8d6672c737c72db7"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "2f73fc28027b7d483e504e08edc64d1837935816",
+            "path": "packages/alacritty/native/src/lib.rs",
+            "oid": "1779ff4f042f7f285ab3d396da039408b492be10"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/alacritty/src/index.ts",
+            "oid": "b4154cbd6ef4a83ce2cbf3dcf26ff13d645efd05"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/alacritty/src/backend.ts",
+            "oid": "27b78b1264cd5d2ed72705ba36c9735b29e874c5"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "src/load-native.ts",
+            "oid": "34e142550085450ab02138184626716ad0d6b546"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev2-2026-11-03-alacritty-0.26.0-extensions.osc1-icon-source-review",
+            "reviewer": "@dev/2",
+            "reason": "Independent source judgment (@dev/2, 2026-11-03, verdict33332a71-29e8-4d32-aacc-2414fbe8dc2e): The captured native SHA2569839e138d9e6f13e84adc3022f67964f0451e2e6416294952e22286412994f61 binds source2f73fc28027b7d483e504e08edc64d1837935816/build343c00e0/lock1f89f257. The unpatched Cargo dependencies are alacritty_terminal0.26.0 archive SHA256bda177466b9524d59f1b12f0dd30b68696788e9992a7e959021c4a0ed96fcf59 and vte0.15.0 archive SHA256a5924018406ce0063cd67f8e008104968b74b563ee1b85dde3ed1f7cb87d3dbd. Reviewed vte src/ansi.rs:1329-1523 has OSC0/2 title arms but no OSC1 arm; unmatched1 only debug-logs and returns. alacritty_terminal src/term/mod.rs stores title/title_stack but no icon state. The reviewer-local d280/source5af artifact is distinct; the actual captured9839 artifact/receipt were rehashed and match. The same locked unpatched dispatcher judgment applies to the captured target. Unsupported follows the actual absent writer/state, not a missing reader or unchanged title; each measured run still requires its own negative assertion.",
+            "sources": [
+              "Source packet /hh/var/@dev2/5257c0b4-osc1-icon-20261103.md, verdict33332a71-29e8-4d32-aacc-2414fbe8dc2e, 2026-11-03",
+              "The captured native SHA2569839e138d9e6f13e84adc3022f67964f0451e2e6416294952e22286412994f61 binds source2f73fc28027b7d483e504e08edc64d1837935816/build343c00e0/lock1f89f257. The unpatched Cargo dependencies are alacritty_terminal0.26.0 archive SHA256bda177466b9524d59f1b12f0dd30b68696788e9992a7e959021c4a0ed96fcf59 and vte0.15.0 archive SHA256a5924018406ce0063cd67f8e008104968b74b563ee1b85dde3ed1f7cb87d3dbd. Reviewed vte src/ansi.rs:1329-1523 has OSC0/2 title arms but no OSC1 arm; unmatched1 only debug-logs and returns. alacritty_terminal src/term/mod.rs stores title/title_stack but no icon state. The reviewer-local d280/source5af artifact is distinct; the actual captured9839 artifact/receipt were rehashed and match. The same locked unpatched dispatcher judgment applies to the captured target.",
+              "git@github.com:beorn/termless.git@2f73fc28027b7d483e504e08edc64d1837935816:packages/alacritty/native/Cargo.lock blob 61a0da4773734220406e2077f33f154f31895a29",
+              "git@github.com:beorn/termless.git@2f73fc28027b7d483e504e08edc64d1837935816:packages/alacritty/native/Cargo.toml blob 12521c8ea6dcedf6b94f757a8d6672c737c72db7",
+              "git@github.com:beorn/termless.git@2f73fc28027b7d483e504e08edc64d1837935816:packages/alacritty/native/src/lib.rs blob 1779ff4f042f7f285ab3d396da039408b492be10",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/alacritty/src/index.ts blob b4154cbd6ef4a83ce2cbf3dcf26ff13d645efd05",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/alacritty/src/backend.ts blob 27b78b1264cd5d2ed72705ba36c9735b29e874c5",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:src/load-native.ts blob 34e142550085450ab02138184626716ad0d6b546"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "alacritty",
+      "version": "0.26.0",
+      "os": "linux"
+    },
     "featureId": "extensions.osc10-fg-color",
     "answers": [
       {
@@ -1806,6 +1875,54 @@
             "reason": "Ghostty WASM artifact 77b69f9f22c4126359be864fcce97afad8f84615053e21d335ba6348a8d3e1d7, core 5714ed07a1012573261b7b7e3ed2add9c1504496; Termless 14912a2729d795b45579698abcdb92d4749f4ff1 vendor/ghostty-web/ghostty-wasm-api.patch:834-837 constructs ResponseStream(ResponseHandler), :877 feeds it, :605-617 ignores request_mode_unknown/size_report/clipboard_contents. Core src/terminal/stream.zig:1793-1849 XTWINOPS accepts 14/16/18/21 and 22/23, but 20 reaches the unimplemented-parameter arm before any handler. Terminfo 27541ce40cea4baaaa5a34171ad059e08d295d19 packages/probe-defs/src/extensions.ts:2245-2254,2759-2770 requires BOTH icon20 and title21 exact payload replies; icon20 is necessary. Title21 separately dispatches size_report (:1819-1821), ignored by this WASM handler.",
             "sources": [
               "Ghostty WASM artifact 77b69f9f22c4126359be864fcce97afad8f84615053e21d335ba6348a8d3e1d7, core 5714ed07a1012573261b7b7e3ed2add9c1504496; Termless 14912a2729d795b45579698abcdb92d4749f4ff1 vendor/ghostty-web/ghostty-wasm-api.patch:834-837 constructs ResponseStream(ResponseHandler), :877 feeds it, :605-617 ignores request_mode_unknown/size_report/clipboard_contents. Core src/terminal/stream.zig:1793-1849 XTWINOPS accepts 14/16/18/21 and 22/23, but 20 reaches the unimplemented-parameter arm before any handler. Terminfo 27541ce40cea4baaaa5a34171ad059e08d295d19 packages/probe-defs/src/extensions.ts:2245-2254,2759-2770 requires BOTH icon20 and title21 exact payload replies; icon20 is necessary. Title21 separately dispatches size_report (:1819-1821), ignored by this WASM handler."
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "ghostty",
+      "version": "0.4.0",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc1-icon",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/ghostty/src/backend.ts",
+            "oid": "19d45e37b36c0d6fc8d69ae6215ece9db173351c"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "vendor/ghostty-web/RECEIPT.json",
+            "oid": "3ffc517c4f4b5b97bf31e5a8b513ab7f3b21251e"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "vendor/ghostty-web/ghostty-wasm-api.patch",
+            "oid": "17769d971169a3f50ea15335ef473984b2026b32"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev2-2026-11-03-ghostty-0.4.0-extensions.osc1-icon-source-review",
+            "reviewer": "@dev/2",
+            "reason": "Independent source judgment (@dev/2, 2026-11-03, verdict33332a71-29e8-4d32-aacc-2414fbe8dc2e): Shipped ghostty-web0.4.0 WASM SHA25642e84af1b38be94571974a23fa4667c4735ee7a272dcff39afd5cba40dcf48de is bound by Termless25089207 vendor/ghostty-web/RECEIPT.json to core5714ed07a1012573261b7b7e3ed2add9c1504496 and actual inner patch2a42e7e91ef05b9a24f1809ab243964b9dd9f0f9a01d7a1bd6654b3fc1a0396e. Core src/terminal/stream.zig:2017-2019 explicitly logs and ignores change_window_icon before any handler call; Terminal.zig has no icon field. The compiled shim patch adds window_title storage but no icon action. There is no icon writer/state in this configured library; this is not the Ghostty app. Unsupported follows the actual absent writer/state, not a missing reader or unchanged title; each measured run still requires its own negative assertion.",
+            "sources": [
+              "Source packet /hh/var/@dev2/5257c0b4-osc1-icon-20261103.md, verdict33332a71-29e8-4d32-aacc-2414fbe8dc2e, 2026-11-03",
+              "Shipped ghostty-web0.4.0 WASM SHA25642e84af1b38be94571974a23fa4667c4735ee7a272dcff39afd5cba40dcf48de is bound by Termless25089207 vendor/ghostty-web/RECEIPT.json to core5714ed07a1012573261b7b7e3ed2add9c1504496 and actual inner patch2a42e7e91ef05b9a24f1809ab243964b9dd9f0f9a01d7a1bd6654b3fc1a0396e. Core src/terminal/stream.zig:2017-2019 explicitly logs and ignores change_window_icon before any handler call; Terminal.zig has no icon field. The compiled shim patch adds window_title storage but no icon action. There is no icon writer/state in this configured library; this is not the Ghostty app.",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/ghostty/src/backend.ts blob 19d45e37b36c0d6fc8d69ae6215ece9db173351c",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:vendor/ghostty-web/RECEIPT.json blob 3ffc517c4f4b5b97bf31e5a8b513ab7f3b21251e",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:vendor/ghostty-web/ghostty-wasm-api.patch blob 17769d971169a3f50ea15335ef473984b2026b32"
             ]
           }
         ]
@@ -6808,6 +6925,54 @@
             "reason": "ghostty 332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28 src/terminal/stream.zig:1755-1820 XTWINOPS handles14/16/18/21,22/23 only;20 ->unimplemented parameter before handler. This feature requires BOTH20 and21 exact payload replies;20 is necessary;21 dispatches size_report and is separately ignored.",
             "sources": [
               "ghostty 332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28 src/terminal/stream.zig:1755-1820 XTWINOPS handles14/16/18/21,22/23 only;20 ->unimplemented parameter before handler. This feature requires BOTH20 and21 exact payload replies;20 is necessary;21 dispatches size_report and is separately ignored."
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "ghostty-native",
+      "version": "1.3.1",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc1-icon",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/ghostty-native/src/backend.ts",
+            "oid": "f403717f7c063d799c5de994b3ccc095edbcacd1"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/ghostty-native/native/src/main.zig",
+            "oid": "1cda313d3f016704c769f1f54bb4ec4ac67f6611"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/ghostty-native/build/build.sh",
+            "oid": "740ed6d0627872f8e868a9733f06ff466c70bc85"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev2-2026-11-03-ghostty-native-1.3.1-extensions.osc1-icon-source-review",
+            "reviewer": "@dev/2",
+            "reason": "Independent source judgment (@dev/2, 2026-11-03, verdict33332a71-29e8-4d32-aacc-2414fbe8dc2e): The captured native SHA25653f9a867cce594b4d50fb9508db9ce5d2d79fb4244a418548b7cb31fa50780d1 receipt binds core332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28/build2d5e53cf/lock3ec77550, with current index35c9e35a/backendf403717f. Core src/terminal/stream.zig:1982-1984 explicitly logs and ignores change_window_icon before handler dispatch; Terminal.zig has no icon field. Termless25089207 native/src/main.zig:38-83 delegates other actions to ReadonlyHandler, but OSC1 is already dropped before that wrapper is reached. No icon writer or state exists in this configured headless core; an added getter alone could not measure it. Unsupported follows the actual absent writer/state, not a missing reader or unchanged title; each measured run still requires its own negative assertion.",
+            "sources": [
+              "Source packet /hh/var/@dev2/5257c0b4-osc1-icon-20261103.md, verdict33332a71-29e8-4d32-aacc-2414fbe8dc2e, 2026-11-03",
+              "The captured native SHA25653f9a867cce594b4d50fb9508db9ce5d2d79fb4244a418548b7cb31fa50780d1 receipt binds core332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28/build2d5e53cf/lock3ec77550, with current index35c9e35a/backendf403717f. Core src/terminal/stream.zig:1982-1984 explicitly logs and ignores change_window_icon before handler dispatch; Terminal.zig has no icon field. Termless25089207 native/src/main.zig:38-83 delegates other actions to ReadonlyHandler, but OSC1 is already dropped before that wrapper is reached. No icon writer or state exists in this configured headless core; an added getter alone could not measure it.",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/ghostty-native/src/backend.ts blob f403717f7c063d799c5de994b3ccc095edbcacd1",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/ghostty-native/native/src/main.zig blob 1cda313d3f016704c769f1f54bb4ec4ac67f6611",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/ghostty-native/build/build.sh blob 740ed6d0627872f8e868a9733f06ff466c70bc85"
             ]
           }
         ]
