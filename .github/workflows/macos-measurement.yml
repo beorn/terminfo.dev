@@ -652,6 +652,24 @@ jobs:
               console.error("Warp launch identity unmeasured; see warp-failure-evidence.json", error);
             }
           }
+          if (process.env.APP_ID === "iterm2") {
+            try {
+              await run("processes", ["/bin/ps", "-ww", "-axo", "pid,ppid,pgid,tty,state,wchan,etime,command"], 10000);
+              const ancestry = await readFile(join(out, "collector.log"), "utf8");
+              const receipt = JSON.parse(await readFile(join(out, "host-measured.json"), "utf8"));
+              const collector = ancestry.match(/Hosted Darwin measured process ancestry: ([0-9]+):bun/);
+              const app = ancestry.match(/ <- ([0-9]+):\/Applications\/iTerm\.app\/Contents\/MacOS\/iTerm2/);
+              for (const [label, match, expected] of [["collector", collector, join(out, "run.json")], ["app", app, receipt.appLaunch?.executablePath]]) {
+                try {
+                  if (!match || !expected) throw new Error("Measured target PID or expected argv unavailable");
+                  const state = await run(`${label}-state`, ["/bin/ps", "-ww", "-p", match[1], "-o", "pid,ppid,pgid,tty,state,wchan,etime,command"], 5000);
+                  if (state.exitCode !== 0 || state.outerTimedOut || !state.stdout.text.includes(expected)) throw new Error("Measured PID exited or no longer names this run target");
+                  const sampled = await run(`${label}-sample`, ["/usr/bin/sample", match[1], "1", "1", "-file", join(out, `${prefix}-${label}.sample.txt`)], 10000);
+                  if (sampled.exitCode !== 0 || sampled.outerTimedOut || (await stat(join(out, `${prefix}-${label}.sample.txt`))).size === 0) throw new Error("Native stack sample unmeasured");
+                } catch (error) { failures.push({ label: `${label}-sample`, error: String(error) }); console.error(`${prefix} native state unmeasured`, label, error); }
+              }
+            } catch (error) { failures.push({ label: "native-state", error: String(error) }); console.error(`${prefix} native state unavailable; existing failure evidence continues`, error); }
+          }
           const commands = [
             ["screen", ["/usr/sbin/screencapture", "-x", join(out, `${prefix}-screen.png`)], 10000],
             ["windows", ["/usr/bin/osascript", "-l", "JavaScript", "-e", CENSUS], 10000],
