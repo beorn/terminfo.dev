@@ -10,6 +10,7 @@
 import { describe, expect, it, vi } from "vitest"
 import { createHash } from "node:crypto"
 import { initializeRunDraft, sealRunDraft } from "@terminfo/probe-defs"
+import { parseSuiteManifest } from "@terminfo/run-parser"
 import {
   chmodSync,
   copyFileSync,
@@ -106,6 +107,7 @@ function writeFrozenSuite(content: string, probeHash: string): void {
       schemaVersion: 4 as const,
       probeHash,
       adapterVersion: "4.0.0",
+      catalogIds: ["sgr.bold"],
       freeze: { release: "candidate2", at: "2026-10-12T03:33:42.000Z" },
       probes: { term: [], lib: [], mux: [] },
     }),
@@ -187,11 +189,12 @@ describe("consumer selection", () => {
       // The archived refusals are required content since #30759 AC3; an empty list is a real state.
       writeFileSync(join(root, "content", "archived-exclusions.json"), JSON.stringify({ archivedExclusions: [] }))
       // A current unverified TODO run cannot become a reviewed measurement.
-      const kittyManifest = JSON.parse(readFileSync(join(root, "content", "suites", "deadbeefcafe.json"), "utf8"))
+      const kittyManifestPath = join(root, "content", "suites", "deadbeefcafe.json")
+      const kittyManifest = parseSuiteManifest(kittyManifestPath, readFileSync(kittyManifestPath, "utf8"))
       const kittyDraft = initializeRunDraft({
         runId: "unreviewed-kitty",
         sourceRevision: "a".repeat(40),
-        manifest: { ...kittyManifest, catalogIds: ["sgr.bold"] },
+        manifest: { ...kittyManifest, schemaVersion: 4 },
         source: { kind: "live" },
         intendedSubject: { kind: "term", id: "kitty" },
       })

@@ -415,11 +415,13 @@ it.each([
     const originalBytes = readFileSync(original, "utf8")
     const frozenSuite = suite === "frozen" ? frozenSuiteIdFor(CONTENT, "candidate2") : undefined
     const textCase = inputChange.startsWith("text-")
-    const manifestPath = join(CONTENT, "suites", `${frozenSuite ?? raw.probeHash}.json`)
+    // A current writer snapshot supplies this synthetic tree; no historical declaration is enriched.
+    const currentSnapshot = versions.probeSuiteSnapshot()
     const snapshot =
       suite !== "different"
         ? vi.spyOn(versions, "probeSuiteSnapshot").mockReturnValue({
-            ...parseSuiteManifest(manifestPath, readFileSync(manifestPath, "utf8")),
+            ...currentSnapshot,
+            probeHash: frozenSuite ?? raw.probeHash,
             sourcePaths: [relative(dirname(CONTENT), input)],
           })
         : undefined

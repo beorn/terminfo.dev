@@ -431,7 +431,8 @@ it("qualifies current text and recomputes eligibility for its historical reviewe
   const raw = textRun({ subject: { ...TARGET, os: "macos" } })
   const manifest = { ...suites.get(SUITE)!, textClaims: [FEATURE] }
   const run = parseRun("qualified-text.json", JSON.stringify(raw), [FEATURE], new Map([[SUITE, manifest]]))
-  const observation = { ...run.results![0]!, outcome: "supported" as const }
+  const { featureId, assertionType, rawReplyRef, frames } = run.results![0]!
+  const observation = { featureId, assertionType, rawReplyRef, frames, outcome: "supported" as const }
   expect(canConcludeObservation(run, observation, { qualified: true })).toBe(true)
   expect(canConcludeObservation(run, observation, { qualified: false, reason: "mapping failed" })).toBe(false)
   expect(canConcludeObservation({ ...run, textClaims: [] }, observation, { qualified: true })).toBe(false)
@@ -445,7 +446,7 @@ it("qualifies current text and recomputes eligibility for its historical reviewe
     [FEATURE],
     new Map([[SUITE, manifest]]),
   )
-  expect(canConcludeObservation(hosted, { ...hosted.results![0]!, outcome: "supported" }, { qualified: true })).toBe(
+  expect(canConcludeObservation(hosted, { ...observation, host: hosted.results![0]!.host }, { qualified: true })).toBe(
     false,
   )
   const [entry] = parseInterpretations(
