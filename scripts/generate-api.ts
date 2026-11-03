@@ -356,7 +356,12 @@ export function generateApi(
     versions: currentGroups(published.projection.versions),
     history: currentGroups(published.projection.history),
     exclusions: published.projection.exclusions,
-    ...(workingView && { working: workingView }),
+    ...(workingView && {
+      working: {
+        ...workingView,
+        contexts: workingView.contexts.map(({ counts: _counts, positions: _positions, ...context }) => context),
+      },
+    }),
   }
   const v3Dir = outDir ? join(outDir, "api", "v3") : join(publicDir, "api", "v3")
   mkdirSync(v3Dir, { recursive: true })

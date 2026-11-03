@@ -87,7 +87,7 @@ const platforms = loadJson(join(contentDir, "platforms.json")) as Record<
   }
 >
 
-const annotations = loadJson(join(contentDir, "annotations.json")) as Record<string, { note: string; result?: string }>
+const annotations = loadJson(join(contentDir, "annotations.json")) as Record<string, { note: string }>
 
 // Baseline metadata is a required input even though this validator has no baseline-specific tests.
 void loadJson(join(contentDir, "baselines.json"))

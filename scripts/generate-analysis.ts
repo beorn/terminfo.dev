@@ -176,10 +176,10 @@ function loadFrameworks(): Record<string, FrameworkMeta> {
   return loadJson<Record<string, FrameworkMeta>>(path, "framework metadata")
 }
 
-function loadAnnotations(): Record<string, { note: string; url?: string; result?: string }> {
+function loadAnnotations(): Record<string, { note: string; url?: string }> {
   const path = join(contentDir, "annotations.json")
   if (!existsSync(path)) return {}
-  return loadJson<Record<string, { note: string; url?: string; result?: string }>>(path, "annotations")
+  return loadJson<Record<string, { note: string; url?: string }>>(path, "annotations")
 }
 
 interface SelectedAnalysisInput {
@@ -233,7 +233,6 @@ function crossValidate(
   features: Record<string, FeatureMeta>,
   terminals: Record<string, TerminalMeta>,
   resultMap: Map<string, SelectedAnalysisInput>,
-  annotations: Record<string, { note: string; url?: string; result?: string }>,
 ): void {
   // Features in results should be in features.json — warn for missing
   // (probes may include features not yet documented in features.json)
@@ -257,25 +256,6 @@ function crossValidate(
     if (![...resultMap.values()].some((data) => data.sourceId === termId && data.type === meta.kind)) {
       console.warn(`Warning: Terminal '${termId}' has no current sealed runs`)
     }
-  }
-
-  // ERROR: annotations on passing results are contradictions
-  const contradictions: string[] = []
-  for (const [termId, data] of resultMap) {
-    for (const [featureId, result] of Object.entries(data.results)) {
-      const annKey = `${termId}:${featureId}`
-      if (result === "supported" && annotations[annKey]) {
-        const note = annotations[annKey].note.toLowerCase()
-        if (note.includes("not supported") || note.includes("not available") || note.includes("missing")) {
-          contradictions.push(`${annKey}: passes but annotation says "${annotations[annKey].note}"`)
-        }
-      }
-    }
-  }
-  if (contradictions.length > 0) {
-    throw new Error(
-      `${contradictions.length} annotation contradiction(s) — passing probes have "not supported" annotations:\n${contradictions.map((c) => `  ${c}`).join("\n")}\n\nFix: remove contradicting annotations from content/annotations.json`,
-    )
   }
 }
 
@@ -1211,7 +1191,7 @@ function loadAllData() {
   const resultMap = buildTerminalResultMap()
 
   // Cross-validate
-  crossValidate(features, terminals, resultMap, annotations)
+  crossValidate(features, terminals, resultMap)
 
   return { features, terminals, categories, standards, baselines, annotations, frameworks, glossary, resultMap }
 }

@@ -119,9 +119,8 @@ describe("the full-273 preview", () => {
   })
 })
 
-// AC1/2/3, CTOa3360fa7/5af532bb: fixture selected receipts vary against the immutable
-// technical-owner DATA snapshot. The real corpus cannot witness each stale identity arm.
-describe("accepted tool-gap metadata in the existing private preview", () => {
+// Membership is not an eligibility contract. Preserve original selected facts and completion.
+describe("stored results without membership eligibility", () => {
   afterEach(() => vi.restoreAllMocks())
 
   function fixture() {
@@ -226,114 +225,35 @@ describe("accepted tool-gap metadata in the existing private preview", () => {
     return { rows, contexts, source: contexts["lib:libvterm"]!.cells[ids[0]!]!.run }
   }
 
-  it("folds the owner-authored population and annotates only its exact cell among eleven libraries", () => {
-    const f = fixture(),
-      before = JSON.stringify(f.contexts)
+  it("retains every selected status and completion without a membership eligibility field", () => {
+    const f = fixture()
+    const before = JSON.stringify(f.contexts)
     const output = loadFullProjectData()
-    expect(output.toolGaps).toMatchObject({
-      authorityPath: "docs/data/full-project.data.ts",
-      authoritySha256: "aeaaefbd91bc6d34a6cd6057590fd1234912e2c10ed239b11ec6fa08085e32ad",
-      membershipComplete: false,
-      namedTodo: 1,
-      unnamedTodo: 21,
-      failures: 0,
-      eligibleForConsideration: false,
-      classes: [{ name: "icon-name state", accepted: 1, matched: 1 }],
-    })
-    const named = output.contexts.flatMap((row) =>
-      row.collected ? row.observations.filter((cell) => cell.note !== null) : [],
+    expect(Object.hasOwn(output, "toolGaps")).toBe(false)
+    expect(output.contexts.map((row) => (row.collected ? row.selection.contextKey : row.context))).toEqual(
+      f.rows.map((row) => (row.collected ? row.selection.contextKey : row.context)),
     )
-    expect(named).toHaveLength(1)
-    expect(named[0]).toMatchObject({
-      state: "test-todo",
-      note: "Our libvterm adapter does not expose the engine's icon-name callback state.",
-      reason: "recorded-0",
-    })
-    expect(JSON.stringify(f.contexts)).toBe(before)
-    expect(output.complete).toBe(false)
     expect(
       output.contexts.every(
-        (row) => row.collected && row.observations[2]?.state === "untestable" && row.observations[3]?.note === null,
+        (row) =>
+          row.collected && row.observations[0]?.state === "test-todo" && row.observations[2]?.state === "untestable",
       ),
     ).toBe(true)
-  })
-
-  it.each(["suiteId", "runId", "sha256", "sourceRevision", "measuredAt"] as const)(
-    "does not borrow an accepted row with a stale selected %s",
-    (key) => {
-      const f = fixture()
-      f.source[key] = "stale"
-      if (key === "runId") {
-        const context = f.contexts["lib:libvterm"]!
-        context.contributingRunIds = ["stale"]
-        for (const cell of Object.values(context.cells)) cell.origin.runId = "stale"
-        const row = f.rows[0]
-        if (!row?.collected) throw new Error("fixture row missing")
-        row.sources[0]!.runId = "stale"
-        for (const observation of row.observations) observation.origin.runId = "stale"
-      }
-      expect(loadFullProjectData().toolGaps).toMatchObject({
-        namedTodo: 0,
-        unnamedTodo: 22,
-        eligibleForConsideration: false,
-        classes: [{ name: "icon-name state", accepted: 1, matched: 0 }],
-      })
-    },
-  )
-
-  it("requires exact engine, version, adapter and loaded artifact identity", () => {
-    const f = fixture()
-    f.source.subject.version = "stale"
-    expect(loadFullProjectData().toolGaps.namedTodo).toBe(0)
-    f.source.subject.version = "0.3.3"
-    if (!f.source.runtimeIdentity) throw new Error("fixture runtime missing")
-    f.source.runtimeIdentity.termlessRevision = "stale"
-    expect(loadFullProjectData().toolGaps.namedTodo).toBe(0)
-    f.source.runtimeIdentity.termlessRevision = "cd5cd5172680fd240ee3445dea96289793bc2d59"
-    if (!("loadedBinary" in f.source.runtimeIdentity) || !f.source.runtimeIdentity.loadedBinary) {
-      throw new Error("fixture binary missing")
-    }
-    f.source.runtimeIdentity.loadedBinary.sha256 = "stale"
-    expect(loadFullProjectData().toolGaps.namedTodo).toBe(0)
-  })
-
-  it("keeps a matching FAIL unannotated and blocks the cut", () => {
-    const f = fixture(),
-      first = f.rows[0]
-    if (!first?.collected) throw new Error("fixture first row missing")
-    first.observations[0]!.state = "test-failure"
-    f.source.results![0]!.status = "test-failure"
-    expect(loadFullProjectData().toolGaps).toMatchObject({
-      namedTodo: 0,
-      unnamedTodo: 21,
-      failures: 1,
-      eligibleForConsideration: false,
-    })
-    expect(loadFullProjectData().contexts[0]).toMatchObject({ observations: [{ note: null }, {}, {}, {}] })
-  })
-
-  it("never treats the incomplete authority population or a missing library context as eligible", () => {
-    const f = fixture()
-    for (const row of f.rows) {
-      if (row.collected) {
-        for (const cell of row.observations) {
-          if (cell.id === "device.primary-da") cell.state = "untestable"
-        }
-      }
-    }
-    expect(loadFullProjectData().toolGaps).toMatchObject({
-      namedTodo: 1,
-      unnamedTodo: 10,
-      eligibleForConsideration: false,
-    })
+    expect(output.complete).toBe(false)
+    expect(JSON.stringify(f.contexts)).toBe(before)
+    const first = f.rows[0]!
     f.rows[0] = {
-      context: "libvterm/headless",
-      terminalId: "libvterm",
-      os: "headless",
-      kind: "lib",
+      context: first.context,
+      terminalId: first.terminalId,
+      os: first.os,
+      kind: first.kind,
       collected: false,
-      cause: "no selected run",
+      cause: "no stored run",
     }
-    expect(loadFullProjectData().toolGaps.eligibleForConsideration).toBe(false)
+    const missing = loadFullProjectData()
+    expect(Object.hasOwn(missing, "toolGaps")).toBe(false)
+    expect(missing.notCollected).toBe(1)
+    expect(missing.complete).toBe(false)
+    expect(JSON.stringify(f.contexts)).toBe(before)
   })
 })

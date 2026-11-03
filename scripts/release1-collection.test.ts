@@ -148,9 +148,10 @@ if (currentManifest.schemaVersion !== 4 || !currentManifest.catalogIds) {
   throw new Error("Collection fixture requires the committed schema-4 catalogue")
 }
 
-// Frozen legacy fixtures remain readable until Phase 1.4; adding reviews must not regrade stored projection cells.
+// Legacy tool-gap records cannot regrade the site's stored results. Other entry points retain
+// their separately owned admission/collection behavior until the coordinated Phase 1.4 handoff.
 it.each(["projection", "admission", "collection"] as const)(
-  "%s preserves its stored-result boundary when six tool-gap reviews are added",
+  "%s retains its stored-result and trust boundary with six legacy tool-gap records",
   async (entry) => {
     const paths = [
       "probes-apps/alacritty-0.17.0-linux-f504922f67f074794c588cf3a14e2114.json",
@@ -309,8 +310,6 @@ mock.module(${JSON.stringify(join(dirname(CONTENT), "scripts/admit-run.ts"))}, (
 }));
 mock.module(${JSON.stringify(join(dirname(CONTENT), "docs/data/current-results.ts"))}, () => ({
   loadCurrentResults: () => ({projection: {versions: {"app:xterm:linux": [run]}, table: {[run.runId]: Object.fromEntries(run.results.map(result => [result.featureId, result.status]))}}}),
-  loadDefaultContextPolicy: () => ({}),
-  reviewedContextFor: () => undefined
 }));
 mock.module(${JSON.stringify(join(dirname(CONTENT), "docs/data/full-project.ts"))}, () => ({
   buildFullProjectRows: () => ({contexts: [], catalogRows: 273, recordedPositions: 0, collected: 0, complete: false})

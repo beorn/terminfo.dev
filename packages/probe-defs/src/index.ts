@@ -2,10 +2,11 @@ export { evidenceRuntimeIdentity } from "./runtime-identity.ts"
 export {
   SOURCE_ANSWERS,
   SOURCE_ANSWER_PENDING_LABELS,
+  publicSourceAnswerPendingLabel,
   resolveSourceAnswer,
   sourceAnswerForRef,
-  sourceAnswerKey,
   sourceAnswerVersionLabel,
+  sourceAnswerKey,
   parseSourceAnswerKey,
   repositoryIdentity,
 } from "./source-answers.ts"
