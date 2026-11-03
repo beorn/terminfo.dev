@@ -2722,22 +2722,24 @@ it("forwards explicit callback tests through the actual native batch attempt wit
 // AC1–AC3 (#31677): the forwarding test above replaces the callback with a valid helper.
 // These actual producers previously retained frames but defaulted to FAILURE with no review.
 // Frames and decisions here are explicit collector fixtures, never terminal qualification evidence.
+// The split stack callbacks require an operation-only observation (#31904); the third-frame
+// fixture supplies none, so their rowless inconclusive result is Test failure, not pending review.
 it.each([
-  ["modes.xtpushsgr", 2, /bold.*not italic/i],
-  ["modes.xtpopsgr", 2, /bold.*not italic/i],
-  ["modes.xtsave", 2, /row 2/],
-  ["modes.xtrestore", 2, /row 2/],
-  ["modes.xtpushcolors", 2, /blue/],
-  ["modes.xtpopcolors", 2, /blue/],
-  ["modes.alt-screen.exit", 3, /PRIMARY.*ALTONLY/],
-  ["modes.altscreen-47", 3, /MAIN47.*ALT47/],
-  ["modes.altscreen-1047", 3, /second entry/i],
-  ["modes.left-right-margin", 2, /column 6/],
-  ["modes.insert-replace", 2, /XABCD/],
-  ["cursor.shape", 2, /cursor cell/i],
+  ["modes.xtpushsgr", 2, /no push-only observation/, "test-failure"],
+  ["modes.xtpopsgr", 2, /no pop-only observation/, "test-failure"],
+  ["modes.xtsave", 2, /no push-only observation/, "test-failure"],
+  ["modes.xtrestore", 2, /no pop-only observation/, "test-failure"],
+  ["modes.xtpushcolors", 2, /no push-only observation/, "test-failure"],
+  ["modes.xtpopcolors", 2, /no pop-only observation/, "test-failure"],
+  ["modes.alt-screen.exit", 3, /PRIMARY.*ALTONLY/, "test-todo"],
+  ["modes.altscreen-47", 3, /MAIN47.*ALT47/, "test-todo"],
+  ["modes.altscreen-1047", 3, /second entry/i, "test-todo"],
+  ["modes.left-right-margin", 2, /column 6/, "test-todo"],
+  ["modes.insert-replace", 2, /XABCD/, "test-todo"],
+  ["cursor.shape", 2, /cursor cell/i, "test-todo"],
 ] as const)(
-  "retains actual %s capture through required review and the canonical reader",
-  async (id, count, expected) => {
+  "retains actual %s capture status and evidence through the canonical reader",
+  async (id, count, expected, expectedStatus) => {
     verifiedBatchFixture()
     vi.useFakeTimers()
     const ownManifest = {
@@ -2874,8 +2876,8 @@ it.each([
         return
       }
       if (batch.assertions.length === 0) {
-        expect(result).toMatchObject({ status: "test-todo" })
-        expect(result.tests.some((check) => check.status === "test-todo")).toBe(true)
+        expect(result).toMatchObject({ status: expectedStatus })
+        expect(result.tests.some((check) => check.status === expectedStatus)).toBe(true)
         expect(result.frames!.length).toBeGreaterThanOrEqual(8)
         expect(
           result.frames!.every((frame) => Boolean(frame.regionDigest && frame.pixelsDigest && frame.regionRectangle)),
@@ -2887,7 +2889,11 @@ it.each([
         if (!result.tests.some((check) => check.id === "review")) {
           expect(
             result.tests.every(
-              (check) => check.status === "test-todo" && check.reason?.includes("a third distinct frame"),
+              (check) =>
+                check.status === expectedStatus &&
+                (expectedStatus === "test-failure"
+                  ? typeof check.reason === "string" && expected.test(check.reason)
+                  : check.reason?.includes("a third distinct frame")),
             ),
           ).toBe(true)
           const decoded = decodeCollectorDraft(
@@ -2896,7 +2902,11 @@ it.each([
             manifest,
             sourceRevision,
           ).run
-          expect(decoded.results.find((result) => result.featureId === id)?.frames).toEqual(result.frames)
+          expect(decoded.results.find((result) => result.featureId === id)).toMatchObject({
+            status: expectedStatus,
+            tests: result.tests,
+            frames: result.frames,
+          })
           return
         }
         const read = parseRun(
