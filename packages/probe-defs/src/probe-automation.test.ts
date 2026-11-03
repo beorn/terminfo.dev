@@ -1502,6 +1502,59 @@ describe("reply-path audit", () => {
     )
   })
 
+  test("the 42e84af1 rebuild carries all 44 audited query rows", () => {
+    // #32185: the key list above proves the artifact is audited; this pins what it was audited for, so a
+    // later edit cannot shrink the rebuild's inventory and leave cells decided by an absent query.
+    const rebuild = REPLY_PATH_AUDITS.get("42e84af1b38be94571974a23fa4667c4735ee7a272dcff39afd5cba40dcf48de")!
+    expect(Object.keys(rebuild)).toHaveLength(44)
+    expect(Object.keys(rebuild).sort()).toEqual([
+      "device.dsr-996-color-scheme",
+      "device.tertiary-da",
+      "device.xtgetxres",
+      "device.xtreportcolors",
+      "device.xtwinops-14",
+      "device.xtwinops-16",
+      "device.xtwinops-20",
+      "device.xtwinops-21",
+      "editing.decrqcra",
+      "extensions.iterm2-images",
+      "extensions.kitty-graphics",
+      "extensions.kitty-graphics.animation",
+      "extensions.kitty-graphics.display",
+      "extensions.kitty-graphics.transmit",
+      "extensions.kitty-graphics.unicode-placeholders",
+      "extensions.osc0-icon-title",
+      "extensions.osc10-fg-color",
+      "extensions.osc104-reset-palette",
+      "extensions.osc11-bg-color",
+      "extensions.osc110-reset-fg",
+      "extensions.osc111-reset-bg",
+      "extensions.osc112-reset-cursor",
+      "extensions.osc113-reset-pointer-fg",
+      "extensions.osc114-reset-pointer-bg",
+      "extensions.osc12-cursor-color",
+      "extensions.osc1337-capabilities",
+      "extensions.osc1337-cellsize",
+      "extensions.osc17-highlight-bg",
+      "extensions.osc19-highlight-fg",
+      "extensions.osc21-kitty-color",
+      "extensions.osc30001-color-stack-push",
+      "extensions.osc30101-color-stack-pop",
+      "extensions.osc4-palette",
+      "extensions.osc5-special-color",
+      "extensions.osc52-clipboard",
+      "extensions.osc52-read",
+      "extensions.osc52-write",
+      "extensions.osc701-locale",
+      "extensions.osc702-version",
+      "extensions.osc776-cell-size",
+      "extensions.osc7770-font-size",
+      "extensions.osc7777-font-window-size",
+      "extensions.osc99-kitty-notify",
+      "extensions.sixel-geometry-report",
+    ])
+  })
+
   // @cto d9998884, f9d23c2a (#31372): the WASM build drops every DCS before src/terminal/dcs.zig, and it builds its
   // stream without an OSC allocator, so each colour query is rejected at the parser. The table test above accepts
   // either kind, so only this pin keeps the ruled kinds.
