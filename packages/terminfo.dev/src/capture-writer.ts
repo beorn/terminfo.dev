@@ -2,15 +2,11 @@
 import { mkdirSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import {
-  REPLY_PATH_AUDIT_REVIEW,
-  SOURCE_NEGATIVE_REVIEW,
-  UNTESTABLE_ONLY_REVIEW_BRANCHES,
   finalizeProbeResult,
   type CapturedRunDraft as CollectedProbeRun,
   type AssertionType,
   type ProbeSubject,
 } from "@terminfo/probe-defs"
-import { resolveMeasuredSourceAnswer } from "@terminfo/run-parser"
 
 const DA1_QUERY = "\u001b[c"
 const DA1_REPLY = /\u001b\[\?[0-9;]*c/u
@@ -117,90 +113,9 @@ export function finalizeCollectedDraft(
       ],
     }
   })
-  captured.results = captured.results.map((result) => {
-    if (
-      !result.tests.some(
-        (test) =>
-          test.id === "review" &&
-          (test.status === "test-todo" ||
-            (result.criterionBranch === SOURCE_NEGATIVE_REVIEW && test.status === "test-failure")),
-      )
-    ) {
-      return finalizeProbeResult(result)
-    }
-    const resolution = resolveMeasuredSourceAnswer({
-      subject: captured.subject,
-      featureId: result.featureId,
-      ...(captured.runtimeIdentity && { runtimeIdentity: captured.runtimeIdentity }),
-      sourceRevision: captured.sourceRevision,
-    })
-    if (
-      result.criterionBranch !== undefined &&
-      UNTESTABLE_ONLY_REVIEW_BRANCHES.has(result.criterionBranch) &&
-      resolution.kind === "answer" &&
-      resolution.status !== "untestable"
-    ) {
-      const ref = resolution.rowKeys[0]
-      const reason = `Kept ${resolution.status} answer${ref ? ` ${ref}` : ""} not admitted: ${result.criterionBranch} admits only untestable`
-      return finalizeProbeResult({
-        ...result,
-        reason,
-        tests: result.tests.map((test) => (test.id === "review" ? { ...test, reason } : test)),
-      })
-    }
-    // A reply-path gate measured zero reply bytes; a kept answer that claims support contradicts the measurement.
-    if (
-      result.criterionBranch === REPLY_PATH_AUDIT_REVIEW &&
-      resolution.kind === "answer" &&
-      resolution.status === "supported"
-    ) {
-      throw new Error(
-        `Reply-path gate for ${result.featureId} measured a zero-byte reply but its kept answers claim support`,
-      )
-    }
-    // The canonical reader binds an Unsupported source-negative or frame-read row to the run's own negative
-    // assertion, so a kept Unsupported answer applies only where this run measured one (#32225: a visual-review
-    // capture records only a positive "frames captured" assertion).
-    if (
-      resolution.kind === "answer" &&
-      resolution.status === "unsupported" &&
-      (result.criterionBranch === SOURCE_NEGATIVE_REVIEW || measuredFrameRead(result)) &&
-      result.assertionType !== undefined &&
-      result.tests.some((test) => test.id === "review" && (test.assertionRefs?.length ?? 0) === 0)
-    ) {
-      const assertionRefs = captured.assertions.flatMap((assertion, index) =>
-        assertion.featureId === result.featureId &&
-        assertion.assertionType === result.assertionType &&
-        assertion.kind === "negative" &&
-        assertion.expected?.trim() &&
-        assertion.observed?.trim()
-          ? [index]
-          : [],
-      )
-      if (assertionRefs.length === 0) {
-        const reason = "Source answer requires a current deciding negative assertion"
-        return finalizeProbeResult({
-          ...result,
-          reason,
-          tests: result.tests.map((test) => (test.id === "review" ? { ...test, status: "test-todo", reason } : test)),
-        })
-      }
-      result = {
-        ...result,
-        tests: result.tests.map((test) => (test.id === "review" ? { ...test, assertionRefs } : test)),
-      }
-    }
-    return finalizeProbeResult(result, resolution)
-  })
+  // Grades come only from what this run observed; a stored source answer never sets one (#32246).
+  captured.results = captured.results.map((result) => finalizeProbeResult(result))
   return captured
-}
-
-/** A pixel or text-cells frame read, which the canonical reader requires to bind its own deciding assertion. */
-function measuredFrameRead(result: CollectedProbeRun["results"][number]): boolean {
-  return (
-    result.assertionType === "screenshot" ||
-    (result.assertionType === "buffer_state" && result.frames?.some((frame) => frame.kind === "text-cells") === true)
-  )
 }
 
 /** Preserve one immutable collected run under its measured identity. */
