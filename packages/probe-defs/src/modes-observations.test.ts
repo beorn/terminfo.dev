@@ -248,7 +248,15 @@ test.each([
     expect(events).toEqual(
       snapshot === 2 ? [`\x1b[?${mode}$p`, `\x1b[?${mode}h`, `\x1b[?${mode}$p`, `\x1b[?${mode}l`] : [`\x1b[?${mode}$p`],
     )
-    if (outcome === null) {
+    if (mode === 2026 && snapshot === 2 && enabled === 2) {
+      // The retained Alacritty after-set Ps 2 reply took 140 ms; it cannot witness the enabled update.
+      expect(result.observation).toBeUndefined()
+      expect(result.assertions).toBeUndefined()
+      expect(result.response).toBe('{"snapshot":2,"afterSet":2}')
+      expect(result.tests).toEqual([
+        { id: "criterion", status: "test-failure", reason: expect.stringContaining("set-state control unobservable") },
+      ])
+    } else if (outcome === null) {
       expect(result.observation).toBeUndefined()
       expect(result.tests).toEqual([{ id: "criterion", status: "test-todo", reason: "no DECRPM reply" }])
     } else {

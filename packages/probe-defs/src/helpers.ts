@@ -1289,6 +1289,16 @@ export function decrpmModeProbe(
           tests: [{ id: "criterion", status: "test-todo", reason: "no DECRPM reply" }],
         }
       }
+      if (modeNum === 2026 && snapshot === 2 && ps === 2) {
+        const reason =
+          "synchronized-output set-state control unobservable: DECRPM reset reply after DECSET cannot establish enabled update; rendered effect unmeasured"
+        return {
+          pass: false,
+          response,
+          note: reason,
+          tests: [{ id: "criterion", status: "test-failure", reason }],
+        }
+      }
       const supported = ps === 1 || ps === 3
       const reading = decrpmReading(ps)
       // Preserve the existing tail for other modes, including DECSCLM.
