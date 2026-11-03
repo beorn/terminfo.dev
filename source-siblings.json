@@ -30,7 +30,7 @@
     {
       "name": "@termless/core",
       "repository": "beorn/termless",
-      "commit": "539e4803eee45fcfe60369188c2189b57a06ae18",
+      "commit": "1af9bbd8e49e6210f11f708d87f4cb4154596c44",
       "pack": true
     },
     {
