@@ -169,14 +169,71 @@ the last matching `comm` basename: the outermost matching ancestor in that order
 additionally requires the exact GUI executable path. Warp's recognized name is `stable`.
 The rows are unchanged; this selection alone proves neither window ownership nor launch causation.
 
+## Retained macOS capture observations
+
+These are scoped observations from retained November 2 captures, not current capability
+grades, launch-policy guarantees or a cause established for every collection failure.
+
+On the measured hosted iTerm2 3.6.11 build, the
+[OSC 1337 inline-image probe](../packages/probe-defs/src/extensions.ts) was followed by an
+"Allow Terminal-Initiated Display?" consent modal obscuring retained target frames.
+The modal is a measured obstruction, not a proven cause of the full collection's outer
+600-second wait. A later image/underline/blink diagnostic reproduced the obstruction and
+completed; all three feature statuses remained Test to-do. Neither unfinished draft statuses
+nor successful capture subtests establish accepted feature grades.
+
+The retained Terminal.app post-repair capture refused the selected window image and the
+region fallback through the Darwin window server. That raster acquisition refusal is not
+evidence that Terminal.app lacks the probed capabilities.
+
+These observations do not qualify the macOS multiplexer route. The hosted cmux app row
+above is not mux measurement. Absence from a headless sample's selected engine set cannot
+establish absence of historical, native-app or multiplexer captures; those populations remain
+unqueried here.
+
+## Windows console reads: ordering is not GUI paint
+
+The existing [text adapter](../packages/terminfo.dev/src/serve.ts) installs only with an owned
+cell reader and a retention directory. On Windows, `installTextCapture` awaits one plain
+CPR (`CSI 6 n`) with a 700 ms query bound before each console read, using the existing
+[selected-output query operation](../packages/terminfo.dev/src/tty.ts). No matched CPR means
+a named refused read with the query reason and byte count, not a frame. Non-Windows keeps
+its empty-write completion path. The strict compared-cell/stand-in checks remain unchanged.
+The acknowledgement is the existing console-read ordering witness, not proof of GUI paint,
+glyph rendering or text qualification.
+
+Retained October 19 experiments reported stale early reads; a no-query idle read cleared in
+one run, and a later post-query read cleared in another. Those sequences do not isolate causation.
+The later development record counted 469 capture CPRs per Windows Terminal/Alacritty app;
+469 × 700 ms = 328.3 s is a counterfactual timeout bound for that historical count, not a
+current query count or measured batch duration. That record's WezTerm launch failed before
+a window/collector with an OpenGL error; it supplies no successful WezTerm measurement.
+
+## macOS text qualification remains separate
+
+The existing [qualification collector](../packages/terminfo.dev/src/text-qualification.ts)
+uses one run's full-grid control/target witnesses for mid-line gap, trailing gap, soft wrap,
+prior scrollback and an empty last row after overflow. The [retained-byte assessment](../packages/probe-defs/src/text-qualification.ts)
+requires the cited recipe/version and all five expected grids, not a stored pass flag.
+The current writer requires a declared text claim, a macOS terminal subject and no console
+host; Windows CPR does not satisfy that prerequisite. A Windows text-frame row retains a
+text-qualification Test to-do, with existing required failures still taking precedence.
+
+Preparation restores measured visibility/autowrap and verifies the reset blank grid through
+the existing capture lifecycle; failure to prove it fails the run. This proves neither retained
+history nor general session restoration. `CSI 2 J` does not clear history, and `CSI 3 J` is
+not this cleanup's dependency. [Owner disposal](../packages/terminfo.dev/src/owned-terminal.ts)
+revokes ownership and disposes clipboard state; it does not close an app or tab.
+
 ## Other platforms and retained work
 
-Windows launch facts, the Windows console read fence and the macOS multiplexer route are not
-extracted here yet. The macOS launch facts above do not complete the remaining routes' capture
-or mutated-state restoration requirements. Do not reconstruct missing launch instructions from
-historical plans or copy private host details into this public source tree.
+Windows launch-policy prerequisites and the macOS multiplexer route are not extracted here
+yet. The launch, console-ordering and text-qualification facts above do not complete the
+remaining routes' capture or all-mutated-state restoration requirements. Do not reconstruct
+missing launch instructions from historical plans or copy private host details into this
+public source tree.
 
 Operational owners, evidence custody, dated parks and runtime grants remain in their owning
 work records. Documentation, source delivery and a unit-test result grant no native capture,
-configuration change, grade application, admission or publication. Existing live instructions
-remain in force until the code that enforces them is actually removed.
+configuration change, grade application or publication. The still-live admission machinery
+is being removed by Phase 1 batch 1.4; its existing hold remains until that deletion boundary.
