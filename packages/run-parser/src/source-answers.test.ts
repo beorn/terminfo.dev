@@ -6,7 +6,6 @@
  */
 import { afterEach, expect, it, vi } from "vitest"
 import { readFileSync } from "node:fs"
-import { fileURLToPath } from "node:url"
 import { SOURCE_ANSWERS } from "@terminfo/probe-defs"
 
 const control = vi.hoisted(() => ({ mode: "normal" }))
@@ -114,38 +113,6 @@ it("qualifies at the writer and preserves stored answers when decoding", async (
   })
   expect(parse()).toEqual(loaded)
   expect(() => finalizeCollectedDraft(raw)).toThrow("source I/O reached")
-})
-
-// Read-time resolution caught stale committed grades. Keep that coverage at the writer,
-// using every retained run rather than a second implementation of grading.
-it("keeps every committed cell equal to the writer at the current source-answer table", async () => {
-  const { loadStoredRuns } = await import("../../admin/run-admission.ts")
-  const { finalizeCollectedDraft } = await import("../../terminfo.dev/src/capture-writer.ts")
-  const content = fileURLToPath(new URL("../../../content", import.meta.url))
-  const catalog = Object.keys(JSON.parse(readFileSync(`${content}/features.json`, "utf8")) as Record<string, unknown>)
-  const runs = loadStoredRuns(content, catalog)
-  expect(runs).toHaveLength(12)
-  let cells = 0
-  for (const run of runs) {
-    const draft = JSON.parse(readFileSync(run.path, "utf8")) as Parameters<typeof finalizeCollectedDraft>[0] & {
-      sealedAt?: string
-    }
-    delete draft.sealedAt
-    draft.results = draft.results.map((result) => ({
-      ...result,
-      tests: result.tests.map((test) => (test.id === "review" ? { ...test, status: "test-todo" } : test)),
-    }))
-    const finalized = finalizeCollectedDraft(draft)
-    for (const [index, result] of finalized.results.entries()) {
-      expect(result.status, `${run.runId}/${result.featureId}`).toBe(run.results![index]!.status)
-      expect(
-        result.tests.filter((test) => test.id === "review").map((test) => test.reason),
-        `${run.runId}/${result.featureId} review reason`,
-      ).toEqual(run.results![index]!.tests.filter((test) => test.id === "review").map((test) => test.reason))
-      cells++
-    }
-  }
-  expect(cells).toBe(3276)
 })
 
 // The retained C1 fixtures already had references from the old review applier. Fresh OSC176

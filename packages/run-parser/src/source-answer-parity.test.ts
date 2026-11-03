@@ -49,7 +49,7 @@ const currentRuns = () =>
     readdirSync(join(ROOT, "content", dir))
       .filter((name) => name.endsWith(".json"))
       .map((name) => ({ dir, name, run: JSON.parse(readFileSync(join(ROOT, "content", dir, name), "utf8")) as Run }))
-      .filter(({ run }) => run.schemaVersion === 4 && run.runtimeIdentity !== undefined),
+      .filter(({ run }) => run.schemaVersion === 4),
   )
 
 const resolveCell = (run: Run, featureId: string) =>
@@ -63,19 +63,19 @@ const resolveCell = (run: Run, featureId: string) =>
 describe("kept answers against every current committed run", () => {
   it("finds the subject cells and no cell the writer would decide differently", () => {
     const runs = currentRuns()
-    expect(runs.length).toBeGreaterThan(0)
+    expect(runs).toHaveLength(12)
     const drifted: string[] = []
     let cells = 0
     for (const { dir, name, run } of runs) {
       for (const result of run.results) {
-        if (!result.reviewRef && !result.tests.some((test) => test.reviewRef !== undefined)) continue
         cells++
-        const next = finalizeProbeResult(result as never, resolveCell(run, result.featureId))
+        const reviewed = result.reviewRef || result.tests.some((test) => test.reviewRef !== undefined)
+        const next = finalizeProbeResult(result as never, reviewed ? resolveCell(run, result.featureId) : undefined)
         if (!isDeepStrictEqual(next, result)) drifted.push(`${dir}/${name} ${result.featureId}`)
       }
     }
     // A table edit re-finalizes the affected runs in the same change; this is the cell-for-cell proof of it.
-    expect({ cells, drifted }).toEqual({ cells, drifted: [] })
+    expect({ cells, drifted }).toEqual({ cells: 3276, drifted: [] })
   })
 
   it("reads the disputed ghostty cells as test-todo with both originals named", () => {
@@ -132,7 +132,7 @@ describe("kept answers against every current committed run", () => {
     // No committed run reads the engine core today, and no ghostty checkout exists here, so every cell above
     // resolved without one. The gate that keeps that true is the wasm output: a js-source run names no binary.
     for (const { name, run } of runs.filter((entry) => entry.name !== GHOSTTY_RUN)) {
-      if (!("loadedBinary" in run.runtimeIdentity!))
+      if (!run.runtimeIdentity || !("loadedBinary" in run.runtimeIdentity))
         expect(readEngineReceipt(run.runtimeIdentity), name).toBeUndefined()
       else
         expect(readEngineReceipt(run.runtimeIdentity)?.outputs["ghostty-vt.wasm"], name).not.toBe(
