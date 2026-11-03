@@ -325,6 +325,35 @@ export function finalizeCollectedDraft(
         `Reply-path gate for ${result.featureId} measured a zero-byte reply but its kept answers claim support`,
       )
     }
+    if (
+      resolution.kind === "answer" &&
+      resolution.status === "unsupported" &&
+      result.criterionBranch === SOURCE_NEGATIVE_REVIEW &&
+      result.assertionType !== undefined &&
+      result.tests.some((test) => test.id === "review" && (test.assertionRefs?.length ?? 0) === 0)
+    ) {
+      const assertionRefs = captured.assertions.flatMap((assertion, index) =>
+        assertion.featureId === result.featureId &&
+        assertion.assertionType === result.assertionType &&
+        assertion.kind === "negative" &&
+        assertion.expected?.trim() &&
+        assertion.observed?.trim()
+          ? [index]
+          : [],
+      )
+      if (assertionRefs.length === 0) {
+        const reason = "Source answer requires a current deciding negative assertion"
+        return finalizeProbeResult({
+          ...result,
+          reason,
+          tests: result.tests.map((test) => (test.id === "review" ? { ...test, status: "test-todo", reason } : test)),
+        })
+      }
+      result = {
+        ...result,
+        tests: result.tests.map((test) => (test.id === "review" ? { ...test, assertionRefs } : test)),
+      }
+    }
     return finalizeProbeResult(result, resolution)
   })
   for (const result of captured.results) {

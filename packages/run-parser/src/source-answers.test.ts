@@ -6,6 +6,7 @@
  */
 import { afterEach, expect, it, vi } from "vitest"
 import { readFileSync } from "node:fs"
+import { fileURLToPath } from "node:url"
 import { SOURCE_ANSWERS } from "@terminfo/probe-defs"
 
 const control = vi.hoisted(() => ({ mode: "normal" }))
@@ -120,8 +121,8 @@ it("qualifies at the writer and preserves stored answers when decoding", async (
 it("keeps every committed cell equal to the writer at the current source-answer table", async () => {
   const { loadStoredRuns } = await import("../../admin/run-admission.ts")
   const { finalizeCollectedDraft } = await import("../../terminfo.dev/src/capture-writer.ts")
-  const content = new URL("../../../content", import.meta.url).pathname
-  const catalog = Object.keys(JSON.parse(readFileSync(`${content}/features.json`, "utf8")))
+  const content = fileURLToPath(new URL("../../../content", import.meta.url))
+  const catalog = Object.keys(JSON.parse(readFileSync(`${content}/features.json`, "utf8")) as Record<string, unknown>)
   const runs = loadStoredRuns(content, catalog)
   expect(runs).toHaveLength(12)
   let cells = 0
@@ -137,8 +138,62 @@ it("keeps every committed cell equal to the writer at the current source-answer 
     const finalized = finalizeCollectedDraft(draft)
     for (const [index, result] of finalized.results.entries()) {
       expect(result.status, `${run.runId}/${result.featureId}`).toBe(run.results![index]!.status)
+      expect(
+        result.tests.filter((test) => test.id === "review").map((test) => test.reason),
+        `${run.runId}/${result.featureId} review reason`,
+      ).toEqual(run.results![index]!.tests.filter((test) => test.id === "review").map((test) => test.reason))
       cells++
     }
   }
   expect(cells).toBe(3276)
 })
+
+// The retained C1 fixtures already had references from the old review applier. Fresh OSC176
+// captures leave the review pending with [], even though their real negative assertion exists.
+it.each(["measured", "missing", "positive", "other-feature", "empty-expected", "empty-observed"])(
+  "source finalization binds only the current deciding assertion (%s)",
+  async (mode) => {
+    const { finalizeCollectedDraft } = await import("../../terminfo.dev/src/capture-writer.ts")
+    const featureId = "extensions.osc176-app-id"
+    const path = new URL(
+      "../../../content/probes-libs/vterm-0.10.1-linux-a22f06ca-2505-4c0d-a518-b0b01f8bbe76.json",
+      import.meta.url,
+    )
+    const capture = JSON.parse(readFileSync(path, "utf8")) as Parameters<typeof finalizeCollectedDraft>[0] & {
+      sealedAt?: string
+    }
+    delete capture.sealedAt
+    const row = capture.results.find((result) => result.featureId === featureId)!
+    row.status = "test-todo"
+    row.tests = row.tests.map((test) =>
+      test.id === "review" ? { ...test, status: "test-todo", assertionRefs: [] } : test,
+    )
+    const measured = capture.assertions.flatMap((assertion, index) =>
+      assertion.featureId === featureId && assertion.kind === "negative" ? [index] : [],
+    )
+    expect(measured.length).toBeGreaterThan(0)
+    for (const index of measured) {
+      const assertion = capture.assertions[index]!
+      if (mode === "other-feature") assertion.featureId = "other-feature"
+      if (mode === "positive") assertion.kind = "positive"
+      if (mode === "empty-expected") assertion.expected = ""
+      if (mode === "empty-observed") assertion.observed = ""
+    }
+    if (mode === "missing") {
+      capture.assertions = capture.assertions.filter((assertion) => assertion.featureId !== featureId)
+    }
+    const assertions = structuredClone(capture.assertions)
+    const finalized = finalizeCollectedDraft(capture)
+    const result = finalized.results.find((entry) => entry.featureId === featureId)!
+    expect(finalized.assertions).toEqual(assertions)
+    expect(capture.results.find((entry) => entry.featureId === featureId)?.status).toBe("test-todo")
+    if (mode === "measured") {
+      expect(result.status).toBe("unsupported")
+      expect(result.tests.find((test) => test.id === "review")?.assertionRefs).toEqual(measured)
+    } else {
+      expect(result.status).toBe("test-todo")
+      expect(result.reason).toContain("current deciding negative assertion")
+      expect(result.tests.find((test) => test.id === "review")?.assertionRefs).toEqual([])
+    }
+  },
+)

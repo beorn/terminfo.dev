@@ -27,7 +27,7 @@ test("validates retained runs through the canonical decoder and names rejected i
     expect(baseline.stdout).toContain("0 errors")
     const featuresPath = join(root, "content/features.json")
     const features = readFileSync(featuresPath, "utf8")
-    const catalog = JSON.parse(features)
+    const catalog = JSON.parse(features) as Record<string, unknown>
     delete catalog["input.modify-other-keys"]
     writeFileSync(featuresPath, JSON.stringify(catalog))
     const missingFeature = run()
@@ -37,9 +37,9 @@ test("validates retained runs through the canonical decoder and names rejected i
     )
     writeFileSync(featuresPath, features)
     const path = join(root, "content/probes-apps/alacritty-0.17.0-linux-f504922f67f074794c588cf3a14e2114.json")
-    const raw = JSON.parse(readFileSync(path, "utf8"))
+    const raw = JSON.parse(readFileSync(path, "utf8")) as { results: Array<{ status: string }> }
     // Metadata-only inventory previously accepted an invalid stored grade without decoding the run.
-    raw.results[0].status = "invented-grade"
+    raw.results[0]!.status = "invented-grade"
     writeFileSync(path, JSON.stringify(raw))
     const malformed = run()
     expect(malformed.error).toBeUndefined()
