@@ -396,23 +396,29 @@ it.each(["source-negative-review", "reply-path-audit-review"] as const)(
 
 // Requirement (@cto batch7 A-F2): a stored app/mux screenshot review is retired too, but its reason names what it
 // was: a judgment record, not a same-run pixel check (#30590). Source-answer cells keep their own reason.
-it("reads a stored screenshot visual review as TEST TODO with the visual-review reason", () => {
+// Both stored screenshot-review branches are covered: 54 retained cells use visual-review and Screen 5.0.2
+// cursor.hide uses cursor-visibility-visual-review (peer af27-peer-1519).
+it.each(["visual-review", "cursor-visibility-visual-review"])(
+  "reads a stored %s screenshot review as TEST TODO with the visual-review reason",
+  (criterionBranch) => {
   const attempt = { scope: "probe", startedAt: "2026-10-21T05:00:00.000Z" }
   const reviewRef = JSON.stringify(["term", "alacritty", "0.16.1", "linux", "alpha"])
   const row = {
     featureId: "alpha",
     status: "supported",
-    criterionBranch: "visual-review",
+    criterionBranch,
     assertionType: "screenshot",
     reviewRef,
     attempt,
     tests: [{ id: "review", status: "supported", attempt, reviewRef }],
   }
   const [read] = parseProbeResults([row], "fixture.json", new Set(["alpha"]), {}, [])
-  expect(read).toMatchObject({ status: "test-todo", reason: STORED_VISUAL_REVIEW_RETIRED_REASON })
-  expect(read?.tests[0]).toMatchObject({ status: "test-todo", reason: STORED_VISUAL_REVIEW_RETIRED_REASON })
-  expect(STORED_VISUAL_REVIEW_RETIRED_REASON).toBe("stored visual review not re-admitted: needs a same-run pixel check")
-})
+  const reason = "stored visual review not re-admitted: needs a same-run pixel check"
+  expect(read).toMatchObject({ status: "test-todo", reason })
+  expect(read?.tests[0]).toMatchObject({ status: "test-todo", reason })
+  expect(STORED_VISUAL_REVIEW_RETIRED_REASON).toBe(reason)
+  },
+)
 
 // Requirement: a reference must resolve to its own retained answer; current fixtures only use valid tuples.
 it.each([

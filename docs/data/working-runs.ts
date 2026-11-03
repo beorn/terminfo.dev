@@ -16,9 +16,8 @@
  *   this view is built AFTER the accepted projection
  *   and only reads it. No working run is ever passed into `loadCurrentResults`, whose composed contexts would fold
  *   raw cells into accepted context cells and their counts.
- * - A pending source review (criterionBranch `source-negative-review` still at TEST TODO or TEST FAILURE) reads
- *   "pending review", not failure; a reviewed answer on that branch (e.g. sealed unsupported) reads as its status.
- * - "Differs from reviewed" needs the same suite AND the same engine version, and never marks a pending raw cell.
+ * - Every cell reads as its status; no cell waits on a source review (#32246).
+ * - "Differs from reviewed" needs the same suite AND the same engine version and a different status.
  */
 import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from "node:fs"
 import { join, resolve, sep } from "node:path"

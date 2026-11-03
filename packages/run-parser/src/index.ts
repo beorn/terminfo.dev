@@ -697,12 +697,14 @@ export const SOURCE_ANSWER_RETIRED_REASON = "source answer no longer counts (ope
  * unstyled control and a changed positive control (#30590), so it is not re-admitted (@cto batch7 A-F2).
  */
 export const STORED_VISUAL_REVIEW_RETIRED_REASON = "stored visual review not re-admitted: needs a same-run pixel check"
+/** The stored screenshot-review branches: 54 retained cells use the first, Screen 5.0.2 cursor.hide the second. */
+const STORED_VISUAL_REVIEW_BRANCHES: ReadonlySet<string> = new Set(["visual-review", "cursor-visibility-visual-review"])
 
 /** Map one stored source-answer cell to TEST TODO; its references and branch stay in the stored file only. */
 function retiredSourceAnswer(result: ProbeResult): ProbeResult {
   const { reviewRef: _reviewRef, ...rest } = result
   const reason =
-    result.criterionBranch === "visual-review" && result.assertionType === "screenshot"
+    STORED_VISUAL_REVIEW_BRANCHES.has(result.criterionBranch ?? "") && result.assertionType === "screenshot"
       ? STORED_VISUAL_REVIEW_RETIRED_REASON
       : SOURCE_ANSWER_RETIRED_REASON
   return {
