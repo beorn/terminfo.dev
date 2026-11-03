@@ -178,12 +178,19 @@ it.each([
 ])("keeps source answers within the selected review route (%s)", async (criterionBranch, status) => {
   const { finalizeCollectedDraft } = await import("../../terminfo.dev/src/capture-writer.ts")
   const path = new URL(
-    "../../../content/probes-libs/ghostty-0.4.0-linux-3f3e920e-ebf8-4d81-ace1-52445a05a992.json",
+    "../../../content/probes-libs/ghostty-0.4.0-linux-3bacc3ae-a7c9-4fed-9f3f-a2c0ce01e6f5.json",
     import.meta.url,
   )
   const capture = JSON.parse(readFileSync(path, "utf8")) as CapturedRunDraft
   const row = capture.results.find((result) => result.featureId === "extensions.iterm2-images")!
-  capture.results = [{ ...row, criterionBranch, tests: row.tests.map((test) => ({ ...test, id: "review" })) }]
+  capture.results = [
+    {
+      ...row,
+      criterionBranch,
+      status: "test-todo",
+      tests: row.tests.map((test) => ({ ...test, id: "review", status: "test-todo" as const })),
+    },
+  ]
   const finalized = finalizeCollectedDraft(capture)
   expect(finalized.results[0]).toMatchObject({
     criterionBranch,
