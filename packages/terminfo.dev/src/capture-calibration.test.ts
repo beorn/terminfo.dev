@@ -230,7 +230,9 @@ test.each(["sentinel", "zero"] as const)("owned calibration establishes visibili
   })
   await expect(run.promise).resolves.toMatchObject({
     pixelGeometry: geometry,
-    basis: expect.stringContaining("owned disposable session cursor explicitly set before calibration and restored set"),
+    basis: expect.stringContaining(
+      "owned disposable session cursor explicitly set before calibration and restored set",
+    ),
   })
   expect(run.writes.at(-1)).toBe("\x1b[?25h")
   expect(run.reads.get("restore grid paint")).toBe(2)
