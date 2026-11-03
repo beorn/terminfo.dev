@@ -81,7 +81,7 @@ export interface ProbeData {
   /** backend name -> metadata from backends.json */
   meta: Record<string, BackendMeta>
   /** "backend:feature" -> { note, url? } from annotations.json */
-  annotations: Record<string, { note: string; url?: string; result?: string }>
+  annotations: Record<string, { note: string; url?: string }>
   /** feature id -> { name, url? } from features.json */
   featureDescriptions: FeatureCatalog
   /** baseline -> feature ids */
@@ -128,7 +128,7 @@ function loadFeatureDescriptions(): FeatureCatalog {
   return loadFeatures(contentDir)
 }
 
-function loadAnnotations(): Record<string, { note: string; url?: string; result?: string }> {
+function loadAnnotations(): Record<string, { note: string; url?: string }> {
   const annotationsPath = join(__dirname, "..", "..", "content", "annotations.json")
   if (!existsSync(annotationsPath)) {
     throw new Error(`annotations.json not found at ${annotationsPath}`)
@@ -137,7 +137,7 @@ function loadAnnotations(): Record<string, { note: string; url?: string; result?
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
     throw new Error(`${annotationsPath}: expected annotation catalog object`)
   }
-  return raw as Record<string, { note: string; url?: string; result?: string }>
+  return raw as Record<string, { note: string; url?: string }>
 }
 
 /** platform id -> display label; the site prints it beside a score so the OS is never implied. */

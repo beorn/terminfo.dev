@@ -9,13 +9,19 @@
  *   so the sentence itself is the contract and this pins it for both arms.
  * @testonly none
  */
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 import { readFileSync } from "node:fs"
 import { parseRun, parseSuiteManifest } from "@terminfo/run-parser"
 import { projectResults } from "../docs/data/selected-results.ts"
 import { publicResults } from "../docs/data/public-results.ts"
 import { describeTracePanes, readCellTrace } from "../docs/data/evidence-reader.ts"
 import { textEvidenceExplanation } from "../docs/.vitepress/theme/ungraded-explanation.ts"
+
+const caption = vi.hoisted(() => ({ suffix: "" }))
+vi.mock("@terminfo/probe-defs", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@terminfo/probe-defs")>()),
+  sourceAnswerVersionLabel: (version: string) => `reviewed at ${version}, not re-verified${caption.suffix}`,
+}))
 
 const SAMPLE_SHA256 = "a".repeat(64)
 
@@ -45,10 +51,61 @@ it("labels a retained source answer by engine version without regrading or datin
   expect(result?.reason).toContain("reviewed at 0.17.0, not re-verified")
   expect(result?.status).toBe("unsupported")
   expect(selected?.measuredAt).toBe(run.measuredAt)
-  const published = publicResults(projection, new Map()).projection
-  expect(published.contexts["term:alacritty"]?.cells[featureId]?.reason).toBe("reviewed at 0.17.0, not re-verified")
+  expect(publicResults(projection, new Map()).projection.contexts["term:alacritty"]?.cells[featureId]?.reason).toBe(
+    "reviewed at 0.17.0, not re-verified",
+  )
+  // Mutate only the public mapper input when exercising shared-caption drift.
+  const captionProjection = structuredClone(projection)
+  const captionResult = captionProjection.history["term:alacritty"]?.[0]?.results.find(
+    (entry) => entry.featureId === featureId,
+  )
+  if (!captionResult?.reason) throw new Error("Expected retained source answer")
+  // A changed shared caption must reach the public reader; a second literal
+  // silently drops it even though today's exact caption above still passes.
+  caption.suffix = " (shared caption)"
+  captionResult.reason += caption.suffix
+  const published = publicResults(captionProjection, new Map()).projection
+  caption.suffix = ""
+  expect(published.contexts["term:alacritty"]?.cells[featureId]?.reason).toBe(
+    "reviewed at 0.17.0, not re-verified (shared caption)",
+  )
   expect(published.contexts["term:alacritty"]?.cells[featureId]?.presentation.state).toBe("not-reviewed")
   expect(published.contexts["term:alacritty"]?.cells[featureId]?.record).toBeUndefined()
+  expect(run).toEqual(original)
+  expect(readFileSync(path, "utf8")).toBe(bytes)
+})
+
+// CTO18a3b98f permits only the fixed pending phrase; the real retained dispute
+// includes private source/reviewer details that caption-only coverage never exercised.
+it("publishes only the safe pending phrase from a real disputed Ghostty cell", () => {
+  const path = new URL(
+    "../content/probes-libs/ghostty-0.4.0-linux-3f3e920e-ebf8-4d81-ace1-52445a05a992.json",
+    import.meta.url,
+  )
+  const bytes = readFileSync(path, "utf8")
+  const manifestPath = new URL("../content/suites/4b01b0117e18.json", import.meta.url)
+  const manifest = parseSuiteManifest(manifestPath.pathname, readFileSync(manifestPath, "utf8"))
+  const catalog = manifest.catalogIds!
+  const run = parseRun(path.pathname, bytes, catalog, new Map([[manifest.probeHash, manifest]]))
+  const original = structuredClone(run)
+  const featureId = "extensions.osc104-reset-palette"
+  const retained = run.results.find((result) => result.featureId === featureId)
+  expect(retained?.status).toBe("test-todo")
+  expect(retained?.reason).toMatch(/^kept answers disagree:/)
+  expect(retained?.reason).toContain("kept originals:")
+  const projection = projectResults(
+    [run], [], catalog, { currentProbeHash: manifest.probeHash, workingRuns: [run] }, [],
+  )
+  const published = publicResults(projection, new Map()).projection.contexts["lib:ghostty"]?.cells[featureId]
+  expect(published?.reason).toBe("kept answers disagree")
+  expect(published?.status).toBe("test-todo")
+  const publicBytes = JSON.stringify(published)
+  expect(publicBytes).not.toContain("kept originals")
+  expect(publicBytes).not.toContain("@dev/")
+  expect(publicBytes).not.toContain("reply-path-audit")
+  expect(publicBytes).not.toContain("[lib,")
+  expect(published?.presentation.state).toBe("not-reviewed")
+  expect(published?.record).toBeUndefined()
   expect(run).toEqual(original)
   expect(readFileSync(path, "utf8")).toBe(bytes)
 })

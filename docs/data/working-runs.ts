@@ -12,7 +12,8 @@
  *   its run id, suite and time. On the same suite a disagreement is ALSO marked "differs from reviewed"; on a different
  *   suite the reviewed answer keeps its existing suite label and raw sits beside it. Where raw is the only answer the
  *   cell still says "raw, unreviewed".
- * - Raw never enters any score, count, completeness tier or rollup: this view is built AFTER the accepted projection
+ * - Raw has its own five counts from the shared rollup, but never enters an accepted score, count or completeness tier:
+ *   this view is built AFTER the accepted projection
  *   and only reads it. No working run is ever passed into `loadCurrentResults`, whose composed contexts would fold
  *   raw cells into accepted context cells and their counts.
  * - A pending source review (criterionBranch `source-negative-review` still at TEST TODO or TEST FAILURE) reads
@@ -27,6 +28,7 @@ import { parseJsonStrict, type LoadedRun } from "@terminfo/run-parser"
 import { loadRawCapture, UntrustedSuiteError } from "../../packages/admin/raw-capture.ts"
 import { compatibilitySubjects, loadCurrentResults, type CurrentResult } from "./current-results.ts"
 import { admittedContextKeys, originalRunFor, workingSubjectKey, type SelectedProjection } from "./selected-results.ts"
+import { rollupTerminalStatuses, type TerminalStatusRollup } from "./release-scope.ts"
 
 export const WORKING_RUNS_ENV = "TERMINFO_SITE_WORKING_RUNS_DIR"
 export const RAW_LABEL = "raw, unreviewed"
@@ -303,6 +305,8 @@ export interface WorkingContext {
   sourceRevision: string
   measuredAt: string
   cells: WorkingCell[]
+  counts: TerminalStatusRollup["counts"]
+  positions: TerminalStatusRollup["positions"]
 }
 
 export interface WorkingView {
@@ -367,6 +371,9 @@ export function composeWorkingView(
         reviewedSide,
       )
     })
+    const { counts, positions } = rollupTerminalStatuses(
+      Object.fromEntries(run.results.map((result) => [result.featureId, result.status])),
+    )
     return {
       contextKey,
       reviewedContextKey: review?.contextKey ?? null,
@@ -378,14 +385,16 @@ export function composeWorkingView(
       sourceRevision: run.sourceRevision,
       measuredAt: run.measuredAt,
       cells,
+      counts,
+      positions,
     }
   })
   contexts.sort((a, b) => a.engine.localeCompare(b.engine) || a.contextKey.localeCompare(b.contextKey))
   return {
     label: RAW_LABEL,
     rule:
-      "Raw, unreviewed hourly results sit beside the reviewed answer and never replace it. They enter no score, " +
-      "count, completeness tier or rollup.",
+      "Raw, unreviewed hourly results have their own counts beside the reviewed answer and never replace it. " +
+      "They enter no accepted score, count, completeness tier or rollup.",
     run: {
       id: working.id,
       startedAt: working.startedAt,

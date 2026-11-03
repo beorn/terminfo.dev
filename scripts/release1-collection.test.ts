@@ -148,10 +148,10 @@ if (currentManifest.schemaVersion !== 4 || !currentManifest.catalogIds) {
   throw new Error("Collection fixture requires the committed schema-4 catalogue")
 }
 
-// #32014: all three entry points resolve the same private non-C1 embedded targets until Phase 1.4.
-// Frozen run bytes at 9e319ac6 stay outside active content; canonical parsing remains real.
+// Legacy tool-gap records cannot regrade the site's stored results. Other entry points retain
+// their separately owned admission/collection behavior until the coordinated Phase 1.4 handoff.
 it.each(["projection", "admission", "collection"] as const)(
-  "%s resolves six exact-run tool-gap overlays",
+  "%s retains its stored-result and trust boundary with six legacy tool-gap records",
   async (entry) => {
     const paths = [
       "probes-apps/alacritty-0.17.0-linux-f504922f67f074794c588cf3a14e2114.json",
@@ -224,7 +224,7 @@ it.each(["projection", "admission", "collection"] as const)(
         const result = await invoke()
         if (entry === "projection") {
           const projection = result as ReturnType<typeof loadSelectedResults>
-          for (const overlay of overlays) expect(projection.table[overlay.runId]![overlay.featureId]).toBe("test-todo")
+          for (const overlay of overlays) expect(projection.table[overlay.runId]![overlay.featureId]).toBe("untestable")
         } else if (entry === "admission") {
           // The committed run's placement receipt is absent beside it; resolving overlays grants no receipt.
           expect(baseline).toMatch(/cites ownership receipt.*does not exist beside the run/)
@@ -309,8 +309,6 @@ mock.module(${JSON.stringify(join(dirname(CONTENT), "scripts/admit-run.ts"))}, (
 }));
 mock.module(${JSON.stringify(join(dirname(CONTENT), "docs/data/current-results.ts"))}, () => ({
   loadCurrentResults: () => ({projection: {versions: {"app:xterm:linux": [run]}, table: {[run.runId]: Object.fromEntries(run.results.map(result => [result.featureId, result.status]))}}}),
-  loadDefaultContextPolicy: () => ({}),
-  reviewedContextFor: () => undefined
 }));
 mock.module(${JSON.stringify(join(dirname(CONTENT), "docs/data/full-project.ts"))}, () => ({
   buildFullProjectRows: () => ({contexts: [], catalogRows: 273, recordedPositions: 0, collected: 0, complete: false})
