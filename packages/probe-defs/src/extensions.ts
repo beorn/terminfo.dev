@@ -2741,7 +2741,9 @@ function textSizingResult(
 const ENGINE_CLIPBOARD_NOTE = "engine copy_to_clipboard callback read via getClipboardState, no reply bytes"
 const OSC52_SOURCE_CONTROL = `\x1b]52;c;${btoa("terminfo-osc52-source-control")}\x07`
 
-function auditedClipboardWriteSource(source: LibProbeSource): boolean {
+function auditedClipboardWriteSource(
+  source: Pick<LibProbeSource, "runtimeIdentity" | "getTitle" | "getIconLabel">,
+): boolean {
   const engine = auditedOscEngine(source.runtimeIdentity, 52)?.[0]
   return auditedXtermState(source) || engine === "vt100" || engine === "vt220"
 }
