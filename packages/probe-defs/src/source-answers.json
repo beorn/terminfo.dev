@@ -29760,5 +29760,271 @@
         ]
       }
     ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt100",
+      "version": "0.10.1",
+      "os": "linux"
+    },
+    "featureId": "sgr.underline-color-reset",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/vterm.git",
+            "commit": "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+            "path": "packages/vt100/src/screen.ts",
+            "oid": "cd71776df5f72918cd06934d724a5c2e3585a89d"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev3-32203-vt100-sgr.underline-color-reset-source9e99",
+            "reviewer": "@dev/3",
+            "reason": "sgr.underline-color-reset: Vterm9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vt100/src/screen.ts handleSGR full switch admits0,1,4,5,7,22,24,25,27,38,48,58; it has no59 case or default handler. SGR59 falls through without implementing an underline-colour reset. This own dispatcher, independently of readback, establishes unsupported59 under the preserved classic contract. Build provenance: The08:34 target run names engine0.10.1 at Vterm9e99e4d23cdc606fca258b1863aa2be7ae79eed3 with clean source integrity; this answer cites this engine's own dispatcher blob. The probe sent a58seed, but its missing seed is not a measured negative; this is an own-source negative under the authorised source-negative-review branch on new collections only.",
+            "sources": [
+              "Vterm9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vt100/src/screen.ts handleSGR full switch admits0,1,4,5,7,22,24,25,27,38,48,58; it has no59 case or default handler. SGR59 falls through without implementing an underline-colour reset. This own dispatcher, independently of readback, establishes unsupported59 under the preserved classic contract.",
+              "The08:34 target run names engine0.10.1 at Vterm9e99e4d23cdc606fca258b1863aa2be7ae79eed3 with clean source integrity; this answer cites this engine's own dispatcher blob.",
+              "CTO8720f261 option(b): qualify this exact engine/build no59 source before applying an answer; no reader/linker widening. Historical headless-observable-review branches and their pending results remain unchanged. Source audit by @dev/3; independent qualification requested from @dev/8."
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt220",
+      "version": "0.10.1",
+      "os": "linux"
+    },
+    "featureId": "sgr.underline-color-reset",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/vterm.git",
+            "commit": "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+            "path": "packages/vt220/src/screen.ts",
+            "oid": "cc5c5c79b0c882cb1c335f2ccaf2c555884a05ee"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev3-32203-vt220-sgr.underline-color-reset-source9e99",
+            "reviewer": "@dev/3",
+            "reason": "sgr.underline-color-reset: Vterm9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vt220/src/screen.ts handleSGR full switch admits0,1,4,5,7,8,22,24,25,27,28,30–37,39,40–47,49,38,48,58; it has no59 case or default handler. SGR59 falls through without implementing an underline-colour reset. This independently cited vt220 switch establishes the result, not an inference from vt100 or a missing getter. Build provenance: The08:34 target run names engine0.10.1 at Vterm9e99e4d23cdc606fca258b1863aa2be7ae79eed3 with clean source integrity; this answer cites this engine's own dispatcher blob. The probe sent a58seed, but its missing seed is not a measured negative; this is an own-source negative under the authorised source-negative-review branch on new collections only.",
+            "sources": [
+              "Vterm9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vt220/src/screen.ts handleSGR full switch admits0,1,4,5,7,8,22,24,25,27,28,30–37,39,40–47,49,38,48,58; it has no59 case or default handler. SGR59 falls through without implementing an underline-colour reset. This independently cited vt220 switch establishes the result, not an inference from vt100 or a missing getter.",
+              "The08:34 target run names engine0.10.1 at Vterm9e99e4d23cdc606fca258b1863aa2be7ae79eed3 with clean source integrity; this answer cites this engine's own dispatcher blob.",
+              "CTO8720f261 option(b): qualify this exact engine/build no59 source before applying an answer; no reader/linker widening. Historical headless-observable-review branches and their pending results remain unchanged. Source audit by @dev/3; independent qualification requested from @dev/8."
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt100-rust",
+      "version": "0.16.2",
+      "os": "linux"
+    },
+    "featureId": "sgr.underline-color-reset",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "https://github.com/doy/vt100-rust.git",
+            "commit": "eb66ffaf7d771c13303ef73b29f6f2a56fdacecf",
+            "path": "src/screen.rs",
+            "oid": "7dfec97da6370b7905f242b975258a1a38b663a7"
+          },
+          {
+            "repository": "https://github.com/doy/vt100-rust.git",
+            "commit": "eb66ffaf7d771c13303ef73b29f6f2a56fdacecf",
+            "path": "src/cell.rs",
+            "oid": "c000cf30cf2b1770eddb0aae7619c5978c14db2f"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "286fddf6632e43ccd62f9050be41ec7b2908e43e",
+            "path": "packages/vt100-rust/native/src/lib.rs",
+            "oid": "ecdc2cf069088b4ba7180dbf28d8603d13d58fb8"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "286fddf6632e43ccd62f9050be41ec7b2908e43e",
+            "path": "packages/vt100-rust/native/Cargo.toml",
+            "oid": "cd1dd11f0824fde2ce6720c11b3ac71fa8ae4d5d"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "286fddf6632e43ccd62f9050be41ec7b2908e43e",
+            "path": "packages/vt100-rust/native/Cargo.lock",
+            "oid": "3755893017da8338bfd02474d98ecfb7ccadaacb"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev3-32203-vt100-rust-sgr.underline-color-reset-native286",
+            "reviewer": "@dev/3",
+            "reason": "sgr.underline-color-reset: Rust vt1000.16.2 upstream eb66ffaf7d771c13303ef73b29f6f2a56fdacecf src/screen.rs csi_m full match admits0,1,2,3,4,7,22,23,24,27,30–37,38,39,40–47,48,49,90–97,100–107; no59 arm, and its catch-all calls unhandled(self). Source archive checksum054ff75fb8fa83e609e685106df4faeffdf3a735d3c74ebce97ec557d5d36fd9 matches each cited build Cargo.lock. Own no59 dispatch establishes unsupported independently of wrapper getter or58 absence. Build provenance: Artifact84a5b6a3a40a7c16c6bae8b64534b730403df911498bb34bded68c3a17e2d408, native source286fddf6632e43ccd62f9050be41ec7b2908e43e, buildHash30b232d295488042b0d6164e881e319dea8d7fae06ac766b3b568fd4832bf074 and lockSha4cf037e4efa648ca41d08b30ef5c4ce7ada29ad61fcad45a7d1aa97bf55391c6; this artifact is loaded by the08:34 target run. Its pinned vt100 crate is0.16.2/checksum054ff75f. The probe sent a58seed, but its missing seed is not a measured negative; this is an own-source negative under the authorised source-negative-review branch on new collections only.",
+            "sources": [
+              "Rust vt1000.16.2 upstream eb66ffaf7d771c13303ef73b29f6f2a56fdacecf src/screen.rs csi_m full match admits0,1,2,3,4,7,22,23,24,27,30–37,38,39,40–47,48,49,90–97,100–107; no59 arm, and its catch-all calls unhandled(self). Source archive checksum054ff75fb8fa83e609e685106df4faeffdf3a735d3c74ebce97ec557d5d36fd9 matches each cited build Cargo.lock. Own no59 dispatch establishes unsupported independently of wrapper getter or58 absence.",
+              "Artifact84a5b6a3a40a7c16c6bae8b64534b730403df911498bb34bded68c3a17e2d408, native source286fddf6632e43ccd62f9050be41ec7b2908e43e, buildHash30b232d295488042b0d6164e881e319dea8d7fae06ac766b3b568fd4832bf074 and lockSha4cf037e4efa648ca41d08b30ef5c4ce7ada29ad61fcad45a7d1aa97bf55391c6; this artifact is loaded by the08:34 target run. Its pinned vt100 crate is0.16.2/checksum054ff75f.",
+              "CTO8720f261 option(b): qualify this exact engine/build no59 source before applying an answer; no reader/linker widening. Historical headless-observable-review branches and their pending results remain unchanged. Source audit by @dev/3; independent qualification requested from @dev/8."
+            ]
+          }
+        ]
+      },
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "https://github.com/doy/vt100-rust.git",
+            "commit": "eb66ffaf7d771c13303ef73b29f6f2a56fdacecf",
+            "path": "src/screen.rs",
+            "oid": "7dfec97da6370b7905f242b975258a1a38b663a7"
+          },
+          {
+            "repository": "https://github.com/doy/vt100-rust.git",
+            "commit": "eb66ffaf7d771c13303ef73b29f6f2a56fdacecf",
+            "path": "src/cell.rs",
+            "oid": "c000cf30cf2b1770eddb0aae7619c5978c14db2f"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "83f653f649f185740afc57965f9544d3b742cea7",
+            "path": "packages/vt100-rust/native/src/lib.rs",
+            "oid": "310a38096b2641182e53e4cfb6a768da68e184c6"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "83f653f649f185740afc57965f9544d3b742cea7",
+            "path": "packages/vt100-rust/native/Cargo.toml",
+            "oid": "0f1ddb9ffc3b7cfc76abc98952666136c0bcd6c7"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "83f653f649f185740afc57965f9544d3b742cea7",
+            "path": "packages/vt100-rust/native/Cargo.lock",
+            "oid": "90bd0c36ab538390bdcb36cd8abda8e20675be02"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev3-32203-vt100-rust-sgr.underline-color-reset-native83f",
+            "reviewer": "@dev/3",
+            "reason": "sgr.underline-color-reset: Rust vt1000.16.2 upstream eb66ffaf7d771c13303ef73b29f6f2a56fdacecf src/screen.rs csi_m full match admits0,1,2,3,4,7,22,23,24,27,30–37,38,39,40–47,48,49,90–97,100–107; no59 arm, and its catch-all calls unhandled(self). Source archive checksum054ff75fb8fa83e609e685106df4faeffdf3a735d3c74ebce97ec557d5d36fd9 matches each cited build Cargo.lock. Own no59 dispatch establishes unsupported independently of wrapper getter or58 absence. Build provenance: Artifactf309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96, native source83f653f649f185740afc57965f9544d3b742cea7, buildHash6855ef909dbfd13871ede6c55116e38455736bfb1c5425f455b81bce92ace507 and lockSha2e3a100df5ad81d8de0f2d7d9e38ac3e2207177c81803d3d3e3ba0b4394ed5d6; independently hashed shared-main on-disk diagnostic input, not a claimed retained capture. Its pinned vt100 crate is0.16.2/checksum054ff75f. The probe sent a58seed, but its missing seed is not a measured negative; this is an own-source negative under the authorised source-negative-review branch on new collections only.",
+            "sources": [
+              "Rust vt1000.16.2 upstream eb66ffaf7d771c13303ef73b29f6f2a56fdacecf src/screen.rs csi_m full match admits0,1,2,3,4,7,22,23,24,27,30–37,38,39,40–47,48,49,90–97,100–107; no59 arm, and its catch-all calls unhandled(self). Source archive checksum054ff75fb8fa83e609e685106df4faeffdf3a735d3c74ebce97ec557d5d36fd9 matches each cited build Cargo.lock. Own no59 dispatch establishes unsupported independently of wrapper getter or58 absence.",
+              "Artifactf309015f6094827922d9bc82cda53838f4094ac632251af90e83612f6f1c7e96, native source83f653f649f185740afc57965f9544d3b742cea7, buildHash6855ef909dbfd13871ede6c55116e38455736bfb1c5425f455b81bce92ace507 and lockSha2e3a100df5ad81d8de0f2d7d9e38ac3e2207177c81803d3d3e3ba0b4394ed5d6; independently hashed shared-main on-disk diagnostic input, not a claimed retained capture. Its pinned vt100 crate is0.16.2/checksum054ff75f.",
+              "CTO8720f261 option(b): qualify this exact engine/build no59 source before applying an answer; no reader/linker widening. Historical headless-observable-review branches and their pending results remain unchanged. Source audit by @dev/3; independent qualification requested from @dev/8."
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "libvterm",
+      "version": "0.3.3",
+      "os": "linux"
+    },
+    "featureId": "sgr.underline-color-reset",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "https://github.com/neovim/libvterm.git",
+            "commit": "9d6d2112335080312ef8c36667fa717ded4f7daf",
+            "path": "src/pen.c",
+            "oid": "2227a6fcd33d509a20dfb3340273155986e3e69e"
+          },
+          {
+            "repository": "https://github.com/neovim/libvterm.git",
+            "commit": "9d6d2112335080312ef8c36667fa717ded4f7daf",
+            "path": "include/vterm.h",
+            "oid": "44e15023c0bd524b063385b25edbc33a52bfb410"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "80dd254111ab82279125555f9ca1e68b112cd7e3",
+            "path": "packages/libvterm/wasm/libvterm.wasm.receipt.json",
+            "oid": "19798378217cd10c00b4d86d9ecd925fb8b1dee1"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "80dd254111ab82279125555f9ca1e68b112cd7e3",
+            "path": "packages/libvterm/build/flat-api.c",
+            "oid": "49702d335a27976125514acea38c1cdd2e2d84d1"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev3-32203-libvterm-sgr.underline-color-reset-wasm3d67",
+            "reviewer": "@dev/3",
+            "reason": "sgr.underline-color-reset: libvterm0.3.3 upstream9d6d2112335080312ef8c36667fa717ded4f7daf src/pen.c vterm_state_setpen full switch includes reset0, underline4/21, foreground38/39 and background48/49; neither58 nor59 has an arm. Unhandled59 takes default done=0 and logs Unhandled CSI SGR without pen mutation. Own no59 dispatch, traced through this original build receipt, establishes unsupported independently of missing58 or public colour fields. Build provenance: Artifact3d67045bb43c5e4081c70dc58088af8f735416c20df2d7843d765e5aad8ef62a from Termless80dd254111ab82279125555f9ca1e68b112cd7e3; its own receipt pins upstream9d6d2112335080312ef8c36667fa717ded4f7daf. This artifact is loaded by the08:34 target run. The probe sent a58seed, but its missing seed is not a measured negative; this is an own-source negative under the authorised source-negative-review branch on new collections only.",
+            "sources": [
+              "libvterm0.3.3 upstream9d6d2112335080312ef8c36667fa717ded4f7daf src/pen.c vterm_state_setpen full switch includes reset0, underline4/21, foreground38/39 and background48/49; neither58 nor59 has an arm. Unhandled59 takes default done=0 and logs Unhandled CSI SGR without pen mutation. Own no59 dispatch, traced through this original build receipt, establishes unsupported independently of missing58 or public colour fields.",
+              "Artifact3d67045bb43c5e4081c70dc58088af8f735416c20df2d7843d765e5aad8ef62a from Termless80dd254111ab82279125555f9ca1e68b112cd7e3; its own receipt pins upstream9d6d2112335080312ef8c36667fa717ded4f7daf. This artifact is loaded by the08:34 target run.",
+              "CTO8720f261 option(b): qualify this exact engine/build no59 source before applying an answer; no reader/linker widening. Historical headless-observable-review branches and their pending results remain unchanged. Source audit by @dev/3; independent qualification requested from @dev/8."
+            ]
+          }
+        ]
+      },
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "https://github.com/neovim/libvterm.git",
+            "commit": "9d6d2112335080312ef8c36667fa717ded4f7daf",
+            "path": "src/pen.c",
+            "oid": "2227a6fcd33d509a20dfb3340273155986e3e69e"
+          },
+          {
+            "repository": "https://github.com/neovim/libvterm.git",
+            "commit": "9d6d2112335080312ef8c36667fa717ded4f7daf",
+            "path": "include/vterm.h",
+            "oid": "44e15023c0bd524b063385b25edbc33a52bfb410"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "bdaa263fdec6480cceb4b383aff027d3a46fd483",
+            "path": "packages/libvterm/wasm/libvterm.wasm.receipt.json",
+            "oid": "178e8db507779f4903f6b99436006cf8d418a952"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "bdaa263fdec6480cceb4b383aff027d3a46fd483",
+            "path": "packages/libvterm/build/flat-api.c",
+            "oid": "17896892f427a04d7a9a963e7a3614c517a73ecc"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev3-32203-libvterm-sgr.underline-color-reset-wasm7122",
+            "reviewer": "@dev/3",
+            "reason": "sgr.underline-color-reset: libvterm0.3.3 upstream9d6d2112335080312ef8c36667fa717ded4f7daf src/pen.c vterm_state_setpen full switch includes reset0, underline4/21, foreground38/39 and background48/49; neither58 nor59 has an arm. Unhandled59 takes default done=0 and logs Unhandled CSI SGR without pen mutation. Own no59 dispatch, traced through this original build receipt, establishes unsupported independently of missing58 or public colour fields. Build provenance: Artifact712298aff45c7c53a22dc028b13cb58dae1e984199b520bbbc0475ae64d83159 from Termlessbdaa263fdec6480cceb4b383aff027d3a46fd483; its own receipt pins upstream9d6d2112335080312ef8c36667fa717ded4f7daf. Separate source original; it does not substitute for08:34 artifact3d67045b. The probe sent a58seed, but its missing seed is not a measured negative; this is an own-source negative under the authorised source-negative-review branch on new collections only.",
+            "sources": [
+              "libvterm0.3.3 upstream9d6d2112335080312ef8c36667fa717ded4f7daf src/pen.c vterm_state_setpen full switch includes reset0, underline4/21, foreground38/39 and background48/49; neither58 nor59 has an arm. Unhandled59 takes default done=0 and logs Unhandled CSI SGR without pen mutation. Own no59 dispatch, traced through this original build receipt, establishes unsupported independently of missing58 or public colour fields.",
+              "Artifact712298aff45c7c53a22dc028b13cb58dae1e984199b520bbbc0475ae64d83159 from Termlessbdaa263fdec6480cceb4b383aff027d3a46fd483; its own receipt pins upstream9d6d2112335080312ef8c36667fa717ded4f7daf. Separate source original; it does not substitute for08:34 artifact3d67045b.",
+              "CTO8720f261 option(b): qualify this exact engine/build no59 source before applying an answer; no reader/linker widening. Historical headless-observable-review branches and their pending results remain unchanged. Source audit by @dev/3; independent qualification requested from @dev/8."
+            ]
+          }
+        ]
+      }
+    ]
   }
 ]
