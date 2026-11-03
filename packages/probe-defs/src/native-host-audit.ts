@@ -155,6 +155,17 @@ export const NATIVE_HOST_AUDITS: ReadonlyMap<string, NativeHostSourceCitations> 
   ],
 
   [
+    // Termless 80dd2541 forwards stored overline only; the pinned engine and clipboard reply path are unchanged.
+    "b4155bfdef040ae8b3b723a4366fa8ec7f278463dbef577ec4730ad152b8bf07",
+    {
+      "clipboard-load": {
+        kind: "unimplemented",
+        citation:
+          "tattoy-wezterm-term 0.1.0-fork.5 terminalstate/performer.rs:788 drops OperatingSystemCommand::QuerySelection; terminal.rs:13-19 Clipboard has only set_contents; Termless 80dd2541 packages/wezterm/native/src/lib.rs changes only cell overline projection and provides no OSC 52 read reply",
+      },
+    },
+  ],
+  [
     "0f56a805793d7d829daa617f1323aacff0d73fe868747b0d077c6af315e2aab8",
     {
       "clipboard-load": {
