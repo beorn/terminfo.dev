@@ -6,7 +6,8 @@
  */
 import { describe, expect, it } from "vitest"
 import { parseRun } from "@terminfo/run-parser"
-import { initializeRunDraft, sealRunDraft, type ProbeResult, type ProbeSuiteManifest } from "@terminfo/probe-defs"
+import { initializeRunDraft, type ProbeResult, type ProbeSuiteManifest } from "@terminfo/probe-defs"
+import { finalizeCollectedDraft } from "../packages/terminfo.dev/src/capture-writer.ts"
 import { classifyDevelopmentRun, projectResults } from "../docs/data/selected-results.ts"
 
 // #30720 (@cto rulings fc63f412, 1ee8cf0b, f126327b): no other test reads a Windows run, so none sees the
@@ -112,7 +113,13 @@ const current = (os: string) => {
   draft.rawReplies = rawReplies()
   draft.assertions = assertions()
   draft.results = results
-  const value = sealRunDraft(draft, "2026-10-22T05:00:01.000Z")
+  const value = finalizeCollectedDraft({
+    ...draft,
+    subject: draft.subject,
+    identity: draft.identity,
+    measuredAt: draft.measuredAt,
+    origin: draft.origin,
+  })
   return parseRun("fixture.json", JSON.stringify(value), ids, new Map([[suite.probeHash, suite]]))
 }
 const statusOf = (run: ReturnType<typeof current>) =>
@@ -146,8 +153,8 @@ describe("Windows console-host rule", () => {
     })
     expect(projection.table[run.runId]?.[ids[0]!]).toBe("test-todo")
     expect(classifyDevelopmentRun(run).states[ids[0]!]).toBe("test-todo")
-    // The raw run keeps the collector's sealed verdict; only the reader holds it.
-    expect(run.results?.find((result) => result.featureId === ids[0])?.status).toBe("supported")
+    // The writer retains the host prerequisite; readers use that recorded grade.
+    expect(run.results?.find((result) => result.featureId === ids[0])?.status).toBe("test-todo")
   })
   it("never touches a run outside Windows", () => {
     const states = statusOf(current("macos"))

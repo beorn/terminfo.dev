@@ -608,29 +608,6 @@ export function decodeHistoricalCorrection(value: unknown, path: string, feature
   return projectHistorical(value as unknown as ObservationInput, {})
 }
 
-export function canConcludeObservation(
-  run: LoadedRun,
-  observation: ReadObservation,
-  text: TextQualificationAssessment,
-): boolean {
-  const facts = historical.get(observation)
-  const requiresTextQualification = facts?.requiresTextQualification ?? textRead(observation)
-  return (
-    !run.legacy &&
-    (!requiresTextQualification ||
-      (run.subject.kind === "term" &&
-        run.subject.os?.toLowerCase() === "macos" &&
-        observation.host === undefined &&
-        !run.observations.some(
-          (recorded) => recorded.featureId === observation.featureId && recorded.host !== undefined,
-        ) &&
-        text.qualified &&
-        run.textClaims?.includes(observation.featureId) === true)) &&
-    !(facts?.nonMeasuring ?? observation.assertionType === undefined) &&
-    (observation.outcome === "supported" || observation.outcome === "unsupported")
-  )
-}
-
 export function textQualificationFailure(
   run: LoadedRun,
   observation: ReadObservation,
@@ -641,70 +618,6 @@ export function textQualificationFailure(
     !text.qualified
     ? text.reason
     : undefined
-}
-
-const DA1_QUERY = "\u001b[c"
-const DA1_REPLY = /\u001b\[\?[0-9;]*c/u
-
-function replySource(sequence: string, reply: string): "host" | "terminal" | "none" {
-  const da1 = sequence !== DA1_QUERY && sequence.endsWith(DA1_QUERY) ? DA1_REPLY.exec(reply) : null
-  if (da1 === null) return reply === "" ? "none" : "host"
-  if (da1.index > 0) return "host"
-  return da1.index + da1[0].length < reply.length ? "terminal" : "none"
-}
-
-/** The console host a reason names: a text read's recorded host, else the ownership receipt's image. */
-function consoleHostBinary(run: LoadedRun): string {
-  const hosts = new Set(
-    [...(run.results ?? []), ...run.observations].flatMap((cell) =>
-      cell.host ? [`${cell.host.image} ${cell.host.executableSha256.slice(0, "sha256:".length + 12)}`] : [],
-    ),
-  )
-  if (hosts.size > 1) throw new Error(`Run ${run.runId} names ${hosts.size} console hosts; one run has one`)
-  const [host] = hosts
-  if (host !== undefined) return host
-  const receipt = run.rawReplies["collector.terminalOwnership"]
-  const image =
-    receipt === undefined
-      ? undefined
-      : (JSON.parse(receipt) as { windowsHosted?: { consoleHost?: { image?: unknown } } }).windowsHosted?.consoleHost
-          ?.image
-  return typeof image === "string" && image !== "" ? image : "(console host binary not recorded)"
-}
-
-export function consoleHostHold(
-  run: LoadedRun,
-  cell: { featureId: string; assertionType?: AssertionType; rawReplyRef?: string },
-  verdict: string,
-): string | undefined {
-  if (run.subject.kind !== "term" || run.subject.os?.toLowerCase() !== "windows") return undefined
-  if (verdict !== "supported" && verdict !== "unsupported") return undefined
-  const old = historical.get(cell)?.input.evidence
-  if (
-    (old !== undefined ? old !== "query" && old !== "behavior" : cell.assertionType !== "query_reply") ||
-    cell.rawReplyRef === undefined
-  ) {
-    return undefined
-  }
-  const stored = run.rawReplies[cell.rawReplyRef]
-  if (stored === undefined) {
-    throw new Error(`Run ${run.runId}: ${cell.featureId} cites raw reply ${cell.rawReplyRef}, which the run lacks`)
-  }
-  const queries = stored.startsWith("{") ? (JSON.parse(stored) as { queries?: unknown }).queries : undefined
-  if (stored.startsWith("{") && (!Array.isArray(queries) || queries.length === 0)) return undefined
-  const sources = Array.isArray(queries)
-    ? queries.map((query: unknown, index) => {
-        const { sequence, raw } = (query ?? {}) as { sequence?: unknown; raw?: unknown }
-        if (typeof sequence !== "string" || (raw !== undefined && typeof raw !== "string")) {
-          throw new Error(`Run ${run.runId}: ${cell.featureId} query ${index} has no readable sequence and reply`)
-        }
-        return replySource(sequence, raw ?? "")
-      })
-    : [replySource("", stored)]
-  if (sources.every((source) => source === "terminal")) return undefined
-  return sources.includes("host")
-    ? `answered by the Windows console host ${consoleHostBinary(run)}, not measured on the terminal`
-    : "no reply after the console host's DA1; the host may have swallowed the query"
 }
 
 const TEMPORAL_PIXEL_FEATURES = new Set([

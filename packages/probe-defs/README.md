@@ -620,7 +620,7 @@ Observation outcomes are `supported`, `unsupported`, `inconclusive` and `error`.
 - Coverage becomes `test-todo`. Refusal and consumption without a deciding observation explicitly supply Test to-do tests; unanswered queries and errors explicitly supply Test failure tests. No reply, clipboard value or frame is invented to satisfy a type.
 - A measured inconclusive observation stays typed and defaults to `test-failure` unless an existing explicit criterion test selects a different status.
 
-`finalizeProbeResult` folds the required tests in order: failure, pending or empty tests, reviewed impossibility, unsupported, then supported. `untestable` needs a review reference.
+`finalizeProbeResult` folds the required tests in order: failure, pending or empty tests, reviewed impossibility, unsupported, then supported. `untestable` needs a review reference. Collection finalization records source-answer resolutions and Windows console-host prerequisites before that fold. The canonical run reader decodes the stored result without re-resolving source answers or folding its tests again; content validation uses that same reader.
 
 That order matters: a failed test wins over a pending one. Timeout or lack of an observable is not automatically evidence that a terminal lacks the feature; the probe's criterion must establish that. An execution-only Test to-do can follow real I/O and does not promise an empty trace; pre-I/O refusal fixtures separately prove their zero-byte behavior.
 
