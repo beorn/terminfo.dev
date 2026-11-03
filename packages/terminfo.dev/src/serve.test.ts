@@ -1338,10 +1338,15 @@ describe("private finite daemon startup", () => {
   })
 
   it.each([
-    { arm: "windowsHosted", retained: false },
-    { arm: "terminalApp", retained: false },
-    { arm: "darwinHosted", retained: true },
-  ])("handles $arm text retention: $retained", ({ arm, retained }) => {
+    { arm: "windowsHosted", app: "kitty", route: "absent", retained: false, pid: true },
+    { arm: "terminalApp", app: "terminal-app", route: "absent", retained: false, pid: true },
+    { arm: "darwinHosted", app: "iterm2", route: "absent", retained: false, pid: true },
+    { arm: "darwinHosted", app: "kitty", route: "text-cells", retained: true, pid: true },
+    { arm: "darwinHosted", app: "iterm2", route: "pixels", retained: true, pid: true },
+    { arm: "darwinHosted", app: "terminal-app", route: "pixels", retained: true, pid: true },
+    { arm: "terminalApp", app: "terminal-app", route: "refused", retained: true, pid: true },
+    { arm: "darwinHosted", app: "iterm2", route: "pixels", retained: true, pid: false },
+  ])("handles $arm $app capture route $route (retained=$retained, pid=$pid)", ({ arm, app, route, retained, pid }) => {
     home = mkdtempSync(join(tmpdir(), "terminfo-serve-windows-skip-"))
     const result = spawnSync(
       process.execPath,
@@ -1351,6 +1356,8 @@ describe("private finite daemon startup", () => {
       import { mock } from "bun:test"
       import assert from "node:assert/strict"
       const arm = process.env.FIXTURE_ARM
+      const app = process.env.FIXTURE_APP
+      const route = process.env.FIXTURE_ROUTE
       const retained = process.env.FIXTURE_RETAINED === "yes"
       Object.defineProperty(process, "platform", { value: arm === "windowsHosted" ? "win32" : "darwin" })
       const unified = await import("./packages/terminfo.dev/src/probes/unified.ts")
@@ -1359,18 +1366,20 @@ describe("private finite daemon startup", () => {
       let capture
       let captureKind = "absent"
       let reads = 0
+      let pixelFrames = 0, calibrations = 0
       globalThis.__TERMINFO_BUNDLED_SUITE__ = {
         manifest: { schemaVersion: 4, catalogIds: Object.keys((await import("@terminfo/catalog")).loadFeatures(process.cwd() + "/content")).sort(), probeHash: "a".repeat(12), probes: { term: unified.ALL_PROBES.map(p => p.id).sort() } },
         collectorRevision: "b".repeat(40)
       }
       mock.module("./packages/terminfo.dev/src/detect.ts", () => ({
-        detectTerminal: () => ({ name: "kitty", version: "", os: "windows", osVersion: "fixture" })
+        detectTerminal: () => ({ name: app, version: "", os: arm === "windowsHosted" ? "windows" : "macos", osVersion: "fixture" })
       }))
       mock.module("./packages/terminfo.dev/src/owned-terminal.ts", () => ({ ...owned,
         ownedTerminalVerifiedFor: () => true,
         createOwnedTerminal: async () => ({
           geometryAtGrant: { status: "measured", rows: 24, cols: 80 },
-          hostedAppId: "kitty",
+          ...(arm !== "terminalApp" && { hostedAppId: app }),
+          ...(process.env.FIXTURE_PID === "yes" && { appPid: 5705 }),
           summary: "owned fixture",
           readCells: async () => { reads += 1; return { status: "refused", reason: "no retention directory in this run" } },
           dispose: async () => {}
@@ -1379,14 +1388,35 @@ describe("private finite daemon startup", () => {
       mock.module("./packages/terminfo.dev/src/tty.ts", () => ({ ...tty,
         withRawMode: async callback => callback(), drainStdin: async () => {},
         queryWithSentinelOutcome: async (sequence, pattern) => {
-          const raw = "\\x1bP>|kitty(0.49.2)\\x1b\\\\\\x1b[?62;52;c"
+          const raw = sequence === "\\x1b[18t" ? "\\x1b[8;24;80t"
+            : sequence === "\\x1b[16t" ? "\\x1b[6;17;8t"
+            : sequence === "\\x1b[14t" ? "\\x1b[4;408;640t"
+            : app === "iterm2" ? "\\x1bP>|iTerm2 3.6.11\\x1b\\\\"
+            : app === "kitty" ? "\\x1bP>|kitty(0.49.2)\\x1b\\\\\\x1b[?62;52;c" : "\\x1b[?1;2c"
           return { raw, rawBase64: Buffer.from(raw).toString("base64"), match: pattern.exec(raw), reason: pattern.test(raw) ? "reply" : "sentinel" }
+        }
+      }))
+      mock.module("./packages/terminfo.dev/src/darwin-capture.ts", () => ({
+        createDarwinCapture: async (_directory, options) => {
+          assert.equal(options.appPid, 5705)
+          return { captureRaw: async () => { pixelFrames++; throw new Error("pixel frame fixture") } }
+        }
+      }))
+      mock.module("./packages/terminfo.dev/src/capture-calibration.ts", () => ({
+        calibrateCaptureOrigin: async () => {
+          calibrations++
+          throw Object.assign(new Error("Capture calibration route fixture"), { name: "CaptureCalibrationRefused" })
         }
       }))
       mock.module("./packages/terminfo.dev/src/probes/unified.ts", () => ({ ...unified,
         runProbeBatch: async options => {
           capture = options.capture
           captureKind = options.captureKind ?? "absent"
+          if (route === "pixels") {
+            assert.equal(typeof capture, "function", "Mac route must attempt a pixel frame")
+            assert.equal(captureKind, "absent", "Mac route must not install text-cells")
+            await assert.rejects(options.capture({ role: "witness", label: "route fixture" }), /pixel frame fixture/)
+          }
           if (retained) {
             assert.equal(typeof options.prepareCapture, "function", "macOS text needs once-per-run preparation")
             await options.prepareCapture({
@@ -1407,15 +1437,30 @@ describe("private finite daemon startup", () => {
         }
       }))
       const { collectProbeRun } = await import("./packages/terminfo.dev/src/serve.ts")
-      const run = arm === "terminalApp"
-        ? await collectProbeRun({ ids: ["device.xtversion"], terminalAppOwner: {} })
-        : await collectProbeRun({ ids: ["device.xtversion"] })
+      const collect = () => arm === "terminalApp"
+        ? collectProbeRun({ ids: ["device.xtversion"], terminalAppOwner: {} })
+        : collectProbeRun({ ids: ["device.xtversion"] })
+      if (route === "refused") {
+        await assert.rejects(collect(), /Darwin capture directory requires a verified hosted-runner receipt or owned process/)
+        assert.equal(reads, 0)
+        assert.equal(pixelFrames, 0)
+        process.exit(0)
+      }
+      if (retained && process.env.FIXTURE_PID !== "yes") {
+        await assert.rejects(collect(), /Verified darwinHosted terminal has no measured app PID for capture/)
+        assert.equal(reads, 0)
+        assert.equal(pixelFrames, 0)
+        process.exit(0)
+      }
+      const run = await collect()
       assert.equal(typeof capture, retained ? "function" : "undefined")
-      assert.equal(captureKind, retained ? "text-cells" : "absent")
+      assert.equal(captureKind, route === "text-cells" ? "text-cells" : "absent")
       assert.equal(reads, 0)
+      assert.equal(pixelFrames, route === "pixels" ? 1 : 0)
+      assert.equal(calibrations, route === "pixels" ? 1 : 0)
       assert.deepEqual(run.textSnapshotRefs ?? [], [])
       assert.equal(run.results.filter(observation => observation.frames?.some(frame => frame.kind === "text-cells")).length, 0)
-      if (retained) {
+      if (route === "text-cells") {
         assert.equal(run.textQualification.shapes.length, 5)
         assert.ok(run.textQualification.shapes.every(shape => typeof shape.reason === "string" && !shape.frames))
       } else assert.equal(run.textQualification, undefined)
@@ -1427,6 +1472,9 @@ describe("private finite daemon startup", () => {
           ...process.env,
           HOME: home,
           FIXTURE_ARM: arm,
+          FIXTURE_APP: app,
+          FIXTURE_ROUTE: route,
+          FIXTURE_PID: pid ? "yes" : "no",
           FIXTURE_RETAINED: retained ? "yes" : "no",
           TERMINFO_CAPTURE_DIRECTORY: retained ? join(home, "capture") : "",
           TERMINFO_DISPOSABLE_RECEIPT: arm !== "terminalApp" ? "hardware-receipt-fixture" : "",
