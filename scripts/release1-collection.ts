@@ -47,7 +47,7 @@ import { assertPrivateCollectionOutput } from "../packages/admin/src/admit-colle
 import { reviewedContextFor } from "../docs/data/current-results.ts"
 import { classifyDevelopmentRun, consoleHostHeldResults, readVerifiedArtifact } from "../docs/data/selected-results.ts"
 import { parseInterpretations, activeInterpretations } from "./interpretations.ts"
-import { loadStoredRuns } from "../packages/admin/run-admission.ts"
+import { loadStoredRuns } from "../packages/admin/corpus-placement.ts"
 import { derivedSuiteManifest, probeSuiteSnapshot } from "../packages/admin/versions.ts"
 import { collectHeadlessRuns } from "../packages/probes/collect-headless.ts"
 import { TRANSPORT_RECEIPT_KIND } from "../packages/terminfo.dev/src/disposable-receipt.ts"

@@ -36,7 +36,7 @@ import {
   RETAINED_ARTIFACT_KINDS,
   verifyRetainedArtifact,
   type RetainedArtifactKind,
-} from "../../packages/admin/run-admission.ts"
+} from "../../packages/admin/corpus-placement.ts"
 import {
   activeInterpretations,
   applies,

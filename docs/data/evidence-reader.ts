@@ -5,7 +5,6 @@ import type {
   ObservationReason,
   ProbeAssertion,
 } from "../../packages/probe-defs/src/types.ts"
-import type { IdentityAdmission } from "../../packages/admin/run-admission.ts"
 import type { CellEvidence, HistoricalCellEvidence } from "./public-results.ts"
 
 export type LoadedCellEvidence =
@@ -62,7 +61,6 @@ export interface LoadedCellTrace {
   sourceRevision: string | null
   identity: {
     recorded: string
-    admission?: IdentityAdmission
   }
   featureId: string
   cell: TraceCellRecord
@@ -434,9 +432,6 @@ export function readCellTrace(parsed: unknown, expectation: CellTraceExpectation
     sourceRevision: parsed.sourceRevision,
     identity: {
       recorded: parsed.identity.recorded,
-      ...(isRecord(parsed.identity.admission) && {
-        admission: parsed.identity.admission as unknown as IdentityAdmission,
-      }),
     },
     featureId: expectation.featureId,
     cell: cellEntry as unknown as TraceCellRecord,

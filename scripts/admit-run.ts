@@ -6,7 +6,7 @@ import { decodeCollectorDraft } from "@terminfo/run-parser"
 import { derivedSuiteManifest, probeSuiteSnapshot } from "../packages/admin/versions.ts"
 import { execFileSync } from "node:child_process"
 import { saveDaemonProbeRun } from "../packages/terminfo.dev/src/daemon-client.ts"
-import { admitRun, planAdmission, CONTENT_DIR } from "../packages/admin/run-admission.ts"
+import { admitRun, planAdmission, CONTENT_DIR } from "../packages/admin/corpus-placement.ts"
 export {
   admitRun,
   assessRunAdmission,
@@ -17,7 +17,7 @@ export {
   type IdentityAdmission,
   type AdmissionExclusionCode,
   type AdmissionPlan,
-} from "../packages/admin/run-admission.ts"
+} from "../packages/admin/corpus-placement.ts"
 
 function usage(): never {
   console.error(

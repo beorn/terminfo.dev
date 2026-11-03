@@ -200,8 +200,8 @@ const fixture = vi.hoisted(() => {
 
 // Synthetic rows test consumer parity, not admission. The retained-corpus subprocess below
 // still runs the real assessor, parser, selector and composer without this module's mock registry.
-vi.mock("../packages/admin/run-admission.ts", async () => ({
-  ...(await vi.importActual<typeof import("../packages/admin/run-admission.ts")>("../packages/admin/run-admission.ts")),
+vi.mock("../packages/admin/corpus-placement.ts", async () => ({
+  ...(await vi.importActual<typeof import("../packages/admin/corpus-placement.ts")>("../packages/admin/corpus-placement.ts")),
   assessRunAdmission: (run: LoadedRun) =>
     run.runId.startsWith("kitty-clipboard") || run.runId.startsWith("kitty-lib")
       ? { accepted: false, reason: "identity-unverified", identityAdmission: null }

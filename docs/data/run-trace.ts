@@ -317,8 +317,8 @@ export interface TraceDocument<Cell> {
   runSha256: string
   measuredAt: string
   sourceRevision: string | null
-  /** The identity the run recorded for itself, and the admission rule selection applied to it. */
-  identity: { recorded: string; admission?: SelectedVersion["identityAdmission"] }
+  /** The identity the run recorded for itself. */
+  identity: { recorded: string }
   cells: Record<string, Cell>
 }
 export type CurrentTraceDocument = TraceDocument<CurrentTraceCell>
@@ -480,7 +480,7 @@ function traceRecord(
   }
 }
 
-type TraceVersion = Pick<SelectedVersion, "runId" | "sha256" | "measuredAt" | "identity" | "identityAdmission"> & {
+type TraceVersion = Pick<SelectedVersion, "runId" | "sha256" | "measuredAt" | "identity"> & {
   sourceRevision: string | null
   schemaVersion?: 1 | 2 | 3 | 4
   source?: CurrentSelectedVersion["source"]
@@ -502,7 +502,6 @@ function traceDocument<Cell>(
     sourceRevision: version.sourceRevision,
     identity: {
       recorded: version.identity,
-      ...(version.identityAdmission && { admission: version.identityAdmission }),
     },
     cells,
   }

@@ -15,7 +15,7 @@ import { fileURLToPath } from "node:url"
 import { promisify } from "node:util"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import { buildStamp, createBuildMetadata } from "./build-metadata.ts"
-import { CONTENT_DIR } from "../packages/admin/run-admission.ts"
+import { CONTENT_DIR } from "../packages/admin/corpus-placement.ts"
 
 let repo: string
 
