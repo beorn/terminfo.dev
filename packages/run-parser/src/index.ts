@@ -692,17 +692,27 @@ function probeAttempt(value: unknown, path: string, rawReplies: Record<string, s
 /** The reason a stored source-answer cell reads with, now that source answers no longer count (#32246). */
 export const SOURCE_ANSWER_RETIRED_REASON = "source answer no longer counts (operator 2026-11-03)"
 
+/**
+ * A stored app/mux screenshot review is retired too: it is a judgment record, not a same-run pixel check with an
+ * unstyled control and a changed positive control (#30590), so it is not re-admitted (@cto batch7 A-F2).
+ */
+export const STORED_VISUAL_REVIEW_RETIRED_REASON = "stored visual review not re-admitted: needs a same-run pixel check"
+
 /** Map one stored source-answer cell to TEST TODO; its references and branch stay in the stored file only. */
 function retiredSourceAnswer(result: ProbeResult): ProbeResult {
   const { reviewRef: _reviewRef, ...rest } = result
+  const reason =
+    result.criterionBranch === "visual-review" && result.assertionType === "screenshot"
+      ? STORED_VISUAL_REVIEW_RETIRED_REASON
+      : SOURCE_ANSWER_RETIRED_REASON
   return {
     ...rest,
     status: "test-todo",
-    reason: SOURCE_ANSWER_RETIRED_REASON,
+    reason,
     tests: result.tests.map((test) => {
       if (test.id !== "review" && test.reviewRef === undefined) return test
       const { reviewRef: _testRef, ...kept } = test
-      return { ...kept, status: "test-todo", reason: SOURCE_ANSWER_RETIRED_REASON }
+      return { ...kept, status: "test-todo", reason }
     }),
   }
 }
