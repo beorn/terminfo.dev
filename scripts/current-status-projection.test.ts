@@ -173,10 +173,7 @@ describe("current execution projection", () => {
     })
     const older = candidates.find((candidate) => candidate !== chosen)!
     const rewritten = projectResults(
-      [
-        { ...olderHost, runId: "rewritten-old-host", sha256: "f".repeat(64) },
-        chosenHost,
-      ],
+      [{ ...olderHost, runId: "rewritten-old-host", sha256: "f".repeat(64) }, chosenHost],
       [],
       ids,
       { currentProbeHash: suite.probeHash },
