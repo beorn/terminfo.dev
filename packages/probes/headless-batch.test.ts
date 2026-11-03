@@ -451,6 +451,78 @@ test.each(["witness-loss", "width-control", "bad-counts", "control-counts", "vie
   },
 )
 
+// @failure Engines whose primary-screen ED 2 (\x1b[2J) scrolls cleared rows into scrollback (alacritty_terminal 0.26)
+// fail main-screen width controls, exceed the history-shrink post-resize readBound, and fail alternate 1049 isolation.
+// @level l1
+// @consumer Registered reflow callback through an ED 2 scrollback-retaining engine.
+test("reflow qualifies main, history, and alternate phases when primary ED 2 scrolls into scrollback unless ED 3 follows", async () => {
+  const definition = registryDefinitions(["extensions.reflow"])[0]!
+  const batch = await collectBatch(backend, "xtermjs", [
+    {
+      ...definition,
+      lib(ctx) {
+        const feed = ctx.feed.bind(ctx)
+        const resize = ctx.resize!.bind(ctx)
+        const scrollback = ctx.getScrollback.bind(ctx)
+        const cell = ctx.getCell.bind(ctx)
+        let mainShrinkAfter = false
+        ctx.feed = (text) => {
+          mainShrinkAfter = false
+          const entersAlt = text.includes("\x1b[?1049h")
+          const leavesAlt = text.includes("\x1b[?1049l")
+          const onPrimary = !entersAlt && (leavesAlt || !ctx.getMode("altScreen"))
+          if (onPrimary && text.includes("\x1b[2J")) {
+            const { y, x } = ctx.getCursor()
+            const { screenLines } = scrollback()
+            const scroll = `\x1b[${screenLines};1H${"\n".repeat(y + 1)}\x1b[${y + 1};${x + 1}H\x1b[2J`
+            feed(text.replace("\x1b[2J", scroll))
+            return
+          }
+          feed(text)
+        }
+        ctx.resize = (cols, rows) => {
+          const before = scrollback()
+          resize(cols, rows)
+          if (!ctx.getMode("altScreen") && cols === 12 && before.totalLines === rows) {
+            mainShrinkAfter = true
+          }
+        }
+        ctx.getScrollback = () => {
+          const state = scrollback()
+          if (mainShrinkAfter && state.totalLines === state.screenLines && cell(0, 0).char === "A") {
+            return { ...state, totalLines: state.screenLines + 1, viewportOffset: 1 }
+          }
+          return state
+        }
+        ctx.getCell = (row, col) => {
+          if (mainShrinkAfter && row === scrollback().screenLines) {
+            return { ...cell(0, 0), char: " ", wide: false }
+          }
+          return cell(row, col)
+        }
+        return definition.lib!(ctx)
+      },
+    },
+  ])
+  expect(batch.ungradedDiagnostics).toEqual({})
+  expect(batch.results).toMatchObject([
+    {
+      featureId: "extensions.reflow",
+      status: "supported",
+      tests: [
+        expect.objectContaining({ id: "main-grow", status: "supported" }),
+        expect.objectContaining({ id: "main-shrink", status: "supported" }),
+        expect.objectContaining({ id: "history-grow", status: "supported" }),
+        expect.objectContaining({ id: "history-shrink", status: "supported" }),
+      ],
+    },
+  ])
+  expect(reflowEvidence(batch).alternatePhases).toMatchObject([
+    { id: "alternate-grow", status: "unsupported", outcome: "preserved-wraps" },
+    { id: "alternate-shrink", status: "unsupported", outcome: "truncated" },
+  ])
+})
+
 // @failure Qualified alternate positives are omitted, or their polarity is folded against another buffer.
 // @level l1
 // @consumer Actual vterm alternate resize/readback; the xterm case above supplies complete physical negatives.

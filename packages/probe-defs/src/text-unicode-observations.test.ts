@@ -1001,6 +1001,36 @@ test("headless wrap uses initialized 61 columns and declines a one-row grid", ()
   expect(unicodeTooShort).toEqual([])
 })
 
+// #32182: ED 2 (\x1b[2J) in alacritty_terminal scrolls cleared primary-screen lines into scrollback,
+// shifting the active screen to totalLines - screenLines.
+test("unicode.wrap-boundary reads active screen rows when ED 2 retains scrollback lines", () => {
+  let phase = "empty"
+  const blank = headless().getCell(0, 0)
+  const result = byId("unicode.wrap-boundary").lib(
+    headless({
+      cols: 61,
+      getScrollback: () => ({ viewportOffset: 0, totalLines: 25, screenLines: 24 }),
+      feed(sequence) {
+        if (sequence.includes("A".repeat(61))) phase = "seed"
+        else if (sequence === "\x1b[1;61H") phase = "setup"
+        else if (sequence === "中") phase = "sample"
+      },
+      getCell: (row, col) => {
+        if (row < 1) return { ...blank, char: "", wide: false }
+        const screenRow = row - 1
+        if (phase === "seed" && screenRow === 0) return { ...blank, char: "A", wide: false }
+        if (phase === "sample" && screenRow === 0 && col === 0) return { ...blank, char: "A", wide: false }
+        if (phase === "sample" && screenRow === 1 && col === 0) return { ...blank, char: "中", wide: true }
+        if (phase === "sample" && screenRow === 0 && col === 60) return { ...blank, char: "中", wide: true }
+        return { ...blank, char: "", wide: false }
+      },
+      getCursor: () => ({ x: phase === "setup" ? 60 : 0, y: 0, visible: true, style: null }),
+    }),
+  )
+  expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
+  expect(result.assertions).toMatchObject([{ kind: "positive" }])
+})
+
 test("tab fixtures restore after a failed cursor query", async () => {
   // text.reverse-index-scroll is no longer here: it is a region-readback kind row now, so its app arm
   // asks the terminal's pixel report rather than the cursor, and a cursor-transport failure never

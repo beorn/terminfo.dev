@@ -1909,3 +1909,81 @@ test("modes.decsscls names the missing capture instead of claiming presentation 
   expect(result.notTested).toMatchObject({ reason: "no-semantic-observable" })
   expect(result.observation).toBeUndefined()
 })
+
+// #32182: alacritty_terminal scrolls cleared primary-screen lines into scrollback on ED 2 (\x1b[2J),
+// so totalLines > screenLines on the primary screen while alternate screen has totalLines === screenLines.
+test("alt-screen, left-right-margin, and decsscls headless probes offset primary reads by retained scrollback", () => {
+  for (const [id, mode] of [
+    ["modes.alt-screen.enter", 1049],
+    ["modes.alt-screen.exit", 1049],
+    ["modes.altscreen-47", 47],
+    ["modes.altscreen-1047", 1047],
+  ] as const) {
+    const { context } = alt1049Source("roundtrip", 20, 5, mode)
+    const feed = context.feed.bind(context)
+    const getCell = context.getCell.bind(context)
+    let onAlt = false
+    let scrolled = 0
+    context.feed = (sequence: string) => {
+      if (sequence === `\x1b[?${mode}h`) onAlt = true
+      if (sequence.startsWith(`\x1b[?${mode}l`)) onAlt = false
+      if (!onAlt && sequence.includes("\x1b[2J")) scrolled += 1
+      feed(sequence)
+    }
+    context.getScrollback = () => ({
+      viewportOffset: 0,
+      totalLines: onAlt ? 5 : 5 + scrolled,
+      screenLines: 5,
+    })
+    context.getCell = (row: number, col: number) => {
+      const offset = onAlt ? 0 : scrolled
+      if (row < offset) return { char: " " } as ReturnType<LibProbeSource["getCell"]>
+      return getCell(row - offset, col)
+    }
+    const probe = modesProbes.find((entry) => entry.id === id)!
+    const result = probe.lib!(context)
+    expect(result.observation, id).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
+  }
+
+  // left-right-margin with 1 scrolled line from \x1b[2J (libProbeSource offsets model.getCell by totalLines - screenLines):
+  let marginRow = "        "
+  let marginScrolled = 0
+  let marginMode = false
+  const marginSource = libProbeSource({
+    cols: 8,
+    getScrollback: () => ({ viewportOffset: 0, totalLines: 24 + marginScrolled, screenLines: 24 }),
+    feed(sequence) {
+      if (sequence.includes("\x1b[2J")) marginScrolled += 1
+      if (sequence.includes("ABCDEFGH")) marginRow = "ABCDEFGH"
+      if (sequence.includes("\x1b[?69h")) marginMode = true
+      if (sequence.endsWith("\x1b[1;3H\x1b[@")) {
+        marginRow = marginMode ? "AB CDEGH" : "AB CDEFG"
+      }
+    },
+    getCell: (row, col) =>
+      ({
+        char: row === 0 ? (marginRow[col] ?? " ") : " ",
+      }) as ReturnType<LibProbeSource["getCell"]>,
+    getCursor: () => ({ x: 0, y: 0, visible: true, style: null }),
+  })
+  const marginResult = modesProbes.find((entry) => entry.id === "modes.left-right-margin")!.lib!(marginSource)
+  expect(marginResult.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
+
+  // decsscls with 1 blank scrollback line retained above the 24-line active screen:
+  let decssclsMeasured = false
+  const decssclsLibSource = libProbeSource({
+    cols: 80,
+    getScrollback: () => ({ viewportOffset: 0, totalLines: 25, screenLines: 24 }),
+    feed(sequence) {
+      decssclsMeasured = sequence.includes("\x1b[9 p")
+    },
+    getText: () => (decssclsMeasured ? "\nQ\n\n" : "\n\n\n"),
+    getCursor: () => ({ x: decssclsMeasured ? 1 : 0, y: 0, visible: true, style: "block" }),
+    getCell() {
+      throw new Error("DECSSCLS must use the existing text/cursor readers")
+    },
+  })
+  const decssclsResult = modesProbes.find((entry) => entry.id === "modes.decsscls")!.lib!(decssclsLibSource)
+  expect(decssclsResult.criterionBranch).toBe("source-negative-review")
+  expect(decssclsResult.tests).toMatchObject([{ id: "review", status: "test-todo" }])
+})

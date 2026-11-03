@@ -530,6 +530,33 @@ test("editing.decsace keeps a differing pair that is not the two extents inconcl
   }
 })
 
+// #32182: alacritty_terminal scrolls cleared primary-screen lines into scrollback on ED 2 (\x1b[2J),
+// so totalLines > screenLines and active screen rows start at totalLines - screenLines.
+// libProbeSource maps retained-buffer getCell(row, col) to model.getCell(row - (totalLines - screenLines), col).
+test("editing.decsace reads active screen rows when ED 2 scrolls a cleared row into scrollback", () => {
+  const chars = ["abcdefgh", "ijklmnop"]
+  let pattern = ""
+  let scrolled = 0
+  const source = libProbeSource({
+    cols: 8,
+    getScrollback: () => ({ viewportOffset: 0, totalLines: 24 + scrolled, screenLines: 24 }),
+    feed: (text) => {
+      if (text.includes("\x1b[2J")) scrolled += 1
+      if (text.includes("\x1b[2*x")) pattern = DECSACE_RECT
+      else if (text.includes("\x1b[0*x")) pattern = DECSACE_STREAM
+    },
+    getCell: (row, col) =>
+      ({
+        char: row >= 0 ? (chars[row]?.[col] ?? " ") : "",
+        inverse: row >= 0 && pattern.split("|")[row]?.[col] === "#",
+      }) as ReturnType<LibProbeSource["getCell"]>,
+    getCursor: () => ({ x: 0, y: 0, visible: true, style: null }),
+  })
+  const result = find("editing.decsace").lib!(source)
+  expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
+  expect(result.assertions).toMatchObject([{ kind: "positive" }])
+})
+
 test("editing.decsace without a capture adapter still clears its DECSACE extent", async () => {
   const { context, writes } = captureSource(24, 80, false)
   const result = await find("editing.decsace").term!(context)
