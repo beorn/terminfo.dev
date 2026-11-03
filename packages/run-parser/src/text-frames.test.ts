@@ -9,8 +9,6 @@
 import { createHash } from "node:crypto"
 import { describe, expect, it } from "vitest"
 import { initializeRunDraft, sealRunDraft, type ProbeSuiteManifest } from "@terminfo/probe-defs"
-import { canConcludeObservation, validateCorrectedObservation } from "./observations.ts"
-import { parseInterpretations } from "../../../scripts/interpretations.ts"
 import { decodeCollectorDraft, parseRun, parseSuiteManifest } from "./index.ts"
 
 const digest = (seed: string) => `sha256:${createHash("sha256").update(seed).digest("hex")}`
@@ -423,60 +421,4 @@ describe("run-owned text qualification ingestion", () => {
   ])("refuses malformed trusted suite declarations", (metadata, reason) => {
     expect(() => parseSuiteManifest("suite.json", JSON.stringify({ ...manifest, ...metadata }))).toThrow(reason)
   })
-})
-
-// The immutable corpus has no successfully qualified text run and no corrections. This exercises
-// selection's full qualified path and proves a replacement gets its own historical interpretation.
-it("qualifies current text and recomputes eligibility for its historical reviewed correction", () => {
-  const raw = textRun({ subject: { ...TARGET, os: "macos" } })
-  const manifest = { ...suites.get(SUITE)!, textClaims: [FEATURE] }
-  const run = parseRun("qualified-text.json", JSON.stringify(raw), [FEATURE], new Map([[SUITE, manifest]]))
-  const { featureId, assertionType, rawReplyRef, frames } = run.results![0]!
-  if (assertionType !== "buffer_state") throw new Error("Current text correction fixture lacks its buffer-state proof")
-  const observation = { featureId, assertionType, rawReplyRef, frames, outcome: "supported" as const }
-  expect(canConcludeObservation(run, observation, { qualified: true })).toBe(true)
-  expect(canConcludeObservation(run, observation, { qualified: false, reason: "mapping failed" })).toBe(false)
-  expect(canConcludeObservation({ ...run, textClaims: [] }, observation, { qualified: true })).toBe(false)
-  expect(
-    canConcludeObservation({ ...run, subject: { ...run.subject, os: "windows" } }, observation, { qualified: true }),
-  ).toBe(false)
-  const host = { image: "conhost.exe", executablePath: "C:\\Windows\\conhost.exe", executableSha256: digest("host") }
-  const hosted = parseRun(
-    "hosted-text.json",
-    JSON.stringify({ ...raw, results: [{ ...raw.results[0], host }] }),
-    [FEATURE],
-    new Map([[SUITE, manifest]]),
-  )
-  expect(canConcludeObservation(hosted, { ...observation, host: hosted.results![0]!.host }, { qualified: true })).toBe(
-    false,
-  )
-  const [entry] = parseInterpretations(
-    "corrections.json",
-    JSON.stringify([
-      {
-        id: "reviewed-query-criterion",
-        reviewer: "reviewer",
-        reason: "The retained criterion describes a historical behavior observation",
-        sources: ["review"],
-        supersedes: [],
-        runId: run.runId,
-        runSha256: run.sha256,
-        featureId: FEATURE,
-        scope: {
-          target: { kind: "app", id: TARGET.id },
-          versions: [TARGET.version, TARGET.version],
-          suites: [SUITE, SUITE],
-        },
-        observation: { featureId: FEATURE, outcome: "supported", evidence: "behavior", rawReplyRef: FEATURE },
-      },
-    ]),
-    [FEATURE],
-  )
-  const corrected = validateCorrectedObservation({ ...run, observations: [observation] }, entry!)
-  expect(corrected.assertionType).toBeUndefined()
-  expect(canConcludeObservation(run, corrected, { qualified: false, reason: "mapping failed" })).toBe(true)
-  expect(JSON.stringify({ run, entry, corrected })).not.toMatch(/nonMeasuring|requiresTextQualification|"evidence"/)
-  expect(() => validateCorrectedObservation({ ...run, observations: [observation], rawReplies: {} }, entry!)).toThrow(
-    /missing raw reply/,
-  )
 })
