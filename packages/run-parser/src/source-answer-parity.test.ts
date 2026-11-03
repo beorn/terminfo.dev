@@ -21,9 +21,12 @@ import {
 import { resolveMeasuredSourceAnswer } from "./source-answers.ts"
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "../../..")
-const GHOSTTY_RUN = "ghostty-0.4.0-linux-3f3e920e-ebf8-4d81-ace1-52445a05a992.json"
-/** The eight cells whose kept answers disagree now that both the colour-readback and reply-path passes are kept. */
-const DISPUTED = [
+const GHOSTTY_RUN = "ghostty-0.4.0-linux-3bacc3ae-a7c9-4fed-9f3f-a2c0ce01e6f5.json"
+/**
+ * The eight colour-reset cells whose @dev/1 originals were withdrawn with the superseded 3f3e920e run (#32181).
+ * Their reply-path answer is now the only kept answer, so it decides the cell.
+ */
+const WITHDRAWN = [
   "extensions.osc104-reset-palette",
   "extensions.osc110-reset-fg",
   "extensions.osc111-reset-bg",
@@ -32,6 +35,15 @@ const DISPUTED = [
   "extensions.osc114-reset-pointer-bg",
   "extensions.osc30001-color-stack-push",
   "extensions.osc30101-color-stack-pop",
+].sort()
+/**
+ * The kitty-graphics trio keeps two disagreeing reply-path answers in the table. That dispute predates #32181,
+ * which touches no row outside the eight above, so it stays a dispute in this run and nobody picks a side here.
+ */
+const PRE_EXISTING_DISPUTES = [
+  "extensions.kitty-graphics",
+  "extensions.kitty-graphics.display",
+  "extensions.kitty-graphics.transmit",
 ].sort()
 
 interface Run {
@@ -77,22 +89,25 @@ describe("kept answers against every current committed run", () => {
     expect({ cells, drifted }).toEqual({ cells: 3276, drifted: [] })
   }, 30_000)
 
-  it("reads the disputed ghostty cells as test-todo with both originals named", () => {
+  it("reads the eight withdrawn colour-reset cells on their surviving reply-path answer", () => {
     const run = currentRuns().find((entry) => entry.name === GHOSTTY_RUN)!.run
     const cells = run.results
-      .filter((result) => DISPUTED.includes(result.featureId))
+      .filter((result) => WITHDRAWN.includes(result.featureId))
       .sort((a, b) => a.featureId.localeCompare(b.featureId))
-    expect(cells.map((cell) => cell.featureId)).toEqual(DISPUTED)
+    expect(cells.map((cell) => cell.featureId)).toEqual(WITHDRAWN)
     for (const cell of cells) {
-      expect(cell.status, cell.featureId).toBe("test-todo")
-      const reason = String(cell.reason)
-      expect(reason.startsWith("kept answers disagree"), cell.featureId).toBe(true)
-      // Never a pick by order or kind: both kept originals travel with the cell.
-      expect(reason, cell.featureId).toContain("@dev/1: ")
-      expect(reason, cell.featureId).toContain("reply-path-audit: ")
+      // The dispute ends because the table keeps one answer, never because a side was picked by order or kind.
       const row = SOURCE_ANSWERS.find((entry) => entry.featureId === cell.featureId && entry.subject.id === "ghostty")!
-      const statuses = new Set(row.answers.map((answer) => answer.status))
-      expect(statuses.size, cell.featureId).toBeGreaterThan(1)
+      expect(
+        row.answers.map((answer) => answer.status),
+        cell.featureId,
+      ).toEqual(["unsupported"])
+      expect(
+        row.answers[0]!.originals.map((original) => original.reviewer),
+        cell.featureId,
+      ).toEqual(["reply-path-audit"])
+      expect(cell.status, cell.featureId).toBe("unsupported")
+      expect(String(cell.reason).startsWith("kept answers disagree"), cell.featureId).toBe(false)
     }
   })
 
@@ -106,11 +121,13 @@ describe("kept answers against every current committed run", () => {
       ).map((row) => row.featureId),
     )
     const cells = run.results.filter((result) => audited.has(result.featureId))
-    expect(cells.length).toBeGreaterThan(DISPUTED.length)
-    // Exactly the eight disputed cells read as a dispute; every other audited cell keeps its measured result.
+    expect(cells.length).toBeGreaterThan(WITHDRAWN.length)
+    // The eight withdrawn cells no longer read as a dispute; the kitty trio still does, and this change leaves it so.
     const disputed = run.results.filter((result) => String(result.reason).startsWith("kept answers disagree"))
-    expect(disputed.map((cell) => cell.featureId).sort()).toEqual(DISPUTED)
-    for (const cell of cells.filter((entry) => !DISPUTED.includes(entry.featureId))) {
+    expect(disputed.map((cell) => cell.featureId).sort()).toEqual(PRE_EXISTING_DISPUTES)
+    for (const cell of cells.filter(
+      (entry) => !WITHDRAWN.includes(entry.featureId) && !PRE_EXISTING_DISPUTES.includes(entry.featureId),
+    )) {
       expect(String(cell.reason).startsWith("kept answers disagree"), cell.featureId).toBe(false)
     }
   })
