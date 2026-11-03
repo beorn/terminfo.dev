@@ -5023,7 +5023,7 @@
           },
           "assertionRefs": [],
           "rawReplyRef": "extensions.font-ligatures",
-          "reason": "Untestable on this run: the capture was launched with DejaVu Sans Mono, a face without programming-ligature substitutions; the criterion requires a ligature-enabled font with known shaping. Target frames show the ordinary separate operator forms the font must paint; terminal shaping cannot be inferred. Ruling @cto, verdict on ball af2221b2, agreeing with @dev/1 REVISE 425cbf46.",
+          "reason": "Untestable on this run: the capture was launched with DejaVu Sans Mono, a face without programming-ligature substitutions; the criterion requires a ligature-enabled font with known shaping. Target frames show the ordinary separate operator forms the font must paint; terminal shaping cannot be inferred. Ruling @cto, verdict on ball af2221b2, agreeing with @dev/1 REVISE 425cbf46.; reviewed at 0.49.2, not re-verified",
           "reviewRef": "[\"term\",\"kitty\",\"0.49.2\",\"linux\",\"extensions.font-ligatures\"]"
         }
       ],
@@ -5051,7 +5051,7 @@
         }
       ],
       "screenshotRef": "sha256:9755c1a92a88832be2b75e3cd0f5ae3f12832b5d531ef4eed46922f095303ca5",
-      "reason": "Untestable on this run: the capture was launched with DejaVu Sans Mono, a face without programming-ligature substitutions; the criterion requires a ligature-enabled font with known shaping. Target frames show the ordinary separate operator forms the font must paint; terminal shaping cannot be inferred. Ruling @cto, verdict on ball af2221b2, agreeing with @dev/1 REVISE 425cbf46.",
+      "reason": "Untestable on this run: the capture was launched with DejaVu Sans Mono, a face without programming-ligature substitutions; the criterion requires a ligature-enabled font with known shaping. Target frames show the ordinary separate operator forms the font must paint; terminal shaping cannot be inferred. Ruling @cto, verdict on ball af2221b2, agreeing with @dev/1 REVISE 425cbf46.; reviewed at 0.49.2, not re-verified",
       "status": "untestable",
       "reviewRef": "[\"term\",\"kitty\",\"0.49.2\",\"linux\",\"extensions.font-ligatures\"]"
     },
@@ -5085,7 +5085,7 @@
             205
           ],
           "rawReplyRef": "extensions.iterm2-images",
-          "reason": "Accept the existing independent @dev/luna5 Unsupported verdict for this exact original run and suite: the target is blank and only the cursor differs from control. check.json binds the run, suite, original raw SHA256, control and target; the retained original PNG/XWD refs and hashes were verified. No new capture or cross-run inference. This decision does not resolve font ligatures.",
+          "reason": "Accept the existing independent @dev/luna5 Unsupported verdict for this exact original run and suite: the target is blank and only the cursor differs from control. check.json binds the run, suite, original raw SHA256, control and target; the retained original PNG/XWD refs and hashes were verified. No new capture or cross-run inference. This decision does not resolve font ligatures.; reviewed at 0.49.2, not re-verified",
           "reviewRef": "[\"term\",\"kitty\",\"0.49.2\",\"linux\",\"extensions.iterm2-images\"]"
         }
       ],
@@ -5113,7 +5113,7 @@
         }
       ],
       "screenshotRef": "sha256:8599fc9bf2e5275555426b8d76603f7f0c1976c9b408c85eb2b95f242770577b",
-      "reason": "Accept the existing independent @dev/luna5 Unsupported verdict for this exact original run and suite: the target is blank and only the cursor differs from control. check.json binds the run, suite, original raw SHA256, control and target; the retained original PNG/XWD refs and hashes were verified. No new capture or cross-run inference. This decision does not resolve font ligatures.",
+      "reason": "Accept the existing independent @dev/luna5 Unsupported verdict for this exact original run and suite: the target is blank and only the cursor differs from control. check.json binds the run, suite, original raw SHA256, control and target; the retained original PNG/XWD refs and hashes were verified. No new capture or cross-run inference. This decision does not resolve font ligatures.; reviewed at 0.49.2, not re-verified",
       "status": "unsupported",
       "reviewRef": "[\"term\",\"kitty\",\"0.49.2\",\"linux\",\"extensions.iterm2-images\"]"
     },

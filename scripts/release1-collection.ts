@@ -49,7 +49,7 @@ import { parseJsonStrict, parseRun, parseSuiteManifest } from "@terminfo/run-par
 import { frozenSuiteIdFor } from "../packages/admin/suite-manifest.ts"
 import { assertPrivateCollectionOutput } from "../packages/admin/src/admit-collected-run.ts"
 import { loadCurrentResults, loadDefaultContextPolicy, reviewedContextFor } from "../docs/data/current-results.ts"
-import { classifyDevelopmentRun, consoleHostHeldResults, readVerifiedArtifact } from "../docs/data/selected-results.ts"
+import { classifyDevelopmentRun, readVerifiedArtifact } from "../docs/data/selected-results.ts"
 import { parseInterpretations, activeInterpretations } from "./interpretations.ts"
 import { loadStoredRuns } from "../packages/admin/run-admission.ts"
 import { derivedSuiteManifest, probeSuiteSnapshot } from "../packages/admin/versions.ts"
@@ -879,7 +879,7 @@ export async function collectPass(
         textSnapshots.set(ref, readVerifiedArtifact(dirname(path), ref, path, "text-snapshot"))
       }
       if (!run.results || !run.catalogIds) throw new Error("Current run lacks frozen results")
-      row.summary = aggregateCurrentResults(consoleHostHeldResults(run, []), run.catalogIds)
+      row.summary = aggregateCurrentResults(run.results, run.catalogIds)
       row.classification = classifyDevelopmentRun(run)
       row.status = draft ? "pending-review" : "classified"
       if (draft) row.reason = "Valid measured capture; unsealed draft"

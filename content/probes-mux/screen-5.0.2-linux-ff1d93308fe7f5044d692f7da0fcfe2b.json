@@ -307,7 +307,7 @@
             134
           ],
           "rawReplyRef": "cursor.hide",
-          "reason": "Exact-run CTO ruling 6c4da8e6-bcf9-4cfb-acca-1ef0ab69af99. CTO independently reviewed the original steady-block control and hidden target under the frozen cursor-visibility-visual-review fallback: cursor at row2 col3 disappears; CURSOR/L/R seeded text stays unchanged. This fallback records only shown and hidden frames; restored digest belongs to the measured-raster branch not taken. No third frame or changed criterion.",
+          "reason": "Exact-run CTO ruling 6c4da8e6-bcf9-4cfb-acca-1ef0ab69af99. CTO independently reviewed the original steady-block control and hidden target under the frozen cursor-visibility-visual-review fallback: cursor at row2 col3 disappears; CURSOR/L/R seeded text stays unchanged. This fallback records only shown and hidden frames; restored digest belongs to the measured-raster branch not taken. No third frame or changed criterion.; reviewed at 5.0.2, not re-verified",
           "reviewRef": "[\"mux\",\"screen\",\"5.0.2\",\"linux\",\"cursor.hide\"]"
         }
       ],
@@ -335,7 +335,7 @@
         }
       ],
       "screenshotRef": "sha256:7b2d8f5ecc5d08ed2ca4799f1b841a7634d9874caa8ce80289431d13d8ab4a92",
-      "reason": "Exact-run CTO ruling 6c4da8e6-bcf9-4cfb-acca-1ef0ab69af99. CTO independently reviewed the original steady-block control and hidden target under the frozen cursor-visibility-visual-review fallback: cursor at row2 col3 disappears; CURSOR/L/R seeded text stays unchanged. This fallback records only shown and hidden frames; restored digest belongs to the measured-raster branch not taken. No third frame or changed criterion.",
+      "reason": "Exact-run CTO ruling 6c4da8e6-bcf9-4cfb-acca-1ef0ab69af99. CTO independently reviewed the original steady-block control and hidden target under the frozen cursor-visibility-visual-review fallback: cursor at row2 col3 disappears; CURSOR/L/R seeded text stays unchanged. This fallback records only shown and hidden frames; restored digest belongs to the measured-raster branch not taken. No third frame or changed criterion.; reviewed at 5.0.2, not re-verified",
       "status": "supported",
       "reviewRef": "[\"mux\",\"screen\",\"5.0.2\",\"linux\",\"cursor.hide\"]"
     },
@@ -2035,7 +2035,7 @@
             121
           ],
           "rawReplyRef": "extensions.iterm2-images",
-          "reason": "Exact-run CTO ruling 6c4da8e6-bcf9-4cfb-acca-1ef0ab69af99. Existing screen review: target is blank; no requested image is visible.",
+          "reason": "Exact-run CTO ruling 6c4da8e6-bcf9-4cfb-acca-1ef0ab69af99. Existing screen review: target is blank; no requested image is visible.; reviewed at 5.0.2, not re-verified",
           "reviewRef": "[\"mux\",\"screen\",\"5.0.2\",\"linux\",\"extensions.iterm2-images\"]"
         }
       ],
@@ -2063,7 +2063,7 @@
         }
       ],
       "screenshotRef": "sha256:c3227e1b740e452d49b9ff445ef514c89f5707248705b4cf876b694df31b3fd1",
-      "reason": "Exact-run CTO ruling 6c4da8e6-bcf9-4cfb-acca-1ef0ab69af99. Existing screen review: target is blank; no requested image is visible.",
+      "reason": "Exact-run CTO ruling 6c4da8e6-bcf9-4cfb-acca-1ef0ab69af99. Existing screen review: target is blank; no requested image is visible.; reviewed at 5.0.2, not re-verified",
       "status": "unsupported",
       "reviewRef": "[\"mux\",\"screen\",\"5.0.2\",\"linux\",\"extensions.iterm2-images\"]"
     },
@@ -5719,7 +5719,7 @@
             122
           ],
           "rawReplyRef": "sgr.bold",
-          "reason": "Exact-run CTO ruling 6c4da8e6-bcf9-4cfb-acca-1ef0ab69af99. Existing screen review compared its own control: 2082 ink pixels versus 1697 (+22.7%), contrast 33.0 versus 31.5.",
+          "reason": "Exact-run CTO ruling 6c4da8e6-bcf9-4cfb-acca-1ef0ab69af99. Existing screen review compared its own control: 2082 ink pixels versus 1697 (+22.7%), contrast 33.0 versus 31.5.; reviewed at 5.0.2, not re-verified",
           "reviewRef": "[\"mux\",\"screen\",\"5.0.2\",\"linux\",\"sgr.bold\"]"
         }
       ],
@@ -5747,7 +5747,7 @@
         }
       ],
       "screenshotRef": "sha256:cbb3d7065392861002b8ea9849e49e4d7308be7e2be41fce5a4488fe2bb02c35",
-      "reason": "Exact-run CTO ruling 6c4da8e6-bcf9-4cfb-acca-1ef0ab69af99. Existing screen review compared its own control: 2082 ink pixels versus 1697 (+22.7%), contrast 33.0 versus 31.5.",
+      "reason": "Exact-run CTO ruling 6c4da8e6-bcf9-4cfb-acca-1ef0ab69af99. Existing screen review compared its own control: 2082 ink pixels versus 1697 (+22.7%), contrast 33.0 versus 31.5.; reviewed at 5.0.2, not re-verified",
       "status": "supported",
       "reviewRef": "[\"mux\",\"screen\",\"5.0.2\",\"linux\",\"sgr.bold\"]"
     },
@@ -5781,7 +5781,7 @@
             123
           ],
           "rawReplyRef": "sgr.faint",
-          "reason": "Exact-run CTO ruling 6c4da8e6-bcf9-4cfb-acca-1ef0ab69af99. Existing screen review: 1526 ink pixels versus 2085 (-27%), contrast 15.9 versus 29.7.",
+          "reason": "Exact-run CTO ruling 6c4da8e6-bcf9-4cfb-acca-1ef0ab69af99. Existing screen review: 1526 ink pixels versus 2085 (-27%), contrast 15.9 versus 29.7.; reviewed at 5.0.2, not re-verified",
           "reviewRef": "[\"mux\",\"screen\",\"5.0.2\",\"linux\",\"sgr.faint\"]"
         }
       ],
@@ -5809,7 +5809,7 @@
         }
       ],
       "screenshotRef": "sha256:0eca9de75c3c00df9f922846ec3b001d2baafd5a00dbdf03cfeeee206e3b1549",
-      "reason": "Exact-run CTO ruling 6c4da8e6-bcf9-4cfb-acca-1ef0ab69af99. Existing screen review: 1526 ink pixels versus 2085 (-27%), contrast 15.9 versus 29.7.",
+      "reason": "Exact-run CTO ruling 6c4da8e6-bcf9-4cfb-acca-1ef0ab69af99. Existing screen review: 1526 ink pixels versus 2085 (-27%), contrast 15.9 versus 29.7.; reviewed at 5.0.2, not re-verified",
       "status": "supported",
       "reviewRef": "[\"mux\",\"screen\",\"5.0.2\",\"linux\",\"sgr.faint\"]"
     },
@@ -5963,7 +5963,7 @@
             130
           ],
           "rawReplyRef": "sgr.hidden",
-          "reason": "Exact-run CTO ruling 6c4da8e6-bcf9-4cfb-acca-1ef0ab69af99. Existing screen review: target is identical to its own control; requested hidden text remains visible.",
+          "reason": "Exact-run CTO ruling 6c4da8e6-bcf9-4cfb-acca-1ef0ab69af99. Existing screen review: target is identical to its own control; requested hidden text remains visible.; reviewed at 5.0.2, not re-verified",
           "reviewRef": "[\"mux\",\"screen\",\"5.0.2\",\"linux\",\"sgr.hidden\"]"
         }
       ],
@@ -5991,7 +5991,7 @@
         }
       ],
       "screenshotRef": "sha256:b291616e6c725c6ed4a25e1e1fa01542b894276fa8d718e245dab5b8ddf7547d",
-      "reason": "Exact-run CTO ruling 6c4da8e6-bcf9-4cfb-acca-1ef0ab69af99. Existing screen review: target is identical to its own control; requested hidden text remains visible.",
+      "reason": "Exact-run CTO ruling 6c4da8e6-bcf9-4cfb-acca-1ef0ab69af99. Existing screen review: target is identical to its own control; requested hidden text remains visible.; reviewed at 5.0.2, not re-verified",
       "status": "unsupported",
       "reviewRef": "[\"mux\",\"screen\",\"5.0.2\",\"linux\",\"sgr.hidden\"]"
     },
@@ -6025,7 +6025,7 @@
             124
           ],
           "rawReplyRef": "sgr.inverse",
-          "reason": "Exact-run CTO ruling 6c4da8e6-bcf9-4cfb-acca-1ef0ab69af99. Existing screen review: 9088 ink pixels versus 2085; the text background band is visibly filled.",
+          "reason": "Exact-run CTO ruling 6c4da8e6-bcf9-4cfb-acca-1ef0ab69af99. Existing screen review: 9088 ink pixels versus 2085; the text background band is visibly filled.; reviewed at 5.0.2, not re-verified",
           "reviewRef": "[\"mux\",\"screen\",\"5.0.2\",\"linux\",\"sgr.inverse\"]"
         }
       ],
@@ -6053,7 +6053,7 @@
         }
       ],
       "screenshotRef": "sha256:afeba97a66a364b364c3d33746a6d00a7a5acbd0acf8ef94c2215096b2f9a8cc",
-      "reason": "Exact-run CTO ruling 6c4da8e6-bcf9-4cfb-acca-1ef0ab69af99. Existing screen review: 9088 ink pixels versus 2085; the text background band is visibly filled.",
+      "reason": "Exact-run CTO ruling 6c4da8e6-bcf9-4cfb-acca-1ef0ab69af99. Existing screen review: 9088 ink pixels versus 2085; the text background band is visibly filled.; reviewed at 5.0.2, not re-verified",
       "status": "supported",
       "reviewRef": "[\"mux\",\"screen\",\"5.0.2\",\"linux\",\"sgr.inverse\"]"
     },
@@ -6087,7 +6087,7 @@
             125
           ],
           "rawReplyRef": "sgr.italic",
-          "reason": "Exact-run CTO ruling 6c4da8e6-bcf9-4cfb-acca-1ef0ab69af99. Existing screen review: visibly slanted glyphs; unchanged ink count is not used as a negative.",
+          "reason": "Exact-run CTO ruling 6c4da8e6-bcf9-4cfb-acca-1ef0ab69af99. Existing screen review: visibly slanted glyphs; unchanged ink count is not used as a negative.; reviewed at 5.0.2, not re-verified",
           "reviewRef": "[\"mux\",\"screen\",\"5.0.2\",\"linux\",\"sgr.italic\"]"
         }
       ],
@@ -6115,7 +6115,7 @@
         }
       ],
       "screenshotRef": "sha256:83a015480c3e4cb9f62cd5c9b4d8151b7ca450ee0465597495f433f169680c86",
-      "reason": "Exact-run CTO ruling 6c4da8e6-bcf9-4cfb-acca-1ef0ab69af99. Existing screen review: visibly slanted glyphs; unchanged ink count is not used as a negative.",
+      "reason": "Exact-run CTO ruling 6c4da8e6-bcf9-4cfb-acca-1ef0ab69af99. Existing screen review: visibly slanted glyphs; unchanged ink count is not used as a negative.; reviewed at 5.0.2, not re-verified",
       "status": "supported",
       "reviewRef": "[\"mux\",\"screen\",\"5.0.2\",\"linux\",\"sgr.italic\"]"
     },
@@ -6149,7 +6149,7 @@
             131
           ],
           "rawReplyRef": "sgr.overline",
-          "reason": "Exact-run CTO ruling 6c4da8e6-bcf9-4cfb-acca-1ef0ab69af99. Existing screen review: target is identical to its own control, without the requested overline.",
+          "reason": "Exact-run CTO ruling 6c4da8e6-bcf9-4cfb-acca-1ef0ab69af99. Existing screen review: target is identical to its own control, without the requested overline.; reviewed at 5.0.2, not re-verified",
           "reviewRef": "[\"mux\",\"screen\",\"5.0.2\",\"linux\",\"sgr.overline\"]"
         }
       ],
@@ -6177,7 +6177,7 @@
         }
       ],
       "screenshotRef": "sha256:b291616e6c725c6ed4a25e1e1fa01542b894276fa8d718e245dab5b8ddf7547d",
-      "reason": "Exact-run CTO ruling 6c4da8e6-bcf9-4cfb-acca-1ef0ab69af99. Existing screen review: target is identical to its own control, without the requested overline.",
+      "reason": "Exact-run CTO ruling 6c4da8e6-bcf9-4cfb-acca-1ef0ab69af99. Existing screen review: target is identical to its own control, without the requested overline.; reviewed at 5.0.2, not re-verified",
       "status": "unsupported",
       "reviewRef": "[\"mux\",\"screen\",\"5.0.2\",\"linux\",\"sgr.overline\"]"
     },
@@ -6329,7 +6329,7 @@
             132
           ],
           "rawReplyRef": "sgr.strikethrough",
-          "reason": "Exact-run CTO ruling 6c4da8e6-bcf9-4cfb-acca-1ef0ab69af99. Existing screen review: target is identical to its own control, without the requested strike.",
+          "reason": "Exact-run CTO ruling 6c4da8e6-bcf9-4cfb-acca-1ef0ab69af99. Existing screen review: target is identical to its own control, without the requested strike.; reviewed at 5.0.2, not re-verified",
           "reviewRef": "[\"mux\",\"screen\",\"5.0.2\",\"linux\",\"sgr.strikethrough\"]"
         }
       ],
@@ -6357,7 +6357,7 @@
         }
       ],
       "screenshotRef": "sha256:b291616e6c725c6ed4a25e1e1fa01542b894276fa8d718e245dab5b8ddf7547d",
-      "reason": "Exact-run CTO ruling 6c4da8e6-bcf9-4cfb-acca-1ef0ab69af99. Existing screen review: target is identical to its own control, without the requested strike.",
+      "reason": "Exact-run CTO ruling 6c4da8e6-bcf9-4cfb-acca-1ef0ab69af99. Existing screen review: target is identical to its own control, without the requested strike.; reviewed at 5.0.2, not re-verified",
       "status": "unsupported",
       "reviewRef": "[\"mux\",\"screen\",\"5.0.2\",\"linux\",\"sgr.strikethrough\"]"
     },
@@ -6487,7 +6487,7 @@
             127
           ],
           "rawReplyRef": "sgr.underline.curly",
-          "reason": "Exact-run CTO ruling 6c4da8e6-bcf9-4cfb-acca-1ef0ab69af99. CTO independently opened and pixel-diffed this original target: it equals the italic frame plus one straight underline at y=71; screen splits SGR 4:3 into underline and italic, not the requested wave.",
+          "reason": "Exact-run CTO ruling 6c4da8e6-bcf9-4cfb-acca-1ef0ab69af99. CTO independently opened and pixel-diffed this original target: it equals the italic frame plus one straight underline at y=71; screen splits SGR 4:3 into underline and italic, not the requested wave.; reviewed at 5.0.2, not re-verified",
           "reviewRef": "[\"mux\",\"screen\",\"5.0.2\",\"linux\",\"sgr.underline.curly\"]"
         }
       ],
@@ -6515,7 +6515,7 @@
         }
       ],
       "screenshotRef": "sha256:3c6355018e6749710c1070acce66c8d500d4d1a32691dd0bd83c7bd82fc427ba",
-      "reason": "Exact-run CTO ruling 6c4da8e6-bcf9-4cfb-acca-1ef0ab69af99. CTO independently opened and pixel-diffed this original target: it equals the italic frame plus one straight underline at y=71; screen splits SGR 4:3 into underline and italic, not the requested wave.",
+      "reason": "Exact-run CTO ruling 6c4da8e6-bcf9-4cfb-acca-1ef0ab69af99. CTO independently opened and pixel-diffed this original target: it equals the italic frame plus one straight underline at y=71; screen splits SGR 4:3 into underline and italic, not the requested wave.; reviewed at 5.0.2, not re-verified",
       "status": "unsupported",
       "reviewRef": "[\"mux\",\"screen\",\"5.0.2\",\"linux\",\"sgr.underline.curly\"]"
     },
@@ -6549,7 +6549,7 @@
             128
           ],
           "rawReplyRef": "sgr.underline.dashed",
-          "reason": "Exact-run CTO ruling 6c4da8e6-bcf9-4cfb-acca-1ef0ab69af99. Existing screen review: the requested dashed underline is the same straight rule; no dashes.",
+          "reason": "Exact-run CTO ruling 6c4da8e6-bcf9-4cfb-acca-1ef0ab69af99. Existing screen review: the requested dashed underline is the same straight rule; no dashes.; reviewed at 5.0.2, not re-verified",
           "reviewRef": "[\"mux\",\"screen\",\"5.0.2\",\"linux\",\"sgr.underline.dashed\"]"
         }
       ],
@@ -6577,7 +6577,7 @@
         }
       ],
       "screenshotRef": "sha256:f69a5efbc56b2f0ffe2885e7250f3ac8732e998aa9978353a0cf46020a640c5a",
-      "reason": "Exact-run CTO ruling 6c4da8e6-bcf9-4cfb-acca-1ef0ab69af99. Existing screen review: the requested dashed underline is the same straight rule; no dashes.",
+      "reason": "Exact-run CTO ruling 6c4da8e6-bcf9-4cfb-acca-1ef0ab69af99. Existing screen review: the requested dashed underline is the same straight rule; no dashes.; reviewed at 5.0.2, not re-verified",
       "status": "unsupported",
       "reviewRef": "[\"mux\",\"screen\",\"5.0.2\",\"linux\",\"sgr.underline.dashed\"]"
     },
@@ -6611,7 +6611,7 @@
             129
           ],
           "rawReplyRef": "sgr.underline.dotted",
-          "reason": "Exact-run CTO ruling 6c4da8e6-bcf9-4cfb-acca-1ef0ab69af99. Existing screen review: the requested dotted underline is the same straight rule; no dots.",
+          "reason": "Exact-run CTO ruling 6c4da8e6-bcf9-4cfb-acca-1ef0ab69af99. Existing screen review: the requested dotted underline is the same straight rule; no dots.; reviewed at 5.0.2, not re-verified",
           "reviewRef": "[\"mux\",\"screen\",\"5.0.2\",\"linux\",\"sgr.underline.dotted\"]"
         }
       ],
@@ -6639,7 +6639,7 @@
         }
       ],
       "screenshotRef": "sha256:f69a5efbc56b2f0ffe2885e7250f3ac8732e998aa9978353a0cf46020a640c5a",
-      "reason": "Exact-run CTO ruling 6c4da8e6-bcf9-4cfb-acca-1ef0ab69af99. Existing screen review: the requested dotted underline is the same straight rule; no dots.",
+      "reason": "Exact-run CTO ruling 6c4da8e6-bcf9-4cfb-acca-1ef0ab69af99. Existing screen review: the requested dotted underline is the same straight rule; no dots.; reviewed at 5.0.2, not re-verified",
       "status": "unsupported",
       "reviewRef": "[\"mux\",\"screen\",\"5.0.2\",\"linux\",\"sgr.underline.dotted\"]"
     },
@@ -6673,7 +6673,7 @@
             133
           ],
           "rawReplyRef": "sgr.underline.double",
-          "reason": "Exact-run CTO ruling 6c4da8e6-bcf9-4cfb-acca-1ef0ab69af99. Existing screen review: target is identical to its own control, without the requested double underline.",
+          "reason": "Exact-run CTO ruling 6c4da8e6-bcf9-4cfb-acca-1ef0ab69af99. Existing screen review: target is identical to its own control, without the requested double underline.; reviewed at 5.0.2, not re-verified",
           "reviewRef": "[\"mux\",\"screen\",\"5.0.2\",\"linux\",\"sgr.underline.double\"]"
         }
       ],
@@ -6701,7 +6701,7 @@
         }
       ],
       "screenshotRef": "sha256:b291616e6c725c6ed4a25e1e1fa01542b894276fa8d718e245dab5b8ddf7547d",
-      "reason": "Exact-run CTO ruling 6c4da8e6-bcf9-4cfb-acca-1ef0ab69af99. Existing screen review: target is identical to its own control, without the requested double underline.",
+      "reason": "Exact-run CTO ruling 6c4da8e6-bcf9-4cfb-acca-1ef0ab69af99. Existing screen review: target is identical to its own control, without the requested double underline.; reviewed at 5.0.2, not re-verified",
       "status": "unsupported",
       "reviewRef": "[\"mux\",\"screen\",\"5.0.2\",\"linux\",\"sgr.underline.double\"]"
     },
@@ -6735,7 +6735,7 @@
             126
           ],
           "rawReplyRef": "sgr.underline.single",
-          "reason": "Exact-run CTO ruling 6c4da8e6-bcf9-4cfb-acca-1ef0ab69af99. Existing screen review: one solid rule at y=71.",
+          "reason": "Exact-run CTO ruling 6c4da8e6-bcf9-4cfb-acca-1ef0ab69af99. Existing screen review: one solid rule at y=71.; reviewed at 5.0.2, not re-verified",
           "reviewRef": "[\"mux\",\"screen\",\"5.0.2\",\"linux\",\"sgr.underline.single\"]"
         }
       ],
@@ -6763,7 +6763,7 @@
         }
       ],
       "screenshotRef": "sha256:f69a5efbc56b2f0ffe2885e7250f3ac8732e998aa9978353a0cf46020a640c5a",
-      "reason": "Exact-run CTO ruling 6c4da8e6-bcf9-4cfb-acca-1ef0ab69af99. Existing screen review: one solid rule at y=71.",
+      "reason": "Exact-run CTO ruling 6c4da8e6-bcf9-4cfb-acca-1ef0ab69af99. Existing screen review: one solid rule at y=71.; reviewed at 5.0.2, not re-verified",
       "status": "supported",
       "reviewRef": "[\"mux\",\"screen\",\"5.0.2\",\"linux\",\"sgr.underline.single\"]"
     },

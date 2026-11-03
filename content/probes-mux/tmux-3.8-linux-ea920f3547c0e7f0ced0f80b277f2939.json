@@ -5154,7 +5154,7 @@
             195
           ],
           "rawReplyRef": "extensions.iterm2-images",
-          "reason": "Accept the existing independent same-run review: blank target.",
+          "reason": "Accept the existing independent same-run review: blank target.; reviewed at 3.8, not re-verified",
           "reviewRef": "[\"mux\",\"tmux\",\"3.8\",\"linux\",\"extensions.iterm2-images\"]"
         }
       ],
@@ -5182,7 +5182,7 @@
         }
       ],
       "screenshotRef": "sha256:23636103bd779f3d0567697b7f119d7cc859388e94121add8d2e5e199c43583a",
-      "reason": "Accept the existing independent same-run review: blank target.",
+      "reason": "Accept the existing independent same-run review: blank target.; reviewed at 3.8, not re-verified",
       "status": "unsupported",
       "reviewRef": "[\"mux\",\"tmux\",\"3.8\",\"linux\",\"extensions.iterm2-images\"]"
     },
@@ -10565,7 +10565,7 @@
             196
           ],
           "rawReplyRef": "sgr.bold",
-          "reason": "Accept the existing independent same-run review: heavier strokes.",
+          "reason": "Accept the existing independent same-run review: heavier strokes.; reviewed at 3.8, not re-verified",
           "reviewRef": "[\"mux\",\"tmux\",\"3.8\",\"linux\",\"sgr.bold\"]"
         }
       ],
@@ -10593,7 +10593,7 @@
         }
       ],
       "screenshotRef": "sha256:40ef64c35bd61cefa524e9035245e4d610be1e1dbeb76ab88b8ff7a7a38e91fc",
-      "reason": "Accept the existing independent same-run review: heavier strokes.",
+      "reason": "Accept the existing independent same-run review: heavier strokes.; reviewed at 3.8, not re-verified",
       "status": "supported",
       "reviewRef": "[\"mux\",\"tmux\",\"3.8\",\"linux\",\"sgr.bold\"]"
     },
@@ -10627,7 +10627,7 @@
             197
           ],
           "rawReplyRef": "sgr.faint",
-          "reason": "Accept the existing independent same-run review: dimmer text.",
+          "reason": "Accept the existing independent same-run review: dimmer text.; reviewed at 3.8, not re-verified",
           "reviewRef": "[\"mux\",\"tmux\",\"3.8\",\"linux\",\"sgr.faint\"]"
         }
       ],
@@ -10655,7 +10655,7 @@
         }
       ],
       "screenshotRef": "sha256:c61687436988a492c5b4e42f1c2294e56cbcd4ce532e105b9d800d62db61baa0",
-      "reason": "Accept the existing independent same-run review: dimmer text.",
+      "reason": "Accept the existing independent same-run review: dimmer text.; reviewed at 3.8, not re-verified",
       "status": "supported",
       "reviewRef": "[\"mux\",\"tmux\",\"3.8\",\"linux\",\"sgr.faint\"]"
     },
@@ -11472,7 +11472,7 @@
             206
           ],
           "rawReplyRef": "sgr.hidden",
-          "reason": "Accept the existing independent same-run review: target is the control; text stayed visible after SGR 8.",
+          "reason": "Accept the existing independent same-run review: target is the control; text stayed visible after SGR 8.; reviewed at 3.8, not re-verified",
           "reviewRef": "[\"mux\",\"tmux\",\"3.8\",\"linux\",\"sgr.hidden\"]"
         }
       ],
@@ -11500,7 +11500,7 @@
         }
       ],
       "screenshotRef": "sha256:3cf34e616ec8f8f8a62c9ea807ab8ff8c0c6ebfb9911bf0c5cfe6da31e32a4eb",
-      "reason": "Accept the existing independent same-run review: target is the control; text stayed visible after SGR 8.",
+      "reason": "Accept the existing independent same-run review: target is the control; text stayed visible after SGR 8.; reviewed at 3.8, not re-verified",
       "status": "unsupported",
       "reviewRef": "[\"mux\",\"tmux\",\"3.8\",\"linux\",\"sgr.hidden\"]"
     },
@@ -11534,7 +11534,7 @@
             198
           ],
           "rawReplyRef": "sgr.inverse",
-          "reason": "Accept the existing independent same-run review: text on a light band.",
+          "reason": "Accept the existing independent same-run review: text on a light band.; reviewed at 3.8, not re-verified",
           "reviewRef": "[\"mux\",\"tmux\",\"3.8\",\"linux\",\"sgr.inverse\"]"
         }
       ],
@@ -11562,7 +11562,7 @@
         }
       ],
       "screenshotRef": "sha256:d5e7e420c315ef36b67b09a7252385adbc8d7770fd9af07ecc2e9ff7ff6191d2",
-      "reason": "Accept the existing independent same-run review: text on a light band.",
+      "reason": "Accept the existing independent same-run review: text on a light band.; reviewed at 3.8, not re-verified",
       "status": "supported",
       "reviewRef": "[\"mux\",\"tmux\",\"3.8\",\"linux\",\"sgr.inverse\"]"
     },
@@ -11596,7 +11596,7 @@
             199
           ],
           "rawReplyRef": "sgr.italic",
-          "reason": "Accept the existing independent same-run review: slanted glyphs.",
+          "reason": "Accept the existing independent same-run review: slanted glyphs.; reviewed at 3.8, not re-verified",
           "reviewRef": "[\"mux\",\"tmux\",\"3.8\",\"linux\",\"sgr.italic\"]"
         }
       ],
@@ -11624,7 +11624,7 @@
         }
       ],
       "screenshotRef": "sha256:5e0993fe5835802f0efc4e24d04b27602024cef05b1365b89e2ad54ca0282dad",
-      "reason": "Accept the existing independent same-run review: slanted glyphs.",
+      "reason": "Accept the existing independent same-run review: slanted glyphs.; reviewed at 3.8, not re-verified",
       "status": "supported",
       "reviewRef": "[\"mux\",\"tmux\",\"3.8\",\"linux\",\"sgr.italic\"]"
     },
@@ -11658,7 +11658,7 @@
             207
           ],
           "rawReplyRef": "sgr.overline",
-          "reason": "Accept the existing independent same-run review: target is the control; nothing changed.",
+          "reason": "Accept the existing independent same-run review: target is the control; nothing changed.; reviewed at 3.8, not re-verified",
           "reviewRef": "[\"mux\",\"tmux\",\"3.8\",\"linux\",\"sgr.overline\"]"
         }
       ],
@@ -11686,7 +11686,7 @@
         }
       ],
       "screenshotRef": "sha256:3cf34e616ec8f8f8a62c9ea807ab8ff8c0c6ebfb9911bf0c5cfe6da31e32a4eb",
-      "reason": "Accept the existing independent same-run review: target is the control; nothing changed.",
+      "reason": "Accept the existing independent same-run review: target is the control; nothing changed.; reviewed at 3.8, not re-verified",
       "status": "unsupported",
       "reviewRef": "[\"mux\",\"tmux\",\"3.8\",\"linux\",\"sgr.overline\"]"
     },
@@ -12231,7 +12231,7 @@
             200
           ],
           "rawReplyRef": "sgr.strikethrough",
-          "reason": "Accept the existing independent same-run review: line through the middle.",
+          "reason": "Accept the existing independent same-run review: line through the middle.; reviewed at 3.8, not re-verified",
           "reviewRef": "[\"mux\",\"tmux\",\"3.8\",\"linux\",\"sgr.strikethrough\"]"
         }
       ],
@@ -12259,7 +12259,7 @@
         }
       ],
       "screenshotRef": "sha256:439ba2c846d517ecfb7361b1958582842e9b285e6e9f3bc3d42b34629b8b5ee9",
-      "reason": "Accept the existing independent same-run review: line through the middle.",
+      "reason": "Accept the existing independent same-run review: line through the middle.; reviewed at 3.8, not re-verified",
       "status": "supported",
       "reviewRef": "[\"mux\",\"tmux\",\"3.8\",\"linux\",\"sgr.strikethrough\"]"
     },
@@ -12919,7 +12919,7 @@
             201
           ],
           "rawReplyRef": "sgr.underline.curly",
-          "reason": "Accept the existing independent same-run review: wave on rows 72-74, measured.",
+          "reason": "Accept the existing independent same-run review: wave on rows 72-74, measured.; reviewed at 3.8, not re-verified",
           "reviewRef": "[\"mux\",\"tmux\",\"3.8\",\"linux\",\"sgr.underline.curly\"]"
         }
       ],
@@ -12947,7 +12947,7 @@
         }
       ],
       "screenshotRef": "sha256:8758b5e07cd37144e767e42a7a4632d2bc9e23ec56a3c47338f716c1f2feda1e",
-      "reason": "Accept the existing independent same-run review: wave on rows 72-74, measured.",
+      "reason": "Accept the existing independent same-run review: wave on rows 72-74, measured.; reviewed at 3.8, not re-verified",
       "status": "supported",
       "reviewRef": "[\"mux\",\"tmux\",\"3.8\",\"linux\",\"sgr.underline.curly\"]"
     },
@@ -12981,7 +12981,7 @@
             202
           ],
           "rawReplyRef": "sgr.underline.dashed",
-          "reason": "Accept the existing independent same-run review: dashes at row 71, measured.",
+          "reason": "Accept the existing independent same-run review: dashes at row 71, measured.; reviewed at 3.8, not re-verified",
           "reviewRef": "[\"mux\",\"tmux\",\"3.8\",\"linux\",\"sgr.underline.dashed\"]"
         }
       ],
@@ -13009,7 +13009,7 @@
         }
       ],
       "screenshotRef": "sha256:d502b906a35f8b91b20307ae698b1d0b93af9c1cbbbe95d5e340ca3619ca7c0f",
-      "reason": "Accept the existing independent same-run review: dashes at row 71, measured.",
+      "reason": "Accept the existing independent same-run review: dashes at row 71, measured.; reviewed at 3.8, not re-verified",
       "status": "supported",
       "reviewRef": "[\"mux\",\"tmux\",\"3.8\",\"linux\",\"sgr.underline.dashed\"]"
     },
@@ -13043,7 +13043,7 @@
             203
           ],
           "rawReplyRef": "sgr.underline.dotted",
-          "reason": "Accept the existing independent same-run review: dots at row 71, measured.",
+          "reason": "Accept the existing independent same-run review: dots at row 71, measured.; reviewed at 3.8, not re-verified",
           "reviewRef": "[\"mux\",\"tmux\",\"3.8\",\"linux\",\"sgr.underline.dotted\"]"
         }
       ],
@@ -13071,7 +13071,7 @@
         }
       ],
       "screenshotRef": "sha256:83c9bf1aeea04745984a42fcf945c853cb6310f24675d31b547795668fb9313d",
-      "reason": "Accept the existing independent same-run review: dots at row 71, measured.",
+      "reason": "Accept the existing independent same-run review: dots at row 71, measured.; reviewed at 3.8, not re-verified",
       "status": "supported",
       "reviewRef": "[\"mux\",\"tmux\",\"3.8\",\"linux\",\"sgr.underline.dotted\"]"
     },
@@ -13105,7 +13105,7 @@
             204
           ],
           "rawReplyRef": "sgr.underline.double",
-          "reason": "Accept the existing independent same-run review: two parallel rules.",
+          "reason": "Accept the existing independent same-run review: two parallel rules.; reviewed at 3.8, not re-verified",
           "reviewRef": "[\"mux\",\"tmux\",\"3.8\",\"linux\",\"sgr.underline.double\"]"
         }
       ],
@@ -13133,7 +13133,7 @@
         }
       ],
       "screenshotRef": "sha256:34afbfcedc4781cf9585d046c9dd95ce990e206e07df5431a937000232325318",
-      "reason": "Accept the existing independent same-run review: two parallel rules.",
+      "reason": "Accept the existing independent same-run review: two parallel rules.; reviewed at 3.8, not re-verified",
       "status": "supported",
       "reviewRef": "[\"mux\",\"tmux\",\"3.8\",\"linux\",\"sgr.underline.double\"]"
     },
@@ -13167,7 +13167,7 @@
             205
           ],
           "rawReplyRef": "sgr.underline.single",
-          "reason": "Accept the existing independent same-run review: one solid rule.",
+          "reason": "Accept the existing independent same-run review: one solid rule.; reviewed at 3.8, not re-verified",
           "reviewRef": "[\"mux\",\"tmux\",\"3.8\",\"linux\",\"sgr.underline.single\"]"
         }
       ],
@@ -13195,7 +13195,7 @@
         }
       ],
       "screenshotRef": "sha256:42f4592223264e7160f5094030a6a7003d63fdfac167da22a9010cc8f44b13a1",
-      "reason": "Accept the existing independent same-run review: one solid rule.",
+      "reason": "Accept the existing independent same-run review: one solid rule.; reviewed at 3.8, not re-verified",
       "status": "supported",
       "reviewRef": "[\"mux\",\"tmux\",\"3.8\",\"linux\",\"sgr.underline.single\"]"
     },
