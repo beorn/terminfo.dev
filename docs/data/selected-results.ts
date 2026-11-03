@@ -239,7 +239,7 @@ export function classifyDevelopmentRun(run: LoadedRun): {
 } {
   if ((run.schemaVersion !== 3 && run.schemaVersion !== 4) || !run.results) {
     throw new Error(
-      `Development run ${run.runId} requires current sealed recorded results; use the historical reader for old runs`,
+      `Development run ${run.runId} requires stored current results; use the historical reader for old runs`,
     )
   }
   return {
@@ -594,7 +594,7 @@ function composeContextSummaries(
       cells[result.featureId] = { origin: { runId: run.runId, resultId: result.featureId }, run, result }
     }
     for (const run of baselines) {
-      if (!run.results) throw new Error(`Run ${run.runId} has no current sealed results`)
+      if (!run.results) throw new Error(`Run ${run.runId} has no stored current results`)
       for (const result of run.results) remember(run, result)
     }
     const selected = candidates.flatMap((run) => {
@@ -604,7 +604,7 @@ function composeContextSummaries(
     selected.sort(compareContextAttempts)
     const attempts: SelectedContextAttempt[] = []
     for (const { run, selection, attempt } of selected) {
-      if (!run.results) throw new Error(`Run ${run.runId} has no current sealed results`)
+      if (!run.results) throw new Error(`Run ${run.runId} has no stored current results`)
       const results = run.results
       // A real initialized TODO is useful missing-evidence data when no prior cell exists; it
       // never replaces a prior cell and never becomes an emitted measurement.

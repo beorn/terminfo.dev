@@ -146,7 +146,7 @@ function buildRow(
   }
   const results = picked.run.results
   if (!results) {
-    return { ...base, collected: false, cause: "selected run is historical; current sealed results required" }
+    return { ...base, collected: false, cause: "selected run is historical; stored current results required" }
   }
   const byId = new Map(results.map((result) => [result.featureId, result]))
   for (const source of onSuiteSources) {
@@ -155,14 +155,14 @@ function buildRow(
       : results
     for (const id of args.catalogIds) {
       if (!original?.some((result) => result.featureId === id)) {
-        throw new Error(`Current run ${source.runId} lacks frozen feature ${id}`)
+        throw new Error(`Current run ${source.runId} lacks recorded catalogue feature ${id}`)
       }
     }
   }
   const heldIds: string[] = []
   const observations = args.catalogIds.map((id): ObservationRow => {
     const cell = byId.get(id)
-    if (!cell) throw new Error(`Current context ${picked.run.key} lacks frozen feature ${id}`)
+    if (!cell) throw new Error(`Current context ${picked.run.key} lacks recorded catalogue feature ${id}`)
     const original = picked.run.context?.cells[id]?.run
     const source = original ?? firstOnSuite
     const hold =

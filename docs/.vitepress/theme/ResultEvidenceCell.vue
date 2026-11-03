@@ -93,7 +93,7 @@ const methodLabel = computed(() =>
   props.cell?.assertionType === "query_reply" ? "Terminal query" : (props.cell?.assertionType ?? ""),
 )
 const selectionExplanation = computed(() => {
-  if (!props.version) return "No reviewed current result is available for this context."
+  if (!props.version) return "No stored current result is available for this context."
   if (!props.cell) {
     return "This feature has no retained measurement in this selection."
   }
@@ -150,9 +150,7 @@ const compactCause = computed(() => {
 })
 
 /**
- * The status keyword the step table grades against. A held Windows result is displayed as TEST TODO even
- * though its sealed status is unsupported (#30720), so the table follows the displayed status and marks the
- * graded step `held` rather than calling the terminal failed.
+ * The stored status keyword the step table grades against.
  */
 const STEP_STATUS: Record<string, string> = {
   Supported: "supported",
@@ -771,7 +769,7 @@ onBeforeUnmount(() => {
 
         <h3>Evidence</h3>
         <p v-if="!sourceRun">No original source is available for this feature in the selection.</p>
-        <p v-else-if="!cell">TEST TODO: no reviewed current result covers this feature.</p>
+        <p v-else-if="!cell">TEST TODO: no stored current result covers this feature.</p>
         <template v-else-if="presentation?.state === 'not-reviewed'">
           <p>Original evidence has not been reviewed for presentation.</p>
         </template>
@@ -882,7 +880,7 @@ onBeforeUnmount(() => {
             <dt>Feature ID</dt>
             <dd>{{ featureId }}</dd>
             <dt>Subject</dt>
-            <dd>{{ sourceRun ? `${sourceRun.subject.kind}:${sourceRun.subject.id}` : "No reviewed current run" }}</dd>
+            <dd>{{ sourceRun ? `${sourceRun.subject.kind}:${sourceRun.subject.id}` : "No stored current run" }}</dd>
             <dt>Version</dt>
             <dd>{{ sourceRun?.subject.version ?? "Not recorded" }}</dd>
             <dt>Operating system</dt>

@@ -1,7 +1,7 @@
 /**
  * VitePress build-time data loader for probe results.
  *
- * Projects reviewed current runs through the canonical selector and joins
+ * Projects stored current runs through the canonical selector and joins
  * their display metadata with the feature catalog for the matrix page.
  *
  * Consumed via: import { data } from './data/probes.data'
@@ -72,7 +72,7 @@ export interface ProbeData {
   features: FeatureResult[]
   /** category -> FeatureResult[] */
   categories: Record<string, FeatureResult[]>
-  /** Current terminal id -> feature id -> exact sealed five-status value. */
+  /** Current terminal id -> feature id -> exact stored five-status value. */
   results: Record<string, Record<string, ProbeStatus>>
   /** backend name -> feature id -> published reason */
   notes: Record<string, Record<string, string>>
@@ -86,7 +86,7 @@ export interface ProbeData {
   featureDescriptions: FeatureCatalog
   /** baseline -> feature ids */
   baselines: Record<string, string[]>
-  /** Backend name -> baseline Supported/all score and frozen catalog coverage. */
+  /** Backend name -> baseline Supported/all score and recorded catalog coverage. */
   baselineStats: Record<string, Record<string, CurrentStats>>
   /** category slug -> display label */
   categoryLabels: Record<string, string>
@@ -200,8 +200,8 @@ export function loadFullProbes(): ProbeData {
   for (const [id, terminal] of Object.entries(catalog)) {
     meta[id] = { ...meta[id], ...terminal }
   }
-  // #30759 Slice A: the site renders the frozen suite only, so a historical-only target is
-  // not a matrix row any more; it gets no metadata and no page.
+  // Matrix metadata follows selected contexts and their recorded physical subjects.
+
   for (const [key, { selected }] of bySubject) {
     if (!selected.subject) throw new Error(`Selected context ${key} has no physical subject`)
     const id = selected.subject.id
@@ -273,7 +273,7 @@ export function loadFullProbes(): ProbeData {
   const releaseTable: Record<string, Readonly<Record<string, ProbeStatus>>> = {}
   for (const run of Object.values(published.projection.history).flat()) {
     const rows = projection.table[run.runId]
-    if (!rows) throw new Error(`The projection has no sealed status row for run ${run.runId}`)
+    if (!rows) throw new Error(`The projection has no stored status row for run ${run.runId}`)
     releaseTable[run.runId] = rows
   }
   const result: ProbeData = {

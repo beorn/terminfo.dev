@@ -240,7 +240,7 @@ function screenGeometry(receipt: string | undefined): { rows: number; cols: numb
   return undefined
 }
 
-/** Current public results retain sealed statuses; evidence remains separately publication-reviewed. */
+/** Current public results retain stored statuses; evidence remains separately publication-reviewed. */
 export interface PublicProbeResult extends Pick<
   ProbeResult,
   "featureId" | "status" | "attempt" | "tests" | "assertionType"
@@ -406,9 +406,16 @@ export function publicResults(projection: SelectedProjection, subjects: Readonly
       documents,
       3,
     )
+    const publicResult = globalThis.structuredClone(result)
+    const pendingReason = publicSourceAnswerPendingLabel(publicResult.reason)
+    if (pendingReason !== undefined) publicResult.reason = pendingReason
+    for (const check of publicResult.tests) {
+      const pendingCheckReason = publicSourceAnswerPendingLabel(check.reason)
+      if (pendingCheckReason !== undefined) check.reason = pendingCheckReason
+    }
     evidenceCells[result.featureId] = {
       featureId: result.featureId,
-      result: globalThis.structuredClone(result),
+      result: publicResult,
       record: {
         ...images(record, `run ${version.runId}/${result.featureId}`),
         assertions: record.assertions,
@@ -426,7 +433,7 @@ export function publicResults(projection: SelectedProjection, subjects: Readonly
   const mapVersion = (version: CurrentSelectedVersion): PublicVersion => {
     const prior = mappedRuns.get(version.runId)
     if (prior) {
-      if (prior.sha256 !== version.sha256) throw new Error(`Conflicting sealed current run ${version.runId}`)
+      if (prior.sha256 !== version.sha256) throw new Error(`Conflicting stored current run ${version.runId}`)
       return prior
     }
     const {

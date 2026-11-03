@@ -14,8 +14,8 @@ function resultFor(row, id) { return publicResultFor(data.evidenceContexts[row.c
 
 # All {{ data.catalogRows }} features across {{ data.contexts.length }} contexts
 
-::: warning Development reading — private, unadmitted, not a result
-This page reads composed contexts with original sealed sources on the required suite. Retained cells from other suites stay visible with a hold reason and do not count as release evidence. A context without a source on the required suite is **NOT COLLECTED**, with its cause. Historical results remain available through the [historical API](/api#historical-v1-and-v2); they do not complete this cohort. Operator publication GO remains required; this preview publishes no result.
+::: warning Development reading — not approved for publication
+This page reads composed contexts with original stored sources on the required suite. Retained cells from other suites stay visible with a hold reason and do not count as release evidence. A context without a source on the required suite is **NOT COLLECTED**, with its cause. Historical results remain available through the [historical API](/api#historical-v1-and-v2); they do not complete this cohort. Operator publication GO remains required; this preview publishes no result.
 :::
 
 <div v-if="data.working">
@@ -49,7 +49,7 @@ This page reads composed contexts with original sealed sources on the required s
 - **{{ data.collected }} contexts collected**, **{{ data.notCollected }} NOT COLLECTED**; {{ data.recordedPositions }} explicit feature positions.
 - Score is **Supported / all {{ data.gradedRows }} graded features**; the {{ data.environmentGroups }} environment groups are ungraded and never in the denominator. Unsupported and Untestable remain in the denominator.
 - Completion requires **zero TEST TODO and zero TEST FAILURE among the graded features in every required context**, on this one suite. Cohort: **{{ data.complete ? 'complete' : 'incomplete' }}**.
-- No current sealed runs means no current score. [Historical results remain available](/api#historical-v1-and-v2).
+- No stored current runs means no current score. [Historical results remain available](/api#historical-v1-and-v2).
 
 ## The contexts
 

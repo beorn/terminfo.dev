@@ -123,11 +123,21 @@ it("publishes only the safe pending phrase from a real disputed Ghostty cell", (
     accepted: { by: "fixture", wire: "00000000-0000-4000-8000-000000000000", at: "2026-10-30T12:00:00-07:00" },
     acceptedSha256: "a".repeat(64),
   }
-  const approved = publicResults(approvedProjection, new Map()).projection.contexts["lib:ghostty"]?.cells[featureId]
+  const approvedOutput = publicResults(approvedProjection, new Map())
+  const approved = approvedOutput.projection.contexts["lib:ghostty"]?.cells[featureId]
   expect(approved?.reason).toBe("kept answers disagree")
   expect(approved?.tests.find((check) => check.id === "review")?.reason).toBe("kept answers disagree")
   expect(JSON.stringify(approved)).not.toContain("@dev/")
   expect(JSON.stringify(approved)).not.toContain("kept originals")
+  if (approved?.presentation.state !== "presented") throw new Error("Expected approved evidence document")
+  const documentUrl = approved.presentation.url.split("#")[0]
+  if (!documentUrl) throw new Error("Expected approved evidence document URL")
+  const document = approvedOutput.documents.get(documentUrl)
+  expect(document).toBeDefined()
+  expect(document?.bytes).not.toContain("@dev/")
+  expect(document?.bytes).not.toContain("kept originals")
+  expect(document?.bytes).not.toContain("reply-path-audit")
+  expect(document?.bytes).toContain('"reason": "kept answers disagree"')
   expect(run).toEqual(original)
   expect(readFileSync(path, "utf8")).toBe(bytes)
 })
