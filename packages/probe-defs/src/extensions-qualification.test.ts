@@ -2636,6 +2636,7 @@ test.each(geometryReplies)("$id distinguishes sibling source entries", ({ id, ra
 test.each([
   ["alacritty", auditedArtifacts[0]!, "ansi.rs:1349-1361"],
   ["ghostty", absentOscBatch.find((entry) => entry.engine === "ghostty")!.identity, "stream.zig:2017-2021"],
+  ["kitty", absentOscBatch.find((entry) => entry.engine === "kittyCa46f3c2")!.identity, "screen.c:3533-3534"],
   [
     "ghostty-native",
     absentOscBatch.find((entry) => entry.engine === "ghostty-native")!.identity,

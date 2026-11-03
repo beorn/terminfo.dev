@@ -1524,7 +1524,14 @@ const ABSENT_OSC_ENGINES = {
     sourceCommit: "b2cb871254fbdac19a085188813c8dfb258b95cd",
     buildHash: "88e840e1b8e7f09edf3464ee33df8753fd5107838de15bccb6ea59e0dd6cc9c3",
     lockSha256: "282d1098337a5705a7c1d13188a74d2fe34565766619e8d6b21a48d5b67451be",
-    codes: [176],
+    codes: [1, 176],
+    reviewReasons: [
+      {
+        code: 1,
+        reason:
+          "kitty/screen.c:3533-3534 dispatches icon_changed without storing icon state; kitty/window.py:1585-1586 is a TODO/no-op, and the configured Termless bridge callback is also a no-op",
+      },
+    ],
     sourceCitation:
       "kitty0.49.2 source b2cb871254fbdac19a085188813c8dfb258b95cd kitty/vt-parser.c:546-670 (Git blob 50dc1e6d698be9ee9fb6bc687f4da65823c5cde1, SHA256 08dd5f733e466b72ec2ee6c5d5e2ea59e1e0fa898bd9f6a6f56a2c4c17629390) has no OSC176 arm and defaults to reporting an unknown code; current Termless25089207 packages/kitty/build/bridge.py blob ca46f3c2 forwards input to that parser without an app-id handler. Independent source review @dev/8 2026-11-03, 6196c3b3-f320-495b-861a-4312753ff1bf; the existing identity owner verifies loaded native bb65c2d5 and its receipt/build/lock against these adapter blobs",
   },
