@@ -12,6 +12,7 @@ import { extensionsProbes } from "./extensions.ts"
 import { withReplyFailureEvidence } from "./helpers.ts"
 import {
   contractGaps,
+  inertLibProbeSource,
   libProbeSource,
   missingContractTests,
   regradeCommand,
@@ -22,6 +23,49 @@ import {
   type GroupContractSpec,
   type HeadlessModel,
 } from "./testing/group-harness.ts"
+import { createSemanticSurface } from "./testing/semantic-surface.ts"
+
+// Row 2.1: replies must follow the actual query/set/reset operations; canned replies cannot
+// prove that disabling one feature changes its result while its same-path control still works.
+const EXTENSIONS_COLOR_CONTROLS = [
+  ["osc10-fg-color", "osc10-query-noop"],
+  ["osc11-bg-color", "osc11-query-noop"],
+  ["osc12-cursor-color", "osc12-query-noop"],
+  ["osc17-highlight-bg", "osc17-query-noop"],
+  ["osc19-highlight-fg", "osc19-query-noop"],
+  ["osc4-palette", "osc4-query-noop"],
+  ["osc5-special-color", "osc5-query-noop"],
+  ["osc104-reset-palette", "osc104-noop"],
+  ["osc110-reset-fg", "osc110-noop"],
+  ["osc111-reset-bg", "osc111-noop"],
+  ["osc112-reset-cursor", "osc112-noop"],
+  ["osc113-reset-pointer-fg", "osc113-noop"],
+  ["osc114-reset-pointer-bg", "osc114-noop"],
+  ["osc117-reset-highlight-bg", "osc117-noop"],
+  ["osc119-reset-highlight-fg", "osc119-noop"],
+  ["truecolor", "fg-truecolor-noop"],
+  ["osc21-kitty-color", "osc21-query-noop"],
+  ["osc30001-color-stack-push", "osc30001-noop"],
+  ["osc30101-color-stack-pop", "osc30101-noop"],
+] as const
+
+test.each(EXTENSIONS_COLOR_CONTROLS)("colour controls for extensions.%s with %s", async (name, mutation) => {
+  const id = `extensions.${name}`
+  const probe = extensionsProbes.find((entry) => entry.id === id)!
+  const row = EXTENSIONS_CONTRACT.find((entry) => entry.id === id)!
+  expect(probe, id).toBeDefined()
+  expect(row, id).toBeDefined()
+  expect(probe.lib, id).toBeTypeOf("function")
+
+  const inert = await regradeRow(probe, row, { headless: inertLibProbeSource() })
+  expect(inert.after, `${id}: no-op source cannot establish support`).not.toBe("supported")
+  const working = await regradeRow(probe, row, { headless: libProbeSource(createSemanticSurface()) })
+  expect(working.after, `${id}: working feature must establish support`).toBe("supported")
+  const disabled = await regradeRow(probe, row, {
+    headless: libProbeSource(createSemanticSurface({ mutations: [mutation] })),
+  })
+  expect(disabled.after, `${id}: only ${mutation} is disabled`).toBe("unsupported")
+})
 
 /**
  * The 79 extension features (78 defined in extensions.ts + 1 catalog-only in features.json).

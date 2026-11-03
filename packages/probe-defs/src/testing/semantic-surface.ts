@@ -531,6 +531,12 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
   let savedPrivateModes = new Map<number, boolean>()
   let palette = new Map<number, Rgb>()
   let paletteStack: Map<number, Rgb>[] = []
+  const initialColors = new Map<string, Rgb>(
+    ["10", "11", "12", "13", "14", "17", "19"].map((code) => [code, { r: 16, g: 32, b: 48 }]),
+  )
+  let dynamicColors = new Map(initialColors)
+  const specialColors = new Map<number, Rgb>()
+  const colorStack: Map<string, Rgb>[] = []
   let tabStops = defaultTabStops(cols)
   let charsetG0: CharsetSet = "ascii"
   let charsetG1: CharsetSet = "ascii"
@@ -586,6 +592,9 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
     savedPrivateModes = new Map()
     palette = new Map()
     paletteStack = []
+    dynamicColors = new Map(initialColors)
+    specialColors.clear()
+    colorStack.length = 0
     tabStops = defaultTabStops(cols)
     charsetG0 = "ascii"
     charsetG1 = "ascii"
@@ -1571,18 +1580,63 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
   }
 
   const consumeOsc = (code: string, payload: string): void => {
+    const rgbText = (rgb: Rgb): string =>
+      `rgb:${[rgb.r, rgb.g, rgb.b].map((channel) => channel.toString(16).padStart(2, "0")).join("/")}`
+    const parseRgb = (value: string): Rgb | undefined => {
+      const match = /^rgb:([0-9a-f]+)\/([0-9a-f]+)\/([0-9a-f]+)$/iu.exec(value)
+      return match
+        ? { r: parseHexChannel(match[1]!), g: parseHexChannel(match[2]!), b: parseHexChannel(match[3]!) }
+        : undefined
+    }
+    if (code === "30001") {
+      if (!mutations.has("osc30001-noop")) colorStack.push(new Map(dynamicColors))
+      return
+    }
+    if (code === "30101") {
+      if (!mutations.has("osc30101-noop")) dynamicColors = colorStack.pop() ?? dynamicColors
+      return
+    }
+    if (code === "21") {
+      if (payload === "foreground=?" && !mutations.has("osc21-query-noop")) {
+        replies += `\x1b]21;foreground=${rgbText(dynamicColors.get("10")!)}\x1b\\`
+      }
+      return
+    }
+    if (initialColors.has(code)) {
+      if (payload === "?") {
+        if (!mutations.has(`osc${code}-query-noop`)) replies += `\x1b]${code};${rgbText(dynamicColors.get(code)!)}\x07`
+      } else {
+        const rgb = parseRgb(payload)
+        if (rgb) dynamicColors.set(code, rgb)
+      }
+      return
+    }
+    const resetCode = String(Number(code) - 100)
+    if (initialColors.has(resetCode)) {
+      if (!mutations.has(`osc${code}-noop`)) dynamicColors.set(resetCode, initialColors.get(resetCode)!)
+      return
+    }
     if (code === "1" && !mutations.has("xtwinops-20-noop")) iconLabel = payload
     else if (code === "2") title = payload
-    else if (code === "4") {
+    else if (code === "4" || code === "5") {
+      const query = /^(\d+);\?$/u.exec(payload)
+      const colors = code === "4" ? palette : specialColors
+      if (query) {
+        const index = Number(query[1])
+        const rgb = colors.get(index) ?? palette256(index)
+        if (rgb && !mutations.has(`osc${code}-query-noop`)) replies += `\x1b]${code};${index};${rgbText(rgb)}\x07`
+        return
+      }
       const match = /^(\d+);rgb:([0-9a-fA-F]+)\/([0-9a-fA-F]+)\/([0-9a-fA-F]+)$/u.exec(payload)
       if (match) {
-        palette.set(Number(match[1] ?? 0), {
+        colors.set(Number(match[1] ?? 0), {
           r: parseHexChannel(match[2] ?? "00"),
           g: parseHexChannel(match[3] ?? "00"),
           b: parseHexChannel(match[4] ?? "00"),
         })
       }
     } else if (code === "104") {
+      if (mutations.has("osc104-noop")) return
       if (payload === "") palette.clear()
       else palette.delete(Number(payload))
     }
