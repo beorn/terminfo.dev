@@ -14,6 +14,15 @@ Read the [current probe-system model](packages/probe-defs/README.md) before chan
 Update it in the same change when those contracts change.
 Its [vocabulary and current code](packages/probe-defs/README.md#vocabulary-and-current-code) section maps the approved probe terms to existing identifiers and distinguishes future refactoring.
 
+## Author loop
+
+Work on one probe. Use the five result labels and terminal progress tiers defined in the probe-system model; catalog coverage and color depth are separate concepts.
+For authorized headless work, run the changed probe IDs across the eleven configured library backends and the owning two-sided checks.
+A do-nothing fake never reads Supported; a working fake reads Supported and loses it when only that feature is disabled.
+Read the changed results and retained reasons, obtain one peer review, then deliver through the configured Yrd queue.
+Collection, admission and publication are separate; a Git push or site build is not deployment authority.
+Existing run, custody and END holds remain in force. The live machinery below is transitional until its approved Phase 1 removal, not permission to run it.
+
 ## Directory Structure
 
 ```
@@ -30,8 +39,8 @@ content/                        ← ALL input data
 packages/                       ← source code (internal tools)
   probe-defs/                      @terminfo/probe-defs: pure probe definitions + shared types
   probes/                         @terminfo/probes: private headless collector + diagnostic Vitest runner
-  admin/                          @terminfo/admin: dev/orchestration CLI (bun terminfo)
-    src/                          unified CLI (bun terminfo) — all 4 probe mechanisms
+  admin/                          @terminfo/admin: author/orchestration CLI (bun admin)
+    src/                          author CLI (bun admin) — five probe mechanisms
       index.ts                    entry point: probe {termless,server,app,here}, report, status, submit, detect
       termless.ts                 headless collection via packages/probes/collect-headless.ts
       server.ts                   daemon probe mechanism (start/list/probe daemons)
@@ -82,8 +91,7 @@ imported by package name (`@terminfo/probe-defs`); imports into the CLI's own
 source are repo-relative filesystem paths like
 `../../terminfo.dev/src/identity-guard.ts`. The bare subpath
 `terminfo.dev/src/...` no longer resolves: `terminfo.dev` publishes only its
-`./package.json` entry in `exports`. km's root workspace also includes
-`vendor/terminfo.dev/packages/*` so local repo commands resolve the same graph.
+`./package.json` entry in `exports`.
 
 ## Data Architecture
 
@@ -98,13 +106,16 @@ DERIVED     docs/data/*.ts        ← computed at build time from above two
 
 ### Measured: Probe Results
 
-`content/probes-apps/` — real terminal app results (from `bun terminfo probe app --all`)
-`content/probes-libs/` — headless backend results (from `bun terminfo probe termless --all`)
-`content/probes-mux/` — multiplexer pass-through results (from `bun terminfo probe mux --all`)
+`content/probes-apps/` — admitted real terminal app results
+`content/probes-libs/` — admitted headless backend results
+`content/probes-mux/` — admitted multiplexer pass-through results
 
-Each file: `{ backend, version, results: { featureId: boolean }, notes, probeHash, generated }`
+See the [record and persistence contracts](packages/probe-defs/README.md#collector-routes-and-persistence); private collector drafts are not automatically admitted content.
 
-### One suite per collection (cut one commit, collect every subject configuration there)
+### Phase 1 transitional release collection: one suite per collection
+
+This is the existing coordinated release-collection procedure, not a requirement to collect unrelated contexts for each probe edit.
+Its suite-consistency and admission constraints remain implemented until their approved removal; existing holds still apply.
 
 A merge that touches the collector sources changes the probe suite id, so a run collected before that
 merge cannot be admitted (30286). A collection therefore starts at ONE commit, never at whatever `main`
@@ -128,7 +139,7 @@ collector, which is what lets a pointer move onto an older admitted suite from a
 must be twelve lowercase hex and an existing manifest must carry it. A pointer never claims a suite that
 has no admitted run.
 
-### Admitting a run (the one suite-manifest writer)
+### Phase 1 transitional admission (existing suite-manifest writer)
 
 A schema-v2 run cites the executable suite (`probeHash`) that produced it, and the parser refuses a run
 whose suite has no trusted declaration in `content/suites/<probeHash>.json`. The declaration is a
@@ -187,7 +198,7 @@ bun run build               # Build static site (250+ pages) + emits API/badges 
 bun run preview             # Preview built site
 bun run landed-serve        # Build only if the output is not this checkout's revision, then serve it read-only
 
-# Periodic refresh (see /terminfo-update skill)
+# Existing release-maintenance scripts, not the default author loop
 bun run update --full       # Full refresh: discover → probe → validate → build
 bun run update --status     # Check what's stale
 bun run update --discover   # Run explore + show radar
@@ -202,46 +213,36 @@ bun run radar stats         # Triage discovery findings
 bun run candidates list     # Review promoted candidates
 ```
 
-### Unified CLI (`bun terminfo`)
+### Author entry (`bun admin`)
 
-Pattern: bare = list/help, `--all` = run all, `<name>` = run specific.
+From the component root, use `bun admin` for author collection and retained-capture review.
+`bun terminfo` invokes the separate user CLI; admin help displays the program name `terminfo`.
 
-```bash
-bun terminfo                              # Show help
-bun terminfo probe                        # List 4 probe mechanisms
-```
-
-#### Probe Methods (5 mechanisms)
+Start with explicit help, then select existing probe IDs for a separately authorized run:
 
 ```bash
-# 1. Headless library collection (Termless backends, isolated workers)
-bun terminfo probe termless               # List available backends
-bun terminfo probe termless --all         # Probe all backends
-bun terminfo probe termless --force       # Re-run cached
-bun terminfo probe termless xtermjs       # Probe specific backend
-bun terminfo probe termless xtermjs/*     # All versions of a backend
-
-# 2. Daemon probes (run inside ANY terminal — most flexible)
-bun terminfo probe server                 # List running daemons
-bun terminfo probe server --start         # Start daemon in this terminal
-bun terminfo probe server --start -p 3456 # Specific port
-bun terminfo probe server --all           # Probe all running daemons
-bun terminfo probe server ghostty         # Probe specific daemon
-
-# 3. App launch probes (AppleScript opens macOS terminal apps)
-bun terminfo probe app                    # List installed terminals
-bun terminfo probe app --all              # Probe all installed terminals
-bun terminfo probe app ghostty            # Probe specific terminal
-
-# 4. Multiplexer probes (test pass-through of tmux, screen, etc.)
-bun terminfo probe mux                    # List installed multiplexers
-bun terminfo probe mux --all              # Probe through all multiplexers
-bun terminfo probe mux tmux              # Probe through tmux specifically
-
-# 5. Inline probes (probe this terminal directly)
-bun terminfo probe here                   # Probe this terminal
-bun terminfo probe here --json            # Machine-readable output
+bun admin --help
+bun admin probe termless --help
+bun admin probe termless --all --probe-ids '["cursor.move.absolute"]'
+bun admin review --help
 ```
+
+For the SGR family's existing two-sided contract checks, from the component root:
+
+```bash
+bun node_modules/.bin/vitest run packages/probe-defs/src/sgr-contract.test.ts
+```
+
+Other families use their owning checks; this is not a generic admin flag or a native collection command.
+
+The collection example selects one existing probe across the configured headless backends; it is not a prerequisite for prose edits.
+Bare `probe termless` selects every headless backend; omitted `--probe-ids` selects the full library suite.
+`--probe-ids '[]'` executes no probes and is neither measurement nor a passing check.
+Use exact backend keys, not version wildcards. The registered `--force` flag does not establish a cache behavior for this route.
+
+Other registered routes are `probe server`, `probe app`, `probe mux` and `probe here`.
+Read their explicit `--help` and the [route guide](docs/capture-routes.private.md) before an authorized run.
+Registration does not establish platform availability, permission or a measured result.
 
 #### Analysis
 
@@ -254,11 +255,10 @@ bun analysis --dry-run                    # Preview without writing
 #### Reporting & Utilities
 
 ```bash
-bun terminfo report                       # Show saved results
-bun terminfo status                       # Config, cache, backends
-bun terminfo detect                       # Detect current terminal
-bun terminfo detect --json                # Machine output
-bun terminfo submit                       # Probe + submit to terminfo.dev
+bun admin report                         # Show saved results
+bun admin status                         # Config, cache, backends
+bun admin detect                         # Detect current terminal
+bun admin detect --json                   # Machine output
 ```
 
 #### npm CLI (`npx terminfo.dev`)
@@ -268,41 +268,31 @@ npx terminfo.dev                          # Show help
 npx terminfo.dev test                     # Test this terminal
 npx terminfo.dev test --json              # Machine output
 npx terminfo.dev test --serve             # Start daemon for remote testing
-npx terminfo.dev test --all              # Test all serving terminals
-npx terminfo.dev submit                   # Test + submit to terminfo.dev
+npx terminfo.dev test --all              # Unavailable: refuses multi-daemon collection
+npx terminfo.dev submit --help            # Read the user CLI's submission options
 npx terminfo.dev detect                   # Detect terminal
 ```
 
-#### Convenience scripts
+#### All-context convenience scripts
 
 ```bash
-bun probe:termless            # = bun terminfo probe termless --all
-bun probe:apps                # = bun terminfo probe app --all
-bun probe:server              # = bun terminfo probe server --all
-bun probe:mux                 # = bun terminfo probe mux --all
+bun probe:termless            # = bun admin probe termless --all
+bun probe:apps                # = bun admin probe app --all
+bun probe:server              # = bun admin probe server --all
+bun probe:mux                 # = bun admin probe mux --all
 ```
 
-### When to use which probe method
+### Route selection
 
-- **Headless** (`probe termless`): Testing library parsers. Fast, automated, CI-friendly.
-- **App launch** (`probe app`): Testing real macOS terminals. Requires Accessibility permission for AppleScript. Doesn't work for all terminals (Warp, some Electron apps).
-- **Daemon** (`probe server`): Testing ANY terminal. Run `--start` in the probe subject's terminal, then `--all` from another session.
-  Works for Warp, SSH sessions, Linux, anything with a TTY. **Most flexible method.**
-- **Mux** (`probe mux`): Testing multiplexer pass-through (tmux, screen). Launches the mux with a daemon inside, probes via HTTP, saves to `content/probes-mux/`. Shows which features each mux correctly relays vs. strips.
-- **Inline** (`probe here`): Quick test of the current terminal. Good for one-off tests.
-- **Manual**: For terminals where none of the above work, run `terminfo detect` and submit results.
+Use the [collector routes and persistence](packages/probe-defs/README.md#collector-routes-and-persistence) contract and the route guide above.
+Keep native identity, ownership, observer prerequisites, private evidence and admission separate; a route name alone proves none of them.
 
-### Full Update Workflow
+### Collection and release maintenance
 
-When probe data changes (new terminals, new features, updated results):
-
-```bash
-bun terminfo probe termless --all        # 1. Run headless probes
-bun terminfo probe app --all             # 2. Run app probes (or probe server --all)
-bun terminfo probe mux --all             # 3. Run multiplexer probes
-bun run build                            # 4. Generate analysis.json, then build site + emit API/badges into ignored docs/.vitepress/dist/
-git add -A && git commit && git push     # 5. Deploy
-```
+A changed probe uses explicit contexts and probe IDs; it does not require unrelated terminal runs.
+Follow the author loop and selected-collection guidance, not the all-context convenience scripts, as the default entry.
+The update scripts and suite-cut/admission procedures are existing Phase 1 transitional machinery, not additional author loops.
+Their implemented constraints remain until separately removed. A build, private draft or Git push does not authorize admission or publication.
 
 `bun run build` regenerates `content/analysis.json` from probe data and fails if generation fails.
 Do not commit that file.
@@ -311,9 +301,8 @@ Do not commit that file.
 — under that one directory instead of the source tree, so `bun scripts/landed-serve.ts` (the `terminfo-site`
 resident's command) can build from a read-only hab landing. Unset, every path is exactly as before.
 
-**Annotations are required for failures.** If probes produce new failures, `bun terminfo probe`
-will exit with an error listing unannotated failures. Add explanations to
-`content/annotations.json` before the data is usable.
+Private headless collection reports its retained results and collector failures, not an editorial annotation check.
+Keep the existing metadata validation and admission requirements separate; private collection does not waive them.
 
 ## Data Flow
 
@@ -321,11 +310,11 @@ Collectors retain private evidence first; admission is separate. See [collector 
 
 ```
 5 probe methods:
-  packages/probes/collect-headless.ts ← termless: bun terminfo probe termless (Termless workers)
-  packages/admin/src/app.ts          ← app:      bun terminfo probe app (owned terminal launch)
-  packages/terminfo.dev/src/serve.ts                 ← server:   bun terminfo probe server (HTTP daemon)
-  packages/admin/src/mux.ts          ← mux:      bun terminfo probe mux (multiplexer pass-through)
-  packages/terminfo.dev/src/serve.ts                 ← here:     bun terminfo probe here (shared native collector)
+  packages/probes/collect-headless.ts ← termless: bun admin probe termless (Termless workers)
+  packages/admin/src/app.ts          ← app:      bun admin probe app (owned terminal launch)
+  packages/terminfo.dev/src/serve.ts                 ← server:   bun admin probe server (HTTP daemon)
+  packages/admin/src/mux.ts          ← mux:      bun admin probe mux (multiplexer pass-through)
+  packages/terminfo.dev/src/serve.ts                 ← here:     bun admin probe here (shared native collector)
 
   ↓ private collection, then separate admission where requested
 
@@ -368,7 +357,7 @@ Collection, admission and publication remain separate operations.
 
 ## Adding a New Terminal
 
-1. Run probes: `bun terminfo probe app <terminal-name>` (or add headless backend to Termless)
+1. Run authorized probes: `bun admin probe app <terminal-name>` (or add headless backend to Termless)
 2. Add metadata to `content/terminals.json` (label, slug, description, body, url)
 3. Add annotations to `content/annotations.json` for any failures that need explanation
 4. Rebuild: `bun run build`
@@ -381,13 +370,13 @@ Collection, admission and publication remain separate operations.
 4. Add annotations for any unexpected failures
 5. Rebuild: `bun run build` — the build validates tags against `standards.json`
 
-### Probe Status
+### Catalog coverage
 
 Coverage is derived by [derivedProbeStatus](docs/data/probe-status.ts), with reviewed catalog overrides.
 See the [canonical declaration contract](packages/probe-defs/README.md#from-definition-to-recorded-result)
 and [nullable declaration comments](packages/probe-defs/src/types.ts) for the distinction between measured, partial and undeclared coverage.
 
-The catalog may declare a reviewed override for exactly two statuses, each with a
+The catalog may declare a reviewed override for exactly two coverage values, each with a
 `probeStatusReason`:
 
 - `"partial"` — an automated path leaves part of the effect or another route unmeasured.
@@ -402,7 +391,7 @@ reason.
 For `"manual"` and `"unprobed"` features, set the `probe` field to
 `"Manual verification required — no automated probe available."`
 Viewport hold's library arm measures ordinary and synchronized output with qualified viewport controls.
-Its app arm names the missing actuator/readback and stays TEST TODO; registration supplies no app support measurement.
+Its app arm names the missing actuator/readback and stays Test to-do; registration supplies no app support measurement.
 See the canonical declaration contract above.
 
 For UI-owned viewport behavior, prefer `"manual"` plus an exact reproduction
@@ -441,7 +430,7 @@ Support claims require retained observations and deciding assertions; legacy `pa
 | `ctx.capabilities.*` | Declared term features      | Check `capabilities.kittyKeyboard`            |
 | `ctx.getTitle()`     | OSC title sequences         | Check title changed                           |
 
-Execution-only refusals retain TODO or FAILURE tests with reasons, without inventing a measured observation.
+Execution-only refusals retain Test to-do or Test failure tests with reasons, without inventing a measured observation.
 
 ## Content Enrichment
 
@@ -452,8 +441,6 @@ Content files support optional enrichment fields (pages render them when present
 - **standards.json**: `history`, `yearPublished`, `organization`, `parent`, `children[]`
 - **categories.json**: `history`, `seeAlso[]`
 
-Use `/marketing enrich` in km to AI-generate enrichment content for review.
-
 ## SEO
 
 - Sitemap auto-generated by VitePress at `/sitemap.xml`
@@ -461,7 +448,3 @@ Use `/marketing enrich` in km to AI-generate enrichment content for review.
 - CSS tooltips on all result cells via shared `theme/tooltip.css`
 - Comparison pages use alphabetical slug ordering for deterministic URLs
 - All 250+ pages are statically rendered (no client-side data fetching)
-
-## Issue Tracking
-
-Beads under `@km/13056-terminfo` epic in the km repo.
