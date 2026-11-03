@@ -170,6 +170,50 @@ it.each(["measured", "missing", "positive", "other-feature", "empty-expected", "
   },
 )
 
+// #32225: a visual-review capture records only a positive "frames captured" assertion. A kept Unsupported answer
+// must bind this run's own negative screenshot assertion, or the canonical reader refuses the whole run (Dev1's
+// Kitty and Alacritty recaptures); without one the review stays pending instead of promoting the cell.
+it.each(["measured", "missing"])(
+  "a kept unsupported visual review binds a current negative frame read (%s)",
+  async (mode) => {
+    const { finalizeCollectedDraft } = await import("../../terminfo.dev/src/capture-writer.ts")
+    const featureId = "extensions.iterm2-images"
+    const path = new URL(
+      "../../../content/probes-apps/kitty-0.49.2-linux-0f6a17be820e41ecf3404199ff00fbb7.json",
+      import.meta.url,
+    )
+    const capture = JSON.parse(readFileSync(path, "utf8")) as CapturedRunDraft & { sealedAt?: string }
+    delete capture.sealedAt
+    const row = capture.results.find((result) => result.featureId === featureId)!
+    expect(row).toMatchObject({ criterionBranch: "visual-review", assertionType: "screenshot" })
+    row.status = "test-todo"
+    row.tests = row.tests.map((test) =>
+      test.id === "review" ? { ...test, status: "test-todo", assertionRefs: [] } : test,
+    )
+    const negatives = capture.assertions.flatMap((assertion, index) =>
+      assertion.featureId === featureId && assertion.kind === "negative" ? [index] : [],
+    )
+    expect(negatives.length).toBeGreaterThan(0)
+    if (mode === "missing") {
+      capture.assertions = capture.assertions.map((assertion) =>
+        assertion.featureId === featureId && assertion.kind === "negative"
+          ? { ...assertion, featureId: "other-feature" }
+          : assertion,
+      )
+    }
+    const result = finalizeCollectedDraft(capture).results.find((entry) => entry.featureId === featureId)!
+    const review = result.tests.find((test) => test.id === "review")
+    if (mode === "measured") {
+      expect(result.status).toBe("unsupported")
+      expect(review?.assertionRefs).toEqual(negatives)
+    } else {
+      expect(result.status).toBe("test-todo")
+      expect(result.reason).toContain("current deciding negative assertion")
+      expect(review).toMatchObject({ status: "test-todo", assertionRefs: [] })
+    }
+  },
+)
+
 // A same-version kept negative cannot decide a missing-observable review. Existing source
 // qualification cases cover deciding assertions, but not this route; reply audits remain eligible.
 it.each([

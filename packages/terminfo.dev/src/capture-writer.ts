@@ -158,10 +158,13 @@ export function finalizeCollectedDraft(
         `Reply-path gate for ${result.featureId} measured a zero-byte reply but its kept answers claim support`,
       )
     }
+    // The canonical reader binds an Unsupported source-negative or frame-read row to the run's own negative
+    // assertion, so a kept Unsupported answer applies only where this run measured one (#32225: a visual-review
+    // capture records only a positive "frames captured" assertion).
     if (
       resolution.kind === "answer" &&
       resolution.status === "unsupported" &&
-      result.criterionBranch === SOURCE_NEGATIVE_REVIEW &&
+      (result.criterionBranch === SOURCE_NEGATIVE_REVIEW || measuredFrameRead(result)) &&
       result.assertionType !== undefined &&
       result.tests.some((test) => test.id === "review" && (test.assertionRefs?.length ?? 0) === 0)
     ) {
@@ -190,6 +193,14 @@ export function finalizeCollectedDraft(
     return finalizeProbeResult(result, resolution)
   })
   return captured
+}
+
+/** A pixel or text-cells frame read, which the canonical reader requires to bind its own deciding assertion. */
+function measuredFrameRead(result: CollectedProbeRun["results"][number]): boolean {
+  return (
+    result.assertionType === "screenshot" ||
+    (result.assertionType === "buffer_state" && result.frames?.some((frame) => frame.kind === "text-cells") === true)
+  )
 }
 
 /** Preserve one immutable collected run under its measured identity. */
