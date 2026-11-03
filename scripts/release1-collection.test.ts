@@ -1075,7 +1075,6 @@ describe("release 1 collection census", () => {
       expect(census().find((entry) => entry.id === id && entry.os === "windows")?.route).toBe("hosted-workflow")
     }
   })
-
 })
 
 describe("release 1 Linux launcher flags", () => {
