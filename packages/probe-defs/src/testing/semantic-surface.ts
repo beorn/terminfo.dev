@@ -321,8 +321,9 @@ function applyIndexedColor(
   code: 38 | 48 | 58,
   index: number,
   mutations?: ReadonlySet<string>,
+  palette?: ReadonlyMap<number, Rgb>,
 ): Attributes {
-  const color = palette256(index)
+  const color = palette?.get(index) ?? palette256(index)
   if (!color) return attributes
   if (code === 38) return mutations?.has("fg-256-noop") ? attributes : { ...attributes, fg: color }
   if (code === 48) return mutations?.has("bg-256-noop") ? attributes : { ...attributes, bg: color }
@@ -359,12 +360,17 @@ function applyPaletteRange(attributes: Attributes, code: number, mutations?: Rea
 }
 
 /** Apply SGR codes to an attribute set, the table `applySgr` and the rect attribute ops share. */
-function applyCodes(attributes: Attributes, codes: readonly number[], mutations?: ReadonlySet<string>): Attributes {
+function applyCodes(
+  attributes: Attributes,
+  codes: readonly number[],
+  mutations?: ReadonlySet<string>,
+  palette?: ReadonlyMap<number, Rgb>,
+): Attributes {
   let next = attributes
   for (let i = 0; i < codes.length; i++) {
     const code = codes[i] ?? 0
     if ((code === 38 || code === 48 || code === 58) && codes[i + 1] === 5) {
-      next = applyIndexedColor(next, code, codes[i + 2] ?? -1, mutations)
+      next = applyIndexedColor(next, code, codes[i + 2] ?? -1, mutations, palette)
       i += 2
       continue
     }
@@ -418,8 +424,36 @@ export interface SemanticSurface extends HeadlessModel {
   reset(): void
 }
 
+const DECRPM_NOOP_BY_MODE: Readonly<Record<number, string>> = {
+  1: "decckm-noop",
+  3: "deccolm-noop",
+  4: "decsclm-noop",
+  5: "decscnm-noop",
+  6: "decom-noop",
+  7: "decawm-noop",
+  25: "dectcem-noop",
+  45: "reverse-wrap-noop",
+  47: "altscreen-47-noop",
+  69: "declrmm-noop",
+  1000: "mouse-1000-noop",
+  1003: "mouse-1003-noop",
+  1004: "focus-1004-noop",
+  1005: "mouse-1005-noop",
+  1006: "mouse-1006-noop",
+  1007: "alt-scroll-1007-noop",
+  1047: "altscreen-1047-noop",
+  1048: "altscreen-1048-noop",
+  1049: "altscreen-noop",
+  2004: "bracketed-paste-noop",
+  2026: "sync-2026-noop",
+  2031: "color-scheme-2031-noop",
+}
+
+const parseHexChannel = (raw: string): number => Number.parseInt(raw.slice(0, 2).padEnd(2, raw[0] ?? "0"), 16)
+
 export function createSemanticSurface(options: SemanticSurfaceOptions = {}): SemanticSurface {
-  const cols = options.cols ?? 80
+  const initialCols = options.cols ?? 80
+  let cols = initialCols
   const rows = options.rows ?? 24
   const mutations = new Set(options.mutations ?? [])
   let grid: SurfaceCell[][] = []
@@ -429,18 +463,40 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
   let cursorStyle: string | null = "block"
   let regionTop = 0
   let regionBottom = rows - 1
+  let declrmm = false
+  let marginLeft = 0
+  let marginRight = cols - 1
   let scrolled = 0
   let attributes: Attributes = NO_ATTRIBUTES
+  let sgrStack: Attributes[] = []
   let protecting = false
+  let insertMode = false
   let applicationCursor = false
+  let applicationKeypad = false
+  let bracketedPaste = false
+  let reverseVideo = false
+  let mouseTracking = false
+  let mouseAll = false
+  let focusTracking = false
+  let utf8Mouse = false
+  let sgrMouse = false
+  let altScroll = false
+  let smoothScroll = false
+  let syncOutput = false
+  let colorSchemeReporting = false
+  let allowDeccolm = false
   let originMode = false
-  let autoWrap = true
+  let autoWrap = !mutations.has("decawm-noop")
   let reverseWrap = false
   let altScreen = false
   let savedGrid: SurfaceCell[][] | null = null
+  let altGrid: SurfaceCell[][] = []
   let savedCursor: readonly [number, number] = [0, 0]
   let ansiSavedCursor: readonly [number, number] = [0, 0]
   let decSavedCursor: readonly [number, number] = [0, 0]
+  let savedPrivateModes = new Map<number, boolean>()
+  let palette = new Map<number, Rgb>()
+  let paletteStack: Map<number, Rgb>[] = []
   let tabStops = defaultTabStops(cols)
   let charsetG0: CharsetSet = "ascii"
   let charsetG1: CharsetSet = "ascii"
@@ -456,21 +512,44 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
   const blankRow = (): SurfaceCell[] => Array.from({ length: cols }, () => blankCell(NO_ATTRIBUTES))
 
   const clear = (): void => {
+    cols = initialCols
     grid = Array.from({ length: rows }, blankRow)
+    altGrid = Array.from({ length: rows }, blankRow)
     cursorX = 0
     cursorY = 0
     cursorVisible = true
     cursorStyle = "block"
     regionTop = 0
     regionBottom = rows - 1
+    declrmm = false
+    marginLeft = 0
+    marginRight = cols - 1
     scrolled = 0
+    sgrStack = []
+    insertMode = false
+    applicationKeypad = false
+    bracketedPaste = false
+    reverseVideo = false
+    mouseTracking = false
+    mouseAll = false
+    focusTracking = false
+    utf8Mouse = false
+    sgrMouse = false
+    altScroll = false
+    smoothScroll = false
+    syncOutput = false
+    colorSchemeReporting = false
+    allowDeccolm = false
     originMode = false
-    autoWrap = true
+    autoWrap = !mutations.has("decawm-noop")
     reverseWrap = false
     altScreen = false
     savedGrid = null
     ansiSavedCursor = [0, 0]
     decSavedCursor = [0, 0]
+    savedPrivateModes = new Map()
+    palette = new Map()
+    paletteStack = []
     tabStops = defaultTabStops(cols)
     charsetG0 = "ascii"
     charsetG1 = "ascii"
@@ -545,22 +624,6 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
     cursorX = nextTabStop(cursorX)
   }
 
-  /** HTS — own the current column as a tab stop. */
-  const setTabStop = (): void => {
-    tabStops.add(cursorX)
-  }
-
-  /** IND — one row down, column unchanged. */
-  const indexDown = (): void => {
-    lineFeed()
-  }
-
-  /** NEL — one row down and back to column one. */
-  const nextLine = (): void => {
-    lineFeed()
-    cursorX = 0
-  }
-
   /** RI — one row up, scrolling the measured region down when already at its top. */
   const reverseIndex = (): void => {
     if (cursorY <= regionTop) {
@@ -580,17 +643,25 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
   const writeCluster = (cluster: string, width: number): void => {
     if (width === 0) return
     if (cursorX + width > cols) {
-      cursorX = 0
-      lineFeed()
+      if (autoWrap) {
+        cursorX = 0
+        lineFeed()
+      } else {
+        cursorX = Math.max(0, cols - width)
+      }
     }
     const target = grid[cursorY]
     if (target) {
+      if (insertMode) {
+        target.splice(cursorX, 0, ...Array.from({ length: width }, () => blankCell(NO_ATTRIBUTES)))
+        target.length = cols
+      }
       target[cursorX] = { char: cluster, decscaProtected: protecting, wide: width > 1, ...attributes }
       if (width > 1 && cursorX + 1 < cols) {
         target[cursorX + 1] = { char: "", decscaProtected: protecting, wide: false, ...attributes }
       }
     }
-    cursorX += width
+    cursorX = autoWrap ? cursorX + width : Math.min(cols - 1, cursorX + width)
     lastCluster = cluster
     lastWidth = width
   }
@@ -649,12 +720,16 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
     }
   }
 
-  /** ICH — insert blank cells at the cursor, shifting the rest of the row right. */
+  /** ICH — insert blank cells at the cursor, shifting the rest of the row (or active horizontal margin span) right. */
   const insertChars = (count: number): void => {
     if (mutations.has("ich-noop")) return
     const row = grid[cursorY]
     if (!row) return
-    row.splice(cursorX, 0, ...Array.from({ length: Math.max(1, count) }, () => blankCell(NO_ATTRIBUTES)))
+    const right = declrmm ? marginRight : cols - 1
+    if (declrmm && (cursorX < marginLeft || cursorX > marginRight)) return
+    const n = Math.min(Math.max(1, count), right - cursorX + 1)
+    row.splice(right - n + 1, n)
+    row.splice(cursorX, 0, ...Array.from({ length: n }, () => blankCell(NO_ATTRIBUTES)))
     row.length = cols
   }
 
@@ -694,18 +769,18 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
 
   /** SR — shift every screen column right by `count`, blanking the left edge. */
   const shiftRight = (count: number): void => {
-    const blanks = () => Array.from({ length: Math.max(1, count) }, () => blankCell(NO_ATTRIBUTES))
+    const n = Math.max(1, count)
     for (const row of grid) {
-      row.splice(0, 0, ...blanks())
+      for (let i = 0; i < n; i++) row.unshift(blankCell(NO_ATTRIBUTES))
       row.length = cols
     }
   }
 
   /** DECIC — insert blank columns at the cursor, shifting every row right. */
   const insertColumns = (count: number): void => {
-    const blanks = () => Array.from({ length: Math.max(1, count) }, () => blankCell(NO_ATTRIBUTES))
+    const n = Math.max(1, count)
     for (const row of grid) {
-      row.splice(cursorX, 0, ...blanks())
+      for (let i = 0; i < n; i++) row.splice(cursorX, 0, blankCell(NO_ATTRIBUTES))
       row.length = cols
     }
   }
@@ -856,7 +931,7 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
       }
       const code = raw === "" ? 0 : Number(raw)
       if ((code === 38 || code === 48 || code === 58) && tokens[i + 1] === "5") {
-        attributes = applyCodes(attributes, [code, 5, Number(tokens[i + 2] ?? -1)], mutations)
+        attributes = applyCodes(attributes, [code, 5, Number(tokens[i + 2] ?? -1)], mutations, palette)
         i += 2
         continue
       }
@@ -865,22 +940,41 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
           attributes,
           [code, 2, Number(tokens[i + 2] ?? 0), Number(tokens[i + 3] ?? 0), Number(tokens[i + 4] ?? 0)],
           mutations,
+          palette,
         )
         i += 4
         continue
       }
-      attributes = applyCodes(attributes, [code], mutations)
+      attributes = applyCodes(attributes, [code], mutations, palette)
     }
   }
 
   const softReset = (): void => {
+    insertMode = false
     applicationCursor = false
+    applicationKeypad = false
+    bracketedPaste = false
+    reverseVideo = false
+    mouseTracking = false
+    mouseAll = false
+    focusTracking = false
+    utf8Mouse = false
+    sgrMouse = false
+    altScroll = false
+    smoothScroll = false
+    syncOutput = false
+    colorSchemeReporting = false
+    allowDeccolm = false
+    declrmm = false
+    marginLeft = 0
+    marginRight = cols - 1
     originMode = false
-    autoWrap = true
+    autoWrap = !mutations.has("decawm-noop")
     reverseWrap = false
     cursorVisible = true
     cursorStyle = "block"
     attributes = NO_ATTRIBUTES
+    sgrStack = []
     protecting = false
     charsetG0 = "ascii"
     charsetG1 = "ascii"
@@ -915,38 +1009,111 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
     cursorX = clampCol(rawCol - 1)
   }
 
-  const moveCursorVertical = (final: string, first: number): void => {
+  const moveCursor = (final: string, first: number, params: readonly number[]): boolean => {
     const step = Math.max(1, first)
     const top = originMode ? regionTop : 0
     const bottom = originMode ? regionBottom : rows - 1
-    if (final === "A") {
-      if (mutations.has("cuu-noop")) return
-      if (cursorY - step < top && mutations.has("cuu-clamp-noop")) return
-      cursorY = Math.max(top, cursorY - step)
-      return
-    }
-    if (final === "B") {
-      if (mutations.has("cud-noop")) return
-      if (cursorY + step > bottom && mutations.has("cud-clamp-noop")) return
-      cursorY = Math.min(bottom, cursorY + step)
-      return
-    }
-    if (final === "E" && !mutations.has("cnl-noop")) {
-      cursorY = Math.min(bottom, cursorY + step)
-      cursorX = 0
-      return
-    }
-    if (final === "F" && !mutations.has("cpl-noop")) {
-      cursorY = Math.max(top, cursorY - step)
-      cursorX = 0
-      return
-    }
-    if (final === "d" && !mutations.has("vpa-noop")) {
-      cursorY = Math.min(bottom, Math.max(top, top + step - 1))
+    switch (final) {
+      case "A":
+        if (!mutations.has("cuu-noop") && !(cursorY - step < top && mutations.has("cuu-clamp-noop"))) {
+          cursorY = Math.max(top, cursorY - step)
+        }
+        return true
+      case "B":
+        if (!mutations.has("cud-noop") && !(cursorY + step > bottom && mutations.has("cud-clamp-noop"))) {
+          cursorY = Math.min(bottom, cursorY + step)
+        }
+        return true
+      case "E":
+        if (!mutations.has("cnl-noop")) {
+          cursorY = Math.min(bottom, cursorY + step)
+          cursorX = 0
+        }
+        return true
+      case "F":
+        if (!mutations.has("cpl-noop")) {
+          cursorY = Math.max(top, cursorY - step)
+          cursorX = 0
+        }
+        return true
+      case "d":
+        if (!mutations.has("vpa-noop")) cursorY = Math.min(bottom, Math.max(top, top + step - 1))
+        return true
+      case "C":
+        if (!mutations.has("cuf-noop")) cursorX = clampCol(cursorX + step)
+        return true
+      case "D":
+        if (!mutations.has("cub-noop")) cursorX = clampCol(cursorX - step)
+        return true
+      case "G":
+        if (!mutations.has("cha-noop")) cursorX = clampCol((params[0] ?? 1) - 1)
+        return true
+      case "`":
+        if (!mutations.has("hpa-noop")) cursorX = clampCol(step - 1)
+        return true
+      default:
+        return false
     }
   }
 
-  const csiIntermediate = (intermediate: string, final: string, params: readonly number[], first: number): boolean => {
+  const decrpmState = (modeNum: number): 1 | 2 | 4 | null => {
+    const noopMutation = DECRPM_NOOP_BY_MODE[modeNum]
+    if (noopMutation !== undefined && mutations.has(noopMutation)) return 4
+    switch (modeNum) {
+      case 1:
+        return applicationCursor ? 1 : 2
+      case 3:
+        return cols === 132 ? 1 : 2
+      case 4:
+        return smoothScroll ? 1 : 2
+      case 5:
+        return reverseVideo ? 1 : 2
+      case 6:
+        return originMode ? 1 : 2
+      case 7:
+        return autoWrap ? 1 : 2
+      case 25:
+        return cursorVisible ? 1 : 2
+      case 40:
+        return allowDeccolm ? 1 : 2
+      case 45:
+        return reverseWrap ? 1 : 2
+      case 47:
+      case 1047:
+      case 1049:
+        return altScreen ? 1 : 2
+      case 69:
+        return declrmm ? 1 : 2
+      case 1000:
+        return mouseTracking ? 1 : 2
+      case 1003:
+        return mouseAll ? 1 : 2
+      case 1004:
+        return focusTracking ? 1 : 2
+      case 1005:
+        return utf8Mouse ? 1 : 2
+      case 1006:
+        return sgrMouse ? 1 : 2
+      case 1007:
+        return altScroll ? 1 : 2
+      case 2004:
+        return bracketedPaste ? 1 : 2
+      case 2026:
+        return syncOutput ? 1 : 2
+      case 2031:
+        return colorSchemeReporting ? 1 : 2
+      default:
+        return null
+    }
+  }
+
+  const csiIntermediate = (
+    prefix: string,
+    intermediate: string,
+    final: string,
+    params: readonly number[],
+    first: number,
+  ): boolean => {
     if (intermediate === "") return false
     const count = Math.max(1, first)
     if (intermediate === '"' && final === "q") protecting = first !== 0 && !mutations.has("decsca-noop")
@@ -956,8 +1123,9 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
       else if (final === "z" || final === "{") blankRect(params, final === "{")
       else if (final === "v") copyRect(params)
       else if (final === "r" || final === "t") changeRectAttributes(params, final === "t")
-      else if (final === "p" && first === 7 && !mutations.has("decrpm-noop")) {
-        replies += `\x1b[?7;${autoWrap ? 1 : 2}$y`
+      else if (final === "p" && prefix === "?" && !mutations.has("decrpm-noop")) {
+        const ps = decrpmState(first)
+        if (ps !== null) replies += `\x1b[?${first};${ps}$y`
       }
     } else if (intermediate === "*") {
       if (final === "x") attributeExtent = first === 2 ? 1 : 0
@@ -967,38 +1135,76 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
       else if (final === "~") deleteColumns(count)
     } else if (intermediate === "#") {
       if (final === "R" && !mutations.has("xtreportcolors-noop")) replies += "\x1b[0;1#Q"
+      else if (final === "{" && !mutations.has("xtpushsgr-noop")) sgrStack.push({ ...attributes })
+      else if (final === "}" && !mutations.has("xtpopsgr-noop")) {
+        const popped = sgrStack.pop()
+        if (popped) attributes = { ...popped }
+      } else if (final === "P" && !mutations.has("xtpushcolors-noop")) {
+        paletteStack.push(new Map(palette))
+      } else if (final === "Q" && !mutations.has("xtpopcolors-noop")) {
+        const popped = paletteStack.pop()
+        if (popped) palette = new Map(popped)
+      }
     } else if (intermediate === " ") {
       if (final === "@") shiftLeft(count)
       else if (final === "A") shiftRight(count)
       else if (final === "q" && !mutations.has("decscusr-noop")) {
         cursorStyle = first === 5 || first === 6 ? "beam" : first === 3 || first === 4 ? "underline" : "block"
+      } else if (final === "p" && mutations.has("decsscls-noop")) {
+        for (const ch of `${first} p`) writeCluster(ch, 1)
       }
     }
     return true
   }
 
-  const toggleAltScreen = (entering: boolean): void => {
-    if (mutations.has("altscreen-noop")) return
+  const toggleAltScreen = (modeNum: 47 | 1047 | 1049, entering: boolean): void => {
+    if (
+      (modeNum === 1049 && mutations.has("altscreen-noop")) ||
+      (modeNum === 1049 && !entering && mutations.has("altscreen-exit-noop")) ||
+      (modeNum === 47 && mutations.has("altscreen-47-noop")) ||
+      (modeNum === 1047 && mutations.has("altscreen-1047-noop"))
+    ) {
+      return
+    }
     if (entering && !altScreen) {
       savedGrid = grid
-      savedCursor = [cursorX, cursorY]
-      grid = Array.from({ length: rows }, blankRow)
-      cursorX = 0
-      cursorY = 0
+      if (modeNum === 1049) {
+        savedCursor = [cursorX, cursorY]
+        altGrid = Array.from({ length: rows }, blankRow)
+        cursorX = 0
+        cursorY = 0
+      }
+      grid = altGrid
       altScreen = true
       return
     }
     if (!entering && altScreen) {
-      if (!savedGrid) throw new Error("semantic-surface: 1049l with no saved grid")
+      if (!savedGrid) throw new Error(`semantic-surface: ${modeNum}l with no saved grid`)
+      altGrid = modeNum === 1047 ? Array.from({ length: rows }, blankRow) : grid
       grid = savedGrid
       savedGrid = null
-      cursorX = savedCursor[0]
-      cursorY = savedCursor[1]
+      if (modeNum === 1049) {
+        cursorX = savedCursor[0]
+        cursorY = savedCursor[1]
+      }
       altScreen = false
     }
   }
 
-  const csiPrivate = (final: string, first: number): void => {
+  const resizeCols = (nextCols: number): void => {
+    cols = nextCols
+    grid = Array.from({ length: rows }, blankRow)
+    altGrid = Array.from({ length: rows }, blankRow)
+    cursorX = 0
+    cursorY = 0
+    regionTop = 0
+    regionBottom = rows - 1
+    marginLeft = 0
+    marginRight = cols - 1
+    tabStops = defaultTabStops(cols)
+  }
+
+  const csiPrivate = (final: string, first: number, params: readonly number[]): void => {
     if (final === "J") {
       selectiveErase()
       return
@@ -1007,14 +1213,99 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
       if (first === 996 && !mutations.has("dsr-996-noop")) replies += "\x1b[?997;1n"
       return
     }
+    if (final === "s") {
+      if (!mutations.has("xtsave-noop") && (params.length === 0 ? first === 7 : params.includes(7))) {
+        savedPrivateModes.set(7, autoWrap)
+      }
+      return
+    }
+    if (final === "r") {
+      if (!mutations.has("xtrestore-noop") && (params.length === 0 ? first === 7 : params.includes(7))) {
+        const saved = savedPrivateModes.get(7)
+        if (saved !== undefined) autoWrap = saved
+      }
+      return
+    }
     if (final !== "h" && final !== "l") return
     const enable = final === "h"
-    if (first === 1) applicationCursor = enable
-    else if (first === 6) originMode = enable && !mutations.has("decom-noop")
-    else if (first === 7) autoWrap = enable
-    else if (first === 25) cursorVisible = enable ? true : mutations.has("dectcem-noop") ? cursorVisible : false
-    else if (first === 45) reverseWrap = enable && !mutations.has("reverse-wrap-noop")
-    else if (first === 1049) toggleAltScreen(enable)
+    const noopMutation = DECRPM_NOOP_BY_MODE[first]
+    const nextEnabled = enable && (noopMutation === undefined || !mutations.has(noopMutation))
+    switch (first) {
+      case 1:
+        applicationCursor = nextEnabled
+        return
+      case 3:
+        if (allowDeccolm && !mutations.has("deccolm-noop")) resizeCols(enable ? 132 : 80)
+        return
+      case 4:
+        smoothScroll = nextEnabled
+        return
+      case 5:
+        reverseVideo = nextEnabled
+        return
+      case 6:
+        originMode = nextEnabled
+        return
+      case 7:
+        if (!mutations.has("decawm-noop")) autoWrap = enable
+        return
+      case 25:
+        cursorVisible = enable ? true : mutations.has("dectcem-noop") ? cursorVisible : false
+        return
+      case 40:
+        allowDeccolm = enable
+        return
+      case 45:
+        reverseWrap = nextEnabled
+        return
+      case 47:
+      case 1047:
+      case 1049:
+        toggleAltScreen(first, enable)
+        return
+      case 69:
+        declrmm = nextEnabled
+        if (!declrmm) {
+          marginLeft = 0
+          marginRight = cols - 1
+        }
+        return
+      case 1000:
+        mouseTracking = nextEnabled
+        return
+      case 1003:
+        mouseAll = nextEnabled
+        return
+      case 1004:
+        focusTracking = nextEnabled
+        return
+      case 1005:
+        utf8Mouse = nextEnabled
+        return
+      case 1006:
+        sgrMouse = nextEnabled
+        return
+      case 1007:
+        altScroll = nextEnabled
+        return
+      case 1048:
+        if (!mutations.has("altscreen-1048-noop")) {
+          if (enable) decSavedCursor = [cursorX, cursorY]
+          else [cursorX, cursorY] = decSavedCursor
+        }
+        return
+      case 2004:
+        bracketedPaste = nextEnabled
+        return
+      case 2026:
+        syncOutput = nextEnabled
+        return
+      case 2031:
+        colorSchemeReporting = nextEnabled
+        return
+      default:
+        return
+    }
   }
 
   const csiDevicePrefix = (prefix: string, final: string, first: number): boolean => {
@@ -1048,9 +1339,9 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
   const csi = (prefix: string, paramsRaw: string, intermediate: string, final: string): void => {
     const params = paramsRaw === "" ? [] : paramsRaw.split(";").map((raw) => (raw === "" ? 0 : Number(raw)))
     const first = params[0] ?? 0
-    if (csiIntermediate(intermediate, final, params, first)) return
+    if (csiIntermediate(prefix, intermediate, final, params, first)) return
     if (prefix === "?") {
-      csiPrivate(final, first)
+      csiPrivate(final, first, params)
       return
     }
     if (csiDevicePrefix(prefix, final, first)) return
@@ -1058,25 +1349,22 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
       moveCursorAbsolute(paramsRaw, params)
       return
     }
-    if (final === "A" || final === "B" || final === "E" || final === "F" || final === "d") {
-      moveCursorVertical(final, first)
+    if (moveCursor(final, first, params)) return
+    if (final === "h" || final === "l") {
+      if (first === 4 && !mutations.has("irm-noop")) insertMode = final === "h"
       return
     }
     switch (final) {
-      case "C":
-        if (!mutations.has("cuf-noop")) cursorX = clampCol(cursorX + Math.max(1, first))
-        return
-      case "D":
-        if (!mutations.has("cub-noop")) cursorX = clampCol(cursorX - Math.max(1, first))
-        return
-      case "G":
-        if (!mutations.has("cha-noop")) cursorX = clampCol((params[0] ?? 1) - 1)
-        return
-      case "`":
-        if (!mutations.has("hpa-noop")) cursorX = clampCol(Math.max(1, first) - 1)
-        return
       case "s":
-        if (!mutations.has("ansi-save-noop")) ansiSavedCursor = [cursorX, cursorY]
+        if (declrmm) {
+          marginLeft = clampCol((params[0] ?? 0) === 0 ? 0 : (params[0] ?? 1) - 1)
+          const rightRaw = (params[1] ?? 0) === 0 ? cols : (params[1] ?? cols)
+          marginRight = clampCol(rightRaw - 1)
+          cursorX = originMode ? marginLeft : 0
+          cursorY = originMode ? regionTop : 0
+        } else if (!mutations.has("ansi-save-noop")) {
+          ansiSavedCursor = [cursorX, cursorY]
+        }
         return
       case "u":
         if (!mutations.has("ansi-restore-noop")) [cursorX, cursorY] = ansiSavedCursor
@@ -1179,6 +1467,19 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
   const consumeOsc = (code: string, payload: string): void => {
     if (code === "1" && !mutations.has("xtwinops-20-noop")) iconLabel = payload
     else if (code === "2") title = payload
+    else if (code === "4") {
+      const match = /^(\d+);rgb:([0-9a-fA-F]+)\/([0-9a-fA-F]+)\/([0-9a-fA-F]+)$/u.exec(payload)
+      if (match) {
+        palette.set(Number(match[1] ?? 0), {
+          r: parseHexChannel(match[2] ?? "00"),
+          g: parseHexChannel(match[3] ?? "00"),
+          b: parseHexChannel(match[4] ?? "00"),
+        })
+      }
+    } else if (code === "104") {
+      if (payload === "") palette.clear()
+      else palette.delete(Number(payload))
+    }
   }
 
   const consumeEscape = (rest: string): number => {
@@ -1196,7 +1497,7 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
       consumeDcs(dcs[1] ?? "")
       return dcs[0].length
     }
-    const osc = /^\x1b\]([12]);([^\x07\x1b]*)(?:\x07|\x1b\\)/u.exec(rest)
+    const osc = /^\x1b\](\d+)(?:;([^\x07\x1b]*))?(?:\x07|\x1b\\)/u.exec(rest)
     if (osc) {
       consumeOsc(osc[1] ?? "", osc[2] ?? "")
       return osc[0].length
@@ -1208,16 +1509,25 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
     }
     // The single-character C1 escapes: HTS, IND, NEL and RI (#28021 text.hts/index/next-line/…).
     const escape = rest[1]
+    if (escape === "=") {
+      if (!mutations.has("deckpam-noop")) applicationKeypad = true
+      return 2
+    }
+    if (escape === ">") {
+      if (!mutations.has("deckpam-noop")) applicationKeypad = false
+      return 2
+    }
     if (escape === "H") {
-      setTabStop()
+      tabStops.add(cursorX)
       return 2
     }
     if (escape === "D") {
-      indexDown()
+      lineFeed()
       return 2
     }
     if (escape === "E") {
-      nextLine()
+      lineFeed()
+      cursorX = 0
       return 2
     }
     if (escape === "M") {
@@ -1367,9 +1677,20 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
         .join("\n")
     },
     getMode(mode: string) {
+      if (mode === "insertMode") return insertMode
       if (mode === "applicationCursor") return applicationCursor
+      if (mode === "applicationKeypad") return applicationKeypad
+      if (mode === "bracketedPaste") return bracketedPaste
+      if (mode === "reverseVideo") return reverseVideo
+      if (mode === "mouseTracking") return mouseTracking || mouseAll
+      if (mode === "focusTracking") return focusTracking
+      if (mode === "sgrMouse") return sgrMouse
+      if (mode === "altScroll") return altScroll
+      if (mode === "smoothScroll") return smoothScroll
+      if (mode === "syncOutput") return syncOutput
+      if (mode === "colorSchemeReporting") return colorSchemeReporting
       if (mode === "altScreen") return altScreen
-      if (mode === "autoWrap") return autoWrap
+      if (mode === "autoWrap") return mutations.has("decawm-noop") ? null : autoWrap
       return null
     },
     reset() {
