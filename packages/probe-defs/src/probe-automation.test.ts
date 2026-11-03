@@ -294,6 +294,8 @@ describe("audited native host recipe callers", () => {
     "78c05a7155ffb48b351de181cce13a5d996c3472f545f674dc34177fe27bae01",
     "0f56a805793d7d829daa617f1323aacff0d73fe868747b0d077c6af315e2aab8",
     "6722b331de7489c14cb599d939e5d2314f054220728f83c5c29f454e70273e47",
+    // Overline-only rebuild; retained 22:34 run hit missing host causes on all three OSC 52 callers.
+    "b4155bfdef040ae8b3b723a4366fa8ec7f278463dbef577ec4730ad152b8bf07",
   ])("the WezTerm artifact %s cites its OSC 52 read and leaves CSI 14 t measured", (wezterm) => {
     const silent = (id: string) =>
       probe(id).lib!(
@@ -307,9 +309,11 @@ describe("audited native host recipe callers", () => {
         }),
       )
     expect(silent("device.xtwinops-14").hostRecipeCauses).toBeUndefined()
-    expect(silent("extensions.osc52-read").hostRecipeCauses).toMatchObject([
-      { recipe: "clipboard-load", cause: { kind: "unimplemented", artifactSha256: wezterm } },
-    ])
+    for (const id of ["extensions.osc52-clipboard", "extensions.osc52-read", "extensions.osc52-write"]) {
+      expect(silent(id).hostRecipeCauses, id).toMatchObject([
+        { recipe: "clipboard-load", cause: { kind: "unimplemented", artifactSha256: wezterm } },
+      ])
+    }
   })
 
   // The S6 rebuilds need their own host causes; historical artifact fixtures cannot catch a missing new row.
