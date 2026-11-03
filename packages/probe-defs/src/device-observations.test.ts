@@ -755,6 +755,7 @@ describe("window-operation qualification", () => {
     ["6722b331de7489c14cb599d939e5d2314f054220728f83c5c29f454e70273e47", "src/terminalstate/mod.rs:2090-2095"],
     ["0f56a805793d7d829daa617f1323aacff0d73fe868747b0d077c6af315e2aab8", "src/terminalstate/mod.rs:2090-2095"],
     ["b4155bfdef040ae8b3b723a4366fa8ec7f278463dbef577ec4730ad152b8bf07", "src/terminalstate/mod.rs:2090-2095"],
+    ["2e724652f148d5af965999d2eb86457621862dfc73784a1811ee1a010fb6d676", "src/terminalstate/mod.rs:2090-2095"],
   ] as const)(
     "audited title-stack artifact %s grades Unsupported by source only after observed setup",
     (sha256, cite) => {
