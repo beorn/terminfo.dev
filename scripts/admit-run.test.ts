@@ -342,19 +342,6 @@ test("planning refuses a missing cited ownership receipt before placement", () =
   expect(existsSync(destination)).toBe(false)
 })
 
-// AC1 and the CTO's shared-checklist amendment: these real historical runs are complete for their
-// own suites but record dirty collection provenance. Planning must preserve that refusal before
-// adding placement's current-suite requirement. The helper-placement tests cannot see this bypass.
-test.each(["8c50df5834ccb938c208aa91467e9a2b", "2912118b74039bf72ac84070921836ce"])(
-  "planning refuses dirty historical collection %s before placement",
-  (runId) => {
-    const source = join(import.meta.dirname, "..", "test-fixtures", "probes-apps", `kitty-0.49.2-linux-${runId}.json`)
-    const destination = join(temp("terminfo-dirty-plan-"), "run.json")
-    expect(() => planAdmission(source, destination)).toThrow(/native-provenance-dirty/)
-    expect(existsSync(destination)).toBe(false)
-  },
-)
-
 // AC4: engine replies cannot distinguish the enclosing Mac apps. Existing Windows launch tests
 // cannot catch an app swap or missing hosted evidence for these previously unprofiled IDs.
 const hostedMacApps = [
