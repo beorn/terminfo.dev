@@ -5261,12 +5261,13 @@ export const extensionsProbes: ProbeDefinition[] = [
                   controls.every((control) => control.raw === da1)
                 ) {
                   const rejection = engine === "vt100" ? "360-364" : "444-447"
+                  const sourceCitation = `vterm9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/${engine}/src/screen.ts:${rejection} rejects DECRQM; Termless25089207 packages/${engine}/src/backend.ts forwards engine responses without a mode-report substitute`
                   return parserStateResult(
                     null,
                     "OSC5522 protocol detection is recognized",
-                    { detection: reply.raw, decrpmSiblings: controls },
+                    { detection: reply.raw, decrpmSiblings: controls, rejection: "parser", sourceCitation },
                     undefined,
-                    `vterm9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/${engine}/src/screen.ts:${rejection} rejects DECRQM; Termless25089207 packages/${engine}/src/backend.ts forwards engine responses without a mode-report substitute; independent source review required`,
+                    `${sourceCitation}; independent source review required`,
                     "query_reply",
                   )
                 }

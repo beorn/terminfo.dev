@@ -3402,6 +3402,8 @@ describe("Kitty protocol detection", () => {
       ])
       expect(JSON.parse(result.response!)).toMatchObject({
         detection: da1,
+        rejection: "parser",
+        sourceCitation: expect.stringContaining(`packages/${engine}/src/screen.ts`),
         decrpmSiblings: expect.arrayContaining([
           { mode: 7, raw: da1 },
           { mode: 2031, raw: da1 },
