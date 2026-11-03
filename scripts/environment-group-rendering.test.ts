@@ -233,7 +233,7 @@ describe("public test CLI coverage uses the collected manifest", () => {
     [true, true],
     [false, false, true],
   ])(
-    "retains an unsealed public draft (daemon=%s, review=%s, human=%s)",
+    "retains public collected results (daemon=%s, review=%s, human=%s)",
     async (daemon, pending, human: boolean = false) => {
       const manifest = {
         schemaVersion: 4 as const,
@@ -330,7 +330,7 @@ describe("public test CLI coverage uses the collected manifest", () => {
         await program.parseAsync(["test", ...(daemon ? ["kitty"] : []), ...(human ? [] : ["--json"])], { from: "user" })
         if (human) {
           const diagnostic = output.mock.calls.flat().join(" ")
-          expect(diagnostic).toContain("unsealed draft; not admitted")
+          expect(diagnostic).toContain("incomplete; identity unverified")
           expect(diagnostic).not.toContain("required review pending")
           return
         }

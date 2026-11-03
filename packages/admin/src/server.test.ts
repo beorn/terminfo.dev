@@ -52,9 +52,9 @@ vi.mock("../../terminfo.dev/src/daemon-client.ts", async (importOriginal) => {
   const original = await importOriginal<typeof import("../../terminfo.dev/src/daemon-client.ts")>()
   return {
     ...original,
-    saveDaemonProbeRun: vi.fn((run, directory, intended, reviews) => {
+    saveDaemonProbeRun: vi.fn((run, directory, intended) => {
       // Exercise the real exclusive writer without ever letting a regression write the repository corpus.
-      return original.saveDaemonProbeRun(run, join(fixtures.home!, "collected"), intended, reviews)
+      return original.saveDaemonProbeRun(run, join(fixtures.home!, "collected"), intended)
     }),
   }
 })
@@ -301,7 +301,7 @@ it.each([
         vi.mocked(console.log).mockClear()
       }
       await handleHere({})
-      expect(vi.mocked(console.log).mock.calls.flat().join(" ")).toContain("unsealed draft")
+      expect(vi.mocked(console.log).mock.calls.flat().join(" ")).toContain("identity unverified")
       expect(vi.mocked(console.log).mock.calls.flat().join(" ")).not.toContain("required review pending")
     }
 

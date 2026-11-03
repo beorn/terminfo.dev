@@ -92,7 +92,7 @@ type ReceiptRefusalCode =
   | "ownership-receipt-app-launch-mismatch"
   | "ownership-receipt-run-required"
 
-export type PlacementRefusalCode =
+type PlacementRefusalCode =
   | ReceiptRefusalCode
   | "identity-disputed"
   | "runtime-identity-unverified"
@@ -525,7 +525,7 @@ function placeExclusive(destination: string, bytes: Uint8Array, what: string): "
 }
 
 /** Place the admitted run document exclusively. */
-export function placeRun(destination: string, bytes: string): "created" | "existing" {
+function placeRun(destination: string, bytes: string): "created" | "existing" {
   return placeExclusive(destination, Buffer.from(bytes, "utf8"), "admitted run")
 }
 
@@ -595,30 +595,6 @@ function preflightArtifacts(
     artifacts.push({ destination, bytes })
   }
   return artifacts
-}
-
-/**
- * Place every retained artifact the run cites, beside it, so an admitted run can never reference an
- * artifact that is not committed: admission copies the run document and every digest it cites.
- * Bytes come from `artifacts/` next to the run file — the collector's `/out/artifacts/`. Each must
- * hash to its cited digest and pass its kind's check; a missing or mismatched source refuses BY NAME
- * before the run is placed.
- */
-export function placeRetainedArtifacts(
-  source: string,
-  refs: readonly string[],
-  contentDir: string = CONTENT_DIR,
-  kind: RetainedArtifactKind = "screenshot",
-): { created: number; existing: number } {
-  const artifacts = preflightArtifacts(source, refs, contentDir, kind)
-  let created = 0
-  let existing = 0
-  for (const artifact of artifacts) {
-    if (placeExclusive(artifact.destination, artifact.bytes, RETAINED_ARTIFACT_KINDS[kind].noun) === "created") {
-      created += 1
-    } else existing += 1
-  }
-  return { created, existing }
 }
 
 /** The launcher retains this receipt beside the collected run for verification. */

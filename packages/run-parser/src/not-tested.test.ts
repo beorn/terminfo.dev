@@ -77,8 +77,8 @@ describe("collected current runs", () => {
       manifest: currentSuite,
       intendedSubject: { kind: "term", id: "kitty" },
     })
-    draft.subject = {
-      kind: "term",
+    const subject = {
+      kind: "term" as const,
       id: "kitty",
       version: "0.49.2",
       os: null,
@@ -88,10 +88,11 @@ describe("collected current runs", () => {
       config: null,
       permissions: null,
     }
+    draft.subject = subject
     draft.identity = "unverified"
     draft.measuredAt = "2026-10-05T00:00:00.000Z"
     draft.origin = { kind: "collector" }
-    return draft
+    return { ...draft, subject }
   }
   // v1-v3 fixtures cannot detect a current reader/writer retaining the displaced wire names.
   // This pending-only run claims no successful measurement or native qualification.

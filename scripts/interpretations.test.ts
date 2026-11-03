@@ -98,6 +98,4 @@ describe("a presentation decision carries its acceptance", () => {
       /review-vterm-utf8 cannot set accepted without a presentation decision/,
     )
   })
-
-
 })

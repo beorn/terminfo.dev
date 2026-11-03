@@ -675,10 +675,16 @@ it("sends the process owner as processOwner, refused when it names another daemo
 it("retains pending results without review snapshots", () => {
   root = mkdtempSync(join(tmpdir(), "terminfo-owned-"))
   const run = collectorRun()
-  run.results[0]!.tests = [{ id: "review", status: "test-todo", attempt: { scope: "none" }, reason: "Required context review pending" }]
+  run.results[0]!.tests = [
+    { id: "review", status: "test-todo", attempt: { scope: "none" }, reason: "Required context review pending" },
+  ]
   const path = saveDaemonProbeRun(run, root)
   const saved = JSON.parse(readFileSync(path, "utf8")) as CollectedProbeRun
   expect(saved.results[0]!.tests[0]!.status).toBe("test-todo")
-  expect(Object.keys(saved.rawReplies).some((key) => key.startsWith("collector.review.") || key.startsWith("collector.capture."))).toBe(false)
+  expect(
+    Object.keys(saved.rawReplies).some(
+      (key) => key.startsWith("collector.review.") || key.startsWith("collector.capture."),
+    ),
+  ).toBe(false)
   expect(() => saveDaemonProbeRun(run, root!)).toThrow()
 })

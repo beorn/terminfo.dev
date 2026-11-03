@@ -94,4 +94,3 @@ export function verifySuiteManifest(path: string, snapshot: ProbeSuiteSnapshot):
   }
   return verifyValue(parseSuiteManifest(path, source), path, snapshot)
 }
-

@@ -118,7 +118,7 @@ it("retains exact historical collected bytes and unknown identity in an offline 
   expect(readFileSync(result.attachmentPath, "utf8")).toBe(raw)
   const draft = readFileSync(draftPath, "utf8")
   expect(draft).toContain('"identity": "unverified"')
-  expect(draft).toContain('"sealed": true')
+  expect(draft).not.toContain('"sealed"')
 })
 
 it("keeps exact bytes when original JSON has no final LF or has CRLF", () => {

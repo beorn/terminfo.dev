@@ -13,15 +13,18 @@ import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { afterEach, expect, test } from "vitest"
 import { parseSuiteManifest } from "@terminfo/run-parser"
-import { derivedSuiteManifest, probeSuiteSnapshot, uncommittedCollectorDirt, type ProbeSuiteSnapshot } from "../packages/admin/versions.ts"
+import {
+  derivedSuiteManifest,
+  probeSuiteSnapshot,
+  uncommittedCollectorDirt,
+  type ProbeSuiteSnapshot,
+} from "../packages/admin/versions.ts"
 import { parseDisposableReceipt, readDisposableReceipt } from "../packages/terminfo.dev/src/disposable-receipt.ts"
 import { getTrustedSuiteReceipt } from "../packages/terminfo.dev/src/serve.ts"
 
 /** Verbatim copy of a linux-xvfb-container receipt the round carried (#30764 M4 P1b). */
 const LINUX_RECEIPT_FIXTURE = "070448f8377ad6e3dfae0579235fb402.json"
-import {
-  verifySuiteManifest,
-} from "../packages/admin/suite-manifest.ts"
+import { verifySuiteManifest } from "../packages/admin/suite-manifest.ts"
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..")
 
@@ -87,7 +90,6 @@ test("current suite verification rejects altered text declarations", () => {
     const altered = { ...valid, ...change }
     writeFileSync(path, JSON.stringify(altered))
     expect(() => verifySuiteManifest(path, snapshot), JSON.stringify(change)).toThrow(/Suite text .* mismatch/)
-
   }
   // Old snapshots have no opt-in declarations; they still verify without these optional fields.
   const { textClaims: _claims, textQualification: _spec, ...historical } = snapshot
@@ -226,4 +228,3 @@ test("the derived in-development declaration is not uncommitted collector dirt (
   writeFileSync(join(directory, "scripts", "build-cli.ts"), "// collector input, developed\n")
   expect(uncommittedCollectorDirt(directory, snapshot)).toContain("scripts/build-cli.ts")
 })
-

@@ -11,17 +11,39 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync,
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { afterEach, expect, test } from "vitest"
-import { initializeRunDraft, type CapturedRunDraft } from "@terminfo/probe-defs"
+import { initializeRunDraft, type CapturedRunDraft, type ProbeSuiteManifest } from "@terminfo/probe-defs"
 import { finalizeCollectedDraft } from "../packages/terminfo.dev/src/capture-writer.ts"
-import { parseSuiteManifest } from "@terminfo/run-parser"
+import { parseSuiteManifest, parseRun, parseJsonStrict } from "@terminfo/run-parser"
 import { serializeOuterLaunchRecord } from "../packages/admin/src/outer-launch.ts"
 import { loadStoredRuns, placeCollectedRun } from "../packages/admin/corpus-placement.ts"
 
 const dirs: string[] = []
 afterEach(() => {
+  // raw-delete-allow: dirs contains only fixture directories created by this test's mkdtempSync.
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true })
 })
 const hash = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex")
+function muxSpecimen(manifest: ProbeSuiteManifest) {
+  const path = join(
+    import.meta.dirname,
+    "../test-fixtures/probes-mux/tmux-3.8-linux-ea920f3547c0e7f0ced0f80b277f2939.json",
+  )
+  const run = parseRun(
+    path,
+    readFileSync(path, "utf8"),
+    manifest.catalogIds!,
+    new Map([[manifest.probeHash, manifest]]),
+  )
+  if (!run.outerApp?.provenance || !run.sourceRevision) throw new Error("Mux specimen lacks native outer proof")
+  return {
+    ...run,
+    sourceRevision: run.sourceRevision,
+    outerApp: { ...run.outerApp, provenance: run.outerApp.provenance },
+  }
+}
+function record(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+}
 function fixture() {
   const dir = mkdtempSync(join(tmpdir(), "terminfo-placement-"))
   dirs.push(dir)
@@ -32,6 +54,7 @@ function fixture() {
   const manifestPath = join(import.meta.dirname, "../content/suites/4b01b0117e18.json")
   const manifest = parseSuiteManifest(manifestPath, readFileSync(manifestPath, "utf8"))
   if (manifest.schemaVersion !== 4 || !manifest.catalogIds) throw new Error("Expected current suite")
+  const currentManifest = { ...manifest, schemaVersion: 4 as const }
   const subject = {
     kind: "lib" as const,
     id: "xtermjs",
@@ -46,7 +69,7 @@ function fixture() {
   const draft = initializeRunDraft({
     runId: "fixture-run",
     sourceRevision: "a".repeat(40),
-    manifest,
+    manifest: currentManifest,
     source: { kind: "live" },
     intendedSubject: subject,
   })
@@ -73,7 +96,7 @@ function fixture() {
   const source = join(dir, "run.json")
   const save = () => writeFileSync(source, JSON.stringify(run))
   save()
-  return { dir, content, manifest, run, source, save }
+  return { dir, content, manifest: currentManifest, run, source, save }
 }
 
 // Accepted: placement must retain exact run bytes and its trusted suite, and reads must bind them.
@@ -208,12 +231,7 @@ test.each(["valid", "wrong-version", "disputed", "dirty", "missing-receipt", "re
     const run = finalizeCollectedDraft(draft as CapturedRunDraft)
     if (fault === "dirty") {
       // The current mux specimen retains the measured native outer terminal provenance.
-      const specimen = JSON.parse(
-        readFileSync(
-          join(import.meta.dirname, "../test-fixtures/probes-mux/tmux-3.8-linux-ea920f3547c0e7f0ced0f80b277f2939.json"),
-          "utf8",
-        ),
-      )
+      const specimen = muxSpecimen(f.manifest)
       run.provenance = specimen.outerApp.provenance
       run.provenance!.runtime.sourceRevision = "a".repeat(40)
       run.provenance!.runtime.suiteHash = f.manifest.probeHash
@@ -262,9 +280,7 @@ test.each([
 ] as const)("Linux completion custody: %s", (fault) => {
   const f = fixture()
   const base = join(import.meta.dirname, "../test-fixtures")
-  const specimen = JSON.parse(
-    readFileSync(join(base, "probes-mux/tmux-3.8-linux-ea920f3547c0e7f0ced0f80b277f2939.json"), "utf8"),
-  )
+  const specimen = muxSpecimen(f.manifest)
   const subject = specimen.outerApp.subject
   const draft = initializeRunDraft({
     runId: "linux-run",
@@ -275,7 +291,10 @@ test.each([
   })
   specimen.outerApp.provenance.runtime.suiteHash = f.manifest.probeHash
   const originalHost = readFileSync(join(base, "receipts/dfd4cd08416fb5f3be3eaeed5acce782.json"))
-  const hostDocument = JSON.parse(originalHost.toString("utf8"))
+  const hostDocument = parseJsonStrict("host fixture", originalHost.toString("utf8"))
+  if (!record(hostDocument) || !record(hostDocument.runtime) || !record(hostDocument.declaredTarget)) {
+    throw new Error("Invalid host fixture")
+  }
   if (fault === "placeholder-receipt") hostDocument.runtime.imageId = `sha256:${"0".repeat(64)}`
   if (fault === "wrong-target") hostDocument.declaredTarget.id = "wezterm"
   const host =
@@ -283,7 +302,6 @@ test.each([
       ? Buffer.from(JSON.stringify(hostDocument))
       : originalHost
   const citation = { kind: "linux-xvfb-container", receiptSha256: hash(host) }
-  citation.receiptSha256 = hash(host)
   writeFileSync(join(f.dir, "host-measured.json"), host)
   const capture = Buffer.from("retained original capture")
   const captureHash = hash(capture)
@@ -702,9 +720,7 @@ test.each(hostedMacApps)("hosted Mac $id binds launch, target, runner and exact 
 test.each(["valid", "clipboard-hash", "preflight", "config"] as const)("Linux mux custody join: %s", (fault) => {
   const f = fixture()
   const base = join(import.meta.dirname, "../test-fixtures")
-  const specimen = JSON.parse(
-    readFileSync(join(base, "probes-mux/tmux-3.8-linux-ea920f3547c0e7f0ced0f80b277f2939.json"), "utf8"),
-  )
+  const specimen = muxSpecimen(f.manifest)
   const draft = initializeRunDraft({
     runId: specimen.runId,
     sourceRevision: specimen.sourceRevision,
@@ -713,16 +729,20 @@ test.each(["valid", "clipboard-hash", "preflight", "config"] as const)("Linux mu
     intendedSubject: specimen.subject,
   })
   const outer = structuredClone(specimen.outerApp)
-  const replies: Record<string, string> = Object.fromEntries(
-    [
-      "device.primary-da",
-      "device.secondary-da",
-      "collector.xtversion",
-      "collector.terminalOwnership",
-      "collector.clipboardFixture",
-    ].map((key) => [key, specimen.rawReplies[key]]),
-  )
-  const clipboard = JSON.parse(replies["collector.clipboardFixture"])
+  const replies: Record<string, string> = {}
+  for (const key of [
+    "device.primary-da",
+    "device.secondary-da",
+    "collector.xtversion",
+    "collector.terminalOwnership",
+    "collector.clipboardFixture",
+  ]) {
+    const value = specimen.rawReplies[key]
+    if (value === undefined) throw new Error(`Mux specimen is missing ${key}`)
+    replies[key] = value
+  }
+  const clipboard = parseJsonStrict("clipboard fixture", replies["collector.clipboardFixture"]!)
+  if (!record(clipboard)) throw new Error("Invalid clipboard fixture")
   if (fault === "clipboard-hash") clipboard.receiptSha256 = "0".repeat(64)
   if (fault === "preflight") outer.rawReplies["collector.preflightIdentity"] = JSON.stringify({ pid: 1 })
   if (fault === "config") outer.provenance.fixture.config = "different"

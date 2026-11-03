@@ -1436,7 +1436,6 @@ test("DECSSCLS real-vterm pending source review survives collection and canonica
     assertions: batch.assertions,
   }
   const finalized = finalizeCollectedDraft(captured)
-  expect(finalized.sealedAt).toBeUndefined()
   expect(finalized.results).toMatchObject([
     {
       featureId: id,
@@ -2111,11 +2110,8 @@ test.each([
       results: batch.results,
     }
     const finalized = finalizeCollectedDraft(captured)
-    expect(finalized.sealedAt).toBeUndefined()
-    if (finalized.sealedAt !== undefined) throw new Error("Expected pending viewport review draft")
     expect(finalized.results).toEqual(batch.results)
     expect(finalized.rawReplies[id]).toBe(batch.rawReplies[id])
-
   },
 )
 
@@ -3552,7 +3548,6 @@ test("real qualified OSC callbacks survive pending and unit-reviewed sealed read
   stateAssertion.observed = "not-json"
   invalidState.rawReplies[ids[1]!] = "not-json"
   expect(() => read(invalidState)).toThrow("state snapshot")
-
 })
 
 test.each([

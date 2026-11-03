@@ -322,19 +322,7 @@ function formatParserState(parserState: unknown): string {
 }
 
 function formatTraceIdentity(identity: LoadedCellTrace["identity"]): string {
-  const recorded = `Identity ${identity.recorded} in run file`
-  const admission = identity.admission
-  if (!admission) return `${recorded}; not admitted.`
-  const details: string[] = []
-  if (admission.da1) details.push(`DA1 ${formatControlBytes(admission.da1)}`)
-  if (admission.xtversion) details.push(`XTVERSION ${formatControlBytes(admission.xtversion)}`)
-  if (admission.receipt?.cfBundleShortVersionString) {
-    details.push(`bundle ${admission.receipt.cfBundleShortVersionString}`)
-  }
-  if (admission.executable) {
-    details.push(`executable ${admission.executable.version}`)
-  }
-  return `${recorded}; admitted by ${admission.rule} rule${details.length > 0 ? ` (${details.join(", ")})` : ""}.`
+  return `Identity ${identity.recorded} in run file.`
 }
 
 /**

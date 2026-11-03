@@ -605,14 +605,17 @@ it.each([
                       : undefined
       // Requirement: private release collection leaves corpus bytes untouched. The old admission
       // mocks could miss a direct corpus write, so compare the actual placement directories.
-      const corpusSnapshot = () => ["probes-apps", "probes-libs", "probes-mux", "artifacts", "suites"].flatMap((dir) =>
-        readdirSync(join(CONTENT, dir), { recursive: true, withFileTypes: true })
-          .filter((entry) => entry.isFile())
-          .map((entry) => {
-            const path = join(entry.parentPath, entry.name)
-            return [relative(CONTENT, path), createHash("sha256").update(readFileSync(path)).digest("hex")]
-          }),
-      ).sort((a, b) => a[0]!.localeCompare(b[0]!))
+      const corpusSnapshot = () =>
+        ["probes-apps", "probes-libs", "probes-mux", "artifacts", "suites"]
+          .flatMap((dir) =>
+            readdirSync(join(CONTENT, dir), { recursive: true, withFileTypes: true })
+              .filter((entry) => entry.isFile())
+              .map((entry) => {
+                const path = join(entry.parentPath, entry.name)
+                return [relative(CONTENT, path), createHash("sha256").update(readFileSync(path)).digest("hex")]
+              }),
+          )
+          .sort((a, b) => a[0]!.localeCompare(b[0]!))
       const beforeCorpus = suite === "matching" && inputChange === "none" ? corpusSnapshot() : undefined
       const pass = await collectPass(directory, { runner: "local" }, selection)
       if (beforeCorpus) expect(corpusSnapshot()).toEqual(beforeCorpus)
@@ -1694,7 +1697,7 @@ it.each([
         profile: "fixture",
         sha256: "a".repeat(64),
       })
-      expect(retained.sealedAt).toBeUndefined()
+      expect(retained).not.toHaveProperty("sealedAt")
       expect(existsSync(join(raw, "run-receipt.json"))).toBe(false)
       return
     }

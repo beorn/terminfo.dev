@@ -86,7 +86,7 @@ export function loadRawCapture(
   if (header.suiteId !== manifest.probeHash) {
     throw new Error(`${path}: suiteId disagrees with manifest ${manifest.probeHash}`)
   }
-  const run = parseRun(path, bytes, options.catalogIds, new Map([[manifest.probeHash, manifest]]), { mode: "capture" })
+  const run = parseRun(path, bytes, options.catalogIds, new Map([[manifest.probeHash, manifest]]))
   if (!run.results) throw new Error(`${path}: raw capture has no recorded results`)
   return run
 }

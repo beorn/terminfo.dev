@@ -109,7 +109,6 @@ it.each([true, false])(
     if (pendingReview) {
       expect(saved.results.find((row) => row.featureId === "device.primary-da")?.tests[0]?.status).toBe("test-todo")
       expect(saved.rawReplies["collector.capture.device.primary-da"]).toBeUndefined()
-
     }
   },
 )

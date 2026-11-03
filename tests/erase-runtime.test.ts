@@ -91,9 +91,7 @@ test.for(["success", "deciding", "precondition", "replay-failure", "painted-seed
         expect(record.files).toContain(path)
         const bytes = await readFile(path, "utf8")
         expect(JSON.parse(bytes)).not.toHaveProperty("sealedAt")
-        expect(
-          parseRun(path, bytes, suite.catalogIds!, new Map([[suite.probeHash, suite]]), { mode: "capture" }).runId,
-        ).toBe(run.runId)
+        expect(parseRun(path, bytes, suite.catalogIds!, new Map([[suite.probeHash, suite]])).runId).toBe(run.runId)
         expect(run.source).toMatchObject({
           kind: "trace",
           captureRunId: record.captureRunId,

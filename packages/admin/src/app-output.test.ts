@@ -152,33 +152,36 @@ beforeEach(() => {
 })
 
 describe("probe app --output", () => {
-  test.each([false, true])("retains the run without writing it to the corpus, environment catalogue: %s", async (environment) => {
-    if (environment) {
-      results.push(
-        ...ENVIRONMENT_GROUP_IDS.map((featureId) => ({
-          ...results[0]!,
-          featureId,
-        })),
+  test.each([false, true])(
+    "retains the run without writing it to the corpus, environment catalogue: %s",
+    async (environment) => {
+      if (environment) {
+        results.push(
+          ...ENVIRONMENT_GROUP_IDS.map((featureId) => ({
+            ...results[0]!,
+            featureId,
+          })),
+        )
+      }
+      const log = vi.spyOn(console, "log").mockImplementation(() => {})
+      await handleApp("terminal-app", { output: "/private/out" })
+      expect(retainCollectedRun).toHaveBeenCalledOnce()
+      expect(retainCollectedRun).toHaveBeenCalledWith(
+        expect.anything(),
+        "/private/http-responses/digest",
+        expect.anything(),
+        "/private/out",
       )
-    }
-    const log = vi.spyOn(console, "log").mockImplementation(() => {})
-    await handleApp("terminal-app", { output: "/private/out" })
-    expect(retainCollectedRun).toHaveBeenCalledOnce()
-    expect(retainCollectedRun).toHaveBeenCalledWith(
-      expect.anything(),
-      "/private/http-responses/digest",
-      expect.anything(),
-      "/private/out",
-    )
-    expect(writeCollectedRun).not.toHaveBeenCalled()
-    const lines = log.mock.calls.map((call) => String(call[0]))
-    log.mockRestore()
-    const clause = environment ? " · 9 environment groups manual by design (catalogue), ungraded" : ""
-    expect(lines).toContain(
-      `  Not measured yet · 0 Supported · 0 Unsupported · 0 Untestable · 1 TEST TODO · 0 TEST FAILURE${clause} (retained)`,
-    )
-    expect(assertOwnedTerminalWindow).toHaveBeenCalledWith(window, 555)
-  })
+      expect(writeCollectedRun).not.toHaveBeenCalled()
+      const lines = log.mock.calls.map((call) => String(call[0]))
+      log.mockRestore()
+      const clause = environment ? " · 9 environment groups manual by design (catalogue), ungraded" : ""
+      expect(lines).toContain(
+        `  Not measured yet · 0 Supported · 0 Unsupported · 0 Untestable · 1 TEST TODO · 0 TEST FAILURE${clause} (retained)`,
+      )
+      expect(assertOwnedTerminalWindow).toHaveBeenCalledWith(window, 555)
+    },
+  )
 
   test("without --output the same run is written and reported", async () => {
     const log = vi.spyOn(console, "log").mockImplementation(() => {})

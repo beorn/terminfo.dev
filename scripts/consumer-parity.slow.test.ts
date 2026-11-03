@@ -249,7 +249,6 @@ vi.mock("../docs/data/current-results.ts", async () => {
       suiteId: run.suiteId,
       probeHash: run.probeHash ?? "current",
       sourceRevision: "a".repeat(40),
-      sealedAt: run.measuredAt,
       sha256: run.sha256,
       identity: run.identity,
       catalogIds: ids,

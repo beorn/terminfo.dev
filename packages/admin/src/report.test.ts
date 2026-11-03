@@ -349,7 +349,6 @@ test("report renders reviewed outcomes, failures and missing cells", () => {
         readFileSync(path, "utf8"),
         fixtureFeatures,
         new Map([[workingManifest.probeHash, workingManifest]]),
-        { mode: "capture" },
       )
     const withPartial = loadCurrentResults(join(root, "content"), {
       workingRuns: [working(draftPath), working(partialPath)],

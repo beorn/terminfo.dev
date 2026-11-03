@@ -11,12 +11,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, expect, it, vi } from "vitest"
 import { readCallLog } from "viprobe"
-import {
-  ALL_PROBES,
-  initializeRunDraft,
-  type ProbeSuiteManifest,
-  type TextQualification,
-} from "@terminfo/probe-defs"
+import { ALL_PROBES, initializeRunDraft, type ProbeSuiteManifest, type TextQualification } from "@terminfo/probe-defs"
 import { replyFailure } from "../../../probe-defs/src/helpers.ts"
 import { parseRun, decodeCollectorDraft } from "@terminfo/run-parser"
 import * as terminalOwnership from "../owned-terminal.ts"

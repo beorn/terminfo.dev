@@ -164,7 +164,7 @@ bun run candidates list     # Review promoted candidates
 
 ### Author entry (`bun admin`)
 
-From the component root, use `bun admin` for author collection and retained-capture review.
+From the component root, use `bun admin` for author collection and reporting.
 `bun terminfo` invokes the separate user CLI; admin help displays the program name `terminfo`.
 
 Start with explicit help, then select existing probe IDs for a separately authorized run:

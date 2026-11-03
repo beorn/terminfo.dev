@@ -43,11 +43,7 @@ import {
   type TextQualificationShape,
   type TextCellsObservationFrame,
 } from "@terminfo/probe-defs"
-import {
-  parseObservation,
-  parseObservationFrames,
-  validateCurrentAssertions,
-} from "./observations.ts"
+import { parseObservation, parseObservationFrames, validateCurrentAssertions } from "./observations.ts"
 export { parseObservationFrames, validateObservation, validateObservationOutcome } from "./observations.ts"
 import { parseJsonStrict } from "./json.ts"
 export { resolveMeasuredSourceAnswer } from "./source-answers.ts"
@@ -1272,15 +1268,15 @@ export function parseRun(
   }
   if (!date(raw.measuredAt)) fail(path, "invalid measuredAt")
   const results = parseProbeResults(
-        raw.results,
-        path,
-        expected,
-        raw.rawReplies as Record<string, string>,
-        assertions,
-        raw.screenshotRefs as string[],
-        textSnapshotRefs,
-        { subject, ...(runtimeIdentity && { runtimeIdentity }), sourceRevision },
-      )
+    raw.results,
+    path,
+    expected,
+    raw.rawReplies as Record<string, string>,
+    assertions,
+    raw.screenshotRefs as string[],
+    textSnapshotRefs,
+    { subject, ...(runtimeIdentity && { runtimeIdentity }), sourceRevision },
+  )
   if (schemaVersion === 4) {
     validateCurrentAssertions(
       assertions as ProbeAssertion[],
@@ -1446,4 +1442,3 @@ export function decodeCollectorDraft(
   }
   return { kind: "captured", run: value as unknown as CapturedRunDraft, raw, sha256: measured.sha256 }
 }
-

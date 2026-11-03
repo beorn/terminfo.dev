@@ -530,12 +530,7 @@ export async function collectHeadlessRuns(
         )
       }
       const finalPath = saveDaemonProbeRun(captured, directory)
-      parseRun(
-        finalPath,
-        readFileSync(finalPath, "utf8"),
-        suite.catalogIds ?? [],
-        new Map([[suite.probeHash, suite]]),
-      )
+      parseRun(finalPath, readFileSync(finalPath, "utf8"), suite.catalogIds ?? [], new Map([[suite.probeHash, suite]]))
       runs.push(finalPath)
     } catch (error) {
       retainFailure(errorMessage(error))

@@ -66,7 +66,6 @@ export function createDraft(
       counts: current.counts,
       score: { supported: current.supported, all: current.denominator },
       complete,
-      sealed: "sealedAt" in run,
       explicit: `${current.denominator}/${current.denominator}`,
     },
   }
@@ -81,7 +80,6 @@ export function createDraft(
     "If you choose to contribute, include this consent statement:",
     "I dedicate these results to the public domain (CC0 1.0) so terminfo.dev can publish them under any license.",
     ...(!complete ? ["Current execution is incomplete: TEST TODO or TEST FAILURE remains."] : []),
-    ...(!("sealedAt" in run) ? ["Unsealed draft: not sealed or admitted."] : []),
     "",
     "## Measured context and coverage",
     "",
