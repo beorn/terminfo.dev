@@ -31,7 +31,7 @@ content/                        ← ALL input data
   terminals.json                  terminal app metadata (label, description, body)
   standards.json                  standard/tag metadata (label, url, description)
   categories.json                 category metadata (label, order, description)
-  annotations.json                result overrides (backend:feature notes)
+  annotations.json                plain backend:feature notes
   probes-apps/                    measured: real terminal results
   probes-libs/                    measured: headless backend results
   probes-mux/                     measured: multiplexer pass-through results
@@ -124,7 +124,7 @@ External release, publication and pending answers remain held until the actual f
 | `terminals.json`   | Terminal app metadata: label, slug, description, body, url  | ~11     |
 | `standards.json`   | Standard/tag metadata: label, url, description              | ~10     |
 | `categories.json`  | Category metadata: label, order, description                | ~13     |
-| `annotations.json` | Result overrides: backend:feature notes explaining failures | ~88     |
+| `annotations.json` | Plain backend:feature notes explaining failures            | 333     |
 | `baselines.json`   | Baseline tier metadata: label, emoji, color, description    | 4       |
 
 ### Derived: Build-Time Computation

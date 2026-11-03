@@ -1,10 +1,9 @@
 /** A single admission point for published result consumers. */
-import { existsSync, readFileSync } from "node:fs"
+import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { probeHash } from "../../packages/admin/versions.ts"
 import {
   loadSelectedResults,
-  maskRunnerStorePath,
   type SelectedProjection,
   type SelectedVersion,
   type SelectedAttemptInput,
@@ -15,17 +14,9 @@ import { candidateFromSelected, pickContextRun } from "./run-selection.ts"
 import { parseJsonStrict, type LoadedRun } from "@terminfo/run-parser"
 import { loadTerminals } from "@terminfo/catalog"
 
-export interface DefaultContextReview {
-  contextKey: string
-  reviewer: string
-  reason: string
-  sources: string[]
-}
-
 export interface CurrentResult {
   contextKey: string
   selected: SelectedContextSummary
-  policy?: DefaultContextReview
 }
 
 export interface CurrentResults {
@@ -167,66 +158,8 @@ export function loadCurrentResults(
 }
 
 /**
- * Parse the reviewed choice for a compatibility key without changing v2's complete context map. Also
- * consumed by `scripts/decisive-share.ts`, so the bar reader resolves a multi-current tie by the SAME
- * reviewed row `compatibilitySubjects` applies — one policy source, not a second parser.
- */
-export function loadDefaultContextPolicy(contentDir: string): Record<string, DefaultContextReview> {
-  const path = join(contentDir, "default-contexts.json")
-  if (!existsSync(path)) return {}
-  const parsed = parseJsonStrict(path, readFileSync(path, "utf8"))
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error(`${path}: invalid policy object`)
-  const rows = (parsed as Record<string, unknown>).defaultContext
-  if (!rows || typeof rows !== "object" || Array.isArray(rows)) throw new Error(`${path}: missing defaultContext`)
-  const policy: Record<string, DefaultContextReview> = {}
-  for (const [id, value] of Object.entries(rows)) {
-    if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(`${path}: invalid ${id} row`)
-    const row = value as Record<string, unknown>
-    if (
-      ![row.contextKey, row.reviewer, row.reason].every((part) => typeof part === "string" && part.length > 0) ||
-      !Array.isArray(row.sources) ||
-      row.sources.length === 0 ||
-      !row.sources.every((source) => typeof source === "string" && source.length > 0)
-    ) {
-      throw new Error(`${path}: ${id} requires contextKey, reviewer, reason and sources`)
-    }
-    // Normalize the reviewed key by the same rule the projection uses, so a row recorded before a
-    // re-collect (with the era's runner store path in its key) still chooses the context it reviewed
-    // (27929 D5). See maskRunnerStorePath.
-    const canonicalId = id.replace(/^app:/, "term:").replace(/^headless:/, "lib:")
-    policy[canonicalId] = {
-      ...(row as unknown as DefaultContextReview),
-      contextKey: maskRunnerStorePath(row.contextKey) as string,
-    }
-  }
-  return policy
-}
-
-/**
- * The reviewed row that applies to ONE context. An os-qualified key (`app:kitty/linux`) is read before
- * the id-level key (`app:kitty`) for that os ONLY, so a review can break a tie inside a group the
- * id-level row cannot address: `app:kitty` names the macOS context, and the linux group (one default
- * profile plus two clipboard overrides) would otherwise have no reviewed choice at all. The bar's
- * per-context rows and the census ledger both call THIS function, so the site and the census can never
- * select different runs for the same context. A context with no os-qualified row resolves exactly as
- * it did before this key existed.
- */
-export function reviewedContextFor<Row extends { contextKey: string }>(
-  policy: Readonly<Record<string, Row>>,
-  kind: string,
-  id: string,
-  os: string,
-): Row | undefined {
-  return policy[`${kind}:${id}/${os}`] ?? policy[`${kind}:${id}`]
-}
-
-/** Compatibility consumers select one reviewed context per kind:id, then derive stable v1/site keys. */
+ * Select a deterministic summary per kind:id while retaining every projected context. */
 export function compatibilitySubjects(projection: SelectedProjection, contentDir: string): Map<string, CurrentResult> {
-  return compatibilitySubjectsFor(projection, contentDir)
-}
-
-function compatibilitySubjectsFor(projection: SelectedProjection, contentDir: string): Map<string, CurrentResult> {
-  const policy = loadDefaultContextPolicy(contentDir)
   const catalog = loadCatalogKeys(contentDir)
   type SubjectResult = CurrentResult
   const groups = new Map<string, SubjectResult[]>()
@@ -240,7 +173,6 @@ function compatibilitySubjectsFor(projection: SelectedProjection, contentDir: st
   }
   const bySubject = new Map<string, SubjectResult>()
   for (const [subjectKey, group] of groups) {
-    const review = policy[subjectKey]
     // The one run-selection rule; this site and the decisive-share reader must not hold two copies.
     const byKey = new Map(group.map((entry) => [entry.contextKey, entry]))
     const picked = pickContextRun(
@@ -253,27 +185,15 @@ function compatibilitySubjectsFor(projection: SelectedProjection, contentDir: st
         )
         return candidate ? [candidate] : []
       }),
-      review,
     )
     if (picked === undefined) throw new Error(`No current run for ${subjectKey}`)
-    if ("ambiguous" in picked) {
-      throw new Error(
-        `Ambiguous current ${subjectKey}: ${picked.ambiguous.join(", ")}; reviewed defaultContext row required`,
-      )
-    }
-    if ("stale" in picked) throw new Error(picked.stale)
-    if (review && picked.selection !== "reviewed default-context row") {
-      throw new Error(
-        `${join(contentDir, "default-contexts.json")}: ${subjectKey} chooses a noncurrent context ${review.contextKey}`,
-      )
-    }
     // pickContextRun returns one of the candidates it was given, so this lookup cannot miss.
     const chosen = byKey.get(picked.run.key)
     if (!chosen) throw new Error(`Selected run ${picked.run.key} is not among ${subjectKey} current contexts`)
     if (!chosen.selected.subject) throw new Error(`Selected context ${picked.run.key} has no physical subject`)
     const key = compatibilityKey(chosen.selected.subject.kind, chosen.selected.subject.id, catalog)
     if (bySubject.has(key)) throw new Error(`Ambiguous compatibility key ${key}: multiple catalog targets`)
-    bySubject.set(key, { ...chosen, ...(review && { policy: review }) })
+    bySubject.set(key, chosen)
   }
   return bySubject
 }

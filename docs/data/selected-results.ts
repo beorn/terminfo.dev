@@ -1,4 +1,4 @@
-/** Reviewed selection and projection for terminal observations. */
+/** Stored selection and projection for terminal observations. */
 import { createHash } from "node:crypto"
 import { existsSync, readFileSync } from "node:fs"
 import { isAbsolute, join } from "node:path"
@@ -28,17 +28,10 @@ import {
   verifyRetainedArtifact,
   type RetainedArtifactKind,
 } from "../../packages/admin/corpus-placement.ts"
-import {
-  activeInterpretations,
-  applies,
-  fail,
-  hasPresentationDecision,
-  nonempty,
-  parseInterpretations,
-  validatePresentationShape,
-  validatePresentationSupersession,
-} from "../../scripts/interpretations.ts"
-export { parseInterpretations } from "../../scripts/interpretations.ts"
+const nonempty = (value: unknown): value is string => typeof value === "string" && value.length > 0
+function fail(path: string, message: string): never {
+  throw new Error(`${path}: ${message}`)
+}
 
 type ReadObservation = HistoricalProbeRun["observations"][number]
 type ReadAssertion = HistoricalProbeRun["assertions"][number]
@@ -73,10 +66,7 @@ export interface SelectedCell extends ReadObservation {
     correctionId?: string
     sources?: string[]
   }
-  presentation?: {
-    decision: Pick<Interpretation, "id" | "reviewer" | "reason" | "sources"> & { presentsEvidence: boolean }
-    original: { observation: ReadObservation; record: SelectedCell["record"] }
-  }
+
 }
 
 export interface SelectedVersion {
@@ -151,18 +141,6 @@ export interface CurrentSelectedVersion {
   assertions: ReadAssertion[]
   origin: RunOrigin
   textQualification?: TextQualification
-  /**
-   * Each keeps its accepted record and the sha256 of the committed interpretation record (its JSON serialization as
-   * parsed), a reviewed cell's lineage; the public API omits presentations.
-   */
-  presentations: Record<
-    string,
-    Pick<Interpretation, "id" | "reviewer" | "reason" | "sources"> & {
-      presentsEvidence: boolean
-      accepted: NonNullable<Interpretation["accepted"]>
-      acceptedSha256: string
-    }
-  >
   suiteRelation: SuiteRelation
   suiteFreshness: string
   counts: Record<ProbeStatus, number>
@@ -230,7 +208,7 @@ export function classifyDevelopmentRun(run: LoadedRun): {
 } {
   if ((run.schemaVersion !== 3 && run.schemaVersion !== 4) || !run.results) {
     throw new Error(
-      `Development run ${run.runId} requires current sealed recorded results; use the historical reader for old runs`,
+      `Development run ${run.runId} requires stored current results; use the historical reader for old runs`,
     )
   }
   return {
@@ -245,8 +223,7 @@ export function classifyDevelopmentRun(run: LoadedRun): {
  * same row measured on a later suite would otherwise land in a NEW context and never supersede the run
  * it replaces (27929 D5: three xterm/linux runs differed ONLY in this path). Mask it wherever a
  * config string enters a context key — it is apparatus, not a difference in how the row was measured.
- * Exported so the reviewed `default-contexts.json` rows, which record the unmasked key from the era
- * they were reviewed in, are normalized by the SAME rule instead of needing a hand edit per collect.
+ * The same normalization is used for original and working subject configurations.
  */
 export function maskRunnerStorePath(config: string | null): string | null
 export function maskRunnerStorePath(config: unknown): unknown
@@ -294,8 +271,8 @@ export function countContexts(runs: readonly LoadedRun[]): Map<string, Set<strin
  * The key one run's context carries in the projection: the bare `<kind>:<id>` while its group has ONE
  * context, and `<kind>:<id>@<context>` once the group carries more, so a multi-context tie never hides
  * behind an id-level key. The group spans every run of the target, legacy and current, so one context
- * carries one key in `contexts` and in historical groups, and a reviewed default-context row names it once (30661). `run-selection.ts` reads this shape back to tell a stale reviewed row from a
- * review that names another os; tests build fixtures through THIS function, never a hand-copied shape.
+ * carries one key in `contexts` and in historical groups (30661). Tests build fixtures through
+ * this function, never a hand-copied shape.
  */
 export function projectedContextKey(subject: ProbeSubject, contextCount: number): string {
   const stem = `${subject.kind}:${subject.id}`
@@ -325,53 +302,6 @@ export function workingSubjectKey(admitted: ReadonlyMap<string, string>, subject
   return admitted.get(contextKey(subject)) ?? projectedContextKey(subject, 2)
 }
 
-/** The eight fields `projectedContextKey` writes, in its order. */
-export type ProjectedContextKeyParts = readonly [
-  string,
-  string,
-  string,
-  string | null,
-  string | null,
-  string | null,
-  string | null,
-  string | null,
-]
-
-/** Read `projectedContextKey` back. A bare `<kind>:<id>` — a ONE-context group's key — parses to undefined. */
-export function parseProjectedContextKey(key: string): ProjectedContextKeyParts | undefined {
-  const at = key.indexOf("@[")
-  if (at < 0) return undefined
-  let parts: unknown
-  try {
-    parts = JSON.parse(key.slice(at + 1))
-  } catch {
-    // silent-fallback-allow: the caller refuses this key loudly, naming it and the cure; undefined
-    // here is the parser's report, never a swallowed error.
-    return undefined
-  }
-  if (!Array.isArray(parts) || parts.length !== 8 || typeof parts[2] !== "string") return undefined
-  return parts as unknown as ProjectedContextKeyParts
-}
-
-/**
- * The three shapes a context key can carry, recognized in ONE place: the full `<stem>@<context>` key,
- * the bare `<kind>:<id>` stem a ONE-context group carries, and anything else — a key `projectedContextKey`
- * never wrote, which every caller refuses by name rather than skipping.
- */
-export type RecognizedProjectedContextKey =
-  | { shape: "full"; parts: ProjectedContextKeyParts }
-  | { shape: "bare-stem" }
-  | { shape: "unreadable" }
-
-/** The stems a bare key can name: exactly `ProbeSubject.kind` (`packages/probe-defs/src/types.ts`). */
-const BARE_STEM = /^(?:term|lib|mux):[^@/]+$/
-
-/** Read a context key as one of the shapes the builder writes; a bare stem is legitimate, not a defect. */
-export function recognizeProjectedContextKey(key: string): RecognizedProjectedContextKey {
-  const parts = parseProjectedContextKey(key)
-  if (parts !== undefined) return { shape: "full", parts }
-  return BARE_STEM.test(key) ? { shape: "bare-stem" } : { shape: "unreadable" }
-}
 const versionCompare = (a: string, b: string): number => a.localeCompare(b, undefined, { numeric: true })
 
 /**
@@ -381,7 +311,6 @@ const versionCompare = (a: string, b: string): number => a.localeCompare(b, unde
  */
 export function projectResults(
   runs: readonly LoadedRun[],
-  interpretations: readonly Interpretation[],
   catalogIds: readonly string[],
   policy: {
     currentProbeHash: string
@@ -392,25 +321,6 @@ export function projectResults(
   archivedExclusions: readonly SelectedExclusion[],
 ): SelectedProjection {
   if (!nonempty(policy.currentProbeHash)) throw new Error("currentProbeHash is required")
-  for (const entry of interpretations) {
-    if (!hasPresentationDecision(entry)) continue
-    const run = runs.find((candidate) => candidate.runId === entry.runId)
-    if (!run) throw new Error(`presentation ${entry.id}: runId ${entry.runId} does not name a raw run`)
-    validatePresentationShape(
-      entry as unknown as Record<string, unknown>,
-      `interpretation ${entry.id}`,
-      new Set(run.catalogIds ?? catalogIds),
-    )
-    if (entry.runSha256 !== run.sha256) throw new Error(`presentation ${entry.id}: run SHA256 mismatch`)
-    if (!applies(entry, run)) throw new Error(`presentation ${entry.id}: scope does not match exact run`)
-    if (
-      !(run.schemaVersion === 3 || run.schemaVersion === 4 ? run.results : run.observations)?.some(
-        (result) => result.featureId === entry.featureId,
-      )
-    ) {
-      throw new Error(`presentation ${entry.id}: missing original result for ${entry.featureId}`)
-    }
-  }
   // 30661: the context count is per target across every run the projection read, so a context key is
   // qualified exactly as the runs measured it rather than as whichever runs are current today.
   const contexts = countContexts(runs)
@@ -429,8 +339,6 @@ export function projectResults(
     treeSuiteId: policy.currentProbeHash,
   }
   const table: Record<string, Record<string, ProbeStatus>> = {}
-  validatePresentationSupersession(interpretations, "interpretations")
-  const active = activeInterpretations(interpretations)
   const acceptedRuns: LoadedRun[] = []
   const baselineRunIds: string[] = []
   for (const run of currentRuns) {
@@ -443,30 +351,6 @@ export function projectResults(
     const states = Object.fromEntries(results.map((result) => [result.featureId, result.status]))
     table[run.runId] = states
     const suiteRelation: SuiteRelation = run.probeHash === policy.currentProbeHash ? "tree" : "older"
-    const presentations: CurrentSelectedVersion["presentations"] = {}
-    for (const entry of active) {
-      if (!hasPresentationDecision(entry) || entry.runId !== run.runId) continue
-      validatePresentationShape(
-        entry as unknown as Record<string, unknown>,
-        `interpretation ${entry.id}`,
-        new Set(run.catalogIds),
-      )
-      if (entry.runSha256 !== run.sha256) throw new Error(`presentation ${entry.id}: run SHA256 mismatch`)
-      if (!applies(entry, run)) throw new Error(`presentation ${entry.id}: scope does not match exact run`)
-      if (!entry.featureId || !run.results.some((result) => result.featureId === entry.featureId)) {
-        throw new Error(`presentation ${entry.id}: missing original result for ${entry.featureId}`)
-      }
-      if (presentations[entry.featureId]) throw new Error(`presentation ${entry.id}: conflicting active presentation`)
-      presentations[entry.featureId] = {
-        id: entry.id,
-        reviewer: entry.reviewer,
-        reason: entry.reason,
-        sources: [...entry.sources],
-        presentsEvidence: entry.presentsEvidence as boolean,
-        accepted: { ...(entry.accepted as NonNullable<Interpretation["accepted"]>) },
-        acceptedSha256: createHash("sha256").update(JSON.stringify(entry), "utf8").digest("hex"),
-      }
-    }
     const version: CurrentSelectedVersion = {
       schemaVersion: run.schemaVersion as 3 | 4,
       ...(run.schemaVersion === 4 ? { source: { ...run.source } } : {}),
@@ -485,7 +369,6 @@ export function projectResults(
       rawReplies: { ...run.rawReplies },
       assertions: globalThis.structuredClone(run.assertions),
       origin: globalThis.structuredClone(run.origin),
-      presentations,
       ...(run.textQualification && { textQualification: globalThis.structuredClone(run.textQualification) }),
       suiteFreshness: `${suiteRelation} suite ${run.probeHash}`,
       counts,
@@ -615,7 +498,7 @@ function composeContextSummaries(
       cells[result.featureId] = { origin: { runId: run.runId, resultId: result.featureId }, run, result }
     }
     for (const run of baselines) {
-      if (!run.results) throw new Error(`Run ${run.runId} has no current sealed results`)
+      if (!run.results) throw new Error(`Run ${run.runId} has no stored current results`)
       for (const result of run.results) remember(run, result)
     }
     const selected = candidates.flatMap((run) => {
@@ -625,7 +508,7 @@ function composeContextSummaries(
     selected.sort(compareContextAttempts)
     const attempts: SelectedContextAttempt[] = []
     for (const { run, selection, attempt } of selected) {
-      if (!run.results) throw new Error(`Run ${run.runId} has no current sealed results`)
+      if (!run.results) throw new Error(`Run ${run.runId} has no stored current results`)
       const results = run.results
       // A real initialized TODO is useful missing-evidence data when no prior cell exists; it
       // never replaces a prior cell and never becomes an emitted measurement.
@@ -785,13 +668,8 @@ export function loadSelectedResults(
       verifiedArtifacts.add(`text-snapshot:${ref}`)
     }
   }
-  const interpretationsPath = join(contentDir, "interpretations.json")
-  const interpretations = existsSync(interpretationsPath)
-    ? parseInterpretations(interpretationsPath, readFileSync(interpretationsPath, "utf8"), catalog)
-    : []
   return projectResults(
     runs,
-    interpretations,
     catalog,
     {
       currentProbeHash,

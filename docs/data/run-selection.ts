@@ -1,18 +1,8 @@
-/**
- * THE one run-selection rule (28792 item 1). Given the candidate runs the site currently selects for
- * one context, it chooses the run a bar row — or a compatibility key — stands on, or refuses.
- *
- * The site and this reader must not hold two copies of this: `compatibilitySubjects` resolves a
- * multi-context tie with the reviewed `default-contexts.json` row, and `decisive-share` printed the
- * choice of a private fallback chain beside it. One rule, two callers.
- */
+/** One context selection rule shared by compatibility and full-project readers. */
 import type { ProbeStatus, ProbeResult } from "@terminfo/probe-defs"
 import { hasCurrentSource, type CellState, type SuiteRelation } from "./release-scope.ts"
 import {
-  parseProjectedContextKey,
-  recognizeProjectedContextKey,
   originalRunFor,
-  type ProjectedContextKeyParts,
   type SelectedVersion,
   type CurrentSelectedVersion,
   type SelectedContextSummary,
@@ -132,136 +122,24 @@ export function candidateFromSelected(
   }
 }
 
-/** How the one run for a context was chosen, printed with the row so the choice is auditable. */
-export type RunSelection = "only current" | "reviewed default-context row" | "default profile"
+/** How the summary context was chosen, printed beside the row. */
+export type RunSelection = "only current" | "default profile" | "latest original evidence"
 
-export type PickedContextRun<T extends ContextCandidate = ContextCandidate> =
-  | { run: T; selection: RunSelection }
-  | { ambiguous: string[] }
-  /** A reviewed row this group cannot stand on any more; `stale` is the one sentence every caller prints. */
-  | { stale: string }
+export type PickedContextRun<T extends ContextCandidate = ContextCandidate> = { run: T; selection: RunSelection }
 
 /**
- * `os` (2) selects the group; `osVersion` (3) is the ONE field deliberately ignored here, so two
- * generations of the same context are equal on every other field and no version is ever parsed.
+ * Prefer current-suite evidence, then a unique permissions-free profile. Remaining ties use the newest
+ * contributing original measurement, then the stable context key. Attempts never refresh evidence.
+ * This chooses a summary only; the projection retains every context and its original cells.
  */
-function sameContextOtherGeneration(left: ProjectedContextKeyParts, right: ProjectedContextKeyParts): boolean {
-  return (
-    left[0] === right[0] &&
-    left[1] === right[1] &&
-    left[2] === right[2] &&
-    left[4] === right[4] &&
-    left[5] === right[5] &&
-    left[6] === right[6] &&
-    left[7] === right[7]
-  )
-}
-
-/** The current keys the reviewed context was superseded by: the NEWEST generation, ties named sorted. */
-function successors(
-  candidates: readonly ContextCandidate[],
-  chosen: ContextCandidate,
-  context: ProjectedContextKeyParts,
-): ContextCandidate[] {
-  // Only original contributing evidence dates compare host generations. Attempts never refresh it.
-  const evidenceDate = (candidate: ContextCandidate): number =>
-    Math.max(...candidate.sources.map((source) => Date.parse(source.measuredAt)))
-  const newer = candidates.filter((candidate) => {
-    if (candidate.key === chosen.key) return false
-    const other = parseProjectedContextKey(candidate.key)
-    return (
-      other !== undefined &&
-      sameContextOtherGeneration(other, context) &&
-      evidenceDate(candidate) > evidenceDate(chosen)
-    )
-  })
-  if (newer.length === 0) return []
-  const newest = Math.max(...newer.map(evidenceDate))
-  return newer
-    .filter((candidate) => evidenceDate(candidate) === newest)
-    .sort((left, right) => left.key.localeCompare(right.key))
-}
-
-/** The one refusal sentence every caller prints: the stale key, its cause, the current keys, the cure. */
-function refusedReview(reviewed: string, cause: string, candidates: readonly ContextCandidate[]): { stale: string } {
-  return {
-    stale:
-      `reviewed default-context key ${reviewed} is stale: ${cause}; ` +
-      `current contexts: ${candidates.map((candidate) => candidate.key).join(", ")}; ` +
-      "re-record that row in content/default-contexts.json",
+export function pickContextRun<T extends ContextCandidate>(candidates: readonly T[]): PickedContextRun<T> | undefined {
+  const evidenceDate = (candidate: ContextCandidate): number => {
+    const latest = Math.max(...candidate.sources.map((source) => Date.parse(source.measuredAt)))
+    if (!Number.isFinite(latest)) throw new Error(`Context ${candidate.key} has no finite original evidence time`)
+    return latest
   }
-}
-
-/** A candidate key our own builder wrote and cannot be read back: a defect to name, never to skip past. */
-function unreadableCandidate(candidate: ContextCandidate): { stale: string } {
-  return {
-    stale: `current context key ${candidate.key} is unreadable; projectedContextKey wrote it, so no reviewed row can be applied until that key is fixed`,
-  }
-}
-
-/**
- * Choose the one run the site selects for a (terminal id, os) context. The site's own selection keys by
- * terminal id, not by id+os, so a context can carry several current entries: kitty/linux has the
- * default and two clipboard-override profiles, and xterm/linux carries one entry per frozen-runner
- * store path. The site resolves such a tie by the reviewed `default-contexts.json` row
- * (`compatibilitySubjects`), and so does this reader.
- *
- * The bar keys rows by terminal id + os while the review is keyed by terminal id alone, so a review
- * is a tie-break ONLY for the group whose context it names — `app:kitty` names the macOS context, and
- * a review naming ANOTHER os's context falls back exactly as it always has. A review naming THIS
- * group's os must be current: a key no candidate carries, a bare `<kind>:<id>` whose group now has
- * several contexts, a key that cannot be read, and a context superseded by the same context on a
- * newer host generation (a newer measurement with only the osVersion changed) are all REFUSED with
- * the stale key, its successors, every current key and the cure — re-record the row — never silently
- * replaced by a fallback (30112). Among current candidates the review still names any it likes; this
- * rule is the tie-break of last resort, not a filter on the review.
- *
- * The fallbacks consider only CURRENT-suite candidates whenever any are present: the bar reports a
- * run's decisive share on the current suite, so an older-suite entry can never be the measured row,
- * and letting it tie up the choice reports a false ambiguity (kitty/linux: one stale permissions-free
- * entry beside the current one and a current clipboard override, which read "ambiguous" until this
- * rule). With no current-suite candidate the fallbacks are unchanged.
- */
-export function pickContextRun<T extends ContextCandidate>(
-  candidates: readonly T[],
-  reviewed?: { contextKey: string },
-): PickedContextRun<T> | undefined {
-  candidates = candidates.filter((candidate) => candidate.sources.length > 0)
+  for (const candidate of candidates) evidenceDate(candidate)
   if (candidates.length === 0) return undefined
-  if (reviewed !== undefined) {
-    const reviewedKey = reviewed.contextKey
-    const reviewedShape = recognizeProjectedContextKey(reviewedKey)
-    const context = reviewedShape.shape === "full" ? reviewedShape.parts : undefined
-    const chosen = candidates.find((candidate) => candidate.key === reviewedKey)
-    // Every candidate key came from our own builder, which writes a full key or the bare stem of a
-    // ONE-context group. One that is neither is a defect to name; dropping it would silently pick a
-    // successor from an incomplete set.
-    for (const candidate of candidates) {
-      if (candidate.key === reviewedKey) continue
-      if (recognizeProjectedContextKey(candidate.key).shape === "unreadable") return unreadableCandidate(candidate)
-    }
-    if (chosen !== undefined) {
-      if (context !== undefined) {
-        const superseding = successors(candidates, chosen, context)
-        if (superseding.length > 0) {
-          const names = superseding.map((candidate) => candidate.key).join(", ")
-          return refusedReview(reviewedKey, `superseded by ${names}`, candidates)
-        }
-      }
-      return { run: chosen, selection: "reviewed default-context row" }
-    }
-    // A bare `<kind>:<id>` is the key a ONE-context group carries; with several it names nothing, and a
-    // key that cannot be read at all is a row to re-record, never a silent fallback.
-    if (context === undefined) {
-      const cause =
-        reviewedShape.shape === "bare-stem" ? "no current candidate names it" : "the reviewed key is unreadable"
-      return refusedReview(reviewedKey, cause, candidates)
-    }
-    // Another os's context is not this group's tie-break: the fallbacks below apply exactly as before.
-    if (candidates.some((candidate) => candidate.os === context[2])) {
-      return refusedReview(reviewedKey, "no current candidate names it", candidates)
-    }
-  }
   const current = candidates.filter((candidate) => hasCurrentSource(candidate.sources))
   const considered = current.length > 0 ? current : candidates
   const [only] = considered
@@ -269,5 +147,9 @@ export function pickContextRun<T extends ContextCandidate>(
   const defaults = considered.filter((candidate) => candidate.permissions === null)
   const [onlyDefault] = defaults
   if (defaults.length === 1 && onlyDefault) return { run: onlyDefault, selection: "default profile" }
-  return { ambiguous: considered.map((candidate) => candidate.key) }
+  const [latest] = [...considered].sort(
+    (left, right) =>
+      evidenceDate(right) - evidenceDate(left) || (left.key < right.key ? -1 : left.key > right.key ? 1 : 0),
+  )
+  return latest && { run: latest, selection: "latest original evidence" }
 }
