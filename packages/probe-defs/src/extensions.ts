@@ -1269,7 +1269,10 @@ const ABSENT_OSC_ENGINES = {
     engineVersion: "0.3.3",
     adapterVersion: "0.10.2",
     binarySha256: "712298aff45c7c53a22dc028b13cb58dae1e984199b520bbbc0475ae64d83159",
-    codes: [8, 9, 17, 19, 22, 117, 119, 176, 440, 555, 666, 710, 777, 3008],
+    codes: [8, 9, 17, 19, 22, 117, 119, 176, 440, 555, 666, 710, 777, 1337, 3008],
+    absentSixel: true,
+    sixelSourceCitation:
+      "libvterm 9d6d2112335080312ef8c36667fa717ded4f7daf/v0.3.3 src/state.c:1897-1911 on_dcs handles only $q DECRQSS and passes every other DCS to state fallbacks; Termless 2f73fc28027b7d483e504e08edc64d1837935816 packages/libvterm/build/flat-api.c installs no fallbacks, so a DCS q Sixel payload is dropped with no image store",
     sourceCitation:
       "libvterm 9d6d2112335080312ef8c36667fa717ded4f7daf/v0.3.3 src/state.c:1777-1808 handles OSC0/1/2/52 only; vterm.c:13-18 zeroes the default allocator and screen.c:855-889 installs no unrecognised fallback. Termless 2f73fc28027b7d483e504e08edc64d1837935816 packages/libvterm/build/flat-api.c:96-104 installs output/OSC52 callbacks only, src/backend.ts:263-295 forwards native bytes and replies; receipt binds WASM712298af and flat API SHA2561e65f7e53d482b47fc08c5e324e26529079b5f9aa2ba0894d77608e12290c48e",
   },
@@ -1280,6 +1283,9 @@ const ABSENT_OSC_ENGINES = {
     adapterVersion: "0.10.2",
     binarySha256: "42e84af1b38be94571974a23fa4667c4735ee7a272dcff39afd5cba40dcf48de",
     codes: [1, 176, 440, 555, 666, 710, 3008],
+    absentSixel: true,
+    sixelSourceCitation:
+      "Ghostty core5714ed07a1012573261b7b7e3ed2add9c1504496 src/terminal/dcs.zig:50-77 tryHook accepts only p (tmux control mode) without intermediates, so DCS q returns null and :36-39 ignores the hook with no image store; Termless 2f73fc28027b7d483e504e08edc64d1837935816 vendor/ghostty-web/RECEIPT.json binds WASM42e84af1 to that core",
     reviewReasons: [
       {
         code: 1,
