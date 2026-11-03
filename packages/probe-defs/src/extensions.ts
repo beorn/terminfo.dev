@@ -1395,6 +1395,9 @@ const ABSENT_OSC_ENGINES = {
     buildHash: "30b232d295488042b0d6164e881e319dea8d7fae06ac766b3b568fd4832bf074",
     lockSha256: "4cf037e4efa648ca41d08b30ef5c4ce7ada29ad61fcad45a7d1aa97bf55391c6",
     codes: [8, 9, 17, 19, 22, 117, 119, 176, 440, 555, 666, 710, 777, 1337, 3008],
+    absentSixel: true,
+    sixelSourceCitation:
+      "vt100 0.16.2 src/perform.rs:33-263 vte::Perform impl defines print/execute/esc/csi/osc dispatch only; vte 0.15.0 src/lib.rs:779-789 default hook/put/unhook are no-ops, so a DCS q Sixel payload is consumed with no image store",
     sourceCitation:
       "vt100 0.16.2 src/perform.rs:198-238 dispatches unmatched OSCs to unhandled_osc; src/callbacks.rs:66 is a no-op; Termless packages/vt100-rust/native/src/lib.rs:21-54 at 286fddf6632e43ccd62f9050be41ec7b2908e43e installs title, icon and clipboard callbacks with no unhandled_osc override",
   },
@@ -1474,28 +1477,46 @@ function sourceAbsentOsc(id: string, code: number | "133;D", sequence: string, e
     if (!audit) {
       return notTestedResult(`OSC ${code} ${effect}: no audited library target readback at this runtime`, {})
     }
-    const fed = "\x1b[1;1H\x1b[2K" + sequence + "X"
-    ctx.feed(fed)
-    const sentinel = ctx.getCell(0, 0)
     const reviewReason =
       "reviewReasons" in audit ? audit.reviewReasons.find((entry) => entry.code === code)?.reason : undefined
-    return parserStateResult(
-      null,
+    return sourceAbsentSentinel(
+      ctx,
       `${id}: the engine handles OSC ${code} (a ${effect} handler exists at the pinned source)`,
-      {
-        fed,
-        sentinel,
-        engineState: null,
-        engineStateReason: `No ${effect} target state is exposed at this pin`,
-      },
-      sentinel.char === "X" ? undefined : "No rendered X cell to evaluate",
-      sentinel.char === "X"
-        ? reviewReason
-          ? `${audit.sourceCitation}; ${reviewReason}; independent source review required`
-          : `${audit.sourceCitation}: no case ${code} or ${effect} target writer; independent source review required`
-        : undefined,
+      sequence,
+      effect,
+      reviewReason
+        ? `${audit.sourceCitation}; ${reviewReason}`
+        : `${audit.sourceCitation}: no case ${code} or ${effect} target writer`,
     )
   }
+}
+
+/**
+ * The shared source-negative read: feed the sequence followed by an X sentinel at home. Only a rendered X, which
+ * shows the parser left the sequence and resumed printing, lets the audited source citation carry the review.
+ */
+function sourceAbsentSentinel(
+  ctx: LibProbeSource,
+  expected: string,
+  sequence: string,
+  effect: string,
+  citation: string,
+): ProbeCallbackResult {
+  const fed = "\x1b[1;1H\x1b[2K" + sequence + "X"
+  ctx.feed(fed)
+  const sentinel = ctx.getCell(0, 0)
+  return parserStateResult(
+    null,
+    expected,
+    {
+      fed,
+      sentinel,
+      engineState: null,
+      engineStateReason: `No ${effect} target state is exposed at this pin`,
+    },
+    sentinel.char === "X" ? undefined : "No rendered X cell to evaluate",
+    sentinel.char === "X" ? `${citation}; independent source review required` : undefined,
+  )
 }
 
 function promptConsumptionResult(consumed: boolean | null): ProbeCallbackResult {
@@ -4169,6 +4190,17 @@ export const extensionsProbes: ProbeDefinition[] = [
     ...probe(
       "extensions.sixel",
       (ctx) => {
+        // An engine whose audited source has no DCS handler takes the source-negative review (#32225).
+        const audit = auditedOscEngine(ctx.runtimeIdentity)?.[1]
+        if (!ctx.getSixelImages && audit && "absentSixel" in audit && audit.absentSixel) {
+          return sourceAbsentSentinel(
+            ctx,
+            "extensions.sixel: the engine stores DCS q Sixel images (a Sixel handler exists at the pinned source)",
+            "\x1bPq#1;2;100;0;0~\x1b\\",
+            "Sixel image",
+            audit.sixelSourceCitation,
+          )
+        }
         if (ctx.getSixelImages) {
           ctx.feed("\x1b[1;1H")
           const before = ctx.getSixelImages()
