@@ -11322,6 +11322,61 @@
     "subject": {
       "kind": "lib",
       "id": "vt100",
+      "version": "0.10.1",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc176-app-id",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/vterm.git",
+            "commit": "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+            "path": "packages/vt100/src/screen.ts",
+            "oid": "cd71776df5f72918cd06934d724a5c2e3585a89d"
+          },
+          {
+            "repository": "git@github.com:beorn/vterm.git",
+            "commit": "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+            "path": "packages/vt100/src/index.ts",
+            "oid": "7376f2f20a9a2c6b0c6d35fa08c000a3cf9a56fb"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/vt100/src/index.ts",
+            "oid": "99833d737402f9d1d8e3e257e3a255d8aa1facc3"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/vt100/src/backend.ts",
+            "oid": "cdb8be8c5ebbba68a5920cfa4df27c9deb31745a"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "62055eac-46b8-4279-94fe-81bec13d6569",
+            "reviewer": "@dev/4",
+            "reason": "Independent current source review (@dev/4, 2026-11-03, 62055eac-46b8-4279-94fe-81bec13d6569) of vt100 0.10.1 at vterm 9e99e4d23cdc606fca258b1863aa2be7ae79eed3, bound through Termless 25089207e11420cf7a588987c1dc2683a45e8372: the complete handleOSC switch handles only 0/2 title and 1 ignored, with no 176/default arm. BEL/ST termination routes into that handler; a census of the package src directory and the adapter feed wiring found no alternate OSC176/app-id writer. OSC176 is unimplemented: Unsupported. The retained run 549a7b50-f8a6-4f31-accb-48a552d09eb8 sends OSC176 then X and retains its own negative buffer_state assertion; X and null state alone do not decide support. This is a new current-version judgment; older reviews are preserved.",
+            "sources": [
+              "git@github.com:beorn/vterm.git@9e99e4d23cdc606fca258b1863aa2be7ae79eed3:packages/vt100/src/screen.ts blob cd71776df5f72918cd06934d724a5c2e3585a89d",
+              "git@github.com:beorn/vterm.git@9e99e4d23cdc606fca258b1863aa2be7ae79eed3:packages/vt100/src/index.ts blob 7376f2f20a9a2c6b0c6d35fa08c000a3cf9a56fb",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/vt100/src/index.ts blob 99833d737402f9d1d8e3e257e3a255d8aa1facc3",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/vt100/src/backend.ts blob cdb8be8c5ebbba68a5920cfa4df27c9deb31745a",
+              "Current source judgment 62055eac-46b8-4279-94fe-81bec13d6569; reviewer @dev/4, 2026-11-03; /hh/var/@dev4/0853-osc176-current-source-verdict.md",
+              "Natural07:34 run 549a7b50-f8a6-4f31-accb-48a552d09eb8, raw SHA256 44542329abaa3fd73e3bbed24ae81a1b258e24e4735c30cfc097e9b9128ecabd, suite 98dc3bdf6cb1, terminfo 814a587b5968cd0d5b1fc880ba3ec75966b71ffa; own negative buffer_state assertion for extensions.osc176-app-id"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt100",
       "version": "0.10.0",
       "os": "linux"
     },
@@ -21893,6 +21948,61 @@
               "3e88bfde-b6bd-4d8b-9f81-6fbb9f54065c:extensions.osc176-app-id negative buffer_state assertion: extensions.osc176-app-id: the engine handles OSC 176 (a app-id handler exists at the pinned source)",
               "intake postmerge-2f139587-review-candidates.json sha256 887eeed4fff56d28339e27e6295f573b2310e70ca767737c1687b9892906d6f1 (@dev/4, first post-merge collection after root 2f139587c5f33a7801b1b1ac9e71a7eb7ee00e2a; terminfo source 011f01964bbd67cfe1bc251715d957d1fc9e8fba; suite 18bd9019deaf)",
               "intake postmerge-2f139587-proof.json sha256 aa8d58d8be185aa7673cba2f9947683193679895b4b444ac05fc34d393a4930c (104 cells: 76 source-negative review, 17 Unsupported, 11 TODO)"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt220",
+      "version": "0.10.1",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc176-app-id",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/vterm.git",
+            "commit": "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+            "path": "packages/vt220/src/screen.ts",
+            "oid": "cc5c5c79b0c882cb1c335f2ccaf2c555884a05ee"
+          },
+          {
+            "repository": "git@github.com:beorn/vterm.git",
+            "commit": "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+            "path": "packages/vt220/src/index.ts",
+            "oid": "d4f58b58595e9d556b8fd659fcb2778ca14f8a4f"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/vt220/src/index.ts",
+            "oid": "601dd26eb7e753a5396ebdf72f1ef8ee2cc4355f"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/vt220/src/backend.ts",
+            "oid": "7369e3710e36aa649372fd09011ecfdd6ba47c73"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "62055eac-46b8-4279-94fe-81bec13d6569",
+            "reviewer": "@dev/4",
+            "reason": "Independent current source review (@dev/4, 2026-11-03, 62055eac-46b8-4279-94fe-81bec13d6569) of vt220 0.10.1 at vterm 9e99e4d23cdc606fca258b1863aa2be7ae79eed3, bound through Termless 25089207e11420cf7a588987c1dc2683a45e8372: the complete handleOSC switch handles only 0/2 title and 1 ignored, with no 176/default arm. BEL/ST termination routes into that handler; a census of the package src directory and the adapter feed wiring found no alternate OSC176/app-id writer. OSC176 is unimplemented: Unsupported. The retained run d7486495-3460-4f45-af9d-5c4910c5764d sends OSC176 then X and retains its own negative buffer_state assertion; X and null state alone do not decide support. This is a new current-version judgment; older reviews are preserved.",
+            "sources": [
+              "git@github.com:beorn/vterm.git@9e99e4d23cdc606fca258b1863aa2be7ae79eed3:packages/vt220/src/screen.ts blob cc5c5c79b0c882cb1c335f2ccaf2c555884a05ee",
+              "git@github.com:beorn/vterm.git@9e99e4d23cdc606fca258b1863aa2be7ae79eed3:packages/vt220/src/index.ts blob d4f58b58595e9d556b8fd659fcb2778ca14f8a4f",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/vt220/src/index.ts blob 601dd26eb7e753a5396ebdf72f1ef8ee2cc4355f",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/vt220/src/backend.ts blob 7369e3710e36aa649372fd09011ecfdd6ba47c73",
+              "Current source judgment 62055eac-46b8-4279-94fe-81bec13d6569; reviewer @dev/4, 2026-11-03; /hh/var/@dev4/0853-osc176-current-source-verdict.md",
+              "Natural07:34 run d7486495-3460-4f45-af9d-5c4910c5764d, raw SHA256 6339f1c980b5ab4089827765c5ac56186b6d84cfea6f858ce6080baec7f55b52, suite 98dc3bdf6cb1, terminfo 814a587b5968cd0d5b1fc880ba3ec75966b71ffa; own negative buffer_state assertion for extensions.osc176-app-id"
             ]
           }
         ]
