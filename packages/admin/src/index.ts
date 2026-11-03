@@ -26,9 +26,11 @@
 import { Command, json } from "@silvery/commander"
 import { collectorIds } from "@terminfo/probe-defs"
 import { ensureSourceSuiteEnvironment } from "../versions.ts"
-import type { IntakeOptions } from "./review.ts"
 
-const program = new Command().name("terminfo").description("Terminal feature testing for terminfo.dev")
+const program = new Command()
+  .name("terminfo")
+  .description("Terminal feature testing for terminfo.dev")
+  .showHelpAfterError()
 
 program.addHelpSection("Examples:", [
   ["$ terminfo probe termless --all", "Run all headless probes"],
@@ -127,88 +129,6 @@ probe
   })
 
 // ── report ──
-
-const review = program
-  .command("review")
-  .description("Review explicit retained captures; private files only, JSON stdout")
-function reviewContext(value: string): IntakeOptions["context"] {
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(value)
-  } catch (cause) {
-    throw new Error("--context requires valid JSON", { cause })
-  }
-  if (
-    typeof parsed !== "object" ||
-    parsed === null ||
-    Array.isArray(parsed) ||
-    !("kind" in parsed) ||
-    typeof parsed.kind !== "string" ||
-    !["term", "lib", "mux"].includes(parsed.kind) ||
-    !("id" in parsed) ||
-    typeof parsed.id !== "string" ||
-    !parsed.id
-  ) {
-    throw new Error("--context requires kind, id and OS for term/mux")
-  }
-  const os = "os" in parsed ? parsed.os : undefined
-  if ((os !== undefined && typeof os !== "string") || (parsed.kind !== "lib" && !os)) {
-    throw new Error("--context requires kind, id and OS for term/mux")
-  }
-  return { ...parsed, kind: parsed.kind, id: parsed.id, ...(os === undefined ? {} : { os }) }
-}
-review.addHelpSection("Resources:", [
-  [
-    "intake",
-    "Requires retained run/pass, explicit context, frozen registry or pinned-source receipt, and two pinned Git repositories",
-  ],
-  ["apply", "Requires issuer-edited intake; preserves exact decision bytes"],
-  ["Empty scope", "No pending rows produces empty intake; no decisions produces a no-op receipt"],
-  ["Failures", "Missing required inputs/citations fail on stderr; absent optional external sources report unverified"],
-])
-review
-  .command("intake")
-  .description("Write an issuer-editable citation index; no verdicts or timestamps are invented")
-  .requiredOption("--input <path>", "Absolute retained run or pass.json path; never latest/glob")
-  .requiredOption("--context <json>", "Explicit {kind,id,os} context (os required for term/mux)", reviewContext)
-  .requiredOption(
-    "--suite-root <path>",
-    "Absolute suite-registry lookup repository; absent declaration uses the pinned-source receipt",
-  )
-  .requiredOption("--terminfo-repo <path>", "Absolute Terminfo source repository")
-  .requiredOption("--terminfo-commit <sha>", "Full 40-hex pinned Terminfo commit")
-  .requiredOption("--termless-repo <path>", "Absolute Termless source repository")
-  .requiredOption("--termless-commit <sha>", "Full 40-hex pinned Termless commit")
-  .requiredOption("--output <path>", "Absolute new private intake file outside source repositories")
-  .actionMerged(async (opts: IntakeOptions) => {
-    try {
-      const { intakeReview } = await import("./review.ts")
-      console.log(JSON.stringify(intakeReview(opts)))
-    } catch (error) {
-      console.error(error instanceof Error ? error.message : String(error))
-      process.exitCode = 1
-    }
-  })
-review
-  .command("apply")
-  .description(
-    "Apply exact issuer decisions and save a checked private final result or pending draft; no downstream operation",
-  )
-  .requiredOption(
-    "--intake <path>",
-    "Absolute issuer-edited index with exact decision bytes, actual timestamp, SHA256 and citations",
-  )
-  .requiredOption("--output <directory>", "Absolute private output directory outside source repositories")
-  .requiredOption("--receipt <path>", "Absolute new private JSON receipt; missing required resources fail loudly")
-  .actionMerged(async (opts: { intake: string; output: string; receipt: string }) => {
-    try {
-      const { applyReview } = await import("./review.ts")
-      console.log(JSON.stringify(applyReview(opts)))
-    } catch (error) {
-      console.error(error instanceof Error ? error.message : String(error))
-      process.exitCode = 1
-    }
-  })
 
 program
   .command("report")

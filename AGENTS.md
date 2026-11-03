@@ -224,7 +224,6 @@ Start with explicit help, then select existing probe IDs for a separately author
 bun admin --help
 bun admin probe termless --help
 bun admin probe termless --all --probe-ids '["cursor.move.absolute"]'
-bun admin review --help
 ```
 
 For the SGR family's existing two-sided contract checks, from the component root:
