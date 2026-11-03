@@ -572,8 +572,9 @@ export async function calibrateCaptureOrigin({
         solid.rgba[offset] === before.rgba[offset] &&
         solid.rgba[offset + 1] === before.rgba[offset + 1] &&
         solid.rgba[offset + 2] === before.rgba[offset + 2]
-      )
+      ) {
         continue
+      }
       const key = `${solid.rgba[offset]},${solid.rgba[offset + 1]},${solid.rgba[offset + 2]}`
       colorsByCount.set(key, (colorsByCount.get(key) ?? 0) + 1)
     }
@@ -581,10 +582,12 @@ export async function calibrateCaptureOrigin({
     if (!witnessKey) throw refusal("Capture calibration solid grid: no changed pixels")
     const witness = witnessKey.split(",").map(Number)
     for (let offset = 0; offset < before.rgba.length; offset += 4) {
-      if (rgbAt(before, offset, witness))
+      if (rgbAt(before, offset, witness)) {
         throw new Error("Capture calibration grid witness colour was already visible before the requested paint")
+      }
     }
-    const { grid, fillets } = rectangle(solid, (offset) => rgbAt(solid!, offset, witness))
+    const solidFrame = solid
+    const { grid, fillets } = rectangle(solidFrame, (offset) => rgbAt(solidFrame, offset, witness))
     const filletMask = new Set<number>()
     for (const fillet of fillets) for (const key of fillet.holes) filletMask.add(key)
     const outsideUnchanged = (frame: CapturedFrame): EdgeBlend[] => {

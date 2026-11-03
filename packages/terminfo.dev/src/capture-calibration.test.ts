@@ -106,8 +106,9 @@ test.each(["basic", "reverse", "neither"] as const)(
       for (let i = 0; i < result.rgba.length; i += 4) {
         if (result.rgba[i] === 255 && result.rgba[i + 2] === 255) result.rgba.set([173, 47, 199], i)
         else if (result.rgba[i] === 255) result.rgba.set([121, 38, 17], i)
-        else if ((i / 4) % 12 >= 2 && (i / 4) % 12 < 10 && Math.floor(i / 48) >= 2 && Math.floor(i / 48) < 10)
+        else if ((i / 4) % 12 >= 2 && (i / 4) % 12 < 10 && Math.floor(i / 48) >= 2 && Math.floor(i / 48) < 10) {
           result.rgba.set([13, 24, 31], i)
+        }
       }
       return result
     }
