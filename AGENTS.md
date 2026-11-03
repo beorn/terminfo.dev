@@ -268,7 +268,7 @@ npx terminfo.dev                          # Show help
 npx terminfo.dev test                     # Test this terminal
 npx terminfo.dev test --json              # Machine output
 npx terminfo.dev test --serve             # Start daemon for remote testing
-npx terminfo.dev test --all              # Test all serving terminals
+npx terminfo.dev test --all              # Unavailable: refuses multi-daemon collection
 npx terminfo.dev submit --help            # Read the user CLI's submission options
 npx terminfo.dev detect                   # Detect terminal
 ```
