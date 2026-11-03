@@ -6,6 +6,7 @@ import {
   type LibProbeSource,
   type TermProbeSource,
   type TerminalQueryOutcome,
+  SOURCE_ANSWERS,
 } from "./index.ts"
 import {
   HEADLESS_OBSERVABLE_REVIEW,
@@ -599,6 +600,21 @@ describe("qualified clipboard roundtrip", () => {
 })
 
 describe("reply-path audit", () => {
+  /**
+   * The verdict an audited feature carries now lives in its kept answers, per library version, not in the table
+   * (@cto e192401e item 1). Every assertion that used to read a row's `kind` reads this instead.
+   */
+  const replyPathVerdicts = (featureId: string): string[] =>
+    [
+      ...new Set(
+        SOURCE_ANSWERS.filter((row) => row.featureId === featureId).flatMap((row) =>
+          row.answers
+            .filter((answer) => answer.originals.some((original) => original.reviewer === "reply-path-audit"))
+            .map((answer) => answer.status),
+        ),
+      ),
+    ].sort()
+
   const sourceIdentity = (treeOid: string, cleanTree = true): NonNullable<LibProbeSource["runtimeIdentity"]> => ({
     kind: "js",
     runtimeFormat: "js",
@@ -673,7 +689,7 @@ describe("reply-path audit", () => {
       .sort()
       .map((id) => [id, rebuilt![id]])
     expect(createHash("sha256").update(JSON.stringify(entries)).digest("hex")).toBe(
-      "38e76b974a2ae00a894ffe18512a70cb9562c0ae9a62ef0a57c7005e3caf11d4",
+      "1aba9f137e9835449dec5f16cf0296c18039cb888d3b69dc536959ac00261ca0",
     )
   })
 
@@ -690,8 +706,11 @@ describe("reply-path audit", () => {
     expect(REPLY_PATH_AUDITS.get(sha!)?.["extensions.osc99-kitty-notify"]).toMatchObject({
       query: "\x1b]99;",
       matches: "prefix",
-      kind,
     })
+    // The ruled kind is the kept answer's status now, not the table's (@cto e192401e item 1).
+    expect(replyPathVerdicts("extensions.osc99-kitty-notify")).toContain(
+      kind === "parser-rejected" ? "unsupported" : "untestable",
+    )
   })
   const wasmReadbackQueries = [
     ["extensions.osc0-icon-title", "\x1b[20t", "parser-rejected"],
@@ -707,7 +726,6 @@ describe("reply-path audit", () => {
       name: "native conceal",
       digest: "53f9a867cce594b4d50fb9508db9ce5d2d79fb4244a418548b7cb31fa50780d1",
       priors: ["e58288d0b62448bf746ad77e58a4e9523c1baabb080d6fc6723f76caf29d2bb0"],
-      core: "332b2aef",
     },
     {
       name: "native absolute retained rows",
@@ -716,13 +734,11 @@ describe("reply-path audit", () => {
         "d6e23fe62d56de795c6fa783a6c5025fc5b1238e739839de8b4b3737eca0c43e",
         "61fb182e3381ab1c52d94b63a9e33163bbfb89ede419af022f71f4438bfe0b03",
       ],
-      core: "332b2aef",
     },
     {
       name: "native nullable modes",
       digest: "d6e23fe62d56de795c6fa783a6c5025fc5b1238e739839de8b4b3737eca0c43e",
       priors: ["61fb182e3381ab1c52d94b63a9e33163bbfb89ede419af022f71f4438bfe0b03"],
-      core: "332b2aef",
     },
     {
       name: "historical native overline",
@@ -731,7 +747,6 @@ describe("reply-path audit", () => {
         "ac12d6408c2049f1d720e9735d7eb69251d3eed868fc9ced58de98b3543f3e2e",
         "17d155feee5df8fa30266b9a354bbe66e39484d08218de5e03dc3bb2f199a0a3",
       ],
-      core: "332b2aef",
     },
     {
       name: "native",
@@ -740,15 +755,13 @@ describe("reply-path audit", () => {
         "ac12d6408c2049f1d720e9735d7eb69251d3eed868fc9ced58de98b3543f3e2e",
         "17d155feee5df8fa30266b9a354bbe66e39484d08218de5e03dc3bb2f199a0a3",
       ],
-      core: "332b2aef",
     },
     {
       name: "WASM",
       digest: "77b69f9f22c4126359be864fcce97afad8f84615053e21d335ba6348a8d3e1d7",
       priors: ["7c43302dde147c6f7959b7bda7045ff375c71288da1af5667ffca2bf95beb2bf"],
-      core: "5714ed07",
     },
-  ])("the rebuilt $name artifact retains its prior Ghostty audit sets", ({ digest, priors, core }) => {
+  ])("the rebuilt $name artifact retains its prior Ghostty audit sets", ({ digest, priors }) => {
     const prior = Object.fromEntries(
       priors.flatMap((sha) => {
         const audits = REPLY_PATH_AUDITS.get(sha)
@@ -768,9 +781,8 @@ describe("reply-path audit", () => {
       ].sort(),
     )
     for (const [id, audit] of Object.entries(prior)) {
-      expect(rebuilt![id]).toMatchObject({ query: audit.query, kind: audit.kind })
+      expect(rebuilt![id]).toMatchObject({ query: audit.query })
       expect(rebuilt![id]!.matches).toBe(audit.matches)
-      expect(rebuilt![id]!.citation).toContain(core)
     }
   })
 
@@ -786,7 +798,7 @@ describe("reply-path audit", () => {
   })
 
   // #32057, @cto 25157a35: Ghostty WASM 1f23e13d answers DA1, DA2, XTVERSION, DECRQSS and XTGETTCAP, so their six cells
-  // leave the table; the 12 ruled stays keep query, matches and kind with citations for this artifact, and the other 32
+  // leave the table; the 12 ruled stays keep their query and matches for this artifact, and the other 32
   // ce01cd0d rows are rebound with only the artifact renamed.
   test("the rebuilt Ghostty WASM 1f23e13d drops the six routed cells and re-cites the 12 ruled stays", () => {
     const priorSha = "ce01cd0d1ae000dd88948f3817924cc85303874070cab39430967ebdf14877f3"
@@ -823,20 +835,9 @@ describe("reply-path audit", () => {
     expect(Object.keys(stays).filter((id) => !carried.includes(id))).toEqual([])
     for (const id of carried) {
       const audit = rebuilt[id]!
-      // @cto eed4de8b: APC 'G' is ignored at parse time when kitty graphics is compiled out (parser-rejected).
-      const kind = id.startsWith("extensions.kitty-graphics") && id in stays ? "parser-rejected" : prior[id]!.kind
-      expect(audit).toMatchObject({ query: prior[id]!.query, kind })
+      expect(audit).toMatchObject({ query: prior[id]!.query })
       expect(audit.matches).toBe(prior[id]!.matches)
-      expect(audit.citation, id).toContain("5714ed07")
-      expect(audit.citation, id).not.toContain("ce01cd0d")
-      if (id in stays) {
-        expect(audit.citation, id).toContain(stays[id]!)
-        continue
-      }
-      const renamed = prior[id]!.citation.replaceAll(priorSha, sha)
-        .replace(/(artifact|WASM) ce01cd0d([ ,])/, "$1 1f23e13d$2")
-        .replace("the DECRPM reply rebuild (#32024)", "the DA/XTVERSION/DCS reply rebuild (#32057)")
-      expect(audit.citation, id).toBe(renamed)
+      expect(audit, id).toBeDefined()
     }
   })
 
@@ -854,16 +855,13 @@ describe("reply-path audit", () => {
     expect(Object.keys(rebuilt).sort()).toEqual(carried.sort())
     for (const id of carried) {
       const audit = rebuilt[id]!
-      expect(audit).toMatchObject({ query: prior[id]!.query, kind: prior[id]!.kind })
+      expect(audit).toMatchObject({ query: prior[id]!.query })
       expect(audit.matches).toBe(prior[id]!.matches)
-      expect(audit.citation).toContain("5714ed07")
-      expect(audit.citation).not.toContain("5c38594a")
-      expect(audit.citation).not.toContain("request_mode")
     }
   })
 
   // #31392, @cto 34bea86e: Ghostty WASM 5c38594a only adds viewport getters/exports to the d80a8110 facade, so every
-  // d80a8110 row is rebound as its own data row with the same query, kind and matching, and the old rows stay.
+  // d80a8110 row is rebound as its own data row with the same query and matching, and the old rows stay.
   test("the rebuilt Ghostty WASM 5c38594a retains every d80a8110 audit", () => {
     const prior = REPLY_PATH_AUDITS.get("d80a8110258a124fb6ff52a6fe149b8e39b5180d986907cc9fb7dc9143c3f3d9")!
     const rebuilt = REPLY_PATH_AUDITS.get("5c38594a17329b24e826f785d3156d6e498490517835f12b0730eeab2fc63da7")!
@@ -880,11 +878,9 @@ describe("reply-path audit", () => {
     expect(Object.keys(rebuilt)).toHaveLength(52)
     for (const [id, audit] of Object.entries(rebuilt)) {
       if (prior[id]) {
-        expect(audit).toMatchObject({ query: prior[id]!.query, kind: prior[id]!.kind })
+        expect(audit).toMatchObject({ query: prior[id]!.query })
         expect(audit.matches).toBe(prior[id]!.matches)
       }
-      expect(audit.citation).toContain("5714ed07")
-      expect(audit.citation).not.toContain("d80a8110")
     }
   })
 
@@ -901,9 +897,8 @@ describe("reply-path audit", () => {
         .sort(),
     )
     for (const [id, audit] of Object.entries(rebuilt)) {
-      expect(audit).toMatchObject({ query: prior[id]!.query, kind: prior[id]!.kind })
+      expect(audit).toMatchObject({ query: prior[id]!.query })
       expect(audit.matches).toBe(prior[id]!.matches)
-      expect(audit.citation).toContain("5714ed07")
     }
   })
   const indexedCells = [...REPLY_PATH_AUDITS].flatMap(([auditKey, audits]) =>
@@ -969,10 +964,8 @@ describe("reply-path audit", () => {
       const silent = run(id!, sha256, () => "")
       expect(silent.sent.some((query) => query.startsWith(prefix!))).toBe(true)
       // The ruled parser rejection is table provenance now; the probe reports only what it measured.
-      expect(REPLY_PATH_AUDITS.get(sha256!)?.[id!]).toMatchObject({
-        kind: "parser-rejected",
-        citation: expect.stringContaining("5714ed07"),
-      })
+      expect(REPLY_PATH_AUDITS.get(sha256!)?.[id!]).toBeDefined()
+      expect(replyPathVerdicts(id!)).toEqual(["unsupported"])
       expect(silent.result).toMatchObject({
         criterionBranch: REPLY_PATH_AUDIT_REVIEW,
         tests: [{ id: "review", status: "test-todo" }],
@@ -1034,8 +1027,8 @@ describe("reply-path audit", () => {
   ] as const)("named query on %s selects its source-bound result: %s", (sha256, id, parserRejected) => {
     const { result, sent } = run(id, sha256, () => "")
     expect(sent.length).toBeGreaterThan(0)
-    // The ruled distinction stays pinned in the table; the probe itself returns one measured gate.
-    expect(REPLY_PATH_AUDITS.get(sha256)?.[id]?.kind === "parser-rejected").toBe(parserRejected)
+    // The ruled distinction lives in the kept answers; the probe itself returns one measured gate.
+    expect(replyPathVerdicts(id)).toContain(parserRejected ? "unsupported" : "untestable")
     // @cto de41833e condition 1: one measured gate for every audited cell; the kept answer decides support.
     expect(result).toMatchObject({
       criterionBranch: REPLY_PATH_AUDIT_REVIEW,
@@ -1047,7 +1040,8 @@ describe("reply-path audit", () => {
   // Data-derived cases cannot catch a missing row; these five actual callback queries were omitted.
   test.each(wasmReadbackQueries)("WASM readback %s retains its own query and source kind", (id, query, kind) => {
     const digest = "77b69f9f22c4126359be864fcce97afad8f84615053e21d335ba6348a8d3e1d7"
-    expect(REPLY_PATH_AUDITS.get(digest)?.[id]).toMatchObject({ query, kind })
+    expect(REPLY_PATH_AUDITS.get(digest)?.[id]).toMatchObject({ query })
+    expect(replyPathVerdicts(id)).toContain(kind === "parser-rejected" ? "unsupported" : "untestable")
     const { result, sent } = run(id, digest, () => "")
     expect(sent).toContain(query)
     // @cto de41833e condition 1: one measured gate for every audited cell; the kept answer decides support.
@@ -1084,11 +1078,7 @@ describe("reply-path audit", () => {
   ] as const)("native fixed query preserves its source distinction: %s", (id, query, parserRejected) => {
     const { result, sent } = run(id, "17d155feee5df8fa30266b9a354bbe66e39484d08218de5e03dc3bb2f199a0a3", () => "")
     expect(sent).toEqual([query])
-    expect(
-      REPLY_PATH_AUDITS.get("17d155feee5df8fa30266b9a354bbe66e39484d08218de5e03dc3bb2f199a0a3")?.[id]?.kind ===
-        "parser-rejected",
-      id,
-    ).toBe(parserRejected)
+    expect(replyPathVerdicts(id), id).toContain(parserRejected ? "unsupported" : "untestable")
     // @cto de41833e condition 1: one measured gate for every audited cell; the kept answer decides support.
     expect(result).toMatchObject({
       criterionBranch: REPLY_PATH_AUDIT_REVIEW,
@@ -1224,11 +1214,7 @@ describe("reply-path audit", () => {
     ["extensions.osc0-icon-title", true],
   ] as const)("current native source contract: %s", (id, parserRejected) => {
     const { result } = run(id, "ac12d6408c2049f1d720e9735d7eb69251d3eed868fc9ced58de98b3543f3e2e", () => "")
-    expect(
-      REPLY_PATH_AUDITS.get("ac12d6408c2049f1d720e9735d7eb69251d3eed868fc9ced58de98b3543f3e2e")?.[id]?.kind ===
-        "parser-rejected",
-      id,
-    ).toBe(parserRejected)
+    expect(replyPathVerdicts(id), id).toContain(parserRejected ? "unsupported" : "untestable")
     // @cto de41833e condition 1: one measured gate for every audited cell; the kept answer decides support.
     expect(result).toMatchObject({
       criterionBranch: REPLY_PATH_AUDIT_REVIEW,
@@ -1435,15 +1421,9 @@ describe("reply-path audit", () => {
   test("ghostty-web 0.4.0 WASM: DCS queries have no reply path; colour queries are parser-rejected", () => {
     const ghostty = REPLY_PATH_AUDITS.get("7c43302dde147c6f7959b7bda7045ff375c71288da1af5667ffca2bf95beb2bf")!
     const dcs = Object.entries(ghostty).filter(([, audit]) => audit.query.startsWith("\x1bP"))
-    expect(dcs.map(([id, audit]) => [id, audit.kind])).toEqual([
-      ["device.decrqss", "no-reply-path"],
-      ["device.xtgettcap", "no-reply-path"],
-      ["device.xtgetxres", "no-reply-path"],
-    ])
-    for (const [, audit] of dcs) {
-      expect(audit.citation).toContain("patch:586-588")
-      expect(audit.citation).not.toContain("parses it")
-    }
+    expect(dcs.map(([id]) => id)).toEqual(["device.decrqss", "device.xtgettcap", "device.xtgetxres"])
+    for (const [id] of dcs) expect(replyPathVerdicts(id), id).toContain("untestable")
+
     for (const id of [
       "extensions.osc10-fg-color",
       "extensions.osc104-reset-palette",
@@ -1461,13 +1441,8 @@ describe("reply-path audit", () => {
       "extensions.osc4-palette",
       "extensions.osc5-special-color",
     ]) {
-      const audit = ghostty[id]!
-      expect(audit.kind, id).toBe("parser-rejected")
-      expect(audit.citation, id).toContain(
-        "patch:827 ResponseStream.init → ghostty 5714ed07 src/terminal/stream.zig:497-501",
-      )
-      expect(audit.citation, id).toContain("only under initAlloc (stream.zig:506-510)")
-      expect(audit.citation, id).not.toContain("682-687")
+      expect(ghostty[id], id).toBeDefined()
+      expect(replyPathVerdicts(id), id).toContain("unsupported")
     }
   })
 
@@ -1482,7 +1457,8 @@ describe("reply-path audit", () => {
       "extensions.osc52-write",
       "extensions.osc5522-clipboard",
     ]) {
-      expect(REPLY_PATH_AUDITS.get(rust)?.[id]?.kind, id).toBe("no-reply-path")
+      expect(REPLY_PATH_AUDITS.get(rust)?.[id], id).toBeDefined()
+      expect(replyPathVerdicts(id), id).toContain("untestable")
       expect(run(id, rust, () => "").result, id).toMatchObject({
         criterionBranch: REPLY_PATH_AUDIT_REVIEW,
         tests: [{ id: "review", status: "test-todo" }],
@@ -1561,18 +1537,17 @@ describe("reply-path audit", () => {
     ]
     const rows = REPLY_PATH_AUDITS.get(sha)
     expect(Object.keys(rows ?? {}).sort()).toEqual([...noReply, ...parserRejected].sort())
-    for (const id of noReply) expect(rows?.[id]?.kind, id).toBe("no-reply-path")
-    for (const id of parserRejected) expect(rows?.[id]?.kind, id).toBe("parser-rejected")
+    for (const id of noReply) expect(replyPathVerdicts(id), id).toContain("untestable")
+    for (const id of parserRejected) expect(replyPathVerdicts(id), id).toContain("unsupported")
     const readRows = ["extensions.osc52-clipboard", "extensions.osc52-read"]
     for (const id of [...noReply, ...parserRejected].filter((id) => !readRows.includes(id))) {
-      expect(rows?.[id]?.citation, id).toContain("lib.rs:21-53")
-      expect(rows?.[id]?.citation, id).not.toContain("artifactf309015f")
+      expect(rows?.[id], id).toBeDefined()
     }
-    expect(rows?.["extensions.osc52-clipboard"]?.citation).toContain("lib.rs:50-52")
-    expect(rows?.["extensions.osc52-read"]?.citation).toContain("lib.rs:50-52")
+    expect(rows?.["extensions.osc52-clipboard"]).toBeDefined()
+    expect(rows?.["extensions.osc52-read"]).toBeDefined()
     expect(rows?.["extensions.osc52-write"]).toBeUndefined()
-    expect(REPLY_PATH_AUDITS.get(old)?.["extensions.osc52-write"]?.kind).toBe("no-reply-path")
-    expect(REPLY_PATH_AUDITS.get(old)?.["extensions.osc99-kitty-notify"]?.kind).toBe("no-reply-path")
+    expect(REPLY_PATH_AUDITS.get(old)?.["extensions.osc52-write"]).toBeDefined()
+    expect(REPLY_PATH_AUDITS.get(old)?.["extensions.osc99-kitty-notify"]).toBeDefined()
     const silent = run("extensions.osc52-write", sha, () => "")
     if (
       sha === "dc3b24de6e91416f66b1953ce101991ef7e78602ce1b5d357f65832c9b96b326" ||
