@@ -742,6 +742,8 @@ describe("window-operation qualification", () => {
   // grades Unsupported by source citation; failed setup takes the headless observable review and unaudited artifacts
   // stay inconclusive.
   test.each([
+    ["42e84af1b38be94571974a23fa4667c4735ee7a272dcff39afd5cba40dcf48de", "ghostty-wasm-api.patch:717-719"],
+    ["712298aff45c7c53a22dc028b13cb58dae1e984199b520bbbc0475ae64d83159", "src/state.c:978"],
     ["3c2398d5c537d9c10e86b0af69311977927fcdbe4738618df194cedbdd22574d", "stream_handler.zig:343-346"],
     ["ce01cd0d1ae000dd88948f3817924cc85303874070cab39430967ebdf14877f3", "stream_handler.zig:343-346"],
     ["5c38594a17329b24e826f785d3156d6e498490517835f12b0730eeab2fc63da7", "stream_handler.zig:343-346"],

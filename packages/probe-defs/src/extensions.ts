@@ -1235,17 +1235,17 @@ const ABSENT_OSC_ENGINES = {
     runtimeFormat: "wasm",
     engineVersion: "0.3.3",
     adapterVersion: "0.10.2",
-    binarySha256: "3d67045bb43c5e4081c70dc58088af8f735416c20df2d7843d765e5aad8ef62a",
+    binarySha256: "712298aff45c7c53a22dc028b13cb58dae1e984199b520bbbc0475ae64d83159",
     codes: [8, 9, 17, 19, 22, 117, 119, 176, 440, 555, 666, 710, 777, 3008],
     sourceCitation:
-      "libvterm 9d6d2112335080312ef8c36667fa717ded4f7daf/v0.3.3 src/state.c:1777-1808 handles OSC 0/1/2/52 only; Termless f8d2aeb7a7a30f0215fd628bbbb1f1e5cd0a91be packages/libvterm/build/flat-api.c installs output and OSC52 selection callbacks only; src/backend.ts forwards native input and installs no OSC fallback",
+      "libvterm 9d6d2112335080312ef8c36667fa717ded4f7daf/v0.3.3 src/state.c:1777-1808 handles OSC0/1/2/52 only; vterm.c:13-18 zeroes the default allocator and screen.c:855-889 installs no unrecognised fallback. Termless 2f73fc28027b7d483e504e08edc64d1837935816 packages/libvterm/build/flat-api.c:96-104 installs output/OSC52 callbacks only, src/backend.ts:263-295 forwards native bytes and replies; receipt binds WASM712298af and flat API SHA2561e65f7e53d482b47fc08c5e324e26529079b5f9aa2ba0894d77608e12290c48e",
   },
   ghostty: {
     kind: "source",
     runtimeFormat: "wasm",
     engineVersion: "0.4.0",
     adapterVersion: "0.10.2",
-    binarySha256: "3c2398d5c537d9c10e86b0af69311977927fcdbe4738618df194cedbdd22574d",
+    binarySha256: "42e84af1b38be94571974a23fa4667c4735ee7a272dcff39afd5cba40dcf48de",
     codes: [1, 176, 440, 555, 666, 710, 3008],
     reviewReasons: [
       {
@@ -1254,7 +1254,7 @@ const ABSENT_OSC_ENGINES = {
       },
     ],
     sourceCitation:
-      "Ghostty WASM core5714ed07a1012573261b7b7e3ed2add9c1504496 src/terminal/osc.zig:551-566,779-800,891-1002,1047-1075 parser states reject OSC176/3008/440/555/666/710; :1708-1715 returns null before ResponseHandler. Artifact3c2398d5c537d9c10e86b0af69311977927fcdbe4738618df194cedbdd22574d adds DECRPM, DA1/DA2, XTVERSION, DECRQSS and XTGETTCAP reply actions and no OSC handler; OSC9/777 binding losses and OSC22 mouse_shape are excluded",
+      "Ghostty core5714ed07a1012573261b7b7e3ed2add9c1504496 src/terminal/osc.zig:556-566,779-794,903-939,979-989 rejects OSC176/3008/440/555/666/710; :1708-1715 returns null, Parser.zig:270-273 emits no dispatch; stream.zig:2017-2021 ignores OSC1. Termless 2f73fc28027b7d483e504e08edc64d1837935816 vendor/ghostty-web/RECEIPT.json binds WASM42e84af1, core archive55cee285 and inner patch2a42e7e9 (no OSC parser edits); packages/ghostty/src/backend.ts:376-395 forwards input without another parser; OSC9/777 binding losses and OSC22 mouse_shape remain excluded",
   },
   kitty: {
     kind: "native",
