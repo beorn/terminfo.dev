@@ -358,7 +358,9 @@ This remains a review Test to-do; there is no standing class rule, callback grad
 Four term mode criteria opt into `decrpmModeProbe`'s set check: reverse video 5, synchronized output 2026,
 DECSCLM 4 and color-scheme reporting 2031. Snapshot Ps 1/3 is Supported without mutation; Ps 0/4 is
 Unsupported without mutation. Snapshot Ps 2 sends DECSET, queries again and restores DECRST:
-Ps 1/3 is Supported; a retained Ps 2 is Unsupported with "recognized but DECSET refused (mode kept reset)".
+Ps 1/3 is Supported. For synchronized output 2026, a retained Ps 2 is Test failure:
+the reset reply cannot establish an enabled update, and rendered effect remains unmeasured.
+For the other three modes, a retained Ps 2 is Unsupported with "recognized but DECSET refused (mode kept reset)".
 No reply is Test to-do "no DECRPM reply"; an attempted set still restores the reset snapshot.
 These callbacks require the existing disposable-terminal authority. Their limitation is
 "presentation (tearing, scroll cadence, inverted frame) unmeasured; protocol measured".
