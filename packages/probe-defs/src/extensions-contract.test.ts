@@ -834,3 +834,46 @@ test("each colour-stack row names its own operation in the expected sentence", (
     expect(result?.assertions?.[0]?.expected, id).not.toContain(`color-stack ${operation === "push" ? "pop" : "push"}`)
   }
 })
+
+// #31904 R3a (@cto 6e4f7300): each colour-stack row grades its own operation. A pop that resets to
+// the starting (default) foreground passed both rows when the fixture restored that same colour; a
+// stack that keeps a stale snapshot passed the push row. Each fake below is a whole engine model.
+function colourStackEngine(kind: "reset-default" | "stale" | "pop-noop") {
+  const original = "rgb:1010/2020/3030"
+  let current = original
+  const stack: string[] = []
+  return libProbeSource({
+    ...inertModel(),
+    feed: (seq) => {
+      if (seq.includes("]30001")) {
+        if (kind !== "stale" || stack.length === 0) stack.push(current)
+      } else if (seq.includes("]30101")) {
+        if (kind === "reset-default") {
+          stack.pop()
+          current = original
+        } else if (kind === "stale") current = stack.at(-1) ?? current
+        else if (kind !== "pop-noop") current = stack.pop() ?? current
+      } else {
+        const m = /\x1b\]10;(rgb:[a-f\d/]+)/i.exec(seq)
+        if (m) current = m[1] ?? current
+      }
+    },
+    feedCapture: () => `\x1b]10;${current}\x1b\\`,
+  })
+}
+
+test.each([
+  ["reset-default", "extensions.osc30001-color-stack-push", "inconclusive", "no push-only observation"],
+  ["reset-default", "extensions.osc30101-color-stack-pop", "inconclusive", "no pop-only observation"],
+  ["stale", "extensions.osc30001-color-stack-push", "unsupported", "push saved no current snapshot"],
+  ["stale", "extensions.osc30101-color-stack-pop", "supported", undefined],
+  ["pop-noop", "extensions.osc30001-color-stack-push", "unsupported", "push then pop restored no earlier state"],
+  ["pop-noop", "extensions.osc30101-color-stack-pop", "unsupported", "push then pop restored no earlier state"],
+] as const)("a %s colour stack grades %s %s on its own operation", (kind, id, outcome, note) => {
+  const probe = extensionsProbes.find((entry) => entry.id === id)!
+  const result = probe.lib!(colourStackEngine(kind))
+  expect(result.observation?.outcome).toBe(outcome)
+  expect(result.pass).toBe(outcome === "supported")
+  if (note) expect(result.note).toContain(note)
+  if (outcome === "inconclusive") expect(result.assertions).toBeUndefined()
+})
