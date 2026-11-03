@@ -586,27 +586,33 @@ it.each(["new-qualified", "stored-headless", "unqualified"])(
     const capture = structuredClone(UNDERLINE_RETAINED_CAPTURE)
     const featureId = "sgr.underline-color-reset"
     const previous = capture.results[0]!
-    capture.results = [{
-      featureId,
-      attempt: previous.attempt,
-      criterionBranch: mode === "stored-headless" ? HEADLESS_OBSERVABLE_REVIEW : "source-negative-review",
-      rawReplyRef: featureId,
-      status: "test-todo",
-      reason: "No distinct colored seed for SGR 59: the setup cell exposes no explicit underline color",
-      tests: [{
-        id: "review",
-        status: "test-todo",
-        attempt: { scope: "none" },
-        assertionRefs: [],
+    capture.results = [
+      {
+        featureId,
+        attempt: previous.attempt,
+        criterionBranch: mode === "stored-headless" ? HEADLESS_OBSERVABLE_REVIEW : "source-negative-review",
         rawReplyRef: featureId,
+        status: "test-todo",
         reason: "No distinct colored seed for SGR 59: the setup cell exposes no explicit underline color",
-      }],
-    }]
-    capture.rawReplies = { [featureId]: JSON.stringify({
-      baseline: { char: "C", underline: "single", underlineColor: null },
-      before: { char: "X", underline: "single", underlineColor: null },
-      after: { char: "Y", underline: "single", underlineColor: null },
-    }) }
+        tests: [
+          {
+            id: "review",
+            status: "test-todo",
+            attempt: { scope: "none" },
+            assertionRefs: [],
+            rawReplyRef: featureId,
+            reason: "No distinct colored seed for SGR 59: the setup cell exposes no explicit underline color",
+          },
+        ],
+      },
+    ]
+    capture.rawReplies = {
+      [featureId]: JSON.stringify({
+        baseline: { char: "C", underline: "single", underlineColor: null },
+        before: { char: "X", underline: "single", underlineColor: null },
+        after: { char: "Y", underline: "single", underlineColor: null },
+      }),
+    }
     capture.assertions = []
     if (mode === "unqualified") {
       // A named but unavailable different core cannot use own-version fallback.
@@ -626,10 +632,21 @@ it.each(["new-qualified", "stored-headless", "unqualified"])(
     expect(result.assertionType).toBeUndefined()
     expect(result.tests[0]?.assertionRefs).toEqual([])
     expect(result.criterionBranch).toBe(before.results[0]!.criterionBranch)
-    expect(parseProbeResults(
-      finalized.results, "sgr59-source-branch", new Set([featureId]),
-      finalized.rawReplies, finalized.assertions, [], [],
-      { subject: finalized.subject, runtimeIdentity: finalized.runtimeIdentity, sourceRevision: finalized.sourceRevision },
-    )[0]?.status).toBe(mode === "new-qualified" ? "unsupported" : "test-todo")
+    expect(
+      parseProbeResults(
+        finalized.results,
+        "sgr59-source-branch",
+        new Set([featureId]),
+        finalized.rawReplies,
+        finalized.assertions,
+        [],
+        [],
+        {
+          subject: finalized.subject,
+          runtimeIdentity: finalized.runtimeIdentity,
+          sourceRevision: finalized.sourceRevision,
+        },
+      )[0]?.status,
+    ).toBe(mode === "new-qualified" ? "unsupported" : "test-todo")
   },
 )
