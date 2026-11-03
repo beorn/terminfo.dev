@@ -160,8 +160,6 @@ test.each([
 })
 
 test.each([
-  ["sgr.faint", "0"],
-  ["sgr.fg.truecolor", "0"],
   ["sgr.reset", "0;1;3;4"],
   ["sgr.selective-reset.bold", "0"],
   ["sgr.underline-color-reset", "0"],
@@ -222,7 +220,6 @@ test.each([
   ["sgr.bg.truecolor", "0;48:2:0:0:255:128", "supported"],
   ["sgr.underline.color", "0;4;58:2:255:0:128", "supported"],
   ["sgr.underline-color-indexed", "0;4;58:5:5", "supported"],
-  ["sgr.bold", "0;38;2;255;1;5", "unsupported"],
   ["sgr.selective-reset.bold", "0;3;38;2;255;1;5", "supported"],
   ["sgr.fg.default", "0;38;5;31", "unsupported"],
   ["sgr.bg.default", "0;48;5;42", "unsupported"],
@@ -233,6 +230,11 @@ test.each([
   ["sgr.underline.single", "0;4:3:999", "inconclusive"],
   ["sgr.underline.single", "0;4:0:3", "inconclusive"],
   ["sgr.underline.single", "0;4:6", "inconclusive"],
+  ["sgr.underline.curly", "0;4:3:999", "inconclusive"],
+  ["sgr.underline.curly", "0;4:0:3", "inconclusive"],
+  ["sgr.underline.curly", "0;4:6", "inconclusive"],
+  ["sgr.underline.dotted", "0;4:", "inconclusive"],
+  ["sgr.underline.dashed", "0;4:", "inconclusive"],
   ["sgr.underline.single", "0;4:0", "unsupported"],
   ["sgr.selective-reset.underline", "0;1;4:0", "supported"],
   ["sgr.selective-reset.underline", "0;1;4:6", "inconclusive"],
@@ -261,23 +263,26 @@ test.each([
   }
 })
 
-// A style-qualified underline claim needs the reply's own style token. Any other reply — plain 4,
-// 4:1, another style, an unqualified 4: slot, or no underline at all — is a coverage record, never
-// a negative: a collapsed or omitted style cannot establish that the requested style is
-// unsupported (@cto 37277973, option i).
+// Retained Ghostty/Kitty/iTerm2 replies omit overline, hidden or underline color. Without a
+// same-run control, an omitted attribute cannot establish a negative. Style claims likewise need
+// their own valid token; malformed replies belong to the failure table above, not coverage.
 test.each([
+  ["sgr.faint", "0"],
+  ["sgr.fg.truecolor", "0"],
+  ["sgr.bold", "0;38;2;255;1;5"],
+  ["sgr.overline", "0"],
+  ["sgr.overline", ""],
+  ["sgr.hidden", "0"],
+  ["sgr.underline.color", "0;4"],
+  ["sgr.underline-color-rgb", "0;4"],
+  ["sgr.underline-color-indexed", "0;4"],
   ["sgr.underline.curly", "0;4"],
-  ["sgr.underline.curly", "0;4:3:999"],
-  ["sgr.underline.curly", "0;4:0:3"],
-  ["sgr.underline.curly", "0;4:6"],
   ["sgr.underline.dotted", "0;4"],
-  ["sgr.underline.dotted", "0;4:"],
   ["sgr.underline.dotted", "0;4:1"],
   ["sgr.underline.dotted", "0;4:2"],
   ["sgr.underline.dotted", "0;4:0"],
   ["sgr.underline.dotted", "0"],
   ["sgr.underline.dashed", "0;4"],
-  ["sgr.underline.dashed", "0;4:"],
   ["sgr.underline.double", "0;4"],
   ["sgr.underline.double", "0"],
 ] as const)("%s with DECRQSS %s is a PROBE TODO, never a negative", async (id, reply) => {
@@ -286,8 +291,9 @@ test.each([
   expect(result.notTested?.reason).toBe("no-semantic-observable")
   expect(result.observation).toBeUndefined()
   expect(result.pass).toBe(false)
+  expect(result.assertions ?? []).toHaveLength(0)
   expect(result.response).toBe(
-    JSON.stringify({ sgr: reply, ...(RESET_SETUP[id] && { baseline: "0", setup: RESET_SETUP[id] }) }),
+    JSON.stringify({ sgr: reply || "0", ...(RESET_SETUP[id] && { baseline: "0", setup: RESET_SETUP[id] }) }),
   )
   const recorded = recordExecutedProbe({
     featureId: id,
@@ -297,20 +303,6 @@ test.each([
     tests: result.tests,
   })
   expect(recorded.status).toBe("test-todo")
-})
-
-// The qualified side stays decided: each style grades supported only on its own token.
-test.each([
-  ["sgr.underline.curly", "0;4:3"],
-  ["sgr.underline.dotted", "0;4:4"],
-  ["sgr.underline.dashed", "0;4:5"],
-  ["sgr.underline.double", "0;21"],
-  ["sgr.underline.double", "0;4:2"],
-] as const)("%s still grades supported on its own style token %s", async (id, reply) => {
-  const { ctx } = qualifiedSgrReadbackSource(id, reply)
-  const result = await sgrTerm(id)(ctx)
-  expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
-  expect(result.notTested).toBeUndefined()
 })
 
 // A scripted response alone would miss sending reset before reading setup. Check the bytes that
