@@ -577,64 +577,89 @@ function xtModeSaveHeadless(ctx: LibProbeSource, id: string): ProbeCallbackResul
 
 const COLOR_STACK_BLUE = { r: 0, g: 0, b: 255 }
 const COLOR_STACK_GREEN = { r: 0, g: 255, b: 0 }
+const COLOR_STACK_MAGENTA = { r: 255, g: 0, b: 255 }
 
 /**
- * Headless XTPUSHCOLORS/XTPOPCOLORS read-back (#30700): the pixel capture's palette fixture, read
- * from cells. Calibration redefines index 1 blue, draws and reads a cell, then green and reads
- * again, which proves OSC 4 moves the reported foreground at all (on @xterm/headless, the
- * per-instance palette array mirrors _core._inputHandler.onColor events, so OSC 4 cell-color
- * calibration grades that engine-delivered index+rgb event; #31735, @cto 863bef67). The target sets the blue
- * baseline, pushes, redefines index 1 green, prints X, pops and prints Y. Y alone is graded, read
- * before any later palette change can recolor it: blue means the pop restored the saved palette,
- * green means it did not. X is never graded, because a correct pop may recolor it (turn362). A
- * readback whose colors do not follow OSC 4 has no observable for the claim (a coverage record,
- * TEST TODO) rather than a negative.
+ * Headless XTPUSHCOLORS/XTPOPCOLORS read-back (#30700, split by operation in #31904). Calibration
+ * redefines palette index 1 blue, green and magenta, drawing and reading a cell each time, which
+ * proves OSC 4 moves the reported foreground at all (on @xterm/headless, the per-instance palette
+ * array mirrors _core._inputHandler.onColor events, so OSC 4 cell-color calibration grades that
+ * engine-delivered index+rgb event; #31735, @cto 863bef67). Two fixtures follow, each printing X
+ * after the change and Y after the pop; Y alone is graded, read before any later palette change can
+ * recolor it, and X is never graded, because a correct pop may recolor it (turn362).
+ * - POP fixture: set blue, push, set green, X, pop, Y. Blue Y is restored, green Y persisted.
+ * - PUSH fixture: set blue (the earlier state), set magenta (the push-time state), push, set green,
+ *   X, pop, Y. Magenta Y is restored, blue Y is the earlier state, green Y persisted.
+ * Every pass value is a redefined, non-default color, so a pop that resets the palette never passes,
+ * and the PUSH fixture's pass value differs from the POP fixture's, so a stack that keeps a stale
+ * snapshot never passes the push row (@cto 6e4f7300). A readback whose colors do not follow OSC 4
+ * has no observable for the claim (a coverage record, TEST TODO) rather than a negative.
  */
-function xtColorStackHeadless(ctx: LibProbeSource, id: string): ProbeCallbackResult {
-  const expected = `${id}: Y printed through index 1 after the pop reads the blue baseline, not the pushed green`
+function xtColorStackHeadless(ctx: LibProbeSource, operation: "push" | "pop"): ProbeCallbackResult {
+  const id = operation === "push" ? "modes.xtpushcolors" : "modes.xtpopcolors"
+  const expected =
+    operation === "push"
+      ? `${id}: XTPUSHCOLORS saves the state current at push time: after set index 1 magenta, push, set index 1 green, pop, magenta is restored`
+      : `${id}: XTPOPCOLORS restores the pushed state: after set index 1 blue, push, set index 1 green, pop, blue is restored`
   if (!Number.isSafeInteger(ctx.cols) || ctx.cols < 2) {
     return parserStateResult(null, expected, { cols: ctx.cols }, "Measured grid needs two columns")
   }
+  const osc4 = (hex: string) => `\x1b]4;1;rgb:${hex}\x07`
+  const BLUE = osc4("00/00/ff")
+  const GREEN = osc4("00/ff/00")
+  const MAGENTA = osc4("ff/00/ff")
   let pushed = false
   try {
-    ctx.feed("\x1b[0m\x1b[2J\x1b[1;1H\x1b]4;1;rgb:00/00/ff\x07\x1b[38;5;1mA")
-    const blue = ctx.getCell(0, 0)
-    ctx.feed("\x1b[0m\x1b[2J\x1b[1;1H\x1b]4;1;rgb:00/ff/00\x07\x1b[38;5;1mB")
-    const green = ctx.getCell(0, 0)
-    const calibration = { blue, green }
+    const calibrate = (set: string) => {
+      ctx.feed(`\x1b[0m\x1b[2J\x1b[1;1H${set}\x1b[38;5;1mA`)
+      return ctx.getCell(0, 0)
+    }
+    const calibration = { blue: calibrate(BLUE), green: calibrate(GREEN), magenta: calibrate(MAGENTA) }
+    const reads = (cell: StackCell, rgb: typeof COLOR_STACK_BLUE) => cell.char === "A" && !!cell.fg && sameRgb(cell.fg, rgb)
     if (
-      blue.char !== "A" ||
-      green.char !== "B" ||
-      !blue.fg ||
-      !green.fg ||
-      !sameRgb(blue.fg, COLOR_STACK_BLUE) ||
-      !sameRgb(green.fg, COLOR_STACK_GREEN)
+      !reads(calibration.blue, COLOR_STACK_BLUE) ||
+      !reads(calibration.green, COLOR_STACK_GREEN) ||
+      !reads(calibration.magenta, COLOR_STACK_MAGENTA)
     ) {
       return notTestedResult("OSC 4 redefinition of palette index 1 reflected in the headless cell colors", calibration)
     }
-    ctx.feed("\x1b[0m\x1b[2J\x1b[1;1H\x1b]4;1;rgb:00/00/ff\x07")
-    const pushOutput = ctx.feedCapture("\x1b[#P")
-    pushed = true
-    if (pushOutput.length > 0) return stackOutputResult(pushOutput)
-    ctx.feed("\x1b]4;1;rgb:00/ff/00\x07\x1b[38;5;1mX")
-    const popOutput = ctx.feedCapture("\x1b[#Q")
-    pushed = false
-    if (popOutput.length > 0) return stackOutputResult(popOutput)
-    ctx.feed("\x1b[38;5;1mY\x1b[0m")
-    const x = ctx.getCell(0, 0)
-    const y = ctx.getCell(0, 1)
-    const state = { calibration, x, y }
-    if (x.char !== "X" || y.char !== "Y" || !y.fg) {
+    const fixture = (before: string) => {
+      ctx.feed(`\x1b[0m\x1b[2J\x1b[1;1H${before}`)
+      const pushOutput = ctx.feedCapture("\x1b[#P")
+      pushed = true
+      if (pushOutput.length > 0) return pushOutput
+      ctx.feed(`${GREEN}\x1b[38;5;1mX`)
+      const popOutput = ctx.feedCapture("\x1b[#Q")
+      pushed = false
+      if (popOutput.length > 0) return popOutput
+      ctx.feed("\x1b[38;5;1mY\x1b[0m")
+      return { x: ctx.getCell(0, 0), y: ctx.getCell(0, 1) }
+    }
+    const popCells = fixture(BLUE)
+    if (typeof popCells === "string") return stackOutputResult(popCells)
+    const pushCells = fixture(BLUE + MAGENTA)
+    if (typeof pushCells === "string") return stackOutputResult(pushCells)
+    const state = { calibration, popFixture: popCells, pushFixture: pushCells }
+    const yOf = (cells: typeof popCells) => (cells.x.char === "X" && cells.y.char === "Y" ? cells.y.fg : undefined)
+    const popY = yOf(popCells)
+    const pushY = yOf(pushCells)
+    if (!popY || !pushY) {
       return parserStateResult(null, expected, state, "X and Y cells after the pop were not exposed")
     }
-    if (sameRgb(y.fg, COLOR_STACK_BLUE)) return parserStateResult(true, expected, state)
-    if (sameRgb(y.fg, COLOR_STACK_GREEN)) return parserStateResult(false, expected, state)
-    return parserStateResult(
-      null,
-      expected,
-      state,
-      "Y after the pop matches neither the blue baseline nor the pushed green",
-    )
+    const pop: StackReading = sameRgb(popY, COLOR_STACK_BLUE)
+      ? "restored"
+      : sameRgb(popY, COLOR_STACK_GREEN)
+        ? "persisted"
+        : "other"
+    const push: StackReading = sameRgb(pushY, COLOR_STACK_MAGENTA)
+      ? "restored"
+      : sameRgb(pushY, COLOR_STACK_BLUE)
+        ? "earlier"
+        : sameRgb(pushY, COLOR_STACK_GREEN)
+          ? "persisted"
+          : "other"
+    const verdict = stackVerdict(operation, pop, push)
+    return parserStateResult(verdict.pass, expected, { ...state, pop, push }, verdict.note)
   } finally {
     if (pushed) ctx.feed("\x1b[#Q")
     ctx.feed("\x1b]104\x07\x1b[0m\x1b[2J\x1b[H")
@@ -2283,7 +2308,7 @@ const modeDefinitions: ProbeDefinition[] = [
   {
     ...probe(
       "modes.xtpushcolors",
-      (ctx) => xtColorStackHeadless(ctx, "modes.xtpushcolors"),
+      (ctx) => xtColorStackHeadless(ctx, "push"),
       async (ctx) => {
         if (ctx.capture) return xtColorStackCapture(ctx, "modes.xtpushcolors")
         ctx.write("\x1b[#P")
@@ -2317,7 +2342,7 @@ const modeDefinitions: ProbeDefinition[] = [
   {
     ...probe(
       "modes.xtpopcolors",
-      (ctx) => xtColorStackHeadless(ctx, "modes.xtpopcolors"),
+      (ctx) => xtColorStackHeadless(ctx, "pop"),
       async (ctx) => {
         if (ctx.capture) return xtColorStackCapture(ctx, "modes.xtpopcolors")
         ctx.write("\x1b[#P")

@@ -550,3 +550,24 @@ test.each(["modes.xtpushsgr", "modes.xtpopsgr"])(
     expect(result.assertions).toMatchObject([{ kind: "negative" }])
   },
 )
+
+// #31904 R3e: the palette-stack rows split the same way as R3d (@cto 6e4f7300).
+test.each([
+  ["xtpushcolors-stale", "modes.xtpushcolors", "unsupported", "push saved no current snapshot"],
+  ["xtpushcolors-stale", "modes.xtpopcolors", "supported", undefined],
+  ["xtpopcolors-reset-default", "modes.xtpushcolors", "inconclusive", "no push-only observation"],
+  ["xtpopcolors-reset-default", "modes.xtpopcolors", "inconclusive", "no pop-only observation"],
+  ["xtpopcolors-noop", "modes.xtpushcolors", "unsupported", "push then pop restored no earlier state"],
+  ["xtpopcolors-noop", "modes.xtpopcolors", "unsupported", "push then pop restored no earlier state"],
+] as const)("%s grades %s %s on its own operation", (mutation, id, outcome, note) => {
+  const probe = modesProbes.find((entry) => entry.id === id)!
+  const result = probe.lib!(libProbeSource(createSemanticSurface({ mutations: [mutation] })))
+  expect(result.observation?.outcome).toBe(outcome)
+  expect(result.pass).toBe(outcome === "supported")
+  if (note) expect(result.note).toContain(note)
+  if (outcome === "inconclusive") expect(result.assertions).toBeUndefined()
+  else
+    expect(result.assertions?.[0]?.expected).toContain(
+      id === "modes.xtpushcolors" ? "push time" : "restores the pushed",
+    )
+})
