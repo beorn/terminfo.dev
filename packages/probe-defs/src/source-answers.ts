@@ -35,20 +35,25 @@ export function parseSourceAnswerKey(ref: string): { subject: SourceAnswerSubjec
   } catch (cause) {
     throw new Error(`Invalid source-answer key ${ref}`, { cause })
   }
+  if (!Array.isArray(value) || value.length !== 5) throw new Error(`Invalid source-answer key ${ref}`)
+  const [kind, id, version, os, featureId] = value
   if (
-    !Array.isArray(value) ||
-    value.length !== 5 ||
-    !["term", "lib", "mux"].includes(value[0]) ||
-    ![value[1], value[2], value[4]].every((part) => typeof part === "string" && part.length > 0) ||
-    !(value[3] === null || (typeof value[3] === "string" && value[3].length > 0))
+    (kind !== "term" && kind !== "lib" && kind !== "mux") ||
+    typeof id !== "string" ||
+    !id ||
+    typeof version !== "string" ||
+    !version ||
+    typeof featureId !== "string" ||
+    !featureId ||
+    !(os === null || (typeof os === "string" && os.length > 0))
   ) {
     throw new Error(`Invalid source-answer key ${ref}`)
   }
-  const subject: SourceAnswerSubject = { kind: value[0], id: value[1], version: value[2], os: value[3] }
-  if (sourceAnswerKey(subject, value[4]) !== ref) {
+  const subject: SourceAnswerSubject = { kind, id, version, os }
+  if (sourceAnswerKey(subject, featureId) !== ref) {
     throw new Error(`Invalid source-answer key ${ref}: noncanonical tuple`)
   }
-  return { subject, featureId: value[4] }
+  return { subject, featureId }
 }
 
 /** Resolve only existing kept answers. This function does not perform I/O or establish source identity. */
