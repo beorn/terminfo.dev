@@ -124,6 +124,18 @@ const receipt: AppLaunchReceipt = {
 
 beforeEach(() => {
   vi.resetAllMocks()
+  // Default collection requires authoring-checkout replies before retention.
+  vi.mocked(spawnSync).mockImplementation((file, args = []) => {
+    const replies: Record<string, string> = {
+      "git rev-parse HEAD": "a".repeat(40),
+      "git symbolic-ref --quiet --short HEAD": "task/fixture",
+      "git symbolic-ref --quiet --short refs/remotes/origin/HEAD": "origin/main",
+    }
+    const command = [file, ...args].join(" ")
+    const stdout = replies[command]
+    if (stdout === undefined) throw new Error(`Unexpected fixture command: ${command}`)
+    return { pid: 1, status: 0, signal: null, stdout, stderr: "", output: [null, stdout, ""] }
+  })
   let nextDiagnosticFd = 100
   vi.mocked(openSync).mockImplementation(() => nextDiagnosticFd++)
   vi.mocked(createProbeRun).mockReturnValue({
@@ -221,7 +233,7 @@ test("hosted preparation keeps inherited secrets in spawn memory and leaves the 
 })
 
 test("Kitty text collection owns a run-local socket and removes it with its one window", async () => {
-  vi.mocked(spawnSync).mockReturnValue({ status: 0, stderr: "" } as ReturnType<typeof spawnSync>)
+  vi.mocked(spawnSync).mockReturnValueOnce({ status: 0, stderr: "" } as ReturnType<typeof spawnSync>)
   vi.mocked(parseKittyIdentity).mockReturnValue({
     windowId: 7,
     kittyPid: 777,
