@@ -122,35 +122,21 @@ export interface TerminalStatusRollup {
   readonly families: Record<string, FamilyRollup>
 }
 
-export interface ProbeOpenRankRow {
-  readonly featureId: string
-  readonly family: string
-  readonly libOpen: number
-  readonly libFailure: number
-  readonly libTodo: number
-  readonly appOpen: number
-  readonly appFailure: number
-  readonly appTodo: number
-  readonly totalOpen: number
-}
-
-function foldTerminalStatuses(
+/**
+ * The single status-and-rollup computation over one terminal's recorded statuses (Phase 2.4):
+ * folds the graded positions (`gradedFeatureIds`) into the five status counts, family rollups,
+ * decisive/decided/open sums, percentages, and four-way completeness tier.
+ */
+export function rollupTerminalStatuses(
   statuses: Readonly<Record<string, string>>,
-  catalogIds: readonly string[],
-): { rollup: TerminalStatusRollup; idsByState: Record<ProbeStatus, string[]> } {
+  catalogIds: readonly string[] = Object.keys(statuses),
+): TerminalStatusRollup {
   const counts: Record<ProbeStatus, number> = {
     supported: 0,
     unsupported: 0,
     untestable: 0,
     "test-todo": 0,
     "test-failure": 0,
-  }
-  const idsByState: Record<ProbeStatus, string[]> = {
-    supported: [],
-    unsupported: [],
-    untestable: [],
-    "test-todo": [],
-    "test-failure": [],
   }
   const familyAcc = new Map<
     string,
@@ -184,7 +170,6 @@ function foldTerminalStatuses(
     }
     const probeStatus = status as ProbeStatus
     counts[probeStatus]++
-    idsByState[probeStatus].push(id)
     const familyEntry = ensureFamily(id.split(".")[0] ?? id)
     familyEntry.positions++
     familyEntry.counts[probeStatus]++
@@ -216,32 +201,17 @@ function foldTerminalStatuses(
   }
 
   return {
-    rollup: {
-      positions,
-      environmentPositions,
-      counts,
-      decisive,
-      decided,
-      open,
-      donePct,
-      supportedPct,
-      completenessTier,
-      families,
-    },
-    idsByState,
+    positions,
+    environmentPositions,
+    counts,
+    decisive,
+    decided,
+    open,
+    donePct,
+    supportedPct,
+    completenessTier,
+    families,
   }
-}
-
-/**
- * The single status-and-rollup computation over one terminal's recorded statuses (Phase 2.4):
- * folds the graded positions (`gradedFeatureIds`) into the five status counts, family rollups,
- * decisive/decided/open sums, percentages, and four-way completeness tier.
- */
-export function rollupTerminalStatuses(
-  statuses: Readonly<Record<string, string>>,
-  catalogIds: readonly string[] = Object.keys(statuses),
-): TerminalStatusRollup {
-  return foldTerminalStatuses(statuses, catalogIds).rollup
 }
 
 export function aggregateCurrentResults(
@@ -252,6 +222,13 @@ export function aggregateCurrentResults(
     throw new Error("Current aggregate requires a nonempty unique frozen catalogue")
   }
   const statuses: Record<string, string> = {}
+  const idsByState: Record<ProbeStatus, string[]> = {
+    supported: [],
+    unsupported: [],
+    untestable: [],
+    "test-todo": [],
+    "test-failure": [],
+  }
   for (const result of results) {
     statuses[result.featureId] = result.status
   }
@@ -262,7 +239,10 @@ export function aggregateCurrentResults(
   ) {
     throw new Error("Current results differ from frozen catalogue membership")
   }
-  const { rollup, idsByState } = foldTerminalStatuses(statuses, catalogIds)
+  const rollup = rollupTerminalStatuses(statuses, catalogIds)
+  for (const id of gradedFeatureIds(catalogIds)) {
+    idsByState[statuses[id] as ProbeStatus].push(id)
+  }
   return {
     denominator: rollup.positions,
     counts: rollup.counts,
@@ -294,56 +274,6 @@ export function completenessTierOf(statuses: Readonly<Record<string, string>>): 
     failure: rollup.counts["test-failure"],
     positions: rollup.positions,
   }
-}
-
-/**
- * Pure work-list ranking over the graded probes (`gradedFeatureIds`), ordered by
- * `(-totalOpen, -libOpen, -(libFailure + appFailure), featureId)`.
- */
-export function rankOpenProbes(
-  libCells: Readonly<Record<string, Readonly<Record<string, string>>>>,
-  catalogIds: readonly string[],
-  appCells: Readonly<Record<string, Readonly<Record<string, string>>>> = {},
-): ProbeOpenRankRow[] {
-  const gradedIds = gradedFeatureIds(catalogIds)
-  const libEntries = Object.values(libCells)
-  const appEntries = Object.values(appCells)
-  const rows: ProbeOpenRankRow[] = gradedIds.map((featureId) => {
-    let libFailure = 0
-    let libTodo = 0
-    for (const cells of libEntries) {
-      const status = cells[featureId]
-      if (status === "test-failure") libFailure++
-      else if (status === "test-todo") libTodo++
-    }
-    let appFailure = 0
-    let appTodo = 0
-    for (const cells of appEntries) {
-      const status = cells[featureId]
-      if (status === "test-failure") appFailure++
-      else if (status === "test-todo") appTodo++
-    }
-    const libOpen = libFailure + libTodo
-    const appOpen = appFailure + appTodo
-    return {
-      featureId,
-      family: featureId.split(".")[0] ?? featureId,
-      libOpen,
-      libFailure,
-      libTodo,
-      appOpen,
-      appFailure,
-      appTodo,
-      totalOpen: libOpen + appOpen,
-    }
-  })
-  return rows.sort(
-    (a, b) =>
-      b.totalOpen - a.totalOpen ||
-      b.libOpen - a.libOpen ||
-      b.libFailure + b.appFailure - (a.libFailure + a.appFailure) ||
-      a.featureId.localeCompare(b.featureId),
-  )
 }
 
 export function currentCoverageSentence(

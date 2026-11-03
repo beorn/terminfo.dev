@@ -22,7 +22,6 @@ import {
   aggregateCurrentResults,
   completenessTierOf,
   isStaleRelation,
-  rankOpenProbes,
   rollupTerminalStatuses,
   staleCaption,
   treeMovedPastRelease,
@@ -341,7 +340,7 @@ describe("release 1 measurement scope", () => {
   })
 })
 
-describe("Phase 2.4 single status-and-rollup computation (rollupTerminalStatuses + rankOpenProbes)", () => {
+describe("Phase 2.4 single status-and-rollup computation (rollupTerminalStatuses)", () => {
   const allCatalogIds = Object.keys(catalog).sort()
 
   it("partitions the 273 catalogue into 264 graded positions + 9 environment positions across 13 families", () => {
@@ -439,54 +438,6 @@ describe("Phase 2.4 single status-and-rollup computation (rollupTerminalStatuses
       todo: rollup.counts["test-todo"],
       failure: rollup.counts["test-failure"],
       positions: rollup.positions,
-    })
-  })
-
-  it("ranks open probes deterministically by (-totalOpen, -libOpen, -(libFailure + appFailure), featureId) over graded ids only", () => {
-    const subsetIds = ["device.env-term", "sgr.bold", "sgr.faint", "cursor.up", "modes.decckm"]
-    const libCells = {
-      vterm: {
-        "device.env-term": "test-todo",
-        "sgr.bold": "supported",
-        "sgr.faint": "test-todo",
-        "cursor.up": "test-failure",
-        "modes.decckm": "test-todo",
-      },
-      kitty: {
-        "device.env-term": "test-todo",
-        "sgr.bold": "supported",
-        "sgr.faint": "test-todo",
-        "cursor.up": "test-todo",
-        "modes.decckm": "supported",
-      },
-    }
-    const appCells = {
-      "app:kitty": {
-        "device.env-term": "test-todo",
-        "sgr.bold": "supported",
-        "sgr.faint": "supported",
-        "cursor.up": "supported",
-        "modes.decckm": "test-failure",
-      },
-    }
-    const ranked = rankOpenProbes(libCells, subsetIds, appCells)
-    // device.env-term is excluded; 4 graded rows remain.
-    expect(ranked.map((row) => row.featureId)).toEqual([
-      "cursor.up", // totalOpen=2, libOpen=2, failures=1
-      "sgr.faint", // totalOpen=2, libOpen=2, failures=0
-      "modes.decckm", // totalOpen=2, libOpen=1, failures=1
-      "sgr.bold", // totalOpen=0
-    ])
-    expect(ranked[0]).toEqual({
-      featureId: "cursor.up",
-      family: "cursor",
-      libOpen: 2,
-      libFailure: 1,
-      libTodo: 1,
-      appOpen: 0,
-      appFailure: 0,
-      appTodo: 0,
-      totalOpen: 2,
     })
   })
 })
