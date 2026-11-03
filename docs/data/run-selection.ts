@@ -133,23 +133,23 @@ export type PickedContextRun<T extends ContextCandidate = ContextCandidate> = { 
  * This chooses a summary only; the projection retains every context and its original cells.
  */
 export function pickContextRun<T extends ContextCandidate>(candidates: readonly T[]): PickedContextRun<T> | undefined {
-  const evidenceDate = (candidate: ContextCandidate): number => {
+  const dated = candidates.map((candidate) => {
     const latest = Math.max(...candidate.sources.map((source) => Date.parse(source.measuredAt)))
     if (!Number.isFinite(latest)) throw new Error(`Context ${candidate.key} has no finite original evidence time`)
-    return latest
-  }
-  for (const candidate of candidates) evidenceDate(candidate)
-  if (candidates.length === 0) return undefined
-  const current = candidates.filter((candidate) => hasCurrentSource(candidate.sources))
-  const considered = current.length > 0 ? current : candidates
+    return { candidate, latest }
+  })
+  if (dated.length === 0) return undefined
+  const current = dated.filter(({ candidate }) => hasCurrentSource(candidate.sources))
+  const considered = current.length > 0 ? current : dated
   const [only] = considered
-  if (considered.length === 1 && only) return { run: only, selection: "only current" }
-  const defaults = considered.filter((candidate) => candidate.permissions === null)
+  if (considered.length === 1 && only) return { run: only.candidate, selection: "only current" }
+  const defaults = considered.filter(({ candidate }) => candidate.permissions === null)
   const [onlyDefault] = defaults
-  if (defaults.length === 1 && onlyDefault) return { run: onlyDefault, selection: "default profile" }
+  if (defaults.length === 1 && onlyDefault) return { run: onlyDefault.candidate, selection: "default profile" }
   const [latest] = [...considered].sort(
     (left, right) =>
-      evidenceDate(right) - evidenceDate(left) || (left.key < right.key ? -1 : left.key > right.key ? 1 : 0),
+      right.latest - left.latest ||
+      (left.candidate.key < right.candidate.key ? -1 : left.candidate.key > right.candidate.key ? 1 : 0),
   )
-  return latest && { run: latest, selection: "latest original evidence" }
+  return latest && { run: latest.candidate, selection: "latest original evidence" }
 }
