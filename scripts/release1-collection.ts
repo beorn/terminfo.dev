@@ -92,14 +92,15 @@ function linuxLiveArgs(kind: CollectionContext["kind"], id: string): string[] {
 }
 
 /** Discover the existing launcher's retained raw file on either successful or failed exit. */
-function linuxRawRun(output: string): string | undefined {
+function linuxRawRun(output: string, runId: string): string | undefined {
   const runs = readdirSync(output, { withFileTypes: true }).filter((entry) => entry.isDirectory())
   if (runs.length === 0) return undefined
   const run = runs[0]
   if (runs.length !== 1 || !run) {
     throw new Error(`Linux launcher produced ${runs.length} run directories in ${output}; expected exactly one`)
   }
-  for (const name of ["v3-run.json", "v3-run.draft.json", "v3-capture.json"]) {
+  // An HTTP failure leaves its error response at v3-capture.json and the producer's draft in artifacts.
+  for (const name of ["v3-run.json", "v3-run.draft.json", `artifacts/${runId}.draft.json`, "v3-capture.json"]) {
     const candidate = join(output, run.name, "raw", name)
     if (!existsSync(candidate)) continue
     const path = realpathSync(candidate)
@@ -651,7 +652,7 @@ export async function collectPass(
             TERMINFO_SOURCE_REVISION: sourceRevision,
           },
         )
-        const retained = linuxRawRun(output)
+        const retained = linuxRawRun(output, handed.draft.runId)
         if (!retained) throw new Error(`Linux launcher produced no raw run in ${output}`)
         path = retained
       } else if (context.route === "local-owned-app") {
@@ -769,7 +770,7 @@ export async function collectPass(
         try {
           const actualPath =
             context.route === "linux-container"
-              ? linuxRawRun(row.directory)
+              ? linuxRawRun(row.directory, handed.draft.runId)
               : row.rawRun !== handed.path
                 ? row.rawRun
                 : undefined

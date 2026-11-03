@@ -209,6 +209,7 @@ it.each([
   ["matching", "linux-poststart"],
   ["matching", "linux-poststart-capture"],
   ["matching", "linux-poststart-final"],
+  ["matching", "linux-poststart-artifact"],
   ["matching", "macos-poststart"],
   ["matching", "macos-prestart"],
   ["matching", "macos-untrusted"],
@@ -278,6 +279,8 @@ it.each([
     let actualRoutePath: string | undefined
     let actualRouteBytes: string | undefined
     let actualRouteRunId: string | undefined
+    let launcherErrorPath: string | undefined
+    let launcherErrorBytes: string | undefined
     const actualStartedAt = "2026-10-29T07:01:02.000Z"
     const actualError = "original Linux fixture collector failure"
     const macosContexts = ["ghostty", "cursor", "com.microsoft.VSCode", "cmux", "alacritty", "wezterm"]
@@ -307,17 +310,25 @@ it.each([
         })
         draft.rawReplies["collector.failure"] = actualError
         const raw = join(output, "fixture-run", "raw")
-        mkdirSync(raw, { recursive: true })
+        mkdirSync(join(raw, "artifacts"), { recursive: true })
         actualRoutePath = join(
           raw,
           inputChange === "linux-poststart-capture"
             ? "v3-capture.json"
             : inputChange === "linux-poststart-final"
               ? "v3-run.json"
-              : "v3-run.draft.json",
+              : inputChange === "linux-poststart-artifact"
+                ? `artifacts/${draft.runId}.draft.json`
+                : "v3-run.draft.json",
         )
         actualRouteBytes = JSON.stringify(draft)
         writeFileSync(actualRoutePath, actualRouteBytes)
+        if (inputChange === "linux-poststart-artifact") {
+          // Failed HTTP captures retain the delegated producer draft beside their error response.
+          launcherErrorPath = join(raw, "v3-capture.json")
+          launcherErrorBytes = JSON.stringify({ name: "Error", error: actualError })
+          writeFileSync(launcherErrorPath, launcherErrorBytes)
+        }
         return respond("fixture collector started then failed", 17)
       }
       if (command === "git") {
@@ -646,15 +657,18 @@ it.each([
           expect(headless.collectHeadlessRuns).not.toHaveBeenCalled()
           const selectedRow = pass.contexts[0]
           if (!selectedRow?.rawRun) throw new Error("Expected retained Linux context draft")
+          if (inputChange.startsWith("linux-poststart")) expect(selectedRow.rawRun).toBe(actualRoutePath)
           const retained = JSON.parse(readFileSync(selectedRow.rawRun, "utf8")) as RunDraft
           expect(readCollectorSelection(retained.rawReplies)).toEqual({ ids: ["sgr.bold"] })
           expect(readCollectorAttempt(retained.rawReplies)).toMatchObject({ result: "failed", ids: ["sgr.bold"] })
           if (inputChange.startsWith("linux-poststart")) {
-            expect(pass.contexts[0]?.rawRun).toBe(actualRoutePath)
             if (!actualRoutePath || actualRouteBytes === undefined) {
               throw new Error("Expected original Linux route fixture")
             }
             expect(readFileSync(actualRoutePath, "utf8")).toBe(actualRouteBytes)
+            if (launcherErrorPath && launcherErrorBytes) {
+              expect(readFileSync(launcherErrorPath, "utf8")).toBe(launcherErrorBytes)
+            }
             expect(readCollectorAttempt(retained.rawReplies)).toEqual({
               ids: ["sgr.bold"],
               result: "failed",

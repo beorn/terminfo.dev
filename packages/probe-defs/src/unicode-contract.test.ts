@@ -11,6 +11,7 @@ import { join } from "node:path"
 import { unicodeProbes } from "./unicode.ts"
 import {
   contractGaps,
+  inertLibProbeSource,
   libProbeSource,
   missingContractTests,
   regradeCommand,
@@ -20,6 +21,16 @@ import {
   type GroupContractSpec,
 } from "./testing/group-harness.ts"
 import { createSemanticSurface } from "./testing/semantic-surface.ts"
+
+const UNICODE_SEMANTIC_SURFACE_CONTROLS: readonly {
+  readonly id: string
+  readonly mutation: string
+}[] = [
+  { id: "unicode.east-asian-ambiguous", mutation: "east-asian-ambiguous-noop" },
+  { id: "unicode.grapheme-cursor", mutation: "grapheme-cursor-noop" },
+  { id: "unicode.wrap-boundary", mutation: "wrap-boundary-noop" },
+  { id: "unicode.tab-stops", mutation: "ht-noop" },
+]
 
 /** The 4 Unicode features of 28018's Unicode row; ids from unicode.ts, claims are the contract. */
 const UNICODE_CONTRACT: GroupContract = [
@@ -122,3 +133,31 @@ test("a surface whose HT is inert reads unicode.tab-stops unsupported", async ()
   })
   expect(graded.after, "unicode.tab-stops detects an inert HT").toBe("unsupported")
 })
+
+test("the Unicode two-sided control table covers every unicode contract row", () => {
+  expect(UNICODE_SEMANTIC_SURFACE_CONTROLS.map((entry) => entry.id)).toEqual(UNICODE_CONTRACT.map((entry) => entry.id))
+})
+
+test.each(UNICODE_SEMANTIC_SURFACE_CONTROLS)(
+  "unicode two-sided control for $id: inert does not read supported, semantic surface reads supported, and $mutation reads unsupported",
+  async ({ id, mutation }) => {
+    const row = UNICODE_CONTRACT.find((entry) => entry.id === id)
+    const probe = unicodeProbes.find((entry) => entry.id === id)
+    expect(row, `missing Unicode contract row ${id}`).toBeDefined()
+    expect(probe, `missing Unicode probe ${id}`).toBeDefined()
+    if (!row || !probe) return
+
+    const inert = await regradeRow(probe, row, { headless: inertLibProbeSource() })
+    expect(inert.after, `${id} must not read supported against inertLibProbeSource()`).toBe("inconclusive")
+
+    const positive = await regradeRow(probe, row, { headless: libProbeSource(createSemanticSurface()) })
+    expect(positive.after, `${id} must read supported against createSemanticSurface()`).toBe("supported")
+    expect(positive.satisfies, `${id} must satisfy its contract row on createSemanticSurface()`).toBe(true)
+
+    const mutated = await regradeRow(probe, row, {
+      headless: libProbeSource(createSemanticSurface({ mutations: [mutation] })),
+    })
+    expect(mutated.after, `${id} must read unsupported when ${mutation} is active`).toBe("unsupported")
+    expect(mutated.satisfies, `${id} remains decided under ${mutation}`).toBe(true)
+  },
+)

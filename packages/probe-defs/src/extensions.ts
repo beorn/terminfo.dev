@@ -1193,11 +1193,14 @@ const ABSENT_OSC_ENGINES = {
     engineVersion: "0.10.1",
     repository: "git@github.com:beorn/vterm.git",
     treeOid: "b941dae48b25ae8825c394750bda5245c9d93dfa",
-    codes: [1, 8, 9, 17, 19, 22, 117, 119, 133, 176, 440, 555, 633, 666, 710, 777, 3008],
+    codes: [1, 8, 9, 17, 19, 22, 117, 119, 133, 176, 440, 555, 633, 666, 710, 777, 1337, 3008],
     subcodes: ["133;D"],
     reviewReasons: [{ code: 1, reason: "screen.ts:505-520 case 1 is ignored; no icon-name state is stored" }],
     sourceCitation:
       "vt100 9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vt100/src/screen.ts:505-520 handleOSC switch, cases 0/1/2 only",
+    absentSixel: true,
+    sixelSourceCitation:
+      "vt100 9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vt100/src/screen.ts:570-571 ESC P enters the dcs state and :681-686 discards every byte until ESC, so a DCS q Sixel payload is dropped with no image store",
   },
   vt220: {
     kind: "source",
@@ -1205,11 +1208,14 @@ const ABSENT_OSC_ENGINES = {
     engineVersion: "0.10.1",
     repository: "git@github.com:beorn/vterm.git",
     treeOid: "4205f8936ad1848d1029729f3ada888cd61759a8",
-    codes: [1, 8, 9, 17, 19, 22, 117, 119, 133, 176, 440, 555, 633, 666, 710, 777, 3008],
+    codes: [1, 8, 9, 17, 19, 22, 117, 119, 133, 176, 440, 555, 633, 666, 710, 777, 1337, 3008],
     subcodes: ["133;D"],
     reviewReasons: [{ code: 1, reason: "screen.ts:701-716 case 1 is ignored; no icon-name state is stored" }],
     sourceCitation:
       "vt220 9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vt220/src/screen.ts:701-716 handleOSC: no-semicolon return; cases 0/1/2 only",
+    absentSixel: true,
+    sixelSourceCitation:
+      "vt220 9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vt220/src/screen.ts:766-767 ESC P enters the dcs state and :897-902 discards every byte until ESC, so a DCS q Sixel payload is dropped with no image store",
   },
   vterm: {
     kind: "source",
@@ -1233,7 +1239,10 @@ const ABSENT_OSC_ENGINES = {
     engineVersion: "6.0.0",
     adapterVersion: "0.10.2",
     lockIntegrity: "sha512-5Yj1QINYCyzrZtf8OFIHi47iQtI+0qYFPHmouEfG8dHNxbZ9Tb9YGSuLcsEwj9Z+OL75GJqPyJbyoFer80a2Hw==",
-    codes: [7, 9, 17, 19, 22, 52, 117, 119, 176, 440, 555, 666, 710, 777, 3008],
+    codes: [7, 9, 17, 19, 22, 52, 117, 119, 176, 440, 555, 666, 710, 777, 1337, 3008],
+    absentSixel: true,
+    sixelSourceCitation:
+      "@xterm/headless 6.0.0 bundle SHA256 17a90b650cf6b77cce2b98c4063884d43545e4ce177a54b76ccfc906f1aacaed, map SHA256 780e782badc8189491a469c9277b783e01911882ea84417b31e71294ea927d98: InputHandler.ts:381 registers only DCS $q DECRQSS and :204-209 logs every other DCS through the fallback (DcsParser.ts:67-93); termless packages/xtermjs/src/backend.ts (blob 72dc827b2026af7736de722f7ff986a04f3fe883) loads only the Unicode11 addon (:249), no image addon, and reports sixel: false (:808), so a DCS q Sixel payload is dropped with no image store",
     sourceCitation:
       "@xterm/headless 6.0.0 bundle SHA256 17a90b650cf6b77cce2b98c4063884d43545e4ce177a54b76ccfc906f1aacaed, map SHA256 780e782badc8189491a469c9277b783e01911882ea84417b31e71294ea927d98: InputHandler.ts:292-338 OSC registrations (17/19/117/119 are comments only) and :201-203 logging-only fallback, OscParser.ts:145-146 fallback dispatch, CoreTerminal.ts:236-237 embedder hook; termless 9f0d4a5cbbeb2b7d9263ef7e07699df16a1cafc7 packages/xtermjs/src/backend.ts (blob 72dc827b2026af7736de722f7ff986a04f3fe883) registers no OSC handler",
   },
@@ -1403,7 +1412,10 @@ const ABSENT_OSC_ENGINES = {
     sourceCommit: "2f73fc28027b7d483e504e08edc64d1837935816",
     buildHash: "343c00e0db2bed851505ada4645b7b667ab78a0485a4ca71f9eaa4e5d8dead39",
     lockSha256: "1f89f2579b7d786a116d8fefb8267c4af076bd3a3893adcf14b00c4466740497",
-    codes: [1, 9, 17, 19, 22, 117, 119, 176, 440, 555, 666, 710, 777, 3008],
+    codes: [1, 9, 17, 19, 22, 117, 119, 176, 440, 555, 666, 710, 777, 1337, 3008],
+    absentSixel: true,
+    sixelSourceCitation:
+      "vte 0.15.0 src/ansi.rs:1311-1326 Performer hook/put/unhook only log the unhandled DCS and never reach the alacritty_terminal 0.26.0 Handler (src/term/mod.rs:1059-2272), so a DCS q Sixel payload is dropped with no image store",
     reviewReasons: [
       {
         code: 1,
