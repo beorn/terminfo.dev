@@ -6,9 +6,9 @@
  */
 import { expect, test } from "vitest"
 import { inputProbes } from "./input.ts"
-import { extensionsProbes } from "./extensions.ts"
+import { auditedOscEngine, extensionsProbes } from "./extensions.ts"
 import { deviceProbes, TERM_FEATURES_API_CITATIONS } from "./device.ts"
-import { replayTermProbeSource } from "./testing/group-harness.ts"
+import { inertLibProbeSource, replayTermProbeSource } from "./testing/group-harness.ts"
 import { ADAPTER_SOURCE_AUDITS, SOURCE_TREE_AUDITS } from "./helpers.ts"
 import type { HeadlessRuntimeIdentity, TermProbeSource, LibProbeSource } from "./types.ts"
 
@@ -230,6 +230,41 @@ const absentOscBatch = [
     },
   })),
 ] satisfies readonly { engine: string; identity: HeadlessRuntimeIdentity; codes: readonly number[] }[]
+
+// A future version cohort must not turn progress-only evidence into a notification negative.
+// Existing vterm coverage uses the unsuffixed key, so it missed this data-versus-name boundary.
+test("progress-only notification exclusion follows the audit fact for a suffixed cohort", () => {
+  const fixture = absentOscBatch.find((entry) => entry.engine === "libvterm")!
+  const matched = auditedOscEngine(fixture.identity, 9)!
+  expect(matched[0]).not.toBe("vterm")
+  const audit = matched[1]
+  const original = Object.getOwnPropertyDescriptor(audit, "osc9ProgressOnly")
+  const inert = inertLibProbeSource()
+  const writes: string[] = []
+  const source: LibProbeSource = {
+    ...inert,
+    runtimeIdentity: fixture.identity,
+    feed: (bytes) => {
+      writes.push(bytes)
+    },
+    getCell: () => ({ ...inert.getCell(0, 0), char: "X" }),
+  }
+  Object.defineProperty(audit, "osc9ProgressOnly", { value: true, configurable: true })
+  try {
+    const result = callback("extensions.notifications").lib!(source)
+    expect(result.criterionBranch).toBe("headless-observable-review")
+    expect(result.observation).toBeUndefined()
+    expect(result.assertions).toBeUndefined()
+    expect(writes).toEqual([])
+  } finally {
+    if (original) Object.defineProperty(audit, "osc9ProgressOnly", original)
+    else expect(Reflect.deleteProperty(audit, "osc9ProgressOnly")).toBe(true)
+  }
+  const ordinary = callback("extensions.notifications").lib!(source)
+  expect(ordinary.criterionBranch).toBe("source-negative-review")
+  expect(ordinary.observation?.outcome).not.toBe("supported")
+  expect(writes.join("")).toContain("\x1b]9;terminfo-notification-A\x07X")
+})
 
 test.each(absentOscBatch)(
   "$engine source-negative OSC batch requires the exact engine, adapter and X control",

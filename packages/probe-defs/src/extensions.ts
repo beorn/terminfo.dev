@@ -1223,6 +1223,7 @@ const ABSENT_OSC_ENGINES = {
     engineVersion: "0.10.1",
     repository: "git@github.com:beorn/vterm.git",
     treeOid: SOURCE_TREE_AUDITS.vterm.treeOid,
+    osc9ProgressOnly: true,
     codes: [9, 22, 176, 440, 555, 666, 710, 777, 3008],
     reviewReasons: [
       {
@@ -4942,9 +4943,9 @@ export const extensionsProbes: ProbeDefinition[] = [
       "extensions.notifications",
       (ctx) => {
         if (!ctx.getNotifications) {
-          const audited = auditedOscEngine(ctx.runtimeIdentity, 9)
-          // Vterm's OSC 9 audit concerns progress only: it already stores notifications.
-          if (audited && audited[0] !== "vterm") {
+          const audit = absentOscAudit(ctx.runtimeIdentity, 9)
+          // Progress-only OSC 9 evidence cannot decide notification absence, in any cohort.
+          if (audit && !("osc9ProgressOnly" in audit && audit.osc9ProgressOnly)) {
             return sourceAbsentOsc(
               "extensions.notifications",
               9,
