@@ -11,6 +11,7 @@ import { join } from "node:path"
 import { editingProbes } from "./editing.ts"
 import {
   contractGaps,
+  inertLibProbeSource,
   libProbeSource,
   missingContractTests,
   regradeCommand,
@@ -163,3 +164,73 @@ test("an ICH that does not insert reads unsupported", async () => {
   })
   expect(graded.after, "editing.insert-chars detects an inert ICH").toBe("unsupported")
 })
+
+/**
+ * Per-probe two-sided controls across all 17 Editing rows (#32230):
+ * each row has a distinct named mutation on `createSemanticSurface()` that suppresses its target
+ * editing behavior while preserving its setup/control witness, proving the probe grades `supported`
+ * on `createSemanticSurface()`, `unsupported` when its mutation is active, and never `supported` on
+ * `inertLibProbeSource()`.
+ */
+const EDITING_SEMANTIC_SURFACE_CONTROLS: ReadonlyArray<readonly [id: string, mutation: string]> = [
+  ["editing.insert-chars", "ich-noop"],
+  ["editing.delete-chars", "dch-noop"],
+  ["editing.insert-lines", "il-noop"],
+  ["editing.delete-lines", "dl-noop"],
+  ["editing.repeat-char", "rep-noop"],
+  ["editing.decfra", "decfra-noop"],
+  ["editing.decera", "decera-noop"],
+  ["editing.decsera", "decsera-noop"],
+  ["editing.deccra", "deccra-noop"],
+  ["editing.deccara", "deccara-noop"],
+  ["editing.decrara", "decrara-noop"],
+  ["editing.decsace", "decsace-noop"],
+  ["editing.decrqcra", "decrqcra-noop"],
+  ["editing.sl", "sl-noop"],
+  ["editing.sr", "sr-noop"],
+  ["editing.decic", "decic-noop"],
+  ["editing.decdc", "decdc-noop"],
+]
+
+test("EDITING_SEMANTIC_SURFACE_CONTROLS covers all 17 Editing contract rows with distinct mutations", () => {
+  expect(EDITING_SEMANTIC_SURFACE_CONTROLS).toHaveLength(17)
+  expect(EDITING_SEMANTIC_SURFACE_CONTROLS.map(([id]) => id).sort()).toEqual(
+    EDITING_CONTRACT.map((row) => row.id).sort(),
+  )
+  expect(new Set(EDITING_SEMANTIC_SURFACE_CONTROLS.map(([, mutation]) => mutation)).size).toBe(17)
+})
+
+test.each(EDITING_SEMANTIC_SURFACE_CONTROLS)(
+  "%s never reads supported on inertLibProbeSource, reads supported on createSemanticSurface, and reads unsupported when %s is active",
+  async (id, mutation) => {
+    const row = EDITING_CONTRACT.find((entry) => entry.id === id)
+    const probe = editingProbes.find((entry) => entry.id === id)
+    expect(row, `the Editing contract names ${id}`).toBeDefined()
+    expect(probe, `the Editing contract names a real ${id} probe`).toBeDefined()
+    if (!row || !probe || !probe.lib) return
+
+    const inertResult = probe.lib(inertLibProbeSource())
+    expect(inertResult.pass).toBe(false)
+    expect(inertResult.observation?.outcome).not.toBe("supported")
+    const inertGraded = await regradeRow(probe, row, { headless: inertLibProbeSource() })
+    expect(inertGraded.after).not.toBe("supported")
+
+    const positiveResult = probe.lib(libProbeSource(createSemanticSurface()))
+    expect(positiveResult.pass).toBe(true)
+    expect(positiveResult.observation?.outcome).toBe("supported")
+    expect(positiveResult.assertions ?? []).toContainEqual(expect.objectContaining({ kind: "positive" }))
+    const positiveGraded = await regradeRow(probe, row, { headless: libProbeSource(createSemanticSurface()) })
+    expect(positiveGraded.after).toBe("supported")
+    expect(positiveGraded.satisfies).toBe(true)
+
+    const negativeResult = probe.lib(libProbeSource(createSemanticSurface({ mutations: [mutation] })))
+    expect(negativeResult.pass).toBe(false)
+    expect(negativeResult.observation?.outcome).toBe("unsupported")
+    expect(negativeResult.assertions ?? []).toContainEqual(expect.objectContaining({ kind: "negative" }))
+    const negativeGraded = await regradeRow(probe, row, {
+      headless: libProbeSource(createSemanticSurface({ mutations: [mutation] })),
+    })
+    expect(negativeGraded.after).toBe("unsupported")
+    expect(negativeGraded.satisfies).toBe(true)
+  },
+)
