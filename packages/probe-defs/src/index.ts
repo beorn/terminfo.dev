@@ -5,6 +5,7 @@ export {
   publicSourceAnswerPendingLabel,
   resolveSourceAnswer,
   sourceAnswerForRef,
+  hasUnverifiedSourceAnswerSuffix,
   sourceAnswerVersionLabel,
   sourceAnswerKey,
   parseSourceAnswerKey,

@@ -13,6 +13,7 @@ import {
   repositoryIdentity,
   resolveSourceAnswer,
   sourceAnswerKey,
+  hasUnverifiedSourceAnswerSuffix,
   sourceAnswerVersionLabel,
   type SourceAnswer,
 } from "./source-answers.ts"
@@ -578,4 +579,25 @@ it("keeps table order among equally verified answers", () => {
   expect(result.answers[0]).toBe(verifiedOlder.answers[0])
   expect(result.rows[0]).toBe(verifiedOlder)
   expect(result.label).toBeUndefined()
+})
+
+it("detects the unverified version label suffix on stored ProbeResult.reason values (hasUnverifiedSourceAnswerSuffix)", () => {
+  expect(hasUnverifiedSourceAnswerSuffix(undefined, "1.0.0")).toBe(false)
+  expect(hasUnverifiedSourceAnswerSuffix("", "1.0.0")).toBe(false)
+  expect(hasUnverifiedSourceAnswerSuffix("Verified against source blob", "1.0.0")).toBe(false)
+  expect(hasUnverifiedSourceAnswerSuffix("reviewed at 1.0.0, not re-verified", "1.0.0")).toBe(true)
+  expect(
+    hasUnverifiedSourceAnswerSuffix("Verified at 1.0.0 in src/vt.zig; reviewed at 1.0.0, not re-verified", "1.0.0"),
+  ).toBe(true)
+  expect(
+    hasUnverifiedSourceAnswerSuffix("Verified at 1.0.0 in src/vt.zig; reviewed at 0.9.0, not re-verified", "1.0.0"),
+  ).toBe(false)
+})
+
+it("returns the fixed public pending label for stored pending reasons (publicSourceAnswerPendingLabel)", () => {
+  expect(publicSourceAnswerPendingLabel(undefined)).toBeUndefined()
+  expect(publicSourceAnswerPendingLabel("some unrelated todo reason")).toBeUndefined()
+  expect(publicSourceAnswerPendingLabel(`kept answers disagree: ["term","ghostty","0.4.0","linux","sgr.bold"]`)).toBe(
+    SOURCE_ANSWER_PENDING_LABELS.disagree,
+  )
 })

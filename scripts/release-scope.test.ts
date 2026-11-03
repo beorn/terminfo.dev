@@ -873,8 +873,8 @@ describe("Phase 2.4 report-only method, confidence & feature findings (rollupSub
       const apiEvidenceInventorySha256 = createHash("sha256")
         .update(readFileSync(join(outDir, "api", "v3", "evidence-files.json")))
         .digest("hex")
-      expect(apiDataSha256).toBe("7044175e6291fe506ea624e873c073d4404b761039d59db4ac75a25b6c71e41d")
-      expect(apiEvidenceInventorySha256).toBe("f7467b16e5c26b3a30ff2a8e22a1fee1c6808746c557cff3554f438d20375ec8")
+      expect(apiDataSha256).toBe("0a83e0855ed57d0c1f2f6fb1372bd39cfa3228206312b5391c5f962bf2491c83")
+      expect(apiEvidenceInventorySha256).toBe("ded2089fa343155ab12234d7e31c2549e2fe88167e8b27ced1e42d7f924e54b6")
     } finally {
       // raw-delete-allow: standalone component repository whose CI installs without hh's workspace, so removely is
       // unavailable; `outDir` is this test's own mkdtempSync scratch root.
