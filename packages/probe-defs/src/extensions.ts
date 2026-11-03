@@ -4801,21 +4801,13 @@ export const extensionsProbes: ProbeDefinition[] = [
   {
     ...probe(
       "extensions.semantic-prompts",
-      (ctx) => {
-        if (absentOscAudit(ctx.runtimeIdentity, 133)) {
-          return sourceAbsentOsc("extensions.semantic-prompts", 133, "\x1b]133;A\x07", "shell prompt integration")(ctx)
+      () => {
+        const note = "no full-lifecycle observable on this reader"
+        return {
+          pass: false,
+          note,
+          tests: [{ id: "criterion", status: "test-todo", reason: note }],
         }
-        if (ctx.capabilities.extensions.has("semantic-marks")) {
-          return promptMarkResult(ctx, "\x1b]133;A\x07", "OSC 133 prompt-start mark registration", {
-            probeId: "extensions.semantic-prompts",
-            selector: 133,
-            markType: "prompt",
-          })
-        }
-        const note = "Declared semantic-prompt capability does not establish shell prompt integration"
-        return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
-          declared: ctx.capabilities.semanticPrompts === true,
-        })
       },
       () => {
         const note = "No shell prompt integration metadata or behavior readback for OSC 133"
@@ -5032,21 +5024,13 @@ export const extensionsProbes: ProbeDefinition[] = [
   {
     ...probe(
       "extensions.osc-633-vscode",
-      (ctx) => {
-        if (absentOscAudit(ctx.runtimeIdentity, 633)) {
-          return sourceAbsentOsc("extensions.osc-633-vscode", 633, "\x1b]633;A\x07", "VS Code shell integration")(ctx)
+      () => {
+        const note = "no full-lifecycle observable on this reader"
+        return {
+          pass: false,
+          note,
+          tests: [{ id: "criterion", status: "test-todo", reason: note }],
         }
-        if (ctx.capabilities.extensions.has("semantic-marks")) {
-          return promptMarkResult(ctx, "\x1b]633;A\x07", "OSC 633 prompt-start mark registration", {
-            probeId: "extensions.osc-633-vscode",
-            selector: 633,
-            markType: "prompt",
-          })
-        }
-        const note = "Declared semantic-prompt capability does not establish VS Code OSC 633 shell integration"
-        return reviewResult(HEADLESS_OBSERVABLE_REVIEW, `Headless observable review required: ${note}`, note, {
-          declared: ctx.capabilities.semanticPrompts === true,
-        })
       },
       () => {
         const note = "No VS Code shell integration metadata or behavior readback for OSC 633"
