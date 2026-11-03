@@ -1875,7 +1875,7 @@ export function libvtermHistoryReview(ctx: LibProbeSource): ProbeCallbackResult 
     "retained scrollback history count",
     {
       sourceCitation: currentAdapter
-        ? "Termless 2f73fc28027b7d483e504e08edc64d1837935816 packages/libvterm/src/backend.ts:432-444 getScrollback reports the screen extent, not retained history; packages/libvterm/build/flat-api.c installs no history store callbacks; raw libvterm 9d6d2112335080312ef8c36667fa717ded4f7daf include/vterm.h:541-543 and src/screen.c:208-226,676-681,830-837 hand history rows to the embedding application"
+        ? "Termless 2f73fc28027b7d483e504e08edc64d1837935816 packages/libvterm/src/backend.ts:432-444 getScrollback reports the screen extent, not retained history; packages/libvterm/build/flat-api.c:199-210 installs only property observer callbacks, with no history store callbacks; raw libvterm 9d6d2112335080312ef8c36667fa717ded4f7daf include/vterm.h:541-543 and src/screen.c:208-226,676-681,830-837 hand history rows to the embedding application"
         : "Termless 6939d82b84a6bf2989dd0650329779e324790dda packages/libvterm/src/backend.ts:429-445 getScrollback reports the screen extent, not retained history; raw libvterm 9d6d2112335080312ef8c36667fa717ded4f7daf include/vterm.h:541-543 and src/screen.c:208-226,676-681,830-837 hand history rows to the embedding application",
     },
   )
