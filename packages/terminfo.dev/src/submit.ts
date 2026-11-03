@@ -2,7 +2,7 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs"
 import { basename, dirname, join } from "node:path"
 import type { ProbeSuiteManifest } from "@terminfo/probe-defs"
-import { decodeCollectorRun, decodeCollectorDraft, decodeExactUtf8, parseJsonStrict } from "@terminfo/run-parser"
+import { decodeCollectorDraft, decodeExactUtf8 } from "@terminfo/run-parser"
 
 import { aggregateCurrentResults } from "../../../docs/data/release-scope.ts"
 
@@ -30,10 +30,7 @@ export function createDraft(
 } {
   const rawBytes = readFileSync(rawRunPath)
   const raw = decodeExactUtf8(rawBytes, rawRunPath)
-  const value = parseJsonStrict(rawRunPath, raw)
-  const decoder =
-    typeof value === "object" && value !== null && "sealedAt" in value ? decodeCollectorRun : decodeCollectorDraft
-  const decoded = decoder(rawRunPath, raw, receipt.manifest, receipt.collectorRevision)
+  const decoded = decodeCollectorDraft(rawRunPath, raw, receipt.manifest, receipt.collectorRevision)
   if ("kind" in decoded && decoded.kind === "empty-selection") {
     throw new Error(`${rawRunPath}: empty selection where a capture was required`)
   }

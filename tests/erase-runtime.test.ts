@@ -68,7 +68,7 @@ test.for(["success", "deciding", "precondition", "replay-failure", "painted-seed
       await runtime.start()
       expect(reporter.records).toHaveLength(1)
       const record = reporter.records[0]!
-      expect(nativeStates).toEqual([mode === "success" ? "passed" : "failed"])
+      expect(nativeStates, String(record.error)).toEqual([mode === "success" ? "passed" : "failed"])
       const reportFiles = (await readdir(directory)).filter((path) => path.endsWith(".report.json"))
       expect(reportFiles).toHaveLength(1)
       const report = JSON.parse(await readFile(join(directory, reportFiles[0]!), "utf8"))

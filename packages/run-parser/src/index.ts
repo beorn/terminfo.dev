@@ -1447,24 +1447,3 @@ export function decodeCollectorDraft(
   return { kind: "captured", run: value as unknown as CapturedRunDraft, raw, sha256: measured.sha256 }
 }
 
-/** A final file is current only when sealed; historical files have their explicit historical decoder. */
-export function decodeCollectorRun(
-  path: string,
-  raw: string,
-  manifest: ProbeSuiteManifest,
-  collectorRevision: string,
-): { run: ProbeRun; raw: string; sha256: string } {
-  const measured = parseRun(path, raw, manifest.catalogIds ?? [], new Map([[manifest.probeHash, manifest]]))
-  if (measured.schemaVersion !== 4) fail(path, "expected sealed schemaVersion 4 collector run")
-  if (
-    measured.probeHash !== manifest.probeHash ||
-    measured.suiteId !== manifest.probeHash ||
-    measured.sourceRevision !== collectorRevision
-  ) {
-    fail(path, "collector run differs from trusted suite/source")
-  }
-  if (measured.identity !== "unverified" || measured.origin.kind !== "collector") {
-    fail(path, "collector run requires unverified measured identity and collector origin")
-  }
-  return { run: parseJsonStrict(path, raw) as unknown as ProbeRun, raw, sha256: measured.sha256 }
-}
