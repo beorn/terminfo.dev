@@ -838,7 +838,7 @@ test("each colour-stack row names its own operation in the expected sentence", (
 // #31904 R3a (@cto 6e4f7300): each colour-stack row grades its own operation. A pop that resets to
 // the starting (default) foreground passed both rows when the fixture restored that same colour; a
 // stack that keeps a stale snapshot passed the push row. Each fake below is a whole engine model.
-function colourStackEngine(kind: "reset-default" | "stale" | "pop-noop") {
+function colourStackEngine(kind: "reset-default" | "stale" | "pop-noop" | "set-ignored") {
   const original = "rgb:1010/2020/3030"
   let current = original
   const stack: string[] = []
@@ -855,7 +855,7 @@ function colourStackEngine(kind: "reset-default" | "stale" | "pop-noop") {
         else if (kind !== "pop-noop") current = stack.pop() ?? current
       } else {
         const m = /\x1b\]10;(rgb:[a-f\d/]+)/i.exec(seq)
-        if (m) current = m[1] ?? current
+        if (m && kind !== "set-ignored") current = m[1] ?? current
       }
     },
     feedCapture: () => `\x1b]10;${current}\x1b\\`,
@@ -877,3 +877,16 @@ test.each([
   if (note) expect(result.note).toContain(note)
   if (outcome === "inconclusive") expect(result.assertions).toBeUndefined()
 })
+
+// #32242 (@cto 4115d1bf): an engine that ignores the OSC 10 set never shows either stack operation,
+// so both rows are a coverage record (TEST TODO), never the negative main graded them.
+test.each(["extensions.osc30001-color-stack-push", "extensions.osc30101-color-stack-pop"])(
+  "%s with the OSC 10 set ignored is a coverage record, not a negative",
+  (id) => {
+    const probe = extensionsProbes.find((entry) => entry.id === id)!
+    const result = probe.lib!(colourStackEngine("set-ignored"))
+    expect(result.notTested).toMatchObject({ reason: "no-semantic-observable" })
+    expect(result.assertions).toBeUndefined()
+    expect(result.observation?.outcome).not.toBe("unsupported")
+  },
+)

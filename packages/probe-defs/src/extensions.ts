@@ -1166,8 +1166,9 @@ function colorStackColors(before: string): { a: string; b: string; c: string } {
 /**
  * Per-operation colour-stack grade (#31904, @cto 6e4f7300). The POP fixture (set A, push, set B,
  * pop) and the PUSH fixture (set A, set B, push, set C, pop) both run; none of A, B or C is the
- * foreground the run started with. A mutation the reply does not show leaves the stack unobservable
- * and is the joint negative both rows carry, as before the split.
+ * foreground the run started with. A set the reply does not show leaves the stack unobservable: a
+ * coverage record (TEST TODO, null review), never a negative, as the palette arm treats a failed
+ * OSC 4 calibration (#32242, @cto 4115d1bf).
  */
 function colorStackResult(
   operation: "push" | "pop",
@@ -1183,14 +1184,7 @@ function colorStackResult(
       : `OSC 30101 color-stack pop restores the pushed foreground: after set ${colors.a}, push, set ${colors.b}, pop, ${colors.a} is restored`
   const state = { id, before, colors, popFixture, pushFixture }
   if (!sameRgbText(popFixture.changed, colors.b) || !sameRgbText(pushFixture.changed, colors.c)) {
-    return parserStateResult(
-      false,
-      expected,
-      state,
-      "OSC 10 set did not change the queried color, so neither stack operation was observed",
-      undefined,
-      "query_reply",
-    )
+    return notTestedResult("an OSC 10 foreground set reflected in the queried color", state)
   }
   const pop: StackReading = sameRgbText(popFixture.restored, colors.a)
     ? "restored"
