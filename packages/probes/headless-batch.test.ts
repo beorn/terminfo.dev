@@ -1352,7 +1352,7 @@ test.each(["extensions.osc117-reset-highlight-bg", "extensions.osc119-reset-high
         tests: [{ id: "criterion", status: "test-todo" }],
       },
     ])
-    expect(parsed.results[0]?.criterionBranch).toBeUndefined()
+    expect(parsed.results?.[0]?.criterionBranch).toBeUndefined()
   },
 )
 
