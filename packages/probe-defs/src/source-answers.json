@@ -11872,6 +11872,46 @@
     "subject": {
       "kind": "lib",
       "id": "vt100",
+      "version": "0.10.1",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc5522-clipboard",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/vterm.git",
+            "commit": "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+            "path": "packages/vt100/src/screen.ts",
+            "oid": "cd71776df5f72918cd06934d724a5c2e3585a89d"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/vt100/src/backend.ts",
+            "oid": "cdb8be8c5ebbba68a5920cfa4df27c9deb31745a"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "32164-vt100-osc5522-decrqm-source-20261103",
+            "reviewer": "@dev/10",
+            "reason": "vt1000.10.1 loaded at vterm9e99e4d23cdc606fca258b1863aa2be7ae79eed3: packages/vt100/src/screen.ts:360-364 intentionally rejects DECRQM before mode-report dispatch. Termless25089207e11420cf7a588987c1dc2683a45e8372 packages/vt100/src/backend.ts forwards screen input and engine responses without substituting a mode report. This criterion is OSC5522 protocol recognition through DECRPM, not clipboard effects: an engine rejecting every mode query cannot recognize this mode. The deciding run retained DA1 and no mode report in the detector window and all fourteen sibling windows. Those measured windows qualify source review, not automatic Unsupported from silence. Actual mode reports, malformed or late bytes, other engine trees and other Termless revisions retain their existing branches.",
+            "sources": [
+              "vterm@9e99e4d23cdc606fca258b1863aa2be7ae79eed3:packages/vt100/src/screen.ts:360-364",
+              "termless@25089207e11420cf7a588987c1dc2683a45e8372:packages/vt100/src/backend.ts",
+              "capture:c90992f0-740f-47d6-be78-86f155bb569f:extensions.osc5522-clipboard:same-run-detector-and-14-siblings"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt100",
       "version": "0.10.0",
       "os": "linux"
     },
@@ -22589,6 +22629,46 @@
               "Exact engine9e99e4d23cdc606fca258b1863aa2be7ae79eed3 packages/vt220/src/screen.ts:701-716 inspected; actual 07:30 source identity and both Termless adapter blobs retained in private captures",
               "Producerab60b3dc10bcc6d5d65a022e6c2ef39ac3ac84f4 uses existing sourceAbsentOsc and source-qualified buffer-state declaration for OSC52 write/roundtrip; actual 07:39 capture plus canonical parser reaches review TODO before this kept answer",
               "Existing table proves honest nonce replies stay Supported, inert blank-cell controls never become Supported or source-qualified, and malformed/unqualified replies cannot acquire review; actual old-callback RED4 precedes producer"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt220",
+      "version": "0.10.1",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc5522-clipboard",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/vterm.git",
+            "commit": "9e99e4d23cdc606fca258b1863aa2be7ae79eed3",
+            "path": "packages/vt220/src/screen.ts",
+            "oid": "cc5c5c79b0c882cb1c335f2ccaf2c555884a05ee"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/vt220/src/backend.ts",
+            "oid": "7369e3710e36aa649372fd09011ecfdd6ba47c73"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "32164-vt220-osc5522-decrqm-source-20261103",
+            "reviewer": "@dev/10",
+            "reason": "vt2200.10.1 loaded at vterm9e99e4d23cdc606fca258b1863aa2be7ae79eed3: packages/vt220/src/screen.ts:444-447 intentionally rejects DECRQM before mode-report dispatch. Termless25089207e11420cf7a588987c1dc2683a45e8372 packages/vt220/src/backend.ts forwards screen input and engine responses without substituting a mode report. This criterion is OSC5522 protocol recognition through DECRPM, not clipboard effects: an engine rejecting every mode query cannot recognize this mode. The deciding run retained DA1 and no mode report in the detector window and all fourteen sibling windows. Those measured windows qualify source review, not automatic Unsupported from silence. Actual mode reports, malformed or late bytes, other engine trees and other Termless revisions retain their existing branches.",
+            "sources": [
+              "vterm@9e99e4d23cdc606fca258b1863aa2be7ae79eed3:packages/vt220/src/screen.ts:444-447",
+              "termless@25089207e11420cf7a588987c1dc2683a45e8372:packages/vt220/src/backend.ts",
+              "capture:30953895-30f1-4038-9af6-75e250345ea8:extensions.osc5522-clipboard:same-run-detector-and-14-siblings"
             ]
           }
         ]
