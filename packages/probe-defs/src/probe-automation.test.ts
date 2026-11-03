@@ -24,10 +24,10 @@ const OSC_SEMANTIC_MARK_CASES = [
   ["extensions.osc633-a", "\x1b]633;A\x07"],
   ["extensions.osc633-b", "\x1b]633;B\x07"],
   ["extensions.osc633-c", "\x1b]633;C\x07"],
-  ["extensions.osc633-d", "\x1b]633;D;0\x07"],
   ["extensions.osc633-e", "\x1b]633;E;ls -la;nonce123\x07"],
-  ["extensions.osc633-p", "\x1b]633;P;Cwd=/tmp\x07"],
 ] as const
+// osc633-d and osc633-p read their own command-end and Cwd reader routes (#32247); extensions-contract.test.ts
+// covers them, so the generic marker-consumption loops here exclude them.
 const OSC_SEMANTIC_MARK_IDS = OSC_SEMANTIC_MARK_CASES.map(([id]) => id)
 
 function probe(id: string) {

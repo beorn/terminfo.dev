@@ -1630,7 +1630,8 @@ test("Wezterm prompt TEST TODO rows survive actual collection and capture bindin
     const row = captured.results.find((entry) => entry.featureId === id)!
     expect(row).toMatchObject({ featureId: id, status: "test-todo" })
     expect(row.criterionBranch).not.toBe("source-negative-review")
-    expect(row).not.toHaveProperty("assertionType")
+    // osc633-d/-p report their reader route as an inconclusive observation (#32247); still TEST TODO, never graded.
+    if (id !== "extensions.osc633-d" && id !== "extensions.osc633-p") expect(row).not.toHaveProperty("assertionType")
     expect(captured.runtimeIdentity).toEqual(identity)
   }
   expect(captured.assertions).toEqual([])

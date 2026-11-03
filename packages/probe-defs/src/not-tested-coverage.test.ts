@@ -304,13 +304,12 @@ const c154SemanticMarkFeatures = [
   ["extensions.osc633-a", "\x1b]633;A\x07", "OSC 633;A prompt-start mark registration"],
   ["extensions.osc633-b", "\x1b]633;B\x07", "OSC 633;B prompt-end mark registration"],
   ["extensions.osc633-c", "\x1b]633;C\x07", "OSC 633;C pre-execution mark registration"],
-  ["extensions.osc633-d", "\x1b]633;D;0\x07", "OSC 633;D command-finished mark registration"],
   ["extensions.osc633-e", "\x1b]633;E;ls -la;nonce123\x07", "OSC 633;E commandline-with-nonce mark registration"],
-  ["extensions.osc633-p", "\x1b]633;P;Cwd=/tmp\x07", "OSC 633;P properties mark registration"],
 ] as const
 
-test("the 11 headless C154 semantic-mark features emit named coverage only after recorded home/marker/control writes and qualified cursor reads", () => {
-  expect(c154SemanticMarkFeatures).toHaveLength(11)
+test("the 9 headless C154 semantic-mark features emit named coverage only after recorded home/marker/control writes and qualified cursor reads", () => {
+  // osc633-d and osc633-p read their own reader routes (#32247), covered in extensions-contract.test.ts.
+  expect(c154SemanticMarkFeatures).toHaveLength(9)
   for (const [id, sequence, noObservable] of c154SemanticMarkFeatures) {
     const definition = ALL_PROBES.find((probe) => probe.id === id)
     if (!definition?.lib) throw new Error(`missing headless ${id}`)
