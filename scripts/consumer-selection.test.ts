@@ -504,7 +504,7 @@ describe("consumer selection", () => {
     }
   })
 
-  it("requires a reviewed default row for two exact contexts of one terminal", () => {
+  it("selects a stable summary without reading a reviewed default row and keeps both contexts", () => {
     const mac = { subject: { kind: "term", id: "kitty", os: "macos" } }
     const linux = { subject: { kind: "term", id: "kitty", os: "linux" } }
     const macKey = projectedContextKey(
@@ -539,13 +539,13 @@ describe("consumer selection", () => {
     const content = mkdtempSync(join(tmpdir(), "terminfo-context-selection-"))
     try {
       writeCatalog(content)
-      expect(() => compatibilitySubjects(projection, content)).toThrow(/Ambiguous current term:kitty/)
+      expect(compatibilitySubjects(projection, content).get("kitty")?.contextKey).toBe(linuxKey)
       writeFileSync(
         join(content, "default-contexts.json"),
         JSON.stringify({
           defaultContext: {
             "term:kitty": {
-              contextKey: linuxKey,
+              contextKey: macKey,
               reviewer: "reviewer",
               reason: "controlled Linux context selected for default view",
               sources: ["review://linux"],
@@ -554,6 +554,7 @@ describe("consumer selection", () => {
         }),
       )
       expect(compatibilitySubjects(projection, content).get("kitty")?.contextKey).toBe(linuxKey)
+      expect(Object.keys(projection.contexts).sort()).toEqual([linuxKey, macKey].sort())
     } finally {
       rmSync(content, { recursive: true, force: true })
     }

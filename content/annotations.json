@@ -1,42 +1,6 @@
 {
-  "xtermjs:cursor.hide": {
-    "note": "Parser handles DECTCEM but headless mode doesn't expose visibility state",
-    "result": "partial"
-  },
-  "xtermjs:cursor.shape": {
-    "note": "Parser handles DECSCUSR but headless mode doesn't expose cursor shape",
-    "result": "partial"
-  },
-  "xtermjs:cursor.position-report": {
-    "note": "Headless mode has no output stream for DSR responses",
-    "result": "partial"
-  },
-  "xtermjs:device.primary-da": {
-    "note": "Headless mode has no output stream for DA1 responses",
-    "result": "partial"
-  },
-  "xtermjs:device.status-report": {
-    "note": "Headless mode has no output stream for DSR responses",
-    "result": "partial"
-  },
-  "xtermjs:scrollback.scroll-up": {
-    "note": "Headless API reads from buffer, not viewport after scroll",
-    "result": "partial"
-  },
-  "xtermjs:sgr.blink": {
-    "note": "Parser handles SGR 5 but headless mode doesn't expose blink attribute",
-    "result": "partial"
-  },
-  "xtermjs:sgr.hidden": {
-    "note": "Parser handles SGR 8 but headless mode doesn't expose hidden attribute",
-    "result": "partial"
-  },
   "xtermjs:text.wide.emoji": {
     "note": "Headless mode reports emoji as single-width"
-  },
-  "xtermjs:modes.reverse-video": {
-    "note": "Parser handles DECSCNM but headless mode doesn't expose the state",
-    "result": "partial"
   },
   "xtermjs:extensions.osc7-cwd": {
     "note": "OSC 7 not implemented in xterm.js headless"
@@ -83,10 +47,6 @@
   "xtermjs:input.pixel-mouse": {
     "note": "SGR pixel mouse mode not implemented in xterm.js"
   },
-  "xtermjs:modes.mouse-sgr": {
-    "note": "SGR mouse encoding not exposed in xterm.js headless mode",
-    "result": "partial"
-  },
   "xtermjs:text.wide.emoji-flags": {
     "note": "Emoji flag sequences not rendered as wide characters"
   },
@@ -102,96 +62,20 @@
   "xtermjs:device.xtversion": {
     "note": "XTVERSION not implemented in xterm.js"
   },
-  "ghostty-native:extensions.osc2-title": {
-    "note": "Title not exposed via native Zig API",
-    "result": "partial"
-  },
-  "ghostty-native:extensions.osc0-icon-title": {
-    "note": "Title not exposed via native Zig API",
-    "result": "partial"
-  },
-  "ghostty-native:extensions.sixel": {
-    "note": "Ghostty supports sixel in the app but not exposed in libghostty headless API",
-    "result": "partial"
-  },
-  "ghostty-native:sgr.blink": {
-    "note": "Ghostty parses SGR 5 but doesn't expose blink in cell data",
-    "result": "partial"
-  },
-  "ghostty-native:sgr.hidden": {
-    "note": "Ghostty parses SGR 8 but doesn't expose hidden in cell data",
-    "result": "partial"
-  },
-  "ghostty-native:sgr.underline.color": {
-    "note": "Underline color not exposed via native Zig API",
-    "result": "partial"
-  },
-  "ghostty-native:cursor.position-report": {
-    "note": "Headless mode has no output stream for DSR responses",
-    "result": "partial"
-  },
-  "ghostty-native:device.primary-da": {
-    "note": "Headless mode has no output stream for DA1 responses",
-    "result": "partial"
-  },
-  "ghostty-native:device.status-report": {
-    "note": "Headless mode has no output stream for DSR responses",
-    "result": "partial"
-  },
-  "ghostty-native:reset.soft": {
-    "note": "DECSTR resets modes but headless probe reads stale state",
-    "result": "partial"
-  },
-  "ghostty-native:modes.left-right-margin": {
-    "note": "DECLRMM not exposed via native Zig API",
-    "result": "partial"
-  },
   "ghostty-native:extensions.osc1337-cellsize": {
     "note": "iTerm2-specific protocol not supported in headless mode"
   },
   "ghostty-native:extensions.osc1337-capabilities": {
     "note": "iTerm2-specific protocol not supported in headless mode"
   },
-  "ghostty-native:input.pixel-mouse": {
-    "note": "SGR pixel mouse mode not exposed via native Zig API",
-    "result": "partial"
-  },
   "ghostty-native:text.wide.emoji-vs16": {
     "note": "VS16 emoji variation selectors not handled by native Zig API"
-  },
-  "ghostty-native:device.secondary-da": {
-    "note": "Headless mode has no output stream for DA2 responses",
-    "result": "partial"
-  },
-  "ghostty-native:device.tertiary-da": {
-    "note": "Headless mode has no output stream for DA3 responses",
-    "result": "partial"
-  },
-  "ghostty-native:device.decrqss": {
-    "note": "Headless mode has no output stream for DECRQSS responses",
-    "result": "partial"
-  },
-  "ghostty-native:device.xtgettcap": {
-    "note": "Headless mode has no output stream for XTGETTCAP responses",
-    "result": "partial"
-  },
-  "ghostty-native:device.decrpm": {
-    "note": "Headless mode has no output stream for DECRPM responses",
-    "result": "partial"
-  },
-  "ghostty-native:device.xtversion": {
-    "note": "Headless mode has no output stream for XTVERSION responses",
-    "result": "partial"
   },
   "ghostty-native:input.urxvt-mouse": {
     "note": "urxvt mouse mode (?1015) not implemented"
   },
   "ghostty-native:input.x10-mouse": {
     "note": "X10 mouse mode (?9) not implemented"
-  },
-  "ghostty-native:input.button-event-mouse": {
-    "note": "Button-event mouse tracking not exposed via headless API",
-    "result": "partial"
   },
   "ghostty-native:extensions.osc7-cwd": {
     "note": "OSC 7 CWD reporting not supported in headless mode"
@@ -205,14 +89,6 @@
   "ghostty-native:input.modify-other-keys": {
     "note": "modifyOtherKeys mode not supported in headless mode"
   },
-  "ghostty-native:modes.mouse-sgr": {
-    "note": "SGR mouse encoding not exposed via native Zig API",
-    "result": "partial"
-  },
-  "ghostty-native:modes.mouse-all": {
-    "note": "All-motion mouse tracking not exposed via native Zig API",
-    "result": "partial"
-  },
   "ghostty:modes.left-right-margin": {
     "note": "DECLRMM not tracked by ghostty-web WASM backend"
   },
@@ -225,20 +101,8 @@
   "ghostty:input.pixel-mouse": {
     "note": "SGR pixel mouse mode not tracked by ghostty-web WASM backend"
   },
-  "alacritty:extensions.osc7-cwd": {
-    "note": "OSC 7 CWD reporting not exposed via alacritty_terminal API",
-    "result": "partial"
-  },
-  "alacritty:extensions.notifications": {
-    "note": "OSC 9 notifications not exposed via alacritty_terminal API",
-    "result": "partial"
-  },
   "alacritty:extensions.iterm2-images": {
     "note": "iTerm2 inline images not supported by alacritty"
-  },
-  "alacritty:input.modify-other-keys": {
-    "note": "modifyOtherKeys not exposed via alacritty_terminal API",
-    "result": "partial"
   },
   "alacritty:erase.screen.all": {
     "note": "Alacritty's ED 2 doesn't clear scrollback content from buffer"
@@ -254,83 +118,11 @@
     "note": "Not implemented in alacritty",
     "url": "https://github.com/alacritty/alacritty/issues/910"
   },
-  "alacritty:modes.reverse-video": {
-    "note": "Not exposed via alacritty_terminal API",
-    "result": "partial"
-  },
-  "alacritty:sgr.blink": {
-    "note": "Not exposed via alacritty_terminal API",
-    "result": "partial"
-  },
-  "alacritty:sgr.hidden": {
-    "note": "Not exposed via alacritty_terminal API",
-    "result": "partial"
-  },
-  "alacritty:sgr.underline.double": {
-    "note": "Alacritty supports double underline in app but not in headless mode",
-    "result": "partial"
-  },
-  "alacritty:sgr.underline.color": {
-    "note": "Not exposed via alacritty_terminal API",
-    "result": "partial"
-  },
-  "alacritty:sgr.fg.standard": {
-    "note": "Backend returns palette index instead of resolved RGB",
-    "result": "partial"
-  },
-  "alacritty:cursor.position-report": {
-    "note": "Headless mode has no output stream for DSR responses",
-    "result": "partial"
-  },
-  "alacritty:device.primary-da": {
-    "note": "Headless mode has no output stream for DA1 responses",
-    "result": "partial"
-  },
-  "alacritty:device.status-report": {
-    "note": "Headless mode has no output stream for DSR responses",
-    "result": "partial"
-  },
-  "alacritty:reset.soft": {
-    "note": "DECSTR resets modes but headless probe reads stale state",
-    "result": "partial"
-  },
-  "alacritty:modes.left-right-margin": {
-    "note": "DECLRMM not exposed via alacritty_terminal API",
-    "result": "partial"
-  },
-  "alacritty:device.secondary-da": {
-    "note": "Headless mode has no output stream for DA2 responses",
-    "result": "partial"
-  },
-  "alacritty:device.tertiary-da": {
-    "note": "Headless mode has no output stream for DA3 responses",
-    "result": "partial"
-  },
-  "alacritty:device.decrqss": {
-    "note": "Headless mode has no output stream for DECRQSS responses",
-    "result": "partial"
-  },
-  "alacritty:device.xtgettcap": {
-    "note": "Headless mode has no output stream for XTGETTCAP responses",
-    "result": "partial"
-  },
-  "alacritty:device.decrpm": {
-    "note": "Headless mode has no output stream for DECRPM responses",
-    "result": "partial"
-  },
-  "alacritty:device.xtversion": {
-    "note": "Headless mode has no output stream for XTVERSION responses",
-    "result": "partial"
-  },
   "alacritty:extensions.osc1337-cellsize": {
     "note": "iTerm2-specific protocol not supported"
   },
   "alacritty:extensions.osc1337-capabilities": {
     "note": "iTerm2-specific protocol not supported"
-  },
-  "alacritty:input.pixel-mouse": {
-    "note": "SGR pixel mouse mode not exposed via alacritty_terminal API",
-    "result": "partial"
   },
   "alacritty:extensions.osc-633-vscode": {
     "note": "VS Code shell integration (OSC 633) not supported"
@@ -353,115 +145,11 @@
   "alacritty:erase.selective": {
     "note": "DECSED (selective erase) not supported in alacritty"
   },
-  "alacritty:modes.mouse-sgr": {
-    "note": "SGR mouse encoding not exposed via alacritty_terminal API",
-    "result": "partial"
-  },
-  "kitty:extensions.osc7-cwd": {
-    "note": "OSC 7 CWD reporting not exposed via Python batch bridge",
-    "result": "partial"
-  },
-  "kitty:extensions.notifications": {
-    "note": "OSC 9 notifications not exposed via Python batch bridge",
-    "result": "partial"
-  },
   "kitty:extensions.iterm2-images": {
     "note": "Kitty uses its own graphics protocol instead of iTerm2 inline images"
   },
-  "kitty:input.modify-other-keys": {
-    "note": "modifyOtherKeys not exposed via Python batch bridge",
-    "result": "partial"
-  },
   "kitty:extensions.sixel": {
     "note": "Declined by maintainer — kitty uses its own graphics protocol instead of sixel"
-  },
-  "kitty:modes.mouse-tracking": {
-    "note": "Not exposed via Python batch bridge",
-    "result": "partial"
-  },
-  "kitty:modes.reverse-video": {
-    "note": "Not exposed via Python batch bridge",
-    "result": "partial"
-  },
-  "kitty:sgr.hidden": {
-    "note": "Not exposed via Python batch bridge",
-    "result": "partial"
-  },
-  "kitty:sgr.underline.color": {
-    "note": "Not exposed via Python batch bridge",
-    "result": "partial"
-  },
-  "kitty:modes.origin": {
-    "note": "Not exposed via Python batch bridge",
-    "result": "partial"
-  },
-  "kitty:modes.insert-replace": {
-    "note": "Not exposed via Python batch bridge",
-    "result": "partial"
-  },
-  "kitty:modes.application-keypad": {
-    "note": "Not exposed via Python batch bridge",
-    "result": "partial"
-  },
-  "kitty:cursor.position-report": {
-    "note": "Headless mode has no output stream for DSR responses",
-    "result": "partial"
-  },
-  "kitty:device.primary-da": {
-    "note": "Headless mode has no output stream for DA1 responses",
-    "result": "partial"
-  },
-  "kitty:device.status-report": {
-    "note": "Headless mode has no output stream for DSR responses",
-    "result": "partial"
-  },
-  "kitty:reset.soft": {
-    "note": "DECSTR resets modes but headless probe reads stale state",
-    "result": "partial"
-  },
-  "kitty:modes.left-right-margin": {
-    "note": "DECLRMM not exposed via Python batch bridge",
-    "result": "partial"
-  },
-  "kitty:device.secondary-da": {
-    "note": "Headless mode has no output stream for DA2 responses",
-    "result": "partial"
-  },
-  "kitty:device.tertiary-da": {
-    "note": "Headless mode has no output stream for DA3 responses",
-    "result": "partial"
-  },
-  "kitty:device.decrqss": {
-    "note": "Headless mode has no output stream for DECRQSS responses",
-    "result": "partial"
-  },
-  "kitty:device.xtgettcap": {
-    "note": "Headless mode has no output stream for XTGETTCAP responses",
-    "result": "partial"
-  },
-  "kitty:device.decrpm": {
-    "note": "Headless mode has no output stream for DECRPM responses",
-    "result": "partial"
-  },
-  "kitty:device.xtversion": {
-    "note": "Headless mode has no output stream for XTVERSION responses",
-    "result": "partial"
-  },
-  "kitty:input.pixel-mouse": {
-    "note": "SGR pixel mouse mode not exposed via Python batch bridge",
-    "result": "partial"
-  },
-  "kitty:input.button-event-mouse": {
-    "note": "Button-event mouse tracking not exposed via headless API",
-    "result": "partial"
-  },
-  "kitty:modes.mouse-sgr": {
-    "note": "SGR mouse encoding not exposed via Python batch bridge",
-    "result": "partial"
-  },
-  "kitty:modes.mouse-all": {
-    "note": "All-motion mouse tracking not exposed via Python batch bridge",
-    "result": "partial"
   },
   "vt100:extensions.osc7-cwd": {
     "note": "Not implemented — pure TypeScript emulator"
@@ -577,62 +265,6 @@
   "wezterm:extensions.kitty-graphics": {
     "note": "Not implemented in wezterm-term crate"
   },
-  "wezterm:sgr.blink": {
-    "note": "Not exposed via wezterm-term API",
-    "result": "partial"
-  },
-  "wezterm:sgr.hidden": {
-    "note": "Not exposed via wezterm-term API",
-    "result": "partial"
-  },
-  "wezterm:sgr.fg.256": {
-    "note": "Backend returns palette index instead of resolved RGB",
-    "result": "partial"
-  },
-  "wezterm:sgr.bg.256": {
-    "note": "Backend returns palette index instead of resolved RGB",
-    "result": "partial"
-  },
-  "wezterm:sgr.fg.standard": {
-    "note": "Backend returns palette index instead of resolved RGB",
-    "result": "partial"
-  },
-  "wezterm:sgr.bg.standard": {
-    "note": "Backend returns palette index instead of resolved RGB",
-    "result": "partial"
-  },
-  "wezterm:sgr.fg.bright": {
-    "note": "Backend returns palette index instead of resolved RGB",
-    "result": "partial"
-  },
-  "wezterm:sgr.bg.bright": {
-    "note": "Backend returns palette index instead of resolved RGB",
-    "result": "partial"
-  },
-  "wezterm:sgr.underline.color": {
-    "note": "Not exposed via wezterm-term API",
-    "result": "partial"
-  },
-  "wezterm:modes.application-keypad": {
-    "note": "Not exposed via wezterm-term API",
-    "result": "partial"
-  },
-  "wezterm:cursor.position-report": {
-    "note": "Headless mode has no output stream for DSR responses",
-    "result": "partial"
-  },
-  "wezterm:device.primary-da": {
-    "note": "Headless mode has no output stream for DA1 responses",
-    "result": "partial"
-  },
-  "wezterm:device.status-report": {
-    "note": "Headless mode has no output stream for DSR responses",
-    "result": "partial"
-  },
-  "wezterm:reset.soft": {
-    "note": "DECSTR resets modes but headless probe reads stale state",
-    "result": "partial"
-  },
   "wezterm:input.urxvt-mouse": {
     "note": "urxvt mouse mode (?1015) not implemented"
   },
@@ -642,24 +274,8 @@
   "wezterm:erase.selective": {
     "note": "DECSED (selective erase) not supported in wezterm-term"
   },
-  "wezterm:modes.mouse-sgr": {
-    "note": "SGR mouse encoding not exposed via wezterm-term API",
-    "result": "partial"
-  },
-  "vterm:modes.application-keypad": {
-    "note": "Application keypad mode parsed but not exposed via getMode()",
-    "result": "partial"
-  },
   "vterm:modes.left-right-margin": {
     "note": "DECLRMM not implemented"
-  },
-  "wezterm:unicode.wrap-boundary": {
-    "note": "Wide char at end of line not handled correctly in headless mode",
-    "result": "no"
-  },
-  "wezterm:modes.left-right-margin": {
-    "note": "DECLRMM not exposed via wezterm-term API",
-    "result": "partial"
   },
   "wezterm:extensions.osc1337-cellsize": {
     "note": "iTerm2-specific protocol not supported"
@@ -667,24 +283,8 @@
   "wezterm:extensions.osc1337-capabilities": {
     "note": "iTerm2-specific protocol not supported"
   },
-  "wezterm:input.pixel-mouse": {
-    "note": "SGR pixel mouse mode not exposed via wezterm-term API",
-    "result": "partial"
-  },
-  "wezterm:extensions.osc7-cwd": {
-    "note": "OSC 7 CWD reporting not exposed via wezterm-term API",
-    "result": "partial"
-  },
-  "wezterm:extensions.notifications": {
-    "note": "OSC 9 notifications not exposed via wezterm-term API",
-    "result": "partial"
-  },
   "wezterm:extensions.iterm2-images": {
     "note": "iTerm2 inline images not supported by wezterm"
-  },
-  "wezterm:input.modify-other-keys": {
-    "note": "modifyOtherKeys not exposed via wezterm-term API",
-    "result": "partial"
   },
   "wezterm:cursor.cup-boundaries": {
     "note": "CUP boundary behavior differs in wezterm-term headless mode"
@@ -694,30 +294,6 @@
   },
   "wezterm:erase.el-with-attrs": {
     "note": "EL doesn't preserve SGR background in headless mode"
-  },
-  "wezterm:device.secondary-da": {
-    "note": "Headless mode has no output stream for DA2 responses",
-    "result": "partial"
-  },
-  "wezterm:device.tertiary-da": {
-    "note": "Headless mode has no output stream for DA3 responses",
-    "result": "partial"
-  },
-  "wezterm:device.decrqss": {
-    "note": "Headless mode has no output stream for DECRQSS responses",
-    "result": "partial"
-  },
-  "wezterm:device.xtgettcap": {
-    "note": "Headless mode has no output stream for XTGETTCAP responses",
-    "result": "partial"
-  },
-  "wezterm:device.decrpm": {
-    "note": "Headless mode has no output stream for DECRPM responses",
-    "result": "partial"
-  },
-  "wezterm:device.xtversion": {
-    "note": "Headless mode has no output stream for XTVERSION responses",
-    "result": "partial"
   },
   "tmux:cursor.cup-boundaries": {
     "note": "tmux reinterprets CUP coordinates within its own grid, boundary behavior differs"
@@ -887,18 +463,6 @@
   "vt100:unicode.wrap-boundary": {
     "note": "Not in VT100/VT220 — ASCII only, no Unicode width"
   },
-  "ghostty-native:modes.color-scheme-reporting": {
-    "note": "Mode 2031 not exposed in headless mode",
-    "result": "partial"
-  },
-  "ghostty-native:extensions.osc5522-clipboard": {
-    "note": "OSC 5522 not exposed in headless mode",
-    "result": "partial"
-  },
-  "ghostty-native:input.modify-other-keys-3": {
-    "note": "modifyOtherKeys mode 3 not exposed in headless mode",
-    "result": "partial"
-  },
   "xtermjs:modes.color-scheme-reporting": {
     "note": "Mode 2031 not implemented in xterm.js"
   },
@@ -908,38 +472,14 @@
   "xtermjs:input.modify-other-keys-3": {
     "note": "modifyOtherKeys mode 3 not implemented in xterm.js"
   },
-  "wezterm:modes.color-scheme-reporting": {
-    "note": "Mode 2031 not exposed in headless mode",
-    "result": "partial"
-  },
   "wezterm:extensions.osc5522-clipboard": {
     "note": "OSC 5522 not implemented in wezterm"
-  },
-  "wezterm:input.modify-other-keys-3": {
-    "note": "modifyOtherKeys mode 3 not exposed in headless mode",
-    "result": "partial"
-  },
-  "kitty:modes.color-scheme-reporting": {
-    "note": "Mode 2031 not exposed via Python batch bridge",
-    "result": "partial"
-  },
-  "kitty:extensions.osc5522-clipboard": {
-    "note": "OSC 5522 not exposed via Python batch bridge",
-    "result": "partial"
-  },
-  "kitty:input.modify-other-keys-3": {
-    "note": "modifyOtherKeys mode 3 not exposed via Python batch bridge",
-    "result": "partial"
   },
   "alacritty:modes.color-scheme-reporting": {
     "note": "Mode 2031 not implemented in alacritty"
   },
   "alacritty:extensions.osc5522-clipboard": {
     "note": "OSC 5522 not implemented in alacritty"
-  },
-  "alacritty:input.modify-other-keys-3": {
-    "note": "modifyOtherKeys mode 3 not exposed in headless mode",
-    "result": "partial"
   },
   "vt100:modes.color-scheme-reporting": {
     "note": "Not implemented — pure TypeScript emulator"
@@ -959,19 +499,11 @@
   "vterm:extensions.osc66-text-sizing": {
     "note": "OSC 66 text sizing not implemented"
   },
-  "ghostty-native:extensions.osc66-text-sizing": {
-    "note": "OSC 66 parsed but not exposed in headless mode",
-    "result": "partial"
-  },
   "xtermjs:extensions.osc66-text-sizing": {
     "note": "OSC 66 text sizing not implemented in xterm.js"
   },
   "wezterm:extensions.osc66-text-sizing": {
     "note": "OSC 66 text sizing not implemented in wezterm"
-  },
-  "kitty:extensions.osc66-text-sizing": {
-    "note": "OSC 66 not exposed via Python batch bridge — kitty supports it natively",
-    "result": "partial"
   },
   "alacritty:extensions.osc66-text-sizing": {
     "note": "OSC 66 text sizing not implemented in alacritty"
@@ -979,52 +511,8 @@
   "vt100:extensions.osc66-text-sizing": {
     "note": "Not implemented — pure TypeScript emulator"
   },
-  "ghostty-native:extensions.osc52-clipboard": {
-    "note": "OSC 52 clipboard not exposed in headless mode",
-    "result": "partial"
-  },
-  "ghostty-native:extensions.osc10-fg-color": {
-    "note": "OSC 10 color query not exposed in headless mode",
-    "result": "partial"
-  },
-  "ghostty-native:extensions.osc11-bg-color": {
-    "note": "OSC 11 color query not exposed in headless mode",
-    "result": "partial"
-  },
-  "ghostty-native:extensions.sixel-da1": {
-    "note": "Sixel DA1 attribute not exposed in headless API",
-    "result": "partial"
-  },
   "xtermjs:extensions.sixel-da1": {
     "note": "Sixel not implemented in xterm.js"
-  },
-  "wezterm:extensions.osc52-clipboard": {
-    "note": "OSC 52 clipboard not exposed in headless mode",
-    "result": "partial"
-  },
-  "wezterm:extensions.osc10-fg-color": {
-    "note": "OSC 10 color query not exposed in headless mode",
-    "result": "partial"
-  },
-  "wezterm:extensions.osc11-bg-color": {
-    "note": "OSC 11 color query not exposed in headless mode",
-    "result": "partial"
-  },
-  "wezterm:extensions.sixel-da1": {
-    "note": "Sixel DA1 attribute not exposed in headless mode",
-    "result": "partial"
-  },
-  "kitty:extensions.osc52-clipboard": {
-    "note": "OSC 52 clipboard not exposed via Python batch bridge",
-    "result": "partial"
-  },
-  "kitty:extensions.osc10-fg-color": {
-    "note": "OSC 10 color query not exposed via Python batch bridge",
-    "result": "partial"
-  },
-  "kitty:extensions.osc11-bg-color": {
-    "note": "OSC 11 color query not exposed via Python batch bridge",
-    "result": "partial"
   },
   "kitty:extensions.osc1337-cellsize": {
     "note": "iTerm2-specific protocol not supported by kitty"
@@ -1041,18 +529,6 @@
   "kitty:input.x10-mouse": {
     "note": "X10 mouse mode (?9) not implemented in kitty"
   },
-  "alacritty:extensions.osc52-clipboard": {
-    "note": "OSC 52 clipboard not exposed in headless mode",
-    "result": "partial"
-  },
-  "alacritty:extensions.osc10-fg-color": {
-    "note": "OSC 10 color query not exposed in headless mode",
-    "result": "partial"
-  },
-  "alacritty:extensions.osc11-bg-color": {
-    "note": "OSC 11 color query not exposed in headless mode",
-    "result": "partial"
-  },
   "alacritty:extensions.sixel-da1": {
     "note": "Sixel not implemented in alacritty"
   },
@@ -1067,10 +543,6 @@
   },
   "vt100:extensions.sixel-da1": {
     "note": "Not implemented — pure TypeScript emulator"
-  },
-  "ghostty-native:extensions.osc52-read": {
-    "note": "OSC 52 clipboard read not exposed in headless mode",
-    "result": "partial"
   },
   "xtermjs:extensions.kitty-keyboard.disambiguate": {
     "note": "Kitty keyboard protocol not implemented in xterm.js"
@@ -1111,22 +583,6 @@
   "wezterm:extensions.kitty-graphics.unicode-placeholders": {
     "note": "Kitty graphics not implemented in wezterm-term crate"
   },
-  "wezterm:extensions.osc52-read": {
-    "note": "OSC 52 clipboard read not exposed in headless mode",
-    "result": "partial"
-  },
-  "kitty:extensions.osc52-read": {
-    "note": "OSC 52 clipboard read not exposed via Python batch bridge",
-    "result": "partial"
-  },
-  "kitty:extensions.semantic-prompts": {
-    "note": "OSC 133 not exposed via Python batch bridge",
-    "result": "partial"
-  },
-  "kitty:extensions.osc-633-vscode": {
-    "note": "OSC 633 not exposed via Python batch bridge",
-    "result": "partial"
-  },
   "alacritty:extensions.kitty-graphics.transmit": {
     "note": "Kitty graphics not implemented in alacritty"
   },
@@ -1138,10 +594,6 @@
   },
   "alacritty:extensions.kitty-graphics.unicode-placeholders": {
     "note": "Kitty graphics not implemented in alacritty"
-  },
-  "alacritty:extensions.osc52-read": {
-    "note": "OSC 52 clipboard read not exposed in headless mode",
-    "result": "partial"
   },
   "vt100:extensions.kitty-keyboard.disambiguate": {
     "note": "Not implemented — pure TypeScript emulator"
@@ -1437,94 +889,6 @@
   "vterm:reset.decaln": {
     "note": "DECALN not implemented in vterm.js"
   },
-  "ghostty-native:sgr.underline-color-indexed": {
-    "note": "Headless ghostty-native backend doesn't expose underlineColor on cells",
-    "result": "partial"
-  },
-  "ghostty-native:sgr.underline-color-rgb": {
-    "note": "Headless ghostty-native backend doesn't expose underlineColor on cells",
-    "result": "partial"
-  },
-  "ghostty-native:modes.altscreen-47": {
-    "note": "Legacy ?47 alt screen not honoured by ghostty-native headless backend",
-    "result": "partial"
-  },
-  "ghostty-native:modes.xtpushsgr": {
-    "note": "SGR stack not exposed in headless mode; sequence consumed silently",
-    "result": "partial"
-  },
-  "ghostty-native:modes.xtpopsgr": {
-    "note": "SGR stack not exposed in headless mode; sequence consumed silently",
-    "result": "partial"
-  },
-  "ghostty-native:modes.xtsave": {
-    "note": "XTSAVE private mode save not exposed in headless mode",
-    "result": "partial"
-  },
-  "ghostty-native:modes.xtrestore": {
-    "note": "XTRESTORE private mode restore not exposed in headless mode",
-    "result": "partial"
-  },
-  "ghostty-native:modes.xtpushcolors": {
-    "note": "Color palette stack not exposed in headless mode",
-    "result": "partial"
-  },
-  "ghostty-native:modes.xtpopcolors": {
-    "note": "Color palette stack not exposed in headless mode",
-    "result": "partial"
-  },
-  "ghostty-native:device.xtwinops-14": {
-    "note": "Window pixel-size report requires a real window system",
-    "result": "partial"
-  },
-  "ghostty-native:device.xtwinops-16": {
-    "note": "Cell pixel-size report requires a real window system",
-    "result": "partial"
-  },
-  "ghostty-native:device.xtwinops-18": {
-    "note": "Text area size report not exposed in headless mode",
-    "result": "partial"
-  },
-  "ghostty-native:device.xtwinops-20": {
-    "note": "Icon label report requires a real window system",
-    "result": "partial"
-  },
-  "ghostty-native:device.xtwinops-21": {
-    "note": "Window title report requires a real window system",
-    "result": "partial"
-  },
-  "ghostty-native:device.xtwinops-22": {
-    "note": "Title stack push not exposed in headless mode",
-    "result": "partial"
-  },
-  "ghostty-native:device.xtwinops-23": {
-    "note": "Title stack pop not exposed in headless mode",
-    "result": "partial"
-  },
-  "ghostty-native:extensions.osc21-kitty-color": {
-    "note": "Kitty color protocol (OSC 21) not implemented by ghostty",
-    "result": "partial"
-  },
-  "xtermjs:device.xtwinops-14": {
-    "note": "Window operations require real window system; not exposed in headless mode",
-    "result": "partial"
-  },
-  "xtermjs:device.xtwinops-16": {
-    "note": "Window operations require real window system; not exposed in headless mode",
-    "result": "partial"
-  },
-  "xtermjs:device.xtwinops-18": {
-    "note": "Text area size report not exposed in xterm.js headless mode",
-    "result": "partial"
-  },
-  "xtermjs:device.xtwinops-20": {
-    "note": "Icon label report not exposed in xterm.js headless mode",
-    "result": "partial"
-  },
-  "xtermjs:device.xtwinops-21": {
-    "note": "Window title report not exposed in xterm.js headless mode",
-    "result": "partial"
-  },
   "xtermjs:extensions.osc52-clipboard": {
     "note": "OSC 52 clipboard not implemented in xterm.js"
   },
@@ -1540,155 +904,11 @@
   "xtermjs:extensions.osc21-kitty-color": {
     "note": "Kitty color protocol (OSC 21) not implemented in xterm.js"
   },
-  "wezterm:sgr.underline-color-indexed": {
-    "note": "Headless wezterm backend doesn't expose underlineColor on cells",
-    "result": "partial"
-  },
-  "wezterm:sgr.underline-color-rgb": {
-    "note": "Headless wezterm backend doesn't expose underlineColor on cells",
-    "result": "partial"
-  },
-  "wezterm:modes.xtpushsgr": {
-    "note": "SGR stack not exposed in headless mode; sequence consumed silently",
-    "result": "partial"
-  },
-  "wezterm:modes.xtpopsgr": {
-    "note": "SGR stack not exposed in headless mode; sequence consumed silently",
-    "result": "partial"
-  },
-  "wezterm:modes.xtsave": {
-    "note": "XTSAVE private mode save not exposed in headless mode",
-    "result": "partial"
-  },
-  "wezterm:modes.xtrestore": {
-    "note": "XTRESTORE private mode restore not exposed in headless mode",
-    "result": "partial"
-  },
-  "wezterm:modes.xtpushcolors": {
-    "note": "Color palette stack not exposed in headless mode",
-    "result": "partial"
-  },
-  "wezterm:modes.xtpopcolors": {
-    "note": "Color palette stack not exposed in headless mode",
-    "result": "partial"
-  },
-  "wezterm:device.xtwinops-14": {
-    "note": "Window pixel-size report requires a real window system",
-    "result": "partial"
-  },
-  "wezterm:device.xtwinops-16": {
-    "note": "Cell pixel-size report requires a real window system",
-    "result": "partial"
-  },
-  "wezterm:device.xtwinops-18": {
-    "note": "Text area size report not exposed in headless mode",
-    "result": "partial"
-  },
-  "wezterm:device.xtwinops-20": {
-    "note": "Icon label report requires a real window system",
-    "result": "partial"
-  },
-  "wezterm:device.xtwinops-21": {
-    "note": "Window title report requires a real window system",
-    "result": "partial"
-  },
-  "wezterm:device.xtwinops-22": {
-    "note": "Title stack push not exposed in headless mode",
-    "result": "partial"
-  },
-  "wezterm:device.xtwinops-23": {
-    "note": "Title stack pop not exposed in headless mode",
-    "result": "partial"
-  },
   "wezterm:extensions.osc21-kitty-color": {
     "note": "Kitty color protocol (OSC 21) not implemented by wezterm"
   },
-  "kitty:sgr.underline-color-indexed": {
-    "note": "Underline color not exposed via Python batch bridge",
-    "result": "partial"
-  },
-  "kitty:sgr.underline-color-rgb": {
-    "note": "Underline color not exposed via Python batch bridge",
-    "result": "partial"
-  },
-  "kitty:modes.altscreen-1048": {
-    "note": "?1048 save/restore cursor not exposed via Python batch bridge",
-    "result": "partial"
-  },
-  "kitty:modes.xtpushsgr": {
-    "note": "SGR stack not exposed via Python batch bridge",
-    "result": "partial"
-  },
-  "kitty:modes.xtpopsgr": {
-    "note": "SGR stack not exposed via Python batch bridge",
-    "result": "partial"
-  },
-  "kitty:modes.xtsave": {
-    "note": "XTSAVE private mode save not exposed via Python batch bridge",
-    "result": "partial"
-  },
-  "kitty:modes.xtrestore": {
-    "note": "XTRESTORE private mode restore not exposed via Python batch bridge",
-    "result": "partial"
-  },
-  "kitty:modes.xtpushcolors": {
-    "note": "Color palette stack not exposed via Python batch bridge",
-    "result": "partial"
-  },
-  "kitty:modes.xtpopcolors": {
-    "note": "Color palette stack not exposed via Python batch bridge",
-    "result": "partial"
-  },
-  "kitty:device.xtwinops-14": {
-    "note": "Window operations not exposed via Python batch bridge",
-    "result": "partial"
-  },
-  "kitty:device.xtwinops-16": {
-    "note": "Window operations not exposed via Python batch bridge",
-    "result": "partial"
-  },
-  "kitty:device.xtwinops-18": {
-    "note": "Window operations not exposed via Python batch bridge",
-    "result": "partial"
-  },
-  "kitty:device.xtwinops-20": {
-    "note": "Window operations not exposed via Python batch bridge",
-    "result": "partial"
-  },
-  "kitty:device.xtwinops-21": {
-    "note": "Window operations not exposed via Python batch bridge",
-    "result": "partial"
-  },
-  "kitty:device.xtwinops-22": {
-    "note": "Title stack not exposed via Python batch bridge",
-    "result": "partial"
-  },
-  "kitty:device.xtwinops-23": {
-    "note": "Title stack not exposed via Python batch bridge",
-    "result": "partial"
-  },
-  "kitty:extensions.osc21-kitty-color": {
-    "note": "OSC 21 query responses not exposed via Python batch bridge",
-    "result": "partial"
-  },
-  "alacritty:sgr.underline-color-indexed": {
-    "note": "Headless alacritty backend doesn't expose underlineColor on cells",
-    "result": "partial"
-  },
-  "alacritty:sgr.underline-color-rgb": {
-    "note": "Headless alacritty backend doesn't expose underlineColor on cells",
-    "result": "partial"
-  },
   "alacritty:modes.altscreen-47": {
     "note": "Legacy ?47 alt screen not supported by alacritty"
-  },
-  "alacritty:modes.altscreen-1047": {
-    "note": "?1047 alt screen (with clear) not exposed in headless mode",
-    "result": "partial"
-  },
-  "alacritty:modes.altscreen-1048": {
-    "note": "?1048 save/restore cursor not exposed in headless mode",
-    "result": "partial"
   },
   "alacritty:modes.xtpushsgr": {
     "note": "SGR stack not implemented by alacritty"
@@ -1707,18 +927,6 @@
   },
   "alacritty:modes.xtpopcolors": {
     "note": "Color palette stack not implemented by alacritty"
-  },
-  "alacritty:device.xtwinops-14": {
-    "note": "Window pixel-size report requires a real window system",
-    "result": "partial"
-  },
-  "alacritty:device.xtwinops-16": {
-    "note": "Cell pixel-size report requires a real window system",
-    "result": "partial"
-  },
-  "alacritty:device.xtwinops-18": {
-    "note": "Text area size report not exposed in headless mode",
-    "result": "partial"
   },
   "alacritty:device.xtwinops-20": {
     "note": "Icon label report not implemented by alacritty"
@@ -1791,397 +999,5 @@
   },
   "vterm:extensions.osc21-kitty-color": {
     "note": "Kitty color protocol (OSC 21) not implemented in vterm.js"
-  },
-  "ghostty-native:editing.decfra": {
-    "note": "VT420 rectangular area operations not implemented — legacy DEC features omitted by most modern terminals",
-    "result": "no"
-  },
-  "ghostty-native:editing.decera": {
-    "note": "VT420 rectangular area operations not implemented — legacy DEC features omitted by most modern terminals",
-    "result": "no"
-  },
-  "ghostty-native:editing.decsera": {
-    "note": "VT420 rectangular area operations not implemented — legacy DEC features omitted by most modern terminals",
-    "result": "no"
-  },
-  "ghostty-native:editing.deccra": {
-    "note": "VT420 rectangular area operations not implemented — legacy DEC features omitted by most modern terminals",
-    "result": "no"
-  },
-  "ghostty-native:editing.deccara": {
-    "note": "VT420 rectangular area operations not implemented — legacy DEC features omitted by most modern terminals",
-    "result": "no"
-  },
-  "ghostty-native:editing.decrara": {
-    "note": "VT420 rectangular area operations not implemented — legacy DEC features omitted by most modern terminals",
-    "result": "no"
-  },
-  "ghostty-native:editing.decrqcra": {
-    "note": "VT420 rectangular area operations not implemented — legacy DEC features omitted by most modern terminals",
-    "result": "no"
-  },
-  "ghostty-native:editing.sl": {
-    "note": "Column editing (SL/SR/DECIC/DECDC) not implemented — rarely needed by modern TUI apps",
-    "result": "no"
-  },
-  "ghostty-native:editing.sr": {
-    "note": "Column editing (SL/SR/DECIC/DECDC) not implemented — rarely needed by modern TUI apps",
-    "result": "no"
-  },
-  "ghostty-native:editing.decic": {
-    "note": "Column editing (SL/SR/DECIC/DECDC) not implemented — rarely needed by modern TUI apps",
-    "result": "no"
-  },
-  "ghostty-native:editing.decdc": {
-    "note": "Column editing (SL/SR/DECIC/DECDC) not implemented — rarely needed by modern TUI apps",
-    "result": "no"
-  },
-  "xtermjs:editing.decfra": {
-    "note": "VT420 rectangular area operations not implemented — legacy DEC features omitted by most modern terminals",
-    "result": "no"
-  },
-  "xtermjs:editing.decera": {
-    "note": "VT420 rectangular area operations not implemented — legacy DEC features omitted by most modern terminals",
-    "result": "no"
-  },
-  "xtermjs:editing.decsera": {
-    "note": "VT420 rectangular area operations not implemented — legacy DEC features omitted by most modern terminals",
-    "result": "no"
-  },
-  "xtermjs:editing.deccra": {
-    "note": "VT420 rectangular area operations not implemented — legacy DEC features omitted by most modern terminals",
-    "result": "no"
-  },
-  "xtermjs:editing.deccara": {
-    "note": "VT420 rectangular area operations not implemented — legacy DEC features omitted by most modern terminals",
-    "result": "no"
-  },
-  "xtermjs:editing.decrara": {
-    "note": "VT420 rectangular area operations not implemented — legacy DEC features omitted by most modern terminals",
-    "result": "no"
-  },
-  "xtermjs:editing.decrqcra": {
-    "note": "VT420 rectangular area operations not implemented — legacy DEC features omitted by most modern terminals",
-    "result": "no"
-  },
-  "xtermjs:editing.sl": {
-    "note": "Column editing (SL/SR/DECIC/DECDC) not implemented — rarely needed by modern TUI apps",
-    "result": "no"
-  },
-  "xtermjs:editing.sr": {
-    "note": "Column editing (SL/SR/DECIC/DECDC) not implemented — rarely needed by modern TUI apps",
-    "result": "no"
-  },
-  "xtermjs:editing.decic": {
-    "note": "Column editing (SL/SR/DECIC/DECDC) not implemented — rarely needed by modern TUI apps",
-    "result": "no"
-  },
-  "xtermjs:editing.decdc": {
-    "note": "Column editing (SL/SR/DECIC/DECDC) not implemented — rarely needed by modern TUI apps",
-    "result": "no"
-  },
-  "wezterm:editing.decfra": {
-    "note": "VT420 rectangular area operations not implemented — legacy DEC features omitted by most modern terminals",
-    "result": "no"
-  },
-  "wezterm:editing.decera": {
-    "note": "VT420 rectangular area operations not implemented — legacy DEC features omitted by most modern terminals",
-    "result": "no"
-  },
-  "wezterm:editing.decsera": {
-    "note": "VT420 rectangular area operations not implemented — legacy DEC features omitted by most modern terminals",
-    "result": "no"
-  },
-  "wezterm:editing.deccra": {
-    "note": "VT420 rectangular area operations not implemented — legacy DEC features omitted by most modern terminals",
-    "result": "no"
-  },
-  "wezterm:editing.deccara": {
-    "note": "VT420 rectangular area operations not implemented — legacy DEC features omitted by most modern terminals",
-    "result": "no"
-  },
-  "wezterm:editing.decrara": {
-    "note": "VT420 rectangular area operations not implemented — legacy DEC features omitted by most modern terminals",
-    "result": "no"
-  },
-  "wezterm:editing.decrqcra": {
-    "note": "VT420 rectangular area operations not implemented — legacy DEC features omitted by most modern terminals",
-    "result": "no"
-  },
-  "wezterm:editing.sl": {
-    "note": "Column editing (SL/SR/DECIC/DECDC) not implemented — rarely needed by modern TUI apps",
-    "result": "no"
-  },
-  "wezterm:editing.sr": {
-    "note": "Column editing (SL/SR/DECIC/DECDC) not implemented — rarely needed by modern TUI apps",
-    "result": "no"
-  },
-  "wezterm:editing.decic": {
-    "note": "Column editing (SL/SR/DECIC/DECDC) not implemented — rarely needed by modern TUI apps",
-    "result": "no"
-  },
-  "wezterm:editing.decdc": {
-    "note": "Column editing (SL/SR/DECIC/DECDC) not implemented — rarely needed by modern TUI apps",
-    "result": "no"
-  },
-  "kitty:editing.decfra": {
-    "note": "VT420 rectangular area operations not implemented — legacy DEC features omitted by most modern terminals",
-    "result": "no"
-  },
-  "kitty:editing.decera": {
-    "note": "VT420 rectangular area operations not implemented — legacy DEC features omitted by most modern terminals",
-    "result": "no"
-  },
-  "kitty:editing.decsera": {
-    "note": "VT420 rectangular area operations not implemented — legacy DEC features omitted by most modern terminals",
-    "result": "no"
-  },
-  "kitty:editing.deccra": {
-    "note": "VT420 rectangular area operations not implemented — legacy DEC features omitted by most modern terminals",
-    "result": "no"
-  },
-  "kitty:editing.deccara": {
-    "note": "VT420 rectangular area operations not implemented — legacy DEC features omitted by most modern terminals",
-    "result": "no"
-  },
-  "kitty:editing.decrara": {
-    "note": "VT420 rectangular area operations not implemented — legacy DEC features omitted by most modern terminals",
-    "result": "no"
-  },
-  "kitty:editing.decrqcra": {
-    "note": "VT420 rectangular area operations not implemented — legacy DEC features omitted by most modern terminals",
-    "result": "no"
-  },
-  "kitty:editing.sl": {
-    "note": "Column editing (SL/SR/DECIC/DECDC) not implemented — rarely needed by modern TUI apps",
-    "result": "no"
-  },
-  "kitty:editing.sr": {
-    "note": "Column editing (SL/SR/DECIC/DECDC) not implemented — rarely needed by modern TUI apps",
-    "result": "no"
-  },
-  "kitty:editing.decic": {
-    "note": "Column editing (SL/SR/DECIC/DECDC) not implemented — rarely needed by modern TUI apps",
-    "result": "no"
-  },
-  "kitty:editing.decdc": {
-    "note": "Column editing (SL/SR/DECIC/DECDC) not implemented — rarely needed by modern TUI apps",
-    "result": "no"
-  },
-  "alacritty:editing.decfra": {
-    "note": "VT420 rectangular area operations not implemented — legacy DEC features omitted by most modern terminals",
-    "result": "no"
-  },
-  "alacritty:editing.decera": {
-    "note": "VT420 rectangular area operations not implemented — legacy DEC features omitted by most modern terminals",
-    "result": "no"
-  },
-  "alacritty:editing.decsera": {
-    "note": "VT420 rectangular area operations not implemented — legacy DEC features omitted by most modern terminals",
-    "result": "no"
-  },
-  "alacritty:editing.deccra": {
-    "note": "VT420 rectangular area operations not implemented — legacy DEC features omitted by most modern terminals",
-    "result": "no"
-  },
-  "alacritty:editing.deccara": {
-    "note": "VT420 rectangular area operations not implemented — legacy DEC features omitted by most modern terminals",
-    "result": "no"
-  },
-  "alacritty:editing.decrara": {
-    "note": "VT420 rectangular area operations not implemented — legacy DEC features omitted by most modern terminals",
-    "result": "no"
-  },
-  "alacritty:editing.decrqcra": {
-    "note": "VT420 rectangular area operations not implemented — legacy DEC features omitted by most modern terminals",
-    "result": "no"
-  },
-  "alacritty:editing.sl": {
-    "note": "Column editing (SL/SR/DECIC/DECDC) not implemented — rarely needed by modern TUI apps",
-    "result": "no"
-  },
-  "alacritty:editing.sr": {
-    "note": "Column editing (SL/SR/DECIC/DECDC) not implemented — rarely needed by modern TUI apps",
-    "result": "no"
-  },
-  "alacritty:editing.decic": {
-    "note": "Column editing (SL/SR/DECIC/DECDC) not implemented — rarely needed by modern TUI apps",
-    "result": "no"
-  },
-  "alacritty:editing.decdc": {
-    "note": "Column editing (SL/SR/DECIC/DECDC) not implemented — rarely needed by modern TUI apps",
-    "result": "no"
-  },
-  "vt100:editing.decfra": {
-    "note": "VT420 rectangular area operations not implemented — legacy DEC features omitted by most modern terminals",
-    "result": "no"
-  },
-  "vt100:editing.decera": {
-    "note": "VT420 rectangular area operations not implemented — legacy DEC features omitted by most modern terminals",
-    "result": "no"
-  },
-  "vt100:editing.decsera": {
-    "note": "VT420 rectangular area operations not implemented — legacy DEC features omitted by most modern terminals",
-    "result": "no"
-  },
-  "vt100:editing.deccra": {
-    "note": "VT420 rectangular area operations not implemented — legacy DEC features omitted by most modern terminals",
-    "result": "no"
-  },
-  "vt100:editing.deccara": {
-    "note": "VT420 rectangular area operations not implemented — legacy DEC features omitted by most modern terminals",
-    "result": "no"
-  },
-  "vt100:editing.decrara": {
-    "note": "VT420 rectangular area operations not implemented — legacy DEC features omitted by most modern terminals",
-    "result": "no"
-  },
-  "vt100:editing.decrqcra": {
-    "note": "VT420 rectangular area operations not implemented — legacy DEC features omitted by most modern terminals",
-    "result": "no"
-  },
-  "vt100:editing.sl": {
-    "note": "Column editing (SL/SR/DECIC/DECDC) not implemented — rarely needed by modern TUI apps",
-    "result": "no"
-  },
-  "vt100:editing.sr": {
-    "note": "Column editing (SL/SR/DECIC/DECDC) not implemented — rarely needed by modern TUI apps",
-    "result": "no"
-  },
-  "vt100:editing.decic": {
-    "note": "Column editing (SL/SR/DECIC/DECDC) not implemented — rarely needed by modern TUI apps",
-    "result": "no"
-  },
-  "vt100:editing.decdc": {
-    "note": "Column editing (SL/SR/DECIC/DECDC) not implemented — rarely needed by modern TUI apps",
-    "result": "no"
-  },
-  "vterm:editing.decfra": {
-    "note": "VT420 rectangular area operations not implemented — legacy DEC features omitted by most modern terminals",
-    "result": "no"
-  },
-  "vterm:editing.decera": {
-    "note": "VT420 rectangular area operations not implemented — legacy DEC features omitted by most modern terminals",
-    "result": "no"
-  },
-  "vterm:editing.decsera": {
-    "note": "VT420 rectangular area operations not implemented — legacy DEC features omitted by most modern terminals",
-    "result": "no"
-  },
-  "vterm:editing.deccra": {
-    "note": "VT420 rectangular area operations not implemented — legacy DEC features omitted by most modern terminals",
-    "result": "no"
-  },
-  "vterm:editing.deccara": {
-    "note": "VT420 rectangular area operations not implemented — legacy DEC features omitted by most modern terminals",
-    "result": "no"
-  },
-  "vterm:editing.decrara": {
-    "note": "VT420 rectangular area operations not implemented — legacy DEC features omitted by most modern terminals",
-    "result": "no"
-  },
-  "vterm:editing.decrqcra": {
-    "note": "VT420 rectangular area operations not implemented — legacy DEC features omitted by most modern terminals",
-    "result": "no"
-  },
-  "vterm:editing.sl": {
-    "note": "Column editing (SL/SR/DECIC/DECDC) not implemented — rarely needed by modern TUI apps",
-    "result": "no"
-  },
-  "vterm:editing.sr": {
-    "note": "Column editing (SL/SR/DECIC/DECDC) not implemented — rarely needed by modern TUI apps",
-    "result": "no"
-  },
-  "vterm:editing.decic": {
-    "note": "Column editing (SL/SR/DECIC/DECDC) not implemented — rarely needed by modern TUI apps",
-    "result": "no"
-  },
-  "vterm:editing.decdc": {
-    "note": "Column editing (SL/SR/DECIC/DECDC) not implemented — rarely needed by modern TUI apps",
-    "result": "no"
-  },
-  "ghostty-native:device.xtreportcolors": {
-    "note": "XTREPORTCOLORS (xterm patch 401+) not yet adopted outside xterm",
-    "result": "no"
-  },
-  "ghostty-native:device.xtgetxres": {
-    "note": "XTGETXRES resource query — xterm-specific",
-    "result": "no"
-  },
-  "wezterm:device.xtreportcolors": {
-    "note": "XTREPORTCOLORS (xterm patch 401+) not yet adopted outside xterm",
-    "result": "no"
-  },
-  "wezterm:device.xtgetxres": {
-    "note": "XTGETXRES resource query — xterm-specific",
-    "result": "no"
-  },
-  "kitty:device.xtreportcolors": {
-    "note": "XTREPORTCOLORS (xterm patch 401+) not yet adopted outside xterm",
-    "result": "no"
-  },
-  "kitty:device.xtgetxres": {
-    "note": "XTGETXRES resource query — xterm-specific",
-    "result": "no"
-  },
-  "alacritty:device.xtreportcolors": {
-    "note": "XTREPORTCOLORS (xterm patch 401+) not yet adopted outside xterm",
-    "result": "no"
-  },
-  "alacritty:device.xtgetxres": {
-    "note": "XTGETXRES resource query — xterm-specific",
-    "result": "no"
-  },
-  "vt100:device.xtreportcolors": {
-    "note": "XTREPORTCOLORS (xterm patch 401+) not yet adopted outside xterm",
-    "result": "no"
-  },
-  "vt100:device.xtgetxres": {
-    "note": "XTGETXRES resource query — xterm-specific",
-    "result": "no"
-  },
-  "ghostty-native:extensions.sixel-geometry-report": {
-    "note": "Sixel geometry report not supported",
-    "result": "no"
-  },
-  "wezterm:extensions.sixel-geometry-report": {
-    "note": "Sixel geometry report not supported",
-    "result": "no"
-  },
-  "kitty:extensions.sixel-geometry-report": {
-    "note": "Sixel geometry report not supported",
-    "result": "no"
-  },
-  "alacritty:extensions.sixel-geometry-report": {
-    "note": "Sixel geometry report not supported",
-    "result": "no"
-  },
-  "xtermjs:modes.alt-scroll-1007": {
-    "note": "Alt-scroll mode not tracked by xterm.js",
-    "result": "no"
-  },
-  "xtermjs:modes.utf8-mouse-1005": {
-    "note": "UTF-8 mouse mode not tracked — uses SGR mouse",
-    "result": "no"
-  },
-  "xtermjs:modes.deccolm": {
-    "note": "80/132 column switching not implemented — uses dynamic sizing",
-    "result": "no"
-  },
-  "vterm:modes.alt-scroll-1007": {
-    "note": "Alt-scroll mode not implemented in vterm.js",
-    "result": "no"
-  },
-  "vterm:modes.utf8-mouse-1005": {
-    "note": "UTF-8 mouse mode not implemented — uses SGR mouse",
-    "result": "no"
-  },
-  "vterm:modes.deccolm": {
-    "note": "80/132 column switching not implemented — uses dynamic sizing",
-    "result": "no"
-  },
-  "wezterm:extensions.osc2-title": {
-    "note": "OSC 2 title handled by WezTerm GUI, not headless backend",
-    "result": "no"
   }
 }
