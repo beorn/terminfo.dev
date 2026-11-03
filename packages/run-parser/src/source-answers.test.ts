@@ -90,12 +90,11 @@ it.each(["checkout", "remote", "shallow", "broken", "promisor", "absent"])(
   },
 )
 
-// All three production entry points must reach the same I/O owner; pure tests permit omission.
-it("passes the I/O owner through parser, collection writer and site loader", async () => {
+// The writer qualifies source answers; decoding retained results must not require source checkouts.
+it("qualifies at the writer and preserves stored answers when decoding", async () => {
   const io = await import("./source-answers.ts")
   const { parseRun, parseSuiteManifest } = await import("./index.ts")
   const { finalizeCollectedDraft } = await import("../../terminfo.dev/src/capture-writer.ts")
-  const { consoleHostHeldResults } = await import("../../../docs/data/selected-results.ts")
   const path = new URL(
     "../../../content/probes-apps/alacritty-0.17.0-linux-f504922f67f074794c588cf3a14e2114.json",
     import.meta.url,
@@ -112,7 +111,34 @@ it("passes the I/O owner through parser, collection writer and site loader", asy
   vi.spyOn(io, "resolveMeasuredSourceAnswer").mockImplementation(() => {
     throw new Error("source I/O reached")
   })
-  expect(parse).toThrow("source I/O reached")
+  expect(parse()).toEqual(loaded)
   expect(() => finalizeCollectedDraft(raw)).toThrow("source I/O reached")
-  expect(() => consoleHostHeldResults(loaded, [])).toThrow("source I/O reached")
+})
+
+// Read-time resolution caught stale committed grades. Keep that coverage at the writer,
+// using every retained run rather than a second implementation of grading.
+it("keeps every committed cell equal to the writer at the current source-answer table", async () => {
+  const { loadStoredRuns } = await import("../../admin/run-admission.ts")
+  const { finalizeCollectedDraft } = await import("../../terminfo.dev/src/capture-writer.ts")
+  const content = new URL("../../../content", import.meta.url).pathname
+  const catalog = Object.keys(JSON.parse(readFileSync(`${content}/features.json`, "utf8")))
+  const runs = loadStoredRuns(content, catalog)
+  expect(runs).toHaveLength(12)
+  let cells = 0
+  for (const run of runs) {
+    const draft = JSON.parse(readFileSync(run.path, "utf8")) as Parameters<typeof finalizeCollectedDraft>[0] & {
+      sealedAt?: string
+    }
+    delete draft.sealedAt
+    draft.results = draft.results.map((result) => ({
+      ...result,
+      tests: result.tests.map((test) => (test.id === "review" ? { ...test, status: "test-todo" } : test)),
+    }))
+    const finalized = finalizeCollectedDraft(draft)
+    for (const [index, result] of finalized.results.entries()) {
+      expect(result.status, `${run.runId}/${result.featureId}`).toBe(run.results![index]!.status)
+      cells++
+    }
+  }
+  expect(cells).toBe(3276)
 })

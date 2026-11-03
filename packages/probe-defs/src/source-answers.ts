@@ -49,6 +49,10 @@ const VT100_RUST_PREFIX = "packages/vt100-rust/"
 /** Static kept answers; the one-time converter checks the source/provenance and emitted shape. */
 export const SOURCE_ANSWERS = retainedAnswers as readonly SourceAnswer[]
 
+export function sourceAnswerVersionLabel(version: string): string {
+  return `reviewed at ${version}, not re-verified`
+}
+
 export function sourceAnswerForRef(ref: string): SourceAnswer | undefined {
   const key = parseSourceAnswerKey(ref)
   if (!key) return undefined
@@ -237,7 +241,7 @@ export function resolveSourceAnswer(rows: readonly SourceAnswer[], input: Source
       rows: [...new Set(applicable.map((match) => match.row))],
       answers: applicable.map((match) => match.answer),
       rowKeys: [...new Set(applicable.map((match) => match.key))],
-      ...(unverified && { label: `reviewed at ${unverified.row.subject.version}, not re-verified` }),
+      ...(unverified && { label: sourceAnswerVersionLabel(unverified.row.subject.version) }),
     }
   }
   const changed = candidates.filter((match) => match.changed)
