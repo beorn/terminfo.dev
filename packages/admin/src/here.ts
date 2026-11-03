@@ -10,14 +10,9 @@ import { ensureSourceSuiteEnvironment } from "../versions.ts"
 
 export async function handleHere(opts: { json?: boolean }): Promise<void> {
   ensureSourceSuiteEnvironment()
-  const { collectProbeRun, getTrustedSuiteReceipt } = await import("../../terminfo.dev/src/serve.ts")
+  const { collectProbeRun } = await import("../../terminfo.dev/src/serve.ts")
   const draft = await collectProbeRun()
-  const run = finalizeCollectedDraft(draft, undefined, {
-    manifest: getTrustedSuiteReceipt().manifest,
-    decisions: [],
-    origin: () => undefined,
-    keepDraft: true,
-  })
+  const run = finalizeCollectedDraft(draft)
   if (opts.json) {
     console.log(JSON.stringify(run, null, 2))
     return
@@ -26,5 +21,5 @@ export async function handleHere(opts: { json?: boolean }): Promise<void> {
   const aggregate = aggregateCurrentResults(run.results, catalogIds)
   console.log(`${run.subject.id} ${run.subject.version}: ${currentSupportedShare(aggregate)}`)
   console.log(currentCoverageSentence(aggregate, catalogIds))
-  console.log(`Run ${run.runId}: unsealed draft; not admitted; identity unverified.`)
+  console.log(`Run ${run.runId}: identity ${run.identity}.`)
 }

@@ -1,5 +1,5 @@
 /**
- * @failure Consumers disagree about admitted runs, unscoped annotations leak into commentary, or malformed metadata silently omits analysis sections.
+ * @failure Consumers disagree about collected runs, unscoped annotations leak into commentary, or malformed metadata silently omits analysis sections.
  * @level l2
  * @consumer Site matrix, terminal paths, v3 API, frozen v1 bytes and generated analysis.
  * @reach fs-walk vendor/terminfo.dev/content/probes-apps/*.json vendor/terminfo.dev/content/probes-libs/*.json vendor/terminfo.dev/content/probes-mux/*.json
@@ -91,7 +91,7 @@ const fixture = vi.hoisted(() => {
     measuredAt,
     suiteId: "suite-v2",
     probeHash: "current",
-    suiteFreshness: "release suite current",
+    suiteFreshness: "tree suite current",
     sourceRevision: "rev",
     sha256: runSha256,
     identity: "verified",
@@ -176,14 +176,6 @@ const fixture = vi.hoisted(() => {
       versions: {
         "term:kitty": [selected],
         "term:kitty:clipboard": [alternateKitty],
-        "lib:kitty": [
-          {
-            ...alternateKitty,
-            runId: "kitty-lib-reviewed",
-            sha256: "f".repeat(64),
-            subject: { ...subject, kind: "lib" },
-          },
-        ],
         "mux:tmux": [mux],
         "mux:screen": [screen, olderScreen],
       },
@@ -197,16 +189,6 @@ const fixture = vi.hoisted(() => {
     },
   }
 })
-
-// Synthetic rows test consumer parity, not admission. The retained-corpus subprocess below
-// still runs the real assessor, parser, selector and composer without this module's mock registry.
-vi.mock("../packages/admin/run-admission.ts", async () => ({
-  ...(await vi.importActual<typeof import("../packages/admin/run-admission.ts")>("../packages/admin/run-admission.ts")),
-  assessRunAdmission: (run: LoadedRun) =>
-    run.runId.startsWith("kitty-clipboard") || run.runId.startsWith("kitty-lib")
-      ? { accepted: false, reason: "identity-unverified", identityAdmission: null }
-      : { accepted: true, identityAdmission: null },
-}))
 
 vi.mock("../docs/data/current-results.ts", async () => {
   const { loadFeatures } = await import("@terminfo/catalog")
@@ -267,7 +249,6 @@ vi.mock("../docs/data/current-results.ts", async () => {
       suiteId: run.suiteId,
       probeHash: run.probeHash ?? "current",
       sourceRevision: "a".repeat(40),
-      sealedAt: run.measuredAt,
       sha256: run.sha256,
       identity: run.identity,
       catalogIds: ids,
@@ -304,13 +285,7 @@ vi.mock("../docs/data/current-results.ts", async () => {
       const sealed = sealedFixture(run)
       originals.set(sealed.runId, sealed)
     }
-    return projectResults(
-      [...originals.values()],
-      [],
-      catalogIds,
-      { currentProbeHash: "current", releaseSuiteId: "current" },
-      [],
-    )
+    return projectResults([...originals.values()], [], catalogIds, { currentProbeHash: "current" }, [])
   }
   return {
     ...actual,
@@ -368,7 +343,7 @@ function recompose(projection: SelectedProjection, extra: readonly LoadedRun[] =
     [...runs.values()],
     [],
     Object.values(projection.contexts)[0]?.catalogIds ?? [],
-    { currentProbeHash: "current", releaseSuiteId: "current" },
+    { currentProbeHash: "current" },
     [],
   )
 }
@@ -416,7 +391,7 @@ import { loadFullProjectData } from "../docs/data/full-project.data.ts"
 import { probeHash } from "../packages/admin/versions.ts"
 
 it("keeps the retained corpus consistent across unmocked site, API and analysis consumers", () => {
-  // Fixtures above replace selection. Only real retained inputs expose admission/default-context drift.
+  // Fixtures above replace selection. Only real retained inputs expose default-context drift.
   // A separate process uses the existing consumers without inheriting this module's vi.mock registry.
   const root = join(import.meta.dirname, "..")
   const out = mkdtempSync(join(tmpdir(), "terminfo-retained-parity-"))
@@ -1045,18 +1020,21 @@ describe("selected-run consumer parity", () => {
     const current = fixture.projection.seeds["term:kitty"]
     const versions = fixture.projection.versions["term:kitty"]
     const history = fixture.projection.history["term:kitty"]
+    const alternate = fixture.projection.versions["term:kitty:clipboard"]
     try {
       generateApi(out)
       expect(existsSync(runPath)).toBe(true)
       Reflect.deleteProperty(fixture.projection.seeds, "term:kitty")
       fixture.projection.versions["term:kitty"] = []
       fixture.projection.history["term:kitty"] = []
+      fixture.projection.versions["term:kitty:clipboard"] = []
       generateApi(out)
       expect(existsSync(runPath)).toBe(false)
     } finally {
       if (current) fixture.projection.seeds["term:kitty"] = current
       fixture.projection.versions["term:kitty"] = versions ?? []
       fixture.projection.history["term:kitty"] = history ?? []
+      fixture.projection.versions["term:kitty:clipboard"] = alternate ?? []
       rmSync(out, { recursive: true, force: true })
     }
   })
@@ -1253,7 +1231,7 @@ describe("selected-run consumer parity", () => {
       expect.objectContaining({
         version: fixture.screen.subject.version,
         pct: 0,
-        suiteFreshness: "release suite current",
+        suiteFreshness: "tree suite current",
       }),
       expect.objectContaining({ version: "4.9", pct: 0, suiteFreshness: "older suite older-suite" }),
     ])
@@ -1273,7 +1251,7 @@ describe("selected-run consumer parity", () => {
     expect(screen.cells["sgr.bold"]).toMatchObject({
       status: "test-todo",
       origin: { runId: currentRunId, resultId: "sgr.bold" },
-      suiteRelation: "release",
+      suiteRelation: "tree",
       measuredAt: fixture.screen.measuredAt,
     })
     expect(screen.sources[olderRunId]).toMatchObject({
@@ -1283,8 +1261,8 @@ describe("selected-run consumer parity", () => {
       measuredAt: fixture.measuredAt,
     })
     expect(screen.sources[currentRunId]).toMatchObject({
-      suiteFreshness: "release suite current",
-      suiteRelation: "release",
+      suiteFreshness: "tree suite current",
+      suiteRelation: "tree",
       sha256: "d".repeat(64),
       measuredAt: fixture.screen.measuredAt,
     })
@@ -1578,10 +1556,8 @@ it("labels the headless Ghostty cores libghostty-vt and keeps Ghostty for the ap
 })
 
 it("does not name a subject with no current run on the site", () => {
-  // #30759 Slice A (@cto f1504b5c): the site renders the frozen suite only, so a subject with no
-  // current run gets no row and no run data. #30759 AC3 removed the historical reader, so a legacy
-  // run can no longer reach the resolver at all — the absence control below is the non-vacuity
-  // proof that a sealed current run for the same named subject IS named.
+  // A subject absent from the selected projection gets no row or run data. The paired positive
+  // control proves that a retained current run for the same named subject is named.
   const projection = structuredClone(currentResults.loadCurrentResults("").projection)
   const selection = vi.spyOn(currentResults, "loadCurrentResults").mockReturnValue({ projection })
   const warning = vi.spyOn(console, "warn").mockImplementation(() => {})

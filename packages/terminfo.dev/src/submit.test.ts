@@ -105,6 +105,22 @@ it("creates an exclusive offline draft containing the exact partial run and its 
   expect(readFileSync(draftPath, "utf8")).toBe(draft)
 })
 
+// Requirement: old collected bytes and their displayed context survive the one decoder path;
+// the existing partial-run test did not exercise a record carrying the historical timestamp.
+it("retains exact historical collected bytes and unknown identity in an offline draft", () => {
+  const dir = mkdtempSync(join(tmpdir(), "terminfo-draft-historical-"))
+  dirs.push(dir)
+  const raw = `${JSON.stringify({ ...partialRun, sealedAt: "2026-09-28T12:01:00.000Z" })}\n`
+  const rawPath = join(dir, "run.json")
+  const draftPath = join(dir, "draft.md")
+  writeFileSync(rawPath, raw)
+  const result = createDraft(rawPath, draftPath, receipt)
+  expect(readFileSync(result.attachmentPath, "utf8")).toBe(raw)
+  const draft = readFileSync(draftPath, "utf8")
+  expect(draft).toContain('"identity": "unverified"')
+  expect(draft).not.toContain('"sealed"')
+})
+
 it("keeps exact bytes when original JSON has no final LF or has CRLF", () => {
   const dir = mkdtempSync(join(tmpdir(), "terminfo-draft-"))
   dirs.push(dir)

@@ -95,7 +95,7 @@ probe
   .argument("[terminal]", "Terminal app to probe")
   .option("--all", "Probe all installed terminals")
   .option("-f, --force", "Re-run even if cached")
-  .option("--output <directory>", "Retain the private development run without admission")
+  .option("--output <directory>", "Retain the collected run and original HTTP response privately")
   .actionMerged(async (opts: { terminal?: string; all?: boolean; force?: boolean; output?: string }) => {
     ensureSourceSuiteEnvironment()
     const { handleApp } = await import("./app.ts")
@@ -108,7 +108,7 @@ probe
   .command("mux")
   .description("Probe through terminal multiplexers (tmux, screen)")
   .argument("[multiplexer]", "Multiplexer to probe (tmux, screen)")
-  .option("--output <directory>", "Retain raw runs and original HTTP responses privately, without admission")
+  .option("--output <directory>", "Retain collected runs and original HTTP responses privately")
   .option("--all", "Probe through all installed multiplexers")
   .option("-f, --force", "Re-run even if cached")
   .actionMerged(async (opts: { multiplexer?: string; all?: boolean; force?: boolean; output?: string }) => {

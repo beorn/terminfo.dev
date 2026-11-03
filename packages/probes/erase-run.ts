@@ -109,12 +109,7 @@ export async function runEraseReplay(context: TestContext): Promise<EraseRunReco
       geometry: HEADLESS_TERMINAL,
       blobs: [],
     })
-    const capturePath = saveDaemonProbeRun(capture, directory, undefined, {
-      manifest,
-      decisions: [],
-      origin: () => undefined,
-      keepDraft: true,
-    })
+    const capturePath = saveDaemonProbeRun(capture, directory)
     finalRecord.captureRunId = capture.runId
     finalRecord.files.push(capturePath)
     const source = {

@@ -1,11 +1,9 @@
 /**
  * Node-only loader for the Release 1 measurement scope, derived from catalog tier labels.
- * A release's frozen suite is the one suite manifest whose `freeze.release` names it.
  */
 import { splitAppObservable } from "@terminfo/probe-defs"
 import { slice, type FeatureCatalog, type SliceCatalog } from "@terminfo/catalog"
 import type { ReleaseFeature, ReleaseScope } from "./release-scope.ts"
-export { frozenSuiteIdFor } from "../../packages/admin/suite-manifest.ts"
 
 /** Release 1's own two constants, the ones its tier line prints. */
 const RELEASE_1_TIER = 1

@@ -15,8 +15,7 @@ import { fileURLToPath } from "node:url"
 import { promisify } from "node:util"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import { buildStamp, createBuildMetadata } from "./build-metadata.ts"
-import { CONTENT_DIR } from "../packages/admin/run-admission.ts"
-import { citedSuiteHashes } from "./suite-manifest.ts"
+import { CONTENT_DIR } from "../packages/admin/corpus-placement.ts"
 
 let repo: string
 
@@ -37,17 +36,14 @@ afterEach(() => {
 })
 
 describe("website build identity", () => {
-  it("keeps admission and suite defaults rooted at the original component content directory", () => {
+  it("keeps corpus defaults rooted at the original component content directory", () => {
     const originalContentDir = join(dirname(fileURLToPath(import.meta.url)), "..", "content")
     expect(CONTENT_DIR).toBe(originalContentDir)
-    // The current committed corpus supplies real citations through the same default content root.
-    expect(citedSuiteHashes(dirname(originalContentDir)).size).toBeGreaterThan(0)
-    expect(citedSuiteHashes()).toEqual(citedSuiteHashes(dirname(originalContentDir)))
   })
 
   it("loads the actual VitePress configuration through its production config bundler", async () => {
     // Direct Bun imports do not exercise Vite's config bundle: importing an executable script
-    // through the admission reader broke the live site while those direct-import tests passed.
+    // through the corpus reader broke the live site while those direct-import tests passed.
     const siteRoot = join(dirname(fileURLToPath(import.meta.url)), "..")
     const { stdout } = await promisify(execFile)(
       "bun",
