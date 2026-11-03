@@ -1,5 +1,5 @@
 /**
- * @failure Source admin probe commands accept conflicting suite metadata before launching a collector.
+ * @failure Admin commands accept conflicting suite metadata or expose retired review dispatch.
  * @level l2
  * @consumer Admin CLI app, mux, and server probe actions.
  * @testonly none
@@ -78,6 +78,23 @@ test("CLI help is independent of source suite metadata", () => {
   expect(result.error).toBeUndefined()
   expect(result.status).toBe(0)
   expect(result.stdout).toContain("probe")
+})
+
+test("retired review command fails loudly with usage while collection commands stay available", () => {
+  const result = spawnSync(process.execPath, [entry, "review", "intake"], {
+    cwd: root,
+    env: process.env,
+    encoding: "utf8",
+    timeout: 10_000,
+  })
+  expect(result.error).toBeUndefined()
+  expect(result.status).not.toBe(0)
+  const output = `${result.stdout}\n${result.stderr}`
+  expect(output).toMatch(/unknown command.*review/i)
+  expect(output).toMatch(/usage:/i)
+  for (const command of ["probe", "report", "status", "detect", "submit"]) {
+    expect(output).toMatch(new RegExp(`\\b${command}\\b`))
+  }
 })
 
 // AC1/AC5: source metadata tests cannot catch a parsed filter dropped before the headless collector.
