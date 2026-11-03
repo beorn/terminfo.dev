@@ -507,6 +507,8 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
   let insertMode = false
   let applicationCursor = false
   let applicationKeypad = false
+  let kittyKeyboardFlags = 0
+  const kittyKeyboardStack: number[] = []
   let bracketedPaste = false
   let reverseVideo = false
   let mouseTracking = false
@@ -592,6 +594,8 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
     savedPrivateModes = new Map()
     palette = new Map()
     paletteStack = []
+    kittyKeyboardFlags = 0
+    kittyKeyboardStack.length = 0
     dynamicColors = new Map(initialColors)
     specialColors.clear()
     colorStack.length = 0
@@ -1293,6 +1297,14 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
   }
 
   const csiPrivate = (final: string, first: number, params: readonly number[]): void => {
+    if (final === "u") {
+      if (!mutations.has("kitty-keyboard-noop")) replies += `\x1b[?${kittyKeyboardFlags}u`
+      return
+    }
+    if (final === "S" && first === 2 && params[1] === 1 && params[2] === 0) {
+      if (!mutations.has("sixel-geometry-noop")) replies += "\x1b[?2;0;1280;720S"
+      return
+    }
     if (final === "J") {
       selectiveErase()
       return
@@ -1405,13 +1417,25 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
   const csiDevicePrefix = (prefix: string, final: string, first: number): boolean => {
     if (prefix === ">") {
       if (final === "c" && !mutations.has("secondary-da-noop")) replies += "\x1b[>0;49;1c"
-      else if (final === "q" && first === 0 && !mutations.has("xtversion-noop")) {
+      else if (final === "u" && !mutations.has("kitty-keyboard-noop")) {
+        kittyKeyboardStack.push(kittyKeyboardFlags)
+        kittyKeyboardFlags = first
+        if (mutations.has("kitty-disambiguate-noop")) kittyKeyboardFlags &= ~1
+        if (mutations.has("kitty-report-events-noop")) kittyKeyboardFlags &= ~2
+        if (mutations.has("kitty-report-alternate-noop")) kittyKeyboardFlags &= ~4
+        if (mutations.has("kitty-report-all-keys-noop")) kittyKeyboardFlags &= ~8
+        if (mutations.has("kitty-report-text-noop")) kittyKeyboardFlags &= ~16
+      } else if (final === "q" && first === 0 && !mutations.has("xtversion-noop")) {
         replies += "\x1bP>|kitty(0.49.1)\x1b\\"
       }
       return true
     }
     if (prefix === "=") {
       if (final === "c" && !mutations.has("tertiary-da-noop")) replies += "\x1bP!|1234ABCD\x1b\\"
+      return true
+    }
+    if (prefix === "<" && final === "u") {
+      if (!mutations.has("kitty-keyboard-noop")) kittyKeyboardFlags = kittyKeyboardStack.pop() ?? 0
       return true
     }
     return false
@@ -1499,7 +1523,11 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
         if (!mutations.has("ansi-restore-noop")) [cursorX, cursorY] = ansiSavedCursor
         return
       case "c":
-        if (first === 0) replies += mutations.has("primary-da-noop") ? "\x1b[?c" : "\x1b[?62;52;c"
+        if (first === 0) {
+          replies += mutations.has("primary-da-noop")
+            ? "\x1b[?c"
+            : `\x1b[?62;52;${mutations.has("sixel-da1-noop") ? "" : "4"}c`
+        }
         return
       case "n":
         if (first === 5 && !mutations.has("status-report-noop")) replies += "\x1b[0n"
@@ -1580,6 +1608,45 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
   }
 
   const consumeOsc = (code: string, payload: string): void => {
+    if (code === "1337") {
+      if (payload === "ReportCellSize" && !mutations.has("osc1337-cellsize-noop")) {
+        replies += "\x1b]1337;ReportCellSize=16;8\x07"
+      } else if (payload === "Capabilities" && !mutations.has("osc1337-capabilities-noop")) {
+        replies += "\x1b]1337;Capabilities=ReportCellSize\x07"
+      }
+      return
+    }
+    if (["7770", "7777", "701", "702"].includes(code) && payload === "?") {
+      if (!mutations.has(`osc${code}-noop`)) {
+        const value = code === "701" ? "en_US.UTF-8" : code === "702" ? "semantic-surface;fixture;1;0" : "14"
+        replies += `\x1b]${code};${value}\x07`
+      }
+      return
+    }
+    if (code === "776" && payload === "") {
+      if (!mutations.has("osc776-noop")) replies += "\x1b]776;8;16;2\x07"
+      return
+    }
+    if (code === "66") {
+      const sized = /^[ws]=(\d+);(.*)$/u.exec(payload)
+      if (sized && !mutations.has("osc66-noop")) {
+        const text = sized[2]!
+        for (let index = 0; index < text.length;) {
+          const grapheme = nextGrapheme(text, index, mutations)
+          writeCluster(grapheme.cluster, clusterWidth(grapheme.cluster, mutations) * Number(sized[1]))
+          index += grapheme.length
+        }
+      }
+      return
+    }
+    if (code === "99") {
+      const metadata = payload.split(";", 1)[0]!.split(":")
+      const id = metadata.find((field) => field.startsWith("i="))
+      if (id && metadata.includes("p=?") && !mutations.has("osc99-noop")) {
+        replies += `\x1b]99;${id}:p=?;p=title\x1b\\`
+      }
+      return
+    }
     const rgbText = (rgb: Rgb): string =>
       `rgb:${[rgb.r, rgb.g, rgb.b].map((channel) => channel.toString(16).padStart(2, "0")).join("/")}`
     const parseRgb = (value: string): Rgb | undefined => {

@@ -27,7 +27,7 @@ import { createSemanticSurface } from "./testing/semantic-surface.ts"
 
 // Row 2.1: replies must follow the actual query/set/reset operations; canned replies cannot
 // prove that disabling one feature changes its result while its same-path control still works.
-const EXTENSIONS_COLOR_CONTROLS = [
+const EXTENSIONS_SEMANTIC_SURFACE_CONTROLS = [
   ["osc10-fg-color", "osc10-query-noop"],
   ["osc11-bg-color", "osc11-query-noop"],
   ["osc12-cursor-color", "osc12-query-noop"],
@@ -47,9 +47,34 @@ const EXTENSIONS_COLOR_CONTROLS = [
   ["osc21-kitty-color", "osc21-query-noop"],
   ["osc30001-color-stack-push", "osc30001-noop"],
   ["osc30101-color-stack-pop", "osc30101-noop"],
+  ["kitty-keyboard", "kitty-keyboard-noop"],
+  ["kitty-keyboard.disambiguate", "kitty-disambiguate-noop"],
+  ["kitty-keyboard.report-events", "kitty-report-events-noop"],
+  ["kitty-keyboard.report-alternate", "kitty-report-alternate-noop"],
+  ["kitty-keyboard.report-all-keys", "kitty-report-all-keys-noop"],
+  ["kitty-keyboard.report-text", "kitty-report-text-noop"],
+  ["osc1337-cellsize", "osc1337-cellsize-noop"],
+  ["osc1337-capabilities", "osc1337-capabilities-noop"],
+  ["osc7770-font-size", "osc7770-noop"],
+  ["osc7777-font-window-size", "osc7777-noop"],
+  ["osc701-locale", "osc701-noop"],
+  ["osc702-version", "osc702-noop"],
+  ["osc776-cell-size", "osc776-noop"],
+  ["sixel-da1", "sixel-da1-noop"],
+  ["sixel-geometry-report", "sixel-geometry-noop"],
+  ["osc66-text-sizing", "osc66-noop"],
+  ["osc99-kitty-notify", "osc99-noop"],
 ] as const
 
-test.each(EXTENSIONS_COLOR_CONTROLS)("colour controls for extensions.%s with %s", async (name, mutation) => {
+const KITTY_DISABLED_BITS = new Map<string, number>([
+  ["kitty-disambiguate-noop", 1],
+  ["kitty-report-events-noop", 2],
+  ["kitty-report-alternate-noop", 4],
+  ["kitty-report-all-keys-noop", 8],
+  ["kitty-report-text-noop", 16],
+])
+
+test.each(EXTENSIONS_SEMANTIC_SURFACE_CONTROLS)("controls for extensions.%s with %s", async (name, mutation) => {
   const id = `extensions.${name}`
   const probe = extensionsProbes.find((entry) => entry.id === id)!
   const row = EXTENSIONS_CONTRACT.find((entry) => entry.id === id)!
@@ -61,10 +86,21 @@ test.each(EXTENSIONS_COLOR_CONTROLS)("colour controls for extensions.%s with %s"
   expect(inert.after, `${id}: no-op source cannot establish support`).not.toBe("supported")
   const working = await regradeRow(probe, row, { headless: libProbeSource(createSemanticSurface()) })
   expect(working.after, `${id}: working feature must establish support`).toBe("supported")
-  const disabled = await regradeRow(probe, row, {
-    headless: libProbeSource(createSemanticSurface({ mutations: [mutation] })),
-  })
+  const disabledSource = libProbeSource(createSemanticSurface({ mutations: [mutation] }))
+  const disabled = await regradeRow(probe, row, { headless: disabledSource })
   expect(disabled.after, `${id}: only ${mutation} is disabled`).toBe("unsupported")
+  expect(disabledSource.feedCapture("\x1b[c"), `${id}: unrelated DA1 still answers`).toMatch(/^\x1b\[\?[0-9;]+c$/u)
+
+  const disabledBit = KITTY_DISABLED_BITS.get(mutation)
+  if (disabledBit !== undefined) {
+    expect(disabledSource.feedCapture("\x1b[?u"), "the probe popped its own flags").toBe("\x1b[?0u")
+    disabledSource.feed("\x1b[>31u")
+    expect(disabledSource.feedCapture("\x1b[?u"), "all unrelated requested flags survive").toBe(
+      `\x1b[?${31 & ~disabledBit}u`,
+    )
+    disabledSource.feed("\x1b[<u")
+    expect(disabledSource.feedCapture("\x1b[?u"), "pop restores the prior flag state").toBe("\x1b[?0u")
+  }
 })
 
 /**
