@@ -44,18 +44,8 @@ const headlessObservableFeatures = [
   ],
   ["extensions.sixel", "Declared Sixel capability does not establish rendered pixels", { declared: true }],
   [
-    "extensions.semantic-prompts",
-    "Declared semantic-prompt capability does not establish shell prompt integration",
-    { declared: true },
-  ],
-  [
     "extensions.osc7-cwd",
     "Declared OSC 7 capability does not establish working-directory metadata delivery",
-    { declared: true },
-  ],
-  [
-    "extensions.osc-633-vscode",
-    "Declared semantic-prompt capability does not establish VS Code OSC 633 shell integration",
     { declared: true },
   ],
   [

@@ -647,9 +647,7 @@ test("the harness replays every extension feature deterministically", async () =
     "extensions.kitty-graphics.animation",
     "extensions.kitty-graphics.unicode-placeholders",
     "extensions.sixel",
-    "extensions.semantic-prompts",
     "extensions.osc7-cwd",
-    "extensions.osc-633-vscode",
     "extensions.notifications",
     "extensions.iterm2-images",
   ])
@@ -743,6 +741,47 @@ test("a decided extension row reads unsatisfied when silent or unacknowledged", 
   expect(result.observation).toBeUndefined()
   expect(result.assertions).toBeUndefined()
   expect(result.tests).toMatchObject([expect.objectContaining({ status: "test-failure", reason: "no-response" })])
+})
+
+// The umbrella claims a whole lifecycle; a working A-only reader proves only its separate mark row.
+test.each([
+  ["extensions.semantic-prompts", "extensions.osc133-a"],
+  ["extensions.osc-633-vscode", "extensions.osc633-a"],
+])("%s stays TODO when its reader can observe only A registration", (id, markId) => {
+  const makeSource = () => {
+    const base = libProbeSource(inertModel())
+    const marks: { type: "prompt"; startRow: number; startCol: number }[] = []
+    let x = 0
+    let y = 0
+    return {
+      ...base,
+      capabilities: { ...base.capabilities, semanticPrompts: true, extensions: new Set(["semantic-marks"]) },
+      getSemanticMarks: () => structuredClone(marks),
+      getCursor: () => ({ ...base.getCursor(), x, y }),
+      getCell: () => ({ ...base.getCell(0, 0), char: "X" }),
+      feed: (bytes: string) => {
+        if (bytes === "\x1b[1;1H") {
+          x = 0
+          y = 0
+        }
+        if (bytes === "\x1b[2;3H") {
+          x = 2
+          y = 1
+        }
+        if (/\x1b\](?:133|633);A\x07/u.test(bytes)) marks.push({ type: "prompt", startRow: y, startCol: x })
+        if (bytes.endsWith("X")) x += 1
+      },
+    }
+  }
+  const mark = extensionsProbes.find((entry) => entry.id === markId)!
+  expect(mark.lib!(makeSource()).observation?.outcome).toBe("supported")
+  const umbrella = extensionsProbes.find((entry) => entry.id === id)!
+  const result = umbrella.lib!(makeSource())
+  expect(result.pass).toBe(false)
+  expect(result.tests).toEqual([
+    { id: "criterion", status: "test-todo", reason: "no full-lifecycle observable on this reader" },
+  ])
+  expect(result.observation?.outcome).not.toBe("supported")
 })
 
 test("semantic observables omitted in headless mode return notTested without failing determinism", async () => {

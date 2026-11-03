@@ -1028,11 +1028,9 @@ test.for(["semantic-marks", "sixel-storage"] as const)(
 )
 
 const VTERM_MARK_CASES = [
-  ["extensions.semantic-prompts", 133, "prompt"],
   ["extensions.osc133-a", 133, "prompt"],
   ["extensions.osc133-b", 133, "command"],
   ["extensions.osc133-c", 133, "output"],
-  ["extensions.osc-633-vscode", 633, "prompt"],
   ["extensions.osc633-a", 633, "prompt"],
   ["extensions.osc633-b", 633, "command"],
   ["extensions.osc633-c", 633, "output"],
@@ -1059,10 +1057,12 @@ test.skipIf(!isKittyAvailable())(
         expect(start.criterionBranch, id).toBe(SEMANTIC_PROMPT_SOURCE_REVIEW)
         expect(start.observation, id).toBeUndefined()
       }
-      // The umbrella callbacks have their own dispatch gates; A/C alone cannot catch a callable-only gate there.
+      // The umbrella callbacks stay TEST TODO until a full-lifecycle reader exists (b5fecd017, #32247).
       for (const id of ["extensions.semantic-prompts", "extensions.osc-633-vscode"]) {
         const umbrella = registryDefinitions([id])[0]!.lib!(source)
-        expect(umbrella.criterionBranch, id).toBe(HEADLESS_OBSERVABLE_REVIEW)
+        expect(umbrella.tests, id).toEqual([
+          { id: "criterion", status: "test-todo", reason: "no full-lifecycle observable on this reader" },
+        ])
         expect(umbrella.observation, id).toBeUndefined()
       }
       const cached = source.getSemanticMarks!()

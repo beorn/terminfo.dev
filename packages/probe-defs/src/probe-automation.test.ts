@@ -3358,9 +3358,7 @@ describe("extensions without a complete behavior oracle", () => {
     "extensions.kitty-graphics.unicode-placeholders",
     "extensions.sixel",
     "extensions.reflow",
-    "extensions.semantic-prompts",
     "extensions.osc7-cwd",
-    "extensions.osc-633-vscode",
     "extensions.notifications",
     "extensions.iterm2-images",
   ] as const
