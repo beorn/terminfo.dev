@@ -45,10 +45,9 @@ function readBlob(repository: string, commit: string, path: string): string | un
   }
   const context = `${repository}@${commit} (checkout ${repo})`
   if (!existsSync(repo)) throw new Error(`Missing source repository ${context}; provide its complete source checkout`)
-  const git = (args: string[], input?: string) => {
+  const git = (args: string[]) => {
     const result = spawnSync("git", ["-C", repo, ...args], {
       encoding: "utf8",
-      input,
       timeout: 30000,
       env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
     })
@@ -69,20 +68,18 @@ function readBlob(repository: string, commit: string, path: string): string | un
       )
     }
   }
-  const expression = `${commit}:${path}`
-  const object = git(["cat-file", "--batch-check=%(objectname) %(objecttype)"], `${expression}\n`)
+  // The commit tree binds the path and content hash; reading blob metadata would hydrate its body in a partial clone.
+  const object = git(["--literal-pathspecs", "ls-tree", "-z", commit, "--", path])
   if (object.status !== 0) throw new Error(`Cannot read cited source ${context}:${path}: ${object.stderr.trim()}`)
-  if (object.stdout.trim() === `${expression} missing`) {
-    const promisor = git(["config", "--get-regexp", "remote\\..*\\.promisor"])
-    if (promisor.status !== 1) {
-      throw new Error(`Incomplete source objects for ${context}:${path}; provide complete repository history`)
-    }
+  if (object.stdout === "") {
     // Absence is not immutable and is deliberately not cached.
     return undefined
   }
-  const match = /^([a-f0-9]{40}) blob$/.exec(object.stdout.trim())
+  const match = /^[0-7]{6} blob ([a-f0-9]{40})\t([^\0]*)\0$/.exec(object.stdout)
   const oid = match?.[1]
-  if (!oid) throw new Error(`Cited source is not a blob at ${context}:${path}: ${object.stdout.trim()}`)
+  if (!oid || match?.[2] !== path) {
+    throw new Error(`Cited source is not a blob at ${context}:${path}: ${object.stdout.trim()}`)
+  }
   blobs.set(key, oid)
   return oid
 }
