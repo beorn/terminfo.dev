@@ -57,6 +57,7 @@ import {
 export { parseObservationFrames, validateObservation, validateObservationOutcome } from "./observations.ts"
 import { parseJsonStrict, canonicalJson } from "./json.ts"
 import { resolveMeasuredSourceAnswer } from "./source-answers.ts"
+import { SOURCE_ANSWER_PENDING_LABELS } from "@terminfo/probe-defs"
 export { resolveMeasuredSourceAnswer } from "./source-answers.ts"
 export { parseJsonStrict, canonicalJson, FEATURE_ENTRY_PROSE_DENYLIST, boundFeatureEntry } from "./json.ts"
 import { ALACRITTY_VERSION_PATTERN, PLACEHOLDER, parseAppLaunchReceipt, parseDerivedSourceTree } from "./app-launch.ts"
@@ -1757,7 +1758,7 @@ export function parseProbeResults(
         resolution.kind === "pending" &&
         reviewed.some(
           (test) =>
-            (resolution.reason !== "cited source not resolvable" && test.status !== "test-todo") ||
+            (resolution.reason !== SOURCE_ANSWER_PENDING_LABELS.unresolvable && test.status !== "test-todo") ||
             !test.reason?.includes(resolution.reason) ||
             !test.reason.includes(test.reviewRef ?? ""),
         )

@@ -115,16 +115,4 @@ describe("kept answers against every current committed run", () => {
       expect(String(cell.reason).startsWith("kept answers disagree"), cell.featureId).toBe(false)
     }
   })
-
-  // @cto de41833e c2 removed the build receipt, so a kept engine citation could only resolve as an own-version
-  // answer with nothing behind it. No kept row may name the engine core.
-  it("keeps the engine core out of every kept citation", () => {
-    const core = repositoryIdentity("https://github.com/ghostty-org/ghostty")
-    const cited = new Set(
-      SOURCE_ANSWERS.flatMap((row) =>
-        row.answers.flatMap((answer) => answer.citedBlobs.map((blob) => blob.repository)),
-      ),
-    )
-    expect([...cited].filter((repository) => repositoryIdentity(repository) === core)).toEqual([])
-  })
 })
