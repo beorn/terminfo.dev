@@ -132,8 +132,8 @@ describe("current execution projection", () => {
     expect(unselectedPublic.cells[ids[1]!]!.reason).toBeUndefined()
   })
 
-  // CTO contract: only contributing original dates may supersede a reviewed host generation.
-  // Existing cell-composition cases do not exercise the picker or a newer no-output attempt.
+  // The reviewed-context replacement orders original evidence, never newer no-output attempts.
+  // Existing composition tests miss cross-context ties and a newer non-default profile.
   it("does not let a newer attempt supersede original evidence from another host generation", () => {
     const baseline = supportedBaseline()
     const olderHost = {
@@ -167,9 +167,68 @@ describe("current execution projection", () => {
     const chosen = candidates.find((candidate) =>
       candidate.sources.some((source) => source.runId === chosenHost.runId),
     )!
-    expect(pickContextRun(candidates, { contextKey: chosen.key })).toEqual({
-      run: chosen,
-      selection: "reviewed default-context row",
+    expect(pickContextRun(candidates)).toMatchObject({
+      run: { key: chosen.key },
+      selection: "latest original evidence",
+    })
+    const older = candidates.find((candidate) => candidate !== chosen)!
+    const rewritten = projectResults(
+      [
+        { ...olderHost, runId: "rewritten-old-host", sha256: "f".repeat(64), sealedAt: "2030-01-01T00:00:00Z" },
+        chosenHost,
+      ],
+      [],
+      ids,
+      { currentProbeHash: suite.probeHash },
+      [],
+    )
+    const rewrittenCandidates = Object.values(rewritten.contexts).flatMap((context) => {
+      const candidate = candidateFromSelected(context.contextKey, context, {}, rewritten)
+      return candidate ? [candidate] : []
+    })
+    expect(pickContextRun(rewrittenCandidates)).toMatchObject({ run: { key: chosen.key } })
+    const composed = {
+      ...older,
+      sources: [
+        ...older.sources,
+        {
+          ...chosen.sources[0]!,
+          measuredAt: "2026-10-22T00:00:00Z",
+        },
+      ],
+    }
+    expect(pickContextRun([chosen, composed])).toMatchObject({ run: { key: older.key } })
+    const tied = {
+      ...older,
+      sources: older.sources.map((source) => ({ ...source, measuredAt: chosenHost.measuredAt })),
+    }
+    for (const order of [
+      [tied, chosen],
+      [chosen, tied],
+    ]) {
+      expect(pickContextRun(order)).toMatchObject({ run: { key: chosen.key }, selection: "latest original evidence" })
+    }
+    const upperKey = { ...tied, key: projectedContextKey({ ...baseline.subject, config: "Z" }, 2) }
+    const lowerKey = { ...tied, key: projectedContextKey({ ...baseline.subject, config: "a" }, 2) }
+    for (const order of [
+      [upperKey, lowerKey],
+      [lowerKey, upperKey],
+    ]) {
+      expect(pickContextRun(order)).toMatchObject({ run: { key: upperKey.key } })
+    }
+    const nondefault = {
+      ...chosen,
+      permissions: "clipboard",
+      sources: chosen.sources.map((source) => ({
+        ...source,
+        measuredAt: "2028-01-01T00:00:00Z",
+      })),
+    }
+    expect(pickContextRun([older, nondefault])).toMatchObject({ run: { key: older.key }, selection: "default profile" })
+    expect(pickContextRun([older, tied, nondefault])).toMatchObject({ run: { key: nondefault.key } })
+    expect(pickContextRun([{ ...older, permissions: "clipboard" }, nondefault])).toMatchObject({
+      run: { key: nondefault.key },
+      selection: "latest original evidence",
     })
   })
 

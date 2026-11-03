@@ -6,6 +6,7 @@ import {
   readCollectorSelection,
   sourceAnswerForRef,
   sourceAnswerVersionLabel,
+  publicSourceAnswerPendingLabel,
 } from "@terminfo/probe-defs"
 import type {
   ProbeResult,
@@ -239,7 +240,7 @@ function screenGeometry(receipt: string | undefined): { rows: number; cols: numb
   return undefined
 }
 
-/** Current public results retain sealed statuses; evidence remains separately publication-reviewed. */
+/** Current public results retain stored statuses; evidence remains separately publication-reviewed. */
 export interface PublicProbeResult extends Pick<
   ProbeResult,
   "featureId" | "status" | "attempt" | "tests" | "assertionType"
@@ -347,11 +348,12 @@ export function publicResults(projection: SelectedProjection, subjects: Readonly
         : undefined
     // Scheduling facts explain an untouched row without presenting unreviewed callback evidence.
     const reason =
-      selection && !selection.ids.includes(result.featureId)
+      publicSourceAnswerPendingLabel(result.reason) ??
+      (selection && !selection.ids.includes(result.featureId)
         ? "Not selected for this collection; no test was attempted."
         : approved
           ? result.reason
-          : sourceLabel
+          : sourceLabel)
     const mapped: PublicProbeResult = {
       featureId: result.featureId,
       status: result.status,
@@ -360,7 +362,8 @@ export function publicResults(projection: SelectedProjection, subjects: Readonly
         id: check.id,
         status: check.status,
         attempt: publicAttempt(check.attempt),
-        ...(approved && check.reason !== undefined && { reason: check.reason }),
+        ...(approved &&
+          check.reason !== undefined && { reason: publicSourceAnswerPendingLabel(check.reason) ?? check.reason }),
         ...(check.assertionRefs && { assertionRefs: [...check.assertionRefs] }),
       })),
       ...(result.assertionType && { assertionType: result.assertionType }),
@@ -403,9 +406,16 @@ export function publicResults(projection: SelectedProjection, subjects: Readonly
       documents,
       3,
     )
+    const publicResult = globalThis.structuredClone(result)
+    const pendingReason = publicSourceAnswerPendingLabel(publicResult.reason)
+    if (pendingReason !== undefined) publicResult.reason = pendingReason
+    for (const check of publicResult.tests) {
+      const pendingCheckReason = publicSourceAnswerPendingLabel(check.reason)
+      if (pendingCheckReason !== undefined) check.reason = pendingCheckReason
+    }
     evidenceCells[result.featureId] = {
       featureId: result.featureId,
-      result: globalThis.structuredClone(result),
+      result: publicResult,
       record: {
         ...images(record, `run ${version.runId}/${result.featureId}`),
         assertions: record.assertions,
@@ -423,7 +433,7 @@ export function publicResults(projection: SelectedProjection, subjects: Readonly
   const mapVersion = (version: CurrentSelectedVersion): PublicVersion => {
     const prior = mappedRuns.get(version.runId)
     if (prior) {
-      if (prior.sha256 !== version.sha256) throw new Error(`Conflicting sealed current run ${version.runId}`)
+      if (prior.sha256 !== version.sha256) throw new Error(`Conflicting stored current run ${version.runId}`)
       return prior
     }
     const {
@@ -541,7 +551,6 @@ export function publicResults(projection: SelectedProjection, subjects: Readonly
           contextKey: value.contextKey,
           selected: context,
           states: Object.fromEntries(context.catalogIds.map((id) => [id, context.cells[id]?.status ?? "test-todo"])),
-          ...(value.policy && { policy: { ...value.policy, sources: publicSources(value.policy.sources) } }),
         },
       ]
     }),

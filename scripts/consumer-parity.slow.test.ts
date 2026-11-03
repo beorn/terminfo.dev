@@ -192,7 +192,7 @@ const fixture = vi.hoisted(() => {
 
 vi.mock("../docs/data/current-results.ts", async () => {
   const { loadFeatures } = await import("@terminfo/catalog")
-  const { projectResults, projectedContextKey } = await import("../docs/data/selected-results.ts")
+  const { projectResults } = await import("../docs/data/selected-results.ts")
   const actual = await vi.importActual<typeof import("../docs/data/current-results.ts")>(
     "../docs/data/current-results.ts",
   )
@@ -200,19 +200,6 @@ vi.mock("../docs/data/current-results.ts", async () => {
   const catalogIds = Object.keys(loadFeatures(content))
   const fixtureContent = mkdtempSync(join(tmpdir(), "terminfo-parity-policy-"))
   symlinkSync(join(content, "terminals.json"), join(fixtureContent, "terminals.json"))
-  writeFileSync(
-    join(fixtureContent, "default-contexts.json"),
-    JSON.stringify({
-      defaultContext: {
-        "term:kitty": {
-          contextKey: projectedContextKey(fixture.selected.subject, 2),
-          reviewer: "fixture",
-          reason: "default physical context",
-          sources: ["fixture://kitty"],
-        },
-      },
-    }),
-  )
   afterAll(() => rmSync(fixtureContent, { recursive: true, force: true }))
   const sealedFixture = (run: SelectedVersion): LoadedRun => {
     const ids = [...new Set([...catalogIds, ...Object.keys(run.cells)])]
@@ -559,7 +546,7 @@ it("keeps the retained corpus consistent across unmocked site, API and analysis 
       result.stderr
         .split("\n")
         .filter(Boolean)
-        .every((line) => /^Warning: Terminal '.+' has no current sealed runs$/.test(line)),
+        .every((line) => /^Warning: Terminal '.+' has no stored current runs$/.test(line)),
     ).toBe(true)
     const receipt = JSON.parse(result.stdout) as {
       exactContexts: number
@@ -868,7 +855,6 @@ describe("selected-run consumer parity", () => {
   it("keeps raw evidence and unchecked collector notes out of generated site and API summaries", () => {
     const out = mkdtempSync(join(tmpdir(), "terminfo-presentation-"))
     let selection: ReturnType<typeof vi.spyOn> | undefined
-    let policy: ReturnType<typeof vi.spyOn> | undefined
     let imageReader: ReturnType<typeof vi.spyOn> | undefined
     try {
       const site = probesLoader.load()
@@ -903,7 +889,6 @@ describe("selected-run consumer parity", () => {
       current.suiteId = probeHash()
       for (const cell of Object.values(context.cells)) cell.run.suiteId = current.suiteId
       selection = vi.spyOn(currentResults, "loadCurrentResults").mockReturnValue({ projection })
-      policy = vi.spyOn(currentResults, "loadDefaultContextPolicy").mockReturnValue({})
       current.rawReplies = { "bold-reply": "RETAINED_CURRENT_REPLY" }
       current.assertions = [
         { featureId: "sgr.bold", kind: "positive", expected: "expected criterion", observed: "actual response" },
@@ -994,7 +979,6 @@ describe("selected-run consumer parity", () => {
       expect(readFileSync(join(out, docUrl), "utf8")).toBe(document!.bytes)
     } finally {
       imageReader?.mockRestore()
-      policy?.mockRestore()
       selection?.mockRestore()
       rmSync(out, { recursive: true, force: true })
     }
@@ -1150,7 +1134,7 @@ describe("selected-run consumer parity", () => {
       expect(warnings.some((message) => message.includes("historical analysis snapshot is not current evidence"))).toBe(
         false,
       )
-      expect(warnings.every((message) => message.includes("no current sealed runs"))).toBe(true)
+      expect(warnings.every((message) => message.includes("no stored current runs"))).toBe(true)
     } finally {
       warning.mockRestore()
       rmSync(out, { recursive: true, force: true })
@@ -1182,7 +1166,7 @@ describe("selected-run consumer parity", () => {
       const analysis = generateAnalysis()["modes/decsclm-smooth-scroll"]?.analysis
       expect(analysis).toContain("Legacy")
       expect(analysis).not.toContain("Unicode")
-      expect(warnings.every((message) => message.includes("no current sealed runs"))).toBe(true)
+      expect(warnings.every((message) => message.includes("no stored current runs"))).toBe(true)
     } finally {
       warning.mockRestore()
       Reflect.deleteProperty(cells, featureId)
@@ -1420,6 +1404,8 @@ describe("selected-run consumer parity", () => {
     if (!unscoped) throw new Error("Missing Kitty sixel annotation fixture")
     const cell = fixture.selected.cells["extensions.sixel"] as SelectedCell
     const original = structuredClone(cell)
+    const annotationId = "extensions.osc1337-cellsize"
+    const previousAnnotated = fixture.selected.cells[annotationId]
     try {
       const unreviewed = generateAnalysis()["extensions/sixel-graphics"]?.analysis
       expect(unreviewed).not.toContain(unscoped)
@@ -1430,12 +1416,23 @@ describe("selected-run consumer parity", () => {
       const reviewed = generateAnalysis()["extensions/sixel-graphics"]?.analysis
       expect(reviewed).not.toContain(unscoped)
       expect(reviewed).not.toContain("Reviewed Kitty sixel observation note")
-      expect(warnings.every((message) => message.includes("no current sealed runs"))).toBe(true)
+      // Plain notes cannot veto stored grades or become evidence. Existing negative-result
+      // cases miss the old build refusal triggered by a note saying "not supported".
+      fixture.selected.cells[annotationId] = {
+        ...structuredClone(original),
+        featureId: annotationId,
+        outcome: "supported",
+      }
+      const generated = JSON.stringify(generateAnalysis())
+      expect(generated).not.toContain(annotations[`kitty:${annotationId}`]!.note)
+      expect(warnings.every((message) => message.includes("no stored current runs"))).toBe(true)
     } finally {
       warning.mockRestore()
       Object.assign(cell, original)
       if (original.note === undefined) delete cell.note
       if (original.chain.correctionId === undefined) Reflect.deleteProperty(cell.chain, "correctionId")
+      if (previousAnnotated) fixture.selected.cells[annotationId] = previousAnnotated
+      else Reflect.deleteProperty(fixture.selected.cells, annotationId)
     }
   })
 

@@ -46,6 +46,13 @@ export const SOURCE_ANSWER_PENDING_LABELS = {
   unresolvable: "cited source not resolvable",
 } as const
 
+/** Return only the fixed public cause, never a stored pending reason's private detail. */
+export function publicSourceAnswerPendingLabel(reason: string | undefined): string | undefined {
+  return Object.values(SOURCE_ANSWER_PENDING_LABELS).find(
+    (label) => reason === label || reason?.startsWith(`${label}: `) || reason?.startsWith(`${label} at `),
+  )
+}
+
 export type SourceAnswerPendingReason =
   | (typeof SOURCE_ANSWER_PENDING_LABELS)[keyof typeof SOURCE_ANSWER_PENDING_LABELS]
   | `cited source not resolvable at ${string}`
