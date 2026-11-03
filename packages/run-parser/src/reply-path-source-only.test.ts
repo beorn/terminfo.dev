@@ -6,7 +6,13 @@
  * @testonly none
  */
 import { expect, it } from "vitest"
-import { REPLY_PATH_AUDIT_REVIEW, type ProbeSuiteManifest } from "@terminfo/probe-defs"
+import {
+  REPLY_PATH_AUDIT_REVIEW,
+  SOURCE_NEGATIVE_REVIEW,
+  SOURCE_ONLY_NEGATIVE_REVIEW_BRANCHES,
+  UNTESTABLE_ONLY_REVIEW_BRANCHES,
+  type ProbeSuiteManifest,
+} from "@terminfo/probe-defs"
 import { parseRun } from "./index.ts"
 
 const FEATURE = "extensions.kitty-graphics"
@@ -107,17 +113,38 @@ it("still refuses a reply-path cell that claims evidence it does not have", () =
   expect(() => read("unsupported", "buffer_state")).toThrow("lacks bound negative assertion")
 })
 
-// @cto 32f3d0c1 condition 2. Option (a) — the reader admitting a source-only negative on a no-observable
-// branch — was refused, so this pins it: the same status and the same absent assertion are admitted or
-// refused purely by which branch recorded the measurement. The cure for a mis-selected branch is the probe
-// choosing the branch that carries the answer, never the reader admitting the one that does not.
-it("refuses an Unsupported standing on a no-observable branch, so (b) cannot decay into (a)", () => {
-  expect(() => read("unsupported", undefined, "color-readback-review")).toThrow(
-    "support result requires measured evidence",
-  )
-  // Untestable-only is refused earlier still; this is the shape that cost the 01:34 Ghostty backend.
-  expect(() => read("unsupported", undefined, "headless-observable-review")).toThrow(
-    "headless-observable-review review admits only an untestable decision",
-  )
-  expect(read("unsupported", undefined, REPLY_PATH_AUDIT_REVIEW).results?.[0]?.status).toBe("unsupported")
+// @cto 93c86660 condition 2: one table for the whole rule, pinned RED first. Every row is the SAME status with
+// the SAME absent assertion, so the verdict is decided purely by which branch recorded the measurement. Adding
+// "color-readback-review" to SOURCE_ONLY_NEGATIVE_REVIEW_BRANCHES must turn the third row red — that is what
+// proves the table measures the reader and not itself (@cto 32f3d0c1 refused option (a)).
+const BRANCH_ROWS: ReadonlyArray<{ branch: string; admits: boolean; refusal?: string }> = [
+  {
+    branch: "headless-observable-review",
+    admits: false,
+    refusal: "headless-observable-review review admits only an untestable decision",
+  },
+  { branch: REPLY_PATH_AUDIT_REVIEW, admits: true },
+  { branch: SOURCE_NEGATIVE_REVIEW, admits: true },
+  {
+    branch: "color-readback-review",
+    admits: false,
+    refusal: "support result requires measured evidence",
+  },
+]
+
+it("admits a source-only negative on exactly the branches that record one", () => {
+  for (const row of BRANCH_ROWS) {
+    if (row.admits) {
+      expect(read("unsupported", undefined, row.branch).results?.[0]?.status, row.branch).toBe("unsupported")
+    } else {
+      expect(() => read("unsupported", undefined, row.branch), row.branch).toThrow(row.refusal as string)
+    }
+  }
+})
+
+// A branch cannot be both untestable-only and source-only-negative; if one ever joined both sets, the two rules
+// would contradict and the row above would stop meaning what it says (@cto 93c86660 condition 2).
+it("keeps the untestable-only and source-only-negative branch sets disjoint", () => {
+  const both = [...SOURCE_ONLY_NEGATIVE_REVIEW_BRANCHES].filter((branch) => UNTESTABLE_ONLY_REVIEW_BRANCHES.has(branch))
+  expect(both).toEqual([])
 })

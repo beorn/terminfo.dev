@@ -1707,6 +1707,17 @@ export const HEADLESS_OBSERVABLE_REVIEW = "headless-observable-review"
 /** A reply-path gate carries no verdict, so it is not in this set: its kept answer decides (@cto de41833e). */
 export const UNTESTABLE_ONLY_REVIEW_BRANCHES: ReadonlySet<string> = new Set([HEADLESS_OBSERVABLE_REVIEW])
 
+/**
+ * The branches whose review is a source-only negative: there is no event to assert, so a cell on one of these
+ * carries neither an assertion type nor assertionRefs. A colour-readback cell is deliberately not in this set —
+ * its branch records no observable channel, so the probe chooses a branch that carries an answer rather than
+ * the reader admitting one that does not (@cto 32f3d0c1, 93c86660).
+ */
+export const SOURCE_ONLY_NEGATIVE_REVIEW_BRANCHES: ReadonlySet<string> = new Set([
+  SOURCE_NEGATIVE_REVIEW,
+  REPLY_PATH_AUDIT_REVIEW,
+])
+
 /** Audited source entries have one home; their paths are repository-relative identities, not checkout locations. */
 export const SOURCE_TREE_AUDITS = {
   libvterm: {

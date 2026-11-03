@@ -699,7 +699,7 @@ test("underline color reset needs both an observed colored before cell and defau
     withCells({ ...baseCell, underline: true, underlineColor: undefined }, { ...baseCell, char: "Y", underline: true }),
   )
   expect(missingBefore.notTested).toMatchObject({ reason: "no-semantic-observable" })
-  expect(missingBefore.criterionBranch).toBe("headless-observable-review")
+  expect(missingBefore.criterionBranch).toBe("source-negative-review")
   expect(missingBefore.tests).toEqual([
     { id: "review", status: "test-todo", reason: expect.stringContaining("distinct colored seed") },
   ])
