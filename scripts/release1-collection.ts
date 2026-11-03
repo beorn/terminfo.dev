@@ -883,6 +883,7 @@ function collectHostedArtifacts(
     stderr: join(directory, `${step}.stderr.log`),
   })
   let branch: string
+  let dispatchRef: string
   try {
     mkdirSync(root, { recursive: true })
     if (sourceRef === undefined) {
@@ -897,6 +898,7 @@ function collectHostedArtifacts(
           `hosted source revision ${sourceRevision} is not the published branch ${branch}; publish that exact component branch before dispatch`,
         )
       }
+      dispatchRef = `refs/heads/${branch}`
     } else {
       branch = sourceRef
       const remote = runChild(
@@ -921,15 +923,15 @@ function collectHostedArtifacts(
             return [name, oid] as const
           }),
       )
-      const actual =
-        refs.get(`refs/heads/${sourceRef}`) ??
-        refs.get(`refs/tags/${sourceRef}^{}`) ??
-        refs.get(`refs/tags/${sourceRef}`)
-      if (actual !== sourceRevision) {
+      const actual = [`refs/heads/${sourceRef}`, `refs/tags/${sourceRef}^{}`, `refs/tags/${sourceRef}`]
+        .map((reference) => ({ reference, revision: refs.get(reference) }))
+        .find((entry) => entry.revision !== undefined)
+      if (actual?.revision !== sourceRevision) {
         throw new Error(
-          `hosted source ref ${sourceRef} resolves to ${actual ?? "no published revision"}, not measured source ${sourceRevision}; skipped before dispatch`,
+          `hosted source ref ${sourceRef} resolves to ${actual?.revision ?? "no published revision"}, not measured source ${sourceRevision}; skipped before dispatch`,
         )
       }
+      dispatchRef = actual.reference.replace(/\^\{\}$/, "")
     }
   } catch (error) {
     for (const context of census.filter((row) => row.route === "hosted-workflow")) {
@@ -959,7 +961,7 @@ function collectHostedArtifacts(
             "--repo",
             "beorn/terminfo.dev",
             "--ref",
-            branch,
+            dispatchRef,
             "--field",
             `capture_run_ids=${JSON.stringify(
               Object.fromEntries(

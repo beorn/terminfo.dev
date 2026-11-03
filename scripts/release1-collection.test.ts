@@ -206,6 +206,9 @@ it.each([
   ["matching", "hosted-census-one"],
   ["matching", "hosted-ref-main"],
   ["matching", "hosted-ref-tag"],
+  ["matching", "hosted-ref-collision"],
+  ["matching", "hosted-ref-lightweight-tag"],
+  ["matching", "hosted-ref-missing"],
   ["matching", "hosted-ref-mismatch"],
   ["matching", "completed-collector-error"],
   ["matching", "empty-selection"],
@@ -238,7 +241,11 @@ it.each([
     writeFileSync(original, bytes)
     const originalBytes = readFileSync(original, "utf8")
     const sourceRef =
-      inputChange === "hosted-ref-tag" ? "fixture-tag" : inputChange.startsWith("hosted-ref-") ? "main" : undefined
+      inputChange === "hosted-ref-tag" || inputChange === "hosted-ref-lightweight-tag"
+        ? "fixture-tag"
+        : inputChange.startsWith("hosted-ref-")
+          ? "main"
+          : undefined
     const catalogSelection =
       inputChange === "hosted-census-one"
         ? vi
@@ -356,9 +363,15 @@ it.each([
           const refs =
             inputChange === "hosted-ref-tag"
               ? [`${"f".repeat(40)}\trefs/tags/fixture-tag`, `${raw.sourceRevision}\trefs/tags/fixture-tag^{}`]
-              : [
-                  `${inputChange === "hosted-ref-mismatch" ? "0".repeat(40) : raw.sourceRevision}\trefs/heads/${sourceRef ?? "fixture-collection"}`,
-                ]
+              : inputChange === "hosted-ref-lightweight-tag"
+                ? [`${raw.sourceRevision}\trefs/tags/fixture-tag`]
+                : inputChange === "hosted-ref-collision"
+                  ? [`${"e".repeat(40)}\trefs/tags/main`, `${raw.sourceRevision}\trefs/heads/main`]
+                  : inputChange === "hosted-ref-missing"
+                    ? []
+                    : [
+                        `${inputChange === "hosted-ref-mismatch" ? "0".repeat(40) : raw.sourceRevision}\trefs/heads/${sourceRef ?? "fixture-collection"}`,
+                      ]
           return respond(refs.filter((line) => args.includes(line.split("\t")[1])).join("\n") + "\n")
         }
         throw new Error(`unexpected Git command ${args.join(" ")}`)
@@ -588,12 +601,15 @@ it.each([
         expect(dispatches[0]?.[1]?.some((argument) => String(argument).startsWith("probe_ids="))).toBe(false)
         return
       }
-      if (inputChange === "hosted-ref-mismatch") {
+      if (inputChange === "hosted-ref-mismatch" || inputChange === "hosted-ref-missing") {
         expect(
           launcher.mock.calls.filter(([command, args]) => command === "gh" && args?.[0] === "workflow"),
         ).toHaveLength(0)
         expect(pass.contexts[0]?.error ?? pass.contexts[0]?.reason).toContain("main")
         expect(pass.contexts[0]?.error ?? pass.contexts[0]?.reason).toContain(raw.sourceRevision)
+        if (inputChange === "hosted-ref-missing") {
+          expect(pass.contexts[0]?.error ?? pass.contexts[0]?.reason).toContain("no published revision")
+        }
         return
       }
       if (inputChange.startsWith("macos-")) {
@@ -659,7 +675,7 @@ it.each([
               "--repo",
               "beorn/terminfo.dev",
               "--ref",
-              sourceRef ?? "fixture-collection",
+              `refs/${inputChange === "hosted-ref-tag" || inputChange === "hosted-ref-lightweight-tag" ? "tags" : "heads"}/${sourceRef ?? "fixture-collection"}`,
               "--field",
               `capture_run_ids=${JSON.stringify(ids)}`,
               "--field",
@@ -889,7 +905,7 @@ it.each([
             "--repo",
             "beorn/terminfo.dev",
             "--ref",
-            "fixture-collection",
+            "refs/heads/fixture-collection",
             "--field",
             `capture_run_ids=${JSON.stringify(delegated)}`,
             "--field",
