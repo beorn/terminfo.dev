@@ -363,20 +363,14 @@ describe("Phase 2.4 single status-and-rollup computation (rollupTerminalStatuses
     expect(rollup.positions).toBe(264)
     expect(rollup.environmentPositions).toBe(9)
     expect(Object.keys(rollup.families)).toHaveLength(13)
-    expect(
-      Object.values(rollup.families).reduce((sum, fam) => sum + fam.positions, 0),
-    ).toBe(264)
-    expect(
-      Object.values(rollup.families).reduce((sum, fam) => sum + fam.positions + fam.environmentPositions, 0),
-    ).toBe(273)
+    expect(Object.values(rollup.families).reduce((sum, fam) => sum + fam.positions, 0)).toBe(264)
+    expect(Object.values(rollup.families).reduce((sum, fam) => sum + fam.positions + fam.environmentPositions, 0)).toBe(
+      273,
+    )
     expect(rollup.families.device?.positions).toBe(19)
     expect(rollup.families.device?.environmentPositions).toBe(9)
-    expect(
-      Object.values(rollup.families).reduce((sum, fam) => sum + fam.open, 0),
-    ).toBe(rollup.open)
-    expect(
-      Object.values(rollup.families).reduce((sum, fam) => sum + fam.decided, 0),
-    ).toBe(rollup.decided)
+    expect(Object.values(rollup.families).reduce((sum, fam) => sum + fam.open, 0)).toBe(rollup.open)
+    expect(Object.values(rollup.families).reduce((sum, fam) => sum + fam.decided, 0)).toBe(rollup.decided)
     expect(rollup.decisive).toBe(rollup.counts.supported + rollup.counts.unsupported)
     expect(rollup.decided).toBe(rollup.decisive + rollup.counts.untestable)
     expect(rollup.open).toBe(rollup.counts["test-todo"] + rollup.counts["test-failure"])
@@ -478,10 +472,10 @@ describe("Phase 2.4 single status-and-rollup computation (rollupTerminalStatuses
     const ranked = rankOpenProbes(libCells, subsetIds, appCells)
     // device.env-term is excluded; 4 graded rows remain.
     expect(ranked.map((row) => row.featureId)).toEqual([
-      "cursor.up",    // totalOpen=2, libOpen=2, failures=1
-      "sgr.faint",    // totalOpen=2, libOpen=2, failures=0
+      "cursor.up", // totalOpen=2, libOpen=2, failures=1
+      "sgr.faint", // totalOpen=2, libOpen=2, failures=0
       "modes.decckm", // totalOpen=2, libOpen=1, failures=1
-      "sgr.bold",     // totalOpen=0
+      "sgr.bold", // totalOpen=0
     ])
     expect(ranked[0]).toEqual({
       featureId: "cursor.up",
