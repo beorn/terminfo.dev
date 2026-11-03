@@ -470,7 +470,7 @@ describe("Phase 2.4 report-only method, confidence & feature findings (rollupSub
 
   // No result is graded from source (operator 2026-11-03, #32246): the reader reads every stored source-answer cell
   // as TEST TODO, so no corpus cell classifies as source-reading and no kept-answer bucket exists.
-  it("maps every graded cell across all 16 corpus runs (loadStoredRuns) with 0 unmapped, 0 mixed and 0 source-reading", () => {
+  it("maps every graded cell across all 17 corpus runs (loadStoredRuns) with 0 unmapped, 0 mixed and 0 source-reading", () => {
     expect(PROBE_METHODS).toEqual(["source-reading", "library", "app-text", "app-screenshot", "real-os-device"])
     expect(PROBE_METHOD_RANK).toEqual({
       "source-reading": 1,
@@ -517,14 +517,14 @@ describe("Phase 2.4 report-only method, confidence & feature findings (rollupSub
       }
     }
 
-    // 19adf2707 retained four accepted Linux app captures, so the census reads 16 runs.
-    expect(storedRuns).toHaveLength(16)
-    expect(totalPositions).toBe(4224)
+    // f6136e4d retained the approved VTerm lifecycle run: 17 runs and 233 additional typed library rows.
+    expect(storedRuns).toHaveLength(17)
+    expect(totalPositions).toBe(4488)
     expect(totalUnmapped).toBe(0)
     expect(totalMixed).toBe(0)
     expect(totalSourceReading).toBe(0)
     // A retired source-answer cell keeps its stored assertion type, so it now classifies by that method.
-    expect(totalLibrary).toBe(834)
+    expect(totalLibrary).toBe(1067)
     expect(totalAppText).toBe(1712)
     expect(totalAppScreenshot).toBe(477)
     expect(totalRealOsDevice).toBe(100)
@@ -776,9 +776,9 @@ describe("Phase 2.4 report-only method, confidence & feature findings (rollupSub
     expect(report.needsByMethod["app-screenshot"]).toEqual([fFailure, fBelowMin])
   })
 
-  // Pinned after #32246 (the 164 stored source-answer cells read TEST TODO; every other cell's read status is
-  // unchanged) and 19adf2707 (four retained Linux app captures, 16 runs).
-  it("keeps rollupTerminalStatuses and generateApi outputs byte-identical on the 16 corpus runs (Adjustment 5)", () => {
+  // Pinned after #32246's source-answer retirement and the approved VTerm lifecycle run f6136e4d;
+  // all 17 retained runs are read without changing their stored bytes.
+  it("keeps rollupTerminalStatuses and generateApi outputs byte-identical on the 17 corpus runs (Adjustment 5)", () => {
     const rollups = storedRuns.map((loaded) => ({
       path: loaded.path.slice(contentDir.length + 1),
       sha256: loaded.sha256,
@@ -788,7 +788,7 @@ describe("Phase 2.4 report-only method, confidence & feature findings (rollupSub
       ),
     }))
     const rollupsSha256 = createHash("sha256").update(JSON.stringify(rollups)).digest("hex")
-    expect(rollupsSha256).toBe("e16b3d5555d82a9ea1dc45b310999fb25a8f2191794077d2b57bd7a0e2c67120")
+    expect(rollupsSha256).toBe("15b42e8764f426dc7e29bbee099a32566311df58921e826077c1a58353c6f1e3")
 
     const outDir = mkdtempSync(join(tmpdir(), "terminfo-api-verify-"))
     try {
@@ -797,8 +797,8 @@ describe("Phase 2.4 report-only method, confidence & feature findings (rollupSub
       const apiEvidenceInventorySha256 = createHash("sha256")
         .update(readFileSync(join(outDir, "api", "v3", "evidence-files.json")))
         .digest("hex")
-      expect(apiDataSha256).toBe("07d0e087c7a9772f05de1ef421ab6d5c81491ac824baf70b3321271e42ece2ee")
-      expect(apiEvidenceInventorySha256).toBe("b8915243ee16b710e874e9be2e73da10538128bac24e5483d1280f445b7e0739")
+      expect(apiDataSha256).toBe("4e7d000c28798a14e45137a09a94e074b63230a409a963e2b1e858c00b62da56")
+      expect(apiEvidenceInventorySha256).toBe("c9ce746c3ab03a74a52523f161216f07a8034fdcb178d4aa2dec79b3e427aa75")
     } finally {
       // raw-delete-allow: standalone component repository whose CI installs without hh's workspace, so removely is
       // unavailable; `outDir` is this test's own mkdtempSync scratch root.

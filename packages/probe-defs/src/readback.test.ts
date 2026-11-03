@@ -9,6 +9,7 @@ import { cursorProbes } from "./cursor.ts"
 import { modesProbes } from "./modes.ts"
 import { resetProbes } from "./reset.ts"
 import { sgrProbes } from "./sgr.ts"
+import { NO_SAME_PATH_CONTROL } from "./helpers.ts"
 import type { TermProbeSource, TerminalQueryOutcome } from "./types.ts"
 
 function termProbe(id: string): (ctx: TermProbeSource) => Promise<import("./types.ts").ProbeCallbackResult> {
@@ -137,19 +138,25 @@ test.each(["sgr.bold", "cursor.hide", "modes.insert-replace"] as const)(
   },
 )
 
-test("an incorrect SGR readback is a negative, not a pass", async () => {
+test("an incorrect SGR value is negative; an absent selector without setup is TODO", async () => {
   const ctx = kittySource(true)
+  let reported = "38;2;0;0;255"
   const original = ctx.queryWithSentinelOutcome
   ctx.queryWithSentinelOutcome = async (sequence, pattern, timeoutMs) => {
     const outcome = await original.call(ctx, sequence, pattern, timeoutMs)
     if (sequence.startsWith("\x1bP$qm")) {
-      return { match: ["\x1bP1$r0m\x1b\\", "0"], reason: "reply", raw: "", rawBase64: "" }
+      const raw = `\x1bP1$r${reported}m\x1b\\`
+      return { match: [raw, reported], reason: "reply", raw, rawBase64: Buffer.from(raw).toString("base64") }
     }
     return outcome
   }
-  const result = await termProbe("sgr.bold")(ctx)
+  const result = await termProbe("sgr.fg.truecolor")(ctx)
   expect(result.pass).toBe(false)
   expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
+  reported = "0"
+  const unqualified = await termProbe("sgr.bold")(ctx)
+  expect(unqualified.notTested).toEqual({ reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL })
+  expect(unqualified.observation).toBeUndefined()
 })
 
 // Kitty 0.49.2 answers DECRQSS with the full normalized SGR list, not just the set codes:
