@@ -30,7 +30,7 @@ import { extensionsProbes } from "./extensions.ts"
 import { deviceProbes } from "./device.ts"
 import { modesProbes } from "./modes.ts"
 import { resetProbes } from "./reset.ts"
-import { sgrProbes } from "./sgr.ts"
+import { sgrProbes, finalizeSgrResult } from "./sgr.ts"
 import { unicodeProbes } from "./unicode.ts"
 import { editingProbes } from "./editing.ts"
 import { textProbes } from "./text.ts"
@@ -41,9 +41,80 @@ import type {
   NotTestedCoverageResult,
   ObservationFrame,
   ProbeCallbackResult,
+  ProbeResult,
   TermProbeSource,
 } from "./types.ts"
 const attempt = { scope: "probe" as const, startedAt: "2026-10-21T05:00:00.000Z" }
+
+// One shared owner covers the whole registry and status fold. Native tests retain only the
+// distinct capture-transport binding; headless tests retain manifest-to-checkpoint delivery.
+it("requires visual evidence across the SGR registry while preserving parser-only and non-SGR results", () => {
+  const targets = [
+    { target: { kind: "term", id: "fixture" }, pending: true },
+    { target: { kind: "mux", id: "fixture" }, pending: true },
+    { target: { kind: "lib", id: "fixture", rendering: "render-capable" }, pending: true },
+    { target: { kind: "lib", id: "fixture", rendering: "parser-only" }, pending: false },
+    { target: { kind: "lib", id: "fixture" }, pending: true },
+  ] as const
+  for (const featureId of [...sgrProbes.map(({ id }) => id), "modes.bracketed-paste"]) {
+    for (const status of ["supported", "unsupported", "test-todo", "test-failure"] as const) {
+      const recorded: ProbeResult = {
+        featureId,
+        status,
+        attempt,
+        reason: "Recorded criterion cause",
+        tests: [{ id: "criterion", status, attempt }],
+        rawReplyRef: featureId,
+      }
+      for (const { target, pending } of targets) {
+        const result = finalizeSgrResult(recorded, target, [])
+        const conclusive = status === "supported" || status === "unsupported"
+        if (featureId !== "modes.bracketed-paste" && pending && conclusive) {
+          expect(result.status).toBe("test-todo")
+          expect(result.reason).toBe(
+            target.kind === "lib" && !("rendering" in target)
+              ? "rendering declaration missing for library fixture in @termless/core/backends.json"
+              : "visual effect not observed in this run",
+          )
+          expect(result.rawReplyRef).toBe(recorded.rawReplyRef)
+          expect(result.tests[0]).toEqual(recorded.tests[0])
+        } else {
+          expect(result).toEqual(recorded)
+        }
+      }
+    }
+  }
+})
+
+// Pixel presence cannot promote TODO/failure, and text or another feature's frame is not this
+// result's screenshot. The collector tests prove the frame list itself comes from the actual probe.
+it("accepts only the recorded SGR screenshot in its own pixel captures without supplying a verdict", () => {
+  const ref = `sha256:${"a".repeat(64)}`
+  const frame: ObservationFrame = { role: "target", ref, capturedAt: 1, label: "Fixture pixels" }
+  const textFrame: ObservationFrame = {
+    ...frame,
+    kind: "text-cells",
+    cellDigest: "cells",
+    frameDigest: "frame",
+    cellRectangle: { top: 1, left: 1, bottom: 1, right: 1 },
+  }
+  for (const status of ["supported", "unsupported", "test-todo", "test-failure"] as const) {
+    const recorded: ProbeResult = {
+      featureId: "sgr.bold",
+      status,
+      attempt,
+      tests: [{ id: "criterion", status, attempt }],
+      screenshotRef: ref,
+    }
+    const target = { kind: "lib", id: "render-fixture", rendering: "render-capable" } as const
+    expect(finalizeSgrResult(recorded, target, [frame])).toEqual(recorded)
+    for (const captures of [[textFrame], [{ ...frame, ref: `sha256:${"b".repeat(64)}` }], []]) {
+      expect(finalizeSgrResult(recorded, target, captures).status).toBe(
+        status === "supported" || status === "unsupported" ? "test-todo" : status,
+      )
+    }
+  }
+})
 
 // Callback-only reply markers must never become stored evidence fields. Existing tests
 // did not pass callback metadata through the public finalizer's structural boundary.

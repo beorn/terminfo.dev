@@ -52,6 +52,47 @@ async function backend() {
   return createXtermBackend()
 }
 
+// The collector must apply the registered library product declaration before its final checkpoint.
+// Callback-only tests cannot catch losing that fact between the manifest and the recorded result.
+// Kitty uses an explicitly labelled xterm parser fixture: this tests undeclared-target recording,
+// not a Kitty execution, identity, rendering claim or capture.
+test.each([
+  { name: "xtermjs", create: backend, expected: "test-todo", reason: "visual effect not observed in this run" },
+  { name: "vterm", create: async () => createVtermBackend(), expected: "supported", reason: undefined },
+  {
+    name: "kitty",
+    create: backend,
+    expected: "test-todo",
+    reason: "rendering declaration missing for library kitty in @termless/core/backends.json",
+  },
+] as const)(
+  "records $name SGR with its rendering declaration before checkpoint",
+  async ({ name, create, expected, reason }) => {
+    const definition = registryDefinitions(["sgr.bold"])[0]!
+    const draft = {
+      runId: "library-rendering-declaration-fixture",
+      rawReplies: {},
+      results: [
+        { featureId: definition.id, status: "test-todo" as const, attempt: { scope: "none" as const }, tests: [] },
+      ],
+    }
+    const checkpoints: string[] = []
+    const batch = await collectBatch(create, name, [definition], draft, (value) => {
+      checkpoints.push(value.results[0]!.status)
+    })
+    expect(batch.ungradedDiagnostics).toEqual({})
+    expect(batch.results[0]!.status).toBe(expected)
+    if (reason) expect(batch.results[0]!.reason).toBe(reason)
+    expect(draft.results[0]!.status).toBe(expected)
+    expect(checkpoints.at(-1)).toBe(expected)
+    expect(batch.observations[0]).toMatchObject({
+      featureId: definition.id,
+      outcome: "supported",
+      assertionType: "buffer_state",
+    })
+  },
+)
+
 // @failure A real collector source drops backend.name and turns the adapter-binding TODO into an undefined label.
 // @consumer The registered six-mode callback through createLibProbeSource and canonical batch recording.
 test("adapter-binding TODO names the initialized backend", async () => {
@@ -4303,7 +4344,14 @@ test("a silent loaded binary collects a no-same-path-control TODO and an observe
     // #32246: a zero-byte reply on a loaded binary is TEST TODO with no same-path control, never a source audit.
     tests: [{ id: "criterion", status: "test-todo", reason: NO_SAME_PATH_CONTROL }],
   })
-  expect(batch.results.find((row) => row.featureId === "sgr.bold")?.status).toBe("supported")
+  expect(batch.observations.find((row) => row.featureId === "sgr.bold")).toMatchObject({
+    outcome: "supported",
+    assertionType: "buffer_state",
+  })
+  expect(batch.results.find((row) => row.featureId === "sgr.bold")).toMatchObject({
+    status: "test-todo",
+    reason: "visual effect not observed in this run",
+  })
 })
 
 // AC2: an actual declared/loaded mismatch still refuses before probes and retains the original failure.

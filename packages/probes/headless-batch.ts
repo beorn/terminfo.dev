@@ -3,6 +3,7 @@
 
 import {
   hasExtension,
+  entry as backendEntry,
   type HyperlinkExtension,
   type DefaultColorsExtension,
   type MouseEncodingExtension,
@@ -18,6 +19,7 @@ import {
   readHyperlinkMetadata,
   readSentinelReply,
   recordExecutedProbe,
+  finalizeSgrResult,
   ASSERTION_TYPES,
   sentinelAnswer,
   sentinelGraceMs,
@@ -872,7 +874,7 @@ export async function collectBatch(
       const observation = batch.observations.find((entry) => entry.featureId === probe.id)
       const diagnostic = batch.ungradedDiagnostics[probe.id]
       const coverage = batch.notTested.find((entry) => entry.featureId === probe.id)
-      const result = recordExecutedProbe({
+      const recorded = recordExecutedProbe({
         featureId: probe.id,
         attempt,
         observation,
@@ -883,6 +885,11 @@ export async function collectBatch(
         ...(Object.hasOwn(batch.rawReplies, probe.id) ? { rawReplyRef: probe.id } : {}),
         criterionBranch,
       })
+      const result = finalizeSgrResult(
+        recorded,
+        { kind: "lib", id: backendName, rendering: backendEntry(backendName)?.rendering },
+        [],
+      )
       const index = batch.results.findIndex((entry) => entry.featureId === probe.id)
       if (index < 0) throw new Error(`Headless callback ${probe.id} is outside the initialized catalogue`)
       batch.results[index] = result
