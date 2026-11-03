@@ -9,13 +9,19 @@
  *   so the sentence itself is the contract and this pins it for both arms.
  * @testonly none
  */
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 import { readFileSync } from "node:fs"
 import { parseRun, parseSuiteManifest } from "@terminfo/run-parser"
 import { projectResults } from "../docs/data/selected-results.ts"
 import { publicResults } from "../docs/data/public-results.ts"
 import { describeTracePanes, readCellTrace } from "../docs/data/evidence-reader.ts"
 import { textEvidenceExplanation } from "../docs/.vitepress/theme/ungraded-explanation.ts"
+
+const caption = vi.hoisted(() => ({ suffix: "" }))
+vi.mock("@terminfo/probe-defs", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@terminfo/probe-defs")>()),
+  sourceAnswerVersionLabel: (version: string) => `reviewed at ${version}, not re-verified${caption.suffix}`,
+}))
 
 const SAMPLE_SHA256 = "a".repeat(64)
 
@@ -45,8 +51,19 @@ it("labels a retained source answer by engine version without regrading or datin
   expect(result?.reason).toContain("reviewed at 0.17.0, not re-verified")
   expect(result?.status).toBe("unsupported")
   expect(selected?.measuredAt).toBe(run.measuredAt)
+  expect(publicResults(projection, new Map()).projection.contexts["term:alacritty"]?.cells[featureId]?.reason).toBe(
+    "reviewed at 0.17.0, not re-verified",
+  )
+  // A changed shared caption must reach the public reader; a second literal
+  // silently drops it even though today's exact caption above still passes.
+  caption.suffix = " (shared caption)"
+  if (!result?.reason) throw new Error("Expected retained source answer")
+  result.reason += caption.suffix
   const published = publicResults(projection, new Map()).projection
-  expect(published.contexts["term:alacritty"]?.cells[featureId]?.reason).toBe("reviewed at 0.17.0, not re-verified")
+  caption.suffix = ""
+  expect(published.contexts["term:alacritty"]?.cells[featureId]?.reason).toBe(
+    "reviewed at 0.17.0, not re-verified (shared caption)",
+  )
   expect(published.contexts["term:alacritty"]?.cells[featureId]?.presentation.state).toBe("not-reviewed")
   expect(published.contexts["term:alacritty"]?.cells[featureId]?.record).toBeUndefined()
   expect(run).toEqual(original)
