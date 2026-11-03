@@ -38,7 +38,7 @@ export interface FeatureRecord {
   /**
    * The tier-1 Release 1 label. Only the 62 declared rows carry it: `included` for the 52 that are
    * scored, `excluded` for the ten silent-consumed or fixture-gated OSC rows the 27832 audit names.
-   * Every other row's slice is its category's slice — see `slice()`.
+   * Every other row's cohort slice is its category's slice.
    */
   tier1?: Tier1
   probeStatus?: string
@@ -55,14 +55,14 @@ export const TIER1_VALUES: readonly Tier1[] = ["included", "excluded"]
 
 /**
  * A feature's slice — the scope label the cohorts and scopes filter over. `tier1` is never stored on
- * the row; it is what `slice()` returns for a row that carries a `tier1` field, so a slice can never
- * disagree with the category it came from.
+ * the row; cohort tests select it for a row that carries a `tier1` field. Other rows keep their
+ * category's slice.
  */
 export type Slice = "tier1" | "classics" | "extensions" | "input" | "modes" | "device"
 
 export const SLICES: readonly Slice[] = ["tier1", "classics", "extensions", "input", "modes", "device"]
 
-/** The only fact `slice()` needs from a category: its slice label. */
+/** A category's slice label. */
 export interface SliceCategory {
   slice: Slice
 }
@@ -286,20 +286,4 @@ export function loadTerminals(contentDir: string): TerminalCatalog {
   const frozen = Object.freeze(catalog)
   cache.set(cacheKey, frozen)
   return frozen
-}
-
-/**
- * The ONE slice function: `tier1` when the feature carries a tier1 field, otherwise its category's
- * slice. It is a function, never a stored field, so a row's slice can never disagree with the
- * category it belongs to (and storing it on all 273 rows would need a drift check). Cohorts and
- * scopes are filters over this label.
- */
-export function slice(features: FeatureCatalog, categories: SliceCatalog, id: string): Slice {
-  const feature = features[id]
-  if (!feature) throw new Error(`slice(): no feature "${id}" in the catalog`)
-  if (feature.tier1 !== undefined) return "tier1"
-  const key = id.split(".")[0] ?? ""
-  const category = categories[key]
-  if (!category) throw new Error(`slice(): feature "${id}" has prefix "${key}", which is not a category`)
-  return category.slice
 }

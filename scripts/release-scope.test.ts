@@ -13,7 +13,7 @@ import { createHash } from "node:crypto"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { describe, expect, it } from "vitest"
-import { loadFeatures, slice, type FeatureCatalog, type Slice } from "@terminfo/catalog"
+import { loadFeatures, type FeatureCatalog, type Slice, type SliceCatalog } from "@terminfo/catalog"
 import {
   ENVIRONMENT_GROUP_IDS,
   SOURCE_ANSWERS,
@@ -46,6 +46,18 @@ const root = join(import.meta.dirname, "..")
 const contentDir = join(root, "content")
 const catalog = loadFeatures(contentDir)
 const categories = loadCategories(contentDir)
+
+// CTO ruling 2026-11-03: the retired projection was the last production reader; keep slice behaviour
+// with the cohort contract instead of retaining an unused package API (#31824).
+function slice(features: FeatureCatalog, categories: SliceCatalog, id: string): Slice {
+  const feature = features[id]
+  if (!feature) throw new Error(`slice(): no feature "${id}" in the catalog`)
+  if (feature.tier1 !== undefined) return "tier1"
+  const key = id.split(".")[0] ?? ""
+  const category = categories[key]
+  if (!category) throw new Error(`slice(): feature "${id}" has prefix "${key}", which is not a category`)
+  return category.slice
+}
 
 // CTO ruling 2026-10-23: retain these accepted contracts at their only caller, this test boundary.
 /** The category facts a cohort's order needs: its slice label and its site order. */
