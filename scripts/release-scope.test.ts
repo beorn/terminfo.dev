@@ -8,23 +8,20 @@
  * @reach fs-walk vendor/terminfo.dev/docs/** vendor/terminfo.dev/scripts/**
  * @testonly none
  */
-import { readFileSync, mkdtempSync, writeFileSync, mkdirSync, rmSync } from "node:fs"
+import { readFileSync } from "node:fs"
 import { createHash } from "node:crypto"
 import { join } from "node:path"
-import { tmpdir } from "node:os"
 import { describe, expect, it } from "vitest"
 import { loadFeatures, slice, type FeatureCatalog, type Slice } from "@terminfo/catalog"
 import { ENVIRONMENT_GROUP_IDS, type ProbeStatus } from "@terminfo/probe-defs"
-import { parseSuiteManifest } from "@terminfo/run-parser"
 import { loadCategories, orderedCategoryIds } from "../docs/data/categories.ts"
-import { frozenSuiteIdFor, loadReleaseScope } from "../docs/data/load-release-scope.ts"
+import { loadReleaseScope } from "../docs/data/load-release-scope.ts"
 import {
   aggregateCurrentResults,
   completenessTierOf,
   isStaleRelation,
   rollupTerminalStatuses,
   staleCaption,
-  treeMovedPastRelease,
 } from "../docs/data/release-scope.ts"
 
 const root = join(import.meta.dirname, "..")
@@ -132,21 +129,7 @@ export function d3Verdict(decisive: number, denominator: number): D3Verdict {
   return { label, decisive, denominator, pct, fraction, text: `${label} · ${fraction}` }
 }
 
-/** Write one suite manifest from a freeze pointer, for the registry tests below. */
-function writeSuite(dir: string, probeHash: string, freeze?: { release: string; at: string }): void {
-  writeFileSync(
-    join(dir, `${probeHash}.json`),
-    JSON.stringify({
-      schemaVersion: 4 as const,
-      probeHash,
-      adapterVersion: "4.0.0",
-      ...(freeze === undefined ? {} : { freeze }),
-      probes: { term: [], lib: [], mux: [] },
-    }),
-  )
-}
-
-describe("the derived scope, the classic cohort and the suite pointer", () => {
+describe("the derived scope and the classic cohort", () => {
   it("derives the declared 62 tier-1 rows from the catalog's tier1 labels, never a scope file", () => {
     const scope = loadReleaseScope({ catalog, categories })
     expect(scope.measuredCount).toBe(62)
@@ -240,40 +223,6 @@ describe("the derived scope, the classic cohort and the suite pointer", () => {
       }),
     ).toThrow(/cohort is empty: the categories for slices classics carry no rows/)
   })
-
-  it("reads a release's suite from the one manifest that freezes it, refusing none and refusing two", () => {
-    // candidate 2 moved 67ad1f1d1580 -> c24025ea22fc on 2026-10-18 through the supported writer (28018),
-    // then c24025ea22fc -> f9450b3bc56a on 2026-10-19 when the five Linux contexts were admitted on the
-    // suite the pin then built (28023), then f9450b3bc56a -> 448ce7769d2c when the all-platform
-    // collection landed (30286), so every ruled context including both Windows rows is measured on the
-    // live suite. The suite a move leaves keeps no claim of its own, so the lineage carried on the new
-    // record is the only place the older suites are still named.
-    const suiteId = frozenSuiteIdFor(contentDir, "candidate2")
-    expect(suiteId).toBe("00da53623456")
-    const suitePath = join(contentDir, "suites", `${suiteId}.json`)
-    expect(
-      parseSuiteManifest(suitePath, readFileSync(suitePath, "utf8")).freeze?.previous?.map((entry) => entry.suite),
-    ).toContain("c24025ea22fc")
-    // Candidate 4 keeps its own freeze, a different declaration from candidate 2's, while its COHORT
-    // reads candidate 2's suite (@chief convergence ruling, 2026-10-18). The registry lookup and the
-    // cohort spec answer two separate questions and must not be conflated.
-    expect(frozenSuiteIdFor(contentDir, "candidate4")).toBe("4f6fcc8c3ff7")
-    const dir = mkdtempSync(join(tmpdir(), "suite-registry-"))
-    try {
-      mkdirSync(join(dir, "suites"))
-      const at = "2026-10-12T03:33:42.000Z"
-      writeSuite(join(dir, "suites"), "aaaa00000000", { release: "candidate2", at })
-      expect(frozenSuiteIdFor(dir, "candidate2")).toBe("aaaa00000000")
-      expect(() => frozenSuiteIdFor(dir, "candidate9")).toThrow(
-        /no suite manifest declares freeze.release "candidate9"/,
-      )
-      writeSuite(join(dir, "suites"), "bbbb11111111", { release: "candidate2", at })
-      expect(() => frozenSuiteIdFor(dir, "candidate2")).toThrow(/2 suite manifests claim release "candidate2"/)
-      expect(() => frozenSuiteIdFor(join(dir, "absent"), "candidate2")).toThrow(/the suite registry is required/)
-    } finally {
-      rmSync(dir, { recursive: true })
-    }
-  })
 })
 
 describe("release 1 measurement scope", () => {
@@ -297,14 +246,9 @@ describe("release 1 measurement scope", () => {
 
   it("records a stale measurement as not re-measured since that date", () => {
     expect(staleCaption("2026-10-04T17:46:58Z")).toBe("not re-measured since October 4, 2026")
-    expect(isStaleRelation("release")).toBe(false)
     expect(isStaleRelation("tree")).toBe(false)
     expect(isStaleRelation("older")).toBe(true)
     expect(isStaleRelation("partial")).toBe(true)
-    // One banner only when the live tree has actually moved past the release suite.
-    expect(treeMovedPastRelease("21739d9e768f", "a8bafe49cdd4")).toBe(true)
-    expect(treeMovedPastRelease("a8bafe49cdd4", "a8bafe49cdd4")).toBe(false)
-    expect(treeMovedPastRelease("a8bafe49cdd4", null)).toBe(false)
   })
 
   it("labels the D3 verdict: pass from 90% decisive of the included cohort, with gaps from 70%, fail below", () => {

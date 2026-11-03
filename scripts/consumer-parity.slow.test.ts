@@ -304,13 +304,7 @@ vi.mock("../docs/data/current-results.ts", async () => {
       const sealed = sealedFixture(run)
       originals.set(sealed.runId, sealed)
     }
-    return projectResults(
-      [...originals.values()],
-      [],
-      catalogIds,
-      { currentProbeHash: "current", releaseSuiteId: "current" },
-      [],
-    )
+    return projectResults([...originals.values()], [], catalogIds, { currentProbeHash: "current" }, [])
   }
   return {
     ...actual,
@@ -368,7 +362,7 @@ function recompose(projection: SelectedProjection, extra: readonly LoadedRun[] =
     [...runs.values()],
     [],
     Object.values(projection.contexts)[0]?.catalogIds ?? [],
-    { currentProbeHash: "current", releaseSuiteId: "current" },
+    { currentProbeHash: "current" },
     [],
   )
 }

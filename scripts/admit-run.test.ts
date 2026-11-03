@@ -30,7 +30,7 @@ import {
 import { object } from "./interpretations.ts"
 import { parseDisposableReceipt } from "../packages/terminfo.dev/src/disposable-receipt.ts"
 import { derivedSuiteManifest } from "./suite-manifest.ts"
-import { frozenSuiteIdFor } from "../docs/data/load-release-scope.ts"
+import { frozenSuiteIdFor } from "../packages/admin/suite-manifest.ts"
 import muxIdentity from "../packages/terminfo.dev/src/fixtures/mux-identity.json"
 import { serializeOuterLaunchRecord } from "../packages/admin/src/outer-launch.ts"
 

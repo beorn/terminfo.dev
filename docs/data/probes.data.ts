@@ -110,8 +110,6 @@ export interface ProbeData {
    * than walking the run's raw cells or holding a second classifier.
    */
   releaseTable: Record<string, Readonly<Record<string, ProbeStatus>>>
-  /** The two suite facts, and whether the live tree has moved past the release suite (one banner when it has). */
-  suiteMove: { treeSuiteId: string; releaseSuiteId: string | null; treeMovedPastRelease: boolean }
 }
 
 interface CurrentStats {
@@ -300,11 +298,6 @@ export function loadFullProbes(): ProbeData {
     releaseShares,
     releaseStale,
     releaseTable,
-    suiteMove: {
-      treeSuiteId: projection.treeSuiteId,
-      releaseSuiteId: projection.releaseSuiteId,
-      treeMovedPastRelease: projection.treeMovedPastRelease,
-    },
   }
   computeBaselines(result, projection)
   return result

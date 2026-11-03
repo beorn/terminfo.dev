@@ -754,21 +754,6 @@ test("--move takes exactly one release, through the same parser as --freeze", ()
   expect(suiteManifestMode(["--move", "candidate2", "extra"])).toBe("usage")
 })
 
-test("the live registry records the candidate2 pointer move it already made", () => {
-  // The live registry carries every move: the hand edit that put candidate2 on 67ad, the supported
-  // writer's --move onto c24025ea22fc (28018), the --move onto f9450b3bc56a when the five Linux
-  // contexts were admitted (28023), and the --move onto 448ce7769d2c when the all-platform
-  // collection landed (30286). The current record names every suite it left and the window each held
-  // the pointer, so the lineage is recoverable from content alone rather than only from Git history.
-  const contentDir = join(REPO_ROOT, "content")
-  const suiteId = frozenSuiteIdFor(contentDir, "candidate2")
-  expect(suiteId).toBe("00da53623456")
-  const suitePath = join(contentDir, "suites", `${suiteId}.json`)
-  expect(
-    parseSuiteManifest(suitePath, readFileSync(suitePath, "utf8")).freeze?.previous?.map((entry) => entry.suite),
-  ).toEqual(["5753741410a9", "68847e4d5355", "67ad1f1d1580", "c24025ea22fc", "f9450b3bc56a", "448ce7769d2c"])
-})
-
 test("the declaration API cannot write a release claim, so no writer bypasses the checked act", () => {
   const directory = authoringRepo("terminfo-suite-no-bypass-")
   const first = snapshotOf("e".repeat(12))
