@@ -266,15 +266,39 @@ function clusterWidth(cluster: string, mutations?: ReadonlySet<string>): number 
   const codes = Array.from(cluster, (char) => char.codePointAt(0) ?? 0)
   if (codes.length === 0) return 0
   if (codes.includes(VS16) && !mutations?.has("emoji-vs16-noop")) return 2
-  if (codes.includes(ZWJ)) return mutations?.has("emoji-zwj-noop") ? 1 : 2
+  if (codes.includes(ZWJ)) {
+    return mutations?.has("emoji-zwj-noop") || mutations?.has("grapheme-cursor-noop") ? 1 : 2
+  }
   if (codes.length >= 2 && isRegionalIndicator(codes[0] ?? 0) && isRegionalIndicator(codes[1] ?? 0)) {
     return mutations?.has("emoji-flags-noop") ? 1 : 2
   }
   const base = codes[0] ?? 0
   if (isCombining(base)) return mutations?.has("combining-noop") ? 1 : 0
+  if (mutations?.has("east-asian-ambiguous-noop") && base === 0x25cf) return 0
   if (mutations?.has("wide-emoji-noop") && base >= 0x1f300 && base <= 0x1faff) return 1
   if (mutations?.has("wide-cjk-noop") && base >= 0x2e80 && base <= 0xffe6) return 1
   return isWide(base) ? 2 : 1
+}
+
+function shouldWrapCluster(autoWrap: boolean, width: number, mutations: ReadonlySet<string>): boolean {
+  return autoWrap && !mutations.has("wrap-noop") && !(width > 1 && mutations.has("wrap-boundary-noop"))
+}
+
+function mapDecSpecialChar(activeSet: CharsetSet, char: string, mutations: ReadonlySet<string>): string | undefined {
+  if (activeSet !== "dec-special") return undefined
+  if (char === "j" && mutations.has("dec-line-drawing-noop")) return undefined
+  return DEC_SPECIAL_GRAPHICS[char]
+}
+
+function resolveUtf8Cluster(
+  cluster: string,
+  width: number,
+  mutations: ReadonlySet<string>,
+): { readonly cluster: string; readonly width: number } {
+  if (mutations.has("utf8-noop") && (cluster.codePointAt(0) ?? 0) > 0x7f) {
+    return { cluster: "?", width: 1 }
+  }
+  return { cluster, width }
 }
 
 const COLON_UNDERLINE_STYLES: Readonly<Record<number, { readonly mutation: string; readonly style: UnderlineStyle }>> =
@@ -475,6 +499,8 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
   let marginLeft = 0
   let marginRight = cols - 1
   let scrolled = 0
+  let viewportOffset = 0
+  let viewportAnchored = false
   let attributes: Attributes = NO_ATTRIBUTES
   let sgrStack: Attributes[] = []
   let protecting = false
@@ -533,6 +559,8 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
     marginLeft = 0
     marginRight = cols - 1
     scrolled = 0
+    viewportOffset = 0
+    viewportAnchored = false
     sgrStack = []
     insertMode = false
     applicationKeypad = false
@@ -593,6 +621,14 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
   const clampCol = (col: number): number => (col < 0 ? 0 : col > cols - 1 ? cols - 1 : col)
   const cellAt = (row: number, col: number): SurfaceCell => grid[row]?.[col] ?? blankCell(NO_ATTRIBUTES)
 
+  const advanceHistory = (added: number): void => {
+    scrolled += added
+    if (!viewportAnchored || mutations.has("viewport-hold-noop")) {
+      viewportOffset = scrolled
+      viewportAnchored = false
+    }
+  }
+
   const lineFeed = (): void => {
     if (mutations.has("lf-noop")) return
     if (cursorY >= regionBottom) {
@@ -601,7 +637,7 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
       // History accounting follows scrollUp: only a full-screen region pushes the line that leaves
       // the top into scrollback; an interior region discards it. Without this the DECSTBM reset row
       // could not be decided by a with-and-without-reset control pair on totalLines.
-      if (regionTop === 0 && regionBottom === rows - 1) scrolled += 1
+      if (regionTop === 0 && regionBottom === rows - 1) advanceHistory(1)
       return
     }
     cursorY += 1
@@ -613,14 +649,16 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
    * control the scrollback.scroll-up probe asserts with `totalLines === screenLines`).
    */
   const scrollUp = (count: number): void => {
+    if (mutations.has("su-noop")) return
     const n = Math.min(count, regionBottom - regionTop + 1)
     grid.splice(regionTop, n)
     for (let i = 0; i < n; i++) grid.splice(regionBottom, 0, blankRow())
-    if (regionTop === 0 && regionBottom === rows - 1) scrolled += n
+    if (regionTop === 0 && regionBottom === rows - 1) advanceHistory(n)
   }
 
   /** SD — scroll the region down by N, blanking the vacated top rows; history is unchanged. */
   const scrollDown = (count: number): void => {
+    if (mutations.has("sd-noop")) return
     const n = Math.min(count, regionBottom - regionTop + 1)
     grid.splice(regionBottom - n + 1, n)
     for (let i = 0; i < n; i++) grid.splice(regionTop, 0, blankRow())
@@ -650,7 +688,7 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
    */
   const writeCluster = (cluster: string, width: number): void => {
     if (width === 0 || mutations.has("basic-text-noop")) return
-    const shouldWrap = autoWrap && !mutations.has("wrap-noop")
+    const shouldWrap = shouldWrapCluster(autoWrap, width, mutations)
     if (cursorX + width > cols) {
       if (shouldWrap) {
         cursorX = 0
@@ -981,6 +1019,7 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
   }
 
   const softReset = (): void => {
+    if (mutations.has("decstr-noop")) return
     insertMode = false
     applicationCursor = false
     applicationKeypad = false
@@ -1020,6 +1059,7 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
 
   /** DECALN: fill the whole measured grid with E and home the cursor. */
   const decaln = (): void => {
+    if (mutations.has("decaln-noop")) return
     for (let row = 0; row < rows; row++) {
       for (let col = 0; col < cols; col++) grid[row]![col] = { char: "E", decscaProtected: false, ...attributes }
     }
@@ -1402,6 +1442,14 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
     return false
   }
 
+  const setScrollingRegion = (paramsRaw: string, params: readonly number[], first: number): void => {
+    if (mutations.has("scrollregion-noop") || mutations.has("decstbm-noop")) return
+    if (paramsRaw === "" && mutations.has("decstbm-reset-noop")) return
+    regionTop = clampRow((first === 0 ? 1 : first) - 1)
+    const bottomRaw = (params[1] ?? 0) === 0 ? rows : (params[1] ?? rows)
+    regionBottom = clampRow(bottomRaw - 1)
+  }
+
   const csi = (prefix: string, paramsRaw: string, intermediate: string, final: string): void => {
     const params = paramsRaw === "" ? [] : paramsRaw.split(";").map((raw) => (raw === "" ? 0 : Number(raw)))
     const first = params[0] ?? 0
@@ -1470,11 +1518,7 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
         repeatChar(first)
         return
       case "r":
-        if (!mutations.has("scrollregion-noop")) {
-          regionTop = clampRow((first === 0 ? 1 : first) - 1)
-          const bottomRaw = (params[1] ?? 0) === 0 ? rows : (params[1] ?? rows)
-          regionBottom = clampRow(bottomRaw - 1)
-        }
+        setScrollingRegion(paramsRaw, params, first)
         return
       case "m":
         applySgr(paramsRaw)
@@ -1641,19 +1685,20 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
         continue
       }
       if (char === "\x0e") {
-        activeCharset = "g1"
+        if (!mutations.has("g0-g1-noop")) activeCharset = "g1"
         index += 1
         continue
       }
       const activeSet = activeCharset === "g0" ? charsetG0 : charsetG1
-      const mapped = activeSet === "dec-special" ? DEC_SPECIAL_GRAPHICS[char] : undefined
+      const mapped = mapDecSpecialChar(activeSet, char, mutations)
       if (mapped !== undefined) {
         writeCluster(mapped, 1)
         index += 1
         continue
       }
       const grapheme = nextGrapheme(text, index, mutations)
-      writeCluster(grapheme.cluster, clusterWidth(grapheme.cluster, mutations))
+      const resolved = resolveUtf8Cluster(grapheme.cluster, clusterWidth(grapheme.cluster, mutations), mutations)
+      writeCluster(resolved.cluster, resolved.width)
       index += grapheme.length
     }
   }
@@ -1714,7 +1759,16 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
       return { x: cursorX, y: cursorY, visible: cursorVisible, style: cursorStyle }
     },
     getScrollback() {
-      return { viewportOffset: 0, totalLines: rows + scrolled, screenLines: rows }
+      const history = mutations.has("total-lines-noop") ? 0 : scrolled
+      return {
+        viewportOffset: Math.min(viewportOffset, history),
+        totalLines: rows + history,
+        screenLines: rows,
+      }
+    },
+    scrollViewport(delta: number) {
+      viewportOffset = Math.max(0, Math.min(scrolled, viewportOffset + delta))
+      viewportAnchored = viewportOffset < scrolled
     },
     getText() {
       return grid
@@ -1744,6 +1798,7 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
       return null
     },
     reset() {
+      if (mutations.has("reset-method-noop")) return
       softReset()
       clear()
     },

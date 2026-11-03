@@ -11,6 +11,7 @@ import { join } from "node:path"
 import { resetProbes } from "./reset.ts"
 import {
   contractGaps,
+  inertLibProbeSource,
   libProbeSource,
   missingContractTests,
   regradeCommand,
@@ -20,6 +21,18 @@ import {
   type GroupContractSpec,
 } from "./testing/group-harness.ts"
 import { createSemanticSurface } from "./testing/semantic-surface.ts"
+
+const RESET_SEMANTIC_SURFACE_CONTROLS: readonly {
+  readonly id: string
+  readonly mutation: string
+  readonly inertOutcome: "inconclusive" | "unsupported"
+}[] = [
+  { id: "reset.sgr", mutation: "sgr0-noop", inertOutcome: "inconclusive" },
+  { id: "reset.ris", mutation: "ris-noop", inertOutcome: "inconclusive" },
+  { id: "reset.soft", mutation: "decstr-noop", inertOutcome: "inconclusive" },
+  { id: "reset.decaln", mutation: "decaln-noop", inertOutcome: "unsupported" },
+  { id: "reset.method", mutation: "reset-method-noop", inertOutcome: "inconclusive" },
+]
 
 /** The 5 Reset features of 28018's Reset row; ids drawn from reset.ts, claims are the contract. */
 const RESET_CONTRACT: GroupContract = [
@@ -114,3 +127,31 @@ test("a RIS that does not reset reads unsupported", async () => {
   })
   expect(graded.after, "reset.ris detects an inert RIS").toBe("unsupported")
 })
+
+test("the Reset two-sided control table covers every reset contract row", () => {
+  expect(RESET_SEMANTIC_SURFACE_CONTROLS.map((entry) => entry.id)).toEqual(RESET_CONTRACT.map((entry) => entry.id))
+})
+
+test.each(RESET_SEMANTIC_SURFACE_CONTROLS)(
+  "reset two-sided control for $id: inert reads $inertOutcome, semantic surface reads supported, and $mutation reads unsupported",
+  async ({ id, mutation, inertOutcome }) => {
+    const row = RESET_CONTRACT.find((entry) => entry.id === id)
+    const probe = resetProbes.find((entry) => entry.id === id)
+    expect(row, `missing Reset contract row ${id}`).toBeDefined()
+    expect(probe, `missing Reset probe ${id}`).toBeDefined()
+    if (!row || !probe) return
+
+    const inert = await regradeRow(probe, row, { headless: inertLibProbeSource() })
+    expect(inert.after, `${id} must not read supported against inertLibProbeSource()`).toBe(inertOutcome)
+
+    const positive = await regradeRow(probe, row, { headless: libProbeSource(createSemanticSurface()) })
+    expect(positive.after, `${id} must read supported against createSemanticSurface()`).toBe("supported")
+    expect(positive.satisfies, `${id} must satisfy its contract row on createSemanticSurface()`).toBe(true)
+
+    const mutated = await regradeRow(probe, row, {
+      headless: libProbeSource(createSemanticSurface({ mutations: [mutation] })),
+    })
+    expect(mutated.after, `${id} must read unsupported when ${mutation} is active`).toBe("unsupported")
+    expect(mutated.satisfies, `${id} remains decided under ${mutation}`).toBe(true)
+  },
+)

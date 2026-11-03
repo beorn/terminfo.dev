@@ -11,6 +11,7 @@ import { join } from "node:path"
 import { scrollbackProbes } from "./scrollback.ts"
 import {
   contractGaps,
+  inertLibProbeSource,
   libProbeSource,
   missingContractTests,
   regradeCommand,
@@ -20,6 +21,23 @@ import {
   type GroupContractSpec,
 } from "./testing/group-harness.ts"
 import { createSemanticSurface } from "./testing/semantic-surface.ts"
+
+const SCROLLBACK_SEMANTIC_SURFACE_CONTROLS: readonly {
+  readonly id: string
+  readonly mutation: string
+  readonly inertOutcome: "inconclusive" | "unsupported" | undefined
+}[] = [
+  { id: "scrollback.accumulate", mutation: "lf-noop", inertOutcome: "unsupported" },
+  { id: "scrollback.total-lines", mutation: "total-lines-noop", inertOutcome: "unsupported" },
+  { id: "scrollback.scroll-up", mutation: "su-noop", inertOutcome: "inconclusive" },
+  { id: "scrollback.reverse-index", mutation: "ri-noop", inertOutcome: "inconclusive" },
+  { id: "scrollback.scroll-down", mutation: "sd-noop", inertOutcome: "inconclusive" },
+  { id: "scrollback.set-region", mutation: "scrollregion-noop", inertOutcome: "inconclusive" },
+  { id: "scrollback.alt-screen", mutation: "altscreen-noop", inertOutcome: "inconclusive" },
+  { id: "scrollback.decstbm", mutation: "decstbm-noop", inertOutcome: "inconclusive" },
+  { id: "scrollback.decstbm-reset", mutation: "decstbm-reset-noop", inertOutcome: "inconclusive" },
+  { id: "scrollback.viewport-hold-output", mutation: "viewport-hold-noop", inertOutcome: undefined },
+]
 
 /**
  * All ten library Scrollback features decide from measured state. The app viewport arm
@@ -180,3 +198,33 @@ test("an inert line feed reads unsupported for scrollback accumulation", async (
   })
   expect(graded.after, "an inert line feed is detected").toBe("unsupported")
 })
+
+test("the Scrollback two-sided control table covers every scrollback contract row", () => {
+  expect(SCROLLBACK_SEMANTIC_SURFACE_CONTROLS.map((entry) => entry.id)).toEqual(
+    SCROLLBACK_CONTRACT.map((entry) => entry.id),
+  )
+})
+
+test.each(SCROLLBACK_SEMANTIC_SURFACE_CONTROLS)(
+  "scrollback two-sided control for $id: inert reads $inertOutcome, semantic surface reads supported, and $mutation reads unsupported",
+  async ({ id, mutation, inertOutcome }) => {
+    const row = SCROLLBACK_CONTRACT.find((entry) => entry.id === id)
+    const probe = scrollbackProbes.find((entry) => entry.id === id)
+    expect(row, `missing Scrollback contract row ${id}`).toBeDefined()
+    expect(probe, `missing Scrollback probe ${id}`).toBeDefined()
+    if (!row || !probe) return
+
+    const inert = await regradeRow(probe, row, { headless: inertLibProbeSource() })
+    expect(inert.after, `${id} must not read supported against inertLibProbeSource()`).toBe(inertOutcome)
+
+    const positive = await regradeRow(probe, row, { headless: libProbeSource(createSemanticSurface()) })
+    expect(positive.after, `${id} must read supported against createSemanticSurface()`).toBe("supported")
+    expect(positive.satisfies, `${id} must satisfy its contract row on createSemanticSurface()`).toBe(true)
+
+    const mutated = await regradeRow(probe, row, {
+      headless: libProbeSource(createSemanticSurface({ mutations: [mutation] })),
+    })
+    expect(mutated.after, `${id} must read unsupported when ${mutation} is active`).toBe("unsupported")
+    expect(mutated.satisfies, `${id} remains decided under ${mutation}`).toBe(true)
+  },
+)
