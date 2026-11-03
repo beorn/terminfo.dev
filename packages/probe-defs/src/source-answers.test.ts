@@ -5,6 +5,7 @@
  * @testonly none
  */
 import { expect, it } from "vitest"
+import { finalizeProbeResult } from "./helpers.ts"
 import { parseSourceAnswerKey, resolveSourceAnswer, sourceAnswerKey, type SourceAnswer } from "./source-answers.ts"
 
 const subject = { kind: "lib" as const, id: "example", version: "1.0", os: "linux" }
@@ -103,4 +104,127 @@ it("keeps conflicting qualifying rows pending without choosing the newest versio
     if (result.kind === "none") throw new Error("Conflicting kept answers must stay visible")
     expect(result.rowKeys).toHaveLength(2)
   }
+})
+
+it("discharges only the required source test and preserves an actual failed criterion", () => {
+  const input = {
+    featureId: answer.featureId,
+    attempt: { scope: "probe" as const, startedAt: "2026-11-02T00:00:00Z" },
+    tests: [
+      {
+        id: "review",
+        status: "test-todo" as const,
+        attempt: { scope: "none" as const },
+        reason: "Source review pending",
+      },
+    ],
+  }
+  const resolution = resolveSourceAnswer([answer], { subject, featureId: answer.featureId })
+  const result = finalizeProbeResult(input, resolution)
+  expect(result.status).toBe("unsupported")
+  expect(result.reviewRef).toBe(sourceAnswerKey(subject, answer.featureId))
+  expect(result.tests[0]).toMatchObject({ status: "unsupported", reviewRef: result.reviewRef, attempt: input.attempt })
+  const failed = finalizeProbeResult(
+    {
+      ...input,
+      tests: [
+        ...input.tests,
+        { id: "criterion", status: "test-failure" as const, attempt: input.attempt, reason: "Actual failed control" },
+      ],
+    },
+    resolution,
+  )
+  expect(failed.status).toBe("test-failure")
+  expect(failed.tests.find((test) => test.id === "criterion")?.reason).toBe("Actual failed control")
+})
+
+it("retains a named candidate when cross-version proof is unavailable", () => {
+  const input = {
+    featureId: answer.featureId,
+    attempt: { scope: "probe" as const, startedAt: "2026-11-02T00:00:00Z" },
+    tests: [
+      {
+        id: "review",
+        status: "test-todo" as const,
+        attempt: { scope: "none" as const },
+        reason: "Source review pending",
+      },
+    ],
+  }
+  const resolution = resolveSourceAnswer([bound], {
+    subject: { ...subject, version: "2.0" },
+    featureId: answer.featureId,
+  })
+  const result = finalizeProbeResult(input, resolution)
+  expect(result.status).toBe("test-todo")
+  expect(result.reason).toContain("cited source not resolvable")
+  expect(result.reason).toContain(sourceAnswerKey(subject, answer.featureId))
+})
+
+it("does not accept an unknown C1 row key as a legacy review", () => {
+  expect(() =>
+    finalizeProbeResult({
+      featureId: answer.featureId,
+      attempt: { scope: "none" },
+      tests: [
+        {
+          id: "review",
+          status: "untestable",
+          attempt: { scope: "none" },
+          reason: "Unproven",
+          reviewRef: sourceAnswerKey(subject, answer.featureId),
+        },
+      ],
+    }),
+  ).toThrow("Missing source-answer row")
+})
+
+it("resolves cited engine blobs only from the measured clean source revision", () => {
+  const runtimeIdentity = {
+    kind: "js" as const,
+    runtimeFormat: "js" as const,
+    resolvedPath: "/engine/index.js",
+    engineVersion: "2.0",
+    adapterVersion: "1",
+    termlessRevision: "e".repeat(40),
+    integrity: {
+      kind: "source" as const,
+      repository: blob.repository,
+      revision: blob.commit,
+      treeOid: "f".repeat(40),
+      cleanTree: true,
+    },
+  }
+  const input = { subject: { ...subject, version: "2.0" }, featureId: answer.featureId, runtimeIdentity }
+  expect(resolveSourceAnswer([bound], input)).toMatchObject({ kind: "answer", status: "unsupported" })
+  expect(
+    resolveSourceAnswer([bound], {
+      ...input,
+      runtimeIdentity: { ...runtimeIdentity, integrity: { ...runtimeIdentity.integrity, cleanTree: false } },
+    }),
+  ).toMatchObject({ kind: "pending", reason: "cited source not resolvable" })
+  expect(
+    resolveSourceAnswer([bound], {
+      ...input,
+      runtimeIdentity: { ...runtimeIdentity, integrity: { kind: "registry", lockIntegrity: "sha512-package" } },
+    }),
+  ).toMatchObject({ kind: "pending", reason: "cited source not resolvable" })
+})
+
+it("uses measured adapter path OIDs to detect drift even at the original version", () => {
+  const adapter = { ...bound, citedBlobs: [{ ...blob, repository: "git@github.com:beorn/termless.git" }] }
+  const runtimeIdentity = {
+    kind: "js" as const,
+    runtimeFormat: "js" as const,
+    resolvedPath: "/engine/index.js",
+    engineVersion: "1.0",
+    adapterVersion: "1",
+    termlessRevision: "e".repeat(40),
+    integrity: { kind: "registry" as const, lockIntegrity: "sha512-package" },
+    adapterSources: [{ path: blob.path, blobOid: "d".repeat(40) }],
+  }
+  expect(resolveSourceAnswer([adapter], { subject, featureId: answer.featureId, runtimeIdentity })).toMatchObject({
+    kind: "pending",
+    reason: "cited source changed",
+  })
 })

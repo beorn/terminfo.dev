@@ -38,12 +38,30 @@ import {
   canonicalJson,
   FEATURE_ENTRY_PROSE_DENYLIST,
   boundFeatureEntry,
+  parseSuiteManifest,
 } from "./index.ts"
 import { finalizeHeadlessAttempt, createLibProbeSource } from "../../probes/headless-batch.ts"
 import { createVt100Backend } from "@termless/vt100"
 import { createVt220Backend } from "@termless/vt220"
 import { libProbeSource } from "../../probe-defs/src/testing/group-harness.ts"
 import { createSemanticSurface } from "../../probe-defs/src/testing/semantic-surface.ts"
+
+// C1 replaces embedded decision bytes; the old capture-binding fixtures cannot
+// prove that the retained corpus still parses or rejects a borrowed source row.
+it("reads retained C1 references without embedded decisions and rejects another measured subject", () => {
+  const path = new URL("../../../content/probes-apps/alacritty-0.17.0-linux-f504922f67f074794c588cf3a14e2114.json", import.meta.url)
+  const source = readFileSync(path, "utf8")
+  const run = JSON.parse(source)
+  const result = run.results.find((result: { featureId: string }) => result.featureId === "extensions.iterm2-images")
+  expect(result.reviewRef).toBe('["term","alacritty","0.17.0","linux","extensions.iterm2-images"]')
+  expect(run.rawReplies[result.reviewRef]).toBeUndefined()
+  const manifestPath = new URL(`../../../content/suites/${run.probeHash}.json`, import.meta.url)
+  const manifest = parseSuiteManifest(manifestPath.pathname, readFileSync(manifestPath, "utf8"))
+  const read = (bytes: string) => parseRun(path.pathname, bytes, manifest.catalogIds ?? [], new Map([[run.probeHash, manifest]]))
+  expect(read(source).results?.find((entry) => entry.featureId === result.featureId)?.status).toBe(result.status)
+  run.subject.id = "other-measured-terminal"
+  expect(() => read(JSON.stringify(run))).toThrow("source answer does not apply to measured identity")
+})
 
 // Empty HTTP transport is a real initialized draft, not a truncated measured capture.
 // Sealed-run binding tests never decode the unmeasured collector response boundary.
@@ -882,10 +900,10 @@ it.each(["generic-todo", "source-negative-todo", "legacy-source-negative-failure
   },
 )
 
-// @failure Normalizing pending status changes a binding already retained in the sealed set.
+// @failure Converting the source review changes the retained Vterm measurement bytes.
 // @level l1
-// @consumer retainCaptureBinding; synthetic legacy fixtures cannot prove compatibility with retained bytes.
-it("preserves the sealed Vterm source-negative capture binding byte for byte", () => {
+// @consumer C1 source-negative reader; synthetic fixtures cannot prove retained-byte conservation.
+it("preserves the sealed Vterm source-negative measurement after removing its private binding", () => {
   const { sealedAt: _sealedAt, ...draft } = JSON.parse(
     readFileSync(
       new URL(
@@ -896,8 +914,13 @@ it("preserves the sealed Vterm source-negative capture binding byte for byte", (
     ),
   ) as CurrentProbeRun
   const featureId = "extensions.osc176-app-id"
-  const before = draft.rawReplies[`collector.capture.${featureId}`]
-  expect(retainCaptureBinding(draft, featureId).source).toBe(before)
+  expect(draft.rawReplies[`collector.capture.${featureId}`]).toBeUndefined()
+  expect(draft.results.find((result) => result.featureId === featureId)?.reviewRef).toBe(
+    '["lib","vterm","0.10.1","linux","extensions.osc176-app-id"]',
+  )
+  expect(createHash("sha256").update(draft.rawReplies[featureId]!, "utf8").digest("hex")).toBe(
+    "8384591c8dbffb48900cc681bacf8def5dca12f327098ea46141d75ac53f1851",
+  )
 })
 
 // #32014: the three grading decisions cannot represent a buildable, unbuilt readback.

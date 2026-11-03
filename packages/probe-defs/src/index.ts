@@ -1,4 +1,12 @@
 export { evidenceRuntimeIdentity } from "./runtime-identity.ts"
+export {
+  SOURCE_ANSWERS,
+  resolveSourceAnswer,
+  sourceAnswerForRef,
+  sourceAnswerKey,
+  parseSourceAnswerKey,
+} from "./source-answers.ts"
+export type { SourceAnswer, SourceAnswerSubject, SourceAnswerInput, SourceAnswerResolution } from "./source-answers.ts"
 export type {
   HostInputName,
   HostRecipeName,

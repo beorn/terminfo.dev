@@ -1,4 +1,5 @@
-import type { ProbeSubject } from "./types.ts"
+import type { HeadlessRuntimeIdentity, ProbeSubject } from "./types.ts"
+import retainedAnswers from "./source-answers.json"
 
 export type SourceAnswerSubject = Pick<ProbeSubject, "kind" | "id" | "version" | "os">
 export interface SourceAnswer {
@@ -13,6 +14,19 @@ export interface SourceAnswerInput {
   featureId: string
   /** Facts resolved from this measured identity, never another build's declaration. */
   blobs?: readonly { repository: string; path: string; oid: string }[]
+  runtimeIdentity?: HeadlessRuntimeIdentity
+  sourceRevision?: string | null
+}
+
+/** Static kept answers; the one-time converter checks the source/provenance and emitted shape. */
+export const SOURCE_ANSWERS = retainedAnswers as readonly SourceAnswer[]
+
+export function sourceAnswerForRef(ref: string): SourceAnswer | undefined {
+  const key = parseSourceAnswerKey(ref)
+  if (!key) return undefined
+  const row = SOURCE_ANSWERS.find((row) => sourceAnswerKey(row.subject, row.featureId) === ref)
+  if (!row) throw new Error(`Missing source-answer row ${ref}`)
+  return row
 }
 export type SourceAnswerResolution =
   | { kind: "none" }
@@ -68,10 +82,34 @@ export function resolveSourceAnswer(rows: readonly SourceAnswer[], input: Source
     )
     .map((row) => {
       const states = row.citedBlobs.map((blob) => {
-        const facts = (input.blobs ?? []).filter(
+        const runtime = input.runtimeIdentity
+        const facts = [
+          ...(input.blobs ?? []),
+          ...(blob.repository === "git@github.com:beorn/termless.git"
+            ? (runtime?.adapterSources ?? []).map((source) => ({
+                repository: blob.repository,
+                path: source.path,
+                oid: source.blobOid,
+              }))
+            : []),
+        ].filter(
           (fact) => fact.repository === blob.repository && fact.path === blob.path && /^[a-f0-9]{40}$/.test(fact.oid),
         )
         const oids = new Set(facts.map((fact) => fact.oid))
+        // An exact immutable commit addresses the converted blob. A different commit
+        // alone does not establish whether this path changed. Explicit path OIDs win.
+        if (
+          oids.size === 0 &&
+          ((runtime?.kind === "js" &&
+            runtime.integrity.kind === "source" &&
+            runtime.integrity.cleanTree &&
+            runtime.integrity.repository === blob.repository &&
+            runtime.integrity.revision === blob.commit) ||
+            (blob.repository === "git@github.com:beorn/termless.git" && runtime?.termlessRevision === blob.commit) ||
+            (blob.repository === "git@github.com:beorn/terminfo.dev.git" && input.sourceRevision === blob.commit))
+        ) {
+          return "same"
+        }
         if (oids.size !== 1) return "unavailable"
         return oids.has(blob.oid) ? "same" : "changed"
       })

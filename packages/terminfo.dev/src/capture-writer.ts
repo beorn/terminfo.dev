@@ -4,6 +4,10 @@ import { mkdirSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import {
   SOURCE_NEGATIVE_REVIEW,
+  SOURCE_ANSWERS,
+  resolveSourceAnswer,
+  sourceAnswerForRef,
+  finalizeProbeResult,
   sealRunDraft,
   type CapturedRunDraft as CollectedProbeRun,
   type CurrentProbeRun,
@@ -39,13 +43,15 @@ function carryCaptureReviews(
   captured: CollectedProbeRun,
   reviews: NonNullable<Parameters<typeof finalizeCollectedDraft>[2]>,
 ): void {
-  const pending = captured.results.filter((result) =>
-    result.tests.some(
-      (test) =>
-        test.id === "review" &&
-        (test.status === "test-todo" ||
-          (result.criterionBranch === SOURCE_NEGATIVE_REVIEW && test.status === "test-failure")),
-    ),
+  const pending = captured.results.filter(
+    (result) =>
+      !(result.reviewRef && sourceAnswerForRef(result.reviewRef)) &&
+      result.tests.some(
+        (test) =>
+          test.id === "review" &&
+          (test.status === "test-todo" ||
+            (result.criterionBranch === SOURCE_NEGATIVE_REVIEW && test.status === "test-failure")),
+      ),
   )
   if (reviews.manifest.catalogIds === undefined) {
     for (const result of pending) {
@@ -77,6 +83,7 @@ function carryCaptureReviews(
     return [{ ...input, decision: parseCaptureDecision(value, "capture review", catalog) }]
   })
   for (const result of captured.results) {
+    if (result.reviewRef && sourceAnswerForRef(result.reviewRef)) continue
     if (
       !result.tests.some(
         (test) =>
@@ -218,7 +225,27 @@ export function finalizeCollectedDraft(
     captured.intendedSubject = { ...captured.intendedSubject, ...intended }
     captured.rawReplies["collector.intent"] = JSON.stringify(intended)
   }
+  captured.results = captured.results.map((result) => {
+    if (
+      !result.tests.some(
+        (test) =>
+          test.id === "review" &&
+          (test.status === "test-todo" ||
+            (result.criterionBranch === SOURCE_NEGATIVE_REVIEW && test.status === "test-failure")),
+      )
+    ) {
+      return result
+    }
+    const resolution = resolveSourceAnswer(SOURCE_ANSWERS, {
+      subject: captured.subject,
+      featureId: result.featureId,
+      ...(captured.runtimeIdentity && { runtimeIdentity: captured.runtimeIdentity }),
+      sourceRevision: captured.sourceRevision,
+    })
+    return finalizeProbeResult(result, resolution)
+  })
   for (const result of captured.results) {
+    if (result.reviewRef && sourceAnswerForRef(result.reviewRef)) continue
     if (
       result.tests.some(
         (check) =>
