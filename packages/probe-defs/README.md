@@ -24,6 +24,9 @@ a supported observation can still have a failed or pending required test; an inc
 does not establish Untestable. Without explicit tests, a diagnostic or a conclusive outcome, named
 missing-observable coverage defaults to Test to-do; rowless inconclusive without that coverage defaults
 to Test failure. Untestable still requires the implemented review reference.
+Highlight reset cannot be decided without an initial colour reading. When the DA1 control completes but
+OSC 17 or 19 supplies no initial colour, the callback records a named Test to-do; broken or untrustworthy
+measurement remains Test failure. Silence alone does not establish Unsupported.
 The [legacy presentation keys](../../docs/data/release-scope.ts) are a different shape:
 The `CellState` value `inconclusive` denotes reviewed Untestable, `error` denotes Test failure and `untested` denotes
 Test to-do; `supported` and `unsupported` retain their corresponding labels. Do not substitute callback outcomes for these keys.

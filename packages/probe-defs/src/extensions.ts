@@ -514,6 +514,19 @@ function highlightResetProbe(id: string, setCode: number, resetCode: number): Pr
         const initialRead = await read(ctx)
         const initial = initialRead.colour
         if (!initial) {
+          if (initialRead.reply.reason === "sentinel") {
+            return {
+              pass: false,
+              response: JSON.stringify({ query: querySeq, initialSentinel: initialRead.reply }),
+              tests: [
+                {
+                  id: "criterion",
+                  status: "test-todo",
+                  reason: `initial highlight colour not observable: OSC ${setCode} no reply (DA1 control passed)`,
+                },
+              ],
+            }
+          }
           return inconclusive(
             `${id}: OSC ${setCode} did not report a colour, so the initial highlight colour is unknown and a reset cannot be compared with it`,
             initialRead.reply,
@@ -752,6 +765,19 @@ function colorResetProbe(id: string, setCode: number, resetCode: number, index?:
           )
         }
         const note = `OSC ${setCode} initial highlight colour was not read back, so OSC ${resetCode} cannot be compared with it`
+        if (originalRaw === "" && initialSentinel?.reason === "sentinel") {
+          return {
+            pass: false,
+            response: JSON.stringify({ query, originalRaw, initialSentinel }),
+            tests: [
+              {
+                id: "criterion",
+                status: "test-todo",
+                reason: `initial highlight colour not observable: OSC ${setCode} no reply (DA1 control passed)`,
+              },
+            ],
+          }
+        }
         return {
           ...(originalRaw === "" && !silence ? replyFailure(note) : {}),
           pass: false,
