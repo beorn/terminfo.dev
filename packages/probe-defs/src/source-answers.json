@@ -334,6 +334,76 @@
       "version": "0.26.0",
       "os": "linux"
     },
+    "featureId": "extensions.osc176-app-id",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/alacritty/native/src/lib.rs",
+            "oid": "1779ff4f042f7f285ab3d396da039408b492be10"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/alacritty/native/Cargo.lock",
+            "oid": "61a0da4773734220406e2077f33f154f31895a29"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/alacritty/native/Cargo.toml",
+            "oid": "12521c8ea6dcedf6b94f757a8d6672c737c72db7"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/alacritty/src/index.ts",
+            "oid": "b4154cbd6ef4a83ce2cbf3dcf26ff13d645efd05"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/alacritty/src/backend.ts",
+            "oid": "27b78b1264cd5d2ed72705ba36c9735b29e874c5"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "src/load-native.ts",
+            "oid": "34e142550085450ab02138184626716ad0d6b546"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "73d5b6b6-149e-4414-8ab5-78df101c67ed",
+            "reviewer": "@dev/4",
+            "reason": "Independent current source review (@dev/4, 2026-11-03, 73d5b6b6-149e-4414-8ab5-78df101c67ed): The exact native9839e138 receipt (source2f73fc28/build343c00e0/lock1f89f257) binds Cargo archives alacritty_terminal0.26.0 SHA256bda177466b9524d59f1b12f0dd30b68696788e9992a7e959021c4a0ed96fcf59 and vte0.15.0 SHA256a5924018406ce0063cd67f8e008104968b74b563ee1b85dde3ed1f7cb87d3dbd. Complete vte src/ansi.rs OSC dispatch1329–1523 has no176 arm and defaults to logging; its inspected bytes match the archive (SHA2562ce81d9282575b0f79d7a127463c177d966d1da13eea32d5ecbc0dc35f392b13). The bound Termless wrapper advances that Processor against Term<EventProxy>, with no alternate OSC hook. No OSC176 app-id target writer exists in this configured library path: Unsupported. Retained run 81cd7753-2c1d-46b4-b4ad-4830921cc7ca has its own negative buffer_state assertion for the exact OSC176/X control. X/null alone does not decide support.",
+            "sources": [
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/alacritty/native/src/lib.rs blob 1779ff4f042f7f285ab3d396da039408b492be10",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/alacritty/native/Cargo.lock blob 61a0da4773734220406e2077f33f154f31895a29",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/alacritty/native/Cargo.toml blob 12521c8ea6dcedf6b94f757a8d6672c737c72db7",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/alacritty/src/index.ts blob b4154cbd6ef4a83ce2cbf3dcf26ff13d645efd05",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/alacritty/src/backend.ts blob 27b78b1264cd5d2ed72705ba36c9735b29e874c5",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:src/load-native.ts blob 34e142550085450ab02138184626716ad0d6b546",
+              "The exact native9839e138 receipt (source2f73fc28/build343c00e0/lock1f89f257) binds Cargo archives alacritty_terminal0.26.0 SHA256bda177466b9524d59f1b12f0dd30b68696788e9992a7e959021c4a0ed96fcf59 and vte0.15.0 SHA256a5924018406ce0063cd67f8e008104968b74b563ee1b85dde3ed1f7cb87d3dbd. Complete vte src/ansi.rs OSC dispatch1329–1523 has no176 arm and defaults to logging; its inspected bytes match the archive (SHA2562ce81d9282575b0f79d7a127463c177d966d1da13eea32d5ecbc0dc35f392b13). The bound Termless wrapper advances that Processor against Term<EventProxy>, with no alternate OSC hook.",
+              "Current source verdict 73d5b6b6-149e-4414-8ab5-78df101c67ed, @dev/4, 2026-11-03; /hh/var/@dev4/0920-osc176-alacritty-xterm-verdict.md",
+              "Run 81cd7753-2c1d-46b4-b4ad-4830921cc7ca raw SHA256e52894287d4eaafcb4552da69b34da310357d03cd6cd3dd75a3e347c5ed92e66, suitea891217f6896, terminfo50c9d86da33306fd20a6dda5f891003252d931ab; own negative buffer_state assertion for extensions.osc176-app-id"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "alacritty",
+      "version": "0.26.0",
+      "os": "linux"
+    },
     "featureId": "extensions.osc4-palette",
     "answers": [
       {
@@ -30169,6 +30239,62 @@
               "evidence:sha256:0a75e844c084171df493e32fc60e00f0a2a3366596fc44445a6fe10615ce861a/30543-mixed-decrqm-ruling.md",
               "Independent evidence approval: Tribe 4e5126f8-b2ae-42c1-98bd-9095effd0fc8",
               "Acceptance owner issuance instruction: Tribe 259c0636-0ea7-4e9a-a33e-7d6e8e91fa10"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "xtermjs",
+      "version": "6.0.0",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc176-app-id",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/xtermjs/src/index.ts",
+            "oid": "550e10110ec2baaf326d2958319b03ee8208feba"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/xtermjs/src/backend.ts",
+            "oid": "72dc827b2026af7736de722f7ff986a04f3fe883"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/xtermjs/package.json",
+            "oid": "7febf39cdcf09a1edcb35732487a8d59821f7415"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "bun.lock",
+            "oid": "e98a82dedba868673d1c96c230d611cac67ca72b"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "73d5b6b6-149e-4414-8ab5-78df101c67ed",
+            "reviewer": "@dev/4",
+            "reason": "Independent current source review (@dev/4, 2026-11-03, 73d5b6b6-149e-4414-8ab5-78df101c67ed): The actual @xterm/headless6.0.0 bundle SHA25617a90b650cf6b77cce2b98c4063884d43545e4ce177a54b76ccfc906f1aacaed and source map SHA256780e782badc8189491a469c9277b783e01911882ea84417b31e71294ea927d98 bind the inspected InputHandler/OscParser sources. Complete OSC registrations have no176 handler and the fallback only logs. A public custom-handler API exists, but the exact Termless adapter installs none; its loaded Unicode11Addon registers only a width provider. This judgment concerns the configured package+adapter, not every embedder. No OSC176 app-id target writer exists in this configured library path: Unsupported. Retained run 403089e7-f0ed-4c3f-827b-3f11eeb9f1ba has its own negative buffer_state assertion for the exact OSC176/X control. X/null alone does not decide support.",
+            "sources": [
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/xtermjs/src/index.ts blob 550e10110ec2baaf326d2958319b03ee8208feba",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/xtermjs/src/backend.ts blob 72dc827b2026af7736de722f7ff986a04f3fe883",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/xtermjs/package.json blob 7febf39cdcf09a1edcb35732487a8d59821f7415",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:bun.lock blob e98a82dedba868673d1c96c230d611cac67ca72b",
+              "The actual @xterm/headless6.0.0 bundle SHA25617a90b650cf6b77cce2b98c4063884d43545e4ce177a54b76ccfc906f1aacaed and source map SHA256780e782badc8189491a469c9277b783e01911882ea84417b31e71294ea927d98 bind the inspected InputHandler/OscParser sources. Complete OSC registrations have no176 handler and the fallback only logs. A public custom-handler API exists, but the exact Termless adapter installs none; its loaded Unicode11Addon registers only a width provider. This judgment concerns the configured package+adapter, not every embedder.",
+              "Current source verdict 73d5b6b6-149e-4414-8ab5-78df101c67ed, @dev/4, 2026-11-03; /hh/var/@dev4/0920-osc176-alacritty-xterm-verdict.md",
+              "Run 403089e7-f0ed-4c3f-827b-3f11eeb9f1ba raw SHA256b2b6133a7bb6ec068c53a4e4f3bc77bea7917d4b85229f7bc182067f293b0ec7, suitea891217f6896, terminfo50c9d86da33306fd20a6dda5f891003252d931ab; own negative buffer_state assertion for extensions.osc176-app-id"
             ]
           }
         ]
