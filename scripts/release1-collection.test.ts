@@ -181,7 +181,8 @@ it.each(["projection", "collection"] as const)(
         entry === "projection"
           ? loadSelectedResults(CONTENT, versions.probeSuiteSnapshot().probeHash)
           : collectPass(fingerprintFixture.directory, { runner: "local" }, { contexts: [] })
-      const baseline = entry === "projection" ? loadSelectedResults(CONTENT, versions.probeSuiteSnapshot().probeHash) : undefined
+      const baseline =
+        entry === "projection" ? loadSelectedResults(CONTENT, versions.probeSuiteSnapshot().probeHash) : undefined
       const storePath = join(CONTENT, "interpretations.json")
       const original = readFileSync(storePath, "utf8")
       const stored: unknown = JSON.parse(original)

@@ -8,7 +8,7 @@
 
 import { readFileSync, readdirSync, existsSync } from "node:fs"
 import { join, relative, basename, dirname } from "node:path"
-import { loadStoredRuns } from "../packages/admin/run-admission.ts"
+import { loadStoredRuns } from "../packages/admin/corpus-placement.ts"
 import { ALL_PROBES } from "../packages/probe-defs/src/index.ts"
 import { loadCategories } from "../docs/data/categories.ts"
 import { probeStatusSummary } from "../docs/data/probe-status.ts"
