@@ -450,7 +450,6 @@ test("report renders reviewed outcomes, failures and missing cells", () => {
       suite: string,
       rawRun: string,
       context = { kind: "term", id: "kitty", os: "macos" },
-      admittedPath?: string,
     ) => {
       const directory = join(root, name)
       mkdirSync(directory)
@@ -468,9 +467,8 @@ test("report renders reviewed outcomes, failures and missing cells", () => {
           contexts: [
             {
               context,
-              status: admittedPath ? "admitted" : "classified",
+              status: "classified",
               rawRun,
-              ...(admittedPath && { admittedPath }),
             },
             {
               context: { kind: "term", id: "ghostty", os: "linux" },
@@ -603,43 +601,18 @@ test("report renders reviewed outcomes, failures and missing cells", () => {
     expect(published.status, published.stderr).toBe(0)
     expect(published.stdout).toContain("kitty/macos | published")
     expect(published.stdout).toContain("graded 5: supported=5")
-    // A real pass points to both its private capture and the admitted selected bytes; neither path is synthesized.
-    const admittedDraftPath = join(root, "admitted-capture.draft.json")
-    const { sealedAt: _admittedSeal, ...admittedDraft } = completeRun
-    writeFileSync(admittedDraftPath, JSON.stringify(admittedDraft))
-    const admittedPass = passPath("admitted-pass", snapshot.probeHash, admittedDraftPath, undefined, runPath)
-    const admittedReport = spawnSync(process.execPath, [join(root, "run.ts"), admittedPass], {
+    // A pass can point directly to stored bytes; matching provenance still identifies the selected run.
+    const storedPass = passPath("stored-pass", snapshot.probeHash, runPath)
+    const storedReport = spawnSync(process.execPath, [join(root, "run.ts"), storedPass], {
       cwd: root,
       encoding: "utf8",
       timeout: 15_000,
     })
-    expect(admittedReport.status, admittedReport.stderr).toBe(0)
-    const admittedRow = admittedReport.stdout.split("\n").find((line) => line.startsWith("| kitty/macos |"))
-    expect(admittedRow).toContain("| published | admitted-pass |")
-    expect(admittedRow).toContain(snapshot.probeHash)
-    expect(admittedRow).toContain(runPath)
-    expect(admittedRow).toContain(admittedDraftPath)
-    expect(admittedRow).toContain(createHash("sha256").update(completeBytes).digest("hex"))
-    expect(admittedRow).toContain("reviewed-pass; publication proven")
-    expect(admittedRow).toContain("raw catalog 14: supported=5")
-    expect(admittedRow).toContain("test-todo=9")
-    const sealedPass = passPath("sealed-pass", snapshot.probeHash, runPath, undefined, runPath)
-    const sealedReport = spawnSync(process.execPath, [join(root, "run.ts"), sealedPass], {
-      cwd: root,
-      encoding: "utf8",
-      timeout: 15_000,
-    })
-    expect(sealedReport.status, sealedReport.stderr).toBe(0)
-    expect(sealedReport.stdout).toContain("kitty/macos | published | sealed-pass |")
-    expect(sealedReport.stdout).toContain(snapshot.probeHash)
-    const foreignAdmission = passPath("foreign-admission", snapshot.probeHash, draftPath, undefined, runPath)
-    const foreignReport = spawnSync(process.execPath, [join(root, "run.ts"), foreignAdmission], {
-      cwd: root,
-      encoding: "utf8",
-      timeout: 15_000,
-    })
-    expect(foreignReport.status).not.toBe(0)
-    expect(foreignReport.stderr).toContain("does not identify captured run")
+    expect(storedReport.status, storedReport.stderr).toBe(0)
+    const storedRow = storedReport.stdout.split("\n").find((line) => line.startsWith("| kitty/macos |"))
+    expect(storedRow).toContain("| published | stored-pass |")
+    expect(storedRow).toContain(runPath)
+    expect(storedRow).toContain(createHash("sha256").update(completeBytes).digest("hex"))
     const featuresPath = join(root, "content", "features.json")
     const featuresBytes = readFileSync(featuresPath, "utf8")
     writeFileSync(featuresPath, `${featuresBytes}\n`)
@@ -680,8 +653,8 @@ test("report renders reviewed outcomes, failures and missing cells", () => {
     expect(mixedRow).toContain("supported=5")
     expect(mixedRow).toContain("supported=1")
     expect(mixedRow).toContain("test-failure=2")
-    // The explicit pass must not hide a second selected configuration when it matches admitted bytes.
-    const mixedPass = passPath("mixed-admitted", snapshot.probeHash, inconclusivePath, undefined, inconclusivePath)
+    // The explicit pass must not hide a second selected configuration when it matches stored bytes.
+    const mixedPass = passPath("mixed-stored", snapshot.probeHash, inconclusivePath)
     const mixedReport = spawnSync(process.execPath, [join(root, "run.ts"), mixedPass], {
       cwd: root,
       encoding: "utf8",

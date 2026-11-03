@@ -867,9 +867,8 @@ function assertLinuxXvfbContainer(value: Record<string, unknown>): {
   }
 }
 
-/** A GitHub-hosted runner is disposable only when GitHub says so AND the VM identity never recurs.
- * This accepts the two tests a receipt can carry (hosted environment; one machine for the whole
- * job). Non-reuse across job identities is checked where all receipts are seen, not here. */
+/** Validate the hosted environment and one VM identity throughout this job.
+ * Cross-job VM non-reuse is not checked. */
 function assertGithubHostedRunner(value: Record<string, unknown>): {
   declaredTarget?: ReceiptTarget
   identity?: ContainerIdentity

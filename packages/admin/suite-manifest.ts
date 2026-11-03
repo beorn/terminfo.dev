@@ -85,12 +85,18 @@ export function readExplicitSuiteTarget(root: string, suiteId: string): Explicit
 }
 
 /** Verify a stored declaration against the currently executable suite. */
-export function verifySuiteManifest(path: string, snapshot: ProbeSuiteSnapshot): ProbeSuiteManifest {
-  let source: string
-  try {
-    source = readFileSync(path, "utf8")
-  } catch (cause) {
-    throw new Error(`Cannot read suite manifest ${path}`, { cause })
+export function verifySuiteManifest(
+  path: string,
+  snapshot: ProbeSuiteSnapshot,
+  providedSource?: string,
+): ProbeSuiteManifest {
+  let source = providedSource
+  if (source === undefined) {
+    try {
+      source = readFileSync(path, "utf8")
+    } catch (cause) {
+      throw new Error(`Cannot read suite manifest ${path}`, { cause })
+    }
   }
   return verifyValue(parseSuiteManifest(path, source), path, snapshot)
 }

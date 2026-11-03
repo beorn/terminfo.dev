@@ -6,7 +6,7 @@ outline: [2, 3]
 
 ## Current results
 
-**`GET /api/v3/data.json`** returns the current five-status contract. Composed contexts retain cells from original sealed schema-3 or schema-4 runs.
+**`GET /api/v3/data.json`** returns the current five-status contract. Composed contexts retain cells from original stored schema-4 runs.
 
 [View current data](/api/v3/data.json) · [Frozen v1](/api/v1/data.json)
 
@@ -17,13 +17,13 @@ outline: [2, 3]
 | `features`, `catalogIds` | Catalog metadata; each run also records its own exact frozen `catalogIds`      |
 | `contextCount`           | Number of composed contexts                                                    |
 | `contexts`               | Exact context keys mapped to composed context summaries                        |
-| `versions`, `history`    | Retained sealed schema-3 or schema-4 run references                            |
+| `versions`, `history`    | Retained stored schema-4 run references                                        |
 | `methodology`            | Status, score, completion and historical endpoint explanations                 |
 | `message`                | Explicit no-current explanation when `contextCount` is zero                    |
 
-A context includes its physical `subject` (without a version), `catalogIds`, `cells`, `sources`, `contributingRunIds`, `attempts`, counts, score and completion. Its subject may be absent for an unmeasured pre-start attempt. A context has no single run ID, version, suite, run hash or seal.
+A context includes its physical `subject` (without a version), `catalogIds`, `cells`, `sources`, `contributingRunIds`, `attempts`, counts, score and completion. Its subject may be absent for an unmeasured pre-start attempt. A context has no single run ID, version, suite or run hash.
 
-Each `cells[featureId]` retains its original status, `origin: { runId, resultId }`, `measuredAt`, `suiteId` and `suiteRelation`. Resolve its original receipt as `context.sources[cell.origin.runId]`. Each source retains its own subject version, source revision, suite, run ID/hash, frozen catalog IDs, seal, counts, score, completion, trace receipt and verified run-document URL/hash. `versions` and `history` reference these original immutable run documents; they do not contain composed results.
+Each `cells[featureId]` retains its original status, `origin: { runId, resultId }`, `measuredAt`, `suiteId` and `suiteRelation`. Resolve its original receipt as `context.sources[cell.origin.runId]`. Each source retains its own subject version, source revision, suite, run ID/hash, catalog IDs, counts, score, completion, trace receipt and verified run-document URL/hash. `versions` and `history` reference these original immutable run documents; they do not contain composed results.
 
 Each public attempt is flat: `runId`, optional recorded `startedAt` and `noOutputIds`. Private selection, outcome and error objects remain in the canonical private projection. A later attempt without output does not replace an earlier measured cell.
 
@@ -37,7 +37,7 @@ Each public attempt is flat: `runId`, optional recorded `startedAt` and `noOutpu
 | `test-todo`    | TEST TODO     | Required work remains; this is not a terminal feature verdict   |
 | `test-failure` | TEST FAILURE  | An attempted test or collection failed to obtain a valid result |
 
-Each sealed run has exactly one result per frozen catalog ID. Its `results` array retains the recorded status and attempts/tests; readers never turn old observations into new current statuses.
+Each stored run has exactly one result per catalog ID. Its `results` array retains the recorded status and attempts/tests; readers never turn old observations into new current statuses.
 
 `score.supported / score.all` is Supported divided by the **graded** catalog positions (264 for a current
 273-row run). Untestable, TEST TODO and TEST FAILURE remain in that denominator. The nine environment
@@ -48,9 +48,9 @@ only a stored TEST TODO is displayed as **NOT MEASURED**.
 A context's `complete` is true only when its TEST TODO and TEST FAILURE counts among the graded
 features are both zero. Completion does not imply full support.
 
-Publication still requires every required context on the approved source/suite. An absent current context cannot count as complete.
+An absent current context cannot count as complete.
 
-## No current sealed runs
+## No current results
 
 An all-history corpus is a valid migration state. The v3 response contains catalog metadata, `contextCount: 0`, `contexts: {}`, and an explicit message:
 
@@ -79,15 +79,15 @@ A missing context means there is no selected composed context. A missing cell ha
 
 ## Evidence and publication
 
-Status recording, identity admission and evidence publication are separate decisions. A support review does not automatically authorize publishing captured bytes.
+Status recording, measured identity and evidence publication are separate facts. A support review does not automatically authorize publishing captured bytes.
 
 Each result's `presentation` says whether evidence is unreviewed, withdrawn or presented. Presented evidence points to `/api/v3/evidence/<runSha256>.json#<featureId>` and carries the SHA-256 receipt of that run's evidence document. Per-run evidence documents carry `version: 4`, bumped from per-cell `version: 3` because the document shape changed to `cells[featureId]`.
 
-Each run's evidence document keys its approved cells under `cells[featureId]` and retains the sealed result (or historical observation) plus original expected/observed assertions, raw reply and frame references. Text snapshots and screenshots retain their own hashes.
+Each run's evidence document keys its approved cells under `cells[featureId]` and retains the stored result plus original expected/observed assertions, raw reply and frame references. Text snapshots and screenshots retain their own hashes.
 
 Free-form execution reasons and captured diagnostics pass the existing presentation review boundary. A summary without that approval does not expose the private collector note or capture.
 
-Each contributing original source carries `trace`: the URL and SHA-256 receipt of its trace document, `/api/v3/traces/<run sha256>.json`. The document names the run's SHA-256, its recorded identity and admission rule, and holds every result without a presentation decision, keyed by feature ID:
+Each contributing original source carries `trace`: the URL and SHA-256 receipt of its trace document, `/api/v3/traces/<run sha256>.json`. The document names the run's SHA-256, its recorded identity, and holds every result without a presentation decision, keyed by feature ID:
 
 - the outcome or status, the assertion type and a reason code;
 - the bytes the probe wrote, and each query's sequence and reason;

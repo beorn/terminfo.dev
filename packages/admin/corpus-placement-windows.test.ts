@@ -22,6 +22,7 @@ import { join } from "node:path"
 import { afterEach, expect, test } from "vitest"
 import { parseSuiteManifest, parseRun, decodeCollectorDraft } from "@terminfo/run-parser"
 import { placeCollectedRun } from "./corpus-placement.ts"
+import { derivedSuiteManifest, probeSuiteSnapshot } from "./versions.ts"
 
 const dirs: string[] = []
 afterEach(() => {
@@ -103,12 +104,13 @@ function fixture(alacritty = false) {
   copyFileSync(join(root, "content/features.json"), join(content, "features.json"))
   for (const name of ["probes-apps", "probes-libs", "probes-mux"]) mkdirSync(join(content, name))
   const manifestPath = join(root, "content/suites/4b01b0117e18.json")
-  const manifest = parseSuiteManifest(manifestPath, readFileSync(manifestPath, "utf8"))
+  const historical = parseSuiteManifest(manifestPath, readFileSync(manifestPath, "utf8"))
+  const manifest = derivedSuiteManifest(probeSuiteSnapshot())
   const specimenPath = join(root, "test-fixtures/probes-apps/windows-terminal-admission-current.json")
   const bytes = readFileSync(specimenPath, "utf8")
-  const parsed = parseRun(specimenPath, bytes, manifest.catalogIds!, new Map([[manifest.probeHash, manifest]]))
+  const parsed = parseRun(specimenPath, bytes, historical.catalogIds!, new Map([[historical.probeHash, historical]]))
   if (!parsed.sourceRevision) throw new Error("Windows fixture has no source revision")
-  const decoded = decodeCollectorDraft(specimenPath, bytes, manifest, parsed.sourceRevision)
+  const decoded = decodeCollectorDraft(specimenPath, bytes, historical, parsed.sourceRevision)
   if (decoded.kind !== "captured") throw new Error("Windows fixture is not captured")
   const launch = structuredClone(alacritty ? alacrittyLaunch : windowsLaunch)
   const launchWithMesa: typeof windowsLaunch & { mesaRenderer?: typeof alacrittyLaunch.mesaRenderer } = {
@@ -117,6 +119,8 @@ function fixture(alacritty = false) {
   }
   const run = {
     ...decoded.run,
+    probeHash: manifest.probeHash,
+    suiteId: manifest.probeHash,
     origin: {
       ...decoded.run.origin,
       appLaunch: launchWithMesa,
@@ -129,8 +133,9 @@ function fixture(alacritty = false) {
     run.rawReplies["device.primary-da"] = "\x1b[?61;6;7;21;22;23;24;28;32;42c"
   }
   const source = join(dir, "run.json")
-  const cite = (appLaunch: unknown = launch) => {
+  const cite = (appLaunch: unknown = launch, runnerOS = "Windows") => {
     const host = { ...hostedReceipt(alacritty ? "1005" : "1003"), appLaunch }
+    host.runner.os = runnerOS
     const bytes = JSON.stringify(host)
     writeFileSync(join(dir, "host-measured.json"), bytes)
     run.rawReplies["collector.disposableOwnership"] = JSON.stringify({
@@ -143,6 +148,17 @@ function fixture(alacritty = false) {
   cite()
   return { run, source, content, manifest, launch, cite }
 }
+
+// Hosted placement must reject an OS without a ratified identity source; existing receipt
+// parsing only validates that runner.os is nonempty, so an unrecognized value otherwise passes.
+test.each(["Plan9", "constructor", "toString"])("rejects hosted runner OS %s", (os) => {
+  const f = fixture()
+  f.cite(f.launch, os)
+  writeFileSync(f.source, JSON.stringify(f.run))
+  expect(() => placeCollectedRun(f.source, f.manifest, f.content)).toThrow(/runner\.os.*no ratified identity/)
+  expect(readdirSync(join(f.content, "probes-apps"))).toEqual([])
+  expect(existsSync(join(f.content, "suites"))).toBe(false)
+})
 
 // Accepted: the recorded Windows executable, target, hosted receipt and measured launch must agree.
 // Old assessor tests never exercised the actual writer or proved refusal leaves no corpus record.

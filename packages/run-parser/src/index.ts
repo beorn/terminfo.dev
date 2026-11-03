@@ -841,7 +841,11 @@ export function parseProbeResults(
       ...new Set(
         [result.reviewRef, ...tests.map((test) => test.reviewRef)].filter((ref): ref is string => ref !== undefined),
       ),
-    ].filter((ref) => sourceAnswerForRef(ref) !== undefined)
+    ]
+    for (const ref of sourceRefs) {
+      if (!nonempty(ref) || !sourceAnswerForRef(ref))
+        fail(path, `${featureId} unresolved review reference ${String(ref)}`)
+    }
     if (sourceRefs.length) {
       if (!sourceContext) fail(path, `${featureId} source answer requires measured subject context`)
       for (const ref of sourceRefs) {
@@ -859,6 +863,9 @@ export function parseProbeResults(
     const semanticSource =
       result.criterionBranch === SEMANTIC_PROMPT_SOURCE_REVIEW && (status === "supported" || status === "unsupported")
     const sourceOnlyNegative = status === "unsupported" && isSourceOnlyNegativeReview(result, assertions)
+    if ((semanticSource || sourceOnlyNegative || status === "untestable") && sourceRefs.length === 0) {
+      fail(path, `${featureId} requires a kept source answer`)
+    }
     if ((status === "supported" || status === "unsupported") && !semanticSource && !sourceOnlyNegative) {
       if (attempt.scope === "none" || !item.assertionType) {
         fail(path, `${featureId} support result requires measured evidence`)
@@ -1436,8 +1443,8 @@ export function decodeCollectorDraft(
   ) {
     fail(path, "collector draft differs from trusted suite/source")
   }
-  if (measured.origin.kind !== "collector") {
-    fail(path, "collector draft requires collector origin")
+  if (measured.identity !== "unverified" || measured.origin.kind !== "collector") {
+    fail(path, "collector draft requires unverified measured identity and collector origin")
   }
   return { kind: "captured", run: value as unknown as CapturedRunDraft, raw, sha256: measured.sha256 }
 }

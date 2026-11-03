@@ -50,7 +50,6 @@ async function rawScoreboard(paths: readonly string[], contentDir: string): Prom
       pass: string
       state: string
       selected: boolean
-      admitted: boolean
     }>
   >()
   type PassContext = {
@@ -84,20 +83,10 @@ async function rawScoreboard(paths: readonly string[], contentDir: string): Prom
       if (!context) throw new Error(`${path}: pass names a context outside the canonical census`)
       if (typeof value.rawRun === "string") {
         const declared = { ...identity, context }
-        const capture = read(value.rawRun, declared)
-        if (value.status === "admitted" && typeof value.admittedPath === "string") {
-          const admitted = read(value.admittedPath, declared)
-          if (!capture || !admitted || capture.runId !== admitted.runId || capture.suite !== admitted.suite) {
-            throw new Error(
-              `${path}: admitted path ${value.admittedPath} does not identify captured run ${value.rawRun}`,
-            )
-          }
-          admitted.admitted = true
-        }
+        read(value.rawRun, declared)
       } else {
         append(context.context, {
           selected: false,
-          admitted: false,
           pass: identity.pass,
           state: "to-measure",
           suite: `${header.probeHash}@${header.sourceRevision}`,
@@ -152,7 +141,6 @@ async function rawScoreboard(paths: readonly string[], contentDir: string): Prom
         }
         return append(pass.context.context, {
           selected: false,
-          admitted: false,
           pass: pass.pass,
           state: "to-measure",
           suite: `${header.probeHash}@${header.sourceRevision}`,
@@ -197,7 +185,6 @@ async function rawScoreboard(paths: readonly string[], contentDir: string): Prom
     }
     return append(pass?.context?.context ?? context.context, {
       selected: false,
-      admitted: false,
       pass: pass?.pass ?? "no pass",
       state: "measured-unpublished",
       runId: header.runId,
@@ -274,7 +261,6 @@ async function rawScoreboard(paths: readonly string[], contentDir: string): Prom
       } else {
         append(context.context, {
           selected: true,
-          admitted: false,
           pass: "no pass",
           state,
           runId: selected.runId,
@@ -304,7 +290,6 @@ async function rawScoreboard(paths: readonly string[], contentDir: string): Prom
       .get(context.context)
       ?.sort(
         (left, right) =>
-          Number(right.admitted) - Number(left.admitted) ||
           Number(left.selected) - Number(right.selected) ||
           left.source.localeCompare(right.source) ||
           left.runId.localeCompare(right.runId) ||
