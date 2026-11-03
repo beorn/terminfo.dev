@@ -2,7 +2,7 @@
  * @failure Mux raw-output collection admits development data or loses its original HTTP response.
  * @level l1
  * @consumer handleMux private-output lifecycle and the shared immutable raw writer.
- * @reach fs-read vendor/terminfo.dev/test-fixtures/probes-apps/kitty-0.49.2-linux-8c50df5834ccb938c208aa91467e9a2b.json
+ * @reach fs-read <fixture-only: private HTTP response and raw capture files written inside the test directory>
  * @reach fs-walk <fixture-only: mkdtempSync capture output directory; readdirSync picks the tmux raw file written beside the HTTP response>
  * @testonly none
  */
@@ -14,8 +14,8 @@ import { execSync, spawnSync } from "node:child_process"
 import { expect, it, vi } from "vitest"
 import {
   ENVIRONMENT_GROUP_IDS,
+  initializeRunDraft,
   type CapturedRunDraft,
-  type HistoricalProbeRun,
   type ProbeSuiteManifest,
 } from "@terminfo/probe-defs"
 import { handleMux } from "./mux.ts"
@@ -65,54 +65,44 @@ it.each([
   mkdirSync(wrapper)
   const log = vi.spyOn(console, "log").mockImplementation(() => {})
   vi.spyOn(console, "error").mockImplementation(() => {})
-  const historical = JSON.parse(
-    readFileSync(
-      new URL(
-        "../../../test-fixtures/probes-apps/kitty-0.49.2-linux-8c50df5834ccb938c208aa91467e9a2b.json",
-        import.meta.url,
-      ),
-      "utf8",
-    ),
-  ) as HistoricalProbeRun
-  const {
-    observations: _observations,
-    notTested: _notTested,
-    ungradedDiagnostics: _diagnostics,
-    suiteComplete: _complete,
-    ...metadata
-  } = historical
+  const catalogIds = ["sgr.bold", ...(environment ? ENVIRONMENT_GROUP_IDS : [])]
+  const manifest = {
+    schemaVersion: 4 as const,
+    probeHash: "a".repeat(12),
+    sourceRevision: "b".repeat(40),
+    generatedAt: "2026-10-25T00:00:00.000Z",
+    adapterVersion: "test",
+    catalogIds,
+    probes: { term: [], lib: [], mux: catalogIds },
+  } satisfies ProbeSuiteManifest
   const run: CapturedRunDraft = {
-    source: { kind: "live" },
-    ...metadata,
-    assertions: [],
-    schemaVersion: 4,
-    intendedSubject: { kind: "mux", id: "tmux", version: "3.6a" },
-    results: ["sgr.bold", ...(environment ? ENVIRONMENT_GROUP_IDS : [])].map((featureId) => ({
-      featureId,
-      status: "test-todo",
-      attempt: { scope: "none" },
-      tests: [],
-      reason: "Synthetic route fixture; not measured",
-    })),
+    ...initializeRunDraft({
+      source: { kind: "live" },
+      runId: "1234567890abcdef1234567890abcdef",
+      sourceRevision: manifest.sourceRevision,
+      manifest,
+      intendedSubject: { kind: "mux", id: "tmux", version: "3.6a" },
+    }),
+    subject: {
+      kind: "mux",
+      id: "tmux",
+      version: "3.6a",
+      os: "linux",
+      osVersion: null,
+      outerTerminal: null,
+      mux: null,
+      config: null,
+      permissions: null,
+    },
+    identity: "unverified",
+    measuredAt: "2026-10-25T00:00:00.000Z",
+    origin: { kind: "collector" },
   }
-  // Only transport/persistence is exercised: this synthetic identity is not native mux evidence.
-  run.subject = {
-    ...(historical as unknown as { target: CapturedRunDraft["subject"] }).target,
-    kind: "mux",
-    id: "tmux",
-    version: "3.6a",
-  }
+  // This current-schema TODO run exercises transport/persistence only; it makes no native mux claim.
   // Private retention uses the source receipt as well as the child launcher's environment.
   fixtures.receipt = {
-    manifest: {
-      schemaVersion: 4,
-      probeHash: run.probeHash,
-      sourceRevision: run.sourceRevision,
-      adapterVersion: "test",
-      catalogIds: run.results.map(({ featureId }) => featureId),
-      probes: { term: [], lib: [], mux: [] },
-    },
-    collectorRevision: run.sourceRevision,
+    manifest,
+    collectorRevision: manifest.sourceRevision,
   }
   const bytes = JSON.stringify(run)
   // COPYFILE_EXCL cannot overwrite the real package.json on the unfixed path; the correct guard must refuse first.

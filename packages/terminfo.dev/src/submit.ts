@@ -2,12 +2,7 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs"
 import { basename, dirname, join } from "node:path"
 import type { ProbeSuiteManifest } from "@terminfo/probe-defs"
-import {
-  decodeCollectorRun,
-  decodeCollectorDraft,
-  decodeExactUtf8,
-  parseJsonStrict,
-} from "@terminfo/run-parser"
+import { decodeCollectorRun, decodeCollectorDraft, decodeExactUtf8, parseJsonStrict } from "@terminfo/run-parser"
 
 import { aggregateCurrentResults } from "../../../docs/data/release-scope.ts"
 
@@ -88,9 +83,7 @@ export function createDraft(
     "This command creates files offline and does not send them. Review this draft before posting it as a GitHub issue.",
     "If you choose to contribute, include this consent statement:",
     "I dedicate these results to the public domain (CC0 1.0) so terminfo.dev can publish them under any license.",
-    ...(!complete
-      ? ["Current execution is incomplete: TEST TODO or TEST FAILURE remains."]
-      : []),
+    ...(!complete ? ["Current execution is incomplete: TEST TODO or TEST FAILURE remains."] : []),
     ...(!("sealedAt" in run) ? ["Unsealed draft: not sealed or admitted."] : []),
     "",
     "## Measured context and coverage",

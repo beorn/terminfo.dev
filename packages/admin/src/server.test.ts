@@ -114,22 +114,46 @@ it("refuses an old registration without a token before sending any terminal comm
   expect(requests).toEqual([])
 })
 
-// The daemon transport/parser and raw writer are real; the admission owner independently refuses
-// this retained historical collection's dirty provenance. The old canonical save bypassed it.
-it("retains historical HTTP bytes privately and refuses to treat them as the current collector contract", async () => {
-  const root = join(import.meta.dirname, "../../..")
-  fixtures.raw = readFileSync(
-    join(root, "test-fixtures/probes-apps/kitty-0.49.2-linux-8c50df5834ccb938c208aa91467e9a2b.json"),
-    "utf8",
-  )
-  const run = JSON.parse(fixtures.raw) as { probeHash: string; sourceRevision: string }
-  fixtures.receipt = {
-    manifest: JSON.parse(
-      readFileSync(join(root, "content/suites", `${run.probeHash}.json`), "utf8"),
-    ) as ProbeSuiteManifest,
-    collectorRevision: run.sourceRevision,
+// Exercise the real daemon transport/parser with a schema-4 draft whose source revision is not trusted.
+it("retains current-format HTTP bytes privately and refuses a collector revision mismatch", async () => {
+  const manifest = {
+    schemaVersion: 4 as const,
+    probeHash: "abcdef123456",
+    sourceRevision: "a".repeat(40),
+    generatedAt: "2026-10-25T00:00:00.000Z",
+    adapterVersion: "test",
+    catalogIds: ["sgr.bold"],
+    probes: { term: ["sgr.bold"], lib: [], mux: [] },
+  } satisfies ProbeSuiteManifest
+  const run: CapturedRunDraft = {
+    ...initializeRunDraft({
+      source: { kind: "live" },
+      runId: "1234567890abcdef1234567890abcdef",
+      sourceRevision: manifest.sourceRevision,
+      manifest,
+      intendedSubject: { kind: "term", id: "kitty", version: "0.49.1" },
+    }),
+    subject: {
+      kind: "term",
+      id: "kitty",
+      version: "0.49.1",
+      os: "linux",
+      osVersion: null,
+      outerTerminal: null,
+      mux: null,
+      config: null,
+      permissions: null,
+    },
+    identity: "unverified",
+    measuredAt: "2026-10-25T00:00:00.000Z",
+    origin: { kind: "collector" },
   }
-  await expect(handleServer("kitty", {})).rejects.toThrow(/schemaVersion 4 collector draft/)
+  fixtures.raw = JSON.stringify(run)
+  fixtures.receipt = {
+    manifest,
+    collectorRevision: "b".repeat(40),
+  }
+  await expect(handleServer("kitty", {})).rejects.toThrow(/collector draft differs from trusted suite\/source/)
   expect(saveDaemonProbeRun).not.toHaveBeenCalled()
   const digest = createHash("sha256").update(fixtures.raw).digest("hex")
   expect(readFileSync(join(fixtures.home!, ".terminfo-dev", "http-responses", digest), "utf8")).toBe(fixtures.raw)

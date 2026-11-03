@@ -1,0 +1,2849 @@
+{
+  "schemaVersion": 4,
+  "source": {
+    "kind": "live"
+  },
+  "runId": "fixture-terminal-app-text-frame",
+  "suiteId": "8533e1c9630b",
+  "probeHash": "8533e1c9630b",
+  "sourceRevision": "750022af33fd31d0c4ac9731c474872740466592",
+  "intendedSubject": {
+    "kind": "term",
+    "id": "terminal-app",
+    "version": "2.15",
+    "os": "macos",
+    "osVersion": "26.6.2",
+    "outerTerminal": null,
+    "mux": null,
+    "config": null,
+    "permissions": null
+  },
+  "results": [
+    {
+      "featureId": "charsets.dec-line-drawing",
+      "attempt": {
+        "scope": "probe",
+        "startedAt": "2026-10-28T19:10:34.842Z"
+      },
+      "tests": [
+        {
+          "id": "criterion",
+          "status": "supported",
+          "attempt": {
+            "scope": "probe",
+            "startedAt": "2026-10-28T19:10:34.842Z"
+          },
+          "assertionRefs": [
+            0
+          ],
+          "rawReplyRef": "charsets.dec-line-drawing"
+        },
+        {
+          "id": "text-qualification",
+          "status": "test-failure",
+          "attempt": {
+            "scope": "probe",
+            "startedAt": "2026-10-28T19:08:05.158Z"
+          },
+          "reason": "Run 404cc558e74169b209dae16f8e365373: text qualification shape mid-line-gap: Prior cursor visibility or autowrap state is unavailable (DECTCEM=null, DECAWM=null)"
+        }
+      ],
+      "assertionType": "buffer_state",
+      "rawReplyRef": "charsets.dec-line-drawing",
+      "frames": [
+        {
+          "kind": "text-cells",
+          "role": "control",
+          "label": "charsets.dec-line-drawing: pre-edit seed — paint witness",
+          "capturedAt": 1793214635864,
+          "ref": "sha256:4bf61ec0bd9538b637a28ea403613a889f1ebb51da811fe3318af009b17751fe",
+          "cellDigest": "sha256:5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9",
+          "frameDigest": "sha256:4bf61ec0bd9538b637a28ea403613a889f1ebb51da811fe3318af009b17751fe",
+          "cellRectangle": {
+            "top": 3,
+            "left": 1,
+            "bottom": 3,
+            "right": 1
+          }
+        },
+        {
+          "kind": "text-cells",
+          "role": "control",
+          "label": "charsets.dec-line-drawing: pre-edit seed",
+          "capturedAt": 1793214636153,
+          "ref": "sha256:4bf61ec0bd9538b637a28ea403613a889f1ebb51da811fe3318af009b17751fe",
+          "cellDigest": "sha256:1292ca34c0626e9d22eb53c8a605a86dc747b1a72daa1d84769cc690d7ea12f8",
+          "frameDigest": "sha256:4bf61ec0bd9538b637a28ea403613a889f1ebb51da811fe3318af009b17751fe",
+          "cellRectangle": {
+            "top": 1,
+            "left": 1,
+            "bottom": 1,
+            "right": 7
+          }
+        },
+        {
+          "kind": "text-cells",
+          "role": "control",
+          "label": "charsets.dec-line-drawing: post-sequence target — paint witness",
+          "capturedAt": 1793214636664,
+          "ref": "sha256:5c968421d08d8f0f9695f1d5946d12d484f763be13d6fca0da1a9e77d0c2a352",
+          "cellDigest": "sha256:6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b",
+          "frameDigest": "sha256:5c968421d08d8f0f9695f1d5946d12d484f763be13d6fca0da1a9e77d0c2a352",
+          "cellRectangle": {
+            "top": 3,
+            "left": 1,
+            "bottom": 3,
+            "right": 1
+          }
+        },
+        {
+          "kind": "text-cells",
+          "role": "target",
+          "label": "charsets.dec-line-drawing: post-sequence target",
+          "capturedAt": 1793214636930,
+          "ref": "sha256:5c968421d08d8f0f9695f1d5946d12d484f763be13d6fca0da1a9e77d0c2a352",
+          "cellDigest": "sha256:02e2e67090327901d595b04e4f90d421bb10ca8d80b1b60b53078567549f77a9",
+          "frameDigest": "sha256:5c968421d08d8f0f9695f1d5946d12d484f763be13d6fca0da1a9e77d0c2a352",
+          "cellRectangle": {
+            "top": 1,
+            "left": 1,
+            "bottom": 1,
+            "right": 7
+          }
+        },
+        {
+          "kind": "text-cells",
+          "role": "control",
+          "label": "charsets.dec-line-drawing: expected frame — paint witness",
+          "capturedAt": 1793214637550,
+          "ref": "sha256:94c06f4435f0c481b6caf3928446669a1ba55704141fe848073cba16622797df",
+          "cellDigest": "sha256:d4735e3a265e16eee03f59718b9b5d03019c07d8b6c51f90da3a666eec13ab35",
+          "frameDigest": "sha256:94c06f4435f0c481b6caf3928446669a1ba55704141fe848073cba16622797df",
+          "cellRectangle": {
+            "top": 3,
+            "left": 1,
+            "bottom": 3,
+            "right": 1
+          }
+        },
+        {
+          "kind": "text-cells",
+          "role": "control",
+          "label": "charsets.dec-line-drawing: expected frame",
+          "capturedAt": 1793214637880,
+          "ref": "sha256:94c06f4435f0c481b6caf3928446669a1ba55704141fe848073cba16622797df",
+          "cellDigest": "sha256:02e2e67090327901d595b04e4f90d421bb10ca8d80b1b60b53078567549f77a9",
+          "frameDigest": "sha256:94c06f4435f0c481b6caf3928446669a1ba55704141fe848073cba16622797df",
+          "cellRectangle": {
+            "top": 1,
+            "left": 1,
+            "bottom": 1,
+            "right": 7
+          }
+        }
+      ],
+      "status": "test-failure",
+      "reason": "Run 404cc558e74169b209dae16f8e365373: text qualification shape mid-line-gap: Prior cursor visibility or autowrap state is unavailable (DECTCEM=null, DECAWM=null)"
+    },
+    {
+      "featureId": "charsets.dec-special",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "charsets.g0-g1-switching",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "charsets.utf8",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "cursor.ansi-restore",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "cursor.ansi-save",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "cursor.cpl",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "cursor.cud-past-bottom",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "cursor.cup-boundaries",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "cursor.cup-scroll-region",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "cursor.cuu-past-top",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "cursor.hide",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "cursor.horizontal-absolute",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "cursor.hpa",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "cursor.move.absolute",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "cursor.move.back",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "cursor.move.down",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "cursor.move.forward",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "cursor.move.home",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "cursor.move.up",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "cursor.next-line",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "cursor.position-report",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "cursor.reverse-wrap",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "cursor.save-restore",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "cursor.shape",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "cursor.vpa",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.decrpm",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.decrqss",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.dsr-996-color-scheme",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.env-colorterm",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.env-kitty",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.env-lc-terminal",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.env-no-color",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.env-term",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.env-term-program",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.env-vte-version",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.env-wezterm",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.env-wt-session",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.primary-da",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.secondary-da",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.status-report",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.term-features",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.tertiary-da",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.xtgettcap",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.xtgetxres",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.xtreportcolors",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.xtversion",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.xtwinops-14",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.xtwinops-16",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.xtwinops-18",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.xtwinops-20",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.xtwinops-21",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.xtwinops-22",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.xtwinops-23",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "editing.deccara",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "editing.deccra",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "editing.decdc",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "editing.decera",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "editing.decfra",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "editing.decic",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "editing.decrara",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "editing.decrqcra",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "editing.decsace",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "editing.decsera",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "editing.delete-chars",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "editing.delete-lines",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "editing.insert-chars",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "editing.insert-lines",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "editing.repeat-char",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "editing.sl",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "editing.sr",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "erase.character",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "erase.ed-scroll-region",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "erase.el-with-attrs",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "erase.line.all",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "erase.line.left",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "erase.line.right",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "erase.screen.above",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "erase.screen.all",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "erase.screen.below",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "erase.screen.scrollback",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "erase.selective",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.clipboard-paste",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.font-ligatures",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.iterm2-images",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.kitty-graphics",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.kitty-graphics.animation",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.kitty-graphics.display",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.kitty-graphics.transmit",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.kitty-graphics.unicode-placeholders",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.kitty-keyboard",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.kitty-keyboard.disambiguate",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.kitty-keyboard.report-all-keys",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.kitty-keyboard.report-alternate",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.kitty-keyboard.report-events",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.kitty-keyboard.report-text",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.notifications",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc-633-vscode",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc0-icon-title",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc1-icon",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc10-fg-color",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc104-reset-palette",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc11-bg-color",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc110-reset-fg",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc111-reset-bg",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc112-reset-cursor",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc113-reset-pointer-fg",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc114-reset-pointer-bg",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc117-reset-highlight-bg",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc119-reset-highlight-fg",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc12-cursor-color",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc133-a",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc133-b",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc133-c",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc133-d",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc133-p",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc1337-capabilities",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc1337-cellsize",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc17-highlight-bg",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc176-app-id",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc19-highlight-fg",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc2-title",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc21-kitty-color",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc22-pointer",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc30001-color-stack-push",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc3008-context",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc30101-color-stack-pop",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc4-palette",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc440-audio",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc5-special-color",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc52-clipboard",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc52-read",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc52-write",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc5522-clipboard",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc555-flash",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc633-a",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc633-b",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc633-c",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc633-d",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc633-e",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc633-p",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc66-text-sizing",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc666-termprop",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc7-cwd",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc701-locale",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc702-version",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc710-font-normal",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc720-scroll-up",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc776-cell-size",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc777-notify",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc7770-font-size",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc7777-font-window-size",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc8",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc9-progress",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc99-kitty-notify",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.reflow",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.semantic-prompts",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.sixel",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.sixel-da1",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.sixel-geometry-report",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.truecolor",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "input.button-event-mouse",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "input.csi-u",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "input.kitty-click-events",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "input.modify-other-keys",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "input.modify-other-keys-3",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "input.pixel-mouse",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "input.urxvt-mouse",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "input.x10-mouse",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "input.xtest-click",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "input.xtest-key",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "input.xtest-wheel",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.alt-screen.enter",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.alt-screen.exit",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.alt-scroll-1007",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.altscreen-1047",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.altscreen-1048",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.altscreen-47",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.application-cursor",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.application-keypad",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.auto-wrap",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.bracketed-paste",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.color-scheme-reporting",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.deccolm",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.decsclm",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.decsscls",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.focus-tracking",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.insert-replace",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.left-right-margin",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.mouse-all",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.mouse-sgr",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.mouse-tracking",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.origin",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.reverse-video",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.synchronized-output",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.utf8-mouse-1005",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.xtpopcolors",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.xtpopsgr",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.xtpushcolors",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.xtpushsgr",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.xtrestore",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.xtsave",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "reset.decaln",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "reset.method",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "reset.ris",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "reset.sgr",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "reset.soft",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "scrollback.accumulate",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "scrollback.alt-screen",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "scrollback.decstbm",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "scrollback.decstbm-reset",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "scrollback.reverse-index",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "scrollback.scroll-down",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "scrollback.scroll-up",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "scrollback.set-region",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "scrollback.total-lines",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "scrollback.viewport-hold-output",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.bg.256",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.bg.bright",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.bg.default",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.bg.standard",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.bg.truecolor",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.blink",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.bold",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.faint",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.fg.256",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.fg.bright",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.fg.default",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.fg.standard",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.fg.truecolor",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.hidden",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.inverse",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.italic",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.overline",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.reset",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.selective-reset.bold",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.selective-reset.inverse",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.selective-reset.italic",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.selective-reset.underline",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.strikethrough",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.underline-color-indexed",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.underline-color-reset",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.underline-color-rgb",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.underline.color",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.underline.curly",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.underline.dashed",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.underline.dotted",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.underline.double",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.underline.single",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "text.backspace",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "text.basic",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "text.cbt",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "text.cht",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "text.combining",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "text.cr",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "text.hts",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "text.index",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "text.newline",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "text.next-line",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "text.overwrite",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "text.reverse-index-scroll",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "text.tab",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "text.tbc",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "text.wide.cjk",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "text.wide.emoji",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "text.wide.emoji-flags",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "text.wide.emoji-vs16",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "text.wide.emoji-zwj",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "text.wrap",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "unicode.east-asian-ambiguous",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "unicode.grapheme-cursor",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "unicode.tab-stops",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "unicode.wrap-boundary",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    }
+  ],
+  "rawReplies": {
+    "charsets.dec-line-drawing": "{\"writes\":[\"\\u001b[0m\",\"\\u001b[?25l\",\"\\u001b[2J\\u001b[H\",\"\\u001b[0m\\u001b[2J\\u001b[H\\u000f\\u001b(B\\u001b)B\\u000f\\u001b(B\\u001b)B\\u001b[1;1H\\u001b[2Kjklmqxj\\u001b[2;1H\",\"\\u001b[2;1H\",\"\\u001b[3;1H0\",\"\\u001b[0m\\u001b[2J\\u001b[H\\u000f\\u001b(B\\u001b)B\\u000f\\u001b(B\\u001b)B\\u001b[1;1H\\u001b[2Kjklmqxj\\u001b[2;1H\\u001b[1;1H\\u001b(0jklmqx\\u001b(B\\u001b[2;1H\",\"\\u001b[2;1H\",\"\\u001b[3;1H1\",\"\\u001b[0m\\u001b[2J\\u001b[H\\u000f\\u001b(B\\u001b)B\\u001b[1;1H┘┐┌└─│j\\u001b[2;1H\",\"\\u001b[2;1H\",\"\\u001b[3;1H2\",\"\\u001b[?25h\",\"\\u001b[0m\\u001b[2J\\u001b[H\"],\"queries\":[],\"events\":[{\"kind\":\"write\",\"sequence\":\"\\u001b[0m\"},{\"kind\":\"write\",\"sequence\":\"\\u001b[?25l\"},{\"kind\":\"write\",\"sequence\":\"\\u001b[2J\\u001b[H\"},{\"kind\":\"write\",\"sequence\":\"\\u001b[0m\\u001b[2J\\u001b[H\\u000f\\u001b(B\\u001b)B\\u000f\\u001b(B\\u001b)B\\u001b[1;1H\\u001b[2Kjklmqxj\\u001b[2;1H\"},{\"kind\":\"write\",\"sequence\":\"\\u001b[2;1H\"},{\"kind\":\"write\",\"sequence\":\"\\u001b[3;1H0\"},{\"kind\":\"write\",\"sequence\":\"\\u001b[0m\\u001b[2J\\u001b[H\\u000f\\u001b(B\\u001b)B\\u000f\\u001b(B\\u001b)B\\u001b[1;1H\\u001b[2Kjklmqxj\\u001b[2;1H\\u001b[1;1H\\u001b(0jklmqx\\u001b(B\\u001b[2;1H\"},{\"kind\":\"write\",\"sequence\":\"\\u001b[2;1H\"},{\"kind\":\"write\",\"sequence\":\"\\u001b[3;1H1\"},{\"kind\":\"write\",\"sequence\":\"\\u001b[0m\\u001b[2J\\u001b[H\\u000f\\u001b(B\\u001b)B\\u001b[1;1H┘┐┌└─│j\\u001b[2;1H\"},{\"kind\":\"write\",\"sequence\":\"\\u001b[2;1H\"},{\"kind\":\"write\",\"sequence\":\"\\u001b[3;1H2\"},{\"kind\":\"write\",\"sequence\":\"\\u001b[?25h\"},{\"kind\":\"write\",\"sequence\":\"\\u001b[0m\\u001b[2J\\u001b[H\"}],\"captures\":[{\"frame\":{\"kind\":\"text-cells\",\"role\":\"control\",\"label\":\"charsets.dec-line-drawing: capture stability 1\",\"capturedAt\":1793214635095,\"ref\":\"sha256:736415f1c384910a375730173c1126462f6eba63a2fa8e16d6e512f9fb359e5f\",\"cellDigest\":\"sha256:90a512a5b8a107065c11e103aad9c4a9d9bc5f8b92ac4d962c42dcc1010f9ddb\",\"frameDigest\":\"sha256:736415f1c384910a375730173c1126462f6eba63a2fa8e16d6e512f9fb359e5f\",\"cellRectangle\":{\"top\":1,\"left\":1,\"bottom\":1,\"right\":7}},\"trace\":{\"kind\":\"text-cells\",\"retained\":\"736415f1c384910a375730173c1126462f6eba63a2fa8e16d6e512f9fb359e5f.txt\",\"source\":\"the terminal's own text snapshot\",\"droppedLines\":0,\"carriedHistory\":false,\"paddedRows\":[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30]}},{\"frame\":{\"kind\":\"text-cells\",\"role\":\"control\",\"label\":\"charsets.dec-line-drawing: capture stability 2\",\"capturedAt\":1793214635328,\"ref\":\"sha256:736415f1c384910a375730173c1126462f6eba63a2fa8e16d6e512f9fb359e5f\",\"cellDigest\":\"sha256:90a512a5b8a107065c11e103aad9c4a9d9bc5f8b92ac4d962c42dcc1010f9ddb\",\"frameDigest\":\"sha256:736415f1c384910a375730173c1126462f6eba63a2fa8e16d6e512f9fb359e5f\",\"cellRectangle\":{\"top\":1,\"left\":1,\"bottom\":1,\"right\":7}},\"trace\":{\"kind\":\"text-cells\",\"retained\":\"736415f1c384910a375730173c1126462f6eba63a2fa8e16d6e512f9fb359e5f.txt\",\"source\":\"the terminal's own text snapshot\",\"droppedLines\":0,\"carriedHistory\":false,\"paddedRows\":[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30]}},{\"frame\":{\"kind\":\"text-cells\",\"role\":\"control\",\"label\":\"charsets.dec-line-drawing: pre-edit seed — baseline\",\"capturedAt\":1793214635597,\"ref\":\"sha256:f3b8e9881c50a52f54f7aac4e0c3b5b62df50d411cf7361aec4ac4576af50a30\",\"cellDigest\":\"sha256:36a9e7f1c95b82ffb99743e0c5c4ce95d83c9a430aac59f84ef3cbfab6145068\",\"frameDigest\":\"sha256:f3b8e9881c50a52f54f7aac4e0c3b5b62df50d411cf7361aec4ac4576af50a30\",\"cellRectangle\":{\"top\":3,\"left\":1,\"bottom\":3,\"right\":1}},\"trace\":{\"kind\":\"text-cells\",\"retained\":\"f3b8e9881c50a52f54f7aac4e0c3b5b62df50d411cf7361aec4ac4576af50a30.txt\",\"source\":\"the terminal's own text snapshot\",\"droppedLines\":0,\"carriedHistory\":false,\"paddedRows\":[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30]}},{\"frame\":{\"kind\":\"text-cells\",\"role\":\"control\",\"label\":\"charsets.dec-line-drawing: pre-edit seed — paint witness\",\"capturedAt\":1793214635864,\"ref\":\"sha256:4bf61ec0bd9538b637a28ea403613a889f1ebb51da811fe3318af009b17751fe\",\"cellDigest\":\"sha256:5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9\",\"frameDigest\":\"sha256:4bf61ec0bd9538b637a28ea403613a889f1ebb51da811fe3318af009b17751fe\",\"cellRectangle\":{\"top\":3,\"left\":1,\"bottom\":3,\"right\":1}},\"trace\":{\"kind\":\"text-cells\",\"retained\":\"4bf61ec0bd9538b637a28ea403613a889f1ebb51da811fe3318af009b17751fe.txt\",\"source\":\"the terminal's own text snapshot\",\"droppedLines\":0,\"carriedHistory\":false,\"paddedRows\":[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30]}},{\"frame\":{\"kind\":\"text-cells\",\"role\":\"control\",\"label\":\"charsets.dec-line-drawing: pre-edit seed\",\"capturedAt\":1793214636153,\"ref\":\"sha256:4bf61ec0bd9538b637a28ea403613a889f1ebb51da811fe3318af009b17751fe\",\"cellDigest\":\"sha256:1292ca34c0626e9d22eb53c8a605a86dc747b1a72daa1d84769cc690d7ea12f8\",\"frameDigest\":\"sha256:4bf61ec0bd9538b637a28ea403613a889f1ebb51da811fe3318af009b17751fe\",\"cellRectangle\":{\"top\":1,\"left\":1,\"bottom\":1,\"right\":7}},\"trace\":{\"kind\":\"text-cells\",\"retained\":\"4bf61ec0bd9538b637a28ea403613a889f1ebb51da811fe3318af009b17751fe.txt\",\"source\":\"the terminal's own text snapshot\",\"droppedLines\":0,\"carriedHistory\":false,\"paddedRows\":[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30]}},{\"frame\":{\"kind\":\"text-cells\",\"role\":\"control\",\"label\":\"charsets.dec-line-drawing: post-sequence target — baseline\",\"capturedAt\":1793214636400,\"ref\":\"sha256:3e3b6a8e4fce2699fd277194aa6e6d24669106febe649558652e4f2d4bb2304e\",\"cellDigest\":\"sha256:36a9e7f1c95b82ffb99743e0c5c4ce95d83c9a430aac59f84ef3cbfab6145068\",\"frameDigest\":\"sha256:3e3b6a8e4fce2699fd277194aa6e6d24669106febe649558652e4f2d4bb2304e\",\"cellRectangle\":{\"top\":3,\"left\":1,\"bottom\":3,\"right\":1}},\"trace\":{\"kind\":\"text-cells\",\"retained\":\"3e3b6a8e4fce2699fd277194aa6e6d24669106febe649558652e4f2d4bb2304e.txt\",\"source\":\"the terminal's own text snapshot\",\"droppedLines\":0,\"carriedHistory\":false,\"paddedRows\":[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30]}},{\"frame\":{\"kind\":\"text-cells\",\"role\":\"control\",\"label\":\"charsets.dec-line-drawing: post-sequence target — paint witness\",\"capturedAt\":1793214636664,\"ref\":\"sha256:5c968421d08d8f0f9695f1d5946d12d484f763be13d6fca0da1a9e77d0c2a352\",\"cellDigest\":\"sha256:6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b\",\"frameDigest\":\"sha256:5c968421d08d8f0f9695f1d5946d12d484f763be13d6fca0da1a9e77d0c2a352\",\"cellRectangle\":{\"top\":3,\"left\":1,\"bottom\":3,\"right\":1}},\"trace\":{\"kind\":\"text-cells\",\"retained\":\"5c968421d08d8f0f9695f1d5946d12d484f763be13d6fca0da1a9e77d0c2a352.txt\",\"source\":\"the terminal's own text snapshot\",\"droppedLines\":0,\"carriedHistory\":false,\"paddedRows\":[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30]}},{\"frame\":{\"kind\":\"text-cells\",\"role\":\"target\",\"label\":\"charsets.dec-line-drawing: post-sequence target\",\"capturedAt\":1793214636930,\"ref\":\"sha256:5c968421d08d8f0f9695f1d5946d12d484f763be13d6fca0da1a9e77d0c2a352\",\"cellDigest\":\"sha256:02e2e67090327901d595b04e4f90d421bb10ca8d80b1b60b53078567549f77a9\",\"frameDigest\":\"sha256:5c968421d08d8f0f9695f1d5946d12d484f763be13d6fca0da1a9e77d0c2a352\",\"cellRectangle\":{\"top\":1,\"left\":1,\"bottom\":1,\"right\":7}},\"trace\":{\"kind\":\"text-cells\",\"retained\":\"5c968421d08d8f0f9695f1d5946d12d484f763be13d6fca0da1a9e77d0c2a352.txt\",\"source\":\"the terminal's own text snapshot\",\"droppedLines\":0,\"carriedHistory\":false,\"paddedRows\":[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30]}},{\"frame\":{\"kind\":\"text-cells\",\"role\":\"control\",\"label\":\"charsets.dec-line-drawing: expected frame — baseline\",\"capturedAt\":1793214637217,\"ref\":\"sha256:3e3b6a8e4fce2699fd277194aa6e6d24669106febe649558652e4f2d4bb2304e\",\"cellDigest\":\"sha256:36a9e7f1c95b82ffb99743e0c5c4ce95d83c9a430aac59f84ef3cbfab6145068\",\"frameDigest\":\"sha256:3e3b6a8e4fce2699fd277194aa6e6d24669106febe649558652e4f2d4bb2304e\",\"cellRectangle\":{\"top\":3,\"left\":1,\"bottom\":3,\"right\":1}},\"trace\":{\"kind\":\"text-cells\",\"retained\":\"3e3b6a8e4fce2699fd277194aa6e6d24669106febe649558652e4f2d4bb2304e.txt\",\"source\":\"the terminal's own text snapshot\",\"droppedLines\":0,\"carriedHistory\":false,\"paddedRows\":[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30]}},{\"frame\":{\"kind\":\"text-cells\",\"role\":\"control\",\"label\":\"charsets.dec-line-drawing: expected frame — paint witness\",\"capturedAt\":1793214637550,\"ref\":\"sha256:94c06f4435f0c481b6caf3928446669a1ba55704141fe848073cba16622797df\",\"cellDigest\":\"sha256:d4735e3a265e16eee03f59718b9b5d03019c07d8b6c51f90da3a666eec13ab35\",\"frameDigest\":\"sha256:94c06f4435f0c481b6caf3928446669a1ba55704141fe848073cba16622797df\",\"cellRectangle\":{\"top\":3,\"left\":1,\"bottom\":3,\"right\":1}},\"trace\":{\"kind\":\"text-cells\",\"retained\":\"94c06f4435f0c481b6caf3928446669a1ba55704141fe848073cba16622797df.txt\",\"source\":\"the terminal's own text snapshot\",\"droppedLines\":0,\"carriedHistory\":false,\"paddedRows\":[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30]}},{\"frame\":{\"kind\":\"text-cells\",\"role\":\"control\",\"label\":\"charsets.dec-line-drawing: expected frame\",\"capturedAt\":1793214637880,\"ref\":\"sha256:94c06f4435f0c481b6caf3928446669a1ba55704141fe848073cba16622797df\",\"cellDigest\":\"sha256:02e2e67090327901d595b04e4f90d421bb10ca8d80b1b60b53078567549f77a9\",\"frameDigest\":\"sha256:94c06f4435f0c481b6caf3928446669a1ba55704141fe848073cba16622797df\",\"cellRectangle\":{\"top\":1,\"left\":1,\"bottom\":1,\"right\":7}},\"trace\":{\"kind\":\"text-cells\",\"retained\":\"94c06f4435f0c481b6caf3928446669a1ba55704141fe848073cba16622797df.txt\",\"source\":\"the terminal's own text snapshot\",\"droppedLines\":0,\"carriedHistory\":false,\"paddedRows\":[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30]}}]}"
+  },
+  "assertions": [
+    {
+      "featureId": "charsets.dec-line-drawing",
+      "assertionType": "buffer_state",
+      "kind": "positive",
+      "expected": "charsets.dec-line-drawing: cell-aligned region {\"top\":1,\"left\":1,\"bottom\":1,\"right\":7} equals the same-run expected frame after \"\\u001b[1;1H\\u001b(0jklmqx\\u001b(B\\u001b[2;1H\", behind a paint witness in cell 3,1",
+      "observed": "sha256:02e2e67090327901d595b04e4f90d421bb10ca8d80b1b60b53078567549f77a9",
+      "rawReplyRef": "charsets.dec-line-drawing"
+    }
+  ],
+  "screenshotRefs": [],
+  "subject": {
+    "kind": "term",
+    "id": "terminal-app",
+    "version": "2.15",
+    "os": "macos",
+    "osVersion": "26.6.2",
+    "outerTerminal": null,
+    "mux": null,
+    "config": null,
+    "permissions": null
+  },
+  "identity": "unverified",
+  "measuredAt": "2026-10-28T19:10:39.264Z",
+  "origin": {
+    "kind": "collector"
+  },
+  "textSnapshotRefs": [
+    "sha256:736415f1c384910a375730173c1126462f6eba63a2fa8e16d6e512f9fb359e5f",
+    "sha256:902caf41fc2c45dc02eede1897fe9d8ac60d95c4bd4564174abea99766e3ee7a",
+    "sha256:6322cd145952df608374ea0693702835377a7d5dc0f2ce7b659a47fc68f57fdf",
+    "sha256:930bfc917db3b20bae190952f9e3c040adae413a866f3e74bf91caee9349bb0f",
+    "sha256:de2ba6bbf7910cf2877758cdf159ede5e3ca6ca3839052b16a4897938cfe1f8c",
+    "sha256:d8928f696d65fbe34380e3d9a8e54a47322c93e2459337ff55bb3c120fcf45a3",
+    "sha256:d69db7a327ac10c4b3f39e193cde0f5efc96dfafa1b2a0e78fedcbaee0e1edd3",
+    "sha256:b6652800ea396c8f496715ee31b005d4c1c0bfd490b36057cb96086af013f237",
+    "sha256:0b4f7f44eb94bd27b26051bb3789393bfbb8388fdeae46e4fbdcae200b972e93",
+    "sha256:23c4d4929fac283d2933b38bf8095a5a1a6963049e7ce034387f7dbab3095988",
+    "sha256:454491a43eac209e4b9b63311888bbcd12e4ceef81ee8a69d303d20fd17f7e89",
+    "sha256:86d7cf40d33afe31b022a62b94aba1f485e1e16353cd939435d1453d2eb5cdac",
+    "sha256:08c8095275c2701dce0c8bdaf6372b9e2a029d60cfe31ee269eb48589724ea57",
+    "sha256:86ab978c035e012195a101332202506dea27233fabb62677ef89befb8c6487eb",
+    "sha256:08ce8554c615176244b9331582b6552e456fef801f708e9c6852295e40a5ecce",
+    "sha256:7251cb018136cf6c844f95d1ad220b60b80944bcf3f8ad71d08bf56e6cd779f1",
+    "sha256:0fefc27f1344fac9046a119c3a78e45a64ce5ae792cad7df9cd167fee4b1db66",
+    "sha256:5dcabc8e1967b83f4f166c2dbbca7fd79521ed38d7e1c1c13bde0dbe5265ca88",
+    "sha256:e9ec217e100d8c679d8dcf7f934ab549ccd0a1c245ab73b4654d8c36727699f5",
+    "sha256:2d56f9f8d6f42f51adcfe6e7ca89930ad053d98237c2df519c026f42c17509bc",
+    "sha256:373962df875bedc59161fdf9b96f090fbc268ba966ab5fc983d64ef0259acfcb",
+    "sha256:01f6ab829913254f71ed1ab5544d7c6540c24edcee32ecda4677992c8874bd68",
+    "sha256:f46d80eb15b7ea7e77d305c46d6a7fa4c3a9b8a3b671c64c741610d6b811d91f",
+    "sha256:82f08a7acddf9d93ef1591ceddb97717b1748e4700c24e18c0bc3d9f75126698",
+    "sha256:8c4f385d0a6a6d61d02003f07ebe5d89fe6a9ce2b097dcf53ced6a581a6b211d",
+    "sha256:597298b504b806a6ded0f54e008cfb3e5dda63175c129f9781cd9aa66573e9dd",
+    "sha256:fc5cf0f17ea39f3973a92a5d124f350e58194428c3319c77469d33c05db3f532",
+    "sha256:d056a1a569f436c11bb355d9cba8df2dae0b40eb9f3aba0b2fcd40bcfea4483b",
+    "sha256:e36c82ca6a8b7782ab373d4d59d57f11b8622ca6e2ba97034a0db60d2abafec6",
+    "sha256:6b518221403ef343794e64c5e2851109092b870dd6a2d8b01bef34ed98a18715",
+    "sha256:99b28d490618dab1080116a037a3a467c6aeeae548ae22eb75e21d4f177a878e",
+    "sha256:2be7483a51bf573e258fc83fbcb4226b0d00fe3b6093acdbd2c68c8d304d2866",
+    "sha256:fb490e993e22e3fbaa1ab4ccd8075f48f8828edce569ff33a4b4bf6cc965d666",
+    "sha256:4904cbcddb2aee964e97f8540a64c8a1dffbae2997f3673d8805b37cf8504ded",
+    "sha256:021c35bddeb25dc114036c71ebb70990b4e48466f910d17db986b075da42cc79",
+    "sha256:eaaed4a4bf6c6282f9e252ea5b8203f1ec14630401fff8f4dd383705a4bc69e1",
+    "sha256:641caeffabed50d37cab1bf88fe7a74d9edde29fb0a4ca153acaf7b9e190d275",
+    "sha256:6973cb442f256ed7fc84380c107ce3d9a58004f4bd11cb26725c5fec3f10cd54",
+    "sha256:e7334d370db9a6ab6d7e6769fda82ab5f6b275f6ac50ea198a0ba99648b43569",
+    "sha256:61dec33e5723e4c50281daf2720f4647e4b7491b4c87df1d30efdbabd25341d8",
+    "sha256:08af31f1c56a3fe482fcf15039cbfcd64c7e8244df05f404fa2d8ce80d5904e9",
+    "sha256:827e32cc897f34884c26ab51801a95cc553811ea968fa82c3fa6edac432cf9f7",
+    "sha256:cd7f0e0d460d675b2c6bfa8ddf57ffee6a2bf79c6e285f6723c15f5e176de55f",
+    "sha256:7efc5f7d215b5d5c8d0c56d4e86cc1fdb7a88ce0a427af7a7082f7f71303b82e",
+    "sha256:06cefe407473a4a6dea925bf5f1ce0bfc3bab1057430b477bf43736ed59c10d0",
+    "sha256:57b99e6191a77ad3d72b99403753fd01278d009c99f93c1977428b7769d64a79",
+    "sha256:4ef7bd51cb4b9ceaf3c6740b4ef4c6094948c9724ee53799036f917f0eea156c",
+    "sha256:323de72e75388025d998d7dcddc579b262416f25a0eb2e301283168674ca0dee",
+    "sha256:cd8e09ece17aab79d166707701941efc8eae4fbd50ce3c5a1eb0b2de948c2946",
+    "sha256:2e62f0758f3b37d505a18f128df903940d577e4a846596b74a6720cf318038e6",
+    "sha256:0ccb85b67f36d1285901033112b7a94190d586b9512c82fc6d00b8e4f158e2bb",
+    "sha256:faf746395a4a2f96f82ad3d3260bf268587f388a1e7bacf4eeb45675de13faae",
+    "sha256:1912bdb401a87179d0a93f975fdc189e7b90f527e78014c7dd1b0433c96098f0",
+    "sha256:12c8ffe5255648ea2a64f71bf109ea9be209ff7cb525cd57558b6ff251e5a963",
+    "sha256:e1504374235b5370d815b1a2d3f1865e2b7808c31655d42952efbf07783b5ec0",
+    "sha256:4a40b6c105e3a7a73cf07a5a96e03fb1ec10ab6a5999aaf46d812ccb56941742",
+    "sha256:b901e9a432c82d2b95d8025a7f1a45c80f17d9ca48e1f08b753bde77ce5a64b9",
+    "sha256:a481e478dd08baaa483dc3cc49aff2b595c3128934faf14a0d46b84447001330",
+    "sha256:91d38839af359c4a0333f3f66122692587ff0686fa35fe2c025ee01ddc05fb6f",
+    "sha256:2b19ee1a844c1576429105f4df8bd63484b62cf806ca0f3375aaa253867f75f5",
+    "sha256:92ab05f46cb5b1b512c87c09c5f5c0b7356a28de68271985bc84643f265dabcf",
+    "sha256:1e4f754fd3f6c095a2ce881a67e250768670127c7555dcc4bda32186c6af9b0d",
+    "sha256:6ed446f92be82b0412cd4df5e697b4f05c314afb261d47b7966e1b2b811c394d",
+    "sha256:6accb33679bf0cfd7814df3944e27e4adad1625b4ef255fc969c4f76478471d1",
+    "sha256:0848f84f37cf90efcd14d3c7b5b8a06b13be060dedf2986595e970abf5dbe214",
+    "sha256:d378c81964576d6c70d639680fefe7245410d59e0c73bbc78611b4f5bedaf00f",
+    "sha256:ce4d083c7500a269f58ffdfc9d4216a013e5f515f734050ba3d43d938b7a08e8",
+    "sha256:a25f92efe0b4d397129f0ad8b1803bbe6d18b99786fa7afca9137fb22ab41704",
+    "sha256:f8860d7cde19160e39f81b60c4fb200c4a623c0cfcd1c174271533580bebcfec",
+    "sha256:a7f62b2f2b9bba22489d856546bdc8409202afc3aac40eb0dfb77e952b4e8491",
+    "sha256:4f16ddcbd617c4226ac45f63557e089c829698ee90d92d4f872ae350b1273414",
+    "sha256:fd3297777cac3de3f9b1f9001e5ca35ae29e19dd92ea6f1a45e7794460ca9daa",
+    "sha256:ef43d1caade0c839f14bcf9f33276698337a14a2f5fb33e695d1040b6270f5ac",
+    "sha256:60140e159b22baf26a23d52ae2abf478a0322693edfd2dd37d62cf77c5339d8f",
+    "sha256:3b83226b08cec313a83bfd1c12f59afeb9d5c04259be6fb46bc66607146e1c69",
+    "sha256:4da7dab50e00a1a33cdb81c1a07e0c91e2066c058a8715ad482d0c5c90e2ae63",
+    "sha256:3e43d7f157f726e0bd889390dfe1fb161be7b43df53cc42a83d6bbdda9d89b4a",
+    "sha256:e7a8aa8c2d7aa10b7512e88ff64c699bfb637366ea4d4d1f5cc3745ff088c249",
+    "sha256:73130f034da8498e2cab83576da6c7259136fd205ca4cc32773c12d78a813707",
+    "sha256:438c59475a3f3f0309f8c4185777a442c2b5bfcf4f75ea2208ac5cee77bf1734",
+    "sha256:eb323022a20729b5d21ca935016c55ccd9f4449054861de59384f79be58695fa",
+    "sha256:72a13f399170eadad3e98a1adc419b0c177afabdc920f0f5f25accc0fcd0a432",
+    "sha256:1d1c5830d97420c8649504446bdd18670340029fab58521b5b4b697cc97779c3",
+    "sha256:ccaaca83b28d40d9f8d3c88431931655364c87de752f63875fe59caec2d6d1fc",
+    "sha256:37dabf82bf57046d6f6d2008b6c961a8cd34ee073d1ba416c999733d2ee57c4f",
+    "sha256:cc756d462a9c33ae658811a20f7e0204516313619ab94f6100cee161e67d7dde",
+    "sha256:308807c0d5900b5c22d2febf785aa29c539d73a60d0989312f12b909dac78e10",
+    "sha256:c29c51d16ed4ee9a38ff9b9a0a8c54801ab7a3ebce942c7a1543ce8b048c31a9",
+    "sha256:48ec6842328988a765ef40d8d85d04c49ab5a6e0d7ebe3d83d769b9d581aa26c",
+    "sha256:d6309c13902e3ba78292065ab55353a5e4fa9c4c97e49568a4e6fddbb4e634c2",
+    "sha256:41efc345f704eb569062fb4e57562248ba3d8420080e3fab2bc58037621017c9",
+    "sha256:14dd40619060902e894a4f49bd0407130228cdd30bed20225ae95405aff046a4",
+    "sha256:9642edf6ca1f203882efa292bae17fdb36af71f298deebedd2ec323f589b45d6",
+    "sha256:5ab8203ca0aef490857a148d2a30e6b22e3f4b500bc9660957f5be857b1226fc",
+    "sha256:ede457db701d4bf775fa1e6cb718f9b6936720e699f0bb08e4523648d37645c0",
+    "sha256:cae46a08bc1c5b2f815c66c162440edc4fed9e3445abf67d8124a1853d35936f",
+    "sha256:55de8017b2878af422058c8854faeff131ac79e9df77bb6b180a31817871abbd",
+    "sha256:fa9bdb7dc23540bfe4d68d6c9d39bf80a2784ccf406645527c5188a58b9dc3fc",
+    "sha256:9fe2cbd504c383c737932712cfb4f51bb0fa8e0670277e0ca8c67f392ad2e12f",
+    "sha256:813b925a5fe772df251cc75a1f7b34b33c83250833f7dab32376e9f5fcec0027",
+    "sha256:bc7437472ac8470c3be4fcdc1105e5a438e4cd8704dc322934fca1f361e515be",
+    "sha256:16f3ddc5f7fae36e18824b3cf68f399af29e0e78721c95b554b680c12857b49f",
+    "sha256:c115d987c41310e51c5e6b4fd15314f21f59995eb05655a058ffc01cf9ecf29a",
+    "sha256:3d584b6c410a79d692109dc459e8711e94966aaf9061f134dfa9721753ee289e",
+    "sha256:172e9f86e28194eac4d07925fca2cabf43ae42fa2c2df4bfd4ee0cf56b43c648",
+    "sha256:3d946cbd1f1a1ad640d09b6977833b4ddeb7c0ac516523d2aef75469ff34bef9",
+    "sha256:8b0ab4c9d1dd0ad8365c48d2b06aa9e61d0cd949bf103bc9149e03e2db9f6e47",
+    "sha256:cc683d3a9edb9ab5165190da463d599cebf285e39aaa573772430b07275cf08f",
+    "sha256:59c8f15ebd55f706e713caff70186c0a896b65b51809fe5431de7df5493ac18a",
+    "sha256:504dfa78121082b155dc3cf263479ae49ba5e3f3a453ccedc1274619fdfec231",
+    "sha256:8b9c0bb234437bc2be0c02e6604eedc2683b096c028f9d7dc13639ca259b5e31",
+    "sha256:6c015cf61057ef307d8e2274cc330eab2614991bc52601e4f1d342eff57802df",
+    "sha256:2c0bf24522c45b127e90c7fa0ec88279d9d7537f792d948e11b70fc0ff1d9447",
+    "sha256:0980b5fe111ecc196bf01cd05426212b5eb19baa7448d59d3e58f264270d8d66",
+    "sha256:233af011da2f5d632cf14b762a44e9b7595a1146bea394bd1b166b83be4b7cd6",
+    "sha256:60315fd8ade1dbb372467d85dc191c81d4758657695b7f7d18454941b3ec21ac",
+    "sha256:71f815f7aa0badb00c60de1530d94adba3f275f6b1bb9c13f4d85f89c28e538b",
+    "sha256:b2bdb6895f24e8e973067099ad6de133d39be78fa4faef0370fa170b22a6702c",
+    "sha256:388e7b339dd3629842749b08597339f25983082a8ded1d49418df5f515a16441",
+    "sha256:58103fd08a5f00375bc10ccf993c3c64e013a8f2590110b81e6166cab9f56dfa",
+    "sha256:ba96c07bcb4492a8dac2c92638000c9c77cd24f76980d46cc5a48c500e4d74de",
+    "sha256:d5fca055094c549a566d29f40ebf5e1d41c3a1468f07b42aa4972d9b747d2339",
+    "sha256:a7516d3cce216ec171d6c38aad30a8b031cc8cab843c8bb755e47fe97a4c3247",
+    "sha256:3b264647164d9813c3ae7d5ba2a2a183adac5f2a81bec15152cedcd7241378e0",
+    "sha256:bfe2b2655058b6b4751abeb5c4be640418e74bc9ea717e4c7b990c98cd913b5a",
+    "sha256:64ba02d54fcc5bad8f4cd59c6f3e5822778fcc329b7c4569d09dab1a00d6631f",
+    "sha256:ea82d02ef923a708481a9bf01948e645a72837588f33ebfa17bfb308ad609d59",
+    "sha256:b80f207a9f739b2db04b7000474f1f8f05e35598fe93019bd1928578b55e4e91",
+    "sha256:e419370f1d23fffc47cd20a6619323306ee819a58e718e73f8f246ebe32f361c",
+    "sha256:b023806da7d721e4a6ff674360f3294dec7b7490784fbc9ac0d16fa462baa724",
+    "sha256:f3667c30c0664baf8ea8509799adc9ba3a1894198d57aa86a51b9dcb59c68c30",
+    "sha256:ab4b444290c5132b3e6e071334a1240f9c72d8a089c650db85267d58faa59c6e",
+    "sha256:17df408eb8261058c67ee3326b3ca4bc973676a1468923788f77a1a2b5a9d918",
+    "sha256:66fba2e0d2fe3f5d0290fe25350265be5975d987e84a5144b0c5c2e30a576f01",
+    "sha256:beb2e3fc06182a2b967e94466d2c98809df754cd45388e6faa967b9433cb2599",
+    "sha256:58857d2da1b9f651a88a7d433d02d530c7feab23779de13af27224f067284ae5",
+    "sha256:11c70b874be33729b82e42bf0d19ff0b0353227e82291ae70b7aebc81af4caba",
+    "sha256:5e04ce3365e31999bf8c6ee6f6bb8e2467b019eaae2b67e11c6e69f7874d1181",
+    "sha256:ba915e03f9706f3f4d81a15ed13e7868aa767ab85b4fc7862e1940f4f8a88c0d",
+    "sha256:8ce27486fe479889805020a7f174b1c3b18d8de9152a44a8e77fdeb31c55f2e5",
+    "sha256:f9e87ec83ce51e74ff7211ae44b9060ec8c996d6db16a5146bc8917984c0f03b",
+    "sha256:a6fd4926912a54ee8160c03bc27405a5e59cbae7b1d5e6d68efb7c01dd494dda",
+    "sha256:29c940a63af3b3a4e62d27a5954ba81df60e620a3b9c6581496420d381f14090",
+    "sha256:14c9e6bd9bbb1901af7e018a054218abddc67e00dd9243ddae7d698dc39bb1be",
+    "sha256:be3c3b76165a3dba2e36f93404a514aeaefe3a0d7289d403fd4e87a492b96b2c",
+    "sha256:1c6a654ae21f132addf39763584682ff3c0c6b0ffe19540648be607377a8a329",
+    "sha256:7358d9a35f63e5f8f389da539017d4881e6b0372a09df6270e7eebf93bd3ad87",
+    "sha256:a174596efc90fd25bc6ff78b59674b544f0547e415af09dd7973188b59402db1",
+    "sha256:67256bd99e9a451e21c4fc2fda134d8d7dcef6f3ca1e9fbf07d66b2140f6674a",
+    "sha256:13b0db06278f6bb389f843e1a6c26bb589db87f81bc89b49f991bb21ecc300dd",
+    "sha256:864d5182e88b02af1628320bd15cfb8928b8658e79400e94afbc40553386244b",
+    "sha256:85ce36a8e4376e6d7c203da53e36989def59aac2b0ba890fcc578fa520135abb",
+    "sha256:09d1c3620baefc716619aaace6b709094988fcbbdf5cb90bfecf0df0d82799d8",
+    "sha256:8a53c47cc0df9d42f9f8ff2b1e2dcb4dc8150da11713fdcd2928f9729fa144b3",
+    "sha256:278f640636626c5b58d30fbc953b451ef13a64709e45e37e8f83a1e4819f215e",
+    "sha256:a526c15a16c7c3a425daa83cbe37f85634ea954b92d002eb776ec498f04ca03e",
+    "sha256:3504b87d557802a9a890ecdc2bd7cb525176a9d4ee133424dbf6d15f03e785be",
+    "sha256:e369a502d25bb8229ec380b2ca52bdf50bbc9bfbd098dad0c6d978b84b2e8c9a",
+    "sha256:3d4e715ea125a59fb2d69af4c80df4f5008560ef3775ead4adc2d85ca39a1402",
+    "sha256:d791e483f75098cf2809074a644bb86f6374ba1d86e268ab830d9dabcda9da32",
+    "sha256:8ea4e459dbc96d17a9defeccdf95806ad853b87e3befc64d04f7d723c17c9f16",
+    "sha256:0f5b9975f7a7a1a46ec1a3dada88488e335544dd6708b56490b1a29eca5fc9a3",
+    "sha256:407216799877d70a8329a177fed672080c12375f34d01c33ff0d5d68ccaff7cd",
+    "sha256:e089cd72a01ee2abd2350810eeb3a972495d2959b25592894542f619b922734c",
+    "sha256:dd12d1d0e8b4641c5b868eae3d8f84ace28beafaede335e91f4cfd3b2439e971",
+    "sha256:593b433828ddfd7812ea4d8f4fef3167b6560385ec71f64f71c18b3bd6a1be0d",
+    "sha256:a7e1ee9ed18ea63e0739cab733644801695841f55b204cd85029e8ebd2586cd5",
+    "sha256:f5936e3366b10fd1a6510cd9c3ba5ccf19d75be52131af70de7f091cb156ad1a",
+    "sha256:3d3b2effb57188f0b1b62472b46bc47e0586d5ab28b6242c1ddfd2312e22fab7",
+    "sha256:5532c44cb4c69b4ca3139364488c60dc4e6827c72fd1126743b0f84ca67b700f",
+    "sha256:cddef6461cfde73f62952dd453bf717d3e856a93cdec4f2eb75cc86c5f8e910d",
+    "sha256:15f0e6bb59690857cc9b33a5da184bf909838df9cc1e49b380b03985ebbfa9ba",
+    "sha256:e28b82bf2b3d5aaba32e8e98c7d52dc09334168e507aeb1828754de01fe8ed6e",
+    "sha256:8d6ab8ed82eb4d3111dbcf98921fd648c20c010fa8a6c7774846ac0a417bc882",
+    "sha256:4c9f59f2d715b41565ba8ded6abd6413c2cdd407e1a5cb8b848deb028203dc27",
+    "sha256:32f4acb7820f7bc161cc012b2d8ff611c76fcf6845d8d022dcb2918e2754e945",
+    "sha256:67b74f8fc3b37fee1da1ea3d13a2765ab1efb7d768e14523e3fa71ba185eb184",
+    "sha256:300f308c17b51c2ae7d0c49df770883dfa1e55f4fc33775ae1380e0ed675109a",
+    "sha256:2b2456ba8cf6cc3217baf95d0b8009bbca7f9d6ca7d9393c2325977aff67e610",
+    "sha256:63018b148c8aea6aa777214d25d286f7a93843b48cbae31d7348c8667d455daa",
+    "sha256:9c536ba9c7425d27357370bfa1939100a8cd0912a7c41471808ef1820612fb01",
+    "sha256:3003cf9dd2df0814f29248e08a3d0caa15e8678fd5e3751323aed2091a9ba69d",
+    "sha256:916f620ee6d37025f765d50680828d6f3ff5111f82ff6cdeb4ea1c0bf1af5e44",
+    "sha256:b82a45771955434b6d9cd6252692617dc2493311a7b9e2f5c99eb338c260073a",
+    "sha256:f3b8e9881c50a52f54f7aac4e0c3b5b62df50d411cf7361aec4ac4576af50a30",
+    "sha256:4bf61ec0bd9538b637a28ea403613a889f1ebb51da811fe3318af009b17751fe",
+    "sha256:3e3b6a8e4fce2699fd277194aa6e6d24669106febe649558652e4f2d4bb2304e",
+    "sha256:5c968421d08d8f0f9695f1d5946d12d484f763be13d6fca0da1a9e77d0c2a352",
+    "sha256:94c06f4435f0c481b6caf3928446669a1ba55704141fe848073cba16622797df"
+  ],
+  "textQualification": {
+    "version": 1,
+    "recipe": "macos-text-cells-v1",
+    "grid": {
+      "rows": 30,
+      "cols": 120
+    },
+    "shapes": [
+      {
+        "shape": "mid-line-gap",
+        "reason": "Prior cursor visibility or autowrap state is unavailable (DECTCEM=null, DECAWM=null)"
+      },
+      {
+        "shape": "trailing-gap",
+        "reason": "Prior cursor visibility or autowrap state is unavailable (DECTCEM=null, DECAWM=null)"
+      },
+      {
+        "shape": "soft-wrap",
+        "reason": "Prior cursor visibility or autowrap state is unavailable (DECTCEM=null, DECAWM=null)"
+      },
+      {
+        "shape": "prior-scrollback",
+        "reason": "Prior cursor visibility or autowrap state is unavailable (DECTCEM=null, DECAWM=null)"
+      },
+      {
+        "shape": "empty-last-row",
+        "reason": "Prior cursor visibility or autowrap state is unavailable (DECTCEM=null, DECAWM=null)"
+      }
+    ]
+  },
+  "sealedAt": "2026-10-28T19:10:39.285Z"
+}

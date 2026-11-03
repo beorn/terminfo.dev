@@ -15,13 +15,7 @@ import { dirname, join } from "node:path"
 import { afterEach, expect, test, vi } from "vitest"
 import * as suiteManifest from "../packages/admin/suite-manifest.ts"
 import * as versions from "../packages/admin/versions.ts"
-import {
-  decodeHistoricalCollectorRun,
-  retainCaptureBinding,
-  parseJsonStrict,
-  parseRun,
-  parseSuiteManifest,
-} from "@terminfo/run-parser"
+import { retainCaptureBinding, parseJsonStrict, parseRun, parseSuiteManifest } from "@terminfo/run-parser"
 import { initializeRunDraft, type CapturedRunDraft } from "@terminfo/probe-defs"
 import { saveDaemonProbeRun } from "../packages/terminfo.dev/src/daemon-client.ts"
 import { probeSuiteSnapshot } from "../packages/admin/versions.ts"
@@ -177,29 +171,29 @@ test("daemon-saved enriched run names the launcher cure without content placemen
     throw new Error("Collector fixture lacks source revision")
   }
   const snapshot = probeSuiteSnapshot()
-  const decoded = decodeHistoricalCollectorRun(source, raw, derivedSuiteManifest(snapshot), document.sourceRevision)
-  const {
-    observations: _observations,
-    notTested: _notTested,
-    ungradedDiagnostics: _diagnostics,
-    suiteComplete: _complete,
-    ...metadata
-  } = decoded.run
+  const manifest = derivedSuiteManifest(snapshot)
+  const decoded = parseRun(source, raw, snapshot.catalogIds, new Map([[manifest.probeHash, manifest]]))
+  if (manifest.schemaVersion !== 4) throw new Error("Daemon fixture requires the current writer manifest")
+  const draft = initializeRunDraft({
+    runId: decoded.runId,
+    sourceRevision: document.sourceRevision,
+    manifest,
+    source: { kind: "live" },
+    intendedSubject: decoded.subject,
+  })
   const staged = saveDaemonProbeRun(
     {
-      source: { kind: "live" },
-      ...metadata,
-      assertions: [],
-      schemaVersion: 4,
-      intendedSubject: { kind: metadata.subject.kind, id: metadata.subject.id },
-      results: snapshot.catalogIds.map((featureId) => ({
-        featureId,
-        status: "test-todo",
-        attempt: { scope: "none" },
-        tests: [],
-        reason: "Synthetic fresh TODO fixture; no old observation upgraded",
-      })),
-      rawReplies: { ...decoded.run.rawReplies, "collector.httpResponseSha256": decoded.sha256 },
+      ...draft,
+      subject: decoded.subject,
+      identity: decoded.identity,
+      measuredAt: decoded.measuredAt,
+      origin: decoded.origin,
+      provenance: decoded.provenance,
+      screenshotRefs: decoded.screenshotRefs,
+      rawReplies: {
+        ...decoded.rawReplies,
+        "collector.httpResponseSha256": createHash("sha256").update(raw).digest("hex"),
+      },
     },
     dirname(source),
   )
@@ -367,11 +361,7 @@ const hostedMacApps = [
 
 function hostedMacAdmissionFixture(app: (typeof hostedMacApps)[number]) {
   const fixtures = join(import.meta.dirname, "..", "test-fixtures")
-  const original = join(
-    fixtures,
-    "probes-apps",
-    "windows-terminal-1.23.20211.0-windows-5ce6e5804f4f8eb592f0b83c1f68e166.json",
-  )
+  const original = join(fixtures, "probes-apps", "windows-terminal-admission-current.json")
   const bytes = readFileSync(original, "utf8")
   const document = parseJsonStrict(original, bytes)
   if (!object(document) || typeof document.probeHash !== "string") throw new Error("Identity fixture has no suite")
@@ -441,7 +431,7 @@ test("a tool-gap review cannot grant community-run admission", () => {
     decision: "tool-gap" as const,
     runId: run.runId,
     runSha256: run.sha256,
-    featureId: run.observations[0]!.featureId,
+    featureId: run.results![0]!.featureId,
     reviewed: true,
     reviewer: "fixture-reviewer",
     reason: "Readback unbuilt; instrument #32014",
@@ -732,11 +722,7 @@ test("Darwin mux custody joins the attachment platform to both declared operatin
 test("Windows admission requires its measured executable version to match exactly", () => {
   const content = join(import.meta.dirname, "..", "content")
   const fixtures = join(import.meta.dirname, "..", "test-fixtures")
-  const source = join(
-    fixtures,
-    "probes-apps",
-    "windows-terminal-1.23.20211.0-windows-5ce6e5804f4f8eb592f0b83c1f68e166.json",
-  )
+  const source = join(fixtures, "probes-apps", "windows-terminal-admission-current.json")
   const bytes = readFileSync(source, "utf8")
   const document = parseJsonStrict(source, bytes)
   if (!object(document) || typeof document.probeHash !== "string") throw new Error("Windows fixture has no suite")

@@ -8,16 +8,16 @@
  */
 import { createHash } from "node:crypto"
 import { describe, expect, it } from "vitest"
-import type { ProbeSuiteManifest } from "@terminfo/probe-defs"
+import { initializeRunDraft, sealRunDraft, type ProbeSuiteManifest } from "@terminfo/probe-defs"
 import { canConcludeObservation, validateCorrectedObservation } from "./observations.ts"
 import { parseInterpretations } from "../../../scripts/interpretations.ts"
-import { decodeHistoricalCollectorRun, parseRun, parseSuiteManifest } from "./index.ts"
+import { decodeCollectorDraft, parseRun, parseSuiteManifest } from "./index.ts"
 
 const digest = (seed: string) => `sha256:${createHash("sha256").update(seed).digest("hex")}`
 const FEATURE = "erase.el"
 const SUITE = "452ac343b55d"
 const TARGET = {
-  kind: "app",
+  kind: "term",
   id: "iterm2",
   version: "3.6.11",
   os: "darwin",
@@ -31,8 +31,11 @@ const suites = new Map<string, ProbeSuiteManifest>([
   [
     SUITE,
     {
+      schemaVersion: 4,
+      catalogIds: [FEATURE],
       probeHash: SUITE,
       adapterVersion: "3.3.1",
+      sourceRevision: "4".repeat(40),
       generatedAt: "2026-10-10T22:00:00.000Z",
       probes: { term: [FEATURE], lib: [], mux: [] },
     },
@@ -54,47 +57,59 @@ const textFrame = (role: "control" | "target", at: number) => ({
   cellRectangle: { top: 1, left: 1, bottom: 1, right: 3 },
 })
 
-const textRun = (overrides: Record<string, unknown> = {}) => ({
-  schemaVersion: 2,
-  runId: "text-iterm2",
-  target: TARGET,
-  identity: "unverified",
-  suiteId: SUITE,
-  probeHash: SUITE,
-  suiteComplete: true,
-  sourceRevision: "4".repeat(40),
-  measuredAt: "2026-10-17T18:00:00.000Z",
-  origin: { kind: "collector" },
-  rawReplies: { [FEATURE]: JSON.stringify({ writes: [], queries: [], events: [] }) },
-  assertions: [
-    {
-      featureId: FEATURE,
-      kind: "positive",
-      rawReplyRef: FEATURE,
-      expected: `${FEATURE}: the text cells equal the same-run expected snapshot`,
-      observed: CELL,
-    },
-  ],
-  screenshotRefs: [],
-  textSnapshotRefs: [SNAPSHOT],
-  observations: [
-    {
-      featureId: FEATURE,
-      outcome: "supported",
-      evidence: "text",
-      rawReplyRef: FEATURE,
-      frames: [textFrame("control", 1), textFrame("target", 2)],
-    },
-  ],
-  ...overrides,
-})
+const textRun = (overrides: Record<string, unknown> = {}) => {
+  const manifest = suites.get(SUITE)!
+  const draft = initializeRunDraft({
+    runId: "text-iterm2",
+    sourceRevision: "4".repeat(40),
+    manifest: { ...manifest, schemaVersion: 4 },
+    source: { kind: "live" },
+    intendedSubject: { kind: "term", id: "iterm2" },
+  })
+  draft.subject = TARGET
+  draft.identity = "unverified"
+  draft.measuredAt = "2026-10-17T18:00:00.000Z"
+  draft.origin = { kind: "collector" }
+  const attempt = { scope: "probe" as const, startedAt: draft.measuredAt }
+  return {
+    ...sealRunDraft(draft, "2026-10-17T18:01:00.000Z"),
+    rawReplies: { [FEATURE]: JSON.stringify({ writes: [], queries: [], events: [] }) },
+    assertions: [
+      {
+        featureId: FEATURE,
+        kind: "positive",
+        assertionType: "buffer_state",
+        rawReplyRef: FEATURE,
+        expected: `${FEATURE}: the text cells equal the same-run expected snapshot`,
+        observed: CELL,
+      },
+    ],
+    screenshotRefs: [],
+    textSnapshotRefs: [SNAPSHOT],
+    results: [
+      {
+        featureId: FEATURE,
+        status: "supported",
+        assertionType: "buffer_state",
+        attempt,
+        rawReplyRef: FEATURE,
+        frames: [textFrame("control", 1), textFrame("target", 2)],
+        tests: [
+          { id: "criterion", status: "supported", attempt, assertionRefs: [0] },
+          { id: "text-qualification", status: "supported", attempt },
+        ],
+      },
+    ],
+    ...overrides,
+  }
+}
 
 const parse = (run: Record<string, unknown>) => parseRun("text-frames.json", JSON.stringify(run), [FEATURE], suites)
 
 describe("text frames — admitted only as what they are", () => {
   it("admits a text verdict that cites its frame's cell digest, recomputable from the run alone", () => {
     const loaded = parse(textRun())
-    expect(loaded.observations[0]).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
+    expect(loaded.results![0]).toMatchObject({ status: "supported", assertionType: "buffer_state" })
     expect(loaded.textSnapshotRefs).toEqual([SNAPSHOT])
   })
 
@@ -107,8 +122,8 @@ describe("text frames — admitted only as what they are", () => {
       executableSha256: digest("console-host"),
     }
     const run = textRun()
-    const loaded = parse({ ...run, observations: [{ ...(run.observations as object[])[0], host }] })
-    expect(loaded.observations[0]?.host).toEqual(host)
+    const loaded = parse({ ...run, results: [{ ...(run.results as object[])[0], host }] })
+    expect(loaded.results![0]?.host).toEqual(host)
   })
 
   // A host belongs to a text read alone. On a pixels row it is a stray field, refused by name the
@@ -122,15 +137,13 @@ describe("text frames — admitted only as what they are", () => {
     expect(() =>
       parse({
         ...run,
-        assertions: [],
+        assertions: [{ ...run.assertions[0]!, assertionType: "screenshot", observed: png }],
         screenshotRefs: [png],
         textSnapshotRefs: [],
-        observations: [
+        results: [
           {
-            ...(run.observations as object[])[0],
-            outcome: "inconclusive",
-            reason: "insufficient-evidence",
-            evidence: "pixels",
+            ...(run.results as object[])[0],
+            assertionType: "screenshot",
             screenshotRef: png,
             frames,
             host: {
@@ -141,7 +154,7 @@ describe("text frames — admitted only as what they are", () => {
           },
         ],
       }),
-    ).toThrow(/pixels observation for erase\.el carries host/u)
+    ).toThrow(/screenshot observation for erase\.el carries host/u)
   })
 
   it("refuses a pixel frame that carries a text field without declaring kind text-cells", () => {
@@ -157,10 +170,10 @@ describe("text frames — admitted only as what they are", () => {
         ...run,
         screenshotRefs: [png],
         textSnapshotRefs: [],
-        observations: [
+        results: [
           {
-            ...(run.observations as object[])[0],
-            evidence: "pixels",
+            ...(run.results as object[])[0],
+            assertionType: "screenshot",
             screenshotRef: png,
             frames,
           },
@@ -180,7 +193,7 @@ describe("text frames — admitted only as what they are", () => {
         ...run,
         screenshotRefs: [png],
         textSnapshotRefs: [SNAPSHOT],
-        observations: [{ ...(run.observations as object[])[0], frames }],
+        results: [{ ...(run.results as object[])[0], frames }],
       }),
     ).toThrow(/text observation for erase\.el cites a pixels frame/u)
   })
@@ -193,10 +206,10 @@ describe("text frames — admitted only as what they are", () => {
         ...run,
         screenshotRefs: [png],
         textSnapshotRefs: [SNAPSHOT],
-        observations: [
+        results: [
           {
-            ...(run.observations as object[])[0],
-            evidence: "pixels",
+            ...(run.results as object[])[0],
+            assertionType: "screenshot",
             screenshotRef: png,
             frames: [textFrame("control", 1), textFrame("target", 2)],
           },
@@ -212,7 +225,7 @@ describe("text frames — admitted only as what they are", () => {
       parse({
         ...run,
         screenshotRefs: [png],
-        observations: [{ ...(run.observations as object[])[0], screenshotRef: png }],
+        results: [{ ...(run.results as object[])[0], screenshotRef: png }],
       }),
     ).toThrow(/text observation erase\.el cannot carry screenshotRef/u)
   })
@@ -222,12 +235,6 @@ describe("text frames — admitted only as what they are", () => {
     expect(() => parse({ ...run, screenshotRefs: [SNAPSHOT] })).toThrow(
       /text snapshot .* is also listed as a screenshotRef/u,
     )
-  })
-
-  it("refuses a text verdict with no frames at all", () => {
-    const run = textRun()
-    const { frames: _frames, ...headless } = (run.observations as Record<string, unknown>[])[0]!
-    expect(() => parse({ ...run, observations: [headless] })).toThrow(/requires control and target frames/u)
   })
 
   it("refuses a verdict that cites only the whole-frame digest, which decided no cells", () => {
@@ -241,7 +248,7 @@ describe("text frames — admitted only as what they are", () => {
   it("refuses a text frame that carries a pixel field", () => {
     const run = textRun()
     const frames = [textFrame("control", 1), { ...textFrame("target", 2), regionDigest: digest("px") }]
-    expect(() => parse({ ...run, observations: [{ ...(run.observations as object[])[0], frames }] })).toThrow(
+    expect(() => parse({ ...run, results: [{ ...(run.results as object[])[0], frames }] })).toThrow(
       /text-cells frame .* carries pixel field regionDigest/u,
     )
   })
@@ -263,8 +270,8 @@ describe("text frames — admitted only as what they are", () => {
         ...run,
         screenshotRefs: [digest("some-png")],
         textSnapshotRefs: [SNAPSHOT],
-        observations: [
-          { ...(run.observations as object[])[0], frames, evidence: "pixels", screenshotRef: digest("some-png") },
+        results: [
+          { ...(run.results as object[])[0], frames, assertionType: "screenshot", screenshotRef: digest("some-png") },
         ],
       }),
     ).toThrow(/absent from the run's screenshotRefs/u)
@@ -279,7 +286,7 @@ describe("text frames — admitted only as what they are", () => {
   it("refuses a frame kind outside the union", () => {
     const run = textRun()
     const frames = [textFrame("control", 1), { ...textFrame("target", 2), kind: "cells" }]
-    expect(() => parse({ ...run, observations: [{ ...(run.observations as object[])[0], frames }] })).toThrow(
+    expect(() => parse({ ...run, results: [{ ...(run.results as object[])[0], frames }] })).toThrow(
       /invalid frame kind cells 1 for erase\.el/u,
     )
   })
@@ -296,20 +303,20 @@ describe("text frames — admitted only as what they are", () => {
       textFrame("control", 1),
       { ...textFrame("target", 2), cellRectangle },
     ]
-    const observation = (frames: unknown[]) => [{ ...(run.observations as object[])[0], frames }]
-    expect(() => parse({ ...run, observations: observation(withRectangle({ top: 1, left: 1 })) })).toThrow(
+    const observation = (frames: unknown[]) => [{ ...(run.results as object[])[0], frames }]
+    expect(() => parse({ ...run, results: observation(withRectangle({ top: 1, left: 1 })) })).toThrow(
       /invalid frame cellRectangle/u,
     )
     expect(() =>
       parse({
         ...run,
-        observations: observation(withRectangle({ top: 2, left: 1, bottom: 1, right: 3 })),
+        results: observation(withRectangle({ top: 2, left: 1, bottom: 1, right: 3 })),
       }),
     ).toThrow(/rectangle is empty/u)
     expect(() =>
       parse({
         ...run,
-        observations: observation(withRectangle({ top: 1, left: 3, bottom: 1, right: 2 })),
+        results: observation(withRectangle({ top: 1, left: 3, bottom: 1, right: 2 })),
       }),
     ).toThrow(/rectangle is empty/u)
   })
@@ -320,11 +327,11 @@ describe("text frames — admitted only as what they are", () => {
       textFrame("control", 1),
       { ...textFrame("target", 2), ...frame },
     ]
-    const observation = (frames: unknown[]) => [{ ...(run.observations as object[])[0], frames }]
-    expect(() => parse({ ...run, observations: observation(withFrame({ cellDigest: "sha256:zz" })) })).toThrow(
+    const observation = (frames: unknown[]) => [{ ...(run.results as object[])[0], frames }]
+    expect(() => parse({ ...run, results: observation(withFrame({ cellDigest: "sha256:zz" })) })).toThrow(
       /invalid frame cellDigest/u,
     )
-    expect(() => parse({ ...run, observations: observation(withFrame({ frameDigest: "sha256:zz" })) })).toThrow(
+    expect(() => parse({ ...run, results: observation(withFrame({ frameDigest: "sha256:zz" })) })).toThrow(
       /invalid frame frameDigest/u,
     )
   })
@@ -336,7 +343,7 @@ describe("run-owned text qualification ingestion", () => {
   const spec = { version: 1, recipe: "macos-text-cells-v1" }
   const shape = { shape: "mid-line-gap", frames: [textFrame("control", 1), textFrame("target", 2)] }
   const qualification = { ...spec, grid: { rows: 4, cols: 12 }, shapes: [shape] }
-  const manifest = { probeHash: SUITE, adapterVersion: "3.3.1", probes: { app: [FEATURE], headless: [], mux: [] } }
+  const manifest = { ...suites.get(SUITE)!, schemaVersion: 4, catalogIds: [FEATURE] }
 
   it("carries a partial qualification and only the cited suite's declarations", () => {
     const declared = parseSuiteManifest(
@@ -353,9 +360,9 @@ describe("run-owned text qualification ingestion", () => {
     expect(loaded.textQualificationSpec).toEqual(spec)
     expect(loaded.textClaims).toEqual([FEATURE])
     expect(
-      decodeHistoricalCollectorRun(
+      decodeCollectorDraft(
         "collector.json",
-        JSON.stringify(textRun({ textQualification: qualification })),
+        JSON.stringify({ ...textRun({ textQualification: qualification }), sealedAt: undefined }),
         declared,
         "4".repeat(40),
       ).run.textQualification,
@@ -420,11 +427,11 @@ describe("run-owned text qualification ingestion", () => {
 
 // The immutable corpus has no successfully qualified text run and no corrections. This exercises
 // selection's full qualified path and proves a replacement gets its own historical interpretation.
-it("qualifies retained historical text and recomputes eligibility for its reviewed correction", () => {
-  const raw = textRun({ target: { ...TARGET, os: "macos" } })
+it("qualifies current text and recomputes eligibility for its historical reviewed correction", () => {
+  const raw = textRun({ subject: { ...TARGET, os: "macos" } })
   const manifest = { ...suites.get(SUITE)!, textClaims: [FEATURE] }
   const run = parseRun("qualified-text.json", JSON.stringify(raw), [FEATURE], new Map([[SUITE, manifest]]))
-  const observation = run.observations[0]!
+  const observation = { ...run.results![0]!, outcome: "supported" as const }
   expect(canConcludeObservation(run, observation, { qualified: true })).toBe(true)
   expect(canConcludeObservation(run, observation, { qualified: false, reason: "mapping failed" })).toBe(false)
   expect(canConcludeObservation({ ...run, textClaims: [] }, observation, { qualified: true })).toBe(false)
@@ -434,11 +441,13 @@ it("qualifies retained historical text and recomputes eligibility for its review
   const host = { image: "conhost.exe", executablePath: "C:\\Windows\\conhost.exe", executableSha256: digest("host") }
   const hosted = parseRun(
     "hosted-text.json",
-    JSON.stringify({ ...raw, observations: [{ ...raw.observations[0], host }] }),
+    JSON.stringify({ ...raw, results: [{ ...raw.results[0], host }] }),
     [FEATURE],
     new Map([[SUITE, manifest]]),
   )
-  expect(canConcludeObservation(hosted, hosted.observations[0]!, { qualified: true })).toBe(false)
+  expect(canConcludeObservation(hosted, { ...hosted.results![0]!, outcome: "supported" }, { qualified: true })).toBe(
+    false,
+  )
   const [entry] = parseInterpretations(
     "corrections.json",
     JSON.stringify([
@@ -461,9 +470,11 @@ it("qualifies retained historical text and recomputes eligibility for its review
     ]),
     [FEATURE],
   )
-  const corrected = validateCorrectedObservation(run, entry!)
+  const corrected = validateCorrectedObservation({ ...run, observations: [observation] }, entry!)
   expect(corrected.assertionType).toBeUndefined()
   expect(canConcludeObservation(run, corrected, { qualified: false, reason: "mapping failed" })).toBe(true)
   expect(JSON.stringify({ run, entry, corrected })).not.toMatch(/nonMeasuring|requiresTextQualification|"evidence"/)
-  expect(() => validateCorrectedObservation({ ...run, rawReplies: {} }, entry!)).toThrow(/missing raw reply/)
+  expect(() => validateCorrectedObservation({ ...run, observations: [observation], rawReplies: {} }, entry!)).toThrow(
+    /missing raw reply/,
+  )
 })
