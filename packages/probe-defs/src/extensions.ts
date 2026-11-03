@@ -1427,9 +1427,16 @@ const ABSENT_OSC_ENGINES = {
     sourceCommit: "332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28",
     buildHash: "2d5e53cf4f0846e47cda8a45c513f44da5c699657edffe93886e6eba99f36bfd",
     lockSha256: "3ec775507556db01d08055836b26183f629a9cbb0b5802a1566661e95988d74a",
-    codes: [17, 19, 117, 119],
+    codes: [17, 19, 117, 119, 176],
+    reviewReasons: [
+      {
+        code: 176,
+        reason:
+          "core332b2aef osc.zig:580-596 rejects the 6 in OSC176 at state17; :484-492 drops the invalid payload with no command",
+      },
+    ],
     sourceCitation:
-      "libghostty-vt332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28 Terminal.zig:132-145 stores foreground/background/cursor/palette only; stream_readonly.zig:290-361 ignores highlight set/reset/query. Termless25089207e11420cf7a588987c1dc2683a45e8372 packages/ghostty-native/native/src/main.zig:31-78 delegates color operations to ReadonlyHandler and :141 uses initAlloc; backend.ts:257-270 forwards actual replies. The loaded native53f9a867 receipt binds buildHash2d5e53cf, lock3ec77550 and nativeTree77721d68; captured current adapter blobs are index35c9e35a/backendf403717f. This is the shipped headless library, not the Ghostty app",
+      "libghostty-vt332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28 Terminal.zig:132-145 stores foreground/background/cursor/palette only; stream_readonly.zig:290-361 ignores highlight set/reset/query. Termless25089207e11420cf7a588987c1dc2683a45e8372 packages/ghostty-native/native/src/main.zig:31-78 delegates color operations to ReadonlyHandler and :141 uses initAlloc; backend.ts:257-270 forwards actual replies. The loaded native53f9a867 receipt binds buildHash2d5e53cf, lock3ec77550 and nativeTree77721d68; captured current adapter blobs are index35c9e35a/backendf403717f. This is the shipped headless library, not the Ghostty app. Ghostty332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28 src/terminal/osc.zig:507,544,580-596 (Git blob 0086e48bca4c329906b49c2fa95e08161fe63530, SHA256 5ebb4e72390408382c64d76f72bac68726a23a6043cd9afcea04876574283fb4) routes 1 then7 to state17, whose only accepted next byte is semicolon; the6 in176 enters invalid and :484-492 drops the payload. No OSC176 command reaches the bound readonly handler. Independent source review @dev/8 2026-11-03, 6196c3b3-f320-495b-861a-4312753ff1bf; the existing identity owner verifies loaded53f9a867/build2d5e53cf with current index35c9e35a/backendf403717f",
   },
   alacritty: {
     kind: "native",
@@ -1502,6 +1509,30 @@ const ABSENT_OSC_ENGINES = {
       "vt100 0.16.2 src/perform.rs:33-263 vte::Perform impl defines print/execute/esc/csi/osc dispatch only; vte 0.15.0 src/lib.rs:779-789 default hook/put/unhook are no-ops, so a DCS q Sixel payload is consumed with no image store",
     sourceCitation:
       "vt100 0.16.2 src/perform.rs:198-238 dispatches unmatched OSCs to unhandled_osc; src/callbacks.rs:66 is a no-op; Termless packages/vt100-rust/native/src/lib.rs:21-54 at 286fddf6632e43ccd62f9050be41ec7b2908e43e installs title, icon and clipboard callbacks with no unhandled_osc override",
+  },
+  kittyCa46f3c2: {
+    kind: "native",
+    engineVersion: "0.49.2",
+    adapterVersion: "0.10.2",
+    binarySha256: "bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886",
+    sourceCommit: "b2cb871254fbdac19a085188813c8dfb258b95cd",
+    buildHash: "88e840e1b8e7f09edf3464ee33df8753fd5107838de15bccb6ea59e0dd6cc9c3",
+    lockSha256: "282d1098337a5705a7c1d13188a74d2fe34565766619e8d6b21a48d5b67451be",
+    codes: [176],
+    sourceCitation:
+      "kitty0.49.2 source b2cb871254fbdac19a085188813c8dfb258b95cd kitty/vt-parser.c:546-670 (Git blob 50dc1e6d698be9ee9fb6bc687f4da65823c5cde1, SHA256 08dd5f733e466b72ec2ee6c5d5e2ea59e1e0fa898bd9f6a6f56a2c4c17629390) has no OSC176 arm and defaults to reporting an unknown code; current Termless25089207 packages/kitty/build/bridge.py blob ca46f3c2 forwards input to that parser without an app-id handler. Independent source review @dev/8 2026-11-03, 6196c3b3-f320-495b-861a-4312753ff1bf; the existing identity owner verifies loaded native bb65c2d5 and its receipt/build/lock against these adapter blobs",
+  },
+  weztermB4155bfd: {
+    kind: "native",
+    engineVersion: "0.1.0-fork.5",
+    adapterVersion: "0.10.2",
+    binarySha256: "b4155bfdef040ae8b3b723a4366fa8ec7f278463dbef577ec4730ad152b8bf07",
+    sourceCommit: "80dd254111ab82279125555f9ca1e68b112cd7e3",
+    buildHash: "dc7cc8afd1cdedfef0f972a00aca10fad92fafc4c0e9f019a2f67473e40a054b",
+    lockSha256: "8eaeab733cced8d47feb223d773d5ae158b2e6af8c994f993d4071d9ba3231d4",
+    codes: [176],
+    sourceCitation:
+      "tattoy-wezterm-escape-parser0.1.0-1 archive SHA256 7ca89ed38092d6718a03e97b0c1101fcf2203c2e6f2757a91c465f393d11d98b, src/osc.rs:457-505 SHA256 fd26b6d6254c46ef880fbcc03ba418d67e9049c875e71cca6f18f4df76a0924f has no176 mapping; :155-167 produces Unspecified. tattoy-wezterm-term0.1.0-fork.5 archive SHA256 7f3678674adc87f210ec01e2134e1972d6b0bd194bf82242f7e7beee3ae9dbd8, src/terminalstate/performer.rs:772-782 SHA256 6f53e3345e0911b7756815f8afdf015d7c6bf5d7ebe8ff450db2f3225ff1749d only optionally logs Unspecified, with no state or reply. Current Termless25089207 native/src/lib.rs advances that pinned Terminal without an alternate OSC handler. Independent source review @dev/8 2026-11-03, 6196c3b3-f320-495b-861a-4312753ff1bf and dispatcher f4cb516b-7485-4055-ace1-02ac435a1f73; the existing identity owner verifies loaded b4155bfd with source80dd2541/builddc7cc8af/lock8eaeab73",
   },
 } as const
 

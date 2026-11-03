@@ -7263,6 +7263,76 @@
       "version": "1.3.1",
       "os": "linux"
     },
+    "featureId": "extensions.osc176-app-id",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/ghostty-native/src/index.ts",
+            "oid": "35c9e35a5d60625ce1135b65ff38ae9278495a18"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/ghostty-native/src/backend.ts",
+            "oid": "f403717f7c063d799c5de994b3ccc095edbcacd1"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/ghostty-native/native/build.zig.zon",
+            "oid": "fbded80893c660202568100b66edaf9aa92e3f0a"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/ghostty-native/native/src/main.zig",
+            "oid": "1cda313d3f016704c769f1f54bb4ec4ac67f6611"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/ghostty-native/build/build.sh",
+            "oid": "740ed6d0627872f8e868a9733f06ff466c70bc85"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/ghostty-native/build/write-receipt.ts",
+            "oid": "8c3461f6db4094e8f0c0921e5b60bf78bc59f9be"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "6196c3b3-f320-495b-861a-4312753ff1bf",
+            "reviewer": "@dev/8",
+            "reason": "Independent current source review (@dev/8, 2026-11-03, 6196c3b3-f320-495b-861a-4312753ff1bf): Ghostty332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28 src/terminal/osc.zig:507,544,580-596 (Git blob 0086e48bca4c329906b49c2fa95e08161fe63530, SHA256 5ebb4e72390408382c64d76f72bac68726a23a6043cd9afcea04876574283fb4) routes 1 then7 to state17, whose only accepted next byte is semicolon; the6 in176 enters invalid and :484-492 drops the payload. No OSC176 command reaches the bound readonly handler. Independent source review @dev/8 2026-11-03, 6196c3b3-f320-495b-861a-4312753ff1bf; the existing identity owner verifies loaded53f9a867/build2d5e53cf with current index35c9e35a/backendf403717f No OSC176 app-id target writer exists in this configured library path: Unsupported. Baseline run 115fa88f-5992-46a9-b95b-92cbf43f17f6 retained the OSC176/X control as TODO without a deciding assertion; X/null alone does not decide support. Existing native identity and adapter-source owners verified the actual loaded binary, receipt, native tree, build and lock separately before this answer was added.",
+            "sources": [
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/ghostty-native/src/index.ts blob 35c9e35a5d60625ce1135b65ff38ae9278495a18",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/ghostty-native/src/backend.ts blob f403717f7c063d799c5de994b3ccc095edbcacd1",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/ghostty-native/native/build.zig.zon blob fbded80893c660202568100b66edaf9aa92e3f0a",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/ghostty-native/native/src/main.zig blob 1cda313d3f016704c769f1f54bb4ec4ac67f6611",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/ghostty-native/build/build.sh blob 740ed6d0627872f8e868a9733f06ff466c70bc85",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/ghostty-native/build/write-receipt.ts blob 8c3461f6db4094e8f0c0921e5b60bf78bc59f9be",
+              "Ghostty332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28 src/terminal/osc.zig:507,544,580-596 (Git blob 0086e48bca4c329906b49c2fa95e08161fe63530, SHA256 5ebb4e72390408382c64d76f72bac68726a23a6043cd9afcea04876574283fb4) routes 1 then7 to state17, whose only accepted next byte is semicolon; the6 in176 enters invalid and :484-492 drops the payload. No OSC176 command reaches the bound readonly handler. Independent source review @dev/8 2026-11-03, 6196c3b3-f320-495b-861a-4312753ff1bf; the existing identity owner verifies loaded53f9a867/build2d5e53cf with current index35c9e35a/backendf403717f",
+              "Current source verdict 6196c3b3-f320-495b-861a-4312753ff1bf, @dev/8, 2026-11-03;  /hh/var/@dev1/osc176-native-current-bindings-proof.json",
+              "Run 115fa88f-5992-46a9-b95b-92cbf43f17f6 raw SHA256d348e17240b32fa87f1475a1fbedcf8f683fa4947182d19cca10f672aab46b5b, suiteca6d8b6736cf, terminfocc4263e522d345216629c9345282f12c2c027969; baseline TODO has no deciding assertion; source absence plus exact native/adapter qualification is required for extensions.osc176-app-id"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "ghostty-native",
+      "version": "1.3.1",
+      "os": "linux"
+    },
     "featureId": "extensions.osc19-highlight-fg",
     "answers": [
       {
@@ -9298,6 +9368,76 @@
               "https://github.com/ghostty-org/ghostty.git@332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28:src/terminal/stream.zig",
               "git@github.com:beorn/termless.git@80dd254111ab82279125555f9ca1e68b112cd7e3:packages/ghostty-native/native/src/main.zig",
               "git@github.com:beorn/termless.git@80dd254111ab82279125555f9ca1e68b112cd7e3:packages/ghostty-native/src/backend.ts"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "kitty",
+      "version": "0.49.2",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc176-app-id",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/kitty/src/index.ts",
+            "oid": "3f207f911646613cdc3d8b04f155f0686a96a077"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/kitty/src/backend.ts",
+            "oid": "1b7367a9737d1292618ea34a1c451bf3273c3b35"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/kitty/build/bridge.py",
+            "oid": "ca46f3c261ccbdcfd9c3ada9949e2a0238cbcaac"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/kitty/build/layout.c",
+            "oid": "49c0beef4424190e89d2884eac5efe4da50e3630"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/kitty/build/native-mode-layout.json",
+            "oid": "6bd0f2d5b6936f8f6298e4cb9ae4b228172a9502"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/kitty/build/native-mode-layout.receipt.json",
+            "oid": "02899a0c97f70eeba38f5030de1ba7ef4665b6f6"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "6196c3b3-f320-495b-861a-4312753ff1bf",
+            "reviewer": "@dev/8",
+            "reason": "Independent current source review (@dev/8, 2026-11-03, 6196c3b3-f320-495b-861a-4312753ff1bf): kitty0.49.2 source b2cb871254fbdac19a085188813c8dfb258b95cd kitty/vt-parser.c:546-670 (Git blob 50dc1e6d698be9ee9fb6bc687f4da65823c5cde1, SHA256 08dd5f733e466b72ec2ee6c5d5e2ea59e1e0fa898bd9f6a6f56a2c4c17629390) has no OSC176 arm and defaults to reporting an unknown code; current Termless25089207 packages/kitty/build/bridge.py blob ca46f3c2 forwards input to that parser without an app-id handler. Independent source review @dev/8 2026-11-03, 6196c3b3-f320-495b-861a-4312753ff1bf; the existing identity owner verifies loaded native bb65c2d5 and its receipt/build/lock against these adapter blobs No OSC176 app-id target writer exists in this configured library path: Unsupported. Baseline run e32a604d-d952-4a59-b5ea-78c8de89a418 retained the OSC176/X control as TODO without a deciding assertion; X/null alone does not decide support. Existing native identity and adapter-source owners verified the actual loaded binary, receipt, native tree, build and lock separately before this answer was added.",
+            "sources": [
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/kitty/src/index.ts blob 3f207f911646613cdc3d8b04f155f0686a96a077",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/kitty/src/backend.ts blob 1b7367a9737d1292618ea34a1c451bf3273c3b35",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/kitty/build/bridge.py blob ca46f3c261ccbdcfd9c3ada9949e2a0238cbcaac",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/kitty/build/layout.c blob 49c0beef4424190e89d2884eac5efe4da50e3630",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/kitty/build/native-mode-layout.json blob 6bd0f2d5b6936f8f6298e4cb9ae4b228172a9502",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/kitty/build/native-mode-layout.receipt.json blob 02899a0c97f70eeba38f5030de1ba7ef4665b6f6",
+              "kitty0.49.2 source b2cb871254fbdac19a085188813c8dfb258b95cd kitty/vt-parser.c:546-670 (Git blob 50dc1e6d698be9ee9fb6bc687f4da65823c5cde1, SHA256 08dd5f733e466b72ec2ee6c5d5e2ea59e1e0fa898bd9f6a6f56a2c4c17629390) has no OSC176 arm and defaults to reporting an unknown code; current Termless25089207 packages/kitty/build/bridge.py blob ca46f3c2 forwards input to that parser without an app-id handler. Independent source review @dev/8 2026-11-03, 6196c3b3-f320-495b-861a-4312753ff1bf; the existing identity owner verifies loaded native bb65c2d5 and its receipt/build/lock against these adapter blobs",
+              "Current source verdict 6196c3b3-f320-495b-861a-4312753ff1bf, @dev/8, 2026-11-03;  /hh/var/@dev1/osc176-native-current-bindings-proof.json",
+              "Run e32a604d-d952-4a59-b5ea-78c8de89a418 raw SHA256a8c4c0b6d1b6874c05c5e6da1c4ab0d17abfd31615f017f5c217521125eb2670, suiteca6d8b6736cf, terminfocc4263e522d345216629c9345282f12c2c027969; baseline TODO has no deciding assertion; source absence plus exact native/adapter qualification is required for extensions.osc176-app-id"
             ]
           }
         ]
@@ -30289,6 +30429,76 @@
               "git@github.com:beorn/termless.git@80dd254111ab82279125555f9ca1e68b112cd7e3:packages/wezterm/src/backend.ts",
               "locked crate tattoy-wezterm-escape-parser-0.1.0-1 archive sha256:7ca89ed38092d6718a03e97b0c1101fcf2203c2e6f2757a91c465f393d11d98b; source /home/hh/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tattoy-wezterm-escape-parser-0.1.0-1/src/csi.rs sha256:ccd68f8aab7d5b7c1d84aba07d219675ac9898fc84c9a32cd4548ad2774541db; archive bytes verified equal",
               "locked crate tattoy-wezterm-term-0.1.0-fork.5 archive sha256:7f3678674adc87f210ec01e2134e1972d6b0bd194bf82242f7e7beee3ae9dbd8; source /home/hh/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tattoy-wezterm-term-0.1.0-fork.5/src/terminalstate/performer.rs sha256:6f53e3345e0911b7756815f8afdf015d7c6bf5d7ebe8ff450db2f3225ff1749d; archive bytes verified equal"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "wezterm",
+      "version": "0.1.0-fork.5",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc176-app-id",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/wezterm/src/index.ts",
+            "oid": "512606c5270ffd0cff55c1b70f5b3eda18a92df0"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/wezterm/src/backend.ts",
+            "oid": "29b9bdea778abe558497217e811495c3c279451f"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/wezterm/native/src/lib.rs",
+            "oid": "47dc0392036f34416fb6a38e9a834a7fccc8cfe3"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "src/load-native.ts",
+            "oid": "34e142550085450ab02138184626716ad0d6b546"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/wezterm/native/Cargo.toml",
+            "oid": "defdc52aa543b7ba683348fb6051f6e3ddf92a1d"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/wezterm/native/Cargo.lock",
+            "oid": "4a5e4832104dcacc63e882c2b8adbd7e8276fe09"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "6196c3b3-f320-495b-861a-4312753ff1bf",
+            "reviewer": "@dev/8",
+            "reason": "Independent current source review (@dev/8, 2026-11-03, 6196c3b3-f320-495b-861a-4312753ff1bf): tattoy-wezterm-escape-parser0.1.0-1 archive SHA256 7ca89ed38092d6718a03e97b0c1101fcf2203c2e6f2757a91c465f393d11d98b, src/osc.rs:457-505 SHA256 fd26b6d6254c46ef880fbcc03ba418d67e9049c875e71cca6f18f4df76a0924f has no176 mapping; :155-167 produces Unspecified. tattoy-wezterm-term0.1.0-fork.5 archive SHA256 7f3678674adc87f210ec01e2134e1972d6b0bd194bf82242f7e7beee3ae9dbd8, src/terminalstate/performer.rs:772-782 SHA256 6f53e3345e0911b7756815f8afdf015d7c6bf5d7ebe8ff450db2f3225ff1749d only optionally logs Unspecified, with no state or reply. Current Termless25089207 native/src/lib.rs advances that pinned Terminal without an alternate OSC handler. Independent source review @dev/8 2026-11-03, 6196c3b3-f320-495b-861a-4312753ff1bf and dispatcher f4cb516b-7485-4055-ace1-02ac435a1f73; the existing identity owner verifies loaded b4155bfd with source80dd2541/builddc7cc8af/lock8eaeab73 Additional independent dispatcher judgment f4cb516b-7485-4055-ace1-02ac435a1f73, @dev/8, 2026-11-03. No OSC176 app-id target writer exists in this configured library path: Unsupported. Baseline run 48bed351-faaa-4cab-af01-836b2103986d retained the OSC176/X control as TODO without a deciding assertion; X/null alone does not decide support. Existing native identity and adapter-source owners verified the actual loaded binary, receipt, native tree, build and lock separately before this answer was added.",
+            "sources": [
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/wezterm/src/index.ts blob 512606c5270ffd0cff55c1b70f5b3eda18a92df0",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/wezterm/src/backend.ts blob 29b9bdea778abe558497217e811495c3c279451f",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/wezterm/native/src/lib.rs blob 47dc0392036f34416fb6a38e9a834a7fccc8cfe3",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:src/load-native.ts blob 34e142550085450ab02138184626716ad0d6b546",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/wezterm/native/Cargo.toml blob defdc52aa543b7ba683348fb6051f6e3ddf92a1d",
+              "git@github.com:beorn/termless.git@25089207e11420cf7a588987c1dc2683a45e8372:packages/wezterm/native/Cargo.lock blob 4a5e4832104dcacc63e882c2b8adbd7e8276fe09",
+              "tattoy-wezterm-escape-parser0.1.0-1 archive SHA256 7ca89ed38092d6718a03e97b0c1101fcf2203c2e6f2757a91c465f393d11d98b, src/osc.rs:457-505 SHA256 fd26b6d6254c46ef880fbcc03ba418d67e9049c875e71cca6f18f4df76a0924f has no176 mapping; :155-167 produces Unspecified. tattoy-wezterm-term0.1.0-fork.5 archive SHA256 7f3678674adc87f210ec01e2134e1972d6b0bd194bf82242f7e7beee3ae9dbd8, src/terminalstate/performer.rs:772-782 SHA256 6f53e3345e0911b7756815f8afdf015d7c6bf5d7ebe8ff450db2f3225ff1749d only optionally logs Unspecified, with no state or reply. Current Termless25089207 native/src/lib.rs advances that pinned Terminal without an alternate OSC handler. Independent source review @dev/8 2026-11-03, 6196c3b3-f320-495b-861a-4312753ff1bf and dispatcher f4cb516b-7485-4055-ace1-02ac435a1f73; the existing identity owner verifies loaded b4155bfd with source80dd2541/builddc7cc8af/lock8eaeab73",
+              "Current source verdict 6196c3b3-f320-495b-861a-4312753ff1bf, @dev/8, 2026-11-03;  Additional independent dispatcher judgment f4cb516b-7485-4055-ace1-02ac435a1f73, @dev/8, 2026-11-03. /hh/var/@dev1/osc176-native-current-bindings-proof.json",
+              "Run 48bed351-faaa-4cab-af01-836b2103986d raw SHA2566adc367f6cff96712a33afe54e386d82f04c8c1a5e14f5c762c1da324c1fed03, suiteca6d8b6736cf, terminfocc4263e522d345216629c9345282f12c2c027969; baseline TODO has no deciding assertion; source absence plus exact native/adapter qualification is required for extensions.osc176-app-id"
             ]
           }
         ]

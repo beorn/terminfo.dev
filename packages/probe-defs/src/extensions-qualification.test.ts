@@ -182,6 +182,125 @@ const absentOscBatch = [
     },
     codes: [176, 3008, 440, 555, 666, 710],
   },
+  {
+    engine: "ghostty-native",
+    identity: {
+      kind: "native",
+      engineVersion: "1.3.1",
+      adapterVersion: "0.10.2",
+      termlessRevision: "25089207e11420cf7a588987c1dc2683a45e8372",
+      loadedBinary: {
+        path: "/fixture/native",
+        sha256: "53f9a867cce594b4d50fb9508db9ce5d2d79fb4244a418548b7cb31fa50780d1",
+      },
+      provenance: {
+        sha256: "53f9a867cce594b4d50fb9508db9ce5d2d79fb4244a418548b7cb31fa50780d1",
+        sourceCommit: "332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28",
+        buildHash: "2d5e53cf4f0846e47cda8a45c513f44da5c699657edffe93886e6eba99f36bfd",
+        toolchain: "zig 0.15.2",
+        lockSha256: "3ec775507556db01d08055836b26183f629a9cbb0b5802a1566661e95988d74a",
+      },
+      adapterSources: [
+        {
+          path: "packages/ghostty-native/src/index.ts",
+          blobOid: "35c9e35a5d60625ce1135b65ff38ae9278495a18",
+        },
+        {
+          path: "packages/ghostty-native/src/backend.ts",
+          blobOid: "f403717f7c063d799c5de994b3ccc095edbcacd1",
+        },
+      ],
+    },
+    codes: [176],
+  },
+  {
+    engine: "kittyCa46f3c2",
+    identity: {
+      kind: "native",
+      engineVersion: "0.49.2",
+      adapterVersion: "0.10.2",
+      termlessRevision: "25089207e11420cf7a588987c1dc2683a45e8372",
+      loadedBinary: {
+        path: "/fixture/native",
+        sha256: "bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886",
+      },
+      provenance: {
+        sha256: "bb65c2d57e56eecca8143d73771432cf7dd386bccd36ae658950e5923a661886",
+        sourceCommit: "b2cb871254fbdac19a085188813c8dfb258b95cd",
+        buildHash: "88e840e1b8e7f09edf3464ee33df8753fd5107838de15bccb6ea59e0dd6cc9c3",
+        toolchain:
+          "Nix /nix/store/fbpk67n6fd9kb95vl7ksrc7pkh3gx3qx-kitty-official-binary-0.49.2; narHash sha256-THskGDdyHQGsNNMEPUs7CxW2YWTSxv4REQ6k4gvf+b0=; source archive /nix/store/kw9sbgr6haym99r3ppavnyzl43vb954x-kitty-0.49.2-x86_64.txz sha256 d573618b911e9c461bd421b96c13c74c7f1cb2f1ac9c327818d4ff84366cf5c6; kitty +runpy",
+        lockSha256: "282d1098337a5705a7c1d13188a74d2fe34565766619e8d6b21a48d5b67451be",
+      },
+      adapterSources: [
+        {
+          path: "packages/kitty/src/index.ts",
+          blobOid: "3f207f911646613cdc3d8b04f155f0686a96a077",
+        },
+        {
+          path: "packages/kitty/src/backend.ts",
+          blobOid: "1b7367a9737d1292618ea34a1c451bf3273c3b35",
+        },
+        {
+          path: "packages/kitty/build/bridge.py",
+          blobOid: "ca46f3c261ccbdcfd9c3ada9949e2a0238cbcaac",
+        },
+        {
+          path: "packages/kitty/build/layout.c",
+          blobOid: "49c0beef4424190e89d2884eac5efe4da50e3630",
+        },
+        {
+          path: "packages/kitty/build/native-mode-layout.json",
+          blobOid: "6bd0f2d5b6936f8f6298e4cb9ae4b228172a9502",
+        },
+        {
+          path: "packages/kitty/build/native-mode-layout.receipt.json",
+          blobOid: "02899a0c97f70eeba38f5030de1ba7ef4665b6f6",
+        },
+      ],
+    },
+    codes: [176],
+  },
+  {
+    engine: "wezterm",
+    identity: {
+      kind: "native",
+      engineVersion: "0.1.0-fork.5",
+      adapterVersion: "0.10.2",
+      termlessRevision: "25089207e11420cf7a588987c1dc2683a45e8372",
+      loadedBinary: {
+        path: "/fixture/native",
+        sha256: "b4155bfdef040ae8b3b723a4366fa8ec7f278463dbef577ec4730ad152b8bf07",
+      },
+      provenance: {
+        sha256: "b4155bfdef040ae8b3b723a4366fa8ec7f278463dbef577ec4730ad152b8bf07",
+        sourceCommit: "80dd254111ab82279125555f9ca1e68b112cd7e3",
+        buildHash: "dc7cc8afd1cdedfef0f972a00aca10fad92fafc4c0e9f019a2f67473e40a054b",
+        toolchain:
+          "rustc 1.94.0 (4a4ef493e 2026-03-02) (built from a source tarball); cargo 1.94.0 (85eff7c80 2026-01-15)",
+        lockSha256: "8eaeab733cced8d47feb223d773d5ae158b2e6af8c994f993d4071d9ba3231d4",
+      },
+      adapterSources: [
+        {
+          path: "packages/wezterm/src/index.ts",
+          blobOid: "512606c5270ffd0cff55c1b70f5b3eda18a92df0",
+        },
+        {
+          path: "packages/wezterm/src/backend.ts",
+          blobOid: "29b9bdea778abe558497217e811495c3c279451f",
+        },
+        {
+          path: "packages/wezterm/native/src/lib.rs",
+          blobOid: "47dc0392036f34416fb6a38e9a834a7fccc8cfe3",
+        },
+        {
+          path: "src/load-native.ts",
+          blobOid: "34e142550085450ab02138184626716ad0d6b546",
+        },
+      ],
+    },
+    codes: [176],
+  },
   ...[
     {
       engine: "vt100Rust",
