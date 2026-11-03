@@ -62,13 +62,6 @@ export type Slice = "tier1" | "classics" | "extensions" | "input" | "modes" | "d
 
 export const SLICES: readonly Slice[] = ["tier1", "classics", "extensions", "input", "modes", "device"]
 
-/** A category's slice label. */
-export interface SliceCategory {
-  slice: Slice
-}
-
-export type SliceCatalog = Readonly<Record<string, SliceCategory>>
-
 /** One terminal catalog entry, keyed by its terminal id in `content/terminals.json`. */
 export interface TerminalRecord {
   label: string

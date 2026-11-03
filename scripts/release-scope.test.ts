@@ -13,7 +13,7 @@ import { createHash } from "node:crypto"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { describe, expect, it } from "vitest"
-import { loadFeatures, type FeatureCatalog, type Slice, type SliceCatalog } from "@terminfo/catalog"
+import { loadFeatures, type FeatureCatalog, type Slice } from "@terminfo/catalog"
 import {
   ENVIRONMENT_GROUP_IDS,
   SOURCE_ANSWERS,
@@ -49,7 +49,7 @@ const categories = loadCategories(contentDir)
 
 // CTO ruling 2026-11-03: the retired projection was the last production reader; keep slice behaviour
 // with the cohort contract instead of retaining an unused package API (#31824).
-function slice(features: FeatureCatalog, categories: SliceCatalog, id: string): Slice {
+function slice(features: FeatureCatalog, categories: Readonly<Record<string, { slice: Slice }>>, id: string): Slice {
   const feature = features[id]
   if (!feature) throw new Error(`slice(): no feature "${id}" in the catalog`)
   if (feature.tier1 !== undefined) return "tier1"
