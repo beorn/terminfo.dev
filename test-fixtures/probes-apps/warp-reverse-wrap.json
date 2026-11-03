@@ -1,0 +1,2529 @@
+{
+  "schemaVersion": 4,
+  "source": {
+    "kind": "live"
+  },
+  "runId": "fixture-reverse-wrap-warp",
+  "suiteId": "4b01b0117e18",
+  "probeHash": "4b01b0117e18",
+  "sourceRevision": "750022af33fd31d0c4ac9731c474872740466592",
+  "intendedSubject": {
+    "kind": "term",
+    "id": "warp",
+    "version": "v0.2026.10.14.08.27.stable_01",
+    "os": "macos",
+    "osVersion": "26.6.2",
+    "outerTerminal": null,
+    "mux": null,
+    "config": null,
+    "permissions": null
+  },
+  "results": [
+    {
+      "featureId": "charsets.dec-line-drawing",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "charsets.dec-special",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "charsets.g0-g1-switching",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "charsets.utf8",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "cursor.ansi-restore",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "cursor.ansi-save",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "cursor.cpl",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "cursor.cud-past-bottom",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "cursor.cup-boundaries",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "cursor.cup-scroll-region",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "cursor.cuu-past-top",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "cursor.hide",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "cursor.horizontal-absolute",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "cursor.hpa",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "cursor.move.absolute",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "cursor.move.back",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "cursor.move.down",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "cursor.move.forward",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "cursor.move.home",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "cursor.move.up",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "cursor.next-line",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "cursor.position-report",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "cursor.reverse-wrap",
+      "attempt": {
+        "scope": "probe",
+        "startedAt": "2026-10-22T00:46:18.804Z"
+      },
+      "rawReplyRef": "cursor.reverse-wrap",
+      "reason": "Measured wrap was not reversed to row 1 column 123",
+      "status": "unsupported",
+      "tests": [
+        {
+          "id": "criterion",
+          "status": "unsupported",
+          "attempt": {
+            "scope": "probe",
+            "startedAt": "2026-10-22T00:46:18.804Z"
+          },
+          "assertionRefs": [
+            0
+          ],
+          "rawReplyRef": "cursor.reverse-wrap",
+          "reason": "Measured wrap was not reversed to row 1 column 123"
+        }
+      ],
+      "assertionType": "query_reply"
+    },
+    {
+      "featureId": "cursor.save-restore",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "cursor.shape",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "cursor.vpa",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.decrpm",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.decrqss",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.dsr-996-color-scheme",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.env-colorterm",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.env-kitty",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.env-lc-terminal",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.env-no-color",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.env-term",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.env-term-program",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.env-vte-version",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.env-wezterm",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.env-wt-session",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.primary-da",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.secondary-da",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.status-report",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.term-features",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.tertiary-da",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.xtgettcap",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.xtgetxres",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.xtreportcolors",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.xtversion",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.xtwinops-14",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.xtwinops-16",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.xtwinops-18",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.xtwinops-20",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.xtwinops-21",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.xtwinops-22",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "device.xtwinops-23",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "editing.deccara",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "editing.deccra",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "editing.decdc",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "editing.decera",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "editing.decfra",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "editing.decic",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "editing.decrara",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "editing.decrqcra",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "editing.decsace",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "editing.decsera",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "editing.delete-chars",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "editing.delete-lines",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "editing.insert-chars",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "editing.insert-lines",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "editing.repeat-char",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "editing.sl",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "editing.sr",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "erase.character",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "erase.ed-scroll-region",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "erase.el-with-attrs",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "erase.line.all",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "erase.line.left",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "erase.line.right",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "erase.screen.above",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "erase.screen.all",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "erase.screen.below",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "erase.screen.scrollback",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "erase.selective",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.clipboard-paste",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.font-ligatures",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.iterm2-images",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.kitty-graphics",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.kitty-graphics.animation",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.kitty-graphics.display",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.kitty-graphics.transmit",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.kitty-graphics.unicode-placeholders",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.kitty-keyboard",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.kitty-keyboard.disambiguate",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.kitty-keyboard.report-all-keys",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.kitty-keyboard.report-alternate",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.kitty-keyboard.report-events",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.kitty-keyboard.report-text",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.notifications",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc-633-vscode",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc0-icon-title",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc1-icon",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc10-fg-color",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc104-reset-palette",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc11-bg-color",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc110-reset-fg",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc111-reset-bg",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc112-reset-cursor",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc113-reset-pointer-fg",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc114-reset-pointer-bg",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc117-reset-highlight-bg",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc119-reset-highlight-fg",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc12-cursor-color",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc133-a",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc133-b",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc133-c",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc133-d",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc133-p",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc1337-capabilities",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc1337-cellsize",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc17-highlight-bg",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc176-app-id",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc19-highlight-fg",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc2-title",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc21-kitty-color",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc22-pointer",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc30001-color-stack-push",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc3008-context",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc30101-color-stack-pop",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc4-palette",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc440-audio",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc5-special-color",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc52-clipboard",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc52-read",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc52-write",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc5522-clipboard",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc555-flash",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc633-a",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc633-b",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc633-c",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc633-d",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc633-e",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc633-p",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc66-text-sizing",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc666-termprop",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc7-cwd",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc701-locale",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc702-version",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc710-font-normal",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc720-scroll-up",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc776-cell-size",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc777-notify",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc7770-font-size",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc7777-font-window-size",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc8",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc9-progress",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.osc99-kitty-notify",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.reflow",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.semantic-prompts",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.sixel",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.sixel-da1",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.sixel-geometry-report",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "extensions.truecolor",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "input.button-event-mouse",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "input.csi-u",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "input.kitty-click-events",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "input.modify-other-keys",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "input.modify-other-keys-3",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "input.pixel-mouse",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "input.urxvt-mouse",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "input.x10-mouse",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "input.xtest-click",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "input.xtest-key",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "input.xtest-wheel",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.alt-screen.enter",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.alt-screen.exit",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.alt-scroll-1007",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.altscreen-1047",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.altscreen-1048",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.altscreen-47",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.application-cursor",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.application-keypad",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.auto-wrap",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.bracketed-paste",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.color-scheme-reporting",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.deccolm",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.decsclm",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.decsscls",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.focus-tracking",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.insert-replace",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.left-right-margin",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.mouse-all",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.mouse-sgr",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.mouse-tracking",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.origin",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.reverse-video",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.synchronized-output",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.utf8-mouse-1005",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.xtpopcolors",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.xtpopsgr",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.xtpushcolors",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.xtpushsgr",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.xtrestore",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "modes.xtsave",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "reset.decaln",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "reset.method",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "reset.ris",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "reset.sgr",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "reset.soft",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "scrollback.accumulate",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "scrollback.alt-screen",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "scrollback.decstbm",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "scrollback.decstbm-reset",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "scrollback.reverse-index",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "scrollback.scroll-down",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "scrollback.scroll-up",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "scrollback.set-region",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "scrollback.total-lines",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "scrollback.viewport-hold-output",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.bg.256",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.bg.bright",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.bg.default",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.bg.standard",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.bg.truecolor",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.blink",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.bold",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.faint",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.fg.256",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.fg.bright",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.fg.default",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.fg.standard",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.fg.truecolor",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.hidden",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.inverse",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.italic",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.overline",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.reset",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.selective-reset.bold",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.selective-reset.inverse",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.selective-reset.italic",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.selective-reset.underline",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.strikethrough",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.underline-color-indexed",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.underline-color-reset",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.underline-color-rgb",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.underline.color",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.underline.curly",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.underline.dashed",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.underline.dotted",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.underline.double",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "sgr.underline.single",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "text.backspace",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "text.basic",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "text.cbt",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "text.cht",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "text.combining",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "text.cr",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "text.hts",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "text.index",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "text.newline",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "text.next-line",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "text.overwrite",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "text.reverse-index-scroll",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "text.tab",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "text.tbc",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "text.wide.cjk",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "text.wide.emoji",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "text.wide.emoji-flags",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "text.wide.emoji-vs16",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "text.wide.emoji-zwj",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "text.wrap",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "unicode.east-asian-ambiguous",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "unicode.grapheme-cursor",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "unicode.tab-stops",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    },
+    {
+      "featureId": "unicode.wrap-boundary",
+      "status": "test-todo",
+      "attempt": {
+        "scope": "none"
+      },
+      "tests": [],
+      "reason": "Required probe test has not started"
+    }
+  ],
+  "rawReplies": {
+    "cursor.reverse-wrap": "{\"writes\":[\"\\u001b[?45h\",\"\\u001b[?7h\",\"\\u001b[H\",\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB\",\"\\b\\b\",\"\\u001b[?45l\"],\"queries\":[{\"sequence\":\"\\u001b[6n\",\"match\":[\"\\u001b[1;1R\",\"1\",\"1\"],\"reason\":\"reply\",\"raw\":\"\\u001b[1;1R\",\"rawBase64\":\"G1sxOzFS\"},{\"sequence\":\"\\u001b[6n\",\"match\":[\"\\u001b[2;2R\",\"2\",\"2\"],\"reason\":\"reply\",\"raw\":\"\\u001b[2;2R\",\"rawBase64\":\"G1syOzJS\"},{\"sequence\":\"\\u001b[6n\",\"match\":[\"\\u001b[2;1R\",\"2\",\"1\"],\"reason\":\"reply\",\"raw\":\"\\u001b[2;1R\",\"rawBase64\":\"G1syOzFS\"}],\"events\":[{\"kind\":\"write\",\"sequence\":\"\\u001b[?45h\"},{\"kind\":\"write\",\"sequence\":\"\\u001b[?7h\"},{\"kind\":\"write\",\"sequence\":\"\\u001b[H\"},{\"kind\":\"query\",\"sequence\":\"\\u001b[6n\",\"match\":[\"\\u001b[1;1R\",\"1\",\"1\"],\"reason\":\"reply\",\"raw\":\"\\u001b[1;1R\",\"rawBase64\":\"G1sxOzFS\"},{\"kind\":\"write\",\"sequence\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB\"},{\"kind\":\"query\",\"sequence\":\"\\u001b[6n\",\"match\":[\"\\u001b[2;2R\",\"2\",\"2\"],\"reason\":\"reply\",\"raw\":\"\\u001b[2;2R\",\"rawBase64\":\"G1syOzJS\"},{\"kind\":\"write\",\"sequence\":\"\\b\\b\"},{\"kind\":\"query\",\"sequence\":\"\\u001b[6n\",\"match\":[\"\\u001b[2;1R\",\"2\",\"1\"],\"reason\":\"reply\",\"raw\":\"\\u001b[2;1R\",\"rawBase64\":\"G1syOzFS\"},{\"kind\":\"write\",\"sequence\":\"\\u001b[?45l\"}]}",
+    "collector.geometry": "{\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"bindingReceiptRef\":\"collector.terminalOwnership\",\"grant\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:56.487Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"corroboration\":{\"status\":\"agree\",\"query\":{\"sequence\":\"\\u001b[18t\",\"outbound\":\"\\u001b[18t\\u001b[c\",\"reason\":\"reply\",\"raw\":\"\\u001b[8;39;123t\\u001b[?62c\",\"rawBase64\":\"G1s4OzM5OzEyM3QbWz82MmM=\"},\"rows\":39,\"cols\":123},\"checks\":[{\"featureId\":\"extensions.truecolor\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:57.187Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:02.753Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"collector.captureCalibration\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:45:57.187Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"extensions.font-ligatures\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:02.772Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:02.791Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"extensions.sixel\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:03.334Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:03.343Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"extensions.osc8\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:03.352Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:03.362Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"extensions.iterm2-images\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:03.905Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:03.922Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"extensions.osc66-text-sizing\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:04.448Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:04.464Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"sgr.bold\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:09.122Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:09.393Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"sgr.faint\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:09.412Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:09.689Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"sgr.italic\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:09.707Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:09.980Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"sgr.underline.single\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:10.003Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:10.273Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"sgr.underline.double\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:10.282Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:10.548Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"sgr.underline.curly\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:10.566Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:10.835Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"sgr.underline.dotted\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:10.848Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:11.121Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"sgr.underline.dashed\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:11.134Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:11.398Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"sgr.blink\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:11.407Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:11.674Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"sgr.inverse\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:11.682Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:11.945Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"sgr.hidden\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:11.960Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:12.236Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"sgr.strikethrough\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:12.258Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:12.521Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"sgr.overline\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:12.531Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:12.796Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"sgr.underline.color\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:12.805Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:13.072Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"sgr.underline-color-indexed\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:13.082Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:13.349Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"sgr.underline-color-rgb\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:13.358Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:13.622Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"sgr.underline-color-reset\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:13.633Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:13.906Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"sgr.fg.standard\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:13.927Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:14.191Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"sgr.bg.standard\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:14.205Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:14.472Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"sgr.fg.bright\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:14.480Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:14.748Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"sgr.bg.bright\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:14.760Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:15.028Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"sgr.fg.default\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:15.036Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:15.311Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"sgr.bg.default\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:15.323Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:15.591Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"sgr.fg.256\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:15.609Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:15.881Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"sgr.bg.256\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:15.897Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:16.169Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"sgr.fg.truecolor\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:16.184Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:16.452Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"sgr.bg.truecolor\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:16.467Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:16.739Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"sgr.selective-reset.bold\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:16.754Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:17.025Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"sgr.selective-reset.underline\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:17.043Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:17.320Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"sgr.selective-reset.italic\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:17.336Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:17.605Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"sgr.selective-reset.inverse\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:17.619Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:17.890Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"sgr.reset\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:17.905Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:18.178Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"cursor.move.absolute\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:18.193Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:18.201Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"cursor.move.home\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:18.214Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:18.223Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"cursor.move.forward\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:18.239Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:18.253Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"cursor.move.back\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:18.263Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:18.272Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"cursor.move.down\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:18.286Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:18.297Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"cursor.move.up\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:18.309Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:18.320Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"cursor.hide\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:18.342Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:18.354Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"cursor.shape\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:18.363Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:18.633Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"cursor.horizontal-absolute\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:18.648Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:18.657Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"cursor.next-line\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:18.665Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:18.678Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"cursor.position-report\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:18.687Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:18.704Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"cursor.ansi-save\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:18.720Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:18.734Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"cursor.ansi-restore\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:18.749Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:18.761Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"cursor.save-restore\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:18.772Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:18.786Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"cursor.reverse-wrap\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:18.798Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:18.812Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"cursor.cup-boundaries\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:18.821Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:18.838Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"cursor.cuu-past-top\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:18.849Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:18.865Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"cursor.cud-past-bottom\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:18.875Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:18.883Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"cursor.vpa\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:18.893Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:18.902Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"cursor.cpl\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:18.914Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:18.921Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"cursor.hpa\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:18.931Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:18.941Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"cursor.cup-scroll-region\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:18.951Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:18.961Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"text.overwrite\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:18.973Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:18.984Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"text.reverse-index-scroll\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:18.996Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:19.005Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"text.basic\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:19.013Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:19.025Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"text.newline\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:19.033Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:19.045Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"text.wrap\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:19.054Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:19.327Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"text.tab\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:19.344Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:19.358Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"text.wide.emoji\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:19.370Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:19.381Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"text.wide.cjk\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:19.390Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:19.405Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"text.cr\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:19.417Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:19.441Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"text.backspace\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:19.455Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:19.469Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"text.index\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:19.482Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:19.497Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"text.next-line\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:19.509Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:19.522Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"text.combining\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:19.539Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:19.554Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"text.hts\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:19.564Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:19.573Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"text.tbc\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:19.591Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:19.610Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"text.cht\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:19.622Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:19.635Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"text.cbt\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:19.649Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:19.665Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"text.wide.emoji-flags\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:19.677Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:19.687Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"text.wide.emoji-vs16\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:19.697Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:19.706Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"text.wide.emoji-zwj\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:19.716Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:19.726Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"erase.character\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:19.736Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:19.747Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"erase.line.right\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:19.754Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:19.763Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"erase.line.left\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:19.773Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:19.786Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"erase.line.all\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:19.803Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:19.820Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"erase.screen.below\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:19.833Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:19.851Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"erase.screen.above\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:19.860Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:19.878Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"erase.screen.all\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:19.890Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:19.901Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"erase.selective\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:19.918Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:19.936Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"erase.ed-scroll-region\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:19.946Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:19.963Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"erase.el-with-attrs\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:19.973Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:19.982Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"erase.screen.scrollback\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:19.993Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:20.006Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"editing.insert-chars\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:20.016Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:20.027Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"editing.delete-chars\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:20.038Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:20.046Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"editing.insert-lines\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:20.055Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:20.065Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"editing.delete-lines\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:20.074Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:20.085Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"editing.repeat-char\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:20.094Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:20.106Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"editing.decfra\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:20.120Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:20.132Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"editing.decera\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:20.143Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:20.154Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"editing.decsera\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:20.164Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:20.176Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"editing.deccra\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:20.187Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:20.198Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"editing.sl\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:20.209Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:20.216Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"editing.sr\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:20.225Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:20.235Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"editing.decic\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:20.249Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:20.261Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"editing.decdc\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:20.272Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:20.283Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"editing.deccara\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:20.293Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:20.302Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"editing.decrara\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:20.314Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:20.327Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"editing.decsace\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:20.336Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:20.350Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"modes.alt-screen.exit\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:20.876Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:20.889Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"modes.origin\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:22.470Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:22.477Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"modes.insert-replace\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:22.482Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:22.750Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"modes.left-right-margin\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:23.274Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:23.283Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"modes.altscreen-47\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:23.294Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:23.306Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"modes.altscreen-1047\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:23.315Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:23.578Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"modes.altscreen-1048\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:23.588Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:23.599Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"modes.xtpushsgr\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:24.634Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:24.643Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"modes.xtpopsgr\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:24.650Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:24.657Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"modes.xtsave\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:24.665Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:24.670Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"modes.xtrestore\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:24.676Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:24.683Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"modes.xtpushcolors\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:24.689Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:24.696Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"modes.xtpopcolors\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:24.702Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:24.710Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"modes.decsscls\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:24.716Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:24.723Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"reset.sgr\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:27.329Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:27.591Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"reset.ris\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:27.600Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:27.607Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"reset.soft\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:27.614Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:27.874Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"reset.decaln\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:27.887Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:27.898Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"scrollback.accumulate\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:27.918Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:27.933Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"scrollback.total-lines\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:27.944Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:27.954Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"scrollback.scroll-up\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:27.963Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:27.971Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"scrollback.reverse-index\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:27.982Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:27.991Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"scrollback.scroll-down\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:28.008Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:28.020Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"scrollback.set-region\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:28.033Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:28.042Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"scrollback.alt-screen\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:28.054Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:28.065Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"scrollback.decstbm\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:28.074Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:28.084Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"scrollback.decstbm-reset\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:28.093Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:28.105Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"charsets.dec-special\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:28.113Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:28.124Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"charsets.utf8\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:28.133Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:28.142Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"charsets.g0-g1-switching\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:28.151Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:28.158Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"charsets.dec-line-drawing\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:28.167Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:28.179Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"unicode.east-asian-ambiguous\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:28.190Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:28.204Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"unicode.grapheme-cursor\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:28.213Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:28.223Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"unicode.wrap-boundary\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:28.232Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:28.249Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}},{\"featureId\":\"unicode.tab-stops\",\"pre\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:28.263Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"},\"post\":{\"status\":\"measured\",\"at\":\"2026-10-22T00:46:28.277Z\",\"source\":\"stty size on a /dev/fd reopen of the verified output device\",\"rows\":39,\"cols\":123,\"stdout\":\"39 123\\n\",\"stderr\":\"\"}}]}"
+  },
+  "assertions": [
+    {
+      "featureId": "cursor.reverse-wrap",
+      "kind": "negative",
+      "expected": "Backspace from column 1 of row 2 reverses the wrap to the last column of row 1",
+      "observed": "{\"measured\":[{\"step\":\"home\",\"report\":{\"row\":1,\"col\":1}},{\"step\":\"wrapped\",\"report\":{\"row\":2,\"col\":2}},{\"step\":\"reverted\",\"report\":{\"row\":2,\"col\":1}}]}",
+      "rawReplyRef": "cursor.reverse-wrap",
+      "assertionType": "query_reply"
+    }
+  ],
+  "screenshotRefs": [],
+  "subject": {
+    "kind": "term",
+    "id": "warp",
+    "version": "v0.2026.10.14.08.27.stable_01",
+    "os": "macos",
+    "osVersion": "26.6.2",
+    "outerTerminal": null,
+    "mux": null,
+    "config": null,
+    "permissions": null
+  },
+  "identity": "unverified",
+  "measuredAt": "2026-10-22T00:46:29.307Z",
+  "origin": {
+    "kind": "collector"
+  },
+  "sealedAt": "2026-10-22T00:46:29.318Z"
+}

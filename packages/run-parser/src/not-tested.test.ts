@@ -2,7 +2,7 @@
  * @failure Named coverage records silently change suite completeness, overlap a measured outcome, or hide a failed probe.
  * @level l1
  * @consumer run-parser admission, selected-results partition, collector boundary
- * @reach parses raw v2 runs carrying the additive ProbeRun.notTested coverage record
+ * @reach parses current frozen results, initialization and source identity
  * @testonly none
  */
 import { describe, expect, it } from "vitest"
@@ -10,114 +10,15 @@ import { initializeRunDraft, sealRunDraft, type ProbeSuiteManifest } from "@term
 import { parseRun, parseSuiteManifest } from "./index.ts"
 
 const catalog = ["alpha", "beta", "gamma"]
-const suite: ProbeSuiteManifest = {
+const suite: ProbeSuiteManifest & { schemaVersion: 4 } = {
+  schemaVersion: 4,
+  catalogIds: catalog,
   probeHash: "nt-suite",
   sourceRevision: "2".repeat(40),
   generatedAt: "2026-10-05T00:00:00.000Z",
   adapterVersion: "3.3.2",
   probes: { term: catalog, lib: catalog, mux: catalog },
 }
-const suites = new Map([[suite.probeHash, suite]])
-
-const measured = (featureId: string) => ({
-  featureId,
-  outcome: "inconclusive" as const,
-  evidence: "query" as const,
-  reason: "timeout" as const,
-})
-const coverage = (featureId: string, overrides: Record<string, unknown> = {}) => ({
-  featureId,
-  reason: "no-semantic-observable",
-  noObservable: "input events",
-  rawReplyRef: featureId,
-  ...overrides,
-})
-const baseRun = (overrides: Record<string, unknown> = {}) => ({
-  schemaVersion: 2,
-  runId: "nt-run",
-  target: {
-    kind: "app",
-    id: "kitty",
-    version: "0.49.2",
-    os: null,
-    osVersion: null,
-    outerTerminal: null,
-    mux: null,
-    config: null,
-    permissions: null,
-  },
-  identity: "verified",
-  suiteId: "nt-suite",
-  probeHash: "nt-suite",
-  suiteComplete: true,
-  sourceRevision: "2".repeat(40),
-  measuredAt: "2026-10-05T00:00:00.000Z",
-  origin: { kind: "collector" },
-  rawReplies: { alpha: "A", beta: "B", gamma: "C" },
-  assertions: [],
-  screenshotRefs: [],
-  observations: [measured("alpha"), measured("beta")],
-  notTested: [coverage("gamma")],
-  ...overrides,
-})
-const parse = (overrides: Record<string, unknown> = {}) =>
-  parseRun("nt.json", JSON.stringify(baseRun(overrides)), catalog, suites)
-
-describe("named not-tested coverage", () => {
-  it("treats measured plus named not-tested as a disjoint complete suite", () => {
-    const run = parse()
-    expect(run.suiteComplete).toBe(true)
-    expect(run.notTested).toEqual([
-      { featureId: "gamma", reason: "no-semantic-observable", noObservable: "input events", rawReplyRef: "gamma" },
-    ])
-    expect(run.observations.map((item) => item.featureId)).toEqual(["alpha", "beta"])
-  })
-
-  it("refuses a scheduled probe missing from both measured and named coverage", () => {
-    expect(() => parse({ notTested: [] })).toThrow(/suiteComplete.*2.*3/)
-  })
-
-  it("refuses an unclosed reason, an empty noObservable, and a trace that does not bind", () => {
-    expect(() => parse({ notTested: [coverage("gamma", { reason: "because" })] })).toThrow(
-      /invalid notTested reason for gamma/,
-    )
-    expect(() => parse({ notTested: [coverage("gamma", { noObservable: "   " })] })).toThrow(
-      /requires a specific noObservable/,
-    )
-    expect(() => parse({ notTested: [coverage("gamma", { rawReplyRef: "alpha" })] })).toThrow(
-      /requires its own rawReplyRef/,
-    )
-    expect(() => parse({ rawReplies: { alpha: "A", beta: "B" } })).toThrow(/requires a retained nonempty raw trace/)
-    expect(() => parse({ rawReplies: { alpha: "A", beta: "B", gamma: "" } })).toThrow(
-      /requires a retained nonempty raw trace/,
-    )
-  })
-
-  it("refuses duplicate named IDs and any overlap with observations or assertions", () => {
-    expect(() => parse({ notTested: [coverage("gamma"), coverage("gamma")] })).toThrow(
-      /duplicate notTested feature gamma/,
-    )
-    expect(() => parse({ notTested: [coverage("gamma"), coverage("beta")] })).toThrow(
-      /notTested beta also occurs in observations/,
-    )
-    expect(() =>
-      parse({
-        assertions: [{ featureId: "gamma", kind: "positive", expected: "ACK", observed: "ACK" }],
-      }),
-    ).toThrow(/notTested gamma also occurs in assertions/)
-  })
-
-  it("keeps a run without the optional key unchanged and complete from observations alone", () => {
-    const { notTested: _omitted, ...withoutKey } = baseRun({ observations: catalog.map(measured) })
-    const run = parseRun("legacy.json", JSON.stringify(withoutKey), catalog, suites)
-    expect(run.suiteComplete).toBe(true)
-    expect(run.notTested).toEqual([])
-    expect(run.observations.map((item) => item.featureId)).toEqual(catalog)
-  })
-})
-
-// The approved runtime contract requires explicit TODO initialization and required-check
-// precedence. Historical coverage tests above cannot catch a reader inventing these statuses.
 describe("execution-owned five statuses", () => {
   it("initializes every frozen catalogue member without inventing measured identity or a criterion", async () => {
     const { initializeRunDraft } = await import("@terminfo/probe-defs")
@@ -165,25 +66,32 @@ describe("execution-owned five statuses", () => {
   })
 })
 
-// Current v3 totality is over immutable catalogue membership, not only callable arms.
-// Historical v2 completeness above cannot detect omission of a catalogue-only capability.
+// Current totality is over immutable catalogue membership, not only callable arms.
 describe("sealed current runs", () => {
-  const currentSuite = { ...suite, catalogIds: catalog }
+  const currentSuite = suite
   const current = () => {
-    const { observations: _old, notTested: _coverage, suiteComplete: _membership, ...metadata } = baseRun()
-    return {
-      ...metadata,
-      schemaVersion: 3,
-      intendedContext: { kind: "app", id: "kitty" },
-      sealedAt: "2026-10-21T05:00:01.000Z",
-      results: catalog.map((featureId) => ({
-        featureId,
-        status: "test-todo",
-        attempt: { scope: "none" },
-        checks: [],
-        reason: "Missing implementation",
-      })),
+    const draft = initializeRunDraft({
+      runId: "nt-run",
+      sourceRevision: "2".repeat(40),
+      source: { kind: "live" },
+      manifest: currentSuite,
+      intendedSubject: { kind: "term", id: "kitty" },
+    })
+    draft.subject = {
+      kind: "term",
+      id: "kitty",
+      version: "0.49.2",
+      os: null,
+      osVersion: null,
+      outerTerminal: null,
+      mux: null,
+      config: null,
+      permissions: null,
     }
+    draft.identity = "unverified"
+    draft.measuredAt = "2026-10-05T00:00:00.000Z"
+    draft.origin = { kind: "collector" }
+    return sealRunDraft(draft, "2026-10-21T05:00:01.000Z")
   }
   // v1-v3 fixtures cannot detect a current reader/writer retaining the displaced wire names.
   // This pending-only run claims no successful measurement or native qualification.
@@ -198,15 +106,7 @@ describe("sealed current runs", () => {
       captureSourceRevision: "2".repeat(40),
     },
   ])("preserves schema 4 $kind source through initialization, sealing and reading", (source) => {
-    const { target, intendedContext, results, ...metadata } = current()
-    const raw = {
-      ...metadata,
-      schemaVersion: 4,
-      source,
-      subject: { ...target, kind: "term" as const },
-      intendedSubject: { ...intendedContext, kind: "term" as const },
-      results: results.map(({ checks, ...result }) => ({ ...result, tests: checks })),
-    }
+    const raw = { ...current(), source }
     const draft = initializeRunDraft({
       runId: raw.runId,
       sourceRevision: raw.sourceRevision,
@@ -245,15 +145,7 @@ describe("sealed current runs", () => {
   })
   // The old reader accepted arbitrary extra keys; the new wire must have one spelling per fact.
   it("requires a bound source and refuses displaced or unknown schema-4 keys by name", () => {
-    const { target, intendedContext, results, ...metadata } = current()
-    const raw = {
-      ...metadata,
-      schemaVersion: 4,
-      source: { kind: "live" },
-      subject: { ...target, kind: "term" as const },
-      intendedSubject: { ...intendedContext, kind: "term" as const },
-      results: results.map(({ checks, ...result }) => ({ ...result, tests: checks })),
-    }
+    const raw = current()
     const parseV4 = (value: unknown) =>
       parseRun(
         "v4.json",
@@ -262,17 +154,9 @@ describe("sealed current runs", () => {
         new Map([[suite.probeHash, { ...currentSuite, schemaVersion: 4 }]]),
       )
     expect(() => parseV4({ ...raw, source: undefined })).toThrow(/source/)
-    // These are wire-key diagnostics: v4 has subject, while retained schema3 still has target.
+    // Required current subject fields are named in wire-key diagnostics.
     for (const field of ["id", "version", "os", "osVersion", "outerTerminal", "mux", "config", "permissions"]) {
       expect(() => parseV4({ ...raw, subject: { ...raw.subject, [field]: undefined } })).toThrow(`subject.${field}`)
-      expect(() =>
-        parseRun(
-          "historical-v3.json",
-          JSON.stringify({ ...current(), target: { ...target, [field]: undefined } }),
-          catalog,
-          new Map([[suite.probeHash, currentSuite]]),
-        ),
-      ).toThrow(`target.${field}`)
     }
     expect(() => parseV4({ ...raw, runtimeIdentity: {} })).toThrow("runtimeIdentity is only valid for lib subjects")
     expect(() => parseV4({ ...raw, subject: { ...raw.subject, kind: "lib" } })).toThrow("missing lib runtimeIdentity")
@@ -282,7 +166,7 @@ describe("sealed current runs", () => {
         subject: { ...raw.subject, kind: "lib" },
         runtimeIdentity: { kind: "js", engineVersion: "different-version" },
       }),
-    ).toThrow(`conflicts with subject.version ${target.version}`)
+    ).toThrow(`conflicts with subject.version ${raw.subject.version}`)
     expect(() => parseV4({ ...raw, source: { kind: "trace" } })).toThrow(/trace source/)
     const traceSource = {
       kind: "trace",
@@ -337,7 +221,7 @@ describe("sealed current runs", () => {
       ).toThrow(/source/)
       expect(() => sealRunDraft({ ...raw, source } as never), JSON.stringify(source)).toThrow(/source/)
     }
-    expect(() => parseV4({ ...raw, target })).toThrow(/target/)
+    expect(() => parseV4({ ...raw, target: raw.subject })).toThrow(/target/)
     expect(() => parseV4({ ...raw, mystery: true })).toThrow(/mystery/)
     expect(() => parseV4({ ...raw, results: raw.results.map((result) => ({ ...result, checks: [] })) })).toThrow(
       /checks/,
@@ -348,14 +232,10 @@ describe("sealed current runs", () => {
   })
 
   it("validates each current assertion's retained payload independently of the primary result type", () => {
-    const { target, intendedContext, results, ...metadata } = current()
+    const currentRun = current()
     const attempt = { scope: "probe", startedAt: "2026-10-21T05:00:00.000Z" }
     const raw = {
-      ...metadata,
-      schemaVersion: 4,
-      source: { kind: "live" },
-      subject: { ...target, kind: "term" },
-      intendedSubject: { ...intendedContext, kind: "term" },
+      ...currentRun,
       rawReplies: { alpha: "ACK" },
       assertions: [
         {
@@ -367,7 +247,7 @@ describe("sealed current runs", () => {
           observed: JSON.stringify({ control: "before", report: "ACK" }),
         },
       ],
-      results: results.map(({ checks, ...result }, index) =>
+      results: currentRun.results.map((result, index) =>
         index === 0
           ? {
               ...result,
@@ -378,7 +258,7 @@ describe("sealed current runs", () => {
               attempt,
               tests: [{ id: "criterion", status: "supported", attempt, assertionRefs: [0] }],
             }
-          : { ...result, tests: checks },
+          : result,
       ),
     }
     const parseV4 = (value: unknown) =>
@@ -397,7 +277,7 @@ describe("sealed current runs", () => {
   })
 
   it("decodes suite wire versions without rewriting historical marker absence", () => {
-    const { probes: _normalized, ...metadata } = suite
+    const { probes: _normalized, schemaVersion: _schemaVersion, ...metadata } = suite
     const oldWire = { ...metadata, probes: { app: catalog, headless: catalog, mux: catalog } }
     const normalized = parseSuiteManifest("old-suite.json", JSON.stringify(oldWire))
     expect(normalized.probes).toEqual({ term: catalog, lib: catalog, mux: catalog })
@@ -421,8 +301,8 @@ describe("sealed current runs", () => {
       ["new-live-id"],
       new Map([[suite.probeHash, currentSuite]]),
     )
-    expect(loaded.schemaVersion).toBe(3)
-    expect(loaded.results).toEqual(raw.results.map(({ checks, ...result }) => ({ ...result, tests: checks })))
+    expect(loaded.schemaVersion).toBe(4)
+    expect(loaded.results).toEqual(raw.results)
     expect(loaded.catalogIds).toEqual(catalog)
   })
   it("rejects missing/duplicate frozen results and an unsealed draft", () => {
@@ -443,9 +323,9 @@ describe("sealed current runs", () => {
     const supported = {
       ...first,
       status: "supported",
-      evidence: "parser-state",
+      assertionType: "buffer_state",
       attempt: { scope: "probe", startedAt: "2026-10-21T05:00:00.000Z" },
-      checks: [
+      tests: [
         {
           id: "criterion",
           status: "supported",
@@ -460,7 +340,15 @@ describe("sealed current runs", () => {
         JSON.stringify({
           ...raw,
           results: [supported, ...raw.results.slice(1)],
-          assertions: [{ featureId: "alpha", kind: "positive", expected: "bold=true", observed: "bold=true" }],
+          assertions: [
+            {
+              featureId: "alpha",
+              kind: "positive",
+              assertionType: "buffer_state",
+              expected: "bold=true",
+              observed: "bold=true",
+            },
+          ],
           rawReplies: {},
         }),
         catalog,

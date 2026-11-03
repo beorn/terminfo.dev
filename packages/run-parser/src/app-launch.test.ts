@@ -8,17 +8,23 @@
  * @reach parses origin.appLaunch of a collector app run, flat and derived-source-tree
  * @testonly none
  */
-import { readFileSync } from "node:fs"
-import { join } from "node:path"
 import { describe, expect, it } from "vitest"
 import { parseAppLaunchReceipt } from "./app-launch.ts"
 
-// Checked-in copy of the measured run (#30764 M4): the old round leaves content/ on Friday, and this
-// suite must keep reading a real recorded receipt.
-const FIXTURES = join(import.meta.dirname, "..", "..", "..", "test-fixtures")
+// Retain only the measured receipt verbatim; this parser does not decode a capture run.
 const ZEROS = "0".repeat(64)
 const LETTERS = "a".repeat(64)
-const MEASURED = "alacritty-0.17.0-macos-976d8f5c37c0fb4426205993a0c08da1.json"
+const MEASURED = {
+  bundlePath: "/Applications/Alacritty.app",
+  cfBundleShortVersionString: "0.17.0",
+  cfBundleVersion: "1",
+  executablePath: "/Applications/Alacritty.app/Contents/MacOS/alacritty",
+  executableSha256: "444055799f1211d6adbe9f18ab2660c57155de4f0e88d42458d6ae4fb539dcda",
+  sourceArtifact: {
+    path: "/Users/runner/work/_temp/Alacritty.dmg",
+    sha256: "ad8d7de35fb38e43184776cac6dfee05ca325caa0b6639a06a55e54e4b026620",
+  },
+}
 
 /**
  * The two documents 28240 retired, carrying their own receipt blocks verbatim (@cto 2026-10-08: the
@@ -43,10 +49,8 @@ const RETIRED: Record<string, Record<string, unknown>> = {
   },
 }
 
-function appLaunchOf(name: string): Record<string, unknown> {
-  const path = join(FIXTURES, "probes-apps", name)
-  const document = JSON.parse(readFileSync(path, "utf8")) as { origin: { appLaunch: Record<string, unknown> } }
-  return document.origin.appLaunch
+function appLaunchOf(): Record<string, unknown> {
+  return structuredClone(MEASURED)
 }
 
 function parse(receipt: Record<string, unknown>): unknown {
@@ -82,40 +86,40 @@ describe("a placeholder digest is refused by name", () => {
   }
 
   it("refuses a placeholder executableSha256 on an otherwise measured receipt", () => {
-    expect(() => parse(withDigest(appLaunchOf(MEASURED), "executableSha256", ZEROS))).toThrow(/placeholder/)
+    expect(() => parse(withDigest(appLaunchOf(), "executableSha256", ZEROS))).toThrow(/placeholder/)
   })
 
   it("refuses a placeholder flat sourceArtifact.sha256 on an otherwise measured receipt", () => {
-    expect(() => parse(withDigest(appLaunchOf(MEASURED), "sourceArtifact.sha256", ZEROS))).toThrow(/placeholder/)
+    expect(() => parse(withDigest(appLaunchOf(), "sourceArtifact.sha256", ZEROS))).toThrow(/placeholder/)
   })
 
   it("refuses a placeholder derived-source-tree sha256", () => {
-    expect(() => parse(withDerived(appLaunchOf(MEASURED), ZEROS))).toThrow(/placeholder/)
+    expect(() => parse(withDerived(appLaunchOf(), ZEROS))).toThrow(/placeholder/)
   })
 
   it("refuses one repeated character, not only an all-zero digest", () => {
-    expect(() => parse(withDigest(appLaunchOf(MEASURED), "executableSha256", LETTERS))).toThrow(/placeholder/)
-    expect(() => parse(withDigest(appLaunchOf(MEASURED), "sourceArtifact.sha256", LETTERS))).toThrow(/placeholder/)
-    expect(() => parse(withDerived(appLaunchOf(MEASURED), LETTERS))).toThrow(/placeholder/)
+    expect(() => parse(withDigest(appLaunchOf(), "executableSha256", LETTERS))).toThrow(/placeholder/)
+    expect(() => parse(withDigest(appLaunchOf(), "sourceArtifact.sha256", LETTERS))).toThrow(/placeholder/)
+    expect(() => parse(withDerived(appLaunchOf(), LETTERS))).toThrow(/placeholder/)
   })
 
   it("still refuses a digest that is not a sha256 at all", () => {
-    expect(() => parse(withDigest(appLaunchOf(MEASURED), "executableSha256", "zz"))).toThrow(/invalid/)
-    expect(() => parse(withDigest(appLaunchOf(MEASURED), "sourceArtifact.sha256", "zz"))).toThrow(/invalid/)
-    expect(() => parse(withDerived(appLaunchOf(MEASURED), "zz"))).toThrow(/invalid/)
+    expect(() => parse(withDigest(appLaunchOf(), "executableSha256", "zz"))).toThrow(/invalid/)
+    expect(() => parse(withDigest(appLaunchOf(), "sourceArtifact.sha256", "zz"))).toThrow(/invalid/)
+    expect(() => parse(withDerived(appLaunchOf(), "zz"))).toThrow(/invalid/)
   })
 })
 
 describe("a measured receipt still parses", () => {
   it("accepts the receipt 28216's re-collection produced", () => {
-    const parsed = parse(appLaunchOf(MEASURED)) as { executableSha256: string; sourceArtifact: { sha256: string } }
+    const parsed = parse(appLaunchOf()) as { executableSha256: string; sourceArtifact: { sha256: string } }
     expect(parsed.executableSha256).toBe("444055799f1211d6adbe9f18ab2660c57155de4f0e88d42458d6ae4fb539dcda")
     expect(parsed.sourceArtifact.sha256).toMatch(/^[a-f0-9]{64}$/)
     expect(parsed.sourceArtifact.sha256).not.toBe(ZEROS)
   })
 
   it("accepts a derived-source-tree artifact with a measured sha256", () => {
-    const parsed = parse(withDerived(appLaunchOf(MEASURED), "c3".repeat(32))) as {
+    const parsed = parse(withDerived(appLaunchOf(), "c3".repeat(32))) as {
       sourceArtifact: { kind: string; sha256: string }
     }
     expect(parsed.sourceArtifact.kind).toBe("derived-source-tree")
@@ -227,6 +231,6 @@ describe("a measured Windows launch uses the same parser", () => {
     expect(() => parse(receipt)).toThrow(diagnostic)
   })
   it("refuses Windows fields mixed into the existing absent-platform macOS shape", () => {
-    expect(() => parse({ ...appLaunchOf(MEASURED), productVersion: windows.productVersion })).toThrow(/mixed/)
+    expect(() => parse({ ...appLaunchOf(), productVersion: windows.productVersion })).toThrow(/mixed/)
   })
 })

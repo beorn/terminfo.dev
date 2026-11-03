@@ -5,8 +5,8 @@
  * @level l1
  * @consumer terminfo.dev result popover (#30756)
  * @source-grep the step names and setup positions live in packages/probe-defs/src/cursor.ts, so only a measured
- *   run proves the expectations are the probe's own. The run is a checked-in verbatim copy (#30764): the live
- *   round leaves content/ on Friday. The helper is display-only and never re-grades a cell.
+ *   trace proves the expectations are the probe's own. Current writer fixtures retain the recorded
+ *   reply, geometry and assertion bytes; other results are TODO. The helper never re-grades a cell.
  * @reach fs-read vendor/terminfo.dev/test-fixtures/probes-apps/** vendor/terminfo.dev/test-fixtures/probes-libs/** vendor/terminfo.dev/test-fixtures/probes-mux/** vendor/terminfo.dev/test-fixtures/artifacts/**
  * @testonly none
  */
@@ -22,8 +22,8 @@ import {
   type StepSource,
 } from "../docs/data/step-table.ts"
 
-// Checked-in copies of the run files this suite reads (#30764 M4): the old round leaves content/ on
-// Friday, and these assertions must keep reading a real recorded run, not a hand-written stub.
+// Current writer fixtures retain the original reverse-wrap trace, measured geometry and assertion.
+// Their other results are explicitly TODO; these wrappers claim no new terminal measurement.
 const fixtures = join(import.meta.dirname, "..", "test-fixtures")
 
 interface StoredRun {
@@ -62,9 +62,9 @@ function source(file: string, status: string): StepSource {
   }
 }
 
-const warp = "warp-v0.2026.10.14.08.27.stable_01-macos-0a0afdf422002ff3f9896a3088e4a169.json"
-const alacrittyWindows = "alacritty-0.17.0-windows-20eb3ab6d830e196eb3fa08dade7740a.json"
-const terminalApp = "terminal-app-2.15-macos-81d7321e92df660ce1c01931bebedbd2.json"
+const warp = "warp-reverse-wrap.json"
+const alacrittyWindows = "alacritty-windows-reverse-wrap.json"
+const terminalApp = "terminal-app-reverse-wrap.json"
 
 describe("the popover step table", () => {
   it("names each recorded step and grades the measured one against the run's own width", () => {
