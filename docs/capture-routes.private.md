@@ -169,6 +169,28 @@ the last matching `comm` basename: the outermost matching ancestor in that order
 additionally requires the exact GUI executable path. Warp's recognized name is `stable`.
 The rows are unchanged; this selection alone proves neither window ownership nor launch causation.
 
+## Retained macOS capture observations
+
+These are scoped observations from retained November 2 captures, not current capability
+grades, launch-policy guarantees or a cause established for every collection failure.
+
+On the measured hosted iTerm2 3.6.11 build, the
+[OSC 1337 inline-image probe](../packages/probe-defs/src/extensions.ts) was followed by an
+"Allow Terminal-Initiated Display?" consent modal obscuring retained target frames.
+The modal is a measured obstruction, not a proven cause of the full collection's outer
+600-second wait. A later image/underline/blink diagnostic reproduced the obstruction and
+completed; all three feature statuses remained Test to-do. Neither unfinished draft statuses
+nor successful capture subtests establish accepted feature grades.
+
+The retained Terminal.app post-repair capture refused the selected window image and the
+region fallback through the Darwin window server. That raster acquisition refusal is not
+evidence that Terminal.app lacks the probed capabilities.
+
+These observations do not qualify the macOS multiplexer route. The hosted cmux app row
+above is not mux measurement. Absence from a headless sample's selected engine set cannot
+establish absence of historical, native-app or multiplexer captures; those populations remain
+unqueried here.
+
 ## Windows console reads: ordering is not GUI paint
 
 The existing [text adapter](../packages/terminfo.dev/src/serve.ts) installs only with an owned
