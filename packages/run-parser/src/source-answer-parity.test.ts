@@ -59,6 +59,7 @@ const resolveCell = (run: Run, featureId: string) =>
   })
 
 describe("kept answers against every current committed run", () => {
+  // The full committed corpus exceeded Vitest's 5s default under two-worker CI contention.
   it("finds the subject cells and no cell the writer would decide differently", () => {
     const runs = currentRuns()
     expect(runs).toHaveLength(12)
@@ -74,7 +75,7 @@ describe("kept answers against every current committed run", () => {
     }
     // A table edit re-finalizes the affected runs in the same change; this is the cell-for-cell proof of it.
     expect({ cells, drifted }).toEqual({ cells: 3276, drifted: [] })
-  })
+  }, 30_000)
 
   it("reads the disputed ghostty cells as test-todo with both originals named", () => {
     const run = currentRuns().find((entry) => entry.name === GHOSTTY_RUN)!.run
