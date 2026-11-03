@@ -345,9 +345,12 @@ it("keeps differing qualifying originals under one key pending", () => {
       },
     ],
   }
-  expect(resolveSourceAnswer([row], { subject, featureId: answer.featureId, blobs: [blob] })).toEqual({
+  const resolution = resolveSourceAnswer([row], { subject, featureId: answer.featureId, blobs: [blob] })
+  // Both kept originals travel with the dispute so the cell can name each one (@cto 85a9cfd9).
+  expect(resolution).toEqual({
     kind: "pending",
     reason: "kept answers disagree",
     rowKeys: [sourceAnswerKey(subject, answer.featureId)],
+    answers: [row.answers[0], row.answers[1]],
   })
 })

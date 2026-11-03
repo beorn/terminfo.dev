@@ -42,6 +42,8 @@ export type SourceAnswerResolution =
         | "cited source not resolvable"
         | `cited source not resolvable at ${string}`
       rowKeys: string[]
+      /** Every kept answer that disagreed, so a pending cell can name each original rather than only its key. */
+      answers?: readonly SourceAnswer["answers"][number][]
     }
   | {
       kind: "answer"
@@ -161,7 +163,13 @@ export function resolveSourceAnswer(rows: readonly SourceAnswer[], input: Source
   const pending = (
     reason: Extract<SourceAnswerResolution, { kind: "pending" }>["reason"],
     matches: typeof candidates,
-  ): SourceAnswerResolution => ({ kind: "pending", reason, rowKeys: [...new Set(matches.map((match) => match.key))] })
+  ): SourceAnswerResolution => ({
+    kind: "pending",
+    reason,
+    rowKeys: [...new Set(matches.map((match) => match.key))],
+    // Only a disagreement needs each original named; other pending reasons point at one candidate set.
+    ...(reason === "kept answers disagree" && { answers: [...new Set(matches.map((match) => match.answer))] }),
+  })
   const applicable = candidates.filter((match) => !match.changed && !match.unavailable && (match.own || match.verified))
   if (new Set(applicable.map((match) => match.answer.status)).size > 1) {
     return pending("kept answers disagree", applicable)

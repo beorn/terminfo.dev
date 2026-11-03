@@ -1869,13 +1869,13 @@
           },
           "assertionRefs": [],
           "rawReplyRef": "extensions.clipboard-paste",
-          "reason": "For this captured xtermjs 6.0.0 library context, extensions.clipboard-paste requires OS-level XTEST paste injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.",
+          "reason": "For this captured xtermjs 6.0.0 library context, extensions.clipboard-paste requires OS-level XTEST paste injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.; reviewed at 6.0.0, not re-verified",
           "reviewRef": "[\"lib\",\"xtermjs\",\"6.0.0\",\"linux\",\"extensions.clipboard-paste\"]"
         }
       ],
       "criterionBranch": "os-input-review",
       "rawReplyRef": "extensions.clipboard-paste",
-      "reason": "For this captured xtermjs 6.0.0 library context, extensions.clipboard-paste requires OS-level XTEST paste injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.",
+      "reason": "For this captured xtermjs 6.0.0 library context, extensions.clipboard-paste requires OS-level XTEST paste injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.; reviewed at 6.0.0, not re-verified",
       "status": "untestable",
       "reviewRef": "[\"lib\",\"xtermjs\",\"6.0.0\",\"linux\",\"extensions.clipboard-paste\"]"
     },
@@ -3636,13 +3636,13 @@
           },
           "assertionRefs": [],
           "rawReplyRef": "input.button-event-mouse",
-          "reason": "For this captured xtermjs 6.0.0 library context, input.button-event-mouse requires OS-level XTEST click injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.",
+          "reason": "For this captured xtermjs 6.0.0 library context, input.button-event-mouse requires OS-level XTEST click injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.; reviewed at 6.0.0, not re-verified",
           "reviewRef": "[\"lib\",\"xtermjs\",\"6.0.0\",\"linux\",\"input.button-event-mouse\"]"
         }
       ],
       "criterionBranch": "os-input-review",
       "rawReplyRef": "input.button-event-mouse",
-      "reason": "For this captured xtermjs 6.0.0 library context, input.button-event-mouse requires OS-level XTEST click injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.",
+      "reason": "For this captured xtermjs 6.0.0 library context, input.button-event-mouse requires OS-level XTEST click injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.; reviewed at 6.0.0, not re-verified",
       "status": "untestable",
       "reviewRef": "[\"lib\",\"xtermjs\",\"6.0.0\",\"linux\",\"input.button-event-mouse\"]"
     },
@@ -3688,13 +3688,13 @@
           },
           "assertionRefs": [],
           "rawReplyRef": "input.kitty-click-events",
-          "reason": "For this captured xtermjs 6.0.0 library context, input.kitty-click-events requires OS-level XTEST click injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.",
+          "reason": "For this captured xtermjs 6.0.0 library context, input.kitty-click-events requires OS-level XTEST click injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.; reviewed at 6.0.0, not re-verified",
           "reviewRef": "[\"lib\",\"xtermjs\",\"6.0.0\",\"linux\",\"input.kitty-click-events\"]"
         }
       ],
       "criterionBranch": "os-input-review",
       "rawReplyRef": "input.kitty-click-events",
-      "reason": "For this captured xtermjs 6.0.0 library context, input.kitty-click-events requires OS-level XTEST click injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.",
+      "reason": "For this captured xtermjs 6.0.0 library context, input.kitty-click-events requires OS-level XTEST click injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.; reviewed at 6.0.0, not re-verified",
       "status": "untestable",
       "reviewRef": "[\"lib\",\"xtermjs\",\"6.0.0\",\"linux\",\"input.kitty-click-events\"]"
     },
@@ -3714,13 +3714,13 @@
           },
           "assertionRefs": [],
           "rawReplyRef": "input.modify-other-keys",
-          "reason": "For this captured xtermjs 6.0.0 library context, input.modify-other-keys requires OS-level XTEST key injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.",
+          "reason": "For this captured xtermjs 6.0.0 library context, input.modify-other-keys requires OS-level XTEST key injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.; reviewed at 6.0.0, not re-verified",
           "reviewRef": "[\"lib\",\"xtermjs\",\"6.0.0\",\"linux\",\"input.modify-other-keys\"]"
         }
       ],
       "criterionBranch": "os-input-review",
       "rawReplyRef": "input.modify-other-keys",
-      "reason": "For this captured xtermjs 6.0.0 library context, input.modify-other-keys requires OS-level XTEST key injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.",
+      "reason": "For this captured xtermjs 6.0.0 library context, input.modify-other-keys requires OS-level XTEST key injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.; reviewed at 6.0.0, not re-verified",
       "status": "untestable",
       "reviewRef": "[\"lib\",\"xtermjs\",\"6.0.0\",\"linux\",\"input.modify-other-keys\"]"
     },
@@ -3740,13 +3740,13 @@
           },
           "assertionRefs": [],
           "rawReplyRef": "input.modify-other-keys-3",
-          "reason": "For this captured xtermjs 6.0.0 library context, input.modify-other-keys-3 requires OS-level XTEST key injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.",
+          "reason": "For this captured xtermjs 6.0.0 library context, input.modify-other-keys-3 requires OS-level XTEST key injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.; reviewed at 6.0.0, not re-verified",
           "reviewRef": "[\"lib\",\"xtermjs\",\"6.0.0\",\"linux\",\"input.modify-other-keys-3\"]"
         }
       ],
       "criterionBranch": "os-input-review",
       "rawReplyRef": "input.modify-other-keys-3",
-      "reason": "For this captured xtermjs 6.0.0 library context, input.modify-other-keys-3 requires OS-level XTEST key injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.",
+      "reason": "For this captured xtermjs 6.0.0 library context, input.modify-other-keys-3 requires OS-level XTEST key injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.; reviewed at 6.0.0, not re-verified",
       "status": "untestable",
       "reviewRef": "[\"lib\",\"xtermjs\",\"6.0.0\",\"linux\",\"input.modify-other-keys-3\"]"
     },
@@ -3766,13 +3766,13 @@
           },
           "assertionRefs": [],
           "rawReplyRef": "input.pixel-mouse",
-          "reason": "For this captured xtermjs 6.0.0 library context, input.pixel-mouse requires OS-level XTEST click injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.",
+          "reason": "For this captured xtermjs 6.0.0 library context, input.pixel-mouse requires OS-level XTEST click injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.; reviewed at 6.0.0, not re-verified",
           "reviewRef": "[\"lib\",\"xtermjs\",\"6.0.0\",\"linux\",\"input.pixel-mouse\"]"
         }
       ],
       "criterionBranch": "os-input-review",
       "rawReplyRef": "input.pixel-mouse",
-      "reason": "For this captured xtermjs 6.0.0 library context, input.pixel-mouse requires OS-level XTEST click injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.",
+      "reason": "For this captured xtermjs 6.0.0 library context, input.pixel-mouse requires OS-level XTEST click injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.; reviewed at 6.0.0, not re-verified",
       "status": "untestable",
       "reviewRef": "[\"lib\",\"xtermjs\",\"6.0.0\",\"linux\",\"input.pixel-mouse\"]"
     },
@@ -3792,13 +3792,13 @@
           },
           "assertionRefs": [],
           "rawReplyRef": "input.urxvt-mouse",
-          "reason": "For this captured xtermjs 6.0.0 library context, input.urxvt-mouse requires OS-level XTEST click injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.",
+          "reason": "For this captured xtermjs 6.0.0 library context, input.urxvt-mouse requires OS-level XTEST click injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.; reviewed at 6.0.0, not re-verified",
           "reviewRef": "[\"lib\",\"xtermjs\",\"6.0.0\",\"linux\",\"input.urxvt-mouse\"]"
         }
       ],
       "criterionBranch": "os-input-review",
       "rawReplyRef": "input.urxvt-mouse",
-      "reason": "For this captured xtermjs 6.0.0 library context, input.urxvt-mouse requires OS-level XTEST click injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.",
+      "reason": "For this captured xtermjs 6.0.0 library context, input.urxvt-mouse requires OS-level XTEST click injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.; reviewed at 6.0.0, not re-verified",
       "status": "untestable",
       "reviewRef": "[\"lib\",\"xtermjs\",\"6.0.0\",\"linux\",\"input.urxvt-mouse\"]"
     },
@@ -3818,13 +3818,13 @@
           },
           "assertionRefs": [],
           "rawReplyRef": "input.x10-mouse",
-          "reason": "For this captured xtermjs 6.0.0 library context, input.x10-mouse requires OS-level XTEST click injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.",
+          "reason": "For this captured xtermjs 6.0.0 library context, input.x10-mouse requires OS-level XTEST click injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.; reviewed at 6.0.0, not re-verified",
           "reviewRef": "[\"lib\",\"xtermjs\",\"6.0.0\",\"linux\",\"input.x10-mouse\"]"
         }
       ],
       "criterionBranch": "os-input-review",
       "rawReplyRef": "input.x10-mouse",
-      "reason": "For this captured xtermjs 6.0.0 library context, input.x10-mouse requires OS-level XTEST click injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.",
+      "reason": "For this captured xtermjs 6.0.0 library context, input.x10-mouse requires OS-level XTEST click injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.; reviewed at 6.0.0, not re-verified",
       "status": "untestable",
       "reviewRef": "[\"lib\",\"xtermjs\",\"6.0.0\",\"linux\",\"input.x10-mouse\"]"
     },
@@ -3844,13 +3844,13 @@
           },
           "assertionRefs": [],
           "rawReplyRef": "input.xtest-click",
-          "reason": "For this captured xtermjs 6.0.0 library context, input.xtest-click requires OS-level XTEST click injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.",
+          "reason": "For this captured xtermjs 6.0.0 library context, input.xtest-click requires OS-level XTEST click injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.; reviewed at 6.0.0, not re-verified",
           "reviewRef": "[\"lib\",\"xtermjs\",\"6.0.0\",\"linux\",\"input.xtest-click\"]"
         }
       ],
       "criterionBranch": "os-input-review",
       "rawReplyRef": "input.xtest-click",
-      "reason": "For this captured xtermjs 6.0.0 library context, input.xtest-click requires OS-level XTEST click injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.",
+      "reason": "For this captured xtermjs 6.0.0 library context, input.xtest-click requires OS-level XTEST click injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.; reviewed at 6.0.0, not re-verified",
       "status": "untestable",
       "reviewRef": "[\"lib\",\"xtermjs\",\"6.0.0\",\"linux\",\"input.xtest-click\"]"
     },
@@ -3870,13 +3870,13 @@
           },
           "assertionRefs": [],
           "rawReplyRef": "input.xtest-key",
-          "reason": "For this captured xtermjs 6.0.0 library context, input.xtest-key requires OS-level XTEST key injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.",
+          "reason": "For this captured xtermjs 6.0.0 library context, input.xtest-key requires OS-level XTEST key injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.; reviewed at 6.0.0, not re-verified",
           "reviewRef": "[\"lib\",\"xtermjs\",\"6.0.0\",\"linux\",\"input.xtest-key\"]"
         }
       ],
       "criterionBranch": "os-input-review",
       "rawReplyRef": "input.xtest-key",
-      "reason": "For this captured xtermjs 6.0.0 library context, input.xtest-key requires OS-level XTEST key injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.",
+      "reason": "For this captured xtermjs 6.0.0 library context, input.xtest-key requires OS-level XTEST key injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.; reviewed at 6.0.0, not re-verified",
       "status": "untestable",
       "reviewRef": "[\"lib\",\"xtermjs\",\"6.0.0\",\"linux\",\"input.xtest-key\"]"
     },
@@ -3896,13 +3896,13 @@
           },
           "assertionRefs": [],
           "rawReplyRef": "input.xtest-wheel",
-          "reason": "For this captured xtermjs 6.0.0 library context, input.xtest-wheel requires OS-level XTEST wheel injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.",
+          "reason": "For this captured xtermjs 6.0.0 library context, input.xtest-wheel requires OS-level XTEST wheel injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.; reviewed at 6.0.0, not re-verified",
           "reviewRef": "[\"lib\",\"xtermjs\",\"6.0.0\",\"linux\",\"input.xtest-wheel\"]"
         }
       ],
       "criterionBranch": "os-input-review",
       "rawReplyRef": "input.xtest-wheel",
-      "reason": "For this captured xtermjs 6.0.0 library context, input.xtest-wheel requires OS-level XTEST wheel injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.",
+      "reason": "For this captured xtermjs 6.0.0 library context, input.xtest-wheel requires OS-level XTEST wheel injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.; reviewed at 6.0.0, not re-verified",
       "status": "untestable",
       "reviewRef": "[\"lib\",\"xtermjs\",\"6.0.0\",\"linux\",\"input.xtest-wheel\"]"
     },
@@ -3970,13 +3970,13 @@
           },
           "assertionRefs": [],
           "rawReplyRef": "modes.alt-scroll-1007",
-          "reason": "For this captured xtermjs 6.0.0 library context, modes.alt-scroll-1007 requires OS-level XTEST wheel injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.",
+          "reason": "For this captured xtermjs 6.0.0 library context, modes.alt-scroll-1007 requires OS-level XTEST wheel injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.; reviewed at 6.0.0, not re-verified",
           "reviewRef": "[\"lib\",\"xtermjs\",\"6.0.0\",\"linux\",\"modes.alt-scroll-1007\"]"
         }
       ],
       "criterionBranch": "os-input-review",
       "rawReplyRef": "modes.alt-scroll-1007",
-      "reason": "For this captured xtermjs 6.0.0 library context, modes.alt-scroll-1007 requires OS-level XTEST wheel injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.",
+      "reason": "For this captured xtermjs 6.0.0 library context, modes.alt-scroll-1007 requires OS-level XTEST wheel injection. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"input\":false} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.; reviewed at 6.0.0, not re-verified",
       "status": "untestable",
       "reviewRef": "[\"lib\",\"xtermjs\",\"6.0.0\",\"linux\",\"modes.alt-scroll-1007\"]"
     },
@@ -4092,13 +4092,13 @@
           },
           "assertionRefs": [],
           "rawReplyRef": "modes.application-keypad",
-          "reason": "For this captured xtermjs 6.0.0 library context, modes.application-keypad requires keypad input. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"on\":true,\"off\":true} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.",
+          "reason": "For this captured xtermjs 6.0.0 library context, modes.application-keypad requires keypad input. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"on\":true,\"off\":true} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.; reviewed at 6.0.0, not re-verified",
           "reviewRef": "[\"lib\",\"xtermjs\",\"6.0.0\",\"linux\",\"modes.application-keypad\"]"
         }
       ],
       "criterionBranch": "os-input-review",
       "rawReplyRef": "modes.application-keypad",
-      "reason": "For this captured xtermjs 6.0.0 library context, modes.application-keypad requires keypad input. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"on\":true,\"off\":true} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.",
+      "reason": "For this captured xtermjs 6.0.0 library context, modes.application-keypad requires keypad input. The frozen library callback selects os-input-review; LibProbeSource has no owned OS-input fixture/readInput or engine-input event observation. The retained state {\"on\":true,\"off\":true} contains no generated input bytes or qualified delivery observation. Mode flags, when present, are context only. Proposed cut-specific Untestable; no claim that the engine lacks this capability, and no conclusion from silence alone.; reviewed at 6.0.0, not re-verified",
       "status": "untestable",
       "reviewRef": "[\"lib\",\"xtermjs\",\"6.0.0\",\"linux\",\"modes.application-keypad\"]"
     },

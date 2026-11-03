@@ -3,6 +3,7 @@ import { createHash } from "node:crypto"
 import { mkdirSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import {
+  REPLY_PATH_AUDIT_REVIEW,
   SOURCE_NEGATIVE_REVIEW,
   sourceAnswerForRef,
   finalizeProbeResult,
@@ -241,6 +242,16 @@ export function finalizeCollectedDraft(
       ...(captured.runtimeIdentity && { runtimeIdentity: captured.runtimeIdentity }),
       sourceRevision: captured.sourceRevision,
     })
+    // A reply-path gate measured zero reply bytes; a kept answer that claims support contradicts the measurement.
+    if (
+      result.criterionBranch === REPLY_PATH_AUDIT_REVIEW &&
+      resolution.kind === "answer" &&
+      resolution.status === "supported"
+    ) {
+      throw new Error(
+        `Reply-path gate for ${result.featureId} measured a zero-byte reply but its kept answers claim support`,
+      )
+    }
     return finalizeProbeResult(result, resolution)
   })
   for (const result of captured.results) {

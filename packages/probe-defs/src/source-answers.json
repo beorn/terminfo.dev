@@ -25832,9 +25832,7 @@
             "reviewRef": "reply-path:3f19c52dd065",
             "reviewer": "reply-path-audit",
             "reason": "ghostty 332b2aef src/terminal/osc.zig:637-646 state7 accepts only ';' or '7'; '0' -> invalid",
-            "sources": [
-              "ghostty 332b2aef src/terminal/osc.zig:637-646 state7 accepts only ';' or '7'; '0' -> invalid"
-            ]
+            "sources": ["ghostty 332b2aef src/terminal/osc.zig:637-646 state7 accepts only ';' or '7'; '0' -> invalid"]
           }
         ]
       }
@@ -25857,9 +25855,7 @@
             "reviewRef": "reply-path:28c3c172ab57",
             "reviewer": "reply-path-audit",
             "reason": "ghostty 332b2aef src/terminal/osc.zig:637-646 state7 accepts only ';' or '7'; '0' -> invalid",
-            "sources": [
-              "ghostty 332b2aef src/terminal/osc.zig:637-646 state7 accepts only ';' or '7'; '0' -> invalid"
-            ]
+            "sources": ["ghostty 332b2aef src/terminal/osc.zig:637-646 state7 accepts only ';' or '7'; '0' -> invalid"]
           }
         ]
       }
@@ -25882,9 +25878,7 @@
             "reviewRef": "reply-path:2631e49d6afa",
             "reviewer": "reply-path-audit",
             "reason": "ghostty 332b2aef src/terminal/osc.zig:643-646 state77 accepts only '7'; '6' -> invalid",
-            "sources": [
-              "ghostty 332b2aef src/terminal/osc.zig:643-646 state77 accepts only '7'; '6' -> invalid"
-            ]
+            "sources": ["ghostty 332b2aef src/terminal/osc.zig:643-646 state77 accepts only '7'; '6' -> invalid"]
           }
         ]
       }
@@ -25907,9 +25901,7 @@
             "reviewRef": "reply-path:dd18e25394e5",
             "reviewer": "reply-path-audit",
             "reason": "ghostty 332b2aef src/terminal/osc.zig:674-681 state777 accepts only ';'; '0' -> invalid",
-            "sources": [
-              "ghostty 332b2aef src/terminal/osc.zig:674-681 state777 accepts only ';'; '0' -> invalid"
-            ]
+            "sources": ["ghostty 332b2aef src/terminal/osc.zig:674-681 state777 accepts only ';'; '0' -> invalid"]
           }
         ]
       }
@@ -25932,9 +25924,7 @@
             "reviewRef": "reply-path:0fece0d46a0b",
             "reviewer": "reply-path-audit",
             "reason": "ghostty 332b2aef src/terminal/osc.zig:674-681 state777 accepts only ';'; '7' -> invalid",
-            "sources": [
-              "ghostty 332b2aef src/terminal/osc.zig:674-681 state777 accepts only ';'; '7' -> invalid"
-            ]
+            "sources": ["ghostty 332b2aef src/terminal/osc.zig:674-681 state777 accepts only ';'; '7' -> invalid"]
           }
         ]
       }

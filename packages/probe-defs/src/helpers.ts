@@ -1705,10 +1705,8 @@ export function probe(
 
 export const REPLY_PATH_AUDIT_REVIEW = "reply-path-audit-review"
 export const HEADLESS_OBSERVABLE_REVIEW = "headless-observable-review"
-export const UNTESTABLE_ONLY_REVIEW_BRANCHES: ReadonlySet<string> = new Set([
-  REPLY_PATH_AUDIT_REVIEW,
-  HEADLESS_OBSERVABLE_REVIEW,
-])
+/** A reply-path gate carries no verdict, so it is not in this set: its kept answer decides (@cto de41833e). */
+export const UNTESTABLE_ONLY_REVIEW_BRANCHES: ReadonlySet<string> = new Set([HEADLESS_OBSERVABLE_REVIEW])
 
 /** Audited source entries have one home; their paths are repository-relative identities, not checkout locations. */
 export const SOURCE_TREE_AUDITS = {
@@ -1862,10 +1860,12 @@ export function libvtermHistoryReview(ctx: LibProbeSource): ProbeCallbackResult 
 export const HARNESS_INCOMPLETE_TEST = "harness"
 
 /**
- * Apply the reply-path audit table (reply-path-audit.ts) to one library probe; it decides nothing about identity.
- * The review replaces the measured result only when the probe sent its audited query and every matching capture
- * of it returned zero bytes. Observed buffers and replies keep their measured result. Silence on an unaudited
- * binary retains the exact missing-source reason; a known artifact without a feature row uses the ordinary criterion.
+ * Apply the reply-path audit table (reply-path-audit.ts) to one library probe; it decides nothing about identity,
+ * support or testability. The probe keeps only the measured gate: the audited query was sent and every matching
+ * capture of it returned zero bytes. Observed buffers and replies keep their measured result. Silence on an
+ * unaudited binary retains the exact missing-source reason; a known artifact without a feature row uses the
+ * ordinary criterion. The kept answer is applied at the writer's existing finalizeCollectedDraft seam, from the
+ * retained source-answer table (@cto de41833e condition 1).
  */
 function replyPathAudited(
   id: string,
@@ -1933,44 +1933,49 @@ function replyPathAudited(
       tests: [{ id: "criterion", status: "test-todo", reason }],
     }
   }
-  const review = replyPathReviewResult(id, entry, captures, measured)
-  return measured.hostRecipeCauses ? { ...review, hostRecipeCauses: measured.hostRecipeCauses } : review
+  const gate = replyPathMeasuredGate(id, entry, captures, measured)
+  return measured.hostRecipeCauses ? { ...gate, hostRecipeCauses: measured.hostRecipeCauses } : gate
 }
 
 /**
- * The cell records which entry fired, the query it matched, and the zero-byte fact. A missing reply path reads
- * "review by reply-path audit"; a cited parser rejection on the live path is Unsupported whatever the artifact's
- * reply delivery, because no reply transport changes a result the engine never produces (@cto d9998884).
+ * The cell records which audit key fired, the query it matched and the zero-byte measurement. It carries no status
+ * and no citation: the kept answers decide whether that measurement reads Untestable (the artifact has no reply
+ * writer) or Unsupported (its parser rejects the query), and the writer applies that answer (@cto de41833e
+ * condition 1). Reading the table's per-row verdict here would decide the cell twice.
  */
-function replyPathReviewResult(
+function replyPathMeasuredGate(
   id: string,
   entry: NonNullable<ReturnType<typeof replyPathAuditFor>>,
   captures: readonly { text: string; reply: string }[],
   measured: ProbeCallbackResult,
 ): ProbeCallbackResult {
   const { audit, ...identityKey } = entry
-  const replyPathAudit = { ...identityKey, featureId: id, ...audit, captures: captures.length, replyBytes: 0 }
-  const measuredResponse = measured.response ?? null
-  if (audit.kind === "no-reply-path") {
-    return reviewResult(
-      REPLY_PATH_AUDIT_REVIEW,
-      `Review by reply-path audit: the loaded artifact has no reply path (${audit.citation}); Untestable review required`,
-      `${id}: no reply path for this query in the loaded artifact`,
-      {
-        replyPathAudit,
-        measuredResponse,
-        ...(audit.matches === "prefix" && { matchedQueries: captures.map(({ text }) => text) }),
-      },
-    )
+  const replyPathAudit = {
+    ...identityKey,
+    featureId: id,
+    query: audit.query,
+    ...(audit.matches !== undefined && { matches: audit.matches }),
+    captures: captures.length,
+    replyBytes: 0,
   }
-  return parserStateResult(
-    false,
-    `parser-level rejection of ${JSON.stringify(audit.query)}`,
-    { rejection: "parser", replyPathAudit, measuredResponse },
-    "negative by source citation",
-    undefined,
-    "query_reply",
-  )
+  const state = {
+    replyPathAudit,
+    measuredResponse: measured.response ?? null,
+    ...(audit.matches === "prefix" && { matchedQueries: captures.map(({ text }) => text) }),
+  }
+  return {
+    pass: false,
+    response: JSON.stringify(state),
+    note: `${id}: measured a zero-byte reply to the audited query`,
+    criterionBranch: REPLY_PATH_AUDIT_REVIEW,
+    tests: [
+      {
+        id: "review",
+        status: "test-todo",
+        reason: `${id}: the audited query ${JSON.stringify(audit.query)} was sent and every matching capture returned zero bytes (${captures.length}); the kept source answer decides this cell`,
+      },
+    ],
+  }
 }
 
 /** Feature support is independent of whether an observer can inspect link metadata. */
@@ -2167,10 +2172,17 @@ export function finalizeProbeResult(
       throw new Error(`Source answer differs from feature ${input.featureId}`)
     }
     const originalReason = sourceAnswer.kind === "answer" ? sourceAnswer.answers[0]?.originals[0]?.reason : undefined
+    // A disputed cell names every kept original, never a pick by order or kind (@cto 85a9cfd9).
+    const disputed =
+      sourceAnswer.kind === "pending" && sourceAnswer.reason === "kept answers disagree"
+        ? (sourceAnswer.answers ?? [])
+            .flatMap((answer) => answer.originals.map((original) => `${original.reviewer}: ${original.reason}`))
+            .join(" | ")
+        : undefined
     const reason =
       sourceAnswer.kind === "answer"
         ? originalReason && `${originalReason}${sourceAnswer.label ? `; ${sourceAnswer.label}` : ""}`
-        : `${sourceAnswer.reason}: ${sourceAnswer.rowKeys.join(", ")}`
+        : `${sourceAnswer.reason}: ${sourceAnswer.rowKeys.join(", ")}${disputed ? `; kept originals: ${disputed}` : ""}`
     if (!reason) throw new Error(`Source answer for ${input.featureId} has no reason`)
     const otherFailure = input.tests.some((test) => test.id !== "review" && test.status === "test-failure")
     input = {
