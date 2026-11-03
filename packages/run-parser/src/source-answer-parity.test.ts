@@ -74,7 +74,7 @@ describe("kept answers against every current committed run", () => {
   // The full committed corpus exceeded Vitest's 5s default under two-worker CI contention.
   it("finds the subject cells and no cell the writer would decide differently", () => {
     const runs = currentRuns()
-    expect(runs).toHaveLength(12)
+    expect(runs).toHaveLength(16)
     const drifted: string[] = []
     let cells = 0
     for (const { dir, name, run } of runs) {
@@ -86,7 +86,7 @@ describe("kept answers against every current committed run", () => {
       }
     }
     // A table edit re-finalizes the affected runs in the same change; this is the cell-for-cell proof of it.
-    expect({ cells, drifted }).toEqual({ cells: 3276, drifted: [] })
+    expect({ cells, drifted }).toEqual({ cells: 4368, drifted: [] })
   }, 30_000)
 
   it("reads the eight withdrawn colour-reset cells on their surviving reply-path answer", () => {
