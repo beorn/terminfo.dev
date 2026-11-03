@@ -582,7 +582,7 @@ function highlightResetProbe(id: string, setCode: number, resetCode: number): Pr
     // The callback mutates the highlight slot, so the collector must hold a disposable receipt:
     // the same classification the OSC 10-14 reset probes carry.
     termNeedsDisposable: true,
-    // The lib arm mixes measured query_reply and source-review buffer_state routes;
+    // The lib arm records either a query_reply or a parser-state (buffer_state) observation;
     // one declaration cannot state both, so it stays temporarily undeclared under #28801.
   }
 }
@@ -769,7 +769,7 @@ function colorResetProbe(id: string, setCode: number, resetCode: number, index?:
               `OSC ${resetCode} restores the prior OSC ${setCode} color after a verified change`,
               { query, originalRaw, defaultColors: ctx.getDefaultColors() },
               undefined,
-              `OSC ${setCode} initial colour readback is missing and OSC ${resetCode} reset was not observed; default-color readback reports only fg, bg, and cursor, so pointer-colour support requires source review`,
+              `OSC ${setCode} initial colour readback is missing and OSC ${resetCode} reset was not observed; default-color readback reports only fg, bg, and cursor, so pointer-colour support is not observable on this reader`,
             )
           }
           return colorReadbackReviewResult(
