@@ -37,7 +37,7 @@ test.each(["timeout", "query I/O", "diagnostic I/O"] as const)(
         throw failure
       },
     } as unknown as TermProbeSource
-    const result = calibrateCaptureOrigin({ ctx, timeoutMs: 100, captureRaw, collectorLaunched: true })
+    const result = calibrateCaptureOrigin({ ctx, timeoutMs: 100, captureRaw })
     if (fault !== "timeout") await expect(result).rejects.toBe(failure)
     else await expect(result).rejects.toThrow(/cursor visibility query timed out/)
     expect(write).not.toHaveBeenCalled()
@@ -76,7 +76,6 @@ test.each([
       pixelGeometry: geometry,
       timeoutMs: 100,
       captureRaw,
-      collectorLaunched: status === "3" || status === "4",
     }),
   ).rejects.toMatchObject({
     name: "CaptureCalibrationRefused",
@@ -204,9 +203,18 @@ function calibration(
   return { promise, writes, reads, budgets }
 }
 
-// Hosted Terminal.app 41555062118 answered DA1, never DECRQM. Only an app this
-// collector launched can restore that unreported state to its launch default.
-test.each(["sentinel", "zero"] as const)("launched calibration restores default visibility after %s", async (reply) => {
+test("owned disposable calibration sets cursor visibility before painting and restores that explicit state", async () => {
+  // CTO 99185ca9: prior hidden state is irrelevant only in our disposable session.
+  // The old launch-default fallback preserved a reported hidden state instead.
+  const run = calibration({ collectorLaunched: true, visibility: "reset" })
+  await expect(run.promise).resolves.toMatchObject({ pixelGeometry: geometry })
+  expect(run.writes[0]).toBe("\x1b[?25h")
+  expect(run.writes.at(-1)).toBe("\x1b[?25h")
+  expect(run.reads.get("restore grid paint")).toBe(2)
+})
+
+// Owned disposable sessions set a state explicitly, independent of any prior report.
+test.each(["sentinel", "zero"] as const)("owned calibration establishes visibility despite %s", async (reply) => {
   const raw = "\x1b[?1;2c"
   const run = calibration({
     collectorLaunched: true,
@@ -222,7 +230,9 @@ test.each(["sentinel", "zero"] as const)("launched calibration restores default 
   })
   await expect(run.promise).resolves.toMatchObject({
     pixelGeometry: geometry,
-    basis: expect.stringContaining("prior cursor visibility unreported; restored launch default set"),
+    basis: expect.stringContaining(
+      "owned disposable session cursor explicitly set before calibration and restored set",
+    ),
   })
   expect(run.writes.at(-1)).toBe("\x1b[?25h")
   expect(run.reads.get("restore grid paint")).toBe(2)
@@ -436,7 +446,7 @@ test.each(["set", "reset"] as const)(
   async (visibility) => {
     const run = calibration({
       visibility,
-      collectorLaunched: true,
+      collectorLaunched: false,
       beforeCapture: (_label, writes) => {
         expect(writes.join("")).toContain("\x1b[?25l")
         expect(writes.join("")).not.toContain("\x1b[?25h")

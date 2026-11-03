@@ -625,7 +625,10 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
               ctx: probeSource,
               pixelGeometry: reportedGeometry,
               timeoutMs: DEFAULT_TIMEOUT_MS,
-              collectorLaunched: kind === "darwinHosted" || (kind === "process" && process.platform === "darwin"),
+              collectorLaunched:
+                kind === "darwinHosted" ||
+                (kind === "process" && process.platform === "darwin") ||
+                (process.platform === "linux" && kind === "linux"),
               captureRaw: async (label, deadline) => {
                 const result = await adapter.captureRaw({ featureId, role: "control", label }, deadline)
                 recordCapture(result.result)

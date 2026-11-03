@@ -82,9 +82,11 @@ one calibration witnesses the grid origin and every cell pitch, then confirms id
 The batch carries that measured origin and geometry into every cell crop; changing screen content cannot move them.
 An unmeasurable witness or changed geometry is recorded as a named refusal, never replaced by frame-colour centring.
 Every confirmation compares consecutive complete frames under one fixed deadline.
-For a Darwin app the collector launched, an unreported cursor-visibility mode restores
-the launch default set; the retained raster basis names that choice without treating DA1 as a mode reply.
-The identical-restoration witness concerns surface pixels; unreported cursor state uses the launch default without a mode readback claim.
+For a verified collector-launched disposable session on Darwin or Linux, including a Linux mux,
+calibration explicitly sets cursor visibility before painting and restores that set state.
+It does not infer the prior state from a launch default or DA1. The retained raster basis names the
+explicit setup; identical restoration concerns surface pixels without a cursor-mode readback claim.
+Sessions the collector did not launch require a reported original visibility and restore it unchanged.
 Native capture-command failures during installation retain their primary command evidence and
 secondary restoration failure in the named per-row no-adapter outcome, including native command deadline kills.
 Terminal-query timeouts and apparatus errors without a native capture-command cause retain their existing failure behavior.
