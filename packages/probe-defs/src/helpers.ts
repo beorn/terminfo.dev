@@ -850,9 +850,31 @@ export async function sgrReadbackDecision(
   sequence: string,
   readback: SgrReadback,
   setup?: { sequence: string; baseline: SgrReadback; readback: SgrReadback },
-  independentSetup?: () => Promise<ProbeCallbackResult | null>,
+  independentCapture?: () => Promise<ProbeCallbackResult | null>,
 ): Promise<ProbeCallbackResult | null> {
   const observed: Record<string, string> = {}
+  const captureReadback = async (reply: Record<string, string>, phase: "setup" | "visual") => {
+    const captured = await independentCapture?.()
+    if (!captured) return null
+    const instrument =
+      phase === "setup"
+        ? `${id}: the independent capture oracle supplies this result because the terminal's SGR report did not establish setup`
+        : `${id}: the independent capture oracle supplies the visual result`
+    const retainedNote = `${instrument}; DECRQSS ${JSON.stringify(reply)}`
+    const note = captured.note ? `${captured.note}; ${retainedNote}` : retainedNote
+    const retained = { response: JSON.stringify({ ...reply, capture: captured.response }), note }
+    if (captured.observation) {
+      return {
+        ...captured,
+        ...retained,
+        observation: {
+          ...captured.observation,
+          note: captured.observation.note ? `${captured.observation.note}; ${retainedNote}` : retainedNote,
+        },
+      }
+    }
+    return { ...captured, ...retained }
+  }
   try {
     ctx.write("\x1b[0m")
     if (setup) {
@@ -871,28 +893,10 @@ export async function sgrReadbackDecision(
           if (
             phase === "setup" &&
             (qualified.observation?.outcome === "unsupported" || qualified.notTested !== undefined) &&
-            independentSetup
+            independentCapture
           ) {
-            const captured = await independentSetup()
-            if (captured) {
-              const instrument = `${id}: the independent capture oracle supplies this result because the terminal's SGR report did not establish setup`
-              const note = captured.note ? `${captured.note}; ${instrument}` : instrument
-              const retained = {
-                response: JSON.stringify({ ...observed, capture: captured.response }),
-                note,
-              }
-              if (captured.observation) {
-                return {
-                  ...captured,
-                  ...retained,
-                  observation: {
-                    ...captured.observation,
-                    note: captured.observation.note ? `${captured.observation.note}; ${instrument}` : instrument,
-                  },
-                }
-              }
-              return { ...captured, ...retained }
-            }
+            const captured = await captureReadback(observed, "setup")
+            if (captured) return captured
           }
           const note = `${id}: ${phase} prerequisite was not established${qualified.note ? `: ${qualified.note}` : ""}`
           if (qualified.notTested) {
@@ -915,10 +919,19 @@ export async function sgrReadbackDecision(
     ctx.write(sequence)
     const state = await querySgrState(ctx)
     if (state === null) return null
-    const result = evaluateSgrReadback(id, sequence, state, readback, setup !== undefined)
-    return setup
-      ? { ...result, response: JSON.stringify({ sgr: state.length === 0 ? "0" : state.join(";"), ...observed }) }
-      : result
+    const evaluated = evaluateSgrReadback(id, sequence, state, readback, setup !== undefined)
+    const reply = { sgr: state.length === 0 ? "0" : state.join(";"), ...observed }
+    const result = setup ? { ...evaluated, response: JSON.stringify(reply) } : evaluated
+    // Invalid replies keep their failure; valid state reports do not decide a visual claim.
+    if (
+      ctx.capture &&
+      independentCapture &&
+      (result.notTested || result.observation?.outcome === "supported" || result.observation?.outcome === "unsupported")
+    ) {
+      const captured = await captureReadback(reply, "visual")
+      if (captured) return captured
+    }
+    return result
   } finally {
     ctx.write("\x1b[0m")
   }
@@ -1062,19 +1075,12 @@ export function sgrProbe(
     async term(ctx) {
       const refusal = sgrPlainFixtureTooSmall(ctx)
       if (refusal) return refusal
-      if (readback) {
-        // The capture fixture guard refuses before any bytes on a measured small terminal, so the
-        // readback must not emit its own sequences ahead of it.
-        if (ctx.capture) {
-          const refusal = sgrCaptureTooSmall(ctx, "SGR fixture")
-          if (refusal) return refusal
-        }
-        const decided = await sgrReadbackDecision(ctx, id, sequence, readback)
-        if (decided) return decided
-      }
       if (ctx.capture) {
         const refusal = sgrCaptureTooSmall(ctx, "SGR fixture")
         if (refusal) return refusal
+      }
+      const captureResult = async () => {
+        if (!ctx.capture) return null
         const sample = "AaBb 0123456789 - terminal text"
         try {
           if (capture) return await capture(ctx, { sequence, sample, row: 3, col: 3 })
@@ -1091,6 +1097,12 @@ export function sgrProbe(
           ctx.write("\x1b[0m")
         }
       }
+      if (readback) {
+        const decided = await sgrReadbackDecision(ctx, id, sequence, readback, undefined, captureResult)
+        if (decided) return decided
+      }
+      const captured = await captureResult()
+      if (captured) return captured
       ctx.write("\x1b[1;1H\x1b[2K") // clear line
       ctx.write(sequence + "X\x1b[0m")
       const pos = await ctx.queryCursorPosition()

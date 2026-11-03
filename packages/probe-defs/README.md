@@ -381,6 +381,12 @@ the capture response, and the note names the deciding instrument. Malformed setu
 final-phase results and the three multi-attribute reference refusals keep their existing behavior.
 Without a deciding independent capture, an omitted setup attribute retains named Test to-do coverage
 and both raw query phases, just as an omitted final attribute does; it is not a broken measurement.
+With an owned capture, valid final SGR state replies and named missing-observable results use the
+existing visual oracle; its same-run controls decide the visual claim, and the unchanged DECRQSS
+reply stays in the note. The existing sixth callback supplies that capture without a new API.
+Malformed replies and failed baseline/setup controls keep their failures; independent setup
+capture keeps its existing eligibility. A valid state reply and different pixel result measure
+different properties, not a conflict.
 
 **Headless evidence** comes through [headless-batch.ts](../probes/headless-batch.ts). It retains callback `response` values as raw replies, not every probe-source call or every engine-state read.
 
