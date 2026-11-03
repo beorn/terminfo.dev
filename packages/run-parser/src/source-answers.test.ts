@@ -611,8 +611,11 @@ it.each(["new-qualified", "stored-headless", "unqualified"])(
     if (mode === "unqualified") {
       // A named but unavailable different core cannot use own-version fallback.
       control.mode = "absent"
-      if (capture.runtimeIdentity?.integrity.kind !== "source") throw new Error("Expected retained source identity")
-      capture.runtimeIdentity.integrity.revision = "0".repeat(40)
+      const runtime = capture.runtimeIdentity
+      if (runtime?.kind !== "js" || runtime.integrity.kind !== "source") {
+        throw new Error("Expected retained JS source identity")
+      }
+      runtime.integrity.revision = "0".repeat(40)
     }
     const before = structuredClone(capture)
     const finalized = finalizeCollectedDraft(capture)
