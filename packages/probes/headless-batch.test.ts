@@ -4280,15 +4280,52 @@ test("retains execution-only failure bytes despite pass true and rejects a typed
   ])
 })
 
-// #31774 (@cto 5429c292 Q1.2): an unaudited native artifact must be refused once up front before any probe runs,
-// with one sentence on stderr and in the run record naming loaded sha, expected sha, nativeTreeOid, and audited keys;
-// no per-probe errors, no sentinel degradation, and no secondary throw in finalizeHeadlessAttempt.
-test("refuses an unaudited native artifact up front before probe collection with loaded sha, expected sha, nativeTreeOid, and audited keys", async () => {
+// AC1: the old preflight refused an exact declared/loaded identity because it lacked
+// audit-table membership; existing tests deliberately asserted that obsolete refusal.
+test("unaudited binary collects a named audit TODO and an observed buffer result", async () => {
+  const sha256 = "f".repeat(64)
+  const identity = {
+    kind: "native" as const,
+    engineVersion: "fixture",
+    adapterVersion: "fixture",
+    termlessRevision: "a".repeat(40),
+    loadedBinary: { path: "fixture.node", sha256 },
+    provenance: {
+      sha256,
+      sourceCommit: "a".repeat(40),
+      buildHash: "b".repeat(64),
+      toolchain: "fixture",
+      lockSha256: "c".repeat(64),
+    },
+  }
+  const { assertDeclaredNativeSha } = await import("./headless-batch.ts")
+  expect(() =>
+    assertDeclaredNativeSha(
+      "fixture",
+      identity,
+      { boundary: "feed-and-getCursor", adapterSources: [], engine: { kind: "native", sha256 } },
+      undefined,
+      undefined,
+      () => {},
+    ),
+  ).not.toThrow()
+  const definitions = registryDefinitions(["device.xtgettcap", "sgr.bold"]).map((definition) => ({
+    ...definition,
+    lib: (ctx: LibProbeSource) => definition.lib!({ ...ctx, runtimeIdentity: identity }),
+  }))
+  const batch = await collectBatch(backend, "xtermjs", definitions)
+  expect(batch.results.find((row) => row.featureId === "device.xtgettcap")).toMatchObject({
+    status: "test-todo",
+    tests: [{ id: "criterion", status: "test-todo", reason: `no source audit for binary ${sha256.slice(0, 12)}` }],
+  })
+  expect(batch.results.find((row) => row.featureId === "sgr.bold")?.status).toBe("supported")
+})
+
+// AC2: an actual declared/loaded mismatch still refuses before probes and retains the original failure.
+test("refuses a declared native SHA mismatch before probe collection", async () => {
   const { initializeRunDraft, readCollectorAttempt, recordCollectionFailure, recordCollectorAttempt } =
     await import("@terminfo/probe-defs")
-  const { NATIVE_HOST_AUDITS } = await import("../probe-defs/src/native-host-audit.ts")
-  const { REPLY_PATH_AUDITS } = await import("../probe-defs/src/reply-path-audit.ts")
-  const { assertAuditedNativeArtifact, finalizeHeadlessAttempt } = await import("./headless-batch.ts")
+  const { assertDeclaredNativeSha, finalizeHeadlessAttempt } = await import("./headless-batch.ts")
   const loadedSha = "67736cf8d7d96156ac921566713032a445bfd8564e499f5e715c3c7f077d8af6"
   const expectedSha = "32d76284e5a3c7673fafbbc83a16717fa0a1c1811c7d659d982176a53ceb1aa9"
   const nativeTreeOid = "4c4fb801b537704068deac6b8df24ed86a68cf35"
@@ -4318,7 +4355,7 @@ test("refuses an unaudited native artifact up front before probe collection with
   const draftPath = "pass-s93GZY/lib-alacritty-unknown.draft.json"
   const warnings: string[] = []
   expect(() =>
-    assertAuditedNativeArtifact(
+    assertDeclaredNativeSha(
       "alacritty",
       {
         ...runtimeIdentity,
@@ -4333,7 +4370,7 @@ test("refuses an unaudited native artifact up front before probe collection with
   ).not.toThrow()
   expect(warnings).toEqual([])
 
-  // Unaudited artifact refuses up front before any probe runs.
+  // Identity mismatch refuses before probes, regardless of source-audit membership.
   const ids = ["extensions.osc10-fg-color", "device.primary-da"]
   const startedAt = "2026-10-29T22:34:03.743Z"
   const draft = initializeRunDraft({
@@ -4354,7 +4391,7 @@ test("refuses an unaudited native artifact up front before probe collection with
 
   let caught: Error | undefined
   try {
-    assertAuditedNativeArtifact("alacritty", runtimeIdentity, declaration, nativeTreeOid, draftPath, (line) =>
+    assertDeclaredNativeSha("alacritty", runtimeIdentity, declaration, nativeTreeOid, draftPath, (line) =>
       warnings.push(line),
     )
   } catch (error) {
@@ -4379,9 +4416,6 @@ test("refuses an unaudited native artifact up front before probe collection with
   expect(caught!.message).toContain(`expected sha ${expectedSha}`)
   expect(caught!.message).toContain(`nativeTreeOid ${nativeTreeOid}`)
   expect(caught!.message).toContain(`draft: ${draftPath}`)
-  for (const key of [...NATIVE_HOST_AUDITS.keys(), ...REPLY_PATH_AUDITS.keys()]) {
-    expect(caught!.message).toContain(key.slice(0, 12))
-  }
   expect(draft.rawReplies["collector.failure"]).toBe(caught!.message)
   expect(draft.rawReplies["collector.finalizationFailure"]).toBeUndefined()
   expect(draft.rawReplies["collector.replyPath"]).toBeUndefined()
@@ -4389,7 +4423,7 @@ test("refuses an unaudited native artifact up front before probe collection with
   expect(draft.results.every((row) => row.attempt.scope === "collection" && row.reason === caught!.message)).toBe(true)
 
   // #31810: kitty is typed "native" in backends.json but is a `kitty +runpy` subprocess bridge that loads
-  // no .node addon; evaluating readNativeArtifactTreeOid(entry.package) as an argument to assertAuditedNativeArtifact
+  // no .node addon; evaluating readNativeArtifactTreeOid(entry.package) as an argument to assertDeclaredNativeSha
   // must never ask require.cache for a loaded native addon in packages/kitty.
   const { readNativeArtifactTreeOid } = await import("./headless-identity.ts")
   const kittyIdentity = {
@@ -4413,7 +4447,7 @@ test("refuses an unaudited native artifact up front before probe collection with
   expect(readNativeArtifactTreeOid("@termless/kitty")).toBeUndefined()
   expect(readNativeArtifactTreeOid("@termless/kitty", "kitty")).toBeUndefined()
   expect(() =>
-    assertAuditedNativeArtifact(
+    assertDeclaredNativeSha(
       "kitty",
       kittyIdentity,
       undefined,

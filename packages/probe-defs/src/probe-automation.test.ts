@@ -278,6 +278,12 @@ describe("audited native host recipe callers", () => {
         }),
       )
       expect(result.hostRecipeCauses).toBeUndefined()
+      if (id !== "extensions.osc10-fg-color") {
+        expect(result.tests).toEqual([
+          { id: "criterion", status: "test-todo", reason: `no source audit for binary ${other.slice(0, 12)}` },
+        ])
+        expect(result.observation).toBeUndefined()
+      }
     },
   )
 
@@ -928,6 +934,20 @@ describe("reply-path audit", () => {
     )
     return { result, sent }
   }
+
+  // AC1: existing unlisted-artifact coverage checked only absence of borrowed citations,
+  // allowing a default negative or unnamed coverage instead of the required missing-audit TODO.
+  test("unaudited binary silence names its own missing source audit while replies stay observed", () => {
+    const sha = "f".repeat(64)
+    const silent = run("device.secondary-da", sha, () => "").result
+    expect(silent.tests).toEqual([
+      { id: "criterion", status: "test-todo", reason: `no source audit for binary ${sha.slice(0, 12)}` },
+    ])
+    expect(silent.observation).toBeUndefined()
+    const observed = run("device.secondary-da", sha, () => "\x1b[>1;2;0c").result
+    expect(observed.observation?.outcome).toBe("supported")
+    expect(observed.tests?.some((row) => row.reason?.startsWith("no source audit"))).not.toBe(true)
+  })
 
   // #32026: these three callbacks previously returned before sending any protocol bytes,
   // so adding data alone would never trigger the source audit. The real callback owns that boundary.

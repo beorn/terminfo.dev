@@ -161,6 +161,13 @@ Termless revisions or host filesystem locators. Raw replies and observed payload
 runtime identities; the record's allowlisted identity is their sole carrier. WASM engine identity
 uses the loaded binary digest, while wrapper repository/tree metadata remains provenance.
 
+Headless collection checks declared-versus-loaded native SHA before probes, independently of source-audit
+membership. An unaudited binary still collects observed buffers and replies. A silence-dependent cell without
+its binary's source audit retains TEST TODO with `no source audit for binary <sha12>` and its raw response;
+it never borrows another binary's citation. Hourly measurement calls the existing `collectHeadlessRuns`
+entry point and reads its `collection.json` through the canonical run parser, without importing review selection.
+App/hosted collection keeps its existing driver, and admission remains separate.
+
 The current libvterm v0.3.3 source audits bind WASM `3d67045b`, adapter blob
 `eb513ccd` and loader blob `1e784be8`. Its OSC52 selection callbacks and native
 reverse-property observation do not add retained history, a title stack or other
