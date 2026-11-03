@@ -1447,6 +1447,7 @@ test.each([
 })
 
 // Q2/bar93: callback tests miss a typed buffer-state review rejected at the collector/parser boundary.
+// Canonical source validation lazily fetches historical Git blobs in CI's partial clones; this is not a speed test.
 test("DECSSCLS real-vterm pending source review survives collection and canonical parsing", async () => {
   const id = "modes.decsscls"
   const manifest = {
@@ -1525,7 +1526,7 @@ test("DECSSCLS real-vterm pending source review survives collection and canonica
     new Map([[manifest.probeHash, manifest]]),
   )
   expect(parsed.results).toEqual(finalized.results)
-})
+}, 30_000)
 
 // @failure A typed D/633 source review under libAssertionType:null becomes a collector error.
 // @level l1 @consumer collectBatch plus capture parser; callback tests cannot catch declaration rejection.
