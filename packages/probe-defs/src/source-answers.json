@@ -2501,6 +2501,426 @@
       "version": "0.4.0",
       "os": "linux"
     },
+    "featureId": "extensions.osc633-a",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "vendor/ghostty-web/ghostty-vt.wasm",
+            "oid": "99810cd84adb3a1439d07370e7cad8fec7f3cd21"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "vendor/ghostty-web/dist/ghostty-web.js",
+            "oid": "f8861be44a538fff74ebf2718a7304dd218c970a"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "vendor/ghostty-web/RECEIPT.json",
+            "oid": "3ffc517c4f4b5b97bf31e5a8b513ab7f3b21251e"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "vendor/ghostty-web/ghostty-wasm-api.patch",
+            "oid": "17769d971169a3f50ea15335ef473984b2026b32"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "vendor/ghostty-web/ghostty-page-zero.patch",
+            "oid": "e783e0658de095b5d5eba582342797f180bc842f"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/ghostty/src/backend.ts",
+            "oid": "19d45e37b36c0d6fc8d69ae6215ece9db173351c"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev3-2026-11-03-ghostty-0.4.0-extensions.osc633-a-source-review",
+            "reviewer": "@dev/3",
+            "reason": "Source review (@dev/3, 2026-11-03): shipped ghostty-web 0.4.0 at Termless 25089207e11420cf7a588987c1dc2683a45e8372 binds Ghostty core 5714ed07a1012573261b7b7e3ed2add9c1504496 through vendor/ghostty-web/RECEIPT.json. In src/terminal/osc.zig:550-567, Parser.next rejects an initial 6; subsequent invalid-state bytes clear complete and Parser.end at 1708-1715 returns null. Thus OSC 633;A never dispatches or registers its required state. The API and page-zero patches do not alter this parser. packages/ghostty/src/backend.ts:376-386 passes bytes to ghostty-web; dist/ghostty-web.js:143-145 copies them to WASM, whose patched write feeds stream.nextSlice (API patch:1065-1067). Neither wrapper implements OSC 633. This is Unsupported from pinned parser rejection, not absent readback or cursor movement. The cited tracked WASM SHA-256 42e84af1b38be94571974a23fa4667c4735ee7a272dcff39afd5cba40dcf48de and JS hash match both the build receipt and the actual author capture.",
+            "sources": [
+              "https://github.com/ghostty-org/ghostty/blob/5714ed07a1012573261b7b7e3ed2add9c1504496/src/terminal/osc.zig#L550-L567",
+              "https://github.com/ghostty-org/ghostty/blob/5714ed07a1012573261b7b7e3ed2add9c1504496/src/terminal/osc.zig#L1708-L1715",
+              "Termless 25089207e11420cf7a588987c1dc2683a45e8372 vendor/ghostty-web/ghostty-vt.wasm",
+              "Termless 25089207e11420cf7a588987c1dc2683a45e8372 vendor/ghostty-web/dist/ghostty-web.js",
+              "Termless 25089207e11420cf7a588987c1dc2683a45e8372 vendor/ghostty-web/RECEIPT.json",
+              "Termless 25089207e11420cf7a588987c1dc2683a45e8372 vendor/ghostty-web/ghostty-wasm-api.patch",
+              "Termless 25089207e11420cf7a588987c1dc2683a45e8372 vendor/ghostty-web/ghostty-page-zero.patch",
+              "Termless 25089207e11420cf7a588987c1dc2683a45e8372 packages/ghostty/src/backend.ts",
+              "Author run 5f2172d1-5122-415f-9122-2c25e79706cc; suite 07a42ec1d359; six specific OSC 633 cells pending before source qualification"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "ghostty",
+      "version": "0.4.0",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc633-b",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "vendor/ghostty-web/ghostty-vt.wasm",
+            "oid": "99810cd84adb3a1439d07370e7cad8fec7f3cd21"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "vendor/ghostty-web/dist/ghostty-web.js",
+            "oid": "f8861be44a538fff74ebf2718a7304dd218c970a"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "vendor/ghostty-web/RECEIPT.json",
+            "oid": "3ffc517c4f4b5b97bf31e5a8b513ab7f3b21251e"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "vendor/ghostty-web/ghostty-wasm-api.patch",
+            "oid": "17769d971169a3f50ea15335ef473984b2026b32"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "vendor/ghostty-web/ghostty-page-zero.patch",
+            "oid": "e783e0658de095b5d5eba582342797f180bc842f"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/ghostty/src/backend.ts",
+            "oid": "19d45e37b36c0d6fc8d69ae6215ece9db173351c"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev3-2026-11-03-ghostty-0.4.0-extensions.osc633-b-source-review",
+            "reviewer": "@dev/3",
+            "reason": "Source review (@dev/3, 2026-11-03): shipped ghostty-web 0.4.0 at Termless 25089207e11420cf7a588987c1dc2683a45e8372 binds Ghostty core 5714ed07a1012573261b7b7e3ed2add9c1504496 through vendor/ghostty-web/RECEIPT.json. In src/terminal/osc.zig:550-567, Parser.next rejects an initial 6; subsequent invalid-state bytes clear complete and Parser.end at 1708-1715 returns null. Thus OSC 633;B never dispatches or registers its required state. The API and page-zero patches do not alter this parser. packages/ghostty/src/backend.ts:376-386 passes bytes to ghostty-web; dist/ghostty-web.js:143-145 copies them to WASM, whose patched write feeds stream.nextSlice (API patch:1065-1067). Neither wrapper implements OSC 633. This is Unsupported from pinned parser rejection, not absent readback or cursor movement. The cited tracked WASM SHA-256 42e84af1b38be94571974a23fa4667c4735ee7a272dcff39afd5cba40dcf48de and JS hash match both the build receipt and the actual author capture.",
+            "sources": [
+              "https://github.com/ghostty-org/ghostty/blob/5714ed07a1012573261b7b7e3ed2add9c1504496/src/terminal/osc.zig#L550-L567",
+              "https://github.com/ghostty-org/ghostty/blob/5714ed07a1012573261b7b7e3ed2add9c1504496/src/terminal/osc.zig#L1708-L1715",
+              "Termless 25089207e11420cf7a588987c1dc2683a45e8372 vendor/ghostty-web/ghostty-vt.wasm",
+              "Termless 25089207e11420cf7a588987c1dc2683a45e8372 vendor/ghostty-web/dist/ghostty-web.js",
+              "Termless 25089207e11420cf7a588987c1dc2683a45e8372 vendor/ghostty-web/RECEIPT.json",
+              "Termless 25089207e11420cf7a588987c1dc2683a45e8372 vendor/ghostty-web/ghostty-wasm-api.patch",
+              "Termless 25089207e11420cf7a588987c1dc2683a45e8372 vendor/ghostty-web/ghostty-page-zero.patch",
+              "Termless 25089207e11420cf7a588987c1dc2683a45e8372 packages/ghostty/src/backend.ts",
+              "Author run 5f2172d1-5122-415f-9122-2c25e79706cc; suite 07a42ec1d359; six specific OSC 633 cells pending before source qualification"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "ghostty",
+      "version": "0.4.0",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc633-c",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "vendor/ghostty-web/ghostty-vt.wasm",
+            "oid": "99810cd84adb3a1439d07370e7cad8fec7f3cd21"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "vendor/ghostty-web/dist/ghostty-web.js",
+            "oid": "f8861be44a538fff74ebf2718a7304dd218c970a"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "vendor/ghostty-web/RECEIPT.json",
+            "oid": "3ffc517c4f4b5b97bf31e5a8b513ab7f3b21251e"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "vendor/ghostty-web/ghostty-wasm-api.patch",
+            "oid": "17769d971169a3f50ea15335ef473984b2026b32"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "vendor/ghostty-web/ghostty-page-zero.patch",
+            "oid": "e783e0658de095b5d5eba582342797f180bc842f"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/ghostty/src/backend.ts",
+            "oid": "19d45e37b36c0d6fc8d69ae6215ece9db173351c"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev3-2026-11-03-ghostty-0.4.0-extensions.osc633-c-source-review",
+            "reviewer": "@dev/3",
+            "reason": "Source review (@dev/3, 2026-11-03): shipped ghostty-web 0.4.0 at Termless 25089207e11420cf7a588987c1dc2683a45e8372 binds Ghostty core 5714ed07a1012573261b7b7e3ed2add9c1504496 through vendor/ghostty-web/RECEIPT.json. In src/terminal/osc.zig:550-567, Parser.next rejects an initial 6; subsequent invalid-state bytes clear complete and Parser.end at 1708-1715 returns null. Thus OSC 633;C never dispatches or registers its required state. The API and page-zero patches do not alter this parser. packages/ghostty/src/backend.ts:376-386 passes bytes to ghostty-web; dist/ghostty-web.js:143-145 copies them to WASM, whose patched write feeds stream.nextSlice (API patch:1065-1067). Neither wrapper implements OSC 633. This is Unsupported from pinned parser rejection, not absent readback or cursor movement. The cited tracked WASM SHA-256 42e84af1b38be94571974a23fa4667c4735ee7a272dcff39afd5cba40dcf48de and JS hash match both the build receipt and the actual author capture.",
+            "sources": [
+              "https://github.com/ghostty-org/ghostty/blob/5714ed07a1012573261b7b7e3ed2add9c1504496/src/terminal/osc.zig#L550-L567",
+              "https://github.com/ghostty-org/ghostty/blob/5714ed07a1012573261b7b7e3ed2add9c1504496/src/terminal/osc.zig#L1708-L1715",
+              "Termless 25089207e11420cf7a588987c1dc2683a45e8372 vendor/ghostty-web/ghostty-vt.wasm",
+              "Termless 25089207e11420cf7a588987c1dc2683a45e8372 vendor/ghostty-web/dist/ghostty-web.js",
+              "Termless 25089207e11420cf7a588987c1dc2683a45e8372 vendor/ghostty-web/RECEIPT.json",
+              "Termless 25089207e11420cf7a588987c1dc2683a45e8372 vendor/ghostty-web/ghostty-wasm-api.patch",
+              "Termless 25089207e11420cf7a588987c1dc2683a45e8372 vendor/ghostty-web/ghostty-page-zero.patch",
+              "Termless 25089207e11420cf7a588987c1dc2683a45e8372 packages/ghostty/src/backend.ts",
+              "Author run 5f2172d1-5122-415f-9122-2c25e79706cc; suite 07a42ec1d359; six specific OSC 633 cells pending before source qualification"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "ghostty",
+      "version": "0.4.0",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc633-d",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "vendor/ghostty-web/ghostty-vt.wasm",
+            "oid": "99810cd84adb3a1439d07370e7cad8fec7f3cd21"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "vendor/ghostty-web/dist/ghostty-web.js",
+            "oid": "f8861be44a538fff74ebf2718a7304dd218c970a"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "vendor/ghostty-web/RECEIPT.json",
+            "oid": "3ffc517c4f4b5b97bf31e5a8b513ab7f3b21251e"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "vendor/ghostty-web/ghostty-wasm-api.patch",
+            "oid": "17769d971169a3f50ea15335ef473984b2026b32"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "vendor/ghostty-web/ghostty-page-zero.patch",
+            "oid": "e783e0658de095b5d5eba582342797f180bc842f"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/ghostty/src/backend.ts",
+            "oid": "19d45e37b36c0d6fc8d69ae6215ece9db173351c"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev3-2026-11-03-ghostty-0.4.0-extensions.osc633-d-source-review",
+            "reviewer": "@dev/3",
+            "reason": "Source review (@dev/3, 2026-11-03): shipped ghostty-web 0.4.0 at Termless 25089207e11420cf7a588987c1dc2683a45e8372 binds Ghostty core 5714ed07a1012573261b7b7e3ed2add9c1504496 through vendor/ghostty-web/RECEIPT.json. In src/terminal/osc.zig:550-567, Parser.next rejects an initial 6; subsequent invalid-state bytes clear complete and Parser.end at 1708-1715 returns null. Thus OSC 633;D never dispatches or registers its required state. The API and page-zero patches do not alter this parser. packages/ghostty/src/backend.ts:376-386 passes bytes to ghostty-web; dist/ghostty-web.js:143-145 copies them to WASM, whose patched write feeds stream.nextSlice (API patch:1065-1067). Neither wrapper implements OSC 633. This is Unsupported from pinned parser rejection, not absent readback or cursor movement. The cited tracked WASM SHA-256 42e84af1b38be94571974a23fa4667c4735ee7a272dcff39afd5cba40dcf48de and JS hash match both the build receipt and the actual author capture.",
+            "sources": [
+              "https://github.com/ghostty-org/ghostty/blob/5714ed07a1012573261b7b7e3ed2add9c1504496/src/terminal/osc.zig#L550-L567",
+              "https://github.com/ghostty-org/ghostty/blob/5714ed07a1012573261b7b7e3ed2add9c1504496/src/terminal/osc.zig#L1708-L1715",
+              "Termless 25089207e11420cf7a588987c1dc2683a45e8372 vendor/ghostty-web/ghostty-vt.wasm",
+              "Termless 25089207e11420cf7a588987c1dc2683a45e8372 vendor/ghostty-web/dist/ghostty-web.js",
+              "Termless 25089207e11420cf7a588987c1dc2683a45e8372 vendor/ghostty-web/RECEIPT.json",
+              "Termless 25089207e11420cf7a588987c1dc2683a45e8372 vendor/ghostty-web/ghostty-wasm-api.patch",
+              "Termless 25089207e11420cf7a588987c1dc2683a45e8372 vendor/ghostty-web/ghostty-page-zero.patch",
+              "Termless 25089207e11420cf7a588987c1dc2683a45e8372 packages/ghostty/src/backend.ts",
+              "Author run 5f2172d1-5122-415f-9122-2c25e79706cc; suite 07a42ec1d359; six specific OSC 633 cells pending before source qualification"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "ghostty",
+      "version": "0.4.0",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc633-e",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "vendor/ghostty-web/ghostty-vt.wasm",
+            "oid": "99810cd84adb3a1439d07370e7cad8fec7f3cd21"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "vendor/ghostty-web/dist/ghostty-web.js",
+            "oid": "f8861be44a538fff74ebf2718a7304dd218c970a"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "vendor/ghostty-web/RECEIPT.json",
+            "oid": "3ffc517c4f4b5b97bf31e5a8b513ab7f3b21251e"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "vendor/ghostty-web/ghostty-wasm-api.patch",
+            "oid": "17769d971169a3f50ea15335ef473984b2026b32"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "vendor/ghostty-web/ghostty-page-zero.patch",
+            "oid": "e783e0658de095b5d5eba582342797f180bc842f"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/ghostty/src/backend.ts",
+            "oid": "19d45e37b36c0d6fc8d69ae6215ece9db173351c"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev3-2026-11-03-ghostty-0.4.0-extensions.osc633-e-source-review",
+            "reviewer": "@dev/3",
+            "reason": "Source review (@dev/3, 2026-11-03): shipped ghostty-web 0.4.0 at Termless 25089207e11420cf7a588987c1dc2683a45e8372 binds Ghostty core 5714ed07a1012573261b7b7e3ed2add9c1504496 through vendor/ghostty-web/RECEIPT.json. In src/terminal/osc.zig:550-567, Parser.next rejects an initial 6; subsequent invalid-state bytes clear complete and Parser.end at 1708-1715 returns null. Thus OSC 633;E never dispatches or registers its required state. The API and page-zero patches do not alter this parser. packages/ghostty/src/backend.ts:376-386 passes bytes to ghostty-web; dist/ghostty-web.js:143-145 copies them to WASM, whose patched write feeds stream.nextSlice (API patch:1065-1067). Neither wrapper implements OSC 633. This is Unsupported from pinned parser rejection, not absent readback or cursor movement. The cited tracked WASM SHA-256 42e84af1b38be94571974a23fa4667c4735ee7a272dcff39afd5cba40dcf48de and JS hash match both the build receipt and the actual author capture.",
+            "sources": [
+              "https://github.com/ghostty-org/ghostty/blob/5714ed07a1012573261b7b7e3ed2add9c1504496/src/terminal/osc.zig#L550-L567",
+              "https://github.com/ghostty-org/ghostty/blob/5714ed07a1012573261b7b7e3ed2add9c1504496/src/terminal/osc.zig#L1708-L1715",
+              "Termless 25089207e11420cf7a588987c1dc2683a45e8372 vendor/ghostty-web/ghostty-vt.wasm",
+              "Termless 25089207e11420cf7a588987c1dc2683a45e8372 vendor/ghostty-web/dist/ghostty-web.js",
+              "Termless 25089207e11420cf7a588987c1dc2683a45e8372 vendor/ghostty-web/RECEIPT.json",
+              "Termless 25089207e11420cf7a588987c1dc2683a45e8372 vendor/ghostty-web/ghostty-wasm-api.patch",
+              "Termless 25089207e11420cf7a588987c1dc2683a45e8372 vendor/ghostty-web/ghostty-page-zero.patch",
+              "Termless 25089207e11420cf7a588987c1dc2683a45e8372 packages/ghostty/src/backend.ts",
+              "Author run 5f2172d1-5122-415f-9122-2c25e79706cc; suite 07a42ec1d359; six specific OSC 633 cells pending before source qualification"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "ghostty",
+      "version": "0.4.0",
+      "os": "linux"
+    },
+    "featureId": "extensions.osc633-p",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "vendor/ghostty-web/ghostty-vt.wasm",
+            "oid": "99810cd84adb3a1439d07370e7cad8fec7f3cd21"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "vendor/ghostty-web/dist/ghostty-web.js",
+            "oid": "f8861be44a538fff74ebf2718a7304dd218c970a"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "vendor/ghostty-web/RECEIPT.json",
+            "oid": "3ffc517c4f4b5b97bf31e5a8b513ab7f3b21251e"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "vendor/ghostty-web/ghostty-wasm-api.patch",
+            "oid": "17769d971169a3f50ea15335ef473984b2026b32"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "vendor/ghostty-web/ghostty-page-zero.patch",
+            "oid": "e783e0658de095b5d5eba582342797f180bc842f"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "25089207e11420cf7a588987c1dc2683a45e8372",
+            "path": "packages/ghostty/src/backend.ts",
+            "oid": "19d45e37b36c0d6fc8d69ae6215ece9db173351c"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "dev3-2026-11-03-ghostty-0.4.0-extensions.osc633-p-source-review",
+            "reviewer": "@dev/3",
+            "reason": "Source review (@dev/3, 2026-11-03): shipped ghostty-web 0.4.0 at Termless 25089207e11420cf7a588987c1dc2683a45e8372 binds Ghostty core 5714ed07a1012573261b7b7e3ed2add9c1504496 through vendor/ghostty-web/RECEIPT.json. In src/terminal/osc.zig:550-567, Parser.next rejects an initial 6; subsequent invalid-state bytes clear complete and Parser.end at 1708-1715 returns null. Thus OSC 633;P never dispatches or registers its required state. The API and page-zero patches do not alter this parser. packages/ghostty/src/backend.ts:376-386 passes bytes to ghostty-web; dist/ghostty-web.js:143-145 copies them to WASM, whose patched write feeds stream.nextSlice (API patch:1065-1067). Neither wrapper implements OSC 633. This is Unsupported from pinned parser rejection, not absent readback or cursor movement. The cited tracked WASM SHA-256 42e84af1b38be94571974a23fa4667c4735ee7a272dcff39afd5cba40dcf48de and JS hash match both the build receipt and the actual author capture.",
+            "sources": [
+              "https://github.com/ghostty-org/ghostty/blob/5714ed07a1012573261b7b7e3ed2add9c1504496/src/terminal/osc.zig#L550-L567",
+              "https://github.com/ghostty-org/ghostty/blob/5714ed07a1012573261b7b7e3ed2add9c1504496/src/terminal/osc.zig#L1708-L1715",
+              "Termless 25089207e11420cf7a588987c1dc2683a45e8372 vendor/ghostty-web/ghostty-vt.wasm",
+              "Termless 25089207e11420cf7a588987c1dc2683a45e8372 vendor/ghostty-web/dist/ghostty-web.js",
+              "Termless 25089207e11420cf7a588987c1dc2683a45e8372 vendor/ghostty-web/RECEIPT.json",
+              "Termless 25089207e11420cf7a588987c1dc2683a45e8372 vendor/ghostty-web/ghostty-wasm-api.patch",
+              "Termless 25089207e11420cf7a588987c1dc2683a45e8372 vendor/ghostty-web/ghostty-page-zero.patch",
+              "Termless 25089207e11420cf7a588987c1dc2683a45e8372 packages/ghostty/src/backend.ts",
+              "Author run 5f2172d1-5122-415f-9122-2c25e79706cc; suite 07a42ec1d359; six specific OSC 633 cells pending before source qualification"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "ghostty",
+      "version": "0.4.0",
+      "os": "linux"
+    },
     "featureId": "extensions.osc666-termprop",
     "answers": [
       {
