@@ -75,6 +75,41 @@ it("labels a retained source answer by engine version without regrading or datin
   expect(readFileSync(path, "utf8")).toBe(bytes)
 })
 
+// CTO18a3b98f permits only the fixed pending phrase; the real retained dispute
+// includes private source/reviewer details that caption-only coverage never exercised.
+it("publishes only the safe pending phrase from a real disputed Ghostty cell", () => {
+  const path = new URL(
+    "../content/probes-libs/ghostty-0.4.0-linux-3f3e920e-ebf8-4d81-ace1-52445a05a992.json",
+    import.meta.url,
+  )
+  const bytes = readFileSync(path, "utf8")
+  const manifestPath = new URL("../content/suites/4b01b0117e18.json", import.meta.url)
+  const manifest = parseSuiteManifest(manifestPath.pathname, readFileSync(manifestPath, "utf8"))
+  const catalog = manifest.catalogIds!
+  const run = parseRun(path.pathname, bytes, catalog, new Map([[manifest.probeHash, manifest]]))
+  const original = structuredClone(run)
+  const featureId = "extensions.osc104-reset-palette"
+  const retained = run.results.find((result) => result.featureId === featureId)
+  expect(retained?.status).toBe("test-todo")
+  expect(retained?.reason).toMatch(/^kept answers disagree:/)
+  expect(retained?.reason).toContain("kept originals:")
+  const projection = projectResults(
+    [run], [], catalog, { currentProbeHash: manifest.probeHash, workingRuns: [run] }, [],
+  )
+  const published = publicResults(projection, new Map()).projection.contexts["lib:ghostty"]?.cells[featureId]
+  expect(published?.reason).toBe("kept answers disagree")
+  expect(published?.status).toBe("test-todo")
+  const publicBytes = JSON.stringify(published)
+  expect(publicBytes).not.toContain("kept originals")
+  expect(publicBytes).not.toContain("@dev/")
+  expect(publicBytes).not.toContain("reply-path-audit")
+  expect(publicBytes).not.toContain("[lib,")
+  expect(published?.presentation.state).toBe("not-reviewed")
+  expect(published?.record).toBeUndefined()
+  expect(run).toEqual(original)
+  expect(readFileSync(path, "utf8")).toBe(bytes)
+})
+
 describe("the site says why a text row does not count (30033 ruling f1f3c64b)", () => {
   it("names the console host on a Windows text row, and says it is not counted", () => {
     const text = textEvidenceExplanation({ assertionType: "buffer_state", conclusive: false, os: "windows" })
