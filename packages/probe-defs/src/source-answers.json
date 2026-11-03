@@ -29889,15 +29889,15 @@
         "citedBlobs": [
           {
             "repository": "git@github.com:beorn/terminfo.dev.git",
-            "commit": "84c495d2c008d6c6feb6f7ab3fc56eed8af4264a",
+              "commit": "53d40ebaff289acce9fc17bd2a5f7fce5027dbd6",
             "path": "packages/probe-defs/src/extensions.ts",
-            "oid": "e61f53907f83b713ab2d5066910f22d1ae1153bf"
+              "oid": "678f2ff4a28ce8f480d4b8041c87334aeda3aec5"
           },
           {
             "repository": "git@github.com:beorn/terminfo.dev.git",
-            "commit": "84c495d2c008d6c6feb6f7ab3fc56eed8af4264a",
+              "commit": "53d40ebaff289acce9fc17bd2a5f7fce5027dbd6",
             "path": "packages/probe-defs/src/helpers.ts",
-            "oid": "8ebcedeb60984cdedf3e34afe7a41c522d4f7929"
+              "oid": "6c72e4a401beed3259d14867a95d3e07d8da4260"
           },
           {
             "repository": "git@github.com:beorn/termless.git",
@@ -29948,15 +29948,15 @@
         "citedBlobs": [
           {
             "repository": "git@github.com:beorn/terminfo.dev.git",
-            "commit": "84c495d2c008d6c6feb6f7ab3fc56eed8af4264a",
+              "commit": "53d40ebaff289acce9fc17bd2a5f7fce5027dbd6",
             "path": "packages/probe-defs/src/extensions.ts",
-            "oid": "e61f53907f83b713ab2d5066910f22d1ae1153bf"
+              "oid": "678f2ff4a28ce8f480d4b8041c87334aeda3aec5"
           },
           {
             "repository": "git@github.com:beorn/terminfo.dev.git",
-            "commit": "84c495d2c008d6c6feb6f7ab3fc56eed8af4264a",
+              "commit": "53d40ebaff289acce9fc17bd2a5f7fce5027dbd6",
             "path": "packages/probe-defs/src/helpers.ts",
-            "oid": "8ebcedeb60984cdedf3e34afe7a41c522d4f7929"
+              "oid": "6c72e4a401beed3259d14867a95d3e07d8da4260"
           },
           {
             "repository": "git@github.com:beorn/termless.git",
@@ -30007,15 +30007,15 @@
         "citedBlobs": [
           {
             "repository": "git@github.com:beorn/terminfo.dev.git",
-            "commit": "84c495d2c008d6c6feb6f7ab3fc56eed8af4264a",
+              "commit": "53d40ebaff289acce9fc17bd2a5f7fce5027dbd6",
             "path": "packages/probe-defs/src/extensions.ts",
-            "oid": "e61f53907f83b713ab2d5066910f22d1ae1153bf"
+              "oid": "678f2ff4a28ce8f480d4b8041c87334aeda3aec5"
           },
           {
             "repository": "git@github.com:beorn/terminfo.dev.git",
-            "commit": "84c495d2c008d6c6feb6f7ab3fc56eed8af4264a",
+              "commit": "53d40ebaff289acce9fc17bd2a5f7fce5027dbd6",
             "path": "packages/probe-defs/src/helpers.ts",
-            "oid": "8ebcedeb60984cdedf3e34afe7a41c522d4f7929"
+              "oid": "6c72e4a401beed3259d14867a95d3e07d8da4260"
           },
           {
             "repository": "git@github.com:beorn/termless.git",
@@ -30066,15 +30066,15 @@
         "citedBlobs": [
           {
             "repository": "git@github.com:beorn/terminfo.dev.git",
-            "commit": "84c495d2c008d6c6feb6f7ab3fc56eed8af4264a",
+              "commit": "53d40ebaff289acce9fc17bd2a5f7fce5027dbd6",
             "path": "packages/probe-defs/src/extensions.ts",
-            "oid": "e61f53907f83b713ab2d5066910f22d1ae1153bf"
+              "oid": "678f2ff4a28ce8f480d4b8041c87334aeda3aec5"
           },
           {
             "repository": "git@github.com:beorn/terminfo.dev.git",
-            "commit": "84c495d2c008d6c6feb6f7ab3fc56eed8af4264a",
+              "commit": "53d40ebaff289acce9fc17bd2a5f7fce5027dbd6",
             "path": "packages/probe-defs/src/helpers.ts",
-            "oid": "8ebcedeb60984cdedf3e34afe7a41c522d4f7929"
+              "oid": "6c72e4a401beed3259d14867a95d3e07d8da4260"
           },
           {
             "repository": "git@github.com:beorn/termless.git",
