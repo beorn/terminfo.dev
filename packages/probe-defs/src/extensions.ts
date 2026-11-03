@@ -1428,8 +1428,13 @@ const ABSENT_OSC_ENGINES = {
     sourceCommit: "332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28",
     buildHash: "2d5e53cf4f0846e47cda8a45c513f44da5c699657edffe93886e6eba99f36bfd",
     lockSha256: "3ec775507556db01d08055836b26183f629a9cbb0b5802a1566661e95988d74a",
-    codes: [17, 19, 117, 119, 176],
+    codes: [1, 17, 19, 117, 119, 176],
     reviewReasons: [
+      {
+        code: 1,
+        reason:
+          "core332b2aef src/terminal/stream.zig:1982-1984 logs and ignores OSC 1 before handler dispatch; Terminal.zig has no icon-name state",
+      },
       {
         code: 176,
         reason:
