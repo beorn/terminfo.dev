@@ -475,6 +475,19 @@ async function pixelMouse(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
       SGR_MOUSE,
       "XTEST delivery control failed: click under 1000+1006 did not reach the app",
     )
+    const cell = sgrMouseCoords(control)
+    if (
+      sgrMouseButton(control) !== 0 ||
+      !cell ||
+      !Number.isSafeInteger(cell.x) ||
+      !Number.isSafeInteger(cell.y) ||
+      cell.x < 1 ||
+      cell.y < 1 ||
+      cell.x > ctx.cols ||
+      cell.y > ctx.rows
+    ) {
+      return notTestedResult("pixel-mouse delivery control is not a button-1 event in a valid screen cell", { control })
+    }
     const measured = await queryPixelGeometry(ctx)
     if ("missing" in measured) {
       return notTestedResult(`no cell geometry: ${measured.missing}`, { control, geometry: measured })
@@ -488,6 +501,9 @@ async function pixelMouse(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
         )
       }
       const observed = { mode: "1016", control, report, geometry: measured.geometry, geometrySource: measured.source }
+      if (sgrMouseButton(report) !== 0) {
+        return notTestedResult("pixel-mouse target is not a button-1 event", observed)
+      }
       const expected = "OS XTEST click report under 1016 with pixel coordinates after 1000+1006 delivery control"
       if (pixelCoordsWithin(control, report, measured.geometry)) {
         return interactionResult("pixel-mouse:1", expected, observed)
