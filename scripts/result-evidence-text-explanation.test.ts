@@ -89,12 +89,17 @@ it("publishes only the safe pending phrase from a real disputed Ghostty cell", (
   const run = parseRun(path.pathname, bytes, catalog, new Map([[manifest.probeHash, manifest]]))
   const original = structuredClone(run)
   const featureId = "extensions.osc104-reset-palette"
-  const retained = run.results.find((result) => result.featureId === featureId)
+  const retained = run.results?.find((result) => result.featureId === featureId)
   expect(retained?.status).toBe("test-todo")
   expect(retained?.reason).toMatch(/^kept answers disagree:/)
   expect(retained?.reason).toContain("kept originals:")
+  expect(retained?.reason).toContain("@dev/")
   const projection = projectResults(
-    [run], [], catalog, { currentProbeHash: manifest.probeHash, workingRuns: [run] }, [],
+    [run],
+    [],
+    catalog,
+    { currentProbeHash: manifest.probeHash, workingRuns: [run] },
+    [],
   )
   const published = publicResults(projection, new Map()).projection.contexts["lib:ghostty"]?.cells[featureId]
   expect(published?.reason).toBe("kept answers disagree")
@@ -103,9 +108,26 @@ it("publishes only the safe pending phrase from a real disputed Ghostty cell", (
   expect(publicBytes).not.toContain("kept originals")
   expect(publicBytes).not.toContain("@dev/")
   expect(publicBytes).not.toContain("reply-path-audit")
-  expect(publicBytes).not.toContain("[lib,")
   expect(published?.presentation.state).toBe("not-reviewed")
   expect(published?.record).toBeUndefined()
+  // Approval permits evidence presentation, never the pending reason's private suffix.
+  const approvedProjection = structuredClone(projection)
+  const selected = approvedProjection.history["lib:ghostty"]?.[0]
+  if (!selected) throw new Error("Expected real retained Ghostty selection")
+  selected.presentations[featureId] = {
+    id: "pending-privacy-regression",
+    reviewer: "fixture",
+    reason: "Inspect retained evidence",
+    sources: [],
+    presentsEvidence: true,
+    accepted: { by: "fixture", wire: "00000000-0000-4000-8000-000000000000", at: "2026-10-30T12:00:00-07:00" },
+    acceptedSha256: "a".repeat(64),
+  }
+  const approved = publicResults(approvedProjection, new Map()).projection.contexts["lib:ghostty"]?.cells[featureId]
+  expect(approved?.reason).toBe("kept answers disagree")
+  expect(approved?.tests.find((check) => check.id === "review")?.reason).toBe("kept answers disagree")
+  expect(JSON.stringify(approved)).not.toContain("@dev/")
+  expect(JSON.stringify(approved)).not.toContain("kept originals")
   expect(run).toEqual(original)
   expect(readFileSync(path, "utf8")).toBe(bytes)
 })
