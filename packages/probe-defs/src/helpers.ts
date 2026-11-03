@@ -47,10 +47,21 @@ export const ADAPTER_SOURCE_AUDITS = {
   },
   ghostty: {
     "packages/ghostty/src/index.ts": "f4b9d9f3e13cc515b23abc739cab21bf971e8585",
+    // Historical cohort retained for existing API/reply and source-review consumers.
+    "packages/ghostty/src/backend.ts": "560146d5f929f31a8f973f809d97f91cf0e23fd6",
+  },
+  ghostty42e84af1: {
+    "packages/ghostty/src/index.ts": "f4b9d9f3e13cc515b23abc739cab21bf971e8585",
     // Underline-colour ABI readback (termless 2f73fc28); current receipt and parser audits bind WASM 42e84af1.
     "packages/ghostty/src/backend.ts": "19d45e37b36c0d6fc8d69ae6215ece9db173351c",
   },
   libvterm: {
+    "packages/libvterm/src/index.ts": "2b4708b1081e701b99893ca055ded781dc46cf25",
+    "packages/libvterm/src/backend.ts": "eb513ccd443e30c7a869a8ba41f8126e1c0ddf00",
+    "packages/libvterm/src/wasm-bindings.ts": "2bbd4d5cf59b8d53db8f5c0329d2ed7853c43e45",
+    "packages/libvterm/wasm/libvterm.js": "1e784be87614ab924b96844009919b7c21ce150e",
+  },
+  libvterm712298af: {
     "packages/libvterm/src/index.ts": "2b4708b1081e701b99893ca055ded781dc46cf25",
     "packages/libvterm/src/backend.ts": "f0431b2b3b1824d3028e7a039d55278d2cddc0e8",
     "packages/libvterm/src/wasm-bindings.ts": "55ddc684464e525e63cd523d2d6a638c4c6dbcd9",

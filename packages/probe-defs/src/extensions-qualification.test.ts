@@ -100,24 +100,24 @@ const auditedArtifacts: readonly HeadlessRuntimeIdentity[] = [
     runtimeFormat: "wasm",
     engineVersion: "0.3.3",
     adapterVersion: "0.10.2",
-    termlessRevision: "2f73fc28027b7d483e504e08edc64d1837935816",
+    termlessRevision: "f8d2aeb7a7a30f0215fd628bbbb1f1e5cd0a91be",
     resolvedPath: "/relocated/libvterm/index.ts",
     integrity: {
       kind: "source",
       repository: "git@github.com:beorn/termless.git",
-      revision: "2f73fc28027b7d483e504e08edc64d1837935816",
+      revision: "f8d2aeb7a7a30f0215fd628bbbb1f1e5cd0a91be",
       treeOid: "changed-wrapper-tree",
       cleanTree: true,
     },
     loadedBinary: {
       path: "/relocated/libvterm.wasm",
-      sha256: "712298aff45c7c53a22dc028b13cb58dae1e984199b520bbbc0475ae64d83159",
+      sha256: "3d67045bb43c5e4081c70dc58088af8f735416c20df2d7843d765e5aad8ef62a",
     },
     adapterSources: [
       { path: "packages/libvterm/src/index.ts", blobOid: "2b4708b1081e701b99893ca055ded781dc46cf25" },
-      { path: "packages/libvterm/src/backend.ts", blobOid: "f0431b2b3b1824d3028e7a039d55278d2cddc0e8" },
-      { path: "packages/libvterm/src/wasm-bindings.ts", blobOid: "55ddc684464e525e63cd523d2d6a638c4c6dbcd9" },
-      { path: "packages/libvterm/wasm/libvterm.js", blobOid: "d28bc97333d33129c7c9764a331a3d47f088f7b3" },
+      { path: "packages/libvterm/src/backend.ts", blobOid: "eb513ccd443e30c7a869a8ba41f8126e1c0ddf00" },
+      { path: "packages/libvterm/src/wasm-bindings.ts", blobOid: "2bbd4d5cf59b8d53db8f5c0329d2ed7853c43e45" },
+      { path: "packages/libvterm/wasm/libvterm.js", blobOid: "1e784be87614ab924b96844009919b7c21ce150e" },
     ],
   },
 ]
@@ -126,7 +126,35 @@ const auditedArtifacts: readonly HeadlessRuntimeIdentity[] = [
 // The existing two-artifact checks cover OSC8/alacritty440, so they miss this absent-row/code batch.
 const absentOscBatch = [
   { engine: "xtermjs", identity: xtermOscIdentity, codes: [7] },
-  { engine: "libvterm", identity: auditedArtifacts[1]!, codes: [9, 22, 176, 3008, 440, 555, 666, 710, 777] },
+  {
+    engine: "libvterm",
+    identity: {
+      kind: "js",
+      runtimeFormat: "wasm",
+      engineVersion: "0.3.3",
+      adapterVersion: "0.10.2",
+      termlessRevision: "2f73fc28027b7d483e504e08edc64d1837935816",
+      resolvedPath: "/fixture/libvterm/index.ts",
+      integrity: {
+        kind: "source",
+        repository: "git@github.com:beorn/termless.git",
+        revision: "2f73fc28027b7d483e504e08edc64d1837935816",
+        treeOid: "000404fd8b8f8f0b1b968bf7398f8afc90958618",
+        cleanTree: true,
+      },
+      loadedBinary: {
+        path: "/fixture/libvterm.wasm",
+        sha256: "712298aff45c7c53a22dc028b13cb58dae1e984199b520bbbc0475ae64d83159",
+      },
+      adapterSources: [
+        { path: "packages/libvterm/src/index.ts", blobOid: "2b4708b1081e701b99893ca055ded781dc46cf25" },
+        { path: "packages/libvterm/src/backend.ts", blobOid: "f0431b2b3b1824d3028e7a039d55278d2cddc0e8" },
+        { path: "packages/libvterm/src/wasm-bindings.ts", blobOid: "55ddc684464e525e63cd523d2d6a638c4c6dbcd9" },
+        { path: "packages/libvterm/wasm/libvterm.js", blobOid: "d28bc97333d33129c7c9764a331a3d47f088f7b3" },
+      ],
+    },
+    codes: [9, 22, 176, 3008, 440, 555, 666, 710, 777],
+  },
   {
     engine: "ghostty",
     identity: {
