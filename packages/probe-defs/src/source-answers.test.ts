@@ -218,12 +218,50 @@ it("resolves cited engine blobs only from the measured clean source revision", (
   }
   const input = { subject: { ...subject, version: "2.0" }, featureId: answer.featureId, runtimeIdentity }
   expect(resolveSourceAnswer([bound], input)).toMatchObject({ kind: "answer", status: "unsupported" })
+  // A label match cannot excuse a named different source revision whose objects are absent.
+  const missingRevision = "c".repeat(40)
+  expect(
+    resolveSourceAnswer([bound], {
+      ...input,
+      subject,
+      runtimeIdentity: {
+        ...runtimeIdentity,
+        integrity: { ...runtimeIdentity.integrity, revision: missingRevision },
+      },
+    }),
+  ).toMatchObject({
+    kind: "pending",
+    reason: `cited source not resolvable at ${blob.repository}@${missingRevision.slice(0, 12)}`,
+  })
+  for (const [currentOid, kind, reason] of [
+    [blob.oid, "answer", undefined],
+    ["d".repeat(40), "pending", "cited source changed"],
+  ] as const) {
+    const resolution = resolveSourceAnswer([bound], {
+      ...input,
+      subject,
+      runtimeIdentity: { ...runtimeIdentity, integrity: { ...runtimeIdentity.integrity, revision: missingRevision } },
+      readBlob: (_repository, revision) => (revision === blob.commit ? blob.oid : currentOid),
+    })
+    expect(resolution).toMatchObject({ kind, ...(reason && { reason }) })
+  }
+  expect(
+    resolveSourceAnswer([bound], {
+      ...input,
+      readBlob: () => {
+        throw new Error("Same immutable commit must not need object reads")
+      },
+    }),
+  ).toMatchObject({ kind: "answer", status: "unsupported" })
   expect(
     resolveSourceAnswer([bound], {
       ...input,
       runtimeIdentity: { ...runtimeIdentity, integrity: { ...runtimeIdentity.integrity, cleanTree: false } },
     }),
-  ).toMatchObject({ kind: "pending", reason: "cited source not resolvable" })
+  ).toMatchObject({
+    kind: "pending",
+    reason: `cited source not resolvable at ${blob.repository}@${blob.commit.slice(0, 12)}`,
+  })
   expect(
     resolveSourceAnswer([bound], {
       ...input,

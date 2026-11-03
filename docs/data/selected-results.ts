@@ -17,16 +17,14 @@ import {
   type UngradedDiagnostic,
   type TextQualification,
   finalizeProbeResult,
-  SOURCE_ANSWERS,
   sourceAnswerForRef,
-  resolveSourceAnswer,
   type TextQualificationAssessment,
   type CollectorSelection,
   type CollectorAttempt,
   readCollectorSelection,
   readCollectorAttempt,
 } from "@terminfo/probe-defs"
-import { type LoadedRun, parseJsonStrict } from "@terminfo/run-parser"
+import { type LoadedRun, parseJsonStrict, resolveMeasuredSourceAnswer } from "@terminfo/run-parser"
 import {
   canConcludeObservation,
   textQualificationFailure,
@@ -307,7 +305,7 @@ export function consoleHostHeldResults(run: LoadedRun, interpretations: readonly
     if (reason === undefined) {
       const ref = result.reviewRef ?? result.tests.find((test) => test.id === "review")?.reviewRef
       if (!ref || !sourceAnswerForRef(ref)) return result
-      const answer = resolveSourceAnswer(SOURCE_ANSWERS, {
+      const answer = resolveMeasuredSourceAnswer({
         subject: run.subject,
         featureId: result.featureId,
         ...(run.runtimeIdentity && { runtimeIdentity: run.runtimeIdentity }),

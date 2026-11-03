@@ -11,8 +11,6 @@ import {
   type HostRecipeName,
   PROBE_STATUSES,
   finalizeProbeResult,
-  SOURCE_ANSWERS,
-  resolveSourceAnswer,
   sourceAnswerForRef,
   type SourceAnswerInput,
   initializeRunDraft,
@@ -57,6 +55,8 @@ import {
 } from "./observations.ts"
 export { parseObservationFrames, validateObservation, validateObservationOutcome } from "./observations.ts"
 import { parseJsonStrict, canonicalJson } from "./json.ts"
+import { resolveMeasuredSourceAnswer } from "./source-answers.ts"
+export { resolveMeasuredSourceAnswer } from "./source-answers.ts"
 export { parseJsonStrict, canonicalJson, FEATURE_ENTRY_PROSE_DENYLIST, boundFeatureEntry } from "./json.ts"
 import { ALACRITTY_VERSION_PATTERN, PLACEHOLDER, parseAppLaunchReceipt, parseDerivedSourceTree } from "./app-launch.ts"
 
@@ -1716,7 +1716,7 @@ export function parseProbeResults(
     ].filter((ref) => sourceAnswerForRef(ref) !== undefined)
     if (sourceRefs.length) {
       if (!sourceContext) fail(path, `${featureId} source answer requires measured subject context`)
-      const resolution = resolveSourceAnswer(SOURCE_ANSWERS, { ...sourceContext, featureId })
+      const resolution = resolveMeasuredSourceAnswer({ ...sourceContext, featureId })
       if (resolution.kind === "none" || sourceRefs.some((ref) => !resolution.rowKeys.includes(ref))) {
         fail(path, `${featureId} source answer does not apply to measured identity`)
       }

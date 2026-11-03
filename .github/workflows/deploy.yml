@@ -36,6 +36,9 @@ jobs:
       site-artifact-name: ${{ steps.archive.outputs.artifact-name }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          filter: blob:none
 
       - uses: oven-sh/setup-bun@v2
         with:

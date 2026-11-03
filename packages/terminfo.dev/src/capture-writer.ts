@@ -4,8 +4,6 @@ import { mkdirSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import {
   SOURCE_NEGATIVE_REVIEW,
-  SOURCE_ANSWERS,
-  resolveSourceAnswer,
   sourceAnswerForRef,
   finalizeProbeResult,
   sealRunDraft,
@@ -20,6 +18,7 @@ import {
   parseCaptureDecision,
   parseJsonStrict,
   parseRun,
+  resolveMeasuredSourceAnswer,
 } from "@terminfo/run-parser"
 
 export interface CaptureReviewInput {
@@ -236,7 +235,7 @@ export function finalizeCollectedDraft(
     ) {
       return result
     }
-    const resolution = resolveSourceAnswer(SOURCE_ANSWERS, {
+    const resolution = resolveMeasuredSourceAnswer({
       subject: captured.subject,
       featureId: result.featureId,
       ...(captured.runtimeIdentity && { runtimeIdentity: captured.runtimeIdentity }),
