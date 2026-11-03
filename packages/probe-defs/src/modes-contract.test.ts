@@ -518,3 +518,35 @@ test.each(MODES_SEMANTIC_SURFACE_CONTROLS)(
     expect(negativeGraded.after).toBe(negativeOutcome)
   },
 )
+
+// #31904 (@cto 6e4f7300): each SGR-stack row grades its own operation. A stack that keeps a stale
+// snapshot restores the POP fixture but returns the earlier state in the PUSH fixture, so only the
+// push row is negative; the shared roundtrip graded both rows supported. A pop that resets to the
+// default restores no non-default state, so neither row passes.
+test.each([
+  ["xtpushsgr-stale", "modes.xtpushsgr", "unsupported", "push saved no current snapshot"],
+  ["xtpushsgr-stale", "modes.xtpopsgr", "supported", undefined],
+  ["xtpopsgr-reset-default", "modes.xtpushsgr", "inconclusive", "no push-only observation"],
+  ["xtpopsgr-reset-default", "modes.xtpopsgr", "inconclusive", "no pop-only observation"],
+] as const)("%s grades %s %s on its own operation", (mutation, id, outcome, note) => {
+  const probe = modesProbes.find((entry) => entry.id === id)!
+  const result = probe.lib!(libProbeSource(createSemanticSurface({ mutations: [mutation] })))
+  expect(result.observation?.outcome).toBe(outcome)
+  expect(result.pass).toBe(outcome === "supported")
+  if (note) expect(result.note).toContain(note)
+  if (outcome === "inconclusive") expect(result.assertions).toBeUndefined()
+  else {
+    expect(result.assertions?.[0]?.expected).toContain(id === "modes.xtpushsgr" ? "push time" : "restores the pushed")
+  }
+})
+
+test.each(["modes.xtpushsgr", "modes.xtpopsgr"])(
+  "%s carries the joint negative when neither fixture restores",
+  (id) => {
+    const probe = modesProbes.find((entry) => entry.id === id)!
+    const result = probe.lib!(libProbeSource(createSemanticSurface({ mutations: ["xtpopsgr-noop"] })))
+    expect(result.observation?.outcome).toBe("unsupported")
+    expect(result.note).toBe("push then pop restored no earlier state")
+    expect(result.assertions).toMatchObject([{ kind: "negative" }])
+  },
+)
