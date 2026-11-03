@@ -561,15 +561,16 @@ test.each([
   ["xtrestore-reset-default", "modes.xtrestore", "unsupported", "save then restore restored no earlier state"],
   ["xtrestore-noop", "modes.xtsave", "unsupported", "save then restore restored no earlier state"],
   ["xtrestore-noop", "modes.xtrestore", "unsupported", "save then restore restored no earlier state"],
+  ["xtrestore-always-off", "modes.xtsave", "inconclusive", "restore set DECAWM off whatever was saved"],
+  ["xtrestore-always-off", "modes.xtrestore", "inconclusive", "restore set DECAWM off whatever was saved"],
 ] as const)("%s grades %s %s on its own operation", (mutation, id, outcome, note) => {
   const probe = modesProbes.find((entry) => entry.id === id)!
   const result = probe.lib!(libProbeSource(createSemanticSurface({ mutations: [mutation] })))
   expect(result.observation?.outcome).toBe(outcome)
   expect(result.pass).toBe(outcome === "supported")
   if (note) expect(result.note).toContain(note)
-  expect(result.assertions?.[0]?.expected).toContain(
-    id === "modes.xtsave" ? "current at save time" : "restores the saved",
-  )
+  if (outcome === "inconclusive") expect(result.assertions).toBeUndefined()
+  else expect(result.assertions?.[0]?.expected).toContain(id === "modes.xtsave" ? "current at save time" : "restores the saved")
 })
 
 // #31904 R3e: the palette-stack rows split the same way as R3d (@cto 6e4f7300).

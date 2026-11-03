@@ -1305,6 +1305,8 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
         if (mutations.has("xtsave-stale")) savedPrivateModes.delete(7)
         // xtrestore-reset-default (#31904): restore resets DECAWM to its default (on).
         if (mutations.has("xtrestore-reset-default")) autoWrap = true
+        // xtrestore-always-off (#31904): restore disables DECAWM whatever was saved (vterm 0.10.1).
+        else if (mutations.has("xtrestore-always-off")) autoWrap = false
         else if (saved !== undefined) autoWrap = saved
       }
       return

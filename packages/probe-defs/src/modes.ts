@@ -508,6 +508,9 @@ function xtSgrStackHeadless(ctx: LibProbeSource, operation: "push" | "pop"): Pro
  * Wrap on is the default, so every pass value is off: a restore that only resets to the default
  * looks the same as one that restored nothing, and both rows read the joint negative (@cto
  * 0613b68d). On returning while the control passed blames only the save that kept the earlier state.
+ * An on-control (on, save, off, restore, expect on) runs after the restore control: a restore that
+ * sets off whatever was saved passes both off fixtures, so the control counts as restored only when
+ * the on-control also returns on; otherwise both rows have no observation (vterm 0.10.1, #31904).
  */
 function xtModeSaveHeadless(ctx: LibProbeSource, operation: "push" | "pop"): ProbeCallbackResult {
   const id = operation === "push" ? "modes.xtsave" : "modes.xtrestore"
@@ -553,9 +556,15 @@ function xtModeSaveHeadless(ctx: LibProbeSource, operation: "push" | "pop"): Pro
     }
     const control = fixture([OFF, SAVE, ON, RESTORE])
     if (typeof control === "string") return stackOutputResult(control)
+    const onControl = fixture([ON, SAVE, OFF, RESTORE])
+    if (typeof onControl === "string") return stackOutputResult(onControl)
     const overwrite = fixture([ON, SAVE, OFF, SAVE, ON, RESTORE])
     if (typeof overwrite === "string") return stackOutputResult(overwrite)
-    const pop: StackReading = stayed(control) ? "restored" : wrapped(control) ? "persisted" : "other"
+    const pop: StackReading = wrapped(control)
+      ? "persisted"
+      : stayed(control) && wrapped(onControl)
+        ? "restored"
+        : "other"
     const push: StackReading = stayed(overwrite)
       ? "restored"
       : wrapped(overwrite)
@@ -563,12 +572,25 @@ function xtModeSaveHeadless(ctx: LibProbeSource, operation: "push" | "pop"): Pro
           ? "earlier"
           : "persisted"
         : "other"
-    const state = { rows, cols: ctx.cols, off, on, control, overwrite, autoWrap: ctx.getMode("autoWrap"), pop, push }
+    const state = {
+      rows,
+      cols: ctx.cols,
+      off,
+      on,
+      control,
+      onControl,
+      overwrite,
+      autoWrap: ctx.getMode("autoWrap"),
+      pop,
+      push,
+    }
     const verdict = stackVerdict(operation, pop, push)
     const note =
       pop === "persisted" && push === "persisted"
         ? "save then restore restored no earlier state"
-        : verdict.note?.replace("push saved no current snapshot", "save kept the earlier saved state")
+        : stayed(control) && stayed(onControl)
+          ? "restore set DECAWM off whatever was saved, so neither operation was observed"
+          : verdict.note?.replace("push saved no current snapshot", "save kept the earlier saved state")
     return parserStateResult(verdict.pass, expected, state, note)
   } finally {
     ctx.feed(`${ON}\x1b[0m\x1b[2J\x1b[H`)
