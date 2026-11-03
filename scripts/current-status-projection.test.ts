@@ -10,13 +10,12 @@ import { describe, expect, it } from "vitest"
 import { parseRun, parseSuiteManifest } from "@terminfo/run-parser"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
-import { publicResults, type EvidenceDocument } from "../docs/data/public-results.ts"
+import { publicResults } from "../docs/data/public-results.ts"
 import type { ProbeResult, ProbeSuiteManifest, TextQualification } from "@terminfo/probe-defs"
 import { ENVIRONMENT_GROUP_IDS, initializeRunDraft } from "@terminfo/probe-defs"
 import { projectResults, maskRunnerStorePath, projectedContextKey } from "../docs/data/selected-results.ts"
 import { currentCoverageSentence } from "../docs/data/release-scope.ts"
 import { candidateFromSelected, pickContextRun } from "../docs/data/run-selection.ts"
-import { readCellEvidence } from "../docs/data/evidence-reader.ts"
 
 const ids = Array.from({ length: 273 }, (_, index) => `capability.${index}`)
 const suite: ProbeSuiteManifest & { schemaVersion: 4 } = {
@@ -94,6 +93,15 @@ function supportedBaseline() {
     rawReplies: { ...value.rawReplies, ...Object.fromEntries(ids.slice(0, 4).map((id) => [id, "ACK"])) },
   })
 }
+// CTO70df: invalid original evidence time must not silently fall through to key ordering.
+it.each([{ sources: [] }, { sources: [{ runId: "bad-run", measuredAt: "not-a-date", suiteId: "suite", suiteRelation: "tree" as const }] }])(
+  "rejects a context without a finite original evidence time: %j",
+  ({ sources }) => {
+    const candidate = { key: "invalid-evidence-context", kind: "term", terminalId: "kitty", os: "linux", permissions: null, sources, states: {} }
+    expect(() => pickContextRun([candidate])).toThrow(/invalid-evidence-context/)
+  },
+)
+
 // Current selection reads the stored five statuses and frozen denominator
 // without applying later interpretations.
 describe("current execution projection", () => {
@@ -118,7 +126,7 @@ describe("current execution projection", () => {
       },
     })
     const retained = JSON.stringify(run.results)
-    const projection = projectResults([run], [], ids, { currentProbeHash: suite.probeHash }, [])
+    const projection = projectResults([run], ids, { currentProbeHash: suite.probeHash }, [])
     const published = publicResults(projection, new Map()).projection.contexts["term:kitty"]!
     expect(published.cells[ids[1]!]!.attempt).toEqual({ scope: "none" })
     expect(published.cells[ids[1]!]!.status).toBe("test-todo")
@@ -127,7 +135,7 @@ describe("current execution projection", () => {
     expect(published.cells[ids[1]!]!.reason ?? "").toMatch(/not selected/i)
     expect(published.cells[ids[1]!]!.presentation).toEqual({ state: "not-reviewed" })
     const withoutSelection = parse(value)
-    const unselectedProjection = projectResults([withoutSelection], [], ids, { currentProbeHash: suite.probeHash }, [])
+    const unselectedProjection = projectResults([withoutSelection], ids, { currentProbeHash: suite.probeHash }, [])
     const unselectedPublic = publicResults(unselectedProjection, new Map()).projection.contexts["term:kitty"]!
     expect(unselectedPublic.cells[ids[1]!]!.reason).toBeUndefined()
   })
@@ -148,7 +156,7 @@ describe("current execution projection", () => {
       measuredAt: "2026-10-21T00:00:00Z",
       subject: { ...baseline.subject, osVersion: "new" },
     }
-    const projection = projectResults([olderHost, chosenHost], [], ids, { currentProbeHash: suite.probeHash }, [])
+    const projection = projectResults([olderHost, chosenHost], ids, { currentProbeHash: suite.probeHash }, [])
     const candidates = Object.values(projection.contexts).map((context) => {
       if (context.contributingRunIds.includes(olderHost.runId)) {
         context.attempts.push({
@@ -174,7 +182,6 @@ describe("current execution projection", () => {
     const older = candidates.find((candidate) => candidate !== chosen)!
     const rewritten = projectResults(
       [{ ...olderHost, runId: "rewritten-old-host", sha256: "f".repeat(64) }, chosenHost],
-      [],
       ids,
       { currentProbeHash: suite.probeHash },
       [],
@@ -230,9 +237,9 @@ describe("current execution projection", () => {
   })
 
   // A context with both old and current cells remains eligible. Whole-run filtering misses this.
-  it("keeps a mixed-source context current and excludes a zero-source candidate", () => {
+  it("keeps a mixed-source context current and refuses an invalid zero-source candidate", () => {
     const baseline = supportedBaseline()
-    const projection = projectResults([baseline], [], ids, { currentProbeHash: suite.probeHash }, [])
+    const projection = projectResults([baseline], ids, { currentProbeHash: suite.probeHash }, [])
     const context = Object.values(projection.contexts)[0]!
     const candidate = candidateFromSelected(context.contextKey, context, {}, projection)!
     const mixed = {
@@ -246,7 +253,8 @@ describe("current execution projection", () => {
       key: projectedContextKey({ ...baseline.subject, config: "older-only-fixture" }, 2),
       sources: candidate.sources.map((source) => ({ ...source, suiteRelation: "older" as const })),
     }
-    expect(pickContextRun([empty, stale, mixed])).toEqual({ run: mixed, selection: "only current" })
+    expect(pickContextRun([stale, mixed])).toEqual({ run: mixed, selection: "only current" })
+    expect(() => pickContextRun([empty, stale, mixed])).toThrow(/attempt-only/)
     expect(
       candidateFromSelected(context.contextKey, { ...context, contributingRunIds: [] }, {}, projection),
     ).toBeUndefined()
@@ -259,7 +267,6 @@ describe("current execution projection", () => {
     const working = parse({ ...value, runId: "working-linux", subject: { ...value.subject, os: "linux" } })
     const projection = projectResults(
       [current],
-      [],
       ids,
       { currentProbeHash: suite.probeHash, workingRuns: [working] },
       [],
@@ -298,7 +305,6 @@ describe("current execution projection", () => {
     }
     const projection = projectResults(
       [current],
-      [],
       ids,
       { currentProbeHash: suite.probeHash, workingRuns: [working], workingAttempts: [input] },
       [],
@@ -356,7 +362,7 @@ describe("current execution projection", () => {
           }),
         },
       })
-      const projection = projectResults([prior, latest], [], ids, { currentProbeHash: suite.probeHash }, [])
+      const projection = projectResults([prior, latest], ids, { currentProbeHash: suite.probeHash }, [])
       expect(projection).toMatchObject({
         contexts: {
           "term:kitty": {
@@ -409,56 +415,6 @@ describe("current execution projection", () => {
       expect(published).not.toHaveProperty("runId")
       expect(published).not.toHaveProperty("sha256")
       expect(published).not.toHaveProperty("sealedAt")
-      // A matching origin alone would miss mapping both cells through one run's publication review.
-      // Extend this owning two-run case through the public evidence reader and both trace receipts.
-      for (const [runId, featureId] of [
-        [prior.runId, ids[1]!],
-        [latest.runId, ids[3]!],
-      ]) {
-        const original = projection.history["term:kitty"]!.find((run) => run.runId === runId)!
-        original.presentations[featureId!] = {
-          id: `review-${runId}`,
-          reviewer: "fixture",
-          reason: "Inspect this original result",
-          sources: [],
-          presentsEvidence: true,
-          accepted: {
-            by: "fixture-acceptor",
-            wire: "00000000-0000-4000-8000-000000000000",
-            at: "2026-10-30T12:00:00-07:00",
-          },
-          acceptedSha256: "a".repeat(64),
-        }
-      }
-      const reviewedPublic = publicResults(projection, new Map())
-      const reviewedContext = reviewedPublic.projection.contexts["term:kitty"]!
-      for (const featureId of [ids[1]!, ids[3]!]) {
-        const cell = reviewedContext.cells[featureId]!
-        const source = reviewedContext.sources[cell.origin.runId]!
-        expect(cell.presentation.state).toBe("presented")
-        if (cell.presentation.state !== "presented") throw new Error("Fixture evidence was not presented")
-        expect(cell.presentation.review.id).toBe(`review-${cell.origin.runId}`)
-        const document = reviewedPublic.documents.get(cell.presentation.url.split("#")[0]!)!
-        const evidence = readCellEvidence(document.document, {
-          schemaVersion: source.schemaVersion,
-          runId: cell.origin.runId,
-          runSha256: source.sha256,
-          featureId: cell.origin.resultId,
-          reviewId: cell.presentation.review.id,
-          status: cell.status,
-        })
-        expect(evidence.runId).toBe(cell.origin.runId)
-        expect(evidence.review.id).toBe(`review-${cell.origin.runId}`)
-        if (featureId === ids[1]) {
-          expect(evidence.record.rawReply).toBe("ACK")
-          expect(evidence.record.assertions[0]?.featureId).toBe(featureId)
-        }
-        if (!source.trace) throw new Error(`Missing original trace for ${source.runId}`)
-        expect(reviewedPublic.documents.get(source.trace.url)?.document).toMatchObject({
-          runId: source.runId,
-          runSha256: source.sha256,
-        })
-      }
       // Original immutable runs keep their full cells apart from the composed context.
       expect(projection.history["term:kitty"]?.find((run) => run.runId === latest.runId)).toMatchObject({
         runId: latest.runId,
@@ -486,7 +442,7 @@ describe("current execution projection", () => {
           "collector.collectionAttempt": JSON.stringify({ ...selection, ...outcome }),
         },
       })
-      const projection = projectResults([prior, latest], [], ids, { currentProbeHash: suite.probeHash }, [])
+      const projection = projectResults([prior, latest], ids, { currentProbeHash: suite.probeHash }, [])
       const context = projection.contexts["term:kitty"]!
       expect(context.contributingRunIds).toEqual([prior.runId])
       expect(context.cells[ids[0]!]!.result).toBe(prior.results?.[0])
@@ -505,7 +461,6 @@ describe("current execution projection", () => {
     const selection = { ids: [ids[0]!] }
     const outcome = { ...selection, result: "failed", error: "Prerequisite missing" }
     const projection = projectResults(
-      [],
       [],
       ids,
       {
@@ -570,7 +525,7 @@ describe("current execution projection", () => {
       }
       const a = selected("A", aHour!, "test-failure", "05")
       const z = selected("Z", zHour!, "test-todo", "09")
-      const projection = projectResults([prior, z, a], [], ids, { currentProbeHash: suite.probeHash }, [])
+      const projection = projectResults([prior, z, a], ids, { currentProbeHash: suite.probeHash }, [])
       const context = projection.contexts["term:kitty"]!
       expect(context.cells[ids[0]!]!.origin.runId).toBe(winner)
       expect(context.cells[ids[0]!]!.result).toBe((winner === "A" ? a : z).results?.[0])
@@ -581,7 +536,6 @@ describe("current execution projection", () => {
     const run = parse(raw(todos()))
     const projection = projectResults(
       [run],
-      [],
       ["different-live-catalogue"],
       { currentProbeHash: suite.probeHash },
       [],
@@ -607,7 +561,7 @@ describe("current execution projection", () => {
       tests: [{ id: "collection", status: "test-failure", attempt, reason: "callback threw" }],
       reason: "callback threw",
     }
-    const projection = projectResults([parse(raw(results))], [], ids, { currentProbeHash: suite.probeHash }, [])
+    const projection = projectResults([parse(raw(results))], ids, { currentProbeHash: suite.probeHash }, [])
     expect(projection.contexts["term:kitty"]?.counts).toEqual({
       supported: 0,
       unsupported: 0,
@@ -639,7 +593,6 @@ describe("current execution projection", () => {
     }))
     const projection = projectResults(
       [parse({ ...value, assertions })],
-      [],
       ids,
       { currentProbeHash: suite.probeHash },
       [],
@@ -680,7 +633,7 @@ describe("current execution projection", () => {
       ],
     }
     const run = parseRun("fixture.json", JSON.stringify(value), splitIds, new Map([[splitSuite.probeHash, splitSuite]]))
-    const projection = projectResults([run], [], splitIds, { currentProbeHash: suite.probeHash }, [])
+    const projection = projectResults([run], splitIds, { currentProbeHash: suite.probeHash }, [])
     const selected = projection.contexts["term:kitty"]
     // The supported-looking environment row stays recorded, and never graded: numerator and
     // denominator both cover the same 264 ids (CTO condition, verdict 427f2da3).
@@ -711,60 +664,9 @@ it("normalizes historical reviewed context keys without rewriting arbitrary conf
 
 it("retains the recorded live source on selected current metadata", () => {
   const loaded = parse(raw(todos()))
-  const selected = projectResults([loaded], [], ids, { currentProbeHash: suite.probeHash }, []).history[
+  const selected = projectResults([loaded], ids, { currentProbeHash: suite.probeHash }, []).history[
     "term:kitty"
   ]?.[0]
   expect(selected?.schemaVersion).toBe(4)
   expect(selected?.source).toEqual({ kind: "live" })
-})
-
-// Current qualification links require the retained text-cells frame. The fixture is a
-// current writer wrapper around recorded frame bytes, not a new terminal measurement.
-it("publishes current text qualification only with retained text-cells frames", () => {
-  const root = join(import.meta.dirname, "..")
-  const path = join(root, "test-fixtures/probes-apps/terminal-app-text-frame.json")
-  const bytes = readFileSync(path, "utf8")
-  const wire = JSON.parse(bytes) as { probeHash: string; textQualification: TextQualification }
-  const manifestPath = join(root, "content/suites", `${wire.probeHash}.json`)
-  const manifest = parseSuiteManifest(manifestPath, readFileSync(manifestPath, "utf8"))
-  const catalogIds = manifest.catalogIds!
-  const run = parseRun(path, bytes, catalogIds, new Map([[manifest.probeHash, manifest]]))
-  const projection = projectResults([run], [], catalogIds, { currentProbeHash: manifest.probeHash }, [])
-  const selected = Object.values(projection.history)
-    .flat()
-    .find((version) => version.runId === run.runId)
-  if (!selected) throw new Error("Retained current fixture was not projected")
-  const featureId = "charsets.dec-line-drawing"
-  selected.presentations[featureId] = {
-    id: "review-text-failure",
-    reviewer: "fixture",
-    reason: "Present retained failure",
-    sources: [],
-    presentsEvidence: true,
-    accepted: { by: "fixture-acceptor", wire: "00000000-0000-4000-8000-000000000000", at: "2026-10-30T12:00:00-07:00" },
-    acceptedSha256: "a".repeat(64),
-  }
-  const published = publicResults(projection, new Map())
-  const evidenceUrl = `/api/v3/evidence/${run.sha256}.json`
-  const document = published.documents.get(evidenceUrl)?.document as EvidenceDocument
-  const cell = document.cells[featureId]
-  if (!cell) throw new Error("Presented current fixture result is missing")
-  const qualification = cell.textQualification
-  expect(qualification).toEqual({
-    url: `/api/v3/evidence/${run.sha256}/text-qualification.json`,
-    sha256: expect.stringMatching(/^[a-f0-9]{64}$/),
-  })
-  if (!qualification) throw new Error("Current qualification link is missing")
-  expect(published.documents.get(qualification.url)?.document).toMatchObject({ qualification: wire.textQualification })
-  expect(cell.result.status).toBe("test-failure")
-  expect(cell.result).not.toHaveProperty("evidence")
-  const unframed = globalThis.structuredClone(projection)
-  const version = Object.values(unframed.history)
-    .flat()
-    .find((entry) => entry.runId === run.runId)
-  const result = version?.results.find((entry) => entry.featureId === featureId)
-  if (!result) throw new Error("Current text result is missing")
-  delete result.frames
-  const unframedDocument = publicResults(unframed, new Map()).documents.get(evidenceUrl)?.document as EvidenceDocument
-  expect(unframedDocument.cells[featureId]?.textQualification).toBeUndefined()
 })

@@ -5,14 +5,11 @@ import type {
   ObservationReason,
   ProbeAssertion,
 } from "../../packages/probe-defs/src/types.ts"
-import type { CellEvidence, HistoricalCellEvidence } from "./public-results.ts"
+import type { HistoricalCellEvidence } from "./public-results.ts"
 
-export type LoadedCellEvidence =
-  | (CellEvidence & { version: 4; runId: string; runSha256: string })
-  | (HistoricalCellEvidence & { version: 2; runId: string; runSha256: string })
-
+export type LoadedCellEvidence = HistoricalCellEvidence & { version: 2; runId: string; runSha256: string }
 export interface CellEvidenceExpectation {
-  schemaVersion: number
+  schemaVersion: 1 | 2
   runId: string
   runSha256: string
   featureId: string
@@ -326,11 +323,10 @@ function formatTraceIdentity(identity: LoadedCellTrace["identity"]): string {
 }
 
 /**
- * Validate a parsed per-run evidence document (`version: 2` for historical runs, `version: 4` for
- * schema-3 or schema-4 runs) and extract the cell record for `expectation.featureId`.
+ * Read an archived historical evidence document (`version: 2`) for `expectation.featureId`.
  */
 export function readCellEvidence(parsed: unknown, expectation: CellEvidenceExpectation): LoadedCellEvidence {
-  const expectedDocumentVersion = expectation.schemaVersion === 3 || expectation.schemaVersion === 4 ? 4 : 2
+  const expectedDocumentVersion = 2
   if (
     !isRecord(parsed) ||
     parsed.version !== expectedDocumentVersion ||
@@ -344,11 +340,7 @@ export function readCellEvidence(parsed: unknown, expectation: CellEvidenceExpec
   if (cellEntry === undefined) {
     throw new Error("no evidence stored for this cell")
   }
-  const payload = isRecord(cellEntry)
-    ? expectation.schemaVersion === 3 || expectation.schemaVersion === 4
-      ? cellEntry.result
-      : cellEntry.observation
-    : undefined
+  const payload = isRecord(cellEntry) ? cellEntry.observation : undefined
   if (
     !isRecord(cellEntry) ||
     cellEntry.featureId !== expectation.featureId ||
@@ -366,7 +358,7 @@ export function readCellEvidence(parsed: unknown, expectation: CellEvidenceExpec
     version: expectedDocumentVersion,
     runId: expectation.runId,
     runSha256: expectation.runSha256,
-    ...(cellEntry as unknown as CellEvidence | HistoricalCellEvidence),
+    ...(cellEntry as unknown as HistoricalCellEvidence),
   } as LoadedCellEvidence
 }
 

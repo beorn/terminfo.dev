@@ -469,17 +469,14 @@ export async function collectPass(
   const directory = mkdtempSync(join(output, "pass-"))
   const sourceRevision = execFileSync("git", ["rev-parse", "HEAD"], { cwd: ROOT, encoding: "utf8" }).trim()
   const catalogIds = Object.keys(loadFeatures(CONTENT))
-  const interpretationsPath = join(CONTENT, "interpretations.json")
   const inputSha256: Record<string, string> = {}
   for (const path of new Set([
     ...snapshot.sourcePaths.map((path) => join(ROOT, path)),
-    interpretationsPath,
     join(ROOT, "scripts/release1-collection.ts"),
     join(ROOT, "docs/data/full-census.ts"),
     join(ROOT, "content/features.json"),
     join(ROOT, "content/terminals.json"),
     join(ROOT, "scripts/linux-container-run.sh"),
-    join(ROOT, "scripts/interpretations.ts"),
     join(ROOT, "docs/data/selected-results.ts"),
     join(ROOT, "docs/data/release-scope.ts"),
     resolve(ROOT, "../../bun.lock"),

@@ -133,7 +133,12 @@ export type PickedContextRun<T extends ContextCandidate = ContextCandidate> = { 
  * This chooses a summary only; the projection retains every context and its original cells.
  */
 export function pickContextRun<T extends ContextCandidate>(candidates: readonly T[]): PickedContextRun<T> | undefined {
-  candidates = candidates.filter((candidate) => candidate.sources.length > 0)
+  const evidenceDate = (candidate: ContextCandidate): number => {
+    const latest = Math.max(...candidate.sources.map((source) => Date.parse(source.measuredAt)))
+    if (!Number.isFinite(latest)) throw new Error(`Context ${candidate.key} has no finite original evidence time`)
+    return latest
+  }
+  for (const candidate of candidates) evidenceDate(candidate)
   if (candidates.length === 0) return undefined
   const current = candidates.filter((candidate) => hasCurrentSource(candidate.sources))
   const considered = current.length > 0 ? current : candidates
@@ -142,8 +147,6 @@ export function pickContextRun<T extends ContextCandidate>(candidates: readonly 
   const defaults = considered.filter((candidate) => candidate.permissions === null)
   const [onlyDefault] = defaults
   if (defaults.length === 1 && onlyDefault) return { run: onlyDefault, selection: "default profile" }
-  const evidenceDate = (candidate: ContextCandidate): number =>
-    Math.max(...candidate.sources.map((source) => Date.parse(source.measuredAt)))
   const [latest] = [...considered].sort(
     (left, right) =>
       evidenceDate(right) - evidenceDate(left) || (left.key < right.key ? -1 : left.key > right.key ? 1 : 0),

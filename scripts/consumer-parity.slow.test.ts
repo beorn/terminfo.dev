@@ -272,7 +272,7 @@ vi.mock("../docs/data/current-results.ts", async () => {
       const sealed = sealedFixture(run)
       originals.set(sealed.runId, sealed)
     }
-    return projectResults([...originals.values()], [], catalogIds, { currentProbeHash: "current" }, [])
+    return projectResults([...originals.values()], catalogIds, { currentProbeHash: "current" }, [])
   }
   return {
     ...actual,
@@ -328,7 +328,6 @@ function recompose(projection: SelectedProjection, extra: readonly LoadedRun[] =
   for (const run of extra) runs.set(run.runId, run)
   return selectedResults.projectResults(
     [...runs.values()],
-    [],
     Object.values(projection.contexts)[0]?.catalogIds ?? [],
     { currentProbeHash: "current" },
     [],
@@ -855,7 +854,6 @@ describe("selected-run consumer parity", () => {
   it("keeps raw evidence and unchecked collector notes out of generated site and API summaries", () => {
     const out = mkdtempSync(join(tmpdir(), "terminfo-presentation-"))
     let selection: ReturnType<typeof vi.spyOn> | undefined
-    let imageReader: ReturnType<typeof vi.spyOn> | undefined
     try {
       const site = probesLoader.load()
       generateApi(out)
@@ -921,64 +919,8 @@ describe("selected-run consumer parity", () => {
       const privateFullProject = loadFullProjectData()
       expect(privateFullProject.collected).toBe(1)
       expect(JSON.stringify(privateFullProject).includes("UNAPPROVED_CURRENT_REASON")).toBe(false)
-      current.presentations = {
-        "sgr.bold": {
-          id: "present-current-bold",
-          reviewer: "reviewer",
-          reason: "reviewed retained evidence",
-          sources: ["https://example.org/review"],
-          presentsEvidence: true,
-          accepted: {
-            by: "fixture-acceptor",
-            wire: "00000000-0000-4000-8000-000000000000",
-            at: "2026-10-30T12:00:00-07:00",
-          },
-          acceptedSha256: "a".repeat(64),
-        },
-      }
-      const presented = publicResults(projection, targets)
-      const approval = presented.selectedByBackend.kitty?.selected.cells["sgr.bold"]?.presentation
-      if (approval?.state !== "presented") throw new Error("Current evidence was not presented")
-      expect(approval.url).toBe(`/api/v3/evidence/${current.sha256}.json#sgr.bold`)
-      // A presentation decision takes the result out of the trace.
-      const traceAfter = presented.projection.contexts[context.contextKey]?.sources[current.runId]?.trace
-      const tracedAfter = traceAfter && presented.documents.get(traceAfter.url)
-      if (traceAfter && !tracedAfter) throw new Error(`Missing trace document ${traceAfter.url}`)
-      const cellsAfter = tracedAfter ? (JSON.parse(tracedAfter.bytes) as { cells: Record<string, unknown> }).cells : {}
-      expect(Object.keys(cellsAfter)).not.toContain("sgr.bold")
-      const docUrl = approval.url.split("#")[0]!
-      const document = presented.documents.get(docUrl)
-      expect(document?.document).toMatchObject({
-        version: 4,
-        runId: current.runId,
-        runSha256: current.sha256,
-        cells: {
-          "sgr.bold": {
-            featureId: "sgr.bold",
-            result: { status: "supported" },
-            record: {
-              rawReply: "RETAINED_CURRENT_REPLY",
-              assertions: current.assertions,
-              screenshot: { url: `/artifacts/${screenshotSha256}.png`, sha256: screenshotSha256 },
-            },
-          },
-        },
-      })
-      expect(createHash("sha256").update(document!.bytes).digest("hex")).toBe(approval.sha256)
-      expect(JSON.stringify(presented.projection.contexts)).not.toContain("RETAINED_CURRENT_REPLY")
-      expect(JSON.stringify(loadFullProjectData()).includes("UNAPPROVED_CURRENT_REASON")).toBe(true)
-      imageReader = vi.spyOn(selectedResults, "readVerifiedArtifact").mockReturnValue(screenshot)
-      generateApi(out)
-      expect(imageReader).toHaveBeenCalledWith(
-        expect.any(String),
-        `sha256:${screenshotSha256}`,
-        current.runId,
-        "screenshot",
-      )
-      expect(readFileSync(join(out, "artifacts", `${screenshotSha256}.png`))).toEqual(screenshot)
-      expect(readFileSync(join(out, docUrl), "utf8")).toBe(document!.bytes)
+      expect([...unpublished.documents.keys()].some((url) => url.includes("/evidence/"))).toBe(false)
     } finally {
-      imageReader?.mockRestore()
       selection?.mockRestore()
       rmSync(out, { recursive: true, force: true })
     }

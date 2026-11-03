@@ -41,7 +41,6 @@ it("labels a retained source answer by engine version without regrading or datin
   const featureId = "extensions.iterm2-images"
   const projection = projectResults(
     [run],
-    [],
     catalog,
     { currentProbeHash: manifest.probeHash, workingRuns: [run] },
     [],
@@ -96,7 +95,6 @@ it("publishes only the safe pending phrase from a real disputed Ghostty cell", (
   expect(retained?.reason).toContain("@dev/")
   const projection = projectResults(
     [run],
-    [],
     catalog,
     { currentProbeHash: manifest.probeHash, workingRuns: [run] },
     [],
@@ -110,34 +108,6 @@ it("publishes only the safe pending phrase from a real disputed Ghostty cell", (
   expect(publicBytes).not.toContain("reply-path-audit")
   expect(published?.presentation.state).toBe("not-reviewed")
   expect(published?.record).toBeUndefined()
-  // Approval permits evidence presentation, never the pending reason's private suffix.
-  const approvedProjection = structuredClone(projection)
-  const selected = approvedProjection.history["lib:ghostty"]?.[0]
-  if (!selected) throw new Error("Expected real retained Ghostty selection")
-  selected.presentations[featureId] = {
-    id: "pending-privacy-regression",
-    reviewer: "fixture",
-    reason: "Inspect retained evidence",
-    sources: [],
-    presentsEvidence: true,
-    accepted: { by: "fixture", wire: "00000000-0000-4000-8000-000000000000", at: "2026-10-30T12:00:00-07:00" },
-    acceptedSha256: "a".repeat(64),
-  }
-  const approvedOutput = publicResults(approvedProjection, new Map())
-  const approved = approvedOutput.projection.contexts["lib:ghostty"]?.cells[featureId]
-  expect(approved?.reason).toBe("kept answers disagree")
-  expect(approved?.tests.find((check) => check.id === "review")?.reason).toBe("kept answers disagree")
-  expect(JSON.stringify(approved)).not.toContain("@dev/")
-  expect(JSON.stringify(approved)).not.toContain("kept originals")
-  if (approved?.presentation.state !== "presented") throw new Error("Expected approved evidence document")
-  const documentUrl = approved.presentation.url.split("#")[0]
-  if (!documentUrl) throw new Error("Expected approved evidence document URL")
-  const document = approvedOutput.documents.get(documentUrl)
-  expect(document).toBeDefined()
-  expect(document?.bytes).not.toContain("@dev/")
-  expect(document?.bytes).not.toContain("kept originals")
-  expect(document?.bytes).not.toContain("reply-path-audit")
-  expect(document?.bytes).toContain('"reason": "kept answers disagree"')
   expect(run).toEqual(original)
   expect(readFileSync(path, "utf8")).toBe(bytes)
 })

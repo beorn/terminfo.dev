@@ -1,4 +1,4 @@
-/** Reviewed selection and projection for terminal observations. */
+/** Stored selection and projection for terminal observations. */
 import { createHash } from "node:crypto"
 import { existsSync, readFileSync } from "node:fs"
 import { isAbsolute, join } from "node:path"
@@ -28,17 +28,10 @@ import {
   verifyRetainedArtifact,
   type RetainedArtifactKind,
 } from "../../packages/admin/corpus-placement.ts"
-import {
-  activeInterpretations,
-  applies,
-  fail,
-  hasPresentationDecision,
-  nonempty,
-  parseInterpretations,
-  validatePresentationShape,
-  validatePresentationSupersession,
-} from "../../scripts/interpretations.ts"
-export { parseInterpretations } from "../../scripts/interpretations.ts"
+const nonempty = (value: unknown): value is string => typeof value === "string" && value.length > 0
+function fail(path: string, message: string): never {
+  throw new Error(`${path}: ${message}`)
+}
 
 type ReadObservation = HistoricalProbeRun["observations"][number]
 type ReadAssertion = HistoricalProbeRun["assertions"][number]
@@ -73,10 +66,7 @@ export interface SelectedCell extends ReadObservation {
     correctionId?: string
     sources?: string[]
   }
-  presentation?: {
-    decision: Pick<Interpretation, "id" | "reviewer" | "reason" | "sources"> & { presentsEvidence: boolean }
-    original: { observation: ReadObservation; record: SelectedCell["record"] }
-  }
+
 }
 
 export interface SelectedVersion {
@@ -151,18 +141,6 @@ export interface CurrentSelectedVersion {
   assertions: ReadAssertion[]
   origin: RunOrigin
   textQualification?: TextQualification
-  /**
-   * Each keeps its accepted record and the sha256 of the committed interpretation record (its JSON serialization as
-   * parsed), a reviewed cell's lineage; the public API omits presentations.
-   */
-  presentations: Record<
-    string,
-    Pick<Interpretation, "id" | "reviewer" | "reason" | "sources"> & {
-      presentsEvidence: boolean
-      accepted: NonNullable<Interpretation["accepted"]>
-      acceptedSha256: string
-    }
-  >
   suiteRelation: SuiteRelation
   suiteFreshness: string
   counts: Record<ProbeStatus, number>
@@ -333,7 +311,6 @@ const versionCompare = (a: string, b: string): number => a.localeCompare(b, unde
  */
 export function projectResults(
   runs: readonly LoadedRun[],
-  interpretations: readonly Interpretation[],
   catalogIds: readonly string[],
   policy: {
     currentProbeHash: string
@@ -344,25 +321,6 @@ export function projectResults(
   archivedExclusions: readonly SelectedExclusion[],
 ): SelectedProjection {
   if (!nonempty(policy.currentProbeHash)) throw new Error("currentProbeHash is required")
-  for (const entry of interpretations) {
-    if (!hasPresentationDecision(entry)) continue
-    const run = runs.find((candidate) => candidate.runId === entry.runId)
-    if (!run) throw new Error(`presentation ${entry.id}: runId ${entry.runId} does not name a raw run`)
-    validatePresentationShape(
-      entry as unknown as Record<string, unknown>,
-      `interpretation ${entry.id}`,
-      new Set(run.catalogIds ?? catalogIds),
-    )
-    if (entry.runSha256 !== run.sha256) throw new Error(`presentation ${entry.id}: run SHA256 mismatch`)
-    if (!applies(entry, run)) throw new Error(`presentation ${entry.id}: scope does not match exact run`)
-    if (
-      !(run.schemaVersion === 3 || run.schemaVersion === 4 ? run.results : run.observations)?.some(
-        (result) => result.featureId === entry.featureId,
-      )
-    ) {
-      throw new Error(`presentation ${entry.id}: missing original result for ${entry.featureId}`)
-    }
-  }
   // 30661: the context count is per target across every run the projection read, so a context key is
   // qualified exactly as the runs measured it rather than as whichever runs are current today.
   const contexts = countContexts(runs)
@@ -381,9 +339,6 @@ export function projectResults(
     treeSuiteId: policy.currentProbeHash,
   }
   const table: Record<string, Record<string, ProbeStatus>> = {}
-  const resolvedRuns = [...runs, ...(policy.workingRuns ?? [])]
-  validatePresentationSupersession(interpretations, "interpretations", resolvedRuns)
-  const active = activeInterpretations(interpretations, resolvedRuns)
   const acceptedRuns: LoadedRun[] = []
   const baselineRunIds: string[] = []
   for (const run of currentRuns) {
@@ -396,30 +351,6 @@ export function projectResults(
     const states = Object.fromEntries(results.map((result) => [result.featureId, result.status]))
     table[run.runId] = states
     const suiteRelation: SuiteRelation = run.probeHash === policy.currentProbeHash ? "tree" : "older"
-    const presentations: CurrentSelectedVersion["presentations"] = {}
-    for (const entry of active) {
-      if (!hasPresentationDecision(entry) || entry.runId !== run.runId) continue
-      validatePresentationShape(
-        entry as unknown as Record<string, unknown>,
-        `interpretation ${entry.id}`,
-        new Set(run.catalogIds),
-      )
-      if (entry.runSha256 !== run.sha256) throw new Error(`presentation ${entry.id}: run SHA256 mismatch`)
-      if (!applies(entry, run)) throw new Error(`presentation ${entry.id}: scope does not match exact run`)
-      if (!entry.featureId || !run.results.some((result) => result.featureId === entry.featureId)) {
-        throw new Error(`presentation ${entry.id}: missing original result for ${entry.featureId}`)
-      }
-      if (presentations[entry.featureId]) throw new Error(`presentation ${entry.id}: conflicting active presentation`)
-      presentations[entry.featureId] = {
-        id: entry.id,
-        reviewer: entry.reviewer,
-        reason: entry.reason,
-        sources: [...entry.sources],
-        presentsEvidence: entry.presentsEvidence as boolean,
-        accepted: { ...(entry.accepted as NonNullable<Interpretation["accepted"]>) },
-        acceptedSha256: createHash("sha256").update(JSON.stringify(entry), "utf8").digest("hex"),
-      }
-    }
     const version: CurrentSelectedVersion = {
       schemaVersion: run.schemaVersion as 3 | 4,
       ...(run.schemaVersion === 4 ? { source: { ...run.source } } : {}),
@@ -438,7 +369,6 @@ export function projectResults(
       rawReplies: { ...run.rawReplies },
       assertions: globalThis.structuredClone(run.assertions),
       origin: globalThis.structuredClone(run.origin),
-      presentations,
       ...(run.textQualification && { textQualification: globalThis.structuredClone(run.textQualification) }),
       suiteFreshness: `${suiteRelation} suite ${run.probeHash}`,
       counts,
@@ -738,13 +668,8 @@ export function loadSelectedResults(
       verifiedArtifacts.add(`text-snapshot:${ref}`)
     }
   }
-  const interpretationsPath = join(contentDir, "interpretations.json")
-  const interpretations = existsSync(interpretationsPath)
-    ? parseInterpretations(interpretationsPath, readFileSync(interpretationsPath, "utf8"), catalog, undefined, runs)
-    : []
   return projectResults(
     runs,
-    interpretations,
     catalog,
     {
       currentProbeHash,
