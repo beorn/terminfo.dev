@@ -1069,6 +1069,32 @@
   {
     "subject": {
       "kind": "lib",
+      "id": "alacritty",
+      "version": "0.26.0",
+      "os": "linux"
+    },
+    "featureId": "sgr.overline",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [],
+        "originals": [
+          {
+            "reviewRef": "source.32245-alacritty-0.26.0-sgr.overline",
+            "reviewer": "@grok/1",
+            "reason": "alacritty_terminal 0.26.0 checksum bda177466b9524d59f1b12f0dd30b68696788e9992a7e959021c4a0ed96fcf59 has no OVERLINE flag and ignores unknown SGR attributes. The termless 0.10.2 reader writes overline null because the engine does not store it.",
+            "sources": [
+              "crates.io alacritty_terminal 0.26.0 checksum bda177466b9524d59f1b12f0dd30b68696788e9992a7e959021c4a0ed96fcf59 src/term/cell.rs Flags",
+              "@termless/alacritty@0.10.2 native/src/lib.rs get_cell"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
       "id": "ghostty",
       "version": "0.4.0",
       "os": "linux"
@@ -11706,6 +11732,33 @@
     "subject": {
       "kind": "lib",
       "id": "vt100",
+      "version": "0.10.1",
+      "os": "linux"
+    },
+    "featureId": "sgr.overline",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [],
+        "originals": [
+          {
+            "reviewRef": "source.32245-vt100-0.10.1-sgr.overline",
+            "reviewer": "@grok/1",
+            "reason": "vt100.js 0.10.1 ScreenCell has no overline field. SGR handles 1, 4, 5, and 7 only. The termless 0.10.2 reader writes overline null because the engine does not store it.",
+            "sources": [
+              "vt100.js@0.10.1 src/screen.ts ScreenCell",
+              "vt100.js@0.10.1 src/screen.ts handleSGR",
+              "@termless/vt100@0.10.2 src/backend.ts convertCell"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt100",
       "version": "0.9.0",
       "os": "linux"
     },
@@ -21914,6 +21967,32 @@
       "version": "0.16.2",
       "os": "linux"
     },
+    "featureId": "sgr.overline",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [],
+        "originals": [
+          {
+            "reviewRef": "source.32245-vt100-rust-0.16.2-sgr.overline",
+            "reviewer": "@grok/1",
+            "reason": "vt100 crate 0.16.2 checksum 054ff75fb8fa83e609e685106df4faeffdf3a735d3c74ebce97ec557d5d36fd9 stores bold, dim, italic, underline, and inverse only. The termless 0.10.2 binding writes overline null because the crate has no overline bit.",
+            "sources": [
+              "crates.io vt100 0.16.2 checksum 054ff75fb8fa83e609e685106df4faeffdf3a735d3c74ebce97ec557d5d36fd9 src/attrs.rs",
+              "@termless/vt100-rust@0.10.2 src/backend.ts convertNapiCell"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt100-rust",
+      "version": "0.16.2",
+      "os": "linux"
+    },
     "featureId": "sgr.underline-color-indexed",
     "answers": [
       {
@@ -22787,6 +22866,33 @@
               "git@github.com:beorn/vterm.git@9e99e4d23cdc606fca258b1863aa2be7ae79eed3:packages/vt220/src/screen.ts",
               "git@github.com:beorn/termless.git@bdaa263fdec6480cceb4b383aff027d3a46fd483:packages/vt220/src/index.ts",
               "git@github.com:beorn/termless.git@bdaa263fdec6480cceb4b383aff027d3a46fd483:packages/vt220/src/backend.ts"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "subject": {
+      "kind": "lib",
+      "id": "vt220",
+      "version": "0.10.1",
+      "os": "linux"
+    },
+    "featureId": "sgr.overline",
+    "answers": [
+      {
+        "status": "unsupported",
+        "citedBlobs": [],
+        "originals": [
+          {
+            "reviewRef": "source.32245-vt220-0.10.1-sgr.overline",
+            "reviewer": "@grok/1",
+            "reason": "vt220.js 0.10.1 ScreenCell has no overline field. SGR handles 1, 4, 5, 7, and 8 only. The termless 0.10.2 reader writes overline null because the engine does not store it.",
+            "sources": [
+              "vt220.js@0.10.1 src/screen.ts ScreenCell",
+              "vt220.js@0.10.1 src/screen.ts handleSGR",
+              "@termless/vt220@0.10.2 src/backend.ts convertCell"
             ]
           }
         ]
