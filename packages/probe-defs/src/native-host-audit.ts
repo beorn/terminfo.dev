@@ -177,6 +177,17 @@ export const NATIVE_HOST_AUDITS: ReadonlyMap<string, NativeHostSourceCitations> 
     },
   ],
   [
+    // 31688 rebuilt native: independently checked clipboard dispatch and wrapper.
+    "2e724652f148d5af965999d2eb86457621862dfc73784a1811ee1a010fb6d676",
+    {
+      "clipboard-load": {
+        kind: "unimplemented",
+        citation:
+          "tattoy-wezterm-term 0.1.0-fork.5 (base archive 7f367867, prepared patch 57be24a5) terminalstate/performer.rs:788 drops OperatingSystemCommand::QuerySelection; terminal.rs:13-19 Clipboard has only set_contents, so no build of this engine answers an OSC 52 read; termless cbfa60e2 packages/wezterm/native/src/lib.rs adds only the applicationCursor readback line at :418 and provides no OSC 52 read reply",
+      },
+    },
+  ],
+  [
     "0f56a805793d7d829daa617f1323aacff0d73fe868747b0d077c6af315e2aab8",
     {
       "clipboard-load": {

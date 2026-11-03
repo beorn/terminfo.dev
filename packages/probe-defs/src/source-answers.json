@@ -30926,6 +30926,50 @@
             ]
           }
         ]
+      },
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "cbfa60e2134dbd0a8a8e2dc51e9495a09ffaae82",
+            "path": "packages/wezterm/src/backend.ts",
+            "oid": "29b9bdea778abe558497217e811495c3c279451f"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "cbfa60e2134dbd0a8a8e2dc51e9495a09ffaae82",
+            "path": "packages/wezterm/native/src/lib.rs",
+            "oid": "f020988ef5ecc4f124d6468f7ba66e1c3a4cc6d3"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "cbfa60e2134dbd0a8a8e2dc51e9495a09ffaae82",
+            "path": "packages/wezterm/native/Cargo.toml",
+            "oid": "6f6d6198ed874e97f4b4c9a0f7a3e832a64cd129"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "cbfa60e2134dbd0a8a8e2dc51e9495a09ffaae82",
+            "path": "packages/wezterm/native/Cargo.lock",
+            "oid": "078727966d0ad2b73b87f7c3e291eff89bf84fa4"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "31688-source-pass-2026-11-03-wezterm",
+            "reviewer": "@dev/2",
+            "reason": "Rebuilt 31688 artifact 2e724652f148d5af965999d2eb86457621862dfc73784a1811ee1a010fb6d676, sourceCommit 3aeac576531cbc9fb3502b406789cf51ee22fcac, build ca7186865f0552c614701166c1664ab59216f89550c8b2df7b4c26894e011de0, lock 69f92e2bb6cf16b891ba30b213958c34e17c84ee57fa96b42e02e7e477218d58, nativeTree 5b05435f1648f4fd21f366651439360d12ed57b4, baseArchive 7f3678674adc87f210ec01e2134e1972d6b0bd194bf82242f7e7beee3ae9dbd8 plus prepared patch 57be24a5bb315e4b7672139f760467f939c6afe9f4f0d2858236beb2b026fc4f (src/terminalstate/mod.rs and src/test/csi.rs only). The vendored term crate still has no DECSACE or DECCARA path: the only star-intermediate arm in the escape parser is ('y', [.., CsiParam::P(b'*')]) checksum_area at csi.rs:1834 (DECRQCRA), no x final-action arm exists anywhere in the crate, and the only dollar-intermediate arms are p at csi.rs:1852-1853 and 2384-2390, so CSI Ps * x and the DECCARA rectangle parse to CSI::Unspecified (csi.rs:115-141) and land in performer.rs:577-581, which only optionally logs. performer.rs is byte-identical to the audited archive (sha256 6f53e334) and the prepared patch adds a readback getter only, not a CSI arm. No attribute-change-extent state, no effect on DECCARA grading: Unsupported.",
+            "sources": [
+              "git@github.com:beorn/termless.git@cbfa60e2134dbd0a8a8e2dc51e9495a09ffaae82:packages/wezterm/native/src/lib.rs blob f020988ef5ecc4f124d6468f7ba66e1c3a4cc6d3 (adds only the applicationCursor readback line at :418)",
+              "git@github.com:beorn/termless.git@cbfa60e2134dbd0a8a8e2dc51e9495a09ffaae82:packages/wezterm/native/vendor/tattoy-wezterm-term/src/terminalstate/performer.rs blob 4acbe6cff3e955c8539eed924229877d2ae89e45 sha256 6f53e3345e0911b7756815f8afdf015d7c6bf5d7ebe8ff450db2f3225ff1749d",
+              "git@github.com:beorn/termless.git@cbfa60e2134dbd0a8a8e2dc51e9495a09ffaae82:packages/wezterm/native/vendor/tattoy-wezterm-term/src/terminal.rs blob 4edaa7c59c90913ed190249e0ea2f64448b5a7a8 sha256 b777a247e03903d8056e7951285c8cd742dd7b0eec103871474c28cdc4c9400d",
+              "locked crate tattoy-wezterm-escape-parser-0.1.0-1 archive sha256:7ca89ed38092d6718a03e97b0c1101fcf2203c2e6f2757a91c465f393d11d98b; source /home/hh/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tattoy-wezterm-escape-parser-0.1.0-1/src/csi.rs sha256:ccd68f8aab7d5b7c1d84aba07d219675ac9898fc84c9a32cd4548ad2774541db; archive bytes verified equal",
+              "locked crate tattoy-wezterm-escape-parser-0.1.0-1 archive sha256:7ca89ed38092d6718a03e97b0c1101fcf2203c2e6f2757a91c465f393d11d98b; source /home/hh/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tattoy-wezterm-escape-parser-0.1.0-1/src/osc.rs sha256:fd26b6d6254c46ef880fbcc03ba418d67e9049c875e71cca6f18f4df76a0924f; archive bytes verified equal",
+              "current source pass @dev/2 2026-11-03, 31688-source-pass-2026-11-03-wezterm; identity from /hh/var/@dev1/31688-built-identity-proof.json and /hh/var/@dev1/31688-vendor-proof.json"
+            ]
+          }
+        ]
       }
     ]
   },
@@ -30993,6 +31037,62 @@
               "tattoy-wezterm-escape-parser0.1.0-1 archive SHA256 7ca89ed38092d6718a03e97b0c1101fcf2203c2e6f2757a91c465f393d11d98b, src/osc.rs:457-505 SHA256 fd26b6d6254c46ef880fbcc03ba418d67e9049c875e71cca6f18f4df76a0924f has no176 mapping; :155-167 produces Unspecified. tattoy-wezterm-term0.1.0-fork.5 archive SHA256 7f3678674adc87f210ec01e2134e1972d6b0bd194bf82242f7e7beee3ae9dbd8, src/terminalstate/performer.rs:772-782 SHA256 6f53e3345e0911b7756815f8afdf015d7c6bf5d7ebe8ff450db2f3225ff1749d only optionally logs Unspecified, with no state or reply. Current Termless25089207 native/src/lib.rs advances that pinned Terminal without an alternate OSC handler. Independent source review @dev/8 2026-11-03, 6196c3b3-f320-495b-861a-4312753ff1bf and dispatcher f4cb516b-7485-4055-ace1-02ac435a1f73; the existing identity owner verifies loaded b4155bfd with source80dd2541/builddc7cc8af/lock8eaeab73",
               "Current source verdict 6196c3b3-f320-495b-861a-4312753ff1bf, @dev/8, 2026-11-03;  Additional independent dispatcher judgment f4cb516b-7485-4055-ace1-02ac435a1f73, @dev/8, 2026-11-03. /hh/var/@dev1/osc176-native-current-bindings-proof.json",
               "Run 48bed351-faaa-4cab-af01-836b2103986d raw SHA2566adc367f6cff96712a33afe54e386d82f04c8c1a5e14f5c762c1da324c1fed03, suiteca6d8b6736cf, terminfocc4263e522d345216629c9345282f12c2c027969; baseline TODO has no deciding assertion; source absence plus exact native/adapter qualification is required for extensions.osc176-app-id"
+            ]
+          }
+        ]
+      },
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "cbfa60e2134dbd0a8a8e2dc51e9495a09ffaae82",
+            "path": "packages/wezterm/src/index.ts",
+            "oid": "512606c5270ffd0cff55c1b70f5b3eda18a92df0"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "cbfa60e2134dbd0a8a8e2dc51e9495a09ffaae82",
+            "path": "packages/wezterm/src/backend.ts",
+            "oid": "29b9bdea778abe558497217e811495c3c279451f"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "cbfa60e2134dbd0a8a8e2dc51e9495a09ffaae82",
+            "path": "packages/wezterm/native/src/lib.rs",
+            "oid": "f020988ef5ecc4f124d6468f7ba66e1c3a4cc6d3"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "cbfa60e2134dbd0a8a8e2dc51e9495a09ffaae82",
+            "path": "src/load-native.ts",
+            "oid": "34e142550085450ab02138184626716ad0d6b546"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "cbfa60e2134dbd0a8a8e2dc51e9495a09ffaae82",
+            "path": "packages/wezterm/native/Cargo.toml",
+            "oid": "6f6d6198ed874e97f4b4c9a0f7a3e832a64cd129"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "cbfa60e2134dbd0a8a8e2dc51e9495a09ffaae82",
+            "path": "packages/wezterm/native/Cargo.lock",
+            "oid": "078727966d0ad2b73b87f7c3e291eff89bf84fa4"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "31688-source-pass-2026-11-03-wezterm",
+            "reviewer": "@dev/2",
+            "reason": "Rebuilt 31688 artifact 2e724652f148d5af965999d2eb86457621862dfc73784a1811ee1a010fb6d676, sourceCommit 3aeac576531cbc9fb3502b406789cf51ee22fcac, build ca7186865f0552c614701166c1664ab59216f89550c8b2df7b4c26894e011de0, lock 69f92e2bb6cf16b891ba30b213958c34e17c84ee57fa96b42e02e7e477218d58, nativeTree 5b05435f1648f4fd21f366651439360d12ed57b4, baseArchive 7f3678674adc87f210ec01e2134e1972d6b0bd194bf82242f7e7beee3ae9dbd8 plus prepared patch 57be24a5bb315e4b7672139f760467f939c6afe9f4f0d2858236beb2b026fc4f (src/terminalstate/mod.rs and src/test/csi.rs only). ESC ] 176 BEL parses through tattoy-wezterm-escape-parser 0.1.0-1 osc.rs (sha256 fd26b6d6): internal_parse at :256 falls back to OperatingSystemCommand::Unspecified at :152-166, and the crate contains no 176 arm and no 176 token. The term crate handles Unspecified at performer.rs:772-782 with an optional log only, so no app-id state is set and no reply is written. The rebuilt native path adds only the applicationCursor readback line (lib.rs f020988e :418) and registers no alternate OSC handler; adapter index.ts, backend.ts and load-native.ts are byte-identical to the prior revision. No Wayland app-id writer or state exists in this configured library path: Unsupported.",
+            "sources": [
+              "git@github.com:beorn/termless.git@cbfa60e2134dbd0a8a8e2dc51e9495a09ffaae82:packages/wezterm/native/src/lib.rs blob f020988ef5ecc4f124d6468f7ba66e1c3a4cc6d3 (adds only the applicationCursor readback line at :418)",
+              "git@github.com:beorn/termless.git@cbfa60e2134dbd0a8a8e2dc51e9495a09ffaae82:packages/wezterm/native/vendor/tattoy-wezterm-term/src/terminalstate/performer.rs blob 4acbe6cff3e955c8539eed924229877d2ae89e45 sha256 6f53e3345e0911b7756815f8afdf015d7c6bf5d7ebe8ff450db2f3225ff1749d",
+              "git@github.com:beorn/termless.git@cbfa60e2134dbd0a8a8e2dc51e9495a09ffaae82:packages/wezterm/native/vendor/tattoy-wezterm-term/src/terminal.rs blob 4edaa7c59c90913ed190249e0ea2f64448b5a7a8 sha256 b777a247e03903d8056e7951285c8cd742dd7b0eec103871474c28cdc4c9400d",
+              "locked crate tattoy-wezterm-escape-parser-0.1.0-1 archive sha256:7ca89ed38092d6718a03e97b0c1101fcf2203c2e6f2757a91c465f393d11d98b; source /home/hh/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tattoy-wezterm-escape-parser-0.1.0-1/src/csi.rs sha256:ccd68f8aab7d5b7c1d84aba07d219675ac9898fc84c9a32cd4548ad2774541db; archive bytes verified equal",
+              "locked crate tattoy-wezterm-escape-parser-0.1.0-1 archive sha256:7ca89ed38092d6718a03e97b0c1101fcf2203c2e6f2757a91c465f393d11d98b; source /home/hh/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tattoy-wezterm-escape-parser-0.1.0-1/src/osc.rs sha256:fd26b6d6254c46ef880fbcc03ba418d67e9049c875e71cca6f18f4df76a0924f; archive bytes verified equal",
+              "current source pass @dev/2 2026-11-03, 31688-source-pass-2026-11-03-wezterm; identity from /hh/var/@dev1/31688-built-identity-proof.json and /hh/var/@dev1/31688-vendor-proof.json"
             ]
           }
         ]
@@ -31357,6 +31457,50 @@
               "git@github.com:beorn/termless.git@80dd254111ab82279125555f9ca1e68b112cd7e3:packages/wezterm/src/backend.ts",
               "locked crate tattoy-wezterm-escape-parser-0.1.0-1 archive sha256:7ca89ed38092d6718a03e97b0c1101fcf2203c2e6f2757a91c465f393d11d98b; source /home/hh/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tattoy-wezterm-escape-parser-0.1.0-1/src/csi.rs sha256:ccd68f8aab7d5b7c1d84aba07d219675ac9898fc84c9a32cd4548ad2774541db; archive bytes verified equal",
               "locked crate tattoy-wezterm-term-0.1.0-fork.5 archive sha256:7f3678674adc87f210ec01e2134e1972d6b0bd194bf82242f7e7beee3ae9dbd8; source /home/hh/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tattoy-wezterm-term-0.1.0-fork.5/src/terminalstate/performer.rs sha256:6f53e3345e0911b7756815f8afdf015d7c6bf5d7ebe8ff450db2f3225ff1749d; archive bytes verified equal"
+            ]
+          }
+        ]
+      },
+      {
+        "status": "unsupported",
+        "citedBlobs": [
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "cbfa60e2134dbd0a8a8e2dc51e9495a09ffaae82",
+            "path": "packages/wezterm/src/backend.ts",
+            "oid": "29b9bdea778abe558497217e811495c3c279451f"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "cbfa60e2134dbd0a8a8e2dc51e9495a09ffaae82",
+            "path": "packages/wezterm/native/src/lib.rs",
+            "oid": "f020988ef5ecc4f124d6468f7ba66e1c3a4cc6d3"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "cbfa60e2134dbd0a8a8e2dc51e9495a09ffaae82",
+            "path": "packages/wezterm/native/Cargo.toml",
+            "oid": "6f6d6198ed874e97f4b4c9a0f7a3e832a64cd129"
+          },
+          {
+            "repository": "git@github.com:beorn/termless.git",
+            "commit": "cbfa60e2134dbd0a8a8e2dc51e9495a09ffaae82",
+            "path": "packages/wezterm/native/Cargo.lock",
+            "oid": "078727966d0ad2b73b87f7c3e291eff89bf84fa4"
+          }
+        ],
+        "originals": [
+          {
+            "reviewRef": "31688-source-pass-2026-11-03-wezterm",
+            "reviewer": "@dev/2",
+            "reason": "Rebuilt 31688 artifact 2e724652f148d5af965999d2eb86457621862dfc73784a1811ee1a010fb6d676, sourceCommit 3aeac576531cbc9fb3502b406789cf51ee22fcac, build ca7186865f0552c614701166c1664ab59216f89550c8b2df7b4c26894e011de0, lock 69f92e2bb6cf16b891ba30b213958c34e17c84ee57fa96b42e02e7e477218d58, nativeTree 5b05435f1648f4fd21f366651439360d12ed57b4, baseArchive 7f3678674adc87f210ec01e2134e1972d6b0bd194bf82242f7e7beee3ae9dbd8 plus prepared patch 57be24a5bb315e4b7672139f760467f939c6afe9f4f0d2858236beb2b026fc4f (src/terminalstate/mod.rs and src/test/csi.rs only). DECSSCLS shares CSI Ps SP q with DECSCUSR, and this engine binds that sequence to cursor style only: the single space-q arm is ('q', [.., CsiParam::P(b' ')]) cursor_style at csi.rs:1833, with no scroll-speed arm. The vendored term crate carries no DECSSCLS or presentation-speed state (its only speed symbol is config alternate_buffer_wheel_scroll_speed, wheel scrolling). The prepared DECCKM readback patch adds no arm. A DECSSCLS sequence therefore changes cursor style and leaves no readable scroll-speed state: Unsupported.",
+            "sources": [
+              "git@github.com:beorn/termless.git@cbfa60e2134dbd0a8a8e2dc51e9495a09ffaae82:packages/wezterm/native/src/lib.rs blob f020988ef5ecc4f124d6468f7ba66e1c3a4cc6d3 (adds only the applicationCursor readback line at :418)",
+              "git@github.com:beorn/termless.git@cbfa60e2134dbd0a8a8e2dc51e9495a09ffaae82:packages/wezterm/native/vendor/tattoy-wezterm-term/src/terminalstate/performer.rs blob 4acbe6cff3e955c8539eed924229877d2ae89e45 sha256 6f53e3345e0911b7756815f8afdf015d7c6bf5d7ebe8ff450db2f3225ff1749d",
+              "git@github.com:beorn/termless.git@cbfa60e2134dbd0a8a8e2dc51e9495a09ffaae82:packages/wezterm/native/vendor/tattoy-wezterm-term/src/terminal.rs blob 4edaa7c59c90913ed190249e0ea2f64448b5a7a8 sha256 b777a247e03903d8056e7951285c8cd742dd7b0eec103871474c28cdc4c9400d",
+              "locked crate tattoy-wezterm-escape-parser-0.1.0-1 archive sha256:7ca89ed38092d6718a03e97b0c1101fcf2203c2e6f2757a91c465f393d11d98b; source /home/hh/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tattoy-wezterm-escape-parser-0.1.0-1/src/csi.rs sha256:ccd68f8aab7d5b7c1d84aba07d219675ac9898fc84c9a32cd4548ad2774541db; archive bytes verified equal",
+              "locked crate tattoy-wezterm-escape-parser-0.1.0-1 archive sha256:7ca89ed38092d6718a03e97b0c1101fcf2203c2e6f2757a91c465f393d11d98b; source /home/hh/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tattoy-wezterm-escape-parser-0.1.0-1/src/osc.rs sha256:fd26b6d6254c46ef880fbcc03ba418d67e9049c875e71cca6f18f4df76a0924f; archive bytes verified equal",
+              "current source pass @dev/2 2026-11-03, 31688-source-pass-2026-11-03-wezterm; identity from /hh/var/@dev1/31688-built-identity-proof.json and /hh/var/@dev1/31688-vendor-proof.json"
             ]
           }
         ]

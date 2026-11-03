@@ -764,16 +764,42 @@ describe("window-operation qualification", () => {
           let index = 0
           return {
             feed: () => undefined,
-            runtimeIdentity: {
-              kind: "js",
-              runtimeFormat: "wasm",
-              engineVersion: "0.4.0",
-              adapterVersion: "0.4.0",
-              termlessRevision: "0".repeat(40),
-              resolvedPath: "fixture.js",
-              integrity: { kind: "registry", lockIntegrity: "sha512-fixture" },
-              loadedBinary: { path: "fixture.wasm", sha256: binarySha },
-            },
+            runtimeIdentity:
+              sha256 === "2e724652f148d5af965999d2eb86457621862dfc73784a1811ee1a010fb6d676"
+                ? {
+                    kind: "native",
+                    engineVersion: "0.1.0-fork.5",
+                    adapterVersion: "0.10.2",
+                    termlessRevision: "cbfa60e2134dbd0a8a8e2dc51e9495a09ffaae82",
+                    loadedBinary: { path: "/fixture/native", sha256: binarySha },
+                    provenance: {
+                      sha256: binarySha,
+                      sourceCommit: "3aeac576531cbc9fb3502b406789cf51ee22fcac",
+                      buildHash: "ca7186865f0552c614701166c1664ab59216f89550c8b2df7b4c26894e011de0",
+                      toolchain:
+                        "rustc 1.94.0 (4a4ef493e 2026-03-02) (built from a source tarball); cargo 1.94.0 (85eff7c80 2026-01-15)",
+                      lockSha256: "69f92e2bb6cf16b891ba30b213958c34e17c84ee57fa96b42e02e7e477218d58",
+                    },
+                    adapterSources: [
+                      { path: "packages/wezterm/src/index.ts", blobOid: "512606c5270ffd0cff55c1b70f5b3eda18a92df0" },
+                      { path: "packages/wezterm/src/backend.ts", blobOid: "29b9bdea778abe558497217e811495c3c279451f" },
+                      {
+                        path: "packages/wezterm/native/src/lib.rs",
+                        blobOid: "f020988ef5ecc4f124d6468f7ba66e1c3a4cc6d3",
+                      },
+                      { path: "src/load-native.ts", blobOid: "34e142550085450ab02138184626716ad0d6b546" },
+                    ],
+                  }
+                : {
+                    kind: "js",
+                    runtimeFormat: "wasm",
+                    engineVersion: "0.4.0",
+                    adapterVersion: "0.4.0",
+                    termlessRevision: "0".repeat(40),
+                    resolvedPath: "fixture.js",
+                    integrity: { kind: "registry", lockIntegrity: "sha512-fixture" },
+                    loadedBinary: { path: "fixture.wasm", sha256: binarySha },
+                  },
             getTitle: () => titles[index++]!,
           } as unknown as LibProbeSource
         }

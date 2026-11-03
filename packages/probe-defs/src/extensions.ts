@@ -1534,6 +1534,18 @@ const ABSENT_OSC_ENGINES = {
     sourceCitation:
       "tattoy-wezterm-escape-parser0.1.0-1 archive SHA256 7ca89ed38092d6718a03e97b0c1101fcf2203c2e6f2757a91c465f393d11d98b, src/osc.rs:457-505 SHA256 fd26b6d6254c46ef880fbcc03ba418d67e9049c875e71cca6f18f4df76a0924f has no176 mapping; :155-167 produces Unspecified. tattoy-wezterm-term0.1.0-fork.5 archive SHA256 7f3678674adc87f210ec01e2134e1972d6b0bd194bf82242f7e7beee3ae9dbd8, src/terminalstate/performer.rs:772-782 SHA256 6f53e3345e0911b7756815f8afdf015d7c6bf5d7ebe8ff450db2f3225ff1749d only optionally logs Unspecified, with no state or reply. Current Termless25089207 native/src/lib.rs advances that pinned Terminal without an alternate OSC handler. Independent source review @dev/8 2026-11-03, 6196c3b3-f320-495b-861a-4312753ff1bf and dispatcher f4cb516b-7485-4055-ace1-02ac435a1f73; the existing identity owner verifies loaded b4155bfd with source80dd2541/builddc7cc8af/lock8eaeab73",
   },
+  wezterm2e724652: {
+    kind: "native",
+    engineVersion: "0.1.0-fork.5",
+    adapterVersion: "0.10.2",
+    binarySha256: "2e724652f148d5af965999d2eb86457621862dfc73784a1811ee1a010fb6d676",
+    sourceCommit: "3aeac576531cbc9fb3502b406789cf51ee22fcac",
+    buildHash: "ca7186865f0552c614701166c1664ab59216f89550c8b2df7b4c26894e011de0",
+    lockSha256: "69f92e2bb6cf16b891ba30b213958c34e17c84ee57fa96b42e02e7e477218d58",
+    codes: [176],
+    sourceCitation:
+      "Rebuilt 31688 artifact 2e724652f148d5af965999d2eb86457621862dfc73784a1811ee1a010fb6d676, sourceCommit 3aeac576531cbc9fb3502b406789cf51ee22fcac, build ca7186865f0552c614701166c1664ab59216f89550c8b2df7b4c26894e011de0, lock 69f92e2bb6cf16b891ba30b213958c34e17c84ee57fa96b42e02e7e477218d58, nativeTree 5b05435f1648f4fd21f366651439360d12ed57b4, baseArchive 7f3678674adc87f210ec01e2134e1972d6b0bd194bf82242f7e7beee3ae9dbd8 plus prepared patch 57be24a5bb315e4b7672139f760467f939c6afe9f4f0d2858236beb2b026fc4f (src/terminalstate/mod.rs and src/test/csi.rs only). ESC ] 176 BEL parses through tattoy-wezterm-escape-parser 0.1.0-1 osc.rs (sha256 fd26b6d6): internal_parse at :256 falls back to OperatingSystemCommand::Unspecified at :152-166, and the crate contains no 176 arm and no 176 token. The term crate handles Unspecified at performer.rs:772-782 with an optional log only, so no app-id state is set and no reply is written. The rebuilt native path adds only the applicationCursor readback line (lib.rs f020988e :418) and registers no alternate OSC handler; adapter index.ts, backend.ts and load-native.ts are byte-identical to the prior revision. No Wayland app-id writer or state exists in this configured library path: Unsupported.",
+  },
 } as const
 
 export function auditedOscEngine(identity: LibProbeSource["runtimeIdentity"], code?: number | "133;D") {
