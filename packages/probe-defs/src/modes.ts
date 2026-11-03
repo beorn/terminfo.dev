@@ -1,7 +1,6 @@
 import type {
   CaptureCells,
   CaptureRectangle,
-  HeadlessRuntimeIdentity,
   ObservationFrame,
   ProbeDefinition,
   ProbeCallbackResult,
@@ -11,7 +10,6 @@ import type {
 import { frameDigests } from "./types.ts"
 import {
   probe,
-  modeSourceKey,
   withModeSourceReview,
   replyFailure,
   decrpmModeProbe,
@@ -836,30 +834,6 @@ const ALT_SCREEN_1049: AltScreenMode = { mode: 1049, clearsOnEnter: true, clears
 const ALT_SCREEN_1047: AltScreenMode = { mode: 1047, clearsOnEnter: false, clearsOnExit: true, savesCursor: false }
 const ALT_SCREEN_47: AltScreenMode = { mode: 47, clearsOnEnter: false, clearsOnExit: false, savesCursor: false }
 
-/**
- * Exact loaded sources whose engine implements no alternate screen at all (#31388, @dev/10 d2dbb969). On such
- * an engine a ?1049 exit is not "unattributed": there is no alternate buffer to leave, so the honest grade is a
- * negative decided by source — the shape of the audited title stack (#31735, @cto 863bef67), but keyed on a
- * source tuple because a JS source engine has no loaded binary to hash. Repository, revision, tree and resolved
- * path must all match and the tree must be clean. An adapter name is never enough: the adapters are
- * pass-throughs, and a moved or locally modified engine must fall back to the existing inconclusive answer.
- */
-const ALT_SCREEN_UNIMPLEMENTED_AUDITS: ReadonlyMap<string, string> = new Map([
-  [
-    "git@github.com:beorn/vterm.git@9e99e4d23cdc606fca258b1863aa2be7ae79eed3:b941dae48b25ae8825c394750bda5245c9d93dfa:vendor/vterm/packages/vt100/src/index.ts",
-    "vterm packages/vt100/src/screen.ts:99 'Main screen buffer (no alternate screen in VT100)'; no CSI ? 1049 changes state in that source tree, so there is no alternate buffer for exit to leave",
-  ],
-  [
-    "git@github.com:beorn/vterm.git@9e99e4d23cdc606fca258b1863aa2be7ae79eed3:4205f8936ad1848d1029729f3ada888cd61759a8:vendor/vterm/packages/vt220/src/index.ts",
-    "vterm packages/vt220/src/screen.ts:145 'Main screen buffer (no alternate screen in VT220)', with :90 listing the alternate screen among what it does not cover; no CSI ? 1049 changes state in that source tree",
-  ],
-])
-
-function altScreenAbsenceCitation(identity: HeadlessRuntimeIdentity | undefined): string | undefined {
-  const key = modeSourceKey(identity)
-  return key === undefined ? undefined : ALT_SCREEN_UNIMPLEMENTED_AUDITS.get(key)
-}
-
 type AlternateReflowPhase = {
   id: "alternate-grow" | "alternate-shrink"
   from: 12 | 20
@@ -968,14 +942,7 @@ function altScreenRoundtrip(
     if (!entered) {
       const state = { seedA, seedB, blankA, blankB, ...(!screen.clearsOnEnter && { seedShown }) }
       if (phase === "exit") {
-        // An engine audited as having no alternate screen cannot have entered one, so its exit is decided by
-        // source rather than left unattributed (#31388). Every other engine keeps the inconclusive answer below:
-        // an exit across an unqualified entry is genuinely unattributable, and the broad failed-entry branch
-        // stays as it is.
-        const sourceCitation = altScreenAbsenceCitation(ctx.runtimeIdentity)
-        if (sourceCitation !== undefined) {
-          return parserStateResult(false, expected, { ...state, sourceCitation }, "negative by source citation")
-        }
+        // An exit across an unqualified entry is unattributable; source never decides it (#32246, @cto batch7 A-F1).
         return parserStateResult(
           null,
           expected,
