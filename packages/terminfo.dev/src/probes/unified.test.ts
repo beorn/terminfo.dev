@@ -485,13 +485,13 @@ function verifiedBatchFixture() {
 // A DECRQSS style result is not a visual observation (#30590). The unrelated screenshot
 // assertion exercises the same-run feature binding, not just global screenshot presence.
 it.each([
-  { id: "sgr.bold", outcome: "supported", evidence: "captured", expected: "supported" },
-  { id: "sgr.bold", outcome: "unsupported", evidence: "captured", expected: "unsupported" },
-  { id: "sgr.bold", outcome: "supported", evidence: "assertion", expected: "test-todo" },
-  { id: "sgr.bold", outcome: "supported", evidence: "foreign-captured", expected: "test-todo" },
+  { id: "sgr.bold", outcome: "supported", evidence: "captured", kind: "term", expected: "supported" },
+  { id: "sgr.bold", outcome: "unsupported", evidence: "captured", kind: "mux", expected: "unsupported" },
+  { id: "sgr.bold", outcome: "supported", evidence: "assertion", kind: "term", expected: "test-todo" },
+  { id: "sgr.bold", outcome: "supported", evidence: "foreign-captured", kind: "term", expected: "test-todo" },
   { id: "sgr.bold", outcome: "supported", evidence: "none", kind: "lib", expected: "supported" },
 ] as const)("records $id/$outcome with $evidence visual evidence as $expected", async (testCase) => {
-  const { id, outcome, evidence, expected } = testCase
+  const { id, outcome, evidence, expected, kind } = testCase
   verifiedBatchFixture()
   const definitions = ["device.primary-da", id].map((featureId) => ALL_PROBES.find((probe) => probe.id === featureId)!)
   const originals = definitions.map(({ term, termWrites, termNeedsGeometry }) => ({
@@ -505,9 +505,6 @@ it.each([
       definition.termWrites = "query"
       delete definition.termNeedsGeometry
       definition.term = async (ctx) => {
-        if (definition.id === id && (outcome === "test-todo" || outcome === "test-failure")) {
-          return { pass: false, tests: [{ id: "criterion", status: outcome, reason: "Existing callback cause" }] }
-        }
         const measured = outcome === "unsupported" && definition.id === id ? "unsupported" : "supported"
         const captured =
           (definition.id === id && evidence === "captured") || (definition.id !== id && evidence === "foreign-captured")
@@ -538,7 +535,7 @@ it.each([
     const batch = await runProbeBatch({
       ids: definitions.map((probe) => probe.id),
       subject: {
-        kind: "kind" in testCase ? testCase.kind : id === "sgr.bold" ? "term" : "mux",
+        kind,
         id: "visual-style-fixture",
         os: "linux",
       },
@@ -549,12 +546,10 @@ it.each([
     })
     const row = batch.results.find((result) => result.featureId === id)!
     expect(row.status).toBe(expected)
-    if (expected === "test-todo" && outcome !== "test-todo") {
+    if (expected === "test-todo") {
       expect(row.reason).toBe("visual effect not observed in this run")
       expect(row.tests).toContainEqual(expect.objectContaining({ status: "test-todo", reason: row.reason }))
       expect(batch.observations.find((observation) => observation.featureId === id)?.outcome).toBe(outcome)
-    } else if (outcome === "test-todo" || outcome === "test-failure") {
-      expect(row.reason).toBe("Existing callback cause")
     }
     expect(batch.results.find((result) => result.featureId === "device.primary-da")?.status).toBe("supported")
   } finally {

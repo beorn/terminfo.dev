@@ -92,7 +92,10 @@ it("accepts only the recorded SGR screenshot in its own pixel captures without s
   const ref = `sha256:${"a".repeat(64)}`
   const frame: ObservationFrame = { role: "target", ref, capturedAt: 1, label: "Fixture pixels" }
   const textFrame: ObservationFrame = {
-    ...frame,
+    role: "target",
+    ref,
+    capturedAt: 1,
+    label: "Fixture cells",
     kind: "text-cells",
     cellDigest: "cells",
     frameDigest: "frame",
