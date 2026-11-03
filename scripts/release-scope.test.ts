@@ -13,7 +13,7 @@ import { createHash } from "node:crypto"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { describe, expect, it } from "vitest"
-import { loadFeatures, slice, type FeatureCatalog, type Slice } from "@terminfo/catalog"
+import { loadFeatures, type FeatureCatalog, type Slice } from "@terminfo/catalog"
 import {
   ENVIRONMENT_GROUP_IDS,
   SOURCE_ANSWERS,
@@ -25,7 +25,6 @@ import {
 } from "@terminfo/probe-defs"
 import { loadStoredRuns } from "../packages/admin/corpus-placement.ts"
 import { loadCategories, orderedCategoryIds } from "../docs/data/categories.ts"
-import { loadReleaseScope } from "../docs/data/load-release-scope.ts"
 import {
   PROBE_METHODS,
   PROBE_METHOD_RANK,
@@ -47,6 +46,18 @@ const root = join(import.meta.dirname, "..")
 const contentDir = join(root, "content")
 const catalog = loadFeatures(contentDir)
 const categories = loadCategories(contentDir)
+
+// CTO ruling 2026-11-03: the retired projection was the last production reader; keep slice behaviour
+// with the cohort contract instead of retaining an unused package API (#31824).
+function slice(features: FeatureCatalog, categories: Readonly<Record<string, { slice: Slice }>>, id: string): Slice {
+  const feature = features[id]
+  if (!feature) throw new Error(`slice(): no feature "${id}" in the catalog`)
+  if (feature.tier1 !== undefined) return "tier1"
+  const key = id.split(".")[0] ?? ""
+  const category = categories[key]
+  if (!category) throw new Error(`slice(): feature "${id}" has prefix "${key}", which is not a category`)
+  return category.slice
+}
 
 // CTO ruling 2026-10-23: retain these accepted contracts at their only caller, this test boundary.
 /** The category facts a cohort's order needs: its slice label and its site order. */
@@ -149,12 +160,13 @@ export function d3Verdict(decisive: number, denominator: number): D3Verdict {
 
 describe("the derived scope and the classic cohort", () => {
   it("derives the declared 62 tier-1 rows from the catalog's tier1 labels, never a scope file", () => {
-    const scope = loadReleaseScope({ catalog, categories })
-    expect(scope.measuredCount).toBe(62)
-    expect(scope.measuredIds).toEqual([...scope.measuredIds].sort())
-    const included = scope.measuredIds.filter((id) => catalog[id]?.tier1 === "included")
+    const ids = Object.keys(catalog)
+      .filter((id) => slice(catalog, categories, id) === "tier1")
+      .sort()
+    expect(ids).toHaveLength(62)
+    const included = ids.filter((id) => catalog[id]?.tier1 === "included")
     expect(included).toHaveLength(52)
-    expect(scope.measuredIds).toContain("device.primary-da")
+    expect(ids).toContain("device.primary-da")
     expect(included).not.toContain("extensions.osc777-notify")
   })
 
@@ -243,25 +255,7 @@ describe("the derived scope and the classic cohort", () => {
   })
 })
 
-describe("release 1 measurement scope", () => {
-  const scope = loadReleaseScope({ catalog, categories })
-
-  it("declares 62 of 273 features as tier 1 query/reply", () => {
-    expect(scope.catalogCount).toBe(273)
-    expect(scope.measuredCount).toBe(62)
-    expect(scope.unmeasured).toHaveLength(211)
-    expect(scope.tier).toBe(1)
-    expect(scope.method).toBe("query/reply")
-  })
-
-  it("names every unmeasured catalog feature as not measured in this release", () => {
-    const measured = new Set(scope.measuredIds)
-    expect(scope.unmeasured.every((row) => catalog[row.id] && !measured.has(row.id))).toBe(true)
-    expect(new Set(scope.unmeasured.map((row) => row.id)).size).toBe(211)
-    expect(scope.unmeasured.every((row) => row.status === "not measured in this release")).toBe(true)
-    expect(scope.unmeasured.every((row) => row.name.length > 0)).toBe(true)
-  })
-
+describe("release status and verdicts", () => {
   it("records a stale measurement as not re-measured since that date", () => {
     expect(staleCaption("2026-10-04T17:46:58Z")).toBe("not re-measured since October 4, 2026")
     expect(isStaleRelation("tree")).toBe(false)
