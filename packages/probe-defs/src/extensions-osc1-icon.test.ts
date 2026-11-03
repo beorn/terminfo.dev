@@ -11,9 +11,14 @@ import type { LibProbeSource } from "./types.ts"
 
 function source(
   icon: { current: string } | null,
-  options: { changesTitle?: boolean; ignoresTitleSetup?: boolean; ignoresIconSet?: boolean } = {},
+  options: {
+    changesTitle?: boolean
+    ignoresTitleSetup?: boolean
+    ignoresIconSet?: boolean
+    initialTitle?: string
+  } = {},
 ): LibProbeSource {
-  let title = "unchanged-title"
+  let title = options.initialTitle ?? "unchanged-title"
   return {
     backendName: "scripted-model",
     kind: "live",
@@ -103,3 +108,18 @@ test.each(["original-icon", "test-icon"])("headless osc1 rejects an ignored writ
   const result = probe!.lib!(source({ current: initial }, { ignoresIconSet: true }))
   expect(result.observation).toMatchObject({ outcome: "unsupported" })
 })
+
+// The title criterion must witness a change, including when the old title already equals the
+// usual payload. Existing OSC 1 controls exercise title setup but never the OSC 2 probe itself.
+test.each(["unchanged-title", "Test Title"])(
+  "headless osc2 distinguishes an ignored write from initial title %s",
+  (initialTitle) => {
+    const probe = extensionsProbes.find((entry) => entry.id === "extensions.osc2-title")!
+    for (const ignoresTitleSetup of [true, false]) {
+      const ctx = source(null, { initialTitle, ignoresTitleSetup })
+      const result = probe.lib!(ctx)
+      expect(result.observation).toMatchObject({ outcome: ignoresTitleSetup ? "unsupported" : "supported" })
+      expect(ctx.getTitle()).toBe(initialTitle)
+    }
+  },
+)
