@@ -15,7 +15,6 @@ import { loadFeatures, loadTerminals, subjectLabel, type FeatureCatalog } from "
 import { compatibilitySubjects, loadCurrentResults } from "./current-results.ts"
 import { publicResults, type PublicProjection, type PublicCurrentResult } from "./public-results.ts"
 import { loadCategories, orderedCategoryIds } from "./categories.ts"
-import { loadReleaseScope } from "./load-release-scope.ts"
 import type { ProbeStatus } from "@terminfo/probe-defs"
 import {
   aggregateCurrentResults,
@@ -24,7 +23,6 @@ import {
   runDecidedNothing,
   staleCaption,
   type CurrentAggregate,
-  type ReleaseScope,
 } from "./release-scope.ts"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -98,7 +96,6 @@ export interface ProbeData {
   selected: PublicProjection
   selectedByBackend: Record<string, PublicCurrentResult>
   currentContextCount: number
-  releaseScope: ReleaseScope
   releaseBars: Record<string, CurrentAggregate>
   /** Backend name -> the bar's SUPPORTED share label, the front page's secondary readout beside the D3 verdict. */
   releaseShares: Record<string, string>
@@ -248,7 +245,6 @@ export function loadFullProbes(): ProbeData {
       .flatMap((context) => Object.values(context.sources).map((source) => source.measuredAt))
       .sort()
       .at(-1) ?? ""
-  const release = loadReleaseScope({ catalog: featureDescriptions, categories: categoryCatalog })
   const releaseBars: Record<string, CurrentAggregate> = {}
   const releaseShares: Record<string, string> = {}
   const releaseStale: Record<string, string | null> = {}
@@ -292,7 +288,6 @@ export function loadFullProbes(): ProbeData {
     selected: published.projection,
     selectedByBackend,
     currentContextCount: published.projection.contextCount,
-    releaseScope: release,
     releaseBars,
     releaseShares,
     releaseStale,
