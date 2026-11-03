@@ -3,6 +3,7 @@ import { createHash } from "node:crypto"
 import { isDeepStrictEqual } from "node:util"
 import {
   SOURCE_NEGATIVE_REVIEW,
+  REPLY_PATH_AUDIT_REVIEW,
   SEMANTIC_PROMPT_SOURCE_REVIEW,
   HARNESS_INCOMPLETE_TEST,
   UNTESTABLE_ONLY_REVIEW_BRANCHES,
@@ -693,7 +694,10 @@ function probeAttempt(value: unknown, path: string, rawReplies: Record<string, s
 
 function isSourceOnlyNegativeReview(result: ProbeResult, assertions: readonly ReadAssertion[]): boolean {
   return (
-    result.criterionBranch === SOURCE_NEGATIVE_REVIEW &&
+    // Both source-only routes carry no event to assert: the source-negative review and the reply-path gate, whose
+    // measurement is a zero-byte reply. The shape stays identical, so a reply-path cell still cannot carry an
+    // assertion or assertionRefs, and the route-specific guards against "supported" remain.
+    (result.criterionBranch === SOURCE_NEGATIVE_REVIEW || result.criterionBranch === REPLY_PATH_AUDIT_REVIEW) &&
     result.assertionType === undefined &&
     !assertions.some((assertion) => assertion.featureId === result.featureId) &&
     !result.tests.some((test) => (test.assertionRefs?.length ?? 0) > 0)
