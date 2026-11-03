@@ -325,11 +325,13 @@ interface CaptureCalibrationFact {
   basis?: PixelGeometrySource
   /** The measured geometry a frame request is checked against, present on the same terms as basis. */
   geometry?: PixelGeometry
+  /** Complete raster witness, including any collector-launch cursor default. */
+  rasterBasis?: string
   /** Every reply the pre-flight read, in the order it asked, so the refusal is re-derivable. */
   queries: CaptureCalibrationQuery[]
   /** The named cause, present exactly when the geometry was refused. */
   refusal?: string
-  causes?: Array<{ name: string; message: string }>
+  causes?: Array<{ name: string; message: string; captureCommand?: unknown }>
 }
 
 /** Linux collections export both the clipboard receipt and TERMINFO_DISPOSABLE_RECEIPT; clipboard wins. */
@@ -623,6 +625,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
               ctx: probeSource,
               pixelGeometry: reportedGeometry,
               timeoutMs: DEFAULT_TIMEOUT_MS,
+              collectorLaunched: kind === "darwinHosted" || (kind === "process" && process.platform === "darwin"),
               captureRaw: async (label, deadline) => {
                 const result = await adapter.captureRaw({ featureId, role: "control", label }, deadline)
                 recordCapture(result.result)
@@ -637,15 +640,13 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
               outcome: "installed",
               basis: probeSource.captureGeometry.source,
               geometry: textOrigin.pixelGeometry,
+              rasterBasis: textOrigin.basis,
               queries,
               installCensus,
             }
           } catch (cause) {
             const error = cause instanceof Error ? cause : new Error(String(cause))
-            if (error.name !== "CaptureCalibrationRefused") throw error
-            calibrationError = error
-            probeSource.captureGeometryRefusal = error.message
-            const causes: Array<{ name: string; message: string }> = []
+            const causes: NonNullable<CaptureCalibrationFact["causes"]> = []
             const seen = new Set<Error>()
             for (
               let current: unknown = error;
@@ -653,8 +654,20 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
               current = current.cause
             ) {
               seen.add(current)
-              causes.push({ name: current.name, message: current.message })
+              causes.push({
+                name: current.name,
+                message: current.message,
+                ...("captureCommand" in current ? { captureCommand: current.captureCommand } : {}),
+              })
             }
+            // A native capture command can fail before the raster is installed.
+            // Retain its primary cause and secondary restoration failure while
+            // each affected row names the existing no-adapter outcome.
+            const darwinCommandFailure =
+              process.platform === "darwin" && causes.some((cause) => cause.captureCommand !== undefined)
+            if (error.name !== "CaptureCalibrationRefused" && !darwinCommandFailure) throw error
+            calibrationError = error
+            probeSource.captureGeometryRefusal = error.message
             captureCalibration = { outcome: "refused", queries, refusal: error.message, causes, installCensus }
           }
         }

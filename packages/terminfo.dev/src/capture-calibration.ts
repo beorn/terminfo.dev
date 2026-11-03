@@ -460,11 +460,14 @@ export async function calibrateCaptureOrigin({
   pixelGeometry,
   timeoutMs,
   captureRaw,
+  collectorLaunched = false,
 }: {
   ctx: TermProbeSource
   pixelGeometry?: CapturePixelGeometry
   timeoutMs: number
   captureRaw: (label: string, deadline: number) => Promise<CapturedFrame>
+  /** Only the verified collector launch can supply the initial cursor default. */
+  collectorLaunched?: boolean
 }): Promise<NamedTextOrigin & { pixelGeometry: CapturePixelGeometry }> {
   if (![ctx.rows, ctx.cols].every((value) => Number.isSafeInteger(value) && value >= 2)) {
     throw new Error("Capture calibration requires a verified grid of at least 2x2 cells")
@@ -484,12 +487,16 @@ export async function calibrateCaptureOrigin({
     // Retain the alternate exchange in the owned preparation trace; it cannot establish prior state.
     await ctx.queryOutcome("\x1b[?25$p", /\x1b\[\?25;([0-4])\$y/, 5000)
   }
-  if (visibilityReport.reason !== "reply" || (status !== "1" && status !== "2")) {
+  const launchDefault =
+    collectorLaunched &&
+    ((visibilityReport.reason === "sentinel" && visibilityReport.match === null) ||
+      (visibilityReport.reason === "reply" && status === "0"))
+  if (!launchDefault && (visibilityReport.reason !== "reply" || (status !== "1" && status !== "2"))) {
     throw refusal(
       `Capture calibration cannot restore cursor visibility: ${status === "3" || status === "4" ? "permanent mode" : "unreported mode"}; ${JSON.stringify(visibilityReport)}`,
     )
   }
-  const visibility = status === "1" ? "set" : "reset"
+  const visibility = launchDefault || status === "1" ? "set" : "reset"
   const capture = async (label: string, deadline: number) => {
     if (Date.now() >= deadline) throw paintTimeout(`Capture calibration ${label}: paint witness timeout before capture`)
     const frame = await captureRaw(`collector raster calibration: ${label}`, deadline)
@@ -503,12 +510,15 @@ export async function calibrateCaptureOrigin({
     changedFrom?: CapturedFrame,
   ) => {
     const deadline = Date.now() + timeoutMs
+    let previous: CapturedFrame | undefined
     for (;;) {
-      const current = await capture(label, deadline)
-      if ((!changedFrom || !equal(current, changedFrom)) && accepts(current)) {
-        const confirmation = await capture(`${label} confirmation`, deadline)
-        if (equal(current, confirmation)) return confirmation
+      const current = await capture(previous ? `${label} confirmation` : label, deadline)
+      if ((!changedFrom || !equal(current, changedFrom)) && accepts(current) && previous && equal(previous, current)) {
+        return current
       }
+      // A confirmation is also the next candidate. Discarding it misses stable
+      // consecutive pairs while consuming the same fixed paint deadline.
+      previous = current
       if (Date.now() >= deadline) {
         throw paintTimeout(`Capture calibration ${label}: paint witness timeout; no confirmed current frame`)
       }
@@ -676,7 +686,7 @@ export async function calibrateCaptureOrigin({
       origin: { x: authored.x, y: authored.y },
       pixelGeometry: measured,
       ...(columnClip > 0 || rowClip > 0 ? { visible: { width: authored.width, height: authored.height } } : {}),
-      basis: `collector complete witnessed raster: ${ctx.cols} columns x ${ctx.rows} rows, every unmasked scanline measures ${cellWidth}x${cellHeight}, visible ${authored.width}x${authored.height} grid at ${authored.x},${authored.y}${filletTrace}${blendTrace}${leadTrace}${clipTrace}; current paints and identical restore confirmed`,
+      basis: `collector complete witnessed raster: ${ctx.cols} columns x ${ctx.rows} rows, every unmasked scanline measures ${cellWidth}x${cellHeight}, visible ${authored.width}x${authored.height} grid at ${authored.x},${authored.y}${filletTrace}${blendTrace}${leadTrace}${clipTrace}; current paints and identical restore confirmed${launchDefault ? "; prior cursor visibility unreported; restored launch default set" : ""}`,
     }
   } catch (cause) {
     failure = cause
@@ -700,7 +710,7 @@ export async function calibrateCaptureOrigin({
       }
       try {
         ctx.write(`\x1b[?25${visibility === "set" ? "h" : "l"}`)
-        if ((await ctx.queryMode(25)) !== visibility) {
+        if (!launchDefault && (await ctx.queryMode(25)) !== visibility) {
           throw new Error("Restored cursor visibility differs from its prior mode")
         }
       } catch (cause) {

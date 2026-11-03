@@ -37,7 +37,7 @@ test.each(["timeout", "query I/O", "diagnostic I/O"] as const)(
         throw failure
       },
     } as unknown as TermProbeSource
-    const result = calibrateCaptureOrigin({ ctx, timeoutMs: 100, captureRaw })
+    const result = calibrateCaptureOrigin({ ctx, timeoutMs: 100, captureRaw, collectorLaunched: true })
     if (fault !== "timeout") await expect(result).rejects.toBe(failure)
     else await expect(result).rejects.toThrow(/cursor visibility query timed out/)
     expect(write).not.toHaveBeenCalled()
@@ -71,7 +71,13 @@ test.each([
     queryOutcome: async () => ({ reason: "timeout", match: null, raw: "", rawBase64: "" }),
   } as unknown as TermProbeSource
   await expect(
-    calibrateCaptureOrigin({ ctx, pixelGeometry: geometry, timeoutMs: 100, captureRaw }),
+    calibrateCaptureOrigin({
+      ctx,
+      pixelGeometry: geometry,
+      timeoutMs: 100,
+      captureRaw,
+      collectorLaunched: status === "3" || status === "4",
+    }),
   ).rejects.toMatchObject({
     name: "CaptureCalibrationRefused",
     message: expect.stringMatching(/cursor visibility/),
@@ -153,6 +159,8 @@ function calibration(
     beforeCapture?: (label: string, writes: readonly string[]) => void
     restoredVisibility?: "set" | "reset"
     visibility?: "set" | "reset"
+    visibilityReport?: TerminalQueryOutcome
+    collectorLaunched?: boolean
   } = {},
 ) {
   const defaults: Record<Stage, CapturedFrame> = {
@@ -172,10 +180,14 @@ function calibration(
       rows: options.rows ?? 4,
       cols: options.cols ?? 4,
       write: (text: string) => writes.push(text),
-      queryMode: async () => options.restoredVisibility ?? options.visibility ?? "reset",
-      queryWithSentinelOutcome: async () => modeOutcome(options.visibility === "set" ? "1" : "2"),
+      queryMode: async () =>
+        options.visibilityReport ? "unknown" : (options.restoredVisibility ?? options.visibility ?? "reset"),
+      queryWithSentinelOutcome: async () =>
+        options.visibilityReport ?? modeOutcome(options.visibility === "set" ? "1" : "2"),
+      queryOutcome: async () => ({ reason: "timeout", match: null, raw: "", rawBase64: "" }),
     } as unknown as TermProbeSource,
     pixelGeometry: options.geometry,
+    collectorLaunched: options.collectorLaunched,
     timeoutMs: 100,
     captureRaw: async (label, deadline) => {
       options.beforeCapture?.(label, writes)
@@ -191,6 +203,44 @@ function calibration(
   }).finally(() => clock.mockRestore())
   return { promise, writes, reads, budgets }
 }
+
+// Hosted Terminal.app 41555062118 answered DA1, never DECRQM. Only an app this
+// collector launched can restore that unreported state to its launch default.
+test.each(["sentinel", "zero"] as const)("launched calibration restores default visibility after %s", async (reply) => {
+  const raw = "\x1b[?1;2c"
+  const run = calibration({
+    collectorLaunched: true,
+    visibilityReport:
+      reply === "zero"
+        ? modeOutcome("0")
+        : {
+            reason: "sentinel",
+            match: null,
+            raw,
+            rawBase64: Buffer.from(raw).toString("base64"),
+          },
+  })
+  await expect(run.promise).resolves.toMatchObject({
+    pixelGeometry: geometry,
+    basis: expect.stringContaining("prior cursor visibility unreported; restored launch default set"),
+  })
+  expect(run.writes.at(-1)).toBe("\x1b[?25h")
+  expect(run.reads.get("restore grid paint")).toBe(2)
+})
+
+test("consecutive full frames confirm across the former disjoint-pair boundary", async () => {
+  const changingChrome = frame()
+  changingChrome.rgba.set([1, 2, 3, 255], 0)
+  // The retained iTerm2 sequence contains stable pairs 3/4 and 5/6, each across
+  // a discarded confirmation. Keep the same shape without copying the PNGs.
+  const run = calibration({ frames: { "before grid paint": [changingChrome, blank, blank] } })
+  await expect(run.promise).resolves.toMatchObject({ pixelGeometry: geometry })
+  expect(run.reads.get("before grid paint")).toBe(3)
+  expect(
+    new Set(run.budgets.filter(({ label }) => label.includes("before grid paint")).map(({ deadline }) => deadline))
+      .size,
+  ).toBe(1)
+})
 
 test("complete witnessed raster establishes every edge without dividing padded window replies", async () => {
   const run = calibration({
@@ -381,17 +431,21 @@ test("a cursor mode left changed makes restoration fail", async () => {
   })
 })
 
-test("a visible cursor is hidden through both blank witnesses and restored last", async () => {
-  const run = calibration({
-    visibility: "set",
-    beforeCapture: (_label, writes) => {
-      expect(writes.join("")).toContain("\x1b[?25l")
-      expect(writes.join("")).not.toContain("\x1b[?25h")
-    },
-  })
-  await expect(run.promise).resolves.toMatchObject({ pixelGeometry: geometry })
-  expect(run.writes.at(-1)).toBe("\x1b[?25h")
-})
+test.each(["set", "reset"] as const)(
+  "a reported %s cursor is hidden through both blank witnesses and restored last",
+  async (visibility) => {
+    const run = calibration({
+      visibility,
+      collectorLaunched: true,
+      beforeCapture: (_label, writes) => {
+        expect(writes.join("")).toContain("\x1b[?25l")
+        expect(writes.join("")).not.toContain("\x1b[?25h")
+      },
+    })
+    await expect(run.promise).resolves.toMatchObject({ pixelGeometry: geometry })
+    expect(run.writes.at(-1)).toBe(`\x1b[?25${visibility === "set" ? "h" : "l"}`)
+  },
+)
 
 test.each(["adapter I/O", "dimensions changed", "invalid decoded frame"])(
   "solid-paint %s stays a fatal apparatus error",
