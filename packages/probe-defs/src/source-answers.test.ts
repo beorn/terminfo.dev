@@ -461,3 +461,98 @@ it("resolves other Termless paths at the pinned Termless revision", () => {
     }),
   ).toMatchObject({ kind: "answer", status: "unsupported" })
 })
+
+// @cto 00cce4ce: a verified kept answer leads the resolution, so the stored reason, rows and ref agree.
+const ownUnverified: SourceAnswer = {
+  subject: { ...subject, version: "2.0" },
+  featureId: "extensions.mixed",
+  answers: [
+    {
+      status: "unsupported",
+      citedBlobs: [],
+      originals: [
+        { reviewRef: "collector.review.own", reviewer: "@dev/2", reason: "Own unverified review", sources: ["own"] },
+      ],
+    },
+  ],
+}
+const verifiedOlder: SourceAnswer = {
+  subject: { ...subject, version: "1.0" },
+  featureId: "extensions.mixed",
+  answers: [
+    {
+      status: "unsupported",
+      citedBlobs: [blob],
+      originals: [
+        { reviewRef: "collector.review.older", reviewer: "@cto", reason: "Verified older review", sources: ["old"] },
+      ],
+    },
+  ],
+}
+const equallyVerified: SourceAnswer = {
+  subject: { ...subject, version: "0.9" },
+  featureId: "extensions.mixed",
+  answers: [
+    {
+      status: "unsupported",
+      citedBlobs: [blob],
+      originals: [
+        {
+          reviewRef: "collector.review.oldest",
+          reviewer: "@dev/4",
+          reason: "Second verified review",
+          sources: ["oldest"],
+        },
+      ],
+    },
+  ],
+}
+const mixedInput = { subject: { ...subject, version: "2.0" }, featureId: "extensions.mixed", blobs: [blob] }
+
+it.each([
+  ["own row first", [ownUnverified, verifiedOlder]],
+  ["verified row first", [verifiedOlder, ownUnverified]],
+])("leads with the blob-verified answer and drops the label (%s)", (_name, rows) => {
+  const result = resolveSourceAnswer(rows, mixedInput)
+  if (result.kind !== "answer") throw new Error("Expected one applicable answer")
+  expect(result.label).toBeUndefined()
+  expect(result.answers[0]).toBe(verifiedOlder.answers[0])
+  expect(result.rows[0]).toBe(verifiedOlder)
+  expect(result.rowKeys[0]).toBe(sourceAnswerKey(verifiedOlder.subject, verifiedOlder.featureId))
+  expect(result.answers).toEqual([verifiedOlder.answers[0], ownUnverified.answers[0]])
+})
+
+it("finalizes the verified reason with its matching ref and no version label", () => {
+  const result = finalizeProbeResult(
+    {
+      featureId: "extensions.mixed",
+      attempt: { scope: "none" as const },
+      tests: [
+        {
+          id: "review",
+          status: "test-todo" as const,
+          attempt: { scope: "none" as const },
+          reason: "Source review pending",
+        },
+      ],
+    },
+    resolveSourceAnswer([ownUnverified, verifiedOlder], mixedInput),
+  )
+  expect(result.reviewRef).toBe(sourceAnswerKey(verifiedOlder.subject, verifiedOlder.featureId))
+  expect(result.reason).toBe("Verified older review")
+})
+
+it("keeps the version label when no applicable answer is verified", () => {
+  expect(resolveSourceAnswer([ownUnverified], mixedInput)).toMatchObject({
+    kind: "answer",
+    label: "reviewed at 2.0, not re-verified",
+  })
+})
+
+it("keeps table order among equally verified answers", () => {
+  const result = resolveSourceAnswer([verifiedOlder, equallyVerified], mixedInput)
+  if (result.kind !== "answer") throw new Error("Expected one applicable answer")
+  expect(result.answers[0]).toBe(verifiedOlder.answers[0])
+  expect(result.rows[0]).toBe(verifiedOlder)
+  expect(result.label).toBeUndefined()
+})
